@@ -1,0 +1,40 @@
+# Secrets and signing material never enter this repository
+*.env
+.env*
+!.env.example
+*.p12
+*.pfx
+*.cer
+*.mobileprovision
+signing/
+azure-signing*
+
+# macOS / Swift
+.DS_Store
+.build/
+.swiftpm/
+*.xcuserstate
+xcuserdata/
+DerivedData/
+*.app
+*.dmg
+*.zip
+
+# Windows / .NET
+bin/
+obj/
+publish*/
+installer-output/
+*.user
+*.suo
+.vs/
+AppPackages/
+
+# Local models, media and caches
+*.onnx
+*.bin
+*.mp4
+*.mov
+*.wav
+!shared/fixtures/**/*.wav
+node_modules/
