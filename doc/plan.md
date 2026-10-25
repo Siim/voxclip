@@ -417,7 +417,7 @@ Each brief stands on its own. Section 1 applies to every track.
 
 **Goal.** Build the shared generators and fixture sets that the other tracks test against, so that both platforms check the same data.
 
-**Worktree.** Repository `/Users/siimhaugas/Desktop/Projects/voxclip`, your own worktree, branch `m1/tooling`.
+**Worktree.** Repository `<repo>`, your own worktree, branch `m1/tooling`.
 
 **You own only these paths:** `tools/design/`, `tools/release/`, `tools/fixtures/llm/`, `tools/fixtures/media/`, `tools/schemas/`, `shared/fixtures/llm/`, `shared/fixtures/transcription/`, `shared/fixtures/media/`, `shared/fixtures/ingest/`, plus exactly two generated files in app trees: `apps/macos/Sources/VoxClip/Design/Tokens.swift` and `apps/windows/src/VoxClip.App/Themes/Tokens.xaml`. Change nothing else.
 
@@ -459,7 +459,7 @@ python3 -c "import json,glob; [json.load(open(p)) for p in glob.glob('shared/fix
 
 **Goal.** Implement the macOS core so that it passes every shared fixture. That covers the word editor's domain and persistence, the three transcription engines, the caption layout and the single CoreText rasterizer, and the LLM connectors with the clip finder. Implement the contract additions in `doc/plan.md` section 4.1.2 so `mac-app` can build on them.
 
-**Worktree.** Repository `/Users/siimhaugas/Desktop/Projects/voxclip`, your own worktree, branch `m1/mac-core`.
+**Worktree.** Repository `<repo>`, your own worktree, branch `m1/mac-core`.
 
 **You own only these paths (under `apps/macos/`):** `Sources/VoxClipCore/Domain/` except `Domain/Publishing/`; `Sources/VoxClipCore/Services/Project/`, `Settings/`, `LLM/`, `Process/`, `Speech/`, `Models/`; `Sources/VoxClipMedia/Captions/`, `Speech/`, `Intelligence/`; `Tests/VoxClipCoreTests/` except `Tests/VoxClipCoreTests/App/`; and new folders `Tests/VoxClipMediaTests/Captions/`, `Speech/`, `Intelligence/`. `Domain/Shared/` is frozen: its public signatures and wire names change only through the section 4.1.2 additions (`OutputSizing.swift` is new there). Fixing behaviour inside it to match the fixtures, for example the `Redactor` rules, is part of your work. Keep `Tests/VoxClipCoreTests/FixtureLoader.swift` and `ContractTests.swift` working; extend them, do not rewrite them.
 
@@ -494,7 +494,7 @@ grep -rn "notImplemented" Sources/VoxClipCore/Domain Sources/VoxClipCore/Service
 
 **Goal.** Ship the macOS product on top of `mac-core`: the AVFoundation pipeline (one compositor, sample-exact cuts, 5 ms join fades), the SwiftUI document app with every M1 screen, the `voxclip-cli` used for end-to-end tests, and `bundle.sh`.
 
-**Worktree.** Repository `/Users/siimhaugas/Desktop/Projects/voxclip`, your own worktree, branch `m1/mac-app`.
+**Worktree.** Repository `<repo>`, your own worktree, branch `m1/mac-app`.
 
 **You own only these paths (under `apps/macos/`):** `Sources/VoxClipMedia/Pipeline/`, `Audio/`; `Sources/VoxClipCore/Services/Logging/`, `Updates/`; a new `Sources/VoxClipCore/Domain/Publishing/` for the pure share helpers; `Sources/VoxClip/` (including `Info.plist`) except the generated `Sources/VoxClip/Design/Tokens.swift`; `VoxClip.entitlements`; `Sources/voxclip-cli/`; `Tests/VoxClipMediaTests/` except its `Captions/`, `Speech/` and `Intelligence/` folders; a new `Tests/VoxClipCoreTests/App/`; `bundle.sh`; `dmg-background.png`; `README.md`.
 
@@ -534,7 +534,7 @@ swift run voxclip-cli plan --open ../../shared/fixtures/projects/interview-take.
 
 **Goal.** Implement the Windows core so that it passes the same shared fixtures as macOS. That covers editing and persistence, ElevenLabs and Whisper.net transcription, HarfBuzz shaping with the single Skia glyph-outline rasterizer, and the LLM connectors with the clip finder. Implement the contract changes in `doc/plan.md` section 4.2.2 so `win-app` can build on them.
 
-**Worktree.** Repository `/Users/siimhaugas/Desktop/Projects/voxclip`, your own worktree, branch `m1/win-core`.
+**Worktree.** Repository `<repo>`, your own worktree, branch `m1/win-core`.
 
 **You own only these paths (under `apps/windows/`):** `src/VoxClip.Core/Domain/` except `Domain/Publishing/`; `src/VoxClip.Core/Services/Project/`, `Settings/`, `Speech/`, `Models/`, `LLM/`, `Process/`; `src/VoxClip.Media/Captions/`, `Speech/`; `tests/VoxClip.Core.Tests/` except `Tracks/UiPlaceholderTests.cs` and `Tracks/win-app/`; `tests/Support/`; and new folders `tests/VoxClip.Media.Tests/Captions/` and `Speech/`. `Domain/Shared/` is frozen: its public signatures and wire names change only for W1 (`ProjectJsonContext` metadata). Fixing behaviour inside it to match the fixtures is part of your work. You do not edit `.csproj` or props files; the lead adds `Whisper.net.Runtime.Vulkan` in phase 0.
 
@@ -570,7 +570,7 @@ grep -rn "NotImplemented" src/VoxClip.Core/Domain src/VoxClip.Core/Services/{Pro
 
 **Goal.** Ship the Windows product on top of `win-core`: the FFmpeg LGPL pipeline with one compose path for preview and export, the WinUI 3 app with every M1 screen, `voxclip-cli.exe`, Velopack updates, and the signed release scripts.
 
-**Worktree.** Repository `/Users/siimhaugas/Desktop/Projects/voxclip`, your own worktree, branch `m1/win-app`.
+**Worktree.** Repository `<repo>`, your own worktree, branch `m1/win-app`.
 
 **You own only these paths (under `apps/windows/`):** `src/VoxClip.Core/Services/Media/`, `Logging/`, `Updates/`; a new `src/VoxClip.Core/Domain/Publishing/` for the pure share helpers; `src/VoxClip.Media/Ffmpeg/`, `Pipeline/`, `Audio/`; `src/VoxClip.App/` (including `VoxClip.App.csproj`) except the generated `Themes/Tokens.xaml`; `src/VoxClip.Cli/` (including `VoxClip.Cli.csproj`); `tests/VoxClip.Media.Tests/` except its `Captions/` and `Speech/` folders and the `.csproj`; `tests/VoxClip.Core.Tests/Tracks/UiPlaceholderTests.cs` and a new `tests/VoxClip.Core.Tests/Tracks/win-app/`; `build/`; `README.md`.
 
@@ -616,7 +616,7 @@ pwsh -NoProfile -Command '$e=$null; foreach($f in Get-ChildItem build/*.ps1){[vo
 
 **Goal.** Prove that the two apps behave the same: caption pixels, edit plans and end-to-end export results. Wire those checks into CI.
 
-**Worktree.** Repository `/Users/siimhaugas/Desktop/Projects/voxclip`, your own worktree, branch `m1/parity`.
+**Worktree.** Repository `<repo>`, your own worktree, branch `m1/parity`.
 
 **You own only these paths:** `tools/parity/`, `tools/captions/parity.sh`, `tools/captions/compare_overlays.py`, `shared/fixtures/captions/golden/`, `.github/workflows/ci.yml`.
 
@@ -657,11 +657,11 @@ python3 tools/parity/compare_e2e.py /tmp/e2e-macos /tmp/e2e-windows
 
 **Goal.** Finish the M1 web part of publishing.md section 4: the `/download` page and the `302` redirects to the GitHub release assets, in vox-web. Nothing else.
 
-**Where.** `/Users/siimhaugas/vox/vox-web`, a separate git repository with uncommitted user edits. Work in that working tree directly: no worktree, no branch, and no git command that changes state (`add`, `commit`, `checkout`, `stash`, `reset`, `restore`). The owner commits. Read `/Users/siimhaugas/vox/CLAUDE.md` and `/Users/siimhaugas/vox/AGENTS.md` first. Never modify `/Users/siimhaugas/vox/x11-api` or `x11-ui`, and never touch `vox-api`.
+**Where.** `<vox>/vox-web`, a separate git repository with uncommitted user edits. Work in that working tree directly: no worktree, no branch, and no git command that changes state (`add`, `commit`, `checkout`, `stash`, `reset`, `restore`). The owner commits. Read `<vox>/CLAUDE.md` and `<vox>/AGENTS.md` first. Never modify `<vox>/x11-api` or `x11-ui`, and never touch `vox-api`.
 
 **You may change only these files, and only their download-related parts:** `server.mjs` (the VoxClip redirect block), `src/components/Download/` (all), `src/App.tsx`, `src/lib/metadata.ts` and `src/Layout.tsx` (the `/download` entries), `src/entryServer.tsx` and `src/entryClient.tsx` (only to pass the Windows-availability flag to the page), `src/index.css` (download rules), `test/ssr.test.mjs` (download tests), and `.env.example` (variable names with empty values, no secrets). Save `git status --short` before you start, and check at the end that only these files changed.
 
-**Read first:** `/Users/siimhaugas/Desktop/Projects/voxclip/doc/publishing.md` sections 1, 3.4 (rows W1 to W5, W7, W9, W10) and 4; `/Users/siimhaugas/Desktop/Projects/voxclip/doc/release.md` section 1.1 (asset names); `/Users/siimhaugas/Desktop/Projects/voxclip/doc/decisions.md` ADR-R17; and the existing download code in vox-web.
+**Read first:** `<repo>/doc/publishing.md` sections 1, 3.4 (rows W1 to W5, W7, W9, W10) and 4; `<repo>/doc/release.md` section 1.1 (asset names); `<repo>/doc/decisions.md` ADR-R17; and the existing download code in vox-web.
 
 **Current state.** Most of the work already exists in the vox-web working tree: the redirect block in `server.mjs` (case-insensitive, trailing slashes ignored, unknown names redirect to `/download`), `src/components/Download/index.tsx`, the route, metadata and layout entries, the "Desktop app" links in `Splash.tsx`, and SSR tests. Complete it in place. Do not rewrite it.
 
@@ -684,7 +684,7 @@ Out of scope: the `/device` page (W6), the sidebar entry (W8), every vox-api cha
 **Verification commands:**
 
 ```sh
-cd /Users/siimhaugas/vox/vox-web
+cd <vox>/vox-web
 git status --short > /tmp/vox-web-status-before.txt   # run once, before any edit
 npm test
 npm run build
