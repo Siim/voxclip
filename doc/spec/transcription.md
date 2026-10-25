@@ -1152,6 +1152,10 @@ A catalogue update that changes a hash marks the old install "Update available".
    - Follow the 302 to the CDN host. Never read the body byte by byte; that once tripped Superscribe's idle timeout on large files.
    - Timeouts: 300 s idle, 3 h per file.
    - Retries per `doc/architecture.md` §10.1 rule 5. A retry resumes from the partial.
+   - Errors, identical on both platforms:
+     - HTTP 429 after retries: `rateLimited`, "Hugging Face is busy. Try again in a minute."
+     - other non-2xx: `providerError`, "Hugging Face answered {status}: The model download could not be completed." The response body is never shown.
+     - transport failure after retries: `offline`.
    - Progress: "Downloading {model} · 37% · {done} of {total}" [Cancel] (`doc/design.md`). The total includes the `requires` files.
 5. **Verify.** Hash with SHA-256 incrementally while writing; on resume, hash the existing partial first.
    - Mismatch: delete the partial and fail with `modelChecksumMismatch`.

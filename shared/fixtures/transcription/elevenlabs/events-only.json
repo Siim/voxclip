@@ -1,0 +1,14 @@
+{
+  "language_code": "eng",
+  "language_probability": 0.0,
+  "text": "(music)",
+  "words": [
+    {
+      "text": "(music)",
+      "type": "audio_event",
+      "start": 0.0,
+      "end": 4.0
+    }
+  ],
+  "transcription_id": "synthetic-events-only"
+}

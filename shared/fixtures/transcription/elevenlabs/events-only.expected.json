@@ -1,0 +1,20 @@
+{
+  "schema": "voxclip-transcription-expected/1",
+  "derivation": "Transcription 3.2 and 8.2 retain audio_event as an event and normalize eng to en; 3.4 requires noSpeech when no word tokens exist; 14.3 reuses the paid response without another upload.",
+  "diarize": false,
+  "language": "en",
+  "rawTokens": [
+    {
+      "text": "(music)",
+      "joinsPrevious": false,
+      "start": 0.0,
+      "end": 4.0,
+      "conf": null,
+      "speaker": null,
+      "kind": "event",
+      "group": 0
+    }
+  ],
+  "importError": "noSpeech",
+  "expectedUploads": 1
+}
