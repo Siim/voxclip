@@ -604,7 +604,7 @@ Behaviour:
 
 1. `--open` a `.voxclip` project: load it and relink media by the project rules (section 3) without prompts; a `contentKey` mismatch is exit 3.
 2. `--open` a media file: create an in-memory project. With `--transcript`, load that file: one JSON object exactly as `transcript` is stored in a project (`project.schema.json` `$defs/transcript`), used as is with no post-processing (stored timings never change); a file that does not decode is exit 3. Otherwise transcribe with `--engine` (default: whisper with the first installed model that matches `--language`, else exit 7).
-3. Apply `--cut-fillers`, then `--tighten-pauses` (the same reducers as the UI), then select `--clip` or `--range`.
+3. Select the export scope first: `--clip` (an existing clip) or `--range` (a new clip over those words) when given, else an opened project's stored `activeClipId`, else the whole take. Then apply `--cut-fillers`, then `--tighten-pauses` (the same reducers as the UI), which act within that scope as they do in the app. So `--clip b --cut-fillers` cuts the fillers of clip `b`, whichever clip was active when the project was saved. A new in-memory project (media-file input) sets `pauseThresholdSeconds` as an import does (editing.md 2.5: 0.8 when the transcript is refined, else 1.0).
 4. Export with the same exporter as the app. Write `--srt` if asked.
 
 ### 9.2 Subcommands
