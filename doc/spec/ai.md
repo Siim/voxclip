@@ -328,7 +328,7 @@ Errors are logged by their `LLMError` case plus the redacted user message. Never
 | --- | --- | --- | --- | --- |
 | `noConnector` | `llm.connector` is empty | no | no | Choose how VoxClip finds clips: your API key, a model on this computer, or an installed CLI. (Button: **Open AI settings**.) |
 | `missingKey` | API-key connector and no key stored | no | no | Add your {label} API key in Settings › AI. |
-| `unauthorized` | 401, 403, Gemini 400 with reason `API_KEY_INVALID`, xAI 400 mentioning "API key" | no | no | {label} rejected the API key. Check it in Settings › AI. |
+| `unauthorized` | 401 or 403 from a connector whose catalog entry has `auth.keyAccount`, Gemini 400 with reason `API_KEY_INVALID`, xAI 400 mentioning "API key" | no | no | {label} rejected the API key. Check it in Settings › AI. |
 | `quotaExceeded` | Anthropic 402 `billing_error`, OpenAI 429 with code `insufficient_quota` | no | no | {label} says this account is out of credit or over its quota. |
 | `rateLimited(retryAfter?)` | 429 after retries, or a wait hint over 30 s | yes | yes | {label} is rate limiting this key. Try again in a minute. (With a hint: "Try again in {n} s.") |
 | `planLimit(message?)` | CLI reports a usage or rate limit | no | yes (Codex), CLI-internal (Claude Code) | Your {cli} plan's usage limit is reached. {message} |
@@ -345,7 +345,7 @@ Errors are logged by their `LLMError` case plus the redacted user message. Never
 | `unsupportedLanguage(lang)` | Apple locale gate (§6.7) | no | no | Apple's on-device model doesn't support {language name}. Use an API key, a CLI or a local model for this project. |
 | `notRunning(url)` | Ollama or LM Studio connection refused | no | no | Ollama isn't running at {url}. Start Ollama and try again. / LM Studio's server isn't running at {url}. Start it from LM Studio's Developer tab. |
 | `noModels` | local server has no chat model | no | no | Ollama has no chat models. Run `ollama pull <model>`, then refresh. / Load or download a model in LM Studio, then refresh. |
-| `unavailable(reason)` | Apple availability | no | no | This Mac can't run Apple Intelligence. / Turn on Apple Intelligence in System Settings to use the on-device model. / Apple's on-device model is still downloading. Try again later. |
+| `unavailable(reason)` | Apple availability; Ollama or LM Studio answering 401 or 403 (they have no key to fix); an unusable Ollama or LM Studio address in settings (credentials, query, fragment or a scheme other than http and https) | no | no | This Mac can't run Apple Intelligence. / Turn on Apple Intelligence in System Settings to use the on-device model. / Apple's on-device model is still downloading. Try again later. / {label} rejected the request ({status}). / {label}'s server address in Settings isn't valid. |
 | `cliMissing` | no executable found | no | no | {cli} isn't installed. {installHint} |
 | `cliTooOld(version, missing)` | required flags missing from `--help` | no | no | Your {cli} {version} is too old for VoxClip. Update it, then try again. |
 | `cliSignedOut` | auth preflight or auth markers | no | no | {cli} isn't signed in. {signInHint} |
