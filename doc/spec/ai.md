@@ -32,7 +32,7 @@ Code lives in the cross-platform cores: `VoxClipCore/AI/` (Swift) and `VoxClip.C
    | `xai` | `llm-api-key-xai` | `api.x.ai` | `Authorization: Bearer {key}` |
    | `gemini` | `llm-api-key-gemini` | `generativelanguage.googleapis.com` | `x-goog-api-key: {key}` |
 
-   No other connector ever receives a stored key. Nothing can change where a key goes: not a catalog file (for example one found through `VOXCLIP_SHARED_DIR`, architecture 2.4), not settings, not an injected HTTP client, not a redirect. Key-bearing requests go through a transport the connector owns, which never follows a redirect. A catalog entry that disagrees with this table makes the connector `unavailable` with "VoxClip is missing its AI configuration. Reinstall VoxClip."
+   No other connector ever receives a stored key. Nothing can change where a key goes: not a catalog file (for example one found through `VOXCLIP_SHARED_DIR`, architecture 2.4), not settings, not an injected HTTP client, not a redirect. Key-bearing requests go through a transport the connector owns, which never follows a redirect. A catalog entry that disagrees with this table makes the connector `unavailable` with "VoxClip is missing its AI configuration. Reinstall VoxClip." That includes an `auth` block on any connector the table does not list (Ollama, LM Studio, Apple, the CLI connectors): it is never ignored.
 6. **Plain HTTP on both platforms.** Every HTTP connector is implemented directly on `URLSession` (Swift) and `HttpClient` (C#), with no vendor SDK. Swift has no official SDK for most of these APIs, and one wire implementation per platform lets the same request and response fixtures test both apps.
 7. **Capabilities drive the UI, not provider names.** Each connector declares its group, privacy class, structured-output mode and limits in the catalog.
 
@@ -928,6 +928,12 @@ macOS GUI apps get a minimal `PATH`, so PATH alone is never enough.
 **Timeout and cancel.**
 - macOS: start the child in its own process group (`posix_spawn` with `POSIX_SPAWN_SETPGROUP`). Send `SIGTERM` to the group, then `SIGKILL` after 3 s.
 - Windows: put the child in a Job Object with `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`, and close the job.
+
+**Probe results (both CLIs, both platforms).**
+- Required help flags are matched against the help command's stdout and stderr together.
+- The sign-in check reads its signed-out signals before it looks at the exit code: the catalog `signedOutExitCode`, `loggedIn == false` in Claude Code's JSON, or the catalog `signedOutText` in either stream means `cliSignedOut`, whatever the exit code.
+- Any other failure of a detection or sign-in probe (start failure, timeout, non-zero exit, unreadable or truncated output) is `cliFailed` with the message "The CLI could not be started or its output could not be read."
+- A probe failure during a model refresh is a failed refresh (§9): the cached or curated list stays and the status reads "Couldn't refresh: {message}". It never escapes as an error.
 
 **Other rules.**
 - One CLI run at a time per connector.
