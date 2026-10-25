@@ -6,7 +6,7 @@ import Testing
 import VoxClipCore
 import VoxClipMedia
 
-private struct CLIResult: Sendable {
+struct CLIResult: Sendable {
     let status: Int32
     let stdout: Data
     let stderr: String
@@ -15,7 +15,7 @@ private struct CLIResult: Sendable {
     var json: [String: Any] { get throws { try #require(JSONSerialization.jsonObject(with: stdout) as? [String: Any]) } }
 }
 
-private func runCLI(_ arguments: [String], directory: URL, interruptAfter: Double? = nil,
+func runCLI(_ arguments: [String], directory: URL, interruptAfter: Double? = nil,
                     interruptTimeout: Double? = nil, timeout: Double = 20) throws -> CLIResult {
     var package = URL(fileURLWithPath: #filePath)
     for _ in 0..<4 { package.deleteLastPathComponent() }
@@ -33,6 +33,9 @@ private func runCLI(_ arguments: [String], directory: URL, interruptAfter: Doubl
     for key in ["VOXCLIP_ELEVENLABS_API_KEY", "VOXCLIP_ANTHROPIC_API_KEY", "VOXCLIP_OPENAI_API_KEY", "VOXCLIP_XAI_API_KEY", "VOXCLIP_GEMINI_API_KEY"] {
         environment.removeValue(forKey: key)
     }
+    environment["VOXCLIP_LIVE_TESTS"] = "0"
+    environment["VOXCLIP_TEST_DOWNLOAD"] = "0"
+    environment["VOXCLIP_NO_KEYCHAIN"] = "1"
     environment["VOXCLIP_DATA_DIR"] = directory.appendingPathComponent("data").path
     environment["VOXCLIP_SHARED_DIR"] = try FixtureLoader.sharedRoot(environment: [:]).path
     process.environment = environment
@@ -67,7 +70,7 @@ private func runCLI(_ arguments: [String], directory: URL, interruptAfter: Doubl
         watchdogFired: watchdogFired.withLock { $0 })
 }
 
-private func cliDirectory() throws -> URL {
+func cliDirectory() throws -> URL {
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent("voxclip-cli-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     return directory

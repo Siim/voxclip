@@ -41,6 +41,7 @@ struct Fixture {
     var audioChannels = 1
     var audioBitrate = 128_000
     var audioTones: [Double] = []
+    var nativeChirp = false
 }
 
 let fixtures: [Fixture] = [
@@ -57,6 +58,10 @@ let fixtures: [Fixture] = [
 let pocketFixture = Fixture(file: "pocket4-like-2tracks.mov", width: 1280, height: 720, seconds: 6,
     picture: "pocket", audio: "tone", codec: .hevc, bitrate: 1_000_000, main10: true,
     audioChannels: 2, audioBitrate: 96_000, audioTones: [1000, 300])
+// Test-only input for the Windows native suite. Zero selects the same chirp as bars-two-audio.mkv.
+let windowsHevcFixture = Fixture(file: "hevc10-two-audio.mp4", width: 640, height: 360, seconds: 4,
+    picture: "bars", audio: "chirp", codec: .hevc, bitrate: 600_000, main10: true,
+    audioBitrate: 160_000, audioTones: [0, 2011], nativeChirp: true)
 
 func sha256(_ data: Data) -> String {
     SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
@@ -155,13 +160,16 @@ func drawFrame(_ buffer: CVPixelBuffer, fixture: Fixture, frame: Int, noise: CGI
     }
 }
 
-func pcmBuffer(start: Int, count: Int, channels: Int = 1, tone: Double? = nil) throws -> CMSampleBuffer {
+func pcmBuffer(start: Int, count: Int, channels: Int = 1, tone: Double? = nil,
+               nativeChirp: Bool = false) throws -> CMSampleBuffer {
     var samples = [Int16](repeating: 0, count: count * channels)
     for index in 0..<count {
         let time = Double(start + index) / Double(sampleRate)
         let phase = tone.map { 2 * Double.pi * $0 * time }
-            ?? (2 * Double.pi * (200 * time + 1800 * time * time / 60))
-        let value = Int16(((tone == 440 ? 0.4 : 0.3) * sin(phase) * 32767).rounded())
+            ?? (2 * Double.pi * (nativeChirp ? 997 * time + 81 * time * time
+                : 200 * time + 1800 * time * time / 60))
+        let amplitude = tone == 440 ? 0.4 : (nativeChirp && tone == nil ? 0.35 : 0.3)
+        let value = Int16((amplitude * sin(phase) * 32767).rounded())
         for channel in 0..<channels { samples[index * channels + channel] = value }
     }
     var description = AudioStreamBasicDescription(mSampleRate: Double(sampleRate), mFormatID: kAudioFormatLinearPCM,
@@ -277,9 +285,10 @@ func generate(_ fixture: Fixture, at url: URL) async throws {
                     progressed = true
                 }
                 for (index, audio) in audioInputs.enumerated() where audioFrames[index] < totalFrames && audio.isReadyForMoreMediaData {
-                    let tone = fixture.audioTones.isEmpty ? (fixture.audio == "pcm" ? 440.0 : nil) : fixture.audioTones[index]
+                    let tone = fixture.audioTones.isEmpty ? (fixture.audio == "pcm" ? 440.0 : nil)
+                        : (fixture.audioTones[index] == 0 ? nil : fixture.audioTones[index])
                     let sample = try pcmBuffer(start: audioFrames[index] * 1600, count: 1600,
-                        channels: fixture.audioChannels, tone: tone)
+                        channels: fixture.audioChannels, tone: tone, nativeChirp: fixture.nativeChirp)
                     try require(audio.append(sample), "cannot append audio: \(writer.error?.localizedDescription ?? "unknown error")")
                     audioFrames[index] += 1
                     if audioFrames[index] == totalFrames { audio.markAsFinished() }
@@ -371,7 +380,7 @@ func verifyPixels(width: Int, height: Int, frame: Int, picture: String,
     }
 }
 
-func verifyVideo(_ asset: AVAsset, fixture: Fixture) async throws {
+func verifyVideo(_ asset: AVAsset, fixture: Fixture, verifyPicture: Bool = true) async throws {
     let tracks = try await asset.loadTracks(withMediaType: .video)
     try require(tracks.count == 1, "expected exactly one video track")
     let track = tracks[0]
@@ -410,8 +419,10 @@ func verifyVideo(_ asset: AVAsset, fixture: Fixture) async throws {
             guard let buffer = CMSampleBufferGetImageBuffer(sample) else { throw FixtureError("missing decoded frame") }
             CVPixelBufferLockBaseAddress(buffer, .readOnly)
             defer { CVPixelBufferUnlockBaseAddress(buffer, .readOnly) }
-            try verifyPixels(width: fixture.width, height: fixture.height, frame: frame, picture: fixture.picture) {
-                rgb(buffer, x: $0, y: $1)
+            if verifyPicture {
+                try verifyPixels(width: fixture.width, height: fixture.height, frame: frame, picture: fixture.picture) {
+                    rgb(buffer, x: $0, y: $1)
+                }
             }
         }
         frame += 1
@@ -420,7 +431,8 @@ func verifyVideo(_ asset: AVAsset, fixture: Fixture) async throws {
     try require(frame == fixture.seconds * 30, "wrong frame count: \(frame)")
 }
 
-func correlate(_ samples: [Float], tone: Double?, seconds: Int, channels: Int = 1) throws {
+func correlate(_ samples: [Float], tone: Double?, seconds: Int, channels: Int = 1,
+               nativeChirp: Bool = false) throws {
     try require(abs(samples.count / channels - seconds * sampleRate) <= 1024, "wrong decoded audio sample count: \(samples.count)")
     for fraction in [0.08, 0.5, 0.94] {
         let start = Int(Double(seconds * sampleRate) * fraction)
@@ -431,8 +443,9 @@ func correlate(_ samples: [Float], tone: Double?, seconds: Int, channels: Int = 
         for offset in 0..<length {
             let time = Double(start + offset) / Double(sampleRate)
             let phase = tone.map { 2 * Double.pi * $0 * time }
-                ?? (2 * Double.pi * (200 * time + 1800 * time * time / 60))
-            let expected = (tone == 440 ? 0.4 : 0.3) * sin(phase)
+                ?? (2 * Double.pi * (nativeChirp ? 997 * time + 81 * time * time
+                    : 200 * time + 1800 * time * time / 60))
+            let expected = (tone == 440 ? 0.4 : (nativeChirp && tone == nil ? 0.35 : 0.3)) * sin(phase)
             for channel in 0..<channels {
                 let actual = Double(samples[(start + offset) * channels + channel])
                 dot += expected * actual
@@ -490,8 +503,10 @@ func verifyAudio(_ asset: AVAsset, fixture: Fixture) async throws {
             try require(samples.count == fixture.seconds * sampleRate * fixture.audioChannels,
                         "wrong exact LPCM sample count: \(samples.count)")
         }
-        let tone = fixture.audioTones.isEmpty ? (pcm ? 440.0 : nil) : fixture.audioTones[index]
-        try correlate(samples, tone: tone, seconds: fixture.seconds, channels: fixture.audioChannels)
+        let tone = fixture.audioTones.isEmpty ? (pcm ? 440.0 : nil)
+            : (fixture.audioTones[index] == 0 ? nil : fixture.audioTones[index])
+        try correlate(samples, tone: tone, seconds: fixture.seconds, channels: fixture.audioChannels,
+                      nativeChirp: fixture.nativeChirp)
     }
 }
 
@@ -510,6 +525,30 @@ func verifyPocket(_ url: URL) async throws {
     try await verifyVideo(asset, fixture: pocketFixture)
     try await verifyAudio(asset, fixture: pocketFixture)
     print("ok \(url.lastPathComponent): \(data.count) bytes, \(sha256(data).prefix(12)), Main 10 and both stereo tones verified")
+}
+
+func verifyWindowsHevc(_ url: URL) async throws {
+    let data = try Data(contentsOf: url)
+    try require(data.count < maximumBytes, "Windows HEVC fixture exceeds 2 MB")
+    let asset = AVURLAsset(url: url)
+    let videos = try await asset.loadTracks(withMediaType: .video)
+    try require(videos.count == 1, "Windows HEVC fixture needs one video track")
+    let formats = try await videos[0].load(.formatDescriptions)
+    try require(formats.count == 1 && CMFormatDescriptionGetMediaSubType(formats[0]) == kCMVideoCodecType_HEVC,
+                "Windows HEVC fixture needs hvc1")
+    let extensions = CMFormatDescriptionGetExtensions(formats[0]) as NSDictionary? ?? [:]
+    let atoms = extensions[kCMFormatDescriptionExtension_SampleDescriptionExtensionAtoms] as? NSDictionary
+    guard let hvcC = atoms?["hvcC"] as? Data, hvcC.count >= 19 else {
+        throw FixtureError("Windows HEVC fixture has no hvcC decoder configuration")
+    }
+    try require(hvcC[0] == 1 && hvcC[1] & 0x1f == 2 && hvcC[16] & 3 == 1
+                && hvcC[17] & 7 == 2 && hvcC[18] & 7 == 2,
+                "Windows HEVC fixture needs Main 10, 4:2:0, ten-bit luma and chroma")
+    let duration = try await asset.load(.duration).seconds
+    try require(abs(duration - 4) < 0.04, "Windows HEVC fixture duration must be four seconds")
+    try await verifyVideo(asset, fixture: windowsHevcFixture, verifyPicture: false)
+    try await verifyAudio(asset, fixture: windowsHevcFixture)
+    print("ok \(url.lastPathComponent): \(data.count) bytes, Main 10 and two audio tracks verified")
 }
 
 func toolURL(_ name: String) throws -> URL {
@@ -635,7 +674,7 @@ func verify(_ directory: URL) async throws {
 
 func main() async throws {
     let arguments = Array(CommandLine.arguments.dropFirst())
-    try require(arguments.count == 2, "usage: swift tools/fixtures/media/generate.swift --out DIR | --verify DIR | --index DIR | --long-hevc FILE | --motion-60s FILE | --pocket4 FILE | --verify-pocket4 FILE")
+    try require(arguments.count == 2, "usage: swift tools/fixtures/media/generate.swift --out DIR | --verify DIR | --index DIR | --long-hevc FILE | --motion-60s FILE | --pocket4 FILE | --verify-pocket4 FILE | --win-hevc FILE | --verify-win-hevc FILE")
     let destination = URL(fileURLWithPath: arguments[1])
     switch arguments[0] {
     case "--out":
@@ -651,6 +690,10 @@ func main() async throws {
         try await generate(pocketFixture, at: destination)
         try await verifyPocket(destination)
     case "--verify-pocket4": try await verifyPocket(destination)
+    case "--win-hevc":
+        try await generate(windowsHevcFixture, at: destination)
+        try await verifyWindowsHevc(destination)
+    case "--verify-win-hevc": try await verifyWindowsHevc(destination)
     case "--long-hevc", "--motion-60s":
         let long = arguments[0] == "--long-hevc"
         try await generate(Fixture(file: destination.lastPathComponent, width: 1920, height: 1080,

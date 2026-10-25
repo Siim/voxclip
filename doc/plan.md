@@ -12,7 +12,7 @@ M1 is everything the specs mark M1 or 0.1.0: import, transcription (three engine
 2. **Specs are normative.** Read the documents your brief names before you write code. If a spec is wrong, ambiguous or contradicts another, do not edit `doc/`. Implement the most literal reading that passes the shared fixtures, mark the place with `TODO(<track-id>): spec question`, and list it in your final report.
 3. **Contracts.** The scaffold contracts (`apps/macos/CONTRACTS.md`, `apps/windows/CONTRACTS.md` and the declarations they index) plus section 4 of this plan are fixed. Source-compatible additions inside your own paths are allowed: new types, new members, and new trailing parameters with default values. Any other change to a public signature, a JSON wire name or an enum value is a contract change. Do not make it. Put the proposal (old and new signature, affected tracks, spec section, reason) in your final report and continue with other work.
 4. **Shared data.** `shared/` is the source of truth. Read it at runtime through `SharedResources`; never copy it into an app folder. Only the `tooling` and `parity` tracks write under `shared/`, and only the paths their briefs list.
-5. **Fixtures decide.** A behaviour both apps share is done when it passes the shared fixtures on both platforms. Until a fixture file you need exists, the test that uses it must be reported as skipped, with the missing path in the skip message. It must never pass without checking anything.
+5. **Fixtures decide.** A behaviour both apps share is done when it passes the shared fixtures on both platforms. Required M1 fixture files and native test projects are CI prerequisites: absence fails the job. Local optional runs may skip unavailable inputs only with the missing path in the skip message; `VOXCLIP_REQUIRE_NATIVE=1` and `VOXCLIP_REQUIRE_E2E=1` turn missing native and canonical CLI inputs into failures. A test must never pass without checking anything.
 6. **Secrets and network.** Never write a key, token, password or the contents of an `.env` or signing file anywhere: code, tests, fixtures, logs, reports. Refer to secrets by variable name and file location only. Default test runs make no network calls and download nothing. Live tests run only with `VOXCLIP_LIVE_TESTS=1`, model downloads only with `VOXCLIP_TEST_DOWNLOAD=1`, and both read keys from the `VOXCLIP_*_API_KEY` variables (architecture section 9.4).
 7. **Licences.** No GPL or proprietary code, fonts or binaries (AGENTS.md rule 4). Do not add a dependency. If you need one, propose it in your report; the lead pins it and adds its notice.
 8. **Stubs.** Replace the scaffold stubs in place. Do not leave duplicate implementations, backup files or dead code. Remove a track placeholder test only when real tests replace it. At hand-off, no M1 path you own may still throw `notImplemented`. Seams the specs mark M2 or M3 (lipsync, speaker embedding, AI tighten, cost estimates) stay as stubs.
@@ -48,7 +48,7 @@ Merge order:
 1. `tooling`: the token generator and both generated token files first, as a separate small merge on day one, because the app UIs reference the tokens. The fixtures follow as they are ready.
 2. `mac-core` and `win-core`: merge in increments (editing, captions, transcription, AI). The app tracks rebase on each merge.
 3. `mac-app` and `win-app`.
-4. `parity`: part A (tools and CI wiring) can merge at any time, because its CI steps skip until their inputs exist. Part B (caption goldens and full runs) merges after steps 2 and 3.
+4. `parity`: the integrated CI requires current test projects, canonical media fixtures, caption assets, and plan and E2E reports. Earlier scaffold guards no longer waive these requirements.
 5. `vox-site` merges in the vox-web repository whenever it is ready; its deployment setting follows ADR-R17 (section 6).
 
 Each core track covers four scaffold sub-areas: editing, speech, captions and ai. If one track is too large, the lead may split it along the scaffold's sub-track folders (`apps/*/CONTRACTS.md`, "Ownership"). No contract changes in that case, and the brief's acceptance list splits by the same folders.
@@ -391,7 +391,7 @@ Nothing. `Services/Logging` (`ILog`, `Log`) and `Services/Media` belong to win-a
 ### 4.3 CLI and end-to-end contract (app tracks to `parity`)
 
 - The command tree, flags, JSON output and exit codes are architecture.md section 9. Both CLIs implement every M1 command. `plan --json` has the shape in section 9.2. `render-caption` writes `<dir>/<case>/s<index>.png` plus `<dir>/<case>.json`, and `<dir>/tiles/` for `--tiles`.
-- The end-to-end cases, case ids and the `VOXCLIP_E2E_OUT` report are defined in architecture section 9.5. mac-app writes them from `Tests/VoxClipMediaTests/E2E/`, win-app from `tests/VoxClip.Media.Tests/E2E/`. The suites find the built CLI through `VOXCLIP_CLI` (an absolute path). When that variable is unset, they build or locate the CLI the platform's usual way.
+- The end-to-end cases, case ids and the `VOXCLIP_E2E_OUT` report are defined in architecture section 9.5. macOS writes them from `Tests/VoxClipMediaTests/E2E/`, Windows from `tests/VoxClip.Media.Tests/E2E/`. CI supplies the absolute Release CLI path in `VOXCLIP_CLI` and sets `VOXCLIP_REQUIRE_E2E=1`; missing inputs fail. Local runs may skip when the CLI or canonical fixtures are absent and strict mode is unset.
 - The Windows CLI loads FFmpeg lazily. `version`, `plan`, `render-caption` and `models list` run on macOS without FFmpeg. The caption parity and plan parity checks depend on this.
 
 ### 4.4 Shared fixtures and tools (`tooling` to everyone)
@@ -629,14 +629,14 @@ pwsh -NoProfile -Command '$e=$null; foreach($f in Get-ChildItem build/*.ps1){[vo
 - **Part A (start now):**
   1. `tools/parity/compare_e2e.py` (Python 3 standard library only): compares two `VOXCLIP_E2E_OUT` directories by the rules in architecture 9.5, prints one line per difference, and exits 1 on any difference or a missing case. `tools/parity/test_compare_e2e.py` covers it with synthetic reports.
   2. `tools/parity/plan_parity.sh`: runs `plan --open <p> --json` with the Swift and the .NET CLI for every `shared/fixtures/projects/*.voxclip` on macOS. It compares the two outputs (ignoring nothing but `version`) and checks them against the `take` expectations in `shared/fixtures/editing/projects/`.
-  3. CI (`ci.yml`): keep every existing guard so the workflow stays green before the app tracks land. macOS job: add a plan-parity step and an e2e step (Swift, with `VOXCLIP_CLI` and `VOXCLIP_E2E_OUT`) when `shared/fixtures/media/index.json` exists, and upload the reports. Windows job: fetch FFmpeg with `apps/windows/build/Fetch-Ffmpeg.ps1 -RuntimeIdentifier win-x64` when the script supports it, run the media tests with `VOXCLIP_E2E_OUT`, and upload. A new `e2e-parity` job downloads both report sets and runs `compare_e2e.py`. Run every `dotnet` command with `working-directory: apps/windows` and `dotnet test --project`.
+  3. CI (`ci.yml`): require integrated projects and canonical fixtures. macOS runs the Release CLI E2E suite with `VOXCLIP_REQUIRE_E2E=1`, uploads ten reports, and runs plan parity. Windows runs strict native and CLI E2E tests against test-only FFmpeg and uploads its reports. `e2e-parity` downloads both report sets and runs `compare_e2e.py`. Use one .NET compile job and at most two Swift compile jobs; run `dotnet test --project` from `apps/windows`.
 - **Part B (after the core and app tracks merge):**
   4. Caption goldens: render every golden sample and gallery tile with the macOS CLI (`voxclip-cli render-caption`), review them visually, and commit them under `shared/fixtures/captions/golden/` in the layout `parity.sh` and captions section 16.4 expect. Report the total size; no single file may exceed 2 MB.
   5. Run `tools/captions/parity.sh`, `tools/parity/plan_parity.sh` and, with both report sets, `compare_e2e.py`. Fix only your own tools. Report renderer or CLI differences to the lead with the failing case, the diff image or JSON, and the owning track.
 
 **Acceptance criteria:**
 
-- `actionlint` reports no problems for `ci.yml`, and the YAML loads. On a tree without media fixtures or app implementations, every new step is skipped by its guard, not failed.
+- `actionlint` reports no problems for `ci.yml`, and the YAML loads. Missing required media fixtures or app implementations fail the corresponding CI job.
 - `python3 -m unittest discover -s tools/parity` passes, and `bash -n` and `shellcheck` pass on the scripts.
 - Part B: `parity.sh` exits 0 (Swift against C#, and both against the goldens). Plan parity exits 0. `compare_e2e.py` exits 0 on the macOS and Windows report sets.
 

@@ -949,7 +949,8 @@ Default caption tests exercise layout, rendering, cache equivalence and recovery
 | `VOXCLIP_PERF_TESTS=1` | Enable frame timing checks in the Swift and C# suites. Use `swift test -c release` or `dotnet test -c Release`, with the performance suite selected. |
 | `VOXCLIP_ALLOCATION_TESTS=1` | Enable the C# renderer's allocation checks, including animated frames and rotating output targets. |
 | `VOXCLIP_PERF_FORCE=1` | C# diagnostic override when the one-minute load check fails or is unavailable. Results with this override do not satisfy performance acceptance. |
-| `VOXCLIP_CAPTION_PYTHON` | Select Python for the Swift image-comparison cross-check. It must import `numpy` under `-I`; CI requires this cross-check. |
+| `VOXCLIP_CAPTION_PYTHON` | Select Python for the Swift and C# image-comparison cross-checks and `tools/captions/parity.sh`. It must import `numpy` under `-I`. |
+| `VOXCLIP_REQUIRE_CAPTION_PYTHON=1` | Make the C# cross-check fail when the selected interpreter or `numpy` is missing. Both macOS and Windows Media CI jobs set this flag. |
 | `VOXCLIP_GOLDEN_OUT` | Generate candidate images from renderer tests into a scratch directory outside `shared/`, including after symlink resolution. This does not update the committed goldens. Final golden generation uses the CLI procedure in 16.7. |
 
 Timing acceptance follows 13.9: an optimized build, one-minute load below 2, resources warmed before measurement, and the best p95 of three passes for every style and mode. On the M3 Max development host the steady-frame gate is 3.0 ms and the page-first gate is 7.5 ms. A skipped timing test, a debug build or a forced diagnostic run leaves acceptance pending. Run timing tests after other builds and test processes have stopped; do not create artificial CPU load.

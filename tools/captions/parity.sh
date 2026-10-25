@@ -13,9 +13,20 @@ FIX="$ROOT/shared/fixtures/captions"
 GOLDEN="$FIX/golden"
 mkdir -p "$OUT/swift" "$OUT/dotnet" "$OUT/diff"
 
+PY="${VOXCLIP_CAPTION_PYTHON:-python3}"
+if ! "$PY" -I -c 'import numpy' 2>/dev/null; then
+  if [ -n "${VOXCLIP_CAPTION_PYTHON:-}" ]; then
+    echo 'VOXCLIP_CAPTION_PYTHON must import numpy under -I.' >&2
+    exit 1
+  fi
+  python3 -m venv "$OUT/venv"
+  "$OUT/venv/bin/pip" install -q "$(grep '^numpy==' "$ROOT/tools/captions/requirements.txt")"
+  PY="$OUT/venv/bin/python"
+fi
+
 echo "Building the CLIs"
-swift build --package-path "$ROOT/apps/macos" -c release --product voxclip-cli
-dotnet build "$ROOT/apps/windows/src/VoxClip.Cli" -c Release
+swift build --package-path "$ROOT/apps/macos" -c release --jobs 2 --product voxclip-cli
+dotnet build "$ROOT/apps/windows/src/VoxClip.Cli" -c Release -m:1 -nodeReuse:false -p:UseSharedCompilation=false
 
 swift_cli() { swift run --package-path "$ROOT/apps/macos" -c release --skip-build voxclip-cli "$@"; }
 dotnet_cli() { dotnet run --project "$ROOT/apps/windows/src/VoxClip.Cli" -c Release --no-build -- "$@"; }
@@ -28,12 +39,6 @@ done
 swift_cli render-caption --tiles "$FIX/preview-tiles.json" --out "$OUT/swift"
 dotnet_cli render-caption --tiles "$FIX/preview-tiles.json" --out "$OUT/dotnet"
 
-PY=python3
-if ! python3 -c 'import numpy' 2>/dev/null; then
-  python3 -m venv "$OUT/venv"
-  "$OUT/venv/bin/pip" install -q "$(grep '^numpy==' "$ROOT/tools/captions/requirements.txt")"
-  PY="$OUT/venv/bin/python"
-fi
 compare() { "$PY" -I "$ROOT/tools/captions/compare_overlays.py" --dirs "$1" "$2" --diff-dir "$3"; }
 
 status=0

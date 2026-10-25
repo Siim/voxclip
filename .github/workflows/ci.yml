@@ -1,5 +1,5 @@
 # VoxClip CI. Spec: doc/architecture.md section 12.
-# Every job detects its project files first and skips (with a notice) while the folders are still empty.
+# Native and cross-platform test projects are required; missing inputs fail before setup.
 # Signed releases are never produced here (doc/release.md).
 name: CI
 
@@ -21,6 +21,7 @@ env:
   DOTNET_CLI_TELEMETRY_OPTOUT: "1"
   DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "1"
   VOXCLIP_LIVE_TESTS: "0"
+  VOXCLIP_TEST_DOWNLOAD: "0"
 
 jobs:
   macos:
@@ -29,6 +30,13 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v5
+
+      - name: Require integrated macOS and .NET test projects
+        shell: bash
+        run: |
+          for file in apps/macos/Package.swift apps/windows/tests/VoxClip.Core.Tests/VoxClip.Core.Tests.csproj apps/windows/tests/VoxClip.Media.Tests/VoxClip.Media.Tests.csproj tools/captions/parity.sh; do
+            test -f "$file" || { echo "::error file=$file::Required test project or parity script is missing"; exit 1; }
+          done
 
       - name: Detect projects
         id: detect
@@ -42,10 +50,6 @@ jobs:
             echo "parity=$(has tools/captions/parity.sh)"
           } >> "$GITHUB_OUTPUT"
           cat "$GITHUB_OUTPUT"
-
-      - name: Skip notice (Swift package not present yet)
-        if: steps.detect.outputs.swift != 'true'
-        run: echo "::notice title=macOS::apps/macos/Package.swift not found; skipping Swift build and tests."
 
       - name: Select the newest Xcode
         if: steps.detect.outputs.swift == 'true'
@@ -61,20 +65,20 @@ jobs:
 
       - name: Set up Python (schema check and caption image comparator, macOS)
         id: py
-        if: steps.detect.outputs.swift == 'true' || steps.detect.outputs.core_tests == 'true'
+        if: steps.detect.outputs.swift == 'true' || steps.detect.outputs.core_tests == 'true' || steps.detect.outputs.media_tests == 'true'
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
       - name: Install the Draft 2020-12 validator and numpy (macOS)
-        if: steps.detect.outputs.swift == 'true' || steps.detect.outputs.core_tests == 'true'
+        if: steps.detect.outputs.swift == 'true' || steps.detect.outputs.core_tests == 'true' || steps.detect.outputs.media_tests == 'true'
         shell: bash
-        run: python -m pip install "jsonschema>=4.18,<5" "numpy==2.5.4"
+        run: python -m pip install "jsonschema==4.26.0" "numpy==2.5.4"
 
       - name: Swift build
         if: steps.detect.outputs.swift == 'true'
         working-directory: apps/macos
-        run: swift build
+        run: swift build --jobs 2
 
       - name: Swift test
         if: steps.detect.outputs.swift == 'true'
@@ -82,11 +86,38 @@ jobs:
         env:
           VOXCLIP_SHARED_DIR: ${{ github.workspace }}/shared
           VOXCLIP_CAPTION_PYTHON: ${{ steps.py.outputs.python-path }}
-        run: swift test
+        run: swift test --jobs 2
 
-      - name: Skip notice (.NET core tests not present yet)
-        if: steps.detect.outputs.core_tests != 'true'
-        run: echo "::notice title=macOS::apps/windows/tests/VoxClip.Core.Tests not found; skipping .NET core tests on macOS."
+      - name: Canonical macOS CLI E2E (Release)
+        if: steps.detect.outputs.swift == 'true'
+        shell: bash
+        env:
+          VOXCLIP_SHARED_DIR: ${{ github.workspace }}/shared
+          VOXCLIP_REQUIRE_E2E: "1"
+          VOXCLIP_E2E_OUT: ${{ runner.temp }}/voxclip-macos-e2e
+        run: |
+          swift build --package-path apps/macos -c release --jobs 2 --product voxclip-cli
+          VOXCLIP_CLI="$(swift build --package-path apps/macos -c release --show-bin-path)/voxclip-cli" \
+            swift test --package-path apps/macos -c release --jobs 2 --filter MediaCliE2ETests
+          python3 - "$VOXCLIP_E2E_OUT" <<'PY'
+          import sys
+          from pathlib import Path
+          sys.path.insert(0, "tools/parity")
+          from compare_e2e import load_reports
+          _, errors = load_reports(Path(sys.argv[1]), "macos")
+          if errors:
+              raise SystemExit("\n".join(errors))
+          print("Validated ten structured macOS CLI E2E reports")
+          PY
+
+      - name: Upload macOS CLI E2E reports
+        if: always() && steps.detect.outputs.swift == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-e2e-reports
+          path: ${{ runner.temp }}/voxclip-macos-e2e
+          if-no-files-found: warn
+          retention-days: 14
 
       - name: Set up .NET 10
         if: steps.detect.outputs.core_tests == 'true' || steps.detect.outputs.media_tests == 'true'
@@ -101,28 +132,80 @@ jobs:
           VOXCLIP_SHARED_DIR: ${{ github.workspace }}/shared
           VOXCLIP_SCHEMA_PYTHON: ${{ steps.py.outputs.python-path }}
           VOXCLIP_REQUIRE_SCHEMA_PYTHON: "1"
-        run: dotnet test --project tests/VoxClip.Core.Tests/VoxClip.Core.Tests.csproj -c Release
+        run: |
+          dotnet build tests/VoxClip.Core.Tests/VoxClip.Core.Tests.csproj -c Release -m:1 -nodeReuse:false -p:UseSharedCompilation=false
+          dotnet test --project tests/VoxClip.Core.Tests/VoxClip.Core.Tests.csproj -c Release --no-build
 
       - name: .NET media tests on macOS (caption renderer; no FFmpeg, no Windows-only APIs)
         if: steps.detect.outputs.media_tests == 'true'
         working-directory: apps/windows
         env:
           VOXCLIP_SHARED_DIR: ${{ github.workspace }}/shared
-        run: dotnet test --project tests/VoxClip.Media.Tests/VoxClip.Media.Tests.csproj -c Release --filter "Category!=RequiresFFmpeg&Category!=RequiresWindows"
+          VOXCLIP_CAPTION_PYTHON: ${{ steps.py.outputs.python-path }}
+          VOXCLIP_REQUIRE_CAPTION_PYTHON: "1"
+        run: |
+          dotnet build tests/VoxClip.Media.Tests/VoxClip.Media.Tests.csproj -c Release -m:1 -nodeReuse:false -p:UseSharedCompilation=false
+          dotnet test --project tests/VoxClip.Media.Tests/VoxClip.Media.Tests.csproj -c Release --no-build --filter "Category!=RequiresFFmpeg&Category!=RequiresWindows"
+
+      - name: Shared project plan parity
+        if: steps.detect.outputs.swift == 'true' && steps.detect.outputs.media_tests == 'true'
+        shell: bash
+        env:
+          VOXCLIP_PLAN_PYTHON: ${{ steps.py.outputs.python-path }}
+        run: |
+          VOXCLIP_MAC_CLI="$(swift build --package-path apps/macos -c release --show-bin-path)/voxclip-cli" \
+          VOXCLIP_WIN_CLI="$GITHUB_WORKSPACE/apps/windows/src/VoxClip.Cli/bin/Release/net10.0/voxclip-cli" \
+            bash tools/parity/plan_parity.sh
 
       - name: Caption parity (Swift vs C# renders)
         if: steps.detect.outputs.parity == 'true' && steps.detect.outputs.swift == 'true' && steps.detect.outputs.media_tests == 'true'
         env:
           VOXCLIP_SHARED_DIR: ${{ github.workspace }}/shared
           VOXCLIP_CAPTION_PYTHON: ${{ steps.py.outputs.python-path }}
-        run: bash tools/captions/parity.sh
+        run: bash tools/captions/parity.sh "$RUNNER_TEMP/caption-parity"
+
+      - name: Upload caption parity differences
+        if: always() && steps.detect.outputs.parity == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: caption-parity-differences
+          path: ${{ runner.temp }}/caption-parity/diff
+          if-no-files-found: warn
+          retention-days: 7
+
+  hevc-fixture:
+    name: Test-only Windows Main 10 fixture
+    runs-on: macos-26
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - name: Generate and verify Main 10 media
+        shell: bash
+        run: |
+          swift tools/fixtures/media/generate.swift --win-hevc "$RUNNER_TEMP/hevc10-two-audio.mp4"
+          swift tools/fixtures/media/generate.swift --verify-win-hevc "$RUNNER_TEMP/hevc10-two-audio.mp4"
+      - name: Upload test-only Main 10 fixture
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-native-hevc-input
+          path: ${{ runner.temp }}/hevc10-two-audio.mp4
+          if-no-files-found: error
+          retention-days: 7
 
   windows:
     name: Windows (.NET tests, WinUI x64 + arm64)
+    needs: hevc-fixture
     runs-on: windows-latest
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v5
+
+      - name: Require integrated Windows test inputs
+        shell: bash
+        run: |
+          for file in apps/windows/tests/VoxClip.Core.Tests/VoxClip.Core.Tests.csproj apps/windows/tests/VoxClip.Media.Tests/VoxClip.Media.Tests.csproj apps/windows/src/VoxClip.Cli/VoxClip.Cli.csproj apps/windows/tests/VoxClip.Media.Tests/generate-fixtures.sh apps/windows/build/Fetch-Ffmpeg.ps1 shared/fixtures/media/index.json; do
+            test -f "$file" || { echo "::error file=$file::Required native or CLI test input is missing"; exit 1; }
+          done
 
       - name: Detect projects
         id: detect
@@ -137,27 +220,25 @@ jobs:
           } >> "$GITHUB_OUTPUT"
           cat "$GITHUB_OUTPUT"
 
-      - name: Skip notice (Windows projects not present yet)
-        if: steps.detect.outputs.core_tests != 'true' && steps.detect.outputs.media_tests != 'true' && steps.detect.outputs.app != 'true' && steps.detect.outputs.cli != 'true'
-        run: echo "::notice title=Windows::No Windows projects found under apps/windows; skipping."
-
       - name: Set up .NET 10
         if: steps.detect.outputs.core_tests == 'true' || steps.detect.outputs.media_tests == 'true' || steps.detect.outputs.app == 'true' || steps.detect.outputs.cli == 'true'
         uses: actions/setup-dotnet@v5
         with:
           dotnet-version: "10.0.x"
 
-      - name: Set up Python for the schema check
+      - name: Set up Python for schema and image checks
         id: py
-        if: steps.detect.outputs.core_tests == 'true'
+        if: steps.detect.outputs.core_tests == 'true' || steps.detect.outputs.media_tests == 'true'
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
-      - name: Install the Draft 2020-12 validator
-        if: steps.detect.outputs.core_tests == 'true'
+      - name: Install pinned schema and image comparison prerequisites
+        if: steps.detect.outputs.core_tests == 'true' || steps.detect.outputs.media_tests == 'true'
         shell: bash
-        run: python -m pip install "jsonschema>=4.18,<5"
+        run: |
+          python -m pip install "jsonschema==4.26.0" "numpy==2.5.4"
+          python -I -c 'import jsonschema, numpy'
 
       - name: .NET core tests
         if: steps.detect.outputs.core_tests == 'true'
@@ -167,39 +248,138 @@ jobs:
           VOXCLIP_SHARED_DIR: ${{ github.workspace }}/shared
           VOXCLIP_SCHEMA_PYTHON: ${{ steps.py.outputs.python-path }}
           VOXCLIP_REQUIRE_SCHEMA_PYTHON: "1"
-        run: dotnet test --project tests/VoxClip.Core.Tests/VoxClip.Core.Tests.csproj -c Release
+        run: |
+          dotnet build tests/VoxClip.Core.Tests/VoxClip.Core.Tests.csproj -c Release -m:1 -nodeReuse:false -p:UseSharedCompilation=false
+          dotnet test --project tests/VoxClip.Core.Tests/VoxClip.Core.Tests.csproj -c Release --no-build
 
       - name: Fetch pinned test-only FFmpeg tools
         if: steps.detect.outputs.media_tests == 'true'
         shell: pwsh
         run: apps/windows/build/Fetch-Ffmpeg.ps1 -RuntimeIdentifier win-x64 -TestTools
 
-      - name: .NET media tests
+      - name: Download prepared Main 10 native fixture
+        if: steps.detect.outputs.media_tests == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-native-hevc-input
+          path: ${{ runner.temp }}/voxclip-hevc
+
+      - name: Generate native Windows media fixtures
+        if: steps.detect.outputs.media_tests == 'true'
+        shell: bash
+        env:
+          VOXCLIP_FFMPEG_DIR: ${{ github.workspace }}/apps/windows/build/.cache/ffmpeg/win-x64/test-tools
+          VOXCLIP_HEVC_FIXTURE: ${{ runner.temp }}/voxclip-hevc/hevc10-two-audio.mp4
+          VOXCLIP_FIXTURE_PYTHON: ${{ steps.py.outputs.python-path }}
+        run: |
+          set -o pipefail
+          tools_dir="$(cygpath -u "$VOXCLIP_FFMPEG_DIR")"
+          PATH="$tools_dir:$PATH"
+          VOXCLIP_HEVC_FIXTURE="$(cygpath -u "$VOXCLIP_HEVC_FIXTURE")"
+          VOXCLIP_FIXTURE_PYTHON="$(cygpath -u "$VOXCLIP_FIXTURE_PYTHON")"
+          export PATH VOXCLIP_HEVC_FIXTURE VOXCLIP_FIXTURE_PYTHON
+          results_dir="$(cygpath -u "$RUNNER_TEMP")/voxclip-test-results"
+          mkdir -p "$results_dir"
+          sh apps/windows/tests/VoxClip.Media.Tests/generate-fixtures.sh 2>&1 | tee "$results_dir/fixture-generation.log"
+
+      - name: Build Media tests and CLI with one compile job
+        if: steps.detect.outputs.media_tests == 'true'
+        shell: bash
+        working-directory: apps/windows
+        run: dotnet build tests/VoxClip.Media.Tests/VoxClip.Media.Tests.csproj -c Release -m:1 -nodeReuse:false -p:UseSharedCompilation=false
+
+      - name: Stage only the six test DLLs beside the built CLI
+        if: steps.detect.outputs.media_tests == 'true'
+        shell: pwsh
+        working-directory: apps/windows
+        env:
+          VOXCLIP_FFMPEG_DIR: ${{ github.workspace }}/apps/windows/build/.cache/ffmpeg/win-x64/test-tools
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $pin = Get-Content build/ffmpeg.json -Raw | ConvertFrom-Json
+          $cli = 'src/VoxClip.Cli/bin/Release/net10.0'
+          if (-not (Test-Path "$cli/voxclip-cli.exe")) { throw 'The built CLI is missing.' }
+          foreach ($entry in $pin.libraryMajors.PSObject.Properties) {
+            $name = "$($entry.Name)-$($entry.Value).dll"
+            $source = Join-Path $env:VOXCLIP_FFMPEG_DIR $name
+            if (-not (Test-Path $source)) { throw "Missing test DLL: $name" }
+            Copy-Item -LiteralPath $source -Destination $cli -Force
+          }
+
+      - name: .NET media tests (strict native and CLI E2E)
         if: steps.detect.outputs.media_tests == 'true'
         shell: bash
         working-directory: apps/windows
         env:
           VOXCLIP_SHARED_DIR: ${{ github.workspace }}/shared
-          VOXCLIP_TEST_FFMPEG: ${{ github.workspace }}/apps/windows/build/.cache/ffmpeg/win-x64/test-tools/ffmpeg.exe
-        run: dotnet test --project tests/VoxClip.Media.Tests/VoxClip.Media.Tests.csproj -c Release
+          VOXCLIP_FFMPEG_DIR: ${{ github.workspace }}/apps/windows/build/.cache/ffmpeg/win-x64/test-tools
+          VOXCLIP_REQUIRE_NATIVE: "1"
+          VOXCLIP_REQUIRE_E2E: "1"
+          VOXCLIP_CLI: ${{ github.workspace }}/apps/windows/src/VoxClip.Cli/bin/Release/net10.0/voxclip-cli.exe
+          VOXCLIP_E2E_OUT: ${{ runner.temp }}/voxclip-test-results/e2e
+          VOXCLIP_CAPTION_PYTHON: ${{ steps.py.outputs.python-path }}
+          VOXCLIP_REQUIRE_CAPTION_PYTHON: "1"
+        run: |
+          set -o pipefail
+          mkdir -p "$(cygpath -u "$RUNNER_TEMP")/voxclip-test-results"
+          dotnet test --project tests/VoxClip.Media.Tests/VoxClip.Media.Tests.csproj -c Release --no-build 2>&1 | tee "$(cygpath -u "$RUNNER_TEMP")/voxclip-test-results/media-tests.log"
+          python - "$VOXCLIP_E2E_OUT" <<'PY'
+          import json
+          from pathlib import Path
+          import sys
+
+          reports = sorted(Path(sys.argv[1]).glob("*.json"))
+          assert len(reports) == 10, f"expected ten Windows CLI E2E reports, got {len(reports)}"
+          for path in reports:
+              report = json.loads(path.read_text(encoding="utf-8"))
+              assert path.stem == report["caseId"] and report["platform"] == "windows" and isinstance(report["result"], dict)
+          print("Validated ten structured Windows CLI E2E reports")
+          PY
+
+      - name: Upload native test log and structured CLI reports
+        if: always() && steps.detect.outputs.media_tests == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-native-test-evidence
+          path: ${{ runner.temp }}/voxclip-test-results
+          if-no-files-found: warn
+          retention-days: 14
 
       - name: Build WinUI app (win-x64)
         if: steps.detect.outputs.app == 'true'
         shell: bash
         working-directory: apps/windows
-        run: dotnet build src/VoxClip.App/VoxClip.App.csproj -c Release -r win-x64 -p:Platform=x64
+        run: dotnet build src/VoxClip.App/VoxClip.App.csproj -c Release -r win-x64 -p:Platform=x64 -m:1 -nodeReuse:false -p:UseSharedCompilation=false
 
       - name: Build WinUI app (win-arm64)
         if: steps.detect.outputs.app == 'true'
         shell: bash
         working-directory: apps/windows
-        run: dotnet build src/VoxClip.App/VoxClip.App.csproj -c Release -r win-arm64 -p:Platform=ARM64
+        run: dotnet build src/VoxClip.App/VoxClip.App.csproj -c Release -r win-arm64 -p:Platform=ARM64 -m:1 -nodeReuse:false -p:UseSharedCompilation=false
 
       - name: Build CLI
-        if: steps.detect.outputs.cli == 'true'
+        if: steps.detect.outputs.cli == 'true' && steps.detect.outputs.media_tests != 'true'
         shell: bash
         working-directory: apps/windows
-        run: dotnet build src/VoxClip.Cli/VoxClip.Cli.csproj -c Release
+        run: dotnet build src/VoxClip.Cli/VoxClip.Cli.csproj -c Release -m:1 -nodeReuse:false -p:UseSharedCompilation=false
+
+  e2e-parity:
+    name: macOS and Windows CLI E2E parity
+    needs: [macos, windows]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with:
+          name: macos-e2e-reports
+          path: ${{ runner.temp }}/macos-e2e
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-native-test-evidence
+          path: ${{ runner.temp }}/windows-evidence
+      - name: Compare the ten structured CLI reports
+        run: python3 tools/parity/compare_e2e.py "$RUNNER_TEMP/macos-e2e" "$RUNNER_TEMP/windows-evidence/e2e"
 
   fixtures:
     name: Shared fixtures and repo hygiene

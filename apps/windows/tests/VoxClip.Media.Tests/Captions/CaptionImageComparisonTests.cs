@@ -97,6 +97,10 @@ public sealed class CaptionImageComparisonTests
     [Fact]
     public async Task SyntheticVerdictsAndMetricsMatchPython()
     {
+        var python = Environment.GetEnvironmentVariable("VOXCLIP_CAPTION_PYTHON");
+        if (string.IsNullOrWhiteSpace(python)) python = "python3";
+        var requirePython = Environment.GetEnvironmentVariable("VOXCLIP_REQUIRE_CAPTION_PYTHON") == "1";
+        const string prerequisite = "Python with numpy under -I is required for the executable caption comparison definition; set VOXCLIP_CAPTION_PYTHON.";
         var directory = Directory.CreateTempSubdirectory("voxclip-caption-comparison-");
         try
         {
@@ -106,21 +110,34 @@ public sealed class CaptionImageComparisonTests
                 var name = (string)row[0]; var first = (CaptionImageComparison.Image)row[1]; var second = (CaptionImageComparison.Image)row[2];
                 var firstPath = Path.Combine(directory.FullName, name + "-a.png"); var secondPath = Path.Combine(directory.FullName, name + "-b.png");
                 CaptionImageComparison.WritePng(first, firstPath); CaptionImageComparison.WritePng(second, secondPath);
-                var start = new ProcessStartInfo("python3") { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false };
+                var start = new ProcessStartInfo(python) { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false };
                 foreach (var argument in new[] { "-I", script, firstPath, secondPath }) start.ArgumentList.Add(argument);
                 Process? process = null;
                 try { process = Process.Start(start); }
-                catch (Win32Exception) { Assert.Skip("Python 3 with numpy is required to cross-check the executable caption comparison definition."); }
+                catch (Win32Exception)
+                {
+                    if (requirePython) Assert.Fail(prerequisite);
+                    Assert.Skip(prerequisite);
+                }
                 Assert.NotNull(process);
                 using (process)
                 {
                     var standard = process.StandardOutput.ReadToEndAsync(TestContext.Current.CancellationToken); var error = process.StandardError.ReadToEndAsync(TestContext.Current.CancellationToken);
                     try { await process.WaitForExitAsync(TestContext.Current.CancellationToken).WaitAsync(TimeSpan.FromSeconds(60), TestContext.Current.CancellationToken); }
-                    catch { process.Kill(entireProcessTree: true); throw; }
+                    catch
+                    {
+                        if (!process.HasExited)
+                        {
+                            try { process.Kill(entireProcessTree: true); }
+                            catch (InvalidOperationException) { }
+                        }
+                        throw;
+                    }
                     var text = await standard; var errors = await error;
-                    Assert.SkipWhen(errors.Contains("No module named 'numpy'", StringComparison.Ordinal)
-                        || errors.Contains("Python was not found; run without arguments to install from the Microsoft Store", StringComparison.Ordinal),
-                        "Python 3 with numpy is required for the executable comparison definition.");
+                    var missingPython = errors.Contains("No module named 'numpy'", StringComparison.Ordinal)
+                        || errors.Contains("Python was not found; run without arguments to install from the Microsoft Store", StringComparison.Ordinal);
+                    if (missingPython && requirePython) Assert.Fail(prerequisite + " " + errors);
+                    Assert.SkipWhen(missingPython, prerequisite);
                     Assert.True(process.ExitCode is 0 or 1, errors);
                     var result = CaptionImageComparison.Compare(first, second);
                     Assert.Equal(result.Passed, process.ExitCode == 0);

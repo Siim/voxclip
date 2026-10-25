@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 import Testing
 import VoxClipCore
 @testable import VoxClipMedia
@@ -100,9 +101,19 @@ struct CaptionImageComparisonTests {
                 "--a-crop", "\(firstImage.crop.x)", "\(firstImage.crop.y)",
                 "--b-crop", "\(secondImage.crop.x)", "\(secondImage.crop.y)"]
             process.standardOutput = output; process.standardError = output
+            let exited = DispatchSemaphore(value: 0)
+            process.terminationHandler = { _ in exited.signal() }
+            var reaped = false
+            defer {
+                if !reaped && process.isRunning {
+                    kill(process.processIdentifier, SIGKILL)
+                    if exited.wait(timeout: .now() + .seconds(5)) == .success { process.waitUntilExit() }
+                }
+            }
             try process.run()
             let response = String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
             process.waitUntilExit()
+            reaped = true
             var matches = process.terminationStatus == (passes ? 0 : 1)
             #expect(matches, "Python: \(name): \(response)")
             if let start = response.firstIndex(of: "{"), let end = response[start...].firstIndex(of: "}"),

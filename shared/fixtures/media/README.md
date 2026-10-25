@@ -6,6 +6,28 @@ an intentional content change, review decoded frames, and commit the media and
 the updated `index.json` together. No provider, model, or recorded speech is used.
 Every committed file must remain below 2,000,000 bytes.
 
+## Test-only Windows Main 10 input
+
+The Windows native suite also needs `hevc10-two-audio.mp4`, a four-second
+640×360 HEVC Main 10 MP4 with two AAC 48 kHz mono tracks. It is generated
+outside `shared/fixtures/media/` and is never committed or packaged. The first
+track contains the same chirp as the native `bars-two-audio.mkv` fixture; the
+second contains a 2011 Hz tone. On macOS, run:
+
+```sh
+swift tools/fixtures/media/generate.swift --win-hevc /tmp/hevc10-two-audio.mp4
+swift tools/fixtures/media/generate.swift --verify-win-hevc /tmp/hevc10-two-audio.mp4
+VOXCLIP_HEVC_FIXTURE=/tmp/hevc10-two-audio.mp4 sh apps/windows/tests/VoxClip.Media.Tests/generate-fixtures.sh
+```
+
+CI generates this small input with AVFoundation on `macos-26`. The Swift verifier
+uses AVFoundation and CoreMedia to check the `hvc1` Main 10 4:2:0 ten-bit stream,
+640×360 dimensions, 120 decoded frames, four-second duration, and both AAC
+48 kHz mono tracks and their audio content. It needs no `ffprobe` on macOS.
+Windows setup checks the downloaded file with the pinned test-only `ffprobe.exe`
+and uses test-only `ffmpeg.exe` for the other ignored native fixtures. It does
+not need a Windows HEVC encoder.
+
 ## Regenerate on macOS
 
 The Swift script uses AVAssetWriter and VideoToolbox H.264 High, CoreGraphics
