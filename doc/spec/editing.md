@@ -182,6 +182,8 @@ EditPlan {
 
 The macOS canonical initializer takes `sampleRate`, `totalSamples`, `cuts` and `kept`; output samples and joins are derived from the kept intervals. The legacy initializer with explicit derived values is deprecated and asserts their agreement in DEBUG builds. Decoding still normalizes stale derived fields from kept intervals without changing the wire format.
 
+On Windows, construction, record copies and decoding silently normalize supplied output samples and joins from the kept intervals, sample rate and source bounds in both Debug and Release. Supplied derived fields never override those values, regardless of initializer order.
+
 ### 2.8 CaptionWord
 
 ```text
@@ -746,7 +748,7 @@ gain(output sample o in part P): i = o - P.outputStart; j = P.length - 1 - i
 - Fades are linear and change amplitude only, never length. The first sample of a fade-in and the last of a fade-out are exactly 0. The two ranges never overlap, because `fade <= floor(len/2)`.
 - A clip's first part fades in and its last part fades out, because they start after 0 and end before the source end. The very start and end of the source are never faded.
 - macOS applies the gains in an `MTAudioProcessingTap` on the composition's audio mix (the media spec has the measured reasons `setVolumeRamp` is not used). If the tap runs at a different rate than the plan, scale the part boundaries once in `prepare`. Windows applies the same gains to decoded `fltp` samples. Both use the same tap or filter for preview and export.
-- Fixtures: `fades/*` (4). Gains are binary32 (`Float32(i / N)`); compare with tolerance 1e-7.
+- Fixtures: `fades/*` (5). Gains are binary32 (`Float32(i / N)`); compare with tolerance 1e-7.
 
 ### 7.8 Consumers
 
@@ -845,7 +847,7 @@ Fixture: `media/content-key`.
 3. Otherwise ask the user to locate the file. A file whose size and hash match is accepted silently. A different file is accepted only after an explicit confirmation, and only if its probed planning duration is within 0.05 s of `durationSeconds`. In that case `sizeBytes`, `contentKey`, `video` and `audio` are updated, and the transcript and edits are kept.
 4. Until the media is resolved, the project opens read-only with the transcript visible.
 
-On Windows, steps 1 and 2 probe a candidate only if it has one of two forms, checked after converting `/` to `\`: a drive-letter path (`X:\…`), or a UNC path (`\\server\share\…`) on the same server and share as the `.voxclip` file itself, comparing `Path.GetPathRoot` case-insensitively. Every other form is never probed, including the device and NT prefixes `\\?\`, `\\.\` and `\??\` (`\??\UNC\…` reaches the network like a UNC path), and UNC paths on any other share. Probing such a path can open an SMB session with the user's credentials as soon as a crafted project is opened. Those candidates go straight to step 3, and the locate dialog shows the stored path.
+On Windows, steps 1 and 2 probe a candidate only if it has one of two forms, checked after converting `/` to `\`: a drive-letter path (`X:\…`, with an ASCII letter), or a UNC path (`\\server\share\…`) on the same server and share as the `.voxclip` file itself, comparing the server and share case-insensitively. The project file's full path, resolved against the current directory, must also have one of these forms; a project on a device path never probes any candidate. Every other form is never probed, including the device and NT prefixes `\\?\`, `\\.\` and `\??\` (`\??\UNC\…` reaches the network like a UNC path), and UNC paths on any other share. Probing such a path can open an SMB session with the user's credentials as soon as a crafted project is opened. Those candidates go straight to step 3, and the locate dialog shows the stored path.
 
 ### 10.4 Loading and validation
 

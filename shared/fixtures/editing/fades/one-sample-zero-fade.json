@@ -1,0 +1,24 @@
+{
+  "schema": "voxclip-editing-fixture/1",
+  "id": "fades/one-sample-zero-fade",
+  "kind": "join-fades",
+  "origin": "voxclip",
+  "source": "doc/spec/editing.md section 2.7 (derived joins and zero-length fades)",
+  "description": "Exactly one kept sample between cut clip edges: both fade lengths are zero, no edge joins are emitted, and gain remains one (editing 2.7).",
+  "input": {
+    "durationSeconds": 0.003,
+    "sampleRate": 1000,
+    "segments": [
+      {"id": "clip-head", "kind": "range", "start": 0, "end": 0.001, "cut": true},
+      {"id": "clip-tail", "kind": "range", "start": 0.002, "end": 0.003, "cut": true}
+    ]
+  },
+  "expected": {
+    "kept": [[1, 2]],
+    "outputSamples": 1,
+    "parts": [{"outputStart": 0, "length": 1, "fadeIn": 0, "fadeOut": 0}],
+    "joins": [],
+    "gains": [[0, 1]],
+    "tolerance": 1e-7
+  }
+}

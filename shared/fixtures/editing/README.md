@@ -14,7 +14,7 @@ shared/fixtures/editing/
 | Group | kind | Files | Spec section |
 |---|---|---|---|
 | `plan/` | `edit-plan` | 34 | 7.3 to 7.6 |
-| `fades/` | `join-fades` | 4 | 7.7 |
+| `fades/` | `join-fades` | 5 | 7.7 |
 | `session/` | `edit-session` | 3 | 6, 7.1 |
 | `projects/` | `project-plan` | 2 | 10.4, 7.1 |
 | `pauses/` | `pause-detection`, `pause-label` | 4 + 1 | 5.7, 4.4 |
@@ -51,6 +51,8 @@ Every file is one JSON object:
 ```
 
 `source`, `description`, `notes` and `informative` are documentation. Runners never assert them.
+
+`fades/one-sample-zero-fade` also asserts the optional `expected.joins` sample triples (`outSample`, `fadeOutLen`, `fadeInLen`): a single kept sample has zero-length fades, an empty join list and unity gain. Its `origin` is `voxclip` because derived joins are a VoxClip editing §2.7 rule, not a field from the VoxConvo reference. Its inputs and expectations are generated, not hand-edited.
 
 ### Origins
 

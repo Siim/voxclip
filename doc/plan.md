@@ -396,7 +396,7 @@ Nothing. `Services/Logging` (`ILog`, `Log`) and `Services/Media` belong to win-a
 
 ### 4.4 Shared fixtures and tools (`tooling` to everyone)
 
-Already in the repository: `shared/fixtures/editing` (84), `projects` (2), `captions`, `redaction/cases.json` (architecture 11.2), `version/compare.json` (architecture 13.1) and `export/presets.json` (architecture 4.1).
+Already in the repository: `shared/fixtures/editing` (85), `projects` (2), `captions`, `redaction/cases.json` (architecture 11.2), `version/compare.json` (architecture 13.1) and `export/presets.json` (architecture 4.1).
 
 Produced by `tooling`, with the names below fixed:
 

@@ -366,7 +366,8 @@ for (const [id, seconds, sections, words, description] of [
 }
 
 // ---------- join fades (audioEditor.ts) ----------
-async function fades({ id, description, duration, sampleRate, segments }) {
+async function fades({ id, description, duration, sampleRate, segments, sampleProbes = [], includeJoins = false,
+  origin = 'voxconvo', source = 'vox-web/src/utils/audioEditor.ts:19-29 (run on a constant 1.0 buffer)' }) {
   const refSegs = vc.toReferenceSegments(segments)
   const built = buildMediaEditPlan(refSegs, duration, sampleRate)
   const total = built.totalSamples
@@ -403,9 +404,17 @@ async function fades({ id, description, duration, sampleRate, segments }) {
     }
     probe = [...picks].sort((a, b) => a - b)
   }
-  add({ id, kind: 'join-fades', origin: 'voxconvo', source: 'vox-web/src/utils/audioEditor.ts:19-29 (run on a constant 1.0 buffer)', description,
+  probe = uniq([...probe, ...sampleProbes]).sort((a, b) => a - b)
+  const joins = []
+  for (let index = 0; index < parts.length; index++) {
+    const part = parts[index]
+    if (part.outputStart > 0 || part.fadeIn > 0) joins.push([part.outputStart, parts[index - 1]?.fadeOut ?? 0, part.fadeIn])
+  }
+  const last = parts.at(-1)
+  if (last?.fadeOut > 0) joins.push([built.outputSamples, last.fadeOut, 0])
+  add({ id, kind: 'join-fades', origin, source, description,
     input: { durationSeconds: duration, sampleRate, segments },
-    expected: { kept: built.kept.map(k => [k.startSample, k.endSample]), outputSamples: built.outputSamples, parts, gains: probe.map(s => [s, out[s]]), tolerance: 1e-7 } })
+    expected: { kept: built.kept.map(k => [k.startSample, k.endSample]), outputSamples: built.outputSamples, parts, ...(includeJoins ? { joins } : {}), gains: probe.map(s => [s, out[s]]), tolerance: 1e-7 } })
 }
 await fades({ id: 'fades/one-cut-1k', duration: 3, sampleRate: 1000, description: 'One cut: the part before it fades out, the part after it fades in, and the file start and end are never faded. 5 samples at 1 kHz.',
   segments: [w('a', 0.5, 1.0), w('b', 1.2, 1.5, true), w('c', 2.0, 2.5)] })
@@ -414,6 +423,9 @@ await fades({ id: 'fades/short-parts-1k', duration: 2, sampleRate: 1000, descrip
 await fades({ id: 'fades/clip-edges-48k', duration: 4, sampleRate: 48000, description: 'A clip export fades in at its first sample and out at its last, because its kept parts start after 0 and end before the source end. 240 samples at 48 kHz.',
   segments: [w('before', 0.2, 0.6, true), w('clip', 1.0, 1.4), w('um', 1.5, 1.6, true), w('words', 1.7, 2.1), w('after', 2.6, 3.0, true), r('clip-head', 0, 0.88), r('clip-tail', 2.35, 3603)] })
 await fades({ id: 'fades/no-cuts', duration: 1, sampleRate: 1000, description: 'No cuts: one part covering the whole file, no fades.', segments: [w('a', 0.2, 0.8)] })
+await fades({ id: 'fades/one-sample-zero-fade', duration: 0.003, sampleRate: 1000, description: 'Exactly one kept sample between cut clip edges: both fade lengths are zero, no edge joins are emitted, and gain remains one (editing 2.7).',
+  segments: [r('clip-head', 0, 0.001), r('clip-tail', 0.002, 0.003)], sampleProbes: [0], includeJoins: true,
+  origin: 'voxclip', source: 'doc/spec/editing.md section 2.7 (derived joins and zero-length fades)' })
 
 // ---------- text primitives ----------
 {

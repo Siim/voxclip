@@ -181,6 +181,7 @@ struct FixtureValue {
             })
         }
         actual["parts"] = try FixtureValue.encoded(plan.fadeParts).value
+        actual["joins"] = .array(plan.joins.map { .array([.number(Double($0.outSample)), .number(Double($0.fadeOutLen)), .number(Double($0.fadeInLen))]) })
         for pair in expected["gains"].array {
             let sample = Int64(pair.array[0].int)
             #expect(gainFromJoins(plan.joins, at: sample) == plan.joinGain(at: sample))
