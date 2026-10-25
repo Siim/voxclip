@@ -845,7 +845,7 @@ Fixture: `media/content-key`.
 3. Otherwise ask the user to locate the file. A file whose size and hash match is accepted silently. A different file is accepted only after an explicit confirmation, and only if its probed planning duration is within 0.05 s of `durationSeconds`. In that case `sizeBytes`, `contentKey`, `video` and `audio` are updated, and the transcript and edits are kept.
 4. Until the media is resolved, the project opens read-only with the transcript visible.
 
-On Windows, steps 1 and 2 never probe a device path (`\\?\` or `\\.\`). They probe a UNC path (`\\server\share\…`) only when the `.voxclip` file itself is on the same server and share, comparing `Path.GetPathRoot` case-insensitively. Probing an arbitrary UNC path opens an SMB session with the user's credentials as soon as a crafted project is opened. Any other UNC candidate goes straight to step 3, and the locate dialog shows the stored path.
+On Windows, steps 1 and 2 probe a candidate only if it has one of two forms, checked after converting `/` to `\`: a drive-letter path (`X:\…`), or a UNC path (`\\server\share\…`) on the same server and share as the `.voxclip` file itself, comparing `Path.GetPathRoot` case-insensitively. Every other form is never probed, including the device and NT prefixes `\\?\`, `\\.\` and `\??\` (`\??\UNC\…` reaches the network like a UNC path), and UNC paths on any other share. Probing such a path can open an SMB session with the user's credentials as soon as a crafted project is opened. Those candidates go straight to step 3, and the locate dialog shows the stored path.
 
 ### 10.4 Loading and validation
 
