@@ -356,7 +356,7 @@ Errors are logged by their `LLMError` case plus the redacted user message. Never
 | `noModels` | local server has no chat model | no | no | Ollama has no chat models. Run `ollama pull <model>`, then refresh. / Load or download a model in LM Studio, then refresh. |
 | `unavailable(reason)` | Apple availability; Ollama or LM Studio answering 401 or 403 (they have no key to fix); an unusable Ollama or LM Studio address in settings (credentials, query, fragment or a scheme other than http and https) | no | no | This Mac can't run Apple Intelligence. / Turn on Apple Intelligence in System Settings to use the on-device model. / Apple's on-device model is still downloading. Try again later. / {label} rejected the request ({status}). / {label}'s server address in Settings isn't valid. (also for a 404 from the local status probe) / VoxClip is missing its AI configuration. Reinstall VoxClip. (catalog disagrees with the §1 rule 5 table) / {label} is not enabled. (catalog `enabled: false`, the release kill switch; also for a 400 from a local status probe use "{label} rejected the request ({status})." without the provider's message) |
 | `cliMissing` | no executable found | no | no | {cli} isn't installed. {installHint} |
-| `cliTooOld(version, missing)` | required flags missing from `--help` | no | no | Your {cli} {version} is too old for VoxClip. Update it, then try again. |
+| `cliTooOld(version, missing)` | required flags missing from `--help`; a non-zero or unparseable `--version`; a non-zero help exit; a failing `codex features list` | no | no | Your {cli} {version} is too old for VoxClip. Update it, then try again. When the version could not be read: Your {cli} is too old for VoxClip. Update it, then try again. |
 | `cliSignedOut` | auth preflight or auth markers | no | no | {cli} isn't signed in. {signInHint} |
 | `cliFailed(message)` | non-zero exit or unparseable output, no better match | no | no | {cli} stopped with an error: {message, at most 200 characters, redacted} |
 | `cancelled` | the user cancelled | no | no | (no message) |
@@ -932,7 +932,9 @@ macOS GUI apps get a minimal `PATH`, so PATH alone is never enough.
 **Probe results (both CLIs, both platforms).**
 - Required help flags are matched against the help command's stdout and stderr together.
 - The sign-in check reads its signed-out signals before it looks at the exit code: the catalog `signedOutExitCode`, `loggedIn == false` in Claude Code's JSON, or the catalog `signedOutText` in either stream means `cliSignedOut`, whatever the exit code.
-- Any other failure of a detection or sign-in probe (start failure, timeout, non-zero exit, unreadable or truncated output) is `cliFailed` with the message "The CLI could not be started or its output could not be read."
+- A non-zero or unparseable `--version`, a non-zero help exit, missing required flags or a failing `codex features list` is `cliTooOld` (§5), checked in that order before any sign-in probe.
+- Any other failure of a detection or sign-in probe (start failure, timeout, unreadable or truncated output, a sign-in probe's non-zero exit without a signed-out signal) is `cliFailed` with the message "The CLI could not be started or its output could not be read."
+- Every `cliMissing` message includes the catalog `installHint`, including the refresh warning.
 - A probe failure during a model refresh is a failed refresh (§9): the cached or curated list stays and the status reads "Couldn't refresh: {message}". It never escapes as an error.
 
 **Other rules.**
