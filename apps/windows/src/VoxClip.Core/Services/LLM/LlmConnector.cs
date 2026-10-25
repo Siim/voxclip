@@ -169,7 +169,7 @@ public sealed partial class LlmConnector
             if (structured) output["format"] = new JsonObject { ["type"] = "json_schema", ["schema"] = schema };
             var body = new JsonObject { ["model"] = model, ["max_tokens"] = maxOut, ["system"] = request.System,
                 ["messages"] = new JsonArray(new JsonObject { ["role"] = "user", ["content"] = content }), ["output_config"] = output };
-            if (UsesBeta(model)) body["fallbacks"] = "default";
+            if (request.Feature != LlmFeature.VoiceRewrite && UsesBeta(model)) body["fallbacks"] = "default";
             return body;
         }
         if (Id == ConnectorId.OpenAI)
@@ -263,7 +263,9 @@ public sealed partial class LlmConnector
                     (!AllowsStoredKey(finalUri) || finalUri.Port != request.RequestUri!.Port))
                     throw Error(LlmErrorKind.Unavailable, model, feature, detail: InvalidKeyDestination);
                 status = (int)response.StatusCode;
-                var responseText = await response.Content.ReadAsStringAsync(deadline.Token).ConfigureAwait(false);
+                var responseText = feature == LlmFeature.VoiceRewrite
+                    ? await ReadRewriteResponseAsync(response.Content, deadline.Token).ConfigureAwait(false)
+                    : await response.Content.ReadAsStringAsync(deadline.Token).ConfigureAwait(false);
                 var parsed = LlmOutput.Parse(responseText) as JsonObject ?? new JsonObject();
                 var requestIdHeader = Provider["requestIdHeader"]?.GetValue<string>();
                 var requestId = requestIdHeader is not null && response.Headers.TryGetValues(requestIdHeader, out var values) ? values.FirstOrDefault() : null;
@@ -271,7 +273,7 @@ public sealed partial class LlmConnector
                 recorded = true;
                 if (response.IsSuccessStatusCode && !(Id == ConnectorId.OpenAI && parsed["status"]?.GetValue<string>() == "failed")) return (parsed, requestId);
                 var message = parsed["error"] is JsonValue value ? value.GetValue<string>() : parsed["error"]?["message"]?.GetValue<string>() ?? "The provider rejected the request.";
-                if (Id == ConnectorId.Anthropic && status == 400 && body?.ContainsKey("fallbacks") == true && message.Contains("anthropic-beta", StringComparison.OrdinalIgnoreCase) && message.Contains("unexpected", StringComparison.OrdinalIgnoreCase))
+                if (feature != LlmFeature.VoiceRewrite && Id == ConnectorId.Anthropic && status == 400 && body?.ContainsKey("fallbacks") == true && message.Contains("anthropic-beta", StringComparison.OrdinalIgnoreCase) && message.Contains("unexpected", StringComparison.OrdinalIgnoreCase))
                 { betaUnsupported = true; body.Remove("fallbacks"); attempt--; continue; }
                 var retryAfter = RetryAfter(response, parsed);
                 var kind = Classify(status, parsed, message);
@@ -284,7 +286,7 @@ public sealed partial class LlmConnector
                 if (status is 401 or 403 && keyDestination is null) safe = $"{Label} rejected the request ({status}).";
                 var failure = Error(kind, model, feature, status, safe, retryAfter);
                 var retryStatus = catalog.Data["policy"]!["retry"]!["retryStatuses"]!.AsArray().Any(item => item!.GetValue<int>() == status);
-                if (!retryStatus || kind is LlmErrorKind.QuotaExceeded or LlmErrorKind.Timeout or LlmErrorKind.Unauthorized or LlmErrorKind.ContextTooLong or LlmErrorKind.ModelNotFound) throw failure;
+                if (feature == LlmFeature.VoiceRewrite || !retryStatus || kind is LlmErrorKind.QuotaExceeded or LlmErrorKind.Timeout or LlmErrorKind.Unauthorized or LlmErrorKind.ContextTooLong or LlmErrorKind.ModelNotFound) throw failure;
                 if (retryAfter > catalog.MaxRetryAfter) throw Error(LlmErrorKind.RateLimited, model, feature, status, retryAfter: retryAfter);
                 if (attempt + 1 >= attempts) throw failure;
                 await delay(retryAfter ?? catalog.RetryBackoff(attempt), ct).ConfigureAwait(false);
@@ -293,7 +295,7 @@ public sealed partial class LlmConnector
             {
                 WriteAttempt(model, canonical, attempt, status, stopwatch.Elapsed, null, null, key);
                 recorded = true;
-                if (ConnectionReset(exception) && attempt + 1 < attempts)
+                if (feature != LlmFeature.VoiceRewrite && ConnectionReset(exception) && attempt + 1 < attempts)
                 { await delay(catalog.RetryBackoff(attempt), ct).ConfigureAwait(false); continue; }
                 throw Error(Id is ConnectorId.Ollama or ConnectorId.LmStudio ? LlmErrorKind.NotRunning : LlmErrorKind.Network, model, feature, detail: baseUri?.GetLeftPart(UriPartial.Path));
             }
@@ -310,6 +312,23 @@ public sealed partial class LlmConnector
         for (; exception is not null; exception = exception.InnerException)
             if (exception is SocketException { SocketErrorCode: SocketError.ConnectionReset }) return true;
         return false;
+    }
+
+    private static async Task<string> ReadRewriteResponseAsync(HttpContent content, CancellationToken ct)
+    {
+        const int limit = 1024 * 1024;
+        if (content.Headers.ContentLength > limit) throw LlmErrors.Create(LlmErrorKind.InvalidOutput, "", feature: LlmFeature.VoiceRewrite);
+        await using var stream = await content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+        using var output = new MemoryStream();
+        var buffer = new byte[8192];
+        while (true)
+        {
+            var count = await stream.ReadAsync(buffer, ct).ConfigureAwait(false);
+            if (count == 0) break;
+            if (output.Length + count > limit) throw LlmErrors.Create(LlmErrorKind.InvalidOutput, "", feature: LlmFeature.VoiceRewrite);
+            output.Write(buffer, 0, count);
+        }
+        return Encoding.UTF8.GetString(output.GetBuffer().AsSpan(0, (int)output.Length));
     }
 
     private LlmErrorKind Classify(int status, JsonObject body, string message)

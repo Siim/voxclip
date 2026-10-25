@@ -1,0 +1,596 @@
+using System.Globalization;
+using System.Buffers.Binary;
+using System.Net;
+using System.Net.Http.Headers;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using System.Text.RegularExpressions;
+using VoxClip.Core.Domain.VoiceLab;
+using VoxClip.Core.Services.LLM;
+using VoxClip.Core.Services.Logging;
+using VoxClip.Core.Services.Speech;
+#pragma warning disable CS1591
+
+namespace VoxClip.Core.Services.VoiceLab;
+
+/// <summary>Explicit regional discovery and single-dispatch Voice Lab operations. Core does not capture consent or speaker embeddings.</summary>
+public sealed class ElevenLabsVoiceLab : IDisposable
+{
+    private const int MaxUpload = 16 * 1024 * 1024;
+    private const int MaxPcm = 32 * 1024 * 1024;
+    private const int MaxJsonAudio = 44 * 1024 * 1024;
+    private static readonly Regex SafeId = new("^[A-Za-z0-9_-]{1,128}$", RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1));
+    private static readonly Regex LanguageCode = new("^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$", RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1));
+    private readonly IKeyProvider keys;
+    private readonly ILog log;
+    private readonly HttpClient http;
+    private readonly VoiceLabActionGate actions;
+    private readonly object discoveredGate = new();
+    private Dictionary<string, VoiceLabModel> models = new(StringComparer.Ordinal);
+    private Dictionary<string, VoiceLabVoice> voices = new(StringComparer.Ordinal);
+    private VoiceLabSubscription? subscription;
+    public ElevenLabsRegion Region { get; }
+
+    public ElevenLabsVoiceLab(IKeyProvider keys, ElevenLabsRegion region = ElevenLabsRegion.Default, ILog? logger = null)
+        : this(keys, new HttpClient(SpeechTransport.CreateCloudHandler()) { Timeout = Timeout.InfiniteTimeSpan }, region, logger, null) { }
+
+    private ElevenLabsVoiceLab(IKeyProvider keys, HttpClient http, ElevenLabsRegion region, ILog? logger, TimeProvider? clock)
+    {
+        this.keys = keys ?? throw new ArgumentNullException(nameof(keys));
+        this.http = http;
+        Region = region;
+        _ = region.BaseUri();
+        log = logger ?? new Log();
+        actions = new VoiceLabActionGate(clock);
+    }
+
+    /// <summary>Only Core tests can inject a handler; production always owns a nonredirecting, cookieless transport.</summary>
+    internal static ElevenLabsVoiceLab ForTesting(IKeyProvider keys, HttpMessageHandler handler, ElevenLabsRegion region,
+        ILog? logger = null, TimeProvider? clock = null)
+    {
+        ArgumentNullException.ThrowIfNull(handler);
+        return new(keys, new HttpClient(handler, disposeHandler: false) { Timeout = Timeout.InfiniteTimeSpan }, region, logger, clock);
+    }
+
+    public void Dispose() => http.Dispose();
+
+    public async Task<IReadOnlyList<VoiceLabModel>> DiscoverModelsAsync(CancellationToken ct)
+    {
+        using var reply = await SendAsync(HttpMethod.Get, "/v1/models", null, 1024 * 1024, ct).ConfigureAwait(false);
+        using var json = Parse(reply.Bytes);
+        if (json.RootElement.ValueKind != JsonValueKind.Array) throw Malformed();
+        var found = new Dictionary<string, VoiceLabModel>(StringComparer.Ordinal);
+        foreach (var row in json.RootElement.EnumerateArray())
+        {
+            if (row.ValueKind != JsonValueKind.Object) throw Malformed();
+            var id = RequiredString(row, "model_id");
+            if (!IsSafeId(id) || found.ContainsKey(id)) throw Malformed();
+            var languages = new List<string>();
+            if (row.TryGetProperty("languages", out var lang))
+            {
+                if (lang.ValueKind != JsonValueKind.Array) throw Malformed();
+                foreach (var item in lang.EnumerateArray())
+                {
+                    if (item.ValueKind != JsonValueKind.Object) throw Malformed();
+                    var code = RequiredString(item, "language_id");
+                    if (!LanguageCode.IsMatch(code)) throw Malformed();
+                    if (!languages.Contains(code, StringComparer.Ordinal)) languages.Add(code);
+                }
+            }
+            int? maximum = OptionalInt(row, "maximum_text_length_per_request");
+            if (maximum is < 1 or > 1000000) throw Malformed();
+            double? multiplier = null;
+            if (row.TryGetProperty("model_rates", out var rates) && rates.ValueKind != JsonValueKind.Null)
+            {
+                if (rates.ValueKind != JsonValueKind.Object) throw Malformed();
+                if (rates.TryGetProperty("character_cost_multiplier", out var cost))
+                {
+                    if (cost.ValueKind != JsonValueKind.Number || !cost.TryGetDouble(out var value) || !double.IsFinite(value) || value <= 0) throw Malformed();
+                    multiplier = value;
+                }
+            }
+            found.Add(id, new(id, OptionalString(row, "name") ?? id, languages.ToArray(),
+                OptionalBool(row, "can_do_text_to_speech") ?? false,
+                OptionalBool(row, "can_do_voice_conversion") ?? false, maximum, multiplier));
+        }
+        if (found.Count == 0) throw Malformed();
+        lock (discoveredGate) models = found;
+        return found.Values.ToArray();
+    }
+
+    public async Task<VoiceLabSubscription> DiscoverSubscriptionAsync(CancellationToken ct)
+    {
+        using var reply = await SendAsync(HttpMethod.Get, "/v1/user/subscription", null, 128 * 1024, ct).ConfigureAwait(false);
+        using var json = Parse(reply.Bytes);
+        var row = json.RootElement;
+        if (row.ValueKind != JsonValueKind.Object) throw Malformed();
+        var result = new VoiceLabSubscription(RequiredString(row, "tier"), RequiredString(row, "status"),
+            RequiredInt(row, "character_count"), RequiredInt(row, "character_limit"), OptionalLong(row, "next_character_count_reset_unix"),
+            RequiredBool(row, "can_use_instant_voice_cloning"), RequiredInt(row, "voice_slots_used"), RequiredInt(row, "voice_limit"));
+        if (result.CharacterCount < 0 || result.CharacterLimit < 0 || result.VoiceSlotsUsed < 0 || result.VoiceLimit < 0 || result.NextResetUnix is < 0) throw Malformed();
+        lock (discoveredGate) subscription = result;
+        return result;
+    }
+
+    public async Task<IReadOnlyList<VoiceLabVoice>> DiscoverVoicesAsync(CancellationToken ct)
+    {
+        var found = new Dictionary<string, VoiceLabVoice>(StringComparer.Ordinal);
+        var cursors = new HashSet<string>(StringComparer.Ordinal);
+        string? cursor = null;
+        for (var page = 0; page < 20; page++)
+        {
+            ct.ThrowIfCancellationRequested();
+            var path = "/v2/voices" + (cursor is null ? "?page_size=100" : "?page_size=100&next_page_token=" + Uri.EscapeDataString(cursor));
+            using var reply = await SendAsync(HttpMethod.Get, path, null, 4 * 1024 * 1024, ct).ConfigureAwait(false);
+            using var json = Parse(reply.Bytes);
+            var row = json.RootElement;
+            if (row.ValueKind != JsonValueKind.Object || !row.TryGetProperty("voices", out var items) || items.ValueKind != JsonValueKind.Array) throw Malformed();
+            foreach (var item in items.EnumerateArray())
+            {
+                if (item.ValueKind != JsonValueKind.Object) throw Malformed();
+                var id = RequiredString(item, "voice_id");
+                if (!IsSafeId(id) || found.ContainsKey(id)) throw Malformed();
+                if (found.Count >= 2000) throw new VoiceLabException(VoiceLabErrorKind.ResponseTooLarge);
+                var category = RequiredString(item, "category");
+                bool required = false, verified = false;
+                if (item.TryGetProperty("voice_verification", out var verification) && verification.ValueKind != JsonValueKind.Null)
+                {
+                    if (verification.ValueKind != JsonValueKind.Object) throw Malformed();
+                    required = OptionalBool(verification, "requires_verification") ?? false;
+                    verified = OptionalBool(verification, "is_verified") ?? false;
+                }
+                found.Add(id, new(id, RequiredString(item, "name"), category,
+                    OptionalBool(item, "is_owner") ?? false, required, verified));
+            }
+            var more = RequiredBool(row, "has_more");
+            if (!more)
+            {
+                lock (discoveredGate) voices = found;
+                return found.Values.ToArray();
+            }
+            cursor = RequiredString(row, "next_page_token");
+            if (cursor.Length is < 1 or > 256 || !cursors.Add(cursor)) throw Malformed();
+        }
+        throw new VoiceLabException(VoiceLabErrorKind.ResponseTooLarge);
+    }
+
+    public VoiceLabAuthorization Approve(VoiceLabPreparedAction action, bool affirmative) => actions.Approve(action, affirmative);
+
+    public VoiceLabPreparedAction PrepareSynthesis(string text, string modelId, VoiceLabVoiceChoice voice, string language, Guid requestId)
+    {
+        var model = SelectedModel(modelId, language, true);
+        SelectedVoice(voice);
+        if (string.IsNullOrWhiteSpace(text) || Encoding.UTF8.GetByteCount(text) > 20000 ||
+            text.EnumerateRunes().Count() > Math.Min(model.MaximumTextLength ?? 5000, 5000)) throw Invalid();
+        var fingerprint = SynthesisFingerprint(text, modelId, voice, language);
+        return actions.Prepare(fingerprint, Unknown(VoiceLabOperation.TextToSpeech, text.EnumerateRunes().Count(), "character"),
+            Review(VoiceLabOperation.TextToSpeech, requestId, "/v1/text-to-speech/" + voice.Id + "/with-timestamps?output_format=pcm_24000",
+                modelId, voice.Id, modelId == "eleven_multilingual_v2" ? Auto(language) : Explicit(language),
+                VoiceLabActionGate.ContentHash(Encoding.UTF8.GetBytes(text)), voice.Policy));
+    }
+
+    public VoiceLabPreparedAction PrepareClone(string name, byte[] sample, string mimeType, OwnVoicePolicy policy, Guid requestId)
+    {
+        policy.Validate();
+        if (sample is null) throw Invalid();
+        var snapshot = sample.ToArray();
+        ValidateCloneInput(name, snapshot, mimeType);
+        return actions.Prepare(CloneFingerprint(name, snapshot, mimeType, policy), Unknown(VoiceLabOperation.CreateClone, 1, "call"),
+            Review(VoiceLabOperation.CreateClone, requestId, "/v1/voices/add", null, null, null,
+                VoiceLabActionGate.ContentHash(snapshot), policy) with { DisplayName = name, MimeType = mimeType });
+    }
+
+    public VoiceLabPreparedAction PrepareDeletion(string voiceId, OwnVoicePolicy policy, Guid requestId)
+    {
+        policy.Validate(voiceId);
+        SelectedOwnForDeletion(voiceId);
+        return actions.Prepare(DeleteFingerprint(voiceId, policy), Unknown(VoiceLabOperation.DeleteClone, 1, "call"),
+            Review(VoiceLabOperation.DeleteClone, requestId, "/v1/voices/" + voiceId, null, voiceId, null, null, policy));
+    }
+
+    public VoiceLabPreparedAction PrepareConversion(byte[] sourceWav, string modelId, VoiceLabVoiceChoice voice, string language, Guid requestId)
+    {
+        SelectedModel(modelId, language, false);
+        SelectedVoice(voice);
+        if (sourceWav is null) throw Invalid();
+        var snapshot = sourceWav.ToArray();
+        if (snapshot.Length > MaxUpload || !TryParseWav(snapshot, out var wav)) throw Invalid();
+        return actions.Prepare(ConversionFingerprint(snapshot, modelId, voice, language),
+            Unknown(VoiceLabOperation.VoiceChange, wav.Seconds / 60, "minute"),
+            Review(VoiceLabOperation.VoiceChange, requestId, "/v1/voice-changer/" + voice.Id + "?output_format=pcm_24000",
+                modelId, voice.Id, Auto(language), VoiceLabActionGate.ContentHash(snapshot), voice.Policy));
+    }
+
+    public async Task<VoiceLabCloneResult> CreateOwnCloneAsync(string name, byte[] sample, string mimeType, OwnVoicePolicy policy,
+        VoiceLabAuthorization authorization, CancellationToken ct, Guid requestId)
+    {
+        policy.Validate();
+        if (sample is null) throw Invalid();
+        var snapshot = sample.ToArray();
+        ValidateCloneInput(name, snapshot, mimeType);
+        lock (discoveredGate)
+        {
+            if (subscription is null || !subscription.CanClone) throw new VoiceLabException(VoiceLabErrorKind.PlanUnavailable);
+            if (subscription.VoiceSlotsUsed >= subscription.VoiceLimit) throw new VoiceLabException(VoiceLabErrorKind.NoVoiceSlots);
+        }
+        var id = actions.Claim(authorization, CloneFingerprint(name, snapshot, mimeType, policy), VoiceLabOperation.CreateClone, requestId);
+        var boundary = "voxclip-" + Guid.NewGuid().ToString("N");
+        var fields = new[] { ("name", name) };
+        var extension = mimeType switch { "audio/wav" => "wav", "audio/mp4" => "m4a", "audio/mpeg" => "mp3", "audio/flac" => "flac", _ => throw Invalid() };
+        using var body = Multipart(boundary, fields, "files[]", "own-voice." + extension, mimeType, snapshot);
+        using var reply = await SendAsync(HttpMethod.Post, "/v1/voices/add", body, 128 * 1024, ct).ConfigureAwait(false);
+        using var json = Parse(reply.Bytes);
+        if (json.RootElement.ValueKind != JsonValueKind.Object) throw Malformed();
+        var voiceId = RequiredString(json.RootElement, "voice_id");
+        if (!IsSafeId(voiceId)) throw Malformed();
+        var requires = RequiredBool(json.RootElement, "requires_verification");
+        lock (discoveredGate) voices[voiceId] = new(voiceId, name, "cloned", true, requires, !requires);
+        return new(voiceId, requires, policy.RecordId, Receipt("/v1/voices/add", null, voiceId, id, reply));
+    }
+
+    public async Task<VoiceLabReceipt> DeleteOwnCloneAsync(string voiceId, OwnVoicePolicy policy,
+        VoiceLabAuthorization authorization, CancellationToken ct, Guid requestId)
+    {
+        policy.Validate(voiceId);
+        SelectedOwnForDeletion(voiceId);
+        var id = actions.Claim(authorization, DeleteFingerprint(voiceId, policy), VoiceLabOperation.DeleteClone, requestId);
+        var path = "/v1/voices/" + voiceId;
+        using var reply = await SendAsync(HttpMethod.Delete, path, null, 128 * 1024, ct, allowNotFound: true).ConfigureAwait(false);
+        if (reply.Status != HttpStatusCode.NotFound)
+        {
+            using var json = Parse(reply.Bytes);
+            if (json.RootElement.ValueKind != JsonValueKind.Object || RequiredString(json.RootElement, "status") != "ok") throw Malformed();
+        }
+        lock (discoveredGate) voices.Remove(voiceId);
+        return Receipt(path, null, voiceId, id, reply);
+    }
+
+    public async Task<VoiceLabAudioResult> SynthesizeAsync(string text, string modelId, VoiceLabVoiceChoice voice,
+        string language, VoiceLabAuthorization authorization, CancellationToken ct, Guid requestId)
+    {
+        var model = SelectedModel(modelId, language, true);
+        SelectedVoice(voice);
+        if (string.IsNullOrWhiteSpace(text) || Encoding.UTF8.GetByteCount(text) > 20000 ||
+            text.EnumerateRunes().Count() > Math.Min(model.MaximumTextLength ?? 5000, 5000)) throw Invalid();
+        var id = actions.Claim(authorization, SynthesisFingerprint(text, modelId, voice, language), VoiceLabOperation.TextToSpeech, requestId);
+        var path = "/v1/text-to-speech/" + voice.Id + "/with-timestamps?output_format=pcm_24000";
+        var payload = new JsonObject { ["text"] = text, ["model_id"] = modelId };
+        if (modelId != "eleven_multilingual_v2") payload["language_code"] = language;
+        var jsonBody = Encoding.UTF8.GetBytes(payload.ToJsonString());
+        using var reply = await SendAsync(HttpMethod.Post, path, new ByteArrayContent(jsonBody) { Headers = { ContentType = new MediaTypeHeaderValue("application/json") } }, MaxJsonAudio, ct).ConfigureAwait(false);
+        if (reply.ContentType is { } contentType && !contentType.Equals("application/json", StringComparison.OrdinalIgnoreCase)) throw new VoiceLabException(VoiceLabErrorKind.InvalidAudio);
+        using var json = Parse(reply.Bytes);
+        if (json.RootElement.ValueKind != JsonValueKind.Object || !json.RootElement.TryGetProperty("audio_base64", out var audio) || audio.ValueKind != JsonValueKind.String) throw new VoiceLabException(VoiceLabErrorKind.InvalidAudio);
+        byte[] pcm;
+        try { pcm = Convert.FromBase64String(audio.GetString()!); }
+        catch (FormatException) { throw new VoiceLabException(VoiceLabErrorKind.InvalidAudio); }
+        ValidatePcm(pcm);
+        var timing = Alignment(json.RootElement, text, pcm.Length / 48000.0);
+        return new(pcm, 24000, timing, Receipt("/v1/text-to-speech/" + voice.Id + "/with-timestamps", modelId, voice.Id, id, reply));
+    }
+
+    public async Task<VoiceLabAudioResult> ConvertAsync(byte[] sourceWav, string modelId, VoiceLabVoiceChoice voice,
+        string language, VoiceLabAuthorization authorization, CancellationToken ct, Guid requestId)
+    {
+        SelectedModel(modelId, language, false);
+        SelectedVoice(voice);
+        if (sourceWav is null) throw Invalid();
+        var snapshot = sourceWav.ToArray();
+        if (snapshot.Length > MaxUpload || !TryParseWav(snapshot, out _)) throw Invalid();
+        var id = actions.Claim(authorization, ConversionFingerprint(snapshot, modelId, voice, language), VoiceLabOperation.VoiceChange, requestId);
+        var boundary = "voxclip-" + Guid.NewGuid().ToString("N");
+        using var body = Multipart(boundary, [("model_id", modelId)], "audio", "source.wav", "audio/wav", snapshot);
+        var path = "/v1/voice-changer/" + voice.Id + "?output_format=pcm_24000";
+        using var reply = await SendAsync(HttpMethod.Post, path, body, MaxPcm, ct).ConfigureAwait(false);
+        if (reply.ContentType is { } type && !new[] { "application/octet-stream", "audio/pcm", "audio/l16" }.Contains(type, StringComparer.OrdinalIgnoreCase))
+            throw new VoiceLabException(VoiceLabErrorKind.InvalidAudio);
+        ValidatePcm(reply.Bytes);
+        return new(reply.Bytes, 24000, null, Receipt("/v1/voice-changer/" + voice.Id, modelId, voice.Id, id, reply));
+    }
+
+    private VoiceLabModel SelectedModel(string id, string language, bool tts)
+    {
+        if (!IsSafeId(id) || !LanguageCode.IsMatch(language)) throw Invalid();
+        VoiceLabModel? model;
+        lock (discoveredGate) models.TryGetValue(id, out model);
+        if (model is null || !model.Languages.Contains(language, StringComparer.Ordinal) || (tts ? !model.CanSpeak : !model.CanConvert))
+            throw new VoiceLabException(VoiceLabErrorKind.UnsupportedModel);
+        if (tts && !model.SupportsTimestampedTts) throw new VoiceLabException(VoiceLabErrorKind.UnsupportedEndpoint);
+        return model;
+    }
+    private void SelectedVoice(VoiceLabVoiceChoice choice)
+    {
+        if (!IsSafeId(choice.Id)) throw Invalid();
+        VoiceLabVoice? voice;
+        lock (discoveredGate) voices.TryGetValue(choice.Id, out voice);
+        if (voice is null) throw Invalid();
+        if (choice.Kind == VoiceLabVoiceKind.Own)
+        {
+            if (choice.Policy is null) throw new VoiceLabException(VoiceLabErrorKind.ConsentRequired);
+            choice.Policy.Validate(choice.Id);
+            if (!voice.IsOwner || voice.Category != "cloned" || voice.RequiresVerification && !voice.IsVerified)
+                throw new VoiceLabException(VoiceLabErrorKind.ConsentRequired);
+        }
+        else if (choice.Policy is not null || !(voice.Category == "premade" || voice.Category == "generated" && voice.IsOwner) || voice.RequiresVerification && !voice.IsVerified)
+            throw new VoiceLabException(VoiceLabErrorKind.ConsentRequired);
+    }
+    private void SelectedOwnForDeletion(string id)
+    {
+        if (!IsSafeId(id)) throw Invalid();
+        VoiceLabVoice? voice;
+        lock (discoveredGate) voices.TryGetValue(id, out voice);
+        if (voice is null || !voice.IsOwner || voice.Category != "cloned")
+            throw new VoiceLabException(VoiceLabErrorKind.ConsentRequired);
+    }
+
+    private string SynthesisFingerprint(string text, string model, VoiceLabVoiceChoice voice, string language) =>
+        Fingerprint(VoiceLabOperation.TextToSpeech, "/v1/text-to-speech/" + voice.Id + "/with-timestamps?output_format=pcm_24000", model, voice, language, VoiceLabActionGate.ContentHash(Encoding.UTF8.GetBytes(text)));
+    private string CloneFingerprint(string name, byte[] audio, string mimeType, OwnVoicePolicy policy) =>
+        VoiceLabActionGate.Fingerprint("elevenlabs", Region.ToString(), VoiceLabOperation.CreateClone.ToString(), "/v1/voices/add", name, mimeType,
+            VoiceLabActionGate.ContentHash(audio), PolicyIdentity(policy));
+    private string DeleteFingerprint(string id, OwnVoicePolicy policy) =>
+        VoiceLabActionGate.Fingerprint("elevenlabs", Region.ToString(), VoiceLabOperation.DeleteClone.ToString(), "/v1/voices/" + id, PolicyIdentity(policy));
+    private string ConversionFingerprint(byte[] audio, string model, VoiceLabVoiceChoice voice, string language) =>
+        Fingerprint(VoiceLabOperation.VoiceChange, "/v1/voice-changer/" + voice.Id + "?output_format=pcm_24000", model, voice, language, VoiceLabActionGate.ContentHash(audio));
+    private string Fingerprint(VoiceLabOperation operation, string path, string model, VoiceLabVoiceChoice voice, string language, string content) =>
+        VoiceLabActionGate.Fingerprint("elevenlabs", Region.ToString(), operation.ToString(), path, model, voice.Id,
+            voice.Kind.ToString(), voice.Policy is null ? null : PolicyIdentity(voice.Policy), language, content);
+    private static string PolicyIdentity(OwnVoicePolicy policy) => VoiceLabActionGate.Fingerprint(policy.RecordId, policy.CloneVoiceId,
+        policy.RecordActive.ToString(), policy.ProviderConsentGranted.ToString(), policy.StatementVerified.ToString(), policy.SpeakerMatched.ToString(), policy.OwnerConfirmed.ToString());
+    private VoiceLabReview Review(VoiceLabOperation operation, Guid requestId, string endpoint, string? model, string? voice,
+        VoiceLabLanguageMode? language, string? contentHash, OwnVoicePolicy? consent) =>
+        new(operation, requestId, "elevenlabs", Region, endpoint, model, voice, language, contentHash,
+            consent?.RecordId, ConsentPolicy: consent);
+    private static VoiceLabLanguageMode Explicit(string language) => new(VoiceLabLanguageModeKind.Explicit, language);
+    private static VoiceLabLanguageMode Auto(string language) => new(VoiceLabLanguageModeKind.AutoDetected, language);
+    private static void ValidateCloneInput(string name, byte[] audio, string mimeType)
+    {
+        if (string.IsNullOrWhiteSpace(name) || Encoding.UTF8.GetByteCount(name) > 100 || name.Contains('\r') || name.Contains('\n') ||
+            audio.Length is < 1 or > MaxUpload || mimeType is not ("audio/wav" or "audio/mp4" or "audio/mpeg" or "audio/flac")) throw Invalid();
+        if (mimeType == "audio/wav" && !TryParseWav(audio, out _)) throw Invalid();
+    }
+    private static VoiceLabEstimate Unknown(VoiceLabOperation operation, double units, string unit) =>
+        new("elevenlabs", operation, units, unit, null, null, "Provider price and account-specific credits are unknown; review ElevenLabs usage before approval.");
+    private VoiceLabReceipt Receipt(string path, string? model, string? voice, Guid id, Reply reply) =>
+        new("elevenlabs", Region, path, model, voice, id, reply.RequestId);
+
+    private sealed class Reply(byte[] bytes, HttpStatusCode status, string? contentType, string? requestId) : IDisposable
+    {
+        public byte[] Bytes { get; } = bytes;
+        public HttpStatusCode Status { get; } = status;
+        public string? ContentType { get; } = contentType;
+        public string? RequestId { get; } = requestId;
+        public void Dispose() { }
+    }
+    private async Task<Reply> SendAsync(HttpMethod method, string path, HttpContent? body, int limit, CancellationToken ct, bool allowNotFound = false)
+    {
+        ct.ThrowIfCancellationRequested();
+        var origin = Region.BaseUri();
+        var url = new Uri(origin, path);
+        if (url.Scheme != Uri.UriSchemeHttps || url.Host != origin.Host || url.Port != origin.Port) throw Invalid();
+        string? key;
+        try { key = await keys.GetKeyAsync("elevenlabs-api-key", ct).ConfigureAwait(false); }
+        catch (OperationCanceledException) { throw new VoiceLabException(VoiceLabErrorKind.Cancelled); }
+        catch (Exception) { throw new VoiceLabException(VoiceLabErrorKind.MissingKey); }
+        if (string.IsNullOrWhiteSpace(key)) throw new VoiceLabException(VoiceLabErrorKind.MissingKey);
+        log.RegisterSecret(key);
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        deadline.CancelAfter(TimeSpan.FromMinutes(5));
+        try
+        {
+            using var request = new HttpRequestMessage(method, url) { Content = body };
+            request.Headers.TryAddWithoutValidation("xi-api-key", key);
+            request.Headers.UserAgent.ParseAdd("VoxClip/0.1.0");
+            using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, deadline.Token).ConfigureAwait(false);
+            if (response.RequestMessage?.RequestUri is { } final && (final.Scheme != url.Scheme || final.Host != url.Host || final.Port != url.Port || final.AbsolutePath != url.AbsolutePath))
+                throw new VoiceLabException(VoiceLabErrorKind.ProviderFailure);
+            if (response.Content.Headers.ContentLength is { } length && length > limit) throw new VoiceLabException(VoiceLabErrorKind.ResponseTooLarge);
+            await using var stream = await response.Content.ReadAsStreamAsync(deadline.Token).ConfigureAwait(false);
+            using var output = new MemoryStream();
+            var buffer = new byte[8192];
+            while (true)
+            {
+                var read = await stream.ReadAsync(buffer, deadline.Token).ConfigureAwait(false);
+                if (read == 0) break;
+                if (output.Length + read > limit) throw new VoiceLabException(VoiceLabErrorKind.ResponseTooLarge);
+                output.Write(buffer, 0, read);
+            }
+            var bytes = output.ToArray();
+            if (!response.IsSuccessStatusCode && !(allowNotFound && response.StatusCode == HttpStatusCode.NotFound))
+                throw Error(response.StatusCode, bytes, url.AbsolutePath, method);
+            var requestId = response.Headers.TryGetValues("request-id", out var values) ? values.FirstOrDefault() :
+                response.Headers.TryGetValues("x-request-id", out var alternate) ? alternate.FirstOrDefault() : null;
+            return new(bytes, response.StatusCode, response.Content.Headers.ContentType?.MediaType, requestId);
+        }
+        catch (OperationCanceledException) { throw new VoiceLabException(ct.IsCancellationRequested ? VoiceLabErrorKind.Cancelled : VoiceLabErrorKind.Network); }
+        catch (VoiceLabException) { throw; }
+        catch (Exception error) when (error is HttpRequestException or IOException) { throw new VoiceLabException(VoiceLabErrorKind.Network); }
+    }
+    private static VoiceLabException Error(HttpStatusCode statusCode, byte[] body, string path, HttpMethod method)
+    {
+        var status = (int)statusCode;
+        var text = Encoding.UTF8.GetString(body.AsSpan(0, Math.Min(body.Length, 16384))).ToLowerInvariant();
+        if (text.Contains("quota") || text.Contains("credit")) return new(VoiceLabErrorKind.QuotaExceeded);
+        if (status == 403 || status == 401 && text.Contains("permission"))
+        {
+            var permission = path switch
+            {
+                "/v1/models" => "models_read", "/v1/user/subscription" => "user_read", "/v2/voices" => "voices_read",
+                "/v1/voices/add" => "create_instant_voice_clone", _ when method == HttpMethod.Delete && path.StartsWith("/v1/voices/", StringComparison.Ordinal) => "voices_write",
+                _ when path.StartsWith("/v1/text-to-speech/", StringComparison.Ordinal) => "text_to_speech",
+                _ when path.StartsWith("/v1/voice-changer/", StringComparison.Ordinal) => "speech_to_speech", _ => "unknown"
+            };
+            return new(VoiceLabErrorKind.PermissionMissing, permission);
+        }
+        if (status == 401) return new(VoiceLabErrorKind.Unauthorized);
+        if (status == 429) return new(VoiceLabErrorKind.RateLimited);
+        if (status == 422 && text.Contains("output_format")) return new(VoiceLabErrorKind.UnsupportedFormat);
+        return new(VoiceLabErrorKind.ProviderFailure, status.ToString(CultureInfo.InvariantCulture));
+    }
+
+    private static MultipartFormDataContent Multipart(string boundary, IEnumerable<(string Field, string Value)> fields,
+        string fileField, string filename, string mime, byte[] bytes)
+    {
+        var body = new MultipartFormDataContent(boundary);
+        foreach (var (field, value) in fields)
+        {
+            if (value.Contains('\r') || value.Contains('\n') || Encoding.UTF8.GetByteCount(value) > 256) throw Invalid();
+            body.Add(new StringContent(value, Encoding.UTF8), field);
+        }
+        var file = new ByteArrayContent(bytes);
+        file.Headers.ContentType = new MediaTypeHeaderValue(mime);
+        body.Add(file, fileField, filename);
+        return body;
+    }
+
+    private static void ValidatePcm(byte[] pcm)
+    {
+        if (pcm.Length is < 960 or > MaxPcm || (pcm.Length & 1) != 0 || IsWavContainer(pcm) || ValidId3(pcm) ||
+            IsFlacContainer(pcm) || IsMp4Container(pcm) || IsOggContainer(pcm) || HasTwoMp3Frames(pcm))
+            throw new VoiceLabException(VoiceLabErrorKind.InvalidAudio);
+    }
+    private static bool IsWavContainer(ReadOnlySpan<byte> bytes)
+    {
+        if (bytes.Length < 44 || !bytes[..4].SequenceEqual("RIFF"u8) || !bytes[8..12].SequenceEqual("WAVE"u8)) return false;
+        var declared = BitConverter.ToUInt32(bytes[4..8]);
+        if ((ulong)declared + 8 > (ulong)bytes.Length || declared < 36) return false;
+        var offset = 12; var format = false; var data = false;
+        while (offset + 8 <= bytes.Length)
+        {
+            var length = BitConverter.ToUInt32(bytes.Slice(offset + 4, 4));
+            if (length > bytes.Length - offset - 8) return false;
+            if (bytes.Slice(offset, 4).SequenceEqual("fmt "u8) && length >= 16) format = true;
+            if (bytes.Slice(offset, 4).SequenceEqual("data"u8) && length > 0) data = true;
+            offset += 8 + (int)length + ((int)length & 1);
+        }
+        return format && data;
+    }
+    private static bool IsFlacContainer(ReadOnlySpan<byte> bytes) => bytes.Length >= 42 && bytes[..4].SequenceEqual("fLaC"u8) &&
+        (bytes[4] & 0x7f) == 0 && ((bytes[5] << 16) | (bytes[6] << 8) | bytes[7]) == 34;
+    private static bool IsMp4Container(ReadOnlySpan<byte> bytes)
+    {
+        if (bytes.Length < 16 || !bytes.Slice(4, 4).SequenceEqual("ftyp"u8)) return false;
+        var size = System.Buffers.Binary.BinaryPrimitives.ReadUInt32BigEndian(bytes[..4]);
+        return size >= 16 && size <= bytes.Length;
+    }
+    private static bool IsOggContainer(ReadOnlySpan<byte> bytes)
+    {
+        if (bytes.Length < 27 || !bytes[..4].SequenceEqual("OggS"u8) || bytes[4] != 0) return false;
+        var segments = bytes[26];
+        if (bytes.Length < 27 + segments) return false;
+        var payload = 0;
+        for (var i = 0; i < segments; i++) payload += bytes[27 + i];
+        return payload > 0 && bytes.Length >= 27 + segments + payload;
+    }
+    private static bool ValidId3(ReadOnlySpan<byte> bytes)
+    {
+        if (bytes.Length < 10 || !bytes[..3].SequenceEqual("ID3"u8) || bytes[3] is < 2 or > 4 ||
+            (bytes[6] | bytes[7] | bytes[8] | bytes[9]) >= 128) return false;
+        var size = (bytes[6] << 21) | (bytes[7] << 14) | (bytes[8] << 7) | bytes[9];
+        return size + 10 <= bytes.Length;
+    }
+    private static bool HasTwoMp3Frames(ReadOnlySpan<byte> bytes)
+    {
+        static int FrameLength(ReadOnlySpan<byte> data)
+        {
+            if (data.Length < 4 || data[0] != 0xff || (data[1] & 0xe0) != 0xe0) return 0;
+            var version = (data[1] >> 3) & 3;
+            var layer = (data[1] >> 1) & 3;
+            var bitrateIndex = data[2] >> 4;
+            var rateIndex = (data[2] >> 2) & 3;
+            if (version is 0 or 1 || layer != 1 || bitrateIndex is 0 or 15 || rateIndex == 3) return 0;
+            ReadOnlySpan<int> rates = [44100, 48000, 32000];
+            ReadOnlySpan<int> highBitrates = [0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320];
+            ReadOnlySpan<int> lowBitrates = [0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160];
+            var rate = rates[rateIndex] / (version == 3 ? 1 : version == 2 ? 2 : 4);
+            var bitrate = (version == 3 ? highBitrates : lowBitrates)[bitrateIndex] * 1000;
+            return (version == 3 ? 144 : 72) * bitrate / rate + ((data[2] >> 1) & 1);
+        }
+        var first = FrameLength(bytes);
+        return first >= 4 && bytes.Length >= first + 4 && FrameLength(bytes[first..]) is var second && second >= 4 &&
+            bytes.Length >= first + second;
+    }
+
+    private readonly record struct WavInfo(uint SampleRate, uint DataBytes)
+    {
+        public double Seconds => DataBytes / (SampleRate * 2.0);
+    }
+    private static bool TryParseWav(ReadOnlySpan<byte> bytes, out WavInfo info)
+    {
+        info = default;
+        if (bytes.Length < 44 || !bytes[..4].SequenceEqual("RIFF"u8) || !bytes[8..12].SequenceEqual("WAVE"u8) ||
+            (ulong)BinaryPrimitives.ReadUInt32LittleEndian(bytes[4..8]) + 8 != (ulong)bytes.Length) return false;
+        var offset = 12;
+        uint rate = 0, payload = 0;
+        var format = false; var data = false;
+        while (offset < bytes.Length)
+        {
+            if (bytes.Length - offset < 8) return false;
+            var length = BinaryPrimitives.ReadUInt32LittleEndian(bytes.Slice(offset + 4, 4));
+            if (length > bytes.Length - offset - 8 || (ulong)length + (ulong)(length & 1) > (ulong)(bytes.Length - offset - 8)) return false;
+            var chunk = bytes.Slice(offset + 8, (int)length);
+            if (bytes.Slice(offset, 4).SequenceEqual("fmt "u8))
+            {
+                if (format || length is not (16 or 18) || length == 18 && BinaryPrimitives.ReadUInt16LittleEndian(chunk[16..18]) != 0) return false;
+                rate = BinaryPrimitives.ReadUInt32LittleEndian(chunk[4..8]);
+                if (BinaryPrimitives.ReadUInt16LittleEndian(chunk[..2]) != 1 ||
+                    BinaryPrimitives.ReadUInt16LittleEndian(chunk[2..4]) != 1 || rate is < 8000 or > 96000 ||
+                    BinaryPrimitives.ReadUInt32LittleEndian(chunk[8..12]) != rate * 2 ||
+                    BinaryPrimitives.ReadUInt16LittleEndian(chunk[12..14]) != 2 ||
+                    BinaryPrimitives.ReadUInt16LittleEndian(chunk[14..16]) != 16) return false;
+                format = true;
+            }
+            else if (bytes.Slice(offset, 4).SequenceEqual("data"u8))
+            {
+                if (data || length == 0 || (length & 1) != 0) return false;
+                payload = length;
+                data = true;
+            }
+            offset += 8 + (int)length + (int)(length & 1);
+        }
+        if (!format || !data || offset != bytes.Length) return false;
+        info = new(rate, payload);
+        var frames = payload / 2;
+        return frames >= (rate + 49) / 50 && frames <= (ulong)rate * 290;
+    }
+    private static IReadOnlyList<VoiceLabCharacterTiming> Alignment(JsonElement row, string text, double duration)
+    {
+        if (!row.TryGetProperty("alignment", out var alignment) || alignment.ValueKind != JsonValueKind.Object ||
+            !alignment.TryGetProperty("characters", out var characters) || characters.ValueKind != JsonValueKind.Array ||
+            !alignment.TryGetProperty("character_start_times_seconds", out var starts) || starts.ValueKind != JsonValueKind.Array ||
+            !alignment.TryGetProperty("character_end_times_seconds", out var ends) || ends.ValueKind != JsonValueKind.Array ||
+            characters.GetArrayLength() == 0 || characters.GetArrayLength() != starts.GetArrayLength() || starts.GetArrayLength() != ends.GetArrayLength())
+            throw new VoiceLabException(VoiceLabErrorKind.InvalidAlignment);
+        var output = new List<VoiceLabCharacterTiming>();
+        var joined = new StringBuilder();
+        var previous = 0.0;
+        for (var i = 0; i < characters.GetArrayLength(); i++)
+        {
+            var character = characters[i]; var start = starts[i]; var end = ends[i];
+            if (character.ValueKind != JsonValueKind.String || start.ValueKind != JsonValueKind.Number || end.ValueKind != JsonValueKind.Number ||
+                !start.TryGetDouble(out var begin) || !end.TryGetDouble(out var finish) || !double.IsFinite(begin) || !double.IsFinite(finish) ||
+                begin < previous || finish < begin || finish > duration + 0.05) throw new VoiceLabException(VoiceLabErrorKind.InvalidAlignment);
+            var value = character.GetString()!;
+            if (value.Length == 0) throw new VoiceLabException(VoiceLabErrorKind.InvalidAlignment);
+            joined.Append(value); output.Add(new(value, begin, finish)); previous = finish;
+        }
+        if (joined.ToString() != text) throw new VoiceLabException(VoiceLabErrorKind.InvalidAlignment);
+        return output;
+    }
+    private static JsonDocument Parse(byte[] bytes)
+    {
+        try { return JsonDocument.Parse(bytes, new JsonDocumentOptions { MaxDepth = 32 }); }
+        catch (JsonException) { throw Malformed(); }
+    }
+    private static VoiceLabException Malformed() => new(VoiceLabErrorKind.MalformedResponse);
+    private static VoiceLabException Invalid() => new(VoiceLabErrorKind.InvalidInput);
+    private static bool IsSafeId(string? id) => id is not null && SafeId.IsMatch(id);
+    private static string RequiredString(JsonElement row, string name) => row.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(value.GetString()) ? value.GetString()! : throw Malformed();
+    private static string? OptionalString(JsonElement row, string name) => !row.TryGetProperty(name, out var value) || value.ValueKind == JsonValueKind.Null ? null : value.ValueKind == JsonValueKind.String ? value.GetString() : throw Malformed();
+    private static bool RequiredBool(JsonElement row, string name) => row.TryGetProperty(name, out var value) ? value.ValueKind switch { JsonValueKind.True => true, JsonValueKind.False => false, _ => throw Malformed() } : throw Malformed();
+    private static bool? OptionalBool(JsonElement row, string name) => !row.TryGetProperty(name, out var value) || value.ValueKind == JsonValueKind.Null ? null : value.ValueKind switch { JsonValueKind.True => true, JsonValueKind.False => false, _ => throw Malformed() };
+    private static int RequiredInt(JsonElement row, string name) => row.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out var result) ? result : throw Malformed();
+    private static int? OptionalInt(JsonElement row, string name) => !row.TryGetProperty(name, out var value) || value.ValueKind == JsonValueKind.Null ? null : value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out var result) ? result : throw Malformed();
+    private static long? OptionalLong(JsonElement row, string name) => !row.TryGetProperty(name, out var value) || value.ValueKind == JsonValueKind.Null ? null : value.ValueKind == JsonValueKind.Number && value.TryGetInt64(out var result) ? result : throw Malformed();
+}

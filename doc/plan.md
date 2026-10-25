@@ -10,7 +10,7 @@ M1 is everything the specs mark M1 or 0.1.0: import, transcription (three engine
 
 The original request includes turning a rough vlog into better wording with the user's chosen LLM, speaking the revision in their own cloned voice, voice changing, and lip-sync. A cut-only editor or a signed M1 preview does not satisfy that workflow. The earlier deferral of full-take re-voicing in the Voice Lab spec is superseded by this scope clarification: passage and full-take rewriting and re-voicing remain required work. Consent, explicit paid actions, preservation of original media, and review before applying generated results still apply.
 
-Status on 2026-10-25 distinguishes implemented code, local test evidence, and delivery:
+Status on 2026-10-26 distinguishes implemented code, local test evidence, and delivery:
 
 | Requested area | Current state | Remaining work |
 |---|---|---|
@@ -22,7 +22,7 @@ Status on 2026-10-25 distinguishes implemented code, local test evidence, and de
 | Open-source monorepo | Public MIT repository contains both native apps, shared data and specs | Continue shipping corresponding source and complete bundled payload notices |
 | VoxConvo download page | Local page and redirect changes are implemented and tested | Deployment and published downloadable artifacts |
 | VoxConvo, X and LinkedIn integration | Export/share helpers exist | VoxConvo sign-in/upload/publish and integrated sharing acceptance; composer links do not establish direct upload |
-| AI rewrite, own-voice clone and voice changer | Core implementation started; no complete user-facing workflow yet | Both-platform services, rewritten speech, synthetic timeline/persistence, preview/accept/undo and UI |
+| AI rewrite, own-voice clone and voice changer | Both native Core services and shared offline contracts are integrated; no complete user-facing workflow yet | Consent recording and speaker verification, bounded full-take generation, synthetic timeline/persistence, preview/accept/undo and UI |
 | Lip-sync | Spec and interface seams only | Provider adapter, jobs/cancellation, media integration, disclosure and end-to-end acceptance |
 
 The agreed follow-on specs also contain AI tighten, Clean audio, camera/microphone recording and expanded ingest. These are still open; a reserved type or protocol is not an implementation.

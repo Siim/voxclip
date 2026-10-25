@@ -1,5 +1,9 @@
 # macOS implementation contracts
 
+### 2026-10-26 — paired Voice Lab Core integration
+
+- The lead integrated reviewed Mac Core `aabf7f1` and Windows Core `458e5be` against the same rewrite prompt and version-1 behavior fixture, including all 31 conversion-input cases. Both services retain original timed words, require exact-input single-use approval, and check connector/model/context before a rewrite send. The Windows clone route additionally validates declared WAV samples; that stricter clone-input check is recorded in the Voice Lab spec. No app workflow, project schema, media composition, consent capture or speaker verification is implied by this Core integration.
+
 ### 2026-10-25 — ADR-R22 hardware colour acceptance
 
 - The lead accepted ADR-R22 for required-hardware macOS `h264_videotoolbox` only. It supersedes only the macOS decoded-canonical-RGB clause of ADR-R21. Windows software and hardware gates remain unchanged. The exporter still requires hardware acceleration and uses the one `FrameCompositor` path for preview and export. No fixture, bitrate, encoder setting or production pixel conversion changed.

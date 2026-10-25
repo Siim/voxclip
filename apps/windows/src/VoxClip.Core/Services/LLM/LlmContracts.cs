@@ -35,7 +35,9 @@ public enum LlmFeature
     /// <summary>M2 cut suggestions.</summary>
     AiTighten,
     /// <summary>Connection test.</summary>
-    Test
+    Test,
+    /// <summary>One explicitly approved, review-only Voice Lab rewrite.</summary>
+    VoiceRewrite
 }
 /// <summary>Portable effort selection; AI §3.2.</summary>
 public enum Effort

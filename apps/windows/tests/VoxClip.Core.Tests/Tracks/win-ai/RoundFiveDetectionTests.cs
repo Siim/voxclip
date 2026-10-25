@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Services.LLM;
 using Xunit;
@@ -149,11 +150,19 @@ public sealed class RoundFiveDetectionTests
     public async Task MissingCodexRefreshAndSendIncludeTheInstallHint()
     {
         var catalog = Catalog();
+        var platform = OperatingSystem.IsWindows() ? "windows" : "macos";
+        var settings = catalog.Provider(ConnectorId.Codex)["cli"]!;
+        settings["searchPaths"]![platform] = new JsonArray();
+        using var processes = new FixtureProcessRunner(ConnectorId.Codex, catalog, new());
+        var lookup = settings["shellLookup"]![platform]![0]!.GetValue<string>();
+        processes.Override = request => Path.GetFileName(request.Executable).Equals(Path.GetFileName(lookup), StringComparison.OrdinalIgnoreCase) &&
+            request.Arguments.SequenceEqual(settings["shellLookup"]![platform]!.AsArray().Skip(1).Select(item => item!.GetValue<string>()))
+            ? new(0, "", "", TimeSpan.Zero, false) : null;
         using var handler = new StubHttp((_, _, _) => throw new InvalidOperationException("CLI probes must not send HTTP."));
         using var http = new HttpClient(handler);
         var keys = new MemoryKeys(null);
         var missing = Path.Combine(Path.GetTempPath(), "voxclip-missing-cli-" + Guid.NewGuid().ToString("N"), "codex");
-        var connector = new LlmConnector(ConnectorId.Codex, catalog, http, keys, new Redactor(), binaryOverride: missing);
+        var connector = new LlmConnector(ConnectorId.Codex, catalog, http, keys, new Redactor(), processes: processes, binaryOverride: missing);
         var hint = catalog.Provider(ConnectorId.Codex)["cli"]!["installHint"]!.GetValue<string>();
         var expected = $"Codex isn't installed. {hint} Your edits are saved.";
         Assert.Equal(catalog.Models(ConnectorId.Codex), await connector.GetModelsAsync(true, TestContext.Current.CancellationToken));
@@ -161,6 +170,9 @@ public sealed class RoundFiveDetectionTests
         var failure = await Assert.ThrowsAsync<LlmException>(() => connector.SendAsync(catalog.TestRequest(ConnectorId.Codex), "default", TestContext.Current.CancellationToken));
         Assert.Equal(LlmErrorKind.CliMissing, failure.Error.Kind);
         Assert.Equal(expected, failure.Message);
+        Assert.DoesNotContain(processes.Requests, request => request.Arguments.Contains("--version") || request.Arguments.Contains("app-server"));
+        Assert.Empty(processes.Generations);
+        Assert.Empty(keys.Accounts);
         Assert.Empty(handler.Requests);
     }
 

@@ -48,7 +48,7 @@ public sealed partial class LlmCatalog
     internal TimeSpan RetryBackoff(int attempt) => TimeSpan.FromSeconds(Data["policy"]!["retry"]!["backoffSeconds"]![attempt]!.GetValue<double>());
     internal TimeSpan MaxRetryAfter => TimeSpan.FromSeconds(Data["policy"]!["retry"]!["maxRetryAfterSeconds"]!.GetValue<double>());
     internal static string WireId(ConnectorId id) => id switch { ConnectorId.OpenAI => "openai", ConnectorId.LmStudio => "lmstudio", ConnectorId.AppleFoundation => "apple-foundation", ConnectorId.ClaudeCode => "claude-code", _ => id.ToString().ToLowerInvariant() };
-    internal static string FeatureId(LlmFeature feature) => feature switch { LlmFeature.ClipFinder => "clipFinder", LlmFeature.AiTighten => "aiTighten", _ => "test" };
+    internal static string FeatureId(LlmFeature feature) => feature switch { LlmFeature.ClipFinder => "clipFinder", LlmFeature.AiTighten => "aiTighten", LlmFeature.VoiceRewrite => "voiceRewrite", _ => "test" };
     /// <summary>Build the shared catalog's connection test with the connector's timeout; AI §10.2.</summary>
     public LlmRequest TestRequest(ConnectorId id)
     {

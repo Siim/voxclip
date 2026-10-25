@@ -209,7 +209,7 @@ internal sealed class CliLlmAdapter(ConnectorId id, LlmCatalog catalog, IProcess
             {
                 args.AddRange(new[] { "-p", "--output-format", "json", "--json-schema", request.Schema.ToJsonString(LlmRuntime.CompactJson), "--system-prompt", request.System, "--tools", "", "--no-session-persistence" });
                 if (model != "default") args.AddRange(new[] { "--model", model });
-                if (catalog.Fallback(id, model) is { } fallback && Supports(detection.Help, "--fallback-model")) args.AddRange(new[] { "--fallback-model", fallback });
+                if (request.Feature != LlmFeature.VoiceRewrite && catalog.Fallback(id, model) is { } fallback && Supports(detection.Help, "--fallback-model")) args.AddRange(new[] { "--fallback-model", fallback });
                 if (request.Effort is not null && Supports(detection.Help, "--effort")) args.AddRange(new[] { "--effort", request.Effort.Value.ToString().ToLowerInvariant() });
                 args.Add("--safe-mode");
                 foreach (var optional in new[] { "--strict-mcp-config", "--disable-slash-commands" }) if (Supports(detection.Help, optional)) args.Add(optional);
