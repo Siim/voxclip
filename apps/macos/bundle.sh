@@ -145,8 +145,8 @@ BUILD_FLAGS=(--sdk "$SDK_PATH" -Xlinker -platform_version -Xlinker macos -Xlinke
 CONFIG=release
 [ "$MODE" != debug ] || CONFIG=debug
 printf 'Building VoxClip %s (%s), %s, arm64, macOS %s+, SDK %s\n' "$VERSION" "$BUILD_NUMBER" "$CONFIG" "$MIN_MACOS" "$SDK_VERSION"
-swift build -c "$CONFIG" "${BUILD_FLAGS[@]}"
-BIN_DIR=$(swift build -c "$CONFIG" "${BUILD_FLAGS[@]}" --show-bin-path)
+swift build --jobs 2 -c "$CONFIG" "${BUILD_FLAGS[@]}"
+BIN_DIR=$(swift build --jobs 2 -c "$CONFIG" "${BUILD_FLAGS[@]}" --show-bin-path)
 OTOOL=$(xcrun --find otool)
 NM=$(xcrun --find nm)
 mkdir -p "$DIST"

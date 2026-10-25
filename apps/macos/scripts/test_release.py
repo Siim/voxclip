@@ -599,6 +599,8 @@ fi
                 self.assertEqual(result.returncode, 1)
                 invocations = self.calls.read_text()
                 build = next(line for line in invocations.splitlines() if line.startswith("swift build "))
+                self.assertIn("swift build --jobs 2 -c release ", build)
+                self.assertIn('BIN_DIR=$(swift build --jobs 2 -c "$CONFIG"', script.read_text())
                 self.assertIn("BUILD_COMMIT=test-commit", build)
                 self.assertLess(invocations.index("rev-parse HEAD"), invocations.index("swift build "))
                 self.assertLess(invocations.index("ioreg "), invocations.index("swift build "))

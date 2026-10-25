@@ -138,6 +138,8 @@ Also: `dmg-background.png` (600×400) in `apps/macos`. From the repository root:
 
 The script and `scripts/release-common.sh` are the implementation; this spec describes their contract, not a second executable template. Bash 3.2 is supported. Tracing is disabled; never enable `set -x` around signing or release commands.
 
+Both Swift build invocations use two jobs to bound compiler resource use on the release Mac.
+
 | Command | Result |
 |---|---|
 | `./bundle.sh` | Debug build, ad-hoc signed `dist/VoxClip.app`; anyone can run it |
