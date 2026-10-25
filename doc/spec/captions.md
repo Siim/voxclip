@@ -812,6 +812,8 @@ Windows (`VoxClip.Media`): the compose function draws into an `SKSurface` that w
 
 ## 14. App integration
 
+`CaptionLine.words` holds indices into the track's full list of captioned words, not offsets within the page. SRT output uses that same list across pages. A compatibility track without a usable full list falls back to the page's own words instead of indexing outside the list.
+
 - Off: `styleId == "off"` (the first gallery tile, "Just the video"). No caption pass; cuts and every other export setting still apply.
 - Captions are drawn while paused and while scrubbing, at the playhead's output time.
 - Dragging: the handle is the visual rectangle of the page visible at the playhead; when no page is visible, the next page's (or the previous page's, at the end) layout is used and drawn as an outline only. The dragged anchor point is written as in 2.4. Snapping to `x = 0.5` and `y ∈ {1/3, 2/3}` is a UI aid (design.md); the stored value is the snapped value. Rendering always clamps to the safe area (7.3), so a stored position outside it renders inside it.

@@ -367,6 +367,7 @@ No ffmpeg ships on macOS in v1. WebM and MKV are rejected with the `unsupportedC
 
 ### 5.3 Join fades: MTAudioProcessingTap
 
+- Media code builds `EditPlan` only from `sampleRate`, `totalSamples`, `cuts` and `kept`; Core derives the output length and the join fades (editing 2.7). Media tests use real kept ranges for clip edges and zero-length fade sides, never hand-set derived fields.
 - `AVMutableAudioMixInputParameters.setVolumeRamp` is **not** used: ramps shorter than about 25 ms do not reach silence (measured: a 5 ms ramp left the join at about 0.28 of full level).
 - The tap is created with `kMTAudioProcessingTapCreationFlag_PostEffects` and attached to the composition audio track's mix parameters. The same `AVAudioMix` serves `AVPlayerItem.audioMix` and `AVAssetReaderAudioMixOutput.audioMix`.
 - The context is an immutable `final class FadeContext: @unchecked Sendable` holding the sorted join list (`ContiguousArray` of `(outSample, fadeOutLen, fadeInLen)` on the edited timeline). `gain(s)` binary-searches it: inside a fade-in of length `N` starting at `j`, `gain = (s − j) / N`; inside a fade-out ending at `j`, `gain = (j − 1 − s) / N`; otherwise 1. Kept parts that start at source sample 0 get no fade-in; parts that end at `totalSamples` get no fade-out. The gain function itself lives in Core (`EditPlan.joinGain`) so Windows uses the identical code path.
@@ -399,8 +400,11 @@ No ffmpeg ships on macOS in v1. WebM and MKV are rejected with the `unsupportedC
 - Writer: `AVAssetWriter(outputURL: <dest>.partial, fileType: .mp4)`, `shouldOptimizeForNetworkUse = true` (moov first, the `+faststart` equivalent).
 - Video input: `AVVideoCodecType.h264`, width/height from section 4.1, `AVVideoCompressionPropertiesKey: [AVVideoAverageBitRateKey, AVVideoExpectedSourceFrameRateKey: fps, AVVideoMaxKeyFrameIntervalKey: 2 × fps, AVVideoAllowFrameReorderingKey: true, AVVideoProfileLevelKey: AVVideoProfileLevelH264HighAutoLevel, AVVideoH264EntropyModeKey: AVVideoH264EntropyModeCABAC]`, `AVVideoColorPropertiesKey`: BT.709 primaries, transfer function and YCbCr matrix. The same colour properties are set on the video composition. VideoToolbox picks the hardware encoder.
 - Audio input: `kAudioFormatMPEG4AAC`, 48,000 Hz, 2 channels, 160,000 bps.
+- The movie timescale is 48,000, so audio edit-list durations keep every exported sample, including edits that do not fall on the 1/600 s grid. The video input may keep its 600-tick timescale.
+- Edited WAV output has exactly the plan's sample count. If a container rounds its audio end past the last decodable PCM sample, check the source's final second and pad only the missing tail of the last kept range. Any other shortfall is an export error; interior gaps are never padded.
 - Pumping: `requestMediaDataWhenReady` on two serial queues; `copyNextSampleBuffer` → `append`; `markAsFinished` on nil. Progress = last appended video PTS / composition duration, published at ≤ 10 Hz with phases `preparing`, `encoding`, `finalizing`.
-- Cancellation: `Task.isCancelled` is checked in each pump loop; then `reader.cancelReading()`, `writer.cancelWriting()` and the partial file is deleted.
+- Each pump has its own `AVAssetReader` over the same composition and time range (one with the video-composition output, one with the audio-mix output), so neither output can stall waiting for the other to be read.
+- Cancellation and failure: task cancellation or the first pump error stops both pumps at their next sample boundary. Each pump cancels its own reader, the writer is cancelled and the partial file is deleted. Neither path decodes the rest of the timeline.
 - M1 exports H.264 only (X, LinkedIn and VoxConvo accept it everywhere). HEVC for "Save to disk" may come later.
 - Measured reference: about 10× realtime at 1080p30 on M3 Max including captions; budget 3–5× on a base M1.
 
@@ -619,7 +623,12 @@ Behaviour:
 
 ### 9.3 Output and exit codes
 
+Before preparing an export, the CLI checks the editing summary in the active clip or word-range scope. An empty output plan or `canExport == false` fails with `everythingCut` and exit 5, and no destination or sidecar is changed. An unknown clip or a word range outside the transcript is a bad argument (`usageError`, exit 2), and so is `--audio-out` for a source with no audio track ("This video has no audio track, so --audio-out has nothing to write.").
+
+Every output (video, edited WAV, SRT) is written to `<name>.partial` beside its destination, where the destination path is resolved through symlinks first. An existing regular file at a `.partial` path is a leftover from an earlier run and is replaced; a directory or symlink there is a bad argument. The WAV and SRT are finished before the MP4 is published and are published only after the MP4 publish succeeds, so a failure at any step leaves every existing destination unchanged. Partial files are removed on success, failure and cancellation.
+
 - Human-readable progress goes to **stderr**: one line per phase change, percentages at most once per second, nothing with `--quiet`.
+- `audioSampleRate` reports the 48,000 Hz export target on both platforms. For video-only output it stays 48,000, `audioSamples` is 0 and no audio track is written.
 - `--json` prints exactly one JSON object on **stdout** at the end:
 
 ```json
