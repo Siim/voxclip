@@ -723,17 +723,17 @@ Machines that are not available are listed in the release notes as "not tested".
 5. Performance: every architecture section 14 budget is measured on Mac A and Windows A and recorded in the release issue.
 6. Privacy: a network capture of a local-only session (whisper, Ollama) shows no traffic except the update check (AGENTS.md rule 10).
 7. Licences: the macOS `nm` gate and the Windows `avcodec_configuration()` gate pass. `VoxClip-win-ffmpeg-source.tar.xz` is attached. `THIRD_PARTY_NOTICES.md` covers every component (release.md section 4, step 3b).
-8. Subscription connector gate (release.md section 4, step 3a; ADR-R20) is applied to `shared/catalog/llm-providers.json`.
+8. Subscription connector check (release.md section 4, step 3a; ADR-R20): `enabled` in `shared/catalog/llm-providers.json` matches the lead's decision.
 9. release.md section 4, steps 1 to 9, in order. `CHANGELOG.md` gets the release date.
 10. vox-web is deployed with `VOXCLIP_WINDOWS_AVAILABLE` set per ADR-R17. The release.md section 4 step 9 curl checks pass, including `/download/windows-ffmpeg-source`.
 
 ## 7. Open questions for the lead
 
 1. ADR-R16: confirm the short-edge caption size, or choose `height` with rescaled portrait sizes and regenerated caption fixtures.
-2. Publication of the vendored VoxConvo files (`tools/fixtures/editing/reference/*.ts`) and the clip-finder prompt under MIT. If not approved, delete `reference/*.ts` before the first push; the generator then needs `VOXCONVO_WEB_DIR`.
+2. **Decided 2026-10-25:** the vendored VoxConvo files (`tools/fixtures/editing/reference/*.ts`) and the clip-finder prompt are published under MIT.
 3. ADR-R17: approve the macOS-first fallback, or require both platforms in 0.1.0.
 4. ADR-R1 and ADR-R2 (the extra `VoxClipMedia` target and `VoxClip.Cli` project): confirm.
-5. Anthropic and OpenAI written confirmation for the CLI connectors (ai.md section 14, item 8). Without it, release.md section 4 step 3a disables them in 0.1.0.
+5. **Decided 2026-10-25:** the CLI connectors ship enabled in 0.1.0 without waiting for written confirmation from Anthropic and OpenAI (ADR-R20). The requests stay open (ai.md section 14, item 8).
 6. The Estonian filler list stays deferred (editing.md section 12). Confirm that 0.1.0 ships English hesitations only.
 7. Default caption style `vox-highlight` (settings `captions.defaultStyleId`): confirm.
 8. whisper.cpp `b5454` is a GitHub pre-release; the newest non-prerelease build with an xcframework is `b4938`. Keep `b5454`?

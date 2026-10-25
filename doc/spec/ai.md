@@ -950,7 +950,7 @@ These rules are normative. A change that breaks one must not ship.
    - The same plain-text rule applies to the API-key connectors (Anthropic, OpenAI, xAI, Google Gemini), which are named only to identify the service the user's key belongs to.
 7. **Attribution is plain text.** The About window and README may say: "VoxClip can run Claude Code or Codex if you have installed them and signed in. Their use is governed by your own agreements with Anthropic and OpenAI."
 8. **Opt-in and disclosed.** CLI connectors are off until the user selects one, and the consent sheet (§4.8) states that usage counts toward the user's plan.
-9. **Kill switch.** Each CLI connector has `enabled` in the catalog. Setting it to `false` in a release hides the connector without code changes. The switch is bundled data: it only affects builds released after the change, and the macOS app does not auto-update. It is therefore applied as a release gate (release.md §4 step 3a, ADR-R20), not as a remote control.
+9. **Kill switch.** Each CLI connector has `enabled` in the catalog. Setting it to `false` in a release hides the connector without code changes. The switch is bundled data: it only affects builds released after the change, and the macOS app does not auto-update. It is therefore checked at release time (release.md §4 step 3a, ADR-R20), not used as a remote control.
 
 ### 7.2 What the vendors say (fetched 2026-10-25)
 
@@ -1586,7 +1586,7 @@ Each item needs a check before 0.1.0. The owner records the result in this file.
 5. **CLI locations and standalone Codex.** Re-verify §6.9 against a standalone Codex release (Homebrew or npm `@openai/codex`) on macOS and update the catalog `verified` entry; the only verified copy so far is the one bundled inside ChatGPT.app, which VoxClip does not use. On the UTM VM check the Claude Code native installer path (`%USERPROFILE%\.local\bin\claude.exe`), Codex install paths and the npm shim scripts, and that the `node.exe <script>` launch works for both.
 6. **Claude Code on Windows** prints the same result envelope. **Codex on Windows** accepts `--sandbox read-only` and the feature names in `disableFeatures`.
 7. **Ollama tags** in `suggestedModels` exist on ollama.com, and each returns valid `clips` JSON on the F1 transcript.
-8. **Policy reading for the subscription connectors** (§7.2). The lead asks Anthropic and OpenAI to confirm in writing that a local app invoking the user's own signed-in CLI, under rules 1–9, is acceptable, and records the answer (date, sender, quote) here. Release gate (release.md §4 step 3a, ADR-R20): a release tagged without a recorded answer from Anthropic ships `claude-code` with `enabled: false`; without one from OpenAI, `codex` likewise.
+8. **Policy reading for the subscription connectors** (§7.2). The lead asks Anthropic and OpenAI to confirm in writing that a local app invoking the user's own signed-in CLI, under rules 1–9, is acceptable, and records the answer (date, sender, quote) here. This is not a release gate: on 2026-10-25 the lead decided to ship both connectors enabled in 0.1.0 without waiting for the answers (ADR-R20). If a vendor objects, the next release sets that connector's `enabled` to `false` (release.md §4 step 3a).
 9. **Codex usage overhead.** Each call carries about 12k tokens of Codex base instructions (§6.9). Decide whether the UI should mention this.
 
 ---
