@@ -39,22 +39,7 @@ extension FocusedValues { var editor: EditorModel? { get { self[EditorFocusKey.s
         }
         .navigationTitle(document.project.title ?? "Untitled")
         .navigationSubtitle(model.subtitle)
-        .toolbar {
-            ToolbarItemGroup(placement: .principal) {
-                Button("Cut fillers · \(model.summary.fillerCount)", systemImage: "scissors") { model.apply(.cutFillers, name: "Cut fillers") }.labelStyle(.titleAndIcon).disabled(!model.summary.canCutFillers)
-                Button("Tighten pauses", systemImage: "arrow.left.and.right") { model.apply(.tightenPauses, name: "Tighten pauses") }.disabled(!model.summary.canTighten)
-                Button("Restore cuts", systemImage: "arrow.uturn.backward") { model.apply(.restoreCuts, name: "Restore cuts") }.disabled(!model.summary.hasEdits)
-            }
-            ToolbarSpacer(.fixed)
-            if #available(macOS 26.1, *) {
-                ToolbarItem { playButton }.visibilityPriority(.high)
-            } else { ToolbarItem { playButton } }
-            ToolbarSpacer(.flexible)
-            if #available(macOS 26.1, *) {
-                ToolbarItem(placement: .primaryAction) { exportButton }.visibilityPriority(.high)
-            } else { ToolbarItem(placement: .primaryAction) { exportButton } }
-            ToolbarItem { Button("Inspector", systemImage: "sidebar.trailing") { model.showInspector.toggle() }.help("Show inspector · ⌥⌘I") }
-        }
+        .toolbar { EditorToolbar(model: model) }
         .focusedSceneValue(\.editor, model)
         .background(EditorWindowSetup(model: model))
         .preferredColorScheme(model.app.appearance)
@@ -75,11 +60,92 @@ extension FocusedValues { var editor: EditorModel? { get { self[EditorFocusKey.s
         }
         .frame(minWidth: 960, minHeight: 600)
     }
-    private var playButton: some View {
-        Button { model.transport(" ") } label: { Label(timecode(model.playhead), systemImage: model.isPlaying ? "pause.fill" : "play.fill").labelStyle(.titleAndIcon).font(DesignValues.mono()) }.help("Play or pause · Space")
+}
+
+@MainActor private struct EditorToolbar: ToolbarContent {
+    let model: EditorModel
+
+    var body: some ToolbarContent {
+        EditorCutToolbar(model: model)
+        ToolbarSpacer(.fixed)
+        EditorPlayToolbar(model: model)
+        ToolbarSpacer(.flexible)
+        EditorExportToolbar(model: model)
+        ToolbarItem {
+            Button("Inspector", systemImage: "sidebar.trailing") { model.showInspector.toggle() }
+                .help("Show inspector · ⌥⌘I")
+        }
     }
-    private var exportButton: some View {
-        EditorExportControl { model.presentExport() }.disabled(!model.canExport).help(model.canExport ? "Export · ⌘E" : "Keep at least one word before exporting.")
+}
+
+@MainActor private struct EditorCutToolbar: ToolbarContent {
+    let model: EditorModel
+
+    var body: some ToolbarContent {
+        ToolbarItemGroup(placement: .principal) {
+            Button("Cut fillers · \(model.summary.fillerCount)", systemImage: "scissors") {
+                model.apply(.cutFillers, name: "Cut fillers")
+            }
+            .labelStyle(.titleAndIcon)
+            .disabled(!model.summary.canCutFillers)
+
+            Button("Tighten pauses", systemImage: "arrow.left.and.right") {
+                model.apply(.tightenPauses, name: "Tighten pauses")
+            }
+            .disabled(!model.summary.canTighten)
+
+            Button("Restore cuts", systemImage: "arrow.uturn.backward") {
+                model.apply(.restoreCuts, name: "Restore cuts")
+            }
+            .disabled(!model.summary.hasEdits)
+        }
+    }
+}
+
+@MainActor private struct EditorPlayToolbar: ToolbarContent {
+    let model: EditorModel
+
+    var body: some ToolbarContent {
+        if #available(macOS 26.1, *) {
+            ToolbarItem { EditorPlayButton(model: model) }.visibilityPriority(.high)
+        } else {
+            ToolbarItem { EditorPlayButton(model: model) }
+        }
+    }
+}
+
+@MainActor private struct EditorPlayButton: View {
+    let model: EditorModel
+
+    var body: some View {
+        Button { model.transport(" ") } label: {
+            Label(timecode(model.playhead), systemImage: model.isPlaying ? "pause.fill" : "play.fill")
+                .labelStyle(.titleAndIcon)
+                .font(DesignValues.mono())
+        }
+        .help("Play or pause · Space")
+    }
+}
+
+@MainActor private struct EditorExportToolbar: ToolbarContent {
+    let model: EditorModel
+
+    var body: some ToolbarContent {
+        if #available(macOS 26.1, *) {
+            ToolbarItem(placement: .primaryAction) { EditorExportButton(model: model) }.visibilityPriority(.high)
+        } else {
+            ToolbarItem(placement: .primaryAction) { EditorExportButton(model: model) }
+        }
+    }
+}
+
+@MainActor private struct EditorExportButton: View {
+    let model: EditorModel
+
+    var body: some View {
+        EditorExportControl { model.presentExport() }
+            .disabled(!model.canExport)
+            .help(model.canExport ? "Export · ⌘E" : "Keep at least one word before exporting.")
     }
 }
 
