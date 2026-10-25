@@ -1,0 +1,39 @@
+{
+  "schema": "voxclip-editing-fixture/1",
+  "id": "ingest/clean-words",
+  "kind": "word-cleanup",
+  "origin": "voxclip",
+  "source": "doc/spec/editing.md (cleanWords)",
+  "description": "Engine words to clean items: NFC, JS-whitespace trim, opening punctuation joins the next word, other punctuation-only tokens join the previous item only if it is a word, invalid times are dropped, conf outside [0,1] becomes null, and the result is stably sorted by start.",
+  "input": {
+    "rawWords": [
+      {"text": " ¿", "start": 0.1, "end": 0.1},
+      {"text": "Qué", "start": 0.2, "end": 0.5, "conf": 0.93},
+      {"text": "?", "start": 0.5, "end": 0.5},
+      {"text": "(laughs)", "start": 0.6, "end": 1.1, "kind": "event"},
+      {"text": ",", "start": 1.1, "end": 1.1},
+      {"text": "café", "start": 1.2, "end": 1.6, "conf": 1.2},
+      {"text": "   ", "start": 1.6, "end": 1.7},
+      {"text": "bad", "start": 2, "end": 1.9},
+      {"text": "neg", "start": -0.2, "end": 0.1},
+      {"text": "late", "start": 3, "end": 3.4, "speaker": "speaker_1"},
+      {"text": "early", "start": 2.5, "end": 2.9, "conf": 0.5},
+      {"text": "tie", "start": 2.5, "end": 2.6},
+      {"text": "“", "start": 3.5, "end": 3.5},
+      {"text": "quoted”.", "start": 3.6, "end": 4},
+      {"text": "nan", "start": "NaN", "end": 4.5},
+      {"text": "»", "start": 4.6, "end": 4.6}
+    ]
+  },
+  "expected": {
+    "words": [
+      {"text": "¿Qué?", "start": 0.2, "end": 0.5, "conf": 0.93, "kind": "word", "speaker": null},
+      {"text": "(laughs)", "start": 0.6, "end": 1.1, "conf": null, "kind": "event", "speaker": null},
+      {"text": "café", "start": 1.2, "end": 1.6, "conf": null, "kind": "word", "speaker": null},
+      {"text": "early", "start": 2.5, "end": 2.9, "conf": 0.5, "kind": "word", "speaker": null},
+      {"text": "tie", "start": 2.5, "end": 2.6, "conf": null, "kind": "word", "speaker": null},
+      {"text": "late", "start": 3, "end": 3.4, "conf": null, "kind": "word", "speaker": "speaker_1"},
+      {"text": "“quoted”.»", "start": 3.6, "end": 4, "conf": null, "kind": "word", "speaker": null}
+    ]
+  }
+}

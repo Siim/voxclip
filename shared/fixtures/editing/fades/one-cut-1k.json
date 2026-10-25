@@ -1,0 +1,35 @@
+{
+  "schema": "voxclip-editing-fixture/1",
+  "id": "fades/one-cut-1k",
+  "kind": "join-fades",
+  "origin": "voxconvo",
+  "source": "vox-web/src/utils/audioEditor.ts:19-29 (run on a constant 1.0 buffer)",
+  "description": "One cut: the part before it fades out, the part after it fades in, and the file start and end are never faded. 5 samples at 1 kHz.",
+  "input": {
+    "durationSeconds": 3,
+    "sampleRate": 1000,
+    "segments": [
+      {"id": "a", "kind": "word", "text": "a", "start": 0.5, "end": 1, "cut": false},
+      {"id": "b", "kind": "word", "text": "b", "start": 1.2, "end": 1.5, "cut": true},
+      {"id": "c", "kind": "word", "text": "c", "start": 2, "end": 2.5, "cut": false}
+    ]
+  },
+  "expected": {
+    "kept": [[0, 1100], [1600, 3000]],
+    "outputSamples": 2500,
+    "parts": [{"outputStart": 0, "length": 1100, "fadeIn": 0, "fadeOut": 5}, {"outputStart": 1100, "length": 1400, "fadeIn": 5, "fadeOut": 0}],
+    "gains": [
+      [1095, 0.800000011920929],
+      [1096, 0.6000000238418579],
+      [1097, 0.4000000059604645],
+      [1098, 0.20000000298023224],
+      [1099, 0],
+      [1100, 0],
+      [1101, 0.20000000298023224],
+      [1102, 0.4000000059604645],
+      [1103, 0.6000000238418579],
+      [1104, 0.800000011920929]
+    ],
+    "tolerance": 1e-7
+  }
+}

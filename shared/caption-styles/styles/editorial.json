@@ -1,0 +1,37 @@
+{
+ "$schema": "../schema.json",
+ "schemaVersion": 1,
+ "id": "editorial",
+ "name": "Editorial",
+ "description": "Elegant italic serif in sentence case with a soft shadow; one key word per page tinted gold.",
+ "order": 150,
+ "tags": ["sentence", "serif", "emphasis"],
+ "accent": "#F2D7A0",
+ "font": {
+  "file": "DMSerifDisplay-Italic.ttf",
+  "family": "DM Serif Display",
+  "weight": 400,
+  "italic": true,
+  "sizeSh": 0.06,
+  "lineHeightEm": 1.15
+ },
+ "text": {"transform": "none", "punctuation": "keep"},
+ "layout": {
+  "maxWords": 7,
+  "maxLines": 2,
+  "maxLineWidthW": 0.78,
+  "balance": "balanced",
+  "holdGapSec": 0.8,
+  "maxPageSec": 4.0
+ },
+ "position": {"x": 0.5, "y": 0.76},
+ "aspects": {"landscape": {"y": 0.8}},
+ "fill": {"type": "solid", "color": "#FFFFFF"},
+ "shadows": [{"dxEm": 0, "dyEm": 0.03, "sigmaEm": 0.12, "color": "#000000A6"}],
+ "animation": {
+  "pageIn": {"type": "fade", "durationSec": 0.2, "easing": "easeInOutCubic"},
+  "pageOut": {"type": "fade", "durationSec": 0.2, "easing": "easeInOutCubic"}
+ },
+ "emphasis": {"source": "rule", "maxPerPage": 1, "minScore": 2, "fill": {"type": "solid", "color": "$accent"}},
+ "preview": {"text": "Every story deserves a beginning", "activeWord": 0}
+}

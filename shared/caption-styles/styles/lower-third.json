@@ -1,0 +1,35 @@
+{
+ "$schema": "../schema.json",
+ "schemaVersion": 1,
+ "id": "lower-third",
+ "name": "Lower third",
+ "description": "Quiet left-aligned sentences on a dark rounded panel in the lower left, sliding up gently.",
+ "order": 130,
+ "tags": ["sentence", "box", "clean", "left"],
+ "font": {
+  "file": "DMSans-Medium.ttf",
+  "family": "DM Sans",
+  "weight": 500,
+  "sizeSh": 0.04,
+  "lineHeightEm": 1.3
+ },
+ "text": {"transform": "none", "punctuation": "keep"},
+ "layout": {
+  "maxWords": 10,
+  "maxLines": 2,
+  "maxLineWidthW": 0.62,
+  "align": "left",
+  "holdGapSec": 1.0,
+  "maxPageSec": 5.0
+ },
+ "position": {"x": 0.06, "y": 0.9, "anchorX": "left", "anchorY": "bottom"},
+ "aspects": {"landscape": {"maxLineWidthW": 0.5}},
+ "fill": {"type": "solid", "color": "#FFFFFFF2"},
+ "shadows": [{"dxEm": 0, "dyEm": 0.04, "sigmaEm": 0.08, "color": "#00000099"}],
+ "box": {"scope": "page", "color": "#0000008C", "paddingXEm": 0.6, "paddingYEm": 0.35, "radiusEm": 0.25},
+ "animation": {
+  "pageIn": {"type": "slide-up", "durationSec": 0.18, "fromOffsetEm": 0.4},
+  "pageOut": {"type": "fade", "durationSec": 0.12}
+ },
+ "preview": {"text": "We started with one simple question", "activeWord": 0}
+}

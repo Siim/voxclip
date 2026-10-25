@@ -1,0 +1,10 @@
+{
+  "schema": "voxclip-editing-fixture/1",
+  "id": "align/unicode-normalise",
+  "kind": "transcript-alignment",
+  "origin": "voxconvo",
+  "source": "vox-web/src/utils/transcriptionTiming.ts:11",
+  "description": "Normalisation: locale lower-case, drop everything that is not a Unicode letter or number.",
+  "input": {"words": [{"word": "Ära", "start": 0, "end": 0.4}, {"word": "100", "start": 0.5, "end": 0.9}], "finalText": "“ära” 100%."},
+  "expected": {"words": [{"word": "“ära”", "start": 0, "end": 0.4}, {"word": "100%.", "start": 0.5, "end": 0.9}]}
+}

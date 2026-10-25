@@ -1,0 +1,16 @@
+{
+  "schema": "voxclip-editing-fixture/1",
+  "id": "estimate/utf16-length",
+  "kind": "estimated-words",
+  "origin": "voxconvo",
+  "source": "vox-web/src/utils/transcriptionTiming.ts:20",
+  "description": "Lengths are UTF-16 code units: the emoji counts 2, \"õun\" (NFC) counts 3. Counting grapheme clusters or scalars gives different times.",
+  "input": {"text": "ok 😀 õun", "start": 0, "end": 7},
+  "expected": {
+    "words": [
+      {"word": "ok", "start": 0, "end": 2, "conf": 0},
+      {"word": "😀", "start": 2, "end": 4, "conf": 0},
+      {"word": "õun", "start": 4, "end": 7, "conf": 0}
+    ]
+  }
+}

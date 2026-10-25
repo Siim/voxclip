@@ -1,0 +1,1086 @@
+{
+ "fixture": "voxclip-caption-text/1",
+ "description": "Spec section 3. results keys are '<punctuation>|<transform>'. An empty result means the word is not captioned.",
+ "cases": [
+  {
+   "input": "don't",
+   "inputCodepoints": ["0064", "006F", "006E", "0027", "0074"],
+   "language": "en",
+   "results": {
+    "keep|none": "don't",
+    "keep|uppercase": "DON'T",
+    "keep|lowercase": "don't",
+    "strip-keep-numeric|none": "don't",
+    "strip-keep-numeric|uppercase": "DON'T"
+   },
+   "matchingKey": "dont",
+   "endsSentence": false,
+   "endsClause": false
+  },
+  {
+   "input": "Don’t",
+   "inputCodepoints": ["0044", "006F", "006E", "2019", "0074"],
+   "language": "en",
+   "results": {
+    "keep|none": "Don’t",
+    "keep|uppercase": "DON’T",
+    "keep|lowercase": "don’t",
+    "strip-keep-numeric|none": "Don’t",
+    "strip-keep-numeric|uppercase": "DON’T"
+   },
+   "matchingKey": "dont",
+   "endsSentence": false,
+   "endsClause": false
+  },
+  {
+   "input": "03:15",
+   "inputCodepoints": ["0030", "0033", "003A", "0031", "0035"],
+   "language": "en",
+   "results": {
+    "keep|none": "03:15",
+    "keep|uppercase": "03:15",
+    "keep|lowercase": "03:15",
+    "strip-keep-numeric|none": "03:15",
+    "strip-keep-numeric|uppercase": "03:15"
+   },
+   "matchingKey": "0315",
+   "endsSentence": false,
+   "endsClause": false
+  },
+  {
+   "input": "03:15.",
+   "inputCodepoints": ["0030", "0033", "003A", "0031", "0035", "002E"],
+   "language": "en",
+   "results": {
+    "keep|none": "03:15.",
+    "keep|uppercase": "03:15.",
+    "keep|lowercase": "03:15.",
+    "strip-keep-numeric|none": "03:15",
+    "strip-keep-numeric|uppercase": "03:15"
+   },
+   "matchingKey": "0315",
+   "endsSentence": true,
+   "endsClause": false
+  },
+  {
+   "input": "3.5",
+   "inputCodepoints": ["0033", "002E", "0035"],
+   "language": "en",
+   "results": {
+    "keep|none": "3.5",
+    "keep|uppercase": "3.5",
+    "keep|lowercase": "3.5",
+    "strip-keep-numeric|none": "3.5",
+    "strip-keep-numeric|uppercase": "3.5"
+   },
+   "matchingKey": "35",
+   "endsSentence": false,
+   "endsClause": false
+  },
+  {
+   "input": "$3.50,",
+   "inputCodepoints": ["0024", "0033", "002E", "0035", "0030", "002C"],
+   "language": "en",
+   "results": {
+    "keep|none": "$3.50,",
+    "keep|uppercase": "$3.50,",
+    "keep|lowercase": "$3.50,",
+    "strip-keep-numeric|none": "$3.50",
+    "strip-keep-numeric|uppercase": "$3.50"
+   },
+   "matchingKey": "$350",
+   "endsSentence": false,
+   "endsClause": true
+  },
+  {
+   "input": "1,000",
+   "inputCodepoints": ["0031", "002C", "0030", "0030", "0030"],
+   "language": "en",
+   "results": {
+    "keep|none": "1,000",
+    "keep|uppercase": "1,000",
+    "keep|lowercase": "1,000",
+    "strip-keep-numeric|none": "1,000",
+    "strip-keep-numeric|uppercase": "1,000"
+   },
+   "matchingKey": "1000",
+   "endsSentence": false,
+   "endsClause": false
+  },
+  {
+   "input": "100%.",
+   "inputCodepoints": ["0031", "0030", "0030", "0025", "002E"],
+   "language": "en",
+   "results": {
+    "keep|none": "100%.",
+    "keep|uppercase": "100%.",
+    "keep|lowercase": "100%.",
+    "strip-keep-numeric|none": "100%",
+    "strip-keep-numeric|uppercase": "100%"
+   },
+   "matchingKey": "100",
+   "endsSentence": true,
+   "endsClause": false
+  },
+  {
+   "input": "#1",
+   "inputCodepoints": ["0023", "0031"],
+   "language": "en",
+   "results": {
+    "keep|none": "#1",
+    "keep|uppercase": "#1",
+    "keep|lowercase": "#1",
+    "strip-keep-numeric|none": "#1",
+    "strip-keep-numeric|uppercase": "#1"
+   },
+   "matchingKey": "1",
+   "endsSentence": false,
+   "endsClause": false
+  },
+  {
+   "input": "@siim",
+   "inputCodepoints": ["0040", "0073", "0069", "0069", "006D"],
+   "language": "en",
+   "results": {
+    "keep|none": "@siim",
+    "keep|uppercase": "@SIIM",
+    "keep|lowercase": "@siim",
+    "strip-keep-numeric|none": "@siim",
+    "strip-keep-numeric|uppercase": "@SIIM"
+   },
+   "matchingKey": "siim",
+   "endsSentence": false,
+   "endsClause": false
+  },
+  {
+   "input": "rock'n'roll",
+   "inputCodepoints": ["0072", "006F", "0063", "006B", "0027", "006E", "0027", "0072", "006F", "006C", "006C"],
+   "language": "en",
+   "results": {
+    "keep|none": "rock'n'roll",
+    "keep|uppercase": "ROCK'N'ROLL",
+    "keep|lowercase": "rock'n'roll",
+    "strip-keep-numeric|none": "rock'n'roll",
+    "strip-keep-numeric|uppercase": "ROCK'N'ROLL"
+   },
+   "matchingKey": "rocknroll",
+   "endsSentence": false,
+   "endsClause": false
+  },
+  {
+   "input": "'cause",
+   "inputCodepoints": ["0027", "0063", "0061", "0075", "0073", "0065"],
+   "language": "en",
+   "results": {
+    "keep|none": "'cause",
+    "keep|uppercase": "'CAUSE",
+    "keep|lowercase": "'cause",
+    "strip-keep-numeric|none": "cause",
+    "strip-keep-numeric|uppercase": "CAUSE"
+   },
+   "matchingKey": "cause",
+   "endsSentence": false,
+   "endsClause": false
+  },
+  {
+   "input": "students'",
+   "inputCodepoints": ["0073", "0074", "0075", "0064", "0065", "006E", "0074", "0073", "0027"],
+   "language": "en",
+   "results": {
+    "keep|none": "students'",
+    "keep|uppercase": "STUDENTS'",
+    "keep|lowercase": "students'",
+    "strip-keep-numeric|none": "students",
+    "strip-keep-numeric|uppercase": "STUDENTS"
+   },
+   "matchingKey": "students",
+   "endsSentence": false,
+   "endsClause": false
+  },
+  {
+   "input": "e-mail",
+   "inputCodepoints": ["0065", "002D", "006D", "0061", "0069", "006C"],
+   "language": "en",
+   "results": {
+    "keep|none": "e-mail",
+    "keep|uppercase": "E-MAIL",
+    "keep|lowercase": "e-mail",
+    "strip-keep-numeric|none": "e-mail",
+    "strip-keep-numeric|uppercase": "E-MAIL"
+   },
+   "matchingKey": "email",
+   "endsSentence": false,
+   "endsClause": false
+  },
+  {
+   "input": "U.S.",
+   "inputCodepoints": ["0055", "002E", "0053", "002E"],
+   "language": "en",
+   "results": {
+    "keep|none": "U.S.",
+    "keep|uppercase": "U.S.",
+    "keep|lowercase": "u.s.",
+    "strip-keep-numeric|none": "U.S.",
+    "strip-keep-numeric|uppercase": "U.S."
+   },
+   "matchingKey": "us",
+   "endsSentence": false,
+   "endsClause": false
+  },
+  {
+   "input": "voxconvo.com",
+   "inputCodepoints": ["0076", "006F", "0078", "0063", "006F", "006E", "0076", "006F", "002E", "0063", "006F", "006D"],
+   "language": "en",
+   "results": {
+    "keep|none": "voxconvo.com",
+    "keep|uppercase": "VOXCONVO.COM",
+    "keep|lowercase": "voxconvo.com",
+    "strip-keep-numeric|none": "voxconvo.com",
+    "strip-keep-numeric|uppercase": "VOXCONVO.COM"
+   },
+   "matchingKey": "voxconvocom",
+   "endsSentence": false,
+   "endsClause": false
+  },
+  {
+   "input": "and/or",
+   "inputCodepoints": ["0061", "006E", "0064", "002F", "006F", "0072"],
+   "language": "en",
+   "results": {
+    "keep|none": "and/or",
+    "keep|uppercase": "AND/OR",
+    "keep|lowercase": "and/or",
+    "strip-keep-numeric|none": "and/or",
+    "strip-keep-numeric|uppercase": "AND/OR"
+   },
+   "matchingKey": "andor",
+   "endsSentence": false,
+   "endsClause": false
+  },
+  {
+   "input": "24/7",
+   "inputCodepoints": ["0032", "0034", "002F", "0037"],
+   "language": "en",
+   "results": {
+    "keep|none": "24/7",
+    "keep|uppercase": "24/7",
+    "keep|lowercase": "24/7",
+    "strip-keep-numeric|none": "24/7",
+    "strip-keep-numeric|uppercase": "24/7"
+   },
+   "matchingKey": "247",
+   "endsSentence": false,
+   "endsClause": false
+  },
+  {
+   "input": "...so",
+   "inputCodepoints": ["002E", "002E", "002E", "0073", "006F"],
+   "language": "en",
+   "results": {
+    "keep|none": "...so",
+    "keep|uppercase": "...SO",
+    "keep|lowercase": "...so",
+    "strip-keep-numeric|none": "so",
+    "strip-keep-numeric|uppercase": "SO"
+   },
+   "matchingKey": "so",
+   "endsSentence": false,
+   "endsClause": false
+  },
+  {
+   "input": "well—",
+   "inputCodepoints": ["0077", "0065", "006C", "006C", "2014"],
+   "language": "en",
+   "results": {
+    "keep|none": "well—",
+    "keep|uppercase": "WELL—",
+    "keep|lowercase": "well—",
+    "strip-keep-numeric|none": "well",
+    "strip-keep-numeric|uppercase": "WELL"
+   },
+   "matchingKey": "well",
+   "endsSentence": false,
+   "endsClause": true
+  },
+  {
+   "input": "—",
+   "inputCodepoints": ["2014"],
+   "language": "en",
+   "results": {
+    "keep|none": "—",
+    "keep|uppercase": "—",
+    "keep|lowercase": "—",
+    "strip-keep-numeric|none": "",
+    "strip-keep-numeric|uppercase": ""
+   },
+   "matchingKey": "",
+   "endsSentence": false,
+   "endsClause": true
+  },
+  {
+   "input": "?!",
+   "inputCodepoints": ["003F", "0021"],
+   "language": "en",
+   "results": {
+    "keep|none": "?!",
+    "keep|uppercase": "?!",
+    "keep|lowercase": "?!",
+    "strip-keep-numeric|none": "",
+    "strip-keep-numeric|uppercase": ""
+   },
+   "matchingKey": "",
+   "endsSentence": true,
+   "endsClause": false
+  },
+  {
+   "input": "“Hello,”",
+   "inputCodepoints": ["201C", "0048", "0065", "006C", "006C", "006F", "002C", "201D"],
+   "language": "en",
+   "results": {
+    "keep|none": "“Hello,”",
+    "keep|uppercase": "“HELLO,”",
+    "keep|lowercase": "“hello,”",
+    "strip-keep-numeric|none": "Hello",
+    "strip-keep-numeric|uppercase": "HELLO"
+   },
+   "matchingKey": "hello",
+   "endsSentence": false,
+   "endsClause": true
+  },
+  {
+   "input": "«Привет»",
+   "inputCodepoints": ["00AB", "041F", "0440", "0438", "0432", "0435", "0442", "00BB"],
+   "language": "ru",
+   "results": {
+    "keep|none": "«Привет»",
+    "keep|uppercase": "«ПРИВЕТ»",
+    "keep|lowercase": "«привет»",
+    "strip-keep-numeric|none": "Привет",
+    "strip-keep-numeric|uppercase": "ПРИВЕТ"
+   },
+   "matchingKey": "привет",
+   "endsSentence": false,
+   "endsClause": false
+  },
+  {
+   "input": "¿Qué?",
+   "inputCodepoints": ["00BF", "0051", "0075", "00E9", "003F"],
+   "language": "es",
+   "results": {
+    "keep|none": "¿Qué?",
+    "keep|uppercase": "¿QUÉ?",
+    "keep|lowercase": "¿qué?",
+    "strip-keep-numeric|none": "Qué",
+    "strip-keep-numeric|uppercase": "QUÉ"
+   },
+   "matchingKey": "qué",
+   "endsSentence": true,
+   "endsClause": false
+  },
+  {
+   "input": "¡Hola!",
+   "inputCodepoints": ["00A1", "0048", "006F", "006C", "0061", "0021"],
+   "language": "es",
+   "results": {
+    "keep|none": "¡Hola!",
+    "keep|uppercase": "¡HOLA!",
+    "keep|lowercase": "¡hola!",
+    "strip-keep-numeric|none": "Hola",
+    "strip-keep-numeric|uppercase": "HOLA"
+   },
+   "matchingKey": "hola",
+   "endsSentence": true,
+   "endsClause": false
+  },
+  {
+   "input": "straße",
+   "inputCodepoints": ["0073", "0074", "0072", "0061", "00DF", "0065"],
+   "language": "de",
+   "results": {
+    "keep|none": "straße",
+    "keep|uppercase": "STRASSE",
+    "keep|lowercase": "straße",
+    "strip-keep-numeric|none": "straße",
+    "strip-keep-numeric|uppercase": "STRASSE"
+   },
+   "matchingKey": "straße",
+   "endsSentence": false,
+   "endsClause": false
+  },
+  {
+   "input": "Straße",
+   "inputCodepoints": ["0053", "0074", "0072", "0061", "00DF", "0065"],
+   "language": "de",
+   "results": {
+    "keep|none": "Straße",
+    "keep|uppercase": "STRASSE",
+    "keep|lowercase": "straße",
+    "strip-keep-numeric|none": "Straße",
+    "strip-keep-numeric|uppercase": "STRASSE"
+   },
+   "matchingKey": "straße",
+   "endsSentence": false,
+   "endsClause": false
+  },
+  {
+   "input": "ẞ",
+   "inputCodepoints": ["1E9E"],
+   "language": "de",
+   "results": {
+    "keep|none": "ẞ",
+    "keep|uppercase": "ẞ",
+    "keep|lowercase": "ß",
+    "strip-keep-numeric|none": "ẞ",
+    "strip-keep-numeric|uppercase": "ẞ"
+   },
+   "matchingKey": "ß",
+   "endsSentence": false,
+   "endsClause": false
+  },
+  {
+   "input": "istanbul",
+   "inputCodepoints": ["0069", "0073", "0074", "0061", "006E", "0062", "0075", "006C"],
+   "language": "tr",
+   "results": {
+    "keep|none": "istanbul",
+    "keep|uppercase": "İSTANBUL",
+    "keep|lowercase": "istanbul",
+    "strip-keep-numeric|none": "istanbul",
+    "strip-keep-numeric|uppercase": "İSTANBUL"
+   },
+   "matchingKey": "istanbul",
+   "endsSentence": false,
+   "endsClause": false
+  },
+  {
+   "input": "İstanbul",
+   "inputCodepoints": ["0130", "0073", "0074", "0061", "006E", "0062", "0075", "006C"],
+   "language": "tr",
+   "results": {
+    "keep|none": "İstanbul",
+    "keep|uppercase": "İSTANBUL",
+    "keep|lowercase": "istanbul",
+    "strip-keep-numeric|none": "İstanbul",
+    "strip-keep-numeric|uppercase": "İSTANBUL"
+   },
+   "matchingKey": "istanbul",
+   "endsSentence": false,
+   "endsClause": false
+  },
+  {
+   "input": "Istanbul",
+   "inputCodepoints": ["0049", "0073", "0074", "0061", "006E", "0062", "0075", "006C"],
+   "language": "az",
+   "results": {
+    "keep|none": "Istanbul",
+    "keep|uppercase": "ISTANBUL",
+    "keep|lowercase": "ıstanbul",
+    "strip-keep-numeric|none": "Istanbul",
+    "strip-keep-numeric|uppercase": "ISTANBUL"
+   },
+   "matchingKey": "ıstanbul",
+   "endsSentence": false,
+   "endsClause": false
+  },
+  {
+   "input": "istanbul",
+   "inputCodepoints": ["0069", "0073", "0074", "0061", "006E", "0062", "0075", "006C"],
+   "language": "en",
+   "results": {
+    "keep|none": "istanbul",
+    "keep|uppercase": "ISTANBUL",
+    "keep|lowercase": "istanbul",
+    "strip-keep-numeric|none": "istanbul",
+    "strip-keep-numeric|uppercase": "ISTANBUL"
+   },
+   "matchingKey": "istanbul",
+   "endsSentence": false,
+   "endsClause": false
+  },
+  {
+   "input": "šokolaad",
+   "inputCodepoints": ["0161", "006F", "006B", "006F", "006C", "0061", "0061", "0064"],
+   "language": "et",
+   "results": {
+    "keep|none": "šokolaad",
+    "keep|uppercase": "ŠOKOLAAD",
+    "keep|lowercase": "šokolaad",
+    "strip-keep-numeric|none": "šokolaad",
+    "strip-keep-numeric|uppercase": "ŠOKOLAAD"
+   },
+   "matchingKey": "šokolaad",
+   "endsSentence": false,
+   "endsClause": false
+  },
+  {
+   "input": "Õhtu",
+   "inputCodepoints": ["00D5", "0068", "0074", "0075"],
+   "language": "et",
+   "results": {
+    "keep|none": "Õhtu",
+    "keep|uppercase": "ÕHTU",
+    "keep|lowercase": "õhtu",
+    "strip-keep-numeric|none": "Õhtu",
+    "strip-keep-numeric|uppercase": "ÕHTU"
+   },
+   "matchingKey": "õhtu",
+   "endsSentence": false,
+   "endsClause": false
+  },
+  {
+   "input": "„Väga",
+   "inputCodepoints": ["201E", "0056", "00E4", "0067", "0061"],
+   "language": "et",
+   "results": {
+    "keep|none": "„Väga",
+    "keep|uppercase": "„VÄGA",
+    "keep|lowercase": "„väga",
+    "strip-keep-numeric|none": "Väga",
+    "strip-keep-numeric|uppercase": "VÄGA"
+   },
+   "matchingKey": "väga",
+   "endsSentence": false,
+   "endsClause": false
+  },
+  {
+   "input": "hea.”",
+   "inputCodepoints": ["0068", "0065", "0061", "002E", "201D"],
+   "language": "et",
+   "results": {
+    "keep|none": "hea.”",
+    "keep|uppercase": "HEA.”",
+    "keep|lowercase": "hea.”",
+    "strip-keep-numeric|none": "hea",
+    "strip-keep-numeric|uppercase": "HEA"
+   },
+   "matchingKey": "hea",
+   "endsSentence": true,
+   "endsClause": false
+  },
+  {
+   "input": "naïve",
+   "inputCodepoints": ["006E", "0061", "00EF", "0076", "0065"],
+   "language": "en",
+   "results": {
+    "keep|none": "naïve",
+    "keep|uppercase": "NAÏVE",
+    "keep|lowercase": "naïve",
+    "strip-keep-numeric|none": "naïve",
+    "strip-keep-numeric|uppercase": "NAÏVE"
+   },
+   "matchingKey": "naïve",
+   "endsSentence": false,
+   "endsClause": false
+  },
+  {
+   "input": "ﬁne",
+   "inputCodepoints": ["FB01", "006E", "0065"],
+   "language": "en",
+   "results": {
+    "keep|none": "ﬁne",
+    "keep|uppercase": "ﬁNE",
+    "keep|lowercase": "ﬁne",
+    "strip-keep-numeric|none": "ﬁne",
+    "strip-keep-numeric|uppercase": "ﬁNE"
+   },
+   "matchingKey": "ﬁne",
+   "endsSentence": false,
+   "endsClause": false
+  },
+  {
+   "input": "Ǆ",
+   "inputCodepoints": ["01C4"],
+   "language": "hr",
+   "results": {
+    "keep|none": "Ǆ",
+    "keep|uppercase": "Ǆ",
+    "keep|lowercase": "ǆ",
+    "strip-keep-numeric|none": "Ǆ",
+    "strip-keep-numeric|uppercase": "Ǆ"
+   },
+   "matchingKey": "ǆ",
+   "endsSentence": false,
+   "endsClause": false
+  },
+  {
+   "input": "ǆ",
+   "inputCodepoints": ["01C6"],
+   "language": "hr",
+   "results": {
+    "keep|none": "ǆ",
+    "keep|uppercase": "Ǆ",
+    "keep|lowercase": "ǆ",
+    "strip-keep-numeric|none": "ǆ",
+    "strip-keep-numeric|uppercase": "Ǆ"
+   },
+   "matchingKey": "ǆ",
+   "endsSentence": false,
+   "endsClause": false
+  },
+  {
+   "input": "σοφός",
+   "inputCodepoints": ["03C3", "03BF", "03C6", "03CC", "03C2"],
+   "language": "el",
+   "results": {
+    "keep|none": "σοφός",
+    "keep|uppercase": "ΣΟΦΌΣ",
+    "keep|lowercase": "σοφός",
+    "strip-keep-numeric|none": "σοφός",
+    "strip-keep-numeric|uppercase": "ΣΟΦΌΣ"
+   },
+   "matchingKey": "σοφός",
+   "endsSentence": false,
+   "endsClause": false
+  },
+  {
+   "input": "ΣΟΦΟΣ",
+   "inputCodepoints": ["03A3", "039F", "03A6", "039F", "03A3"],
+   "language": "el",
+   "results": {
+    "keep|none": "ΣΟΦΟΣ",
+    "keep|uppercase": "ΣΟΦΟΣ",
+    "keep|lowercase": "σοφοσ",
+    "strip-keep-numeric|none": "ΣΟΦΟΣ",
+    "strip-keep-numeric|uppercase": "ΣΟΦΟΣ"
+   },
+   "matchingKey": "σοφοσ",
+   "endsSentence": false,
+   "endsClause": false
+  },
+  {
+   "input": "C++",
+   "inputCodepoints": ["0043", "002B", "002B"],
+   "language": "en",
+   "results": {
+    "keep|none": "C++",
+    "keep|uppercase": "C++",
+    "keep|lowercase": "c++",
+    "strip-keep-numeric|none": "C++",
+    "strip-keep-numeric|uppercase": "C++"
+   },
+   "matchingKey": "c++",
+   "endsSentence": false,
+   "endsClause": false
+  },
+  {
+   "input": "a.m.",
+   "inputCodepoints": ["0061", "002E", "006D", "002E"],
+   "language": "en",
+   "results": {
+    "keep|none": "a.m.",
+    "keep|uppercase": "A.M.",
+    "keep|lowercase": "a.m.",
+    "strip-keep-numeric|none": "a.m.",
+    "strip-keep-numeric|uppercase": "A.M."
+   },
+   "matchingKey": "am",
+   "endsSentence": false,
+   "endsClause": false
+  },
+  {
+   "input": "New   York,",
+   "inputCodepoints": ["004E", "0065", "0077", "0020", "00A0", "0020", "0059", "006F", "0072", "006B", "002C"],
+   "language": "en",
+   "results": {
+    "keep|none": "New York,",
+    "keep|uppercase": "NEW YORK,",
+    "keep|lowercase": "new york,",
+    "strip-keep-numeric|none": "New York",
+    "strip-keep-numeric|uppercase": "NEW YORK"
+   },
+   "matchingKey": "newyork",
+   "endsSentence": false,
+   "endsClause": true
+  },
+  {
+   "input": "\ttab word ",
+   "inputCodepoints": ["0009", "0074", "0061", "0062", "2003", "0077", "006F", "0072", "0064", "0020"],
+   "language": "en",
+   "results": {
+    "keep|none": "tab word",
+    "keep|uppercase": "TAB WORD",
+    "keep|lowercase": "tab word",
+    "strip-keep-numeric|none": "tab word",
+    "strip-keep-numeric|uppercase": "TAB WORD"
+   },
+   "matchingKey": "tabword",
+   "endsSentence": false,
+   "endsClause": false
+  },
+  {
+   "input": "été",
+   "inputCodepoints": ["0065", "0301", "0074", "0065", "0301"],
+   "language": "fr",
+   "results": {
+    "keep|none": "été",
+    "keep|uppercase": "ÉTÉ",
+    "keep|lowercase": "été",
+    "strip-keep-numeric|none": "été",
+    "strip-keep-numeric|uppercase": "ÉTÉ"
+   },
+   "matchingKey": "été",
+   "endsSentence": false,
+   "endsClause": false
+  },
+  {
+   "input": "x²",
+   "inputCodepoints": ["0078", "00B2"],
+   "language": "en",
+   "results": {
+    "keep|none": "x²",
+    "keep|uppercase": "X²",
+    "keep|lowercase": "x²",
+    "strip-keep-numeric|none": "x²",
+    "strip-keep-numeric|uppercase": "X²"
+   },
+   "matchingKey": "x²",
+   "endsSentence": false,
+   "endsClause": false
+  },
+  {
+   "input": "50°C",
+   "inputCodepoints": ["0035", "0030", "00B0", "0043"],
+   "language": "en",
+   "results": {
+    "keep|none": "50°C",
+    "keep|uppercase": "50°C",
+    "keep|lowercase": "50°c",
+    "strip-keep-numeric|none": "50°C",
+    "strip-keep-numeric|uppercase": "50°C"
+   },
+   "matchingKey": "50°c",
+   "endsSentence": false,
+   "endsClause": false
+  },
+  {
+   "input": "–5",
+   "inputCodepoints": ["2013", "0035"],
+   "language": "en",
+   "results": {
+    "keep|none": "–5",
+    "keep|uppercase": "–5",
+    "keep|lowercase": "–5",
+    "strip-keep-numeric|none": "–5",
+    "strip-keep-numeric|uppercase": "–5"
+   },
+   "matchingKey": "5",
+   "endsSentence": false,
+   "endsClause": false
+  },
+  {
+   "input": "−5",
+   "inputCodepoints": ["2212", "0035"],
+   "language": "en",
+   "results": {
+    "keep|none": "−5",
+    "keep|uppercase": "−5",
+    "keep|lowercase": "−5",
+    "strip-keep-numeric|none": "−5",
+    "strip-keep-numeric|uppercase": "−5"
+   },
+   "matchingKey": "−5",
+   "endsSentence": false,
+   "endsClause": false
+  },
+  {
+   "input": "‐dash",
+   "inputCodepoints": ["2010", "0064", "0061", "0073", "0068"],
+   "language": "en",
+   "results": {
+    "keep|none": "‐dash",
+    "keep|uppercase": "‐DASH",
+    "keep|lowercase": "‐dash",
+    "strip-keep-numeric|none": "dash",
+    "strip-keep-numeric|uppercase": "DASH"
+   },
+   "matchingKey": "dash",
+   "endsSentence": false,
+   "endsClause": false
+  },
+  {
+   "input": "l·l",
+   "inputCodepoints": ["006C", "00B7", "006C"],
+   "language": "ca",
+   "results": {
+    "keep|none": "l·l",
+    "keep|uppercase": "L·L",
+    "keep|lowercase": "l·l",
+    "strip-keep-numeric|none": "l·l",
+    "strip-keep-numeric|uppercase": "L·L"
+   },
+   "matchingKey": "ll",
+   "endsSentence": false,
+   "endsClause": false
+  },
+  {
+   "input": "foo_bar",
+   "inputCodepoints": ["0066", "006F", "006F", "005F", "0062", "0061", "0072"],
+   "language": "en",
+   "results": {
+    "keep|none": "foo_bar",
+    "keep|uppercase": "FOO_BAR",
+    "keep|lowercase": "foo_bar",
+    "strip-keep-numeric|none": "foobar",
+    "strip-keep-numeric|uppercase": "FOOBAR"
+   },
+   "matchingKey": "foobar",
+   "endsSentence": false,
+   "endsClause": false
+  },
+  {
+   "input": "🔥fire",
+   "inputCodepoints": ["1F525", "0066", "0069", "0072", "0065"],
+   "language": "en",
+   "results": {
+    "keep|none": "🔥fire",
+    "keep|uppercase": "🔥FIRE",
+    "keep|lowercase": "🔥fire",
+    "strip-keep-numeric|none": "🔥fire",
+    "strip-keep-numeric|uppercase": "🔥FIRE"
+   },
+   "matchingKey": "🔥fire",
+   "endsSentence": false,
+   "endsClause": false
+  },
+  {
+   "input": "(laughs)",
+   "inputCodepoints": ["0028", "006C", "0061", "0075", "0067", "0068", "0073", "0029"],
+   "language": "en",
+   "results": {
+    "keep|none": "(laughs)",
+    "keep|uppercase": "(LAUGHS)",
+    "keep|lowercase": "(laughs)",
+    "strip-keep-numeric|none": "laughs",
+    "strip-keep-numeric|uppercase": "LAUGHS"
+   },
+   "matchingKey": "laughs",
+   "endsSentence": false,
+   "endsClause": false
+  },
+  {
+   "input": "[music]",
+   "inputCodepoints": ["005B", "006D", "0075", "0073", "0069", "0063", "005D"],
+   "language": "en",
+   "results": {
+    "keep|none": "[music]",
+    "keep|uppercase": "[MUSIC]",
+    "keep|lowercase": "[music]",
+    "strip-keep-numeric|none": "music",
+    "strip-keep-numeric|uppercase": "MUSIC"
+   },
+   "matchingKey": "music",
+   "endsSentence": false,
+   "endsClause": false
+  },
+  {
+   "input": "um,",
+   "inputCodepoints": ["0075", "006D", "002C"],
+   "language": "en",
+   "results": {
+    "keep|none": "um,",
+    "keep|uppercase": "UM,",
+    "keep|lowercase": "um,",
+    "strip-keep-numeric|none": "um",
+    "strip-keep-numeric|uppercase": "UM"
+   },
+   "matchingKey": "um",
+   "endsSentence": false,
+   "endsClause": true
+  },
+  {
+   "input": "Tallinn–Tartu",
+   "inputCodepoints": ["0054", "0061", "006C", "006C", "0069", "006E", "006E", "2013", "0054", "0061", "0072", "0074", "0075"],
+   "language": "et",
+   "results": {
+    "keep|none": "Tallinn–Tartu",
+    "keep|uppercase": "TALLINN–TARTU",
+    "keep|lowercase": "tallinn–tartu",
+    "strip-keep-numeric|none": "Tallinn–Tartu",
+    "strip-keep-numeric|uppercase": "TALLINN–TARTU"
+   },
+   "matchingKey": "tallinntartu",
+   "endsSentence": false,
+   "endsClause": false
+  },
+  {
+   "input": "10:30–11:00",
+   "inputCodepoints": ["0031", "0030", "003A", "0033", "0030", "2013", "0031", "0031", "003A", "0030", "0030"],
+   "language": "en",
+   "results": {
+    "keep|none": "10:30–11:00",
+    "keep|uppercase": "10:30–11:00",
+    "keep|lowercase": "10:30–11:00",
+    "strip-keep-numeric|none": "10:30–11:00",
+    "strip-keep-numeric|uppercase": "10:30–11:00"
+   },
+   "matchingKey": "10301100",
+   "endsSentence": false,
+   "endsClause": false
+  },
+  {
+   "input": "1.",
+   "inputCodepoints": ["0031", "002E"],
+   "language": "en",
+   "results": {
+    "keep|none": "1.",
+    "keep|uppercase": "1.",
+    "keep|lowercase": "1.",
+    "strip-keep-numeric|none": "1",
+    "strip-keep-numeric|uppercase": "1"
+   },
+   "matchingKey": "1",
+   "endsSentence": true,
+   "endsClause": false
+  },
+  {
+   "input": "v2.0.1",
+   "inputCodepoints": ["0076", "0032", "002E", "0030", "002E", "0031"],
+   "language": "en",
+   "results": {
+    "keep|none": "v2.0.1",
+    "keep|uppercase": "V2.0.1",
+    "keep|lowercase": "v2.0.1",
+    "strip-keep-numeric|none": "v2.0.1",
+    "strip-keep-numeric|uppercase": "V2.0.1"
+   },
+   "matchingKey": "v201",
+   "endsSentence": false,
+   "endsClause": false
+  },
+  {
+   "input": "-5",
+   "inputCodepoints": ["002D", "0035"],
+   "language": "en",
+   "results": {
+    "keep|none": "-5",
+    "keep|uppercase": "-5",
+    "keep|lowercase": "-5",
+    "strip-keep-numeric|none": "-5",
+    "strip-keep-numeric|uppercase": "-5"
+   },
+   "matchingKey": "5",
+   "endsSentence": false,
+   "endsClause": false
+  },
+  {
+   "input": "–5°C",
+   "inputCodepoints": ["2013", "0035", "00B0", "0043"],
+   "language": "en",
+   "results": {
+    "keep|none": "–5°C",
+    "keep|uppercase": "–5°C",
+    "keep|lowercase": "–5°c",
+    "strip-keep-numeric|none": "–5°C",
+    "strip-keep-numeric|uppercase": "–5°C"
+   },
+   "matchingKey": "5°c",
+   "endsSentence": false,
+   "endsClause": false
+  },
+  {
+   "input": "e.g.",
+   "inputCodepoints": ["0065", "002E", "0067", "002E"],
+   "language": "en",
+   "results": {
+    "keep|none": "e.g.",
+    "keep|uppercase": "E.G.",
+    "keep|lowercase": "e.g.",
+    "strip-keep-numeric|none": "e.g.",
+    "strip-keep-numeric|uppercase": "E.G."
+   },
+   "matchingKey": "eg",
+   "endsSentence": false,
+   "endsClause": false
+  },
+  {
+   "input": "U.S.A.",
+   "inputCodepoints": ["0055", "002E", "0053", "002E", "0041", "002E"],
+   "language": "en",
+   "results": {
+    "keep|none": "U.S.A.",
+    "keep|uppercase": "U.S.A.",
+    "keep|lowercase": "u.s.a.",
+    "strip-keep-numeric|none": "U.S.A.",
+    "strip-keep-numeric|uppercase": "U.S.A."
+   },
+   "matchingKey": "usa",
+   "endsSentence": false,
+   "endsClause": false
+  },
+  {
+   "input": "Mr.",
+   "inputCodepoints": ["004D", "0072", "002E"],
+   "language": "en",
+   "results": {
+    "keep|none": "Mr.",
+    "keep|uppercase": "MR.",
+    "keep|lowercase": "mr.",
+    "strip-keep-numeric|none": "Mr",
+    "strip-keep-numeric|uppercase": "MR"
+   },
+   "matchingKey": "mr",
+   "endsSentence": true,
+   "endsClause": false
+  },
+  {
+   "input": "well—that",
+   "inputCodepoints": ["0077", "0065", "006C", "006C", "2014", "0074", "0068", "0061", "0074"],
+   "language": "en",
+   "results": {
+    "keep|none": "well—that",
+    "keep|uppercase": "WELL—THAT",
+    "keep|lowercase": "well—that",
+    "strip-keep-numeric|none": "well—that",
+    "strip-keep-numeric|uppercase": "WELL—THAT"
+   },
+   "matchingKey": "wellthat",
+   "endsSentence": false,
+   "endsClause": false
+  },
+  {
+   "input": "2-3",
+   "inputCodepoints": ["0032", "002D", "0033"],
+   "language": "en",
+   "results": {
+    "keep|none": "2-3",
+    "keep|uppercase": "2-3",
+    "keep|lowercase": "2-3",
+    "strip-keep-numeric|none": "2-3",
+    "strip-keep-numeric|uppercase": "2-3"
+   },
+   "matchingKey": "23",
+   "endsSentence": false,
+   "endsClause": false
+  },
+  {
+   "input": "-",
+   "inputCodepoints": ["002D"],
+   "language": "en",
+   "results": {
+    "keep|none": "-",
+    "keep|uppercase": "-",
+    "keep|lowercase": "-",
+    "strip-keep-numeric|none": "",
+    "strip-keep-numeric|uppercase": ""
+   },
+   "matchingKey": "",
+   "endsSentence": false,
+   "endsClause": false
+  },
+  {
+   "input": "ﬁ‍",
+   "inputCodepoints": ["FB01", "200D"],
+   "language": "en",
+   "results": {
+    "keep|none": "ﬁ‍",
+    "keep|uppercase": "ﬁ‍",
+    "keep|lowercase": "ﬁ‍",
+    "strip-keep-numeric|none": "ﬁ‍",
+    "strip-keep-numeric|uppercase": "ﬁ‍"
+   },
+   "matchingKey": "ﬁ‍",
+   "endsSentence": false,
+   "endsClause": false
+  }
+ ]
+}

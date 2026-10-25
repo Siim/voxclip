@@ -1,0 +1,22 @@
+{
+  "schema": "voxclip-editing-fixture/1",
+  "id": "tighten/leading-absorbed",
+  "kind": "word-tightening",
+  "origin": "voxclip",
+  "source": "doc/spec/editing.md (tightenIntoSound)",
+  "description": "Apple-style gapless ranges absorb the silence before a word. The word keeps its last sound island (an untranscribed sound at 1.3-1.6 is left in the gap) and leading silence is trimmed.",
+  "input": {
+    "audio": {
+      "generator": "vox-take-v1",
+      "sampleRate": 16000,
+      "seconds": 5,
+      "sections": [[0.4, 0.8, "vowel"], [1.3, 1.6, "vowel"], [2, 2.4, "vowel"], [3.6, 4.2, "vowel"]]
+    },
+    "timing": "runGrouped",
+    "words": [{"id": "so", "start": 0.3, "end": 0.8}, {"id": "today", "start": 0.8, "end": 2.4}, {"id": "ship", "start": 2.4, "end": 4.2}]
+  },
+  "expected": {
+    "words": [{"id": "so", "start": 0.4, "end": 0.8}, {"id": "today", "start": 2, "end": 2.4}, {"id": "ship", "start": 3.6, "end": 4.2}],
+    "tolerance": 0.000001
+  }
+}

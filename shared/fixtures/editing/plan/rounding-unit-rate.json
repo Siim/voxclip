@@ -1,0 +1,21 @@
+{
+  "schema": "voxclip-editing-fixture/1",
+  "id": "plan/rounding-unit-rate",
+  "kind": "edit-plan",
+  "origin": "voxconvo",
+  "source": "synthetic",
+  "description": "Rounding edge cases at sampleRate 1: 0.49999999999999994 rounds to 0 (floor(x+0.5) is wrong), 2.5 -> 3.",
+  "input": {"durationSeconds": 10, "sampleRate": 1, "segments": [{"id": "x", "kind": "word", "text": "x", "start": 1, "end": 2, "cut": false}]},
+  "expected": {
+    "totalSamples": 10,
+    "outputSamples": 10,
+    "durationSeconds": 10,
+    "segmentCuts": [],
+    "cuts": [],
+    "kept": [[0, 10]],
+    "captions": [{"id": "x", "start": 1, "end": 2}],
+    "mapTime": [[0, 0], [-1, 0], ["NaN", 0], [10, 10], [11, 10], [5, 5], [0.49999999999999994, 0], [2.5, 3], [3.5, 4]],
+    "sourceTime": [[0, 0], [-1, 0], ["NaN", 0], [10, 10], [11, 10], [0.49999999999999994, 0], [2.5, 3], [3.5, 4]],
+    "previewSkip": [[0, null]]
+  }
+}

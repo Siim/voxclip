@@ -1,0 +1,1107 @@
+{
+ "fixture": "voxclip-caption-layout/1",
+ "id": "active-pop-portrait-timing",
+ "note": "overlapping and touching word times, minPageSec extension, final page clamped to the duration",
+ "input": {
+  "style": "active-pop",
+  "frame": {"width": 1080, "height": 1920},
+  "language": "en",
+  "duration": 3.6,
+  "captions": {"overrides": {}, "position": null, "positionByAspect": {}},
+  "words": [
+   {"id": "timing-0", "text": "Wait", "start": 0.0, "end": 0.3},
+   {"id": "timing-1", "text": "what", "start": 0.25, "end": 0.5},
+   {"id": "timing-2", "text": "happened?", "start": 0.5, "end": 1.1},
+   {"id": "timing-3", "text": "Okay.", "start": 2.0, "end": 2.05},
+   {"id": "timing-4", "text": "so", "start": 2.4, "end": 2.5},
+   {"id": "timing-5", "text": "um", "start": 2.5, "end": 2.6},
+   {"id": "timing-6", "text": "basically", "start": 2.62, "end": 3.2},
+   {"id": "timing-7", "text": "yes.", "start": 3.25, "end": 3.4}
+  ]
+ },
+ "expected": {
+  "aspect": "portrait",
+  "preset": "9:16",
+  "resolved": {
+   "sizeSh": 0.07,
+   "sizeScale": 1,
+   "x": 0.5,
+   "y": 0.7,
+   "anchorX": "center",
+   "anchorY": "center",
+   "maxLineWidthW": 0.8,
+   "maxWords": 3,
+   "transform": "uppercase",
+   "punctuation": "strip-keep-numeric",
+   "accent": "#22E06B"
+  },
+  "fontPx64": 4838,
+  "fontPx": 75.59375,
+  "safeRect": {"x": 64.8, "y": 115.2, "w": 950.4, "h": 1612.8},
+  "safeInsets": {"left": 0.06, "right": 0.06, "top": 0.06, "bottom": 0.1},
+  "limitPx": 864.0,
+  "limitPx64": 55296,
+  "unitsPerEm": 1000,
+  "gapUnits": 340,
+  "words": [
+   {
+    "sourceIndex": 0,
+    "id": "timing-0",
+    "raw": "Wait",
+    "text": "WAIT",
+    "start": 0.0,
+    "end": 0.3,
+    "units": 2976,
+    "clusters": 4,
+    "runs": [
+     {
+      "file": "Montserrat-Black.ttf",
+      "text": "WAIT",
+      "units": 2976,
+      "glyphs": [333, 1, 135, 281],
+      "advances": [1166, 806, 350, 654],
+      "offsets": [[0, 0], [0, 0], [0, 0], [0, 0]],
+      "clusters": [0, 1, 2, 3]
+     }
+    ],
+    "emphasisPoints": 104,
+    "emphasisCandidate": false
+   },
+   {
+    "sourceIndex": 1,
+    "id": "timing-1",
+    "raw": "what",
+    "text": "WHAT",
+    "start": 0.25,
+    "end": 0.5,
+    "units": 3420,
+    "clusters": 4,
+    "runs": [
+     {
+      "file": "Montserrat-Black.ttf",
+      "text": "WHAT",
+      "units": 3420,
+      "glyphs": [333, 123, 1, 281],
+      "advances": [1191, 804, 771, 654],
+      "offsets": [[0, 0], [0, 0], [0, 0], [0, 0]],
+      "clusters": [0, 1, 2, 3]
+     }
+    ],
+    "emphasisPoints": 4,
+    "emphasisCandidate": false
+   },
+   {
+    "sourceIndex": 2,
+    "id": "timing-2",
+    "raw": "happened?",
+    "text": "HAPPENED",
+    "start": 0.5,
+    "end": 1.1,
+    "units": 6052,
+    "clusters": 8,
+    "runs": [
+     {
+      "file": "Montserrat-Black.ttf",
+      "text": "HAPPENED",
+      "units": 6052,
+      "glyphs": [123, 1, 248, 248, 72, 191, 72, 56],
+      "advances": [804, 806, 733, 733, 673, 804, 673, 826],
+      "offsets": [[0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0]],
+      "clusters": [0, 1, 2, 3, 4, 5, 6, 7]
+     }
+    ],
+    "emphasisPoints": 208,
+    "emphasisCandidate": false
+   },
+   {
+    "sourceIndex": 3,
+    "id": "timing-3",
+    "raw": "Okay.",
+    "text": "OKAY",
+    "start": 2.0,
+    "end": 2.05,
+    "units": 3039,
+    "clusters": 4,
+    "runs": [
+     {
+      "file": "Montserrat-Black.ttf",
+      "text": "OKAY",
+      "units": 3039,
+      "glyphs": [206, 161, 1, 344],
+      "advances": [848, 730, 751, 710],
+      "offsets": [[0, 0], [0, 0], [0, 0], [0, 0]],
+      "clusters": [0, 1, 2, 3]
+     }
+    ],
+    "emphasisPoints": 4,
+    "emphasisCandidate": false
+   },
+   {
+    "sourceIndex": 4,
+    "id": "timing-4",
+    "raw": "so",
+    "text": "SO",
+    "start": 2.4,
+    "end": 2.5,
+    "units": 1505,
+    "clusters": 2,
+    "runs": [
+     {
+      "file": "Montserrat-Black.ttf",
+      "text": "SO",
+      "units": 1505,
+      "glyphs": [268, 206],
+      "advances": [657, 848],
+      "offsets": [[0, 0], [0, 0]],
+      "clusters": [0, 1]
+     }
+    ],
+    "emphasisPoints": 2,
+    "emphasisCandidate": false
+   },
+   {
+    "sourceIndex": 5,
+    "id": "timing-5",
+    "raw": "um",
+    "text": "UM",
+    "start": 2.5,
+    "end": 2.6,
+    "units": 1738,
+    "clusters": 2,
+    "runs": [
+     {
+      "file": "Montserrat-Black.ttf",
+      "text": "UM",
+      "units": 1738,
+      "glyphs": [294, 185],
+      "advances": [784, 954],
+      "offsets": [[0, 0], [0, 0]],
+      "clusters": [0, 1]
+     }
+    ],
+    "emphasisPoints": 2,
+    "emphasisCandidate": false
+   },
+   {
+    "sourceIndex": 6,
+    "id": "timing-6",
+    "raw": "basically",
+    "text": "BASICALLY",
+    "start": 2.62,
+    "end": 3.2,
+    "units": 5993,
+    "clusters": 9,
+    "runs": [
+     {
+      "file": "Montserrat-Black.ttf",
+      "text": "BASICALLY",
+      "units": 5993,
+      "glyphs": [37, 1, 268, 135, 45, 1, 169, 169, 344],
+      "advances": [773, 806, 657, 350, 727, 806, 617, 547, 710],
+      "offsets": [[0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0]],
+      "clusters": [0, 1, 2, 3, 4, 5, 6, 7, 8]
+     }
+    ],
+    "emphasisPoints": 209,
+    "emphasisCandidate": false
+   },
+   {
+    "sourceIndex": 7,
+    "id": "timing-7",
+    "raw": "yes.",
+    "text": "YES",
+    "start": 3.25,
+    "end": 3.4,
+    "units": 2035,
+    "clusters": 3,
+    "runs": [
+     {
+      "file": "Montserrat-Black.ttf",
+      "text": "YES",
+      "units": 2035,
+      "glyphs": [344, 72, 268],
+      "advances": [705, 673, 657],
+      "offsets": [[0, 0], [0, 0], [0, 0]],
+      "clusters": [0, 1, 2]
+     }
+    ],
+    "emphasisPoints": 3,
+    "emphasisCandidate": false
+   }
+  ],
+  "dropped": [],
+  "pages": [
+   {
+    "index": 0,
+    "words": [0, 1, 2],
+    "start": 0.0,
+    "end": 1.6,
+    "fontPx64": 4838,
+    "fontPx": 75.59375,
+    "shrunk": false,
+    "lines": [
+     {"words": [0, 1], "units": 6736, "x": 285.0, "top": 1261.0, "baseline": 1329.034, "width": 509.2},
+     {"words": [2], "units": 6052, "x": 310.853, "top": 1344.153, "baseline": 1412.188, "width": 457.493}
+    ],
+    "wordRects": [
+     {
+      "word": 0,
+      "line": 0,
+      "x": 285.0,
+      "y": 1261.0,
+      "w": 224.967,
+      "h": 83.153,
+      "baseline": 1329.034,
+      "cx": 397.483,
+      "cy": 1302.577
+     },
+     {
+      "word": 1,
+      "line": 0,
+      "x": 535.669,
+      "y": 1261.0,
+      "w": 258.531,
+      "h": 83.153,
+      "baseline": 1329.034,
+      "cx": 664.934,
+      "cy": 1302.577
+     },
+     {
+      "word": 2,
+      "line": 1,
+      "x": 310.853,
+      "y": 1344.153,
+      "w": 457.493,
+      "h": 83.153,
+      "baseline": 1412.188,
+      "cx": 539.6,
+      "cy": 1385.73
+     }
+    ],
+    "block": {"x": 285.0, "y": 1261.0, "w": 509.2, "h": 166.306},
+    "visual": {"x": 285.0, "y": 1261.0, "w": 509.2, "h": 166.306},
+    "boxes": [],
+    "emphasised": [],
+    "emoji": null,
+    "clampShift": [0.0, 0.0]
+   },
+   {
+    "index": 1,
+    "words": [3],
+    "start": 2.0,
+    "end": 2.4,
+    "fontPx64": 4838,
+    "fontPx": 75.59375,
+    "shrunk": false,
+    "lines": [{"words": [3], "units": 3039, "x": 425.0, "top": 1302.0, "baseline": 1370.034, "width": 229.729}],
+    "wordRects": [
+     {
+      "word": 3,
+      "line": 0,
+      "x": 425.0,
+      "y": 1302.0,
+      "w": 229.729,
+      "h": 83.153,
+      "baseline": 1370.034,
+      "cx": 539.865,
+      "cy": 1343.577
+     }
+    ],
+    "block": {"x": 425.0, "y": 1302.0, "w": 229.729, "h": 83.153},
+    "visual": {"x": 425.0, "y": 1302.0, "w": 229.729, "h": 83.153},
+    "boxes": [],
+    "emphasised": [],
+    "emoji": null,
+    "clampShift": [0.0, 0.0]
+   },
+   {
+    "index": 2,
+    "words": [4, 5, 6],
+    "start": 2.4,
+    "end": 3.25,
+    "fontPx64": 4838,
+    "fontPx": 75.59375,
+    "shrunk": false,
+    "lines": [{"words": [4, 5, 6], "units": 9916, "x": 165.0, "top": 1302.0, "baseline": 1370.034, "width": 749.588}],
+    "wordRects": [
+     {
+      "word": 4,
+      "line": 0,
+      "x": 165.0,
+      "y": 1302.0,
+      "w": 113.769,
+      "h": 83.153,
+      "baseline": 1370.034,
+      "cx": 221.884,
+      "cy": 1343.577
+     },
+     {
+      "word": 5,
+      "line": 0,
+      "x": 304.47,
+      "y": 1302.0,
+      "w": 131.382,
+      "h": 83.153,
+      "baseline": 1370.034,
+      "cx": 370.161,
+      "cy": 1343.577
+     },
+     {
+      "word": 6,
+      "line": 0,
+      "x": 461.554,
+      "y": 1302.0,
+      "w": 453.033,
+      "h": 83.153,
+      "baseline": 1370.034,
+      "cx": 688.071,
+      "cy": 1343.577
+     }
+    ],
+    "block": {"x": 165.0, "y": 1302.0, "w": 749.588, "h": 83.153},
+    "visual": {"x": 165.0, "y": 1302.0, "w": 749.588, "h": 83.153},
+    "boxes": [],
+    "emphasised": [],
+    "emoji": null,
+    "clampShift": [0.0, 0.0]
+   },
+   {
+    "index": 3,
+    "words": [7],
+    "start": 3.25,
+    "end": 3.6,
+    "fontPx64": 4838,
+    "fontPx": 75.59375,
+    "shrunk": false,
+    "lines": [{"words": [7], "units": 2035, "x": 463.0, "top": 1302.0, "baseline": 1370.034, "width": 153.833}],
+    "wordRects": [
+     {
+      "word": 7,
+      "line": 0,
+      "x": 463.0,
+      "y": 1302.0,
+      "w": 153.833,
+      "h": 83.153,
+      "baseline": 1370.034,
+      "cx": 539.917,
+      "cy": 1343.577
+     }
+    ],
+    "block": {"x": 463.0, "y": 1302.0, "w": 153.833, "h": 83.153},
+    "visual": {"x": 463.0, "y": 1302.0, "w": 153.833, "h": 83.153},
+    "boxes": [],
+    "emphasised": [],
+    "emoji": null,
+    "clampShift": [0.0, 0.0]
+   }
+  ],
+  "samples": [
+   {
+    "t": 0.0,
+    "page": 0,
+    "activeWord": 0,
+    "progress": 0.0,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 0,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#22E06BFF",
+      "fillSource": "active"
+     },
+     {
+      "word": 1,
+      "state": "future",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base"
+     },
+     {
+      "word": 2,
+      "state": "future",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base"
+     }
+    ],
+    "cursor": null,
+    "golden": true
+   },
+   {
+    "t": 0.15,
+    "page": 0,
+    "activeWord": 0,
+    "progress": 0.5,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 0,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.08,
+      "dy": 0.0,
+      "fill": "#22E06BFF",
+      "fillSource": "active"
+     },
+     {
+      "word": 1,
+      "state": "future",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base"
+     },
+     {
+      "word": 2,
+      "state": "future",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base"
+     }
+    ],
+    "cursor": null
+   },
+   {
+    "t": 0.375,
+    "page": 0,
+    "activeWord": 1,
+    "progress": 0.5,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 0,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base"
+     },
+     {
+      "word": 1,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.08,
+      "dy": 0.0,
+      "fill": "#22E06BFF",
+      "fillSource": "active"
+     },
+     {
+      "word": 2,
+      "state": "future",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base"
+     }
+    ],
+    "cursor": null
+   },
+   {
+    "t": 0.8,
+    "page": 0,
+    "activeWord": 2,
+    "progress": 0.5,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 0,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base"
+     },
+     {
+      "word": 1,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base"
+     },
+     {
+      "word": 2,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.08,
+      "dy": 0.0,
+      "fill": "#22E06BFF",
+      "fillSource": "active"
+     }
+    ],
+    "cursor": null,
+    "golden": true
+   },
+   {
+    "t": 1.11,
+    "page": 0,
+    "activeWord": 2,
+    "progress": 1.0,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 0,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base"
+     },
+     {
+      "word": 1,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base"
+     },
+     {
+      "word": 2,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.08,
+      "dy": 0.0,
+      "fill": "#22E06BFF",
+      "fillSource": "active"
+     }
+    ],
+    "cursor": null
+   },
+   {
+    "t": 1.599,
+    "page": 0,
+    "activeWord": 2,
+    "progress": 1.0,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 0,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base"
+     },
+     {
+      "word": 1,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base"
+     },
+     {
+      "word": 2,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.08,
+      "dy": 0.0,
+      "fill": "#22E06BFF",
+      "fillSource": "active"
+     }
+    ],
+    "cursor": null
+   },
+   {"t": 1.6, "page": null},
+   {"t": 1.8, "page": null},
+   {
+    "t": 2.0,
+    "page": 1,
+    "activeWord": 3,
+    "progress": 0.0,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 3,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#22E06BFF",
+      "fillSource": "active"
+     }
+    ],
+    "cursor": null
+   },
+   {
+    "t": 2.025,
+    "page": 1,
+    "activeWord": 3,
+    "progress": 0.5,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 3,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.061198,
+      "dy": 0.0,
+      "fill": "#22E06BFF",
+      "fillSource": "active"
+     }
+    ],
+    "cursor": null
+   },
+   {
+    "t": 2.06,
+    "page": 1,
+    "activeWord": 3,
+    "progress": 1.0,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 3,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.09,
+      "dy": 0.0,
+      "fill": "#22E06BFF",
+      "fillSource": "active"
+     }
+    ],
+    "cursor": null
+   },
+   {
+    "t": 2.399,
+    "page": 1,
+    "activeWord": 3,
+    "progress": 1.0,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 3,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.08,
+      "dy": 0.0,
+      "fill": "#22E06BFF",
+      "fillSource": "active"
+     }
+    ],
+    "cursor": null
+   },
+   {
+    "t": 2.4,
+    "page": 2,
+    "activeWord": 4,
+    "progress": 0.0,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 4,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#22E06BFF",
+      "fillSource": "active"
+     },
+     {
+      "word": 5,
+      "state": "future",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base"
+     },
+     {
+      "word": 6,
+      "state": "future",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base"
+     }
+    ],
+    "cursor": null
+   },
+   {
+    "t": 2.45,
+    "page": 2,
+    "activeWord": 4,
+    "progress": 0.5,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 4,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.086806,
+      "dy": 0.0,
+      "fill": "#22E06BFF",
+      "fillSource": "active"
+     },
+     {
+      "word": 5,
+      "state": "future",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base"
+     },
+     {
+      "word": 6,
+      "state": "future",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base"
+     }
+    ],
+    "cursor": null
+   },
+   {
+    "t": 2.55,
+    "page": 2,
+    "activeWord": 5,
+    "progress": 0.5,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 4,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base"
+     },
+     {
+      "word": 5,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.086806,
+      "dy": 0.0,
+      "fill": "#22E06BFF",
+      "fillSource": "active"
+     },
+     {
+      "word": 6,
+      "state": "future",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base"
+     }
+    ],
+    "cursor": null
+   },
+   {
+    "t": 2.91,
+    "page": 2,
+    "activeWord": 6,
+    "progress": 0.5,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 4,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base"
+     },
+     {
+      "word": 5,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base"
+     },
+     {
+      "word": 6,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.08,
+      "dy": 0.0,
+      "fill": "#22E06BFF",
+      "fillSource": "active"
+     }
+    ],
+    "cursor": null
+   },
+   {
+    "t": 3.21,
+    "page": 2,
+    "activeWord": 6,
+    "progress": 1.0,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 4,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base"
+     },
+     {
+      "word": 5,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base"
+     },
+     {
+      "word": 6,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.08,
+      "dy": 0.0,
+      "fill": "#22E06BFF",
+      "fillSource": "active"
+     }
+    ],
+    "cursor": null
+   },
+   {
+    "t": 3.249,
+    "page": 2,
+    "activeWord": 6,
+    "progress": 1.0,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 4,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base"
+     },
+     {
+      "word": 5,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base"
+     },
+     {
+      "word": 6,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.08,
+      "dy": 0.0,
+      "fill": "#22E06BFF",
+      "fillSource": "active"
+     }
+    ],
+    "cursor": null
+   },
+   {
+    "t": 3.25,
+    "page": 3,
+    "activeWord": 7,
+    "progress": 0.0,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 7,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#22E06BFF",
+      "fillSource": "active"
+     }
+    ],
+    "cursor": null
+   },
+   {
+    "t": 3.325,
+    "page": 3,
+    "activeWord": 7,
+    "progress": 0.5,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 7,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.089844,
+      "dy": 0.0,
+      "fill": "#22E06BFF",
+      "fillSource": "active"
+     }
+    ],
+    "cursor": null
+   },
+   {
+    "t": 3.41,
+    "page": 3,
+    "activeWord": 7,
+    "progress": 1.0,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 7,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.08,
+      "dy": 0.0,
+      "fill": "#22E06BFF",
+      "fillSource": "active"
+     }
+    ],
+    "cursor": null,
+    "golden": true
+   },
+   {
+    "t": 3.599,
+    "page": 3,
+    "activeWord": 7,
+    "progress": 1.0,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 7,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.08,
+      "dy": 0.0,
+      "fill": "#22E06BFF",
+      "fillSource": "active"
+     }
+    ],
+    "cursor": null
+   },
+   {"t": 3.6, "page": null}
+  ]
+ }
+}

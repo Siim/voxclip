@@ -1,0 +1,32 @@
+{
+ "$schema": "../schema.json",
+ "schemaVersion": 1,
+ "id": "neon",
+ "name": "Neon",
+ "description": "Rounded caps with a thin coloured tube outline and a layered neon glow; words not yet spoken are dimmed.",
+ "order": 170,
+ "tags": ["phrase", "glow"],
+ "accent": "#FF4FD8",
+ "font": {
+  "file": "Righteous-Regular.ttf",
+  "family": "Righteous",
+  "weight": 400,
+  "sizeSh": 0.064,
+  "lineHeightEm": 1.15,
+  "wordSpacingEm": 0.3
+ },
+ "text": {"transform": "uppercase", "punctuation": "strip-keep-numeric"},
+ "layout": {"maxWords": 4, "maxLines": 2, "maxLineWidthW": 0.8, "maxPageSec": 3.0},
+ "position": {"x": 0.5, "y": 0.7},
+ "aspects": {"landscape": {"y": 0.8}},
+ "fill": {"type": "solid", "color": "#FFF4FD"},
+ "stroke": {"widthEm": 0.035, "color": "$accent"},
+ "shadows": [
+  {"dxEm": 0, "dyEm": 0, "sigmaEm": 0.06, "color": "$accent"},
+  {"dxEm": 0, "dyEm": 0, "sigmaEm": 0.2, "color": "$accent/CC"},
+  {"dxEm": 0, "dyEm": 0, "sigmaEm": 0.5, "color": "#9D00FF99"}
+ ],
+ "words": {"future": {"opacity": 0.55}},
+ "animation": {"pageIn": {"type": "fade", "durationSec": 0.15}},
+ "preview": {"text": "Open all night", "activeWord": 1, "background": "#16171D"}
+}

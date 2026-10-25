@@ -1,0 +1,32 @@
+{
+  "schema": "voxclip-editing-fixture/1",
+  "id": "projects/interview-take",
+  "kind": "project-plan",
+  "origin": "voxclip",
+  "source": "shared/fixtures/projects/interview-take.voxclip",
+  "description": "Load shared/fixtures/projects/interview-take.voxclip, rebuild the edit state, and plan the full take and every stored clip.",
+  "input": {"projectPath": "shared/fixtures/projects/interview-take.voxclip"},
+  "expected": {
+    "sampleRate": 48000,
+    "sourceDurationSeconds": 7,
+    "pauses": [
+      {"id": "pause-after-w3", "start": 1.5, "end": 2.6, "label": "pause 1.1s"},
+      {"id": "pause-after-w8", "start": 4.2, "end": 5.5, "label": "pause 1.3s"}
+    ],
+    "take": {
+      "outputSamples": 264000,
+      "durationSeconds": 5.5,
+      "kept": [[0, 31200], [50400, 79200], [117600, 151200], [165600, 336000]],
+      "captions": [
+        {"id": "w1", "text": "So", "start": 0.3, "end": 0.6},
+        {"id": "w3", "text": "today", "start": 0.7, "end": 1.1},
+        {"id": "w4", "text": "we", "start": 1.4, "end": 1.55},
+        {"id": "w5", "text": "shipped", "start": 1.6, "end": 1.9},
+        {"id": "w7", "text": "the", "start": 2, "end": 2.1},
+        {"id": "w8", "text": "clipper.", "start": 2.15, "end": 2.7},
+        {"id": "w9", "text": "Thanks", "start": 4, "end": 4.4}
+      ]
+    },
+    "clips": []
+  }
+}

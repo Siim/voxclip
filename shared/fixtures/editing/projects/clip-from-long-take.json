@@ -1,0 +1,92 @@
+{
+  "schema": "voxclip-editing-fixture/1",
+  "id": "projects/clip-from-long-take",
+  "kind": "project-plan",
+  "origin": "voxclip",
+  "source": "shared/fixtures/projects/clip-from-long-take.voxclip",
+  "description": "Load shared/fixtures/projects/clip-from-long-take.voxclip, rebuild the edit state, and plan the full take and every stored clip.",
+  "input": {"projectPath": "shared/fixtures/projects/clip-from-long-take.voxclip"},
+  "expected": {
+    "sampleRate": 44100,
+    "sourceDurationSeconds": 16,
+    "pauses": [
+      {"id": "pause-after-w17", "start": 9.2, "end": 10.4, "label": "pause 1.2s"},
+      {"id": "pause-after-w23", "start": 12.5, "end": 13.6, "label": "pause 1.1s"}
+    ],
+    "take": {
+      "outputSamples": 590058,
+      "durationSeconds": 13.38,
+      "kept": [[0, 220500], [243432, 407925], [456435, 553455], [597555, 705600]],
+      "captions": [
+        {"id": "w1", "text": "Tere!", "start": 0.42, "end": 0.8},
+        {"id": "w2", "text": "Täna", "start": 1.3, "end": 1.62},
+        {"id": "w3", "text": "näitan,", "start": 1.66, "end": 2.1},
+        {"id": "w4", "text": "kuidas", "start": 2.2, "end": 2.52},
+        {"id": "w5", "text": "lõigata", "start": 2.56, "end": 3.02},
+        {"id": "w6", "text": "videot", "start": 3.06, "end": 3.48},
+        {"id": "w7", "text": "sõnade", "start": 3.52, "end": 3.9},
+        {"id": "w8", "text": "kaupa.", "start": 3.94, "end": 4.4},
+        {"id": "w10", "text": "See", "start": 5.38, "end": 5.56},
+        {"id": "w11", "text": "on", "start": 5.6, "end": 5.72},
+        {"id": "w12", "text": "tegelikult", "start": 5.76, "end": 6.38},
+        {"id": "w13", "text": "palju", "start": 6.44, "end": 6.78},
+        {"id": "w14", "text": "kiirem", "start": 6.82, "end": 7.22},
+        {"id": "w15", "text": "kui", "start": 7.26, "end": 7.4},
+        {"id": "w16", "text": "ajateljel", "start": 7.44, "end": 8.04},
+        {"id": "w17", "text": "kerimine.", "start": 8.08, "end": 8.68},
+        {"id": "w18", "text": "Iga", "start": 8.78, "end": 9},
+        {"id": "w19", "text": "sõna", "start": 9.04, "end": 9.36},
+        {"id": "w20", "text": "asukoht", "start": 9.4, "end": 9.9},
+        {"id": "w21", "text": "on", "start": 9.94, "end": 10.06},
+        {"id": "w22", "text": "juba", "start": 10.1, "end": 10.36},
+        {"id": "w23", "text": "teada.", "start": 10.4, "end": 10.88},
+        {"id": "w24", "text": "Proovime", "start": 10.98, "end": 11.48},
+        {"id": "w25", "text": "kohe", "start": 11.52, "end": 11.78},
+        {"id": "w26", "text": "järele.", "start": 11.82, "end": 12.38}
+      ]
+    },
+    "clips": [
+      {
+        "id": "clip-2f1c",
+        "startWord": 9,
+        "endWord": 16,
+        "sourceStart": 5.78,
+        "sourceEnd": 9.45,
+        "outputSamples": 153027,
+        "durationSeconds": 3.47,
+        "kept": [[254898, 407925]],
+        "captions": [
+          {"id": "w10", "text": "See", "start": 0.12, "end": 0.3},
+          {"id": "w11", "text": "on", "start": 0.34, "end": 0.46},
+          {"id": "w12", "text": "tegelikult", "start": 0.5, "end": 1.12},
+          {"id": "w13", "text": "palju", "start": 1.18, "end": 1.52},
+          {"id": "w14", "text": "kiirem", "start": 1.56, "end": 1.96},
+          {"id": "w15", "text": "kui", "start": 2, "end": 2.14},
+          {"id": "w16", "text": "ajateljel", "start": 2.18, "end": 2.78},
+          {"id": "w17", "text": "kerimine.", "start": 2.82, "end": 3.42}
+        ]
+      },
+      {
+        "id": "clip-9a0b",
+        "startWord": 17,
+        "endWord": 25,
+        "sourceStart": 10.280000000000001,
+        "sourceEnd": 15.25,
+        "outputSamples": 171990,
+        "durationSeconds": 3.9,
+        "kept": [[456435, 553455], [597555, 672525]],
+        "captions": [
+          {"id": "w18", "text": "Iga", "start": 0.05, "end": 0.27},
+          {"id": "w19", "text": "sõna", "start": 0.31, "end": 0.63},
+          {"id": "w20", "text": "asukoht", "start": 0.67, "end": 1.17},
+          {"id": "w21", "text": "on", "start": 1.21, "end": 1.33},
+          {"id": "w22", "text": "juba", "start": 1.37, "end": 1.63},
+          {"id": "w23", "text": "teada.", "start": 1.67, "end": 2.15},
+          {"id": "w24", "text": "Proovime", "start": 2.25, "end": 2.75},
+          {"id": "w25", "text": "kohe", "start": 2.79, "end": 3.05},
+          {"id": "w26", "text": "järele.", "start": 3.09, "end": 3.65}
+        ]
+      }
+    ]
+  }
+}

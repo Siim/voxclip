@@ -1,0 +1,4894 @@
+{
+ "fixture": "voxclip-caption-layout/1",
+ "id": "typewriter-square-typing",
+ "note": "dense samples of the character reveal and the cursor blink",
+ "input": {
+  "style": "typewriter",
+  "frame": {"width": 1080, "height": 1080},
+  "language": "en",
+  "duration": 4.0,
+  "captions": {"overrides": {}, "position": null, "positionByAspect": {}},
+  "words": [
+   {"id": "typing-0", "text": "Hello,", "start": 0.2, "end": 0.6},
+   {"id": "typing-1", "text": "world.", "start": 0.65, "end": 1.1},
+   {"id": "typing-2", "text": "Let's", "start": 1.6, "end": 1.9},
+   {"id": "typing-3", "text": "begin", "start": 1.92, "end": 2.3},
+   {"id": "typing-4", "text": "with", "start": 2.32, "end": 2.45},
+   {"id": "typing-5", "text": "3", "start": 2.5, "end": 2.7},
+   {"id": "typing-6", "text": "steps.", "start": 2.75, "end": 3.3}
+  ]
+ },
+ "expected": {
+  "aspect": "square",
+  "preset": "1:1",
+  "resolved": {
+   "sizeSh": 0.046,
+   "sizeScale": 1,
+   "x": 0.5,
+   "y": 0.78,
+   "anchorX": "center",
+   "anchorY": "center",
+   "maxLineWidthW": 0.84,
+   "maxWords": 8,
+   "transform": "none",
+   "punctuation": "keep",
+   "accent": null
+  },
+  "fontPx64": 3180,
+  "fontPx": 49.6875,
+  "safeRect": {"x": 54.0, "y": 54.0, "w": 972.0, "h": 950.4},
+  "safeInsets": {"left": 0.05, "right": 0.05, "top": 0.05, "bottom": 0.07},
+  "limitPx": 907.2,
+  "limitPx64": 58060,
+  "unitsPerEm": 1000,
+  "gapUnits": 600,
+  "words": [
+   {
+    "sourceIndex": 0,
+    "id": "typing-0",
+    "raw": "Hello,",
+    "text": "Hello,",
+    "start": 0.2,
+    "end": 0.6,
+    "units": 3600,
+    "clusters": 6,
+    "runs": [
+     {
+      "file": "JetBrainsMono-SemiBold.ttf",
+      "text": "Hello,",
+      "units": 3600,
+      "glyphs": [65, 234, 287, 287, 302, 909],
+      "advances": [600, 600, 600, 600, 600, 600],
+      "offsets": [[0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0]],
+      "clusters": [0, 1, 2, 3, 4, 5]
+     }
+    ],
+    "emphasisPoints": 105,
+    "emphasisCandidate": false
+   },
+   {
+    "sourceIndex": 1,
+    "id": "typing-1",
+    "raw": "world.",
+    "text": "world.",
+    "start": 0.65,
+    "end": 1.1,
+    "units": 3600,
+    "clusters": 6,
+    "runs": [
+     {
+      "file": "JetBrainsMono-SemiBold.ttf",
+      "text": "world.",
+      "units": 3600,
+      "glyphs": [374, 302, 332, 287, 230, 908],
+      "advances": [600, 600, 600, 600, 600, 600],
+      "offsets": [[0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0]],
+      "clusters": [0, 1, 2, 3, 4, 5]
+     }
+    ],
+    "emphasisPoints": 105,
+    "emphasisCandidate": false
+   },
+   {
+    "sourceIndex": 2,
+    "id": "typing-2",
+    "raw": "Let's",
+    "text": "Let's",
+    "start": 1.6,
+    "end": 1.9,
+    "units": 3000,
+    "clusters": 5,
+    "runs": [
+     {
+      "file": "JetBrainsMono-SemiBold.ttf",
+      "text": "Let's",
+      "units": 3000,
+      "glyphs": [87, 234, 344, 973, 336],
+      "advances": [600, 600, 600, 600, 600],
+      "offsets": [[0, 0], [0, 0], [0, 0], [0, 0], [0, 0]],
+      "clusters": [0, 1, 2, 3, 4]
+     }
+    ],
+    "emphasisPoints": 4,
+    "emphasisCandidate": false
+   },
+   {
+    "sourceIndex": 3,
+    "id": "typing-3",
+    "raw": "begin",
+    "text": "begin",
+    "start": 1.92,
+    "end": 2.3,
+    "units": 3000,
+    "clusters": 5,
+    "runs": [
+     {
+      "file": "JetBrainsMono-SemiBold.ttf",
+      "text": "begin",
+      "units": 3000,
+      "glyphs": [223, 234, 255, 265, 295],
+      "advances": [600, 600, 600, 600, 600],
+      "offsets": [[0, 0], [0, 0], [0, 0], [0, 0], [0, 0]],
+      "clusters": [0, 1, 2, 3, 4]
+     }
+    ],
+    "emphasisPoints": 105,
+    "emphasisCandidate": false
+   },
+   {
+    "sourceIndex": 4,
+    "id": "typing-4",
+    "raw": "with",
+    "text": "with",
+    "start": 2.32,
+    "end": 2.45,
+    "units": 2400,
+    "clusters": 4,
+    "runs": [
+     {
+      "file": "JetBrainsMono-SemiBold.ttf",
+      "text": "with",
+      "units": 2400,
+      "glyphs": [374, 265, 344, 262],
+      "advances": [600, 600, 600, 600],
+      "offsets": [[0, 0], [0, 0], [0, 0], [0, 0]],
+      "clusters": [0, 1, 2, 3]
+     }
+    ],
+    "emphasisPoints": 4,
+    "emphasisCandidate": false
+   },
+   {
+    "sourceIndex": 5,
+    "id": "typing-5",
+    "raw": "3",
+    "text": "3",
+    "start": 2.5,
+    "end": 2.7,
+    "units": 600,
+    "clusters": 1,
+    "runs": [
+     {
+      "file": "JetBrainsMono-SemiBold.ttf",
+      "text": "3",
+      "units": 600,
+      "glyphs": [740],
+      "advances": [600],
+      "offsets": [[0, 0]],
+      "clusters": [0]
+     }
+    ],
+    "emphasisPoints": 401,
+    "emphasisCandidate": false
+   },
+   {
+    "sourceIndex": 6,
+    "id": "typing-6",
+    "raw": "steps.",
+    "text": "steps.",
+    "start": 2.75,
+    "end": 3.3,
+    "units": 3600,
+    "clusters": 6,
+    "runs": [
+     {
+      "file": "JetBrainsMono-SemiBold.ttf",
+      "text": "steps.",
+      "units": 3600,
+      "glyphs": [336, 344, 234, 329, 336, 908],
+      "advances": [600, 600, 600, 600, 600, 600],
+      "offsets": [[0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0]],
+      "clusters": [0, 1, 2, 3, 4, 5]
+     }
+    ],
+    "emphasisPoints": 105,
+    "emphasisCandidate": false
+   }
+  ],
+  "dropped": [],
+  "pages": [
+   {
+    "index": 0,
+    "words": [0, 1],
+    "start": 0.2,
+    "end": 1.6,
+    "fontPx64": 3180,
+    "fontPx": 49.6875,
+    "shrunk": false,
+    "lines": [{"words": [0, 1], "units": 7800, "x": 346.0, "top": 809.0, "baseline": 860.675, "width": 387.562}],
+    "wordRects": [
+     {
+      "word": 0,
+      "line": 0,
+      "x": 346.0,
+      "y": 809.0,
+      "w": 178.875,
+      "h": 67.078,
+      "baseline": 860.675,
+      "cx": 435.438,
+      "cy": 842.539
+     },
+     {
+      "word": 1,
+      "line": 0,
+      "x": 554.688,
+      "y": 809.0,
+      "w": 178.875,
+      "h": 67.078,
+      "baseline": 860.675,
+      "cx": 644.125,
+      "cy": 842.539
+     }
+    ],
+    "block": {"x": 346.0, "y": 809.0, "w": 387.562, "h": 67.078},
+    "visual": {"x": 321.156, "y": 794.094, "w": 437.25, "h": 96.891},
+    "boxes": [{"kind": "page", "x": 321.156, "y": 794.094, "w": 437.25, "h": 96.891, "r": 7.453}],
+    "emphasised": [],
+    "emoji": null,
+    "clampShift": [0.0, 0.0]
+   },
+   {
+    "index": 1,
+    "words": [2, 3, 4, 5, 6],
+    "start": 1.6,
+    "end": 4.0,
+    "fontPx64": 3180,
+    "fontPx": 49.6875,
+    "shrunk": false,
+    "lines": [
+     {
+      "words": [2, 3, 4, 5, 6],
+      "units": 15000,
+      "x": 167.0,
+      "top": 809.0,
+      "baseline": 860.675,
+      "width": 745.312
+     }
+    ],
+    "wordRects": [
+     {
+      "word": 2,
+      "line": 0,
+      "x": 167.0,
+      "y": 809.0,
+      "w": 149.062,
+      "h": 67.078,
+      "baseline": 860.675,
+      "cx": 241.531,
+      "cy": 842.539
+     },
+     {
+      "word": 3,
+      "line": 0,
+      "x": 345.875,
+      "y": 809.0,
+      "w": 149.062,
+      "h": 67.078,
+      "baseline": 860.675,
+      "cx": 420.406,
+      "cy": 842.539
+     },
+     {
+      "word": 4,
+      "line": 0,
+      "x": 524.75,
+      "y": 809.0,
+      "w": 119.25,
+      "h": 67.078,
+      "baseline": 860.675,
+      "cx": 584.375,
+      "cy": 842.539
+     },
+     {
+      "word": 5,
+      "line": 0,
+      "x": 673.812,
+      "y": 809.0,
+      "w": 29.812,
+      "h": 67.078,
+      "baseline": 860.675,
+      "cx": 688.719,
+      "cy": 842.539
+     },
+     {
+      "word": 6,
+      "line": 0,
+      "x": 733.438,
+      "y": 809.0,
+      "w": 178.875,
+      "h": 67.078,
+      "baseline": 860.675,
+      "cx": 822.875,
+      "cy": 842.539
+     }
+    ],
+    "block": {"x": 167.0, "y": 809.0, "w": 745.312, "h": 67.078},
+    "visual": {"x": 142.156, "y": 794.094, "w": 795.0, "h": 96.891},
+    "boxes": [{"kind": "page", "x": 142.156, "y": 794.094, "w": 795.0, "h": 96.891, "r": 7.453}],
+    "emphasised": [],
+    "emoji": null,
+    "clampShift": [0.0, 0.0]
+   }
+  ],
+  "samples": [
+   {"t": 0.1, "page": null},
+   {"t": 0.15, "page": null},
+   {
+    "t": 0.2,
+    "page": 0,
+    "activeWord": 0,
+    "progress": 0.0,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 0,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 1
+     },
+     {
+      "word": 1,
+      "state": "future",
+      "visible": false,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 0
+     }
+    ],
+    "cursor": {"visible": true, "word": 0, "x": 378.297, "y": 819.434, "w": 3.975, "h": 46.209},
+    "golden": true
+   },
+   {
+    "t": 0.25,
+    "page": 0,
+    "activeWord": 0,
+    "progress": 0.125,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 0,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 2
+     },
+     {
+      "word": 1,
+      "state": "future",
+      "visible": false,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 0
+     }
+    ],
+    "cursor": {"visible": true, "word": 0, "x": 408.109, "y": 819.434, "w": 3.975, "h": 46.209}
+   },
+   {
+    "t": 0.3,
+    "page": 0,
+    "activeWord": 0,
+    "progress": 0.25,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 0,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 3
+     },
+     {
+      "word": 1,
+      "state": "future",
+      "visible": false,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 0
+     }
+    ],
+    "cursor": {"visible": true, "word": 0, "x": 437.922, "y": 819.434, "w": 3.975, "h": 46.209}
+   },
+   {
+    "t": 0.35,
+    "page": 0,
+    "activeWord": 0,
+    "progress": 0.375,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 0,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 5
+     },
+     {
+      "word": 1,
+      "state": "future",
+      "visible": false,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 0
+     }
+    ],
+    "cursor": {"visible": true, "word": 0, "x": 497.547, "y": 819.434, "w": 3.975, "h": 46.209}
+   },
+   {
+    "t": 0.4,
+    "page": 0,
+    "activeWord": 0,
+    "progress": 0.5,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 0,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 6
+     },
+     {
+      "word": 1,
+      "state": "future",
+      "visible": false,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 0
+     }
+    ],
+    "cursor": {"visible": true, "word": 0, "x": 527.359, "y": 819.434, "w": 3.975, "h": 46.209}
+   },
+   {
+    "t": 0.45,
+    "page": 0,
+    "activeWord": 0,
+    "progress": 0.625,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 0,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 6
+     },
+     {
+      "word": 1,
+      "state": "future",
+      "visible": false,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 0
+     }
+    ],
+    "cursor": {"visible": true, "word": 0, "x": 527.359, "y": 819.434, "w": 3.975, "h": 46.209}
+   },
+   {
+    "t": 0.5,
+    "page": 0,
+    "activeWord": 0,
+    "progress": 0.75,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 0,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 6
+     },
+     {
+      "word": 1,
+      "state": "future",
+      "visible": false,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 0
+     }
+    ],
+    "cursor": {"visible": true, "word": 0, "x": 527.359, "y": 819.434, "w": 3.975, "h": 46.209}
+   },
+   {
+    "t": 0.55,
+    "page": 0,
+    "activeWord": 0,
+    "progress": 0.875,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 0,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 6
+     },
+     {
+      "word": 1,
+      "state": "future",
+      "visible": false,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 0
+     }
+    ],
+    "cursor": {"visible": true, "word": 0, "x": 527.359, "y": 819.434, "w": 3.975, "h": 46.209}
+   },
+   {
+    "t": 0.6,
+    "page": 0,
+    "activeWord": 0,
+    "progress": 1.0,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 0,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 6
+     },
+     {
+      "word": 1,
+      "state": "future",
+      "visible": false,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 0
+     }
+    ],
+    "cursor": {"visible": true, "word": 0, "x": 527.359, "y": 819.434, "w": 3.975, "h": 46.209}
+   },
+   {
+    "t": 0.65,
+    "page": 0,
+    "activeWord": 1,
+    "progress": 0.0,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 0,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 6
+     },
+     {
+      "word": 1,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 1
+     }
+    ],
+    "cursor": {"visible": true, "word": 1, "x": 586.984, "y": 819.434, "w": 3.975, "h": 46.209}
+   },
+   {
+    "t": 0.7,
+    "page": 0,
+    "activeWord": 1,
+    "progress": 0.111111,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 0,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 6
+     },
+     {
+      "word": 1,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 2
+     }
+    ],
+    "cursor": {"visible": true, "word": 1, "x": 616.797, "y": 819.434, "w": 3.975, "h": 46.209}
+   },
+   {
+    "t": 0.75,
+    "page": 0,
+    "activeWord": 1,
+    "progress": 0.222222,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 0,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 6
+     },
+     {
+      "word": 1,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 3
+     }
+    ],
+    "cursor": {"visible": true, "word": 1, "x": 646.609, "y": 819.434, "w": 3.975, "h": 46.209}
+   },
+   {
+    "t": 0.8,
+    "page": 0,
+    "activeWord": 1,
+    "progress": 0.333333,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 0,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 6
+     },
+     {
+      "word": 1,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 5
+     }
+    ],
+    "cursor": {"visible": true, "word": 1, "x": 706.234, "y": 819.434, "w": 3.975, "h": 46.209}
+   },
+   {
+    "t": 0.85,
+    "page": 0,
+    "activeWord": 1,
+    "progress": 0.444444,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 0,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 6
+     },
+     {
+      "word": 1,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 6
+     }
+    ],
+    "cursor": {"visible": true, "word": 1, "x": 736.047, "y": 819.434, "w": 3.975, "h": 46.209}
+   },
+   {
+    "t": 0.875,
+    "page": 0,
+    "activeWord": 1,
+    "progress": 0.5,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 0,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 6
+     },
+     {
+      "word": 1,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 6
+     }
+    ],
+    "cursor": {"visible": true, "word": 1, "x": 736.047, "y": 819.434, "w": 3.975, "h": 46.209}
+   },
+   {
+    "t": 0.9,
+    "page": 0,
+    "activeWord": 1,
+    "progress": 0.555556,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 0,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 6
+     },
+     {
+      "word": 1,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 6
+     }
+    ],
+    "cursor": {"visible": true, "word": 1, "x": 736.047, "y": 819.434, "w": 3.975, "h": 46.209}
+   },
+   {
+    "t": 0.95,
+    "page": 0,
+    "activeWord": 1,
+    "progress": 0.666667,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 0,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 6
+     },
+     {
+      "word": 1,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 6
+     }
+    ],
+    "cursor": {"visible": true, "word": 1, "x": 736.047, "y": 819.434, "w": 3.975, "h": 46.209}
+   },
+   {
+    "t": 1.0,
+    "page": 0,
+    "activeWord": 1,
+    "progress": 0.777778,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 0,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 6
+     },
+     {
+      "word": 1,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 6
+     }
+    ],
+    "cursor": {"visible": true, "word": 1, "x": 736.047, "y": 819.434, "w": 3.975, "h": 46.209}
+   },
+   {
+    "t": 1.05,
+    "page": 0,
+    "activeWord": 1,
+    "progress": 0.888889,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 0,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 6
+     },
+     {
+      "word": 1,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 6
+     }
+    ],
+    "cursor": {"visible": true, "word": 1, "x": 736.047, "y": 819.434, "w": 3.975, "h": 46.209}
+   },
+   {
+    "t": 1.1,
+    "page": 0,
+    "activeWord": 1,
+    "progress": 1.0,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 0,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 6
+     },
+     {
+      "word": 1,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 6
+     }
+    ],
+    "cursor": {"visible": true, "word": 1, "x": 736.047, "y": 819.434, "w": 3.975, "h": 46.209}
+   },
+   {
+    "t": 1.11,
+    "page": 0,
+    "activeWord": 1,
+    "progress": 1.0,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 0,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 6
+     },
+     {
+      "word": 1,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 6
+     }
+    ],
+    "cursor": {"visible": true, "word": 1, "x": 736.047, "y": 819.434, "w": 3.975, "h": 46.209}
+   },
+   {
+    "t": 1.15,
+    "page": 0,
+    "activeWord": 1,
+    "progress": 1.0,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 0,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 6
+     },
+     {
+      "word": 1,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 6
+     }
+    ],
+    "cursor": {"visible": false, "word": 1, "x": 736.047, "y": 819.434, "w": 3.975, "h": 46.209}
+   },
+   {
+    "t": 1.2,
+    "page": 0,
+    "activeWord": 1,
+    "progress": 1.0,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 0,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 6
+     },
+     {
+      "word": 1,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 6
+     }
+    ],
+    "cursor": {"visible": false, "word": 1, "x": 736.047, "y": 819.434, "w": 3.975, "h": 46.209}
+   },
+   {
+    "t": 1.25,
+    "page": 0,
+    "activeWord": 1,
+    "progress": 1.0,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 0,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 6
+     },
+     {
+      "word": 1,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 6
+     }
+    ],
+    "cursor": {"visible": false, "word": 1, "x": 736.047, "y": 819.434, "w": 3.975, "h": 46.209}
+   },
+   {
+    "t": 1.3,
+    "page": 0,
+    "activeWord": 1,
+    "progress": 1.0,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 0,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 6
+     },
+     {
+      "word": 1,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 6
+     }
+    ],
+    "cursor": {"visible": false, "word": 1, "x": 736.047, "y": 819.434, "w": 3.975, "h": 46.209}
+   },
+   {
+    "t": 1.35,
+    "page": 0,
+    "activeWord": 1,
+    "progress": 1.0,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 0,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 6
+     },
+     {
+      "word": 1,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 6
+     }
+    ],
+    "cursor": {"visible": false, "word": 1, "x": 736.047, "y": 819.434, "w": 3.975, "h": 46.209}
+   },
+   {
+    "t": 1.4,
+    "page": 0,
+    "activeWord": 1,
+    "progress": 1.0,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 0,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 6
+     },
+     {
+      "word": 1,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 6
+     }
+    ],
+    "cursor": {"visible": true, "word": 1, "x": 736.047, "y": 819.434, "w": 3.975, "h": 46.209}
+   },
+   {
+    "t": 1.45,
+    "page": 0,
+    "activeWord": 1,
+    "progress": 1.0,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 0,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 6
+     },
+     {
+      "word": 1,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 6
+     }
+    ],
+    "cursor": {"visible": true, "word": 1, "x": 736.047, "y": 819.434, "w": 3.975, "h": 46.209}
+   },
+   {
+    "t": 1.5,
+    "page": 0,
+    "activeWord": 1,
+    "progress": 1.0,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 0,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 6
+     },
+     {
+      "word": 1,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 6
+     }
+    ],
+    "cursor": {"visible": true, "word": 1, "x": 736.047, "y": 819.434, "w": 3.975, "h": 46.209}
+   },
+   {
+    "t": 1.55,
+    "page": 0,
+    "activeWord": 1,
+    "progress": 1.0,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 0,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 6
+     },
+     {
+      "word": 1,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 6
+     }
+    ],
+    "cursor": {"visible": true, "word": 1, "x": 736.047, "y": 819.434, "w": 3.975, "h": 46.209}
+   },
+   {
+    "t": 1.599,
+    "page": 0,
+    "activeWord": 1,
+    "progress": 1.0,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 0,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 6
+     },
+     {
+      "word": 1,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 6
+     }
+    ],
+    "cursor": {"visible": true, "word": 1, "x": 736.047, "y": 819.434, "w": 3.975, "h": 46.209}
+   },
+   {
+    "t": 1.6,
+    "page": 1,
+    "activeWord": 2,
+    "progress": 0.0,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 2,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 1
+     },
+     {
+      "word": 3,
+      "state": "future",
+      "visible": false,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 0
+     },
+     {
+      "word": 4,
+      "state": "future",
+      "visible": false,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 0
+     },
+     {
+      "word": 5,
+      "state": "future",
+      "visible": false,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 0
+     },
+     {
+      "word": 6,
+      "state": "future",
+      "visible": false,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 0
+     }
+    ],
+    "cursor": {"visible": true, "word": 2, "x": 199.297, "y": 819.434, "w": 3.975, "h": 46.209}
+   },
+   {
+    "t": 1.65,
+    "page": 1,
+    "activeWord": 2,
+    "progress": 0.166667,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 2,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 2
+     },
+     {
+      "word": 3,
+      "state": "future",
+      "visible": false,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 0
+     },
+     {
+      "word": 4,
+      "state": "future",
+      "visible": false,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 0
+     },
+     {
+      "word": 5,
+      "state": "future",
+      "visible": false,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 0
+     },
+     {
+      "word": 6,
+      "state": "future",
+      "visible": false,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 0
+     }
+    ],
+    "cursor": {"visible": true, "word": 2, "x": 229.109, "y": 819.434, "w": 3.975, "h": 46.209}
+   },
+   {
+    "t": 1.7,
+    "page": 1,
+    "activeWord": 2,
+    "progress": 0.333333,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 2,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 3
+     },
+     {
+      "word": 3,
+      "state": "future",
+      "visible": false,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 0
+     },
+     {
+      "word": 4,
+      "state": "future",
+      "visible": false,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 0
+     },
+     {
+      "word": 5,
+      "state": "future",
+      "visible": false,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 0
+     },
+     {
+      "word": 6,
+      "state": "future",
+      "visible": false,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 0
+     }
+    ],
+    "cursor": {"visible": true, "word": 2, "x": 258.922, "y": 819.434, "w": 3.975, "h": 46.209}
+   },
+   {
+    "t": 1.75,
+    "page": 1,
+    "activeWord": 2,
+    "progress": 0.5,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 2,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 5
+     },
+     {
+      "word": 3,
+      "state": "future",
+      "visible": false,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 0
+     },
+     {
+      "word": 4,
+      "state": "future",
+      "visible": false,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 0
+     },
+     {
+      "word": 5,
+      "state": "future",
+      "visible": false,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 0
+     },
+     {
+      "word": 6,
+      "state": "future",
+      "visible": false,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 0
+     }
+    ],
+    "cursor": {"visible": true, "word": 2, "x": 318.547, "y": 819.434, "w": 3.975, "h": 46.209}
+   },
+   {
+    "t": 1.8,
+    "page": 1,
+    "activeWord": 2,
+    "progress": 0.666667,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 2,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 5
+     },
+     {
+      "word": 3,
+      "state": "future",
+      "visible": false,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 0
+     },
+     {
+      "word": 4,
+      "state": "future",
+      "visible": false,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 0
+     },
+     {
+      "word": 5,
+      "state": "future",
+      "visible": false,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 0
+     },
+     {
+      "word": 6,
+      "state": "future",
+      "visible": false,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 0
+     }
+    ],
+    "cursor": {"visible": true, "word": 2, "x": 318.547, "y": 819.434, "w": 3.975, "h": 46.209}
+   },
+   {
+    "t": 1.85,
+    "page": 1,
+    "activeWord": 2,
+    "progress": 0.833333,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 2,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 5
+     },
+     {
+      "word": 3,
+      "state": "future",
+      "visible": false,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 0
+     },
+     {
+      "word": 4,
+      "state": "future",
+      "visible": false,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 0
+     },
+     {
+      "word": 5,
+      "state": "future",
+      "visible": false,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 0
+     },
+     {
+      "word": 6,
+      "state": "future",
+      "visible": false,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 0
+     }
+    ],
+    "cursor": {"visible": true, "word": 2, "x": 318.547, "y": 819.434, "w": 3.975, "h": 46.209}
+   },
+   {
+    "t": 1.9,
+    "page": 1,
+    "activeWord": 2,
+    "progress": 1.0,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 2,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 5
+     },
+     {
+      "word": 3,
+      "state": "future",
+      "visible": false,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 0
+     },
+     {
+      "word": 4,
+      "state": "future",
+      "visible": false,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 0
+     },
+     {
+      "word": 5,
+      "state": "future",
+      "visible": false,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 0
+     },
+     {
+      "word": 6,
+      "state": "future",
+      "visible": false,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 0
+     }
+    ],
+    "cursor": {"visible": true, "word": 2, "x": 318.547, "y": 819.434, "w": 3.975, "h": 46.209}
+   },
+   {
+    "t": 1.95,
+    "page": 1,
+    "activeWord": 3,
+    "progress": 0.078947,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 2,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 5
+     },
+     {
+      "word": 3,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 1
+     },
+     {
+      "word": 4,
+      "state": "future",
+      "visible": false,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 0
+     },
+     {
+      "word": 5,
+      "state": "future",
+      "visible": false,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 0
+     },
+     {
+      "word": 6,
+      "state": "future",
+      "visible": false,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 0
+     }
+    ],
+    "cursor": {"visible": true, "word": 3, "x": 378.172, "y": 819.434, "w": 3.975, "h": 46.209}
+   },
+   {
+    "t": 2.0,
+    "page": 1,
+    "activeWord": 3,
+    "progress": 0.210526,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 2,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 5
+     },
+     {
+      "word": 3,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 3
+     },
+     {
+      "word": 4,
+      "state": "future",
+      "visible": false,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 0
+     },
+     {
+      "word": 5,
+      "state": "future",
+      "visible": false,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 0
+     },
+     {
+      "word": 6,
+      "state": "future",
+      "visible": false,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 0
+     }
+    ],
+    "cursor": {"visible": true, "word": 3, "x": 437.797, "y": 819.434, "w": 3.975, "h": 46.209}
+   },
+   {
+    "t": 2.05,
+    "page": 1,
+    "activeWord": 3,
+    "progress": 0.342105,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 2,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 5
+     },
+     {
+      "word": 3,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 4
+     },
+     {
+      "word": 4,
+      "state": "future",
+      "visible": false,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 0
+     },
+     {
+      "word": 5,
+      "state": "future",
+      "visible": false,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 0
+     },
+     {
+      "word": 6,
+      "state": "future",
+      "visible": false,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 0
+     }
+    ],
+    "cursor": {"visible": true, "word": 3, "x": 467.609, "y": 819.434, "w": 3.975, "h": 46.209}
+   },
+   {
+    "t": 2.1,
+    "page": 1,
+    "activeWord": 3,
+    "progress": 0.473684,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 2,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 5
+     },
+     {
+      "word": 3,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 5
+     },
+     {
+      "word": 4,
+      "state": "future",
+      "visible": false,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 0
+     },
+     {
+      "word": 5,
+      "state": "future",
+      "visible": false,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 0
+     },
+     {
+      "word": 6,
+      "state": "future",
+      "visible": false,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 0
+     }
+    ],
+    "cursor": {"visible": true, "word": 3, "x": 497.422, "y": 819.434, "w": 3.975, "h": 46.209}
+   },
+   {
+    "t": 2.15,
+    "page": 1,
+    "activeWord": 3,
+    "progress": 0.605263,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 2,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 5
+     },
+     {
+      "word": 3,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 5
+     },
+     {
+      "word": 4,
+      "state": "future",
+      "visible": false,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 0
+     },
+     {
+      "word": 5,
+      "state": "future",
+      "visible": false,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 0
+     },
+     {
+      "word": 6,
+      "state": "future",
+      "visible": false,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 0
+     }
+    ],
+    "cursor": {"visible": true, "word": 3, "x": 497.422, "y": 819.434, "w": 3.975, "h": 46.209}
+   },
+   {
+    "t": 2.2,
+    "page": 1,
+    "activeWord": 3,
+    "progress": 0.736842,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 2,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 5
+     },
+     {
+      "word": 3,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 5
+     },
+     {
+      "word": 4,
+      "state": "future",
+      "visible": false,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 0
+     },
+     {
+      "word": 5,
+      "state": "future",
+      "visible": false,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 0
+     },
+     {
+      "word": 6,
+      "state": "future",
+      "visible": false,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 0
+     }
+    ],
+    "cursor": {"visible": true, "word": 3, "x": 497.422, "y": 819.434, "w": 3.975, "h": 46.209}
+   },
+   {
+    "t": 2.25,
+    "page": 1,
+    "activeWord": 3,
+    "progress": 0.868421,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 2,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 5
+     },
+     {
+      "word": 3,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 5
+     },
+     {
+      "word": 4,
+      "state": "future",
+      "visible": false,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 0
+     },
+     {
+      "word": 5,
+      "state": "future",
+      "visible": false,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 0
+     },
+     {
+      "word": 6,
+      "state": "future",
+      "visible": false,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 0
+     }
+    ],
+    "cursor": {"visible": true, "word": 3, "x": 497.422, "y": 819.434, "w": 3.975, "h": 46.209}
+   },
+   {
+    "t": 2.3,
+    "page": 1,
+    "activeWord": 3,
+    "progress": 1.0,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 2,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 5
+     },
+     {
+      "word": 3,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 5
+     },
+     {
+      "word": 4,
+      "state": "future",
+      "visible": false,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 0
+     },
+     {
+      "word": 5,
+      "state": "future",
+      "visible": false,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 0
+     },
+     {
+      "word": 6,
+      "state": "future",
+      "visible": false,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 0
+     }
+    ],
+    "cursor": {"visible": true, "word": 3, "x": 497.422, "y": 819.434, "w": 3.975, "h": 46.209}
+   },
+   {
+    "t": 2.35,
+    "page": 1,
+    "activeWord": 4,
+    "progress": 0.230769,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 2,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 5
+     },
+     {
+      "word": 3,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 5
+     },
+     {
+      "word": 4,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 1
+     },
+     {
+      "word": 5,
+      "state": "future",
+      "visible": false,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 0
+     },
+     {
+      "word": 6,
+      "state": "future",
+      "visible": false,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 0
+     }
+    ],
+    "cursor": {"visible": true, "word": 4, "x": 557.047, "y": 819.434, "w": 3.975, "h": 46.209}
+   },
+   {
+    "t": 2.385,
+    "page": 1,
+    "activeWord": 4,
+    "progress": 0.5,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 2,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 5
+     },
+     {
+      "word": 3,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 5
+     },
+     {
+      "word": 4,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 3
+     },
+     {
+      "word": 5,
+      "state": "future",
+      "visible": false,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 0
+     },
+     {
+      "word": 6,
+      "state": "future",
+      "visible": false,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 0
+     }
+    ],
+    "cursor": {"visible": true, "word": 4, "x": 616.672, "y": 819.434, "w": 3.975, "h": 46.209}
+   },
+   {
+    "t": 2.4,
+    "page": 1,
+    "activeWord": 4,
+    "progress": 0.615385,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 2,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 5
+     },
+     {
+      "word": 3,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 5
+     },
+     {
+      "word": 4,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 3
+     },
+     {
+      "word": 5,
+      "state": "future",
+      "visible": false,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 0
+     },
+     {
+      "word": 6,
+      "state": "future",
+      "visible": false,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 0
+     }
+    ],
+    "cursor": {"visible": true, "word": 4, "x": 616.672, "y": 819.434, "w": 3.975, "h": 46.209}
+   },
+   {
+    "t": 2.45,
+    "page": 1,
+    "activeWord": 4,
+    "progress": 1.0,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 2,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 5
+     },
+     {
+      "word": 3,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 5
+     },
+     {
+      "word": 4,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 4
+     },
+     {
+      "word": 5,
+      "state": "future",
+      "visible": false,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 0
+     },
+     {
+      "word": 6,
+      "state": "future",
+      "visible": false,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 0
+     }
+    ],
+    "cursor": {"visible": true, "word": 4, "x": 646.484, "y": 819.434, "w": 3.975, "h": 46.209}
+   },
+   {
+    "t": 2.5,
+    "page": 1,
+    "activeWord": 5,
+    "progress": 0.0,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 2,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 5
+     },
+     {
+      "word": 3,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 5
+     },
+     {
+      "word": 4,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 4
+     },
+     {
+      "word": 5,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 1
+     },
+     {
+      "word": 6,
+      "state": "future",
+      "visible": false,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 0
+     }
+    ],
+    "cursor": {"visible": true, "word": 5, "x": 706.109, "y": 819.434, "w": 3.975, "h": 46.209}
+   },
+   {
+    "t": 2.55,
+    "page": 1,
+    "activeWord": 5,
+    "progress": 0.25,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 2,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 5
+     },
+     {
+      "word": 3,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 5
+     },
+     {
+      "word": 4,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 4
+     },
+     {
+      "word": 5,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 1
+     },
+     {
+      "word": 6,
+      "state": "future",
+      "visible": false,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 0
+     }
+    ],
+    "cursor": {"visible": true, "word": 5, "x": 706.109, "y": 819.434, "w": 3.975, "h": 46.209}
+   },
+   {
+    "t": 2.6,
+    "page": 1,
+    "activeWord": 5,
+    "progress": 0.5,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 2,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 5
+     },
+     {
+      "word": 3,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 5
+     },
+     {
+      "word": 4,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 4
+     },
+     {
+      "word": 5,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 1
+     },
+     {
+      "word": 6,
+      "state": "future",
+      "visible": false,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 0
+     }
+    ],
+    "cursor": {"visible": true, "word": 5, "x": 706.109, "y": 819.434, "w": 3.975, "h": 46.209}
+   },
+   {
+    "t": 2.65,
+    "page": 1,
+    "activeWord": 5,
+    "progress": 0.75,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 2,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 5
+     },
+     {
+      "word": 3,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 5
+     },
+     {
+      "word": 4,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 4
+     },
+     {
+      "word": 5,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 1
+     },
+     {
+      "word": 6,
+      "state": "future",
+      "visible": false,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 0
+     }
+    ],
+    "cursor": {"visible": true, "word": 5, "x": 706.109, "y": 819.434, "w": 3.975, "h": 46.209}
+   },
+   {
+    "t": 2.7,
+    "page": 1,
+    "activeWord": 5,
+    "progress": 1.0,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 2,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 5
+     },
+     {
+      "word": 3,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 5
+     },
+     {
+      "word": 4,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 4
+     },
+     {
+      "word": 5,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 1
+     },
+     {
+      "word": 6,
+      "state": "future",
+      "visible": false,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 0
+     }
+    ],
+    "cursor": {"visible": true, "word": 5, "x": 706.109, "y": 819.434, "w": 3.975, "h": 46.209}
+   },
+   {
+    "t": 2.75,
+    "page": 1,
+    "activeWord": 6,
+    "progress": 0.0,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 2,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 5
+     },
+     {
+      "word": 3,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 5
+     },
+     {
+      "word": 4,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 4
+     },
+     {
+      "word": 5,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 1
+     },
+     {
+      "word": 6,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 1
+     }
+    ],
+    "cursor": {"visible": true, "word": 6, "x": 765.734, "y": 819.434, "w": 3.975, "h": 46.209}
+   },
+   {
+    "t": 2.8,
+    "page": 1,
+    "activeWord": 6,
+    "progress": 0.090909,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 2,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 5
+     },
+     {
+      "word": 3,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 5
+     },
+     {
+      "word": 4,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 4
+     },
+     {
+      "word": 5,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 1
+     },
+     {
+      "word": 6,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 2
+     }
+    ],
+    "cursor": {"visible": true, "word": 6, "x": 795.547, "y": 819.434, "w": 3.975, "h": 46.209},
+    "golden": true
+   },
+   {
+    "t": 2.85,
+    "page": 1,
+    "activeWord": 6,
+    "progress": 0.181818,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 2,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 5
+     },
+     {
+      "word": 3,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 5
+     },
+     {
+      "word": 4,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 4
+     },
+     {
+      "word": 5,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 1
+     },
+     {
+      "word": 6,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 3
+     }
+    ],
+    "cursor": {"visible": true, "word": 6, "x": 825.359, "y": 819.434, "w": 3.975, "h": 46.209}
+   },
+   {
+    "t": 2.9,
+    "page": 1,
+    "activeWord": 6,
+    "progress": 0.272727,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 2,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 5
+     },
+     {
+      "word": 3,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 5
+     },
+     {
+      "word": 4,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 4
+     },
+     {
+      "word": 5,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 1
+     },
+     {
+      "word": 6,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 5
+     }
+    ],
+    "cursor": {"visible": true, "word": 6, "x": 884.984, "y": 819.434, "w": 3.975, "h": 46.209}
+   },
+   {
+    "t": 2.95,
+    "page": 1,
+    "activeWord": 6,
+    "progress": 0.363636,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 2,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 5
+     },
+     {
+      "word": 3,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 5
+     },
+     {
+      "word": 4,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 4
+     },
+     {
+      "word": 5,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 1
+     },
+     {
+      "word": 6,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 6
+     }
+    ],
+    "cursor": {"visible": true, "word": 6, "x": 914.797, "y": 819.434, "w": 3.975, "h": 46.209}
+   },
+   {
+    "t": 3.0,
+    "page": 1,
+    "activeWord": 6,
+    "progress": 0.454545,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 2,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 5
+     },
+     {
+      "word": 3,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 5
+     },
+     {
+      "word": 4,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 4
+     },
+     {
+      "word": 5,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 1
+     },
+     {
+      "word": 6,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 6
+     }
+    ],
+    "cursor": {"visible": true, "word": 6, "x": 914.797, "y": 819.434, "w": 3.975, "h": 46.209}
+   },
+   {
+    "t": 3.025,
+    "page": 1,
+    "activeWord": 6,
+    "progress": 0.5,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 2,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 5
+     },
+     {
+      "word": 3,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 5
+     },
+     {
+      "word": 4,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 4
+     },
+     {
+      "word": 5,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 1
+     },
+     {
+      "word": 6,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 6
+     }
+    ],
+    "cursor": {"visible": true, "word": 6, "x": 914.797, "y": 819.434, "w": 3.975, "h": 46.209}
+   },
+   {
+    "t": 3.05,
+    "page": 1,
+    "activeWord": 6,
+    "progress": 0.545455,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 2,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 5
+     },
+     {
+      "word": 3,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 5
+     },
+     {
+      "word": 4,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 4
+     },
+     {
+      "word": 5,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 1
+     },
+     {
+      "word": 6,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 6
+     }
+    ],
+    "cursor": {"visible": true, "word": 6, "x": 914.797, "y": 819.434, "w": 3.975, "h": 46.209}
+   },
+   {
+    "t": 3.1,
+    "page": 1,
+    "activeWord": 6,
+    "progress": 0.636364,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 2,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 5
+     },
+     {
+      "word": 3,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 5
+     },
+     {
+      "word": 4,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 4
+     },
+     {
+      "word": 5,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 1
+     },
+     {
+      "word": 6,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 6
+     }
+    ],
+    "cursor": {"visible": true, "word": 6, "x": 914.797, "y": 819.434, "w": 3.975, "h": 46.209}
+   },
+   {
+    "t": 3.15,
+    "page": 1,
+    "activeWord": 6,
+    "progress": 0.727273,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 2,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 5
+     },
+     {
+      "word": 3,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 5
+     },
+     {
+      "word": 4,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 4
+     },
+     {
+      "word": 5,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 1
+     },
+     {
+      "word": 6,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 6
+     }
+    ],
+    "cursor": {"visible": true, "word": 6, "x": 914.797, "y": 819.434, "w": 3.975, "h": 46.209}
+   },
+   {
+    "t": 3.2,
+    "page": 1,
+    "activeWord": 6,
+    "progress": 0.818182,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 2,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 5
+     },
+     {
+      "word": 3,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 5
+     },
+     {
+      "word": 4,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 4
+     },
+     {
+      "word": 5,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 1
+     },
+     {
+      "word": 6,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 6
+     }
+    ],
+    "cursor": {"visible": true, "word": 6, "x": 914.797, "y": 819.434, "w": 3.975, "h": 46.209}
+   },
+   {
+    "t": 3.25,
+    "page": 1,
+    "activeWord": 6,
+    "progress": 0.909091,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 2,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 5
+     },
+     {
+      "word": 3,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 5
+     },
+     {
+      "word": 4,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 4
+     },
+     {
+      "word": 5,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 1
+     },
+     {
+      "word": 6,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 6
+     }
+    ],
+    "cursor": {"visible": false, "word": 6, "x": 914.797, "y": 819.434, "w": 3.975, "h": 46.209}
+   },
+   {
+    "t": 3.3,
+    "page": 1,
+    "activeWord": 6,
+    "progress": 1.0,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 2,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 5
+     },
+     {
+      "word": 3,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 5
+     },
+     {
+      "word": 4,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 4
+     },
+     {
+      "word": 5,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 1
+     },
+     {
+      "word": 6,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 6
+     }
+    ],
+    "cursor": {"visible": false, "word": 6, "x": 914.797, "y": 819.434, "w": 3.975, "h": 46.209}
+   },
+   {
+    "t": 3.31,
+    "page": 1,
+    "activeWord": 6,
+    "progress": 1.0,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 2,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 5
+     },
+     {
+      "word": 3,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 5
+     },
+     {
+      "word": 4,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 4
+     },
+     {
+      "word": 5,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 1
+     },
+     {
+      "word": 6,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 6
+     }
+    ],
+    "cursor": {"visible": false, "word": 6, "x": 914.797, "y": 819.434, "w": 3.975, "h": 46.209}
+   },
+   {
+    "t": 3.35,
+    "page": 1,
+    "activeWord": 6,
+    "progress": 1.0,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 2,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 5
+     },
+     {
+      "word": 3,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 5
+     },
+     {
+      "word": 4,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 4
+     },
+     {
+      "word": 5,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 1
+     },
+     {
+      "word": 6,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 6
+     }
+    ],
+    "cursor": {"visible": false, "word": 6, "x": 914.797, "y": 819.434, "w": 3.975, "h": 46.209}
+   },
+   {
+    "t": 3.4,
+    "page": 1,
+    "activeWord": 6,
+    "progress": 1.0,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 2,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 5
+     },
+     {
+      "word": 3,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 5
+     },
+     {
+      "word": 4,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 4
+     },
+     {
+      "word": 5,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 1
+     },
+     {
+      "word": 6,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 6
+     }
+    ],
+    "cursor": {"visible": false, "word": 6, "x": 914.797, "y": 819.434, "w": 3.975, "h": 46.209}
+   },
+   {
+    "t": 3.45,
+    "page": 1,
+    "activeWord": 6,
+    "progress": 1.0,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 2,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 5
+     },
+     {
+      "word": 3,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 5
+     },
+     {
+      "word": 4,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 4
+     },
+     {
+      "word": 5,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 1
+     },
+     {
+      "word": 6,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 6
+     }
+    ],
+    "cursor": {"visible": false, "word": 6, "x": 914.797, "y": 819.434, "w": 3.975, "h": 46.209}
+   },
+   {
+    "t": 3.5,
+    "page": 1,
+    "activeWord": 6,
+    "progress": 1.0,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 2,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 5
+     },
+     {
+      "word": 3,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 5
+     },
+     {
+      "word": 4,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 4
+     },
+     {
+      "word": 5,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 1
+     },
+     {
+      "word": 6,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 6
+     }
+    ],
+    "cursor": {"visible": true, "word": 6, "x": 914.797, "y": 819.434, "w": 3.975, "h": 46.209}
+   },
+   {
+    "t": 3.55,
+    "page": 1,
+    "activeWord": 6,
+    "progress": 1.0,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 2,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 5
+     },
+     {
+      "word": 3,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 5
+     },
+     {
+      "word": 4,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 4
+     },
+     {
+      "word": 5,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 1
+     },
+     {
+      "word": 6,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 6
+     }
+    ],
+    "cursor": {"visible": true, "word": 6, "x": 914.797, "y": 819.434, "w": 3.975, "h": 46.209}
+   },
+   {
+    "t": 3.6,
+    "page": 1,
+    "activeWord": 6,
+    "progress": 1.0,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 2,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 5
+     },
+     {
+      "word": 3,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 5
+     },
+     {
+      "word": 4,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 4
+     },
+     {
+      "word": 5,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 1
+     },
+     {
+      "word": 6,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 6
+     }
+    ],
+    "cursor": {"visible": true, "word": 6, "x": 914.797, "y": 819.434, "w": 3.975, "h": 46.209}
+   },
+   {
+    "t": 3.65,
+    "page": 1,
+    "activeWord": 6,
+    "progress": 1.0,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 2,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 5
+     },
+     {
+      "word": 3,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 5
+     },
+     {
+      "word": 4,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 4
+     },
+     {
+      "word": 5,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 1
+     },
+     {
+      "word": 6,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 6
+     }
+    ],
+    "cursor": {"visible": true, "word": 6, "x": 914.797, "y": 819.434, "w": 3.975, "h": 46.209}
+   },
+   {
+    "t": 3.7,
+    "page": 1,
+    "activeWord": 6,
+    "progress": 1.0,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 2,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 5
+     },
+     {
+      "word": 3,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 5
+     },
+     {
+      "word": 4,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 4
+     },
+     {
+      "word": 5,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 1
+     },
+     {
+      "word": 6,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 6
+     }
+    ],
+    "cursor": {"visible": true, "word": 6, "x": 914.797, "y": 819.434, "w": 3.975, "h": 46.209}
+   },
+   {
+    "t": 3.75,
+    "page": 1,
+    "activeWord": 6,
+    "progress": 1.0,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 2,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 5
+     },
+     {
+      "word": 3,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 5
+     },
+     {
+      "word": 4,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 4
+     },
+     {
+      "word": 5,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 1
+     },
+     {
+      "word": 6,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 6
+     }
+    ],
+    "cursor": {"visible": false, "word": 6, "x": 914.797, "y": 819.434, "w": 3.975, "h": 46.209}
+   },
+   {
+    "t": 3.8,
+    "page": 1,
+    "activeWord": 6,
+    "progress": 1.0,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 2,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 5
+     },
+     {
+      "word": 3,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 5
+     },
+     {
+      "word": 4,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 4
+     },
+     {
+      "word": 5,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 1
+     },
+     {
+      "word": 6,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 6
+     }
+    ],
+    "cursor": {"visible": false, "word": 6, "x": 914.797, "y": 819.434, "w": 3.975, "h": 46.209}
+   },
+   {
+    "t": 3.85,
+    "page": 1,
+    "activeWord": 6,
+    "progress": 1.0,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 2,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 5
+     },
+     {
+      "word": 3,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 5
+     },
+     {
+      "word": 4,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 4
+     },
+     {
+      "word": 5,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 1
+     },
+     {
+      "word": 6,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 6
+     }
+    ],
+    "cursor": {"visible": false, "word": 6, "x": 914.797, "y": 819.434, "w": 3.975, "h": 46.209}
+   },
+   {
+    "t": 3.9,
+    "page": 1,
+    "activeWord": 6,
+    "progress": 1.0,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 2,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 5
+     },
+     {
+      "word": 3,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 5
+     },
+     {
+      "word": 4,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 4
+     },
+     {
+      "word": 5,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 1
+     },
+     {
+      "word": 6,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 6
+     }
+    ],
+    "cursor": {"visible": false, "word": 6, "x": 914.797, "y": 819.434, "w": 3.975, "h": 46.209}
+   },
+   {
+    "t": 3.999,
+    "page": 1,
+    "activeWord": 6,
+    "progress": 1.0,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 2,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 5
+     },
+     {
+      "word": 3,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 5
+     },
+     {
+      "word": 4,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 4
+     },
+     {
+      "word": 5,
+      "state": "past",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 1
+     },
+     {
+      "word": 6,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base",
+      "visibleClusters": 6
+     }
+    ],
+    "cursor": {"visible": true, "word": 6, "x": 914.797, "y": 819.434, "w": 3.975, "h": 46.209}
+   },
+   {"t": 4.0, "page": null}
+  ]
+ }
+}

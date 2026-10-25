@@ -1,0 +1,39 @@
+{
+ "$schema": "../schema.json",
+ "schemaVersion": 1,
+ "id": "karaoke",
+ "name": "Karaoke",
+ "description": "Short phrases in heavy white caps; each word fills with colour from left to right as it is spoken.",
+ "order": 40,
+ "tags": ["phrase", "active-word", "outline"],
+ "accent": "#FFE14D",
+ "font": {
+  "file": "Poppins-ExtraBold.ttf",
+  "family": "Poppins",
+  "weight": 800,
+  "sizeSh": 0.062,
+  "lineHeightEm": 1.15,
+  "wordSpacingEm": 0.34
+ },
+ "text": {"transform": "uppercase", "punctuation": "strip-keep-numeric"},
+ "layout": {
+  "maxWords": 6,
+  "maxLines": 2,
+  "maxLineWidthW": 0.84,
+  "balance": "balanced",
+  "holdGapSec": 0.4,
+  "maxPageSec": 3.5
+ },
+ "position": {"x": 0.5, "y": 0.72},
+ "aspects": {"landscape": {"y": 0.8}},
+ "fill": {"type": "solid", "color": "#FFFFFF"},
+ "stroke": {"widthEm": 0.16, "color": "#000000"},
+ "shadows": [{"dxEm": 0, "dyEm": 0.06, "sigmaEm": 0.08, "color": "#00000099"}],
+ "words": {
+  "past": {"fill": {"type": "solid", "color": "$accent"}},
+  "active": {"fill": {"type": "solid", "color": "$accent"}}
+ },
+ "reveal": {"unit": "wipe"},
+ "animation": {"pageIn": {"type": "fade", "durationSec": 0.08}},
+ "preview": {"text": "Say it like you mean it", "activeWord": 2, "progress": 0.6}
+}

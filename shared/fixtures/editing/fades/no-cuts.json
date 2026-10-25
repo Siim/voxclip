@@ -1,0 +1,16 @@
+{
+  "schema": "voxclip-editing-fixture/1",
+  "id": "fades/no-cuts",
+  "kind": "join-fades",
+  "origin": "voxconvo",
+  "source": "vox-web/src/utils/audioEditor.ts:19-29 (run on a constant 1.0 buffer)",
+  "description": "No cuts: one part covering the whole file, no fades.",
+  "input": {"durationSeconds": 1, "sampleRate": 1000, "segments": [{"id": "a", "kind": "word", "text": "a", "start": 0.2, "end": 0.8, "cut": false}]},
+  "expected": {
+    "kept": [[0, 1000]],
+    "outputSamples": 1000,
+    "parts": [{"outputStart": 0, "length": 1000, "fadeIn": 0, "fadeOut": 0}],
+    "gains": [],
+    "tolerance": 1e-7
+  }
+}

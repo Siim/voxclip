@@ -1,0 +1,19 @@
+{
+  "schema": "voxclip-editing-fixture/1",
+  "id": "tighten/trailing-absorbed",
+  "kind": "word-tightening",
+  "origin": "voxclip",
+  "source": "doc/spec/editing.md (tightenIntoSound)",
+  "description": "Whisper-style ranges end at the next word's start, absorbing the silence after a word. The word keeps its first sound island and trailing silence is trimmed.",
+  "input": {
+    "audio": {
+      "generator": "vox-take-v1",
+      "sampleRate": 16000,
+      "seconds": 5,
+      "sections": [[0.4, 0.8, "vowel"], [1.3, 1.6, "vowel"], [2, 2.4, "vowel"]]
+    },
+    "timing": "dtw",
+    "words": [{"id": "so", "start": 0.4, "end": 2}, {"id": "today", "start": 2, "end": 2.9}]
+  },
+  "expected": {"words": [{"id": "so", "start": 0.4, "end": 0.8}, {"id": "today", "start": 2, "end": 2.4}], "tolerance": 0.000001}
+}

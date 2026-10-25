@@ -1,0 +1,14 @@
+{
+  "schema": "voxclip-editing-fixture/1",
+  "id": "tighten/short-sound-floor",
+  "kind": "word-tightening",
+  "origin": "voxclip",
+  "source": "doc/spec/editing.md (tightenIntoSound)",
+  "description": "A range that contains only a very short sound keeps at least MIN_WORD (0.04 s).",
+  "input": {
+    "audio": {"generator": "vox-take-v1", "sampleRate": 16000, "seconds": 3, "sections": [[1.5, 1.52, "vowel"]]},
+    "timing": "runGrouped",
+    "words": [{"id": "blip", "start": 1, "end": 2}]
+  },
+  "expected": {"words": [{"id": "blip", "start": 1.48, "end": 1.52}], "tolerance": 0.000001}
+}

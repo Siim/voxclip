@@ -1,0 +1,33 @@
+{
+ "$schema": "../schema.json",
+ "schemaVersion": 1,
+ "id": "box-highlight",
+ "name": "Box highlight",
+ "description": "White outlined caps with a coloured rounded box that jumps to the word being spoken.",
+ "order": 60,
+ "tags": ["phrase", "active-word", "box"],
+ "accent": "#7C3AED",
+ "font": {
+  "file": "Montserrat-ExtraBold.ttf",
+  "family": "Montserrat",
+  "weight": 800,
+  "sizeSh": 0.062,
+  "lineHeightEm": 1.2,
+  "wordSpacingEm": 0.36
+ },
+ "text": {"transform": "uppercase", "punctuation": "strip-keep-numeric"},
+ "layout": {"maxWords": 4, "maxLines": 2, "maxLineWidthW": 0.82, "maxPageSec": 3.0},
+ "position": {"x": 0.5, "y": 0.7},
+ "aspects": {"landscape": {"y": 0.8}},
+ "fill": {"type": "solid", "color": "#FFFFFF"},
+ "stroke": {"widthEm": 0.1, "color": "#000000"},
+ "words": {
+  "active": {
+   "hideStroke": true,
+   "scale": 1.06,
+   "box": {"color": "$accent", "paddingXEm": 0.16, "paddingYEm": 0.02, "radiusEm": 0.18}
+  }
+ },
+ "animation": {"activeIn": {"type": "pop", "durationSec": 0.1, "easing": "easeOutBack", "fromScale": 1.0}},
+ "preview": {"text": "Watch this part closely", "activeWord": 1}
+}

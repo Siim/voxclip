@@ -1,0 +1,33 @@
+{
+  "schema": "voxclip-editing-fixture/1",
+  "id": "plan/adjacent-cuts-merge",
+  "kind": "edit-plan",
+  "origin": "voxconvo",
+  "source": "synthetic",
+  "description": "Two neighbouring removed words merge into one cut that includes the gap between them.",
+  "input": {
+    "durationSeconds": 5,
+    "sampleRate": 1000,
+    "segments": [
+      {"id": "keep", "kind": "word", "text": "keep", "start": 0.5, "end": 1, "cut": false},
+      {"id": "you", "kind": "word", "text": "you", "start": 1.5, "end": 1.7, "cut": true},
+      {"id": "know", "kind": "word", "text": "know", "start": 1.75, "end": 2, "cut": true},
+      {"id": "right", "kind": "word", "text": "right", "start": 2.6, "end": 3, "cut": false}
+    ]
+  },
+  "expected": {
+    "totalSamples": 5000,
+    "outputSamples": 4300,
+    "durationSeconds": 4.3,
+    "segmentCuts": [
+      {"id": "you", "rawStart": 1.4, "rawEnd": 1.725, "startSample": 1400, "endSample": 1725, "empty": false},
+      {"id": "know", "rawStart": 1.725, "rawEnd": 2.1, "startSample": 1725, "endSample": 2100, "empty": false}
+    ],
+    "cuts": [[1400, 2100]],
+    "kept": [[0, 1400], [2100, 5000]],
+    "captions": [{"id": "keep", "start": 0.5, "end": 1}, {"id": "right", "start": 1.9, "end": 2.3}],
+    "mapTime": [[0, 0], [-1, 0], ["NaN", 0], [5, 4.3], [6, 4.3], [1.4, 1.4], [2.1, 1.4], [1.75, 1.4], [0.7, 0.7], [3.55, 2.85]],
+    "sourceTime": [[0, 0], [-1, 0], ["NaN", 0], [4.3, 5], [5.3, 5], [1.4, 2.1]],
+    "previewSkip": [[0, null], [1.4, 2.1], [1.75, 2.1], [2.1, null]]
+  }
+}

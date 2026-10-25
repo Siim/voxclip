@@ -1,0 +1,35 @@
+{
+ "$schema": "../schema.json",
+ "schemaVersion": 1,
+ "id": "one-word",
+ "name": "One word",
+ "description": "One huge word at a time that pops in; numbers and key words switch to bright colours.",
+ "order": 70,
+ "tags": ["one-word", "emphasis", "outline"],
+ "font": {
+  "file": "Montserrat-Black.ttf",
+  "family": "Montserrat",
+  "weight": 900,
+  "sizeSh": 0.11,
+  "lineHeightEm": 1.0
+ },
+ "text": {"transform": "uppercase", "punctuation": "strip-keep-numeric"},
+ "layout": {
+  "maxWords": 1,
+  "maxLines": 1,
+  "maxLineWidthW": 0.9,
+  "minShrink": 0.35,
+  "holdGapSec": 0.25,
+  "minPageSec": 0.18,
+  "breakOnGapSec": null
+ },
+ "position": {"x": 0.5, "y": 0.62},
+ "fill": {"type": "solid", "color": "#FFFFFF"},
+ "stroke": {"widthEm": 0.16, "color": "#000000"},
+ "shadows": [{"dxEm": 0, "dyEm": 0.08, "sigmaEm": 0.06, "color": "#000000CC"}],
+ "animation": {
+  "pageIn": {"type": "pop", "durationSec": 0.1, "easing": "easeOutBack", "fromScale": 0.8, "overshoot": 1.7}
+ },
+ "emphasis": {"source": "rule", "maxPerPage": 1, "minScore": 2, "palette": ["#FFE600", "#3BFF4E", "#FF3B3B"]},
+ "preview": {"text": "Unstoppable", "activeWord": 0}
+}

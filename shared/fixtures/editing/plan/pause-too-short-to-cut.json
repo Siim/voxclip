@@ -1,0 +1,29 @@
+{
+  "schema": "voxclip-editing-fixture/1",
+  "id": "plan/pause-too-short-to-cut",
+  "kind": "edit-plan",
+  "origin": "voxconvo",
+  "source": "synthetic",
+  "description": "A pause shorter than the two breaths (0.3 s) produces an empty cut, which is dropped.",
+  "input": {
+    "durationSeconds": 3,
+    "sampleRate": 1000,
+    "segments": [
+      {"id": "a", "kind": "word", "text": "a", "start": 0.5, "end": 1, "cut": false},
+      {"id": "pause-after-a", "kind": "pause", "start": 1, "end": 1.25, "cut": true},
+      {"id": "b", "kind": "word", "text": "b", "start": 1.25, "end": 1.6, "cut": false}
+    ]
+  },
+  "expected": {
+    "totalSamples": 3000,
+    "outputSamples": 3000,
+    "durationSeconds": 3,
+    "segmentCuts": [{"id": "pause-after-a", "rawStart": 1.15, "rawEnd": 1.1, "startSample": 1150, "endSample": 1100, "empty": true}],
+    "cuts": [],
+    "kept": [[0, 3000]],
+    "captions": [{"id": "a", "start": 0.5, "end": 1}, {"id": "b", "start": 1.25, "end": 1.6}],
+    "mapTime": [[0, 0], [-1, 0], ["NaN", 0], [3, 3], [4, 3], [1.5, 1.5]],
+    "sourceTime": [[0, 0], [-1, 0], ["NaN", 0], [3, 3], [4, 3]],
+    "previewSkip": [[0, null]]
+  }
+}

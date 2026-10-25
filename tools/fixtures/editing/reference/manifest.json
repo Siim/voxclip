@@ -1,0 +1,40 @@
+{
+  "description": "Verbatim copies of the VoxConvo editing code that the editing fixtures are generated from. Same author as VoxClip; vendored unmodified so the fixtures can be regenerated without a VoxConvo checkout. The loader refuses to run if a file's sha1 does not match.",
+  "license": "MIT",
+  "copyright": "Haugas Development OU",
+  "licenseFile": "LICENSE",
+  "copiedFrom": "VoxConvo working tree, vox-web on top of commit 221a5dc840405df3d1af9d5219b2d137d1f44710 (2025-11-12) with uncommitted edits, copied 2026-10-25",
+  "publicationApproval": "pending: the repository owner confirms publishing these files before the first push (doc/plan.md, open questions). Without approval, delete the .ts files; the generator then needs VOXCONVO_WEB_DIR.",
+  "files": [
+    {
+      "file": "mediaTimeline.ts",
+      "source": "vox-web/src/utils/mediaTimeline.ts",
+      "sha1": "4a49f9b3e8152a6844d09289c4bfcc99a3460f69",
+      "note": "Byte-identical to vox-api/src/utils/mediaTimeline.ts. Edit plan, cut ranges, time mapping, caption copy."
+    },
+    {
+      "file": "transcriptionTiming.ts",
+      "source": "vox-web/src/utils/transcriptionTiming.ts",
+      "sha1": "f3771d94085ad0fef4ab404baadf63b0320d7c97",
+      "note": "alignTranscriptWords, estimateTranscriptWords."
+    },
+    {
+      "file": "clips.ts",
+      "source": "vox-web/src/utils/clips.ts",
+      "sha1": "248da7eee40fac1eb4eb8f0543317ca244306464",
+      "note": "clipTimes. The import of ./videoJob is replaced by a constant at load time; the network helpers are never called."
+    },
+    {
+      "file": "wordBoundaries.ts",
+      "source": "vox-web/src/utils/wordBoundaries.ts",
+      "sha1": "8fefb83c26020ae752c23230401cce17f2035f44",
+      "note": "refineWordBoundaries."
+    },
+    {
+      "file": "audioEditor.ts",
+      "source": "vox-web/src/utils/audioEditor.ts",
+      "sha1": "43ef528ce3dcd00a47f04d7bffbcb7ea37dad1d7",
+      "note": "removeWordSegments (5 ms join fades). Run against a stub AudioContext at load time."
+    }
+  ]
+}

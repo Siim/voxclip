@@ -1,0 +1,314 @@
+# VoxClip CI. Spec: doc/architecture.md section 12.
+# Every job detects its project files first and skips (with a notice) while the folders are still empty.
+# Signed releases are never produced here (doc/release.md).
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_NOLOGO: "1"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "1"
+  VOXCLIP_LIVE_TESTS: "0"
+
+jobs:
+  macos:
+    name: macOS (Swift app, .NET core on macOS)
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Detect projects
+        id: detect
+        shell: bash
+        run: |
+          has() { if [ -e "$1" ]; then echo true; else echo false; fi; }
+          {
+            echo "swift=$(has apps/macos/Package.swift)"
+            echo "core_tests=$(has apps/windows/tests/VoxClip.Core.Tests/VoxClip.Core.Tests.csproj)"
+            echo "media_tests=$(has apps/windows/tests/VoxClip.Media.Tests/VoxClip.Media.Tests.csproj)"
+            echo "parity=$(has tools/captions/parity.sh)"
+          } >> "$GITHUB_OUTPUT"
+          cat "$GITHUB_OUTPUT"
+
+      - name: Skip notice (Swift package not present yet)
+        if: steps.detect.outputs.swift != 'true'
+        run: echo "::notice title=macOS::apps/macos/Package.swift not found; skipping Swift build and tests."
+
+      - name: Select the newest Xcode
+        if: steps.detect.outputs.swift == 'true'
+        shell: bash
+        run: |
+          XCODE=$(/bin/ls -d /Applications/Xcode_*.app 2>/dev/null | grep -viE 'beta|release_candidate' | sort -V | tail -1)
+          if [ -n "$XCODE" ]; then sudo xcode-select -s "$XCODE/Contents/Developer"; fi
+          xcodebuild -version
+          swift --version
+          SDK=$(xcrun --sdk macosx --show-sdk-version)
+          echo "macOS SDK $SDK"
+          [ "${SDK%%.*}" -ge 26 ] || { echo "::error::macOS SDK $SDK is older than the macOS 26 minimum"; exit 1; }
+
+      - name: Swift build
+        if: steps.detect.outputs.swift == 'true'
+        working-directory: apps/macos
+        run: swift build
+
+      - name: Swift test
+        if: steps.detect.outputs.swift == 'true'
+        working-directory: apps/macos
+        env:
+          VOXCLIP_SHARED_DIR: ${{ github.workspace }}/shared
+        run: swift test
+
+      - name: Skip notice (.NET core tests not present yet)
+        if: steps.detect.outputs.core_tests != 'true'
+        run: echo "::notice title=macOS::apps/windows/tests/VoxClip.Core.Tests not found; skipping .NET core tests on macOS."
+
+      - name: Set up .NET 10
+        if: steps.detect.outputs.core_tests == 'true' || steps.detect.outputs.media_tests == 'true'
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: .NET core tests on macOS
+        if: steps.detect.outputs.core_tests == 'true'
+        env:
+          VOXCLIP_SHARED_DIR: ${{ github.workspace }}/shared
+        run: dotnet test apps/windows/tests/VoxClip.Core.Tests/VoxClip.Core.Tests.csproj -c Release
+
+      - name: .NET media tests on macOS (caption renderer; no FFmpeg, no Windows-only APIs)
+        if: steps.detect.outputs.media_tests == 'true'
+        env:
+          VOXCLIP_SHARED_DIR: ${{ github.workspace }}/shared
+        run: dotnet test apps/windows/tests/VoxClip.Media.Tests/VoxClip.Media.Tests.csproj -c Release --filter "Category!=RequiresFFmpeg&Category!=RequiresWindows"
+
+      - name: Caption parity (Swift vs C# renders)
+        if: steps.detect.outputs.parity == 'true' && steps.detect.outputs.swift == 'true' && steps.detect.outputs.media_tests == 'true'
+        env:
+          VOXCLIP_SHARED_DIR: ${{ github.workspace }}/shared
+        run: bash tools/captions/parity.sh
+
+  windows:
+    name: Windows (.NET tests, WinUI x64 + arm64)
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Detect projects
+        id: detect
+        shell: bash
+        run: |
+          has() { if [ -e "$1" ]; then echo true; else echo false; fi; }
+          {
+            echo "core_tests=$(has apps/windows/tests/VoxClip.Core.Tests/VoxClip.Core.Tests.csproj)"
+            echo "media_tests=$(has apps/windows/tests/VoxClip.Media.Tests/VoxClip.Media.Tests.csproj)"
+            echo "app=$(has apps/windows/src/VoxClip.App/VoxClip.App.csproj)"
+            echo "cli=$(has apps/windows/src/VoxClip.Cli/VoxClip.Cli.csproj)"
+          } >> "$GITHUB_OUTPUT"
+          cat "$GITHUB_OUTPUT"
+
+      - name: Skip notice (Windows projects not present yet)
+        if: steps.detect.outputs.core_tests != 'true' && steps.detect.outputs.media_tests != 'true' && steps.detect.outputs.app != 'true' && steps.detect.outputs.cli != 'true'
+        run: echo "::notice title=Windows::No Windows projects found under apps/windows; skipping."
+
+      - name: Set up .NET 10
+        if: steps.detect.outputs.core_tests == 'true' || steps.detect.outputs.media_tests == 'true' || steps.detect.outputs.app == 'true' || steps.detect.outputs.cli == 'true'
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: .NET core tests
+        if: steps.detect.outputs.core_tests == 'true'
+        shell: bash
+        env:
+          VOXCLIP_SHARED_DIR: ${{ github.workspace }}/shared
+        run: dotnet test apps/windows/tests/VoxClip.Core.Tests/VoxClip.Core.Tests.csproj -c Release
+
+      - name: .NET media tests (FFmpeg-dependent tests skip themselves when FFmpeg is absent)
+        if: steps.detect.outputs.media_tests == 'true'
+        shell: bash
+        env:
+          VOXCLIP_SHARED_DIR: ${{ github.workspace }}/shared
+        run: dotnet test apps/windows/tests/VoxClip.Media.Tests/VoxClip.Media.Tests.csproj -c Release
+
+      - name: Build WinUI app (win-x64)
+        if: steps.detect.outputs.app == 'true'
+        shell: bash
+        run: dotnet build apps/windows/src/VoxClip.App/VoxClip.App.csproj -c Release -r win-x64 -p:Platform=x64
+
+      - name: Build WinUI app (win-arm64)
+        if: steps.detect.outputs.app == 'true'
+        shell: bash
+        run: dotnet build apps/windows/src/VoxClip.App/VoxClip.App.csproj -c Release -r win-arm64 -p:Platform=ARM64
+
+      - name: Build CLI
+        if: steps.detect.outputs.cli == 'true'
+        shell: bash
+        run: dotnet build apps/windows/src/VoxClip.Cli/VoxClip.Cli.csproj -c Release
+
+  fixtures:
+    name: Shared fixtures and repo hygiene
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Detect generators and checks
+        id: detect
+        shell: bash
+        run: |
+          # A generator is a folder with a package.json that has a "generate" script.
+          gen() {
+            if [ -f "$1/package.json" ] && grep -q '"generate"[[:space:]]*:' "$1/package.json"; then echo true; else echo false; fi
+          }
+          has() { if [ -e "$1" ]; then echo true; else echo false; fi; }
+          {
+            echo "editing=$(gen tools/fixtures/editing)"
+            echo "editing_lock=$(has tools/fixtures/editing/package-lock.json)"
+            # The editing generator needs the VoxConvo reference (vendored .ts files); without it CI only validates the fixtures.
+            if ls tools/fixtures/editing/reference/*.ts >/dev/null 2>&1; then echo "editing_ref=true"; else echo "editing_ref=false"; fi
+            echo "llm=$(gen tools/fixtures/llm)"
+            echo "schemas=$(has tools/schemas/validate.py)"
+            echo "tokens=$(gen tools/design)"
+            echo "tokens_lock=$(has tools/design/package-lock.json)"
+            echo "styles=$(has tools/captions/check_styles.py)"
+            echo "styles_reqs=$(has tools/captions/requirements.txt)"
+            echo "version=$(has tools/release/check-version.sh)"
+          } >> "$GITHUB_OUTPUT"
+          cat "$GITHUB_OUTPUT"
+
+      - name: Set up Node
+        if: steps.detect.outputs.editing == 'true' || steps.detect.outputs.tokens == 'true' || steps.detect.outputs.llm == 'true'
+        uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+
+      - name: Skip notice (editing fixture generator not present yet)
+        if: steps.detect.outputs.editing != 'true'
+        run: echo "::notice title=Fixtures::tools/fixtures/editing has no generate script yet; skipping fixture regeneration."
+
+      - name: Install editing fixture generator dependencies
+        if: steps.detect.outputs.editing == 'true' && steps.detect.outputs.editing_lock == 'true'
+        run: npm ci --prefix tools/fixtures/editing
+
+      - name: Regenerate editing fixtures (writes every fixture, deletes stale ones)
+        if: steps.detect.outputs.editing == 'true' && steps.detect.outputs.editing_ref == 'true'
+        run: npm --prefix tools/fixtures/editing run generate
+
+      - name: Editing fixtures parse and carry their schema (no VoxConvo reference available)
+        if: steps.detect.outputs.editing == 'true' && steps.detect.outputs.editing_ref != 'true'
+        shell: bash
+        run: |
+          echo "::notice title=Fixtures::tools/fixtures/editing/reference has no .ts files; validating committed fixtures without regenerating."
+          python3 - <<'PY'
+          import json, pathlib, sys
+          bad = 0
+          for p in sorted(pathlib.Path("shared/fixtures/editing").rglob("*.json")):
+              d = json.loads(p.read_text(encoding="utf-8"))
+              want = str(p.relative_to("shared/fixtures/editing").with_suffix(""))
+              if d.get("schema") != "voxclip-editing-fixture/1" or d.get("id") != want:
+                  print(f"::error file={p}::bad schema or id"); bad += 1
+          sys.exit(1 if bad else 0)
+          PY
+
+      - name: Regenerate LLM fixtures
+        if: steps.detect.outputs.llm == 'true'
+        run: npm --prefix tools/fixtures/llm run generate
+
+      - name: Fixtures must be unchanged
+        if: steps.detect.outputs.editing == 'true' || steps.detect.outputs.llm == 'true'
+        shell: bash
+        run: |
+          git diff --exit-code
+          untracked=$(git status --porcelain --untracked-files=all)
+          if [ -n "$untracked" ]; then
+            echo "::error::A fixture generator produced files that are not committed:"
+            echo "$untracked"
+            exit 1
+          fi
+
+      - name: Set up Python
+        if: steps.detect.outputs.styles == 'true' || steps.detect.outputs.schemas == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install caption style checker dependencies
+        if: steps.detect.outputs.styles == 'true' || steps.detect.outputs.schemas == 'true'
+        shell: bash
+        env:
+          STYLES_REQS: ${{ steps.detect.outputs.styles_reqs }}
+        run: |
+          if [ "$STYLES_REQS" = "true" ]; then
+            python -m pip install -r tools/captions/requirements.txt
+          else
+            python -m pip install "jsonschema>=4.18,<5"
+          fi
+
+      - name: Caption styles are valid (schema and semantic rules)
+        if: steps.detect.outputs.styles == 'true'
+        run: python tools/captions/check_styles.py
+
+      - name: Example projects validate against shared/schemas
+        if: steps.detect.outputs.schemas == 'true'
+        run: python tools/schemas/validate.py
+
+      - name: Install design token generator dependencies
+        if: steps.detect.outputs.tokens == 'true' && steps.detect.outputs.tokens_lock == 'true'
+        run: npm ci --prefix tools/design
+
+      - name: Regenerate design tokens (Tokens.swift, Tokens.xaml)
+        if: steps.detect.outputs.tokens == 'true'
+        shell: bash
+        run: |
+          npm --prefix tools/design run generate
+          git diff --exit-code
+          untracked=$(git status --porcelain --untracked-files=all)
+          if [ -n "$untracked" ]; then echo "::error::Generated token files are not committed:"; echo "$untracked"; exit 1; fi
+
+      - name: Versions agree (Info.plist and Directory.Build.props)
+        if: steps.detect.outputs.version == 'true'
+        run: bash tools/release/check-version.sh
+
+      - name: Validate JSON in shared/
+        shell: bash
+        run: |
+          status=0
+          while IFS= read -r -d '' f; do
+            if ! python3 -c 'import json,sys; json.load(open(sys.argv[1], encoding="utf-8"))' "$f"; then
+              echo "::error file=$f::Invalid JSON"; status=1
+            fi
+          done < <(git ls-files -z 'shared/*.json' 'shared/**/*.json' 'shared/**/*.voxclip' skills-lock.json)
+          exit $status
+
+      - name: No secrets, env files or non-ASCII PowerShell in tracked files
+        shell: bash
+        run: |
+          status=0
+          if git ls-files | grep -E '(^|/)\.env($|\.)|(^|/)azure-signing' | grep -vE '\.env\.example$'; then
+            echo "::error::Environment or signing files must never be committed."; status=1
+          fi
+          pattern='sk-ant-(api|admin)[0-9]{2}-[A-Za-z0-9_-]{80,}|sk-proj-[A-Za-z0-9_-]{80,}|xai-[A-Za-z0-9]{70,}|AIza[0-9A-Za-z_-]{35}|gh[pousr]_[A-Za-z0-9]{36}|github_pat_[A-Za-z0-9_]{80,}|-----BEGIN ([A-Z]+ )?PRIVATE KEY-----|sk_[0-9a-f]{48}|(AZURE_CLIENT_SECRET|AZURE_SIGNING_KVS)[[:space:]]*=[[:space:]]*[^[:space:]<$"'"'"'{}]{8,}'
+          set +e
+          git ls-files -z | xargs -0 grep -nIE -d skip -s -- "$pattern"
+          rc=$?
+          set -e
+          if [ "$rc" -eq 0 ]; then echo "::error::Possible secret found in a tracked file (see above)."; status=1; fi
+          if [ -n "$(git ls-files '*.ps1')" ]; then
+            if git ls-files -z '*.ps1' | xargs -0 grep -nP '[^\x00-\x7F]'; then
+              echo "::error::PowerShell scripts must be ASCII (Windows PowerShell 5.1 reads them as ANSI)."; status=1
+            fi
+          fi
+          exit $status

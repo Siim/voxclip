@@ -1,0 +1,49 @@
+{
+  "schema": "voxclip-editing-fixture/1",
+  "id": "plan/pause-breath-and-filler",
+  "kind": "edit-plan",
+  "origin": "voxconvo",
+  "source": "vox-web/test/caption-timing.test.mjs:137",
+  "description": "A shortened pause keeps a natural breath; a removed word leaves none of itself behind.",
+  "input": {
+    "durationSeconds": 6,
+    "sampleRate": 1000,
+    "segments": [
+      {"id": "so", "kind": "word", "text": "so", "start": 1, "end": 1.4, "cut": false},
+      {"id": "pause-after-so", "kind": "pause", "start": 1.4, "end": 3.4, "cut": true},
+      {"id": "right", "kind": "word", "text": "right", "start": 3.4, "end": 3.9, "cut": false},
+      {"id": "um", "kind": "word", "text": "um", "start": 4.2, "end": 4.5, "cut": true},
+      {"id": "then", "kind": "word", "text": "then", "start": 4.8, "end": 5.2, "cut": false}
+    ]
+  },
+  "expected": {
+    "totalSamples": 6000,
+    "outputSamples": 3800,
+    "durationSeconds": 3.8,
+    "segmentCuts": [
+      {"id": "pause-after-so", "rawStart": 1.5499999999999998, "rawEnd": 3.25, "startSample": 1550, "endSample": 3250, "empty": false},
+      {"id": "um", "rawStart": 4.1000000000000005, "rawEnd": 4.6, "startSample": 4100, "endSample": 4600, "empty": false}
+    ],
+    "cuts": [[1550, 3250], [4100, 4600]],
+    "kept": [[0, 1550], [3250, 4100], [4600, 6000]],
+    "captions": [{"id": "so", "start": 1, "end": 1.4}, {"id": "right", "start": 1.7, "end": 2.2}, {"id": "then", "start": 2.6, "end": 3}],
+    "mapTime": [
+      [0, 0],
+      [-1, 0],
+      ["NaN", 0],
+      [6, 3.8],
+      [7, 3.8],
+      [1.55, 1.55],
+      [3.25, 1.55],
+      [2.4, 1.55],
+      [4.1, 2.4],
+      [4.6, 2.4],
+      [4.35, 2.4],
+      [0.775, 0.775],
+      [3.675, 1.975],
+      [5.3, 3.1]
+    ],
+    "sourceTime": [[0, 0], [-1, 0], ["NaN", 0], [3.8, 6], [4.8, 6], [1.55, 3.25], [2.4, 4.6]],
+    "previewSkip": [[0, null], [1.55, 3.25], [2.4, 3.25], [3.25, null], [4.1, 4.6], [4.35, 4.6], [4.6, null]]
+  }
+}

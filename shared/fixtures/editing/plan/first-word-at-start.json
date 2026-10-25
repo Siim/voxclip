@@ -1,0 +1,28 @@
+{
+  "schema": "voxclip-editing-fixture/1",
+  "id": "plan/first-word-at-start",
+  "kind": "edit-plan",
+  "origin": "voxconvo",
+  "source": "synthetic",
+  "description": "First word: the silence before it is measured from 0 (reach = min(0.1, start/2)).",
+  "input": {
+    "durationSeconds": 3,
+    "sampleRate": 1000,
+    "segments": [
+      {"id": "um", "kind": "word", "text": "um", "start": 0.05, "end": 0.4, "cut": true},
+      {"id": "hello", "kind": "word", "text": "hello", "start": 1, "end": 1.5, "cut": false}
+    ]
+  },
+  "expected": {
+    "totalSamples": 3000,
+    "outputSamples": 2525,
+    "durationSeconds": 2.525,
+    "segmentCuts": [{"id": "um", "rawStart": 0.025, "rawEnd": 0.5, "startSample": 25, "endSample": 500, "empty": false}],
+    "cuts": [[25, 500]],
+    "kept": [[0, 25], [500, 3000]],
+    "captions": [{"id": "hello", "start": 0.525, "end": 1.025}],
+    "mapTime": [[0, 0], [-1, 0], ["NaN", 0], [3, 2.525], [4, 2.525], [0.025, 0.025], [0.5, 0.025], [0.2625, 0.025], [0.0125, 0.013], [1.75, 1.275]],
+    "sourceTime": [[0, 0], [-1, 0], ["NaN", 0], [2.525, 3], [3.525, 3], [0.025, 0.5]],
+    "previewSkip": [[0, null], [0.025, 0.5], [0.2625, 0.5], [0.5, null]]
+  }
+}

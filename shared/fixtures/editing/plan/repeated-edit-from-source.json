@@ -1,0 +1,32 @@
+{
+  "schema": "voxclip-editing-fixture/1",
+  "id": "plan/repeated-edit-from-source",
+  "kind": "edit-plan",
+  "origin": "voxconvo",
+  "source": "vox-web/test/caption-timing.test.mjs:93",
+  "description": "Every edit derives from the original timeline: cutting hello+um leaves world at 0.6-1.6.",
+  "input": {
+    "durationSeconds": 5,
+    "sampleRate": 1000,
+    "segments": [
+      {"id": "hello", "kind": "word", "text": "hello", "start": 0.2, "end": 1, "cut": true},
+      {"id": "um", "kind": "word", "text": "um", "start": 1, "end": 1.4, "cut": true},
+      {"id": "world", "kind": "word", "text": "world", "start": 2, "end": 3, "cut": false}
+    ]
+  },
+  "expected": {
+    "totalSamples": 5000,
+    "outputSamples": 3600,
+    "durationSeconds": 3.6,
+    "segmentCuts": [
+      {"id": "hello", "rawStart": 0.1, "rawEnd": 1, "startSample": 100, "endSample": 1000, "empty": false},
+      {"id": "um", "rawStart": 1, "rawEnd": 1.5, "startSample": 1000, "endSample": 1500, "empty": false}
+    ],
+    "cuts": [[100, 1500]],
+    "kept": [[0, 100], [1500, 5000]],
+    "captions": [{"id": "world", "start": 0.6, "end": 1.6}],
+    "mapTime": [[0, 0], [-1, 0], ["NaN", 0], [5, 3.6], [6, 3.6], [0.1, 0.1], [1.5, 0.1], [0.8, 0.1], [0.05, 0.05], [3.25, 1.85]],
+    "sourceTime": [[0, 0], [-1, 0], ["NaN", 0], [3.6, 5], [4.6, 5], [0.1, 1.5]],
+    "previewSkip": [[0, null], [0.1, 1.5], [0.8, 1.5], [1.5, null]]
+  }
+}

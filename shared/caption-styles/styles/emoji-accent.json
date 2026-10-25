@@ -1,0 +1,33 @@
+{
+ "$schema": "../schema.json",
+ "schemaVersion": 1,
+ "id": "emoji-accent",
+ "name": "Emoji",
+ "description": "Bold outlined caps with a matching emoji above the phrase when a keyword is spoken.",
+ "order": 180,
+ "tags": ["phrase", "emoji", "outline"],
+ "font": {
+  "file": "Montserrat-ExtraBold.ttf",
+  "family": "Montserrat",
+  "weight": 800,
+  "sizeSh": 0.064,
+  "lineHeightEm": 1.12,
+  "wordSpacingEm": 0.32
+ },
+ "text": {"transform": "uppercase", "punctuation": "strip-keep-numeric"},
+ "layout": {"maxWords": 4, "maxLines": 2, "maxLineWidthW": 0.8, "maxPageSec": 3.0},
+ "position": {"x": 0.5, "y": 0.7},
+ "aspects": {"landscape": {"y": 0.8}},
+ "fill": {"type": "solid", "color": "#FFFFFF"},
+ "stroke": {"widthEm": 0.12, "color": "#000000"},
+ "animation": {"pageIn": {"type": "pop", "durationSec": 0.16, "easing": "easeOutBack", "fromScale": 0.7}},
+ "emoji": {
+  "enabled": true,
+  "source": "rule",
+  "placement": "above-page",
+  "sizeEm": 1.25,
+  "gapEm": 0.15,
+  "maxPerPage": 1
+ },
+ "preview": {"text": "This idea is fire", "activeWord": 3}
+}

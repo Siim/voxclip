@@ -1,0 +1,10 @@
+{
+  "schema": "voxclip-editing-fixture/1",
+  "id": "estimate/empty",
+  "kind": "estimated-words",
+  "origin": "voxconvo",
+  "source": "vox-web/src/utils/transcriptionTiming.ts:20",
+  "description": "Fallback when a provider returns no word times: split the segment by character count (UTF-16 length), conf 0.",
+  "input": {"text": "   ", "start": 0, "end": 1},
+  "expected": {"words": []}
+}

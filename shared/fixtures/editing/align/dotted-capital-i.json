@@ -1,0 +1,23 @@
+{
+  "schema": "voxclip-editing-fixture/1",
+  "id": "align/dotted-capital-i",
+  "kind": "transcript-alignment",
+  "origin": "voxconvo",
+  "source": "vox-web/src/utils/transcriptionTiming.ts:11",
+  "description": "Lower-casing for matching: U+0130 must compare equal to \"i\" (JS gives i + U+0307, and U+0307 is stripped as a non-letter); Estonian letters keep their diacritics.",
+  "input": {
+    "words": [
+      {"word": "İstanbul", "start": 0, "end": 0.6},
+      {"word": "ŠOKOLAAD", "start": 0.7, "end": 1.2},
+      {"word": "Õun", "start": 1.3, "end": 1.6}
+    ],
+    "finalText": "istanbul, šokolaad õun."
+  },
+  "expected": {
+    "words": [
+      {"word": "istanbul,", "start": 0, "end": 0.6},
+      {"word": "šokolaad", "start": 0.7, "end": 1.2},
+      {"word": "õun.", "start": 1.3, "end": 1.6}
+    ]
+  }
+}

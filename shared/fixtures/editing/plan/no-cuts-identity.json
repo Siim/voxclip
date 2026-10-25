@@ -1,0 +1,28 @@
+{
+  "schema": "voxclip-editing-fixture/1",
+  "id": "plan/no-cuts-identity",
+  "kind": "edit-plan",
+  "origin": "voxconvo",
+  "source": "synthetic",
+  "description": "No cuts: intro, outro and gaps are kept; every caption keeps its source time.",
+  "input": {
+    "durationSeconds": 5,
+    "sampleRate": 1000,
+    "segments": [
+      {"id": "hello", "kind": "word", "text": "hello", "start": 0.5, "end": 1, "cut": false},
+      {"id": "world", "kind": "word", "text": "world", "start": 2, "end": 2.6, "cut": false}
+    ]
+  },
+  "expected": {
+    "totalSamples": 5000,
+    "outputSamples": 5000,
+    "durationSeconds": 5,
+    "segmentCuts": [],
+    "cuts": [],
+    "kept": [[0, 5000]],
+    "captions": [{"id": "hello", "start": 0.5, "end": 1}, {"id": "world", "start": 2, "end": 2.6}],
+    "mapTime": [[0, 0], [-1, 0], ["NaN", 0], [5, 5], [6, 5], [2.5, 2.5]],
+    "sourceTime": [[0, 0], [-1, 0], ["NaN", 0], [5, 5], [6, 5]],
+    "previewSkip": [[0, null]]
+  }
+}

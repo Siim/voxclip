@@ -1,0 +1,37 @@
+{
+  "schema": "voxclip-editing-fixture/1",
+  "id": "plan/clip-head-tail",
+  "kind": "edit-plan",
+  "origin": "voxconvo",
+  "source": "vox-api/test/video-timeline.test.cjs:147",
+  "description": "A clip keeps only its own range, including the gaps between its words.",
+  "input": {
+    "durationSeconds": 4,
+    "sampleRate": 48000,
+    "segments": [
+      {"id": "before", "kind": "word", "text": "before", "start": 0.2, "end": 0.6, "cut": true},
+      {"id": "clip", "kind": "word", "text": "clip", "start": 1, "end": 1.4, "cut": false},
+      {"id": "words", "kind": "word", "text": "words", "start": 1.7, "end": 2.1, "cut": false},
+      {"id": "after", "kind": "word", "text": "after", "start": 2.6, "end": 3, "cut": true},
+      {"id": "clip-head", "kind": "range", "start": 0, "end": 0.88, "cut": true},
+      {"id": "clip-tail", "kind": "range", "start": 2.35, "end": 3603, "cut": true}
+    ]
+  },
+  "expected": {
+    "totalSamples": 192000,
+    "outputSamples": 70560,
+    "durationSeconds": 1.47,
+    "segmentCuts": [
+      {"id": "before", "rawStart": 0.1, "rawEnd": 0.7, "startSample": 4800, "endSample": 33600, "empty": false},
+      {"id": "after", "rawStart": 2.5, "rawEnd": 3.1, "startSample": 120000, "endSample": 148800, "empty": false},
+      {"id": "clip-head", "rawStart": 0, "rawEnd": 0.88, "startSample": 0, "endSample": 42240, "empty": false},
+      {"id": "clip-tail", "rawStart": 2.35, "rawEnd": 3603, "startSample": 112800, "endSample": 192000, "empty": false}
+    ],
+    "cuts": [[0, 42240], [112800, 192000]],
+    "kept": [[42240, 112800]],
+    "captions": [{"id": "clip", "start": 0.12, "end": 0.52}, {"id": "words", "start": 0.82, "end": 1.22}],
+    "mapTime": [[0, 0], [-1, 0], ["NaN", 0], [4, 1.47], [5, 1.47], [0.88, 0], [0.44, 0], [2.35, 1.47], [3.175, 1.47], [1.615, 0.735]],
+    "sourceTime": [[0, 0.88], [-1, 0.88], ["NaN", 0.88], [1.47, 4], [2.4699999999999998, 4]],
+    "previewSkip": [[0, 0.88], [0.44, 0.88], [0.88, null], [2.35, 4], [3.175, 4], [4, null]]
+  }
+}

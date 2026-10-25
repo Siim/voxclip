@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48" role="img" aria-label="VoxClip">
+  <title>VoxClip</title>
+  <!-- Windows 48 px, hinted to the pixel grid. Render at exactly 48 px. -->
+  <defs><linearGradient id="vc-plate" x1="0" y1="3" x2="0" y2="45" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#2E3037"/><stop offset="1" stop-color="#15161A"/></linearGradient></defs>
+  <rect x="3" y="3" width="42" height="42" rx="8.25" fill="url(#vc-plate)"/>
+  <rect x="10" y="18" width="4" height="12" rx="2" fill="#F3F0E7"/>
+  <rect x="16" y="14" width="4" height="20" rx="2" fill="#F3F0E7"/>
+  <rect x="28" y="16" width="4" height="16" rx="2" fill="#F3F0E7"/>
+  <rect x="34" y="19" width="4" height="10" rx="2" fill="#F3F0E7"/>
+  <rect x="23" y="11" width="2" height="26" rx="1" fill="#F38F83"/>
+</svg>

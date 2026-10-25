@@ -1,0 +1,27 @@
+{
+  "schema": "voxclip-editing-fixture/1",
+  "id": "clip-range/overlaps-and-edges",
+  "kind": "clip-range",
+  "origin": "voxconvo",
+  "source": "vox-web/src/utils/clips.ts:32",
+  "description": "Overlapping or touching neighbours give zero padding on that side; a clip at time 0 starts at 0; the last word always gets the full 0.25 s.",
+  "input": {
+    "words": [
+      {"word": "a", "start": 0, "end": 0.5},
+      {"word": "b", "start": 0.4, "end": 1},
+      {"word": "c", "start": 1, "end": 1.5},
+      {"word": "d", "start": 2, "end": 2.6}
+    ],
+    "ranges": [[0, 0], [1, 1], [2, 2], [3, 3], [1, 2], [0, 3]]
+  },
+  "expected": {
+    "ranges": [
+      {"startWord": 0, "endWord": 0, "start": 0, "end": 0.5},
+      {"startWord": 1, "endWord": 1, "start": 0.4, "end": 1},
+      {"startWord": 2, "endWord": 2, "start": 1, "end": 1.75},
+      {"startWord": 3, "endWord": 3, "start": 1.88, "end": 2.85},
+      {"startWord": 1, "endWord": 2, "start": 0.4, "end": 1.75},
+      {"startWord": 0, "endWord": 3, "start": 0, "end": 2.85}
+    ]
+  }
+}

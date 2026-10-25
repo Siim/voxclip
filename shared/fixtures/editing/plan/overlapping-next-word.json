@@ -1,0 +1,29 @@
+{
+  "schema": "voxclip-editing-fixture/1",
+  "id": "plan/overlapping-next-word",
+  "kind": "edit-plan",
+  "origin": "voxconvo",
+  "source": "synthetic",
+  "description": "When the next word starts before this one ends, reach after is 0.",
+  "input": {
+    "durationSeconds": 3,
+    "sampleRate": 1000,
+    "segments": [
+      {"id": "a", "kind": "word", "text": "a", "start": 0.5, "end": 0.9, "cut": false},
+      {"id": "b", "kind": "word", "text": "b", "start": 1, "end": 1.5, "cut": true},
+      {"id": "c", "kind": "word", "text": "c", "start": 1.4, "end": 1.9, "cut": false}
+    ]
+  },
+  "expected": {
+    "totalSamples": 3000,
+    "outputSamples": 2450,
+    "durationSeconds": 2.45,
+    "segmentCuts": [{"id": "b", "rawStart": 0.95, "rawEnd": 1.5, "startSample": 950, "endSample": 1500, "empty": false}],
+    "cuts": [[950, 1500]],
+    "kept": [[0, 950], [1500, 3000]],
+    "captions": [{"id": "a", "start": 0.5, "end": 0.9}, {"id": "c", "start": 0.95, "end": 1.35}],
+    "mapTime": [[0, 0], [-1, 0], ["NaN", 0], [3, 2.45], [4, 2.45], [0.95, 0.95], [1.5, 0.95], [1.225, 0.95], [0.475, 0.475], [2.25, 1.7]],
+    "sourceTime": [[0, 0], [-1, 0], ["NaN", 0], [2.45, 3], [3.45, 3], [0.95, 1.5]],
+    "previewSkip": [[0, null], [0.95, 1.5], [1.225, 1.5], [1.5, null]]
+  }
+}

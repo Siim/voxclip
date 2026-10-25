@@ -1,0 +1,98 @@
+{
+  "id": "ai-tighten",
+  "schemaVersion": 1,
+  "promptVersion": 1,
+  "milestone": "M2",
+  "provenance": {
+    "basis": "Tighten mode (L1) of the AI re-take design in the 2026-10-25 ElevenLabs/AI research, narrowed to deletions only. The filler examples come from the Superscribe cleanup prompt. The transcript line format is the clip finder's (voxconvo-numbered-lines-v1).",
+    "changes": [
+      "The model returns the kept words of each changed line instead of rewritten text, so the app can prove every edit is a pure deletion.",
+      "kind is an enum instead of a free-text reason."
+    ]
+  },
+  "system": "You tighten the transcript of a talking-head video. You can only delete words. Every word you keep is played from the real recording, so you cannot add, replace, reorder, translate or respell anything.\n\nThe transcript is given as numbered lines. \"[12-37] 0:05\" means the line contains words 12 to 37 and starts 5 seconds into the recording. \"(pause 2.3s)\" marks a silence. Some word numbers can be missing from a line; those words are already cut.\n\nWhat you may remove, when the request asks for it:\n- Filler words and hesitation sounds in any language (English: um, uh, er, like, you know; Estonian: ee, öö, noh, nagu, tead).\n- Stutters and doubled words (\"I I think\", \"the the\").\n- False starts: words the speaker abandoned before restarting the sentence. Keep the restarted version.\n- Self-corrections: keep only the corrected version.\n- Repetitions: the same point said twice in a row. Keep the clearest version.\n- Detours: asides that add nothing to the point, only when the remaining sentence still reads naturally.\n\nRules:\n- Return only the lines you change. For each, give line exactly as shown (for example \"[12-37]\") and keep: the words of that line you keep, copied exactly as written, in their original order, separated by single spaces. Use an empty string to remove the whole line.\n- Never add, replace, reorder, translate or respell words. Do not fix grammar, punctuation or capitalisation.\n- Keep the speaker's meaning, facts, names and numbers. When in doubt, keep the words.\n- Keep a word that carries meaning even when it can also be a filler, for example \"like\" in \"I like it\".\n- Do not remove more than half of a line unless the whole line is a false start or a repetition.\n- kind: the main reason for the change, one of filler, false_start, repetition, self_correction, detour.\n- If nothing should change, return an empty list.",
+  "transcriptBlock": {
+    "prefix": "<transcript>\n",
+    "suffix": "\n</transcript>",
+    "lineFormat": "voxconvo-numbered-lines-v1"
+  },
+  "request": {
+    "strengths": [
+      {
+        "id": "light",
+        "label": "Light",
+        "instruction": "Remove only filler words, hesitation sounds, stutters and doubled words."
+      },
+      {
+        "id": "normal",
+        "label": "Normal",
+        "instruction": "Remove filler words, hesitation sounds, stutters, doubled words, false starts, self-corrections and repetitions."
+      },
+      {
+        "id": "strong",
+        "label": "Strong",
+        "instruction": "Remove filler words, hesitation sounds, stutters, doubled words, false starts, self-corrections, repetitions and detours that add nothing to the point."
+      }
+    ],
+    "defaultStrength": "normal",
+    "alsoPrefix": "Also: ",
+    "maxInstructionsLength": 200,
+    "windowLine": "This part of the transcript runs from {windowStart} to {windowEnd}. Other parts are handled separately."
+  },
+  "limits": {
+    "maxWordsPerRequest": 2000,
+    "reviewCutFraction": 0.6,
+    "wholeLinePreselectMaxWords": 12,
+    "warnTotalCutFraction": 0.4
+  },
+  "normalization": {
+    "unicode": "NFC",
+    "case": "lowercase, invariant culture, full Unicode mapping",
+    "stripEdgeCharacters": ".,!?;:\"'“”‘’„«»‹›()[]{}…–—-¿¡。、，！？：；「」『』"
+  },
+  "kinds": [
+    { "id": "filler", "label": "Filler" },
+    { "id": "false_start", "label": "False start" },
+    { "id": "repetition", "label": "Repetition" },
+    { "id": "self_correction", "label": "Correction" },
+    { "id": "detour", "label": "Detour" }
+  ],
+  "generation": {
+    "maxOutputTokens": 16000,
+    "effort": "medium"
+  },
+  "output": {
+    "name": "tighten_edits",
+    "schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["edits"],
+      "properties": {
+        "edits": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["line", "keep", "kind"],
+            "properties": {
+              "line": { "type": "string" },
+              "keep": { "type": "string" },
+              "kind": {
+                "type": "string",
+                "enum": ["filler", "false_start", "repetition", "self_correction", "detour"]
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "messages": {
+    "noWords": "There are no words left to tighten.",
+    "noResults": "Nothing to tighten. The take already reads cleanly.",
+    "refused": "The model declined to tighten this recording.",
+    "incomplete": "The tighten suggestions were incomplete. Please try again.",
+    "rejectedSome": "{count} suggested edits were skipped because they changed words instead of only cutting them.",
+    "warnLarge": "These suggestions cut {percent}% of the words. Review them before applying."
+  }
+}

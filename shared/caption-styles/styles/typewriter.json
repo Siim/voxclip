@@ -1,0 +1,37 @@
+{
+ "$schema": "../schema.json",
+ "schemaVersion": 1,
+ "id": "typewriter",
+ "name": "Typewriter",
+ "description": "Monospaced text typed out letter by letter in time with the speech, with a blinking cursor.",
+ "order": 140,
+ "tags": ["sentence", "box", "mono", "animated"],
+ "font": {
+  "file": "JetBrainsMono-SemiBold.ttf",
+  "family": "JetBrains Mono",
+  "weight": 600,
+  "sizeSh": 0.046,
+  "lineHeightEm": 1.35,
+  "features": {"liga": false, "calt": false}
+ },
+ "text": {"transform": "none", "punctuation": "keep"},
+ "layout": {
+  "maxWords": 8,
+  "maxLines": 2,
+  "maxLineWidthW": 0.84,
+  "balance": "greedy",
+  "align": "left",
+  "holdGapSec": 0.8,
+  "maxPageSec": 4.5
+ },
+ "position": {"x": 0.5, "y": 0.78},
+ "aspects": {"landscape": {"y": 0.84}},
+ "fill": {"type": "solid", "color": "#FFFFFF"},
+ "box": {"scope": "page", "color": "#000000CC", "paddingXEm": 0.5, "paddingYEm": 0.3, "radiusEm": 0.15},
+ "reveal": {
+  "unit": "char",
+  "maxCharsPerSec": 28,
+  "cursor": {"widthEm": 0.08, "color": "#FFFFFF", "blinkHz": 2}
+ },
+ "preview": {"text": "Hello, world. Let's begin.", "activeWord": 1, "progress": 1}
+}

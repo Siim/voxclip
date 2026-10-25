@@ -1,0 +1,15 @@
+{
+  "schema": "voxclip-editing-fixture/1",
+  "id": "caption-text/punctuation-uppercase",
+  "kind": "caption-text",
+  "origin": "voxconvo-reimplemented",
+  "source": "vox-api/src/services/videoSubtitleService.ts:193-207",
+  "description": "Server caption transform: removePunctuation strips [.,!?;:'\"] then trims; uppercase uses JS toUpperCase (full Unicode, ß -> SS). Words that become empty are dropped from captions.",
+  "notes": "Informative. Documents the VoxConvo burner and the ß trap. VoxClip's caption text transform is owned by the captions spec; editing test suites skip this kind.",
+  "input": {"words": ["Hello,", "don't", "100%", "03:15", "\"Quote\"", "Wait...", "—", "naïve", "straße", "¿Qué?"]},
+  "expected": {
+    "removePunctuation": ["Hello", "dont", "100%", "0315", "Quote", "Wait", "—", "naïve", "straße", "¿Qué"],
+    "uppercase": ["HELLO,", "DON'T", "100%", "03:15", "\"QUOTE\"", "WAIT...", "—", "NAÏVE", "STRASSE", "¿QUÉ?"],
+    "both": ["HELLO", "DONT", "100%", "0315", "QUOTE", "WAIT", "—", "NAÏVE", "STRASSE", "¿QUÉ"]
+  }
+}

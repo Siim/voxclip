@@ -1,0 +1,30 @@
+{
+ "$schema": "../schema.json",
+ "schemaVersion": 1,
+ "id": "vox-bold-plus",
+ "name": "Bold+",
+ "description": "Bold with a thin black outline and soft shadow so single words stay readable on bright footage, and a short hold to stop flicker.",
+ "order": 30,
+ "tags": ["vox", "one-word", "outline"],
+ "font": {
+  "file": "DMSans-Black.ttf",
+  "family": "DM Sans",
+  "weight": 900,
+  "sizeSh": 0.0444,
+  "lineHeightEm": 1.2
+ },
+ "text": {"transform": "uppercase", "punctuation": "strip-keep-numeric"},
+ "layout": {
+  "maxWords": 1,
+  "maxLines": 1,
+  "maxLineWidthW": 0.9,
+  "holdGapSec": 0.3,
+  "minPageSec": 0.15,
+  "breakOnGapSec": null
+ },
+ "position": {"x": 0.5, "y": 0.8},
+ "fill": {"type": "solid", "color": "#FFFFFF"},
+ "stroke": {"widthEm": 0.12, "color": "#000000D9"},
+ "shadows": [{"dxEm": 0, "dyEm": 0.04, "sigmaEm": 0.06, "color": "#00000099"}],
+ "preview": {"text": "Your story", "activeWord": 1, "background": "#C9CBD0"}
+}

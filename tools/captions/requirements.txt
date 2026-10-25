@@ -1,0 +1,6 @@
+# Reference implementation and generators for doc/spec/captions.md. Install into a throwaway venv, never globally.
+fonttools==4.67.0
+uharfbuzz==0.57.0
+jsonschema==4.26.0
+regex==2026.9.29
+numpy==2.5.4

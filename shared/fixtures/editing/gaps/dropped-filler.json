@@ -1,0 +1,18 @@
+{
+  "schema": "voxclip-editing-fixture/1",
+  "id": "gaps/dropped-filler",
+  "kind": "unlabeled-speech",
+  "origin": "voxclip",
+  "source": "doc/spec/editing.md (findUnlabeledSpeech)",
+  "description": "A voiced sound in a gap between words (a filler the engine dropped) becomes an unlabeledSpeech item covering the sound's frames.",
+  "input": {
+    "audio": {
+      "generator": "vox-take-v1",
+      "sampleRate": 16000,
+      "seconds": 4,
+      "sections": [[0.5, 0.9, "vowel"], [1.3, 1.6, "vowel"], [2.2, 2.8, "vowel"]]
+    },
+    "words": [{"id": "so", "start": 0.5, "end": 0.9}, {"id": "today", "start": 2.2, "end": 2.8}]
+  },
+  "expected": {"items": [{"start": 1.3, "end": 1.6}], "tolerance": 0.000001}
+}

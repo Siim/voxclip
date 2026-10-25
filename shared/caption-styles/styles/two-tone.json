@@ -1,0 +1,33 @@
+{
+ "$schema": "../schema.json",
+ "schemaVersion": 1,
+ "id": "two-tone",
+ "name": "Two-tone",
+ "description": "White outlined caps with the strongest word on each line set heavier and in colour.",
+ "order": 90,
+ "tags": ["phrase", "emphasis", "outline"],
+ "accent": "#FFC400",
+ "font": {
+  "file": "Poppins-Bold.ttf",
+  "family": "Poppins",
+  "weight": 700,
+  "sizeSh": 0.062,
+  "lineHeightEm": 1.12,
+  "wordSpacingEm": 0.3
+ },
+ "text": {"transform": "uppercase", "punctuation": "strip-keep-numeric"},
+ "layout": {"maxWords": 4, "maxLines": 2, "maxLineWidthW": 0.82, "maxPageSec": 3.0},
+ "position": {"x": 0.5, "y": 0.7},
+ "aspects": {"landscape": {"y": 0.8}},
+ "fill": {"type": "solid", "color": "#FFFFFF"},
+ "stroke": {"widthEm": 0.1, "color": "#000000"},
+ "emphasis": {
+  "source": "rule",
+  "maxPerPage": 1,
+  "minScore": 0,
+  "fill": {"type": "solid", "color": "$accent"},
+  "fontFile": "Poppins-Black.ttf",
+  "scale": 1.08
+ },
+ "preview": {"text": "The secret is consistency", "activeWord": 3}
+}

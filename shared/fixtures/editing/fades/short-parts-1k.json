@@ -1,0 +1,43 @@
+{
+  "schema": "voxclip-editing-fixture/1",
+  "id": "fades/short-parts-1k",
+  "kind": "join-fades",
+  "origin": "voxconvo",
+  "source": "vox-web/src/utils/audioEditor.ts:19-29 (run on a constant 1.0 buffer)",
+  "description": "Parts shorter than two fades get floor(length/2) samples per side; a 1-sample part gets none.",
+  "input": {
+    "durationSeconds": 2,
+    "sampleRate": 1000,
+    "segments": [
+      {"id": "x", "kind": "word", "text": "x", "start": 1.2, "end": 1.5, "cut": false},
+      {"id": "r1", "kind": "range", "start": 0.1, "end": 0.5, "cut": true},
+      {"id": "r2", "kind": "range", "start": 0.503, "end": 0.8, "cut": true},
+      {"id": "r3", "kind": "range", "start": 0.801, "end": 1, "cut": true}
+    ]
+  },
+  "expected": {
+    "kept": [[0, 100], [500, 503], [800, 801], [1000, 2000]],
+    "outputSamples": 1104,
+    "parts": [
+      {"outputStart": 0, "length": 100, "fadeIn": 0, "fadeOut": 5},
+      {"outputStart": 100, "length": 3, "fadeIn": 1, "fadeOut": 1},
+      {"outputStart": 103, "length": 1, "fadeIn": 0, "fadeOut": 0},
+      {"outputStart": 104, "length": 1000, "fadeIn": 5, "fadeOut": 0}
+    ],
+    "gains": [
+      [95, 0.800000011920929],
+      [96, 0.6000000238418579],
+      [97, 0.4000000059604645],
+      [98, 0.20000000298023224],
+      [99, 0],
+      [100, 0],
+      [102, 0],
+      [104, 0],
+      [105, 0.20000000298023224],
+      [106, 0.4000000059604645],
+      [107, 0.6000000238418579],
+      [108, 0.800000011920929]
+    ],
+    "tolerance": 1e-7
+  }
+}

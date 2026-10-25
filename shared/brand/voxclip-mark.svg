@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 15 16" width="60" height="64" role="img" aria-label="VoxClip" fill="currentColor">
+  <title>VoxClip</title>
+  <!-- Monochrome mark: one colour (currentColor, black when used as an image). The seam is told
+       apart by shape alone: thinner and taller than the bars. Drawn on a 15 x 16 grid: render it
+       16, 32, 48 or 64 px tall for whole-pixel edges. -->
+  <rect x="0" y="5" width="2" height="6" rx="1"/>
+  <rect x="3" y="2" width="2" height="12" rx="1"/>
+  <rect x="10" y="3" width="2" height="10" rx="1"/>
+  <rect x="13" y="5" width="2" height="6" rx="1"/>
+  <rect x="7" y="1" width="1" height="14" rx="0.5"/>
+</svg>

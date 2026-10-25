@@ -1,0 +1,15 @@
+{
+  "schema": "voxclip-editing-fixture/1",
+  "id": "align/whitespace-tokens",
+  "kind": "transcript-alignment",
+  "origin": "voxconvo",
+  "source": "vox-web/src/utils/transcriptionTiming.ts:11",
+  "description": "Final text is trimmed and split on the JS whitespace set (no-break space, em space and ideographic space included).",
+  "input": {
+    "words": [{"word": "one", "start": 0, "end": 0.3}, {"word": "two", "start": 0.4, "end": 0.7}, {"word": "three", "start": 0.8, "end": 1.1}],
+    "finalText": " One, two　three!\n"
+  },
+  "expected": {
+    "words": [{"word": "One,", "start": 0, "end": 0.3}, {"word": "two", "start": 0.4, "end": 0.7}, {"word": "three!", "start": 0.8, "end": 1.1}]
+  }
+}

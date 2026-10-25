@@ -1,0 +1,18 @@
+{
+  "schema": "voxclip-editing-fixture/1",
+  "id": "boundaries/half-gap-limit",
+  "kind": "word-boundaries",
+  "origin": "voxconvo",
+  "source": "vox-web/test/word-boundaries.test.mjs",
+  "description": "A word may only claim its half of the gap.",
+  "input": {
+    "audio": {
+      "generator": "vox-take-v1",
+      "sampleRate": 16000,
+      "seconds": 4,
+      "sections": [[1, 1.4, "vowel"], [1.5, 1.8, "hiss"], [1.8, 2.2, "vowel"]]
+    },
+    "words": [{"id": "a", "word": "a", "start": 1, "end": 1.4}, {"id": "b", "word": "b", "start": 1.8, "end": 2.2}]
+  },
+  "expected": {"words": [{"id": "a", "start": 1, "end": 1.4}, {"id": "b", "start": 1.6, "end": 2.2}], "tolerance": 0.000001}
+}

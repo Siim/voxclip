@@ -1,0 +1,33 @@
+{
+  "schema": "voxclip-editing-fixture/1",
+  "id": "plan/pause-word-after-cut",
+  "kind": "edit-plan",
+  "origin": "voxconvo",
+  "source": "synthetic",
+  "description": "If the word after the pause is cut, no breath is kept on that side.",
+  "input": {
+    "durationSeconds": 5,
+    "sampleRate": 1000,
+    "segments": [
+      {"id": "so", "kind": "word", "text": "so", "start": 0.5, "end": 1, "cut": false},
+      {"id": "pause-after-so", "kind": "pause", "start": 1, "end": 2.2, "cut": true},
+      {"id": "uh", "kind": "word", "text": "uh", "start": 2.2, "end": 2.5, "cut": true},
+      {"id": "right", "kind": "word", "text": "right", "start": 2.9, "end": 3.4, "cut": false}
+    ]
+  },
+  "expected": {
+    "totalSamples": 5000,
+    "outputSamples": 3550,
+    "durationSeconds": 3.55,
+    "segmentCuts": [
+      {"id": "pause-after-so", "rawStart": 1.15, "rawEnd": 2.2, "startSample": 1150, "endSample": 2200, "empty": false},
+      {"id": "uh", "rawStart": 2.1, "rawEnd": 2.6, "startSample": 2100, "endSample": 2600, "empty": false}
+    ],
+    "cuts": [[1150, 2600]],
+    "kept": [[0, 1150], [2600, 5000]],
+    "captions": [{"id": "so", "start": 0.5, "end": 1}, {"id": "right", "start": 1.45, "end": 1.95}],
+    "mapTime": [[0, 0], [-1, 0], ["NaN", 0], [5, 3.55], [6, 3.55], [1.15, 1.15], [2.6, 1.15], [1.875, 1.15], [0.575, 0.575], [3.8, 2.35]],
+    "sourceTime": [[0, 0], [-1, 0], ["NaN", 0], [3.55, 5], [4.55, 5], [1.15, 2.6]],
+    "previewSkip": [[0, null], [1.15, 2.6], [1.875, 2.6], [2.6, null]]
+  }
+}

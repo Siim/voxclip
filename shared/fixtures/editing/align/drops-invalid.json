@@ -1,0 +1,19 @@
+{
+  "schema": "voxclip-editing-fixture/1",
+  "id": "align/drops-invalid",
+  "kind": "transcript-alignment",
+  "origin": "voxconvo",
+  "source": "vox-web/src/utils/transcriptionTiming.ts:11",
+  "description": "Blank text, negative start, or end <= start are dropped after alignment (count differs here, so originals are kept).",
+  "input": {
+    "words": [
+      {"word": "ok", "start": 0, "end": 0.2},
+      {"word": " ", "start": 0.2, "end": 0.3},
+      {"word": "neg", "start": -0.1, "end": 0.1},
+      {"word": "zero", "start": 0.5, "end": 0.5},
+      {"word": "fine", "start": 0.6, "end": 0.9}
+    ],
+    "finalText": "ok fine"
+  },
+  "expected": {"words": [{"word": "ok", "start": 0, "end": 0.2}, {"word": "fine", "start": 0.6, "end": 0.9}]}
+}

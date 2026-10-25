@@ -1,0 +1,39 @@
+{
+  "schema": "voxclip-editing-fixture/1",
+  "id": "plan/last-word-to-end",
+  "kind": "edit-plan",
+  "origin": "voxconvo",
+  "source": "synthetic",
+  "description": "Last word: the silence after it runs to the media duration.",
+  "input": {
+    "durationSeconds": 3,
+    "sampleRate": 1000,
+    "segments": [
+      {"id": "hello", "kind": "word", "text": "hello", "start": 0.5, "end": 1, "cut": false},
+      {"id": "bye", "kind": "word", "text": "bye", "start": 2.8, "end": 2.95, "cut": true}
+    ]
+  },
+  "expected": {
+    "totalSamples": 3000,
+    "outputSamples": 2725,
+    "durationSeconds": 2.725,
+    "segmentCuts": [{"id": "bye", "rawStart": 2.6999999999999997, "rawEnd": 2.975, "startSample": 2700, "endSample": 2975, "empty": false}],
+    "cuts": [[2700, 2975]],
+    "kept": [[0, 2700], [2975, 3000]],
+    "captions": [{"id": "hello", "start": 0.5, "end": 1}],
+    "mapTime": [
+      [0, 0],
+      [-1, 0],
+      ["NaN", 0],
+      [3, 2.725],
+      [4, 2.725],
+      [2.7, 2.7],
+      [2.975, 2.7],
+      [2.8375000000000004, 2.7],
+      [1.35, 1.35],
+      [2.9875, 2.713]
+    ],
+    "sourceTime": [[0, 0], [-1, 0], ["NaN", 0], [2.725, 3], [3.725, 3], [2.7, 2.975]],
+    "previewSkip": [[0, null], [2.7, 2.975], [2.8375000000000004, 2.975], [2.975, null]]
+  }
+}

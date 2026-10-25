@@ -1,0 +1,29 @@
+{
+  "schema": "voxclip-editing-fixture/1",
+  "id": "plan/touching-words-no-reach",
+  "kind": "edit-plan",
+  "origin": "voxconvo",
+  "source": "synthetic",
+  "description": "Words that touch have no silence to take; the cut is exactly the word.",
+  "input": {
+    "durationSeconds": 3,
+    "sampleRate": 1000,
+    "segments": [
+      {"id": "a", "kind": "word", "text": "a", "start": 0.5, "end": 1, "cut": false},
+      {"id": "b", "kind": "word", "text": "b", "start": 1, "end": 1.4, "cut": true},
+      {"id": "c", "kind": "word", "text": "c", "start": 1.4, "end": 2, "cut": false}
+    ]
+  },
+  "expected": {
+    "totalSamples": 3000,
+    "outputSamples": 2600,
+    "durationSeconds": 2.6,
+    "segmentCuts": [{"id": "b", "rawStart": 1, "rawEnd": 1.4, "startSample": 1000, "endSample": 1400, "empty": false}],
+    "cuts": [[1000, 1400]],
+    "kept": [[0, 1000], [1400, 3000]],
+    "captions": [{"id": "a", "start": 0.5, "end": 1}, {"id": "c", "start": 1, "end": 1.6}],
+    "mapTime": [[0, 0], [-1, 0], ["NaN", 0], [3, 2.6], [4, 2.6], [1, 1], [1.4, 1], [1.2, 1], [0.5, 0.5], [2.2, 1.8]],
+    "sourceTime": [[0, 0], [-1, 0], ["NaN", 0], [2.6, 3], [3.6, 3], [1, 1.4]],
+    "previewSkip": [[0, null], [1, 1.4], [1.2, 1.4], [1.4, null]]
+  }
+}

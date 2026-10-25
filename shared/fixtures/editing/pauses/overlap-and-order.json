@@ -1,0 +1,13 @@
+{
+  "schema": "voxclip-editing-fixture/1",
+  "id": "pauses/overlap-and-order",
+  "kind": "pause-detection",
+  "origin": "voxconvo-reimplemented",
+  "source": "vox-web/src/components/VoiceRecorder/VoiceRecorder.tsx:784-802",
+  "description": "Only consecutive words in transcript order are compared; overlaps (negative gaps) are not pauses; no leading/trailing silence pause.",
+  "input": {
+    "hasDecodedAudio": true,
+    "words": [{"id": "a", "start": 0, "end": 1}, {"id": "b", "start": 0.9, "end": 1.2}, {"id": "c", "start": 3, "end": 3.4}]
+  },
+  "expected": {"pauses": [{"id": "pause-after-b", "start": 1.2, "end": 3, "duration": 1.8, "label": "pause 1.8s"}]}
+}

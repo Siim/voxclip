@@ -1,0 +1,29 @@
+{
+  "schema": "voxclip-editing-fixture/1",
+  "id": "plan/pause-not-cut-ignored",
+  "kind": "edit-plan",
+  "origin": "voxconvo",
+  "source": "synthetic",
+  "description": "A pause that is not cut never affects the plan.",
+  "input": {
+    "durationSeconds": 4,
+    "sampleRate": 1000,
+    "segments": [
+      {"id": "a", "kind": "word", "text": "a", "start": 0.5, "end": 1, "cut": false},
+      {"id": "pause-after-a", "kind": "pause", "start": 1, "end": 2.5, "cut": false},
+      {"id": "b", "kind": "word", "text": "b", "start": 2.5, "end": 3, "cut": false}
+    ]
+  },
+  "expected": {
+    "totalSamples": 4000,
+    "outputSamples": 4000,
+    "durationSeconds": 4,
+    "segmentCuts": [],
+    "cuts": [],
+    "kept": [[0, 4000]],
+    "captions": [{"id": "a", "start": 0.5, "end": 1}, {"id": "b", "start": 2.5, "end": 3}],
+    "mapTime": [[0, 0], [-1, 0], ["NaN", 0], [4, 4], [5, 4], [2, 2]],
+    "sourceTime": [[0, 0], [-1, 0], ["NaN", 0], [4, 4], [5, 4]],
+    "previewSkip": [[0, null]]
+  }
+}

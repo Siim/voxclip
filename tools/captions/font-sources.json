@@ -1,0 +1,414 @@
+{
+  "description": "Where every file in shared/fonts came from. Each URL is pinned to the commit it was downloaded from on 2026-10-25. build_font_manifest.py copies this into shared/fonts/fonts.json.",
+  "notes": {
+    "noto-sans/OFL.txt": "Saved from fonts/LICENSE of notofonts/notofonts.github.io (the SIL OFL 1.1 text for the Noto fonts in that repository).",
+    "noto-emoji": "PNG images and LICENSE are taken from commit 41e31b11 (2024-02-15), the last commit before the repository root LICENSE was changed from Apache-2.0 to OFL-1.1 (commit 254596e5, 2024-07-29). At that commit README.md states: 'Tools and most image resources are under the Apache license, version 2.0 (./LICENSE)'. The images are distributed unmodified under Apache-2.0."
+  },
+  "files": {
+    "dm-sans/DMSans-Black.ttf": {
+      "repository": "googlefonts/dm-fonts",
+      "commit": "4412393b7d2de9fe7a92064c2dce9b5af5d7fd26",
+      "url": "https://raw.githubusercontent.com/googlefonts/dm-fonts/4412393b7d2de9fe7a92064c2dce9b5af5d7fd26/Sans/fonts/ttf/DMSans-Black.ttf"
+    },
+    "dm-sans/DMSans-Bold.ttf": {
+      "repository": "googlefonts/dm-fonts",
+      "commit": "4412393b7d2de9fe7a92064c2dce9b5af5d7fd26",
+      "url": "https://raw.githubusercontent.com/googlefonts/dm-fonts/4412393b7d2de9fe7a92064c2dce9b5af5d7fd26/Sans/fonts/ttf/DMSans-Bold.ttf"
+    },
+    "dm-sans/DMSans-Medium.ttf": {
+      "repository": "googlefonts/dm-fonts",
+      "commit": "4412393b7d2de9fe7a92064c2dce9b5af5d7fd26",
+      "url": "https://raw.githubusercontent.com/googlefonts/dm-fonts/4412393b7d2de9fe7a92064c2dce9b5af5d7fd26/Sans/fonts/ttf/DMSans-Medium.ttf"
+    },
+    "dm-sans/OFL.txt": {
+      "repository": "googlefonts/dm-fonts",
+      "commit": "5e6ead50d4dea0361b58ef81ab47f137ad8fb5b5",
+      "url": "https://raw.githubusercontent.com/googlefonts/dm-fonts/5e6ead50d4dea0361b58ef81ab47f137ad8fb5b5/Sans/OFL.txt"
+    },
+    "dm-serif-display/DMSerifDisplay-Italic.ttf": {
+      "repository": "google/fonts",
+      "commit": "5bdc59521ab95d387c82a1543277fddab4aa7a8b",
+      "url": "https://raw.githubusercontent.com/google/fonts/5bdc59521ab95d387c82a1543277fddab4aa7a8b/ofl/dmserifdisplay/DMSerifDisplay-Italic.ttf"
+    },
+    "dm-serif-display/OFL.txt": {
+      "repository": "google/fonts",
+      "commit": "2c8d6d482c03db2a62c1ab71b724dd85c3c7a151",
+      "url": "https://raw.githubusercontent.com/google/fonts/2c8d6d482c03db2a62c1ab71b724dd85c3c7a151/ofl/dmserifdisplay/OFL.txt"
+    },
+    "montserrat/Montserrat-Black.ttf": {
+      "repository": "JulietaUla/Montserrat",
+      "commit": "679ead9bcd0d6cef6d3712369dc49fe72e8bd8d7",
+      "url": "https://raw.githubusercontent.com/JulietaUla/Montserrat/679ead9bcd0d6cef6d3712369dc49fe72e8bd8d7/fonts/ttf/Montserrat-Black.ttf"
+    },
+    "montserrat/Montserrat-ExtraBold.ttf": {
+      "repository": "JulietaUla/Montserrat",
+      "commit": "679ead9bcd0d6cef6d3712369dc49fe72e8bd8d7",
+      "url": "https://raw.githubusercontent.com/JulietaUla/Montserrat/679ead9bcd0d6cef6d3712369dc49fe72e8bd8d7/fonts/ttf/Montserrat-ExtraBold.ttf"
+    },
+    "montserrat/OFL.txt": {
+      "repository": "JulietaUla/Montserrat",
+      "commit": "fc12e6819947c76db917f9d589a1d327e37a7b6b",
+      "url": "https://raw.githubusercontent.com/JulietaUla/Montserrat/fc12e6819947c76db917f9d589a1d327e37a7b6b/OFL.txt"
+    },
+    "poppins/Poppins-Bold.ttf": {
+      "repository": "google/fonts",
+      "commit": "7dc16b7de42db624b902f2292b68ed9e489e5053",
+      "url": "https://raw.githubusercontent.com/google/fonts/7dc16b7de42db624b902f2292b68ed9e489e5053/ofl/poppins/Poppins-Bold.ttf"
+    },
+    "poppins/Poppins-ExtraBold.ttf": {
+      "repository": "google/fonts",
+      "commit": "7dc16b7de42db624b902f2292b68ed9e489e5053",
+      "url": "https://raw.githubusercontent.com/google/fonts/7dc16b7de42db624b902f2292b68ed9e489e5053/ofl/poppins/Poppins-ExtraBold.ttf"
+    },
+    "poppins/Poppins-Black.ttf": {
+      "repository": "google/fonts",
+      "commit": "7dc16b7de42db624b902f2292b68ed9e489e5053",
+      "url": "https://raw.githubusercontent.com/google/fonts/7dc16b7de42db624b902f2292b68ed9e489e5053/ofl/poppins/Poppins-Black.ttf"
+    },
+    "poppins/OFL.txt": {
+      "repository": "google/fonts",
+      "commit": "7dc16b7de42db624b902f2292b68ed9e489e5053",
+      "url": "https://raw.githubusercontent.com/google/fonts/7dc16b7de42db624b902f2292b68ed9e489e5053/ofl/poppins/OFL.txt"
+    },
+    "anton/Anton-Regular.ttf": {
+      "repository": "google/fonts",
+      "commit": "e0a8124cf36bb7c32ca68e5d46d6acdbc3df866a",
+      "url": "https://raw.githubusercontent.com/google/fonts/e0a8124cf36bb7c32ca68e5d46d6acdbc3df866a/ofl/anton/Anton-Regular.ttf"
+    },
+    "anton/OFL.txt": {
+      "repository": "google/fonts",
+      "commit": "e0a8124cf36bb7c32ca68e5d46d6acdbc3df866a",
+      "url": "https://raw.githubusercontent.com/google/fonts/e0a8124cf36bb7c32ca68e5d46d6acdbc3df866a/ofl/anton/OFL.txt"
+    },
+    "righteous/Righteous-Regular.ttf": {
+      "repository": "google/fonts",
+      "commit": "90abd17b4f97671435798b6147b698aa9087612f",
+      "url": "https://raw.githubusercontent.com/google/fonts/90abd17b4f97671435798b6147b698aa9087612f/ofl/righteous/Righteous-Regular.ttf"
+    },
+    "righteous/OFL.txt": {
+      "repository": "google/fonts",
+      "commit": "90abd17b4f97671435798b6147b698aa9087612f",
+      "url": "https://raw.githubusercontent.com/google/fonts/90abd17b4f97671435798b6147b698aa9087612f/ofl/righteous/OFL.txt"
+    },
+    "jetbrains-mono/JetBrainsMono-SemiBold.ttf": {
+      "repository": "JetBrains/JetBrainsMono",
+      "commit": "02bb50b082dad9ef8a0f33ac393839202b760223",
+      "url": "https://raw.githubusercontent.com/JetBrains/JetBrainsMono/02bb50b082dad9ef8a0f33ac393839202b760223/fonts/ttf/JetBrainsMono-SemiBold.ttf"
+    },
+    "jetbrains-mono/OFL.txt": {
+      "repository": "JetBrains/JetBrainsMono",
+      "commit": "61cf0cedc2d9d29efcab968e97707d6899133e68",
+      "url": "https://raw.githubusercontent.com/JetBrains/JetBrainsMono/61cf0cedc2d9d29efcab968e97707d6899133e68/OFL.txt"
+    },
+    "sora/Sora-ExtraBold.ttf": {
+      "repository": "sora-xor/sora-font",
+      "commit": "345772cfcc247cdb5c54f2f3b51d908799fc5538",
+      "url": "https://raw.githubusercontent.com/sora-xor/sora-font/345772cfcc247cdb5c54f2f3b51d908799fc5538/fonts/ttf/Sora-ExtraBold.ttf"
+    },
+    "sora/OFL.txt": {
+      "repository": "sora-xor/sora-font",
+      "commit": "67df22f085298fa775ca615660a6f13d064753fe",
+      "url": "https://raw.githubusercontent.com/sora-xor/sora-font/67df22f085298fa775ca615660a6f13d064753fe/OFL.txt"
+    },
+    "vt323/VT323-Regular.ttf": {
+      "repository": "google/fonts",
+      "commit": "eb8781e516576b414603df8cd267c0f21c9b4ee2",
+      "url": "https://raw.githubusercontent.com/google/fonts/eb8781e516576b414603df8cd267c0f21c9b4ee2/ofl/vt323/VT323-Regular.ttf"
+    },
+    "vt323/OFL.txt": {
+      "repository": "google/fonts",
+      "commit": "eb8781e516576b414603df8cd267c0f21c9b4ee2",
+      "url": "https://raw.githubusercontent.com/google/fonts/eb8781e516576b414603df8cd267c0f21c9b4ee2/ofl/vt323/OFL.txt"
+    },
+    "noto-sans/NotoSans-Regular.ttf": {
+      "repository": "notofonts/notofonts.github.io",
+      "commit": "28b15b4b43b7bed62b5cf6e6b0b5ff5846270535",
+      "url": "https://raw.githubusercontent.com/notofonts/notofonts.github.io/28b15b4b43b7bed62b5cf6e6b0b5ff5846270535/fonts/NotoSans/unhinted/ttf/NotoSans-Regular.ttf"
+    },
+    "noto-sans/NotoSans-SemiBold.ttf": {
+      "repository": "notofonts/notofonts.github.io",
+      "commit": "28b15b4b43b7bed62b5cf6e6b0b5ff5846270535",
+      "url": "https://raw.githubusercontent.com/notofonts/notofonts.github.io/28b15b4b43b7bed62b5cf6e6b0b5ff5846270535/fonts/NotoSans/unhinted/ttf/NotoSans-SemiBold.ttf"
+    },
+    "noto-sans/NotoSans-Bold.ttf": {
+      "repository": "notofonts/notofonts.github.io",
+      "commit": "28b15b4b43b7bed62b5cf6e6b0b5ff5846270535",
+      "url": "https://raw.githubusercontent.com/notofonts/notofonts.github.io/28b15b4b43b7bed62b5cf6e6b0b5ff5846270535/fonts/NotoSans/unhinted/ttf/NotoSans-Bold.ttf"
+    },
+    "noto-sans/NotoSans-Black.ttf": {
+      "repository": "notofonts/notofonts.github.io",
+      "commit": "28b15b4b43b7bed62b5cf6e6b0b5ff5846270535",
+      "url": "https://raw.githubusercontent.com/notofonts/notofonts.github.io/28b15b4b43b7bed62b5cf6e6b0b5ff5846270535/fonts/NotoSans/unhinted/ttf/NotoSans-Black.ttf"
+    },
+    "noto-sans/OFL.txt": {
+      "repository": "notofonts/notofonts.github.io",
+      "commit": "d7f1364683a278e4a7c3d23f1292487aaa488a3f",
+      "url": "https://raw.githubusercontent.com/notofonts/notofonts.github.io/d7f1364683a278e4a7c3d23f1292487aaa488a3f/fonts/LICENSE"
+    },
+    "paytone-one/PaytoneOne-Regular.ttf": {
+      "repository": "google/fonts",
+      "commit": "579c9b51ec0203ed051b6165e314b97b409fbbae",
+      "url": "https://raw.githubusercontent.com/google/fonts/579c9b51ec0203ed051b6165e314b97b409fbbae/ofl/paytoneone/PaytoneOne-Regular.ttf"
+    },
+    "paytone-one/OFL.txt": {
+      "repository": "google/fonts",
+      "commit": "c19f2d37a7466e9da7b64aca5413f0ad5d584c3b",
+      "url": "https://raw.githubusercontent.com/google/fonts/c19f2d37a7466e9da7b64aca5413f0ad5d584c3b/ofl/paytoneone/OFL.txt"
+    },
+    "noto-emoji/png128/emoji_u1f525.png": {
+      "repository": "googlefonts/noto-emoji",
+      "commit": "41e31b110b4eb929dffb410264694a06205b7ad7",
+      "url": "https://raw.githubusercontent.com/googlefonts/noto-emoji/41e31b110b4eb929dffb410264694a06205b7ad7/png/128/emoji_u1f525.png"
+    },
+    "noto-emoji/png128/emoji_u1f4b0.png": {
+      "repository": "googlefonts/noto-emoji",
+      "commit": "41e31b110b4eb929dffb410264694a06205b7ad7",
+      "url": "https://raw.githubusercontent.com/googlefonts/noto-emoji/41e31b110b4eb929dffb410264694a06205b7ad7/png/128/emoji_u1f4b0.png"
+    },
+    "noto-emoji/png128/emoji_u1f4a1.png": {
+      "repository": "googlefonts/noto-emoji",
+      "commit": "41e31b110b4eb929dffb410264694a06205b7ad7",
+      "url": "https://raw.githubusercontent.com/googlefonts/noto-emoji/41e31b110b4eb929dffb410264694a06205b7ad7/png/128/emoji_u1f4a1.png"
+    },
+    "noto-emoji/png128/emoji_u1f680.png": {
+      "repository": "googlefonts/noto-emoji",
+      "commit": "41e31b110b4eb929dffb410264694a06205b7ad7",
+      "url": "https://raw.githubusercontent.com/googlefonts/noto-emoji/41e31b110b4eb929dffb410264694a06205b7ad7/png/128/emoji_u1f680.png"
+    },
+    "noto-emoji/png128/emoji_u2764.png": {
+      "repository": "googlefonts/noto-emoji",
+      "commit": "41e31b110b4eb929dffb410264694a06205b7ad7",
+      "url": "https://raw.githubusercontent.com/googlefonts/noto-emoji/41e31b110b4eb929dffb410264694a06205b7ad7/png/128/emoji_u2764.png"
+    },
+    "noto-emoji/png128/emoji_u1f602.png": {
+      "repository": "googlefonts/noto-emoji",
+      "commit": "41e31b110b4eb929dffb410264694a06205b7ad7",
+      "url": "https://raw.githubusercontent.com/googlefonts/noto-emoji/41e31b110b4eb929dffb410264694a06205b7ad7/png/128/emoji_u1f602.png"
+    },
+    "noto-emoji/png128/emoji_u1f92f.png": {
+      "repository": "googlefonts/noto-emoji",
+      "commit": "41e31b110b4eb929dffb410264694a06205b7ad7",
+      "url": "https://raw.githubusercontent.com/googlefonts/noto-emoji/41e31b110b4eb929dffb410264694a06205b7ad7/png/128/emoji_u1f92f.png"
+    },
+    "noto-emoji/png128/emoji_u2705.png": {
+      "repository": "googlefonts/noto-emoji",
+      "commit": "41e31b110b4eb929dffb410264694a06205b7ad7",
+      "url": "https://raw.githubusercontent.com/googlefonts/noto-emoji/41e31b110b4eb929dffb410264694a06205b7ad7/png/128/emoji_u2705.png"
+    },
+    "noto-emoji/png128/emoji_u274c.png": {
+      "repository": "googlefonts/noto-emoji",
+      "commit": "41e31b110b4eb929dffb410264694a06205b7ad7",
+      "url": "https://raw.githubusercontent.com/googlefonts/noto-emoji/41e31b110b4eb929dffb410264694a06205b7ad7/png/128/emoji_u274c.png"
+    },
+    "noto-emoji/png128/emoji_u26a0.png": {
+      "repository": "googlefonts/noto-emoji",
+      "commit": "41e31b110b4eb929dffb410264694a06205b7ad7",
+      "url": "https://raw.githubusercontent.com/googlefonts/noto-emoji/41e31b110b4eb929dffb410264694a06205b7ad7/png/128/emoji_u26a0.png"
+    },
+    "noto-emoji/png128/emoji_u1f4c8.png": {
+      "repository": "googlefonts/noto-emoji",
+      "commit": "41e31b110b4eb929dffb410264694a06205b7ad7",
+      "url": "https://raw.githubusercontent.com/googlefonts/noto-emoji/41e31b110b4eb929dffb410264694a06205b7ad7/png/128/emoji_u1f4c8.png"
+    },
+    "noto-emoji/png128/emoji_u1f4c9.png": {
+      "repository": "googlefonts/noto-emoji",
+      "commit": "41e31b110b4eb929dffb410264694a06205b7ad7",
+      "url": "https://raw.githubusercontent.com/googlefonts/noto-emoji/41e31b110b4eb929dffb410264694a06205b7ad7/png/128/emoji_u1f4c9.png"
+    },
+    "noto-emoji/png128/emoji_u23f0.png": {
+      "repository": "googlefonts/noto-emoji",
+      "commit": "41e31b110b4eb929dffb410264694a06205b7ad7",
+      "url": "https://raw.githubusercontent.com/googlefonts/noto-emoji/41e31b110b4eb929dffb410264694a06205b7ad7/png/128/emoji_u23f0.png"
+    },
+    "noto-emoji/png128/emoji_u1f3af.png": {
+      "repository": "googlefonts/noto-emoji",
+      "commit": "41e31b110b4eb929dffb410264694a06205b7ad7",
+      "url": "https://raw.githubusercontent.com/googlefonts/noto-emoji/41e31b110b4eb929dffb410264694a06205b7ad7/png/128/emoji_u1f3af.png"
+    },
+    "noto-emoji/png128/emoji_u1f4aa.png": {
+      "repository": "googlefonts/noto-emoji",
+      "commit": "41e31b110b4eb929dffb410264694a06205b7ad7",
+      "url": "https://raw.githubusercontent.com/googlefonts/noto-emoji/41e31b110b4eb929dffb410264694a06205b7ad7/png/128/emoji_u1f4aa.png"
+    },
+    "noto-emoji/png128/emoji_u1f9e0.png": {
+      "repository": "googlefonts/noto-emoji",
+      "commit": "41e31b110b4eb929dffb410264694a06205b7ad7",
+      "url": "https://raw.githubusercontent.com/googlefonts/noto-emoji/41e31b110b4eb929dffb410264694a06205b7ad7/png/128/emoji_u1f9e0.png"
+    },
+    "noto-emoji/png128/emoji_u1f440.png": {
+      "repository": "googlefonts/noto-emoji",
+      "commit": "41e31b110b4eb929dffb410264694a06205b7ad7",
+      "url": "https://raw.githubusercontent.com/googlefonts/noto-emoji/41e31b110b4eb929dffb410264694a06205b7ad7/png/128/emoji_u1f440.png"
+    },
+    "noto-emoji/png128/emoji_u1f44f.png": {
+      "repository": "googlefonts/noto-emoji",
+      "commit": "41e31b110b4eb929dffb410264694a06205b7ad7",
+      "url": "https://raw.githubusercontent.com/googlefonts/noto-emoji/41e31b110b4eb929dffb410264694a06205b7ad7/png/128/emoji_u1f44f.png"
+    },
+    "noto-emoji/png128/emoji_u1f914.png": {
+      "repository": "googlefonts/noto-emoji",
+      "commit": "41e31b110b4eb929dffb410264694a06205b7ad7",
+      "url": "https://raw.githubusercontent.com/googlefonts/noto-emoji/41e31b110b4eb929dffb410264694a06205b7ad7/png/128/emoji_u1f914.png"
+    },
+    "noto-emoji/png128/emoji_u1f631.png": {
+      "repository": "googlefonts/noto-emoji",
+      "commit": "41e31b110b4eb929dffb410264694a06205b7ad7",
+      "url": "https://raw.githubusercontent.com/googlefonts/noto-emoji/41e31b110b4eb929dffb410264694a06205b7ad7/png/128/emoji_u1f631.png"
+    },
+    "noto-emoji/png128/emoji_u1f389.png": {
+      "repository": "googlefonts/noto-emoji",
+      "commit": "41e31b110b4eb929dffb410264694a06205b7ad7",
+      "url": "https://raw.githubusercontent.com/googlefonts/noto-emoji/41e31b110b4eb929dffb410264694a06205b7ad7/png/128/emoji_u1f389.png"
+    },
+    "noto-emoji/png128/emoji_u1f3c6.png": {
+      "repository": "googlefonts/noto-emoji",
+      "commit": "41e31b110b4eb929dffb410264694a06205b7ad7",
+      "url": "https://raw.githubusercontent.com/googlefonts/noto-emoji/41e31b110b4eb929dffb410264694a06205b7ad7/png/128/emoji_u1f3c6.png"
+    },
+    "noto-emoji/png128/emoji_u2b50.png": {
+      "repository": "googlefonts/noto-emoji",
+      "commit": "41e31b110b4eb929dffb410264694a06205b7ad7",
+      "url": "https://raw.githubusercontent.com/googlefonts/noto-emoji/41e31b110b4eb929dffb410264694a06205b7ad7/png/128/emoji_u2b50.png"
+    },
+    "noto-emoji/png128/emoji_u1f4af.png": {
+      "repository": "googlefonts/noto-emoji",
+      "commit": "41e31b110b4eb929dffb410264694a06205b7ad7",
+      "url": "https://raw.githubusercontent.com/googlefonts/noto-emoji/41e31b110b4eb929dffb410264694a06205b7ad7/png/128/emoji_u1f4af.png"
+    },
+    "noto-emoji/png128/emoji_u1f4f1.png": {
+      "repository": "googlefonts/noto-emoji",
+      "commit": "41e31b110b4eb929dffb410264694a06205b7ad7",
+      "url": "https://raw.githubusercontent.com/googlefonts/noto-emoji/41e31b110b4eb929dffb410264694a06205b7ad7/png/128/emoji_u1f4f1.png"
+    },
+    "noto-emoji/png128/emoji_u1f4bb.png": {
+      "repository": "googlefonts/noto-emoji",
+      "commit": "41e31b110b4eb929dffb410264694a06205b7ad7",
+      "url": "https://raw.githubusercontent.com/googlefonts/noto-emoji/41e31b110b4eb929dffb410264694a06205b7ad7/png/128/emoji_u1f4bb.png"
+    },
+    "noto-emoji/png128/emoji_u1f3a4.png": {
+      "repository": "googlefonts/noto-emoji",
+      "commit": "41e31b110b4eb929dffb410264694a06205b7ad7",
+      "url": "https://raw.githubusercontent.com/googlefonts/noto-emoji/41e31b110b4eb929dffb410264694a06205b7ad7/png/128/emoji_u1f3a4.png"
+    },
+    "noto-emoji/png128/emoji_u1f3ac.png": {
+      "repository": "googlefonts/noto-emoji",
+      "commit": "41e31b110b4eb929dffb410264694a06205b7ad7",
+      "url": "https://raw.githubusercontent.com/googlefonts/noto-emoji/41e31b110b4eb929dffb410264694a06205b7ad7/png/128/emoji_u1f3ac.png"
+    },
+    "noto-emoji/png128/emoji_u1f4da.png": {
+      "repository": "googlefonts/noto-emoji",
+      "commit": "41e31b110b4eb929dffb410264694a06205b7ad7",
+      "url": "https://raw.githubusercontent.com/googlefonts/noto-emoji/41e31b110b4eb929dffb410264694a06205b7ad7/png/128/emoji_u1f4da.png"
+    },
+    "noto-emoji/png128/emoji_u2728.png": {
+      "repository": "googlefonts/noto-emoji",
+      "commit": "41e31b110b4eb929dffb410264694a06205b7ad7",
+      "url": "https://raw.githubusercontent.com/googlefonts/noto-emoji/41e31b110b4eb929dffb410264694a06205b7ad7/png/128/emoji_u2728.png"
+    },
+    "noto-emoji/png128/emoji_u1f91d.png": {
+      "repository": "googlefonts/noto-emoji",
+      "commit": "41e31b110b4eb929dffb410264694a06205b7ad7",
+      "url": "https://raw.githubusercontent.com/googlefonts/noto-emoji/41e31b110b4eb929dffb410264694a06205b7ad7/png/128/emoji_u1f91d.png"
+    },
+    "noto-emoji/png128/emoji_u1f30d.png": {
+      "repository": "googlefonts/noto-emoji",
+      "commit": "41e31b110b4eb929dffb410264694a06205b7ad7",
+      "url": "https://raw.githubusercontent.com/googlefonts/noto-emoji/41e31b110b4eb929dffb410264694a06205b7ad7/png/128/emoji_u1f30d.png"
+    },
+    "noto-emoji/png128/emoji_u1f3e0.png": {
+      "repository": "googlefonts/noto-emoji",
+      "commit": "41e31b110b4eb929dffb410264694a06205b7ad7",
+      "url": "https://raw.githubusercontent.com/googlefonts/noto-emoji/41e31b110b4eb929dffb410264694a06205b7ad7/png/128/emoji_u1f3e0.png"
+    },
+    "noto-emoji/png128/emoji_u2615.png": {
+      "repository": "googlefonts/noto-emoji",
+      "commit": "41e31b110b4eb929dffb410264694a06205b7ad7",
+      "url": "https://raw.githubusercontent.com/googlefonts/noto-emoji/41e31b110b4eb929dffb410264694a06205b7ad7/png/128/emoji_u2615.png"
+    },
+    "noto-emoji/png128/emoji_u1f355.png": {
+      "repository": "googlefonts/noto-emoji",
+      "commit": "41e31b110b4eb929dffb410264694a06205b7ad7",
+      "url": "https://raw.githubusercontent.com/googlefonts/noto-emoji/41e31b110b4eb929dffb410264694a06205b7ad7/png/128/emoji_u1f355.png"
+    },
+    "noto-emoji/png128/emoji_u1f3b5.png": {
+      "repository": "googlefonts/noto-emoji",
+      "commit": "41e31b110b4eb929dffb410264694a06205b7ad7",
+      "url": "https://raw.githubusercontent.com/googlefonts/noto-emoji/41e31b110b4eb929dffb410264694a06205b7ad7/png/128/emoji_u1f3b5.png"
+    },
+    "noto-emoji/png128/emoji_u1f634.png": {
+      "repository": "googlefonts/noto-emoji",
+      "commit": "41e31b110b4eb929dffb410264694a06205b7ad7",
+      "url": "https://raw.githubusercontent.com/googlefonts/noto-emoji/41e31b110b4eb929dffb410264694a06205b7ad7/png/128/emoji_u1f634.png"
+    },
+    "noto-emoji/png128/emoji_u1f6ab.png": {
+      "repository": "googlefonts/noto-emoji",
+      "commit": "41e31b110b4eb929dffb410264694a06205b7ad7",
+      "url": "https://raw.githubusercontent.com/googlefonts/noto-emoji/41e31b110b4eb929dffb410264694a06205b7ad7/png/128/emoji_u1f6ab.png"
+    },
+    "noto-emoji/png128/emoji_u1f4b8.png": {
+      "repository": "googlefonts/noto-emoji",
+      "commit": "41e31b110b4eb929dffb410264694a06205b7ad7",
+      "url": "https://raw.githubusercontent.com/googlefonts/noto-emoji/41e31b110b4eb929dffb410264694a06205b7ad7/png/128/emoji_u1f4b8.png"
+    },
+    "noto-emoji/png128/emoji_u1f4e3.png": {
+      "repository": "googlefonts/noto-emoji",
+      "commit": "41e31b110b4eb929dffb410264694a06205b7ad7",
+      "url": "https://raw.githubusercontent.com/googlefonts/noto-emoji/41e31b110b4eb929dffb410264694a06205b7ad7/png/128/emoji_u1f4e3.png"
+    },
+    "noto-emoji/png128/emoji_u1f511.png": {
+      "repository": "googlefonts/noto-emoji",
+      "commit": "41e31b110b4eb929dffb410264694a06205b7ad7",
+      "url": "https://raw.githubusercontent.com/googlefonts/noto-emoji/41e31b110b4eb929dffb410264694a06205b7ad7/png/128/emoji_u1f511.png"
+    },
+    "noto-emoji/png128/emoji_u26a1.png": {
+      "repository": "googlefonts/noto-emoji",
+      "commit": "41e31b110b4eb929dffb410264694a06205b7ad7",
+      "url": "https://raw.githubusercontent.com/googlefonts/noto-emoji/41e31b110b4eb929dffb410264694a06205b7ad7/png/128/emoji_u26a1.png"
+    },
+    "noto-emoji/png128/emoji_u1f381.png": {
+      "repository": "googlefonts/noto-emoji",
+      "commit": "41e31b110b4eb929dffb410264694a06205b7ad7",
+      "url": "https://raw.githubusercontent.com/googlefonts/noto-emoji/41e31b110b4eb929dffb410264694a06205b7ad7/png/128/emoji_u1f381.png"
+    },
+    "noto-emoji/png128/emoji_u2753.png": {
+      "repository": "googlefonts/noto-emoji",
+      "commit": "41e31b110b4eb929dffb410264694a06205b7ad7",
+      "url": "https://raw.githubusercontent.com/googlefonts/noto-emoji/41e31b110b4eb929dffb410264694a06205b7ad7/png/128/emoji_u2753.png"
+    },
+    "noto-emoji/png128/emoji_u1f60d.png": {
+      "repository": "googlefonts/noto-emoji",
+      "commit": "41e31b110b4eb929dffb410264694a06205b7ad7",
+      "url": "https://raw.githubusercontent.com/googlefonts/noto-emoji/41e31b110b4eb929dffb410264694a06205b7ad7/png/128/emoji_u1f60d.png"
+    },
+    "noto-emoji/png128/emoji_u1f622.png": {
+      "repository": "googlefonts/noto-emoji",
+      "commit": "41e31b110b4eb929dffb410264694a06205b7ad7",
+      "url": "https://raw.githubusercontent.com/googlefonts/noto-emoji/41e31b110b4eb929dffb410264694a06205b7ad7/png/128/emoji_u1f622.png"
+    },
+    "noto-emoji/png128/emoji_u1f621.png": {
+      "repository": "googlefonts/noto-emoji",
+      "commit": "41e31b110b4eb929dffb410264694a06205b7ad7",
+      "url": "https://raw.githubusercontent.com/googlefonts/noto-emoji/41e31b110b4eb929dffb410264694a06205b7ad7/png/128/emoji_u1f621.png"
+    },
+    "noto-emoji/png128/emoji_u1f64f.png": {
+      "repository": "googlefonts/noto-emoji",
+      "commit": "41e31b110b4eb929dffb410264694a06205b7ad7",
+      "url": "https://raw.githubusercontent.com/googlefonts/noto-emoji/41e31b110b4eb929dffb410264694a06205b7ad7/png/128/emoji_u1f64f.png"
+    },
+    "noto-emoji/png128/emoji_u1f44d.png": {
+      "repository": "googlefonts/noto-emoji",
+      "commit": "41e31b110b4eb929dffb410264694a06205b7ad7",
+      "url": "https://raw.githubusercontent.com/googlefonts/noto-emoji/41e31b110b4eb929dffb410264694a06205b7ad7/png/128/emoji_u1f44d.png"
+    },
+    "noto-emoji/png128/emoji_u1f44e.png": {
+      "repository": "googlefonts/noto-emoji",
+      "commit": "41e31b110b4eb929dffb410264694a06205b7ad7",
+      "url": "https://raw.githubusercontent.com/googlefonts/noto-emoji/41e31b110b4eb929dffb410264694a06205b7ad7/png/128/emoji_u1f44e.png"
+    },
+    "noto-emoji/LICENSE": {
+      "repository": "googlefonts/noto-emoji",
+      "commit": "41e31b110b4eb929dffb410264694a06205b7ad7",
+      "url": "https://raw.githubusercontent.com/googlefonts/noto-emoji/41e31b110b4eb929dffb410264694a06205b7ad7/LICENSE"
+    }
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "schema": "voxclip-editing-fixture/1",
+  "id": "plan/complete-removal",
+  "kind": "edit-plan",
+  "origin": "voxconvo",
+  "source": "vox-web/test/caption-timing.test.mjs:115",
+  "description": "Removing everything yields no kept media and no captions (exporters must refuse).",
+  "input": {"durationSeconds": 1, "sampleRate": 1000, "segments": [{"id": "all", "kind": "word", "text": "all", "start": -1, "end": 9, "cut": true}]},
+  "expected": {
+    "totalSamples": 1000,
+    "outputSamples": 0,
+    "durationSeconds": 0,
+    "segmentCuts": [{"id": "all", "rawStart": -1, "rawEnd": 9, "startSample": 0, "endSample": 1000, "empty": false}],
+    "cuts": [[0, 1000]],
+    "kept": [],
+    "captions": [],
+    "mapTime": [[0, 0], [-1, 0], ["NaN", 0], [1, 0], [2, 0], [0.5, 0]],
+    "sourceTime": [[0, 1], [-1, 1], ["NaN", 1], [1, 1]],
+    "previewSkip": [[0, 1], [0.5, 1], [1, null]]
+  }
+}

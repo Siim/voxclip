@@ -1,0 +1,18 @@
+{
+  "schema": "voxclip-editing-fixture/1",
+  "id": "boundaries/soft-start-fading-end",
+  "kind": "word-boundaries",
+  "origin": "voxconvo",
+  "source": "vox-web/test/word-boundaries.test.mjs",
+  "description": "A soft start and fading end move out to where the sound is.",
+  "input": {
+    "audio": {
+      "generator": "vox-take-v1",
+      "sampleRate": 16000,
+      "seconds": 4,
+      "sections": [[1, 1.2, "hiss"], [1.2, 1.6, "vowel"], [1.6, 1.75, "hiss"], [2.5, 2.9, "vowel"]]
+    },
+    "words": [{"id": "so", "word": "so", "start": 1.2, "end": 1.6}, {"id": "then", "word": "then", "start": 2.5, "end": 2.9}]
+  },
+  "expected": {"words": [{"id": "so", "start": 1, "end": 1.75}, {"id": "then", "start": 2.5, "end": 2.9}], "tolerance": 0.000001}
+}

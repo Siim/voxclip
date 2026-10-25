@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32" role="img" aria-label="VoxClip">
+  <title>VoxClip</title>
+  <!-- macOS 32 px, hinted to the pixel grid. Render at exactly 32 px. -->
+  <defs><linearGradient id="vc-plate" x1="0" y1="3" x2="0" y2="29" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#2E3037"/><stop offset="1" stop-color="#15161A"/></linearGradient></defs>
+  <path d="M11.94,3H20.06C22.63,3 23.92,3 25.08,3.38L25.31,3.44C26.82,3.99 28.01,5.18 28.56,6.69L28.62,6.92C29,8.08 29,9.37 29,11.94V20.06C29,22.63 29,23.92 28.62,25.08L28.56,25.31C28.01,26.82 26.82,28.01 25.31,28.56L25.08,28.62C23.92,29 22.63,29 20.06,29H11.94C9.37,29 8.08,29 6.92,28.62L6.69,28.56C5.18,28.01 3.99,26.82 3.44,25.31L3.38,25.08C3,23.92 3,22.63 3,20.06V11.94C3,9.37 3,8.08 3.38,6.92L3.44,6.69C3.99,5.18 5.18,3.99 6.69,3.44L6.92,3.38C8.08,3 9.37,3 11.94,3Z" fill="url(#vc-plate)"/>
+  <rect x="6" y="12" width="3" height="8" rx="1.5" fill="#F3F0E7"/>
+  <rect x="10" y="10" width="3" height="12" rx="1.5" fill="#F3F0E7"/>
+  <rect x="19" y="11" width="3" height="10" rx="1.5" fill="#F3F0E7"/>
+  <rect x="23" y="13" width="3" height="6" rx="1.5" fill="#F3F0E7"/>
+  <rect x="15" y="8" width="2" height="16" rx="1" fill="#F38F83"/>
+</svg>

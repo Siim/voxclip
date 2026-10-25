@@ -1,0 +1,29 @@
+{
+  "schema": "voxclip-editing-fixture/1",
+  "id": "plan/word-reach-capped",
+  "kind": "edit-plan",
+  "origin": "voxconvo",
+  "source": "synthetic",
+  "description": "A removed word takes WORD_REACH (0.1 s) of silence on each side when gaps are wide.",
+  "input": {
+    "durationSeconds": 6,
+    "sampleRate": 1000,
+    "segments": [
+      {"id": "so", "kind": "word", "text": "so", "start": 1, "end": 1.4, "cut": false},
+      {"id": "um", "kind": "word", "text": "um", "start": 2, "end": 2.3, "cut": true},
+      {"id": "then", "kind": "word", "text": "then", "start": 3, "end": 3.5, "cut": false}
+    ]
+  },
+  "expected": {
+    "totalSamples": 6000,
+    "outputSamples": 5500,
+    "durationSeconds": 5.5,
+    "segmentCuts": [{"id": "um", "rawStart": 1.9, "rawEnd": 2.4, "startSample": 1900, "endSample": 2400, "empty": false}],
+    "cuts": [[1900, 2400]],
+    "kept": [[0, 1900], [2400, 6000]],
+    "captions": [{"id": "so", "start": 1, "end": 1.4}, {"id": "then", "start": 2.5, "end": 3}],
+    "mapTime": [[0, 0], [-1, 0], ["NaN", 0], [6, 5.5], [7, 5.5], [1.9, 1.9], [2.4, 1.9], [2.15, 1.9], [0.95, 0.95], [4.2, 3.7]],
+    "sourceTime": [[0, 0], [-1, 0], ["NaN", 0], [5.5, 6], [6.5, 6], [1.9, 2.4]],
+    "previewSkip": [[0, null], [1.9, 2.4], [2.15, 2.4], [2.4, null]]
+  }
+}

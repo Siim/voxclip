@@ -1,0 +1,545 @@
+{
+  "schema": "voxclip.transcription-catalog",
+  "schemaVersion": 1,
+  "catalogVersion": "2026-10-25",
+  "spec": "doc/spec/transcription.md#12-model-catalogue-and-model-manager",
+  "storage": "<data>/Models/<engine>/<modelId>/<file name> (doc/architecture.md section 2.5)",
+  "notes": [
+    "Bundled into both apps as a resource and treated as trusted. v1 never fetches a remote catalogue.",
+    "Every file URL is a Hugging Face resolve URL pinned to a commit revision, so the bytes behind a URL cannot change. sha256 and bytes come from the Hugging Face LFS metadata (api/models/<repo>/tree) and were cross-checked against the X-Linked-Size and X-Linked-Etag headers of the resolve URL on 2026-10-25.",
+    "Resolve URLs answer 302 to a CDN host (cdn.hf.co). Clients follow the redirect; the confirmation sheet names the catalogue host (huggingface.co).",
+    "VoxClip hosts no model files. Every model is a third-party download that the user confirms once.",
+    "Languages are BCP-47 primary language subtags (ISO 639-1 where one exists). '*' means any language the engine accepts, including auto-detection."
+  ],
+  "engines": [
+    {
+      "id": "elevenlabs",
+      "displayName": "ElevenLabs Scribe",
+      "kind": "cloud",
+      "platforms": ["macos", "windows"],
+      "endpoint": "https://api.elevenlabs.io/v1/speech-to-text",
+      "modelId": "scribe_v2",
+      "languages": ["*"],
+      "autoLanguage": true,
+      "verbatim": true,
+      "timing": "native",
+      "requiresKey": "elevenlabs",
+      "keyPermissions": ["speech_to_text"],
+      "privacy": "thirdPartyCloud",
+      "sends": "The audio track only, as a 16 kHz mono 16-bit WAV. No video, title or project data.",
+      "limits": {
+        "minDurationSeconds": 0.1,
+        "maxDurationSeconds": 36000,
+        "maxUploadBytes": 3000000000,
+        "limitsNote": "The API reference says files must be under 5.0 GB; the capability page says up to 3 GB and 10 hours. VoxClip enforces the stricter pair."
+      },
+      "pricing": {
+        "currency": "USD",
+        "perAudioHour": 0.22,
+        "keytermsSurchargeFraction": 0.20,
+        "keytermsMinimumBilledSecondsOver100Terms": 20,
+        "silenceIsBilled": true,
+        "asOf": "2026-10-25",
+        "source": "https://elevenlabs.io/pricing/api"
+      },
+      "languageQuality": {
+        "et": "Excellent tier (WER <= 5%) per https://elevenlabs.io/docs/overview/capabilities/speech-to-text",
+        "en": "Excellent tier (WER <= 5%)"
+      }
+    },
+    {
+      "id": "whispercpp",
+      "displayName": "Whisper on this device",
+      "kind": "local",
+      "platforms": ["macos", "windows"],
+      "autoLanguage": true,
+      "verbatim": false,
+      "timing": "dtw",
+      "privacy": "onDevice",
+      "sends": "Nothing. Runs on this device.",
+      "runtime": {
+        "macos": {
+          "library": "whisper.cpp",
+          "version": "1.9.5",
+          "artifact": "whisper-b5454-xcframework.zip",
+          "url": "https://github.com/ggml-org/whisper.cpp/releases/download/b5454/whisper-b5454-xcframework.zip",
+          "bytes": 65816082,
+          "swiftpmChecksum": "e57f8c48933000acabc13bb913fbe82805d483a2deff692cc6738836bd92393b",
+          "license": "MIT",
+          "acceleration": "Metal (shaders embedded), Accelerate; Core ML encoder support compiled in with fallback, unused in v1",
+          "swiftpmTargetName": "whisper",
+          "linkage": "dynamic framework; bundle.sh embeds it in Contents/Frameworks and signs it"
+        },
+        "windows": {
+          "library": "Whisper.net",
+          "version": "1.9.1",
+          "whisperCppVersion": "1.8.5",
+          "packages": [
+            { "id": "Whisper.net", "version": "1.9.1" },
+            { "id": "Whisper.net.Runtime", "version": "1.9.1", "rids": ["win-x64", "win-arm64"], "note": "CPU. Needs AVX, AVX2, FMA and F16C on x64." },
+            { "id": "Whisper.net.Runtime.NoAvx", "version": "1.9.1", "rids": ["win-x64"], "note": "CPU fallback for x64 machines without AVX2." },
+            { "id": "Whisper.net.Runtime.Vulkan", "version": "1.9.1", "rids": ["win-x64"], "note": "GPU on AMD, Intel and NVIDIA through the driver's Vulkan loader. No win-arm64 build exists." }
+          ],
+          "license": "MIT"
+        }
+      }
+    },
+    {
+      "id": "apple-speech",
+      "displayName": "Apple Speech (on this Mac)",
+      "kind": "system",
+      "platforms": ["macos"],
+      "minimumOS": "26.0",
+      "module": "SpeechTranscriber",
+      "autoLanguage": false,
+      "verbatim": false,
+      "timing": "runGrouped",
+      "privacy": "onDevice",
+      "sends": "Nothing. macOS downloads its own speech assets.",
+      "localesAuthority": "runtime: SpeechTranscriber.supportedLocales and supportedLocale(equivalentTo:)",
+      "localesSnapshot": {
+        "measuredOn": "macOS 27.0.1, Apple M3 Max, 2026-10-25",
+        "locales": ["bn-IN", "de-AT", "de-CH", "de-DE", "en-AU", "en-CA", "en-GB", "en-IE", "en-IN", "en-NZ", "en-SG", "en-US", "en-ZA", "es-CL", "es-ES", "es-MX", "es-US", "fr-BE", "fr-CA", "fr-CH", "fr-FR", "gu-IN", "hi-IN", "it-CH", "it-IT", "ja-JP", "kn-IN", "ko-KR", "ks-IN", "mai-IN", "ml-IN", "mr-IN", "mul-IN", "ne-IN", "or-IN", "pa-IN", "pt-BR", "pt-PT", "ta-IN", "te-IN", "ur-IN", "yue-CN", "zh-CN", "zh-HK", "zh-TW"],
+        "notSupported": ["et"]
+      },
+      "maximumReservedLocalesObserved": 5
+    }
+  ],
+  "models": [
+    {
+      "id": "taltech-et-verbatim-2604-q8_0",
+      "displayName": "Estonian · TalTech verbatim (Q8_0)",
+      "engine": "whispercpp",
+      "kind": "asr",
+      "family": "whisper-large-v3-turbo",
+      "variant": "q8_0",
+      "languages": ["et"],
+      "codeSwitching": ["en"],
+      "forcedLanguage": "et",
+      "verbatim": false,
+      "verbatimNote": "Fine-tuned on verbatim Estonian transcripts, so fillers are expected to appear as words. Treated as non-verbatim until the filler-recall acceptance test in the spec passes; then flip to true.",
+      "timing": "dtw",
+      "whisper": {
+        "multilingual": true,
+        "dtwAheadsPreset": "LARGE_V3_TURBO",
+        "dtwAheadsNote": "generation_config.json at revision 310c5509 carries alignment_heads [[2,4],[2,11],[3,3],[3,6],[3,11],[3,14]], identical to openai/whisper-large-v3-turbo. They were copied, not re-estimated, so DTW quality on the fine-tune must be measured.",
+        "initialPromptByLanguage": {},
+        "vadModel": "silero-vad-v6.2.0"
+      },
+      "files": [
+        {
+          "role": "model",
+          "name": "ggml-model-q8_0.bin",
+          "url": "https://huggingface.co/Aivo/whisper-large-v3-turbo-et-verbatim-2604-ggml/resolve/e2662ad36c2f0588633dddbed3564c30fa7ea967/ggml-model-q8_0.bin",
+          "bytes": 874188075,
+          "sha256": "0e6308a9300d497ca1bcce41f53c17e4702b62b14ad237db40e108b00a53b127"
+        }
+      ],
+      "totalBytes": 874188075,
+      "approxPeakRamBytes": 2100000000,
+      "approxPeakRamNote": "Publisher measurement on an ARM phone CPU backend for 10 min of audio. Desktop use is expected to be lower; measure.",
+      "repo": { "host": "huggingface.co", "id": "Aivo/whisper-large-v3-turbo-et-verbatim-2604-ggml", "revision": "e2662ad36c2f0588633dddbed3564c30fa7ea967" },
+      "sourcePage": "https://huggingface.co/Aivo/whisper-large-v3-turbo-et-verbatim-2604-ggml",
+      "publisher": "Hugging Face user Aivo (quantization)",
+      "originalPublisher": "TalTech Laboratory of Language Technology (TalTechNLP)",
+      "provenance": "Quantized with whisper-quantize from whisper.cpp v1.9.4 (commit 927cfce) from TalTechNLP ggml/ggml-model.bin, sha256 4e231f931f029850d7ca497efe4223f85c495a27d986d955f9a577ac1cd02edb, TalTechNLP revision 310c5509.",
+      "license": "MIT",
+      "licenseUrl": "https://huggingface.co/TalTechNLP/whisper-large-v3-turbo-et-verbatim-2604",
+      "attribution": "Estonian speech recognition: whisper-large-v3-turbo-et-verbatim-2604 by the TalTech Laboratory of Language Technology (MIT), fine-tuned from OpenAI Whisper large-v3-turbo (MIT). GGML Q8_0 quantization by the Hugging Face user Aivo (MIT).",
+      "citation": "Olev, A. and Alumäe, T. (2025). Open source platform for Estonian speech transcription. Language Resources and Evaluation 59(4), 4421-4438.",
+      "quality": {
+        "source": "publisher model card",
+        "metric": "normalized WER (casefolded, punctuation removed, diacritics kept, numbers not normalized)",
+        "testSet": "287 items, about 65 min: FLEURS et test, VoxPopuli et test and degraded variants",
+        "clean": 0.109,
+        "degraded": 0.1696,
+        "note": "About 3.5 points of the clean WER come from numbers written as spoken words, which is the verbatim style."
+      },
+      "thirdParty": true,
+      "hosting": "third-party",
+      "platforms": ["macos", "windows"],
+      "requires": ["silero-vad-v6.2.0"],
+      "listed": true
+    },
+    {
+      "id": "taltech-et-verbatim-2604-q5_k",
+      "displayName": "Estonian · TalTech verbatim (Q5_K, smaller)",
+      "engine": "whispercpp",
+      "kind": "asr",
+      "family": "whisper-large-v3-turbo",
+      "variant": "q5_k",
+      "languages": ["et"],
+      "codeSwitching": ["en"],
+      "forcedLanguage": "et",
+      "verbatim": false,
+      "timing": "dtw",
+      "whisper": {
+        "multilingual": true,
+        "dtwAheadsPreset": "LARGE_V3_TURBO",
+        "initialPromptByLanguage": {},
+        "vadModel": "silero-vad-v6.2.0"
+      },
+      "files": [
+        {
+          "role": "model",
+          "name": "ggml-model-q5_k.bin",
+          "url": "https://huggingface.co/Aivo/whisper-large-v3-turbo-et-verbatim-2604-ggml/resolve/e2662ad36c2f0588633dddbed3564c30fa7ea967/ggml-model-q5_k.bin",
+          "bytes": 574041195,
+          "sha256": "6cc5102bf73e421ea6dc496663b1e83593164b000a51373942a0e2ca3044c855"
+        }
+      ],
+      "totalBytes": 574041195,
+      "repo": { "host": "huggingface.co", "id": "Aivo/whisper-large-v3-turbo-et-verbatim-2604-ggml", "revision": "e2662ad36c2f0588633dddbed3564c30fa7ea967" },
+      "sourcePage": "https://huggingface.co/Aivo/whisper-large-v3-turbo-et-verbatim-2604-ggml",
+      "publisher": "Hugging Face user Aivo (quantization)",
+      "originalPublisher": "TalTech Laboratory of Language Technology (TalTechNLP)",
+      "provenance": "Quantized with whisper-quantize from whisper.cpp v1.9.4 (commit 927cfce) from TalTechNLP ggml/ggml-model.bin at revision 310c5509.",
+      "license": "MIT",
+      "licenseUrl": "https://huggingface.co/TalTechNLP/whisper-large-v3-turbo-et-verbatim-2604",
+      "attribution": "Estonian speech recognition: whisper-large-v3-turbo-et-verbatim-2604 by the TalTech Laboratory of Language Technology (MIT), fine-tuned from OpenAI Whisper large-v3-turbo (MIT). GGML Q5_K quantization by the Hugging Face user Aivo (MIT).",
+      "citation": "Olev, A. and Alumäe, T. (2025). Open source platform for Estonian speech transcription. Language Resources and Evaluation 59(4), 4421-4438.",
+      "quality": { "source": "publisher model card", "note": "Q5_K is not in the publisher's WER table. Paired-bootstrap delta WER against F16 was at most +0.27 points for every quantization on the on-device test." },
+      "thirdParty": true,
+      "hosting": "third-party",
+      "platforms": ["macos", "windows"],
+      "requires": ["silero-vad-v6.2.0"],
+      "listed": true,
+      "verify": ["Whisper.net 1.9.1 (whisper.cpp 1.8.5) loads a Q5_K file written by whisper-quantize 1.9.4."]
+    },
+    {
+      "id": "taltech-et-verbatim-2604-q4_0",
+      "displayName": "Estonian · TalTech verbatim (Q4_0, low memory)",
+      "engine": "whispercpp",
+      "kind": "asr",
+      "family": "whisper-large-v3-turbo",
+      "variant": "q4_0",
+      "languages": ["et"],
+      "codeSwitching": ["en"],
+      "forcedLanguage": "et",
+      "verbatim": false,
+      "timing": "dtw",
+      "whisper": {
+        "multilingual": true,
+        "dtwAheadsPreset": "LARGE_V3_TURBO",
+        "initialPromptByLanguage": {},
+        "vadModel": "silero-vad-v6.2.0"
+      },
+      "files": [
+        {
+          "role": "model",
+          "name": "ggml-model-q4_0.bin",
+          "url": "https://huggingface.co/Aivo/whisper-large-v3-turbo-et-verbatim-2604-ggml/resolve/e2662ad36c2f0588633dddbed3564c30fa7ea967/ggml-model-q4_0.bin",
+          "bytes": 473992235,
+          "sha256": "b3786e0e258ab61c0129ca661abbabd7a328677a818b850aad45f539c27f4bf2"
+        }
+      ],
+      "totalBytes": 473992235,
+      "repo": { "host": "huggingface.co", "id": "Aivo/whisper-large-v3-turbo-et-verbatim-2604-ggml", "revision": "e2662ad36c2f0588633dddbed3564c30fa7ea967" },
+      "sourcePage": "https://huggingface.co/Aivo/whisper-large-v3-turbo-et-verbatim-2604-ggml",
+      "publisher": "Hugging Face user Aivo (quantization)",
+      "originalPublisher": "TalTech Laboratory of Language Technology (TalTechNLP)",
+      "provenance": "Quantized with whisper-quantize from whisper.cpp v1.9.4 (commit 927cfce) from TalTechNLP ggml/ggml-model.bin at revision 310c5509.",
+      "license": "MIT",
+      "licenseUrl": "https://huggingface.co/TalTechNLP/whisper-large-v3-turbo-et-verbatim-2604",
+      "attribution": "Estonian speech recognition: whisper-large-v3-turbo-et-verbatim-2604 by the TalTech Laboratory of Language Technology (MIT), fine-tuned from OpenAI Whisper large-v3-turbo (MIT). GGML Q4_0 quantization by the Hugging Face user Aivo (MIT).",
+      "citation": "Olev, A. and Alumäe, T. (2025). Open source platform for Estonian speech transcription. Language Resources and Evaluation 59(4), 4421-4438.",
+      "quality": {
+        "source": "publisher model card",
+        "metric": "normalized WER",
+        "clean": 0.1083,
+        "degraded": 0.1939,
+        "note": "Same clean-speech WER as F16, worse on noisy and phone-channel audio. Offer only for machines with less than 8 GB of RAM."
+      },
+      "thirdParty": true,
+      "hosting": "third-party",
+      "platforms": ["macos", "windows"],
+      "requires": ["silero-vad-v6.2.0"],
+      "listed": true
+    },
+    {
+      "id": "taltech-et-verbatim-2604-f16",
+      "displayName": "Estonian · TalTech verbatim (original F16)",
+      "engine": "whispercpp",
+      "kind": "asr",
+      "family": "whisper-large-v3-turbo",
+      "variant": "f16",
+      "languages": ["et"],
+      "codeSwitching": ["en"],
+      "forcedLanguage": "et",
+      "verbatim": false,
+      "timing": "dtw",
+      "whisper": {
+        "multilingual": true,
+        "dtwAheadsPreset": "LARGE_V3_TURBO",
+        "initialPromptByLanguage": {},
+        "vadModel": "silero-vad-v6.2.0"
+      },
+      "files": [
+        {
+          "role": "model",
+          "name": "ggml-model.bin",
+          "url": "https://huggingface.co/TalTechNLP/whisper-large-v3-turbo-et-verbatim-2604/resolve/310c550922fc1d1bebf3fad41f9b33ede6652bdc/ggml/ggml-model.bin",
+          "bytes": 1624555275,
+          "sha256": "4e231f931f029850d7ca497efe4223f85c495a27d986d955f9a577ac1cd02edb"
+        }
+      ],
+      "totalBytes": 1624555275,
+      "repo": { "host": "huggingface.co", "id": "TalTechNLP/whisper-large-v3-turbo-et-verbatim-2604", "revision": "310c550922fc1d1bebf3fad41f9b33ede6652bdc" },
+      "sourcePage": "https://huggingface.co/TalTechNLP/whisper-large-v3-turbo-et-verbatim-2604",
+      "publisher": "TalTech Laboratory of Language Technology (TalTechNLP)",
+      "originalPublisher": "TalTech Laboratory of Language Technology (TalTechNLP)",
+      "provenance": "GGML F16 file published by TalTechNLP on 2026-06-17 in the ggml/ subdirectory of the model repository.",
+      "license": "MIT",
+      "licenseUrl": "https://huggingface.co/TalTechNLP/whisper-large-v3-turbo-et-verbatim-2604",
+      "attribution": "Estonian speech recognition: whisper-large-v3-turbo-et-verbatim-2604 by the TalTech Laboratory of Language Technology (MIT), fine-tuned from OpenAI Whisper large-v3-turbo (MIT).",
+      "citation": "Olev, A. and Alumäe, T. (2025). Open source platform for Estonian speech transcription. Language Resources and Evaluation 59(4), 4421-4438.",
+      "quality": { "source": "publisher model card (Aivo evaluation)", "metric": "normalized WER", "clean": 0.109, "degraded": 0.1696 },
+      "thirdParty": true,
+      "hosting": "third-party",
+      "platforms": ["macos", "windows"],
+      "requires": ["silero-vad-v6.2.0"],
+      "listed": true
+    },
+    {
+      "id": "whisper-large-v3-turbo-q5_0",
+      "displayName": "Multilingual · Whisper large-v3-turbo (Q5_0)",
+      "engine": "whispercpp",
+      "kind": "asr",
+      "family": "whisper-large-v3-turbo",
+      "variant": "q5_0",
+      "languages": ["en", "zh", "de", "es", "ru", "ko", "fr", "ja", "pt", "tr", "pl", "ca", "nl", "ar", "sv", "it", "id", "hi", "fi", "vi", "he", "uk", "el", "ms", "cs", "ro", "da", "hu", "ta", "no", "th", "ur", "hr", "bg", "lt", "la", "mi", "ml", "cy", "sk", "te", "fa", "lv", "bn", "sr", "az", "sl", "kn", "et", "mk", "br", "eu", "is", "hy", "ne", "mn", "bs", "kk", "sq", "sw", "gl", "mr", "pa", "si", "km", "sn", "yo", "so", "af", "oc", "ka", "be", "tg", "sd", "gu", "am", "yi", "lo", "uz", "fo", "ht", "ps", "tk", "nn", "mt", "sa", "lb", "my", "bo", "tl", "mg", "as", "tt", "haw", "ln", "ha", "ba", "jv", "su", "yue"],
+      "forcedLanguage": null,
+      "verbatim": false,
+      "timing": "dtw",
+      "whisper": {
+        "multilingual": true,
+        "dtwAheadsPreset": "LARGE_V3_TURBO",
+        "initialPromptByLanguage": {
+          "en": "Umm, let me think like, hmm... Okay, here's what I'm, like, thinking."
+        },
+        "vadModel": "silero-vad-v6.2.0"
+      },
+      "files": [
+        {
+          "role": "model",
+          "name": "ggml-large-v3-turbo-q5_0.bin",
+          "url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-large-v3-turbo-q5_0.bin",
+          "bytes": 574041195,
+          "sha256": "394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2"
+        }
+      ],
+      "totalBytes": 574041195,
+      "repo": { "host": "huggingface.co", "id": "ggerganov/whisper.cpp", "revision": "5359861c739e955e79d9a303bcbc70fb988958b1" },
+      "sourcePage": "https://huggingface.co/ggerganov/whisper.cpp",
+      "publisher": "whisper.cpp project (ggml-org), Hugging Face ggerganov/whisper.cpp",
+      "originalPublisher": "OpenAI",
+      "license": "MIT",
+      "licenseUrl": "https://github.com/openai/whisper/blob/main/LICENSE",
+      "attribution": "Speech recognition: Whisper large-v3-turbo by OpenAI (MIT). GGML conversion and Q5_0 quantization by the whisper.cpp project (MIT).",
+      "thirdParty": true,
+      "hosting": "third-party",
+      "platforms": ["macos", "windows"],
+      "requires": ["silero-vad-v6.2.0"],
+      "listed": true
+    },
+    {
+      "id": "whisper-large-v3-turbo-q8_0",
+      "displayName": "Multilingual · Whisper large-v3-turbo (Q8_0)",
+      "engine": "whispercpp",
+      "kind": "asr",
+      "family": "whisper-large-v3-turbo",
+      "variant": "q8_0",
+      "languages": ["en", "zh", "de", "es", "ru", "ko", "fr", "ja", "pt", "tr", "pl", "ca", "nl", "ar", "sv", "it", "id", "hi", "fi", "vi", "he", "uk", "el", "ms", "cs", "ro", "da", "hu", "ta", "no", "th", "ur", "hr", "bg", "lt", "la", "mi", "ml", "cy", "sk", "te", "fa", "lv", "bn", "sr", "az", "sl", "kn", "et", "mk", "br", "eu", "is", "hy", "ne", "mn", "bs", "kk", "sq", "sw", "gl", "mr", "pa", "si", "km", "sn", "yo", "so", "af", "oc", "ka", "be", "tg", "sd", "gu", "am", "yi", "lo", "uz", "fo", "ht", "ps", "tk", "nn", "mt", "sa", "lb", "my", "bo", "tl", "mg", "as", "tt", "haw", "ln", "ha", "ba", "jv", "su", "yue"],
+      "forcedLanguage": null,
+      "verbatim": false,
+      "timing": "dtw",
+      "whisper": {
+        "multilingual": true,
+        "dtwAheadsPreset": "LARGE_V3_TURBO",
+        "initialPromptByLanguage": {
+          "en": "Umm, let me think like, hmm... Okay, here's what I'm, like, thinking."
+        },
+        "vadModel": "silero-vad-v6.2.0"
+      },
+      "files": [
+        {
+          "role": "model",
+          "name": "ggml-large-v3-turbo-q8_0.bin",
+          "url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-large-v3-turbo-q8_0.bin",
+          "bytes": 874188075,
+          "sha256": "317eb69c11673c9de1e1f0d459b253999804ec71ac4c23c17ecf5fbe24e259a1"
+        }
+      ],
+      "totalBytes": 874188075,
+      "repo": { "host": "huggingface.co", "id": "ggerganov/whisper.cpp", "revision": "5359861c739e955e79d9a303bcbc70fb988958b1" },
+      "sourcePage": "https://huggingface.co/ggerganov/whisper.cpp",
+      "publisher": "whisper.cpp project (ggml-org), Hugging Face ggerganov/whisper.cpp",
+      "originalPublisher": "OpenAI",
+      "license": "MIT",
+      "licenseUrl": "https://github.com/openai/whisper/blob/main/LICENSE",
+      "attribution": "Speech recognition: Whisper large-v3-turbo by OpenAI (MIT). GGML conversion and Q8_0 quantization by the whisper.cpp project (MIT).",
+      "thirdParty": true,
+      "hosting": "third-party",
+      "platforms": ["macos", "windows"],
+      "requires": ["silero-vad-v6.2.0"],
+      "listed": true
+    },
+    {
+      "id": "whisper-small.en-q5_1",
+      "displayName": "English · Whisper small.en (fast)",
+      "engine": "whispercpp",
+      "kind": "asr",
+      "family": "whisper-small.en",
+      "variant": "q5_1",
+      "languages": ["en"],
+      "forcedLanguage": "en",
+      "verbatim": false,
+      "timing": "dtw",
+      "whisper": {
+        "multilingual": false,
+        "dtwAheadsPreset": "SMALL_EN",
+        "initialPromptByLanguage": {
+          "en": "Umm, let me think like, hmm... Okay, here's what I'm, like, thinking."
+        },
+        "vadModel": "silero-vad-v6.2.0"
+      },
+      "files": [
+        {
+          "role": "model",
+          "name": "ggml-small.en-q5_1.bin",
+          "url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-small.en-q5_1.bin",
+          "bytes": 190098681,
+          "sha256": "bfdff4894dcb76bbf647d56263ea2a96645423f1669176f4844a1bf8e478ad30"
+        }
+      ],
+      "totalBytes": 190098681,
+      "repo": { "host": "huggingface.co", "id": "ggerganov/whisper.cpp", "revision": "5359861c739e955e79d9a303bcbc70fb988958b1" },
+      "sourcePage": "https://huggingface.co/ggerganov/whisper.cpp",
+      "publisher": "whisper.cpp project (ggml-org), Hugging Face ggerganov/whisper.cpp",
+      "originalPublisher": "OpenAI",
+      "license": "MIT",
+      "licenseUrl": "https://github.com/openai/whisper/blob/main/LICENSE",
+      "attribution": "Speech recognition: Whisper small.en by OpenAI (MIT). GGML conversion and Q5_1 quantization by the whisper.cpp project (MIT).",
+      "thirdParty": true,
+      "hosting": "third-party",
+      "platforms": ["macos", "windows"],
+      "requires": ["silero-vad-v6.2.0"],
+      "listed": true
+    },
+    {
+      "id": "whisper-base.en-q5_1",
+      "displayName": "English · Whisper base.en (tiny, for tests)",
+      "engine": "whispercpp",
+      "kind": "asr",
+      "family": "whisper-base.en",
+      "variant": "q5_1",
+      "languages": ["en"],
+      "forcedLanguage": "en",
+      "verbatim": false,
+      "timing": "dtw",
+      "whisper": {
+        "multilingual": false,
+        "dtwAheadsPreset": "BASE_EN",
+        "initialPromptByLanguage": {
+          "en": "Umm, let me think like, hmm... Okay, here's what I'm, like, thinking."
+        },
+        "vadModel": "silero-vad-v6.2.0"
+      },
+      "files": [
+        {
+          "role": "model",
+          "name": "ggml-base.en-q5_1.bin",
+          "url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-base.en-q5_1.bin",
+          "bytes": 59721011,
+          "sha256": "4baf70dd0d7c4247ba2b81fafd9c01005ac77c2f9ef064e00dcf195d0e2fdd2f"
+        }
+      ],
+      "totalBytes": 59721011,
+      "repo": { "host": "huggingface.co", "id": "ggerganov/whisper.cpp", "revision": "5359861c739e955e79d9a303bcbc70fb988958b1" },
+      "sourcePage": "https://huggingface.co/ggerganov/whisper.cpp",
+      "publisher": "whisper.cpp project (ggml-org), Hugging Face ggerganov/whisper.cpp",
+      "originalPublisher": "OpenAI",
+      "license": "MIT",
+      "licenseUrl": "https://github.com/openai/whisper/blob/main/LICENSE",
+      "attribution": "Speech recognition: Whisper base.en by OpenAI (MIT). GGML conversion and Q5_1 quantization by the whisper.cpp project (MIT).",
+      "thirdParty": true,
+      "hosting": "third-party",
+      "platforms": ["macos", "windows"],
+      "requires": ["silero-vad-v6.2.0"],
+      "listed": false,
+      "listedNote": "Hidden from the model list. Used by opt-in download tests (VOXCLIP_TEST_DOWNLOAD=1) and the CLI."
+    },
+    {
+      "id": "silero-vad-v6.2.0",
+      "displayName": "Silero VAD v6.2.0 (speech detection)",
+      "engine": "whispercpp",
+      "kind": "vad",
+      "family": "silero-vad",
+      "variant": "v6.2.0",
+      "languages": ["*"],
+      "files": [
+        {
+          "role": "vad",
+          "name": "ggml-silero-v6.2.0.bin",
+          "url": "https://huggingface.co/ggml-org/whisper-vad/resolve/9ffd54a1e1ee413ddf265af9913beaf518d1639b/ggml-silero-v6.2.0.bin",
+          "bytes": 885098,
+          "sha256": "2aa269b785eeb53a82983a20501ddf7c1d9c48e33ab63a41391ac6c9f7fb6987"
+        }
+      ],
+      "totalBytes": 885098,
+      "repo": { "host": "huggingface.co", "id": "ggml-org/whisper-vad", "revision": "9ffd54a1e1ee413ddf265af9913beaf518d1639b" },
+      "sourcePage": "https://huggingface.co/ggml-org/whisper-vad",
+      "publisher": "ggml-org (GGML conversion)",
+      "originalPublisher": "Silero Team",
+      "license": "MIT",
+      "licenseUrl": "https://github.com/snakers4/silero-vad/blob/master/LICENSE",
+      "attribution": "Speech detection: Silero VAD v6.2.0 by the Silero Team (MIT). GGML conversion by ggml-org (MIT).",
+      "thirdParty": true,
+      "hosting": "third-party",
+      "platforms": ["macos", "windows"],
+      "requires": [],
+      "listed": false,
+      "listedNote": "Never shown as its own row. Downloaded together with the first Whisper model, inside the same confirmation."
+    }
+  ],
+  "defaults": {
+    "spec": "doc/spec/transcription.md#11-language-routing",
+    "byLanguage": {
+      "et": {
+        "macos": { "system": null, "local": ["taltech-et-verbatim-2604-q8_0", "taltech-et-verbatim-2604-q5_k", "taltech-et-verbatim-2604-f16", "taltech-et-verbatim-2604-q4_0"], "recommendedDownload": "taltech-et-verbatim-2604-q8_0", "cloud": "elevenlabs" },
+        "windows": { "system": null, "local": ["taltech-et-verbatim-2604-q8_0", "taltech-et-verbatim-2604-q5_k", "taltech-et-verbatim-2604-f16", "taltech-et-verbatim-2604-q4_0"], "recommendedDownload": "taltech-et-verbatim-2604-q8_0", "lowMemoryDownload": "taltech-et-verbatim-2604-q4_0", "cloud": "elevenlabs" }
+      },
+      "en": {
+        "macos": { "system": "apple-speech", "local": ["whisper-large-v3-turbo-q8_0", "whisper-large-v3-turbo-q5_0", "whisper-small.en-q5_1"], "recommendedDownload": "whisper-large-v3-turbo-q5_0", "cloud": "elevenlabs" },
+        "windows": { "system": null, "local": ["whisper-large-v3-turbo-q8_0", "whisper-large-v3-turbo-q5_0", "whisper-small.en-q5_1"], "recommendedDownload": "whisper-large-v3-turbo-q5_0", "lowMemoryDownload": "whisper-small.en-q5_1", "cloud": "elevenlabs" }
+      },
+      "*": {
+        "macos": { "system": "apple-speech", "systemCondition": "only when SpeechTranscriber.supportedLocale(equivalentTo:) returns a locale for the language", "local": ["whisper-large-v3-turbo-q8_0", "whisper-large-v3-turbo-q5_0"], "recommendedDownload": "whisper-large-v3-turbo-q5_0", "cloud": "elevenlabs" },
+        "windows": { "system": null, "local": ["whisper-large-v3-turbo-q8_0", "whisper-large-v3-turbo-q5_0"], "recommendedDownload": "whisper-large-v3-turbo-q5_0", "cloud": "elevenlabs" }
+      },
+      "auto": {
+        "macos": { "system": null, "local": ["whisper-large-v3-turbo-q8_0", "whisper-large-v3-turbo-q5_0"], "recommendedDownload": "whisper-large-v3-turbo-q5_0", "cloud": "elevenlabs" },
+        "windows": { "system": null, "local": ["whisper-large-v3-turbo-q8_0", "whisper-large-v3-turbo-q5_0"], "recommendedDownload": "whisper-large-v3-turbo-q5_0", "cloud": "elevenlabs" }
+      }
+    },
+    "lowMemoryThresholdBytes": 8589934592
+  },
+  "languageCodes": {
+    "note": "Maps ISO 639-3 (and common individual-language codes of macrolanguages) to the BCP-47 subtag VoxClip stores. Used to normalise ElevenLabs language_code responses. Codes not listed are stored unchanged.",
+    "iso639_3": {
+      "afr": "af", "amh": "am", "ara": "ar", "arb": "ar", "asm": "as", "aze": "az", "bak": "ba", "bel": "be", "ben": "bn", "bod": "bo",
+      "bos": "bs", "bre": "br", "bul": "bg", "cat": "ca", "ces": "cs", "cmn": "zh", "cym": "cy", "dan": "da", "deu": "de", "ekk": "et",
+      "ell": "el", "eng": "en", "est": "et", "eus": "eu", "fao": "fo", "fas": "fa", "pes": "fa", "fil": "tl", "fin": "fi", "fra": "fr",
+      "glg": "gl", "guj": "gu", "hat": "ht", "hau": "ha", "haw": "haw", "heb": "he", "hin": "hi", "hrv": "hr", "hun": "hu", "hye": "hy",
+      "ind": "id", "isl": "is", "ita": "it", "jav": "jv", "jpn": "ja", "kan": "kn", "kat": "ka", "kaz": "kk", "khm": "km", "kor": "ko",
+      "lao": "lo", "lat": "la", "lav": "lv", "lvs": "lv", "lin": "ln", "lit": "lt", "ltz": "lb", "mal": "ml", "mar": "mr", "mkd": "mk",
+      "mlg": "mg", "plt": "mg", "mlt": "mt", "mon": "mn", "khk": "mn", "mri": "mi", "msa": "ms", "zsm": "ms", "mya": "my", "nep": "ne",
+      "npi": "ne", "nld": "nl", "nno": "nn", "nob": "no", "nor": "no", "oci": "oc", "pan": "pa", "pol": "pl", "por": "pt", "pus": "ps",
+      "pbt": "ps", "ron": "ro", "rus": "ru", "san": "sa", "sin": "si", "slk": "sk", "slv": "sl", "sna": "sn", "snd": "sd", "som": "so",
+      "spa": "es", "sqi": "sq", "als": "sq", "srp": "sr", "sun": "su", "swa": "sw", "swh": "sw", "swe": "sv", "tam": "ta", "tat": "tt",
+      "tel": "te", "tgk": "tg", "tgl": "tl", "tha": "th", "tuk": "tk", "tur": "tr", "ukr": "uk", "urd": "ur", "uzb": "uz", "uzn": "uz",
+      "vie": "vi", "yid": "yi", "yor": "yo", "yue": "yue", "zho": "zh"
+    },
+    "whisperCodeFor": { "jv": "jw" }
+  }
+}

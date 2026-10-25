@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+    <key>CFBundleIdentifier</key><string>com.voxconvo.voxclip</string>
+    <key>CFBundleName</key><string>VoxClip</string>
+    <key>CFBundleDisplayName</key><string>VoxClip</string>
+    <key>CFBundleExecutable</key><string>VoxClip</string>
+    <key>CFBundlePackageType</key><string>APPL</string>
+    <key>CFBundleShortVersionString</key><string>0.1.0</string>
+    <key>CFBundleVersion</key><string>1</string>
+    <key>LSMinimumSystemVersion</key><string>26.0</string>
+    <key>NSHighResolutionCapable</key><true/>
+    <key>NSCameraUsageDescription</key><string>VoxClip uses the camera when you choose to record a video.</string>
+    <key>NSMicrophoneUsageDescription</key><string>VoxClip uses the microphone when you choose to record audio.</string>
+    <key>CFBundleDocumentTypes</key><array><dict>
+        <key>CFBundleTypeName</key><string>VoxClip project</string>
+        <key>CFBundleTypeRole</key><string>Editor</string>
+        <key>LSHandlerRank</key><string>Owner</string>
+        <key>LSItemContentTypes</key><array><string>com.voxconvo.voxclip.project</string></array>
+    </dict></array>
+    <key>UTExportedTypeDeclarations</key><array><dict>
+        <key>UTTypeIdentifier</key><string>com.voxconvo.voxclip.project</string>
+        <key>UTTypeDescription</key><string>VoxClip project</string>
+        <key>UTTypeConformsTo</key><array><string>public.json</string></array>
+        <key>UTTypeTagSpecification</key><dict><key>public.filename-extension</key><array><string>voxclip</string></array><key>public.mime-type</key><string>application/json</string></dict>
+    </dict></array>
+</dict></plist>

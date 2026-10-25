@@ -1,0 +1,29 @@
+{
+ "$schema": "../schema.json",
+ "schemaVersion": 1,
+ "id": "vhs",
+ "name": "VHS",
+ "description": "Pixel-terminal caps with red and cyan colour fringes and a slight tape-wobble jitter.",
+ "order": 190,
+ "tags": ["phrase", "retro", "animated"],
+ "font": {
+  "file": "VT323-Regular.ttf",
+  "family": "VT323",
+  "weight": 400,
+  "sizeSh": 0.085,
+  "letterSpacingEm": 0.03,
+  "lineHeightEm": 1.0,
+  "features": {"kern": false, "liga": false}
+ },
+ "text": {"transform": "uppercase", "punctuation": "keep"},
+ "layout": {"maxWords": 4, "maxLines": 2, "maxLineWidthW": 0.84, "maxPageSec": 3.0},
+ "position": {"x": 0.5, "y": 0.72},
+ "aspects": {"landscape": {"y": 0.8}},
+ "fill": {"type": "solid", "color": "#F5F5F5"},
+ "shadows": [{"dxEm": 0, "dyEm": 0, "sigmaEm": 0.15, "color": "#FFFFFF40"}],
+ "effects": {
+  "rgbSplit": {"offsetEm": 0.035, "leftColor": "#FF1744CC", "rightColor": "#00E5FFCC"},
+  "jitter": {"amplitudeEm": 0.012, "rateHz": 15, "seed": 7}
+ },
+ "preview": {"text": "Play rewind record", "activeWord": 0, "background": "#21232B"}
+}

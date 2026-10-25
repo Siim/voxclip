@@ -1,0 +1,9 @@
+Copyright (c) Haugas Development OU
+
+The TypeScript files in this folder are unmodified copies of VoxConvo source files
+(vox-web/src/utils/), written by Haugas Development OU, the owner of both VoxConvo
+and VoxClip. They are published in this repository under the MIT License; see the
+LICENSE file at the root of this repository for the full text.
+
+They exist only so the editing fixtures in shared/fixtures/editing can be regenerated
+without a VoxConvo checkout. Nothing in this folder ships in either app.

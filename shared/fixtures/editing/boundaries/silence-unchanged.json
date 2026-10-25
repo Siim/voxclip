@@ -1,0 +1,13 @@
+{
+  "schema": "voxclip-editing-fixture/1",
+  "id": "boundaries/silence-unchanged",
+  "kind": "word-boundaries",
+  "origin": "voxconvo",
+  "source": "vox-web/test/word-boundaries.test.mjs",
+  "description": "Words already at their sound edges keep their timestamps.",
+  "input": {
+    "audio": {"generator": "vox-take-v1", "sampleRate": 16000, "seconds": 3, "sections": [[0.5, 0.9, "vowel"], [1.5, 1.9, "vowel"]]},
+    "words": [{"id": "one", "word": "one", "start": 0.5, "end": 0.9}, {"id": "two", "word": "two", "start": 1.5, "end": 1.9}]
+  },
+  "expected": {"words": [{"id": "one", "start": 0.5, "end": 0.9}, {"id": "two", "start": 1.5, "end": 1.9}], "tolerance": 0.000001}
+}

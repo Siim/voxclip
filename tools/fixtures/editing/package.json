@@ -1,0 +1,15 @@
+{
+  "name": "voxclip-editing-fixtures",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Generates shared/fixtures/editing from the vendored VoxConvo reference and the VoxClip editing spec.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "generate": "node --no-warnings=ExperimentalWarning gen.mjs",
+    "check": "node --no-warnings=ExperimentalWarning gen.mjs --check"
+  }
+}

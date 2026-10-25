@@ -1,0 +1,29 @@
+{
+ "$schema": "../schema.json",
+ "schemaVersion": 1,
+ "id": "bounce",
+ "name": "Bounce",
+ "description": "Rounded heavy words that bounce in one by one as they are spoken.",
+ "order": 80,
+ "tags": ["phrase", "animated", "outline"],
+ "font": {
+  "file": "PaytoneOne-Regular.ttf",
+  "family": "Paytone One",
+  "weight": 400,
+  "sizeSh": 0.072,
+  "lineHeightEm": 1.12,
+  "wordSpacingEm": 0.32
+ },
+ "text": {"transform": "uppercase", "punctuation": "strip-keep-numeric"},
+ "layout": {"maxWords": 4, "maxLines": 2, "maxLineWidthW": 0.82, "maxPageSec": 3.0},
+ "position": {"x": 0.5, "y": 0.68},
+ "aspects": {"landscape": {"y": 0.8}},
+ "fill": {"type": "solid", "color": "#FFFFFF"},
+ "stroke": {"widthEm": 0.12, "color": "#111111"},
+ "shadows": [{"dxEm": 0, "dyEm": 0.08, "sigmaEm": 0, "color": "#00000099"}],
+ "reveal": {"unit": "word"},
+ "animation": {
+  "wordIn": {"type": "pop", "durationSec": 0.22, "easing": "easeOutBack", "fromScale": 0.4, "overshoot": 2.4}
+ },
+ "preview": {"text": "Here we go again", "activeWord": 3}
+}

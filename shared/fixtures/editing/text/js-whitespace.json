@@ -1,0 +1,45 @@
+{
+  "schema": "voxclip-editing-fixture/1",
+  "id": "text/js-whitespace",
+  "kind": "text-whitespace",
+  "origin": "voxconvo",
+  "source": "JS String.prototype.trim and split(/\\s+/) as used by transcriptionTiming.ts and WordChip.tsx",
+  "description": "The whitespace set for trim and token splitting is JavaScript's: U+0085 (NEL), U+180E and U+200B are not whitespace; U+FEFF is. Platform trim functions disagree, so implement the set explicitly.",
+  "input": {
+    "strings": [
+      " a ",
+      " a ",
+      " a　",
+      "﻿a",
+      "a",
+      "a᠎",
+      "a​",
+      "\t\n\u000b\f\ra\r\n",
+      " a ",
+      "one  two three four five",
+      " x y z",
+      "",
+      "   ",
+      "no-change"
+    ]
+  },
+  "expected": {
+    "trim": ["a", "a", "a", "a", "a", "a᠎", "a​", "a", "a", "one  two three four five", "x y z", "", "", "no-change"],
+    "split": [
+      ["a"],
+      ["a"],
+      ["a"],
+      ["a"],
+      ["a"],
+      ["a᠎"],
+      ["a​"],
+      ["a"],
+      ["a"],
+      ["one", "two", "three", "four", "five"],
+      ["x", "y", "z"],
+      [],
+      [],
+      ["no-change"]
+    ]
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "schema": "voxclip-editing-fixture/1",
+  "id": "plan/zero-duration",
+  "kind": "edit-plan",
+  "origin": "voxconvo",
+  "source": "synthetic",
+  "description": "Zero-length media: no samples, everything maps to 0.",
+  "input": {
+    "durationSeconds": 0,
+    "sampleRate": 48000,
+    "segments": [
+      {"id": "a", "kind": "word", "text": "a", "start": 0, "end": 0.5, "cut": false},
+      {"id": "b", "kind": "word", "text": "b", "start": 0.6, "end": 0.9, "cut": true}
+    ]
+  },
+  "expected": {
+    "totalSamples": 0,
+    "outputSamples": 0,
+    "durationSeconds": 0,
+    "segmentCuts": [{"id": "b", "rawStart": 0.55, "rawEnd": 0.9, "startSample": 0, "endSample": 0, "empty": true}],
+    "cuts": [],
+    "kept": [],
+    "captions": [],
+    "mapTime": [[0, 0], [-1, 0], ["NaN", 0], [1, 0]],
+    "sourceTime": [[0, 0], [-1, 0], ["NaN", 0], [1, 0]],
+    "previewSkip": [[0, null]]
+  }
+}

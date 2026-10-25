@@ -1,0 +1,47 @@
+{
+  "schema": "voxclip-editing-fixture/1",
+  "id": "plan/rounding-half-up",
+  "kind": "edit-plan",
+  "origin": "voxconvo",
+  "source": "synthetic",
+  "description": "Sample rounding is JS Math.round (ties toward +infinity), not banker's rounding: 62.5 -> 63, 1062.5 -> 1063.",
+  "input": {
+    "durationSeconds": 2,
+    "sampleRate": 1000,
+    "segments": [
+      {"id": "x", "kind": "word", "text": "x", "start": 0.5, "end": 0.6, "cut": false},
+      {"id": "clip-a", "kind": "range", "start": 0.0625, "end": 0.25, "cut": true},
+      {"id": "clip-b", "kind": "range", "start": 1, "end": 1.0625, "cut": true}
+    ]
+  },
+  "expected": {
+    "totalSamples": 2000,
+    "outputSamples": 1750,
+    "durationSeconds": 1.75,
+    "segmentCuts": [
+      {"id": "clip-a", "rawStart": 0.0625, "rawEnd": 0.25, "startSample": 63, "endSample": 250, "empty": false},
+      {"id": "clip-b", "rawStart": 1, "rawEnd": 1.0625, "startSample": 1000, "endSample": 1063, "empty": false}
+    ],
+    "cuts": [[63, 250], [1000, 1063]],
+    "kept": [[0, 63], [250, 1000], [1063, 2000]],
+    "captions": [{"id": "x", "start": 0.313, "end": 0.413}],
+    "mapTime": [
+      [0, 0],
+      [-1, 0],
+      ["NaN", 0],
+      [2, 1.75],
+      [3, 1.75],
+      [0.063, 0.063],
+      [0.25, 0.063],
+      [0.1565, 0.063],
+      [1, 0.813],
+      [1.063, 0.813],
+      [1.0314999999999999, 0.813],
+      [0.0315, 0.032],
+      [0.625, 0.438],
+      [1.5314999999999999, 1.281]
+    ],
+    "sourceTime": [[0, 0], [-1, 0], ["NaN", 0], [1.75, 2], [2.75, 2], [0.063, 0.25], [0.813, 1.063], [0.0005, 0.001], [0.0015, 0.002]],
+    "previewSkip": [[0, null], [0.063, 0.25], [0.1565, 0.25], [0.25, null], [1, 1.063], [1.0314999999999999, 1.063], [1.063, null]]
+  }
+}

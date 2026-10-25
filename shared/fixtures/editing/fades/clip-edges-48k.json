@@ -1,0 +1,52 @@
+{
+  "schema": "voxclip-editing-fixture/1",
+  "id": "fades/clip-edges-48k",
+  "kind": "join-fades",
+  "origin": "voxconvo",
+  "source": "vox-web/src/utils/audioEditor.ts:19-29 (run on a constant 1.0 buffer)",
+  "description": "A clip export fades in at its first sample and out at its last, because its kept parts start after 0 and end before the source end. 240 samples at 48 kHz.",
+  "input": {
+    "durationSeconds": 4,
+    "sampleRate": 48000,
+    "segments": [
+      {"id": "before", "kind": "word", "text": "before", "start": 0.2, "end": 0.6, "cut": true},
+      {"id": "clip", "kind": "word", "text": "clip", "start": 1, "end": 1.4, "cut": false},
+      {"id": "um", "kind": "word", "text": "um", "start": 1.5, "end": 1.6, "cut": true},
+      {"id": "words", "kind": "word", "text": "words", "start": 1.7, "end": 2.1, "cut": false},
+      {"id": "after", "kind": "word", "text": "after", "start": 2.6, "end": 3, "cut": true},
+      {"id": "clip-head", "kind": "range", "start": 0, "end": 0.88, "cut": true},
+      {"id": "clip-tail", "kind": "range", "start": 2.35, "end": 3603, "cut": true}
+    ]
+  },
+  "expected": {
+    "kept": [[42240, 69600], [79200, 112800]],
+    "outputSamples": 60960,
+    "parts": [
+      {"outputStart": 0, "length": 27360, "fadeIn": 240, "fadeOut": 240},
+      {"outputStart": 27360, "length": 33600, "fadeIn": 240, "fadeOut": 240}
+    ],
+    "gains": [
+      [0, 0],
+      [1, 0.004166666883975267],
+      [120, 0.5],
+      [239, 0.9958333373069763],
+      [240, 1],
+      [27119, 1],
+      [27120, 0.9958333373069763],
+      [27239, 0.5],
+      [27358, 0.004166666883975267],
+      [27359, 0],
+      [27360, 0],
+      [27361, 0.004166666883975267],
+      [27480, 0.5],
+      [27599, 0.9958333373069763],
+      [27600, 1],
+      [60719, 1],
+      [60720, 0.9958333373069763],
+      [60839, 0.5],
+      [60958, 0.004166666883975267],
+      [60959, 0]
+    ],
+    "tolerance": 1e-7
+  }
+}

@@ -1,0 +1,35 @@
+{
+ "$schema": "../schema.json",
+ "schemaVersion": 1,
+ "id": "vox-highlight",
+ "name": "Highlight",
+ "description": "VoxConvo Highlight: one white word at a time on a rounded 70% black box, as in the VoxConvo web preview.",
+ "order": 20,
+ "tags": ["vox", "one-word", "box"],
+ "font": {
+  "file": "DMSans-Black.ttf",
+  "family": "DM Sans",
+  "weight": 900,
+  "sizeSh": 0.0333,
+  "lineHeightEm": 1.6
+ },
+ "text": {"transform": "uppercase", "punctuation": "strip-keep-numeric"},
+ "layout": {
+  "maxWords": 1,
+  "maxLines": 1,
+  "maxLineWidthW": 0.9,
+  "holdGapSec": 0,
+  "minPageSec": 0,
+  "breakOnGapSec": null
+ },
+ "position": {"x": 0.5, "y": 0.8},
+ "fill": {"type": "solid", "color": "#FFFFFF"},
+ "box": {
+  "scope": "page",
+  "color": "#000000B3",
+  "paddingXEm": 0.667,
+  "paddingYEm": 0.444,
+  "radiusEm": 0.556
+ },
+ "preview": {"text": "Your story", "activeWord": 1, "background": "#3A3C45"}
+}

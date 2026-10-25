@@ -1,0 +1,357 @@
+{
+  "schema": "voxclip-editing-fixture/1",
+  "id": "session/clip-range-layer",
+  "kind": "edit-session",
+  "origin": "voxclip",
+  "source": "doc/spec/editing.md (session operations, clip scope)",
+  "description": "Range-layer semantics end to end: bulk operations act on the clip scope only, a selection toggles as a group, nudging the clip keeps edits, a pause cut outside the clip still shortens its edge, and correcting a word back to its original text removes the correction.",
+  "input": {
+    "durationSeconds": 7,
+    "sampleRate": 1000,
+    "hasDecodedAudio": true,
+    "words": [
+      {"id": "w0", "text": "So", "start": 0.3, "end": 0.6},
+      {"id": "w1", "text": "um,", "start": 0.7, "end": 1},
+      {"id": "w2", "text": "today", "start": 1.1, "end": 1.5},
+      {"id": "w3", "text": "we", "start": 2.6, "end": 2.75},
+      {"id": "w4", "text": "ship", "start": 2.8, "end": 3.1},
+      {"id": "w5", "text": "uh", "start": 3.2, "end": 3.4},
+      {"id": "w6", "text": "the", "start": 3.5, "end": 3.6},
+      {"id": "w7", "text": "clipper.", "start": 3.65, "end": 4.2},
+      {"id": "w8", "text": "Thanks", "start": 5.5, "end": 5.9}
+    ],
+    "ops": [
+      {"op": "tightenPauses"},
+      {"op": "previewClip", "clip": [2, 7]},
+      {"op": "cutFillers"},
+      {"op": "correct", "id": "w4", "text": "shipped"},
+      {"op": "cutSelection", "ids": ["w6", "w7"]},
+      {"op": "cutSelection", "ids": ["w6", "w7"]},
+      {"op": "cutSelection", "ids": ["w5", "w6"]},
+      {"op": "previewClip", "clip": [3, 7]},
+      {"op": "restoreCuts"},
+      {"op": "previewClip", "clip": null},
+      {"op": "correct", "id": "w4", "text": "ship"},
+      {"op": "restoreCuts"}
+    ]
+  },
+  "expected": {
+    "steps": [
+      {
+        "after": {"op": "initial"},
+        "cutWords": [],
+        "cutPauses": [],
+        "texts": {"w0": "So", "w1": "um,", "w2": "today", "w3": "we", "w4": "ship", "w5": "uh", "w6": "the", "w7": "clipper.", "w8": "Thanks"},
+        "activeClip": null,
+        "ui": {
+          "cutFillersLabel": "Cut fillers · 2",
+          "cutFillersEnabled": true,
+          "tightenPausesEnabled": true,
+          "restoreCutsVisible": false,
+          "status": null,
+          "publishEnabled": true
+        },
+        "durationSeconds": 7,
+        "captions": [
+          {"text": "So", "start": 0.3, "end": 0.6},
+          {"text": "um,", "start": 0.7, "end": 1},
+          {"text": "today", "start": 1.1, "end": 1.5},
+          {"text": "we", "start": 2.6, "end": 2.75},
+          {"text": "ship", "start": 2.8, "end": 3.1},
+          {"text": "uh", "start": 3.2, "end": 3.4},
+          {"text": "the", "start": 3.5, "end": 3.6},
+          {"text": "clipper.", "start": 3.65, "end": 4.2},
+          {"text": "Thanks", "start": 5.5, "end": 5.9}
+        ]
+      },
+      {
+        "after": {"op": "tightenPauses"},
+        "cutWords": [],
+        "cutPauses": ["pause-after-w2", "pause-after-w7"],
+        "texts": {"w0": "So", "w1": "um,", "w2": "today", "w3": "we", "w4": "ship", "w5": "uh", "w6": "the", "w7": "clipper.", "w8": "Thanks"},
+        "activeClip": null,
+        "ui": {
+          "cutFillersLabel": "Cut fillers · 2",
+          "cutFillersEnabled": true,
+          "tightenPausesEnabled": false,
+          "restoreCutsVisible": true,
+          "status": "0 words and 2 pauses cut. Preview before publishing.",
+          "publishEnabled": true
+        },
+        "durationSeconds": 5.2,
+        "captions": [
+          {"text": "So", "start": 0.3, "end": 0.6},
+          {"text": "um,", "start": 0.7, "end": 1},
+          {"text": "today", "start": 1.1, "end": 1.5},
+          {"text": "we", "start": 1.8, "end": 1.95},
+          {"text": "ship", "start": 2, "end": 2.3},
+          {"text": "uh", "start": 2.4, "end": 2.6},
+          {"text": "the", "start": 2.7, "end": 2.8},
+          {"text": "clipper.", "start": 2.85, "end": 3.4},
+          {"text": "Thanks", "start": 3.7, "end": 4.1}
+        ]
+      },
+      {
+        "after": {"op": "previewClip", "clip": [2, 7]},
+        "cutWords": [],
+        "cutPauses": ["pause-after-w2", "pause-after-w7"],
+        "texts": {"w0": "So", "w1": "um,", "w2": "today", "w3": "we", "w4": "ship", "w5": "uh", "w6": "the", "w7": "clipper.", "w8": "Thanks"},
+        "activeClip": [2, 7],
+        "ui": {
+          "cutFillersLabel": "Cut fillers · 1",
+          "cutFillersEnabled": true,
+          "tightenPausesEnabled": false,
+          "restoreCutsVisible": true,
+          "status": "0 words and 1 pause cut. Preview before publishing.",
+          "publishEnabled": true
+        },
+        "durationSeconds": 2.5,
+        "captions": [
+          {"text": "today", "start": 0.05, "end": 0.45},
+          {"text": "we", "start": 0.75, "end": 0.9},
+          {"text": "ship", "start": 0.95, "end": 1.25},
+          {"text": "uh", "start": 1.35, "end": 1.55},
+          {"text": "the", "start": 1.65, "end": 1.75},
+          {"text": "clipper.", "start": 1.8, "end": 2.35}
+        ]
+      },
+      {
+        "after": {"op": "cutFillers"},
+        "cutWords": ["w5"],
+        "cutPauses": ["pause-after-w2", "pause-after-w7"],
+        "texts": {"w0": "So", "w1": "um,", "w2": "today", "w3": "we", "w4": "ship", "w5": "uh", "w6": "the", "w7": "clipper.", "w8": "Thanks"},
+        "activeClip": [2, 7],
+        "ui": {
+          "cutFillersLabel": "Cut fillers",
+          "cutFillersEnabled": false,
+          "tightenPausesEnabled": false,
+          "restoreCutsVisible": true,
+          "status": "1 word and 1 pause cut. Preview before publishing.",
+          "publishEnabled": true
+        },
+        "durationSeconds": 2.2,
+        "captions": [
+          {"text": "today", "start": 0.05, "end": 0.45},
+          {"text": "we", "start": 0.75, "end": 0.9},
+          {"text": "ship", "start": 0.95, "end": 1.25},
+          {"text": "the", "start": 1.35, "end": 1.45},
+          {"text": "clipper.", "start": 1.5, "end": 2.05}
+        ]
+      },
+      {
+        "after": {"op": "correct", "id": "w4", "text": "shipped"},
+        "cutWords": ["w5"],
+        "cutPauses": ["pause-after-w2", "pause-after-w7"],
+        "texts": {"w0": "So", "w1": "um,", "w2": "today", "w3": "we", "w4": "shipped", "w5": "uh", "w6": "the", "w7": "clipper.", "w8": "Thanks"},
+        "activeClip": [2, 7],
+        "ui": {
+          "cutFillersLabel": "Cut fillers",
+          "cutFillersEnabled": false,
+          "tightenPausesEnabled": false,
+          "restoreCutsVisible": true,
+          "status": "1 word and 1 pause cut. Preview before publishing.",
+          "publishEnabled": true
+        },
+        "durationSeconds": 2.2,
+        "captions": [
+          {"text": "today", "start": 0.05, "end": 0.45},
+          {"text": "we", "start": 0.75, "end": 0.9},
+          {"text": "shipped", "start": 0.95, "end": 1.25},
+          {"text": "the", "start": 1.35, "end": 1.45},
+          {"text": "clipper.", "start": 1.5, "end": 2.05}
+        ]
+      },
+      {
+        "after": {"op": "cutSelection", "ids": ["w6", "w7"]},
+        "cutWords": ["w5", "w6", "w7"],
+        "cutPauses": ["pause-after-w2", "pause-after-w7"],
+        "texts": {"w0": "So", "w1": "um,", "w2": "today", "w3": "we", "w4": "shipped", "w5": "uh", "w6": "the", "w7": "clipper.", "w8": "Thanks"},
+        "activeClip": [2, 7],
+        "ui": {
+          "cutFillersLabel": "Cut fillers",
+          "cutFillersEnabled": false,
+          "tightenPausesEnabled": false,
+          "restoreCutsVisible": true,
+          "status": "3 words and 1 pause cut. Preview before publishing.",
+          "publishEnabled": true
+        },
+        "durationSeconds": 1.3,
+        "captions": [
+          {"text": "today", "start": 0.05, "end": 0.45},
+          {"text": "we", "start": 0.75, "end": 0.9},
+          {"text": "shipped", "start": 0.95, "end": 1.25}
+        ]
+      },
+      {
+        "after": {"op": "cutSelection", "ids": ["w6", "w7"]},
+        "cutWords": ["w5"],
+        "cutPauses": ["pause-after-w2", "pause-after-w7"],
+        "texts": {"w0": "So", "w1": "um,", "w2": "today", "w3": "we", "w4": "shipped", "w5": "uh", "w6": "the", "w7": "clipper.", "w8": "Thanks"},
+        "activeClip": [2, 7],
+        "ui": {
+          "cutFillersLabel": "Cut fillers",
+          "cutFillersEnabled": false,
+          "tightenPausesEnabled": false,
+          "restoreCutsVisible": true,
+          "status": "1 word and 1 pause cut. Preview before publishing.",
+          "publishEnabled": true
+        },
+        "durationSeconds": 2.2,
+        "captions": [
+          {"text": "today", "start": 0.05, "end": 0.45},
+          {"text": "we", "start": 0.75, "end": 0.9},
+          {"text": "shipped", "start": 0.95, "end": 1.25},
+          {"text": "the", "start": 1.35, "end": 1.45},
+          {"text": "clipper.", "start": 1.5, "end": 2.05}
+        ]
+      },
+      {
+        "after": {"op": "cutSelection", "ids": ["w5", "w6"]},
+        "cutWords": ["w5", "w6"],
+        "cutPauses": ["pause-after-w2", "pause-after-w7"],
+        "texts": {"w0": "So", "w1": "um,", "w2": "today", "w3": "we", "w4": "shipped", "w5": "uh", "w6": "the", "w7": "clipper.", "w8": "Thanks"},
+        "activeClip": [2, 7],
+        "ui": {
+          "cutFillersLabel": "Cut fillers",
+          "cutFillersEnabled": false,
+          "tightenPausesEnabled": false,
+          "restoreCutsVisible": true,
+          "status": "2 words and 1 pause cut. Preview before publishing.",
+          "publishEnabled": true
+        },
+        "durationSeconds": 2.025,
+        "captions": [
+          {"text": "today", "start": 0.05, "end": 0.45},
+          {"text": "we", "start": 0.75, "end": 0.9},
+          {"text": "shipped", "start": 0.95, "end": 1.25},
+          {"text": "clipper.", "start": 1.325, "end": 1.875}
+        ]
+      },
+      {
+        "after": {"op": "previewClip", "clip": [3, 7]},
+        "cutWords": ["w5", "w6"],
+        "cutPauses": ["pause-after-w2", "pause-after-w7"],
+        "texts": {"w0": "So", "w1": "um,", "w2": "today", "w3": "we", "w4": "shipped", "w5": "uh", "w6": "the", "w7": "clipper.", "w8": "Thanks"},
+        "activeClip": [3, 7],
+        "ui": {
+          "cutFillersLabel": "Cut fillers",
+          "cutFillersEnabled": false,
+          "tightenPausesEnabled": false,
+          "restoreCutsVisible": true,
+          "status": "2 words and 0 pauses cut. Preview before publishing.",
+          "publishEnabled": true
+        },
+        "durationSeconds": 1.395,
+        "captions": [
+          {"text": "we", "start": 0.12, "end": 0.27},
+          {"text": "shipped", "start": 0.32, "end": 0.62},
+          {"text": "clipper.", "start": 0.695, "end": 1.245}
+        ]
+      },
+      {
+        "after": {"op": "restoreCuts"},
+        "cutWords": [],
+        "cutPauses": ["pause-after-w2", "pause-after-w7"],
+        "texts": {"w0": "So", "w1": "um,", "w2": "today", "w3": "we", "w4": "shipped", "w5": "uh", "w6": "the", "w7": "clipper.", "w8": "Thanks"},
+        "activeClip": [3, 7],
+        "ui": {
+          "cutFillersLabel": "Cut fillers · 1",
+          "cutFillersEnabled": true,
+          "tightenPausesEnabled": false,
+          "restoreCutsVisible": false,
+          "status": null,
+          "publishEnabled": true
+        },
+        "durationSeconds": 1.87,
+        "captions": [
+          {"text": "we", "start": 0.12, "end": 0.27},
+          {"text": "shipped", "start": 0.32, "end": 0.62},
+          {"text": "uh", "start": 0.72, "end": 0.92},
+          {"text": "the", "start": 1.02, "end": 1.12},
+          {"text": "clipper.", "start": 1.17, "end": 1.72}
+        ]
+      },
+      {
+        "after": {"op": "previewClip", "clip": null},
+        "cutWords": [],
+        "cutPauses": ["pause-after-w2", "pause-after-w7"],
+        "texts": {"w0": "So", "w1": "um,", "w2": "today", "w3": "we", "w4": "shipped", "w5": "uh", "w6": "the", "w7": "clipper.", "w8": "Thanks"},
+        "activeClip": null,
+        "ui": {
+          "cutFillersLabel": "Cut fillers · 2",
+          "cutFillersEnabled": true,
+          "tightenPausesEnabled": false,
+          "restoreCutsVisible": true,
+          "status": "0 words and 2 pauses cut. Preview before publishing.",
+          "publishEnabled": true
+        },
+        "durationSeconds": 5.2,
+        "captions": [
+          {"text": "So", "start": 0.3, "end": 0.6},
+          {"text": "um,", "start": 0.7, "end": 1},
+          {"text": "today", "start": 1.1, "end": 1.5},
+          {"text": "we", "start": 1.8, "end": 1.95},
+          {"text": "shipped", "start": 2, "end": 2.3},
+          {"text": "uh", "start": 2.4, "end": 2.6},
+          {"text": "the", "start": 2.7, "end": 2.8},
+          {"text": "clipper.", "start": 2.85, "end": 3.4},
+          {"text": "Thanks", "start": 3.7, "end": 4.1}
+        ]
+      },
+      {
+        "after": {"op": "correct", "id": "w4", "text": "ship"},
+        "cutWords": [],
+        "cutPauses": ["pause-after-w2", "pause-after-w7"],
+        "texts": {"w0": "So", "w1": "um,", "w2": "today", "w3": "we", "w4": "ship", "w5": "uh", "w6": "the", "w7": "clipper.", "w8": "Thanks"},
+        "activeClip": null,
+        "ui": {
+          "cutFillersLabel": "Cut fillers · 2",
+          "cutFillersEnabled": true,
+          "tightenPausesEnabled": false,
+          "restoreCutsVisible": true,
+          "status": "0 words and 2 pauses cut. Preview before publishing.",
+          "publishEnabled": true
+        },
+        "durationSeconds": 5.2,
+        "captions": [
+          {"text": "So", "start": 0.3, "end": 0.6},
+          {"text": "um,", "start": 0.7, "end": 1},
+          {"text": "today", "start": 1.1, "end": 1.5},
+          {"text": "we", "start": 1.8, "end": 1.95},
+          {"text": "ship", "start": 2, "end": 2.3},
+          {"text": "uh", "start": 2.4, "end": 2.6},
+          {"text": "the", "start": 2.7, "end": 2.8},
+          {"text": "clipper.", "start": 2.85, "end": 3.4},
+          {"text": "Thanks", "start": 3.7, "end": 4.1}
+        ]
+      },
+      {
+        "after": {"op": "restoreCuts"},
+        "cutWords": [],
+        "cutPauses": [],
+        "texts": {"w0": "So", "w1": "um,", "w2": "today", "w3": "we", "w4": "ship", "w5": "uh", "w6": "the", "w7": "clipper.", "w8": "Thanks"},
+        "activeClip": null,
+        "ui": {
+          "cutFillersLabel": "Cut fillers · 2",
+          "cutFillersEnabled": true,
+          "tightenPausesEnabled": true,
+          "restoreCutsVisible": false,
+          "status": null,
+          "publishEnabled": true
+        },
+        "durationSeconds": 7,
+        "captions": [
+          {"text": "So", "start": 0.3, "end": 0.6},
+          {"text": "um,", "start": 0.7, "end": 1},
+          {"text": "today", "start": 1.1, "end": 1.5},
+          {"text": "we", "start": 2.6, "end": 2.75},
+          {"text": "ship", "start": 2.8, "end": 3.1},
+          {"text": "uh", "start": 3.2, "end": 3.4},
+          {"text": "the", "start": 3.5, "end": 3.6},
+          {"text": "clipper.", "start": 3.65, "end": 4.2},
+          {"text": "Thanks", "start": 5.5, "end": 5.9}
+        ]
+      }
+    ]
+  }
+}

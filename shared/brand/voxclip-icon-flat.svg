@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="VoxClip">
+  <title>VoxClip</title>
+  <!-- Windows master (taskbar, Start, Explorer, title bar). Sizes 16 to 48 use hinted/ instead. -->
+  <defs>
+    <linearGradient id="vc-tile" x1="0" y1="16" x2="0" y2="240" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#2C2E35"/><stop offset="1" stop-color="#121317"/></linearGradient>
+    <linearGradient id="vc-edge" x1="0" y1="16" x2="0" y2="240" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#FFFFFF" stop-opacity="0.20"/><stop offset="1" stop-color="#FFFFFF" stop-opacity="0.06"/></linearGradient>
+    <linearGradient id="vc-paper" x1="0" y1="57" x2="0" y2="197" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#FBF9F3"/><stop offset="1" stop-color="#E3E0D6"/></linearGradient>
+    <linearGradient id="vc-coral" x1="0" y1="57" x2="0" y2="197" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#FFA396"/><stop offset="1" stop-color="#EE6A5E"/></linearGradient>
+  </defs>
+  <rect x="16" y="16" width="224" height="224" rx="44" fill="url(#vc-tile)"/>
+  <rect x="16.75" y="16.75" width="222.5" height="222.5" rx="43.25" fill="none" stroke="url(#vc-edge)" stroke-width="1.5"/>
+  <g>
+    <rect x="51.84" y="94.8" width="23.52" height="64.4" rx="11.76" fill="url(#vc-paper)"/>
+    <rect x="83.2" y="72.4" width="23.52" height="109.2" rx="11.76" fill="url(#vc-paper)"/>
+    <rect x="149.28" y="82.2" width="23.52" height="89.6" rx="11.76" fill="url(#vc-paper)"/>
+    <rect x="180.64" y="100.4" width="23.52" height="53.2" rx="11.76" fill="url(#vc-paper)"/>
+    <rect x="122.96" y="57" width="10.08" height="140" rx="5.04" fill="url(#vc-coral)"/>
+  </g>
+</svg>

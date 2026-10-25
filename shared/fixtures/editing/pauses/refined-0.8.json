@@ -1,0 +1,23 @@
+{
+  "schema": "voxclip-editing-fixture/1",
+  "id": "pauses/refined-0.8",
+  "kind": "pause-detection",
+  "origin": "voxconvo-reimplemented",
+  "source": "vox-web/src/components/VoiceRecorder/VoiceRecorder.tsx:784-802",
+  "description": "With decoded audio (refined boundaries) the threshold is 0.8 s, inclusive.",
+  "input": {
+    "hasDecodedAudio": true,
+    "words": [
+      {"id": "a", "start": 0, "end": 0.5},
+      {"id": "b", "start": 1.3, "end": 1.6},
+      {"id": "c", "start": 2.39, "end": 2.7},
+      {"id": "d", "start": 4, "end": 4.2}
+    ]
+  },
+  "expected": {
+    "pauses": [
+      {"id": "pause-after-a", "start": 0.5, "end": 1.3, "duration": 0.8, "label": "pause 0.8s"},
+      {"id": "pause-after-c", "start": 2.7, "end": 4, "duration": 1.2999999999999998, "label": "pause 1.3s"}
+    ]
+  }
+}

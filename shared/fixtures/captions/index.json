@@ -1,0 +1,540 @@
+{
+ "fixture": "voxclip-caption-index/1",
+ "layout": [
+  {
+   "file": "layout/vox-bold-portrait-en.json",
+   "style": "vox-bold",
+   "frame": [1080, 1920],
+   "pages": 19,
+   "samples": 94
+  },
+  {
+   "file": "layout/vox-highlight-portrait-en.json",
+   "style": "vox-highlight",
+   "frame": [1080, 1920],
+   "pages": 19,
+   "samples": 94
+  },
+  {
+   "file": "layout/vox-bold-plus-portrait-en.json",
+   "style": "vox-bold-plus",
+   "frame": [1080, 1920],
+   "pages": 19,
+   "samples": 79
+  },
+  {
+   "file": "layout/karaoke-portrait-en.json",
+   "style": "karaoke",
+   "frame": [1080, 1920],
+   "pages": 4,
+   "samples": 31
+  },
+  {
+   "file": "layout/active-pop-portrait-en.json",
+   "style": "active-pop",
+   "frame": [1080, 1920],
+   "pages": 7,
+   "samples": 43
+  },
+  {
+   "file": "layout/box-highlight-portrait-en.json",
+   "style": "box-highlight",
+   "frame": [1080, 1920],
+   "pages": 5,
+   "samples": 33
+  },
+  {
+   "file": "layout/one-word-portrait-en.json",
+   "style": "one-word",
+   "frame": [1080, 1920],
+   "pages": 19,
+   "samples": 97
+  },
+  {
+   "file": "layout/bounce-portrait-en.json",
+   "style": "bounce",
+   "frame": [1080, 1920],
+   "pages": 5,
+   "samples": 33
+  },
+  {
+   "file": "layout/two-tone-portrait-en.json",
+   "style": "two-tone",
+   "frame": [1080, 1920],
+   "pages": 5,
+   "samples": 33
+  },
+  {
+   "file": "layout/outline-portrait-en.json",
+   "style": "outline",
+   "frame": [1080, 1920],
+   "pages": 7,
+   "samples": 43
+  },
+  {"file": "layout/pill-portrait-en.json", "style": "pill", "frame": [1080, 1920], "pages": 3, "samples": 24},
+  {
+   "file": "layout/clean-subtitle-portrait-en.json",
+   "style": "clean-subtitle",
+   "frame": [1080, 1920],
+   "pages": 2,
+   "samples": 15
+  },
+  {
+   "file": "layout/lower-third-portrait-en.json",
+   "style": "lower-third",
+   "frame": [1080, 1920],
+   "pages": 3,
+   "samples": 20
+  },
+  {
+   "file": "layout/typewriter-portrait-en.json",
+   "style": "typewriter",
+   "frame": [1080, 1920],
+   "pages": 3,
+   "samples": 21
+  },
+  {
+   "file": "layout/editorial-portrait-en.json",
+   "style": "editorial",
+   "frame": [1080, 1920],
+   "pages": 3,
+   "samples": 24
+  },
+  {
+   "file": "layout/gradient-portrait-en.json",
+   "style": "gradient",
+   "frame": [1080, 1920],
+   "pages": 7,
+   "samples": 50
+  },
+  {"file": "layout/neon-portrait-en.json", "style": "neon", "frame": [1080, 1920], "pages": 5, "samples": 38},
+  {
+   "file": "layout/emoji-accent-portrait-en.json",
+   "style": "emoji-accent",
+   "frame": [1080, 1920],
+   "pages": 5,
+   "samples": 38
+  },
+  {"file": "layout/vhs-portrait-en.json", "style": "vhs", "frame": [1080, 1920], "pages": 5, "samples": 33},
+  {
+   "file": "layout/karaoke-landscape-et.json",
+   "style": "karaoke",
+   "frame": [1920, 1080],
+   "pages": 5,
+   "samples": 36
+  },
+  {
+   "file": "layout/box-highlight-square-et.json",
+   "style": "box-highlight",
+   "frame": [1080, 1080],
+   "pages": 6,
+   "samples": 38
+  },
+  {
+   "file": "layout/editorial-landscape-et.json",
+   "style": "editorial",
+   "frame": [1920, 1080],
+   "pages": 4,
+   "samples": 27
+  },
+  {
+   "file": "layout/clean-subtitle-landscape-en.json",
+   "style": "clean-subtitle",
+   "frame": [1920, 1080],
+   "pages": 2,
+   "samples": 15
+  },
+  {
+   "file": "layout/lower-third-landscape-en.json",
+   "style": "lower-third",
+   "frame": [1920, 1080],
+   "pages": 3,
+   "samples": 20
+  },
+  {"file": "layout/neon-landscape-en.json", "style": "neon", "frame": [1920, 1080], "pages": 5, "samples": 38},
+  {
+   "file": "layout/vox-highlight-square-scripts.json",
+   "style": "vox-highlight",
+   "frame": [1080, 1080],
+   "pages": 7,
+   "samples": 34
+  },
+  {
+   "file": "layout/two-tone-portrait-scripts.json",
+   "style": "two-tone",
+   "frame": [1080, 1920],
+   "pages": 3,
+   "samples": 17
+  },
+  {
+   "file": "layout/one-word-portrait-long.json",
+   "style": "one-word",
+   "frame": [1080, 1920],
+   "pages": 4,
+   "samples": 21
+  },
+  {
+   "file": "layout/one-word-landscape-long.json",
+   "style": "one-word",
+   "frame": [1920, 1080],
+   "pages": 4,
+   "samples": 21
+  },
+  {
+   "file": "layout/karaoke-portrait-long.json",
+   "style": "karaoke",
+   "frame": [1080, 1920],
+   "pages": 3,
+   "samples": 17
+  },
+  {
+   "file": "layout/active-pop-portrait-timing.json",
+   "style": "active-pop",
+   "frame": [1080, 1920],
+   "pages": 4,
+   "samples": 23
+  },
+  {
+   "file": "layout/vox-bold-portrait-timing.json",
+   "style": "vox-bold",
+   "frame": [1080, 1920],
+   "pages": 8,
+   "samples": 33
+  },
+  {
+   "file": "layout/typewriter-square-typing.json",
+   "style": "typewriter",
+   "frame": [1080, 1080],
+   "pages": 2,
+   "samples": 85
+  },
+  {
+   "file": "layout/bounce-portrait-typing.json",
+   "style": "bounce",
+   "frame": [1080, 1920],
+   "pages": 3,
+   "samples": 51
+  },
+  {
+   "file": "layout/vhs-portrait-frames.json",
+   "style": "vhs",
+   "frame": [1080, 1920],
+   "pages": 3,
+   "samples": 40
+  },
+  {
+   "file": "layout/lower-third-portrait-frames.json",
+   "style": "lower-third",
+   "frame": [1080, 1920],
+   "pages": 2,
+   "samples": 45
+  },
+  {
+   "file": "layout/emoji-accent-portrait-et.json",
+   "style": "emoji-accent",
+   "frame": [1080, 1920],
+   "pages": 4,
+   "samples": 27
+  },
+  {
+   "file": "layout/emoji-accent-landscape-et.json",
+   "style": "emoji-accent",
+   "frame": [1920, 1080],
+   "pages": 4,
+   "samples": 27
+  },
+  {
+   "file": "layout/one-word-portrait-numbers.json",
+   "style": "one-word",
+   "frame": [1080, 1920],
+   "pages": 10,
+   "samples": 51
+  },
+  {
+   "file": "layout/two-tone-portrait-numbers.json",
+   "style": "two-tone",
+   "frame": [1080, 1920],
+   "pages": 3,
+   "samples": 18
+  },
+  {
+   "file": "layout/two-tone-portrait-overrides.json",
+   "style": "two-tone",
+   "frame": [1080, 1920],
+   "pages": 10,
+   "samples": 52
+  },
+  {
+   "file": "layout/pill-portrait-clamp.json",
+   "style": "pill",
+   "frame": [1080, 1920],
+   "pages": 3,
+   "samples": 24
+  },
+  {
+   "file": "layout/karaoke-landscape-clamp.json",
+   "style": "karaoke",
+   "frame": [1920, 1080],
+   "pages": 4,
+   "samples": 29
+  },
+  {
+   "file": "layout/emoji-accent-portrait-clamp.json",
+   "style": "emoji-accent",
+   "frame": [1080, 1920],
+   "pages": 4,
+   "samples": 27
+  },
+  {
+   "file": "layout/karaoke-source-4x3.json",
+   "style": "karaoke",
+   "frame": [1440, 1080],
+   "pages": 4,
+   "samples": 29
+  },
+  {
+   "file": "layout/vox-highlight-portrait-720.json",
+   "style": "vox-highlight",
+   "frame": [720, 1280],
+   "pages": 19,
+   "samples": 94
+  },
+  {
+   "file": "layout/vox-bold-portrait-patch.json",
+   "style": "vox-bold",
+   "frame": [1080, 1920],
+   "pages": 19,
+   "samples": 79
+  },
+  {
+   "file": "layout/outline-portrait-line.json",
+   "style": "outline",
+   "frame": [1080, 1920],
+   "pages": 7,
+   "samples": 41
+  },
+  {
+   "file": "layout/karaoke-portrait-dropped.json",
+   "style": "karaoke",
+   "frame": [1080, 1920],
+   "pages": 1,
+   "samples": 8
+  },
+  {
+   "file": "layout/active-pop-square-en.json",
+   "style": "active-pop",
+   "frame": [1080, 1080],
+   "pages": 7,
+   "samples": 43
+  },
+  {
+   "file": "layout/active-pop-landscape-en.json",
+   "style": "active-pop",
+   "frame": [1920, 1080],
+   "pages": 7,
+   "samples": 43
+  },
+  {
+   "file": "layout/bounce-square-en.json",
+   "style": "bounce",
+   "frame": [1080, 1080],
+   "pages": 5,
+   "samples": 33
+  },
+  {
+   "file": "layout/bounce-landscape-en.json",
+   "style": "bounce",
+   "frame": [1920, 1080],
+   "pages": 5,
+   "samples": 33
+  },
+  {
+   "file": "layout/box-highlight-square-en.json",
+   "style": "box-highlight",
+   "frame": [1080, 1080],
+   "pages": 5,
+   "samples": 33
+  },
+  {
+   "file": "layout/box-highlight-landscape-en.json",
+   "style": "box-highlight",
+   "frame": [1920, 1080],
+   "pages": 5,
+   "samples": 33
+  },
+  {
+   "file": "layout/clean-subtitle-square-en.json",
+   "style": "clean-subtitle",
+   "frame": [1080, 1080],
+   "pages": 2,
+   "samples": 15
+  },
+  {
+   "file": "layout/editorial-square-en.json",
+   "style": "editorial",
+   "frame": [1080, 1080],
+   "pages": 3,
+   "samples": 24
+  },
+  {
+   "file": "layout/editorial-landscape-en.json",
+   "style": "editorial",
+   "frame": [1920, 1080],
+   "pages": 3,
+   "samples": 24
+  },
+  {
+   "file": "layout/emoji-accent-square-en.json",
+   "style": "emoji-accent",
+   "frame": [1080, 1080],
+   "pages": 5,
+   "samples": 38
+  },
+  {
+   "file": "layout/emoji-accent-landscape-en.json",
+   "style": "emoji-accent",
+   "frame": [1920, 1080],
+   "pages": 5,
+   "samples": 38
+  },
+  {
+   "file": "layout/gradient-square-en.json",
+   "style": "gradient",
+   "frame": [1080, 1080],
+   "pages": 7,
+   "samples": 50
+  },
+  {
+   "file": "layout/gradient-landscape-en.json",
+   "style": "gradient",
+   "frame": [1920, 1080],
+   "pages": 7,
+   "samples": 50
+  },
+  {
+   "file": "layout/karaoke-square-en.json",
+   "style": "karaoke",
+   "frame": [1080, 1080],
+   "pages": 4,
+   "samples": 31
+  },
+  {
+   "file": "layout/karaoke-landscape-en.json",
+   "style": "karaoke",
+   "frame": [1920, 1080],
+   "pages": 4,
+   "samples": 29
+  },
+  {
+   "file": "layout/lower-third-square-en.json",
+   "style": "lower-third",
+   "frame": [1080, 1080],
+   "pages": 3,
+   "samples": 20
+  },
+  {"file": "layout/neon-square-en.json", "style": "neon", "frame": [1080, 1080], "pages": 5, "samples": 38},
+  {
+   "file": "layout/one-word-square-en.json",
+   "style": "one-word",
+   "frame": [1080, 1080],
+   "pages": 19,
+   "samples": 97
+  },
+  {
+   "file": "layout/one-word-landscape-en.json",
+   "style": "one-word",
+   "frame": [1920, 1080],
+   "pages": 19,
+   "samples": 97
+  },
+  {
+   "file": "layout/outline-square-en.json",
+   "style": "outline",
+   "frame": [1080, 1080],
+   "pages": 7,
+   "samples": 43
+  },
+  {
+   "file": "layout/outline-landscape-en.json",
+   "style": "outline",
+   "frame": [1920, 1080],
+   "pages": 7,
+   "samples": 43
+  },
+  {"file": "layout/pill-square-en.json", "style": "pill", "frame": [1080, 1080], "pages": 3, "samples": 24},
+  {"file": "layout/pill-landscape-en.json", "style": "pill", "frame": [1920, 1080], "pages": 3, "samples": 24},
+  {
+   "file": "layout/two-tone-square-en.json",
+   "style": "two-tone",
+   "frame": [1080, 1080],
+   "pages": 5,
+   "samples": 33
+  },
+  {
+   "file": "layout/two-tone-landscape-en.json",
+   "style": "two-tone",
+   "frame": [1920, 1080],
+   "pages": 5,
+   "samples": 33
+  },
+  {
+   "file": "layout/typewriter-square-en.json",
+   "style": "typewriter",
+   "frame": [1080, 1080],
+   "pages": 3,
+   "samples": 21
+  },
+  {
+   "file": "layout/typewriter-landscape-en.json",
+   "style": "typewriter",
+   "frame": [1920, 1080],
+   "pages": 3,
+   "samples": 21
+  },
+  {"file": "layout/vhs-square-en.json", "style": "vhs", "frame": [1080, 1080], "pages": 5, "samples": 33},
+  {"file": "layout/vhs-landscape-en.json", "style": "vhs", "frame": [1920, 1080], "pages": 5, "samples": 33},
+  {
+   "file": "layout/vox-bold-square-en.json",
+   "style": "vox-bold",
+   "frame": [1080, 1080],
+   "pages": 19,
+   "samples": 94
+  },
+  {
+   "file": "layout/vox-bold-landscape-en.json",
+   "style": "vox-bold",
+   "frame": [1920, 1080],
+   "pages": 19,
+   "samples": 94
+  },
+  {
+   "file": "layout/vox-bold-plus-square-en.json",
+   "style": "vox-bold-plus",
+   "frame": [1080, 1080],
+   "pages": 19,
+   "samples": 79
+  },
+  {
+   "file": "layout/vox-bold-plus-landscape-en.json",
+   "style": "vox-bold-plus",
+   "frame": [1920, 1080],
+   "pages": 19,
+   "samples": 79
+  },
+  {
+   "file": "layout/vox-highlight-square-en.json",
+   "style": "vox-highlight",
+   "frame": [1080, 1080],
+   "pages": 19,
+   "samples": 94
+  },
+  {
+   "file": "layout/vox-highlight-landscape-en.json",
+   "style": "vox-highlight",
+   "frame": [1920, 1080],
+   "pages": 19,
+   "samples": 94
+  }
+ ],
+ "files": ["text-normalization.json", "math.json", "preview-tiles.json"]
+}

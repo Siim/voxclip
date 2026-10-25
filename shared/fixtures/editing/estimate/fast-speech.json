@@ -1,0 +1,18 @@
+{
+  "schema": "voxclip-editing-fixture/1",
+  "id": "estimate/fast-speech",
+  "kind": "estimated-words",
+  "origin": "voxconvo",
+  "source": "vox-web/src/utils/transcriptionTiming.ts:20",
+  "description": "Fallback when a provider returns no word times: split the segment by character count (UTF-16 length), conf 0.",
+  "input": {"text": "one two three four five", "start": 0.5, "end": 0.7},
+  "expected": {
+    "words": [
+      {"word": "one", "start": 0.5, "end": 0.531578947368421, "conf": 0},
+      {"word": "two", "start": 0.531578947368421, "end": 0.5631578947368421, "conf": 0},
+      {"word": "three", "start": 0.5631578947368421, "end": 0.6157894736842106, "conf": 0},
+      {"word": "four", "start": 0.6157894736842106, "end": 0.6578947368421052, "conf": 0},
+      {"word": "five", "start": 0.6578947368421052, "end": 0.7, "conf": 0}
+    ]
+  }
+}

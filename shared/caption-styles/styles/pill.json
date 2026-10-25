@@ -1,0 +1,31 @@
+{
+ "$schema": "../schema.json",
+ "schemaVersion": 1,
+ "id": "pill",
+ "name": "Pill",
+ "description": "Dark sentence-case text on white rounded pills, one pill per line.",
+ "order": 110,
+ "tags": ["phrase", "box", "clean"],
+ "font": {
+  "file": "DMSans-Bold.ttf",
+  "family": "DM Sans",
+  "weight": 700,
+  "sizeSh": 0.05,
+  "lineHeightEm": 1.3
+ },
+ "text": {"transform": "none", "punctuation": "keep"},
+ "layout": {
+  "maxWords": 7,
+  "maxLines": 2,
+  "maxLineWidthW": 0.8,
+  "holdGapSec": 0.6,
+  "maxPageSec": 4.0,
+  "lineGapEm": 0.36
+ },
+ "position": {"x": 0.5, "y": 0.75},
+ "aspects": {"landscape": {"y": 0.82}},
+ "fill": {"type": "solid", "color": "#111111"},
+ "box": {"scope": "line", "color": "#FFFFFFF2", "paddingXEm": 0.5, "paddingYEm": 0.12, "pill": true},
+ "animation": {"pageIn": {"type": "pop", "durationSec": 0.12, "fromScale": 0.92}},
+ "preview": {"text": "Small steps every day", "activeWord": 0}
+}

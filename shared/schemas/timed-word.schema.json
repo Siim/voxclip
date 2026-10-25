@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Siim/voxclip/main/shared/schemas/timed-word.schema.json",
+  "title": "VoxClip TimedWord",
+  "description": "One transcript item on the source presentation timeline, as stored in a .voxclip project (transcript.words). Same shape as TimedWord in doc/spec/transcription.md section 3.1; normative rules in doc/spec/editing.md section 2.2. Every field is written, with null for absent optional values. Timings are written once at import and never change. Constraints JSON Schema cannot express: end > start; items in a transcript are sorted by start (ties keep engine order); ids are unique within the transcript.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "text", "kind", "start", "end", "rawStart", "rawEnd", "conf", "speaker", "timing"],
+  "properties": {
+    "id": {
+      "description": "Opaque, unique within the transcript, never reused. Import assigns \"w1\", \"w2\", ... in final start order. Pause ids are derived from it (\"pause-after-<id>\").",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$"
+    },
+    "text": {
+      "description": "Display text as transcribed, NFC, with attached punctuation (\"words,\"). Never empty and never starts or ends with whitespace. User corrections are stored separately in edits.corrections. unlabeledSpeech items use \"…\" (U+2026).",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200,
+      "pattern": "^\\S(?:[\\s\\S]*\\S)?$"
+    },
+    "kind": {
+      "description": "word: transcribed speech (fillers included; filler status is derived from the current text). event: a non-speech sound the engine labelled, e.g. \"(laughs)\". unlabeledSpeech: audible speech in a gap that a non-verbatim engine did not transcribe. Only word items become captions.",
+      "enum": ["word", "event", "unlabeledSpeech"]
+    },
+    "start": {
+      "description": "Seconds on the source presentation timeline, after boundary refinement.",
+      "type": "number",
+      "minimum": 0
+    },
+    "end": {
+      "description": "Seconds; strictly greater than start.",
+      "type": "number",
+      "minimum": 0
+    },
+    "rawStart": {
+      "description": "Engine start after cleanWords and before tightening/refinement. null for detected items.",
+      "type": ["number", "null"],
+      "minimum": 0
+    },
+    "rawEnd": {
+      "description": "Engine end after cleanWords and before tightening/refinement. null for detected items.",
+      "type": ["number", "null"],
+      "minimum": 0
+    },
+    "conf": {
+      "description": "Engine confidence in [0, 1]; null when the engine gives none.",
+      "type": ["number", "null"],
+      "minimum": 0,
+      "maximum": 1
+    },
+    "speaker": {
+      "description": "Diarization label from the engine, if any.",
+      "type": ["string", "null"],
+      "maxLength": 64
+    },
+    "timing": {
+      "description": "Where the times came from (transcription spec TimingSource). unlabeledSpeech items use \"detected\".",
+      "enum": ["native", "dtw", "tokenGrouped", "runGrouped", "detected"]
+    }
+  }
+}

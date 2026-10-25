@@ -1,0 +1,28 @@
+{
+ "$schema": "../schema.json",
+ "schemaVersion": 1,
+ "id": "vox-bold",
+ "name": "Bold",
+ "description": "VoxConvo Bold: one white word at a time in DM Sans Black, no outline. A faithful port of the VoxConvo web caption.",
+ "order": 10,
+ "tags": ["vox", "one-word", "minimal"],
+ "font": {
+  "file": "DMSans-Black.ttf",
+  "family": "DM Sans",
+  "weight": 900,
+  "sizeSh": 0.0444,
+  "lineHeightEm": 1.2
+ },
+ "text": {"transform": "uppercase", "punctuation": "strip-keep-numeric"},
+ "layout": {
+  "maxWords": 1,
+  "maxLines": 1,
+  "maxLineWidthW": 0.9,
+  "holdGapSec": 0,
+  "minPageSec": 0,
+  "breakOnGapSec": null
+ },
+ "position": {"x": 0.5, "y": 0.8},
+ "fill": {"type": "solid", "color": "#FFFFFF"},
+ "preview": {"text": "Your story", "activeWord": 1, "background": "#3A3C45"}
+}

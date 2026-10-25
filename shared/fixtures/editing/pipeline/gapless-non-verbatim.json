@@ -1,0 +1,93 @@
+{
+  "schema": "voxclip-editing-fixture/1",
+  "id": "pipeline/gapless-non-verbatim",
+  "kind": "import-pipeline",
+  "origin": "voxclip",
+  "source": "doc/spec/editing.md (import pipeline)",
+  "description": "Apple-style run-grouped words with decoded audio: clean, tighten into sound, refine, find the dropped filler, assign ids, detect pauses at 0.8 s.",
+  "input": {
+    "audio": {
+      "generator": "vox-take-v1",
+      "sampleRate": 16000,
+      "seconds": 5,
+      "sections": [[0.4, 0.8, "vowel"], [1.3, 1.6, "vowel"], [2, 2.4, "vowel"], [2.45, 2.7, "vowel"], [3.6, 4.2, "vowel"]]
+    },
+    "timing": "runGrouped",
+    "verbatim": false,
+    "rawWords": [
+      {"text": "So", "start": 0.3, "end": 0.8, "conf": 0.9},
+      {"text": ",", "start": 0.8, "end": 0.8},
+      {"text": "today", "start": 0.8, "end": 2.4, "conf": 0.8},
+      {"text": "we", "start": 2.4, "end": 2.7, "conf": 0.95},
+      {"text": "ship", "start": 2.7, "end": 4.2, "conf": 0.7},
+      {"text": ".", "start": 4.2, "end": 4.2}
+    ]
+  },
+  "expected": {
+    "words": [
+      {
+        "id": "w1",
+        "text": "So,",
+        "kind": "word",
+        "start": 0.4,
+        "end": 0.8,
+        "rawStart": 0.3,
+        "rawEnd": 0.8,
+        "conf": 0.9,
+        "speaker": null,
+        "timing": "runGrouped"
+      },
+      {
+        "id": "w2",
+        "text": "…",
+        "kind": "unlabeledSpeech",
+        "start": 1.3,
+        "end": 1.6,
+        "rawStart": null,
+        "rawEnd": null,
+        "conf": null,
+        "speaker": null,
+        "timing": "detected"
+      },
+      {
+        "id": "w3",
+        "text": "today",
+        "kind": "word",
+        "start": 2,
+        "end": 2.4,
+        "rawStart": 0.8,
+        "rawEnd": 2.4,
+        "conf": 0.8,
+        "speaker": null,
+        "timing": "runGrouped"
+      },
+      {
+        "id": "w4",
+        "text": "we",
+        "kind": "word",
+        "start": 2.4,
+        "end": 2.7,
+        "rawStart": 2.4,
+        "rawEnd": 2.7,
+        "conf": 0.95,
+        "speaker": null,
+        "timing": "runGrouped"
+      },
+      {
+        "id": "w5",
+        "text": "ship.",
+        "kind": "word",
+        "start": 3.6,
+        "end": 4.2,
+        "rawStart": 2.7,
+        "rawEnd": 4.2,
+        "conf": 0.7,
+        "speaker": null,
+        "timing": "runGrouped"
+      }
+    ],
+    "pauseThresholdSeconds": 0.8,
+    "pauses": [{"id": "pause-after-w4", "start": 2.7, "end": 3.6, "duration": 0.8999999999999999, "label": "pause 0.9s"}],
+    "tolerance": 0.000001
+  }
+}

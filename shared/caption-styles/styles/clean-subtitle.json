@@ -1,0 +1,32 @@
+{
+ "$schema": "../schema.json",
+ "schemaVersion": 1,
+ "id": "clean-subtitle",
+ "name": "Subtitle",
+ "description": "Broadcast-style subtitles: sentence case on a translucent black band per line, bottom line fixed.",
+ "order": 120,
+ "tags": ["sentence", "box", "broadcast", "clean"],
+ "font": {
+  "file": "NotoSans-SemiBold.ttf",
+  "family": "Noto Sans",
+  "weight": 600,
+  "sizeSh": 0.042,
+  "lineHeightEm": 1.25
+ },
+ "text": {"transform": "none", "punctuation": "keep"},
+ "layout": {
+  "maxWords": 12,
+  "maxLines": 2,
+  "maxLineWidthW": 0.8,
+  "balance": "balanced",
+  "holdGapSec": 0.8,
+  "minPageSec": 0.8,
+  "breakOnGapSec": 0.8,
+  "maxPageSec": 6.0
+ },
+ "position": {"x": 0.5, "y": 0.9, "anchorY": "bottom"},
+ "aspects": {"landscape": {"maxLineWidthW": 0.7}},
+ "fill": {"type": "solid", "color": "#FFFFFF"},
+ "box": {"scope": "line", "color": "#000000B3", "paddingXEm": 0.25, "paddingYEm": 0.06, "radiusEm": 0.08},
+ "preview": {"text": "Here is what we learned this week.", "activeWord": 0}
+}

@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Siim/voxclip/main/shared/schemas/settings.schema.json",
+  "title": "VoxClip settings file (<data>/settings.json), voxclip-settings/1",
+  "description": "One flat JSON object with dotted keys, identical on macOS and Windows (doc/architecture.md section 2.5). A missing key means its default. Writers write every key they changed and may omit keys at their default. Unknown keys are preserved on save (a newer VoxClip may have written them), so additionalProperties is allowed; tests check that the apps write only the keys listed here. No secret ever appears in this file: API keys live in the Keychain / DPAPI (architecture section 11.4). The owning spec of each group is named in its description.",
+  "type": "object",
+  "required": ["schema"],
+  "additionalProperties": true,
+  "properties": {
+    "schema": { "const": "voxclip-settings/1" },
+
+    "general.appearance": { "enum": ["system", "light", "dark"], "default": "system", "description": "design.md section 10, General." },
+    "general.transcriptTextSize": { "type": ["number", "null"], "minimum": 13, "maximum": 28, "default": null, "description": "Transcript font size in pt (macOS) or epx (Windows); null is the platform default (17 / 16). design.md section 4.1." },
+    "general.showLowConfidence": { "type": "boolean", "default": false, "description": "Dashed underline on low-confidence words. design.md section 4.1." },
+    "general.openLastProject": { "type": "boolean", "default": false, "description": "Windows: open the most recent project at launch. macOS restores windows through the system and ignores this key." },
+    "general.recentProjects": { "type": "array", "maxItems": 20, "items": { "type": "string", "minLength": 1 }, "default": [], "description": "Windows only: absolute paths of recently opened projects, most recent first (macOS uses NSDocumentController's list)." },
+    "onboarding.completed": { "type": "boolean", "default": false, "description": "design.md section 9." },
+
+    "editing.pauseBreath": { "enum": ["tight", "natural", "relaxed"], "default": "natural", "description": "Pause breath: tight 0.05 s, natural 0.15 s, relaxed 0.30 s (editing spec pauseKeepSeconds). New projects take it at import; changing it applies setPauseKeep to every open project, one undo step each. design.md section 4.2." },
+
+    "captions.defaultStyleId": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$", "default": "vox-highlight", "description": "Caption style id for new projects (a style in shared/caption-styles/styles, or \"off\"). design.md section 10." },
+
+    "cache.limitGB": { "enum": [2, 5, 10, 20], "default": 5, "description": "Cache eviction cap. architecture.md section 8.2." },
+
+    "transcription.engineMode": { "enum": ["local", "apple", "elevenlabs", "ask"], "default": "local", "description": "transcription.md section 11.1. \"apple\" is macOS only; a Windows reader treats it as \"local\"." },
+    "transcription.language": { "type": "string", "pattern": "^(auto|[a-z]{2,3})$", "default": "auto", "description": "Default language for new imports: \"auto\" or a BCP 47 primary subtag. The import sheet's \"Remember for new imports\" writes it. transcription.md section 11.1." },
+    "transcription.recentLanguages": { "type": "array", "maxItems": 10, "uniqueItems": true, "items": { "type": "string", "pattern": "^[a-z]{2,3}$" }, "default": [], "description": "Most recent first; orders the import sheet's language list." },
+    "transcription.elevenlabs.region": { "enum": ["default", "us", "eu", "in", "sg"], "default": "default", "description": "Base URL for every ElevenLabs call. transcription.md section 8.1." },
+    "transcription.cloudConsent.elevenlabs": { "type": "boolean", "default": false, "description": "The first-use ElevenLabs upload sheet was accepted. transcription.md section 8.5." },
+
+    "export.defaultAspect": { "enum": ["source", "16:9", "9:16", "1:1"], "default": "source", "description": "New projects copy it into export.aspect. design.md section 10, Export." },
+    "export.quality": { "enum": ["standard", "high"], "default": "standard", "description": "New projects copy it into export.quality." },
+    "export.srt": { "type": "boolean", "default": false, "description": "New projects copy it into export.srt (\"Burn in + .srt\")." },
+    "export.folder": { "type": ["string", "null"], "minLength": 1, "default": null, "description": "Default export folder; null is the platform default (architecture.md section 2.5)." },
+    "export.fileNamePattern": { "type": "string", "minLength": 1, "maxLength": 200, "default": "{project}-{clip}-{aspect}", "description": "Tokens {project}, {clip}, {aspect}. design.md section 8." },
+    "export.openFolderAfter": { "type": "boolean", "default": false },
+
+    "update.autoCheck": { "type": "boolean", "default": true, "description": "architecture.md section 13." },
+    "update.lastCheckAt": { "type": ["string", "null"], "format": "date-time", "default": null },
+    "update.latestVersion": { "type": ["string", "null"], "default": null, "description": "macOS only (Velopack keeps its own state on Windows)." },
+    "update.htmlURL": { "type": ["string", "null"], "default": null, "description": "macOS only; must be an https://github.com/ URL." },
+
+    "llm.connector": { "type": "string", "default": "", "description": "Connector id from shared/catalog/llm-providers.json, or empty (none chosen; nothing is preselected). ai.md section 8.2." },
+    "llm.baseUrl.ollama": { "type": "string", "pattern": "^https?://", "description": "Default: the catalog baseUrl." },
+    "llm.baseUrl.lmstudio": { "type": "string", "pattern": "^https?://", "description": "Default: the catalog baseUrl." },
+    "llm.cliPath.claude-code": { "type": "string", "default": "", "description": "Empty means auto-detect. ai.md section 6.10." },
+    "llm.cliPath.codex": { "type": "string", "default": "", "description": "Empty means auto-detect." },
+    "llm.clips.snapToLines": { "type": "boolean", "default": true },
+    "llm.clips.lastPreset": { "enum": ["best", "hooks", "topics", "quotes", "custom"], "default": "best" },
+    "llm.tighten.strength": { "enum": ["light", "normal", "strong"], "default": "normal", "description": "M2." },
+
+    "voiceLab.enabled": { "type": "boolean", "default": false, "description": "M3 beta: Settings → Voice Lab → Show Voice Lab. voice-lab.md section 5." }
+  },
+  "patternProperties": {
+    "^llm\\.model\\.[a-z0-9]+(?:-[a-z0-9]+)*$": { "type": "string", "minLength": 1, "maxLength": 128, "description": "Model id per connector (never one shared key). Default: the catalog defaultModel." },
+    "^llm\\.cloudConsent\\.[a-z0-9]+(?:-[a-z0-9]+)*$": { "type": "boolean", "description": "First-use consent per thirdPartyCloud connector. ai.md section 4.8." },
+    "^voiceLab\\.providerConsent\\.[a-z0-9]+(?:-[a-z0-9]+)*$": { "type": "boolean", "description": "M2/M3 provider consent. voice-lab.md section 2.5." }
+  }
+}

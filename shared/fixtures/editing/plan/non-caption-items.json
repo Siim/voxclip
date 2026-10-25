@@ -1,0 +1,42 @@
+{
+  "schema": "voxclip-editing-fixture/1",
+  "id": "plan/non-caption-items",
+  "kind": "edit-plan",
+  "origin": "voxclip",
+  "source": "doc/spec/editing.md (word kinds)",
+  "description": "Kept event and unlabeledSpeech items bound the silence like words (a cut neighbour only reaches half the gap) but never become captions.",
+  "input": {
+    "durationSeconds": 5,
+    "sampleRate": 1000,
+    "segments": [
+      {"id": "hello", "kind": "word", "text": "hello", "start": 0.5, "end": 1, "cut": false},
+      {"id": "laugh", "kind": "word", "text": "(laughs)", "start": 1.2, "end": 1.6, "cut": false, "wordKind": "event"},
+      {"id": "um", "kind": "word", "text": "um", "start": 1.7, "end": 1.9, "cut": true},
+      {"id": "mumble", "kind": "word", "text": "…", "start": 2, "end": 2.3, "cut": false, "wordKind": "unlabeledSpeech"},
+      {"id": "world", "kind": "word", "text": "world", "start": 3, "end": 3.5, "cut": false}
+    ]
+  },
+  "expected": {
+    "totalSamples": 5000,
+    "outputSamples": 4700,
+    "durationSeconds": 4.7,
+    "segmentCuts": [{"id": "um", "rawStart": 1.65, "rawEnd": 1.95, "startSample": 1650, "endSample": 1950, "empty": false}],
+    "cuts": [[1650, 1950]],
+    "kept": [[0, 1650], [1950, 5000]],
+    "captions": [{"id": "hello", "start": 0.5, "end": 1}, {"id": "world", "start": 2.7, "end": 3.2}],
+    "mapTime": [
+      [0, 0],
+      [-1, 0],
+      ["NaN", 0],
+      [5, 4.7],
+      [6, 4.7],
+      [1.65, 1.65],
+      [1.95, 1.65],
+      [1.7999999999999998, 1.65],
+      [0.825, 0.825],
+      [3.475, 3.175]
+    ],
+    "sourceTime": [[0, 0], [-1, 0], ["NaN", 0], [4.7, 5], [5.7, 5], [1.65, 1.95]],
+    "previewSkip": [[0, null], [1.65, 1.95], [1.7999999999999998, 1.95], [1.95, null]]
+  }
+}

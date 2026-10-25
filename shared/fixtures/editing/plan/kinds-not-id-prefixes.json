@@ -1,0 +1,70 @@
+{
+  "schema": "voxclip-editing-fixture/1",
+  "id": "plan/kinds-not-id-prefixes",
+  "kind": "edit-plan",
+  "origin": "voxclip",
+  "source": "doc/spec/editing.md (explicit segment kinds)",
+  "description": "Segment type comes from kind only. A word whose id starts with \"pause-\" or \"clip-\" is still a word (it gets word reach and a caption); a range and a pause with neutral ids behave as range and pause.",
+  "notes": "VoxConvo infers type from id prefixes and its upload payload drops ids, so the server planned clip head/tail as words (research section 9.1). VoxClip never looks at ids.",
+  "input": {
+    "durationSeconds": 6,
+    "sampleRate": 48000,
+    "segments": [
+      {"id": "pause-like-word", "kind": "word", "text": "um", "start": 0.5, "end": 0.9, "cut": true},
+      {"id": "so", "kind": "word", "text": "so", "start": 1.5, "end": 1.9, "cut": false},
+      {"id": "gap-1", "kind": "pause", "start": 1.9, "end": 3.4, "cut": true},
+      {"id": "clip-like-word", "kind": "word", "text": "right", "start": 3.4, "end": 3.8, "cut": false},
+      {"id": "head", "kind": "range", "start": 0, "end": 0.2, "cut": true},
+      {"id": "tail", "kind": "range", "start": 5.5, "end": 3605.5, "cut": true}
+    ]
+  },
+  "expected": {
+    "totalSamples": 288000,
+    "outputSamples": 168000,
+    "durationSeconds": 3.5,
+    "segmentCuts": [
+      {"id": "pause-like-word", "rawStart": 0.4, "rawEnd": 1, "startSample": 19200, "endSample": 48000, "empty": false},
+      {"id": "gap-1", "rawStart": 2.05, "rawEnd": 3.25, "startSample": 98400, "endSample": 156000, "empty": false},
+      {"id": "head", "rawStart": 0, "rawEnd": 0.2, "startSample": 0, "endSample": 9600, "empty": false},
+      {"id": "tail", "rawStart": 5.5, "rawEnd": 3605.5, "startSample": 264000, "endSample": 288000, "empty": false}
+    ],
+    "cuts": [[0, 9600], [19200, 48000], [98400, 156000], [264000, 288000]],
+    "kept": [[9600, 19200], [48000, 98400], [156000, 264000]],
+    "captions": [{"id": "so", "start": 0.7, "end": 1.1}, {"id": "clip-like-word", "start": 1.4, "end": 1.8}],
+    "mapTime": [
+      [0, 0],
+      [-1, 0],
+      ["NaN", 0],
+      [6, 3.5],
+      [7, 3.5],
+      [0.2, 0],
+      [0.1, 0],
+      [0.4, 0.2],
+      [1, 0.2],
+      [0.7, 0.2],
+      [2.05, 1.25],
+      [3.25, 1.25],
+      [2.65, 1.25],
+      [5.5, 3.5],
+      [5.75, 3.5],
+      [0.30000000000000004, 0.1],
+      [1.525, 0.725],
+      [4.375, 2.375]
+    ],
+    "sourceTime": [[0, 0.2], [-1, 0.2], ["NaN", 0.2], [3.5, 6], [4.5, 6], [0.2, 1], [1.25, 3.25]],
+    "previewSkip": [
+      [0, 0.2],
+      [0.1, 0.2],
+      [0.2, null],
+      [0.4, 1],
+      [0.7, 1],
+      [1, null],
+      [2.05, 3.25],
+      [2.65, 3.25],
+      [3.25, null],
+      [5.5, 6],
+      [5.75, 6],
+      [6, null]
+    ]
+  }
+}

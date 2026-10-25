@@ -1,0 +1,14 @@
+{
+  "schema": "voxclip-editing-fixture/1",
+  "id": "tighten/small-edges-kept",
+  "kind": "word-tightening",
+  "origin": "voxclip",
+  "source": "doc/spec/editing.md (tightenIntoSound)",
+  "description": "Fewer than 7 silent frames at an edge, and an inner dip shorter than 15 frames, change nothing.",
+  "input": {
+    "audio": {"generator": "vox-take-v1", "sampleRate": 16000, "seconds": 3, "sections": [[1.04, 1.5, "vowel"], [1.56, 1.95, "vowel"]]},
+    "timing": "runGrouped",
+    "words": [{"id": "word", "start": 1, "end": 2}]
+  },
+  "expected": {"words": [{"id": "word", "start": 1, "end": 2}], "tolerance": 0.000001}
+}

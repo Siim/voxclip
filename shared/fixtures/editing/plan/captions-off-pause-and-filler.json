@@ -1,0 +1,48 @@
+{
+  "schema": "voxclip-editing-fixture/1",
+  "id": "plan/captions-off-pause-and-filler",
+  "kind": "edit-plan",
+  "origin": "voxconvo",
+  "source": "vox-api/test/video-timeline.test.cjs:76",
+  "description": "Pause and filler cuts apply regardless of caption style.",
+  "input": {
+    "durationSeconds": 8,
+    "sampleRate": 48000,
+    "segments": [
+      {"id": "hello", "kind": "word", "text": "hello", "start": 0.2, "end": 0.7, "cut": false},
+      {"id": "pause-after-hello", "kind": "pause", "start": 1, "end": 2, "cut": true},
+      {"id": "um", "kind": "word", "text": "um", "start": 3, "end": 3.3, "cut": true},
+      {"id": "world", "kind": "word", "text": "world", "start": 4, "end": 4.7, "cut": false}
+    ]
+  },
+  "expected": {
+    "totalSamples": 384000,
+    "outputSamples": 319200,
+    "durationSeconds": 6.65,
+    "segmentCuts": [
+      {"id": "pause-after-hello", "rawStart": 1.15, "rawEnd": 2, "startSample": 55200, "endSample": 96000, "empty": false},
+      {"id": "um", "rawStart": 2.9, "rawEnd": 3.4, "startSample": 139200, "endSample": 163200, "empty": false}
+    ],
+    "cuts": [[55200, 96000], [139200, 163200]],
+    "kept": [[0, 55200], [96000, 139200], [163200, 384000]],
+    "captions": [{"id": "hello", "start": 0.2, "end": 0.7}, {"id": "world", "start": 2.65, "end": 3.35}],
+    "mapTime": [
+      [0, 0],
+      [-1, 0],
+      ["NaN", 0],
+      [8, 6.65],
+      [9, 6.65],
+      [1.15, 1.15],
+      [2, 1.15],
+      [1.575, 1.15],
+      [2.9, 2.05],
+      [3.4, 2.05],
+      [3.15, 2.05],
+      [0.575, 0.575],
+      [2.45, 1.6],
+      [5.7, 4.35]
+    ],
+    "sourceTime": [[0, 0], [-1, 0], ["NaN", 0], [6.65, 8], [7.65, 8], [1.15, 2], [2.05, 3.4]],
+    "previewSkip": [[0, null], [1.15, 2], [1.575, 2], [2, null], [2.9, 3.4], [3.15, 3.4], [3.4, null]]
+  }
+}

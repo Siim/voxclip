@@ -1,0 +1,26 @@
+{
+ "$schema": "../schema.json",
+ "schemaVersion": 1,
+ "id": "outline",
+ "name": "Outline",
+ "description": "Tall condensed white caps with a heavy black outline and a hard drop shadow.",
+ "order": 100,
+ "tags": ["phrase", "outline", "condensed"],
+ "font": {
+  "file": "Anton-Regular.ttf",
+  "family": "Anton",
+  "weight": 400,
+  "sizeSh": 0.085,
+  "letterSpacingEm": 0.02,
+  "lineHeightEm": 1.05,
+  "wordSpacingEm": 0.36
+ },
+ "text": {"transform": "uppercase", "punctuation": "strip-keep-numeric"},
+ "layout": {"maxWords": 3, "maxLines": 2, "maxLineWidthW": 0.82, "maxPageSec": 2.5},
+ "position": {"x": 0.5, "y": 0.66},
+ "aspects": {"landscape": {"y": 0.8}},
+ "fill": {"type": "solid", "color": "#FFFFFF"},
+ "stroke": {"widthEm": 0.22, "color": "#000000"},
+ "shadows": [{"dxEm": 0, "dyEm": 0.09, "sigmaEm": 0, "color": "#000000"}],
+ "preview": {"text": "No more excuses", "activeWord": 2}
+}

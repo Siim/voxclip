@@ -1,0 +1,5 @@
+# Generator for shared/brand (tools/brand/brand.py). Install into a throwaway venv, never globally.
+# Also needs rsvg-convert (librsvg) or ImageMagick on PATH, and iconutil (macOS) for AppIcon.icns.
+pillow==13.0.0
+fonttools==4.67.0
+uharfbuzz==0.57.0

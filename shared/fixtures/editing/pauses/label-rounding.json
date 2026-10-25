@@ -1,0 +1,26 @@
+{
+  "schema": "voxclip-editing-fixture/1",
+  "id": "pauses/label-rounding",
+  "kind": "pause-detection",
+  "origin": "voxconvo-reimplemented",
+  "source": "vox-web/src/components/VoiceRecorder/VoiceRecorder.tsx:784-802",
+  "description": "Labels use JS toFixed(1): exact ties round up (1.25 -> \"1.3\", 2.25 -> \"2.3\"); printf-style %.1f gives \"1.2\".",
+  "input": {
+    "hasDecodedAudio": true,
+    "words": [
+      {"id": "a", "start": 0, "end": 1},
+      {"id": "b", "start": 2.25, "end": 2.5},
+      {"id": "c", "start": 3.35, "end": 3.5},
+      {"id": "d", "start": 4.35, "end": 5},
+      {"id": "e", "start": 7.25, "end": 7.5}
+    ]
+  },
+  "expected": {
+    "pauses": [
+      {"id": "pause-after-a", "start": 1, "end": 2.25, "duration": 1.25, "label": "pause 1.3s"},
+      {"id": "pause-after-b", "start": 2.5, "end": 3.35, "duration": 0.8500000000000001, "label": "pause 0.9s"},
+      {"id": "pause-after-c", "start": 3.5, "end": 4.35, "duration": 0.8499999999999996, "label": "pause 0.8s"},
+      {"id": "pause-after-d", "start": 5, "end": 7.25, "duration": 2.25, "label": "pause 2.3s"}
+    ]
+  }
+}

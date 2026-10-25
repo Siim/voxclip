@@ -1,0 +1,30 @@
+{
+  "schema": "voxclip-editing-fixture/1",
+  "id": "plan/pause-breath-tight",
+  "kind": "edit-plan",
+  "origin": "voxclip",
+  "source": "doc/spec/editing.md (pauseKeepSeconds)",
+  "description": "The pause breath is a project parameter. With pauseKeepSeconds 0.05 the same pause as plan/pause-both-neighbours-kept keeps 0.05 s on each side.",
+  "input": {
+    "durationSeconds": 5,
+    "sampleRate": 1000,
+    "pauseKeepSeconds": 0.05,
+    "segments": [
+      {"id": "so", "kind": "word", "text": "so", "start": 0.5, "end": 1, "cut": false},
+      {"id": "pause-after-so", "kind": "pause", "start": 1, "end": 2.5, "cut": true},
+      {"id": "right", "kind": "word", "text": "right", "start": 2.5, "end": 3, "cut": false}
+    ]
+  },
+  "expected": {
+    "totalSamples": 5000,
+    "outputSamples": 3600,
+    "durationSeconds": 3.6,
+    "segmentCuts": [{"id": "pause-after-so", "rawStart": 1.05, "rawEnd": 2.45, "startSample": 1050, "endSample": 2450, "empty": false}],
+    "cuts": [[1050, 2450]],
+    "kept": [[0, 1050], [2450, 5000]],
+    "captions": [{"id": "so", "start": 0.5, "end": 1}, {"id": "right", "start": 1.1, "end": 1.6}],
+    "mapTime": [[0, 0], [-1, 0], ["NaN", 0], [5, 3.6], [6, 3.6], [1.05, 1.05], [2.45, 1.05], [1.75, 1.05], [0.525, 0.525], [3.725, 2.325]],
+    "sourceTime": [[0, 0], [-1, 0], ["NaN", 0], [3.6, 5], [4.6, 5], [1.05, 2.45]],
+    "previewSkip": [[0, null], [1.05, 2.45], [1.75, 2.45], [2.45, null]]
+  }
+}

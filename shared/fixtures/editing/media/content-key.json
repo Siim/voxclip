@@ -1,0 +1,19 @@
+{
+  "schema": "voxclip-editing-fixture/1",
+  "id": "media/content-key",
+  "kind": "content-key",
+  "origin": "voxclip",
+  "source": "doc/spec/editing.md (contentKey); doc/architecture.md section 8.1",
+  "description": "contentKey of synthetic files whose byte i is (i * 31 + 7) mod 251. Files smaller than 2 MiB are hashed whole; from 2 MiB on, only the first and last MiB are hashed.",
+  "input": {"bytes": "byte[i] = (i * 31 + 7) mod 251", "sizes": [0, 1, 1000000, 2097151, 2097152, 3000000]},
+  "expected": {
+    "contentKeys": [
+      "9dd5f187077043db003010ccfe53d320e838125ab6a192dfae7f50f0593dfa56",
+      "3c307673d40ba84162a74cde204d12fcae85421843874bb5906cb11aa5b55bdb",
+      "a420f836251c8de3b9117f283ded216635af789948159d1a0e076a43a4f05a18",
+      "9f8d9fa545ad802a30a19c1486b04e472e997eabff40269f7ba702d471c4b146",
+      "96be5ab2477d06ce21d421fa8489e7331c95ef7a67fd3259ac825e260051009e",
+      "e3846c5b804ce8625d71f9b4d277ce6d9434c341cb2174f53ab78f5fe89267f7"
+    ]
+  }
+}

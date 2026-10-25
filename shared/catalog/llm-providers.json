@@ -1,0 +1,532 @@
+{
+  "schemaVersion": 1,
+  "updated": "2026-10-25",
+  "curatedAsOf": "2026-10",
+  "description": "LLM connectors for VoxClip. Normative behaviour is in doc/spec/ai.md. Curated model ids are an offline fallback: the app refreshes them from each provider's model-list endpoint and always accepts a custom model id.",
+  "policy": {
+    "timeoutsSeconds": {
+      "status": 3,
+      "modelList": 15,
+      "test": 30,
+      "cloud": 180,
+      "localServer": 600,
+      "appleFoundation": 120,
+      "cliDetect": 10,
+      "cliTest": 120,
+      "cli": 300
+    },
+    "retry": {
+      "attempts": 3,
+      "backoffSeconds": [1, 2],
+      "retryStatuses": [429, 500, 502, 503, 504, 529],
+      "maxRetryAfterSeconds": 30
+    },
+    "fallback": {
+      "triggerStatuses": [429, 503, 529],
+      "maxFallbackModels": 1
+    },
+    "tokenEstimate": {
+      "utf8BytesPerToken": 2.2,
+      "contextSafetyFactor": 0.9
+    },
+    "logging": {
+      "contentLogged": false,
+      "redactor": "doc/architecture.md section 11.2 (the only redactor definition; replacement [REDACTED])"
+    }
+  },
+  "testRequest": {
+    "system": "You are a connection test for a desktop app. Reply only with the requested JSON.",
+    "instruction": "Return ok as true and echo as the word voxclip.",
+    "schemaName": "connection_test",
+    "schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ok", "echo"],
+      "properties": {
+        "ok": { "type": "boolean" },
+        "echo": { "type": "string" }
+      }
+    },
+    "maxOutputTokens": 2048,
+    "effort": "low",
+    "expect": { "ok": true, "echo": "voxclip" }
+  },
+  "groups": [
+    { "id": "apiKey", "label": "Your API key" },
+    { "id": "local", "label": "On this computer" },
+    { "id": "cli", "label": "Installed CLI (your own sign-in)" }
+  ],
+  "connectors": [
+    {
+      "id": "anthropic",
+      "group": "apiKey",
+      "label": "Anthropic",
+      "platforms": ["macos", "windows"],
+      "privacy": "thirdPartyCloud",
+      "wire": "anthropic-messages",
+      "baseUrl": "https://api.anthropic.com",
+      "auth": {
+        "type": "apiKey",
+        "header": "x-api-key",
+        "valueTemplate": "{key}",
+        "keyAccount": "llm-api-key-anthropic",
+        "keyHint": "API key from console.anthropic.com",
+        "debugEnvVar": "VOXCLIP_ANTHROPIC_API_KEY"
+      },
+      "headers": {
+        "anthropic-version": "2026-10-21",
+        "content-type": "application/json"
+      },
+      "generate": { "method": "POST", "path": "/v1/messages" },
+      "structuredOutput": {
+        "mode": "jsonSchemaStrict",
+        "mechanism": "output_config.format = {type: json_schema, schema}"
+      },
+      "promptCaching": {
+        "mechanism": "cache_control {type: ephemeral} on the transcript content block",
+        "minPrefixTokens": 512
+      },
+      "effort": { "field": "output_config.effort", "values": ["low", "medium", "high", "xhigh", "max"] },
+      "neverSend": ["temperature", "top_p", "top_k", "thinking", "assistant prefill", "tool_choice any or tool"],
+      "serverSideFallback": {
+        "betaHeader": "server-side-fallback-2026-07-01",
+        "body": { "fallbacks": "default" },
+        "appliesTo": "models with serverSideFallback true"
+      },
+      "modelList": {
+        "method": "GET",
+        "path": "/v1/models",
+        "query": { "limit": "100" },
+        "items": "data",
+        "id": "id",
+        "name": "display_name",
+        "contextTokens": "max_input_tokens",
+        "pagination": { "hasMore": "has_more", "cursorField": "last_id", "cursorParam": "after_id" },
+        "include": "capabilities.structured_outputs.supported is not false"
+      },
+      "requestIdHeader": "request-id",
+      "defaultModel": "claude-opus-5-5",
+      "fallbackOrder": ["claude-sonnet-5-5", "claude-haiku-5-5"],
+      "models": [
+        { "id": "claude-haiku-5-5", "name": "Claude Haiku 5.5", "tier": "fast", "contextTokens": 1000000, "effort": true, "serverSideFallback": false },
+        { "id": "claude-sonnet-5-5", "name": "Claude Sonnet 5.5", "tier": "balanced", "contextTokens": 1000000, "effort": true, "serverSideFallback": true },
+        { "id": "claude-opus-5-5", "name": "Claude Opus 5.5", "tier": "best", "contextTokens": 1000000, "effort": true, "serverSideFallback": true },
+        { "id": "claude-sonnet-5", "name": "Claude Sonnet 5", "tier": "balanced", "contextTokens": 1000000, "effort": true, "serverSideFallback": false },
+        { "id": "claude-opus-5", "name": "Claude Opus 5", "tier": "best", "contextTokens": 1000000, "effort": true, "serverSideFallback": true }
+      ],
+      "retiredModels": ["claude-haiku-4-5", "claude-haiku-4-5-20251001"]
+    },
+    {
+      "id": "openai",
+      "group": "apiKey",
+      "label": "OpenAI",
+      "platforms": ["macos", "windows"],
+      "privacy": "thirdPartyCloud",
+      "wire": "openai-responses",
+      "baseUrl": "https://api.openai.com",
+      "auth": {
+        "type": "apiKey",
+        "header": "Authorization",
+        "valueTemplate": "Bearer {key}",
+        "keyAccount": "llm-api-key-openai",
+        "keyHint": "API key from platform.openai.com",
+        "debugEnvVar": "VOXCLIP_OPENAI_API_KEY"
+      },
+      "headers": { "content-type": "application/json" },
+      "generate": { "method": "POST", "path": "/v1/responses" },
+      "structuredOutput": {
+        "mode": "jsonSchemaStrict",
+        "mechanism": "text.format = {type: json_schema, name, strict: true, schema}"
+      },
+      "promptCaching": {
+        "mechanism": "automatic prefix caching; prompt_cache_key = voxclip- plus the first 16 hex characters of sha256(transcript block)",
+        "minPrefixTokens": 1024
+      },
+      "effort": { "field": "reasoning.effort", "values": ["low", "medium", "high"] },
+      "neverSend": ["temperature", "top_p"],
+      "alwaysSend": { "store": false },
+      "modelList": {
+        "method": "GET",
+        "path": "/v1/models",
+        "items": "data",
+        "id": "id",
+        "include": "id starts with gpt- or matches ^o[0-9]; id contains none of: audio, realtime, transcribe, tts, image, search, embedding, moderation, instruct",
+        "sort": "created descending"
+      },
+      "requestIdHeader": "x-request-id",
+      "defaultModel": "gpt-5.6-terra",
+      "fallbackOrder": ["gpt-5.6-terra", "gpt-5.6-luna"],
+      "models": [
+        { "id": "gpt-5.6-luna", "name": "GPT-5.6 Luna", "tier": "fast", "effort": true },
+        { "id": "gpt-5.6-terra", "name": "GPT-5.6 Terra", "tier": "balanced", "effort": true },
+        { "id": "gpt-5.6-sol", "name": "GPT-5.6 Sol", "tier": "best", "effort": true },
+        { "id": "gpt-6.1-sol", "name": "GPT-6.1 Sol", "tier": "best", "effort": true }
+      ],
+      "retiredModels": ["gpt-5-nano", "gpt-5-mini", "gpt-5", "gpt-4.1-mini"]
+    },
+    {
+      "id": "xai",
+      "group": "apiKey",
+      "label": "xAI",
+      "platforms": ["macos", "windows"],
+      "privacy": "thirdPartyCloud",
+      "wire": "openai-chat-completions",
+      "baseUrl": "https://api.x.ai",
+      "auth": {
+        "type": "apiKey",
+        "header": "Authorization",
+        "valueTemplate": "Bearer {key}",
+        "keyAccount": "llm-api-key-xai",
+        "keyHint": "API key from console.x.ai",
+        "debugEnvVar": "VOXCLIP_XAI_API_KEY"
+      },
+      "headers": { "content-type": "application/json" },
+      "generate": { "method": "POST", "path": "/v1/chat/completions" },
+      "structuredOutput": {
+        "mode": "jsonSchemaStrict",
+        "mechanism": "response_format = {type: json_schema, json_schema: {name, strict: true, schema}}"
+      },
+      "promptCaching": { "mechanism": "automatic prefix caching", "minPrefixTokens": null },
+      "effort": null,
+      "neverSend": ["temperature", "top_p", "reasoning_effort"],
+      "modelList": {
+        "method": "GET",
+        "path": "/v1/models",
+        "items": "data",
+        "id": "id",
+        "include": "id starts with grok-; id contains none of: image, imagine, video, vision, tts, stt"
+      },
+      "requestIdHeader": "x-request-id",
+      "defaultModel": "grok-4.5",
+      "fallbackOrder": ["grok-4.5", "grok-4.3"],
+      "models": [
+        { "id": "grok-4.3", "name": "Grok 4.3", "tier": "fast" },
+        { "id": "grok-4.5", "name": "Grok 4.5", "tier": "balanced" },
+        { "id": "grok-4.6", "name": "Grok 4.6", "tier": "best" },
+        { "id": "grok-4.7", "name": "Grok 4.7", "tier": "best" }
+      ],
+      "retiredModels": ["grok-4-fast-non-reasoning", "grok-4.20-non-reasoning", "grok-4", "grok-3-mini"]
+    },
+    {
+      "id": "gemini",
+      "group": "apiKey",
+      "label": "Google Gemini",
+      "platforms": ["macos", "windows"],
+      "privacy": "thirdPartyCloud",
+      "wire": "gemini-generate-content",
+      "baseUrl": "https://generativelanguage.googleapis.com",
+      "auth": {
+        "type": "apiKey",
+        "header": "x-goog-api-key",
+        "valueTemplate": "{key}",
+        "keyAccount": "llm-api-key-gemini",
+        "keyHint": "API key from aistudio.google.com",
+        "debugEnvVar": "VOXCLIP_GEMINI_API_KEY",
+        "neverInUrl": true
+      },
+      "headers": { "content-type": "application/json" },
+      "generate": { "method": "POST", "path": "/v1beta/models/{model}:generateContent" },
+      "structuredOutput": {
+        "mode": "jsonSchemaStrict",
+        "mechanism": "generationConfig.responseMimeType = application/json and generationConfig.responseJsonSchema = schema (never together with responseSchema)"
+      },
+      "promptCaching": { "mechanism": "implicit caching", "minPrefixTokens": null },
+      "effort": null,
+      "neverSend": ["temperature", "topP", "topK", "responseSchema", "thinkingConfig"],
+      "modelList": {
+        "method": "GET",
+        "path": "/v1beta/models",
+        "query": { "pageSize": "1000" },
+        "items": "models",
+        "id": "name without the models/ prefix",
+        "name": "displayName",
+        "contextTokens": "inputTokenLimit",
+        "pagination": { "cursorField": "nextPageToken", "cursorParam": "pageToken" },
+        "include": "supportedGenerationMethods contains generateContent; id starts with gemini-; id contains none of: embedding, image, tts, audio, live, aqa"
+      },
+      "requestIdHeader": null,
+      "defaultModel": "gemini-3.8-flash",
+      "fallbackOrder": ["gemini-3.8-flash", "gemini-3.5-flash-lite"],
+      "models": [
+        { "id": "gemini-3.5-flash-lite", "name": "Gemini 3.5 Flash Lite", "tier": "fast" },
+        { "id": "gemini-3.8-flash", "name": "Gemini 3.8 Flash", "tier": "balanced" },
+        { "id": "gemini-3.1-pro-preview", "name": "Gemini 3.1 Pro", "tier": "best" }
+      ],
+      "retiredModels": ["gemini-2.5-flash-lite", "gemini-2.5-flash", "gemini-2.5-pro"]
+    },
+    {
+      "id": "ollama",
+      "group": "local",
+      "label": "Ollama",
+      "platforms": ["macos", "windows"],
+      "privacy": "localServer",
+      "wire": "ollama-chat",
+      "baseUrl": "http://127.0.0.1:11434",
+      "baseUrlEditable": true,
+      "auth": { "type": "none" },
+      "status": { "method": "GET", "path": "/api/version" },
+      "generate": { "method": "POST", "path": "/api/chat" },
+      "structuredOutput": { "mode": "jsonSchemaBestEffort", "mechanism": "format = schema" },
+      "promptCaching": null,
+      "effort": null,
+      "modelList": {
+        "method": "GET",
+        "path": "/api/tags",
+        "items": "models",
+        "id": "name",
+        "details": {
+          "method": "POST",
+          "path": "/api/show",
+          "body": { "model": "{model}" },
+          "contextTokens": "model_info key ending in .context_length",
+          "capabilities": "capabilities"
+        },
+        "include": "capabilities contains completion (when capabilities is present); name does not contain embed"
+      },
+      "options": { "temperature": 0, "keep_alive": "10m", "minNumCtx": 8192, "numCtxStep": 1024 },
+      "maxOutputTokensCap": 4096,
+      "defaultModel": null,
+      "fallbackOrder": [],
+      "suggestedModels": [
+        { "id": "qwen3.5:4b", "minRamGB": 8, "note": "verify the tag on ollama.com before suggesting" },
+        { "id": "gemma4:12b", "minRamGB": 16, "note": "verify the tag on ollama.com before suggesting" },
+        { "id": "qwen3.5:27b", "minRamGB": 32, "note": "verify the tag on ollama.com before suggesting" }
+      ],
+      "models": []
+    },
+    {
+      "id": "lmstudio",
+      "group": "local",
+      "label": "LM Studio",
+      "platforms": ["macos", "windows"],
+      "privacy": "localServer",
+      "wire": "openai-chat-completions",
+      "baseUrl": "http://127.0.0.1:1234",
+      "baseUrlEditable": true,
+      "auth": { "type": "none" },
+      "status": { "method": "GET", "path": "/v1/models" },
+      "generate": { "method": "POST", "path": "/v1/chat/completions" },
+      "structuredOutput": {
+        "mode": "jsonSchemaBestEffort",
+        "mechanism": "response_format = {type: json_schema, json_schema: {name, strict: true, schema}}"
+      },
+      "promptCaching": null,
+      "effort": null,
+      "modelList": {
+        "method": "GET",
+        "path": "/v1/models",
+        "items": "data",
+        "id": "id",
+        "include": "id does not contain embed",
+        "contextInfo": {
+          "method": "GET",
+          "path": "/api/v0/models/{model}",
+          "fields": ["loaded_context_length", "max_context_length"],
+          "verify": true
+        }
+      },
+      "options": { "temperature": 0, "maxTokensField": "max_tokens", "assumedContextTokens": 4096 },
+      "maxOutputTokensCap": 4096,
+      "defaultModel": null,
+      "fallbackOrder": [],
+      "models": []
+    },
+    {
+      "id": "apple-foundation",
+      "group": "local",
+      "label": "Apple Intelligence (on this Mac)",
+      "platforms": ["macos"],
+      "privacy": "onDevice",
+      "wire": "apple-foundation-models",
+      "auth": { "type": "none" },
+      "structuredOutput": { "mode": "generable", "mechanism": "DynamicGenerationSchema built from the canonical schema" },
+      "contextTokens": "runtime: SystemLanguageModel.default.contextSize",
+      "localeGate": "SystemLanguageModel.default.supportsLocale(Locale(identifier: transcriptLanguage))",
+      "measuredOn": {
+        "date": "2026-10-25",
+        "os": "macOS 27.0.1",
+        "contextTokens": 8192,
+        "supportedLocales": ["da-DK", "de-DE", "en-AU", "en-GB", "en-IN", "en-US", "es-419", "es-ES", "es-US", "fr-CA", "fr-FR", "it-IT", "ja-JP", "ko-KR", "nb-NO", "nl-NL", "pt-BR", "pt-PT", "sv-SE", "tr-TR", "vi-VN", "zh-CN", "zh-HK", "zh-TW"],
+        "estonianSupported": false
+      },
+      "sampling": "greedy",
+      "maxOutputTokensCap": 1500,
+      "defaultModel": "system",
+      "fallbackOrder": [],
+      "models": [
+        { "id": "system", "name": "On-device model", "tier": "fast" }
+      ]
+    },
+    {
+      "id": "claude-code",
+      "group": "cli",
+      "label": "Claude Code (installed CLI)",
+      "platforms": ["macos", "windows"],
+      "privacy": "thirdPartyCloud",
+      "wire": "claude-code-print",
+      "enabled": true,
+      "verified": { "date": "2026-10-25", "version": "2.1.309", "os": "macOS 27.0.1" },
+      "cli": {
+        "executable": "claude",
+        "searchPaths": {
+          "macos": [
+            "~/.local/bin/claude",
+            "/opt/homebrew/bin/claude",
+            "/usr/local/bin/claude",
+            "~/.npm-global/bin/claude",
+            "~/.bun/bin/claude",
+            "~/.claude/local/claude"
+          ],
+          "windows": [
+            "%USERPROFILE%\\.local\\bin\\claude.exe",
+            "%APPDATA%\\npm\\claude.cmd"
+          ]
+        },
+        "shellLookup": {
+          "macos": ["/bin/zsh", "-lc", "command -v claude"],
+          "windows": ["where.exe", "claude"]
+        },
+        "npmShimScript": "%APPDATA%\\npm\\node_modules\\@anthropic-ai\\claude-code\\cli.js",
+        "detect": {
+          "version": { "args": ["--version"], "regex": "^(\\d+\\.\\d+\\.\\d+)" },
+          "help": {
+            "args": ["--help"],
+            "requiredFlags": ["--print", "--output-format", "--json-schema", "--tools", "--system-prompt", "--model", "--no-session-persistence", "--safe-mode"],
+            "optionalFlags": ["--strict-mcp-config", "--disable-slash-commands", "--effort", "--fallback-model"]
+          },
+          "auth": { "args": ["auth", "status", "--json"], "signedInField": "loggedIn", "authMethodField": "authMethod", "signedOutExitCode": 1 }
+        },
+        "forbiddenFlags": ["--bare", "--setting-sources", "--dangerously-skip-permissions", "--allow-dangerously-skip-permissions", "--add-dir", "--mcp-config", "--settings", "--resume", "--continue"],
+        "invocation": {
+          "args": [
+            "-p",
+            "--output-format", "json",
+            "--json-schema", "{schemaJson}",
+            "--system-prompt", "{system}",
+            "--tools", "",
+            "--no-session-persistence",
+            { "when": "model", "args": ["--model", "{model}"] },
+            { "when": "fallbackModel", "args": ["--fallback-model", "{fallbackModel}"] },
+            { "when": "supports:--effort", "args": ["--effort", "{effort}"] },
+            "--safe-mode",
+            { "when": "supports:--strict-mcp-config", "args": ["--strict-mcp-config"] },
+            { "when": "supports:--disable-slash-commands", "args": ["--disable-slash-commands"] }
+          ],
+          "stdin": "{cachedBlock}\n\n{instruction}",
+          "cwd": "fresh empty temporary directory",
+          "output": "one JSON object on stdout: type=result, is_error, result, structured_output, api_error_status, terminal_reason, modelUsage, usage"
+        },
+        "authErrorMarkers": ["Not logged in", "/login", "Invalid API key", "OAuth token", "authentication_error"],
+        "limitMarkers": ["usage limit", "rate limit", "limit reached"],
+        "overloadMarkers": ["overloaded", "529"],
+        "signInHint": "Open Terminal, run claude, and sign in.",
+        "installHint": "Install Claude Code from code.claude.com, then run claude once to sign in."
+      },
+      "defaultModel": "sonnet",
+      "fallbackOrder": ["sonnet", "haiku"],
+      "models": [
+        { "id": "default", "name": "CLI default", "tier": null, "omitFlag": true },
+        { "id": "sonnet", "name": "Sonnet (latest)", "tier": "balanced" },
+        { "id": "opus", "name": "Opus (latest)", "tier": "best" },
+        { "id": "haiku", "name": "Haiku (latest)", "tier": "fast" }
+      ]
+    },
+    {
+      "id": "codex",
+      "group": "cli",
+      "label": "Codex (installed CLI)",
+      "platforms": ["macos", "windows"],
+      "privacy": "thirdPartyCloud",
+      "wire": "codex-exec",
+      "enabled": true,
+      "verified": { "date": "2026-10-25", "version": "0.163.0-alpha.10.2", "os": "macOS 27.0.1", "installedVia": "CLI bundled in the ChatGPT desktop app (not searched by VoxClip)", "standaloneVerified": false, "note": "Re-verify on a standalone Codex release before 0.1.0 (doc/spec/ai.md section 14 item 5)." },
+      "cli": {
+        "executable": "codex",
+        "searchPaths": {
+          "macos": [
+            "/opt/homebrew/bin/codex",
+            "/usr/local/bin/codex",
+            "~/.local/bin/codex",
+            "~/.npm-global/bin/codex",
+            "~/.bun/bin/codex"
+          ],
+          "windows": [
+            "%APPDATA%\\npm\\codex.cmd",
+            "%LOCALAPPDATA%\\Programs\\codex\\codex.exe"
+          ]
+        },
+        "shellLookup": {
+          "macos": ["/bin/zsh", "-lc", "command -v codex"],
+          "windows": ["where.exe", "codex"]
+        },
+        "npmShimScript": "%APPDATA%\\npm\\node_modules\\@openai\\codex\\bin\\codex.js",
+        "detect": {
+          "version": { "args": ["--version"], "regex": "codex-cli (\\S+)" },
+          "help": {
+            "args": ["exec", "--help"],
+            "requiredFlags": ["--json", "--output-schema", "--output-last-message", "--skip-git-repo-check", "--ephemeral", "--ignore-user-config", "--sandbox", "--cd", "--model"],
+            "optionalFlags": ["--ignore-rules"]
+          },
+          "features": { "args": ["features", "list"], "lineRegex": "^(\\S+)\\s+(.+?)\\s+(true|false)\\s*$", "skipStage": "removed" },
+          "auth": { "args": ["login", "status"], "signedInExitCode": 0, "signedOutExitCode": 1, "signedOutText": "Not logged in", "apiKeyText": "API key" }
+        },
+        "disableFeatures": ["shell_tool", "unified_exec", "apps", "plugins", "multi_agent", "image_generation", "hooks", "browser_use", "computer_use"],
+        "forbiddenFlags": ["--dangerously-bypass-approvals-and-sandbox", "--dangerously-bypass-hook-trust", "--add-dir", "--search", "--worktree", "--profile", "--oss"],
+        "invocation": {
+          "args": [
+            "exec",
+            "--json",
+            "--ephemeral",
+            "--skip-git-repo-check",
+            "--ignore-user-config",
+            { "when": "supports:--ignore-rules", "args": ["--ignore-rules"] },
+            "--sandbox", "read-only",
+            "--cd", "{cwd}",
+            { "when": "model", "args": ["--model", "{model}"] },
+            { "when": "effort", "args": ["-c", "model_reasoning_effort=\"{effort}\""] },
+            "-c", "web_search=\"disabled\"",
+            "-c", "approval_policy=\"never\"",
+            "-c", "mcp_servers={}",
+            "-c", "developer_instructions={systemToml}",
+            { "forEach": "disableFeatures present in features list", "args": ["--disable", "{feature}"] },
+            "--output-schema", "{schemaFile}",
+            "--output-last-message", "{outFile}",
+            "-"
+          ],
+          "stdin": "{cachedBlock}\n\n{instruction}",
+          "cwd": "fresh empty temporary directory; schemaFile and outFile live in a separate temporary directory",
+          "output": "JSONL events on stdout (thread.started, turn.started, item.completed, turn.completed, turn.failed, error); final message in outFile"
+        },
+        "modelListViaAppServer": {
+          "args": ["app-server", "--listen", "stdio://"],
+          "protocol": "newline-delimited JSON-RPC over stdio",
+          "sequence": [
+            { "id": 1, "method": "initialize", "params": { "clientInfo": { "name": "voxclip", "title": "VoxClip", "version": "{appVersion}" } } },
+            { "method": "initialized" },
+            { "id": 2, "method": "model/list", "params": { "limit": 100 } }
+          ],
+          "result": "result.data[]: id, displayName, isDefault, hidden, defaultReasoningEffort, supportedReasoningEfforts[].reasoningEffort",
+          "note": "model/list returns a bundled catalog and works signed out; treat it as a catalog, not an entitlement check"
+        },
+        "authErrorMarkers": ["401", "Unauthorized", "Not logged in"],
+        "limitMarkers": ["usage limit", "rate limit", "429"],
+        "modelErrorMarkers": ["model_not_found", "does not exist", "not supported"],
+        "signInHint": "Open Terminal and run codex login.",
+        "installHint": "Install Codex (developers.openai.com/codex), then run codex login."
+      },
+      "defaultModel": "default",
+      "fallbackOrder": ["gpt-5.6-terra", "gpt-5.6-luna"],
+      "models": [
+        { "id": "default", "name": "CLI default", "tier": null, "omitFlag": true },
+        { "id": "gpt-6.1-sol", "name": "GPT-6.1-Sol", "tier": "best", "cliDefault": true },
+        { "id": "gpt-6-astra", "name": "GPT-6-Astra", "tier": "best" },
+        { "id": "gpt-6-sol", "name": "GPT-6-Sol", "tier": "best" },
+        { "id": "gpt-6-luna", "name": "GPT-6-Luna", "tier": "fast" },
+        { "id": "gpt-5.6-sol", "name": "GPT-5.6-Sol", "tier": "best" },
+        { "id": "gpt-5.6-terra", "name": "GPT-5.6-Terra", "tier": "balanced" },
+        { "id": "gpt-5.6-luna", "name": "GPT-5.6-Luna", "tier": "fast" },
+        { "id": "gpt-5.5", "name": "GPT-5.5", "tier": "balanced" }
+      ]
+    }
+  ]
+}

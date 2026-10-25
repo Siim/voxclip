@@ -1,0 +1,35 @@
+{
+ "$schema": "../schema.json",
+ "schemaVersion": 1,
+ "id": "gradient",
+ "name": "Gradient",
+ "description": "Bold caps filled with an orange-to-violet gradient across each line, zooming in per phrase.",
+ "order": 160,
+ "tags": ["phrase", "gradient", "outline"],
+ "font": {
+  "file": "Sora-ExtraBold.ttf",
+  "family": "Sora",
+  "weight": 800,
+  "sizeSh": 0.068,
+  "lineHeightEm": 1.1,
+  "wordSpacingEm": 0.28
+ },
+ "text": {"transform": "uppercase", "punctuation": "strip-keep-numeric"},
+ "layout": {"maxWords": 3, "maxLines": 2, "maxLineWidthW": 0.8, "maxPageSec": 2.5},
+ "position": {"x": 0.5, "y": 0.7},
+ "aspects": {"landscape": {"y": 0.8}},
+ "fill": {
+  "type": "linear",
+  "angleDeg": 0,
+  "space": "line",
+  "stops": [
+   {"offset": 0, "color": "#FF7A18"},
+   {"offset": 0.5, "color": "#FF2D95"},
+   {"offset": 1, "color": "#7B2FF7"}
+  ]
+ },
+ "stroke": {"widthEm": 0.08, "color": "#1A0B2E"},
+ "shadows": [{"dxEm": 0, "dyEm": 0.06, "sigmaEm": 0.1, "color": "#00000080"}],
+ "animation": {"pageIn": {"type": "zoom", "durationSec": 0.14, "fromScale": 0.9}},
+ "preview": {"text": "Level up today", "activeWord": 0}
+}

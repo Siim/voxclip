@@ -1,0 +1,16 @@
+{
+  "schema": "voxclip-editing-fixture/1",
+  "id": "estimate/char-weighted",
+  "kind": "estimated-words",
+  "origin": "voxconvo",
+  "source": "vox-web/src/utils/transcriptionTiming.ts:20",
+  "description": "Fallback when a provider returns no word times: split the segment by character count (UTF-16 length), conf 0.",
+  "input": {"text": "a bb cccc", "start": 10, "end": 17},
+  "expected": {
+    "words": [
+      {"word": "a", "start": 10, "end": 11, "conf": 0},
+      {"word": "bb", "start": 11, "end": 13, "conf": 0},
+      {"word": "cccc", "start": 13, "end": 17, "conf": 0}
+    ]
+  }
+}

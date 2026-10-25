@@ -1,0 +1,35 @@
+{
+  "schema": "voxclip-editing-fixture/1",
+  "id": "plan/invalid-and-out-of-bounds",
+  "kind": "edit-plan",
+  "origin": "voxconvo",
+  "source": "vox-web/test/caption-timing.test.mjs:52",
+  "description": "Invalid (NaN, backwards) segments are ignored; out-of-range cuts clamp to [0, duration].",
+  "input": {
+    "durationSeconds": 10,
+    "sampleRate": 1000,
+    "segments": [
+      {"id": "early", "kind": "word", "text": "early", "start": -3, "end": 0.1, "cut": true},
+      {"id": "late", "kind": "word", "text": "late", "start": 9.9, "end": 20, "cut": true},
+      {"id": "bad", "kind": "word", "text": "bad", "start": "NaN", "end": 5, "cut": true},
+      {"id": "backwards", "kind": "word", "text": "backwards", "start": 7, "end": 6, "cut": true},
+      {"id": "kept", "kind": "word", "text": "kept", "start": 0, "end": 0.2, "cut": false},
+      {"id": "invalid-active", "kind": "word", "text": "invalid-active", "start": "NaN", "end": 1, "cut": false}
+    ]
+  },
+  "expected": {
+    "totalSamples": 10000,
+    "outputSamples": 9700,
+    "durationSeconds": 9.7,
+    "segmentCuts": [
+      {"id": "early", "rawStart": -3, "rawEnd": 0.1, "startSample": 0, "endSample": 100, "empty": false},
+      {"id": "late", "rawStart": 9.8, "rawEnd": 20, "startSample": 9800, "endSample": 10000, "empty": false}
+    ],
+    "cuts": [[0, 100], [9800, 10000]],
+    "kept": [[100, 9800]],
+    "captions": [{"id": "kept", "start": 0, "end": 0.1}],
+    "mapTime": [[0, 0], [-1, 0], ["NaN", 0], [10, 9.7], [11, 9.7], [0.1, 0], [0.05, 0], [9.8, 9.7], [9.9, 9.7], [4.95, 4.85]],
+    "sourceTime": [[0, 0.1], [-1, 0.1], ["NaN", 0.1], [9.7, 10], [10.7, 10]],
+    "previewSkip": [[0, 0.1], [0.05, 0.1], [0.1, null], [9.8, 10], [9.9, 10], [10, null]]
+  }
+}

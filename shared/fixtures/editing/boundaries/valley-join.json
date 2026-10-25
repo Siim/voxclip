@@ -1,0 +1,13 @@
+{
+  "schema": "voxclip-editing-fixture/1",
+  "id": "boundaries/valley-join",
+  "kind": "word-boundaries",
+  "origin": "voxconvo",
+  "source": "vox-web/test/word-boundaries.test.mjs",
+  "description": "Touching words share an edge at the quietest frame between them.",
+  "input": {
+    "audio": {"generator": "vox-take-v1", "sampleRate": 16000, "seconds": 3, "sections": [[1, 1.43, "vowel"], [1.46, 1.9, "vowel"]]},
+    "words": [{"id": "in", "word": "in", "start": 1, "end": 1.4}, {"id": "there", "word": "there", "start": 1.4, "end": 1.9}]
+  },
+  "expected": {"words": [{"id": "in", "start": 1, "end": 1.455}, {"id": "there", "start": 1.455, "end": 1.9}], "tolerance": 0.000001}
+}

@@ -1,0 +1,87 @@
+{
+  "schema": "voxclip-editing-fixture/1",
+  "id": "pipeline/native-verbatim-no-audio",
+  "kind": "import-pipeline",
+  "origin": "voxclip",
+  "source": "doc/spec/editing.md (import pipeline)",
+  "description": "ElevenLabs-style native word times without decoded audio: no tightening, refinement or gap search; the event stays an item; pauses use the 1.0 s threshold.",
+  "input": {
+    "audio": null,
+    "timing": "native",
+    "verbatim": true,
+    "rawWords": [
+      {"text": "Tere", "start": 0.12, "end": 0.48, "conf": 0.99},
+      {"text": "tulemast!", "start": 0.52, "end": 1.1, "conf": 0.97},
+      {"text": "(naerab)", "start": 1.2, "end": 2, "kind": "event"},
+      {"text": "Ee,", "start": 3.4, "end": 3.6, "conf": 0.6},
+      {"text": "alustame.", "start": 3.7, "end": 4.3, "conf": 0.98}
+    ]
+  },
+  "expected": {
+    "words": [
+      {
+        "id": "w1",
+        "text": "Tere",
+        "kind": "word",
+        "start": 0.12,
+        "end": 0.48,
+        "rawStart": 0.12,
+        "rawEnd": 0.48,
+        "conf": 0.99,
+        "speaker": null,
+        "timing": "native"
+      },
+      {
+        "id": "w2",
+        "text": "tulemast!",
+        "kind": "word",
+        "start": 0.52,
+        "end": 1.1,
+        "rawStart": 0.52,
+        "rawEnd": 1.1,
+        "conf": 0.97,
+        "speaker": null,
+        "timing": "native"
+      },
+      {
+        "id": "w3",
+        "text": "(naerab)",
+        "kind": "event",
+        "start": 1.2,
+        "end": 2,
+        "rawStart": 1.2,
+        "rawEnd": 2,
+        "conf": null,
+        "speaker": null,
+        "timing": "native"
+      },
+      {
+        "id": "w4",
+        "text": "Ee,",
+        "kind": "word",
+        "start": 3.4,
+        "end": 3.6,
+        "rawStart": 3.4,
+        "rawEnd": 3.6,
+        "conf": 0.6,
+        "speaker": null,
+        "timing": "native"
+      },
+      {
+        "id": "w5",
+        "text": "alustame.",
+        "kind": "word",
+        "start": 3.7,
+        "end": 4.3,
+        "rawStart": 3.7,
+        "rawEnd": 4.3,
+        "conf": 0.98,
+        "speaker": null,
+        "timing": "native"
+      }
+    ],
+    "pauseThresholdSeconds": 1,
+    "pauses": [{"id": "pause-after-w3", "start": 2, "end": 3.4, "duration": 1.4, "label": "pause 1.4s"}],
+    "tolerance": 0.000001
+  }
+}

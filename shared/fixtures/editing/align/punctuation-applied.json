@@ -1,0 +1,15 @@
+{
+  "schema": "voxclip-editing-fixture/1",
+  "id": "align/punctuation-applied",
+  "kind": "transcript-alignment",
+  "origin": "voxconvo",
+  "source": "vox-web/src/utils/transcriptionTiming.ts:11",
+  "description": "Same words after normalisation: take punctuation/capitalisation from the final text.",
+  "input": {
+    "words": [{"word": "hello", "start": 0, "end": 0.3}, {"word": "um", "start": 0.3, "end": 0.5}, {"word": "world", "start": 0.5, "end": 1}],
+    "finalText": "Hello, um, world!"
+  },
+  "expected": {
+    "words": [{"word": "Hello,", "start": 0, "end": 0.3}, {"word": "um,", "start": 0.3, "end": 0.5}, {"word": "world!", "start": 0.5, "end": 1}]
+  }
+}

@@ -1,0 +1,416 @@
+{
+  "format": "voxclip-project",
+  "schemaVersion": 1,
+  "id": "c2a4e6f8-1b3d-4f5a-8c7e-9d0b2a4c6e8f",
+  "title": "Sõnade kaupa lõikamine",
+  "createdAt": "2026-10-24T18:02:11Z",
+  "modifiedAt": "2026-10-25T07:45:30Z",
+  "savedBy": {"app": "VoxClip", "version": "0.1.0", "platform": "windows"},
+  "media": {
+    "source": {
+      "absolutePath": "C:\\Users\\mari\\Videos\\voxclip-demo.mp4",
+      "relativePath": "../Videos/voxclip-demo.mp4",
+      "sizeBytes": 31457280,
+      "durationSeconds": 16,
+      "contentKey": "57b4c88847792026348b90412999d8bcf58cdb14367c7d5cfee893c6e4610547",
+      "video": {"width": 1920, "height": 1080, "frameRate": 29.97, "rotationDegrees": 0},
+      "audio": {"sampleRate": 44100, "channels": 2}
+    }
+  },
+  "transcript": {
+    "schemaVersion": 1,
+    "words": [
+      {
+        "id": "w1",
+        "text": "Tere!",
+        "kind": "word",
+        "start": 0.42,
+        "end": 0.8,
+        "rawStart": 0.44,
+        "rawEnd": 1.3,
+        "conf": 0.9,
+        "speaker": null,
+        "timing": "dtw"
+      },
+      {
+        "id": "w2",
+        "text": "Täna",
+        "kind": "word",
+        "start": 1.3,
+        "end": 1.62,
+        "rawStart": 1.32,
+        "rawEnd": 1.66,
+        "conf": 0.9,
+        "speaker": null,
+        "timing": "dtw"
+      },
+      {
+        "id": "w3",
+        "text": "näitan,",
+        "kind": "word",
+        "start": 1.66,
+        "end": 2.1,
+        "rawStart": 1.68,
+        "rawEnd": 2.2,
+        "conf": 0.9,
+        "speaker": null,
+        "timing": "dtw"
+      },
+      {
+        "id": "w4",
+        "text": "kuidas",
+        "kind": "word",
+        "start": 2.2,
+        "end": 2.52,
+        "rawStart": 2.22,
+        "rawEnd": 2.56,
+        "conf": 0.9,
+        "speaker": null,
+        "timing": "dtw"
+      },
+      {
+        "id": "w5",
+        "text": "lõigata",
+        "kind": "word",
+        "start": 2.56,
+        "end": 3.02,
+        "rawStart": 2.58,
+        "rawEnd": 3.06,
+        "conf": 0.9,
+        "speaker": null,
+        "timing": "dtw"
+      },
+      {
+        "id": "w6",
+        "text": "videot",
+        "kind": "word",
+        "start": 3.06,
+        "end": 3.48,
+        "rawStart": 3.08,
+        "rawEnd": 3.52,
+        "conf": 0.9,
+        "speaker": null,
+        "timing": "dtw"
+      },
+      {
+        "id": "w7",
+        "text": "sõnade",
+        "kind": "word",
+        "start": 3.52,
+        "end": 3.9,
+        "rawStart": 3.54,
+        "rawEnd": 3.94,
+        "conf": 0.9,
+        "speaker": null,
+        "timing": "dtw"
+      },
+      {
+        "id": "w8",
+        "text": "kaupa.",
+        "kind": "word",
+        "start": 3.94,
+        "end": 4.4,
+        "rawStart": 3.96,
+        "rawEnd": 5.1,
+        "conf": 0.9,
+        "speaker": null,
+        "timing": "dtw"
+      },
+      {
+        "id": "w9",
+        "text": "…",
+        "kind": "unlabeledSpeech",
+        "start": 5.1,
+        "end": 5.42,
+        "rawStart": null,
+        "rawEnd": null,
+        "conf": null,
+        "speaker": null,
+        "timing": "detected"
+      },
+      {
+        "id": "w10",
+        "text": "See",
+        "kind": "word",
+        "start": 5.9,
+        "end": 6.08,
+        "rawStart": 5.92,
+        "rawEnd": 6.12,
+        "conf": 0.9,
+        "speaker": null,
+        "timing": "dtw"
+      },
+      {
+        "id": "w11",
+        "text": "on",
+        "kind": "word",
+        "start": 6.12,
+        "end": 6.24,
+        "rawStart": 6.14,
+        "rawEnd": 6.28,
+        "conf": 0.9,
+        "speaker": null,
+        "timing": "dtw"
+      },
+      {
+        "id": "w12",
+        "text": "tegelikult",
+        "kind": "word",
+        "start": 6.28,
+        "end": 6.9,
+        "rawStart": 6.3,
+        "rawEnd": 6.96,
+        "conf": 0.9,
+        "speaker": null,
+        "timing": "dtw"
+      },
+      {
+        "id": "w13",
+        "text": "palju",
+        "kind": "word",
+        "start": 6.96,
+        "end": 7.3,
+        "rawStart": 6.98,
+        "rawEnd": 7.34,
+        "conf": 0.9,
+        "speaker": null,
+        "timing": "dtw"
+      },
+      {
+        "id": "w14",
+        "text": "kiirem",
+        "kind": "word",
+        "start": 7.34,
+        "end": 7.74,
+        "rawStart": 7.36,
+        "rawEnd": 7.78,
+        "conf": 0.9,
+        "speaker": null,
+        "timing": "dtw"
+      },
+      {
+        "id": "w15",
+        "text": "kui",
+        "kind": "word",
+        "start": 7.78,
+        "end": 7.92,
+        "rawStart": 7.8,
+        "rawEnd": 7.96,
+        "conf": 0.9,
+        "speaker": null,
+        "timing": "dtw"
+      },
+      {
+        "id": "w16",
+        "text": "ajateljel",
+        "kind": "word",
+        "start": 7.96,
+        "end": 8.56,
+        "rawStart": 7.98,
+        "rawEnd": 8.6,
+        "conf": 0.9,
+        "speaker": null,
+        "timing": "dtw"
+      },
+      {
+        "id": "w17",
+        "text": "kerimine.",
+        "kind": "word",
+        "start": 8.6,
+        "end": 9.2,
+        "rawStart": 8.62,
+        "rawEnd": 10.4,
+        "conf": 0.9,
+        "speaker": null,
+        "timing": "dtw"
+      },
+      {
+        "id": "w18",
+        "text": "Iga",
+        "kind": "word",
+        "start": 10.4,
+        "end": 10.62,
+        "rawStart": 10.42,
+        "rawEnd": 10.66,
+        "conf": 0.9,
+        "speaker": null,
+        "timing": "dtw"
+      },
+      {
+        "id": "w19",
+        "text": "sõna",
+        "kind": "word",
+        "start": 10.66,
+        "end": 10.98,
+        "rawStart": 10.68,
+        "rawEnd": 11.02,
+        "conf": 0.9,
+        "speaker": null,
+        "timing": "dtw"
+      },
+      {
+        "id": "w20",
+        "text": "asukot",
+        "kind": "word",
+        "start": 11.02,
+        "end": 11.52,
+        "rawStart": 11.04,
+        "rawEnd": 11.56,
+        "conf": 0.9,
+        "speaker": null,
+        "timing": "dtw"
+      },
+      {
+        "id": "w21",
+        "text": "on",
+        "kind": "word",
+        "start": 11.56,
+        "end": 11.68,
+        "rawStart": 11.58,
+        "rawEnd": 11.72,
+        "conf": 0.9,
+        "speaker": null,
+        "timing": "dtw"
+      },
+      {
+        "id": "w22",
+        "text": "juba",
+        "kind": "word",
+        "start": 11.72,
+        "end": 11.98,
+        "rawStart": 11.74,
+        "rawEnd": 12.02,
+        "conf": 0.9,
+        "speaker": null,
+        "timing": "dtw"
+      },
+      {
+        "id": "w23",
+        "text": "teada.",
+        "kind": "word",
+        "start": 12.02,
+        "end": 12.5,
+        "rawStart": 12.04,
+        "rawEnd": 13.6,
+        "conf": 0.9,
+        "speaker": null,
+        "timing": "dtw"
+      },
+      {
+        "id": "w24",
+        "text": "Proovime",
+        "kind": "word",
+        "start": 13.6,
+        "end": 14.1,
+        "rawStart": 13.62,
+        "rawEnd": 14.14,
+        "conf": 0.9,
+        "speaker": null,
+        "timing": "dtw"
+      },
+      {
+        "id": "w25",
+        "text": "kohe",
+        "kind": "word",
+        "start": 14.14,
+        "end": 14.4,
+        "rawStart": 14.16,
+        "rawEnd": 14.44,
+        "conf": 0.9,
+        "speaker": null,
+        "timing": "dtw"
+      },
+      {
+        "id": "w26",
+        "text": "järele.",
+        "kind": "word",
+        "start": 14.44,
+        "end": 15,
+        "rawStart": 14.46,
+        "rawEnd": 15,
+        "conf": 0.9,
+        "speaker": null,
+        "timing": "dtw"
+      }
+    ],
+    "language": "et",
+    "languageProbability": null,
+    "durationSeconds": 16,
+    "engine": {
+      "id": "whispercpp",
+      "modelId": "taltech-et-verbatim-2604-q8_0",
+      "modelSha256": "0e6308a9300d497ca1bcce41f53c17e4702b62b14ad237db40e108b00a53b127",
+      "engineVersion": "Whisper.net 1.9.1 (whisper.cpp 1.8.5)",
+      "locale": null
+    },
+    "verbatim": false,
+    "refined": true,
+    "pipelineVersion": 1,
+    "rawKey": "2a0c148bbcc500abeaf7405141fcb065ba7e172e73d762169ad642be2ca74938",
+    "createdAt": "2026-10-24T18:03:52Z"
+  },
+  "edits": {
+    "pauseThresholdSeconds": 0.8,
+    "pauseKeepSeconds": 0.05,
+    "cutWordIds": ["w9"],
+    "cutPauseIds": ["pause-after-w17", "pause-after-w23"],
+    "corrections": {"w20": "asukoht"},
+    "clips": [
+      {
+        "id": "clip-2f1c",
+        "startWordId": "w10",
+        "endWordId": "w17",
+        "title": "Miks sõnade kaupa on kiirem",
+        "origin": "ai",
+        "aiResultId": "air-7d3e",
+        "aiClipIndex": 0,
+        "selected": true
+      },
+      {
+        "id": "clip-9a0b",
+        "startWordId": "w18",
+        "endWordId": "w26",
+        "title": "Iga sõna asukoht",
+        "origin": "manual",
+        "aiResultId": null,
+        "aiClipIndex": null,
+        "selected": false
+      }
+    ],
+    "activeClipId": "clip-2f1c"
+  },
+  "captions": {
+    "styleId": "karaoke",
+    "overrides": {"text": {"transform": "uppercase"}},
+    "position": {"x": 0.5, "y": 0.72},
+    "positionByAspect": {"16:9": {"x": 0.5, "y": 0.85}}
+  },
+  "export": {"aspect": "9:16", "quality": "high", "srt": true, "folder": "C:\\Users\\mari\\Videos\\VoxClip"},
+  "share": {"captions": {"clip-2f1c": "Miks sõnade kaupa on kiirem\n\nSee on tegelikult palju kiirem."}},
+  "ai": {
+    "results": [
+      {
+        "id": "air-7d3e",
+        "createdAt": "2026-10-25T07:40:02Z",
+        "provider": "claude-code",
+        "model": "sonnet",
+        "preset": "hooks",
+        "instructions": null,
+        "language": "et",
+        "inputSha256": "21febfbe9ef740acbc34f3bc7b469e5977dd5c34b27ea487c52604d33ab33817",
+        "clips": [
+          {
+            "title": "Miks sõnade kaupa on kiirem",
+            "reason": "Selge väide ja võrdlus, mis haarab kohe.",
+            "score": 8,
+            "startWordId": "w10",
+            "endWordId": "w17"
+          },
+          {"title": "Iga sõna asukoht", "reason": "Lühike ja tsiteeritav lause.", "score": 6, "startWordId": "w18", "endWordId": "w23"}
+        ]
+      }
+    ]
+  },
+  "voiceLab": {"segments": []},
+  "extensions": {}
+}

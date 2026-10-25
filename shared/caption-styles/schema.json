@@ -1,0 +1,349 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Siim/voxclip/blob/main/shared/caption-styles/schema.json",
+  "title": "VoxClip CaptionStyle v1",
+  "description": "A data-driven caption style. Semantics, defaults and the rendering algorithm are normative in doc/spec/captions.md. Every 'default' below is part of the contract: a renderer must behave as if the default value were written in the file. A project stores a style id plus an RFC 7396 merge patch over this object (captions spec section 2.4).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "id", "name", "description", "font", "text", "layout", "position", "fill", "preview"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "schemaVersion": { "const": 1 },
+    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{1,39}$", "description": "Stable identifier. Equals the file name without .json. Stored in project files." },
+    "name": { "type": "string", "minLength": 1, "maxLength": 24, "description": "Gallery tile label (sentence case)." },
+    "description": { "type": "string", "minLength": 1, "maxLength": 200, "description": "One sentence used as the accessibility label of the tile." },
+    "order": { "type": "integer", "minimum": 0, "maximum": 999, "default": 500, "description": "Gallery order, ascending; ties by id." },
+    "tags": { "type": "array", "uniqueItems": true, "items": { "type": "string", "pattern": "^[a-z0-9-]+$" }, "default": [] },
+    "accent": { "$ref": "#/$defs/rgb", "description": "Default value of the $accent colour token. The Colour control replaces it through the project overrides patch. Styles without an accent show no colour swatches." },
+    "font": { "$ref": "#/$defs/font" },
+    "text": { "$ref": "#/$defs/text" },
+    "layout": { "$ref": "#/$defs/layout" },
+    "position": { "$ref": "#/$defs/position" },
+    "aspects": { "$ref": "#/$defs/aspects" },
+    "fill": { "$ref": "#/$defs/paint" },
+    "stroke": { "$ref": "#/$defs/stroke" },
+    "shadows": { "type": "array", "maxItems": 4, "items": { "$ref": "#/$defs/shadow" }, "default": [] },
+    "box": { "$ref": "#/$defs/box" },
+    "words": { "$ref": "#/$defs/wordStates" },
+    "reveal": { "$ref": "#/$defs/reveal" },
+    "animation": { "$ref": "#/$defs/animation" },
+    "emphasis": { "$ref": "#/$defs/emphasis" },
+    "emoji": { "$ref": "#/$defs/emoji" },
+    "effects": { "$ref": "#/$defs/effects" },
+    "preview": { "$ref": "#/$defs/preview" }
+  },
+  "$defs": {
+    "rgb": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+    "color": {
+      "type": "string",
+      "pattern": "^(#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?|\\$accent(/[0-9A-Fa-f]{2})?)$",
+      "description": "sRGB, gamma-encoded, straight alpha: #RRGGBB or #RRGGBBAA. '$accent' is the style accent (opaque); '$accent/AA' is the accent with alpha byte AA."
+    },
+    "opaqueColor": { "type": "string", "pattern": "^(#[0-9A-Fa-f]{6}([Ff]{2})?|\\$accent)$" },
+    "fontFile": { "type": "string", "pattern": "^[A-Za-z0-9_-]+\\.ttf$", "description": "File name of a font listed in shared/fonts/fonts.json." },
+    "unit": { "type": "number", "minimum": 0, "maximum": 1 },
+    "font": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["file", "family", "weight", "sizeSh"],
+      "properties": {
+        "file": { "$ref": "#/$defs/fontFile" },
+        "family": { "type": "string", "description": "Informational; must equal the manifest family of 'file'." },
+        "weight": { "type": "integer", "minimum": 100, "maximum": 1000, "description": "Informational; must equal the manifest nominal weight of 'file'." },
+        "italic": { "type": "boolean", "default": false, "description": "Informational; must equal the manifest value." },
+        "sizeSh": { "type": "number", "minimum": 0.01, "maximum": 0.3, "description": "Font size as a fraction of the reference length (sizeRef)." },
+        "sizeRef": { "enum": ["shortEdge", "height", "width"], "default": "shortEdge" },
+        "sizeScale": { "type": "number", "minimum": 0.6, "maximum": 1.6, "default": 1, "description": "Multiplier on sizeSh. Built-in styles leave it at 1; the Size control writes it through the project's overrides patch." },
+        "letterSpacingEm": { "type": "number", "minimum": -0.2, "maximum": 0.5, "default": 0 },
+        "wordSpacingEm": { "type": "number", "minimum": 0, "maximum": 1, "description": "Gap between words in em. When absent the gap is the font's space advance plus letter spacing." },
+        "lineHeightEm": { "type": "number", "minimum": 0.8, "maximum": 2.5, "default": 1.2 },
+        "features": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kern": { "type": "boolean", "default": true },
+            "liga": { "type": "boolean", "default": true },
+            "calt": { "type": "boolean", "default": true }
+          },
+          "default": {}
+        },
+        "fallbackFiles": { "type": "array", "items": { "$ref": "#/$defs/fontFile" }, "maxItems": 3, "default": [], "description": "Tried in order after the primary file and before Noto Sans." }
+      }
+    },
+    "text": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "transform": { "enum": ["none", "uppercase", "lowercase"], "default": "none" },
+        "punctuation": { "enum": ["keep", "strip-keep-numeric"], "default": "keep" },
+        "userOverridable": { "type": "boolean", "default": true, "description": "Whether the user may change transform and punctuation." }
+      }
+    },
+    "layout": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["maxWords", "maxLines", "maxLineWidthW"],
+      "properties": {
+        "maxWords": { "type": "integer", "minimum": 1, "maximum": 16 },
+        "maxLines": { "type": "integer", "minimum": 1, "maximum": 3 },
+        "maxLineWidthW": { "type": "number", "minimum": 0.2, "maximum": 1, "description": "Maximum line advance width as a fraction of the frame width (further limited by the safe area)." },
+        "balance": { "enum": ["greedy", "balanced"], "default": "balanced" },
+        "minShrink": { "type": "number", "minimum": 0.3, "maximum": 1, "default": 0.5 },
+        "breakOnSentence": { "type": "boolean", "default": true },
+        "breakOnComma": { "type": "boolean", "default": false },
+        "breakOnGapSec": { "type": ["number", "null"], "minimum": 0, "maximum": 10, "default": 0.6, "description": "null disables gap breaks." },
+        "maxPageSec": { "type": ["number", "null"], "minimum": 0.5, "maximum": 30, "default": null, "description": "null means no limit." },
+        "holdGapSec": { "type": "number", "minimum": 0, "maximum": 5, "default": 0.5 },
+        "minPageSec": { "type": "number", "minimum": 0, "maximum": 5, "default": 0.3 },
+        "align": { "enum": ["center", "left", "right"], "default": "center" },
+        "lineGapEm": { "type": "number", "minimum": 0, "maximum": 2, "default": 0, "description": "Extra space between line boxes." }
+      }
+    },
+    "position": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["x", "y"],
+      "properties": {
+        "x": { "$ref": "#/$defs/unit" },
+        "y": { "$ref": "#/$defs/unit" },
+        "anchorX": { "enum": ["center", "left", "right"], "default": "center" },
+        "anchorY": { "enum": ["center", "top", "bottom"], "default": "center" },
+        "userDraggable": { "type": "boolean", "default": true }
+      }
+    },
+    "aspectOverride": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "sizeSh": { "type": "number", "minimum": 0.01, "maximum": 0.3 },
+        "x": { "$ref": "#/$defs/unit" },
+        "y": { "$ref": "#/$defs/unit" },
+        "maxLineWidthW": { "type": "number", "minimum": 0.2, "maximum": 1 },
+        "maxWords": { "type": "integer", "minimum": 1, "maximum": 16 }
+      }
+    },
+    "aspects": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "portrait": { "$ref": "#/$defs/aspectOverride" },
+        "square": { "$ref": "#/$defs/aspectOverride" },
+        "landscape": { "$ref": "#/$defs/aspectOverride" }
+      }
+    },
+    "paint": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "color"],
+          "properties": { "type": { "const": "solid" }, "color": { "$ref": "#/$defs/color" } }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "angleDeg", "stops"],
+          "properties": {
+            "type": { "const": "linear" },
+            "angleDeg": { "type": "number", "minimum": -360, "maximum": 360, "description": "0 = left to right, 90 = top to bottom (y down)." },
+            "space": { "enum": ["word", "line", "page"], "default": "line" },
+            "stops": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 5,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["offset", "color"],
+                "properties": { "offset": { "$ref": "#/$defs/unit" }, "color": { "$ref": "#/$defs/opaqueColor" } }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "stroke": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["widthEm", "color"],
+      "properties": {
+        "widthEm": { "type": "number", "minimum": 0, "maximum": 0.5, "description": "Full stroke line width (SVG stroke-width), centred on the outline and drawn under the fill, so widthEm/2 shows outside the glyph." },
+        "color": { "$ref": "#/$defs/color" }
+      }
+    },
+    "shadow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["dxEm", "dyEm", "sigmaEm", "color"],
+      "properties": {
+        "dxEm": { "type": "number", "minimum": -1, "maximum": 1 },
+        "dyEm": { "type": "number", "minimum": -1, "maximum": 1 },
+        "sigmaEm": { "type": "number", "minimum": 0, "maximum": 1, "description": "Gaussian standard deviation in em; 0 is a hard shadow." },
+        "color": { "$ref": "#/$defs/color" }
+      }
+    },
+    "boxShape": {
+      "type": "object",
+      "properties": {
+        "paddingXEm": { "type": "number", "minimum": 0, "maximum": 2, "default": 0.4 },
+        "paddingYEm": { "type": "number", "minimum": 0, "maximum": 2, "default": 0.15 },
+        "radiusEm": { "type": "number", "minimum": 0, "maximum": 2, "default": 0.2 },
+        "pill": { "type": "boolean", "default": false },
+        "borderWidthEm": { "type": "number", "minimum": 0, "maximum": 0.5, "default": 0 }
+      }
+    },
+    "box": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scope", "color"],
+      "properties": {
+        "scope": { "enum": ["page", "line", "word"] },
+        "color": { "$ref": "#/$defs/color" },
+        "paddingXEm": { "$ref": "#/$defs/boxShape/properties/paddingXEm" },
+        "paddingYEm": { "$ref": "#/$defs/boxShape/properties/paddingYEm" },
+        "radiusEm": { "$ref": "#/$defs/boxShape/properties/radiusEm" },
+        "pill": { "$ref": "#/$defs/boxShape/properties/pill" },
+        "borderWidthEm": { "$ref": "#/$defs/boxShape/properties/borderWidthEm" },
+        "borderColor": { "$ref": "#/$defs/color" }
+      }
+    },
+    "wordBox": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["color"],
+      "properties": {
+        "color": { "$ref": "#/$defs/color" },
+        "paddingXEm": { "$ref": "#/$defs/boxShape/properties/paddingXEm" },
+        "paddingYEm": { "$ref": "#/$defs/boxShape/properties/paddingYEm" },
+        "radiusEm": { "$ref": "#/$defs/boxShape/properties/radiusEm" },
+        "pill": { "$ref": "#/$defs/boxShape/properties/pill" },
+        "borderWidthEm": { "$ref": "#/$defs/boxShape/properties/borderWidthEm" },
+        "borderColor": { "$ref": "#/$defs/color" }
+      }
+    },
+    "wordState": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "fill": { "$ref": "#/$defs/paint" },
+        "opacity": { "$ref": "#/$defs/unit" },
+        "scale": { "type": "number", "minimum": 0.5, "maximum": 2, "description": "Drawn about the word centre; never changes layout." },
+        "strokeColor": { "$ref": "#/$defs/color" },
+        "hideStroke": { "type": "boolean" },
+        "box": { "$ref": "#/$defs/wordBox" }
+      }
+    },
+    "wordStates": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "past": { "$ref": "#/$defs/wordState" },
+        "active": { "$ref": "#/$defs/wordState" },
+        "future": { "$ref": "#/$defs/wordState" }
+      }
+    },
+    "reveal": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "unit": { "enum": ["page", "word", "char", "wipe"], "default": "page" },
+        "maxCharsPerSec": { "type": "number", "minimum": 1, "maximum": 200, "default": 30 },
+        "cursor": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["widthEm", "color"],
+          "properties": {
+            "widthEm": { "type": "number", "minimum": 0.01, "maximum": 0.5 },
+            "color": { "$ref": "#/$defs/color" },
+            "blinkHz": { "type": "number", "minimum": 0, "maximum": 10, "default": 2 }
+          }
+        }
+      }
+    },
+    "anim": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "durationSec"],
+      "properties": {
+        "type": { "enum": ["none", "fade", "pop", "zoom", "slide-up"] },
+        "durationSec": { "type": "number", "minimum": 0, "maximum": 2 },
+        "easing": { "enum": ["linear", "easeOutCubic", "easeInOutCubic", "easeOutBack"], "default": "easeOutCubic" },
+        "fromScale": { "type": "number", "minimum": 0, "maximum": 2, "default": 0.8 },
+        "fromOffsetEm": { "type": "number", "minimum": -2, "maximum": 2, "default": 0.4 },
+        "overshoot": { "type": "number", "minimum": 0, "maximum": 4, "default": 1.70158 }
+      }
+    },
+    "animation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "pageIn": { "$ref": "#/$defs/anim" },
+        "pageOut": { "$ref": "#/$defs/anim" },
+        "wordIn": { "$ref": "#/$defs/anim" },
+        "activeIn": { "$ref": "#/$defs/anim" }
+      }
+    },
+    "emphasis": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "source": { "enum": ["none", "rule", "manual", "llm"], "default": "none", "description": "v1 apps treat 'llm' as 'rule'." },
+        "maxPerPage": { "type": "integer", "minimum": 0, "maximum": 4, "default": 1 },
+        "minScore": { "type": "number", "minimum": 0, "maximum": 10, "default": 0 },
+        "fill": { "$ref": "#/$defs/paint" },
+        "palette": { "type": "array", "minItems": 1, "maxItems": 8, "items": { "$ref": "#/$defs/color" }, "description": "Cycled over emphasised words in caption order; overrides fill." },
+        "fontFile": { "$ref": "#/$defs/fontFile" },
+        "scale": { "type": "number", "minimum": 0.5, "maximum": 2, "default": 1, "description": "Changes layout width and drawing size." }
+      }
+    },
+    "emoji": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean", "default": false },
+        "source": { "enum": ["rule", "manual", "llm"], "default": "rule", "description": "Manual picks always apply; v1 apps treat 'llm' as 'rule'." },
+        "placement": { "const": "above-page", "default": "above-page" },
+        "sizeEm": { "type": "number", "minimum": 0.5, "maximum": 3, "default": 1.2 },
+        "gapEm": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.15 },
+        "maxPerPage": { "type": "integer", "minimum": 0, "maximum": 1, "default": 1 }
+      }
+    },
+    "effects": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "rgbSplit": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["offsetEm", "leftColor", "rightColor"],
+          "properties": {
+            "offsetEm": { "type": "number", "minimum": 0, "maximum": 0.2 },
+            "leftColor": { "$ref": "#/$defs/color" },
+            "rightColor": { "$ref": "#/$defs/color" }
+          }
+        },
+        "jitter": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["amplitudeEm", "rateHz", "seed"],
+          "properties": {
+            "amplitudeEm": { "type": "number", "minimum": 0, "maximum": 0.1 },
+            "rateHz": { "type": "number", "minimum": 1, "maximum": 60 },
+            "seed": { "type": "integer", "minimum": 0, "maximum": 4294967295 }
+          }
+        }
+      }
+    },
+    "preview": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["text"],
+      "properties": {
+        "text": { "type": "string", "minLength": 1, "maxLength": 60, "description": "Sample words (space separated) used when no transcript phrase is available." },
+        "activeWord": { "type": "integer", "minimum": 0, "maximum": 15, "default": 0 },
+        "progress": { "$ref": "#/$defs/unit", "default": 1 },
+        "background": { "$ref": "#/$defs/rgb", "default": "#3A3C45" }
+      }
+    }
+  }
+}

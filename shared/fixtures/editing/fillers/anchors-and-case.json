@@ -1,0 +1,37 @@
+{
+  "schema": "voxclip-editing-fixture/1",
+  "id": "fillers/anchors-and-case",
+  "kind": "filler-detection",
+  "origin": "voxconvo-reimplemented",
+  "source": "vox-web/src/components/VoiceRecorder/VoiceRecorder.tsx:1054",
+  "description": "The same rule on inputs where regex engines differ: JS \"$\" (no m flag) matches only at the very end, so \"um\\n\" is not a filler (.NET and ICU \"$\" also match before a final newline); /i folds ASCII only here, so full-width or accented letters never match.",
+  "input": {
+    "pattern": "^(um+|uh+|erm+|hmm+)[,.!?]?$",
+    "flags": "i",
+    "words": [
+      "um\n",
+      "um\r\n",
+      "UM\n",
+      "uM",
+      "hMM!",
+      "HmMmM.",
+      "ermmm?",
+      "Uhhh.",
+      "um ",
+      "umm…",
+      "u m",
+      "hmm?!",
+      "ＵＭ",
+      "úm",
+      "um​",
+      "erm.",
+      "ERRM",
+      "uhh,",
+      "mmm",
+      "UH!"
+    ]
+  },
+  "expected": {
+    "matches": [false, false, false, true, true, true, true, true, false, false, false, false, false, false, false, true, false, true, false, true]
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "schema": "voxclip-editing-fixture/1",
+  "id": "boundaries/max-lead",
+  "kind": "word-boundaries",
+  "origin": "voxconvo",
+  "source": "vox-web/test/word-boundaries.test.mjs",
+  "description": "A start moves at most 0.35 s.",
+  "input": {
+    "audio": {"generator": "vox-take-v1", "sampleRate": 16000, "seconds": 4, "sections": [[0.5, 1.5, "hiss"], [1.5, 1.9, "vowel"]]},
+    "words": [{"id": "c", "word": "c", "start": 1.5, "end": 1.9}]
+  },
+  "expected": {"words": [{"id": "c", "start": 1.1500000000000001, "end": 1.9}], "tolerance": 0.000001}
+}

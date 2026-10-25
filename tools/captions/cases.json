@@ -1,0 +1,171 @@
+{
+  "description": "Inputs for shared/fixtures/captions/layout/*.json. Word times are on the output (edited) timeline in seconds. gen_fixtures.py adds the expected results. 'matrix' adds <style>-<aspect>-<words> for every style and aspect not listed under 'cases'.",
+  "matrix": {"words": "en", "aspects": ["portrait", "square", "landscape"]},
+  "wordSets": {
+    "en": {
+      "language": "en",
+      "duration": 9.0,
+      "words": [
+        ["So", 0.10, 0.28], ["here's", 0.30, 0.55], ["the", 0.57, 0.66], ["thing,", 0.68, 1.02],
+        ["we", 1.20, 1.31], ["shipped", 1.33, 1.70], ["version", 1.72, 2.10], ["3.5", 2.12, 2.60],
+        ["at", 2.62, 2.71], ["03:15", 2.73, 3.40], ["on", 3.42, 3.52], ["Monday.", 3.54, 4.05],
+        ["Don't", 5.05, 5.30], ["panic:", 5.32, 5.80], ["responsibility", 5.82, 6.50], ["and", 6.52, 6.65],
+        ["100%", 6.67, 7.20], ["ready,", 7.22, 7.60], ["right?", 7.62, 8.10]
+      ]
+    },
+    "et": {
+      "language": "et",
+      "duration": 9.5,
+      "words": [
+        ["Tõnis", 0.20, 0.52], ["Mägi", 0.55, 0.90], ["sõi", 0.93, 1.15], ["öösel", 1.18, 1.55],
+        ["šokolaadi,", 1.58, 2.20], ["kell", 2.40, 2.62], ["03:15.", 2.65, 3.30], ["Äge!", 3.90, 4.30],
+        ["Žürii", 4.60, 5.00], ["ütles:", 5.02, 5.40], ["„Väga", 5.45, 5.75], ["hea.”", 5.78, 6.10],
+        ["Rahaga", 6.80, 7.20], ["pole", 7.22, 7.40], ["muret,", 7.42, 7.85], ["idee", 7.95, 8.25],
+        ["on", 8.27, 8.38], ["tuli.", 8.40, 8.90]
+      ]
+    },
+    "scripts": {
+      "language": "en",
+      "duration": 4.0,
+      "words": [
+        ["Привет,", 0.10, 0.50], ["мир!", 0.55, 0.90], ["Γειά", 1.20, 1.50], ["σου", 1.52, 1.70],
+        ["κόσμε.", 1.72, 2.20], ["Straße", 2.50, 3.00], ["naïve", 3.05, 3.50]
+      ]
+    },
+    "long-words": {
+      "language": "et",
+      "duration": 4.2,
+      "words": [
+        ["internationalization", 0.20, 1.20], ["Kõrvalekalduvustest", 1.30, 2.30], ["ok", 2.40, 2.60],
+        ["supercalifragilistic-expialidocious", 2.70, 3.90]
+      ]
+    },
+    "timing": {
+      "language": "en",
+      "duration": 3.6,
+      "words": [
+        ["Wait", 0.00, 0.30], ["what", 0.25, 0.50], ["happened?", 0.50, 1.10], ["Okay.", 2.00, 2.05],
+        ["so", 2.40, 2.50], ["um", 2.50, 2.60], ["basically", 2.62, 3.20], ["yes.", 3.25, 3.40]
+      ]
+    },
+    "typing": {
+      "language": "en",
+      "duration": 4.0,
+      "words": [
+        ["Hello,", 0.20, 0.60], ["world.", 0.65, 1.10], ["Let's", 1.60, 1.90], ["begin", 1.92, 2.30],
+        ["with", 2.32, 2.45], ["3", 2.50, 2.70], ["steps.", 2.75, 3.30]
+      ]
+    },
+    "emoji-et": {
+      "language": "et",
+      "duration": 5.5,
+      "words": [
+        ["Raha", 0.20, 0.50], ["teeb", 0.52, 0.75], ["rõõmu,", 0.78, 1.20, {"emoji": "1f60d"}], ["aga", 1.40, 1.55],
+        ["idee", 1.58, 1.90], ["on", 1.92, 2.00], ["parim", 2.02, 2.40], ["kingitus.", 2.42, 3.00],
+        ["Kohvi?", 3.60, 4.10], ["Kohvi!", 4.60, 5.10]
+      ]
+    },
+    "numbers": {
+      "language": "en",
+      "duration": 3.6,
+      "words": [
+        ["We", 0.10, 0.30], ["grew", 0.32, 0.60, {"emphasis": true}], ["3", 0.62, 0.80], ["times", 0.82, 1.10],
+        ["faster", 1.12, 1.50, {"emphasis": false}], ["in", 1.52, 1.60], ["2025", 1.62, 2.20], ["with", 2.22, 2.40],
+        ["twelve", 2.42, 2.80], ["people.", 2.82, 3.30]
+      ]
+    },
+    "dropped": {
+      "language": "en",
+      "duration": 2.5,
+      "words": [
+        ["Okay", 0.10, 0.40], ["\u2014", 0.42, 0.50], ["this", 0.52, 0.70], ["\ud83d\udd25", 0.72, 0.90], ["is", 0.92, 1.00],
+        ["fire\ud83d\udd25", 1.02, 1.50], ["...", 1.52, 1.60], ["ok?", 1.62, 1.90]
+      ]
+    }
+  },
+  "cases": [
+    {"id": "vox-bold-portrait-en", "style": "vox-bold", "frame": [1080, 1920], "words": "en"},
+    {"id": "vox-highlight-portrait-en", "style": "vox-highlight", "frame": [1080, 1920], "words": "en"},
+    {"id": "vox-bold-plus-portrait-en", "style": "vox-bold-plus", "frame": [1080, 1920], "words": "en"},
+    {"id": "karaoke-portrait-en", "style": "karaoke", "frame": [1080, 1920], "words": "en"},
+    {"id": "active-pop-portrait-en", "style": "active-pop", "frame": [1080, 1920], "words": "en"},
+    {"id": "box-highlight-portrait-en", "style": "box-highlight", "frame": [1080, 1920], "words": "en"},
+    {"id": "one-word-portrait-en", "style": "one-word", "frame": [1080, 1920], "words": "en"},
+    {"id": "bounce-portrait-en", "style": "bounce", "frame": [1080, 1920], "words": "en"},
+    {"id": "two-tone-portrait-en", "style": "two-tone", "frame": [1080, 1920], "words": "en"},
+    {"id": "outline-portrait-en", "style": "outline", "frame": [1080, 1920], "words": "en"},
+    {"id": "pill-portrait-en", "style": "pill", "frame": [1080, 1920], "words": "en"},
+    {"id": "clean-subtitle-portrait-en", "style": "clean-subtitle", "frame": [1080, 1920], "words": "en"},
+    {"id": "lower-third-portrait-en", "style": "lower-third", "frame": [1080, 1920], "words": "en"},
+    {"id": "typewriter-portrait-en", "style": "typewriter", "frame": [1080, 1920], "words": "en"},
+    {"id": "editorial-portrait-en", "style": "editorial", "frame": [1080, 1920], "words": "en"},
+    {"id": "gradient-portrait-en", "style": "gradient", "frame": [1080, 1920], "words": "en"},
+    {"id": "neon-portrait-en", "style": "neon", "frame": [1080, 1920], "words": "en"},
+    {"id": "emoji-accent-portrait-en", "style": "emoji-accent", "frame": [1080, 1920], "words": "en"},
+    {"id": "vhs-portrait-en", "style": "vhs", "frame": [1080, 1920], "words": "en"},
+
+    {"id": "karaoke-landscape-et", "style": "karaoke", "frame": [1920, 1080], "words": "et",
+     "note": "Estonian diacritics in Poppins; landscape aspect override y = 0.8"},
+    {"id": "box-highlight-square-et", "style": "box-highlight", "frame": [1080, 1080], "words": "et"},
+    {"id": "editorial-landscape-et", "style": "editorial", "frame": [1920, 1080], "words": "et",
+     "note": "rule emphasis with the Estonian stopword list"},
+    {"id": "clean-subtitle-landscape-en", "style": "clean-subtitle", "frame": [1920, 1080], "words": "en",
+     "note": "bottom anchor, line boxes overlapping by 2 x paddingY (filled once), landscape maxLineWidthW 0.7"},
+    {"id": "lower-third-landscape-en", "style": "lower-third", "frame": [1920, 1080], "words": "en",
+     "note": "left/bottom anchor and left alignment"},
+    {"id": "neon-landscape-en", "style": "neon", "frame": [1920, 1080], "words": "en"},
+    {"id": "vox-highlight-square-scripts", "style": "vox-highlight", "frame": [1080, 1080], "words": "scripts",
+     "note": "Cyrillic and Greek fall back to NotoSans-Black (nearest weight to 900); ß becomes SS"},
+    {"id": "two-tone-portrait-scripts", "style": "two-tone", "frame": [1080, 1920], "words": "scripts",
+     "note": "fallback for the base font (Poppins Bold -> Noto Sans Bold) and for the emphasis font (Poppins Black -> Noto Sans Black)"},
+    {"id": "one-word-portrait-long", "style": "one-word", "frame": [1080, 1920], "words": "long-words",
+     "note": "single words wider than the line limit are shrunk, never below minShrink"},
+    {"id": "one-word-landscape-long", "style": "one-word", "frame": [1920, 1080], "words": "long-words"},
+    {"id": "karaoke-portrait-long", "style": "karaoke", "frame": [1080, 1920], "words": "long-words",
+     "note": "an overlong word always gets a page of its own"},
+    {"id": "active-pop-portrait-timing", "style": "active-pop", "frame": [1080, 1920], "words": "timing",
+     "note": "overlapping and touching word times, minPageSec extension, final page clamped to the duration"},
+    {"id": "vox-bold-portrait-timing", "style": "vox-bold", "frame": [1080, 1920], "words": "timing"},
+    {"id": "typewriter-square-typing", "style": "typewriter", "frame": [1080, 1080], "words": "typing",
+     "samplesEvery": [0.1, 3.9, 0.05], "note": "dense samples of the character reveal and the cursor blink"},
+    {"id": "bounce-portrait-typing", "style": "bounce", "frame": [1080, 1920], "words": "typing",
+     "samplesEvery": [0.15, 1.2, 0.03], "note": "wordIn pop with easeOutBack overshoot"},
+    {"id": "vhs-portrait-frames", "style": "vhs", "frame": [1080, 1920], "words": "typing",
+     "frameSamples": {"fpsNum": 30, "fpsDen": 1, "first": 0, "count": 40},
+     "note": "jitter offsets at constant frame times t = i * fpsDen / fpsNum"},
+    {"id": "lower-third-portrait-frames", "style": "lower-third", "frame": [1080, 1920], "words": "typing",
+     "frameSamples": {"fpsNum": 30000, "fpsDen": 1001, "first": 0, "count": 45},
+     "note": "slide-up page-in and fade page-out at 29.97 fps frame times"},
+    {"id": "emoji-accent-portrait-et", "style": "emoji-accent", "frame": [1080, 1920], "words": "emoji-et",
+     "note": "manual emoji wins; prefix keywords; the same emoji is not repeated on consecutive pages"},
+    {"id": "emoji-accent-landscape-et", "style": "emoji-accent", "frame": [1920, 1080], "words": "emoji-et"},
+    {"id": "one-word-portrait-numbers", "style": "one-word", "frame": [1080, 1920], "words": "numbers",
+     "note": "palette cycling over emphasised words; manual emphasis true and false"},
+    {"id": "two-tone-portrait-numbers", "style": "two-tone", "frame": [1080, 1920], "words": "numbers"},
+    {"id": "two-tone-portrait-overrides", "style": "two-tone", "frame": [1080, 1920], "words": "en",
+     "overrides": {"font": {"sizeScale": 1.45}, "layout": {"maxWords": 2}, "text": {"transform": "none"}, "accent": "#5CE1FF"},
+     "note": "project overrides patch: Size XL, two words per page, Case As said, Cyan swatch"},
+    {"id": "pill-portrait-clamp", "style": "pill", "frame": [1080, 1920], "words": "en",
+     "positionByAspect": {"9:16": {"x": 0.5, "y": 0.98}},
+     "note": "dragged below the safe area: the block is clamped to the safe rect"},
+    {"id": "karaoke-landscape-clamp", "style": "karaoke", "frame": [1920, 1080], "words": "en",
+     "position": {"x": 0.02, "y": 0.5}, "positionByAspect": {"9:16": {"x": 0.5, "y": 0.1}},
+     "note": "position applies to every aspect unless positionByAspect has the current preset"},
+    {"id": "emoji-accent-portrait-clamp", "style": "emoji-accent", "frame": [1080, 1920], "words": "emoji-et",
+     "position": {"x": 0.5, "y": 0.03},
+     "note": "the emoji rect takes part in clamping but not in anchoring"},
+    {"id": "karaoke-source-4x3", "style": "karaoke", "frame": [1440, 1080], "words": "en",
+     "positionByAspect": {"16:9": {"x": 0.5, "y": 0.2}},
+     "note": "a source frame matches no preset, so positionByAspect[16:9] does not apply; landscape class"},
+    {"id": "vox-highlight-portrait-720", "style": "vox-highlight", "frame": [720, 1280], "words": "en",
+     "note": "the same style at a smaller output size: layout is computed at the output size"},
+    {"id": "vox-bold-portrait-patch", "style": "vox-bold", "frame": [1080, 1920], "words": "en",
+     "overrides": {"stroke": {"widthEm": 0.1, "color": "#000000"}, "layout": {"holdGapSec": 0.3}, "text": {"punctuation": "keep"}},
+     "note": "a hand-written merge patch beyond the Fine tune controls is allowed when the patched style validates"},
+    {"id": "outline-portrait-line", "style": "outline", "frame": [1080, 1920], "words": "en",
+     "overrides": {"layout": {"maxWords": 16, "maxLines": 1}},
+     "note": "Words on screen: Line"},
+    {"id": "karaoke-portrait-dropped", "style": "karaoke", "frame": [1080, 1920], "words": "dropped",
+     "note": "punctuation-only words normalise to empty and are dropped; an emoji-only word has no glyph in the cascade and is dropped; an emoji inside a word drops that cluster only"}
+  ]
+}

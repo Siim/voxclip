@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024" role="img" aria-label="VoxClip">
+  <title>VoxClip</title>
+  <!-- macOS master. Apple icon grid: 1024 canvas, 824 x 824 body at 100,100 with a continuous corner
+       (radius 185.4); the margin holds the drop shadow. Sizes 16, 32 and 64 use hinted/ instead. -->
+  <defs>
+    <linearGradient id="vc-plate" x1="0" y1="100" x2="0" y2="924" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#2C2E35"/><stop offset="1" stop-color="#0F1013"/></linearGradient>
+    <linearGradient id="vc-rim" x1="0" y1="100" x2="0" y2="924" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#FFFFFF" stop-opacity="0.22"/><stop offset="0.5" stop-color="#FFFFFF" stop-opacity="0.06"/><stop offset="1" stop-color="#FFFFFF" stop-opacity="0.10"/></linearGradient>
+    <radialGradient id="vc-sheen" cx="512" cy="100" r="620" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#FFFFFF" stop-opacity="0.07"/><stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/></radialGradient>
+    <linearGradient id="vc-paper" x1="0" y1="258" x2="0" y2="758" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#FBF9F3"/><stop offset="1" stop-color="#E3E0D6"/></linearGradient>
+    <linearGradient id="vc-coral" x1="0" y1="258" x2="0" y2="758" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#FFA396"/><stop offset="1" stop-color="#EE6A5E"/></linearGradient>
+    <filter id="vc-plate-shadow" x="0" y="0" width="1024" height="1024" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="14"/><feOffset dy="12"/>
+      <feComponentTransfer><feFuncA type="linear" slope="0.30"/></feComponentTransfer>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="vc-glyph-shadow" x="0" y="0" width="1024" height="1024" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="10"/><feOffset dy="10"/>
+      <feComponentTransfer><feFuncA type="linear" slope="0.45"/></feComponentTransfer>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <path d="M383.41,100H640.59C722.19,100 763,100 799.79,112.14L806.92,113.89C854.88,131.34 892.66,169.12 910.11,217.08L911.86,224.21C924,261 924,301.81 924,383.41V640.59C924,722.19 924,763 911.86,799.79L910.11,806.92C892.66,854.88 854.88,892.66 806.92,910.11L799.79,911.86C763,924 722.19,924 640.59,924H383.41C301.81,924 261,924 224.21,911.86L217.08,910.11C169.12,892.66 131.34,854.88 113.89,806.92L112.14,799.79C100,763 100,722.19 100,640.59V383.41C100,301.81 100,261 112.14,224.21L113.89,217.08C131.34,169.12 169.12,131.34 217.08,113.89L224.21,112.14C261,100 301.81,100 383.41,100Z" fill="url(#vc-plate)" filter="url(#vc-plate-shadow)"/>
+  <path d="M383.41,100H640.59C722.19,100 763,100 799.79,112.14L806.92,113.89C854.88,131.34 892.66,169.12 910.11,217.08L911.86,224.21C924,261 924,301.81 924,383.41V640.59C924,722.19 924,763 911.86,799.79L910.11,806.92C892.66,854.88 854.88,892.66 806.92,910.11L799.79,911.86C763,924 722.19,924 640.59,924H383.41C301.81,924 261,924 224.21,911.86L217.08,910.11C169.12,892.66 131.34,854.88 113.89,806.92L112.14,799.79C100,763 100,722.19 100,640.59V383.41C100,301.81 100,261 112.14,224.21L113.89,217.08C131.34,169.12 169.12,131.34 217.08,113.89L224.21,112.14C261,100 301.81,100 383.41,100Z" fill="url(#vc-sheen)"/>
+  <path d="M382.77,101.5H641.23C722.22,101.5 762.71,101.5 799.23,113.55L806.31,115.28C853.9,132.61 891.39,170.1 908.72,217.69L910.45,224.77C922.5,261.29 922.5,301.78 922.5,382.77V641.23C922.5,722.22 922.5,762.71 910.45,799.23L908.72,806.31C891.39,853.9 853.9,891.39 806.31,908.72L799.23,910.45C762.71,922.5 722.22,922.5 641.23,922.5H382.77C301.78,922.5 261.29,922.5 224.77,910.45L217.69,908.72C170.1,891.39 132.61,853.9 115.28,806.31L113.55,799.23C101.5,762.71 101.5,722.22 101.5,641.23V382.77C101.5,301.78 101.5,261.29 113.55,224.77L115.28,217.69C132.61,170.1 170.1,132.61 217.69,115.28L224.77,113.55C261.29,101.5 301.78,101.5 382.77,101.5Z" fill="none" stroke="url(#vc-rim)" stroke-width="3"/>
+  <g filter="url(#vc-glyph-shadow)">
+    <rect x="240" y="393" width="84" height="230" rx="42" fill="url(#vc-paper)"/>
+    <rect x="352" y="313" width="84" height="390" rx="42" fill="url(#vc-paper)"/>
+    <rect x="588" y="348" width="84" height="320" rx="42" fill="url(#vc-paper)"/>
+    <rect x="700" y="413" width="84" height="190" rx="42" fill="url(#vc-paper)"/>
+    <rect x="494" y="258" width="36" height="500" rx="18" fill="url(#vc-coral)"/>
+  </g>
+</svg>

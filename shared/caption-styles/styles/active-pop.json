@@ -1,0 +1,30 @@
+{
+ "$schema": "../schema.json",
+ "schemaVersion": 1,
+ "id": "active-pop",
+ "name": "Pop",
+ "description": "Up to three bold words; the word being spoken turns colour and pops slightly larger.",
+ "order": 50,
+ "tags": ["phrase", "active-word", "outline"],
+ "accent": "#22E06B",
+ "font": {
+  "file": "Montserrat-Black.ttf",
+  "family": "Montserrat",
+  "weight": 900,
+  "sizeSh": 0.07,
+  "lineHeightEm": 1.1,
+  "wordSpacingEm": 0.34
+ },
+ "text": {"transform": "uppercase", "punctuation": "strip-keep-numeric"},
+ "layout": {"maxWords": 3, "maxLines": 2, "maxLineWidthW": 0.8, "maxPageSec": 2.5},
+ "position": {"x": 0.5, "y": 0.7},
+ "aspects": {"landscape": {"y": 0.8}},
+ "fill": {"type": "solid", "color": "#FFFFFF"},
+ "stroke": {"widthEm": 0.14, "color": "#000000"},
+ "shadows": [{"dxEm": 0, "dyEm": 0.07, "sigmaEm": 0.05, "color": "#000000B3"}],
+ "words": {"active": {"fill": {"type": "solid", "color": "$accent"}, "scale": 1.08}},
+ "animation": {
+  "activeIn": {"type": "pop", "durationSec": 0.12, "easing": "easeOutBack", "fromScale": 1.0, "overshoot": 2.0}
+ },
+ "preview": {"text": "This changes everything", "activeWord": 1}
+}

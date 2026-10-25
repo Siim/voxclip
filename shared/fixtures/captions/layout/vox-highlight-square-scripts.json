@@ -1,0 +1,915 @@
+{
+ "fixture": "voxclip-caption-layout/1",
+ "id": "vox-highlight-square-scripts",
+ "note": "Cyrillic and Greek fall back to NotoSans-Black (nearest weight to 900); ß becomes SS",
+ "input": {
+  "style": "vox-highlight",
+  "frame": {"width": 1080, "height": 1080},
+  "language": "en",
+  "duration": 4.0,
+  "captions": {"overrides": {}, "position": null, "positionByAspect": {}},
+  "words": [
+   {"id": "scripts-0", "text": "Привет,", "start": 0.1, "end": 0.5},
+   {"id": "scripts-1", "text": "мир!", "start": 0.55, "end": 0.9},
+   {"id": "scripts-2", "text": "Γειά", "start": 1.2, "end": 1.5},
+   {"id": "scripts-3", "text": "σου", "start": 1.52, "end": 1.7},
+   {"id": "scripts-4", "text": "κόσμε.", "start": 1.72, "end": 2.2},
+   {"id": "scripts-5", "text": "Straße", "start": 2.5, "end": 3.0},
+   {"id": "scripts-6", "text": "naïve", "start": 3.05, "end": 3.5}
+  ]
+ },
+ "expected": {
+  "aspect": "square",
+  "preset": "1:1",
+  "resolved": {
+   "sizeSh": 0.0333,
+   "sizeScale": 1,
+   "x": 0.5,
+   "y": 0.8,
+   "anchorX": "center",
+   "anchorY": "center",
+   "maxLineWidthW": 0.9,
+   "maxWords": 1,
+   "transform": "uppercase",
+   "punctuation": "strip-keep-numeric",
+   "accent": null
+  },
+  "fontPx64": 2302,
+  "fontPx": 35.96875,
+  "safeRect": {"x": 54.0, "y": 54.0, "w": 972.0, "h": 950.4},
+  "safeInsets": {"left": 0.05, "right": 0.05, "top": 0.05, "bottom": 0.07},
+  "limitPx": 924.018,
+  "limitPx64": 59137,
+  "unitsPerEm": 1000,
+  "gapUnits": 226,
+  "words": [
+   {
+    "sourceIndex": 0,
+    "id": "scripts-0",
+    "raw": "Привет,",
+    "text": "ПРИВЕТ",
+    "start": 0.1,
+    "end": 0.5,
+    "units": 4004,
+    "clusters": 6,
+    "runs": [
+     {
+      "file": "NotoSans-Black.ttf",
+      "text": "ПРИВЕТ",
+      "units": 4004,
+      "glyphs": [439, 440, 432, 426, 429, 442],
+      "advances": [761, 635, 783, 670, 564, 591],
+      "offsets": [[0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0]],
+      "clusters": [0, 1, 2, 3, 4, 5]
+     }
+    ],
+    "emphasisPoints": 206,
+    "emphasisCandidate": false
+   },
+   {
+    "sourceIndex": 1,
+    "id": "scripts-1",
+    "raw": "мир!",
+    "text": "МИР",
+    "start": 0.55,
+    "end": 0.9,
+    "units": 2393,
+    "clusters": 3,
+    "runs": [
+     {
+      "file": "NotoSans-Black.ttf",
+      "text": "МИР",
+      "units": 2393,
+      "glyphs": [436, 432, 440],
+      "advances": [975, 783, 635],
+      "offsets": [[0, 0], [0, 0], [0, 0]],
+      "clusters": [0, 1, 2]
+     }
+    ],
+    "emphasisPoints": 103,
+    "emphasisCandidate": false
+   },
+   {
+    "sourceIndex": 2,
+    "id": "scripts-2",
+    "raw": "Γειά",
+    "text": "ΓΕΙΆ",
+    "start": 1.2,
+    "end": 1.5,
+    "units": 2361,
+    "clusters": 4,
+    "runs": [
+     {
+      "file": "NotoSans-Black.ttf",
+      "text": "ΓΕΙΆ",
+      "units": 2361,
+      "glyphs": [352, 354, 358, 341],
+      "advances": [519, 549, 440, 853],
+      "offsets": [[0, 0], [0, 0], [0, 0], [0, 0]],
+      "clusters": [0, 1, 2, 3]
+     }
+    ],
+    "emphasisPoints": 104,
+    "emphasisCandidate": false
+   },
+   {
+    "sourceIndex": 3,
+    "id": "scripts-3",
+    "raw": "σου",
+    "text": "ΣΟΥ",
+    "start": 1.52,
+    "end": 1.7,
+    "units": 2051,
+    "clusters": 3,
+    "runs": [
+     {
+      "file": "NotoSans-Black.ttf",
+      "text": "ΣΟΥ",
+      "units": 2051,
+      "glyphs": [367, 364, 369],
+      "advances": [600, 787, 664],
+      "offsets": [[0, 0], [0, 0], [0, 0]],
+      "clusters": [0, 1, 2]
+     }
+    ],
+    "emphasisPoints": 103,
+    "emphasisCandidate": false
+   },
+   {
+    "sourceIndex": 4,
+    "id": "scripts-4",
+    "raw": "κόσμε.",
+    "text": "ΚΌΣΜΕ",
+    "start": 1.72,
+    "end": 2.2,
+    "units": 3786,
+    "clusters": 5,
+    "runs": [
+     {
+      "file": "NotoSans-Black.ttf",
+      "text": "ΚΌΣΜΕ",
+      "units": 3786,
+      "glyphs": [359, 346, 367, 361, 354],
+      "advances": [667, 993, 610, 967, 549],
+      "offsets": [[0, 0], [0, 0], [0, 0], [0, 0], [0, 0]],
+      "clusters": [0, 1, 2, 3, 4]
+     }
+    ],
+    "emphasisPoints": 105,
+    "emphasisCandidate": false
+   },
+   {
+    "sourceIndex": 5,
+    "id": "scripts-5",
+    "raw": "Straße",
+    "text": "STRASSE",
+    "start": 2.5,
+    "end": 3.0,
+    "units": 4388,
+    "clusters": 7,
+    "runs": [
+     {
+      "file": "DMSans-Black.ttf",
+      "text": "STRASSE",
+      "units": 4388,
+      "glyphs": [87, 93, 83, 1, 87, 87, 23],
+      "advances": [607, 608, 641, 722, 611, 611, 588],
+      "offsets": [[0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0]],
+      "clusters": [0, 1, 2, 3, 4, 5, 6]
+     }
+    ],
+    "emphasisPoints": 207,
+    "emphasisCandidate": false
+   },
+   {
+    "sourceIndex": 6,
+    "id": "scripts-6",
+    "raw": "naïve",
+    "text": "NAÏVE",
+    "start": 3.05,
+    "end": 3.5,
+    "units": 3052,
+    "clusters": 5,
+    "runs": [
+     {
+      "file": "DMSans-Black.ttf",
+      "text": "NAÏVE",
+      "units": 3052,
+      "glyphs": [63, 1, 47, 108, 23],
+      "advances": [741, 722, 284, 717, 588],
+      "offsets": [[0, 0], [0, 0], [0, 0], [0, 0], [0, 0]],
+      "clusters": [0, 1, 2, 3, 4]
+     }
+    ],
+    "emphasisPoints": 105,
+    "emphasisCandidate": false
+   }
+  ],
+  "dropped": [],
+  "pages": [
+   {
+    "index": 0,
+    "words": [0],
+    "start": 0.1,
+    "end": 0.5,
+    "fontPx64": 2302,
+    "fontPx": 35.96875,
+    "shrunk": false,
+    "lines": [{"words": [0], "units": 4004, "x": 468.0, "top": 835.0, "baseline": 876.364, "width": 144.019}],
+    "wordRects": [
+     {
+      "word": 0,
+      "line": 0,
+      "x": 468.0,
+      "y": 835.0,
+      "w": 144.019,
+      "h": 57.55,
+      "baseline": 876.364,
+      "cx": 540.009,
+      "cy": 863.775
+     }
+    ],
+    "block": {"x": 468.0, "y": 835.0, "w": 144.019, "h": 57.55},
+    "visual": {"x": 444.009, "y": 819.03, "w": 192.001, "h": 89.49},
+    "boxes": [{"kind": "page", "x": 444.009, "y": 819.03, "w": 192.001, "h": 89.49, "r": 19.999}],
+    "emphasised": [],
+    "emoji": null,
+    "clampShift": [0.0, 0.0]
+   },
+   {
+    "index": 1,
+    "words": [1],
+    "start": 0.55,
+    "end": 0.9,
+    "fontPx64": 2302,
+    "fontPx": 35.96875,
+    "shrunk": false,
+    "lines": [{"words": [1], "units": 2393, "x": 497.0, "top": 835.0, "baseline": 876.364, "width": 86.073}],
+    "wordRects": [
+     {
+      "word": 1,
+      "line": 0,
+      "x": 497.0,
+      "y": 835.0,
+      "w": 86.073,
+      "h": 57.55,
+      "baseline": 876.364,
+      "cx": 540.037,
+      "cy": 863.775
+     }
+    ],
+    "block": {"x": 497.0, "y": 835.0, "w": 86.073, "h": 57.55},
+    "visual": {"x": 473.009, "y": 819.03, "w": 134.056, "h": 89.49},
+    "boxes": [{"kind": "page", "x": 473.009, "y": 819.03, "w": 134.056, "h": 89.49, "r": 19.999}],
+    "emphasised": [],
+    "emoji": null,
+    "clampShift": [0.0, 0.0]
+   },
+   {
+    "index": 2,
+    "words": [2],
+    "start": 1.2,
+    "end": 1.5,
+    "fontPx64": 2302,
+    "fontPx": 35.96875,
+    "shrunk": false,
+    "lines": [{"words": [2], "units": 2361, "x": 498.0, "top": 835.0, "baseline": 876.364, "width": 84.922}],
+    "wordRects": [
+     {
+      "word": 2,
+      "line": 0,
+      "x": 498.0,
+      "y": 835.0,
+      "w": 84.922,
+      "h": 57.55,
+      "baseline": 876.364,
+      "cx": 540.461,
+      "cy": 863.775
+     }
+    ],
+    "block": {"x": 498.0, "y": 835.0, "w": 84.922, "h": 57.55},
+    "visual": {"x": 474.009, "y": 819.03, "w": 132.905, "h": 89.49},
+    "boxes": [{"kind": "page", "x": 474.009, "y": 819.03, "w": 132.905, "h": 89.49, "r": 19.999}],
+    "emphasised": [],
+    "emoji": null,
+    "clampShift": [0.0, 0.0]
+   },
+   {
+    "index": 3,
+    "words": [3],
+    "start": 1.52,
+    "end": 1.7,
+    "fontPx64": 2302,
+    "fontPx": 35.96875,
+    "shrunk": false,
+    "lines": [{"words": [3], "units": 2051, "x": 503.0, "top": 835.0, "baseline": 876.364, "width": 73.772}],
+    "wordRects": [
+     {
+      "word": 3,
+      "line": 0,
+      "x": 503.0,
+      "y": 835.0,
+      "w": 73.772,
+      "h": 57.55,
+      "baseline": 876.364,
+      "cx": 539.886,
+      "cy": 863.775
+     }
+    ],
+    "block": {"x": 503.0, "y": 835.0, "w": 73.772, "h": 57.55},
+    "visual": {"x": 479.009, "y": 819.03, "w": 121.754, "h": 89.49},
+    "boxes": [{"kind": "page", "x": 479.009, "y": 819.03, "w": 121.754, "h": 89.49, "r": 19.999}],
+    "emphasised": [],
+    "emoji": null,
+    "clampShift": [0.0, 0.0]
+   },
+   {
+    "index": 4,
+    "words": [4],
+    "start": 1.72,
+    "end": 2.2,
+    "fontPx64": 2302,
+    "fontPx": 35.96875,
+    "shrunk": false,
+    "lines": [{"words": [4], "units": 3786, "x": 472.0, "top": 835.0, "baseline": 876.364, "width": 136.178}],
+    "wordRects": [
+     {
+      "word": 4,
+      "line": 0,
+      "x": 472.0,
+      "y": 835.0,
+      "w": 136.178,
+      "h": 57.55,
+      "baseline": 876.364,
+      "cx": 540.089,
+      "cy": 863.775
+     }
+    ],
+    "block": {"x": 472.0, "y": 835.0, "w": 136.178, "h": 57.55},
+    "visual": {"x": 448.009, "y": 819.03, "w": 184.16, "h": 89.49},
+    "boxes": [{"kind": "page", "x": 448.009, "y": 819.03, "w": 184.16, "h": 89.49, "r": 19.999}],
+    "emphasised": [],
+    "emoji": null,
+    "clampShift": [0.0, 0.0]
+   },
+   {
+    "index": 5,
+    "words": [5],
+    "start": 2.5,
+    "end": 3.0,
+    "fontPx64": 2302,
+    "fontPx": 35.96875,
+    "shrunk": false,
+    "lines": [{"words": [5], "units": 4388, "x": 461.0, "top": 835.0, "baseline": 876.364, "width": 157.831}],
+    "wordRects": [
+     {
+      "word": 5,
+      "line": 0,
+      "x": 461.0,
+      "y": 835.0,
+      "w": 157.831,
+      "h": 57.55,
+      "baseline": 876.364,
+      "cx": 539.915,
+      "cy": 863.775
+     }
+    ],
+    "block": {"x": 461.0, "y": 835.0, "w": 157.831, "h": 57.55},
+    "visual": {"x": 437.009, "y": 819.03, "w": 205.813, "h": 89.49},
+    "boxes": [{"kind": "page", "x": 437.009, "y": 819.03, "w": 205.813, "h": 89.49, "r": 19.999}],
+    "emphasised": [],
+    "emoji": null,
+    "clampShift": [0.0, 0.0]
+   },
+   {
+    "index": 6,
+    "words": [6],
+    "start": 3.05,
+    "end": 3.5,
+    "fontPx64": 2302,
+    "fontPx": 35.96875,
+    "shrunk": false,
+    "lines": [{"words": [6], "units": 3052, "x": 485.0, "top": 835.0, "baseline": 876.364, "width": 109.777}],
+    "wordRects": [
+     {
+      "word": 6,
+      "line": 0,
+      "x": 485.0,
+      "y": 835.0,
+      "w": 109.777,
+      "h": 57.55,
+      "baseline": 876.364,
+      "cx": 539.888,
+      "cy": 863.775
+     }
+    ],
+    "block": {"x": 485.0, "y": 835.0, "w": 109.777, "h": 57.55},
+    "visual": {"x": 461.009, "y": 819.03, "w": 157.759, "h": 89.49},
+    "boxes": [{"kind": "page", "x": 461.009, "y": 819.03, "w": 157.759, "h": 89.49, "r": 19.999}],
+    "emphasised": [],
+    "emoji": null,
+    "clampShift": [0.0, 0.0]
+   }
+  ],
+  "samples": [
+   {
+    "t": 0.1,
+    "page": 0,
+    "activeWord": 0,
+    "progress": 0.0,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 0,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base"
+     }
+    ],
+    "cursor": null,
+    "golden": true
+   },
+   {
+    "t": 0.3,
+    "page": 0,
+    "activeWord": 0,
+    "progress": 0.5,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 0,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base"
+     }
+    ],
+    "cursor": null
+   },
+   {
+    "t": 0.499,
+    "page": 0,
+    "activeWord": 0,
+    "progress": 0.9975,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 0,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base"
+     }
+    ],
+    "cursor": null
+   },
+   {"t": 0.5, "page": null},
+   {"t": 0.525, "page": null},
+   {
+    "t": 0.55,
+    "page": 1,
+    "activeWord": 1,
+    "progress": 0.0,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 1,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base"
+     }
+    ],
+    "cursor": null
+   },
+   {
+    "t": 0.725,
+    "page": 1,
+    "activeWord": 1,
+    "progress": 0.5,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 1,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base"
+     }
+    ],
+    "cursor": null
+   },
+   {
+    "t": 0.899,
+    "page": 1,
+    "activeWord": 1,
+    "progress": 0.997143,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 1,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base"
+     }
+    ],
+    "cursor": null
+   },
+   {"t": 0.9, "page": null},
+   {"t": 1.05, "page": null},
+   {
+    "t": 1.2,
+    "page": 2,
+    "activeWord": 2,
+    "progress": 0.0,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 2,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base"
+     }
+    ],
+    "cursor": null
+   },
+   {
+    "t": 1.35,
+    "page": 2,
+    "activeWord": 2,
+    "progress": 0.5,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 2,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base"
+     }
+    ],
+    "cursor": null
+   },
+   {
+    "t": 1.499,
+    "page": 2,
+    "activeWord": 2,
+    "progress": 0.996667,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 2,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base"
+     }
+    ],
+    "cursor": null
+   },
+   {"t": 1.5, "page": null},
+   {"t": 1.51, "page": null},
+   {
+    "t": 1.52,
+    "page": 3,
+    "activeWord": 3,
+    "progress": 0.0,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 3,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base"
+     }
+    ],
+    "cursor": null
+   },
+   {
+    "t": 1.61,
+    "page": 3,
+    "activeWord": 3,
+    "progress": 0.5,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 3,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base"
+     }
+    ],
+    "cursor": null
+   },
+   {
+    "t": 1.699,
+    "page": 3,
+    "activeWord": 3,
+    "progress": 0.994444,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 3,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base"
+     }
+    ],
+    "cursor": null
+   },
+   {"t": 1.7, "page": null},
+   {"t": 1.71, "page": null},
+   {
+    "t": 1.72,
+    "page": 4,
+    "activeWord": 4,
+    "progress": 0.0,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 4,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base"
+     }
+    ],
+    "cursor": null
+   },
+   {
+    "t": 1.96,
+    "page": 4,
+    "activeWord": 4,
+    "progress": 0.5,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 4,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base"
+     }
+    ],
+    "cursor": null
+   },
+   {
+    "t": 2.199,
+    "page": 4,
+    "activeWord": 4,
+    "progress": 0.997917,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 4,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base"
+     }
+    ],
+    "cursor": null
+   },
+   {"t": 2.2, "page": null},
+   {"t": 2.35, "page": null},
+   {
+    "t": 2.5,
+    "page": 5,
+    "activeWord": 5,
+    "progress": 0.0,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 5,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base"
+     }
+    ],
+    "cursor": null
+   },
+   {
+    "t": 2.75,
+    "page": 5,
+    "activeWord": 5,
+    "progress": 0.5,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 5,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base"
+     }
+    ],
+    "cursor": null
+   },
+   {
+    "t": 2.999,
+    "page": 5,
+    "activeWord": 5,
+    "progress": 0.998,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 5,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base"
+     }
+    ],
+    "cursor": null
+   },
+   {"t": 3.0, "page": null},
+   {"t": 3.025, "page": null},
+   {
+    "t": 3.05,
+    "page": 6,
+    "activeWord": 6,
+    "progress": 0.0,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 6,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base"
+     }
+    ],
+    "cursor": null
+   },
+   {
+    "t": 3.275,
+    "page": 6,
+    "activeWord": 6,
+    "progress": 0.5,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 6,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base"
+     }
+    ],
+    "cursor": null,
+    "golden": true
+   },
+   {
+    "t": 3.499,
+    "page": 6,
+    "activeWord": 6,
+    "progress": 0.997778,
+    "pageAlpha": 1.0,
+    "pageScale": 1.0,
+    "pageDy": 0.0,
+    "jitter": [0.0, 0.0],
+    "words": [
+     {
+      "word": 6,
+      "state": "active",
+      "visible": true,
+      "opacity": 1.0,
+      "scale": 1.0,
+      "dy": 0.0,
+      "fill": "#FFFFFFFF",
+      "fillSource": "base"
+     }
+    ],
+    "cursor": null
+   },
+   {"t": 3.5, "page": null}
+  ]
+ }
+}

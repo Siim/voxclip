@@ -1,0 +1,29 @@
+{
+  "schema": "voxclip-editing-fixture/1",
+  "id": "plan/nested-word",
+  "kind": "edit-plan",
+  "origin": "voxconvo",
+  "source": "synthetic",
+  "description": "A word inside an earlier word is cut exactly (no reach); the outer caption is shortened.",
+  "input": {
+    "durationSeconds": 3,
+    "sampleRate": 1000,
+    "segments": [
+      {"id": "outer", "kind": "word", "text": "outer", "start": 1, "end": 2, "cut": false},
+      {"id": "inner", "kind": "word", "text": "inner", "start": 1.2, "end": 1.4, "cut": true},
+      {"id": "next", "kind": "word", "text": "next", "start": 2.5, "end": 2.8, "cut": false}
+    ]
+  },
+  "expected": {
+    "totalSamples": 3000,
+    "outputSamples": 2800,
+    "durationSeconds": 2.8,
+    "segmentCuts": [{"id": "inner", "rawStart": 1.2, "rawEnd": 1.4, "startSample": 1200, "endSample": 1400, "empty": false}],
+    "cuts": [[1200, 1400]],
+    "kept": [[0, 1200], [1400, 3000]],
+    "captions": [{"id": "outer", "start": 1, "end": 1.8}, {"id": "next", "start": 2.3, "end": 2.6}],
+    "mapTime": [[0, 0], [-1, 0], ["NaN", 0], [3, 2.8], [4, 2.8], [1.2, 1.2], [1.4, 1.2], [1.2999999999999998, 1.2], [0.6, 0.6], [2.2, 2]],
+    "sourceTime": [[0, 0], [-1, 0], ["NaN", 0], [2.8, 3], [3.8, 3], [1.2, 1.4]],
+    "previewSkip": [[0, null], [1.2, 1.4], [1.2999999999999998, 1.4], [1.4, null]]
+  }
+}
