@@ -90,6 +90,10 @@ voxclip-cli --open shared/fixtures/media/fillers-chirp.mp4 --transcript shared/f
 
 Test environment variables: `VOXCLIP_DATA_DIR` (isolated settings, models, cache, logs), `VOXCLIP_SHARED_DIR` (path to `shared/`; fixture loaders take its parent as the repository root), `VOXCLIP_LOG_LEVEL`, and for the end-to-end suites `VOXCLIP_CLI` (absolute path of the CLI under test) and `VOXCLIP_E2E_OUT` (report directory; architecture.md section 9.5). Tests that call real providers or download models are opt-in (`VOXCLIP_LIVE_TESTS=1`, or the narrower switches a topic spec defines, such as `VOXCLIP_TEST_DOWNLOAD=1` in the transcription spec) and need the key env vars; otherwise they skip. Tests never read the Keychain or DPAPI.
 
+Schema tests use `VOXCLIP_SCHEMA_PYTHON` to select a Python interpreter with `jsonschema>=4.18,<5`; Windows Store aliases do not count as an interpreter. Both Core CI jobs set `VOXCLIP_REQUIRE_SCHEMA_PYTHON=1`, so a missing validator fails the job. Local runs without that flag report an explicit prerequisite skip.
+
+Caption timing and allocation checks are opt-in: `VOXCLIP_PERF_TESTS=1` and, for the C# renderer, `VOXCLIP_ALLOCATION_TESTS=1`. Timing acceptance requires an optimized build on a quiet host; a diagnostic run with `VOXCLIP_PERF_FORCE=1` is not acceptance evidence. See [captions.md section 16.8](doc/spec/captions.md#168-test-environment) for interpreter selection, golden output and the exact timing conditions. Keep live-provider and model-download switches disabled during these checks.
+
 ## Commits and pull requests
 
 - One logical change per commit. Subject in the imperative, at most 72 characters ("Add join-fade tap to the composition builder"); the body says why, and names the spec or ADR it follows.

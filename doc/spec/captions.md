@@ -940,6 +940,20 @@ These tolerances are calibrated on the first full Swift and C# renders: the macO
 - Pixel goldens are regenerated only with `voxclip-cli render-caption` after a reviewed rendering change, with before/after images attached to the pull request.
 - A font update also regenerates `fonts.json` and `THIRD_PARTY_NOTICES.md` and is re-verified for licence and coverage.
 
+### 16.8 Test environment
+
+Default caption tests exercise layout, rendering, cache equivalence and recovery without calling providers or downloading models. Additional checks use these variables:
+
+| Variable | Purpose |
+|---|---|
+| `VOXCLIP_PERF_TESTS=1` | Enable frame timing checks in the Swift and C# suites. Use `swift test -c release` or `dotnet test -c Release`, with the performance suite selected. |
+| `VOXCLIP_ALLOCATION_TESTS=1` | Enable the C# renderer's allocation checks, including animated frames and rotating output targets. |
+| `VOXCLIP_PERF_FORCE=1` | C# diagnostic override when the one-minute load check fails or is unavailable. Results with this override do not satisfy performance acceptance. |
+| `VOXCLIP_CAPTION_PYTHON` | Select Python for the Swift image-comparison cross-check. It must import `numpy` under `-I`; CI requires this cross-check. |
+| `VOXCLIP_GOLDEN_OUT` | Generate candidate images from renderer tests into a scratch directory outside `shared/`, including after symlink resolution. This does not update the committed goldens. Final golden generation uses the CLI procedure in 16.7. |
+
+Timing acceptance follows 13.9: an optimized build, one-minute load below 2, resources warmed before measurement, and the best p95 of three passes for every style and mode. On the M3 Max development host the steady-frame gate is 3.0 ms and the page-first gate is 7.5 ms. A skipped timing test, a debug build or a forced diagnostic run leaves acceptance pending. Run timing tests after other builds and test processes have stopped; do not create artificial CPU load.
+
 ---
 
 ## 17. Style catalogue
