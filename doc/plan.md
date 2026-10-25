@@ -1,10 +1,41 @@
-# VoxClip M1 implementation plan
+# VoxClip implementation plan
 
-Status: normative for 0.1.0 (M1). Written 2026-10-25. Owner: the lead.
+Status: M1 preview baseline and continuation of the full requested product. Updated 2026-10-25. Owner: the lead.
 
 This plan splits M1 into seven tracks. Each track is built by one implementer in its own git worktree and owns a disjoint set of paths. Section 4 fixes the public API between tracks, so dependent tracks start at the same time against the same signatures. Section 5 holds the brief for each track. The orchestrator hands out these briefs as they are. Section 6 is the 0.1.0 release checklist.
 
-M1 is everything the specs mark M1 or 0.1.0: import, transcription (three engines), word editing, clips (manual and AI), captions (19 styles), export (source, 16:9, 9:16, 1:1), the share helpers, update checks, the CLI, release packaging on both platforms, and the voxconvo.com download page. M2 and M3 surfaces stay hidden or absent: AI tighten, Clean audio, Voice Lab, recording, ingest (except the camera-file test in ingest.md section 3.1) and VoxConvo publishing.
+M1 is everything the specs mark M1 or 0.1.0: import, transcription (three engines), word editing, clips (manual and AI), captions (19 styles), export (source, 16:9, 9:16, 1:1), the share helpers, update checks, the CLI, release packaging on both platforms, and the voxconvo.com download page. M2 and M3 surfaces remain absent from the M1 preview until implemented. They remain part of the continuation below; the milestone split does not complete or reduce the user's request.
+
+## 0. Full scope and current delivery status
+
+The original request includes turning a rough vlog into better wording with the user's chosen LLM, speaking the revision in their own cloned voice, voice changing, and lip-sync. A cut-only editor or a signed M1 preview does not satisfy that workflow. The earlier deferral of full-take re-voicing in the Voice Lab spec is superseded by this scope clarification: passage and full-take rewriting and re-voicing remain required work. Consent, explicit paid actions, preservation of original media, and review before applying generated results still apply.
+
+Status on 2026-10-25 distinguishes implemented code, local test evidence, and delivery:
+
+| Requested area | Current state | Remaining work |
+|---|---|---|
+| Native Swift/SwiftUI Mac and .NET/WinUI Windows apps | Import, transcription, word editing, manual/AI clips, preview, project save/reopen and export are integrated | Combined release acceptance, real-device workflows and accessibility/performance checks |
+| Bring your own LLM | Catalog-backed cloud, local and CLI connectors are wired for clip finding | Live-provider acceptance and rewrite workflow integration |
+| ElevenLabs key and local speech models | Transcription routes and secure key storage are integrated | Real local-model quality and explicit live-provider acceptance |
+| Caption burner and styles | Shared preview/export composition, 19 styles and 300 cross-platform golden samples | Quiet-host timing and hosted CI on the final combined revision |
+| Signed apps | Signed and notarized local Mac 0.1.0 build 1 preview produced | Signed Windows preview and public-release acceptance |
+| Open-source monorepo | Public MIT repository contains both native apps, shared data and specs | Continue shipping corresponding source and complete bundled payload notices |
+| VoxConvo download page | Local page and redirect changes are implemented and tested | Deployment and published downloadable artifacts |
+| VoxConvo, X and LinkedIn integration | Export/share helpers exist | VoxConvo sign-in/upload/publish and integrated sharing acceptance; composer links do not establish direct upload |
+| AI rewrite, own-voice clone and voice changer | Core implementation started; no complete user-facing workflow yet | Both-platform services, rewritten speech, synthetic timeline/persistence, preview/accept/undo and UI |
+| Lip-sync | Spec and interface seams only | Provider adapter, jobs/cancellation, media integration, disclosure and end-to-end acceptance |
+
+The agreed follow-on specs also contain AI tighten, Clean audio, camera/microphone recording and expanded ingest. These are still open; a reserved type or protocol is not an implementation.
+
+Continuation order:
+
+1. Finish the current preview acceptance fixes in parallel with feature development: Windows x64 colour conversion, SDK compatibility, runtime agreement and installer notices, then combined hosted CI. Preserve encoder contracts and fixture thresholds.
+2. Implement reviewable rewrite proposals and ElevenLabs voice services with deterministic offline tests, region/key handling, explicit action authorization and cost information. Port the same contracts and fixtures to Windows.
+3. Connect generated audio to reversible project segments, captions and the existing preview/export composition paths. Support both passage and full-take revisions. Add native UI and verify save/reopen, preview, accept, disable, undo and export.
+4. Implement lip-sync using a verified provider API with explicit user selection, cost preview and cancellation. Do not assume speech synthesis alone supplies lip-sync. Complete the recording, Clean audio, AI tighten and ingest work recorded in the topic specs.
+5. Complete VoxConvo authentication and publishing, deploy the download integration, and validate sharing. Prepare signed artifacts and draft releases under the release policy; a human publishes public releases.
+
+The original M1 track briefs below remain the baseline for their assigned work. New continuation briefs explicitly expand ownership and deliverables; their M1-only exclusions must not be used to discard the original full product scope.
 
 ## 1. Rules for every track
 
