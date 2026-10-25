@@ -1098,6 +1098,8 @@ Gates, checked in order:
 5. Consent (§4.8).
 6. Apple locale gate (§6.7).
 
+Gates 1 and 2 are feature gates, not connector errors. They show exactly the message above (from `shared/prompts/clip-finder.json`), never an `llm*` message from §5, and are never retried or logged as provider failures. Each platform raises them as a dedicated clip-finder gate error (`noWords`, `needInstructions`) that carries the message.
+
 ### 11.2 Clip words
 
 The "words" of this spec are the transcript items of the editing spec, in transcript order. Item `i` becomes `{ index: i, text, start, end }`:
