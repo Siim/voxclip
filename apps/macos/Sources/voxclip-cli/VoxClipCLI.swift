@@ -3,10 +3,21 @@ import Darwin
 import ArgumentParser
 import VoxClipCore
 import VoxClipMedia
+import VideoToolbox
 
 /// Architecture §9.1 primary export form, with §9.2 subcommands.
 @main struct VoxClipCLI: AsyncParsableCommand {
     static func main() async {
+        signal(SIGINT, SIG_IGN)
+        let task = Task { await execute() }
+        let interrupt = DispatchSource.makeSignalSource(signal: SIGINT, queue: .global())
+        interrupt.setEventHandler { @Sendable in task.cancel() }
+        interrupt.resume()
+        await task.value
+        interrupt.cancel()
+    }
+
+    static func execute() async {
         do {
             var command = try parseAsRoot()
             if var asynchronous = command as? any AsyncParsableCommand {
@@ -16,6 +27,12 @@ import VoxClipMedia
             }
         } catch {
             let status = exitCode(for: error)
+            if status == .validationFailure, CommandLine.arguments.contains("--json") {
+                let first = CommandLine.arguments.dropFirst().first
+                let name = first.map { $0.hasPrefix("-") ? "export" : $0 } ?? "export"
+                try? CLIExecution.usageError(command: name, message: message(for: error), json: true)
+                Darwin.exit(2)
+            }
             let message = fullMessage(for: error)
             if !message.isEmpty {
                 let sink = status == .success ? FileHandle.standardOutput : FileHandle.standardError
@@ -48,10 +65,11 @@ struct Export: AsyncParsableCommand {
     @Option(help: "Transcription catalog model ID.") var model: String?
     @Option(help: "auto or BCP 47 language.") var language: String?
     @Flag(help: "Cut fillers before tightening pauses.") var cutFillers = false
-    @Flag(help: "Tighten pauses before selecting a clip.") var tightenPauses = false
+    @Flag(help: "Tighten pauses within the selected export scope.") var tightenPauses = false
     @Option(help: "standard or high.") var quality: String?
-    @Option(help: "Constant output frame rate.") var fps: Double?
+    @Option(parsing: .unconditional, help: "Constant output frame rate.") var fps: String?
     @Option(help: "Destination SRT sidecar.") var srt: String?
+    @Option(help: "Also write edited, faded Float32 WAV.") var audioOut: String?
     @Flag(help: "Print one final JSON object on stdout.") var json = false
     @Flag(help: "Suppress human-readable progress on stderr.") var quiet = false
 
@@ -65,15 +83,17 @@ struct Export: AsyncParsableCommand {
             let pair = wordRange.split(separator: ":", omittingEmptySubsequences: false)
             guard pair.count == 2, let first = Int(pair[0]), let last = Int(pair[1]), first >= 0, last >= first else { throw ValidationError("--range must be start:end with 0 <= start <= end") }
         }
-        if let fps, !fps.isFinite || fps <= 0 || fps > 60 { throw ValidationError("--fps must be greater than zero and at most 60") }
+        if let fps {
+            guard let rate = Double(fps), rate.isFinite, rate > 0, rate <= 60 else {
+                throw ValidationError("--fps must be greater than zero and at most 60")
+            }
+        }
     }
 
     mutating func run() async throws {
         guard let input, output != nil else { throw CleanExit.helpRequest(self) }
         try await CLIExecution.run(command: "export", json: json) {
-            let store: any ProjectStore = JSONProjectStore()
-            _ = try await store.load(from: URL(fileURLWithPath: input))
-            throw VoxClipError.notImplemented("mac-media")
+            try await CLIWorkflow.export(self, input: input)
         }
     }
 }
@@ -83,7 +103,7 @@ struct EnvironmentKeyProvider: KeyProvider {
     func key(for provider: String) async throws -> String? {
         let names = ["elevenlabs": "ELEVENLABS_API_KEY", "anthropic": "ANTHROPIC_API_KEY", "openai": "OPENAI_API_KEY", "xai": "XAI_API_KEY", "gemini": "GEMINI_API_KEY"]
         guard let name = names[provider] else { return nil }
-        return ProcessInfo.processInfo.environment[name]
+        return ProcessInfo.processInfo.environment["VOXCLIP_" + name]
     }
 }
 
@@ -91,7 +111,7 @@ struct EnvironmentKeyProvider: KeyProvider {
 enum CLIExecution {
     static func redactor() -> Redactor {
         let environment = ProcessInfo.processInfo.environment
-        let secrets = ["ELEVENLABS_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "XAI_API_KEY", "GEMINI_API_KEY"].compactMap { environment[$0] }
+        let secrets = ["ELEVENLABS_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "XAI_API_KEY", "GEMINI_API_KEY"].compactMap { environment["VOXCLIP_" + $0] }
         return Redactor(knownSecrets: secrets, homeDirectory: FileManager.default.homeDirectoryForCurrentUser.path)
     }
 
@@ -113,9 +133,12 @@ enum CLIExecution {
         do {
             let value = try await operation()
             if json { try printJSON(value) }
+        } catch let error as ValidationError {
+            try usageError(command: command, message: error.message, json: json)
+            throw ExitCode(2)
         } catch {
-            let failure = error is CancellationError ? VoxClipError.cancelled : (error as? VoxClipError ?? .providerError("Unexpected failure"))
-            let message = redactor().redact(failure.errorDescription ?? "Cancelled")
+            let failure = error is CancellationError ? VoxClipError.cancelled : (error as? VoxClipError ?? (error is DecodingError ? .projectUnreadable("Invalid input JSON") : .exportFailed(redactor().redact(error.localizedDescription))))
+            let message = redactor().redact(failure.errorDescription ?? "")
             if json {
                 try printJSON(.object(["ok": .bool(false), "command": .string(command), "error": .object(["code": .string(failure.code.rawValue), "message": .string(message)]), "version": .string("0.1.0")]))
             } else if failure != .cancelled {
@@ -123,6 +146,14 @@ enum CLIExecution {
             }
             throw ExitCode(failure.exitCode)
         }
+    }
+
+    static func usageError(command: String, message: String, json: Bool) throws {
+        let message = redactor().redact(message)
+        if json {
+            try printJSON(.object(["ok": .bool(false), "command": .string(command),
+                "error": .object(["code": .string("usageError"), "message": .string(message)]), "version": .string("0.1.0")]))
+        } else { FileHandle.standardError.write(Data((message + "\n").utf8)) }
     }
 
     static func printJSON(_ value: JSONValue) throws {
@@ -141,8 +172,7 @@ struct Probe: AsyncParsableCommand {
     mutating func run() async throws {
         try await CLIExecution.run(command: "probe", json: json) {
             let probe: any MediaProbe = AVMediaProbe()
-            _ = try await probe.probe(URL(fileURLWithPath: media))
-            throw VoxClipError.notImplemented("mac-media")
+            return try CLIWorkflow.success("probe", value: await probe.probe(URL(fileURLWithPath: media)))
         }
     }
 }
@@ -162,10 +192,7 @@ struct Transcribe: AsyncParsableCommand {
     mutating func validate() throws { _ = try CLIExecution.engine(engine) }
     mutating func run() async throws {
         try await CLIExecution.run(command: "transcribe", json: json) {
-            let extractor: any AudioExtractor = AVAudioExtractor()
-            let locations = DataLocations()
-            _ = try await extractor.extract(AudioExtractionRequest(sourceURL: URL(fileURLWithPath: input), contentKey: "", durationSeconds: 0, cacheDirectory: locations.cache), progress: { _ in })
-            throw VoxClipError.notImplemented("mac-speech")
+            try await CLIWorkflow.transcribe(self)
         }
     }
 }
@@ -178,8 +205,7 @@ struct Models: AsyncParsableCommand {
         mutating func run() async throws {
             try await CLIExecution.run(command: "models list", json: json) {
                 let catalog: any ModelCatalog = BundledModelCatalog(shared: try SharedResources.locate())
-                _ = try await catalog.models()
-                throw VoxClipError.notImplemented("mac-speech")
+                return try CLIWorkflow.success("models list", value: await catalog.models())
             }
         }
     }
@@ -192,7 +218,7 @@ struct Models: AsyncParsableCommand {
                 let catalog = BundledModelCatalog(shared: try SharedResources.locate())
                 let downloader: any ModelDownloader = ModelStore(catalog: catalog, locations: DataLocations())
                 try await downloader.install(id: id, progress: { _ in })
-                throw VoxClipError.notImplemented("mac-speech")
+                return CLIWorkflow.success("models install", fields: ["model": .string(id)])
             }
         }
     }
@@ -204,8 +230,9 @@ struct Models: AsyncParsableCommand {
             try await CLIExecution.run(command: "models verify", json: json) {
                 let catalog = BundledModelCatalog(shared: try SharedResources.locate())
                 let downloader: any ModelDownloader = ModelStore(catalog: catalog, locations: DataLocations())
-                _ = try await downloader.verify(id: id)
-                throw VoxClipError.notImplemented("mac-speech")
+                let verified = try await downloader.verify(id: id)
+                guard verified else { throw VoxClipError.modelChecksumMismatch(id) }
+                return CLIWorkflow.success("models verify", fields: ["model": .string(id), "verified": .bool(verified)])
             }
         }
     }
@@ -218,7 +245,7 @@ struct Models: AsyncParsableCommand {
                 let catalog = BundledModelCatalog(shared: try SharedResources.locate())
                 let downloader: any ModelDownloader = ModelStore(catalog: catalog, locations: DataLocations())
                 try await downloader.remove(id: id)
-                throw VoxClipError.notImplemented("mac-speech")
+                return CLIWorkflow.success("models remove", fields: ["model": .string(id)])
             }
         }
     }
@@ -231,23 +258,36 @@ struct Plan: AsyncParsableCommand {
     mutating func run() async throws {
         try await CLIExecution.run(command: "plan", json: json) {
             let store: any ProjectStore = JSONProjectStore()
-            _ = try await store.load(from: URL(fileURLWithPath: input))
-            throw VoxClipError.notImplemented("mac-editing")
+            var project = try await store.load(from: URL(fileURLWithPath: input))
+            project.edits.activeClipId = nil
+            let plan = try CLIWorkflow.plan(project)
+            return CLIWorkflow.success("plan", fields: ["sampleRate": .number(plan.sampleRate), "totalSamples": .number(Double(plan.totalSamples)),
+                "outputSamples": .number(Double(plan.outputSamples)), "durationSeconds": .number(plan.duration),
+                "cuts": .array(plan.cuts.map { .array([.number(Double($0.startSample)), .number(Double($0.endSample))]) }),
+                "kept": .array(plan.kept.map { .array([.number(Double($0.startSample)), .number(Double($0.endSample))]) })])
         }
     }
 }
 
 struct RenderCaption: AsyncParsableCommand {
-    static let configuration = CommandConfiguration(abstract: "Render a transparent caption golden case.")
-    @Option(help: "Caption style ID.") var style: String
-    @Option(name: .customLong("case"), help: "Caption fixture JSON.") var fixture: String
+    static let configuration = CommandConfiguration(abstract: "Render transparent caption fixture samples.")
+    @Option(help: "Caption style override.") var style: String?
+    @Option(name: .customLong("case"), help: "Caption fixture JSON.") var fixture: String?
+    @Option(help: "Gallery tiles JSON.") var tiles: String?
+    @Option(help: "Single sample index.") var sample: Int?
     @Option(help: "Destination PNG.") var out: String
     @Option(help: "Destination layout JSON.") var layoutOut: String?
     @Flag(help: "Print JSON.") var json = false
+    mutating func validate() throws {
+        guard (fixture != nil) != (tiles != nil) else { throw ValidationError("Choose exactly one of --case or --tiles") }
+        if let sample, sample < 0 || fixture == nil { throw ValidationError("--sample requires --case and a nonnegative index") }
+        guard style == nil, layoutOut == nil else {
+            throw ValidationError("The caption harness uses the fixture style and writes layout JSON beside its samples")
+        }
+    }
     mutating func run() async throws {
         try await CLIExecution.run(command: "render-caption", json: json) {
-            _ = CoreTextCaptionRasterizer(shared: try SharedResources.locate()) as any CaptionRasterizer
-            throw VoxClipError.notImplemented("mac-captions")
+            try await CLIWorkflow.renderCaption(self)
         }
     }
 }
@@ -270,8 +310,34 @@ struct FindClips: AsyncParsableCommand {
     mutating func run() async throws {
         try await CLIExecution.run(command: "find-clips", json: json) {
             let store: any ProjectStore = JSONProjectStore()
-            _ = try await store.load(from: URL(fileURLWithPath: input))
-            throw VoxClipError.notImplemented("mac-ai")
+            let project = try await store.load(from: URL(fileURLWithPath: input))
+            guard let transcript = project.transcript else { throw VoxClipError.noSpeech }
+            let shared = try SharedResources.locate()
+            let catalog = try LLMCatalog(shared: shared)
+            let prompt = try ClipPromptDocument(data: Data(contentsOf: shared.root.appendingPathComponent("prompts/clip-finder.json")))
+            guard let selected = ClipPresetID(rawValue: preset), let chosen = prompt.presets.first(where: { $0.id == selected }) else { throw ValidationError("Unknown clip preset") }
+            let id = try CLIExecution.connector(connector)
+            let selectedModel = model ?? catalog.curatedModels(for: id).first?.id ?? ""
+            if dryRun {
+                let builder = ClipRequestBuilder(prompt: prompt)
+                let words = builder.clipWords(transcript, corrections: project.edits.corrections)
+                let context = catalog.curatedModels(for: id).first { $0.id == selectedModel }?.contextTokens ?? 128000
+                let windows = try builder.windows(words: words, preset: chosen, instruction: instruction, contextTokens: context, localServer: id == .ollama || id == .lmstudio)
+                let requests: [JSONValue] = windows.enumerated().map { index, window in
+                    let request = builder.request(words: words, window: window, preset: chosen, instruction: instruction,
+                        windowIndex: index, windowCount: windows.count, timeout: catalog.timeout(for: id, feature: .clipFinder), language: transcript.language)
+                    return .object(["system": .string(request.system), "cachedBlock": .string(request.cachedBlock ?? ""), "instruction": .string(request.instruction)])
+                }
+                return CLIWorkflow.success("find-clips", fields: ["prompts": .array(requests)])
+            }
+            let logger = RedactingLogger(homeDirectory: FileManager.default.homeDirectoryForCurrentUser.path)
+            let keys = LLMEnvironmentKeyProvider(catalog: catalog)
+            let service: any LLMConnector = id == .appleFoundation ? FoundationModelsConnector(log: logger) : StubLLMConnector(id: id, keys: keys, catalog: catalog, log: logger)
+            let finder = ClipFinder(runner: LLMRunner(keys: keys, catalog: catalog, log: logger), shared: shared)
+            let result = try await finder.find(ClipFinderRequest(transcript: transcript, corrections: project.edits.corrections,
+                cutWordIds: Set(project.edits.cutWordIds), preset: chosen, instruction: instruction, snap: !noSnap),
+                connector: service, model: selectedModel)
+            return try CLIWorkflow.success("find-clips", value: result)
         }
     }
 }
@@ -284,9 +350,17 @@ struct LLMTest: AsyncParsableCommand {
     mutating func validate() throws { _ = try CLIExecution.connector(connector) }
     mutating func run() async throws {
         try await CLIExecution.run(command: "llm-test", json: json) {
-            let service: any LLMConnector = StubLLMConnector(id: try CLIExecution.connector(connector))
-            _ = try await service.models(refresh: false)
-            throw VoxClipError.notImplemented("mac-ai")
+            let shared = try SharedResources.locate()
+            let catalog = try LLMCatalog(shared: shared)
+            let id = try CLIExecution.connector(connector)
+            let selectedModel = model ?? catalog.curatedModels(for: id).first?.id ?? ""
+            let logger = RedactingLogger(homeDirectory: FileManager.default.homeDirectoryForCurrentUser.path)
+            let keys = LLMEnvironmentKeyProvider(catalog: catalog)
+            let service: any LLMConnector = id == .appleFoundation ? FoundationModelsConnector(log: logger) : StubLLMConnector(id: id, keys: keys, catalog: catalog, log: logger)
+            let result = try await LLMRunner(keys: keys, catalog: catalog, log: logger).test(on: service, model: selectedModel)
+            guard result.passed else { throw LLMError.invalidOutput(reason: "Connection test did not echo VoxClip") }
+            return CLIWorkflow.success("llm-test", fields: ["passed": .bool(result.passed), "model": .string(result.model),
+                "usedFallback": .bool(result.usedFallback), "seconds": .number(result.seconds)])
         }
     }
 }
@@ -295,11 +369,19 @@ struct Encoders: AsyncParsableCommand {
     static let configuration = CommandConfiguration(abstract: "Report VideoToolbox H.264 availability.")
     @Flag(help: "Print JSON.") var json = false
     mutating func run() async throws {
-        try await CLIExecution.run(command: "encoders", json: json) { throw VoxClipError.notImplemented("mac-media") }
+        try await CLIExecution.run(command: "encoders", json: json) {
+            CLIWorkflow.success("encoders", fields: ["h264_videotoolbox": .bool(CLIWorkflow.hardwareEncoderAvailable())])
+        }
     }
 }
 
 struct Version: ParsableCommand {
     static let configuration = CommandConfiguration(abstract: "Print VoxClip version and platform.")
-    mutating func run() { print("VoxClip 0.1.0 (macOS-arm64)") }
+    mutating func run() {
+        #if arch(arm64)
+        print("VoxClip 0.1.0 (macos-arm64)")
+        #else
+        print("VoxClip 0.1.0 (macos-x64)")
+        #endif
+    }
 }

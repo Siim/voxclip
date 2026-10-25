@@ -50,6 +50,27 @@ git diff --stat shared/                               # review: a fixture diff i
 
 It does not rasterise. Pixel goldens come from the macOS renderer (`voxclip-cli render-caption`), spec section 16.4.
 
+## Reviewing macOS golden output
+
+Until the CLI command is wired, the test hook uses the same `CaptionRenderHarness`:
+
+```sh
+cd apps/macos
+VOXCLIP_SHARED_DIR="$PWD/../../shared" VOXCLIP_GOLDEN_OUT=/tmp/voxclip-reviewed-goldens swift test --filter goldenRenders
+```
+
+Use a fresh output directory outside `shared/`. Generation refuses the configured shared directory and its descendants, the committed golden root, and symlink aliases into either. Generation does not compare against stored goldens; normal tests always check cache parity and tile states, and require the stored root for pixel comparisons. `VOXCLIP_SKIP_CAPTION_GOLDENS` does not disable these checks.
+
+Review the generated PNGs and indexes before explicitly copying accepted output into the repository:
+
+```sh
+diff -rq ../../shared/fixtures/captions/golden /tmp/voxclip-reviewed-goldens
+cp -R /tmp/voxclip-reviewed-goldens/. ../../shared/fixtures/captions/golden/
+git diff --stat -- ../../shared/fixtures/captions/golden
+```
+
+The lead will rerender through `voxclip-cli render-caption` when mac-media lands that command and verify byte-identical output before accepting that handoff.
+
 ## Adding a style
 
 1. Add `shared/caption-styles/styles/<id>.json` (copy a similar style; the gallery position comes from `order`).

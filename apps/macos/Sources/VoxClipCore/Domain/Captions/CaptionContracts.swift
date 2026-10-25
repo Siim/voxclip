@@ -485,7 +485,10 @@ public struct CaptionTrack: Codable, Sendable, Equatable {
         try values.encode(self.pages, forKey: .pages)
     }
 
-    public static func build(plan: EditPlan, transcript: Transcript, corrections: [String: String], style: CaptionStyle, transforms: CaptionTextOptions) throws -> CaptionTrack { throw VoxClipError.notImplemented("mac-captions") }
+    @available(*, deprecated, message: "Use CaptionPipeline.layout with the edited caption copy and resolved style")
+    public static func build(plan: EditPlan, transcript: Transcript, corrections: [String: String], style: CaptionStyle, transforms: CaptionTextOptions) throws -> CaptionTrack {
+        throw CaptionFailure.missingContext("CaptionLayoutEngine.build requires the edited caption copy, output frame, CaptionResources and an injected GlyphShaper")
+    }
 }
 
 /// User text transform toggles; captions §3.1.
@@ -624,21 +627,50 @@ public struct CaptionRaster: Codable, Sendable, Equatable {
 public protocol CaptionRasterizer: Sendable { func rasterize(_ request: CaptionRasterRequest) async throws -> CaptionRaster }
 /// Pure caption pipeline seams; captions §3, §6, §7 and §11.2.
 public enum CaptionTextTransformer {
-    public static func apply(_ text: String, style: CaptionStyle, options: CaptionTextOptions) throws -> String { throw VoxClipError.notImplemented("mac-captions") }
+    @available(*, deprecated, message: "Use CaptionPipeline.layout with the edited caption copy and resolved style")
+    public static func apply(_ text: String, style: CaptionStyle, options: CaptionTextOptions) throws -> String {
+        let transform = style.text.userOverridable && options.uppercase ? CaptionTextTransform.uppercase : style.text.transform
+        guard transform == .none else { throw CaptionFailure.missingContext("Case mapping requires CaptionResources and the transcript language") }
+        let punctuation = style.text.userOverridable && options.removePunctuation ? CaptionTextPunctuation.stripKeepNumeric : style.text.punctuation
+        return CaptionTextRules.raw(punctuation == .keep ? text : CaptionTextRules.strip(CaptionTextRules.raw(text)))
+    }
+
+    public static func apply(_ text: String, style: CaptionStyle, options: CaptionTextOptions, language: String, resources: CaptionResources) throws -> String {
+        var effective = style.text
+        if effective.userOverridable {
+            if options.uppercase { effective.transform = .uppercase }
+            if options.removePunctuation { effective.punctuation = .stripKeepNumeric }
+        }
+        return CaptionTextRules.normalize(text, options: effective, language: language, resources: resources)
+    }
 }
 /// Paging over shaped integer advances; captions §6.1–6.2.
 public enum CaptionPager {
-    public static func pages(words: [ShapedWord], style: CaptionStyle, width: Int, height: Int) throws -> [CaptionPage] { throw VoxClipError.notImplemented("mac-captions") }
+    @available(*, deprecated, message: "Use CaptionPipeline.layout with the edited caption copy and resolved style")
+    public static func pages(words: [ShapedWord], style: CaptionStyle, width: Int, height: Int) throws -> [CaptionPage] {
+        if words.isEmpty { return [] }
+        throw CaptionFailure.missingContext("CaptionLayoutEngine.build requires manifest metrics, raw text, language and emphasis candidates for paging")
+    }
 }
 /// Deterministic line breaking; captions §6.3.
 public enum CaptionLineBreaker {
-    public static func lines(words: [ShapedWord], style: CaptionStyle, limitUnits: Int) throws -> [CaptionLine] { throw VoxClipError.notImplemented("mac-captions") }
+    @available(*, deprecated, message: "Use CaptionPipeline.layout with the edited caption copy and resolved style")
+    public static func lines(words: [ShapedWord], style: CaptionStyle, limitUnits: Int) throws -> [CaptionLine] {
+        if words.isEmpty { return [] }
+        throw CaptionFailure.missingContext("Line geometry requires font size, manifest metrics and word gap; use CaptionLayoutEngine.build")
+    }
 }
 /// Safe-area placement and clamping; captions §7.
 public enum CaptionPlacement {
-    public static func place(page: CaptionPage, style: CaptionStyle, position: CaptionPosition?, width: Int, height: Int) throws -> CaptionPage { throw VoxClipError.notImplemented("mac-captions") }
+    @available(*, deprecated, message: "Use CaptionPipeline.layout with the edited caption copy and resolved style")
+    public static func place(page: CaptionPage, style: CaptionStyle, position: CaptionPosition?, width: Int, height: Int) throws -> CaptionPage {
+        throw CaptionFailure.missingContext("Placement requires resolved emphasis and emoji geometry; use CaptionLayoutEngine.build")
+    }
 }
 /// Pure easing curves; captions §11.2.
 public enum CaptionEasing {
-    public static func evaluate(_ easing: CaptionAnimEasing, progress: Double) throws -> Double { throw VoxClipError.notImplemented("mac-captions") }
+    public static func evaluate(_ easing: CaptionAnimEasing, progress: Double) throws -> Double {
+        guard progress.isFinite else { throw CaptionFailure.invalid("Animation progress") }
+        return CaptionMath.ease(easing, CaptionMath.clamp(progress))
+    }
 }

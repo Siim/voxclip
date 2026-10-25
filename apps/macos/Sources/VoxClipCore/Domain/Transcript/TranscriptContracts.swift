@@ -328,12 +328,12 @@ public enum LanguageRouter {
     public static func route(language: LanguageChoice, preferred: TranscriptEngine, installedModels: [String]) throws -> TranscriptionPlan {
         if preferred == .elevenlabs { return TranscriptionPlan(engine: preferred, model: "scribe_v2", language: language) }
         if preferred == .appleSpeech {
-            guard case .forced(let code) = language, SpeechText.primaryLanguage(code) != "et" else { throw VoxClipError.transcriptionLanguageUnsupported("Apple Speech needs a supported, explicit locale") }
+            guard case .forced(let code) = language, SpeechText.primaryLanguage(code) != "et" else { throw SpeechErrorCopy.unsupported(.appleSpeech, language: language) }
             return TranscriptionPlan(engine: preferred, language: language)
         }
         switch language {
         case .auto:
-            guard let model = installedModels.first(where: { $0.hasPrefix("whisper-large-v3-turbo-") }) else { throw VoxClipError.transcriptionLanguageUnsupported("Choose the spoken language") }
+            guard let model = installedModels.first(where: { $0.hasPrefix("whisper-large-v3-turbo-") }) else { throw SpeechErrorCopy.unsupported(.whispercpp, language: language) }
             return TranscriptionPlan(engine: .whispercpp, model: model, language: .auto)
         case .forced(let code):
             let primary = SpeechText.primaryLanguage(code)

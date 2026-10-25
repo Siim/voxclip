@@ -70,7 +70,7 @@ extension LanguageRouter {
             return try route(language: .forced(detected), mode: .local, snapshot: snapshot)
         }
         let primary = SpeechText.primaryLanguage(code)
-        guard let defaults = snapshot.defaults[primary] ?? snapshot.defaults["*"] else { throw VoxClipError.transcriptionLanguageUnsupported(primary) }
+        guard let defaults = snapshot.defaults[primary] ?? snapshot.defaults["*"] else { throw SpeechErrorCopy.unsupported(.whispercpp, language: language) }
         let installed = defaults.local.compactMap { identifier in
             snapshot.models.first { $0.id == identifier && snapshot.installedModels.contains(identifier) }
         }

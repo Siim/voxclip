@@ -172,29 +172,185 @@ public struct LLMCatalog: Sendable, Equatable {
 }
 /// Shared runner, including retries and validation; AI §3.1 and §4.
 public actor LLMRunner {
-    public init(keys: any KeyProvider, catalog: LLMCatalog, log: any Redacting) {}
-    public func run(_ request: LLMRequest, on connector: any LLMConnector, model: String) async throws -> LLMResult { throw VoxClipError.notImplemented("mac-ai") }
+    let keys: any KeyProvider
+    let catalog: LLMCatalog
+    let log: any Redacting
+    private var active = false
+    public init(keys: any KeyProvider, catalog: LLMCatalog, log: any Redacting) { self.keys = keys; self.catalog = catalog; self.log = log }
+    public func run(_ request: LLMRequest, on connector: any LLMConnector, model: String) async throws -> LLMResult {
+        guard !active else { throw LLMError.unavailable(reason: "An AI request is already running.") }
+        active = true
+        defer { active = false }
+        do {
+            try Task.checkCancellation()
+            try await checkStatus(connector)
+            let account = LLMKeyDestination.pinned[connector.id]?.account
+            if let account {
+                do {
+                    if let key = try await keys.key(for: account) { await log.register(secret: AIText.trim(key)) }
+                    try Task.checkCancellation()
+                } catch is CancellationError { throw LLMError.cancelled }
+                catch LLMError.cancelled { throw LLMError.cancelled }
+                catch { throw LLMError.missingKey }
+            }
+            do { return try await validated(request, connector: connector, model: model, fallback: false) }
+            catch let failure as LLMError {
+                guard permitsFallback(failure, id: connector.id), let fallback = catalog.fallback(for: connector.id, model: model) else { throw failure }
+                return try await validated(request, connector: connector, model: fallback, fallback: true)
+            }
+        } catch {
+            let failure = try await logFailure(error, connector: connector, feature: request.feature, model: model)
+            throw failure
+        }
+    }
+
+    func preflight(_ connector: any LLMConnector, feature: LLMFeature = .clipFinder, model: String = "") async throws {
+        do { try await checkStatus(connector) }
+        catch {
+            let failure = try await logFailure(error, connector: connector, feature: feature, model: model)
+            throw failure
+        }
+    }
+
+    private func logFailure(_ error: any Error, connector: any LLMConnector, feature: LLMFeature, model: String) async throws -> LLMError {
+        let failure: LLMError
+        if Task.isCancelled || error is CancellationError { failure = .cancelled }
+        else if let value = error as? LLMError { failure = value }
+        else { throw error }
+        let config = catalog.connector(connector.id)
+        let userMessage = failure.userMessage(label: config[ai: "label"].aiString ?? connector.id.rawValue, model: model, feature: feature,
+                                             installHint: config[ai: "cli"][ai: "installHint"].aiString ?? "",
+                                             signInHint: config[ai: "cli"][ai: "signInHint"].aiString ?? "",
+                                             cli: connector.id == .claudeCode ? "Claude Code" : connector.id == .codex ? "Codex" : nil) ?? ""
+        let detail = AIText.prefix(await log.redact(userMessage), utf16: 200)
+        let message = await log.redact("llm connector=\(connector.id.rawValue) error=\(failure.caseName) code=\(failure.code.rawValue) message=\(detail)")
+        await log.write(LogEntry(level: failure == .cancelled ? .info : .error, category: "llm", message: message))
+        return failure
+    }
+
+    private func checkStatus(_ connector: any LLMConnector) async throws {
+        let status = await connector.status()
+        try Task.checkCancellation()
+        switch status {
+        case .ready: return
+        case .needsKey: throw LLMError.missingKey
+        case .noModels: throw LLMError.noModels
+        case .cliMissing: throw LLMError.cliMissing
+        case .cliSignedOut: throw LLMError.cliSignedOut
+        case .cliTooOld(let version, let missing): throw LLMError.cliTooOld(version: version, missing: missing)
+        case .notRunning(let url): throw LLMError.notRunning(url: url)
+        case .unavailable(let reason): throw LLMError.unavailable(reason: reason)
+        }
+    }
+
+    private func permitsFallback(_ failure: LLMError, id: ConnectorID) -> Bool {
+        guard id != .claudeCode, id != .ollama, id != .lmstudio, id != .appleFoundation else { return false }
+        switch failure {
+        case .rateLimited, .overloaded: return true
+        case .planLimit: return id == .codex
+        default: return false
+        }
+    }
+
+    private func validated(_ request: LLMRequest, connector: any LLMConnector, model: String, fallback: Bool) async throws -> LLMResult {
+        var current = request
+        for correction in 0...1 {
+            try Task.checkCancellation()
+            let raw = try await connector.send(current, model: model)
+            try Task.checkCancellation()
+            do {
+                let parsed = try CanonicalResponseParser.validate(raw, schema: request.schema)
+                return LLMResult(object: parsed.object, droppedItems: parsed.droppedItems, model: raw.model, usedFallback: fallback || nativeFallback(connector: connector.id, requested: model, actual: raw.model), usage: raw.usage, requestID: raw.requestID)
+            } catch LLMError.invalidOutput(let reason) {
+                guard correction == 0 else { throw LLMError.invalidOutput(reason: reason) }
+                current.instruction += "\n\nYour previous reply was not valid JSON for the required schema (\(reason)). Reply with only the JSON object."
+            }
+        }
+        throw LLMError.invalidOutput(reason: "not JSON")
+    }
+
+    private func nativeFallback(connector: ConnectorID, requested: String, actual: String) -> Bool {
+        if connector == .anthropic { return requested != actual }
+        guard connector == .claudeCode, requested != "default", requested != actual,
+              let fallback = catalog.fallback(for: connector, model: requested) else { return false }
+        return !claudeModelsMatch(requested, actual) && claudeModelsMatch(fallback, actual)
+    }
+
+    private func claudeModelsMatch(_ selected: String, _ actual: String) -> Bool {
+        if selected == actual { return true }
+        let base = selected.components(separatedBy: "[").first ?? selected
+        guard ["sonnet", "opus", "haiku"].contains(base) else { return false }
+        return actual == base || actual.hasPrefix("claude-\(base)-")
+    }
 }
-/// Safe connector placeholder; AI §3.1.
+/// Catalog-backed connector adapter; AI §3.1.
 public actor StubLLMConnector: LLMConnector {
     public nonisolated let id: ConnectorID
-    public init(id: ConnectorID) { self.id = id }
+    private var implementation: (any LLMConnector)?
+    private let factory: (@Sendable () throws -> any LLMConnector)?
+    public init(id: ConnectorID) { self.id = id; self.factory = nil }
+    public init(id: ConnectorID, keys: any KeyProvider, catalog: LLMCatalog, log: any Redacting, baseURL: URL? = nil, cliPath: String? = nil, cacheURL: URL? = DataLocations().cache.appendingPathComponent("llm-models.json")) {
+        self.id = id
+        self.factory = {
+            switch id {
+            case .claudeCode, .codex:
+                return CLIConnector(id: id, catalog: catalog, log: log, executable: cliPath.map { URL(fileURLWithPath: $0) })
+            case .appleFoundation:
+                throw LLMError.unavailable(reason: "Use the native FoundationModelsConnector from VoxClipMedia.")
+            default:
+                return try HTTPConnector(id: id, keys: keys, catalog: catalog, log: log, baseURL: baseURL, cacheURL: cacheURL)
+            }
+        }
+    }
     public func status() async -> ConnectorStatus {
-        // TODO(mac-ai)
-        return .unavailable(reason: "mac-ai")
+        do { return await (try resolve()).status() }
+        catch { return .unavailable(reason: "VoxClip is missing its AI configuration. Reinstall VoxClip.") }
     }
-    public func models(refresh: Bool) async throws -> [LLMModel] { throw VoxClipError.notImplemented("mac-ai") }
+    public func models(refresh: Bool) async throws -> [LLMModel] { try await resolve().models(refresh: refresh) }
     public func contextTokens(model: String) async -> Int? {
-        // TODO(mac-ai)
-        return nil
+        guard let connector = try? resolve() else { return nil }
+        return await connector.contextTokens(model: model)
     }
-    public func send(_ request: LLMRequest, model: String) async throws -> RawCompletion { throw VoxClipError.notImplemented("mac-ai") }
+    public func send(_ request: LLMRequest, model: String) async throws -> RawCompletion { try await resolve().send(request, model: model) }
+
+    private func resolve() throws -> any LLMConnector {
+        if let implementation { return implementation }
+        if let factory {
+            let connector = try factory()
+            implementation = connector
+            return connector
+        }
+        let shared = try SharedResources.locate()
+        let catalog = try LLMCatalog(shared: shared)
+        let log = RedactingLogger(homeDirectory: FileManager.default.homeDirectoryForCurrentUser.path)
+        let connector: any LLMConnector
+        switch id {
+        case .claudeCode, .codex: connector = CLIConnector(id: id, catalog: catalog, log: log)
+        case .appleFoundation: throw LLMError.unavailable(reason: "Use the native FoundationModelsConnector from VoxClipMedia.")
+        default: connector = try HTTPConnector(id: id, keys: LLMEnvironmentKeyProvider(catalog: catalog), catalog: catalog, log: log, cacheURL: DataLocations().cache.appendingPathComponent("llm-models.json"))
+        }
+        implementation = connector
+        return connector
+    }
 }
 /// Presets are read verbatim from shared/prompts; AI §11.
 public actor ClipFinder {
-    public init(runner: LLMRunner, shared: SharedResources) {}
-    public func presets() async throws -> [ClipPreset] { throw VoxClipError.notImplemented("mac-ai") }
-    public func find(_ request: ClipFinderRequest, connector: any LLMConnector, model: String) async throws -> [ClipSuggestion] { throw VoxClipError.notImplemented("mac-ai") }
+    let runner: LLMRunner
+    let shared: SharedResources
+    var active = false
+    var lastRun: ClipFinderRunSummary?
+    public private(set) var lastUsedFallback: Bool?
+    public init(runner: LLMRunner, shared: SharedResources) { self.runner = runner; self.shared = shared }
+    public func presets() async throws -> [ClipPreset] { try loadPrompt().presets }
+    public func find(_ request: ClipFinderRequest, connector: any LLMConnector, model: String) async throws -> ProjectAIResult {
+        lastUsedFallback = nil
+        do {
+            let result = try await execute(request, connector: connector, model: model)
+            lastUsedFallback = lastRun?.usedFallback
+            return result
+        }
+        catch is CancellationError { throw LLMError.cancelled }
+    }
 }
 
 /// Detailed connector taxonomy, mapped to architecture codes at the feature boundary; AI §5–5.1.

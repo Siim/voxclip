@@ -32,6 +32,10 @@ final class ModelHTTPDownload: NSObject, URLSessionDataDelegate {
     let progress: @Sendable (Int64) -> Void
     init(file: ModelFile, partial: URL, progress: @escaping @Sendable (Int64) -> Void) { self.file = file; self.partial = partial; self.progress = progress }
 
+    static func provider(for url: URL) -> String {
+        url.host?.lowercased() == "huggingface.co" ? "Hugging Face" : "Model host"
+    }
+
     static func run(file: ModelFile, partial: URL, configuration: URLSessionConfiguration, progress: @escaping @Sendable (Int64) -> Void) async throws {
         let delegate = ModelHTTPDownload(file: file, partial: partial, progress: progress)
         let config = configuration.copy() as! URLSessionConfiguration
@@ -75,7 +79,7 @@ final class ModelHTTPDownload: NSObject, URLSessionDataDelegate {
                     guard range.count == 2, bounds.count == 2,
                           Int64(bounds[0]) == Int64(offset), let last = Int64(bounds[1]),
                           last >= Int64(offset), last < file.bytes,
-                          Int64(range[1]) == file.bytes else { throw VoxClipError.providerError("Invalid model resume range") }
+                          Int64(range[1]) == file.bytes else { throw VoxClipError.providerError("Invalid model resume range", provider: Self.provider(for: file.url), status: http.statusCode) }
                 }
                 try handle.seek(toOffset: 0)
                 while let chunk = try handle.read(upToCount: 1_048_576), !chunk.isEmpty {

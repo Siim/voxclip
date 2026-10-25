@@ -25,10 +25,10 @@ public actor AppleSpeechTranscriber: Transcriber, SpeechCacheIdentityProviding {
         }
     }
     public func prepare(for plan: TranscriptionPlan, progress: @escaping @Sendable (Double) -> Void) async throws {
-        guard plan.engine == engine else { throw VoxClipError.transcriptionLanguageUnsupported("Apple Speech") }
+        guard plan.engine == engine else { throw SpeechErrorCopy.unsupported(engine, language: plan.language) }
         let reporter = SpeechProgressLimiter(callback: progress)
         defer { reporter.cancel() }
-        guard let locale = await locale(for: plan.language) else { throw VoxClipError.transcriptionLanguageUnsupported("Apple Speech") }
+        guard let locale = await locale(for: plan.language) else { throw SpeechErrorCopy.unsupported(engine, language: plan.language) }
         try await AppleSpeechAssets.prepare(locale: locale.identifier(.bcp47), operation: {
             try await self.prepareAssets(locale, reporter: reporter)
         }, reserve: { try await self.reserve(locale) }, release: { try await self.releaseOldest(excluding: locale) })
@@ -38,7 +38,7 @@ public actor AppleSpeechTranscriber: Transcriber, SpeechCacheIdentityProviding {
         let transcriber = module(locale)
         try Task.checkCancellation()
         let status = await AssetInventory.status(forModules: [transcriber])
-        if status == .unsupported { throw VoxClipError.transcriptionLanguageUnsupported(locale.identifier(.bcp47)) }
+        if status == .unsupported { throw SpeechErrorCopy.unsupported(engine, language: .forced(locale.identifier(.bcp47))) }
         if status == .installed { return }
         try await reserve(locale)
         if let installation = try await AssetInventory.assetInstallationRequest(supporting: [transcriber]) {
@@ -52,7 +52,7 @@ public actor AppleSpeechTranscriber: Transcriber, SpeechCacheIdentityProviding {
         }
     }
     public func cacheIdentity(for plan: TranscriptionPlan) async throws -> EngineRef {
-        guard let locale = await locale(for: plan.language) else { throw VoxClipError.transcriptionLanguageUnsupported("Apple Speech") }
+        guard let locale = await locale(for: plan.language) else { throw SpeechErrorCopy.unsupported(engine, language: plan.language) }
         return EngineRef(id: .appleSpeech, engineVersion: "macOS \(SpeechRuntimeVersion.macOS) Speech", locale: locale.identifier(.bcp47))
     }
     public func transcribe(_ request: TranscriptionRequest, progress: @escaping @Sendable (TranscriptionProgress) -> Void) async throws -> RawTranscript {
@@ -60,7 +60,7 @@ public actor AppleSpeechTranscriber: Transcriber, SpeechCacheIdentityProviding {
         guard !active else { throw VoxClipError.transcriptionFailed("This Apple Speech engine is already transcribing") }
         active = true
         defer { active = false }
-        guard request.plan.engine == engine, let locale = await locale(for: request.plan.language) else { throw VoxClipError.transcriptionLanguageUnsupported("Apple Speech") }
+        guard request.plan.engine == engine, let locale = await locale(for: request.plan.language) else { throw SpeechErrorCopy.unsupported(engine, language: request.plan.language) }
         guard request.audio.durationSeconds.isFinite, request.audio.durationSeconds > 0 else { throw VoxClipError.noSpeech }
         await AppleSpeechLocaleUsage.shared.begin(locale.identifier(.bcp47))
         defer {
@@ -115,13 +115,13 @@ public actor AppleSpeechTranscriber: Transcriber, SpeechCacheIdentityProviding {
         let reserved = await AssetInventory.reservedLocales
         guard !reserved.contains(where: { $0.identifier(.bcp47) == locale.identifier(.bcp47) }) else { return }
         if reserved.count >= AssetInventory.maximumReservedLocales { try await releaseOldest(excluding: locale) }
-        guard try await AssetInventory.reserve(locale: locale) else { throw VoxClipError.speechAssetsUnavailable("Unable to reserve \(locale.identifier(.bcp47))") }
+        guard try await AssetInventory.reserve(locale: locale) else { throw VoxClipError.speechAssetsUnavailable(locale.identifier(.bcp47), reason: "Unable to reserve the locale") }
         try touch(locale)
     }
     private func releaseOldest(excluding locale: Locale) async throws {
         let reserved = await AssetInventory.reservedLocales
         let running = await AppleSpeechLocaleUsage.shared.running()
-        guard let oldest = ledger().sorted(by: { $0.lastUsed < $1.lastUsed }).first(where: { entry in entry.locale != locale.identifier(.bcp47) && !running.contains(entry.locale) && reserved.contains(where: { $0.identifier(.bcp47) == entry.locale }) }) else { throw VoxClipError.speechAssetsUnavailable("All reserved speech locales are in use") }
+        guard let oldest = ledger().sorted(by: { $0.lastUsed < $1.lastUsed }).first(where: { entry in entry.locale != locale.identifier(.bcp47) && !running.contains(entry.locale) && reserved.contains(where: { $0.identifier(.bcp47) == entry.locale }) }) else { throw VoxClipError.speechAssetsUnavailable(locale.identifier(.bcp47), reason: "All reserved speech locales are in use") }
         try await AppleSpeechAssets.release(oldest.locale, reserved: reserved) { await AssetInventory.release(reservedLocale: $0) }
     }
     private func analyze(_ request: TranscriptionRequest, locale: Locale, progress: @escaping @Sendable (TranscriptionProgress) -> Void) async throws -> RawTranscript {
@@ -169,25 +169,50 @@ public actor AppleSpeechTranscriber: Transcriber, SpeechCacheIdentityProviding {
     private func writeConvertedAudio(_ source: URL, to destination: URL, format: AVAudioFormat) throws {
         let file = try AVAudioFile(forReading: source)
         guard let converter = AVAudioConverter(from: file.processingFormat, to: format),
-              let input = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: 32768),
               let output = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 65536) else { throw VoxClipError.decodeFailed("Apple audio conversion") }
+        let input = AppleConversionInput(file: file)
         let target = try AVAudioFile(forWriting: destination, settings: format.settings, commonFormat: format.commonFormat, interleaved: format.isInterleaved)
         while true {
             try Task.checkCancellation()
-            var error: NSError?, readError: (any Error)?
+            var error: NSError?
             let status = converter.convert(to: output, error: &error) { packets, inputStatus in
-                do {
-                    if file.framePosition >= file.length { inputStatus.pointee = .endOfStream; return nil }
-                    try file.read(into: input, frameCount: min(32768, packets))
-                    inputStatus.pointee = .haveData
-                    return input
-                } catch { readError = error; inputStatus.pointee = .endOfStream; return nil }
+                input.next(packets: packets, status: inputStatus)
             }
-            if let readError { throw readError }
+            if let readError = input.error { throw readError }
             if let error { throw error }
             if output.frameLength > 0 { try target.write(from: output) }
             if status == .endOfStream { break }
             if status == .error { throw VoxClipError.decodeFailed("Apple audio conversion") }
+        }
+    }
+}
+
+/// The converter's callback may be called on another thread. Keep file state and
+/// errors behind one lock, and return a fresh buffer for each callback.
+private final class AppleConversionInput: @unchecked Sendable {
+    private let lock = NSLock()
+    private let file: AVAudioFile
+    private var failure: (any Error)?
+    init(file: AVAudioFile) { self.file = file }
+    var error: (any Error)? { lock.lock(); defer { lock.unlock() }; return failure }
+
+    func next(packets: AVAudioPacketCount, status: UnsafeMutablePointer<AVAudioConverterInputStatus>) -> AVAudioBuffer? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard failure == nil, file.framePosition < file.length else { status.pointee = .endOfStream; return nil }
+        guard let buffer = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: min(32768, packets)) else {
+            failure = VoxClipError.decodeFailed("Apple audio conversion")
+            status.pointee = .endOfStream
+            return nil
+        }
+        do {
+            try file.read(into: buffer, frameCount: min(32768, packets))
+            status.pointee = .haveData
+            return buffer
+        } catch {
+            failure = error
+            status.pointee = .endOfStream
+            return nil
         }
     }
 }

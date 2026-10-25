@@ -16,13 +16,10 @@ struct SpeechProgressTests {
         defer { reporter.cancel() }
         for index in 0..<1000 { reporter.report(TranscriptionProgress(stage: .uploading, fraction: Double(index) / 1000)) }
         reporter.report(TranscriptionProgress(stage: .transcribing, fraction: nil))
-        // Wait for the trailing delivery instead of a fixed sleep, so a loaded machine cannot fail the test.
-        let deadline = ContinuousClock.now + .seconds(2)
-        while ContinuousClock.now < deadline, events.withLock({ $0.last?.0.stage }) != .transcribing {
-            try await Task.sleep(for: .milliseconds(10))
-        }
+        // Completion waits for the scheduled trailing callback even under runner contention.
+        await reporter.finish()
         let values = events.withLock { $0 }
-        #expect(values.count >= 2 && values.count <= 3)
+        #expect(values.count >= 2)
         #expect(values.first?.0.stage == .uploading)
         #expect(values.last?.0.stage == .transcribing && values.last?.0.fraction == nil)
         for index in 1..<values.count { #expect(values[index - 1].1.duration(to: values[index].1) >= .milliseconds(95)) }

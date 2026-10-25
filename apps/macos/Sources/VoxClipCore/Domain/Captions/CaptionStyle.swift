@@ -79,7 +79,7 @@ public struct CaptionStyle: Codable, Sendable, Equatable {
         self.preview = preview
     }
 
-    private enum CodingKeys: String, CodingKey {
+    private enum CodingKeys: String, CodingKey, CaseIterable {
         case schemaURL = "$schema"
         case schemaVersion
         case id
@@ -107,31 +107,57 @@ public struct CaptionStyle: Codable, Sendable, Equatable {
     }
 
     public init(from decoder: any Decoder) throws {
+        try CaptionDecoding.keys(decoder, allowed: CodingKeys.allCases.map(\.rawValue))
         let values = try decoder.container(keyedBy: CodingKeys.self)
+        try CaptionDecoding.nonNull(values, .schemaURL, decoder)
         self.schemaURL = try values.decodeIfPresent(String.self, forKey: .schemaURL) ?? nil
         self.schemaVersion = try values.decode(Int.self, forKey: .schemaVersion)
+        try CaptionDecoding.check(self.schemaVersion, decoder: decoder, message: "Invalid CaptionStyle.schemaVersion") { value in value == 1 }
         self.id = try values.decode(String.self, forKey: .id)
+        try CaptionDecoding.check(self.id, decoder: decoder, message: "Invalid CaptionStyle.id") { value in value.range(of: "^[a-z0-9][a-z0-9-]{1,39}$", options: .regularExpression) != nil }
         self.name = try values.decode(String.self, forKey: .name)
+        try CaptionDecoding.check(self.name, decoder: decoder, message: "Invalid CaptionStyle.name") { value in value.unicodeScalars.count >= 1 && value.unicodeScalars.count <= 24 }
         self.description = try values.decode(String.self, forKey: .description)
+        try CaptionDecoding.check(self.description, decoder: decoder, message: "Invalid CaptionStyle.description") { value in value.unicodeScalars.count >= 1 && value.unicodeScalars.count <= 200 }
+        try CaptionDecoding.nonNull(values, .order, decoder)
         self.order = try values.decodeIfPresent(Int.self, forKey: .order) ?? 500
+        try CaptionDecoding.check(self.order, decoder: decoder, message: "Invalid CaptionStyle.order") { value in value >= 0 && value <= 999 }
+        try CaptionDecoding.nonNull(values, .tags, decoder)
         self.tags = try values.decodeIfPresent([String].self, forKey: .tags) ?? []
+        try CaptionDecoding.check(self.tags, decoder: decoder, message: "Invalid CaptionStyle.tags") { value in
+            Set(value).count == value.count && value.allSatisfy { $0.range(of: "^[a-z0-9-]+$", options: .regularExpression) != nil }
+        }
+        try CaptionDecoding.nonNull(values, .accent, decoder)
         self.accent = try values.decodeIfPresent(String.self, forKey: .accent) ?? nil
+        try CaptionDecoding.check(self.accent, decoder: decoder, message: "Invalid CaptionStyle.accent") { value in value.range(of: "^#[0-9A-Fa-f]{6}$", options: .regularExpression) != nil }
         self.font = try values.decode(CaptionFont.self, forKey: .font)
         self.text = try values.decode(CaptionText.self, forKey: .text)
         self.layout = try values.decode(CaptionLayout.self, forKey: .layout)
         self.position = try values.decode(CaptionStylePosition.self, forKey: .position)
+        try CaptionDecoding.nonNull(values, .aspects, decoder)
         self.aspects = try values.decodeIfPresent(CaptionAspects.self, forKey: .aspects) ?? nil
         self.fill = try values.decode(CaptionPaint.self, forKey: .fill)
+        try CaptionDecoding.nonNull(values, .stroke, decoder)
         self.stroke = try values.decodeIfPresent(CaptionStroke.self, forKey: .stroke) ?? nil
+        try CaptionDecoding.nonNull(values, .shadows, decoder)
         self.shadows = try values.decodeIfPresent([CaptionShadow].self, forKey: .shadows) ?? []
+        try CaptionDecoding.check(self.shadows, decoder: decoder, message: "Invalid CaptionStyle.shadows") { value in value.count <= 4 }
+        try CaptionDecoding.nonNull(values, .box, decoder)
         self.box = try values.decodeIfPresent(CaptionBox.self, forKey: .box) ?? nil
+        try CaptionDecoding.nonNull(values, .words, decoder)
         self.words = try values.decodeIfPresent(CaptionWordStates.self, forKey: .words) ?? nil
+        try CaptionDecoding.nonNull(values, .reveal, decoder)
         self.reveal = try values.decodeIfPresent(CaptionReveal.self, forKey: .reveal) ?? nil
+        try CaptionDecoding.nonNull(values, .animation, decoder)
         self.animation = try values.decodeIfPresent(CaptionAnimation.self, forKey: .animation) ?? nil
+        try CaptionDecoding.nonNull(values, .emphasis, decoder)
         self.emphasis = try values.decodeIfPresent(CaptionEmphasis.self, forKey: .emphasis) ?? nil
+        try CaptionDecoding.nonNull(values, .emoji, decoder)
         self.emoji = try values.decodeIfPresent(CaptionEmoji.self, forKey: .emoji) ?? nil
+        try CaptionDecoding.nonNull(values, .effects, decoder)
         self.effects = try values.decodeIfPresent(CaptionEffects.self, forKey: .effects) ?? nil
         self.preview = try values.decode(CaptionPreview.self, forKey: .preview)
+        try validateSemantics()
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -207,7 +233,7 @@ public struct CaptionFont: Codable, Sendable, Equatable {
         self.fallbackFiles = fallbackFiles
     }
 
-    private enum CodingKeys: String, CodingKey {
+    private enum CodingKeys: String, CodingKey, CaseIterable {
         case file
         case family
         case weight
@@ -223,19 +249,38 @@ public struct CaptionFont: Codable, Sendable, Equatable {
     }
 
     public init(from decoder: any Decoder) throws {
+        try CaptionDecoding.keys(decoder, allowed: CodingKeys.allCases.map(\.rawValue))
         let values = try decoder.container(keyedBy: CodingKeys.self)
         self.file = try values.decode(String.self, forKey: .file)
+        try CaptionDecoding.check(self.file, decoder: decoder, message: "Invalid CaptionFont.file") { value in value.range(of: "^[A-Za-z0-9_-]+\\.ttf$", options: .regularExpression) != nil }
         self.family = try values.decode(String.self, forKey: .family)
         self.weight = try values.decode(Int.self, forKey: .weight)
+        try CaptionDecoding.check(self.weight, decoder: decoder, message: "Invalid CaptionFont.weight") { value in value >= 100 && value <= 1000 }
+        try CaptionDecoding.nonNull(values, .italic, decoder)
         self.italic = try values.decodeIfPresent(Bool.self, forKey: .italic) ?? false
         self.sizeSh = try values.decode(Double.self, forKey: .sizeSh)
+        try CaptionDecoding.check(self.sizeSh, decoder: decoder, message: "Invalid CaptionFont.sizeSh") { value in value >= 0.01 && value <= 0.3 }
+        try CaptionDecoding.nonNull(values, .sizeRef, decoder)
         self.sizeRef = try values.decodeIfPresent(CaptionFontSizeRef.self, forKey: .sizeRef) ?? .shortEdge
+        try CaptionDecoding.nonNull(values, .sizeScale, decoder)
         self.sizeScale = try values.decodeIfPresent(Double.self, forKey: .sizeScale) ?? 1
+        try CaptionDecoding.check(self.sizeScale, decoder: decoder, message: "Invalid CaptionFont.sizeScale") { value in value >= 0.6 && value <= 1.6 }
+        try CaptionDecoding.nonNull(values, .letterSpacingEm, decoder)
         self.letterSpacingEm = try values.decodeIfPresent(Double.self, forKey: .letterSpacingEm) ?? 0
+        try CaptionDecoding.check(self.letterSpacingEm, decoder: decoder, message: "Invalid CaptionFont.letterSpacingEm") { value in value >= -0.2 && value <= 0.5 }
+        try CaptionDecoding.nonNull(values, .wordSpacingEm, decoder)
         self.wordSpacingEm = try values.decodeIfPresent(Double.self, forKey: .wordSpacingEm) ?? nil
+        try CaptionDecoding.check(self.wordSpacingEm, decoder: decoder, message: "Invalid CaptionFont.wordSpacingEm") { value in value >= 0 && value <= 1 }
+        try CaptionDecoding.nonNull(values, .lineHeightEm, decoder)
         self.lineHeightEm = try values.decodeIfPresent(Double.self, forKey: .lineHeightEm) ?? 1.2
+        try CaptionDecoding.check(self.lineHeightEm, decoder: decoder, message: "Invalid CaptionFont.lineHeightEm") { value in value >= 0.8 && value <= 2.5 }
+        try CaptionDecoding.nonNull(values, .features, decoder)
         self.features = try values.decodeIfPresent(CaptionFontFeatures.self, forKey: .features) ?? CaptionFontFeatures()
+        try CaptionDecoding.nonNull(values, .fallbackFiles, decoder)
         self.fallbackFiles = try values.decodeIfPresent([String].self, forKey: .fallbackFiles) ?? []
+        try CaptionDecoding.check(self.fallbackFiles, decoder: decoder, message: "Invalid CaptionFont.fallbackFiles") { value in
+            value.count <= 3 && value.allSatisfy { $0.range(of: "^[A-Za-z0-9_-]+\\.ttf$", options: .regularExpression) != nil }
+        }
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -279,16 +324,20 @@ public struct CaptionFontFeatures: Codable, Sendable, Equatable {
         self.calt = calt
     }
 
-    private enum CodingKeys: String, CodingKey {
+    private enum CodingKeys: String, CodingKey, CaseIterable {
         case kern
         case liga
         case calt
     }
 
     public init(from decoder: any Decoder) throws {
+        try CaptionDecoding.keys(decoder, allowed: CodingKeys.allCases.map(\.rawValue))
         let values = try decoder.container(keyedBy: CodingKeys.self)
+        try CaptionDecoding.nonNull(values, .kern, decoder)
         self.kern = try values.decodeIfPresent(Bool.self, forKey: .kern) ?? true
+        try CaptionDecoding.nonNull(values, .liga, decoder)
         self.liga = try values.decodeIfPresent(Bool.self, forKey: .liga) ?? true
+        try CaptionDecoding.nonNull(values, .calt, decoder)
         self.calt = try values.decodeIfPresent(Bool.self, forKey: .calt) ?? true
     }
 
@@ -317,16 +366,20 @@ public struct CaptionText: Codable, Sendable, Equatable {
         self.userOverridable = userOverridable
     }
 
-    private enum CodingKeys: String, CodingKey {
+    private enum CodingKeys: String, CodingKey, CaseIterable {
         case transform
         case punctuation
         case userOverridable
     }
 
     public init(from decoder: any Decoder) throws {
+        try CaptionDecoding.keys(decoder, allowed: CodingKeys.allCases.map(\.rawValue))
         let values = try decoder.container(keyedBy: CodingKeys.self)
+        try CaptionDecoding.nonNull(values, .transform, decoder)
         self.transform = try values.decodeIfPresent(CaptionTextTransform.self, forKey: .transform) ?? .none
+        try CaptionDecoding.nonNull(values, .punctuation, decoder)
         self.punctuation = try values.decodeIfPresent(CaptionTextPunctuation.self, forKey: .punctuation) ?? .keep
+        try CaptionDecoding.nonNull(values, .userOverridable, decoder)
         self.userOverridable = try values.decodeIfPresent(Bool.self, forKey: .userOverridable) ?? true
     }
 
@@ -398,7 +451,7 @@ public struct CaptionLayout: Codable, Sendable, Equatable {
         self.lineGapEm = lineGapEm
     }
 
-    private enum CodingKeys: String, CodingKey {
+    private enum CodingKeys: String, CodingKey, CaseIterable {
         case maxWords
         case maxLines
         case maxLineWidthW
@@ -415,20 +468,38 @@ public struct CaptionLayout: Codable, Sendable, Equatable {
     }
 
     public init(from decoder: any Decoder) throws {
+        try CaptionDecoding.keys(decoder, allowed: CodingKeys.allCases.map(\.rawValue))
         let values = try decoder.container(keyedBy: CodingKeys.self)
         self.maxWords = try values.decode(Int.self, forKey: .maxWords)
+        try CaptionDecoding.check(self.maxWords, decoder: decoder, message: "Invalid CaptionLayout.maxWords") { value in value >= 1 && value <= 16 }
         self.maxLines = try values.decode(Int.self, forKey: .maxLines)
+        try CaptionDecoding.check(self.maxLines, decoder: decoder, message: "Invalid CaptionLayout.maxLines") { value in value >= 1 && value <= 3 }
         self.maxLineWidthW = try values.decode(Double.self, forKey: .maxLineWidthW)
+        try CaptionDecoding.check(self.maxLineWidthW, decoder: decoder, message: "Invalid CaptionLayout.maxLineWidthW") { value in value >= 0.2 && value <= 1 }
+        try CaptionDecoding.nonNull(values, .balance, decoder)
         self.balance = try values.decodeIfPresent(CaptionLayoutBalance.self, forKey: .balance) ?? .balanced
+        try CaptionDecoding.nonNull(values, .minShrink, decoder)
         self.minShrink = try values.decodeIfPresent(Double.self, forKey: .minShrink) ?? 0.5
+        try CaptionDecoding.check(self.minShrink, decoder: decoder, message: "Invalid CaptionLayout.minShrink") { value in value >= 0.3 && value <= 1 }
+        try CaptionDecoding.nonNull(values, .breakOnSentence, decoder)
         self.breakOnSentence = try values.decodeIfPresent(Bool.self, forKey: .breakOnSentence) ?? true
+        try CaptionDecoding.nonNull(values, .breakOnComma, decoder)
         self.breakOnComma = try values.decodeIfPresent(Bool.self, forKey: .breakOnComma) ?? false
         self.breakOnGapSec = values.contains(.breakOnGapSec) ? try values.decodeIfPresent(Double.self, forKey: .breakOnGapSec) : 0.6
+        try CaptionDecoding.check(self.breakOnGapSec, decoder: decoder, message: "Invalid CaptionLayout.breakOnGapSec") { value in value >= 0 && value <= 10 }
         self.maxPageSec = try values.decodeIfPresent(Double.self, forKey: .maxPageSec) ?? nil
+        try CaptionDecoding.check(self.maxPageSec, decoder: decoder, message: "Invalid CaptionLayout.maxPageSec") { value in value >= 0.5 && value <= 30 }
+        try CaptionDecoding.nonNull(values, .holdGapSec, decoder)
         self.holdGapSec = try values.decodeIfPresent(Double.self, forKey: .holdGapSec) ?? 0.5
+        try CaptionDecoding.check(self.holdGapSec, decoder: decoder, message: "Invalid CaptionLayout.holdGapSec") { value in value >= 0 && value <= 5 }
+        try CaptionDecoding.nonNull(values, .minPageSec, decoder)
         self.minPageSec = try values.decodeIfPresent(Double.self, forKey: .minPageSec) ?? 0.3
+        try CaptionDecoding.check(self.minPageSec, decoder: decoder, message: "Invalid CaptionLayout.minPageSec") { value in value >= 0 && value <= 5 }
+        try CaptionDecoding.nonNull(values, .align, decoder)
         self.align = try values.decodeIfPresent(CaptionLayoutAlign.self, forKey: .align) ?? .center
+        try CaptionDecoding.nonNull(values, .lineGapEm, decoder)
         self.lineGapEm = try values.decodeIfPresent(Double.self, forKey: .lineGapEm) ?? 0
+        try CaptionDecoding.check(self.lineGapEm, decoder: decoder, message: "Invalid CaptionLayout.lineGapEm") { value in value >= 0 && value <= 2 }
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -485,7 +556,7 @@ public struct CaptionStylePosition: Codable, Sendable, Equatable {
         self.userDraggable = userDraggable
     }
 
-    private enum CodingKeys: String, CodingKey {
+    private enum CodingKeys: String, CodingKey, CaseIterable {
         case x
         case y
         case anchorX
@@ -494,11 +565,17 @@ public struct CaptionStylePosition: Codable, Sendable, Equatable {
     }
 
     public init(from decoder: any Decoder) throws {
+        try CaptionDecoding.keys(decoder, allowed: CodingKeys.allCases.map(\.rawValue))
         let values = try decoder.container(keyedBy: CodingKeys.self)
         self.x = try values.decode(Double.self, forKey: .x)
+        try CaptionDecoding.check(self.x, decoder: decoder, message: "Invalid CaptionStylePosition.x") { value in value >= 0 && value <= 1 }
         self.y = try values.decode(Double.self, forKey: .y)
+        try CaptionDecoding.check(self.y, decoder: decoder, message: "Invalid CaptionStylePosition.y") { value in value >= 0 && value <= 1 }
+        try CaptionDecoding.nonNull(values, .anchorX, decoder)
         self.anchorX = try values.decodeIfPresent(CaptionStylePositionAnchorX.self, forKey: .anchorX) ?? .center
+        try CaptionDecoding.nonNull(values, .anchorY, decoder)
         self.anchorY = try values.decodeIfPresent(CaptionStylePositionAnchorY.self, forKey: .anchorY) ?? .center
+        try CaptionDecoding.nonNull(values, .userDraggable, decoder)
         self.userDraggable = try values.decodeIfPresent(Bool.self, forKey: .userDraggable) ?? true
     }
 
@@ -543,16 +620,20 @@ public struct CaptionAspects: Codable, Sendable, Equatable {
         self.landscape = landscape
     }
 
-    private enum CodingKeys: String, CodingKey {
+    private enum CodingKeys: String, CodingKey, CaseIterable {
         case portrait
         case square
         case landscape
     }
 
     public init(from decoder: any Decoder) throws {
+        try CaptionDecoding.keys(decoder, allowed: CodingKeys.allCases.map(\.rawValue))
         let values = try decoder.container(keyedBy: CodingKeys.self)
+        try CaptionDecoding.nonNull(values, .portrait, decoder)
         self.portrait = try values.decodeIfPresent(CaptionAspectOverride.self, forKey: .portrait) ?? nil
+        try CaptionDecoding.nonNull(values, .square, decoder)
         self.square = try values.decodeIfPresent(CaptionAspectOverride.self, forKey: .square) ?? nil
+        try CaptionDecoding.nonNull(values, .landscape, decoder)
         self.landscape = try values.decodeIfPresent(CaptionAspectOverride.self, forKey: .landscape) ?? nil
     }
 
@@ -587,7 +668,7 @@ public struct CaptionAspectOverride: Codable, Sendable, Equatable {
         self.maxWords = maxWords
     }
 
-    private enum CodingKeys: String, CodingKey {
+    private enum CodingKeys: String, CodingKey, CaseIterable {
         case sizeSh
         case x
         case y
@@ -596,12 +677,23 @@ public struct CaptionAspectOverride: Codable, Sendable, Equatable {
     }
 
     public init(from decoder: any Decoder) throws {
+        try CaptionDecoding.keys(decoder, allowed: CodingKeys.allCases.map(\.rawValue))
         let values = try decoder.container(keyedBy: CodingKeys.self)
+        try CaptionDecoding.nonNull(values, .sizeSh, decoder)
         self.sizeSh = try values.decodeIfPresent(Double.self, forKey: .sizeSh) ?? nil
+        try CaptionDecoding.check(self.sizeSh, decoder: decoder, message: "Invalid CaptionAspectOverride.sizeSh") { value in value >= 0.01 && value <= 0.3 }
+        try CaptionDecoding.nonNull(values, .x, decoder)
         self.x = try values.decodeIfPresent(Double.self, forKey: .x) ?? nil
+        try CaptionDecoding.check(self.x, decoder: decoder, message: "Invalid CaptionAspectOverride.x") { value in value >= 0 && value <= 1 }
+        try CaptionDecoding.nonNull(values, .y, decoder)
         self.y = try values.decodeIfPresent(Double.self, forKey: .y) ?? nil
+        try CaptionDecoding.check(self.y, decoder: decoder, message: "Invalid CaptionAspectOverride.y") { value in value >= 0 && value <= 1 }
+        try CaptionDecoding.nonNull(values, .maxLineWidthW, decoder)
         self.maxLineWidthW = try values.decodeIfPresent(Double.self, forKey: .maxLineWidthW) ?? nil
+        try CaptionDecoding.check(self.maxLineWidthW, decoder: decoder, message: "Invalid CaptionAspectOverride.maxLineWidthW") { value in value >= 0.2 && value <= 1 }
+        try CaptionDecoding.nonNull(values, .maxWords, decoder)
         self.maxWords = try values.decodeIfPresent(Int.self, forKey: .maxWords) ?? nil
+        try CaptionDecoding.check(self.maxWords, decoder: decoder, message: "Invalid CaptionAspectOverride.maxWords") { value in value >= 1 && value <= 16 }
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -628,15 +720,18 @@ public struct CaptionStroke: Codable, Sendable, Equatable {
         self.color = color
     }
 
-    private enum CodingKeys: String, CodingKey {
+    private enum CodingKeys: String, CodingKey, CaseIterable {
         case widthEm
         case color
     }
 
     public init(from decoder: any Decoder) throws {
+        try CaptionDecoding.keys(decoder, allowed: CodingKeys.allCases.map(\.rawValue))
         let values = try decoder.container(keyedBy: CodingKeys.self)
         self.widthEm = try values.decode(Double.self, forKey: .widthEm)
+        try CaptionDecoding.check(self.widthEm, decoder: decoder, message: "Invalid CaptionStroke.widthEm") { value in value >= 0 && value <= 0.5 }
         self.color = try values.decode(String.self, forKey: .color)
+        try CaptionDecoding.check(self.color, decoder: decoder, message: "Invalid CaptionStroke.color") { value in value.range(of: "^(#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?|\\$accent(/[0-9A-Fa-f]{2})?)$", options: .regularExpression) != nil }
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -666,7 +761,7 @@ public struct CaptionShadow: Codable, Sendable, Equatable {
         self.color = color
     }
 
-    private enum CodingKeys: String, CodingKey {
+    private enum CodingKeys: String, CodingKey, CaseIterable {
         case dxEm
         case dyEm
         case sigmaEm
@@ -674,11 +769,16 @@ public struct CaptionShadow: Codable, Sendable, Equatable {
     }
 
     public init(from decoder: any Decoder) throws {
+        try CaptionDecoding.keys(decoder, allowed: CodingKeys.allCases.map(\.rawValue))
         let values = try decoder.container(keyedBy: CodingKeys.self)
         self.dxEm = try values.decode(Double.self, forKey: .dxEm)
+        try CaptionDecoding.check(self.dxEm, decoder: decoder, message: "Invalid CaptionShadow.dxEm") { value in value >= -1 && value <= 1 }
         self.dyEm = try values.decode(Double.self, forKey: .dyEm)
+        try CaptionDecoding.check(self.dyEm, decoder: decoder, message: "Invalid CaptionShadow.dyEm") { value in value >= -1 && value <= 1 }
         self.sigmaEm = try values.decode(Double.self, forKey: .sigmaEm)
+        try CaptionDecoding.check(self.sigmaEm, decoder: decoder, message: "Invalid CaptionShadow.sigmaEm") { value in value >= 0 && value <= 1 }
         self.color = try values.decode(String.self, forKey: .color)
+        try CaptionDecoding.check(self.color, decoder: decoder, message: "Invalid CaptionShadow.color") { value in value.range(of: "^(#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?|\\$accent(/[0-9A-Fa-f]{2})?)$", options: .regularExpression) != nil }
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -722,7 +822,7 @@ public struct CaptionBox: Codable, Sendable, Equatable {
         self.borderColor = borderColor
     }
 
-    private enum CodingKeys: String, CodingKey {
+    private enum CodingKeys: String, CodingKey, CaseIterable {
         case scope
         case color
         case paddingXEm
@@ -734,15 +834,28 @@ public struct CaptionBox: Codable, Sendable, Equatable {
     }
 
     public init(from decoder: any Decoder) throws {
+        try CaptionDecoding.keys(decoder, allowed: CodingKeys.allCases.map(\.rawValue))
         let values = try decoder.container(keyedBy: CodingKeys.self)
         self.scope = try values.decode(CaptionBoxScope.self, forKey: .scope)
         self.color = try values.decode(String.self, forKey: .color)
+        try CaptionDecoding.check(self.color, decoder: decoder, message: "Invalid CaptionBox.color") { value in value.range(of: "^(#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?|\\$accent(/[0-9A-Fa-f]{2})?)$", options: .regularExpression) != nil }
+        try CaptionDecoding.nonNull(values, .paddingXEm, decoder)
         self.paddingXEm = try values.decodeIfPresent(Double.self, forKey: .paddingXEm) ?? 0.4
+        try CaptionDecoding.check(self.paddingXEm, decoder: decoder, message: "Invalid CaptionBox.paddingXEm") { value in value >= 0 && value <= 2 }
+        try CaptionDecoding.nonNull(values, .paddingYEm, decoder)
         self.paddingYEm = try values.decodeIfPresent(Double.self, forKey: .paddingYEm) ?? 0.15
+        try CaptionDecoding.check(self.paddingYEm, decoder: decoder, message: "Invalid CaptionBox.paddingYEm") { value in value >= 0 && value <= 2 }
+        try CaptionDecoding.nonNull(values, .radiusEm, decoder)
         self.radiusEm = try values.decodeIfPresent(Double.self, forKey: .radiusEm) ?? 0.2
+        try CaptionDecoding.check(self.radiusEm, decoder: decoder, message: "Invalid CaptionBox.radiusEm") { value in value >= 0 && value <= 2 }
+        try CaptionDecoding.nonNull(values, .pill, decoder)
         self.pill = try values.decodeIfPresent(Bool.self, forKey: .pill) ?? false
+        try CaptionDecoding.nonNull(values, .borderWidthEm, decoder)
         self.borderWidthEm = try values.decodeIfPresent(Double.self, forKey: .borderWidthEm) ?? 0
+        try CaptionDecoding.check(self.borderWidthEm, decoder: decoder, message: "Invalid CaptionBox.borderWidthEm") { value in value >= 0 && value <= 0.5 }
+        try CaptionDecoding.nonNull(values, .borderColor, decoder)
         self.borderColor = try values.decodeIfPresent(String.self, forKey: .borderColor) ?? nil
+        try CaptionDecoding.check(self.borderColor, decoder: decoder, message: "Invalid CaptionBox.borderColor") { value in value.range(of: "^(#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?|\\$accent(/[0-9A-Fa-f]{2})?)$", options: .regularExpression) != nil }
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -782,16 +895,20 @@ public struct CaptionWordStates: Codable, Sendable, Equatable {
         self.future = future
     }
 
-    private enum CodingKeys: String, CodingKey {
+    private enum CodingKeys: String, CodingKey, CaseIterable {
         case past
         case active
         case future
     }
 
     public init(from decoder: any Decoder) throws {
+        try CaptionDecoding.keys(decoder, allowed: CodingKeys.allCases.map(\.rawValue))
         let values = try decoder.container(keyedBy: CodingKeys.self)
+        try CaptionDecoding.nonNull(values, .past, decoder)
         self.past = try values.decodeIfPresent(CaptionWordState.self, forKey: .past) ?? nil
+        try CaptionDecoding.nonNull(values, .active, decoder)
         self.active = try values.decodeIfPresent(CaptionWordState.self, forKey: .active) ?? nil
+        try CaptionDecoding.nonNull(values, .future, decoder)
         self.future = try values.decodeIfPresent(CaptionWordState.self, forKey: .future) ?? nil
     }
 
@@ -829,7 +946,7 @@ public struct CaptionWordState: Codable, Sendable, Equatable {
         self.box = box
     }
 
-    private enum CodingKeys: String, CodingKey {
+    private enum CodingKeys: String, CodingKey, CaseIterable {
         case fill
         case opacity
         case scale
@@ -839,12 +956,22 @@ public struct CaptionWordState: Codable, Sendable, Equatable {
     }
 
     public init(from decoder: any Decoder) throws {
+        try CaptionDecoding.keys(decoder, allowed: CodingKeys.allCases.map(\.rawValue))
         let values = try decoder.container(keyedBy: CodingKeys.self)
+        try CaptionDecoding.nonNull(values, .fill, decoder)
         self.fill = try values.decodeIfPresent(CaptionPaint.self, forKey: .fill) ?? nil
+        try CaptionDecoding.nonNull(values, .opacity, decoder)
         self.opacity = try values.decodeIfPresent(Double.self, forKey: .opacity) ?? nil
+        try CaptionDecoding.check(self.opacity, decoder: decoder, message: "Invalid CaptionWordState.opacity") { value in value >= 0 && value <= 1 }
+        try CaptionDecoding.nonNull(values, .scale, decoder)
         self.scale = try values.decodeIfPresent(Double.self, forKey: .scale) ?? nil
+        try CaptionDecoding.check(self.scale, decoder: decoder, message: "Invalid CaptionWordState.scale") { value in value >= 0.5 && value <= 2 }
+        try CaptionDecoding.nonNull(values, .strokeColor, decoder)
         self.strokeColor = try values.decodeIfPresent(String.self, forKey: .strokeColor) ?? nil
+        try CaptionDecoding.check(self.strokeColor, decoder: decoder, message: "Invalid CaptionWordState.strokeColor") { value in value.range(of: "^(#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?|\\$accent(/[0-9A-Fa-f]{2})?)$", options: .regularExpression) != nil }
+        try CaptionDecoding.nonNull(values, .hideStroke, decoder)
         self.hideStroke = try values.decodeIfPresent(Bool.self, forKey: .hideStroke) ?? nil
+        try CaptionDecoding.nonNull(values, .box, decoder)
         self.box = try values.decodeIfPresent(CaptionWordBox.self, forKey: .box) ?? nil
     }
 
@@ -888,7 +1015,7 @@ public struct CaptionWordBox: Codable, Sendable, Equatable {
         self.borderColor = borderColor
     }
 
-    private enum CodingKeys: String, CodingKey {
+    private enum CodingKeys: String, CodingKey, CaseIterable {
         case color
         case paddingXEm
         case paddingYEm
@@ -899,14 +1026,27 @@ public struct CaptionWordBox: Codable, Sendable, Equatable {
     }
 
     public init(from decoder: any Decoder) throws {
+        try CaptionDecoding.keys(decoder, allowed: CodingKeys.allCases.map(\.rawValue))
         let values = try decoder.container(keyedBy: CodingKeys.self)
         self.color = try values.decode(String.self, forKey: .color)
+        try CaptionDecoding.check(self.color, decoder: decoder, message: "Invalid CaptionWordBox.color") { value in value.range(of: "^(#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?|\\$accent(/[0-9A-Fa-f]{2})?)$", options: .regularExpression) != nil }
+        try CaptionDecoding.nonNull(values, .paddingXEm, decoder)
         self.paddingXEm = try values.decodeIfPresent(Double.self, forKey: .paddingXEm) ?? 0.4
+        try CaptionDecoding.check(self.paddingXEm, decoder: decoder, message: "Invalid CaptionWordBox.paddingXEm") { value in value >= 0 && value <= 2 }
+        try CaptionDecoding.nonNull(values, .paddingYEm, decoder)
         self.paddingYEm = try values.decodeIfPresent(Double.self, forKey: .paddingYEm) ?? 0.15
+        try CaptionDecoding.check(self.paddingYEm, decoder: decoder, message: "Invalid CaptionWordBox.paddingYEm") { value in value >= 0 && value <= 2 }
+        try CaptionDecoding.nonNull(values, .radiusEm, decoder)
         self.radiusEm = try values.decodeIfPresent(Double.self, forKey: .radiusEm) ?? 0.2
+        try CaptionDecoding.check(self.radiusEm, decoder: decoder, message: "Invalid CaptionWordBox.radiusEm") { value in value >= 0 && value <= 2 }
+        try CaptionDecoding.nonNull(values, .pill, decoder)
         self.pill = try values.decodeIfPresent(Bool.self, forKey: .pill) ?? false
+        try CaptionDecoding.nonNull(values, .borderWidthEm, decoder)
         self.borderWidthEm = try values.decodeIfPresent(Double.self, forKey: .borderWidthEm) ?? 0
+        try CaptionDecoding.check(self.borderWidthEm, decoder: decoder, message: "Invalid CaptionWordBox.borderWidthEm") { value in value >= 0 && value <= 0.5 }
+        try CaptionDecoding.nonNull(values, .borderColor, decoder)
         self.borderColor = try values.decodeIfPresent(String.self, forKey: .borderColor) ?? nil
+        try CaptionDecoding.check(self.borderColor, decoder: decoder, message: "Invalid CaptionWordBox.borderColor") { value in value.range(of: "^(#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?|\\$accent(/[0-9A-Fa-f]{2})?)$", options: .regularExpression) != nil }
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -938,16 +1078,21 @@ public struct CaptionReveal: Codable, Sendable, Equatable {
         self.cursor = cursor
     }
 
-    private enum CodingKeys: String, CodingKey {
+    private enum CodingKeys: String, CodingKey, CaseIterable {
         case unit
         case maxCharsPerSec
         case cursor
     }
 
     public init(from decoder: any Decoder) throws {
+        try CaptionDecoding.keys(decoder, allowed: CodingKeys.allCases.map(\.rawValue))
         let values = try decoder.container(keyedBy: CodingKeys.self)
+        try CaptionDecoding.nonNull(values, .unit, decoder)
         self.unit = try values.decodeIfPresent(CaptionRevealUnit.self, forKey: .unit) ?? .page
+        try CaptionDecoding.nonNull(values, .maxCharsPerSec, decoder)
         self.maxCharsPerSec = try values.decodeIfPresent(Double.self, forKey: .maxCharsPerSec) ?? 30
+        try CaptionDecoding.check(self.maxCharsPerSec, decoder: decoder, message: "Invalid CaptionReveal.maxCharsPerSec") { value in value >= 1 && value <= 200 }
+        try CaptionDecoding.nonNull(values, .cursor, decoder)
         self.cursor = try values.decodeIfPresent(CaptionRevealCursor.self, forKey: .cursor) ?? nil
     }
 
@@ -984,17 +1129,22 @@ public struct CaptionRevealCursor: Codable, Sendable, Equatable {
         self.blinkHz = blinkHz
     }
 
-    private enum CodingKeys: String, CodingKey {
+    private enum CodingKeys: String, CodingKey, CaseIterable {
         case widthEm
         case color
         case blinkHz
     }
 
     public init(from decoder: any Decoder) throws {
+        try CaptionDecoding.keys(decoder, allowed: CodingKeys.allCases.map(\.rawValue))
         let values = try decoder.container(keyedBy: CodingKeys.self)
         self.widthEm = try values.decode(Double.self, forKey: .widthEm)
+        try CaptionDecoding.check(self.widthEm, decoder: decoder, message: "Invalid CaptionRevealCursor.widthEm") { value in value >= 0.01 && value <= 0.5 }
         self.color = try values.decode(String.self, forKey: .color)
+        try CaptionDecoding.check(self.color, decoder: decoder, message: "Invalid CaptionRevealCursor.color") { value in value.range(of: "^(#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?|\\$accent(/[0-9A-Fa-f]{2})?)$", options: .regularExpression) != nil }
+        try CaptionDecoding.nonNull(values, .blinkHz, decoder)
         self.blinkHz = try values.decodeIfPresent(Double.self, forKey: .blinkHz) ?? 2
+        try CaptionDecoding.check(self.blinkHz, decoder: decoder, message: "Invalid CaptionRevealCursor.blinkHz") { value in value >= 0 && value <= 10 }
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -1025,7 +1175,7 @@ public struct CaptionAnimation: Codable, Sendable, Equatable {
         self.activeIn = activeIn
     }
 
-    private enum CodingKeys: String, CodingKey {
+    private enum CodingKeys: String, CodingKey, CaseIterable {
         case pageIn
         case pageOut
         case wordIn
@@ -1033,10 +1183,15 @@ public struct CaptionAnimation: Codable, Sendable, Equatable {
     }
 
     public init(from decoder: any Decoder) throws {
+        try CaptionDecoding.keys(decoder, allowed: CodingKeys.allCases.map(\.rawValue))
         let values = try decoder.container(keyedBy: CodingKeys.self)
+        try CaptionDecoding.nonNull(values, .pageIn, decoder)
         self.pageIn = try values.decodeIfPresent(CaptionAnim.self, forKey: .pageIn) ?? nil
+        try CaptionDecoding.nonNull(values, .pageOut, decoder)
         self.pageOut = try values.decodeIfPresent(CaptionAnim.self, forKey: .pageOut) ?? nil
+        try CaptionDecoding.nonNull(values, .wordIn, decoder)
         self.wordIn = try values.decodeIfPresent(CaptionAnim.self, forKey: .wordIn) ?? nil
+        try CaptionDecoding.nonNull(values, .activeIn, decoder)
         self.activeIn = try values.decodeIfPresent(CaptionAnim.self, forKey: .activeIn) ?? nil
     }
 
@@ -1075,7 +1230,7 @@ public struct CaptionAnim: Codable, Sendable, Equatable {
         self.overshoot = overshoot
     }
 
-    private enum CodingKeys: String, CodingKey {
+    private enum CodingKeys: String, CodingKey, CaseIterable {
         case type
         case durationSec
         case easing
@@ -1085,13 +1240,22 @@ public struct CaptionAnim: Codable, Sendable, Equatable {
     }
 
     public init(from decoder: any Decoder) throws {
+        try CaptionDecoding.keys(decoder, allowed: CodingKeys.allCases.map(\.rawValue))
         let values = try decoder.container(keyedBy: CodingKeys.self)
         self.type = try values.decode(CaptionAnimType.self, forKey: .type)
         self.durationSec = try values.decode(Double.self, forKey: .durationSec)
+        try CaptionDecoding.check(self.durationSec, decoder: decoder, message: "Invalid CaptionAnim.durationSec") { value in value >= 0 && value <= 2 }
+        try CaptionDecoding.nonNull(values, .easing, decoder)
         self.easing = try values.decodeIfPresent(CaptionAnimEasing.self, forKey: .easing) ?? .easeOutCubic
+        try CaptionDecoding.nonNull(values, .fromScale, decoder)
         self.fromScale = try values.decodeIfPresent(Double.self, forKey: .fromScale) ?? 0.8
+        try CaptionDecoding.check(self.fromScale, decoder: decoder, message: "Invalid CaptionAnim.fromScale") { value in value >= 0 && value <= 2 }
+        try CaptionDecoding.nonNull(values, .fromOffsetEm, decoder)
         self.fromOffsetEm = try values.decodeIfPresent(Double.self, forKey: .fromOffsetEm) ?? 0.4
+        try CaptionDecoding.check(self.fromOffsetEm, decoder: decoder, message: "Invalid CaptionAnim.fromOffsetEm") { value in value >= -2 && value <= 2 }
+        try CaptionDecoding.nonNull(values, .overshoot, decoder)
         self.overshoot = try values.decodeIfPresent(Double.self, forKey: .overshoot) ?? 1.70158
+        try CaptionDecoding.check(self.overshoot, decoder: decoder, message: "Invalid CaptionAnim.overshoot") { value in value >= 0 && value <= 4 }
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -1151,7 +1315,7 @@ public struct CaptionEmphasis: Codable, Sendable, Equatable {
         self.scale = scale
     }
 
-    private enum CodingKeys: String, CodingKey {
+    private enum CodingKeys: String, CodingKey, CaseIterable {
         case source
         case maxPerPage
         case minScore
@@ -1162,14 +1326,31 @@ public struct CaptionEmphasis: Codable, Sendable, Equatable {
     }
 
     public init(from decoder: any Decoder) throws {
+        try CaptionDecoding.keys(decoder, allowed: CodingKeys.allCases.map(\.rawValue))
         let values = try decoder.container(keyedBy: CodingKeys.self)
+        try CaptionDecoding.nonNull(values, .source, decoder)
         self.source = try values.decodeIfPresent(CaptionEmphasisSource.self, forKey: .source) ?? .none
+        try CaptionDecoding.nonNull(values, .maxPerPage, decoder)
         self.maxPerPage = try values.decodeIfPresent(Int.self, forKey: .maxPerPage) ?? 1
+        try CaptionDecoding.check(self.maxPerPage, decoder: decoder, message: "Invalid CaptionEmphasis.maxPerPage") { value in value >= 0 && value <= 4 }
+        try CaptionDecoding.nonNull(values, .minScore, decoder)
         self.minScore = try values.decodeIfPresent(Double.self, forKey: .minScore) ?? 0
+        try CaptionDecoding.check(self.minScore, decoder: decoder, message: "Invalid CaptionEmphasis.minScore") { value in value >= 0 && value <= 10 }
+        try CaptionDecoding.nonNull(values, .fill, decoder)
         self.fill = try values.decodeIfPresent(CaptionPaint.self, forKey: .fill) ?? nil
+        try CaptionDecoding.nonNull(values, .palette, decoder)
         self.palette = try values.decodeIfPresent([String].self, forKey: .palette) ?? nil
+        try CaptionDecoding.check(self.palette, decoder: decoder, message: "Invalid CaptionEmphasis.palette") { value in
+            value.count >= 1 && value.count <= 8 && value.allSatisfy {
+                $0.range(of: "^(#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?|\\$accent(/[0-9A-Fa-f]{2})?)$", options: .regularExpression) != nil
+            }
+        }
+        try CaptionDecoding.nonNull(values, .fontFile, decoder)
         self.fontFile = try values.decodeIfPresent(String.self, forKey: .fontFile) ?? nil
+        try CaptionDecoding.check(self.fontFile, decoder: decoder, message: "Invalid CaptionEmphasis.fontFile") { value in value.range(of: "^[A-Za-z0-9_-]+\\.ttf$", options: .regularExpression) != nil }
+        try CaptionDecoding.nonNull(values, .scale, decoder)
         self.scale = try values.decodeIfPresent(Double.self, forKey: .scale) ?? 1
+        try CaptionDecoding.check(self.scale, decoder: decoder, message: "Invalid CaptionEmphasis.scale") { value in value >= 0.5 && value <= 2 }
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -1218,7 +1399,7 @@ public struct CaptionEmoji: Codable, Sendable, Equatable {
         self.maxPerPage = maxPerPage
     }
 
-    private enum CodingKeys: String, CodingKey {
+    private enum CodingKeys: String, CodingKey, CaseIterable {
         case enabled
         case source
         case placement
@@ -1228,13 +1409,24 @@ public struct CaptionEmoji: Codable, Sendable, Equatable {
     }
 
     public init(from decoder: any Decoder) throws {
+        try CaptionDecoding.keys(decoder, allowed: CodingKeys.allCases.map(\.rawValue))
         let values = try decoder.container(keyedBy: CodingKeys.self)
+        try CaptionDecoding.nonNull(values, .enabled, decoder)
         self.enabled = try values.decodeIfPresent(Bool.self, forKey: .enabled) ?? false
+        try CaptionDecoding.nonNull(values, .source, decoder)
         self.source = try values.decodeIfPresent(CaptionEmojiSource.self, forKey: .source) ?? .rule
+        try CaptionDecoding.nonNull(values, .placement, decoder)
         self.placement = try values.decodeIfPresent(String.self, forKey: .placement) ?? "above-page"
+        try CaptionDecoding.check(self.placement, decoder: decoder, message: "Invalid CaptionEmoji.placement") { value in value == "above-page" }
+        try CaptionDecoding.nonNull(values, .sizeEm, decoder)
         self.sizeEm = try values.decodeIfPresent(Double.self, forKey: .sizeEm) ?? 1.2
+        try CaptionDecoding.check(self.sizeEm, decoder: decoder, message: "Invalid CaptionEmoji.sizeEm") { value in value >= 0.5 && value <= 3 }
+        try CaptionDecoding.nonNull(values, .gapEm, decoder)
         self.gapEm = try values.decodeIfPresent(Double.self, forKey: .gapEm) ?? 0.15
+        try CaptionDecoding.check(self.gapEm, decoder: decoder, message: "Invalid CaptionEmoji.gapEm") { value in value >= 0 && value <= 1 }
+        try CaptionDecoding.nonNull(values, .maxPerPage, decoder)
         self.maxPerPage = try values.decodeIfPresent(Int.self, forKey: .maxPerPage) ?? 1
+        try CaptionDecoding.check(self.maxPerPage, decoder: decoder, message: "Invalid CaptionEmoji.maxPerPage") { value in value >= 0 && value <= 1 }
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -1269,14 +1461,17 @@ public struct CaptionEffects: Codable, Sendable, Equatable {
         self.jitter = jitter
     }
 
-    private enum CodingKeys: String, CodingKey {
+    private enum CodingKeys: String, CodingKey, CaseIterable {
         case rgbSplit
         case jitter
     }
 
     public init(from decoder: any Decoder) throws {
+        try CaptionDecoding.keys(decoder, allowed: CodingKeys.allCases.map(\.rawValue))
         let values = try decoder.container(keyedBy: CodingKeys.self)
+        try CaptionDecoding.nonNull(values, .rgbSplit, decoder)
         self.rgbSplit = try values.decodeIfPresent(CaptionEffectsRgbSplit.self, forKey: .rgbSplit) ?? nil
+        try CaptionDecoding.nonNull(values, .jitter, decoder)
         self.jitter = try values.decodeIfPresent(CaptionEffectsJitter.self, forKey: .jitter) ?? nil
     }
 
@@ -1304,17 +1499,21 @@ public struct CaptionEffectsRgbSplit: Codable, Sendable, Equatable {
         self.rightColor = rightColor
     }
 
-    private enum CodingKeys: String, CodingKey {
+    private enum CodingKeys: String, CodingKey, CaseIterable {
         case offsetEm
         case leftColor
         case rightColor
     }
 
     public init(from decoder: any Decoder) throws {
+        try CaptionDecoding.keys(decoder, allowed: CodingKeys.allCases.map(\.rawValue))
         let values = try decoder.container(keyedBy: CodingKeys.self)
         self.offsetEm = try values.decode(Double.self, forKey: .offsetEm)
+        try CaptionDecoding.check(self.offsetEm, decoder: decoder, message: "Invalid CaptionEffectsRgbSplit.offsetEm") { value in value >= 0 && value <= 0.2 }
         self.leftColor = try values.decode(String.self, forKey: .leftColor)
+        try CaptionDecoding.check(self.leftColor, decoder: decoder, message: "Invalid CaptionEffectsRgbSplit.leftColor") { value in value.range(of: "^(#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?|\\$accent(/[0-9A-Fa-f]{2})?)$", options: .regularExpression) != nil }
         self.rightColor = try values.decode(String.self, forKey: .rightColor)
+        try CaptionDecoding.check(self.rightColor, decoder: decoder, message: "Invalid CaptionEffectsRgbSplit.rightColor") { value in value.range(of: "^(#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?|\\$accent(/[0-9A-Fa-f]{2})?)$", options: .regularExpression) != nil }
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -1342,17 +1541,21 @@ public struct CaptionEffectsJitter: Codable, Sendable, Equatable {
         self.seed = seed
     }
 
-    private enum CodingKeys: String, CodingKey {
+    private enum CodingKeys: String, CodingKey, CaseIterable {
         case amplitudeEm
         case rateHz
         case seed
     }
 
     public init(from decoder: any Decoder) throws {
+        try CaptionDecoding.keys(decoder, allowed: CodingKeys.allCases.map(\.rawValue))
         let values = try decoder.container(keyedBy: CodingKeys.self)
         self.amplitudeEm = try values.decode(Double.self, forKey: .amplitudeEm)
+        try CaptionDecoding.check(self.amplitudeEm, decoder: decoder, message: "Invalid CaptionEffectsJitter.amplitudeEm") { value in value >= 0 && value <= 0.1 }
         self.rateHz = try values.decode(Double.self, forKey: .rateHz)
+        try CaptionDecoding.check(self.rateHz, decoder: decoder, message: "Invalid CaptionEffectsJitter.rateHz") { value in value >= 1 && value <= 60 }
         self.seed = try values.decode(Int.self, forKey: .seed)
+        try CaptionDecoding.check(self.seed, decoder: decoder, message: "Invalid CaptionEffectsJitter.seed") { value in value >= 0 && value <= 4294967295 }
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -1379,11 +1582,11 @@ public struct CaptionPreview: Codable, Sendable, Equatable {
     public init(text: String, activeWord: Int = 0, progress: Double? = nil, background: String? = nil) {
         self.text = text
         self.activeWord = activeWord
-        self.progress = progress
-        self.background = background
+        self.progress = progress ?? 1
+        self.background = background ?? "#3A3C45"
     }
 
-    private enum CodingKeys: String, CodingKey {
+    private enum CodingKeys: String, CodingKey, CaseIterable {
         case text
         case activeWord
         case progress
@@ -1391,11 +1594,19 @@ public struct CaptionPreview: Codable, Sendable, Equatable {
     }
 
     public init(from decoder: any Decoder) throws {
+        try CaptionDecoding.keys(decoder, allowed: CodingKeys.allCases.map(\.rawValue))
         let values = try decoder.container(keyedBy: CodingKeys.self)
         self.text = try values.decode(String.self, forKey: .text)
+        try CaptionDecoding.check(self.text, decoder: decoder, message: "Invalid CaptionPreview.text") { value in value.unicodeScalars.count >= 1 && value.unicodeScalars.count <= 60 }
+        try CaptionDecoding.nonNull(values, .activeWord, decoder)
         self.activeWord = try values.decodeIfPresent(Int.self, forKey: .activeWord) ?? 0
-        self.progress = try values.decodeIfPresent(Double.self, forKey: .progress) ?? nil
-        self.background = try values.decodeIfPresent(String.self, forKey: .background) ?? nil
+        try CaptionDecoding.check(self.activeWord, decoder: decoder, message: "Invalid CaptionPreview.activeWord") { value in value >= 0 && value <= 15 }
+        try CaptionDecoding.nonNull(values, .progress, decoder)
+        self.progress = try values.decodeIfPresent(Double.self, forKey: .progress) ?? 1
+        try CaptionDecoding.check(self.progress, decoder: decoder, message: "Invalid CaptionPreview.progress") { value in value >= 0 && value <= 1 }
+        try CaptionDecoding.nonNull(values, .background, decoder)
+        self.background = try values.decodeIfPresent(String.self, forKey: .background) ?? "#3A3C45"
+        try CaptionDecoding.check(self.background, decoder: decoder, message: "Invalid CaptionPreview.background") { value in value.range(of: "^#[0-9A-Fa-f]{6}$", options: .regularExpression) != nil }
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -1412,10 +1623,21 @@ public struct CaptionPreview: Codable, Sendable, Equatable {
 public enum CaptionPaint: Codable, Sendable, Equatable {
     case solid(color: String)
     case linear(angleDeg: Double, space: CaptionPaintSpace, stops: [CaptionPaintStop])
-    private enum CodingKeys: String, CodingKey { case type, color, angleDeg, space, stops }
+    private enum CodingKeys: String, CodingKey, CaseIterable { case type, color, angleDeg, space, stops }
     public init(from decoder: any Decoder) throws {
+        try CaptionDecoding.keys(decoder, allowed: CodingKeys.allCases.map(\.rawValue))
         let values = try decoder.container(keyedBy: CodingKeys.self)
         let type = try values.decode(String.self, forKey: .type)
+        try CaptionDecoding.keys(decoder, allowed: type == "solid" ? ["type", "color"] : ["type", "angleDeg", "space", "stops"])
+        if type == "solid" {
+            let color = try values.decode(String.self, forKey: .color)
+            guard color.range(of: "^(#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?|\\$accent(/[0-9A-Fa-f]{2})?)$", options: .regularExpression) != nil else { throw CaptionFailure.invalid("Paint colour") }
+        } else if type == "linear" {
+            let angle = try values.decode(Double.self, forKey: .angleDeg)
+            let stops = try values.decode([CaptionPaintStop].self, forKey: .stops)
+            guard (-360...360).contains(angle), (2...5).contains(stops.count), zip(stops, stops.dropFirst()).allSatisfy({ $0.offset <= $1.offset }) else { throw CaptionFailure.invalid("Gradient stops") }
+            try CaptionDecoding.nonNull(values, .space, decoder)
+        }
         switch type {
         case "solid": self = .solid(color: try values.decode(String.self, forKey: .color))
         case "linear": self = .linear(angleDeg: try values.decode(Double.self, forKey: .angleDeg), space: try values.decodeIfPresent(CaptionPaintSpace.self, forKey: .space) ?? .line, stops: try values.decode([CaptionPaintStop].self, forKey: .stops))
@@ -1451,15 +1673,18 @@ public struct CaptionPaintStop: Codable, Sendable, Equatable {
         self.color = color
     }
 
-    private enum CodingKeys: String, CodingKey {
+    private enum CodingKeys: String, CodingKey, CaseIterable {
         case offset
         case color
     }
 
     public init(from decoder: any Decoder) throws {
+        try CaptionDecoding.keys(decoder, allowed: CodingKeys.allCases.map(\.rawValue))
         let values = try decoder.container(keyedBy: CodingKeys.self)
         self.offset = try values.decode(Double.self, forKey: .offset)
+        try CaptionDecoding.check(self.offset, decoder: decoder, message: "Invalid CaptionPaintStop.offset") { value in value >= 0 && value <= 1 }
         self.color = try values.decode(String.self, forKey: .color)
+        try CaptionDecoding.check(self.color, decoder: decoder, message: "Invalid CaptionPaintStop.color") { value in value.range(of: "^(#[0-9A-Fa-f]{6}([Ff]{2})?|\\$accent)$", options: .regularExpression) != nil }
     }
 
     public func encode(to encoder: any Encoder) throws {

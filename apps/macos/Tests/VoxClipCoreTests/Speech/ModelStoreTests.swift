@@ -147,6 +147,38 @@ struct ModelStoreTests {
         #expect(try await store.installedModels().isEmpty)
     }
 
+    @Test(arguments: [403, 404, 429, 503])
+    func huggingFaceErrorsUseExactProviderCopy(_ status: Int) async throws {
+        let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let calls = Mutex(0)
+        let handler = SpeechStubHTTP.register { request in
+            #expect(request.url?.host == "huggingface.co")
+            calls.withLock { $0 += 1 }
+            return (status, ["Retry-After": "0"], Data())
+        }
+        let model = SpeechTestFiles.model(URL(string: "https://huggingface.co/voxclip/synthetic/resolve/pinned/model.bin")!, data: Data("synthetic bytes".utf8))
+        let store = ModelStore(catalog: SpeechTestCatalog(entries: [model]), locations: SpeechTestFiles.locations(root), configuration: SpeechStubHTTP.configuration(for: handler), confirm: { _, _ in true }, availableCapacity: { _ in Int64.max })
+        do { try await store.install(id: model.id) { _ in }; Issue.record("Expected model-host failure") }
+        catch let error as VoxClipError {
+            #expect(error.code == .providerError)
+            #expect(error.errorDescription == "Hugging Face answered \(status): The model download could not be completed.")
+        }
+        #expect(calls.withLock { $0 } == (status >= 500 || status == 429 ? 3 : 1))
+    }
+
+    @Test func huggingFaceResumeErrorUsesExactProviderCopy() async throws {
+        let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let handler = SpeechStubHTTP.register { _ in (206, ["Content-Range": "bytes 1-2/3"], Data()) }
+        let model = SpeechTestFiles.model(URL(string: "https://huggingface.co/voxclip/synthetic/resolve/pinned/model.bin")!, data: Data("abc".utf8))
+        do {
+            try await ModelHTTPDownload.run(file: model.files[0], partial: root.appendingPathComponent("synthetic.partial"), configuration: SpeechStubHTTP.configuration(for: handler), progress: { _ in })
+            Issue.record("Expected invalid resume range")
+        } catch let error as VoxClipError {
+            #expect(error.code == .providerError)
+            #expect(error.errorDescription == "Hugging Face answered 206: Invalid model resume range")
+        }
+    }
+
     @Test func wrongResumeRangeDoesNotAppend() async throws {
         let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
         let payload = Data("complete model payload".utf8)

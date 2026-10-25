@@ -235,18 +235,21 @@ public struct FinalizeClipsOptions: Codable, Sendable, Equatable {
     public var cutWordIds: Set<String>
     /// windowCount; Finalizer runtime policy; AI §11.7.
     public var windowCount: Int
+    public var limits: JSONValue
 
     /// Creates an explicit value without I/O or generated identifiers.
-    public init(snap: Bool = true, cutWordIds: Set<String> = [], windowCount: Int = 1) {
+    public init(snap: Bool = true, cutWordIds: Set<String> = [], windowCount: Int = 1, limits: JSONValue = .null) {
         self.snap = snap
         self.cutWordIds = cutWordIds
         self.windowCount = windowCount
+        self.limits = limits
     }
 
     private enum CodingKeys: String, CodingKey {
         case snap
         case cutWordIds
         case windowCount
+        case limits
     }
 
     public init(from decoder: any Decoder) throws {
@@ -254,6 +257,7 @@ public struct FinalizeClipsOptions: Codable, Sendable, Equatable {
         self.snap = try values.decodeIfPresent(Bool.self, forKey: .snap) ?? true
         self.cutWordIds = try values.decodeIfPresent(Set<String>.self, forKey: .cutWordIds) ?? []
         self.windowCount = try values.decodeIfPresent(Int.self, forKey: .windowCount) ?? 1
+        self.limits = try values.decodeIfPresent(JSONValue.self, forKey: .limits) ?? .null
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -261,6 +265,7 @@ public struct FinalizeClipsOptions: Codable, Sendable, Equatable {
         try values.encode(self.snap, forKey: .snap)
         try values.encode(self.cutWordIds, forKey: .cutWordIds)
         try values.encode(self.windowCount, forKey: .windowCount)
+        if limits != .null { try values.encode(limits, forKey: .limits) }
     }
 
 }
@@ -322,10 +327,67 @@ public struct ClipFinderRequest: Codable, Sendable, Equatable {
 }
 
 /// Canonical parsing and finalization; AI §4.5, §11.3 and §11.7.
-public func formatTranscript(_ words: [ClipWord]) throws -> FormattedTranscript { throw VoxClipError.notImplemented("mac-ai") }
-public func finalizeClips(_ candidates: [ClipCandidate], words: [TimedWord], preset: ClipPreset, lines: [TranscriptLine], options: FinalizeClipsOptions = FinalizeClipsOptions()) throws -> [ClipSuggestion] { throw VoxClipError.notImplemented("mac-ai") }
+public func formatTranscript(_ words: [ClipWord]) throws -> FormattedTranscript {
+    guard words.allSatisfy({ $0.start.isFinite && $0.end.isFinite && $0.start >= 0 && $0.end >= $0.start && $0.index >= 0 }) else {
+        throw LLMError.invalidOutput(reason: "invalid transcript timing")
+    }
+    var lines: [TranscriptLine] = []
+    var firstPosition = 0
+    for position in words.indices {
+        let word = words[position]
+        let next = position + 1 < words.count ? words[position + 1] : nil
+        let gap = next.map { $0.start - word.end } ?? 0
+        let sentenceEnd = word.text.range(of: #"[.!?。！？][\"'”’)]*\z"#, options: .regularExpression) != nil
+        if next == nil || sentenceEnd || gap >= 1.2 || position - firstPosition >= 40 {
+            let first = words[firstPosition]
+            let text = words[firstPosition...position].map(\.text).joined(separator: " ")
+            let label = "[\(first.index)-\(word.index)] \(AIText.formatTime(first.start)) \(text)"
+            let pause = next != nil && gap >= 1.5 ? "(pause \(toFixed1(gap))s)" : nil
+            lines.append(TranscriptLine(firstPos: firstPosition, lastPos: position, firstIndex: first.index, lastIndex: word.index, start: first.start, end: word.end, text: label, pauseAfter: pause))
+            firstPosition = position + 1
+        }
+    }
+    return FormattedTranscript(lines: lines, rendered: lines.flatMap { [$0.text] + ($0.pauseAfter.map { [$0] } ?? []) }.joined(separator: "\n"))
+}
+public func finalizeClips(_ candidates: [ClipCandidate], words: [TimedWord], preset: ClipPreset, lines: [TranscriptLine], options: FinalizeClipsOptions = FinalizeClipsOptions()) throws -> [ClipSuggestion] {
+    guard !words.isEmpty, preset.maxClips > 0 else { return [] }
+    let limits = options.limits
+    var ranked: [(arrival: Int, clip: ClipSuggestion)] = []
+    for (arrival, candidate) in candidates.enumerated() {
+        guard candidate.startWord.isFinite, candidate.endWord.isFinite, candidate.score.isFinite,
+              candidate.startWord == floor(candidate.startWord), candidate.endWord == floor(candidate.endWord),
+              candidate.startWord >= 0, candidate.endWord >= candidate.startWord, candidate.endWord < Double(words.count) else { continue }
+        var start = Int(candidate.startWord)
+        var end = Int(candidate.endWord)
+        if options.snap {
+            let (snappedStart, snappedEnd) = clipsSnapPair(start: start, end: end, lines: lines, radius: limits[ai: "snapRadiusWords"].aiInt ?? 3)
+            if snappedStart <= snappedEnd, snappedStart >= 0, snappedEnd < words.count { start = snappedStart; end = snappedEnd }
+        }
+        let length = words[end].end - words[start].start
+        guard length >= max(limits[ai: "minLengthFloorSeconds"].aiDouble ?? 2, preset.minSeconds * (limits[ai: "minLengthFactor"].aiDouble ?? 0.6)), length <= preset.maxSeconds * (limits[ai: "maxLengthFactor"].aiDouble ?? 1.4) else { continue }
+        let cutCount = (start...end).filter { options.cutWordIds.contains(words[$0].id) }.count
+        guard Double(cutCount) / Double(end - start + 1) <= (limits[ai: "mostlyCutFraction"].aiDouble ?? 0.5) else { continue }
+        let rounded = EditingPrimitives.jsRound(candidate.score)
+        ranked.append((arrival, ClipSuggestion(title: AIText.prefix(AIText.trim(candidate.title), utf16: limits[ai: "titleMaxLength"].aiInt ?? 120), reason: AIText.prefix(AIText.trim(candidate.reason), utf16: limits[ai: "reasonMaxLength"].aiInt ?? 300), score: Int(min(limits[ai: "scoreMax"].aiDouble ?? 10, max(limits[ai: "scoreMin"].aiDouble ?? 1, rounded))), startWord: start, endWord: end)))
+    }
+    ranked.sort { $0.clip.score == $1.clip.score ? $0.arrival < $1.arrival : $0.clip.score > $1.clip.score }
+    var chosen: [ClipSuggestion] = []
+    for entry in ranked {
+        if chosen.count >= preset.maxClips { break }
+        let clip = entry.clip
+        let skip = chosen.contains { other in
+            if clip.startWord == other.startWord && clip.endWord == other.endWord { return true }
+            if preset.noOverlap && clip.startWord <= other.endWord && other.startWord <= clip.endWord { return true }
+            let intersection = max(0, min(clip.endWord, other.endWord) - max(clip.startWord, other.startWord) + 1)
+            let union = max(clip.endWord, other.endWord) - min(clip.startWord, other.startWord) + 1
+            return options.windowCount > 1 && Double(intersection) / Double(union) >= (limits[ai: "nearDuplicateOverlap"].aiDouble ?? 0.6)
+        }
+        if !skip { chosen.append(clip) }
+    }
+    return chosen.enumerated().sorted { $0.element.startWord == $1.element.startWord ? $0.offset < $1.offset : $0.element.startWord < $1.element.startWord }.map(\.element)
+}
 public enum CanonicalResponseParser {
-    public static func parse(_ completion: RawCompletion, schema: JSONValue) throws -> JSONValue { throw VoxClipError.notImplemented("mac-ai") }
+    public static func parse(_ completion: RawCompletion, schema: JSONValue) throws -> JSONValue { try validate(completion, schema: schema).object }
 }
 /// Pure M2 suggestions only, never applied automatically; AI §12.
 public struct TightenEdit: Codable, Sendable, Equatable {

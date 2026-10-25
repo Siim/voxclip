@@ -60,7 +60,11 @@ extension ModelStore {
             }
         }
         let capacity = try availableCapacity(locations.models)
-        if let capacity, Double(capacity) < Double(remaining) * 1.1 + 1_073_741_824 { throw VoxClipError.diskFull("Not enough room for the model") }
+        let volume = (try? locations.models.resourceValues(forKeys: [.volumeURLKey]))?.volume?.path ?? "/"
+        if let capacity, Double(capacity) < Double(remaining) * 1.1 + 1_073_741_824 {
+            let shortfall = Double(remaining) * 1.1 + 1_073_741_824 - Double(capacity)
+            throw VoxClipError.diskFull(volume, size: SpeechErrorCopy.bytes(shortfall))
+        }
         try Task.checkCancellation()
         guard let confirmation, try await confirmation(model, total) else { throw VoxClipError.cancelled }
         var finished: Int64 = 0
@@ -89,7 +93,7 @@ extension ModelStore {
             }
         } catch {
             if Task.isCancelled || error is CancellationError || (error as? URLError)?.code == .cancelled { throw VoxClipError.cancelled }
-            if (error as NSError).code == NSFileWriteOutOfSpaceError { throw VoxClipError.diskFull("Model download") }
+            if (error as NSError).code == NSFileWriteOutOfSpaceError { throw VoxClipError.diskFull(volume, size: SpeechErrorCopy.bytes(Double(max(1, remaining)))) }
             throw error
         }
     }
@@ -133,7 +137,7 @@ extension ModelStore {
                 progress(file.bytes)
                 return
             } catch let failure as SpeechHTTPFailure {
-                guard attempt < 2, failure.retryable else { throw VoxClipError.providerError("Model host HTTP \(failure.status)") }
+                guard attempt < 2, failure.retryable else { throw VoxClipError.providerError("The model download could not be completed.", provider: ModelHTTPDownload.provider(for: file.url), status: failure.status) }
                 try await Task.sleep(for: .seconds(failure.retryAfter ?? Double(1 << attempt)))
             } catch let error as URLError {
                 guard error.code != .cancelled else { throw error }

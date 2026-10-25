@@ -68,16 +68,18 @@ final class SpeechStubHTTP: URLProtocol {
         handlers.withLock { $0[host] = handler }
         return URL(string: "https://\(host)")!
     }
-    static func configuration() -> URLSessionConfiguration {
+    static func configuration(for handler: URL? = nil) -> URLSessionConfiguration {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [SpeechStubHTTP.self]
+        if let host = handler?.host { configuration.httpAdditionalHeaders = ["X-VoxClip-Test-Handler": host] }
         return configuration
     }
-    override class func canInit(with request: URLRequest) -> Bool { request.url?.host?.hasPrefix("stub-") == true }
+    override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func startLoading() {
         do {
-            guard let host = request.url?.host, let handler = Self.handlers.withLock({ $0[host] }) else { throw URLError(.badURL) }
+            guard let host = request.value(forHTTPHeaderField: "X-VoxClip-Test-Handler") ?? request.url?.host,
+                  let handler = Self.handlers.withLock({ $0[host] }) else { throw URLError(.badURL) }
             let reply = try handler(request)
             let response = HTTPURLResponse(url: request.url!, statusCode: reply.status, httpVersion: "HTTP/1.1", headerFields: reply.headers)!
             client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)

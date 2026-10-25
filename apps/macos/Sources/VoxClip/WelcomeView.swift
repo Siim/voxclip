@@ -1,73 +1,88 @@
 import SwiftUI
 import VoxClipCore
 
-/// Separate native Welcome scene; design §2. No accounts or providers are required.
 @MainActor public struct WelcomeView: View {
-    @Environment(AppModel.self) private var appModel
+    @Environment(AppModel.self) private var app
     @Environment(\.openDocument) private var openDocument
+    @Environment(\.newDocument) private var newDocument
+    @State private var dropTarget = false
+    @State private var launchedDemo = false
     public init() {}
     public var body: some View {
-        VStack(spacing: 20) {
-            Image(systemName: "text.word.spacing").font(.system(size: 52)).accessibilityHidden(true)
-            Text("VoxClip").font(.largeTitle.bold())
-            Text("Edit video by words.").foregroundStyle(.secondary)
-            Button("Open project…") {
-                let panel = NSOpenPanel()
-                panel.allowedContentTypes = [.voxclipProject]
-                panel.allowsMultipleSelection = false
-                if panel.runModal() == .OK, let url = panel.url { Task { try? await openDocument(at: url) } }
-            }.buttonStyle(.borderedProminent)
-            if let error = appModel.startupError {
-                Text(error.localizedDescription).font(.callout).foregroundStyle(.secondary)
+        @Bindable var app = app
+        VStack(alignment: .leading, spacing: 20) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Cut video by its words.").font(.system(size: 28, weight: .semibold))
+                Text("Drop a talking-head video. VoxClip transcribes it so you can cut text.").foregroundStyle(.secondary)
+            }
+            VStack(spacing: 10) {
+                Label(dropTarget ? "Drop to transcribe" : "Drop a video here", systemImage: "arrow.down.doc").font(.title3)
+                Text(".mov  .mp4  .m4v").font(DesignValues.mono()).foregroundStyle(.secondary)
+                Button("Choose file…  ⌘O") { chooseFile(app: app, open: openDocument, create: newDocument) }.buttonStyle(.borderedProminent)
+            }
+            .frame(maxWidth: .infinity, minHeight: 140)
+            .overlay(RoundedRectangle(cornerRadius: 16).stroke(DesignValues.color(dropTarget ? "line.strong" : "overlay.dropZoneBorder"), style: StrokeStyle(lineWidth: 2, dash: [6, 4])))
+            .dropDestination(for: URL.self) { urls, _ in guard let url = urls.first else { return false }; openFile(url, app: app, open: openDocument, create: newDocument); return true } isTargeted: { dropTarget = $0 }
+            HStack { Text("Recent").font(.headline); Spacer(); Button("Open project…") { chooseFile(app: app, open: openDocument, create: newDocument, projectsOnly: true) } }
+            if app.recent.isEmpty { Text("No recent projects. Your first take starts here.").foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading) }
+            else {
+                ScrollView {
+                    VStack(spacing: 0) {
+                        ForEach(app.recent, id: \.self) { url in
+                            Button { openFile(url, app: app, open: openDocument, create: newDocument) } label: {
+                                HStack { Image(systemName: "doc.text"); Text(url.deletingPathExtension().lastPathComponent); Spacer(); Text("Open").font(.caption).foregroundStyle(.secondary) }.padding(.vertical, 8).contentShape(Rectangle())
+                            }.buttonStyle(.plain).contextMenu {
+                                Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([url]) }
+                                Button("Remove from list") {
+                                    app.recent.removeAll { $0 == url }
+                                    NSDocumentController.shared.clearRecentDocuments(nil)
+                                    for remaining in app.recent.reversed() { NSDocumentController.shared.noteNewRecentDocumentURL(remaining) }
+                                }
+                            }
+                        }
+                    }
+                }.frame(maxHeight: 100)
+            }
+            Spacer(minLength: 0)
+            if let error = app.startupError { InlineNotice(text: UserMessages.message(error)) }
+            if let notice = app.notice { InlineNotice(text: notice) }
+            HStack {
+                Text("Transcription status unavailable in this build").font(.caption).foregroundStyle(.secondary)
+                Spacer()
+                if let update = app.update { Text("VoxClip \(update.version) is available.").font(.caption); Button("Download") { if update.htmlURL.host == "github.com" { NSWorkspace.shared.open(update.htmlURL) } } }
+                else { SettingsLink { Text("Settings…") }.font(.caption) }
             }
         }
-        .padding(32)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-}
-
-/// Native Settings scene with a safe unavailable state; design §10 and architecture §2.5.
-@MainActor public struct SettingsView: View {
-    @State private var showLicences = false
-    public init() {}
-    public var body: some View {
-        TabView {
-            Tab("General", systemImage: "gear") { Text("General settings will be available here.").padding(32) }
-            Tab("Transcription", systemImage: "waveform") { Text("Transcription models will be available here.").padding(32) }
-            Tab("AI", systemImage: "sparkles") { Text("Bring your own API key, local model or installed CLI.").padding(32) }
-            Tab("About", systemImage: "info.circle") {
-                VStack(spacing: 12) {
-                    Text("VoxClip 0.1.0 (1)")
-                    Text("MIT License")
-                    Text("swift-argument-parser 1.8.2 · Apache-2.0")
-                    Text("whisper.cpp b5454 (1.9.5) · MIT")
-                    Button("Licences…") { showLicences = true }
-                }.padding(32)
-            }
-        }
-        .frame(width: 580, height: 320)
-        .sheet(isPresented: $showLicences) { LicencesView() }
-    }
-}
-
-/// Legal notices loaded as plain text; AGENTS.md rule 4 and architecture §2.4.
-@MainActor private struct LicencesView: View {
-    @Environment(\.dismiss) private var dismiss
-    @State private var notices = "swift-argument-parser: Apache-2.0. whisper.cpp and ggml: MIT. Full texts are in apps/macos/THIRD_PARTY_NOTICES.md."
-    var body: some View {
-        VStack(alignment: .trailing) {
-            ScrollView { Text(notices).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading).padding() }
-            Button("Done") { dismiss() }.keyboardShortcut(.defaultAction).padding()
-        }
-        .frame(width: 640, height: 480)
+        .padding(32).frame(minWidth: 640, minHeight: 440)
+        .sheet(isPresented: $app.showTour) { OnboardingView() }
         .task {
-            var candidates = [Bundle.main.resourceURL?.appendingPathComponent("THIRD_PARTY_NOTICES.md")]
-            if let shared = try? SharedResources.locate() {
-                candidates.append(shared.root.deletingLastPathComponent().appendingPathComponent("apps/macos/THIRD_PARTY_NOTICES.md"))
+            #if DEBUG
+            if AppModel.isTestSession { return }
+            if let position = CommandLine.arguments.firstIndex(of: "-demoProject"), position + 1 < CommandLine.arguments.count, !launchedDemo {
+                launchedDemo = true
+                do {
+                    let project = try DemoEditing.loadFixture(URL(fileURLWithPath: CommandLine.arguments[position + 1]))
+                    newDocument { VoxClipDocument(project: project, demo: true) }
+                } catch { app.notice = await app.safeError(error) }
             }
-            for case let url? in candidates {
-                if let text = try? String(contentsOf: url, encoding: .utf8) { notices = text; break }
-            }
+            #endif
         }
+    }
+}
+
+@MainActor struct ShortcutsView: View {
+    @Environment(\.dismiss) private var dismiss
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Keyboard shortcuts").font(.title2)
+            Text("Select words in the transcript. Single-letter keys work in the editor, never while typing a correction or in a text field.").foregroundStyle(.secondary)
+            Grid(alignment: .leading, horizontalSpacing: 40, verticalSpacing: 8) {
+                ForEach(["Space|Play / pause", "J / K / L|Back / stop / forward", "Delete / ⇧Delete|Cut / restore selection", "Return / C|Correct spelling", "⌘Z / ⇧⌘Z|Undo / redo", "← / →|Previous / next word", "⌥← / ⌥→|Previous / next sentence", "⇧← / ⇧→|Extend selection", "⌘K|Make clip from selection", "I / O|Set clip start / end", "[ / ]|Previous / next clip", "P|Preview this cut", "⌥⌘U / ⌥⌘P / ⌥⌘R|Cut fillers / tighten / restore", "⌘F / ⌘G / ⇧⌘G|Find / next / previous", "⌘1 / ⌘2|Captions / clips", "⌥⌘I|Toggle inspector", "⌘+ / ⌘− / ⌘0|Text size", "⌘E / ⌘O / ⌘,|Export / open / settings"], id: \.self) { line in
+                    let parts = line.split(separator: "|")
+                    GridRow { Text(parts[0]).font(DesignValues.mono()); Text(parts[1]) }
+                }
+            }
+            HStack { Spacer(); Button("Done") { dismiss() }.keyboardShortcut(.defaultAction) }
+        }.padding(24).frame(width: 580)
     }
 }

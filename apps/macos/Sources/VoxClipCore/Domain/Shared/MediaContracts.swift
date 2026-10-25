@@ -227,8 +227,10 @@ public struct RenderRequest: Sendable, Equatable {
     public var placement: CaptionPosition?
     public var output: OutputSpec
     public var forPreview: Bool
-    public init(sourceURL: URL, plan: EditPlan, captions: CaptionTrack = CaptionTrack(), style: CaptionStyle? = nil, placement: CaptionPosition? = nil, output: OutputSpec, forPreview: Bool = false) {
+    public var captionLayout: CaptionLayoutResult?
+    public init(sourceURL: URL, plan: EditPlan, captions: CaptionTrack = CaptionTrack(), style: CaptionStyle? = nil, placement: CaptionPosition? = nil, output: OutputSpec, forPreview: Bool = false, captionLayout: CaptionLayoutResult? = nil) {
         self.sourceURL = sourceURL; self.plan = plan; self.captions = captions; self.style = style; self.placement = placement; self.output = output; self.forPreview = forPreview
+        self.captionLayout = captionLayout
     }
 }
 /// Export selection, never a rewrite of global cuts; architecture §4.9.

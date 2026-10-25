@@ -5,6 +5,16 @@ import Testing
 
 @Suite("ElevenLabs Scribe v2")
 struct ElevenLabsTests {
+    private struct RecordedExpectation: Decodable {
+        let schema: String
+        let derivation: String
+        let diarize: Bool
+        let language: String
+        let rawTokens: [RawToken]
+        let importError: VoxClipErrorCode
+        let expectedUploads: Int
+    }
+
     @Test(arguments: [false, true])
     func responseMapping(diarize: Bool) async throws {
         let shared = SharedResources(root: try FixtureLoader.sharedRoot())
@@ -16,11 +26,82 @@ struct ElevenLabsTests {
         #expect(abs((raw.tokens[0].conf ?? 0) - exp(-0.02)) < 0.000001)
         #expect(raw.tokens[1].text == "ee")
         #expect(raw.tokens[3].kind == .event && raw.tokens[3].conf == nil)
+        #expect(raw.tokens.enumerated().allSatisfy { $0.offset == 3 || $0.element.kind == nil })
+        let encoded = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(raw.tokens)) as? [[String: Any]])
+        #expect(encoded[0]["kind"] is NSNull)
+        #expect(encoded[3]["kind"] as? String == "event")
         #expect(raw.tokens[0].speaker == (diarize ? "speaker_0" : nil))
         let words = try SpeechEditingImportAdapter.cleanWords(WordAssembler.group(raw.tokens, rule: raw.grouping, timelineStart: 0), timing: raw.timing)
         #expect(words.count == 4)
         #expect(raw.verbatim && raw.timing == .native)
     }
+    @Test(arguments: [false, true])
+    func eventsOnlyResponseIsNoSpeechWithoutRebilling(_ throughService: Bool) async throws {
+        let directory = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: directory) }
+        let fixtureRoot = try FixtureLoader.sharedRoot(environment: [:])
+        let response = try Data(contentsOf: fixtureRoot.appendingPathComponent("fixtures/transcription/elevenlabs/events-only.json"))
+        let expected = try JSONDecoder().decode(RecordedExpectation.self, from: Data(contentsOf: fixtureRoot.appendingPathComponent("fixtures/transcription/elevenlabs/events-only.expected.json")))
+        #expect(expected.schema == "voxclip-transcription-expected/1")
+        #expect(!expected.derivation.isEmpty)
+        let calls = Mutex(0)
+        let base = SpeechStubHTTP.register { _ in calls.withLock { $0 += 1 }; return (200, [:], response) }
+        let engine = ElevenLabsTranscriber(keys: SpeechTestKeys(value: "synthetic-key-for-tests"), session: URLSession(configuration: SpeechStubHTTP.configuration(for: base)), catalog: try SpeechTestFiles.catalog())
+        let raw = try await engine.mapResponse(response, diarize: expected.diarize)
+        #expect(raw.tokens == expected.rawTokens)
+        #expect(raw.language == expected.language)
+        let service = TranscriptionService(locations: SpeechTestFiles.locations(directory))
+        let request = try SpeechTestFiles.request(directory, options: TranscriptionOptions(diarize: expected.diarize))
+        for _ in 0..<2 {
+            do {
+                if throughService { _ = try await service.transcribe(request, using: engine, envelope: nil) }
+                else { _ = try await engine.transcribe(request) { _ in } }
+                Issue.record("Expected recorded import error")
+            } catch let error as VoxClipError {
+                #expect(error.code == expected.importError)
+            }
+        }
+        #expect(calls.withLock { $0 } == expected.expectedUploads)
+    }
+
+    @Test(arguments: ["direct", "service", "service-catalog"])
+    func forcedLanguageAliasesShareUploadAndCache(_ route: String) async throws {
+        let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let calls = Mutex(0)
+        let base = SpeechStubHTTP.register { _ in
+            calls.withLock { $0 += 1 }
+            let bodyURL = try #require(FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil).first { $0.pathExtension == "multipart" })
+            let body = try String(contentsOf: bodyURL, encoding: .utf8)
+            #expect(body.contains("name=\"language_code\"\r\n\r\net\r\n"))
+            #expect(!body.contains("\r\n\r\nest\r\n"))
+            return (200, [:], RecordedSpeech.scribe)
+        }
+        let catalog = try SpeechTestFiles.catalog()
+        let engine = ElevenLabsTranscriber(keys: SpeechTestKeys(value: "synthetic-key-for-tests"), session: URLSession(configuration: SpeechStubHTTP.configuration(for: base)), catalog: catalog)
+        let service = TranscriptionService(locations: SpeechTestFiles.locations(root), catalog: route == "service-catalog" ? catalog : nil)
+        var rawKey: String?
+        for (index, alias) in ["EST-ee", "et", "est", "ekk"].enumerated() {
+            let request = try SpeechTestFiles.request(root, language: .forced(alias))
+            if route == "direct" { #expect(try await engine.transcribe(request) { _ in }.language == "et") }
+            else {
+                let result = try await service.transcribeResult(request, using: engine, envelope: nil)
+                #expect(result.fromCache == (index > 0))
+                if let rawKey { #expect(result.transcript.rawKey == rawKey) }
+                else { rawKey = result.transcript.rawKey }
+            }
+            #expect(request.plan.language == .forced(alias))
+        }
+        #expect(calls.withLock { $0 } == 1)
+        let directory = route == "direct" ? root.appendingPathComponent("transcripts") : root.appendingPathComponent("Cache/synthetic-content/transcripts")
+        let files = try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
+        #expect(files.count == 1)
+        let file = try #require(files.first)
+        #expect(file.lastPathComponent.hasPrefix("elevenlabs-scribe_v2-et-"))
+        let cached = try SpeechRawCacheEntry.read(file)
+        let expected = SpeechRawCacheKey(request: try SpeechTestFiles.request(root, language: .forced("et")), identity: EngineRef(id: .elevenlabs, modelId: "scribe_v2", engineVersion: "scribe_v2"))
+        #expect(cached.key == expected)
+        #expect(try cached.key.digest() == expected.digest())
+    }
+
     @Test func multipartOrderAndPrivacy() throws {
         let directory = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: directory) }
         let request = try SpeechTestFiles.request(directory, options: TranscriptionOptions(diarize: true, numSpeakers: 2, keyterms: ["VoxClip", "TalTech"]))
@@ -42,7 +123,12 @@ struct ElevenLabsTests {
     func invalidKeyterms(_ term: String) throws {
         let directory = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: directory) }
         let request = try SpeechTestFiles.request(directory, options: TranscriptionOptions(keyterms: [term]))
-        #expect(throws: VoxClipError.self) { try ElevenLabsTranscriber.multipart(request, boundary: "test") }
+        do { _ = try ElevenLabsTranscriber.multipart(request, boundary: "test"); Issue.record("Expected invalid keyterm") }
+        catch let error as VoxClipError {
+            #expect(error.code == .transcriptionFailed)
+            #expect(error.errorDescription == "Transcription stopped: Invalid keyterm: \(term). Your video is still here.")
+        }
+        #expect(try FileManager.default.contentsOfDirectory(atPath: directory.path) == ["audio-16k.wav"])
     }
     @Test(arguments: [(401, "invalid", VoxClipErrorCode.keyRejected), (401, "missing permission", .keyPermissionMissing), (403, "denied", .keyPermissionMissing), (422, "invalid", .providerError), (429, "busy", .rateLimited), (400, "credit quota", .quotaExceeded)])
     func errors(_ status: Int, _ body: String, _ code: VoxClipErrorCode) {
@@ -60,7 +146,7 @@ struct ElevenLabsTests {
             return attempt == 1 ? (429, ["Retry-After": "0"], Data("busy".utf8)) : (200, [:], RecordedSpeech.scribe)
         }
         let shared = SharedResources(root: try FixtureLoader.sharedRoot())
-        let engine = ElevenLabsTranscriber(keys: SpeechTestKeys(value: "synthetic-key-for-tests"), session: URLSession(configuration: SpeechStubHTTP.configuration()), base: base, catalog: BundledModelCatalog(shared: shared), sleep: { delay in delays.withLock { $0.append(delay) } })
+        let engine = ElevenLabsTranscriber(keys: SpeechTestKeys(value: "synthetic-key-for-tests"), session: URLSession(configuration: SpeechStubHTTP.configuration(for: base)), catalog: BundledModelCatalog(shared: shared), sleep: { delay in delays.withLock { $0.append(delay) } })
         let service = TranscriptionService(locations: SpeechTestFiles.locations(directory))
         let request = try SpeechTestFiles.request(directory)
         let firstResult = try await service.transcribeResult(request, using: engine, envelope: nil)
@@ -77,13 +163,13 @@ struct ElevenLabsTests {
         #expect(cached.providerResponse != nil)
         #expect(cached.raw?.providerRequestID == "synthetic-recording-1")
         #expect(cached.providerResponseBytes == RecordedSpeech.scribe)
-        let withoutKey = ElevenLabsTranscriber(keys: SpeechTestKeys(value: nil))
+        let withoutKey = ElevenLabsTranscriber(keys: SpeechTestKeys(value: nil), region: .default)
         let reused = try await service.transcribe(request, using: withoutKey, envelope: nil)
         #expect(reused.words == first.words)
         #expect(calls.withLock { $0 } == 2)
     }
     @Test func unexpectedResponseAndNoKey() async throws {
-        let engine = ElevenLabsTranscriber(keys: SpeechTestKeys(value: nil))
+        let engine = ElevenLabsTranscriber(keys: SpeechTestKeys(value: nil), region: .default)
         await #expect(throws: VoxClipError.self) { try await engine.mapResponse(Data(#"{"transcripts":[]}"#.utf8), diarize: false) }
         #expect(await engine.readiness(for: TranscriptionPlan(engine: .elevenlabs)) == .needsKey(provider: "elevenlabs"))
     }
@@ -93,7 +179,10 @@ struct ElevenLabsTests {
         request.audio.durationSeconds = 36001
         let engine = ElevenLabsTranscriber(keys: SpeechTestKeys(value: "synthetic-key"), session: URLSession(configuration: SpeechStubHTTP.configuration()), catalog: try SpeechTestFiles.catalog())
         do { _ = try await engine.transcribe(request) { _ in }; Issue.record("Expected mediaTooLong") }
-        catch let error as VoxClipError { #expect(error.code == .mediaTooLong) }
+        catch let error as VoxClipError {
+            #expect(error.code == .mediaTooLong)
+            #expect(error.errorDescription == "ElevenLabs accepts up to 10 hours. This take is 10:00:01.")
+        }
         request.audio.durationSeconds = 0.01
         do { _ = try await engine.transcribe(request) { _ in }; Issue.record("Expected noSpeech") }
         catch let error as VoxClipError { #expect(error.code == .noSpeech) }
@@ -106,7 +195,7 @@ struct ElevenLabsTests {
             attempts.withLock { $0 += 1 }
             return (status, ["Retry-After": "90"], Data(#"{"detail":[{"msg":"invalid synthetic-key-for-tests"}]}"#.utf8))
         }
-        let engine = ElevenLabsTranscriber(keys: SpeechTestKeys(value: "synthetic-key-for-tests"), session: URLSession(configuration: SpeechStubHTTP.configuration()), base: base, catalog: try SpeechTestFiles.catalog(), sleep: { delay in delays.withLock { $0.append(delay) } })
+        let engine = ElevenLabsTranscriber(keys: SpeechTestKeys(value: "synthetic-key-for-tests"), session: URLSession(configuration: SpeechStubHTTP.configuration(for: base)), catalog: try SpeechTestFiles.catalog(), sleep: { delay in delays.withLock { $0.append(delay) } })
         do { _ = try await engine.transcribe(SpeechTestFiles.request(root)) { _ in }; Issue.record("Expected HTTP error") }
         catch let error as VoxClipError {
             #expect(error.code == expected)
@@ -121,11 +210,11 @@ struct ElevenLabsTests {
         let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
         let attempts = Mutex(0)
         let base = SpeechStubHTTP.register { _ in attempts.withLock { $0 += 1 }; throw URLError(.networkConnectionLost) }
-        let engine = ElevenLabsTranscriber(keys: SpeechTestKeys(value: "synthetic-key-for-tests"), session: URLSession(configuration: SpeechStubHTTP.configuration()), base: base, catalog: try SpeechTestFiles.catalog(), sleep: { _ in })
+        let engine = ElevenLabsTranscriber(keys: SpeechTestKeys(value: "synthetic-key-for-tests"), session: URLSession(configuration: SpeechStubHTTP.configuration(for: base)), catalog: try SpeechTestFiles.catalog(), sleep: { _ in })
         do { _ = try await engine.transcribe(SpeechTestFiles.request(root)) { _ in }; Issue.record("Expected offline") }
         catch let error as VoxClipError { #expect(error.code == .offline) }
         #expect(attempts.withLock { $0 } == 3)
-        let cancelled = ElevenLabsTranscriber(keys: SpeechTestKeys(value: "synthetic-key-for-tests"), session: URLSession(configuration: SpeechStubHTTP.configuration()), base: base, catalog: try SpeechTestFiles.catalog(), sleep: { _ in throw CancellationError() })
+        let cancelled = ElevenLabsTranscriber(keys: SpeechTestKeys(value: "synthetic-key-for-tests"), session: URLSession(configuration: SpeechStubHTTP.configuration(for: base)), catalog: try SpeechTestFiles.catalog(), sleep: { _ in throw CancellationError() })
         await #expect(throws: VoxClipError.cancelled) { _ = try await cancelled.transcribe(SpeechTestFiles.request(root)) { _ in } }
     }
 

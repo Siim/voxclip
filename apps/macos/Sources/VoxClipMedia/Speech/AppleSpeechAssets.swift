@@ -9,13 +9,13 @@ enum AppleSpeechAssets {
         let native = error as NSError
         if native.domain == SFSpeechError.errorDomain {
             switch native.code {
-            case SFSpeechError.Code.insufficientResources.rawValue: return .diskFull("Apple Speech assets")
+            case SFSpeechError.Code.insufficientResources.rawValue: return .diskFull("/", size: "space for the speech model")
             case SFSpeechError.Code.noModel.rawValue, SFSpeechError.Code.cannotAllocateUnsupportedLocale.rawValue:
-                return .transcriptionLanguageUnsupported(locale)
+                return SpeechErrorCopy.unsupported(.appleSpeech, language: .forced(locale))
             default: break
             }
         }
-        return .speechAssetsUnavailable("\(locale) (\(native.domain):\(native.code))")
+        return .speechAssetsUnavailable(locale, reason: "\(native.domain):\(native.code)")
     }
 
     static func prepare(locale: String, operation: @Sendable () async throws -> Void, reserve: @Sendable () async throws -> Void, release: @Sendable () async throws -> Void) async throws {
@@ -38,7 +38,7 @@ enum AppleSpeechAssets {
 
     static func release(_ identifier: String, reserved: [Locale], operation: @Sendable (Locale) async -> Bool) async throws {
         guard let locale = reserved.first(where: { $0.identifier(.bcp47) == identifier }), await operation(locale) else {
-            throw VoxClipError.speechAssetsUnavailable("Unable to release \(identifier)")
+            throw VoxClipError.speechAssetsUnavailable(identifier, reason: "Unable to release the reserved locale")
         }
     }
 }

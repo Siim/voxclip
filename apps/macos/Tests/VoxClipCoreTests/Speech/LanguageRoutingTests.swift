@@ -9,6 +9,22 @@ struct LanguageRoutingTests {
         return try await catalog.routingSnapshot(installedModels: installed, supportedAppleLocales: apple, hasElevenLabsKey: key, installedRAMBytes: 16 * 1_073_741_824)
     }
 
+    @Test(arguments: [("est", "et"), ("EST-ee", "et"), ("ekk", "et"), ("eng-US", "en"), ("deu-DE", "de"), ("fil", "tl"), ("pt-BR", "pt"), ("zzz", "zzz")])
+    func catalogNormalizesISOAliasesAndPrimarySubtags(_ code: String, _ expected: String) async throws {
+        let catalog = try SpeechTestFiles.catalog()
+        #expect(try await catalog.normalizeLanguage(code) == expected)
+    }
+
+    @Test func normalizationKeepsExplicitAppleRegion() async throws {
+        let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        var request = try SpeechTestFiles.request(root)
+        request.plan = TranscriptionPlan(engine: .appleSpeech, language: .forced("eng-GB"))
+        let normalized = try await SpeechRawCacheKey.normalizedRequest(request, catalog: SpeechTestFiles.catalog())
+        #expect(normalized.plan.language == .forced("en-GB"))
+        let key = SpeechRawCacheKey(request: normalized, identity: EngineRef(id: .appleSpeech, engineVersion: "test", locale: "en-GB"))
+        #expect(key.language == "en" && key.locale == "en-GB")
+    }
+
     @Test func englishSpecificModelWinsBeforeApple() async throws {
         let context = try await snapshot(installed: ["whisper-large-v3-turbo-q8_0", "whisper-small.en-q5_1"])
         #expect(try LanguageRouter.route(language: .forced("en"), mode: .local, snapshot: context) == .plan(TranscriptionPlan(engine: .whispercpp, model: "whisper-small.en-q5_1", language: .forced("en"))))

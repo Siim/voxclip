@@ -31,6 +31,8 @@ struct NativeSpeechTests {
         let engine = AppleSpeechTranscriber()
         #expect(await !engine.supports(.forced("et"), model: nil))
         #expect(await !engine.supports(.auto, model: nil))
+        do { _ = try await engine.cacheIdentity(for: TranscriptionPlan(engine: .appleSpeech, language: .forced("et"))); Issue.record("Expected unsupported language") }
+        catch let error as VoxClipError { #expect(error.errorDescription == "Apple can't transcribe et.") }
     }
     @Test func whisperCatalogueSupportsAndReadiness() async throws {
         let root = try temporaryDirectory(); defer { try? FileManager.default.removeItem(at: root) }
@@ -46,6 +48,14 @@ struct NativeSpeechTests {
         let readiness = await engine.readiness(for: TranscriptionPlan(engine: .whispercpp, model: "whisper-base.en-q5_1", language: .forced("en")))
         guard case .needsModels(let ids, let bytes) = readiness else { Issue.record("Expected missing models"); return }
         #expect(ids.contains("silero-vad-v6.2.0") && bytes > 59_000_000)
+        var missingRequest = detectionRequest
+        missingRequest.plan = TranscriptionPlan(engine: .whispercpp, model: "whisper-base.en-q5_1", language: .forced("en"))
+        let model = try await catalog.model(id: "whisper-base.en-q5_1")
+        do { _ = try await engine.transcribe(missingRequest) { _ in }; Issue.record("Expected missing model before reading audio") }
+        catch let error as VoxClipError {
+            #expect(error == .modelMissing(model.displayName, size: SpeechErrorCopy.bytes(Double(bytes))))
+            #expect(error.errorDescription == "Download the \(model.displayName) model (\(SpeechErrorCopy.bytes(Double(bytes)))) to transcribe on this Mac.")
+        }
     }
     @Test func nativeProgressIsThrottledAndWhisperSpecialsAreSkipped() async {
         let calls = Mutex(0)

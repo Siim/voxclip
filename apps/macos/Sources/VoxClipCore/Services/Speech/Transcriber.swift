@@ -233,6 +233,14 @@ public actor TranscriptionService {
         }
         let reporter = SpeechProgressThrottle { delivery.continuation.yield($0) }
         defer { reporter.cancel(); delivery.continuation.finish(); publishing.cancel() }
+        let originalRequest = request
+        let request: TranscriptionRequest
+        if let catalog { request = try await SpeechRawCacheKey.normalizedRequest(originalRequest, catalog: catalog) }
+        else if let elevenLabs = engine as? ElevenLabsTranscriber { request = try await elevenLabs.normalizedRequest(originalRequest) }
+        else {
+            let catalog = (try? SharedResources.locate()).map { BundledModelCatalog(shared: $0) }
+            request = try await SpeechRawCacheKey.normalizedRequest(originalRequest, catalog: catalog)
+        }
         let identity: EngineRef
         if let provider = engine as? any SpeechCacheIdentityProviding { identity = try await provider.cacheIdentity(for: request.plan) }
         else {
@@ -242,7 +250,7 @@ public actor TranscriptionService {
             identity = EngineRef(id: engine.engine, modelId: model, modelSha256: hash, engineVersion: "", locale: nil)
         }
         let key = SpeechRawCacheKey(request: request, identity: identity)
-        guard identity.id == engine.engine else { throw VoxClipError.transcriptionLanguageUnsupported("Invalid transcription engine identity") }
+        guard identity.id == engine.engine else { throw SpeechErrorCopy.unsupported(engine.engine, language: request.plan.language) }
         let rawKey = try key.digest()
         let directory = locations.cache.appendingPathComponent(request.contentKey).appendingPathComponent("transcripts")
         let url = try key.url(in: directory)
@@ -256,7 +264,7 @@ public actor TranscriptionService {
                 raw = matched
                 fromCache = engine.engine == .elevenlabs
             } else {
-                guard await engine.supports(request.plan.language, model: request.plan.model) else { throw VoxClipError.transcriptionLanguageUnsupported(engine.engine.rawValue) }
+                guard await engine.supports(request.plan.language, model: request.plan.model) else { throw SpeechErrorCopy.unsupported(engine.engine, language: request.plan.language) }
                 reporter.report(TranscriptionProgress(stage: .preparing, fraction: 0))
                 try await engine.prepare(for: request.plan) { fraction in reporter.report(TranscriptionProgress(stage: .preparing, fraction: fraction)) }
                 if let elevenLabs = engine as? ElevenLabsTranscriber {
@@ -278,7 +286,7 @@ public actor TranscriptionService {
             let grouped = try WordAssembler.group(raw.tokens, rule: raw.grouping, timelineStart: request.audio.timelineStart)
             let imported = try SpeechEditingImportAdapter.pipeline(grouped, envelope: envelope, timing: raw.timing, verbatim: raw.verbatim, duration: request.audio.durationSeconds)
             let words = imported.words
-            guard !words.isEmpty else { throw VoxClipError.noSpeech }
+            guard words.contains(where: { $0.kind == .word }) else { throw VoxClipError.noSpeech }
             let refined = imported.refined
             try Task.checkCancellation()
             let result = Transcript(words: words, language: raw.language, languageProbability: raw.languageProbability, durationSeconds: request.audio.durationSeconds, engine: raw.engine, verbatim: raw.verbatim, refined: refined, rawKey: rawKey, createdAt: Date())

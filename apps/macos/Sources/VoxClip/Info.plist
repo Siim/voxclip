@@ -5,6 +5,7 @@
     <key>CFBundleName</key><string>VoxClip</string>
     <key>CFBundleDisplayName</key><string>VoxClip</string>
     <key>CFBundleExecutable</key><string>VoxClip</string>
+    <key>CFBundleIconFile</key><string>AppIcon</string>
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>CFBundleShortVersionString</key><string>0.1.0</string>
     <key>CFBundleVersion</key><string>1</string>
@@ -12,11 +13,17 @@
     <key>NSHighResolutionCapable</key><true/>
     <key>NSCameraUsageDescription</key><string>VoxClip uses the camera when you choose to record a video.</string>
     <key>NSMicrophoneUsageDescription</key><string>VoxClip uses the microphone when you choose to record audio.</string>
+    <key>NSSpeechRecognitionUsageDescription</key><string>VoxClip transcribes your videos on this Mac so you can edit them by their words.</string>
     <key>CFBundleDocumentTypes</key><array><dict>
         <key>CFBundleTypeName</key><string>VoxClip project</string>
         <key>CFBundleTypeRole</key><string>Editor</string>
         <key>LSHandlerRank</key><string>Owner</string>
         <key>LSItemContentTypes</key><array><string>com.voxconvo.voxclip.project</string></array>
+    </dict><dict>
+        <key>CFBundleTypeName</key><string>Movie</string>
+        <key>CFBundleTypeRole</key><string>Viewer</string>
+        <key>LSHandlerRank</key><string>Alternate</string>
+        <key>LSItemContentTypes</key><array><string>public.movie</string><string>com.apple.quicktime-movie</string><string>public.mpeg-4</string></array>
     </dict></array>
     <key>UTExportedTypeDeclarations</key><array><dict>
         <key>UTTypeIdentifier</key><string>com.voxconvo.voxclip.project</string>

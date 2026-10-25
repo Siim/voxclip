@@ -176,7 +176,10 @@ public actor BundledModelCatalog: ModelCatalog {
         guard let model = try document().models.first(where: { $0.descriptor.id == id }) else { throw VoxClipError.modelMissing(id) }
         return model.runtime
     }
-    public func normalizeLanguage(_ code: String) throws -> String { try document().languageCodes.iso639_3[code] ?? code }
+    public func normalizeLanguage(_ code: String) throws -> String {
+        let primary = SpeechText.primaryLanguage(code)
+        return try document().languageCodes.iso639_3[primary] ?? primary
+    }
     public func whisperLanguage(_ code: String) throws -> String { try document().languageCodes.whisperCodeFor[code] ?? code }
     public func fromWhisperLanguage(_ code: String) throws -> String {
         let languages = try document().languageCodes

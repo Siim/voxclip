@@ -10,7 +10,7 @@ import VoxClipMedia
 
 @Test func unfinishedMediaProbeFailsWithoutOpeningInput() async {
     let probe: any MediaProbe = AVMediaProbe()
-    await #expect(throws: VoxClipError.notImplemented("mac-media")) {
+    await #expect(throws: VoxClipError.mediaMissing("no-video.mov")) {
         _ = try await probe.probe(URL(fileURLWithPath: "/tmp/no-video.mov"))
     }
 }

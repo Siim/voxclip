@@ -71,6 +71,45 @@ struct TranscriptionServiceTests {
         #expect(values.last?.stage == .aligning && values.last?.fraction == 1)
     }
 
+    @Test(arguments: [false, true])
+    func nonWordResultsAreNoSpeech(_ withUnlabeledSpeech: Bool) async throws {
+        let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let engine = CountingSpeechEngine(engine: .whispercpp, activity: SpeechJobActivity(), delay: .zero, kind: .event, verbatim: !withUnlabeledSpeech)
+        let service = TranscriptionService(locations: SpeechTestFiles.locations(root))
+        var request = try SpeechTestFiles.request(root)
+        request.plan = TranscriptionPlan(engine: .whispercpp, language: .forced("en"))
+        let value = request
+        var levels = [Float](repeating: 0, count: 400)
+        for index in 10..<40 { levels[index] = 1 }
+        for index in 100..<200 { levels[index] = 1 }
+        let envelope = withUnlabeledSpeech ? AudioEnvelope(sampleRate: 16000, levels: levels) : nil
+        if withUnlabeledSpeech {
+            let imported = try SpeechEditingImportAdapter.pipeline([RawWord(text: "hello", start: 0.1, end: 0.4, kind: .event)], envelope: envelope, timing: .native, verbatim: false, duration: 4)
+            #expect(imported.words.contains { $0.kind == .unlabeledSpeech })
+            #expect(!imported.words.contains { $0.kind == .word })
+        }
+        for _ in 0..<2 {
+            await #expect(throws: VoxClipError.noSpeech) { try await service.transcribe(value, using: engine, envelope: envelope) }
+        }
+    }
+
+    @Test(arguments: [false, true])
+    func localForcedLanguageIsNormalizedBeforeEngineAndCache(_ injectCatalog: Bool) async throws {
+        let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let activity = SpeechJobActivity()
+        let engine = CountingSpeechEngine(engine: .whispercpp, activity: activity, delay: .zero)
+        let service = TranscriptionService(locations: SpeechTestFiles.locations(root), catalog: injectCatalog ? try SpeechTestFiles.catalog() : nil)
+        var rawKey: String?
+        for alias in ["est", "et", "EST-ee"] {
+            var request = try SpeechTestFiles.request(root)
+            request.plan = TranscriptionPlan(engine: .whispercpp, language: .forced(alias))
+            let transcript = try await service.transcribe(request, using: engine, envelope: nil)
+            if let rawKey { #expect(transcript.rawKey == rawKey) }
+            else { rawKey = transcript.rawKey }
+        }
+        #expect(await activity.languages == [.forced("et")])
+    }
+
     @Test func keySeparatesOptionsAndAudioTracks() throws {
         let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
         var request = try SpeechTestFiles.request(root)
@@ -89,7 +128,9 @@ private actor SpeechJobActivity {
     var cloud = 0
     var maximumLocal = 0
     var maximumCloud = 0
-    func start(_ engine: TranscriptEngine) {
+    var languages: [LanguageChoice] = []
+    func start(_ engine: TranscriptEngine, language: LanguageChoice) {
+        languages.append(language)
         if engine == .elevenlabs { cloud += 1; maximumCloud = max(maximumCloud, cloud) }
         else { local += 1; maximumLocal = max(maximumLocal, local) }
     }
@@ -108,18 +149,20 @@ private struct CountingSpeechEngine: Transcriber {
     let activity: SpeechJobActivity
     var delay: Duration = .milliseconds(75)
     var waitForConcurrency = false
+    var kind: WordKind = .word
+    var verbatim = true
     func capabilities(model: String?) -> TranscriberCapabilities { TranscriberCapabilities(timing: .native, verbatim: true, autoLanguage: false, onDevice: engine != .elevenlabs) }
     func supports(_ language: LanguageChoice, model: String?) async -> Bool { true }
     func readiness(for plan: TranscriptionPlan) async -> Readiness { .ready }
     func prepare(for plan: TranscriptionPlan, progress: @escaping @Sendable (Double) -> Void) async throws {}
     func transcribe(_ request: TranscriptionRequest, progress: @escaping @Sendable (TranscriptionProgress) -> Void) async throws -> RawTranscript {
-        await activity.start(engine)
+        await activity.start(engine, language: request.plan.language)
         do {
             if waitForConcurrency { try await activity.waitForSaturation() }
             for index in 0..<1000 { progress(TranscriptionProgress(stage: .transcribing, fraction: Double(index) / 1000)) }
             try await Task.sleep(for: delay)
             await activity.end(engine)
-            return RawTranscript(engine: EngineRef(id: engine, engineVersion: "test"), grouping: GroupingRule(end: .lastToken, conf: .single, bracketEvents: false), tokens: [RawToken(text: "hello", start: 0.1, end: 0.4)], language: "en", verbatim: true, timing: .native)
+            return RawTranscript(engine: EngineRef(id: engine, engineVersion: "test"), grouping: GroupingRule(end: .lastToken, conf: .single, bracketEvents: false), tokens: [RawToken(text: "hello", start: 0.1, end: 0.4, kind: kind)], language: "en", verbatim: verbatim, timing: .native)
         } catch { await activity.end(engine); throw error }
     }
 }

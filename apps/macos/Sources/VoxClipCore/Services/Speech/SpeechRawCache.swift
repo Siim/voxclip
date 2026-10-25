@@ -16,6 +16,21 @@ struct SpeechRawCacheKey: Codable, Equatable, Sendable {
     let keyterms: [String]
     let dtw: Bool
     let audioTrackIndex: Int
+    static func normalizedRequest(_ request: TranscriptionRequest, catalog: BundledModelCatalog?) async throws -> TranscriptionRequest {
+        guard case .forced(let code) = request.plan.language else { return request }
+        guard code.range(of: "^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$", options: .regularExpression) != nil else {
+            throw VoxClipError.transcriptionLanguageUnsupported(SpeechErrorCopy.engineName(request.plan.engine), language: "the selected model or language identifier")
+        }
+        let primary = SpeechText.primaryLanguage(code)
+        let language: String
+        if let catalog { language = try await catalog.normalizeLanguage(primary) }
+        else { language = primary }
+        var normalized = request
+        if request.plan.engine == .appleSpeech, let region = code.firstIndex(of: "-") {
+            normalized.plan.language = .forced(language + code[region...])
+        } else { normalized.plan.language = .forced(language) }
+        return normalized
+    }
     init(request: TranscriptionRequest, identity: EngineRef) {
         engine = identity.id; model = identity.modelId; modelSha256 = identity.modelSha256; adapterVersion = 1
         if case .forced(let code) = request.plan.language { language = SpeechText.primaryLanguage(code) } else { language = nil }
@@ -31,7 +46,7 @@ struct SpeechRawCacheKey: Codable, Equatable, Sendable {
     func digest() throws -> String { SpeechSHA256.hex(try canonicalData()) }
     func url(in directory: URL) throws -> URL {
         guard model.map({ $0.range(of: "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$", options: .regularExpression) != nil }) ?? true,
-              language.map({ $0.range(of: "^[a-z]{2,3}$", options: .regularExpression) != nil }) ?? true else { throw VoxClipError.transcriptionLanguageUnsupported("Invalid model or language identifier") }
+              language.map({ $0.range(of: "^[a-z]{2,3}$", options: .regularExpression) != nil }) ?? true else { throw VoxClipError.transcriptionLanguageUnsupported(SpeechErrorCopy.engineName(engine), language: "the selected model or language identifier") }
         let digest = try digest()
         return directory.appendingPathComponent("\(engine.rawValue)-\(model ?? "none")-\(language ?? "auto")-\(digest.prefix(8)).json")
     }

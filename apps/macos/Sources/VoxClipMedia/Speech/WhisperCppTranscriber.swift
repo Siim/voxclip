@@ -43,7 +43,7 @@ public actor WhisperCppTranscriber: Transcriber, SpeechCacheIdentityProviding, S
     }
     public func prepare(for plan: TranscriptionPlan, progress: @escaping @Sendable (Double) -> Void) async throws { try Task.checkCancellation() }
     public func cacheIdentity(for plan: TranscriptionPlan) async throws -> EngineRef {
-        guard let model = plan.model, let catalog else { throw VoxClipError.modelMissing("Choose a catalogue model") }
+        guard let model = plan.model, let catalog else { throw VoxClipError.modelMissing(plan.model ?? "Whisper") }
         let descriptor = try await catalog.model(id: model)
         return EngineRef(id: .whispercpp, modelId: model, modelSha256: descriptor.files.first(where: { $0.role == "model" })?.sha256, engineVersion: "whisper.cpp 1.9.5 (b5454)")
     }
@@ -60,13 +60,13 @@ public actor WhisperCppTranscriber: Transcriber, SpeechCacheIdentityProviding, S
         }
         guard request.plan.engine == engine, request.plan.language == .auto,
               let modelID = request.plan.model, let catalog,
-              await supports(.auto, model: modelID) else { throw VoxClipError.transcriptionLanguageUnsupported("Detection requires an installed OpenAI multilingual model") }
-        if case .needsModels(let identifiers, _) = await readiness(for: request.plan) { throw VoxClipError.modelMissing(identifiers.joined(separator: ", ")) }
+              await supports(.auto, model: modelID) else { throw SpeechErrorCopy.unsupported(engine, language: request.plan.language) }
         let descriptor = try await catalog.model(id: modelID)
+        if case .needsModels(_, let bytes) = await readiness(for: request.plan) { throw SpeechErrorCopy.modelMissing(descriptor, bytes: bytes) }
         let runtime = try await catalog.runtime(id: modelID)
-        guard let settings = runtime.whisper, let file = descriptor.files.first(where: { $0.role == "model" }) else { throw VoxClipError.modelMissing(modelID) }
+        guard let settings = runtime.whisper, let file = descriptor.files.first(where: { $0.role == "model" }) else { throw SpeechErrorCopy.modelMissing(descriptor) }
         let vad = try await catalog.model(id: settings.vadModel)
-        guard let vadFile = vad.files.first else { throw VoxClipError.modelMissing(settings.vadModel) }
+        guard let vadFile = vad.files.first else { throw SpeechErrorCopy.modelMissing(vad) }
         WhisperDiagnosticLog.install(logger: logger)
         let samples = try SpeechNativeAudio.normalized(SpeechNativeAudio.samples(request.audio.wav16k))
         let cancellation = WhisperCallbacks(progress: { _ in })
@@ -91,14 +91,14 @@ public actor WhisperCppTranscriber: Transcriber, SpeechCacheIdentityProviding, S
                 do { try await Task.sleep(for: .seconds(120)); await self?.unloadIfIdle() } catch {}
             }
         }
-        guard request.plan.engine == engine, let modelID = request.plan.model, let catalog else { throw VoxClipError.modelMissing("Choose a catalogue model") }
-        guard await supports(request.plan.language, model: modelID) else { throw VoxClipError.transcriptionLanguageUnsupported(modelID) }
-        if case .needsModels(let ids, _) = await readiness(for: request.plan) { throw VoxClipError.modelMissing(ids.joined(separator: ", ")) }
+        guard request.plan.engine == engine, let modelID = request.plan.model, let catalog else { throw VoxClipError.modelMissing(request.plan.model ?? "Whisper") }
+        guard await supports(request.plan.language, model: modelID) else { throw SpeechErrorCopy.unsupported(engine, language: request.plan.language) }
         let descriptor = try await catalog.model(id: modelID)
+        if case .needsModels(_, let bytes) = await readiness(for: request.plan) { throw SpeechErrorCopy.modelMissing(descriptor, bytes: bytes) }
         let runtime = try await catalog.runtime(id: modelID)
-        guard let settings = runtime.whisper, let modelFile = descriptor.files.first(where: { $0.role == "model" }) else { throw VoxClipError.modelMissing(modelID) }
+        guard let settings = runtime.whisper, let modelFile = descriptor.files.first(where: { $0.role == "model" }) else { throw SpeechErrorCopy.modelMissing(descriptor) }
         let vad = try await catalog.model(id: settings.vadModel)
-        guard let vadFile = vad.files.first else { throw VoxClipError.modelMissing(settings.vadModel) }
+        guard let vadFile = vad.files.first else { throw SpeechErrorCopy.modelMissing(vad) }
         let samples = try SpeechNativeAudio.normalized(SpeechNativeAudio.samples(request.audio.wav16k))
         let cancellation = WhisperCallbacks(progress: progress)
         defer { cancellation.progress.cancel() }
@@ -115,10 +115,10 @@ public actor WhisperCppTranscriber: Transcriber, SpeechCacheIdentityProviding, S
             case .forced(let code): language = runtime.forcedLanguage ?? SpeechText.primaryLanguage(code)
             case .auto:
                 let detected = try detect(samples, unit: units[0], context: context)
-                guard detected.probability >= 0.5 else { throw VoxClipError.transcriptionLanguageUnsupported("Choose the spoken language") }
+                guard detected.probability >= 0.5 else { throw SpeechErrorCopy.unsupported(engine, language: request.plan.language) }
                 language = try await catalog.fromWhisperLanguage(detected.language)
                 probability = detected.probability
-                if language == "et" { throw VoxClipError.transcriptionLanguageUnsupported("Estonian detected; select the TalTech model with language et") }
+                if language == "et" { throw SpeechErrorCopy.unsupported(engine, language: .forced(language)) }
             }
             let decodeLanguage = try await catalog.whisperLanguage(language)
             let prompt = settings.initialPromptByLanguage[language] ?? ""

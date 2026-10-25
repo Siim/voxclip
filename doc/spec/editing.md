@@ -753,6 +753,7 @@ gain(output sample o in part P): i = o - P.outputStart; j = P.length - 1 - i
 ### 7.8 Consumers
 
 - **Preview** plays a composition of `plan.kept`: an AVMutableComposition with CMTime timescale = `sampleRate` on macOS, and the equivalent sample-accurate timeline on Windows. The player clock is edited time. Captions are drawn from `captionCopy` on that clock. There is no seek-skipping, so the reference's two-clock preview is not carried over.
+- **Export target scope** resolves `fullEdit` to no clip and `clip(id)` to that exact clip before building segments. The edit plan and `captionCopy` for one output consume the same resolved segments; the editor's currently open clip affects only the ordinary preview. An unknown clip id is an export error, not a full-edit fallback.
 - **Transcript highlight** at edited time `e`: `s = sourceTime(e)`. The highlighted word is the first `kind == word` item in transcript order that is not cut (effective cut, 7.1) and has `start <= s < end`.
 - **Transcript tap** seeks to `mapTime(item.start)`. A cut item seeks to the join where it was.
 - **Scrubber** range is `[0, plan.duration]` in edited time.

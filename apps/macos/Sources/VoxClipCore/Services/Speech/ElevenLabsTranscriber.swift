@@ -4,24 +4,32 @@ import Synchronization
 /// User-selected batch cloud adapter; transcription §8. Keys are supplied, never discovered or logged.
 public actor ElevenLabsTranscriber: Transcriber {
     public nonisolated let engine: TranscriptEngine = .elevenlabs
+    public nonisolated let region: ElevenLabsRegion
     private let keys: any KeyProvider
     private let session: URLSession
-    private let base: URL
     private let catalog: BundledModelCatalog?
     private let sleep: @Sendable (Double) async throws -> Void
     private let logger: any Redacting
-    public init(keys: any KeyProvider, logger: any Redacting = RedactingLogger(homeDirectory: FileManager.default.homeDirectoryForCurrentUser.path)) {
+    public init(keys: any KeyProvider, region: ElevenLabsRegion, logger: any Redacting = RedactingLogger(homeDirectory: FileManager.default.homeDirectoryForCurrentUser.path)) {
         self.keys = keys
+        self.region = region
         self.logger = logger
         let config = URLSessionConfiguration.ephemeral
         config.timeoutIntervalForRequest = 300; config.timeoutIntervalForResource = 7200
         session = URLSession(configuration: config)
-        base = URL(string: "https://api.elevenlabs.io")!
         catalog = (try? SharedResources.locate()).map { BundledModelCatalog(shared: $0) }
         sleep = { try await Task.sleep(for: .seconds($0)) }
     }
-    public init(keys: any KeyProvider, session: URLSession, base: URL = URL(string: "https://api.elevenlabs.io")!, catalog: BundledModelCatalog? = nil, sleep: @escaping @Sendable (Double) async throws -> Void = { try await Task.sleep(for: .seconds($0)) }, logger: any Redacting = RedactingLogger(homeDirectory: FileManager.default.homeDirectoryForCurrentUser.path)) {
-        self.keys = keys; self.session = session; self.base = base; self.catalog = catalog; self.sleep = sleep; self.logger = logger
+    public init(keys: any KeyProvider, settings: SettingsDocument, logger: any Redacting = RedactingLogger(homeDirectory: FileManager.default.homeDirectoryForCurrentUser.path)) async {
+        let region = await ElevenLabsRegion.from(settings: settings, logger: logger)
+        self.init(keys: keys, region: region, logger: logger)
+    }
+    public init(keys: any KeyProvider, session: URLSession, region: ElevenLabsRegion = .default, catalog: BundledModelCatalog? = nil, sleep: @escaping @Sendable (Double) async throws -> Void = { try await Task.sleep(for: .seconds($0)) }, logger: any Redacting = RedactingLogger(homeDirectory: FileManager.default.homeDirectoryForCurrentUser.path)) {
+        self.keys = keys; self.session = session; self.region = region; self.catalog = catalog; self.sleep = sleep; self.logger = logger
+    }
+    public init(keys: any KeyProvider, settings: SettingsDocument, session: URLSession, catalog: BundledModelCatalog? = nil, sleep: @escaping @Sendable (Double) async throws -> Void = { try await Task.sleep(for: .seconds($0)) }, logger: any Redacting = RedactingLogger(homeDirectory: FileManager.default.homeDirectoryForCurrentUser.path)) async {
+        let region = await ElevenLabsRegion.from(settings: settings, logger: logger)
+        self.init(keys: keys, session: session, region: region, catalog: catalog, sleep: sleep, logger: logger)
     }
     public nonisolated func capabilities(model: String?) -> TranscriberCapabilities { TranscriberCapabilities(timing: .native, verbatim: true, autoLanguage: true, maxDurationSeconds: 36_000, maxUploadBytes: 3_000_000_000, onDevice: false) }
     public func supports(_ language: LanguageChoice, model: String?) async -> Bool {
@@ -37,16 +45,24 @@ public actor ElevenLabsTranscriber: Transcriber {
     }
     public func prepare(for plan: TranscriptionPlan, progress: @escaping @Sendable (Double) -> Void) async throws { try Task.checkCancellation() }
     public func transcribe(_ request: TranscriptionRequest, progress: @escaping @Sendable (TranscriptionProgress) -> Void) async throws -> RawTranscript {
+        let request = try await normalizedRequest(request)
         let key = cacheKey(request)
         let directory = request.audio.wav16k.deletingLastPathComponent().appendingPathComponent("transcripts")
         return try await transcribeWithCache(request, cacheURL: key.url(in: directory), progress: progress).raw
     }
+    func normalizedRequest(_ request: TranscriptionRequest) async throws -> TranscriptionRequest {
+        try await SpeechRawCacheKey.normalizedRequest(request, catalog: catalog)
+    }
     func transcribeWithCache(_ request: TranscriptionRequest, cacheURL: URL, progress: @escaping @Sendable (TranscriptionProgress) -> Void) async throws -> (raw: RawTranscript, fromCache: Bool) {
         do {
+            let request = try await normalizedRequest(request)
             let bytes = try await validateRequest(request)
             let key = cacheKey(request)
             if let entry = try? SpeechRawCacheEntry.read(cacheURL), entry.key == key, entry.schema == "voxclip-raw-transcript/1" {
-                if let raw = entry.matchingRaw(for: key) { return (raw, true) }
+                if let raw = entry.matchingRaw(for: key) {
+                    guard raw.tokens.contains(where: { ($0.kind ?? .word) == .word }) else { throw VoxClipError.noSpeech }
+                    return (raw, true)
+                }
                 if let data = try entry.providerData() {
                     return (try await mapAndCache(data, request: request, key: key, url: cacheURL), true)
                 }
@@ -66,12 +82,11 @@ public actor ElevenLabsTranscriber: Transcriber {
     }
     private func validateRequest(_ request: TranscriptionRequest) async throws -> Int {
         try Task.checkCancellation()
-        guard base.scheme == "https" else { throw VoxClipError.providerError("ElevenLabs requires HTTPS") }
-        guard request.plan.engine == engine, await supports(request.plan.language, model: request.plan.model) else { throw VoxClipError.transcriptionLanguageUnsupported("ElevenLabs") }
-        guard request.plan.model == nil || request.plan.model == "scribe_v2" else { throw VoxClipError.modelMissing("scribe_v2") }
+        guard request.plan.engine == engine, await supports(request.plan.language, model: request.plan.model) else { throw SpeechErrorCopy.unsupported(engine, language: request.plan.language) }
+        guard request.plan.model == nil || request.plan.model == "scribe_v2" else { throw VoxClipError.transcriptionFailed("ElevenLabs requires the scribe_v2 model") }
         guard request.audio.durationSeconds.isFinite, request.audio.durationSeconds >= 0.1 else { throw VoxClipError.noSpeech }
         let bytes = try request.audio.wav16k.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
-        guard request.audio.durationSeconds <= 36_000, bytes <= 3_000_000_000 else { throw VoxClipError.mediaTooLong("ElevenLabs accepts up to 10 hours and 3 GB") }
+        guard request.audio.durationSeconds <= 36_000, bytes <= 3_000_000_000 else { throw VoxClipError.mediaTooLong(SpeechErrorCopy.duration(request.audio.durationSeconds)) }
         try Self.validateOptions(request.plan.options)
         return bytes
     }
@@ -82,7 +97,7 @@ public actor ElevenLabsTranscriber: Transcriber {
         let boundary = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
         let body = try Self.multipart(request, boundary: boundary)
         defer { try? FileManager.default.removeItem(at: body) }
-        var upload = URLRequest(url: base.appendingPathComponent("v1/speech-to-text"))
+        var upload = URLRequest(url: region.baseURL.appendingPathComponent("v1/speech-to-text"))
         upload.httpMethod = "POST"
         upload.timeoutInterval = 300
         upload.setValue(key, forHTTPHeaderField: "xi-api-key")
@@ -99,7 +114,7 @@ public actor ElevenLabsTranscriber: Transcriber {
                     reporter.report(TranscriptionProgress(stage: sent >= total ? .transcribing : .uploading, fraction: sent >= total ? nil : Double(sent) / Double(max(1, total))))
                 }
                 let (data, response) = try await uploadBody(upload, file: body, delegate: delegate)
-                guard let http = response as? HTTPURLResponse else { throw VoxClipError.providerError("Invalid ElevenLabs response") }
+                guard let http = response as? HTTPURLResponse else { throw VoxClipError.providerError("invalid response", provider: "ElevenLabs") }
                 await Log(logger: logger).write(.info, category: "transcribe", message: "engine=elevenlabs status=\(http.statusCode) attempt=\(attempt + 1)")
                 if (200..<300).contains(http.statusCode) {
                     let raw = try await mapAndCache(data, request: request, key: cacheKey(request), url: cacheURL)
@@ -126,12 +141,24 @@ public actor ElevenLabsTranscriber: Transcriber {
     }
     private func mapAndCache(_ data: Data, request: TranscriptionRequest, key: SpeechRawCacheKey, url: URL) async throws -> RawTranscript {
         let response = try? JSONDecoder().decode(JSONValue.self, from: data)
-        try SpeechRawCacheEntry(key: key, raw: nil, providerResponse: response, providerResponseBytes: data).write(url)
+        await cachePaidResponse(SpeechRawCacheEntry(key: key, raw: nil, providerResponse: response, providerResponseBytes: data), at: url)
         try Task.checkCancellation()
         let raw = try await mapResponse(data, diarize: request.plan.options.diarize)
-        try SpeechRawCacheEntry(key: key, raw: raw, providerResponse: response, providerResponseBytes: data).write(url)
-        guard !raw.tokens.isEmpty else { throw VoxClipError.noSpeech }
+        await cachePaidResponse(SpeechRawCacheEntry(key: key, raw: raw, providerResponse: response, providerResponseBytes: data), at: url)
+        guard raw.tokens.contains(where: { ($0.kind ?? .word) == .word }) else { throw VoxClipError.noSpeech }
         return raw
+    }
+
+    private func cachePaidResponse(_ entry: SpeechRawCacheEntry, at url: URL) async {
+        for attempt in 0..<3 {
+            do {
+                try entry.write(url)
+                return
+            } catch {
+                if attempt < 2 { try? await sleep(Double(attempt + 1) * 0.05) }
+            }
+        }
+        await Log(logger: logger).write(.warn, category: "transcribe", message: "engine=elevenlabs cacheWriteFailed attempts=3 paidResponseRetainedForImport=true")
     }
 
     private func uploadBody(_ request: URLRequest, file: URL, delegate: ScribeUploadDelegate) async throws -> (Data, URLResponse) {
@@ -156,7 +183,7 @@ public actor ElevenLabsTranscriber: Transcriber {
             let words: [Word]
             let transcription_id: String?
         }
-        guard let response = try? JSONDecoder().decode(Response.self, from: data) else { throw VoxClipError.providerError("Unexpected ElevenLabs response shape") }
+        guard let response = try? JSONDecoder().decode(Response.self, from: data) else { throw VoxClipError.providerError("unexpected response shape", provider: "ElevenLabs", status: 200) }
         let unknownTypes = Set(response.words.map(\.type)).subtracting(["word", "spacing", "audio_event"])
         for type in unknownTypes.sorted() {
             let safe = type.range(of: "^[a-z_]{1,32}$", options: .regularExpression) == nil ? "unrecognized" : type
@@ -176,11 +203,11 @@ public actor ElevenLabsTranscriber: Transcriber {
     }
 
     private static func validateOptions(_ options: TranscriptionOptions) throws {
-        if let count = options.numSpeakers, !options.diarize || !(1...32).contains(count) { throw VoxClipError.providerError("Speaker count needs diarization and a value from 1 to 32") }
-        guard options.keyterms.count <= 1000 else { throw VoxClipError.providerError("At most 1000 keyterms are allowed") }
+        if let count = options.numSpeakers, !options.diarize || !(1...32).contains(count) { throw VoxClipError.transcriptionFailed("Speaker count needs diarization and a value from 1 to 32") }
+        guard options.keyterms.count <= 1000 else { throw VoxClipError.transcriptionFailed("At most 1000 keyterms are allowed") }
         for term in options.keyterms {
             guard !SpeechText.trim(term).isEmpty, term.unicodeScalars.count < 50, term.split(whereSeparator: { $0.isWhitespace }).count <= 5,
-                  !term.contains(where: { "<>{}[]\\\r\n".contains($0) }) else { throw VoxClipError.providerError("Invalid keyterm: \(term)") }
+                  !term.contains(where: { "<>{}[]\\\r\n".contains($0) }) else { throw VoxClipError.transcriptionFailed("Invalid keyterm: \(term)") }
         }
     }
     static func multipart(_ request: TranscriptionRequest, boundary: String) throws -> URL {
@@ -212,15 +239,17 @@ public actor ElevenLabsTranscriber: Transcriber {
     static func providerError(status: Int, data: Data, key: String) -> VoxClipError {
         let body = String(decoding: data, as: UTF8.self)
         let lower = body.lowercased()
-        if lower.contains("quota") || lower.contains("credit") { return .quotaExceeded("ElevenLabs credits or key quota are used up") }
+        if lower.contains("quota") || lower.contains("credit") { return .quotaExceeded("ElevenLabs") }
         if status == 403 || status == 401 && lower.contains("permission") { return .keyPermissionMissing }
-        if status == 401 { return .keyRejected("elevenlabs") }
+        if status == 401 { return .keyRejected("ElevenLabs", status: status) }
         if status == 429 { return .rateLimited("elevenlabs") }
-        var message = "ElevenLabs HTTP \(status)"
-        if status == 422, let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-           let detail = object["detail"] as? [[String: Any]], let validation = detail.first?["msg"] as? String { message += ": " + validation }
+        var message = "The request could not be completed."
+        if let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            if let detail = object["detail"] as? String { message = detail }
+            else if let detail = object["detail"] as? [[String: Any]], let validation = detail.first?["msg"] as? String { message = validation }
+        }
         let safe = Redactor(knownSecrets: [key]).redact(message.replacingOccurrences(of: key, with: "[REDACTED]"))
-        return .providerError(String(safe.prefix(200)))
+        return .providerError(String(safe.prefix(200)), provider: "ElevenLabs", status: status)
     }
 }
 
