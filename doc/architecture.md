@@ -505,8 +505,9 @@ At first launch, and whenever the GPU adapter LUID, the driver version or the FF
 | 2 | `h264_qsv` | `preset=medium`, `b`, `maxrate=1.5×b`, `profile=high`, `g=2×fps` (absent on ARM64) |
 | 3 | `h264_amf` | `usage=transcoding`, `quality=balanced`, `rc=vbr_peak`, `b`, `maxrate=1.5×b`, `profile=high`, `g=2×fps` |
 | 4 | `h264_mf` | `hw_encoding=1`, `rate_control=pc_vbr`, `b`, `profile=high` (the default can be Constrained Baseline, so always set High), `g=2×fps` |
+| 5 | `h264_mf` (software) | `hw_encoding=0`, otherwise as row 4. Microsoft's own H.264 encoder MFT that ships with Windows; used only when no hardware encoder MFT exists (VMs, machines without a GPU encoder). It is not x264 and adds no GPL code. Slower; the export sheet shows "Exporting without hardware acceleration" once |
 
-Probe: `avcodec_find_encoder_by_name`; open at 1280×720 NV12 30 fps with the options above; encode 3 black frames; flush; success = at least one packet. The first success wins and is cached in `<data>\Cache\encoders.json` keyed by `{adapterLuid, driverVersion, ffmpegVersion}`. If an encode fails mid-export with the cached encoder, the job restarts once with the next encoder in the ladder and updates the cache. If none works: `encoderUnavailable`.
+Probe: `avcodec_find_encoder_by_name`; open at 1280×720 NV12 30 fps with the options above; encode 3 black frames; flush; success = at least one packet. The first success wins and is cached in `<data>\Cache\encoders.json` keyed by `{adapterLuid, driverVersion, ffmpegVersion}`. If an encode fails mid-export with the cached encoder, the job restarts once with the next encoder in the ladder and updates the cache. If none works (for example Windows N editions without the Media Feature Pack): `encoderUnavailable`, whose message names the Media Feature Pack.
 
 Acceptance: average bitrate within ±15% of target on the on-demand `--motion-60s` clip (section 9.5) for every encoder present on the test machine; `ffprobe` reports `profile=High`, `pix_fmt=yuv420p`, `color_primaries=bt709`, `color_transfer=bt709`, `color_space=bt709`; colour bars decode within ±3 code values.
 
