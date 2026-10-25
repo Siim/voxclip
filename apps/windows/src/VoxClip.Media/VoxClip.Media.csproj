@@ -5,6 +5,9 @@
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
   </PropertyGroup>
   <ItemGroup>
+    <InternalsVisibleTo Include="VoxClip.Media.Tests" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="../VoxClip.Core/VoxClip.Core.csproj" />
     <PackageReference Include="FFmpeg.AutoGen" />
     <PackageReference Include="SkiaSharp" />

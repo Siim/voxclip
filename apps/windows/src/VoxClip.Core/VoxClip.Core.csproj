@@ -4,4 +4,8 @@
     <IsAotCompatible>true</IsAotCompatible>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
   </PropertyGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="VoxClip.Core.Tests" />
+    <InternalsVisibleTo Include="VoxClip.Media" />
+  </ItemGroup>
 </Project>

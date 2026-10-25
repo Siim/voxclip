@@ -18,33 +18,11 @@ public interface ITranscriber
     Task<RawTranscript> TranscribeAsync(TranscriptionRequest request, IProgress<TranscriptionProgress> progress, CancellationToken ct);
 }
 
-/// <summary>ElevenLabs HTTP adapter placeholder; transcription §8. Never uploads until explicitly invoked.</summary>
-public sealed class ElevenLabsTranscriber : ITranscriber
-{
-    // TODO(win-speech): implement preflight; unavailable readiness and no-op preparation never upload audio.
-    /// <inheritdoc />
-    public TranscriptEngine Engine => TranscriptEngine.Elevenlabs;
-    /// <inheritdoc />
-    public TranscriberCapabilities Capabilities(string? model) => new(TimingSource.Native, true, true, 36_000, null, false);
-    /// <inheritdoc />
-    public Task<bool> SupportsAsync(LanguageChoice language, string? model, CancellationToken ct) => ServiceStub.Missing<bool>("win-speech", ct);
-    /// <inheritdoc />
-    public Task<Readiness> ReadinessAsync(TranscriptionPlan plan, CancellationToken ct) => Task.FromResult<Readiness>(new Readiness.Unavailable("win-speech"));
-    /// <inheritdoc />
-    public Task PrepareAsync(TranscriptionPlan plan, IProgress<double>? progress, CancellationToken ct) => Task.CompletedTask;
-    /// <inheritdoc />
-    public Task<RawTranscript> TranscribeAsync(TranscriptionRequest request, IProgress<TranscriptionProgress> progress, CancellationToken ct) => ServiceStub.Missing<RawTranscript>("win-speech", ct);
-}
-
 /// <summary>Import orchestration; architecture §7.2 and transcription §5.</summary>
 public interface ITranscriptionService
 {
-    /// <summary>Route, preflight, transcribe, post-process and cache without silent engine switching.</summary>
+    /// <summary>Transcribe with the caller's decoded envelope and stage-local progress; plan W5 and transcription §3.3.</summary>
+    Task<Transcript> TranscribeAsync(TranscriptionRequest request, AudioEnvelope? envelope, IProgress<TranscriptionProgress>? progress, CancellationToken ct);
+    /// <summary>Compatibility entry point that resolves the cached envelope for the caller.</summary>
     Task<Transcript> TranscribeAsync(TranscriptionRequest request, IProgress<TranscriptionProgress> progress, CancellationToken ct);
-}
-/// <summary>Transcription orchestration placeholder owned by win-speech.</summary>
-public sealed class TranscriptionService : ITranscriptionService
-{
-    /// <inheritdoc />
-    public Task<Transcript> TranscribeAsync(TranscriptionRequest request, IProgress<TranscriptionProgress> progress, CancellationToken ct) => ServiceStub.Missing<Transcript>("win-speech", ct);
 }

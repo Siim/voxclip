@@ -4,11 +4,13 @@ namespace VoxClip.Core.Domain.Transcript;
 
 /// <summary>Persisted transcript, matching project.schema.json exactly; architecture §3 and editing §2.3. See CONTRACTS.md for the transcription §3.1 conflict.</summary>
 public sealed record Transcript(int SchemaVersion, IReadOnlyList<TimedWord> Words, string? Language,
-    double? LanguageProbability, double DurationSeconds, TranscriptEngineInfo Engine, bool Verbatim,
-    bool Refined, int PipelineVersion, string RawKey, DateTimeOffset CreatedAt);
-
-/// <summary>Persisted engine identity, distinct from routing enum; project schema $defs/transcript.</summary>
-public sealed record TranscriptEngineInfo(string Id, string? ModelId, string? ModelSha256, string EngineVersion, string? Locale);
+    double? LanguageProbability, double DurationSeconds, EngineRef Engine, bool Verbatim,
+    bool Refined, int PipelineVersion, string RawKey, DateTimeOffset CreatedAt)
+{
+    /// <summary>Runtime-only indication that an earlier paid ElevenLabs result was reused; transcription §14.3.</summary>
+    [JsonIgnore]
+    public bool FromCache { get; init; }
+}
 
 /// <summary>Transcription router engine identifiers; transcription §3.1.</summary>
 [JsonConverter(typeof(JsonStringEnumConverter<TranscriptEngine>))]

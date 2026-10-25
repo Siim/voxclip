@@ -9,7 +9,11 @@ public sealed record TranscriptionModel(string Id, TranscriptEngine Engine, stri
     IReadOnlyList<string> Requires, string License, Uri LicenseUrl, string Attribution, bool Listed,
     System.Text.Json.JsonElement RawMetadata);
 /// <summary>Installed model and verification status; transcription §12.2.</summary>
-public sealed record InstalledModel(string Id, string Directory, bool Verified, DateTimeOffset? VerifiedAt);
+public sealed record InstalledModel(string Id, string Directory, bool Verified, DateTimeOffset? VerifiedAt)
+{
+    /// <summary>Installed, Update available, or Broken; transcription §12.2. Only Verified entries are ready.</summary>
+    public string Status { get; init; } = "Installed";
+}
 /// <summary>Model transfer/verification progress; transcription §12.3.</summary>
 public sealed record ModelDownloadProgress(string ModelId, string File, string Stage, long BytesReceived, long? TotalBytes);
 /// <summary>Bundled catalog reader; transcription §12.1. Catalog is never downloaded in v1.</summary>
@@ -25,31 +29,10 @@ public interface IModelDownloader
 {
     /// <summary>Install the model and required entries only after user confirmation.</summary>
     Task<InstalledModel> InstallAsync(string id, IProgress<ModelDownloadProgress>? progress, CancellationToken ct);
-    /// <summary>Verify every file before native loading.</summary>
+    /// <summary>Explicit full SHA-256 verification; use-time readiness checks marker identity and file sizes only.</summary>
     Task<bool> VerifyAsync(string id, IProgress<ModelDownloadProgress>? progress, CancellationToken ct);
     /// <summary>Remove only the explicitly selected installed model.</summary>
     Task RemoveAsync(string id, CancellationToken ct);
     /// <summary>List installed models, never treating them as disposable cache.</summary>
     Task<IReadOnlyList<InstalledModel>> ListInstalledAsync(CancellationToken ct);
-}
-/// <summary>Catalog reader placeholder owned by win-speech.</summary>
-public sealed class ModelCatalog : IModelCatalog
-{
-    /// <inheritdoc />
-    public Task<IReadOnlyList<TranscriptionModel>> GetModelsAsync(CancellationToken ct) => ServiceStub.Missing<IReadOnlyList<TranscriptionModel>>("win-speech", ct);
-    /// <inheritdoc />
-    public Task<TranscriptionModel?> GetModelAsync(string id, CancellationToken ct) => ServiceStub.Missing<TranscriptionModel?>("win-speech", ct);
-}
-/// <summary>Model manager placeholder owned by win-speech.</summary>
-public sealed class ModelStore : IModelDownloader
-{
-    // TODO(win-speech): enumerate verified installed models instead of the startup-safe empty list.
-    /// <inheritdoc />
-    public Task<InstalledModel> InstallAsync(string id, IProgress<ModelDownloadProgress>? progress, CancellationToken ct) => ServiceStub.Missing<InstalledModel>("win-speech", ct);
-    /// <inheritdoc />
-    public Task<bool> VerifyAsync(string id, IProgress<ModelDownloadProgress>? progress, CancellationToken ct) => ServiceStub.Missing<bool>("win-speech", ct);
-    /// <inheritdoc />
-    public Task RemoveAsync(string id, CancellationToken ct) => ServiceStub.Missing("win-speech", ct);
-    /// <inheritdoc />
-    public Task<IReadOnlyList<InstalledModel>> ListInstalledAsync(CancellationToken ct) => Task.FromResult<IReadOnlyList<InstalledModel>>([]);
 }

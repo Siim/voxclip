@@ -236,7 +236,7 @@ public sealed class EditingFixtureTests
     }
 
     internal static EditState State(IReadOnlyList<TimedWord> words, double duration = 10, bool refined = true)
-        => new(new TranscriptModel(1, words, "en", null, duration, new("elevenlabs", "scribe_v2", null, "fixture", null), true, refined, 1, new string('0', 64), DateTimeOffset.UnixEpoch),
+        => new(new TranscriptModel(1, words, "en", null, duration, new(TranscriptEngine.Elevenlabs, "scribe_v2", null, "fixture", null), true, refined, 1, new string('0', 64), DateTimeOffset.UnixEpoch),
             EditingAlgorithms.DetectPauses(words, refined ? 0.8 : 1), refined ? 0.8 : 1, 0.15, new HashSet<string>(StringComparer.Ordinal), new HashSet<string>(StringComparer.Ordinal), new Dictionary<string, string>(StringComparer.Ordinal), [], null);
 
     internal static TimedWord Word(string id, string text, double start, double end, WordKind kind = WordKind.Word) => new(id, text, kind, start, end, start, end, null, null, TimingSource.Native);

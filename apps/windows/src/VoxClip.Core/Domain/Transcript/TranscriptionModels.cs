@@ -1,8 +1,9 @@
+using System.Text.Json.Serialization;
 using VoxClip.Core.Domain.Shared;
 namespace VoxClip.Core.Domain.Transcript;
 
-/// <summary>Raw adapter engine identity; transcription §3.2.</summary>
-public sealed record EngineRef(TranscriptEngine Engine, string? Model, string? ModelSha256, string EngineVersion, string? Locale);
+/// <summary>Shared persisted and raw engine identity; transcription §3.1 and plan W1.</summary>
+public sealed record EngineRef(TranscriptEngine Id, string? ModelId, string? ModelSha256, string EngineVersion, string? Locale);
 /// <summary>One complete-UTF8 engine token; transcription §3.2. Input times precede presentation offset correction.</summary>
 public sealed record RawToken(string Text, bool JoinsPrevious, double? Start, double? End, double? Conf, string? Speaker, WordKind? Kind, int Group);
 /// <summary>Adapter result, cached before import post-processing; transcription §3.2.</summary>
@@ -11,22 +12,24 @@ public sealed record RawTranscript(EngineRef Engine, int AdapterVersion, Groupin
 /// <summary>Assembler output before cleanWords; transcription §3.2 and editing §5.0.</summary>
 public sealed record RawWord(string Text, double? Start, double? End, double? Conf, string? Speaker, WordKind Kind);
 /// <summary>Token grouping end rule; transcription §6.</summary>
+[JsonConverter(typeof(JsonStringEnumConverter<GroupingEnd>))]
 public enum GroupingEnd
 {
     /// <summary>Use the last token end.</summary>
-    LastToken,
+    [JsonStringEnumMemberName("lastToken")] LastToken,
     /// <summary>Use the next word start.</summary>
-    NextWordStart
+    [JsonStringEnumMemberName("nextWordStart")] NextWordStart
 }
 /// <summary>Token confidence aggregation; transcription §6.</summary>
+[JsonConverter(typeof(JsonStringEnumConverter<GroupingConfidence>))]
 public enum GroupingConfidence
 {
     /// <summary>Single token confidence.</summary>
-    Single,
+    [JsonStringEnumMemberName("single")] Single,
     /// <summary>Arithmetic mean.</summary>
-    Mean,
+    [JsonStringEnumMemberName("mean")] Mean,
     /// <summary>Minimum confidence.</summary>
-    Min
+    [JsonStringEnumMemberName("min")] Min
 }
 /// <summary>Per-adapter token assembly rules; transcription §6.</summary>
 public sealed record GroupingRule(GroupingEnd End, GroupingConfidence Conf, bool BracketEvents);
@@ -80,15 +83,3 @@ public abstract record Readiness
 }
 /// <summary>Decoded native-rate audio envelope; transcription §4 and editing §5.</summary>
 public sealed record AudioEnvelope(int SampleRate, double FrameSeconds, IReadOnlyList<float> Rms);
-/// <summary>Pure raw-token assembly; transcription §6.</summary>
-public static class WordAssembler
-{
-    /// <summary>Group tokens without changing their order.</summary>
-    public static IReadOnlyList<RawWord> Group(IReadOnlyList<RawToken> tokens, GroupingRule rule, double timelineStart) => throw new VoxClipException(VoxClipErrorCode.NotImplemented, "win-speech");
-}
-/// <summary>Pure import processing; transcription §7 and editing §5.</summary>
-public static class TranscriptPostProcessor
-{
-    /// <summary>Clean, tighten, refine, detect omitted speech and assign stable ids once.</summary>
-    public static Transcript Process(RawTranscript raw, double duration, AudioEnvelope? envelope, string rawKey, DateTimeOffset createdAt) => throw new VoxClipException(VoxClipErrorCode.NotImplemented, "win-speech");
-}
