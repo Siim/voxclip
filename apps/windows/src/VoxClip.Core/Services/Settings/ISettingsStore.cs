@@ -132,47 +132,55 @@ public sealed class SettingsStore : ISettingsStore
         {
             lock (sync) { if (current is not null) return Resolve(current); }
             var settings = new AppSettings("voxclip-settings/1");
-            if (File.Exists(path))
+            // Existence is only a hint for an exhausted read: ReplaceFile can briefly hide the name.
+            var existed = File.Exists(path);
+            var json = "";
+            var missing = false;
+            try
             {
-                var json = "";
                 try
                 {
-                    try { json = await fileOperations.ReadAllTextAsync(path, new UTF8Encoding(false, true), ct).ConfigureAwait(false); }
-                    catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-                    {
-                        lock (sync) lastLoadError = "Could not read settings.";
-                        onWarning?.Invoke("Could not read settings.");
-                        throw new VoxClipException(VoxClipErrorCode.ProjectUnreadable, LastLoadError!, exception);
-                    }
+                    json = await AtomicFile.ReadAllTextAsync(path, new UTF8Encoding(false, true), ct, fileOperations).ConfigureAwait(false);
+                }
+                catch (FileNotFoundException) when (!existed) { missing = true; }
+                catch (DirectoryNotFoundException) when (!existed) { missing = true; }
+                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+                {
+                    lock (sync) lastLoadError = "Could not read settings.";
+                    onWarning?.Invoke("Could not read settings.");
+                    throw new VoxClipException(VoxClipErrorCode.ProjectUnreadable, LastLoadError!, exception);
+                }
+                if (!missing)
+                {
                     SettingsValidation.ValidateJson(json);
                     settings = JsonSerializer.Deserialize(json, SettingsJsonContext.Default.AppSettings) ?? throw new JsonException("Missing settings.");
                     SettingsValidation.Validate(settings);
                 }
-                catch (Exception damaged) when (damaged is JsonException or DecoderFallbackException)
+            }
+            catch (Exception damaged) when (damaged is JsonException or DecoderFallbackException)
+            {
+                settings = Recover(json);
+                try
                 {
-                    settings = Recover(json);
-                    try
-                    {
-                        File.Copy(path, DamagedPath());
-                    }
-                    catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-                    {
-                        throw new VoxClipException(VoxClipErrorCode.ProjectUnreadable, "Could not preserve damaged settings.", exception);
-                    }
-                    lock (sync)
-                    {
-                        current = settings;
-                        pending = Serialize(settings);
-                        revision++;
-                        lastLoadError = "Damaged settings were set aside; valid preferences were recovered.";
-                    }
-                    onWarning?.Invoke("Damaged settings were set aside; valid preferences were recovered.");
-                    try { await WritePendingUnderGateAsync(ct).ConfigureAwait(false); }
-                    catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-                    {
-                        lock (sync) lastLoadError = "Recovered settings could not be saved; valid preferences remain pending.";
-                        throw new VoxClipException(VoxClipErrorCode.ProjectUnreadable, LastLoadError!, exception);
-                    }
+                    File.Copy(path, DamagedPath());
+                }
+                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+                {
+                    throw new VoxClipException(VoxClipErrorCode.ProjectUnreadable, "Could not preserve damaged settings.", exception);
+                }
+                lock (sync)
+                {
+                    current = settings;
+                    pending = Serialize(settings);
+                    revision++;
+                    lastLoadError = "Damaged settings were set aside; valid preferences were recovered.";
+                }
+                onWarning?.Invoke("Damaged settings were set aside; valid preferences were recovered.");
+                try { await WritePendingUnderGateAsync(ct).ConfigureAwait(false); }
+                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+                {
+                    lock (sync) lastLoadError = "Recovered settings could not be saved; valid preferences remain pending.";
+                    throw new VoxClipException(VoxClipErrorCode.ProjectUnreadable, LastLoadError!, exception);
                 }
             }
             SettingsValidation.Validate(settings);

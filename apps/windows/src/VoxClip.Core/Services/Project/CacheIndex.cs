@@ -127,7 +127,7 @@ public sealed class CacheIndex
     private static bool ValidKey(string key) => key.Length == 64 && key.All(character => character is >= '0' and <= '9' or >= 'a' and <= 'f');
 }
 
-[JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase, WriteIndented = true,
+[JsonSourceGenerationOptions(NewLine = JsonFormatting.NewLine, PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase, WriteIndented = true,
     RespectRequiredConstructorParameters = true, Converters = new[] { typeof(UtcTimestampConverter) })]
 [JsonSerializable(typeof(CacheEntry))]
 internal partial class CacheJsonContext : JsonSerializerContext;

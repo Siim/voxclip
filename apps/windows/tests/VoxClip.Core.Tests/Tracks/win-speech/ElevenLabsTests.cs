@@ -40,8 +40,7 @@ public sealed class ElevenLabsTests
             Assert.DoesNotContain("file_format", names);
             return StubHttp.Json(Response);
         });
-        using var http = new HttpClient(handler);
-        var engine = new ElevenLabsTranscriber(new TestKeys(), http, baseUri: null);
+        var engine = ElevenLabsTranscriber.ForTesting(new TestKeys(), handler, region: ElevenLabsRegion.Default);
         var raw = await engine.TranscribeAsync(files.Request(new(diarize, diarize ? 2 : null, ["VoxClip", "TalTech"]), new LanguageChoice.Forced("est")),
             new CaptureProgress<TranscriptionProgress>(), TestContext.Current.CancellationToken);
         Assert.Equal("et", raw.Language);
@@ -70,8 +69,7 @@ public sealed class ElevenLabsTests
     {
         using var files = new SpeechFiles();
         using var handler = new StubHttp((_, _) => Task.FromResult(StubHttp.Json(body, (HttpStatusCode)status)));
-        using var http = new HttpClient(handler);
-        var error = await Assert.ThrowsAsync<VoxClipException>(() => new ElevenLabsTranscriber(new TestKeys(), http, baseUri: null)
+        var error = await Assert.ThrowsAsync<VoxClipException>(() => ElevenLabsTranscriber.ForTesting(new TestKeys(), handler, region: ElevenLabsRegion.Default)
             .TranscribeAsync(files.Request(), new CaptureProgress<TranscriptionProgress>(), TestContext.Current.CancellationToken));
         Assert.Equal(expected, error.Code);
         Assert.Equal(1, handler.Calls);
@@ -91,8 +89,7 @@ public sealed class ElevenLabsTests
             response.Headers.RetryAfter = new RetryConditionHeaderValue(TimeSpan.Zero);
             return Task.FromResult(response);
         });
-        using var http = new HttpClient(handler);
-        var error = await Assert.ThrowsAsync<VoxClipException>(() => new ElevenLabsTranscriber(new TestKeys(), http, baseUri: null)
+        var error = await Assert.ThrowsAsync<VoxClipException>(() => ElevenLabsTranscriber.ForTesting(new TestKeys(), handler, region: ElevenLabsRegion.Default)
             .TranscribeAsync(files.Request(), new CaptureProgress<TranscriptionProgress>(), TestContext.Current.CancellationToken));
         Assert.Equal(expected, error.Code);
         Assert.Equal(3, handler.Calls);
@@ -117,8 +114,7 @@ public sealed class ElevenLabsTests
     {
         using var files = new SpeechFiles();
         using var handler = new StubHttp((_, _) => Task.FromResult(StubHttp.Json(response)));
-        using var http = new HttpClient(handler);
-        var error = await Assert.ThrowsAsync<VoxClipException>(() => new ElevenLabsTranscriber(new TestKeys(), http, baseUri: null)
+        var error = await Assert.ThrowsAsync<VoxClipException>(() => ElevenLabsTranscriber.ForTesting(new TestKeys(), handler, region: ElevenLabsRegion.Default)
             .TranscribeAsync(files.Request(), new CaptureProgress<TranscriptionProgress>(), TestContext.Current.CancellationToken));
         Assert.Equal(expected, error.Code);
         Assert.Equal("ElevenLabs answered 200: unexpected response shape", error.Message);
@@ -137,8 +133,7 @@ public sealed class ElevenLabsTests
             await Task.Delay(150, ct);
             return StubHttp.Json(Response);
         });
-        using var http = new HttpClient(handler);
-        await new ElevenLabsTranscriber(new TestKeys(), http, baseUri: null).TranscribeAsync(files.Request(), progress, TestContext.Current.CancellationToken);
+        await ElevenLabsTranscriber.ForTesting(new TestKeys(), handler, region: ElevenLabsRegion.Default).TranscribeAsync(files.Request(), progress, TestContext.Current.CancellationToken);
         Assert.Contains(progress.Values, value => value.Stage == TranscriptionStage.Uploading && value.Fraction == 0);
     }
 
@@ -147,9 +142,8 @@ public sealed class ElevenLabsTests
     {
         using var files = new SpeechFiles();
         using var handler = new StubHttp((_, _) => throw new InvalidOperationException("Must not upload."));
-        using var http = new HttpClient(handler);
         var missing = new VoxClip.Core.Services.Models.ModelCatalog(files.Root);
-        var engine = new ElevenLabsTranscriber(new TestKeys(), http, baseUri: null, modelCatalog: missing);
+        var engine = ElevenLabsTranscriber.ForTesting(new TestKeys(), handler, region: ElevenLabsRegion.Default, modelCatalog: missing);
         var error = await Assert.ThrowsAsync<VoxClipException>(() => new TranscriptionService([engine], missing, files.Root)
             .TranscribeAsync(files.Request(), new CaptureProgress<TranscriptionProgress>(), TestContext.Current.CancellationToken));
         Assert.Equal(VoxClipErrorCode.SharedResourcesMissing, error.Code);
@@ -173,9 +167,8 @@ public sealed class ElevenLabsTests
     {
         using var files = new SpeechFiles();
         using var handler = new StubHttp((_, _) => throw new InvalidOperationException("Must not upload."));
-        using var http = new HttpClient(handler);
         var request = files.Request();
-        var error = await Assert.ThrowsAsync<VoxClipException>(() => new ElevenLabsTranscriber(new TestKeys(), http, baseUri: null)
+        var error = await Assert.ThrowsAsync<VoxClipException>(() => ElevenLabsTranscriber.ForTesting(new TestKeys(), handler, region: ElevenLabsRegion.Default)
             .TranscribeAsync(request with { Audio = request.Audio with { DurationSeconds = duration } }, new CaptureProgress<TranscriptionProgress>(), TestContext.Current.CancellationToken));
         Assert.Equal(expected, error.Code);
         if (durationText is not null) Assert.Equal($"ElevenLabs accepts up to 10 hours. This take is {durationText}.", error.Message);
@@ -187,8 +180,7 @@ public sealed class ElevenLabsTests
     {
         using var files = new SpeechFiles();
         using var handler = new StubHttp((_, _) => throw new InvalidOperationException("Must not upload."));
-        using var http = new HttpClient(handler);
-        var engine = new ElevenLabsTranscriber(new TestKeys(null), http, baseUri: null);
+        var engine = ElevenLabsTranscriber.ForTesting(new TestKeys(null), handler, region: ElevenLabsRegion.Default);
         Assert.IsType<Readiness.NeedsKey>(await engine.ReadinessAsync(files.Request().Plan, TestContext.Current.CancellationToken));
         var error = await Assert.ThrowsAsync<VoxClipException>(() => engine.TranscribeAsync(files.Request(), new CaptureProgress<TranscriptionProgress>(), TestContext.Current.CancellationToken));
         Assert.Equal(VoxClipErrorCode.KeyMissing, error.Code);
@@ -203,8 +195,7 @@ public sealed class ElevenLabsTests
     {
         using var files = new SpeechFiles();
         using var handler = new StubHttp((_, _) => Task.FromResult(StubHttp.Json("{\"detail\":\"synthetic-test-credential \"}", HttpStatusCode.BadRequest)));
-        using var http = new HttpClient(handler);
-        var error = await Assert.ThrowsAsync<VoxClipException>(() => new ElevenLabsTranscriber(new TestKeys(), http, baseUri: null)
+        var error = await Assert.ThrowsAsync<VoxClipException>(() => ElevenLabsTranscriber.ForTesting(new TestKeys(), handler, region: ElevenLabsRegion.Default)
             .TranscribeAsync(files.Request(), new CaptureProgress<TranscriptionProgress>(), TestContext.Current.CancellationToken));
         Assert.DoesNotContain("synthetic-test-credential", error.Message);
         Assert.Contains("[REDACTED]", error.Message);
@@ -216,8 +207,7 @@ public sealed class ElevenLabsTests
         using var files = new SpeechFiles();
         using var cancel = new CancellationTokenSource();
         using var handler = new StubHttp(async (_, ct) => { cancel.Cancel(); await Task.Delay(Timeout.InfiniteTimeSpan, ct); return StubHttp.Json(Response); });
-        using var http = new HttpClient(handler);
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => new ElevenLabsTranscriber(new TestKeys(), http, baseUri: null)
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => ElevenLabsTranscriber.ForTesting(new TestKeys(), handler, region: ElevenLabsRegion.Default)
             .TranscribeAsync(files.Request(), new CaptureProgress<TranscriptionProgress>(), cancel.Token));
         Assert.Equal(1, handler.Calls);
     }

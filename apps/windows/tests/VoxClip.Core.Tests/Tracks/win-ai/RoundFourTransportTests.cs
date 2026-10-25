@@ -1,12 +1,12 @@
 using System.Net;
 using System.Net.Security;
 using System.Net.Sockets;
-using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Services.LLM;
 using VoxClip.Core.Services.Process;
+using VoxClip.Tests.Support;
 using Xunit;
 using static VoxClip.Core.Tests.Tracks.WinAi.AiTestSupport;
 
@@ -27,9 +27,7 @@ public sealed class RoundFourTransportTests
         {
             using var deadline = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
             deadline.CancelAfter(TimeSpan.FromSeconds(5));
-            using var privateKey = RSA.Create(2048);
-            var certificateRequest = new CertificateRequest("CN=voxclip-loopback", privateKey, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
-            using var certificate = certificateRequest.CreateSelfSigned(DateTimeOffset.UtcNow.AddMinutes(-1), DateTimeOffset.UtcNow.AddHours(1));
+            using var certificate = LoopbackTls.CreateCertificate();
             using var first = new TcpListener(IPAddress.Loopback, 0);
             using var collector = new TcpListener(IPAddress.Loopback, 0);
             first.Start();

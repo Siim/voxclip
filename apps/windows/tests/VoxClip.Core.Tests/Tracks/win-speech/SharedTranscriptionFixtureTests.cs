@@ -33,8 +33,7 @@ public sealed class SharedTranscriptionFixtureTests
         using var body = JsonDocument.Parse(response);
         using var files = new SpeechFiles();
         using var handler = new StubHttp((_, _) => Task.FromResult(StubHttp.Json(response)));
-        using var http = new HttpClient(handler);
-        using var engine = new ElevenLabsTranscriber(new TestKeys(), http, baseUri: null);
+        using var engine = ElevenLabsTranscriber.ForTesting(new TestKeys(), handler, region: ElevenLabsRegion.Default);
         var diarize = expected.GetProperty("diarize").GetBoolean();
         var raw = await engine.MapResponseAsync(body.RootElement, diarize, new LanguageChoice.Auto(), ct);
         var tokens = expected.GetProperty("rawTokens").EnumerateArray().Select(token => new RawToken(

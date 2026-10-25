@@ -23,11 +23,10 @@ public sealed class PaidCacheSafetyTests
             protection = new(directory);
             return StubHttp.Json(ElevenLabsTests.Response);
         });
-        using var http = new HttpClient(handler);
         await using var log = new CacheLog();
         try
         {
-            var fresh = await new TranscriptionService([new ElevenLabsTranscriber(new TestKeys(), http, baseUri: null, logger: log)], dataRoot: files.Root)
+            var fresh = await new TranscriptionService([ElevenLabsTranscriber.ForTesting(new TestKeys(), handler, region: ElevenLabsRegion.Default, logger: log)], dataRoot: files.Root)
                 .TranscribeAsync(request, null, null, TestContext.Current.CancellationToken);
             Assert.False(fresh.FromCache);
             Assert.Contains(fresh.Words, word => word.Text == "Tere,");
@@ -41,13 +40,13 @@ public sealed class PaidCacheSafetyTests
             });
         }
         finally { protection?.Dispose(); }
-        var cached = await new TranscriptionService([new ElevenLabsTranscriber(new TestKeys(), http, baseUri: null)], dataRoot: files.Root)
+        var cached = await new TranscriptionService([ElevenLabsTranscriber.ForTesting(new TestKeys(), handler, region: ElevenLabsRegion.Default)], dataRoot: files.Root)
             .TranscribeAsync(request, null, null, TestContext.Current.CancellationToken);
         Assert.True(cached.FromCache);
         Assert.Contains(cached.Words, word => word.Text == "Tere,");
         Assert.Equal(1, handler.Calls);
         Assert.Single(Directory.EnumerateFiles(directory, "*.json"));
-        await new TranscriptionService([new ElevenLabsTranscriber(new TestKeys(), http, baseUri: null)], dataRoot: files.Root)
+        await new TranscriptionService([ElevenLabsTranscriber.ForTesting(new TestKeys(), handler, region: ElevenLabsRegion.Default)], dataRoot: files.Root)
             .TranscribeAsync(request, null, null, TestContext.Current.CancellationToken);
         Assert.Equal(1, handler.Calls);
     }
@@ -61,9 +60,8 @@ public sealed class PaidCacheSafetyTests
         Directory.CreateDirectory(directory);
         using var protection = new ReadOnlyDirectory(directory);
         using var handler = new StubHttp((_, _) => throw new InvalidOperationException("Must not upload."));
-        using var http = new HttpClient(handler);
         var error = await Assert.ThrowsAsync<VoxClipException>(() =>
-            new TranscriptionService([new ElevenLabsTranscriber(new TestKeys(), http, baseUri: null)], dataRoot: files.Root)
+            new TranscriptionService([ElevenLabsTranscriber.ForTesting(new TestKeys(), handler, region: ElevenLabsRegion.Default)], dataRoot: files.Root)
                 .TranscribeAsync(request, null, null, TestContext.Current.CancellationToken));
         Assert.Equal(VoxClipErrorCode.TranscriptionFailed, error.Code);
         Assert.Equal("Transcription stopped: the transcript cache is unavailable. Your video is still here.", error.Message);
@@ -77,9 +75,8 @@ public sealed class PaidCacheSafetyTests
     {
         using var files = new SpeechFiles();
         using var handler = new StubHttp((_, _) => Task.FromResult(StubHttp.Json(ElevenLabsTests.Response)));
-        using var http = new HttpClient(handler);
         var writes = 0;
-        var raw = await new ElevenLabsTranscriber(new TestKeys(), http, baseUri: null).TranscribeAndCacheAsync(files.Request(),
+        var raw = await ElevenLabsTranscriber.ForTesting(new TestKeys(), handler, region: ElevenLabsRegion.Default).TranscribeAndCacheAsync(files.Request(),
             new CaptureProgress<TranscriptionProgress>(), _ =>
             {
                 writes++;

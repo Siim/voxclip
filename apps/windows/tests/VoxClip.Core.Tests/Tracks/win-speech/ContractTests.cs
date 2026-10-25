@@ -25,7 +25,9 @@ public sealed class ContractTests
     public void CompositionSignaturesMatchW5()
     {
         Assert.NotNull(typeof(TranscriptionService).GetConstructor([typeof(IReadOnlyList<ITranscriber>), typeof(DataLocations)]));
-        Assert.NotNull(typeof(ElevenLabsTranscriber).GetConstructor([typeof(IKeyProvider), typeof(HttpClient)]));
+        Assert.NotNull(typeof(ElevenLabsTranscriber).GetConstructor([typeof(IKeyProvider), typeof(ElevenLabsRegion), typeof(ModelCatalog), typeof(Core.Services.Logging.ILog)]));
+        Assert.DoesNotContain(typeof(ElevenLabsTranscriber).GetConstructors().SelectMany(constructor => constructor.GetParameters()),
+            parameter => parameter.ParameterType == typeof(HttpClient));
         Assert.NotNull(typeof(ModelStore).GetConstructor([typeof(IModelCatalog), typeof(DataLocations), typeof(HttpClient)]));
         Assert.NotNull(typeof(ITranscriptionService).GetMethod(nameof(ITranscriptionService.TranscribeAsync),
             [typeof(TranscriptionRequest), typeof(AudioEnvelope), typeof(IProgress<TranscriptionProgress>), typeof(CancellationToken)]));

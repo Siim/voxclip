@@ -159,6 +159,7 @@ public sealed class RoutingAndCacheTests
         Assert.Equal(transcript.RawKey, second.RawKey);
         Assert.Equal(0.6, Assert.Single(second.Words).Start);
         var cache = Assert.Single(Directory.EnumerateFiles(Path.Combine(files.Root, "Cache"), "*.json", SearchOption.AllDirectories));
+        await VoxClip.Core.Tests.Tracks.WinCoreNative.TextOutputTests.AssertFileAsync(cache);
         using var raw = JsonDocument.Parse(await File.ReadAllTextAsync(cache, TestContext.Current.CancellationToken));
         Assert.Equal(0.1, raw.RootElement.GetProperty("raw").GetProperty("tokens")[0].GetProperty("start").GetDouble());
         Assert.Equal(JsonValueKind.Null, raw.RootElement.GetProperty("providerResponse").ValueKind);
@@ -172,8 +173,7 @@ public sealed class RoutingAndCacheTests
     {
         using var files = new SpeechFiles();
         using var handler = new StubHttp((_, _) => Task.FromResult(StubHttp.Json(ElevenLabsTests.Response)));
-        using var http = new HttpClient(handler);
-        var engine = new ElevenLabsTranscriber(new TestKeys(), http, baseUri: null);
+        var engine = ElevenLabsTranscriber.ForTesting(new TestKeys(), handler, region: ElevenLabsRegion.Default);
         var service = new TranscriptionService([engine], dataRoot: files.Root);
         var fresh = await service.TranscribeAsync(files.Request(), new CaptureProgress<TranscriptionProgress>(), TestContext.Current.CancellationToken);
         var cached = await service.TranscribeAsync(files.Request(), new CaptureProgress<TranscriptionProgress>(), TestContext.Current.CancellationToken);
@@ -226,8 +226,7 @@ public sealed class RoutingAndCacheTests
             Assert.Equal(new(TranscriptionStage.Transcribing, null), captured.Values[^1]);
             return StubHttp.Json(ElevenLabsTests.Response);
         });
-        using var http = new HttpClient(handler);
-        var service = new TranscriptionService([new ElevenLabsTranscriber(new TestKeys(), http, baseUri: null)], dataRoot: files.Root);
+        var service = new TranscriptionService([ElevenLabsTranscriber.ForTesting(new TestKeys(), handler, region: ElevenLabsRegion.Default)], dataRoot: files.Root);
         await service.TranscribeAsync(files.Request(), captured, TestContext.Current.CancellationToken);
         Assert.Contains(new(TranscriptionStage.Uploading, 0), captured.Values);
         Assert.Contains(new(TranscriptionStage.Aligning, 0), captured.Values);
@@ -276,8 +275,7 @@ public sealed class RoutingAndCacheTests
     {
         using var files = new SpeechFiles();
         using var handler = new StubHttp((_, _) => Task.FromResult(StubHttp.Json(response)));
-        using var http = new HttpClient(handler);
-        var engine = new ElevenLabsTranscriber(new TestKeys(), http, baseUri: null);
+        var engine = ElevenLabsTranscriber.ForTesting(new TestKeys(), handler, region: ElevenLabsRegion.Default);
         for (var attempt = 0; attempt < 2; attempt++)
         {
             var service = new TranscriptionService([engine], dataRoot: files.Root);

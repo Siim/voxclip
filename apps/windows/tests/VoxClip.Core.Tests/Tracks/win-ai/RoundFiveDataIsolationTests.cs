@@ -60,6 +60,7 @@ public sealed class RoundFiveDataIsolationTests(AiDataIsolation isolation)
         Assert.IsType<ConnectorStatus.Ready>(await connector.GetStatusAsync(TestContext.Current.CancellationToken));
         Assert.Single(await connector.GetModelsAsync(true, TestContext.Current.CancellationToken));
         Assert.True(File.Exists(isolation.CacheFile));
+        await VoxClip.Core.Tests.Tracks.WinCoreNative.TextOutputTests.AssertFileAsync(isolation.CacheFile);
         isolation.AssertRealCacheUnchanged();
         Assert.Empty(processes.Requests);
         Assert.Empty(keys.Accounts);

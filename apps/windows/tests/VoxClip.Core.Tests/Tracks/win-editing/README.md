@@ -1,9 +1,8 @@
 # Windows editing verification
 
 Run from `apps/windows` with the .NET 10 SDK and the repository shared assets.
-Python 3 with `jsonschema` and `referencing` is a required test prerequisite,
-not a Core dependency. Install those existing schema-tool prerequisites into
-your test environment before running the suite.
+Python 3 with `jsonschema` and `referencing` enables the schema test and is
+not a Core dependency. CI requires it with `VOXCLIP_REQUIRE_SCHEMA_PYTHON=1`.
 
 ```sh
 VOXCLIP_SHARED_DIR=/path/to/voxclip/shared timeout 1200 dotnet test --project tests/VoxClip.Core.Tests -c Release
@@ -11,12 +10,14 @@ VOXCLIP_SHARED_DIR=/path/to/voxclip/shared timeout 1200 dotnet test --project te
 timeout 1200 dotnet build VoxClip.CrossPlatform.slnf -c Release
 ```
 
-The default suite always runs the real Draft 2020-12 writer validation, with
-no extra filter or opt-in. It uses `python3` on macOS and `python` on Windows.
-Set `VOXCLIP_SCHEMA_PYTHON` only to select another prepared interpreter. A
-missing interpreter or missing validator dependency fails the test; it never
-silently skips schema conformance. Validator subprocesses have a 60-second
-deadline and are terminated on cancellation.
+The default suite runs real Draft 2020-12 writer validation when a prepared
+interpreter is available. `VOXCLIP_SCHEMA_PYTHON` selects an explicit interpreter;
+otherwise discovery tries `python3`, `py -3` (Windows only), then `python`.
+WindowsApps Store aliases and interpreters missing `jsonschema` or `referencing`
+are ignored. Without a usable interpreter, the test explicitly skips locally
+or fails when `VOXCLIP_REQUIRE_SCHEMA_PYTHON=1`. Both macOS and Windows Core CI
+jobs must set that flag. Interpreter probes have 10-second deadlines; validator
+subprocesses have a 60-second deadline. All are terminated on cancellation.
 
 All 85 editing fixtures are discovered: 84 normative vectors run and the
 informative caption-transform vector is explicitly skipped, per editing

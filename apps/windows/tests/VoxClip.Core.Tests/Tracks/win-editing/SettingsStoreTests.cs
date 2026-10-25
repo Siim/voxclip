@@ -1,8 +1,8 @@
-using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using VoxClip.Core.Domain.Shared;
+using VoxClip.Core.Services.Project;
 using VoxClip.Core.Services.Settings;
 using VoxClip.Tests.Support;
 using Xunit;
@@ -11,6 +11,82 @@ namespace VoxClip.Core.Tests.Tracks.WinEditing;
 
 public sealed class SettingsStoreTests
 {
+    [Fact]
+    public async Task FirstLoadReadsPreferencesThatReappearAfterAReplacementNameGap()
+    {
+        using var storage = new TestStorage();
+        var path = storage.PathFor("settings.json");
+        var operations = new MissingReadTransition { CreateOnFirstDelay = "{\"schema\":\"voxclip-settings/1\",\"general.appearance\":\"dark\",\"org.example.preference\":true}" };
+        var store = new SettingsStore(path, null, operations);
+
+        var loaded = await store.LoadAsync(TestContext.Current.CancellationToken);
+        Assert.Equal("dark", loaded.Values["general.appearance"].GetString());
+        Assert.True(loaded.Values["org.example.preference"].GetBoolean());
+        Assert.Equal(2, operations.ReadAttempts);
+        Assert.Equal([25], operations.Delays);
+        Assert.Null(store.LastLoadError);
+
+        loaded.Values["export.srt"] = Element("true");
+        await store.SaveAsync(loaded, TestContext.Current.CancellationToken);
+        await store.FlushAsync(TestContext.Current.CancellationToken);
+        var persisted = await new SettingsStore(path).LoadAsync(TestContext.Current.CancellationToken);
+        Assert.Equal("dark", persisted.Values["general.appearance"].GetString());
+        Assert.True(persisted.Values["org.example.preference"].GetBoolean());
+        Assert.True(persisted.Values["export.srt"].GetBoolean());
+    }
+
+    [Fact]
+    public async Task FirstLaunchMissingSettingsReturnDefaultsAfterBoundedRetry()
+    {
+        using var storage = new TestStorage();
+        var path = storage.PathFor("settings.json");
+        var operations = new MissingReadTransition();
+        var store = new SettingsStore(path, null, operations);
+
+        var loaded = await store.LoadAsync(TestContext.Current.CancellationToken);
+        Assert.Equal("system", loaded.Values["general.appearance"].GetString());
+        Assert.Equal(6, operations.ReadAttempts);
+        Assert.Equal([25, 50, 100, 200, 400], operations.Delays);
+        Assert.Null(store.LastLoadError);
+        Assert.Empty(Directory.EnumerateFileSystemEntries(storage.Root));
+    }
+
+    [Fact]
+    public async Task ExhaustedNameGapForExistingSettingsIsAnExplicitReadError()
+    {
+        using var storage = new TestStorage();
+        var path = storage.PathFor("settings.json");
+        var original = "{\"schema\":\"voxclip-settings/1\",\"general.appearance\":\"dark\"}";
+        await File.WriteAllTextAsync(path, original, TestContext.Current.CancellationToken);
+        var operations = new MissingReadTransition { FailEveryReadAsMissing = true };
+        var store = new SettingsStore(path, null, operations);
+
+        var error = await Assert.ThrowsAsync<VoxClipException>(() => store.LoadAsync(TestContext.Current.CancellationToken));
+        Assert.Equal(VoxClipErrorCode.ProjectUnreadable, error.Code);
+        Assert.IsType<FileNotFoundException>(error.InnerException);
+        Assert.Equal("Could not read settings.", store.LastLoadError);
+        Assert.Equal(6, operations.ReadAttempts);
+        Assert.Equal([25, 50, 100, 200, 400], operations.Delays);
+        Assert.Equal(original, await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task CancelledFirstLoadDoesNotCacheDefaults()
+    {
+        using var storage = new TestStorage();
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        var path = storage.PathFor("settings.json");
+        var operations = new MissingReadTransition { CancelOnFirstDelay = cancellation };
+        var store = new SettingsStore(path, null, operations);
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => store.LoadAsync(cancellation.Token));
+        Assert.Equal(1, operations.ReadAttempts);
+        Assert.Equal([25], operations.Delays);
+        await File.WriteAllTextAsync(path, "{\"schema\":\"voxclip-settings/1\",\"general.appearance\":\"dark\"}", TestContext.Current.CancellationToken);
+        Assert.Equal("dark", (await store.LoadAsync(TestContext.Current.CancellationToken)).Values["general.appearance"].GetString());
+        Assert.Null(store.LastLoadError);
+    }
+
     [Theory]
     [InlineData(false, false)]
     [InlineData(false, true)]
@@ -116,8 +192,8 @@ public sealed class SettingsStoreTests
         {
             while (!done.IsCancellationRequested)
             {
-                await using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
-                using var document = await JsonDocument.ParseAsync(stream, cancellationToken: TestContext.Current.CancellationToken);
+                using var document = JsonDocument.Parse(await Core.Services.Project.AtomicFile.ReadAllTextAsync(path,
+                    new UTF8Encoding(false, true), TestContext.Current.CancellationToken));
                 Assert.Equal("voxclip-settings/1", document.RootElement.GetProperty("schema").GetString());
                 await Task.Yield();
             }
@@ -144,16 +220,26 @@ public sealed class SettingsStoreTests
     {
         using var storage = new TestStorage();
         var path = storage.PathFor("settings.json");
-        Directory.CreateDirectory(path);
-        var store = new SettingsStore(path);
+        var store = new SettingsStore(path, null, new FailedFirstWrite());
         await store.SaveAsync(new AppSettings("voxclip-settings/1"), TestContext.Current.CancellationToken);
         await Assert.ThrowsAnyAsync<IOException>(() => store.FlushAsync(TestContext.Current.CancellationToken));
         Assert.NotNull(store.LastWriteError);
-        Directory.Delete(path);
         await store.FlushAsync(TestContext.Current.CancellationToken);
         Assert.Null(store.LastWriteError);
         Assert.Equal("voxclip-settings/1", JsonNode.Parse(await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken))!["schema"]!.GetValue<string>());
         Assert.Empty(Directory.GetFiles(storage.Root, "*.tmp"));
+    }
+
+    [Fact]
+    public async Task DirectoryAtSettingsPathIsAnExplicitReadError()
+    {
+        using var storage = new TestStorage();
+        var path = storage.PathFor("settings.json");
+        Directory.CreateDirectory(path);
+        var store = new SettingsStore(path);
+        var error = await Assert.ThrowsAsync<VoxClipException>(() => store.LoadAsync(TestContext.Current.CancellationToken));
+        Assert.Equal(VoxClipErrorCode.ProjectUnreadable, error.Code);
+        Assert.Equal("Could not read settings.", store.LastLoadError);
     }
 
     [Theory]
@@ -230,23 +316,7 @@ public sealed class SettingsStoreTests
             await new Core.Services.Project.ProjectStore().SaveAsync(Core.Domain.Shared.ProjectSerialization.Deserialize(await File.ReadAllTextAsync(TestStorage.ProjectPath(name), TestContext.Current.CancellationToken)), path, TestContext.Current.CancellationToken);
             files.Add(path);
         }
-        var python = Environment.GetEnvironmentVariable("VOXCLIP_SCHEMA_PYTHON") ?? (OperatingSystem.IsWindows() ? "python" : "python3");
-        var start = new ProcessStartInfo(python) { RedirectStandardOutput = true, RedirectStandardError = true };
-        start.ArgumentList.Add("-c");
-        start.ArgumentList.Add("import runpy, sys\ntry:\n import jsonschema, referencing\nexcept ModuleNotFoundError as error:\n sys.exit('Missing Python module: ' + error.name + '. Install jsonschema>=4.18,<5 or select an interpreter with VOXCLIP_SCHEMA_PYTHON.')\nsys.argv = sys.argv[1:]\nrunpy.run_path(sys.argv[0], run_name='__main__')");
-        start.ArgumentList.Add(Path.Combine(Path.GetDirectoryName(FixtureLoader.SharedRoot)!, "tools", "schemas", "validate.py"));
-        foreach (var path in files) start.ArgumentList.Add(path);
-        using var process = Process.Start(start)!;
-        var output = process.StandardOutput.ReadToEndAsync(TestContext.Current.CancellationToken);
-        var error = process.StandardError.ReadToEndAsync(TestContext.Current.CancellationToken);
-        try
-        {
-            using var deadline = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
-            deadline.CancelAfter(TimeSpan.FromSeconds(60));
-            await process.WaitForExitAsync(deadline.Token);
-            Assert.True(process.ExitCode == 0, "Schema validation failed.\n" + await output + await error);
-        }
-        finally { if (!process.HasExited) { process.Kill(true); await process.WaitForExitAsync(CancellationToken.None); } }
+        await WinCoreNative.SchemaPython.ValidateAsync(files, TestContext.Current.CancellationToken);
     }
 
     [Theory]
@@ -374,6 +444,33 @@ public sealed class SettingsStoreTests
         {
             if (Unauthorized) throw new UnauthorizedAccessException(path);
             throw new IOException(path);
+        }
+    }
+
+    private sealed class MissingReadTransition : AtomicFileOperations
+    {
+        private string? readPath;
+        internal string? CreateOnFirstDelay { get; init; }
+        internal CancellationTokenSource? CancelOnFirstDelay { get; init; }
+        internal bool FailEveryReadAsMissing { get; init; }
+        internal int ReadAttempts { get; private set; }
+        internal List<int> Delays { get; } = [];
+
+        internal override Task<string> ReadAllTextAsync(string path, Encoding encoding, CancellationToken ct)
+        {
+            ReadAttempts++;
+            readPath = path;
+            if (FailEveryReadAsMissing) return Task.FromException<string>(new FileNotFoundException("Injected replacement name gap.", path));
+            return base.ReadAllTextAsync(path, encoding, ct);
+        }
+
+        internal override async Task DelayAsync(int milliseconds, CancellationToken ct)
+        {
+            Delays.Add(milliseconds);
+            if (Delays.Count == 1 && CreateOnFirstDelay is not null)
+                await File.WriteAllTextAsync(readPath!, CreateOnFirstDelay, ct);
+            if (Delays.Count == 1) CancelOnFirstDelay?.Cancel();
+            ct.ThrowIfCancellationRequested();
         }
     }
 

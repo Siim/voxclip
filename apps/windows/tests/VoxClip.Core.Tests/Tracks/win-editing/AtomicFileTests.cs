@@ -32,7 +32,7 @@ public sealed class AtomicFileTests
             Assert.Equal([path], Directory.GetFiles(storage.Root));
         }
         Assert.Equal(6, operations.MoveAttempts);
-        Assert.Equal([50, 100, 200, 400, 800], operations.Delays);
+        Assert.Equal([25, 50, 100, 200, 400], operations.Delays);
     }
 
     [Fact]
@@ -44,7 +44,7 @@ public sealed class AtomicFileTests
         var operations = new Faults { RemainingFailures = 1, ErrorCode = 32, RemoveDestination = true, KeepBackup = true, RemainingRecoveryFailures = 2 };
         await AtomicFile.WriteAsync(path, "new", TestContext.Current.CancellationToken, operations);
         Assert.Equal("new", await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken));
-        Assert.Equal([50, 100], operations.Delays);
+        Assert.Equal([25, 50], operations.Delays);
         Assert.Equal([path], Directory.GetFiles(storage.Root));
     }
 
@@ -62,7 +62,7 @@ public sealed class AtomicFileTests
         await AtomicFile.WriteAsync(path, "new", TestContext.Current.CancellationToken, operations);
         Assert.Equal("new", await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken));
         Assert.Equal(6, operations.Attempts);
-        Assert.Equal([50, 100, 200, 400, 800], operations.Delays);
+        Assert.Equal([25, 50, 100, 200, 400], operations.Delays);
         Assert.Equal([path], Directory.GetFiles(storage.Root));
     }
 

@@ -38,7 +38,7 @@ public sealed class ProjectStore : IProjectStore
     {
         try
         {
-            var json = await File.ReadAllTextAsync(path, new UTF8Encoding(false, true), ct).ConfigureAwait(false);
+            var json = await AtomicFile.ReadAllTextAsync(path, new UTF8Encoding(false, true), ct).ConfigureAwait(false);
             ProjectValidation.Validate(json);
             var project = ProjectSerialization.Deserialize(json);
             var warnings = new List<string>();

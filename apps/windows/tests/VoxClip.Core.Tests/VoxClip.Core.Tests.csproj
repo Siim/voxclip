@@ -12,5 +12,8 @@
     <PackageReference Include="xunit.runner.visualstudio" PrivateAssets="all" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <Compile Include="../Support/FixtureLoader.cs" Link="Support/FixtureLoader.cs" />
+    <Compile Include="../Support/NetworkGuard.cs" Link="Support/NetworkGuard.cs" />
+    <Compile Include="../Support/NetworkGuardTests.cs" Link="Support/NetworkGuardTests.cs" />
+    <Compile Include="../Support/LoopbackTls.cs" Link="Support/LoopbackTls.cs" />
   </ItemGroup>
 </Project>

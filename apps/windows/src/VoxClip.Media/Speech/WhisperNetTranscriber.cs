@@ -89,6 +89,8 @@ public sealed class WhisperNetTranscriber : ITranscriber, IAsyncDisposable
     /// <inheritdoc />
     public async Task<RawTranscript> TranscribeAsync(TranscriptionRequest request, IProgress<TranscriptionProgress> progress, CancellationToken ct)
     {
+        ct.ThrowIfCancellationRequested();
+        SpeechCopy.ValidateIdentifiers(request.Plan);
         if (request.Plan.Engine != Engine) throw new ArgumentException("Wrong transcription engine.", nameof(request));
         await operation.WaitAsync(ct).ConfigureAwait(false);
         var handedOff = false;

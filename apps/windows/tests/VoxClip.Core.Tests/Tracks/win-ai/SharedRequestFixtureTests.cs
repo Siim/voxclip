@@ -111,9 +111,10 @@ public sealed partial class SharedFixtureTests
         Assert.Equal(Text(expected, "stdin"), process.StandardInput);
         Assert.Equal("<cwd>", Normalize(cwd));
         var files = new JsonObject();
-        foreach (var file in runner.GenerationFiles) files[Normalize(file.Key)] = file.Value;
+        foreach (var file in runner.GenerationFiles) files[Normalize(file.Key)] = file.Value.TrimEnd('\n');
         EqualJson(expected["files"], files);
-        foreach (var file in runner.GenerationBytes) Assert.Equal(System.Text.Encoding.UTF8.GetBytes(Text(expected["files"]!, Normalize(file.Key))), file.Value);
+        foreach (var file in runner.GenerationBytes)
+            Assert.Equal(System.Text.Encoding.UTF8.GetBytes(Text(expected["files"]!, Normalize(file.Key)).TrimEnd('\n') + "\n"), file.Value);
         Assert.False(Directory.Exists(cwd));
         if (io is not null) Assert.False(Directory.Exists(io));
         Assert.All(runner.Requests, command =>

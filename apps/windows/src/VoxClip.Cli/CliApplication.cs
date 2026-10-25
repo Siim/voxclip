@@ -170,12 +170,12 @@ internal static class CliApplication
         else if (message.Length != 0) Console.Error.WriteLine(DiagnosticRedactor.Redact(code + ": " + message));
         return exitCode;
     }
-    private static void WriteJson(CliEnvelope value) => Console.Out.WriteLine(JsonSerializer.Serialize(value, CliJsonContext.Default.CliEnvelope));
+    private static void WriteJson(CliEnvelope value) => Console.Out.Write(JsonSerializer.Serialize(value, CliJsonContext.Default.CliEnvelope) + "\n");
 }
 internal sealed record CliError(string Code, string Message);
 internal sealed record CliEnvelope(bool Ok, string Command,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Output,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] CliError? Error, string Version);
-[JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
+[JsonSourceGenerationOptions(NewLine = JsonFormatting.NewLine, PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
 [JsonSerializable(typeof(CliEnvelope))]
 internal partial class CliJsonContext : JsonSerializerContext;

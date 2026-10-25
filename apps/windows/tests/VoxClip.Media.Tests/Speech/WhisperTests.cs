@@ -16,6 +16,33 @@ namespace VoxClip.Media.Tests.Speech;
 
 public sealed class WhisperTests(ITestOutputHelper output)
 {
+    [Theory]
+    [InlineData("../en", "whisper-base.en-q5_1")]
+    [InlineData("en/x", "whisper-base.en-q5_1")]
+    [InlineData("english", "whisper-base.en-q5_1")]
+    [InlineData("en\n", "whisper-base.en-q5_1")]
+    [InlineData("en", "../private-model")]
+    [InlineData("en", "whisper/private-model")]
+    [InlineData("en", "private-model\n")]
+    [InlineData("en", "")]
+    public async Task InvalidIdentifiersUseFixedCopyBeforeReadinessOrNativeWork(string language, string model)
+    {
+        using var files = new WaveFiles();
+        await using var engine = new WhisperNetTranscriber(new ModelCatalog(), dataRoot: files.Root);
+        var request = new TranscriptionRequest(new(TranscriptEngine.Whispercpp, model, new LanguageChoice.Forced(language), new()),
+            new(files.Wav, 16000, 0, 0, 0), new string('a', 64));
+        var service = new Core.Services.Speech.TranscriptionService([engine], dataRoot: files.Root);
+        var direct = await Assert.ThrowsAsync<VoxClipException>(() => engine.TranscribeAsync(request,
+            new Progress<TranscriptionProgress>(), TestContext.Current.CancellationToken));
+        var orchestrated = await Assert.ThrowsAsync<VoxClipException>(() => service.TranscribeAsync(request, null, null, TestContext.Current.CancellationToken));
+        foreach (var error in new[] { direct, orchestrated })
+        {
+            Assert.Equal(VoxClipErrorCode.TranscriptionLanguageUnsupported, error.Code);
+            Assert.Equal("Whisper can't transcribe the selected model or language identifier.", error.Message);
+        }
+        Assert.False(Directory.Exists(Path.Combine(files.Root, "Cache")));
+    }
+
     [Fact]
     public void CompositionConstructorMatchesW5() =>
         Assert.NotNull(typeof(WhisperNetTranscriber).GetConstructor([typeof(IModelDownloader)]));

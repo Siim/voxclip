@@ -216,7 +216,7 @@ internal sealed class CliLlmAdapter(ConnectorId id, LlmCatalog catalog, IProcess
             }
             else
             {
-                await File.WriteAllTextAsync(schemaFile, request.Schema.ToJsonString(LlmRuntime.CompactJson), new UTF8Encoding(false), ct).ConfigureAwait(false);
+                await File.WriteAllTextAsync(schemaFile, request.Schema.ToJsonString(LlmRuntime.CompactJson) + "\n", new UTF8Encoding(false), ct).ConfigureAwait(false);
                 args.AddRange(new[] { "exec", "--json", "--ephemeral", "--skip-git-repo-check", "--ignore-user-config" });
                 if (Supports(detection.Help, "--ignore-rules")) args.Add("--ignore-rules");
                 args.AddRange(new[] { "--sandbox", "read-only", "--cd", workspace.Cwd });

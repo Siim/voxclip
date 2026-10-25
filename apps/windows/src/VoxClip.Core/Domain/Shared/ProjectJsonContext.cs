@@ -8,7 +8,7 @@ using VoxClip.Core.Domain.Transcript;
 namespace VoxClip.Core.Domain.Shared;
 
 /// <summary>Reflection-free persisted project and caption serialization; architecture §2.3 and editing §10.1.</summary>
-[JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase, WriteIndented = true,
+[JsonSourceGenerationOptions(NewLine = JsonFormatting.NewLine, PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase, WriteIndented = true,
     UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow, RespectRequiredConstructorParameters = true, RespectNullableAnnotations = true,
     Converters = new[] { typeof(UtcTimestampConverter) })]
 [JsonSerializable(typeof(Project))]

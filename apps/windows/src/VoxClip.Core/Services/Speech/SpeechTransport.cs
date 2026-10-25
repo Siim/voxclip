@@ -13,10 +13,10 @@ internal static class SpeechTransport
         ConnectTimeout = TimeSpan.FromSeconds(30), AllowAutoRedirect = true
     }) { Timeout = Timeout.InfiniteTimeSpan };
 
-    internal static HttpClient CloudClient { get; } = new(new SocketsHttpHandler
+    internal static SocketsHttpHandler CreateCloudHandler() => new()
     {
         ConnectTimeout = TimeSpan.FromSeconds(30), AllowAutoRedirect = false, UseCookies = false
-    }) { Timeout = Timeout.InfiniteTimeSpan };
+    };
 
     internal static bool Retryable(HttpStatusCode status) => status == HttpStatusCode.TooManyRequests || (int)status >= 500;
 
@@ -35,9 +35,10 @@ internal static class SpeechTransport
         {
             await using (var stream = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None, 65536, true))
             {
-                using var writer = new Utf8JsonWriter(stream);
+                using var writer = new Utf8JsonWriter(stream, VoxClip.Core.Domain.Shared.JsonFormatting.CreateWriterOptions());
                 write(writer);
                 await writer.FlushAsync(ct).ConfigureAwait(false);
+                await stream.WriteAsync("\n"u8.ToArray(), ct).ConfigureAwait(false);
                 await stream.FlushAsync(ct).ConfigureAwait(false);
             }
             ct.ThrowIfCancellationRequested();
@@ -82,11 +83,15 @@ public static class ImportProgress
     }
 }
 
-internal sealed class SpeechProgress<T>(IProgress<T>? target) : IProgress<T>
+/// <summary>Throttle adapter progress to 10 Hz while preserving stage boundaries and completion.</summary>
+/// <typeparam name="T">The adapter progress value.</typeparam>
+/// <param name="target">The caller's progress observer, if any.</param>
+public sealed class SpeechProgress<T>(IProgress<T>? target) : IProgress<T>
 {
     private readonly object gate = new();
     private long last;
     private T? previous;
+    /// <inheritdoc />
     public void Report(T value) => Report(value, false);
 
     private void Report(T value, bool force)
@@ -105,7 +110,8 @@ internal sealed class SpeechProgress<T>(IProgress<T>? target) : IProgress<T>
         }
     }
 
-    internal async Task CompleteAsync(T value, CancellationToken ct)
+    /// <summary>Deliver the final value after the throttle interval, unless cancelled.</summary>
+    public async Task CompleteAsync(T value, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
         TimeSpan delay;

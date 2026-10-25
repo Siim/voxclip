@@ -7,6 +7,21 @@ namespace VoxClip.Core.Services.Project;
 
 internal static class AtomicFile
 {
+    internal static async Task<string> ReadAllTextAsync(string path, Encoding encoding, CancellationToken ct, AtomicFileOperations? operations = null)
+    {
+        operations ??= new AtomicFileOperations();
+        for (var attempt = 0; ; attempt++)
+        {
+            ct.ThrowIfCancellationRequested();
+            try { return await operations.ReadAllTextAsync(path, encoding, ct).ConfigureAwait(false); }
+            // ReplaceFile can briefly hide the name or deny a delete-sharing open; retry opens, not malformed JSON.
+            catch (IOException exception) when ((exception.HResult & 0xFFFF) is 2 or 32 or 33 && attempt < 5)
+            {
+                await operations.DelayAsync(25 << attempt, ct).ConfigureAwait(false);
+            }
+        }
+    }
+
     internal static async Task WriteAsync(string path, string content, CancellationToken ct, AtomicFileOperations? operations = null)
     {
         operations ??= new AtomicFileOperations();
@@ -65,7 +80,7 @@ internal static class AtomicFile
                     }
                     if (attempt >= 5 || (exception.HResult & 0xFFFF) is not (5 or 32 or 33 or 1175) ||
                         !operations.Exists(temporary)) throw;
-                    await operations.DelayAsync(50 << attempt, ct).ConfigureAwait(false);
+                    await operations.DelayAsync(25 << attempt, ct).ConfigureAwait(false);
                 }
             }
         }
@@ -81,7 +96,13 @@ internal static class AtomicFile
 
 internal class AtomicFileOperations
 {
-    internal virtual Task<string> ReadAllTextAsync(string path, Encoding encoding, CancellationToken ct) => File.ReadAllTextAsync(path, encoding, ct);
+    internal virtual async Task<string> ReadAllTextAsync(string path, Encoding encoding, CancellationToken ct)
+    {
+        await using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete,
+            65536, FileOptions.Asynchronous | FileOptions.SequentialScan);
+        using var reader = new StreamReader(stream, encoding);
+        return await reader.ReadToEndAsync(ct).ConfigureAwait(false);
+    }
     internal virtual bool UseReplace => OperatingSystem.IsWindows();
     internal virtual bool Exists(string path) => File.Exists(path);
     internal virtual void Replace(string temporary, string path, string backup) => File.Replace(temporary, path, backup);

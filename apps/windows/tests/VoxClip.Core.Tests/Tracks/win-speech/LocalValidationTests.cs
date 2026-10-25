@@ -33,8 +33,7 @@ public sealed class LocalValidationTests
         };
         using var files = new SpeechFiles();
         using var handler = new StubHttp((_, _) => throw new InvalidOperationException("Must not upload."));
-        using var http = new HttpClient(handler);
-        using var engine = new ElevenLabsTranscriber(new TestKeys(), http, baseUri: null);
+        using var engine = ElevenLabsTranscriber.ForTesting(new TestKeys(), handler, region: ElevenLabsRegion.Default);
         var request = files.Request(options);
         if (invalid == "model") request = request with { Plan = request.Plan with { Model = "not-scribe" } };
         var service = new TranscriptionService([engine], dataRoot: files.Root);
@@ -54,21 +53,28 @@ public sealed class LocalValidationTests
     public async Task FiftyUnicodeScalarsAreRejectedWithTheOffendingTerm()
     {
         using var files = new SpeechFiles();
-        using var engine = new ElevenLabsTranscriber(new TestKeys());
+        using var handler = new StubHttp((_, _) => throw new InvalidOperationException("Must not upload."));
+        using var engine = ElevenLabsTranscriber.ForTesting(new TestKeys(), handler, region: ElevenLabsRegion.Default);
         var term = string.Concat(Enumerable.Repeat("õ", 50));
         var error = await Assert.ThrowsAsync<VoxClipException>(() => engine.TranscribeAsync(files.Request(new(Keyterms: [term])),
             new CaptureProgress<TranscriptionProgress>(), TestContext.Current.CancellationToken));
         Assert.Equal(VoxClipErrorCode.TranscriptionFailed, error.Code);
         Assert.Equal($"Transcription stopped: Invalid keyterm: {term}. Your video is still here.", error.Message);
+        Assert.Equal(0, handler.Calls);
     }
 
     [Theory]
     [InlineData("../en")]
     [InlineData("12")]
-    public async Task InvalidForcedLanguageUsesTheUnsupportedCopyDirectlyAndThroughService(string language)
+    [InlineData("english")]
+    [InlineData("en/x")]
+    [InlineData("en\nprivate-identifier")]
+    [InlineData("en\n")]
+    public async Task InvalidForcedLanguageNeverAppearsInCopyDirectlyOrThroughService(string language)
     {
         using var files = new SpeechFiles();
-        using var engine = new ElevenLabsTranscriber(new TestKeys());
+        using var handler = new StubHttp((_, _) => throw new InvalidOperationException("Must not upload."));
+        using var engine = ElevenLabsTranscriber.ForTesting(new TestKeys(), handler, region: ElevenLabsRegion.Default);
         var request = files.Request(language: new LanguageChoice.Forced(language));
         var service = new TranscriptionService([engine], dataRoot: files.Root);
         var direct = await Assert.ThrowsAsync<VoxClipException>(() => engine.TranscribeAsync(request,
@@ -77,20 +83,51 @@ public sealed class LocalValidationTests
         foreach (var error in new[] { direct, orchestrated })
         {
             Assert.Equal(VoxClipErrorCode.TranscriptionLanguageUnsupported, error.Code);
-            Assert.Equal($"ElevenLabs can't transcribe {language}.", error.Message);
+            Assert.Equal("ElevenLabs can't transcribe the selected model or language identifier.", error.Message);
+            Assert.DoesNotContain(language, error.Message);
         }
+        Assert.Equal(0, handler.Calls);
+        Assert.False(Directory.Exists(Path.Combine(files.Root, "Cache")));
+    }
+
+    [Theory]
+    [InlineData("../private-model")]
+    [InlineData("scribe/private-model")]
+    [InlineData("private-model\n")]
+    [InlineData("")]
+    [InlineData("private-model")]
+    public async Task InvalidModelNeverAppearsInCopyDirectlyOrThroughService(string model)
+    {
+        using var files = new SpeechFiles();
+        using var handler = new StubHttp((_, _) => throw new InvalidOperationException("Must not upload."));
+        using var engine = ElevenLabsTranscriber.ForTesting(new TestKeys(), handler, region: ElevenLabsRegion.Default);
+        var request = files.Request();
+        request = request with { Plan = request.Plan with { Model = model } };
+        var service = new TranscriptionService([engine], dataRoot: files.Root);
+        var direct = await Assert.ThrowsAsync<VoxClipException>(() => engine.TranscribeAsync(request,
+            new CaptureProgress<TranscriptionProgress>(), TestContext.Current.CancellationToken));
+        var orchestrated = await Assert.ThrowsAsync<VoxClipException>(() => service.TranscribeAsync(request, null, null, TestContext.Current.CancellationToken));
+        foreach (var error in new[] { direct, orchestrated })
+        {
+            Assert.Equal(VoxClipErrorCode.TranscriptionFailed, error.Code);
+            Assert.Equal("Transcription stopped: ElevenLabs requires the scribe_v2 model. Your video is still here.", error.Message);
+        }
+        Assert.Equal(0, handler.Calls);
+        Assert.False(Directory.Exists(Path.Combine(files.Root, "Cache")));
     }
 
     [Fact]
     public async Task WrongEngineUsesTheMacUnsupportedCodeAndCopy()
     {
         using var files = new SpeechFiles();
-        using var engine = new ElevenLabsTranscriber(new TestKeys());
+        using var handler = new StubHttp((_, _) => throw new InvalidOperationException("Must not upload."));
+        using var engine = ElevenLabsTranscriber.ForTesting(new TestKeys(), handler, region: ElevenLabsRegion.Default);
         var request = files.Request(language: new LanguageChoice.Forced("en"));
         request = request with { Plan = request.Plan with { Engine = TranscriptEngine.Whispercpp } };
         var error = await Assert.ThrowsAsync<VoxClipException>(() => engine.TranscribeAsync(request,
             new CaptureProgress<TranscriptionProgress>(), TestContext.Current.CancellationToken));
         Assert.Equal(VoxClipErrorCode.TranscriptionLanguageUnsupported, error.Code);
         Assert.Equal("ElevenLabs can't transcribe en.", error.Message);
+        Assert.Equal(0, handler.Calls);
     }
 }

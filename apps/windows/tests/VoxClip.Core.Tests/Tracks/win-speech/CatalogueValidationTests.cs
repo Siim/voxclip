@@ -72,8 +72,7 @@ public sealed class CatalogueValidationTests
         await File.WriteAllTextAsync(path, source.ToJsonString(), TestContext.Current.CancellationToken);
         var catalog = ModelCatalog.FromFile(path);
         using var handler = new StubHttp((_, _) => throw new InvalidOperationException("Must not upload."));
-        using var http = new HttpClient(handler);
-        using var transcriber = new ElevenLabsTranscriber(new TestKeys(), http, baseUri: null, modelCatalog: catalog);
+        using var transcriber = ElevenLabsTranscriber.ForTesting(new TestKeys(), handler, region: ElevenLabsRegion.Default, modelCatalog: catalog);
         var error = await Assert.ThrowsAsync<VoxClipException>(() => transcriber.TranscribeAsync(files.Request(),
             new CaptureProgress<Core.Domain.Transcript.TranscriptionProgress>(), TestContext.Current.CancellationToken));
         Assert.Equal(VoxClipErrorCode.SharedResourcesMissing, error.Code);

@@ -57,8 +57,7 @@ public sealed class TranscriptionService : ITranscriptionService
             throw new ArgumentException("A source SHA-256 content key is required.", nameof(request));
         if (!engines.TryGetValue(request.Plan.Engine, out var engine))
             throw new VoxClipException(VoxClipErrorCode.TranscriptionFailed, "Transcription stopped: this transcription engine is unavailable. Your video is still here.");
-        if (request.Plan.Language is LanguageChoice.Forced forcedLanguage && !ElevenLabsTranscriber.ValidLanguage(forcedLanguage.Code))
-            throw SpeechCopy.Unsupported(request.Plan.Engine, forcedLanguage.Code);
+        SpeechCopy.ValidateIdentifiers(request.Plan);
         if (engine is ElevenLabsTranscriber) ElevenLabsTranscriber.ValidatePlan(request.Plan);
         await catalog.GetModelsAsync(ct).ConfigureAwait(false);
         if (request.Plan.Language is LanguageChoice.Forced languageChoice && catalog is ModelCatalog bundled)
@@ -76,7 +75,7 @@ public sealed class TranscriptionService : ITranscriptionService
                 var key = CacheKey(request, model);
                 var rawKey = Convert.ToHexStringLower(SHA256.HashData(key));
                 var language = request.Plan.Language is LanguageChoice.Forced forced ? forced.Code.ToLowerInvariant().Split('-')[0] : "auto";
-                if (language.Any(character => !char.IsAsciiLetterLower(character))) throw SpeechCopy.Unsupported(request.Plan.Engine, language);
+                if (language.Any(character => !char.IsAsciiLetterLower(character))) throw SpeechCopy.InvalidIdentifier(request.Plan.Engine);
                 var directory = Path.Combine(root, "Cache", request.ContentKey, "transcripts");
                 var modelId = request.Plan.Engine == TranscriptEngine.Elevenlabs ? "scribe_v2" : request.Plan.Model ?? "none";
                 ModelPaths.ValidateId(modelId);
@@ -150,7 +149,7 @@ public sealed class TranscriptionService : ITranscriptionService
     internal static byte[] CacheKey(TranscriptionRequest request, TranscriptionModel? model)
     {
         using var buffer = new MemoryStream();
-        using (var writer = new Utf8JsonWriter(buffer, new JsonWriterOptions { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping }))
+        using (var writer = new Utf8JsonWriter(buffer, JsonFormatting.CreateWriterOptions(new() { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping })))
         {
             writer.WriteStartObject();
             writer.WriteNumber("adapterVersion", 1);
@@ -210,7 +209,7 @@ public sealed class TranscriptionService : ITranscriptionService
     private static byte[] Canonical(JsonElement key)
     {
         using var buffer = new MemoryStream();
-        using (var writer = new Utf8JsonWriter(buffer, new JsonWriterOptions { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping }))
+        using (var writer = new Utf8JsonWriter(buffer, JsonFormatting.CreateWriterOptions(new() { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping })))
         {
             writer.WriteStartObject();
             foreach (var property in key.EnumerateObject().OrderBy(property => property.Name, StringComparer.Ordinal))

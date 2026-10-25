@@ -54,13 +54,15 @@ public sealed class ModelCatalog : IModelCatalog
     public async Task<TranscriptionModel?> GetModelAsync(string id, CancellationToken ct) =>
         (await GetModelsAsync(ct).ConfigureAwait(false)).FirstOrDefault(model => model.Id == id);
 
-    internal async Task<JsonElement> RootAsync(CancellationToken ct)
+    /// <summary>Read the validated, bundled catalogue metadata for native adapters.</summary>
+    public async Task<JsonElement> RootAsync(CancellationToken ct)
     {
         await GetModelsAsync(ct).ConfigureAwait(false);
         return root!.Value;
     }
 
-    internal async Task<string> NormalizeLanguageAsync(string code, CancellationToken ct)
+    /// <summary>Normalize a language code using the bundled ISO 639 mapping.</summary>
+    public async Task<string> NormalizeLanguageAsync(string code, CancellationToken ct)
     {
         var data = await RootAsync(ct).ConfigureAwait(false);
         var primary = code.Split('-')[0].ToLowerInvariant();
@@ -68,7 +70,8 @@ public sealed class ModelCatalog : IModelCatalog
             ? normalized.GetString()! : primary;
     }
 
-    internal async Task<string> FromWhisperLanguageAsync(string code, CancellationToken ct)
+    /// <summary>Map a Whisper language code back to the bundled canonical language code.</summary>
+    public async Task<string> FromWhisperLanguageAsync(string code, CancellationToken ct)
     {
         var data = await RootAsync(ct).ConfigureAwait(false);
         foreach (var mapping in data.GetProperty("languageCodes").GetProperty("whisperCodeFor").EnumerateObject())
@@ -206,10 +209,12 @@ public sealed class ModelCatalog : IModelCatalog
 
 internal static class ModelPaths
 {
+    internal static bool ValidId(string id) =>
+        Regex.IsMatch(id, "\\A[A-Za-z0-9][A-Za-z0-9._-]{0,127}\\z", RegexOptions.CultureInvariant) && !id.Contains("..", StringComparison.Ordinal);
+
     internal static void ValidateId(string id)
     {
-        if (!Regex.IsMatch(id, "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$", RegexOptions.CultureInvariant) || id.Contains("..", StringComparison.Ordinal))
-            throw new InvalidDataException("Unsafe model id.");
+        if (!ValidId(id)) throw new InvalidDataException("Unsafe model id.");
     }
 
     internal static void ValidateFileName(string name)

@@ -19,10 +19,12 @@ namespace VoxClip.Core.Services.Speech;
 /// <summary>File-streamed Scribe v2 batch requests with explicit cloud selection; transcription §8.</summary>
 public sealed class ElevenLabsTranscriber : ITranscriber, IDisposable
 {
+    private static readonly string UserAgent = BuildUserAgent();
     private readonly HttpClient http;
     private readonly IKeyProvider keys;
     private readonly ModelCatalog catalog;
     private readonly Uri endpoint;
+    private readonly Uri subscriptionEndpoint;
     private readonly ILog log;
     private readonly ConditionalWeakTable<RawTranscript, ProviderJson> responses = new();
     internal SocketsHttpHandler? OwnedHandler { get; }
@@ -33,49 +35,78 @@ public sealed class ElevenLabsTranscriber : ITranscriber, IDisposable
     /// <summary>Explicit env provider for the CLI or VOXCLIP_NO_KEYCHAIN debug host only; architecture §9.4.</summary>
     public static IKeyProvider CreateEnvironmentKeyProvider() => new EnvironmentKeys();
 
-    /// <summary>Compose explicit key storage and cloud transport; plan W5.</summary>
-    public ElevenLabsTranscriber(IKeyProvider keys, HttpClient http) : this(keys, http, ElevenLabsRegion.Default) { }
-
-    /// <summary>The compatibility client is not used for key-bearing calls; transport is adapter-owned.</summary>
-    public ElevenLabsTranscriber(IKeyProvider keys, HttpClient http, ElevenLabsRegion region) : this(keys, region)
-    {
-        ArgumentNullException.ThrowIfNull(http);
-    }
-
     /// <summary>Compose key storage, a closed residency region, catalogue and redacted logging.</summary>
     public ElevenLabsTranscriber(IKeyProvider keys, ElevenLabsRegion region = ElevenLabsRegion.Default,
-        ModelCatalog? modelCatalog = null, ILog? logger = null) : this(keys, null, region.Origin(), modelCatalog, logger) { }
+        ModelCatalog? modelCatalog = null, ILog? logger = null) : this(keys, null, region, modelCatalog, logger) { }
 
     /// <summary>Use the same stored region for imports and key tests; the CLI uses Default without settings.</summary>
     public static ElevenLabsTranscriber FromSettings(IKeyProvider keys, AppSettings settings,
         ILog? logger = null, ModelCatalog? modelCatalog = null) =>
         new(keys, ElevenLabsRegions.FromSettings(settings, logger), modelCatalog, logger);
 
-    internal ElevenLabsTranscriber(IKeyProvider keyProvider, HttpClient? httpClient, Uri? baseUri,
+    internal static ElevenLabsTranscriber ForTesting(IKeyProvider keys, HttpMessageHandler handler, ElevenLabsRegion region,
         ModelCatalog? modelCatalog = null, ILog? logger = null)
     {
+        ArgumentNullException.ThrowIfNull(handler);
+        return new(keys, new HttpClient(handler, disposeHandler: false) { Timeout = Timeout.InfiniteTimeSpan }, region, modelCatalog, logger);
+    }
+
+    private ElevenLabsTranscriber(IKeyProvider keyProvider, HttpClient? httpClient, ElevenLabsRegion region,
+        ModelCatalog? modelCatalog = null, ILog? logger = null)
+    {
+        var origin = region.BaseUri();
         keys = keyProvider;
         if (httpClient is null)
         {
-            OwnedHandler = new SocketsHttpHandler
-            {
-                ConnectTimeout = TimeSpan.FromSeconds(30), AllowAutoRedirect = false, UseCookies = false
-            };
+            OwnedHandler = SpeechTransport.CreateCloudHandler();
             http = new HttpClient(OwnedHandler) { Timeout = Timeout.InfiniteTimeSpan };
         }
         else http = httpClient;
-        var origin = baseUri ?? new Uri("https://api.elevenlabs.io");
-        if (origin.Scheme != "https" && !(origin.Scheme == "http" && origin.IsLoopback))
-            throw new ArgumentException("A secure ElevenLabs endpoint is required.", nameof(baseUri));
         endpoint = new Uri(origin, "/v1/speech-to-text");
+        subscriptionEndpoint = new Uri(origin, "/v1/user/subscription");
         catalog = modelCatalog ?? new ModelCatalog();
         log = logger ?? new Log();
     }
 
-    /// <summary>Dispose only the adapter-owned transport, never an internal test client's transport.</summary>
-    public void Dispose()
+    /// <summary>Dispose the owned client without disposing a handler supplied by the test factory.</summary>
+    public void Dispose() => http.Dispose();
+
+    /// <summary>Test the stored key without uploading audio or making a paid call; transcription §8.5.</summary>
+    public async Task<ElevenLabsKeyTestResult> TestKeyAsync(CancellationToken ct)
     {
-        if (OwnedHandler is not null) http.Dispose();
+        ct.ThrowIfCancellationRequested();
+        var key = await keys.GetKeyAsync("elevenlabs-api-key", ct).ConfigureAwait(false);
+        if (string.IsNullOrWhiteSpace(key))
+            throw new VoxClipException(VoxClipErrorCode.KeyMissing, "Add your ElevenLabs key in Settings to use it.");
+        log.RegisterSecret(key);
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        deadline.CancelAfter(TimeSpan.FromSeconds(30));
+        try
+        {
+            using var message = new HttpRequestMessage(HttpMethod.Get, subscriptionEndpoint);
+            message.Headers.Add("xi-api-key", key);
+            message.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+            message.Headers.UserAgent.ParseAdd(UserAgent);
+            using var response = await http.SendAsync(message, HttpCompletionOption.ResponseHeadersRead, deadline.Token).ConfigureAwait(false);
+            log.Write(LogLevel.Info, "transcribe", $"elevenlabs key test HTTP {(int)response.StatusCode}");
+            if (response.StatusCode == HttpStatusCode.OK) return new(true, "Works.");
+            if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
+            {
+                await using var stream = await response.Content.ReadAsStreamAsync(deadline.Token).ConfigureAwait(false);
+                if (ReportsMissingPermission(await ReadErrorBodyAsync(stream, deadline.Token).ConfigureAwait(false)))
+                    return new(false, "The key works. It can't read account details (user_read), and that is fine for transcription.");
+            }
+            if (response.StatusCode == HttpStatusCode.Unauthorized)
+                throw new VoxClipException(VoxClipErrorCode.KeyRejected, "ElevenLabs rejected the key (401). Your video is still here.");
+            if (response.StatusCode == HttpStatusCode.TooManyRequests)
+                throw new VoxClipException(VoxClipErrorCode.RateLimited, "ElevenLabs is busy. Try again in a minute.");
+            throw new VoxClipException(VoxClipErrorCode.ProviderError,
+                $"ElevenLabs answered {(int)response.StatusCode}: The request could not be completed.");
+        }
+        catch (Exception error) when ((error is HttpRequestException or IOException or OperationCanceledException) && !ct.IsCancellationRequested)
+        {
+            throw new VoxClipException(VoxClipErrorCode.Offline, "You're offline. On-device transcription and editing still work.");
+        }
     }
 
     /// <inheritdoc />
@@ -123,9 +154,6 @@ public sealed class ElevenLabsTranscriber : ITranscriber, IDisposable
                 $"ElevenLabs accepts up to 10 hours. This take is {SpeechCopy.Duration(request.Audio.DurationSeconds)}.");
         var forcedLanguage = request.Plan.Language is LanguageChoice.Forced chosen
             ? await catalog.NormalizeLanguageAsync(chosen.Code, ct).ConfigureAwait(false) : null;
-        var version = typeof(ElevenLabsTranscriber).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion.Split('+')[0]
-            ?? typeof(ElevenLabsTranscriber).Assembly.GetName().Version!.ToString(3);
-        var userAgent = $"VoxClip/{version} ({(OperatingSystem.IsWindows() ? "Windows" : "macOS")} {Environment.OSVersion.Version.ToString(3)}; {RuntimeInformation.ProcessArchitecture.ToString().ToLowerInvariant()})";
         var key = await keys.GetKeyAsync("elevenlabs-api-key", ct).ConfigureAwait(false);
         if (string.IsNullOrWhiteSpace(key)) throw new VoxClipException(VoxClipErrorCode.KeyMissing, "Add your ElevenLabs key in Settings to use it.");
         log.RegisterSecret(key);
@@ -142,7 +170,7 @@ public sealed class ElevenLabsTranscriber : ITranscriber, IDisposable
                 using var message = new HttpRequestMessage(HttpMethod.Post, endpoint);
                 message.Headers.Add("xi-api-key", key);
                 message.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-                message.Headers.UserAgent.ParseAdd(userAgent);
+                message.Headers.UserAgent.ParseAdd(UserAgent);
                 using var multipart = new SpeechMultipartContent(Guid.NewGuid().ToString("N"), () =>
                 {
                     reporting.Report(new(TranscriptionStage.Uploading, 1));
@@ -177,15 +205,7 @@ public sealed class ElevenLabsTranscriber : ITranscriber, IDisposable
                 await using var activity = new ActivityStream(incoming, _ => idle.CancelAfter(TimeSpan.FromSeconds(300)));
                 if (!response.IsSuccessStatusCode)
                 {
-                    var buffer = new byte[64 * 1024];
-                    var length = 0;
-                    while (length < buffer.Length)
-                    {
-                        var read = await activity.ReadAsync(buffer.AsMemory(length), idle.Token).ConfigureAwait(false);
-                        if (read == 0) break;
-                        length += read;
-                    }
-                    throw MapError(response.StatusCode, Encoding.UTF8.GetString(buffer, 0, length), key);
+                    throw MapError(response.StatusCode, await ReadErrorBodyAsync(activity, idle.Token).ConfigureAwait(false), key);
                 }
                 JsonDocument document;
                 try { document = await JsonDocument.ParseAsync(activity, cancellationToken: idle.Token).ConfigureAwait(false); }
@@ -270,6 +290,46 @@ public sealed class ElevenLabsTranscriber : ITranscriber, IDisposable
     private static double? Number(JsonElement data, string name) => data.TryGetProperty(name, out var value) &&
         value.ValueKind == JsonValueKind.Number && value.TryGetDouble(out var number) && double.IsFinite(number) ? number : null;
 
+    private static async Task<string> ReadErrorBodyAsync(Stream stream, CancellationToken ct)
+    {
+        var buffer = new byte[64 * 1024];
+        var length = 0;
+        while (length < buffer.Length)
+        {
+            var read = await stream.ReadAsync(buffer.AsMemory(length), ct).ConfigureAwait(false);
+            if (read == 0) break;
+            length += read;
+        }
+        return Encoding.UTF8.GetString(buffer, 0, length);
+    }
+
+    private static bool ReportsMissingPermission(string body)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(body);
+            return PermissionDetail(document.RootElement);
+        }
+        catch (JsonException) { return MissingPermissionMessage(body); }
+    }
+
+    private static bool PermissionDetail(JsonElement detail)
+    {
+        if (detail.ValueKind == JsonValueKind.String) return MissingPermissionMessage(detail.GetString()!);
+        if (detail.ValueKind != JsonValueKind.Object) return false;
+        if (detail.TryGetProperty("status", out var status) && status.ValueKind == JsonValueKind.String &&
+            status.GetString() is "missing_permissions" or "missing_permission") return true;
+        foreach (var field in new[] { "detail", "message", "error" })
+            if (detail.TryGetProperty(field, out var value) && PermissionDetail(value)) return true;
+        return false;
+    }
+
+    private static bool MissingPermissionMessage(string message) =>
+        message.Contains("permission", StringComparison.OrdinalIgnoreCase) &&
+        (message.Contains("missing", StringComparison.OrdinalIgnoreCase) || message.Contains("lacks", StringComparison.OrdinalIgnoreCase) ||
+         message.Contains("does not have", StringComparison.OrdinalIgnoreCase) || message.Contains("doesn't have", StringComparison.OrdinalIgnoreCase) ||
+         message.Contains("required", StringComparison.OrdinalIgnoreCase));
+
     private static VoxClipException MapError(HttpStatusCode status, string body, string key)
     {
         if (body.Contains("quota", StringComparison.OrdinalIgnoreCase) || body.Contains("credit", StringComparison.OrdinalIgnoreCase))
@@ -294,14 +354,22 @@ public sealed class ElevenLabsTranscriber : ITranscriber, IDisposable
         return new(VoxClipErrorCode.ProviderError, $"ElevenLabs answered {(int)status}: {detail}");
     }
 
-    internal static bool ValidLanguage(string code) => Regex.IsMatch(code, "^[a-zA-Z]{2,3}(?:-[a-zA-Z0-9]{2,8})*$", RegexOptions.CultureInvariant);
+    internal static bool ValidLanguage(string code) => Regex.IsMatch(code, "\\A[a-zA-Z]{2,3}(?:-[a-zA-Z0-9]{2,8})*\\z", RegexOptions.CultureInvariant);
 
     internal static void ValidatePlan(TranscriptionPlan plan)
     {
-        if (plan.Engine != TranscriptEngine.Elevenlabs || plan.Language is LanguageChoice.Forced forced && !ValidLanguage(forced.Code))
+        SpeechCopy.ValidateIdentifiers(plan);
+        if (plan.Engine != TranscriptEngine.Elevenlabs)
             throw SpeechCopy.Unsupported(TranscriptEngine.Elevenlabs, plan.Language is LanguageChoice.Forced language ? language.Code : "auto");
         if (plan.Model is not (null or "scribe_v2")) throw SpeechCopy.Failed("ElevenLabs requires the scribe_v2 model");
         ValidateOptions(plan.Options);
+    }
+
+    private static string BuildUserAgent()
+    {
+        var version = typeof(ElevenLabsTranscriber).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion.Split('+')[0]
+            ?? typeof(ElevenLabsTranscriber).Assembly.GetName().Version!.ToString(3);
+        return $"VoxClip/{version} ({(OperatingSystem.IsWindows() ? "Windows" : "macOS")} {Environment.OSVersion.Version.ToString(3)}; {RuntimeInformation.ProcessArchitecture.ToString().ToLowerInvariant()})";
     }
 
     private static void ValidateOptions(TranscriptionOptions options)

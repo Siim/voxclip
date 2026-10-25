@@ -40,7 +40,8 @@ public static class ElevenLabsRegions
         return ElevenLabsRegion.Default;
     }
 
-    internal static Uri Origin(this ElevenLabsRegion region) => new(region switch
+    /// <summary>The fixed HTTPS origin for display and all ElevenLabs calls; transcription §8.1.</summary>
+    public static Uri BaseUri(this ElevenLabsRegion region) => new(region switch
     {
         ElevenLabsRegion.Default => "https://api.elevenlabs.io",
         ElevenLabsRegion.Us => "https://api.us.elevenlabs.io",

@@ -61,7 +61,7 @@ public sealed partial class LlmCatalog
 
 internal static class LlmRuntime
 {
-    internal static readonly JsonSerializerOptions CompactJson = new() { Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
+    internal static readonly JsonSerializerOptions CompactJson = VoxClip.Core.Domain.Shared.JsonFormatting.CreateOptions(new() { Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping });
     internal static readonly HttpClient Http = new(CreateHttpHandler()) { Timeout = System.Threading.Timeout.InfiniteTimeSpan };
     internal static readonly AsyncLocal<HttpClient?> ScopedKeyedHttp = new();
     internal static HttpClient KeyedHttp => ScopedKeyedHttp.Value ?? Http;

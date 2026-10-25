@@ -156,7 +156,7 @@ public sealed partial class LlmConnector
             foreach (var model in modelCache ?? []) models.Add((JsonNode)new JsonObject { ["id"] = model.Id, ["name"] = model.Name, ["tier"] = model.Tier, ["contextTokens"] = model.ContextTokens, ["source"] = model.Source.ToString().ToLowerInvariant() });
             root[LlmCatalog.WireId(Id)] = new JsonObject { ["fetchedAt"] = ModelsFetchedAt?.ToString("O"), ["models"] = models };
             Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(cacheFile))!);
-            await File.WriteAllTextAsync(temporary, root.ToJsonString(), ct).ConfigureAwait(false);
+            await File.WriteAllTextAsync(temporary, root.ToJsonString(VoxClip.Core.Domain.Shared.JsonFormatting.CreateOptions()) + "\n", ct).ConfigureAwait(false);
             File.Move(temporary, cacheFile, true);
         }
         catch (IOException) { }
