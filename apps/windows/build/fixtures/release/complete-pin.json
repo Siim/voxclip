@@ -1,0 +1,12 @@
+{
+  "sourceCommit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "btbnCommit": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "license": "LGPL version 2.1 or later",
+  "configure": "--enable-shared --enable-libopus --enable-zlib",
+  "sourceAssets": [
+    {"component": "ffmpeg", "name": "source.tar.xz", "url": "https://example.invalid/source.tar.xz", "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+    {"component": "ffmpeg-builds", "name": "scripts.tar.gz", "url": "https://example.invalid/scripts.tar.gz", "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"},
+    {"component": "opus", "name": "opus.tar.gz", "url": "https://example.invalid/opus.tar.gz", "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"},
+    {"component": "zlib", "name": "zlib.tar.gz", "url": "https://example.invalid/zlib.tar.gz", "sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"}
+  ]
+}

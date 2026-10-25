@@ -182,13 +182,16 @@ The Windows VM (ARM64 Windows 11 under UTM on the release Mac) has signtool and 
 - `Azure.CodeSigning.Dlib.dll` from the `Microsoft.Trusted.Signing.Client` NuGet package, extracted (e.g. `C:\trusted-signing-client\bin\x64\`). **The dlib and signtool must be the same architecture**: on the ARM64 VM use the x64 signtool with the x64 dlib (both run under emulation), as the existing Superscribe setup does.
 - `tar.exe` (built into Windows 11) and Windows PowerShell 5.1 (`powershell.exe`). Scripts run under 5.1 must be **ASCII only** (an em dash broke Superscribe's script).
 - `vpk` comes from the repo's local tool manifest `apps/windows/.config/dotnet-tools.json` (pinned version), restored with `dotnet tool restore`; nothing global.
-- Velopack's `--signTemplate` calls `apps/windows/build/sign-if-needed.ps1` (section 3.5).
+- Velopack's `--signTemplate` calls `apps/windows/build/Sign-Artifacts.ps1` (section 3.5).
 
 ### 3.2 Credentials (never on a command line, never on the VM disk, never in the repo)
 
-- The env file lives **outside this repo** on the release Mac. Its path is in the Mac env var `VOXCLIP_SIGNING_ENV` (for example the existing Superscribe signing env file). The driver refuses a path inside the repo.
-- Recognised names (values are never printed): `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET` (aliases accepted for the existing file: `AZURE_SIGNING_KVT`, `AZURE_SIGNING_KVI`, `AZURE_SIGNING_KVS`), plus the non-secret `AZURE_SIGNING_ENDPOINT` (default `https://neu.codesigning.azure.net`), `AZURE_SIGNING_ACCOUNT` and `AZURE_SIGNING_PROFILE` (the Haugas Development OU Artifact Signing account and certificate profile; required).
-- The driver filters exactly these lines from the file and **streams them over the SSH session's stdin** to `vm-release.ps1`, which reads stdin once at start into a script-scoped hashtable and never writes the values anywhere. The builds, the FFmpeg download and the delta download run **without** credentials. Only then are `AZURE_TENANT_ID`, `AZURE_CLIENT_ID` and `AZURE_CLIENT_SECRET` (what the dlib's `DefaultAzureCredential` reads) set as process environment variables, for the signing and packing steps alone (signtool, `vpk pack` with its sign template, the sign wrapper); they are removed before verification and the smoke install (section 3.4). The SSH command line carries only the version, paths and tool locations.
+- A signing env file with more than one hard link is refused before locking or staging. All local staging and secret-name checks finish before acquiring the VM lock or deleting older VM runs. Dirty/skeleton archives send a NUL-delimited `git ls-files -z --cached --others --exclude-standard -- <staged paths>` list through isolated Python: it rejects `*.env`, `.env*`, `azure-signing*`, `*.pfx`, `*.p12`, `*.cer`, `*.key`, `*.pem` and `signing/` components case-insensitively, then drops deleted paths. `tar --null -T <validated list> --no-recursion` applies matching case-insensitive exclusions as an independently tested second layer and prevents recursive inclusion of unlisted contents.
+- The env file lives **outside this repo** on the release Mac. Its path is in the Mac env var `VOXCLIP_SIGNING_ENV` (for example the existing Superscribe signing env file). Isolated Python walks every ancestor of its resolved path and compares device/inode identity with the checkout, rejecting internal files through symlinks, case variants on case-insensitive filesystems and other aliases before staging or SSH.
+- Every Python invocation in the Mac driver runs with `-I`, including `release-assets.py`, dry-run pin checks, version checks, containment and VM configuration, so modules planted in the launch directory cannot execute even with empty/relative `PYTHONPATH` entries. After capturing the signing-file path, the driver unsets `VOXCLIP_SIGNING_ENV` so children do not inherit it.
+- Each canonical tenant/client/secret value wins when its unquoted value is non-empty; otherwise its KVT/KVI/KVS alias supplies the value. The effective value must be non-blank. A whitespace-only canonical value therefore fails before the lock even with a valid alias, and the VM repeats this validation with `.Trim()`.
+- Recognised names (values are never printed): `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET` (aliases accepted for the existing file: `AZURE_SIGNING_KVT`, `AZURE_SIGNING_KVI`, `AZURE_SIGNING_KVS`), plus the non-secret `AZURE_SIGNING_ENDPOINT`, `AZURE_SIGNING_ACCOUNT` and `AZURE_SIGNING_PROFILE`. Each non-secret name absent from the file falls back to the driver's own Mac process environment; a present file value always wins, including an empty or invalid value. Only the endpoint has a default when absent from both: `https://neu.codesigning.azure.net`. Account `<account>` and profile `<profile>` must match `^[A-Za-z0-9][A-Za-z0-9-]{1,63}$`; endpoint must be exactly `https://<region>.codesigning.azure.net` with region matching `^[a-z]{2,8}$`. Mac validation occurs before locking and reports only the invalid variable name, and the VM repeats it. All three travel explicitly in the same stdin payload as credentials, never SSH argv; the VM requires the endpoint. Tenant/client/secret require non-blank effective values through their documented aliases; they never fall back to the Mac environment. Other legacy signing names remain ignored.
+- The driver uses isolated Python to read bytes, strip a leading UTF-8 BOM and normalize CR/CRLF line endings before matching exact allowed names; unrelated lines are skipped without decoding, and grep environment options have no effect. Allowed lines must be valid UTF-8, with each value one single-quoted, double-quoted or unquoted shell word on one line and no trailing payload. Malformed allowed assignments report only the variable name; unexpected failures use one fixed message without traceback text, bytes or offsets. The complete validated output is UTF-8-encoded in memory, including validation-only preflight, before a single binary write, so a parsing or encoding failure never streams a partial set. It **streams the validated assignments over the SSH session's stdin** to `vm-release.ps1`, which reads stdin once at start into a script-scoped hashtable and never writes the values anywhere. The builds, local FFmpeg staging and the delta download run **without** credentials. Only then are `AZURE_TENANT_ID`, `AZURE_CLIENT_ID` and `AZURE_CLIENT_SECRET` (what the dlib's `DefaultAzureCredential` reads) set as process environment variables, for the signing and packing steps alone (signtool, `vpk pack` with its sign template, the sign wrapper); they are removed before verification and the smoke install (section 3.4). The SSH command line carries only the version, paths and tool locations.
 - `metadata.json` for the dlib is written by the VM script from the non-secret values, as single-line ASCII without a BOM (a UTF-16 or BOM file breaks the dlib):
   `{"Endpoint":"https://neu.codesigning.azure.net","CodeSigningAccountName":"<account>","CertificateProfileName":"<profile>"}`
 
@@ -196,173 +199,35 @@ The Windows VM (ARM64 Windows 11 under UTM on the release Mac) has signtool and 
 
 `write-pin` is a maintainer pin-update operation, not part of releasing an existing pin. Release builds verify `buildInputsSha256`, both clean-build results and the committed ZIP hashes; they never rewrite `ffmpeg.json` to accept different output. The shipping recipe excludes zimg and uses architecture section 6.5's existing swscale HDR fallback, without assuming a licence exception.
 
-Env vars: `VOXCLIP_WIN_HOST` (required, `user@host`), `VOXCLIP_SIGNING_ENV` (required), `VOXCLIP_WIN_BUILD_DIR` (default `C:\voxclip-build`), `VOXCLIP_VM_SIGNTOOL` (default `C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\x64\signtool.exe`), `VOXCLIP_VM_DLIB` (default `C:\trusted-signing-client\bin\x64\Azure.CodeSigning.Dlib.dll`). Flags: `--no-upload`, `--upload-only`.
+Env vars: `VOXCLIP_WIN_HOST` (required, `user@host`), `VOXCLIP_SIGNING_ENV` (required), `VOXCLIP_FFMPEG_CACHE` (optional local build cache), `VOXCLIP_WIN_BUILD_DIR` (default `C:\voxclip-build`), `VOXCLIP_VM_SIGNTOOL` (optional override), `VOXCLIP_VM_DLIB` (default `C:\trusted-signing-client\bin\x64\Azure.CodeSigning.Dlib.dll`). Flags include `--no-upload`, `--upload-only`, `--dry-run` and non-uploadable `--skeleton-test`.
 
-The FFmpeg phase runs on the Mac **before transfer to the signing VM**. Use the pinned `tools/ffmpeg-build/` recipe, never BtbN downloads. Rebuild both RIDs from the source pins, check the resulting ZIPs against `ffmpeg.json` and run the two-clean-build comparison (architecture section 6.1). Pass the verified local ZIPs, the LGPL-2.1 text, build/runtime reports and dependency notices to the Windows packaging step; it must not redownload FFmpeg. `recipeCommit: "BUILD_COMMIT"` is resolved to this release's full commit. The source archive contains that exact recipe tree and the pinned original archives, including static-runtime and build-tool sources. Readers must accept schema 2 and remove their `btbnCommit`, `ffmpeg-builds` and BtbN-URL assumptions; a missing unpublished URL is not an error or permission to publish a new asset.
+Before release, run the pinned `tools/ffmpeg-build/` recipe for both RIDs twice and verify the committed pin (architecture section 6.1). The Windows release driver consumes those cached outputs; it does not rebuild or rewrite the pin. `recipeCommit: "BUILD_COMMIT"` resolves to this release's full commit. The shipping path has no `btbnCommit`, `ffmpeg-builds` or BtbN download URL requirement.
 
-```bash
-#!/usr/bin/env bash
-# Release VoxClip for Windows from the Mac: build, sign, pack and verify on the VM, then upload.
-# Never use `set -x` here: the signing stream must not be echoed.
-set -euo pipefail
-cd "$(dirname "$0")/../../.."                                     # repo root
-REPO_ROOT="$(pwd)"
-HOST="${VOXCLIP_WIN_HOST:?Set VOXCLIP_WIN_HOST=user@vm}"
-SIGNING_ENV="${VOXCLIP_SIGNING_ENV:?Set VOXCLIP_SIGNING_ENV to the signing env file outside this repo}"
-BUILD_DIR="${VOXCLIP_WIN_BUILD_DIR:-C:\\voxclip-build}"
-SIGNTOOL="${VOXCLIP_VM_SIGNTOOL:-C:\\Program Files (x86)\\Windows Kits\\10\\bin\\10.0.26100.0\\x64\\signtool.exe}"
-DLIB="${VOXCLIP_VM_DLIB:-C:\\trusted-signing-client\\bin\\x64\\Azure.CodeSigning.Dlib.dll}"
-GITHUB_REPO="${GITHUB_REPO:-Siim/voxclip}"
-DIST="apps/windows/dist"
-NO_UPLOAD=false; UPLOAD_ONLY=false
-for a in "$@"; do case "$a" in --no-upload) NO_UPLOAD=true ;; --upload-only) UPLOAD_ONLY=true ;; *) echo "Unknown $a" >&2; exit 2 ;; esac; done
+The release driver validates the committed schema-2 pin and the two cached clean-build reports before taking the VM lock. The archive name, byte size and SHA-256 for each local ZIP must match `builds`; both reports must match `buildInputsSha256`, the exact configure/licence evidence and the reproducibility hashes. It checks that each ZIP holds exactly the six ABI-named DLLs for the RID and that their PE machine types and per-DLL hashes match the reports. The former BtbN `testTools` ZIP is never a shipping input. There are no shipping ZIP URLs.
 
-VERSION=$(sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' apps/windows/Directory.Build.props | head -1)
-TAG="v$VERSION"
-tools/release/check-version.sh >/dev/null
-[ -z "$(git status --porcelain)" ] || { echo "Working tree is dirty." >&2; exit 1; }
-[ "$(git rev-parse HEAD)" = "$(git rev-parse "$TAG^{commit}" 2>/dev/null)" ] || { echo "HEAD is not tagged $TAG." >&2; exit 1; }
-BUILD_COMMIT="$(git rev-parse "$TAG^{commit}")"
-FFMPEG_CACHE="$HOME/Library/Caches/voxclip-ffmpeg-build"
+Source staging reads `tools/ffmpeg-build/` from the tagged release commit, compares its source lock and recipe digest with the manifest, and rechecks every cached source/build-tool archive's pinned size and SHA-256 before copying it. The `sourceAssets.includePaths` selection is repacked after rejecting traversal, unsafe links, duplicate entries and missing selected files. The full AMF download is not redistributed; its original URL, size and hash remain in `SOURCE-ASSETS.json` alongside the selected archive's hash. Other pinned original source archives, including llvm-mingw, MinGW-w64 and LLVM, and pinned build-tool archives are included. The archive also has the exact committed recipe, schema-2 manifest, `BUILD.txt` with both configure lines, DLL/import inventory and final shipping ZIP hashes, LGPL text, FFmpeg licence, generated per-RID notices and per-RID audit summaries with resolved components, runtime objects and licence coverage. It excludes build logs, config logs, raw maps and private evidence. The staged source archive is verified again when copied into the final upload set, so a later change to the build cache or working recipe cannot change corresponding source.
 
-upload() {
-  (cd "$DIST" && shasum -a 256 -c SHA256SUMS-windows.txt)
-  gh release view "$TAG" --repo "$GITHUB_REPO" >/dev/null 2>&1 \
-    || gh release create "$TAG" --repo "$GITHUB_REPO" --draft --verify-tag --title "VoxClip $VERSION" --notes "Windows build"
-  [ "$(gh release view "$TAG" --repo "$GITHUB_REPO" --json isDraft --jq .isDraft)" = "true" ] \
-    || { echo "$TAG is already published; refusing to replace assets." >&2; exit 1; }
-  gh release upload "$TAG" "$DIST"/* --repo "$GITHUB_REPO" --clobber
-  echo "Attached Windows assets to draft $TAG."
-}
-if [ "$UPLOAD_ONLY" = true ]; then upload; exit 0; fi
-
-# Credentials file: outside the repo, has the required names (values never printed).
-SIGNING_REAL="$(cd "$(dirname "$SIGNING_ENV")" && pwd)/$(basename "$SIGNING_ENV")"
-case "$SIGNING_REAL" in "$REPO_ROOT"/*) echo "VOXCLIP_SIGNING_ENV must point outside the repo." >&2; exit 1 ;; esac
-NAMES='AZURE_TENANT_ID|AZURE_CLIENT_ID|AZURE_CLIENT_SECRET|AZURE_SIGNING_KVT|AZURE_SIGNING_KVI|AZURE_SIGNING_KVS|AZURE_SIGNING_ENDPOINT|AZURE_SIGNING_ACCOUNT|AZURE_SIGNING_PROFILE'
-grep -Eq '^(AZURE_CLIENT_SECRET|AZURE_SIGNING_KVS)=.+' "$SIGNING_ENV" || { echo "No client secret in the signing env file." >&2; exit 1; }
-grep -Eq '^AZURE_SIGNING_ACCOUNT=.+' "$SIGNING_ENV" && grep -Eq '^AZURE_SIGNING_PROFILE=.+' "$SIGNING_ENV" \
-  || { echo "AZURE_SIGNING_ACCOUNT and AZURE_SIGNING_PROFILE must be set in the signing env file." >&2; exit 1; }
-
-ssh -o ConnectTimeout=5 "$HOST" "echo connected" >/dev/null
-
-# 0. Rebuild both RIDs twice from clean source; verify reproducibility and the committed pin.
-# The recipe enforces at most two concurrent compiler jobs and 15 GiB free.
-python3 -I tools/ffmpeg-build/build.py fetch --cache "$FFMPEG_CACHE"
-for rid in win-x64 win-arm64; do
-  for attempt in 1 2; do
-    python3 -I tools/ffmpeg-build/build.py build --rid "$rid" --attempt "$attempt" --jobs 2 --cache "$FFMPEG_CACHE"
-  done
-done
-python3 -I tools/ffmpeg-build/build.py verify --cache "$FFMPEG_CACHE"
-
-# 1. Ship a clean archive of the TAG (not the working tree) and replace the VM source tree entirely.
-TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
-git archive --format=tar --prefix=src/ -o "$TMP/src.tar" "$TAG" apps/windows shared LICENSE THIRD_PARTY_NOTICES.md CHANGELOG.md
-ssh "$HOST" "powershell -NoProfile -Command \"New-Item -ItemType Directory -Force -Path '$BUILD_DIR' | Out-Null\""
-scp -q "$TMP/src.tar" "$HOST:${BUILD_DIR//\\//}/src.tar"
-ssh "$HOST" "powershell -NoProfile -Command \"Remove-Item -Recurse -Force '$BUILD_DIR\\src','$BUILD_DIR\\out' -ErrorAction SilentlyContinue; tar -xf '$BUILD_DIR\\src.tar' -C '$BUILD_DIR'; if (\$LASTEXITCODE) { exit 1 }\""
-# The VM consumes only the verified local ZIPs and their licence/build reports.
-ssh "$HOST" "powershell -NoProfile -Command \"New-Item -ItemType Directory -Force -Path '$BUILD_DIR\\ffmpeg' | Out-Null\""
-for rid in win-x64 win-arm64; do
-  scp -q "$FFMPEG_CACHE/reports/$rid-1/voxclip-ffmpeg-n9.0.2-$rid.zip" "$HOST:${BUILD_DIR//\\//}/ffmpeg/"
-  scp -q "$FFMPEG_CACHE/reports/$rid-1/report.json" "$HOST:${BUILD_DIR//\\//}/ffmpeg/$rid-report.json"
-  scp -q "$FFMPEG_CACHE/reports/$rid-1/FFmpeg-NOTICES.txt" "$HOST:${BUILD_DIR//\\//}/ffmpeg/$rid-NOTICES.txt"
-done
-for notice in FFmpeg-LICENSE.txt FFmpeg-LICENSE.md; do
-  scp -q "$FFMPEG_CACHE/reports/win-x64-1/$notice" "$HOST:${BUILD_DIR//\\//}/ffmpeg/$notice"
-done
-
-# 2. Build, sign, pack, verify on the VM. Credentials go over stdin only.
-grep -E "^($NAMES)=" "$SIGNING_ENV" | tr -d '\r' | ssh "$HOST" \
-  "powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"$BUILD_DIR\\src\\apps\\windows\\build\\vm-release.ps1\" -Version $VERSION -BuildDir \"$BUILD_DIR\" -SignTool \"$SIGNTOOL\" -Dlib \"$DLIB\""
-
-# 3. Copy the upload set back (individual files, no zip: Windows zips drop directory execute bits).
-rm -rf "$DIST"; mkdir -p "$DIST"
-scp -q "$HOST:${BUILD_DIR//\\//}/out/upload/*" "$DIST/"
-(cd "$DIST" && shasum -a 256 -c SHA256SUMS-windows.txt)
-
-# 4. LGPL corresponding source for the shipped FFmpeg DLLs (architecture.md section 6.1), built on the Mac
-#    from the verified source/runtime/build-tool archives, plus the recipe at BUILD_COMMIT.
-#    Both local DLL ZIPs have already passed the ABI, source, GPL-marker and reproducibility gates.
-SRC="$TMP/ffmpeg-source"; mkdir -p "$SRC"
-python3 - "$SRC" "$FFMPEG_CACHE" "$BUILD_COMMIT" <<'PY'
-import hashlib, json, sys, pathlib, shutil, tarfile, io
-out = pathlib.Path(sys.argv[1]); pin = json.load(open("apps/windows/build/ffmpeg.json"))
-cache = pathlib.Path(sys.argv[2]); pin["recipeCommit"] = sys.argv[3]
-for a in pin["sourceAssets"] + pin["buildTools"]:
-    data = (cache / "downloads" / a["name"]).read_bytes()
-    if hashlib.sha256(data).hexdigest() != a["sha256"]: sys.exit(f"sha256 mismatch: {a['name']}")
-    if a.get("includePaths"):
-        with tarfile.open(fileobj=io.BytesIO(data)) as archive:
-            selected = [member for member in archive.getmembers() if any(
-                "/".join(pathlib.PurePosixPath(member.name).parts[1:]) == prefix or
-                "/".join(pathlib.PurePosixPath(member.name).parts[1:]).startswith(prefix + "/")
-                for prefix in a["includePaths"])]
-            archive.extractall(out / (a["component"] + "-selected-source"), members=selected, filter="data")
-    else:
-        (out / a["name"]).write_bytes(data)
-shutil.copytree("tools/ffmpeg-build", out / "tools/ffmpeg-build", ignore=shutil.ignore_patterns("__pycache__"))
-shutil.copyfile("THIRD_PARTY_NOTICES.md", out / "THIRD_PARTY_NOTICES.md")
-(out / "ffmpeg.json").write_text(json.dumps(pin, indent=2) + "\n", encoding="utf-8")
-(out / "BUILD.txt").write_text("FFmpeg %s, recipe %s\nlicense: %s\n" %
-    (pin["sourceCommit"], pin["recipeCommit"], pin["license"]) + "".join(
-    "configure %s: %s\nruntimeObjects %s: %s\n" %
-    (rid, pin["configure"][rid], rid, json.dumps(json.load(open(cache / "reports" / (rid + "-1") / "report.json"))["runtimeObjects"], sort_keys=True))
-    for rid in ("win-x64", "win-arm64")), encoding="utf-8")
-for name in ("FFmpeg-LICENSE.txt", "FFmpeg-LICENSE.md"):
-    shutil.copyfile(cache / "reports" / "win-x64-1" / name, out / name)
-for rid in ("win-x64", "win-arm64"):
-    shutil.copyfile(cache / "reports" / (rid + "-1") / "FFmpeg-NOTICES.txt",
-                    out / (rid + "-NOTICES.txt"))
-PY
-tar -C "$TMP" -cJf "$DIST/VoxClip-win-ffmpeg-source.tar.xz" ffmpeg-source
-(cd "$DIST" && shasum -a 256 VoxClip-win-ffmpeg-source.tar.xz >> SHA256SUMS-windows.txt)
-if command -v osslsigncode >/dev/null; then
-  for f in "$DIST"/*-Setup.exe; do osslsigncode verify -in "$f" >/dev/null || { echo "Signature check failed: $f" >&2; exit 1; }; done
-fi
-[ "$NO_UPLOAD" = true ] && { echo "Built and verified in $DIST. Upload with --upload-only."; exit 0; }
-upload
-```
+The driver transfers only the staged ZIPs, licence/notice/BUILD files, audit summaries and their hash receipt to the VM; it keeps the corresponding-source archive on the Mac. The VM checks the receipt against its release commit and `buildInputsSha256`, verifies every transferred file and passes the ZIP as `-ZipPath` to `Fetch-Ffmpeg.ps1`. `--dry-run` prints the plan without staging, VM access or signing. `--skeleton-test` remains permanently non-uploadable. `--upload-only` uses the previously verified production output and repeats checksum and optional Setup signature checks before draft upload.
 
 ### 3.4 VM-side script (`apps/windows/build/vm-release.ps1`, ASCII only)
 
-Normative steps (the script is written at scaffold time; this is its contract):
+The driver invokes the committed script with a per-run `config.json` beneath the configured build root's `runs/` directory. The owner-token lock and heartbeat belong to the Mac driver; the VM script never takes over another run.
 
-1. `$ErrorActionPreference = 'Stop'`; `Set-StrictMode -Version Latest`. Every native command is followed by `if ($LASTEXITCODE -ne 0) { throw "<step> failed" }` (no grepping output for "error").
-2. **Credentials from stdin into memory only:** `$raw = [Console]::In.ReadToEnd()`. Parse `NAME=VALUE` lines (strip one pair of surrounding quotes), map aliases (`KVT → AZURE_TENANT_ID`, `KVI → AZURE_CLIENT_ID`, `KVS → AZURE_CLIENT_SECRET`), require tenant, client id, secret, account and profile, and keep them in a script-scoped hashtable `$Creds`. **Set no environment variable yet.** Clear `$raw`. Never `Write-Host` a value; log only "Signing credentials: present".
-3. Write `$BuildDir\signing\metadata.json` (non-secret values only) with `[IO.File]::WriteAllText(path, json, [Text.Encoding]::ASCII)`.
-4. `cd $BuildDir\src\apps\windows`; `dotnet tool restore`; `dotnet --version` must start with `10.`. Set `$env:MSBUILDDISABLENODEREUSE = '1'` and `$env:DOTNET_CLI_USE_MSBUILD_SERVER = '0'`. The script never passes `-bl` or `-v:diag`.
-5. **Build phase, no credentials in the environment.** For `rid` in `win-x64` (`Platform=x64`), `win-arm64` (`Platform=ARM64`):
-   1. `dotnet publish src\VoxClip.Cli\VoxClip.Cli.csproj -c Release -r <rid> --self-contained -nodeReuse:false -p:UseSharedCompilation=false -o ..\..\..\out\<rid>\app`
-   2. `dotnet publish src\VoxClip.App\VoxClip.App.csproj -c Release -r <rid> -p:Platform=<platform> --self-contained -nodeReuse:false -p:UseSharedCompilation=false -o ..\..\..\out\<rid>\app` (the App last; both share one folder and one runtime).
-   3. **FFmpeg and notices:** read schema-2 `build\ffmpeg.json`; require the Mac-staged `<rid>` ZIP in `$BUILD_DIR\ffmpeg\` with its pinned local `name`; `Get-FileHash -Algorithm SHA256` must equal the recorded hash (otherwise delete and fail). No download fallback. Extract and require exactly the six ABI-named DLLs in `libraryMajors`, then copy them from `bin\` into the app folder. Stage the pinned `FFmpeg-LICENSE.txt`, `FFmpeg-LICENSE.md` and `<rid>-NOTICES.txt` from `$BUILD_DIR\ffmpeg\` into `licenses\` (the last as `FFmpeg-NOTICES.txt`); write `licenses\FFmpeg-BUILD.txt` with `sourceCommit`, the resolved recipe `BUILD_COMMIT`, the RID's exact configure/licence strings and runtime inventory from `<rid>-report.json`. Copy repository `LICENSE` and `THIRD_PARTY_NOTICES.md` into `out\<rid>\app\`.
-   4. **Delta base (optional):** `dotnet vpk download github --repoUrl https://github.com/Siim/voxclip --channel <rid> -o ..\..\..\out\<rid>\releases` (no token; failure on the first release is ignored).
+1. **Start without signing credentials in the environment.** Reject inherited Azure tenant/client/secret values. Record the process identity for bounded cancellation, select the configured .NET SDK, disable build servers and telemetry, and create the run's private metadata directory with restricted ACLs.
+2. **Read credentials from SSH stdin into memory.** Parse only the names and aliases in section 3.2, validate them again, and clear the raw input. Keep secrets in a hashtable until signing; write only the non-secret account/profile/endpoint metadata as ASCII. Never log a credential value.
+3. **Prepare the exact source and tools.** Extract this run's `source.tar.gz` into its fresh `source/` directory, require .NET 10, validate the selected signtool/dlib PE architectures, and extract release notes for the configured version from `CHANGELOG.md`. The explicitly non-uploadable skeleton resume may reuse its own original publish, never a production release.
+4. **Build without signing credentials in the environment.** For `win-x64`, then `win-arm64`, publish the CLI followed by the App into the same RID-specific `out/<rid>/app` directory. Both are self-contained Release builds with `-m:1`, node reuse disabled and shared compilation disabled; the App also receives the matching `Platform`. Verify shared resources and root notices. Verify the schema-2 FFmpeg stage receipt, ZIP size/hash, six ABI DLLs and exact runtime configure/licence strings before staging the DLLs and licence/notice/BUILD files. Collect build failures, shut down build servers and stop before signing if any failed.
+5. **Prepare packaging.** Use the `vpk` tool version pinned by `Directory.Packages.props`, installing it into the build root's versioned tools directory if absent. Fetch the optional previous published package for each channel; a first release may have no delta base.
+6. **Sign and pack.** Set the three Azure credential environment variables only inside the signing `try/finally`. `Sign-Artifacts.ps1` signs the payload; `Pack-Velopack.ps1` creates each RID's installer, full package, optional delta and feed with the production ICO and `--noPortable`. Its signing template uses the pinned Velopack `{{file}}` placeholder and the same wrapper for package tooling, including `Update.exe`. It verifies the final installer publisher as `Haugas Development OU`. The `finally` clears credentials and the signing runtime override before any install or CLI smoke test.
+7. **Verify after clearing credentials.** Check every payload PE, the installer and every PE extracted from the full package. `Test-Install.ps1` silently installs each architecture into its own temporary directory, verifies installed signatures and required app/CLI/licence files, checks the installed CLI's version and RID, then uninstalls. Installation, CLI execution and cleanup are bounded. Preserve existing user data, retain cleanup markers on failure, and report both the original failure and any cleanup failure. The x64 installer runs under emulation on the ARM64 VM.
+8. **Collect verified output.** Copy only the installer, packages listed by Velopack and the channel feed into `out/upload`. Write ASCII, LF-terminated `SHA256SUMS-windows.txt` and a verification receipt identifying the source commit, version, tool versions and whether it was a test build. The Mac adds and checks the corresponding-source archive before draft upload (section 3.3).
+9. **Clean up on every exit.** Clear credential variables and the in-memory hashtable, restore process tool paths, and remove this run's private metadata, source archive and process marker. The Mac driver handles owned remote process cleanup, evidence copy-back and lock release; it never deletes a foreign run or lock.
 
-   Then `dotnet build-server shutdown`, so no MSBuild node or compiler server outlives this phase.
-6. **Signing phase.** Set `AZURE_TENANT_ID`, `AZURE_CLIENT_ID` and `AZURE_CLIENT_SECRET` from `$Creds` with `[Environment]::SetEnvironmentVariable(name, value, 'Process')`, inside `try { … } finally { … }`. For each `rid`:
-   1. **Sign every PE we ship:** `Get-ChildItem out\<rid>\app -Recurse -Include *.exe,*.dll` → files whose `Get-AuthenticodeSignature` status is not `Valid` → `sign-if-needed.ps1` (section 3.5) in batches of 50. Files already validly signed by their publisher (Microsoft runtime and Windows App SDK files, SkiaSharp) keep their signature; everything else (our assemblies and executables, FFmpeg, Whisper.net natives, NAudio, Velopack) is signed by us.
-   2. **Pack:** `dotnet vpk pack --packId VoxClip --packVersion <version> --packTitle VoxClip --packAuthors "Haugas Development OU" --packDir out\<rid>\app --mainExe VoxClip.exe --icon src\VoxClip.App\Assets\VoxClip.ico --channel <rid> --runtime <rid> --noPortable --releaseNotes <notes file from CHANGELOG.md> --signTemplate "<wrapper command> {{file...}}" -o out\<rid>\releases`. The sign template points at the same wrapper, so Velopack's own `Update.exe` and the `Setup.exe` are signed with the same identity, and files already signed are left alone.
-   3. **Sign the installer:** if `VoxClip-<rid>-Setup.exe` is not `Valid` after packing, sign it with the wrapper (post-signing Setup.exe is allowed).
+### 3.5 Signing wrapper (`apps/windows/build/Sign-Artifacts.ps1`)
 
-   The `finally` block runs `Remove-Item Env:AZURE_TENANT_ID, Env:AZURE_CLIENT_ID, Env:AZURE_CLIENT_SECRET -ErrorAction SilentlyContinue` and clears `$Creds`, whether signing succeeded or not.
-7. **Verify phase, credentials already removed** (fail the release on any miss). For each `rid`:
-   - every PE in `out\<rid>\app` has status `Valid`;
-   - `VoxClip-<rid>-Setup.exe` is `Valid` and its signer subject contains `Haugas Development OU`; `signtool verify /pa /v` succeeds on it;
-   - copy the full `.nupkg` to a `.zip`, expand it to a temp folder, and every PE inside is `Valid`;
-   - smoke install: run the Setup.exe silently into a temp folder (`--silent --installto <temp>`; check the flags against the pinned Velopack version), check that every PE under it (including `Update.exe`) is `Valid`, that `current\LICENSE`, `current\THIRD_PARTY_NOTICES.md`, `current\licenses\FFmpeg-LICENSE.txt` and `current\licenses\FFmpeg-BUILD.txt` exist, run `current\voxclip-cli.exe version` and compare with `<version>`, then uninstall silently. The x64 installer runs under emulation on the ARM64 VM.
-8. Collect the upload set into `out\upload\`: both Setup.exe files, every `.nupkg` listed in `assets.<rid>.json` for this version, and `releases.<rid>.json`. Write `SHA256SUMS-windows.txt` (`<lowercase sha256><two spaces><file name>`, LF endings, ASCII). The Mac driver adds the FFmpeg source asset to it (section 3.3).
-9. Remove `$BuildDir\signing\` and `$BuildDir\src.tar`. Exit 0.
+Parameters: `-SignTool`, `-Dlib`, `-Metadata`, `-Paths`, plus `-VerifyOnly` and optional `-ReportPath`. The wrapper inventories PE files recursively and preserves publisher signatures that already meet the release checks. It signs the remaining files in batches of at most 50 with SHA-256 and Microsoft's RFC 3161 timestamp service. Only transient timestamp-service failures retry, at most three attempts, and each attempt filters out files already successfully signed.
 
-### 3.5 Signing wrapper (`apps/windows/build/sign-if-needed.ps1`)
-
-Parameters: `-SignTool <path> -Dlib <path> -Metadata <path> <files...>`. For each file: skip if `Get-AuthenticodeSignature` is `Valid`; collect the rest and run, in batches of 50:
-
-```text
-"<SignTool>" sign /v /fd SHA256 /tr http://timestamp.acs.microsoft.com /td SHA256 /dlib "<Dlib>" /dmdf "<Metadata>" <file> <file> …
-```
-
-Exit non-zero if signtool fails or if any file is still not `Valid` afterwards. The wrapper reads credentials only from the process environment it inherits.
+Every invocation ends with the shared Authenticode and timestamp verification; `-VerifyOnly` performs those checks without reading signing credentials. Failed native exit codes, missing or invalid signatures and missing valid timestamps fail the release. Signer output is redacted before logging. The wrapper restores the prior signing runtime path on every exit. See [the implementation guide](../apps/windows/build/README-release.md) for prerequisite selection, evidence files and offline regression commands.
 
 ### 3.6 What the Windows flow guarantees
 
@@ -371,7 +236,12 @@ Exit non-zero if signtool fails or if any file is still not `Valid` afterwards. 
 - Failures are detected by exit codes, not by grepping logs.
 - Credentials exist only in the memory of one SSH session on the VM: in a script variable during the build phase, and in that one PowerShell process's environment only during the signing phase. No build tool, MSBuild node, compiler server, binlog, installer or smoke-test process ever sees them.
 - The install folder carries VoxClip's `LICENSE`, the full `THIRD_PARTY_NOTICES.md` and the FFmpeg licence and build notes, and every release carries the FFmpeg corresponding source.
-- Results are hash-checked after the copy back, and optionally signature-checked on the Mac with `osslsigncode`.
+- Results are hash-checked after the copy back, and optionally signature-checked on the Mac with `osslsigncode`. When installed, it verifies each Setup file with a bounded 120-second check before upload, including `--upload-only`; a verification failure stops the release. When absent, the driver explicitly reports that this optional check is skipped. The `.release/latest` pointer advances only after the final Mac hash check and this signature-verification step pass for a clean production build; failures leave any previous verified pointer unchanged. Before signing, the VM honors `VOXCLIP_VM_SIGNTOOL`; otherwise it selects the numerically newest Windows Kits `10.0.26100.0` or newer x64 signtool, then the pinned AzureTrustedSignTool `1.3.13` user-profile tool-store bundle. That bundled x64 tool with the x64 dlib is accepted without a Windows SDK. The selected signtool and dlib must have matching PE machine types; invalid headers or a mismatch fail with a prerequisite error before signing credentials enter the environment. `signing-tool.json` and the verification receipt record the tool path, version, dlib path and both machine types.
+- After the first copy-back hash check, the driver stops and reaps the ownership heartbeat, cleans up the remote process and metadata, and releases only its own VM lock. Cleanup and Release each retry transport exits 124/255 at most three times with 20/40-second backoff. If release remains unsuccessful, a CRITICAL diagnostic retains the lock for human inspection without another exit-cleanup retry; the hash-verified Mac corresponding-source, manifest and upload steps still finish. The driver then exits 75 with a summary identifying the retained VM lock. Mac-only work never depends on a running heartbeat or continued VM availability.
+- Exit cleanup ignores further INT, TERM and HUP signals while its bounded steps run. It stops and reaps the heartbeat before terminating the active step, so a repeated interrupt or heartbeat signal cannot prevent the owner-checked release. On failure it first attempts to copy only `out/evidence` back to the Mac with a 60-second timeout, never `private`; copy failure does not skip remote cleanup. Installer aggregate errors carry the original error and every cleanup error in the outer message, including on Windows PowerShell 5.1. Before Setup starts, `out/evidence/<rid>/install-root.json` records the temporary install root; only successful cleanup removes the marker. After taskkill, remote cleanup handles every marker in this run: bounded 180-second uninstall, process cleanup, root removal, then marker deletion, within a 600-second remote-call limit; unmarked roots and other runs are untouched. A failed app kill never skips uninstall. Cleanup waits 60 seconds for root-matched processes, force-stops any remaining processes on timeout, waits another 10 seconds, then removes the root with at most five attempts two seconds apart, checking existence each time. The CLI version check is bounded to 60 seconds. Failed cleanup retains its marker and the VM lock for inspection.
+- After ambiguous acquisition, exit cleanup retries owner-checked Release on transport exits 124/255 at most three times with 20/40-second backoff. Successful release and a first-attempt 74 are silent; an exhausted transport retry budget produces a WARNING identifying the run, owner and lock. A later 74 after an ambiguous reply follows the lost-reply rule below.
+- A Release exit 74 after an earlier 124/255 means an earlier release reply was lost: Describe reports current state and the driver prints that this invocation no longer owns the lock, without a retained-lock failure or exit 75. A first-attempt 74 during normal release keeps the CRITICAL human-inspection path.
+- Every invocation, including resume, uses a fresh random lock owner separate from its run-directory ID. Acquisition timeouts and SSH transport failures retry owner checks within the lock deadline, including after later contention, to recover only that invocation's acquisition. Early-exit cleanup attempts an owner-checked release after successful or uncertain acquisition, including interruptions, but not after definite contention alone. A foreign/missing lock (exit 74) is left untouched and silent; diagnostics identify the run, invocation owner and lock path, never credential values.
 
 ---
 
