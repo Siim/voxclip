@@ -623,11 +623,18 @@ Behaviour:
 
 ### 9.3 Output and exit codes
 
-Before preparing an export, the CLI checks the editing summary in the active clip or word-range scope. An empty output plan or `canExport == false` fails with `everythingCut` and exit 5, and no destination or sidecar is changed. An unknown clip or a word range outside the transcript is a bad argument (`usageError`, exit 2), and so is `--audio-out` for a source with no audio track ("This video has no audio track, so --audio-out has nothing to write.") and `--srt` when the effective caption style is `off` ("Captions are off, so --srt has nothing to write. Choose a caption style with --style."). SRT cues come from caption pages, and with captions off there are none. These argument checks run as soon as the source is probed, before transcription and before the `everythingCut` check, so the same flags give the same exit code on both platforms.
+Before preparing an export, the CLI checks the editing summary in the active clip or word-range scope. An empty output plan or `canExport == false` fails with `everythingCut` and exit 5, and no destination or sidecar is changed. An unknown clip or a word range outside the transcript is a bad argument (`usageError`, exit 2), and so is `--audio-out` for a source with no audio track ("This video has no audio track, so --audio-out has nothing to write.") and `--srt` when the effective caption style is `off` ("Captions are off, so --srt has nothing to write. Choose a caption style with --style."). SRT cues come from caption pages, and with captions off there are none. These argument checks run as soon as the source is probed, before transcription and before the `everythingCut` check, so the same flags give the same exit code on both platforms. They also cover an unknown `--clip` for a media-file input, which never has clips.
 
-Every output (video, edited WAV, SRT) is written to `<name>.partial` beside its destination, where the destination path is resolved through symlinks first. An existing regular file at a `.partial` path is a leftover from an earlier run and is replaced; a directory or symlink there is a bad argument. The WAV and SRT are finished before anything is published. Publication is all-or-nothing, in the order MP4, SRT, WAV: before the first rename, each existing destination is kept as a backup beside it (`<name>.rollback-<random>`, a copy-on-write clone where the file system supports one). If any rename fails, every destination already replaced is restored from its backup, or removed if it did not exist before, so a failure at any step leaves every existing destination unchanged. Backups are deleted on success, failure and cancellation. Partial files are removed on success, failure and cancellation.
+Other bad arguments are usage errors (exit 2) before the input is opened, with this copy on both platforms:
+- `--fps` that is not a finite number above 0 and at most 60: "--fps must be greater than zero and at most 60".
+- An output (`--export`, `--srt`, `--audio-out`) that is an existing folder or special file: "An output must be a file path, not a folder or special file". An output whose parent folder does not exist: "The output folder does not exist for {path}". Folders are never created.
+- Outputs that overwrite an input or each other: "Output paths must not overwrite inputs or each other".
+- `--transcript` when `--open` is a `.voxclip` project: "--transcript only applies when --open is a media file." A project keeps its own transcript.
+
+Every output (video, edited WAV, SRT) is written to `<name>.partial` beside its destination, where the destination path is resolved through symlinks first. An existing regular file at a `.partial` path is a leftover from an earlier run and is replaced; a directory or symlink there is a bad argument. The WAV and SRT are finished before anything is published. Publication is all-or-nothing, in the order MP4, SRT, WAV: before the first rename, each existing destination is kept as a backup beside it (`<name>.rollback-<random>`, a copy-on-write clone where the file system supports one). If any rename fails, every destination already replaced is restored from its backup, or removed if it did not exist before, so a failure at any step leaves every existing destination unchanged. Every restore is attempted even if an earlier one fails. A backup whose restore fails is never deleted: it stays beside the destination, and the error (`exportFailed`) says "Couldn't put back {file name}. The previous version is saved as {backup file name}." Every other backup is deleted on success, failure and cancellation. Partial files are removed on success, failure and cancellation.
 
 - Human-readable progress goes to **stderr**: one line per phase change, percentages at most once per second, nothing with `--quiet`.
+- The edited WAV (`--audio-out`) is written at the plan's sample rate with exactly `plan.outputSamples` samples per channel; it is never resampled.
 - `audioSampleRate` reports the 48,000 Hz export target on both platforms. For video-only output it stays 48,000, `audioSamples` is 0 and no audio track is written.
 - `--json` prints exactly one JSON object on **stdout** at the end:
 
@@ -650,6 +657,17 @@ On failure: `{ "ok": false, "command": "export", "error": { "code": "unsupported
 | 5 | Export failed (including `everythingCut`) |
 | 6 | Cancelled (SIGINT / Ctrl+C); partial output deleted |
 | 7 | Missing key, model or connector (`keyMissing`, `modelMissing`, `cliNotInstalled`, `cliNotSignedIn`) |
+
+Each error code has one exit status on both platforms, whatever the command:
+
+| Exit | Codes |
+|---|---|
+| 3 | `unsupportedContainer`, `mediaMissing`, `noAudioTrack`, `decodeFailed`, `projectUnreadable`, `projectTooNew`, `sharedResourcesMissing`, `ffmpegLicenceGate` |
+| 4 | `noSpeech`, `keyPermissionMissing`, `mediaTooLong`, `transcriptionLanguageUnsupported`, `speechAssetsUnavailable`, `transcriptionFailed` |
+| 5 | `everythingCut`, `diskFull`, `encoderUnavailable`, `exportFailed` |
+| 6 | `cancelled` |
+| 7 | `keyMissing`, `modelMissing`, `cliNotInstalled`, `cliNotSignedIn` |
+| 1 | every other code (`modelChecksumMismatch`, `keyRejected`, `quotaExceeded`, `rateLimited`, `offline`, `providerError`, `llmInvalidOutput`, `localeUnsupported`) |
 
 ### 9.4 Keys and environment
 
