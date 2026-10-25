@@ -502,6 +502,8 @@ macOS                                                    Windows
 
 Every row's settings key, type and default are in `shared/schemas/settings.schema.json`.
 
+Windows 0.1 import accepts the container list only with the codecs in `tools/ffmpeg-build/components.md`. ProRes, DNxHD/HR, MJPEG, MP3, AC-3/E-AC-3, ALAC and FLAC tracks can occur inside MP4/MOV/MKV but currently produce `decodeFailed` on Windows. The import error uses the normal recoverable media-error treatment; it does not imply the file was changed.
+
 Key row (both platforms): label, secure field with placeholder = key hint or "Saved in the Keychain; paste to replace" / "Saved for your Windows account; paste to replace"; buttons **Save key** (disabled when empty), **Test** / **Testing…**, **Forget key** (only when a key exists); result line from the owning spec's Test (green "Works …" / orange "Failed: …"). Footnote: AI keys "The key stays in the macOS Keychain and is used only for AI features."; the ElevenLabs key "The key stays in the macOS Keychain and is used only for transcription." (Windows: "…encrypted for your Windows account…").
 
 Model row: name; "languages · size · licence"; third-party note with a Source link; state `Installed ✓` + Remove | progress % + Cancel | Download. Third-party models show a confirmation before download: "Download {name} from {host}? This model is not published by VoxClip. It downloads from the publisher ({size}) and runs on this {Mac/PC}. Licence: {licence}." [Download] [Cancel] [Open source page].

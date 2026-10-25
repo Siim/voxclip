@@ -40,7 +40,7 @@ Provenance: Superscribe's `apps/macos/bundle.sh`, `apps/windows/build-windows.sh
 | `releases.win-x64.json`, `releases.win-arm64.json` | Windows | Velopack feeds read by `GithubSource` |
 | `VoxClip-<version>-win-x64-full.nupkg`, `VoxClip-<version>-win-arm64-full.nupkg` | Windows | Velopack full packages (exact names are whatever `vpk pack` writes into `assets.<channel>.json`) |
 | `VoxClip-<version>-win-*-delta.nupkg` | Windows | Only when a previous release existed |
-| `VoxClip-win-ffmpeg-source.tar.xz` | Windows | Corresponding source for the shipped LGPL FFmpeg DLLs: FFmpeg at `sourceCommit`, the BtbN FFmpeg-Builds scripts at `btbnCommit`, the source of every library linked into the DLLs, and `BUILD.txt` with the configure line (architecture.md section 6.1). Constant name; attached to every release that ships Windows |
+| `VoxClip-win-ffmpeg-source.tar.xz` | Windows | Corresponding source for the self-built minimal LGPL FFmpeg DLLs: component-labelled source/runtime archives and build tools pinned by URL and SHA-256, `tools/ffmpeg-build/` from the release `BUILD_COMMIT`, the schema-2 manifest and `BUILD.txt` with each RID's configure line and runtime inventory (architecture section 6.1). Incomplete provenance or failed clean-build reproducibility blocks release. Constant name; attached to every release that ships Windows |
 | `SHA256SUMS-windows.txt` | Windows | `<sha256>  <file>` lines for every Windows asset above |
 
 The download-page targets never carry a version in their names, so `https://github.com/Siim/voxclip/releases/latest/download/<asset>` always resolves to the newest **published** release. Drafts and pre-releases are never "latest". Velopack's package files carry versions by design; Velopack finds them through the feed files.
@@ -194,7 +194,11 @@ The Windows VM (ARM64 Windows 11 under UTM on the release Mac) has signtool and 
 
 ### 3.3 Mac-side driver (`apps/windows/build/release-windows.sh`)
 
+`write-pin` is a maintainer pin-update operation, not part of releasing an existing pin. Release builds verify `buildInputsSha256`, both clean-build results and the committed ZIP hashes; they never rewrite `ffmpeg.json` to accept different output. The shipping recipe excludes zimg and uses architecture section 6.5's existing swscale HDR fallback, without assuming a licence exception.
+
 Env vars: `VOXCLIP_WIN_HOST` (required, `user@host`), `VOXCLIP_SIGNING_ENV` (required), `VOXCLIP_WIN_BUILD_DIR` (default `C:\voxclip-build`), `VOXCLIP_VM_SIGNTOOL` (default `C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\x64\signtool.exe`), `VOXCLIP_VM_DLIB` (default `C:\trusted-signing-client\bin\x64\Azure.CodeSigning.Dlib.dll`). Flags: `--no-upload`, `--upload-only`.
+
+The FFmpeg phase runs on the Mac **before transfer to the signing VM**. Use the pinned `tools/ffmpeg-build/` recipe, never BtbN downloads. Rebuild both RIDs from the source pins, check the resulting ZIPs against `ffmpeg.json` and run the two-clean-build comparison (architecture section 6.1). Pass the verified local ZIPs, the LGPL-2.1 text, build/runtime reports and dependency notices to the Windows packaging step; it must not redownload FFmpeg. `recipeCommit: "BUILD_COMMIT"` is resolved to this release's full commit. The source archive contains that exact recipe tree and the pinned original archives, including static-runtime and build-tool sources. Readers must accept schema 2 and remove their `btbnCommit`, `ffmpeg-builds` and BtbN-URL assumptions; a missing unpublished URL is not an error or permission to publish a new asset.
 
 ```bash
 #!/usr/bin/env bash
@@ -218,6 +222,8 @@ TAG="v$VERSION"
 tools/release/check-version.sh >/dev/null
 [ -z "$(git status --porcelain)" ] || { echo "Working tree is dirty." >&2; exit 1; }
 [ "$(git rev-parse HEAD)" = "$(git rev-parse "$TAG^{commit}" 2>/dev/null)" ] || { echo "HEAD is not tagged $TAG." >&2; exit 1; }
+BUILD_COMMIT="$(git rev-parse "$TAG^{commit}")"
+FFMPEG_CACHE="$HOME/Library/Caches/voxclip-ffmpeg-build"
 
 upload() {
   (cd "$DIST" && shasum -a 256 -c SHA256SUMS-windows.txt)
@@ -240,12 +246,32 @@ grep -Eq '^AZURE_SIGNING_ACCOUNT=.+' "$SIGNING_ENV" && grep -Eq '^AZURE_SIGNING_
 
 ssh -o ConnectTimeout=5 "$HOST" "echo connected" >/dev/null
 
+# 0. Rebuild both RIDs twice from clean source; verify reproducibility and the committed pin.
+# The recipe enforces at most two concurrent compiler jobs and 15 GiB free.
+python3 -I tools/ffmpeg-build/build.py fetch --cache "$FFMPEG_CACHE"
+for rid in win-x64 win-arm64; do
+  for attempt in 1 2; do
+    python3 -I tools/ffmpeg-build/build.py build --rid "$rid" --attempt "$attempt" --jobs 2 --cache "$FFMPEG_CACHE"
+  done
+done
+python3 -I tools/ffmpeg-build/build.py verify --cache "$FFMPEG_CACHE"
+
 # 1. Ship a clean archive of the TAG (not the working tree) and replace the VM source tree entirely.
 TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
 git archive --format=tar --prefix=src/ -o "$TMP/src.tar" "$TAG" apps/windows shared LICENSE THIRD_PARTY_NOTICES.md CHANGELOG.md
 ssh "$HOST" "powershell -NoProfile -Command \"New-Item -ItemType Directory -Force -Path '$BUILD_DIR' | Out-Null\""
 scp -q "$TMP/src.tar" "$HOST:${BUILD_DIR//\\//}/src.tar"
 ssh "$HOST" "powershell -NoProfile -Command \"Remove-Item -Recurse -Force '$BUILD_DIR\\src','$BUILD_DIR\\out' -ErrorAction SilentlyContinue; tar -xf '$BUILD_DIR\\src.tar' -C '$BUILD_DIR'; if (\$LASTEXITCODE) { exit 1 }\""
+# The VM consumes only the verified local ZIPs and their licence/build reports.
+ssh "$HOST" "powershell -NoProfile -Command \"New-Item -ItemType Directory -Force -Path '$BUILD_DIR\\ffmpeg' | Out-Null\""
+for rid in win-x64 win-arm64; do
+  scp -q "$FFMPEG_CACHE/reports/$rid-1/voxclip-ffmpeg-n9.0.2-$rid.zip" "$HOST:${BUILD_DIR//\\//}/ffmpeg/"
+  scp -q "$FFMPEG_CACHE/reports/$rid-1/report.json" "$HOST:${BUILD_DIR//\\//}/ffmpeg/$rid-report.json"
+  scp -q "$FFMPEG_CACHE/reports/$rid-1/FFmpeg-NOTICES.txt" "$HOST:${BUILD_DIR//\\//}/ffmpeg/$rid-NOTICES.txt"
+done
+for notice in FFmpeg-LICENSE.txt FFmpeg-LICENSE.md; do
+  scp -q "$FFMPEG_CACHE/reports/win-x64-1/$notice" "$HOST:${BUILD_DIR//\\//}/ffmpeg/$notice"
+done
 
 # 2. Build, sign, pack, verify on the VM. Credentials go over stdin only.
 grep -E "^($NAMES)=" "$SIGNING_ENV" | tr -d '\r' | ssh "$HOST" \
@@ -257,17 +283,38 @@ scp -q "$HOST:${BUILD_DIR//\\//}/out/upload/*" "$DIST/"
 (cd "$DIST" && shasum -a 256 -c SHA256SUMS-windows.txt)
 
 # 4. LGPL corresponding source for the shipped FFmpeg DLLs (architecture.md section 6.1), built on the Mac
-#    from the sha256-pinned sourceAssets in ffmpeg.json, then added to the checksum file.
+#    from the verified source/runtime/build-tool archives, plus the recipe at BUILD_COMMIT.
+#    Both local DLL ZIPs have already passed the ABI, source, GPL-marker and reproducibility gates.
 SRC="$TMP/ffmpeg-source"; mkdir -p "$SRC"
-python3 - "$SRC" <<'PY'
-import hashlib, json, sys, urllib.request, pathlib
+python3 - "$SRC" "$FFMPEG_CACHE" "$BUILD_COMMIT" <<'PY'
+import hashlib, json, sys, pathlib, shutil, tarfile, io
 out = pathlib.Path(sys.argv[1]); pin = json.load(open("apps/windows/build/ffmpeg.json"))
-for a in pin["sourceAssets"]:
-    data = urllib.request.urlopen(a["url"], timeout=600).read()
+cache = pathlib.Path(sys.argv[2]); pin["recipeCommit"] = sys.argv[3]
+for a in pin["sourceAssets"] + pin["buildTools"]:
+    data = (cache / "downloads" / a["name"]).read_bytes()
     if hashlib.sha256(data).hexdigest() != a["sha256"]: sys.exit(f"sha256 mismatch: {a['name']}")
-    (out / a["name"]).write_bytes(data)
-(out / "BUILD.txt").write_text("FFmpeg %s, BtbN FFmpeg-Builds %s\nconfigure: %s\nlicense: %s\n"
-    % (pin["sourceCommit"], pin["btbnCommit"], pin["configure"], pin["license"]), encoding="ascii")
+    if a.get("includePaths"):
+        with tarfile.open(fileobj=io.BytesIO(data)) as archive:
+            selected = [member for member in archive.getmembers() if any(
+                "/".join(pathlib.PurePosixPath(member.name).parts[1:]) == prefix or
+                "/".join(pathlib.PurePosixPath(member.name).parts[1:]).startswith(prefix + "/")
+                for prefix in a["includePaths"])]
+            archive.extractall(out / (a["component"] + "-selected-source"), members=selected, filter="data")
+    else:
+        (out / a["name"]).write_bytes(data)
+shutil.copytree("tools/ffmpeg-build", out / "tools/ffmpeg-build", ignore=shutil.ignore_patterns("__pycache__"))
+shutil.copyfile("THIRD_PARTY_NOTICES.md", out / "THIRD_PARTY_NOTICES.md")
+(out / "ffmpeg.json").write_text(json.dumps(pin, indent=2) + "\n", encoding="utf-8")
+(out / "BUILD.txt").write_text("FFmpeg %s, recipe %s\nlicense: %s\n" %
+    (pin["sourceCommit"], pin["recipeCommit"], pin["license"]) + "".join(
+    "configure %s: %s\nruntimeObjects %s: %s\n" %
+    (rid, pin["configure"][rid], rid, json.dumps(json.load(open(cache / "reports" / (rid + "-1") / "report.json"))["runtimeObjects"], sort_keys=True))
+    for rid in ("win-x64", "win-arm64")), encoding="utf-8")
+for name in ("FFmpeg-LICENSE.txt", "FFmpeg-LICENSE.md"):
+    shutil.copyfile(cache / "reports" / "win-x64-1" / name, out / name)
+for rid in ("win-x64", "win-arm64"):
+    shutil.copyfile(cache / "reports" / (rid + "-1") / "FFmpeg-NOTICES.txt",
+                    out / (rid + "-NOTICES.txt"))
 PY
 tar -C "$TMP" -cJf "$DIST/VoxClip-win-ffmpeg-source.tar.xz" ffmpeg-source
 (cd "$DIST" && shasum -a 256 VoxClip-win-ffmpeg-source.tar.xz >> SHA256SUMS-windows.txt)
@@ -289,7 +336,7 @@ Normative steps (the script is written at scaffold time; this is its contract):
 5. **Build phase, no credentials in the environment.** For `rid` in `win-x64` (`Platform=x64`), `win-arm64` (`Platform=ARM64`):
    1. `dotnet publish src\VoxClip.Cli\VoxClip.Cli.csproj -c Release -r <rid> --self-contained -nodeReuse:false -p:UseSharedCompilation=false -o ..\..\..\out\<rid>\app`
    2. `dotnet publish src\VoxClip.App\VoxClip.App.csproj -c Release -r <rid> -p:Platform=<platform> --self-contained -nodeReuse:false -p:UseSharedCompilation=false -o ..\..\..\out\<rid>\app` (the App last; both share one folder and one runtime).
-   3. **FFmpeg and notices:** read `build\ffmpeg.json`; download the `<rid>` zip into `$BuildDir\cache\` if absent; `Get-FileHash -Algorithm SHA256` must equal the pinned hash (otherwise delete and fail); extract; copy the DLLs listed in `dlls` from its `bin\` into the app folder; copy its `LICENSE.txt` to `licenses\FFmpeg-LICENSE.txt` (plus the LGPLv3 and GPLv3 texts when `ffmpeg.json` `license` says version 3); write `licenses\FFmpeg-BUILD.txt` with `sourceCommit`, `btbnCommit` and `configure`; copy the repository `LICENSE` and `THIRD_PARTY_NOTICES.md` into `out\<rid>\app\`.
+   3. **FFmpeg and notices:** read schema-2 `build\ffmpeg.json`; require the Mac-staged `<rid>` ZIP in `$BUILD_DIR\ffmpeg\` with its pinned local `name`; `Get-FileHash -Algorithm SHA256` must equal the recorded hash (otherwise delete and fail). No download fallback. Extract and require exactly the six ABI-named DLLs in `libraryMajors`, then copy them from `bin\` into the app folder. Stage the pinned `FFmpeg-LICENSE.txt`, `FFmpeg-LICENSE.md` and `<rid>-NOTICES.txt` from `$BUILD_DIR\ffmpeg\` into `licenses\` (the last as `FFmpeg-NOTICES.txt`); write `licenses\FFmpeg-BUILD.txt` with `sourceCommit`, the resolved recipe `BUILD_COMMIT`, the RID's exact configure/licence strings and runtime inventory from `<rid>-report.json`. Copy repository `LICENSE` and `THIRD_PARTY_NOTICES.md` into `out\<rid>\app\`.
    4. **Delta base (optional):** `dotnet vpk download github --repoUrl https://github.com/Siim/voxclip --channel <rid> -o ..\..\..\out\<rid>\releases` (no token; failure on the first release is ignored).
 
    Then `dotnet build-server shutdown`, so no MSBuild node or compiler server outlives this phase.

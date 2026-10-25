@@ -27,9 +27,9 @@ NuGet metadata is available at `https://api.nuget.org/v3/registration5-semver1/<
 
 ## FFmpeg dynamic distribution
 
-`build/ffmpeg.json` pairs **FFmpeg.AutoGen 9.0.1.1** with the **FFmpeg 9.0** shared-library ABI, pinned to BtbN release `autobuild-2026-10-24-13-02`, version `n9.0.2-35-g9a9b70bb8c`. It records exact win-x64 and win-arm64 LGPL-shared assets, source commit and SHA-256 hashes. Hashes were compared with the release's `checksums.sha256` and GitHub asset digests. `build/Fetch-Ffmpeg.ps1` verifies a download before selecting the six allowed DLL families. It does not put native DLLs into the application or bypass the runtime licence gate.
+`build/ffmpeg.json` pairs **FFmpeg.AutoGen 9.0.1.1** with the **self-built FFmpeg n9.0.2** shared-library ABI. It records source/tool pins, exact configure strings, reproducibility evidence and win-x64/win-arm64 ZIP hashes. `build/Fetch-Ffmpeg.ps1` verifies a locally staged shipping ZIP before selecting the six ABI-named DLLs. Its separate `-TestTools` download is for tests only and must never enter the application or release package. The root `THIRD_PARTY_NOTICES.md` and per-RID generated `FFmpeg-NOTICES.txt` carry the linked-source notices.
 
-- Upstream: https://ffmpeg.org/ and https://github.com/BtbN/FFmpeg-Builds
+- Upstream: https://ffmpeg.org/
 - Legal checklist: https://ffmpeg.org/legal.html
 - Dynamically linked FFmpeg only, under LGPL-2.1-or-later, with the applicable LGPLv3/GPLv3 texts for LGPLv3 portions and third-party notices supplied by the actual build. No `--enable-gpl`, `--enable-nonfree`, x264 or x265.
 - Before any decode, win-media must call `FfmpegLoader.ValidateConfiguration` with the real `avcodec_configuration()` value. The skeleton does not load FFmpeg yet. A release must preserve replacement of the DLLs, corresponding source/build instructions and attribution, and verify `zscale`/HDR support against the actual binaries.

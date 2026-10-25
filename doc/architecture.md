@@ -420,33 +420,17 @@ No ffmpeg ships on macOS in v1. WebM and MKV are rejected with the `unsupportedC
 
 ### 6.1 FFmpeg build and loading
 
-- Binaries: BtbN FFmpeg-Builds `win64-lgpl-shared` and `winarm64-lgpl-shared`, one pinned release-branch build, listed with URL and SHA-256 in `apps/windows/build/ffmpeg.json`. The release script and the developer fetch script verify the SHA-256 before extracting. Only the `avcodec`, `avformat`, `avutil`, `swresample`, `swscale` and `avfilter` DLLs are shipped.
-- **LGPL obligations** (ffmpeg.org/legal.html checklist). The install folder carries `licenses\FFmpeg-LICENSE.txt` (and both the LGPLv3 and GPLv3 texts when `avcodec_license()` reports LGPL version 3) and `licenses\FFmpeg-BUILD.txt` with the configure line. Every release carries the constant asset `VoxClip-win-ffmpeg-source.tar.xz` (release.md section 1.1): the FFmpeg source at `sourceCommit`, the BtbN FFmpeg-Builds scripts at `btbnCommit`, the source of every library linked into the shipped DLLs, and `BUILD.txt` with the configure line. About → Licences and the download page say "This software uses libraries from the FFmpeg project under the LGPL" with a link to that asset for the running version. VoxClip's licence places no restriction on reverse engineering the FFmpeg DLLs, and they are never statically linked.
-- `ffmpeg.json` format (all values filled at pin time):
-
-```json
-{
-  "schema": "voxclip-ffmpeg/1",
-  "version": "n8.1",
-  "release": "https://github.com/BtbN/FFmpeg-Builds/releases/tag/<autobuild tag>",
-  "sourceCommit": "<ffmpeg git sha>",
-  "btbnCommit": "<BtbN/FFmpeg-Builds git sha the build was made from>",
-  "configure": "<avcodec_configuration() output of the pinned build>",
-  "license": "<avcodec_license() output, e.g. LGPL version 2.1 or later>",
-  "builds": {
-    "win-x64":   { "url": "<…win64-lgpl-shared….zip>",    "sha256": "<64 hex>" },
-    "win-arm64": { "url": "<…winarm64-lgpl-shared….zip>", "sha256": "<64 hex>" }
-  },
-  "sourceAssets": [ { "name": "<tarball name>", "url": "<source tarball URL>", "sha256": "<64 hex>" } ],
-  "dlls": ["avcodec", "avformat", "avutil", "swresample", "swscale", "avfilter"]
-}
-```
-
-`sourceAssets` lists the FFmpeg source tarball, the BtbN scripts archive and each dependency's source tarball; `release-windows.sh` packs them into `VoxClip-win-ffmpeg-source.tar.xz` (release.md section 3.3).
-
-- Bindings: FFmpeg.AutoGen at the major version matching the pinned FFmpeg. `ffmpeg.RootPath = AppContext.BaseDirectory` before first use. Startup checks `avcodec_configuration()` and refuses to run if it contains `--enable-gpl` or `--enable-nonfree` (error `ffmpegLicenceGate`).
-- Never x264, never x265, never a GPL build. The encoder ladder (section 6.6) never names `libx264`.
-- Each `AVFormatContext` and `AVCodecContext` is owned by exactly one thread for its lifetime. Every FFmpeg call that returns a negative code goes through one `Check(int rc, string op)` helper that throws `MediaException` with the `av_strerror` text.
+- Binaries: **self-built minimal FFmpeg n9.0.2**, dynamically linked, from `tools/ffmpeg-build/`. `sources.json` pins the release tarball and every dependency, build-tool source and toolchain archive by HTTPS URL, SHA-256 and byte size. CMake, make, pkg-config, Perl, Python and patch are host prerequisites; their available versions are recorded in the build report, not source-pinned. The llvm-mingw 20261020 UCRT toolchain targets `win-x64` and `win-arm64` from Apple-silicon macOS or Linux x86_64. No moving branch, Cargo closure, submodule fetch, system codec library or BtbN binary enters the build.
+- The component allowlist and code references are in `tools/ffmpeg-build/components.md`: MP4/MOV/M4V, MKV/WebM and WAV inputs; AVC, HEVC/Main10, VP8/VP9, AV1 and the specified audio/fixture codecs; MP4 export and M2 MOV/LPCM recording; the section 6.6 encoder ladder; D3D11 decode for AVC/HEVC/VP9 and dav1d software AV1. QSV is x64-only. The optional zscale HDR graph is omitted because zimg's WTFPL-2 licence is outside the project allowlist; section 6.5's swscale conversion and warning apply. The RTMP receiver is VoxClip code (ingest sections 5–6), not FFmpeg network IO. Only the `file` protocol is enabled. No `ffmpeg.exe` or `ffprobe.exe` ships. AMF's full source container includes unrelated prebuilt third-party binaries: its `includePaths` selects only the 57 public headers and root MIT notice for the build and corresponding-source pack; never redistribute that full container as corresponding source.
+- Configure starts with `--disable-everything --disable-autodetect --disable-programs --disable-doc --disable-avdevice --enable-shared --disable-static --disable-gpl --disable-nonfree`; the recipe explicitly enables each audited component. ARM64 also disables arm-crc, pmull and eor3 to exclude FFmpeg's GPL-headed `aarch64/crc.S`. FFmpeg x64 assembly uses pinned NASM; dav1d assembly is enabled on both RIDs. The resolved configuration is checked for missing or unexpected components. Native/OS encoders replace GPL software encoders. AV1 software decode uses BSD-2-Clause dav1d. No zimg, Chromaprint, FFTW, librsvg or rav1e is present.
+- Only `avcodec-63.dll`, `avformat-63.dll`, `avutil-61.dll`, `avfilter-12.dll`, `swresample-7.dll` and `swscale-10.dll` ship. FFmpeg.AutoGen 9.0.1.1 and `FfmpegLoader.LibraryMajors` must agree with those ABI majors. Runtime objects statically linked into these shared libraries are inventoried from per-DLL link maps; their exact LLVM and mingw-w64 sources are pinned too. Vendor GPU drivers and Windows system libraries are not bundled.
+- `buildInputsSha256` in build reports and the manifest covers the source lock and executable recipe inputs. Cached reports from a different recipe or source pin are rejected before comparison or manifest writing. This complements, rather than replaces, the archive and per-DLL hashes.
+- **Acceptance:** build each RID twice from independently extracted clean sources in an explicit minimal environment, with fixed `SOURCE_DATE_EPOCH`, path maps, extra version, zero PE timestamps and stripped output. Compare both DLL bytes and deterministic ZIP hashes against the committed manifest. The tool decodes the actual exported `avcodec_configuration()` and `avcodec_license()` return strings without running Windows code, requires `LGPL version 2.1 or later`, rejects GPL/nonfree configure flags, audits every FFmpeg object in the DLL link maps against its pinned source header, rejects GPL-only linked code, verifies ARM64 `crc.o` contributes no text, audits linked dependency provenance and derives notices from those maps. It also scans every DLL for unambiguous GPL/supplier markers. The H.264 decoder's x264 SEI recognition string is not an x264 encoder. A licence string alone is not provenance evidence: the retired BtbN `lgpl-shared` DLLs contained statically linked GPL FFTW through Chromaprint; their mutable Cargo and base-toolchain inputs could not be pinned.
+- `apps/windows/build/ffmpeg.json` uses schema `voxclip-ffmpeg/2`. `version`, `sourceCommit`, `configure` (one exact string or a per-RID object), `license`, `sourceAssets` and `dlls` retain their meanings. Each source asset has `name`, `component`, `url`, `sha256` and `size`. `buildTools` pins build-only inputs, and `toolchains` pins one compiler archive per host. `libraryMajors` records the ABI. `builds.<rid>` contains a local archive `name`, `sha256` and `size`, **not an unpublished download URL**. `recipe` is `tools/ffmpeg-build`; `recipeCommit: "BUILD_COMMIT"` means that exact tree at the release commit. There is no `btbnCommit` or synthetic `ffmpeg-builds` source entry.
+- **LGPL obligations** (ffmpeg.org/legal.html checklist): the install folder carries `licenses\FFmpeg-LICENSE.txt` (the pinned LGPL-2.1 text), `licenses\FFmpeg-LICENSE.md` (FFmpeg's own licence summary), `licenses\FFmpeg-NOTICES.txt` (notices generated by the link-map audit), `licenses\FFmpeg-BUILD.txt` with the source/recipe commit, configure line and runtime inventory, and `THIRD_PARTY_NOTICES.md`. Every release carries `VoxClip-win-ffmpeg-source.tar.xz` (release section 1.1): the original verified source/runtime archives, pinned build tools, recipe from `BUILD_COMMIT`, manifest and `BUILD.txt`. A parent repository is not assumed to contain submodules or registry packages. Missing inputs, mismatched hashes or forbidden transitive licences block release. No binary hosting or mirror is created without separate user approval.
+- About → Licences and the download page say "This software uses libraries from the FFmpeg project under the LGPL" and link the corresponding-source asset for the running version. VoxClip's licence does not restrict reverse engineering these DLLs, and the app never statically links FFmpeg. The full notices file is the licence source for both apps.
+- Bindings set `ffmpeg.RootPath = AppContext.BaseDirectory` before first use. Startup checks `avcodec_configuration()`, `avcodec_license()` and every library major, refusing GPL/nonfree or incompatible libraries (`ffmpegLicenceGate` or `sharedResourcesMissing`). Never x264 or x265; section 6.6 never names `libx264`.
+- Each `AVFormatContext` and `AVCodecContext` is owned by exactly one thread for its lifetime. Every FFmpeg call returning a negative code goes through the one `Check(int rc, string op)` helper, which throws `MediaException` with `av_strerror` text.
 
 ### 6.2 Probe and decode
 
@@ -455,6 +439,7 @@ No ffmpeg ships on macOS in v1. WebM and MKV are rejected with the `unsupportedC
 - Hardware frames are copied to system memory with `av_hwframe_transfer_data` (NV12 or P010) before scaling.
 - Frame-exact seek: `av_seek_frame(ctx, stream, ts, AVSEEK_FLAG_BACKWARD)`, `avcodec_flush_buffers`, then decode forward until `best_effort_timestamp ≥ target − ½ frame`.
 - Audio: decode to float planar, `swr_convert` to float32 interleaved at the **source audio sample rate**, mixed down to stereo (mono is duplicated). The plan's sample grid is the source sample rate, exactly as on macOS.
+- The Windows 0.1 pin guarantees the codec subset in `tools/ffmpeg-build/components.md`, not every codec inside an accepted container. ProRes, DNxHD/HR, MJPEG, MP3, AC-3/E-AC-3, ALAC and FLAC tracks are currently unsupported; if the selected video or first audio track uses one, import reports `decodeFailed`. This differs from macOS system-codec coverage and must be revisited before claiming full container parity.
 
 ### 6.3 Preview engine
 

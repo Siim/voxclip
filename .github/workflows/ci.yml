@@ -169,12 +169,18 @@ jobs:
           VOXCLIP_REQUIRE_SCHEMA_PYTHON: "1"
         run: dotnet test --project tests/VoxClip.Core.Tests/VoxClip.Core.Tests.csproj -c Release
 
-      - name: .NET media tests (FFmpeg-dependent tests skip themselves when FFmpeg is absent)
+      - name: Fetch pinned test-only FFmpeg tools
+        if: steps.detect.outputs.media_tests == 'true'
+        shell: pwsh
+        run: apps/windows/build/Fetch-Ffmpeg.ps1 -RuntimeIdentifier win-x64 -TestTools
+
+      - name: .NET media tests
         if: steps.detect.outputs.media_tests == 'true'
         shell: bash
         working-directory: apps/windows
         env:
           VOXCLIP_SHARED_DIR: ${{ github.workspace }}/shared
+          VOXCLIP_TEST_FFMPEG: ${{ github.workspace }}/apps/windows/build/.cache/ffmpeg/win-x64/test-tools/ffmpeg.exe
         run: dotnet test --project tests/VoxClip.Media.Tests/VoxClip.Media.Tests.csproj -c Release
 
       - name: Build WinUI app (win-x64)

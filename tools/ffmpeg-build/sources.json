@@ -1,0 +1,106 @@
+{
+  "schema": "voxclip-ffmpeg-build/1",
+  "version": "n9.0.2",
+  "sourceCommit": "946fcce07b6dcd0331c8cc609192aeff5e1924f8",
+  "sourceDateEpoch": 1792454400,
+  "extraVersion": "voxclip-lgpl1",
+  "toolchains": {
+    "Darwin-arm64": {
+      "component": "llvm-mingw-darwin-arm64",
+      "name": "llvm-mingw-20261020-ucrt-macos-universal.tar.xz",
+      "url": "https://github.com/mstorsjo/llvm-mingw/releases/download/20261020/llvm-mingw-20261020-ucrt-macos-universal.tar.xz",
+      "sha256": "e9c13e4ede38e715003ffc674d4d00a1088df8235439d1f0c16188ff0704c17e",
+      "size": 124415944
+    },
+    "Linux-x86_64": {
+      "component": "llvm-mingw-linux-x86_64",
+      "name": "llvm-mingw-20261020-ucrt-ubuntu-22.04-x86_64.tar.xz",
+      "url": "https://github.com/mstorsjo/llvm-mingw/releases/download/20261020/llvm-mingw-20261020-ucrt-ubuntu-22.04-x86_64.tar.xz",
+      "sha256": "55064b60b991a1e1e8090b8c2f84e82b22cfe5903d12c159d65064cf5e8ae335",
+      "size": 84017268
+    }
+  },
+  "sourceAssets": [
+    {
+      "component": "amf",
+      "name": "amf-6277e353fd625121a8f627b1d0540323ef372a49.tar.gz",
+      "url": "https://codeload.github.com/GPUOpen-LibrariesAndSDKs/AMF/tar.gz/6277e353fd625121a8f627b1d0540323ef372a49",
+      "sha256": "b4c489025e1e0da9890ac7134252604a9b9c9f314a6048393d46826294e77d09",
+      "size": 398531874,
+      "includePaths": [
+        "amf/public/include",
+        "LICENSE.txt"
+      ]
+    },
+    {
+      "component": "libdav1d",
+      "name": "dav1d-1.5.4.tar.xz",
+      "url": "https://downloads.videolan.org/pub/videolan/dav1d/1.5.4/dav1d-1.5.4.tar.xz",
+      "sha256": "686616b7c69eb88d44459391ab25cac13b6647a3b288835c5784e71c1514a5c5",
+      "size": 1038852
+    },
+    {
+      "component": "ffnvcodec",
+      "name": "ffnvcodec-eddcea9e27f6b772057c9b3f87de2cc1737faffc.tar.gz",
+      "url": "https://codeload.github.com/FFmpeg/nv-codec-headers/tar.gz/eddcea9e27f6b772057c9b3f87de2cc1737faffc",
+      "sha256": "ea251ed884765b7523e0f4fa814dfd9acd7b5dcc43878cad744b77a46b429e48",
+      "size": 86262
+    },
+    {
+      "component": "libvpl",
+      "name": "libvpl-674d015bcb294bc39fa276e99a652ea045423e82.tar.gz",
+      "url": "https://codeload.github.com/intel/libvpl/tar.gz/674d015bcb294bc39fa276e99a652ea045423e82",
+      "sha256": "9d5d3c221b9d41468e04add6855cf5eec6df06dae7be649f84e1f846c98e38fb",
+      "size": 12976876
+    },
+    {
+      "component": "ffmpeg",
+      "name": "ffmpeg-9.0.2.tar.xz",
+      "url": "https://ffmpeg.org/releases/ffmpeg-9.0.2.tar.xz",
+      "sha256": "8c3850283eb25fa026482078a04051e0be17347b09ef81a0849bec15a96e002e",
+      "size": 12040788
+    },
+    {
+      "component": "llvm-mingw",
+      "name": "llvm-mingw-source.tar.gz",
+      "url": "https://codeload.github.com/mstorsjo/llvm-mingw/tar.gz/e08a31fbfe5cfdad07b698299af22d66e5608383",
+      "sha256": "914a580a484b87abd733d89494b9fb8b1a684cfe0c87153374a755867829e561",
+      "size": 71052
+    },
+    {
+      "component": "mingw-w64",
+      "name": "mingw-w64.tar.gz",
+      "url": "https://codeload.github.com/mingw-w64/mingw-w64/tar.gz/0d6dfbc348dfad714761c0a7151615767f96bcb5",
+      "sha256": "03f717ddb9005d6519e38434359af281d0819d5d468a42578e28bd0fd8e31d0c",
+      "size": 15831149
+    },
+    {
+      "component": "llvm-project",
+      "name": "llvm-project.tar.gz",
+      "url": "https://codeload.github.com/llvm/llvm-project/tar.gz/7a941dfb2877a0b8cf30323fefa85ad019e0b0f5",
+      "sha256": "dd7ef5ae528cfe23ccf3cda68ab42c11e42657b079d43d7e0ddb1ff52840d0e0",
+      "size": 277724397
+    },
+    {
+      "component": "meson",
+      "name": "meson.tar.gz",
+      "url": "https://codeload.github.com/mesonbuild/meson/tar.gz/d4b7efc83b925cbe0f35ce0972baadaad9147431",
+      "sha256": "736139bc98392f35920644f6b186434dfffd04c3ae94240dd0a5eaf82bbc64cf",
+      "size": 4984129
+    },
+    {
+      "component": "ninja",
+      "name": "ninja.tar.gz",
+      "url": "https://codeload.github.com/ninja-build/ninja/tar.gz/2daa09ba270b0a43e1929d29b073348aa985dfaa",
+      "sha256": "373bb33a8db2769b825a771e5d25b11d79ef5e41a934b870487257c27b187180",
+      "size": 240689
+    },
+    {
+      "component": "nasm",
+      "name": "nasm-2.16.03.tar.xz",
+      "url": "https://www.nasm.us/pub/nasm/releasebuilds/2.16.03/nasm-2.16.03.tar.xz",
+      "sha256": "1412a1c760bbd05db026b6c0d1657affd6631cd0a63cddb6f73cc6d4aa616148",
+      "size": 1032388
+    }
+  ]
+}

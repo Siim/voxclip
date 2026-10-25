@@ -50,7 +50,7 @@ The FFmpeg DLLs are **not** fetched by restore or loaded at startup. To fetch a 
 powershell -NoProfile -File build/Fetch-Ffmpeg.ps1 -RuntimeIdentifier win-arm64
 ```
 
-`build/ffmpeg.json` pins the 9.0 LGPL-shared release ABI matching FFmpeg.AutoGen 9.0.1.1. The script stages DLLs only in `build/.cache/ffmpeg/<rid>/native`. Loader initialization, packaging, real configuration/license validation, encoder probing and media fixture conformance remain win-media work. Never substitute a GPL build or x264/x265.
+`build/ffmpeg.json` pins the self-built FFmpeg n9.0.2 LGPL shared ABI matching FFmpeg.AutoGen 9.0.1.1. Obtain the locally built ZIP from `tools/ffmpeg-build/` and pass it to `build/Fetch-Ffmpeg.ps1 -ZipPath <path>`; the script verifies its SHA-256, size and six ABI-named DLLs before staging them in `build/.cache/ffmpeg/<rid>/native`. `-TestTools` fetches a separately pinned, test-only FFmpeg distribution with `ffmpeg.exe`; never package that directory. Loader initialization, packaging and media fixture conformance remain win-media work. Never substitute a GPL build or x264/x265 for the shipping DLLs.
 
 ## Data, resources and CLI behavior
 

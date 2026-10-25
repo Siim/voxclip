@@ -1,24 +1,168 @@
 {
-  "schema": "voxclip-ffmpeg/1",
-  "version": "n9.0.2-35-g9a9b70bb8c",
-  "release": "https://github.com/BtbN/FFmpeg-Builds/releases/tag/autobuild-2026-10-24-13-02",
-  "sourceCommit": "9a9b70bb8c96c633f6e588c79f769964b10213b5",
+  "schema": "voxclip-ffmpeg/2",
+  "version": "n9.0.2",
+  "sourceCommit": "946fcce07b6dcd0331c8cc609192aeff5e1924f8",
+  "recipe": "tools/ffmpeg-build",
+  "buildInputsSha256": "049f309525d2e22ab186539890732cbcb526d3c4f3b65c78ccc5b01839ba2ed7",
+  "recipeCommit": "BUILD_COMMIT",
+  "configure": {
+    "win-x64": "--disable-everything --disable-autodetect --disable-programs --disable-doc --disable-avdevice --enable-shared --disable-static --disable-gpl --disable-nonfree --disable-version3 --disable-network --disable-debug --disable-pthreads --enable-w32threads --disable-dxva2 --enable-cross-compile --target-os=mingw32 --arch=x86_64 --prefix=/voxclip --cross-prefix=x86_64-w64-mingw32- --cc=x86_64-w64-mingw32-clang --cxx=x86_64-w64-mingw32-clang++ --ld=voxclip-link --pkg-config=pkg-config --pkg-config-flags=--static --extra-version=voxclip-lgpl1 --extra-cflags='-I../prefix/include -O2 -g0 -fno-ident -ffile-prefix-map=../../=/build/' --extra-ldflags='-L../prefix/lib -static -Wl,--no-insert-timestamp' --extra-libs='-lc++ -lc++abi -lunwind -lwinpthread' --enable-avcodec --enable-avformat --enable-avutil --enable-avfilter --enable-swscale --enable-swresample --enable-mediafoundation --enable-d3d11va --enable-ffnvcodec --enable-nvenc --enable-amf --enable-libdav1d --disable-libzimg --enable-libvpl --enable-decoder='h264,hevc,vp8,vp9,libdav1d,aac,opus,vorbis,mpeg4,h263,ffv1,pcm_u8,pcm_s8,pcm_s16le,pcm_s16be,pcm_s24le,pcm_s24be,pcm_s32le,pcm_s32be,pcm_f32le,pcm_f32be,pcm_f64le,pcm_f64be' --enable-encoder='h264_nvenc,h264_qsv,h264_amf,h264_mf,aac,pcm_s16le' --enable-parser='h264,hevc,vp8,vp9,av1,aac,opus,vorbis,mpeg4video,ac3' --enable-bsf='aac_adtstoasc,h264_mp4toannexb,hevc_mp4toannexb,extract_extradata,av1_frame_split,vp9_superframe_split,vp9_superframe' --enable-demuxer='mov,matroska,wav' --enable-muxer='mp4,mov' --enable-hwaccel='h264_d3d11va,h264_d3d11va2,hevc_d3d11va,hevc_d3d11va2,vp9_d3d11va,vp9_d3d11va2' --enable-protocol=file",
+    "win-arm64": "--disable-everything --disable-autodetect --disable-programs --disable-doc --disable-avdevice --enable-shared --disable-static --disable-gpl --disable-nonfree --disable-version3 --disable-network --disable-debug --disable-pthreads --enable-w32threads --disable-dxva2 --enable-cross-compile --target-os=mingw32 --arch=aarch64 --prefix=/voxclip --cross-prefix=aarch64-w64-mingw32- --cc=aarch64-w64-mingw32-clang --cxx=aarch64-w64-mingw32-clang++ --ld=voxclip-link --pkg-config=pkg-config --pkg-config-flags=--static --extra-version=voxclip-lgpl1 --extra-cflags='-I../prefix/include -O2 -g0 -fno-ident -ffile-prefix-map=../../=/build/' --extra-ldflags='-L../prefix/lib -static -Wl,--no-insert-timestamp' --extra-libs='-lc++ -lc++abi -lunwind -lwinpthread' --enable-avcodec --enable-avformat --enable-avutil --enable-avfilter --enable-swscale --enable-swresample --enable-mediafoundation --enable-d3d11va --enable-ffnvcodec --enable-nvenc --enable-amf --enable-libdav1d --disable-libzimg --disable-libvpl --disable-arm-crc --disable-pmull --disable-eor3 --enable-decoder='h264,hevc,vp8,vp9,libdav1d,aac,opus,vorbis,mpeg4,h263,ffv1,pcm_u8,pcm_s8,pcm_s16le,pcm_s16be,pcm_s24le,pcm_s24be,pcm_s32le,pcm_s32be,pcm_f32le,pcm_f32be,pcm_f64le,pcm_f64be' --enable-encoder='h264_nvenc,h264_amf,h264_mf,aac,pcm_s16le' --enable-parser='h264,hevc,vp8,vp9,av1,aac,opus,vorbis,mpeg4video,ac3' --enable-bsf='aac_adtstoasc,h264_mp4toannexb,hevc_mp4toannexb,extract_extradata,av1_frame_split,vp9_superframe_split,vp9_superframe' --enable-demuxer='mov,matroska,wav' --enable-muxer='mp4,mov' --enable-hwaccel='h264_d3d11va,h264_d3d11va2,hevc_d3d11va,hevc_d3d11va2,vp9_d3d11va,vp9_d3d11va2' --enable-protocol=file"
+  },
+  "license": "LGPL version 2.1 or later",
   "builds": {
     "win-x64": {
-      "url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-10-24-13-02/ffmpeg-n9.0.2-35-g9a9b70bb8c-win64-lgpl-shared-9.0.zip",
-      "sha256": "fb771d872989dba5d96621a840194362202426e882814a0d5e7eddd8387908d3"
+      "name": "voxclip-ffmpeg-n9.0.2-win-x64.zip",
+      "sha256": "f4df8380abc9847bdc8f0f12b6242379c8d9c6f4efcc77a7be9a57d1dc55c869",
+      "size": 14579388
     },
     "win-arm64": {
-      "url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-10-24-13-02/ffmpeg-n9.0.2-35-g9a9b70bb8c-winarm64-lgpl-shared-9.0.zip",
-      "sha256": "4bf8f5ff4ec2ec462c50d0c65f77793c2e18303cb343ef376c8c020c7028d248"
+      "name": "voxclip-ffmpeg-n9.0.2-win-arm64.zip",
+      "sha256": "4ed4745035847c70b73e64babbdcda6cbb5f910ce292511ca9a80748261b905c",
+      "size": 7891644
+    }
+  },
+  "sourceAssets": [
+    {
+      "component": "amf",
+      "name": "amf-6277e353fd625121a8f627b1d0540323ef372a49.tar.gz",
+      "url": "https://codeload.github.com/GPUOpen-LibrariesAndSDKs/AMF/tar.gz/6277e353fd625121a8f627b1d0540323ef372a49",
+      "sha256": "b4c489025e1e0da9890ac7134252604a9b9c9f314a6048393d46826294e77d09",
+      "size": 398531874,
+      "includePaths": [
+        "amf/public/include",
+        "LICENSE.txt"
+      ]
+    },
+    {
+      "component": "libdav1d",
+      "name": "dav1d-1.5.4.tar.xz",
+      "url": "https://downloads.videolan.org/pub/videolan/dav1d/1.5.4/dav1d-1.5.4.tar.xz",
+      "sha256": "686616b7c69eb88d44459391ab25cac13b6647a3b288835c5784e71c1514a5c5",
+      "size": 1038852
+    },
+    {
+      "component": "ffnvcodec",
+      "name": "ffnvcodec-eddcea9e27f6b772057c9b3f87de2cc1737faffc.tar.gz",
+      "url": "https://codeload.github.com/FFmpeg/nv-codec-headers/tar.gz/eddcea9e27f6b772057c9b3f87de2cc1737faffc",
+      "sha256": "ea251ed884765b7523e0f4fa814dfd9acd7b5dcc43878cad744b77a46b429e48",
+      "size": 86262
+    },
+    {
+      "component": "libvpl",
+      "name": "libvpl-674d015bcb294bc39fa276e99a652ea045423e82.tar.gz",
+      "url": "https://codeload.github.com/intel/libvpl/tar.gz/674d015bcb294bc39fa276e99a652ea045423e82",
+      "sha256": "9d5d3c221b9d41468e04add6855cf5eec6df06dae7be649f84e1f846c98e38fb",
+      "size": 12976876
+    },
+    {
+      "component": "ffmpeg",
+      "name": "ffmpeg-9.0.2.tar.xz",
+      "url": "https://ffmpeg.org/releases/ffmpeg-9.0.2.tar.xz",
+      "sha256": "8c3850283eb25fa026482078a04051e0be17347b09ef81a0849bec15a96e002e",
+      "size": 12040788
+    },
+    {
+      "component": "llvm-mingw",
+      "name": "llvm-mingw-source.tar.gz",
+      "url": "https://codeload.github.com/mstorsjo/llvm-mingw/tar.gz/e08a31fbfe5cfdad07b698299af22d66e5608383",
+      "sha256": "914a580a484b87abd733d89494b9fb8b1a684cfe0c87153374a755867829e561",
+      "size": 71052
+    },
+    {
+      "component": "mingw-w64",
+      "name": "mingw-w64.tar.gz",
+      "url": "https://codeload.github.com/mingw-w64/mingw-w64/tar.gz/0d6dfbc348dfad714761c0a7151615767f96bcb5",
+      "sha256": "03f717ddb9005d6519e38434359af281d0819d5d468a42578e28bd0fd8e31d0c",
+      "size": 15831149
+    },
+    {
+      "component": "llvm-project",
+      "name": "llvm-project.tar.gz",
+      "url": "https://codeload.github.com/llvm/llvm-project/tar.gz/7a941dfb2877a0b8cf30323fefa85ad019e0b0f5",
+      "sha256": "dd7ef5ae528cfe23ccf3cda68ab42c11e42657b079d43d7e0ddb1ff52840d0e0",
+      "size": 277724397
+    }
+  ],
+  "buildTools": [
+    {
+      "component": "meson",
+      "name": "meson.tar.gz",
+      "url": "https://codeload.github.com/mesonbuild/meson/tar.gz/d4b7efc83b925cbe0f35ce0972baadaad9147431",
+      "sha256": "736139bc98392f35920644f6b186434dfffd04c3ae94240dd0a5eaf82bbc64cf",
+      "size": 4984129
+    },
+    {
+      "component": "ninja",
+      "name": "ninja.tar.gz",
+      "url": "https://codeload.github.com/ninja-build/ninja/tar.gz/2daa09ba270b0a43e1929d29b073348aa985dfaa",
+      "sha256": "373bb33a8db2769b825a771e5d25b11d79ef5e41a934b870487257c27b187180",
+      "size": 240689
+    },
+    {
+      "component": "nasm",
+      "name": "nasm-2.16.03.tar.xz",
+      "url": "https://www.nasm.us/pub/nasm/releasebuilds/2.16.03/nasm-2.16.03.tar.xz",
+      "sha256": "1412a1c760bbd05db026b6c0d1657affd6631cd0a63cddb6f73cc6d4aa616148",
+      "size": 1032388
+    }
+  ],
+  "toolchains": {
+    "Darwin-arm64": {
+      "component": "llvm-mingw-darwin-arm64",
+      "name": "llvm-mingw-20261020-ucrt-macos-universal.tar.xz",
+      "url": "https://github.com/mstorsjo/llvm-mingw/releases/download/20261020/llvm-mingw-20261020-ucrt-macos-universal.tar.xz",
+      "sha256": "e9c13e4ede38e715003ffc674d4d00a1088df8235439d1f0c16188ff0704c17e",
+      "size": 124415944
+    },
+    "Linux-x86_64": {
+      "component": "llvm-mingw-linux-x86_64",
+      "name": "llvm-mingw-20261020-ucrt-ubuntu-22.04-x86_64.tar.xz",
+      "url": "https://github.com/mstorsjo/llvm-mingw/releases/download/20261020/llvm-mingw-20261020-ucrt-ubuntu-22.04-x86_64.tar.xz",
+      "sha256": "55064b60b991a1e1e8090b8c2f84e82b22cfe5903d12c159d65064cf5e8ae335",
+      "size": 84017268
     }
   },
   "dlls": [
     "avcodec",
     "avformat",
     "avutil",
+    "avfilter",
     "swresample",
-    "swscale",
-    "avfilter"
-  ]
+    "swscale"
+  ],
+  "libraryMajors": {
+    "avcodec": 63,
+    "avformat": 63,
+    "avutil": 61,
+    "avfilter": 12,
+    "swresample": 7,
+    "swscale": 10
+  },
+  "reproducibility": {
+    "win-x64": {
+      "identical": true,
+      "firstSha256": "f4df8380abc9847bdc8f0f12b6242379c8d9c6f4efcc77a7be9a57d1dc55c869",
+      "secondSha256": "f4df8380abc9847bdc8f0f12b6242379c8d9c6f4efcc77a7be9a57d1dc55c869",
+      "differences": {}
+    },
+    "win-arm64": {
+      "identical": true,
+      "firstSha256": "4ed4745035847c70b73e64babbdcda6cbb5f910ce292511ca9a80748261b905c",
+      "secondSha256": "4ed4745035847c70b73e64babbdcda6cbb5f910ce292511ca9a80748261b905c",
+      "differences": {}
+    }
+  },
+  "testTools": {
+    "win-x64": {
+      "url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-10-24-13-02/ffmpeg-n9.0.2-35-g9a9b70bb8c-win64-lgpl-shared-9.0.zip",
+      "sha256": "fb771d872989dba5d96621a840194362202426e882814a0d5e7eddd8387908d3",
+      "purpose": "TEST ONLY; never ship"
+    },
+    "win-arm64": {
+      "url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-10-24-13-02/ffmpeg-n9.0.2-35-g9a9b70bb8c-winarm64-lgpl-shared-9.0.zip",
+      "sha256": "4bf8f5ff4ec2ec462c50d0c65f77793c2e18303cb343ef376c8c020c7028d248",
+      "purpose": "TEST ONLY; never ship"
+    }
+  }
 }
