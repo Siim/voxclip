@@ -13,9 +13,9 @@ public interface IProcessRunner
     /// <summary>Read both pipes concurrently, honor timeout/cancel and kill the process tree.</summary>
     Task<ProcessResult> RunAsync(ProcessRequest request, IProgress<ProcessProgress>? progress, CancellationToken ct);
 }
-/// <summary>Process runner placeholder owned by win-ai. No process is spawned by the skeleton.</summary>
-public sealed class ProcessRunner : IProcessRunner
+/// <summary>Bounded UTF-8 subprocess runner with process-group or Job Object cleanup; AI §6.10.</summary>
+public sealed partial class ProcessRunner : IProcessRunner
 {
     /// <inheritdoc />
-    public Task<ProcessResult> RunAsync(ProcessRequest request, IProgress<ProcessProgress>? progress, CancellationToken ct) => ServiceStub.Missing<ProcessResult>("win-ai", ct);
+    public Task<ProcessResult> RunAsync(ProcessRequest request, IProgress<ProcessProgress>? progress, CancellationToken ct) => RunCoreAsync(request, progress, ct);
 }

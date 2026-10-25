@@ -51,13 +51,54 @@ public sealed record FinalizeClipsRequest(IReadOnlyList<RawClip> Candidates, IRe
 /// <summary>Clip filtering result; AI §11.7.</summary>
 public sealed record FinalizeClipsResult(IReadOnlyList<ClipCandidate> Clips, int DroppedItems);
 
+internal sealed record ClipValidationLimits(int TitleMaxLength = 120, int ReasonMaxLength = 300, int ScoreMin = 1, int ScoreMax = 10,
+    double MinLengthFloorSeconds = 2, double MinLengthFactor = 0.6, double MaxLengthFactor = 1.4,
+    int SnapRadiusWords = 3, double MostlyCutFraction = 0.5, double NearDuplicateOverlap = 0.6);
+
 /// <summary>Pure clip pipeline entry points; AI §11.</summary>
 public static class ClipValidation
 {
     /// <summary>Validate integer indices, bounds, duration and score; never mutate edits.</summary>
-    public static FinalizeClipsResult FinalizeClips(FinalizeClipsRequest request) => throw new VoxClipException(VoxClipErrorCode.NotImplemented, "win-ai");
+    public static FinalizeClipsResult FinalizeClips(FinalizeClipsRequest request) => FinalizeClips(request, new());
+
+    internal static FinalizeClipsResult FinalizeClips(FinalizeClipsRequest request, ClipValidationLimits limits)
+    {
+        var ranked = new List<(ClipCandidate Clip, int Arrival)>();
+        for (var arrival = 0; arrival < request.Candidates.Count; arrival++)
+        {
+            var raw = request.Candidates[arrival];
+            if (!double.IsFinite(raw.StartWord) || !double.IsFinite(raw.EndWord) || !double.IsFinite(raw.Score) ||
+                raw.StartWord != Math.Floor(raw.StartWord) || raw.EndWord != Math.Floor(raw.EndWord) ||
+                raw.StartWord < 0 || raw.StartWord > raw.EndWord || raw.EndWord >= request.Words.Count) continue;
+            var start = (int)raw.StartWord;
+            var end = (int)raw.EndWord;
+            if (request.Snap) (start, end) = ClipText.Snap(start, end, request.Lines, limits.SnapRadiusWords);
+            var length = request.Words[end].End - request.Words[start].Start;
+            if (length < Math.Max(limits.MinLengthFloorSeconds, request.Preset.MinSeconds * limits.MinLengthFactor) || length > request.Preset.MaxSeconds * limits.MaxLengthFactor) continue;
+            var cuts = 0;
+            for (var index = start; index <= end; index++) if (request.CutSet.Contains(request.Words[index].Id)) cuts++;
+            if ((double)cuts / (end - start + 1) > limits.MostlyCutFraction) continue;
+            var rounded = Math.Floor(raw.Score) + (raw.Score - Math.Floor(raw.Score) >= 0.5 ? 1 : 0);
+            ranked.Add((new(ClipText.Limit(ClipText.Trim(raw.Title), limits.TitleMaxLength), ClipText.Limit(ClipText.Trim(raw.Reason), limits.ReasonMaxLength),
+                (int)Math.Clamp(rounded, limits.ScoreMin, limits.ScoreMax), start, end), arrival));
+        }
+        var chosen = new List<ClipCandidate>();
+        foreach (var item in ranked.OrderBy(item => item.Clip.Score * -1).ThenBy(item => item.Arrival))
+        {
+            if (chosen.Count >= request.Preset.MaxClips) break;
+            var clip = item.Clip;
+            if (chosen.Any(other => (clip.Start == other.Start && clip.End == other.End) ||
+                (request.WindowCount > 1 && ClipText.Overlap(clip, other) >= limits.NearDuplicateOverlap) ||
+                (request.Preset.NoOverlap && clip.Start <= other.End && other.Start <= clip.End))) continue;
+            chosen.Add(clip);
+        }
+        var ordered = chosen.Select((clip, selection) => (clip, selection)).OrderBy(item => item.clip.Start)
+            .ThenBy(item => item.selection).Select(item => item.clip).ToArray();
+        return new(ordered, request.Candidates.Count - ordered.Length);
+    }
     /// <summary>Numbered transcript block sent unchanged across providers; AI §11.2.</summary>
-    public static string FormatTranscript(IReadOnlyList<TimedWord> words, IReadOnlyDictionary<string, string> corrections) => throw new VoxClipException(VoxClipErrorCode.NotImplemented, "win-ai");
+    public static string FormatTranscript(IReadOnlyList<TimedWord> words, IReadOnlyDictionary<string, string> corrections) =>
+        ClipText.Render(ClipText.Lines(ClipText.Entries(words, corrections)));
 }
 
 /// <summary>M2 tighten proposal, pure cuts only; AI §12.</summary>

@@ -1,6 +1,7 @@
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using VoxClip.Core.Domain.Shared;
+using VoxClip.Core.Services.Process;
 namespace VoxClip.Core.Services.LLM;
 
 /// <summary>Connector ids, including decode-only AppleFoundation on Windows; AI §3.2.</summary>
@@ -181,36 +182,76 @@ public sealed class LlmException(LlmError error) : Exception(error.UserMessage)
     public LlmError Error { get; } = error;
 }
 /// <summary>Catalog access and provider metadata; AI §9.</summary>
-public sealed class LlmCatalog
+public sealed partial class LlmCatalog
 {
     /// <summary>Read curated models from SharedResources, never from a second app copy.</summary>
-    public Task<IReadOnlyList<LlmModel>> GetModelsAsync(ConnectorId connector, CancellationToken ct) => ServiceStub.Missing<IReadOnlyList<LlmModel>>("win-ai", ct);
+    public Task<IReadOnlyList<LlmModel>> GetModelsAsync(ConnectorId connector, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        return Task.FromResult<IReadOnlyList<LlmModel>>(Models(connector));
+    }
 }
 /// <summary>Preflight, one fallback, validation and corrective retry; AI §3.2 and §4.</summary>
-public sealed class LlmRunner
+public sealed partial class LlmRunner
 {
+    private readonly IKeyProvider keys;
+    private readonly LlmCatalog catalog;
+    private readonly IRedactor log;
+    private readonly Action<LlmErrorKind, string>? onError;
     /// <summary>Injected keys/catalog/redactor. The skeleton never reads or retains key values.</summary>
-    public LlmRunner(IKeyProvider keys, LlmCatalog catalog, IRedactor log)
+    public LlmRunner(IKeyProvider keys, LlmCatalog catalog, IRedactor log, Action<LlmErrorKind, string>? onError = null)
     {
         ArgumentNullException.ThrowIfNull(keys);
         ArgumentNullException.ThrowIfNull(catalog);
         ArgumentNullException.ThrowIfNull(log);
+        this.keys = keys;
+        this.catalog = catalog;
+        this.log = log;
+        this.onError = onError;
     }
     /// <summary>Run a canonical request without mutating the project.</summary>
-    public Task<LlmResult> RunAsync(LlmRequest request, ILlmConnector connector, string model, CancellationToken ct) => ServiceStub.Missing<LlmResult>("win-ai", ct);
+    public Task<LlmResult> RunAsync(LlmRequest request, ILlmConnector connector, string model, CancellationToken ct) => RunCoreAsync(request, connector, model, ct);
+    /// <summary>Run the catalog test through preflight, fallback and validation; AI §10.2.</summary>
+    public async Task<LlmConnectionTestResult> TestAsync(ILlmConnector connector, string model, CancellationToken ct)
+    {
+        var started = System.Diagnostics.Stopwatch.StartNew();
+        var result = await RunAsync(catalog.TestRequest(connector.Id), connector, model, ct).ConfigureAwait(false);
+        var passed = result.Object["ok"]?.GetValue<bool>() == true &&
+            Domain.Clips.ClipText.Trim(result.Object["echo"]?.GetValue<string>() ?? "").Equals("voxclip", StringComparison.OrdinalIgnoreCase);
+        return new(passed, result.Model, result.UsedFallback, started.Elapsed.TotalSeconds);
+    }
 }
-/// <summary>Provider adapter placeholder. Replace internals in win-ai without changing ILlmConnector.</summary>
-public sealed class LlmConnector(ConnectorId id) : ILlmConnector
+/// <summary>Connection-test outcome without storing a project result; AI §10.2.</summary>
+public sealed record LlmConnectionTestResult(bool Passed, string Model, bool UsedFallback, double Seconds);
+/// <summary>Safe installed CLI metadata for status and consent; never contains credentials.</summary>
+public sealed record CliDetectionInfo(string Path, string Version, string? AuthMethod, bool UsesApiKey);
+/// <summary>HTTP or standalone CLI provider adapter; AI §6.</summary>
+public sealed partial class LlmConnector : ILlmConnector
 {
-    // TODO(win-ai): replace the unavailable status with provider-specific preflight without starting generation.
+    /// <summary>Unavailable compatibility placeholder; use W7 to configure an adapter.</summary>
+    public LlmConnector(ConnectorId id) : this(id, new EmptyKeys(), new LlmCatalog(), new Redactor())
+    { unavailableReason = "Choose and configure an AI connector in Settings."; }
+    /// <summary>Build a connector with injected process and keyless local HTTP transports; W7. Core owns cloud key-bearing HTTP, disables redirects and cookies, and honours the system proxy regardless of the supplied client.</summary>
+    public LlmConnector(ConnectorId id, IKeyProvider keys, IProcessRunner processes, LlmCatalog catalog, HttpClient http)
+        : this(id, keys, processes, catalog, http, new Redactor()) { }
+    /// <summary>W7 with explicit local/CLI settings, redaction and safe diagnostics; AI §4.9 and §8.2. The supplied HTTP client is used only for Ollama and LM Studio; Core's cookie-free cloud transport never redirects and honours the system proxy.</summary>
+    public LlmConnector(ConnectorId id, IKeyProvider keys, IProcessRunner processes, LlmCatalog catalog, HttpClient http,
+        IRedactor redactor, string? baseUrl = null, string? cliPath = null, Action<string>? onDiagnostic = null)
+        : this(id, catalog, id is ConnectorId.Ollama or ConnectorId.LmStudio ? http : LlmRuntime.KeyedHttp, keys, redactor, baseUrl: baseUrl, processes: processes, binaryOverride: cliPath,
+            onDiagnostic: onDiagnostic, cacheFile: System.IO.Path.Combine(Services.Project.DataLocations.Resolve().Cache, "llm-models.json")) { }
+    /// <summary>App and CLI construction path. Keys come only from the supplied provider; optional server URL and CLI path are explicit user settings.</summary>
+    public LlmConnector(ConnectorId id, IKeyProvider keys, LlmCatalog catalog, IRedactor redactor, string? baseUrl = null, string? cliPath = null)
+        : this(id, keys, new ProcessRunner(), catalog, LlmRuntime.Http, redactor, baseUrl, cliPath) { }
     /// <inheritdoc />
-    public ConnectorId Id { get; } = id;
+    public ConnectorId Id { get; }
+    /// <summary>The last CLI detection and authentication method, or null before detection.</summary>
+    public CliDetectionInfo? CliDetection => cli?.DetectionInfo;
     /// <inheritdoc />
-    public Task<ConnectorStatus> GetStatusAsync(CancellationToken ct) => Task.FromResult<ConnectorStatus>(new ConnectorStatus.Unavailable("win-ai"));
+    public Task<ConnectorStatus> GetStatusAsync(CancellationToken ct) => StatusAsync(ct);
     /// <inheritdoc />
-    public Task<IReadOnlyList<LlmModel>> GetModelsAsync(bool refresh, CancellationToken ct) => ServiceStub.Missing<IReadOnlyList<LlmModel>>("win-ai", ct);
+    public Task<IReadOnlyList<LlmModel>> GetModelsAsync(bool refresh, CancellationToken ct) => ModelsAsync(refresh, ct);
     /// <inheritdoc />
-    public Task<int?> GetContextTokensAsync(string model, CancellationToken ct) => ServiceStub.Missing<int?>("win-ai", ct);
+    public Task<int?> GetContextTokensAsync(string model, CancellationToken ct) => ContextAsync(model, ct);
     /// <inheritdoc />
-    public Task<RawCompletion> SendAsync(LlmRequest request, string model, CancellationToken ct) => ServiceStub.Missing<RawCompletion>("win-ai", ct);
+    public Task<RawCompletion> SendAsync(LlmRequest request, string model, CancellationToken ct) => SendCoreAsync(request, model, ct);
 }
