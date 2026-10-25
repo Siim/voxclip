@@ -32,25 +32,89 @@ public sealed class WindowsProcessTests(WindowsNativeProbe probe) : IClassFixtur
     public async Task JobObjectKillsGrandchildrenOnTimeoutAndCancel(bool cancel)
     {
         RequireWindows();
+        await VerifyJobObjectCleanupAsync(cancel);
+    }
+
+    [Fact]
+    public async Task ReadinessFailureCancelsAndReapsOwnedProcessTree()
+    {
+        RequireWindows();
+        var childPid = 0;
+        var failure = await Assert.ThrowsAsync<InvalidOperationException>(() => VerifyJobObjectCleanupAsync(true, pid =>
+        {
+            childPid = pid;
+            throw new InvalidOperationException("Injected failure while the PID file is incomplete.");
+        }));
+        Assert.Equal("Injected failure while the PID file is incomplete.", failure.Message);
+        Assert.False(failure.Data.Contains("CleanupFailure"), failure.Data["CleanupFailure"]?.ToString());
+        Assert.True(childPid > 0);
+        Assert.False(IsRunning(childPid), "Early failure left the grandchild running.");
+        Assert.Empty(Directory.EnumerateFiles(probe.DirectoryPath, "*.pid*"));
+    }
+
+    private async Task VerifyJobObjectCleanupAsync(bool cancel, Action<int>? beforeReady = null)
+    {
         var pidFile = Path.Combine(probe.DirectoryPath, Guid.NewGuid().ToString("N") + ".pid");
+        var pendingFile = pidFile + ".pending";
+        var writingFile = pidFile + ".writing";
+        var releaseFile = pidFile + ".release";
         using var cancellation = new CancellationTokenSource();
         var running = new ProcessRunner().RunAsync(new(probe.Executable, new[] { "--spawn", pidFile }, probe.DirectoryPath, null, TimeSpan.FromSeconds(cancel ? 20 : 3)), null, cancellation.Token);
-        for (var attempt = 0; !File.Exists(pidFile) && attempt < 100; attempt++) await Task.Delay(20, TestContext.Current.CancellationToken);
-        Assert.True(File.Exists(pidFile));
-        var pid = int.Parse(await File.ReadAllTextAsync(pidFile, TestContext.Current.CancellationToken), System.Globalization.CultureInfo.InvariantCulture);
+        int? pid = null;
+        Exception? primaryFailure = null;
         try
         {
+            var readiness = Stopwatch.StartNew();
+            while (!File.Exists(writingFile) && readiness.Elapsed < TimeSpan.FromSeconds(2))
+                await Task.Delay(20, TestContext.Current.CancellationToken);
+            Assert.True(File.Exists(writingFile), "The native probe did not enter its partial PID write.");
+            pid = int.Parse(await File.ReadAllTextAsync(writingFile, TestContext.Current.CancellationToken), System.Globalization.CultureInfo.InvariantCulture);
+            Assert.False(File.Exists(pidFile), "The final PID path was visible before publication.");
+            Assert.Throws<IOException>(() => File.ReadAllText(pendingFile));
+            beforeReady?.Invoke(pid.Value);
+            File.WriteAllText(releaseFile, "ready");
+            while (!File.Exists(pidFile) && readiness.Elapsed < TimeSpan.FromSeconds(2))
+                await Task.Delay(20, TestContext.Current.CancellationToken);
+            Assert.True(File.Exists(pidFile), "The native probe did not publish the completed PID.");
+            Assert.Equal(pid.Value, int.Parse(await File.ReadAllTextAsync(pidFile, TestContext.Current.CancellationToken), System.Globalization.CultureInfo.InvariantCulture));
+
             var stopwatch = Stopwatch.StartNew();
             if (cancel) cancellation.Cancel();
             if (cancel) await Assert.ThrowsAnyAsync<OperationCanceledException>(() => running.WaitAsync(TimeSpan.FromSeconds(6), TestContext.Current.CancellationToken));
             else await Assert.ThrowsAsync<TimeoutException>(() => running.WaitAsync(TimeSpan.FromSeconds(6), TestContext.Current.CancellationToken));
             Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(6));
-            Assert.False(IsRunning(pid), "Grandchild survived Job Object closure.");
+            Assert.False(IsRunning(pid.Value), "Grandchild survived Job Object closure.");
         }
+        catch (Exception exception) { primaryFailure = exception; throw; }
         finally
         {
-            if (IsRunning(pid)) { using var child = System.Diagnostics.Process.GetProcessById(pid); child.Kill(true); await child.WaitForExitAsync(TestContext.Current.CancellationToken); }
-            File.Delete(pidFile);
+            try
+            {
+                cancellation.Cancel();
+                Exception? cleanupFailure = null;
+                try { await running.WaitAsync(TimeSpan.FromSeconds(8)); }
+                catch (OperationCanceledException) { }
+                catch (TimeoutException) when (running.IsCompleted) { }
+                catch (Exception exception) { cleanupFailure = exception; }
+                try
+                {
+                    if (pid is int childPid && IsRunning(childPid))
+                    {
+                        using var child = System.Diagnostics.Process.GetProcessById(childPid);
+                        child.Kill(true);
+                        await child.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(5));
+                    }
+                }
+                catch (ArgumentException) { }
+                catch (Exception exception) { cleanupFailure ??= exception; }
+                foreach (var file in new[] { pidFile, pendingFile, writingFile, writingFile + ".tmp", releaseFile })
+                    try { File.Delete(file); } catch (Exception exception) { cleanupFailure ??= exception; }
+                if (cleanupFailure is not null) throw cleanupFailure;
+            }
+            catch (Exception cleanupFailure) when (primaryFailure is not null)
+            {
+                primaryFailure.Data["CleanupFailure"] = cleanupFailure.ToString();
+            }
         }
     }
 
@@ -211,7 +275,21 @@ public sealed class WindowsNativeProbe : IAsyncLifetime
                 var start = new ProcessStartInfo(Environment.ProcessPath!) { UseShellExecute = false };
                 start.ArgumentList.Add("--hold");
                 using var child = Process.Start(start)!;
-                File.WriteAllText(args[1], child.Id.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                var pid = child.Id.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                var bytes = System.Text.Encoding.UTF8.GetBytes(pid);
+                using (var writer = new FileStream(args[1] + ".pending", FileMode.CreateNew, FileAccess.Write, FileShare.None))
+                {
+                    writer.Write(bytes, 0, 1);
+                    writer.Flush(true);
+                    File.WriteAllText(args[1] + ".writing.tmp", pid);
+                    File.Move(args[1] + ".writing.tmp", args[1] + ".writing");
+                    if (!SpinWait.SpinUntil(() => File.Exists(args[1] + ".release"), TimeSpan.FromSeconds(10)))
+                        throw new TimeoutException("The PID publication gate was not released.");
+                    writer.SetLength(0);
+                    writer.Write(bytes);
+                    writer.Flush(true);
+                }
+                File.Move(args[1] + ".pending", args[1]);
             }
             Thread.Sleep(120000);
             """);
