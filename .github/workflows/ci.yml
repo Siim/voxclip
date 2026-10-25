@@ -59,6 +59,18 @@ jobs:
           echo "macOS SDK $SDK"
           [ "${SDK%%.*}" -ge 26 ] || { echo "::error::macOS SDK $SDK is older than the macOS 26 minimum"; exit 1; }
 
+      - name: Set up Python (schema check and caption image comparator, macOS)
+        id: py
+        if: steps.detect.outputs.swift == 'true' || steps.detect.outputs.core_tests == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install the Draft 2020-12 validator and numpy (macOS)
+        if: steps.detect.outputs.swift == 'true' || steps.detect.outputs.core_tests == 'true'
+        shell: bash
+        run: python -m pip install "jsonschema>=4.18,<5" "numpy==2.5.4"
+
       - name: Swift build
         if: steps.detect.outputs.swift == 'true'
         working-directory: apps/macos
@@ -69,6 +81,7 @@ jobs:
         working-directory: apps/macos
         env:
           VOXCLIP_SHARED_DIR: ${{ github.workspace }}/shared
+          VOXCLIP_CAPTION_PYTHON: ${{ steps.py.outputs.python-path }}
         run: swift test
 
       - name: Skip notice (.NET core tests not present yet)
@@ -80,17 +93,6 @@ jobs:
         uses: actions/setup-dotnet@v5
         with:
           dotnet-version: "10.0.x"
-
-      - name: Set up Python for the schema check (macOS)
-        if: steps.detect.outputs.core_tests == 'true'
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Install the Draft 2020-12 validator (macOS)
-        if: steps.detect.outputs.core_tests == 'true'
-        shell: bash
-        run: python -m pip install "jsonschema>=4.18,<5"
 
       - name: .NET core tests on macOS
         if: steps.detect.outputs.core_tests == 'true'
@@ -110,6 +112,7 @@ jobs:
         if: steps.detect.outputs.parity == 'true' && steps.detect.outputs.swift == 'true' && steps.detect.outputs.media_tests == 'true'
         env:
           VOXCLIP_SHARED_DIR: ${{ github.workspace }}/shared
+          VOXCLIP_CAPTION_PYTHON: ${{ steps.py.outputs.python-path }}
         run: bash tools/captions/parity.sh
 
   windows:
