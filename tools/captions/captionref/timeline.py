@@ -23,6 +23,12 @@ def mulberry32(seed):
 
 
 def ease(name, p, overshoot=1.70158):
+    # Spec 11.2: evaluate on p clamped to [0, 1], exactly 0 at p = 0 and exactly 1 at p = 1.
+    p = clamp(p, 0.0, 1.0)
+    if p == 0.0:
+        return 0.0
+    if p == 1.0:
+        return 1.0
     if name == "linear":
         return p
     if name == "easeOutCubic":

@@ -240,9 +240,9 @@ def math_fixture():
     easing = {}
     ps = [0, 0.1, 0.25, 0.5, 0.75, 0.9, 1]
     for name in ("linear", "easeOutCubic", "easeInOutCubic"):
-        easing[name] = [[p, r6(ease(name, p))] for p in ps]
+        easing[name] = [[p, ease(name, p) + 0.0] for p in ps]  # full precision: captions 16.3 compares easing within 1e-9
     for ov in (1.70158, 2.0, 2.4):
-        easing["easeOutBack(%s)" % ov] = [[p, r6(ease("easeOutBack", p, ov))] for p in ps]
+        easing["easeOutBack(%s)" % ov] = [[p, ease("easeOutBack", p, ov) + 0.0] for p in ps]
     rng = {}
     for seed in (0, 1, 6, 7, 123456789, 4294967295):
         g = mulberry32(seed)
