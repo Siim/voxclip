@@ -331,7 +331,7 @@ Errors are logged by their `LLMError` case plus the redacted user message. Never
 
 ## 5. Error taxonomy and user-facing messages
 
-`{label}` is the connector label from the catalog, `{model}` the model id, and `{cli}` is "Claude Code" or "Codex".
+`{label}` is the connector label from the catalog (for the CLI connectors "Claude Code (installed CLI)" and "Codex (installed CLI)"), `{model}` the model id, and `{cli}` is "Claude Code" or "Codex". Rows that say `{label}` use the catalog label on both platforms; only rows that say `{cli}` use the short name.
 
 | `LLMError` case | Raised when | Retried (§4.2) | Fallback (§4.3) | User message |
 | --- | --- | --- | --- | --- |
@@ -354,7 +354,7 @@ Errors are logged by their `LLMError` case plus the redacted user message. Never
 | `unsupportedLanguage(lang)` | Apple locale gate (§6.7) | no | no | Apple's on-device model doesn't support {language name}. Use an API key, a CLI or a local model for this project. |
 | `notRunning(url)` | Ollama or LM Studio connection refused | no | no | Ollama isn't running at {url}. Start Ollama and try again. / LM Studio's server isn't running at {url}. Start it from LM Studio's Developer tab. |
 | `noModels` | local server has no chat model | no | no | Ollama has no chat models. Run `ollama pull <model>`, then refresh. / Load or download a model in LM Studio, then refresh. |
-| `unavailable(reason)` | Apple availability; Ollama or LM Studio answering 401 or 403 (they have no key to fix); an unusable Ollama or LM Studio address in settings (credentials, query, fragment or a scheme other than http and https) | no | no | This Mac can't run Apple Intelligence. / Turn on Apple Intelligence in System Settings to use the on-device model. / Apple's on-device model is still downloading. Try again later. / {label} rejected the request ({status}). / {label}'s server address in Settings isn't valid. (also for a 404 from the local status probe) / VoxClip is missing its AI configuration. Reinstall VoxClip. (catalog disagrees with the §1 rule 5 table) |
+| `unavailable(reason)` | Apple availability; Ollama or LM Studio answering 401 or 403 (they have no key to fix); an unusable Ollama or LM Studio address in settings (credentials, query, fragment or a scheme other than http and https) | no | no | This Mac can't run Apple Intelligence. / Turn on Apple Intelligence in System Settings to use the on-device model. / Apple's on-device model is still downloading. Try again later. / {label} rejected the request ({status}). / {label}'s server address in Settings isn't valid. (also for a 404 from the local status probe) / VoxClip is missing its AI configuration. Reinstall VoxClip. (catalog disagrees with the §1 rule 5 table) / {label} is not enabled. (catalog `enabled: false`, the release kill switch; also for a 400 from a local status probe use "{label} rejected the request ({status})." without the provider's message) |
 | `cliMissing` | no executable found | no | no | {cli} isn't installed. {installHint} |
 | `cliTooOld(version, missing)` | required flags missing from `--help` | no | no | Your {cli} {version} is too old for VoxClip. Update it, then try again. |
 | `cliSignedOut` | auth preflight or auth markers | no | no | {cli} isn't signed in. {signInHint} |
