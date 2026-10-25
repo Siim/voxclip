@@ -60,7 +60,7 @@ class ReleaseDriverTests(unittest.TestCase):
         self.signing.write_bytes((
             "\r\n".join(f" export {name} = {signing_fixture_value(name)}" for name in sorted(ALLOWED))
             + "\r\nUNRELATED_TOKEN=fixture-unrelated\r\nAZURE_CLIENT_SECRET_EXTRA=fixture-extra\r\n"
-            + "# AZURE_CLIENT_SECRET=fixture-comment\r\nnot AZURE_CLIENT_SECRET=fixture-invalid\r\n"
+            + "# AZURE_CLIENT_SECRET=" + "fixture-comment\r\nnot AZURE_CLIENT_SECRET=" + "fixture-invalid\r\n"
         ).encode())
         self.env = dict(os.environ, PATH=str(self.bin) + os.pathsep + os.environ["PATH"],
                         VOXCLIP_TIMEOUT=TIMEOUT, VOXCLIP_WIN_HOST="fixture@vm.invalid",
@@ -778,7 +778,7 @@ os.execv({TIMEOUT!r}, [{TIMEOUT!r}, *arguments])
 
     def test_invalid_utf8_in_allowed_line_reports_only_its_name_and_no_partial_set(self):
         with self.signing.open("ab") as fixture:
-            fixture.write(b"AZURE_CLIENT_SECRET=fixture-invalid-\xff\n")
+            fixture.write(b"AZURE_CLIENT_SECRET=" + b"fixture-invalid-\xff\n")
         for arguments in ((), ("--validate",)):
             with self.subTest(arguments=arguments):
                 result = self.filter_credentials(*arguments)

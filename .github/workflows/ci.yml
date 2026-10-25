@@ -123,7 +123,7 @@ jobs:
         if: steps.detect.outputs.core_tests == 'true' || steps.detect.outputs.media_tests == 'true'
         uses: actions/setup-dotnet@v5
         with:
-          dotnet-version: "10.0.x"
+          dotnet-version: "10.0.402"
 
       - name: .NET core tests on macOS
         if: steps.detect.outputs.core_tests == 'true'
@@ -224,7 +224,7 @@ jobs:
         if: steps.detect.outputs.core_tests == 'true' || steps.detect.outputs.media_tests == 'true' || steps.detect.outputs.app == 'true' || steps.detect.outputs.cli == 'true'
         uses: actions/setup-dotnet@v5
         with:
-          dotnet-version: "10.0.x"
+          dotnet-version: "10.0.402"
 
       - name: Set up Python for schema and image checks
         id: py
