@@ -175,11 +175,16 @@ struct MediaCliE2ETests {
                             [191,0,191], [191,0,0], [0,0,191], [0,0,0]]
             let points = (0..<8).flatMap { bar in (0..<3).map { position in (bar * 240 + 60 * (position + 1), 300 + 200 * position) } }
             let frames = try await sampledFrames(output, points: points)
+            let sourceFrames = try await sampledFrames(source, points: points)
+            let decodedYUV = try await sampledYUVFrames(output, points: points, indices: [9, 15, 30])
             #expect(frames.count == 60)
+            try #require(sourceFrames.count > 30 && decodedYUV.count == 3)
             for index in [9, 15, 30] { for bar in 0..<8 { for position in 0..<3 { for channel in 0..<3 {
-                let actual = frames[index].pixels[bar * 3 + position][channel]
+                let point = bar * 3 + position
+                let actual = frames[index].pixels[point][channel]
+                let yuv = try #require(decodedYUV[index]?[point])
                 #expect(abs(actual - expected[bar][channel]) <= 3,
-                        "frame \(index), bar \(bar), point \(position), RGB \(channel): \(actual)")
+                        "frame \(index), bar \(bar), point \(position), RGB \(channel): \(actual); source RGB \(sourceFrames[index].pixels[point]), decoded YUV \(yuv)")
             } } } }
         }
     }
@@ -239,6 +244,38 @@ struct MediaCliE2ETests {
         }
         try #require(reader.status == .completed)
         return samples
+    }
+
+    private func sampledYUVFrames(_ url: URL, points: [(Int, Int)], indices: Set<Int>) async throws -> [Int: [[Int]]] {
+        let asset = AVURLAsset(url: url)
+        let track = try #require(try await asset.loadTracks(withMediaType: .video).first)
+        let reader = try AVAssetReader(asset: asset)
+        let output = AVAssetReaderTrackOutput(track: track, outputSettings: [
+            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange])
+        let provider = reader.outputProvider(for: output)
+        try #require(reader.startReading())
+        var frames = [Int: [[Int]]](), index = 0
+        while let ready = try await provider.next() {
+            if indices.contains(index) {
+                frames[index] = try ready.withUnsafeSampleBuffer { sample in
+                    let buffer = try #require(CMSampleBufferGetImageBuffer(sample))
+                    try #require(CVPixelBufferGetPlaneCount(buffer) == 2)
+                    CVPixelBufferLockBaseAddress(buffer, .readOnly)
+                    defer { CVPixelBufferUnlockBaseAddress(buffer, .readOnly) }
+                    let y = try #require(CVPixelBufferGetBaseAddressOfPlane(buffer, 0)).assumingMemoryBound(to: UInt8.self)
+                    let uv = try #require(CVPixelBufferGetBaseAddressOfPlane(buffer, 1)).assumingMemoryBound(to: UInt8.self)
+                    let yStride = CVPixelBufferGetBytesPerRowOfPlane(buffer, 0)
+                    let uvStride = CVPixelBufferGetBytesPerRowOfPlane(buffer, 1)
+                    return points.map { x, row in
+                        let chroma = (row / 2) * uvStride + (x / 2) * 2
+                        return [Int(y[row * yStride + x]), Int(uv[chroma]), Int(uv[chroma + 1])]
+                    }
+                }
+            }
+            index += 1
+        }
+        try #require(reader.status == .completed)
+        return frames
     }
 
     private func brightCaptionCounts(_ url: URL, frames wanted: Set<Int>) async throws -> [Int: Int] {
