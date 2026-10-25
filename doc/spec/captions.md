@@ -913,14 +913,14 @@ Both images are placed back into a transparent full frame and converted to premu
 
 | Metric | Pass |
 |---|---|
-| Mean channel difference: `Σ_{p∈R} Σ_{c∈RGBA} |A−B| / (4·|R|)` | ≤ 3.0 (of 255) |
-| Share of pixels in `R` whose largest channel difference exceeds 32 | ≤ 2% |
+| Mean channel difference: `Σ_{p∈R} Σ_{c∈RGBA} |A−B| / (4·|R|)` | ≤ 4.5 (of 255) |
+| Pixels in `R` whose largest channel difference exceeds 32 | ≤ max(2% of `|R|`, 96) |
 | Largest channel difference anywhere | ≤ 128 |
-| SSIM of the alpha channel | ≥ 0.98 |
+| SSIM of the alpha channel | ≥ 0.98, not checked when the largest channel difference is ≤ 2 |
 
 SSIM: over the bounding box of `R` grown by 8 px (clamped), on the alpha channels as doubles, Gaussian window 11×11 with σ = 1.5 (normalised), `C1 = (0.01·255)²`, `C2 = (0.03·255)²`, mean of the SSIM map over window positions that lie fully inside the box. A box narrower or shorter than 11 px (only possible at a frame corner) is padded with zeros on the right or bottom to 11 px first. If `R` is empty in both images the comparison passes; if it is empty in one, it fails. `tools/captions/compare_overlays.py` is the executable definition; on failure the suites write a diff PNG (absolute difference ×4, alpha forced to 255) next to the failing output.
 
-These tolerances are calibrated on measured glyph-path differences between CoreText and Skia (mean ≤ 1.7, at most 0.92% of ink pixels above 32, single edge pixels up to about 70). A missing or extra glyph, box, word or emoji breaks the max and SSIM limits. The comparison is deliberately stricter than the 0.5 px layout tolerance: shifting a stroked page by 0.3 px already exceeds the 2% rule, so the renderers must place geometry exactly as computed, not merely within half a pixel. A threshold may be loosened only by a change to this section that records the measured differences between the first Swift and C# renders that justify it.
+These tolerances are calibrated on the first full Swift and C# renders: the macOS goldens of track/mac-captions acd68cb against the Windows goldens of track/win-captions b488813 (2026-10-25), 292 shared images, 275 of them with ink. Outside `vox-bold`, every pair stays within mean 2.22, 0.93% of pixels above 32, largest difference 102 and alpha SSIM 0.9936. Ten `vox-bold` pairs failed the first limits (mean ≤ 3.0, at most 2% above 32). They are plain 48 px text with no outline, where CoreGraphics and Skia antialias every glyph edge differently: mean 2.54 to 3.98, up to 3.36% (71 px) above 32, largest difference 57, SSIM at least 0.9932, ink centroids within 0.09 px. One fade frame (`lower-third-portrait-frames` s6) has a largest difference of 1 but SSIM 0.911, because ±1 rounding dominates the alpha statistics near zero opacity. On the 241 macOS golden samples, the current limits catch exactly the same synthetic faults as the first ones: erasing the last 10% of a page fails 240 samples, a whole-pixel shift 240, a 0.5 px shift 230 and a 0.3 px shift 224. The only sample that passes them all is that near-transparent fade frame. A missing or extra glyph, box, word or emoji breaks the max and SSIM limits. The renderers must still place geometry exactly as computed: the layout fixtures hold coordinates to 0.5 px, and the image comparison catches most sub-pixel shifts on top of that. A threshold may be loosened only by a change to this section that records the measured differences that justify it.
 
 ### 16.6 CI
 

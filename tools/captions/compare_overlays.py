@@ -18,10 +18,12 @@ import zlib
 
 import numpy as np
 
-MEAN_MAX = 3.0
+MEAN_MAX = 4.5
 SHARE_OVER_32_MAX = 0.02
+OVER_32_FLOOR = 96
 MAX_DIFF = 128
 SSIM_MIN = 0.98
+SSIM_SKIP_MAX = 2
 
 
 def read_png(path):
@@ -154,14 +156,16 @@ def compare(img_a, img_b):
     d = np.abs(A - B)
     n = int(region.sum())
     mean = float(d[region].sum()) / (4 * n)
-    over = float((d[region].max(axis=1) > 32).sum()) / n
+    over_px = int((d[region].max(axis=1) > 32).sum())
+    over = float(over_px) / n
     mx = int(d.max())
     ys, xs = np.nonzero(region)
     h, w = region.shape
     box = (max(0, xs.min() - 8), max(0, ys.min() - 8), min(w, xs.max() + 9), min(h, ys.max() + 9))
     s = ssim_alpha(A[..., 3], B[..., 3], box)
     metrics = {"mean": round(mean, 4), "shareOver32": round(over, 5), "max": mx, "ssimAlpha": round(s, 5), "pixels": n}
-    ok = mean <= MEAN_MAX and over <= SHARE_OVER_32_MAX and mx <= MAX_DIFF and s >= SSIM_MIN
+    ok = (mean <= MEAN_MAX and over_px <= max(SHARE_OVER_32_MAX * n, OVER_32_FLOOR) and mx <= MAX_DIFF
+          and (s >= SSIM_MIN or mx <= SSIM_SKIP_MAX))
     return ok, metrics
 
 
