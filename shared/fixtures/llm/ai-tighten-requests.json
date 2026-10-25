@@ -602,7 +602,7 @@
                     "name": "edits",
                     "schema": {
                       "arrayOf": {
-                        "name": "edits",
+                        "name": "tighten_edits_edits_item",
                         "properties": [
                           {
                             "name": "line",
@@ -621,7 +621,7 @@
                           {
                             "name": "kind",
                             "schema": {
-                              "name": "kind",
+                              "name": "tighten_edits_edits_item_kind",
                               "anyOf": [
                                 "filler",
                                 "false_start",
@@ -1338,7 +1338,7 @@
                     "name": "edits",
                     "schema": {
                       "arrayOf": {
-                        "name": "edits",
+                        "name": "tighten_edits_edits_item",
                         "properties": [
                           {
                             "name": "line",
@@ -1357,7 +1357,7 @@
                           {
                             "name": "kind",
                             "schema": {
-                              "name": "kind",
+                              "name": "tighten_edits_edits_item_kind",
                               "anyOf": [
                                 "filler",
                                 "false_start",
@@ -2074,7 +2074,7 @@
                     "name": "edits",
                     "schema": {
                       "arrayOf": {
-                        "name": "edits",
+                        "name": "tighten_edits_edits_item",
                         "properties": [
                           {
                             "name": "line",
@@ -2093,7 +2093,7 @@
                           {
                             "name": "kind",
                             "schema": {
-                              "name": "kind",
+                              "name": "tighten_edits_edits_item_kind",
                               "anyOf": [
                                 "filler",
                                 "false_start",
@@ -2803,7 +2803,7 @@
                     "name": "edits",
                     "schema": {
                       "arrayOf": {
-                        "name": "edits",
+                        "name": "tighten_edits_edits_item",
                         "properties": [
                           {
                             "name": "line",
@@ -2822,7 +2822,7 @@
                           {
                             "name": "kind",
                             "schema": {
-                              "name": "kind",
+                              "name": "tighten_edits_edits_item_kind",
                               "anyOf": [
                                 "filler",
                                 "false_start",
@@ -3539,7 +3539,7 @@
                     "name": "edits",
                     "schema": {
                       "arrayOf": {
-                        "name": "edits",
+                        "name": "tighten_edits_edits_item",
                         "properties": [
                           {
                             "name": "line",
@@ -3558,7 +3558,7 @@
                           {
                             "name": "kind",
                             "schema": {
-                              "name": "kind",
+                              "name": "tighten_edits_edits_item_kind",
                               "anyOf": [
                                 "filler",
                                 "false_start",
@@ -4275,7 +4275,7 @@
                     "name": "edits",
                     "schema": {
                       "arrayOf": {
-                        "name": "edits",
+                        "name": "tighten_edits_edits_item",
                         "properties": [
                           {
                             "name": "line",
@@ -4294,7 +4294,7 @@
                           {
                             "name": "kind",
                             "schema": {
-                              "name": "kind",
+                              "name": "tighten_edits_edits_item_kind",
                               "anyOf": [
                                 "filler",
                                 "false_start",
@@ -5004,7 +5004,7 @@
                     "name": "edits",
                     "schema": {
                       "arrayOf": {
-                        "name": "edits",
+                        "name": "tighten_edits_edits_item",
                         "properties": [
                           {
                             "name": "line",
@@ -5023,7 +5023,7 @@
                           {
                             "name": "kind",
                             "schema": {
-                              "name": "kind",
+                              "name": "tighten_edits_edits_item_kind",
                               "anyOf": [
                                 "filler",
                                 "false_start",
@@ -5740,7 +5740,7 @@
                     "name": "edits",
                     "schema": {
                       "arrayOf": {
-                        "name": "edits",
+                        "name": "tighten_edits_edits_item",
                         "properties": [
                           {
                             "name": "line",
@@ -5759,7 +5759,7 @@
                           {
                             "name": "kind",
                             "schema": {
-                              "name": "kind",
+                              "name": "tighten_edits_edits_item_kind",
                               "anyOf": [
                                 "filler",
                                 "false_start",
@@ -6476,7 +6476,7 @@
                     "name": "edits",
                     "schema": {
                       "arrayOf": {
-                        "name": "edits",
+                        "name": "tighten_edits_edits_item",
                         "properties": [
                           {
                             "name": "line",
@@ -6495,7 +6495,7 @@
                           {
                             "name": "kind",
                             "schema": {
-                              "name": "kind",
+                              "name": "tighten_edits_edits_item_kind",
                               "anyOf": [
                                 "filler",
                                 "false_start",
@@ -7205,7 +7205,7 @@
                     "name": "edits",
                     "schema": {
                       "arrayOf": {
-                        "name": "edits",
+                        "name": "tighten_edits_edits_item",
                         "properties": [
                           {
                             "name": "line",
@@ -7224,7 +7224,7 @@
                           {
                             "name": "kind",
                             "schema": {
-                              "name": "kind",
+                              "name": "tighten_edits_edits_item_kind",
                               "anyOf": [
                                 "filler",
                                 "false_start",
@@ -7941,7 +7941,7 @@
                     "name": "edits",
                     "schema": {
                       "arrayOf": {
-                        "name": "edits",
+                        "name": "tighten_edits_edits_item",
                         "properties": [
                           {
                             "name": "line",
@@ -7960,7 +7960,7 @@
                           {
                             "name": "kind",
                             "schema": {
-                              "name": "kind",
+                              "name": "tighten_edits_edits_item_kind",
                               "anyOf": [
                                 "filler",
                                 "false_start",
@@ -8677,7 +8677,7 @@
                     "name": "edits",
                     "schema": {
                       "arrayOf": {
-                        "name": "edits",
+                        "name": "tighten_edits_edits_item",
                         "properties": [
                           {
                             "name": "line",
@@ -8696,7 +8696,7 @@
                           {
                             "name": "kind",
                             "schema": {
-                              "name": "kind",
+                              "name": "tighten_edits_edits_item_kind",
                               "anyOf": [
                                 "filler",
                                 "false_start",
@@ -9406,7 +9406,7 @@
                     "name": "edits",
                     "schema": {
                       "arrayOf": {
-                        "name": "edits",
+                        "name": "tighten_edits_edits_item",
                         "properties": [
                           {
                             "name": "line",
@@ -9425,7 +9425,7 @@
                           {
                             "name": "kind",
                             "schema": {
-                              "name": "kind",
+                              "name": "tighten_edits_edits_item_kind",
                               "anyOf": [
                                 "filler",
                                 "false_start",
@@ -10142,7 +10142,7 @@
                     "name": "edits",
                     "schema": {
                       "arrayOf": {
-                        "name": "edits",
+                        "name": "tighten_edits_edits_item",
                         "properties": [
                           {
                             "name": "line",
@@ -10161,7 +10161,7 @@
                           {
                             "name": "kind",
                             "schema": {
-                              "name": "kind",
+                              "name": "tighten_edits_edits_item_kind",
                               "anyOf": [
                                 "filler",
                                 "false_start",
@@ -10878,7 +10878,7 @@
                     "name": "edits",
                     "schema": {
                       "arrayOf": {
-                        "name": "edits",
+                        "name": "tighten_edits_edits_item",
                         "properties": [
                           {
                             "name": "line",
@@ -10897,7 +10897,7 @@
                           {
                             "name": "kind",
                             "schema": {
-                              "name": "kind",
+                              "name": "tighten_edits_edits_item_kind",
                               "anyOf": [
                                 "filler",
                                 "false_start",
@@ -11607,7 +11607,7 @@
                     "name": "edits",
                     "schema": {
                       "arrayOf": {
-                        "name": "edits",
+                        "name": "tighten_edits_edits_item",
                         "properties": [
                           {
                             "name": "line",
@@ -11626,7 +11626,7 @@
                           {
                             "name": "kind",
                             "schema": {
-                              "name": "kind",
+                              "name": "tighten_edits_edits_item_kind",
                               "anyOf": [
                                 "filler",
                                 "false_start",
@@ -12343,7 +12343,7 @@
                     "name": "edits",
                     "schema": {
                       "arrayOf": {
-                        "name": "edits",
+                        "name": "tighten_edits_edits_item",
                         "properties": [
                           {
                             "name": "line",
@@ -12362,7 +12362,7 @@
                           {
                             "name": "kind",
                             "schema": {
-                              "name": "kind",
+                              "name": "tighten_edits_edits_item_kind",
                               "anyOf": [
                                 "filler",
                                 "false_start",
@@ -13079,7 +13079,7 @@
                     "name": "edits",
                     "schema": {
                       "arrayOf": {
-                        "name": "edits",
+                        "name": "tighten_edits_edits_item",
                         "properties": [
                           {
                             "name": "line",
@@ -13098,7 +13098,7 @@
                           {
                             "name": "kind",
                             "schema": {
-                              "name": "kind",
+                              "name": "tighten_edits_edits_item_kind",
                               "anyOf": [
                                 "filler",
                                 "false_start",
@@ -13831,7 +13831,7 @@
                     "name": "edits",
                     "schema": {
                       "arrayOf": {
-                        "name": "edits",
+                        "name": "tighten_edits_edits_item",
                         "properties": [
                           {
                             "name": "line",
@@ -13850,7 +13850,7 @@
                           {
                             "name": "kind",
                             "schema": {
-                              "name": "kind",
+                              "name": "tighten_edits_edits_item_kind",
                               "anyOf": [
                                 "filler",
                                 "false_start",
@@ -14560,7 +14560,7 @@
                     "name": "edits",
                     "schema": {
                       "arrayOf": {
-                        "name": "edits",
+                        "name": "tighten_edits_edits_item",
                         "properties": [
                           {
                             "name": "line",
@@ -14579,7 +14579,7 @@
                           {
                             "name": "kind",
                             "schema": {
-                              "name": "kind",
+                              "name": "tighten_edits_edits_item_kind",
                               "anyOf": [
                                 "filler",
                                 "false_start",

@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import * as reference from './reference.mjs'
-import { canonicalRequest, clipInstruction, renderConnector, sha256, tomlBasicString, windowBudget, tightenWindowBudget } from './requests.mjs'
+import { appleSchema, canonicalRequest, clipInstruction, renderConnector, sha256, tomlBasicString, windowBudget, tightenWindowBudget } from './requests.mjs'
 import { candidate, f1Words, f1Rendered, fixedVectors, timeVectors, finalizeVectors, snapVectors, w1Bounds, tightenVectors, t1Entries, u100Words, syntheticWords, randomValues } from './vectors.mjs'
 
 assert(Number(process.versions.node.split('.')[0]) >= 20, 'Node >=20 is required')
@@ -315,8 +315,42 @@ const maxSchema = { type: 'object', additionalProperties: false, required: ['nam
 reference.validateSchema(maxSchema)
 const schemaRequest = { ...testRequest, schemaName: 'primitive_mapping', schema: maxSchema }
 const appleMapping = renderConnector(schemaRequest, connectors['apple-foundation'], catalog)
-equal(appleMapping.schema.root.properties[0].schema, { name: 'name', anyOf: ['yes', 'no'] }, 'Apple string enum mapping')
+equal(appleMapping.schema.root.properties[0].schema, { name: 'primitive_mapping_name', anyOf: ['yes', 'no'] }, 'Apple string enum mapping')
 equal(appleMapping.schema.root.properties[1].schema, { type: 'Double' }, 'Apple number mapping')
+const nestedAppleMapping = appleSchema({
+  type: 'object', properties: {
+    detail: { type: 'object', properties: { kind: { type: 'string', enum: ['yes', 'no'] } } },
+    clips: { type: 'array', items: { type: 'object', properties: {
+      detail: { type: 'object', properties: { kind: { type: 'string', enum: ['yes', 'no'] } } }
+    } } },
+    values: { type: 'array', items: { type: 'array', items: { type: 'string', enum: ['yes', 'no'] } } }
+  }
+}, 'nested_mapping', 5)
+equal(nestedAppleMapping, {
+  name: 'nested_mapping', properties: [
+    { name: 'detail', isOptional: false, schema: {
+      name: 'nested_mapping_detail', properties: [
+        { name: 'kind', isOptional: false, schema: { name: 'nested_mapping_detail_kind', anyOf: ['yes', 'no'] } }
+      ]
+    } },
+    { name: 'clips', isOptional: false, schema: { maximumElements: 5, arrayOf: {
+      name: 'nested_mapping_clips_item', properties: [
+        { name: 'detail', isOptional: false, schema: {
+          name: 'nested_mapping_clips_item_detail', properties: [
+            { name: 'kind', isOptional: false, schema: { name: 'nested_mapping_clips_item_detail_kind', anyOf: ['yes', 'no'] } }
+          ]
+        } }
+      ]
+    } } },
+    { name: 'values', isOptional: false, schema: { maximumElements: null, arrayOf: {
+      maximumElements: null, arrayOf: { name: 'nested_mapping_values_item_item', anyOf: ['yes', 'no'] }
+    } } }
+  ]
+}, 'Apple recursive full-path schema names and array budgets')
+const tightenAppleMapping = appleSchema(aiTighten.output.schema, aiTighten.output.name)
+equal(tightenAppleMapping.name, 'tighten_edits', 'Apple tighten root name')
+equal(tightenAppleMapping.properties[0].schema.arrayOf.name, 'tighten_edits_edits_item', 'Apple tighten item name')
+equal(tightenAppleMapping.properties[0].schema.arrayOf.properties[2].schema.name, 'tighten_edits_edits_item_kind', 'Apple tighten enum name')
 add('connector-requests', 'apple-enum-and-number-mapping', 'connector-request', { request: schemaRequest, connector: 'apple-foundation', options: { macOSMajor: 27, clipBudget: null } }, appleMapping, 'doc/spec/ai.md §6.7')
 for (const connector of catalog.connectors) {
   const request = { ...testRequest, effort: null }
@@ -336,6 +370,8 @@ const ollamaNeeded = reference.estimateTokens(bestRequest.system) + reference.es
 equal(wire.ollama.body.options.num_ctx, Math.min(32768, Math.max(8192, Math.ceil(ollamaNeeded / 1024) * 1024)), 'Ollama num_ctx computation')
 equal(wire.lmstudio.body.max_tokens, 4096, 'LM Studio output cap')
 equal(wire['apple-foundation'].options.maximumResponseTokens, 1500, 'Apple output cap')
+equal(wire['apple-foundation'].schema.root.name, 'clips', 'Apple clip root name')
+equal(wire['apple-foundation'].schema.root.properties[0].schema.arrayOf.name, 'clips_clips_item', 'Apple clip item name')
 equal(wire['claude-code'].argv.slice(0, 4), ['-p', '--output-format', 'json', '--json-schema'], 'Claude argv prefix')
 equal(wire['claude-code'].argv[wire['claude-code'].argv.indexOf('--fallback-model') + 1], 'haiku', 'Claude fallback excludes selected model')
 assert(!wire.codex.argv.includes('--model'), 'Codex default must omit model')
@@ -350,6 +386,26 @@ for (const invalid of [
   { type: 'string', minLength: 1 }, { type: 'integer', enum: [1] }, { type: ['null', 'string'] },
   { type: 'object', properties: {}, required: [], additionalProperties: true }, { type: 'array', items: { type: 'null' } }
 ]) assert.throws(() => reference.validateSchema(invalid), undefined, 'schema subset must reject invalid schema')
+
+const assertAppleSchema = (schema, names = new Set()) => {
+  assert.notEqual(schema.$ref, '#', 'Apple schema must not reference its root')
+  if (schema.name !== undefined) {
+    assert(!names.has(schema.name), `duplicate Apple schema name: ${schema.name}`)
+    names.add(schema.name)
+  }
+  for (const property of schema.properties ?? []) assertAppleSchema(property.schema, names)
+  if (schema.arrayOf) assertAppleSchema(schema.arrayOf, names)
+}
+assert.throws(() => assertAppleSchema({ name: 'duplicate', properties: [
+  { name: 'items', schema: { arrayOf: { name: 'duplicate', properties: [] } } }
+] }), /duplicate Apple schema name/, 'Apple duplicate-name guard')
+assert.throws(() => assertAppleSchema({ arrayOf: { $ref: '#' } }), /must not reference its root/, 'Apple root self-reference guard')
+for (const cases of datasets.values()) {
+  for (const test of cases) {
+    const apple = test.input.connector === 'apple-foundation' ? test.expected : test.expected.connectors?.['apple-foundation']
+    if (apple) assertAppleSchema(apple.schema.root)
+  }
+}
 
 const json = value => JSON.stringify(value, null, 2) + '\n'
 const writeFixtures = async directory => {

@@ -2533,7 +2533,7 @@
                 "name": "clips",
                 "schema": {
                   "arrayOf": {
-                    "name": "clips",
+                    "name": "clips_clips_item",
                     "properties": [
                       {
                         "name": "title",
@@ -3248,7 +3248,7 @@
               {
                 "name": "name",
                 "schema": {
-                  "name": "name",
+                  "name": "primitive_mapping_name",
                   "anyOf": [
                     "yes",
                     "no"
