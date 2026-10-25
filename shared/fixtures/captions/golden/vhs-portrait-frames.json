@@ -1,0 +1,123 @@
+{
+  "images" : [
+    {
+      "crop" : {
+        "h" : 136,
+        "w" : 566,
+        "x" : 251,
+        "y" : 1319
+      },
+      "file" : "s6.png",
+      "frame" : {
+        "height" : 1920,
+        "width" : 1080
+      },
+      "sample" : 6,
+      "sha256" : "c9b5b0c7a7854fd09191db6edc4a4be071f46cab0d812522ad73b85f87ad29a3",
+      "style" : null,
+      "t" : 0.2
+    },
+    {
+      "crop" : {
+        "h" : 136,
+        "w" : 566,
+        "x" : 251,
+        "y" : 1319
+      },
+      "file" : "s11.png",
+      "frame" : {
+        "height" : 1920,
+        "width" : 1080
+      },
+      "sample" : 11,
+      "sha256" : "e4ad51a75474d368434dc4677bda59b750e1b1721429d35933627134ce29854e",
+      "style" : null,
+      "t" : 0.36666666666666664
+    },
+    {
+      "crop" : {
+        "h" : 136,
+        "w" : 566,
+        "x" : 250,
+        "y" : 1319
+      },
+      "file" : "s16.png",
+      "frame" : {
+        "height" : 1920,
+        "width" : 1080
+      },
+      "sample" : 16,
+      "sha256" : "508dfa918396a27f987ccf690fe8482019a5e78f0e381b3a5599a6a8d5f15850",
+      "style" : null,
+      "t" : 0.5333333333333333
+    },
+    {
+      "crop" : {
+        "h" : 136,
+        "w" : 565,
+        "x" : 251,
+        "y" : 1319
+      },
+      "file" : "s21.png",
+      "frame" : {
+        "height" : 1920,
+        "width" : 1080
+      },
+      "sample" : 21,
+      "sha256" : "5857455a93a523c4583379288a64607acbf85bde635ba51cbb7b03d9c0471c1e",
+      "style" : null,
+      "t" : 0.7
+    },
+    {
+      "crop" : {
+        "h" : 135,
+        "w" : 565,
+        "x" : 251,
+        "y" : 1321
+      },
+      "file" : "s26.png",
+      "frame" : {
+        "height" : 1920,
+        "width" : 1080
+      },
+      "sample" : 26,
+      "sha256" : "3f711c7dcd322a47fe24247163577c0a386f57fb70acbb5dcc1b4ab875625c80",
+      "style" : null,
+      "t" : 0.8666666666666667
+    },
+    {
+      "crop" : {
+        "h" : 135,
+        "w" : 566,
+        "x" : 250,
+        "y" : 1320
+      },
+      "file" : "s31.png",
+      "frame" : {
+        "height" : 1920,
+        "width" : 1080
+      },
+      "sample" : 31,
+      "sha256" : "98cd0838281e28764841319b9a7c8715b5bbde6a092717e2989c026591a94431",
+      "style" : null,
+      "t" : 1.0333333333333334
+    },
+    {
+      "crop" : {
+        "h" : 135,
+        "w" : 566,
+        "x" : 250,
+        "y" : 1320
+      },
+      "file" : "s36.png",
+      "frame" : {
+        "height" : 1920,
+        "width" : 1080
+      },
+      "sample" : 36,
+      "sha256" : "e9cf46fc37db1240b5980e8351ef1dc1185eb45939f974574bdedf36e1431952",
+      "style" : null,
+      "t" : 1.2
+    }
+  ]
+}
