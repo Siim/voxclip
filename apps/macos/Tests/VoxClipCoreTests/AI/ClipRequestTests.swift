@@ -25,7 +25,12 @@ import Testing
 
 @Test("W1 windows retain absolute numbers with time-based overlap") func aiW1Windows() throws {
     let builder = ClipRequestBuilder(prompt:try AIClipTestData.prompt())
-    let words = (0..<20000).map { index in ClipWord(index:index,text:"w\(index)" + (index % 15 == 14 ? "." : ""),start:0.3 * Double(index),end:0.3 * Double(index) + 0.25) }
+    let words: [ClipWord] = (0..<20000).map { index in
+        let suffix = index % 15 == 14 ? "." : ""
+        let text = "w\(index)" + suffix
+        let start = 0.3 * Double(index)
+        return ClipWord(index: index, text: text, start: start, end: start + 0.25)
+    }
     let preset = try AIClipTestData.preset(.best)
     let windows = try builder.windows(words:words,preset:preset,contextTokens:128000)
     #expect(windows.count == 3)

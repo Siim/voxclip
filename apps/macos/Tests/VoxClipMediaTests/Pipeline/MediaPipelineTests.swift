@@ -154,7 +154,7 @@ actor TestCaptionRasterizer: CaptionRasterizer {
     func rasterize(_ request: CaptionRasterRequest) async throws -> CaptionRaster {
         times.append(request.time)
         var rgba = Data(repeating: 0, count: request.width * request.height * 4)
-        rgba.withUnsafeMutableBytes { bytes in
+        rgba.withUnsafeMutableBytes { (bytes: UnsafeMutableRawBufferPointer) in
             for row in 0..<min(20, request.height) {
                 for column in 0..<min(40, request.width) {
                     let offset = (row * request.width + column) * 4
