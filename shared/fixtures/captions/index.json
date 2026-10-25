@@ -321,6 +321,20 @@
    "samples": 8
   },
   {
+   "file": "layout/vox-bold-portrait-ignorables.json",
+   "style": "vox-bold",
+   "frame": [1080, 1920],
+   "pages": 7,
+   "samples": 34
+  },
+  {
+   "file": "layout/vox-highlight-landscape-ignorables.json",
+   "style": "vox-highlight",
+   "frame": [1920, 1080],
+   "pages": 7,
+   "samples": 34
+  },
+  {
    "file": "layout/active-pop-square-en.json",
    "style": "active-pop",
    "frame": [1080, 1080],

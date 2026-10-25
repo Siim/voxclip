@@ -81,6 +81,14 @@
         ["Okay", 0.10, 0.40], ["\u2014", 0.42, 0.50], ["this", 0.52, 0.70], ["\ud83d\udd25", 0.72, 0.90], ["is", 0.92, 1.00],
         ["fire\ud83d\udd25", 1.02, 1.50], ["...", 1.52, 1.60], ["ok?", 1.62, 1.90]
       ]
+    },
+    "ignorables": {
+      "language": "en",
+      "duration": 3.0,
+      "words": [
+        ["Intro", 0.10, 0.40], ["\u00a9\ufe0f", 0.42, 0.70], ["TM\u2122\ufe0f", 0.72, 1.00], ["a\u200db", 1.02, 1.30],
+        ["ok\u200cay", 1.32, 1.70], ["1\ufe0f\u20e3", 1.72, 2.00], ["outro", 2.02, 2.40]
+      ]
     }
   },
   "cases": [
@@ -166,6 +174,9 @@
      "overrides": {"layout": {"maxWords": 16, "maxLines": 1}},
      "note": "Words on screen: Line"},
     {"id": "karaoke-portrait-dropped", "style": "karaoke", "frame": [1080, 1920], "words": "dropped",
-     "note": "punctuation-only words normalise to empty and are dropped; an emoji-only word has no glyph in the cascade and is dropped; an emoji inside a word drops that cluster only"}
+     "note": "punctuation-only words normalise to empty and are dropped; an emoji-only word has no glyph in the cascade and is dropped; an emoji inside a word drops that cluster only"},
+    {"id": "vox-bold-portrait-ignorables", "style": "vox-bold", "frame": [1080, 1920], "words": "ignorables",
+     "note": "U+200C, U+200D and U+FE00-FE0F stay in their cluster and shape as HarfBuzz hides them (zero-advance glyph); an uncovered keycap U+20E3 is removed from its cluster (section 4.4)"},
+    {"id": "vox-highlight-landscape-ignorables", "style": "vox-highlight", "frame": [1920, 1080], "words": "ignorables"}
   ]
 }
