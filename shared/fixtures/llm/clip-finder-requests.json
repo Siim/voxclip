@@ -609,7 +609,7 @@
                     "name": "clips",
                     "schema": {
                       "arrayOf": {
-                        "name": "clips",
+                        "name": "clips_clips_item",
                         "properties": [
                           {
                             "name": "title",
@@ -1361,7 +1361,7 @@
                     "name": "clips",
                     "schema": {
                       "arrayOf": {
-                        "name": "clips",
+                        "name": "clips_clips_item",
                         "properties": [
                           {
                             "name": "title",
@@ -2113,7 +2113,7 @@
                     "name": "clips",
                     "schema": {
                       "arrayOf": {
-                        "name": "clips",
+                        "name": "clips_clips_item",
                         "properties": [
                           {
                             "name": "title",
@@ -2856,7 +2856,7 @@
                     "name": "clips",
                     "schema": {
                       "arrayOf": {
-                        "name": "clips",
+                        "name": "clips_clips_item",
                         "properties": [
                           {
                             "name": "title",
@@ -3608,7 +3608,7 @@
                     "name": "clips",
                     "schema": {
                       "arrayOf": {
-                        "name": "clips",
+                        "name": "clips_clips_item",
                         "properties": [
                           {
                             "name": "title",
@@ -4360,7 +4360,7 @@
                     "name": "clips",
                     "schema": {
                       "arrayOf": {
-                        "name": "clips",
+                        "name": "clips_clips_item",
                         "properties": [
                           {
                             "name": "title",
@@ -5103,7 +5103,7 @@
                     "name": "clips",
                     "schema": {
                       "arrayOf": {
-                        "name": "clips",
+                        "name": "clips_clips_item",
                         "properties": [
                           {
                             "name": "title",
@@ -5855,7 +5855,7 @@
                     "name": "clips",
                     "schema": {
                       "arrayOf": {
-                        "name": "clips",
+                        "name": "clips_clips_item",
                         "properties": [
                           {
                             "name": "title",
@@ -6607,7 +6607,7 @@
                     "name": "clips",
                     "schema": {
                       "arrayOf": {
-                        "name": "clips",
+                        "name": "clips_clips_item",
                         "properties": [
                           {
                             "name": "title",
@@ -7350,7 +7350,7 @@
                     "name": "clips",
                     "schema": {
                       "arrayOf": {
-                        "name": "clips",
+                        "name": "clips_clips_item",
                         "properties": [
                           {
                             "name": "title",
@@ -8102,7 +8102,7 @@
                     "name": "clips",
                     "schema": {
                       "arrayOf": {
-                        "name": "clips",
+                        "name": "clips_clips_item",
                         "properties": [
                           {
                             "name": "title",
@@ -8854,7 +8854,7 @@
                     "name": "clips",
                     "schema": {
                       "arrayOf": {
-                        "name": "clips",
+                        "name": "clips_clips_item",
                         "properties": [
                           {
                             "name": "title",
@@ -9597,7 +9597,7 @@
                     "name": "clips",
                     "schema": {
                       "arrayOf": {
-                        "name": "clips",
+                        "name": "clips_clips_item",
                         "properties": [
                           {
                             "name": "title",
@@ -10349,7 +10349,7 @@
                     "name": "clips",
                     "schema": {
                       "arrayOf": {
-                        "name": "clips",
+                        "name": "clips_clips_item",
                         "properties": [
                           {
                             "name": "title",
@@ -11101,7 +11101,7 @@
                     "name": "clips",
                     "schema": {
                       "arrayOf": {
-                        "name": "clips",
+                        "name": "clips_clips_item",
                         "properties": [
                           {
                             "name": "title",
@@ -11844,7 +11844,7 @@
                     "name": "clips",
                     "schema": {
                       "arrayOf": {
-                        "name": "clips",
+                        "name": "clips_clips_item",
                         "properties": [
                           {
                             "name": "title",
@@ -12596,7 +12596,7 @@
                     "name": "clips",
                     "schema": {
                       "arrayOf": {
-                        "name": "clips",
+                        "name": "clips_clips_item",
                         "properties": [
                           {
                             "name": "title",
@@ -13348,7 +13348,7 @@
                     "name": "clips",
                     "schema": {
                       "arrayOf": {
-                        "name": "clips",
+                        "name": "clips_clips_item",
                         "properties": [
                           {
                             "name": "title",
@@ -14091,7 +14091,7 @@
                     "name": "clips",
                     "schema": {
                       "arrayOf": {
-                        "name": "clips",
+                        "name": "clips_clips_item",
                         "properties": [
                           {
                             "name": "title",
@@ -14843,7 +14843,7 @@
                     "name": "clips",
                     "schema": {
                       "arrayOf": {
-                        "name": "clips",
+                        "name": "clips_clips_item",
                         "properties": [
                           {
                             "name": "title",
@@ -15595,7 +15595,7 @@
                     "name": "clips",
                     "schema": {
                       "arrayOf": {
-                        "name": "clips",
+                        "name": "clips_clips_item",
                         "properties": [
                           {
                             "name": "title",
@@ -16338,7 +16338,7 @@
                     "name": "clips",
                     "schema": {
                       "arrayOf": {
-                        "name": "clips",
+                        "name": "clips_clips_item",
                         "properties": [
                           {
                             "name": "title",
@@ -17090,7 +17090,7 @@
                     "name": "clips",
                     "schema": {
                       "arrayOf": {
-                        "name": "clips",
+                        "name": "clips_clips_item",
                         "properties": [
                           {
                             "name": "title",
@@ -17842,7 +17842,7 @@
                     "name": "clips",
                     "schema": {
                       "arrayOf": {
-                        "name": "clips",
+                        "name": "clips_clips_item",
                         "properties": [
                           {
                             "name": "title",
@@ -18626,7 +18626,7 @@
                     "name": "clips",
                     "schema": {
                       "arrayOf": {
-                        "name": "clips",
+                        "name": "clips_clips_item",
                         "properties": [
                           {
                             "name": "title",
@@ -19378,7 +19378,7 @@
                     "name": "clips",
                     "schema": {
                       "arrayOf": {
-                        "name": "clips",
+                        "name": "clips_clips_item",
                         "properties": [
                           {
                             "name": "title",
@@ -20130,7 +20130,7 @@
                     "name": "clips",
                     "schema": {
                       "arrayOf": {
-                        "name": "clips",
+                        "name": "clips_clips_item",
                         "properties": [
                           {
                             "name": "title",
@@ -20873,7 +20873,7 @@
                     "name": "clips",
                     "schema": {
                       "arrayOf": {
-                        "name": "clips",
+                        "name": "clips_clips_item",
                         "properties": [
                           {
                             "name": "title",

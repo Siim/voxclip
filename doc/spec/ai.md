@@ -673,15 +673,24 @@ Estonian is not supported (measured on macOS 27.0.1). The UI then points to API 
 
 **Schema.** Build a `DynamicGenerationSchema` from the canonical schema and wrap it with `GenerationSchema(root:dependencies: [])`:
 
+**Names (normative).** All `DynamicGenerationSchema` names must be unique within one schema. The root is named `<schemaName>`. Every property `P` of a node named `N` is named `N_P`, and that full path is passed down recursively. An array property's item schema appends `_item`, giving `N_P_item`; a nested object property is named `N_P`; a string enum property is also named `N_P`. Primitive scalar schemas (string, number, integer or boolean without enum) must not emit names because the SDK ignores them. These are schema names, not JSON property names.
+
+- Clip schema: root `clips`, its `clips` array item `clips_clips_item`.
+- Tighten schema: root `tighten_edits`, its `edits` array item `tighten_edits_edits_item`, and that item's `kind` enum `tighten_edits_edits_item_kind`.
+
+Apple's SDK deduplicates duplicate schema names; reusing the root name for an array item produces `items.$ref: "#"`, a self-reference to the root instead of the item schema.
+
+**SDK JSON comparison.** `GenerationSchema` JSON encoding preserves object node names (root, `N_P` and `N_P_item`) as `title`; harnesses must compare these titles byte-for-byte with the logical fixture names. It does not retain string-enum names: enum schemas encode only `type: "string"` and their enum values. String-enum names remain part of the `DynamicGenerationSchema` builder contract and the logical fixture; harnesses must derive them from the node path rather than read them from encoded JSON. Apple fixtures must not contain duplicate schema names or root self-references (`$ref: "#"`).
+
 | Canonical | DynamicGenerationSchema |
 | --- | --- |
-| object | `DynamicGenerationSchema(name: schemaName or the property name, properties: [...])`, every property `isOptional: false` |
+| object | `DynamicGenerationSchema(name: pathName, properties: [...])`, using the naming rule above; every property `isOptional: false` |
 | array | `DynamicGenerationSchema(arrayOf: item, maximumElements: k)`. `k` is the window's clip budget for `clips` (§11.5), nil otherwise |
 | string | `DynamicGenerationSchema(type: String.self)` |
 | integer | `DynamicGenerationSchema(type: Int.self)` |
 | number | `DynamicGenerationSchema(type: Double.self)` |
 | boolean | `DynamicGenerationSchema(type: Bool.self)` |
-| string enum | `DynamicGenerationSchema(name: property name, anyOf: values)` |
+| string enum | `DynamicGenerationSchema(name: pathName, anyOf: values)`, using the naming rule above |
 
 **Generation.**
 - macOS 27 and later: `GenerationOptions(samplingMode: .greedy, maximumResponseTokens: maxOut)`.
@@ -1532,6 +1541,7 @@ For each HTTP connector, a fixed `LLMRequest` (the F1 transcript, preset `best`,
 - **OpenAI:** success, `incomplete` with `max_output_tokens`, `refusal` content, 429 `insufficient_quota` (not retried).
 - **Gemini:** success with a `thought` part, `MAX_TOKENS`, `SAFETY`, 400 `API_KEY_INVALID`, 503 (fallback), `RetryInfo` of 45 s (no retry, `rateLimited`). The test also asserts that no request URL contains `key=`.
 - **Ollama:** a `num_ctx` computation, and `done_reason: length`.
+- **Apple:** the logical schema uses the unique full-path names in §6.7, including array items, nested objects and string enums; primitive scalar schemas have no names.
 - **Claude Code:** the verified success and signed-out envelopes from §6.8.
 - **Codex:** the verified success JSONL and the 401 failure sequence from §6.9.
 

@@ -89,13 +89,13 @@ export function tomlBasicString(text) {
   return escaped + '"'
 }
 
-export function appleSchema(schema, name, clipBudget = null) {
+export function appleSchema(schema, name, clipBudget = null, propertyName = null) {
   if (schema.type === 'object') return {
     name, properties: Object.entries(schema.properties).map(([property, child]) => ({
-      name: property, schema: appleSchema(child, property, clipBudget), isOptional: false
+      name: property, schema: appleSchema(child, `${name}_${property}`, clipBudget, property), isOptional: false
     }))
   }
-  if (schema.type === 'array') return { arrayOf: appleSchema(schema.items, name, clipBudget), maximumElements: name === 'clips' ? clipBudget : null }
+  if (schema.type === 'array') return { arrayOf: appleSchema(schema.items, `${name}_item`, clipBudget), maximumElements: propertyName === 'clips' ? clipBudget : null }
   if (schema.enum) return { name, anyOf: schema.enum }
   return { type: { string: 'String', integer: 'Int', number: 'Double', boolean: 'Bool' }[schema.type] }
 }

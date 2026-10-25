@@ -88,6 +88,15 @@ those explicitly, never reinterpret ordinary text fields with the same content.
     compare instructions, prompt, recursively mapped schema, required properties,
     greedy options and output cap. On Windows validate the data/mapping as pure
     fixtures; do not instantiate Apple's unavailable framework.
+    Schema names follow ai.md §6.7: root `<schemaName>`, property `N_P`, array
+    item `N_P_item`, recursively. Nested objects and string enums use their full
+    path names; primitive scalars have no schema names. Names must be unique
+    within each schema so the SDK does not deduplicate an array item into a
+    self-reference (`$ref: "#"`), which is forbidden. JSON property names and
+    array budgets are unchanged. `GenerationSchema` JSON retains object names as
+    byte-exact `title` values but omits string-enum names, so compare object
+    titles with the logical fixture and derive enum builder names from their
+    node paths rather than encoded JSON.
 
 No fixture calls a provider or installed CLI. All auth values are `<key>` or
 `Bearer <key>`. Runtime transport retries, process isolation/cleanup, auth
