@@ -123,7 +123,7 @@ public actor CacheStore { public init(locations: DataLocations)
 public protocol GlyphShaper: Sendable { func shape(_ request: GlyphShapeRequest) async throws -> [ShapedRun] }
 public protocol CaptionRasterizer: Sendable { func rasterize(_ request: CaptionRasterRequest) async throws -> CaptionRaster }
 public struct CaptionRasterRequest { init(page: CaptionPage, style: CaptionStyle, time: Double, width: Int, height: Int, reduceMotion: Bool = false) }
-public struct CaptionRaster { width, height, bytesPerRow: Int; rgba: Data }   // straight alpha
+public struct CaptionRaster { width, height, bytesPerRow: Int; rgba: Data }   // premultiplied RGBA (captions 13.1); composite(into:) blends it into a BGRA frame
 public struct CaptionTrack { words: [CaptionWord]; pages: [CaptionPage] }
 public struct CaptionTextOptions { init(uppercase: Bool = false, removePunctuation: Bool = false) }
 public actor CoreTextShaper: GlyphShaper { public init(shared: SharedResources) }
@@ -197,15 +197,25 @@ extension CaptionStyle {
     public func resolved(overrides: [String: JSONValue], frame: PixelSize) throws -> CaptionStyle
 }
 
-// M7. Caption layout, captions.md 3 to 9 (Domain/Captions). Replaces CaptionTrack.build(plan:transcript:corrections:style:transforms:),
-// which has no consumer; delete it.
-public enum CaptionLayoutEngine {
-    /// Text transforms, shaping through `shaper`, paging, line breaking and placement at export-pixel geometry.
-    /// `position` is the project's override for this aspect, or nil.
-    public static func layout(words: [CaptionWord], style: CaptionStyle, options: CaptionTextOptions, position: CaptionPosition?,
-                              frame: PixelSize, language: String?, shaper: any GlyphShaper) async throws -> CaptionTrack
+// M7. Caption layout, captions.md 3 to 13 (decided 2026-10-25; supersedes the earlier CaptionLayoutEngine.layout sketch).
+// The frozen CaptionTrack.build, CaptionPager.pages, CaptionLineBreaker.lines, CaptionPlacement.place and the 3-argument
+// CaptionTextTransformer.apply cannot express the pipeline (no frame, font metrics or async shaping). They are deprecated
+// and removed once mac-media and mac-ui call CaptionPipeline.
+public actor CaptionPipeline {                            // VoxClipMedia/Captions; loads CaptionResources once, caches shaping
+    public init(shared: SharedResources) throws
+    public func layout(words: <editing 7.6 caption copy>, language: String?, style: CaptionStyle /* resolved */,
+                       position: CaptionPosition?, frame: PixelSize, duration: Double) async throws -> CaptionLayoutResult
 }
-extension CaptionTrack { public func page(at editedTime: Double) -> CaptionPage? }   // captions 8.1 page timing
+extension CaptionLayoutResult /* Domain, Equatable, Sendable */ {
+    public var track: CaptionTrack { get }                // lightweight projection for SRT and compatibility
+    public func page(at editedTime: Double) -> CaptionPage?   // captions 8.1
+    // plus `dropped` (sourceIndex, text, reason "empty" | "no-glyphs") for the inspector note
+}
+extension RenderRequest { public var captionLayout: CaptionLayoutResult? }   // additive, trailing init parameter = nil
+extension CoreTextCaptionRasterizer {                     // band-only composite into the locked BGRA buffer; safe for concurrent frames
+    public func draw(_ layout: CaptionLayoutResult, time: Double, into pixelBuffer: CVPixelBuffer,
+                     previewWidth: Int? = nil, reduceMotion: Bool = false) throws
+}
 
 // M8. Connectors, ai.md 3 and 6 (Services/LLM/LLMConnectors.swift).
 extension LLMCatalog { public static func load(shared: SharedResources) throws -> LLMCatalog }   // catalog/llm-providers.json
@@ -460,7 +470,7 @@ python3 -c "import json,glob; [json.load(open(p)) for p in glob.glob('shared/fix
 1. **Contract additions.** M1 to M11 of `doc/plan.md` section 4.1.2, with exactly those signatures, unless the lead already landed them as stubs (phase 0). Then delete `CaptionTrack.build(...)`.
 2. **Editing** (editing.md): numeric and text primitives (section 4, including `toFixed1` as section 4.4 defines it and no fused multiply-add), audio analysis (5.1), the import post-process (5.0 to 5.8), pauses, fillers, the reducer with every operation of 6.3 including `addAIClips`, `renameClip` and `setClipSelected`, `EditHistory` capped at 500, summaries (6.4), planning, time mapping and join fades (7), and project semantics (10). `JSONProjectStore` covers decode, cleanup and migrations, canonical atomic writes, and relinking by the project rules. `JSONSettingsStore` covers atomic, debounced writes and unknown keys kept. `CacheStore` covers the size limit and protected keys. `SharedResources` and `DataLocations` follow architecture 2.4 and 2.5. `compareVersions`, `Redactor` (architecture 11.2, a single implementation) and `OutputSizing` (4.1) must match their fixtures.
 3. **Transcription** (transcription.md): `WordAssembler`, `cleanWords`, `tightenIntoSound`, `findUnlabeledSpeech` and `LanguageRouter`. `TranscriptionService` runs the pipeline, caches raw transcripts under the section 14.2 keys, reports progress at most 10 Hz, and cancels cleanly. Adapters: ElevenLabs Scribe v2 (section 8; the first-use consent sheet is mac-app's, stored as `transcription.cloudConsent.elevenlabs`), whisper.cpp through the pinned xcframework with DTW and the catalogue models (section 9), and Apple `SpeechTranscriber` (section 10, full BCP 47 tag via `identifier(.bcp47)`). The model catalogue and store (section 12) download, resume, verify sha256 and remove.
-4. **Captions** (captions.md): style decoding and resolution (2), text and the case map (3), CoreText shaping over the bundled fonts with nearest-weight fallback (4), frame, pages and lines, placement, timing, emphasis and emoji, word appearance, animation and geometry (5 to 12). `CoreTextCaptionRasterizer` (13) is the only rasterizer: glyph paths, explicit shapes, our own blur, straight-alpha RGBA output.
+4. **Captions** (captions.md): style decoding and resolution (2), text and the case map (3), CoreText shaping over the bundled fonts with nearest-weight fallback (4), frame, pages and lines, placement, timing, emphasis and emoji, word appearance, animation and geometry (5 to 12). `CoreTextCaptionRasterizer` (13) is the only rasterizer: glyph paths, explicit shapes, our own blur, premultiplied RGBA drawn only over the caption band of the BGRA frame.
 5. **AI** (ai.md): canonical request and result (2), connectors for `anthropic`, `openai`, `xai`, `gemini`, `ollama`, `lmstudio`, `claude-code` and `codex` (6), and `apple-foundation` in `VoxClipMedia/Intelligence`. The CLI connectors must follow section 7: `--safe-mode` always, never `--setting-sources`, no reuse of the user's auth variables, and the catalog `enabled` switch honoured. Also: runner policy (4), error mapping (5), model lists (9), and the clip finder pipeline (11) returning a `ProjectAIResult` (M9). Keys reach connectors only through `KeyProvider`. Prompts and schemas come verbatim from `shared/prompts`.
 6. **Tests.** Fixture runners for every kind in `shared/fixtures/editing/README.md`, plus `shared/fixtures/captions` (layout, text normalisation, math, preview tiles), `transcription`, `llm`, `redaction`, `version`, `export` and the two projects (byte-identical round trip). Add adapter tests with recorded responses (a `URLProtocol` stub; no network) and CLI-connector tests with fake executables. Add a test that `SettingsDocument.defaults` equals the schema defaults, and a benchmark test for the architecture section 14 plan rebuild budget (10,000 words, under 10 ms). Remove the four disabled placeholders in `Tests/VoxClipCoreTests/{Editing,Speech,Captions,AI}` once real tests replace them.
 
