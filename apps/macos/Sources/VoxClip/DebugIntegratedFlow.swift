@@ -4,7 +4,7 @@ import SwiftUI
 import VoxClipCore
 import VoxClipMedia
 
-private actor RegressionClipConnector: LLMConnector {
+actor RegressionClipConnector: LLMConnector {
     nonisolated let id: ConnectorID = .ollama
     func status() -> ConnectorStatus { .ready }
     func models(refresh: Bool) -> [LLMModel] { [LLMModel(id: "fixture-local", name: "Fixture", contextTokens: 128000, source: .curated)] }

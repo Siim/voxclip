@@ -7,8 +7,10 @@ import CryptoKit
     @Bindable var model: EditorModel
     var body: some View {
         VStack(spacing: 0) {
-            Picker("Inspector", selection: $model.inspectorTab) { ForEach(InspectorTab.allCases, id: \.self) { Text($0.rawValue).tag($0) } }.labelsHidden().pickerStyle(.segmented).controlSize(.large).padding(16)
-            if model.inspectorTab == .captions { CaptionsInspector(model: model) } else { ClipsInspector(model: model) }
+            HStack { Text("Captions").font(.headline); Spacer(); Button("Close", systemImage: "xmark") { model.showInspector = false }.labelStyle(.iconOnly) }
+                .padding(16)
+            Divider()
+            CaptionsInspector(model: model)
         }.controlSize(.small).foregroundStyle(DesignValues.color("text.primary"))
     }
 }
@@ -104,34 +106,79 @@ import CryptoKit
     @Bindable var model: EditorModel
     @State private var renaming: String?
     @State private var title = ""
+    @State private var connectorStatus: ConnectorStatus?
+    @State private var finderExpanded = false
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("Find clips in this take").font(.headline)
-                    ConnectorPicker(app: model.app)
-                    let connector = model.app.providers.first { $0.id == model.app.string("llm.connector") }
-                    if let connector { Text(connector.group == "local" ? "Runs on this Mac. Nothing leaves it." : "Sends transcript text with word numbers. No audio or video.").font(.caption).foregroundStyle(.secondary) }
-                    Picker("Clip preset", selection: $model.preset) {
-                        Text("Best moments").tag(ClipPresetID.best); Text("Hooks").tag(ClipPresetID.hooks); Text("One per topic").tag(ClipPresetID.topics); Text("Quotes").tag(ClipPresetID.quotes); Text("Custom").tag(ClipPresetID.custom)
+                    HStack {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Clips").font(.title2.weight(.semibold))
+                            Text(model.words.isEmpty ? "Transcribe this video to select words and find clips." : model.sortedClips.isEmpty ? "Select words in Transcript to make a clip, or find moments with AI." : "\(model.sortedClips.count) clip\(model.sortedClips.count == 1 ? "" : "s") in this project")
+                                .font(.callout).foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        if model.words.isEmpty {
+                            Button("Transcribe…") { model.showTranscribe = true }
+                        } else if model.selectedIDs.isEmpty || selectionAlreadyClipped {
+                            Button("Select Words in Transcript") { model.location = .transcript }
+                        } else {
+                            Button("Make Clip from Selection") { model.makeClip() }
+                        }
                     }
-                    TextField(model.preset == .custom ? "Describe the clips you want" : "Anything specific? (optional)", text: $model.instruction, axis: .vertical).lineLimit(2...4).onSubmit { model.findClips() }.onChange(of: model.instruction) { _, value in if value.count > 500 { model.instruction = String(value.prefix(500)) } }
-                    if model.finding { HStack { ProgressView().controlSize(.small); Text("Finding clips…"); Button("Cancel") { model.findTask?.cancel() } } }
-                    else { HStack { Spacer(); Button("Find clips") { model.findClips() }.disabled(model.words.isEmpty || model.app.string("llm.connector").isEmpty || model.preset == .custom && model.instruction.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) } }
-                    if connector == nil {
-                        Text("Choose how VoxClip finds clips: your API key, a model on this computer, or an installed CLI.").font(.callout).foregroundStyle(.secondary)
-                        SettingsLink { Text("Open AI settings") }
-                    } else if connector?.group == "apiKey", let connector { ProviderKeyRow(provider: connector.id, label: connector.label, app: model.app) }
-                    Text("You can also select words and press ⌘K to make a clip yourself.").font(.caption).foregroundStyle(.secondary)
-                    if let error = model.clipError { InlineNotice(text: error); Button("Retry") { model.findClips() } }
-                    if let answer = model.clipAnswer { Text(answer).font(.caption).foregroundStyle(.secondary) }
                     Divider()
-                    ForEach(model.sortedClips, id: \.id) { clip in clipRow(clip) }
+                    if model.sortedClips.isEmpty {
+                        Text("No clips yet. Results will appear here for preview and export.")
+                            .font(.callout).foregroundStyle(.secondary)
+                    } else {
+                        ForEach(model.sortedClips, id: \.id) { clip in clipRow(clip) }
+                    }
+                    Divider()
+                    HStack {
+                        Text("Find Clips").font(.headline)
+                        Spacer()
+                        if !model.sortedClips.isEmpty {
+                            Button(finderExpanded ? "Hide Setup" : "Find Clips…") { finderExpanded.toggle() }
+                        }
+                    }
+                    if model.sortedClips.isEmpty || finderExpanded || model.finding || model.clipError != nil {
+                        ConnectorPicker(app: model.app)
+                        let connector = model.app.providers.first { $0.id == model.app.string("llm.connector") }
+                        if let connector { Text(connector.group == "local" ? "Runs on this Mac. Nothing leaves it." : "Sends transcript text with word numbers. No audio or video.").font(.caption).foregroundStyle(.secondary) }
+                        if let connector {
+                            Label(statusMessage(connectorStatus, connector: connector), systemImage: connectorStatus == .ready ? "checkmark.circle" : "info.circle")
+                                .font(.caption).foregroundStyle(connectorStatus == .ready ? DesignValues.color("status.success") : .secondary)
+                                .accessibilityIdentifier("clipConnectorStatus")
+                            if connectorStatus != .ready {
+                                HStack {
+                                    Button("Check Again") { model.app.refreshConnectorReadiness() }
+                                        .accessibilityIdentifier("checkConnectorAgain")
+                                    SettingsLink { Text("Configure \(connector.label)…") }
+                                }
+                            }
+                        }
+                        Picker("Clip preset", selection: $model.preset) {
+                            Text("Best moments").tag(ClipPresetID.best); Text("Hooks").tag(ClipPresetID.hooks); Text("One per topic").tag(ClipPresetID.topics); Text("Quotes").tag(ClipPresetID.quotes); Text("Custom").tag(ClipPresetID.custom)
+                        }
+                        TextField(model.preset == .custom ? "Describe the clips you want" : "Anything specific? (optional)", text: $model.instruction, axis: .vertical).lineLimit(2...4).onSubmit { model.findClips() }.onChange(of: model.instruction) { _, value in if value.count > 500 { model.instruction = String(value.prefix(500)) } }
+                        if model.finding { HStack { ProgressView().controlSize(.small); Text("Finding clips…"); Button("Cancel") { model.findTask?.cancel() } } }
+                        else { HStack { Spacer(); Button("Find Clips") { model.findClips() }.buttonStyle(.borderedProminent).accessibilityIdentifier("findClipsAction").disabled(model.words.isEmpty || connector == nil || model.preset == .custom && model.instruction.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) } }
+                        if connector == nil {
+                            Text("Choose how VoxClip finds clips: your API key, a model on this computer, or an installed CLI.").font(.callout).foregroundStyle(.secondary)
+                            SettingsLink { Text("Open AI settings") }
+                        } else if connector?.group == "apiKey", let connector { ProviderKeyRow(provider: connector.id, label: connector.label, app: model.app) }
+                        if let error = model.clipError { InlineNotice(text: error); Button("Retry") { model.findClips() } }
+                        if let answer = model.clipAnswer { Text(answer).font(.caption).foregroundStyle(.secondary) }
+                    } else {
+                        Text("Use AI to suggest moments. Manual clips remain available without a connector.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
                 }.padding(16)
             }
             Divider()
             HStack {
-                if model.activeClip != nil { Button("Back to full take") { model.activate(nil) }.buttonStyle(.plain) }
+                if model.activeClip != nil { Button("Preview Full Video") { model.activate(nil) }.buttonStyle(.plain) }
                 Spacer()
                 let selected = model.sortedClips.filter(\.selected)
                 Button(selected.isEmpty ? "Choose clips to export" : "Export \(selected.count) \(selected.count == 1 ? "clip" : "clips")") { model.presentExport(clipIDs: selected.map(\.id)) }.disabled(selected.isEmpty || !model.canExport)
@@ -142,6 +189,21 @@ import CryptoKit
             Button("Cancel", role: .cancel) { renaming = nil }
             Button("Rename") { if let id = renaming { model.apply(.renameClip(id: id, title: EditorModel.clipTitle(title)), name: "Rename clip") }; renaming = nil }
         }
+        .task(id: "\(model.app.string("llm.connector")):\(model.app.connectorReadinessRevision)") {
+            connectorStatus = nil
+            let id = model.app.string("llm.connector")
+            let revision = model.app.connectorReadinessRevision
+            guard !id.isEmpty else { return }
+            if AppModel.isTestSession && model.app.connectorOverride == nil { return }
+            let status = await model.app.connector(id).status()
+            guard !Task.isCancelled, revision == model.app.connectorReadinessRevision, id == model.app.string("llm.connector") else { return }
+            connectorStatus = status
+        }
+        .onChange(of: model.sortedClips.count) { _, count in if count > 0 { finderExpanded = false } }
+    }
+    private var selectionAlreadyClipped: Bool {
+        guard let start = model.selectedIDs.first, let end = model.selectedIDs.last else { return false }
+        return model.sortedClips.contains { $0.startWordId == start && $0.endWordId == end }
     }
     private func clipRow(_ clip: ClipRange) -> some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -170,11 +232,24 @@ import CryptoKit
         .onKeyPress(.escape) { model.activate(nil); return .handled }
         .onKeyPress(characters: CharacterSet(charactersIn: "[]io")) { model.transport($0.characters); return .handled }
     }
+    private func statusMessage(_ status: ConnectorStatus?, connector: ProviderChoice) -> String {
+        switch status {
+        case .ready: "Ready to find clips."
+        case .needsKey: "Add your \(connector.label) key in AI Settings."
+        case .noModels: "Load a model in \(connector.label), then try again."
+        case .cliMissing: "Install \(connector.label) or choose its executable in AI Settings."
+        case .cliSignedOut: "Sign in to \(connector.label) before finding clips."
+        case .notRunning(let url): "Start \(connector.label) at \(url)."
+        case .cliTooOld: "Update \(connector.label) before finding clips."
+        case .unavailable(let reason): reason.isEmpty ? "Connector unavailable. Check AI Settings." : reason
+        case nil: "Check connector readiness in AI Settings."
+        }
+    }
     @ViewBuilder private func clipActions(_ clip: ClipRange) -> some View {
-            Button("Export this clip") { model.presentExport(clipIDs: [clip.id]) }
-            Button("Copy text") { if let lower = model.index(clip.startWordId), let upper = model.index(clip.endWordId), lower <= upper { copyText(model.words[lower...upper].map { model.text($0) }.joined(separator: " ")) } }
-            Button("Rename…") { renaming = clip.id; title = clip.title ?? "" }
-            Button("Remove") { model.removeClip(clip.id) }
+        Button("Export this clip") { model.presentExport(clipIDs: [clip.id]) }
+        Button("Copy text") { if let lower = model.index(clip.startWordId), let upper = model.index(clip.endWordId), lower <= upper { copyText(model.words[lower...upper].map { model.text($0) }.joined(separator: " ")) } }
+        Button("Rename…") { renaming = clip.id; title = clip.title ?? "" }
+        Button("Remove") { model.removeClip(clip.id) }
     }
     private func suggestion(_ clip: ClipRange) -> ProjectAIClip? {
         guard let result = model.project.ai.results.first(where: { $0.id == clip.aiResultId }), let position = clip.aiClipIndex, result.clips.indices.contains(position) else { return nil }

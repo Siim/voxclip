@@ -22,6 +22,11 @@ struct ProviderChoice: Decodable, Identifiable, Sendable {
 }
 
 struct ProviderCatalogue: Decodable { let connectors: [ProviderChoice] }
+protocol ProviderKeyStore: Sendable {
+    func hasKey(for provider: String) async -> Bool
+    func save(_ value: String, for provider: String) async throws
+}
+extension SecretStore: ProviderKeyStore {}
 extension ProviderChoice {
     var cliConsentCopy: String? {
         if id == "claude-code" { return "VoxClip will run your installed Claude Code with your own sign-in. The transcript is sent to Anthropic and counts toward your Claude plan's usage." }
@@ -44,9 +49,11 @@ extension ProviderChoice {
     var update: UpdateRelease?
     var showTour = false
     let fileRouter = FileOpenRouter()
+    @ObservationIgnored weak var activeHome: EditorModel?
     private(set) var settingsLoaded = false
     private(set) var loadingSettings = true
     private(set) var pauseBreathRevision = 0
+    private(set) var connectorReadinessRevision = 0
     var providerStatus: [String: String] = [:]
     var openProjectKeys: [String: String] = [:]
     let log: RedactingLogger
@@ -69,6 +76,8 @@ extension ProviderChoice {
     @ObservationIgnored private var library: ModelLibrary?
     @ObservationIgnored private let modelDownloader: (any ModelDownloader)?
     @ObservationIgnored var connectorOverride: ((String) -> any LLMConnector)?
+    @ObservationIgnored var providerKeyStoreOverride: (any ProviderKeyStore)?
+    var providerKeyStore: any ProviderKeyStore { providerKeyStoreOverride ?? secrets }
     @ObservationIgnored lazy var captions = CaptionHandoff(shared: shared)
 
     public init(settingsStore: (any SettingsStore)? = nil, updates: any UpdateChecking = UpdateChecker(), modelDownloader: (any ModelDownloader)? = nil) {
@@ -108,6 +117,7 @@ extension ProviderChoice {
             var loaded = try await settingsStore.load()
             loaded.values.merge(pendingSettings) { _, new in new }
             settings = loaded
+            refreshConnectorReadiness()
             settingsLoaded = true
             loadingSettings = false
             if !pendingSettings.isEmpty { scheduleSettingsSave() }
@@ -121,7 +131,6 @@ extension ProviderChoice {
         #if DEBUG
         if Self.isTestSession { return }
         #endif
-        showTour = !bool("onboarding.completed", fallback: false)
         guard bool("update.autoCheck", fallback: true) else { return }
         let last = string("update.lastCheckAt")
         if let date = ISO8601DateFormatter().date(from: last), Date().timeIntervalSince(date) < 86_400 { return }
@@ -132,7 +141,7 @@ extension ProviderChoice {
     }
     static var isTestSession: Bool {
         #if DEBUG
-        CommandLine.arguments.contains("-demoCapture") || CommandLine.arguments.contains("-uiSelfTest") || CommandLine.arguments.contains("-uiPerformanceTest")
+        CommandLine.arguments.contains("-demoCapture") || CommandLine.arguments.contains("-uiSelfTest") || CommandLine.arguments.contains("-uiPerformanceTest") || CommandLine.arguments.contains("-sceneAudit")
         #else
         false
         #endif
@@ -165,10 +174,16 @@ extension ProviderChoice {
         settingErrors[key] = nil
         guard settings.values[key] != value else { return true }
         if key == "editing.pauseBreath", settingsLoaded, settings.values[key] != value { pauseBreathRevision += 1 }
+        if key == "llm.connector" || key.hasPrefix("llm.baseUrl.") || key.hasPrefix("llm.cliPath.") { refreshConnectorReadiness() }
         settings.values[key] = value
         guard settingsLoaded else { if loadingSettings { pendingSettings[key] = value }; return true }
         scheduleSettingsSave()
         return true
+    }
+    func refreshConnectorReadiness() { connectorReadinessRevision &+= 1 }
+    func saveProviderKey(_ value: String, for provider: String) async throws {
+        try await providerKeyStore.save(value, for: provider)
+        refreshConnectorReadiness()
     }
     private func scheduleSettingsSave() {
         settingsTask?.cancel()

@@ -1,7 +1,9 @@
 #if DEBUG
 import SwiftUI
 import VoxClipCore
+import UniformTypeIdentifiers
 import Darwin
+import ApplicationServices
 
 @MainActor enum DebugUISuite {
     private static var ran = false
@@ -19,6 +21,301 @@ import Darwin
         }
         return view.subviews.lazy.compactMap { editorLayout(in: $0) }.first
     }
+    static func sceneAudit(app: AppModel, destination: URL) async {
+        var results: [Result] = []
+        do {
+            try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+            for _ in 0..<80 {
+                if app.activeHome?.window != nil { break }
+                try await Task.sleep(for: .milliseconds(100))
+            }
+            guard let model = app.activeHome, let window = model.window else { throw CocoaError(.coderInvalidValue) }
+            let originalWindow = window.windowNumber
+            window.setAccessibilityIdentifier("voxclip.scene.\(originalWindow)")
+            results.append(Result(name: "fresh launch opens an empty document workspace", passed: model.isHome && window.isVisible))
+            results.append(Result(name: "no separate Welcome window", passed: !NSApp.windows.contains { $0.title.contains("Welcome to VoxClip") }))
+            results.append(Result(name: "fresh Home is not an edited document", passed: !window.isDocumentEdited))
+            let delayedSettings = DelayedInspectorSettings()
+            let delayedApp = AppModel(settingsStore: delayedSettings)
+            let initialReadinessRevision = delayedApp.connectorReadinessRevision
+            let delayedStartup = Task { await delayedApp.start() }
+            for _ in 0..<30 {
+                if await delayedSettings.isWaiting { break }
+                try await Task.sleep(for: .milliseconds(20))
+            }
+            let wasDelayed = await delayedSettings.isWaiting
+            await delayedSettings.finish()
+            await delayedStartup.value
+            results.append(Result(name: "delayed saved connector invalidates readiness", passed: wasDelayed && delayedApp.string("llm.connector") == "openai" && delayedApp.connectorReadinessRevision > initialReadinessRevision))
+            window.setContentSize(NSSize(width: 1100, height: 720))
+            try await Task.sleep(for: .milliseconds(250))
+            try await capture(window: window, name: "live-home", directory: destination)
+            guard let root = app.shared?.root else { throw VoxClipError.sharedResourcesMissing }
+            let source = root.appendingPathComponent("fixtures/media/fillers-chirp.mp4")
+            let cancelled = EditorModel(document: VoxClipDocument(), app: app, preview: DemoPreviewEngine())
+            let cancelledImport = Task {
+                withUnsafeCurrentTask { $0?.cancel() }
+                await cancelled.importVideo(source)
+            }
+            await cancelledImport.value
+            results.append(Result(name: "cancelled import leaves empty Home document", passed: cancelled.isHome && cancelled.importProgress == nil))
+            cancelled.close()
+            await model.importVideo(source)
+            try await Task.sleep(for: .milliseconds(250))
+            results.append(Result(name: "video import stays in the same document window", passed: !model.isHome && model.window?.windowNumber == originalWindow && model.location == .transcript))
+            results.append(Result(name: "imported video can preview and export without transcript", passed: model.mediaResolved && model.canExport && model.project.transcript == nil))
+            results.append(Result(name: "imported document keeps a native untitled title until saved", passed: window.title.contains("Untitled") && model.project.title == "fillers-chirp"))
+            let importedID = model.project.id
+            await model.importVideo(source)
+            results.append(Result(name: "import cannot replace an open project", passed: model.project.id == importedID))
+            try await capture(window: window, name: "live-imported", directory: destination)
+            let fixture = try DemoEditing.loadFixture(root.appendingPathComponent("fixtures/projects/interview-take.voxclip"))
+            var transcribed = model.project
+            transcribed.transcript = fixture.transcript
+            model.document.replaceProject(transcribed)
+            model.refresh()
+            await model.updatePreview(load: false)
+            results.append(Result(name: "demo transcript exposes clip finding", passed: !model.words.isEmpty && model.editingAvailable))
+            model.location = .clips
+            try await capture(window: window, name: "live-finder-missing", directory: destination)
+            let keys = InspectorTestKeys()
+            let keyConnector = InspectorKeyConnector(keys: keys)
+            let localConnector = InspectorStatusConnector(id: .ollama, status: .notRunning(url: "http://127.0.0.1:11434"))
+            let otherConnector = InspectorStatusConnector(id: .lmstudio, status: .ready)
+            app.providerKeyStoreOverride = keys
+            app.connectorOverride = { id in
+                switch id {
+                case "openai": keyConnector
+                case "ollama": localConnector
+                default: otherConnector
+                }
+            }
+            app.set("llm.connector", .string("openai"))
+            results.append(Result(name: "missing key is shown in the Clips workspace", passed: await hasInspectorStatus("Add your OpenAI key", in: window)))
+            results.append(Result(name: "Find Clips remains actionable for current preflight with missing key", passed: inspectorElement("findClipsAction", in: window)?.enabled == true))
+            try await app.saveProviderKey("offline-test-key", for: "openai")
+            results.append(Result(name: "saving a key refreshes Clips readiness without reselecting", passed: await hasInspectorStatus("Ready to find clips", in: window)))
+            try await app.saveProviderKey("", for: "openai")
+            results.append(Result(name: "forgetting a key refreshes Clips readiness without reselecting", passed: await hasInspectorStatus("Add your OpenAI key", in: window)))
+            app.set("llm.connector", .string("ollama"))
+            results.append(Result(name: "stopped local service is shown in Clips", passed: await hasInspectorStatus("Start Ollama", in: window)))
+            results.append(Result(name: "stopped local service keeps Find Clips actionable", passed: inspectorElement("findClipsAction", in: window)?.enabled == true))
+            results.append(Result(name: "stopped local service exposes Check Again", passed: inspectorElement("checkConnectorAgain", in: window)?.enabled == true))
+            try await capture(window: window, name: "live-finder-stopped", directory: destination)
+            await localConnector.setStatus(.ready)
+            let pressedCheckAgain = inspectorElement("checkConnectorAgain", in: window).map { AXUIElementPerformAction($0.element, kAXPressAction as CFString) == .success } == true
+            let refreshedLocalStatus = await hasInspectorStatus("Ready to find clips", in: window)
+            results.append(Result(name: "Check Again refreshes local readiness without reselecting", passed: pressedCheckAgain && refreshedLocalStatus))
+            await localConnector.setStatus(.unavailable(reason: "Local service unavailable."))
+            app.set("llm.baseUrl.ollama", .string("http://127.0.0.1:11435"))
+            results.append(Result(name: "changing the selected server URL refreshes unavailable status", passed: await hasInspectorStatus("Local service unavailable", in: window)))
+            await localConnector.setStatus(.ready)
+            let pressedUnavailableCheck = inspectorElement("checkConnectorAgain", in: window).map { AXUIElementPerformAction($0.element, kAXPressAction as CFString) == .success } == true
+            let recoveredUnavailable = await hasInspectorStatus("Ready to find clips", in: window)
+            results.append(Result(name: "unavailable connector recovers through Check Again", passed: pressedUnavailableCheck && recoveredUnavailable))
+            try await capture(window: window, name: "live-finder-ready", directory: destination)
+            await localConnector.delayNextStatus()
+            app.refreshConnectorReadiness()
+            for _ in 0..<20 {
+                if await localConnector.hasPendingStatus { break }
+                try await Task.sleep(for: .milliseconds(20))
+            }
+            let previousStatusPending = await localConnector.hasPendingStatus
+            app.set("llm.connector", .string("lmstudio"))
+            let otherReady = await hasInspectorStatus("Ready to find clips", in: window)
+            await localConnector.finishDelayedStatus(.needsKey)
+            try await Task.sleep(for: .milliseconds(100))
+            results.append(Result(name: "late previous connector status cannot replace current readiness", passed: previousStatusPending && otherReady && inspectorElement("clipConnectorStatus", in: window)?.label?.contains("Ready to find clips") == true))
+            try await capture(window: window, name: "live-finder-recovered", directory: destination)
+            app.set("llm.connector", .string(""))
+            app.connectorOverride = nil
+            app.providerKeyStoreOverride = nil
+            model.location = .transcript
+            let ids = model.words.prefix(3).map(\.id)
+            model.selectedWordIDs = Set(ids)
+            model.makeClip()
+            try await Task.sleep(for: .milliseconds(250))
+            results.append(Result(name: "manual clip enters Clips workspace", passed: model.location == .clips && model.sortedClips.count == 1))
+            results.append(Result(name: "manual clip registers document undo", passed: model.undoManager?.canUndo == true))
+            results.append(Result(name: "document window is backed by NSDocument", passed: window.windowController?.document != nil))
+            results.append(Result(name: "native document records unsaved changes", passed: window.windowController?.document?.isDocumentEdited == true))
+            results.append(Result(name: "edited document is marked for close protection", passed: window.isDocumentEdited))
+            try await capture(window: window, name: "live-clips", directory: destination)
+            if let clip = model.sortedClips.first {
+                model.activate(clip)
+                try await Task.sleep(for: .milliseconds(250))
+                if let button = exportButton(in: window) {
+                    results.append(Result(name: "toolbar has an accessible export label", passed: button.exportTitle == "Export…" && button.accessibilityLabel() == "Export…" && button.isEnabled))
+                    button.performClick(nil)
+                } else {
+                    results.append(Result(name: "native export toolbar button is discoverable", passed: false))
+                }
+                try await Task.sleep(for: .milliseconds(250))
+                results.append(Result(name: "toolbar click opens export for previewed clip", passed: model.showExport && model.activeClip?.id == clip.id && model.exportClipIDs == [clip.id]))
+                if let sheet = window.attachedSheet {
+                    try await capture(window: sheet, name: "live-export-clip", directory: destination)
+                    results.append(Result(name: "clip export opens a native attached sheet", passed: sheet.isVisible))
+                } else {
+                    results.append(Result(name: "clip export opens a native attached sheet", passed: false))
+                }
+                model.showExport = false
+                let full = try await model.renderRequest(target: .fullEdit)
+                let selected = try await model.renderRequest(target: .clip(clip.id))
+                results.append(Result(name: "full video and clip render scopes differ", passed: full.plan.outputSamples > selected.plan.outputSamples))
+                try await capture(window: window, name: "live-clip-preview", directory: destination)
+                model.activate(nil)
+                model.setStyle("off")
+                results.append(Result(name: "caption switch keeps project and preview", passed: model.project.captions.styleId == "off" && model.activeClip == nil && model.mediaResolved))
+                window.setContentSize(NSSize(width: 900, height: 650))
+                try await Task.sleep(for: .milliseconds(250))
+                results.append(Result(name: "workspace resizes to laptop split view", passed: window.frame.width >= 890 && model.location == .clips))
+                try await capture(window: window, name: "live-compact", directory: destination)
+                app.set("general.appearance", .string("light"))
+                try await Task.sleep(for: .milliseconds(250))
+                try await capture(window: window, name: "live-compact-light", directory: destination)
+            }
+            if let native = window.windowController?.document as? NSDocument {
+                let registered = native.windowControllers.contains { $0 === window.windowController }
+                results.append(Result(name: "document owns its workspace window controller", passed: registered))
+                window.performClose(nil)
+                try await Task.sleep(for: .milliseconds(300))
+                if let sheet = window.attachedSheet {
+                    try await capture(window: sheet, name: "live-dirty-close", directory: destination)
+                    results.append(Result(name: "unsaved project close asks before discarding edits", passed: sheet.isVisible && window.isVisible))
+                    sheet.cancelOperation(nil)
+                    try await Task.sleep(for: .milliseconds(500))
+                    results.append(Result(name: "cancel keeps the unsaved document open", passed: window.attachedSheet == nil && window.isVisible && native.isDocumentEdited))
+                } else {
+                    results.append(Result(name: "unsaved project close asks before discarding edits", passed: false))
+                    results.append(Result(name: "cancel keeps the unsaved document open", passed: false))
+                }
+                let saved = destination.appendingPathComponent("native-save.voxclip")
+                try await save(native, to: saved)
+                try await Task.sleep(for: .milliseconds(150))
+                try await save(native, to: saved, operation: .saveOperation)
+                try await Task.sleep(for: .milliseconds(400))
+                results.append(Result(name: "native Save As writes and clears dirty state", passed: FileManager.default.fileExists(atPath: saved.path) && !native.isDocumentEdited && !window.isDocumentEdited))
+                let reopened = try VoxClipDocument(data: Data(contentsOf: saved)).project
+                results.append(Result(name: "native saved project retains transcript and clip", passed: reopened.transcript == model.project.transcript && reopened.edits.clips == model.project.edits.clips))
+                model.setStyle("vox-highlight")
+                results.append(Result(name: "edit after Save marks this document dirty", passed: native.isDocumentEdited))
+                model.undoManager?.undo()
+                try await Task.sleep(for: .milliseconds(400))
+                results.append(Result(name: "undo back to saved content clears dirty state", passed: model.project.captions.styleId == "off" && !native.isDocumentEdited && !window.isDocumentEdited))
+                let second = destination.appendingPathComponent("finder-open.voxclip")
+                try FileManager.default.copyItem(at: saved, to: second)
+                let initialCount = NSDocumentController.shared.documents.count
+                NSDocumentController.shared.newDocument(nil)
+                for _ in 0..<30 {
+                    if let home = app.activeHome, home !== model, home.window != nil { break }
+                    try await Task.sleep(for: .milliseconds(100))
+                }
+                if let emptyHome = app.activeHome, emptyHome !== model, let emptyWindow = emptyHome.window {
+                    results.append(Result(name: "New Project opens a normal empty document", passed: emptyHome.isHome && emptyWindow.isVisible && NSDocumentController.shared.documents.count == initialCount + 1))
+                    app.fileRouter.receive([second])
+                    for _ in 0..<30 {
+                        if NSDocumentController.shared.document(for: second) != nil && !emptyWindow.isVisible { break }
+                        try await Task.sleep(for: .milliseconds(100))
+                    }
+                    results.append(Result(name: "opening a saved project from Home closes only that empty Home", passed: NSDocumentController.shared.document(for: second) != nil && !emptyWindow.isVisible && window.isVisible && NSDocumentController.shared.documents.count == initialCount + 1))
+                    window.makeKeyAndOrderFront(nil)
+                    try await Task.sleep(for: .milliseconds(150))
+                    let third = destination.appendingPathComponent("another-project.voxclip")
+                    try FileManager.default.copyItem(at: saved, to: third)
+                    app.fileRouter.receive([third])
+                    for _ in 0..<30 {
+                        if NSDocumentController.shared.document(for: third) != nil { break }
+                        try await Task.sleep(for: .milliseconds(100))
+                    }
+                    results.append(Result(name: "opening from an occupied project keeps both project windows", passed: NSDocumentController.shared.document(for: third) != nil && window.isVisible && NSDocumentController.shared.documents.count == initialCount + 2))
+                } else {
+                    results.append(Result(name: "New Project opens a normal empty document", passed: false))
+                    results.append(Result(name: "opening a saved project from Home closes only that empty Home", passed: false))
+                    results.append(Result(name: "opening from an occupied project keeps both project windows", passed: false))
+                }
+            }
+        } catch {
+            results.append(Result(name: "scene audit: \(error.localizedDescription)", passed: false))
+        }
+        if let data = try? JSONEncoder().encode(results) { try? data.write(to: destination.appendingPathComponent("scene-results.json"), options: .atomic) }
+        exit(results.allSatisfy(\.passed) ? 0 : 1)
+    }
+    private static func exportButton(in window: NSWindow) -> ExportToolbarButton? {
+        func find(in view: NSView) -> ExportToolbarButton? {
+            if let button = view as? ExportToolbarButton { return button }
+            return view.subviews.lazy.compactMap { find(in: $0) }.first
+        }
+        return window.toolbar?.visibleItems?.lazy.compactMap { $0.view.flatMap { find(in: $0) } }.first
+            ?? window.contentView.flatMap { find(in: $0) }
+    }
+    private struct InspectorElement { let element: AXUIElement; let label: String?; let enabled: Bool }
+    private static func inspectorElement(_ identifier: String, in window: NSWindow) -> InspectorElement? {
+        func attribute(_ element: AXUIElement, _ name: CFString) -> CFTypeRef? {
+            var value: CFTypeRef?
+            guard AXUIElementCopyAttributeValue(element, name, &value) == .success else { return nil }
+            return value
+        }
+        var seen = 0
+        func find(_ element: AXUIElement, depth: Int) -> InspectorElement? {
+            guard depth < 40, seen < 5000 else { return nil }
+            seen += 1
+            if (attribute(element, kAXIdentifierAttribute as CFString) as? String) == identifier {
+                return InspectorElement(element: element, label: attribute(element, kAXDescriptionAttribute as CFString) as? String ?? attribute(element, kAXTitleAttribute as CFString) as? String ?? attribute(element, kAXValueAttribute as CFString) as? String,
+                                        enabled: attribute(element, kAXEnabledAttribute as CFString) as? Bool ?? true)
+            }
+            let children = attribute(element, kAXChildrenAttribute as CFString) as? [AXUIElement] ?? []
+            for child in children {
+                if let found = find(child, depth: depth + 1) { return found }
+            }
+            return nil
+        }
+        let application = AXUIElementCreateApplication(getpid())
+        let windows = attribute(application, kAXWindowsAttribute as CFString) as? [AXUIElement] ?? []
+        for candidate in windows where (attribute(candidate, kAXIdentifierAttribute as CFString) as? String) == window.accessibilityIdentifier() {
+            if let found = find(candidate, depth: 0) { return found }
+        }
+        return nil
+    }
+    private static func hasInspectorStatus(_ expected: String, in window: NSWindow) async -> Bool {
+        for _ in 0..<30 {
+            if inspectorElement("clipConnectorStatus", in: window)?.label?.contains(expected) == true { return true }
+            try? await Task.sleep(for: .milliseconds(30))
+        }
+        return false
+    }
+    private static func save(_ document: NSDocument, to url: URL, operation: NSDocument.SaveOperationType = .saveAsOperation) async throws {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            document.save(to: url, ofType: UTType.voxclipProject.identifier, for: operation) { error in
+                if let error { continuation.resume(throwing: error) }
+                else { continuation.resume() }
+            }
+        }
+    }
+    private static func capture(window: NSWindow, name: String, directory: URL) async throws {
+        if NSApp.activationPolicy() != .regular { NSApp.setActivationPolicy(.regular) }
+        _ = NSRunningApplication.current.activate(options: [.activateAllWindows])
+        NSApp.activate(ignoringOtherApps: true)
+        window.makeKeyAndOrderFront(nil)
+        for _ in 0..<20 {
+            if NSApp.isActive && window.isKeyWindow { break }
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        try await Task.sleep(for: .milliseconds(100))
+        guard NSApp.isActive, window.isKeyWindow else {
+            let detail = "capture=\(name) appActive=\(NSApp.isActive) processActive=\(NSRunningApplication.current.isActive) key=\(window.isKeyWindow) visible=\(window.isVisible) policy=\(NSApp.activationPolicy().rawValue)"
+            try? Data(detail.utf8).write(to: directory.appendingPathComponent("activation.txt"))
+            throw CocoaError(.userCancelled)
+        }
+        for attempt in 0..<3 {
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+            process.arguments = ["-x", "-l", String(window.windowNumber), directory.appendingPathComponent(name).appendingPathExtension("png").path]
+            try process.run(); process.waitUntilExit()
+            if process.terminationStatus == 0 { return }
+            if attempt < 2 { try await Task.sleep(for: .milliseconds(150)) }
+        }
+        throw CocoaError(.fileWriteUnknown)
+    }
     static func captureDemo(app: AppModel, destination: URL) async {
         do {
             try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
@@ -26,7 +323,10 @@ import Darwin
             let project = try DemoEditing.loadFixture(URL(fileURLWithPath: CommandLine.arguments[index + 1]))
             let document = VoxClipDocument(project: project, demo: true)
             try await snapshot(EditorView(document: document, app: app).environment(app), name: "demo-editor", size: NSSize(width: 1440, height: 820), appearance: .aqua, directory: destination)
-            try await snapshot(WelcomeView().environment(app), name: "demo-welcome", size: NSSize(width: 720, height: 500), appearance: .aqua, directory: destination)
+            let clipsModel = EditorModel(document: document, app: app, preview: DemoPreviewEngine())
+            clipsModel.mediaResolved = true; clipsModel.refresh(); clipsModel.location = .clips
+            try await snapshot(EditorView(model: clipsModel).environment(app), name: "demo-clips", size: NSSize(width: 1100, height: 720), appearance: .aqua, directory: destination)
+            try await snapshot(EditorView(document: VoxClipDocument(), app: app).environment(app), name: "demo-home", size: NSSize(width: 1100, height: 720), appearance: .aqua, directory: destination)
             try await snapshot(SettingsView().environment(app), name: "demo-settings", size: NSSize(width: 900, height: 560), appearance: .aqua, directory: destination)
             try await snapshot(SettingsView().environment(app), name: "settings-minimum", size: NSSize(width: 600, height: 480), appearance: .aqua, directory: destination)
         } catch {
@@ -150,10 +450,15 @@ import Darwin
             try FileManager.default.removeItem(at: outside)
             let unavailable = await app.safeError(VoxClipError.notImplemented("mac-media"))
             check("unimplemented service is truthful", unavailable.contains("not available") && unavailable.contains("Your video and edits are still here."))
-            try await snapshot(WelcomeView().environment(app), name: "welcome-light", size: NSSize(width: 720, height: 500), appearance: .aqua, directory: destination)
+            try await snapshot(EditorView(document: VoxClipDocument(), app: app).environment(app), name: "home-light", size: NSSize(width: 1100, height: 720), appearance: .aqua, directory: destination)
+            try await snapshot(EditorView(document: VoxClipDocument(), app: app).environment(app), name: "home-dark", size: NSSize(width: 1100, height: 720), appearance: .darkAqua, directory: destination)
             let visualDocument = VoxClipDocument(project: project, demo: true)
             try await snapshot(EditorView(document: visualDocument, app: app).environment(app), name: "editor-light", size: NSSize(width: 1440, height: 850), appearance: .aqua, directory: destination)
             try await snapshot(EditorView(document: visualDocument, app: app).environment(app), name: "editor-dark", size: NSSize(width: 1440, height: 850), appearance: .darkAqua, directory: destination)
+            let clipsModel = EditorModel(document: visualDocument, app: app, preview: DemoPreviewEngine())
+            clipsModel.mediaResolved = true; clipsModel.refresh(); clipsModel.location = .clips
+            try await snapshot(EditorView(model: clipsModel).environment(app), name: "clips-light", size: NSSize(width: 1100, height: 720), appearance: .aqua, directory: destination)
+            try await snapshot(EditorView(model: clipsModel).environment(app), name: "clips-dark", size: NSSize(width: 1100, height: 720), appearance: .darkAqua, directory: destination)
             let library = app.modelLibrary
             let downloadTask = Task<Void, Never> { try? await Task.sleep(for: .seconds(30)) }
             defer { downloadTask.cancel(); library.task = nil }
@@ -190,7 +495,7 @@ import Darwin
         window.isReleasedWhenClosed = false
         window.appearance = NSAppearance(named: appearance)
         if name.contains("settings") { window.toolbarStyle = .expanded }
-        window.title = name.contains("editor") ? "interview-take · VoxClip" : name.contains("settings") ? "VoxClip Settings" : name.hasPrefix("export") ? "Export" : name.hasPrefix("toolbar") ? "Toolbar contrast" : "Welcome to VoxClip"
+        window.title = name.contains("editor") || name.contains("clips") ? "interview-take" : name.contains("settings") ? "VoxClip Settings" : name.hasPrefix("export") ? "Export" : name.hasPrefix("toolbar") ? "Toolbar contrast" : "Home"
         window.contentViewController = controller
         hosting.frame = NSRect(origin: .zero, size: size)
         window.orderBack(nil)
@@ -212,7 +517,7 @@ import Darwin
             try JSONEncoder().encode(toolbar).write(to: directory.appendingPathComponent("settings-minimum-toolbar.json"))
         }
         if name.hasPrefix("toolbar-") { toolbarEvidence += try DebugToolbarPixels.measure(window: window, name: name, directory: directory, active: active) }
-        if name.hasPrefix("editor") || name == "demo-editor" {
+        if name == "editor-light" || name == "editor-dark" || name == "demo-editor" {
             guard let layout = editorLayout(in: hosting), layout.transcriptWidth >= 439, layout.previewWidth >= 299 else { throw CocoaError(.coderInvalidValue) }
             if name == "demo-editor" { try JSONEncoder().encode(layout).write(to: directory.appendingPathComponent("editor-layout.json"), options: .atomic) }
         }
@@ -234,6 +539,63 @@ import Darwin
                 ToolbarItem(placement: .primaryAction) { EditorExportControl {}.disabled(true) }
             }
     }
+}
+
+private actor InspectorTestKeys: ProviderKeyStore {
+    private var present = false
+    func hasKey(for provider: String) -> Bool { provider == "openai" && present }
+    func save(_ value: String, for provider: String) {
+        if provider == "openai" { present = !value.isEmpty }
+    }
+}
+
+private actor DelayedInspectorSettings: SettingsStore {
+    private var pending: CheckedContinuation<SettingsDocument, Never>?
+    private var released = false
+    var isWaiting: Bool { pending != nil }
+    func load() async throws -> SettingsDocument {
+        if released { return SettingsDocument(values: ["llm.connector": .string("openai")]) }
+        return await withCheckedContinuation { pending = $0 }
+    }
+    func finish() {
+        released = true
+        pending?.resume(returning: SettingsDocument(values: ["llm.connector": .string("openai")]))
+        pending = nil
+    }
+    func save(_ settings: SettingsDocument) async throws {}
+    func flush() async throws {}
+}
+
+private actor InspectorKeyConnector: LLMConnector {
+    nonisolated let id: ConnectorID = .openai
+    let keys: InspectorTestKeys
+    init(keys: InspectorTestKeys) { self.keys = keys }
+    func status() async -> ConnectorStatus { await keys.hasKey(for: "openai") ? .ready : .needsKey }
+    func models(refresh: Bool) -> [LLMModel] { [] }
+    func contextTokens(model: String) -> Int? { nil }
+    func send(_ request: LLMRequest, model: String) throws -> RawCompletion { throw LLMError.unavailable(reason: "Offline UI fixture") }
+}
+
+private actor InspectorStatusConnector: LLMConnector {
+    nonisolated let id: ConnectorID
+    private var current: ConnectorStatus
+    private var delayNext = false
+    private var pending: CheckedContinuation<ConnectorStatus, Never>?
+    init(id: ConnectorID, status: ConnectorStatus) { self.id = id; current = status }
+    func setStatus(_ value: ConnectorStatus) { current = value }
+    func delayNextStatus() { delayNext = true }
+    var hasPendingStatus: Bool { pending != nil }
+    func finishDelayedStatus(_ value: ConnectorStatus) { pending?.resume(returning: value); pending = nil }
+    func status() async -> ConnectorStatus {
+        if delayNext {
+            delayNext = false
+            return await withCheckedContinuation { pending = $0 }
+        }
+        return current
+    }
+    func models(refresh: Bool) -> [LLMModel] { [] }
+    func contextTokens(model: String) -> Int? { nil }
+    func send(_ request: LLMRequest, model: String) throws -> RawCompletion { throw LLMError.unavailable(reason: "Offline UI fixture") }
 }
 
 @MainActor private final class OffscreenSnapshotWindow: NSWindow {

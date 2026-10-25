@@ -4,14 +4,17 @@ import AVFoundation
 import VoxClipCore
 import VoxClipMedia
 
-enum InspectorTab: String, CaseIterable { case captions = "Captions", clips = "Clips" }
+enum WorkspaceLocation: String, CaseIterable { case home = "Home", transcript = "Transcript", clips = "Clips" }
 
 @MainActor @Observable public final class EditorModel {
     let document: VoxClipDocument
     let app: AppModel
-    var showInspector = true
+    var showInspector = false
+    var sidebarVisibility: NavigationSplitViewVisibility = .all
     var windowWidth = 1280.0
-    var inspectorTab = InspectorTab.captions
+    var location: WorkspaceLocation = .transcript
+    var importProgress: String?
+    var importError: String?
     var selectedWordIDs: Set<String> = []
     var selectedPauseIDs: Set<String> = []
     var previewStop: Double?
@@ -44,8 +47,8 @@ enum InspectorTab: String, CaseIterable { case captions = "Captions", clips = "C
     var exportError: String?
     var exportClipIDs: [String] = []
     var exporting = false
-    func presentExport(clipIDs: [String] = []) {
-        if !exporting { exports = []; exportError = nil; exportClipIDs = clipIDs }
+    func presentExport(clipIDs: [String]? = nil) {
+        if !exporting { exports = []; exportError = nil; exportClipIDs = clipIDs ?? activeClip.map { [$0.id] } ?? [] }
         showExport = true
     }
     var exportIndex = 0
@@ -75,6 +78,7 @@ enum InspectorTab: String, CaseIterable { case captions = "Captions", clips = "C
     @ObservationIgnored private var planningWordIndex: [String: Int] = [:]
     @ObservationIgnored private var summaryCache: [(edits: ProjectEdits, summary: EditSummary)] = []
     @ObservationIgnored weak var undoManager: UndoManager? { didSet { undoManager?.levelsOfUndo = 500 } }
+    @ObservationIgnored weak var window: NSWindow?
     @ObservationIgnored private var history: EditHistory?
     @ObservationIgnored let preview: any PreviewEngine
     @ObservationIgnored let nativePreview: PreviewPlayerController?
@@ -84,12 +88,14 @@ enum InspectorTab: String, CaseIterable { case captions = "Captions", clips = "C
     @ObservationIgnored var workTask: Task<Void, Never>?
     @ObservationIgnored var exportTask: Task<Void, Never>?
     @ObservationIgnored var findTask: Task<Void, Never>?
+    @ObservationIgnored var importTask: Task<Void, Never>?
     @ObservationIgnored private var initialised = false
 
     init(document: VoxClipDocument, app: AppModel, preview: (any PreviewEngine)? = nil, exporter: any Exporter = ExportQueue()) {
         self.document = document
         self.app = app
         self.exporter = exporter
+        location = document.project.media.source.absolutePath == "/" ? .home : .transcript
         mediaResolved = document.demo
         if let preview { self.preview = preview; nativePreview = nil }
         else {
@@ -100,6 +106,7 @@ enum InspectorTab: String, CaseIterable { case captions = "Captions", clips = "C
     }
 
     var project: Project { document.project }
+    var isHome: Bool { project.media.source.absolutePath == "/" }
     var words: [TimedWord] { project.transcript?.words ?? [] }
     var activeClip: ClipRange? { project.edits.clips.first { $0.id == project.edits.activeClipId } }
     var sortedClips: [ClipRange] {
@@ -165,12 +172,39 @@ enum InspectorTab: String, CaseIterable { case captions = "Captions", clips = "C
             } catch { previewError = await app.safeError(error) }
         }
         refresh()
-        if words.isEmpty && mediaResolved { showTranscribe = true }
         if mediaResolved { await updatePreview(load: true) }
     }
     func close() {
-        workTask?.cancel(); exportTask?.cancel(); findTask?.cancel(); eventTask?.cancel(); updateTask?.cancel(); preview.close()
+        workTask?.cancel(); exportTask?.cancel(); findTask?.cancel(); importTask?.cancel(); eventTask?.cancel(); updateTask?.cancel(); preview.close()
+        if app.activeHome === self { app.activeHome = nil }
         app.openProjectKeys[project.id] = nil
+    }
+    func closeEmptyWindow() { if isHome { window?.performClose(nil) } }
+    func importVideo(_ url: URL) async {
+        guard isHome, importProgress == nil else { return }
+        importProgress = "Importing video…"
+        importError = nil
+        defer { importProgress = nil }
+        do {
+            let imported = try await importedDocument(url, app: app)
+            let probe = try await AVMediaProbe().probe(url)
+            try Task.checkCancellation()
+            guard isHome else { return }
+            var next = imported.project
+            next.media.source.durationSeconds = probe.durationSeconds
+            next.media.source.video = probe.video
+            next.media.source.audio = probe.audio
+            app.openProjectKeys[project.id] = nil
+            document.replaceProject(next)
+            recordDocumentChange()
+            mediaResolved = true
+            app.openProjectKeys[next.id] = next.media.source.contentKey
+            if app.activeHome === self { app.activeHome = nil }
+            location = .transcript
+            refresh()
+            await updatePreview(load: true)
+        } catch is CancellationError {
+        } catch { importError = await app.safeError(error) }
     }
     func editState() -> EditState? {
         let project = project
@@ -276,6 +310,7 @@ enum InspectorTab: String, CaseIterable { case captions = "Captions", clips = "C
         var changed = newProject
         changed.modifiedAt = Date()
         document.replaceProject(changed)
+        recordDocumentChange()
         error = nil
         refresh()
         updateTask?.cancel()
@@ -289,6 +324,14 @@ enum InspectorTab: String, CaseIterable { case captions = "Captions", clips = "C
                 try await Task.sleep(for: .milliseconds(150))
                 await updatePreview(load: mediaChanged)
             } catch is CancellationError {} catch { previewError = await app.safeError(error) }
+        }
+    }
+    private func recordDocumentChange() {
+        if let native = window?.windowController?.document {
+            native.updateChangeCount(undoManager?.isUndoing == true ? .changeUndone : undoManager?.isRedoing == true ? .changeRedone : .changeDone)
+            window?.isDocumentEdited = native.isDocumentEdited
+        } else {
+            document.markEdited()
         }
     }
     func resolveMediaIdentity() async throws -> URL {
@@ -342,10 +385,10 @@ enum InspectorTab: String, CaseIterable { case captions = "Captions", clips = "C
     }
     func makeClip() {
         guard let start = selectedIDs.first, let end = selectedIDs.last else { return }
-        guard !project.edits.clips.contains(where: { $0.startWordId == start && $0.endWordId == end }) else { inspectorTab = .clips; showInspector = true; return }
+        guard !project.edits.clips.contains(where: { $0.startWordId == start && $0.endWordId == end }) else { location = .clips; return }
         let title = words.filter { selectedWordIDs.contains($0.id) }.prefix(7).map { text($0) }.joined(separator: " ")
         apply(.addClip(ClipRange(id: UUID().uuidString.lowercased(), startWordId: start, endWordId: end, title: Self.clipTitle(title))), name: "Make clip from selection")
-        inspectorTab = .clips; showInspector = true
+        location = .clips
     }
     func nudge(_ clip: ClipRange, start: Bool, offset: Int) {
         guard let lower = index(clip.startWordId), let upper = index(clip.endWordId) else { return }

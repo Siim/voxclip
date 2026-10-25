@@ -47,7 +47,7 @@ import VoxClipCore
                     if let id = requestedIDs.first {
                         LabeledContent("What", value: requestedIDs.count == 1 ? "This clip · \(model.project.edits.clips.first { $0.id == id }?.title ?? "Clip")" : "\(requestedIDs.count) clips")
                     } else {
-                        Picker("What", selection: $clips) { Text("Full edit · \(durationLabel(model.duration))").tag(false); Text("Selected clips (\(model.sortedClips.filter(\.selected).count))").tag(true) }.pickerStyle(.radioGroup)
+                        Picker("What", selection: $clips) { Text("Full video (with edits)").tag(false); Text("Selected clips (\(model.sortedClips.filter(\.selected).count))").tag(true) }.pickerStyle(.radioGroup)
                     }
                     Picker("Aspect", selection: binding(\.aspect)) { Text("Source").tag(AspectRatio.source); Text("16:9").tag(AspectRatio.landscape); Text("9:16").tag(AspectRatio.portrait); Text("1:1").tag(AspectRatio.square) }.pickerStyle(.segmented)
                     Picker("Captions", selection: Binding(get: { model.project.captions.styleId }, set: { model.setStyle($0) })) { Text("Off").tag("off"); ForEach(model.app.styles, id: \.id) { Text($0.name).tag($0.id) } }

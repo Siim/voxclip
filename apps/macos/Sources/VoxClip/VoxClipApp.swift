@@ -7,7 +7,7 @@ import VoxClipCore
     private var terminating = false
     func applicationWillFinishLaunching(_ notification: Notification) {
         #if DEBUG
-        if AppModel.isTestSession { NSApp.setActivationPolicy(.prohibited) }
+        if AppModel.isTestSession && !CommandLine.arguments.contains("-sceneAudit") { NSApp.setActivationPolicy(.prohibited) }
         #endif
         model = AppModel.sharedModel
         model?.fileRouter.receive(bufferedURLs)
@@ -20,6 +20,9 @@ import VoxClipCore
             Task {
                 await model.start()
                 if CommandLine.arguments.contains("-uiSelfTest") { await DebugUISuite.run(app: model) }
+                else if let position = CommandLine.arguments.firstIndex(of: "-sceneAudit"), position + 1 < CommandLine.arguments.count {
+                    await DebugUISuite.sceneAudit(app: model, destination: URL(fileURLWithPath: CommandLine.arguments[position + 1]))
+                }
                 else if let position = CommandLine.arguments.firstIndex(of: "-uiPerformanceTest"), position + 1 < CommandLine.arguments.count {
                     DebugUISuite.performance(app: model, destination: URL(fileURLWithPath: CommandLine.arguments[position + 1]))
                 } else if let position = CommandLine.arguments.firstIndex(of: "-demoCapture"), position + 1 < CommandLine.arguments.count {
@@ -29,7 +32,7 @@ import VoxClipCore
         }
         #endif
     }
-    func applicationShouldOpenUntitledFile(_ sender: NSApplication) -> Bool { false }
+    func applicationShouldOpenUntitledFile(_ sender: NSApplication) -> Bool { true }
     func application(_ application: NSApplication, open urls: [URL]) {
         if let model { model.fileRouter.receive(urls) } else { bufferedURLs.append(contentsOf: urls) }
     }
@@ -57,12 +60,6 @@ import VoxClipCore
         .defaultSize(width: 1280, height: 800)
         .windowToolbarStyle(.unified)
         .commands { VoxClipCommands(app: appModel) }
-        Window("Welcome to VoxClip", id: "welcome") {
-            WelcomeView().environment(appModel).preferredColorScheme(appModel.appearance)
-                .background(FileRoutingBridge(app: appModel))
-        }
-        .defaultSize(width: 720, height: 480)
-        .defaultLaunchBehavior(AppModel.isTestSession ? .suppressed : .presented)
         Settings { SettingsView().environment(appModel).preferredColorScheme(appModel.appearance) }
             .windowToolbarStyle(.expanded)
     }
@@ -71,11 +68,10 @@ import VoxClipCore
 @MainActor struct VoxClipCommands: Commands {
     @Bindable var app: AppModel
     @FocusedValue(\.editor) private var editor
-    @Environment(\.openWindow) private var openWindow
     @Environment(\.openDocument) private var openDocument
     @Environment(\.newDocument) private var newDocument
     var body: some Commands {
-        CommandGroup(replacing: .newItem) { Button("New Project") { openWindow(id: "welcome") }.keyboardShortcut("n") }
+        CommandGroup(replacing: .newItem) { Button("New Project") { newDocument { VoxClipDocument() } }.keyboardShortcut("n") }
         CommandGroup(replacing: .importExport) {
             Button("Open…") { chooseFile(app: app, open: openDocument, create: newDocument) }.keyboardShortcut("o")
             Button("Export…") { editor?.presentExport() }.keyboardShortcut("e").disabled(editor?.canExport != true)
@@ -103,9 +99,11 @@ import VoxClipCore
         CommandGroup(before: .toolbar) {
             Button(editor?.showCuts == true ? "Hide Cut Words" : "Show Cut Words") { editor?.showCuts.toggle() }.keyboardShortcut("h", modifiers: [.command, .shift])
             Button(editor?.showPauses == true ? "Hide Pauses" : "Show Pauses") { editor?.showPauses.toggle() }
-            Button("Show Inspector") { editor?.showInspector.toggle() }.keyboardShortcut("i", modifiers: [.command, .option])
-            Button("Captions") { editor?.inspectorTab = .captions; editor?.showInspector = true }.keyboardShortcut("1")
-            Button("Clips") { editor?.inspectorTab = .clips; editor?.showInspector = true }.keyboardShortcut("2")
+            Button("Show Caption Inspector") { editor?.showInspector.toggle() }.keyboardShortcut("i", modifiers: [.command, .option])
+            Button("Home") { editor?.location = .home }.keyboardShortcut("1")
+            Button("Transcript") { if editor?.isHome == false { editor?.location = .transcript } }.keyboardShortcut("2").disabled(editor?.isHome != false)
+            Button("Clips") { if editor?.isHome == false { editor?.location = .clips } }.keyboardShortcut("3").disabled(editor?.isHome != false)
+            Button(editor?.sidebarVisibility == .all ? "Hide Sidebar" : "Show Sidebar") { editor?.sidebarVisibility = editor?.sidebarVisibility == .all ? .detailOnly : .all }
             Button("Source / Edited Timeline") { editor?.editedTimeline.toggle() }
             Divider()
             Button("Bigger Text") { editor?.zoom(1) }.keyboardShortcut("+")
@@ -128,13 +126,12 @@ import VoxClipCore
             Button("Set End") { editor?.setClipEdge(start: false) }
             Button("Previous Clip") { editor?.moveClip(-1) }
             Button("Next Clip") { editor?.moveClip(1) }
-            Button("Find Clips…") { editor?.inspectorTab = .clips; editor?.showInspector = true }
+            Button("Find Clips…") { editor?.location = .clips }.disabled(editor?.isHome != false)
         }
-        CommandGroup(after: .windowArrangement) { Button("Welcome") { openWindow(id: "welcome") } }
         CommandGroup(replacing: .help) {
             Button("Keyboard Shortcuts") { editor?.showShortcuts = true }.keyboardShortcut("/")
-            Button("Welcome Tour") { openWindow(id: "welcome"); app.showTour = true }
-            Button("What Leaves This Mac") { app.notice = privacyCopy; openWindow(id: "welcome") }
+            Button("Workspace Tour") { app.showTour = true }
+            Button("What Leaves This Mac") { let alert = NSAlert(); alert.messageText = "What Leaves This Mac"; alert.informativeText = privacyCopy; alert.runModal() }
             Button("Reveal Logs") { app.revealLogs() }
             Button("Copy Diagnostics") { Task { copyText(await app.diagnostics()) } }
         }
@@ -162,6 +159,10 @@ let privacyCopy = "On-device transcription, editing, captions and export stay on
 }
 
 @MainActor func openMovie(_ url: URL, app: AppModel, create: NewDocumentAction) {
+    if let home = app.activeHome, home.isHome {
+        home.importTask = Task { await home.importVideo(url) }
+        return
+    }
     Task {
         do {
             let document = try await importedDocument(url, app: app)
@@ -186,8 +187,17 @@ let privacyCopy = "On-device transcription, editing, captions and export stay on
     private var bufferedMovies: [URL] = []
     private var movieOpener: ((URL) -> Void)?
     var projectOpener: (URL) -> Void = { url in
-        NSDocumentController.shared.openDocument(withContentsOf: url, display: true) { _, _, error in
-            if let error { Task { @MainActor in AppModel.sharedModel.notice = await AppModel.sharedModel.safeError(error) } }
+        let originatingHome = AppModel.sharedModel.activeHome
+        let originatingWindow = originatingHome?.window
+        NSDocumentController.shared.openDocument(withContentsOf: url, display: true) { document, _, error in
+            Task { @MainActor in
+                if let error { AppModel.sharedModel.notice = await AppModel.sharedModel.safeError(error) }
+                else if document != nil, let originatingHome, let originatingWindow,
+                        originatingHome.window === originatingWindow, originatingWindow.isVisible,
+                        originatingHome.isHome, originatingHome.importProgress == nil {
+                    originatingHome.closeEmptyWindow()
+                }
+            }
         }
     }
     func installMovieOpener(_ opener: @escaping (URL) -> Void) {

@@ -15,7 +15,7 @@ import Darwin
             if let reason = result.skipped { print("SKIP: \(result.name): \(reason)") }
             else { #expect(result.passed, Comment(rawValue: result.name)) }
         }
-        for name in ["welcome-light", "editor-light", "editor-dark", "settings-light", "onboarding-light", "onboarding-dark", "export-light", "export-dark", "toolbar-light-key", "toolbar-light-inactive", "toolbar-dark-key", "toolbar-dark-inactive"] {
+        for name in ["home-light", "home-dark", "editor-light", "editor-dark", "clips-light", "clips-dark", "settings-light", "onboarding-light", "onboarding-dark", "export-light", "export-dark", "toolbar-light-key", "toolbar-light-inactive", "toolbar-dark-key", "toolbar-dark-inactive"] {
             let image = try #require(NSBitmapImageRep(data: Data(contentsOf: directory.appendingPathComponent(name).appendingPathExtension("jpg"))))
             #expect(image.pixelsWide >= 500 && image.pixelsHigh >= 200)
             #expect(image.representation(using: .png, properties: [:])!.count > 5000)
@@ -33,11 +33,23 @@ import Darwin
         struct ToolbarExtent: Decodable { let label: String; let width: Double; let attached: Bool }
         let toolbar = try JSONDecoder().decode([ToolbarExtent].self, from: Data(contentsOf: directory.appendingPathComponent("settings-minimum-toolbar.json")))
         #expect(toolbar.contains { $0.label == "Navigation Tab Bar" && $0.attached && $0.width >= 440 })
-        for name in ["demo-editor", "demo-welcome", "demo-settings"] {
+        for name in ["demo-editor", "demo-home", "demo-clips", "demo-settings"] {
             let image = try #require(NSBitmapImageRep(data: Data(contentsOf: directory.appendingPathComponent("\(name).jpg"))))
             #expect(image.pixelsWide >= 500 && image.pixelsHigh >= 200)
         }
         print("mac-ui document screenshots: \(directory.path)")
+    }
+    @Test("Native document scene moves from Home through clipping", .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_UI_TESTS"] == "1")) func documentScene() throws {
+        let directory = try UIProcessHarness.run(mode: "-sceneAudit", name: "scene")
+        defer { UIProcessHarness.cleanTemporary(directory) }
+        let report = try JSONDecoder().decode([UIProcessHarness.Result].self, from: Data(contentsOf: directory.appendingPathComponent("scene-results.json")))
+        #expect(report.count >= 14)
+        for result in report { #expect(result.passed, Comment(rawValue: result.name)) }
+        for name in ["live-home", "live-imported", "live-finder-missing", "live-finder-stopped", "live-finder-ready", "live-finder-recovered", "live-clips", "live-export-clip", "live-clip-preview", "live-compact", "live-compact-light", "live-dirty-close"] {
+            let image = try #require(NSBitmapImageRep(data: Data(contentsOf: directory.appendingPathComponent(name).appendingPathExtension("png"))))
+            #expect(image.pixelsWide >= 600 && image.pixelsHigh >= 400)
+        }
+        print("mac-ui native scene screenshots: \(directory.path)")
     }
     @Test("Log sink redacts before persisting") func redactedFileSink() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("voxclip-log-test-\(UUID().uuidString)")
@@ -122,6 +134,8 @@ private enum UIProcessHarness {
         childEnvironment["VOXCLIP_SHARED_DIR"] = shared.path
         childEnvironment["VOXCLIP_NO_KEYCHAIN"] = "1"
         childEnvironment["VOXCLIP_DATA_DIR"] = data.path
+        childEnvironment["VOXCLIP_LIVE_TESTS"] = "0"
+        childEnvironment["VOXCLIP_TEST_DOWNLOAD"] = "0"
         process.environment = childEnvironment
         let logURL = directory.appendingPathComponent("app.log")
         FileManager.default.createFile(atPath: logURL.path, contents: nil)

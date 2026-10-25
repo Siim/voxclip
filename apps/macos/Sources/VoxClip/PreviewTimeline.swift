@@ -18,6 +18,7 @@ import VoxClipMedia
 
 @MainActor struct PreviewColumn: View {
     @Bindable var model: EditorModel
+    var compact = false
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var pointerInside = false
@@ -33,7 +34,14 @@ import VoxClipMedia
         }
     }
     var body: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: compact ? 6 : 12) {
+            HStack {
+                Label(model.activeClip == nil ? "Full Video" : "Clip: \(model.activeClip?.title ?? "Untitled clip")", systemImage: model.activeClip == nil ? "play.rectangle" : "film")
+                    .font((compact ? Font.caption : Font.callout).weight(.medium)).lineLimit(1)
+                    .accessibilityLabel(model.activeClip == nil ? "Previewing full video" : "Previewing selected clip")
+                Spacer()
+                if model.activeClip != nil { Button("Full Video") { model.activate(nil) } }
+            }
             ZStack(alignment: .bottom) {
                 Rectangle().fill(DesignValues.color("stage"))
                 if model.document.demo {
@@ -60,14 +68,14 @@ import VoxClipMedia
             }
             Picker("Preview aspect", selection: Binding(get: { model.project.export.aspect }, set: { model.setAspect($0) })) {
                 ForEach(AspectRatio.allCases, id: \.self) { aspect in Text(aspect == .source ? "Source" : aspect.rawValue).tag(aspect) }
-            }.labelsHidden().pickerStyle(.segmented).controlSize(.small)
+            }.labelsHidden().pickerStyle(.segmented).controlSize(compact ? .mini : .small)
             if let error = model.previewError, !error.isEmpty {
                 InlineNotice(text: error)
                 if !model.mediaResolved, !model.document.demo { Button("Locate…") { locateMedia() } }
             }
             Spacer(minLength: 0)
         }
-        .padding(20)
+        .padding(compact ? 8 : 20)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .focusable()
         .onKeyPress(characters: CharacterSet(charactersIn: " jklpico[]")) { key in model.transport(key.characters, shift: key.modifiers.contains(.shift)); return .handled }

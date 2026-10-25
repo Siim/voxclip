@@ -25,7 +25,7 @@ func sampledFrames(_ url: URL, points: [(Int, Int)]) async throws -> [SampledFra
     let asset = AVURLAsset(url: url)
     let track = try await asset.loadTracks(withMediaType: .video)[0]
     let reader = try AVAssetReader(asset: asset)
-    let output = AVAssetReaderTrackOutput(track: track, outputSettings: [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA])
+    let output = AVAssetReaderTrackOutput(track: track, outputSettings: [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange])
     let provider = reader.outputProvider(for: output)
     guard reader.startReading() else { throw VoxClipError.decodeFailed("Cannot verify video") }
     var frames: [SampledFrame] = []
@@ -35,11 +35,18 @@ func sampledFrames(_ url: URL, points: [(Int, Int)]) async throws -> [SampledFra
             let buffer = try #require(CMSampleBufferGetImageBuffer(sample))
             CVPixelBufferLockBaseAddress(buffer, .readOnly)
             defer { CVPixelBufferUnlockBaseAddress(buffer, .readOnly) }
-            let base = try #require(CVPixelBufferGetBaseAddress(buffer)).assumingMemoryBound(to: UInt8.self)
-            let rowStride = CVPixelBufferGetBytesPerRow(buffer)
+            let luma = try #require(CVPixelBufferGetBaseAddressOfPlane(buffer, 0)).assumingMemoryBound(to: UInt8.self)
+            let chroma = try #require(CVPixelBufferGetBaseAddressOfPlane(buffer, 1)).assumingMemoryBound(to: UInt8.self)
+            let lumaStride = CVPixelBufferGetBytesPerRowOfPlane(buffer, 0)
+            let chromaStride = CVPixelBufferGetBytesPerRowOfPlane(buffer, 1)
             return points.map { column, row in
-                let offset = row * rowStride + column * 4
-                return [Int(base[offset + 2]), Int(base[offset + 1]), Int(base[offset])]
+                let luminance = (Double(luma[row * lumaStride + column]) - 16) * 255 / 219
+                let chromaOffset = (row / 2) * chromaStride + (column / 2) * 2
+                let blueDifference = (Double(chroma[chromaOffset]) - 128) * 255 / 224
+                let redDifference = (Double(chroma[chromaOffset + 1]) - 128) * 255 / 224
+                return [luminance + 1.5748 * redDifference,
+                        luminance - 0.187324 * blueDifference - 0.468124 * redDifference,
+                        luminance + 1.8556 * blueDifference].map { min(255, max(0, Int($0.rounded()))) }
             }
         }
         frames.append(SampledFrame(time: ready.presentationTimeStamp.seconds, pixels: pixels))

@@ -180,26 +180,26 @@ extension AppModel {
             HStack {
                 SecureField(saved ? "Saved in the Keychain; paste to replace" : "API key", text: $value).textContentType(.password).accessibilityLabel("\(label) API key")
                 Button("Save key") {
-                    Task { do { try await app.secrets.save(value, for: provider); value = ""; saved = true; result = "Saved in the Keychain." } catch { result = await app.safeError(error) } }
+                    Task { do { try await app.saveProviderKey(value, for: provider); value = ""; saved = true; result = "Saved in the Keychain." } catch { result = await app.safeError(error) } }
                 }.disabled(value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 Button(testing ? "Testing…" : "Test") {
                     testing = true
                     Task {
                         defer { testing = false }
                         if !value.isEmpty {
-                            do { try await app.secrets.save(value, for: provider); value = ""; saved = true } catch { result = await app.safeError(error); return }
+                            do { try await app.saveProviderKey(value, for: provider); value = ""; saved = true } catch { result = await app.safeError(error); return }
                         }
                         if provider == "elevenlabs" { result = await testSpeechKey(app: app) }
                         else if let choice = app.providers.first(where: { $0.id == provider }) { result = await testProvider(choice, app: app) }
                     }
                 }.disabled(testing || !saved && value.isEmpty)
-                if saved { Button("Forget key") { Task { do { try await app.secrets.save("", for: provider); saved = false; result = nil } catch { result = await app.safeError(error) } } } }
+                if saved { Button("Forget key") { Task { do { try await app.saveProviderKey("", for: provider); saved = false; result = nil } catch { result = await app.safeError(error) } } } }
             }
             Text(provider == "elevenlabs" ? "The key stays in the macOS Keychain and is used only for transcription." : "The key stays in the macOS Keychain and is used only for AI features.").font(.caption).foregroundStyle(.secondary)
             Text(provider == "elevenlabs" ? "Sends the audio track to ElevenLabs." : "Sends transcript text only. No audio or video.").font(.caption).foregroundStyle(.secondary)
             if let result { Text(result).font(.caption).foregroundStyle(result.hasPrefix("Works") ? DesignValues.color("status.success") : DesignValues.color("status.warning")) }
         }
-        .task(id: provider) { saved = await app.secrets.hasKey(for: provider) }
+        .task(id: "\(provider):\(app.connectorReadinessRevision)") { saved = await app.providerKeyStore.hasKey(for: provider) }
     }
 }
 

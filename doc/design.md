@@ -6,6 +6,16 @@ This spec covers information architecture, window layouts for macOS and Windows,
 
 Provenance: VoxConvo's web clipper (`vox-web` VoiceRecorder, ClipsPanel, SubtitleOverlay, WordChip, theme), Superscribe's native apps, Apple HIG and WWDC25/26 Liquid Glass sessions, Microsoft Learn WinUI 3 guidance and the skills in section 18, as collected in the planning research (`design.md`).
 
+### Mac workspace correction (2026-10-26; ADR-R25)
+
+This section supersedes the Mac Welcome scene, automatic first-run tour, and the Captions/Clips inspector navigation described below. The Windows design and the media, project, caption, and export contracts are unchanged.
+
+**Task walkthrough.** A fresh launch opens one ordinary, resizable untitled document window in its Home state. Home shows Import Video and recent projects. Importing into this empty document turns that same window into the project editor; choosing a saved project opens it through the system document controller. File > New Project opens another empty document window deliberately. Finder and Open Recent continue to open documents, and a video opened while editing creates a separate project; an existing dirty project is never replaced. Closing and saving use the document system's prompts and per-window undo. No onboarding appears automatically. Help can show the tour on request.
+
+**Layout reasoning.** The Mac window uses a native sidebar with Home under Library and Transcript and Clips under the current project. The selected location is visible and keyboard reachable. Transcript and Clips share a persistent preview, playback and timeline. Transcript is the editing surface; Clips is a full working surface with Find Clips, provider readiness, manual Make Clip from Selection, and the clip list. A toolbar Find Clips action goes to Clips, while Make Clip from Selection is visible beside the transcript selection and in the Clip menu. The Clips surface offers a direct route to select words when none are selected; once clips exist, their rows precede collapsible AI setup so they remain visible at laptop sizes. Connector readiness refreshes after a key or server setting changes; an inline Check Again action lets users retry after starting a local service or signing in. The displayed status is advisory: Find Clips performs its current connector preflight when pressed. Clip preview explicitly says which clip is active and offers Preview Full Video. The toolbar has one stable Export action, and its sheet names the full-video or clip scope before rendering. Caption styling lives in a contextual inspector opened by the Captions toolbar/menu command. Secondary cut tools stay in menus and the transcript surface. Home, missing transcript, missing connector, and results each state the next useful action inline.
+
+This follows Apple's official macOS HIG for fewer nested levels, visible sidebars, main-task toolbar actions, native document windows, menu equivalents, and resizing. The desktop and UX skills support recognition over recall, visible system status, and keyboard operation. Spotify informs only the stable navigation and persistent playback, not visual branding or a card dashboard. Narrow widths keep Home and the main task usable; the inspector can be hidden. Light and dark appearances retain system controls and accessible labels.
+
 ---
 
 ## 0. Design stance
