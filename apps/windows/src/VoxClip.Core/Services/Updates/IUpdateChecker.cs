@@ -12,14 +12,28 @@ public interface IUpdateChecker
     /// <summary>Restart only when no export/transcription is active.</summary>
     Task ApplyAsync(UpdateInfo update, CancellationToken ct);
 }
-/// <summary>Safe development-build placeholder owned by win-ui.</summary>
+/// <summary>Platform-free update facade. The application supplies a Velopack backend; Core never references native packages.</summary>
 public sealed class UpdateChecker : IUpdateChecker
 {
-    // TODO(win-ui): connect Velopack; development startup currently reports no available update.
+    private readonly IUpdateChecker? backend;
+    /// <summary>Development hosts may omit the backend; installed applications supply their platform adapter.</summary>
+    public UpdateChecker(IUpdateChecker? backend = null) => this.backend = backend;
     /// <inheritdoc />
-    public Task<UpdateInfo?> CheckAsync(bool manual, CancellationToken ct) => Task.FromResult<UpdateInfo?>(null);
+    public Task<UpdateInfo?> CheckAsync(bool manual, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        return backend?.CheckAsync(manual, ct) ?? Task.FromResult<UpdateInfo?>(null);
+    }
     /// <inheritdoc />
-    public Task DownloadAsync(UpdateInfo update, IProgress<double>? progress, CancellationToken ct) => ServiceStub.Missing("win-ui", ct);
+    public Task DownloadAsync(UpdateInfo update, IProgress<double>? progress, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        return backend?.DownloadAsync(update, progress, ct) ?? Task.FromException(new InvalidOperationException("Updates are available only in an installed VoxClip build."));
+    }
     /// <inheritdoc />
-    public Task ApplyAsync(UpdateInfo update, CancellationToken ct) => ServiceStub.Missing("win-ui", ct);
+    public Task ApplyAsync(UpdateInfo update, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        return backend?.ApplyAsync(update, ct) ?? Task.FromException(new InvalidOperationException("Updates are available only in an installed VoxClip build."));
+    }
 }

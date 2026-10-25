@@ -1,9 +1,12 @@
 <Window x:Class="VoxClip.App.MainWindow"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-    <Grid>
-        <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
-        <TitleBar x:Name="AppTitleBar" Title="VoxClip" />
-        <Frame x:Name="ContentFrame" Grid.Row="1" />
+    <Grid x:Name="Root" AllowDrop="True" DragOver="FileDragOver" Drop="FileDropped">
+        <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+        <TitleBar x:Name="AppTitleBar" Title="VoxClip" BackRequested="BackRequested">
+            <TitleBar.Content><Button Click="SettingsClicked" HorizontalAlignment="Right" Style="{ThemeResource SubtleButtonStyle}" AutomationProperties.Name="Settings (Ctrl+,)" ToolTipService.ToolTip="Settings (Ctrl+,)"><SymbolIcon Symbol="Setting" /></Button></TitleBar.Content>
+        </TitleBar>
+        <InfoBar x:Name="WindowNotice" Grid.Row="1" IsOpen="False" />
+        <Frame x:Name="ContentFrame" Grid.Row="2" />
     </Grid>
 </Window>

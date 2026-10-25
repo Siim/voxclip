@@ -1,43 +1,80 @@
-<Page x:Class="VoxClip.App.Pages.EditorPage"
-    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-    <Grid>
-        <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="112" /></Grid.RowDefinitions>
-        <CommandBar DefaultLabelPosition="Right" Background="{ThemeResource LayerOnMicaBaseAltFillColorDefaultBrush}">
-            <AppBarButton Icon="Back" Label="Home" Click="HomeClicked" />
-            <AppBarButton Icon="Cut" Label="Cut fillers" IsEnabled="False" />
-            <AppBarButton Icon="Clock" Label="Tighten pauses" IsEnabled="False" />
-            <AppBarButton Icon="Undo" Label="Restore cuts" IsEnabled="False" />
-            <AppBarButton Icon="Save" Label="Export" IsEnabled="False" />
-        </CommandBar>
-        <InfoBar Grid.Row="1" IsOpen="True" IsClosable="False" Severity="Informational"
-                 Message="Editor placeholder. No file is open; media and editing tracks will connect these regions." />
-        <Grid Grid.Row="2" Padding="16" ColumnSpacing="16">
-            <Grid.ColumnDefinitions><ColumnDefinition Width="5*" MinWidth="280" /><ColumnDefinition Width="4*" MinWidth="240" /><ColumnDefinition Width="320" /></Grid.ColumnDefinitions>
-            <Grid RowSpacing="12">
-                <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
-                <TextBlock Text="Transcript" Style="{ThemeResource SubtitleTextBlockStyle}" />
-                <ListView Grid.Row="1" AutomationProperties.Name="Transcript paragraphs" />
-            </Grid>
-            <Grid Grid.Column="1" RowSpacing="12">
-                <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
-                <TextBlock Text="Preview" Style="{ThemeResource SubtitleTextBlockStyle}" />
-                <Grid Grid.Row="1" Background="Black" AutomationProperties.Name="Video preview stage"><Image Stretch="Uniform" /></Grid>
-            </Grid>
-            <Grid Grid.Column="2" RowSpacing="12">
-                <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
-                <SelectorBar AutomationProperties.Name="Inspector tabs">
-                    <SelectorBarItem Text="Captions" IsSelected="True" />
-                    <SelectorBarItem Text="Clips" />
-                    <SelectorBarItem Text="AI" IsEnabled="False" />
-                </SelectorBar>
-                <ScrollViewer Grid.Row="1"><StackPanel Spacing="12"><TextBlock Text="Inspector" /><ContentControl AutomationProperties.Name="Inspector content" /></StackPanel></ScrollViewer>
-            </Grid>
+<Page x:Class="VoxClip.App.Pages.EditorPage" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:controls="using:VoxClip.App.Controls" xmlns:local="using:VoxClip.App.Pages">
+    <Grid x:Name="EditorRoot" KeyDown="EditorKeyDown" SizeChanged="EditorSizeChanged">
+        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="32"/></Grid.RowDefinitions>
+        <Grid Background="{ThemeResource LayerOnMicaBaseAltFillColorDefaultBrush}" Padding="0,0,12,0">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+            <CommandBar x:Name="Commands" HorizontalAlignment="Left" DefaultLabelPosition="Right" Background="{ThemeResource LayerOnMicaBaseAltFillColorDefaultBrush}">
+                <AppBarButton Icon="Cut" Label="{x:Bind ViewModel.FillerLabel, Mode=OneWay}" IsEnabled="{x:Bind ViewModel.Summary.CanCutFillers, Mode=OneWay}" Click="FillersClicked" ToolTipService.ToolTip="Cut fillers (Ctrl+Shift+U)"/>
+                <AppBarButton Icon="Clock" Label="Tighten pauses" IsEnabled="{x:Bind ViewModel.Summary.CanTighten, Mode=OneWay}" Click="PausesClicked" ToolTipService.ToolTip="Tighten pauses (Ctrl+Shift+P)"/>
+                <AppBarButton Icon="Undo" Label="Restore cuts" IsEnabled="{x:Bind ViewModel.Summary.HasEdits, Mode=OneWay}" Click="RestoreClicked" ToolTipService.ToolTip="Restore cuts (Ctrl+Shift+R)"/>
+                <AppBarSeparator/>
+                <AppBarToggleButton x:Name="PlayCommand" Icon="Play" Label="Play" Click="PlayClicked" ToolTipService.ToolTip="Play or pause (Space)"/>
+                <AppBarButton Icon="OpenPane" Label="Inspector" Click="InspectorClicked" ToolTipService.ToolTip="Inspector (Ctrl+Shift+I)"/>
+                <CommandBar.SecondaryCommands>
+                    <AppBarButton Label="Undo (Ctrl+Z)" Click="UndoClicked"/>
+                    <AppBarButton Label="Redo (Ctrl+Y)" Click="RedoClicked"/>
+                    <AppBarToggleButton x:Name="ShowCuts" Label="Show cut words" IsChecked="True" Click="DisplayChanged"/>
+                    <AppBarToggleButton x:Name="ShowPauses" Label="Show pauses" IsChecked="True" Click="DisplayChanged"/>
+                    <AppBarButton Label="Find (Ctrl+F)" Click="FindClicked"/>
+                    <AppBarButton Label="Make clip from selection (Ctrl+K)" Click="MakeClipClicked"/>
+                    <AppBarButton Label="Save project as…" Click="SaveAsClicked"/>
+                    <AppBarButton Label="Show project file" Click="ShowProjectClicked"/>
+                    <AppBarButton Label="Transcribe again…" Click="TranscribeAgainClicked"/>
+                    <AppBarButton Label="Keyboard shortcuts (F1)" Click="ShortcutsClicked"/>
+                </CommandBar.SecondaryCommands>
+            </CommandBar>
+            <Button Grid.Column="1" Content="Export…" Style="{StaticResource AccentButtonStyle}" Click="ExportClicked" IsEnabled="{x:Bind ViewModel.CanExport, Mode=OneWay}" VerticalAlignment="Center" ToolTipService.ToolTip="Export (Ctrl+E)"/>
         </Grid>
-        <Grid Grid.Row="3" Padding="16" RowSpacing="8">
-            <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
-            <TextBlock Text="Timeline" />
-            <Canvas Grid.Row="1" Background="{ThemeResource ControlFillColorSecondaryBrush}" AutomationProperties.Name="Timeline waveform" />
+        <SplitView x:Name="InspectorSplit" Grid.Row="1" PanePlacement="Right" OpenPaneLength="300" DisplayMode="Inline" IsPaneOpen="True" Background="{ThemeResource VcBgWindowBrush}" PaneBackground="{ThemeResource VcBgSurfaceBrush}">
+            <SplitView.Pane><Grid x:Name="InspectorHost"/></SplitView.Pane>
+            <Grid>
+                <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="56"/></Grid.RowDefinitions>
+                <Grid x:Name="ContentPanes">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" MinWidth="280"/><ColumnDefinition Width="4"/><ColumnDefinition x:Name="PreviewColumn" Width="380"/></Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="0"/></Grid.RowDefinitions>
+                    <Grid x:Name="TranscriptPane" Background="{ThemeResource VcBgSurfaceBrush}" CornerRadius="8,0,0,0" RowSpacing="8">
+                        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+                        <InfoBar x:Name="EditorNotice" IsOpen="{x:Bind local:EditorPage.HasText(ViewModel.Notice), Mode=OneWay}" Message="{x:Bind ViewModel.Notice, Mode=OneWay}" Severity="Informational"/>
+                        <Grid Grid.Row="1" Padding="24,12,24,0">
+                            <TextBlock Text="TRANSCRIPT · EDIT BY WORDS" FontFamily="{ThemeResource VcFontGeistMono}" FontSize="11" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                            <Button Content="Find" Click="FindClicked" HorizontalAlignment="Right" Style="{ThemeResource SubtleButtonStyle}"/>
+                        </Grid>
+                        <StackPanel x:Name="FindBar" Grid.Row="2" Orientation="Horizontal" Spacing="8" Margin="24,0" Visibility="Collapsed">
+                            <TextBox x:Name="SearchText" Header="Find words" Width="160" TextChanged="SearchChanged"/>
+                            <Button x:Name="CutMatches" Content="Cut all matches" VerticalAlignment="Bottom" Click="CutMatchesClicked"/>
+                            <Button Content="Close" VerticalAlignment="Bottom" Click="CloseFindClicked"/>
+                        </StackPanel>
+                        <controls:TranscriptView x:Name="Transcript" Grid.Row="3"/>
+                        <StackPanel x:Name="Untranscribed" Grid.Row="3" VerticalAlignment="Center" HorizontalAlignment="Center" MaxWidth="320" Spacing="12" Padding="24">
+                            <TextBlock Text="This video isn't transcribed yet." TextWrapping="Wrap" Style="{ThemeResource SubtitleTextBlockStyle}"/>
+                            <Button Content="Transcribe…" Click="TranscribeClicked"/>
+                        </StackPanel>
+                    </Grid>
+                    <Thumb Grid.Column="1" DragDelta="SplitterDragged" AutomationProperties.Name="Resize transcript and preview" Background="{ThemeResource DividerStrokeColorDefaultBrush}"/>
+                    <Grid x:Name="PreviewPane" Grid.Column="2" Padding="16,16,16,24" RowSpacing="12">
+                        <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                        <Border Background="{ThemeResource VcStageBrush}" RequestedTheme="Dark" CornerRadius="12" MinHeight="180">
+                            <Grid>
+                                <Image x:Name="PreviewImage" Stretch="Uniform" AutomationProperties.Name="Video preview"/>
+                                <TextBlock x:Name="PreviewEmpty" Text="Preview unavailable. Your video and edits are still here." TextWrapping="Wrap" TextAlignment="Center" Foreground="{ThemeResource TextFillColorPrimaryBrush}" Margin="20" VerticalAlignment="Center"/>
+                                <Border Background="{ThemeResource VcOverlayTransportOpaqueBrush}" BorderBrush="{ThemeResource VcLineStrongBrush}" BorderThickness="1" CornerRadius="18" Padding="8,0" Height="40" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="8,8,8,16">
+                                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                        <Button x:Name="PreviewPlay" Click="PlayClicked" Style="{ThemeResource SubtleButtonStyle}" AutomationProperties.Name="Play or pause (Space)" Padding="6"><SymbolIcon Symbol="Play"/></Button>
+                                        <TextBlock x:Name="TransportTime" Text="00:00.0" FontFamily="{ThemeResource VcFontGeistMono}" FontSize="12" VerticalAlignment="Center" Foreground="{ThemeResource VcTextPrimaryBrush}"/>
+                                    </StackPanel>
+                                </Border>
+                            </Grid>
+                        </Border>
+                        <RadioButtons x:Name="Aspect" Grid.Row="1" Header="Preview aspect" MaxColumns="4" SelectedIndex="0" HorizontalAlignment="Stretch" SelectionChanged="AspectChanged"><x:String>Source</x:String><x:String>16:9</x:String><x:String>9:16</x:String><x:String>1:1</x:String></RadioButtons>
+                        <TextBlock x:Name="PreviewDescription" Grid.Row="2" Text="Your source video is never changed." Style="{StaticResource HelperText}"/>
+                    </Grid>
+                </Grid>
+                <controls:TimelineView x:Name="Timeline" Grid.Row="1"/>
+            </Grid>
+        </SplitView>
+        <Grid Grid.Row="2" Padding="24,0,12,0"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+            <TextBlock Text="{x:Bind ViewModel.Status, Mode=OneWay}" FontSize="12" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+            <Button x:Name="FooterExport" Grid.Column="1" Content="Export…" Click="ExportClicked" Padding="8,2" MinHeight="28" IsEnabled="{x:Bind ViewModel.CanExport, Mode=OneWay}"/>
         </Grid>
     </Grid>
 </Page>

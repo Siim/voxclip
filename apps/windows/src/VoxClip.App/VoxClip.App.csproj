@@ -4,6 +4,7 @@
     <OutputType>WinExe</OutputType>
     <UseWinUI>true</UseWinUI>
     <WindowsPackageType>None</WindowsPackageType>
+    <EnableMsixTooling>true</EnableMsixTooling>
     <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
     <SelfContained>true</SelfContained>
     <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
@@ -13,8 +14,11 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
     <StartupObject>VoxClip.App.Program</StartupObject>
+    <ApplicationIcon>Assets\VoxClip.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
+    <Content Include="Assets\VoxClip.ico" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="$(MSBuildThisFileDirectory)..\..\..\..\THIRD_PARTY_NOTICES.md" Link="THIRD_PARTY_NOTICES.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <ProjectReference Include="../VoxClip.Core/VoxClip.Core.csproj" />
     <ProjectReference Include="../VoxClip.Media/VoxClip.Media.csproj" />
     <PackageReference Include="Microsoft.WindowsAppSDK" />
@@ -28,4 +32,7 @@
              Exclude="$(MSBuildThisFileDirectory)..\..\..\..\shared\fixtures\**"
              LinkBase="shared" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
+  <Target Name="VerifyXamlResources" AfterTargets="Build" Condition="'$(OS)' == 'Windows_NT'">
+    <Error Condition="!Exists('$(TargetDir)$(TargetName).pri')" Text="WinUI $(TargetName).pri is missing from the unpackaged output. Check SDK BuildTools and PRI generation before launching VoxClip." />
+  </Target>
 </Project>

@@ -1,15 +1,22 @@
 <Window x:Class="VoxClip.App.SettingsWindow"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-    <ScrollViewer>
-        <StackPanel Padding="32" Spacing="20">
-            <TextBlock Text="Settings" Style="{ThemeResource TitleTextBlockStyle}" />
-            <TextBlock Text="General · Transcription · AI · About" TextWrapping="Wrap" />
-            <InfoBar IsOpen="True" IsClosable="False" Message="Settings services are not connected yet. No API keys are read or written." />
-            <TextBlock Text="About VoxClip" Style="{ThemeResource SubtitleTextBlockStyle}" />
-            <TextBlock Text="{x:Bind VersionLabel}" />
-            <TextBlock Text="Licences" Style="{ThemeResource SubtitleTextBlockStyle}" />
-            <TextBlock Text="{x:Bind Licences}" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
-        </StackPanel>
-    </ScrollViewer>
+    <Grid x:Name="Root">
+        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition/></Grid.RowDefinitions>
+        <TitleBar x:Name="SettingsTitleBar" Title="VoxClip" Subtitle="Settings" />
+        <NavigationView x:Name="Navigation" Grid.Row="1" IsBackButtonVisible="Collapsed" IsSettingsVisible="False" PaneDisplayMode="Left" OpenPaneLength="210" SelectionChanged="PaneChanged">
+            <NavigationView.MenuItems>
+                <NavigationViewItem Content="General" Tag="General" Icon="Setting"/>
+                <NavigationViewItem Content="Transcription" Tag="Transcription" Icon="Microphone"/>
+                <NavigationViewItem Content="Providers &amp; Keys" Tag="Providers &amp; Keys" Icon="Permissions"/>
+                <NavigationViewItem Content="Local Models" Tag="Local Models" Icon="Download"/>
+                <NavigationViewItem Content="Export" Tag="Export" Icon="Save"/>
+                <NavigationViewItem Content="Accounts" Tag="Accounts" Icon="Contact"/>
+                <NavigationViewItem Content="About" Tag="About" Icon="Help"/>
+            </NavigationView.MenuItems>
+            <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+                <StackPanel x:Name="Body" Padding="28,16,28,32" Spacing="20" MaxWidth="680" HorizontalAlignment="Stretch"/>
+            </ScrollViewer>
+        </NavigationView>
+    </Grid>
 </Window>

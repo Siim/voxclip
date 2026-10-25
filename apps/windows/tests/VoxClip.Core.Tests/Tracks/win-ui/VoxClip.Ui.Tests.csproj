@@ -1,0 +1,31 @@
+<Project>
+  <PropertyGroup>
+    <BaseIntermediateOutputPath>$(MSBuildThisFileDirectory).artifacts/obj/</BaseIntermediateOutputPath>
+    <BaseOutputPath>$(MSBuildThisFileDirectory).artifacts/bin/</BaseOutputPath>
+  </PropertyGroup>
+  <Import Project="Sdk.props" Sdk="Microsoft.NET.Sdk" />
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <IsTestProject>true</IsTestProject>
+    <IsPackable>false</IsPackable>
+    <TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
+    <DefineConstants>$(DefineConstants);WIN_UI_TESTS</DefineConstants>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../../../src/VoxClip.Core/VoxClip.Core.csproj" />
+    <ProjectReference Include="../../../../src/VoxClip.Media/VoxClip.Media.csproj" />
+    <PackageReference Include="CommunityToolkit.Mvvm" />
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="xunit.runner.visualstudio" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <Compile Include="ViewModelTests.cs" />
+    <Compile Include="StartupCheckTests.cs" />
+    <Compile Include="NativeIntegratedFlowTests.cs" />
+    <Compile Include="../../../../src/VoxClip.App/Services/StartupCheck.cs" Link="Services/StartupCheck.cs" />
+    <Compile Include="../../../../src/VoxClip.App/ViewModels/*.cs" LinkBase="ViewModels" />
+    <Compile Include="../../../../src/VoxClip.App/Services/DemoProject.cs" Link="Services/DemoProject.cs" />
+  </ItemGroup>
+  <Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk" />
+</Project>

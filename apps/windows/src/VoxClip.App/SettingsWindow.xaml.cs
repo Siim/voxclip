@@ -1,24 +1,234 @@
-using System.Reflection;
+using System.Net.Http;
+using System.Runtime.InteropServices;
+using CommunityToolkit.WinUI.Controls;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
+using VoxClip.App.Controls;
+using VoxClip.App.Services;
+using VoxClip.Core.Services.LLM;
+using VoxClip.Core.Services.Models;
+
 namespace VoxClip.App;
 
-/// <summary>Settings and About placeholder; architecture §11 and §13. Never handles plaintext keys.</summary>
 public sealed partial class SettingsWindow : Window
 {
-    /// <summary>Only version source is Directory.Build.props via entry assembly metadata.</summary>
-    public string VersionLabel => "VoxClip " + (Assembly.GetEntryAssembly()?.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion.Split('+')[0] ?? "unknown");
-    /// <summary>Dependency licenses visible in About before any runtime feature is implemented.</summary>
-    public string Licences => "VoxClip — MIT. Microsoft Windows App SDK and Windows SDK BuildTools — Microsoft licences. " +
-        "CommunityToolkit, SkiaSharp, HarfBuzzSharp, FFmpeg.AutoGen, Whisper.net, NAudio, Velopack, System.CommandLine — MIT; " +
-        "Skia/HarfBuzz native components — BSD/MIT/Apache-2.0 and bundled notices. FFmpeg LGPL shared — LGPL-2.1-or-later; no GPL encoders. " +
-        "Bundled fonts — SIL OFL; emoji — Apache-2.0. See THIRD_PARTY_NOTICES.md for versions, sources and transitive licence notices.";
-    /// <summary>Initialize a separate theme-aware settings window on the UI thread.</summary>
+    private readonly CancellationTokenSource lifetime = new();
+    private readonly InfoBar notice = Ui.Notice();
+    private CancellationTokenSource? download;
     public SettingsWindow()
     {
-        InitializeComponent();
-        Title = "VoxClip Settings";
-        SystemBackdrop = new MicaBackdrop();
-        AppWindow.Resize(new Windows.Graphics.SizeInt32(640, 720));
+        InitializeComponent(); Title = "VoxClip Settings"; SystemBackdrop = new MicaBackdrop();
+        ExtendsContentIntoTitleBar = true; SetTitleBar(SettingsTitleBar);
+        var scale = GetDpiForWindow(WinRT.Interop.WindowNative.GetWindowHandle(this)) / 96.0;
+        AppWindow.Resize(new Windows.Graphics.SizeInt32((int)(760 * scale), (int)(600 * scale)));
+        if (AppWindow.Presenter is Microsoft.UI.Windowing.OverlappedPresenter presenter) { presenter.PreferredMinimumWidth = (int)(560 * scale); presenter.PreferredMinimumHeight = (int)(480 * scale); }
+        AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "VoxClip.ico"));
+        App.Services.ApplyTheme(Root); App.Services.SettingsChanged += SettingsChanged;
+        Navigation.SelectedItem = Navigation.MenuItems[0];
+        Closed += (_, _) => { lifetime.Cancel(); download?.Cancel(); App.Services.SettingsChanged -= SettingsChanged; };
+    }
+    [DllImport("user32.dll")]
+    private static extern uint GetDpiForWindow(IntPtr window);
+    private void SettingsChanged(object? sender, EventArgs args) => App.Services.ApplyTheme(Root);
+    private async void PaneChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
+    {
+        if (args.SelectedItem is not NavigationViewItem item || Body is null) return;
+        Body.Children.Clear(); notice.IsOpen = false;
+        Body.Children.Add(Ui.Text((string)item.Tag, "TitleTextBlockStyle")); Body.Children.Add(notice);
+        await Ui.RunAsync(notice, async () =>
+        {
+            switch ((string)item.Tag)
+            {
+                case "General": General(); break;
+                case "Transcription": await TranscriptionAsync(); break;
+                case "Providers & Keys": await ProvidersAsync(); break;
+                case "Local Models": await ModelsAsync(); break;
+                case "Export": Export(); break;
+                case "Accounts": Body.Children.Add(Ui.Text("VoxConvo sharing is coming later. No account is needed to cut, caption or export.")); break;
+                case "About": await AboutAsync(); break;
+            }
+        }, "Settings");
+    }
+    private void Save(string key, object value) => _ = Ui.RunAsync(notice, () => App.Services.SetAsync(key, value, lifetime.Token), "Save settings");
+    private void AddSetting(FrameworkElement content) => Body.Children.Add(content);
+    private void General()
+    {
+        var appearance = Ui.Choice("Appearance", ["System", "Light", "Dark"], Array.IndexOf(new[] { "system", "light", "dark" }, App.Services.Get("general.appearance", "system")));
+        appearance.SelectionChanged += (_, _) => Save("general.appearance", new[] { "system", "light", "dark" }[appearance.SelectedIndex]); AddSetting(appearance);
+        var reopen = new ToggleSwitch { Header = "Open the last project at launch", IsOn = App.Services.Get("general.openLastProject", false) };
+        reopen.Toggled += (_, _) => Save("general.openLastProject", reopen.IsOn); AddSetting(reopen);
+        var textSize = new Slider { Header = "Transcript text size", Minimum = 13, Maximum = 28, StepFrequency = 1, Value = App.Services.Get("general.transcriptTextSize", 16d) };
+        textSize.ValueChanged += (_, _) => Save("general.transcriptTextSize", textSize.Value); AddSetting(textSize);
+        var confidence = new ToggleSwitch { Header = "Mark low-confidence words", IsOn = App.Services.Get("general.showLowConfidence", false) };
+        confidence.Toggled += (_, _) => Save("general.showLowConfidence", confidence.IsOn); AddSetting(confidence);
+        var breath = Ui.Choice("Breath kept in tightened pauses", ["Tight · 0.05 s", "Natural · 0.15 s", "Relaxed · 0.30 s"], Array.IndexOf(new[] { "tight", "natural", "relaxed" }, App.Services.Get("editing.pauseBreath", "natural")));
+        breath.SelectionChanged += (_, _) => Save("editing.pauseBreath", new[] { "tight", "natural", "relaxed" }[breath.SelectedIndex]); AddSetting(breath);
+        Body.Children.Add(Ui.Text("New-project defaults only. Existing projects keep their choices.", "HelperText"));
+        var updates = new ToggleSwitch { Header = "Check for updates automatically", IsOn = App.Services.Get("update.autoCheck", true) };
+        updates.Toggled += (_, _) => Save("update.autoCheck", updates.IsOn); AddSetting(updates);
+        var cacheSizes = new[] { 2, 5, 10, 20 };
+        var cache = Ui.Choice("Cache limit", cacheSizes.Select(size => size + " GB"), Array.IndexOf(cacheSizes, App.Services.Get("cache.limitGB", 5)));
+        cache.SelectionChanged += (_, _) => Save("cache.limitGB", cacheSizes[cache.SelectedIndex]); AddSetting(cache);
+        Body.Children.Add(Ui.Text("Local first. No telemetry. No account wall. Your source media is never changed.", "HelperText"));
+        Body.Children.Add(Ui.Button("Show data folder", () => ShareHelpers.Reveal(App.Services.Data.Logs)));
+    }
+    private async Task TranscriptionAsync()
+    {
+        var modes = new[] { "local", "elevenlabs", "ask" };
+        var current = App.Services.Get("transcription.engineMode", "local");
+        var engine = Ui.Choice("Engine for new imports", ["On this PC", "ElevenLabs Scribe", "Ask each time"], Math.Max(0, Array.IndexOf(modes, current)));
+        engine.SelectionChanged += (_, _) => Save("transcription.engineMode", modes[engine.SelectedIndex]); AddSetting(engine);
+        var language = new TextBox { Header = "Language for new imports", Text = App.Services.Get("transcription.language", "auto"), PlaceholderText = "auto or language code, such as en" };
+        language.LostFocus += (_, _) =>
+        {
+            var code = language.Text.Trim().ToLowerInvariant();
+            if (code == "auto" || code.Length is >= 2 and <= 3 && code.All(char.IsAsciiLetterLower)) Save("transcription.language", code);
+            else Ui.Show(notice, "Enter auto or a two or three letter language code.", InfoBarSeverity.Warning);
+        };
+        AddSetting(language);
+        var regions = new[] { "default", "us", "eu", "in", "sg" };
+        var region = Ui.Choice("ElevenLabs region", ["Default", "US", "EU", "India", "Singapore"], Math.Max(0, Array.IndexOf(regions, App.Services.Get("transcription.elevenlabs.region", "default"))));
+        region.SelectionChanged += (_, _) => Save("transcription.elevenlabs.region", regions[region.SelectedIndex]); AddSetting(region);
+        await ProviderRowAsync("ElevenLabs", "Sends the audio track to ElevenLabs, which keeps it under its terms. You confirm each take before upload.", "elevenlabs-api-key", null);
+        Body.Children.Add(Ui.Button("Manage local models…", () => Navigation.SelectedItem = Navigation.MenuItems.OfType<NavigationViewItem>().First(item => (string)item.Tag == "Local Models")));
+        Body.Children.Add(Ui.Text("Models download only after you confirm. Local transcription runs entirely on this PC.", "HelperText"));
+    }
+    private async Task ProvidersAsync()
+    {
+        Body.Children.Add(Ui.Text("Keys are encrypted for your Windows account using DPAPI. Saved keys are never shown and never stored in settings or logs.", "HelperText"));
+        var entries = await ProviderCatalog.ReadAsync(lifetime.Token);
+        var selected = Ui.Choice("Default connector for AI clips", ["None · manual clips still work", .. entries.Select(entry => entry.Label)]);
+        selected.SelectedIndex = Math.Max(0, entries.ToList().FindIndex(entry => entry.WireId == App.Services.Get("llm.connector", "")) + 1);
+        selected.SelectionChanged += (_, _) => Save("llm.connector", selected.SelectedIndex == 0 ? "" : entries[selected.SelectedIndex - 1].WireId); Body.Children.Add(selected);
+        await ProviderRowAsync("ElevenLabs", "Sends the audio track to ElevenLabs. No video is sent.", "elevenlabs-api-key", null);
+        foreach (var entry in entries) await ProviderRowAsync(entry.Label, entry.DataFlow, entry.Account, entry);
+    }
+    private async Task ProviderRowAsync(string label, string dataFlow, string? account, ProviderEntry? entry)
+    {
+        var panel = Ui.Stack(12); panel.Children.Add(Ui.Text(dataFlow, "HelperText"));
+        var hasKey = false;
+        var keyUnreadable = false;
+        if (account is not null)
+        {
+            try { hasKey = await App.Services.Keys.GetKeyAsync(account, lifetime.Token) is not null; }
+            catch (Exception exception) when (exception is not OperationCanceledException) { keyUnreadable = true; hasKey = true; }
+        }
+        var status = Ui.Text(keyUnreadable ? "This saved key can't be read. Forget it, then save a new key. Your media and edits are still here." : hasKey ? "Key saved securely." : account is null ? "Check detects availability; Test sends only a connection test." : "No key saved.", "HelperText");
+        panel.Children.Add(status);
+        var model = new TextBox { Header = "Model ID", Text = App.Services.Get("llm.model." + entry?.WireId, entry?.DefaultModel ?? "") };
+        if (entry is not null) { panel.Children.Add(model); model.LostFocus += (_, _) => { if (model.Text.Trim().Length > 0) Save("llm.model." + entry.WireId, model.Text.Trim()); }; }
+        if (entry?.Cli == true)
+        {
+            var path = new TextBox { Header = "CLI path (optional override)", Text = App.Services.Get("llm.cliPath." + entry.WireId, ""), PlaceholderText = "Find the installed CLI automatically" };
+            path.LostFocus += (_, _) => Save("llm.cliPath." + entry.WireId, path.Text.Trim()); panel.Children.Add(path);
+            panel.Children.Add(Ui.Text("VoxClip does not read CLI sign-in files. Install, update and sign in in your terminal.", "HelperText"));
+        }
+        if (entry?.Group == "local")
+        {
+            var endpoint = new TextBox { Header = "Local server URL", Text = App.Services.Get("llm.baseUrl." + entry.WireId, entry.WireId == "ollama" ? "http://localhost:11434" : "http://localhost:1234") };
+            endpoint.LostFocus += (_, _) => { if (Uri.TryCreate(endpoint.Text, UriKind.Absolute, out var address) && address.IsLoopback && address.Scheme is "http" or "https") Save("llm.baseUrl." + entry.WireId, endpoint.Text); else Ui.Show(notice, "Use a loopback HTTP or HTTPS address.", InfoBarSeverity.Warning); }; panel.Children.Add(endpoint);
+        }
+        if (account is not null)
+        {
+            var key = new PasswordBox { Header = "New API key", PasswordRevealMode = PasswordRevealMode.Hidden, PlaceholderText = hasKey ? "Saved for your Windows account; paste to replace" : "Paste an API key" };
+            panel.Children.Add(key);
+            Button? forget = null;
+            var save = Ui.Button("Save key", () => _ = Ui.RunAsync(notice, async () =>
+            {
+                var secret = key.Password; key.Password = "";
+                if (string.IsNullOrWhiteSpace(secret)) return;
+                await App.Services.Keys.SaveAsync(account, secret, lifetime.Token); status.Text = "Key saved securely."; key.PlaceholderText = "Saved for your Windows account; paste to replace";
+                if (forget is not null) forget.Visibility = Visibility.Visible;
+            }, "Save key"));
+            save.IsEnabled = false; key.PasswordChanged += (_, _) => save.IsEnabled = !string.IsNullOrWhiteSpace(key.Password); panel.Children.Add(save);
+            forget = Ui.Button("Forget key", () => _ = Ui.RunAsync(notice, async () => { key.Password = ""; await App.Services.Keys.SaveAsync(account, "", lifetime.Token); status.Text = "Key forgotten."; key.PlaceholderText = "Paste an API key"; if (forget is not null) forget.Visibility = Visibility.Collapsed; }, "Forget key"));
+            forget.Visibility = hasKey ? Visibility.Visible : Visibility.Collapsed; panel.Children.Add(forget);
+        }
+        if (entry is not null)
+        {
+            panel.Children.Add(Ui.Button("Check status", () => _ = Ui.RunAsync(notice, async () => status.Text = ProviderCatalog.Status(await App.Services.Connector(entry.Id).GetStatusAsync(lifetime.Token)), "Connector status")));
+            panel.Children.Add(Ui.Button("Test", () => _ = Ui.RunAsync(notice, async () =>
+            {
+                var connectorStatus = await App.Services.Connector(entry.Id).GetStatusAsync(lifetime.Token);
+                status.Text = ProviderCatalog.Status(connectorStatus);
+                if (connectorStatus is not ConnectorStatus.Ready) return;
+                if (!await ProviderCatalog.ConsentAsync(entry, Root.XamlRoot, lifetime.Token)) return;
+                await ProviderCatalog.TestAsync(entry, model.Text.Trim(), lifetime.Token); status.Text = "Works.";
+            }, "Connection test")));
+        }
+        else panel.Children.Add(Ui.Button("Test", () => _ = Ui.RunAsync(notice, async () =>
+        {
+            using var transcriber = VoxClip.Core.Services.Speech.ElevenLabsTranscriber.FromSettings(App.Services.Keys, App.Services.Settings, App.Services.Log);
+            var result = await transcriber.TestKeyAsync(lifetime.Token);
+            status.Text = result.Message;
+        }, "Connection test")));
+        var group = new SettingsExpander { Header = label, HorizontalAlignment = HorizontalAlignment.Stretch };
+        group.Items.Add(new SettingsCard { Content = panel, HorizontalContentAlignment = HorizontalAlignment.Stretch }); Body.Children.Add(group);
+    }
+    private async Task ModelsAsync()
+    {
+        Body.Children.Add(Ui.Text("Models stay on this computer. Downloads start only when you choose Download and confirm the licence.", "HelperText"));
+        var catalogue = await App.Services.Models.GetModelsAsync(lifetime.Token);
+        var installed = await App.Services.Downloads.ListInstalledAsync(lifetime.Token);
+        if (catalogue.Count == 0) Body.Children.Add(Ui.Text("No models are available in this build."));
+        foreach (var model in catalogue.Where(entry => entry.Listed))
+        {
+            var panel = Ui.Stack(12); var available = installed.Any(entry => entry.Id == model.Id && entry.Verified);
+            panel.Children.Add(Ui.Text($"{model.Engine} · {model.TotalBytes / 1_000_000d:0} MB · {model.License}", "HelperText"));
+            panel.Children.Add(Ui.Text(available ? "Installed and verified." : "Not installed.", "HelperText"));
+            var bar = new ProgressBar { Visibility = Visibility.Collapsed }; panel.Children.Add(bar);
+            panel.Children.Add(Ui.Button(available ? "Remove" : "Download", () => _ = Ui.RunAsync(notice, async () =>
+            {
+                if (download is not null) { Ui.Show(notice, "A model download is already running."); return; }
+                var host = model.Files.FirstOrDefault()?.Url.Host ?? model.LicenseUrl.Host;
+                if (!await Ui.ConfirmAsync(Root.XamlRoot, available ? "Remove model?" : "Download model?", available ? $"Remove {model.Id}? Your projects and source videos stay here." : $"{model.Id}\nPublisher: {host}\nDownload: {model.TotalBytes / 1_000_000d:0} MB\nLicence: {model.License}\n{model.Attribution}\n{model.LicenseUrl}", available ? "Remove" : "Download and accept licence")) return;
+                download = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token); bar.Visibility = Visibility.Visible;
+                try
+                {
+                    if (available) await App.Services.Downloads.RemoveAsync(model.Id, download.Token);
+                    else await App.Services.Downloads.InstallAsync(model.Id, new Progress<ModelDownloadProgress>(value => { bar.IsIndeterminate = value.TotalBytes is null; bar.Value = value.TotalBytes > 0 ? value.BytesReceived * 100d / value.TotalBytes.Value : 0; Ui.Show(notice, value.Stage); }), download.Token);
+                    Ui.Show(notice, available ? "Model removed." : "Model installed and verified. Reopen Local Models to refresh.");
+                }
+                finally { download.Dispose(); download = null; bar.Visibility = Visibility.Collapsed; }
+            }, "Local models")));
+            panel.Children.Add(Ui.Button("Cancel download", () => download?.Cancel()));
+            var group = new SettingsExpander { Header = model.Id, HorizontalAlignment = HorizontalAlignment.Stretch };
+            group.Items.Add(new SettingsCard { Content = panel, HorizontalContentAlignment = HorizontalAlignment.Stretch }); Body.Children.Add(group);
+        }
+    }
+    private void Export()
+    {
+        var aspects = new[] { "source", "16:9", "9:16", "1:1" };
+        var aspect = Ui.Choice("Default aspect", ["Source", "16:9", "9:16", "1:1"], Array.IndexOf(aspects, App.Services.Get("export.defaultAspect", "source")));
+        aspect.SelectionChanged += (_, _) => Save("export.defaultAspect", aspects[aspect.SelectedIndex]); Body.Children.Add(aspect);
+        var quality = Ui.Choice("Quality", ["Standard", "High"], App.Services.Get("export.quality", "standard") == "high" ? 1 : 0);
+        quality.SelectionChanged += (_, _) => Save("export.quality", quality.SelectedIndex == 1 ? "high" : "standard"); Body.Children.Add(quality);
+        var srt = new ToggleSwitch { Header = "Save an SRT sidecar", IsOn = App.Services.Get("export.srt", false) };
+        srt.Toggled += (_, _) => Save("export.srt", srt.IsOn); Body.Children.Add(srt);
+        var folder = new TextBox { Header = "Default destination folder", Text = App.Services.Get("export.folder", Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyVideos), "VoxClip")) };
+        folder.LostFocus += (_, _) => { if (Path.IsPathFullyQualified(folder.Text)) Save("export.folder", folder.Text); else Ui.Show(notice, "Choose an absolute folder path.", InfoBarSeverity.Warning); }; Body.Children.Add(folder);
+        var pattern = new TextBox { Header = "File name pattern", Text = App.Services.Get("export.fileNamePattern", "{project}-{clip}-{aspect}"), MaxLength = 200 };
+        pattern.LostFocus += (_, _) => { if (!string.IsNullOrWhiteSpace(pattern.Text)) Save("export.fileNamePattern", pattern.Text); }; Body.Children.Add(pattern);
+        var openFolder = new ToggleSwitch { Header = "Open destination folder after export", IsOn = App.Services.Get("export.openFolderAfter", false) };
+        openFolder.Toggled += (_, _) => Save("export.openFolderAfter", openFolder.IsOn); Body.Children.Add(openFolder);
+        Body.Children.Add(Ui.Text("VoxClip uses H.264 hardware encoding when available and the Windows software encoder when needed. GPL encoders are never used.", "HelperText"));
+    }
+    private async Task AboutAsync()
+    {
+        Body.Children.Add(Ui.Text("VoxClip " + AppServices.Version, "SubtitleTextBlockStyle"));
+        Body.Children.Add(Ui.Text("A fast way to cut, because we already know where every word sits.\nOpen source · MIT · No telemetry."));
+        Body.Children.Add(Ui.Button("Check for updates", () => _ = Ui.RunAsync(notice, async () => { if (App.Windows.FirstOrDefault() is { } window) { await window.CheckUpdatesAsync(true); Ui.Show(notice, "Update check finished. Available updates appear in the main window. Development builds do not self-update."); } }, "Updates")));
+        Body.Children.Add(Ui.Text("What leaves this device: local transcription and editing stay here. ElevenLabs receives audio only after consent. AI connectors receive transcript text only, never video or audio.", "HelperText"));
+        Body.Children.Add(Ui.Button("Welcome tour", () => _ = Ui.RunAsync(notice, async () => { if (App.Windows.FirstOrDefault() is { } window) await window.ShowOnboardingAsync(); }, "Welcome tour")));
+        Body.Children.Add(Ui.Button("Reveal logs", () => ShareHelpers.Reveal(Path.Combine(App.Services.Data.Logs, "voxclip.log"))));
+        Body.Children.Add(Ui.Button("Copy diagnostics", () => _ = Ui.RunAsync(notice, async () => { var lines = await App.Services.Log.ReadRecentAsync(200, lifetime.Token); ShareHelpers.Copy($"VoxClip {AppServices.Version}\n{System.Runtime.InteropServices.RuntimeInformation.OSArchitecture}\n" + string.Join('\n', lines)); Ui.Show(notice, "Redacted diagnostics copied. No transcript text or keys are included."); }, "Diagnostics")));
+        Body.Children.Add(Ui.Text("Licences", "SubtitleTextBlockStyle"));
+        Body.Children.Add(Ui.Text("This software uses libraries from the FFmpeg project under the LGPL. The FFmpeg DLLs are dynamically linked. You may replace those DLLs with compatible versions and reverse engineer them to debug changes.", "HelperText"));
+        Body.Children.Add(new HyperlinkButton { Content = "FFmpeg corresponding source for VoxClip " + AppServices.Version,
+            NavigateUri = new Uri("https://github.com/Siim/voxclip/releases/download/v" + AppServices.Version + "/VoxClip-win-ffmpeg-source.tar.xz") });
+        Body.Children.Add(Ui.Text("FFmpeg.AutoGen 9.0.1.1 is MIT-licensed. Its notice is included with the other third-party licences below.", "HelperText"));
+        var path = Path.Combine(AppContext.BaseDirectory, "THIRD_PARTY_NOTICES.md");
+        Body.Children.Add(new TextBox { Text = await File.ReadAllTextAsync(path, lifetime.Token), IsReadOnly = true, AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MaxHeight = 420, FontFamily = new FontFamily("Cascadia Mono"), FontSize = 12 });
     }
 }
