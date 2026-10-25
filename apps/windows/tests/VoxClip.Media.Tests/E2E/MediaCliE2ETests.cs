@@ -80,7 +80,7 @@ public sealed class MediaCliE2ETests
             }
             if (caseId == "e2e-7-counter-9x16") arguments.AddRange(["--aspect", "9:16"]);
             if (caseId == "e2e-6-big-source") arguments.AddRange(["--aspect", "source"]);
-            var (exit, result) = await RunCli(arguments, directory, TestContext.Current.CancellationToken);
+            var (exit, result) = await RunCli(arguments, directory, caseId, TestContext.Current.CancellationToken);
             WriteReport(caseId, exit, result);
             if (caseId == "e2e-5-everything-cut")
             {
@@ -129,7 +129,7 @@ public sealed class MediaCliE2ETests
         }
     }
 
-    private static async Task<(int Exit, JsonNode Result)> RunCli(IReadOnlyList<string> arguments, string directory, CancellationToken ct)
+    private static async Task<(int Exit, JsonNode Result)> RunCli(IReadOnlyList<string> arguments, string directory, string caseId, CancellationToken ct)
     {
         var cli = Environment.GetEnvironmentVariable("VOXCLIP_CLI") ?? Path.Combine(NativePipelineTests.TestRoot,
             "..", "..", "src", "VoxClip.Cli", "bin", "Release", "net10.0", "voxclip-cli.dll");
@@ -143,7 +143,11 @@ public sealed class MediaCliE2ETests
         start.Environment["VOXCLIP_DATA_DIR"] = Path.Combine(directory, "data");
         start.Environment["VOXCLIP_LIVE_TESTS"] = "0";
         start.Environment["VOXCLIP_TEST_DOWNLOAD"] = "0";
+        start.Environment.Remove("VOXCLIP_FFMPEG_DIR");
         using var process = Process.Start(start)!;
+        var moduleCheck = caseId == "e2e-1-chirp-cut-fillers"
+            ? CheckShippingCliModules(process, Path.GetDirectoryName(cli)!, ct)
+            : Task.CompletedTask;
         using var limit = CancellationTokenSource.CreateLinkedTokenSource(ct);
         limit.CancelAfter(TimeSpan.FromMinutes(4));
         try
@@ -151,10 +155,59 @@ public sealed class MediaCliE2ETests
             var stdout = process.StandardOutput.ReadToEndAsync(limit.Token);
             var stderr = process.StandardError.ReadToEndAsync(limit.Token);
             await process.WaitForExitAsync(limit.Token);
+            await moduleCheck;
             var body = await stdout; await stderr;
             return (process.ExitCode, JsonNode.Parse(body.Trim()) ?? throw new JsonException("The CLI did not write one JSON object."));
         }
         catch { if (!process.HasExited) process.Kill(entireProcessTree: true); throw; }
+    }
+
+    private static async Task CheckShippingCliModules(Process process, string cliDirectory, CancellationToken ct)
+    {
+        var reportPath = Environment.GetEnvironmentVariable("VOXCLIP_SHIPPING_REPORT");
+        var evidencePath = Environment.GetEnvironmentVariable("VOXCLIP_CLI_MODULE_EVIDENCE");
+        if (string.IsNullOrWhiteSpace(reportPath) || string.IsNullOrWhiteSpace(evidencePath)) return;
+        using var report = JsonDocument.Parse(File.ReadAllText(reportPath));
+        var expected = report.RootElement.GetProperty("dlls");
+        var names = expected.EnumerateObject().Select(item => item.Name).ToArray();
+        var observed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        string? inspectionError = null;
+        while (true)
+        {
+            process.Refresh();
+            if (process.HasExited) break;
+            try
+            {
+                var loaded = process.Modules.Cast<ProcessModule>()
+                    .Where(module => names.Contains(module.ModuleName, StringComparer.OrdinalIgnoreCase))
+                    .ToDictionary(module => module.ModuleName, StringComparer.OrdinalIgnoreCase);
+                foreach (var name in loaded.Keys) observed.Add(name);
+                if (loaded.Count == names.Length)
+                {
+                    var modules = new List<object>();
+                    foreach (var name in names)
+                    {
+                        var path = Path.GetFullPath(loaded[name].FileName);
+                        Assert.Equal(Path.Combine(cliDirectory, name), path, ignoreCase: true);
+                        var bytes = new FileInfo(path).Length;
+                        using var stream = File.OpenRead(path);
+                        var hash = Convert.ToHexStringLower(SHA256.HashData(stream));
+                        Assert.Equal(expected.GetProperty(name).GetProperty("size").GetInt64(), bytes);
+                        Assert.Equal(expected.GetProperty(name).GetProperty("sha256").GetString(), hash);
+                        modules.Add(new { name, path, bytes, sha256 = hash });
+                    }
+                    Directory.CreateDirectory(Path.GetDirectoryName(evidencePath)!);
+                    File.WriteAllText(evidencePath, JsonSerializer.Serialize(new { caseId = "e2e-1-chirp-cut-fillers", modules },
+                        new JsonSerializerOptions { WriteIndented = true }));
+                    return;
+                }
+            }
+            catch (System.ComponentModel.Win32Exception error) when (!process.HasExited) { inspectionError = error.Message; }
+            catch (InvalidOperationException error) when (!process.HasExited) { inspectionError = error.Message; }
+            await Task.Delay(50, ct);
+        }
+        Assert.Fail($"The shipping CLI exited before all six app-adjacent FFmpeg modules could be verified. " +
+            $"Observed: {string.Join(", ", observed.Order())}; inspection error: {inspectionError ?? "none"}.");
     }
 
     private static void WriteReport(string caseId, int exit, JsonNode result)

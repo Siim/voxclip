@@ -1,5 +1,37 @@
 # win-media handoff — 2026-10-25, round 4 continuation
 
+## Shipping FFmpeg runtime acceptance
+
+From the committed `track/win-media` checkout, run each available RID separately:
+
+```sh
+VOXCLIP_VM_HOST=siim@192.168.64.3 \
+VOXCLIP_SHIPPING_RID=win-arm64 \
+VOXCLIP_FFMPEG_ZIP="$HOME/Library/Caches/voxclip-ffmpeg-build/reports/win-arm64-1/voxclip-ffmpeg-n9.0.2-win-arm64.zip" \
+sh apps/windows/tests/VoxClip.Media.Tests/verify-vm.sh
+```
+
+Use `win-x64` and its matching report ZIP only when the VM has an x64 .NET 10
+host/runtime. The script checks the ZIP, input digest and six DLL hashes against
+the committed manifest and audited report before transfer. The VM checks them
+again before loading. It builds from `git archive HEAD`, with offline NuGet
+sources and one build job, then runs the ten canonical CLI cases, the software
+MF colour test, loaded-module identity, and supported-format native pipeline
+selections in separate test processes. The AVI, FLV and raw AAC success cases
+are excluded because their demuxers are outside the shipping build. Caption
+goldens and the full Core/Media suites are outside this selection. The CLI
+gets only app-adjacent DLLs; its test subprocess removes the test-only loader
+override. The native test-process evidence records the six paths, sizes and
+SHA-256 values, license string, configuration and process architecture. The
+first CLI case separately records the six modules loaded by the shipping CLI
+from its own app directory and verifies their hashes.
+
+Logs, E2E JSON/CSV reports, `loaded-modules.json` and
+`loaded-cli-modules.json` are copied into the
+ignored `.runs/<owner>/` directory before the owned VM scratch is removed.
+The runner releases only its own lock. A pre-existing lock with a missing
+owner marker is reported after 90 seconds and left untouched.
+
 ## Native prerequisites and reproducibility
 
 Work only in the `track/win-media` checkout and `C:\voxclip-build\win-media` on Windows. Source transfers use `git archive HEAD apps/windows shared`; ignored generated fixtures are transferred separately. Never transfer environment or credential files. `FfmpegLoader.LibraryMajors`, derived from FFmpeg.AutoGen, determines DLL basenames and ABI majors. Do not use a different ABI with these struct layouts. `build/ffmpeg.json` remains owned by win-ffmpeg-pin.

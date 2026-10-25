@@ -1,9 +1,10 @@
-param([string]$LockOwner = '', [string]$FfmpegDirectory = $env:VOXCLIP_FFMPEG_DIR, [switch]$WithoutEncoders, [switch]$DiagnoseMf, [switch]$ManagedOnly)
+param([string]$LockOwner = '', [string]$FfmpegDirectory = $env:VOXCLIP_FFMPEG_DIR, [switch]$WithoutEncoders, [switch]$DiagnoseMf, [switch]$ManagedOnly,
+    [switch]$ShippingAcceptance, [string]$ShippingRid = '', [string]$BuildReport = '')
 $ErrorActionPreference = 'Stop'
 Set-Location (Resolve-Path (Join-Path $PSScriptRoot '..\..\..\..'))
 if (-not $PWD.Path.StartsWith('C:\voxclip-build\win-media\', [StringComparison]::OrdinalIgnoreCase)) { throw 'Run only in an archived win-media workspace.' }
 if (-not (Test-Path 'C:\voxclip-build\vm.lock\owner') -or (Get-Content 'C:\voxclip-build\vm.lock\owner') -ne $LockOwner) { throw 'The caller must own the VM lock.' }
-if (-not $ManagedOnly -and (-not $FfmpegDirectory -or -not (Test-Path $FfmpegDirectory))) { throw 'Pass -FfmpegDirectory with the self-built LGPL FFmpeg 9 native directory.' }
+if (-not $ManagedOnly -and (-not $FfmpegDirectory -or (-not $ShippingAcceptance -and -not (Test-Path $FfmpegDirectory)))) { throw 'Pass -FfmpegDirectory with the self-built LGPL FFmpeg 9 native directory.' }
 if ($FfmpegDirectory -and -not $FfmpegDirectory.StartsWith('C:\voxclip-build\win-media\', [StringComparison]::OrdinalIgnoreCase)) { throw 'Copy approved DLLs into the win-media VM directory first.' }
 $env:VOXCLIP_FFMPEG_DIR = $FfmpegDirectory
 $env:VOXCLIP_REQUIRE_NATIVE = '1'
@@ -17,9 +18,17 @@ $env:MSBUILDDISABLENODEREUSE = '1'
 $env:DOTNET_CLI_DO_NOT_USE_MSBUILD_SERVER = '1'
 $env:UseSharedCompilation = 'false'
 $dotnet = 'C:\Program Files\dotnet\dotnet.exe'
+$workspaceRoot = $PWD.Path
 $runs = Join-Path $PWD 'apps\windows\tests\VoxClip.Media.Tests\.runs'
 New-Item -ItemType Directory -Force $runs | Out-Null
 Set-Content (Join-Path $runs 'runner.pid') $PID
+function Assert-ScratchBudget {
+    $free = (Get-PSDrive C).Free
+    if ($free -lt 6GB) { throw "C: free space fell below 6 GiB: $free bytes." }
+    $owned = (Get-ChildItem $workspaceRoot -Recurse -File -ErrorAction Stop | Measure-Object Length -Sum).Sum
+    if ($owned -gt 2GB) { throw "Owned win-media scratch exceeded 2 GiB: $owned bytes." }
+    Write-Output ("C: free GiB: {0:N2}; owned scratch MiB: {1:N1}" -f ($free / 1GB), ($owned / 1MB))
+}
 $acceptanceFailures = [System.Collections.Generic.List[string]]::new()
 $collectFailures = $false
 function Invoke-Bounded([string]$Name, [string[]]$Arguments, [int]$Seconds, [int]$ExpectedExit = 0, [string]$Executable = $dotnet) {
@@ -46,6 +55,34 @@ function Invoke-Bounded([string]$Name, [string[]]$Arguments, [int]$Seconds, [int
     }
 }
 try {
+    if ($ShippingAcceptance) {
+        if ($ShippingRid -notin @('win-arm64', 'win-x64')) { throw 'Shipping RID must be win-arm64 or win-x64.' }
+        if (-not (Test-Path $BuildReport)) { throw 'Audited build report is missing.' }
+        Assert-ScratchBudget
+        $manifest = Get-Content 'apps\windows\build\ffmpeg.json' -Raw | ConvertFrom-Json
+        $report = Get-Content $BuildReport -Raw | ConvertFrom-Json
+        $pin = $manifest.builds.PSObject.Properties[$ShippingRid].Value
+        $archive = Join-Path $PWD 'ffmpeg.zip'
+        if ($report.rid -ne $ShippingRid -or $report.buildInputsSha256 -ne $manifest.buildInputsSha256 -or
+            $report.archive -ne $pin.name -or $report.sha256 -ne $pin.sha256 -or $report.size -ne $pin.size -or
+            (Get-Item $archive).Length -ne $pin.size -or (Get-FileHash $archive -Algorithm SHA256).Hash -ne $pin.sha256) {
+            throw 'Shipping archive/report does not match the committed manifest.'
+        }
+        Expand-Archive -LiteralPath $archive -DestinationPath (Join-Path $PWD 'native') -ErrorAction Stop
+        $expected = @('avcodec-63.dll', 'avformat-63.dll', 'avutil-61.dll', 'avfilter-12.dll', 'swresample-7.dll', 'swscale-10.dll')
+        $actual = @(Get-ChildItem $FfmpegDirectory -File | Select-Object -ExpandProperty Name)
+        if (@(Compare-Object $expected $actual).Count -ne 0) { throw 'Shipping archive has a different DLL set.' }
+        foreach ($name in $expected) {
+            $dll = Join-Path $FfmpegDirectory $name
+            $record = $report.dlls.PSObject.Properties[$name].Value
+            if (-not $record -or (Get-Item $dll).Length -ne $record.size -or
+                (Get-FileHash $dll -Algorithm SHA256).Hash -ne $record.sha256) { throw "Shipping DLL mismatch: $name" }
+        }
+        $env:VOXCLIP_SHIPPING_REPORT = $BuildReport
+        $env:VOXCLIP_MODULE_EVIDENCE = Join-Path $runs 'loaded-modules.json'
+        $env:VOXCLIP_CLI_MODULE_EVIDENCE = Join-Path $runs 'loaded-cli-modules.json'
+        Assert-ScratchBudget
+    }
     Set-Location apps\windows
     if ($DiagnoseMf) {
         $ffmpeg = Get-ChildItem $FfmpegDirectory -Filter ffmpeg.exe | Select-Object -First 1
@@ -57,7 +94,23 @@ try {
         Write-Output ('Windows encoder DLL present: ' + (Test-Path C:\Windows\System32\msmpeg2venc.dll))
         Get-CimInstance Win32_OperatingSystem | Select-Object Caption, OSArchitecture
     }
-    Invoke-Bounded 'build' @('build', 'VoxClip.CrossPlatform.slnf', '-c', 'Release', '--nologo', '-m:1', '-p:UseSharedCompilation=false', '-nodeReuse:false') 300
+    $buildArgs = @('build', 'VoxClip.CrossPlatform.slnf', '-c', 'Release', '--nologo', '-m:1', '-p:UseSharedCompilation=false', '-nodeReuse:false')
+    if ($ShippingAcceptance) { $buildArgs += '-p:RestoreSources=C:\Users\siim\.nuget\packages' }
+    Invoke-Bounded 'build' $buildArgs 300
+    if ($ShippingAcceptance) {
+        Assert-ScratchBudget
+        Copy-Item (Join-Path $FfmpegDirectory '*.dll') 'src\VoxClip.Cli\bin\Release\net10.0' -Force
+        $env:VOXCLIP_CLI = Join-Path $PWD 'src\VoxClip.Cli\bin\Release\net10.0\voxclip-cli.dll'
+        $testDll = Join-Path $PWD 'tests\VoxClip.Media.Tests\bin\Release\net10.0\VoxClip.Media.Tests.dll'
+        Invoke-Bounded 'shipping-modules' @($testDll, '-class', 'VoxClip.Media.Tests.ShippingRuntimeIdentityTests') 90
+        Invoke-Bounded 'shipping-e2e' @($testDll, '-class', 'VoxClip.Media.Tests.E2E.MediaCliE2ETests') 900
+        Invoke-Bounded 'shipping-colour' @($testDll, '-class', 'VoxClip.Media.Tests.E2E.SoftwareMfBarColorTests') 180
+        Invoke-Bounded 'shipping-native-conformance' @($testDll, '-class', 'VoxClip.Media.Tests.NativeMediaConformanceTests') 180
+        Invoke-Bounded 'shipping-native-pipeline' @($testDll, '-class', 'VoxClip.Media.Tests.NativePipelineTests', '-method-', 'VoxClip.Media.Tests.NativePipelineTests.DecoderReconfiguresWhenAudioChannelsChange') 300
+        Invoke-Bounded 'shipping-windows-pipeline' @($testDll, '-class', 'VoxClip.Media.Tests.WindowsPipelineTests', '-method-', 'VoxClip.Media.Tests.WindowsPipelineTests.IdentityExportAndPreviewAudioStartSeekFromZero') 300
+        Assert-ScratchBudget
+        return
+    }
     if ($ManagedOnly) {
         Invoke-Bounded 'managed-tests' @('test', '--project', 'tests\VoxClip.Media.Tests', '-c', 'Release', '--no-build', '--filter-not-trait', 'Category=RequiresFFmpeg', '--filter-not-trait', 'Category=RequiresWindows') 180
         Write-Output 'Managed verification only. Native FFmpeg acceptance remains pending.'

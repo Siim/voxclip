@@ -4,6 +4,35 @@ cd "$(dirname "$0")/../../../.."
 remote=${VOXCLIP_VM_HOST:?Set VOXCLIP_VM_HOST to the Windows SSH target}
 native_zip=${VOXCLIP_FFMPEG_ZIP:-}
 if [ -n "$native_zip" ]; then test -s "$native_zip"; fi
+shipping_rid=${VOXCLIP_SHIPPING_RID:-}
+if [ -n "$shipping_rid" ]; then
+  case "$shipping_rid" in win-arm64|win-x64) ;; *) echo 'VOXCLIP_SHIPPING_RID must be win-arm64 or win-x64' >&2; exit 2 ;; esac
+  test -n "$native_zip" || { echo 'VOXCLIP_FFMPEG_ZIP is required for shipping acceptance' >&2; exit 2; }
+  build_report="$(dirname "$native_zip")/report.json"
+  python3 - "$shipping_rid" "$native_zip" "$build_report" <<'PY'
+import hashlib, json, pathlib, sys, zipfile
+rid, archive_path, report_path = sys.argv[1:]
+manifest = json.loads(pathlib.Path('apps/windows/build/ffmpeg.json').read_text())
+report = json.loads(pathlib.Path(report_path).read_text())
+archive = pathlib.Path(archive_path)
+build = manifest['builds'][rid]
+assert archive.name == build['name'] == report['archive']
+assert report['rid'] == rid
+assert report['buildInputsSha256'] == manifest['buildInputsSha256']
+assert archive.stat().st_size == build['size'] == report['size']
+digest = hashlib.file_digest(archive.open('rb'), 'sha256').hexdigest()
+assert digest == build['sha256'] == report['sha256']
+with zipfile.ZipFile(archive) as z:
+    actual = {i.filename: i for i in z.infolist()}
+    expected = {'bin/' + name for name in report['dlls']}
+    assert set(actual) == expected
+    for name, data in report['dlls'].items():
+        entry = actual['bin/' + name]
+        assert entry.file_size == data['size']
+        assert hashlib.sha256(z.read(entry)).hexdigest() == data['sha256']
+print(f'{rid} shipping ZIP, input digest and six DLLs match manifest/report: {digest}')
+PY
+fi
 command -v timeout >/dev/null
 owner="win-media-$(date +%s)-$$"
 workspace="C:\\voxclip-build\\win-media\\source-$owner"
@@ -23,6 +52,11 @@ cleanup() {
     timeout -k 5 30 scp -o BatchMode=yes -o ConnectTimeout=5 "$remote:C:/voxclip-build/win-media/source-$owner/apps/windows/tests/VoxClip.Media.Tests/.runs/*.log" "$runs/$owner/" || true
     mkdir -p "$runs/$owner/e2e"
     timeout -k 5 30 scp -o BatchMode=yes -o ConnectTimeout=5 "$remote:C:/voxclip-build/win-media/source-$owner/apps/windows/tests/VoxClip.Media.Tests/.runs/e2e/*.json" "$runs/$owner/e2e/" || true
+    if [ -n "$shipping_rid" ]; then
+      timeout -k 5 30 scp -o BatchMode=yes -o ConnectTimeout=5 "$remote:C:/voxclip-build/win-media/source-$owner/apps/windows/tests/VoxClip.Media.Tests/.runs/loaded-modules.json" "$runs/$owner/" || true
+      timeout -k 5 30 scp -o BatchMode=yes -o ConnectTimeout=5 "$remote:C:/voxclip-build/win-media/source-$owner/apps/windows/tests/VoxClip.Media.Tests/.runs/loaded-cli-modules.json" "$runs/$owner/" || true
+      timeout -k 5 30 scp -o BatchMode=yes -o ConnectTimeout=5 "$remote:C:/voxclip-build/win-media/source-$owner/apps/windows/tests/VoxClip.Media.Tests/.runs/e2e/*.csv" "$runs/$owner/e2e/" || true
+    fi
   fi
   remote_ps "\$marker='C:\voxclip-build\vm.lock\owner'; if ((Test-Path \$marker) -and (Get-Content \$marker) -eq '$owner') { try { \$pidFile='$workspace\apps\windows\tests\VoxClip.Media.Tests\.runs\runner.pid'; if (Test-Path \$pidFile) { taskkill.exe /PID ([int](Get-Content \$pidFile)) /T /F 2>\$null }; Remove-Item -Recurse -Force '$workspace' -ErrorAction Stop } finally { if ((Get-Content \$marker) -eq '$owner') { Remove-Item -Recurse 'C:\voxclip-build\vm.lock' } } }" 30 || true
 }
@@ -36,7 +70,7 @@ while :; do
   command_timeout=20
   if [ "$remaining" -lt "$command_timeout" ]; then command_timeout=$remaining; fi
   status=0
-  remote_ps "try { New-Item -ItemType Directory 'C:\voxclip-build\vm.lock' -ErrorAction Stop | Out-Null } catch { \$lock=Get-Item 'C:\voxclip-build\vm.lock'; \$boot=(Get-CimInstance Win32_OperatingSystem).LastBootUpTime; Get-Content 'C:\voxclip-build\vm.lock\owner' -ErrorAction SilentlyContinue; Write-Output ('Lock created: ' + \$lock.CreationTime + '; boot: ' + \$boot); if (\$lock.CreationTime -lt \$boot) { Write-Output 'Lock may be stale; report to the lead. It was not removed.'; exit 23 }; exit 22 }; Set-Content 'C:\voxclip-build\vm.lock\owner' '$owner'" "$command_timeout" || status=$?
+  remote_ps "try { New-Item -ItemType Directory 'C:\voxclip-build\vm.lock' -ErrorAction Stop | Out-Null } catch { \$lock=Get-Item 'C:\voxclip-build\vm.lock'; \$boot=(Get-CimInstance Win32_OperatingSystem).LastBootUpTime; if (\$lock.PSIsContainer) { Get-Content 'C:\voxclip-build\vm.lock\owner' -ErrorAction SilentlyContinue } else { Get-Content 'C:\voxclip-build\vm.lock' -ErrorAction SilentlyContinue }; Write-Output ('Lock created: ' + \$lock.CreationTime + '; boot: ' + \$boot); if (\$lock.CreationTime -lt \$boot) { Write-Output 'Lock may be stale; report to the lead. It was not removed.'; exit 23 }; if (\$lock.PSIsContainer -and -not (Test-Path 'C:\voxclip-build\vm.lock\owner') -and ((Get-Date) - \$lock.CreationTime).TotalSeconds -gt 90) { Write-Output 'Lock owner marker is missing; report to the lead. It was not removed.'; exit 24 }; exit 22 }; Set-Content 'C:\voxclip-build\vm.lock\owner' '$owner'" "$command_timeout" || status=$?
   if [ "$status" -eq 0 ]; then acquired=true; break; fi
   if [ "$status" -ne 22 ]; then exit "$status"; fi
   remaining=$((deadline - $(date +%s)))
@@ -54,7 +88,12 @@ timeout 90 scp -o BatchMode=yes -o ConnectTimeout=5 "$fixtures" "$remote:C:/voxc
 timeout 45 ssh "$remote" "cd /d $workspace && tar -xf workspace.tar && tar -xf fixtures.tar && del workspace.tar fixtures.tar"
 if [ -n "$native_zip" ]; then
   timeout 90 scp -o BatchMode=yes -o ConnectTimeout=5 "$native_zip" "$remote:C:/voxclip-build/win-media/source-$owner/ffmpeg.zip"
-  remote_ps "Expand-Archive -LiteralPath '$workspace\ffmpeg.zip' -DestinationPath '$workspace\native' -ErrorAction Stop; Remove-Item '$workspace\ffmpeg.zip'" 45
+  if [ -n "$shipping_rid" ]; then
+    timeout 30 scp -o BatchMode=yes -o ConnectTimeout=5 "$build_report" "$remote:C:/voxclip-build/win-media/source-$owner/report.json"
+    set -- -ShippingAcceptance -ShippingRid "$shipping_rid" -BuildReport "$workspace\report.json" "$@"
+  else
+    remote_ps "Expand-Archive -LiteralPath '$workspace\ffmpeg.zip' -DestinationPath '$workspace\native' -ErrorAction Stop; Remove-Item '$workspace\ffmpeg.zip'" 45
+  fi
   set -- -FfmpegDirectory "$workspace\native\bin" "$@"
 fi
 remote_ps "& '$workspace\apps\windows\tests\VoxClip.Media.Tests\verify-windows.ps1' -LockOwner '$owner' $*" 1800
