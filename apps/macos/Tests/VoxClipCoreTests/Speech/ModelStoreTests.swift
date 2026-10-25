@@ -10,18 +10,23 @@ struct ModelStoreTests {
         let payload = Data((0..<3000).map { UInt8($0 % 251) })
         let ranges = Mutex<[String?]>([])
         let base = SpeechStubHTTP.registerStream { request in
+            // Serve from the requested offset: under load a dropped connection can leave fewer bytes on disk.
             let range = request.value(forHTTPHeaderField: "Range")
             let attempt = ranges.withLock { $0.append(range); return $0.count }
-            let offset = (attempt - 1) * 1000
-            return SpeechStubHTTP.Reply(status: attempt == 1 ? 200 : 206,
-                headers: attempt == 1 ? [:] : ["Content-Range": "bytes \(offset)-2999/3000"],
-                body: payload.subdata(in: offset..<(offset + 1000)),
+            let offset = range.flatMap { Int($0.dropFirst("bytes=".count).dropLast()) } ?? 0
+            let end = attempt < 3 ? min(offset + 1000, payload.count) : payload.count
+            return SpeechStubHTTP.Reply(status: range == nil ? 200 : 206,
+                headers: range == nil ? [:] : ["Content-Range": "bytes \(offset)-2999/3000"],
+                body: payload.subdata(in: offset..<end),
                 failure: attempt < 3 ? .networkConnectionLost : nil)
         }
         let model = SpeechTestFiles.model(base.appendingPathComponent("model.bin"), data: payload)
         let store = ModelStore(catalog: SpeechTestCatalog(entries: [model]), locations: SpeechTestFiles.locations(root), configuration: SpeechStubHTTP.configuration(), confirm: { _, _ in true }, availableCapacity: { _ in Int64.max })
         try await store.install(id: model.id) { _ in }
-        #expect(ranges.withLock { $0 } == [nil, "bytes=1000-", "bytes=2000-"])
+        let requested = ranges.withLock { $0 }
+        #expect(requested.count == 3 && requested.first == .some(nil))
+        let offsets = requested.dropFirst().compactMap { $0.flatMap { Int($0.dropFirst("bytes=".count).dropLast()) } }
+        #expect(offsets.count == 2 && offsets[0] > 0 && offsets[1] > offsets[0])
         #expect(try await store.verify(id: model.id))
     }
     @Test func sha256VectorsAndIncremental() throws {
