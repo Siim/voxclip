@@ -22,6 +22,8 @@ public interface IPreviewEngine : IAsyncDisposable
 {
     /// <summary>Clock position; immutable value, never native context state.</summary>
     PreviewPosition Position { get; }
+    /// <summary>Recoverable playback failure, raised on the engine owner thread; also fails the next Play or Seek once.</summary>
+    event EventHandler<Exception>? PlaybackFaulted { add { } remove { } }
     /// <summary>Load media and a plan snapshot.</summary>
     Task LoadAsync(ComposeSnapshot snapshot, IProgress<MediaProgress>? progress, CancellationToken ct);
     /// <summary>Start edited playback.</summary>
@@ -34,7 +36,7 @@ public interface IPreviewEngine : IAsyncDisposable
     Task UpdateSnapshotAsync(ComposeSnapshot snapshot, CancellationToken ct);
     /// <summary>Swap captions without rebuilding the plan and recompose the paused frame once.</summary>
     Task UpdateCaptionsAsync(CaptionTrack? captions, CancellationToken ct);
-    /// <summary>Read bounded frame hand-offs. Consumer presents only the newest frame due at the clock.</summary>
+    /// <summary>Read bounded frame hand-offs for the engine lifetime, across recoverable playback faults. No re-subscribe is needed; only disposal or a terminal owner failure completes the stream. Consumer presents only the newest frame due at the clock.</summary>
     IAsyncEnumerable<PreviewFrame> ReadFramesAsync(CancellationToken ct);
 }
 /// <summary>Sequential MP4 exporter sharing the exact preview compose path; architecture §6.4.</summary>

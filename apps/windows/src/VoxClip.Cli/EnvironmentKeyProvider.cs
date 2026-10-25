@@ -10,8 +10,8 @@ public sealed class EnvironmentKeyProvider : IKeyProvider
         ct.ThrowIfCancellationRequested();
         var variable = account switch
         {
-            "elevenlabs-api-key" => "ELEVENLABS_API_KEY", "llm-api-key-anthropic" => "ANTHROPIC_API_KEY",
-            "llm-api-key-openai" => "OPENAI_API_KEY", "llm-api-key-xai" => "XAI_API_KEY", "llm-api-key-gemini" => "GEMINI_API_KEY", _ => null
+            "elevenlabs-api-key" => "VOXCLIP_ELEVENLABS_API_KEY", "llm-api-key-anthropic" => "VOXCLIP_ANTHROPIC_API_KEY",
+            "llm-api-key-openai" => "VOXCLIP_OPENAI_API_KEY", "llm-api-key-xai" => "VOXCLIP_XAI_API_KEY", "llm-api-key-gemini" => "VOXCLIP_GEMINI_API_KEY", _ => null
         };
         return Task.FromResult(variable is null ? null : Environment.GetEnvironmentVariable(variable));
     }

@@ -4,16 +4,16 @@ using VoxClip.Core.Domain.Shared;
 
 namespace VoxClip.Core.Domain.Captions;
 
-internal sealed record CaptionWordHints(bool? Emphasis = null, string? Emoji = null);
-
 internal static class CaptionLayoutBuilder
 {
     internal static async Task<CaptionTrack> BuildAsync(CaptionLayoutRequest request, IGlyphShaper shaper, IProgress<double>? progress,
-        CancellationToken ct, CaptionData data, IReadOnlyList<CaptionWordHints>? hints = null)
+        CancellationToken ct, CaptionData data)
     {
         ct.ThrowIfCancellationRequested();
         ArgumentNullException.ThrowIfNull(shaper);
         if (request.Frame.Width <= 0 || request.Frame.Height <= 0 || !double.IsFinite(request.Duration) || request.Duration < 0) throw new ArgumentException("Invalid caption output geometry or duration.");
+        var hints = request.WordHints;
+        if (hints is not null && hints.Count != request.Words.Count) throw new ArgumentException("Caption word hints must match source words.", nameof(request));
         var style = CaptionStyleResolver.Resolve(request, data, out var overridesRejected);
         if (request.Captions.StyleId == "off") return new(style, request.Frame, [], [], request.Duration) { OverridesRejected = overridesRejected };
         var font = data.Fonts[style.Font.File];

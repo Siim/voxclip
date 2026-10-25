@@ -177,13 +177,19 @@ public sealed class CaptionCacheAndBlurTests
         var track = await CaptionFixtureSupport.Build(document.RootElement.GetProperty("input"));
         var shared = new SkiaCaptionRasterizer { CacheEnabled = false };
         var independent = new SkiaCaptionRasterizer { CacheEnabled = false, ShareShadowMasks = false, PrecolorShadows = false };
+        var sharedMasksOnly = new SkiaCaptionRasterizer { CacheEnabled = false, PrecolorShadows = false };
+        var precoloredOnly = new SkiaCaptionRasterizer { CacheEnabled = false, ShareShadowMasks = false };
         foreach (var scale in new[] { 1.0, 0.37 })
             foreach (var page in track.Pages)
                 foreach (var time in new[] { page.Start + 0.075, page.Start + 0.65, page.End - 0.001 })
                 {
                     var request = new CaptionRenderRequest(track, time, Scale: scale);
                     var expected = await independent.RenderAsync(request, CancellationToken.None);
+                    var sharedMaskPixels = await sharedMasksOnly.RenderAsync(request, CancellationToken.None);
+                    var precoloredPixels = await precoloredOnly.RenderAsync(request, CancellationToken.None);
                     var actual = await shared.RenderAsync(request, CancellationToken.None);
+                    Assert.True(expected.Pixels.Span.SequenceEqual(sharedMaskPixels.Pixels.Span), $"Page {page.Index}, time {time}, scale {scale}: shared mask differs without precoloring");
+                    Assert.True(expected.Pixels.Span.SequenceEqual(precoloredPixels.Pixels.Span), $"Page {page.Index}, time {time}, scale {scale}: precoloring differs without shared masks");
                     Assert.True(expected.Pixels.Span.SequenceEqual(actual.Pixels.Span), $"Page {page.Index}, time {time}, scale {scale}: shared mask differs");
                     Assert.Equal(1, shared.LastShadowMaskCount);
                     Assert.Equal(3, independent.LastShadowMaskCount);

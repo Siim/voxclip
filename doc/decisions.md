@@ -64,3 +64,17 @@ To change a decision, add a new row that supersedes the old one (keep the old ro
 | ADR-R18 | **No JSON Schema engine at runtime.** Apps validate shared JSON by strict typed decoding; tests validate with a real JSON Schema 2020-12 validator (architecture section 2.1 rule 8) | ADR-R3 | Core has no third-party dependencies, and neither Foundation nor the .NET BCL has a 2020-12 validator |
 | ADR-R19 | **.NET globalization stays on** (`InvariantGlobalization` unset); culture independence comes from ordinal and invariant APIs and `casemap.json` | ADR-017 | Invariant mode makes `string.Normalize` a silent no-op, which breaks NFC (measured on .NET 10.0.102) |
 | ADR-R20 | The **Claude Code and Codex connectors ship enabled in 0.1.0** (`enabled: true` in `shared/catalog/llm-providers.json`). The lead decided this on 2026-10-25 without waiting for the vendors' written confirmation; the requests stay open in ai.md section 14 item 8. If a vendor objects, the next release sets that connector's `enabled` to `false` | ADR-020 | The catalog switch is bundled data and cannot withdraw a connector from installed copies, so the lead checks it at release time (release.md section 4 step 3a) |
+| ADR-R21 | **Software Windows Media Foundation H.264 bar acceptance** uses preencoder RGB ±3, decoded Y/U/V each ±1 from the actual NV12 sent to the encoder at the same frame/pixel, exact High/yuv420p/BT.709 limited metadata, and an independent BT.709 coefficient check. Hardware Windows and macOS decoded RGB ±3 remains. | ADR-R10; architecture §§6.6, 9.5 case 8 | A one-code Y and U change after lossy H.264 becomes about 3.276 blue codes under the BT.709 limited inverse matrix. The measured green centre was preencoder NV12 133/64/52, decoded 134/65/52 and RGB 1/191/4. Raising the decoded RGB threshold would hide matrix/range errors; the split checks preserve those failures. Scope is software `h264_mf` only; there is no hardware acceptance claim. |
+
+**ADR-R21 measurement (Windows ARM64 software `h264_mf`, 2026-10-25).** The production shared compose path submitted NV12 at frames 9, 15 and 30 (0.3, 0.5 and 1.0 s). All eight canonical bars were sampled at three interior positions each: x = bar start + 60, 120 and 180, with y = 300, 500 and 700. Across all 72 samples, the maximum preencoder RGB error from canonical was 2, the maximum decoded Y/U/V change from submitted NV12 was 1, and the maximum decoded RGB error was 4. The decoded stream reported H.264 profile 100 (High), yuv420p, BT.709 primaries/transfer/matrix and MPEG limited range. At frame 15, centre position (x = bar start + 120, y = 500), the exact measurements were:
+
+| Bar | Canonical RGB | Preencoder RGB | Submitted Y/U/V | Decoded Y/U/V | Decoded RGB |
+|---|---|---|---|---|---|
+| White | 191/191/191 | 191/191/191 | 180/128/128 | 179/128/128 | 190/190/190 |
+| Yellow | 191/191/0 | 191/190/0 | 168/44/136 | 169/44/136 | 192/191/1 |
+| Cyan | 0/191/191 | 0/189/189 | 144/147/45 | 145/147/44 | 0/190/190 |
+| Green | 0/191/0 | 0/190/1 | 133/64/52 | 134/65/52 | 1/191/4 |
+| Magenta | 191/0/191 | 193/0/192 | 63/193/205 | 64/192/205 | 194/0/191 |
+| Red | 191/0/0 | 191/0/0 | 51/109/212 | 52/109/212 | 192/1/1 |
+| Blue | 0/0/191 | 0/0/191 | 28/212/120 | 28/211/121 | 1/0/189 |
+| Black | 0/0/0 | 0/0/0 | 16/128/128 | 17/128/128 | 1/1/1 |

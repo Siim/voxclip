@@ -54,8 +54,8 @@ internal static class CaptionFixtureSupport
         var hints = source.Select(word => new CaptionWordHints(word.TryGetProperty("emphasis", out var emphasis) && emphasis.ValueKind != JsonValueKind.Null ? emphasis.GetBoolean() : null,
             word.TryGetProperty("emoji", out var emoji) && emoji.ValueKind != JsonValueKind.Null ? emoji.GetString() : null)).ToArray();
         var request = new CaptionLayoutRequest(style, new(style.Id, overrides?.Clone() ?? captions.GetProperty("overrides").Clone(), Position(captions.GetProperty("position")), positions),
-            new(frame.GetProperty("width").GetInt32(), frame.GetProperty("height").GetInt32()), words, input.GetProperty("language").GetString(), input.GetProperty("duration").GetDouble());
-        return await CaptionLayoutBuilder.BuildAsync(request, new HarfBuzzGlyphShaper(), null, CancellationToken.None, CaptionDataLoader.Current, hints);
+            new(frame.GetProperty("width").GetInt32(), frame.GetProperty("height").GetInt32()), words, input.GetProperty("language").GetString(), input.GetProperty("duration").GetDouble()) { WordHints = hints };
+        return await CaptionEngine.BuildAsync(request, new HarfBuzzGlyphShaper(), null, CancellationToken.None);
     }
 
     internal static object Rect(RectD rectangle) => new { rectangle.X, rectangle.Y, w = rectangle.Width, h = rectangle.Height };

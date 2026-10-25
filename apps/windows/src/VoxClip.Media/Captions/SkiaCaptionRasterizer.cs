@@ -36,10 +36,11 @@ public sealed partial class SkiaCaptionRasterizer : ICaptionRasterizer
     private int nextTarget;
     private SKBitmap? overlayBitmap;
     private SKCanvas? overlayCanvas;
+    private SKBitmap? opacityBitmap;
+    private SKCanvas? opacityCanvas;
     private readonly SKPaint solidPaint = new();
     private readonly SKPaint strokePaint = new();
     private readonly SKPaint gradientPaint = new();
-    private readonly SKPaint layerPaint = new();
     private readonly SKPath boxPath = new();
     private readonly SKPath localBoxPath = new();
     private readonly SKPath borderPath = new();
@@ -53,6 +54,7 @@ public sealed partial class SkiaCaptionRasterizer : ICaptionRasterizer
     internal bool QueueShadowBlurs { get; set; } = true;
     internal enum RenderCheckpoint { OverlayBounds, ShadowPrepareGrowth, ShadowBlur, ShadowStart }
     internal Action<RenderCheckpoint>? TestCheckpoint { get; set; }
+    internal Action<SKBitmap, int, int, int, int>? TestOpacityBandReady { get; set; }
     internal int LastShadowMaskCount { get; private set; }
     internal long CachedBytes => cachedBytes;
     internal long RetainedShadowBytes => shadows.Sum(buffer => buffer.RetainedBytes) + masks.Sum(buffer => buffer.RetainedBytes);
@@ -62,6 +64,8 @@ public sealed partial class SkiaCaptionRasterizer : ICaptionRasterizer
     internal int RetainedTargetCount => targets.Count(target => target is not null);
     internal int RetainedTargetCanvasSaveCount => targets.First(target => target is not null)!.Canvas.SaveCount;
     internal int OverlayCanvasSaveCount => overlayCanvas?.SaveCount ?? 0;
+    internal long RetainedOpacityBandBytes => opacityBitmap?.ByteCount ?? 0;
+    internal int OpacityCanvasSaveCount => opacityCanvas?.SaveCount ?? 0;
     internal int LastOverlayClearPixels { get; private set; }
     internal int LastOverlayCopyPixels { get; private set; }
     internal int GradientShaderCount => gradients.Count;
@@ -274,7 +278,8 @@ public sealed partial class SkiaCaptionRasterizer : ICaptionRasterizer
             colored.Erase(SKColors.Transparent);
             using var canvas = new SKCanvas(colored);
             using var paint = new SKPaint { Color = color, IsAntialias = true };
-            canvas.DrawBitmap(mask, 0, 0, paint);
+            using var image = SKImage.FromBitmap(mask);
+            canvas.DrawImage(image, 0, 0, paint);
             canvas.Flush();
             Marshal.Copy(colored.GetPixels(), tint, 0, tint.Length);
             tintColor = color;
@@ -427,6 +432,8 @@ public sealed partial class SkiaCaptionRasterizer : ICaptionRasterizer
         var frame = CaptionEvaluator.Evaluate(request.Track, request.Time, request.ReduceMotion, visiblePage is null ? null : geometry.Frames(visiblePage), geometry.Frame);
         if (frame is null || frame.PageAlpha <= 0 || frame.PageScale <= 0) return;
         geometry.Frame = frame;
+        // A partially transparent page needs deterministic group opacity on every native Skia build.
+        if (frame.PageAlpha < 1) key = null;
         if (key is { } cacheKey)
         {
             var bounds = OverlayBounds(canvas, request, frame, geometry);
@@ -485,7 +492,8 @@ public sealed partial class SkiaCaptionRasterizer : ICaptionRasterizer
             canvas.Flush();
             return;
         }
-        DrawPage(canvas, request, frame, geometry, ct);
+        if (frame.PageAlpha < 1) DrawPageWithOpacity(canvas, target, request, frame, geometry, ct);
+        else DrawPage(canvas, request, frame, geometry, ct);
     }
 
     private static CacheKey? StableKey(CaptionRenderRequest request, TrackGeometry geometry, int width, int height)
@@ -530,13 +538,6 @@ public sealed partial class SkiaCaptionRasterizer : ICaptionRasterizer
         var layer = canvas.Save();
         try
         {
-            if (frame.PageAlpha < 1)
-            {
-                layerPaint.Color = SKColors.White.WithAlpha(Alpha(frame.PageAlpha));
-                var bounds = OverlayBounds(canvas, request, frame, geometry);
-                if (!canvas.TotalMatrix.TryInvert(out var inverse)) throw new InvalidOperationException("Invalid caption canvas transform.");
-                canvas.SaveLayer(inverse.MapRect(bounds), layerPaint);
-            }
             canvas.Scale((float)request.Scale);
             PageTransform(canvas, frame);
             Boxes(canvas, request.Track.Style, frame);
@@ -574,6 +575,67 @@ public sealed partial class SkiaCaptionRasterizer : ICaptionRasterizer
         }
         finally { canvas.RestoreToCount(layer); }
         canvas.Flush();
+    }
+
+    private unsafe void DrawPageWithOpacity(SKCanvas targetCanvas, PixelBuffer target, CaptionRenderRequest request, CaptionFrame frame, TrackGeometry geometry, CancellationToken ct)
+    {
+        var bounds = OverlayBounds(targetCanvas, request, frame, geometry);
+        var left = Math.Clamp((int)Math.Floor(bounds.Left), 0, target.Width - 1);
+        var top = Math.Clamp((int)Math.Floor(bounds.Top), 0, target.Height - 1);
+        var right = Math.Clamp((int)Math.Ceiling(bounds.Right), left + 1, target.Width);
+        var bottom = Math.Clamp((int)Math.Ceiling(bounds.Bottom), top + 1, target.Height);
+        var width = right - left;
+        var height = bottom - top;
+        if (opacityBitmap is null || opacityBitmap.Width < width || opacityBitmap.Height < height)
+        {
+            var grownWidth = Math.Max(opacityBitmap?.Width ?? 0, width);
+            var grownHeight = Math.Max(opacityBitmap?.Height ?? 0, height);
+            opacityCanvas?.Dispose();
+            opacityBitmap?.Dispose();
+            opacityBitmap = new(new SKImageInfo(grownWidth, grownHeight, SKColorType.Bgra8888, SKAlphaType.Premul));
+            opacityCanvas = new(opacityBitmap);
+        }
+        var band = new SKRectI(0, 0, width, height);
+        opacityBitmap.Erase(SKColors.Transparent, band);
+        var saved = opacityCanvas!.Save();
+        try
+        {
+            opacityCanvas.ClipRect(band, SKClipOperation.Intersect, false);
+            opacityCanvas.Translate(-left, -top);
+            DrawPage(opacityCanvas, request, frame, geometry, ct);
+        }
+        finally { opacityCanvas.RestoreToCount(saved); }
+        TestOpacityBandReady?.Invoke(opacityBitmap, left, top, width, height);
+        var source = new ReadOnlySpan<byte>((void*)opacityBitmap.GetPixels(), opacityBitmap.ByteCount);
+        CompositePremultipliedOpacity(source, opacityBitmap.RowBytes, target.Pixels.Span, target.Stride,
+            left, top, width, height, frame.PageAlpha, ct);
+    }
+
+    internal static void CompositePremultipliedOpacity(ReadOnlySpan<byte> source, int sourceStride, Span<byte> target,
+        int targetStride, int left, int top, int width, int height, double opacity, CancellationToken ct)
+    {
+        Span<byte> scaled = stackalloc byte[256];
+        for (var value = 0; value < scaled.Length; value++) scaled[value] = (byte)CaptionMath.RoundHalfUp(value * opacity);
+        for (var row = 0; row < height; row++)
+        {
+            ct.ThrowIfCancellationRequested();
+            var sourceRow = source.Slice(row * sourceStride, width * 4);
+            var targetRow = target.Slice((top + row) * targetStride + left * 4, width * 4);
+            for (var pixel = 0; pixel < width * 4; pixel += 4)
+            {
+                var alpha = scaled[sourceRow[pixel + 3]];
+                if (alpha == 0) continue;
+                if (alpha == 255)
+                {
+                    sourceRow.Slice(pixel, 4).CopyTo(targetRow.Slice(pixel, 4));
+                    continue;
+                }
+                var inverse = 255 - alpha;
+                for (var channel = 0; channel < 3; channel++)
+                    targetRow[pixel + channel] = (byte)Math.Min(255, scaled[sourceRow[pixel + channel]] + (targetRow[pixel + channel] * inverse + 127) / 255);
+                targetRow[pixel + 3] = (byte)Math.Min(255, alpha + (targetRow[pixel + 3] * inverse + 127) / 255);
+            }
+        }
     }
 
     private SKRect OverlayBounds(SKCanvas canvas, CaptionRenderRequest request, CaptionFrame frame, TrackGeometry geometry)

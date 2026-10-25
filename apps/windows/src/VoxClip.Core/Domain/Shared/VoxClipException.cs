@@ -86,8 +86,8 @@ public class VoxClipException(VoxClipErrorCode code, string message, Exception? 
     {
         VoxClipErrorCode.Cancelled => 6,
         VoxClipErrorCode.KeyMissing or VoxClipErrorCode.ModelMissing or VoxClipErrorCode.CliNotInstalled or VoxClipErrorCode.CliNotSignedIn => 7,
-        VoxClipErrorCode.UnsupportedContainer or VoxClipErrorCode.MediaMissing or VoxClipErrorCode.ProjectUnreadable or VoxClipErrorCode.ProjectTooNew or VoxClipErrorCode.SharedResourcesMissing => 3,
-        VoxClipErrorCode.NoAudioTrack or VoxClipErrorCode.NoSpeech or VoxClipErrorCode.TranscriptionFailed or VoxClipErrorCode.TranscriptionLanguageUnsupported or VoxClipErrorCode.SpeechAssetsUnavailable => 4,
+        VoxClipErrorCode.UnsupportedContainer or VoxClipErrorCode.MediaMissing or VoxClipErrorCode.NoAudioTrack or VoxClipErrorCode.DecodeFailed or VoxClipErrorCode.ProjectUnreadable or VoxClipErrorCode.ProjectTooNew or VoxClipErrorCode.SharedResourcesMissing or VoxClipErrorCode.FfmpegLicenceGate => 3,
+        VoxClipErrorCode.NoSpeech or VoxClipErrorCode.KeyPermissionMissing or VoxClipErrorCode.MediaTooLong or VoxClipErrorCode.TranscriptionFailed or VoxClipErrorCode.TranscriptionLanguageUnsupported or VoxClipErrorCode.SpeechAssetsUnavailable => 4,
         VoxClipErrorCode.EverythingCut or VoxClipErrorCode.EncoderUnavailable or VoxClipErrorCode.ExportFailed or VoxClipErrorCode.DiskFull => 5,
         _ => 1
     };

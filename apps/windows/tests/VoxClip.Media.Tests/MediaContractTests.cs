@@ -26,12 +26,6 @@ public sealed class MediaContractTests
         Assert.Equal(VoxClipErrorCode.FfmpegLicenceGate, exception.Code);
     }
     [Fact]
-    public void EncoderLadderContainsOnlyTheSpecifiedHardwareEncoders()
-        => Assert.Equal(new[] { "h264_nvenc", "h264_qsv", "h264_amf", "h264_mf" }, EncoderProbe.Ladder);
-    [Fact(Skip = "win-media: implement sample-exact media fixture conformance.")]
-    [Trait("Category", "RequiresFFmpeg")]
-    public void FfmpegConformance() { }
-    [Fact(Skip = "win-media: implement WASAPI and hardware encoder conformance on Windows.")]
-    [Trait("Category", "RequiresWindows")]
-    public void WindowsConformance() { }
+    public void EncoderLadderContainsOnlyTheApprovedWindowsEncoders()
+        => Assert.Equal(new[] { "h264_nvenc", "h264_qsv", "h264_amf", "h264_mf", "h264_mf (software)" }, EncoderProbe.Ladder);
 }

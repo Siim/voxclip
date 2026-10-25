@@ -29,7 +29,11 @@ public sealed record ExportJob(ComposeSnapshot Snapshot, ExportTarget Target, Ex
 public sealed record ExportProgress(string Phase, double? Fraction, long FramesEncoded, long? TotalFrames);
 /// <summary>Successful final output, never a partial path; architecture §9.3.</summary>
 public sealed record ExportResult(string Output, string? Srt, double DurationSeconds, int Width, int Height, double Fps,
-    long Frames, int AudioSampleRate, long AudioSamples, string VideoCodec, string Encoder, double ElapsedSeconds);
+    long Frames, int AudioSampleRate, long AudioSamples, string VideoCodec, string Encoder, double ElapsedSeconds)
+{
+    /// <summary>Rung 5 used the OS software MFT; show the acceleration notice once per export.</summary>
+    public bool SoftwareEncoding { get; init; }
+}
 /// <summary>Frame hand-off; caller owns its lifetime. Preview uses a bounded channel of six; architecture §6.3.</summary>
 public sealed record PreviewFrame(PixelBuffer Buffer, double EditedPts, double SourcePts, long Generation);
 /// <summary>Preview audio-clock position; architecture §6.3.</summary>

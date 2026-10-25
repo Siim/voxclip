@@ -1,0 +1,5 @@
+.build.log
+.vm-*.tar
+.runs/
+TestResults/
+Fixtures/generated/

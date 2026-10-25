@@ -6,37 +6,59 @@ using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using VoxClip.Core.Domain.Shared;
+using VoxClip.Core.Services.LLM;
 namespace VoxClip.Cli;
 
 internal static class CliApplication
 {
     private static readonly Option<bool> Json = new("--json") { Description = "Print exactly one final JSON object.", Recursive = true };
     private static readonly Option<bool> Quiet = new("--quiet") { Description = "Suppress human progress on stderr.", Recursive = true };
-    private static readonly Redactor DiagnosticRedactor = new(
-        new[] { "ELEVENLABS_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "XAI_API_KEY", "GEMINI_API_KEY" }
-            .Select(Environment.GetEnvironmentVariable).OfType<string>(),
-        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
-    private static string Version => Assembly.GetEntryAssembly()?.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion.Split('+')[0] ?? "unknown";
+    private static readonly Redactor DiagnosticRedactor = ServicesMergeAdapter.DiagnosticRedactor();
+    internal static string Version => Assembly.GetEntryAssembly()?.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion.Split('+')[0] ?? "unknown";
 
-    internal static async Task<int> RunAsync(string[] args, CancellationToken ct)
+    internal static async Task<int> RunAsync(string[] args, CancellationToken ct, ExportInputReader? openExport = null, ExportPreparer? prepareExport = null)
     {
-        var root = BuildCommand();
+        var root = BuildCommand(openExport, prepareExport);
         var result = root.Parse(args);
         if (result.Errors.Count > 0)
         {
             foreach (var error in result.Errors) Console.Error.WriteLine(DiagnosticRedactor.Redact(error.Message));
-            if (result.GetValue(Json)) WriteJson(new(false, result.CommandResult.Command.Name, null, new("usageError", "Invalid command line."), Version));
+            if (result.GetValue(Json)) WriteJson(new(false, CommandName(result), null,
+                new("usageError", DiagnosticRedactor.Redact(result.Errors[0].Message)), Version));
             return 2;
         }
-        try { return await result.InvokeAsync(cancellationToken: ct).ConfigureAwait(false); }
+        try { return await result.InvokeAsync(new InvocationConfiguration { EnableDefaultExceptionHandler = false, ProcessTerminationTimeout = null }, ct).ConfigureAwait(false); }
         catch (OperationCanceledException) { return Fail(result, "cancelled", string.Empty, 6); }
-        catch (VoxClipException exception) { return Fail(result, exception.WireCode, exception.Message, exception.ExitCode); }
+        catch (CliUsageException exception) { return Fail(result, "usageError", exception.Message, 2); }
+        catch (CliInputException exception) { return Fail(result, exception.Failure.WireCode, FailureMessage(exception.Failure), 3); }
+        catch (Exception exception) when (AiMergeAdapter.IsGate(exception))
+        {
+            var gate = AiMergeAdapter.Gate(exception);
+            return Fail(result, gate.Code, gate.Message, gate.ExitCode);
+        }
+        catch (LlmException exception)
+        {
+            var mapped = new VoxClipException(exception.Error.Code, exception.Error.UserMessage);
+            return Fail(result, mapped.WireCode, mapped.Message, mapped.ExitCode);
+        }
+        catch (VoxClipException exception)
+        {
+            return Fail(result, exception.WireCode, FailureMessage(exception), exception.ExitCode);
+        }
+        catch (JsonException) { return Fail(result, "projectUnreadable", "This project file can't be read: the input JSON is invalid.", 3); }
+        catch (FileNotFoundException) { return Fail(result, "mediaMissing", "The input file cannot be found.", 3); }
+        catch (DirectoryNotFoundException) { return Fail(result, "mediaMissing", "The input folder cannot be found.", 3); }
+        catch (IOException) { return Fail(result, result.CommandResult.Command == root ? "exportFailed" : "projectUnreadable", "The file could not be read or written.", result.CommandResult.Command == root ? 5 : 3); }
+        catch (UnauthorizedAccessException) { return Fail(result, result.CommandResult.Command == root ? "exportFailed" : "projectUnreadable", "Permission to access the file was denied.", result.CommandResult.Command == root ? 5 : 3); }
         catch (Exception) { return Fail(result, "unexpectedFailure", "The command could not be completed.", 1); }
     }
 
-    private static RootCommand BuildCommand()
+    internal static string FailureMessage(VoxClipException exception) => exception is MediaException { Code: VoxClipErrorCode.DecodeFailed }
+        ? $"VoxClip couldn't decode this video: {exception.Message.TrimEnd('.')}. Your edits are saved." : exception.Message;
+
+    private static RootCommand BuildCommand(ExportInputReader? openExport, ExportPreparer? prepareExport)
     {
-        var root = new RootCommand("VoxClip headless media tool. Unfinished operations return notImplemented (exit 1).");
+        var root = new RootCommand("VoxClip headless media tool.");
         root.Options.Add(Json);
         root.Options.Add(Quiet);
         Add(root, "--open", "Project or media path.");
@@ -50,15 +72,15 @@ internal static class CliApplication
         Flag(root, "--cut-fillers", "Cut fillers before pause tightening.");
         Flag(root, "--tighten-pauses", "Cut long pauses after fillers.");
         Choice(root, "--quality", "Encoding quality.", "standard", "high");
-        root.Options.Add(new Option<double?>("--fps") { Description = "Constant output frame rate." });
+        root.Options.Add(new Option<string?>("--fps") { Description = "Constant output frame rate." });
         Add(root, "--srt", "SRT sidecar path.");
         Add(root, "--audio-out", "Edited faded 32-bit float WAV test hook.");
         root.Validators.Add(validation =>
         {
             if (validation.GetValue<string?>("--clip") is not null && validation.GetValue<string?>("--range") is not null)
                 validation.AddError("--clip and --range are mutually exclusive.");
-            if (validation.GetValue<double?>("--fps") is { } fps && (!double.IsFinite(fps) || fps <= 0))
-                validation.AddError("--fps must be finite and positive.");
+            if (validation.GetValue<string?>("--fps") is { } fps && !TryFps(fps, out _))
+                validation.AddError("--fps must be greater than zero and at most 60");
             if (validation.GetValue<string?>("--range") is { } range)
             {
                 var bounds = range.Split(':');
@@ -67,7 +89,7 @@ internal static class CliApplication
                     validation.AddError("--range must be non-negative inclusive start:end indices, with start <= end.");
             }
         });
-        Stub(root, "export");
+        Stub(root, "export", openExport, prepareExport);
 
         var probe = Command(root, "probe", "Print media probe facts.");
         probe.Arguments.Add(new Argument<string>("media"));
@@ -94,14 +116,15 @@ internal static class CliApplication
         var caption = Command(root, "render-caption", "Render one transparent caption golden case.");
         Add(caption, "--case", "Caption layout fixture; style is read from its input.");
         Add(caption, "--tiles", "Gallery preview-tiles.json, mutually exclusive with --case.");
-        caption.Options.Add(new Option<int?>("--sample") { Description = "Render one zero-based case sample instead of all samples." });
+        caption.Options.Add(new Option<string?>("--sample") { Description = "Render one zero-based case sample instead of all samples." });
         Add(caption, "--out", "PNG destination.", true);
         caption.Validators.Add(validation =>
         {
             var hasCase = validation.GetValue<string?>("--case") is not null;
             var hasTiles = validation.GetValue<string?>("--tiles") is not null;
             if (hasCase == hasTiles) validation.AddError("Specify exactly one of --case or --tiles.");
-            if (validation.GetValue<int?>("--sample") is { } sample && (sample < 0 || !hasCase))
+            if (validation.GetValue<string?>("--sample") is { } sample &&
+                (!int.TryParse(sample, NumberStyles.None, CultureInfo.InvariantCulture, out _) || !hasCase))
                 validation.AddError("--sample must be a non-negative index with --case.");
         });
         Stub(caption, "render-caption");
@@ -118,7 +141,7 @@ internal static class CliApplication
         Add(test, "--connector", "Connector catalog id.", true);
         Add(test, "--model", "Model id.");
         Stub(test, "llm-test");
-        Stub(Command(root, "encoders", "Probe the hardware H264 encoder ladder."), "encoders");
+        Stub(Command(root, "encoders", "Probe the Windows H264 encoder ladder."), "encoders");
         var version = Command(root, "version", "Print version and runtime platform.");
         version.SetAction(result =>
         {
@@ -129,6 +152,16 @@ internal static class CliApplication
             return 0;
         });
         return root;
+    }
+
+    internal static bool TryFps(string value, out double fps)
+        => double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out fps) &&
+            double.IsFinite(fps) && fps > 0 && fps <= 60;
+
+    internal static int? Sample(ParseResult arguments)
+    {
+        var value = arguments.GetValue<string?>("--sample");
+        return value is null ? null : int.Parse(value, NumberStyles.None, CultureInfo.InvariantCulture);
     }
 
     private static void Speech(Command command, bool requireEngine = false)
@@ -154,23 +187,34 @@ internal static class CliApplication
         command.Options.Add(option);
         return option;
     }
-    private static void Stub(Command command, string name) => command.SetAction((result, ct) =>
+    private static void Stub(Command command, string name, ExportInputReader? openExport = null, ExportPreparer? prepareExport = null) => command.SetAction(async (result, ct) =>
     {
         ct.ThrowIfCancellationRequested();
         if (name == "export" && (result.GetValue<string?>("--open") is null || result.GetValue<string?>("--export") is null))
-            return Task.FromResult(Fail(result, "usageError", "Export requires --open and --export.", 2, name));
+            return Fail(result, "usageError", "Export requires --open and --export.", 2, name);
         var path = name == "probe" ? result.GetValue<string>("media") : result.GetValue<string?>("--open");
-        if (path is not null && !File.Exists(path))
-            return Task.FromResult(Fail(result, "mediaMissing", "The input file cannot be found.", 3, name));
-        return Task.FromResult(Fail(result, "notImplemented", "win-media", 1, name));
+        if (name != "export" && path is not null && !File.Exists(path))
+            return Fail(result, "mediaMissing", "The input file cannot be found.", 3, name);
+        var fields = await CliOperations.ExecuteAsync(name, result, ct, openExport, prepareExport).ConfigureAwait(false);
+        fields["ok"] = true; fields["command"] = name; fields["version"] = Version;
+        if (result.GetValue(Json)) Console.Out.WriteLine(fields.ToJsonString());
+        else if (name == "export")
+        {
+            Console.Out.WriteLine(fields["output"]?.GetValue<string>());
+            Console.Out.WriteLine("encoder: " + fields["encoder"]?.GetValue<string>());
+        }
+        else Console.Out.WriteLine(fields["output"]?.GetValue<string>() ?? fields.ToJsonString());
+        return 0;
     });
     private static int Fail(ParseResult result, string code, string message, int exitCode, string? command = null)
     {
-        if (result.GetValue(Json)) WriteJson(new(false, command ?? result.CommandResult.Command.Name, null, new(code, message), Version));
+        if (result.GetValue(Json)) WriteJson(new(false, command ?? CommandName(result), null, new(code, DiagnosticRedactor.Redact(message)), Version));
         else if (message.Length != 0) Console.Error.WriteLine(DiagnosticRedactor.Redact(code + ": " + message));
         return exitCode;
     }
     private static void WriteJson(CliEnvelope value) => Console.Out.Write(JsonSerializer.Serialize(value, CliJsonContext.Default.CliEnvelope) + "\n");
+    private static string CommandName(ParseResult result) => result.CommandResult.Parent is null ? "export" :
+        result.CommandResult.Parent is CommandResult parent && parent.Command.Name == "models" ? "models " + result.CommandResult.Command.Name : result.CommandResult.Command.Name;
 }
 internal sealed record CliError(string Code, string Message);
 internal sealed record CliEnvelope(bool Ok, string Command,

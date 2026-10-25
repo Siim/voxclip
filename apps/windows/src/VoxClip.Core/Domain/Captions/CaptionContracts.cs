@@ -58,7 +58,13 @@ public sealed record CaptionTrack(CaptionStyle Style, PixelSize Frame, IReadOnly
 }
 /// <summary>Layout inputs with project overrides and edited words; captions §2.4 and §16.2.</summary>
 public sealed record CaptionLayoutRequest(CaptionStyle Style, ProjectCaptions Captions, PixelSize Frame,
-    IReadOnlyList<CaptionWord> Words, string? Language, double Duration);
+    IReadOnlyList<CaptionWord> Words, string? Language, double Duration)
+{
+    /// <summary>Optional manual choices, indexed by source word; captions §9.1–9.2.</summary>
+    public IReadOnlyList<CaptionWordHints>? WordHints { get; init; }
+}
+/// <summary>Manual emphasis and emoji choices for one source word; null allows the style's rule.</summary>
+public sealed record CaptionWordHints(bool? Emphasis = null, string? Emoji = null);
 /// <summary>Caller-owned premultiplied BGRA8 pixels, top-left origin, gamma-encoded blending; architecture §6.3.</summary>
 public sealed record PixelBuffer(Memory<byte> Pixels, int Width, int Height, int Stride);
 /// <summary>Per-frame state independent of previously rendered frames; captions §1.2.</summary>
