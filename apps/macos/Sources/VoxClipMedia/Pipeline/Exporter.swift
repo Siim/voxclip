@@ -8,6 +8,44 @@ private struct ExportPumpSource: @unchecked Sendable {
     let receiver: AVAssetWriterInput.SampleBufferReceiver
 }
 
+// Test seam at the composed writer input. No pixel buffer or sample buffer escapes the callback.
+struct WriterBoundarySample: Sendable {
+    let frame: Int64
+    let pts: Double
+    let rgb: [[Int]]
+}
+
+struct WriterBoundaryObservation: Sendable {
+    let frames: Set<Int64>
+    let points: [(x: Int, y: Int)]
+    let receive: @Sendable (WriterBoundarySample) -> Void
+
+    func capture(_ sample: CMReadySampleBuffer<CMSampleBuffer.DynamicContent>, frame: Int64) throws -> WriterBoundarySample {
+        try sample.withUnsafeSampleBuffer { raw in
+            guard let buffer = CMSampleBufferGetImageBuffer(raw),
+                  CVPixelBufferGetPixelFormatType(buffer) == kCVPixelFormatType_32BGRA else {
+                throw VoxClipError.decodeFailed("Observed writer input is not BGRA")
+            }
+            let width = CVPixelBufferGetWidth(buffer), height = CVPixelBufferGetHeight(buffer)
+            guard points.allSatisfy({ $0.x >= 0 && $0.x < width && $0.y >= 0 && $0.y < height }) else {
+                throw VoxClipError.decodeFailed("Writer observation point is outside the frame")
+            }
+            let status = CVPixelBufferLockBaseAddress(buffer, .readOnly)
+            guard status == kCVReturnSuccess else { throw VoxClipError.decodeFailed("Cannot lock writer input") }
+            defer { CVPixelBufferUnlockBaseAddress(buffer, .readOnly) }
+            guard let base = CVPixelBufferGetBaseAddress(buffer)?.assumingMemoryBound(to: UInt8.self) else {
+                throw VoxClipError.decodeFailed("Writer input has no base address")
+            }
+            let stride = CVPixelBufferGetBytesPerRow(buffer)
+            let rgb = points.map { point in
+                let offset = point.y * stride + point.x * 4
+                return [Int(base[offset + 2]), Int(base[offset + 1]), Int(base[offset])]
+            }
+            return WriterBoundarySample(frame: frame, pts: sample.presentationTimeStamp.seconds, rgb: rgb)
+        }
+    }
+}
+
 /// Native export implementation; architecture §5.6.
 public actor AVExporter: Exporter {
     private let builder: CompositionBuilder
@@ -19,14 +57,16 @@ public actor AVExporter: Exporter {
     private let pumpObserver: (@Sendable (ExportPumpEvent) -> Void)?
     private let pullCheck: (@Sendable (Int) -> Void)?
     private let decodeCheck: (@Sendable (Int) -> Void)?
-    public init() { builder = CompositionBuilder(); appendCheck = nil; pumpObserver = nil; pullCheck = nil; decodeCheck = nil }
-    public init(rasterizer: any CaptionRasterizer) { builder = CompositionBuilder(rasterizer: rasterizer); appendCheck = nil; pumpObserver = nil; pullCheck = nil; decodeCheck = nil }
+    private let writerObservation: WriterBoundaryObservation?
+    public init() { builder = CompositionBuilder(); appendCheck = nil; pumpObserver = nil; pullCheck = nil; decodeCheck = nil; writerObservation = nil }
+    public init(rasterizer: any CaptionRasterizer) { builder = CompositionBuilder(rasterizer: rasterizer); appendCheck = nil; pumpObserver = nil; pullCheck = nil; decodeCheck = nil; writerObservation = nil }
     init(appendCheck: @escaping @Sendable (Int, Int64) throws -> Void,
          pumpObserver: (@Sendable (ExportPumpEvent) -> Void)? = nil,
          pullCheck: (@Sendable (Int) -> Void)? = nil,
-         decodeCheck: (@Sendable (Int) -> Void)? = nil) {
+         decodeCheck: (@Sendable (Int) -> Void)? = nil,
+         writerObservation: WriterBoundaryObservation? = nil) {
         builder = CompositionBuilder(); self.appendCheck = appendCheck; self.pumpObserver = pumpObserver; self.pullCheck = pullCheck
-        self.decodeCheck = decodeCheck
+        self.decodeCheck = decodeCheck; self.writerObservation = writerObservation
     }
 
     private func acquire() async throws {
@@ -255,11 +295,17 @@ public actor AVExporter: Exporter {
                 try Task.checkCancellation()
                 try appendCheck?(0, frames)
                 try pumps.checkRunning()
-                while try !pumps.append({ try receiver.appendImmediately(sample) }) {
+                var observed: WriterBoundarySample?
+                while try !pumps.append({
+                    observed = try writerObservation?.frames.contains(frames) == true
+                        ? writerObservation?.capture(sample, frame: frames) : nil
+                    return try receiver.appendImmediately(sample)
+                }) {
                     try Task.checkCancellation()
                     try pumps.checkRunning()
                     try await Task.sleep(for: .milliseconds(1))
                 }
+                if let observed { writerObservation?.receive(observed) }
                 frames += 1
                 if lastProgress.duration(to: .now) >= .milliseconds(100) {
                     progress(ExportProgress(phase: .encoding, fraction: min(1, max(0, sample.presentationTimeStamp.seconds / duration))))

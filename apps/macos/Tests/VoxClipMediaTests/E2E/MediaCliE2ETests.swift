@@ -1,9 +1,10 @@
 import AVFoundation
 import CryptoKit
 import Foundation
+import Synchronization
 import Testing
 import VoxClipCore
-import VoxClipMedia
+@testable import VoxClipMedia
 import XCTest
 
 @Suite("canonical-cli-e2e", .serialized,
@@ -171,21 +172,58 @@ struct MediaCliE2ETests {
         }
         if caseId == "e2e-8-bars" {
             #expect(try await AVURLAsset(url: output).loadTracks(withMediaType: .audio).isEmpty)
-            let expected = [[191,191,191], [191,191,0], [0,191,191], [0,191,0],
-                            [191,0,191], [191,0,0], [0,0,191], [0,0,0]]
-            let points = (0..<8).flatMap { bar in (0..<3).map { position in (bar * 240 + 60 * (position + 1), 300 + 200 * position) } }
-            let frames = try await sampledFrames(output, points: points)
-            let sourceFrames = try await sampledFrames(source, points: points)
-            let decodedYUV = try await sampledYUVFrames(output, points: points, indices: [9, 15, 30])
-            #expect(frames.count == 60)
-            try #require(sourceFrames.count > 30 && decodedYUV.count == 3)
-            for index in [9, 15, 30] { for bar in 0..<8 { for position in 0..<3 { for channel in 0..<3 {
-                let point = bar * 3 + position
-                let actual = frames[index].pixels[point][channel]
-                let yuv = try #require(decodedYUV[index]?[point])
-                #expect(abs(actual - expected[bar][channel]) <= 3,
-                        "frame \(index), bar \(bar), point \(position), RGB \(channel): \(actual); source RGB \(sourceFrames[index].pixels[point]), decoded YUV \(yuv)")
-            } } } }
+            #expect(result["encoder"] as? String == "h264_videotoolbox")
+            let sourceProbe = try await AVMediaProbe().probe(source)
+            let rate = Double(sourceProbe.audio?.sampleRate ?? 48000)
+            let total = Int64((sourceProbe.durationSeconds * rate).rounded())
+            let plan = EditPlan(sampleRate: rate, totalSamples: total,
+                                kept: [MediaInterval(startSample: 0, endSample: total)])
+            let settings = try OutputSpec.resolved(source: sourceProbe, aspect: .source, quality: .standard)
+            let observed = Mutex<[WriterBoundarySample]>([])
+            let observation = WriterBoundaryObservation(frames: Set(MacColorAcceptance.frames), points: MacColorAcceptance.points) {
+                sample in observed.withLock { $0.append(sample) }
+            }
+            let companionURL = directory.appendingPathComponent("companion-output.mp4")
+            let companion = try await AVExporter(appendCheck: { _, _ in }, writerObservation: observation)
+                .export(ExportJob(render: RenderRequest(sourceURL: source, plan: plan, output: settings), outputURL: companionURL)) { _ in }
+            #expect(companion.encoder == "h264_videotoolbox")
+            #expect(companion.width == result["width"] as? Int && companion.height == result["height"] as? Int)
+            #expect(companion.fps == result["fps"] as? Double && companion.frames == result["frames"] as? Int64)
+            #expect(abs(companion.durationSeconds - (result["durationSeconds"] as? Double ?? -1)) <= 0.001)
+            #expect(try await AVURLAsset(url: companionURL).loadTracks(withMediaType: .audio).isEmpty)
+
+            let samples = observed.withLock { $0 }
+            let companionDecoded = try await MacColorAcceptance.decoded(companionURL)
+            let cliDecoded = try await MacColorAcceptance.decoded(output)
+            for (name, decoded) in [("companion", companionDecoded), ("CLI", cliDecoded)] {
+                try #require(decoded.yuvFrameCount == 60, "\(name): YUV decoded \(decoded.yuvFrameCount) frames, expected 60")
+                try #require(decoded.rgbFrameCount == 60, "\(name): BGRA decoded \(decoded.rgbFrameCount) frames, expected 60")
+            }
+            func rows(_ decoded: MacColorAcceptance.DecodedVideo) -> [MacColorAcceptance.Row] {
+                samples.flatMap { sample -> [MacColorAcceptance.Row] in
+                    guard let frame = decoded.frames[sample.frame], sample.rgb.count == 24,
+                          frame.yuv.count == 24, frame.rgb.count == 24 else { return [] }
+                    return (0..<24).map { point in
+                        MacColorAcceptance.Row(frame: sample.frame, point: point, pts: sample.pts,
+                                               decodedPTS: frame.pts, input: sample.rgb[point],
+                                               yuv: frame.yuv[point], rgb: frame.rgb[point])
+                    }
+                }
+            }
+            let pairedRows = rows(companionDecoded)
+            let cliRows = rows(cliDecoded)
+            if let path = ProcessInfo.processInfo.environment["VOXCLIP_E2E_OUT"], !path.isEmpty {
+                let reportDirectory = URL(fileURLWithPath: path)
+                try FileManager.default.createDirectory(at: reportDirectory, withIntermediateDirectories: true)
+                try MacColorAcceptance.csv(pairedRows, to: reportDirectory.appendingPathComponent("e2e-8-bars-paired-72.csv"))
+                try MacColorAcceptance.csv(cliRows, to: reportDirectory.appendingPathComponent("e2e-8-bars-cli-72.csv"))
+            }
+            let companionFailures = MacColorAcceptance.validate(pairedRows, metadata: try await MacColorAcceptance.metadata(companionURL), label: "companion")
+            // CLI has no observer. The independent companion runs the same source, identity plan and settings;
+            // its submitted BGRA is a witness, while CLI metadata and decoded pixels are checked separately.
+            let cliFailures = MacColorAcceptance.validate(cliRows, metadata: try await MacColorAcceptance.metadata(output), label: "CLI")
+            #expect(companionFailures.isEmpty, "\(companionFailures.joined(separator: "\n"))")
+            #expect(cliFailures.isEmpty, "\(cliFailures.joined(separator: "\n"))")
         }
     }
 
@@ -244,38 +282,6 @@ struct MediaCliE2ETests {
         }
         try #require(reader.status == .completed)
         return samples
-    }
-
-    private func sampledYUVFrames(_ url: URL, points: [(Int, Int)], indices: Set<Int>) async throws -> [Int: [[Int]]] {
-        let asset = AVURLAsset(url: url)
-        let track = try #require(try await asset.loadTracks(withMediaType: .video).first)
-        let reader = try AVAssetReader(asset: asset)
-        let output = AVAssetReaderTrackOutput(track: track, outputSettings: [
-            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange])
-        let provider = reader.outputProvider(for: output)
-        try #require(reader.startReading())
-        var frames = [Int: [[Int]]](), index = 0
-        while let ready = try await provider.next() {
-            if indices.contains(index) {
-                frames[index] = try ready.withUnsafeSampleBuffer { sample in
-                    let buffer = try #require(CMSampleBufferGetImageBuffer(sample))
-                    try #require(CVPixelBufferGetPlaneCount(buffer) == 2)
-                    CVPixelBufferLockBaseAddress(buffer, .readOnly)
-                    defer { CVPixelBufferUnlockBaseAddress(buffer, .readOnly) }
-                    let y = try #require(CVPixelBufferGetBaseAddressOfPlane(buffer, 0)).assumingMemoryBound(to: UInt8.self)
-                    let uv = try #require(CVPixelBufferGetBaseAddressOfPlane(buffer, 1)).assumingMemoryBound(to: UInt8.self)
-                    let yStride = CVPixelBufferGetBytesPerRowOfPlane(buffer, 0)
-                    let uvStride = CVPixelBufferGetBytesPerRowOfPlane(buffer, 1)
-                    return points.map { x, row in
-                        let chroma = (row / 2) * uvStride + (x / 2) * 2
-                        return [Int(y[row * yStride + x]), Int(uv[chroma]), Int(uv[chroma + 1])]
-                    }
-                }
-            }
-            index += 1
-        }
-        try #require(reader.status == .completed)
-        return frames
     }
 
     private func brightCaptionCounts(_ url: URL, frames wanted: Set<Int>) async throws -> [Int: Int] {
