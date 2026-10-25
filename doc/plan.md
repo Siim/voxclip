@@ -1,6 +1,6 @@
 # VoxClip implementation plan
 
-Status: M1 preview baseline and continuation of the full requested product. Updated 2026-10-25. Owner: the lead.
+Status: M1 preview baseline and continuation of the full requested product. Updated 2026-10-26. Owner: the lead.
 
 This plan splits M1 into seven tracks. Each track is built by one implementer in its own git worktree and owns a disjoint set of paths. Section 4 fixes the public API between tracks, so dependent tracks start at the same time against the same signatures. Section 5 holds the brief for each track. The orchestrator hands out these briefs as they are. Section 6 is the 0.1.0 release checklist.
 
@@ -15,22 +15,23 @@ Status on 2026-10-26 distinguishes implemented code, local test evidence, and de
 | Requested area | Current state | Remaining work |
 |---|---|---|
 | Native Swift/SwiftUI Mac and .NET/WinUI Windows apps | Import, transcription, word editing, manual/AI clips, preview, project save/reopen and export are integrated | Combined release acceptance, real-device workflows and accessibility/performance checks |
+| Clipping workspace and startup | Mac Home/import now share the document window, with visible Transcript/Clips navigation and persistent preview; Windows workspace and save-transition changes are implemented on their review track | Final Windows native integration; combined Mac native scene rerun after the host is unlocked |
 | Bring your own LLM | Catalog-backed cloud, local and CLI connectors are wired for clip finding | Live-provider acceptance and rewrite workflow integration |
 | ElevenLabs key and local speech models | Transcription routes and secure key storage are integrated | Real local-model quality and explicit live-provider acceptance |
 | Caption burner and styles | Shared preview/export composition, 19 styles and 300 cross-platform golden samples | Quiet-host timing and hosted CI on the final combined revision |
-| Signed apps | Signed and notarized local Mac 0.1.0 build 1 preview produced | Signed Windows preview and public-release acceptance |
+| Signed apps | Signed and notarized local Mac 0.1.0 build 1 preview produced; it predates the workspace redesign | Refreshed signed Mac preview, signed Windows preview and public-release acceptance |
 | Open-source monorepo | Public MIT repository contains both native apps, shared data and specs | Continue shipping corresponding source and complete bundled payload notices |
 | VoxConvo download page | Local page and redirect changes are implemented and tested | Deployment and published downloadable artifacts |
 | VoxConvo, X and LinkedIn integration | Export/share helpers exist | VoxConvo sign-in/upload/publish and integrated sharing acceptance; composer links do not establish direct upload |
-| AI rewrite, own-voice clone and voice changer | Both native Core services and shared offline contracts are integrated; no complete user-facing workflow yet | Consent recording and speaker verification, bounded full-take generation, synthetic timeline/persistence, preview/accept/undo and UI |
+| AI rewrite, own-voice clone and voice changer | Both native Core services, shared offline contracts, reversible v2 project data and deterministic full/clip output plans are integrated; active synth is explicitly blocked at legacy render boundaries | Paid-asset media validation, audio/video composition, consent recording and speaker verification, bounded full-take generation, preview/accept/undo, disclosure and UI |
 | Lip-sync | Spec and interface seams only | Provider adapter, jobs/cancellation, media integration, disclosure and end-to-end acceptance |
 
 The agreed follow-on specs also contain AI tighten, Clean audio, camera/microphone recording and expanded ingest. These are still open; a reserved type or protocol is not an implementation.
 
 Continuation order:
 
-1. Finish the current preview acceptance fixes in parallel with feature development: Windows x64 colour conversion, SDK compatibility, runtime agreement and installer notices, then combined hosted CI. Preserve encoder contracts and fixture thresholds.
-2. Implement reviewable rewrite proposals and ElevenLabs voice services with deterministic offline tests, region/key handling, explicit action authorization and cost information. Port the same contracts and fixtures to Windows.
+1. Finish the current preview acceptance fixes in parallel with feature development: integrate the reviewed workspace changes, preserve Windows colour correctness while checking conversion performance, and validate the current installed runtime agreement and notices, then run combined hosted CI. Both tested Windows architectures passed the strict shipping colour selection; x64 ran under ARM emulation, and performance remains open. Preserve encoder contracts and fixture thresholds.
+2. Retain the integrated rewrite and ElevenLabs Core request-binding contracts on both platforms, and connect them to the native workflow with separate review and approval for each paid action. Live-provider and real local-model acceptance remain separate from offline tests.
 3. Connect generated audio to reversible project segments, captions and the existing preview/export composition paths. Support both passage and full-take revisions. Add native UI and verify save/reopen, preview, accept, disable, undo and export.
 4. Implement lip-sync using a verified provider API with explicit user selection, cost preview and cancellation. Do not assume speech synthesis alone supplies lip-sync. Complete the recording, Clean audio, AI tighten and ingest work recorded in the topic specs.
 5. Complete VoxConvo authentication and publishing, deploy the download integration, and validate sharing. Prepare signed artifacts and draft releases under the release policy; a human publishes public releases.
