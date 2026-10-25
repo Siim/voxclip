@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Clips;
+using VoxClip.Core.Domain.VoiceLab;
 using TranscriptModel = VoxClip.Core.Domain.Transcript.Transcript;
 namespace VoxClip.Core.Domain.Shared;
 
@@ -53,5 +54,10 @@ public sealed record ProjectShare(IReadOnlyDictionary<string, string> Captions);
 /// <summary>Cached clip-finding runs; editing §10.6.</summary>
 public sealed record ProjectAi(IReadOnlyList<AiResult> Results);
 
-/// <summary>Schema-v1 placeholder only; segments MUST be empty. Voice Lab §10 requires a future schema bump.</summary>
-public sealed record VoiceLabPlaceholder(IReadOnlyList<JsonElement> Segments);
+/// <summary>Version 1 has only empty segments; version 2 adds typed paid assets and replacements.</summary>
+public sealed record VoiceLabPlaceholder(IReadOnlyList<VoiceLabSegment> Segments)
+{
+    /// <summary>Absent in version 1 and required in version 2.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<VoiceLabAsset>? Assets { get; init; }
+}

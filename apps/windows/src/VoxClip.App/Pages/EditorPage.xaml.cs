@@ -96,6 +96,7 @@ public sealed partial class EditorPage : Page
         var source = media ?? throw new InvalidOperationException("No media is open.");
         var rate = source.Audio?.SampleRate ?? 48000;
         var state = stateOverride ?? ViewModel.State;
+        ViewModel.RequireLegacyRendering(state);
         var samples = (long)(source.DurationSeconds * rate);
         var plan = new EditPlan(rate, samples, [], [new(0, samples)], samples, []);
         if (!demo && state is not null) plan = EditingEngine.BuildEditPlan(EditingEngine.BuildSegments(state, source.DurationSeconds), source.DurationSeconds, rate, state.PauseKeepSeconds);

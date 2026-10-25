@@ -22,6 +22,26 @@ public sealed class ViewModelTests
     private static EditorViewModel Demo() => new(Fixture(), DemoProject.Reduce, DemoProject.Summarize);
 
     [Fact]
+    public void SnapshotCapabilityHonorsFullAndClipScopeWithoutDroppingSynth()
+    {
+        var root = new DirectoryInfo(AppContext.BaseDirectory);
+        while (root is not null && !Directory.Exists(Path.Combine(root.FullName, "shared"))) root = root.Parent;
+        Assert.NotNull(root);
+        var project = ProjectSerialization.Deserialize(File.ReadAllText(Path.Combine(root.FullName,
+            "shared", "fixtures", "voice-lab", "passage-project.voxclip")));
+        var model = new EditorViewModel(project);
+        Assert.Throws<VoxClip.Core.Domain.VoiceLab.VoiceLabProjectException>(() => model.RequireLegacyRendering(model.State));
+        var outside = new VoxClip.Core.Domain.Editing.ClipRange("outside", "w1", "w2", "Source only", VoxClip.Core.Domain.Editing.ClipOrigin.Manual, null, null, true);
+        var state = model.State! with { Clips = model.State!.Clips.Append(outside).ToArray(), ActiveClipId = outside.Id };
+        model.RequireLegacyRendering(state);
+        Assert.Throws<VoxClip.Core.Domain.VoiceLab.VoiceLabProjectException>(() => model.RequireLegacyRendering(state with { ActiveClipId = null }));
+        Assert.True(model.Project.VoiceLab.Segments[0].Enabled);
+        var disabled = VoxClip.Core.Domain.VoiceLab.VoiceLabProject.SetEnabled(project, "vl-passage", false);
+        var restored = new EditorViewModel(disabled);
+        restored.RequireLegacyRendering(restored.State);
+    }
+
+    [Fact]
     public void FixtureCreatesParagraphsWithoutWordViews()
     {
         var model = Demo();

@@ -19,11 +19,11 @@ internal static class ProjectValidation
         var root = document.RootElement;
         RejectDuplicateKeys(root);
         Require(root.ValueKind == JsonValueKind.Object);
-        if (root.TryGetProperty("schemaVersion", out var version) && version.ValueKind == JsonValueKind.Number && version.TryGetInt32(out var number) && number > 1)
+        if (root.TryGetProperty("schemaVersion", out var version) && version.ValueKind == JsonValueKind.Number && version.TryGetInt32(out var number) && number > 2)
             throw new VoxClipException(VoxClipErrorCode.ProjectTooNew, "This project was saved by a newer VoxClip. Update VoxClip to open it.");
         Object(root, "format schemaVersion id createdAt modifiedAt savedBy media transcript edits captions export share ai voiceLab", "title extensions");
         String(root.GetProperty("format"), "voxclip-project");
-        Number(root.GetProperty("schemaVersion"), 1, 1, true);
+        Number(root.GetProperty("schemaVersion"), 1, 2, true);
         String(root.GetProperty("id"), "[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}");
         Timestamp(root.GetProperty("createdAt")); Timestamp(root.GetProperty("modifiedAt"));
         if (root.TryGetProperty("title", out var title)) Text(title, 0, 200);
@@ -76,7 +76,27 @@ internal static class ProjectValidation
             });
         });
         UniqueIds(ai.GetProperty("results").EnumerateArray().Select(result => result.GetProperty("id").GetString()!));
-        var voice = root.GetProperty("voiceLab"); Object(voice, "segments"); Require(voice.GetProperty("segments").ValueKind == JsonValueKind.Array && voice.GetProperty("segments").GetArrayLength() == 0);
+        var voice = root.GetProperty("voiceLab");
+        if (root.GetProperty("schemaVersion").GetInt32() == 1)
+        {
+            Object(voice, "segments"); Require(voice.GetProperty("segments").ValueKind == JsonValueKind.Array && voice.GetProperty("segments").GetArrayLength() == 0);
+        }
+        else
+        {
+            Object(voice, "assets segments");
+            Array(voice.GetProperty("assets"), asset => Object(asset, "id kind file sha256 durationSeconds sampleRate createdAt"));
+            Array(voice.GetProperty("segments"), segment =>
+            {
+                Object(segment, "id kind enabled replace outDuration audio text words provenance qa candidates selectedCandidateIndex");
+                Object(segment.GetProperty("replace"), "start end firstWordId lastWordId");
+                Object(segment.GetProperty("audio"), "assetId trimStart trimEnd stretch gainDb");
+                Nullable(segment.GetProperty("text"), text => Object(text, "original new"));
+                Nullable(segment.GetProperty("words"), words => Array(words, word => Object(word, "text start end synthetic")));
+                Object(segment.GetProperty("provenance"), "provider endpoint model voiceId consentRecordId requestId seed createdAt");
+                Object(segment.GetProperty("qa"), "transcriptMatch lufsJumpLu peakDbfs speakerScore");
+                Array(segment.GetProperty("candidates"), candidate => Object(candidate, "assetId score rejected"));
+            });
+        }
     }
 
     private static void Transcript(JsonElement transcript)

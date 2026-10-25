@@ -5,6 +5,7 @@ using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Services.LLM;
 using VoxClip.Core.Domain.Clips;
+using VoxClip.Core.Domain.VoiceLab;
 
 namespace VoxClip.App.ViewModels;
 
@@ -38,6 +39,17 @@ public sealed class EditorViewModel : ObservableObject
     }
 
     public Project Project => project;
+    internal void RequireLegacyRendering(EditState? renderState)
+    {
+        var scoped = renderState is null ? project : project with { Edits = project.Edits with
+        {
+            Clips = renderState.Clips.ToArray(), ActiveClipId = renderState.ActiveClipId,
+            CutWordIds = renderState.CutWordIds.ToArray(), CutPauseIds = renderState.CutPauseIds.ToArray(),
+            Corrections = new Dictionary<string, string>(renderState.Corrections),
+            PauseThresholdSeconds = renderState.PauseThresholdSeconds, PauseKeepSeconds = renderState.PauseKeepSeconds
+        } };
+        VoiceLabProject.RequireLegacyRendering(scoped, scoped.Edits.ActiveClipId is { } id ? VoiceLabOutputScope.Clip(id) : VoiceLabOutputScope.Full);
+    }
     public EditState? State => state;
     public string Title => project.Title ?? "Untitled take";
     public IReadOnlyList<TimedWord> Words => state?.Transcript.Words ?? [];

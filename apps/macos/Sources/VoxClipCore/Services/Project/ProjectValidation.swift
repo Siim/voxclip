@@ -50,7 +50,26 @@ enum ProjectValidation {
             let result = try object(rawResult, required: "id createdAt provider model preset instructions language inputSha256 clips")
             for clip in try array(result["clips"]) { _ = try object(clip, required: "title reason score startWordId endWordId") }
         }
-        _ = try object(root["voiceLab"], required: "segments")
+        let version = root["schemaVersion"] == .number(2) ? 2 : 1
+        let voice = try object(root["voiceLab"], required: version == 2 ? "segments assets" : "segments")
+        if version == 1 { try require(try array(voice["segments"]).isEmpty, "Version 1 Voice Lab must be empty") }
+        if version == 2 {
+            for asset in try array(voice["assets"]) {
+                _ = try object(asset, required: "id kind file sha256 durationSeconds sampleRate createdAt")
+            }
+            for segment in try array(voice["segments"]) {
+                let item = try object(segment, required: "id kind enabled replace outDuration audio text words provenance qa candidates selectedCandidateIndex")
+                _ = try object(item["replace"], required: "start end firstWordId lastWordId")
+                _ = try object(item["audio"], required: "assetId trimStart trimEnd stretch gainDb")
+                if item["text"] != .null { _ = try object(item["text"], required: "original new") }
+                if item["words"] != .null {
+                    for word in try array(item["words"]) { _ = try object(word, required: "text start end synthetic") }
+                }
+                _ = try object(item["provenance"], required: "provider endpoint model voiceId consentRecordId requestId seed createdAt")
+                _ = try object(item["qa"], required: "transcriptMatch lufsJumpLu peakDbfs speakerScore")
+                for candidate in try array(item["candidates"]) { _ = try object(candidate, required: "assetId score rejected") }
+            }
+        }
         if let extensions = root["extensions"] { _ = try map(extensions) }
         try validateDates(raw)
     }

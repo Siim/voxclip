@@ -1,5 +1,9 @@
 # macOS implementation contracts
 
+### 2026-10-26 — Voice Lab v2 project and Core output pieces (ADR-R24)
+
+- `ProjectVoiceLab` now retains typed `VoiceLabAsset` and `VoiceLabSegment` records in schemaVersion 2. Version 1 still writes only empty `segments`; generated assets require the version bump. `VoiceLabProject` validates and performs immutable accept, enable, disable, delete and candidate-selection transitions without changing source words or deleting assets. `VoiceLabOutputPlanner.build(_:scope:)` returns ordered source/synth sample pieces, mapping and captions for explicit full or clip scope. `requireLegacyRendering` rejects active synth for callers still using a source-only `EditPlan`. App, CLI and Media integration is a separate handoff; no rendering, consent capture or lip-sync is implied.
+
 ### 2026-10-26 — paired Voice Lab Core integration
 
 - The lead integrated reviewed Mac Core `aabf7f1` and Windows Core `458e5be` against the same rewrite prompt and version-1 behavior fixture, including all 31 conversion-input cases. Both services retain original timed words, require exact-input single-use approval, and check connector/model/context before a rewrite send. The Windows clone route additionally validates declared WAV samples; that stricter clone-input check is recorded in the Voice Lab spec. No app workflow, project schema, media composition, consent capture or speaker verification is implied by this Core integration.
@@ -1195,3 +1199,7 @@ Paths are relative to apps/macos. Nested public types are qualified with their e
 | `WhisperCppTranscriber` | `Sources/VoxClipMedia/Speech/WhisperCppTranscriber.swift` | mac-speech |
 | `WordAssembler` | `Sources/VoxClipCore/Domain/Transcript/TranscriptContracts.swift` | mac-speech |
 | `WordKind` | `Sources/VoxClipCore/Domain/Shared/Transcript.swift` | common (frozen; lead approval) |
+
+### ADR-R24 render capability integration
+
+The app cached plan and render request, and CLI plan/export, reject an enabled synthetic piece in their selected scope before rendering. Disabled replacements and clips excluding synth retain ordinary source rendering; v2 decode/save/reopen remains supported. Parent verification: Swift build, six VoiceLab project tests, CLI plan rejection/restoration, and the app self-test (147 assertions including six render-boundary checks) passed with isolated data and no Keychain/provider calls. Media splicing and the complete Voice Lab app workflow remain pending.

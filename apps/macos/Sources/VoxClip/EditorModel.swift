@@ -69,6 +69,7 @@ enum InspectorTab: String, CaseIterable { case captions = "Captions", clips = "C
     @ObservationIgnored private var renderedTranscript: Transcript?
     @ObservationIgnored private var renderedEdits: ProjectEdits?
     @ObservationIgnored private var renderedMedia: ProjectMedia?
+    @ObservationIgnored private var renderedVoiceLab: ProjectVoiceLab?
     @ObservationIgnored private var fillerCandidateIDs: Set<String> = []
     @ObservationIgnored private var planningSegments: [EditSegment]?
     @ObservationIgnored private var planningWordIndex: [String: Int] = [:]
@@ -183,7 +184,7 @@ enum InspectorTab: String, CaseIterable { case captions = "Captions", clips = "C
         let edits = project.edits
         let transcriptChanged = renderedTranscript != project.transcript
         let editChanged = renderedEdits != edits
-        guard transcriptChanged || editChanged || renderedMedia != project.media || renderedEdits == nil else { return }
+        guard transcriptChanged || editChanged || renderedMedia != project.media || renderedVoiceLab != project.voiceLab || renderedEdits == nil else { return }
         if transcriptChanged || renderedEdits?.corrections != edits.corrections {
             transcriptLayoutRevision += 1
             fillerCandidateIDs = Set(words.filter { word in
@@ -217,6 +218,7 @@ enum InspectorTab: String, CaseIterable { case captions = "Captions", clips = "C
             if summaryCache.count > 16 { summaryCache.removeFirst() }
         }
         do {
+            try VoiceLabProject.requireLegacyRendering(project, scope: activeClip.map { .clip($0.id) } ?? .full)
             if let state {
                 var comparable = edits
                 comparable.cutWordIds = renderedEdits?.cutWordIds ?? []
@@ -234,8 +236,12 @@ enum InspectorTab: String, CaseIterable { case captions = "Captions", clips = "C
                 planningSegments = segments
                 plan = try buildEditPlan(segments, duration: sourceDuration, sampleRate: Double(project.media.source.audio?.sampleRate ?? 48_000), pauseKeepSeconds: edits.pauseKeepSeconds)
             } else { planningSegments = nil; planningWordIndex = [:]; plan = Self.uncutPlan(duration: sourceDuration) }
-        } catch { plan = nil }
+        } catch {
+            plan = nil
+            if error as? VoiceLabProjectError == .unsupportedRendering { previewError = UserMessages.message(error) }
+        }
         renderedTranscript = project.transcript; renderedEdits = edits; renderedMedia = project.media
+        renderedVoiceLab = project.voiceLab
         transcriptRevision += 1
         timeline = TimelineProjection(model: self)
     }
@@ -450,6 +456,7 @@ enum InspectorTab: String, CaseIterable { case captions = "Captions", clips = "C
             }
             clip = selected
         }
+        try VoiceLabProject.requireLegacyRendering(project, scope: clip.map { .clip($0.id) } ?? .full)
         if clip != nil && state == nil { throw VoxClipError.exportFailed("Clip transcript is unavailable") }
         let segments = try state.map { try buildSegments($0, activeClip: clip) }
         var plan = plan

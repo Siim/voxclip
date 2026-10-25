@@ -10,7 +10,7 @@ The macOS and Windows apps send the same prompts to every LLM connector. The pro
 
 The connector catalog, including the connection-test request, is `../catalog/llm-providers.json`. The normative behaviour (how requests are built, windowed, validated and finalised) is in [`doc/spec/ai.md`](../../doc/spec/ai.md).
 
-`apps/macos/Sources/VoxClipCore/Services/VoiceLab/VoiceRewriteService.swift` is the current consumer of `voice-rewrite.json`. Windows Core must load the same file and match its review-only validation and offline connector tests before parity can be claimed.
+The Swift and Windows Core `VoiceRewriteService` implementations consume `voice-rewrite.json` and the shared review-only behavior fixtures.
 
 ## How the apps load these files
 

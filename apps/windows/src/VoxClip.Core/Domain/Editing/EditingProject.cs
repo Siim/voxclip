@@ -25,7 +25,8 @@ internal static class EditingProject
             new Dictionary<string, string>(state.Corrections, StringComparer.Ordinal), state.Clips.ToArray(), state.ActiveClipId);
         return Clean(project with { Transcript = state.Transcript, Edits = edits,
             Ai = replaced ? new([]) : project.Ai,
-            Share = replaced ? new(new Dictionary<string, string>(StringComparer.Ordinal)) : project.Share }, []);
+            Share = replaced ? new(new Dictionary<string, string>(StringComparer.Ordinal)) : project.Share,
+            VoiceLab = replaced ? project.VoiceLab with { Segments = [] } : project.VoiceLab }, []);
     }
 
     internal static ProjectModel Clean(ProjectModel project, List<string> warnings)

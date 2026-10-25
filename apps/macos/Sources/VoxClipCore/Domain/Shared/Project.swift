@@ -770,25 +770,31 @@ public struct ProjectAI: Codable, Sendable, Equatable {
 /// doc/architecture.md §3; shared/schemas/project.schema.json
 public struct ProjectVoiceLab: Codable, Sendable, Equatable {
     /// segments; doc/architecture.md §3; shared/schemas/project.schema.json
-    public var segments: [JSONValue]
+    public var segments: [VoiceLabSegment]
+    /// Absent in v1; present in v2, even when empty.
+    public var assets: [VoiceLabAsset]?
 
     /// Creates an explicit value without I/O or generated identifiers.
-    public init(segments: [JSONValue] = []) {
+    public init(segments: [VoiceLabSegment] = [], assets: [VoiceLabAsset]? = nil) {
         self.segments = segments
+        self.assets = assets
     }
 
     private enum CodingKeys: String, CodingKey {
         case segments
+        case assets
     }
 
     public init(from decoder: any Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
-        self.segments = try values.decode([JSONValue].self, forKey: .segments)
+        self.segments = try values.decode([VoiceLabSegment].self, forKey: .segments)
+        self.assets = try values.decodeIfPresent([VoiceLabAsset].self, forKey: .assets)
     }
 
     public func encode(to encoder: any Encoder) throws {
         var values = encoder.container(keyedBy: CodingKeys.self)
         try values.encode(self.segments, forKey: .segments)
+        try values.encodeIfPresent(self.assets, forKey: .assets)
     }
 
 }

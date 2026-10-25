@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://raw.githubusercontent.com/Siim/voxclip/main/shared/schemas/project.schema.json",
-  "title": "VoxClip project file (.voxclip), schemaVersion 1",
+  "title": "VoxClip project file (.voxclip), schemaVersion 1 or 2",
   "description": "One portable UTF-8 JSON document per project, identical on macOS and Windows. It references the source media (never embeds it) and stores the transcript, the edits (cut set, corrections, clip range layer), caption choices, export choices, share captions and cached AI clip results. Caches (levels, thumbnails, proxies) live in the app support directory, never here. Secrets never appear in this file. Semantics that JSON Schema cannot express are normative in doc/spec/editing.md section 10. The apps do not run a JSON Schema engine at runtime; they decode strictly into typed models (doc/architecture.md section 2.1), and tests validate every file the apps write against this schema.",
   "type": "object",
   "additionalProperties": false,
@@ -10,7 +10,7 @@
     "format": { "const": "voxclip-project" },
     "schemaVersion": {
       "description": "Readers must refuse to edit a file with a higher schemaVersion than they support (they may offer read-only preview). Any change to this schema that an older reader would misread increments it.",
-      "const": 1
+      "enum": [1, 2]
     },
     "id": { "$ref": "#/$defs/uuid", "description": "Stable project id, created once." },
     "title": { "type": "string", "maxLength": 200 },
@@ -45,13 +45,7 @@
     "share": { "$ref": "#/$defs/share" },
     "ai": { "$ref": "#/$defs/ai" },
     "voiceLab": {
-      "description": "Placeholder for M3 Voice Lab segments (consent-guarded re-voice and patch mode). Must be empty in schemaVersion 1; a version that writes segments increments schemaVersion.",
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["segments"],
-      "properties": {
-        "segments": { "type": "array", "maxItems": 0 }
-      }
+      "oneOf": [{ "$ref": "#/$defs/voiceLabV1" }, { "$ref": "#/$defs/voiceLabV2" }]
     },
     "extensions": {
       "description": "Optional. Data owned by forks or experiments, keyed by reverse-DNS name. VoxClip preserves entries it does not understand when it saves.",
@@ -59,7 +53,54 @@
       "propertyNames": { "pattern": "^[a-z0-9]+(?:\\.[a-z0-9-]+)+$" }
     }
   },
+  "allOf": [
+    { "if": { "properties": { "schemaVersion": { "const": 1 } } }, "then": { "properties": { "voiceLab": { "$ref": "#/$defs/voiceLabV1" } } } },
+    { "if": { "properties": { "schemaVersion": { "const": 2 } } }, "then": { "properties": { "voiceLab": { "$ref": "#/$defs/voiceLabV2" } } } }
+  ],
   "$defs": {
+    "voiceLabV1": { "type": "object", "additionalProperties": false, "required": ["segments"], "properties": { "segments": { "type": "array", "maxItems": 0 } } },
+    "voiceLabV2": {
+      "type": "object", "additionalProperties": false, "required": ["assets", "segments"],
+      "properties": {
+        "assets": { "type": "array", "items": { "$ref": "#/$defs/voiceLabAsset" } },
+        "segments": { "type": "array", "items": { "$ref": "#/$defs/voiceLabSegment" } }
+      }
+    },
+    "voiceLabAsset": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "kind", "file", "sha256", "durationSeconds", "sampleRate", "createdAt"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^(?!(?:con|prn|aux|nul|com[1-9]|lpt[1-9])$)[a-z0-9][a-z0-9_-]{0,63}$" }, "kind": { "const": "audio" },
+        "file": { "type": "string", "pattern": "^[0-9a-f-]{36}/(?!(?:con|prn|aux|nul|com[1-9]|lpt[1-9])\\.)[a-z0-9][a-z0-9_-]{0,63}\\.(wav|flac)$" },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "durationSeconds": { "type": "number", "exclusiveMinimum": 0 },
+        "sampleRate": { "type": "integer", "minimum": 1 }, "createdAt": { "$ref": "#/$defs/timestamp" }
+      }
+    },
+    "voiceLabSegment": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "kind", "enabled", "replace", "outDuration", "audio", "text", "words", "provenance", "qa", "candidates", "selectedCandidateIndex"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" }, "kind": { "enum": ["tts", "voiceChanger"] }, "enabled": { "type": "boolean" },
+        "replace": { "type": "object", "additionalProperties": false, "required": ["start", "end", "firstWordId", "lastWordId"],
+          "properties": { "start": { "$ref": "#/$defs/seconds" }, "end": { "$ref": "#/$defs/seconds" }, "firstWordId": { "$ref": "#/$defs/wordId" }, "lastWordId": { "$ref": "#/$defs/wordId" } } },
+        "outDuration": { "type": "number", "exclusiveMinimum": 0 },
+        "audio": { "type": "object", "additionalProperties": false, "required": ["assetId", "trimStart", "trimEnd", "stretch", "gainDb"],
+          "properties": { "assetId": { "$ref": "#/$defs/id" }, "trimStart": { "$ref": "#/$defs/seconds" }, "trimEnd": { "$ref": "#/$defs/seconds" }, "stretch": { "type": "number", "exclusiveMinimum": 0 }, "gainDb": { "type": "number" } } },
+        "text": { "oneOf": [{ "type": "null" }, { "type": "object", "additionalProperties": false, "required": ["original", "new"], "properties": { "original": { "type": "string" }, "new": { "type": "string", "minLength": 1 } } }] },
+        "words": { "oneOf": [{ "type": "null" }, { "type": "array", "minItems": 1, "items": { "type": "object", "additionalProperties": false, "required": ["text", "start", "end", "synthetic"], "properties": { "text": { "type": "string", "minLength": 1 }, "start": { "$ref": "#/$defs/seconds" }, "end": { "$ref": "#/$defs/seconds" }, "synthetic": { "type": "boolean" } } } }] },
+        "provenance": { "type": "object", "additionalProperties": false, "required": ["provider", "endpoint", "model", "voiceId", "consentRecordId", "requestId", "seed", "createdAt"],
+          "properties": { "provider": { "type": "string", "pattern": "^[a-z0-9-]+$" }, "endpoint": { "type": "string", "minLength": 1 }, "model": { "type": "string", "minLength": 1 }, "voiceId": { "type": "string", "minLength": 1 }, "consentRecordId": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/id" }] }, "requestId": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/id" }] }, "seed": { "type": ["integer", "null"], "minimum": 0, "maximum": 4294967295 }, "createdAt": { "$ref": "#/$defs/timestamp" } } },
+        "qa": { "type": "object", "additionalProperties": false, "required": ["transcriptMatch", "lufsJumpLu", "peakDbfs", "speakerScore"],
+          "properties": { "transcriptMatch": { "type": ["number", "null"], "minimum": 0, "maximum": 1 }, "lufsJumpLu": { "type": ["number", "null"] }, "peakDbfs": { "type": ["number", "null"] }, "speakerScore": { "type": ["number", "null"], "minimum": 0, "maximum": 1 } } },
+        "candidates": { "type": "array", "minItems": 1, "items": { "type": "object", "additionalProperties": false, "required": ["assetId", "score", "rejected"], "properties": { "assetId": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/id" }] }, "score": { "type": ["number", "null"], "minimum": 0, "maximum": 1 }, "rejected": { "type": ["string", "null"] } } } },
+        "selectedCandidateIndex": { "type": "integer", "minimum": 0 }
+      },
+      "allOf": [
+        { "if": { "properties": { "kind": { "const": "tts" } } }, "then": { "properties": { "text": { "type": "object" }, "words": { "type": "array" } } } },
+        { "if": { "properties": { "kind": { "const": "voiceChanger" } } }, "then": { "properties": { "text": { "type": "null" }, "words": { "type": "null" } } } }
+      ]
+    },
     "uuid": { "type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" },
     "timestamp": {
       "description": "RFC 3339 UTC timestamp, whole seconds or fractions, always with Z.",

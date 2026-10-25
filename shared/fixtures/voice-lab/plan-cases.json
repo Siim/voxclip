@@ -1,0 +1,102 @@
+{
+  "sampleRate": 1000,
+  "passage": {
+    "outputSamples": 7300,
+    "pieces": [
+      [
+        "source",
+        0,
+        2500,
+        0,
+        2500
+      ],
+      [
+        "synth",
+        2500,
+        3200,
+        2500,
+        3500
+      ],
+      [
+        "source",
+        3200,
+        7000,
+        3500,
+        7300
+      ]
+    ],
+    "mapping": [
+      [
+        0,
+        0
+      ],
+      [
+        2.5,
+        2.5
+      ],
+      [
+        2.85,
+        3
+      ],
+      [
+        3.2,
+        3.5
+      ],
+      [
+        7,
+        7.3
+      ]
+    ],
+    "captions": [
+      [
+        "vl-passage:word:0",
+        2.5,
+        2.7
+      ],
+      [
+        "vl-passage:word:1",
+        2.7,
+        3
+      ],
+      [
+        "vl-passage:word:2",
+        3,
+        3.5
+      ]
+    ]
+  },
+  "disabled": {
+    "outputSamples": 7000
+  },
+  "full": {
+    "outputSamples": 8000,
+    "pieces": [
+      [
+        "synth",
+        0,
+        7000,
+        0,
+        8000
+      ]
+    ],
+    "mapping": [
+      [
+        0,
+        0
+      ],
+      [
+        3.5,
+        4
+      ],
+      [
+        7,
+        8
+      ]
+    ]
+  },
+  "clip": {
+    "sourceStart": 1.05,
+    "sourceEnd": 4.45,
+    "outputSamples": 3700
+  }
+}

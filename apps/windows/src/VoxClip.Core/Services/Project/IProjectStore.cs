@@ -31,7 +31,8 @@ public sealed class ProjectStore : IProjectStore
     /// <summary>After consumer confirmation, replace words and clear transcript-dependent project data, editing §10.5.</summary>
     public static ProjectModel ReplaceTranscript(ProjectModel project, TranscriptModel transcript)
         => project with { Transcript = transcript, Edits = new(transcript.Refined ? 0.8 : 1.0, project.Edits.PauseKeepSeconds, [], [],
-            new Dictionary<string, string>(StringComparer.Ordinal), [], null), Ai = new([]), Share = new(new Dictionary<string, string>(StringComparer.Ordinal)) };
+            new Dictionary<string, string>(StringComparer.Ordinal), [], null), Ai = new([]), Share = new(new Dictionary<string, string>(StringComparer.Ordinal)),
+            VoiceLab = project.VoiceLab with { Segments = [] } };
 
     /// <inheritdoc />
     public async Task<ProjectOpenResult> LoadAsync(string path, CancellationToken ct)

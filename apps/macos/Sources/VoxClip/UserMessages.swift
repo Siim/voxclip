@@ -4,6 +4,9 @@ import VoxClipCore
 enum UserMessages {
     static func message(_ error: any Error, context: String = "", model: String = "the selected model", installHint: String? = nil, signInHint: String? = nil, connectorID: String? = nil) -> String {
         if error is CancellationError || error as? VoxClipError == .cancelled || error as? LLMError == .cancelled { return "" }
+        if error as? VoiceLabProjectError == .unsupportedRendering {
+            return "This build cannot preview or export generated voice segments yet. Your video and edits are still here."
+        }
         if context == "Settings could not be saved." || context == "Settings could not be loaded." { return context + " Your video and edits are still here." }
         let isAI = context.hasPrefix("ai:") || context.hasPrefix("ai-test:")
         let label = isAI ? String(context.split(separator: ":", maxSplits: 1).last ?? "The provider") : "The provider"

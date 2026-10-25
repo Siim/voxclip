@@ -47,6 +47,8 @@ user ops ─► EditState { cutWordIds, cutPauseIds, corrections, clips, activeC
 
 A cut is computed in seconds, rounded to whole audio samples, and merged. The kept intervals are the complement of the cuts. `mapTime` (source to edited) and `sourceTime` (edited to source) are exact inverses on the sample grid.
 
+Voice Lab schemaVersion 2 has a separate ordered output-piece plan for generated audio (Voice Lab §10, ADR-R24). The version-1 subtractive `EditPlan` and its wire format remain unchanged. An `EditPlan`-only consumer must check render capability before preview/export; its source `kept` ranges cannot represent enabled synthetic audio.
+
 ## 2. Data model
 
 ### 2.1 Time
@@ -940,5 +942,5 @@ for [from, to, kind] in sections (in order):
 - **Per-language filler lists and multi-word suggestions.** The M1 rule is English hesitations only (4.11), and it is not editable in 0.1.0. Estonian candidates (`ee`, `eee`, `äää`, `mm`, `hmm`) need a reviewed list per language. `öö` (night) and multi-word discourse fillers (`nagu`, `noh`, `tead`, "you know", "I mean") are real words and can only ever be suggestions. A later change needs a settings key, a matching algorithm in 4.11 and fixtures before any UI ships; transcription.md 7.7 records candidate lists as input. Until then, `unlabeledSpeech` covers dropped fillers for non-verbatim engines, and the verbatim engine (ElevenLabs Scribe) transcribes "ee" as a word the user can cut. TalTech is `verbatim: false` until transcription.md 16.4 measures its filler recall, so the gap search runs on TalTech takes.
 - **AI tighten (M2).** An LLM may only propose additions to `cutWordIds` and `cutPauseIds`, shown as suggestions and applied as one undoable operation. It never edits text or timings.
 - **Recording (M2).** Live pause chips use 1.0 s on raw times. After recording, the import pipeline runs on the recorded file.
-- **Voice Lab (M3).** Synthetic segments become a new segment kind in a new schemaVersion. The subtractive plan stays as specified here.
+- **Voice Lab (M3).** Version 2 stores source-preserving synthetic replacements and Core plans `source`/`synth` output pieces (Voice Lab §10). The subtractive plan here remains the version-1 plan and applies to source pieces. Media rendering, insertion mapping, lip-sync and disclosure remain later work.
 - **Caption gap filling and paging** are owned by the captions spec, which consumes `captionCopy`.

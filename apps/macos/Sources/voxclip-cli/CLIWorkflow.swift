@@ -72,6 +72,10 @@ enum CLIWorkflow {
     }
 
     static func plan(_ project: Project, state supplied: EditState? = nil) throws -> EditPlan {
+        var scopedProject = project
+        if let supplied { scopedProject.edits = supplied.projectEdits }
+        let scope = scopedProject.edits.activeClipId.map { VoiceLabOutputScope.clip($0) } ?? .full
+        try VoiceLabProject.requireLegacyRendering(scopedProject, scope: scope)
         let source = project.media.source
         let rate = Double(source.audio?.sampleRate ?? 48000)
         let edits = project.edits

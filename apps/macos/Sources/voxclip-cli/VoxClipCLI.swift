@@ -136,6 +136,12 @@ enum CLIExecution {
         } catch let error as ValidationError {
             try usageError(command: command, message: error.message, json: json)
             throw ExitCode(2)
+        } catch VoiceLabProjectError.unsupportedRendering {
+            let message = "This build cannot preview or export generated voice segments yet. Your video and edits are still here."
+            if json {
+                try printJSON(.object(["ok": .bool(false), "command": .string(command), "error": .object(["code": .string("exportFailed"), "message": .string(message)]), "version": .string("0.1.0")]))
+            } else { FileHandle.standardError.write(Data((message + "\n").utf8)) }
+            throw ExitCode(5)
         } catch {
             let failure = error is CancellationError ? VoxClipError.cancelled : (error as? VoxClipError ?? (error is DecodingError ? .projectUnreadable("Invalid input JSON") : .exportFailed(redactor().redact(error.localizedDescription))))
             let message = redactor().redact(failure.errorDescription ?? "")

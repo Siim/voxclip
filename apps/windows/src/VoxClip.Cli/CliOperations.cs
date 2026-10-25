@@ -9,6 +9,7 @@ using System.Text.Json.Serialization.Metadata;
 using VoxClip.Core.Domain.Captions;
 using VoxClip.Core.Domain.Clips;
 using VoxClip.Core.Domain.Editing;
+using VoxClip.Core.Domain.VoiceLab;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Domain.Transcript;
 using VoxClip.Core.Services.LLM;
@@ -372,6 +373,7 @@ internal static class CliOperations
 
     internal static EditPlan BuildPlan(Project project, bool activeClip)
     {
+        VoiceLabProject.RequireLegacyRendering(project, activeClip && project.Edits.ActiveClipId is { } id ? VoiceLabOutputScope.Clip(id) : VoiceLabOutputScope.Full);
         var reference = project.Media.Source;
         var rate = reference.Audio?.SampleRate ?? 48_000;
         if (project.Edits.CutWordIds.Count == 0 && project.Edits.CutPauseIds.Count == 0 && (!activeClip || project.Edits.ActiveClipId is null))

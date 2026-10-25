@@ -28,7 +28,7 @@ public enum ProjectJSON {
 
     public static func decode(_ data: Data) throws -> Project {
         let document = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-        if let version = document?["schemaVersion"] as? Int, version > 1 { throw VoxClipError.projectTooNew }
+        if let version = document?["schemaVersion"] as? Int, version > 2 { throw VoxClipError.projectTooNew }
         let project = try decoder().decode(Project.self, from: data)
         try validate(project)
         return project
@@ -40,7 +40,7 @@ public enum ProjectJSON {
     }
 
     public static func validate(_ project: Project) throws {
-        guard project.format == "voxclip-project", project.schemaVersion == 1, project.voiceLab.segments.isEmpty else {
+        guard project.format == "voxclip-project", (1...2).contains(project.schemaVersion) else {
             throw VoxClipError.projectUnreadable("Unsupported document format or Voice Lab schema")
         }
         if let transcript = project.transcript {
@@ -54,5 +54,6 @@ public enum ProjectJSON {
                 previousStart = word.start
             }
         }
+        try VoiceLabProject.validate(project)
     }
 }

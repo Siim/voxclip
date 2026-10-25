@@ -93,6 +93,8 @@ internal static class CliApplication
         {
             return FailRun(exception.WireCode, FailureMessage(exception), exception.ExitCode);
         }
+        catch (VoxClip.Core.Domain.VoiceLab.VoiceLabProjectException exception) when (exception.Code == VoxClip.Core.Domain.VoiceLab.VoiceLabProjectErrorCode.UnsupportedRendering)
+        { return FailRun("exportFailed", "This build cannot preview or export generated voice segments yet. Your video and edits are still here.", 5); }
         catch (JsonException) { return FailRun("projectUnreadable", "This project file can't be read: the input JSON is invalid.", 3); }
         catch (FileNotFoundException) { return FailRun("mediaMissing", "The input file cannot be found.", 3); }
         catch (DirectoryNotFoundException) { return FailRun("mediaMissing", "The input folder cannot be found.", 3); }

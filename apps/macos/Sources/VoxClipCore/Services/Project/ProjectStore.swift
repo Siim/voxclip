@@ -24,6 +24,7 @@ public actor JSONProjectStore: ProjectStore {
             for warning in warnings { await logger.write(LogEntry(level: .warn, category: "import", message: warning)) }
             return (project, warnings)
         } catch let error as VoxClipError { throw error }
+        catch let error as VoiceLabProjectError { throw error }
         catch { throw VoxClipError.projectUnreadable("Invalid project document") }
     }
 
@@ -52,6 +53,7 @@ public actor JSONProjectStore: ProjectStore {
             let cleaned = cleanReferences(project)
             return (cleaned.project, cleaned.warnings)
         } catch let error as VoxClipError { throw error }
+        catch let error as VoiceLabProjectError { throw error }
         catch { throw VoxClipError.projectUnreadable("Invalid project document") }
     }
 

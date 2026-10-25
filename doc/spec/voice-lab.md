@@ -902,89 +902,46 @@ One lip-sync job per provider at a time, queued. Progress shows "Lip sync · que
 
 ## 10. Data model: AI segments in the edit plan
 
-### 10.1 Project additions (the schema version that ships M3)
+### 10.1 Version 2 project representation (ADR-R24)
 
-The `voiceLab` object, empty in schemaVersion 1, gains these fields. The project schema owner adds them when bumping the version.
+`schemaVersion: 1` continues to require exactly `voiceLab: {"segments": []}`. A project that stores generated media uses `schemaVersion: 2` and a `voiceLab` object with required `assets` and `segments` arrays. An ordinary project is not rewritten to v2 merely because the app understands this format. Both native Core serializers retain unknown reverse-DNS `extensions` when they load and save either version. A reader rejects version 3 or later.
 
-```json
-"voiceLab": {
-  "cleanAudio": null,
-  "voices": [ { "recordId": "6f0c2c1e-…", "provider": "elevenlabs", "voiceId": "c38kUX8pkfYO2kHyqfFy", "name": "Siim (VoxClip)" } ],
-  "assets": [
-    { "id": "a-7d1e", "kind": "audio", "file": "<projectId>/a-7d1e.flac", "sha256": "…",
-      "durationSeconds": 1.71, "sampleRate": 48000, "createdAt": "2026-10-25T12:10:00Z" },
-    { "id": "a-91c0", "kind": "video", "file": "<projectId>/a-91c0.mp4", "sha256": "…",
-      "durationSeconds": 4.1, "fps": 30, "width": 1080, "height": 1920, "createdAt": "…" }
-  ],
-  "segments": [
-    {
-      "id": "vl-1",
-      "kind": "tts",
-      "enabled": true,
-      "replace": { "start": 12.34, "end": 14.02, "firstWordId": "w41", "lastWordId": "w44", "afterWordId": null },
-      "outDuration": 1.68,
-      "audio": { "assetId": "a-7d1e", "trimStart": 0.03, "trimEnd": 1.71, "stretch": 1.04, "gainDb": -2.5,
-                 "roomTone": { "sourceStart": 30.10, "sourceEnd": 30.60, "gainDb": 0.0 },
-                 "seamFadeMs": { "in": 20, "out": 20 } },
-      "video": { "mode": "source", "zoom": null, "retime": null,
-                 "lipsync": null },
-      "text": { "original": "I said twenty twenty-four", "new": "I said 2025" },
-      "words": [ { "text": "I", "start": 0.00, "end": 0.11, "synthetic": false },
-                 { "text": "said", "start": 0.11, "end": 0.42, "synthetic": false },
-                 { "text": "2025", "start": 0.42, "end": 1.62, "synthetic": true } ],
-      "provenance": { "provider": "elevenlabs", "endpoint": "v1/text-to-dialogue/with-timestamps", "model": "eleven_v4",
-                      "voiceId": "c38kUX8pkfYO2kHyqfFy", "consentRecordId": "6f0c2c1e-…",
-                      "seed": 3141592653, "candidateIndex": 1,
-                      "candidates": [ { "seed": 3141592652, "assetId": "a-7d1d", "score": 0.71, "rejected": null },
-                                      { "seed": 3141592653, "assetId": "a-7d1e", "score": 0.88, "rejected": null },
-                                      { "seed": 3141592654, "assetId": null, "score": null, "rejected": "qa-transcript" } ],
-                      "requestId": null, "costUsd": 0.02, "createdAt": "2026-10-25T12:10:00Z" },
-      "qa": { "transcriptMatch": 1.0, "lufsJumpLu": 0.8, "peakDbfs": -1.2, "speakerScore": 0.78 }
-    }
-  ]
-}
-```
+A v2 asset is `{id, kind: "audio", file, sha256, durationSeconds, sampleRate, createdAt}`. `file` is a relative `<projectId>/<assetId>.wav` or `.flac` name under the paid VoiceLab store. Asset IDs used as file components contain only lowercase ASCII letters, digits, `_` and `-`; Windows device names (`con`, `prn`, `aux`, `nul`, `com1`–`com9`, `lpt1`–`lpt9`) are rejected. There is no colon, trailing dot/space, absolute path, URI, parent traversal or backslash path. A project carries no audio bytes, credentials, or consent-statement recording. Assets are immutable paid outputs and delete/disable operations do not erase them. A media adapter must resolve the store path, verify SHA-256 and duration before rendering; this Core round only validates the reference and plans pieces.
 
-Field rules:
+A v2 segment has `{id, kind, enabled, replace, outDuration, audio, text, words, provenance, qa, candidates, selectedCandidateIndex}`. `kind` is `tts` or `voiceChanger`. `replace` has source seconds `start` and `end` plus `firstWordId` and `lastWordId`; this round supports positive-length passage and full-take replacement. Insertion (`afterWordId` and a zero-length source range) is reserved for a later version with an explicit inverse mapping rule. `audio` identifies the selected asset, trim bounds, stretch and gain. `outDuration` must equal the trimmed asset duration times stretch within one asset sample. `candidates` retain their asset IDs, score and rejection reason; the selected index must name an unrejected candidate and match `audio.assetId`. `provenance` records provider endpoint name, model, voice ID, optional consent **record ID**, optional request ID, optional seed and creation time. `qa` has optional transcript match, loudness jump, peak and speaker score. All persisted numbers must be finite.
 
-| Field | Rule |
+For `tts`, `text` contains original and new spoken text and `words` contains positive, ordered times relative to the output start, each with a `synthetic` flag. `synthetic: false` marks a bridge word whose text was kept although its audio was re-voiced. `voiceChanger` stores `text: null` and `words: null`; captions retain the source words. This v2 object is the first audio-only project format, not the final Voice Lab schema.
+
+**Pending Media and later-format requirements.** A later schema version must specify and validate the following before Media or UI uses them. Version 2 does not imply defaults for any omitted field:
+
+| Area | Required later representation or behavior |
 |---|---|
-| `kind` | `tts` (patch mode) or `voiceChanger`. Lip sync is a property of a `tts` segment's `video`, not a separate kind |
-| `replace` | `start` and `end` are the seams in source seconds. `firstWordId` and `lastWordId` name the covered source words. For an insertion, `afterWordId` names the word before the gap, and both word ids are null |
-| `outDuration` | seconds on the edited timeline. It equals `end − start` unless §8.9 step 3 applied |
-| `audio` | `assetId` points at the synthetic audio before trim. `stretch` is the factor applied after trim. `roomTone` is null when Clean audio is on |
-| `video.mode` | `source`, `zoomCover`, `retimed` or `lipsync`. For `zoomCover`: `zoom` (1.12) and `retime` (the source-frame rate factor). For `lipsync`: `{ "assetId", "provider", "model", "requestId", "window": {"start","end"}, "replaceStart", "replaceEnd", "syncMode" }` |
-| `words` | times relative to the segment's output start. `synthetic: false` marks bridge words that kept their text but were re-voiced. They are synthetic audio too, but appear as the speaker's words in captions |
-| `voiceChanger` segments | `text: null`, `words: null` (captions keep the source words), `audio.chunks: [{ sourceStart, sourceEnd, requestId }]`, `provenance.model: "eleven_multilingual_sts_v2"`, plus the `seed` used for every chunk |
+| Voice and clean audio | `voiceLab.cleanAudio` and owned `voices` with consent record ID, provider, voice ID and display name (§4.7, §6.8). A project stores no consent statement recording. |
+| Audio assembly | `audio.roomTone` with source start/end and gain, null when Clean audio is on; `audio.seamFadeMs` with in/out values. Generated seams use equal-power fades, not the ordinary 5 ms join fade (§8.7, §8.10). |
+| Voice changer | `audio.chunks: [{sourceStart, sourceEnd, requestId}]`, the `eleven_multilingual_sts_v2` model and the seed used for every chunk (§7.2–7.3). The v2 audio record cannot describe or schedule these chunks. |
+| Video and lip sync | Video assets need duration, frame rate, width and height. Segment `video.mode` needs `source`, `zoomCover`, `retimed` and `lipsync`; zoomCover stores zoom and source-frame retime. Lip sync stores asset ID, provider, model, request ID, source window start/end, replacement start/end and sync mode. Source mode uses original frames; zoomCover uses the stored face centre; lip sync uses its generated frames and three-frame crossfades (§8.9, §9). |
+| Generation record | Each candidate needs its seed alongside asset ID, score and rejection; provenance needs selected candidate index and cost in USD as well as provider/model/request metadata (§3, §8.6). The v2 index selects an asset but cannot reconstruct those missing details. |
+| QA and disclosure | Apply the transcript, loudness, peak and speaker QA gates (§8.11). Derive per-export AI kinds and duration, visible disclosure and provenance output (§11); do not infer finished disclosure from v2 captions alone. |
 
-Assets live in `<data>/VoiceLab/<projectId>/`, a paid store that is never evicted, and are referenced by `sha256`. When the assets are missing, the project opens with "Voice Lab files for this project aren't on this computer." and offers [Locate folder…] and [Turn off these changes]. Until then, export plays the source in their place and says so.
+Core validation rejects missing/dangling assets, duplicate IDs, unsafe files, malformed or out-of-bounds ranges, source words crossing a replacement seam, conflicting enabled replacements, invalid candidates, nonfinite values and invalid relative word timing with typed Voice Lab errors. Disabled segments remain saved, but do not replace source. Asset existence and hash checking remain at the future Media boundary; missing assets must stop a synthetic render rather than silently play original audio.
 
-### 10.2 Planning rules (for the editing spec's new segment kind)
+Replacing the source transcript clears segments whose word IDs and ranges belonged to the old transcript, while retaining the paid asset list. A later workflow can offer explicit reattachment; this round does not guess a match from new timings.
 
-`editing.md` §12 already says synthetic segments become a new segment kind in a new schemaVersion. The kind is `synth`, with these rules:
+### 10.2 Deterministic output pieces
 
-1. **Covered source items.** An enabled `synth` segment replaces the source interval `[replace.start, replace.end]`. The source items fully inside it are covered:
-   - they are not captioned and not individually cuttable;
-   - their cut flags and corrections are ignored while the segment is enabled, and kept in `edits` for when it is turned off.
-2. **Cutting a segment.** Cutting the segment as a whole behaves like cutting a word spanning `[replace.start, replace.end]`, with the usual word reach (`editing.md` §7.3).
-3. **Output pieces.** The kept output is a sequence of source pieces and synth pieces:
-   - a source piece maps time as today;
-   - a synth piece contributes `outDuration`, with time inside it mapped linearly: `edited = pieceStart + (t − replace.start) × outDuration / (replace.end − replace.start)`.
-4. **Audio.** A synth piece plays `audio` (trim, stretch, gain, room tone). The seams use `seamFadeMs` equal-power crossfades instead of the 5 ms join fade.
-5. **Video.**
+`VoiceLabOutputPlanner.build(project, scope)` in each Core has explicit `full` or `clip(id)` scope. Full scope ignores `edits.activeClipId`. It returns ordered `source` and `synth` output pieces with half-open source and output sample bounds, derived duration, source/edited mapping and caption words. Replacement bounds and `outDuration` are rounded with the existing JavaScript half-up sample rule at the source audio rate. Source word times and stored cuts never change.
 
-   | Mode | Frames |
-   |---|---|
-   | `source` | source frames of the replaced interval |
-   | `zoomCover` | source frames scaled by `zoom` around the stored face centre, retimed by `retime` |
-   | `lipsync` | lipsync asset frames in `[replaceStart, replaceEnd]`, with 3-frame crossfades |
+Mapping probes round to that sample grid before lookup. As in the existing `EditPlan`, `sourceTime(output duration)` returns the full source duration even for a selected clip whose last output piece ends earlier; probes within the output use the selected pieces. This endpoint convention preserves existing clip callers while the explicit piece bounds identify the actual last included source sample.
 
-6. **Captions.** Captions inside a synth piece are its `words`, offset by `pieceStart`.
-7. **Edit plan JSON.** The plan for a project with synth segments lists them in the `--json` output of `voxclip-cli plan`, so fixtures can check the mapping.
+Enabled replacements may touch at a seam but cannot overlap. An enabled range covers source words fully inside it; their individual cuts and corrections are dormant while enabled. A cut from a neighboring word or pause stops at the synthetic seam. A clip may fully include or exclude a replacement, but a clip boundary through one is rejected as an invalid scope. Source intervals outside replacements retain the existing subtractive edit plan, including cuts, pause breath and clip range behavior. Disabling or deleting the segment restores that plan and its original source captions. A synthetic output piece contributes its rounded `outDuration`; source-to-edited and edited-to-source positions inside it interpolate linearly between its rounded bounds. Source captions within `voiceChanger` pieces follow that mapping, with the original source text. `tts` captions use the relative output word times. Core's `requireLegacyRendering` capability check throws for any active synthetic piece; old `EditPlan`-only Media, app and CLI consumers must call it before preview/export until they render these output pieces. There is no source-only fallback for active synthetic audio. The app preview and render-request boundaries and both CLI plan/export entry points enforce this check for their explicit scope. An included replacement returns “This build cannot preview or export generated voice segments yet. Your video and edits are still here.” CLI reports `exportFailed` with exit 5 before encoding or creating output files. A source-only clip that excludes all enabled replacements and a project with only disabled replacements continue through the ordinary renderer.
+
+The shared `passage-project.voxclip`, `full-take-project.voxclip` and `plan-cases.json` fixtures under `shared/fixtures/voice-lab/` are generated by `tools/fixtures/voice-lab/generate.py` and consumed by both native Core tests. The separate `project-plan-README.md` describes them; the original provider-service `README.md` and `contract.json` stay unchanged. They contain no provider output or binary media.
 
 ### 10.3 Undo
 
 Accept, turn off, turn on, delete, choosing another candidate, and changing the lip-sync tier are each one undo step. Undo never deletes assets. Unreferenced assets are removed when the project is closed, after 7 days.
+
+The v2 Core functions return new project values for accept, enable/disable, delete and candidate selection. They do not register app `UndoManager`/`EditHistory` steps. App undo wiring, lip-sync tier changes and eventual asset cleanup remain integration work; no Core transition deletes a paid asset.
 
 ---
 

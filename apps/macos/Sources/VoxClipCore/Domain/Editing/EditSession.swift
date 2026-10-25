@@ -129,5 +129,6 @@ extension Project {
         edits = ProjectEdits(pauseThresholdSeconds: replacement.refined ? 0.8 : 1, pauseKeepSeconds: edits.pauseKeepSeconds)
         ai = ProjectAI()
         share = ProjectShare()
+        voiceLab.segments = [] // New source words invalidate replacement ranges; retain paid assets.
     }
 }

@@ -65,8 +65,8 @@ func portableProjectRoundTrip(name: String) throws {
 
 @Test func voiceLabCannotBeWrittenIntoSchemaOne() throws {
     var project = try ProjectJSON.decode(FixtureLoader.data("fixtures/projects/interview-take.voxclip"))
-    project.voiceLab.segments = [.object([:])]
-    #expect(throws: VoxClipError.self) { try ProjectJSON.encode(project) }
+    project.voiceLab.segments = [try ProjectJSON.decode(FixtureLoader.data("fixtures/voice-lab/passage-project.voxclip")).voiceLab.segments[0]]
+    #expect(throws: VoiceLabProjectError.invalidSegment) { try ProjectJSON.encode(project) }
 }
 
 @Test func isolatedPathsDoNotTouchUserData() {

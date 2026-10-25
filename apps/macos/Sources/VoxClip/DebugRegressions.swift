@@ -179,6 +179,29 @@ actor RegressionSettingsStore: SettingsStore {
     static func editor(app: AppModel, project: Project) async throws -> [DebugUISuite.Result] {
         var results: [DebugUISuite.Result] = []
         func check(_ name: String, _ passed: Bool) { results.append(.init(name: name, passed: passed)) }
+        let voiceURL = app.shared!.root.appendingPathComponent("fixtures/voice-lab/passage-project.voxclip")
+        var voiceProject = try JSONProjectStore.decode(Data(contentsOf: voiceURL))
+        voiceProject.captions.styleId = "off"
+        let voiceDocument = VoxClipDocument(project: voiceProject)
+        let voiceModel = EditorModel(document: voiceDocument, app: app, preview: DemoPreviewEngine())
+        defer { voiceModel.close() }
+        voiceModel.mediaResolved = true
+        voiceModel.refresh()
+        check("active synthetic audio has no source-only cached plan", voiceModel.plan == nil && voiceModel.previewError?.contains("generated voice segments") == true)
+        do { _ = try await voiceModel.renderRequest(); check("preview rejects active synthetic audio", false) }
+        catch { check("preview rejects active synthetic audio", error as? VoiceLabProjectError == .unsupportedRendering) }
+        let outside = ClipRange(id: "outside", startWordId: "w1", endWordId: "w2", title: "Source only")
+        voiceProject.edits.clips.append(outside); voiceProject.edits.activeClipId = outside.id
+        voiceDocument.replaceProject(voiceProject); voiceModel.refresh()
+        check("clip excluding synthetic audio retains a render plan", voiceModel.plan != nil)
+        do { _ = try await voiceModel.renderRequest(target: .fullEdit); check("full export ignores source-only active clip", false) }
+        catch { check("full export ignores source-only active clip", error as? VoiceLabProjectError == .unsupportedRendering) }
+        let outsideRequest = try await voiceModel.renderRequest(target: .clip(outside.id))
+        check("explicit source-only clip reaches render request", outsideRequest.plan.outputSamples > 0)
+        voiceProject.edits.activeClipId = nil
+        voiceProject = try VoiceLabProject.setEnabled(false, id: "vl-passage", in: voiceProject)
+        voiceDocument.replaceProject(voiceProject); voiceModel.refresh()
+        check("disabled synthetic audio restores source render", try await voiceModel.renderRequest(target: .fullEdit).plan.outputSamples == 7000)
         let model = EditorModel(document: VoxClipDocument(project: project), app: app, preview: DemoPreviewEngine())
         defer { model.close() }
         model.mediaResolved = true
