@@ -194,6 +194,7 @@ try {
     if (-not (Test-Path -LiteralPath $vpk)) {
         Invoke-ReleaseTool -Executable $configuration.Dotnet -Arguments @('tool', 'install', 'vpk', '--tool-path', $toolDirectory, '--version', $vpkVersion)
     }
+    Assert-PinnedVelopackInputs -ToolDirectory $toolDirectory
     foreach ($rid in @('win-x64', 'win-arm64')) {
         Get-ReleaseDeltaBase -Vpk $vpk -RuntimeIdentifier $rid -OutputDirectory (Join-Path $out "$rid\releases")
     }
@@ -229,21 +230,27 @@ try {
         Assert-ReleaseSignatures -Paths $setup -SignTool $configuration.SignTool -ReportPath (Join-Path $ridEvidence 'setup-signatures.json')
         $assets = Get-Content (Join-Path $releases "assets.$rid.json") -Raw | ConvertFrom-Json
         $packageNames = @($assets | Where-Object { $_.Type -in @('Full', 'Delta') } | ForEach-Object { $_.RelativeFileName })
-        if (-not ($packageNames | Where-Object { $_ -like '*-full.nupkg' })) { throw "No full package in assets.$rid.json." }
+        $expectedFullPackage = Get-ReleaseCurrentFullPackageName -Assets @($assets) -Version $configuration.Version -RuntimeIdentifier $rid
+        $packagedUpdaterHash = $null
+        $packagedStubHash = $null
         foreach ($name in $packageNames) {
             if ([IO.Path]::GetFileName($name) -ne $name -or $name -notmatch '\.nupkg$') { throw 'Invalid package name in Velopack metadata.' }
             $package = Join-Path $releases $name
-            if ($name -like '*-full.nupkg') {
+            if ($name -eq $expectedFullPackage) {
                 $expanded = Join-Path $out "$rid\verify-package"
                 [IO.Compression.ZipFile]::ExtractToDirectory($package, $expanded)
                 Assert-ReleaseSignatures -Paths $expanded -SignTool $configuration.SignTool -ReportPath (Join-Path $ridEvidence 'package-signatures.json')
+                Assert-ReleaseFileMatches -Expected (Join-Path $repository 'THIRD_PARTY_NOTICES.md') -Actual (Join-Path $expanded 'lib\app\THIRD_PARTY_NOTICES.md')
+                $packagedUpdaterHash = (Get-FileHash -LiteralPath (Join-Path $expanded 'lib\app\Squirrel.exe') -Algorithm SHA256).Hash
+                $packagedStubHash = (Get-FileHash -LiteralPath (Join-Path $expanded 'lib\app\VoxClip_ExecutionStub.exe') -Algorithm SHA256).Hash
                 Remove-Item -LiteralPath $expanded -Recurse -Force
             }
             Copy-Item -LiteralPath $package -Destination $upload
         }
+        if (-not $packagedUpdaterHash -or -not $packagedStubHash) { throw "Current full package was not verified for $rid." }
         Copy-Item -LiteralPath $setup -Destination $upload
         Copy-Item -LiteralPath (Join-Path $releases "releases.$rid.json") -Destination $upload
-        & (Join-Path $PSScriptRoot 'Test-Install.ps1') -Setup $setup -SignTool $configuration.SignTool -Version $configuration.Version -RuntimeIdentifier $rid -ReportDirectory $ridEvidence
+        & (Join-Path $PSScriptRoot 'Test-Install.ps1') -Setup $setup -SignTool $configuration.SignTool -Version $configuration.Version -RuntimeIdentifier $rid -ReportDirectory $ridEvidence -ExpectedNotices (Join-Path $repository 'THIRD_PARTY_NOTICES.md') -PackagedUpdaterHash $packagedUpdaterHash -PackagedStubHash $packagedStubHash
         if (-not $?) { throw "Install smoke test failed for $rid." }
     }
     $sums = @(Get-ChildItem $upload -File | Sort-Object Name | ForEach-Object { "{0}  {1}" -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant(), $_.Name })

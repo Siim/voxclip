@@ -1,4 +1,5 @@
 using System.CommandLine;
+using System.CommandLine.Help;
 using System.CommandLine.Parsing;
 using System.Globalization;
 using System.Reflection;
@@ -7,60 +8,109 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Services.LLM;
+using VoxClip.Core.Services.Project;
 namespace VoxClip.Cli;
 
 internal static class CliApplication
 {
     private static readonly Option<bool> Json = new("--json") { Description = "Print exactly one final JSON object.", Recursive = true };
     private static readonly Option<bool> Quiet = new("--quiet") { Description = "Suppress human progress on stderr.", Recursive = true };
-    private static readonly Redactor DiagnosticRedactor = ServicesMergeAdapter.DiagnosticRedactor();
+    private static readonly Option<bool> RuntimeTerms = new("--runtime-terms") { Description = "Print the bundled Windows component terms and their SHA-256.", Recursive = true };
+    private static readonly Option<string?> AcceptRuntimeTerms = new("--accept-runtime-terms") { Description = "Accept the displayed Windows component terms SHA-256 for this user.", Recursive = true };
+    private static readonly Redactor BasicRedactor = new([], Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
+    private static readonly Lazy<Redactor> DiagnosticRedactor = new(ServicesMergeAdapter.DiagnosticRedactor);
     internal static string Version => Assembly.GetEntryAssembly()?.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion.Split('+')[0] ?? "unknown";
 
-    internal static async Task<int> RunAsync(string[] args, CancellationToken ct, ExportInputReader? openExport = null, ExportPreparer? prepareExport = null)
+    internal static async Task<int> RunAsync(string[] args, CancellationToken ct, ExportInputReader? openExport = null, ExportPreparer? prepareExport = null,
+        WindowsRuntimeAgreement? runtimeAgreement = null, Func<string, bool>? inputExists = null)
     {
-        var root = BuildCommand(openExport, prepareExport);
+        var root = BuildCommand(openExport, prepareExport, inputExists);
         var result = root.Parse(args);
         if (result.Errors.Count > 0)
         {
-            foreach (var error in result.Errors) Console.Error.WriteLine(DiagnosticRedactor.Redact(error.Message));
+            foreach (var error in result.Errors) Console.Error.WriteLine(BasicRedactor.Redact(error.Message));
             if (result.GetValue(Json)) WriteJson(new(false, CommandName(result), null,
-                new("usageError", DiagnosticRedactor.Redact(result.Errors[0].Message)), Version));
+                new("usageError", BasicRedactor.Redact(result.Errors[0].Message)), Version));
             return 2;
         }
-        try { return await result.InvokeAsync(new InvocationConfiguration { EnableDefaultExceptionHandler = false, ProcessTerminationTimeout = null }, ct).ConfigureAwait(false); }
-        catch (OperationCanceledException) { return Fail(result, "cancelled", string.Empty, 6); }
-        catch (CliUsageException exception) { return Fail(result, "usageError", exception.Message, 2); }
-        catch (CliInputException exception) { return Fail(result, exception.Failure.WireCode, FailureMessage(exception.Failure), 3); }
+        var runtimeAgreementWork = false;
+        var normalWorkAuthorized = false;
+        int FailRun(string code, string message, int exitCode) => Fail(result, code, message, exitCode,
+            redactor: normalWorkAuthorized ? DiagnosticRedactor.Value : BasicRedactor);
+        try
+        {
+            if (result.GetValue(RuntimeTerms) || result.GetValue(AcceptRuntimeTerms) is not null)
+            {
+                runtimeAgreementWork = true;
+                var agreement = runtimeAgreement ?? WindowsRuntimeAgreement.ForCurrentUser();
+                var terms = agreement.LoadTerms();
+                if (result.GetValue(RuntimeTerms))
+                {
+                    if (result.GetValue(Json)) WriteJson(new(true, "runtime-terms", terms.Sha256 + "\n" + terms.DisplayText, null, Version));
+                    else Console.Out.WriteLine(terms.DisplayText + "\n\nSHA-256: " + terms.Sha256);
+                    return 0;
+                }
+                agreement.Accept(terms, result.GetValue(AcceptRuntimeTerms)!);
+                if (result.GetValue(Json)) WriteJson(new(true, "accept-runtime-terms", terms.Sha256, null, Version));
+                else Console.Out.WriteLine("Windows component terms accepted for this user (" + terms.Sha256 + ").");
+                return 0;
+            }
+            var informationalAction = result.Action is HelpAction ||
+                root.Options.OfType<VersionOption>().Any(option => result.GetResult(option) is not null) ||
+                result.CommandResult.Command.Name == "version";
+            if ((OperatingSystem.IsWindows() || runtimeAgreement is not null) && !informationalAction)
+            {
+                runtimeAgreementWork = true;
+                var agreement = runtimeAgreement ?? WindowsRuntimeAgreement.ForCurrentUser();
+                var terms = agreement.LoadTerms();
+                if (!agreement.IsAccepted(terms))
+                    return FailRun("runtimeTermsRequired",
+                        "Review the Windows component terms with `voxclip-cli --runtime-terms`, then run `voxclip-cli --accept-runtime-terms <SHA-256>`.", 7);
+            }
+            runtimeAgreementWork = false;
+            normalWorkAuthorized = !informationalAction;
+            return await result.InvokeAsync(new InvocationConfiguration { EnableDefaultExceptionHandler = false, ProcessTerminationTimeout = null }, ct).ConfigureAwait(false);
+        }
+        catch (InvalidDataException exception) when (runtimeAgreementWork) { return FailRun("runtimeTermsUnavailable", exception.Message, 7); }
+        catch (IOException) when (runtimeAgreementWork)
+        { return FailRun("runtimeTermsUnavailable", "Could not read or save the Windows component terms. Check the installed files and user data permissions.", 7); }
+        catch (UnauthorizedAccessException) when (runtimeAgreementWork)
+        { return FailRun("runtimeTermsUnavailable", "Could not read or save the Windows component terms. Check the installed files and user data permissions.", 7); }
+        catch (OperationCanceledException) { return FailRun("cancelled", string.Empty, 6); }
+        catch (CliUsageException exception) { return FailRun("usageError", exception.Message, 2); }
+        catch (CliInputException exception) { return FailRun(exception.Failure.WireCode, FailureMessage(exception.Failure), 3); }
         catch (Exception exception) when (AiMergeAdapter.IsGate(exception))
         {
             var gate = AiMergeAdapter.Gate(exception);
-            return Fail(result, gate.Code, gate.Message, gate.ExitCode);
+            return FailRun(gate.Code, gate.Message, gate.ExitCode);
         }
         catch (LlmException exception)
         {
             var mapped = new VoxClipException(exception.Error.Code, exception.Error.UserMessage);
-            return Fail(result, mapped.WireCode, mapped.Message, mapped.ExitCode);
+            return FailRun(mapped.WireCode, mapped.Message, mapped.ExitCode);
         }
         catch (VoxClipException exception)
         {
-            return Fail(result, exception.WireCode, FailureMessage(exception), exception.ExitCode);
+            return FailRun(exception.WireCode, FailureMessage(exception), exception.ExitCode);
         }
-        catch (JsonException) { return Fail(result, "projectUnreadable", "This project file can't be read: the input JSON is invalid.", 3); }
-        catch (FileNotFoundException) { return Fail(result, "mediaMissing", "The input file cannot be found.", 3); }
-        catch (DirectoryNotFoundException) { return Fail(result, "mediaMissing", "The input folder cannot be found.", 3); }
-        catch (IOException) { return Fail(result, result.CommandResult.Command == root ? "exportFailed" : "projectUnreadable", "The file could not be read or written.", result.CommandResult.Command == root ? 5 : 3); }
-        catch (UnauthorizedAccessException) { return Fail(result, result.CommandResult.Command == root ? "exportFailed" : "projectUnreadable", "Permission to access the file was denied.", result.CommandResult.Command == root ? 5 : 3); }
-        catch (Exception) { return Fail(result, "unexpectedFailure", "The command could not be completed.", 1); }
+        catch (JsonException) { return FailRun("projectUnreadable", "This project file can't be read: the input JSON is invalid.", 3); }
+        catch (FileNotFoundException) { return FailRun("mediaMissing", "The input file cannot be found.", 3); }
+        catch (DirectoryNotFoundException) { return FailRun("mediaMissing", "The input folder cannot be found.", 3); }
+        catch (IOException) { return FailRun(result.CommandResult.Command == root ? "exportFailed" : "projectUnreadable", "The file could not be read or written.", result.CommandResult.Command == root ? 5 : 3); }
+        catch (UnauthorizedAccessException) { return FailRun(result.CommandResult.Command == root ? "exportFailed" : "projectUnreadable", "Permission to access the file was denied.", result.CommandResult.Command == root ? 5 : 3); }
+        catch (Exception) { return FailRun("unexpectedFailure", "The command could not be completed.", 1); }
     }
 
     internal static string FailureMessage(VoxClipException exception) => exception is MediaException { Code: VoxClipErrorCode.DecodeFailed }
         ? $"VoxClip couldn't decode this video: {exception.Message.TrimEnd('.')}. Your edits are saved." : exception.Message;
 
-    private static RootCommand BuildCommand(ExportInputReader? openExport, ExportPreparer? prepareExport)
+    private static RootCommand BuildCommand(ExportInputReader? openExport, ExportPreparer? prepareExport, Func<string, bool>? inputExists)
     {
         var root = new RootCommand("VoxClip headless media tool.");
         root.Options.Add(Json);
         root.Options.Add(Quiet);
+        root.Options.Add(RuntimeTerms);
+        root.Options.Add(AcceptRuntimeTerms);
         Add(root, "--open", "Project or media path.");
         Add(root, "--export", "Destination MP4 path.");
         Add(root, "--style", "Caption style id, or off.");
@@ -77,6 +127,8 @@ internal static class CliApplication
         Add(root, "--audio-out", "Edited faded 32-bit float WAV test hook.");
         root.Validators.Add(validation =>
         {
+            if (validation.GetValue(RuntimeTerms) && validation.GetValue(AcceptRuntimeTerms) is not null)
+                validation.AddError("Use --runtime-terms or --accept-runtime-terms, not both.");
             if (validation.GetValue<string?>("--clip") is not null && validation.GetValue<string?>("--range") is not null)
                 validation.AddError("--clip and --range are mutually exclusive.");
             if (validation.GetValue<string?>("--fps") is { } fps && !TryFps(fps, out _))
@@ -93,7 +145,7 @@ internal static class CliApplication
 
         var probe = Command(root, "probe", "Print media probe facts.");
         probe.Arguments.Add(new Argument<string>("media"));
-        Stub(probe, "probe");
+        Stub(probe, "probe", inputExists: inputExists);
         var transcribe = Command(root, "transcribe", "Transcribe and save a project.");
         Add(transcribe, "--open", "Source media.", true);
         Speech(transcribe, requireEngine: true);
@@ -187,13 +239,14 @@ internal static class CliApplication
         command.Options.Add(option);
         return option;
     }
-    private static void Stub(Command command, string name, ExportInputReader? openExport = null, ExportPreparer? prepareExport = null) => command.SetAction(async (result, ct) =>
+    private static void Stub(Command command, string name, ExportInputReader? openExport = null, ExportPreparer? prepareExport = null,
+        Func<string, bool>? inputExists = null) => command.SetAction(async (result, ct) =>
     {
         ct.ThrowIfCancellationRequested();
         if (name == "export" && (result.GetValue<string?>("--open") is null || result.GetValue<string?>("--export") is null))
             return Fail(result, "usageError", "Export requires --open and --export.", 2, name);
         var path = name == "probe" ? result.GetValue<string>("media") : result.GetValue<string?>("--open");
-        if (name != "export" && path is not null && !File.Exists(path))
+        if (name != "export" && path is not null && !(inputExists ?? File.Exists)(path))
             return Fail(result, "mediaMissing", "The input file cannot be found.", 3, name);
         var fields = await CliOperations.ExecuteAsync(name, result, ct, openExport, prepareExport).ConfigureAwait(false);
         fields["ok"] = true; fields["command"] = name; fields["version"] = Version;
@@ -206,10 +259,11 @@ internal static class CliApplication
         else Console.Out.WriteLine(fields["output"]?.GetValue<string>() ?? fields.ToJsonString());
         return 0;
     });
-    private static int Fail(ParseResult result, string code, string message, int exitCode, string? command = null)
+    private static int Fail(ParseResult result, string code, string message, int exitCode, string? command = null, Redactor? redactor = null)
     {
-        if (result.GetValue(Json)) WriteJson(new(false, command ?? CommandName(result), null, new(code, DiagnosticRedactor.Redact(message)), Version));
-        else if (message.Length != 0) Console.Error.WriteLine(DiagnosticRedactor.Redact(code + ": " + message));
+        var scrubber = redactor ?? DiagnosticRedactor.Value;
+        if (result.GetValue(Json)) WriteJson(new(false, command ?? CommandName(result), null, new(code, scrubber.Redact(message)), Version));
+        else if (message.Length != 0) Console.Error.WriteLine(scrubber.Redact(code + ": " + message));
         return exitCode;
     }
     private static void WriteJson(CliEnvelope value) => Console.Out.Write(JsonSerializer.Serialize(value, CliJsonContext.Default.CliEnvelope) + "\n");

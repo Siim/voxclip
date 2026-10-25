@@ -136,7 +136,7 @@ public sealed class CliOutputParityTests
                 arguments.AddRange(["--transcript", transcript]);
             }
             Console.SetOut(output); Console.SetError(errors);
-            Assert.Equal(0, await CliApplication.RunAsync(arguments.ToArray(), TestContext.Current.CancellationToken, Open, Prepare));
+            Assert.Equal(0, await AcceptedCli.RunAsync(arguments.ToArray(), TestContext.Current.CancellationToken, Open, Prepare));
             Assert.Equal(1, probes); Assert.Equal(1, preparations);
             Assert.NotNull(prepared);
             Assert.Equal(savedProject ? 123_600 : 336_000, prepared.Snapshot.Plan.OutputSamples);
@@ -484,7 +484,7 @@ public sealed class CliOutputParityTests
         try
         {
             Console.SetOut(output); Console.SetError(errors);
-            Assert.Equal(exit, await CliApplication.RunAsync(arguments, ct ?? TestContext.Current.CancellationToken, openExport));
+            Assert.Equal(exit, await AcceptedCli.RunAsync(arguments, ct ?? TestContext.Current.CancellationToken, openExport));
             using var json = JsonDocument.Parse(output.ToString());
             var failure = json.RootElement.GetProperty("error");
             Assert.Equal(code, failure.GetProperty("code").GetString());

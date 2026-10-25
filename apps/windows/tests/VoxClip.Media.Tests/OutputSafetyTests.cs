@@ -61,7 +61,7 @@ public sealed class OutputSafetyTests
                 else File.CreateSymbolicLink(project, source);
             }
             Console.SetOut(output); Console.SetError(errors);
-            Assert.Equal(2, await CliApplication.RunAsync(["transcribe", "--open", source, "--out", project, "--raw-out", raw, "--json"], TestContext.Current.CancellationToken));
+            Assert.Equal(2, await AcceptedCli.RunAsync(["transcribe", "--open", source, "--out", project, "--raw-out", raw, "--json"], TestContext.Current.CancellationToken));
             using var json = JsonDocument.Parse(output.ToString());
             Assert.Equal("usageError", json.RootElement.GetProperty("error").GetProperty("code").GetString());
             Assert.Equal("preserve source", File.ReadAllText(source));
@@ -140,7 +140,7 @@ public sealed class OutputSafetyTests
             var arguments = new List<string> { "--open", project, "--export", flag == "--export" ? project : Path.Combine(directory, "export.mp4"), "--style", style, "--json" };
             if (flag != "--export") arguments.AddRange([flag, project]);
             Console.SetOut(output); Console.SetError(errors);
-            Assert.Equal(2, await CliApplication.RunAsync(arguments.ToArray(), TestContext.Current.CancellationToken));
+            Assert.Equal(2, await AcceptedCli.RunAsync(arguments.ToArray(), TestContext.Current.CancellationToken));
             using var json = JsonDocument.Parse(output.ToString());
             Assert.Equal("usageError", json.RootElement.GetProperty("error").GetProperty("code").GetString());
             Assert.Equal("preserve project", File.ReadAllText(project));

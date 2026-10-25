@@ -8,6 +8,7 @@ using VoxClip.Core.Domain.Captions;
 using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Domain.Transcript;
+using VoxClip.Core.Services.Project;
 using VoxClip.Media.Ffmpeg;
 using VoxClip.Media.Pipeline;
 using VoxClip.Tests.Support;
@@ -135,12 +136,17 @@ public sealed class MediaCliE2ETests
             "..", "..", "src", "VoxClip.Cli", "bin", "Release", "net10.0", "voxclip-cli.dll");
         cli = Path.GetFullPath(cli);
         Assert.True(File.Exists(cli), $"Built CLI is missing: {cli}");
+        var data = Path.Combine(directory, "data");
+        var agreement = new WindowsRuntimeAgreement(Path.Combine(Path.GetDirectoryName(cli)!, WindowsRuntimeAgreement.NoticeFileName),
+            Path.Combine(data, WindowsRuntimeAgreement.StampFileName));
+        var terms = agreement.LoadTerms();
+        agreement.Accept(terms, terms.Sha256);
         var start = new ProcessStartInfo(cli.EndsWith(".dll", StringComparison.OrdinalIgnoreCase) ? "dotnet" : cli)
         { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false };
         if (cli.EndsWith(".dll", StringComparison.OrdinalIgnoreCase)) start.ArgumentList.Add(cli);
         foreach (var argument in arguments) start.ArgumentList.Add(argument);
         start.Environment["VOXCLIP_SHARED_DIR"] = FixtureLoader.SharedRoot;
-        start.Environment["VOXCLIP_DATA_DIR"] = Path.Combine(directory, "data");
+        start.Environment["VOXCLIP_DATA_DIR"] = data;
         start.Environment["VOXCLIP_LIVE_TESTS"] = "0";
         start.Environment["VOXCLIP_TEST_DOWNLOAD"] = "0";
         start.Environment.Remove("VOXCLIP_FFMPEG_DIR");

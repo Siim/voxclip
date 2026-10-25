@@ -361,3 +361,48 @@ function Assert-ReleaseResources {
         Copy-Item -LiteralPath (Join-Path $Repository $notice) -Destination $AppDirectory -Force
     }
 }
+
+function Assert-ReleaseFileMatches {
+    param([string] $Expected, [string] $Actual)
+    if (-not (Test-Path -LiteralPath $Expected -PathType Leaf) -or
+        -not (Test-Path -LiteralPath $Actual -PathType Leaf) -or
+        (Get-FileHash -LiteralPath $Expected -Algorithm SHA256).Hash -ne (Get-FileHash -LiteralPath $Actual -Algorithm SHA256).Hash) {
+        throw "Release file differs from root source: $Actual"
+    }
+}
+
+function Get-ReleaseCurrentFullPackageName {
+    param([object[]] $Assets, [string] $Version, [string] $RuntimeIdentifier)
+    $expected = "VoxClip-$Version-$RuntimeIdentifier-full.nupkg"
+    $full = @($Assets | Where-Object { $_.Type -eq 'Full' })
+    $named = @($Assets | Where-Object { $_.RelativeFileName -ceq $expected })
+    if ($full.Count -ne 1 -or $named.Count -ne 1 -or
+        $full[0].RelativeFileName -cne $expected -or $named[0].Type -cne 'Full') {
+        throw "Expected exactly one current full package in assets.$RuntimeIdentifier.json."
+    }
+    return $expected
+}
+
+function Assert-PinnedVelopackInputs {
+    param([string] $ToolDirectory)
+    # SHA-256 of the six Windows payload inputs in the vpk 1.2.161 NuGet archive.
+    $pins = @{
+        'setup_x64.exe' = 'b4bac7fed188b173d36bac27f59376dfcac59c8db3f830858772b244c2308cab'
+        'setup_arm64.exe' = '390662ca2c1b4277c7200447a27ea1ba10fe7c5201d64f4dd5b11e00529066ee'
+        'update_x64.exe' = 'acefb4a2cb46cc77ed3c2364db17f8bd2a25e2197cfeae56cd85e88a7ac21ac5'
+        'update_arm64.exe' = '260fb897a8c2c3a23fc7ab71d52938d5c757d585b26a496981d549d51c78c5ff'
+        'stub_x64.exe' = '405517cdd4fb8d106ada4ce1fd834b583b46c3a3e2a9da12b2d3c4b6d69999b5'
+        'stub_arm64.exe' = '51c7db95ae8c85e8edbd92c328c0a468ec4fdbec55bd675e9445afcf3789b2ae'
+    }
+    $vendorCandidates = @(Get-ChildItem -LiteralPath $ToolDirectory -Filter 'setup_x64.exe' -Recurse -File -Force)
+    if ($vendorCandidates.Count -ne 1 -or (Split-Path -Leaf $vendorCandidates[0].DirectoryName) -ne 'vendor') {
+        throw 'Expected one pinned Velopack vendor directory in the installed vpk tool.'
+    }
+    foreach ($name in $pins.Keys) {
+        $file = Join-Path $vendorCandidates[0].DirectoryName $name
+        if (-not (Test-Path -LiteralPath $file -PathType Leaf) -or
+            (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash -ine $pins[$name]) {
+            throw "Pinned Velopack payload differs: $name"
+        }
+    }
+}

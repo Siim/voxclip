@@ -278,8 +278,10 @@ that keeps its executable open for three seconds, plus failure-path fixtures.
   integration follow-up; implementation changes stay in this track's release
   tooling in `build/`. The lead separately accepts `doc/release.md` wording
   changes in the asset table and sections 3.2/3.6 as a scoped exception.
-- Complete the Windows dependency license texts in `THIRD_PARTY_NOTICES.md`
-  before an actual release; the skeleton currently has confirmation placeholders.
+- The root `THIRD_PARTY_NOTICES.md` now contains the audited Windows package
+  texts and pinned Velopack Setup/Update/stub source notices. The release flow
+  checks its bytes in each full package and installed app; the older local
+  signed installer predates those notices and does not verify this payload.
 
 Local checks (wrap each command in `timeout`):
 

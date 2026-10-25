@@ -34,7 +34,7 @@ public sealed class CliTests
         try
         {
             Console.SetOut(output); Console.SetError(errors);
-            var exit = await CliApplication.RunAsync(command.Split(' '), TestContext.Current.CancellationToken);
+            var exit = await AcceptedCli.RunAsync(command.Split(' '), TestContext.Current.CancellationToken);
             Assert.Equal(expectedExit, exit);
             using var document = JsonDocument.Parse(output.ToString());
             Assert.Equal(ok, document.RootElement.GetProperty("ok").GetBoolean());
@@ -60,7 +60,7 @@ public sealed class CliTests
         {
             var source = Path.Combine(directory, "source.mp4"); File.WriteAllText(source, "input marker");
             Console.SetOut(output); Console.SetError(errors);
-            var exit = await CliApplication.RunAsync(["--open", source, "--export", Path.Combine(directory, "out.mp4"),
+            var exit = await AcceptedCli.RunAsync(["--open", source, "--export", Path.Combine(directory, "out.mp4"),
                 "--fps", value, "--json"], TestContext.Current.CancellationToken,
                 (_, _) => throw new InvalidOperationException("Input must not open"));
             Assert.Equal(2, exit);
@@ -86,7 +86,7 @@ public sealed class CliTests
             CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("de-DE");
             Console.SetOut(output); Console.SetError(errors);
             var opened = false;
-            var exit = await CliApplication.RunAsync(["--open", source, "--export", Path.Combine(directory, "out.mp4"),
+            var exit = await AcceptedCli.RunAsync(["--open", source, "--export", Path.Combine(directory, "out.mp4"),
                 "--fps", "29.97", "--json"], TestContext.Current.CancellationToken,
                 (_, _) => { opened = true; throw new VoxClipException(VoxClipErrorCode.DecodeFailed, "probe stopped"); });
             Assert.True(opened); Assert.Equal(3, exit);
@@ -104,7 +104,7 @@ public sealed class CliTests
         try
         {
             Console.SetOut(output); Console.SetError(errors);
-            var exit = await CliApplication.RunAsync(["--open", "missing.mp4", "--export", "unused.mp4",
+            var exit = await AcceptedCli.RunAsync(["--open", "missing.mp4", "--export", "unused.mp4",
                 "--style", style, "--json"], TestContext.Current.CancellationToken,
                 (_, _) => throw new InvalidOperationException("Input must not open"));
             Assert.Equal(2, exit);
@@ -130,7 +130,7 @@ public sealed class CliTests
             var source = Path.Combine(directory, "source.mp4");
             File.WriteAllText(source, "probed by the test");
             Console.SetOut(output); Console.SetError(errors);
-            var exit = await CliApplication.RunAsync(["--open", source, "--export", Path.Combine(directory, "out.mp4"), "--json"],
+            var exit = await AcceptedCli.RunAsync(["--open", source, "--export", Path.Combine(directory, "out.mp4"), "--json"],
                 TestContext.Current.CancellationToken, (_, _) => throw new VoxClipException(code, "safe diagnostic"));
             Assert.Equal(expected, exit);
             using var json = JsonDocument.Parse(output.ToString());
@@ -162,7 +162,7 @@ public sealed class CliTests
             var source = Path.Combine(directory, "corrupt.mp4");
             File.WriteAllText(source, "not media");
             Console.SetOut(output); Console.SetError(errors);
-            Assert.Equal(3, await CliApplication.RunAsync(["--open", source, "--export", Path.Combine(directory, "out.mp4"), "--json"], TestContext.Current.CancellationToken));
+            Assert.Equal(3, await AcceptedCli.RunAsync(["--open", source, "--export", Path.Combine(directory, "out.mp4"), "--json"], TestContext.Current.CancellationToken));
             using var json = JsonDocument.Parse(output.ToString());
             var failure = json.RootElement.GetProperty("error");
             Assert.Equal("decodeFailed", failure.GetProperty("code").GetString());

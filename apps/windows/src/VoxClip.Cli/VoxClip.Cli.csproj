@@ -5,6 +5,7 @@
     <AssemblyName>voxclip-cli</AssemblyName>
   </PropertyGroup>
   <ItemGroup>
+    <Content Include="$(MSBuildThisFileDirectory)..\..\..\..\THIRD_PARTY_NOTICES.md" Link="THIRD_PARTY_NOTICES.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <ProjectReference Include="../VoxClip.Core/VoxClip.Core.csproj" />
     <ProjectReference Include="../VoxClip.Media/VoxClip.Media.csproj" />
     <PackageReference Include="System.CommandLine" />

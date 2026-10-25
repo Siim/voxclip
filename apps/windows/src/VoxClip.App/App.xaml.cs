@@ -1,12 +1,15 @@
 using Microsoft.UI.Xaml;
 using VoxClip.App.Services;
+using VoxClip.App.Controls;
+using VoxClip.Core.Services.Project;
 using Windows.ApplicationModel.Activation;
 namespace VoxClip.App;
 
 /// <summary>WinUI application lifecycle; architecture §7.2. No native model/media work runs during startup.</summary>
 public partial class App : Application
 {
-    internal static AppServices Services { get; } = new();
+    private static AppServices? services;
+    internal static AppServices Services => services ??= new();
     internal static List<MainWindow> Windows { get; } = [];
     internal static SettingsWindow? Settings { get; private set; }
     /// <summary>Initialize theme-aware WinUI resources.</summary>
@@ -19,11 +22,17 @@ public partial class App : Application
     protected override async void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
     {
         MainWindow? window = null;
+        Window? termsHost = null;
         var screen = "home";
         try
         {
+        var decision = await WindowsRuntimeTermsDialog.ShowAsync(WindowsRuntimeAgreement.ForCurrentUser());
+        termsHost = decision.Host;
+        if (!decision.Accepted) { termsHost?.Close(); termsHost = null; Exit(); return; }
         await Services.InitializeAsync(CancellationToken.None);
         window = NewWindow();
+        termsHost?.Close();
+        termsHost = null;
         if (Program.Instance is { } instance)
             instance.Activated += (_, activation) => window.DispatcherQueue.TryEnqueue(async () =>
             {
@@ -55,6 +64,7 @@ public partial class App : Application
         }
         catch (Exception exception)
         {
+            termsHost?.Close();
             StartupDiagnostics.Failure(exception, "launch");
             if (window is null) { Environment.ExitCode = 1; Exit(); }
             else window.ShowError(exception, "Open project");

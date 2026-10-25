@@ -441,6 +441,8 @@ after export (same sheet / dialog content replaced):
 
 ## 9. Onboarding (first launch, skippable)
 
+On Windows, before this optional onboarding or any project, media, model, provider or key access, a native blocking dialog titled **Windows component terms** explains: “VoxClip includes Microsoft Windows components. Review and accept their terms to use this Windows build. VoxClip itself remains open source under MIT.” It displays the full bundled Windows App SDK 2.5.1 and Windows ML Runtime 2.1.74 terms offline in a scrollable read-only field that stays usable with keyboard scrolling and display scaling. **Accept and continue** records the exact current terms hash for this user; **Quit**, Escape and closing the dialog or its host window leave normal app features unavailable. The default button is Quit. No checkbox is preselected. The prompt reappears only when the terms hash changes or the receipt is absent or invalid; an accepted receipt opens the normal window directly. About → Licences continues to show the complete root notices. This dialog may initialize WinUI before the decision; it does not start normal application services.
+
 A 560×480 sheet over the Welcome window (macOS) or a centred `ContentDialog`-sized page over Home (Windows). Three steps with a dot indicator; **Skip** is always in the top-trailing corner and lands on Welcome/Home with local defaults. Reopen from Help → Welcome Tour.
 
 ```text

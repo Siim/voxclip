@@ -105,6 +105,84 @@ function Invoke-FakeSignTool {
 }
 
 try {
+    $matchRoot = Join-Path $temporary 'file-match'
+    New-Item -ItemType Directory -Path $matchRoot | Out-Null
+    $matchExpected = Join-Path $matchRoot 'expected.txt'
+    $matchActual = Join-Path $matchRoot 'actual.txt'
+    [IO.File]::WriteAllText($matchExpected, 'pinned notices')
+    [IO.File]::WriteAllText($matchActual, 'pinned notices')
+    Invoke-Test 'release file match accepts identical bytes and rejects missing or altered files' {
+        Assert-ReleaseFileMatches -Expected $matchExpected -Actual $matchActual
+        [IO.File]::WriteAllText($matchActual, 'changed notices')
+        Assert-Throws { Assert-ReleaseFileMatches -Expected $matchExpected -Actual $matchActual } 'Release file differs from root source'
+        Remove-Item -LiteralPath $matchActual
+        Assert-Throws { Assert-ReleaseFileMatches -Expected $matchExpected -Actual $matchActual } 'Release file differs from root source'
+        [IO.File]::WriteAllText($matchActual, 'pinned notices')
+        Remove-Item -LiteralPath $matchExpected
+        Assert-Throws { Assert-ReleaseFileMatches -Expected $matchExpected -Actual $matchActual } 'Release file differs from root source'
+    }
+    Invoke-Test 'current full package requires one exact Full entry for the RID' {
+        $current = [pscustomobject]@{ Type = 'Full'; RelativeFileName = 'VoxClip-0.1.0-win-x64-full.nupkg' }
+        $delta = [pscustomobject]@{ Type = 'Delta'; RelativeFileName = 'VoxClip-0.1.0-win-x64-delta.nupkg' }
+        Assert-Equal (Get-ReleaseCurrentFullPackageName -Assets @($delta, $current) -Version 0.1.0 -RuntimeIdentifier win-x64) $current.RelativeFileName
+        Assert-Throws { Get-ReleaseCurrentFullPackageName -Assets @($delta) -Version 0.1.0 -RuntimeIdentifier win-x64 } 'exactly one current full package'
+        Assert-Throws { Get-ReleaseCurrentFullPackageName -Assets @([pscustomobject]@{ Type = 'Delta'; RelativeFileName = $current.RelativeFileName }) -Version 0.1.0 -RuntimeIdentifier win-x64 } 'exactly one current full package'
+        Assert-Throws { Get-ReleaseCurrentFullPackageName -Assets @($current, $current) -Version 0.1.0 -RuntimeIdentifier win-x64 } 'exactly one current full package'
+        Assert-Throws { Get-ReleaseCurrentFullPackageName -Assets @($current, [pscustomobject]@{ Type = 'Full'; RelativeFileName = 'VoxClip-0.1.0-win-arm64-full.nupkg' }) -Version 0.1.0 -RuntimeIdentifier win-x64 } 'exactly one current full package'
+        Assert-Throws { Get-ReleaseCurrentFullPackageName -Assets @($current) -Version 0.1.0 -RuntimeIdentifier win-arm64 } 'exactly one current full package'
+    }
+    $script:vendorPinTable = @{}
+    foreach ($line in Get-Content -LiteralPath (Join-Path $PSScriptRoot '../../../doc/dependency-notices-audit.md')) {
+        if ($line -match '^\| `((?:setup|update|stub)_(?:x64|arm64)\.exe)` \| `([a-f0-9]{64})` \|$') {
+            $script:vendorPinTable[$Matches[1]] = $Matches[2]
+        }
+    }
+    Assert-Equal $script:vendorPinTable.Count 6
+    $toolFixture = Join-Path $temporary 'vpk-tool'
+    $vendorFixture = Join-Path $toolFixture 'vpk/vendor'
+    New-Item -ItemType Directory -Force -Path $vendorFixture | Out-Null
+    foreach ($name in $script:vendorPinTable.Keys) {
+        [IO.File]::WriteAllText((Join-Path $vendorFixture $name), "pinned $name")
+    }
+    Invoke-Test 'pinned Velopack input check covers all six documented identities' {
+        $script:mockedVendorHashNames = @()
+        function Get-FileHash {
+            param([string] $LiteralPath, [string] $Algorithm)
+            Assert-Equal $Algorithm 'SHA256'
+            $name = Split-Path -Leaf $LiteralPath
+            if (-not $script:vendorPinTable.ContainsKey($name)) { throw "Unexpected fake hash path: $name" }
+            $script:mockedVendorHashNames += $name
+            $hash = if ([IO.File]::ReadAllText($LiteralPath) -ceq "pinned $name") { $script:vendorPinTable[$name] } else { '0' * 64 }
+            return [pscustomobject]@{ Hash = $hash }
+        }
+        Assert-PinnedVelopackInputs -ToolDirectory $toolFixture
+        Assert-Equal (@($script:mockedVendorHashNames | Sort-Object -Unique).Count) 6
+    }
+    Invoke-Test 'pinned Velopack input check rejects each altered or missing vendor file' {
+        function Get-FileHash {
+            param([string] $LiteralPath, [string] $Algorithm)
+            Assert-Equal $Algorithm 'SHA256'
+            $name = Split-Path -Leaf $LiteralPath
+            $hash = if ([IO.File]::ReadAllText($LiteralPath) -ceq "pinned $name") { $script:vendorPinTable[$name] } else { '0' * 64 }
+            return [pscustomobject]@{ Hash = $hash }
+        }
+        foreach ($name in $script:vendorPinTable.Keys) {
+            $path = Join-Path $vendorFixture $name
+            [IO.File]::WriteAllText($path, "altered $name")
+            Assert-Throws { Assert-PinnedVelopackInputs -ToolDirectory $toolFixture } ([regex]::Escape("Pinned Velopack payload differs: $name"))
+            Remove-Item -LiteralPath $path
+            $pattern = if ($name -eq 'setup_x64.exe') { 'Expected one pinned Velopack vendor directory' } else { [regex]::Escape("Pinned Velopack payload differs: $name") }
+            Assert-Throws { Assert-PinnedVelopackInputs -ToolDirectory $toolFixture } $pattern
+            [IO.File]::WriteAllText($path, "pinned $name")
+        }
+    }
+    Invoke-Test 'pinned Velopack input check rejects missing and ambiguous vendor directories' {
+        Assert-Throws { Assert-PinnedVelopackInputs -ToolDirectory (Join-Path $temporary 'no-vpk-tool') } 'cannot find|does not exist|Expected one pinned Velopack vendor directory'
+        $secondVendor = Join-Path $toolFixture 'other/vendor'
+        New-Item -ItemType Directory -Force -Path $secondVendor | Out-Null
+        [IO.File]::WriteAllText((Join-Path $secondVendor 'setup_x64.exe'), 'duplicate')
+        Assert-Throws { Assert-PinnedVelopackInputs -ToolDirectory $toolFixture } 'Expected one pinned Velopack vendor directory'
+    }
     $vmAst = [Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot 'vm-release.ps1'), [ref] $null, [ref] $null)
     $validation = $vmAst.Find({ param($Node) $Node -is [Management.Automation.Language.FunctionDefinitionAst] -and $Node.Name -eq 'Assert-ReleaseSigningCredentials' }, $true)
     . ([scriptblock]::Create($validation.Extent.Text))
@@ -581,25 +659,60 @@ function Invoke-ReleaseProcess {
     if ($Arguments -like '--silent --installto *') {
         $script:fixtureScenario = $Executable
         $root = [regex]::Match($Arguments, '--installto "([^"]+)"').Groups[1].Value
+        $script:fixtureRoot = $root
+        $global:fixtureGateEvents = @()
         $pending = Get-Content -LiteralPath (Join-Path $ReportDirectory 'install-root.json') -Raw | ConvertFrom-Json
         Assert-Equal $pending.installRoot $root
         Assert-Equal $TimeoutSeconds 300
         if ($Executable -eq 'install-fail') { throw 'Fixture install failure.' }
-        foreach ($relative in @('Update.exe', 'current/VoxClip.exe', 'current/voxclip-cli.exe', 'current/LICENSE',
+        foreach ($relative in @('Update.exe', 'VoxClip.exe', 'current/VoxClip.exe', 'current/voxclip-cli.exe', 'current/LICENSE',
             'current/THIRD_PARTY_NOTICES.md', 'current/licenses/FFmpeg-LICENSE.txt', 'current/licenses/FFmpeg-BUILD.txt')) {
             $path = Join-Path $root $relative
             New-Item -ItemType Directory -Force -Path (Split-Path -Parent $path) | Out-Null
-            [IO.File]::WriteAllText($path, 'fixture')
+            $contents = if (($script:fixtureScenario -in @('notices-mismatch', 'notices-and-cleanup-fail') -and $relative -eq 'current/THIRD_PARTY_NOTICES.md') -or
+                ($script:fixtureScenario -eq 'updater-mismatch' -and $relative -eq 'Update.exe') -or
+                ($script:fixtureScenario -eq 'stub-mismatch' -and $relative -eq 'VoxClip.exe')) { 'altered fixture' } else { 'fixture' }
+            [IO.File]::WriteAllText($path, $contents)
         }
     } elseif ($Arguments -eq 'version') {
         Assert-Equal $TimeoutSeconds 60
         if ($script:fixtureScenario -eq 'cli-timeout') { throw 'Fixture CLI exceeded 60 seconds.' }
         [IO.File]::WriteAllText($StandardOutput, 'VoxClip 0.1.0 (windows-x64)')
+    } elseif ($Arguments -eq '--runtime-terms --json' -or $Arguments -like '--accept-runtime-terms * --json' -or $Arguments -like 'probe * --json') {
+        Assert-Equal $TimeoutSeconds 60
+        Assert-Equal $env:VOXCLIP_DATA_DIR (Join-Path $script:fixtureRoot 'runtime-terms-smoke')
+        Assert-Equal (Test-Path -LiteralPath $env:VOXCLIP_DATA_DIR -PathType Container) $true
+        $hash = 'a' * 64
+        $receipt = Join-Path $env:VOXCLIP_DATA_DIR 'windows-runtime-agreement.txt'
+        $stamp = "format=voxclip-windows-runtime-agreement/1`nsha256=$hash`n"
+        $exitCode = 0
+        if ($Arguments -eq '--runtime-terms --json') {
+            $global:fixtureGateEvents += 'terms'
+            $shownHash = if ($script:fixtureScenario -eq 'terms-hash-invalid') { 'invalid-hash' } else { $hash }
+            $body = @{ ok = $true; command = 'runtime-terms'; output = "$shownHash`nFixture terms"; version = '0.1.0' }
+        } elseif ($Arguments -like '--accept-runtime-terms * --json') {
+            $global:fixtureGateEvents += 'accept'
+            Assert-Equal $Arguments "--accept-runtime-terms $hash --json"
+            [IO.File]::WriteAllText($receipt, $stamp)
+            $body = @{ ok = $true; command = 'accept-runtime-terms'; output = $hash; version = '0.1.0' }
+        } else {
+            $probeIndex = @($global:fixtureGateEvents | Where-Object { $_ -like 'probe:*' }).Count
+            $accepted = (Test-Path -LiteralPath $receipt -PathType Leaf) -and ([IO.File]::ReadAllText($receipt) -ceq $stamp)
+            if ($script:fixtureScenario -in @('terms-gate-bypass', 'terms-gate-and-cleanup-fail') -and $probeIndex -eq 0) { $accepted = $true }
+            if ($script:fixtureScenario -eq 'terms-missing-recheck-bypass' -and $probeIndex -eq 2) { $accepted = $true }
+            if ($script:fixtureScenario -eq 'terms-corrupt-recheck-bypass' -and $probeIndex -eq 3) { $accepted = $true }
+            $exitCode = if ($accepted) { 3 } else { 7 }
+            $code = if ($accepted) { 'mediaMissing' } else { 'runtimeTermsRequired' }
+            $global:fixtureGateEvents += "probe:$exitCode"
+            $body = @{ ok = $false; command = 'probe'; error = @{ code = $code; message = 'Fixture gate result.' }; version = '0.1.0' }
+        }
+        [IO.File]::WriteAllText($StandardOutput, ($body | ConvertTo-Json -Compress))
+        return [pscustomobject] @{ ExitCode = $exitCode }
     } else {
         Assert-Equal $Arguments '--uninstall --silent'
         Assert-Equal $TimeoutSeconds 180
         Remove-Item -LiteralPath (Join-Path (Split-Path -Parent $Executable) 'current') -Recurse -Force
-        if ($script:fixtureScenario -in @('cleanup-fail', 'both-fail')) { throw 'Fixture cleanup failure.' }
+        if ($script:fixtureScenario -in @('cleanup-fail', 'both-fail', 'notices-and-cleanup-fail', 'terms-gate-and-cleanup-fail')) { throw 'Fixture cleanup failure.' }
         if ($script:fixtureScenario -eq 'success') {
             if ($env:OS -eq 'Windows_NT') {
                 Copy-Item -LiteralPath (Join-Path $env:SystemRoot 'System32/ping.exe') -Destination $Executable -Force
@@ -615,16 +728,22 @@ function Invoke-ReleaseProcess {
 }
 '@, [Text.Encoding]::ASCII)
     $oldLocalAppData = $env:LOCALAPPDATA
+    $oldDataDirectory = $env:VOXCLIP_DATA_DIR
     $global:fixtureProcesses = @()
+    $expectedNotice = Join-Path $temporary 'expected-notices.txt'
+    [IO.File]::WriteAllText($expectedNotice, 'fixture')
+    $expectedPayloadHash = (Get-FileHash -LiteralPath $expectedNotice -Algorithm SHA256).Hash
     try {
         $env:LOCALAPPDATA = Join-Path $temporary 'user-data-fixture'
-        foreach ($scenario in @('success', 'install-fail', 'verification-fail', 'cleanup-fail', 'both-fail', 'cli-timeout')) {
+        foreach ($scenario in @('success', 'install-fail', 'verification-fail', 'cleanup-fail', 'both-fail', 'cli-timeout',
+            'notices-mismatch', 'updater-mismatch', 'stub-mismatch', 'notices-and-cleanup-fail', 'terms-hash-invalid',
+            'terms-gate-bypass', 'terms-missing-recheck-bypass', 'terms-corrupt-recheck-bypass', 'terms-gate-and-cleanup-fail')) {
             Invoke-Test "install evidence survives $scenario and preserves the first error" {
                 $report = Join-Path $temporary ("install-report-" + $scenario)
                 $failure = $null
                 $timer = [Diagnostics.Stopwatch]::StartNew()
                 try {
-                    & (Join-Path $installFixture 'Test-Install.ps1') -Setup $scenario -SignTool fixture -Version 0.1.0 -RuntimeIdentifier win-x64 -ReportDirectory $report
+                    & (Join-Path $installFixture 'Test-Install.ps1') -Setup $scenario -SignTool fixture -Version 0.1.0 -RuntimeIdentifier win-x64 -ReportDirectory $report -ExpectedNotices $expectedNotice -PackagedUpdaterHash $expectedPayloadHash -PackagedStubHash $expectedPayloadHash
                 } catch { $failure = $_.Exception }
                 $receipt = Get-Content -LiteralPath (Join-Path $report 'install-test.json') -Raw | ConvertFrom-Json
                 Assert-Equal $receipt.success ($scenario -eq 'success')
@@ -634,10 +753,24 @@ function Invoke-ReleaseProcess {
                 Assert-Equal $receipt.cleanup.processesExited $true
                 Assert-Equal $receipt.cleanup.attempted ($scenario -ne 'install-fail')
                 Assert-Equal $receipt.cleanup.removalAttempts $(if ($scenario -eq 'install-fail') { 0 } else { 1 })
-                Assert-Equal $receipt.cleanup.errors.Count $(if ($scenario -in @('cleanup-fail', 'both-fail')) { 1 } else { 0 })
-                Assert-Equal (Test-Path -LiteralPath (Join-Path $report 'install-root.json')) ($scenario -in @('cleanup-fail', 'both-fail'))
+                Assert-Equal $receipt.cleanup.errors.Count $(if ($scenario -in @('cleanup-fail', 'both-fail', 'notices-and-cleanup-fail', 'terms-gate-and-cleanup-fail')) { 1 } else { 0 })
+                Assert-Equal (Test-Path -LiteralPath (Join-Path $report 'install-root.json')) ($scenario -in @('cleanup-fail', 'both-fail', 'notices-and-cleanup-fail', 'terms-gate-and-cleanup-fail'))
                 if ($scenario -eq 'success' -and $timer.Elapsed.TotalSeconds -lt 2.5) { throw 'Test-Install did not wait for its updater.' }
+                if ($scenario -eq 'success') { Assert-Equal ($global:fixtureGateEvents -join '|') 'terms|probe:7|accept|probe:3|probe:7|accept|probe:7' }
+                Assert-Equal $env:VOXCLIP_DATA_DIR $oldDataDirectory
                 if ($scenario -eq 'cli-timeout') { Assert-Equal $failure.Message 'Fixture CLI exceeded 60 seconds.' }
+                $mismatchErrors = @{
+                    'notices-mismatch' = 'Release file differs from root source'
+                    'updater-mismatch' = 'Installed Update.exe differs from packaged Squirrel.exe.'
+                    'stub-mismatch' = 'Installed execution stub differs from the full package.'
+                    'notices-and-cleanup-fail' = 'Release file differs from root source'
+                }
+                if ($mismatchErrors.ContainsKey($scenario)) {
+                    Assert-Equal ($receipt.error.StartsWith($mismatchErrors[$scenario], [StringComparison]::Ordinal)) $true
+                    Assert-Equal ($failure.Message.Contains($mismatchErrors[$scenario])) $true
+                    Assert-Equal $receipt.cleanup.attempted $true
+                    Assert-Equal $receipt.cleanup.directoryRemoved $true
+                }
                 if ($scenario -eq 'both-fail') {
                     $expected = "Installer verification or cleanup failed for win-x64 (install root $($receipt.installRoot)): Fixture original verification failure. | Fixture cleanup failure."
                     Assert-Equal ($failure.Message.StartsWith($expected, [StringComparison]::Ordinal)) $true
@@ -645,6 +778,21 @@ function Invoke-ReleaseProcess {
                     Assert-Equal $failure.InnerExceptions[0].Message 'Fixture original verification failure.'
                     Assert-Equal $failure.InnerExceptions[1].Message 'Fixture cleanup failure.'
                     Assert-Equal $receipt.error 'Fixture original verification failure.'
+                }
+                if ($scenario -eq 'notices-and-cleanup-fail') {
+                    Assert-Equal $failure.InnerExceptions.Count 2
+                    Assert-Equal ($failure.InnerExceptions[0].Message.StartsWith('Release file differs from root source', [StringComparison]::Ordinal)) $true
+                    Assert-Equal $failure.InnerExceptions[1].Message 'Fixture cleanup failure.'
+                }
+                if ($scenario -eq 'terms-hash-invalid') { Assert-Equal $receipt.error 'Packaged CLI runtime terms output lacks a SHA-256 first line.' }
+                if ($scenario -in @('terms-gate-bypass', 'terms-missing-recheck-bypass', 'terms-corrupt-recheck-bypass')) {
+                    Assert-Equal $receipt.error 'Packaged CLI runtime gate returned an unexpected status for probe.'
+                }
+                if ($scenario -eq 'terms-gate-and-cleanup-fail') {
+                    Assert-Equal $failure.InnerExceptions.Count 2
+                    Assert-Equal $failure.InnerExceptions[0].Message 'Packaged CLI runtime gate returned an unexpected status for probe.'
+                    Assert-Equal $failure.InnerExceptions[1].Message 'Fixture cleanup failure.'
+                    Assert-Equal $receipt.error $failure.InnerExceptions[0].Message
                 }
             }
         }
