@@ -84,8 +84,9 @@ Every `default` in `schema.json` is normative: a reader behaves as if the defaul
 | `emoji` | `{"enabled": false}` |
 | `effects` | no effects |
 | `aspects` | no per-aspect overrides |
-| `text` | `{"transform": "none", "punctuation": "keep", "userOverridable": true}` |
 | `accent` | no `$accent` token; the Colour control is hidden |
+
+`text` is not optional: `schema.json` requires it in every style, so a reader rejects a style without it, and an overrides patch that deletes it is rejected like any other invalid patch (2.4 step 3). Its members keep their schema defaults (`transform: "none"`, `punctuation: "keep"`, `userOverridable: true`).
 
 ### 2.3 Colours
 
