@@ -99,6 +99,8 @@ jobs:
         working-directory: apps/windows
         env:
           VOXCLIP_SHARED_DIR: ${{ github.workspace }}/shared
+          VOXCLIP_SCHEMA_PYTHON: ${{ steps.py.outputs.python-path }}
+          VOXCLIP_REQUIRE_SCHEMA_PYTHON: "1"
         run: dotnet test --project tests/VoxClip.Core.Tests/VoxClip.Core.Tests.csproj -c Release
 
       - name: .NET media tests on macOS (caption renderer; no FFmpeg, no Windows-only APIs)
@@ -146,6 +148,7 @@ jobs:
           dotnet-version: "10.0.x"
 
       - name: Set up Python for the schema check
+        id: py
         if: steps.detect.outputs.core_tests == 'true'
         uses: actions/setup-python@v5
         with:
@@ -162,6 +165,8 @@ jobs:
         working-directory: apps/windows
         env:
           VOXCLIP_SHARED_DIR: ${{ github.workspace }}/shared
+          VOXCLIP_SCHEMA_PYTHON: ${{ steps.py.outputs.python-path }}
+          VOXCLIP_REQUIRE_SCHEMA_PYTHON: "1"
         run: dotnet test --project tests/VoxClip.Core.Tests/VoxClip.Core.Tests.csproj -c Release
 
       - name: .NET media tests (FFmpeg-dependent tests skip themselves when FFmpeg is absent)
