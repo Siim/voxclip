@@ -180,6 +180,8 @@ EditPlan {
 }
 ```
 
+The macOS canonical initializer takes `sampleRate`, `totalSamples`, `cuts` and `kept`; output samples and joins are derived from the kept intervals. The legacy initializer with explicit derived values is deprecated and asserts their agreement in DEBUG builds. Decoding still normalizes stale derived fields from kept intervals without changing the wire format.
+
 ### 2.8 CaptionWord
 
 ```text
@@ -557,6 +559,8 @@ The default rule is the reference rule (4.11), which tests the **current** (corr
 ### 6.3 Operations
 
 Each operation is a pure function `(EditState, Op) -> EditState`. The app makes each one a single undo step, and every operation pauses playback.
+
+For AI-linked clip additions, the macOS history entry point is `EditHistory.apply(_:aiResults:)`, supplied with the project's current AI results. It performs the same reference and batch-size checks as `Project.applyEditing`; a rejected command changes neither the edit state nor the undo/redo stacks. The state-only overload remains available when AI context is unavailable.
 
 | Op | Semantics |
 |---|---|

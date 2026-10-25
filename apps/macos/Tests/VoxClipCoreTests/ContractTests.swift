@@ -75,9 +75,9 @@ func portableProjectRoundTrip(name: String) throws {
     #expect(locations.settings.path == "/tmp/voxclip-contract-test/settings.json")
 }
 
-@Test func unfinishedProjectStoreIsNonDestructive() async {
+@Test func projectStoreRejectsMissingInput() async {
     let store: any ProjectStore = JSONProjectStore()
-    await #expect(throws: VoxClipError.notImplemented("mac-editing")) {
+    await #expect(throws: VoxClipError.projectUnreadable("Invalid project document")) {
         _ = try await store.load(from: URL(fileURLWithPath: "/tmp/not-a-project.voxclip"))
     }
 }

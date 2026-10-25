@@ -1,5 +1,11 @@
 import Foundation
 
+public enum EditingLimits {
+    public static let maxCorrectionScalars = 200
+    public static let maxClipTitleScalars = 120
+    public static let clipIDPattern = "[A-Za-z0-9][A-Za-z0-9._:-]{0,63}"
+}
+
 /// Derived source pause; editing §2.4.
 public struct Pause: Codable, Sendable, Equatable {
     /// id; Derived source pause; editing §2.4.
@@ -42,7 +48,7 @@ public struct Pause: Codable, Sendable, Equatable {
         try values.encode(self.end, forKey: .end)
     }
     public var duration: Double { end - start }
-    public var label: String { "pause " + String(format: "%.1f", locale: Locale(identifier: "en_US_POSIX"), duration) + "s" }
+    public var label: String { "pause " + toFixed1(duration) + "s" }
 }
 
 /// Half-open source sample interval; editing §2.7.
@@ -293,26 +299,53 @@ public struct Join: Codable, Sendable, Equatable {
 /// Sample-grid plan; editing §2.7 and §7.4–7.7.
 public struct EditPlan: Codable, Sendable, Equatable {
     /// sampleRate; Sample-grid plan; editing §2.7 and §7.4–7.7.
-    public var sampleRate: Double
+    public var sampleRate: Double {
+        didSet { rebuildDerivedValues() }
+    }
     /// totalSamples; Sample-grid plan; editing §2.7 and §7.4–7.7.
-    public var totalSamples: Int64
+    public var totalSamples: Int64 {
+        didSet { rebuildDerivedValues() }
+    }
     /// cuts; Sample-grid plan; editing §2.7 and §7.4–7.7.
     public var cuts: [MediaInterval]
     /// kept; Sample-grid plan; editing §2.7 and §7.4–7.7.
-    public var kept: [MediaInterval]
+    public var kept: [MediaInterval] {
+        didSet { rebuildDerivedValues() }
+    }
     /// outputSamples; Sample-grid plan; editing §2.7 and §7.4–7.7.
-    public var outputSamples: Int64
+    public var outputSamples: Int64 {
+        didSet { outputSamples = kept.reduce(0) { $0 + $1.count } }
+    }
     /// joins; Sample-grid plan; editing §2.7 and §7.4–7.7.
-    public var joins: [Join]
+    public var joins: [Join] {
+        didSet { joins = Self.makeJoins(parts: fadeParts, outputSamples: outputSamples) }
+    }
+    public private(set) var fadeParts: [FadePart]
 
     /// Creates an explicit value without I/O or generated identifiers.
-    public init(sampleRate: Double, totalSamples: Int64, cuts: [MediaInterval] = [], kept: [MediaInterval] = [], outputSamples: Int64, joins: [Join] = []) {
+    public init(sampleRate: Double, totalSamples: Int64, cuts: [MediaInterval] = [], kept: [MediaInterval] = []) {
         self.sampleRate = sampleRate
         self.totalSamples = totalSamples
         self.cuts = cuts
         self.kept = kept
-        self.outputSamples = outputSamples
-        self.joins = joins
+        let parts = Self.makeFadeParts(kept: kept, totalSamples: totalSamples, sampleRate: sampleRate)
+        self.outputSamples = kept.reduce(0) { $0 + $1.count }
+        self.joins = Self.makeJoins(parts: parts, outputSamples: self.outputSamples)
+        self.fadeParts = parts
+    }
+
+    @available(*, deprecated, message: "outputSamples and joins are derived from kept")
+    public init(sampleRate: Double, totalSamples: Int64, cuts: [MediaInterval] = [], kept: [MediaInterval] = [], outputSamples: Int64, joins: [Join] = []) {
+        self.init(sampleRate: sampleRate, totalSamples: totalSamples, cuts: cuts, kept: kept)
+        #if DEBUG
+        assert(outputSamples == self.outputSamples && joins == self.joins, "outputSamples and joins are derived from kept")
+        #endif
+    }
+
+    private mutating func rebuildDerivedValues() {
+        fadeParts = Self.makeFadeParts(kept: kept, totalSamples: totalSamples, sampleRate: sampleRate)
+        outputSamples = kept.reduce(0) { $0 + $1.count }
+        joins = Self.makeJoins(parts: fadeParts, outputSamples: outputSamples)
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -326,12 +359,12 @@ public struct EditPlan: Codable, Sendable, Equatable {
 
     public init(from decoder: any Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
-        self.sampleRate = try values.decode(Double.self, forKey: .sampleRate)
-        self.totalSamples = try values.decode(Int64.self, forKey: .totalSamples)
-        self.cuts = try values.decodeIfPresent([MediaInterval].self, forKey: .cuts) ?? []
-        self.kept = try values.decodeIfPresent([MediaInterval].self, forKey: .kept) ?? []
-        self.outputSamples = try values.decode(Int64.self, forKey: .outputSamples)
-        self.joins = try values.decodeIfPresent([Join].self, forKey: .joins) ?? []
+        self.init(sampleRate: try values.decode(Double.self, forKey: .sampleRate),
+                  totalSamples: try values.decode(Int64.self, forKey: .totalSamples),
+                  cuts: try values.decodeIfPresent([MediaInterval].self, forKey: .cuts) ?? [],
+                  kept: try values.decodeIfPresent([MediaInterval].self, forKey: .kept) ?? [])
+        _ = try values.decode(Int64.self, forKey: .outputSamples)
+        _ = try values.decodeIfPresent([Join].self, forKey: .joins)
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -347,23 +380,48 @@ public struct EditPlan: Codable, Sendable, Equatable {
     public var duration: Double { sampleRate > 0 ? Double(outputSamples) / sampleRate : 0 }
     /// mac-editing supplies validation and the exact fixture-tested planner.
     public static func build(transcript: Transcript, editState: EditState, activeClip: ClipRange?, duration: Double, sampleRate: Double) throws -> EditPlan {
-        throw VoxClipError.notImplemented("mac-editing")
+        var snapshot = editState
+        snapshot.transcript = transcript
+        return try buildEditPlan(buildSegments(snapshot, activeClip: activeClip), duration: duration, sampleRate: sampleRate, pauseKeepSeconds: snapshot.pauseKeepSeconds)
     }
-    /// Placeholder: identity mapping until mac-editing implements §7.5.
     public func mapTime(_ source: Double) -> Double {
-        // TODO(mac-editing)
-        return source
+        let sample = clampSample(source.isFinite ? source : 0)
+        var removed: Int64 = 0
+        for cut in cuts {
+            if cut.startSample >= sample { break }
+            removed += min(sample, cut.endSample) - cut.startSample
+        }
+        return Double(min(outputSamples, max(0, sample - removed))) / sampleRate
     }
-    /// Placeholder: identity mapping until mac-editing implements §7.5.
     public func sourceTime(_ edited: Double) -> Double {
-        // TODO(mac-editing)
-        return edited
+        let rounded = EditingPrimitives.jsRound((edited.isFinite ? edited : 0) * sampleRate)
+        if rounded >= Double(outputSamples) { return Double(totalSamples) / sampleRate }
+        var remaining = Int64(max(0, rounded))
+        for interval in kept {
+            if remaining < interval.count { return Double(interval.startSample + remaining) / sampleRate }
+            remaining -= interval.count
+        }
+        return Double(totalSamples) / sampleRate
     }
     public func editedTime(fromSource source: Double) -> Double { mapTime(source) }
     public func sourceTime(fromEdited edited: Double) -> Double { sourceTime(edited) }
-    /// Placeholder unity gain; never call an unbuilt skeleton plan for export.
     public func joinGain(at sample: Int64) -> Double {
-        // TODO(mac-editing)
+        guard sample >= 0 else { return 1 }
+        var lower = 0, upper = fadeParts.count
+        while lower < upper {
+            let middle = lower + (upper - lower) / 2
+            if fadeParts[middle].outputStart <= sample { lower = middle + 1 }
+            else { upper = middle }
+        }
+        guard lower > 0 else { return 1 }
+        let part = fadeParts[lower - 1]
+        if sample - part.outputStart < part.length {
+            let index = sample - part.outputStart, remaining = part.length - 1 - index
+            var gain = 1.0
+            if index < part.fadeIn { gain = gain * Double(index) / Double(part.fadeIn) }
+            if remaining < part.fadeOut { gain = gain * Double(remaining) / Double(part.fadeOut) }
+            return gain
+        }
         return 1
     }
 }
@@ -455,11 +513,14 @@ public enum EditCommand: Sendable, Equatable {
     case setPauseThreshold(seconds: Double)
 }
 
-/// Pure reducer entry point; editing §6.3. Placeholder preserves all edits.
+/// Pure reducer entry point; editing §6.3.
 public enum EditReducer {
     public static func reduce(_ state: EditState, command: EditCommand) -> EditState {
-        // TODO(mac-editing)
-        return state
+        reduceEditingState(state, command: command)
+    }
+
+    public static func reduce(_ state: EditState, command: EditCommand, aiResults: [ProjectAIResult]) -> EditState {
+        reduceEditingState(state, command: command, aiResults: aiResults)
     }
 }
 
@@ -472,7 +533,12 @@ public struct EditHistory: Sendable, Equatable {
     public var canUndo: Bool { !undoStates.isEmpty }
     public var canRedo: Bool { !redoStates.isEmpty }
     public mutating func apply(_ command: EditCommand) {
-        let next = EditReducer.reduce(state, command: command)
+        record(EditReducer.reduce(state, command: command))
+    }
+    public mutating func apply(_ command: EditCommand, aiResults: [ProjectAIResult]) {
+        record(EditReducer.reduce(state, command: command, aiResults: aiResults))
+    }
+    private mutating func record(_ next: EditState) {
         guard next != state else { return }
         undoStates.append(state)
         if undoStates.count > 500 { undoStates.removeFirst() }
@@ -490,16 +556,3 @@ public struct EditHistory: Sendable, Equatable {
         state = next
     }
 }
-
-/// Shared editing algorithm entry points; editing §5–7. Throwing skeleton operations never fabricate edits.
-public func detectPauses(_ words: [TimedWord], thresholdSeconds: Double) throws -> [Pause] { throw VoxClipError.notImplemented("mac-editing") }
-public func isFillerText(_ text: String) throws -> Bool { throw VoxClipError.notImplemented("mac-editing") }
-public func refineWordBoundaries(_ words: [TimedWord], envelope: AudioEnvelope) throws -> [TimedWord] { throw VoxClipError.notImplemented("mac-editing") }
-/// Attaches matching final-text punctuation without moving source times; editing §5.3.
-public func alignTranscriptWords(_ words: [RawWord], finalText: String) throws -> [RawWord] { throw VoxClipError.notImplemented("mac-editing") }
-/// Returns raw, unlabelled estimates within the supplied segment; editing §5.4. Not persisted as v1 TimedWord.
-public func estimateTranscriptWords(_ text: String, start: Double, end: Double) throws -> [RawWord] { throw VoxClipError.notImplemented("mac-editing") }
-public func buildSegments(_ state: EditState, activeClip: ClipRange?) throws -> [EditSegment] { throw VoxClipError.notImplemented("mac-editing") }
-public func clipTimes(_ words: [TimedWord], startIndex: Int, endIndex: Int) throws -> TimeRange { throw VoxClipError.notImplemented("mac-editing") }
-public func cutRange(_ segment: EditSegment, segments: [EditSegment], pauseKeepSeconds: Double) throws -> TimeRange { throw VoxClipError.notImplemented("mac-editing") }
-public func buildEditPlan(_ segments: [EditSegment], duration: Double, sampleRate: Double, pauseKeepSeconds: Double = 0.15) throws -> EditPlan { throw VoxClipError.notImplemented("mac-editing") }

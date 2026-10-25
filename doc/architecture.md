@@ -262,6 +262,8 @@ The Windows data root is deliberately **not** `%LOCALAPPDATA%\VoxClip\`, because
 
 Settings are one flat JSON file with dotted keys on both platforms (schema `shared/schemas/settings.schema.json`, `"schema": "voxclip-settings/1"`; every key, type and default is listed there and design.md section 10 names the key of each row), written atomically (temp file + rename) 500 ms after the last change. Unknown keys are preserved. LLM model ids are stored **per provider** (`llm.model.anthropic`, `llm.model.openai`, …), never in one shared key.
 
+On macOS, damaged settings are backed up before valid preferences are recovered. If persisting the recovered document fails, the store reports the load/write error but keeps that document in memory and pending for a later write. Subsequent loads and saves reuse the recovered state; write retries do not repeat recovery or create more damaged backups.
+
 ### 2.6 Project files and app instances
 
 - **macOS.** `DocumentGroup` with a `ReferenceFileDocument` whose `readableContentTypes` and `writableContentTypes` are `[com.voxconvo.voxclip.project]` only, so a movie can never become a document's file URL. Movies are opened by replacing File > Open… (`CommandGroup(replacing: .newItem)` plus an open panel accepting projects and movies): a project goes to `NSDocumentController.shared.openDocument(withContentsOf:display:)`; a movie calls `@Environment(\.newDocument)` with `VoxClipDocument(importing: url)`. Finder and Dock opens go through an `NSApplicationDelegateAdaptor` whose `application(_:open:)` does the same split. Saving is `NSDocument` autosave-in-place (editing 10.2). Untitled projects follow the system keep/delete prompt on close.
