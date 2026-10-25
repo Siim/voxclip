@@ -42,12 +42,12 @@ The full `VoxClip.slnx` includes the App. For full-solution builds select `-p:Pl
 
 ## Native media dependencies
 
-NuGet pins are centralized in `Directory.Packages.props`; see [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) for selection dates, sources and licences. Whisper.net CPU runtimes include **both win-x64 and win-arm64**; NoAvx is the x64 fallback. macOS native SkiaSharp/HarfBuzz assets let renderer tests run without Windows.
+NuGet pins are centralized in `Directory.Packages.props`; see the root [`THIRD_PARTY_NOTICES.md`](../../THIRD_PARTY_NOTICES.md) for pinned sources and licences. Whisper.net CPU runtimes include **both win-x64 and win-arm64**; NoAvx is the x64 fallback. macOS native SkiaSharp/HarfBuzz assets let renderer tests run without Windows.
 
-The FFmpeg DLLs are **not** fetched by restore or loaded at startup. To fetch a checksum-verified development distribution on Windows:
+The FFmpeg DLLs are **not** fetched by restore or loaded at startup. After building the pinned shipping ZIP locally, stage and verify it on Windows:
 
 ```powershell
-powershell -NoProfile -File build/Fetch-Ffmpeg.ps1 -RuntimeIdentifier win-arm64
+powershell -NoProfile -File build/Fetch-Ffmpeg.ps1 -RuntimeIdentifier win-arm64 -ZipPath 'C:\path\to\pinned-win-arm64.zip'
 ```
 
 `build/ffmpeg.json` pins the self-built FFmpeg n9.0.2 LGPL shared ABI matching FFmpeg.AutoGen 9.0.1.1. Obtain the locally built ZIP from `tools/ffmpeg-build/` and pass it to `build/Fetch-Ffmpeg.ps1 -ZipPath <path>`; the script verifies its SHA-256, size and six ABI-named DLLs before staging them in `build/.cache/ffmpeg/<rid>/native`. `-TestTools` fetches a separately pinned, test-only FFmpeg distribution with `ffmpeg.exe`; never package that directory. Loader initialization, packaging and media fixture conformance remain win-media work. Never substitute a GPL build or x264/x265 for the shipping DLLs.
