@@ -29,7 +29,7 @@ Provenance: VoxConvo's web clipper (`vox-web` VoiceRecorder, ClipsPanel, Subtitl
 |---|---|---|
 | Minimum | macOS 26, Apple silicon (arm64) | Windows 10 19041+; designed and tested on Windows 11 |
 | UI stack | SwiftUI scenes and views, AppKit where text or video need it (`NSTextView` TextKit 2, `AVPlayerLayer`) | WinUI 3, Windows App SDK latest stable (pinned), unpackaged, self-contained |
-| Materials | Liquid Glass on chrome only, **no fallbacks** (macOS 26 is the floor). `visibilityPriority` (macOS 26.1+) behind `if #available(macOS 26.1, *)` | Mica on the main and Settings windows; Acrylic only for transient surfaces |
+| Materials | Liquid Glass on chrome only, **no fallbacks** (macOS 26 is the floor). `visibilityPriority` requires the Xcode 27 / Swift 6.4 SDK declaration and macOS 26.1+ at runtime; earlier toolchains keep the same toolbar items without that modifier | Mica on the main and Settings windows; Acrylic only for transient surfaces |
 | System font | SF Pro (UI), SF Mono (fallback) | Segoe UI Variable (UI), Cascadia Mono (fallback) |
 | Brand fonts | DM Sans 400 (transcript), Geist Mono 400/500/600 (numbers), both OFL, loaded by file from `shared/fonts` (tokens.json `fontFiles`; until a file is bundled, the platform fallback is used) | same |
 | Appearance | follows the system; dark is the hero look for screenshots and the README | follows the system; plus High Contrast |
@@ -135,7 +135,7 @@ How it is built:
 }
 ```
 
-  `summary` is the editing spec's `EditSummary` (section 6.4) for the current scope. On macOS 26.1 and later (`if #available(macOS 26.1, *)`), apply `.visibilityPriority(.high)` to Play and Export so they survive narrow windows; the rest moves to the overflow menu. Icons are monochrome. Only Export is prominent; it uses the app accent (titanium).
+  `summary` is the editing spec's `EditSummary` (section 6.4) for the current scope. With Xcode 27 / Swift 6.4 and macOS 26.1 or later (`#if compiler(>=6.4)` and `if #available(macOS 26.1, *)`), apply `.visibilityPriority(.high)` to Play and Export so they survive narrow windows; earlier toolchains use the same Play and Export items without the modifier. Icons are monochrome. Only Export is prominent; it uses the app accent (titanium).
 - Transport pill over the video is the only custom glass element: `GlassEffectContainer { TransportPill().glassEffect(.regular.interactive(), in: .capsule) }`. Always `.regular`, never `.clear` (video frames can be pure white; test over a white frame). Under Reduce Transparency: opaque `overlay.transportOpaque` with a 1 pt `line.strong` border.
 - **No glass on content:** not on the transcript, the timeline, caption tiles or clip rows. No darkening backgrounds behind the toolbar (they break the automatic scroll-edge effect). The transcript scroll view keeps `.scrollEdgeEffectStyle(.automatic)`.
 - Inspector header: segmented `Picker` (Captions | Clips, plus AI from M2) at `.controlSize(.large)`; inspector body at `.controlSize(.small)`.

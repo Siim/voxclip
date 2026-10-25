@@ -106,11 +106,15 @@ extension FocusedValues { var editor: EditorModel? { get { self[EditorFocusKey.s
     let model: EditorModel
 
     var body: some ToolbarContent {
+        #if compiler(>=6.4)
         if #available(macOS 26.1, *) {
             ToolbarItem { EditorPlayButton(model: model) }.visibilityPriority(.high)
         } else {
             ToolbarItem { EditorPlayButton(model: model) }
         }
+        #else
+        ToolbarItem { EditorPlayButton(model: model) }
+        #endif
     }
 }
 
@@ -131,11 +135,15 @@ extension FocusedValues { var editor: EditorModel? { get { self[EditorFocusKey.s
     let model: EditorModel
 
     var body: some ToolbarContent {
+        #if compiler(>=6.4)
         if #available(macOS 26.1, *) {
             ToolbarItem(placement: .primaryAction) { EditorExportButton(model: model) }.visibilityPriority(.high)
         } else {
             ToolbarItem(placement: .primaryAction) { EditorExportButton(model: model) }
         }
+        #else
+        ToolbarItem(placement: .primaryAction) { EditorExportButton(model: model) }
+        #endif
     }
 }
 
