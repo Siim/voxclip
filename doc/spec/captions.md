@@ -610,7 +610,7 @@ shown  = t < start + dur  or  blinkHz == 0  or  floor((t − (start + dur)) · b
 
 ### 11.2 Easing and kinds
 
-Polynomials only, identical on both platforms:
+Polynomials only, identical on both platforms. Each function is evaluated on `p` clamped to [0, 1] and returns exactly 0 at `p = 0` and exactly 1 at `p = 1`; the formulas apply strictly between:
 
 ```text
 linear(p)          = p
@@ -806,6 +806,9 @@ Windows (`VoxClip.Media`): the compose function draws into an `SKSurface` that w
 
 - Layout is computed once per `(CaptionInput, resolved style, W, H)` and kept until one of them changes.
 - A page's rendered overlay may be cached when nothing time-dependent is in progress: no entrance or exit animation running, no jitter, no wipe in progress, no cursor, and the same active word and visible cluster counts. Cache key: `(page index, style hash, W×H, k, active word, visible cluster counts)`. LRU, at most 64 MiB per window. A cached frame must be pixel-identical to an uncached one.
+- A stable frame (one the cache could hold) is always flattened into a transparent band and composited onto the target with one source-over, whether or not the cache holds that band. A cached frame is therefore pixel-identical to an uncached one on any target, transparent or video. Animated frames are drawn directly.
+- Reused render state (scratch buffers, masks, canvases, the cache) must stay consistent when a render throws or is cancelled: a later frame never shows another frame's pixels and never fails because of the earlier error.
+- Memory: the band cache is at most 64 MiB per window, and scratch memory is bounded by the largest frame drawn, never by the number of pages or tracks drawn.
 - Budget: a 1080×1920 caption frame renders in under 4 ms on an M1 or a 2022 mid-range Windows laptop with the box blur; animated frames are rendered directly.
 
 ---
@@ -901,7 +904,7 @@ Also: every case of `text-normalization.json` exactly, and every vector of `math
 - Samples marked `"golden": true` are rendered as goldens: the first visible sample, the middle of the page-in animation, the first sample whose active word is on the second line, and a steady-state sample of the last page; in frame-sample cases, every fifth visible frame. That is 258 samples over the 84 cases, plus the 38 gallery tiles of `preview-tiles.json`.
 - A golden is the caption overlay alone, rendered on a transparent canvas at the case's frame size, including `pageAlpha`. It is stored as a straight-alpha RGBA PNG cropped to the bounding box of `alpha > 0` grown by 8 px and clamped to the frame, at `golden/<case>/s<sample-index>.png`. A fully transparent render is stored as a 1×1 transparent PNG with crop `{0, 0, 1, 1}`.
 - Gallery tile goldens are the tile state of `preview-tiles.json` rendered the same way (overlay only, no background), at `golden/tiles/<style>-<W>x<H>.png`.
-- Each folder has an index next to it (`golden/<case>.json`, `golden/tiles.json`): `{"images": [{"file": "s12.png", "sample": 12 | null, "style": id | null, "t": seconds, "frame": {"width", "height"}, "crop": {"x", "y", "w", "h"}, "sha256"}]}`.
+- Each folder has an index next to it (`golden/<case>.json`, `golden/tiles.json`): `{"images": [{"file": "s12.png", "sample": 12 | null, "style": id | null, "t": seconds, "frame": {"width", "height"}, "crop": {"x", "y", "w", "h"}, "sha256"}]}`. The index `t` is the fixture's sample or tile time written unchanged (no arithmetic), and comparators match `t` within 1e-9 seconds.
 - Goldens are produced by the macOS renderer. CLI contract, identical on both platforms (also architecture.md section 9.2):
   - `voxclip-cli render-caption --case <layout fixture> --out <dir>` renders every golden sample of the case into `<dir>/<case>/s<index>.png` and writes `<dir>/<case>.json`.
   - `voxclip-cli render-caption --case <layout fixture> --sample <index> --out <file.png>` renders one sample (any sample, golden or not).
