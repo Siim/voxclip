@@ -152,14 +152,14 @@ equal(finalize(cutIdsInput), [], 'mostly-cut resolves source ids, not numeric wo
 add('extensions', 'cut-set-is-source-ids', 'finalize-clips', cutIdsInput, [], 'doc/spec/ai.md §11.7 step 5')
 const w1Words = syntheticWords({ generator: 'W1' })
 const w1Lines = reference.formatTranscript(w1Words).lines
-const windowCase = (id, context, cap, maxWords = clipFinder.limits.maxWordsPerRequest, overlapSeconds = 60, feature = 'clipFinder') => {
+const windowCase = (id, context, cap, maxWords = clipFinder.limits.maxWordsPerRequest, overlapSeconds = 60, feature = 'clipFinder', localServer = false) => {
   const budgeting = feature === 'clipFinder'
-    ? windowBudget({ words: w1Words, lines: w1Lines, preset: presets.best, context, maxOutputTokensCap: cap }, clipFinder)
-    : tightenWindowBudget({ lines: w1Lines, context, maxOutputTokensCap: cap }, aiTighten)
+    ? windowBudget({ words: w1Words, lines: w1Lines, preset: presets.best, context, maxOutputTokensCap: cap, localServer }, clipFinder)
+    : tightenWindowBudget({ lines: w1Lines, context, maxOutputTokensCap: cap, localServer }, aiTighten)
   const windows = reference.packWindows(w1Lines, { budget: budgeting.budget, maxWords, overlapSeconds })
   const maxClips = feature === 'clipFinder' ? Math.max(clipFinder.limits.windowMinClips, Math.ceil(presets.best.maxClips * clipFinder.limits.windowClipFactor / windows.length)) : null
   const expected = { ...budgeting, maxClips, windows: windows.map(window => ({ ...window, lineLabels: w1Lines.slice(window.firstLine, window.lastLine + 1).map(line => line.text.split(' ')[0]) })) }
-  add('extensions', id, 'windows', { words: { generator: 'W1' }, feature, choice: feature === 'clipFinder' ? 'best' : 'normal', context, maxOutputTokensCap: cap, maxWords, overlapSeconds }, expected, feature === 'clipFinder' ? 'doc/spec/ai.md §13.5 W1' : 'doc/spec/ai.md §12.3')
+  add('extensions', id, 'windows', { words: { generator: 'W1' }, feature, choice: feature === 'clipFinder' ? 'best' : 'normal', context, maxOutputTokensCap: cap, maxWords, overlapSeconds, ...(localServer ? { localServer } : {}) }, expected, feature === 'clipFinder' ? 'doc/spec/ai.md §13.5 W1' : 'doc/spec/ai.md §12.3')
   return expected
 }
 const cloudWindows = windowCase('W1-cloud', 128000, null)
@@ -171,6 +171,11 @@ for (let index = 1; index < cloudWindows.windows.length; index += 1) {
 }
 const appleWindows = windowCase('W1-apple', 8192, 1500)
 assert(appleWindows.windows.every(window => window.estimatedCost <= appleWindows.budget), 'W1 Apple budget exceeded')
+const localWindows = windowCase('W1-local', 4096, 4096, clipFinder.limits.maxWordsPerRequest, 60, 'clipFinder', true)
+equal(localWindows.outputReserve, 1024, 'W1 local-server reserve clamp')
+assert(localWindows.budget >= 600 && localWindows.windows.every(window => window.estimatedCost <= localWindows.budget), 'W1 local budget exceeded')
+const localTighten = windowCase('tighten-local-4096', 4096, 4096, aiTighten.limits.maxWordsPerRequest, 0, 'aiTighten', true)
+assert(localTighten.budget >= 600, 'tighten local budget too small')
 const noOverlapWindows = windowCase('tighten-no-overlap-packing', 128000, null, aiTighten.limits.maxWordsPerRequest, 0, 'aiTighten')
 for (let index = 1; index < noOverlapWindows.windows.length; index += 1) equal(noOverlapWindows.windows[index].firstLine, noOverlapWindows.windows[index - 1].lastLine + 1, 'tighten windows never overlap')
 const oversizedLines = reference.formatTranscript(entries(Array.from({ length: 41 }, () => 'long'.repeat(100)))).lines

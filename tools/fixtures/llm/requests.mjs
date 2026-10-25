@@ -48,7 +48,13 @@ export function canonicalRequest({ feature, words, lines, choice, instructions =
   }
 }
 
-export function windowBudget({ words, lines, preset, context, maxOutputTokensCap = null, instructions = '' }, prompt) {
+// ai.md §11.5: local servers clamp the reserve to a quarter of the context (at least 1024).
+function reserveFor(prompt, context, maxOutputTokensCap, localServer) {
+  const reserve = Math.min(prompt.generation.maxOutputTokens, maxOutputTokensCap ?? prompt.generation.maxOutputTokens)
+  return localServer ? Math.min(reserve, Math.max(1024, Math.floor(context / 4))) : reserve
+}
+
+export function windowBudget({ words, lines, preset, context, maxOutputTokensCap = null, instructions = '', localServer = false }, prompt) {
   assert(lines.length, 'windowBudget needs transcript lines')
   const longest = values => values.reduce((chosen, value) => Buffer.byteLength(value) > Buffer.byteLength(chosen) ? value : chosen, '')
   const base = clipInstruction({ words, preset, instructions }, prompt)
@@ -59,12 +65,12 @@ export function windowBudget({ words, lines, preset, context, maxOutputTokensCap
     })),
     ...(preset.id === 'topics' ? [interpolate(prompt.request.topicsContinuationLine, { lastEnd: words.length - 1, nextWord: words.length })] : [])
   ].join('\n')
-  const outputReserve = Math.min(prompt.generation.maxOutputTokens, maxOutputTokensCap ?? prompt.generation.maxOutputTokens)
+  const outputReserve = reserveFor(prompt, context, maxOutputTokensCap, localServer)
   const overhead = estimateTokens(prompt.system) + estimateTokens(longestInstruction) + estimateTokens(JSON.stringify(prompt.output.schema)) + 64
   return { context, outputReserve, overhead, budget: Math.floor((context - overhead - outputReserve) * 0.9) }
 }
 
-export function tightenWindowBudget({ lines, context, maxOutputTokensCap = null, strength = 'normal', instructions = '' }, prompt) {
+export function tightenWindowBudget({ lines, context, maxOutputTokensCap = null, strength = 'normal', instructions = '', localServer = false }, prompt) {
   assert(lines.length, 'tightenWindowBudget needs transcript lines')
   const longest = values => values.reduce((chosen, value) => Buffer.byteLength(value) > Buffer.byteLength(chosen) ? value : chosen, '')
   const userText = instructionsText(instructions, prompt.request.maxInstructionsLength)
@@ -74,7 +80,7 @@ export function tightenWindowBudget({ lines, context, maxOutputTokensCap = null,
       windowStart: longest(lines.map(line => formatTime(line.start))), windowEnd: longest(lines.map(line => formatTime(line.end)))
     })
   ].join('\n')
-  const outputReserve = Math.min(prompt.generation.maxOutputTokens, maxOutputTokensCap ?? prompt.generation.maxOutputTokens)
+  const outputReserve = reserveFor(prompt, context, maxOutputTokensCap, localServer)
   const overhead = estimateTokens(prompt.system) + estimateTokens(instruction) + estimateTokens(JSON.stringify(prompt.output.schema)) + 64
   return { context, outputReserve, overhead, budget: Math.floor((context - overhead - outputReserve) * 0.9) }
 }

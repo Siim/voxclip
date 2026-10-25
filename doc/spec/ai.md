@@ -1179,12 +1179,15 @@ maxWords      = limits.maxWordsPerRequest (8000)
 context       = connector.contextTokens(model) ?? catalog model contextTokens ?? default
                 (cloud 128000; Ollama from /api/show, else 4096; LM Studio §6.6; Apple runtime)
 outputReserve = min(generation.maxOutputTokens, connector.maxOutputTokensCap ?? generation.maxOutputTokens)
+                Ollama and LM Studio only: outputReserve = min(outputReserve, max(1024, floor(context / 4)))
 overhead      = est(system) + est(instruction rendered with the longest window lines, k = 99) + est(compact schema) + 64
 budget        = floor((context - overhead - outputReserve) * 0.9)
 if budget < 600: contextTooLong
 ```
 
 `est(s) = ceil(utf8ByteCount(s) / 2.2)`. This is conservative: it measured within a few percent of Apple's tokenizer for Estonian and about 30% high for English.
+
+Each window's request sends `maxOutputTokens = outputReserve`, so Ollama's `num_predict` and `needed` (§6.5) and LM Studio's `max_tokens` use the same reserve the budget assumed. The local-server clamp exists because both servers fall back to a 4096-token context and a 4096-token output cap; without it the budget would be negative and every run on such a model would fail with `contextTooLong`.
 
 **Packing.**
 - Take lines in order. A line costs `est(line.text + "\n")`, plus `est(pauseAfter + "\n")` when it has a pause line.
@@ -1515,6 +1518,8 @@ Expected:
 - `k = max(2, ceil(5 × 1.5 / 3)) = 3`.
 
 With `context = 8192` and `maxOutputTokensCap = 1500` (Apple), every window's estimated cost is ≤ its budget.
+
+With `context = 4096` and `maxOutputTokensCap = 4096` on a local server (Ollama or LM Studio fallback, vector `W1-local`), `outputReserve = 1024`, the budget is positive and every window's estimated cost is ≤ its budget.
 
 ### 13.6 AI tighten verifier vectors (M2)
 
