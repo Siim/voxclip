@@ -1,0 +1,1380 @@
+{
+  "schema": "voxclip-llm-fixtures/1",
+  "id": "tighten-verifier",
+  "origin": "voxclip",
+  "sources": {
+    "shared/prompts/clip-finder.json": "f087788566198c36c19ddcc7e263f321d539fec4ed41d69a1d472eea152e4a89",
+    "shared/prompts/ai-tighten.json": "0bdb47a851a41a0747235c248641905cf1d62cd39c70c651b2f765a14acc4163",
+    "shared/catalog/llm-providers.json": "0d55a38556702ed6a527f00516c655d3fecd0281c50a4f41a6156546fc23d52f"
+  },
+  "cases": [
+    {
+      "id": "T1",
+      "kind": "tighten-verifier",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §13.6",
+      "input": {
+        "entries": [
+          {
+            "id": "w40",
+            "index": 40,
+            "text": "So,",
+            "start": 0,
+            "end": 0.25
+          },
+          {
+            "id": "w41",
+            "index": 41,
+            "text": "um,",
+            "start": 0.3,
+            "end": 0.55
+          },
+          {
+            "id": "w42",
+            "index": 42,
+            "text": "we",
+            "start": 0.6,
+            "end": 0.85
+          },
+          {
+            "id": "w43",
+            "index": 43,
+            "text": "we",
+            "start": 0.8999999999999999,
+            "end": 1.15
+          },
+          {
+            "id": "w44",
+            "index": 44,
+            "text": "went",
+            "start": 1.2,
+            "end": 1.45
+          },
+          {
+            "id": "w45",
+            "index": 45,
+            "text": "to",
+            "start": 1.5,
+            "end": 1.75
+          },
+          {
+            "id": "w46",
+            "index": 46,
+            "text": "the",
+            "start": 1.7999999999999998,
+            "end": 2.05
+          },
+          {
+            "id": "w47",
+            "index": 47,
+            "text": "uh",
+            "start": 2.1,
+            "end": 2.35
+          },
+          {
+            "id": "w48",
+            "index": 48,
+            "text": "the",
+            "start": 2.4,
+            "end": 2.65
+          },
+          {
+            "id": "w49",
+            "index": 49,
+            "text": "store.",
+            "start": 2.6999999999999997,
+            "end": 2.9499999999999997
+          }
+        ],
+        "edits": [
+          {
+            "line": "[40-49]",
+            "keep": "So, we went to the store.",
+            "kind": "filler"
+          }
+        ]
+      },
+      "expected": {
+        "proposals": [
+          {
+            "lineLabel": "[40-49]",
+            "kind": "filler",
+            "cutWordIds": [
+              "w41",
+              "w42",
+              "w46",
+              "w47"
+            ],
+            "preselected": true
+          }
+        ],
+        "rejectedCount": 0,
+        "rejected": []
+      }
+    },
+    {
+      "id": "T2",
+      "kind": "tighten-verifier",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §13.6",
+      "input": {
+        "entries": [
+          {
+            "id": "w40",
+            "index": 40,
+            "text": "So,",
+            "start": 0,
+            "end": 0.25
+          },
+          {
+            "id": "w41",
+            "index": 41,
+            "text": "um,",
+            "start": 0.3,
+            "end": 0.55
+          },
+          {
+            "id": "w42",
+            "index": 42,
+            "text": "we",
+            "start": 0.6,
+            "end": 0.85
+          },
+          {
+            "id": "w43",
+            "index": 43,
+            "text": "we",
+            "start": 0.8999999999999999,
+            "end": 1.15
+          },
+          {
+            "id": "w44",
+            "index": 44,
+            "text": "went",
+            "start": 1.2,
+            "end": 1.45
+          },
+          {
+            "id": "w45",
+            "index": 45,
+            "text": "to",
+            "start": 1.5,
+            "end": 1.75
+          },
+          {
+            "id": "w46",
+            "index": 46,
+            "text": "the",
+            "start": 1.7999999999999998,
+            "end": 2.05
+          },
+          {
+            "id": "w47",
+            "index": 47,
+            "text": "uh",
+            "start": 2.1,
+            "end": 2.35
+          },
+          {
+            "id": "w48",
+            "index": 48,
+            "text": "the",
+            "start": 2.4,
+            "end": 2.65
+          },
+          {
+            "id": "w49",
+            "index": 49,
+            "text": "store.",
+            "start": 2.6999999999999997,
+            "end": 2.9499999999999997
+          }
+        ],
+        "edits": [
+          {
+            "line": "[40-49]",
+            "keep": "So we went to the shop.",
+            "kind": "filler"
+          }
+        ]
+      },
+      "expected": {
+        "proposals": [],
+        "rejectedCount": 1,
+        "rejected": [
+          {
+            "editIndex": 0,
+            "reason": "notSubsequence"
+          }
+        ]
+      }
+    },
+    {
+      "id": "T3",
+      "kind": "tighten-verifier",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §13.6",
+      "input": {
+        "entries": [
+          {
+            "id": "w40",
+            "index": 40,
+            "text": "So,",
+            "start": 0,
+            "end": 0.25
+          },
+          {
+            "id": "w41",
+            "index": 41,
+            "text": "um,",
+            "start": 0.3,
+            "end": 0.55
+          },
+          {
+            "id": "w42",
+            "index": 42,
+            "text": "we",
+            "start": 0.6,
+            "end": 0.85
+          },
+          {
+            "id": "w43",
+            "index": 43,
+            "text": "we",
+            "start": 0.8999999999999999,
+            "end": 1.15
+          },
+          {
+            "id": "w44",
+            "index": 44,
+            "text": "went",
+            "start": 1.2,
+            "end": 1.45
+          },
+          {
+            "id": "w45",
+            "index": 45,
+            "text": "to",
+            "start": 1.5,
+            "end": 1.75
+          },
+          {
+            "id": "w46",
+            "index": 46,
+            "text": "the",
+            "start": 1.7999999999999998,
+            "end": 2.05
+          },
+          {
+            "id": "w47",
+            "index": 47,
+            "text": "uh",
+            "start": 2.1,
+            "end": 2.35
+          },
+          {
+            "id": "w48",
+            "index": 48,
+            "text": "the",
+            "start": 2.4,
+            "end": 2.65
+          },
+          {
+            "id": "w49",
+            "index": 49,
+            "text": "store.",
+            "start": 2.6999999999999997,
+            "end": 2.9499999999999997
+          }
+        ],
+        "edits": [
+          {
+            "line": "[40-49]",
+            "keep": "",
+            "kind": "filler"
+          }
+        ]
+      },
+      "expected": {
+        "proposals": [
+          {
+            "lineLabel": "[40-49]",
+            "kind": "filler",
+            "cutWordIds": [
+              "w40",
+              "w41",
+              "w42",
+              "w43",
+              "w44",
+              "w45",
+              "w46",
+              "w47",
+              "w48",
+              "w49"
+            ],
+            "preselected": true
+          }
+        ],
+        "rejectedCount": 0,
+        "rejected": []
+      }
+    },
+    {
+      "id": "T4",
+      "kind": "tighten-verifier",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §13.6",
+      "input": {
+        "entries": [
+          {
+            "id": "w40",
+            "index": 40,
+            "text": "So,",
+            "start": 0,
+            "end": 0.25
+          },
+          {
+            "id": "w41",
+            "index": 41,
+            "text": "um,",
+            "start": 0.3,
+            "end": 0.55
+          },
+          {
+            "id": "w42",
+            "index": 42,
+            "text": "we",
+            "start": 0.6,
+            "end": 0.85
+          },
+          {
+            "id": "w43",
+            "index": 43,
+            "text": "we",
+            "start": 0.8999999999999999,
+            "end": 1.15
+          },
+          {
+            "id": "w44",
+            "index": 44,
+            "text": "went",
+            "start": 1.2,
+            "end": 1.45
+          },
+          {
+            "id": "w45",
+            "index": 45,
+            "text": "to",
+            "start": 1.5,
+            "end": 1.75
+          },
+          {
+            "id": "w46",
+            "index": 46,
+            "text": "the",
+            "start": 1.7999999999999998,
+            "end": 2.05
+          },
+          {
+            "id": "w47",
+            "index": 47,
+            "text": "uh",
+            "start": 2.1,
+            "end": 2.35
+          },
+          {
+            "id": "w48",
+            "index": 48,
+            "text": "the",
+            "start": 2.4,
+            "end": 2.65
+          },
+          {
+            "id": "w49",
+            "index": 49,
+            "text": "store.",
+            "start": 2.6999999999999997,
+            "end": 2.9499999999999997
+          }
+        ],
+        "edits": [
+          {
+            "line": "[40-49]",
+            "keep": "store",
+            "kind": "filler"
+          }
+        ]
+      },
+      "expected": {
+        "proposals": [
+          {
+            "lineLabel": "[40-49]",
+            "kind": "filler",
+            "cutWordIds": [
+              "w40",
+              "w41",
+              "w42",
+              "w43",
+              "w44",
+              "w45",
+              "w46",
+              "w47",
+              "w48"
+            ],
+            "preselected": false
+          }
+        ],
+        "rejectedCount": 0,
+        "rejected": []
+      }
+    },
+    {
+      "id": "T5",
+      "kind": "tighten-verifier",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §13.6",
+      "input": {
+        "entries": [
+          {
+            "id": "w40",
+            "index": 40,
+            "text": "So,",
+            "start": 0,
+            "end": 0.25
+          },
+          {
+            "id": "w41",
+            "index": 41,
+            "text": "um,",
+            "start": 0.3,
+            "end": 0.55
+          },
+          {
+            "id": "w42",
+            "index": 42,
+            "text": "we",
+            "start": 0.6,
+            "end": 0.85
+          },
+          {
+            "id": "w43",
+            "index": 43,
+            "text": "we",
+            "start": 0.8999999999999999,
+            "end": 1.15
+          },
+          {
+            "id": "w44",
+            "index": 44,
+            "text": "went",
+            "start": 1.2,
+            "end": 1.45
+          },
+          {
+            "id": "w45",
+            "index": 45,
+            "text": "to",
+            "start": 1.5,
+            "end": 1.75
+          },
+          {
+            "id": "w46",
+            "index": 46,
+            "text": "the",
+            "start": 1.7999999999999998,
+            "end": 2.05
+          },
+          {
+            "id": "w47",
+            "index": 47,
+            "text": "uh",
+            "start": 2.1,
+            "end": 2.35
+          },
+          {
+            "id": "w48",
+            "index": 48,
+            "text": "the",
+            "start": 2.4,
+            "end": 2.65
+          },
+          {
+            "id": "w49",
+            "index": 49,
+            "text": "store.",
+            "start": 2.6999999999999997,
+            "end": 2.9499999999999997
+          }
+        ],
+        "edits": [
+          {
+            "line": "[99-120]",
+            "keep": "",
+            "kind": "filler"
+          }
+        ]
+      },
+      "expected": {
+        "proposals": [],
+        "rejectedCount": 1,
+        "rejected": [
+          {
+            "editIndex": 0,
+            "reason": "unknownLine"
+          }
+        ]
+      }
+    },
+    {
+      "id": "T6",
+      "kind": "tighten-verifier",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §13.6",
+      "input": {
+        "entries": [
+          {
+            "id": "w50",
+            "index": 50,
+            "text": "going to",
+            "start": 0,
+            "end": 0.25
+          },
+          {
+            "id": "w51",
+            "index": 51,
+            "text": "win.",
+            "start": 0.3,
+            "end": 0.55
+          }
+        ],
+        "edits": [
+          {
+            "line": "[50-51]",
+            "keep": "going win",
+            "kind": "filler"
+          }
+        ]
+      },
+      "expected": {
+        "proposals": [],
+        "rejectedCount": 1,
+        "rejected": [
+          {
+            "editIndex": 0,
+            "reason": "splitWord"
+          }
+        ]
+      }
+    },
+    {
+      "id": "T7",
+      "kind": "tighten-verifier",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §13.6",
+      "input": {
+        "entries": [
+          {
+            "id": "w60",
+            "index": 60,
+            "text": "Well",
+            "start": 0,
+            "end": 0.25
+          },
+          {
+            "id": "w61",
+            "index": 61,
+            "text": "—",
+            "start": 0.3,
+            "end": 0.55
+          },
+          {
+            "id": "w62",
+            "index": 62,
+            "text": "um",
+            "start": 0.6,
+            "end": 0.85
+          },
+          {
+            "id": "w63",
+            "index": 63,
+            "text": "yes.",
+            "start": 0.8999999999999999,
+            "end": 1.15
+          }
+        ],
+        "edits": [
+          {
+            "line": "[60-63]",
+            "keep": "Well yes.",
+            "kind": "filler"
+          }
+        ]
+      },
+      "expected": {
+        "proposals": [
+          {
+            "lineLabel": "[60-63]",
+            "kind": "filler",
+            "cutWordIds": [
+              "w62"
+            ],
+            "preselected": true
+          }
+        ],
+        "rejectedCount": 0,
+        "rejected": []
+      }
+    },
+    {
+      "id": "T8",
+      "kind": "tighten-verifier",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §13.6",
+      "input": {
+        "entries": [
+          {
+            "id": "w40",
+            "index": 40,
+            "text": "So,",
+            "start": 0,
+            "end": 0.25
+          },
+          {
+            "id": "w41",
+            "index": 41,
+            "text": "um,",
+            "start": 0.3,
+            "end": 0.55
+          },
+          {
+            "id": "w42",
+            "index": 42,
+            "text": "we",
+            "start": 0.6,
+            "end": 0.85
+          },
+          {
+            "id": "w43",
+            "index": 43,
+            "text": "we",
+            "start": 0.8999999999999999,
+            "end": 1.15
+          },
+          {
+            "id": "w44",
+            "index": 44,
+            "text": "went",
+            "start": 1.2,
+            "end": 1.45
+          },
+          {
+            "id": "w45",
+            "index": 45,
+            "text": "to",
+            "start": 1.5,
+            "end": 1.75
+          },
+          {
+            "id": "w46",
+            "index": 46,
+            "text": "the",
+            "start": 1.7999999999999998,
+            "end": 2.05
+          },
+          {
+            "id": "w47",
+            "index": 47,
+            "text": "uh",
+            "start": 2.1,
+            "end": 2.35
+          },
+          {
+            "id": "w48",
+            "index": 48,
+            "text": "the",
+            "start": 2.4,
+            "end": 2.65
+          },
+          {
+            "id": "w49",
+            "index": 49,
+            "text": "store.",
+            "start": 2.6999999999999997,
+            "end": 2.9499999999999997
+          }
+        ],
+        "edits": [
+          {
+            "line": "[40-49]",
+            "keep": "so WE went to the store",
+            "kind": "filler"
+          }
+        ]
+      },
+      "expected": {
+        "proposals": [
+          {
+            "lineLabel": "[40-49]",
+            "kind": "filler",
+            "cutWordIds": [
+              "w41",
+              "w42",
+              "w46",
+              "w47"
+            ],
+            "preselected": true
+          }
+        ],
+        "rejectedCount": 0,
+        "rejected": []
+      }
+    },
+    {
+      "id": "duplicate",
+      "kind": "tighten-verifier",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §12.5",
+      "input": {
+        "entries": [
+          {
+            "id": "w40",
+            "index": 40,
+            "text": "So,",
+            "start": 0,
+            "end": 0.25
+          },
+          {
+            "id": "w41",
+            "index": 41,
+            "text": "um,",
+            "start": 0.3,
+            "end": 0.55
+          },
+          {
+            "id": "w42",
+            "index": 42,
+            "text": "we",
+            "start": 0.6,
+            "end": 0.85
+          },
+          {
+            "id": "w43",
+            "index": 43,
+            "text": "we",
+            "start": 0.8999999999999999,
+            "end": 1.15
+          },
+          {
+            "id": "w44",
+            "index": 44,
+            "text": "went",
+            "start": 1.2,
+            "end": 1.45
+          },
+          {
+            "id": "w45",
+            "index": 45,
+            "text": "to",
+            "start": 1.5,
+            "end": 1.75
+          },
+          {
+            "id": "w46",
+            "index": 46,
+            "text": "the",
+            "start": 1.7999999999999998,
+            "end": 2.05
+          },
+          {
+            "id": "w47",
+            "index": 47,
+            "text": "uh",
+            "start": 2.1,
+            "end": 2.35
+          },
+          {
+            "id": "w48",
+            "index": 48,
+            "text": "the",
+            "start": 2.4,
+            "end": 2.65
+          },
+          {
+            "id": "w49",
+            "index": 49,
+            "text": "store.",
+            "start": 2.6999999999999997,
+            "end": 2.9499999999999997
+          }
+        ],
+        "edits": [
+          {
+            "line": "[40-49]",
+            "keep": "So we went to the store",
+            "kind": "filler"
+          },
+          {
+            "line": "[40-49]",
+            "keep": "",
+            "kind": "repetition"
+          }
+        ]
+      },
+      "expected": {
+        "proposals": [
+          {
+            "lineLabel": "[40-49]",
+            "kind": "filler",
+            "cutWordIds": [
+              "w41",
+              "w42",
+              "w46",
+              "w47"
+            ],
+            "preselected": true
+          }
+        ],
+        "rejectedCount": 1,
+        "rejected": [
+          {
+            "editIndex": 1,
+            "reason": "duplicate"
+          }
+        ]
+      }
+    },
+    {
+      "id": "bad-kind",
+      "kind": "tighten-verifier",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §12.5",
+      "input": {
+        "entries": [
+          {
+            "id": "w40",
+            "index": 40,
+            "text": "So,",
+            "start": 0,
+            "end": 0.25
+          },
+          {
+            "id": "w41",
+            "index": 41,
+            "text": "um,",
+            "start": 0.3,
+            "end": 0.55
+          },
+          {
+            "id": "w42",
+            "index": 42,
+            "text": "we",
+            "start": 0.6,
+            "end": 0.85
+          },
+          {
+            "id": "w43",
+            "index": 43,
+            "text": "we",
+            "start": 0.8999999999999999,
+            "end": 1.15
+          },
+          {
+            "id": "w44",
+            "index": 44,
+            "text": "went",
+            "start": 1.2,
+            "end": 1.45
+          },
+          {
+            "id": "w45",
+            "index": 45,
+            "text": "to",
+            "start": 1.5,
+            "end": 1.75
+          },
+          {
+            "id": "w46",
+            "index": 46,
+            "text": "the",
+            "start": 1.7999999999999998,
+            "end": 2.05
+          },
+          {
+            "id": "w47",
+            "index": 47,
+            "text": "uh",
+            "start": 2.1,
+            "end": 2.35
+          },
+          {
+            "id": "w48",
+            "index": 48,
+            "text": "the",
+            "start": 2.4,
+            "end": 2.65
+          },
+          {
+            "id": "w49",
+            "index": 49,
+            "text": "store.",
+            "start": 2.6999999999999997,
+            "end": 2.9499999999999997
+          }
+        ],
+        "edits": [
+          {
+            "line": "[40-49]",
+            "keep": "",
+            "kind": "rewrite"
+          }
+        ]
+      },
+      "expected": {
+        "proposals": [],
+        "rejectedCount": 1,
+        "rejected": [
+          {
+            "editIndex": 0,
+            "reason": "badKind"
+          }
+        ]
+      }
+    },
+    {
+      "id": "no-op",
+      "kind": "tighten-verifier",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §12.5",
+      "input": {
+        "entries": [
+          {
+            "id": "w40",
+            "index": 40,
+            "text": "So,",
+            "start": 0,
+            "end": 0.25
+          },
+          {
+            "id": "w41",
+            "index": 41,
+            "text": "um,",
+            "start": 0.3,
+            "end": 0.55
+          },
+          {
+            "id": "w42",
+            "index": 42,
+            "text": "we",
+            "start": 0.6,
+            "end": 0.85
+          },
+          {
+            "id": "w43",
+            "index": 43,
+            "text": "we",
+            "start": 0.8999999999999999,
+            "end": 1.15
+          },
+          {
+            "id": "w44",
+            "index": 44,
+            "text": "went",
+            "start": 1.2,
+            "end": 1.45
+          },
+          {
+            "id": "w45",
+            "index": 45,
+            "text": "to",
+            "start": 1.5,
+            "end": 1.75
+          },
+          {
+            "id": "w46",
+            "index": 46,
+            "text": "the",
+            "start": 1.7999999999999998,
+            "end": 2.05
+          },
+          {
+            "id": "w47",
+            "index": 47,
+            "text": "uh",
+            "start": 2.1,
+            "end": 2.35
+          },
+          {
+            "id": "w48",
+            "index": 48,
+            "text": "the",
+            "start": 2.4,
+            "end": 2.65
+          },
+          {
+            "id": "w49",
+            "index": 49,
+            "text": "store.",
+            "start": 2.6999999999999997,
+            "end": 2.9499999999999997
+          }
+        ],
+        "edits": [
+          {
+            "line": "[40-49]",
+            "keep": "So um we we went to the uh the store",
+            "kind": "filler"
+          }
+        ]
+      },
+      "expected": {
+        "proposals": [],
+        "rejectedCount": 0,
+        "rejected": []
+      }
+    },
+    {
+      "id": "unicode-nfc-and-case",
+      "kind": "tighten-verifier",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §12.5",
+      "input": {
+        "entries": [
+          {
+            "id": "w0",
+            "index": 0,
+            "text": "ÉLAN",
+            "start": 0,
+            "end": 0.25
+          },
+          {
+            "id": "w1",
+            "index": 1,
+            "text": "um",
+            "start": 0.3,
+            "end": 0.55
+          },
+          {
+            "id": "w2",
+            "index": 2,
+            "text": "İ.",
+            "start": 0.6,
+            "end": 0.85
+          },
+          {
+            "id": "w3",
+            "index": 3,
+            "text": "ΣΟΣ.",
+            "start": 0.8999999999999999,
+            "end": 1.15
+          }
+        ],
+        "edits": [
+          {
+            "line": "[0-2]",
+            "keep": "élan i̇",
+            "kind": "filler"
+          }
+        ]
+      },
+      "expected": {
+        "proposals": [
+          {
+            "lineLabel": "[0-2]",
+            "kind": "filler",
+            "cutWordIds": [
+              "w1"
+            ],
+            "preselected": true
+          }
+        ],
+        "rejectedCount": 0,
+        "rejected": []
+      }
+    },
+    {
+      "id": "whole-line-review",
+      "kind": "tighten-verifier",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §12.5",
+      "input": {
+        "entries": [
+          {
+            "id": "w0",
+            "index": 0,
+            "text": "word0",
+            "start": 0,
+            "end": 0.25
+          },
+          {
+            "id": "w1",
+            "index": 1,
+            "text": "word1",
+            "start": 0.3,
+            "end": 0.55
+          },
+          {
+            "id": "w2",
+            "index": 2,
+            "text": "word2",
+            "start": 0.6,
+            "end": 0.85
+          },
+          {
+            "id": "w3",
+            "index": 3,
+            "text": "word3",
+            "start": 0.8999999999999999,
+            "end": 1.15
+          },
+          {
+            "id": "w4",
+            "index": 4,
+            "text": "word4",
+            "start": 1.2,
+            "end": 1.45
+          },
+          {
+            "id": "w5",
+            "index": 5,
+            "text": "word5",
+            "start": 1.5,
+            "end": 1.75
+          },
+          {
+            "id": "w6",
+            "index": 6,
+            "text": "word6",
+            "start": 1.7999999999999998,
+            "end": 2.05
+          },
+          {
+            "id": "w7",
+            "index": 7,
+            "text": "word7",
+            "start": 2.1,
+            "end": 2.35
+          },
+          {
+            "id": "w8",
+            "index": 8,
+            "text": "word8",
+            "start": 2.4,
+            "end": 2.65
+          },
+          {
+            "id": "w9",
+            "index": 9,
+            "text": "word9",
+            "start": 2.6999999999999997,
+            "end": 2.9499999999999997
+          },
+          {
+            "id": "w10",
+            "index": 10,
+            "text": "word10",
+            "start": 3,
+            "end": 3.25
+          },
+          {
+            "id": "w11",
+            "index": 11,
+            "text": "word11",
+            "start": 3.3,
+            "end": 3.55
+          },
+          {
+            "id": "w12",
+            "index": 12,
+            "text": "word12",
+            "start": 3.5999999999999996,
+            "end": 3.8499999999999996
+          }
+        ],
+        "edits": [
+          {
+            "line": "[0-12]",
+            "keep": "",
+            "kind": "false_start"
+          }
+        ]
+      },
+      "expected": {
+        "proposals": [
+          {
+            "lineLabel": "[0-12]",
+            "kind": "false_start",
+            "cutWordIds": [
+              "w0",
+              "w1",
+              "w2",
+              "w3",
+              "w4",
+              "w5",
+              "w6",
+              "w7",
+              "w8",
+              "w9",
+              "w10",
+              "w11",
+              "w12"
+            ],
+            "preselected": false
+          }
+        ],
+        "rejectedCount": 0,
+        "rejected": []
+      }
+    },
+    {
+      "id": "leading-punctuation",
+      "kind": "tighten-verifier",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §12.5",
+      "input": {
+        "entries": [
+          {
+            "id": "w0",
+            "index": 0,
+            "text": "—",
+            "start": 0,
+            "end": 0.25
+          },
+          {
+            "id": "w1",
+            "index": 1,
+            "text": "um",
+            "start": 0.3,
+            "end": 0.55
+          },
+          {
+            "id": "w2",
+            "index": 2,
+            "text": "yes.",
+            "start": 0.6,
+            "end": 0.85
+          }
+        ],
+        "edits": [
+          {
+            "line": "[0-2]",
+            "keep": "yes",
+            "kind": "filler"
+          }
+        ]
+      },
+      "expected": {
+        "proposals": [
+          {
+            "lineLabel": "[0-2]",
+            "kind": "filler",
+            "cutWordIds": [
+              "w0",
+              "w1"
+            ],
+            "preselected": false
+          }
+        ],
+        "rejectedCount": 0,
+        "rejected": []
+      }
+    },
+    {
+      "id": "punctuation-only-whole-line",
+      "kind": "tighten-verifier",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §12.5",
+      "input": {
+        "entries": [
+          {
+            "id": "w0",
+            "index": 0,
+            "text": "—",
+            "start": 0,
+            "end": 0.25
+          },
+          {
+            "id": "w1",
+            "index": 1,
+            "text": "…",
+            "start": 0.3,
+            "end": 0.55
+          }
+        ],
+        "edits": [
+          {
+            "line": "[0-1]",
+            "keep": "",
+            "kind": "false_start"
+          }
+        ]
+      },
+      "expected": {
+        "proposals": [
+          {
+            "lineLabel": "[0-1]",
+            "kind": "false_start",
+            "cutWordIds": [
+              "w0",
+              "w1"
+            ],
+            "preselected": true
+          }
+        ],
+        "rejectedCount": 0,
+        "rejected": []
+      }
+    },
+    {
+      "id": "unicode-whitespace",
+      "kind": "tighten-verifier",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §12.5",
+      "input": {
+        "entries": [
+          {
+            "id": "w0",
+            "index": 0,
+            "text": "So,",
+            "start": 0,
+            "end": 0.25
+          },
+          {
+            "id": "w1",
+            "index": 1,
+            "text": "um",
+            "start": 0.3,
+            "end": 0.55
+          },
+          {
+            "id": "w2",
+            "index": 2,
+            "text": "yes.",
+            "start": 0.6,
+            "end": 0.85
+          }
+        ],
+        "edits": [
+          {
+            "line": "[0-2]",
+            "keep": "﻿so yes﻿",
+            "kind": "filler"
+          }
+        ]
+      },
+      "expected": {
+        "proposals": [
+          {
+            "lineLabel": "[0-2]",
+            "kind": "filler",
+            "cutWordIds": [
+              "w1"
+            ],
+            "preselected": true
+          }
+        ],
+        "rejectedCount": 0,
+        "rejected": []
+      }
+    }
+  ]
+}

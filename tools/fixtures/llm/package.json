@@ -1,0 +1,13 @@
+{
+  "name": "voxclip-llm-fixtures",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Independent golden fixtures for VoxClip's shared LLM behaviour.",
+  "license": "MIT",
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "generate": "node gen.mjs",
+    "check": "node gen.mjs --check"
+  }
+}
