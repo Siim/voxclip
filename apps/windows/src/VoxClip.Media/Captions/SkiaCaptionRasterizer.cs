@@ -588,11 +588,9 @@ public sealed partial class SkiaCaptionRasterizer : ICaptionRasterizer
         var height = bottom - top;
         if (opacityBitmap is null || opacityBitmap.Width < width || opacityBitmap.Height < height)
         {
-            var grownWidth = Math.Max(opacityBitmap?.Width ?? 0, width);
-            var grownHeight = Math.Max(opacityBitmap?.Height ?? 0, height);
             opacityCanvas?.Dispose();
             opacityBitmap?.Dispose();
-            opacityBitmap = new(new SKImageInfo(grownWidth, grownHeight, SKColorType.Bgra8888, SKAlphaType.Premul));
+            opacityBitmap = new(new SKImageInfo(width, height, SKColorType.Bgra8888, SKAlphaType.Premul));
             opacityCanvas = new(opacityBitmap);
         }
         var band = new SKRectI(0, 0, width, height);

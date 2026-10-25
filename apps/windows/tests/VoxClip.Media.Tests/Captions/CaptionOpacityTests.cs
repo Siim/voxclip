@@ -141,6 +141,29 @@ public sealed class CaptionOpacityTests
         Assert.True(first.AsSpan().SequenceEqual(small.Pixels.Span));
     }
 
+    [Fact]
+    public async Task OpacityBandStaysWithinLargestFrameAcrossAspectSwitches()
+    {
+        using var fixture = FixtureLoader.ReadJson("fixtures/captions/layout/neon-portrait-en.json");
+        var source = await CaptionFixtureSupport.Build(fixture.RootElement.GetProperty("input"));
+        var rasterizer = new SkiaCaptionRasterizer();
+        var maxFrameBytes = 1920L * 1080 * 4;
+        for (var index = 0; index < 12; index++)
+        {
+            var (width, height) = index % 2 == 0 ? (1920, 1080) : (1080, 1920);
+            var page = source.Pages[0] with { Visual = new(0, 0, width, height) };
+            var track = source with { Frame = new(width, height), Pages = [page] };
+            var request = new CaptionRenderRequest(track, page.Start + 0.075);
+            Assert.InRange(CaptionEvaluator.Evaluate(track, request.Time)!.PageAlpha, 0.001, 0.999);
+            var target = new PixelBuffer(new byte[width * height * 4], width, height, width * 4);
+            rasterizer.Draw(request, target, CancellationToken.None);
+            Assert.InRange(rasterizer.RetainedOpacityBandBytes, 1, maxFrameBytes);
+            Assert.Equal(1, rasterizer.OpacityCanvasSaveCount);
+            var fresh = await new SkiaCaptionRasterizer().RenderAsync(request, CancellationToken.None);
+            Assert.True(fresh.Pixels.Span.SequenceEqual(target.Pixels.Span), $"Opacity output differed after aspect switch {index}.");
+        }
+    }
+
     private static int FirstDifference(ReadOnlySpan<byte> expected, ReadOnlySpan<byte> actual)
     {
         for (var index = 0; index < expected.Length; index++) if (expected[index] != actual[index]) return index;
