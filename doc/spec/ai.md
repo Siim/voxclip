@@ -23,7 +23,16 @@ Code lives in the cross-platform cores: `VoxClipCore/AI/` (Swift) and `VoxClip.C
 2. **LLM output never edits the project by itself.** Clip suggestions are suggestions. AI tighten proposals need the user's approval. A failed or cancelled run leaves the project unchanged.
 3. **Manual clips need no connector.** Selecting words and choosing "Make clip" works with no key, no network and no model.
 4. **Only text leaves the machine, and only to the connector the user picked.** The transcript (word text plus timings, as formatted in §11.3) is sent. Media files never are. VoxConvo servers are never in the loop. There is no telemetry.
-5. **Keys stay in the OS secret store.** They never appear in logs, URLs, project files or crash reports, and VoxClip never adds its stored keys to a child process's environment. A stored key is sent only over HTTPS to its connector's host, and the hosts are fixed in code on both platforms: `api.anthropic.com`, `api.openai.com`, `api.x.ai` and `generativelanguage.googleapis.com`. Nothing can change where a key goes: not a catalog file (for example one found through `VOXCLIP_SHARED_DIR`, architecture 2.4), not settings, not a redirect.
+5. **Keys stay in the OS secret store.** They never appear in logs, URLs, project files or crash reports, and VoxClip never adds its stored keys to a child process's environment. A stored key is sent only over HTTPS to its connector's host. Everything that decides where a key goes is fixed in code on both platforms, per connector: which key it uses, the host, the header and the header value.
+
+   | Connector | Key account | Host | Header and value |
+   | --- | --- | --- | --- |
+   | `anthropic` | `llm-api-key-anthropic` | `api.anthropic.com` | `x-api-key: {key}` |
+   | `openai` | `llm-api-key-openai` | `api.openai.com` | `Authorization: Bearer {key}` |
+   | `xai` | `llm-api-key-xai` | `api.x.ai` | `Authorization: Bearer {key}` |
+   | `gemini` | `llm-api-key-gemini` | `generativelanguage.googleapis.com` | `x-goog-api-key: {key}` |
+
+   No other connector ever receives a stored key. Nothing can change where a key goes: not a catalog file (for example one found through `VOXCLIP_SHARED_DIR`, architecture 2.4), not settings, not an injected HTTP client, not a redirect. Key-bearing requests go through a transport the connector owns, which never follows a redirect. A catalog entry that disagrees with this table makes the connector `unavailable` with "VoxClip is missing its AI configuration. Reinstall VoxClip."
 6. **Plain HTTP on both platforms.** Every HTTP connector is implemented directly on `URLSession` (Swift) and `HttpClient` (C#), with no vendor SDK. Swift has no official SDK for most of these APIs, and one wire implementation per platform lets the same request and response fixtures test both apps.
 7. **Capabilities drive the UI, not provider names.** Each connector declares its group, privacy class, structured-output mode and limits in the catalog.
 
@@ -345,7 +354,7 @@ Errors are logged by their `LLMError` case plus the redacted user message. Never
 | `unsupportedLanguage(lang)` | Apple locale gate (§6.7) | no | no | Apple's on-device model doesn't support {language name}. Use an API key, a CLI or a local model for this project. |
 | `notRunning(url)` | Ollama or LM Studio connection refused | no | no | Ollama isn't running at {url}. Start Ollama and try again. / LM Studio's server isn't running at {url}. Start it from LM Studio's Developer tab. |
 | `noModels` | local server has no chat model | no | no | Ollama has no chat models. Run `ollama pull <model>`, then refresh. / Load or download a model in LM Studio, then refresh. |
-| `unavailable(reason)` | Apple availability; Ollama or LM Studio answering 401 or 403 (they have no key to fix); an unusable Ollama or LM Studio address in settings (credentials, query, fragment or a scheme other than http and https) | no | no | This Mac can't run Apple Intelligence. / Turn on Apple Intelligence in System Settings to use the on-device model. / Apple's on-device model is still downloading. Try again later. / {label} rejected the request ({status}). / {label}'s server address in Settings isn't valid. |
+| `unavailable(reason)` | Apple availability; Ollama or LM Studio answering 401 or 403 (they have no key to fix); an unusable Ollama or LM Studio address in settings (credentials, query, fragment or a scheme other than http and https) | no | no | This Mac can't run Apple Intelligence. / Turn on Apple Intelligence in System Settings to use the on-device model. / Apple's on-device model is still downloading. Try again later. / {label} rejected the request ({status}). / {label}'s server address in Settings isn't valid. (also for a 404 from the local status probe) / VoxClip is missing its AI configuration. Reinstall VoxClip. (catalog disagrees with the §1 rule 5 table) |
 | `cliMissing` | no executable found | no | no | {cli} isn't installed. {installHint} |
 | `cliTooOld(version, missing)` | required flags missing from `--help` | no | no | Your {cli} {version} is too old for VoxClip. Update it, then try again. |
 | `cliSignedOut` | auth preflight or auth markers | no | no | {cli} isn't signed in. {signInHint} |
