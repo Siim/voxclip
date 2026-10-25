@@ -1,0 +1,352 @@
+{
+  "schema": "voxclip-export-fixture/1",
+  "source": "doc/architecture.md section 4.1",
+  "description": "Output size, centre crop (oriented source pixels, [x, y, width, height]), output frame rate and H.264 bitrate in bits per second for each case. Hand-written from architecture section 4.1; change both together. Inputs avoid rounding ties in the size rule. Compare integers exactly and crop values within 1e-9.",
+  "cases": [
+    {
+      "source": [
+        1920,
+        1080
+      ],
+      "sourceFps": 29.97,
+      "aspect": "source",
+      "quality": "standard",
+      "expected": {
+        "size": [
+          1920,
+          1080
+        ],
+        "crop": [
+          0,
+          0,
+          1920,
+          1080
+        ],
+        "fps": 30,
+        "videoBitrate": 8000000
+      }
+    },
+    {
+      "source": [
+        2400,
+        1350
+      ],
+      "sourceFps": 30,
+      "aspect": "source",
+      "quality": "standard",
+      "expected": {
+        "size": [
+          1920,
+          1080
+        ],
+        "crop": [
+          0,
+          0,
+          2400,
+          1350
+        ],
+        "fps": 30,
+        "videoBitrate": 8000000
+      }
+    },
+    {
+      "source": [
+        1280,
+        720
+      ],
+      "sourceFps": 30,
+      "aspect": "source",
+      "quality": "standard",
+      "expected": {
+        "size": [
+          1280,
+          720
+        ],
+        "crop": [
+          0,
+          0,
+          1280,
+          720
+        ],
+        "fps": 30,
+        "videoBitrate": 3555556
+      }
+    },
+    {
+      "source": [
+        640,
+        360
+      ],
+      "sourceFps": 25,
+      "aspect": "source",
+      "quality": "standard",
+      "expected": {
+        "size": [
+          640,
+          360
+        ],
+        "crop": [
+          0,
+          0,
+          640,
+          360
+        ],
+        "fps": 25,
+        "videoBitrate": 2000000
+      }
+    },
+    {
+      "source": [
+        1080,
+        1920
+      ],
+      "sourceFps": 60,
+      "aspect": "source",
+      "quality": "high",
+      "expected": {
+        "size": [
+          1080,
+          1920
+        ],
+        "crop": [
+          0,
+          0,
+          1080,
+          1920
+        ],
+        "fps": 60,
+        "videoBitrate": 18000000
+      }
+    },
+    {
+      "source": [
+        3840,
+        2160
+      ],
+      "sourceFps": 23.976,
+      "aspect": "source",
+      "quality": "standard",
+      "expected": {
+        "size": [
+          1920,
+          1080
+        ],
+        "crop": [
+          0,
+          0,
+          3840,
+          2160
+        ],
+        "fps": 24,
+        "videoBitrate": 8000000
+      }
+    },
+    {
+      "source": [
+        1000,
+        1000
+      ],
+      "sourceFps": 30,
+      "aspect": "source",
+      "quality": "standard",
+      "expected": {
+        "size": [
+          1000,
+          1000
+        ],
+        "crop": [
+          0,
+          0,
+          1000,
+          1000
+        ],
+        "fps": 30,
+        "videoBitrate": 3858025
+      }
+    },
+    {
+      "source": [
+        2560,
+        1441
+      ],
+      "sourceFps": 30,
+      "aspect": "source",
+      "quality": "standard",
+      "expected": {
+        "size": [
+          1920,
+          1080
+        ],
+        "crop": [
+          0,
+          0,
+          2560,
+          1441
+        ],
+        "fps": 30,
+        "videoBitrate": 8000000
+      }
+    },
+    {
+      "source": [
+        1920,
+        1080
+      ],
+      "sourceFps": 27.5,
+      "aspect": "source",
+      "quality": "standard",
+      "expected": {
+        "size": [
+          1920,
+          1080
+        ],
+        "crop": [
+          0,
+          0,
+          1920,
+          1080
+        ],
+        "fps": 25,
+        "videoBitrate": 8000000
+      }
+    },
+    {
+      "source": [
+        1920,
+        1080
+      ],
+      "sourceFps": 120,
+      "aspect": "source",
+      "quality": "standard",
+      "expected": {
+        "size": [
+          1920,
+          1080
+        ],
+        "crop": [
+          0,
+          0,
+          1920,
+          1080
+        ],
+        "fps": 60,
+        "videoBitrate": 12000000
+      }
+    },
+    {
+      "source": [
+        1920,
+        1080
+      ],
+      "sourceFps": 30,
+      "aspect": "9:16",
+      "quality": "standard",
+      "expected": {
+        "size": [
+          1080,
+          1920
+        ],
+        "crop": [
+          656.25,
+          0,
+          607.5,
+          1080
+        ],
+        "fps": 30,
+        "videoBitrate": 8000000
+      }
+    },
+    {
+      "source": [
+        1920,
+        1080
+      ],
+      "sourceFps": 24,
+      "aspect": "1:1",
+      "quality": "high",
+      "expected": {
+        "size": [
+          1080,
+          1080
+        ],
+        "crop": [
+          420,
+          0,
+          1080,
+          1080
+        ],
+        "fps": 24,
+        "videoBitrate": 9000000
+      }
+    },
+    {
+      "source": [
+        1080,
+        1920
+      ],
+      "sourceFps": 50,
+      "aspect": "16:9",
+      "quality": "standard",
+      "expected": {
+        "size": [
+          1920,
+          1080
+        ],
+        "crop": [
+          0,
+          656.25,
+          1080,
+          607.5
+        ],
+        "fps": 50,
+        "videoBitrate": 12000000
+      }
+    },
+    {
+      "source": [
+        720,
+        1280
+      ],
+      "sourceFps": 30,
+      "aspect": "1:1",
+      "quality": "standard",
+      "expected": {
+        "size": [
+          1080,
+          1080
+        ],
+        "crop": [
+          0,
+          280,
+          720,
+          720
+        ],
+        "fps": 30,
+        "videoBitrate": 6000000
+      }
+    },
+    {
+      "source": [
+        1280,
+        720
+      ],
+      "sourceFps": 30,
+      "aspect": "16:9",
+      "quality": "high",
+      "expected": {
+        "size": [
+          1920,
+          1080
+        ],
+        "crop": [
+          0,
+          0,
+          1280,
+          720
+        ],
+        "fps": 30,
+        "videoBitrate": 12000000
+      }
+    }
+  ]
+}

@@ -83,15 +83,17 @@ jobs:
 
       - name: .NET core tests on macOS
         if: steps.detect.outputs.core_tests == 'true'
+        working-directory: apps/windows
         env:
           VOXCLIP_SHARED_DIR: ${{ github.workspace }}/shared
-        run: dotnet test apps/windows/tests/VoxClip.Core.Tests/VoxClip.Core.Tests.csproj -c Release
+        run: dotnet test --project tests/VoxClip.Core.Tests/VoxClip.Core.Tests.csproj -c Release
 
       - name: .NET media tests on macOS (caption renderer; no FFmpeg, no Windows-only APIs)
         if: steps.detect.outputs.media_tests == 'true'
+        working-directory: apps/windows
         env:
           VOXCLIP_SHARED_DIR: ${{ github.workspace }}/shared
-        run: dotnet test apps/windows/tests/VoxClip.Media.Tests/VoxClip.Media.Tests.csproj -c Release --filter "Category!=RequiresFFmpeg&Category!=RequiresWindows"
+        run: dotnet test --project tests/VoxClip.Media.Tests/VoxClip.Media.Tests.csproj -c Release --filter "Category!=RequiresFFmpeg&Category!=RequiresWindows"
 
       - name: Caption parity (Swift vs C# renders)
         if: steps.detect.outputs.parity == 'true' && steps.detect.outputs.swift == 'true' && steps.detect.outputs.media_tests == 'true'
@@ -132,31 +134,36 @@ jobs:
       - name: .NET core tests
         if: steps.detect.outputs.core_tests == 'true'
         shell: bash
+        working-directory: apps/windows
         env:
           VOXCLIP_SHARED_DIR: ${{ github.workspace }}/shared
-        run: dotnet test apps/windows/tests/VoxClip.Core.Tests/VoxClip.Core.Tests.csproj -c Release
+        run: dotnet test --project tests/VoxClip.Core.Tests/VoxClip.Core.Tests.csproj -c Release
 
       - name: .NET media tests (FFmpeg-dependent tests skip themselves when FFmpeg is absent)
         if: steps.detect.outputs.media_tests == 'true'
         shell: bash
+        working-directory: apps/windows
         env:
           VOXCLIP_SHARED_DIR: ${{ github.workspace }}/shared
-        run: dotnet test apps/windows/tests/VoxClip.Media.Tests/VoxClip.Media.Tests.csproj -c Release
+        run: dotnet test --project tests/VoxClip.Media.Tests/VoxClip.Media.Tests.csproj -c Release
 
       - name: Build WinUI app (win-x64)
         if: steps.detect.outputs.app == 'true'
         shell: bash
-        run: dotnet build apps/windows/src/VoxClip.App/VoxClip.App.csproj -c Release -r win-x64 -p:Platform=x64
+        working-directory: apps/windows
+        run: dotnet build src/VoxClip.App/VoxClip.App.csproj -c Release -r win-x64 -p:Platform=x64
 
       - name: Build WinUI app (win-arm64)
         if: steps.detect.outputs.app == 'true'
         shell: bash
-        run: dotnet build apps/windows/src/VoxClip.App/VoxClip.App.csproj -c Release -r win-arm64 -p:Platform=ARM64
+        working-directory: apps/windows
+        run: dotnet build src/VoxClip.App/VoxClip.App.csproj -c Release -r win-arm64 -p:Platform=ARM64
 
       - name: Build CLI
         if: steps.detect.outputs.cli == 'true'
         shell: bash
-        run: dotnet build apps/windows/src/VoxClip.Cli/VoxClip.Cli.csproj -c Release
+        working-directory: apps/windows
+        run: dotnet build src/VoxClip.Cli/VoxClip.Cli.csproj -c Release
 
   fixtures:
     name: Shared fixtures and repo hygiene

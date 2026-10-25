@@ -219,15 +219,16 @@ The server resolves the video URL from the job instead of trusting a URL from th
 
 - Standalone for everyone (landing header and footer). Hero: "VoxClip. Cut video by its words." Sub: "Free and open source. Bring your own keys, or run everything on your computer."
 - Buttons: **Download for Mac** (`/download/macos`, "Apple silicon · macOS 26 or later"), **Download for Windows** (`/download/windows`, "64-bit · Windows 10 or 11") with a secondary link "Windows on Arm" (`/download/windows-arm64`). Client-side OS detection (`navigator.userAgentData?.platform || navigator.platform`) highlights one button; SSR renders all of them.
-- Also: system requirements, a link to `https://github.com/Siim/voxclip` and its releases page, the SHA-256 note ("Checksums are attached to each GitHub release"), and the privacy line "Your keys stay on your device. VoxClip sends no telemetry."
+- Also: system requirements, a link to `https://github.com/Siim/voxclip` and its releases page, the SHA-256 note ("Checksums are attached to each GitHub release"), and the privacy line "No account required. Your keys stay on your device. VoxClip sends no telemetry."
 - Next to the Windows buttons: "The Windows app uses libraries from the FFmpeg project under the LGPL. Source: VoxClip-win-ffmpeg-source.tar.xz" linking to `https://github.com/Siim/voxclip/releases/latest/download/VoxClip-win-ffmpeg-source.tar.xz` (release.md section 1.1).
-- If the latest published release has no Windows assets (ADR-R17), the server-side config `VOXCLIP_WINDOWS_AVAILABLE=false` hides the Windows buttons and their redirects answer 302 to the releases page instead.
+- If the latest published release has no Windows assets (ADR-R17), the server-side config `VOXCLIP_WINDOWS_AVAILABLE=false` hides the Windows buttons, the Windows requirements and the FFmpeg source line, and their redirects answer 302 to the releases page instead (section 4.2). The server passes the flag to the SSR render and to the client, so hydration renders the same markup.
+- Unknown paths under `/download/` redirect to `/download` (section 4.2); the page never queries the VoxConvo API.
 
 ### 4.2 Redirects (`vox-web/server.mjs`, before the SSR middleware)
 
 ```js
-const VOXCLIP_RELEASES = process.env.VOXCLIP_RELEASES_BASE
-  || 'https://github.com/Siim/voxclip/releases/latest/download'
+const VOXCLIP_RELEASES = (process.env.VOXCLIP_RELEASES_BASE
+  || 'https://github.com/Siim/voxclip/releases/latest/download').replace(/\/$/, '')
 const VOXCLIP_RELEASES_PAGE = 'https://github.com/Siim/voxclip/releases'
 const VOXCLIP_WINDOWS = process.env.VOXCLIP_WINDOWS_AVAILABLE !== 'false'   // ADR-R17
 const VOXCLIP_ASSETS = {
@@ -237,18 +238,26 @@ const VOXCLIP_ASSETS = {
   'windows-arm64': 'VoxClip-win-arm64-Setup.exe',
   'windows-ffmpeg-source': 'VoxClip-win-ffmpeg-source.tar.xz',
 }
-const voxclipTargets = new Map()
+const voxclipTargets = new Map()   // keys are lower case
 for (const [alias, asset] of Object.entries(VOXCLIP_ASSETS)) {
-  const target = alias.startsWith('windows') && !VOXCLIP_WINDOWS ? VOXCLIP_RELEASES_PAGE : `${VOXCLIP_RELEASES}/${asset}`
-  voxclipTargets.set(`/download/${alias}`, target)
-  voxclipTargets.set(`/download/${asset}`, target)
+  const windowsAsset = alias.startsWith('windows')
+  const target = windowsAsset && !VOXCLIP_WINDOWS ? VOXCLIP_RELEASES_PAGE : `${VOXCLIP_RELEASES}/${asset}`
+  voxclipTargets.set(`/download/${alias}`.toLowerCase(), target)
+  voxclipTargets.set(`/download/${asset}`.toLowerCase(), target)
 }
-app.get([...voxclipTargets.keys()], (req, res) => {
-  res.set('Cache-Control', 'no-store').redirect(302, voxclipTargets.get(req.path))
+app.get(/^\/download(?:\/.*)?$/i, (req, res, next) => {
+  const path = req.path.replace(/\/+$/, '')
+  const normalizedPath = path.toLowerCase()
+  if (normalizedPath === '/download') {
+    if (path !== '/download') return res.redirect(301, '/download')   // e.g. /Download
+    return next()                                                     // the SSR page (section 4.1)
+  }
+  const target = voxclipTargets.get(normalizedPath)
+  return res.set('Cache-Control', 'no-store').redirect(302, target || '/download')
 })
 ```
 
-Redirect table (all `302`, `Cache-Control: no-store`):
+Matching ignores case and trailing slashes. Redirect table (all `302`, `Cache-Control: no-store`):
 
 | Path | Location |
 |---|---|
@@ -256,8 +265,9 @@ Redirect table (all `302`, `Cache-Control: no-store`):
 | `/download/windows`, `/download/windows-x64`, `/download/VoxClip-win-x64-Setup.exe` | `…/latest/download/VoxClip-win-x64-Setup.exe` |
 | `/download/windows-arm64`, `/download/VoxClip-win-arm64-Setup.exe` | `…/latest/download/VoxClip-win-arm64-Setup.exe` |
 | `/download/windows-ffmpeg-source`, `/download/VoxClip-win-ffmpeg-source.tar.xz` | `…/latest/download/VoxClip-win-ffmpeg-source.tar.xz` |
+| any other `/download/<name>` | `/download` |
 
-With `VOXCLIP_WINDOWS_AVAILABLE=false`, every `windows*` path answers 302 to `https://github.com/Siim/voxclip/releases` instead.
+`/download` itself, with any letter case other than exactly `/download`, answers `301` to `/download`. With `VOXCLIP_WINDOWS_AVAILABLE=false`, every `windows*` alias and Windows asset name answers 302 to `https://github.com/Siim/voxclip/releases` instead, and the page (section 4.1) renders no Windows buttons and no FFmpeg source line.
 
 GitHub answers `releases/latest/download/<asset>` with a redirect to the newest published release's asset, so the page never needs a redeploy for a release. Caddy needs no change (voxconvo.com already proxies everything to the SSR server).
 

@@ -1,0 +1,48 @@
+{
+  "schema": "voxclip-redaction-fixture/1",
+  "source": "doc/architecture.md section 11.2",
+  "description": "Redactor acceptance cases. Hand-written from the table in architecture section 11.2; change both together. For each case, build a Redactor with the case's home directory (empty string when absent) and the registered secrets (none here), call redact(input) once, and compare the result with output exactly. The secret-looking values are fake.",
+  "cases": [
+    {
+      "input": "x-api-key: sk-ant-api03-abcdefghijklmnopqrstuv",
+      "output": "x-api-key: [REDACTED]"
+    },
+    {
+      "input": "GET https://example.com/v1/models?key=AIzaSyA1234567890abcdefghijklmnopqrstu&alt=json",
+      "output": "GET https://example.com/v1/models?key=[REDACTED]&alt=json"
+    },
+    {
+      "input": "Authorization: Bearer eyJhbGciOi.J9.abc",
+      "output": "Authorization: Bearer [REDACTED]"
+    },
+    {
+      "input": "{\"client_secret\":\"s3cr3t-value-123\"}",
+      "output": "{\"client_secret\":\"[REDACTED]\"}"
+    },
+    {
+      "input": "/Users/alice/Movies/take.mov failed",
+      "home": "/Users/alice",
+      "output": "~/Movies/take.mov failed"
+    },
+    {
+      "input": "Authorization: Key 1a2b3c4d:5e6f7a8b9c0d",
+      "output": "Authorization: Key [REDACTED]"
+    },
+    {
+      "input": "Authorization: Basic dXNlcjpwYXNz",
+      "output": "Authorization: Basic [REDACTED]"
+    },
+    {
+      "input": "xi-api-key: sk_0123456789abcdef0123456789abcdef",
+      "output": "xi-api-key: [REDACTED]"
+    },
+    {
+      "input": "transport error: https://generativelanguage.googleapis.com/v1beta/models?key=AIzaSyA1234567890abcdefghijklmnopqrstu",
+      "output": "transport error: https://generativelanguage.googleapis.com/v1beta/models?key=[REDACTED]"
+    },
+    {
+      "input": "status 401 from api.elevenlabs.io",
+      "output": "status 401 from api.elevenlabs.io"
+    }
+  ]
+}

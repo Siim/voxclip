@@ -1,0 +1,52 @@
+{
+  "schema": "voxclip-version-fixture/1",
+  "source": "doc/architecture.md section 13.1",
+  "description": "compareVersions(left, right) cases. The result is -1 when left is older, 0 when equal, 1 when newer. Numeric parts compare as integers, missing parts are 0, and a pre-release suffix sorts below the same numbers without one. Inputs never carry a leading v (callers strip it from tag_name first).",
+  "cases": [
+    [
+      "0.1.0",
+      "0.1.0",
+      0
+    ],
+    [
+      "0.1.1",
+      "0.1.0",
+      1
+    ],
+    [
+      "0.2.0",
+      "0.10.0",
+      -1
+    ],
+    [
+      "1.0",
+      "1.0.0",
+      0
+    ],
+    [
+      "1.0.0-beta.1",
+      "1.0.0",
+      -1
+    ],
+    [
+      "1.0.0",
+      "1.0.0-beta.1",
+      1
+    ],
+    [
+      "1.0.1-beta.1",
+      "1.0.0",
+      1
+    ],
+    [
+      "0.9.9",
+      "1.0.0-beta.2",
+      -1
+    ],
+    [
+      "10.0.0",
+      "9.9.9",
+      1
+    ]
+  ]
+}

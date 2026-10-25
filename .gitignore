@@ -37,4 +37,14 @@ AppPackages/
 *.mov
 *.wav
 !shared/fixtures/**/*.wav
+!shared/fixtures/**/*.mp4
+!shared/fixtures/**/*.mov
 node_modules/
+
+# Python and release outputs
+__pycache__/
+*.pyc
+apps/macos/dist/
+apps/windows/dist/
+*.tar
+*.tar.xz

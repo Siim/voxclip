@@ -54,18 +54,21 @@ swift run voxclip-cli version
 .NET core and caption renderer on macOS (.NET 10 SDK):
 
 ```sh
-dotnet test apps/windows/tests/VoxClip.Core.Tests -c Release
-dotnet test apps/windows/tests/VoxClip.Media.Tests -c Release --filter "Category!=RequiresFFmpeg&Category!=RequiresWindows"
+cd apps/windows                      # global.json here selects the SDK and the Microsoft.Testing.Platform runner
+dotnet build VoxClip.CrossPlatform.slnf -c Release
+dotnet test --project tests/VoxClip.Core.Tests -c Release
+dotnet test --project tests/VoxClip.Media.Tests -c Release --filter "Category!=RequiresFFmpeg&Category!=RequiresWindows"
 ```
 
 Windows (Windows 11, .NET 10 SDK, Windows SDK):
 
 ```powershell
-dotnet test apps\windows\tests\VoxClip.Core.Tests -c Release
-dotnet test apps\windows\tests\VoxClip.Media.Tests -c Release
-dotnet build apps\windows\src\VoxClip.App -c Release -r win-x64 -p:Platform=x64
-dotnet build apps\windows\src\VoxClip.App -c Release -r win-arm64 -p:Platform=ARM64
-dotnet build apps\windows\src\VoxClip.Cli -c Release
+cd apps\windows
+dotnet test --project tests\VoxClip.Core.Tests -c Release
+dotnet test --project tests\VoxClip.Media.Tests -c Release
+dotnet build src\VoxClip.App -c Release -r win-x64 -p:Platform=x64 -m:1
+dotnet build src\VoxClip.App -c Release -r win-arm64 -p:Platform=ARM64 -m:1
+dotnet build src\VoxClip.Cli -c Release
 ```
 
 Shared data and generators (Node 22):
@@ -85,7 +88,7 @@ voxclip-cli --open shared/fixtures/media/fillers-chirp.mp4 --transcript shared/f
             --cut-fillers --export /tmp/out.mp4 --style vox-highlight --aspect 9:16 --json
 ```
 
-Test environment variables: `VOXCLIP_DATA_DIR` (isolated settings, models, cache, logs), `VOXCLIP_SHARED_DIR` (path to `shared/`; fixture loaders take its parent as the repository root), `VOXCLIP_LOG_LEVEL`. Tests that call real providers or download models are opt-in (`VOXCLIP_LIVE_TESTS=1`, or the narrower switches a topic spec defines, such as `VOXCLIP_TEST_DOWNLOAD=1` in the transcription spec) and need the key env vars; otherwise they skip. Tests never read the Keychain or DPAPI.
+Test environment variables: `VOXCLIP_DATA_DIR` (isolated settings, models, cache, logs), `VOXCLIP_SHARED_DIR` (path to `shared/`; fixture loaders take its parent as the repository root), `VOXCLIP_LOG_LEVEL`, and for the end-to-end suites `VOXCLIP_CLI` (absolute path of the CLI under test) and `VOXCLIP_E2E_OUT` (report directory; architecture.md section 9.5). Tests that call real providers or download models are opt-in (`VOXCLIP_LIVE_TESTS=1`, or the narrower switches a topic spec defines, such as `VOXCLIP_TEST_DOWNLOAD=1` in the transcription spec) and need the key env vars; otherwise they skip. Tests never read the Keychain or DPAPI.
 
 ## Commits and pull requests
 
