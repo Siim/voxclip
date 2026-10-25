@@ -809,7 +809,8 @@ Windows (`VoxClip.Media`): the compose function draws into an `SKSurface` that w
 - A stable frame (one the cache could hold) is always flattened into a transparent band and composited onto the target with one source-over, whether or not the cache holds that band. A cached frame is therefore pixel-identical to an uncached one on any target, transparent or video. Animated frames are drawn directly.
 - Reused render state (scratch buffers, masks, canvases, the cache) must stay consistent when a render throws or is cancelled: a later frame never shows another frame's pixels and never fails because of the earlier error.
 - Memory: the band cache is at most 64 MiB per window, and scratch memory is bounded by the largest frame drawn, never by the number of pages or tracks drawn.
-- Budget: a 1080×1920 caption frame renders in under 4 ms on an M1 or a 2022 mid-range Windows laptop with the box blur; animated frames are rendered directly.
+- Budget, at 1080×1920 with the box blur on an M1 or a 2022 mid-range Windows laptop: every frame after a page's first renders in under 4 ms, with or without the band cache; the first frame of a page, which builds that page's outlines and shadow masks, renders in under 10 ms. A renderer loads and parses its fonts and style resources once, and that one-time setup is not part of either budget. Animated frames are rendered directly.
+- Acceptance runs on a quiet machine (one-minute load average below 2) and takes the best p95 of three passes per style and mode. On the M3 Max development machine the gates are 3.0 ms and 7.5 ms. The page-first pass reuses one renderer whose resources are already loaded, so it times page geometry, not setup.
 
 ---
 
