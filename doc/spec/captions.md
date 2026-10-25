@@ -783,6 +783,8 @@ For each entry of `shadows`:
 2. Blur the mask (13.2) with `σ = sigmaEm · Fp · pageScale`.
 3. Composite the shadow colour, premultiplied and multiplied by `mask/255`, source-over onto the overlay.
 
+Windows x64 draws the Alpha8 mask with its colour paint directly. Its native Skia source-over path fuses tint and blending; precolouring a separate BGRA image changes overlapping shadow channels by up to two levels. Other renderer architectures may precolour a retained shadow image when their pixels match the direct path. Both paths reuse their buffers and retain the same output contract.
+
 ### 13.6 RGB split
 
 When `effects.rgbSplit` exists, for every visible word draw its fill outlines in `leftColor` translated by `(−offsetEm·Fp, 0)` and then in `rightColor` translated by `(+offsetEm·Fp, 0)` (page coordinates), source-over, alpha multiplied by the word opacity.
@@ -806,9 +808,11 @@ Windows (`VoxClip.Media`): the compose function draws into an `SKSurface` that w
 
 - Layout is computed once per `(CaptionInput, resolved style, W, H)` and kept until one of them changes.
 - A page's rendered overlay may be cached when nothing time-dependent is in progress: no entrance or exit animation running, no jitter, no wipe in progress, no cursor, and the same active word and visible cluster counts. Cache key: `(page index, style hash, W×H, k, active word, visible cluster counts)`. LRU, at most 64 MiB per window. A cached frame must be pixel-identical to an uncached one.
+- The Windows renderer retains glyph paths for at most eight recent pages per live track. Repeated draws on those pages reuse the paths and their LRU nodes. Revisiting an evicted page rebuilds its paths.
 - A stable frame (one the cache could hold) is always flattened into a transparent band and composited onto the target with one source-over, whether or not the cache holds that band. A cached frame is therefore pixel-identical to an uncached one on any target, transparent or video. Animated frames are drawn directly.
 - Reused render state (scratch buffers, masks, canvases, the cache) must stay consistent when a render throws or is cancelled: a later frame never shows another frame's pixels and never fails because of the earlier error.
 - Memory: the band cache is at most 64 MiB per window, and scratch memory is bounded by the largest frame drawn, never by the number of pages or tracks drawn. Across aspect switches, a retained scratch bitmap's pixel count must not exceed that of the largest frame drawn.
+- The Windows shadow views and opacity band grow to the largest required width and height while the output dimensions stay fixed, then reuse those dimensions for smaller frames. On an output size change, shadow views are reset and the opacity band starts at the new required size so two aspects cannot combine into an oversized retained bitmap.
 - Budget, at 1080×1920 with the box blur on an M1 or a 2022 mid-range Windows laptop: every frame after a page's first renders in under 4 ms, with or without the band cache; the first frame of a page, which builds that page's outlines and shadow masks, renders in under 10 ms. A renderer loads and parses its fonts and style resources once, and that one-time setup is not part of either budget. Animated frames are rendered directly.
 - Acceptance runs on a quiet machine (one-minute load average below 2) and takes the best p95 of three passes per style and mode. On the M3 Max development machine the gates are 3.0 ms and 7.5 ms. The page-first pass reuses one renderer whose resources are already loaded, so it times page geometry, not setup.
 

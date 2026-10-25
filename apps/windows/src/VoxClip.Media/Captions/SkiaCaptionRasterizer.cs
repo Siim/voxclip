@@ -27,6 +27,9 @@ public sealed partial class SkiaCaptionRasterizer : ICaptionRasterizer
     private int cachedGeometryId;
     private readonly List<ShadowBuffer> shadows = [];
     private readonly List<ShadowBuffer> masks = [];
+    private static readonly bool DirectShadowTint = OperatingSystem.IsWindows() && RuntimeInformation.ProcessArchitecture == Architecture.X64;
+    private int shadowTargetWidth;
+    private int shadowTargetHeight;
     private readonly object sync = new();
     private const long CacheLimit = 64L * 1024 * 1024;
     private readonly Dictionary<CacheKey, LinkedListNode<CachedPage>> cache = new();
@@ -36,8 +39,11 @@ public sealed partial class SkiaCaptionRasterizer : ICaptionRasterizer
     private int nextTarget;
     private SKBitmap? overlayBitmap;
     private SKCanvas? overlayCanvas;
+    private SKImage? overlayImage;
     private SKBitmap? opacityBitmap;
     private SKCanvas? opacityCanvas;
+    private int opacityTargetWidth;
+    private int opacityTargetHeight;
     private readonly SKPaint solidPaint = new();
     private readonly SKPaint strokePaint = new();
     private readonly SKPaint gradientPaint = new();
@@ -52,7 +58,7 @@ public sealed partial class SkiaCaptionRasterizer : ICaptionRasterizer
     internal bool ShareShadowMasks { get; set; } = true;
     internal bool PrecolorShadows { get; set; } = true;
     internal bool QueueShadowBlurs { get; set; } = true;
-    internal enum RenderCheckpoint { OverlayBounds, ShadowPrepareGrowth, ShadowBlur, ShadowStart }
+    internal enum RenderCheckpoint { OverlayBounds, OverlayImageWrap, OverlayComposite, ShadowPrepareGrowth, ShadowBlur, ShadowStart }
     internal Action<RenderCheckpoint>? TestCheckpoint { get; set; }
     internal Action<SKBitmap, int, int, int, int>? TestOpacityBandReady { get; set; }
     internal int LastShadowMaskCount { get; private set; }
@@ -61,6 +67,8 @@ public sealed partial class SkiaCaptionRasterizer : ICaptionRasterizer
     internal int InvalidatedShadowViewCount => shadows.Concat(masks).Count(buffer => !buffer.HasViews);
     internal long RetainedMaskColorBytes => masks.Sum(buffer => buffer.ColorBytes);
     internal long RetainedGeometryBytes(CaptionTrack track) => geometries.TryGetValue(track, out var geometry) ? geometry.RetainedBytes : 0;
+    internal int RetainedGeometryPageCount(CaptionTrack track) => geometries.TryGetValue(track, out var geometry) ? geometry.RetainedPageCount : 0;
+    internal bool RetainsGeometryPage(CaptionTrack track, int page) => geometries.TryGetValue(track, out var geometry) && geometry.RetainsPage(page);
     internal int RetainedTargetCount => targets.Count(target => target is not null);
     internal int RetainedTargetCanvasSaveCount => targets.First(target => target is not null)!.Canvas.SaveCount;
     internal int OverlayCanvasSaveCount => overlayCanvas?.SaveCount ?? 0;
@@ -198,19 +206,21 @@ public sealed partial class SkiaCaptionRasterizer : ICaptionRasterizer
         internal Span<byte> Prepare(int requestedWidth, int requestedHeight, bool colorize = false, Action<RenderCheckpoint>? testCheckpoint = null)
         {
             Content = SKRect.Empty;
-            if (Width != requestedWidth || Height != requestedHeight || colorize && ColoredImage is null)
+            if (Surface is null || Width < requestedWidth || Height < requestedHeight || colorize && ColoredImage is null)
             {
+                var width = Math.Max(Width, requestedWidth);
+                var height = Math.Max(Height, requestedHeight);
                 InvalidateViews();
                 try
                 {
-                    var length = checked(requestedWidth * requestedHeight);
+                    var length = checked(width * height);
                     var grows = pixels.Length < length;
                     Grow(ref pixels, ref pin, length);
                     if (grows) testCheckpoint?.Invoke(RenderCheckpoint.ShadowPrepareGrowth);
-                    var info = new SKImageInfo(requestedWidth, requestedHeight, SKColorType.Alpha8, SKAlphaType.Premul);
-                    Surface = SKSurface.Create(info, pin.AddrOfPinnedObject(), requestedWidth) ?? throw new InvalidOperationException("Could not wrap caption alpha mask.");
+                    var info = new SKImageInfo(width, height, SKColorType.Alpha8, SKAlphaType.Premul);
+                    Surface = SKSurface.Create(info, pin.AddrOfPinnedObject(), width) ?? throw new InvalidOperationException("Could not wrap caption alpha mask.");
                     Canvas = Surface.Canvas;
-                    if (!Bitmap.InstallPixels(info, pin.AddrOfPinnedObject(), requestedWidth)) throw new InvalidOperationException("Could not wrap caption alpha image.");
+                    if (!Bitmap.InstallPixels(info, pin.AddrOfPinnedObject(), width)) throw new InvalidOperationException("Could not wrap caption alpha image.");
                     using var pixmap = Bitmap.PeekPixels();
                     Image = SKImage.FromPixels(pixmap) ?? throw new InvalidOperationException("Could not wrap caption alpha pixels.");
                     if (colorize)
@@ -219,13 +229,13 @@ public sealed partial class SkiaCaptionRasterizer : ICaptionRasterizer
                         grows = coloredPixels.Length < colorLength;
                         Grow(ref coloredPixels, ref colorPin, colorLength);
                         if (grows) testCheckpoint?.Invoke(RenderCheckpoint.ShadowPrepareGrowth);
-                        var colorInfo = new SKImageInfo(requestedWidth, requestedHeight, SKColorType.Bgra8888, SKAlphaType.Premul);
-                        if (!coloredBitmap.InstallPixels(colorInfo, colorPin.AddrOfPinnedObject(), requestedWidth * 4)) throw new InvalidOperationException("Could not wrap caption shadow pixels.");
+                        var colorInfo = new SKImageInfo(width, height, SKColorType.Bgra8888, SKAlphaType.Premul);
+                        if (!coloredBitmap.InstallPixels(colorInfo, colorPin.AddrOfPinnedObject(), width * 4)) throw new InvalidOperationException("Could not wrap caption shadow pixels.");
                         using var coloredPixmap = coloredBitmap.PeekPixels();
                         ColoredImage = SKImage.FromPixels(coloredPixmap) ?? throw new InvalidOperationException("Could not wrap caption shadow image.");
                     }
-                    Width = requestedWidth;
-                    Height = requestedHeight;
+                    Width = width;
+                    Height = height;
                 }
                 catch { InvalidateViews(); throw; }
             }
@@ -255,6 +265,8 @@ public sealed partial class SkiaCaptionRasterizer : ICaptionRasterizer
             Bitmap.Reset();
             coloredBitmap.Reset();
         }
+
+        internal void ResetViews() => InvalidateViews();
 
         ~ShadowBuffer()
         {
@@ -288,13 +300,17 @@ public sealed partial class SkiaCaptionRasterizer : ICaptionRasterizer
 
     private sealed class TrackGeometry(CaptionTrack track, CaptionResources data)
     {
+        private const int PageLimit = 8;
         private readonly Dictionary<(int Page, int Word, int Clusters), SKPath> paths = new();
         private readonly LinkedList<int> recentPages = new();
+        private readonly List<(int Page, int Word, int Clusters)> evictedKeys = new();
         private readonly Dictionary<int, CaptionWordFrame[]> frames = new();
         internal int Id { get; } = Interlocked.Increment(ref nextGeometryId);
         internal CaptionResources Data { get; } = data;
         internal CaptionFrame? Frame { get; set; }
         internal long RetainedBytes => frames.Sum(entry => (long)entry.Value.Length * 128) + paths.Sum(entry => 64L + entry.Value.PointCount * 8L);
+        internal int RetainedPageCount => recentPages.Count;
+        internal bool RetainsPage(int page) => recentPages.Contains(page);
         internal CaptionWordFrame[] Frames(CaptionPage page)
         {
             if (!frames.TryGetValue(page.Words.Count, out var result)) frames.Add(page.Words.Count, result = new CaptionWordFrame[page.Words.Count]);
@@ -313,16 +329,26 @@ public sealed partial class SkiaCaptionRasterizer : ICaptionRasterizer
         private void Touch(int page)
         {
             var existing = recentPages.Find(page);
-            if (existing is not null) recentPages.Remove(existing);
-            recentPages.AddFirst(page);
-            if (recentPages.Count <= 2) return;
+            if (existing is not null)
+            {
+                if (existing != recentPages.First)
+                {
+                    recentPages.Remove(existing);
+                    recentPages.AddFirst(existing);
+                }
+            }
+            else recentPages.AddFirst(page);
+            if (recentPages.Count <= PageLimit) return;
             var evicted = recentPages.Last!.Value;
             recentPages.RemoveLast();
-            foreach (var key in paths.Keys.Where(key => key.Page == evicted).ToArray())
+            evictedKeys.Clear();
+            foreach (var (key, path) in paths)
             {
-                paths.Remove(key, out var path);
-                path!.Dispose();
+                if (key.Page != evicted) continue;
+                path.Dispose();
+                evictedKeys.Add(key);
             }
+            foreach (var key in evictedKeys) paths.Remove(key);
         }
 
         private SKPath Build(CaptionPage page, CaptionWordFrame frame)
@@ -406,6 +432,13 @@ public sealed partial class SkiaCaptionRasterizer : ICaptionRasterizer
             ClearPageCache();
             cachedGeometryId = geometry.Id;
         }
+        if (shadowTargetWidth != target.Width || shadowTargetHeight != target.Height)
+        {
+            foreach (var shadow in shadows) shadow.ResetViews();
+            foreach (var mask in masks) mask.ResetViews();
+            shadowTargetWidth = target.Width;
+            shadowTargetHeight = target.Height;
+        }
         for (var index = 0; wrappedTarget is null && index < targets.Length; index++)
             if (targets[index] is { } candidate && candidate.Target == target) { wrappedTarget = candidate; break; }
         if (wrappedTarget is null)
@@ -443,10 +476,30 @@ public sealed partial class SkiaCaptionRasterizer : ICaptionRasterizer
             var bottom = Math.Clamp((int)Math.Ceiling(bounds.Bottom), top + 1, target.Height);
             if (overlayBitmap is null || overlayBitmap.Width != target.Width || overlayBitmap.Height != target.Height)
             {
+                SKBitmap? replacementBitmap = null;
+                SKCanvas? replacementCanvas = null;
+                SKImage? replacementImage = null;
+                try
+                {
+                    replacementBitmap = new(new SKImageInfo(target.Width, target.Height, SKColorType.Bgra8888, SKAlphaType.Premul));
+                    replacementCanvas = new(replacementBitmap);
+                    using var pixels = replacementBitmap.PeekPixels();
+                    TestCheckpoint?.Invoke(RenderCheckpoint.OverlayImageWrap);
+                    replacementImage = SKImage.FromPixels(pixels) ?? throw new InvalidOperationException("Could not wrap the caption overlay pixels.");
+                }
+                catch
+                {
+                    replacementImage?.Dispose();
+                    replacementCanvas?.Dispose();
+                    replacementBitmap?.Dispose();
+                    throw;
+                }
                 overlayCanvas?.Dispose();
+                overlayImage?.Dispose();
                 overlayBitmap?.Dispose();
-                overlayBitmap = new(new SKImageInfo(target.Width, target.Height, SKColorType.Bgra8888, SKAlphaType.Premul));
-                overlayCanvas = new(overlayBitmap);
+                overlayBitmap = replacementBitmap;
+                overlayCanvas = replacementCanvas;
+                overlayImage = replacementImage;
             }
             var band = new SKRectI(left, top, right, bottom);
             overlayBitmap.Erase(SKColors.Transparent, band);
@@ -458,14 +511,22 @@ public sealed partial class SkiaCaptionRasterizer : ICaptionRasterizer
                 DrawPage(overlayCanvas, request, frame, geometry, ct);
             }
             finally { overlayCanvas.RestoreToCount(saved); }
-            using var subset = new SKBitmap();
-            if (!overlayBitmap.ExtractSubset(subset, band)) throw new InvalidOperationException("Could not crop the caption overlay.");
             if (!CacheEnabled)
             {
-                canvas.DrawBitmap(subset, left, top);
+                overlayBitmap.NotifyPixelsChanged();
+                var clipped = canvas.Save();
+                try
+                {
+                    canvas.ClipRect(band, SKClipOperation.Intersect, false);
+                    TestCheckpoint?.Invoke(RenderCheckpoint.OverlayComposite);
+                    canvas.DrawImage(overlayImage!, 0, 0);
+                }
+                finally { canvas.RestoreToCount(clipped); }
                 canvas.Flush();
                 return;
             }
+            using var subset = new SKBitmap();
+            if (!overlayBitmap.ExtractSubset(subset, band)) throw new InvalidOperationException("Could not crop the caption overlay.");
             var bitmap = subset.Copy();
             LastOverlayCopyPixels = band.Width * band.Height;
             try
@@ -586,12 +647,17 @@ public sealed partial class SkiaCaptionRasterizer : ICaptionRasterizer
         var bottom = Math.Clamp((int)Math.Ceiling(bounds.Bottom), top + 1, target.Height);
         var width = right - left;
         var height = bottom - top;
-        if (opacityBitmap is null || opacityBitmap.Width < width || opacityBitmap.Height < height)
+        var changedTarget = opacityTargetWidth != target.Width || opacityTargetHeight != target.Height;
+        if (opacityBitmap is null || changedTarget || opacityBitmap.Width < width || opacityBitmap.Height < height)
         {
+            var capacityWidth = changedTarget ? width : Math.Max(opacityBitmap?.Width ?? 0, width);
+            var capacityHeight = changedTarget ? height : Math.Max(opacityBitmap?.Height ?? 0, height);
             opacityCanvas?.Dispose();
             opacityBitmap?.Dispose();
-            opacityBitmap = new(new SKImageInfo(width, height, SKColorType.Bgra8888, SKAlphaType.Premul));
+            opacityBitmap = new(new SKImageInfo(capacityWidth, capacityHeight, SKColorType.Bgra8888, SKAlphaType.Premul));
             opacityCanvas = new(opacityBitmap);
+            opacityTargetWidth = target.Width;
+            opacityTargetHeight = target.Height;
         }
         var band = new SKRectI(0, 0, width, height);
         opacityBitmap.Erase(SKColors.Transparent, band);
@@ -928,6 +994,9 @@ public sealed partial class SkiaCaptionRasterizer : ICaptionRasterizer
         var definitions = request.Track.Style.Shadows;
         LastShadowMaskCount = 0;
         if (definitions.Count == 0) return;
+        // Windows x64 Skia fuses Alpha8 tint with source-over and rounds channels differently
+        // from drawing a precolored BGRA image (up to 2 levels on overlapping neon shadows).
+        var precolor = PrecolorShadows && !DirectShadowTint;
         Span<int> groups = stackalloc int[definitions.Count];
         for (var index = 0; index < definitions.Count; index++)
         {
@@ -955,7 +1024,7 @@ public sealed partial class SkiaCaptionRasterizer : ICaptionRasterizer
             buffer.Top = checked((int)Math.Floor(source.Ink.Top) - padding);
             var width = checked((int)Math.Ceiling(source.Ink.Right) + padding - buffer.Left);
             var height = checked((int)Math.Ceiling(source.Ink.Bottom) + padding - buffer.Top);
-            var pixels = buffer.Prepare(width, height, PrecolorShadows, TestCheckpoint);
+            var pixels = buffer.Prepare(width, height, precolor, TestCheckpoint);
             var offsetX = buffer.Left - source.Left;
             var offsetY = buffer.Top - source.Top;
             for (var row = 0; row < height; row++) source.Pixels.Slice((row + offsetY) * source.Stride + offsetX, width).CopyTo(pixels.Slice(row * buffer.Stride, width));
@@ -966,7 +1035,7 @@ public sealed partial class SkiaCaptionRasterizer : ICaptionRasterizer
         {
             for (var index = 0; index < definitions.Count; index++)
             {
-                if (!shadows[index].Ink.IsEmpty) shadows[index].Start(ct, queued: QueueShadowBlurs && index < definitions.Count - 1, Color(definitions[index].Color, request.Track.Style), PrecolorShadows, TestCheckpoint);
+                if (!shadows[index].Ink.IsEmpty) shadows[index].Start(ct, queued: QueueShadowBlurs && index < definitions.Count - 1, Color(definitions[index].Color, request.Track.Style), precolor, TestCheckpoint);
                 started = index + 1;
                 if (index == 0) TestCheckpoint?.Invoke(RenderCheckpoint.ShadowStart);
             }
@@ -991,7 +1060,7 @@ public sealed partial class SkiaCaptionRasterizer : ICaptionRasterizer
                 var content = buffer.Content;
                 content.Offset(buffer.Left, buffer.Top);
                 canvas.ClipRect(content, SKClipOperation.Intersect, false);
-                if (PrecolorShadows) canvas.DrawImage(buffer.ColoredImage, buffer.Left, buffer.Top);
+                if (precolor) canvas.DrawImage(buffer.ColoredImage, buffer.Left, buffer.Top);
                 else canvas.DrawImage(buffer.Image, buffer.Left, buffer.Top, Solid(definitions[index].Color, request.Track.Style, 1));
                 canvas.RestoreToCount(clipped);
             }

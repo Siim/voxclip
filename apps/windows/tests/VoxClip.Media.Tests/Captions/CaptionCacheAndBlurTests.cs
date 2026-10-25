@@ -189,7 +189,8 @@ public sealed class CaptionCacheAndBlurTests
                     var precoloredPixels = await precoloredOnly.RenderAsync(request, CancellationToken.None);
                     var actual = await shared.RenderAsync(request, CancellationToken.None);
                     Assert.True(expected.Pixels.Span.SequenceEqual(sharedMaskPixels.Pixels.Span), $"Page {page.Index}, time {time}, scale {scale}: shared mask differs without precoloring");
-                    Assert.True(expected.Pixels.Span.SequenceEqual(precoloredPixels.Pixels.Span), $"Page {page.Index}, time {time}, scale {scale}: precoloring differs without shared masks");
+                    if (!expected.Pixels.Span.SequenceEqual(precoloredPixels.Pixels.Span))
+                        Assert.Fail($"Page {page.Index}, time {time}, scale {scale}: precoloring differs without shared masks; {DifferenceSummary(expected, precoloredPixels)}");
                     Assert.True(expected.Pixels.Span.SequenceEqual(actual.Pixels.Span), $"Page {page.Index}, time {time}, scale {scale}: shared mask differs");
                     Assert.Equal(1, shared.LastShadowMaskCount);
                     Assert.Equal(3, independent.LastShadowMaskCount);
@@ -205,6 +206,29 @@ public sealed class CaptionCacheAndBlurTests
                     shared.Draw(request, actual, CancellationToken.None);
                     Assert.True(expected.Pixels.Span.SequenceEqual(actual.Pixels.Span), $"Page {page.Index}, time {time}, scale {scale}: precolored shadows differ over existing pixels");
                 }
+    }
+
+    private static string DifferenceSummary(PixelBuffer expected, PixelBuffer actual)
+    {
+        var first = -1;
+        var pixels = 0;
+        var maxChannelDifference = 0;
+        for (var offset = 0; offset < expected.Pixels.Length; offset += 4)
+        {
+            var different = false;
+            for (var channel = 0; channel < 4; channel++)
+            {
+                var difference = Math.Abs(expected.Pixels.Span[offset + channel] - actual.Pixels.Span[offset + channel]);
+                different |= difference != 0;
+                maxChannelDifference = Math.Max(maxChannelDifference, difference);
+            }
+            if (!different) continue;
+            if (first < 0) first = offset;
+            pixels++;
+        }
+        if (first < 0) return "no differing pixels";
+        return $"{pixels} differing pixels, max channel delta {maxChannelDifference}, first ({first / 4 % expected.Width}, {first / 4 / expected.Width}) " +
+            $"expected BGRA {Convert.ToHexString(expected.Pixels.Span.Slice(first, 4))}, actual {Convert.ToHexString(actual.Pixels.Span.Slice(first, 4))}";
     }
 
     [Fact]

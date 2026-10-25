@@ -64,12 +64,18 @@ public sealed class CaptionRenderStateTests(ITestOutputHelper output)
         Assert.Equal(fiftyBytes, rasterizer.RetainedShadowBytes);
         Assert.True(fiftyGeometryBytes > 0);
         Assert.Equal(fiftyGeometryBytes, rasterizer.RetainedGeometryBytes(track));
+        Assert.Equal(8, rasterizer.RetainedGeometryPageCount(track));
+        Assert.False(rasterizer.RetainsGeometryPage(track, 0));
+        Assert.True(rasterizer.RetainsGeometryPage(track, 299));
         Assert.Equal(0, rasterizer.RetainedMaskColorBytes);
         Assert.InRange(rasterizer.CachedBytes, 1, 64L * 1024 * 1024);
         var small = new CaptionRenderRequest(track, track.Pages[0].Start + 0.075, Scale: 0.25);
         var expected = await new SkiaCaptionRasterizer().RenderAsync(small, CancellationToken.None);
         var actual = await rasterizer.RenderAsync(small, CancellationToken.None);
         Assert.True(expected.Pixels.Span.SequenceEqual(actual.Pixels.Span));
+        Assert.Equal(8, rasterizer.RetainedGeometryPageCount(track));
+        Assert.True(rasterizer.RetainsGeometryPage(track, 0));
+        Assert.False(rasterizer.RetainsGeometryPage(track, 292));
     }
 
     [Fact]
@@ -153,6 +159,88 @@ public sealed class CaptionRenderStateTests(ITestOutputHelper output)
         Assert.Equal(1, rasterizer.OverlayCanvasSaveCount);
         rasterizer.TestCheckpoint = null;
         await AssertRecovered(rasterizer, wide, target);
+    }
+
+    [Fact]
+    public async Task UncachedCompositeFailureRestoresTargetClipAndNextFrame()
+    {
+        var track = await Track("neon");
+        var narrow = new CaptionRenderRequest(track, track.Pages[4].Start + 0.65);
+        var wide = new CaptionRenderRequest(track, track.Pages[1].Start + 0.65);
+        var rasterizer = new SkiaCaptionRasterizer { CacheEnabled = false };
+        var target = Target();
+        Assert.False(rasterizer.IsAnimating(narrow));
+        Assert.False(rasterizer.IsAnimating(wide));
+        Assert.True(track.Pages[1].Visual.Width > track.Pages[4].Visual.Width);
+        rasterizer.TestCheckpoint = point =>
+        {
+            if (point == SkiaCaptionRasterizer.RenderCheckpoint.OverlayComposite)
+                throw new InvalidOperationException("Injected composite failure");
+        };
+        Assert.Throws<InvalidOperationException>(() => rasterizer.Draw(narrow, target, CancellationToken.None));
+        Assert.Equal(1, rasterizer.RetainedTargetCanvasSaveCount);
+        Assert.Equal(1, rasterizer.OverlayCanvasSaveCount);
+        rasterizer.TestCheckpoint = null;
+        await AssertRecovered(rasterizer, wide, target);
+        Assert.Equal(1, rasterizer.RetainedTargetCanvasSaveCount);
+    }
+
+    [Fact]
+    public async Task FailedOverlayImageWrapKeepsPreviousViewsAndRebuildsForNewSize()
+    {
+        var track = await Track("neon");
+        var request = new CaptionRenderRequest(track, track.Pages[0].Start + 0.65);
+        var rasterizer = new SkiaCaptionRasterizer { CacheEnabled = false };
+        var portrait = Target();
+        rasterizer.Draw(request, portrait, CancellationToken.None);
+        var smaller = new PixelBuffer(new byte[720 * 1280 * 4], 720, 1280, 720 * 4);
+        var scaled = request with { Scale = 2.0 / 3 };
+        var wraps = 0;
+        rasterizer.TestCheckpoint = point =>
+        {
+            if (point == SkiaCaptionRasterizer.RenderCheckpoint.OverlayImageWrap && ++wraps == 1)
+                throw new InvalidOperationException("Injected image wrap failure");
+        };
+        Assert.Throws<InvalidOperationException>(() => rasterizer.Draw(scaled, smaller, CancellationToken.None));
+        Assert.Equal(1, wraps);
+        Assert.Equal(1, rasterizer.OverlayCanvasSaveCount);
+        rasterizer.TestCheckpoint = null;
+        await AssertRecovered(rasterizer, request, portrait);
+        var expected = new PixelBuffer(new byte[smaller.Pixels.Length], smaller.Width, smaller.Height, smaller.Stride);
+        new SkiaCaptionRasterizer { CacheEnabled = false }.Draw(scaled, expected, CancellationToken.None);
+        smaller.Pixels.Span.Clear();
+        rasterizer.Draw(scaled, smaller, CancellationToken.None);
+        Assert.True(expected.Pixels.Span.SequenceEqual(smaller.Pixels.Span));
+        Assert.Equal(1, rasterizer.OverlayCanvasSaveCount);
+    }
+
+    [Fact]
+    public async Task ShadowViewsRecoverAcrossAspectStyleAndTrackSwitches()
+    {
+        var portrait = await Track("neon");
+        using var landscapeFixture = FixtureLoader.ReadJson("fixtures/captions/layout/neon-landscape-en.json");
+        var landscape = await CaptionFixtureSupport.Build(landscapeFixture.RootElement.GetProperty("input"));
+        var otherStyle = await Track("outline");
+        var cases = new[]
+        {
+            (Track: portrait, Width: 1080, Height: 1920),
+            (Track: landscape, Width: 1920, Height: 1080),
+            (Track: otherStyle, Width: 1080, Height: 1920)
+        };
+        var rasterizer = new SkiaCaptionRasterizer { CacheEnabled = false };
+        for (var pass = 0; pass < 4; pass++)
+        {
+            foreach (var item in cases)
+            {
+                var request = new CaptionRenderRequest(item.Track, item.Track.Pages[0].Start + 0.075);
+                var target = new PixelBuffer(new byte[item.Width * item.Height * 4], item.Width, item.Height, item.Width * 4);
+                rasterizer.Draw(request, target, CancellationToken.None);
+                var expected = new PixelBuffer(new byte[target.Pixels.Length], item.Width, item.Height, item.Width * 4);
+                new SkiaCaptionRasterizer { CacheEnabled = false }.Draw(request, expected, CancellationToken.None);
+                Assert.True(expected.Pixels.Span.SequenceEqual(target.Pixels.Span), $"Shadow output differed after pass {pass}, {item.Width}x{item.Height}, {item.Track.Style.Id}.");
+                Assert.InRange(rasterizer.RetainedShadowBytes, 1, 1920L * 1080 * 4);
+            }
+        }
     }
 
     [Fact]
