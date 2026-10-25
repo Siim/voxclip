@@ -393,7 +393,12 @@ actor FoundationModelsFixtureProbe {
         #expect(rendering.options[samplingKey] == .string("greedy"), "\(label): Sampling must be greedy.")
         let cap = try #require(rendering.options["maximumResponseTokens"], "\(label): Missing output cap.")
         #expect(cap == .number(Double(configuration.maxOutput)), "\(label): Connector output cap differs.")
+        #if compiler(>=6.4)
         #expect(configuration.options == GenerationOptions(samplingMode: .greedy, maximumResponseTokens: configuration.maxOutput),
                 "\(label): Actual GenerationOptions differ.")
+        #else
+        #expect(configuration.options == GenerationOptions(sampling: .greedy, maximumResponseTokens: configuration.maxOutput),
+                "\(label): Actual GenerationOptions differ.")
+        #endif
     }
 }

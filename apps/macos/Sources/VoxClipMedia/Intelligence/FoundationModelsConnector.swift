@@ -139,10 +139,13 @@ struct FoundationModelsRuntime: Sendable {
     }
 
     static func options(maxOutput: Int) -> GenerationOptions {
-        if #available(macOS 27, *) {
-            return GenerationOptions(samplingMode: .greedy, maximumResponseTokens: maxOutput)
-        }
+        // Xcode 27's initializer is back-deployed to macOS 26. Xcode 26's SDK
+        // only declares `sampling:`, so select the API at compile time.
+        #if compiler(>=6.4)
+        return GenerationOptions(samplingMode: .greedy, maximumResponseTokens: maxOutput)
+        #else
         return GenerationOptions(sampling: .greedy, maximumResponseTokens: maxOutput)
+        #endif
     }
 
     static func status(for availability: SystemLanguageModel.Availability) -> ConnectorStatus {

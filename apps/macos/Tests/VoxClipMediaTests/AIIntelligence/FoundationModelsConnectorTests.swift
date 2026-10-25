@@ -223,7 +223,11 @@ actor FoundationModelsTestProbe {
     @Test func greedyOptionsPreserveSmallerOutputBudget() {
         let options = FoundationModelsRuntime.options(maxOutput: 32)
         #expect(options.maximumResponseTokens == 32)
+        #if compiler(>=6.4)
         #expect(options == GenerationOptions(samplingMode: .greedy, maximumResponseTokens: 32))
+        #else
+        #expect(options == GenerationOptions(sampling: .greedy, maximumResponseTokens: 32))
+        #endif
     }
 
     @Test func decodingPreservesFractionalNumbersForRunnerValidation() async throws {
@@ -322,6 +326,7 @@ actor FoundationModelsTestProbe {
                 .unavailable(reason: "Authorization: Bearer [REDACTED]"))
     }
 
+    #if compiler(>=6.4)
     @Test @available(macOS 27, *) func modernErrorsUseNewTaxonomy() {
         let context = LanguageModelError.contextSizeExceeded(.init(contextSize: 20, tokenCount: 21, debugDescription: "context"))
         #expect(FoundationModelsFailure.classify(context, language: "en").error == .contextTooLong)
@@ -334,6 +339,7 @@ actor FoundationModelsTestProbe {
         #expect(FoundationModelsFailure.classify(LanguageModelSession.Error.concurrentRequests, language: "en").error ==
                 .unavailable(reason: "Apple's on-device model is busy. Try again."))
     }
+    #endif
 }
 
 private struct FoundationModelsReviewKeys: KeyProvider {

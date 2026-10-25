@@ -84,6 +84,8 @@ enum FoundationModelsFailure {
             if case .rateLimited = error { return .rateLimited }
             return .terminal(error)
         }
+        // Xcode 26's SDK does not declare either macOS 27 error type.
+        #if compiler(>=6.4)
         if #available(macOS 27, *) {
             if let error = error as? LanguageModelError {
                 switch error {
@@ -100,6 +102,7 @@ enum FoundationModelsFailure {
                 return .concurrentRequests
             }
         }
+        #endif
         if let error = error as? LanguageModelSession.GenerationError {
             switch error {
             case .exceededContextWindowSize: return .terminal(.contextTooLong)

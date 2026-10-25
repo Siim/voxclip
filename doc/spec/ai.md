@@ -702,11 +702,11 @@ Apple's SDK deduplicates duplicate schema names; reusing the root name for an ar
 | string enum | `DynamicGenerationSchema(name: pathName, anyOf: values)`, using the naming rule above |
 
 **Generation.**
-- macOS 27 and later: `GenerationOptions(samplingMode: .greedy, maximumResponseTokens: maxOut)`.
-- macOS 26: `GenerationOptions(sampling: .greedy, maximumResponseTokens: maxOut)`.
+- Xcode 27's SDK: `GenerationOptions(samplingMode: .greedy, maximumResponseTokens: maxOut)`. This initializer is back-deployed to macOS 26.
+- Xcode 26's SDK: `GenerationOptions(sampling: .greedy, maximumResponseTokens: maxOut)`. The SDK 26 compiler has no `samplingMode:` initializer; a runtime availability check alone cannot make that reference compile.
 - Call `session.respond(to: prompt, schema: schema, options: options)`. `RawCompletion.object` is decoded from `response.content.jsonString`.
 
-**Errors.** Handle the macOS 26 `LanguageModelSession.GenerationError` and the macOS 27 `LanguageModelError` cases:
+**Errors.** Handle the macOS 26 `LanguageModelSession.GenerationError` and, when built with Xcode 27's SDK, the macOS 27 `LanguageModelError` and `LanguageModelSession.Error` cases. Compile the latter only when that SDK declares them; keep the legacy mapping for macOS 26 runtime errors:
 
 | Apple error | Handling |
 | --- | --- |
