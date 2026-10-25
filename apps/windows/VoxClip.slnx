@@ -1,0 +1,13 @@
+<Solution>
+  <Project Path="src/VoxClip.Core/VoxClip.Core.csproj" />
+  <Project Path="src/VoxClip.Media/VoxClip.Media.csproj" />
+  <Project Path="src/VoxClip.App/VoxClip.App.csproj" />
+  <Project Path="src/VoxClip.Cli/VoxClip.Cli.csproj" />
+  <Project Path="tests/VoxClip.Core.Tests/VoxClip.Core.Tests.csproj" />
+  <Project Path="tests/VoxClip.Media.Tests/VoxClip.Media.Tests.csproj" />
+  <Configurations>
+    <Platform Name="Any CPU" />
+    <Platform Name="x64" />
+    <Platform Name="ARM64" />
+  </Configurations>
+</Solution>

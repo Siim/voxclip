@@ -1,0 +1,9 @@
+!/src/VoxClip.App/
+!/src/VoxClip.App/**
+**/bin/
+**/obj/
+.vs/
+TestResults/
+build/.cache/
+build/verification/
+*.tar

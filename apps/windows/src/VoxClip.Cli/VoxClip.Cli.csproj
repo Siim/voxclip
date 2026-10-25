@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>voxclip-cli</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../VoxClip.Core/VoxClip.Core.csproj" />
+    <ProjectReference Include="../VoxClip.Media/VoxClip.Media.csproj" />
+    <PackageReference Include="System.CommandLine" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="$(MSBuildThisFileDirectory)..\..\..\..\shared\**\*"
+             Exclude="$(MSBuildThisFileDirectory)..\..\..\..\shared\fixtures\**"
+             LinkBase="shared" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

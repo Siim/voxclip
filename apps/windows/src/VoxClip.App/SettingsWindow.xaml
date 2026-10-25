@@ -1,0 +1,15 @@
+<Window x:Class="VoxClip.App.SettingsWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <ScrollViewer>
+        <StackPanel Padding="32" Spacing="20">
+            <TextBlock Text="Settings" Style="{ThemeResource TitleTextBlockStyle}" />
+            <TextBlock Text="General · Transcription · AI · About" TextWrapping="Wrap" />
+            <InfoBar IsOpen="True" IsClosable="False" Message="Settings services are not connected yet. No API keys are read or written." />
+            <TextBlock Text="About VoxClip" Style="{ThemeResource SubtitleTextBlockStyle}" />
+            <TextBlock Text="{x:Bind VersionLabel}" />
+            <TextBlock Text="Licences" Style="{ThemeResource SubtitleTextBlockStyle}" />
+            <TextBlock Text="{x:Bind Licences}" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+        </StackPanel>
+    </ScrollViewer>
+</Window>

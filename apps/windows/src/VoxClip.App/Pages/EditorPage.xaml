@@ -1,0 +1,43 @@
+<Page x:Class="VoxClip.App.Pages.EditorPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Grid>
+        <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="112" /></Grid.RowDefinitions>
+        <CommandBar DefaultLabelPosition="Right" Background="{ThemeResource LayerOnMicaBaseAltFillColorDefaultBrush}">
+            <AppBarButton Icon="Back" Label="Home" Click="HomeClicked" />
+            <AppBarButton Icon="Cut" Label="Cut fillers" IsEnabled="False" />
+            <AppBarButton Icon="Clock" Label="Tighten pauses" IsEnabled="False" />
+            <AppBarButton Icon="Undo" Label="Restore cuts" IsEnabled="False" />
+            <AppBarButton Icon="Save" Label="Export" IsEnabled="False" />
+        </CommandBar>
+        <InfoBar Grid.Row="1" IsOpen="True" IsClosable="False" Severity="Informational"
+                 Message="Editor placeholder. No file is open; media and editing tracks will connect these regions." />
+        <Grid Grid.Row="2" Padding="16" ColumnSpacing="16">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="5*" MinWidth="280" /><ColumnDefinition Width="4*" MinWidth="240" /><ColumnDefinition Width="320" /></Grid.ColumnDefinitions>
+            <Grid RowSpacing="12">
+                <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+                <TextBlock Text="Transcript" Style="{ThemeResource SubtitleTextBlockStyle}" />
+                <ListView Grid.Row="1" AutomationProperties.Name="Transcript paragraphs" />
+            </Grid>
+            <Grid Grid.Column="1" RowSpacing="12">
+                <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+                <TextBlock Text="Preview" Style="{ThemeResource SubtitleTextBlockStyle}" />
+                <Grid Grid.Row="1" Background="Black" AutomationProperties.Name="Video preview stage"><Image Stretch="Uniform" /></Grid>
+            </Grid>
+            <Grid Grid.Column="2" RowSpacing="12">
+                <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+                <SelectorBar AutomationProperties.Name="Inspector tabs">
+                    <SelectorBarItem Text="Captions" IsSelected="True" />
+                    <SelectorBarItem Text="Clips" />
+                    <SelectorBarItem Text="AI" IsEnabled="False" />
+                </SelectorBar>
+                <ScrollViewer Grid.Row="1"><StackPanel Spacing="12"><TextBlock Text="Inspector" /><ContentControl AutomationProperties.Name="Inspector content" /></StackPanel></ScrollViewer>
+            </Grid>
+        </Grid>
+        <Grid Grid.Row="3" Padding="16" RowSpacing="8">
+            <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+            <TextBlock Text="Timeline" />
+            <Canvas Grid.Row="1" Background="{ThemeResource ControlFillColorSecondaryBrush}" AutomationProperties.Name="Timeline waveform" />
+        </Grid>
+    </Grid>
+</Page>

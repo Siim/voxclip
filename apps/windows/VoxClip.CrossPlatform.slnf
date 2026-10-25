@@ -1,0 +1,12 @@
+{
+  "solution": {
+    "path": "VoxClip.slnx",
+    "projects": [
+      "src/VoxClip.Core/VoxClip.Core.csproj",
+      "src/VoxClip.Media/VoxClip.Media.csproj",
+      "src/VoxClip.Cli/VoxClip.Cli.csproj",
+      "tests/VoxClip.Core.Tests/VoxClip.Core.Tests.csproj",
+      "tests/VoxClip.Media.Tests/VoxClip.Media.Tests.csproj"
+    ]
+  }
+}

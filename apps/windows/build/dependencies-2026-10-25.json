@@ -1,0 +1,174 @@
+{
+  "checkedOn": "2026-10-25",
+  "source": "NuGet v3 registration, exact pinned packages",
+  "packages": [
+    {
+      "id": "Microsoft.WindowsAppSDK",
+      "version": "2.5.1",
+      "listed": true,
+      "published": "2026-09-16T22:42:59.113+00:00",
+      "registration": "https://api.nuget.org/v3/registration5-gz-semver2/microsoft.windowsappsdk/2.5.1.json",
+      "latestListedStableInRequiredLine": "2.5.1"
+    },
+    {
+      "id": "Microsoft.Windows.SDK.BuildTools",
+      "version": "10.0.28000.2705",
+      "listed": true,
+      "published": "2026-08-26T04:53:12.017+00:00",
+      "registration": "https://api.nuget.org/v3/registration5-gz-semver2/microsoft.windows.sdk.buildtools/10.0.28000.2705.json",
+      "latestListedStableInRequiredLine": "10.0.28000.2705"
+    },
+    {
+      "id": "CommunityToolkit.Mvvm",
+      "version": "8.4.2",
+      "listed": true,
+      "published": "2026-03-25T20:26:19.513+00:00",
+      "registration": "https://api.nuget.org/v3/registration5-gz-semver2/communitytoolkit.mvvm/8.4.2.json",
+      "latestListedStableInRequiredLine": "8.4.2"
+    },
+    {
+      "id": "CommunityToolkit.WinUI.Controls.SettingsControls",
+      "version": "8.2.251219",
+      "listed": true,
+      "published": "2025-12-20T01:06:28.65+00:00",
+      "registration": "https://api.nuget.org/v3/registration5-gz-semver2/communitytoolkit.winui.controls.settingscontrols/8.2.251219.json",
+      "latestListedStableInRequiredLine": "8.2.251219"
+    },
+    {
+      "id": "SkiaSharp",
+      "version": "3.119.4",
+      "listed": true,
+      "published": "2026-05-25T08:11:08.423+00:00",
+      "registration": "https://api.nuget.org/v3/registration5-gz-semver2/skiasharp/3.119.4.json",
+      "latestListedStableInRequiredLine": "3.119.4"
+    },
+    {
+      "id": "SkiaSharp.HarfBuzz",
+      "version": "3.119.4",
+      "listed": true,
+      "published": "2026-05-25T08:11:10.293+00:00",
+      "registration": "https://api.nuget.org/v3/registration5-gz-semver2/skiasharp.harfbuzz/3.119.4.json",
+      "latestListedStableInRequiredLine": "3.119.4"
+    },
+    {
+      "id": "SkiaSharp.NativeAssets.Win32",
+      "version": "3.119.4",
+      "listed": true,
+      "published": "2026-05-25T08:11:35.15+00:00",
+      "registration": "https://api.nuget.org/v3/registration5-gz-semver2/skiasharp.nativeassets.win32/3.119.4.json",
+      "latestListedStableInRequiredLine": "3.119.4"
+    },
+    {
+      "id": "SkiaSharp.NativeAssets.macOS",
+      "version": "3.119.4",
+      "listed": true,
+      "published": "2026-05-25T08:11:22.883+00:00",
+      "registration": "https://api.nuget.org/v3/registration5-gz-semver2/skiasharp.nativeassets.macos/3.119.4.json",
+      "latestListedStableInRequiredLine": "3.119.4"
+    },
+    {
+      "id": "HarfBuzzSharp",
+      "version": "14.2.1.301",
+      "listed": true,
+      "published": "2026-09-30T03:41:31.003+00:00",
+      "registration": "https://api.nuget.org/v3/registration5-gz-semver2/harfbuzzsharp/14.2.1.301.json",
+      "latestListedStableInRequiredLine": "14.2.1.301"
+    },
+    {
+      "id": "HarfBuzzSharp.NativeAssets.Win32",
+      "version": "14.2.1.301",
+      "listed": true,
+      "published": "2026-09-30T03:41:41.943+00:00",
+      "registration": "https://api.nuget.org/v3/registration5-gz-semver2/harfbuzzsharp.nativeassets.win32/14.2.1.301.json",
+      "latestListedStableInRequiredLine": "14.2.1.301"
+    },
+    {
+      "id": "HarfBuzzSharp.NativeAssets.macOS",
+      "version": "14.2.1.301",
+      "listed": true,
+      "published": "2026-09-30T03:41:44.77+00:00",
+      "registration": "https://api.nuget.org/v3/registration5-gz-semver2/harfbuzzsharp.nativeassets.macos/14.2.1.301.json",
+      "latestListedStableInRequiredLine": "14.2.1.301"
+    },
+    {
+      "id": "FFmpeg.AutoGen",
+      "version": "9.0.1.1",
+      "listed": true,
+      "published": "2026-08-16T19:55:32.003+00:00",
+      "registration": "https://api.nuget.org/v3/registration5-gz-semver2/ffmpeg.autogen/9.0.1.1.json",
+      "latestListedStableInRequiredLine": "9.0.1.1"
+    },
+    {
+      "id": "Whisper.net",
+      "version": "1.9.1",
+      "listed": true,
+      "published": "2026-06-01T15:05:12.857+00:00",
+      "registration": "https://api.nuget.org/v3/registration5-gz-semver2/whisper.net/1.9.1.json",
+      "latestListedStableInRequiredLine": "1.9.1"
+    },
+    {
+      "id": "Whisper.net.Runtime",
+      "version": "1.9.1",
+      "listed": true,
+      "published": "2026-06-01T15:05:14.327+00:00",
+      "registration": "https://api.nuget.org/v3/registration5-gz-semver2/whisper.net.runtime/1.9.1.json",
+      "latestListedStableInRequiredLine": "1.9.1"
+    },
+    {
+      "id": "Whisper.net.Runtime.NoAvx",
+      "version": "1.9.1",
+      "listed": true,
+      "published": "2026-06-01T15:05:55.323+00:00",
+      "registration": "https://api.nuget.org/v3/registration5-gz-semver2/whisper.net.runtime.noavx/1.9.1.json",
+      "latestListedStableInRequiredLine": "1.9.1"
+    },
+    {
+      "id": "NAudio.Wasapi",
+      "version": "3.3.0",
+      "listed": true,
+      "published": "2026-10-19T21:25:48.387+00:00",
+      "registration": "https://api.nuget.org/v3/registration5-gz-semver2/naudio.wasapi/3.3.0.json",
+      "latestListedStableInRequiredLine": "3.3.0"
+    },
+    {
+      "id": "Velopack",
+      "version": "1.2.161",
+      "listed": true,
+      "published": "2026-09-29T11:40:26.517+00:00",
+      "registration": "https://api.nuget.org/v3/registration5-gz-semver2/velopack/1.2.161.json",
+      "latestListedStableInRequiredLine": "1.2.161"
+    },
+    {
+      "id": "System.CommandLine",
+      "version": "2.0.13",
+      "listed": true,
+      "published": "2026-10-13T16:58:55.297+00:00",
+      "registration": "https://api.nuget.org/v3/registration5-gz-semver2/system.commandline/2.0.13.json",
+      "latestListedStableInRequiredLine": "2.0.13"
+    },
+    {
+      "id": "xunit.v3",
+      "version": "4.0.2",
+      "listed": true,
+      "published": "2026-10-09T17:08:28.5+00:00",
+      "registration": "https://api.nuget.org/v3/registration5-gz-semver2/xunit.v3/4.0.2.json",
+      "latestListedStableInRequiredLine": "4.0.2"
+    },
+    {
+      "id": "xunit.runner.visualstudio",
+      "version": "4.0.1",
+      "listed": true,
+      "published": "2026-10-09T17:08:27.827+00:00",
+      "registration": "https://api.nuget.org/v3/registration5-gz-semver2/xunit.runner.visualstudio/4.0.1.json",
+      "latestListedStableInRequiredLine": "4.0.1"
+    },
+    {
+      "id": "Microsoft.NET.Test.Sdk",
+      "version": "18.11.0",
+      "listed": true,
+      "published": "2026-10-13T13:47:48.83+00:00",
+      "registration": "https://api.nuget.org/v3/registration5-gz-semver2/microsoft.net.test.sdk/18.11.0.json",
+      "latestListedStableInRequiredLine": "18.11.0"
+    }
+  ]
+}
