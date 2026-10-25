@@ -1,0 +1,104 @@
+import assert from 'node:assert/strict';
+import { copyFile, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { spawnSync } from 'node:child_process';
+import test from 'node:test';
+import { buildOutputs, rgbaToArgb } from './generate.mjs';
+
+const source = JSON.parse(await readFile(new URL('../../shared/design/tokens.json', import.meta.url), 'utf8'));
+
+test('generation is byte deterministic and names every colour in all themes', () => {
+  const first = buildOutputs(source);
+  assert.deepEqual(first, buildOutputs(structuredClone(source)));
+  assert.equal((first.swift.match(/static let vc\w+ = Color/g) ?? []).length, first.colorCount);
+  for (const name of first.swift.matchAll(/static let (vc\w+) = Color/g)) {
+    const key = `Vc${name[1].slice(2)}Brush`;
+    assert.equal(first.xaml.split(`x:Key="${key}"`).length - 1, 3, key);
+  }
+  for (const theme of ['Default', 'Light', 'HighContrast']) assert.ok(first.xaml.includes(`x:Key="${theme}"`));
+});
+
+test('colours preserve straight alpha and use platform resources without hex substitutes', () => {
+  assert.equal(rgbaToArgb('#F38F83B3'), '#B3F38F83');
+  assert.equal(rgbaToArgb('#ffffff'), '#FFFFFF');
+  assert.throws(() => rgbaToArgb('#bad'));
+  const output = buildOutputs(source);
+  assert.ok(output.swift.includes('NSColor.selectedTextBackgroundColor'));
+  assert.ok(output.swift.includes('NSColor.systemGreen'));
+  assert.ok(output.xaml.includes('x:Key="VcStatusSuccessBrush" ResourceKey="SystemFillColorSuccessBrush"'));
+  assert.ok(output.xaml.includes('x:Key="VcSelectionTextBrush" Color="{ThemeResource SystemAccentColor}" Opacity="0.4"'));
+});
+
+test('numeric, typography and colour values come only from the source tokens', () => {
+  const changed = structuredClone(source);
+  changed.color.text.primary.$value.dark = '#12345678';
+  changed.spacing.panePaddingWindows.$value = 37;
+  changed.typography.body.$value.macos.fontSize = 19;
+  const output = buildOutputs(changed);
+  assert.ok(output.swift.includes('NSColor(srgbRed: 18.0 / 255, green: 52.0 / 255, blue: 86.0 / 255, alpha: 120.0 / 255)'));
+  assert.ok(output.xaml.includes('x:Key="VcTextPrimaryBrush" Color="#78123456"'));
+  assert.ok(output.xaml.includes('x:Key="VcSpacingPanePaddingWindows">37</x:Double>'));
+  assert.ok(output.swift.includes('typographyBodyFontSize: CGFloat = 19'));
+});
+
+test('font URLs, missing-file fallbacks and dimensional resources are generated', () => {
+  const output = buildOutputs(source);
+  assert.ok(output.swift.includes('SharedResources.locate()'));
+  assert.ok(output.swift.includes('CTFontManagerRegisterFontsForURL(url as CFURL'));
+  assert.ok(output.swift.includes('500: "dm-sans/DMSans-Medium.ttf"'));
+  assert.ok(!output.swift.includes('"geist-mono/GeistMono-Regular.ttf"'));
+  assert.ok(output.xaml.includes('ms-appx:///shared/fonts/dm-sans/DMSans-Medium.ttf#DM Sans'));
+  assert.ok(output.xaml.includes('<CornerRadius x:Key="VcRadiusLgCornerRadius">12</CornerRadius>'));
+  assert.ok(output.xaml.includes('<Thickness x:Key="VcSpacingPanePaddingWindowsThickness">24</Thickness>'));
+});
+
+test('unknown formats, missing system mappings and unsafe font paths fail clearly', () => {
+  const changed = structuredClone(source);
+  changed.$extensions['com.voxconvo.voxclip'].format = 'future';
+  assert.throws(() => buildOutputs(changed), /Expected voxclip-tokens\/1/);
+  const system = structuredClone(source);
+  delete system.color.status.success.$extensions['com.voxconvo.voxclip'].macos;
+  assert.throws(() => buildOutputs(system), /Missing macOS system colour/);
+  const fonts = structuredClone(source);
+  fonts.fontFiles.dmSans.$extensions['com.voxconvo.voxclip'].files['../unsafe.ttf'] = { weight: 400, present: true };
+  assert.throws(() => buildOutputs(fonts), /Invalid font path/);
+});
+
+test('CLI detects drift and missing files through symlinked paths without writing', async () => {
+  const temporary = await mkdtemp(path.join(tmpdir(), 'voxclip-token-check-'));
+  try {
+    const copied = path.join(temporary, 'repository');
+    const linked = path.join(temporary, 'linked');
+    const swiftPath = 'apps/macos/Sources/VoxClip/Design/Tokens.swift';
+    const xamlPath = 'apps/windows/src/VoxClip.App/Themes/Tokens.xaml';
+    for (const relative of ['tools/design/generate.mjs', 'shared/design/tokens.json', swiftPath, xamlPath]) {
+      const destination = path.join(copied, relative);
+      await mkdir(path.dirname(destination), { recursive: true });
+      await copyFile(new URL(`../../${relative}`, import.meta.url), destination);
+    }
+    await symlink(copied, linked, 'dir');
+    const generator = path.join(linked, 'tools/design/generate.mjs');
+    const run = (arguments_, status) => {
+      const result = spawnSync(process.execPath, [generator, ...arguments_], { encoding: 'utf8' });
+      assert.equal(result.status, status, result.stdout + result.stderr);
+      return result;
+    };
+    run(['--check'], 0);
+    const swift = path.join(copied, swiftPath);
+    const drifted = await readFile(swift, 'utf8') + '\n';
+    await writeFile(swift, drifted);
+    assert.match(run(['--check'], 1).stderr, /drift:/);
+    assert.equal(await readFile(swift, 'utf8'), drifted);
+    run([], 0);
+    run(['--check'], 0);
+    await rm(path.join(copied, xamlPath));
+    run(['--check'], 1);
+    await assert.rejects(readFile(path.join(copied, xamlPath)), { code: 'ENOENT' });
+    run([], 0);
+    run(['--check'], 0);
+    run(['--unknown'], 1);
+  } finally {
+    await rm(temporary, { recursive: true, force: true });
+  }
+});

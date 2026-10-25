@@ -1,0 +1,12 @@
+{
+  "name": "voxclip-design-tokens",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "generate": "node generate.mjs",
+    "check": "node generate.mjs --check",
+    "test": "node --test"
+  }
+}

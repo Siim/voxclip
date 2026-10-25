@@ -1,0 +1,94 @@
+[
+  {
+    "audio" : {
+      "channels" : 1,
+      "codec" : "pcm_s16le",
+      "sampleRate" : 48000
+    },
+    "bytes" : 1178286,
+    "codec" : "h264",
+    "durationSeconds" : 12,
+    "file" : "joins-tone.mov",
+    "fps" : 30,
+    "height" : 360,
+    "sha256" : "0a0030f3c4ac1c8488bffa4ef5698c037de91fc8d0b75b0a0fd4b92e6d8d6df9",
+    "transcript" : "joins-tone.transcript.json",
+    "width" : 640
+  },
+  {
+    "audio" : {
+      "channels" : 1,
+      "codec" : "aac",
+      "sampleRate" : 48000
+    },
+    "bytes" : 567566,
+    "codec" : "h264",
+    "durationSeconds" : 30,
+    "file" : "fillers-chirp.mp4",
+    "fps" : 30,
+    "height" : 720,
+    "sha256" : "fae8153f63ab871f4238149d91a07af2d36604ff50847cf272151eb93cc19a7e",
+    "transcript" : "fillers-chirp.transcript.json",
+    "width" : 1280
+  },
+  {
+    "audio" : {
+      "channels" : 1,
+      "codec" : "aac",
+      "sampleRate" : 48000
+    },
+    "bytes" : 87017,
+    "codec" : "h264",
+    "durationSeconds" : 4,
+    "file" : "counter-1080p.mp4",
+    "fps" : 30,
+    "height" : 1080,
+    "sha256" : "67a740659958641255a63dc87cfca1248d975e20218e28354c1a9f444d66414e",
+    "transcript" : null,
+    "width" : 1920
+  },
+  {
+    "audio" : {
+      "channels" : 1,
+      "codec" : "aac",
+      "sampleRate" : 48000
+    },
+    "bytes" : 49676,
+    "codec" : "h264",
+    "durationSeconds" : 2,
+    "file" : "big-2400x1350.mp4",
+    "fps" : 30,
+    "height" : 1350,
+    "sha256" : "c62ef0a88a839033b26077d6b49d288e167dc83b40d96e4f3260d821078b43aa",
+    "transcript" : null,
+    "width" : 2400
+  },
+  {
+    "audio" : null,
+    "bytes" : 23888,
+    "codec" : "h264",
+    "durationSeconds" : 2,
+    "file" : "bars-1080p.mp4",
+    "fps" : 30,
+    "height" : 1080,
+    "sha256" : "06fadae955dee181e8d6335f17f7afc246e304cc6731ec844136e7858fd02b4a",
+    "transcript" : null,
+    "width" : 1920
+  },
+  {
+    "audio" : {
+      "channels" : 1,
+      "codec" : "opus",
+      "sampleRate" : 48000
+    },
+    "bytes" : 9225,
+    "codec" : "vp9",
+    "durationSeconds" : 1,
+    "file" : "tiny.webm",
+    "fps" : 30,
+    "height" : 180,
+    "sha256" : "572da0019d7af91bf6b5982985a973dff59b8f0c5c93e90e69b6549a8de1e6ea",
+    "transcript" : null,
+    "width" : 320
+  }
+]
