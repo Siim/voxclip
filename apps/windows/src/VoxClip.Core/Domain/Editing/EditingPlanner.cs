@@ -11,40 +11,70 @@ internal static class EditingPlanner
 
     private sealed class SpeechLookup
     {
+        private readonly record struct SpeechEntry(EditSegment Word, int Index);
+
         internal readonly EditSegment[] Words;
         internal readonly int[] Positions;
         internal readonly double[] EarlierEnds;
-        private readonly EditSegment[] byEnd;
+        private SpeechEntry[]? byEnd;
 
         internal SpeechLookup(IReadOnlyList<EditSegment> segments)
         {
-            var sorted = segments.Select((segment, index) => (segment, index)).Where(pair => pair.segment.Kind == EditSegmentKind.Word && Valid(pair.segment))
-                .OrderBy(pair => pair.segment.Start).ThenBy(pair => pair.index).ToArray();
-            Words = sorted.Select(pair => pair.segment).ToArray();
+            var wordCount = 0;
+            for (var index = 0; index < segments.Count; index++)
+                if (segments[index].Kind == EditSegmentKind.Word && Valid(segments[index])) wordCount++;
+            var sorted = new SpeechEntry[wordCount];
+            var ordered = true;
+            var previousStart = double.NegativeInfinity;
+            for (int index = 0, next = 0; index < segments.Count; index++)
+            {
+                var segment = segments[index];
+                if (segment.Kind != EditSegmentKind.Word || !Valid(segment)) continue;
+                if (segment.Start < previousStart) ordered = false;
+                previousStart = segment.Start;
+                sorted[next++] = new(segment, index);
+            }
+            if (!ordered)
+                Array.Sort(sorted, static (left, right) =>
+                {
+                    var order = left.Word.Start.CompareTo(right.Word.Start);
+                    return order != 0 ? order : left.Index.CompareTo(right.Index);
+                });
+            Words = new EditSegment[wordCount];
             Positions = new int[segments.Count];
             Array.Fill(Positions, -1);
-            EarlierEnds = new double[Words.Length];
+            EarlierEnds = new double[wordCount];
             var reached = 0.0;
             for (var index = 0; index < sorted.Length; index++)
             {
-                Positions[sorted[index].index] = index;
+                Words[index] = sorted[index].Word;
+                Positions[sorted[index].Index] = index;
                 EarlierEnds[index] = reached;
                 reached = Math.Max(reached, Words[index].End);
             }
-            byEnd = Words.Select((word, index) => (word, index)).OrderBy(pair => pair.word.End).ThenByDescending(pair => pair.index).Select(pair => pair.word).ToArray();
         }
 
         internal EditSegment? Before(double end)
         {
+            if (byEnd is null)
+            {
+                byEnd = new SpeechEntry[Words.Length];
+                for (var index = 0; index < Words.Length; index++) byEnd[index] = new(Words[index], index);
+                Array.Sort(byEnd, static (left, right) =>
+                {
+                    var order = left.Word.End.CompareTo(right.Word.End);
+                    return order != 0 ? order : right.Index.CompareTo(left.Index);
+                });
+            }
             var lower = 0;
             var upper = byEnd.Length;
             while (lower < upper)
             {
                 var middle = lower + (upper - lower) / 2;
-                if (byEnd[middle].End <= end) lower = middle + 1;
+                if (byEnd[middle].Word.End <= end) lower = middle + 1;
                 else upper = middle;
             }
-            return lower > 0 ? byEnd[lower - 1] : null;
+            return lower > 0 ? byEnd[lower - 1].Word : null;
         }
 
         internal EditSegment? After(double start)
@@ -97,7 +127,16 @@ internal static class EditingPlanner
             if (end > start) selected.Add((new(start, end), index));
         }
         var cuts = new List<MediaInterval>();
-        foreach (var pair in selected.OrderBy(pair => pair.interval.StartSample).ThenBy(pair => pair.index))
+        var selectedOrdered = true;
+        for (var index = 1; index < selected.Count; index++)
+            if (selected[index].interval.StartSample < selected[index - 1].interval.StartSample) { selectedOrdered = false; break; }
+        if (!selectedOrdered)
+            selected.Sort(static (left, right) =>
+            {
+                var order = left.interval.StartSample.CompareTo(right.interval.StartSample);
+                return order != 0 ? order : left.index.CompareTo(right.index);
+            });
+        foreach (var pair in selected)
         {
             var cut = pair.interval;
             if (cuts.Count > 0 && cut.StartSample <= cuts[^1].EndSample) cuts[^1] = cuts[^1] with { EndSample = Math.Max(cuts[^1].EndSample, cut.EndSample) };
@@ -111,7 +150,8 @@ internal static class EditingPlanner
             cursor = cut.EndSample;
         }
         if (cursor < total) kept.Add(new(cursor, total));
-        return new(rate, total, cuts.ToArray(), kept.ToArray(), kept.Sum(part => part.EndSample - part.StartSample), BuildJoins(rate, total, kept));
+        // EditPlan derives output length and joins from Kept in its constructor.
+        return new(rate, total, cuts.ToArray(), kept.ToArray(), 0, []);
     }
 
     internal static Join[] BuildJoins(double rate, long total, IReadOnlyList<MediaInterval> kept)

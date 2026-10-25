@@ -204,31 +204,61 @@ public sealed class EditingInvariantTests
     }
 
     [Fact]
+    public void ShuffledWordsAndEqualEndTiesPreserveOriginalIndexOrder()
+    {
+        EditSegment[] segments =
+        [
+            new("late", EditSegmentKind.Word, WordKind.Word, "late", 4, 4.2, true),
+            new("first", EditSegmentKind.Word, WordKind.Word, "first", 0, 2, true),
+            new("second", EditSegmentKind.Word, WordKind.Word, "second", 0, 2, false),
+            new("pause", EditSegmentKind.Pause, null, null, 2, 3, true),
+            new("after", EditSegmentKind.Word, WordKind.Word, "after", 3, 3.2, false)
+        ];
+        foreach (var index in Enumerable.Range(0, segments.Length))
+            Assert.Equal(LiteralCutRange(segments, index, 8), EditingEngine.CutRange(segments, index, 8));
+        Assert.Equal(new TimeRange(2, 2.85), EditingEngine.CutRange(segments, 3, 8));
+        var plan = EditingEngine.BuildEditPlan(segments, 8, 48000);
+        Assert.Equal(2, plan.Cuts.Count);
+        Assert.True(plan.Cuts[0].StartSample < plan.Cuts[1].StartSample);
+
+        (segments[1], segments[2]) = (segments[2], segments[1]);
+        Assert.Equal(new TimeRange(2.15, 2.85), EditingEngine.CutRange(segments, 3, 8));
+    }
+
+    [Fact]
     public void LongTranscriptPlanningStaysLinearAfterSortingAndJoinGainsAllocateNothing()
     {
         var segments = Enumerable.Range(0, 10_000).Select(index => new EditSegment("w" + index, EditSegmentKind.Word, WordKind.Word, "word", index * 0.3, index * 0.3 + 0.1, index % 5 == 0)).ToArray();
         var plan = EditingEngine.BuildEditPlan(segments, 3000, 48000);
         for (var iteration = 0; iteration < 20; iteration++) plan = EditingEngine.BuildEditPlan(segments, 3000, 48000);
         var timings = new double[31];
-        for (var iteration = 0; iteration < timings.Length; iteration++)
+        for (var batch = 0; batch < 3; batch++)
         {
-            var started = Stopwatch.GetTimestamp();
-            plan = EditingEngine.BuildEditPlan(segments, 3000, 48000);
-            timings[iteration] = Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+            for (var iteration = 0; iteration < timings.Length; iteration++)
+            {
+                var started = Stopwatch.GetTimestamp();
+                plan = EditingEngine.BuildEditPlan(segments, 3000, 48000);
+                timings[iteration] = Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+            }
+            Array.Sort(timings);
+            var median = timings[timings.Length / 2];
+            var percentile95 = timings[(int)(timings.Length * 0.95)];
+            TestContext.Current.TestOutputHelper?.WriteLine("10,000 words / 2,000 cuts batch {0}: median {1:F2} ms, p95 {2:F2} ms", batch + 1, median, percentile95);
+            Assert.True(median < 10, $"Plan rebuild batch {batch + 1} median {median:F2} ms exceeds architecture §14's 10 ms budget.");
         }
-        Array.Sort(timings);
-        var median = timings[timings.Length / 2];
-        var percentile95 = timings[(int)(timings.Length * 0.95)];
-        TestContext.Current.TestOutputHelper?.WriteLine("10,000 words / 2,000 cuts: median {0:F2} ms, p95 {1:F2} ms", median, percentile95);
-        Assert.True(median < 10, $"Plan rebuild median {median:F2} ms exceeds architecture §14's 10 ms budget.");
         Assert.Equal(2000, plan.Cuts.Count);
         Assert.Equal(2000, plan.Kept.Count);
-        var warmup = plan.JoinGain(100);
-        var before = GC.GetAllocatedBytesForCurrentThread();
-        var total = warmup;
-        for (var sample = 0; sample < 10_000; sample++) total += plan.JoinGain(sample);
-        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
-        Assert.Equal(0, allocated);
+        // Exercise the loop and tiered method body before measuring thread-local allocations.
+        var total = 0.0;
+        for (var sample = 0; sample < 20_000; sample++) total += plan.JoinGain(sample);
+        for (var batch = 0; batch < 3; batch++)
+        {
+            var before = GC.GetAllocatedBytesForCurrentThread();
+            for (var sample = 0; sample < 10_000; sample++) total += plan.JoinGain(sample);
+            var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+            TestContext.Current.TestOutputHelper?.WriteLine("JoinGain allocation batch {0}: {1} bytes", batch + 1, allocated);
+            Assert.Equal(0, allocated);
+        }
         Assert.True(total > 0);
     }
 
