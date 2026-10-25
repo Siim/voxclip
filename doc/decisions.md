@@ -40,6 +40,10 @@ To change a decision, add a new row that supersedes the old one (keep the old ro
 
 **ADR-012 status:** Superseded by ADR-029, accepted in principle on 2026-10-25.
 
+**ADR-030 — Official Windows platform runtimes (accepted 2026-10-25).** Refines ADR-002 and ADR-011 and the dependency policy in AGENTS.md. The native, self-contained Windows app may include the unmodified official runtime binaries selected by the pinned Windows App SDK 2.5.1 package graph, including Windows AI MachineLearning 2.1.74. The exact resolved versions and licence sources are recorded in [the dependency notice audit](dependency-notices-audit.md). Their Microsoft redistribution terms and required third-party notices, including the supplied Intel notices, are a narrow platform-runtime exception; they do not permit unrelated proprietary dependencies, fonts, models, or application code. Build-only SDK tools are not part of this runtime allowance.
+
+VoxClip source remains MIT. This exception does not impose Microsoft runtime restrictions on VoxClip source, dynamically linked FFmpeg, or other components with their own open-source rights. Keep the runtime binaries unmodified, ship their exact notices, and preserve the package terms' open-source and LGPL reverse-engineering exceptions. Internal development and maintainer preview testing may continue under the packages' development and test rights. Public Windows redistribution still requires the downstream agreement path and final payload notices described in [release section 3.7](release.md#37-windows-runtime-redistribution-gate-open); accepting this dependency policy does not mark those conditions complete.
+
 ## Refinements (2026-10-25, proposed in the planning specs)
 
 | ID | Decision | Builds on | Rationale |
