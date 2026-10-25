@@ -254,15 +254,94 @@ public struct AudioEnvelope: Codable, Sendable, Equatable {
 
 /// Shared grouping implementation point; transcription §6.
 public enum WordAssembler {
-    public static func group(_ tokens: [RawToken], rule: GroupingRule, timelineStart: Double) throws -> [RawWord] { throw VoxClipError.notImplemented("mac-speech") }
+    public static func group(_ tokens: [RawToken], rule: GroupingRule, timelineStart: Double) throws -> [RawWord] {
+        guard timelineStart.isFinite else { throw VoxClipError.transcriptionFailed("Invalid timeline origin") }
+        var drafts: [[RawToken]] = []
+        for token in tokens {
+            if let current = drafts.last, let previous = current.last,
+               token.joinsPrevious, token.group == previous.group,
+               token.kind != .event, current.first?.kind != .event {
+                drafts[drafts.count - 1].append(token)
+            } else { drafts.append([token]) }
+        }
+        var words = drafts.enumerated().map { index, draft in
+            let start = draft.compactMap(\.start).first
+            var end = draft.compactMap(\.end).last
+            if rule.end == .nextWordStart {
+                end = drafts.dropFirst(index + 1).first {
+                    $0[0].group == draft[0].group && !SpeechText.isPunctuation($0.map(\.text).joined()) && $0.contains { $0.start != nil }
+                }?.compactMap(\.start).first ?? end
+                if let first = start, let last = end { end = max(last, first + 0.04) }
+            }
+            let confidences = draft.compactMap(\.conf).filter(\.isFinite)
+            let confidence: Double?
+            switch rule.conf {
+            case .single: confidence = draft[0].conf
+            case .mean: confidence = confidences.isEmpty ? nil : confidences.reduce(0, +) / Double(confidences.count)
+            case .min: confidence = confidences.min()
+            }
+            return RawWord(text: draft.map(\.text).joined(), start: start.map { $0 + timelineStart }, end: end.map { $0 + timelineStart }, conf: confidence.flatMap { $0.isFinite ? min(1, max(0, $0)) : nil }, speaker: draft[0].speaker, kind: draft[0].kind == .event ? .event : .word)
+        }
+        if rule.bracketEvents {
+            var index = 0
+            while index < words.count {
+                let opener = words[index].text.first
+                if opener == "[" || opener == "(" {
+                    let closer: Character = opener == "[" ? "]" : ")"
+                    var absorbed = 0
+                    while !words[index].text.contains(closer), absorbed < 6, index + 1 < words.count,
+                          drafts[index][0].group == drafts[index + 1][0].group {
+                        words[index].text += " " + words[index + 1].text
+                        words[index].end = words[index + 1].end
+                        words.remove(at: index + 1)
+                        drafts.remove(at: index + 1)
+                        absorbed += 1
+                    }
+                }
+                let text = words[index].text
+                let music = !text.isEmpty && text.allSatisfy { $0 == "♪" || $0 == "♫" || $0.isWhitespace }
+                if (text.hasPrefix("[") || text.hasPrefix("(")) && (text.hasSuffix("]") || text.hasSuffix(")")) || music {
+                    words[index].kind = .event
+                    let letters = text.unicodeScalars.filter { CharacterSet.letters.contains($0) }.map(String.init).joined().lowercased()
+                    if music || ["blankaudio", "silence", "nospeech", "music", "inaudible"].contains(letters) {
+                        words.remove(at: index); drafts.remove(at: index); continue
+                    }
+                }
+                index += 1
+            }
+        }
+        return words
+    }
 }
-/// Import normalization and gap detection; transcription §7.
-public func cleanWords(_ words: [RawWord], timing: TimingSource) throws -> [TimedWord] { throw VoxClipError.notImplemented("mac-speech") }
-public func tightenIntoSound(_ words: [TimedWord], envelope: AudioEnvelope, timing: TimingSource) throws -> [TimedWord] { throw VoxClipError.notImplemented("mac-speech") }
-public func findUnlabeledSpeech(_ words: [TimedWord], envelope: AudioEnvelope) throws -> [TimedWord] { throw VoxClipError.notImplemented("mac-speech") }
+/// Frozen public seams; they forward to the editing import pipeline (editing.md §5).
+public func cleanWords(_ words: [RawWord], timing: TimingSource) throws -> [TimedWord] {
+    EditingImport.cleanWords(words, timing: timing)
+}
+public func tightenIntoSound(_ words: [TimedWord], envelope: AudioEnvelope, timing: TimingSource) throws -> [TimedWord] {
+    EditingImport.tightenIntoSound(words, envelope: envelope, timing: timing)
+}
+public func findUnlabeledSpeech(_ words: [TimedWord], envelope: AudioEnvelope) throws -> [TimedWord] {
+    EditingImport.findUnlabeledSpeech(words, envelope: envelope)
+}
 /// Language choice does not silently change a local job into an upload; transcription §11.
 public enum LanguageRouter {
-    public static func route(language: LanguageChoice, preferred: TranscriptEngine, installedModels: [String]) throws -> TranscriptionPlan { throw VoxClipError.notImplemented("mac-speech") }
+    public static func route(language: LanguageChoice, preferred: TranscriptEngine, installedModels: [String]) throws -> TranscriptionPlan {
+        if preferred == .elevenlabs { return TranscriptionPlan(engine: preferred, model: "scribe_v2", language: language) }
+        if preferred == .appleSpeech {
+            guard case .forced(let code) = language, SpeechText.primaryLanguage(code) != "et" else { throw VoxClipError.transcriptionLanguageUnsupported("Apple Speech needs a supported, explicit locale") }
+            return TranscriptionPlan(engine: preferred, language: language)
+        }
+        switch language {
+        case .auto:
+            guard let model = installedModels.first(where: { $0.hasPrefix("whisper-large-v3-turbo-") }) else { throw VoxClipError.transcriptionLanguageUnsupported("Choose the spoken language") }
+            return TranscriptionPlan(engine: .whispercpp, model: model, language: .auto)
+        case .forced(let code):
+            let primary = SpeechText.primaryLanguage(code)
+            let candidates = installedModels.filter { primary == "et" ? $0.hasPrefix("taltech-et-") : primary == "en" ? ($0.contains(".en-") || $0.hasPrefix("whisper-large-v3-turbo-")) : $0.hasPrefix("whisper-large-v3-turbo-") }
+            let recommended = primary == "et" ? "taltech-et-verbatim-2604-q8_0" : "whisper-large-v3-turbo-q5_0"
+            return TranscriptionPlan(engine: .whispercpp, model: candidates.first ?? recommended, language: .forced(primary))
+        }
+    }
 }
 extension RawToken: Hashable {}
 extension RawWord: Hashable {}

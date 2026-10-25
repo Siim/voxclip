@@ -174,15 +174,138 @@ public protocol Transcriber: Sendable {
     func prepare(for plan: TranscriptionPlan, progress: @escaping @Sendable (Double) -> Void) async throws
     func transcribe(_ request: TranscriptionRequest, progress: @escaping @Sendable (TranscriptionProgress) -> Void) async throws -> RawTranscript
 }
+
+public protocol SpeechLanguageDetector: Sendable {
+    func detectLanguage(_ request: TranscriptionRequest) async throws -> SpeechLanguageDetection
+}
+public struct TranscriptionResult: Sendable {
+    public var transcript: Transcript
+    public var fromCache: Bool = false
+    public init(transcript: Transcript, fromCache: Bool = false) {
+        self.transcript = transcript
+        self.fromCache = fromCache
+    }
+}
 /// One import pipeline with immutable output; transcription §5, §7 and §13.4.
 public actor TranscriptionService {
-    public init() {}
-    public func transcribe(_ request: TranscriptionRequest, using engine: any Transcriber, envelope: AudioEnvelope?) async throws -> Transcript { throw VoxClipError.notImplemented("mac-speech") }
-    /// Placeholder completed stream; no job starts in the skeleton.
-    public func progress() -> AsyncStream<TranscriptionProgress> {
-        // TODO(mac-speech)
-        return AsyncStream { $0.finish() }
+    private let locations: DataLocations
+    private let catalog: BundledModelCatalog?
+    private var active = false
+    private var generation = UUID()
+    private var observers: [UUID: AsyncStream<TranscriptionProgress>.Continuation] = [:]
+    public init() {
+        locations = DataLocations()
+        catalog = (try? SharedResources.locate()).map { BundledModelCatalog(shared: $0) }
     }
+    public init(locations: DataLocations, catalog: BundledModelCatalog? = nil) { self.locations = locations; self.catalog = catalog }
+    public func detectLanguage(_ request: TranscriptionRequest, using detector: any SpeechLanguageDetector) async throws -> SpeechLanguageDetection {
+        guard !active else { throw VoxClipError.transcriptionFailed("This project already has a transcription job") }
+        active = true
+        defer { active = false }
+        let key = request.contentKey + "-language-detection"
+        do { try await SpeechJobGate.shared.acquire(local: true, key: key) }
+        catch is CancellationError { throw VoxClipError.cancelled }
+        do {
+            let detection = try await detector.detectLanguage(request)
+            try Task.checkCancellation()
+            await SpeechJobGate.shared.release(local: true, key: key)
+            return detection
+        } catch {
+            await SpeechJobGate.shared.release(local: true, key: key)
+            if Task.isCancelled || error is CancellationError { throw VoxClipError.cancelled }
+            throw error
+        }
+    }
+    public func transcribe(_ request: TranscriptionRequest, using engine: any Transcriber, envelope: AudioEnvelope?) async throws -> Transcript {
+        try await transcribeResult(request, using: engine, envelope: envelope).transcript
+    }
+    public func transcribeResult(_ request: TranscriptionRequest, using engine: any Transcriber, envelope: AudioEnvelope?) async throws -> TranscriptionResult {
+        guard !active else { throw VoxClipError.transcriptionFailed("This project already has a transcription job") }
+        guard request.plan.engine == engine.engine, request.audio.durationSeconds.isFinite, request.audio.durationSeconds > 0,
+              request.contentKey.range(of: "^[a-zA-Z0-9_-]{1,128}$", options: .regularExpression) != nil else { throw VoxClipError.transcriptionFailed("Invalid transcription request") }
+        active = true
+        generation = UUID()
+        let job = generation
+        defer { active = false; for observer in observers.values { observer.finish() }; observers.removeAll() }
+        let delivery = AsyncStream<TranscriptionProgress>.makeStream()
+        let publishing = Task { [weak self] in
+            for await value in delivery.stream { await self?.publish(value, job: job) }
+        }
+        let reporter = SpeechProgressThrottle { delivery.continuation.yield($0) }
+        defer { reporter.cancel(); delivery.continuation.finish(); publishing.cancel() }
+        let identity: EngineRef
+        if let provider = engine as? any SpeechCacheIdentityProviding { identity = try await provider.cacheIdentity(for: request.plan) }
+        else {
+            let model = request.plan.engine == .elevenlabs ? "scribe_v2" : request.plan.model
+            var hash: String?
+            if engine.engine == .whispercpp, let model, let catalog { hash = try await catalog.model(id: model).files.first(where: { $0.role == "model" })?.sha256 }
+            identity = EngineRef(id: engine.engine, modelId: model, modelSha256: hash, engineVersion: "", locale: nil)
+        }
+        let key = SpeechRawCacheKey(request: request, identity: identity)
+        guard identity.id == engine.engine else { throw VoxClipError.transcriptionLanguageUnsupported("Invalid transcription engine identity") }
+        let rawKey = try key.digest()
+        let directory = locations.cache.appendingPathComponent(request.contentKey).appendingPathComponent("transcripts")
+        let url = try key.url(in: directory)
+        do { try await SpeechJobGate.shared.acquire(local: engine.engine != .elevenlabs, key: request.contentKey + rawKey) }
+        catch is CancellationError { throw VoxClipError.cancelled }
+        do {
+            try Task.checkCancellation()
+            let raw: RawTranscript
+            let fromCache: Bool
+            if let cached = try? SpeechRawCacheEntry.read(url), let matched = cached.matchingRaw(for: key) {
+                raw = matched
+                fromCache = engine.engine == .elevenlabs
+            } else {
+                guard await engine.supports(request.plan.language, model: request.plan.model) else { throw VoxClipError.transcriptionLanguageUnsupported(engine.engine.rawValue) }
+                reporter.report(TranscriptionProgress(stage: .preparing, fraction: 0))
+                try await engine.prepare(for: request.plan) { fraction in reporter.report(TranscriptionProgress(stage: .preparing, fraction: fraction)) }
+                if let elevenLabs = engine as? ElevenLabsTranscriber {
+                    let result = try await elevenLabs.transcribeWithCache(request, cacheURL: url) { reporter.report($0) }
+                    raw = result.raw
+                    fromCache = result.fromCache
+                } else {
+                    raw = try await engine.transcribe(request) { reporter.report($0) }
+                    fromCache = false
+                    try Task.checkCancellation()
+                    if (try? SpeechRawCacheEntry.read(url))?.key != key {
+                        let entry = SpeechRawCacheEntry(key: key, raw: raw, providerResponse: nil)
+                        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+                        try? entry.write(url)
+                    }
+                }
+            }
+            reporter.report(TranscriptionProgress(stage: .aligning, fraction: 0))
+            let grouped = try WordAssembler.group(raw.tokens, rule: raw.grouping, timelineStart: request.audio.timelineStart)
+            let imported = try SpeechEditingImportAdapter.pipeline(grouped, envelope: envelope, timing: raw.timing, verbatim: raw.verbatim, duration: request.audio.durationSeconds)
+            let words = imported.words
+            guard !words.isEmpty else { throw VoxClipError.noSpeech }
+            let refined = imported.refined
+            try Task.checkCancellation()
+            let result = Transcript(words: words, language: raw.language, languageProbability: raw.languageProbability, durationSeconds: request.audio.durationSeconds, engine: raw.engine, verbatim: raw.verbatim, refined: refined, rawKey: rawKey, createdAt: Date())
+            reporter.report(TranscriptionProgress(stage: .aligning, fraction: 1))
+            await reporter.finish()
+            delivery.continuation.finish()
+            await publishing.value
+            await SpeechJobGate.shared.release(local: engine.engine != .elevenlabs, key: request.contentKey + rawKey)
+            return TranscriptionResult(transcript: result, fromCache: fromCache)
+        } catch {
+            await SpeechJobGate.shared.release(local: engine.engine != .elevenlabs, key: request.contentKey + rawKey)
+            if Task.isCancelled || error is CancellationError { throw VoxClipError.cancelled }
+            throw error
+        }
+    }
+    public func progress() -> AsyncStream<TranscriptionProgress> {
+        let identifier = UUID()
+        let pair = AsyncStream<TranscriptionProgress>.makeStream(bufferingPolicy: .bufferingNewest(1))
+        observers[identifier] = pair.continuation
+        pair.continuation.onTermination = { [weak self] _ in Task { await self?.removeObserver(identifier) } }
+        return pair.stream
+    }
+    private func publish(_ value: TranscriptionProgress, job: UUID) {
+        guard active, job == generation else { return }
+        for observer in observers.values { observer.yield(value) }
+    }
+    private func removeObserver(_ identifier: UUID) { observers.removeValue(forKey: identifier) }
 }
 extension TranscriptionOptions: Hashable {}
 extension TranscriptionPlan: Hashable {}

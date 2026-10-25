@@ -164,15 +164,109 @@ public protocol ModelDownloader: Sendable {
 }
 /// mac-speech owns parsing and validation against shared/catalog.
 public actor BundledModelCatalog: ModelCatalog {
-    public init(shared: SharedResources) {}
-    public func models() async throws -> [ModelDescriptor] { throw VoxClipError.notImplemented("mac-speech") }
-    public func model(id: String) async throws -> ModelDescriptor { throw VoxClipError.notImplemented("mac-speech") }
+    private let shared: SharedResources
+    private var loaded: SpeechCatalogDocument?
+    public init(shared: SharedResources) { self.shared = shared }
+    public func models() async throws -> [ModelDescriptor] { try document().models.map(\.descriptor) }
+    public func model(id: String) async throws -> ModelDescriptor {
+        guard let model = try document().models.first(where: { $0.descriptor.id == id }) else { throw VoxClipError.modelMissing(id) }
+        return model.descriptor
+    }
+    public func runtime(id: String) throws -> SpeechModelRuntime {
+        guard let model = try document().models.first(where: { $0.descriptor.id == id }) else { throw VoxClipError.modelMissing(id) }
+        return model.runtime
+    }
+    public func normalizeLanguage(_ code: String) throws -> String { try document().languageCodes.iso639_3[code] ?? code }
+    public func whisperLanguage(_ code: String) throws -> String { try document().languageCodes.whisperCodeFor[code] ?? code }
+    public func fromWhisperLanguage(_ code: String) throws -> String {
+        let languages = try document().languageCodes
+        let primary = languages.whisperCodeFor.first(where: { $0.value == code })?.key ?? code
+        return languages.iso639_3[primary] ?? primary
+    }
+    public func routingSnapshot(installedModels: Set<String>, supportedAppleLocales: [String], hasElevenLabsKey: Bool, installedRAMBytes: Int64, detectedLanguage: String? = nil, detectionProbability: Double? = nil) throws -> SpeechRoutingSnapshot {
+        let document = try document()
+        var snapshot = SpeechRoutingSnapshot(models: document.models.map(\.descriptor), defaults: document.defaults.byLanguage.mapValues(\.macos), installedModels: installedModels, supportedAppleLocales: supportedAppleLocales, hasElevenLabsKey: hasElevenLabsKey, installedRAMBytes: installedRAMBytes, lowMemoryThresholdBytes: document.defaults.lowMemoryThresholdBytes, detectedLanguage: detectedLanguage, detectionProbability: detectionProbability)
+        snapshot.modelDTWDefaults = Dictionary(uniqueKeysWithValues: document.models.map { ($0.descriptor.id, $0.runtime.whisper?.dtwDefault ?? true) })
+        return snapshot
+    }
+    public func entryJSON(id: String) throws -> Data {
+        let data = try Data(contentsOf: shared.root.appendingPathComponent("catalog/transcription-models.json"))
+        let object = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        guard let entry = (object?["models"] as? [[String: Any]])?.first(where: { $0["id"] as? String == id }) else { throw VoxClipError.modelMissing(id) }
+        return try JSONSerialization.data(withJSONObject: entry, options: [.sortedKeys, .withoutEscapingSlashes])
+    }
+    private func document() throws -> SpeechCatalogDocument {
+        if let loaded { return loaded }
+        do {
+            let data = try Data(contentsOf: shared.root.appendingPathComponent("catalog/transcription-models.json"))
+            let document = try JSONDecoder().decode(SpeechCatalogDocument.self, from: data)
+            try document.validate()
+            loaded = document
+            return document
+        } catch let error as VoxClipError {
+            throw error
+        } catch {
+            throw VoxClipError.sharedResourcesMissing
+        }
+    }
 }
 /// Serial model manager, never evicted as cache; architecture §7.1 and transcription §12.
 public actor ModelStore: ModelDownloader {
-    public init(catalog: any ModelCatalog, locations: DataLocations) {}
-    public func installedModels() async throws -> [String] { throw VoxClipError.notImplemented("mac-speech") }
-    public func install(id: String, progress: @escaping @Sendable (ModelDownloadProgress) -> Void) async throws { throw VoxClipError.notImplemented("mac-speech") }
-    public func verify(id: String) async throws -> Bool { throw VoxClipError.notImplemented("mac-speech") }
-    public func remove(id: String) async throws { throw VoxClipError.notImplemented("mac-speech") }
+    let catalog: any ModelCatalog
+    let locations: DataLocations
+    let configuration: URLSessionConfiguration
+    let confirmation: (@Sendable (ModelDescriptor, Int64) async throws -> Bool)?
+    let availableCapacity: @Sendable (URL) throws -> Int64?
+    var queued: Set<String> = []
+    var busy = false
+    public init(catalog: any ModelCatalog, locations: DataLocations) {
+        self.catalog = catalog; self.locations = locations; configuration = .ephemeral; confirmation = nil
+        availableCapacity = Self.volumeAvailableCapacity
+    }
+    public init(catalog: any ModelCatalog, locations: DataLocations, configuration: URLSessionConfiguration = .ephemeral, confirm: @escaping @Sendable (ModelDescriptor, Int64) async throws -> Bool) {
+        self.catalog = catalog; self.locations = locations; self.configuration = configuration; confirmation = confirm
+        availableCapacity = Self.volumeAvailableCapacity
+    }
+    init(catalog: any ModelCatalog, locations: DataLocations, configuration: URLSessionConfiguration = .ephemeral, confirm: (@Sendable (ModelDescriptor, Int64) async throws -> Bool)? = nil, availableCapacity: @escaping @Sendable (URL) throws -> Int64?) {
+        self.catalog = catalog; self.locations = locations; self.configuration = configuration; confirmation = confirm
+        self.availableCapacity = availableCapacity
+    }
+    private static func volumeAvailableCapacity(_ url: URL) throws -> Int64? {
+        try url.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]).volumeAvailableCapacityForImportantUsage
+    }
+    public func installedModels() async throws -> [String] {
+        let models = try await catalog.models()
+        return models.filter { isInstalled($0) }.map(\.id)
+    }
+    public func install(id: String, progress: @escaping @Sendable (ModelDownloadProgress) -> Void) async throws {
+        let reporter = SpeechProgressLimiter(callback: progress)
+        defer { reporter.cancel() }
+        do {
+            try await installModel(id: id) { reporter.report($0) }
+            await reporter.finish()
+        }
+        catch {
+            if Task.isCancelled || error is CancellationError { throw VoxClipError.cancelled }
+            throw error
+        }
+    }
+    public func verify(id: String) async throws -> Bool {
+        let model = try await catalog.model(id: id)
+        guard isInstalled(model) else { return false }
+        for file in model.files where try SpeechSHA256.file(fileURL(model, file)) != file.sha256 { return false }
+        return true
+    }
+    public func remove(id: String) async throws {
+        let model = try await catalog.model(id: id)
+        guard !busy else { throw VoxClipError.transcriptionFailed("Wait for the model download to finish") }
+        let directory = modelDirectory(model)
+        try await ModelInstallationGate.shared.acquire()
+        do {
+            if FileManager.default.fileExists(atPath: directory.path) { try FileManager.default.removeItem(at: directory) }
+            await ModelInstallationGate.shared.release()
+        } catch {
+            await ModelInstallationGate.shared.release()
+            throw error
+        }
+    }
 }

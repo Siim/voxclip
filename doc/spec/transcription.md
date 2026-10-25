@@ -604,6 +604,8 @@ Settings → Transcription → ElevenLabs → Advanced → Region sets `base` fo
 
 The residency hosts are for accounts with data residency.
 
+On macOS, direct ElevenLabs calls validate HTTPS, engine, language, model, duration, file size and multipart options before reading a cached response or writing files. Cache filenames reject unsafe model and language identifiers in the shared cache-key builder. A valid retained response can be reused without a key; otherwise catalogue and key checks precede cache-directory creation and the placeholder write.
+
 ### 8.2 Response and mapping
 
 A 200 response is a `SpeechToTextChunkResponseModel`:
@@ -1063,6 +1065,8 @@ Estonian takes often contain English terms. Always force `et` on the TalTech mod
 
 `shared/catalog/transcription-models.json` is the single list of models for both apps. It ships inside `shared/` and is read from `<SharedResources.root>/catalog/transcription-models.json` (`doc/architecture.md` §2.4). v1 never downloads a catalogue, so a tampered remote manifest cannot point the app at new hashes. A future remote catalogue must be signed (minisign, with the public key compiled in).
 
+On macOS, catalogue file-read and JSON-decoding failures report `sharedResourcesMissing`, including the ElevenLabs preflight before upload. Existing typed validation errors retain their `VoxClipError` code.
+
 Schema `voxclip.transcription-catalog` v1:
 
 | Field | Type | Meaning |
@@ -1133,7 +1137,7 @@ A catalogue update that changes a hash marks the old install "Update available".
 ### 12.3 Download algorithm
 
 1. **Queue.** `download(modelId)` does nothing if the model is installed or already queued. It queues the `requires` models first. One model download runs at a time.
-2. **Free space.** The volume needs `remaining bytes × 1.1 + 1 GiB` free. Check with `volumeAvailableCapacityForImportantUsageKey` on macOS and `DriveInfo.AvailableFreeSpace` on Windows. If there is not enough, fail with `diskFull`.
+2. **Free space.** The volume needs `remaining bytes × 1.1 + 1 GiB` free. Check with `volumeAvailableCapacityForImportantUsageKey` on macOS and `DriveInfo.AvailableFreeSpace` on Windows. If there is not enough, fail with `diskFull`. macOS model-store unit tests inject capacity independently of the host's free space; production initializers keep the real volume lookup.
 3. **Confirm.** Before the first byte of each model, show a confirmation, once per model: a sheet on the window on macOS, a `ContentDialog` on Windows.
    - Title: "Download {displayName} from huggingface.co?"
    - Body: "This model is published by {publisher}, not by VoxClip. It downloads from Hugging Face ({size}) and runs on this {Mac/PC}. License: {license}. By downloading you accept the publisher's terms." Then a blank line and `{attribution}`.
@@ -1231,6 +1235,7 @@ The normalised `Transcript` lives only in the project file. It is not cached.
 - **`rawKey`** = lowercase hex SHA-256 of that canonical JSON. It is stored in `transcript.rawKey`, so a project can find its raw result again.
 - **`opts8`** = the first 8 characters of `rawKey`.
 - `providerResponse` holds the unmodified ElevenLabs JSON, so a later adapter version can re-map it without paying again. It is `null` for local engines.
+- On macOS, the transcription service preserves an entry already written by an engine for the same key, including when a wrapper forwards to ElevenLabs. Generic cache writes must not discard the paid response or its exact bytes.
 - A lookup must match the whole `key`, not only the file name.
 - The OS version and engine patch versions are not part of the key. A raw result stays valid across them. The post-process (section 7) runs again whenever a raw result, fresh or from a cache hit, is turned into a new `Transcript` (a new import of the same file, or Transcribe Again). Opening a project never reruns it: stored word timings are never recomputed (`editing.md` §5).
 
@@ -1308,12 +1313,13 @@ Apple: a recorded list of `(result, runs, ranges, confidence)` converts to the e
 
 ### 16.3 Opt-in integration tests (never required in CI)
 
-- `VOXCLIP_TEST_DOWNLOAD=1`:
+- `VOXCLIP_LIVE_TESTS=1` enables the integration tests below (provider tests still need their keys). Narrower switches enable individual local engines instead:
+- `VOXCLIP_TEST_DOWNLOAD=1` (or `VOXCLIP_LIVE_TESTS=1`):
   - Download `whisper-base.en-q5_1` through `ModelManager` into `VOXCLIP_DATA_DIR`, then verify its checksum.
   - Transcribe `shared/fixtures/transcription/hello-um.wav`, still to be recorded: about 6 s of English with one "um".
   - Assert the words "hello" and "today" start within 150 ms of the annotation, and that one filler is present (as a word or as `…`).
-- `VOXCLIP_TEST_APPLE_SPEECH=1`, in a signed app build on macOS 26 or later: run the same clip through `apple-speech` with `en-US`.
-- `VOXCLIP_ELEVENLABS_API_KEY` set, local runs only: run the same clip through Scribe v2. Assert `language == "en"` and that the filler is kept as a word.
+- `VOXCLIP_TEST_APPLE_SPEECH=1` (or `VOXCLIP_LIVE_TESTS=1`), in a signed app build on macOS 26 or later: run the same clip through `apple-speech` with `en-US`.
+- `VOXCLIP_LIVE_TESTS=1` and `VOXCLIP_ELEVENLABS_API_KEY` set, local runs only: run the same clip through Scribe v2. Assert `language == "en"` and that the filler is kept as a word.
 
 ### 16.4 Quality acceptance before the 0.1.0 defaults are final
 
