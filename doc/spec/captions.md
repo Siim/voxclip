@@ -805,7 +805,7 @@ Windows (`VoxClip.Media`): the compose function draws into an `SKSurface` that w
 ### 13.9 Caching and performance
 
 - Layout is computed once per `(CaptionInput, resolved style, W, H)` and kept until one of them changes.
-- A page's rendered overlay may be cached when nothing time-dependent is in progress: no entrance or exit animation running, no jitter, no wipe in progress, no cursor, and the same active word and visible cluster counts. Cache key: `(page index, style hash, W×H, k, active word, visible cluster counts)`. LRU, at most 64 MB per window. A cached frame must be pixel-identical to an uncached one.
+- A page's rendered overlay may be cached when nothing time-dependent is in progress: no entrance or exit animation running, no jitter, no wipe in progress, no cursor, and the same active word and visible cluster counts. Cache key: `(page index, style hash, W×H, k, active word, visible cluster counts)`. LRU, at most 64 MiB per window. A cached frame must be pixel-identical to an uncached one.
 - Budget: a 1080×1920 caption frame renders in under 4 ms on an M1 or a 2022 mid-range Windows laptop with the box blur; animated frames are rendered directly.
 
 ---
