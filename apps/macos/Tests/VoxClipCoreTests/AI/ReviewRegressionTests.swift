@@ -4,6 +4,41 @@ import Testing
 @testable import VoxClipCore
 
 extension HTTPConnectorTests {
+    @Test func voiceRewriteNeverRetriesAPaidCompletion() async throws {
+        let harness = try HTTPHarness(.openai, replies: [.json("{\"error\":{\"message\":\"busy\"}}", status: 429)])
+        defer { harness.session.invalidateAndCancel() }
+        var request = try harness.catalog.connectionTest(for: .openai)
+        request.feature = .voiceRewrite
+        await #expect(throws: LLMError.rateLimited(retryAfter: nil)) {
+            try await harness.connector.send(request, model: harness.model)
+        }
+        #expect(HTTPStubProtocol.requests.count == 1)
+        #expect(harness.sleeps.durations.isEmpty)
+    }
+
+    @Test func voiceRewriteNetworkLossDoesNotRetry() async throws {
+        let harness = try HTTPHarness(.openai, replies: [.transport(.networkConnectionLost)])
+        defer { harness.finish() }
+        var request = try harness.catalog.connectionTest(for: .openai)
+        request.feature = .voiceRewrite
+        await #expect(throws: LLMError.network) { try await harness.connector.send(request, model: harness.model) }
+        #expect(HTTPStubProtocol.requests.count == 1)
+        #expect(harness.sleeps.durations.isEmpty)
+    }
+
+    @Test func voiceRewriteAnthropicBetaRejectionDoesNotFallback() async throws {
+        let rejected = HTTPReply.json(#"{"error":{"type":"invalid_request_error","message":"Unexpected anthropic-beta value"}}"#, status: 400)
+        let harness = try HTTPHarness(.anthropic, replies: [rejected])
+        defer { harness.finish() }
+        var request = try HTTPFixtures.f1()
+        request.feature = .voiceRewrite
+        do { _ = try await harness.connector.send(request, model: harness.model); Issue.record("Expected beta rejection") }
+        catch LLMError.badRequest {}
+        #expect(HTTPStubProtocol.requests.count == 1)
+        #expect(HTTPStubProtocol.requests.first?.request.value(forHTTPHeaderField: "anthropic-beta") != nil)
+        #expect(harness.sleeps.durations.isEmpty)
+    }
+
     @Test(arguments: [ConnectorID.ollama, .lmstudio])
     func stoppedServerGatesBeforePlanningAndRecovers(_ id: ConnectorID) async throws {
         for execute in [false, true] {

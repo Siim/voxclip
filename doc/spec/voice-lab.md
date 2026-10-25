@@ -3,8 +3,8 @@
 Status:
 
 - **§4 Clean audio**: normative for M2.
-- **§5 to §12 Voice Lab beta**: normative design for M3. It is gated on the spikes in §14 and on the legal review in §11.10.
-- **§13**: features that are deferred.
+- **§5 to §12 Voice Lab beta**: target design for rewriting a passage or full take in the user's own voice, voice changing and lip sync. The current Mac Core service foundation is described in §2.6; timeline, media, UI, Windows parity and release gates remain open.
+- **§13**: later capabilities and integration limits.
 
 Voice Lab is every VoxClip feature that sends the user's voice to an AI service and gets new audio or video back. It is separate from transcription (`doc/spec/transcription.md`) and from AI tighten (`doc/spec/ai.md` §12). AI tighten only proposes cuts, never makes synthetic media, and never reuses anything defined here.
 
@@ -33,7 +33,7 @@ Key words: "must" is a requirement, "should" is a default, and "may" is optional
 | M3 beta | **Voice changer**: speech-to-speech into the user's own clone or a stock voice | yes | AI MODIFIED, for the whole converted range | ElevenLabs |
 | M3 beta | **Re-voice a phrase**: patch mode. Replace or insert a few words with TTS in the user's own clone | yes | AI MODIFIED at the start and around each patch | ElevenLabs |
 | M3 beta | **Lip sync** of patch windows | yes (face) | as for patch mode | fal.ai or sync.so |
-| Deferred | Full re-voice of a talking-head take | yes | persistent | all |
+| Voice Lab workflow | AI rewrite and own-voice re-voice of a passage or full take | yes | persistent when the whole take is synthetic | ElevenLabs, with lip sync when selected |
 | Later | Own-voice dubbing (translation) | yes | persistent, plus "translated" | ElevenLabs, plus lip sync |
 
 ### 1.2 Principles
@@ -103,9 +103,9 @@ Gates:
 | `voice_slots_used >= voice_limit` | "My voice" is disabled: "Your ElevenLabs account has no free voice slots." |
 | `tier` is `free`, or `status` is `free` | Every Voice Lab row shows "Free ElevenLabs plans allow non-commercial use only." |
 
-`output_format` uses 44.1 kHz PCM only when the tier is Pro or higher. Until the tier names are mapped, use this rule: try `pcm_44100`; if a 4xx body mentions the output format, retry with `pcm_24000` and remember that for the session.
+`output_format` uses 44.1 kHz PCM only when the tier is Pro or higher. Until the tier names are mapped, the Core service uses `pcm_24000`. A rejected output format is reported without a second paid request. Media integration can resample after validating PCM.
 
-If `user_read` is missing, the gates are skipped, and provider errors at action time produce the same messages.
+If `user_read` is missing, Core reports the permission failure and leaves clone creation unavailable because its plan and slot gates cannot be checked. Other generation routes still report their own permission or plan failure at action time.
 
 ### 2.4 Key tests
 
@@ -129,6 +129,18 @@ Buttons: **Continue**, **Cancel**.
 
 ---
 
+### 2.6 First Mac Core service foundation
+
+`ElevenLabsVoiceLab` discovers models (`GET /v1/models`), subscription (`GET /v1/user/subscription`) and paginated voices (`GET /v2/voices`) through the selected ElevenLabs region. The Mac caller selects a discovered model and voice. `VoiceRewriteService` takes a separate estimate and affirmative authorization for its selected LLM connector/model before sending source words and the user's instruction. It returns an inert proposal with original timed words intact. Rewriting a passage and rewriting the entire selected take are both supported requests. The service does not edit, synthesize, or follow URLs in model output.
+
+Creating an Instant Voice Clone takes a verified own-voice consent record and speaker-match policy input, plus explicit authorization for that operation. Core retains `requires_verification` without treating a pending voice as usable. `listOwnClones` filters owned cloned voices from the paginated voice list; deletion is a separate authorized call. Stock selection allows only `premade`, or owner-created `generated`; `cloned`, `professional`, `famous` and unknown categories are denied. The own path requires a matching active consent identity, speaker match and completed provider verification.
+
+Each Mac Core paid action starts with `prepareClone`, `prepareDelete`, `prepareSynthesis` or `prepareConversion` on the same service instance that will dispatch it. Preparation performs no provider call. Its immutable quote binds the operation and caller request ID, provider/region/endpoint, displayed estimate, selected model/voice/language, consent identity and verification state, and all billable text or the SHA-256 of exact audio bytes. The caller shows that quote and creates `VoiceLabAuthorization(quote:approved:)` after an affirmative action. The service validates current inputs against the prepared quote, then consumes it before the first possible billable dispatch. Quotes are instance-scoped, hold at most 32 outstanding entries and cannot be replayed sequentially or concurrently. A changed input, model, region, voice, estimate or consent state needs a new quote and approval. A rewrite proposal's ID is the request ID when preparing synthesis of its approved text.
+
+The first Core synthesis path uses documented `POST /v1/text-to-speech/{voice_id}/with-timestamps` for discovered TTS-capable models supported by that endpoint, raw `pcm_24000`, and validated character timing. It sends explicit `language_code` for supported models except `eleven_multilingual_v2`, whose documented behavior is language auto-detection. The quote exposes `explicit(language)` or `autoDetected(expected: language)` so the caller can show which mode will run. The language must be in the discovered model's language list. Eleven v4 and v4 Turbo are discovered but reported as unsupported by this endpoint; the documented Text to Dialogue path remains for later integration. Voice conversion uses `POST /v1/voice-changer/{voice_id}` for discovered conversion-capable models and the same PCM output. Its documented request has no language field, so Core requires the chosen language in the model's capability list and marks the quote as auto-detected rather than implying forced language selection. Conversion input must be a complete RIFF/WAVE file whose declared RIFF length ends at the actual file boundary. Every chunk length and odd-length pad must fit; ordinary ancillary chunks may appear before, between or after audio chunks. Exactly one unambiguous PCM `fmt ` chunk (16 bytes, or 18 with zero extension length) and one `data` chunk are required. Audio is mono, 16-bit PCM at 8–96 kHz, with byte rate and block alignment matching the format, whole samples, at least 20 ms and at most 290 seconds. The whole upload is limited to 16 MiB and the quote binds its exact bytes. Invalid input is refused before a paid send. Missing or malformed alignment makes timestamped TTS invalid. Empty, odd-length, oversized or structurally encoded output is invalid; raw PCM samples with header-like first bytes remain valid. Encoded conversion content types are invalid. A generation is sent once; the caller must make a new estimate and affirmative authorization before trying again. Estimates retain unknown currency and credit amounts when pricing is unavailable. A cancellation before dispatch sends nothing; after dispatch, cancellation or network loss is ambiguous and the same quote stays consumed. No clone, speech or conversion request is retried automatically. Discovery rejects malformed or duplicate model/voice identities, repeated cursors and more than 20 voice pages.
+
+This Core boundary does not yet record consent, perform speaker embedding, join audio to the timeline, preview or undo a segment, or run lip sync. Those are required before the whole Voice Lab workflow is usable in the app. Windows must consume `shared/prompts/voice-rewrite.json` and `shared/fixtures/voice-lab/contract.json` and match these contracts and offline cases in its own Core implementation.
+
 ## 3. Cost preview
 
 ### 3.1 Rule
@@ -137,8 +149,8 @@ Every action that can bill a provider shows an estimate **before** it runs.
 
 ```swift
 public struct CostEstimate: Codable, Sendable, Hashable {
-    public var provider: String          // "elevenlabs" | "fal" | "syncso"
-    public var operation: String         // "audio-isolation", "tts", "voice-changer", "stt-check", "lipsync"
+    public var provider: String          // "elevenlabs" | selected LLM connector | "fal" | "syncso"
+    public var operation: String         // "voiceRewrite", "createClone", "deleteClone", "textToSpeech", "voiceChange", plus later media operations
     public var units: Double             // minutes, characters or seconds, per `unit`
     public var unit: String              // "minute" | "character" | "second" | "call"
     public var usd: Decimal?             // nil when the price is unknown
@@ -414,8 +426,8 @@ POST {base}/v1/voices/add
 xi-api-key: <key>
 Content-Type: multipart/form-data
   name                     = "{display name} (VoxClip)"
-  files                    = <sample 1>   (one "files" part per sample, consent recording included)
-  files                    = <sample 2> …
+  files[]                  = <sample 1>   (one "files[]" part per sample, consent recording included)
+  files[]                  = <sample 2> …
   remove_background_noise  = false
   description              = "VoxClip own-voice clone. Consent sha256:{statementSha256}. Created {RFC 3339 date}."
   labels                   = {"language":"et"}       (a JSON string. The API documents only the keys language, accent, gender and age, so the consent marker goes in description; spike S5 verifies the encoding)
@@ -499,7 +511,7 @@ A Professional Voice Clone path, where ElevenLabs runs its own voice-captcha ver
 ### 7.3 Request
 
 ```
-POST {base}/v1/voice-changer/{voice_id}?output_format=wav_44100        (wav_24000 below Pro, per §2.3)
+POST {base}/v1/voice-changer/{voice_id}?output_format=pcm_24000
 xi-api-key: <key>
 Content-Type: multipart/form-data
   audio                    = <chunk as 16-bit WAV at the source rate, mono>; filename="audio.wav"
@@ -601,7 +613,7 @@ For each accepted voice hunk replacing source words `[a..b]`, or inserting betwe
 
 ### 8.5 TTS request
 
-The model comes from `GET {base}/v1/models`. Keep entries with `can_do_text_to_speech` whose `languages[].language_id` include the take's language. Preference order:
+The model comes from `GET {base}/v1/models`. Keep entries with `can_do_text_to_speech` whose `languages[].language_id` include the take's language. The selected model must support the selected endpoint. These are examples for future A/B testing, not sole choices:
 
 1. `eleven_v4`
 2. `eleven_v3`
@@ -612,7 +624,7 @@ On first use of a voice in a language, the user hears a 10 s A/B preview of the 
 **Primary request (eleven_v4).** The models page says v4 is available "via the Text to Dialogue API":
 
 ```
-POST {base}/v1/text-to-dialogue/with-timestamps?output_format=pcm_44100     (pcm_24000 below Pro)
+POST {base}/v1/text-to-dialogue/with-timestamps?output_format=pcm_24000
 xi-api-key: <key>
 Content-Type: application/json
 {
@@ -629,10 +641,10 @@ Content-Type: application/json
         "character_end_times_seconds": […] } | null, "normalized_alignment": … | null, "voice_segments": […] }
 ```
 
-**Fallback request (eleven_v3 or multilingual v2, or when v4 is rejected):**
+**Alternative request (eleven_v3 or multilingual v2, explicitly selected after a new estimate when v4 is unavailable):**
 
 ```
-POST {base}/v1/text-to-speech/{voice_id}/with-timestamps?output_format=pcm_44100
+POST {base}/v1/text-to-speech/{voice_id}/with-timestamps?output_format=pcm_24000
 {
   "text": "<patch text>",
   "model_id": "eleven_v3",
@@ -647,9 +659,9 @@ POST {base}/v1/text-to-speech/{voice_id}/with-timestamps?output_format=pcm_44100
 ```
 
 - **Audio.** With `pcm_*` formats, `audio_base64` is raw 16-bit little-endian mono PCM at that rate. Resample to the source rate.
-- **Alignment.** Use `alignment`, not `normalized_alignment`, so caption text equals the typed text ("2025", not "twenty twenty-five"). Treat `null` as normal.
+- **Alignment.** Use `alignment`, not `normalized_alignment`, so caption text equals the typed text ("2025", not "twenty twenty-five"). The current Core timestamped path rejects null or malformed alignment. The later media QA path may use the Scribe/interpolation recovery in §8.8, after it is implemented and tested; null alignment must never be presented as timestamped speech.
 - **Pronunciation.** The user may type a respelling for a word ("say it like"). eleven_v4 also accepts IPA wrapped in `/…/`. The respelling is sent as the text; the caption keeps the typed word.
-- **Retries.** 429 and 5xx are retried per `doc/architecture.md` §10.1 rule 5. A 422 from `/text-to-dialogue` for the model switches to the fallback request once.
+- **Retries.** Synthesis, voice conversion, clone creation and deletion are never retried automatically: a timeout can mean ElevenLabs already billed or completed the request. A different endpoint or model needs a new estimate, review and affirmative authorization. The current Mac Core path does not invoke Text to Dialogue v4; its timing and model capability must be verified separately before it is offered.
 
 ### 8.6 Candidates
 
@@ -1137,13 +1149,13 @@ The Guidelines do not settle whether a free, open-source, bring-your-own-key des
 
 ---
 
-## 13. Deferred and later
+## 13. Later work and integration limits
 
-- **Full re-voice of a talking-head take** is deferred. It costs about $3 per minute with lipsync-2 (TTS ≈ $0.07/min plus lip sync ≈ $2.40–3.00/min), up to $8 per minute with sync-3. It needs a persistent AI label that undercuts the authenticity a talking-head clip depends on. Re-recording with a teleprompter is usually faster. If it is ever built:
+- **Full-take rewrite and re-voice** remains in scope alongside passage rewrites. The current Core service accepts a full-take rewrite request and keeps source word timings, but a long take needs bounded generation chunks, reversible timeline composition, preview/accept/undo, disclosure and optional lip sync before it is available in the app. Estimate provider charges from current provider data; old illustrative per-minute figures are not prices to display to users. For full-take output:
   - offer a voiceover format with no lip-sync claim and a persistent "AI voice" label;
   - sentence-mapped lip sync, retiming each clip within ±25%;
   - a teleprompter re-record prompt, which the app should suggest first.
-- **Own-voice dubbing** (for example Estonian ↔ English) is considered later. It is likely more valuable than full re-voice.
+- **Own-voice dubbing** (for example Estonian ↔ English) is considered later.
   - ElevenLabs Dubbing v2 has been in the API since 6 Aug 2026 (alpha). It costs $2.20 per minute, accepts files up to 3 GB, and its output is "a high-quality preview, not a production master". It has no lip sync.
   - The alternative is to translate with the user's LLM, then run TTS in the own clone, then optionally lip sync.
   - Translation is not exempt under Article 50, so the label adds "translated".

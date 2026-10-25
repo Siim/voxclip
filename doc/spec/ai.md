@@ -11,6 +11,7 @@ Machine-readable inputs this spec governs:
 | `shared/catalog/llm-providers.json` | Connectors, endpoints, auth headers, curated models (2026-10), default and fallback models, structured-output mechanism, policy constants (timeouts, retries, redaction), the connection-test request, and the CLI detection commands and invocation templates |
 | `shared/prompts/clip-finder.json` | Clip-finder system prompt, request templates, presets, limits, output schema |
 | `shared/prompts/ai-tighten.json` | AI tighten prompt, strengths, verification limits, output schema (M2) |
+| `shared/prompts/voice-rewrite.json` | Voice Lab passage/full-take rewrite prompt and review-only schema; Mac Core consumes it, Windows Core parity is pending |
 | `shared/prompts/README.md` | How the apps ship and load these files, and the parity tests that fail on drift |
 
 Code lives in the cross-platform cores: `VoxClipCore/AI/` (Swift) and `VoxClip.Core/Ai/` (C#, `net10.0`, tests run on macOS). The one exception is the Apple Foundation Models connector, which uses a platform ML framework and lives in `VoxClipMedia` behind the Core `LLMConnector` protocol (architecture §1). Nothing in this spec touches media. The headless `voxclip-cli` exposes the same pipeline (§10.4).
@@ -44,13 +45,13 @@ Code lives in the cross-platform cores: `VoxClipCore/AI/` (Swift) and `VoxClip.C
 
 ```text
 LLMRequest {
-  feature: clipFinder | aiTighten | test
+  feature: clipFinder | aiTighten | voiceRewrite | test
   system: string                 // from the prompt file
   cachedBlock: string?           // "<transcript>\n" + lines + "\n</transcript>"; identical across presets of one take
   instruction: string            // the per-request text (§11.4, §12.4)
-  schemaName: string             // "clips", "tighten_edits", "connection_test"
+  schemaName: string             // "clips", "tighten_edits", "voice_rewrite_proposal", "connection_test"
   schema: JSON object            // canonical subset, §2.2
-  maxOutputTokens: int           // 16000 for clipFinder and aiTighten, 2048 for test
+  maxOutputTokens: int           // 16000 for clipFinder and aiTighten; voiceRewrite reserves for selected text up to the connector cap; 2048 for test
   effort: low | medium | high | null
   timeout: seconds               // from catalog policy.timeoutsSeconds
   language: BCP-47 string?       // transcript language, used by the Apple locale gate
@@ -1386,9 +1387,9 @@ Output: `proposals[] = {lineLabel, kind, cutWordIds, preselected = !review}`, pl
 - Rejected edits never change state.
 - Running tighten again right after applying proposes no cuts of words already cut, because they are not in the input.
 
-### 12.8 Future modes
+### 12.8 Voice Lab rewrite is separate
 
-The M3 "patch mode" (insertions and replacements re-voiced with a consented own-voice clone, with disclosure labels) is a separate feature with its own schema and spec. It must not reuse `tighten_edits`, so that a tighten reply can never carry an insertion.
+Voice Lab can rewrite a passage or an entire selected take with the chosen connector and model. Its `voice_rewrite_proposal` schema contains spoken `rewrite` text, and its Mac Core consumer is `VoiceRewriteService`. It never reuses `tighten_edits`, so a tighten reply can never carry an insertion. `prepare` makes an instance-scoped, single-use quote without a provider call; it binds the scope, all source word values and timings, instruction, language, connector, model, prompt/schema identity and estimate. An affirmative authorization for that exact quote is required before the connector send. The quote is consumed before dispatch, even if the response later fails or the call is cancelled after sending. A new attempt requires a new quote and approval. The result retains the original timed words and has no effect until the user reviews it. Another affirmative authorization is needed to send approved text to ElevenLabs for synthesis. The connector's reply cannot select a provider, model, endpoint or URL. This first service path invokes the selected connector/model once with catalog context and output limits, without automatic fallback. `doc/spec/voice-lab.md` §2.6 and `shared/fixtures/voice-lab/contract.json` describe the shared Core contract and pending Windows/media/UI integration.
 
 ---
 

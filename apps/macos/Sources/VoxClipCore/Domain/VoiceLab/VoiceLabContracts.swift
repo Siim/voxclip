@@ -1,0 +1,194 @@
+import Foundation
+import CryptoKit
+
+enum VoiceLabFingerprint {
+    static func bytes(_ data: Data) -> String { SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined() }
+    static func fields(_ fields: [String]) -> String {
+        var payload = Data()
+        for field in fields {
+            var length = UInt64(field.utf8.count).bigEndian
+            withUnsafeBytes(of: &length) { payload.append(contentsOf: $0) }
+            payload.append(contentsOf: field.utf8)
+        }
+        return bytes(payload)
+    }
+    static func policy(_ value: OwnVoicePolicy) -> [String] {
+        [value.recordID, value.cloneVoiceID ?? "", String(value.recordActive), String(value.providerConsentGranted),
+         String(value.statementVerified), String(value.speakerMatched)]
+    }
+}
+
+/// Values passed between the Voice Lab UI, Core services and future media integration.
+public enum VoiceLabOperation: String, Sendable, Codable { case createClone, deleteClone, textToSpeech, voiceChange }
+public enum VoiceLabLanguageMode: Sendable, Equatable {
+    case explicit(String)
+    case autoDetected(expected: String)
+}
+
+public enum VoiceLabError: Error, Sendable, Equatable {
+    case invalidInput, consentRequired, speakerMismatch, planUnavailable, noVoiceSlots, missingKey
+    case permissionMissing(String), unauthorized, quotaExceeded, rateLimited
+    case unsupportedModel, unsupportedEndpoint, unsupportedFormat, malformedResponse, invalidAudio, invalidAlignment
+    case responseTooLarge, cancelled, providerFailure(Int), network
+}
+
+/// Prepared by the service for one exact billable request; preparation performs no provider call.
+public struct VoiceLabQuote: Sendable, Equatable {
+    public let id: UUID
+    public let operation: VoiceLabOperation
+    public let requestID: UUID
+    public let estimate: CostEstimate
+    public let region: ElevenLabsRegion
+    public let endpoint: String
+    public let languageMode: VoiceLabLanguageMode?
+    let fingerprint: String
+}
+
+/// An affirmative answer to a service-issued quote for one concrete request.
+public struct VoiceLabAuthorization: Sendable, Equatable {
+    public let quote: VoiceLabQuote
+    public let approved: Bool
+    public var operation: VoiceLabOperation { quote.operation }
+    public var requestID: UUID { quote.requestID }
+    public var estimate: CostEstimate { quote.estimate }
+    public init(quote: VoiceLabQuote, approved: Bool) {
+        self.quote = quote; self.approved = approved
+    }
+}
+
+/// Produced by the future consent recorder and speaker matcher. No bypass field exists.
+public struct OwnVoicePolicy: Sendable, Equatable {
+    public let recordID: String
+    /// Nil only while creating a new clone. At use or deletion it must match the selected clone.
+    public let cloneVoiceID: String?
+    /// Supplied by the consent store; a deleted or suspended record cannot authorize generation.
+    public let recordActive: Bool
+    public let providerConsentGranted: Bool
+    public let statementVerified: Bool
+    public let speakerMatched: Bool
+    public init(recordID: String, cloneVoiceID: String? = nil, recordActive: Bool,
+                providerConsentGranted: Bool, statementVerified: Bool, speakerMatched: Bool) {
+        self.recordID = recordID; self.cloneVoiceID = cloneVoiceID; self.recordActive = recordActive; self.providerConsentGranted = providerConsentGranted
+        self.statementVerified = statementVerified; self.speakerMatched = speakerMatched
+    }
+    public func validate() throws {
+        guard !recordID.isEmpty, recordActive, providerConsentGranted, statementVerified else { throw VoiceLabError.consentRequired }
+        guard speakerMatched else { throw VoiceLabError.speakerMismatch }
+    }
+}
+
+public struct VoiceLabModel: Sendable, Equatable {
+    public let id: String
+    public let name: String
+    public let languages: [String]
+    public let canSpeak: Bool
+    public let canConvert: Bool
+    public let maximumTextLength: Int?
+    public let characterCostMultiplier: Double?
+    /// v4 is documented for Text to Dialogue; that separate timing path is not implemented here.
+    public var supportsTimestampedTTS: Bool { canSpeak && id != "eleven_v4" && id != "eleven_v4_turbo" }
+}
+
+public struct VoiceLabSubscription: Sendable, Equatable {
+    public let tier: String
+    public let status: String
+    public let characterCount: Int
+    public let characterLimit: Int
+    public let nextResetUnix: Int?
+    public let canClone: Bool
+    public let voiceSlotsUsed: Int
+    public let voiceLimit: Int
+    public var isNonCommercial: Bool { tier == "free" || status == "free" }
+}
+
+public struct VoiceLabVoice: Sendable, Equatable {
+    public let id: String
+    public let name: String
+    public let category: String
+    public let isOwner: Bool
+    public let requiresVerification: Bool
+    public let isVerified: Bool
+}
+
+public enum VoiceLabVoiceChoice: Sendable, Equatable {
+    case own(voiceID: String, policy: OwnVoicePolicy)
+    case stock(voiceID: String)
+    public var id: String { switch self { case .own(let id, _), .stock(let id): id } }
+    public func validate() throws { if case .own(_, let policy) = self { try policy.validate() } }
+}
+
+public struct VoiceLabReceipt: Sendable, Equatable {
+    public let provider: String
+    public let region: ElevenLabsRegion
+    public let endpoint: String
+    public let modelID: String?
+    public let voiceID: String?
+    public let requestID: UUID
+    public let providerRequestID: String?
+}
+
+/// PCM is signed 16-bit little-endian mono; timing starts at zero in generated audio.
+public struct VoiceLabAudioResult: Sendable, Equatable {
+    public let pcm: Data
+    public let sampleRate: Int
+    public let alignment: [VoiceLabCharacterTiming]?
+    public let receipt: VoiceLabReceipt
+}
+
+public struct VoiceLabCharacterTiming: Sendable, Equatable {
+    public let character: String
+    public let start: Double
+    public let end: Double
+}
+
+public struct VoiceLabCloneResult: Sendable, Equatable {
+    public let voiceID: String
+    public let requiresVerification: Bool
+    public let consentRecordID: String
+    public let receipt: VoiceLabReceipt
+}
+
+public enum VoiceRewriteScope: String, Codable, Sendable { case passage, fullTake }
+public struct VoiceRewriteRequest: Codable, Sendable {
+    public let id: UUID
+    public let scope: VoiceRewriteScope
+    public let sourceWords: [TimedWord]
+    public let instruction: String
+    public let language: String
+    public init(id: UUID, scope: VoiceRewriteScope, sourceWords: [TimedWord], instruction: String, language: String) {
+        self.id = id; self.scope = scope; self.sourceWords = sourceWords; self.instruction = instruction; self.language = language
+    }
+}
+
+public struct VoiceRewriteQuote: Sendable, Equatable {
+    public let id: UUID
+    public let requestID: UUID
+    public let connector: ConnectorID
+    public let model: String
+    public let estimate: CostEstimate
+    let fingerprint: String
+}
+
+public struct VoiceRewriteAuthorization: Sendable, Equatable {
+    public let quote: VoiceRewriteQuote
+    public let approved: Bool
+    public var requestID: UUID { quote.requestID }
+    public var connector: ConnectorID { quote.connector }
+    public var model: String { quote.model }
+    public var estimate: CostEstimate { quote.estimate }
+    public init(quote: VoiceRewriteQuote, approved: Bool) {
+        self.quote = quote; self.approved = approved
+    }
+}
+
+/// Review data is inert. It cannot invoke synthesis or change source word timing.
+public struct VoiceRewriteProposal: Sendable {
+    public let id: UUID
+    public let scope: VoiceRewriteScope
+    public let sourceWords: [TimedWord]
+    public let sourceText: String
+    public let proposedText: String
+    public let connector: ConnectorID
+    public let model: String
+    public let providerRequestID: String?
+}

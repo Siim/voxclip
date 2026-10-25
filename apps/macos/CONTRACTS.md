@@ -6,6 +6,19 @@
 - An internal, optional read-only writer observer copies selected composed BGRA RGB values and PTS before a successful append; no sample or pixel buffer escapes it. It is absent from ordinary exports. Canonical case 8 pairs 72 observed frame/pixel samples with the decoded output of that same in-process export. A separate Release CLI export of the same source and identity plan is decoded and checked against that witness, including its own H.264 High, 8-bit 4:2:0, MPEG limited and BT.709 format metadata. The CLI writer input is not directly observed. Both YUV and BGRA decode paths must return 60 frames for each output, agree on finite PTS at every frame, and match the writer PTS at sampled frames. Sampling checks actual image and plane bounds before reading. Both full CSVs are written under `VOXCLIP_E2E_OUT` and all colour failures are collected.
 - Local Release verification: `swift build -c release -j 2`, the independent coefficient/mutation test, all ten canonical CLI cases with the exact Release CLI, and native colour/export cancellation regressions passed. Both 72-row CSVs show maximum submitted-to-canonical RGB error 2 and decoded Y/U/V error 0/1/1. Frame 30 green remains decoded RGB 0/192/5, as ADR-R22 explains. Hosted CI acceptance remains pending.
 
+### 2026-10-26 — Voice Lab conversion WAV boundary correction
+
+- Mac Core conversion preparation and dispatch now walk the complete RIFF/WAVE chunk structure, require the declared RIFF size to equal the actual file boundary, bound every chunk and odd pad, and require one PCM `fmt ` and one `data` chunk. Mono PCM16 at 8–96 kHz needs consistent byte rate and block alignment, whole samples, at least 20 ms and at most 290 seconds. Ordinary ancillary chunks and nonzero-index `Data` slices are accepted without a validation copy. Invalid inputs cause no network or paid send; exact input bytes remain bound to the single-use quote.
+- `shared/fixtures/voice-lab/contract.json` version 1 adds `conversionInputs` with synthetic construction parameters and expected validity. Windows Core should consume this exact table for parity. Existing rewrite proposals and source word timing remain inert; this handoff does not provide media, UI, lip sync or a complete Voice Lab workflow.
+
+### 2026-10-25 — Mac Voice Lab Core service handoff
+
+Review correction: Core now issues bounded, instance-scoped quotes through `prepareClone`, `prepareDelete`, `prepareSynthesis`, `prepareConversion`, and `VoiceRewriteService.prepare`. Authorization references the quote and is consumed before dispatch. Its exact inputs, region/endpoint, model/voice/language, consent state, audio hash or full rewrite source/timings, and estimate must still match. The shared parity source is `shared/fixtures/voice-lab/contract.json` version 1. Stock rights use the `premade` or owned `generated` allowlist; duplicate discovery identities fail with typed errors. TTS carries explicit `language_code` except for documented `eleven_multilingual_v2` auto-detection. Conversion accepts complete mono PCM16 WAV input. Raw signed PCM output may begin `FF FF`; structural containers and encoded response types fail. Cancellation after send, network loss, 429 and invalid replies consume the quote and need a fresh estimate and approval. Windows Core should match the shared fixture before media or UI integration.
+
+- `Domain/VoiceLab/VoiceLabContracts.swift` carries operation authorization, own-voice policy, discovery, audio, provenance and rewrite review values. `Services/VoiceLab/ElevenLabsVoiceLab.swift` uses the existing ElevenLabs region and key provider, discovers models/plan/voices, handles explicit clone create/list/delete, timestamped PCM TTS and voice conversion. `Services/VoiceLab/VoiceRewriteService.swift` consumes `shared/prompts/voice-rewrite.json` through the selected `LLMConnector`; Windows Core must consume the same prompt and match the offline wire/policy tests.
+- The caller supplies a verified consent record and speaker match, shows an estimate and review, then creates an operation- and request-matched authorization for each generation. The LLM rewrite request has its own estimate and authorization. Unknown prices remain unknown. The service sends each mutation once, rejects malformed PCM/timing, keeps original timed words in rewrite proposals and returns a provider receipt. `VoiceLabAudioResult` is raw mono 16-bit little-endian PCM at 24 kHz, with character timing only for TTS.
+- Media and UI must implement source-preserving timeline composition, preview/accept/undo, speaker verification, persistent consent, disclosure and optional lip sync. Long full-take text needs chunk planning with an explicit estimate and authorization per paid request. No project schema, UI or lip-sync pipeline changed in this round.
+
 ### 2026-10-25 — canonical macOS bar acceptance diagnosis
 
 - Exact main `fc5ce0f` and tooling `64a5990` are merged into `track/mac-media`. The tooling suite writes all ten canonical CLI reports. Nine cases pass; `e2e-8-bars` fails only at frame 30, green bar, all three interior positions: direct AVFoundation BGRA decode returns blue 5 against canonical blue 0 and the required ±3. The assertion now reports the source RGB and decoded YUV at each failing point without changing the limit.
@@ -892,6 +905,8 @@ Paths are relative to apps/macos. Nested public types are qualified with their e
 
 | Public type / protocol | File | Owning track |
 | --- | --- | --- |
+| `AIHash` | `Sources/VoxClipCore/Domain/Clips/AIHash.swift` | mac-ai |
+| `AIText` | `Sources/VoxClipCore/Domain/Clips/AIJSON.swift` | mac-ai |
 | `AppleSpeechTranscriber` | `Sources/VoxClipMedia/Speech/AppleSpeechTranscriber.swift` | mac-speech |
 | `AppModel` | `Sources/VoxClip/VoxClipApp.swift` | mac-ui |
 | `AspectRatio` | `Sources/VoxClipCore/Domain/Shared/Project.swift` | common (frozen; lead approval) |
@@ -999,14 +1014,20 @@ Paths are relative to apps/macos. Nested public types are qualified with their e
 | `CaptionWordBox` | `Sources/VoxClipCore/Domain/Captions/CaptionStyle.swift` | mac-captions |
 | `CaptionWordState` | `Sources/VoxClipCore/Domain/Captions/CaptionStyle.swift` | mac-captions |
 | `CaptionWordStates` | `Sources/VoxClipCore/Domain/Captions/CaptionStyle.swift` | mac-captions |
+| `CLIConnector` | `Sources/VoxClipCore/Services/LLM/CLIConnector.swift` | mac-ai |
+| `CLIConnector.Detection` | `Sources/VoxClipCore/Services/LLM/CLIConnector.swift` | mac-ai |
 | `ClipCandidate` | `Sources/VoxClipCore/Domain/Clips/ClipContracts.swift` | mac-ai |
 | `ClipFinder` | `Sources/VoxClipCore/Services/LLM/LLMContracts.swift` | mac-ai |
+| `ClipFinderGateError` | `Sources/VoxClipCore/Domain/Clips/ClipFinderGateError.swift` | mac-ai |
 | `ClipFinderRequest` | `Sources/VoxClipCore/Domain/Clips/ClipContracts.swift` | mac-ai |
 | `ClipOrigin` | `Sources/VoxClipCore/Domain/Shared/Project.swift` | common (frozen; lead approval) |
 | `ClipPreset` | `Sources/VoxClipCore/Domain/Clips/ClipContracts.swift` | mac-ai |
 | `ClipPresetID` | `Sources/VoxClipCore/Domain/Clips/ClipContracts.swift` | mac-ai |
+| `ClipPromptDocument` | `Sources/VoxClipCore/Domain/Clips/ClipRequests.swift` | mac-ai |
 | `ClipRange` | `Sources/VoxClipCore/Domain/Shared/Project.swift` | common (frozen; lead approval) |
+| `ClipRequestBuilder` | `Sources/VoxClipCore/Domain/Clips/ClipRequests.swift` | mac-ai |
 | `ClipSuggestion` | `Sources/VoxClipCore/Domain/Clips/ClipContracts.swift` | mac-ai |
+| `ClipWindow` | `Sources/VoxClipCore/Domain/Clips/ClipRequests.swift` | mac-ai |
 | `ClipWord` | `Sources/VoxClipCore/Domain/Clips/ClipContracts.swift` | mac-ai |
 | `CompositionBuilder` | `Sources/VoxClipMedia/Pipeline/MediaPipeline.swift` | mac-media |
 | `ConnectorID` | `Sources/VoxClipCore/Services/LLM/LLMContracts.swift` | mac-ai |
@@ -1051,6 +1072,7 @@ Paths are relative to apps/macos. Nested public types are qualified with their e
 | `GroupingRule` | `Sources/VoxClipCore/Domain/Transcript/TranscriptContracts.swift` | mac-speech |
 | `GroupingRule.Conf` | `Sources/VoxClipCore/Domain/Transcript/TranscriptContracts.swift` | mac-speech |
 | `GroupingRule.End` | `Sources/VoxClipCore/Domain/Transcript/TranscriptContracts.swift` | mac-speech |
+| `HTTPConnector` | `Sources/VoxClipCore/Services/LLM/HTTPConnector.swift` | mac-ai |
 | `Join` | `Sources/VoxClipCore/Domain/Editing/EditingContracts.swift` | mac-editing |
 | `JSONProjectStore` | `Sources/VoxClipCore/Services/Project/ProjectStore.swift` | mac-editing |
 | `JSONSettingsStore` | `Sources/VoxClipCore/Services/Settings/SettingsStore.swift` | mac-editing |
@@ -1065,7 +1087,10 @@ Paths are relative to apps/macos. Nested public types are qualified with their e
 | `LipsyncState` | `Sources/VoxClipCore/Domain/Shared/VoiceLab.swift` | common (frozen; lead approval) |
 | `LipsyncTier` | `Sources/VoxClipCore/Domain/Shared/VoiceLab.swift` | common (frozen; lead approval) |
 | `LLMCatalog` | `Sources/VoxClipCore/Services/LLM/LLMContracts.swift` | mac-ai |
+| `LLMConnectionTestResult` | `Sources/VoxClipCore/Services/LLM/LLMCatalog.swift` | mac-ai |
 | `LLMConnector` | `Sources/VoxClipCore/Services/LLM/LLMContracts.swift` | mac-ai |
+| `LLMConnectors` | `Sources/VoxClipCore/Services/LLM/LLMConnectors.swift` | mac-ai |
+| `LLMEnvironmentKeyProvider` | `Sources/VoxClipCore/Services/LLM/LLMEnvironmentKeyProvider.swift` | mac-ai |
 | `LLMError` | `Sources/VoxClipCore/Services/LLM/LLMContracts.swift` | mac-ai |
 | `LLMFeature` | `Sources/VoxClipCore/Services/LLM/LLMContracts.swift` | mac-ai |
 | `LLMModel` | `Sources/VoxClipCore/Services/LLM/LLMContracts.swift` | mac-ai |
@@ -1073,6 +1098,7 @@ Paths are relative to apps/macos. Nested public types are qualified with their e
 | `LLMRequest` | `Sources/VoxClipCore/Services/LLM/LLMContracts.swift` | mac-ai |
 | `LLMResult` | `Sources/VoxClipCore/Services/LLM/LLMContracts.swift` | mac-ai |
 | `LLMRunner` | `Sources/VoxClipCore/Services/LLM/LLMContracts.swift` | mac-ai |
+| `LLMTokenCounting` | `Sources/VoxClipCore/Services/LLM/LLMTokenCounting.swift` | mac-ai |
 | `LLMUsage` | `Sources/VoxClipCore/Services/LLM/LLMContracts.swift` | mac-ai |
 | `Log` | `Sources/VoxClipCore/Services/Logging/Logger.swift` | mac-ui |
 | `LogEntry` | `Sources/VoxClipCore/Services/Logging/Logger.swift` | mac-ui |

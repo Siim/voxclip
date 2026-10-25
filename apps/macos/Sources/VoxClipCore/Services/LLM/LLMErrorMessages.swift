@@ -66,8 +66,8 @@ extension LLMError {
         case .contextTooLong: message = "This transcript is too long for \(model). Pick a model with a larger context."
         case .badRequest(let status, let detail): message = "\(label) rejected the request (\(status)): " + AIText.prefix(redactor.redact(detail), utf16: 200)
         case .refused:
-            message = feature == .clipFinder ? "Clips could not be suggested for this recording." : feature == .aiTighten ? "The model declined to tighten this recording." : "The model declined the test request."
-        case .truncated: message = feature == .aiTighten ? "The tighten suggestions were incomplete. Please try again." : "The clip suggestions were incomplete. Please try again."
+            message = feature == .clipFinder ? "Clips could not be suggested for this recording." : feature == .aiTighten ? "The model declined to tighten this recording." : feature == .voiceRewrite ? "The model declined to rewrite this recording." : "The model declined the test request."
+        case .truncated: message = feature == .aiTighten ? "The tighten suggestions were incomplete. Please try again." : feature == .voiceRewrite ? "The rewrite was incomplete. Please try again." : "The clip suggestions were incomplete. Please try again."
         case .invalidOutput: message = "The model's answer wasn't in the expected format. Try again or pick another model."
         case .unsupportedLanguage(let language): message = "Apple's on-device model doesn't support \(Locale(identifier: "en").localizedString(forIdentifier: language) ?? language). Use an API key, a CLI or a local model for this project."
         case .notRunning(let url):

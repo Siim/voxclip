@@ -17,6 +17,7 @@ public enum ConnectorID: String, Codable, Sendable, Hashable, CaseIterable {
 public enum LLMFeature: String, Codable, Sendable, Hashable, CaseIterable {
     case clipFinder
     case aiTighten
+    case voiceRewrite
     case test
 }
 

@@ -6,8 +6,11 @@ The macOS and Windows apps send the same prompts to every LLM connector. The pro
 | --- | --- | --- |
 | `clip-finder.json` | AI clip finding: system prompt, request templates, presets (Best moments, Hooks, One per topic, Quotes, Custom), limits, output schema `clips` | M1 |
 | `ai-tighten.json` | AI tighten: system prompt, strength levels, verification limits, output schema `tighten_edits` | M2 |
+| `voice-rewrite.json` | Voice Lab passage/full-take proposal, output schema `voice_rewrite_proposal` | Mac Core service foundation; Windows handoff pending |
 
 The connector catalog, including the connection-test request, is `../catalog/llm-providers.json`. The normative behaviour (how requests are built, windowed, validated and finalised) is in [`doc/spec/ai.md`](../../doc/spec/ai.md).
+
+`apps/macos/Sources/VoxClipCore/Services/VoiceLab/VoiceRewriteService.swift` is the current consumer of `voice-rewrite.json`. Windows Core must load the same file and match its review-only validation and offline connector tests before parity can be claimed.
 
 ## How the apps load these files
 
