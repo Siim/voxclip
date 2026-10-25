@@ -19,6 +19,7 @@ Provenance: Superscribe's `apps/macos/bundle.sh`, `apps/windows/build-windows.sh
 | Build number (macOS) | `CFBundleVersion`, a positive integer that increases with every release (0.1.0 = `1`) |
 | Tag | `v<version>`, annotated, on the release commit |
 | Bundle ID | `com.voxconvo.voxclip` |
+| CLI signing identifier | `com.voxconvo.voxclip.cli`; its designated requirement must differ from the app's |
 | Apple signing identity | `Developer ID Application: Haugas Development OU (5ZJ9N8WURW)` |
 | Apple team | `5ZJ9N8WURW` |
 | Notary keychain profile | `superscribe-notarize-2` (per Apple ID and team, not per app, so it is shared with Superscribe) |
@@ -55,7 +56,7 @@ Not uploaded: `RELEASES-*` (legacy Squirrel feeds), `assets.*.json` (local build
 - Xcode with the newest macOS SDK, licence accepted (`sudo xcodebuild -license accept`). Check `xcrun --sdk macosx --show-sdk-version`.
 - The Developer ID identity in the login keychain: `security find-identity -v -p codesigning | grep "Developer ID Application: Haugas Development OU (5ZJ9N8WURW)"`.
 - The notary profile works: `xcrun notarytool history --keychain-profile superscribe-notarize-2` (an authenticated call; `security find-generic-password` failing to find it proves nothing).
-- `create-dmg` (`brew install create-dmg`), `gh` signed in with release rights on `Siim/voxclip`.
+- `create-dmg` (`brew install create-dmg`), `gh` signed in with release rights on `Siim/voxclip`. Preflight runs `gh auth status --hostname github.com --active`, checking only the active github.com account; on failure, run `gh auth login -h github.com`.
 
 ### 2.2 Files the script expects (apps/macos)
 
@@ -133,248 +134,38 @@ Not uploaded: `RELEASES-*` (legacy Squirrel feeds), `assets.*.json` (local build
 
 Also: `dmg-background.png` (600×400) in `apps/macos`. From the repository root: `shared/brand/macos/AppIcon.icns`, the single `THIRD_PARTY_NOTICES.md` (fonts, Unicode data, whisper.cpp, swift-argument-parser, models' attribution, and the Windows components) and `LICENSE`. The `NSSpeechRecognitionUsageDescription` string above is the only copy; the transcription spec refers to it.
 
-### 2.3 `bundle.sh` (template; lives at `apps/macos/bundle.sh`)
+### 2.3 `bundle.sh` (lives at `apps/macos/bundle.sh`)
 
-Modes:
+The script and `scripts/release-common.sh` are the implementation; this spec describes their contract, not a second executable template. Bash 3.2 is supported. Tracing is disabled; never enable `set -x` around signing or release commands.
 
 | Command | Result |
 |---|---|
-| `./bundle.sh` | debug build, ad-hoc signed. Anyone can run it |
-| `./bundle.sh --sign-only` | release build signed with the Developer ID, no notarization. Same designated requirement as releases, so camera/mic grants and Keychain access survive rebuilds |
-| `./bundle.sh --release --no-upload` | signed, notarized, stapled `.app`, zip and DMG in `dist/`; nothing leaves the machine |
-| `./bundle.sh --upload-only` | attach the `dist/` artifacts to the draft release `v<version>` |
-| `./bundle.sh --release` | both of the above |
-| `--allow-dirty` | permit a dirty tree or untagged HEAD (test builds only; refused together with `--upload-only`) |
+| `./bundle.sh` | Debug build, ad-hoc signed `dist/VoxClip.app`; anyone can run it |
+| `./bundle.sh --sign-only` | Release build signed with Developer ID and hardened runtime; no notarization. The app's designated requirement matches production releases, preserving camera/mic and Keychain grants |
+| `./bundle.sh --release --no-upload` | Signed, notarized, stapled app, zip, DMG and checksums in `dist/`; submits to Apple, but does not upload to GitHub |
+| `./bundle.sh --upload-only` | Verify existing `dist/` artifacts, then attach them to draft `v<version>`, creating it if missing; no build or notarization |
+| `./bundle.sh --upload-only --dry-run` | Perform local and read-only remote validation; print draft creation/upload commands without executing them |
+| `./bundle.sh --release` or `-r` | Build, sign, notarize, staple and package, then create/update the draft |
+| `./bundle.sh --release --no-upload --allow-dirty` | Untagged/dirty local test release; Apple submissions still happen, GitHub uploads are permanently forbidden for these artifacts |
+| `./bundle.sh --universal` | Reserved and rejected; v1 ships arm64 only |
 
-```bash
-#!/bin/bash
-# Build, sign, notarize and package VoxClip for macOS (arm64).
-# Signing follows doc/release.md. Override SIGNING_IDENTITY / TEAM_ID / NOTARIZE_PROFILE for forks.
-# bash 3.2 (macOS /bin/bash): no `set -u` (empty "${arr[@]}" is an error there). Never use `set -x`.
-set -eo pipefail
-cd "$(dirname "$0")"
-REPO_ROOT="$(cd ../.. && pwd)"
+Usage errors exit **2**: unknown options, conflicting modes, `--no-upload` without `--release`, `--dry-run` without `--upload-only`, or `--allow-dirty` in any combination except `--release --no-upload`. Operational failures exit 1, including nonzero signing, stapler and Gatekeeper statuses, normalized by `set -Eeo pipefail` and `trap 'exit 1' ERR`. `--help` exits 0.
 
-EXECUTABLE="VoxClip"
-CLI="voxclip-cli"
-DISPLAY_NAME="VoxClip"
-BUNDLE_ID="com.voxconvo.voxclip"
-INFO_PLIST="Sources/VoxClip/Info.plist"
-ENTITLEMENTS="VoxClip.entitlements"
-DIST="dist"
-APP_BUNDLE="$DIST/$DISPLAY_NAME.app"
-DMG="$DIST/VoxClip-macOS.dmg"
-ZIP="$DIST/VoxClip-macOS.zip"
-SUMS="$DIST/SHA256SUMS-macOS.txt"
-SIGNING_IDENTITY="${SIGNING_IDENTITY:-Developer ID Application: Haugas Development OU (5ZJ9N8WURW)}"
-TEAM_ID="${TEAM_ID:-5ZJ9N8WURW}"
-NOTARIZE_PROFILE="${NOTARIZE_PROFILE:-superscribe-notarize-2}"
-GITHUB_REPO="${GITHUB_REPO:-Siim/voxclip}"
+After argument validation, every mode takes the per-checkout `.build/bundle.lock` with `/usr/bin/shlock` before reading or changing `dist/`. A second invocation fails without disturbing the active build or its artifacts. The EXIT trap removes the lock and temporary work directory; `shlock` recovers stale locks from dead processes.
 
-VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$INFO_PLIST")
-BUILD_NUMBER=$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$INFO_PLIST")
-PLIST_ID=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$INFO_PLIST")
-[ "$PLIST_ID" = "$BUNDLE_ID" ] || { echo "Info.plist says $PLIST_ID, script says $BUNDLE_ID" >&2; exit 1; }
-TAG="v$VERSION"
+Production releases and uploads require a clean tree (excluding ignored `dist/` outputs), an annotated `v<version>` at HEAD and matching platform versions from `tools/release/check-version.sh`. Capture `BUILD_COMMIT` during the initial tree check, before `swift build`; after assembling the app and before signing, and again immediately before writing metadata, require a clean tree and HEAD still equal to that captured commit. `--allow-dirty` skips clean-tree/tag/recheck gates only; it does not bypass the resource, licence or signing gates. `dist/release-metadata.plist` records `Version`, `BuildNumber`, the captured `GitCommit` (never a later reread of HEAD) and `TestBuild`. Uploads, including dry runs, require `TestBuild=false`, `GitCommit` equal to HEAD and matching version/build fields; test artifacts cannot be uploaded in a later invocation.
 
-RELEASE=false; SIGN_ONLY=false; NO_UPLOAD=false; UPLOAD_ONLY=false; ALLOW_DIRTY=false
-for arg in "$@"; do
-  case "$arg" in
-    --release|-r)  RELEASE=true ;;
-    --sign-only)   RELEASE=true; SIGN_ONLY=true ;;
-    --no-upload)   NO_UPLOAD=true ;;
-    --upload-only) UPLOAD_ONLY=true ;;
-    --allow-dirty) ALLOW_DIRTY=true ;;
-    *) echo "Unknown option $arg" >&2; exit 2 ;;
-  esac
-done
+The pipeline, step by step:
 
-# ---------- release preconditions: clean tree, HEAD is the tag, versions agree ----------
-check_release_tree() {
-  [ "$ALLOW_DIRTY" = true ] && return 0
-  [ -z "$(git -C "$REPO_ROOT" status --porcelain)" ] || { echo "Working tree is dirty. Commit or use --allow-dirty (no upload)." >&2; exit 1; }
-  [ "$(git -C "$REPO_ROOT" rev-parse HEAD)" = "$(git -C "$REPO_ROOT" rev-parse "$TAG^{commit}" 2>/dev/null)" ] \
-    || { echo "HEAD is not tagged $TAG." >&2; exit 1; }
-  "$REPO_ROOT/tools/release/check-version.sh" >/dev/null
-}
-
-# ---------- publish a previous --no-upload build ----------
-upload() {
-  [ "$ALLOW_DIRTY" = true ] && { echo "--allow-dirty builds are never uploaded." >&2; exit 1; }
-  for f in "$DMG" "$ZIP" "$SUMS"; do [ -f "$f" ] || { echo "Missing $f: run ./bundle.sh --release --no-upload" >&2; exit 1; }; done
-  xcrun stapler validate "$APP_BUNDLE" >/dev/null
-  xcrun stapler validate "$DMG" >/dev/null
-  (cd "$DIST" && shasum -a 256 -c "$(basename "$SUMS")")
-  command -v gh >/dev/null || { echo "Install the GitHub CLI (gh)" >&2; exit 1; }
-  if ! gh release view "$TAG" --repo "$GITHUB_REPO" >/dev/null 2>&1; then
-    NOTES=$(mktemp); awk -v v="$VERSION" '$0 ~ "^## "v {f=1; next} /^## / && f {exit} f' "$REPO_ROOT/CHANGELOG.md" > "$NOTES"
-    gh release create "$TAG" --repo "$GITHUB_REPO" --draft --verify-tag --title "VoxClip $VERSION" --notes-file "$NOTES"
-  fi
-  [ "$(gh release view "$TAG" --repo "$GITHUB_REPO" --json isDraft --jq .isDraft)" = "true" ] \
-    || { echo "$TAG is already published; refusing to replace assets." >&2; exit 1; }
-  gh release upload "$TAG" "$DMG" "$ZIP" "$SUMS" --repo "$GITHUB_REPO" --clobber
-  echo "Attached to draft release $TAG. Review and publish it on GitHub."
-}
-if [ "$UPLOAD_ONLY" = true ]; then check_release_tree; upload; exit 0; fi
-
-# ---------- identity check (release modes) ----------
-if [ "$RELEASE" = true ]; then
-  [ "$SIGN_ONLY" = true ] || check_release_tree
-  security find-identity -v -p codesigning | grep -qF "$SIGNING_IDENTITY" || {
-    echo "Signing identity not in the keychain: $SIGNING_IDENTITY" >&2
-    echo "Contributors: run ./bundle.sh without flags for an ad-hoc build." >&2; exit 1; }
-fi
-
-# ---------- SDK pin: the SDK stamped into the binary decides how macOS draws the app ----------
-SDK_PATH="${SDKROOT:-$(xcrun --sdk macosx --show-sdk-path 2>/dev/null || true)}"
-SDK_VERSION=$(/usr/bin/plutil -extract Version raw -o - "$SDK_PATH/SDKSettings.json" 2>/dev/null \
-  || /usr/bin/plutil -extract Version raw -o - "$SDK_PATH/SDKSettings.plist" 2>/dev/null || true)
-MIN_MACOS=$(sed -n 's/.*\.macOS(\.v\([0-9]*\)).*/\1.0/p' Package.swift | head -1)
-[ -n "$SDK_VERSION" ] && [ -n "$MIN_MACOS" ] || {
-  echo "Cannot read the SDK version (${SDK_PATH:-none}) or the minimum macOS in Package.swift" >&2; exit 1; }
-SDK_MAJOR="${SDK_VERSION%%.*}"; MIN_MAJOR="${MIN_MACOS%%.*}"
-[ "$SDK_MAJOR" -ge "$MIN_MAJOR" ] || { echo "SDK $SDK_VERSION is older than the minimum macOS $MIN_MACOS" >&2; exit 1; }
-BUILD_FLAGS=(-Xlinker -platform_version -Xlinker macos -Xlinker "$MIN_MACOS" -Xlinker "$SDK_VERSION")
-CONFIG=$([ "$RELEASE" = true ] && echo release || echo debug)
-
-[ "$(uname -m)" = "arm64" ] || { echo "Build on Apple silicon: v1 ships arm64 only." >&2; exit 1; }
-echo "Building $DISPLAY_NAME $VERSION ($BUILD_NUMBER), $CONFIG, arm64, macOS $MIN_MACOS+, SDK $SDK_VERSION"
-swift build -c "$CONFIG" "${BUILD_FLAGS[@]}"                                       # host arch (arm64); no --arch
-BIN_DIR=$(swift build -c "$CONFIG" "${BUILD_FLAGS[@]}" --show-bin-path)            # Xcode 27 moved .build paths
-
-OTOOL=""
-for c in "$(xcrun --find otool 2>/dev/null || true)" /Library/Developer/CommandLineTools/usr/bin/otool \
-         /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/otool; do
-  if [ -n "$c" ] && [ -x "$c" ]; then OTOOL="$c"; break; fi
-done
-[ -n "$OTOOL" ] || { echo "No otool found" >&2; exit 1; }
-for b in "$BIN_DIR/$EXECUTABLE" "$BIN_DIR/$CLI"; do
-  BUILT_SDK=$("$OTOOL" -l "$b" | awk '/LC_BUILD_VERSION/ {f=1} f && $1=="sdk" {print $2; exit}')
-  [ "$BUILT_SDK" = "$SDK_VERSION" ] || { echo "$b says SDK ${BUILT_SDK:-none}, expected $SDK_VERSION" >&2; exit 1; }
-done
-
-# ---------- licence gate: no GPL code in anything we ship ----------
-for b in "$BIN_DIR/$EXECUTABLE" "$BIN_DIR/$CLI" "$BIN_DIR"/*.framework/Versions/A/*; do
-  [ -f "$b" ] || continue
-  if nm "$b" 2>/dev/null | grep -Eq '_espeak_ng_|_x264_encoder_open|_x265_encoder_open|_avcodec_open2'; then
-    echo "Licence gate: GPL or ffmpeg symbols found in $b (VoxClip ships no espeak-ng, x264, x265 or ffmpeg on macOS)." >&2
-    exit 1
-  fi
-done
-
-# ---------- assemble the bundle ----------
-rm -rf "$APP_BUNDLE"; mkdir -p "$APP_BUNDLE/Contents/MacOS" "$APP_BUNDLE/Contents/Resources" "$APP_BUNDLE/Contents/Frameworks"
-cp "$BIN_DIR/$EXECUTABLE" "$BIN_DIR/$CLI" "$APP_BUNDLE/Contents/MacOS/"
-cp "$INFO_PLIST" "$APP_BUNDLE/Contents/Info.plist"
-echo "APPL????" > "$APP_BUNDLE/Contents/PkgInfo"
-cp "$REPO_ROOT/shared/brand/macos/AppIcon.icns" "$REPO_ROOT/THIRD_PARTY_NOTICES.md" "$REPO_ROOT/LICENSE" \
-   "$APP_BUNDLE/Contents/Resources/"
-# The runtime shared/ folders (architecture.md section 2.4); never fixtures, brand sources or tools.
-SHARED_DIRS="caption-styles catalog design fonts prompts schemas"
-mkdir -p "$APP_BUNDLE/Contents/Resources/shared"
-for d in $SHARED_DIRS; do
-  [ -d "$REPO_ROOT/shared/$d" ] || { echo "Missing shared/$d" >&2; exit 1; }
-  cp -R "$REPO_ROOT/shared/$d" "$APP_BUNDLE/Contents/Resources/shared/"
-done
-for d in $SHARED_DIRS; do                                                        # bundle parity (prompts README test 3)
-  diff -r "$REPO_ROOT/shared/$d" "$APP_BUNDLE/Contents/Resources/shared/$d" >/dev/null \
-    || { echo "shared/$d copy differs from the repository" >&2; exit 1; }
-done
-for fw in "$BIN_DIR"/*.framework; do                                             # e.g. whisper.framework
-  [ -d "$fw" ] || continue
-  dest="$APP_BUNDLE/Contents/Frameworks/$(basename "$fw")"
-  ditto "$fw" "$dest"
-  find "$dest" -name '*.dSYM' -prune -exec rm -rf {} +                           # never ship debug symbols
-  name="$(basename "$fw" .framework)"
-  bin="$dest/Versions/A/$name"
-  [ -f "$bin" ] || bin="$dest/$name"
-  if [ "$(lipo -archs "$bin")" != "arm64" ]; then lipo -thin arm64 "$bin" -output "$bin"; fi   # v1 is arm64 only
-done
-for b in "$APP_BUNDLE/Contents/MacOS/$EXECUTABLE" "$APP_BUNDLE/Contents/MacOS/$CLI"; do
-  "$OTOOL" -l "$b" | grep -q '@executable_path/../Frameworks' \
-    || install_name_tool -add_rpath @executable_path/../Frameworks "$b"
-done
-rmdir "$APP_BUNDLE/Contents/Frameworks" 2>/dev/null || true                      # only if empty
-
-# ---------- sign: nested code first, then the CLI, then the main binary, then the bundle ----------
-if [ "$RELEASE" = true ]; then
-  SIGN=(codesign --force --options runtime --timestamp --sign "$SIGNING_IDENTITY")
-  for fw in "$APP_BUNDLE/Contents/Frameworks"/*.framework; do [ -d "$fw" ] && "${SIGN[@]}" "$fw"; done
-  "${SIGN[@]}" "$APP_BUNDLE/Contents/MacOS/$CLI"                                   # no entitlements: never uses camera/mic
-  "${SIGN[@]}" --entitlements "$ENTITLEMENTS" "$APP_BUNDLE/Contents/MacOS/$EXECUTABLE"
-  "${SIGN[@]}" --entitlements "$ENTITLEMENTS" "$APP_BUNDLE"
-  codesign --verify --strict --deep --verbose=2 "$APP_BUNDLE"
-  # The signed entitlements must equal VoxClip.entitlements exactly (plutil xml1 output has sorted keys).
-  codesign -d --entitlements - --xml "$APP_BUNDLE" > "$DIST/ent-signed.plist" 2>/dev/null
-  plutil -convert xml1 "$DIST/ent-signed.plist"
-  plutil -convert xml1 -o "$DIST/ent-expected.plist" "$ENTITLEMENTS"
-  cmp -s "$DIST/ent-signed.plist" "$DIST/ent-expected.plist" \
-    || { echo "Signed entitlements differ from $ENTITLEMENTS" >&2; exit 1; }
-  rm -f "$DIST/ent-signed.plist" "$DIST/ent-expected.plist"
-else
-  codesign --force --deep --sign - "$APP_BUNDLE"
-  codesign --verify --verbose "$APP_BUNDLE"
-fi
-echo "Built $APP_BUNDLE"
-if [ "$SIGN_ONLY" = true ]; then echo "Developer ID signed local build: open \"$APP_BUNDLE\""; exit 0; fi
-if [ "$RELEASE" != true ]; then echo "Run: open \"$APP_BUNDLE\"   Release: ./bundle.sh --release --no-upload"; exit 0; fi
-
-# ---------- notarize (status read from JSON, log printed on failure) ----------
-notarize() {
-  local file="$1" json status id
-  json=$(mktemp)
-  xcrun notarytool submit "$file" --keychain-profile "$NOTARIZE_PROFILE" --wait --output-format json > "$json" || true
-  status=$(/usr/bin/plutil -extract status raw -o - "$json" 2>/dev/null || echo "")
-  id=$(/usr/bin/plutil -extract id raw -o - "$json" 2>/dev/null || echo "")
-  if [ "$status" != "Accepted" ]; then
-    echo "Notarization of $file: ${status:-no status}" >&2; cat "$json" >&2
-    # HTTP 403 "A required agreement is missing or has expired": the Account Holder must accept it at developer.apple.com.
-    [ -n "$id" ] && xcrun notarytool log "$id" --keychain-profile "$NOTARIZE_PROFILE" >&2 || true
-    exit 1
-  fi
-  echo "Notarized $file ($id)"
-}
-
-rm -f "$ZIP" "$DMG" "$SUMS"
-ditto -c -k --sequesterRsrc --keepParent "$APP_BUNDLE" "$ZIP"
-notarize "$ZIP"
-xcrun stapler staple "$APP_BUNDLE"
-xcrun stapler validate "$APP_BUNDLE"
-rm -f "$ZIP"; ditto -c -k --sequesterRsrc --keepParent "$APP_BUNDLE" "$ZIP"     # the zip now carries the ticket
-spctl --assess --type execute --verbose=2 "$APP_BUNDLE"
-
-command -v create-dmg >/dev/null || { echo "create-dmg missing: brew install create-dmg" >&2; exit 1; }
-create-dmg --volname "$DISPLAY_NAME" --background "dmg-background.png" \
-  --window-pos 200 120 --window-size 600 400 --icon-size 100 \
-  --icon "$DISPLAY_NAME.app" 150 190 --hide-extension "$DISPLAY_NAME.app" --app-drop-link 450 190 \
-  "$DMG" "$APP_BUNDLE" || {
-    echo "create-dmg failed, falling back to hdiutil"
-    rm -f "$DMG"; hdiutil create -volname "$DISPLAY_NAME" -srcfolder "$APP_BUNDLE" -ov -format UDZO "$DMG"; }
-codesign --force --timestamp --sign "$SIGNING_IDENTITY" "$DMG"
-notarize "$DMG"                                                                    # the DMG is notarized separately
-xcrun stapler staple "$DMG"
-xcrun stapler validate "$DMG"
-spctl --assess --type open --context context:primary-signature --verbose=2 "$DMG"
-
-(cd "$DIST" && shasum -a 256 "$(basename "$DMG")" "$(basename "$ZIP")" > "$(basename "$SUMS")")
-echo "Release artifacts (signed, notarized, stapled): $DMG, $ZIP, $SUMS"
-if [ "$NO_UPLOAD" = true ]; then echo "Not uploaded. Publish with: ./bundle.sh --upload-only"; exit 0; fi
-upload
-```
-
-What the template guarantees, step by step:
-
-1. **SDK pin check.** Reads the SDK version from `SDKSettings`, passes `-platform_version macos <min> <sdk>` to the linker, and verifies `LC_BUILD_VERSION sdk` on both executables with a real `otool` (since Xcode 27, `/usr/bin/otool` goes through `xcrun`). A wrong stamp makes macOS draw pre-Liquid-Glass controls.
-2. **Licence gate.** Fails if espeak-ng, x264, x265 or ffmpeg symbols are linked.
-3. **Resources.** Copies exactly the runtime `shared/` folders (`caption-styles catalog design fonts prompts schemas`) and checks them byte for byte against the repository; copies the root `THIRD_PARTY_NOTICES.md`, `LICENSE` and the icon from `shared/brand`; strips dSYMs and thins every embedded framework to arm64.
-4. **Nested-first signing with `--timestamp`.** Frameworks (whisper.cpp), then `voxclip-cli` (no entitlements), then the main executable with entitlements, then the bundle. Same Team ID everywhere, so library validation passes without `disable-library-validation`. Hardened runtime on every Mach-O; no other runtime exceptions.
-5. **Entitlement check.** The signed bundle must carry exactly camera + audio-input.
-6. **Notarize the zip**, parse `status` from `--output-format json`, require `Accepted`, otherwise print `notarytool log`. **Staple** the app and re-zip so the zip carries the ticket. `spctl --assess --type execute`.
-7. **DMG** with `create-dmg` (fallback `hdiutil`), **sign the DMG** with `--timestamp`, **notarize the DMG separately**, staple, validate, `spctl --assess --type open --context context:primary-signature`.
-8. **sha256** sums in `SHA256SUMS-macOS.txt`.
-9. **Upload** to a **draft** GitHub Release `v<version>` (created with notes from `CHANGELOG.md` if missing; refuses to touch a published release).
-
-`dist/` is ignored by git (`*.app`, `*.dmg`, `*.zip` patterns in `.gitignore`; add `apps/macos/dist/` when scaffolding).
+1. **SDK pin check.** Read the selected SDK version from `SDKSettings`, pass `-platform_version macos <min> <sdk>` to Swift's linker, and verify both `LC_BUILD_VERSION sdk` and `minos` on both executables with Xcode's real `otool`. The package and plist minimum macOS versions must agree. A stale SDK stamp makes macOS draw pre-Liquid-Glass controls.
+2. **Licence gate.** Fail closed if any shipped Mach-O cannot be inspected, or contains espeak/espeak-ng, x264, x265 or FFmpeg C symbols or linked libraries. Write `nm -a` and `otool -L` output to temporary files in the work directory and grep those files (excluding the otool filename header), never a multi-megabyte producer pipeline that can mask a match through SIGPIPE under `pipefail`.
+3. **Resources.** Copy only Git-tracked runtime files in `shared/{caption-styles,catalog,design,fonts,prompts,schemas}`, excluding nested `fixtures/`; untracked/ignored files, ingest data, brand sources and tools never ship. Copy and byte-compare with the same NUL-delimited tracked manifests, not a scan of untracked files. List ignored files with `git ls-files -z`, rejecting listing errors and ignored files in shipped shared directories even with `--allow-dirty`, printing offending paths first. Ignore `.DS_Store` basenames everywhere in this gate, including non-ASCII, quoted or newline-containing paths, because untracked files never ship. Copy root `THIRD_PARTY_NOTICES.md`, `LICENSE` and the icon from `shared/brand`; strip dSYMs and thin embedded code to arm64.
+4. **Nested-first signing with `--timestamp`.** Sign embedded Mach-O files and framework wrappers, then `voxclip-cli`, then the main executable and bundle. The CLI has no entitlements and is signed with `--identifier com.voxconvo.voxclip.cli`; verify that identifier and require its designated requirement to differ from the app's `com.voxconvo.voxclip` requirement. Signed local app rebuilds retain the production app requirement. Require the same Team ID, hardened runtime and secure timestamp on every Developer ID Mach-O; no `disable-library-validation` or other runtime exceptions.
+5. **Entitlements and notices.** The signed bundle must carry exactly camera + audio-input. Every embedded framework and dylib (including `Contents/Frameworks/*.dylib`) must match the same known-notice table and its exact copyright marker in the bundled notices file; unknown names fail closed. The current known names are `whisper.framework` and `libwhisper.dylib` (ggml authors).
+6. **Notarize the zip.** Check the screen lock state before the release build and again before every notarization submission (section 5). The current `--upload-only` flow never notarizes; any future upload path that submits must use the same gate. Require a successful `notarytool` command, JSON `status=Accepted` and a valid submission ID; otherwise print stderr/JSON and fetch the submission log when an ID is available. Map `No Keychain password item found for profile` to the same locked-screen diagnostic, not advice to recreate credentials. Retain diagnostics in `dist/notarization/`; never retry submissions automatically. Staple/validate the app and re-zip it so the zip carries the ticket; assess with `spctl --assess --type execute`.
+7. **DMG.** Require installed `create-dmg` before any notarization (`brew install create-dmg`). Use the branded 600×400 background and Applications link; if the installed tool fails, fall back to `hdiutil` with the same app, link and hidden background but no custom Finder positioning. Sign the DMG with `--timestamp`, notarize it separately, staple/validate it and assess with `spctl --assess --type open --context context:primary-signature`.
+8. **Checksums and metadata.** Write `SHA256SUMS-macOS.txt` for the DMG and final zip, plus the local release metadata above. Uploads verify the checksums, signatures, staples and both Gatekeeper assessments before any remote mutation. `dist/` is ignored by Git; it and notarization diagnostics are never committed or uploaded as extra assets.
+9. **Draft upload.** Require authenticated `gh` and identical annotated tag objects locally and on GitHub. Query `isDraft`, `tagName` and `isPrerelease`; refuse published releases, tag mismatches and prerelease flags inconsistent with the version. Only a failed query explicitly reporting `release not found` takes the create path. On HTTP, rate-limit or GraphQL errors, print stderr and stop with `Cannot query release <tag>; not creating a draft`. Create a missing draft with `--verify-tag`, title `VoxClip <version>` and the nonempty exact `## <version>` section from root `CHANGELOG.md`; numbered beta versions add `--prerelease` in real and dry-run commands. Re-query after creation before uploading. A full release checks GitHub prerequisites before building/notarizing, then rechecks immediately before upload. Never publish automatically or replace published assets.
 
 ---
 
@@ -537,17 +328,17 @@ Exit non-zero if signtool fails or if any file is still not `Valid` afterwards. 
 
 ## 4. Version bump and release procedure
 
-1. Pick the version `X.Y.Z` (semver; pre-releases are `X.Y.Z-beta.N` and are created with `gh release create --prerelease`, never "latest").
+1. Pick the version `X.Y.Z` or `X.Y.Z-beta.N` (numeric components only; no other suffixes or build metadata). macOS rejects any other version format. Numbered beta drafts are created with `gh release create --prerelease` (also printed in dry runs), never "latest"; an existing draft's `isPrerelease` must agree with the version. Use the full chosen version, including `-beta.N`, everywhere `X.Y.Z` appears below.
 2. Run `tools/release/set-version.sh X.Y.Z`. It sets `CFBundleShortVersionString` to `X.Y.Z`, increments `CFBundleVersion` by 1 in `apps/macos/Sources/VoxClip/Info.plist`, and sets `<Version>` in `apps/windows/Directory.Build.props`. `tools/release/check-version.sh` (also run in CI) fails if the two disagree.
 3. Add a `## X.Y.Z - YYYY-MM-DD` section at the top of `CHANGELOG.md` (user-facing changes, one line each).
 3a. **Subscription connector check** (ADR-R20). Confirm that `enabled` for `claude-code` and `codex` in `shared/catalog/llm-providers.json` matches the lead's current decision (0.1.0: both enabled, decided 2026-10-25). If a vendor has objected since (ai.md section 14 item 8), set that connector to `false` for this release. The switch is bundled data, so this is the only point where it can withdraw a connector.
 3b. **Notices.** Every component added since the last release has its section in `THIRD_PARTY_NOTICES.md` with the exact licence text from the pinned package (not a placeholder).
 4. Commit `Release X.Y.Z`, create the annotated tag `git tag -a vX.Y.Z -m "VoxClip X.Y.Z"`, push the commit and the tag. CI must be green on that commit.
-5. macOS: `cd apps/macos && ./bundle.sh --release` (creates the draft release `vX.Y.Z` and uploads `VoxClip-macOS.dmg`, `VoxClip-macOS.zip`, `SHA256SUMS-macOS.txt`).
+5. macOS: unlock the Mac, then `cd apps/macos && ./bundle.sh --release` (creates or updates draft `vX.Y.Z` and uploads `VoxClip-macOS.dmg`, `VoxClip-macOS.zip`, `SHA256SUMS-macOS.txt`). The script refuses a locked screen before building and before each notarization (section 5). To separate packaging from upload, use `--release --no-upload`, inspect with `--upload-only --dry-run`, then use `--upload-only`. A missing release is created only on `release not found`; transient query errors stop without creating a draft. Never publish automatically.
 6. Windows: start the VM, then `VOXCLIP_WIN_HOST=… VOXCLIP_SIGNING_ENV=… apps/windows/build/release-windows.sh` (uploads both Setup.exe files, the feeds, the packages and `SHA256SUMS-windows.txt` to the same draft).
-7. Smoke-test from the draft: `gh release download vX.Y.Z --pattern 'VoxClip-*' -D /tmp/vc-rc`; on a second macOS account open the DMG (quarantined download) and launch; on a clean Windows VM snapshot run both installers; check that an installed previous version updates (Windows) and that "Check for Updates…" sees the new version once published (macOS).
-8. Publish: `gh release edit vX.Y.Z --draft=false --latest`.
-9. Check the download page redirects: `curl -sI https://voxconvo.com/download/macos | grep -i location` (and `windows`, `windows-arm64`) point at `releases/latest/download/<asset>`, and those URLs return 302 to the new files.
+7. Smoke-test from the draft: `gh release download vX.Y.Z --pattern 'VoxClip-*' -D /tmp/vc-rc`; on a second macOS account open the DMG (quarantined download) and launch; on a clean Windows VM snapshot run both installers. For stable releases only, check that an installed previous version updates (Windows) and that "Check for Updates…" sees the new version once published (macOS). Beta smoke tests cover the downloaded DMG and installers; neither update check offers betas (architecture.md sections 13.1 and 13.2).
+8. Publish stable releases with `gh release edit vX.Y.Z --draft=false --latest`. Publish betas with `gh release edit vX.Y.Z-beta.N --draft=false`, keeping the draft's prerelease flag; never pass `--latest` for a beta.
+9. **Stable releases only:** check the download page redirects: `curl -sI https://voxconvo.com/download/macos | grep -i location` (and `windows`, `windows-arm64`) point at `releases/latest/download/<asset>`, and those URLs return 302 to the new files. For betas, the download page keeps serving the last stable release.
 
 ---
 
@@ -556,8 +347,8 @@ Exit non-zero if signtool fails or if any file is still not `Valid` afterwards. 
 | Symptom | Cause and fix |
 |---|---|
 | `notarytool submit` → `HTTP status code: 403. A required agreement is missing or has expired.` | Not a credential problem. Apple revised the Program License Agreement. The Account Holder must accept it at developer.apple.com → Agreements, Tax, and Banking. It cannot be scripted. `set -e` stops the script before stapling or uploading, so published assets are untouched; re-run after accepting |
-| `No Keychain password item found for profile: superscribe-notarize-2` while the profile worked earlier | The Mac's screen is locked. notarytool keeps the profile in the data-protection keychain, which is unreadable while the screen is locked even though `security show-keychain-info` reports the login keychain unlocked. Check with `ioreg -n Root -d1 -a \| plutil -extract IOConsoleUsers xml1 -o - - \| grep -A1 CGSSessionScreenIsLocked`; unlock the Mac and re-run. Do not re-create the profile |
-| Notary profile "missing" | The `superscribe-notarize-2` profile lives in the login keychain and is lost with it (the original `superscribe-notarize` died on 22 Sep 2026). Test with `xcrun notarytool history --keychain-profile superscribe-notarize-2`. Re-create interactively with `xcrun notarytool store-credentials superscribe-notarize-2 --apple-id <the Apple ID from the maintainer's private notes> --team-id 5ZJ9N8WURW`; it prompts for an app-specific password, so the password never reaches shell history. Never write the Apple ID or password into this repo |
+| `No Keychain password item found for profile: superscribe-notarize-2` while the profile worked earlier | The script checks screen lock before the release build and before every notarization using the command below. Both a locked-screen result and this notarytool error stop with `The Mac screen is locked (doc/release.md §5); unlock it and re-run. Do not re-create the notary profile.` An unreadable lock state also stops before submission. notarytool keeps the profile in the data-protection keychain, which is unreadable while the screen is locked even though `security show-keychain-info` reports the login keychain unlocked. Check with `ioreg -n Root -d1 -a \| plutil -extract IOConsoleUsers xml1 -o - - \| grep -A1 CGSSessionScreenIsLocked`; unlock the Mac and re-run. Do not re-create the profile |
+| Notary profile still missing after unlocking | First unlock the screen and retry; do not recreate the profile for the locked-screen error above. The profile can genuinely be lost when its keychain is replaced (the original `superscribe-notarize` died on 22 Sep 2026). Test with `xcrun notarytool history --keychain-profile superscribe-notarize-2`. Re-create interactively with `xcrun notarytool store-credentials superscribe-notarize-2 --apple-id <the Apple ID from the maintainer's private notes> --team-id 5ZJ9N8WURW`; it prompts for an app-specific password, so the password never reaches shell history. Never write the Apple ID or password into this repo |
 | App draws old-style controls, no Liquid Glass | The binary carries the wrong SDK stamp (seen when Xcode ran without an accepted licence). `bundle.sh` pins and verifies it; accept the Xcode licence and rebuild |
 | `.build/release/VoxClip` is stale | Since Xcode 27 the products moved under `.build/out/Products/…`. Always use `swift build --show-bin-path` |
 | Login-password prompt for the Keychain during local runs | An ad-hoc-signed build reading an item created by the signed app. Use `./bundle.sh --sign-only` for local testing; the CLI never touches the Keychain |

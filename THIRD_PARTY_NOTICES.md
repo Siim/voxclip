@@ -510,6 +510,55 @@ Libraries linked into or shipped with the apps. The version of each is pinned in
 | whisper.cpp / ggml (xcframework, release b5454) | on-device transcription | MIT (The ggml authors) |
 | swift-argument-parser | `voxclip-cli` argument parsing | Apache-2.0 (text above) |
 
+#### whisper.cpp / ggml b5454
+
+Exact text from `LICENSE` at the pinned whisper.cpp `b5454` tag:
+
+```text
+MIT License
+
+Copyright (c) 2023-2026 The ggml authors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+#### swift-argument-parser 1.8.2
+
+Copyright line from the pinned package's `Sources/ArgumentParser/Parsable Types/ParsableCommand.swift`:
+
+```text
+Copyright (c) 2020 Apple Inc. and the Swift project authors
+Licensed under Apache License v2.0 with Runtime Library Exception
+```
+
+The Apache License 2.0 text is reproduced above. The pinned package's `LICENSE.txt` also includes this exception:
+
+```text
+## Runtime Library Exception to the Apache 2.0 License: ##
+
+
+    As an exception, if you use this Software to compile your source code and
+    portions of this Software are embedded into the binary product as a result,
+    you may redistribute such product without providing attribution as would
+    otherwise be required by Sections 4(a), 4(b) and 4(d) of the License.
+```
+
 ### Windows
 
 | Component | Use | Licence |
