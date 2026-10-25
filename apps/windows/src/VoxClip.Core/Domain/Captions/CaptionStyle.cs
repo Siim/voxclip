@@ -191,6 +191,7 @@ public sealed record CaptionLayout
 
     /// <summary>null disables gap breaks.</summary>
     [JsonPropertyName("breakOnGapSec")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public double? BreakOnGapSec { get; init; } = 0.6;
 
     /// <summary>null means no limit.</summary>

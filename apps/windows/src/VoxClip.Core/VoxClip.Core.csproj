@@ -6,5 +6,6 @@
   </PropertyGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="VoxClip.Core.Tests" />
+    <InternalsVisibleTo Include="VoxClip.Media.Tests" />
   </ItemGroup>
 </Project>
