@@ -1,0 +1,1276 @@
+{
+  "schema": "voxclip-llm-fixtures/1",
+  "id": "format-transcript",
+  "origin": "voxclip",
+  "sources": {
+    "shared/prompts/clip-finder.json": "f087788566198c36c19ddcc7e263f321d539fec4ed41d69a1d472eea152e4a89",
+    "shared/prompts/ai-tighten.json": "0bdb47a851a41a0747235c248641905cf1d62cd39c70c651b2f765a14acc4163",
+    "shared/catalog/llm-providers.json": "0d55a38556702ed6a527f00516c655d3fecd0281c50a4f41a6156546fc23d52f"
+  },
+  "cases": [
+    {
+      "id": "F1",
+      "kind": "format-transcript",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §13.2",
+      "input": {
+        "entries": [
+          {
+            "id": "w0",
+            "index": 0,
+            "text": "So,",
+            "start": 0,
+            "end": 0.3
+          },
+          {
+            "id": "w1",
+            "index": 1,
+            "text": "today",
+            "start": 0.35,
+            "end": 0.7
+          },
+          {
+            "id": "w2",
+            "index": 2,
+            "text": "I",
+            "start": 0.75,
+            "end": 0.85
+          },
+          {
+            "id": "w3",
+            "index": 3,
+            "text": "want",
+            "start": 0.85,
+            "end": 1.1
+          },
+          {
+            "id": "w4",
+            "index": 4,
+            "text": "to",
+            "start": 1.1,
+            "end": 1.2
+          },
+          {
+            "id": "w5",
+            "index": 5,
+            "text": "talk.",
+            "start": 1.2,
+            "end": 1.6
+          },
+          {
+            "id": "w6",
+            "index": 6,
+            "text": "Um",
+            "start": 3.85,
+            "end": 4.1
+          },
+          {
+            "id": "w7",
+            "index": 7,
+            "text": "why",
+            "start": 4.2,
+            "end": 4.45
+          },
+          {
+            "id": "w8",
+            "index": 8,
+            "text": "cut",
+            "start": 4.5,
+            "end": 4.8
+          },
+          {
+            "id": "w9",
+            "index": 9,
+            "text": "by",
+            "start": 4.85,
+            "end": 5
+          },
+          {
+            "id": "w10",
+            "index": 10,
+            "text": "words?",
+            "start": 5,
+            "end": 5.4
+          },
+          {
+            "id": "w11",
+            "index": 11,
+            "text": "\"It",
+            "start": 5.5,
+            "end": 5.7
+          },
+          {
+            "id": "w12",
+            "index": 12,
+            "text": "works.\"",
+            "start": 5.7,
+            "end": 6.2
+          },
+          {
+            "id": "w13",
+            "index": 13,
+            "text": "Fast",
+            "start": 7.45,
+            "end": 7.8
+          },
+          {
+            "id": "w14",
+            "index": 14,
+            "text": "and",
+            "start": 7.85,
+            "end": 8
+          },
+          {
+            "id": "w15",
+            "index": 15,
+            "text": "clean",
+            "start": 8.05,
+            "end": 8.5
+          },
+          {
+            "id": "w16",
+            "index": 16,
+            "text": "Tere!",
+            "start": 70,
+            "end": 70.4
+          },
+          {
+            "id": "w17",
+            "index": 17,
+            "text": "Mis",
+            "start": 70.5,
+            "end": 70.7
+          },
+          {
+            "id": "w18",
+            "index": 18,
+            "text": "toimub?",
+            "start": 70.75,
+            "end": 71.2
+          },
+          {
+            "id": "w19",
+            "index": 19,
+            "text": "「本当",
+            "start": 71.3,
+            "end": 71.6
+          },
+          {
+            "id": "w20",
+            "index": 20,
+            "text": "です。」",
+            "start": 71.6,
+            "end": 72
+          },
+          {
+            "id": "w21",
+            "index": 21,
+            "text": "w21",
+            "start": 72.1,
+            "end": 72.35
+          },
+          {
+            "id": "w22",
+            "index": 22,
+            "text": "w22",
+            "start": 72.4,
+            "end": 72.65
+          },
+          {
+            "id": "w23",
+            "index": 23,
+            "text": "w23",
+            "start": 72.7,
+            "end": 72.95
+          },
+          {
+            "id": "w24",
+            "index": 24,
+            "text": "w24",
+            "start": 73,
+            "end": 73.25
+          },
+          {
+            "id": "w25",
+            "index": 25,
+            "text": "w25",
+            "start": 73.3,
+            "end": 73.55
+          },
+          {
+            "id": "w26",
+            "index": 26,
+            "text": "w26",
+            "start": 73.6,
+            "end": 73.85
+          },
+          {
+            "id": "w27",
+            "index": 27,
+            "text": "w27",
+            "start": 73.9,
+            "end": 74.15
+          },
+          {
+            "id": "w28",
+            "index": 28,
+            "text": "w28",
+            "start": 74.2,
+            "end": 74.45
+          },
+          {
+            "id": "w29",
+            "index": 29,
+            "text": "w29",
+            "start": 74.5,
+            "end": 74.75
+          },
+          {
+            "id": "w30",
+            "index": 30,
+            "text": "w30",
+            "start": 74.8,
+            "end": 75.05
+          },
+          {
+            "id": "w31",
+            "index": 31,
+            "text": "w31",
+            "start": 75.1,
+            "end": 75.35
+          },
+          {
+            "id": "w32",
+            "index": 32,
+            "text": "w32",
+            "start": 75.4,
+            "end": 75.65
+          },
+          {
+            "id": "w33",
+            "index": 33,
+            "text": "w33",
+            "start": 75.7,
+            "end": 75.95
+          },
+          {
+            "id": "w34",
+            "index": 34,
+            "text": "w34",
+            "start": 76,
+            "end": 76.25
+          },
+          {
+            "id": "w35",
+            "index": 35,
+            "text": "w35",
+            "start": 76.3,
+            "end": 76.55
+          },
+          {
+            "id": "w36",
+            "index": 36,
+            "text": "w36",
+            "start": 76.6,
+            "end": 76.85
+          },
+          {
+            "id": "w37",
+            "index": 37,
+            "text": "w37",
+            "start": 76.9,
+            "end": 77.15
+          },
+          {
+            "id": "w38",
+            "index": 38,
+            "text": "w38",
+            "start": 77.2,
+            "end": 77.45
+          },
+          {
+            "id": "w39",
+            "index": 39,
+            "text": "w39",
+            "start": 77.5,
+            "end": 77.75
+          },
+          {
+            "id": "w40",
+            "index": 40,
+            "text": "w40",
+            "start": 77.8,
+            "end": 78.05
+          },
+          {
+            "id": "w41",
+            "index": 41,
+            "text": "w41",
+            "start": 78.1,
+            "end": 78.35
+          },
+          {
+            "id": "w42",
+            "index": 42,
+            "text": "w42",
+            "start": 78.4,
+            "end": 78.65
+          },
+          {
+            "id": "w43",
+            "index": 43,
+            "text": "w43",
+            "start": 78.7,
+            "end": 78.95
+          },
+          {
+            "id": "w44",
+            "index": 44,
+            "text": "w44",
+            "start": 79,
+            "end": 79.25
+          },
+          {
+            "id": "w45",
+            "index": 45,
+            "text": "w45",
+            "start": 79.3,
+            "end": 79.55
+          },
+          {
+            "id": "w46",
+            "index": 46,
+            "text": "w46",
+            "start": 79.6,
+            "end": 79.85
+          },
+          {
+            "id": "w47",
+            "index": 47,
+            "text": "w47",
+            "start": 79.9,
+            "end": 80.15
+          },
+          {
+            "id": "w48",
+            "index": 48,
+            "text": "w48",
+            "start": 80.2,
+            "end": 80.45
+          },
+          {
+            "id": "w49",
+            "index": 49,
+            "text": "w49",
+            "start": 80.5,
+            "end": 80.75
+          },
+          {
+            "id": "w50",
+            "index": 50,
+            "text": "w50",
+            "start": 80.8,
+            "end": 81.05
+          },
+          {
+            "id": "w51",
+            "index": 51,
+            "text": "w51",
+            "start": 81.1,
+            "end": 81.35
+          },
+          {
+            "id": "w52",
+            "index": 52,
+            "text": "w52",
+            "start": 81.4,
+            "end": 81.65
+          },
+          {
+            "id": "w53",
+            "index": 53,
+            "text": "w53",
+            "start": 81.7,
+            "end": 81.95
+          },
+          {
+            "id": "w54",
+            "index": 54,
+            "text": "w54",
+            "start": 82,
+            "end": 82.25
+          },
+          {
+            "id": "w55",
+            "index": 55,
+            "text": "w55",
+            "start": 82.3,
+            "end": 82.55
+          },
+          {
+            "id": "w56",
+            "index": 56,
+            "text": "w56",
+            "start": 82.6,
+            "end": 82.85
+          },
+          {
+            "id": "w57",
+            "index": 57,
+            "text": "w57",
+            "start": 82.9,
+            "end": 83.15
+          },
+          {
+            "id": "w58",
+            "index": 58,
+            "text": "w58",
+            "start": 83.2,
+            "end": 83.45
+          },
+          {
+            "id": "w59",
+            "index": 59,
+            "text": "w59",
+            "start": 83.5,
+            "end": 83.75
+          },
+          {
+            "id": "w60",
+            "index": 60,
+            "text": "w60",
+            "start": 83.8,
+            "end": 84.05
+          },
+          {
+            "id": "w61",
+            "index": 61,
+            "text": "w61",
+            "start": 84.1,
+            "end": 84.35
+          },
+          {
+            "id": "w62",
+            "index": 62,
+            "text": "w62",
+            "start": 84.4,
+            "end": 84.65
+          },
+          {
+            "id": "w63",
+            "index": 63,
+            "text": "w63",
+            "start": 84.7,
+            "end": 84.95
+          },
+          {
+            "id": "w64",
+            "index": 64,
+            "text": "w64",
+            "start": 85,
+            "end": 85.25
+          },
+          {
+            "id": "w65",
+            "index": 65,
+            "text": "w65",
+            "start": 85.3,
+            "end": 85.55
+          },
+          {
+            "id": "w66",
+            "index": 66,
+            "text": "end.",
+            "start": 200,
+            "end": 200.5
+          }
+        ]
+      },
+      "expected": {
+        "lines": [
+          {
+            "firstPos": 0,
+            "lastPos": 5,
+            "firstIndex": 0,
+            "lastIndex": 5,
+            "start": 0,
+            "end": 1.6,
+            "text": "[0-5] 0:00 So, today I want to talk.",
+            "pauseAfter": "(pause 2.3s)"
+          },
+          {
+            "firstPos": 6,
+            "lastPos": 10,
+            "firstIndex": 6,
+            "lastIndex": 10,
+            "start": 3.85,
+            "end": 5.4,
+            "text": "[6-10] 0:03 Um why cut by words?",
+            "pauseAfter": null
+          },
+          {
+            "firstPos": 11,
+            "lastPos": 12,
+            "firstIndex": 11,
+            "lastIndex": 12,
+            "start": 5.5,
+            "end": 6.2,
+            "text": "[11-12] 0:05 \"It works.\"",
+            "pauseAfter": null
+          },
+          {
+            "firstPos": 13,
+            "lastPos": 15,
+            "firstIndex": 13,
+            "lastIndex": 15,
+            "start": 7.45,
+            "end": 8.5,
+            "text": "[13-15] 0:07 Fast and clean",
+            "pauseAfter": "(pause 61.5s)"
+          },
+          {
+            "firstPos": 16,
+            "lastPos": 16,
+            "firstIndex": 16,
+            "lastIndex": 16,
+            "start": 70,
+            "end": 70.4,
+            "text": "[16-16] 1:10 Tere!",
+            "pauseAfter": null
+          },
+          {
+            "firstPos": 17,
+            "lastPos": 18,
+            "firstIndex": 17,
+            "lastIndex": 18,
+            "start": 70.5,
+            "end": 71.2,
+            "text": "[17-18] 1:10 Mis toimub?",
+            "pauseAfter": null
+          },
+          {
+            "firstPos": 19,
+            "lastPos": 59,
+            "firstIndex": 19,
+            "lastIndex": 59,
+            "start": 71.3,
+            "end": 83.75,
+            "text": "[19-59] 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59",
+            "pauseAfter": null
+          },
+          {
+            "firstPos": 60,
+            "lastPos": 65,
+            "firstIndex": 60,
+            "lastIndex": 65,
+            "start": 83.8,
+            "end": 85.55,
+            "text": "[60-65] 1:23 w60 w61 w62 w63 w64 w65",
+            "pauseAfter": "(pause 114.5s)"
+          },
+          {
+            "firstPos": 66,
+            "lastPos": 66,
+            "firstIndex": 66,
+            "lastIndex": 66,
+            "start": 200,
+            "end": 200.5,
+            "text": "[66-66] 3:20 end.",
+            "pauseAfter": null
+          }
+        ],
+        "rendered": "[0-5] 0:00 So, today I want to talk.\n(pause 2.3s)\n[6-10] 0:03 Um why cut by words?\n[11-12] 0:05 \"It works.\"\n[13-15] 0:07 Fast and clean\n(pause 61.5s)\n[16-16] 1:10 Tere!\n[17-18] 1:10 Mis toimub?\n[19-59] 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n[60-65] 1:23 w60 w61 w62 w63 w64 w65\n(pause 114.5s)\n[66-66] 3:20 end."
+      }
+    },
+    {
+      "id": "empty",
+      "kind": "format-transcript",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §11.3",
+      "input": {
+        "entries": []
+      },
+      "expected": {
+        "lines": [],
+        "rendered": ""
+      }
+    },
+    {
+      "id": "sparse-indices-41-entries",
+      "kind": "format-transcript",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §11.3",
+      "input": {
+        "entries": [
+          {
+            "id": "w40",
+            "index": 40,
+            "text": "word0",
+            "start": 0,
+            "end": 0.25
+          },
+          {
+            "id": "w43",
+            "index": 43,
+            "text": "word1",
+            "start": 0.3,
+            "end": 0.55
+          },
+          {
+            "id": "w46",
+            "index": 46,
+            "text": "word2",
+            "start": 0.6,
+            "end": 0.85
+          },
+          {
+            "id": "w49",
+            "index": 49,
+            "text": "word3",
+            "start": 0.8999999999999999,
+            "end": 1.15
+          },
+          {
+            "id": "w52",
+            "index": 52,
+            "text": "word4",
+            "start": 1.2,
+            "end": 1.45
+          },
+          {
+            "id": "w55",
+            "index": 55,
+            "text": "word5",
+            "start": 1.5,
+            "end": 1.75
+          },
+          {
+            "id": "w58",
+            "index": 58,
+            "text": "word6",
+            "start": 1.7999999999999998,
+            "end": 2.05
+          },
+          {
+            "id": "w61",
+            "index": 61,
+            "text": "word7",
+            "start": 2.1,
+            "end": 2.35
+          },
+          {
+            "id": "w64",
+            "index": 64,
+            "text": "word8",
+            "start": 2.4,
+            "end": 2.65
+          },
+          {
+            "id": "w67",
+            "index": 67,
+            "text": "word9",
+            "start": 2.6999999999999997,
+            "end": 2.9499999999999997
+          },
+          {
+            "id": "w70",
+            "index": 70,
+            "text": "word10",
+            "start": 3,
+            "end": 3.25
+          },
+          {
+            "id": "w73",
+            "index": 73,
+            "text": "word11",
+            "start": 3.3,
+            "end": 3.55
+          },
+          {
+            "id": "w76",
+            "index": 76,
+            "text": "word12",
+            "start": 3.5999999999999996,
+            "end": 3.8499999999999996
+          },
+          {
+            "id": "w79",
+            "index": 79,
+            "text": "word13",
+            "start": 3.9,
+            "end": 4.15
+          },
+          {
+            "id": "w82",
+            "index": 82,
+            "text": "word14",
+            "start": 4.2,
+            "end": 4.45
+          },
+          {
+            "id": "w85",
+            "index": 85,
+            "text": "word15",
+            "start": 4.5,
+            "end": 4.75
+          },
+          {
+            "id": "w88",
+            "index": 88,
+            "text": "word16",
+            "start": 4.8,
+            "end": 5.05
+          },
+          {
+            "id": "w91",
+            "index": 91,
+            "text": "word17",
+            "start": 5.1,
+            "end": 5.35
+          },
+          {
+            "id": "w94",
+            "index": 94,
+            "text": "word18",
+            "start": 5.3999999999999995,
+            "end": 5.6499999999999995
+          },
+          {
+            "id": "w97",
+            "index": 97,
+            "text": "word19",
+            "start": 5.7,
+            "end": 5.95
+          },
+          {
+            "id": "w100",
+            "index": 100,
+            "text": "word20",
+            "start": 6,
+            "end": 6.25
+          },
+          {
+            "id": "w103",
+            "index": 103,
+            "text": "word21",
+            "start": 6.3,
+            "end": 6.55
+          },
+          {
+            "id": "w106",
+            "index": 106,
+            "text": "word22",
+            "start": 6.6,
+            "end": 6.85
+          },
+          {
+            "id": "w109",
+            "index": 109,
+            "text": "word23",
+            "start": 6.8999999999999995,
+            "end": 7.1499999999999995
+          },
+          {
+            "id": "w112",
+            "index": 112,
+            "text": "word24",
+            "start": 7.199999999999999,
+            "end": 7.449999999999999
+          },
+          {
+            "id": "w115",
+            "index": 115,
+            "text": "word25",
+            "start": 7.5,
+            "end": 7.75
+          },
+          {
+            "id": "w118",
+            "index": 118,
+            "text": "word26",
+            "start": 7.8,
+            "end": 8.05
+          },
+          {
+            "id": "w121",
+            "index": 121,
+            "text": "word27",
+            "start": 8.1,
+            "end": 8.35
+          },
+          {
+            "id": "w124",
+            "index": 124,
+            "text": "word28",
+            "start": 8.4,
+            "end": 8.65
+          },
+          {
+            "id": "w127",
+            "index": 127,
+            "text": "word29",
+            "start": 8.7,
+            "end": 8.95
+          },
+          {
+            "id": "w130",
+            "index": 130,
+            "text": "word30",
+            "start": 9,
+            "end": 9.25
+          },
+          {
+            "id": "w133",
+            "index": 133,
+            "text": "word31",
+            "start": 9.299999999999999,
+            "end": 9.549999999999999
+          },
+          {
+            "id": "w136",
+            "index": 136,
+            "text": "word32",
+            "start": 9.6,
+            "end": 9.85
+          },
+          {
+            "id": "w139",
+            "index": 139,
+            "text": "word33",
+            "start": 9.9,
+            "end": 10.15
+          },
+          {
+            "id": "w142",
+            "index": 142,
+            "text": "word34",
+            "start": 10.2,
+            "end": 10.45
+          },
+          {
+            "id": "w145",
+            "index": 145,
+            "text": "word35",
+            "start": 10.5,
+            "end": 10.75
+          },
+          {
+            "id": "w148",
+            "index": 148,
+            "text": "word36",
+            "start": 10.799999999999999,
+            "end": 11.049999999999999
+          },
+          {
+            "id": "w151",
+            "index": 151,
+            "text": "word37",
+            "start": 11.1,
+            "end": 11.35
+          },
+          {
+            "id": "w154",
+            "index": 154,
+            "text": "word38",
+            "start": 11.4,
+            "end": 11.65
+          },
+          {
+            "id": "w157",
+            "index": 157,
+            "text": "word39",
+            "start": 11.7,
+            "end": 11.95
+          },
+          {
+            "id": "w160",
+            "index": 160,
+            "text": "word40",
+            "start": 12,
+            "end": 12.25
+          },
+          {
+            "id": "w163",
+            "index": 163,
+            "text": "word41",
+            "start": 12.299999999999999,
+            "end": 12.549999999999999
+          }
+        ]
+      },
+      "expected": {
+        "lines": [
+          {
+            "firstPos": 0,
+            "lastPos": 40,
+            "firstIndex": 40,
+            "lastIndex": 160,
+            "start": 0,
+            "end": 12.25,
+            "text": "[40-160] 0:00 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word10 word11 word12 word13 word14 word15 word16 word17 word18 word19 word20 word21 word22 word23 word24 word25 word26 word27 word28 word29 word30 word31 word32 word33 word34 word35 word36 word37 word38 word39 word40",
+            "pauseAfter": null
+          },
+          {
+            "firstPos": 41,
+            "lastPos": 41,
+            "firstIndex": 163,
+            "lastIndex": 163,
+            "start": 12.299999999999999,
+            "end": 12.549999999999999,
+            "text": "[163-163] 0:12 word41",
+            "pauseAfter": null
+          }
+        ],
+        "rendered": "[40-160] 0:00 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word10 word11 word12 word13 word14 word15 word16 word17 word18 word19 word20 word21 word22 word23 word24 word25 word26 word27 word28 word29 word30 word31 word32 word33 word34 word35 word36 word37 word38 word39 word40\n[163-163] 0:12 word41"
+      }
+    },
+    {
+      "id": "sentence-closers",
+      "kind": "format-transcript",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §11.3",
+      "input": {
+        "entries": [
+          {
+            "id": "w0",
+            "index": 0,
+            "text": "one.”",
+            "start": 0,
+            "end": 0.25
+          },
+          {
+            "id": "w1",
+            "index": 1,
+            "text": "two!)",
+            "start": 0.3,
+            "end": 0.55
+          },
+          {
+            "id": "w2",
+            "index": 2,
+            "text": "three?'",
+            "start": 0.6,
+            "end": 0.85
+          },
+          {
+            "id": "w3",
+            "index": 3,
+            "text": "four。",
+            "start": 0.8999999999999999,
+            "end": 1.15
+          },
+          {
+            "id": "w4",
+            "index": 4,
+            "text": "five！",
+            "start": 1.2,
+            "end": 1.45
+          },
+          {
+            "id": "w5",
+            "index": 5,
+            "text": "six？",
+            "start": 1.5,
+            "end": 1.75
+          },
+          {
+            "id": "w6",
+            "index": 6,
+            "text": "not.」",
+            "start": 1.7999999999999998,
+            "end": 2.05
+          },
+          {
+            "id": "w7",
+            "index": 7,
+            "text": "joined",
+            "start": 2.1,
+            "end": 2.35
+          },
+          {
+            "id": "w8",
+            "index": 8,
+            "text": "trailing. ",
+            "start": 2.4,
+            "end": 2.65
+          },
+          {
+            "id": "w9",
+            "index": 9,
+            "text": "still",
+            "start": 2.6999999999999997,
+            "end": 2.9499999999999997
+          },
+          {
+            "id": "w10",
+            "index": 10,
+            "text": "last",
+            "start": 3,
+            "end": 3.25
+          }
+        ]
+      },
+      "expected": {
+        "lines": [
+          {
+            "firstPos": 0,
+            "lastPos": 0,
+            "firstIndex": 0,
+            "lastIndex": 0,
+            "start": 0,
+            "end": 0.25,
+            "text": "[0-0] 0:00 one.”",
+            "pauseAfter": null
+          },
+          {
+            "firstPos": 1,
+            "lastPos": 1,
+            "firstIndex": 1,
+            "lastIndex": 1,
+            "start": 0.3,
+            "end": 0.55,
+            "text": "[1-1] 0:00 two!)",
+            "pauseAfter": null
+          },
+          {
+            "firstPos": 2,
+            "lastPos": 2,
+            "firstIndex": 2,
+            "lastIndex": 2,
+            "start": 0.6,
+            "end": 0.85,
+            "text": "[2-2] 0:00 three?'",
+            "pauseAfter": null
+          },
+          {
+            "firstPos": 3,
+            "lastPos": 3,
+            "firstIndex": 3,
+            "lastIndex": 3,
+            "start": 0.8999999999999999,
+            "end": 1.15,
+            "text": "[3-3] 0:00 four。",
+            "pauseAfter": null
+          },
+          {
+            "firstPos": 4,
+            "lastPos": 4,
+            "firstIndex": 4,
+            "lastIndex": 4,
+            "start": 1.2,
+            "end": 1.45,
+            "text": "[4-4] 0:01 five！",
+            "pauseAfter": null
+          },
+          {
+            "firstPos": 5,
+            "lastPos": 5,
+            "firstIndex": 5,
+            "lastIndex": 5,
+            "start": 1.5,
+            "end": 1.75,
+            "text": "[5-5] 0:01 six？",
+            "pauseAfter": null
+          },
+          {
+            "firstPos": 6,
+            "lastPos": 10,
+            "firstIndex": 6,
+            "lastIndex": 10,
+            "start": 1.7999999999999998,
+            "end": 3.25,
+            "text": "[6-10] 0:01 not.」 joined trailing.  still last",
+            "pauseAfter": null
+          }
+        ],
+        "rendered": "[0-0] 0:00 one.”\n[1-1] 0:00 two!)\n[2-2] 0:00 three?'\n[3-3] 0:00 four。\n[4-4] 0:01 five！\n[5-5] 0:01 six？\n[6-10] 0:01 not.」 joined trailing.  still last"
+      }
+    },
+    {
+      "id": "gap-thresholds",
+      "kind": "format-transcript",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §11.3",
+      "input": {
+        "entries": [
+          {
+            "id": "w0",
+            "index": 0,
+            "text": "a",
+            "start": 0,
+            "end": 0
+          },
+          {
+            "id": "w1",
+            "index": 1,
+            "text": "b",
+            "start": 1.2,
+            "end": 2
+          },
+          {
+            "id": "w2",
+            "index": 2,
+            "text": "c",
+            "start": 3.5,
+            "end": 4
+          }
+        ]
+      },
+      "expected": {
+        "lines": [
+          {
+            "firstPos": 0,
+            "lastPos": 0,
+            "firstIndex": 0,
+            "lastIndex": 0,
+            "start": 0,
+            "end": 0,
+            "text": "[0-0] 0:00 a",
+            "pauseAfter": null
+          },
+          {
+            "firstPos": 1,
+            "lastPos": 1,
+            "firstIndex": 1,
+            "lastIndex": 1,
+            "start": 1.2,
+            "end": 2,
+            "text": "[1-1] 0:01 b",
+            "pauseAfter": "(pause 1.5s)"
+          },
+          {
+            "firstPos": 2,
+            "lastPos": 2,
+            "firstIndex": 2,
+            "lastIndex": 2,
+            "start": 3.5,
+            "end": 4,
+            "text": "[2-2] 0:03 c",
+            "pauseAfter": null
+          }
+        ],
+        "rendered": "[0-0] 0:00 a\n[1-1] 0:01 b\n(pause 1.5s)\n[2-2] 0:03 c"
+      }
+    },
+    {
+      "id": "binary-gap-subtraction",
+      "kind": "format-transcript",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §11.3",
+      "input": {
+        "entries": [
+          {
+            "id": "w0",
+            "index": 0,
+            "text": "a",
+            "start": 0,
+            "end": 2.5
+          },
+          {
+            "id": "w1",
+            "index": 1,
+            "text": "b",
+            "start": 4.55,
+            "end": 5
+          }
+        ]
+      },
+      "expected": {
+        "lines": [
+          {
+            "firstPos": 0,
+            "lastPos": 0,
+            "firstIndex": 0,
+            "lastIndex": 0,
+            "start": 0,
+            "end": 2.5,
+            "text": "[0-0] 0:00 a",
+            "pauseAfter": "(pause 2.0s)"
+          },
+          {
+            "firstPos": 1,
+            "lastPos": 1,
+            "firstIndex": 1,
+            "lastIndex": 1,
+            "start": 4.55,
+            "end": 5,
+            "text": "[1-1] 0:04 b",
+            "pauseAfter": null
+          }
+        ],
+        "rendered": "[0-0] 0:00 a\n(pause 2.0s)\n[1-1] 0:04 b"
+      }
+    },
+    {
+      "id": "minutes-do-not-wrap",
+      "kind": "format-transcript",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §13.3",
+      "input": {
+        "entries": [
+          {
+            "id": "w7",
+            "index": 7,
+            "text": "late.",
+            "start": 4523.7,
+            "end": 4524
+          }
+        ]
+      },
+      "expected": {
+        "lines": [
+          {
+            "firstPos": 0,
+            "lastPos": 0,
+            "firstIndex": 7,
+            "lastIndex": 7,
+            "start": 4523.7,
+            "end": 4524,
+            "text": "[7-7] 75:23 late.",
+            "pauseAfter": null
+          }
+        ],
+        "rendered": "[7-7] 75:23 late."
+      }
+    },
+    {
+      "id": "literal-regex-terminal-newline",
+      "kind": "format-transcript",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §11.3",
+      "input": {
+        "entries": [
+          {
+            "id": "w0",
+            "index": 0,
+            "text": "end.\n",
+            "start": 0,
+            "end": 0.25
+          },
+          {
+            "id": "w1",
+            "index": 1,
+            "text": "next",
+            "start": 0.3,
+            "end": 0.55
+          }
+        ]
+      },
+      "expected": {
+        "lines": [
+          {
+            "firstPos": 0,
+            "lastPos": 1,
+            "firstIndex": 0,
+            "lastIndex": 1,
+            "start": 0,
+            "end": 0.55,
+            "text": "[0-1] 0:00 end.\n next",
+            "pauseAfter": null
+          }
+        ],
+        "rendered": "[0-1] 0:00 end.\n next"
+      }
+    }
+  ]
+}

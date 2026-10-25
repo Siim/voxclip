@@ -1,0 +1,1387 @@
+{
+  "schema": "voxclip-llm-fixtures/1",
+  "id": "finalize-clips",
+  "origin": "voxclip",
+  "sources": {
+    "shared/prompts/clip-finder.json": "f087788566198c36c19ddcc7e263f321d539fec4ed41d69a1d472eea152e4a89",
+    "shared/prompts/ai-tighten.json": "0bdb47a851a41a0747235c248641905cf1d62cd39c70c651b2f765a14acc4163",
+    "shared/catalog/llm-providers.json": "0d55a38556702ed6a527f00516c655d3fecd0281c50a4f41a6156546fc23d52f"
+  },
+  "cases": [
+    {
+      "id": "C1",
+      "kind": "finalize-clips",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §13.4",
+      "input": {
+        "words": {
+          "generator": "U100"
+        },
+        "preset": "best",
+        "candidates": [
+          {
+            "title": "  Strong opener  ",
+            "start_word": 0,
+            "end_word": 20,
+            "reason": " r1 ",
+            "score": 8.6
+          },
+          {
+            "title": "Best",
+            "start_word": 10,
+            "end_word": 30,
+            "reason": "r2",
+            "score": 9
+          },
+          {
+            "title": "Duplicate of best",
+            "start_word": 10,
+            "end_word": 30,
+            "reason": "r3",
+            "score": 7
+          },
+          {
+            "title": "Too short",
+            "start_word": 50,
+            "end_word": 55,
+            "reason": "r4",
+            "score": 10
+          },
+          {
+            "title": "Out of range",
+            "start_word": 40,
+            "end_word": 130,
+            "reason": "r5",
+            "score": 10
+          },
+          {
+            "title": "Reversed",
+            "start_word": 60,
+            "end_word": 59,
+            "reason": "r6",
+            "score": 10
+          },
+          {
+            "title": "Clamped score",
+            "start_word": 60,
+            "end_word": 99,
+            "reason": "r7",
+            "score": 12
+          },
+          {
+            "title": "Fractional index",
+            "start_word": 5.5,
+            "end_word": 30,
+            "reason": "r8",
+            "score": 10
+          },
+          {
+            "title": "TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT",
+            "start_word": 20,
+            "end_word": 45,
+            "reason": "RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR",
+            "score": 6
+          },
+          {
+            "title": "Low score",
+            "start_word": 70,
+            "end_word": 90,
+            "reason": "r10",
+            "score": -3.5
+          },
+          {
+            "title": "Too long",
+            "start_word": 0,
+            "end_word": 99,
+            "reason": "r11",
+            "score": 9
+          },
+          {
+            "title": "Tie A",
+            "start_word": 30,
+            "end_word": 50,
+            "reason": "r12",
+            "score": 6
+          }
+        ],
+        "snap": false,
+        "cutWordIds": [],
+        "windowCount": 1
+      },
+      "expected": [
+        {
+          "title": "Strong opener",
+          "reason": "r1",
+          "score": 9,
+          "startWord": 0,
+          "endWord": 20
+        },
+        {
+          "title": "Best",
+          "reason": "r2",
+          "score": 9,
+          "startWord": 10,
+          "endWord": 30
+        },
+        {
+          "title": "TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT",
+          "reason": "RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR",
+          "score": 6,
+          "startWord": 20,
+          "endWord": 45
+        },
+        {
+          "title": "Tie A",
+          "reason": "r12",
+          "score": 6,
+          "startWord": 30,
+          "endWord": 50
+        },
+        {
+          "title": "Clamped score",
+          "reason": "r7",
+          "score": 10,
+          "startWord": 60,
+          "endWord": 99
+        }
+      ]
+    },
+    {
+      "id": "C2",
+      "kind": "finalize-clips",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §13.4",
+      "input": {
+        "words": {
+          "generator": "U100"
+        },
+        "preset": "topics",
+        "candidates": [
+          {
+            "title": "A",
+            "start_word": 0,
+            "end_word": 30,
+            "reason": "a",
+            "score": 7
+          },
+          {
+            "title": "B overlaps A",
+            "start_word": 30,
+            "end_word": 60,
+            "reason": "b",
+            "score": 8
+          },
+          {
+            "title": "C",
+            "start_word": 61,
+            "end_word": 99,
+            "reason": "c",
+            "score": 6
+          },
+          {
+            "title": "D inside C",
+            "start_word": 70,
+            "end_word": 90,
+            "reason": "d",
+            "score": 9
+          },
+          {
+            "title": "E",
+            "start_word": 0,
+            "end_word": 20,
+            "reason": "e",
+            "score": 5
+          }
+        ],
+        "snap": false,
+        "cutWordIds": [],
+        "windowCount": 1
+      },
+      "expected": [
+        {
+          "title": "E",
+          "reason": "e",
+          "score": 5,
+          "startWord": 0,
+          "endWord": 20
+        },
+        {
+          "title": "B overlaps A",
+          "reason": "b",
+          "score": 8,
+          "startWord": 30,
+          "endWord": 60
+        },
+        {
+          "title": "D inside C",
+          "reason": "d",
+          "score": 9,
+          "startWord": 70,
+          "endWord": 90
+        }
+      ]
+    },
+    {
+      "id": "C3",
+      "kind": "finalize-clips",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §13.4",
+      "input": {
+        "words": {
+          "generator": "U100"
+        },
+        "preset": "quotes",
+        "candidates": [
+          {
+            "title": "Q0",
+            "start_word": 0,
+            "end_word": 5,
+            "reason": "q",
+            "score": 7
+          },
+          {
+            "title": "Q1",
+            "start_word": 12,
+            "end_word": 17,
+            "reason": "q",
+            "score": 8
+          },
+          {
+            "title": "Q2",
+            "start_word": 24,
+            "end_word": 29,
+            "reason": "q",
+            "score": 7
+          },
+          {
+            "title": "Q3",
+            "start_word": 36,
+            "end_word": 41,
+            "reason": "q",
+            "score": 8
+          },
+          {
+            "title": "Q4",
+            "start_word": 48,
+            "end_word": 53,
+            "reason": "q",
+            "score": 7
+          },
+          {
+            "title": "Q5",
+            "start_word": 60,
+            "end_word": 65,
+            "reason": "q",
+            "score": 8
+          },
+          {
+            "title": "Q6",
+            "start_word": 72,
+            "end_word": 77,
+            "reason": "q",
+            "score": 7
+          },
+          {
+            "title": "Q7",
+            "start_word": 84,
+            "end_word": 89,
+            "reason": "q",
+            "score": 8
+          }
+        ],
+        "snap": false,
+        "cutWordIds": [],
+        "windowCount": 1
+      },
+      "expected": [
+        {
+          "title": "Q0",
+          "reason": "q",
+          "score": 7,
+          "startWord": 0,
+          "endWord": 5
+        },
+        {
+          "title": "Q1",
+          "reason": "q",
+          "score": 8,
+          "startWord": 12,
+          "endWord": 17
+        },
+        {
+          "title": "Q2",
+          "reason": "q",
+          "score": 7,
+          "startWord": 24,
+          "endWord": 29
+        },
+        {
+          "title": "Q3",
+          "reason": "q",
+          "score": 8,
+          "startWord": 36,
+          "endWord": 41
+        },
+        {
+          "title": "Q5",
+          "reason": "q",
+          "score": 8,
+          "startWord": 60,
+          "endWord": 65
+        },
+        {
+          "title": "Q7",
+          "reason": "q",
+          "score": 8,
+          "startWord": 84,
+          "endWord": 89
+        }
+      ]
+    },
+    {
+      "id": "invalid-numbers",
+      "kind": "finalize-clips",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §11.7–§11.9",
+      "input": {
+        "words": {
+          "generator": "U100"
+        },
+        "preset": "best",
+        "candidates": [
+          {
+            "title": "negative",
+            "start_word": -1,
+            "end_word": 20,
+            "reason": "negative",
+            "score": 8
+          },
+          {
+            "title": "NaN index",
+            "start_word": "NaN",
+            "end_word": 30,
+            "reason": "NaN index",
+            "score": 8
+          },
+          {
+            "title": "infinite index",
+            "start_word": 0,
+            "end_word": "Infinity",
+            "reason": "infinite index",
+            "score": 8
+          },
+          {
+            "title": "NaN score",
+            "start_word": 0,
+            "end_word": 20,
+            "reason": "NaN score",
+            "score": "NaN"
+          },
+          {
+            "title": "infinite score",
+            "start_word": 0,
+            "end_word": 20,
+            "reason": "infinite score",
+            "score": "Infinity"
+          },
+          {
+            "title": "negative infinite",
+            "start_word": 0,
+            "end_word": 20,
+            "reason": "negative infinite",
+            "score": "-Infinity"
+          },
+          {
+            "title": "valid",
+            "start_word": 0,
+            "end_word": 20,
+            "reason": "valid",
+            "score": 8
+          }
+        ],
+        "snap": false,
+        "cutWordIds": [],
+        "windowCount": 1
+      },
+      "expected": [
+        {
+          "title": "valid",
+          "reason": "valid",
+          "score": 8,
+          "startWord": 0,
+          "endWord": 20
+        }
+      ]
+    },
+    {
+      "id": "trim-utf16-surrogate",
+      "kind": "finalize-clips",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §11.7–§11.9",
+      "input": {
+        "words": {
+          "generator": "U100"
+        },
+        "preset": "best",
+        "candidates": [
+          {
+            "title": "﻿TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT😀tail﻿",
+            "start_word": 0,
+            "end_word": 20,
+            "reason": "﻿RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR😀tail﻿",
+            "score": 8
+          }
+        ],
+        "snap": false,
+        "cutWordIds": [],
+        "windowCount": 1
+      },
+      "expected": [
+        {
+          "title": "TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT",
+          "reason": "RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR",
+          "score": 8,
+          "startWord": 0,
+          "endWord": 20
+        }
+      ]
+    },
+    {
+      "id": "score-rounding-and-clamps",
+      "kind": "finalize-clips",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §11.7–§11.9",
+      "input": {
+        "words": {
+          "generator": "U100"
+        },
+        "preset": "custom",
+        "candidates": [
+          {
+            "title": "score0",
+            "start_word": 0,
+            "end_word": 5,
+            "reason": "score0",
+            "score": -3.5
+          },
+          {
+            "title": "score1",
+            "start_word": 10,
+            "end_word": 15,
+            "reason": "score1",
+            "score": 1.5
+          },
+          {
+            "title": "score2",
+            "start_word": 20,
+            "end_word": 25,
+            "reason": "score2",
+            "score": 2.49
+          },
+          {
+            "title": "score3",
+            "start_word": 30,
+            "end_word": 35,
+            "reason": "score3",
+            "score": 2.5
+          },
+          {
+            "title": "score4",
+            "start_word": 40,
+            "end_word": 45,
+            "reason": "score4",
+            "score": 9.5
+          },
+          {
+            "title": "score5",
+            "start_word": 50,
+            "end_word": 55,
+            "reason": "score5",
+            "score": 12
+          }
+        ],
+        "snap": false,
+        "cutWordIds": [],
+        "windowCount": 1
+      },
+      "expected": [
+        {
+          "title": "score0",
+          "reason": "score0",
+          "score": 1,
+          "startWord": 0,
+          "endWord": 5
+        },
+        {
+          "title": "score1",
+          "reason": "score1",
+          "score": 2,
+          "startWord": 10,
+          "endWord": 15
+        },
+        {
+          "title": "score2",
+          "reason": "score2",
+          "score": 2,
+          "startWord": 20,
+          "endWord": 25
+        },
+        {
+          "title": "score3",
+          "reason": "score3",
+          "score": 3,
+          "startWord": 30,
+          "endWord": 35
+        },
+        {
+          "title": "score4",
+          "reason": "score4",
+          "score": 10,
+          "startWord": 40,
+          "endWord": 45
+        },
+        {
+          "title": "score5",
+          "reason": "score5",
+          "score": 10,
+          "startWord": 50,
+          "endWord": 55
+        }
+      ]
+    },
+    {
+      "id": "empty-after-trim-is-not-title-fallback",
+      "kind": "finalize-clips",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §11.7–§11.9",
+      "input": {
+        "words": {
+          "generator": "U100"
+        },
+        "preset": "best",
+        "candidates": [
+          {
+            "title": "﻿  ",
+            "start_word": 0,
+            "end_word": 20,
+            "reason": " ",
+            "score": 8
+          }
+        ],
+        "snap": false,
+        "cutWordIds": [],
+        "windowCount": 1
+      },
+      "expected": [
+        {
+          "title": "",
+          "reason": "",
+          "score": 8,
+          "startWord": 0,
+          "endWord": 20
+        }
+      ]
+    },
+    {
+      "id": "inclusive-overlap-one-word",
+      "kind": "finalize-clips",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §11.7–§11.9",
+      "input": {
+        "words": {
+          "generator": "U100"
+        },
+        "preset": "topics",
+        "candidates": [
+          {
+            "title": "first",
+            "start_word": 0,
+            "end_word": 20,
+            "reason": "first",
+            "score": 8
+          },
+          {
+            "title": "touches",
+            "start_word": 20,
+            "end_word": 40,
+            "reason": "touches",
+            "score": 7
+          },
+          {
+            "title": "after",
+            "start_word": 21,
+            "end_word": 41,
+            "reason": "after",
+            "score": 6
+          }
+        ],
+        "snap": false,
+        "cutWordIds": [],
+        "windowCount": 1
+      },
+      "expected": [
+        {
+          "title": "first",
+          "reason": "first",
+          "score": 8,
+          "startWord": 0,
+          "endWord": 20
+        },
+        {
+          "title": "after",
+          "reason": "after",
+          "score": 6,
+          "startWord": 21,
+          "endWord": 41
+        }
+      ]
+    },
+    {
+      "id": "same-start-selection-order",
+      "kind": "finalize-clips",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §11.7 step 8",
+      "input": {
+        "words": {
+          "generator": "U100"
+        },
+        "preset": "custom",
+        "candidates": [
+          {
+            "title": "lower score",
+            "start_word": 20,
+            "end_word": 25,
+            "reason": "lower score",
+            "score": 7
+          },
+          {
+            "title": "higher score",
+            "start_word": 20,
+            "end_word": 30,
+            "reason": "higher score",
+            "score": 8
+          }
+        ],
+        "snap": false,
+        "cutWordIds": [],
+        "windowCount": 1
+      },
+      "expected": [
+        {
+          "title": "higher score",
+          "reason": "higher score",
+          "score": 8,
+          "startWord": 20,
+          "endWord": 30
+        },
+        {
+          "title": "lower score",
+          "reason": "lower score",
+          "score": 7,
+          "startWord": 20,
+          "endWord": 25
+        }
+      ]
+    },
+    {
+      "id": "best-minimum",
+      "kind": "finalize-clips",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §11.7 step 4",
+      "input": {
+        "words": [
+          {
+            "id": "w0",
+            "index": 0,
+            "text": "one",
+            "start": 0,
+            "end": 12
+          }
+        ],
+        "preset": "best",
+        "candidates": [
+          {
+            "title": "edge",
+            "start_word": 0,
+            "end_word": 0,
+            "reason": "edge",
+            "score": 8
+          }
+        ],
+        "snap": false,
+        "cutWordIds": [],
+        "windowCount": 1
+      },
+      "expected": [
+        {
+          "title": "edge",
+          "reason": "edge",
+          "score": 8,
+          "startWord": 0,
+          "endWord": 0
+        }
+      ]
+    },
+    {
+      "id": "best-maximum",
+      "kind": "finalize-clips",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §11.7 step 4",
+      "input": {
+        "words": [
+          {
+            "id": "w0",
+            "index": 0,
+            "text": "one",
+            "start": 0,
+            "end": 84
+          }
+        ],
+        "preset": "best",
+        "candidates": [
+          {
+            "title": "edge",
+            "start_word": 0,
+            "end_word": 0,
+            "reason": "edge",
+            "score": 8
+          }
+        ],
+        "snap": false,
+        "cutWordIds": [],
+        "windowCount": 1
+      },
+      "expected": [
+        {
+          "title": "edge",
+          "reason": "edge",
+          "score": 8,
+          "startWord": 0,
+          "endWord": 0
+        }
+      ]
+    },
+    {
+      "id": "best-below-minimum",
+      "kind": "finalize-clips",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §11.7 step 4",
+      "input": {
+        "words": [
+          {
+            "id": "w0",
+            "index": 0,
+            "text": "one",
+            "start": 0,
+            "end": 11.999999
+          }
+        ],
+        "preset": "best",
+        "candidates": [
+          {
+            "title": "edge",
+            "start_word": 0,
+            "end_word": 0,
+            "reason": "edge",
+            "score": 8
+          }
+        ],
+        "snap": false,
+        "cutWordIds": [],
+        "windowCount": 1
+      },
+      "expected": []
+    },
+    {
+      "id": "best-above-maximum",
+      "kind": "finalize-clips",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §11.7 step 4",
+      "input": {
+        "words": [
+          {
+            "id": "w0",
+            "index": 0,
+            "text": "one",
+            "start": 0,
+            "end": 84.000001
+          }
+        ],
+        "preset": "best",
+        "candidates": [
+          {
+            "title": "edge",
+            "start_word": 0,
+            "end_word": 0,
+            "reason": "edge",
+            "score": 8
+          }
+        ],
+        "snap": false,
+        "cutWordIds": [],
+        "windowCount": 1
+      },
+      "expected": []
+    },
+    {
+      "id": "hooks-minimum",
+      "kind": "finalize-clips",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §11.7 step 4",
+      "input": {
+        "words": [
+          {
+            "id": "w0",
+            "index": 0,
+            "text": "one",
+            "start": 0,
+            "end": 9
+          }
+        ],
+        "preset": "hooks",
+        "candidates": [
+          {
+            "title": "edge",
+            "start_word": 0,
+            "end_word": 0,
+            "reason": "edge",
+            "score": 8
+          }
+        ],
+        "snap": false,
+        "cutWordIds": [],
+        "windowCount": 1
+      },
+      "expected": [
+        {
+          "title": "edge",
+          "reason": "edge",
+          "score": 8,
+          "startWord": 0,
+          "endWord": 0
+        }
+      ]
+    },
+    {
+      "id": "hooks-maximum",
+      "kind": "finalize-clips",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §11.7 step 4",
+      "input": {
+        "words": [
+          {
+            "id": "w0",
+            "index": 0,
+            "text": "one",
+            "start": 0,
+            "end": 42
+          }
+        ],
+        "preset": "hooks",
+        "candidates": [
+          {
+            "title": "edge",
+            "start_word": 0,
+            "end_word": 0,
+            "reason": "edge",
+            "score": 8
+          }
+        ],
+        "snap": false,
+        "cutWordIds": [],
+        "windowCount": 1
+      },
+      "expected": [
+        {
+          "title": "edge",
+          "reason": "edge",
+          "score": 8,
+          "startWord": 0,
+          "endWord": 0
+        }
+      ]
+    },
+    {
+      "id": "hooks-below-minimum",
+      "kind": "finalize-clips",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §11.7 step 4",
+      "input": {
+        "words": [
+          {
+            "id": "w0",
+            "index": 0,
+            "text": "one",
+            "start": 0,
+            "end": 8.999999
+          }
+        ],
+        "preset": "hooks",
+        "candidates": [
+          {
+            "title": "edge",
+            "start_word": 0,
+            "end_word": 0,
+            "reason": "edge",
+            "score": 8
+          }
+        ],
+        "snap": false,
+        "cutWordIds": [],
+        "windowCount": 1
+      },
+      "expected": []
+    },
+    {
+      "id": "hooks-above-maximum",
+      "kind": "finalize-clips",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §11.7 step 4",
+      "input": {
+        "words": [
+          {
+            "id": "w0",
+            "index": 0,
+            "text": "one",
+            "start": 0,
+            "end": 42.000001
+          }
+        ],
+        "preset": "hooks",
+        "candidates": [
+          {
+            "title": "edge",
+            "start_word": 0,
+            "end_word": 0,
+            "reason": "edge",
+            "score": 8
+          }
+        ],
+        "snap": false,
+        "cutWordIds": [],
+        "windowCount": 1
+      },
+      "expected": []
+    },
+    {
+      "id": "topics-minimum",
+      "kind": "finalize-clips",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §11.7 step 4",
+      "input": {
+        "words": [
+          {
+            "id": "w0",
+            "index": 0,
+            "text": "one",
+            "start": 0,
+            "end": 12
+          }
+        ],
+        "preset": "topics",
+        "candidates": [
+          {
+            "title": "edge",
+            "start_word": 0,
+            "end_word": 0,
+            "reason": "edge",
+            "score": 8
+          }
+        ],
+        "snap": false,
+        "cutWordIds": [],
+        "windowCount": 1
+      },
+      "expected": [
+        {
+          "title": "edge",
+          "reason": "edge",
+          "score": 8,
+          "startWord": 0,
+          "endWord": 0
+        }
+      ]
+    },
+    {
+      "id": "topics-maximum",
+      "kind": "finalize-clips",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §11.7 step 4",
+      "input": {
+        "words": [
+          {
+            "id": "w0",
+            "index": 0,
+            "text": "one",
+            "start": 0,
+            "end": 251.99999999999997
+          }
+        ],
+        "preset": "topics",
+        "candidates": [
+          {
+            "title": "edge",
+            "start_word": 0,
+            "end_word": 0,
+            "reason": "edge",
+            "score": 8
+          }
+        ],
+        "snap": false,
+        "cutWordIds": [],
+        "windowCount": 1
+      },
+      "expected": [
+        {
+          "title": "edge",
+          "reason": "edge",
+          "score": 8,
+          "startWord": 0,
+          "endWord": 0
+        }
+      ]
+    },
+    {
+      "id": "topics-below-minimum",
+      "kind": "finalize-clips",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §11.7 step 4",
+      "input": {
+        "words": [
+          {
+            "id": "w0",
+            "index": 0,
+            "text": "one",
+            "start": 0,
+            "end": 11.999999
+          }
+        ],
+        "preset": "topics",
+        "candidates": [
+          {
+            "title": "edge",
+            "start_word": 0,
+            "end_word": 0,
+            "reason": "edge",
+            "score": 8
+          }
+        ],
+        "snap": false,
+        "cutWordIds": [],
+        "windowCount": 1
+      },
+      "expected": []
+    },
+    {
+      "id": "topics-above-maximum",
+      "kind": "finalize-clips",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §11.7 step 4",
+      "input": {
+        "words": [
+          {
+            "id": "w0",
+            "index": 0,
+            "text": "one",
+            "start": 0,
+            "end": 252.00000099999997
+          }
+        ],
+        "preset": "topics",
+        "candidates": [
+          {
+            "title": "edge",
+            "start_word": 0,
+            "end_word": 0,
+            "reason": "edge",
+            "score": 8
+          }
+        ],
+        "snap": false,
+        "cutWordIds": [],
+        "windowCount": 1
+      },
+      "expected": []
+    },
+    {
+      "id": "quotes-minimum",
+      "kind": "finalize-clips",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §11.7 step 4",
+      "input": {
+        "words": [
+          {
+            "id": "w0",
+            "index": 0,
+            "text": "one",
+            "start": 0,
+            "end": 3
+          }
+        ],
+        "preset": "quotes",
+        "candidates": [
+          {
+            "title": "edge",
+            "start_word": 0,
+            "end_word": 0,
+            "reason": "edge",
+            "score": 8
+          }
+        ],
+        "snap": false,
+        "cutWordIds": [],
+        "windowCount": 1
+      },
+      "expected": [
+        {
+          "title": "edge",
+          "reason": "edge",
+          "score": 8,
+          "startWord": 0,
+          "endWord": 0
+        }
+      ]
+    },
+    {
+      "id": "quotes-maximum",
+      "kind": "finalize-clips",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §11.7 step 4",
+      "input": {
+        "words": [
+          {
+            "id": "w0",
+            "index": 0,
+            "text": "one",
+            "start": 0,
+            "end": 21
+          }
+        ],
+        "preset": "quotes",
+        "candidates": [
+          {
+            "title": "edge",
+            "start_word": 0,
+            "end_word": 0,
+            "reason": "edge",
+            "score": 8
+          }
+        ],
+        "snap": false,
+        "cutWordIds": [],
+        "windowCount": 1
+      },
+      "expected": [
+        {
+          "title": "edge",
+          "reason": "edge",
+          "score": 8,
+          "startWord": 0,
+          "endWord": 0
+        }
+      ]
+    },
+    {
+      "id": "quotes-below-minimum",
+      "kind": "finalize-clips",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §11.7 step 4",
+      "input": {
+        "words": [
+          {
+            "id": "w0",
+            "index": 0,
+            "text": "one",
+            "start": 0,
+            "end": 2.999999
+          }
+        ],
+        "preset": "quotes",
+        "candidates": [
+          {
+            "title": "edge",
+            "start_word": 0,
+            "end_word": 0,
+            "reason": "edge",
+            "score": 8
+          }
+        ],
+        "snap": false,
+        "cutWordIds": [],
+        "windowCount": 1
+      },
+      "expected": []
+    },
+    {
+      "id": "quotes-above-maximum",
+      "kind": "finalize-clips",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §11.7 step 4",
+      "input": {
+        "words": [
+          {
+            "id": "w0",
+            "index": 0,
+            "text": "one",
+            "start": 0,
+            "end": 21.000001
+          }
+        ],
+        "preset": "quotes",
+        "candidates": [
+          {
+            "title": "edge",
+            "start_word": 0,
+            "end_word": 0,
+            "reason": "edge",
+            "score": 8
+          }
+        ],
+        "snap": false,
+        "cutWordIds": [],
+        "windowCount": 1
+      },
+      "expected": []
+    },
+    {
+      "id": "custom-minimum",
+      "kind": "finalize-clips",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §11.7 step 4",
+      "input": {
+        "words": [
+          {
+            "id": "w0",
+            "index": 0,
+            "text": "one",
+            "start": 0,
+            "end": 2
+          }
+        ],
+        "preset": "custom",
+        "candidates": [
+          {
+            "title": "edge",
+            "start_word": 0,
+            "end_word": 0,
+            "reason": "edge",
+            "score": 8
+          }
+        ],
+        "snap": false,
+        "cutWordIds": [],
+        "windowCount": 1
+      },
+      "expected": [
+        {
+          "title": "edge",
+          "reason": "edge",
+          "score": 8,
+          "startWord": 0,
+          "endWord": 0
+        }
+      ]
+    },
+    {
+      "id": "custom-maximum",
+      "kind": "finalize-clips",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §11.7 step 4",
+      "input": {
+        "words": [
+          {
+            "id": "w0",
+            "index": 0,
+            "text": "one",
+            "start": 0,
+            "end": 251.99999999999997
+          }
+        ],
+        "preset": "custom",
+        "candidates": [
+          {
+            "title": "edge",
+            "start_word": 0,
+            "end_word": 0,
+            "reason": "edge",
+            "score": 8
+          }
+        ],
+        "snap": false,
+        "cutWordIds": [],
+        "windowCount": 1
+      },
+      "expected": [
+        {
+          "title": "edge",
+          "reason": "edge",
+          "score": 8,
+          "startWord": 0,
+          "endWord": 0
+        }
+      ]
+    },
+    {
+      "id": "custom-below-minimum",
+      "kind": "finalize-clips",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §11.7 step 4",
+      "input": {
+        "words": [
+          {
+            "id": "w0",
+            "index": 0,
+            "text": "one",
+            "start": 0,
+            "end": 1.999999
+          }
+        ],
+        "preset": "custom",
+        "candidates": [
+          {
+            "title": "edge",
+            "start_word": 0,
+            "end_word": 0,
+            "reason": "edge",
+            "score": 8
+          }
+        ],
+        "snap": false,
+        "cutWordIds": [],
+        "windowCount": 1
+      },
+      "expected": []
+    },
+    {
+      "id": "custom-above-maximum",
+      "kind": "finalize-clips",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §11.7 step 4",
+      "input": {
+        "words": [
+          {
+            "id": "w0",
+            "index": 0,
+            "text": "one",
+            "start": 0,
+            "end": 252.00000099999997
+          }
+        ],
+        "preset": "custom",
+        "candidates": [
+          {
+            "title": "edge",
+            "start_word": 0,
+            "end_word": 0,
+            "reason": "edge",
+            "score": 8
+          }
+        ],
+        "snap": false,
+        "cutWordIds": [],
+        "windowCount": 1
+      },
+      "expected": []
+    }
+  ]
+}
