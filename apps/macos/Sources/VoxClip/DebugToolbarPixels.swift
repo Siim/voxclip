@@ -2,7 +2,7 @@
 import AppKit
 
 @MainActor enum DebugToolbarPixels {
-    struct Metrics: Codable { let name: String; let labelPixels: Int; let contrast: Double; let bezel: String }
+    struct Metrics: Codable { let name: String; let labelPixels: Int; let labelShare: Double; let contrast: Double; let bezel: String }
     static func measure(window: NSWindow, name: String, directory: URL, active: Bool) throws -> [DebugUISuite.Result] {
         func buttons(_ view: NSView) -> [NSButton] {
             (view as? NSButton).map { [$0] } ?? view.subviews.flatMap(buttons)
@@ -21,12 +21,25 @@ import AppKit
         context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
         guard let converted = context.makeImage() else { throw CocoaError(.coderInvalidValue) }
         let bitmap = NSBitmapImageRep(cgImage: converted)
-        var count = 0, contrast = 0.0, bezel = ""
+        // Look for the label only inside the capsule and the title's own box: the corners outside
+        // the capsule show the toolbar, which in light mode is within tolerance of accent.on.
+        let cell = button.cell?.titleRect(forBounds: button.bounds) ?? button.bounds, text = button.attributedTitle.size()
+        let title = CGRect(x: cell.midX - text.width / 2, y: cell.midY - text.height / 2, width: text.width, height: text.height)
+        let titleTop = button.isFlipped ? title.minY - button.bounds.minY : button.bounds.maxY - title.maxY
+        let titlePixels = CGRect(x: (title.minX - button.bounds.minX) * scale, y: titleTop * scale, width: title.width * scale, height: title.height * scale)
+        let radius = Double(bitmap.pixelsHigh) / 2, width = Double(bitmap.pixelsWide)
+        func inside(_ column: Int, _ row: Int) -> Bool {
+            let x = Double(column) + 0.5, y = Double(row) + 0.5
+            let dx = x - min(max(x, radius), width - radius), dy = y - radius
+            return titlePixels.contains(CGPoint(x: x, y: y)) && dx * dx + dy * dy <= (radius - 1) * (radius - 1)
+        }
+        var count = 0, area = 0, contrast = 0.0, bezel = ""
         button.effectiveAppearance.performAsCurrentDrawingAppearance {
             guard let label = DesignValues.nsColor(active ? "accent.on" : "text.primary").usingColorSpace(.sRGB) else { return }
             let expected = [label.redComponent, label.greenComponent, label.blueComponent]
             for row in 0..<bitmap.pixelsHigh {
-                for column in 0..<bitmap.pixelsWide {
+                for column in 0..<bitmap.pixelsWide where inside(column, row) {
+                    area += 1
                     guard let pixel = bitmap.colorAt(x: column, y: row) else { continue }
                     if zip([pixel.redComponent, pixel.greenComponent, pixel.blueComponent], expected).allSatisfy({ abs($0 - $1) < 0.08 }) { count += 1 }
                 }
@@ -39,10 +52,12 @@ import AppKit
                 bezel = String(format: "#%02X%02X%02X", Int((median.redComponent * 255).rounded()), Int((median.greenComponent * 255).rounded()), Int((median.blueComponent * 255).rounded()))
             }
         }
-        let metrics = Metrics(name: name, labelPixels: count, contrast: contrast, bezel: bezel)
+        let share = Double(count) / Double(max(1, area))
+        let metrics = Metrics(name: name, labelPixels: count, labelShare: share, contrast: contrast, bezel: bezel)
         try JSONEncoder().encode(metrics).write(to: directory.appendingPathComponent("\(name)-contrast.json"))
         if let image = bitmap.representation(using: .jpeg, properties: [.compressionFactor: 0.85]) { try image.write(to: directory.appendingPathComponent("\(name)-export-control.jpg")) }
-        return [.init(name: "\(name) Export label-to-bezel pixel contrast", passed: count > 8 && contrast >= 4.5)]
+        // A drawn label covers about a tenth of its box; an absent one leaves no matching pixels.
+        return [.init(name: "\(name) Export label-to-bezel pixel contrast", passed: share >= 0.04 && contrast >= 4.5)]
     }
     private static func luminance(_ color: NSColor) -> Double {
         let linear = [color.redComponent, color.greenComponent, color.blueComponent].map { $0 <= 0.04045 ? $0 / 12.92 : pow(($0 + 0.055) / 1.055, 2.4) }
