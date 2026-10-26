@@ -25,9 +25,13 @@ test('colours preserve straight alpha and use platform resources without hex sub
   assert.throws(() => rgbaToArgb('#bad'));
   const output = buildOutputs(source);
   assert.ok(output.swift.includes('NSColor.selectedTextBackgroundColor'));
-  assert.ok(output.swift.includes('NSColor.systemGreen'));
-  assert.ok(output.xaml.includes('x:Key="VcStatusSuccessBrush" ResourceKey="SystemFillColorSuccessBrush"'));
   assert.ok(output.xaml.includes('x:Key="VcSelectionTextBrush" Color="{ThemeResource SystemAccentColor}" Opacity="0.4"'));
+  const brush = structuredClone(source);
+  brush.color.status.success.$value = { dark: 'system:green', light: 'system:green' };
+  brush.color.status.success.$extensions['com.voxconvo.voxclip'] = { macos: 'NSColor.systemGreen', windows: 'SystemFillColorSuccessBrush', windowsHighContrast: 'SystemColorWindowTextColor' };
+  const aliased = buildOutputs(brush);
+  assert.ok(aliased.swift.includes('NSColor.systemGreen'));
+  assert.ok(aliased.xaml.includes('x:Key="VcStatusSuccessBrush" ResourceKey="SystemFillColorSuccessBrush"'));
 });
 
 test('numeric, typography and colour values come only from the source tokens', () => {
@@ -58,7 +62,7 @@ test('unknown formats, missing system mappings and unsafe font paths fail clearl
   changed.$extensions['com.voxconvo.voxclip'].format = 'future';
   assert.throws(() => buildOutputs(changed), /Expected voxclip-tokens\/1/);
   const system = structuredClone(source);
-  delete system.color.status.success.$extensions['com.voxconvo.voxclip'].macos;
+  delete system.color.selection.text.$extensions['com.voxconvo.voxclip'].macos;
   assert.throws(() => buildOutputs(system), /Missing macOS system colour/);
   const fonts = structuredClone(source);
   fonts.fontFiles.dmSans.$extensions['com.voxconvo.voxclip'].files['../unsafe.ttf'] = { weight: 400, present: true };

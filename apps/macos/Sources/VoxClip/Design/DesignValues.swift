@@ -37,7 +37,6 @@ import VoxClipCore
     static func color(_ path: String) -> Color { Color(nsColor: nsColor(path)) }
 
     static func parse(_ hex: String) -> NSColor {
-        if hex == "system:green" { return .systemGreen }
         if hex == "system:selectedText" { return .selectedTextBackgroundColor }
         precondition(!hex.hasPrefix("system:"), "Unknown system colour token")
         let raw = String(hex.dropFirst())

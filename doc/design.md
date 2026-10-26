@@ -686,22 +686,27 @@ Voice: short, factual, calm, always reassuring about the media. No exclamation m
 
 Naming: token path `color.text.primary` → Swift `vcTextPrimary`, XAML `VcTextPrimaryBrush`. Generated files carry `GENERATED from shared/design/tokens.json - do not edit`. CI regenerates and fails on drift.
 
+The palette is the Document direction from the October 2026 design study: paper and ink neutrals and one accent, Petrol. Each colour token's `source` extension names the study token its value comes from; for example `bg.elevated` is the study's raised and `text.muted` its pause label. `line.subtle` was removed because the study has two separators. `text.disabled`, `record.*`, `stage`, `overlay.scrim` and `overlay.transportOpaque` keep values the study does not define.
+
 Summary (full values in tokens.json):
 
 | Token | Dark | Light | Use |
 |---|---|---|---|
-| `bg.window` / `bg.surface` | `#0B0C0F` / `#121317` | `#F0F0ED` / `#FAFAF8` | window, transcript sheet |
-| `bg.elevated` / `bg.muted` / `bg.input` | `#1D1F25` / `#28292F` / `#15161B` | `#FEFEFD` / `#E1E2E6` / `#FFFFFF` | tiles, hover rows, custom inputs |
-| `line.default` / `.subtle` / `.strong` | `#2B2C33` / `#24252A` / `#42444B` | `#D9DAD8` / `#E7E8EA` / `#C3C5CD` | hairlines, emphasis |
-| `text.primary` / `.secondary` / `.muted` / `.tertiary` / `.disabled` | `#F3F0E7` / `#DEDEDB` / `#B0B3BD` / `#A4A7B0` / `#777C8D` | `#131419` / `#363840` / `#51545F` / `#6B6F80` / `#9396A4` | text |
-| `accent.default` / `accent.on` | `#ECE9DF` / `#0E0E11` | `#21232B` / `#FAFAF8` | choice fill, badges, custom focus |
-| `word.playingBackground` / `Foreground` | `#F3F0E7` / `#0E0E11` | `#21232B` / `#FAFAF8` | playing word |
-| `word.cut` | `#9599A6` | `#6E717D` | cut word text |
-| `cut.stroke` / `cut.fill` / `cut.pauseFill` | `#F38F83B3` / `#F38F838C` / `#B0B3BD59` | `#C4453FD9` / `#C4453FE6` / `#51545F59` | strike, timeline hatches |
-| `pause.background` | `#2C2E35` | `#E7E8EA` | pause tokens |
-| `status.warning` | `#F2C46B` | `#9E6600` | suggested fillers |
-| `status.dangerForeground` / `Background` | `#F3ABAB` / `#271B20` | `#B4232A` / `#FCEDEE` | custom error rows |
-| `timeline.track` / `.kept` | `#1A1B20` / `#3A3C45` | `#E1E2E6` / `#C3C5CD` | strip |
+| `bg.window` / `bg.surface` / `bg.sunken` | `#141517` / `#1B1C1F` / `#141517` | `#F0EFEA` / `#FAF9F6` / `#F0EFEA` | window and sheets, transcript page, dock and timeline bed |
+| `bg.elevated` / `bg.muted` / `bg.input` | `#25262A` / `#2A2B2F` / `#25262A` | `#FEFDFB` / `#ECEAE4` / `#FEFDFB` | tiles and cards, hover rows, custom inputs |
+| `line.default` / `.strong` | `#2E2F33` / `#6C6E75` | `#E3E1DB` / `#85878E` | hairlines, 3:1 control boundaries |
+| `text.primary` / `.secondary` / `.muted` / `.tertiary` / `.disabled` | `#ECEAE4` / `#A8AAB0` / `#B0B2B8` / `#8F9198` / `#777C8D` | `#1A1B1F` / `#575A61` / `#55585F` / `#66696F` / `#9396A4` | text |
+| `accent.default` / `.pressed` | `#237D7A` / `#1C6764` | `#1C6B69` / `#155755` | Petrol fill that carries text, its pressed state |
+| `accent.text` / `.on` / `.soft` | `#63BDB6` / `#FAF9F6` / `#1F3F3D` | `#1C6B69` / `#FAF9F6` / `#D3E6E3` | links, marks, playhead; text on the fill; selection tint |
+| `word.playingBackground` / `Foreground` | `#237D7A` / `#FAF9F6` | `#1C6B69` / `#FAF9F6` | playing word |
+| `word.cut` / `.filler` / `.lowConfidence` / `.correctionDot` | `#8E9097` / `#E0AE55` / `#7C7E85` / `#8F9198` | `#6F7178` / `#9A5B00` / `#7E8087` / `#66696F` | cut text, suggested fillers, word marks |
+| `cut.stroke` / `cut.fill` / `cut.pauseFill` | `#EE7F6E` / `#EE7F6E` / `#84878E` | `#C2402F` / `#C2402F` / `#6F7278` | strike, timeline hatches |
+| `pause.background` | `#2A2B2F` | `#ECEAE4` | pause tokens |
+| `status.warning` / `.warningBackground` | `#E3B25C` / `#2D2616` | `#8A5200` / `#FAF0DC` | warnings |
+| `status.dangerForeground` / `.dangerBackground` | `#F2A196` / `#33201D` | `#B3261E` / `#FBECE9` | errors |
+| `status.success` / `.successBackground` / `.infoBackground` | `#7CCB93` / `#1B2A20` / `#232428` | `#1E6E3A` / `#E7F2E9` / `#F0EFEA` | success and info callouts |
+| `timeline.track` / `.kept` / `.playhead` | `#26272B` / `#7A7D85` / `#63BDB6` | `#E4E2DC` / `#74777E` / `#1C6B69` | strip |
+| `overlay.foreground` | `#F5F4F0` | `#F5F4F0` | text over video |
 | `stage` | `#000000` | `#000000` | video surround |
 
 Typography, spacing (4-point grid, macOS pane padding 20, Windows 24), radii (4, 6, 8, 12, 16, capsule), motion (120 / 150 / 240 ms, ease-out `cubic-bezier(.23,1,.32,1)`, spring 0.32 / 0.82, instant under Reduce Motion) and fixed sizes are in tokens.json.
