@@ -2,6 +2,15 @@ import Foundation
 import AVFoundation
 import VoxClipCore
 
+/// The item, including AVFoundation's outstanding callbacks, owns its staged audio lease.
+final class LeasedPlayerItem: AVPlayerItem {
+    let renderGraph: RenderGraph
+    init(graph: RenderGraph) {
+        renderGraph = graph
+        super.init(asset: graph.composition, automaticallyLoadedAssetKeys: nil)
+    }
+}
+
 /// Preview on the source-preserving edited clock; architecture §5.5.
 @MainActor public final class PreviewPlayerController: PreviewEngine {
     public let player = AVPlayer()
@@ -31,7 +40,7 @@ import VoxClipCore
         var preview = request; preview.forPreview = true
         let graph = try await builder.build(preview)
         guard current == revision else { return false }
-        let item = AVPlayerItem(asset: graph.composition)
+        let item = LeasedPlayerItem(graph: graph)
         item.videoComposition = graph.videoComposition; item.audioMix = graph.audioMix
         player.replaceCurrentItem(with: item)
         self.request = preview; editedTime = 0
@@ -39,8 +48,8 @@ import VoxClipCore
             observer = player.addPeriodicTimeObserver(forInterval: CMTime(value: 1, timescale: 30), queue: .main) { [weak self] time in
                 MainActor.assumeIsolated {
                     guard let self, let request = self.request, time.isNumeric else { return }
-                    self.editedTime = min(request.plan.duration, max(0, time.seconds))
-                    self.continuation.yield(.time(edited: self.editedTime, source: request.plan.sourceTime(fromEdited: self.editedTime)))
+                    self.editedTime = min(request.timeline.duration, max(0, time.seconds))
+                    self.continuation.yield(.time(edited: self.editedTime, source: request.timeline.sourceTime(self.editedTime)))
                     let playing = self.player.rate != 0
                     if self.isPlaying != playing { self.isPlaying = playing; self.continuation.yield(.playing(playing)) }
                     if self.player.currentItem?.status == .failed { self.continuation.yield(.failed(.decodeFailed(self.player.currentItem?.error?.localizedDescription ?? "Preview failed"))) }
@@ -51,10 +60,12 @@ import VoxClipCore
     }
 
     public func update(_ request: RenderRequest) async throws {
+        try VoiceLabRenderPreflight.validate(request)
         guard let old = self.request else { try await load(request); return }
         revision &+= 1
         let current = revision
-        if old.plan == request.plan && old.sourceURL == request.sourceURL, let item = player.currentItem {
+        if old.timeline == request.timeline && old.voiceLab == request.voiceLab && old.sourceURL == request.sourceURL,
+           let item = player.currentItem {
             if let lastCaptionUpdate {
                 let remaining = Duration.milliseconds(34) - lastCaptionUpdate.duration(to: .now)
                 if remaining > .zero { try await Task.sleep(for: remaining) }
@@ -70,17 +81,17 @@ import VoxClipCore
         }
         try await Task.sleep(for: .milliseconds(150))
         guard current == revision else { return }
-        let sourceTime = old.plan.sourceTime(fromEdited: player.currentTime().seconds)
+        let sourceTime = old.timeline.sourceTime(player.currentTime().seconds)
         let rate = player.rate
         guard try await apply(request, revision: current) else { return }
-        try await seek(to: request.plan.editedTime(fromSource: sourceTime), exact: true)
+        try await seek(to: request.timeline.mapTime(sourceTime), exact: true)
         guard current == revision else { return }
         if rate != 0 { player.rate = rate; isPlaying = true }
     }
 
     public func seek(to editedTime: Double, exact: Bool) async throws {
         guard let request, editedTime.isFinite else { return }
-        pendingSeek = (min(request.plan.duration, max(0, editedTime)), exact)
+        pendingSeek = (min(request.timeline.duration, max(0, editedTime)), exact)
         if seeking { return }
         seeking = true
         defer { seeking = false }
@@ -89,10 +100,10 @@ import VoxClipCore
             try Task.checkCancellation()
             let current = revision
             let tolerance = exact ? CMTime.zero : CMTime(seconds: 0.1, preferredTimescale: 600)
-            _ = await player.seek(to: CMTime(seconds: time, preferredTimescale: Int32(request.plan.sampleRate)), toleranceBefore: tolerance, toleranceAfter: tolerance)
+            _ = await player.seek(to: CMTime(seconds: time, preferredTimescale: Int32(request.timeline.sampleRate)), toleranceBefore: tolerance, toleranceAfter: tolerance)
             guard current == revision else { continue }
             self.editedTime = time
-            continuation.yield(.time(edited: time, source: request.plan.sourceTime(fromEdited: time)))
+            continuation.yield(.time(edited: time, source: request.timeline.sourceTime(time)))
         }
     }
     public func play() { guard player.currentItem != nil else { return }; player.play(); isPlaying = true; continuation.yield(.playing(true)) }

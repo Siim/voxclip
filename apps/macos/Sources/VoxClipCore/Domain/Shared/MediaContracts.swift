@@ -222,15 +222,22 @@ public protocol AudioExtractor: Sendable {
 public struct RenderRequest: Sendable, Equatable {
     public var sourceURL: URL
     public var plan: EditPlan
+    /// The legacy plan remains source compatible; synthetic consumers use this tagged timeline.
+    public var voiceLab: VoiceLabRenderInput?
+    public var timeline: RenderTimeline {
+        guard let voiceLab, voiceLab.prepared.outputPlan.requiresSyntheticRendering else { return .legacy(plan) }
+        return .voiceLab(voiceLab.prepared.outputPlan)
+    }
     public var captions: CaptionTrack
     public var style: CaptionStyle?
     public var placement: CaptionPosition?
     public var output: OutputSpec
     public var forPreview: Bool
     public var captionLayout: CaptionLayoutResult?
-    public init(sourceURL: URL, plan: EditPlan, captions: CaptionTrack = CaptionTrack(), style: CaptionStyle? = nil, placement: CaptionPosition? = nil, output: OutputSpec, forPreview: Bool = false, captionLayout: CaptionLayoutResult? = nil) {
+    public init(sourceURL: URL, plan: EditPlan, captions: CaptionTrack = CaptionTrack(), style: CaptionStyle? = nil, placement: CaptionPosition? = nil, output: OutputSpec, forPreview: Bool = false, captionLayout: CaptionLayoutResult? = nil, voiceLab: VoiceLabRenderInput? = nil) {
         self.sourceURL = sourceURL; self.plan = plan; self.captions = captions; self.style = style; self.placement = placement; self.output = output; self.forPreview = forPreview
         self.captionLayout = captionLayout
+        self.voiceLab = voiceLab
     }
 }
 /// Export selection, never a rewrite of global cuts; architecture §4.9.

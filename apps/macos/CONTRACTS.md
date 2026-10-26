@@ -1,17 +1,25 @@
 # macOS implementation contracts
 
+### 2026-10-26 — Guarded native Voice Lab composition integration
+
+- Integrated the reviewed Mac source through `ee47127`. Request-bound v3 timelines drive equal-length source video and bounded mixed CAF audio for preview, edited WAV and MP4. Private asset and scratch leases survive until player items and readers release them. Disabled and excluded synthetic pieces retain the ordinary source route. App and CLI active-synthetic guards remain enforced.
+- The existing compositor draws the disclosure after captions. Export stages one recognized Adobe XMP UUID, hashes the finished marked MP4 and publishes MP4/SRT/WAV/provenance through the existing transaction. Combined CLI capacity preflight runs before WAV staging and groups scratch, output and rollback needs by volume. Empty timelines retain the typed `everythingCut` error before capacity calculation, and known RIFF overflow fails before opening a reader or output. Product rendering has no fixed 15 GiB reserve.
+- Nonunity fit returns `pitchPreservingFitUnverified` before paid snapshots or scratch. The former level-gated, first-channel heuristic accepted right-only and quiet copies with missing markers; returned frame count is not evidence of preserved body and seam content. Direct TimePitch rendering remains diagnostic only. The unity bypass admits only four binary64 ULPs of numerical roundoff.
+- Track evidence: 21 composition tests, three decoded-AAC tests and three CLI test functions (eight parameter cases) passed. The parent independently checked the MP4 box structure, exact IPTC property and provenance hash, and inspected the readable synthetic export frame. AAC checks cover selected audio, waveform and markers with one-packet boundary tolerance; they do not establish sample-exact lossy-codec timing. Player load and lease tests do not establish audible playback. After correcting the empty-export error order, the final combined-main Release build succeeded and all 57 selected Media/CLI, disclosure, capacity and legacy pipeline tests passed. The unchanged Core integration had already passed 40 focused tests. Existing test-source warnings remain. The new regression covers both export and combined WAV preflight with a missing source, zero reported capacity and preserved existing outputs. Logs and independently checked output are under `/tmp/voxclip-main-compose-r3/`.
+- Source transcript timings, shared fixtures and provider contracts are unchanged. Generation, consent capture and speaker verification, nonunity fit, changed-duration video, lip sync and the complete app workflow remain pending.
+
 ### 2026-10-26 — Windows native activation integration
 
 - The paired Windows UI integration through `8150a2f` changes only Windows focus, launch handling, companion tests and native evidence. Swift source and shared project/render contracts are unchanged. Windows normal open, same-window Recent reopen and no-file reactivation passed the committed native walk; this does not establish a new Mac scene or generated-media acceptance result.
 
 ### 2026-10-26 — Paired rendering prerequisite status
 
-- The Windows audited runtime pin now includes `atempo` after native ARM64 and emulated x64 graph and strict shipping checks. This does not validate either platform's production duration fit or generated-audio composition. Mac composition and disclosure remain under review, and both App/CLI active-synth guards remain enforced. The development machine's disk reserve is an execution constraint, not a product rendering requirement.
+- The Windows audited runtime pin includes `atempo` after native ARM64 and emulated x64 graph and strict shipping checks. Mac unity composition and disclosure are integrated as recorded above; production duration fit remains unverified on both platforms. Both App/CLI active-synth guards remain enforced. The development machine's disk reserve is an execution constraint, not a product rendering requirement.
 
 ### 2026-10-26 — Approved disclosure staging route (ADR-R27)
 
 - The reviewed helper API uses one reusable `VoiceLabDisclosureOverlay(plan:width:height:fontURL:captionBlocks:)`, drawing after captions via `draw(into:at:)`. Interval-wide caption bounds come from the existing renderer. `VoiceLabDisclosureWriter.stage(sourceMP4:stagedMP4:finalFilename:project:prepared:appVersion:createdAt:)` takes finalized muxer output, stages a marked MP4 and returns sidecar bytes for the existing export transaction.
-- The helper handoff is `4deca8f`, not integrated into main. Native owners must first finish geometry bounds and immutable snapshot review fixes, production composition, asset lifetime and transactional disclosure verification. ADR-R27 records the accepted post-mux XMP route, not completed app/CLI rendering; current guards remain active.
+- The helper handoff began at `4deca8f`. Its corrected Swift implementation is integrated with the guarded Mac renderer above; the Windows implementation remains with its native composition owner. ADR-R27 records the accepted post-mux XMP route, not completed app/CLI rendering; current guards remain active.
 
 ### 2026-10-26 — Reviewed Voice Lab v3 Core integration
 

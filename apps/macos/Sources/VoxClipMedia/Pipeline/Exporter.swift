@@ -1,6 +1,7 @@
 import Foundation
 import AVFoundation
 import VideoToolbox
+import Darwin
 import VoxClipCore
 
 private struct ExportPumpSource: @unchecked Sendable {
@@ -58,15 +59,23 @@ public actor AVExporter: Exporter {
     private let pullCheck: (@Sendable (Int) -> Void)?
     private let decodeCheck: (@Sendable (Int) -> Void)?
     private let writerObservation: WriterBoundaryObservation?
-    public init() { builder = CompositionBuilder(); appendCheck = nil; pumpObserver = nil; pullCheck = nil; decodeCheck = nil; writerObservation = nil }
-    public init(rasterizer: any CaptionRasterizer) { builder = CompositionBuilder(rasterizer: rasterizer); appendCheck = nil; pumpObserver = nil; pullCheck = nil; decodeCheck = nil; writerObservation = nil }
+    private let appVersion: String?
+    private let capacityProvider: DiskCapacity.Provider
+    public init(appVersion: String? = nil) { builder = CompositionBuilder(); appendCheck = nil; pumpObserver = nil; pullCheck = nil; decodeCheck = nil; writerObservation = nil; self.appVersion = appVersion; capacityProvider = DiskCapacity.systemVolume }
+    public init(rasterizer: any CaptionRasterizer, appVersion: String? = nil) { builder = CompositionBuilder(rasterizer: rasterizer); appendCheck = nil; pumpObserver = nil; pullCheck = nil; decodeCheck = nil; writerObservation = nil; self.appVersion = appVersion; capacityProvider = DiskCapacity.systemVolume }
+    init(capacityProvider: @escaping DiskCapacity.Provider, appVersion: String? = nil) {
+        builder = CompositionBuilder(); appendCheck = nil; pumpObserver = nil; pullCheck = nil
+        decodeCheck = nil; writerObservation = nil; self.appVersion = appVersion; self.capacityProvider = capacityProvider
+    }
     init(appendCheck: @escaping @Sendable (Int, Int64) throws -> Void,
          pumpObserver: (@Sendable (ExportPumpEvent) -> Void)? = nil,
          pullCheck: (@Sendable (Int) -> Void)? = nil,
          decodeCheck: (@Sendable (Int) -> Void)? = nil,
-         writerObservation: WriterBoundaryObservation? = nil) {
+         writerObservation: WriterBoundaryObservation? = nil,
+         appVersion: String? = nil) {
         builder = CompositionBuilder(); self.appendCheck = appendCheck; self.pumpObserver = pumpObserver; self.pullCheck = pullCheck
-        self.decodeCheck = decodeCheck; self.writerObservation = writerObservation
+        self.decodeCheck = decodeCheck; self.writerObservation = writerObservation; self.appVersion = appVersion
+        capacityProvider = DiskCapacity.systemVolume
     }
 
     private func acquire() async throws {
@@ -107,6 +116,7 @@ public actor AVExporter: Exporter {
             }
         } catch {
             if let failure = error as? VoxClipError, failure.requiresExportRecovery { throw failure }
+            if error is VoiceLabRenderCapabilityError { throw error }
             if error is CancellationError || Task.isCancelled { throw CancellationError() }
             throw ExportSafety.failure(error, destination: job.outputURL)
         }
@@ -117,40 +127,130 @@ public actor AVExporter: Exporter {
         activePumps?.stop()
     }
 
-    private func perform(_ job: ExportJob, additionalOutputs: [(partial: URL, destination: URL)],
-                         progress: @escaping @Sendable (ExportProgress) -> Void) async throws -> ExportResult {
-        try Task.checkCancellation()
-        let started = ContinuousClock.now
+    private struct TransactionPreflight {
+        let destination: URL
+        let marked: Bool
+        let provenanceURL: URL?
+        let provenancePartial: URL?
+        let srtURL: URL?
+        let srtText: String?
+        let sidecarLimit: Int64
+        let outputNeeds: [DiskCapacity.Need]
+    }
+
+    /// The CLI calls this before staging WAV. Export calls the same calculation
+    /// after the WAV partial exists, when free space already reflects its bytes.
+    package func preflightCombinedExport(_ job: ExportJob, editedAudioURL: URL) throws {
+        _ = try transactionPreflight(job, additionalOutputs: [], plannedEditedAudioURL: editedAudioURL)
+    }
+
+    private func transactionPreflight(_ job: ExportJob,
+        additionalOutputs: [(partial: URL, destination: URL)], plannedEditedAudioURL: URL?) throws -> TransactionPreflight {
         let destination = job.outputURL.standardizedFileURL.resolvingSymlinksInPath()
         try ExportSafety.validateDestination(destination)
         let reservedPartial = try ExportSafety.partialURL(for: destination)
-        guard destination != job.render.sourceURL.standardizedFileURL.resolvingSymlinksInPath() else { throw VoxClipError.exportFailed("The export must not overwrite the source") }
+        let marked = job.render.voiceLab?.prepared.disclosure.required == true
+        if marked { _ = try Self.resolvedAppVersion(explicit: appVersion) }
+        let provenanceURL = marked ? URL(fileURLWithPath: destination.path + ".provenance.json") : nil
+        let provenancePartial = try provenanceURL.map { url -> URL in
+            try ExportSafety.validateDestination(url)
+            return try ExportSafety.partialURL(for: url)
+        }
+        let source = job.render.sourceURL.standardizedFileURL.resolvingSymlinksInPath()
+        guard destination != source else { throw VoxClipError.exportFailed("The export must not overwrite the source") }
         let srtURL = job.writeSRT ? (job.srtURL ?? destination.deletingPathExtension().appendingPathExtension("srt")).standardizedFileURL.resolvingSymlinksInPath() : nil
+        let srtText = srtURL == nil ? nil : (job.render.captionLayout.map { CaptionSubtitles.srt($0) } ?? Self.srt(job.render.captions))
         if let sidecar = srtURL {
             try ExportSafety.validateDestination(sidecar)
             let sidecarPartial = try ExportSafety.partialURL(for: sidecar)
             guard sidecar != destination, sidecar != reservedPartial,
-                  sidecarPartial != destination,
-                  sidecar != job.render.sourceURL.standardizedFileURL.resolvingSymlinksInPath(),
-                  sidecarPartial != job.render.sourceURL.standardizedFileURL.resolvingSymlinksInPath() else {
+                  sidecarPartial != destination, sidecar != source,
+                  sidecarPartial != source else {
                 throw VoxClipError.exportFailed("SRT destination overlaps the video")
             }
         }
+        let primary = [(destination, reservedPartial)] +
+            (srtURL.map { [($0, URL(fileURLWithPath: $0.path + ".partial"))] } ?? []) +
+            (provenanceURL.flatMap { url in provenancePartial.map { [(url, $0)] } } ?? [])
+        var extras = additionalOutputs
+        if let plannedEditedAudioURL {
+            let wav = plannedEditedAudioURL.standardizedFileURL.resolvingSymlinksInPath()
+            extras.append((try ExportSafety.partialURL(for: wav), wav))
+        }
+        let allPaths = primary.flatMap { [$0.0, $0.1] } + extras.flatMap { [$0.partial, $0.destination] }
+        let normalized = allPaths.map { $0.standardizedFileURL.resolvingSymlinksInPath().path }
+        guard Set(normalized).count == normalized.count, !normalized.contains(source.path) else {
+            throw VoxClipError.exportFailed("Export outputs overlap")
+        }
+        if let input = job.render.voiceLab { try Self.preventPaidOverwrite(input, paths: allPaths) }
+        for extra in extras {
+            try ExportSafety.validateDestination(extra.destination)
+            _ = try ExportSafety.partialURL(for: extra.destination)
+        }
+        try VoiceLabRenderPreflight.validate(job.render)
+        guard job.render.timeline.outputSamples > 0 else { throw VoxClipError.everythingCut }
+        let plannedWAVBytes = try plannedEditedAudioURL.map { _ in
+            try PCMFile.plannedBytes(frames: job.render.timeline.outputSamples, channels: 2, bits: 32)
+        }
+        let estimate = job.render.timeline.duration * (Double(job.render.output.videoBitrate) + 192_000) / 8 * 1.5
+        guard estimate.isFinite, estimate > 0, estimate < Double(Int64.max / 4) else {
+            throw VoxClipError.diskFull(destination.path)
+        }
+        let mp4Bytes = Int64(ceil(estimate))
+        let outputBytes = try DiskCapacity.checkedMultiply(mp4Bytes, marked ? 3 : 2, at: destination)
+        let sidecarLimit: Int64 = 16 * 1024 * 1024
+        var needs = [DiskCapacity.Need(directory: destination.deletingLastPathComponent(), bytes: outputBytes)]
+        for path in primary.map({ $0.0 }) + extras.map(\.destination) {
+            needs.append(.init(directory: path.deletingLastPathComponent(), bytes: try DiskCapacity.fileBytes(path)))
+        }
+        if let srtURL, let srtText { needs.append(.init(directory: srtURL.deletingLastPathComponent(), bytes: Int64(srtText.utf8.count))) }
+        if let provenanceURL { needs.append(.init(directory: provenanceURL.deletingLastPathComponent(), bytes: sidecarLimit)) }
+        if let plannedEditedAudioURL, let plannedWAVBytes {
+            needs.append(.init(directory: plannedEditedAudioURL.deletingLastPathComponent(), bytes: plannedWAVBytes))
+        }
+        let outputNeeds = needs
+        if let input = job.render.voiceLab, input.prepared.outputPlan.requiresSyntheticRendering {
+            needs.append(.init(directory: FileManager.default.temporaryDirectory,
+                               bytes: try VoiceLabAudioRenderer.scratchBytes(input: input)))
+        }
+        try DiskCapacity.check(needs, provider: capacityProvider)
+        return TransactionPreflight(destination: destination, marked: marked, provenanceURL: provenanceURL,
+                                    provenancePartial: provenancePartial, srtURL: srtURL, srtText: srtText,
+                                    sidecarLimit: sidecarLimit, outputNeeds: outputNeeds)
+    }
+
+    private func perform(_ job: ExportJob, additionalOutputs: [(partial: URL, destination: URL)],
+                         progress: @escaping @Sendable (ExportProgress) -> Void) async throws -> ExportResult {
+        try Task.checkCancellation()
+        let started = ContinuousClock.now
+        let preflight = try transactionPreflight(job, additionalOutputs: additionalOutputs, plannedEditedAudioURL: nil)
+        let destination = preflight.destination
+        let marked = preflight.marked
+        let provenanceURL = preflight.provenanceURL
+        let provenancePartial = preflight.provenancePartial
+        let srtURL = preflight.srtURL
+        let srtText = preflight.srtText
+        let sidecarLimit = preflight.sidecarLimit
+        let outputNeeds = preflight.outputNeeds
         progress(ExportProgress(phase: .preparing, fraction: 0))
         let graph = try await builder.build(job.render)
+        defer { withExtendedLifetime(graph.voiceLabLease) {} }
+        try DiskCapacity.check(outputNeeds, provider: capacityProvider)
         try Task.checkCancellation()
         let partial = try ExportSafety.preparePartial(for: destination)
         var srtPartial: URL?
+        var ownsProvenancePartial = false
         defer {
             try? FileManager.default.removeItem(at: partial)
             if let srtPartial { try? FileManager.default.removeItem(at: srtPartial) }
+            if ownsProvenancePartial, let provenancePartial { try? FileManager.default.removeItem(at: provenancePartial) }
         }
         if let srtURL { srtPartial = try ExportSafety.preparePartial(for: srtURL) }
         let workDirectory = destination.deletingLastPathComponent().appendingPathComponent("voxclip-export-\(UUID().uuidString).partial")
         try FileManager.default.createDirectory(at: workDirectory, withIntermediateDirectories: false)
         defer { try? FileManager.default.removeItem(at: workDirectory) }
         let output = job.render.output
-        let timeRange = CMTimeRange(start: .zero, duration: CMTime(value: job.render.plan.outputSamples, timescale: Int32(job.render.plan.sampleRate)))
+        let timeRange = CMTimeRange(start: .zero, duration: CMTime(value: job.render.timeline.outputSamples, timescale: Int32(job.render.timeline.sampleRate)))
         guard let videoComposition = graph.composition.copy() as? AVComposition,
               let videoTrack = videoComposition.track(withTrackID: graph.videoTrack.trackID) else {
             throw VoxClipError.decodeFailed("Cannot copy export video composition")
@@ -217,13 +317,13 @@ public actor AVExporter: Exporter {
             } else { audioSource = nil }
             let (frames, audioSampleCount) = try await withThrowingTaskGroup(of: (Int, Int64).self) { group in
                 group.addTask {
-                    (0, try await self.pumpVideo(videoSource, duration: job.render.plan.duration,
-                        frameLimit: Int64((job.render.plan.duration * output.fps).rounded()),
+                    (0, try await self.pumpVideo(videoSource, duration: job.render.timeline.duration,
+                        frameLimit: Int64((job.render.timeline.duration * output.fps).rounded()),
                         pumps: pumps, started: started, progress: progress))
                 }
                 group.addTask {
                     (1, try await self.pumpAudio(audioSource,
-                        sampleLimit: Int64((job.render.plan.duration * 48000).rounded()), pumps: pumps))
+                        sampleLimit: Int64((job.render.timeline.duration * 48000).rounded()), pumps: pumps))
                 }
                 var counts: [Int64] = [0, 0]
                 do {
@@ -242,20 +342,44 @@ public actor AVExporter: Exporter {
             activePumps = nil
             progress(ExportProgress(phase: .finalizing, fraction: 1))
             try Task.checkCancellation()
-            writer.endSession(atSourceTime: CMTime(value: job.render.plan.outputSamples, timescale: Int32(job.render.plan.sampleRate)))
+            writer.endSession(atSourceTime: CMTime(value: job.render.timeline.outputSamples, timescale: Int32(job.render.timeline.sampleRate)))
             await writer.finishWriting()
             try Task.checkCancellation()
             guard writer.status == .completed else { throw writer.error ?? VoxClipError.exportFailed("Encoder did not finish") }
-            if let srtPartial {
-                let sidecar = job.render.captionLayout.map { CaptionSubtitles.srt($0) } ?? Self.srt(job.render.captions)
-                try sidecar.write(to: srtPartial, atomically: true, encoding: .utf8)
+            if let srtPartial, let srtText {
+                try srtText.write(to: srtPartial, atomically: true, encoding: .utf8)
             }
             try Task.checkCancellation()
             var outputs = [(partial: partial, destination: destination)]
+            if let input = job.render.voiceLab, marked, let provenanceURL, let provenancePartial {
+                try Self.reserveDisclosureCopy(partial)
+                let stagedMP4 = workDirectory.appendingPathComponent("marked.mp4")
+                let disclosure = try VoiceLabDisclosureWriter.stage(sourceMP4: partial, stagedMP4: stagedMP4,
+                    finalFilename: destination.lastPathComponent, project: input.project, prepared: input.prepared,
+                    appVersion: try Self.resolvedAppVersion(explicit: appVersion))
+                guard disclosure.sidecarFilename == provenanceURL.lastPathComponent else {
+                    throw VoiceLabDisclosureError.invalidMP4
+                }
+                guard disclosure.sidecarData.count <= sidecarLimit else { throw VoxClipError.diskFull(provenanceURL.path) }
+                let descriptor = Darwin.open(provenancePartial.path, O_WRONLY | O_CREAT | O_EXCL, S_IRUSR | S_IWUSR)
+                guard descriptor >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+                ownsProvenancePartial = true
+                let sidecar = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
+                try sidecar.write(contentsOf: disclosure.sidecarData)
+                try sidecar.synchronize()
+                try sidecar.close()
+                outputs[0].partial = disclosure.mp4URL
+                outputs.append((provenancePartial, provenanceURL))
+            }
             if let srtPartial, let srtURL { outputs.append((srtPartial, srtURL)) }
+            let rollbackNeeds = try (outputs + additionalOutputs).map { output in
+                DiskCapacity.Need(directory: output.destination.deletingLastPathComponent(),
+                                  bytes: try DiskCapacity.fileBytes(output.destination))
+            }
+            try DiskCapacity.check(rollbackNeeds, provider: capacityProvider)
             try ExportSafety.publishAll(outputs + additionalOutputs)
             let elapsed = started.duration(to: .now).components
-            return ExportResult(outputURL: destination, srtURL: srtURL, durationSeconds: job.render.plan.duration,
+            return ExportResult(outputURL: destination, srtURL: srtURL, durationSeconds: job.render.timeline.duration,
                                 width: output.size.width, height: output.size.height, fps: output.fps, frames: frames,
                                 audioSampleRate: 48000, audioSamples: audioSampleCount,
                                 videoCodec: "h264", encoder: "h264_videotoolbox",
@@ -272,6 +396,28 @@ public actor AVExporter: Exporter {
             if let failure = error as? VoxClipError, failure.requiresExportRecovery { throw failure }
             if error is CancellationError || Task.isCancelled { throw CancellationError() }
             throw ExportSafety.failure(error, destination: destination)
+        }
+    }
+
+    private nonisolated static func reserveDisclosureCopy(_ source: URL) throws {
+        let bytes = (try FileManager.default.attributesOfItem(atPath: source.path)[.size] as? NSNumber)?.int64Value ?? -1
+        guard bytes > 0 else { throw VoxClipError.diskFull(source.path) }
+        try DiskCapacity.check([.init(directory: source.deletingLastPathComponent(), bytes: bytes)])
+    }
+
+    static func resolvedAppVersion(explicit: String?, bundle: Bundle = .main) throws -> String {
+        guard let version = explicit ?? bundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String,
+              !version.isEmpty, version != "0.0.0", !version.contains("/"), !version.contains("\\") else {
+            throw VoxClipError.exportFailed("App version is unavailable for provenance")
+        }
+        return version
+    }
+
+    private nonisolated static func preventPaidOverwrite(_ input: VoiceLabRenderInput, paths: [URL]) throws {
+        let outputs = Set(paths.map { $0.standardizedFileURL.resolvingSymlinksInPath().path })
+        for asset in input.project.voiceLab.assets ?? [] {
+            let paid = input.paidRoot.appendingPathComponent(asset.file).standardizedFileURL.resolvingSymlinksInPath().path
+            guard !outputs.contains(paid) else { throw VoxClipError.exportFailed("Export must not overwrite a Voice Lab asset") }
         }
     }
 
@@ -393,6 +539,7 @@ public actor AVExporter: Exporter {
             try Task.checkCancellation()
             try ExportSafety.publish(partial, to: destination.standardizedFileURL.resolvingSymlinksInPath())
         } catch {
+            if error is VoiceLabRenderCapabilityError { throw error }
             if error is CancellationError || Task.isCancelled { throw CancellationError() }
             throw ExportSafety.failure(error, destination: destination)
         }
@@ -408,6 +555,7 @@ public actor AVExporter: Exporter {
                 try await performEditedAudio(request, to: destination)
             } onCancel: { Task { await self.cancelActive(id) } }
         } catch {
+            if error is VoiceLabRenderCapabilityError { throw error }
             if error is CancellationError || Task.isCancelled { throw CancellationError() }
             let failure = ExportSafety.failure(error, destination: destination)
             switch failure {
@@ -424,16 +572,30 @@ public actor AVExporter: Exporter {
         try ExportSafety.validateDestination(destination)
         _ = try ExportSafety.partialURL(for: destination)
         guard destination != request.sourceURL.standardizedFileURL.resolvingSymlinksInPath() else { throw VoxClipError.exportFailed("Unsafe audio destination") }
+        if let input = request.voiceLab {
+            try Self.preventPaidOverwrite(input, paths: [destination, URL(fileURLWithPath: destination.path + ".partial")])
+        }
+        let synthetic = request.voiceLab?.prepared.outputPlan.requiresSyntheticRendering == true
+        guard request.timeline.outputSamples >= 0 else { throw VoxClipError.diskFull(destination.path) }
+        let bytes = try PCMFile.plannedBytes(frames: request.timeline.outputSamples, channels: 2, bits: 32)
+        var needs = [DiskCapacity.Need(directory: destination.deletingLastPathComponent(),
+                                       bytes: try DiskCapacity.checkedAdd(bytes, DiskCapacity.fileBytes(destination), at: destination))]
+        if synthetic, let input = request.voiceLab {
+            needs.append(.init(directory: FileManager.default.temporaryDirectory,
+                               bytes: try VoiceLabAudioRenderer.scratchBytes(input: input)))
+        }
+        try DiskCapacity.check(needs, provider: capacityProvider)
         let graph = try await builder.build(request)
+        defer { withExtendedLifetime(graph.voiceLabLease) {} }
         guard let track = graph.audioTrack else { throw VoxClipError.noAudioTrack }
         let reader = try AVAssetReader(asset: graph.composition)
-        let output = AVAssetReaderAudioMixOutput(audioTracks: [track], audioSettings: MediaSupport.pcm(rate: request.plan.sampleRate, channels: 2))
+        let output = AVAssetReaderAudioMixOutput(audioTracks: [track], audioSettings: MediaSupport.pcm(rate: request.timeline.sampleRate, channels: 2))
         output.audioMix = graph.audioMix; output.alwaysCopiesSampleData = false
         let provider = reader.outputProvider(for: output)
         let temporary = try ExportSafety.preparePartial(for: destination)
         var prepared = false
         defer { if !prepared { try? FileManager.default.removeItem(at: temporary) } }
-        let wav = try PCMFile(url: temporary, rate: Int(request.plan.sampleRate), channels: 2, float: true)
+        let wav = try PCMFile(url: temporary, rate: Int(request.timeline.sampleRate), channels: 2, float: true)
         do {
             guard reader.startReading() else { throw VoxClipError.decodeFailed("Cannot read edited audio") }
             while let ready = try await MediaSupport.nextSample(provider) {
@@ -449,21 +611,21 @@ public actor AVExporter: Exporter {
             }
             try Task.checkCancellation()
             guard reader.status == .completed else { throw VoxClipError.decodeFailed(reader.error?.localizedDescription ?? "Edited audio did not finish") }
-            let deficit = request.plan.outputSamples - wav.frames
-            if deficit > 0, let last = request.plan.kept.last {
+            let deficit = request.timeline.outputSamples - wav.frames
+            if !synthetic, deficit > 0, let last = request.plan.kept.last {
                 let sourceEnd = try await decodedSourceAudioEnd(request)
                 let missingTail = max(0, last.endSample - max(last.startSample, sourceEnd))
                 if deficit == missingTail {
                     try Task.checkCancellation()
-                    try wav.finish(expectedFrames: request.plan.outputSamples)
+                    try wav.finish(expectedFrames: request.timeline.outputSamples)
                 } else {
-                    throw VoxClipError.exportFailed("Edited audio has \(wav.frames) samples, expected \(request.plan.outputSamples)")
+                    throw VoxClipError.exportFailed("Edited audio has \(wav.frames) samples, expected \(request.timeline.outputSamples)")
                 }
             } else {
                 try wav.finish()
             }
-            guard wav.frames == request.plan.outputSamples else {
-                throw VoxClipError.exportFailed("Edited audio has \(wav.frames) samples, expected \(request.plan.outputSamples)")
+            guard wav.frames == request.timeline.outputSamples else {
+                throw VoxClipError.exportFailed("Edited audio has \(wav.frames) samples, expected \(request.timeline.outputSamples)")
             }
             prepared = true
             return temporary

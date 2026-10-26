@@ -2,6 +2,18 @@ import Foundation
 import VoxClipCore
 
 final class PCMFile {
+    static func plannedBytes(frames: Int64, channels: Int, bits: Int) throws -> Int64 {
+        guard frames >= 0, channels > 0, bits == 16 || bits == 32 else {
+            throw VoxClipError.exportFailed("Invalid WAV format or frame count")
+        }
+        let stride = try DiskCapacity.checkedMultiply(Int64(channels), Int64(bits / 8), at: FileManager.default.temporaryDirectory)
+        let dataBytes = try DiskCapacity.checkedMultiply(frames, stride, at: FileManager.default.temporaryDirectory)
+        guard dataBytes <= Int64(UInt32.max) - 36 else {
+            throw VoxClipError.exportFailed("WAV exceeds the RIFF size limit")
+        }
+        return dataBytes + 44
+    }
+
     let handle: FileHandle
     let rate: Int
     let channels: Int
@@ -22,6 +34,7 @@ final class PCMFile {
     }
 
     func finish(expectedFrames: Int64? = nil) throws {
+        _ = try Self.plannedBytes(frames: expectedFrames ?? frames, channels: channels, bits: bits)
         if let expectedFrames {
             if frames > expectedFrames { try handle.truncate(atOffset: UInt64(44 + expectedFrames * Int64(channels * bits / 8))) }
             while frames < expectedFrames {

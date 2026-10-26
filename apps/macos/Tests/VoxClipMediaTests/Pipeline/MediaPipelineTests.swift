@@ -147,6 +147,39 @@ private func request(plan: EditPlan = cutPlan(), size: PixelSize = PixelSize(wid
         try await AVExporter().export(ExportJob(render: request(plan: plan), outputURL: destination)) { _ in }
     }
     #expect(!FileManager.default.fileExists(atPath: destination.path))
+    #expect(!FileManager.default.fileExists(atPath: destination.path + ".partial"))
+}
+
+@Test func emptyTimelinePreflightPreservesOutputsBeforeSourceAndCapacity() async throws {
+    let directory = try temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let plan = EditPlan(sampleRate: 48000, totalSamples: 96000, kept: [])
+    let missingSource = directory.appendingPathComponent("missing.mov")
+    let video = directory.appendingPathComponent("existing.mp4")
+    let wav = directory.appendingPathComponent("existing.wav")
+    let srt = directory.appendingPathComponent("existing.srt")
+    let oldVideo = Data("old video".utf8)
+    let oldWAV = Data("old wav".utf8)
+    let oldSRT = Data("old subtitles".utf8)
+    try oldVideo.write(to: video)
+    try oldWAV.write(to: wav)
+    try oldSRT.write(to: srt)
+    let render = RenderRequest(sourceURL: missingSource, plan: plan,
+        output: OutputSpec(size: PixelSize(width: 320, height: 180), fps: 30, videoBitrate: 2_000_000))
+    let job = ExportJob(render: render, outputURL: video, writeSRT: true, srtURL: srt)
+    let exporter = AVExporter(capacityProvider: { _ in .init(id: 1, freeBytes: 0) })
+    await #expect(throws: VoxClipError.everythingCut) {
+        try await exporter.preflightCombinedExport(job, editedAudioURL: wav)
+    }
+    await #expect(throws: VoxClipError.everythingCut) {
+        _ = try await exporter.export(job) { _ in }
+    }
+    #expect(try Data(contentsOf: video) == oldVideo)
+    #expect(try Data(contentsOf: wav) == oldWAV)
+    #expect(try Data(contentsOf: srt) == oldSRT)
+    for output in [video, wav, srt] {
+        #expect(!FileManager.default.fileExists(atPath: output.path + ".partial"))
+    }
 }
 
 actor TestCaptionRasterizer: CaptionRasterizer {

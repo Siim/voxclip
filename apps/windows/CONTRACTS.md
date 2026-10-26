@@ -1,5 +1,10 @@
 # Windows fixed contracts
 
+### 2026-10-26 — Paired Mac unity composition integration
+
+- The Mac renderer reviewed through `ee47127` is integrated behind the existing app/CLI active-synthetic guards, including native mixed audio, visible disclosure, staged XMP and transactional provenance. Nonunity TimePitch fit is uniformly refused before paid snapshot or scratch preparation. This integration changes no Windows source, shipping DLL, shared fixture or provider contract.
+- Windows composition remains under native acceptance in its own track; the Mac integration does not import the earlier standalone C# disclosure helpers or establish Windows WASAPI, full-take, touching-piece or final-source acceptance. Both platforms still require verified production body and seam placement before enabling nonunity fit.
+
 ### 2026-10-26 — Native clipping keyboard and activation integration
 
 - Integrated the reviewed Windows UI track through `8150a2f`. F6 targets the native timeline slider and selected inspector tab; clip preview moves focus to transport and Escape returns to the clip. Rebuilding clip results preserves checkbox focus. Recent projects expose their names, and Alt+Left reaches Home without editor key handling consuming it.

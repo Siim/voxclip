@@ -52,8 +52,11 @@ public struct RenderGraph {
     public let audioMix: AVAudioMix?
     public let renderSize: CGSize
     public let frameDuration: CMTime
-    public init(composition: AVMutableComposition, videoTrack: AVMutableCompositionTrack, audioTrack: AVMutableCompositionTrack?, videoComposition: AVVideoComposition, audioMix: AVAudioMix?, renderSize: CGSize, frameDuration: CMTime) {
+    /// Keeps paid snapshots and staged CAF alive through every player/reader callback.
+    public let voiceLabLease: VoiceLabRenderLease?
+    public init(composition: AVMutableComposition, videoTrack: AVMutableCompositionTrack, audioTrack: AVMutableCompositionTrack?, videoComposition: AVVideoComposition, audioMix: AVAudioMix?, renderSize: CGSize, frameDuration: CMTime, voiceLabLease: VoiceLabRenderLease? = nil) {
         self.composition = composition; self.videoTrack = videoTrack; self.audioTrack = audioTrack; self.videoComposition = videoComposition; self.audioMix = audioMix; self.renderSize = renderSize; self.frameDuration = frameDuration
+        self.voiceLabLease = voiceLabLease
     }
 }
 
@@ -70,14 +73,17 @@ public struct CompositionBuilder: Sendable {
     public func build(_ request: RenderRequest, isolation: isolated (any Actor)? = #isolation) async throws -> RenderGraph {
         try Task.checkCancellation()
         let plan = request.plan
-        guard plan.outputSamples > 0, !plan.kept.isEmpty else { throw VoxClipError.everythingCut }
-        guard plan.totalSamples >= 0, plan.sampleRate.isFinite, plan.sampleRate > 0, plan.sampleRate <= Double(Int32.max),
-              plan.sampleRate.rounded() == plan.sampleRate,
-              plan.kept.allSatisfy({ $0.startSample >= 0 && $0.endSample <= plan.totalSamples && $0.count > 0 }),
-              zip(plan.kept, plan.kept.dropFirst()).allSatisfy({ $0.endSample <= $1.startSample }),
-              plan.kept.reduce(Int64(0), { $0.addingReportingOverflow($1.count).overflow ? -1 : $0 + $1.count }) == plan.outputSamples,
-              plan.joins.allSatisfy({ $0.outSample >= 0 && $0.outSample <= plan.outputSamples && $0.fadeInLen >= 0 && $0.fadeOutLen >= 0 }),
-              zip(plan.joins, plan.joins.dropFirst()).allSatisfy({ $0.outSample <= $1.outSample }) else {
+        let voicePlan = request.voiceLab?.prepared.outputPlan
+        let synthetic = voicePlan?.requiresSyntheticRendering == true
+        try VoiceLabRenderPreflight.validate(request)
+        guard synthetic || (plan.outputSamples > 0 && !plan.kept.isEmpty) else { throw VoxClipError.everythingCut }
+        guard synthetic || (plan.totalSamples >= 0 && plan.sampleRate.isFinite && plan.sampleRate > 0 && plan.sampleRate <= Double(Int32.max) &&
+              plan.sampleRate.rounded() == plan.sampleRate &&
+              plan.kept.allSatisfy({ $0.startSample >= 0 && $0.endSample <= plan.totalSamples && $0.count > 0 }) &&
+              zip(plan.kept, plan.kept.dropFirst()).allSatisfy({ $0.endSample <= $1.startSample }) &&
+              plan.kept.reduce(Int64(0), { $0.addingReportingOverflow($1.count).overflow ? -1 : $0 + $1.count }) == plan.outputSamples &&
+              plan.joins.allSatisfy({ $0.outSample >= 0 && $0.outSample <= plan.outputSamples && $0.fadeInLen >= 0 && $0.fadeOutLen >= 0 }) &&
+              zip(plan.joins, plan.joins.dropFirst()).allSatisfy({ $0.outSample <= $1.outSample })) else {
             throw VoxClipError.exportFailed("Invalid kept sample ranges")
         }
         guard request.output.size.width >= 2, request.output.size.height >= 2,
@@ -94,11 +100,13 @@ public struct CompositionBuilder: Sendable {
         let composition = AVMutableComposition()
         guard let video = composition.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid) else { throw VoxClipError.exportFailed("Cannot create video track") }
         let audio = sourceAudio == nil ? nil : composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid)
-        let rate = Int32(plan.sampleRate)
+        let rate = Int32(synthetic ? voicePlan!.sampleRate : plan.sampleRate)
+        let ranges: [(Int64, Int64)] = synthetic ? voicePlan!.pieces.map { ($0.sourceStartSample, $0.sourceEndSample) } :
+            plan.kept.map { ($0.startSample, $0.endSample) }
         var cursor = CMTime.zero
-        for kept in plan.kept {
+        for (start, end) in ranges {
             try Task.checkCancellation()
-            let range = CMTimeRange(start: CMTime(value: kept.startSample, timescale: rate), end: CMTime(value: kept.endSample, timescale: rate))
+            let range = CMTimeRange(start: CMTime(value: start, timescale: rate), end: CMTime(value: end, timescale: rate))
             let overlap = CMTimeRangeGetIntersection(range, otherRange: videoRange)
             if overlap.isValid, !overlap.isEmpty {
                 try video.insertTimeRange(overlap, of: sourceVideo, at: cursor + overlap.start - range.start)
@@ -112,15 +120,24 @@ public struct CompositionBuilder: Sendable {
                 try video.insertTimeRange(lastFrame, of: sourceVideo, at: insertion)
                 video.scaleTimeRange(CMTimeRange(start: insertion, duration: frameDuration), toDuration: tailDuration)
             }
-            if let audio, let sourceAudio { try audio.insertTimeRange(range, of: sourceAudio, at: cursor) }
+            if !synthetic, let audio, let sourceAudio { try audio.insertTimeRange(range, of: sourceAudio, at: cursor) }
             cursor = cursor + range.duration
+        }
+        var lease: VoiceLabRenderLease?
+        if synthetic {
+            guard sourceAudio != nil, let audio, let voicePlan else { throw VoxClipError.noAudioTrack }
+            lease = try await VoiceLabAudioRenderer.stage(request: request)
+            let mixed = AVURLAsset(url: lease!.mixedAudioURL)
+            guard let mixedTrack = try await MediaSupport.audioTrack(in: mixed) else { throw VoxClipError.decodeFailed("Mixed CAF has no audio track") }
+            try audio.insertTimeRange(CMTimeRange(start: .zero, duration: CMTime(value: voicePlan.outputSamples, timescale: rate)),
+                                      of: mixedTrack, at: .zero)
         }
         let videoComposition = try makeVideoComposition(request, trackID: video.trackID, duration: cursor,
                                                         orientation: MediaSupport.orientation(transform))
         let size = videoComposition.renderSize
         let frameDuration = videoComposition.frameDuration
         var mix: AVAudioMix?
-        if let audio {
+        if let audio, !synthetic {
             let parameters = AVMutableAudioMixInputParameters(track: audio)
             parameters.audioTapProcessor = try FadeTap.make(plan: plan)
             let audioMix = AVMutableAudioMix()
@@ -128,7 +145,7 @@ public struct CompositionBuilder: Sendable {
             mix = audioMix
         }
         return RenderGraph(composition: composition, videoTrack: video, audioTrack: audio, videoComposition: videoComposition,
-                           audioMix: mix, renderSize: size, frameDuration: frameDuration)
+                           audioMix: mix, renderSize: size, frameDuration: frameDuration, voiceLabLease: lease)
     }
 
     func makeVideoComposition(_ request: RenderRequest, trackID: CMPersistentTrackID, duration: CMTime,
@@ -140,9 +157,21 @@ public struct CompositionBuilder: Sendable {
         }
         let frameDuration = CMTime(value: 1, timescale: Int32(request.output.fps.rounded()))
         let needsRasterizer = request.captionLayout != nil || request.style != nil
+        let disclosure: VoiceLabDisclosureOverlay?
+        if let input = request.voiceLab, input.prepared.disclosure.required {
+            let blocks: [VoiceLabDisclosureCaptionBlock] = request.captionLayout?.pages.map { page in
+                let bounds = page.page.visual
+                return VoiceLabDisclosureCaptionBlock(start: page.page.start, end: page.page.end,
+                    bounds: CGRect(x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height))
+            } ?? []
+            let font = try SharedResources.locate().root.appendingPathComponent("fonts/dm-sans/DMSans-Bold.ttf")
+            disclosure = try VoiceLabDisclosureOverlay(plan: input.prepared.disclosure,
+                width: request.output.size.width, height: request.output.size.height, fontURL: font,
+                captionBlocks: blocks)
+        } else { disclosure = nil }
         let instruction = RenderInstruction(timeRange: CMTimeRange(start: .zero, duration: duration), sourceTrackID: trackID,
             request: request, orientation: orientation, rasterizer: needsRasterizer ? try sharedRasterizer.get() : nil,
-            legacyRasterizer: rasterizer)
+            legacyRasterizer: rasterizer, disclosure: disclosure)
         let config = AVVideoComposition.Configuration(colorPrimaries: AVVideoColorPrimaries_ITU_R_709_2,
             colorTransferFunction: AVVideoTransferFunction_ITU_R_709_2, colorYCbCrMatrix: AVVideoYCbCrMatrix_ITU_R_709_2,
             customVideoCompositorClass: FrameCompositor.self, frameDuration: frameDuration, instructions: [instruction], renderSize: size)

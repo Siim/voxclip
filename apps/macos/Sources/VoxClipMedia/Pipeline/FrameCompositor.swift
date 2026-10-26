@@ -92,19 +92,24 @@ public final class FrameCompositor: NSObject, AVVideoCompositing, @unchecked Sen
     private func drawCaptions(_ request: AVAsynchronousVideoCompositionRequest, instruction: RenderInstruction,
                               into output: CVPixelBuffer, generation current: UInt64) {
         let time = request.compositionTime.seconds
+        @Sendable func finishMarked(_ buffer: CVPixelBuffer) {
+            guard generation.withLock({ $0 }) == current else { request.finishCancelledRequest(); return }
+            do {
+                try instruction.disclosure?.draw(into: buffer, at: time)
+                request.finish(withComposedVideoFrame: buffer)
+            } catch { request.finish(with: error) }
+        }
         if let layout = instruction.request.captionLayout {
             do {
                 guard let rasterizer = instruction.rasterizer else { throw VoxClipError.sharedResourcesMissing }
                 try rasterizer.draw(layout, time: time, into: output,
                     previewWidth: instruction.request.forPreview ? CVPixelBufferGetWidth(output) : nil)
-                if generation.withLock({ $0 }) == current { request.finish(withComposedVideoFrame: output) }
-                else { request.finishCancelledRequest() }
+                finishMarked(output)
             } catch { request.finish(with: error) }
             return
         }
         guard let page = instruction.page(at: time), let style = instruction.request.style else {
-            guard generation.withLock({ $0 }) == current else { request.finishCancelledRequest(); return }
-            request.finish(withComposedVideoFrame: output)
+            finishMarked(output)
             return
         }
         guard let rasterizer = instruction.legacyRasterizer ?? instruction.rasterizer else {
@@ -114,8 +119,9 @@ public final class FrameCompositor: NSObject, AVVideoCompositing, @unchecked Sen
         let height = CVPixelBufferGetHeight(output)
         let complete: @Sendable (CaptionRaster, CVPixelBuffer) -> Void = { overlay, buffer in
             guard self.generation.withLock({ $0 }) == current else { request.finishCancelledRequest(); return }
-            CVPixelBufferLockBaseAddress(buffer, [])
-            defer { CVPixelBufferUnlockBaseAddress(buffer, []) }
+            guard CVPixelBufferLockBaseAddress(buffer, []) == kCVReturnSuccess else {
+                request.finish(with: VoxClipError.decodeFailed("Cannot lock caption frame")); return
+            }
             guard overlay.width > 0, overlay.height > 0, overlay.bytesPerRow >= overlay.width * 4,
                   overlay.rgba.count >= overlay.bytesPerRow * overlay.height,
                   let provider = CGDataProvider(data: overlay.rgba as CFData),
@@ -125,11 +131,12 @@ public final class FrameCompositor: NSObject, AVVideoCompositing, @unchecked Sen
                   let graphics = CGContext(data: CVPixelBufferGetBaseAddress(buffer), width: width, height: height,
                       bitsPerComponent: 8, bytesPerRow: CVPixelBufferGetBytesPerRow(buffer), space: self.colorSpace,
                       bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue) else {
+                CVPixelBufferUnlockBaseAddress(buffer, [])
                 request.finish(with: VoxClipError.decodeFailed("Invalid caption raster")); return
             }
             graphics.draw(caption, in: CGRect(x: 0, y: 0, width: width, height: height))
-            guard self.generation.withLock({ $0 }) == current else { request.finishCancelledRequest(); return }
-            request.finish(withComposedVideoFrame: buffer)
+            CVPixelBufferUnlockBaseAddress(buffer, [])
+            finishMarked(buffer)
         }
         let id = UUID()
         let task = Task {
@@ -172,14 +179,17 @@ public final class RenderInstruction: NSObject, AVVideoCompositionInstructionPro
     let orientation: CGImagePropertyOrientation
     let rasterizer: CoreTextCaptionRasterizer?
     let legacyRasterizer: (any CaptionRasterizer)?
+    let disclosure: VoiceLabDisclosureOverlay?
 
     public convenience init(timeRange: CMTimeRange, sourceTrackID: CMPersistentTrackID, request: RenderRequest) {
         self.init(timeRange: timeRange, sourceTrackID: sourceTrackID, request: request, orientation: .up, rasterizer: nil)
     }
     init(timeRange: CMTimeRange, sourceTrackID: CMPersistentTrackID, request: RenderRequest,
-         orientation: CGImagePropertyOrientation, rasterizer: CoreTextCaptionRasterizer?, legacyRasterizer: (any CaptionRasterizer)? = nil) {
+         orientation: CGImagePropertyOrientation, rasterizer: CoreTextCaptionRasterizer?,
+         legacyRasterizer: (any CaptionRasterizer)? = nil, disclosure: VoiceLabDisclosureOverlay? = nil) {
         self.timeRange = timeRange; self.sourceTrackID = sourceTrackID; self.request = request
-        self.orientation = orientation; self.rasterizer = rasterizer; self.legacyRasterizer = legacyRasterizer; super.init()
+        self.orientation = orientation; self.rasterizer = rasterizer; self.legacyRasterizer = legacyRasterizer
+        self.disclosure = disclosure; super.init()
     }
 
     func page(at time: Double) -> CaptionPage? {
