@@ -8,6 +8,7 @@ using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Services.Media;
 using VoxClip.Media.Audio;
 using VoxClip.Media.Ffmpeg;
+using VoxClip.Media.VoiceLab;
 
 namespace VoxClip.Media.Pipeline;
 
@@ -32,6 +33,7 @@ public sealed class PreviewEngine : IPreviewEngine
     private Exception? playbackFailure;
     private readonly Stopwatch videoClock = new();
     private ComposeSnapshot? snapshot;
+    private VoiceLabRenderSession? voiceSession;
     private PreviewPosition position = new(0, 0, false);
     private IPreviewVideoWorker? current;
     private IPreviewVideoWorker? lookAhead;
@@ -70,7 +72,10 @@ public sealed class PreviewEngine : IPreviewEngine
     /// <inheritdoc />
     public event EventHandler<Exception>? PlaybackFaulted;
     /// <inheritdoc />
-    public Task LoadAsync(ComposeSnapshot snapshot, IProgress<MediaProgress>? progress, CancellationToken ct) => Invoke(() =>
+    public Task LoadAsync(ComposeSnapshot snapshot, IProgress<MediaProgress>? progress, CancellationToken ct)
+    {
+        snapshot = snapshot.VoiceLab?.CaptureSnapshot(snapshot) ?? snapshot;
+        return Invoke(() =>
     {
         StopMedia();
         playbackFailure = null;
@@ -78,20 +83,23 @@ public sealed class PreviewEngine : IPreviewEngine
         try
         {
             initialize(ct);
+            voiceSession = VoiceLabRenderSession.PrepareAsync(snapshot, ct).GetAwaiter().GetResult();
             this.snapshot = CapPreview(snapshot);
+            if (composer is FrameComposer concrete) concrete.PrepareDisclosure(this.snapshot);
             current = createWorker(snapshot.Media.Path, "vc-dec-a"); lookAhead = createWorker(snapshot.Media.Path, "vc-dec-b");
             Task.WhenAll(current.Ready, lookAhead.Ready).WaitAsync(ct).GetAwaiter().GetResult();
             Seek(0, ct);
         }
         catch { StopMedia(); this.snapshot = null; UpdatePosition(0); throw; }
-    }, ct);
+        }, ct);
+    }
     /// <inheritdoc />
     public Task PlayAsync(CancellationToken ct) => Invoke(() =>
     {
         RequireSnapshot();
         ThrowPlaybackFailure();
         if (playing) return;
-        if (Position.EditedTime >= snapshot!.Plan.Duration) Seek(0, ct);
+        if (Position.EditedTime >= snapshot!.Timeline.Duration) Seek(0, ct);
         origin = Position.EditedTime;
         if (snapshot!.Media.Audio is not null)
         {
@@ -115,23 +123,58 @@ public sealed class PreviewEngine : IPreviewEngine
         }, ct);
     }
     /// <inheritdoc />
-    public Task UpdateSnapshotAsync(ComposeSnapshot snapshot, CancellationToken ct) => Invoke(() =>
+    public Task UpdateSnapshotAsync(ComposeSnapshot snapshot, CancellationToken ct)
+    {
+        snapshot = snapshot.VoiceLab?.CaptureSnapshot(snapshot) ?? snapshot;
+        return Invoke(() =>
     {
         RequireSnapshot();
-        var source = Position.SourceTime;
-        var resume = playing;
-        Pause();
-        Interlocked.Exchange(ref this.snapshot, CapPreview(snapshot));
-        var edited = snapshot.Plan.MapTime(source);
-        Seek(edited, ct);
-        if (resume) Resume(ct);
-    }, ct);
+        var sameVoice = voiceSession is not null && this.snapshot!.VoiceLab is { } oldInput &&
+            snapshot.VoiceLab is { } newInput && oldInput.Fingerprint == newInput.Fingerprint &&
+            oldInput.PaidRoot == newInput.PaidRoot && oldInput.Prepared.OutputPlan.Scope == newInput.Prepared.OutputPlan.Scope &&
+            oldInput.Prepared.Disclosure.Position == newInput.Prepared.Disclosure.Position;
+        var nextSession = sameVoice ? voiceSession : VoiceLabRenderSession.PrepareAsync(snapshot, ct).GetAwaiter().GetResult();
+        var previousSnapshot = this.snapshot;
+        ComposeSnapshot? nextSnapshot = null;
+        var swapped = false;
+        try
+        {
+            nextSnapshot = CapPreview(snapshot);
+            if (composer is FrameComposer concrete) concrete.PrepareDisclosure(nextSnapshot);
+            var source = Position.SourceTime;
+            var resume = playing;
+            Pause();
+            if (!sameVoice) { StopAudio(); voiceSession?.Dispose(); voiceSession = nextSession; }
+            Interlocked.Exchange(ref this.snapshot, nextSnapshot);
+            swapped = true;
+            var edited = snapshot.Timeline.MapTime(source);
+            Seek(edited, ct);
+            if (resume) Resume(ct);
+            if (composer is FrameComposer used) used.ReleaseDisclosure(previousSnapshot);
+        }
+        catch
+        {
+            if (composer is FrameComposer used)
+            {
+                if (swapped) used.ReleaseDisclosure(previousSnapshot);
+                else used.ReleaseDisclosure(nextSnapshot);
+            }
+            if (!sameVoice && !ReferenceEquals(voiceSession, nextSession)) nextSession?.Dispose();
+            throw;
+        }
+        }, ct);
+    }
     /// <inheritdoc />
     public Task UpdateCaptionsAsync(CaptionTrack? captions, CancellationToken ct) => Invoke(() =>
     {
         RequireSnapshot();
-        Interlocked.Exchange(ref snapshot, snapshot! with { Captions = captions });
-        if (!playing) Present(Position.EditedTime, true, ct);
+        var updated = snapshot! with { Captions = captions };
+        updated = updated.VoiceLab?.CaptureSnapshot(updated) ?? updated;
+        var previous = snapshot;
+        if (composer is FrameComposer concrete) concrete.PrepareDisclosure(updated);
+        Interlocked.Exchange(ref snapshot, updated);
+        try { if (!playing) Present(Position.EditedTime, true, ct); }
+        finally { if (composer is FrameComposer used) used.ReleaseDisclosure(previous); }
     }, ct);
     /// <inheritdoc />
     public async IAsyncEnumerable<PreviewFrame> ReadFramesAsync([EnumeratorCancellation] CancellationToken ct)
@@ -159,7 +202,7 @@ public sealed class PreviewEngine : IPreviewEngine
                 {
                     var clock = Clock();
                     UpdatePosition(clock);
-                    if (clock >= snapshot.Plan.Duration) { Pause(); continue; }
+                    if (clock >= snapshot.Timeline.Duration) { Pause(); continue; }
                     if (nextFrame <= clock + 0.1)
                     {
                         if (nextFrame < clock - 0.1) nextFrame = clock;
@@ -215,8 +258,8 @@ public sealed class PreviewEngine : IPreviewEngine
         var resume = playing;
         Pause(); StopAudio();
         ClearPrefetch();
-        origin = Math.Clamp(double.IsFinite(editedTime) ? editedTime : 0, 0, snapshot!.Plan.Duration);
-        cursor = new(snapshot.Plan); currentPart = cursor.Part;
+        origin = Math.Clamp(double.IsFinite(editedTime) ? editedTime : 0, 0, snapshot!.Timeline.Duration);
+        cursor = new(snapshot.Timeline); currentPart = cursor.Part;
         prepared = null; preparedPart = -1; generation++;
         while (frames.Reader.TryRead(out _)) { }
         while (leases.Reader.TryRead(out var lease)) lease.Dispose();
@@ -229,7 +272,7 @@ public sealed class PreviewEngine : IPreviewEngine
     private void Present(double edited, bool exact, CancellationToken ct)
     {
         var local = snapshot!;
-        var source = cursor!.Source(Math.Min(edited, Math.Max(0, local.Plan.Duration - 1 / local.Plan.SampleRate)));
+        var source = cursor!.Source(Math.Min(edited, Math.Max(0, local.Timeline.Duration - 1 / local.Timeline.SampleRate)));
         if (cursor.Part != currentPart)
         {
             if (preparedPart == cursor.Part && prepared is { } pending)
@@ -297,11 +340,12 @@ public sealed class PreviewEngine : IPreviewEngine
         var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var localAudio = audio;
         var localSnapshot = snapshot!;
+        var localSession = voiceSession;
         audioProducer = MediaThread.Run("vc-audio", () =>
         {
             try
             {
-                using var reader = new EditedAudioReader(localSnapshot, 48_000, edited);
+                using var reader = new EditedAudioReader(localSnapshot, 48_000, edited, localSession, token);
                 var samples = new float[4096 * 2];
                 int count;
                 while ((count = reader.Read(samples, samples.Length / 2, token)) > 0)
@@ -332,12 +376,12 @@ public sealed class PreviewEngine : IPreviewEngine
         if (OperatingSystem.IsWindows() && audio?.Completion.IsFaulted == true) audio.Completion.GetAwaiter().GetResult();
         if (clockOverride is not null) return clockOverride();
         var elapsed = OperatingSystem.IsWindows() && audio is not null ? audio.FramesPlayed / (double)audio.DeviceRate : videoClock.Elapsed.TotalSeconds;
-        return Math.Min(snapshot!.Plan.Duration, origin + elapsed);
+        return Math.Min(snapshot!.Timeline.Duration, origin + elapsed);
     }
 
     private void UpdatePosition(double edited)
     {
-        var source = snapshot is null ? 0 : new TimelineCursor(snapshot.Plan).Source(edited);
+        var source = snapshot is null ? 0 : new TimelineCursor(snapshot.Timeline).Source(edited);
         Volatile.Write(ref position, new(edited, source, playing));
     }
 
@@ -366,7 +410,12 @@ public sealed class PreviewEngine : IPreviewEngine
             finally
             {
                 try { lookAhead?.DisposeAsync().AsTask().GetAwaiter().GetResult(); }
-                finally { current = null; lookAhead = null; prepared = null; }
+                finally
+                {
+                    current = null; lookAhead = null; prepared = null;
+                    if (composer is FrameComposer concrete) concrete.ReleaseDisclosure(snapshot);
+                    voiceSession?.Dispose(); voiceSession = null;
+                }
             }
         }
     }

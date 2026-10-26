@@ -1,5 +1,6 @@
 using VoxClip.Core.Domain.Captions;
 using VoxClip.Core.Domain.Editing;
+using VoxClip.Core.Domain.VoiceLab;
 namespace VoxClip.Core.Domain.Shared;
 
 /// <summary>Probe result for the presentation timeline; architecture §4 and §6.2.</summary>
@@ -10,7 +11,14 @@ public sealed record AudioExtractionRequest(MediaInfo Media, string ContentKey, 
 /// <summary>Media progress, throttled to at most 10Hz; architecture §7.2.</summary>
 public sealed record MediaProgress(string Phase, double? Fraction);
 /// <summary>Exactly one immutable compose snapshot for preview/export; architecture §6.3–6.4.</summary>
-public sealed record ComposeSnapshot(MediaInfo Media, EditPlan Plan, CaptionTrack? Captions, OutputSpec Output);
+public sealed record ComposeSnapshot(MediaInfo Media, EditPlan Plan, CaptionTrack? Captions, OutputSpec Output)
+{
+    /// <summary>Captured v3 input; null keeps the existing source-only edit route.</summary>
+    public VoiceLabRenderInput? VoiceLab { get; init; }
+    /// <summary>The single timeline used for duration, source frames, and audio.</summary>
+    public RenderTimeline Timeline => VoiceLab is { Prepared.OutputPlan.RequiresSyntheticRendering: true } input
+        ? new RenderTimeline.VoiceLab(input.Prepared.OutputPlan) : new RenderTimeline.Legacy(Plan);
+}
 /// <summary>Output encoding configuration; architecture §4.1 and §6.4.</summary>
 public sealed record OutputSpec(PixelSize Size, double FrameRate, long VideoBitrate, int AudioSampleRate = 48_000,
     int AudioChannels = 2, long AudioBitrate = 160_000, string VideoCodec = "h264");

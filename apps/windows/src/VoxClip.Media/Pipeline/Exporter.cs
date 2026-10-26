@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Globalization;
+using System.Reflection;
 using System.Text;
 using FFmpeg.AutoGen;
 using VoxClip.Core.Domain.Captions;
@@ -7,6 +8,7 @@ using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Services.Media;
 using VoxClip.Media.Audio;
 using VoxClip.Media.Ffmpeg;
+using VoxClip.Media.VoiceLab;
 
 namespace VoxClip.Media.Pipeline;
 
@@ -37,7 +39,10 @@ public sealed class Exporter : IExporter
     private async Task<ExportResult> ExportAsync(ExportJob job, IProgress<ExportProgress>? progress, CancellationToken ct, bool publish)
     {
         ct.ThrowIfCancellationRequested();
+        job = job with { Snapshot = job.Snapshot.VoiceLab?.CaptureSnapshot(job.Snapshot) ?? job.Snapshot };
         Validate(job);
+        var allocations = VoiceLabOutputAllocations(job, publish);
+        using var voiceSession = await VoiceLabRenderSession.PrepareAsync(job.Snapshot, ct, allocations).ConfigureAwait(false);
         var cacheKey = WindowsAdapterIdentity.Read();
         var after = -1;
         var failed = new HashSet<string>(StringComparer.Ordinal);
@@ -50,7 +55,7 @@ public sealed class Exporter : IExporter
             if (selected is null) throw new VoxClipException(VoxClipErrorCode.EncoderUnavailable, ExportErrors.EncoderUnavailable);
             try
             {
-                var result = await MediaThread.Run("vc-export", () => runExport is null ? Export(job, selected, progress, ct, publish) : runExport(job, selected, progress, ct), ct).ConfigureAwait(false);
+                var result = await MediaThread.Run("vc-export", () => runExport is null ? Export(job, selected, progress, ct, publish, voiceSession) : runExport(job, selected, progress, ct), ct).ConfigureAwait(false);
                 return result with { SoftwareEncoding = selected == EncoderProbe.SoftwareMediaFoundation };
             }
             catch (Exception exception) when (ExportErrors.IsEncoderFailure(exception))
@@ -70,14 +75,66 @@ public sealed class Exporter : IExporter
     internal static void Validate(ExportJob job)
     {
         var snapshot = job.Snapshot;
-        if (snapshot.Plan.OutputSamples <= 0 || snapshot.Plan.Kept.Count == 0)
+        if (snapshot.Timeline.OutputSamples <= 0)
             throw new VoxClipException(VoxClipErrorCode.EverythingCut, "Keep at least one word before exporting.");
-        if (!double.IsFinite(snapshot.Plan.SampleRate) || snapshot.Plan.SampleRate <= 0 || snapshot.Media.Video is null)
+        if (!double.IsFinite(snapshot.Timeline.SampleRate) || snapshot.Timeline.SampleRate <= 0 || snapshot.Media.Video is null)
             throw new VoxClipException(VoxClipErrorCode.ExportFailed, "Export stopped: this export requires a video and a valid edit plan. Your edits are saved.");
-        OutputSafety.Validate([snapshot.Media.Path], job.SrtPath is { } srt ? [job.OutputPath, srt] : [job.OutputPath]);
+        if (snapshot.VoiceLab is { Prepared.OutputPlan.RequiresSyntheticRendering: true } input)
+        {
+            var requestedClip = job.Target is ExportTarget.Clip clip ? clip.Id : null;
+            var expectedSize = ExportPresets.OutputSize(snapshot.Media.OrientedSize, job.Aspect);
+            if (input.Prepared.OutputPlan.Scope.ClipId != requestedClip || snapshot.Output.Size != expectedSize ||
+                snapshot.Captions is { } captions && captions.Frame != expectedSize)
+                throw new VoxClip.Core.Domain.VoiceLab.VoiceLabProjectException(
+                    VoxClip.Core.Domain.VoiceLab.VoiceLabProjectErrorCode.StaleRenderContract);
+        }
+        var protectedPaths = new List<string> { snapshot.Media.Path };
+        if (snapshot.VoiceLab is { } voiceInput)
+        {
+            var project = voiceInput.IsolatedProject();
+            protectedPaths.AddRange(project.VoiceLab.Assets?.Select(asset =>
+                Path.Combine(voiceInput.PaidRoot, project.Id, Path.GetFileName(asset.File))) ?? []);
+        }
+        var destinations = new List<string> { job.OutputPath };
+        if (job.SrtPath is { } srt) destinations.Add(srt);
+        if (snapshot.VoiceLab is { Prepared.OutputPlan.RequiresSyntheticRendering: true })
+            destinations.Add(job.OutputPath + ".provenance.json");
+        OutputSafety.Validate(protectedPaths, destinations);
     }
 
-    private unsafe ExportResult Export(ExportJob job, string encoderName, IProgress<ExportProgress>? progress, CancellationToken ct, bool publish)
+    internal static VoiceLabCapacity.Allocation[] VoiceLabOutputAllocations(ExportJob job, bool publish)
+    {
+        var snapshot = job.Snapshot;
+        if (snapshot.VoiceLab is not { Prepared.OutputPlan.RequiresSyntheticRendering: true } input) return [];
+        var size = ExportPresets.OutputSize(snapshot.Media.OrientedSize, job.Aspect);
+        var fps = ExportPresets.OutputFrameRate(snapshot.Output.FrameRate);
+        var bitrate = ExportPresets.VideoBitrate(size, job.Aspect, job.Quality, fps) + 160_000d;
+        var estimate = Math.Ceiling(snapshot.Timeline.Duration * bitrate / 8d * 1.25) + 32d * 1024 * 1024;
+        if (!double.IsFinite(estimate) || estimate > long.MaxValue / 2d)
+            throw new VoxClipException(VoxClipErrorCode.DiskFull, "The marked MP4 is too large for this volume. Your edits are saved.");
+        var mp4Bytes = (long)estimate;
+        var destination = OutputSafety.Resolve(job.OutputPath);
+        var sidecar = destination + ".provenance.json";
+        var sidecarBytes = VoiceLabCapacity.Bytes(System.Text.Encoding.UTF8.GetByteCount(input.Fingerprint), 2, 1_048_576);
+        var srt = job.SrtPath is null ? null : OutputSafety.Resolve(job.SrtPath);
+        var allocations = new List<VoiceLabCapacity.Allocation>
+        {
+            new(destination, mp4Bytes), new(destination, VoiceLabCapacity.Bytes(mp4Bytes, 1, 65_536)),
+            new(sidecar, sidecarBytes)
+        };
+        if (srt is not null)
+            allocations.Add(new(srt, System.Text.Encoding.UTF8.GetByteCount(Subtitles(snapshot.Captions))));
+        if (publish)
+        {
+            allocations.Add(VoiceLabCapacity.Rollback(destination));
+            allocations.Add(VoiceLabCapacity.Rollback(sidecar));
+            if (srt is not null) allocations.Add(VoiceLabCapacity.Rollback(srt));
+        }
+        return allocations.ToArray();
+    }
+
+    private unsafe ExportResult Export(ExportJob job, string encoderName, IProgress<ExportProgress>? progress, CancellationToken ct, bool publish,
+        VoiceLabRenderSession? voiceSession)
     {
         FfmpegLoader.InitializeAsync(ct).GetAwaiter().GetResult();
         var timer = Stopwatch.StartNew();
@@ -87,20 +144,26 @@ public sealed class Exporter : IExporter
         var output = snapshot.Output with { Size = size, FrameRate = fps,
             VideoBitrate = ExportPresets.VideoBitrate(size, job.Aspect, job.Quality, fps), AudioSampleRate = 48_000, AudioChannels = 2, AudioBitrate = 160_000 };
         snapshot = snapshot with { Output = output };
-        var frames = Native.Round(snapshot.Plan.Duration * fps);
-        var samples = snapshot.Media.Audio is null ? 0 : Native.Round(snapshot.Plan.Duration * 48_000);
+        var frames = Native.Round(snapshot.Timeline.Duration * fps);
+        var samples = snapshot.Media.Audio is null ? 0 : Native.Round(snapshot.Timeline.Duration * 48_000);
         var destination = OutputSafety.Resolve(job.OutputPath);
         var partial = destination + ".partial";
         var srtDestination = job.SrtPath is null ? null : OutputSafety.Resolve(job.SrtPath);
         var srtPartial = srtDestination is null ? null : srtDestination + ".partial";
+        var sidecarDestination = snapshot.VoiceLab is { Prepared.OutputPlan.RequiresSyntheticRendering: true }
+            ? destination + ".provenance.json" : null;
+        var sidecarPartial = sidecarDestination is null ? null : sidecarDestination + ".partial";
+        var xmpStage = sidecarDestination is null ? null : partial + ".xmp-" + Guid.NewGuid().ToString("N");
         var lastProgress = -1.0;
         string? lastPhase = null;
         var hasPartial = false;
         var hasSrtPartial = false;
+        var hasSidecarPartial = false;
+        var ownsXmpStage = false;
         try
         {
-            using (OutputSafety.CreatePartial(partial)) { }
-            hasPartial = true;
+            if (composer is FrameComposer frameComposer) frameComposer.PrepareDisclosure(snapshot);
+            using (OutputSafety.CreatePartial(partial)) { hasPartial = true; }
             var reporter = new Action<string, long>((phase, count) =>
             {
                 if (progress is null) return;
@@ -122,13 +185,13 @@ public sealed class Exporter : IExporter
             using (var nv12Handle = NativeHandle.Own(Native.Frame(AVPixelFormat.AV_PIX_FMT_NV12, size.Width, size.Height), NativeKind.Frame))
             using (var scaling = NativeHandle.Own(ffmpeg.sws_getContext(size.Width, size.Height, AVPixelFormat.AV_PIX_FMT_BGRA,
                 size.Width, size.Height, AVPixelFormat.AV_PIX_FMT_NV12, (int)SwsFlags.SWS_BILINEAR, null, null, null), NativeKind.Scale))
-            using (var editedAudio = audio is null ? null : new EditedAudioReader(snapshot, 48_000))
+            using (var editedAudio = audio is null ? null : new EditedAudioReader(snapshot, 48_000, session: voiceSession, ct: ct))
             using (var audioFrameHandle = audio is null ? null : CreateAudioFrame(audio))
             {
                 var format = (AVFormatContext*)mux.Pointer;
                 var nv12 = (AVFrame*)nv12Handle.Pointer;
                 var bgra = new PixelBuffer(new byte[checked(size.Width * size.Height * 4)], size.Width, size.Height, size.Width * 4);
-                var cursor = new TimelineCursor(snapshot.Plan);
+                var cursor = new TimelineCursor(snapshot.Timeline);
                 Native.Colors((SwsContext*)scaling.Pointer, true);
                 long audioOffset = 0;
                 var audioBuffer = new float[2048];
@@ -176,23 +239,77 @@ public sealed class Exporter : IExporter
                 Native.Check(ffmpeg.av_write_trailer(format), "Finalize MP4", VoxClipErrorCode.ExportFailed);
             }
             ct.ThrowIfCancellationRequested();
+            if (sidecarPartial is not null)
+            {
+                var remaining = new List<VoiceLabCapacity.Allocation>
+                {
+                    new(destination, VoiceLabCapacity.Bytes(new FileInfo(partial).Length, 1, 65_536)),
+                    new(sidecarDestination!, 1_048_576)
+                };
+                if (srtDestination is not null)
+                    remaining.Add(new(srtDestination, System.Text.Encoding.UTF8.GetByteCount(Subtitles(snapshot.Captions))));
+                if (publish)
+                {
+                    remaining.Add(VoiceLabCapacity.Rollback(destination));
+                    remaining.Add(VoiceLabCapacity.Rollback(sidecarDestination!));
+                    if (srtDestination is not null) remaining.Add(VoiceLabCapacity.Rollback(srtDestination));
+                }
+                VoiceLabCapacity.Require(remaining);
+                var input = snapshot.VoiceLab!;
+                var project = input.IsolatedProject();
+                var version = typeof(Exporter).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?
+                    .InformationalVersion.Split('+')[0] ?? typeof(Exporter).Assembly.GetName().Version?.ToString(3) ?? "0.0.0";
+                var staged = VoiceLabDisclosureWriter.StageAsync(partial, xmpStage!, Path.GetFileName(destination),
+                    project, input.Prepared, version, DateTimeOffset.UtcNow, ct).GetAwaiter().GetResult();
+                ownsXmpStage = true;
+                if (staged.Mp4Path != xmpStage || staged.SidecarFilename != Path.GetFileName(sidecarDestination))
+                    throw new InvalidDataException("The disclosure stage names do not match the export.");
+                remaining.Clear();
+                remaining.Add(new(sidecarDestination!, staged.SidecarData.Length));
+                if (srtDestination is not null)
+                    remaining.Add(new(srtDestination, System.Text.Encoding.UTF8.GetByteCount(Subtitles(snapshot.Captions))));
+                if (publish)
+                {
+                    remaining.Add(VoiceLabCapacity.Rollback(destination));
+                    remaining.Add(VoiceLabCapacity.Rollback(sidecarDestination!));
+                    if (srtDestination is not null) remaining.Add(VoiceLabCapacity.Rollback(srtDestination));
+                }
+                VoiceLabCapacity.Require(remaining);
+                using (var sidecar = OutputSafety.CreatePartial(sidecarPartial))
+                {
+                    hasSidecarPartial = true;
+                    sidecar.Write(staged.SidecarData);
+                    sidecar.Flush(true);
+                }
+                ct.ThrowIfCancellationRequested();
+                File.Move(xmpStage!, partial, true);
+                ownsXmpStage = false;
+            }
             if (srtPartial is not null)
             {
-                using (OutputSafety.CreatePartial(srtPartial)) { }
-                hasSrtPartial = true;
+                using (OutputSafety.CreatePartial(srtPartial)) { hasSrtPartial = true; }
                 File.WriteAllText(srtPartial, Subtitles(snapshot.Captions), new UTF8Encoding(false));
                 ct.ThrowIfCancellationRequested();
             }
-            if (publish) OutputSafety.Publish(srtDestination is null ? [destination] : [destination, srtDestination], ct: ct);
-            hasPartial = false; hasSrtPartial = false;
-            return new(destination, srtDestination, snapshot.Plan.Duration,
+            var destinations = new List<string> { destination };
+            if (srtDestination is not null) destinations.Add(srtDestination);
+            if (sidecarDestination is not null) destinations.Add(sidecarDestination);
+            if (publish) OutputSafety.Publish(destinations, ct: ct);
+            hasPartial = false; hasSrtPartial = false; hasSidecarPartial = false;
+            return new(destination, srtDestination, snapshot.Timeline.Duration,
                 size.Width, size.Height, fps, frames, 48_000, samples, "h264", encoderName, timer.Elapsed.TotalSeconds);
         }
         finally
         {
             if (hasPartial) DeletePartial(partial);
             if (hasSrtPartial && srtPartial is not null) DeletePartial(srtPartial);
-            if (composer is FrameComposer concrete) concrete.ReleaseThreadResources();
+            if (hasSidecarPartial && sidecarPartial is not null) DeletePartial(sidecarPartial);
+            if (ownsXmpStage && xmpStage is not null) DeletePartial(xmpStage);
+            if (composer is FrameComposer concrete)
+            {
+                concrete.ReleaseDisclosure(snapshot);
+                concrete.ReleaseThreadResources();
+            }
         }
     }
 

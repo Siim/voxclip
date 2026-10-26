@@ -299,6 +299,32 @@ public sealed class CliOutputParityTests
         finally { Directory.Delete(directory, true); }
     }
 
+    [Fact]
+    public async Task AtomicWriteDoesNotDeleteAStageCreatedByAnotherWriter()
+    {
+        var directory = RunDirectory();
+        try
+        {
+            var destination = Path.Combine(directory, "report.json");
+            var partial = destination + ".partial";
+            File.WriteAllText(destination, "previous");
+            OutputSafety.BeforePartialOpen.Value = path =>
+            {
+                Assert.EndsWith("report.json.partial", path, StringComparison.Ordinal);
+                File.WriteAllText(path, "other writer");
+            };
+            await Assert.ThrowsAsync<IOException>(() => CliOperations.AtomicWriteAsync(destination, "new",
+                TestContext.Current.CancellationToken));
+            Assert.Equal("previous", File.ReadAllText(destination));
+            Assert.Equal("other writer", File.ReadAllText(partial));
+        }
+        finally
+        {
+            OutputSafety.BeforePartialOpen.Value = null;
+            Directory.Delete(directory, true);
+        }
+    }
+
     [Theory]
     [InlineData(0)]
     [InlineData(1)]

@@ -112,6 +112,7 @@ public static class VoiceLabAssets
             RequireWithinRoot(rootPath, sourcePath, source.SafeFileHandle, asset.File);
             if (source.Length <= 0 || source.Length > MaxBytes)
                 throw new VoiceLabAssetException(VoiceLabAssetErrorCode.TooLarge, asset.File);
+            VoiceLabCapacity.Require([new VoiceLabCapacity.Allocation(scratch, source.Length)]);
             var snapshot = System.IO.Path.Combine(scratch, System.IO.Path.GetFileName(asset.File));
             await using (var output = new FileStream(snapshot, FileMode.CreateNew, FileAccess.Write, FileShare.None,
                 1024 * 1024, FileOptions.SequentialScan | FileOptions.Asynchronous))
@@ -127,6 +128,8 @@ public static class VoiceLabAssets
                     if (copied > MaxBytes) throw new VoiceLabAssetException(VoiceLabAssetErrorCode.TooLarge, asset.File);
                     hash.AppendData(buffer, 0, count);
                     await output.WriteAsync(buffer.AsMemory(0, count), cancellationToken).ConfigureAwait(false);
+                    if (copied / (64L * 1024 * 1024) != (copied - count) / (64L * 1024 * 1024))
+                        VoiceLabCapacity.Require([new VoiceLabCapacity.Allocation(scratch, source.Length - copied)]);
                 }
                 if (copied != source.Length || Convert.ToHexStringLower(hash.GetHashAndReset()) != asset.Sha256)
                     throw new VoiceLabAssetException(VoiceLabAssetErrorCode.Altered, asset.File);

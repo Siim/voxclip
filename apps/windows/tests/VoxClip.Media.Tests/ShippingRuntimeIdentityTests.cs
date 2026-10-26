@@ -24,12 +24,19 @@ public sealed class ShippingRuntimeIdentityTests
     {
         var reportPath = Environment.GetEnvironmentVariable("VOXCLIP_SHIPPING_REPORT");
         var evidencePath = Environment.GetEnvironmentVariable("VOXCLIP_MODULE_EVIDENCE");
-        if (string.IsNullOrWhiteSpace(reportPath) || string.IsNullOrWhiteSpace(evidencePath))
-            Assert.Skip("Set VOXCLIP_SHIPPING_REPORT and VOXCLIP_MODULE_EVIDENCE for shipping runtime acceptance.");
+        NativeTest.Require(!string.IsNullOrWhiteSpace(reportPath) && !string.IsNullOrWhiteSpace(evidencePath),
+            "Set VOXCLIP_SHIPPING_REPORT and VOXCLIP_MODULE_EVIDENCE for shipping runtime acceptance.");
 
         await NativeTest.RequireAsync(windows: true);
-        using var report = JsonDocument.Parse(File.ReadAllText(reportPath));
+        using var report = JsonDocument.Parse(File.ReadAllText(reportPath!));
         var expected = report.RootElement.GetProperty("dlls");
+        var rid = report.RootElement.GetProperty("rid").GetString();
+        Assert.Equal(rid switch
+        {
+            "win-arm64" => Architecture.Arm64,
+            "win-x64" => Architecture.X64,
+            _ => throw new InvalidDataException("Unknown audited runtime architecture.")
+        }, RuntimeInformation.ProcessArchitecture);
         var root = Path.GetFullPath(Environment.GetEnvironmentVariable("VOXCLIP_FFMPEG_DIR")!);
         using var process = Process.GetCurrentProcess();
         var loaded = process.Modules.Cast<ProcessModule>()
@@ -55,7 +62,7 @@ public sealed class ShippingRuntimeIdentityTests
         var license = ffmpeg.avcodec_license();
         Assert.StartsWith("LGPL version 2.1 or later", license);
         Directory.CreateDirectory(Path.GetDirectoryName(evidencePath)!);
-        File.WriteAllText(evidencePath, JsonSerializer.Serialize(new
+        File.WriteAllText(evidencePath!, JsonSerializer.Serialize(new
         {
             report = report.RootElement.GetProperty("sha256").GetString(),
             rid = report.RootElement.GetProperty("rid").GetString(),

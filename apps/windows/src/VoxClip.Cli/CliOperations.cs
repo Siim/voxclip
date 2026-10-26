@@ -21,6 +21,7 @@ using VoxClip.Media.Audio;
 using VoxClip.Media.Captions;
 using VoxClip.Media.Ffmpeg;
 using VoxClip.Media.Pipeline;
+using VoxClip.Media.VoiceLab;
 using TranscriptModel = VoxClip.Core.Domain.Transcript.Transcript;
 
 namespace VoxClip.Cli;
@@ -133,32 +134,82 @@ internal static class CliOperations
                 EditingEngine.CaptionWords(State(project), plan), project.Transcript?.Language, plan.Duration), ServicesMergeAdapter.GlyphShaper(), null, ct).ConfigureAwait(false);
         }
         var snapshot = new ComposeSnapshot(media, plan, style == "off" ? null : captions, output);
+        snapshot = snapshot.VoiceLab?.CaptureSnapshot(snapshot) ?? snapshot;
         var target = project.Edits.ActiveClipId is { } selectedClip ? (ExportTarget)new ExportTarget.Clip(selectedClip) : new ExportTarget.FullEdit();
         var audioPath = arguments.GetValue<string?>("--audio-out") is { } audioDestination ? OutputSafety.Resolve(audioDestination) : null;
         var srtPath = arguments.GetValue<string?>("--srt") is { } srtDestination ? OutputSafety.Resolve(srtDestination) : null;
-        var destinations = new[] { destination, srtPath, audioPath }.OfType<string>().ToArray();
+        var destinations = ExportDestinations(snapshot, destination, srtPath, audioPath);
+        // The exporter prepares the sidecar partial; the CLI owns publication of the complete set.
+        Exporter.Validate(new(snapshot, target, aspect, quality, destination, null));
+        ValidateExportDestinations(snapshot, destinations);
+        if (snapshot.VoiceLab is { Prepared.OutputPlan.RequiresSyntheticRendering: true })
+        {
+            var peak = Exporter.VoiceLabOutputAllocations(new(snapshot, target, aspect, quality,
+                destination, srtPath), true).ToList();
+            if (audioPath is not null)
+            {
+                var dataBytes = VoiceLabCapacity.Bytes(snapshot.Timeline.OutputSamples, 8);
+                if (dataBytes > uint.MaxValue - 36L)
+                    throw new VoxClipException(VoxClipErrorCode.ExportFailed,
+                        "The edited WAV is too long for the supported WAV format. Your edits are saved.");
+                peak.Add(new(audioPath, VoiceLabCapacity.Bytes(dataBytes, 1, 44)));
+                peak.Add(VoiceLabCapacity.Rollback(audioPath));
+            }
+            VoiceLabCapacity.Require(snapshot, peak.ToArray());
+        }
+        var ownedPartials = new HashSet<string>(StringComparer.Ordinal);
         ExportResult result;
         try
         {
-            if (audioPath is not null) await EditedAudioReader.WriteWaveAsync(snapshot, audioPath, ct, false).ConfigureAwait(false);
+            if (audioPath is not null)
+            {
+                await EditedAudioReader.WriteWaveAsync(snapshot, audioPath, ct, false).ConfigureAwait(false);
+                ownedPartials.Add(audioPath);
+            }
             if (srtPath is not null)
             {
                 using var stream = OutputSafety.CreatePartial(srtPath + ".partial");
+                ownedPartials.Add(srtPath);
                 await using var writer = new StreamWriter(stream, new UTF8Encoding(false));
                 await writer.WriteAsync(Exporter.Subtitles(captions).AsMemory(), ct).ConfigureAwait(false);
             }
             var prepare = prepareExport ?? new Exporter().PrepareAsync;
             result = await prepare(new(snapshot, target, aspect, quality, destination, null),
                 Progress<ExportProgress>(arguments, value => (value.Phase, value.Fraction)), ct).ConfigureAwait(false);
+            ownedPartials.Add(destination);
+            if (snapshot.VoiceLab is { Prepared.OutputPlan.RequiresSyntheticRendering: true })
+                ownedPartials.Add(destination + ".provenance.json");
             ct.ThrowIfCancellationRequested();
             OutputSafety.Publish(destinations, ct: ct);
             result = result with { Srt = srtPath };
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException) { throw ExportErrors.Map(error, destination); }
-        finally { foreach (var outputPath in destinations) OutputSafety.DeletePartial(outputPath + ".partial"); }
+        finally { foreach (var outputPath in ownedPartials) OutputSafety.DeletePartial(outputPath + ".partial"); }
         var fields = Node(result, CliDataJson.Default.ExportResult)!.AsObject();
         fields["captionStyle"] = style; fields["aspect"] = AspectText(aspect); fields["elapsedSeconds"] = timer.Elapsed.TotalSeconds;
         return fields;
+    }
+
+    internal static string[] ExportDestinations(ComposeSnapshot snapshot, string destination, string? srtPath, string? audioPath)
+    {
+        var paths = new List<string> { destination };
+        if (srtPath is not null) paths.Add(srtPath);
+        if (audioPath is not null) paths.Add(audioPath);
+        if (snapshot.VoiceLab is { Prepared.OutputPlan.RequiresSyntheticRendering: true })
+            paths.Add(destination + ".provenance.json");
+        return paths.ToArray();
+    }
+
+    internal static void ValidateExportDestinations(ComposeSnapshot snapshot, IReadOnlyList<string> destinations)
+    {
+        var protectedPaths = new List<string> { snapshot.Media.Path };
+        if (snapshot.VoiceLab is { } input)
+        {
+            var project = input.IsolatedProject();
+            protectedPaths.AddRange(project.VoiceLab.Assets?.Select(asset =>
+                Path.Combine(input.PaidRoot, project.Id, Path.GetFileName(asset.File))) ?? []);
+        }
+        OutputSafety.Validate(protectedPaths, destinations);
     }
 
     private static void ValidateOutputs(ParseResult arguments, string source, string destination, string? project = null)
@@ -404,13 +455,18 @@ internal static class CliOperations
     {
         path = OutputSafety.Resolve(path);
         var temporary = path + ".partial";
+        var owned = false;
         try
         {
-            using (OutputSafety.CreatePartial(temporary)) { }
-            await File.WriteAllTextAsync(temporary, text, ct).ConfigureAwait(false);
-            ct.ThrowIfCancellationRequested(); OutputSafety.Publish([path]);
+            await using (var stream = OutputSafety.CreatePartial(temporary))
+            {
+                owned = true;
+                await using var writer = new StreamWriter(stream, new UTF8Encoding(false));
+                await writer.WriteAsync(text.AsMemory(), ct).ConfigureAwait(false);
+            }
+            ct.ThrowIfCancellationRequested(); OutputSafety.Publish([path], ct: ct);
         }
-        finally { File.Delete(temporary); }
+        finally { if (owned) OutputSafety.DeletePartial(temporary); }
     }
 
     internal static ExportAspect Aspect(string value) => value switch

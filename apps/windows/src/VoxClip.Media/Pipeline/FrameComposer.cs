@@ -1,11 +1,13 @@
 using System.Buffers;
 using FFmpeg.AutoGen;
+using SkiaSharp;
 using VoxClip.Core.Domain.Captions;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Services.Media;
 using VoxClip.Core.Services.Project;
 using VoxClip.Media.Captions;
 using VoxClip.Media.Ffmpeg;
+using VoxClip.Media.VoiceLab;
 
 namespace VoxClip.Media.Pipeline;
 
@@ -14,9 +16,51 @@ public sealed class FrameComposer : IFrameComposer
 {
     private readonly ICaptionRasterizer rasterizer;
     private readonly ThreadLocal<ScaleState> state = new(() => new());
+    private readonly Dictionary<ComposeSnapshot, VoiceLabDisclosureOverlay> disclosures = new(ReferenceEqualityComparer.Instance);
     /// <summary>Use the platform caption rasterizer for every frame.</summary>
     public FrameComposer() : this(new SkiaCaptionRasterizer(SharedResources.ResolveRoot())) { }
     internal FrameComposer(ICaptionRasterizer rasterizer) => this.rasterizer = rasterizer;
+
+    internal void PrepareDisclosure(ComposeSnapshot snapshot)
+    {
+        if (snapshot.VoiceLab is not { Prepared.OutputPlan.RequiresSyntheticRendering: true } input) return;
+        var blocks = new List<VoiceLabDisclosureCaptionBlock>();
+        if (snapshot.Captions is { } captions)
+        {
+            var x = snapshot.Output.Size.Width / (double)captions.Frame.Width;
+            var y = snapshot.Output.Size.Height / (double)captions.Frame.Height;
+            foreach (var page in captions.Pages)
+            {
+                if (page.End <= page.Start) continue;
+                var visual = page.Visual;
+                var block = page.Block;
+                var bounds = SKRect.Union(
+                    new SKRect((float)(visual.X * x), (float)(visual.Y * y),
+                        (float)((visual.X + visual.Width) * x), (float)((visual.Y + visual.Height) * y)),
+                    new SKRect((float)(block.X * x), (float)(block.Y * y),
+                        (float)((block.X + block.Width) * x), (float)((block.Y + block.Height) * y)));
+                blocks.Add(new(page.Start, page.End, bounds));
+            }
+        }
+        var font = Path.Combine(SharedResources.ResolveRoot(), "fonts", "dm-sans", "DMSans-Bold.ttf");
+        var overlay = new VoiceLabDisclosureOverlay(input.Prepared.Disclosure, snapshot.Output.Size.Width,
+            snapshot.Output.Size.Height, font, blocks);
+        lock (disclosures)
+        {
+            if (!disclosures.TryAdd(snapshot, overlay))
+            {
+                overlay.Dispose();
+                throw new InvalidOperationException("The disclosure snapshot is already prepared.");
+            }
+        }
+    }
+
+    internal void ReleaseDisclosure(ComposeSnapshot? snapshot)
+    {
+        if (snapshot is null) return;
+        lock (disclosures)
+            if (disclosures.Remove(snapshot, out var overlay)) overlay.Dispose();
+    }
 
     /// <inheritdoc />
     public unsafe void Compose(PixelBuffer decoded, PixelBuffer output, ComposeSnapshot snapshot, double editedTime, bool forPreview, CancellationToken ct)
@@ -59,6 +103,15 @@ public sealed class FrameComposer : IFrameComposer
             Native.Check(ffmpeg.sws_scale((SwsContext*)scaling.Handle!.Pointer, source, sourceStride, 0, heightCrop, target, targetStride), "Crop and scale video");
             if (snapshot.Captions is { } captions)
                 rasterizer.Draw(new(captions, editedTime, false, output.Width / (double)captions.Frame.Width), output, ct);
+            if (snapshot.VoiceLab is { Prepared.OutputPlan.RequiresSyntheticRendering: true })
+            {
+                lock (disclosures)
+                {
+                    if (!disclosures.TryGetValue(snapshot, out var overlay))
+                        throw new InvalidOperationException("Prepare the Voice Lab disclosure before composing frames.");
+                    overlay.Draw(output, editedTime, ct);
+                }
+            }
         }
         finally { if (oriented is not null) ArrayPool<byte>.Shared.Return(oriented); }
     }

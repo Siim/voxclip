@@ -1,5 +1,357 @@
 # win-media handoff
 
+## 2026-10-26: Voice Lab composition R5 real caption collision correction
+
+R4's `full-preview-collision-1280x720.ppm` was made with a real caption track
+whose page `Start`, `End`, `Block` and `Visual` were then replaced in the test.
+It proved the overlay responds to supplied bounds, **not** that a normally
+laid-out caption collides with the chip. Preserve those R4 captures as prior
+evidence with that limitation. The R5 test source is commit
+`d8db903e5c67f784ee9d698c9b904216c053704e`.
+
+R5 stores caption position `(0.12, 0.08)` in an isolated synthetic v3 project,
+reruns `VoiceLabRenderContract.Prepare` for full scope, captures the exact
+project/request pair, and builds the `vox-bold` track from the prepared output
+words with `CaptionEngine`. It changes no `CaptionPage` geometry or timing.
+The test checks that a produced page intersects the preferred top-left chip
+region during the disclosure interval, that the visible `WHOLE` glyphs render
+at 0.3 s, and that the chip moves to the opposite top corner without covering
+those glyphs. It checks caption-off preview and decoded MP4 at the same 0.3 s,
+then uses `PreviewEngine` and `Exporter` with the caption-on request and reads
+the resulting decoded export frame. The ARM64 and x64 frames visibly show a
+legible `WHOLE` caption at top left and `AI MODIFIED` at top right. The source
+is still the seven-second 1280×720 synthetic fixture, not app UI or a real
+provider workflow.
+
+The exact committed source ran on the Windows ARM64 VM using the existing
+audited `win-arm64-1` and `win-x64-1` FFmpeg ZIPs/reports. ARM64 Release build
+had zero warnings/errors; x64 self-contained publish succeeded. Each RID had
+2/2 separate loaded-six-DLL identity tests and 2/2 affected production route
+cases, with zero skips and failures. x64 ran under ARM64 emulation, not on a
+physical x64 host. The local portable class run had 27 passes and 13 expected
+Windows skips. R5 did not rerun the broader shipping, tempo diagnostic or
+converter suites; no production, pin or dependency code changed. The R4
+nonunity fit refusal and app/CLI active-synth guards remain.
+
+R5 frames, loaded-module reports, logs and test scripts are in
+`/tmp/voxclip-win-media-r5-d8db903/`. Inspect
+`evidence-arm/full-preview-collision-1280x720.png` and
+`evidence-arm/full-decoded-export-collision-1280x720.png`, or the matching
+`evidence-x64/` files; the PPM originals are retained. The caption-off frames
+at the same time are named `full-preview-1280x720` and
+`full-decoded-export-1280x720` in each RID folder.
+After evidence retrieval, the R5-owned VM source/runtime/build scratch and
+lock were removed (`RELEASED=True`, `OWNED_SCRATCH_REMOVED=True`); final VM
+free space was 8,629,608,448 bytes.
+
+## 2026-10-26: Voice Lab composition R4 final exact-unity source acceptance
+
+The **native-tested source head** is
+`258776691f363d77a98d4cde9fcd35d37b840ce2` on `track/win-media`.
+Only Windows Media source/tests plus the authorized
+synthetic fixture and its generator documentation changed in this round. The
+new `voice-lab-7s-720p.mkv` is 856,604 bytes; its committed SHA-256 is in
+`shared/fixtures/voice-lab/media-render-README.md`. The frozen Voice Lab
+README, contract and rewrite prompt remain byte-identical at SHA-256
+`c86de4a9e0e75e480c3abf1a01514e7aa52f854448c14155d8e95947ac4dd69c`,
+`a5729f04af4b56f2c45a9b8e83f5526cd92cc13e4f2b8382209581847a250a5c`, and
+`01e4f9ed85ef6d84c20a924224a69cec2191de3588141fe60a36c8d8f3e55021`.
+
+The committed archive used `git archive --format=tar HEAD apps/windows shared
+THIRD_PARTY_NOTICES.md`. On the exclusive Windows ARM64 VM it ran
+`powershell -NoProfile -ExecutionPolicy Bypass -File
+C:\voxclip-build\win-media\source-win-media-r4-97b9aa02537\run-arm.ps1`
+with the audited `win-arm64-1` ZIP/report, then the corresponding
+`run-x64.ps1` with the audited
+`win-x64-1` ZIP/report and a self-contained x64 test executable under ARM64
+emulation. The retrieved script copies are
+`/tmp/voxclip-win-media-r4-arm.ps1` and
+`/tmp/voxclip-win-media-r4-x64.ps1`. They use `dotnet build
+VoxClip.CrossPlatform.slnf -c Release -m:1`, `dotnet publish
+tests\VoxClip.Media.Tests\VoxClip.Media.Tests.csproj -c Release -r
+win-x64 --self-contained true -m:1`, and the test executable's `-class
+VoxClip.Media.Tests.VoiceLabAudioMixerTests` filter. Both ZIPs, pin,
+build-input digest and each extracted six-DLL set
+were checked before tests. Each test process checked its **loaded** six DLL
+paths, sizes and hashes, architecture, LGPL licence and FFmpeg configuration
+against the RID report. ARM64 Release solution build passed with 0 warnings
+and 0 errors; x64 self-contained test publish passed. Identity was 2/2 and
+the focused `VoiceLabAudioMixerTests` class was 40/40 per RID, with 0 failures
+and 0 skips under `VOXCLIP_REQUIRE_NATIVE=1`. The 27 portable mixer tests
+passed locally. No unchanged eight-vector tempo diagnostic or broad strict
+suite was rerun.
+
+Those native tests covered the existing passage and new production full-take
+two-chunk and touching-segment routes through the real edited-WAV writer and
+marked MP4 exporter. The full take had two distinct chunk tones; touching
+segments used different private paid-asset snapshots and verified both sides
+of the centered seam. Source spans remained source audio. Native source-only
+clip exclusion and a disabled segment used the legacy edit plan and published
+unmarked output without opening a paid snapshot. Exact 1 and the adjacent
+binary doubles below and above 1 wrote real 336,000-frame WAVs; stored
+`1 + 1e-9` returned typed unverified-fit refusal before paid snapshot/output,
+with original paid bytes intact. The empty edited-WAV timeline now returns
+`EverythingCut` before capacity or partial creation, matching the existing
+CLI/exporter ordering. Native all-output staging used real production WAV,
+MP4 and sidecar, plus captions-off SRT; injected publication failure and
+cancellation restored prior MP4/SRT/WAV/sidecar bytes and removed owned
+partials. A Windows volume-GUID path and owned junction were grouped with
+the scratch drive path by the real resolver; only available capacity was
+overridden to prove the early low-space refusal. No second physical volume
+was claimed.
+
+The actual `PreviewEngine` loaded private synth assets, started WASAPI,
+advanced on the device clock, paused, sought, resumed, replaced its graph and
+disposed without a new dangling `voxclip-voice-*` snapshot. This passed in
+the VM's available audio endpoint from SSH; it does not certify audible
+quality or device-unplug behavior. At 1280×720 the same production compositor
+rendered caption-off preview, a caption-track with test-replaced collision
+bounds (moving the interval-wide chip to the opposite top corner), and decoded MP4 export.
+Native test assertions counted the label's dark field and separated bright
+glyph columns, not just changed frame bytes. The actual ARM64 frames are at
+`/tmp/voxclip-win-media-r4-97b9aa02537/evidence-arm/full-preview-1280x720.ppm`,
+`full-preview-collision-1280x720.ppm`, and
+`full-decoded-export-1280x720.ppm` in that directory; the x64 counterparts
+are in `evidence-x64/`. These are compositor frames, not app UI.
+
+Independent inspection of all six final synthetic MP4/WAV pairs is recorded
+in `/tmp/voxclip-win-media-r4-97b9aa02537/aac-wav-independent.json`.
+Each WAV had exactly 336,000 stereo float frames. Each MP4 had 330 AAC
+packets; its first packet PTS was −1024 with a measured 1024-sample skip.
+FFmpeg decoded 336,896 frames after that skip, leaving 896 measured tail
+frames beyond the WAV's logical output. Zero-lag WAV/AAC correlations at
+source, chunk and touching-segment probes were 0.9999139–0.9999995. This
+padding is observed for these six files, not a universal AAC constant.
+Independent top-level ISO BMFF parsing found exactly one Adobe XMP UUID in
+each MP4, with the required DigitalSourceType, and matched every final MP4
+SHA-256 to its sidecar. The loaded-module and XMP review is in
+`/tmp/voxclip-win-media-r4-97b9aa02537/native-identity-xmp-independent.json`.
+The per-RID native logs, output files and frames are retained under that
+owned `/tmp` evidence directory.
+
+No nonunity pitch-preserving fit was accepted: atempo's body/seam placement
+remains opaque as described in the R3 evidence and
+`/tmp/clipper-planning/reviews/voice-fit-timing-r1.md`. App and CLI active
+synth guards remain, and this synthetic route does not certify consent UI,
+live generation/providers, changed-duration video, lip sync, installed-app
+behavior or physical x64 performance. The final VM lock and owned source/
+build/runtime scratch were removed only after evidence retrieval:
+`RELEASED=True`, `OWNED_SCRATCH_REMOVED=True`, free `8,645,165,056` bytes.
+
+## 2026-10-26: Voice Lab composition R3 native evidence and limits
+
+The frozen `shared/fixtures/voice-lab/README.md` is restored byte-for-byte
+(SHA-256 `c86de4a9e0e75e480c3abf1a01514e7aa52f854448c14155d8e95947ac4dd69c`).
+The synthetic source generator and its committed hash live in the new
+[`media-render-README.md`](../../../../shared/fixtures/voice-lab/media-render-README.md).
+The source fixture SHA-256 remains
+`6be0c2e01c675805f2cb61b0e0a31ec1980be433a23daf8897ebb18443cbcf39`;
+the frozen Core contract SHA-256 remains
+`a5729f04af4b56f2c45a9b8e83f5526cd92cc13e4f2b8382209581847a250a5c`.
+
+Native source commit `ec350c6` ran from an owned archived scratch directory on
+the exclusive Windows ARM64 VM, first as native ARM64 and then as self-contained
+x64 under emulation. Both audited runtime ZIPs matched the committed pin and
+build-input digest `fd879b5d763b4bbb4fc3af17da076a6d2e96e5a20661cbeae468adb067a0827f`.
+All six extracted DLLs matched each RID report by size and SHA-256. The test
+processes each checked their own **loaded** DLL paths, sizes, hashes, process
+architecture, FFmpeg configuration and LGPL licence: separate identity,
+atempo diagnostic and production passage processes on each RID. The local
+copies of those six process reports match the exact audited reports. Release
+ARM64 build and x64 self-contained test publish passed with zero errors or
+warnings. Per RID, identity 2/2, diagnostic 8/8 and production passage 1/1
+passed with `VOXCLIP_REQUIRE_NATIVE=1`, zero skips.
+
+The eight graph diagnostics per RID retained actual first PTS (all zero),
+frame counts, minimum versus excess handle lengths, both marker positions
+and measured pitch (428–434 Hz for the 440 Hz source). The assumed linear
+body-origin marker error ranged from −341 to −1 frames. These measurements
+**do not accept** nonunity fit. The typed refusal still precedes paid copies
+and output creation. The read-only timing review at
+`/tmp/clipper-planning/reviews/voice-fit-timing-r1.md` confirms that atempo's
+correlation shifts fragment positions and that PTS/count alone cannot prove
+body or seam placement. Its DSP prime/drain/crop proposal is unverified.
+
+The production passage test exercised real preview load/seek/frame, exact
+336,000-frame 48 kHz WAV, 210 video frames, marked MP4, final-file sidecar
+hash and cancellation with previous MP4/sidecar bytes preserved. Independent
+ISO BMFF parsing found one top-level Adobe XMP UUID box with
+`compositeWithTrainedAlgorithmicMedia` on each RID; independent SHA-256 matches
+each sidecar. Separate AAC decoding yielded 336,896 stereo frames per RID:
+the first packet declares 1,024 priming samples to skip, leaving 896 tail
+padding frames after the 336,000 logical frames. At 1.0, 2.8 and 4.0 seconds,
+the decoded MP4 and WAV have zero-lag correlation above .9999 and the intended
+source/synthetic/source tone regions. This is passage evidence, not full-take
+or touching-seam production acceptance.
+
+Evidence is in `/tmp/voxclip-win-media-r3-9b15fa4a5503/`: per-RID test logs,
+eight tempo JSON files, three loaded-module reports, preview PPM, WAV, MP4
+and sidecar. The 160×90 preview frame is genuinely rendered at 2.8 seconds,
+but its 2.16-pixel disclosure font is not legible by visual inspection at
+that resolution. The current production test checks changed frame bytes,
+not readable label pixels; a larger-output visual assertion remains. The
+test does not call WASAPI `PlayAsync`/Pause/Seek/dispose, and no native
+full-take/touching production, all-output publication rollback, or actual
+Windows volume-GUID alias test ran in this slot. No physical x64 performance
+claim is made.
+
+After releasing the VM, a narrow Media fix replaced the `1e-8` unity bypass
+with one binary-double ULP on either side of 1. Decimal duration arithmetic
+in the frozen passage fixture stores `0.9999999999999999`; it remains a unity
+recipe, while a genuine `1 + 1e-9` stored ratio requires fit and cannot use
+the wave path. The focused local `VoiceLabAudioMixerTests` run passed 26,
+skipped the Windows-only native passage case once, failed zero. This final
+source change was **not rerun natively**; the earlier native passage and
+diagnostics apply to `ec350c6`. App and CLI active-synth guards remain.
+
+The VM never went below 6 GiB free or over 2 GiB owned scratch. After logs
+and artifacts were retrieved, only token `win-media-r3-9b15fa4a5503`'s
+scratch and matching lock were removed. Final VM check:
+`RELEASED=True`, `OWNED_SCRATCH_REMOVED=True`, free `8,656,207,872` bytes.
+
+## 2026-10-26: Voice Lab composition R2 corrections and native gate
+
+R2 moves the physical source-size check from Core `CaptureSnapshot` to Media
+preparation. Core still freezes the plan, captions, and geometry, and now
+rejects non-finite caption duration and page times. Media checks the source
+before paid snapshots or output creation. A capacity preflight groups the
+selected paid snapshot bytes, every fitted stereo float stage, and the peak
+WAV or marked MP4/XMP/sidecar/SRT/rollback bytes by actual volume. The CLI
+checks its combined WAV and video transaction before its first partial. Long
+paid copies, tempo stage creation, XMP copying, and sidecar creation recheck
+remaining available space. The query boundary has low-space, same-volume,
+overflow, source-size, alias-grouping and distinct-volume regression cases.
+Windows resolves drive and mounted-folder aliases to one volume GUID before
+budgeting; separate volumes are queried independently. No development-machine
+free-space reserve is built into the product check. The Windows volume API
+resolution itself still needs a native run.
+
+WAV and CLI atomic writers now delete only partials they created and pass the
+caller cancellation token through publication. The CLI's combined transaction
+also tracks which partials it owns. The MP4 XMP stage is deleted by the exporter
+only after the disclosure writer returns an owned stage; the writer itself
+removes a stage it created if its copy fails. Creation-race tests retain another
+writer's partial and preserve the existing destination.
+
+The audited `9ad75f` atempo runtime has a working filter, but the independent
+R2 native report found nonproportional marker placement and count residuals
+in both directions. A zero first output PTS does not establish the body or seam
+origin. Nonunity composition therefore returns a typed timing refusal before
+copying paid assets or opening outputs. The bounded production graph remains
+available to `VoiceLabNativeTempoTests` as a diagnostic: eight rate/channel/
+ratio/handle vectors record actual first PTS, frame count, and two marker
+positions to `VOXCLIP_VOICE_EVIDENCE_DIR`. A committed 964 KiB seven-second
+48 kHz PCM/MPEG-4 test source drives `NativePassageUsesProductionWaveComposerAndMarkedExporter`
+through real preview frames, the edited WAV writer and the marked MP4 exporter.
+The latter checks source/synthetic frequency regions, exact logical WAV and
+export frame counts, preview disclosure with captions off, independently
+extracted top-level MP4 XMP and the final MP4 sidecar hash. These Windows
+native cases are prepared but **not yet acceptance evidence**; run with
+`VOXCLIP_REQUIRE_NATIVE=1` so missing prerequisites fail, on each audited RID
+after an explicit exclusive VM handoff. The App and CLI active-synth guards
+remain in place.
+
+Local Mac Release cross-platform build passed with zero warnings/errors.
+Focused Media `VoiceLabAudioMixerTests`: 25 passed, one Windows-only skip,
+zero failed. `CliOutputParityTests`: 44 passed, four native prerequisite skips,
+zero failed. `VoiceLabDisclosureTests`: six passed. `OutputSafetyTests`:
+14 passed. The new production passage test exercises preview load/seek/frame,
+but not WASAPI `PlayAsync`; it checks logical MP4 audio sample count but does
+not decode AAC to compare sample timing or priming. No native full-take or
+touching-seam production route is prepared. The passage cancellation assertion
+has not run on Windows. These, plus WAV/all-output transaction failure and
+cancel checks, remain required before route acceptance.
+
+After the parent grants the exclusive VM slot, use an archived checkout of this
+HEAD under `C:\voxclip-build\win-media\` and the matching audited DLL/report
+for each RID. Recheck free C: >= 6 GiB, owned scratch <= 2 GiB, all six DLL
+hashes/sizes and loaded-module identities before a composition run. Set
+`VOXCLIP_DATA_DIR` to an isolated owned folder,
+`VOXCLIP_LIVE_TESTS=0`, `VOXCLIP_TEST_DOWNLOAD=0`,
+`VOXCLIP_REQUIRE_NATIVE=1`, `VOXCLIP_FFMPEG_DIR` to that RID's six-DLL
+directory, `VOXCLIP_SHIPPING_REPORT` to its matching report, and
+`VOXCLIP_VOICE_EVIDENCE_DIR` to an owned report folder. Build the
+cross-platform solution in Release with `-m:1`. Then run one test process at a
+time, ARM64 native before self-contained x64 under emulation:
+
+```powershell
+# From the archived checkout's apps\windows directory, after the above gates.
+$dotnet = 'C:\Program Files\dotnet\dotnet.exe'
+$arm = 'tests\VoxClip.Media.Tests\bin\Release\net10.0\VoxClip.Media.Tests.dll'
+& $dotnet $arm -class VoxClip.Media.Tests.ShippingRuntimeIdentityTests
+& $dotnet $arm -class VoxClip.Media.Tests.VoiceLabNativeTempoTests -showLiveOutput
+& $dotnet $arm -method VoxClip.Media.Tests.VoiceLabAudioMixerTests.NativePassageUsesProductionWaveComposerAndMarkedExporter -showLiveOutput
+
+# With the independently verified x64 DLL/report, and the existing Release
+# self-contained x64 test publish in .runs\x64-tests:
+$x64 = 'tests\VoxClip.Media.Tests\.runs\x64-tests\VoxClip.Media.Tests.exe'
+& $x64 -class VoxClip.Media.Tests.ShippingRuntimeIdentityTests
+& $x64 -class VoxClip.Media.Tests.VoiceLabNativeTempoTests -showLiveOutput
+& $x64 -method VoxClip.Media.Tests.VoiceLabAudioMixerTests.NativePassageUsesProductionWaveComposerAndMarkedExporter -showLiveOutput
+```
+
+Keep the 26-case atempo graph/PTS reports from the runtime owner alongside
+these production-path results. Inspect the marker JSON and retained preview
+PPM, WAV, MP4 and sidecar; a test failure is evidence, not a reason to relax
+sample boundaries, substitute ordinary resampling or remove the typed fit
+refusal. Confirm no optional prerequisite skip under the required-native flag.
+The source fixture is 964 KiB at `shared/fixtures/voice-lab/voice-lab-7s.mkv`;
+its exact generator command and hash are in `shared/fixtures/voice-lab/media-render-README.md`.
+
+## 2026-10-26: Voice Lab mixed composition source handoff
+
+The frozen Core v3 render plan now drives one Windows timeline for video frames,
+caption times, disclosure and sample-exact audio. `VoiceLabRenderInput` takes a
+verified detached project and checks the media source, grid, caption words and
+output geometry again before native work. `VoiceLabRenderSession` prepares only
+selected private paid snapshots before a preview is published or an export/WAV
+partial is created; readers and callbacks stop before it releases them. The
+bounded mixer uses two active WAV readers, two active fitted readers, one
+room-tone run and one on-demand seam buffer, independent of segment count.
+Full-take multi-chunk, passage, and conversion fixture cases include 48 kHz
+source/24 kHz assets, trim and marker boundaries, source clip/cut fades and
+scope inclusion/exclusion. A declared nonunity fit uses one FFmpeg `atempo`
+stage for the body and both handles; absent filter capability refuses before
+paid preparation or output. No raw rate-change fit is accepted.
+
+The reviewed disclosure helper merge `4deca8f7b461fb5060d386aac0b5a4278a7ef0f7`
+is integrated. The compositor draws a reused label after captions, with
+interval-wide collision placement. After muxer trailer, the writer copies to
+a distinct owned XMP stage, hashes the completed marked MP4, and returns the
+sidecar bytes. `OutputSafety` publishes MP4/SRT/sidecar as one set; the CLI's
+prepared transaction also includes an optional WAV. Existing files are
+restored after publication failure or cancellation. The helper freezes
+intervals/provenance before caller mutation and rejects chip geometry that
+cannot contain both margins.
+
+The exact audited atempo recipe source `9ad75f33539a12ab4855d02e6a75d7891e80266c`
+is merged for testing, with build-input digest
+`fd879b5d763b4bbb4fc3af17da076a6d2e96e5a20661cbeae468adb067a0827f`.
+Both RID reports and ZIPs are under
+`~/Library/Caches/voxclip-ffmpeg-atempo-20261026/reports/{win-x64-1,win-arm64-1}`.
+This source integration does not accept the native graph or runtime behavior.
+
+Local Mac Release verification with isolated `VOXCLIP_DATA_DIR`, live and
+download switches off: cross-platform solution build passed with zero warnings
+and errors; full Core passed 1,375 with 27 expected skips and zero failures;
+full Media passed 441 with 62 expected skips and zero failures. The focused
+Voice Lab/CLI selection passed 69 with four native prerequisite skips. These
+portable runs exercise pure mixing, request freezing, disclosure staging and
+transaction rollback. They do not run Windows WASAPI, the shipping FFmpeg
+graph, preview/export video, or native output decoding.
+
+**Next exclusive Windows slot:** verify all six loaded DLL identities for the
+selected RID against its exact audited report and ZIP before native tests.
+Use one test process, at most two compile jobs, isolated data/live flags off,
+6 GiB VM free space and at most 2 GiB owned scratch. Exercise `atempo`
+capability plus passage/touching-seam body and handle pitch/EOF, preview
+replacement/cancellation, exact WAV and decoded MP4 sample/frame timing
+(including AAC priming), source-frame/caption/disclosure order, independently
+extracted XMP, sidecar final hash, and existing-output rollback. Test both
+native ARM64 and emulated x64 separately. The App owner must wire and verify
+its guarded route afterward. The CLI active-synth guard also stays active;
+there is no provider, real-voice, physical-hardware, push or release claim.
+
 ## 2026-10-26: round 7 native acceptance of `997134ef`
 
 The optimized converter source and tests were archived from commit

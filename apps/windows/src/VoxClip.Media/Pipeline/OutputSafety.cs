@@ -6,6 +6,7 @@ namespace VoxClip.Media.Pipeline;
 
 internal static class OutputSafety
 {
+    internal static readonly AsyncLocal<Action<string>?> BeforePartialOpen = new();
     internal static bool SameFile(string first, string second)
     {
         var comparison = OperatingSystem.IsWindows() || OperatingSystem.IsMacOS()
@@ -60,7 +61,19 @@ internal static class OutputSafety
     {
         ValidatePartial(path);
         File.Delete(path);
+        BeforePartialOpen.Value?.Invoke(path);
         return new(path, FileMode.CreateNew, FileAccess.Write, FileShare.None);
+    }
+
+    internal static void RequireCapacity(string destination, long additionalBytes, IEnumerable<string> rollbackDestinations)
+    {
+        if (additionalBytes < 0) throw new ArgumentOutOfRangeException(nameof(additionalBytes));
+        var rollbackBytes = rollbackDestinations.Where(File.Exists).Sum(path => new FileInfo(path).Length);
+        var needed = checked(additionalBytes + rollbackBytes);
+        var root = Path.GetPathRoot(Resolve(destination)) ?? throw new IOException("The output volume is unavailable.");
+        if (new DriveInfo(root).AvailableFreeSpace < needed)
+            throw new VoxClipException(VoxClipErrorCode.ExportFailed,
+                "Export stopped: there is not enough free space for the marked MP4 and its rollback copy. Your edits are saved.");
     }
 
     private static void ValidatePartial(string path)

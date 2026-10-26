@@ -13,10 +13,13 @@ internal sealed class WaveWriter : IDisposable
     internal long Samples { get; private set; }
 
     internal WaveWriter(string path, int sampleRate, int channels, bool floating)
+        : this(new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None), sampleRate, channels, floating) { }
+
+    internal WaveWriter(FileStream ownedStream, int sampleRate, int channels, bool floating)
     {
         this.sampleRate = sampleRate; this.channels = checked((short)channels);
         bits = (short)(floating ? 32 : 16); format = (short)(floating ? 3 : 1);
-        stream = new(path, FileMode.Create, FileAccess.Write, FileShare.None);
+        stream = ownedStream;
         writer = new(stream, Encoding.UTF8, true);
         Header(0);
     }

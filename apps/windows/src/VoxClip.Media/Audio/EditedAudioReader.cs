@@ -3,6 +3,7 @@ using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Media.Ffmpeg;
 using VoxClip.Media.Pipeline;
+using VoxClip.Media.VoiceLab;
 
 namespace VoxClip.Media.Audio;
 
@@ -10,6 +11,7 @@ internal sealed unsafe class EditedAudioReader : IDisposable
 {
     private readonly AudioDecoder decoder;
     private readonly EditPlan plan;
+    private readonly VoiceLabAudioMixer? mixer;
     private readonly NativeHandle resample;
     private readonly float[] source = new float[4096 * 2];
     private readonly float[] converted;
@@ -22,11 +24,13 @@ internal sealed unsafe class EditedAudioReader : IDisposable
     private bool draining;
     internal long TotalFrames { get; }
 
-    internal EditedAudioReader(ComposeSnapshot snapshot, int outputRate, double startEdited = 0)
+    internal EditedAudioReader(ComposeSnapshot snapshot, int outputRate, double startEdited = 0,
+        VoiceLabRenderSession? session = null, CancellationToken ct = default)
     {
         plan = snapshot.Plan;
         decoder = new(snapshot.Media.Path, 2);
-        if (decoder.SampleRate != (int)plan.SampleRate)
+        var timeline = snapshot.Timeline;
+        if (decoder.SampleRate != (int)timeline.SampleRate)
         { decoder.Dispose(); throw new VoxClipException(VoxClipErrorCode.DecodeFailed, "VoxClip couldn't decode this video: the edit plan audio sample rate does not match the source. Your edits are saved."); }
         var layout = new AVChannelLayout();
         ffmpeg.av_channel_layout_default(&layout, 2);
@@ -41,13 +45,25 @@ internal sealed unsafe class EditedAudioReader : IDisposable
         catch { decoder.Dispose(); if (context != null) ffmpeg.swr_free(&context); throw; }
         finally { ffmpeg.av_channel_layout_uninit(&layout); }
         converted = new float[(int)Math.Ceiling(4096.0 * outputRate / decoder.SampleRate + 256) * 2];
-        var sourceOffset = Math.Clamp(Native.Round(startEdited * plan.SampleRate), 0, plan.OutputSamples);
+        var sourceOffset = Math.Clamp(Native.Round(startEdited * timeline.SampleRate), 0, timeline.OutputSamples);
         outputIndex = sourceOffset;
-        TotalFrames = Native.Round((plan.OutputSamples - sourceOffset) * outputRate / plan.SampleRate);
-        while (part < plan.Kept.Count && sourceOffset >= plan.Kept[part].EndSample - plan.Kept[part].StartSample)
-        { sourceOffset -= plan.Kept[part].EndSample - plan.Kept[part].StartSample; part++; }
-        partOffset = sourceOffset;
-        if (part < plan.Kept.Count) decoder.Seek(plan.Kept[part].StartSample + partOffset);
+        TotalFrames = Native.Round((timeline.OutputSamples - sourceOffset) * outputRate / timeline.SampleRate);
+        if (timeline is VoxClip.Core.Domain.VoiceLab.RenderTimeline.VoiceLab voice && voice.Plan.RequiresSyntheticRendering)
+        {
+            try
+            {
+                mixer = (session ?? throw new InvalidOperationException("Prepare generated audio before opening the reader."))
+                    .CreateMixer(new NativeVoiceLabSource(decoder), sourceOffset, ct);
+            }
+            catch { resample.Dispose(); decoder.Dispose(); throw; }
+        }
+        else
+        {
+            while (part < plan.Kept.Count && sourceOffset >= plan.Kept[part].EndSample - plan.Kept[part].StartSample)
+            { sourceOffset -= plan.Kept[part].EndSample - plan.Kept[part].StartSample; part++; }
+            partOffset = sourceOffset;
+            if (part < plan.Kept.Count) decoder.Seek(plan.Kept[part].StartSample + partOffset);
+        }
     }
 
     internal int Read(Span<float> target, int frames, CancellationToken ct)
@@ -61,6 +77,9 @@ internal sealed unsafe class EditedAudioReader : IDisposable
             {
                 if (!Fill(ct))
                 {
+                    if (mixer is not null)
+                        throw new VoxClipException(VoxClipErrorCode.DecodeFailed,
+                            "The generated Voice Lab audio ended before the planned output. Your edits are saved.");
                     target.Slice(written * 2, (frames - written) * 2).Clear();
                     written = frames; break;
                 }
@@ -78,7 +97,11 @@ internal sealed unsafe class EditedAudioReader : IDisposable
         while (true)
         {
             var count = 0;
-            if (part < plan.Kept.Count)
+            if (mixer is not null)
+            {
+                count = mixer.Read(source, 4096, ct);
+            }
+            else if (part < plan.Kept.Count)
             {
                 var range = plan.Kept[part];
                 var length = range.EndSample - range.StartSample;
@@ -112,29 +135,8 @@ internal sealed unsafe class EditedAudioReader : IDisposable
         }
     }
 
-    internal static Task WriteWaveAsync(ComposeSnapshot snapshot, string path, CancellationToken ct, bool publish = true) => MediaThread.Run("vc-audio-wave", () =>
-    {
-        path = OutputSafety.Resolve(path);
-        var partial = path + ".partial";
-        var prepared = false;
-        var rate = checked((int)snapshot.Plan.SampleRate);
-        try
-        {
-            using (OutputSafety.CreatePartial(partial)) { }
-            using (var audio = new EditedAudioReader(snapshot, rate))
-            using (var output = new WaveWriter(partial, rate, 2, true))
-            {
-                var samples = new float[8192];
-                int count;
-                while ((count = audio.Read(samples, samples.Length / 2, ct)) > 0) output.Write(samples.AsSpan(0, count * 2));
-            }
-            ct.ThrowIfCancellationRequested();
-            if (publish) OutputSafety.Publish([path]);
-            prepared = true;
-            return true;
-        }
-        finally { if (publish || !prepared) OutputSafety.DeletePartial(partial); }
-    }, ct);
+    internal static Task WriteWaveAsync(ComposeSnapshot snapshot, string path, CancellationToken ct, bool publish = true)
+        => EditedWaveWriter.WriteAsync(snapshot, path, ct, publish);
 
-    public void Dispose() { resample.Dispose(); decoder.Dispose(); }
+    public void Dispose() { mixer?.Dispose(); resample.Dispose(); decoder.Dispose(); }
 }

@@ -1,5 +1,10 @@
 # macOS implementation contracts
 
+### 2026-10-26 — Paired Windows composition integration
+
+- The selectively integrated Windows renderer through `fcbc05c1` has native ARM64 and emulated-x64 unity passage/full-take/touching output, WASAPI transport, visible disclosure and XMP/provenance evidence. The parent verified retained module identities and six output artifact pairs. R5 corrected the earlier artificial-bounds test: a stored caption position now produces the collision through unchanged layout geometry, with visible caption and relocated disclosure checked in native preview and decoded export on both RIDs. No Swift source, runtime pin or frozen provider fixture changes accompany this integration. Both platforms retain App/CLI active-synthetic and nonunity guards; Mac player load/lifetime evidence is still distinct from actual playback.
+
+
 ### 2026-10-26 — Guarded native Voice Lab composition integration
 
 - Integrated the reviewed Mac source through `ee47127`. Request-bound v3 timelines drive equal-length source video and bounded mixed CAF audio for preview, edited WAV and MP4. Private asset and scratch leases survive until player items and readers release them. Disabled and excluded synthetic pieces retain the ordinary source route. App and CLI active-synthetic guards remain enforced.
@@ -20,7 +25,7 @@
 ### 2026-10-26 — Approved disclosure staging route (ADR-R27)
 
 - The reviewed helper API uses one reusable `VoiceLabDisclosureOverlay(plan:width:height:fontURL:captionBlocks:)`, drawing after captions via `draw(into:at:)`. Interval-wide caption bounds come from the existing renderer. `VoiceLabDisclosureWriter.stage(sourceMP4:stagedMP4:finalFilename:project:prepared:appVersion:createdAt:)` takes finalized muxer output, stages a marked MP4 and returns sidecar bytes for the existing export transaction.
-- The helper handoff began at `4deca8f`. Its corrected Swift implementation is integrated with the guarded Mac renderer above; the Windows implementation remains with its native composition owner. ADR-R27 records the accepted post-mux XMP route, not completed app/CLI rendering; current guards remain active.
+- The helper handoff began at `4deca8f`. Its corrected Swift implementation is integrated with the guarded Mac renderer above; the Windows implementation is integrated with its guarded renderer after the native R4/R5 checks. ADR-R27 records the accepted post-mux XMP route, not completed app/CLI rendering; current guards remain active.
 
 ### 2026-10-26 — Reviewed Voice Lab v3 Core integration
 
