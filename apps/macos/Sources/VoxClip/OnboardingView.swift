@@ -4,8 +4,6 @@ import VoxClipCore
 @MainActor struct OnboardingView: View {
     @Environment(AppModel.self) private var app
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.openDocument) private var openDocument
-    @Environment(\.newDocument) private var newDocument
     @State private var step = 0
     @State private var connector = ""
     @State private var consent = false
@@ -21,7 +19,7 @@ import VoxClipCore
                     if app.string("transcription.engineMode", fallback: "local") == "elevenlabs" { ProviderKeyRow(provider: "elevenlabs", label: "ElevenLabs Scribe", app: app) }
                 }.formStyle(.grouped).scrollContentBackground(.hidden)
                 Text("On this Mac: private and free. Downloads a model once. You can download it later, when you import.").font(.callout).foregroundStyle(.secondary)
-                SettingsLink { Text("Choose or download a local model…") }
+                Button("Choose or download a local model…") { openVoxClipSettings() }
             } else if step == 1 {
                 Picker("Connect using", selection: $connector) {
                     Text("Not now").tag("")
@@ -30,7 +28,7 @@ import VoxClipCore
                 if let choice = app.providers.first(where: { $0.id == connector }) {
                     if choice.group == "apiKey" { ProviderKeyRow(provider: choice.id, label: choice.label, app: app) }
                     if let copy = choice.cliConsentCopy { Text(copy); Toggle("I understand and want to use this connector", isOn: $consent) }
-                    SettingsLink { Text("Configure and test this connector…") }
+                    Button("Configure and test this connector…") { openVoxClipSettings() }
                 }
                 Text("Sends transcript text only. No audio or video.").foregroundStyle(.secondary)
                 Text("You can always make clips yourself: select words, press ⌘K.")
@@ -56,7 +54,7 @@ import VoxClipCore
                         if app.selectOnboardingConnector(connector, consent: consent) { step = 2 }
                     }.disabled(connector.isEmpty || (app.providers.first { $0.id == connector }?.cliConsentCopy != nil && !consent))
                 } else if step == 2 {
-                    Button("Open a video…") { finish(); chooseFile(app: app, open: openDocument, create: newDocument) }
+                    Button("Open a video…") { finish(); chooseFile(app: app) }
                     Button("Done") { finish() }.keyboardShortcut(.defaultAction)
                 }
                 else { Button("Continue") { step += 1 }.keyboardShortcut(.defaultAction) }

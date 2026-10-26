@@ -46,10 +46,25 @@ extension ProviderChoice {
     var providers: [ProviderChoice] = []
     var styles: [CaptionStyle] = []
     var recent: [URL] = []
+    func noteRecent(_ url: URL) {
+        if !Self.isTestSession { NSDocumentController.shared.noteNewRecentDocumentURL(url) }
+        recent.removeAll { $0.standardizedFileURL == url.standardizedFileURL }
+        recent.insert(url, at: 0)
+        recent = Array(recent.prefix(20))
+    }
+    func moveRecent(from oldURL: URL, to newURL: URL) {
+        recent.removeAll { $0.standardizedFileURL == oldURL.standardizedFileURL || $0.standardizedFileURL == newURL.standardizedFileURL }
+        recent.insert(newURL, at: 0)
+        if !Self.isTestSession {
+            NSDocumentController.shared.clearRecentDocuments(nil)
+            for url in recent.reversed() { NSDocumentController.shared.noteNewRecentDocumentURL(url) }
+        }
+    }
     var update: UpdateRelease?
     var showTour = false
     let fileRouter = FileOpenRouter()
     @ObservationIgnored weak var activeHome: EditorModel?
+    @ObservationIgnored weak var activeEditor: EditorModel?
     private(set) var settingsLoaded = false
     private(set) var loadingSettings = true
     private(set) var pauseBreathRevision = 0
@@ -112,7 +127,7 @@ extension ProviderChoice {
         await startupTask?.value
     }
     private func loadStartup() async {
-        recent = NSDocumentController.shared.recentDocumentURLs
+        recent = Self.isTestSession ? [] : NSDocumentController.shared.recentDocumentURLs
         do {
             var loaded = try await settingsStore.load()
             loaded.values.merge(pendingSettings) { _, new in new }
@@ -141,7 +156,7 @@ extension ProviderChoice {
     }
     static var isTestSession: Bool {
         #if DEBUG
-        CommandLine.arguments.contains("-demoCapture") || CommandLine.arguments.contains("-uiSelfTest") || CommandLine.arguments.contains("-uiPerformanceTest") || CommandLine.arguments.contains("-sceneAudit")
+        CommandLine.arguments.contains("-demoCapture") || CommandLine.arguments.contains("-uiSelfTest") || CommandLine.arguments.contains("-uiPerformanceTest") || CommandLine.arguments.contains("-sceneAudit") || CommandLine.arguments.contains("-saveBoundaryAudit") || CommandLine.arguments.contains("-settingsAudit")
         #else
         false
         #endif

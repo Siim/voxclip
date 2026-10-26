@@ -13,6 +13,7 @@ import VoxClipCore
             AboutSettings(app: app).tabItem { Label("About", systemImage: "info.circle") }
         }
         .frame(minWidth: 600, minHeight: 480)
+        .preferredColorScheme(app.appearance)
     }
 }
 

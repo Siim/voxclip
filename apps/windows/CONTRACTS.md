@@ -1,5 +1,11 @@
 # Windows fixed contracts
 
+### 2026-10-26 — Paired Mac document writer and Settings integration
+
+- Integrated the reviewed Mac App and tests through `82fbf09b80bbd857825f78ea0d46cf8e6134a2df`. The native document writer computes media paths for the final Save As or Move destination, preserves post-snapshot edits and synchronizes window state after Move. Settings retains its window, reacts to appearance changes and preserves pending text across close/reopen; native menu titles reflect current state.
+- Final Mac native verification passed three save runs of **36/36**, Settings **16/16**, the scene **56/56** with all **12** owned captures, offscreen UI **147/147**, and the document-window test. Source and evidence hashes are retained under `/tmp/voxclip-mac-document-writer-r8-parent-20261026/`; prior failed audits remain recorded in the Mac ledger.
+- This changes no Windows source, runtime pin, shared schema, Core, Media or CLI code. Windows acceptance and the existing rendering guards are unchanged. The separate Windows App/CLI unity workflow remains on its track pending native App preview acceptance; it is not included in this Mac integration.
+
 ### 2026-10-26 — Guarded Windows composition integration
 
 - Selectively integrated Windows source/tests through `fcbc05c1`. Production composition was tested natively at `25877669`; the test-only R5 collision correction was tested at `d8db903`. The tagged v3 timeline drives bounded unity source/synth mixing, video mapping and captions for preview, edited WAV and MP4; private snapshots stay alive through reader and WASAPI disposal. The same compositor draws disclosure, and marked MP4/SRT/WAV/provenance publication uses the existing rollback boundary. Nonunity and App/CLI guards remain active. Current main runtime, Mac implementation and WinUI work are preserved.

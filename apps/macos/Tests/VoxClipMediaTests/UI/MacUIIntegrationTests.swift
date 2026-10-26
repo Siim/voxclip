@@ -43,13 +43,27 @@ import Darwin
         let directory = try UIProcessHarness.run(mode: "-sceneAudit", name: "scene")
         defer { UIProcessHarness.cleanTemporary(directory) }
         let report = try JSONDecoder().decode([UIProcessHarness.Result].self, from: Data(contentsOf: directory.appendingPathComponent("scene-results.json")))
-        #expect(report.count >= 14)
+        #expect(report.count >= 53)
         for result in report { #expect(result.passed, Comment(rawValue: result.name)) }
         for name in ["live-home", "live-imported", "live-finder-missing", "live-finder-stopped", "live-finder-ready", "live-finder-recovered", "live-clips", "live-export-clip", "live-clip-preview", "live-compact", "live-compact-light", "live-dirty-close"] {
             let image = try #require(NSBitmapImageRep(data: Data(contentsOf: directory.appendingPathComponent(name).appendingPathExtension("png"))))
             #expect(image.pixelsWide >= 600 && image.pixelsHigh >= 400)
         }
         print("mac-ui native scene screenshots: \(directory.path)")
+    }
+    @Test("Native Save As boundary preserves portable media and edits", .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_UI_TESTS"] == "1")) func saveBoundary() throws {
+        let directory = try UIProcessHarness.run(mode: "-saveBoundaryAudit", name: "save", acceptNonzeroWithReport: "save-boundary-results.json")
+        defer { UIProcessHarness.cleanTemporary(directory) }
+        let report = try JSONDecoder().decode([UIProcessHarness.Result].self, from: Data(contentsOf: directory.appendingPathComponent("save-boundary-results.json")))
+        #expect(report.count >= 36)
+        for result in report { #expect(result.passed, Comment(rawValue: result.name)) }
+    }
+    @Test("Settings command retains window and reacts to appearance", .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_UI_TESTS"] == "1")) func settingsLifecycle() throws {
+        let directory = try UIProcessHarness.run(mode: "-settingsAudit", name: "settings", acceptNonzeroWithReport: "settings-results.json")
+        defer { UIProcessHarness.cleanTemporary(directory) }
+        let report = try JSONDecoder().decode([UIProcessHarness.Result].self, from: Data(contentsOf: directory.appendingPathComponent("settings-results.json")))
+        #expect(report.count >= 16)
+        for result in report { #expect(result.passed, Comment(rawValue: result.name)) }
     }
     @Test("Log sink redacts before persisting") func redactedFileSink() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("voxclip-log-test-\(UUID().uuidString)")
@@ -114,7 +128,7 @@ final class MacUIRenderPerformanceTests: XCTestCase {
 private enum UIProcessHarness {
     struct Result: Decodable { let name: String; let passed: Bool; let skipped: String? }
     enum Failure: Error { case executableMissing, timedOut, appFailed(Int32), outputMissing }
-    static func run(mode: String, name: String) throws -> URL {
+    static func run(mode: String, name: String, acceptNonzeroWithReport: String? = nil) throws -> URL {
         let environment = ProcessInfo.processInfo.environment
         let adjacent = Bundle(for: MacUIRenderPerformanceTests.self).bundleURL.deletingLastPathComponent().appendingPathComponent("VoxClip")
         let override = mode == "-uiPerformanceTest" ? environment["VOXCLIP_UI_PERFORMANCE_EXECUTABLE"] ?? environment["VOXCLIP_APP_EXECUTABLE"] : environment["VOXCLIP_APP_EXECUTABLE"]
@@ -154,7 +168,14 @@ private enum UIProcessHarness {
             throw Failure.timedOut
         }
         process.waitUntilExit()
-        guard process.terminationStatus == 0 else { throw Failure.appFailed(process.terminationStatus) }
+        if process.terminationStatus != 0 {
+            guard let report = acceptNonzeroWithReport,
+                  let data = try? Data(contentsOf: directory.appendingPathComponent(report)),
+                  let results = try? JSONDecoder().decode([Result].self, from: data),
+                  results.contains(where: { !$0.passed }) else {
+                throw Failure.appFailed(process.terminationStatus)
+            }
+        }
         guard !FileManager.default.fileExists(atPath: directory.appendingPathComponent("failure.txt").path) else { throw Failure.outputMissing }
         return directory
         } catch {

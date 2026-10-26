@@ -44,7 +44,7 @@ Clip rows, preview clocks and export use the same edit plan. Playback stops at t
 | | macOS | Windows |
 |---|---|---|
 | Minimum | macOS 26, Apple silicon (arm64) | Windows 10 19041+; designed and tested on Windows 11 |
-| UI stack | SwiftUI scenes and views, AppKit where text or video need it (`NSTextView` TextKit 2, `AVPlayerLayer`) | WinUI 3, Windows App SDK latest stable (pinned), unpackaged, self-contained |
+| UI stack | SwiftUI editor and settings views in AppKit `NSDocument` windows; AppKit for native menus, text and video (`NSTextView` TextKit 2, `AVPlayerLayer`) | WinUI 3, Windows App SDK latest stable (pinned), unpackaged, self-contained |
 | Materials | Liquid Glass on chrome only, **no fallbacks** (macOS 26 is the floor). `visibilityPriority` requires the Xcode 27 / Swift 6.4 SDK declaration and macOS 26.1+ at runtime; earlier toolchains keep the same toolbar items without that modifier | Mica on the main and Settings windows; Acrylic only for transient surfaces |
 | System font | SF Pro (UI), SF Mono (fallback) | Segoe UI Variable (UI), Cascadia Mono (fallback) |
 | Brand fonts | DM Sans 400 (transcript), Geist Mono 400/500/600 (numbers), both OFL, loaded by file from `shared/fonts` (tokens.json `fontFiles`; until a file is bundled, the platform fallback is used) | same |
@@ -72,7 +72,7 @@ Settings (⌘, / Ctrl+,): General · Transcription · AI · Export · Accounts (
 First run: Onboarding (3 steps, each skippable) → Welcome / Home
 ```
 
-- **macOS:** a document-based app. `DocumentGroup(newDocument:)` with a `ReferenceFileDocument` for `.voxclip` projects gives Open Recent, ⌘N/⌘O/⌘W, one window per project, autosave and a per-window `UndoManager`. The document's readable and writable content types are `com.voxconvo.voxclip.project` **only**, so a video can never become the document's file and be saved over. Opening a video (⌘O, drop, Finder, Dock) creates an untitled project around it through `@Environment(\.newDocument)` with `VoxClipDocument(importing:)`; File > Open… is replaced by a panel that accepts projects and movies, and an `NSApplicationDelegateAdaptor` routes Finder/Dock opens the same way (architecture.md section 2.6). Saving is `NSDocument` autosave-in-place; Save As, Move To and Rename rewrite the media's `relativePath` on the next autosave. Untitled projects follow the system keep/delete prompt when closed. The Welcome window is a separate `Window` scene (`id: "welcome"`) shown at launch when no project windows are restored, like Xcode's.
+- **macOS:** a document-based app. `NSApplication` and `NSDocumentController` provide Open Recent, ⌘N/⌘O/⌘W, one window per project, autosave, native titles and a per-document undo manager. `VoxClipDocument` accepts `com.voxconvo.voxclip.project` only, so a video cannot become the document file. File > Open…, drop, Finder and Dock route projects to the document controller; a movie imports into an empty Home workspace or opens another untitled project. The empty Home is the regular document window, with no separate Welcome scene. Save As and cross-folder Move write the media path for the destination immediately; a same-folder Rename preserves the already-correct relative path (architecture 2.6, editing 10.2).
 - **Windows:** one process (single instance through `AppInstance`), one main window per project, each with two pages in a `Frame`: **Home** and **Editor**. The TitleBar back button goes from Editor to Home. Ctrl+N opens a new main window in the same process. Opening a project that is already open activates its window. Launching the app again without a file activates the current window and leaves its project and edits in place. A launch with one project or video path opens that file in the existing process. Settings opens in its own window. `NavigationView` is not used in the main window: navigation is shallow and the user stays in one workflow (Microsoft: media/canvas apps use a hero surface with no `NavigationView`). Project files: section 3.3.
 
 ---
@@ -126,7 +126,7 @@ Breakpoints (window width):
 
 How it is built:
 
-- Scene: `DocumentGroup` → `EditorView()`. No sidebar. `.windowToolbarStyle(.unified)`. Title = project name. `.navigationSubtitle("02:15 after cuts · 5 words, 47 pauses cut")` carries the status (VoxConvo's "READY TO REVIEW" line).
+- Window: `NSDocumentController` → `VoxClipDocument` → `NSHostingController` with `EditorView()`. A native sidebar shows Home, Transcript and Clips. The title and proxy reflect AppKit's untitled or saved file location; `.navigationSubtitle("02:15 after cuts · 5 words, 47 pauses cut")` carries editing status.
 - Body: a horizontal split of `TranscriptView | PreviewColumn` with `TimelineStrip` as a fixed 56 pt bottom row, then `.inspector(isPresented: $showInspector) { InspectorView() }`. Inspectors are edge-to-edge glass beside the content; never give the inspector its own opaque background.
 - Toolbar:
 
@@ -496,7 +496,7 @@ Step 3 of 3   Five keys to know
 
 ## 10. Settings
 
-macOS: a `Settings` scene with a toolbar-style `TabView`, `.formStyle(.grouped)`, 600×480, resizable. Windows: a separate Settings window on Mica with a left `NavigationView` (inside the Settings window only) and `SettingsCard` / `SettingsExpander` rows (Windows Community Toolkit); default 760×600, min 560×480.
+macOS: one retained native Settings window hosting a toolbar-style SwiftUI `TabView` with `.formStyle(.grouped)`, minimum 600×480, resizable. The Settings command reopens that window after close; appearance updates while it is open and follows System when selected. Closing it preserves app-owned model downloads and text-field drafts. Windows: a separate Settings window on Mica with a left `NavigationView` (inside the Settings window only) and `SettingsCard` / `SettingsExpander` rows (Windows Community Toolkit); default 760×600, min 560×480.
 
 ```text
 macOS                                                    Windows
@@ -582,7 +582,7 @@ On Windows avoid **Ctrl+Alt+letter** (AltGr on many layouts types characters). U
 - **VoxClip:** About VoxClip, Check for Updates…, Settings…, Hide, Quit.
 - **File:** New Recording (M2), Open… (projects and movies; a movie opens as a new untitled project), Open Recent, Close, Save, Duplicate, Rename…, Move To…, Export…, Reveal Media in Finder.
 - **Edit:** Undo, Redo, Cut Selection, Restore Selection, Correct Word, Select All, Copy Text, Find…, Find Next, Find Previous, Cut Fillers, Tighten Pauses, Restore All Cuts, Transcribe Again… (section 7.1).
-- **View:** Show Cut Words, Show Pauses, Show Inspector, Captions / Clips / AI, Source / Edited Timeline, Bigger / Smaller / Actual Size, Enter Full Screen.
+- **View:** Show/Hide Cut Words, Show/Hide Pauses, Show/Hide Caption Inspector, Show/Hide Sidebar, Home / Transcript / Clips, Source / Edited Timeline, Bigger / Smaller / Actual Size, Enter Full Screen. Each Show/Hide title describes the current action.
 - **Playback:** Play/Pause, Play from Selection, Preview Cut, Shuttle Back / Stop / Forward, Go to Start / End.
 - **Clip:** Make Clip from Selection, Set Start, Set End, Previous / Next Clip, Find Clips…
 - **Window**, **Help:** Keyboard Shortcuts, Welcome Tour, What Leaves This Mac, Reveal Logs, Copy Diagnostics.

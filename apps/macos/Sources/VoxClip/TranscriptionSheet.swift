@@ -36,7 +36,7 @@ import VoxClipMedia
             }.formStyle(.grouped).scrollContentBackground(.hidden).disabled(running)
             if running { ProgressView(model.progress ?? "Reading video…", value: progress?.fraction) }
             if let error { InlineNotice(text: error) }
-            HStack { SettingsLink { Text("Models and keys…") }; Spacer(); Button(running ? "Cancel" : "Not now") { model.workTask?.cancel(); dismiss() }.keyboardShortcut(.cancelAction); Button(error == nil ? "Transcribe" : "Retry") { if engine == "elevenlabs" && !model.app.bool("transcription.cloudConsent.elevenlabs") { showCloudConsent = true } else { transcribe() } }.keyboardShortcut(.defaultAction).disabled(running) }
+            HStack { Button("Models and keys…") { openVoxClipSettings() }; Spacer(); Button(running ? "Cancel" : "Not now") { model.workTask?.cancel(); dismiss() }.keyboardShortcut(.cancelAction); Button(error == nil ? "Transcribe" : "Retry") { if engine == "elevenlabs" && !model.app.bool("transcription.cloudConsent.elevenlabs") { showCloudConsent = true } else { transcribe() } }.keyboardShortcut(.defaultAction).disabled(running) }
         }.padding(24).frame(width: 560)
         .sheet(isPresented: $showCloudConsent) {
             VStack(alignment: .leading, spacing: 16) {

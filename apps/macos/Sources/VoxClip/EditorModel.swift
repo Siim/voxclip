@@ -179,6 +179,26 @@ enum WorkspaceLocation: String, CaseIterable { case home = "Home", transcript = 
         if app.activeHome === self { app.activeHome = nil }
         app.openProjectKeys[project.id] = nil
     }
+    func reloadFromDocument(previousProjectID: String) {
+        app.openProjectKeys[previousProjectID] = nil
+        workTask?.cancel(); exportTask?.cancel(); findTask?.cancel(); importTask?.cancel(); updateTask?.cancel()
+        preview.pause(); isPlaying = false; previewStop = nil
+        history = nil
+        renderedTranscript = nil; renderedEdits = nil; renderedMedia = nil; renderedVoiceLab = nil
+        planningSegments = nil; planningWordIndex = [:]; summaryCache.removeAll()
+        selectedWordIDs = []; selectedPauseIDs = []; correctionID = nil
+        clipAnswer = nil; clipError = nil; error = nil; previewError = nil
+        mediaResolved = document.demo
+        location = isHome ? .home : .transcript
+        refresh()
+        updateTask = Task { [weak self] in
+            guard let self, !isHome else { return }
+            do {
+                _ = try await resolveMediaIdentity()
+                await updatePreview(load: true)
+            } catch is CancellationError {} catch { previewError = await app.safeError(error) }
+        }
+    }
     func closeEmptyWindow() { if isHome { window?.performClose(nil) } }
     func importVideo(_ url: URL) async {
         guard isHome, importProgress == nil else { return }
@@ -327,12 +347,7 @@ enum WorkspaceLocation: String, CaseIterable { case home = "Home", transcript = 
         }
     }
     private func recordDocumentChange() {
-        if let native = window?.windowController?.document {
-            native.updateChangeCount(undoManager?.isUndoing == true ? .changeUndone : undoManager?.isRedoing == true ? .changeRedone : .changeDone)
-            window?.isDocumentEdited = native.isDocumentEdited
-        } else {
-            document.markEdited()
-        }
+        document.updateChangeCount(undoManager?.isUndoing == true ? .changeUndone : undoManager?.isRedoing == true ? .changeRedone : .changeDone)
     }
     func resolveMediaIdentity() async throws -> URL {
         let reference = project.media.source

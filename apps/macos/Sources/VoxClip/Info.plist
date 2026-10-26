@@ -17,6 +17,7 @@
     <key>CFBundleDocumentTypes</key><array><dict>
         <key>CFBundleTypeName</key><string>VoxClip project</string>
         <key>CFBundleTypeRole</key><string>Editor</string>
+        <key>NSDocumentClass</key><string>VoxClipDocument</string>
         <key>LSHandlerRank</key><string>Owner</string>
         <key>LSItemContentTypes</key><array><string>com.voxconvo.voxclip.project</string></array>
     </dict><dict>

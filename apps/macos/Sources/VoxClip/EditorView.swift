@@ -7,9 +7,6 @@ extension FocusedValues { var editor: EditorModel? { get { self[EditorFocusKey.s
 @MainActor public struct EditorView: View {
     @ObservedObject private var document: VoxClipDocument
     @State private var model: EditorModel
-    @Environment(\.undoManager) private var undoManager
-    @Environment(\.openDocument) private var openDocument
-    @Environment(\.newDocument) private var newDocument
 
     init(document: VoxClipDocument, app: AppModel) {
         self.document = document
@@ -65,7 +62,6 @@ extension FocusedValues { var editor: EditorModel? { get { self[EditorFocusKey.s
         .inspector(isPresented: $model.showInspector) {
             InspectorView(model: model).inspectorColumnWidth(min: 260, ideal: 300, max: 380)
         }
-        .navigationTitle(model.isHome || model.location == .home ? "Home" : document.project.title ?? "Untitled")
         .navigationSubtitle(model.isHome || model.location == .home ? "" : model.subtitle)
         .toolbar { EditorToolbar(model: model, hasMedia: !model.isHome) }
         .focusedSceneValue(\.editor, model)
@@ -77,10 +73,10 @@ extension FocusedValues { var editor: EditorModel? { get { self[EditorFocusKey.s
         .sheet(isPresented: Binding(get: { model.app.showTour }, set: { model.app.showTour = $0 })) { OnboardingView() }
         .dropDestination(for: URL.self) { urls, _ in
             guard let url = urls.first else { return false }
-            openFile(url, app: model.app, open: openDocument, create: newDocument)
+            openFile(url, app: model.app)
             return true
         }
-        .task { model.undoManager = undoManager; await model.start() }
+        .task { model.undoManager = document.undoManager; document.editorModel = model; await model.start() }
         .onDisappear { model.close() }
         .onChange(of: model.app.pauseBreathRevision) { _, _ in
             guard model.app.settingsLoaded else { return }
@@ -251,18 +247,14 @@ extension FocusedValues { var editor: EditorModel? { get { self[EditorFocusKey.s
 @MainActor private struct EditorWindowSetup: NSViewRepresentable {
     let model: EditorModel
     func makeNSView(context: Context) -> SetupView { SetupView(model: model) }
-    func updateNSView(_ view: SetupView, context: Context) {
-        if let window = view.window, let native = window.windowController?.document { window.isDocumentEdited = native.isDocumentEdited }
-    }
+    func updateNSView(_ view: SetupView, context: Context) {}
     final class SetupView: NSView {
         weak var model: EditorModel?
         var configured = false
-        var editedStateTimer: Timer?
         init(model: EditorModel) { self.model = model; super.init(frame: .zero) }
         required init?(coder: NSCoder) { nil }
         override func viewWillMove(toWindow newWindow: NSWindow?) {
             if newWindow == nil {
-                editedStateTimer?.invalidate(); editedStateTimer = nil
                 NotificationCenter.default.removeObserver(self)
                 configured = false
             }
@@ -272,10 +264,6 @@ extension FocusedValues { var editor: EditorModel? { get { self[EditorFocusKey.s
             guard let window, !configured else { return }
             configured = true
             NotificationCenter.default.addObserver(self, selector: #selector(windowResized), name: NSWindow.didResizeNotification, object: window)
-            // DocumentGroup's controller does not always mirror the edited bit after an asynchronous save.
-            editedStateTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
-                Task { @MainActor [weak self] in self?.syncEditedState() }
-            }
             Task { @MainActor [weak self, weak window] in
                 guard let self, let window, let model else { return }
                 model.window = window
@@ -293,11 +281,7 @@ extension FocusedValues { var editor: EditorModel? { get { self[EditorFocusKey.s
         @objc private func windowBecameKey() {
             guard let model else { return }
             model.app.activeHome = model.isHome ? model : nil
-            syncEditedState()
-        }
-        @objc private func syncEditedState() {
-            guard let window, let native = window.windowController?.document else { return }
-            if window.isDocumentEdited != native.isDocumentEdited { window.isDocumentEdited = native.isDocumentEdited }
+            model.app.activeEditor = model
         }
         @objc private func windowResized() {
             guard let width = window?.frame.width, let model, abs(width - model.windowWidth) > 1 else { return }
@@ -353,7 +337,7 @@ extension FocusedValues { var editor: EditorModel? { get { self[EditorFocusKey.s
             } else if model.project.transcript == nil {
                 ContentUnavailableView { Label("This video isn't transcribed yet.", systemImage: "text.alignleft") }
                     description: { Text("Your video is still here. Transcribe it to cut by words.") }
-                    actions: { Button("Transcribe…") { model.showTranscribe = true }; SettingsLink { Text("Models and keys…") } }
+                    actions: { Button("Transcribe…") { model.showTranscribe = true }; Button("Models and keys…") { openVoxClipSettings() } }
             } else { TranscriptTextView(model: model).accessibilityLabel("Transcript, edit by words") }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)

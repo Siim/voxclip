@@ -22,6 +22,7 @@ import VoxClipCore
         @Bindable var draft = draft
         VStack(alignment: .leading, spacing: 4) {
             TextField(title, text: $draft.text).focused($focused)
+                .accessibilityIdentifier("setting.\(key)")
                 .onSubmit { draft.commit(key: key, app: app) }
                 .onChange(of: focused) { _, focused in if !focused { draft.commit(key: key, app: app) } }
             if let error = app.settingErrors[key] { Text(error).font(.caption).foregroundStyle(DesignValues.color("status.dangerForeground")).accessibilityLabel("\(title): \(error)") }

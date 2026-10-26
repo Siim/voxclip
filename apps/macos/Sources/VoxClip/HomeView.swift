@@ -3,8 +3,6 @@ import VoxClipCore
 
 @MainActor struct HomeView: View {
     let model: EditorModel
-    @Environment(\.openDocument) private var openDocument
-    @Environment(\.newDocument) private var newDocument
     @State private var dropTarget = false
     @State private var launchedDemo = false
     var body: some View {
@@ -68,7 +66,6 @@ import VoxClipCore
             .frame(maxWidth: .infinity, alignment: .center)
         }
         .padding(.top, 40)
-        .onAppear { model.app.recent = NSDocumentController.shared.recentDocumentURLs }
         .task {
             #if DEBUG
             if !AppModel.isTestSession, model.isHome, !launchedDemo,
@@ -76,7 +73,10 @@ import VoxClipCore
                 launchedDemo = true
                 do {
                     let project = try DemoEditing.loadFixture(URL(fileURLWithPath: CommandLine.arguments[index + 1]))
-                    newDocument { VoxClipDocument(project: project, demo: true) }
+                    let document = VoxClipDocument(project: project, demo: true)
+                    NSDocumentController.shared.addDocument(document)
+                    document.makeWindowControllers()
+                    document.showWindows()
                     model.closeEmptyWindow()
                 } catch { model.importError = await model.app.safeError(error) }
             }
@@ -93,9 +93,9 @@ import VoxClipCore
         if panel.runModal() == .OK, let url = panel.url { open(url) }
     }
     private func open(_ url: URL) {
-        if url.pathExtension.lowercased() == "voxclip" { openFile(url, app: model.app, open: openDocument, create: newDocument) }
+        if url.pathExtension.lowercased() == "voxclip" { openFile(url, app: model.app) }
         else if model.isHome { model.importTask = Task { await model.importVideo(url) } }
-        else { openFile(url, app: model.app, open: openDocument, create: newDocument) }
+        else { openFile(url, app: model.app) }
     }
 }
 

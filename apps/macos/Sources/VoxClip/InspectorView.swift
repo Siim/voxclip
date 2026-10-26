@@ -154,7 +154,7 @@ import CryptoKit
                                 HStack {
                                     Button("Check Again") { model.app.refreshConnectorReadiness() }
                                         .accessibilityIdentifier("checkConnectorAgain")
-                                    SettingsLink { Text("Configure \(connector.label)…") }
+                                    Button("Configure \(connector.label)…") { openVoxClipSettings() }
                                 }
                             }
                         }
@@ -166,7 +166,7 @@ import CryptoKit
                         else { HStack { Spacer(); Button("Find Clips") { model.findClips() }.buttonStyle(.borderedProminent).accessibilityIdentifier("findClipsAction").disabled(model.words.isEmpty || connector == nil || model.preset == .custom && model.instruction.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) } }
                         if connector == nil {
                             Text("Choose how VoxClip finds clips: your API key, a model on this computer, or an installed CLI.").font(.callout).foregroundStyle(.secondary)
-                            SettingsLink { Text("Open AI settings") }
+                            Button("Open AI settings") { openVoxClipSettings() }
                         } else if connector?.group == "apiKey", let connector { ProviderKeyRow(provider: connector.id, label: connector.label, app: model.app) }
                         if let error = model.clipError { InlineNotice(text: error); Button("Retry") { model.findClips() } }
                         if let answer = model.clipAnswer { Text(answer).font(.caption).foregroundStyle(.secondary) }

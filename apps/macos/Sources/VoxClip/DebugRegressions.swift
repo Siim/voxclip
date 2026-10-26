@@ -122,10 +122,6 @@ actor RegressionSettingsStore: SettingsStore {
         reference.relativePath = "source.mov"
         reference.absolutePath = scratch.appendingPathComponent("missing.mov").path
         let projectURL = scratch.appendingPathComponent("take.voxclip")
-        let native = NSDocument()
-        native.fileURL = projectURL
-        NSDocumentController.shared.addDocument(native)
-        defer { NSDocumentController.shared.removeDocument(native) }
         var openedProject = document.project
         openedProject.media.source.relativePath = "source.mov"
         let opened = VoxClipDocument(project: openedProject)
@@ -138,7 +134,7 @@ actor RegressionSettingsStore: SettingsStore {
         let openedEditor = EditorModel(document: opened, app: app, preview: DemoPreviewEngine())
         defer { openedEditor.close() }
         _ = try await openedEditor.resolveMediaIdentity()
-        check("opening unchanged media leaves the document clean", !native.isDocumentEdited && opened.project == openedProject)
+        check("opening unchanged media leaves the document clean", !opened.isDocumentEdited && opened.project == openedProject)
         check("opening and verifying media emit no autosave notifications", changes.withLock { $0 } == 0)
         var movedProject = document.project
         movedProject.media.source = reference
@@ -150,10 +146,10 @@ actor RegressionSettingsStore: SettingsStore {
         defer { editor.close() }
         _ = try await editor.resolveMediaIdentity()
         check("relink revalidation adopts verified relative media", editor.mediaResolved && editor.sourceURL == url && app.openProjectKeys[movedProject.id] == reference.contentKey)
-        check("a changed stored media path marks the document edited", native.isDocumentEdited)
-        native.updateChangeCount(.changeCleared)
+        check("a changed stored media path marks the document edited", movedDocument.isDocumentEdited)
+        let resolvedProject = movedDocument.project
         _ = try await editor.resolveMediaIdentity()
-        check("revalidating unchanged media never marks the document edited", !native.isDocumentEdited)
+        check("revalidating unchanged media does not change the project", movedDocument.project == resolvedProject && movedDocument.isDocumentEdited)
         let absolute = scratch.appendingPathComponent("absolute.mov")
         try Data(contentsOf: url).write(to: absolute)
         defer { try? FileManager.default.removeItem(at: absolute) }
@@ -167,7 +163,7 @@ actor RegressionSettingsStore: SettingsStore {
         document.updateLocation(projectURL)
         let snapshot = try document.snapshot(contentType: .voxclipProject)
         try JSONProjectStore.encode(snapshot).write(to: projectURL)
-        check("file URL changes mark the system document dirty", native.isDocumentEdited)
+        check("destination-aware snapshot does not dirty the document just for a file URL", !document.isDocumentEdited && document.fileURL == projectURL)
         let saved = try JSONProjectStore.decode(Data(contentsOf: projectURL))
         check("saved snapshot rewrites relative media path", saved.media.source.relativePath == "source.mov")
         let unresolved = VoxClipDocument(project: movedProject)
