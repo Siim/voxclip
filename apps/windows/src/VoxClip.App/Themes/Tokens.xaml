@@ -12,7 +12,7 @@
             <SolidColorBrush x:Key="VcLineStrongBrush" Color="#6C6E75" />
             <SolidColorBrush x:Key="VcTextPrimaryBrush" Color="#ECEAE4" />
             <SolidColorBrush x:Key="VcTextSecondaryBrush" Color="#A8AAB0" />
-            <SolidColorBrush x:Key="VcTextMutedBrush" Color="#B0B2B8" />
+            <SolidColorBrush x:Key="VcTextMutedBrush" Color="#9C9EA4" />
             <SolidColorBrush x:Key="VcTextTertiaryBrush" Color="#8F9198" />
             <SolidColorBrush x:Key="VcTextDisabledBrush" Color="#777C8D" />
             <SolidColorBrush x:Key="VcAccentDefaultBrush" Color="#237D7A" />
@@ -70,7 +70,7 @@
             <SolidColorBrush x:Key="VcLineStrongBrush" Color="#85878E" />
             <SolidColorBrush x:Key="VcTextPrimaryBrush" Color="#1A1B1F" />
             <SolidColorBrush x:Key="VcTextSecondaryBrush" Color="#575A61" />
-            <SolidColorBrush x:Key="VcTextMutedBrush" Color="#55585F" />
+            <SolidColorBrush x:Key="VcTextMutedBrush" Color="#5E6168" />
             <SolidColorBrush x:Key="VcTextTertiaryBrush" Color="#66696F" />
             <SolidColorBrush x:Key="VcTextDisabledBrush" Color="#9396A4" />
             <SolidColorBrush x:Key="VcAccentDefaultBrush" Color="#1C6B69" />

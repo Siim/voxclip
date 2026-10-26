@@ -67,8 +67,8 @@ extension Color {
 
     static let vcTextMuted = Color(nsColor: NSColor(name: NSColor.Name("vcTextMuted")) { appearance in
         appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-            ? NSColor(srgbRed: 176.0 / 255, green: 178.0 / 255, blue: 184.0 / 255, alpha: 255.0 / 255)
-            : NSColor(srgbRed: 85.0 / 255, green: 88.0 / 255, blue: 95.0 / 255, alpha: 255.0 / 255)
+            ? NSColor(srgbRed: 156.0 / 255, green: 158.0 / 255, blue: 164.0 / 255, alpha: 255.0 / 255)
+            : NSColor(srgbRed: 94.0 / 255, green: 97.0 / 255, blue: 104.0 / 255, alpha: 255.0 / 255)
     })
 
     static let vcTextTertiary = Color(nsColor: NSColor(name: NSColor.Name("vcTextTertiary")) { appearance in

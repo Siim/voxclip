@@ -103,7 +103,7 @@ public sealed class TranscriptView : UserControl
         var gutter = (TextBlock)grid.Children[0];
         gutter.Text = item.Timecode + (item.Speaker is null ? "" : "\n" + item.Speaker);
         gutter.FontFamily = (FontFamily)Application.Current.Resources["VcFontGeistMono"];
-        gutter.Foreground = Brush("VcTextMutedBrush");
+        gutter.Foreground = Brush("VcTextTertiaryBrush");
         var rich = (RichTextBlock)grid.Children[1];
         rich.FontFamily = (FontFamily)Application.Current.Resources["VcFontDmSans"];
         rich.FontSize = fontSize;

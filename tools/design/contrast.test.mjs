@@ -45,6 +45,18 @@ test('the ADR-R29 badge, selection and boundary pairs are checked in both modes'
   assert.deepEqual(Object.keys(materials['glass.sidebar']).sort(), ['dark', 'light']);
 });
 
+test('the text hierarchy is monotonic on every surface in both modes', () => {
+  for (const mode of ['light', 'dark']) {
+    for (const surface of ['bg.surface', 'bg.sunken', 'bg.window', 'bg.elevated', 'pause.background']) {
+      const ratio = token => contrast(channels(value(token, mode)).rgb, channels(value(surface, mode)).rgb);
+      const where = `${mode} on ${surface}`;
+      assert.ok(ratio('text.primary') > ratio('text.secondary'), `primary > secondary ${where}`);
+      assert.ok(ratio('text.secondary') > ratio('text.muted'), `secondary > muted ${where}`);
+      assert.ok(ratio('text.secondary') > ratio('text.tertiary'), `secondary > tertiary ${where}`);
+    }
+  }
+});
+
 test('the gate fails a pair below its minimum', () => {
   const changed = structuredClone(source);
   changed.color.text.tertiary.$value.light = '#9396A4';

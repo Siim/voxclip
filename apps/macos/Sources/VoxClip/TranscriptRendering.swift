@@ -109,7 +109,7 @@ struct TranscriptAppearance: Equatable {
             if corrected.contains(word.id) { value.addAttribute(.toolTip, value: "Heard as: \(word.text)", range: range) }
             else if model.fillerIDs.contains(word.id) { value.addAttribute(.toolTip, value: "Filler · Delete to cut", range: range) }
             if newParagraph {
-                value.addAttribute(.vcTimecode, value: NSAttributedString(string: timecode(word.start), attributes: [.font: DesignValues.monoFont(10), .foregroundColor: DesignValues.nsColor("text.muted")]), range: NSRange(location: range.location, length: min(1, range.length)))
+                value.addAttribute(.vcTimecode, value: NSAttributedString(string: timecode(word.start), attributes: [.font: DesignValues.monoFont(10), .foregroundColor: DesignValues.nsColor("text.tertiary")]), range: NSRange(location: range.location, length: min(1, range.length)))
             }
             spans.append(TranscriptSpan(id: word.id, range: range, pause: false))
             if model.showPauses, let pause = model.pauseByAfterIndex[position] {
