@@ -131,7 +131,7 @@ Buttons: **Continue**, **Cancel**.
 
 ### 2.6 Cross-platform Core service foundation
 
-`ElevenLabsVoiceLab` discovers models (`GET /v1/models`), subscription (`GET /v1/user/subscription`) and paginated voices (`GET /v2/voices`) through the selected ElevenLabs region. The caller on each platform selects a discovered model and voice. `VoiceRewriteService` takes a separate estimate and affirmative authorization for its selected LLM connector/model before sending source words and the user's instruction. It returns an inert proposal with original timed words intact. Rewriting a passage and rewriting the entire selected take are both supported requests. The service does not edit, synthesize, or follow URLs in model output.
+`ElevenLabsVoiceLab` discovers models (`GET /v1/models`), subscription (`GET /v1/user/subscription`) and paginated voices (`GET /v2/voices`) through the selected ElevenLabs region. The caller on each platform selects a discovered model and voice. `VoiceRewriteService` takes a separate estimate and affirmative authorization for its selected LLM connector/model before sending source words and the user's instruction. It returns an inert proposal with original timed words intact. Rewriting a passage and rewriting the entire selected take are both supported requests. The service does not edit, synthesize, or follow URLs in model output. ADR-R30 adds a length budget to this request (§8.9.1).
 
 Creating an Instant Voice Clone takes a verified own-voice consent record and speaker-match policy input, plus explicit authorization for that operation. Core retains `requires_verification` without treating a pending voice as usable. `listOwnClones` filters owned cloned voices from the paginated voice list; deletion is a separate authorized call. Stock selection allows only `premade`, or owner-created `generated`; `cloned`, `professional`, `famous` and unknown categories are denied. The own path requires a matching active consent identity, speaker match and completed provider verification.
 
@@ -552,11 +552,14 @@ Content-Type: multipart/form-data
    - deleting is preferred;
    - keep the speaker's register;
    - never add facts, numbers, names or claims that are not in the transcript or the instruction;
-   - keep each line within 20% of its spoken length;
+   - keep each edited line inside its character range;
    - return an empty list when nothing should change.
+
+   Each line's character range comes from the length budget (§8.9.1), with the line's words treated as one replace hunk: the same `LENGTH_AIM_MIN` to `LENGTH_AIM_MAX` aim and the same `minChars` and `maxChars` formulas. The request states the range for every line.
 
    Validation:
    - `line` must match an emitted `[a-b]`; duplicates are dropped.
+   - Core counts each edit's letters and digits itself. An edit outside its line's range is shown as it is, with the fit meter (§8.9.1).
    - An edit that introduces digits, URLs or capitalised tokens (not at a sentence start) that appear nowhere in the transcript or the instruction gets a warning badge: "Check this: it adds something you didn't say."
 
 All three paths end in the word diff (§8.2).
@@ -575,7 +578,7 @@ For each edited line, or each selected range plus its new text:
    - **voice**: `insert` or `replace`. It needs TTS.
 6. **Merge voice hunks** separated by at most 2 `equal` words, or by at most 0.35 s of source time. The bridge words between them are re-voiced too, because fewer seams sound better.
 7. **Display.** The transcript shows the diff inline: cut words struck in red, new words in green, re-voiced bridge words in amber. Each hunk has [Accept], [Reject] and [Edit text]. Voice hunks are disabled until an active "My voice" exists, with the action "Create your voice (2 min)".
-8. **Header.** A live summary: "3 cuts · 2 re-voiced phrases (4.1 s of AI voice) · ≈ $0.02".
+8. **Header.** A live summary: "3 cuts · 2 re-voiced phrases (4.1 s of AI voice) · ≈ $0.02". Each voice hunk also shows the fit meter (§8.9.1).
 
 **Patch budget.** Re-voicing is for small fixes. When the inserted plus replaced words exceed 15% of the transcript's `word` items, or 60 words, voice hunks are disabled with "That's a lot to re-voice. Re-record these sentences instead."
 
@@ -588,28 +591,39 @@ SEAM_FADE             = 20 ms     equal-power crossfade at a seam in a gap
 HARD_SEAM_FADE        = 12 ms     at a seam on a word boundary with no gap
 TTS_TRIM_LEAD         = 0.03 s    keep before the first aligned character
 TTS_TRIM_TAIL         = 0.06 s    keep after the last aligned character
-STRETCH_OK            = [0.92, 1.08]   pitch-preserving stretch range (±8%)
+STRETCH_OK            = [0.92, 1.08]   validation bound for a stored fit factor only; rendering refuses any value but 1 (§10.5)
 PAUSE_SLACK_KEEP      = 0.15 s    silence kept next to a word when a seam borrows pause time
+SEAM_PAD_MAX          = 0.3 s     room tone (or silence) padded at a gap seam or take edge, per side
+HARD_SEAM_PAD_MAX     = 60 ms     room tone (or silence) padded at a hard seam, per seam
+PAUSE_FLOOR_PHRASE    = 60 ms     shortest an intra-phrase pause inside a take may become
+PAUSE_FLOOR_PUNCT     = 150 ms    shortest a pause at punctuation inside a take may become
+PAUSE_GROWTH_MAX      = 0.25 s    most any one pause inside a take may grow
+LENGTH_AIM_MIN        = 0.92      new wording aims at 92% to 97% of its window (§8.9.1)
+LENGTH_AIM_MAX        = 0.97
 RETIME_VIDEO_OK       = [0.80, 1.25]   video retime range for zoomCover
 LOUDNESS_NEIGHBOURHOOD= 3.0 s     on each side of the window
 VOICED_FRAME          = −45 dBFS  10 ms RMS
 GAIN_CLAMP            = ±12 dB, then a true-peak limit of −1 dBTP
 ROOM_TONE_MIN_RUN     = 0.5 s     searched inside gaps of at least 0.5 s
 ROOM_TONE_XFADE       = 50 ms
-CANDIDATES            = 3
+CANDIDATES            = 3         most sequential takes per generation run (§8.6)
 PREV_TEXT_MAX         = 100 characters (Text to Dialogue, API limit), 300 (Text to Speech, VoxClip limit)
 ```
+
+The six silence-fit constants (`PAUSE_SLACK_KEEP`, `SEAM_PAD_MAX`, `HARD_SEAM_PAD_MAX`, `PAUSE_FLOOR_PHRASE`, `PAUSE_FLOOR_PUNCT` and `PAUSE_GROWTH_MAX`) are tuned by ear after the listening check (§8.9.4). `PAUSE_SLACK_KEEP` and `SEAM_PAD_MAX` keep the values of the earlier seam step, and the three pause constants are proposals from the duration-fit research. `HARD_SEAM_PAD_MAX` starts at the intra-phrase pause floor, because a hard seam sits in connected speech, where a longer inserted silence is heard as an artifact.
 
 ### 8.4 Window and join placement
 
 For each accepted voice hunk replacing source words `[a..b]`, or inserting between `k` and `k+1`:
 
 1. **Left seam.** Look left from `a`, over up to `SEAM_SEARCH_WORDS` words, for a gap of at least `SEAM_MIN_GAP`.
-   - If one is found, place the seam at the **centre of the quietest 10 ms frame inside that gap**. The words between the gap and `a` become left bridge words.
+   - If one is found, place the seam at the **centre of the quietest 10 ms frame inside that gap**, choosing only among frames that meet step 5. The words between the gap and `a` become left bridge words.
    - Otherwise, place the seam at `a.start − min(0.03, gapBefore / 2)` and use `HARD_SEAM_FADE`.
-2. **Right seam.** The mirror image: look right from `b`.
+   - **Take start.** When no transcript item (word, event or unlabeled speech) lies before the window's first word, the window instead extends to the take start (sample 0), and the seam has kind `none` (§10.5). There is no fade.
+2. **Right seam.** The mirror image: look right from `b`. When no transcript item lies after the window's last word, the window extends to the take end (`totalSamples`) with kind `none`.
 3. **Insertions.** If the gap between `k` and `k+1` is at least `SEAM_MIN_GAP`, both seams lie inside it, `PAUSE_SLACK_KEEP` from each word. Otherwise treat it as a replace of `k+1` with bridging.
 4. **Window.** `W = [seamIn, seamOut]`, and the patch text is left bridge + new words + right bridge.
+5. **Fade inside the take.** A seam's centred fade of `N` source samples (`SEAM_FADE` or `HARD_SEAM_FADE`) must lie inside the take: `seam − floor(N/2) ≥ 0` and `seam + ceil(N/2) ≤ totalSamples`, with `seam` on the source sample grid. A gap frame whose centre breaks this is not a candidate in steps 1 and 2. A hard seam that breaks it refuses the hunk with `seamFadeOutsideTake`.
 
 ### 8.5 TTS request
 
@@ -661,27 +675,32 @@ POST {base}/v1/text-to-speech/{voice_id}/with-timestamps?output_format=pcm_24000
 - **Audio.** With `pcm_*` formats, `audio_base64` is raw 16-bit little-endian mono PCM at that rate. Resample to the source rate.
 - **Alignment.** Use `alignment`, not `normalized_alignment`, so caption text equals the typed text ("2025", not "twenty twenty-five"). The current Core timestamped path rejects null or malformed alignment. The later media QA path may use the Scribe/interpolation recovery in §8.8, after it is implemented and tested; null alignment must never be presented as timestamped speech.
 - **Pronunciation.** The user may type a respelling for a word ("say it like"). eleven_v4 also accepts IPA wrapped in `/…/`. The respelling is sent as the text; the caption keeps the typed word.
+- **Speed.** `voice_settings.speed` is sent only under the speed rule in §8.6. Otherwise it is omitted, and the model's default applies.
 - **Retries.** Synthesis, voice conversion, clone creation and deletion are never retried automatically: a timeout can mean ElevenLabs already billed or completed the request. A different endpoint or model needs a new estimate, review and affirmative authorization. The current Core paths do not invoke Text to Dialogue v4; its timing and model capability must be verified separately before it is offered.
 
 ### 8.6 Candidates
 
-- Generate `CANDIDATES` takes with seeds `s`, `s+1` and `s+2`, where `s` is a random UInt32 per hunk stored with the segment. Run them sequentially.
-- Each candidate goes through §8.7 to §8.11. A candidate is **rejected** when it fails QA (§8.11), when the clipping check fails, or when the speaker score is below τ.
-- Rank the rest by `score = 0.6 × (1 − min(1, |r − 1| / 0.25)) + 0.3 × matchRatio + 0.1 × flatness`, where:
-  - `r` is the raw duration ratio (§8.9);
+- Generate up to `CANDIDATES` takes, one after another, with seeds `s`, `s+1` and `s+2`, where `s` is a random UInt32 per hunk stored with the segment. Each take is its own paid generation, quoted and authorized under §2.6. Whether one affirmative approval may cover the whole bounded run, with one displayed cost cap, is an open decision (§14 S14).
+- Each candidate goes through §8.7 to §8.11, and the fit planner (§8.9.2) runs before the QA gate. A candidate is **rejected** when it fails QA (§8.11), when the clipping check fails, or when the speaker score is below τ.
+- **Early stop.** Generation stops at the first take that passes QA and that the fit planner fits exactly (`exact`, §8.9.2). No further take is quoted or sent.
+- **Speed.** ElevenLabs has no target-duration parameter. `voice_settings.speed` (documented range 0.7–1.2, default 1.0) is used only where a calibration (§14 S13) shows that the model honours it for the language. ElevenLabs documents Eleven v3 as not supporting speed, and Eleven v4 has no speed control. Those are the only models that list Estonian, so Estonian takes differ only by seed and wording. Where speed is used, take 1 runs at 1.0 or at the calibrated speed. Each later take's speed is the previous speed × `D / (LENGTH_AIM_MAX × w)`, clamped to [0.9, 1.1], where `D` is the previous take's trimmed duration and `w` is as in §8.9. Where speed is not used, the next take changes only the seed. ElevenLabs' skills repository claims that speed works on v2 and v3 with a REST range of 0.25–4.0, which contradicts the documentation; S13 settles it. Sources: [TTS with timestamps](https://elevenlabs.io/docs/api-reference/text-to-speech/convert-with-timestamps), [TTS guide](https://elevenlabs.io/docs/eleven-creative/playground/text-to-speech), [TTS best practices](https://elevenlabs.io/docs/overview/capabilities/text-to-speech/best-practices), [models](https://elevenlabs.io/docs/overview/models), [skills repository](https://github.com/elevenlabs/skills/blob/main/text-to-speech/references/voice-settings.md).
+- Rank the rest by `score = 0.6 × (1 − fitCost) + 0.3 × matchRatio + 0.1 × flatness`, where:
+  - `fitCost` is 0 when the planner fits the take exactly; otherwise it is `min(1, |residualSeconds| / (0.25 × w))`, rising with the residual that `changedDuration` reports (§8.9.2);
   - `matchRatio` is the LCS ratio from §8.11;
   - `flatness = 1 − min(1, stdev(momentary LUFS over the candidate) / 6)`.
-- Show the best candidate. The user can audition all three ("Take 1 · 2 · 3") and pick one.
-- If all three are rejected: "These takes didn't sound right. Try different wording or re-record."
+- Show the best candidate. The user can audition every take ("Take 1 · 2 · 3") and pick one.
+- If every take is rejected: "These takes didn't sound right. Try different wording or re-record."
+- Another run (Generate Again, Try Another) needs a new user action and its own quote; no take is generated automatically. The estimate shown before a run covers all `CANDIDATES` takes (§3.2), and the spend ledger records only the takes that were sent (§3.1).
 
 ### 8.7 Trim, level, room tone
 
-1. **Trim** the TTS audio to `[firstCharStart − TTS_TRIM_LEAD, lastCharEnd + TTS_TRIM_TAIL]` using `alignment`. When alignment is null, use the first and last 10 ms frame above `VOICED_FRAME`.
+1. **Trim** the TTS audio to `[firstCharStart − TTS_TRIM_LEAD, lastCharEnd + TTS_TRIM_TAIL]` using `alignment`, clamped to the asset. When alignment is null, the trim runs from the start of the first to the end of the last 10 ms frame above `VOICED_FRAME`, widened by `TTS_TRIM_LEAD` before and `TTS_TRIM_TAIL` after, and clamped to the asset.
 2. **Level.** Take voiced frames in `±LOUDNESS_NEIGHBOURHOOD` around `W` from the source audio (or from the Clean audio when it is on). Gain the TTS so its voiced-frame RMS matches theirs, clamp the gain to `GAIN_CLAMP`, then apply a true-peak limit of −1 dBTP.
 3. **Room tone** (only when Clean audio is off):
    - Find the quietest 0.5 s run (sliding 10 ms RMS) inside source gaps of at least 0.5 s.
    - Loop it under the patch at its natural level, with 50 ms crossfades between loops.
    - Store the room-tone source range with the segment. With Clean audio on, skip room tone: both sides are already clean.
+   - If no source gap holds a whole `ROOM_TONE_MIN_RUN`, passage TTS with Clean audio off is refused with `roomToneUnavailable` before any paid take, and the UI offers Clean audio (§4) instead.
 
 ### 8.8 Synthetic word times
 
@@ -707,27 +726,95 @@ Then:
       → { "characters": [{text,start,end}], "words": [{text,start,end,loss}], "loss": … }
       ```
    2. Otherwise, the Scribe words from the QA pass (§8.11), LCS-matched to the patch tokens. Their times are copied. Unmatched tokens are interpolated between neighbours in proportion to character count.
-3. **Times.** Word times are relative to the trimmed segment start, multiplied by the stretch factor (§8.9). The words are marked `synthetic: true`.
+3. **Times.** Word times are relative to the output start of the window. The fit planner returns them (§8.9.2): each word keeps its aligned duration and moves by the pads and silence edits before it. Every word, bridge words included, is marked `synthetic: true`.
 
 ### 8.9 Duration fit
 
-Let `r = duration(trimmed TTS) / duration(W)`:
+Voiced speech is never time-stretched (ADR-R30). A take reaches the length of its window in this order: length-budgeted wording before any paid call (§8.9.1); at most `CANDIDATES` sequential takes, stopping early at the first take that passes QA and fits (§8.6); silence-only fit (steps 1 and 2 below); and otherwise a changed duration with the ADR-R28 video choice, after as much silence fit as the limits allow (step 3).
 
-1. **Within range.** If `r ∈ STRETCH_OK`, apply a pitch-preserving time-stretch to exactly `duration(W)`. The output timeline is unchanged, and the video stays source video.
-   - macOS: `AVAudioUnitTimePitch` (`rate = r`) in `AVAudioEngine` offline manual rendering.
-   - Windows: FFmpeg's `atempo` filter (libavfilter, LGPL), `atempo = r`.
-2. **Borrow pause time.** Otherwise:
+Let `D = duration(trimmed TTS)` (§8.7 step 1). At a take edge (seam kind `none`, §8.4) the planner keeps the source edge silence with an edge pad `e` (§8.9.2); elsewhere `e = 0`. Let `w = duration(W) − e`, the part of the window the take must fill, and `ρ = D − w`. A positive `ρ` means the take is too long.
+
+1. **Silence fit.** The fit planner (§8.9.2) places `ρ` in the pauses inside the take, which it finds from the character alignment: punctuation pauses first, then the others, each in proportion to its length and within `PAUSE_FLOOR_PHRASE`, `PAUSE_FLOOR_PUNCT` and `PAUSE_GROWTH_MAX`. It edits silence only, and every voiced sample is copied bit-exactly. When the result is `exact`, Media writes the fitted WAV (§8.9.3): the output timeline is unchanged, the recipe's fit factor is 1, and the video stays source video. This step replaces the earlier pitch-preserving fit.
+2. **Borrow pause time.** Whatever step 1 cannot place goes to the seams, in the same plan:
    - If the TTS is longer, widen `W` into the neighbouring gaps, keeping at least `PAUSE_SLACK_KEEP` of silence next to each kept word.
-   - If the TTS is shorter, pad room tone (or silence) equally at both seams, up to 0.3 s per side.
-   - Recompute `r`. If it now falls in `STRETCH_OK`, go to step 1.
-3. **Choose how to match the video.** Otherwise the output length changes (`outDuration ≠ inDuration`). Show both **Lip sync** and **Retimed source video** for each rewrite and require the user's choice (ADR-R28). Do not automatically choose a mode or reuse the last rewrite's choice. Keep an unavailable option visible with its reason; do not fall back to the other option after a failure.
+   - If the TTS is shorter, pad room tone (or silence) equally at both seams: up to `SEAM_PAD_MAX` at a gap seam or take edge, and up to `HARD_SEAM_PAD_MAX` at a hard seam. A hard seam sits in connected speech, so it takes only a short pause. Whatever the take's own pauses and the seams cannot hold becomes a changed duration (step 3).
+3. **Choose how to match the video.** When the planner returns `changedDuration`, its partial silence edits stay, and only the residual changes the output length (`outDuration ≠ inDuration`): `outDuration = duration(W) + residualSeconds`, and the fit factor stays 1. A smaller residual keeps the retime factor inside `RETIME_VIDEO_OK` more often. Show both **Lip sync** and **Retimed source video** for each rewrite and require the user's choice (ADR-R28). Do not automatically choose a mode or reuse the last rewrite's choice. Keep an unavailable option visible with its reason; do not fall back to the other option after a failure.
    - **Retimed source video (`zoomCover`)**: a jump cut to 1.12× around the face during the replaced range, with source frames retimed by `duration(W) / outDuration`. Explain the speed change and slight crop before selection. Only allowed when that factor is in `RETIME_VIDEO_OK`.
      - Face centre: Vision `VNDetectFaceRectanglesRequest` on macOS, `Windows.Media.FaceAnalysis.FaceDetector` on Windows, sampled every 0.5 s and averaged.
      - With no face, use the frame centre.
    - **Lip sync (`lipsync`)**: §9, with `sync_mode = "remap"`. Show the provider, what is sent and the current cost before the separate paid-action approval.
    - If neither approach can handle the range, the hunk is rejected: "This change is too long to patch. Re-record this sentence instead."
 
-The audited Windows runtime now includes `atempo`; its reproducible build and native graph evidence are recorded in `tools/ffmpeg-build/README.md`. The graph's first output PTS of zero does not establish a proportional body origin or exact output duration. Finite-window count differences and marker shifts must be handled and verified in the production composition path with the declared trim and seam handles. Nonunity App and CLI rendering remains refused until that path passes; the runtime prerequisite alone does not enable duration fitting.
+`STRETCH_OK` remains only as a validation bound for stored recipes (§10.5). It no longer selects a fit step, and rendering refuses any fit factor other than 1. A micro-stretch of at most ±3% is an optional later experiment (§8.9.5). What was tried before ADR-R30, and why it was rejected, is recorded in [`doc/archive/voice-lab-stretch-history.md`](../archive/voice-lab-stretch-history.md).
+
+#### 8.9.1 Length budget and fit meter
+
+`VoiceLabLengthBudget` in each Core (`Domain/VoiceLab/`) is free, pure and identical on both platforms.
+
+- **Length.** The length of a text is its number of letters and digits after Unicode NFC normalisation: scalars of general category L or Nd. Spaces and punctuation do not count, and Estonian õ, ä, ö and ü count as one letter each. ADR-R19 keeps NFC working on Windows.
+- **Rate.** Letters and digits per second, kept per voice ID, model ID and language. Until the project stores a candidate for that key, the rate comes from the take's own transcript: the length of its `word` items divided by the total duration of its voiced word spans. A voiced word span is a run of `word` items with no detected pause between them (editing.md §5.7), timed from its first word's start to its last word's end. Once stored candidates exist for the key, the rate is their total text length divided by the total of their aligned spans, each from the first character's start to the last character's end. The rate is learned only from candidates stored in the project; for privacy, there is no rate store shared across projects.
+- **Estimate.** A text of length `n` is expected to give a trimmed take (§8.7 step 1) of `n / rate + TTS_TRIM_LEAD + TTS_TRIM_TAIL` seconds.
+- **Target.** New wording aims at `LENGTH_AIM_MIN` to `LENGTH_AIM_MAX` of `w` (§8.9), so it comes out 3–8% short: the silence fit lengthens a take easily, but it can shorten one only by the pause time the take has. The character range for the words to be written, where `f` is the length of the bridge words the window already holds:
+
+  ```text
+  minChars = max(1, floor((LENGTH_AIM_MIN × w − TTS_TRIM_LEAD − TTS_TRIM_TAIL) × rate) − f)
+  maxChars = max(minChars, ceil((LENGTH_AIM_MAX × w − TTS_TRIM_LEAD − TTS_TRIM_TAIL) × rate) − f)
+  ```
+
+- **Rewrite request.** `VoiceRewriteRequest` gains `targetSeconds`, which is `w`, and `minChars` and `maxChars` from the range above. For a passage, `W` is the §8.4 window of the whole selection treated as one replace hunk, and `f` is the length of that window's bridge words. For a full take the budget is advisory, because the timeline follows each chunk's natural length (§13): `w` runs from the take's first word start to its last word end, and `f` is 0. Both Cores render the three fields into the instruction from `shared/prompts/voice-rewrite.json`. That is a prompt change under `shared/prompts/README.md`: the file gains a `promptVersion` (it has none today), and shared prompt fixtures that both platforms render identically. The instruction gives the target and the range, says that spaces and punctuation are not counted, and asks for natural wording inside the range. The rewrite quote binds the three fields like the rest of the request, so a changed budget needs a new quote and approval.
+- **Check.** LLMs miscount length, so Core counts the proposal itself. A proposal outside the range is shown as it is, with the meter. Asking the LLM again is a new send with its own quote and approval (`doc/spec/ai.md`), unless S15 (§14) allows one bounded automatic retry.
+- **Fit meter.** It costs nothing and updates live as the user edits New words, including text they type. It is computed per voice hunk, for that hunk's patch text and window. The copy, with one decimal place, is "about 4.3 s for a 4.1 s gap: fits" or "about 4.3 s for a 4.1 s gap: will change length", where the first number is the estimate and the second is `w`. The meter says **fits** when the estimate is at most `w` plus the silence the seams can borrow, and at least `w` minus the pad each seam allows (`SEAM_PAD_MAX` at a gap seam or take edge, `HARD_SEAM_PAD_MAX` at a hard seam); otherwise it says **will change length**. The pauses inside a take are unknown until it exists, so a take can still fit when the meter says it will change length. The planner decides (§8.9.2).
+
+#### 8.9.2 Fit planner
+
+`VoiceLabFitPlanner` in each Core (`Domain/VoiceLab/`) is free, pure and deterministic, and gives the same result on both platforms. Its shared vectors are `shared/fixtures/voice-lab/fit-cases.json`, written by `tools/fixtures/voice-lab/generate.py`.
+
+- **Inputs.** The window `W` and the kind of each seam (§8.4). For each `gap` seam, the source silence between the seam and the nearest kept transcript item outside `W`, and for each `none` seam, the source silence between the take edge and the window's nearest word, both from the transcript's item times. The trimmed take (§8.7 step 1), its words from the character alignment (§8.8) and its 10 ms RMS envelope. The patch tokens, and the §8.3 constants.
+- **Take edges.** At a `none` seam the planner pads the take with silence so that its first aligned word starts where the window's first source word started; at the take end, its last aligned word ends as far from the end as the window's last source word did. This edge pad `e` is never negative; when the window reaches both edges, `e` is the sum of both pads. Before a take exists, the length budget and the meter compute `e` with the default trims. A `none` seam has no outside silence to borrow.
+- **Pauses.** An internal pause lies between two consecutive aligned words of the take. Its editable run is the longest run of whole 10 ms frames, counted from the paid asset's first sample, that lies after the earlier word's last character end and before the later word's first character start, with every frame below `VOICED_FRAME`. The pause's length is the length of that run. It is a **punctuation pause** when the patch token before it ends with a Unicode punctuation character (general category P), and an **intra-phrase pause** otherwise.
+- **Limits** (§8.3, tuned by ear after the listening check in §8.9.4):
+
+  | Pause | May shorten to | May lengthen by |
+  |---|---|---|
+  | intra-phrase | `PAUSE_FLOOR_PHRASE` (60 ms) | `PAUSE_GROWTH_MAX` (0.25 s) |
+  | punctuation | `PAUSE_FLOOR_PUNCT` (150 ms) | `PAUSE_GROWTH_MAX` |
+
+  A pause already at or below its floor is not shortened. A run shorter than `SEAM_FADE` is not edited.
+- **Distribution.** A positive `ρ` shortens pauses and a negative `ρ` lengthens them.
+  1. Spread `|ρ|` over the punctuation pauses in proportion to their lengths. A pause that would pass its limit stops at the limit, and the remainder is spread again over the punctuation pauses that can still change, until nothing remains or none can change.
+  2. Spread what remains over the intra-phrase pauses in the same way.
+  3. Place what still remains at the seams (§8.9 step 2), split equally between them. A seam that reaches its limit passes the rest to the other seam. When borrowing, the limit is `PAUSE_SLACK_KEEP` kept next to the kept word. When padding, it is `SEAM_PAD_MAX` at a gap seam or take edge and `HARD_SEAM_PAD_MAX` at a hard seam.
+  4. If anything remains after that, the result is `changedDuration`. The edits from steps 1 to 3 stay, every one of them at its limit, and only the remainder changes the output length.
+- **Rounding.** Edits are whole frames of the paid asset, and borrowing moves a seam by whole source samples, each rounded with the JavaScript half-up rule. The fitted output has `jsRound(n × assetRate / sourceRate)` frames, where `n` is the window's length in source samples, so it matches the window within one asset sample (§10.1). The final sub-millisecond residual left by rounding goes into the pad at a seam that sits in a gap or at a take edge, the incoming seam first, as long as that pad stays non-negative. Otherwise, as at hard seams, it goes into the TTS tail trim, then the lead trim (§8.7 step 1).
+- **Edits.** Each edit lies inside its pause's editable run, centred in it. Shortening removes samples; lengthening inserts samples repeated from the same run. Every edit has equal-power joins of `SEAM_FADE` that lie wholly inside the run, so no edit touches an aligned word span or a 10 ms frame at or above `VOICED_FRAME`.
+- **Output.** Either of:
+  - `exact(editList, newWordTimes)`: the edits in paid-asset frames, the pad and the borrowed source samples at each seam, the final trims and window bounds, and the word times relative to the output start. Each word keeps its aligned duration and moves by the pads and edits before it.
+  - `changedDuration(partialEditList, naturalOut, residualSeconds)` when the limits cannot hold `ρ`. `partialEditList` has the same fields as `editList`, word times included, and holds the edits that fill the limits. `naturalOut` is `e + D`, the take's length before any edit. `residualSeconds` is the part of `ρ` that the limits could not hold, with the sign of `ρ`, so the partially fitted take lasts `duration(W) + residualSeconds`. §8.9 step 3 applies.
+
+#### 8.9.3 Fitted asset
+
+At accept time, `VoiceLabSilenceFit` in each Media (`apps/macos/Sources/VoxClipMedia/VoiceLab/VoiceLabSilenceFit.swift`, `apps/windows/src/VoxClip.Media/VoiceLab/VoiceLabSilenceFit.cs`) writes a derived fitted WAV for each unrejected candidate whose plan pads or edits the take's audio. Before accept, Media renders the same audio to scratch for audition and for the QA pass (§8.11). The renderers do not change.
+
+- **Source.** The SHA-256-verified private snapshot of the paid asset (§10.4). The fitted WAV has the paid asset's sample rate, channel count and sample format.
+- **Content.** In order: the incoming handle, the incoming pad, the edited take, the outgoing pad and the outgoing handle. Every sample outside the edits, their joins and the pads is a bit-exact copy of the paid frames. Pads are silence; room tone is mixed under the whole window at render time (§8.7 step 3). The handles meet §10.5: they copy the paid frames beyond the trim, or continue the silence where a pad meets the seam.
+- **Storage.** `<data>/VoiceLab/<projectId>/<assetId>.wav`, next to the paid assets. The file is immutable and SHA-256-bound, and `voiceLab.assets` lists it like any v3 audio asset. Undo and delete never remove it (§10.3).
+- **Recipe.** `audio.assetId` names the fitted asset, `audio.trimStart` and `audio.trimEnd` bound the content between the handles, `audio.stretch = 1`, and `outDuration` equals the window, or the window plus `residualSeconds` after a partial fit. `recipe.chunks` keep the paid asset: each chunk's `assetId`, `assetSha256`, `requestId` and `seed` name the paid generation, while its assembled frames lie on the fitted asset's grid between the trims. The existing v3 validation accepts this shape, and both renderers play it through their verified unity path. A candidate whose plan neither pads nor edits the take points `audio.assetId` at the paid asset itself. Either way, when a seam borrowed, the segment's replaced range and the chunk source bounds use the widened window.
+
+**Proposed schema change (not adopted).** An optional audit record `recipe.fit = {"kind": "silence", "edits": [...]}` would keep the planner's edits, pads and borrowed samples with the recipe. A reviewer could then see what changed, and a missing fitted WAV could be rebuilt from the paid asset if both platforms write identical bytes. `shared/schemas/project.schema.json` has no such field: the recipe's `audio` object holds only the asset, trims, fit factor and gain, and the recipe allows no other properties. Adding it needs a schema revision. Until then, the fitted WAV's SHA-256 and the paid chunks are the record.
+
+#### 8.9.4 Listening check (release gate)
+
+The fit policy ships only after the user's listening check passes (§14 S16). It uses the same setup as the earlier comparisons, and its pass criteria, below, are written down before any file is generated.
+
+- **Material.** Six real passages in the user's own clone, in both languages if the user vlogs in both. Each language has at least one take that is too long (the fit shortens its pauses) and one that is too short (the fit lengthens them). At least one item must be a one-word patch with hard seams in connected speech, so that `HARD_SEAM_PAD_MAX` is heard.
+- **Presentation.** Each passage plays in its full context: 2 s before and after, with the final seams and room tone, loudness-matched, in random order with hidden labels.
+- **Variants.** X is the natural-length take (changed duration, no fit). Y is the silence fit to the exact window. Z is the ±3% micro-stretch, included only if that experiment is approved (§8.9.5).
+- **Listening.** On the Mac's speakers and on headphones. For each item the user answers: natural or not; any metallic, robotic or echo sound; pauses natural or not; seam audible or not.
+- **Pass.** Y has no reported artifact on any item, and its pacing is judged natural on at least 5 of the 6. Any failure names the pause rule to fix, and the §8.3 constants are tuned from the answers. Z is adopted only if the user cannot tell it from X and calls it artifact-free on every item.
+
+#### 8.9.5 Micro-stretch (optional later experiment)
+
+A micro-stretch of at most ±3% on the dry TTS, before room tone is added, with Signalsmith Stretch (MIT) or Sonic (Apache-2.0), may be tried later. It needs the user's approval, the blinded listening check (variant Z in §8.9.4) and a later ADR. Until then the §10.5 refusal stays. FFmpeg `atempo`, SoundTouch, Apple `AVAudioUnitTimePitch` and Rubber Band are not fit candidates.
 
 ### 8.10 Seams
 
@@ -736,7 +823,7 @@ The audited Windows runtime now includes `atempo`; its reproducible build and na
 
 ### 8.11 QA gate (before Accept is enabled)
 
-1. **Re-transcribe** the final patched window, `[seamIn − 0.5 s, seamOut + 0.5 s]` of the mixed audio, with Scribe v2 and `language_code`. Compare the normalised recognised tokens inside the window with the intended text, bridge words included:
+1. **Re-transcribe** the final patched window, `[seamIn − 0.5 s, seamOut + 0.5 s]` of the mixed audio with the silence fit applied (§8.9), with Scribe v2 and `language_code`. Compare the normalised recognised tokens inside the window with the intended text, bridge words included:
    - for 5 tokens or fewer, require exact equality;
    - otherwise require an LCS ratio of at least 0.9 (`2 × LCS / (expected + recognised)`).
 2. **No clipping.** The sample peak is below 0 dBFS after the limiter.
@@ -912,7 +999,7 @@ A v2 asset is `{id, kind: "audio", file, sha256, durationSeconds, sampleRate, cr
 
 A v2 segment has `{id, kind, enabled, replace, outDuration, audio, text, words, provenance, qa, candidates, selectedCandidateIndex}`. `kind` is `tts` or `voiceChanger`. `replace` has source seconds `start` and `end` plus `firstWordId` and `lastWordId`; this round supports positive-length passage and full-take replacement. Insertion (`afterWordId` and a zero-length source range) is reserved for a later version with an explicit inverse mapping rule. `audio` identifies the selected asset, trim bounds, stretch and gain. `outDuration` must equal the trimmed asset duration times stretch within one asset sample. `candidates` retain their asset IDs, score and rejection reason; the selected index must name an unrejected candidate and match `audio.assetId`. `provenance` records provider endpoint name, model, voice ID, optional consent **record ID**, optional request ID, optional seed and creation time. `qa` has optional transcript match, loudness jump, peak and speaker score. All persisted numbers must be finite.
 
-For `tts`, `text` contains original and new spoken text and `words` contains positive, ordered times relative to the output start, each with a `synthetic` flag. `synthetic: false` marks a bridge word whose text was kept although its audio was re-voiced. `voiceChanger` stores `text: null` and `words: null`; captions retain the source words. This v2 object is the first audio-only project format, not the final Voice Lab schema.
+For `tts`, `text` contains original and new spoken text and `words` contains positive, ordered times relative to the output start, each with a `synthetic` flag. In version 2 only, `synthetic: false` marks a bridge word whose text was kept although its audio was re-voiced. In version 3 recipes every TTS word, bridge words included, is `synthetic: true` (§8.8, §10.5). `voiceChanger` stores `text: null` and `words: null`; captions retain the source words. This v2 object is the first audio-only project format, not the final Voice Lab schema.
 
 **Historical v2 omissions.** Version 3 now specifies these fields in §10.4. Version 2 does not imply defaults for any omitted field:
 
@@ -957,21 +1044,21 @@ Mac `EditorModel`, `CLIWorkflow` and `CompositionBuilder`, and Windows `EditorVi
 
 ### 10.5 Version 3 render recipe and preparation (ADR-R26)
 
-Version 3 adds explicit `voiceLab.cleanAudio`, `voices`, and `videoAssets` and requires every unrejected candidate to carry a complete `recipe`. `cleanAudio` records `off` with null asset and mix, or `on` with an asset and mix; Core reports `cleanAudioUnsupported` for active non-null use until Media implements it. A segment records `scope: passage | fullTake`; a full-take group covers the take without the patch 15%/60-word budget. Candidate recipes record asset trim, pitch-preserving fit, gain, relative words, bounded source and assembled chunk spans with request IDs and seeds, room tone or explicit null, in/out seam policy, tagged video mode, applicable QA, provenance, cost quote and own/stock voice source. `usd: null` means the price was unknown. The source transcript, word times, cuts and reverse-DNS extensions remain unchanged. No v2 segment is promoted automatically; recovery needs explicit future per-segment review.
+Version 3 adds explicit `voiceLab.cleanAudio`, `voices`, and `videoAssets` and requires every unrejected candidate to carry a complete `recipe`. `cleanAudio` records `off` with null asset and mix, or `on` with an asset and mix; Core reports `cleanAudioUnsupported` for active non-null use until Media implements it. A segment records `scope: passage | fullTake`; a full-take group covers the take without the patch 15%/60-word budget. Candidate recipes record asset trim, fit factor, gain, relative words (every TTS word `synthetic: true`, bridge words included), bounded source and assembled chunk spans with request IDs and seeds, room tone or explicit null, in/out seam policy, tagged video mode, applicable QA, provenance, cost quote and own/stock voice source. `usd: null` means the price was unknown. The source transcript, word times, cuts and reverse-DNS extensions remain unchanged. No v2 segment is promoted automatically; recovery needs explicit future per-segment review.
 
 `VoiceLabRenderContract.prepare(project, scope, labelPosition)` uses `VoiceLabOutputPlanner` as the sole source of ordered pieces, mapping and captions. It returns an immutable selected-recipe snapshot and `VoiceLabDisclosurePlan` for that exact project, scope and position; downstream consumers must call `verify` before using it. Full ignores `activeClipId`; a clip cannot bisect an enabled replacement. Disabled and excluded replacements remain source-renderable. Candidate selection transfers the complete validated candidate recipe into segment fields, and accept/enable/disable/delete remain reversible project transitions that never delete paid assets. New own-voice acceptance requires an active consent reference; a previously accepted asset remains playable after voice deletion because rendering uses its stored consent evidence, not a provider lookup or a new speaker match. A record is evidence of generation/accept review, not speaker verification by itself.
 
-All source intervals use JavaScript half-up rounding on the source sample grid; trim and handle frames use the asset sample grid. A centered N-frame seam has left half `floor(N/2)` and right half `N − floor(N/2)`. Equal-power gains use `u = i/(N−1)` for `N ≥ 2`, with exact endpoints. Stored gap seams use 20 ms and hard seams 12 ms; real take edges use explicit `none`. Touching synth pieces share one agreeing seam. Missing handles, a fade shorter than two frames, a clip ending on an internal seam, or overlapping windows fail preparation without shortening a fade or swallowing even a one-sample source gap. Ordinary source cut joins retain their separate 5 ms linear fade. Passage TTS with Clean audio off requires the stored 0.5 s room-tone run; full take and voice changing have an explicit null policy when room tone is not needed.
+All source intervals use JavaScript half-up rounding on the source sample grid; trim and handle frames use the asset sample grid. A centered N-frame seam has left half `floor(N/2)` and right half `N − floor(N/2)`. Equal-power gains use `u = i/(N−1)` for `N ≥ 2`, with exact endpoints. Stored gap seams use 20 ms and hard seams 12 ms; real take edges use explicit `none`. Every gap or hard seam's centred fade lies inside the take (§8.4 step 5); window placement refuses a hunk whose hard seam cannot meet this with `seamFadeOutsideTake`. Touching synth pieces share one agreeing seam. Missing handles, a fade shorter than two frames, a clip ending on an internal seam, or overlapping windows fail preparation without shortening a fade or swallowing even a one-sample source gap. Ordinary source cut joins retain their separate 5 ms linear fade. Passage TTS with Clean audio off requires the stored 0.5 s room-tone run; when no source gap holds a whole run, the passage is refused with `roomToneUnavailable` before any paid take, and the UI offers Clean audio (§8.7). Full take and voice changing have an explicit null policy when room tone is not needed.
 
 An incoming synth seam needs `floor(N/2)` output samples of asset handle before its trim; an outgoing seam needs `ceil(N/2)` after its trim, including when two synth pieces share the seam. For a needed half of `k` source-grid output samples, the minimum raw handle is `ceil(k × assetSampleRate / (sourceSampleRate × audio.stretch))` asset frames. A touching synth seam has zero source handle on both sides and keeps the one N-frame fade.
 
-`video.mode` is one of `source`, `retimed`, `zoomCover`, or `lipsync`, with mode-specific data validated and retained. The current render capability accepts only `source` when rounded replacement input/output sample lengths are equal. Other known modes and changed-duration source mode report `videoModeUnsupported`; unknown mode strings and integer enum values are invalid. Pitch-preserving audio fit is limited to `[0.92, 1.08]`; retime policies validate `[0.80, 1.25]`. TTS requires timestamped alignment, applicable transcript and calibrated speaker QA evidence; stock voice changing does not inherit TTS-specific transcript/speaker gates. Core does not claim a QA record proves actual speaker verification.
+`video.mode` is one of `source`, `retimed`, `zoomCover`, or `lipsync`, with mode-specific data validated and retained. The current render capability accepts only `source` when rounded replacement input/output sample lengths are equal. Other known modes and changed-duration source mode report `videoModeUnsupported`; unknown mode strings and integer enum values are invalid. Core validation keeps a stored fit factor within `STRETCH_OK` (`[0.92, 1.08]`). That range is only a validation bound: under ADR-R30 every renderable recipe has a fit factor of 1, and Media refuses any other value (below). Retime policies validate `[0.80, 1.25]`. TTS requires timestamped alignment, applicable transcript and calibrated speaker QA evidence; stock voice changing does not inherit TTS-specific transcript/speaker gates. Core does not claim a QA record proves actual speaker verification.
 
 The prepared disclosure derives kinds, synthetic output seconds, persistence (`voiceChanger ≥ 50%` or all AI `> 30%`), first exposure `[0,min(3,duration)]`, and clamped segment intervals expanded by 0.5 s and merged when their gap is less than 1 s. It stores 150 ms fades, chosen position and language-specific post text. It does not draw a label, write XMP/sidecar output or accept a render. Callers use it only with native composition and visible/provenance output bound to the same prepared contract.
 
 **Mac renderer.** Media renders reviewed, equal-rounded-length v3 source-video recipes with unity audio fit through `CompositionBuilder` for preview, MP4 and edited WAV. The App and CLI now prepare requests for this saved-recipe subset; legacy CLI plan output remains guarded. It validates the prepared request and source identity, snapshots paid audio, stages bounded source/mixed/fitted CAF on the source grid, and retains those files through player or reader completion. Synthetic tests compare decoded MP4 AAC waveform levels, correlation and marker positions with production edited WAV across passage, full-take and touching-piece routes while allowing one AAC priming packet at the boundary. The player test verifies graph and scratch lifetime after load and close; it does not establish audible playback.
 
-Nonunity pitch-preserving fit is a typed `pitchPreservingFitUnverified` capability refusal before paid snapshot, scratch or output creation. Only numerical roundoff within four binary64 ULPs of unity takes the unity path. The direct offline `AVAudioUnitTimePitch` diagnostic still uses the inverse of stored stretch and bounded CAF rendering for measured experiments; its full frame count does not prove that body and declared seam handles survived. A first-channel, level-gated waveform heuristic previously accepted right-only and quiet copies of full-take and extra-preroll signals that it refused at normal mono level. It is not a production acceptance check. Subsequent native diagnostics reproduced an undetected middle pulse and measured tail timing drift, but did not reproduce an absent tail packet; a failed detector must not be described as proven content loss. Three tested neutral prime/drain policies failed the full provisional criteria despite returning enough frames for the nominal crop. Those diagnostic limits do not define shipping tolerances or establish a universal processor defect. The diagnostic results are retained outside the source tree for a later measured prime, drain and crop policy; that policy is not yet established.
+**Nonunity refusal.** Both renderers refuse every recipe whose `audio.stretch` is not 1, before paid snapshot, scratch or output creation: Mac reports the typed `pitchPreservingFitUnverified` capability error, and Windows throws `VoiceLabTempoException`. Under ADR-R30 this refusal is permanent; it stays until a later ADR adopts a micro-stretch (§8.9.5). Only duration-arithmetic roundoff takes the unity path: within four binary64 ULPs of 1 on Mac, and 1 or its immediately adjacent binary64 values on Windows, so `1 + 1e-9` is refused. The TimePitch and `atempo` diagnostics behind the refusal are recorded in [`doc/archive/voice-lab-stretch-history.md`](../archive/voice-lab-stretch-history.md).
 
 Mac export estimates planned peak scratch, muxing, XMP stage, metadata and prior-output rollback bytes across the actual volumes before creating snapshots or output, then rechecks as work advances. After destination and prepared-request safety checks, an empty output timeline fails with `everythingCut` before the WAV size estimate, capacity check, source reader, paid snapshot or output staging. For combined CLI output, the same transaction preflight also includes the edited WAV partial before WAV staging; an already staged WAV is reflected in free space and is not counted again. A known WAV frame count beyond the RIFF limit fails before reader, snapshot or output creation. There is no fixed 15 GiB product reserve. A sidecar partial is removed only after this invocation exclusively creates it. The app bundle supplies the version for provenance; CLI supplies its declared version explicitly, and a missing version fails before export. Generation, live providers, consent capture, changed-duration video, other video modes and lip sync remain outside this guarded renderer.
 
@@ -984,7 +1071,7 @@ Mac export estimates planned peak scratch, muxing, XMP stage, metadata and prior
 
 **Windows caller acceptance for that subset.** An isolated normal ARM64 Debug App accepted the real first-launch terms UI, reopened a persisted synthetic v3 project, advanced its WASAPI-driven preview clock through a selected replacement, and published full and selected-clip MP4/SRT/provenance sets. Independently decoded 1280×720 outputs showed the AI MODIFIED chip, source and synthetic caption glyphs, and the synthetic tone at the scope's mapped time; the full output lasted 7.0 s and the selected clip 3.4 s. A second saved project with a moving synthetic source verified three source-frame positions in each App output against Core's full or clip map. The matching crop had 4.70–6.05 mean channel error after encoding; a 0.6 s wrong source position had 21.71–62.63. The App showed missing and altered paid-asset notices in preview and export, cleared the preview, kept published output hashes, and left the synthetic paid file unchanged after restoration. Standalone ARM64 and self-contained x64-under-ARM64-emulation CLI combined MP4/WAV/SRT/sidecar routes passed with 336,000 edited-WAV samples and the audited six-DLL runtime for the matching architecture. An independent ISO BMFF parser found one top-level Adobe XMP UUID and the exact IPTC DigitalSourceType property in all six native App/CLI MP4 routes, with every sidecar bound to the final MP4 hash. A schema-v1 CLI export and normal App playback still worked. Earlier guest screenshot methods returned a white or stale entire App window and did not establish visible preview. The parent R4 repeat built exact committed source `793116f` and observed all six audited ARM64 DLLs in the normal App. After the host VM surface became responsive, actual live preview captures showed replacement WORDS at 3.0 s and the AI MODIFIED label; native play/pause/seek and stable paused transport were observed. Process-specific WASAPI loopback included only that App process tree. After alignment, all 336,000 stereo float frames exactly matched the production edited WAV, including the 660 Hz replacement interval. This establishes synthetic App audio output, not physical speaker audibility or human speech quality. The repeat restored the previously observed acceptance receipt for unchanged runtime terms; it did not accept new terms. Its first bounded capture ended before full playback and remains retained as incomplete. Installed App, physical x64, real voice and full consent/generation workflow acceptance remain open.
 
-Windows admits unity and its immediately adjacent binary64 values as duration-arithmetic roundoff. Other values, including `1 + 1e-9`, require fit and return a typed `VoiceLabTempoException` before paid snapshot or output creation. The audited runtime contains `atempo`; the refusal reflects unverified body and seam placement rather than a missing runtime prerequisite. Direct bounded atempo rendering remains diagnostic only. Native ARM64 and x64 under ARM64 emulation verified unity passage, full-take and touching output, source-only scopes, WASAPI play/pause/seek/disposal, marked MP4/WAV and rollback. These synthetic routes do not establish speech intelligibility, installed behavior, physical x64 performance or production nonunity fit. The R5 native check uses a saved caption position and unmodified `CaptionEngine` page geometry; preview and decoded export preserve the visible caption while the disclosure moves to the opposite corner.
+On Windows, native ARM64 and x64 under ARM64 emulation verified unity passage, full-take and touching output, source-only scopes, WASAPI play/pause/seek/disposal, marked MP4/WAV and rollback. These synthetic routes do not establish speech intelligibility, installed behavior or physical x64 performance. The R5 native check uses a saved caption position and unmodified `CaptionEngine` page geometry; preview and decoded export preserve the visible caption while the disclosure moves to the opposite corner.
 
 Windows capacity accounting uses actual volume identities, including drive/mount aliases. Empty edited-WAV timelines report `EverythingCut` before querying capacity or creating readers/partials; known synthetic RIFF overflow also fails before preparation. Paid originals and existing published outputs remain protected on cancellation or failure.
 
@@ -1128,7 +1215,7 @@ The sidecar never contains keys, voice samples, consent audio, embeddings or fil
 
 ### 11.9 Watermarks and metadata
 
-VoxClip never removes, alters or hides ElevenLabs SynthID watermarks or provider metadata, as ElevenLabs' Prohibited Use Policy requires. Ordinary gain, stretch, crossfade and encode steps are allowed. No step may be added whose purpose is to defeat detection.
+VoxClip never removes, alters or hides ElevenLabs SynthID watermarks or provider metadata, as ElevenLabs' Prohibited Use Policy requires. Ordinary gain, crossfade, silence-only fit (§8.9) and encode steps are allowed. No step may be added whose purpose is to defeat detection.
 
 ### 11.10 Legal review gate
 
@@ -1160,6 +1247,8 @@ The Guidelines do not settle whether a free, open-source, bring-your-own-key des
   - offer a voiceover format with no lip-sync claim and a persistent "AI voice" label;
   - sentence-mapped lip sync, retiming each clip within ±25%;
   - a teleprompter re-record prompt, which the app should suggest first.
+
+  A full take is generated per sentence chunk. Only chunks that fail QA or fall outside the chosen video treatment's tolerance, such as the ±25% sentence retime, are regenerated, never the whole take, and the timeline follows the chunks' natural length (ADR-R30).
 - **Own-voice dubbing** (for example Estonian ↔ English) is considered later.
   - ElevenLabs Dubbing v2 has been in the API since 6 Aug 2026 (alpha). It costs $2.20 per minute, accepts files up to 3 GB, and its output is "a high-quality preview, not a production master". It has no lip sync.
   - The alternative is to translate with the user's LLM, then run TTS in the own clone, then optionally lip sync.
@@ -1185,6 +1274,10 @@ The Guidelines do not settle whether a free, open-source, bring-your-own-key des
 | S10 | Does `text_to_speech` permission also cover Text to Dialogue? Exact error-body fields for missing permissions | §2.2 |
 | S11 | Map ElevenLabs `tier` strings to "Pro or higher" for 44.1 kHz output | §2.3 |
 | S12 | Legal review of §11 | M3 release |
+| S13 | Paid calibration, only with the user's explicit approval: 5 passages × 3 seeds per language on the user's own voice, plus `voice_settings.speed` 0.9 and 1.1 probes on Eleven v3 (about $0.25–1). How much does take length vary between seeds, how accurate is the length budget, and does speed change the duration? | §8.6 speed, §8.9.1 |
+| S14 | Approval unit for takes: one affirmative approval for a bounded run of up to `CANDIDATES` takes with one displayed cost cap and early stop, or a separate approval for each take, as §2.6 requires today | §8.6, design §6.3 |
+| S15 | Length retries for the LLM: one bounded automatic retry when a proposal misses the character range, or always ask the user to approve a "shorter" or "longer" request, as `doc/spec/ai.md` requires today | §8.9.1 |
+| S16 | The listening check that gates the fit policy, and the tuning of the six fit constants from its answers | §8.9.4, ADR-R30 |
 
 ---
 
@@ -1201,12 +1294,19 @@ Unit tests run in both suites (`VoxClipCoreTests`, `VoxClip.Core.Tests`), with s
 3. **Seam placement (§8.4).**
    - A gap of 0.2 s two words to the left puts the seam at its quietest frame.
    - No gap within 3 words gives a hard seam at `a.start − min(0.03, gap/2)`.
-4. **Duration fit (§8.9).**
-   - `r = 1.05` gives a stretch to exact length with `outDuration == end − start`.
-   - `r = 1.15` with a 0.6 s adjacent pause borrows the pause and then stretches.
-   - `r = 1.4` with no pause gives zoomCover with `retime = 1/1.4`, which is outside [0.8, 1.25], so the hunk is rejected.
-5. **Alignment to words (§8.8).** The character alignment for `"I said 2025"` gives 3 words. A null alignment falls back to the Scribe words with interpolation.
-6. **Candidate ranking (§8.6).** Rejected candidates are never shown, and the score formula orders a fixed set.
+   - A passage that starts at the take's first item extends the window to sample 0 with seam kind `none`; one that ends at the last item extends it to `totalSamples`.
+   - A gap frame whose centred fade would leave the take is never chosen. A hard seam whose fade would leave the take refuses the hunk with `seamFadeOutsideTake`.
+4. **Duration fit (§8.9), with `fit-cases.json`.**
+   - A take 5% longer than its window (`D = 1.05 × w`) whose punctuation pauses can give up the residual above their floors fits exactly: `outDuration == end − start`, the fit factor is 1, and every word keeps its aligned duration.
+   - A take 5% shorter (`D = 0.95 × w`) lengthens its pauses within `PAUSE_GROWTH_MAX`, pads what remains equally at its two gap seams, and fits exactly.
+   - A one-word take shorter than its window between two hard seams pads at most `HARD_SEAM_PAD_MAX` at each seam, and the rest becomes `changedDuration`.
+   - A take 15% longer next to a 0.6 s source pause borrows from that pause once its own pauses reach their floors, keeping `PAUSE_SLACK_KEEP` next to the kept word.
+   - No edit lies in an aligned word span or a 10 ms frame at or above `VOICED_FRAME`. The floors, `PAUSE_GROWTH_MAX` and `SEAM_PAD_MAX` hold, and the output has exactly `jsRound(n × assetRate / sourceRate)` frames.
+   - A take 40% longer with no pause and no seam silence to borrow returns `changedDuration` with an empty `partialEditList` and `residualSeconds = 0.4 × w`. Retimed source video is unavailable because `1/1.4` is outside `RETIME_VIDEO_OK`; when Lip sync is unavailable too, the hunk is rejected.
+   - A take whose pauses and seams can hold only part of its residual returns `changedDuration` with every edit at its limit. `residualSeconds` is the rest, and `outDuration = duration(W) + residualSeconds`.
+   - At a take edge, the pad keeps the first aligned word at its source distance from the edge.
+5. **Alignment to words (§8.8).** The character alignment for `"I said 2025"` gives 3 words, all `synthetic: true`. A null alignment falls back to the Scribe words with interpolation.
+6. **Candidate ranking (§8.6).** Rejected candidates are never shown. An exactly fitted take has `fitCost = 0`, and a `changedDuration` take's fit cost rises with `|residualSeconds|`. The score formula orders a fixed set.
 7. **Plan mapping (§10.2).**
    - With `outDuration == in`, the plan's `mapTime` is unchanged outside the segment.
    - With `outDuration = 1.2 × in`, the edited duration grows by `0.2 × in`, and captions inside the segment come from `words`.
@@ -1233,6 +1333,20 @@ Unit tests run in both suites (`VoxClipCoreTests`, `VoxClip.Core.Tests`), with s
     - a submit is never retried after a timeout.
 14. **Redaction.** `Authorization: Key <fal key>` and `x-api-key: <sync key>` are redacted by the Core redactor (architecture §11.2), registered or not. Voice Lab log lines contain no text.
 15. **Machine-readable mark (§11.7).** An export with `required == true` contains the XMP `Iptc4xmpExt:DigitalSourceType` value `…/compositeWithTrainedAlgorithmicMedia` on both platforms, with the C2PA component absent and with the Clean-audio C2PA toggle off. A Clean-audio-only export has no `DigitalSourceType`.
+16. **Trim and room tone (§8.7).**
+    - With null alignment, the trim runs from the first to the last voiced 10 ms frame, widened by `TTS_TRIM_LEAD` and `TTS_TRIM_TAIL` and clamped to the asset.
+    - When no source gap holds a whole `ROOM_TONE_MIN_RUN`, passage TTS with Clean audio off is refused with `roomToneUnavailable` before any paid take.
+17. **Length budget (§8.9.1).**
+    - Both platforms count the same length for NFC and NFD Estonian text with õ, ä, ö and ü, digits and punctuation.
+    - The rate and the character range follow the formulas for a fixed transcript and fixed stored candidates, and Fix with AI gives each line the same range (§8.1).
+    - The voice-rewrite request with `targetSeconds`, `minChars` and `maxChars` renders identically on both platforms (shared prompt fixture), and a changed budget needs a new quote.
+    - For fixed inputs the meter reads "about 4.3 s for a 4.1 s gap: fits" or "about 4.3 s for a 4.1 s gap: will change length".
+18. **Takes (§8.6).** With mocked generation, a run stops after the first take that passes QA and fits exactly, and never sends more than `CANDIDATES` takes. `voice_settings.speed` is omitted unless the model and language are calibrated; when it is sent, the next take's speed follows the clamped formula.
+19. **Fitted asset (§8.9.3), in both Media suites.**
+    - The fitted WAV is SHA-256-bound, and every voiced span is bit-identical to the paid snapshot's frames.
+    - Handles are present, and the rendered edited WAV and decoded MP4 put markers at the planned body and seam positions.
+    - The recipe has a fit factor of 1, `outDuration` equal to the window (or the window plus `residualSeconds` after a partial fit), and chunks that name the paid asset's ID and SHA-256; v3 validation accepts it.
+    - The existing unity passage, full-take and touching suites still pass, and both preflights still refuse a fit factor other than 1.
 
 Manual QA with real keys runs locally, never in CI:
 
@@ -1241,7 +1355,9 @@ Manual QA with real keys runs locally, never in CI:
 - three patches (a replace, an insert, a bridged replace);
 - one voice-changer preview;
 - one LatentSync and one lipsync-2 window;
-- an export checked for the label intervals, the post text, the sidecar and the C2PA validation output.
+- an export checked for the label intervals, the post text, the sidecar and the C2PA validation output;
+- the listening check in §8.9.4, before the fit policy ships;
+- once the changed-duration video modes exist, one lip-sync and one retimed result viewed in the native preview and export.
 
 ---
 
@@ -1270,5 +1386,11 @@ Vendor documentation checked on 2026-10-25:
   - the platform pricing and estimate endpoints; the storage upload initiate flow.
 - sync.so: `generate-api/create` and `generate-api/get` (statuses, long-poll), `generate-api/estimate-cost`, `assets-api/create-upload` and `assets-api/create`, the pricing page, and the free trial page.
 - X API `POST /2/tweets` (`made_with_ai`, `paid_partnership`).
+
+Sources cited by the duration-fit research behind ADR-R30 (2026-10-26):
+
+- ElevenLabs: [TTS with timestamps](https://elevenlabs.io/docs/api-reference/text-to-speech/convert-with-timestamps) (no target-duration parameter), the [TTS guide](https://elevenlabs.io/docs/eleven-creative/playground/text-to-speech) (speed "not available for the Eleven v3 model"), [TTS best practices](https://elevenlabs.io/docs/overview/capabilities/text-to-speech/best-practices), the [models page](https://elevenlabs.io/docs/overview/models) (Estonian only on v3 and v4), the [skills repository's voice settings](https://github.com/elevenlabs/skills/blob/main/text-to-speech/references/voice-settings.md) (the contradicting speed claim) and [API pricing](https://elevenlabs.io/pricing/api).
+- sync.so: [sync mode](https://sync.so/docs/developer-guides/sync-mode) and [generate API](https://sync.so/docs/api-reference/api/generate-api/create.md), for changed-duration lip sync.
+- The stretchers that were compared or excluded, with their sources: `doc/archive/voice-lab-stretch-history.md`.
 
 Repository documents: `doc/spec/editing.md` (§2, §4.5, §4.7, §7, §10, §12), `doc/spec/ai.md` (§4.8, §11.3, §12.8), `doc/architecture.md` (§2.5, §8, §10, §11), `doc/design.md` (§6.3, Settings), `doc/publishing.md` (§2, §3.5.3, §5), and `shared/schemas/project.schema.json` (`voiceLab`).

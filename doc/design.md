@@ -767,10 +767,11 @@ From the top:
      - inserted words in `accent.text` with a 1.5 px solid underline;
      - re-voiced bridge words in `text.primary` with a 1 px dashed `accent.text` underline.
    - Its accessible description reads "one becomes on Sunday, seven becomes five, …".
+   - Under the diff, one fit meter line per voice hunk in 11 `text.secondary`: "about 4.3 s for a 4.1 s gap: fits" or "about 4.3 s for a 4.1 s gap: will change length" (voice-lab.md §8.9.1). With more than one hunk, each line starts with that hunk's new words in quotes, for example "“on Sunday” · about 1.2 s for a 1.1 s gap: fits". It updates as the user types, and nothing is sent.
    - The transcript does not render proposed words; only accepted replacements appear there.
 4. **Voice.** A pop-up (macOS) or `ComboBox` (Windows) reading "My voice · consent Oct 12", with the date in `text.secondary`. With no active consented voice, it reads "No voice yet" with **Create Your Voice… (2 min)**, which opens the voice-lab.md §6 flow, and Generate is disabled.
 5. **Takes.**
-   - **Header:** "Takes", with a text button **Generate Takes · ≈ $0.02** before any takes exist, or **Generate Again · ≈ $0.02** after. Its tooltip and accessible name are "Generate 3 new takes, about $0.02". Under it, in 11 `text.secondary`: "Sends the new words and a short audio check to ElevenLabs with your key. No video." The QA re-transcription in voice-lab.md §8.11 sends audio.
+   - **Header:** "Takes", with a text button **Generate Takes · ≈ $0.02** before any takes exist, or **Generate Again · ≈ $0.02** after. Its tooltip and accessible name are "Generate up to 3 new takes, about $0.02". Under it, in 11 `text.secondary`: "Sends the new words and a short audio check to ElevenLabs with your key. No video." The QA re-transcription in voice-lab.md §8.11 sends audio.
    - **The list:** single choice (macOS `List` with selection; Windows `ListView` with `SelectionMode="Single"`). The best take is preselected and plays once.
    - **Rows:** 36 high on macOS, 40 on Windows: a 24 or 32 neutral play/pause button, "Take 1", the duration in mono, a "Best match" outline tag or a pause-fit note such as "pauses +0.4 s" in `text.secondary` (voiced speech is never time-stretched; only silences are fitted), and a 24 or 32 ✕ (Reject, named "Reject take 2"). Rows fill only while selected or playing.
    - **A failed take** gets its own row: a warning glyph, "Take 3 didn't pass the speech check." and **Try Another · ≈ $0.01**.
@@ -788,16 +789,19 @@ From the top:
 
 **Rewrite states** (copy in §13):
 
-- **Generating.** "Generating take 2 of 3…" with a spinner and **Cancel** in place of the remaining rows. Announce "Take 1 ready." and, at the end, "Two takes ready, one failed the speech check."
+- **Generating.** "Generating take 2 of 3…" with a spinner and **Cancel** in place of the remaining rows. Announce "Take 1 ready." as each take arrives. At the end of a run in which no take fits, announce "Three takes ready." or, only when some failed, "Three takes ready, one failed the speech check."
+- **Take fits** (voice-lab.md §8.6). When a take passes the speech check and fits its gap, generation stops: the spinner row reads "Take 2 fits." and it is announced. No further take is generated. Only when an earlier take failed does it add "One failed the speech check."
 - **Provider error.** A callout on `status.dangerBackground`: "ElevenLabs rejected the key (401). Your edits are saved." [Open Settings] [Retry]. Windows uses `InfoBar Severity="Error"`.
 - **No take passed.** "These takes didn't sound right. Try different wording or re-record." [Generate Again · ≈ $0.02].
-- **Length changed** (ADR-R28). "Take 1 runs 1.4 s longer than the words it replaces. Choose how the video keeps up." It offers a required radio choice:
+- **Length changed** (ADR-R28). "Take 1 runs 1.4 s longer than the words it replaces. Choose how the video keeps up." For a take that is too short: "Take 1 runs 0.6 s shorter than the words it replaces. Choose how the video keeps up." The seconds are what remains after the silence fit (voice-lab.md §8.9). It offers a required radio choice:
   - **Lip sync:** "Sends 9 s of video around the change to {provider} with your key. About $0.60, confirmed before it runs."
-  - **Retimed source video:** "Slows these 9 s of video to 0.86× and crops in slightly around your face. Nothing is sent."
+  - **Retimed source video:** "Slows these 9 s of video to 0.86× and crops in slightly around your face. Nothing is sent." For a shorter take: "Speeds these 9 s of video up to 1.07× and crops in slightly around your face. Nothing is sent."
 
   Neither is preselected. An unavailable option shows why. Use Take stays disabled until one is chosen. The choice is never remembered.
 - **Cut-only or text-only diff** (voice-lab.md §8.2 classes cut and textOnly). Voice and Takes hide, and the footer button reads **Apply Cuts** or **Apply Correction**. No AI is used and nothing is sent.
 - **Patch budget exceeded.** "That's a lot to re-voice. Re-record these sentences instead." Generate is disabled.
+- **No room tone** (voice-lab.md §8.7). "This take has no half-second pause to copy the room sound from. Clean audio removes background sound from the whole take, so new words can blend in." [Clean Audio…] opens the Clean audio panel. Generate is disabled.
+- **Too close to the take edge** (voice-lab.md §8.4). "This change is too close to the {start/end} of the take to blend in. Re-record this sentence instead." Generate is disabled.
 - **Cost of $0.50 or more, or unknown.** The cost confirmation from voice-lab.md §3.1 appears before the action runs.
 
 Keyboard: opening the panel focuses "What should change?". Esc closes it and returns focus to the selected words. F6 order is in §15.
@@ -1194,13 +1198,17 @@ Voice: short, factual, calm, always reassuring about the media. No exclamation m
 | Transcribe again | confirmation | "Transcribe again? This replaces the transcript and removes {n} cuts, {m} corrections, {k} clips and the AI suggestions." [Transcribe Again] [Cancel] |
 | ElevenLabs first upload | sheet / ContentDialog | Title "Transcribe with ElevenLabs?" Body "ElevenLabs Scribe uploads this take's audio track with your key. ElevenLabs stores it under its terms and may use it to improve its services unless you opt out in your ElevenLabs account. No video is sent." [Continue] [Cancel] (transcription.md section 8.5) |
 | Project saved outside the video folder (Windows) | InfoBar (Informational) | "Saved in VoxClip's folder. Use Save project as… to keep it with the video." |
-| Rewrite: generating | Rewrite panel | "Generating take {i} of {n}…" [Cancel]; announcements "Take 1 ready." and "{n} takes ready, {k} failed the speech check." |
+| Rewrite: fit meter | Rewrite panel, New words | One line per voice hunk: "about {s} s for a {g} s gap: fits" or "about {s} s for a {g} s gap: will change length". With more than one hunk, each line starts with the hunk's new words in quotes |
+| Rewrite: generating | Rewrite panel | "Generating take {i} of {n}…" [Cancel]; announcements "Take {i} ready." and, after a run in which no take fits, "{n} takes ready." or, only when some failed, "{n} takes ready, {k} failed the speech check." |
+| Rewrite: take fits | Rewrite panel | "Take {i} fits." Generation stops. Only when an earlier take failed does it add "{k} failed the speech check." |
 | Rewrite: provider error | Rewrite panel | "{provider} rejected the key ({status}). Your edits are saved." [Open Settings] [Retry] (Error) |
 | Rewrite: no take passed | Rewrite panel | "These takes didn't sound right. Try different wording or re-record." [Generate Again · ≈ {cost}] |
 | Rewrite: failed take | Rewrite panel row | "Take {i} didn't pass the speech check." [Try Another · ≈ {cost}] |
-| Rewrite: length changed | Rewrite panel | "Take {i} runs {s} s longer than the words it replaces. Choose how the video keeps up." Options as §6.3 |
+| Rewrite: length changed | Rewrite panel | "Take {i} runs {s} s longer than the words it replaces. Choose how the video keeps up." For a shorter take: "Take {i} runs {s} s shorter than the words it replaces. Choose how the video keeps up." Options as §6.3 |
 | Rewrite: no voice | Rewrite panel, Voice row | "No voice yet" [Create Your Voice… (2 min)] |
 | Rewrite: too much | Rewrite panel | "That's a lot to re-voice. Re-record these sentences instead." |
+| Rewrite: no room tone | Rewrite panel | "This take has no half-second pause to copy the room sound from. Clean audio removes background sound from the whole take, so new words can blend in." [Clean Audio…]; Generate is disabled |
+| Rewrite: too close to the take edge | Rewrite panel | "This change is too close to the {start/end} of the take to blend in. Re-record this sentence instead." Generate is disabled |
 | Rewrite: disclosure | Rewrite footer | "Exports show AI MODIFIED on the video and in the post." |
 | Voice Lab off, Rewrite chosen | sheet | voice-lab.md §5 one-time sheet |
 
