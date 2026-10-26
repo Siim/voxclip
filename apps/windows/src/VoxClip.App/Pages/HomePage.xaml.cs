@@ -56,7 +56,8 @@ public sealed partial class HomePage : Page
             {
                 var video = await StorageFile.GetFileFromPathAsync(project.Media.Source.AbsolutePath);
                 using var thumbnail = await video.GetThumbnailAsync(ThumbnailMode.VideosView, 160, ThumbnailOptions.UseCurrentScale);
-                if (thumbnail is null || thumbnail.Size == 0) return;
+                // Without a thumbnail handler (common for MKV and WEBM) the shell returns its file-type icon: no frame.
+                if (thumbnail is null || thumbnail.Size == 0 || thumbnail.Type == ThumbnailType.Icon) return;
                 var image = new BitmapImage();
                 await image.SetSourceAsync(thumbnail);
                 row.Thumbnail = image;

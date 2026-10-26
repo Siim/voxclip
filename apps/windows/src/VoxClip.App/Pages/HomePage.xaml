@@ -27,7 +27,7 @@
                 <ListView.ItemTemplate><DataTemplate x:DataType="models:RecentProject">
                     <Grid Padding="0,8" ColumnSpacing="16"><Grid.ColumnDefinitions><ColumnDefinition Width="56"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                         <Border Background="{ThemeResource LayerFillColorDefaultBrush}" CornerRadius="4" Height="40" Width="56">
-                            <Grid><SymbolIcon Symbol="Video"/><Image Source="{x:Bind Thumbnail, Mode=OneWay}" Stretch="UniformToFill"/></Grid>
+                            <Image Source="{x:Bind Thumbnail, Mode=OneWay}" Stretch="UniformToFill"/>
                         </Border>
                         <StackPanel Grid.Column="1" Spacing="4"><TextBlock Text="{x:Bind Name}" FontWeight="SemiBold"/><TextBlock Text="{x:Bind Detail}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" FontSize="12"/></StackPanel>
                         <Grid.ContextFlyout><MenuFlyout>
