@@ -94,7 +94,7 @@ public sealed partial class VoiceLabAudioMixerTests
     public async Task NativeCliExportsPersistedV3WithCombinedOutputs()
     {
         await NativeTest.RequireAsync(windows: true);
-        await new ShippingRuntimeIdentityTests().LoadedModulesMatchShippingReport();
+        await ShippingRuntimeIdentityTests.MatchShippingReportWhenEvidencePresentAsync();
         var data = Environment.GetEnvironmentVariable("VOXCLIP_DATA_DIR");
         NativeTest.Require(!string.IsNullOrWhiteSpace(data), "Set an isolated VOXCLIP_DATA_DIR before running the native CLI route.");
         var ct = TestContext.Current.CancellationToken;
@@ -118,7 +118,7 @@ public sealed partial class VoiceLabAudioMixerTests
             var mp4 = Path.Combine(root, "cli.mp4");
             var wav = Path.Combine(root, "cli.wav");
             var srt = Path.Combine(root, "cli.srt");
-            var exit = await CliApplication.RunAsync(["--open", projectPath, "--export", mp4,
+            var exit = await AcceptedCli.RunAsync(["--open", projectPath, "--export", mp4,
                 "--audio-out", wav, "--srt", srt, "--style", "vox-highlight", "--json"], ct);
             Assert.Equal(0, exit);
             Assert.True(File.Exists(mp4)); Assert.True(File.Exists(wav)); Assert.True(File.Exists(srt));
@@ -159,7 +159,7 @@ public sealed partial class VoiceLabAudioMixerTests
     {
         await NativeTest.RequireAsync(windows: true);
         var evidence = Environment.GetEnvironmentVariable("VOXCLIP_APP_EVIDENCE_DIR");
-        NativeTest.Require(evidence is not null && Directory.Exists(evidence),
+        NativeTest.RequireEvidence(evidence is not null && Directory.Exists(evidence),
             "Set VOXCLIP_APP_EVIDENCE_DIR to the isolated normal App export evidence.");
         var mp4 = Assert.Single(Directory.GetFiles(Path.Combine(evidence!, scope), "*.mp4"));
         var sidecar = mp4 + ".provenance.json";
@@ -224,7 +224,7 @@ public sealed partial class VoiceLabAudioMixerTests
     {
         await NativeTest.RequireAsync(windows: true);
         var evidence = Environment.GetEnvironmentVariable("VOXCLIP_DYNAMIC_APP_EVIDENCE_DIR");
-        NativeTest.Require(evidence is not null && Directory.Exists(evidence),
+        NativeTest.RequireEvidence(evidence is not null && Directory.Exists(evidence),
             "Set VOXCLIP_DYNAMIC_APP_EVIDENCE_DIR to the isolated dynamic-source App export evidence.");
         var projectPath = Path.Combine(evidence!, "dynamic-project.voxclip");
         var project = (await new ProjectStore().LoadAsync(projectPath, TestContext.Current.CancellationToken)).Project;
@@ -301,7 +301,7 @@ public sealed partial class VoiceLabAudioMixerTests
     public async Task NativeFullAndTouchingRoutesUseProductionAudioAndMarkedVideo(string fixture, bool touching)
     {
         await NativeTest.RequireAsync(windows: true);
-        await new ShippingRuntimeIdentityTests().LoadedModulesMatchShippingReport();
+        await ShippingRuntimeIdentityTests.MatchShippingReportWhenEvidencePresentAsync();
         var ct = TestContext.Current.CancellationToken;
         var (project, snapshot, root) = await NativeCase(fixture, touching,
             touching ? null : new PixelSize(1280, 720));
@@ -398,7 +398,7 @@ public sealed partial class VoiceLabAudioMixerTests
     public async Task NativeExcludedClipAndDisabledSegmentUseUnmarkedSource(bool disabled)
     {
         await NativeTest.RequireAsync(windows: true);
-        await new ShippingRuntimeIdentityTests().LoadedModulesMatchShippingReport();
+        await ShippingRuntimeIdentityTests.MatchShippingReportWhenEvidencePresentAsync();
         var ct = TestContext.Current.CancellationToken;
         var (original, template, root) = await NativeCase("passage-render-v3.voxclip", false);
         try
@@ -443,7 +443,7 @@ public sealed partial class VoiceLabAudioMixerTests
     public async Task NativeAllOutputPublicationRestoresPriorBytesOnFailureAndCancellation(bool cancel)
     {
         await NativeTest.RequireAsync(windows: true);
-        await new ShippingRuntimeIdentityTests().LoadedModulesMatchShippingReport();
+        await ShippingRuntimeIdentityTests.MatchShippingReportWhenEvidencePresentAsync();
         var ct = TestContext.Current.CancellationToken;
         var (project, snapshot, root) = await NativeCase("passage-render-v3.voxclip", false);
         try
@@ -628,7 +628,9 @@ public sealed partial class VoiceLabAudioMixerTests
     public async Task NativeFinalUnityBoundaryStopsRealFitBeforeSnapshotOrOutput(double stretch, bool accepted)
     {
         await NativeTest.RequireAsync(windows: true);
-        await new ShippingRuntimeIdentityTests().LoadedModulesMatchShippingReport();
+        // A build without atempo refuses with a different reason before reaching the timing guard.
+        if (!accepted) NativeTest.RequireFilter("atempo");
+        await ShippingRuntimeIdentityTests.MatchShippingReportWhenEvidencePresentAsync();
         var (project, snapshot, root) = await NativeCase("passage-render-v3.voxclip", false,
             storedStretch: stretch);
         try
@@ -665,7 +667,7 @@ public sealed partial class VoiceLabAudioMixerTests
     public async Task NativePreviewPlaysPausesSeeksAndReleasesSynthLease()
     {
         await NativeTest.RequireAsync(windows: true);
-        await new ShippingRuntimeIdentityTests().LoadedModulesMatchShippingReport();
+        await ShippingRuntimeIdentityTests.MatchShippingReportWhenEvidencePresentAsync();
         var ct = TestContext.Current.CancellationToken;
         var (project, snapshot, root) = await NativeCase("passage-render-v3.voxclip", false);
         var scratchBefore = Directory.GetDirectories(Path.GetTempPath(), "voxclip-voice-*").ToHashSet(StringComparer.OrdinalIgnoreCase);

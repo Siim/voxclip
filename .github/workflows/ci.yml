@@ -346,13 +346,13 @@ jobs:
           retention-days: 14
 
       - name: Build WinUI app (win-x64)
-        if: steps.detect.outputs.app == 'true'
+        if: ${{ !cancelled() && steps.detect.outputs.app == 'true' }}
         shell: bash
         working-directory: apps/windows
         run: dotnet build src/VoxClip.App/VoxClip.App.csproj -c Release -r win-x64 -p:Platform=x64 -m:1 -nodeReuse:false -p:UseSharedCompilation=false
 
       - name: Build WinUI app (win-arm64)
-        if: steps.detect.outputs.app == 'true'
+        if: ${{ !cancelled() && steps.detect.outputs.app == 'true' }}
         shell: bash
         working-directory: apps/windows
         run: dotnet build src/VoxClip.App/VoxClip.App.csproj -c Release -r win-arm64 -p:Platform=ARM64 -m:1 -nodeReuse:false -p:UseSharedCompilation=false

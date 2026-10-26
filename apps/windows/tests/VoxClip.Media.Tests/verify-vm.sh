@@ -5,6 +5,8 @@ remote=${VOXCLIP_VM_HOST:?Set VOXCLIP_VM_HOST to the Windows SSH target}
 native_zip=${VOXCLIP_FFMPEG_ZIP:-}
 if [ -n "$native_zip" ]; then test -s "$native_zip"; fi
 shipping_rid=${VOXCLIP_SHIPPING_RID:-}
+scratch=${VOXCLIP_VM_SCRATCH:-win-media}
+case "$scratch" in ''|-*|*[!a-z0-9-]*) echo 'VOXCLIP_VM_SCRATCH must be one lowercase track directory name' >&2; exit 2 ;; esac
 if [ -n "$shipping_rid" ]; then
   case "$shipping_rid" in win-arm64|win-x64) ;; *) echo 'VOXCLIP_SHIPPING_RID must be win-arm64 or win-x64' >&2; exit 2 ;; esac
   test -n "$native_zip" || { echo 'VOXCLIP_FFMPEG_ZIP is required for shipping acceptance' >&2; exit 2; }
@@ -34,8 +36,9 @@ print(f'{rid} shipping ZIP, input digest and six DLLs match manifest/report: {di
 PY
 fi
 command -v timeout >/dev/null
-owner="win-media-$(date +%s)-$$"
-workspace="C:\\voxclip-build\\win-media\\source-$owner"
+owner="$scratch-$(date +%s)-$$"
+root="C:\\voxclip-build\\$scratch"
+workspace="$root\\source-$owner"
 runs=apps/windows/tests/VoxClip.Media.Tests/.runs
 mkdir -p "$runs"
 archive="$runs/workspace-$owner.tar"
@@ -49,13 +52,13 @@ cleanup() {
   rm -f "$archive" "$fixtures"
   if [ "$acquired" = true ]; then
     mkdir -p "$runs/$owner"
-    timeout -k 5 30 scp -o BatchMode=yes -o ConnectTimeout=5 "$remote:C:/voxclip-build/win-media/source-$owner/apps/windows/tests/VoxClip.Media.Tests/.runs/*.log" "$runs/$owner/" || true
+    timeout -k 5 30 scp -o BatchMode=yes -o ConnectTimeout=5 "$remote:C:/voxclip-build/$scratch/source-$owner/apps/windows/tests/VoxClip.Media.Tests/.runs/*.log" "$runs/$owner/" || true
     mkdir -p "$runs/$owner/e2e"
-    timeout -k 5 30 scp -o BatchMode=yes -o ConnectTimeout=5 "$remote:C:/voxclip-build/win-media/source-$owner/apps/windows/tests/VoxClip.Media.Tests/.runs/e2e/*.json" "$runs/$owner/e2e/" || true
+    timeout -k 5 30 scp -o BatchMode=yes -o ConnectTimeout=5 "$remote:C:/voxclip-build/$scratch/source-$owner/apps/windows/tests/VoxClip.Media.Tests/.runs/e2e/*.json" "$runs/$owner/e2e/" || true
     if [ -n "$shipping_rid" ]; then
-      timeout -k 5 30 scp -o BatchMode=yes -o ConnectTimeout=5 "$remote:C:/voxclip-build/win-media/source-$owner/apps/windows/tests/VoxClip.Media.Tests/.runs/loaded-modules.json" "$runs/$owner/" || true
-      timeout -k 5 30 scp -o BatchMode=yes -o ConnectTimeout=5 "$remote:C:/voxclip-build/win-media/source-$owner/apps/windows/tests/VoxClip.Media.Tests/.runs/loaded-cli-modules.json" "$runs/$owner/" || true
-      timeout -k 5 30 scp -o BatchMode=yes -o ConnectTimeout=5 "$remote:C:/voxclip-build/win-media/source-$owner/apps/windows/tests/VoxClip.Media.Tests/.runs/e2e/*.csv" "$runs/$owner/e2e/" || true
+      timeout -k 5 30 scp -o BatchMode=yes -o ConnectTimeout=5 "$remote:C:/voxclip-build/$scratch/source-$owner/apps/windows/tests/VoxClip.Media.Tests/.runs/loaded-modules.json" "$runs/$owner/" || true
+      timeout -k 5 30 scp -o BatchMode=yes -o ConnectTimeout=5 "$remote:C:/voxclip-build/$scratch/source-$owner/apps/windows/tests/VoxClip.Media.Tests/.runs/loaded-cli-modules.json" "$runs/$owner/" || true
+      timeout -k 5 30 scp -o BatchMode=yes -o ConnectTimeout=5 "$remote:C:/voxclip-build/$scratch/source-$owner/apps/windows/tests/VoxClip.Media.Tests/.runs/e2e/*.csv" "$runs/$owner/e2e/" || true
     fi
   fi
   remote_ps "\$marker='C:\voxclip-build\vm.lock\owner'; if ((Test-Path \$marker) -and (Get-Content \$marker) -eq '$owner') { try { \$pidFile='$workspace\apps\windows\tests\VoxClip.Media.Tests\.runs\runner.pid'; if (Test-Path \$pidFile) { taskkill.exe /PID ([int](Get-Content \$pidFile)) /T /F 2>\$null }; Remove-Item -Recurse -Force '$workspace' -ErrorAction Stop } finally { if ((Get-Content \$marker) -eq '$owner') { Remove-Item -Recurse 'C:\voxclip-build\vm.lock' } } }" 30 || true
@@ -83,17 +86,19 @@ test -s apps/windows/tests/VoxClip.Media.Tests/Fixtures/generated/hevc10-two-aud
   echo 'Run: sh apps/windows/tests/VoxClip.Media.Tests/generate-fixtures.sh' >&2; exit 1;
 }
 COPYFILE_DISABLE=1 tar -cf "$fixtures" apps/windows/tests/VoxClip.Media.Tests/Fixtures/generated
-timeout 90 scp -o BatchMode=yes -o ConnectTimeout=5 "$archive" "$remote:C:/voxclip-build/win-media/source-$owner/workspace.tar"
-timeout 90 scp -o BatchMode=yes -o ConnectTimeout=5 "$fixtures" "$remote:C:/voxclip-build/win-media/source-$owner/fixtures.tar"
+timeout 90 scp -o BatchMode=yes -o ConnectTimeout=5 "$archive" "$remote:C:/voxclip-build/$scratch/source-$owner/workspace.tar"
+timeout 90 scp -o BatchMode=yes -o ConnectTimeout=5 "$fixtures" "$remote:C:/voxclip-build/$scratch/source-$owner/fixtures.tar"
 timeout 45 ssh "$remote" "cd /d $workspace && tar -xf workspace.tar && tar -xf fixtures.tar && del workspace.tar fixtures.tar"
 if [ -n "$native_zip" ]; then
-  timeout 90 scp -o BatchMode=yes -o ConnectTimeout=5 "$native_zip" "$remote:C:/voxclip-build/win-media/source-$owner/ffmpeg.zip"
+  timeout 90 scp -o BatchMode=yes -o ConnectTimeout=5 "$native_zip" "$remote:C:/voxclip-build/$scratch/source-$owner/ffmpeg.zip"
   if [ -n "$shipping_rid" ]; then
-    timeout 30 scp -o BatchMode=yes -o ConnectTimeout=5 "$build_report" "$remote:C:/voxclip-build/win-media/source-$owner/report.json"
+    timeout 30 scp -o BatchMode=yes -o ConnectTimeout=5 "$build_report" "$remote:C:/voxclip-build/$scratch/source-$owner/report.json"
     set -- -ShippingAcceptance -ShippingRid "$shipping_rid" -BuildReport "$workspace\report.json" "$@"
   else
     remote_ps "Expand-Archive -LiteralPath '$workspace\ffmpeg.zip' -DestinationPath '$workspace\native' -ErrorAction Stop; Remove-Item '$workspace\ffmpeg.zip'" 45
   fi
   set -- -FfmpegDirectory "$workspace\native\bin" "$@"
 fi
-remote_ps "& '$workspace\apps\windows\tests\VoxClip.Media.Tests\verify-windows.ps1' -LockOwner '$owner' $*" 1800
+require_evidence=
+if [ -n "$shipping_rid" ]; then require_evidence="\$env:VOXCLIP_REQUIRE_VM_EVIDENCE='1'; "; fi
+remote_ps "$require_evidence& '$workspace\apps\windows\tests\VoxClip.Media.Tests\verify-windows.ps1' -LockOwner '$owner' -ScratchRoot '$root' $*" 1800

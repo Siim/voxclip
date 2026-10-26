@@ -455,7 +455,7 @@ From the committed `track/win-media` checkout, run each available RID separately
 ```sh
 VOXCLIP_VM_HOST=siim@192.168.64.3 \
 VOXCLIP_SHIPPING_RID=win-arm64 \
-VOXCLIP_FFMPEG_ZIP="$HOME/Library/Caches/voxclip-ffmpeg-build/reports/win-arm64-1/voxclip-ffmpeg-n9.0.2-win-arm64.zip" \
+VOXCLIP_FFMPEG_ZIP="$HOME/Library/Caches/voxclip-ffmpeg-atempo-20261026/reports/win-arm64-1/voxclip-ffmpeg-n9.0.2-win-arm64.zip" \
 sh apps/windows/tests/VoxClip.Media.Tests/verify-vm.sh
 ```
 
@@ -474,9 +474,31 @@ SHA-256 values, license string, configuration and process architecture. The
 first CLI case separately records the six modules loaded by the shipping CLI
 from its own app directory and verifies their hashes.
 
+Evidence has its own gate. `NativeTest.Require` covers native prerequisites:
+Windows, the FFmpeg DLLs and their demuxers and filters, generated fixtures
+and committed sources; `VOXCLIP_REQUIRE_NATIVE=1` makes their absence a
+failure. `NativeTest.RequireEvidence` covers what only a VM or release run
+produces: `VOXCLIP_SHIPPING_REPORT` with `VOXCLIP_MODULE_EVIDENCE`, and the
+`VOXCLIP_APP_EVIDENCE_DIR` and `VOXCLIP_DYNAMIC_APP_EVIDENCE_DIR` App export
+folders. Without them those tests skip and name the variable, even under
+`VOXCLIP_REQUIRE_NATIVE=1`. `VOXCLIP_REQUIRE_VM_EVIDENCE=1` turns that skip into
+a failure. `verify-windows.ps1 -ShippingAcceptance` sets it, and `verify-vm.sh`
+passes it whenever `VOXCLIP_SHIPPING_RID` is set. Set it yourself for any other
+run that supplies evidence, such as a manual App-evidence run. Hosted CI
+requires native inputs but never sets `VOXCLIP_REQUIRE_VM_EVIDENCE`, and it
+loads the test-only FFmpeg tools. The Voice Lab tempo graph, mixer and native
+route tests therefore assert behaviour on whichever FFmpeg is loaded, and add
+the loaded-module comparison whenever the shipping report is supplied. A hosted
+pass of those tests says nothing about shipping identity.
+`LoadedModulesMatchShippingReport` and
+`PcmFloatWavDecodesAndSeeksWithShippingDlls` pass only after that comparison.
+
 Logs, E2E JSON/CSV reports, `loaded-modules.json` and
 `loaded-cli-modules.json` are copied into the
 ignored `.runs/<owner>/` directory before the owned VM scratch is removed.
+`VOXCLIP_VM_SCRATCH` names that scratch's one track directory under
+`C:\voxclip-build` (default `win-media`); `verify-windows.ps1 -ScratchRoot`
+refuses to run outside it.
 The runner releases only its own lock. A pre-existing lock with a missing
 owner marker is reported after 90 seconds and left untouched.
 

@@ -943,7 +943,7 @@ public sealed partial class VoiceLabAudioMixerTests
     public async Task NativePassageUsesProductionWaveComposerAndMarkedExporter()
     {
         await NativeTest.RequireAsync(windows: true);
-        await new ShippingRuntimeIdentityTests().LoadedModulesMatchShippingReport();
+        await ShippingRuntimeIdentityTests.MatchShippingReportWhenEvidencePresentAsync();
         var source = Path.Combine(FixtureLoader.SharedRoot, "fixtures", "voice-lab", "voice-lab-7s.mkv");
         NativeTest.Require(File.Exists(source), "The committed seven-second Voice Lab source fixture is missing.");
         var ct = TestContext.Current.CancellationToken;
