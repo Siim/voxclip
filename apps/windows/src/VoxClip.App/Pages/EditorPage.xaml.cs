@@ -8,6 +8,7 @@ using VoxClip.App.ViewModels;
 using VoxClip.Core.Domain.Captions;
 using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Shared;
+using VoxClip.Core.Domain.VoiceLab;
 using VoxClip.Core.Services.Media;
 using VoxClip.Media.Pipeline;
 using VoxClip.Media.Captions;
@@ -102,9 +103,21 @@ public sealed partial class EditorPage : Page
         await RunAsync(async () =>
         {
             if (media is null || preview is null) return;
-            var snapshot = await SnapshotAsync(ct);
-            previewDuration = snapshot.Plan.Duration;
-            await preview.LoadAsync(snapshot, null, ct);
+            try
+            {
+                var snapshot = await SnapshotAsync(ct);
+                previewDuration = snapshot.Timeline.Duration;
+                await preview.LoadAsync(snapshot, null, ct);
+            }
+            catch
+            {
+                preview.PlaybackFaulted -= PlaybackFaulted;
+                await preview.DisposeAsync();
+                preview = null;
+                PreviewImage.Source = null;
+                PreviewEmpty.Visibility = Visibility.Visible;
+                throw;
+            }
             presenter = new(PreviewImage, preview, PositionChanged, exception => ViewModel.Notice = UiError.Message(exception, "Preview"), frame => inspector?.UpdateStill(frame));
             presenter.Start(); PreviewEmpty.Visibility = Visibility.Collapsed;
         }, "Preview");
@@ -121,16 +134,29 @@ public sealed partial class EditorPage : Page
         var source = media ?? throw new InvalidOperationException("No media is open.");
         var rate = source.Audio?.SampleRate ?? 48000;
         var state = stateOverride ?? ViewModel.State;
-        ViewModel.RequireLegacyRendering(state);
-        var samples = (long)(source.DurationSeconds * rate);
+        var project = ViewModel.ScopedProject(state);
+        var scope = project.Edits.ActiveClipId is { } id ? VoiceLabOutputScope.Clip(id) : VoiceLabOutputScope.Full;
+        VoiceLabRenderInput? voice = null;
+        if (project.SchemaVersion == 3)
+        {
+            var prepared = VoiceLabRenderContract.Prepare(project, scope, VoiceLabLabelPosition.TopRight);
+            if (prepared.OutputPlan.RequiresSyntheticRendering)
+                voice = VoiceLabRenderInput.Capture(project, prepared, Path.Combine(App.Services.Data.Root, "VoiceLab"));
+        }
+        else VoiceLabProject.RequireLegacyRendering(project, scope);
+        var samples = checked((long)Math.Floor(source.DurationSeconds * rate + 0.5));
         var plan = new EditPlan(rate, samples, [], [new(0, samples)], samples, []);
         if (state is not null) plan = EditingEngine.BuildEditPlan(EditingEngine.BuildSegments(state, source.DurationSeconds), source.DurationSeconds, rate, state.PauseKeepSeconds);
         var outputSize = ExportPresets.OutputSize(source.OrientedSize, ViewModel.Project.Export.Aspect);
         var fps = ExportPresets.OutputFrameRate(source.Video?.FrameRate ?? 30);
         CaptionTrack? captions = null;
         if (!demo && state is not null && ViewModel.Project.Captions.StyleId != "off" && inspector?.Styles.FirstOrDefault(style => style.Id == ViewModel.Project.Captions.StyleId) is { } style)
-            captions = await CaptionEngine.BuildAsync(new(style, ViewModel.Project.Captions, outputSize, EditingEngine.CaptionWords(state, plan), state.Transcript.Language, plan.Duration), new HarfBuzzGlyphShaper(), null, ct);
-        return new(source, plan, captions, new(outputSize, fps, ExportPresets.VideoBitrate(outputSize, ViewModel.Project.Export.Aspect, ViewModel.Project.Export.Quality, fps)));
+            captions = await CaptionEngine.BuildAsync(new(style, project.Captions, outputSize,
+                voice?.Prepared.OutputPlan.Captions ?? EditingEngine.CaptionWords(state, plan), state.Transcript.Language,
+                voice?.Prepared.OutputPlan.Duration ?? plan.Duration), new HarfBuzzGlyphShaper(), null, ct);
+        var snapshot = new ComposeSnapshot(source, plan, captions,
+            new(outputSize, fps, ExportPresets.VideoBitrate(outputSize, project.Export.Aspect, project.Export.Quality, fps))) { VoiceLab = voice };
+        return voice?.CaptureSnapshot(snapshot) ?? snapshot;
     }
     private void PositionChanged(PreviewPosition position)
     {
@@ -210,7 +236,7 @@ public sealed partial class EditorPage : Page
     }
     private async Task UpdatePreviewAsync()
     {
-        if (preview is null || media is null) return;
+        if (media is null) return;
         await previewChanges.WaitAsync(lifetime.Token);
         try
         {
@@ -218,9 +244,27 @@ public sealed partial class EditorPage : Page
             var snapshot = await SnapshotAsync(lifetime.Token, state);
             var clipChanged = previewClipId != state?.ActiveClipId;
             previewClipId = state?.ActiveClipId;
-            previewDuration = snapshot.Plan.Duration;
-            await preview.UpdateSnapshotAsync(snapshot, lifetime.Token);
+            previewDuration = snapshot.Timeline.Duration;
+            if (preview is null)
+            {
+                preview = new PreviewEngine();
+                preview.PlaybackFaulted += PlaybackFaulted;
+                await preview.LoadAsync(snapshot, null, lifetime.Token);
+                presenter = new(PreviewImage, preview, PositionChanged,
+                    exception => ViewModel.Notice = UiError.Message(exception, "Preview"), frame => inspector?.UpdateStill(frame));
+                presenter.Start(); PreviewEmpty.Visibility = Visibility.Collapsed;
+            }
+            else await preview.UpdateSnapshotAsync(snapshot, lifetime.Token);
             if (clipChanged && previewClipId is not null) await preview.SeekAsync(0, true, lifetime.Token);
+        }
+        catch
+        {
+            if (preview is not null) preview.PlaybackFaulted -= PlaybackFaulted;
+            if (presenter is not null) { await presenter.DisposeAsync(); presenter = null; }
+            else if (preview is not null) await preview.DisposeAsync();
+            preview = null;
+            if (!disposed) { PreviewImage.Source = null; PreviewEmpty.Visibility = Visibility.Visible; }
+            throw;
         }
         finally { previewChanges.Release(); }
     }
@@ -228,7 +272,7 @@ public sealed partial class EditorPage : Page
     {
         if (preview is null) return;
         var snapshot = await SnapshotAsync(lifetime.Token);
-        await preview.SeekAsync(snapshot.Plan.MapTime(source), true, lifetime.Token);
+        await preview.SeekAsync(snapshot.Timeline.MapTime(source), true, lifetime.Token);
     }
     private async Task RunAsync(Func<Task> action, string label)
     {
@@ -468,8 +512,14 @@ public sealed partial class EditorPage : Page
         }
         Transcript.Detach(); Timeline.Detach(); inspector?.Detach();
         App.Services.SettingsChanged -= EditorSettingsChanged;
-        if (preview is not null) preview.PlaybackFaulted -= PlaybackFaulted;
-        if (presenter is not null) await presenter.DisposeAsync(); else if (preview is not null) await preview.DisposeAsync();
+        await previewChanges.WaitAsync();
+        try
+        {
+            if (preview is not null) preview.PlaybackFaulted -= PlaybackFaulted;
+            if (presenter is not null) await presenter.DisposeAsync(); else if (preview is not null) await preview.DisposeAsync();
+            presenter = null; preview = null;
+        }
+        finally { previewChanges.Release(); }
         lifetime.Dispose(); autosave?.Dispose();
     }
 }

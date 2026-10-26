@@ -6,6 +6,7 @@ using VoxClip.Core.Domain.Captions;
 using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Domain.VoiceLab;
+using VoxClip.Core.Services.Project;
 using VoxClip.Core.Services.Settings;
 using VoxClip.Media.Audio;
 using VoxClip.Media.Captions;
@@ -86,6 +87,188 @@ public sealed partial class VoiceLabAudioMixerTests
 
     private static short Tone(int frame, double hz) => (short)Math.Round(20_000 *
         Math.Sin(2 * Math.PI * hz * frame / 24_000));
+
+    [Fact]
+    [Trait("Category", "RequiresFFmpeg")]
+    [Trait("Category", "RequiresWindows")]
+    public async Task NativeCliExportsPersistedV3WithCombinedOutputs()
+    {
+        await NativeTest.RequireAsync(windows: true);
+        await new ShippingRuntimeIdentityTests().LoadedModulesMatchShippingReport();
+        var data = Environment.GetEnvironmentVariable("VOXCLIP_DATA_DIR");
+        NativeTest.Require(!string.IsNullOrWhiteSpace(data), "Set an isolated VOXCLIP_DATA_DIR before running the native CLI route.");
+        var ct = TestContext.Current.CancellationToken;
+        var (project, _, root) = await NativeCase("passage-render-v3.voxclip", false, new(1280, 720));
+        try
+        {
+            project = project with { Edits = project.Edits with { ActiveClipId = null } };
+            var source = Path.Combine(root, Path.GetFileName(project.Media.Source.AbsolutePath));
+            File.Copy(project.Media.Source.AbsolutePath, source);
+            var sourceKey = await new ProjectStore().ComputeContentKeyAsync(source, null, ct);
+            project = project with { Media = project.Media with { Source = project.Media.Source with
+            {
+                AbsolutePath = source, RelativePath = Path.GetFileName(source), SizeBytes = new FileInfo(source).Length,
+                ContentKey = sourceKey
+            } } };
+            var paid = Path.Combine(data!, "VoiceLab", project.Id);
+            Directory.CreateDirectory(paid);
+            File.Copy(Path.Combine(root, project.Id, "asset-one.wav"), Path.Combine(paid, "asset-one.wav"), true);
+            var projectPath = Path.Combine(root, "persisted.voxclip");
+            File.WriteAllText(projectPath, ProjectSerialization.Serialize(project));
+            var mp4 = Path.Combine(root, "cli.mp4");
+            var wav = Path.Combine(root, "cli.wav");
+            var srt = Path.Combine(root, "cli.srt");
+            var exit = await CliApplication.RunAsync(["--open", projectPath, "--export", mp4,
+                "--audio-out", wav, "--srt", srt, "--style", "vox-highlight", "--json"], ct);
+            Assert.Equal(0, exit);
+            Assert.True(File.Exists(mp4)); Assert.True(File.Exists(wav)); Assert.True(File.Exists(srt));
+            Assert.True(File.Exists(mp4 + ".provenance.json"));
+            Assert.Equal(336_000L, (new FileInfo(wav).Length - 44) / 8);
+            Assert.Contains("compositeWithTrainedAlgorithmicMedia", Encoding.UTF8.GetString(
+                VoiceLabDisclosureTests.ExtractTopLevelXmp(File.ReadAllBytes(mp4))), StringComparison.Ordinal);
+            using var provenance = System.Text.Json.JsonDocument.Parse(File.ReadAllBytes(mp4 + ".provenance.json"));
+            Assert.Equal(Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(mp4))),
+                provenance.RootElement.GetProperty("export").GetProperty("sha256").GetString());
+            Assert.NotEmpty(File.ReadAllText(srt));
+            if (Environment.GetEnvironmentVariable("VOXCLIP_VOICE_EVIDENCE_DIR") is { Length: > 0 } evidence)
+            {
+                Directory.CreateDirectory(evidence);
+                foreach (var path in new[] { projectPath, mp4, wav, srt, mp4 + ".provenance.json" })
+                    File.Copy(path, Path.Combine(evidence, Path.GetFileName(path)), true);
+                var stableSource = Path.Combine(evidence, "ui-source.mkv");
+                File.Copy(source, stableSource, true);
+                var stableProject = project with { Media = project.Media with { Source = project.Media.Source with
+                {
+                    AbsolutePath = stableSource, RelativePath = Path.GetFileName(stableSource)
+                } } };
+                var stablePath = Path.Combine(evidence, "ui-project.voxclip");
+                await new ProjectStore().SaveAsync(stableProject, stablePath, ct);
+                Assert.Equal(stableSource, (await new ProjectStore().LoadAsync(stablePath, ct)).ResolvedMediaPath);
+            }
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
+    [Theory]
+    [InlineData("full", 7d, 2.8d)]
+    [InlineData("clip", 3.4d, 1.75d)]
+    [Trait("Category", "RequiresFFmpeg")]
+    [Trait("Category", "RequiresWindows")]
+    public async Task NativeAppPublishedVideoContainsReviewedVoiceAndDisclosure(
+        string scope, double duration, double syntheticTime)
+    {
+        await NativeTest.RequireAsync(windows: true);
+        var evidence = Environment.GetEnvironmentVariable("VOXCLIP_APP_EVIDENCE_DIR");
+        NativeTest.Require(evidence is not null && Directory.Exists(evidence),
+            "Set VOXCLIP_APP_EVIDENCE_DIR to the isolated normal App export evidence.");
+        var mp4 = Assert.Single(Directory.GetFiles(Path.Combine(evidence!, scope), "*.mp4"));
+        var sidecar = mp4 + ".provenance.json";
+        using var provenance = System.Text.Json.JsonDocument.Parse(File.ReadAllBytes(sidecar));
+        Assert.Equal(scope, provenance.RootElement.GetProperty("scope").GetProperty("kind").GetString());
+        Assert.Equal(duration, provenance.RootElement.GetProperty("export").GetProperty("durationSeconds").GetDouble());
+        Assert.Equal(Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(mp4))),
+            provenance.RootElement.GetProperty("export").GetProperty("sha256").GetString());
+        Assert.Contains("compositeWithTrainedAlgorithmicMedia", Encoding.UTF8.GetString(
+            VoiceLabDisclosureTests.ExtractTopLevelXmp(File.ReadAllBytes(mp4))), StringComparison.Ordinal);
+        var segment = Assert.Single(provenance.RootElement.GetProperty("aiSegments").EnumerateArray());
+        Assert.Equal(scope == "full" ? 2.5 : 1.45,
+            segment.GetProperty("outputStart").GetDouble(), 2);
+        Assert.Equal(scope == "full" ? 3.2 : 2.15,
+            segment.GetProperty("outputEnd").GetDouble(), 2);
+
+        var probed = await new FfmpegMediaProbe().ProbeAsync(mp4, TestContext.Current.CancellationToken);
+        Assert.Equal(duration, probed.DurationSeconds, 2);
+        Assert.Equal(new PixelSize(1280, 720), probed.OrientedSize);
+        using var video = new VideoDecoder(mp4, false);
+        var frame = video.ReadAt(scope == "full" ? .45 : .3, true, TestContext.Current.CancellationToken);
+        AssertGlyphRegion(frame, 1000, 36);
+        AssertCaptionGlyphs(frame);
+        var frameEvidence = Environment.GetEnvironmentVariable("VOXCLIP_VOICE_EVIDENCE_DIR");
+        if (frameEvidence is { Length: > 0 })
+        {
+            Directory.CreateDirectory(frameEvidence);
+            WritePpm(Path.Combine(frameEvidence, $"app-{scope}-decoded.ppm"), frame);
+        }
+        var generatedFrame = video.ReadAt(syntheticTime, true, TestContext.Current.CancellationToken);
+        AssertGlyphRegion(generatedFrame, 1000, 36);
+        AssertCaptionGlyphs(generatedFrame);
+        if (frameEvidence is { Length: > 0 })
+            WritePpm(Path.Combine(frameEvidence, $"app-{scope}-synthetic-decoded.ppm"), generatedFrame);
+        using var audio = new AudioDecoder(mp4, 2);
+        Assert.Equal(48_000, audio.SampleRate);
+        Assert.InRange(DecodedFrequency(audio, syntheticTime), 630, 690);
+        Assert.InRange(DecodedFrequency(audio, scope == "full" ? 1d : .5d),
+            scope == "full" ? 330 : 390, scope == "full" ? 390 : 450);
+    }
+
+    private static void AssertCaptionGlyphs(PixelBuffer frame)
+    {
+        var pixels = frame.Pixels.Span;
+        var bright = 0;
+        for (var y = 550; y < 610; y++)
+            for (var x = 500; x < 780; x++)
+            {
+                var offset = y * frame.Stride + x * 4;
+                if (pixels[offset] > 195 && pixels[offset + 1] > 195 && pixels[offset + 2] > 195)
+                    bright++;
+            }
+        Assert.True(bright > 100, $"The decoded App export has no caption glyphs: {bright} bright pixels.");
+    }
+
+    [Theory]
+    [InlineData("full")]
+    [InlineData("clip")]
+    [Trait("Category", "RequiresFFmpeg")]
+    [Trait("Category", "RequiresWindows")]
+    public async Task NativeAppPublishedVideoUsesScopedSourceFrameOrder(string scope)
+    {
+        await NativeTest.RequireAsync(windows: true);
+        var evidence = Environment.GetEnvironmentVariable("VOXCLIP_DYNAMIC_APP_EVIDENCE_DIR");
+        NativeTest.Require(evidence is not null && Directory.Exists(evidence),
+            "Set VOXCLIP_DYNAMIC_APP_EVIDENCE_DIR to the isolated dynamic-source App export evidence.");
+        var projectPath = Path.Combine(evidence!, "dynamic-project.voxclip");
+        var project = (await new ProjectStore().LoadAsync(projectPath, TestContext.Current.CancellationToken)).Project;
+        var prepared = VoiceLabRenderContract.Prepare(project,
+            scope == "full" ? VoiceLabOutputScope.Full : VoiceLabOutputScope.Clip("clip-main"),
+            VoiceLabLabelPosition.TopRight);
+        var mp4 = Assert.Single(Directory.GetFiles(Path.Combine(evidence!, scope), "*.mp4"));
+        using var source = new VideoDecoder(project.Media.Source.AbsolutePath, false);
+        using var output = new VideoDecoder(mp4, false);
+        Assert.Equal(160, output.Width); Assert.Equal(90, output.Height);
+        var report = new List<string>();
+        foreach (var editedTime in scope == "full" ? new[] { .4, 2.8, 5.2 } : new[] { .4, 1.8, 3.0 })
+        {
+            var sourceTime = prepared.OutputPlan.SourceTime(editedTime);
+            var exported = output.ReadAt(editedTime, false, TestContext.Current.CancellationToken);
+            var expected = FrameDifference(exported,
+                source.ReadAt(sourceTime, false, TestContext.Current.CancellationToken));
+            var wrong = FrameDifference(exported,
+                source.ReadAt(sourceTime + .6, false, TestContext.Current.CancellationToken));
+            report.Add($"edited={editedTime:F2} source={sourceTime:F2} matching={expected:F2} wrong={wrong:F2}");
+            Assert.True(expected < 30 && expected + 3 < wrong,
+                $"The App export did not follow the selected source frame at {editedTime:F2}: matching={expected:F2}, wrong={wrong:F2}.");
+        }
+        if (Environment.GetEnvironmentVariable("VOXCLIP_VOICE_EVIDENCE_DIR") is { Length: > 0 } frameEvidence)
+        {
+            Directory.CreateDirectory(frameEvidence);
+            File.WriteAllLines(Path.Combine(frameEvidence, $"app-{scope}-frame-map.txt"), report);
+        }
+    }
+
+    private static double FrameDifference(PixelBuffer left, PixelBuffer right)
+    {
+        var a = left.Pixels.Span; var b = right.Pixels.Span;
+        double total = 0; var count = 0;
+        // The upper-left centre stays clear of the top-right disclosure and lower captions.
+        for (var y = 15; y < 60; y++)
+            for (var x = 8; x < 95; x++)
+            {
+                var i = y * left.Stride + x * 4;
+                var j = y * right.Stride + x * 4;
+                for (var channel = 0; channel < 3; channel++) { total += Math.Abs(a[i + channel] - b[j + channel]); count++; }
+            }
+        return total / count;
+    }
 
     [Fact]
     public async Task EmptyWaveTimelineKeepsEverythingCutBeforeCapacityAndPublication()

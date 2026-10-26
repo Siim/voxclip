@@ -52,15 +52,19 @@ public sealed class EditorViewModel : ObservableObject
         isLeaving = false;
         OnPropertyChanged(nameof(CanExport));
     }
-    internal void RequireLegacyRendering(EditState? renderState)
+    internal Project ScopedProject(EditState? renderState)
     {
-        var scoped = renderState is null ? project : project with { Edits = project.Edits with
+        return renderState is null ? project : project with { Edits = project.Edits with
         {
             Clips = renderState.Clips.ToArray(), ActiveClipId = renderState.ActiveClipId,
             CutWordIds = renderState.CutWordIds.ToArray(), CutPauseIds = renderState.CutPauseIds.ToArray(),
             Corrections = new Dictionary<string, string>(renderState.Corrections),
             PauseThresholdSeconds = renderState.PauseThresholdSeconds, PauseKeepSeconds = renderState.PauseKeepSeconds
         } };
+    }
+    internal void RequireLegacyRendering(EditState? renderState)
+    {
+        var scoped = ScopedProject(renderState);
         VoiceLabProject.RequireLegacyRendering(scoped, scoped.Edits.ActiveClipId is { } id ? VoiceLabOutputScope.Clip(id) : VoiceLabOutputScope.Full);
     }
     public EditState? State => state;

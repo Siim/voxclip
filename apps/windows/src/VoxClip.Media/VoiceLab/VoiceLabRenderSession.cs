@@ -87,8 +87,10 @@ internal sealed class VoiceLabRenderSession : IDisposable
     }
 }
 
-internal sealed class VoiceLabTempoException(string? reason = null) : Exception(reason ??
+#pragma warning disable CS1591 // The typed render failure is surfaced by the native App and CLI.
+public sealed class VoiceLabTempoException(string? reason = null) : Exception(reason ??
     "This Windows build cannot apply the required pitch-preserving Voice Lab duration fit. Your generated audio and edits are saved.");
+#pragma warning restore CS1591
 
 internal static class VoiceLabTempo
 {

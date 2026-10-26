@@ -42,6 +42,27 @@ public sealed class ViewModelTests
     }
 
     [Fact]
+    public void ScopedV3ProjectUsesLiveEditsAndKeepsTheReviewedRecipe()
+    {
+        var root = new DirectoryInfo(AppContext.BaseDirectory);
+        while (root is not null && !Directory.Exists(Path.Combine(root.FullName, "shared"))) root = root.Parent;
+        Assert.NotNull(root);
+        var project = ProjectSerialization.Deserialize(File.ReadAllText(Path.Combine(root.FullName,
+            "shared", "fixtures", "voice-lab", "passage-render-v3.voxclip")));
+        var model = new EditorViewModel(project);
+        var live = model.State! with { ActiveClipId = null,
+            Corrections = new Dictionary<string, string>(model.State!.Corrections) { ["w1"] = "Changed" } };
+        var scoped = model.ScopedProject(live);
+        Assert.Null(scoped.Edits.ActiveClipId);
+        Assert.Equal("Changed", scoped.Edits.Corrections["w1"]);
+        Assert.Single(VoxClip.Core.Domain.VoiceLab.VoiceLabRenderContract.Prepare(scoped,
+            VoxClip.Core.Domain.VoiceLab.VoiceLabOutputScope.Full,
+            VoxClip.Core.Domain.VoiceLab.VoiceLabLabelPosition.TopRight).SelectedSegmentRecipes);
+        Assert.NotSame(project, scoped);
+        Assert.Equal(project.VoiceLab, model.Project.VoiceLab);
+    }
+
+    [Fact]
     public void FixtureCreatesParagraphsWithoutWordViews()
     {
         var model = Demo();

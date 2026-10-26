@@ -1,6 +1,7 @@
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Services.LLM;
 using VoxClip.Core.Domain.VoiceLab;
+using VoxClip.Media.VoiceLab;
 
 namespace VoxClip.App.ViewModels;
 
@@ -9,8 +10,22 @@ public static class UiError
     public static string Message(Exception exception, string action)
     {
         if (exception is OperationCanceledException) return "";
-        if (exception is VoiceLabProjectException { Code: VoiceLabProjectErrorCode.UnsupportedRendering })
-            return "This build cannot preview or export generated voice segments yet. Your video and edits are still here.";
+        if (exception is VoiceLabProjectException voice)
+            return voice.Code switch
+            {
+                VoiceLabProjectErrorCode.UnsupportedRendering or VoiceLabProjectErrorCode.NeedsVoiceLabUpgrade =>
+                    "This Voice Lab project needs a reviewed v3 render recipe before preview or export. Your video and edits are still here.",
+                VoiceLabProjectErrorCode.VideoModeUnsupported =>
+                    "This Voice Lab video timing or mode is not supported in this build. Your generated audio and edits are saved.",
+                VoiceLabProjectErrorCode.UnsupportedAssetFormat =>
+                    "This Windows build cannot read this generated audio format. Keep the paid file for a supported build.",
+                VoiceLabProjectErrorCode.CleanAudioUnsupported =>
+                    "This Voice Lab Clean audio edit cannot be rendered in this build. Your video and edits are saved.",
+                VoiceLabProjectErrorCode.StaleRenderContract =>
+                    "The Voice Lab preview or export request changed. Rebuild it from the current project and try again.",
+                _ => "This Voice Lab render recipe cannot be used here (" + voice.Code + "). Your generated audio and edits are saved."
+            };
+        if (exception is VoiceLabAssetException or VoiceLabTempoException) return exception.Message;
         if (exception is MediaException media) return $"{action} stopped while {media.Operation} ({media.NativeError}). Your edits are saved.";
         if (exception is VoxClipException known)
         {

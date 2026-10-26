@@ -117,8 +117,20 @@ internal static class CliOperations
                 arguments.GetValue<string?>("--clip"), arguments.GetValue<string?>("--range"));
             project = EditingEngine.ApplyToProject(project, state);
         }
-        var plan = BuildPlan(project, true);
-        RequireExportable(plan, project.Transcript is null ? true : EditingEngine.Summarize(State(project)).CanExport);
+        var scope = project.Edits.ActiveClipId is { } clipId ? VoiceLabOutputScope.Clip(clipId) : VoiceLabOutputScope.Full;
+        VoiceLabRenderInput? voice = null;
+        if (project.SchemaVersion == 3)
+        {
+            var prepared = VoiceLabRenderContract.Prepare(project, scope, VoiceLabLabelPosition.TopRight);
+            if (prepared.OutputPlan.RequiresSyntheticRendering)
+                voice = VoiceLabRenderInput.Capture(project, prepared, Path.Combine(DataLocations.Resolve().Root, "VoiceLab"));
+        }
+        else VoiceLabProject.RequireLegacyRendering(project, scope);
+        var plan = BuildPlanUnchecked(project, true);
+        if (voice is null)
+            RequireExportable(plan, project.Transcript is null || EditingEngine.Summarize(State(project)).CanExport);
+        else if (voice.Prepared.OutputPlan.OutputSamples <= 0)
+            throw new VoxClipException(VoxClipErrorCode.EverythingCut, "Keep at least one word before exporting.");
         if (media.IsHdr && !ToneMapper.Available && !arguments.GetValue<bool>("--quiet"))
             Console.Error.WriteLine("This video is HDR. Colours are converted to standard range and may look flatter.");
         var aspect = arguments.GetValue<string?>("--aspect") is { } aspectText ? Aspect(aspectText) : project.Export.Aspect;
@@ -131,9 +143,10 @@ internal static class CliOperations
         if (captionStyle is not null)
         {
             captions = await CaptionEngine.BuildAsync(new(captionStyle, project.Captions with { StyleId = captionStyle.Id }, size,
-                EditingEngine.CaptionWords(State(project), plan), project.Transcript?.Language, plan.Duration), ServicesMergeAdapter.GlyphShaper(), null, ct).ConfigureAwait(false);
+                voice?.Prepared.OutputPlan.Captions ?? EditingEngine.CaptionWords(State(project), plan), project.Transcript?.Language,
+                voice?.Prepared.OutputPlan.Duration ?? plan.Duration), ServicesMergeAdapter.GlyphShaper(), null, ct).ConfigureAwait(false);
         }
-        var snapshot = new ComposeSnapshot(media, plan, style == "off" ? null : captions, output);
+        var snapshot = new ComposeSnapshot(media, plan, style == "off" ? null : captions, output) { VoiceLab = voice };
         snapshot = snapshot.VoiceLab?.CaptureSnapshot(snapshot) ?? snapshot;
         var target = project.Edits.ActiveClipId is { } selectedClip ? (ExportTarget)new ExportTarget.Clip(selectedClip) : new ExportTarget.FullEdit();
         var audioPath = arguments.GetValue<string?>("--audio-out") is { } audioDestination ? OutputSafety.Resolve(audioDestination) : null;
@@ -425,6 +438,11 @@ internal static class CliOperations
     internal static EditPlan BuildPlan(Project project, bool activeClip)
     {
         VoiceLabProject.RequireLegacyRendering(project, activeClip && project.Edits.ActiveClipId is { } id ? VoiceLabOutputScope.Clip(id) : VoiceLabOutputScope.Full);
+        return BuildPlanUnchecked(project, activeClip);
+    }
+
+    private static EditPlan BuildPlanUnchecked(Project project, bool activeClip)
+    {
         var reference = project.Media.Source;
         var rate = reference.Audio?.SampleRate ?? 48_000;
         if (project.Edits.CutWordIds.Count == 0 && project.Edits.CutPauseIds.Count == 0 && (!activeClip || project.Edits.ActiveClipId is null))

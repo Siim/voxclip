@@ -93,8 +93,23 @@ internal static class CliApplication
         {
             return FailRun(exception.WireCode, FailureMessage(exception), exception.ExitCode);
         }
-        catch (VoxClip.Core.Domain.VoiceLab.VoiceLabProjectException exception) when (exception.Code == VoxClip.Core.Domain.VoiceLab.VoiceLabProjectErrorCode.UnsupportedRendering)
-        { return FailRun("exportFailed", "This build cannot preview or export generated voice segments yet. Your video and edits are still here.", 5); }
+        catch (VoxClip.Core.Domain.VoiceLab.VoiceLabProjectException exception)
+        { return FailRun("exportFailed", exception.Code switch
+            {
+                VoxClip.Core.Domain.VoiceLab.VoiceLabProjectErrorCode.UnsupportedRendering or VoxClip.Core.Domain.VoiceLab.VoiceLabProjectErrorCode.NeedsVoiceLabUpgrade =>
+                    "This Voice Lab project needs a reviewed v3 render recipe before export. Your video and edits are still here.",
+                VoxClip.Core.Domain.VoiceLab.VoiceLabProjectErrorCode.VideoModeUnsupported =>
+                    "This Voice Lab video timing or mode is not supported in this build. Your generated audio and edits are saved.",
+                VoxClip.Core.Domain.VoiceLab.VoiceLabProjectErrorCode.UnsupportedAssetFormat =>
+                    "This Windows build cannot read this generated audio format. Keep the paid file for a supported build.",
+                VoxClip.Core.Domain.VoiceLab.VoiceLabProjectErrorCode.CleanAudioUnsupported =>
+                    "This Voice Lab Clean audio edit cannot be rendered in this build. Your video and edits are saved.",
+                _ => "This Voice Lab render recipe cannot be used here (" + exception.Code + "). Your generated audio and edits are saved."
+            }, 5); }
+        catch (VoxClip.Media.VoiceLab.VoiceLabAssetException exception)
+        { return FailRun("exportFailed", exception.Message, 5); }
+        catch (VoxClip.Media.VoiceLab.VoiceLabTempoException exception)
+        { return FailRun("exportFailed", exception.Message, 5); }
         catch (JsonException) { return FailRun("projectUnreadable", "This project file can't be read: the input JSON is invalid.", 3); }
         catch (FileNotFoundException) { return FailRun("mediaMissing", "The input file cannot be found.", 3); }
         catch (DirectoryNotFoundException) { return FailRun("mediaMissing", "The input folder cannot be found.", 3); }
