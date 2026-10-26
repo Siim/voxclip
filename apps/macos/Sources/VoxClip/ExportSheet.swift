@@ -32,7 +32,7 @@ import VoxClipCore
                     ForEach(model.exportClipIDs, id: \.self) { id in Text(model.project.edits.clips.first { $0.id == id }?.title ?? "Clip").tag(id) }
                 }.onAppear { let target = model.exportClipIDs.first ?? "full"; draft.load(target: target, model: model); shareTarget = target }
                 TextEditor(text: Binding(get: { draft.captionDraft }, set: { draft.edit($0); copied = false })).focused($captionFocused).frame(height: 90).border(Color.secondary.opacity(0.3))
-                HStack { Text("\(ShareText.weight(draft.captionDraft))/280 X").foregroundStyle(ShareText.weight(draft.captionDraft) > 280 ? Color.orange : Color.secondary); Text("\(draft.captionDraft.unicodeScalars.count)/3,000 LinkedIn").foregroundStyle(.secondary) }.font(.caption.monospacedDigit())
+                HStack { Text("\(ShareText.weight(draft.captionDraft))/280 X").foregroundStyle(ShareText.weight(draft.captionDraft) > 280 ? DesignValues.color("status.warning") : Color.secondary); Text("\(draft.captionDraft.unicodeScalars.count)/3,000 LinkedIn").foregroundStyle(.secondary) }.font(.caption.monospacedDigit())
                 HStack {
                     Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting(model.exports.map(\.outputURL)) }
                     Button(copied ? "Caption copied." : "Copy caption") { commitCaption(); copyText(draft.captionDraft); copied = true; copyRevision += 1 }

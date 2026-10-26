@@ -44,12 +44,11 @@ struct DemoFrame: View {
     let model: EditorModel
     var body: some View {
         ZStack {
-            Color(red: 0.11, green: 0.14, blue: 0.16)
             VStack(spacing: 18) {
-                Image(systemName: "person.crop.rectangle").font(.system(size: 70, weight: .ultraLight)).foregroundStyle(.white.opacity(0.6))
-                Text("Synthetic preview").font(.title3).foregroundStyle(.white)
-                Text("No source video is loaded").font(.caption).foregroundStyle(.white.opacity(0.7))
-                Text(timecode(model.sourceTime)).font(DesignValues.mono()).foregroundStyle(.white.opacity(0.7))
+                Image(systemName: "person.crop.rectangle").font(.system(size: 70, weight: .ultraLight)).foregroundStyle(DesignValues.color("overlay.foreground").opacity(0.6))
+                Text("Synthetic preview").font(.title3).foregroundStyle(DesignValues.color("overlay.foreground"))
+                Text("No source video is loaded").font(.caption).foregroundStyle(DesignValues.color("overlay.foreground").opacity(0.7))
+                Text(timecode(model.sourceTime)).font(DesignValues.mono()).foregroundStyle(DesignValues.color("overlay.foreground").opacity(0.7))
             }
         }.accessibilityLabel("Synthetic in-memory preview, \(timecode(model.sourceTime))")
     }

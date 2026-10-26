@@ -182,7 +182,7 @@ struct TranscriptAppearance: Equatable {
         if cut { result[.foregroundColor] = DesignValues.nsColor("word.cut") }
         if state.fillers.contains(span.id) && !cut {
             result[.vcUnderline] = 1
-            result[.vcUnderlineColor] = DesignValues.nsColor("status.warning")
+            result[.vcUnderlineColor] = DesignValues.nsColor("word.filler")
         } else if !cut, state.lowConfidence, let confidence = words[span.id]?.conf, confidence < 0.6 {
             result[.vcUnderline] = 2
             result[.vcUnderlineColor] = DesignValues.nsColor("word.lowConfidence")

@@ -50,7 +50,7 @@ import VoxClipMedia
                     #endif
                 } else if let native = model.nativePreview { PlayerSurface(player: native.player) }
                 if model.sourceDuration == 0 && !model.document.demo {
-                    Label("Your video will appear here.", systemImage: "play.rectangle").foregroundStyle(.white.opacity(0.7))
+                    Label("Your video will appear here.", systemImage: "play.rectangle").foregroundStyle(DesignValues.color("overlay.foreground").opacity(0.7))
                 }
                 if !model.document.demo, model.previewError == nil, let style = model.app.styles.first(where: { $0.id == model.project.captions.styleId }), style.position.userDraggable {
                     CaptionPositionOverlay(model: model, style: style)
@@ -93,7 +93,7 @@ import VoxClipMedia
             Button(model.isPlaying ? "Pause" : "Play", systemImage: model.isPlaying ? "pause.fill" : "play.fill") { model.transport(" ") }.labelStyle(.iconOnly).buttonStyle(.plain)
             Text("\(timecode(model.playhead)) / \(timecode(model.duration))").font(DesignValues.mono(13)).monospacedDigit()
             if model.playbackRate != 1 { Text("\(model.playbackRate.formatted())×").font(.caption) }
-        }.foregroundStyle(.white).padding(.horizontal, 16).frame(height: 36)
+        }.foregroundStyle(DesignValues.color("overlay.foreground")).padding(.horizontal, 16).frame(height: 36)
     }
     private func locateMedia() {
         let panel = NSOpenPanel(); panel.allowedContentTypes = [.movie]; panel.allowsMultipleSelection = false
@@ -143,24 +143,25 @@ import VoxClipMedia
         GeometryReader { geometry in
             if dragged != nil {
                 Canvas { context, size in
+                    let unsafe = DesignValues.color("stage").opacity(0.3), guide = DesignValues.color("overlay.foreground").opacity(0.6)
                     switch aspectClass {
                     case "portrait":
-                        context.fill(Path(CGRect(x: 0, y: 0, width: size.width, height: size.height * 0.12)), with: .color(.black.opacity(0.3)))
-                        context.fill(Path(CGRect(x: 0, y: size.height * 0.78, width: size.width, height: size.height * 0.22)), with: .color(.black.opacity(0.3)))
-                        context.fill(Path(CGRect(x: size.width * 0.88, y: 0, width: size.width * 0.12, height: size.height)), with: .color(.black.opacity(0.3)))
+                        context.fill(Path(CGRect(x: 0, y: 0, width: size.width, height: size.height * 0.12)), with: .color(unsafe))
+                        context.fill(Path(CGRect(x: 0, y: size.height * 0.78, width: size.width, height: size.height * 0.22)), with: .color(unsafe))
+                        context.fill(Path(CGRect(x: size.width * 0.88, y: 0, width: size.width * 0.12, height: size.height)), with: .color(unsafe))
                     case "square", "landscape":
                         let bottom = aspectClass == "square" ? 0.12 : 0.10
-                        context.fill(Path(CGRect(x: 0, y: size.height * (1 - bottom), width: size.width, height: size.height * bottom)), with: .color(.black.opacity(0.3)))
+                        context.fill(Path(CGRect(x: 0, y: size.height * (1 - bottom), width: size.width, height: size.height * bottom)), with: .color(unsafe))
                     default: break
                     }
                     for fraction in [1.0 / 3, 0.5, 2.0 / 3] {
                         var line = Path(); line.move(to: CGPoint(x: size.width * fraction, y: 0)); line.addLine(to: CGPoint(x: size.width * fraction, y: size.height))
                         line.move(to: CGPoint(x: 0, y: size.height * fraction)); line.addLine(to: CGPoint(x: size.width, y: size.height * fraction))
-                        context.stroke(line, with: .color(.white.opacity(0.6)), style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
+                        context.stroke(line, with: .color(guide), style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
                     }
                 }.allowsHitTesting(false).accessibilityHidden(true)
             }
-            RoundedRectangle(cornerRadius: 4).stroke(.white.opacity(hovering || dragged != nil ? 0.8 : 0), style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
+            RoundedRectangle(cornerRadius: 4).stroke(DesignValues.color("overlay.foreground").opacity(hovering || dragged != nil ? 0.8 : 0), style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
                 .frame(width: max(80, geometry.size.width * 0.75), height: max(32, geometry.size.height * 0.12))
                 .contentShape(Rectangle())
                 .position(x: (dragged?.x ?? CGFloat(position.x)) * geometry.size.width, y: (dragged?.y ?? CGFloat(position.y)) * geometry.size.height)

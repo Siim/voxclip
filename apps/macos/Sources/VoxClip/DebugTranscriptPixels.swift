@@ -60,7 +60,7 @@ import VoxClipCore
             guard let bitmap = captured, let jpeg = bitmap.representation(using: .jpeg, properties: [.compressionFactor: 0.85]) else { throw CocoaError(.fileWriteUnknown) }
             try jpeg.write(to: directory.appendingPathComponent("transcript-decorations-\(name).jpg"))
             appearance.performAsCurrentDrawingAppearance {
-                for (id, token, strike) in [("pixel-cut", "cut.stroke", true), ("pixel-filler", "status.warning", false), ("pixel-low", "word.lowConfidence", false)] {
+                for (id, token, strike) in [("pixel-cut", "cut.stroke", true), ("pixel-filler", "word.filler", false), ("pixel-low", "word.lowConfidence", false)] {
                     guard let span = text.map.span(id: id) else { results.append(.init(name: "\(name) \(id) pixels", passed: false)); continue }
                     let lower = line.locationForCharacter(at: span.range.location).x + text.textContainerOrigin.x + fragment.layoutFragmentFrame.minX + line.typographicBounds.minX
                     let upper = line.locationForCharacter(at: NSMaxRange(span.range)).x + text.textContainerOrigin.x + fragment.layoutFragmentFrame.minX + line.typographicBounds.minX
