@@ -7,6 +7,25 @@
                 <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
                 <ResourceDictionary Source="Themes/Tokens.xaml" />
             </ResourceDictionary.MergedDictionaries>
+            <!-- Petrol accent ramp (doc/design.md section 14): light fills use Dark1 (accent.default) and
+                 Dark2 (accent.pressed); dark fills use Light2 (accent.text). High Contrast keeps the system colours.
+                 WinUI 2.3.9 builds TextOnAccentFillColorPrimaryBrush from its own colour with StaticResource, so
+                 framework controls may keep #FFFFFF / #000000 on the accent; both still pass 4.5:1. -->
+            <ResourceDictionary.ThemeDictionaries>
+                <ResourceDictionary x:Key="Light">
+                    <Color x:Key="SystemAccentColorDark1">#1C6B69</Color>
+                    <Color x:Key="SystemAccentColorDark2">#155755</Color>
+                    <Color x:Key="SystemAccentColorDark3">#0F4544</Color>
+                    <Color x:Key="TextOnAccentFillColorPrimary">#FAF9F6</Color>
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="Default">
+                    <Color x:Key="SystemAccentColor">#237D7A</Color>
+                    <Color x:Key="SystemAccentColorLight1">#3F9E98</Color>
+                    <Color x:Key="SystemAccentColorLight2">#63BDB6</Color>
+                    <Color x:Key="SystemAccentColorLight3">#8FD3CD</Color>
+                    <Color x:Key="TextOnAccentFillColorPrimary">#141517</Color>
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
             <Style x:Key="HelperText" TargetType="TextBlock" BasedOn="{StaticResource CaptionTextBlockStyle}">
                 <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
                 <Setter Property="TextWrapping" Value="Wrap" />
