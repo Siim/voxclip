@@ -10,6 +10,10 @@ export const minimums = { text: 4.5, accent: 4.5, ui: 3 };
 // composited top first (an overlay over what sits under it). Foregrounds with alpha are
 // composited over the background.
 const surfaces = ['bg.surface', 'bg.sunken', 'bg.window', 'bg.elevated'];
+// System materials the apps never paint, approximated per mode. glass.sidebar is the macOS
+// sidebar's Liquid Glass as the ADR-R29 mockups draw it over the page: light
+// rgba(237,236,231,0.80), dark rgba(46,47,51,0.78).
+export const materials = { 'glass.sidebar': { light: '#EDECE7CC', dark: '#2E2F33C7' } };
 const tokenPairs = [
   ...[...surfaces, 'bg.input', 'bg.muted', 'pause.background', 'accent.soft',
     'status.dangerBackground', 'status.warningBackground', 'status.successBackground', 'status.infoBackground']
@@ -17,7 +21,12 @@ const tokenPairs = [
   ...['text.secondary', 'text.muted', 'text.tertiary', 'accent.text', 'status.dangerForeground', 'status.warning', 'status.success']
     .flatMap(foreground => surfaces.map(background => ['text', foreground, background])),
   ['text', 'text.muted', 'pause.background'],
+  ['text', 'text.secondary', ['clip.badgeBackground', 'bg.surface'], 'neutral clip badge'],
+  ['text', 'text.secondary', ['clip.badgeBackground', 'bg.sunken'], 'neutral clip badge'],
+  ['text', 'text.secondary', ['clip.badgeBackground', 'glass.sidebar', 'bg.surface'], 'neutral clip badge on the sidebar glass'],
+  ['text', 'text.primary', 'selection.transcript', 'Windows transcript selection'],
   ['text', 'word.cut', 'bg.surface'],
+  ['text', 'word.cut', 'pause.background', 'cut word that matches a search'],
   ['text', 'word.filler', 'bg.surface'],
   ['text', 'text.primary', ['overlay.drop', 'text.primary']],
   ['text', 'overlay.foreground', 'stage'],
@@ -32,6 +41,13 @@ const tokenPairs = [
   ['ui', 'focus.ring', 'bg.elevated'],
   ['ui', 'line.strong', ['overlay.transportOpaque', 'stage']],
   ...['timeline.kept', 'cut.fill', 'cut.pauseFill', 'timeline.playhead', 'timeline.clipBracket'].map(foreground => ['ui', foreground, 'timeline.track']),
+  // The Mac draws its playhead, clip brackets and clip numbers in DesignValues.accentText,
+  // which is accent.text while the system accent is Petrol; the timeline.* marks are Windows'.
+  ['ui', 'accent.text', 'timeline.track', 'Mac playhead line on the track'],
+  ['ui', 'accent.text', ['timeline.clipBand', 'timeline.track'], 'Mac playhead line in the active clip band'],
+  ['text', 'accent.text', 'bg.surface', 'Mac 9 pt clip numbers on the timeline strip'],
+  ['ui', 'timeline.waveform', ['timeline.keptBackground', 'timeline.track'], 'waveform bars on the kept-speech bed'],
+  ['ui', 'timeline.playhead', ['timeline.keptBackground', 'timeline.track']],
   ['ui', 'timeline.playhead', 'bg.sunken'],
   ['ui', 'timeline.clipBracket', 'bg.sunken'],
   ['ui', 'timeline.clipBracket', 'bg.surface'],
@@ -53,28 +69,37 @@ export const exempt = {
   'selection.text': 'platform selection colour',
   'record.button': 'M2 recording UI, not drawn yet',
   'record.live': 'M2 recording UI, not drawn yet',
-  'timeline.waveform': 'decorative texture over kept speech',
-  'timeline.clipBand': 'decorative tint; brackets and badges identify clips',
+  'timeline.scopeDim': 'dims the track outside the selected clip on purpose; brackets and trim handles mark the scope',
   'overlay.dropZoneBorder': 'decorative; the zone icon and label identify it',
 };
 
-// Windows draws on-accent text from the App.xaml ramp, not from tokens.
+// Windows draws accent text and on-accent text from the App.xaml ramp, not from tokens. The
+// labels name the WinUI 2.3.9 brushes that use each ramp colour.
 const windowsPairs = {
   Light: [
     ['accent', 'TextOnAccentFillColorPrimary', 'SystemAccentColorDark1', 'AccentButton rest'],
     ['accent', 'TextOnAccentFillColorPrimary', ['SystemAccentColorDark1@0.9', 'bg.window'], 'AccentButton pointer over'],
-    ['accent', '#FFFFFF', 'SystemAccentColorDark1', 'WinUI default on-accent text'],
-    ['text', 'SystemAccentColorDark2', 'bg.window', 'AccentTextFillColorPrimary'],
-    ['text', 'SystemAccentColorDark2', 'bg.surface', 'AccentTextFillColorPrimary'],
+    ['accent', '#FFFFFF', 'SystemAccentColorDark1', 'WinUI default on-accent text, AccentAAFillColorDefault'],
+    ['accent', '#FFFFFF', 'SystemAccentColorDark2', 'AccentAAFillColorSecondary'],
+    ['accent', '#FFFFFF', 'SystemAccentColor', 'selected text, SystemControlHighlightAccentBrush, AccentAAFillColorTertiary'],
+    ...['bg.window', 'bg.surface'].flatMap(background => [
+      ['text', 'SystemAccentColorDark2', background, 'AccentTextFillColorPrimary'],
+      ['text', 'SystemAccentColorDark3', background, 'AccentTextFillColorSecondary'],
+      ['text', 'SystemAccentColorDark1', background, 'AccentTextFillColorTertiary'],
+    ]),
     ['ui', 'SystemAccentColorDark1', 'bg.surface', 'checked or on state fill'],
   ],
   Default: [
     ['accent', 'TextOnAccentFillColorPrimary', 'SystemAccentColorLight2', 'AccentButton rest'],
     ['accent', 'TextOnAccentFillColorPrimary', ['SystemAccentColorLight2@0.9', 'bg.window'], 'AccentButton pointer over'],
-    ['accent', '#000000', 'SystemAccentColorLight2', 'WinUI default on-accent text'],
-    ['accent', '#FFFFFF', 'SystemAccentColor', 'white text on SystemControlHighlightAccentBrush'],
-    ['text', 'SystemAccentColorLight3', 'bg.window', 'AccentTextFillColorPrimary'],
-    ['text', 'SystemAccentColorLight3', 'bg.surface', 'AccentTextFillColorPrimary'],
+    ['accent', '#000000', 'SystemAccentColorLight2', 'WinUI default on-accent text, AccentAAFillColorDefault'],
+    ['accent', '#000000', 'SystemAccentColorLight3', 'AccentAAFillColorSecondary'],
+    ['accent', '#000000', 'SystemAccentColorLight1', 'AccentAAFillColorTertiary'],
+    ['accent', '#FFFFFF', 'SystemAccentColor', 'selected text, SystemControlHighlightAccentBrush'],
+    ...['bg.window', 'bg.surface'].flatMap(background => [
+      ['text', 'SystemAccentColorLight3', background, 'AccentTextFillColorPrimary and Secondary'],
+      ['text', 'SystemAccentColorLight2', background, 'AccentTextFillColorTertiary'],
+    ]),
     ['ui', 'SystemAccentColorLight2', 'bg.surface', 'checked or on state fill'],
   ],
 };
@@ -128,7 +153,7 @@ export function contrastRows(source, xaml) {
     rows.push({ category, ...context, foreground, background: layers.join(' over '), colors: `${hex(top)} on ${hex(base)}`, ratio, minimum: minimums[category], passed: ratio >= minimums[category] });
   };
   for (const mode of ['light', 'dark']) {
-    const lookup = value => value.startsWith('#') ? value : tokenColor(source, value, mode);
+    const lookup = value => value.startsWith('#') ? value : materials[value]?.[mode] ?? tokenColor(source, value, mode);
     for (const [category, foreground, background, label] of tokenPairs) measure(category, foreground, background, lookup, { platform: 'tokens', mode, label: label ?? '' });
   }
   const ramp = windowsRamp(xaml);

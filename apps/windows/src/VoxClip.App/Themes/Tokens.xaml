@@ -12,7 +12,7 @@
             <SolidColorBrush x:Key="VcLineStrongBrush" Color="#6C6E75" />
             <SolidColorBrush x:Key="VcTextPrimaryBrush" Color="#ECEAE4" />
             <SolidColorBrush x:Key="VcTextSecondaryBrush" Color="#A8AAB0" />
-            <SolidColorBrush x:Key="VcTextMutedBrush" Color="#B0B2B8" />
+            <SolidColorBrush x:Key="VcTextMutedBrush" Color="#9C9EA4" />
             <SolidColorBrush x:Key="VcTextTertiaryBrush" Color="#8F9198" />
             <SolidColorBrush x:Key="VcTextDisabledBrush" Color="#777C8D" />
             <SolidColorBrush x:Key="VcAccentDefaultBrush" Color="#237D7A" />
@@ -21,9 +21,10 @@
             <SolidColorBrush x:Key="VcAccentOnBrush" Color="#FAF9F6" />
             <SolidColorBrush x:Key="VcAccentSoftBrush" Color="#1F3F3D" />
             <SolidColorBrush x:Key="VcSelectionTextBrush" Color="{ThemeResource SystemAccentColor}" Opacity="0.4" />
+            <SolidColorBrush x:Key="VcSelectionTranscriptBrush" Color="#1F4C4B" />
             <SolidColorBrush x:Key="VcWordPlayingBackgroundBrush" Color="#237D7A" />
             <SolidColorBrush x:Key="VcWordPlayingForegroundBrush" Color="#FAF9F6" />
-            <SolidColorBrush x:Key="VcWordCutBrush" Color="#8E9097" />
+            <SolidColorBrush x:Key="VcWordCutBrush" Color="#93959C" />
             <SolidColorBrush x:Key="VcWordFillerBrush" Color="#E0AE55" />
             <SolidColorBrush x:Key="VcWordLowConfidenceBrush" Color="#7C7E85" />
             <SolidColorBrush x:Key="VcWordCorrectionDotBrush" Color="#8F9198" />
@@ -40,9 +41,12 @@
             <SolidColorBrush x:Key="VcStatusInfoBackgroundBrush" Color="#232428" />
             <SolidColorBrush x:Key="VcRecordButtonBrush" Color="#E5484D" />
             <SolidColorBrush x:Key="VcRecordLiveBrush" Color="#FF5C5C" />
+            <SolidColorBrush x:Key="VcClipBadgeBackgroundBrush" Color="#1AECEAE4" />
             <SolidColorBrush x:Key="VcTimelineTrackBrush" Color="#26272B" />
             <SolidColorBrush x:Key="VcTimelineKeptBrush" Color="#7A7D85" />
-            <SolidColorBrush x:Key="VcTimelineWaveformBrush" Color="#59B0B2B8" />
+            <SolidColorBrush x:Key="VcTimelineKeptBackgroundBrush" Color="#17ECEAE4" />
+            <SolidColorBrush x:Key="VcTimelineWaveformBrush" Color="#94ECEAE4" />
+            <SolidColorBrush x:Key="VcTimelineScopeDimBrush" Color="#9E141517" />
             <SolidColorBrush x:Key="VcTimelineClipBracketBrush" Color="#63BDB6" />
             <SolidColorBrush x:Key="VcTimelineClipBandBrush" Color="#1F237D7A" />
             <SolidColorBrush x:Key="VcTimelinePlayheadBrush" Color="#63BDB6" />
@@ -66,7 +70,7 @@
             <SolidColorBrush x:Key="VcLineStrongBrush" Color="#85878E" />
             <SolidColorBrush x:Key="VcTextPrimaryBrush" Color="#1A1B1F" />
             <SolidColorBrush x:Key="VcTextSecondaryBrush" Color="#575A61" />
-            <SolidColorBrush x:Key="VcTextMutedBrush" Color="#55585F" />
+            <SolidColorBrush x:Key="VcTextMutedBrush" Color="#5E6168" />
             <SolidColorBrush x:Key="VcTextTertiaryBrush" Color="#66696F" />
             <SolidColorBrush x:Key="VcTextDisabledBrush" Color="#9396A4" />
             <SolidColorBrush x:Key="VcAccentDefaultBrush" Color="#1C6B69" />
@@ -75,9 +79,10 @@
             <SolidColorBrush x:Key="VcAccentOnBrush" Color="#FAF9F6" />
             <SolidColorBrush x:Key="VcAccentSoftBrush" Color="#D3E6E3" />
             <SolidColorBrush x:Key="VcSelectionTextBrush" Color="{ThemeResource SystemAccentColor}" Opacity="0.4" />
+            <SolidColorBrush x:Key="VcSelectionTranscriptBrush" Color="#C5D7D4" />
             <SolidColorBrush x:Key="VcWordPlayingBackgroundBrush" Color="#1C6B69" />
             <SolidColorBrush x:Key="VcWordPlayingForegroundBrush" Color="#FAF9F6" />
-            <SolidColorBrush x:Key="VcWordCutBrush" Color="#6F7178" />
+            <SolidColorBrush x:Key="VcWordCutBrush" Color="#66686F" />
             <SolidColorBrush x:Key="VcWordFillerBrush" Color="#9A5B00" />
             <SolidColorBrush x:Key="VcWordLowConfidenceBrush" Color="#7E8087" />
             <SolidColorBrush x:Key="VcWordCorrectionDotBrush" Color="#66696F" />
@@ -94,9 +99,12 @@
             <SolidColorBrush x:Key="VcStatusInfoBackgroundBrush" Color="#F0EFEA" />
             <SolidColorBrush x:Key="VcRecordButtonBrush" Color="#E5484D" />
             <SolidColorBrush x:Key="VcRecordLiveBrush" Color="#FF5C5C" />
+            <SolidColorBrush x:Key="VcClipBadgeBackgroundBrush" Color="#171A1B1F" />
             <SolidColorBrush x:Key="VcTimelineTrackBrush" Color="#E4E2DC" />
             <SolidColorBrush x:Key="VcTimelineKeptBrush" Color="#74777E" />
-            <SolidColorBrush x:Key="VcTimelineWaveformBrush" Color="#5955585F" />
+            <SolidColorBrush x:Key="VcTimelineKeptBackgroundBrush" Color="#121A1B1F" />
+            <SolidColorBrush x:Key="VcTimelineWaveformBrush" Color="#851A1B1F" />
+            <SolidColorBrush x:Key="VcTimelineScopeDimBrush" Color="#A8F0EFEA" />
             <SolidColorBrush x:Key="VcTimelineClipBracketBrush" Color="#1C6B69" />
             <SolidColorBrush x:Key="VcTimelineClipBandBrush" Color="#1F1C6B69" />
             <SolidColorBrush x:Key="VcTimelinePlayheadBrush" Color="#1C6B69" />
@@ -129,6 +137,7 @@
             <SolidColorBrush x:Key="VcAccentOnBrush" Color="{ThemeResource SystemColorHighlightTextColor}" />
             <SolidColorBrush x:Key="VcAccentSoftBrush" Color="{ThemeResource SystemColorWindowColor}" />
             <SolidColorBrush x:Key="VcSelectionTextBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+            <SolidColorBrush x:Key="VcSelectionTranscriptBrush" Color="{ThemeResource SystemColorHighlightColor}" />
             <SolidColorBrush x:Key="VcWordPlayingBackgroundBrush" Color="{ThemeResource SystemColorHighlightColor}" />
             <SolidColorBrush x:Key="VcWordPlayingForegroundBrush" Color="{ThemeResource SystemColorHighlightTextColor}" />
             <SolidColorBrush x:Key="VcWordCutBrush" Color="{ThemeResource SystemColorGrayTextColor}" />
@@ -148,9 +157,12 @@
             <SolidColorBrush x:Key="VcStatusInfoBackgroundBrush" Color="{ThemeResource SystemColorWindowColor}" />
             <SolidColorBrush x:Key="VcRecordButtonBrush" Color="{ThemeResource SystemColorHighlightColor}" />
             <SolidColorBrush x:Key="VcRecordLiveBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+            <SolidColorBrush x:Key="VcClipBadgeBackgroundBrush" Color="{ThemeResource SystemColorWindowColor}" />
             <SolidColorBrush x:Key="VcTimelineTrackBrush" Color="{ThemeResource SystemColorWindowColor}" />
             <SolidColorBrush x:Key="VcTimelineKeptBrush" Color="{ThemeResource SystemColorButtonFaceColor}" />
+            <SolidColorBrush x:Key="VcTimelineKeptBackgroundBrush" Color="{ThemeResource SystemColorButtonFaceColor}" />
             <SolidColorBrush x:Key="VcTimelineWaveformBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="VcTimelineScopeDimBrush" Color="#00000000" />
             <SolidColorBrush x:Key="VcTimelineClipBracketBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
             <SolidColorBrush x:Key="VcTimelineClipBandBrush" Color="{ThemeResource SystemColorHighlightColor}" />
             <SolidColorBrush x:Key="VcTimelinePlayheadBrush" Color="{ThemeResource SystemColorHighlightColor}" />
@@ -184,10 +196,10 @@
     <Thickness x:Key="VcSpacing8Thickness">32</Thickness>
     <x:Double x:Key="VcSpacing9">48</x:Double>
     <Thickness x:Key="VcSpacing9Thickness">48</Thickness>
-    <x:Double x:Key="VcSpacingPanePaddingMacos">20</x:Double>
-    <Thickness x:Key="VcSpacingPanePaddingMacosThickness">20</Thickness>
-    <x:Double x:Key="VcSpacingPanePaddingWindows">24</x:Double>
-    <Thickness x:Key="VcSpacingPanePaddingWindowsThickness">24</Thickness>
+    <x:Double x:Key="VcSpacingPanePaddingMacos">16</x:Double>
+    <Thickness x:Key="VcSpacingPanePaddingMacosThickness">16</Thickness>
+    <x:Double x:Key="VcSpacingPanePaddingWindows">16</x:Double>
+    <Thickness x:Key="VcSpacingPanePaddingWindowsThickness">16</Thickness>
     <x:Double x:Key="VcSpacingInspectorRowGap">8</x:Double>
     <Thickness x:Key="VcSpacingInspectorRowGapThickness">8</Thickness>
     <x:Double x:Key="VcSpacingInspectorSectionGap">20</x:Double>
@@ -196,14 +208,20 @@
     <Thickness x:Key="VcSpacingTileGapThickness">8</Thickness>
     <x:Double x:Key="VcSpacingClipRowPadding">12</x:Double>
     <Thickness x:Key="VcSpacingClipRowPaddingThickness">12</Thickness>
-    <x:Double x:Key="VcSpacingTranscriptParagraphGap">12</x:Double>
-    <Thickness x:Key="VcSpacingTranscriptParagraphGapThickness">12</Thickness>
-    <x:Double x:Key="VcSpacingTranscriptGutter">64</x:Double>
-    <Thickness x:Key="VcSpacingTranscriptGutterThickness">64</Thickness>
+    <x:Double x:Key="VcSpacingTranscriptParagraphGap">20</x:Double>
+    <Thickness x:Key="VcSpacingTranscriptParagraphGapThickness">20</Thickness>
+    <x:Double x:Key="VcSpacingTranscriptGutter">76</x:Double>
+    <Thickness x:Key="VcSpacingTranscriptGutterThickness">76</Thickness>
     <x:Double x:Key="VcSpacingWordHitSlopVertical">2</x:Double>
     <Thickness x:Key="VcSpacingWordHitSlopVerticalThickness">2</Thickness>
     <x:Double x:Key="VcRadiusXs">4</x:Double>
     <CornerRadius x:Key="VcRadiusXsCornerRadius">4</CornerRadius>
+    <x:Double x:Key="VcRadiusControl">6</x:Double>
+    <CornerRadius x:Key="VcRadiusControlCornerRadius">6</CornerRadius>
+    <x:Double x:Key="VcRadiusPane">10</x:Double>
+    <CornerRadius x:Key="VcRadiusPaneCornerRadius">10</CornerRadius>
+    <x:Double x:Key="VcRadiusSheet">14</x:Double>
+    <CornerRadius x:Key="VcRadiusSheetCornerRadius">14</CornerRadius>
     <x:Double x:Key="VcRadiusSm">6</x:Double>
     <CornerRadius x:Key="VcRadiusSmCornerRadius">6</CornerRadius>
     <x:Double x:Key="VcRadiusMd">8</x:Double>
@@ -255,18 +273,21 @@
     <x:Double x:Key="VcSizeWindowMinHeight">600</x:Double>
     <x:Double x:Key="VcSizeTranscriptMinWidth">440</x:Double>
     <x:Double x:Key="VcSizeTranscriptMeasureMax">680</x:Double>
-    <x:Double x:Key="VcSizePreviewColumnMin">300</x:Double>
-    <x:Double x:Key="VcSizePreviewColumnIdeal">380</x:Double>
-    <x:Double x:Key="VcSizePreviewColumnMax">560</x:Double>
+    <x:Double x:Key="VcSizeSidebar">264</x:Double>
+    <x:Double x:Key="VcSizeRightColumnMin">300</x:Double>
+    <x:Double x:Key="VcSizeRightColumnIdeal">388</x:Double>
+    <x:Double x:Key="VcSizeRightColumnMax">560</x:Double>
+    <x:Double x:Key="VcSizeStagePortraitMaxWidth">180</x:Double>
+    <x:Double x:Key="VcSizeStagePortraitMaxHeight">320</x:Double>
     <x:Double x:Key="VcSizeInspectorMin">260</x:Double>
     <x:Double x:Key="VcSizeInspectorIdeal">300</x:Double>
     <x:Double x:Key="VcSizeInspectorMax">380</x:Double>
-    <x:Double x:Key="VcSizeTimelineHeight">56</x:Double>
-    <x:Double x:Key="VcSizeTimelineTrackHeight">24</x:Double>
+    <x:Double x:Key="VcSizeTimelineHeight">72</x:Double>
+    <x:Double x:Key="VcSizeTimelineTrackHeight">30</x:Double>
+    <x:Double x:Key="VcSizeSelectionBarHeight">40</x:Double>
     <x:Double x:Key="VcSizeFooterStatusHeightWindows">32</x:Double>
     <x:Double x:Key="VcSizeTransportPillHeight">36</x:Double>
-    <x:Double x:Key="VcSizeCaptionTileWidth">128</x:Double>
-    <x:Double x:Key="VcSizeCaptionTileHeight">80</x:Double>
+    <x:Double x:Key="VcSizeCaptionTileAspect">0.45</x:Double>
     <x:Double x:Key="VcSizeSettingsWindowMacosWidth">600</x:Double>
     <x:Double x:Key="VcSizeSettingsWindowMacosHeight">480</x:Double>
     <x:Double x:Key="VcSizeSettingsWindowWindowsDefaultItem0">760</x:Double>
@@ -285,7 +306,7 @@
     <x:Double x:Key="VcSizeBreakpointStack">960</x:Double>
     <FontFamily x:Key="VcFontDmSans">ms-appx:///shared/fonts/dm-sans/DMSans-Medium.ttf#DM Sans, Segoe UI Variable</FontFamily>
     <FontFamily x:Key="VcFontGeistMono">Cascadia Mono</FontFamily>
-    <x:String x:Key="VcStatusFontFamily">Geist Mono</x:String>
+    <x:String x:Key="VcStatusFontFamily">Cascadia Mono</x:String>
     <x:Double x:Key="VcStatusFontWeight">400</x:Double>
     <x:Double x:Key="VcStatusFontSize">11</x:Double>
     <x:Double x:Key="VcStatusLineHeight">16</x:Double>
@@ -322,24 +343,24 @@
     <x:Double x:Key="VcTitleFontSize">28</x:Double>
     <x:Double x:Key="VcTitleLineHeight">36</x:Double>
     <x:String x:Key="VcTitleSystemStyle">TitleTextBlockStyle</x:String>
-    <x:String x:Key="VcTranscriptFontFamily">DM Sans</x:String>
+    <x:String x:Key="VcTranscriptFontFamily">Segoe UI Variable Text</x:String>
     <x:Double x:Key="VcTranscriptFontWeight">400</x:Double>
-    <x:Double x:Key="VcTranscriptFontSize">16</x:Double>
-    <x:Double x:Key="VcTranscriptLineHeight">26</x:Double>
+    <x:Double x:Key="VcTranscriptFontSize">19</x:Double>
+    <x:Double x:Key="VcTranscriptLineHeight">32</x:Double>
     <x:Double x:Key="VcTranscriptZoomMin">13</x:Double>
     <x:Double x:Key="VcTranscriptZoomMax">28</x:Double>
-    <x:Double x:Key="VcTranscriptLineHeightMultiplier">1.65</x:Double>
-    <x:String x:Key="VcPauseTokenFontFamily">Geist Mono</x:String>
+    <x:Double x:Key="VcTranscriptLineHeightMultiplier">1.6842</x:Double>
+    <x:String x:Key="VcPauseTokenFontFamily">Cascadia Mono</x:String>
     <x:Double x:Key="VcPauseTokenFontWeight">400</x:Double>
     <x:Double x:Key="VcPauseTokenFontSize">11</x:Double>
     <x:Double x:Key="VcPauseTokenLineHeight">16</x:Double>
     <x:String x:Key="VcPauseTokenFeaturesItem0">tnum</x:String>
-    <x:String x:Key="VcTimecodeFontFamily">Geist Mono</x:String>
+    <x:String x:Key="VcTimecodeFontFamily">Cascadia Mono</x:String>
     <x:Double x:Key="VcTimecodeFontWeight">500</x:Double>
     <x:Double x:Key="VcTimecodeFontSize">12</x:Double>
     <x:Double x:Key="VcTimecodeLineHeight">16</x:Double>
     <x:String x:Key="VcTimecodeFeaturesItem0">tnum</x:String>
-    <x:String x:Key="VcTransportFontFamily">Geist Mono</x:String>
+    <x:String x:Key="VcTransportFontFamily">Cascadia Mono</x:String>
     <x:Double x:Key="VcTransportFontWeight">600</x:Double>
     <x:Double x:Key="VcTransportFontSize">16</x:Double>
     <x:Double x:Key="VcTransportLineHeight">20</x:Double>

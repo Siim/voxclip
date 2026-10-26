@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
-import { appXamlPath, channels, composite, contrast, contrastRows, coverage, minimums, windowsRamp } from './contrast.mjs';
+import { appXamlPath, channels, composite, contrast, contrastRows, coverage, materials, minimums, windowsRamp } from './contrast.mjs';
 
 const source = JSON.parse(await readFile(new URL('../../shared/design/tokens.json', import.meta.url), 'utf8'));
 const xaml = await readFile(new URL(`../../${appXamlPath}`, import.meta.url), 'utf8');
@@ -27,6 +27,36 @@ test('every text, on-accent and boundary pair meets its minimum in both modes an
   }
 });
 
+test('the ADR-R29 badge, selection and boundary pairs are checked in both modes', () => {
+  const rows = contrastRows(source, xaml);
+  const required = [
+    ['text', 'text.secondary', 'clip.badgeBackground over bg.surface'],
+    ['text', 'text.secondary', 'clip.badgeBackground over bg.sunken'],
+    ['text', 'text.secondary', 'clip.badgeBackground over glass.sidebar over bg.surface'],
+    ['text', 'text.primary', 'selection.transcript'],
+    ['ui', 'line.strong', 'bg.sunken'],
+  ];
+  for (const mode of ['light', 'dark']) {
+    for (const [category, foreground, background] of required) {
+      const row = rows.find(candidate => candidate.platform === 'tokens' && candidate.mode === mode && candidate.foreground === foreground && candidate.background === background);
+      assert.ok(row?.category === category && row.minimum === minimums[category] && row.passed, `${mode} ${foreground} on ${background}`);
+    }
+  }
+  assert.deepEqual(Object.keys(materials['glass.sidebar']).sort(), ['dark', 'light']);
+});
+
+test('the text hierarchy is monotonic on every surface in both modes', () => {
+  for (const mode of ['light', 'dark']) {
+    for (const surface of ['bg.surface', 'bg.sunken', 'bg.window', 'bg.elevated', 'pause.background']) {
+      const ratio = token => contrast(channels(value(token, mode)).rgb, channels(value(surface, mode)).rgb);
+      const where = `${mode} on ${surface}`;
+      assert.ok(ratio('text.primary') > ratio('text.secondary'), `primary > secondary ${where}`);
+      assert.ok(ratio('text.secondary') > ratio('text.muted'), `secondary > muted ${where}`);
+      assert.ok(ratio('text.secondary') > ratio('text.tertiary'), `secondary > tertiary ${where}`);
+    }
+  }
+});
+
 test('the gate fails a pair below its minimum', () => {
   const changed = structuredClone(source);
   changed.color.text.tertiary.$value.light = '#9396A4';
@@ -40,15 +70,20 @@ test('every colour token is checked or explicitly exempt', () => {
   assert.deepEqual(coverage(source), { missing: [], staleExemptions: [] });
 });
 
-test('the Windows accent ramp in App.xaml matches the tokens and leaves High Contrast alone', () => {
+test('the Windows accent ramp in App.xaml is the pinned Petrol ramp and leaves High Contrast alone', () => {
   const ramp = windowsRamp(xaml);
-  assert.deepEqual(Object.keys(ramp).sort(), ['Default', 'Light']);
-  assert.deepEqual(Object.keys(ramp.Light).sort(), ['SystemAccentColorDark1', 'SystemAccentColorDark2', 'SystemAccentColorDark3', 'TextOnAccentFillColorPrimary']);
-  assert.deepEqual(Object.keys(ramp.Default).sort(), ['SystemAccentColor', 'SystemAccentColorLight1', 'SystemAccentColorLight2', 'SystemAccentColorLight3', 'TextOnAccentFillColorPrimary']);
+  assert.deepEqual(ramp, {
+    Light: { SystemAccentColor: '#237D7A', SystemAccentColorDark1: '#1C6B69', SystemAccentColorDark2: '#155755', SystemAccentColorDark3: '#0F4544', TextOnAccentFillColorPrimary: '#FAF9F6' },
+    Default: { SystemAccentColor: '#237D7A', SystemAccentColorLight1: '#3F9E98', SystemAccentColorLight2: '#63BDB6', SystemAccentColorLight3: '#8FD3CD', TextOnAccentFillColorPrimary: '#141517' },
+  });
+  assert.equal(ramp.Light.SystemAccentColor, value('accent.default', 'dark'));
   assert.equal(ramp.Light.SystemAccentColorDark1, value('accent.default', 'light'));
   assert.equal(ramp.Light.SystemAccentColorDark2, value('accent.pressed', 'light'));
   assert.equal(ramp.Light.TextOnAccentFillColorPrimary, value('accent.on', 'light'));
   assert.equal(ramp.Default.SystemAccentColor, value('accent.default', 'dark'));
   assert.equal(ramp.Default.SystemAccentColorLight2, value('accent.text', 'dark'));
-  assert.notEqual(ramp.Default.TextOnAccentFillColorPrimary, '#000000');
+  const rows = contrastRows(source, xaml).filter(row => row.platform === 'windows');
+  for (const [mode, keys] of [['light', Object.keys(ramp.Light)], ['dark', Object.keys(ramp.Default)]]) {
+    for (const key of keys) assert.ok(rows.some(row => row.mode === mode && [row.foreground, ...row.background.split(' over ')].some(layer => layer.split('@')[0] === key)), `${mode} ${key} is measured`);
+  }
 });

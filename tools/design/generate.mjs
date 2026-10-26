@@ -1,4 +1,4 @@
-import { mkdir, readFile, realpath, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, realpath, rm, rmdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -8,6 +8,8 @@ const namespace = 'com.voxconvo.voxclip';
 const swiftTarget = 'apps/macos/Sources/VoxClip/Design/Tokens.swift';
 const xamlTarget = 'apps/windows/src/VoxClip.App/Themes/Tokens.xaml';
 const assetCatalog = 'apps/macos/Resources/Assets.xcassets';
+// macOS typography families that are the system font rather than a fontFiles token.
+const systemDesigns = { system: '', 'SF Mono': ', design: .monospaced' };
 const capitalize = value => value[0].toUpperCase() + value.slice(1);
 const suffix = parts => parts.map(capitalize).join('');
 const swiftName = parts => parts[0] + suffix(parts.slice(1));
@@ -102,19 +104,21 @@ export function buildOutputs(source) {
     names.add(name);
     xamlValues.push(markup);
   };
-  const addConstant = (parts, value, resourceParts = parts) => {
-    const name = `Vc${suffix(resourceParts)}`;
-    swiftValues.push(`    static let ${swiftName(parts)}: ${typeof value === 'number' ? 'CGFloat' : 'String'} = ${typeof value === 'number' ? value : quote(value)}`);
+  const addConstant = (parts, value) => {
+    const name = `Vc${suffix(parts)}`;
     addResource(name, `    <x:${typeof value === 'number' ? 'Double' : 'String'} x:Key="${name}">${xml(value)}</x:${typeof value === 'number' ? 'Double' : 'String'}>`);
   };
 
   for (const token of tokens) {
     if (['color', 'typography', 'fontFamily'].includes(token.$type)) continue;
-    if (!['dimension', 'duration', 'cubicBezier', 'spring', 'string'].includes(token.$type)) throw new Error(`Unsupported token type ${token.$type}`);
+    if (!['dimension', 'number', 'duration', 'cubicBezier', 'spring', 'string'].includes(token.$type)) throw new Error(`Unsupported token type ${token.$type}`);
     const labels = token.$type === 'dimension' ? ['width', 'height'] : ['x1', 'y1', 'x2', 'y2'];
     const values = flatten(token.$value, token.path, labels);
     constants.push(...values);
-    for (const item of values) {
+    for (const item of values) swiftValues.push(`    static let ${swiftName(item.path)}: ${typeof item.value === 'number' ? 'CGFloat' : 'String'} = ${typeof item.value === 'number' ? item.value : quote(item.value)}`);
+    // $value is the macOS value; a `windows` extension replaces it in Tokens.xaml only.
+    const windows = extensions(token).windows;
+    for (const item of windows === undefined ? values : flatten(windows, token.path, labels)) {
       addConstant(item.path, item.value);
       if (typeof item.value === 'number' && ['spacing', 'stroke', 'radius'].includes(item.path[0])) {
         const type = item.path[0] === 'radius' ? 'CornerRadius' : 'Thickness';
@@ -152,9 +156,9 @@ export function buildOutputs(source) {
       addResource(name, `    <${type} x:Key="${name}">${xml(item.value)}</${type}>`);
     }
     const family = families.find(candidate => candidate.$value === macos.fontFamily);
-    if (!family && macos.fontFamily !== 'system') throw new Error(`Unknown font family ${macos.fontFamily}`);
+    if (!family && !Object.hasOwn(systemDesigns, macos.fontFamily)) throw new Error(`Unknown font family ${macos.fontFamily}`);
     const call = family ? `VoxClipTokenFonts.${family.path.at(-1)}(size: size, weight: ${macos.fontWeight})`
-      : `Font.system(size: size, weight: .${fontWeight(macos.fontWeight)})`;
+      : `Font.system(size: size, weight: .${fontWeight(macos.fontWeight)}${systemDesigns[macos.fontFamily]})`;
     swiftFonts.push(`    @MainActor static func vc${capitalize(kind)}(size: CGFloat = VCTokens.${swiftName(token.path)}FontSize) -> Font {\n        ${call}${macos.features?.includes('tnum') ? '.monospacedDigit()' : ''}\n    }`);
   }
 
@@ -232,6 +236,17 @@ ${xamlValues.join('\n')}
   return { swift, xaml, assets, colorCount: colors.length, constantCount: constants.length };
 }
 
+// Every file under the asset catalog, relative to the repository, except Finder metadata.
+async function catalogFiles(directory = path.join(root, assetCatalog)) {
+  let entries;
+  try { entries = await readdir(directory, { withFileTypes: true }); }
+  catch (error) { if (error.code === 'ENOENT') return []; throw error; }
+  const files = await Promise.all(entries.filter(entry => entry.name !== '.DS_Store').map(entry => entry.isDirectory()
+    ? catalogFiles(path.join(directory, entry.name))
+    : [path.relative(root, path.join(directory, entry.name)).split(path.sep).join('/')]));
+  return files.flat().sort();
+}
+
 async function main() {
   const arguments_ = process.argv.slice(2);
   if (arguments_.length > 1 || (arguments_.length === 1 && arguments_[0] !== '--check')) throw new Error('Usage: node generate.mjs [--check]');
@@ -239,6 +254,19 @@ async function main() {
   const source = JSON.parse(await readFile(path.join(root, 'shared/design/tokens.json'), 'utf8'));
   const output = buildOutputs(source);
   let drift = false;
+  // The generator owns the asset catalog, which bundle.sh compiles whole: a file it does not
+  // produce is drift in --check and removed by generate, so a stale colorset cannot ship.
+  const produced = new Set(output.assets.map(([relative]) => relative));
+  for (const relative of await catalogFiles()) {
+    if (produced.has(relative)) continue;
+    if (check) { drift = true; console.error(`drift: ${relative} is not generated from tokens.json`); continue; }
+    await rm(path.join(root, relative));
+    for (let directory = path.dirname(relative); directory !== assetCatalog && directory.startsWith(`${assetCatalog}/`); directory = path.dirname(directory)) {
+      if ((await readdir(path.join(root, directory))).length > 0) break;
+      await rmdir(path.join(root, directory));
+    }
+    console.log(`removed ${relative}`);
+  }
   for (const [relative, text] of [[swiftTarget, output.swift], [xamlTarget, output.xaml], ...output.assets]) {
     const destination = path.join(root, relative);
     if (check) {
