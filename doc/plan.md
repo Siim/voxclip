@@ -26,6 +26,8 @@ Status on 2026-10-26 distinguishes implemented code, local test evidence, and de
 | AI rewrite, own-voice clone and voice changer | Both native Core services, shared offline contracts, reversible v2/v3 projects, explicit candidate render recipes, deterministic full/clip plans, pure disclosure and paid-audio snapshot validation are integrated; active synth is explicitly blocked at legacy render boundaries | Native audio/video composition, visible/XMP/sidecar disclosure, Windows pitch-fit runtime support and asset lifecycle checks, consent recording and speaker verification, bounded full-take generation, preview/accept/undo and UI |
 | Lip-sync | Spec and interface seams only | Provider adapter, jobs/cancellation, media integration, disclosure and end-to-end acceptance |
 
+Native composition is in progress on both platforms. The reviewed disclosure helper handoff is not integrated; ADR-R27 approves its post-mux XMP staging route while geometry, immutable snapshot and production transaction checks remain open. The minimal Windows `atempo` runtime audit is active locally; its new runtime and native production behavior are not yet accepted.
+
 The agreed follow-on specs also contain AI tighten, Clean audio, camera/microphone recording and expanded ingest. These are still open; a reserved type or protocol is not an implementation.
 
 Continuation order:

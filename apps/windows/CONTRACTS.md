@@ -1,5 +1,10 @@
 # Windows fixed contracts
 
+### 2026-10-26 — Approved disclosure staging route (ADR-R27)
+
+- The reviewed helper API uses one reusable `VoiceLabDisclosureOverlay(plan, width, height, fontPath, captionBlocks)`, drawing after captions via `Draw(output, time, ct)`. Interval-wide caption bounds come from the existing renderer. `VoiceLabDisclosureWriter.StageAsync(sourceMp4, stagedMp4, finalFilename, project, prepared, appVersion, createdAt, ct)` takes finalized muxer output, stages a marked MP4 and returns sidecar bytes for the existing export transaction.
+- The helper handoff is `4deca8f`, not integrated into main. Native owners must first finish geometry bounds and immutable snapshot review fixes, production composition, asset lifetime and transactional disclosure verification. ADR-R27 records the accepted post-mux XMP route, not completed app/CLI rendering; current guards remain active.
+
 ### 2026-10-26 — Reviewed Voice Lab v3 Core integration
 
 - Integrated the paired render contract through `f2a58e3`, including typed malformed-input and label-position rejection, public Swift recipe construction, detached Windows prepared collections, selected-scope seam checks and stretch-aware half-handle requirements. Existing v1/v2 schema definitions and the three frozen service artifacts remain unchanged. `prepare`/`verify` is the native composition handoff; active-synth app and CLI guards remain enforced.
