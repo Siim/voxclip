@@ -41,6 +41,11 @@ const tokenPairs = [
   ['ui', 'focus.ring', 'bg.elevated'],
   ['ui', 'line.strong', ['overlay.transportOpaque', 'stage']],
   ...['timeline.kept', 'cut.fill', 'cut.pauseFill', 'timeline.playhead', 'timeline.clipBracket'].map(foreground => ['ui', foreground, 'timeline.track']),
+  // The Mac draws its playhead, clip brackets and clip numbers in DesignValues.accentText,
+  // which is accent.text while the system accent is Petrol; the timeline.* marks are Windows'.
+  ['ui', 'accent.text', 'timeline.track', 'Mac playhead line on the track'],
+  ['ui', 'accent.text', ['timeline.clipBand', 'timeline.track'], 'Mac playhead line in the active clip band'],
+  ['text', 'accent.text', 'bg.surface', 'Mac 9 pt clip numbers on the timeline strip'],
   ['ui', 'timeline.waveform', ['timeline.keptBackground', 'timeline.track'], 'waveform bars on the kept-speech bed'],
   ['ui', 'timeline.playhead', ['timeline.keptBackground', 'timeline.track']],
   ['ui', 'timeline.playhead', 'bg.sunken'],
@@ -65,7 +70,6 @@ export const exempt = {
   'record.button': 'M2 recording UI, not drawn yet',
   'record.live': 'M2 recording UI, not drawn yet',
   'timeline.scopeDim': 'dims the track outside the selected clip on purpose; brackets and trim handles mark the scope',
-  'timeline.clipBand': 'deprecated decorative tint; brackets and badges identify clips',
   'overlay.dropZoneBorder': 'decorative; the zone icon and label identify it',
 };
 
