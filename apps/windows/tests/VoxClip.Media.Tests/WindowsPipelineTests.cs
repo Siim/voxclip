@@ -172,7 +172,10 @@ public sealed class WindowsPipelineTests : IAsyncLifetime
             Assert.InRange(lag, -1, 1);
             await File.WriteAllTextAsync(Path.Combine(directory, $"export-{aspect}.txt"),
                 $"encoder={result.Encoder}; softwareEncoding={result.SoftwareEncoding}; duration={result.DurationSeconds:F3}; elapsed={result.ElapsedSeconds:F3}; frames={result.Frames}; aacLagSamples={lag}", TestContext.Current.CancellationToken);
-            if (aspect == ExportAspect.Source) await VerifyBars(snapshot, path);
+            // The decoded RGB limit applies to hardware encoders. The software MF
+            // path has its own preencoder RGB and decoded YUV acceptance suite.
+            if (aspect == ExportAspect.Source && result.Encoder != EncoderProbe.SoftwareMediaFoundation)
+                await VerifyBars(snapshot, path);
         }
         finally { Directory.Delete(directory, true); }
     }

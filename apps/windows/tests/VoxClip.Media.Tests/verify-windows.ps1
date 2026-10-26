@@ -1,5 +1,5 @@
 param([string]$LockOwner = '', [string]$FfmpegDirectory = $env:VOXCLIP_FFMPEG_DIR, [switch]$WithoutEncoders, [switch]$DiagnoseMf, [switch]$ManagedOnly,
-    [switch]$ShippingAcceptance, [string]$ShippingRid = '', [string]$BuildReport = '')
+    [switch]$ShippingAcceptance, [switch]$FocusedCaptions, [switch]$DiagnoseColorPath, [switch]$ConversionTiming, [switch]$ConversionTimingOnly, [string]$ShippingRid = '', [string]$BuildReport = '')
 $ErrorActionPreference = 'Stop'
 Set-Location (Resolve-Path (Join-Path $PSScriptRoot '..\..\..\..'))
 if (-not $PWD.Path.StartsWith('C:\voxclip-build\win-media\', [StringComparison]::OrdinalIgnoreCase)) { throw 'Run only in an archived win-media workspace.' }
@@ -50,7 +50,10 @@ function Invoke-Bounded([string]$Name, [string[]]$Arguments, [int]$Seconds, [int
             if ($collectFailures) { $acceptanceFailures.Add($failure) } else { throw $failure }
         }
     } finally {
-        if (-not $process.HasExited) { & taskkill.exe /PID $process.Id /T /F | Out-Null }
+        if (-not $process.HasExited) {
+            & taskkill.exe /PID $process.Id /T /F 2>$null | Out-Null
+            $null = $process.WaitForExit(5000)
+        }
         $process.Dispose()
     }
 }
@@ -97,18 +100,82 @@ try {
     $buildArgs = @('build', 'VoxClip.CrossPlatform.slnf', '-c', 'Release', '--nologo', '-m:1', '-p:UseSharedCompilation=false', '-nodeReuse:false')
     if ($ShippingAcceptance) { $buildArgs += '-p:RestoreSources=C:\Users\siim\.nuget\packages' }
     Invoke-Bounded 'build' $buildArgs 300
+    if ($ShippingAcceptance -and $ShippingRid -eq 'win-x64') {
+        $publishArgs = @('publish', 'tests\VoxClip.Media.Tests\VoxClip.Media.Tests.csproj', '-c', 'Release', '-r', 'win-x64',
+            '--self-contained', 'true', '--nologo', '-m:1', '-p:UseAppHost=true', '-p:UseSharedCompilation=false',
+            '-nodeReuse:false', '-p:RestoreSources=C:\Users\siim\.nuget\packages', '-o', (Join-Path $runs 'x64-tests'))
+        Invoke-Bounded 'publish-x64-tests' $publishArgs 360
+        $publishArgs[1] = 'src\VoxClip.Cli\VoxClip.Cli.csproj'
+        $publishArgs[-1] = Join-Path $runs 'x64-cli'
+        Invoke-Bounded 'publish-x64-cli' $publishArgs 360
+        Assert-ScratchBudget
+    }
     if ($ShippingAcceptance) {
         Assert-ScratchBudget
-        Copy-Item (Join-Path $FfmpegDirectory '*.dll') 'src\VoxClip.Cli\bin\Release\net10.0' -Force
-        $env:VOXCLIP_CLI = Join-Path $PWD 'src\VoxClip.Cli\bin\Release\net10.0\voxclip-cli.dll'
-        $testDll = Join-Path $PWD 'tests\VoxClip.Media.Tests\bin\Release\net10.0\VoxClip.Media.Tests.dll'
-        Invoke-Bounded 'shipping-modules' @($testDll, '-class', 'VoxClip.Media.Tests.ShippingRuntimeIdentityTests') 90
-        Invoke-Bounded 'shipping-e2e' @($testDll, '-class', 'VoxClip.Media.Tests.E2E.MediaCliE2ETests') 900
-        Invoke-Bounded 'shipping-colour' @($testDll, '-class', 'VoxClip.Media.Tests.E2E.SoftwareMfBarColorTests') 180
-        Invoke-Bounded 'shipping-native-conformance' @($testDll, '-class', 'VoxClip.Media.Tests.NativeMediaConformanceTests') 180
-        Invoke-Bounded 'shipping-native-pipeline' @($testDll, '-class', 'VoxClip.Media.Tests.NativePipelineTests', '-method-', 'VoxClip.Media.Tests.NativePipelineTests.DecoderReconfiguresWhenAudioChannelsChange') 300
-        Invoke-Bounded 'shipping-windows-pipeline' @($testDll, '-class', 'VoxClip.Media.Tests.WindowsPipelineTests', '-method-', 'VoxClip.Media.Tests.WindowsPipelineTests.IdentityExportAndPreviewAudioStartSeekFromZero') 300
+        if ($ShippingRid -eq 'win-x64') {
+            $cliOutput = Join-Path $runs 'x64-cli'
+            $testExecutable = Join-Path $runs 'x64-tests\VoxClip.Media.Tests.exe'
+            $env:VOXCLIP_CLI = Join-Path $cliOutput 'voxclip-cli.exe'
+        } else {
+            $cliOutput = Join-Path $PWD 'src\VoxClip.Cli\bin\Release\net10.0'
+            $testExecutable = Join-Path $PWD 'tests\VoxClip.Media.Tests\bin\Release\net10.0\VoxClip.Media.Tests.dll'
+            $env:VOXCLIP_CLI = Join-Path $cliOutput 'voxclip-cli.dll'
+        }
+        Copy-Item (Join-Path $FfmpegDirectory '*.dll') $cliOutput -Force
+        if ($ConversionTimingOnly) {
+            $env:VOXCLIP_CONVERSION_TIMING = '1'
+            $env:VOXCLIP_NATIVE_CONVERSION_PROBE = '1'
+            $timingArgs = if ($ShippingRid -eq 'win-x64') { @('-class', 'VoxClip.Media.Tests.Bt709ConversionTimingTests', '-showLiveOutput') } else { @($testExecutable, '-class', 'VoxClip.Media.Tests.Bt709ConversionTimingTests', '-showLiveOutput') }
+            $timingRunner = if ($ShippingRid -eq 'win-x64') { $testExecutable } else { $dotnet }
+            Invoke-Bounded 'conversion-probe' $timingArgs 180 0 $timingRunner
+            Assert-ScratchBudget
+            return
+        }
+        $collectFailures = $true
+        $converterArgs = if ($ShippingRid -eq 'win-x64') { @('-class', 'VoxClip.Media.Tests.Bt709BgraConverterTests') } else { @($testExecutable, '-class', 'VoxClip.Media.Tests.Bt709BgraConverterTests') }
+        $converterRunner = if ($ShippingRid -eq 'win-x64') { $testExecutable } else { $dotnet }
+        Invoke-Bounded 'shipping-converter' $converterArgs 90 0 $converterRunner
+        if ($ConversionTiming) {
+            $env:VOXCLIP_CONVERSION_TIMING = '1'
+            $timingArgs = if ($ShippingRid -eq 'win-x64') { @('-class', 'VoxClip.Media.Tests.Bt709ConversionTimingTests', '-showLiveOutput') } else { @($testExecutable, '-class', 'VoxClip.Media.Tests.Bt709ConversionTimingTests', '-showLiveOutput') }
+            $timingRunner = if ($ShippingRid -eq 'win-x64') { $testExecutable } else { $dotnet }
+            Invoke-Bounded 'conversion-timing' $timingArgs 180 0 $timingRunner
+            Remove-Item Env:VOXCLIP_CONVERSION_TIMING
+        }
+        if ($DiagnoseColorPath) {
+            $env:VOXCLIP_DIAGNOSE_COLOR_PATHS = '1'
+            if ($ShippingRid -eq 'win-x64') {
+                Invoke-Bounded 'color-paths' @('-class', 'VoxClip.Media.Tests.E2E.ColorPathDiagnostics') 180 0 $testExecutable
+            } else {
+                Invoke-Bounded 'color-paths' @($testExecutable, '-class', 'VoxClip.Media.Tests.E2E.ColorPathDiagnostics') 180
+            }
+        } elseif ($FocusedCaptions) {
+            $testRunner = if ($ShippingRid -eq 'win-x64') { $testExecutable } else { $dotnet }
+            $prefix = @()
+            if ($ShippingRid -ne 'win-x64') { $prefix = @($testExecutable) }
+            Invoke-Bounded 'focused-opacity' ($prefix + @('-class', 'VoxClip.Media.Tests.Captions.CaptionOpacityTests')) 180 0 $testRunner
+            Invoke-Bounded 'focused-goldens' ($prefix + @('-class', 'VoxClip.Media.Tests.Captions.CaptionConformanceTests', '-method', 'VoxClip.Media.Tests.Captions.CaptionConformanceTests.CommittedGoldensMatchEverySampleAndGalleryTile')) 300 0 $testRunner
+            Invoke-Bounded 'focused-shadow' ($prefix + @('-class', 'VoxClip.Media.Tests.Captions.CaptionRenderStateTests', '-method', 'VoxClip.Media.Tests.Captions.CaptionRenderStateTests.ShadowScratchStaysFlatAcrossFiftyAndThreeHundredPages')) 180 0 $testRunner
+        } else {
+            $testArgs = if ($ShippingRid -eq 'win-x64') { @('-class', 'VoxClip.Media.Tests.ShippingRuntimeIdentityTests') } else { @($testExecutable, '-class', 'VoxClip.Media.Tests.ShippingRuntimeIdentityTests') }
+            $testRunner = if ($ShippingRid -eq 'win-x64') { $testExecutable } else { $dotnet }
+            $cleanupArgs = if ($ShippingRid -eq 'win-x64') { @('-class', 'VoxClip.Media.Tests.E2E.CliProcessCleanupTests') } else { @($testExecutable, '-class', 'VoxClip.Media.Tests.E2E.CliProcessCleanupTests') }
+            Invoke-Bounded 'shipping-cleanup' $cleanupArgs 90 0 $testRunner
+            Invoke-Bounded 'shipping-modules' $testArgs 90 0 $testRunner
+            foreach ($suite in @(
+                @('shipping-e2e', 'VoxClip.Media.Tests.E2E.MediaCliE2ETests', 900),
+                @('shipping-colour', 'VoxClip.Media.Tests.E2E.SoftwareMfBarColorTests', 180),
+                @('shipping-native-conformance', 'VoxClip.Media.Tests.NativeMediaConformanceTests', 180),
+                @('shipping-native-pipeline', 'VoxClip.Media.Tests.NativePipelineTests', 300),
+                @('shipping-windows-pipeline', 'VoxClip.Media.Tests.WindowsPipelineTests', 300))) {
+                $arguments = if ($ShippingRid -eq 'win-x64') { @('-class', $suite[1]) } else { @($testExecutable, '-class', $suite[1]) }
+                if ($suite[0] -eq 'shipping-native-pipeline') { $arguments += @('-method-', 'VoxClip.Media.Tests.NativePipelineTests.DecoderReconfiguresWhenAudioChannelsChange') }
+                if ($suite[0] -eq 'shipping-windows-pipeline') { $arguments += @('-method-', 'VoxClip.Media.Tests.WindowsPipelineTests.IdentityExportAndPreviewAudioStartSeekFromZero') }
+                Invoke-Bounded $suite[0] $arguments $suite[2] 0 $testRunner
+            }
+        }
         Assert-ScratchBudget
+        if ($acceptanceFailures.Count -gt 0) { throw ($acceptanceFailures -join '; ') }
         return
     }
     if ($ManagedOnly) {

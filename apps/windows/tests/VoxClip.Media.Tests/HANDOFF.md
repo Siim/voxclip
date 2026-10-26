@@ -1,4 +1,100 @@
-# win-media handoff — 2026-10-25, round 4 continuation
+# win-media handoff
+
+## 2026-10-26: round 7 native acceptance of `997134ef`
+
+The optimized converter source and tests were archived from commit
+`997134efcfbc44e4ef6a37ed9b56b007029e4055`. On Windows ARM64, the x64
+run used the self-contained x64 test/CLI executables under emulation; the
+ARM64 run used native `dotnet.exe` and app-adjacent CLI DLLs. Both Release
+builds had zero warnings and errors. Each RID passed 22 converter/oracle
+cases, 49 selected strict shipping cases and two cleanup cases, with zero
+skips or failures. The isolated timing case also passed on each RID.
+
+The `win-x64-1` and `win-arm64-1` report ZIPs matched schema-2
+`buildInputsSha256=049f309525d2e22ab186539890732cbcb526d3c4f3b65c78ccc5b01839ba2ed7`,
+the committed manifest, archive hashes/sizes and all six audited DLL
+hashes/sizes before transfer and again on the VM. The saved module reports
+identify all six loaded DLL paths, sizes and SHA-256 values in both the test
+process and app-adjacent CLI process. The test and CLI architectures match
+each RID. The six CLI DLLs came only from the audited runtime archive.
+
+Both 72-row bar CSVs passed the production software Media Foundation rule:
+preencoder RGB maximum error was 3 on x64 and 2 on ARM64, paired decoded
+Y/U/V maximum error was 1 on each, and decoded RGB was within 2 of the
+finite BT.709 inverse. All rows retained High/yuv420p, limited-range BT.709
+metadata. The ten canonical E2E reports and CSV for each RID are saved under
+`apps/windows/tests/VoxClip.Media.Tests/.runs/round7-x64/` and
+`round7-arm64/`, alongside logs, `audit.json`, `timing-summary.json` and
+test/CLI loaded-module reports.
+
+The isolated Release conversion diagnostic used eight warmups and 12 samples
+for each 1080p and 4K format/path, with zero managed allocation per
+accelerated frame. Its successful per-format output is retained in each
+`timing-only/conversion-probe.out.log`. The before/after medians below are
+R5 versus R7 on the same Windows ARM64 VM; x64 is emulated and ARM64 native.
+
+| 4K input | x64 R5 → R7 ms/frame | ARM64 R5 → R7 ms/frame |
+| --- | ---: | ---: |
+| NV12 | 12.82 → 12.22 | 8.11 → 7.81 |
+| YUV420P | 19.96 → 15.35 | 12.71 → 7.83 |
+| P010 | 23.91 → 20.57 | 15.45 → 8.74 |
+| YUV420P10 | 30.47 → 21.14 | 13.30 → 9.00 |
+
+The strict E2E suite took 64.930 → 58.743 s under x64 emulation and
+29.668 → 25.626 s native ARM64. Per-case CLI elapsed totals were 52.26 →
+47.90 s and 23.02 → 20.55 s respectively. Timing output records actual
+`Avx2.IsSupported=true`/`AdvSimd.Arm64.IsSupported=false` for x64 and the
+opposite flags for ARM64. These are VM diagnostics; physical x64/iGPU and
+Snapdragon performance acceptance remains open. Native swscale is faster on
+some formats but does not meet the strict colour rule.
+
+The first x64 attempt stopped before tests because the archived workspace
+omitted the root `THIRD_PARTY_NOTICES.md` used by the CLI project. The runner
+now includes that tracked file. Successful timing output was initially
+captured by xUnit but not printed; the runner now uses `-showLiveOutput` for
+the timing class. For the two timing-only runs, that runner-only change was
+copied into owned VM scratch after archiving the exact candidate source.
+No conversion, fixture, gate or tolerance code changed. Each run released
+its own lock and removed its source/build/native scratch. The final disk and
+lock check is recorded in the round-7 evidence.
+
+## 2026-10-26: exact BT.709 conversion performance candidate
+
+The vertical chroma loop now selects direct 8-bit planar, P010, or planar
+10-bit reads once per row. It retains the previous integer interpolation,
+P010 right shift, planar 10-bit clamp, SIMD pixel conversion and scalar
+fallback. The timing diagnostic writes to xUnit output so successful runs
+show their measurements. One regression compares out-of-range planar 10-bit
+chroma with the equivalent clamped input. No colour tolerance, fixture,
+shipping DLL or metadata rule changed.
+
+Local Release timing on the same M3 Max Arm64 host and .NET 10 SDK, before
+and after the converter edit: eight warmups, 12 samples, medians in ms/frame.
+The optimized values are the range of two consecutive runs. Every measured
+path allocated 0 managed B/frame.
+
+| Input | 1080p before | 1080p after | 4K before | 4K after |
+| --- | ---: | ---: | ---: | ---: |
+| NV12 | 5.56 | 5.55–5.62 | 8.26 | 8.30–8.57 |
+| YUV420P | 3.06 | 2.02–2.04 | 12.17 | 8.01–8.21 |
+| P010 | 4.07 | 2.11–2.20 | 15.57 | 8.38–8.55 |
+| YUV420P10 | 3.47 | 2.11–2.12 | 13.93 | 8.36–8.82 |
+
+The planar improvements support the per-sample format and clamp decisions
+in the old hot loop as the local bottleneck. NV12, which already had direct
+reads, is effectively unchanged. These Mac timings are diagnostic, not
+Windows performance acceptance. The timing run used AdvSimd; this Mac has
+no x64 .NET host. Native x64 correctness, the strict Windows end-to-end
+timing, and physical x64 acceptance remain for the parent-managed VM slot.
+
+Verification from this worktree: Release Media test build passed with zero
+warnings/errors; 22 converter cases passed, including scalar equality and
+the independent double oracle; the filtered Media suite reported 405 passed,
+5 explicit prerequisite/opt-in skips, 0 failed (410 total). No VM lock or
+transfer was used. The earlier round-5 shipping and DLL-identity evidence is
+unchanged and was not rerun in this local round.
+
+## 2026-10-25: round 4 continuation
 
 ## Shipping FFmpeg runtime acceptance
 

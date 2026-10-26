@@ -123,17 +123,19 @@ public sealed class CaptionImageComparisonTests
                 using (process)
                 {
                     var standard = process.StandardOutput.ReadToEndAsync(TestContext.Current.CancellationToken); var error = process.StandardError.ReadToEndAsync(TestContext.Current.CancellationToken);
-                    try { await process.WaitForExitAsync(TestContext.Current.CancellationToken).WaitAsync(TimeSpan.FromSeconds(60), TestContext.Current.CancellationToken); }
+                    string text; string errors;
+                    try
+                    {
+                        await process.WaitForExitAsync(TestContext.Current.CancellationToken)
+                            .WaitAsync(TimeSpan.FromSeconds(60), TestContext.Current.CancellationToken);
+                        text = await standard;
+                        errors = await error;
+                    }
                     catch
                     {
-                        if (!process.HasExited)
-                        {
-                            try { process.Kill(entireProcessTree: true); }
-                            catch (InvalidOperationException) { }
-                        }
+                        await TestProcessCleanup.ReapAsync(process, standard, error);
                         throw;
                     }
-                    var text = await standard; var errors = await error;
                     var missingPython = errors.Contains("No module named 'numpy'", StringComparison.Ordinal)
                         || errors.Contains("Python was not found; run without arguments to install from the Microsoft Store", StringComparison.Ordinal);
                     if (missingPython && requirePython) Assert.Fail(prerequisite + " " + errors);

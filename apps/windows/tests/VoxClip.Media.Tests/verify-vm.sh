@@ -78,7 +78,7 @@ while :; do
   if [ "$remaining" -gt 30 ]; then sleep 30; else sleep "$remaining"; fi
 done
 remote_ps "New-Item -ItemType Directory '$workspace' -ErrorAction Stop | Out-Null" 20
-git archive --format=tar HEAD apps/windows shared > "$archive"
+git archive --format=tar HEAD apps/windows shared THIRD_PARTY_NOTICES.md > "$archive"
 test -s apps/windows/tests/VoxClip.Media.Tests/Fixtures/generated/hevc10-two-audio.mp4 || {
   echo 'Run: sh apps/windows/tests/VoxClip.Media.Tests/generate-fixtures.sh' >&2; exit 1;
 }

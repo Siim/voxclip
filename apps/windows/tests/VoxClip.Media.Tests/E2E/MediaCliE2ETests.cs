@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Reflection.PortableExecutable;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -150,22 +151,42 @@ public sealed class MediaCliE2ETests
         start.Environment["VOXCLIP_LIVE_TESTS"] = "0";
         start.Environment["VOXCLIP_TEST_DOWNLOAD"] = "0";
         start.Environment.Remove("VOXCLIP_FFMPEG_DIR");
-        using var process = Process.Start(start)!;
-        var moduleCheck = caseId == "e2e-1-chirp-cut-fillers"
-            ? CheckShippingCliModules(process, Path.GetDirectoryName(cli)!, ct)
-            : Task.CompletedTask;
+        var (exit, body) = await RunProcess(start, (process, token) => caseId == "e2e-1-chirp-cut-fillers"
+            ? CheckShippingCliModules(process, Path.GetDirectoryName(cli)!, token)
+            : Task.CompletedTask, ct, TimeSpan.FromMinutes(4));
+        return (exit, JsonNode.Parse(body.Trim()) ?? throw new JsonException("The CLI did not write one JSON object."));
+    }
+
+    internal static async Task<(int Exit, string Stdout)> RunProcess(ProcessStartInfo start,
+        Func<Process, CancellationToken, Task> observe, CancellationToken ct, TimeSpan timeout)
+    {
+        ct.ThrowIfCancellationRequested();
         using var limit = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        limit.CancelAfter(TimeSpan.FromMinutes(4));
+        limit.CancelAfter(timeout);
+        using var process = Process.Start(start) ?? throw new InvalidOperationException("The CLI process did not start.");
+        Task moduleCheck = Task.CompletedTask;
+        Task<string>? stdout = null;
+        Task<string>? stderr = null;
         try
         {
-            var stdout = process.StandardOutput.ReadToEndAsync(limit.Token);
-            var stderr = process.StandardError.ReadToEndAsync(limit.Token);
-            await process.WaitForExitAsync(limit.Token);
+            moduleCheck = observe(process, limit.Token);
+            stdout = process.StandardOutput.ReadToEndAsync(limit.Token);
+            stderr = process.StandardError.ReadToEndAsync(limit.Token);
+            var exit = process.WaitForExitAsync(limit.Token);
+            await await Task.WhenAny(exit, moduleCheck);
+            await exit;
             await moduleCheck;
-            var body = await stdout; await stderr;
-            return (process.ExitCode, JsonNode.Parse(body.Trim()) ?? throw new JsonException("The CLI did not write one JSON object."));
+            var body = await stdout;
+            await stderr;
+            return (process.ExitCode, body);
         }
-        catch { if (!process.HasExited) process.Kill(entireProcessTree: true); throw; }
+        catch
+        {
+            await limit.CancelAsync();
+            await TestProcessCleanup.ReapAsync(process, moduleCheck,
+                stdout ?? Task.CompletedTask, stderr ?? Task.CompletedTask);
+            throw;
+        }
     }
 
     private static async Task CheckShippingCliModules(Process process, string cliDirectory, CancellationToken ct)
@@ -175,6 +196,12 @@ public sealed class MediaCliE2ETests
         if (string.IsNullOrWhiteSpace(reportPath) || string.IsNullOrWhiteSpace(evidencePath)) return;
         using var report = JsonDocument.Parse(File.ReadAllText(reportPath));
         var expected = report.RootElement.GetProperty("dlls");
+        var expectedArchitecture = report.RootElement.GetProperty("rid").GetString() == "win-x64"
+            ? Machine.Amd64 : Machine.Arm64;
+        var executable = Path.GetFullPath(process.MainModule!.FileName);
+        using (var executableStream = File.OpenRead(executable))
+        using (var image = new PEReader(executableStream))
+            Assert.Equal(expectedArchitecture, image.PEHeaders.CoffHeader.Machine);
         var names = expected.EnumerateObject().Select(item => item.Name).ToArray();
         var observed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         string? inspectionError = null;
@@ -203,7 +230,11 @@ public sealed class MediaCliE2ETests
                         modules.Add(new { name, path, bytes, sha256 = hash });
                     }
                     Directory.CreateDirectory(Path.GetDirectoryName(evidencePath)!);
-                    File.WriteAllText(evidencePath, JsonSerializer.Serialize(new { caseId = "e2e-1-chirp-cut-fillers", modules },
+                    File.WriteAllText(evidencePath, JsonSerializer.Serialize(new
+                    {
+                        caseId = "e2e-1-chirp-cut-fillers", processExecutable = executable,
+                        processArchitecture = expectedArchitecture.ToString(), modules
+                    },
                         new JsonSerializerOptions { WriteIndented = true }));
                     return;
                 }

@@ -60,10 +60,22 @@ internal static unsafe class Native
         catch { ffmpeg.avcodec_free_context(&context); throw; }
     }
 
-    internal static void Colors(SwsContext* context, bool fullInput = false)
+    internal static int SourceMatrix(AVColorSpace sourceSpace) => sourceSpace switch
     {
-        var coefficients = ffmpeg.sws_getCoefficients(ffmpeg.SWS_CS_ITU709);
-        Check(ffmpeg.sws_setColorspaceDetails(context, *(int_array4*)coefficients, fullInput ? 1 : 0, *(int_array4*)coefficients, 0, 0, 1 << 16, 1 << 16), "Set BT.709 conversion");
+        AVColorSpace.AVCOL_SPC_FCC => ffmpeg.SWS_CS_FCC,
+        AVColorSpace.AVCOL_SPC_BT470BG or AVColorSpace.AVCOL_SPC_SMPTE170M => ffmpeg.SWS_CS_ITU601,
+        AVColorSpace.AVCOL_SPC_SMPTE240M => ffmpeg.SWS_CS_SMPTE240M,
+        AVColorSpace.AVCOL_SPC_BT2020_NCL => ffmpeg.SWS_CS_BT2020,
+        _ => ffmpeg.SWS_CS_ITU709
+    };
+
+    internal static void Colors(SwsContext* context, bool fullInput = false,
+        AVColorSpace sourceSpace = AVColorSpace.AVCOL_SPC_BT709)
+    {
+        var source = ffmpeg.sws_getCoefficients(SourceMatrix(sourceSpace));
+        var destination = ffmpeg.sws_getCoefficients(ffmpeg.SWS_CS_ITU709);
+        Check(ffmpeg.sws_setColorspaceDetails(context, *(int_array4*)source, fullInput ? 1 : 0,
+            *(int_array4*)destination, 0, 0, 1 << 16, 1 << 16), "Set BT.709 conversion");
     }
 
     internal static AVFrame* Frame(AVPixelFormat format, int width, int height)

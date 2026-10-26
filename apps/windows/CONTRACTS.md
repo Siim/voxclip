@@ -1,5 +1,11 @@
 # Windows fixed contracts
 
+### 2026-10-26 — Reviewed Windows colour conversion integration
+
+- Integrated the shared exact BT.709 decoder conversion and AVX2/AdvSimd acceleration from `track/win-media` through `c5d09a9`; converter source tested natively is `997134ef`. Preview and export continue to share the decoder and compositor. Unsupported matrices, siting, interlace and formats retain the native fallback; source-size changes scale the converted BGRA. No fixture, RGB/YUV tolerance, shipping DLL or encoder setting changed.
+- Retained Windows evidence passed 22 converter/oracle, 49 strict shipping and two cleanup tests per RID, zero skips. x64 ran under ARM64 emulation; ARM64 ran natively. Parent independently checked all test counts, both 72-sample CSVs, metadata, and six loaded test/CLI DLL identities per RID against the audited build reports. E2E suite times improved from 64.930 to 58.743 seconds (x64 emulated) and 29.668 to 25.626 seconds (ARM64); physical x64/iGPU and Snapdragon performance acceptance remains open.
+- Combined-main portable Release build passed with zero warnings/errors; 27 converter, process cleanup and actual CLI Voice Lab boundary cases passed without skips. The caption comparison selection passed its portable cases with the Python oracle skipped because NumPy is unavailable in the selected local interpreter. Native test details and evidence locations are retained in `tests/VoxClip.Media.Tests/HANDOFF.md`. Hosted combined CI and hardware GPU acceptance are not established by these runs.
+
 ### 2026-10-26 — Voice Lab v2 project and Core output pieces (ADR-R24)
 
 - `VoiceLabPlaceholder` now holds typed `VoiceLabAsset` and `VoiceLabSegment` records in schemaVersion 2 while version 1 preserves empty `segments` and no `assets`. `VoiceLabProject` validates and performs immutable accept, enable, disable, delete and candidate-selection transitions without changing source words or deleting assets. `VoiceLabOutputPlanner.Build(project, scope)` returns ordered source/synth sample pieces, mapping and captions for explicit full or clip scope. `RequireLegacyRendering` rejects active synth for callers still using a source-only `EditPlan`. App, CLI and Media integration is a separate handoff; no rendering, consent capture or lip-sync is implied.
