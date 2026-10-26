@@ -21,9 +21,12 @@
     <PackageReference Include="xunit.runner.visualstudio" PrivateAssets="all" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <Compile Include="ViewModelTests.cs" />
+    <Compile Include="UpdateRestartTests.cs" />
     <Compile Include="StartupCheckTests.cs" />
     <Compile Include="NativeIntegratedFlowTests.cs" />
     <Compile Include="../../../../src/VoxClip.App/Services/StartupCheck.cs" Link="Services/StartupCheck.cs" />
+    <Compile Include="../../../../src/VoxClip.App/Services/UpdateRestartCoordinator.cs" Link="Services/UpdateRestartCoordinator.cs" />
+    <Compile Include="../../../../src/VoxClip.App/Services/SettingsWriteQueue.cs" Link="Services/SettingsWriteQueue.cs" />
     <Compile Include="../../../../src/VoxClip.App/ViewModels/*.cs" LinkBase="ViewModels" />
     <Compile Include="../../../../src/VoxClip.App/Services/DemoProject.cs" Link="Services/DemoProject.cs" />
   </ItemGroup>

@@ -286,7 +286,10 @@ public sealed partial class EditorPage : Page
         await new ExportDialog(owner, ViewModel, demo, SnapshotAsync, selectedClips) { XamlRoot = XamlRoot }.ShowAsync();
     }, "Export");
     internal async Task PromptTranscriptionAsync() => await RunAsync(async () =>
-        await new TranscriptionDialog(owner, ViewModel) { XamlRoot = XamlRoot }.ShowAsync(), "Transcription");
+    {
+        if (ViewModel.IsLeaving) return;
+        await new TranscriptionDialog(owner, ViewModel) { XamlRoot = XamlRoot }.ShowAsync();
+    }, "Transcription");
     private async void TranscribeClicked(object sender, RoutedEventArgs args) => await PromptTranscriptionAsync();
     private async void TranscribeAgainClicked(object sender, RoutedEventArgs args)
     {

@@ -24,7 +24,7 @@ internal sealed class AppServices : IAsyncDisposable
     internal SecretStore Keys { get; }
     internal IProjectStore Projects { get; } = new ProjectStore();
     internal ISettingsStore SettingsStore { get; } = new SettingsStore();
-    internal AppSettings Settings { get; private set; } = new("voxclip-settings/1");
+    internal AppSettings Settings => settingsWrites.Current;
     internal IMediaProbe Probe { get; } = new FfmpegMediaProbe();
     internal IAudioExtractor Audio { get; } = new FfmpegAudioExtractor();
     internal IExporter Exporter { get; } = new Exporter();
@@ -42,13 +42,22 @@ internal sealed class AppServices : IAsyncDisposable
     internal event EventHandler? BusyChanged;
     internal static string Version => Assembly.GetEntryAssembly()?.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion.Split('+')[0] ?? "unknown";
     internal event EventHandler? SettingsChanged;
-    private readonly SemaphoreSlim settingsWrites = new(1, 1);
+    private readonly SettingsWriteQueue settingsWrites;
+#if DEBUG
+    internal SettingsWriteQueue DebugSettingsWrites => settingsWrites;
+#endif
     private WhisperNetTranscriber? localSpeech;
     private readonly List<ElevenLabsTranscriber> cloudSpeechInstances = [];
 
     internal AppServices()
     {
         Log = StartupDiagnostics.Log;
+        settingsWrites = new(SettingsStore);
+        settingsWrites.Changed += key =>
+        {
+            if (key == "transcription.elevenlabs.region" && localSpeech is not null) ConfigureCloudSpeech();
+            SettingsChanged?.Invoke(this, EventArgs.Empty);
+        };
         Keys = new(Data.Secrets, Log);
         Downloads = new ModelStore(Models, Data.Root);
         Updates = new UpdateChecker(new VelopackUpdates(this));
@@ -58,7 +67,7 @@ internal sealed class AppServices : IAsyncDisposable
     {
         try { SharedRoot = SharedResources.ResolveRoot(); }
         catch (Exception exception) { StartupNotice = UiError.Message(exception, "Startup"); }
-        try { Settings = await SettingsStore.LoadAsync(ct); }
+        try { settingsWrites.Initialize(await SettingsStore.LoadAsync(ct)); }
         catch (Exception exception) { StartupNotice = UiError.Message(exception, "Settings"); }
         localSpeech = new WhisperNetTranscriber(Models, Downloads, Data.Root, Log);
         ConfigureCloudSpeech();
@@ -79,20 +88,12 @@ internal sealed class AppServices : IAsyncDisposable
         catch (JsonException) { return fallback; }
     }
 
-    internal async Task SetAsync<T>(string key, T value, CancellationToken ct = default)
-    {
-        await settingsWrites.WaitAsync(ct);
-        try
-        {
-            var values = new Dictionary<string, JsonElement>(Settings.Values, StringComparer.Ordinal) { [key] = JsonSerializer.SerializeToElement(value) };
-            var next = new AppSettings("voxclip-settings/1") { Values = values };
-            await SettingsStore.SaveAsync(next, ct);
-            Settings = next;
-            if (key == "transcription.elevenlabs.region" && localSpeech is not null) ConfigureCloudSpeech();
-            SettingsChanged?.Invoke(this, EventArgs.Empty);
-        }
-        finally { settingsWrites.Release(); }
-    }
+    internal Task SetAsync<T>(string key, T value, CancellationToken ct = default) => settingsWrites.SetAsync(key, value, ct);
+
+    internal void FreezeSettings() => settingsWrites.Freeze();
+    internal Task DrainSettingsAsync(CancellationToken ct) => settingsWrites.DrainAsync(ct);
+    internal Task FlushSettingsAsync(CancellationToken ct) => settingsWrites.FlushAsync(ct);
+    internal void ResumeSettings() => settingsWrites.Resume();
 
     internal void ApplyTheme(FrameworkElement root) => root.RequestedTheme = Get("general.appearance", "system") switch
     {

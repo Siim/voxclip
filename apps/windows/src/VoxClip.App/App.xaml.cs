@@ -11,6 +11,7 @@ public partial class App : Application
     private static AppServices? services;
     internal static AppServices Services => services ??= new();
     internal static List<MainWindow> Windows { get; } = [];
+    internal static UpdateRestartCoordinator Restart { get; } = new(() => Windows.Cast<IUpdateRestartWindow>().ToArray());
     internal static SettingsWindow? Settings { get; private set; }
     /// <summary>Initialize theme-aware WinUI resources.</summary>
     public App()
@@ -42,6 +43,13 @@ public partial class App : Application
                 else if (activation.Data is ILaunchActivatedEventArgs launch && !string.IsNullOrWhiteSpace(launch.Arguments)) await target.OpenPathAsync(launch.Arguments.Trim('"'));
             });
 #if DEBUG
+            var restartProbeIndex = Array.IndexOf(Program.Arguments, "--restart-probe");
+            if (restartProbeIndex >= 0 && restartProbeIndex + 1 < Program.Arguments.Length)
+            {
+                await RestartNativeProbe.RunAsync(window, Program.Arguments[restartProbeIndex + 1]);
+                Exit();
+                return;
+            }
             var demoIndex = Array.IndexOf(Program.Arguments, "--demo-project");
             if (demoIndex >= 0 && demoIndex + 1 < Program.Arguments.Length)
             {
@@ -77,6 +85,7 @@ public partial class App : Application
 
     internal static MainWindow NewWindow()
     {
+        if (Restart.IsPreparing) return Windows[0];
         var window = new MainWindow();
         Windows.Add(window);
         window.Activate();
@@ -85,6 +94,7 @@ public partial class App : Application
 
     internal static void OpenSettings()
     {
+        if (Restart.IsPreparing) return;
         if (Settings is null)
         {
             Settings = new();

@@ -15,7 +15,23 @@ public sealed partial class SettingsWindow : Window
 {
     private readonly CancellationTokenSource lifetime = new();
     private readonly InfoBar notice = Ui.Notice();
+    private readonly List<Func<bool>> textCommits = [];
     private CancellationTokenSource? download;
+    private bool preparing;
+    private int keyWrites;
+    private int sensitiveActions;
+#if DEBUG
+    internal bool DebugNavigationEnabled => Navigation.IsEnabled;
+    internal bool DebugSetLanguageText(string value)
+    {
+        Navigation.SelectedItem = Navigation.MenuItems[1];
+        var field = Body.Children.OfType<TextBox>().FirstOrDefault(item => item.Header?.ToString() == "Language for new imports");
+        if (field is null) return false;
+        if (!field.Focus(FocusState.Programmatic)) return false;
+        field.Text = value;
+        return true;
+    }
+#endif
     public SettingsWindow()
     {
         InitializeComponent(); Title = "VoxClip Settings"; SystemBackdrop = new MicaBackdrop();
@@ -26,6 +42,7 @@ public sealed partial class SettingsWindow : Window
         AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "VoxClip.ico"));
         App.Services.ApplyTheme(Root); App.Services.SettingsChanged += SettingsChanged;
         Navigation.SelectedItem = Navigation.MenuItems[0];
+        AppWindow.Closing += (_, args) => { if (App.Restart.IsPreparing) args.Cancel = true; };
         Closed += (_, _) => { lifetime.Cancel(); download?.Cancel(); App.Services.SettingsChanged -= SettingsChanged; };
     }
     [DllImport("user32.dll")]
@@ -34,6 +51,7 @@ public sealed partial class SettingsWindow : Window
     private async void PaneChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
     {
         if (args.SelectedItem is not NavigationViewItem item || Body is null) return;
+        textCommits.Clear();
         Body.Children.Clear(); notice.IsOpen = false;
         Body.Children.Add(Ui.Text((string)item.Tag, "TitleTextBlockStyle")); Body.Children.Add(notice);
         await Ui.RunAsync(notice, async () =>
@@ -50,7 +68,50 @@ public sealed partial class SettingsWindow : Window
             }
         }, "Settings");
     }
-    private void Save(string key, object value) => _ = Ui.RunAsync(notice, () => App.Services.SetAsync(key, value, lifetime.Token), "Save settings");
+    private void Save(string key, object value)
+    {
+        if (preparing) return;
+        _ = Ui.RunAsync(notice, () => App.Services.SetAsync(key, value, lifetime.Token), "Save settings");
+    }
+    private void RunSensitive(Func<Task> action, string feature)
+    {
+        if (preparing) return;
+        sensitiveActions++;
+        _ = CompleteAsync();
+        async Task CompleteAsync()
+        {
+            try { await Ui.RunAsync(notice, action, feature); }
+            finally { sensitiveActions--; }
+        }
+    }
+    private void TrackTextField(TextBox field, Func<bool> save)
+    {
+        var committed = field.Text;
+        bool Commit()
+        {
+            if (field.Text == committed) return true;
+            if (!save()) return false;
+            committed = field.Text;
+            return true;
+        }
+        field.LostFocus += (_, _) => { if (!preparing) Commit(); };
+        textCommits.Add(Commit);
+    }
+    internal RestartPreparation PrepareForRestart()
+    {
+        if (download is not null || keyWrites != 0 || sensitiveActions != 0) return RestartPreparation.Busy;
+        if (preparing) return RestartPreparation.TransitionActive;
+        foreach (var commit in textCommits)
+            if (!commit()) return RestartPreparation.SaveFailed;
+        preparing = true;
+        Navigation.IsEnabled = false;
+        return RestartPreparation.Ready;
+    }
+    internal void ResumeAfterRestart()
+    {
+        preparing = false;
+        Navigation.IsEnabled = true;
+    }
     private void AddSetting(FrameworkElement content) => Body.Children.Add(content);
     private void General()
     {
@@ -80,12 +141,12 @@ public sealed partial class SettingsWindow : Window
         var engine = Ui.Choice("Engine for new imports", ["On this PC", "ElevenLabs Scribe", "Ask each time"], Math.Max(0, Array.IndexOf(modes, current)));
         engine.SelectionChanged += (_, _) => Save("transcription.engineMode", modes[engine.SelectedIndex]); AddSetting(engine);
         var language = new TextBox { Header = "Language for new imports", Text = App.Services.Get("transcription.language", "auto"), PlaceholderText = "auto or language code, such as en" };
-        language.LostFocus += (_, _) =>
+        TrackTextField(language, () =>
         {
             var code = language.Text.Trim().ToLowerInvariant();
-            if (code == "auto" || code.Length is >= 2 and <= 3 && code.All(char.IsAsciiLetterLower)) Save("transcription.language", code);
-            else Ui.Show(notice, "Enter auto or a two or three letter language code.", InfoBarSeverity.Warning);
-        };
+            if (code == "auto" || code.Length is >= 2 and <= 3 && code.All(char.IsAsciiLetterLower)) { Save("transcription.language", code); return true; }
+            Ui.Show(notice, "Enter auto or a two or three letter language code.", InfoBarSeverity.Warning); return false;
+        });
         AddSetting(language);
         var regions = new[] { "default", "us", "eu", "in", "sg" };
         var region = Ui.Choice("ElevenLabs region", ["Default", "US", "EU", "India", "Singapore"], Math.Max(0, Array.IndexOf(regions, App.Services.Get("transcription.elevenlabs.region", "default"))));
@@ -117,17 +178,17 @@ public sealed partial class SettingsWindow : Window
         var status = Ui.Text(keyUnreadable ? "This saved key can't be read. Forget it, then save a new key. Your media and edits are still here." : hasKey ? "Key saved securely." : account is null ? "Check detects availability; Test sends only a connection test." : "No key saved.", "HelperText");
         panel.Children.Add(status);
         var model = new TextBox { Header = "Model ID", Text = App.Services.Get("llm.model." + entry?.WireId, entry?.DefaultModel ?? "") };
-        if (entry is not null) { panel.Children.Add(model); model.LostFocus += (_, _) => { if (model.Text.Trim().Length > 0) Save("llm.model." + entry.WireId, model.Text.Trim()); }; }
+        if (entry is not null) { panel.Children.Add(model); TrackTextField(model, () => { if (model.Text.Trim().Length == 0) { Ui.Show(notice, "Enter a model ID.", InfoBarSeverity.Warning); return false; } Save("llm.model." + entry.WireId, model.Text.Trim()); return true; }); }
         if (entry?.Cli == true)
         {
             var path = new TextBox { Header = "CLI path (optional override)", Text = App.Services.Get("llm.cliPath." + entry.WireId, ""), PlaceholderText = "Find the installed CLI automatically" };
-            path.LostFocus += (_, _) => Save("llm.cliPath." + entry.WireId, path.Text.Trim()); panel.Children.Add(path);
+            TrackTextField(path, () => { Save("llm.cliPath." + entry.WireId, path.Text.Trim()); return true; }); panel.Children.Add(path);
             panel.Children.Add(Ui.Text("VoxClip does not read CLI sign-in files. Install, update and sign in in your terminal.", "HelperText"));
         }
         if (entry?.Group == "local")
         {
             var endpoint = new TextBox { Header = "Local server URL", Text = App.Services.Get("llm.baseUrl." + entry.WireId, entry.WireId == "ollama" ? "http://localhost:11434" : "http://localhost:1234") };
-            endpoint.LostFocus += (_, _) => { if (Uri.TryCreate(endpoint.Text, UriKind.Absolute, out var address) && address.IsLoopback && address.Scheme is "http" or "https") Save("llm.baseUrl." + entry.WireId, endpoint.Text); else Ui.Show(notice, "Use a loopback HTTP or HTTPS address.", InfoBarSeverity.Warning); }; panel.Children.Add(endpoint);
+            TrackTextField(endpoint, () => { if (Uri.TryCreate(endpoint.Text, UriKind.Absolute, out var address) && address.IsLoopback && address.Scheme is "http" or "https") { Save("llm.baseUrl." + entry.WireId, endpoint.Text); return true; } Ui.Show(notice, "Use a loopback HTTP or HTTPS address.", InfoBarSeverity.Warning); return false; }); panel.Children.Add(endpoint);
         }
         if (account is not null)
         {
@@ -136,19 +197,31 @@ public sealed partial class SettingsWindow : Window
             Button? forget = null;
             var save = Ui.Button("Save key", () => _ = Ui.RunAsync(notice, async () =>
             {
+                if (preparing) return;
                 var secret = key.Password; key.Password = "";
                 if (string.IsNullOrWhiteSpace(secret)) return;
-                await App.Services.Keys.SaveAsync(account, secret, lifetime.Token); status.Text = "Key saved securely."; key.PlaceholderText = "Saved for your Windows account; paste to replace";
-                if (forget is not null) forget.Visibility = Visibility.Visible;
+                keyWrites++;
+                try
+                {
+                    await App.Services.Keys.SaveAsync(account, secret, lifetime.Token); status.Text = "Key saved securely."; key.PlaceholderText = "Saved for your Windows account; paste to replace";
+                    if (forget is not null) forget.Visibility = Visibility.Visible;
+                }
+                finally { keyWrites--; }
             }, "Save key"));
             save.IsEnabled = false; key.PasswordChanged += (_, _) => save.IsEnabled = !string.IsNullOrWhiteSpace(key.Password); panel.Children.Add(save);
-            forget = Ui.Button("Forget key", () => _ = Ui.RunAsync(notice, async () => { key.Password = ""; await App.Services.Keys.SaveAsync(account, "", lifetime.Token); status.Text = "Key forgotten."; key.PlaceholderText = "Paste an API key"; if (forget is not null) forget.Visibility = Visibility.Collapsed; }, "Forget key"));
+            forget = Ui.Button("Forget key", () => _ = Ui.RunAsync(notice, async () =>
+            {
+                if (preparing) return;
+                keyWrites++;
+                try { key.Password = ""; await App.Services.Keys.SaveAsync(account, "", lifetime.Token); status.Text = "Key forgotten."; key.PlaceholderText = "Paste an API key"; if (forget is not null) forget.Visibility = Visibility.Collapsed; }
+                finally { keyWrites--; }
+            }, "Forget key"));
             forget.Visibility = hasKey ? Visibility.Visible : Visibility.Collapsed; panel.Children.Add(forget);
         }
         if (entry is not null)
         {
             panel.Children.Add(Ui.Button("Check status", () => _ = Ui.RunAsync(notice, async () => status.Text = ProviderCatalog.Status(await App.Services.Connector(entry.Id).GetStatusAsync(lifetime.Token)), "Connector status")));
-            panel.Children.Add(Ui.Button("Test", () => _ = Ui.RunAsync(notice, async () =>
+            panel.Children.Add(Ui.Button("Test", () => RunSensitive(async () =>
             {
                 var connectorStatus = await App.Services.Connector(entry.Id).GetStatusAsync(lifetime.Token);
                 status.Text = ProviderCatalog.Status(connectorStatus);
@@ -178,11 +251,13 @@ public sealed partial class SettingsWindow : Window
             panel.Children.Add(Ui.Text($"{model.Engine} · {model.TotalBytes / 1_000_000d:0} MB · {model.License}", "HelperText"));
             panel.Children.Add(Ui.Text(available ? "Installed and verified." : "Not installed.", "HelperText"));
             var bar = new ProgressBar { Visibility = Visibility.Collapsed }; panel.Children.Add(bar);
-            panel.Children.Add(Ui.Button(available ? "Remove" : "Download", () => _ = Ui.RunAsync(notice, async () =>
+            panel.Children.Add(Ui.Button(available ? "Remove" : "Download", () => RunSensitive(async () =>
             {
+                if (preparing) return;
                 if (download is not null) { Ui.Show(notice, "A model download is already running."); return; }
                 var host = model.Files.FirstOrDefault()?.Url.Host ?? model.LicenseUrl.Host;
                 if (!await Ui.ConfirmAsync(Root.XamlRoot, available ? "Remove model?" : "Download model?", available ? $"Remove {model.Id}? Your projects and source videos stay here." : $"{model.Id}\nPublisher: {host}\nDownload: {model.TotalBytes / 1_000_000d:0} MB\nLicence: {model.License}\n{model.Attribution}\n{model.LicenseUrl}", available ? "Remove" : "Download and accept licence")) return;
+                if (preparing) return;
                 download = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token); bar.Visibility = Visibility.Visible;
                 try
                 {
@@ -207,9 +282,9 @@ public sealed partial class SettingsWindow : Window
         var srt = new ToggleSwitch { Header = "Save an SRT sidecar", IsOn = App.Services.Get("export.srt", false) };
         srt.Toggled += (_, _) => Save("export.srt", srt.IsOn); Body.Children.Add(srt);
         var folder = new TextBox { Header = "Default destination folder", Text = App.Services.Get("export.folder", Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyVideos), "VoxClip")) };
-        folder.LostFocus += (_, _) => { if (Path.IsPathFullyQualified(folder.Text)) Save("export.folder", folder.Text); else Ui.Show(notice, "Choose an absolute folder path.", InfoBarSeverity.Warning); }; Body.Children.Add(folder);
+        TrackTextField(folder, () => { if (Path.IsPathFullyQualified(folder.Text)) { Save("export.folder", folder.Text); return true; } Ui.Show(notice, "Choose an absolute folder path.", InfoBarSeverity.Warning); return false; }); Body.Children.Add(folder);
         var pattern = new TextBox { Header = "File name pattern", Text = App.Services.Get("export.fileNamePattern", "{project}-{clip}-{aspect}"), MaxLength = 200 };
-        pattern.LostFocus += (_, _) => { if (!string.IsNullOrWhiteSpace(pattern.Text)) Save("export.fileNamePattern", pattern.Text); }; Body.Children.Add(pattern);
+        TrackTextField(pattern, () => { if (string.IsNullOrWhiteSpace(pattern.Text)) { Ui.Show(notice, "Enter a file name pattern.", InfoBarSeverity.Warning); return false; } Save("export.fileNamePattern", pattern.Text); return true; }); Body.Children.Add(pattern);
         var openFolder = new ToggleSwitch { Header = "Open destination folder after export", IsOn = App.Services.Get("export.openFolderAfter", false) };
         openFolder.Toggled += (_, _) => Save("export.openFolderAfter", openFolder.IsOn); Body.Children.Add(openFolder);
         Body.Children.Add(Ui.Text("VoxClip uses H.264 hardware encoding when available and the Windows software encoder when needed. GPL encoders are never used.", "HelperText"));
@@ -218,9 +293,9 @@ public sealed partial class SettingsWindow : Window
     {
         Body.Children.Add(Ui.Text("VoxClip " + AppServices.Version, "SubtitleTextBlockStyle"));
         Body.Children.Add(Ui.Text("A fast way to cut, because we already know where every word sits.\nOpen source · MIT · No telemetry."));
-        Body.Children.Add(Ui.Button("Check for updates", () => _ = Ui.RunAsync(notice, async () => { if (App.Windows.FirstOrDefault() is { } window) { await window.CheckUpdatesAsync(true); Ui.Show(notice, "Update check finished. Available updates appear in the main window. Development builds do not self-update."); } }, "Updates")));
+        Body.Children.Add(Ui.Button("Check for updates", () => RunSensitive(async () => { if (App.Windows.FirstOrDefault() is { } window) { await window.CheckUpdatesAsync(true); Ui.Show(notice, "Update check finished. Available updates appear in the main window. Development builds do not self-update."); } }, "Updates")));
         Body.Children.Add(Ui.Text("What leaves this device: local transcription and editing stay here. ElevenLabs receives audio only after consent. AI connectors receive transcript text only, never video or audio.", "HelperText"));
-        Body.Children.Add(Ui.Button("Welcome tour", () => _ = Ui.RunAsync(notice, async () => { if (App.Windows.FirstOrDefault() is { } window) await window.ShowOnboardingAsync(); }, "Welcome tour")));
+        Body.Children.Add(Ui.Button("Welcome tour", () => RunSensitive(async () => { if (App.Windows.FirstOrDefault() is { } window) await window.ShowOnboardingAsync(); }, "Welcome tour")));
         Body.Children.Add(Ui.Button("Reveal logs", () => ShareHelpers.Reveal(Path.Combine(App.Services.Data.Logs, "voxclip.log"))));
         Body.Children.Add(Ui.Button("Copy diagnostics", () => _ = Ui.RunAsync(notice, async () => { var lines = await App.Services.Log.ReadRecentAsync(200, lifetime.Token); ShareHelpers.Copy($"VoxClip {AppServices.Version}\n{System.Runtime.InteropServices.RuntimeInformation.OSArchitecture}\n" + string.Join('\n', lines)); Ui.Show(notice, "Redacted diagnostics copied. No transcript text or keys are included."); }, "Diagnostics")));
         Body.Children.Add(Ui.Text("Licences", "SubtitleTextBlockStyle"));

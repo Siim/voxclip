@@ -14,7 +14,7 @@ using VoxClip.Core.Domain.Shared;
 namespace VoxClip.App;
 
 /// <summary>Mica editor shell with a custom native title bar; design §3.3.</summary>
-public sealed partial class MainWindow : Window
+public sealed partial class MainWindow : Window, IUpdateRestartWindow
 {
     internal string? ProjectPath { get; private set; }
     internal string CurrentScreen => ContentFrame.Content is EditorPage ? "editor" : ContentFrame.Content is HomePage ? "home" : "none";
@@ -22,7 +22,13 @@ public sealed partial class MainWindow : Window
     private readonly SemaphoreSlim navigation = new(1, 1);
     private bool closingApproved;
     private bool closingInProgress;
+    private bool restartPrepared;
     private EditorPage? editor;
+#if DEBUG
+    internal EditorPage? DebugEditor => editor;
+    internal bool DebugHoldNavigation() => navigation.Wait(0);
+    internal void DebugReleaseNavigation() => navigation.Release();
+#endif
     private Button? updateRestart;
     /// <summary>Construct the shell on the DispatcherQueue thread; architecture §7.2.</summary>
     public MainWindow()
@@ -48,6 +54,7 @@ public sealed partial class MainWindow : Window
         Root.KeyboardAccelerators.Add(Accelerator(VirtualKey.W, VirtualKeyModifiers.Control, () => _ = RequestCloseAsync()));
         AppWindow.Closing += (appWindow, args) =>
         {
+            if (App.Restart.IsPreparing) { args.Cancel = true; return; }
             if (closingApproved || editor is null) return;
             args.Cancel = true;
             _ = RequestCloseAsync();
@@ -60,13 +67,14 @@ public sealed partial class MainWindow : Window
     private void SettingsChanged(object? sender, EventArgs args) => App.Services.ApplyTheme(Root);
     private async Task RequestCloseAsync()
     {
-        if (closingInProgress) return;
+        if (closingInProgress || App.Restart.IsPreparing) return;
         closingInProgress = true;
         try
         {
             await navigation.WaitAsync();
             try
             {
+                if (App.Restart.IsPreparing) return;
                 if (editor is null || await editor.TrySaveBeforeLeavingAsync())
                 {
                     closingApproved = true;
@@ -78,11 +86,35 @@ public sealed partial class MainWindow : Window
         catch (Exception exception) { editor?.ResumeAfterFailedLeave(); ShowError(exception, "Close project"); }
         finally { closingInProgress = false; }
     }
+    bool IUpdateRestartWindow.IsBusyForRestart => editor?.ViewModel?.Busy == true || App.Services.IsBusy;
+    async Task<RestartPreparation> IUpdateRestartWindow.PrepareForRestartAsync()
+    {
+        if (!navigation.Wait(0)) return RestartPreparation.TransitionActive;
+        try
+        {
+            if (closingInProgress) return RestartPreparation.TransitionActive;
+            if (editor is { } current)
+            {
+                if (current.ViewModel.Busy) return RestartPreparation.Busy;
+                if (!await current.TrySaveBeforeLeavingAsync()) return RestartPreparation.SaveFailed;
+            }
+            restartPrepared = true;
+            return RestartPreparation.Ready;
+        }
+        finally { if (!restartPrepared) navigation.Release(); }
+    }
+    void IUpdateRestartWindow.ResumeAfterRestart()
+    {
+        if (!restartPrepared) return;
+        restartPrepared = false;
+        try { editor?.ResumeAfterFailedLeave(); }
+        finally { navigation.Release(); }
+    }
     private void BusyChanged(object? sender, EventArgs args)
     {
         if (updateRestart is null) return;
         updateRestart.IsEnabled = !App.Services.IsBusy;
-        ToolTipService.SetToolTip(updateRestart, App.Services.IsBusy ? "Finish the export first." : "Restart to update VoxClip.");
+        ToolTipService.SetToolTip(updateRestart, App.Services.IsBusy ? "Finish the current task first." : "Restart to update VoxClip.");
     }
     internal static KeyboardAccelerator Accelerator(VirtualKey key, VirtualKeyModifiers modifiers, Action action)
     {
@@ -110,11 +142,13 @@ public sealed partial class MainWindow : Window
 
     internal async Task OpenPathAsync(string path, bool demo = false)
     {
+        if (App.Restart.IsPreparing) return;
         var fullPath = Path.GetFullPath(path);
         var newImport = !Path.GetExtension(fullPath).Equals(".voxclip", StringComparison.OrdinalIgnoreCase);
         var existing = App.Windows.FirstOrDefault(window => string.Equals(window.ProjectPath, fullPath, StringComparison.OrdinalIgnoreCase));
         if (existing is not null) { existing.Activate(); return; }
         await navigation.WaitAsync();
+        if (App.Restart.IsPreparing) { navigation.Release(); return; }
         var previous = editor;
         var previousPath = ProjectPath;
         var previousContent = ContentFrame.Content;
@@ -202,9 +236,11 @@ public sealed partial class MainWindow : Window
     internal async void GoHome() => await GoHomeAsync();
     internal async Task GoHomeAsync()
     {
+        if (App.Restart.IsPreparing) return;
         await navigation.WaitAsync();
         try
         {
+            if (App.Restart.IsPreparing) return;
             if (editor is { } previous)
             {
                 if (!await previous.TrySaveBeforeLeavingAsync()) return;
@@ -265,7 +301,29 @@ public sealed partial class MainWindow : Window
             var restart = new Button { Content = "Restart now", IsEnabled = !App.Services.IsBusy };
             updateRestart = restart;
             BusyChanged(this, EventArgs.Empty);
-            restart.Click += async (_, _) => { try { await App.Services.Updates.ApplyAsync(update, lifetime.Token); } catch (Exception exception) { ShowError(exception, "Update"); } };
+            restart.Click += async (_, _) =>
+            {
+                RestartResult result;
+                try
+                {
+                    result = await App.Restart.RunAsync(new UpdateRestartSettings(),
+                        ct => App.Services.Updates.ApplyAsync(update, ct), lifetime.Token);
+                }
+                catch (Exception exception) { ShowError(exception, "Update"); return; }
+                if (result is RestartResult.Dispatched or RestartResult.Cancelled) return;
+                WindowNotice.Severity = result is RestartResult.SaveFailed or RestartResult.SettingsFailed or RestartResult.UpdateFailed
+                    ? InfoBarSeverity.Error : InfoBarSeverity.Warning;
+                WindowNotice.Message = result switch
+                {
+                    RestartResult.Busy => "Finish or cancel transcription, clip search or export before restarting. Your edits are still here.",
+                    RestartResult.TransitionActive => "Finish opening or closing the project, then try restarting. Your edits are still here.",
+                    RestartResult.SaveFailed => "Could not save every open project. Your projects are still open with their edits. Use Save project as… or check the folder, then try again.",
+                    RestartResult.SettingsFailed => "Could not save settings. Your projects are still open. Check the settings folder, then try again.",
+                    RestartResult.UpdateFailed => "Could not restart for the update. Your projects are still open with their edits. Try again when ready.",
+                    _ => "An update restart is already in progress."
+                };
+                WindowNotice.IsOpen = true;
+            };
             WindowNotice.ActionButton = restart;
             WindowNotice.IsOpen = true;
         }

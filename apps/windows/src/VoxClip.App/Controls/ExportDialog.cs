@@ -78,9 +78,10 @@ internal sealed class ExportDialog : ContentDialog
     private async void Export(ContentDialog sender, ContentDialogButtonClickEventArgs args)
     {
         args.Cancel = true;
-        if (running || demo) return;
+        if (running || demo || model.IsLeaving) return;
         await Ui.RunAsync(notice, async () =>
         {
+            if (model.IsLeaving) return;
             if (!Path.IsPathFullyQualified(folder.Text)) { Ui.Show(notice, "Choose an absolute destination folder.", InfoBarSeverity.Warning); return; }
             var selectedClips = target.SelectedIndex == 1 ? model.Clips.Where(clip => clip.Selected).ToArray() : [];
             if (target.SelectedIndex == 1 && selectedClips.Length == 0) { Ui.Show(notice, "Choose clips to export."); return; }
