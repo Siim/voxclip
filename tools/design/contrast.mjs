@@ -10,6 +10,10 @@ export const minimums = { text: 4.5, accent: 4.5, ui: 3 };
 // composited top first (an overlay over what sits under it). Foregrounds with alpha are
 // composited over the background.
 const surfaces = ['bg.surface', 'bg.sunken', 'bg.window', 'bg.elevated'];
+// System materials the apps never paint, approximated per mode. glass.sidebar is the macOS
+// sidebar's Liquid Glass as the ADR-R29 mockups draw it over the page: light
+// rgba(237,236,231,0.80), dark rgba(46,47,51,0.78).
+export const materials = { 'glass.sidebar': { light: '#EDECE7CC', dark: '#2E2F33C7' } };
 const tokenPairs = [
   ...[...surfaces, 'bg.input', 'bg.muted', 'pause.background', 'accent.soft',
     'status.dangerBackground', 'status.warningBackground', 'status.successBackground', 'status.infoBackground']
@@ -19,6 +23,7 @@ const tokenPairs = [
   ['text', 'text.muted', 'pause.background'],
   ['text', 'text.secondary', ['clip.badgeBackground', 'bg.surface'], 'neutral clip badge'],
   ['text', 'text.secondary', ['clip.badgeBackground', 'bg.sunken'], 'neutral clip badge'],
+  ['text', 'text.secondary', ['clip.badgeBackground', 'glass.sidebar', 'bg.surface'], 'neutral clip badge on the sidebar glass'],
   ['text', 'text.primary', 'selection.transcript', 'Windows transcript selection'],
   ['text', 'word.cut', 'bg.surface'],
   ['text', 'word.filler', 'bg.surface'],
@@ -133,7 +138,7 @@ export function contrastRows(source, xaml) {
     rows.push({ category, ...context, foreground, background: layers.join(' over '), colors: `${hex(top)} on ${hex(base)}`, ratio, minimum: minimums[category], passed: ratio >= minimums[category] });
   };
   for (const mode of ['light', 'dark']) {
-    const lookup = value => value.startsWith('#') ? value : tokenColor(source, value, mode);
+    const lookup = value => value.startsWith('#') ? value : materials[value]?.[mode] ?? tokenColor(source, value, mode);
     for (const [category, foreground, background, label] of tokenPairs) measure(category, foreground, background, lookup, { platform: 'tokens', mode, label: label ?? '' });
   }
   const ramp = windowsRamp(xaml);

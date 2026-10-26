@@ -41,7 +41,7 @@
             <SolidColorBrush x:Key="VcStatusInfoBackgroundBrush" Color="#232428" />
             <SolidColorBrush x:Key="VcRecordButtonBrush" Color="#E5484D" />
             <SolidColorBrush x:Key="VcRecordLiveBrush" Color="#FF5C5C" />
-            <SolidColorBrush x:Key="VcClipBadgeBackgroundBrush" Color="#21ECEAE4" />
+            <SolidColorBrush x:Key="VcClipBadgeBackgroundBrush" Color="#1AECEAE4" />
             <SolidColorBrush x:Key="VcTimelineTrackBrush" Color="#26272B" />
             <SolidColorBrush x:Key="VcTimelineKeptBrush" Color="#7A7D85" />
             <SolidColorBrush x:Key="VcTimelineKeptBackgroundBrush" Color="#17ECEAE4" />

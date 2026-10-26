@@ -241,7 +241,7 @@ extension Color {
 
     static let vcClipBadgeBackground = Color(nsColor: NSColor(name: NSColor.Name("vcClipBadgeBackground")) { appearance in
         appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-            ? NSColor(srgbRed: 236.0 / 255, green: 234.0 / 255, blue: 228.0 / 255, alpha: 33.0 / 255)
+            ? NSColor(srgbRed: 236.0 / 255, green: 234.0 / 255, blue: 228.0 / 255, alpha: 26.0 / 255)
             : NSColor(srgbRed: 26.0 / 255, green: 27.0 / 255, blue: 31.0 / 255, alpha: 23.0 / 255)
     })
 

@@ -51,6 +51,9 @@ host-dependent paths in the outputs.
 and dark: text on surfaces (4.5:1), text and glyphs on the accent (4.5:1), and
 UI boundaries and marks (3:1). Windows on-accent pairs read the accent ramp
 from `App.xaml`; translucent colours are composited over what they sit on.
+System materials the apps never paint are approximated per mode in
+`materials`: `glass.sidebar` is the macOS sidebar glass as the ADR-R29 mockups
+draw it over the page.
 `npm test` fails on any pair below its minimum, on a colour token that no pair
 checks and that is not listed as exempt with a reason, and on an `App.xaml`
 ramp that differs from the accent tokens.

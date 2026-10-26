@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
-import { appXamlPath, channels, composite, contrast, contrastRows, coverage, minimums, windowsRamp } from './contrast.mjs';
+import { appXamlPath, channels, composite, contrast, contrastRows, coverage, materials, minimums, windowsRamp } from './contrast.mjs';
 
 const source = JSON.parse(await readFile(new URL('../../shared/design/tokens.json', import.meta.url), 'utf8'));
 const xaml = await readFile(new URL(`../../${appXamlPath}`, import.meta.url), 'utf8');
@@ -25,6 +25,24 @@ test('every text, on-accent and boundary pair meets its minimum in both modes an
   for (const row of rows) {
     assert.ok(row.passed, `${row.platform} ${row.mode} ${row.foreground} on ${row.background}: ${row.colors} ${row.ratio.toFixed(2)}:1 < ${row.minimum}:1`);
   }
+});
+
+test('the ADR-R29 badge, selection and boundary pairs are checked in both modes', () => {
+  const rows = contrastRows(source, xaml);
+  const required = [
+    ['text', 'text.secondary', 'clip.badgeBackground over bg.surface'],
+    ['text', 'text.secondary', 'clip.badgeBackground over bg.sunken'],
+    ['text', 'text.secondary', 'clip.badgeBackground over glass.sidebar over bg.surface'],
+    ['text', 'text.primary', 'selection.transcript'],
+    ['ui', 'line.strong', 'bg.sunken'],
+  ];
+  for (const mode of ['light', 'dark']) {
+    for (const [category, foreground, background] of required) {
+      const row = rows.find(candidate => candidate.platform === 'tokens' && candidate.mode === mode && candidate.foreground === foreground && candidate.background === background);
+      assert.ok(row?.category === category && row.minimum === minimums[category] && row.passed, `${mode} ${foreground} on ${background}`);
+    }
+  }
+  assert.deepEqual(Object.keys(materials['glass.sidebar']).sort(), ['dark', 'light']);
 });
 
 test('the gate fails a pair below its minimum', () => {
