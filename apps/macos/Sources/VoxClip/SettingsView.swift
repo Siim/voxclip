@@ -305,7 +305,7 @@ extension AppModel {
                 Text("A fast way to cut, because we already know where every word sits.").foregroundStyle(.secondary)
                 Button("Check for updates") { Task { await app.checkUpdates(manual: true) } }
                 if let notice = app.notice { Text(notice).font(.caption) }
-                Link("GitHub", destination: URL(string: "https://github.com/Siim/voxclip")!)
+                Link("GitHub", destination: URL(string: "https://github.com/Siim/voxclip")!).tint(DesignValues.accentText)
                 Button("Licences…") { showLicences = true }
                 Button("What leaves this device") { showPrivacy = true }
                 Button("Reset onboarding") { app.showTour = true; app.set("onboarding.completed", .bool(false)) }

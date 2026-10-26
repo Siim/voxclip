@@ -746,6 +746,25 @@ fi
 ''')
         self.assert_failed(self.copy_resources(), "differs from its tracked source files")
 
+    def test_asset_catalog_must_compile_the_info_plist_accent_colour(self):
+        app = self.root / "VoxClip.app"
+        (app / "Contents/Resources").mkdir(parents=True)
+        self.write_command("xcrun", '#!/bin/bash\nexec /usr/bin/xcrun "$@"\n')
+        self.environment.update({"APP_BUNDLE": str(app), "INFO_PLIST": "Sources/VoxClip/Info.plist",
+                                 "ASSET_CATALOG": "Resources/Assets.xcassets"})
+        result = self.run_function("compile_asset_catalog")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue((app / "Contents/Resources/Assets.car").is_file())
+        info = plistlib.loads((PACKAGE / "Sources/VoxClip/Info.plist").read_bytes())
+        self.assertEqual(info["NSAccentColorName"], "AccentColor")
+        missing = self.root / "Info.plist"
+        missing.write_bytes(plistlib.dumps({**info, "NSAccentColorName": "Missing"}))
+        self.environment["INFO_PLIST"] = str(missing)
+        self.assert_failed(self.run_function("compile_asset_catalog"), "has no Missing colour")
+        del info["NSAccentColorName"]
+        missing.write_bytes(plistlib.dumps(info))
+        self.assert_failed(self.run_function("compile_asset_catalog"), "Info.plist has no NSAccentColorName")
+
     def test_framework_notice_gate_requires_known_copyright(self):
         app = self.root / "VoxClip.app"
         frameworks = app / "Contents/Frameworks"

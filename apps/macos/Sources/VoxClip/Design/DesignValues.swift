@@ -36,8 +36,42 @@ import VoxClipCore
 
     static func color(_ path: String) -> Color { Color(nsColor: nsColor(path)) }
 
+    /// Petrol for marks, links, the playhead and clip badges. While the system accent is
+    /// the AccentColor asset this is the accent.text token, which lifts Petrol to #63BDB6
+    /// on dark surfaces; when the user picked a system accent colour it is controlAccentColor.
+    static let accentText: Color = {
+        let modes = value("color.accent.text") as? [String: String] ?? [:]
+        let dark = parse(modes["dark"] ?? ""), light = parse(modes["light"] ?? "")
+        let asset = NSColor(named: "AccentColor")
+        #if DEBUG
+        let tinted = asset == nil
+        #else
+        let tinted = false
+        #endif
+        return Color(nsColor: NSColor(name: NSColor.Name("voxclip.accentText")) { appearance in
+            var own = tinted
+            if let asset {
+                appearance.performAsCurrentDrawingAppearance {
+                    guard let accent = NSColor.controlAccentColor.usingColorSpace(.sRGB), let petrol = asset.usingColorSpace(.sRGB) else { return }
+                    own = abs(accent.redComponent - petrol.redComponent) < 0.01 && abs(accent.greenComponent - petrol.greenComponent) < 0.01 && abs(accent.blueComponent - petrol.blueComponent) < 0.01
+                }
+            }
+            guard own else { return .controlAccentColor }
+            return appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? dark : light
+        })
+    }()
+
+    #if DEBUG
+    /// accent.default for SwiftUI controls when the app runs without the AccentColor asset
+    /// (`swift run`, the offscreen harness); a bundle from bundle.sh gets nil and uses the
+    /// asset. Caveat: the tint reaches SwiftUI controls only. AppKit still draws focus rings,
+    /// text selection and controlAccentColor in the system accent until the asset is
+    /// bundled, and an explicit tint also colours labels the asset leaves neutral, such as
+    /// borderless menus. Accent evidence for those must come from a bundled build.
+    static let debugTint: Color? = NSColor(named: "AccentColor") == nil ? color("accent.default") : nil
+    #endif
+
     static func parse(_ hex: String) -> NSColor {
-        if hex == "system:green" { return .systemGreen }
         if hex == "system:selectedText" { return .selectedTextBackgroundColor }
         precondition(!hex.hasPrefix("system:"), "Unknown system colour token")
         let raw = String(hex.dropFirst())
@@ -64,6 +98,18 @@ import VoxClipCore
 
     static func monoFont(_ size: Double = 12) -> NSFont { NSFont(name: "GeistMono-Regular", size: size) ?? .monospacedSystemFont(ofSize: size, weight: .regular) }
     static func mono(_ size: Double = 12) -> Font { Font(monoFont(size)) }
+}
+
+extension View {
+    /// Apply at every SwiftUI hosting root: a DEBUG build without the asset tints its
+    /// controls with DesignValues.debugTint, a bundled build uses the AccentColor asset.
+    func sceneAccent() -> some View {
+        #if DEBUG
+        tint(DesignValues.debugTint)
+        #else
+        self
+        #endif
+    }
 }
 
 @MainActor struct InlineNotice: View {

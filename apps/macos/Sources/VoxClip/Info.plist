@@ -11,6 +11,7 @@
     <key>CFBundleVersion</key><string>1</string>
     <key>LSMinimumSystemVersion</key><string>26.0</string>
     <key>NSHighResolutionCapable</key><true/>
+    <key>NSAccentColorName</key><string>AccentColor</string>
     <key>NSCameraUsageDescription</key><string>VoxClip uses the camera when you choose to record a video.</string>
     <key>NSMicrophoneUsageDescription</key><string>VoxClip uses the microphone when you choose to record audio.</string>
     <key>NSSpeechRecognitionUsageDescription</key><string>VoxClip transcribes your videos on this Mac so you can edit them by their words.</string>

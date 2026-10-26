@@ -1,4 +1,4 @@
-import { mkdir, readFile, realpath, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, realpath, rm, rmdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -7,6 +7,9 @@ const header = 'GENERATED from shared/design/tokens.json - do not edit';
 const namespace = 'com.voxconvo.voxclip';
 const swiftTarget = 'apps/macos/Sources/VoxClip/Design/Tokens.swift';
 const xamlTarget = 'apps/windows/src/VoxClip.App/Themes/Tokens.xaml';
+const assetCatalog = 'apps/macos/Resources/Assets.xcassets';
+// macOS typography families that are the system font rather than a fontFiles token.
+const systemDesigns = { system: '', 'SF Mono': ', design: .monospaced' };
 const capitalize = value => value[0].toUpperCase() + value.slice(1);
 const suffix = parts => parts.map(capitalize).join('');
 const swiftName = parts => parts[0] + suffix(parts.slice(1));
@@ -35,6 +38,12 @@ function swiftColor(value, token) {
   const bytes = value.slice(1).match(/../g).map(byte => Number.parseInt(byte, 16));
   if (bytes.length === 3) bytes.push(255);
   return `NSColor(srgbRed: ${bytes[0]}.0 / 255, green: ${bytes[1]}.0 / 255, blue: ${bytes[2]}.0 / 255, alpha: ${bytes[3]}.0 / 255)`;
+}
+
+function assetColor(value, token) {
+  if (!/^#[0-9a-f]{6}(?:[0-9a-f]{2})?$/i.test(value ?? '')) throw new Error(`macOS asset colours must be hex: ${token.path.join('.')}`);
+  const [red, green, blue, alpha = 'FF'] = value.slice(1).toUpperCase().match(/../g);
+  return { 'color-space': 'srgb', components: { alpha: (Number.parseInt(alpha, 16) / 255).toFixed(3), blue: `0x${blue}`, green: `0x${green}`, red: `0x${red}` } };
 }
 
 function xamlColor(token, theme) {
@@ -95,19 +104,21 @@ export function buildOutputs(source) {
     names.add(name);
     xamlValues.push(markup);
   };
-  const addConstant = (parts, value, resourceParts = parts) => {
-    const name = `Vc${suffix(resourceParts)}`;
-    swiftValues.push(`    static let ${swiftName(parts)}: ${typeof value === 'number' ? 'CGFloat' : 'String'} = ${typeof value === 'number' ? value : quote(value)}`);
+  const addConstant = (parts, value) => {
+    const name = `Vc${suffix(parts)}`;
     addResource(name, `    <x:${typeof value === 'number' ? 'Double' : 'String'} x:Key="${name}">${xml(value)}</x:${typeof value === 'number' ? 'Double' : 'String'}>`);
   };
 
   for (const token of tokens) {
     if (['color', 'typography', 'fontFamily'].includes(token.$type)) continue;
-    if (!['dimension', 'duration', 'cubicBezier', 'spring', 'string'].includes(token.$type)) throw new Error(`Unsupported token type ${token.$type}`);
+    if (!['dimension', 'number', 'duration', 'cubicBezier', 'spring', 'string'].includes(token.$type)) throw new Error(`Unsupported token type ${token.$type}`);
     const labels = token.$type === 'dimension' ? ['width', 'height'] : ['x1', 'y1', 'x2', 'y2'];
     const values = flatten(token.$value, token.path, labels);
     constants.push(...values);
-    for (const item of values) {
+    for (const item of values) swiftValues.push(`    static let ${swiftName(item.path)}: ${typeof item.value === 'number' ? 'CGFloat' : 'String'} = ${typeof item.value === 'number' ? item.value : quote(item.value)}`);
+    // $value is the macOS value; a `windows` extension replaces it in Tokens.xaml only.
+    const windows = extensions(token).windows;
+    for (const item of windows === undefined ? values : flatten(windows, token.path, labels)) {
       addConstant(item.path, item.value);
       if (typeof item.value === 'number' && ['spacing', 'stroke', 'radius'].includes(item.path[0])) {
         const type = item.path[0] === 'radius' ? 'CornerRadius' : 'Thickness';
@@ -145,9 +156,9 @@ export function buildOutputs(source) {
       addResource(name, `    <${type} x:Key="${name}">${xml(item.value)}</${type}>`);
     }
     const family = families.find(candidate => candidate.$value === macos.fontFamily);
-    if (!family && macos.fontFamily !== 'system') throw new Error(`Unknown font family ${macos.fontFamily}`);
+    if (!family && !Object.hasOwn(systemDesigns, macos.fontFamily)) throw new Error(`Unknown font family ${macos.fontFamily}`);
     const call = family ? `VoxClipTokenFonts.${family.path.at(-1)}(size: size, weight: ${macos.fontWeight})`
-      : `Font.system(size: size, weight: .${fontWeight(macos.fontWeight)})`;
+      : `Font.system(size: size, weight: .${fontWeight(macos.fontWeight)}${systemDesigns[macos.fontFamily]})`;
     swiftFonts.push(`    @MainActor static func vc${capitalize(kind)}(size: CGFloat = VCTokens.${swiftName(token.path)}FontSize) -> Font {\n        ${call}${macos.features?.includes('tnum') ? '.monospacedDigit()' : ''}\n    }`);
   }
 
@@ -200,6 +211,19 @@ ${[100, 200, 300, 400, 500, 600, 700, 800, 900].map(weight => `        case ${we
 ${fontLoaders.join('\n\n')}
 }
 `;
+  const assets = colors.filter(token => extensions(token).macosAsset !== undefined).map(token => {
+    const name = extensions(token).macosAsset;
+    if (!/^[A-Za-z][A-Za-z0-9]*$/.test(name)) throw new Error(`Invalid macOS asset name: ${token.path.join('.')}`);
+    const contents = {
+      colors: [
+        { color: assetColor(token.$value.light, token), idiom: 'universal' },
+        { appearances: [{ appearance: 'luminosity', value: 'dark' }], color: assetColor(token.$value.dark, token), idiom: 'universal' },
+      ],
+      info: { author: header, version: 1 },
+    };
+    return [`${assetCatalog}/${name}.colorset/Contents.json`, `${JSON.stringify(contents, null, 2)}\n`];
+  });
+  if (new Set(assets.map(([relative]) => relative)).size !== assets.length) throw new Error('Duplicate macOS asset name');
   const themes = ['Default', 'Light', 'HighContrast'].map(theme => `        <ResourceDictionary x:Key="${theme}">\n${colors.map(token => `            ${xamlColor(token, theme)}`).join('\n')}\n        </ResourceDictionary>`);
   const xaml = `<!-- ${header} -->
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
@@ -209,7 +233,18 @@ ${themes.join('\n')}
 ${xamlValues.join('\n')}
 </ResourceDictionary>
 `;
-  return { swift, xaml, colorCount: colors.length, constantCount: constants.length };
+  return { swift, xaml, assets, colorCount: colors.length, constantCount: constants.length };
+}
+
+// Every file under the asset catalog, relative to the repository, except Finder metadata.
+async function catalogFiles(directory = path.join(root, assetCatalog)) {
+  let entries;
+  try { entries = await readdir(directory, { withFileTypes: true }); }
+  catch (error) { if (error.code === 'ENOENT') return []; throw error; }
+  const files = await Promise.all(entries.filter(entry => entry.name !== '.DS_Store').map(entry => entry.isDirectory()
+    ? catalogFiles(path.join(directory, entry.name))
+    : [path.relative(root, path.join(directory, entry.name)).split(path.sep).join('/')]));
+  return files.flat().sort();
 }
 
 async function main() {
@@ -219,7 +254,20 @@ async function main() {
   const source = JSON.parse(await readFile(path.join(root, 'shared/design/tokens.json'), 'utf8'));
   const output = buildOutputs(source);
   let drift = false;
-  for (const [relative, text] of [[swiftTarget, output.swift], [xamlTarget, output.xaml]]) {
+  // The generator owns the asset catalog, which bundle.sh compiles whole: a file it does not
+  // produce is drift in --check and removed by generate, so a stale colorset cannot ship.
+  const produced = new Set(output.assets.map(([relative]) => relative));
+  for (const relative of await catalogFiles()) {
+    if (produced.has(relative)) continue;
+    if (check) { drift = true; console.error(`drift: ${relative} is not generated from tokens.json`); continue; }
+    await rm(path.join(root, relative));
+    for (let directory = path.dirname(relative); directory !== assetCatalog && directory.startsWith(`${assetCatalog}/`); directory = path.dirname(directory)) {
+      if ((await readdir(path.join(root, directory))).length > 0) break;
+      await rmdir(path.join(root, directory));
+    }
+    console.log(`removed ${relative}`);
+  }
+  for (const [relative, text] of [[swiftTarget, output.swift], [xamlTarget, output.xaml], ...output.assets]) {
     const destination = path.join(root, relative);
     if (check) {
       let existing;

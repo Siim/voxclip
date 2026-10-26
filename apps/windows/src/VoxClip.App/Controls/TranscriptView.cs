@@ -103,7 +103,7 @@ public sealed class TranscriptView : UserControl
         var gutter = (TextBlock)grid.Children[0];
         gutter.Text = item.Timecode + (item.Speaker is null ? "" : "\n" + item.Speaker);
         gutter.FontFamily = (FontFamily)Application.Current.Resources["VcFontGeistMono"];
-        gutter.Foreground = Brush("VcTextMutedBrush");
+        gutter.Foreground = Brush("VcTextTertiaryBrush");
         var rich = (RichTextBlock)grid.Children[1];
         rich.FontFamily = (FontFamily)Application.Current.Resources["VcFontDmSans"];
         rich.FontSize = fontSize;
@@ -161,7 +161,7 @@ public sealed class TranscriptView : UserControl
                 }
                 if (run.Run.Text != text) { run.Run.Text = text; textChanged = true; }
                 run.Run.TextDecorations = cut && showCuts ? TextDecorations.Strikethrough : IsFiller(model.DisplayText(word)) || lowConfidence && word.Conf is < 0.6 ? TextDecorations.Underline : TextDecorations.None;
-                run.Run.Foreground = Brush(cut ? "VcWordCutBrush" : IsFiller(model.DisplayText(word)) ? "VcStatusWarningBrush" : "VcTextPrimaryBrush");
+                run.Run.Foreground = Brush(cut ? "VcWordCutBrush" : IsFiller(model.DisplayText(word)) ? "VcWordFillerBrush" : "VcTextPrimaryBrush");
                 if (state.ActiveClipId is { } id && state.Clips.FirstOrDefault(clip => clip.Id == id) is { } active &&
                     (run.Index < model.Index(active.StartWordId) || run.Index > model.Index(active.EndWordId))) run.Run.Foreground = Brush("VcTextDisabledBrush");
             }

@@ -9,6 +9,7 @@ EXECUTABLE="VoxClip"
 CLI="voxclip-cli"
 BUNDLE_ID="com.voxconvo.voxclip"
 INFO_PLIST="Sources/VoxClip/Info.plist"
+ASSET_CATALOG="Resources/Assets.xcassets"
 ENTITLEMENTS="VoxClip.entitlements"
 DIST="$PWD/dist"
 APP_BUNDLE="$DIST/VoxClip.app"
@@ -164,6 +165,7 @@ printf 'APPL????' > "$APP_BUNDLE/Contents/PkgInfo"
 cp "$REPO_ROOT/shared/brand/macos/AppIcon.icns" "$REPO_ROOT/THIRD_PARTY_NOTICES.md" \
     "$REPO_ROOT/LICENSE" "$APP_BUNDLE/Contents/Resources/"
 copy_shared_resources
+compile_asset_catalog
 
 for framework in "$BIN_DIR"/*.framework; do
     [ -d "$framework" ] || continue

@@ -95,10 +95,10 @@ struct CaptionTileInput: Sendable, Equatable {
             image.lockFocus()
             if let still {
                 NSImage(cgImage: still, size: size).draw(in: CGRect(origin: .zero, size: size))
-                NSColor.black.withAlphaComponent(0.15).setFill()
+                DesignValues.nsColor("stage").withAlphaComponent(0.15).setFill()
                 CGRect(origin: .zero, size: size).fill()
             }
-            else { NSColor.black.setFill(); CGRect(origin: .zero, size: size).fill() }
+            else { DesignValues.nsColor("stage").setFill(); CGRect(origin: .zero, size: size).fill() }
             NSImage(cgImage: overlay, size: size).draw(in: CGRect(origin: .zero, size: size))
             image.unlockFocus()
             return image

@@ -48,7 +48,7 @@ import CryptoKit
                         }
                         Picker("Position", selection: Binding(get: { storedPosition?.y ?? 0.8 }, set: { y in mutate { CaptionFineTuning.position(&$0, aspect: model.captionPreset, point: y == 0.8 ? nil : CaptionPosition(x: 0.5, y: y)) } })) { Text("Top").tag(0.2); Text("Middle").tag(0.5); Text("Bottom").tag(0.8) }.pickerStyle(.segmented).disabled(style?.position.userDraggable == false)
                         Text("Drag captions on the video to move them.").font(.caption).foregroundStyle(.secondary)
-                        Button("Reset to style") { mutate { CaptionFineTuning.reset(&$0) } }.buttonStyle(.link)
+                        Button("Reset to style") { mutate { CaptionFineTuning.reset(&$0) } }.buttonStyle(.link).tint(DesignValues.accentText)
                     }.padding(.top, 12)
                 }
             }.padding(16)
@@ -66,8 +66,8 @@ import CryptoKit
                     CaptionTile(input: style.map { model.captionTileInput($0) }, pipeline: model.app.captions)
                         .frame(maxWidth: .infinity).frame(height: 80)
                         .background(DesignValues.color("bg.elevated"), in: .rect(cornerRadius: 12))
-                    if model.project.captions.styleId == id { Image(systemName: "checkmark.circle.fill").padding(6).foregroundStyle(DesignValues.color("accent.default")) }
-                }.overlay(RoundedRectangle(cornerRadius: 12).stroke(model.project.captions.styleId == id ? DesignValues.color("accent.default") : Color.clear, lineWidth: 2))
+                    if model.project.captions.styleId == id { Image(systemName: "checkmark.circle.fill").padding(6).foregroundStyle(DesignValues.accentText) }
+                }.overlay(RoundedRectangle(cornerRadius: 12).stroke(model.project.captions.styleId == id ? DesignValues.accentText : Color.clear, lineWidth: 2))
                 Text(style?.name ?? "Off").font(.caption).foregroundStyle(DesignValues.color("text.primary")).lineLimit(1)
             }.contentShape(Rectangle())
         }.buttonStyle(.plain).accessibilityLabel("\(style?.name ?? "Off"): \(style?.description ?? "Just the video")").accessibilityAddTraits(model.project.captions.styleId == id ? .isSelected : [])
