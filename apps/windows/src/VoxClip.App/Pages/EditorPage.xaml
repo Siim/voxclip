@@ -69,7 +69,7 @@
                                 <Border Background="{ThemeResource VcOverlayTransportOpaqueBrush}" BorderBrush="{ThemeResource VcLineStrongBrush}" BorderThickness="1" CornerRadius="18" Padding="8,0" Height="40" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="8,8,8,16">
                                     <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                                         <Button x:Name="PreviewPlay" Click="PlayClicked" Style="{ThemeResource SubtleButtonStyle}" AutomationProperties.Name="Play or pause (Space)" Padding="6"><SymbolIcon Symbol="Play"/></Button>
-                                        <TextBlock x:Name="TransportTime" Text="0:00.0" FontFamily="{StaticResource VcMonoFontFamily}" FontSize="{StaticResource VcLayoutTimecodeFontSize}" VerticalAlignment="Center" Foreground="{ThemeResource VcTextPrimaryBrush}"/>
+                                        <TextBlock x:Name="TransportTime" Text="0:00.0" FontFamily="{StaticResource VcMonoFontFamily}" FontSize="{StaticResource VcTimecodeFontSize}" VerticalAlignment="Center" Foreground="{ThemeResource VcTextPrimaryBrush}"/>
                                     </StackPanel>
                                 </Border>
                             </Grid>

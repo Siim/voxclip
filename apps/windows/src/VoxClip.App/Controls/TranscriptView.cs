@@ -52,8 +52,8 @@ public sealed class TranscriptView : UserControl
     }
 
     /// <summary>Segoe UI Variable Text at 19 epx is the Windows transcript default; design §4.1 (C4).</summary>
-    internal static double DefaultFontSize => (double)Application.Current.Resources["VcLayoutTranscriptFontSize"];
-    private static double LineHeight(double size) => size * (double)Application.Current.Resources["VcLayoutTranscriptLineHeight"] / DefaultFontSize;
+    internal static double DefaultFontSize => (double)Application.Current.Resources["VcTranscriptFontSize"];
+    private static double LineHeight(double size) => size * (double)Application.Current.Resources["VcTranscriptLineHeight"] / DefaultFontSize;
     public void Attach(EditorViewModel viewModel)
     {
         fontSize = Math.Clamp(App.Services.Get("general.transcriptTextSize", DefaultFontSize), 13, 28);
@@ -106,7 +106,7 @@ public sealed class TranscriptView : UserControl
         var gutter = (TextBlock)grid.Children[0];
         gutter.Text = item.Timecode + (item.Speaker is null ? "" : "\n" + item.Speaker);
         gutter.FontFamily = (FontFamily)Application.Current.Resources["VcMonoFontFamily"];
-        gutter.FontSize = (double)Application.Current.Resources["VcLayoutTimecodeFontSize"];
+        gutter.FontSize = (double)Application.Current.Resources["VcTimecodeFontSize"];
         gutter.Foreground = Brush("VcTextTertiaryBrush");
         var rich = (RichTextBlock)grid.Children[1];
         rich.FontFamily = (FontFamily)Application.Current.Resources["ContentControlThemeFontFamily"];
@@ -129,7 +129,7 @@ public sealed class TranscriptView : UserControl
             runs.Add(new(index, run));
             if (showPauses && model.State?.Pauses.FirstOrDefault(pause => pause.AfterIndex == index) is { } pause)
             {
-                var pauseRun = new Run { Text = " ‖ " + pause.Label + " ", FontSize = (double)Application.Current.Resources["VcLayoutPauseTokenFontSize"], FontFamily = (FontFamily)Application.Current.Resources["VcMonoFontFamily"], Foreground = Brush("VcTextMutedBrush") };
+                var pauseRun = new Run { Text = " ‖ " + pause.Label + " ", FontSize = (double)Application.Current.Resources["VcPauseTokenFontSize"], FontFamily = (FontFamily)Application.Current.Resources["VcMonoFontFamily"], Foreground = Brush("VcTextMutedBrush") };
                 paragraph.Inlines.Add(pauseRun); pauses.Add(new(pause, pauseRun));
             }
         }
@@ -185,7 +185,14 @@ public sealed class TranscriptView : UserControl
                 var playing = model.SourceTime >= word.Start && model.SourceTime < word.End;
                 var length = run.Run.Text.TrimEnd().Length;
                 if ((!selected && !playing) || length == 0) continue;
-                var highlighter = new TextHighlighter { Background = Brush(selected ? "SystemControlHighlightAccentBrush" : "VcWordPlayingBackgroundBrush"), Foreground = Brush(playing ? "VcWordPlayingForegroundBrush" : "SystemControlHighlightAltChromeWhiteBrush") };
+                // Selected words draw in text.primary on the selection fill, which also overrides the cut and filler colours
+                // (they fail contrast on it); High Contrast maps the fill to Highlight, so the text takes HighlightText.
+                var highlighter = new TextHighlighter
+                {
+                    Background = Brush(selected ? "VcSelectionTranscriptBrush" : "VcWordPlayingBackgroundBrush"),
+                    Foreground = playing ? Brush("VcWordPlayingForegroundBrush") : Ui.HighContrast
+                        ? new SolidColorBrush((Windows.UI.Color)Application.Current.Resources["SystemColorHighlightTextColor"]) : Brush("VcTextPrimaryBrush")
+                };
                 highlighter.Ranges.Add(new TextRange { StartIndex = visual.HighlightStarts[index], Length = length });
                 visual.Text.TextHighlighters.Add(highlighter);
             }

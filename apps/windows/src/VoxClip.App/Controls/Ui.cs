@@ -9,6 +9,7 @@ namespace VoxClip.App.Controls;
 internal static class Ui
 {
     private static readonly Windows.UI.ViewManagement.AccessibilitySettings Accessibility = new();
+    internal static bool HighContrast => Accessibility.HighContrast;
     internal static Brush ThemeBrush(FrameworkElement owner, string key)
     {
         var themeKey = Accessibility.HighContrast ? "HighContrast" : owner.ActualTheme == ElementTheme.Light ? "Light" : "Default";

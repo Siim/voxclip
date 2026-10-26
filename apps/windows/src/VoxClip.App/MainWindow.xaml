@@ -67,7 +67,7 @@
                         <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                         <Grid Width="{StaticResource VcLayoutRowThumbColumnWidth}" Height="{StaticResource VcLayoutClipThumbHeight}">
                             <Border Width="{StaticResource VcLayoutClipThumbWidth}" Height="{StaticResource VcLayoutClipThumbHeight}" CornerRadius="4" Background="{ThemeResource VcStageBrush}" BorderBrush="{ThemeResource VcLineDefaultBrush}" BorderThickness="1"/>
-                            <Border Width="18" Height="18" Margin="-1,1,0,0" HorizontalAlignment="Left" VerticalAlignment="Top" CornerRadius="5" BorderThickness="1" BorderBrush="{ThemeResource VcBgSurfaceBrush}" Background="{ThemeResource VcPauseBackgroundBrush}" Visibility="{x:Bind IsNeutral, Mode=OneWay}">
+                            <Border Width="18" Height="18" Margin="-1,1,0,0" HorizontalAlignment="Left" VerticalAlignment="Top" CornerRadius="5" BorderThickness="1" BorderBrush="{ThemeResource VcBgSurfaceBrush}" Background="{ThemeResource VcClipBadgeBackgroundBrush}" Visibility="{x:Bind IsNeutral, Mode=OneWay}">
                                 <TextBlock Text="{x:Bind Number, Mode=OneWay}" FontFamily="{StaticResource VcMonoFontFamily}" FontSize="{StaticResource VcLayoutBadgeFontSize}" FontWeight="SemiBold" Foreground="{ThemeResource VcTextSecondaryBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                             </Border>
                             <Border Width="18" Height="18" Margin="-1,1,0,0" HorizontalAlignment="Left" VerticalAlignment="Top" CornerRadius="5" BorderThickness="1" BorderBrush="{ThemeResource VcBgSurfaceBrush}" Background="{ThemeResource AccentFillColorDefaultBrush}" Visibility="{x:Bind IsActive, Mode=OneWay}">
@@ -136,7 +136,7 @@
             <TitleBar.IconSource><ImageIconSource ImageSource="ms-appx:///Assets/VoxClip.ico"/></TitleBar.IconSource>
             <TitleBar.RightHeader><Button Click="SettingsClicked" Style="{ThemeResource SubtleButtonStyle}" AutomationProperties.Name="Settings (Ctrl+,)" ToolTipService.ToolTip="Settings (Ctrl+,)"><SymbolIcon Symbol="Setting" /></Button></TitleBar.RightHeader>
         </TitleBar>
-        <NavigationView x:Name="Nav" Grid.Row="1" PaneDisplayMode="Left" OpenPaneLength="{StaticResource VcLayoutPaneLength}" IsSettingsVisible="False" IsBackButtonVisible="Collapsed"
+        <NavigationView x:Name="Nav" Grid.Row="1" PaneDisplayMode="Left" OpenPaneLength="{StaticResource VcSizeSidebar}" IsSettingsVisible="False" IsBackButtonVisible="Collapsed"
             IsPaneToggleButtonVisible="False" IsTitleBarAutoPaddingEnabled="False" MenuItemsSource="{x:Bind Shell.Rows}" MenuItemTemplateSelector="{StaticResource SidebarTemplates}"
             SelectionChanged="NavSelectionChanged" ItemInvoked="NavItemInvoked" AutomationProperties.Name="Library and clips">
             <NavigationView.Resources>

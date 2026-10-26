@@ -334,7 +334,7 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
     private void PaneToggleRequested(TitleBar sender, object args) => Nav.IsPaneOpen = !Nav.IsPaneOpen;
     private void RootSizeChanged(object sender, SizeChangedEventArgs args)
     {
-        var mode = args.NewSize.Width >= (double)Application.Current.Resources["VcLayoutPaneBreakpoint"] ? NavigationViewPaneDisplayMode.Left : NavigationViewPaneDisplayMode.LeftMinimal;
+        var mode = args.NewSize.Width >= (double)Application.Current.Resources["VcSizeBreakpointStack"] ? NavigationViewPaneDisplayMode.Left : NavigationViewPaneDisplayMode.LeftMinimal;
         if (Nav.PaneDisplayMode != mode) Nav.PaneDisplayMode = mode;
     }
     private void SettingsClicked(object sender, RoutedEventArgs args) => App.OpenSettings();
