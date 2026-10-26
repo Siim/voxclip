@@ -6,6 +6,27 @@ import XCTest
 import Darwin
 
 @Suite("mac-ui", .serialized) struct MacUIIntegrationTests {
+    @Test("Saved Voice Lab recipe uses native preview and App export", .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_UI_TESTS"] == "1")) func voiceRecipeWorkflow() async throws {
+        let directory = ProcessInfo.processInfo.environment["VOXCLIP_UI_EVIDENCE_DIR"].map { URL(fileURLWithPath: $0).appendingPathComponent("voice") } ?? FileManager.default.temporaryDirectory.appendingPathComponent("voxclip-voice-app-\(UUID().uuidString)")
+        defer { UIProcessHarness.cleanTemporary(directory) }
+        let project = try await voiceCallerFixture(in: directory)
+        _ = try UIProcessHarness.run(mode: "-voiceRecipeAudit", name: "voice", acceptNonzeroWithReport: "voice-recipe-results.json", preparedDirectory: directory)
+        let report = try JSONDecoder().decode([UIProcessHarness.Result].self, from: Data(contentsOf: directory.appendingPathComponent("voice-recipe-results.json")))
+        #expect(report.count >= 20)
+        for result in report { #expect(result.passed, Comment(rawValue: result.name)) }
+        let outputs = try JSONDecoder().decode([ExportResult].self, from: Data(contentsOf: directory.appendingPathComponent("exports.json")))
+        try #require(outputs.count == 2)
+        for (index, output) in outputs.enumerated() {
+            let plan = try VoiceLabOutputPlanner.build(project, scope: index == 0 ? .full : .clip("included"))
+            try verifyVoiceCallerOutput(output.outputURL, expected: plan)
+            try await verifyVoiceCallerAudio(output.outputURL, expected: plan)
+            #expect(try String(contentsOf: #require(output.srtURL), encoding: .utf8).lowercased().contains("new"))
+        }
+        for name in ["native-preview", "native-window"] {
+            let image = try #require(NSBitmapImageRep(data: Data(contentsOf: directory.appendingPathComponent(name).appendingPathExtension("png"))))
+            #expect(image.pixelsWide >= 300 && image.pixelsHigh >= 180)
+        }
+    }
     @Test("View-model assertions and offscreen snapshots", .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_UI_TESTS"] == "1")) func appSelfTest() throws {
         let directory = try UIProcessHarness.run(mode: "-uiSelfTest", name: "ui")
         defer { UIProcessHarness.cleanTemporary(directory) }
@@ -128,18 +149,36 @@ final class MacUIRenderPerformanceTests: XCTestCase {
 private enum UIProcessHarness {
     struct Result: Decodable { let name: String; let passed: Bool; let skipped: String? }
     enum Failure: Error { case executableMissing, timedOut, appFailed(Int32), outputMissing }
-    static func run(mode: String, name: String, acceptNonzeroWithReport: String? = nil) throws -> URL {
+    static func run(mode: String, name: String, acceptNonzeroWithReport: String? = nil, preparedDirectory: URL? = nil) throws -> URL {
         let environment = ProcessInfo.processInfo.environment
         let adjacent = Bundle(for: MacUIRenderPerformanceTests.self).bundleURL.deletingLastPathComponent().appendingPathComponent("VoxClip")
         let override = mode == "-uiPerformanceTest" ? environment["VOXCLIP_UI_PERFORMANCE_EXECUTABLE"] ?? environment["VOXCLIP_APP_EXECUTABLE"] : environment["VOXCLIP_APP_EXECUTABLE"]
-        let executable = override.map { URL(fileURLWithPath: $0) } ?? adjacent
+        var executable = override.map { URL(fileURLWithPath: $0) } ?? adjacent
         guard FileManager.default.isExecutableFile(atPath: executable.path) else { throw Failure.executableMissing }
         let shared = try SharedResources.locate().root
-        let directory = environment["VOXCLIP_UI_EVIDENCE_DIR"].map { URL(fileURLWithPath: $0).appendingPathComponent(name) } ?? FileManager.default.temporaryDirectory.appendingPathComponent("voxclip-mac-ui-\(UUID().uuidString)")
+        let directory = preparedDirectory ?? environment["VOXCLIP_UI_EVIDENCE_DIR"].map { URL(fileURLWithPath: $0).appendingPathComponent(name) } ?? FileManager.default.temporaryDirectory.appendingPathComponent("voxclip-mac-ui-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        if mode == "-voiceRecipeAudit", !executable.path.contains(".app/Contents/MacOS/") {
+            // The real exporter requires the app's actual version in provenance.
+            // SwiftPM's bare executable has no bundle metadata, so give this test
+            // an owned bundle using the production plist and the just-built app.
+            var package = URL(fileURLWithPath: #filePath)
+            for _ in 0..<4 { package.deleteLastPathComponent() }
+            let contents = directory.appendingPathComponent("VoiceRecipe.app/Contents")
+            let macOS = contents.appendingPathComponent("MacOS")
+            try FileManager.default.createDirectory(at: macOS, withIntermediateDirectories: true)
+            try FileManager.default.copyItem(at: package.appendingPathComponent("Sources/VoxClip/Info.plist"), to: contents.appendingPathComponent("Info.plist"))
+            let staged = macOS.appendingPathComponent("VoxClip")
+            try FileManager.default.copyItem(at: executable, to: staged)
+            for item in try FileManager.default.contentsOfDirectory(at: executable.deletingLastPathComponent(), includingPropertiesForKeys: nil)
+                where item.pathExtension == "framework" || item.pathExtension == "dylib" {
+                try FileManager.default.createSymbolicLink(at: macOS.appendingPathComponent(item.lastPathComponent), withDestinationURL: item)
+            }
+            executable = staged
+        }
         do {
         let data = directory.appendingPathComponent("data")
-        defer { if FileManager.default.fileExists(atPath: data.path) { try? FileManager.default.removeItem(at: data) } }
+        defer { if preparedDirectory == nil, FileManager.default.fileExists(atPath: data.path) { try? FileManager.default.removeItem(at: data) } }
         let process = Process()
         process.executableURL = executable
         process.arguments = ["-ApplePersistenceIgnoreState", "YES", "-NSQuitAlwaysKeepsWindows", "NO", mode, directory.path]

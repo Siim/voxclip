@@ -773,7 +773,7 @@ import ApplicationServices
             }
         }
     }
-    private static func capture(window: NSWindow, name: String, directory: URL) async throws {
+    static func capture(window: NSWindow, name: String, directory: URL) async throws {
         if NSApp.activationPolicy() != .regular { NSApp.setActivationPolicy(.regular) }
         _ = NSRunningApplication.current.activate(options: [.activateAllWindows])
         NSApp.activate(ignoringOtherApps: true)

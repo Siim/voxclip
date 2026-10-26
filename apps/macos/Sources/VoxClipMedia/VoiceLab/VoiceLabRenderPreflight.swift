@@ -9,7 +9,30 @@ public enum VoiceLabRenderCapabilityError: Error, LocalizedError, Sendable, Equa
     }
 }
 
-enum VoiceLabRenderPreflight {
+public enum VoiceLabRenderPreflight {
+    /// Bind a caller's exact project and scope before any paid-asset or output I/O.
+    /// Source-only scopes retain the ordinary renderer, including older projects.
+    public static func prepare(project: Project, scope: VoiceLabOutputScope, paidRoot: URL,
+                               labelPosition: VoiceLabLabelPosition = .topLeft) throws -> VoiceLabRenderInput? {
+        if project.schemaVersion < 3 {
+            try VoiceLabProject.requireLegacyRendering(project, scope: scope)
+            return nil
+        }
+        let prepared = try VoiceLabRenderContract.prepare(project, scope: scope, labelPosition: labelPosition)
+        try validateFit(prepared)
+        guard prepared.outputPlan.requiresSyntheticRendering else { return nil }
+        return try VoiceLabRenderInput(project: project, scope: scope, labelPosition: labelPosition,
+                                       paidRoot: paidRoot, prepared: prepared)
+    }
+
+    private static func validateFit(_ prepared: VoiceLabPreparedRender) throws {
+        if prepared.outputPlan.requiresSyntheticRendering && prepared.selectedSegmentRecipes.contains(where: {
+            abs($0.recipe.audio.stretch - 1) > 4 * Double.ulpOfOne
+        }) {
+            throw VoiceLabRenderCapabilityError.pitchPreservingFitUnverified
+        }
+    }
+
     static func validate(_ request: RenderRequest) throws {
         guard let input = request.voiceLab else { return }
         try input.prepared.verify(project: input.project, scope: input.scope,
@@ -24,11 +47,7 @@ enum VoiceLabRenderPreflight {
         // TimePitch can return a full frame count after source content ends. Its
         // current output has no verified body/handle crop, so a real fit cannot
         // enter snapshot or scratch preparation, regardless of its waveform.
-        if plan.requiresSyntheticRendering && input.prepared.selectedSegmentRecipes.contains(where: {
-            abs($0.recipe.audio.stretch - 1) > 4 * Double.ulpOfOne
-        }) {
-            throw VoiceLabRenderCapabilityError.pitchPreservingFitUnverified
-        }
+        try validateFit(input.prepared)
         guard let transcript = input.project.transcript else { throw VoiceLabAssetError.invalidSelection("transcript") }
         let edits = input.project.edits
         let pauses = try detectPauses(transcript.words, thresholdSeconds: edits.pauseThresholdSeconds)

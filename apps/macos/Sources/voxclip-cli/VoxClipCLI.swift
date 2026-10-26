@@ -142,6 +142,20 @@ enum CLIExecution {
                 try printJSON(.object(["ok": .bool(false), "command": .string(command), "error": .object(["code": .string("exportFailed"), "message": .string(message)]), "version": .string("0.1.0")]))
             } else { FileHandle.standardError.write(Data((message + "\n").utf8)) }
             throw ExitCode(5)
+        } catch let error as VoiceLabProjectError {
+            let reason: String
+            switch error {
+            case .needsVoiceLabUpgrade, .missingRenderPolicy: reason = "This generated take needs a reviewed render recipe before export."
+            case .videoModeUnsupported: reason = "This build cannot render the selected Voice Lab video treatment or a changed-duration take."
+            case .cleanAudioUnsupported: reason = "This build cannot render Clean audio yet."
+            case .invalidScope: reason = "Choose a clip that includes or excludes the whole generated passage."
+            default: reason = "The generated take does not have a supported, valid render recipe. Review it before export."
+            }
+            let message = reason + " Your video and edits are still here."
+            if json {
+                try printJSON(.object(["ok": .bool(false), "command": .string(command), "error": .object(["code": .string("exportFailed"), "message": .string(message)]), "version": .string("0.1.0")]))
+            } else { FileHandle.standardError.write(Data((message + "\n").utf8)) }
+            throw ExitCode(5)
         } catch {
             let failure = error is CancellationError ? VoxClipError.cancelled : (error as? VoxClipError ?? (error is DecodingError ? .projectUnreadable("Invalid input JSON") : .exportFailed(redactor().redact(error.localizedDescription))))
             let message = redactor().redact(failure.errorDescription ?? "")

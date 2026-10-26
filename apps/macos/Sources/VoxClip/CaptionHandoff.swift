@@ -10,6 +10,7 @@ struct AppCaptionLayoutInput: Sendable {
     let output: OutputSpec
     let language: String?
     let style: CaptionStyle?
+    var voiceLab: VoiceLabOutputPlan? = nil
 }
 
 struct CaptionTileInput: Sendable, Equatable {
@@ -46,7 +47,19 @@ struct CaptionTileInput: Sendable, Equatable {
         guard let style = input.style else { throw VoxClipError.sharedResourcesMissing }
         let (pipeline, _) = try services()
         let resolution = await pipeline.resolve(style, overrides: input.settings.overrides, frame: input.output.size)
-        let words = captionCopy(input.segments, plan: input.plan)
+        let words = input.voiceLab?.captions ?? captionCopy(input.segments, plan: input.plan)
+        if let voiceLab = input.voiceLab {
+            let layoutInput = CaptionLayoutInput(style: style.id,
+                frame: .init(width: input.output.size.width, height: input.output.size.height),
+                language: input.language ?? "und", duration: voiceLab.duration,
+                captions: .init(overrides: input.settings.overrides, position: input.settings.position,
+                                positionByAspect: input.settings.positionByAspect),
+                words: words.map { .init(id: $0.id, text: $0.text, start: $0.start, end: $0.end) })
+            let result = try await pipeline.layout(input: layoutInput, style: style)
+            rejectedOverrides = resolution.rejectedOverrides
+            droppedWords = result.dropped.count
+            return result
+        }
         let preset = CaptionStyleResolver.preset(width: input.output.size.width, height: input.output.size.height)
         let position = preset.flatMap { input.settings.positionByAspect[$0] } ?? input.settings.position
         let result = try await pipeline.layout(words: words, language: input.language, style: resolution.style,

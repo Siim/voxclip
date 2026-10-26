@@ -1,11 +1,27 @@
 import Foundation
 import VoxClipCore
+import VoxClipMedia
 
 enum UserMessages {
     static func message(_ error: any Error, context: String = "", model: String = "the selected model", installHint: String? = nil, signInHint: String? = nil, connectorID: String? = nil) -> String {
         if error is CancellationError || error as? VoxClipError == .cancelled || error as? LLMError == .cancelled { return "" }
         if error as? VoiceLabProjectError == .unsupportedRendering {
             return "This build cannot preview or export generated voice segments yet. Your video and edits are still here."
+        }
+        if let error = error as? VoiceLabProjectError {
+            let reason: String
+            switch error {
+            case .needsVoiceLabUpgrade, .missingRenderPolicy: reason = "This generated take needs a reviewed render recipe before preview or export."
+            case .videoModeUnsupported: reason = "This build cannot render the selected Voice Lab video treatment or a changed-duration take."
+            case .cleanAudioUnsupported: reason = "This build cannot render Clean audio yet."
+            case .invalidScope: reason = "Choose a clip that includes or excludes the whole generated passage."
+            case .staleRenderContract: reason = "The selected Voice Lab take changed. Rebuild the preview or export request."
+            default: reason = "The generated take does not have a supported, valid render recipe. Review it before preview or export."
+            }
+            return reason + " Your video and edits are still here."
+        }
+        if error is VoiceLabAssetError || error is VoiceLabRenderCapabilityError {
+            return error.localizedDescription + " Your video and edits are still here."
         }
         if context == "Settings could not be saved." || context == "Settings could not be loaded." { return context + " Your video and edits are still here." }
         let isAI = context.hasPrefix("ai:") || context.hasPrefix("ai-test:")

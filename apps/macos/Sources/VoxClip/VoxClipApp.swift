@@ -23,7 +23,7 @@ import VoxClipCore
 
     func applicationWillFinishLaunching(_ notification: Notification) {
         #if DEBUG
-        if AppModel.isTestSession && !CommandLine.arguments.contains("-sceneAudit") && !CommandLine.arguments.contains("-saveBoundaryAudit") && !CommandLine.arguments.contains("-settingsAudit") { NSApp.setActivationPolicy(.prohibited) }
+        if AppModel.isTestSession && !CommandLine.arguments.contains("-sceneAudit") && !CommandLine.arguments.contains("-saveBoundaryAudit") && !CommandLine.arguments.contains("-settingsAudit") && !CommandLine.arguments.contains("-voiceRecipeAudit") { NSApp.setActivationPolicy(.prohibited) }
         #endif
         installMenus()
         model.fileRouter.installMovieOpener { [weak self] url in
@@ -42,7 +42,9 @@ import VoxClipCore
         if AppModel.isTestSession {
             Task {
                 await model.start()
-                if CommandLine.arguments.contains("-uiSelfTest") { await DebugUISuite.run(app: model) }
+                if let position = CommandLine.arguments.firstIndex(of: "-voiceRecipeAudit"), position + 1 < CommandLine.arguments.count {
+                    await DebugVoiceRecipe.run(app: model, destination: URL(fileURLWithPath: CommandLine.arguments[position + 1]))
+                } else if CommandLine.arguments.contains("-uiSelfTest") { await DebugUISuite.run(app: model) }
                 else if let position = CommandLine.arguments.firstIndex(of: "-sceneAudit"), position + 1 < CommandLine.arguments.count {
                     await DebugUISuite.sceneAudit(app: model, destination: URL(fileURLWithPath: CommandLine.arguments[position + 1]))
                 } else if let position = CommandLine.arguments.firstIndex(of: "-saveBoundaryAudit"), position + 1 < CommandLine.arguments.count {

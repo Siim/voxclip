@@ -38,6 +38,11 @@ func runCLI(_ arguments: [String], directory: URL, interruptAfter: Double? = nil
     environment["VOXCLIP_NO_KEYCHAIN"] = "1"
     environment["VOXCLIP_DATA_DIR"] = directory.appendingPathComponent("data").path
     environment["VOXCLIP_SHARED_DIR"] = try FixtureLoader.sharedRoot(environment: [:]).path
+    // Each subprocess owns its renderer scratch; concurrent Media tests must not
+    // observe its temporary snapshots as their own allocations.
+    let scratch = directory.appendingPathComponent("tmp", isDirectory: true)
+    try FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: true)
+    environment["TMPDIR"] = scratch.path
     process.environment = environment
     process.standardOutput = stdout; process.standardError = stderr
     try process.run()

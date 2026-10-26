@@ -198,12 +198,12 @@ import VoxClipMedia
                     .contentShape(Rectangle())
                     .gesture(DragGesture(minimumDistance: 0).onChanged { value in
                         let ratio = min(1, max(0, value.location.x / max(1, geometry.size.width)))
-                        let source = model.editedTimeline ? model.plan?.sourceTime(ratio * model.duration) ?? 0 : ratio * model.sourceDuration
+                        let source = model.editedTimeline ? model.renderTimeline?.sourceTime(ratio * model.duration) ?? 0 : ratio * model.sourceDuration
                         if NSEvent.modifierFlags.contains(.shift), let word = model.word(at: source, nearest: true) { model.seek(source: word.start) } else { model.seek(source: source) }
                     })
                     .onTapGesture(count: 2) { location in
                         let ratio = min(1, max(0, location.x / max(1, geometry.size.width)))
-                        let source = model.editedTimeline ? model.plan?.sourceTime(ratio * model.duration) ?? 0 : ratio * model.sourceDuration
+                        let source = model.editedTimeline ? model.renderTimeline?.sourceTime(ratio * model.duration) ?? 0 : ratio * model.sourceDuration
                         let wordIDs = model.word(at: source).map { model.cutWordIDs.contains($0.id) ? [$0.id] : [] } ?? []
                         let pauseIDs = model.pause(at: source).map { model.cutPauseIDs.contains($0.id) ? [$0.id] : [] } ?? []
                         if !wordIDs.isEmpty || !pauseIDs.isEmpty { model.apply(.restoreSelection(ids: wordIDs + pauseIDs), name: "Restore cut") }
@@ -211,7 +211,7 @@ import VoxClipMedia
                     .onContinuousHover { phase in
                         if case .active(let point) = phase {
                             let time = min(1, max(0, point.x / max(1, geometry.size.width))) * (model.editedTimeline ? model.duration : model.sourceDuration)
-                            hoveredSource = model.editedTimeline ? model.plan?.sourceTime(time) ?? time : time
+                            hoveredSource = model.editedTimeline ? model.renderTimeline?.sourceTime(time) ?? time : time
                         } else { hoveredSource = nil }
                     }
                     .help(hoveredSource.map { source in (model.word(at: source).map { model.text($0) + " · " } ?? "") + timecode(source) } ?? "Drag to scrub. Shift-drag snaps to word starts. Double-click a cut to restore it.")

@@ -55,15 +55,20 @@ struct TimelineProjection: Sendable {
         let sourceDuration = max(0.001, model.sourceDuration), duration = max(0.001, model.duration)
         let words = model.words, cutWordIDs = model.cutWordIDs, cutPauseIDs = model.cutPauseIDs
         let activeClipID = model.project.edits.activeClipId
+        let voicePlan = model.voiceLabPlan
+        func isReplaced(_ start: Double, _ end: Double) -> Bool {
+            guard let voicePlan else { return false }
+            return voicePlan.pieces.contains { $0.kind == .synth && start >= Double($0.sourceStartSample) / voicePlan.sampleRate && end <= Double($0.sourceEndSample) / voicePlan.sampleRate }
+        }
         func ranges(_ start: Double, _ end: Double) -> (ClosedRange<Double>, ClosedRange<Double>) {
-            let lower = mapping.map(start), upper = mapping.map(end)
+            let lower = voicePlan?.mapTime(start) ?? mapping.map(start), upper = voicePlan?.mapTime(end) ?? mapping.map(end)
             return ((start / sourceDuration)...(max(start, end) / sourceDuration), (lower / duration)...(max(lower, upper) / duration))
         }
         blocks = words.map { word in
             let (source, edited) = ranges(word.start, word.end)
-            return TimelineBlock(source: source, edited: edited, cut: cutWordIDs.contains(word.id), pause: false)
+            return TimelineBlock(source: source, edited: edited, cut: cutWordIDs.contains(word.id) && !isReplaced(word.start, word.end), pause: false)
         }
-        blocks += model.pauses.filter { cutPauseIDs.contains($0.id) }.map { pause in
+        blocks += model.pauses.filter { cutPauseIDs.contains($0.id) && !isReplaced($0.start, $0.end) }.map { pause in
             let (source, edited) = ranges(pause.start, pause.end)
             return TimelineBlock(source: source, edited: edited, cut: true, pause: true)
         }

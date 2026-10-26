@@ -76,6 +76,10 @@ enum CLIWorkflow {
         if let supplied { scopedProject.edits = supplied.projectEdits }
         let scope = scopedProject.edits.activeClipId.map { VoiceLabOutputScope.clip($0) } ?? .full
         try VoiceLabProject.requireLegacyRendering(scopedProject, scope: scope)
+        return try sourcePlan(project, state: supplied)
+    }
+
+    private static func sourcePlan(_ project: Project, state supplied: EditState? = nil) throws -> EditPlan {
         let source = project.media.source
         let rate = Double(source.audio?.sampleRate ?? 48000)
         let edits = project.edits
@@ -210,18 +214,25 @@ enum CLIWorkflow {
             if options.tightenPauses { editState = EditReducer.reduce(editState, command: .tightenPauses) }
             state = editState
         }
-        let effectiveState = try state ?? (project.transcript == nil ? nil : self.state(project, derivePauses: false))
-        let plan = try self.plan(project, state: effectiveState)
-        guard plan.outputSamples > 0, effectiveState?.summary.canExport != false else { throw VoxClipError.everythingCut }
+        let effectiveState = try state ?? (project.transcript == nil ? nil : self.state(project, derivePauses: project.schemaVersion >= 3))
+        if let effectiveState { project.edits = effectiveState.projectEdits }
         let aspect = options.aspect.flatMap(AspectRatio.init(rawValue:)) ?? project.export.aspect
         let quality = options.quality.flatMap(ExportQuality.init(rawValue:)) ?? project.export.quality
         let styleID = options.style ?? project.captions.styleId
         let style = try self.style(styleID)
+        project.captions.styleId = styleID
+        project.export.aspect = aspect; project.export.quality = quality
+        let scope = project.edits.activeClipId.map { VoiceLabOutputScope.clip($0) } ?? .full
+        let voiceLab = try VoiceLabRenderPreflight.prepare(project: project, scope: scope,
+            paidRoot: DataLocations().root.appendingPathComponent("VoiceLab", isDirectory: true))
+        let plan = try sourcePlan(project, state: effectiveState)
+        guard (voiceLab?.prepared.outputPlan.outputSamples ?? plan.outputSamples) > 0,
+              voiceLab != nil || effectiveState?.summary.canExport != false else { throw VoxClipError.everythingCut }
         let output = try OutputSpec.resolved(source: probe, aspect: aspect, quality: quality, fps: options.fps.flatMap(Double.init))
         let activeClip = effectiveState.flatMap { state in state.clips.first { $0.id == state.activeClipId } }
         let render: RenderRequest
         switch try await captions(.export(RenderRequest(sourceURL: source, plan: plan, style: style,
-            placement: project.captions.positionByAspect[aspect.rawValue] ?? project.captions.position, output: output),
+            placement: project.captions.positionByAspect[aspect.rawValue] ?? project.captions.position, output: output, voiceLab: voiceLab),
             state: effectiveState, activeClip: activeClip, overrides: project.captions.overrides, language: project.transcript?.language)) {
         case .export(let prepared): render = prepared
         case .render: throw VoxClipError.exportFailed("Invalid caption operation")
@@ -281,6 +292,22 @@ enum CLIWorkflow {
     private static func captions(_ operation: CaptionOperation) async throws -> CaptionResult {
         switch operation {
         case .export(var request, let state, let activeClip, let overrides, let language):
+            if let voiceLab = request.voiceLab {
+                if let style = request.style {
+                    let project = voiceLab.project, plan = voiceLab.prepared.outputPlan
+                    let input = CaptionLayoutInput(style: style.id,
+                        frame: .init(width: request.output.size.width, height: request.output.size.height),
+                        language: language ?? "und", duration: plan.duration,
+                        captions: .init(overrides: project.captions.overrides, position: project.captions.position,
+                                        positionByAspect: project.captions.positionByAspect),
+                        words: plan.captions.map { .init(id: $0.id, text: $0.text, start: $0.start, end: $0.end) })
+                    let pipeline = try CaptionPipeline(shared: SharedResources.locate())
+                    let layout = try await pipeline.layout(input: input, style: style)
+                    request.captionLayout = layout; request.captions = layout.track
+                }
+                request.style = nil
+                return .export(request)
+            }
             guard let style = request.style, let state, !state.transcript.words.isEmpty else { return .export(request) }
             let words = try captionCopy(buildSegments(state, activeClip: activeClip), plan: request.plan)
             let pipeline = try CaptionPipeline(shared: SharedResources.locate())

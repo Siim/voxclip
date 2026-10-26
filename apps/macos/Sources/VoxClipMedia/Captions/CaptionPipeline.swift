@@ -34,4 +34,9 @@ public actor CaptionPipeline {
             throw VoxClipError.projectUnreadable("Invalid caption layout")
         }
     }
+
+    /// Retain the original settings in the layout for request-bound render validation.
+    public func layout(input: CaptionLayoutInput, style: CaptionStyle) async throws -> CaptionLayoutResult {
+        try await CaptionLayoutEngine.build(input: input, style: style, resources: resources, shaper: shaper)
+    }
 }

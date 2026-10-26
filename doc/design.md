@@ -344,6 +344,8 @@ Hidden in M1. M2 rows: **Tighten with AI** (the LLM suggests pure cuts; shown as
 
 When rewritten speech requires a different video duration, show **Lip sync** and **Retimed source video** together and let the user choose for that rewrite (ADR-R28; Voice Lab §8.9). Explain the lip-sync provider and cost, and the retimed option's speed change and slight crop. Show why an option is unavailable. Require a fresh choice for each rewrite; a previous selection or a failed option must not silently select the other. This is the intended workflow; current unsupported-video capability guards remain until those paths are implemented and verified.
 
+For already reviewed, saved v3 recipes with unity audio fit and equal-length source video, the Mac editor uses the existing preview, timeline and Export controls. Preview duration and scrubbing follow the prepared Voice Lab timeline; source cuts beneath an enabled replacement stay dormant. Full Video export ignores a selected preview clip. Captions show the replacement words, and Captions Off retains the mandatory AI MODIFIED chip and export provenance. A missing or changed generated asset clears the preview and explains how to restore it. Unsupported video treatments, duration fit and unreviewed recipes stop with an inline explanation while preserving the video and edits. This does not expose generation, consent, candidate acceptance or changed-duration video choices before those workflows are implemented.
+
 ---
 
 ## 7. Welcome window (macOS) and Home page (Windows)

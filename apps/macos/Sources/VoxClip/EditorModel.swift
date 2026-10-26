@@ -56,6 +56,11 @@ enum WorkspaceLocation: String, CaseIterable { case home = "Home", transcript = 
     var sourceURL: URL { URL(fileURLWithPath: project.media.source.absolutePath) }
     var mediaResolved = false { didSet { document.setMediaResolved(mediaResolved) } }
     var plan: EditPlan?
+    var voiceLabPlan: VoiceLabOutputPlan?
+    var renderTimeline: RenderTimeline? {
+        if let voiceLabPlan { return .voiceLab(voiceLabPlan) }
+        return plan.map(RenderTimeline.legacy)
+    }
     var pauses: [Pause] = []
     var fillerIDs: Set<String> = []
     var summary = EditSummary()
@@ -85,6 +90,7 @@ enum WorkspaceLocation: String, CaseIterable { case home = "Home", transcript = 
     @ObservationIgnored let exporter: any Exporter
     @ObservationIgnored private var eventTask: Task<Void, Never>?
     @ObservationIgnored private var updateTask: Task<Void, Never>?
+    @ObservationIgnored private var previewRevision: UInt64 = 0
     @ObservationIgnored var workTask: Task<Void, Never>?
     @ObservationIgnored var exportTask: Task<Void, Never>?
     @ObservationIgnored var findTask: Task<Void, Never>?
@@ -117,18 +123,18 @@ enum WorkspaceLocation: String, CaseIterable { case home = "Home", transcript = 
     }
     var selectedIDs: [String] { words.filter { selectedWordIDs.contains($0.id) }.map(\.id) }
     var sourceDuration: Double { project.media.source.durationSeconds }
-    var duration: Double { plan?.duration ?? sourceDuration }
+    var duration: Double { renderTimeline?.duration ?? sourceDuration }
     var subtitle: String {
         if exporting { return "Rendering \(exportIndex) of \(max(1, exportClipIDs.count))" }
         if let progress { return progress }
         if !editingAvailable && !words.isEmpty { return "Editing is not available in this build. Your video and edits are still here." }
-        if !summary.canExport && !words.isEmpty { return "Keep at least one word before exporting." }
+        if voiceLabPlan == nil && !summary.canExport && !words.isEmpty { return "Keep at least one word before exporting." }
         return "\(timecode(duration)) after cuts · " + Self.summaryText(summary)
     }
     static func summaryText(_ summary: EditSummary) -> String {
         summary.hasEdits ? "\(summary.cutWordCount) \(summary.cutWordCount == 1 ? "word" : "words") and \(summary.cutPauseCount) \(summary.cutPauseCount == 1 ? "pause" : "pauses") cut." : "No cuts yet."
     }
-    var canExport: Bool { mediaResolved && !exporting && (words.isEmpty ? sourceDuration > 0 : editingAvailable && summary.canExport) }
+    var canExport: Bool { mediaResolved && !exporting && (voiceLabPlan.map { $0.outputSamples > 0 } ?? (words.isEmpty ? sourceDuration > 0 : editingAvailable && summary.canExport)) }
     var playingWordID: String? {
         let transcript = words
         var lower = 0, upper = transcript.count
@@ -175,6 +181,7 @@ enum WorkspaceLocation: String, CaseIterable { case home = "Home", transcript = 
         if mediaResolved { await updatePreview(load: true) }
     }
     func close() {
+        previewRevision &+= 1
         workTask?.cancel(); exportTask?.cancel(); findTask?.cancel(); importTask?.cancel(); eventTask?.cancel(); updateTask?.cancel(); preview.close()
         if app.activeHome === self { app.activeHome = nil }
         app.openProjectKeys[project.id] = nil
@@ -272,7 +279,9 @@ enum WorkspaceLocation: String, CaseIterable { case home = "Home", transcript = 
             if summaryCache.count > 16 { summaryCache.removeFirst() }
         }
         do {
-            try VoiceLabProject.requireLegacyRendering(project, scope: activeClip.map { .clip($0.id) } ?? .full)
+            voiceLabPlan = try VoiceLabRenderPreflight.prepare(project: project,
+                scope: activeClip.map { .clip($0.id) } ?? .full,
+                paidRoot: app.locations.root.appendingPathComponent("VoiceLab", isDirectory: true))?.prepared.outputPlan
             if let state {
                 var comparable = edits
                 comparable.cutWordIds = renderedEdits?.cutWordIds ?? []
@@ -291,8 +300,8 @@ enum WorkspaceLocation: String, CaseIterable { case home = "Home", transcript = 
                 plan = try buildEditPlan(segments, duration: sourceDuration, sampleRate: Double(project.media.source.audio?.sampleRate ?? 48_000), pauseKeepSeconds: edits.pauseKeepSeconds)
             } else { planningSegments = nil; planningWordIndex = [:]; plan = Self.uncutPlan(duration: sourceDuration) }
         } catch {
-            plan = nil
-            if error as? VoiceLabProjectError == .unsupportedRendering { previewError = UserMessages.message(error) }
+            plan = nil; voiceLabPlan = nil
+            previewError = UserMessages.message(error)
         }
         renderedTranscript = project.transcript; renderedEdits = edits; renderedMedia = project.media
         renderedVoiceLab = project.voiceLab
@@ -452,8 +461,8 @@ enum WorkspaceLocation: String, CaseIterable { case home = "Home", transcript = 
         select(words[position].id, extend: extend)
     }
     func seek(source: Double) {
-        guard let plan else { return }
-        let time = plan.mapTime(source)
+        guard let renderTimeline else { return }
+        let time = renderTimeline.mapTime(source)
         Task { [weak self] in
             guard let self else { return }
             do { try await preview.seek(to: time, exact: true); playhead = time; sourceTime = source }
@@ -503,6 +512,7 @@ enum WorkspaceLocation: String, CaseIterable { case home = "Home", transcript = 
         String(String.UnicodeScalarView(title.trimmingCharacters(in: .whitespacesAndNewlines).unicodeScalars.prefix(EditingLimits.maxClipTitleScalars)))
     }
     func renderRequest(target: ExportTarget? = nil) async throws -> RenderRequest {
+        let project = project
         let state = editState()
         let clip: ClipRange?
         switch target {
@@ -514,31 +524,36 @@ enum WorkspaceLocation: String, CaseIterable { case home = "Home", transcript = 
             }
             clip = selected
         }
-        try VoiceLabProject.requireLegacyRendering(project, scope: clip.map { .clip($0.id) } ?? .full)
+        let voiceLab = try VoiceLabRenderPreflight.prepare(project: project,
+            scope: clip.map { .clip($0.id) } ?? .full,
+            paidRoot: app.locations.root.appendingPathComponent("VoiceLab", isDirectory: true))
         if clip != nil && state == nil { throw VoxClipError.exportFailed("Clip transcript is unavailable") }
         let segments = try state.map { try buildSegments($0, activeClip: clip) }
         var plan = plan
-        if target != nil, let state, let segments {
+        if target != nil || voiceLab != nil, let state, let segments {
             plan = try buildEditPlan(segments, duration: sourceDuration, sampleRate: Double(project.media.source.audio?.sampleRate ?? 48_000), pauseKeepSeconds: state.pauseKeepSeconds)
         }
         guard let plan else { throw VoxClipError.exportFailed("Could not build the edit plan") }
-        guard plan.outputSamples > 0 else { throw VoxClipError.everythingCut }
+        guard (voiceLab?.prepared.outputPlan.outputSamples ?? plan.outputSamples) > 0 else { throw VoxClipError.everythingCut }
         let output = outputSpec()
-        let layout = try await buildCaptions(segments: segments, plan: plan, output: output, forPreview: target == nil)
-        return RenderRequest(sourceURL: sourceURL, plan: plan, captions: layout?.track ?? CaptionTrack(),
-            output: output, forPreview: target == nil, captionLayout: layout)
+        let layout = try await buildCaptions(segments: segments, plan: plan, output: output, forPreview: target == nil,
+                                            project: project, voiceLab: voiceLab?.prepared.outputPlan)
+        try Task.checkCancellation()
+        return RenderRequest(sourceURL: URL(fileURLWithPath: project.media.source.absolutePath), plan: plan, captions: layout?.track ?? CaptionTrack(),
+            output: output, forPreview: target == nil, captionLayout: layout, voiceLab: voiceLab)
     }
-    func buildCaptions(segments: [EditSegment]?, plan: EditPlan, output: OutputSpec, forPreview: Bool) async throws -> CaptionLayoutResult? {
+    func buildCaptions(segments: [EditSegment]?, plan: EditPlan, output: OutputSpec, forPreview: Bool,
+                       project: Project, voiceLab: VoiceLabOutputPlan?) async throws -> CaptionLayoutResult? {
         guard let segments else { return nil }
         let style = app.styles.first { $0.id == project.captions.styleId }
         do {
-            let layout = try await app.captions.layout(AppCaptionLayoutInput(segments: segments, settings: project.captions, plan: plan, output: output, language: project.transcript?.language, style: style))
+            let layout = try await app.captions.layout(AppCaptionLayoutInput(segments: segments, settings: project.captions, plan: plan, output: output, language: project.transcript?.language, style: style, voiceLab: voiceLab))
             captionError = app.captions.rejectedOverrides ? "These caption settings could not be applied." : nil
             return layout
         } catch is CancellationError { throw CancellationError() }
         catch {
             captionError = "Captions are not available in this build. Your video and edits are still here."
-            if !forPreview { throw error }
+            if !forPreview || voiceLab != nil { throw error }
             return nil
         }
     }
@@ -559,11 +574,21 @@ enum WorkspaceLocation: String, CaseIterable { case home = "Home", transcript = 
     }
     func updatePreview(load: Bool) async {
         guard mediaResolved else { return }
+        previewRevision &+= 1
+        let revision = previewRevision
         do {
             let request = try await renderRequest()
+            guard revision == previewRevision, !Task.isCancelled else { return }
             if load { try await preview.load(request) } else { try await preview.update(request) }
+            guard revision == previewRevision, !Task.isCancelled else { return }
             previewError = nil
-        } catch is CancellationError {} catch { previewError = await app.safeError(error) }
+        } catch is CancellationError {} catch {
+            guard revision == previewRevision, !Task.isCancelled else { return }
+            preview.close(); isPlaying = false; previewStop = nil
+            let message = await app.safeError(error)
+            guard revision == previewRevision, !Task.isCancelled else { return }
+            previewError = message
+        }
     }
 }
 
