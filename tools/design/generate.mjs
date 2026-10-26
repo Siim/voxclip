@@ -8,6 +8,8 @@ const namespace = 'com.voxconvo.voxclip';
 const swiftTarget = 'apps/macos/Sources/VoxClip/Design/Tokens.swift';
 const xamlTarget = 'apps/windows/src/VoxClip.App/Themes/Tokens.xaml';
 const assetCatalog = 'apps/macos/Resources/Assets.xcassets';
+// macOS typography families that are the system font rather than a fontFiles token.
+const systemDesigns = { system: '', 'SF Mono': ', design: .monospaced' };
 const capitalize = value => value[0].toUpperCase() + value.slice(1);
 const suffix = parts => parts.map(capitalize).join('');
 const swiftName = parts => parts[0] + suffix(parts.slice(1));
@@ -102,19 +104,21 @@ export function buildOutputs(source) {
     names.add(name);
     xamlValues.push(markup);
   };
-  const addConstant = (parts, value, resourceParts = parts) => {
-    const name = `Vc${suffix(resourceParts)}`;
-    swiftValues.push(`    static let ${swiftName(parts)}: ${typeof value === 'number' ? 'CGFloat' : 'String'} = ${typeof value === 'number' ? value : quote(value)}`);
+  const addConstant = (parts, value) => {
+    const name = `Vc${suffix(parts)}`;
     addResource(name, `    <x:${typeof value === 'number' ? 'Double' : 'String'} x:Key="${name}">${xml(value)}</x:${typeof value === 'number' ? 'Double' : 'String'}>`);
   };
 
   for (const token of tokens) {
     if (['color', 'typography', 'fontFamily'].includes(token.$type)) continue;
-    if (!['dimension', 'duration', 'cubicBezier', 'spring', 'string'].includes(token.$type)) throw new Error(`Unsupported token type ${token.$type}`);
+    if (!['dimension', 'number', 'duration', 'cubicBezier', 'spring', 'string'].includes(token.$type)) throw new Error(`Unsupported token type ${token.$type}`);
     const labels = token.$type === 'dimension' ? ['width', 'height'] : ['x1', 'y1', 'x2', 'y2'];
     const values = flatten(token.$value, token.path, labels);
     constants.push(...values);
-    for (const item of values) {
+    for (const item of values) swiftValues.push(`    static let ${swiftName(item.path)}: ${typeof item.value === 'number' ? 'CGFloat' : 'String'} = ${typeof item.value === 'number' ? item.value : quote(item.value)}`);
+    // $value is the macOS value; a `windows` extension replaces it in Tokens.xaml only.
+    const windows = extensions(token).windows;
+    for (const item of windows === undefined ? values : flatten(windows, token.path, labels)) {
       addConstant(item.path, item.value);
       if (typeof item.value === 'number' && ['spacing', 'stroke', 'radius'].includes(item.path[0])) {
         const type = item.path[0] === 'radius' ? 'CornerRadius' : 'Thickness';
@@ -152,9 +156,9 @@ export function buildOutputs(source) {
       addResource(name, `    <${type} x:Key="${name}">${xml(item.value)}</${type}>`);
     }
     const family = families.find(candidate => candidate.$value === macos.fontFamily);
-    if (!family && macos.fontFamily !== 'system') throw new Error(`Unknown font family ${macos.fontFamily}`);
+    if (!family && !Object.hasOwn(systemDesigns, macos.fontFamily)) throw new Error(`Unknown font family ${macos.fontFamily}`);
     const call = family ? `VoxClipTokenFonts.${family.path.at(-1)}(size: size, weight: ${macos.fontWeight})`
-      : `Font.system(size: size, weight: .${fontWeight(macos.fontWeight)})`;
+      : `Font.system(size: size, weight: .${fontWeight(macos.fontWeight)}${systemDesigns[macos.fontFamily]})`;
     swiftFonts.push(`    @MainActor static func vc${capitalize(kind)}(size: CGFloat = VCTokens.${swiftName(token.path)}FontSize) -> Font {\n        ${call}${macos.features?.includes('tnum') ? '.monospacedDigit()' : ''}\n    }`);
   }
 

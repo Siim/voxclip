@@ -25,16 +25,23 @@ host-dependent paths in the outputs.
   light value for Any and the dark value for Dark. `accent.default` is the
   `AccentColor` asset; `bundle.sh` compiles the catalog with actool and
   `Info.plist` names it in `NSAccentColorName`.
-- Dimensions are `CGFloat` constants on `VCTokens`, for example
-  `spacingPanePaddingWindows` and `sizeWindowDefaultWidth`. XAML numeric keys
-  are `VcSpacingPanePaddingWindows` and `VcSizeWindowDefaultWidth`. Spacing and
-  stroke tokens also expose uniform `Thickness` resources; radii expose
-  `CornerRadius` resources with that type name as a suffix.
+- Dimensions and unitless `number` tokens are `CGFloat` constants on
+  `VCTokens`, for example `spacingPanePaddingWindows` and
+  `sizeWindowDefaultWidth`. XAML numeric keys are `VcSpacingPanePaddingWindows`
+  and `VcSizeWindowDefaultWidth`. Spacing and stroke tokens also expose uniform
+  `Thickness` resources; radii expose `CornerRadius` resources with that type
+  name as a suffix.
+- A dimension's `$value` is the macOS value. A `windows` value in its
+  extensions replaces it in `Tokens.xaml` only, so both apps use one name:
+  `spacing.transcriptGutter` is `spacingTranscriptGutter` 84 in Swift and
+  `VcSpacingTranscriptGutter` 76 in XAML.
 - Durations remain milliseconds. Bezier points flatten to `X1/Y1/X2/Y2`;
   compound sizes flatten to width/height or min/ideal/max. Typography constants
   keep each platform's own size, line height, weight, tracking and features.
 - `Font.vcTranscript()`, `vcStatus()`, `vcTimecode()` and the other typography
-  helpers use their macOS token values. `Font.vcDmSans(size:weight:)` and
+  helpers use their macOS token values. A macOS `fontFamily` of `system` is the
+  system font and `SF Mono` its monospaced design; any other family must be a
+  `fontFiles` token. `Font.vcDmSans(size:weight:)` and
   `vcGeistMono(size:weight:)` load present files by URL through `SharedResources`.
   Metadata marked `present: false`, a missing exact font weight, or missing
   shared resources use the declared system fallback. Successful file descriptors

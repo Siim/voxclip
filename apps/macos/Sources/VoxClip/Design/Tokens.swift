@@ -119,6 +119,12 @@ extension Color {
             : NSColor.selectedTextBackgroundColor
     })
 
+    static let vcSelectionTranscript = Color(nsColor: NSColor(name: NSColor.Name("vcSelectionTranscript")) { appearance in
+        appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            ? NSColor(srgbRed: 31.0 / 255, green: 76.0 / 255, blue: 75.0 / 255, alpha: 255.0 / 255)
+            : NSColor(srgbRed: 197.0 / 255, green: 215.0 / 255, blue: 212.0 / 255, alpha: 255.0 / 255)
+    })
+
     static let vcWordPlayingBackground = Color(nsColor: NSColor(name: NSColor.Name("vcWordPlayingBackground")) { appearance in
         appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
             ? NSColor(srgbRed: 35.0 / 255, green: 125.0 / 255, blue: 122.0 / 255, alpha: 255.0 / 255)
@@ -233,6 +239,12 @@ extension Color {
             : NSColor(srgbRed: 255.0 / 255, green: 92.0 / 255, blue: 92.0 / 255, alpha: 255.0 / 255)
     })
 
+    static let vcClipBadgeBackground = Color(nsColor: NSColor(name: NSColor.Name("vcClipBadgeBackground")) { appearance in
+        appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            ? NSColor(srgbRed: 236.0 / 255, green: 234.0 / 255, blue: 228.0 / 255, alpha: 33.0 / 255)
+            : NSColor(srgbRed: 26.0 / 255, green: 27.0 / 255, blue: 31.0 / 255, alpha: 23.0 / 255)
+    })
+
     static let vcTimelineTrack = Color(nsColor: NSColor(name: NSColor.Name("vcTimelineTrack")) { appearance in
         appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
             ? NSColor(srgbRed: 38.0 / 255, green: 39.0 / 255, blue: 43.0 / 255, alpha: 255.0 / 255)
@@ -245,10 +257,22 @@ extension Color {
             : NSColor(srgbRed: 116.0 / 255, green: 119.0 / 255, blue: 126.0 / 255, alpha: 255.0 / 255)
     })
 
+    static let vcTimelineKeptBackground = Color(nsColor: NSColor(name: NSColor.Name("vcTimelineKeptBackground")) { appearance in
+        appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            ? NSColor(srgbRed: 236.0 / 255, green: 234.0 / 255, blue: 228.0 / 255, alpha: 23.0 / 255)
+            : NSColor(srgbRed: 26.0 / 255, green: 27.0 / 255, blue: 31.0 / 255, alpha: 18.0 / 255)
+    })
+
     static let vcTimelineWaveform = Color(nsColor: NSColor(name: NSColor.Name("vcTimelineWaveform")) { appearance in
         appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-            ? NSColor(srgbRed: 176.0 / 255, green: 178.0 / 255, blue: 184.0 / 255, alpha: 89.0 / 255)
-            : NSColor(srgbRed: 85.0 / 255, green: 88.0 / 255, blue: 95.0 / 255, alpha: 89.0 / 255)
+            ? NSColor(srgbRed: 236.0 / 255, green: 234.0 / 255, blue: 228.0 / 255, alpha: 148.0 / 255)
+            : NSColor(srgbRed: 26.0 / 255, green: 27.0 / 255, blue: 31.0 / 255, alpha: 133.0 / 255)
+    })
+
+    static let vcTimelineScopeDim = Color(nsColor: NSColor(name: NSColor.Name("vcTimelineScopeDim")) { appearance in
+        appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            ? NSColor(srgbRed: 20.0 / 255, green: 21.0 / 255, blue: 23.0 / 255, alpha: 158.0 / 255)
+            : NSColor(srgbRed: 240.0 / 255, green: 239.0 / 255, blue: 234.0 / 255, alpha: 168.0 / 255)
     })
 
     static let vcTimelineClipBracket = Color(nsColor: NSColor(name: NSColor.Name("vcTimelineClipBracket")) { appearance in
@@ -329,16 +353,19 @@ enum VCTokens {
     static let spacing7: CGFloat = 24
     static let spacing8: CGFloat = 32
     static let spacing9: CGFloat = 48
-    static let spacingPanePaddingMacos: CGFloat = 20
-    static let spacingPanePaddingWindows: CGFloat = 24
+    static let spacingPanePaddingMacos: CGFloat = 16
+    static let spacingPanePaddingWindows: CGFloat = 16
     static let spacingInspectorRowGap: CGFloat = 8
     static let spacingInspectorSectionGap: CGFloat = 20
     static let spacingTileGap: CGFloat = 8
     static let spacingClipRowPadding: CGFloat = 12
-    static let spacingTranscriptParagraphGap: CGFloat = 12
-    static let spacingTranscriptGutter: CGFloat = 64
+    static let spacingTranscriptParagraphGap: CGFloat = 18
+    static let spacingTranscriptGutter: CGFloat = 84
     static let spacingWordHitSlopVertical: CGFloat = 2
     static let radiusXs: CGFloat = 4
+    static let radiusControl: CGFloat = 6
+    static let radiusPane: CGFloat = 10
+    static let radiusSheet: CGFloat = 14
     static let radiusSm: CGFloat = 6
     static let radiusMd: CGFloat = 8
     static let radiusLg: CGFloat = 12
@@ -375,18 +402,23 @@ enum VCTokens {
     static let sizeWindowMinHeight: CGFloat = 600
     static let sizeTranscriptMinWidth: CGFloat = 440
     static let sizeTranscriptMeasureMax: CGFloat = 680
-    static let sizePreviewColumnMin: CGFloat = 300
-    static let sizePreviewColumnIdeal: CGFloat = 380
-    static let sizePreviewColumnMax: CGFloat = 560
+    static let sizeSidebarMin: CGFloat = 220
+    static let sizeSidebarIdeal: CGFloat = 252
+    static let sizeSidebarMax: CGFloat = 320
+    static let sizeRightColumnMin: CGFloat = 300
+    static let sizeRightColumnIdeal: CGFloat = 360
+    static let sizeRightColumnMax: CGFloat = 560
+    static let sizeStagePortraitMaxWidth: CGFloat = 180
+    static let sizeStagePortraitMaxHeight: CGFloat = 320
     static let sizeInspectorMin: CGFloat = 260
     static let sizeInspectorIdeal: CGFloat = 300
     static let sizeInspectorMax: CGFloat = 380
-    static let sizeTimelineHeight: CGFloat = 56
-    static let sizeTimelineTrackHeight: CGFloat = 24
+    static let sizeTimelineHeight: CGFloat = 72
+    static let sizeTimelineTrackHeight: CGFloat = 30
+    static let sizeSelectionBarHeight: CGFloat = 36
     static let sizeFooterStatusHeightWindows: CGFloat = 32
     static let sizeTransportPillHeight: CGFloat = 36
-    static let sizeCaptionTileWidth: CGFloat = 128
-    static let sizeCaptionTileHeight: CGFloat = 80
+    static let sizeCaptionTileAspect: CGFloat = 0.45
     static let sizeSettingsWindowMacosWidth: CGFloat = 600
     static let sizeSettingsWindowMacosHeight: CGFloat = 480
     static let sizeSettingsWindowWindowsDefaultItem0: CGFloat = 760
@@ -405,7 +437,7 @@ enum VCTokens {
     static let sizeBreakpointStack: CGFloat = 960
     static let fontDmSans: String = "DM Sans"
     static let fontGeistMono: String = "Geist Mono"
-    static let typographyStatusFontFamily: String = "Geist Mono"
+    static let typographyStatusFontFamily: String = "SF Mono"
     static let typographyStatusFontWeight: CGFloat = 400
     static let typographyStatusFontSize: CGFloat = 10
     static let typographyStatusLineHeight: CGFloat = 14
@@ -443,24 +475,24 @@ enum VCTokens {
     static let typographyTitleLineHeight: CGFloat = 28
     static let typographyTitleLetterSpacing: CGFloat = -0.4
     static let typographyTitleSystemStyle: String = "title"
-    static let typographyTranscriptFontFamily: String = "DM Sans"
+    static let typographyTranscriptFontFamily: String = "system"
     static let typographyTranscriptFontWeight: CGFloat = 400
-    static let typographyTranscriptFontSize: CGFloat = 17
-    static let typographyTranscriptLineHeight: CGFloat = 28
+    static let typographyTranscriptFontSize: CGFloat = 19
+    static let typographyTranscriptLineHeight: CGFloat = 32
     static let typographyTranscriptZoomMin: CGFloat = 13
     static let typographyTranscriptZoomMax: CGFloat = 28
-    static let typographyTranscriptLineHeightMultiplier: CGFloat = 1.65
-    static let typographyPauseTokenFontFamily: String = "Geist Mono"
+    static let typographyTranscriptLineHeightMultiplier: CGFloat = 1.6842
+    static let typographyPauseTokenFontFamily: String = "SF Mono"
     static let typographyPauseTokenFontWeight: CGFloat = 400
     static let typographyPauseTokenFontSize: CGFloat = 11
     static let typographyPauseTokenLineHeight: CGFloat = 14
     static let typographyPauseTokenFeaturesItem0: String = "tnum"
-    static let typographyTimecodeFontFamily: String = "Geist Mono"
+    static let typographyTimecodeFontFamily: String = "SF Mono"
     static let typographyTimecodeFontWeight: CGFloat = 500
     static let typographyTimecodeFontSize: CGFloat = 12
     static let typographyTimecodeLineHeight: CGFloat = 16
     static let typographyTimecodeFeaturesItem0: String = "tnum"
-    static let typographyTransportFontFamily: String = "Geist Mono"
+    static let typographyTransportFontFamily: String = "SF Mono"
     static let typographyTransportFontWeight: CGFloat = 600
     static let typographyTransportFontSize: CGFloat = 15
     static let typographyTransportLineHeight: CGFloat = 20
@@ -477,7 +509,7 @@ extension Font {
     }
 
     @MainActor static func vcStatus(size: CGFloat = VCTokens.typographyStatusFontSize) -> Font {
-        VoxClipTokenFonts.geistMono(size: size, weight: 400).monospacedDigit()
+        Font.system(size: size, weight: .regular, design: .monospaced).monospacedDigit()
     }
 
     @MainActor static func vcCaption(size: CGFloat = VCTokens.typographyCaptionFontSize) -> Font {
@@ -505,19 +537,19 @@ extension Font {
     }
 
     @MainActor static func vcTranscript(size: CGFloat = VCTokens.typographyTranscriptFontSize) -> Font {
-        VoxClipTokenFonts.dmSans(size: size, weight: 400)
+        Font.system(size: size, weight: .regular)
     }
 
     @MainActor static func vcPauseToken(size: CGFloat = VCTokens.typographyPauseTokenFontSize) -> Font {
-        VoxClipTokenFonts.geistMono(size: size, weight: 400).monospacedDigit()
+        Font.system(size: size, weight: .regular, design: .monospaced).monospacedDigit()
     }
 
     @MainActor static func vcTimecode(size: CGFloat = VCTokens.typographyTimecodeFontSize) -> Font {
-        VoxClipTokenFonts.geistMono(size: size, weight: 500).monospacedDigit()
+        Font.system(size: size, weight: .medium, design: .monospaced).monospacedDigit()
     }
 
     @MainActor static func vcTransport(size: CGFloat = VCTokens.typographyTransportFontSize) -> Font {
-        VoxClipTokenFonts.geistMono(size: size, weight: 600).monospacedDigit()
+        Font.system(size: size, weight: .semibold, design: .monospaced).monospacedDigit()
     }
 }
 

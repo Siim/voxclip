@@ -54,7 +54,38 @@ test('font URLs, missing-file fallbacks and dimensional resources are generated'
   assert.ok(!output.swift.includes('"geist-mono/GeistMono-Regular.ttf"'));
   assert.ok(output.xaml.includes('ms-appx:///shared/fonts/dm-sans/DMSans-Medium.ttf#DM Sans'));
   assert.ok(output.xaml.includes('<CornerRadius x:Key="VcRadiusLgCornerRadius">12</CornerRadius>'));
-  assert.ok(output.xaml.includes('<Thickness x:Key="VcSpacingPanePaddingWindowsThickness">24</Thickness>'));
+  assert.ok(output.xaml.includes('<Thickness x:Key="VcSpacingPanePaddingWindowsThickness">16</Thickness>'));
+  assert.ok(output.swift.includes('static let sizeCaptionTileAspect: CGFloat = 0.45'));
+  assert.ok(output.xaml.includes('<x:Double x:Key="VcSizeCaptionTileAspect">0.45</x:Double>'));
+});
+
+test('a windows extension replaces a dimension in Tokens.xaml only', () => {
+  const output = buildOutputs(source);
+  assert.ok(output.swift.includes('static let spacingTranscriptGutter: CGFloat = 84'));
+  assert.ok(output.xaml.includes('<x:Double x:Key="VcSpacingTranscriptGutter">76</x:Double>'));
+  assert.ok(output.xaml.includes('<Thickness x:Key="VcSpacingTranscriptGutterThickness">76</Thickness>'));
+  assert.ok(output.swift.includes('static let sizeSidebarIdeal: CGFloat = 252'));
+  assert.ok(output.xaml.includes('<x:Double x:Key="VcSizeSidebar">264</x:Double>'));
+  assert.ok(!output.xaml.includes('VcSizeSidebarIdeal'));
+  assert.ok(output.xaml.includes('<x:Double x:Key="VcSizeRightColumnIdeal">388</x:Double>'));
+  const changed = structuredClone(source);
+  changed.size.timelineHeight.$extensions = { 'com.voxconvo.voxclip': { windows: 80 } };
+  const overridden = buildOutputs(changed);
+  assert.ok(overridden.swift.includes('static let sizeTimelineHeight: CGFloat = 72'));
+  assert.ok(overridden.xaml.includes('<x:Double x:Key="VcSizeTimelineHeight">80</x:Double>'));
+  changed.size.timelineHeight.$extensions['com.voxconvo.voxclip'].windows = [Number.NaN];
+  assert.throws(() => buildOutputs(changed), /Non-finite token/);
+});
+
+test('system typography uses the system font, and SF Mono its monospaced design', () => {
+  const output = buildOutputs(source);
+  assert.ok(output.swift.includes('static func vcTranscript(size: CGFloat = VCTokens.typographyTranscriptFontSize) -> Font {\n        Font.system(size: size, weight: .regular)\n'));
+  assert.ok(output.swift.includes('static func vcTimecode(size: CGFloat = VCTokens.typographyTimecodeFontSize) -> Font {\n        Font.system(size: size, weight: .medium, design: .monospaced).monospacedDigit()'));
+  const brand = structuredClone(source);
+  brand.typography.timecode.$value.macos.fontFamily = 'Geist Mono';
+  assert.ok(buildOutputs(brand).swift.includes('VoxClipTokenFonts.geistMono(size: size, weight: 500).monospacedDigit()'));
+  brand.typography.timecode.$value.macos.fontFamily = 'SF Pro Rounded';
+  assert.throws(() => buildOutputs(brand), /Unknown font family SF Pro Rounded/);
 });
 
 test('the macOS AccentColor asset comes from the flagged token in both appearances', () => {

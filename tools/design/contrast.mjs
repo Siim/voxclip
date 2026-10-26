@@ -17,6 +17,9 @@ const tokenPairs = [
   ...['text.secondary', 'text.muted', 'text.tertiary', 'accent.text', 'status.dangerForeground', 'status.warning', 'status.success']
     .flatMap(foreground => surfaces.map(background => ['text', foreground, background])),
   ['text', 'text.muted', 'pause.background'],
+  ['text', 'text.secondary', ['clip.badgeBackground', 'bg.surface'], 'neutral clip badge'],
+  ['text', 'text.secondary', ['clip.badgeBackground', 'bg.sunken'], 'neutral clip badge'],
+  ['text', 'text.primary', 'selection.transcript', 'Windows transcript selection'],
   ['text', 'word.cut', 'bg.surface'],
   ['text', 'word.filler', 'bg.surface'],
   ['text', 'text.primary', ['overlay.drop', 'text.primary']],
@@ -32,6 +35,8 @@ const tokenPairs = [
   ['ui', 'focus.ring', 'bg.elevated'],
   ['ui', 'line.strong', ['overlay.transportOpaque', 'stage']],
   ...['timeline.kept', 'cut.fill', 'cut.pauseFill', 'timeline.playhead', 'timeline.clipBracket'].map(foreground => ['ui', foreground, 'timeline.track']),
+  ['ui', 'timeline.waveform', ['timeline.keptBackground', 'timeline.track'], 'waveform bars on the kept-speech bed'],
+  ['ui', 'timeline.playhead', ['timeline.keptBackground', 'timeline.track']],
   ['ui', 'timeline.playhead', 'bg.sunken'],
   ['ui', 'timeline.clipBracket', 'bg.sunken'],
   ['ui', 'timeline.clipBracket', 'bg.surface'],
@@ -53,8 +58,8 @@ export const exempt = {
   'selection.text': 'platform selection colour',
   'record.button': 'M2 recording UI, not drawn yet',
   'record.live': 'M2 recording UI, not drawn yet',
-  'timeline.waveform': 'decorative texture over kept speech',
-  'timeline.clipBand': 'decorative tint; brackets and badges identify clips',
+  'timeline.scopeDim': 'dims the track outside the selected clip on purpose; brackets and trim handles mark the scope',
+  'timeline.clipBand': 'deprecated decorative tint; brackets and badges identify clips',
   'overlay.dropZoneBorder': 'decorative; the zone icon and label identify it',
 };
 
