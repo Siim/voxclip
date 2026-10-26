@@ -66,7 +66,8 @@ import VoxClipCore
     /// (`swift run`, the offscreen harness); a bundle from bundle.sh gets nil and uses the
     /// asset. Caveat: the tint reaches SwiftUI controls only. AppKit still draws focus rings,
     /// text selection and controlAccentColor in the system accent until the asset is
-    /// bundled, so accent evidence for those must come from a bundled build.
+    /// bundled, and an explicit tint also colours labels the asset leaves neutral, such as
+    /// borderless menus. Accent evidence for those must come from a bundled build.
     static let debugTint: Color? = NSColor(named: "AccentColor") == nil ? color("accent.default") : nil
     #endif
 
