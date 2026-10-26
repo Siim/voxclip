@@ -50,7 +50,8 @@ struct DemoFrame: View {
                 Text("No source video is loaded").font(.caption).foregroundStyle(DesignValues.color("overlay.foreground").opacity(0.7))
                 Text(timecode(model.sourceTime)).font(DesignValues.mono()).foregroundStyle(DesignValues.color("overlay.foreground").opacity(0.7))
             }
-        }.accessibilityLabel("Synthetic in-memory preview, \(timecode(model.sourceTime))")
+        }.frame(maxWidth: .infinity, maxHeight: .infinity) // fill the stage, so the bottom-aligned parent keeps it centred
+        .accessibilityLabel("Synthetic in-memory preview, \(timecode(model.sourceTime))")
     }
 }
 #endif
