@@ -290,10 +290,23 @@ public sealed partial class EditorPage : Page
         if (ViewModel.MakeClip()) ShowClipsPane();
     }
     private void MakeClipClicked(object sender, RoutedEventArgs args) => MakeClipAndReveal();
-    private void FindClipsClicked(object sender, RoutedEventArgs args)
+    private void FindClipsClicked(object sender, RoutedEventArgs args) => ShowFindClips();
+    /// <summary>The sidebar's "New clip from selection" action.</summary>
+    internal void MakeClipFromPane() => MakeClipAndReveal();
+    /// <summary>The sidebar's "Find clips with AI" action.</summary>
+    internal void ShowFindClips()
     {
         InspectorSplit.IsPaneOpen = true;
         inspector?.ShowFind();
+    }
+    /// <summary>Home pauses playback and keeps this page alive; design §2.</summary>
+    internal void PausePlayback() => _ = RunAsync(async () => { if (preview?.Position.IsPlaying == true) await preview.PauseAsync(lifetime.Token); }, "Preview");
+    /// <summary>A sidebar row sets the scope through the existing setActiveClip step; a clip also selects its first word.</summary>
+    internal void SelectScope(string? clipId)
+    {
+        ViewModel.Apply(new EditOperation.SetActiveClip(clipId));
+        if (clipId is not null && ViewModel.State?.ActiveClipId == clipId && ViewModel.Clips.FirstOrDefault(clip => clip.Id == clipId) is { } row)
+            ViewModel.Select(ViewModel.Index(row.Clip.StartWordId));
     }
     private void CaptionsClicked(object sender, RoutedEventArgs args)
     {

@@ -13,21 +13,30 @@ using Windows.System;
 using VoxClip.Core.Domain.Shared;
 namespace VoxClip.App;
 
-/// <summary>Mica editor shell with a custom native title bar; design §3.3.</summary>
+/// <summary>Mica window with a TitleBar over a NavigationView: Home, the open project's clips and Recent; design §2 and §3.3.</summary>
 public sealed partial class MainWindow : Window, IUpdateRestartWindow
 {
     internal string? ProjectPath { get; private set; }
     internal string CurrentScreen => ContentFrame.Content is EditorPage ? "editor" : ContentFrame.Content is HomePage ? "home" : "none";
+    /// <summary>Sidebar rows for this window.</summary>
+    internal ShellViewModel Shell { get; } = new();
+    private readonly HomePage home = new();
     private readonly CancellationTokenSource lifetime = new();
     private readonly SemaphoreSlim navigation = new(1, 1);
     private bool closingApproved;
     private bool closingInProgress;
     private bool restartPrepared;
     private EditorPage? editor;
+    private bool syncingSelection;
+    private string? dropName;
 #if DEBUG
     internal EditorPage? DebugEditor => editor;
     internal bool DebugHoldNavigation() => navigation.Wait(0);
     internal void DebugReleaseNavigation() => navigation.Release();
+    internal SidebarRow? DebugSelectedRow => Nav.SelectedItem as SidebarRow;
+    /// <summary>Select a row as a click does: the NavigationView raises the same SelectionChanged.</summary>
+    internal void DebugSelect(SidebarRow row) => Nav.SelectedItem = row;
+    internal Task DebugInvokeAsync(SidebarRow row) => InvokeRowAsync(row);
 #endif
     private Button? updateRestart;
     /// <summary>Construct the shell on the DispatcherQueue thread; architecture §7.2.</summary>
@@ -41,7 +50,13 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
         var scale = GetDpiForWindow(WinRT.Interop.WindowNative.GetWindowHandle(this)) / 96.0;
-        AppWindow.Resize(new Windows.Graphics.SizeInt32((int)(1280 * scale), (int)(800 * scale)));
+        var (width, height) = (1280, 800);
+#if DEBUG
+        // Captures launch at their size: the shared VM's compositor stops presenting a window after an external resize.
+        var requested = Program.Arguments.FirstOrDefault(argument => argument.StartsWith("--window-size=", StringComparison.Ordinal))?["--window-size=".Length..].Split('x');
+        if (requested is [var w, var h] && int.TryParse(w, out var requestedWidth) && int.TryParse(h, out var requestedHeight)) (width, height) = (requestedWidth, requestedHeight);
+#endif
+        AppWindow.Resize(new Windows.Graphics.SizeInt32((int)(width * scale), (int)(height * scale)));
         if (AppWindow.Presenter is Microsoft.UI.Windowing.OverlappedPresenter presenter) { presenter.PreferredMinimumWidth = (int)(760 * scale); presenter.PreferredMinimumHeight = (int)(600 * scale); }
         AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "VoxClip.ico"));
         App.Services.ApplyTheme(Root);
@@ -50,7 +65,7 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
         Root.KeyboardAccelerators.Add(Accelerator(VirtualKey.O, VirtualKeyModifiers.Control, async () => await ChooseAsync(false)));
         Root.KeyboardAccelerators.Add(Accelerator(VirtualKey.N, VirtualKeyModifiers.Control, () => App.NewWindow()));
         Root.KeyboardAccelerators.Add(Accelerator((VirtualKey)188, VirtualKeyModifiers.Control, App.OpenSettings));
-        Root.KeyboardAccelerators.Add(Accelerator(VirtualKey.Left, VirtualKeyModifiers.Menu, GoHome));
+        Root.KeyboardAccelerators.Add(Accelerator(VirtualKey.Left, VirtualKeyModifiers.Menu, ShowHome));
         Root.KeyboardAccelerators.Add(Accelerator(VirtualKey.W, VirtualKeyModifiers.Control, () => _ = RequestCloseAsync()));
         AppWindow.Closing += (appWindow, args) =>
         {
@@ -60,7 +75,10 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
             _ = RequestCloseAsync();
         };
         Closed += WindowClosed;
-        GoHome();
+        Root.SizeChanged += RootSizeChanged;
+        home.Attach(this);
+        home.ViewModel.RecentProjects.CollectionChanged += (_, _) => UpdateShell();
+        ShowContent(home);
         _ = CheckUpdatesAsync();
     }
 
@@ -146,14 +164,12 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
         var fullPath = Path.GetFullPath(path);
         var newImport = !Path.GetExtension(fullPath).Equals(".voxclip", StringComparison.OrdinalIgnoreCase);
         var existing = App.Windows.FirstOrDefault(window => string.Equals(window.ProjectPath, fullPath, StringComparison.OrdinalIgnoreCase));
-        if (existing is not null) { existing.Activate(); return; }
+        if (existing is not null) { existing.Activate(); existing.ShowOpenProject(); return; }
         await navigation.WaitAsync();
         if (App.Restart.IsPreparing) { navigation.Release(); return; }
         var previous = editor;
         var previousPath = ProjectPath;
         var previousContent = ContentFrame.Content;
-        var previousSubtitle = AppTitleBar.Subtitle;
-        var previousBackButton = AppTitleBar.IsBackButtonVisible;
         EditorPage? incoming = null;
         var installed = false;
         try
@@ -196,11 +212,11 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
             incoming = new EditorPage();
             ProjectPath = fullPath;
             ContentFrame.Content = incoming;
-            AppTitleBar.IsBackButtonVisible = true;
-            AppTitleBar.Subtitle = project.Title ?? Path.GetFileNameWithoutExtension(fullPath);
             await incoming.OpenAsync(this, project, mediaPath, demo, lifetime.Token);
+            Watch(previous, incoming);
             editor = incoming;
             installed = true;
+            UpdateShell();
             if (previous is not null)
             {
                 try { await previous.CloseAsync(); }
@@ -221,11 +237,9 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
                 {
                     ContentFrame.Content = previousContent;
                     ProjectPath = previousPath;
-                    AppTitleBar.IsBackButtonVisible = previousBackButton;
-                    AppTitleBar.Subtitle = previousSubtitle;
                     if (incoming is not null) { try { await incoming.CloseAsync(); } catch (Exception cleanup) { App.Services.Log.Write(Core.Services.Logging.LogLevel.Warn, "project", cleanup.GetType().Name); } }
                 }
-                finally { previous?.ResumeAfterFailedLeave(); }
+                finally { previous?.ResumeAfterFailedLeave(); UpdateShell(); }
             }
             ShowError(exception, "Open project");
         }
@@ -233,31 +247,96 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
     }
 
     internal void SetProjectPath(string path) => ProjectPath = path;
-    internal async void GoHome() => await GoHomeAsync();
-    internal async Task GoHomeAsync()
+    /// <summary>Show Home without leaving the project: playback pauses and the editor page stays alive (ADR-R29).</summary>
+    internal void ShowHome()
     {
-        if (App.Restart.IsPreparing) return;
-        await navigation.WaitAsync();
+        if (App.Restart.IsPreparing || !navigation.Wait(0)) { SyncSelection(); return; }
         try
         {
-            if (App.Restart.IsPreparing) return;
-            if (editor is { } previous)
-            {
-                if (!await previous.TrySaveBeforeLeavingAsync()) return;
-                await previous.CloseAsync();
-                editor = null;
-            }
-            ProjectPath = null;
-            AppTitleBar.IsBackButtonVisible = false;
-            AppTitleBar.Subtitle = "";
-            var home = new HomePage();
-            home.Attach(this);
-            ContentFrame.Content = home;
+            editor?.PausePlayback();
+            ShowContent(home);
         }
-        catch (Exception exception) { ShowError(exception, "Close project"); }
         finally { navigation.Release(); }
     }
-    private void BackRequested(TitleBar sender, object args) => GoHome();
+    /// <summary>Show the editor scoped to Full take (null) or one clip; a scope change is the existing setActiveClip step.</summary>
+    internal void ShowScope(string? clipId)
+    {
+        if (editor is not { } current || App.Restart.IsPreparing || !navigation.Wait(0)) { SyncSelection(); return; }
+        try
+        {
+            if (!ReferenceEquals(ContentFrame.Content, current)) ShowContent(current);
+            current.SelectScope(clipId);
+        }
+        finally { navigation.Release(); }
+        SyncSelection();
+    }
+    /// <summary>Opening the project a window already holds returns to its editor at the current scope; Home keeps it open.</summary>
+    private void ShowOpenProject()
+    {
+        if (editor is not { } current || App.Restart.IsPreparing || !navigation.Wait(0)) return;
+        try { if (!ReferenceEquals(ContentFrame.Content, current)) ShowContent(current); }
+        finally { navigation.Release(); }
+    }
+    private void ShowContent(Page page)
+    {
+        if (page is HomePage) home.Refresh();
+        ContentFrame.Content = page;
+        UpdateShell();
+    }
+    private bool ShowingHome => editor is null || ContentFrame.Content is HomePage;
+    private void UpdateShell()
+    {
+        Shell.Update(editor?.ViewModel, ShowingHome, home.ViewModel.RecentProjects, ProjectPath);
+        SyncSelection();
+    }
+    /// <summary>Keep the selected row equal to the shown page and the editor's activeClipId, without re-entering selection.</summary>
+    private void SyncSelection()
+    {
+        var target = ShowingHome ? Shell.Home : Shell.ScopeRow(editor!.ViewModel.State?.ActiveClipId);
+        if (target is null || ReferenceEquals(Nav.SelectedItem, target)) return;
+        syncingSelection = true;
+        try { Nav.SelectedItem = target; }
+        finally { syncingSelection = false; }
+    }
+    private void Watch(EditorPage? previous, EditorPage next)
+    {
+        if (previous?.ViewModel is { } old) { old.Changed -= EditorChanged; old.SelectionChanged -= EditorChanged; old.PropertyChanged -= EditorPropertyChanged; }
+        next.ViewModel.Changed += EditorChanged;
+        next.ViewModel.SelectionChanged += EditorChanged;
+        next.ViewModel.PropertyChanged += EditorPropertyChanged;
+    }
+    private void EditorChanged(object? sender, EventArgs args) => UpdateShell();
+    private void EditorPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs args)
+    {
+        if (args.PropertyName is nameof(EditorViewModel.Busy) or nameof(EditorViewModel.CanExport)) UpdateShell();
+    }
+    private void NavSelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
+    {
+        if (syncingSelection || args.SelectedItem is not SidebarRow row) return;
+        switch (row.Kind)
+        {
+            case SidebarKind.Home: ShowHome(); break;
+            case SidebarKind.FullTake: ShowScope(null); break;
+            case SidebarKind.Clip or SidebarKind.Suggestion: ShowScope(row.ClipId); break;
+        }
+    }
+    private async void NavItemInvoked(NavigationView sender, NavigationViewItemInvokedEventArgs args)
+    {
+        if (args.InvokedItemContainer is not null && sender.MenuItemFromContainer(args.InvokedItemContainer) is SidebarRow row) await InvokeRowAsync(row);
+    }
+    /// <summary>Rows that do not select: a Recent project opens in place through OpenPathAsync; actions run on the editor.</summary>
+    private async Task InvokeRowAsync(SidebarRow row)
+    {
+        if (row.Kind == SidebarKind.Recent && row.Recent is { } recent) await OpenPathAsync(recent.Path);
+        else if (row.Key == "action:make") editor?.MakeClipFromPane();
+        else if (row.Key == "action:find") editor?.ShowFindClips();
+    }
+    private void PaneToggleRequested(TitleBar sender, object args) => Nav.IsPaneOpen = !Nav.IsPaneOpen;
+    private void RootSizeChanged(object sender, SizeChangedEventArgs args)
+    {
+        var mode = args.NewSize.Width >= (double)Application.Current.Resources["VcLayoutPaneBreakpoint"] ? NavigationViewPaneDisplayMode.Left : NavigationViewPaneDisplayMode.LeftMinimal;
+        if (Nav.PaneDisplayMode != mode) Nav.PaneDisplayMode = mode;
+    }
     private void SettingsClicked(object sender, RoutedEventArgs args) => App.OpenSettings();
     internal void ShowError(Exception exception, string action)
     {
@@ -268,26 +347,57 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
         WindowNotice.IsOpen = true;
         App.Services.Log.Write(Core.Services.Logging.LogLevel.Warn, "import", $"action={action} code={(exception is VoxClipException known ? known.WireCode : exception.GetType().Name)} inner={exception.GetBaseException().GetType().Name} hresult=0x{exception.GetBaseException().HResult:X8}");
     }
-    private void FileDragOver(object sender, DragEventArgs args)
+    private static readonly string[] OpenableExtensions = [".mp4", ".mov", ".m4v", ".mkv", ".webm", ".voxclip"];
+    /// <summary>Whole-window drop target: overlay copy from design §7 and §13.</summary>
+    private async void FileDragOver(object sender, DragEventArgs args)
     {
         if (!args.DataView.Contains(StandardDataFormats.StorageItems)) return;
         args.AcceptedOperation = DataPackageOperation.Copy;
         args.DragUIOverride.Caption = editor is null ? "Import video in this window" : "Open in this window after saving";
+        DropOverlay.Visibility = Visibility.Visible;
+        if (dropName is not null) return;
+        dropName = "";
+        var deferral = args.GetDeferral();
+        try { dropName = (await args.DataView.GetStorageItemsAsync()).FirstOrDefault()?.Name ?? ""; }
+        catch (Exception) { dropName = ""; }
+        finally { deferral.Complete(); }
+        DropDetail.Text = editor is not null ? $"{editor.ViewModel.Title} is saved first."
+            : Path.GetExtension(dropName).Equals(".voxclip", StringComparison.OrdinalIgnoreCase) ? dropName
+            : $"{dropName} · VoxClip makes a new project next to the video";
     }
+    private void FileDragLeave(object sender, DragEventArgs args) { DropOverlay.Visibility = Visibility.Collapsed; dropName = null; }
     private async void FileDropped(object sender, DragEventArgs args)
     {
+        DropOverlay.Visibility = Visibility.Collapsed;
+        dropName = null;
         try
         {
             var deferral = args.GetDeferral();
             try
             {
                 var items = await args.DataView.GetStorageItemsAsync();
-                if (items.FirstOrDefault() is { } file) await OpenPathAsync(file.Path);
+                if (items.FirstOrDefault() is { } file) await OpenDroppedAsync(file.Path);
             }
             finally { deferral.Complete(); }
         }
         catch (Exception exception) { ShowError(exception, "Import video"); }
     }
+    /// <summary>A dropped file replaces the open project through OpenPathAsync, which saves it first; design §7.</summary>
+    internal async Task OpenDroppedAsync(string path)
+    {
+        var extension = Path.GetExtension(path);
+        if (extension.Length > 0 && !OpenableExtensions.Contains(extension, StringComparer.OrdinalIgnoreCase))
+        {
+            WindowNotice.Severity = InfoBarSeverity.Informational;
+            WindowNotice.Message = $"VoxClip can't open {extension.TrimStart('.').ToUpperInvariant()} files on PC yet. Export the video as MP4 or MOV and try again.";
+            WindowNotice.IsOpen = true;
+            return;
+        }
+        await OpenPathAsync(path);
+    }
+#if DEBUG
+    internal string DebugNotice => WindowNotice.IsOpen ? WindowNotice.Message : "";
+#endif
     internal async Task ShowOnboardingAsync() => await new OnboardingDialog(this) { XamlRoot = Root.XamlRoot }.ShowAsync();
     internal async Task CheckUpdatesAsync(bool manual = false)
     {

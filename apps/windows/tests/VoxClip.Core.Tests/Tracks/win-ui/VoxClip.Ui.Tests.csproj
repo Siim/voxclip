@@ -21,6 +21,7 @@
     <PackageReference Include="xunit.runner.visualstudio" PrivateAssets="all" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <Compile Include="ViewModelTests.cs" />
+    <Compile Include="ShellViewModelTests.cs" />
     <Compile Include="UpdateRestartTests.cs" />
     <Compile Include="StartupCheckTests.cs" />
     <Compile Include="RedirectedLaunchSelectionTests.cs" />

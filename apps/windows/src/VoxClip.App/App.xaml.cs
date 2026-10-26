@@ -55,6 +55,13 @@ public partial class App : Application
                 Exit();
                 return;
             }
+            var shellProbeIndex = Array.IndexOf(Program.Arguments, "--shell-probe");
+            if (shellProbeIndex >= 0 && shellProbeIndex + 1 < Program.Arguments.Length)
+            {
+                await ShellNativeProbe.RunAsync(window, Program.Arguments[shellProbeIndex + 1]);
+                Exit();
+                return;
+            }
             var demoIndex = Array.IndexOf(Program.Arguments, "--demo-project");
             if (demoIndex >= 0 && demoIndex + 1 < Program.Arguments.Length)
             {
@@ -63,7 +70,7 @@ public partial class App : Application
                 var screenIndex = Array.IndexOf(Program.Arguments, "--demo-screen");
                 if (screenIndex >= 0 && screenIndex + 1 < Program.Arguments.Length)
                 {
-                    if (Program.Arguments[screenIndex + 1] == "home") { await window.GoHomeAsync(); screen = "home"; }
+                    if (Program.Arguments[screenIndex + 1] == "home") { window.ShowHome(); screen = "home"; }
                     else if (Program.Arguments[screenIndex + 1] == "settings") { OpenSettings(); screen = "settings"; }
                 }
                 return;

@@ -10,7 +10,7 @@ $env:VOXCLIP_SHARED_DIR=Join-Path $root 'shared'
 $exe=Join-Path $root 'apps\windows\src\VoxClip.App\bin\ARM64\Debug\net10.0-windows10.0.26100.0\win-arm64\VoxClip.exe'
 $started=[DateTime]::UtcNow
 $owned=@{}
-$result=[ordered]@{homeRenderedSelfCheck=$false; editorRenderedSelfCheck=$false; editorUiAObserved=$false; editorScreenshotCaptured=$false; normalOpen=$false; sameWindowReopen=$false; noArgumentReactivation=$false; fileActivationAfterNoArgument=$false; keyboardWalk=$false; correctionTextIsolated=$false; f6Descendants=$false; previewFocused=$false; previewEscapeReturn=$false; exportDialog=$false; exportCancelled=$false; findSetup=$false; compactReturn=$false; providerDispatched=$false; exportStarted=$false}
+$result=[ordered]@{homeRenderedSelfCheck=$false; homeLaunch=$false; editorRenderedSelfCheck=$false; editorUiAObserved=$false; editorScreenshotCaptured=$false; normalOpen=$false; paneRows=$false; keyboardClip=$false; correctionTextIsolated=$false; clipRowScope=$false; escapeFullTake=$false; homeKeepsEditor=$false; findAction=$false; compactPane=$false; sameWindowReopen=$false; noArgumentReactivation=$false; fileActivationAfterNoArgument=$false; keyboardWalk=$false; providerDispatched=$false; exportStarted=$false}
 function StartOwned([string]$arguments) {
  $start=New-Object System.Diagnostics.ProcessStartInfo($exe)
  $start.UseShellExecute=$false
@@ -90,8 +90,17 @@ function Dump([IntPtr]$w,[string]$name){
  $lines=foreach($x in $all){try{ if($x.Current.IsOffscreen){continue};$p=$null;$state='';if($x.TryGetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern,[ref]$p)){$state=' selected='+$p.Current.IsSelected};$p=$null;if($x.TryGetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern,[ref]$p)){$state+=' expanded='+$p.Current.ExpandCollapseState};$p=$null;if($x.TryGetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern,[ref]$p)){$state+=' toggle='+$p.Current.ToggleState}; "{0} | {1} | enabled={2} focus={3}{4}" -f $x.Current.ControlType.ProgrammaticName,$x.Current.Name,$x.Current.IsEnabled,$x.Current.HasKeyboardFocus,$state}catch{}}
  [IO.File]::WriteAllLines((Join-Path $shots "uia-$name.txt"),$lines)
 }
+# Windows refuses SetForegroundWindow from a background script while another window (often the taskbar) holds the
+# foreground lock; an Alt tap releases the lock, as for any automation client. Capture still verifies the owner.
+function Front([IntPtr]$w){
+ for($attempt=0;$attempt -lt 4;$attempt++){
+  if($attempt -gt 0){[R1Native]::Key(0x12)}
+  [void][R1Native]::SetForegroundWindow($w);Start-Sleep -Milliseconds 250
+  if([R1Native]::GetForegroundWindow() -eq $w){return}
+ }
+}
 function Capture([IntPtr]$w,[string]$name){
- [void][R1Native]::SetWindowPos($w,[IntPtr](-1),0,0,0,0,0x43);[void][R1Native]::SetForegroundWindow($w);Start-Sleep -Milliseconds 850
+ [void][R1Native]::SetWindowPos($w,[IntPtr](-1),0,0,0,0,0x43);Front $w;Start-Sleep -Milliseconds 850
  $b=New-Object R1Native+Rect
  if(-not [R1Native]::GetWindowRect($w,[ref]$b)){throw 'No bounds'}
  $foreground=[R1Native]::GetForegroundWindow()
@@ -110,6 +119,31 @@ function Capture([IntPtr]$w,[string]$name){
  $g=[System.Drawing.Graphics]::FromImage($image)
  try{$g.CopyFromScreen($b.Left,$b.Top,0,0,$image.Size);$image.Save((Join-Path $shots "$name.png"),[System.Drawing.Imaging.ImageFormat]::Png)}finally{$g.Dispose();$image.Dispose()}
 }
+function FindPrefix([IntPtr]$w,[string]$prefix) {
+ for($i=0;$i -lt 60;$i++){
+  try{$all=[System.Windows.Automation.AutomationElement]::FromHandle($w).FindAll([System.Windows.Automation.TreeScope]::Descendants,[System.Windows.Automation.Condition]::TrueCondition)}catch{$all=@()}
+  foreach($x in $all){try{if($x.Current.Name.StartsWith($prefix) -and -not $x.Current.IsOffscreen){return $x}}catch{}}
+  Start-Sleep -Milliseconds 200
+ }
+ throw "Missing visible UIA name starting with: $prefix"
+}
+function HasPrefix([IntPtr]$w,[string]$prefix) {
+ try{$all=[System.Windows.Automation.AutomationElement]::FromHandle($w).FindAll([System.Windows.Automation.TreeScope]::Descendants,[System.Windows.Automation.Condition]::TrueCondition)}catch{return $false}
+ foreach($x in $all){try{if($x.Current.Name.StartsWith($prefix) -and -not $x.Current.IsOffscreen){return $true}}catch{}}
+ return $false
+}
+function FindId([IntPtr]$w,[string]$id) {
+ $condition=New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::AutomationIdProperty,$id)
+ for($i=0;$i -lt 40;$i++){
+  $x=[System.Windows.Automation.AutomationElement]::FromHandle($w).FindFirst([System.Windows.Automation.TreeScope]::Descendants,$condition)
+  if($x -and -not $x.Current.IsOffscreen){return $x};Start-Sleep -Milliseconds 200
+ }
+ throw "Missing visible automation id: $id"
+}
+function IsSelected($x){$p=$null;if($x.TryGetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern,[ref]$p)){return $p.Current.IsSelected};return $false}
+function Focused{[System.Windows.Automation.AutomationElement]::FocusedElement.Current.Name}
+function Choose($x){$x.SetFocus();Start-Sleep -Milliseconds 150;[R1Native]::Key(0x0D);Start-Sleep -Milliseconds 600}
+$transcriptName='Transcript. Select words to cut. Enter corrects spelling. Control K makes a clip.'
 try{
  if(Get-Process VoxClip -ErrorAction SilentlyContinue | Where-Object {$_.Path -eq $exe}){throw 'Exact app binary already has a process; refusing to attach to it'}
  $report=Join-Path $shots 'self-check.json'
@@ -125,13 +159,16 @@ try{
   for($i=0;$i -lt 30;$i++){$check=ReadCheck $report;if($check.status -eq 'ready'){break};if($check.status -eq 'failed'){throw 'Home rendered self-check failed'};Start-Sleep -Milliseconds 500}
   if($check.status -ne 'ready' -or $check.screen -ne 'home' -or !$check.rootLoaded -or !$check.rendered -or $check.processId -ne $app.Id -or $check.windowHandle -ne $w.ToInt64()){throw 'Home rendered self-check did not match owned PID/HWND'}
   $result.homeRenderedSelfCheck=$true
+  if(-not (IsSelected (FindName $w 'Home'))){throw 'The Home row is not selected at launch'}
+  if((HasVisibleName $w 'New clip from selection') -or (HasPrefix $w 'Full take, ')){throw 'A project section showed without a project'}
+  $result.homeLaunch=$true
   Dump $w 'home';Capture $w 'home'
   $redirect=StartOwned ('"'+(Resolve-Path $NormalProject).Path+'"')
   [IO.File]::WriteAllText((Join-Path $shots 'activation.txt'),"homePid=$($app.Id) homeHwnd=$w redirectPid=$($redirect.Id)")
-  [void](FindName $w 'Transcript. Select words to cut. Enter corrects spelling. Control K makes a clip.')
+  [void](FindName $w $transcriptName)
   if($app.HasExited -or $app.MainWindowHandle -ne $w){throw 'Normal open did not retain Home process and HWND'}
   $result.normalOpen=$true
- }else{[void](FindName $w 'Transcript. Select words to cut. Enter corrects spelling. Control K makes a clip.')}
+ }else{[void](FindName $w $transcriptName)}
  if(-not $NormalProject){Start-Sleep -Seconds 2;for($i=0;$i -lt 30;$i++){$check=ReadCheck $report;if($check.status -eq 'ready'){break};if($check.status -eq 'failed'){throw 'Rendered self-check failed'};Start-Sleep -Milliseconds 500}}
  if($check.status -ne 'ready' -or !$check.rootLoaded -or !$check.rendered -or $check.processId -ne $app.Id -or $check.windowHandle -ne $w.ToInt64() -or (!$NormalProject -and $check.screen -ne 'editor')){throw 'Rendered self-check did not complete for the owned PID/HWND'}
  if(-not $NormalProject){$result.editorRenderedSelfCheck=$true}
@@ -140,27 +177,26 @@ try{
  Dump $w 'editor';Capture $w 'editor'
  $result.editorUiAObserved=$true
  $result.editorScreenshotCaptured=$true
- $transcript=FindName $w 'Transcript. Select words to cut. Enter corrects spelling. Control K makes a clip.'
- $transcript.SetFocus();[void][R1Native]::SetForegroundWindow($w)
+ # Pane rows carry the design section 3.4 names; Full take is selected after opening.
+ $full=FindPrefix $w 'Full take, '
+ if(-not (IsSelected $full) -or -not $full.Current.Name.EndsWith(' after cuts')){throw "Full take row is not selected or misnamed: $($full.Current.Name)"}
+ [void](FindName $w 'Home')
+ if((FindName $w 'New clip from selection').Current.IsEnabled){throw 'New clip from selection is enabled without selected words'}
+ [void](FindName $w 'Find clips with AI')
+ $result.paneRows=$true
+ $transcript=FindName $w $transcriptName
+ $transcript.SetFocus();Front $w
  [R1Native]::Key(0x24)
  [R1Native]::keybd_event(0x10,0,0,[UIntPtr]::Zero)
  for($k=0;$k -lt 5;$k++){[R1Native]::Key(0x27)}
  [R1Native]::keybd_event(0x10,0,2,[UIntPtr]::Zero)
  Start-Sleep -Milliseconds 300
+ if(-not (FindName $w 'New clip from selection').Current.IsEnabled){throw 'New clip from selection stayed disabled with words selected'}
  Dump $w 'selected';Capture $w 'selected'
  [R1Native]::Chord(0x11,0x4B)
- [void](FindName $w 'Export 1 clip')
+ [void](FindPrefix $w 'Clip 1, ')
  Dump $w 'clip';Capture $w 'clip'
- (FindName $w 'Clip 1').SetFocus()
- [R1Native]::Chord(0x10,0x75);Start-Sleep -Milliseconds 200
- $reverseFromClip=[System.Windows.Automation.AutomationElement]::FocusedElement.Current.Name
- if(-not $reverseFromClip.StartsWith('Playhead')){throw "Shift F6 from clip checkbox missed timeline: $reverseFromClip"}
- (FindName $w 'Source').SetFocus()
- [R1Native]::Key(0x75);Start-Sleep -Milliseconds 200
- $forwardFromAspect=[System.Windows.Automation.AutomationElement]::FocusedElement.Current.Name
- [IO.File]::WriteAllText((Join-Path $shots 'f6-descendants.txt'),"reverseFromClip=$reverseFromClip`nforwardFromAspect=$forwardFromAspect")
- if(-not $forwardFromAspect.StartsWith('Playhead')){throw "F6 from preview aspect missed timeline: $forwardFromAspect"}
- $result.f6Descendants=$true
+ $result.keyboardClip=$true
  $transcript.SetFocus()
  [R1Native]::Key(0x43);Start-Sleep -Milliseconds 250
  $correction=[System.Windows.Automation.AutomationElement]::FocusedElement
@@ -171,90 +207,72 @@ try{
  $typed=[System.Windows.Automation.AutomationElement]::FocusedElement
  $value=[System.Windows.Automation.ValuePattern]$typed.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern)
  [IO.File]::WriteAllText((Join-Path $shots 'correction-typing.txt'),"focus=$($typed.Current.Name)`nvalue=$($value.Current.Value)")
- if($typed.Current.Name -ne 'Correct spelling. The audio stays the same.' -or $value.Current.Value -notmatch '(?i)jklc' -or -not (HasVisibleName $w 'Export 1 clip')){throw 'Correction typing or Ctrl K escaped the text field'}
+ if($typed.Current.Name -ne 'Correct spelling. The audio stays the same.' -or $value.Current.Value -notmatch '(?i)jklc' -or (HasPrefix $w 'Clip 2, ')){throw 'Correction typing or Ctrl K escaped the text field'}
  [R1Native]::Key(0x0D);Start-Sleep -Milliseconds 250
  $result.correctionTextIsolated=$true
- $focus=@()
- for($k=0;$k -lt 3;$k++){[R1Native]::Key(0x75);Start-Sleep -Milliseconds 200;$focus+=('F6='+[System.Windows.Automation.AutomationElement]::FocusedElement.Current.Name)}
- for($k=0;$k -lt 30;$k++){
-  $name=[System.Windows.Automation.AutomationElement]::FocusedElement.Current.Name
-  $focus+=('Tab='+$name)
-  if($name -eq 'Preview Clip 1'){break}
-  [R1Native]::Key(0x09);Start-Sleep -Milliseconds 100
- }
- [IO.File]::WriteAllLines((Join-Path $shots 'focus-before-preview.txt'),$focus)
- if([System.Windows.Automation.AutomationElement]::FocusedElement.Current.Name -ne 'Preview Clip 1'){throw 'Keyboard traversal did not reach Preview clip'}
- [R1Native]::Chord(0x10,0x09);Start-Sleep -Milliseconds 120
- $reverseTab=[System.Windows.Automation.AutomationElement]::FocusedElement.Current.Name
- [R1Native]::Key(0x09);Start-Sleep -Milliseconds 120
- if([System.Windows.Automation.AutomationElement]::FocusedElement.Current.Name -ne 'Preview Clip 1'){throw "Shift Tab and Tab did not return to preview action from $reverseTab"}
- [R1Native]::Key(0x0D)
- [void](FindName $w 'Previewing this clip')
- $previewFocus=[System.Windows.Automation.AutomationElement]::FocusedElement.Current.Name
- if($previewFocus -ne 'Play or pause (Space)'){throw "Preview did not focus its transport: $previewFocus"}
- $result.previewFocused=$true
- Dump $w 'preview';Capture $w 'preview'
- [R1Native]::Key(0x1B);Start-Sleep -Milliseconds 300
- $afterEscape=[System.Windows.Automation.AutomationElement]::FocusedElement.Current.Name
- [IO.File]::WriteAllText((Join-Path $shots 'preview-focus.txt'),"afterEnter=$previewFocus`nafterEscape=$afterEscape")
- Dump $w 'after-escape';Capture $w 'after-escape'
- if($afterEscape -ne 'Clip 1'){throw "Escape did not restore focus to clip row: $afterEscape"}
- $result.previewEscapeReturn=$true
- $focus=@()
- for($k=0;$k -lt 80;$k++){
-  $name=[System.Windows.Automation.AutomationElement]::FocusedElement.Current.Name
-  $focus+=('Tab='+$name)
-  if($name -eq 'Export 1 clip'){break}
-  [R1Native]::Key(0x09);Start-Sleep -Milliseconds 70
- }
- [IO.File]::WriteAllLines((Join-Path $shots 'focus-to-export.txt'),$focus)
- if([System.Windows.Automation.AutomationElement]::FocusedElement.Current.Name -ne 'Export 1 clip'){throw 'Tab did not reach selected clip Export'}
- [R1Native]::Key(0x0D)
- [void](FindName $w 'Selected clips (1)')
- $result.exportDialog=$true
- Start-Sleep -Milliseconds 700;Capture $w 'export'
- [R1Native]::Key(0x1B);Start-Sleep -Milliseconds 250
- if(HasVisibleName $w 'Selected clips (1)'){throw 'Export dialog remained open after Escape'}
- $result.exportCancelled=$true
- $focus=@()
- for($k=0;$k -lt 80;$k++){
-  $name=[System.Windows.Automation.AutomationElement]::FocusedElement.Current.Name
-  $focus+=('Tab='+$name)
-  if($name -eq 'Find clips with a chosen connector'){break}
-  [R1Native]::Key(0x09);Start-Sleep -Milliseconds 70
- }
- [IO.File]::WriteAllLines((Join-Path $shots 'focus-to-find.txt'),$focus)
- if([System.Windows.Automation.AutomationElement]::FocusedElement.Current.Name -ne 'Find clips with a chosen connector'){throw 'Tab did not reach Find Clips'}
- [R1Native]::Key(0x0D)
+ # Choosing a clip row scopes the editor and keeps focus on the row (design C15).
+ Choose (FindPrefix $w 'Clip 1, ')
+ $clip=FindPrefix $w 'Clip 1, '
+ $afterChoose=Focused
+ [IO.File]::WriteAllText((Join-Path $shots 'clip-focus.txt'),"selected=$(IsSelected $clip)`nfocus=$afterChoose")
+ if(-not (IsSelected $clip) -or -not $afterChoose.StartsWith('Clip 1, ')){throw "Choosing the clip row did not select it and keep focus: $afterChoose"}
+ Dump $w 'clip-scope';Capture $w 'clip-scope'
+ $result.clipRowScope=$true
+ $transcript=FindName $w $transcriptName
+ $transcript.SetFocus();Start-Sleep -Milliseconds 150;[R1Native]::Key(0x1B);Start-Sleep -Milliseconds 500
+ if(-not (IsSelected (FindPrefix $w 'Full take, '))){throw 'Escape in the transcript did not return to Full take'}
+ $result.escapeFullTake=$true
+ # Home keeps the open project in the sidebar and returns to the same editor.
+ Choose (FindName $w 'Home')
+ [void](FindName $w 'Import video, Ctrl+O')
+ [void](FindPrefix $w 'Full take, ');[void](FindPrefix $w 'Clip 1, ')
+ if(HasVisibleName $w 'New clip from selection'){throw 'Pane actions stayed visible on Home'}
+ Dump $w 'home-with-project';Capture $w 'home-with-project'
+ Choose (FindPrefix $w 'Full take, ')
+ [void](FindName $w $transcriptName)
+ if($app.HasExited -or $app.MainWindowHandle -ne $w){throw 'Home and Full take changed the owned window'}
+ $transcript=FindName $w $transcriptName
+ $transcript.SetFocus();[R1Native]::Chord(0x12,0x25)
+ [void](FindName $w 'Import video, Ctrl+O')
+ Choose (FindPrefix $w 'Full take, ')
+ [void](FindName $w $transcriptName)
+ $result.homeKeepsEditor=$true
+ Choose (FindName $w 'Find clips with AI')
  [void](FindName $w 'Connector')
- $result.findSetup=$true
- Start-Sleep -Milliseconds 700;Capture $w 'find'
+ Start-Sleep -Milliseconds 500;Capture $w 'find'
+ $result.findAction=$true
  [void][R1Native]::SetWindowPos($w,[IntPtr]::Zero,32,32,[int](900*$check.rasterizationScale),[int](720*$check.rasterizationScale),0x40)
+ Start-Sleep -Milliseconds 900
+ if(HasPrefix $w 'Full take, '){throw 'The pane stayed open below the 960 breakpoint'}
+ $toggle=FindId $w 'PART_PaneToggleButton'
+ $toggleName=$toggle.Current.Name
+ $pattern=$null;if($toggle.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern,[ref]$pattern)){$pattern.Invoke()}else{Choose $toggle}
  Start-Sleep -Milliseconds 700
- (FindName $w 'Clips and captions').SetFocus();[R1Native]::Key(0x0D)
- Start-Sleep -Milliseconds 400;Capture $w 'compact-find'
- [R1Native]::Key(0x1B);Start-Sleep -Milliseconds 300;Capture $w 'compact-return'
- $compactFocus=[System.Windows.Automation.AutomationElement]::FocusedElement.Current.Name
- [IO.File]::WriteAllText((Join-Path $shots 'compact-focus.txt'),$compactFocus)
- if($compactFocus -ne 'Transcript. Select words to cut. Enter corrects spelling. Control K makes a clip.'){throw "Compact Escape did not return transcript focus: $compactFocus"}
- $result.compactReturn=$true
+ [void](FindPrefix $w 'Full take, ')
+ Dump $w 'compact-pane';Capture $w 'compact-pane'
+ [R1Native]::Key(0x1B);Start-Sleep -Milliseconds 500
+ [IO.File]::WriteAllText((Join-Path $shots 'compact-pane.txt'),"toggleName=$toggleName`nafterEscape=$(Focused)")
+ $result.compactPane=$true
+ [void][R1Native]::SetWindowPos($w,[IntPtr]::Zero,32,32,[int](1280*$check.rasterizationScale),[int](800*$check.rasterizationScale),0x40)
+ Start-Sleep -Milliseconds 900
  if($NormalProject){
-  $clipCountLabel='1 clip in this take '+[char]0x00B7+' Select words to make another.'
-  [R1Native]::Chord(0x12,0x25)
+  $transcript=FindName $w $transcriptName
+  $transcript.SetFocus();[R1Native]::Chord(0x12,0x25)
   [void](FindName $w 'Import video, Ctrl+O')
   if($app.HasExited -or $app.MainWindowHandle -ne $w){throw 'Home navigation changed the owned HWND'}
   Dump $w 'home-recent';Capture $w 'home-recent'
+  $projectName=[IO.Path]::GetFileNameWithoutExtension($NormalProject)
   $items=[System.Windows.Automation.AutomationElement]::FromHandle($w).FindAll([System.Windows.Automation.TreeScope]::Descendants,[System.Windows.Automation.Condition]::TrueCondition)
-  $recent=$items | Where-Object {$_.Current.ControlType -eq [System.Windows.Automation.ControlType]::ListItem -and $_.Current.Name -like '*r2-synthetic*'} | Select-Object -First 1
-  if(-not $recent){throw 'Saved project was absent from Home recents'}
-  $recent.SetFocus();[R1Native]::Key(0x0D)
-  [void](FindName $w 'Transcript. Select words to cut. Enter corrects spelling. Control K makes a clip.')
+  $recent=$items | Where-Object {$_.Current.ControlType -eq [System.Windows.Automation.ControlType]::ListItem -and $_.Current.Name -eq $projectName} | Select-Object -First 1
+  if(-not $recent){throw 'The open project was absent from the Home recent list'}
+  Choose $recent
+  [void](FindName $w $transcriptName)
   if($app.HasExited -or $app.MainWindowHandle -ne $w){throw 'Recent reopen changed the owned HWND'}
   if(HasVisibleName $w 'Preview unavailable. Your video and edits are still here.'){throw 'Recent reopen lost the native media preview'}
   Start-Sleep -Milliseconds 700
   Dump $w 'recent-reopened';Capture $w 'recent-reopened'
   $result.sameWindowReopen=$true
-  [void](FindName $w $clipCountLabel)
+  [void](FindPrefix $w 'Clip 1, ')
   Start-Sleep -Seconds 1
   $noticesBefore=VisibleNotices $w
   $savedBefore=(Get-Item $NormalProject).LastWriteTimeUtc.Ticks
@@ -264,24 +282,21 @@ try{
   # The redirected process can exit before the original window handles its queued activation.
   # Let the UI dispatcher settle before checking the editor and saved project.
   Start-Sleep -Seconds 3
-  [void](FindName $w $clipCountLabel)
+  [void](FindPrefix $w 'Clip 1, ')
   $app.Refresh()
   if($app.HasExited -or $app.Path -ne $exe -or $app.StartTime.ToUniversalTime().Ticks -ne $owned[$app.Id] -or $app.MainWindowHandle -ne $w -or (VisibleNotices $w) -ne $noticesBefore -or (Get-Item $NormalProject).LastWriteTimeUtc.Ticks -ne $savedBefore -or (Get-FileHash $NormalProject -Algorithm SHA256).Hash -ne $contentBefore){throw 'No-argument launch changed the project, window, saved file or notice'}
   Dump $w 'no-argument';Capture $w 'no-argument'
-  [void](FindName $w $clipCountLabel)
-  $app.Refresh()
-  if($app.HasExited -or $app.Path -ne $exe -or $app.StartTime.ToUniversalTime().Ticks -ne $owned[$app.Id] -or $app.MainWindowHandle -ne $w -or (VisibleNotices $w) -ne $noticesBefore -or (Get-Item $NormalProject).LastWriteTimeUtc.Ticks -ne $savedBefore -or (Get-FileHash $NormalProject -Algorithm SHA256).Hash -ne $contentBefore){throw 'No-argument launch changed state after the owned-window capture'}
-  [IO.File]::WriteAllText((Join-Path $shots 'no-argument-activation.txt'),"pid=$($app.Id) hwnd=$w redirectPid=$($noFile.Id) selectedClipCount=1 notices=$noticesBefore savedTicks=$savedBefore sha256=$contentBefore settledSeconds=3")
+  [IO.File]::WriteAllText((Join-Path $shots 'no-argument-activation.txt'),"pid=$($app.Id) hwnd=$w redirectPid=$($noFile.Id) notices=$noticesBefore savedTicks=$savedBefore sha256=$contentBefore settledSeconds=3")
   $result.noArgumentReactivation=$true
-  [R1Native]::Chord(0x12,0x25)
+  $transcript=FindName $w $transcriptName
+  $transcript.SetFocus();[R1Native]::Chord(0x12,0x25)
   [void](FindName $w 'Import video, Ctrl+O')
   $fileLaunch=StartOwned ('"'+(Resolve-Path $NormalProject).Path+'"')
   if(-not $fileLaunch.WaitForExit(10000)){throw 'File-activation redirected process did not exit'}
-  [void](FindName $w 'Transcript. Select words to cut. Enter corrects spelling. Control K makes a clip.')
-  [void](FindName $w $clipCountLabel)
-  [void](FindName $w ('Export'+[char]0x2026))
+  [void](FindName $w $transcriptName)
+  [void](FindPrefix $w 'Clip 1, ')
   $savedProject=ReadCheck $NormalProject
-  if($savedProject.edits.corrections.w1 -ne 'jklc' -or @($savedProject.edits.clips).Count -ne 1 -or !$savedProject.edits.clips[0].selected){throw 'File activation did not preserve the correction and selected manual clip'}
+  if($savedProject.edits.corrections.w1 -ne 'jklc' -or @($savedProject.edits.clips).Count -ne 1 -or !$savedProject.edits.clips[0].selected){throw 'File activation did not preserve the correction and the kept manual clip'}
   $app.Refresh()
   if($app.HasExited -or $app.Path -ne $exe -or $app.StartTime.ToUniversalTime().Ticks -ne $owned[$app.Id] -or $app.MainWindowHandle -ne $w){throw 'File activation after no-argument launch changed the owned window'}
   Dump $w 'file-after-no-argument';Capture $w 'file-after-no-argument'

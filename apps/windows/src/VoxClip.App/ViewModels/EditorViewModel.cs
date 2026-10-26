@@ -73,6 +73,8 @@ public sealed class EditorViewModel : ObservableObject
     public ObservableCollection<TranscriptParagraph> Paragraphs { get; } = [];
     public ObservableCollection<ClipRow> Clips { get; } = [];
     public EditSummary Summary { get; private set; } = new(0, 0, 0, 0, false, false, false, true);
+    /// <summary>Edited length of the whole take, whatever clip is active; the Full take row's duration.</summary>
+    public double FullTakeDuration { get; private set; }
     public string Notice { get => notice; set => SetProperty(ref notice, value); }
     public bool Busy { get => busy; set { if (SetProperty(ref busy, value)) OnPropertyChanged(nameof(CanExport)); } }
     public bool HasTranscript => state is not null;
@@ -313,29 +315,31 @@ public sealed class EditorViewModel : ObservableObject
                 Paragraphs.Add(new(start, index - start, Timecode(Words[start].Start), Words[start].Speaker));
                 start = index;
             }
+            var source = project.Media.Source;
+            var sampleRate = source.Audio?.SampleRate is > 0 ? source.Audio.SampleRate : 48000;
+            double EditedLength(EditState scoped) => EditingEngine.BuildEditPlan(EditingEngine.BuildSegments(scoped, source.DurationSeconds),
+                source.DurationSeconds, sampleRate, scoped.PauseKeepSeconds).Duration;
+            try { FullTakeDuration = EditedLength(state with { ActiveClipId = null }); }
+            catch (VoxClipException) { FullTakeDuration = 0; }
             foreach (var clip in state.Clips.OrderBy(clip => Index(clip.StartWordId)))
             {
                 var first = Index(clip.StartWordId);
                 var last = Index(clip.EndWordId);
                 if (first < 0 || last < first) continue;
                 var suggestion = project.Ai.Results.FirstOrDefault(result => result.Id == clip.AiResultId)?.Clips.ElementAtOrDefault(clip.AiClipIndex ?? -1);
-                var scoped = state with { ActiveClipId = clip.Id };
-                var source = project.Media.Source;
-                var sampleRate = source.Audio?.SampleRate is > 0 ? source.Audio.SampleRate : 48000;
-                var plan = EditingEngine.BuildEditPlan(EditingEngine.BuildSegments(scoped, source.DurationSeconds),
-                    source.DurationSeconds, sampleRate, scoped.PauseKeepSeconds);
+                var duration = EditedLength(state with { ActiveClipId = clip.Id });
                 Clips.Add(new(clip, clip.Title ?? suggestion?.Title ?? $"Clip {Clips.Count + 1}",
-                    Timecode(plan.Duration) + (suggestion is null ? " · Manual" : $" · {suggestion.Score}/10"),
-                    string.Join(" ", Words.Skip(first).Take(last - first + 1).Select(DisplayText)), suggestion?.Reason ?? ""));
+                    Timecode(duration) + (suggestion is null ? " · Manual" : $" · {suggestion.Score}/10"),
+                    string.Join(" ", Words.Skip(first).Take(last - first + 1).Select(DisplayText)), suggestion?.Reason ?? "", duration));
             }
         }
-        foreach (var name in new[] { nameof(Project), nameof(State), nameof(Summary), nameof(Status), nameof(FillerLabel), nameof(CanExport), nameof(CanUndo), nameof(CanRedo), nameof(SelectedClipCount), nameof(ClipExportLabel), nameof(HasTranscript) }) OnPropertyChanged(name);
+        foreach (var name in new[] { nameof(Project), nameof(State), nameof(Summary), nameof(Status), nameof(FillerLabel), nameof(CanExport), nameof(CanUndo), nameof(CanRedo), nameof(SelectedClipCount), nameof(ClipExportLabel), nameof(HasTranscript), nameof(FullTakeDuration) }) OnPropertyChanged(name);
         Changed?.Invoke(this, EventArgs.Empty);
     }
 }
 
 public sealed record TranscriptParagraph(int StartIndex, int Count, string Timecode, string? Speaker);
-public sealed record ClipRow(ClipRange Clip, string Title, string Detail, string Excerpt, string Reason)
+public sealed record ClipRow(ClipRange Clip, string Title, string Detail, string Excerpt, string Reason, double DurationSeconds)
 {
     public string Id => Clip.Id;
     public bool Selected => Clip.Selected;

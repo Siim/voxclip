@@ -109,7 +109,7 @@ internal static class RestartNativeProbe
             }, CancellationToken.None);
             Require(App.Restart.IsPreparing && !settings.DebugNavigationEnabled, "Settings was not paused during drain");
             Require(ReferenceEquals(first, App.NewWindow()) && App.Windows.Count == 2, "new window bypassed preparation");
-            await first.GoHomeAsync();
+            first.ShowHome();
             await first.OpenPathAsync(secondPath);
             Require(first.CurrentScreen == "editor" && first.ProjectPath == firstPath, "navigation bypassed preparation");
             App.OpenSettings();

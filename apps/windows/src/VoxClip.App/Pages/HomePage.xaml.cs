@@ -20,15 +20,28 @@ public sealed partial class HomePage : Page
     internal void Attach(MainWindow owner)
     {
         window = owner;
-        foreach (var path in App.Services.Get<string[]>("general.recentProjects", []))
-        {
-            var row = new RecentProject(path, System.IO.Path.GetFileNameWithoutExtension(path));
-            ViewModel.RecentProjects.Add(row);
-            _ = LoadRecentAsync(row);
-        }
-        EmptyRecent.Visibility = ViewModel.RecentProjects.Count > 0 ? Visibility.Collapsed : Visibility.Visible;
+        Refresh();
         if (App.Services.StartupNotice.Length > 0) ViewModel.Notice = App.Services.StartupNotice;
         else _ = RefreshModelStatusAsync();
+    }
+    /// <summary>Home is cached per window (ADR-R29), so it re-reads the recent list each time it is shown.</summary>
+    internal void Refresh()
+    {
+        var paths = App.Services.Get<string[]>("general.recentProjects", []);
+        foreach (var stale in ViewModel.RecentProjects.Where(row => !paths.Contains(row.Path, StringComparer.OrdinalIgnoreCase)).ToArray())
+            ViewModel.RecentProjects.Remove(stale);
+        for (var index = 0; index < paths.Length; index++)
+        {
+            var row = ViewModel.RecentProjects.FirstOrDefault(item => item.Path.Equals(paths[index], StringComparison.OrdinalIgnoreCase));
+            if (row is null)
+            {
+                row = new RecentProject(paths[index], System.IO.Path.GetFileNameWithoutExtension(paths[index]));
+                ViewModel.RecentProjects.Insert(index, row);
+                _ = LoadRecentAsync(row);
+            }
+            else if (ViewModel.RecentProjects.IndexOf(row) is var current && current != index) ViewModel.RecentProjects.Move(current, index);
+        }
+        EmptyRecent.Visibility = ViewModel.RecentProjects.Count > 0 ? Visibility.Collapsed : Visibility.Visible;
     }
     private async Task LoadRecentAsync(RecentProject row)
     {
