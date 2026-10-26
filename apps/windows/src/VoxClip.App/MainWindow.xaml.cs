@@ -19,6 +19,9 @@ public sealed partial class MainWindow : Window
     internal string? ProjectPath { get; private set; }
     internal string CurrentScreen => ContentFrame.Content is EditorPage ? "editor" : ContentFrame.Content is HomePage ? "home" : "none";
     private readonly CancellationTokenSource lifetime = new();
+    private readonly SemaphoreSlim navigation = new(1, 1);
+    private bool closingApproved;
+    private bool closingInProgress;
     private EditorPage? editor;
     private Button? updateRestart;
     /// <summary>Construct the shell on the DispatcherQueue thread; architecture §7.2.</summary>
@@ -33,7 +36,7 @@ public sealed partial class MainWindow : Window
         SetTitleBar(AppTitleBar);
         var scale = GetDpiForWindow(WinRT.Interop.WindowNative.GetWindowHandle(this)) / 96.0;
         AppWindow.Resize(new Windows.Graphics.SizeInt32((int)(1280 * scale), (int)(800 * scale)));
-        if (AppWindow.Presenter is Microsoft.UI.Windowing.OverlappedPresenter presenter) { presenter.PreferredMinimumWidth = (int)(960 * scale); presenter.PreferredMinimumHeight = (int)(600 * scale); }
+        if (AppWindow.Presenter is Microsoft.UI.Windowing.OverlappedPresenter presenter) { presenter.PreferredMinimumWidth = (int)(760 * scale); presenter.PreferredMinimumHeight = (int)(600 * scale); }
         AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "VoxClip.ico"));
         App.Services.ApplyTheme(Root);
         App.Services.SettingsChanged += SettingsChanged;
@@ -42,13 +45,39 @@ public sealed partial class MainWindow : Window
         Root.KeyboardAccelerators.Add(Accelerator(VirtualKey.N, VirtualKeyModifiers.Control, () => App.NewWindow()));
         Root.KeyboardAccelerators.Add(Accelerator((VirtualKey)188, VirtualKeyModifiers.Control, App.OpenSettings));
         Root.KeyboardAccelerators.Add(Accelerator(VirtualKey.Left, VirtualKeyModifiers.Menu, GoHome));
-        Root.KeyboardAccelerators.Add(Accelerator(VirtualKey.W, VirtualKeyModifiers.Control, Close));
+        Root.KeyboardAccelerators.Add(Accelerator(VirtualKey.W, VirtualKeyModifiers.Control, () => _ = RequestCloseAsync()));
+        AppWindow.Closing += (appWindow, args) =>
+        {
+            if (closingApproved || editor is null) return;
+            args.Cancel = true;
+            _ = RequestCloseAsync();
+        };
         Closed += WindowClosed;
         GoHome();
         _ = CheckUpdatesAsync();
     }
 
     private void SettingsChanged(object? sender, EventArgs args) => App.Services.ApplyTheme(Root);
+    private async Task RequestCloseAsync()
+    {
+        if (closingInProgress) return;
+        closingInProgress = true;
+        try
+        {
+            await navigation.WaitAsync();
+            try
+            {
+                if (editor is null || await editor.TrySaveBeforeLeavingAsync())
+                {
+                    closingApproved = true;
+                    Close();
+                }
+            }
+            finally { navigation.Release(); }
+        }
+        catch (Exception exception) { editor?.ResumeAfterFailedLeave(); ShowError(exception, "Close project"); }
+        finally { closingInProgress = false; }
+    }
     private void BusyChanged(object? sender, EventArgs args)
     {
         if (updateRestart is null) return;
@@ -85,8 +114,17 @@ public sealed partial class MainWindow : Window
         var newImport = !Path.GetExtension(fullPath).Equals(".voxclip", StringComparison.OrdinalIgnoreCase);
         var existing = App.Windows.FirstOrDefault(window => string.Equals(window.ProjectPath, fullPath, StringComparison.OrdinalIgnoreCase));
         if (existing is not null) { existing.Activate(); return; }
+        await navigation.WaitAsync();
+        var previous = editor;
+        var previousPath = ProjectPath;
+        var previousContent = ContentFrame.Content;
+        var previousSubtitle = AppTitleBar.Subtitle;
+        var previousBackButton = AppTitleBar.IsBackButtonVisible;
+        EditorPage? incoming = null;
+        var installed = false;
         try
         {
+            if (previous is not null && !await previous.TrySaveBeforeLeavingAsync()) return;
             Core.Domain.Shared.Project project;
             string? mediaPath;
 #if DEBUG
@@ -121,39 +159,67 @@ public sealed partial class MainWindow : Window
                     WindowNotice.IsOpen = true;
                 }
             }
-            if (editor is not null) await editor.CloseAsync();
-            editor = new EditorPage();
+            incoming = new EditorPage();
             ProjectPath = fullPath;
-            ContentFrame.Content = editor;
+            ContentFrame.Content = incoming;
             AppTitleBar.IsBackButtonVisible = true;
             AppTitleBar.Subtitle = project.Title ?? Path.GetFileNameWithoutExtension(fullPath);
-            await editor.OpenAsync(this, project, mediaPath, demo, lifetime.Token);
+            await incoming.OpenAsync(this, project, mediaPath, demo, lifetime.Token);
+            editor = incoming;
+            installed = true;
+            if (previous is not null)
+            {
+                try { await previous.CloseAsync(); }
+                catch (Exception cleanup) { ShowError(cleanup, "Close project"); }
+            }
             if (!demo)
             {
                 try { await App.Services.RememberAsync(fullPath, lifetime.Token); }
                 catch (Exception exception) { ShowError(exception, "Recent projects"); }
-                if (newImport) await editor.PromptTranscriptionAsync(App.Services.Get("transcription.engineMode", "local") == "local");
+                if (newImport) await incoming.PromptTranscriptionAsync();
             }
         }
-        catch (Exception exception) { ShowError(exception, "Open project"); }
+        catch (Exception exception)
+        {
+            if (!installed)
+            {
+                try
+                {
+                    ContentFrame.Content = previousContent;
+                    ProjectPath = previousPath;
+                    AppTitleBar.IsBackButtonVisible = previousBackButton;
+                    AppTitleBar.Subtitle = previousSubtitle;
+                    if (incoming is not null) { try { await incoming.CloseAsync(); } catch (Exception cleanup) { App.Services.Log.Write(Core.Services.Logging.LogLevel.Warn, "project", cleanup.GetType().Name); } }
+                }
+                finally { previous?.ResumeAfterFailedLeave(); }
+            }
+            ShowError(exception, "Open project");
+        }
+        finally { navigation.Release(); }
     }
 
     internal void SetProjectPath(string path) => ProjectPath = path;
     internal async void GoHome() => await GoHomeAsync();
     internal async Task GoHomeAsync()
     {
-        var previous = editor;
-        editor = null;
-        if (previous is not null)
+        await navigation.WaitAsync();
+        try
         {
-            try { await previous.CloseAsync(); } catch (Exception exception) { ShowError(exception, "Close project"); }
+            if (editor is { } previous)
+            {
+                if (!await previous.TrySaveBeforeLeavingAsync()) return;
+                await previous.CloseAsync();
+                editor = null;
+            }
+            ProjectPath = null;
+            AppTitleBar.IsBackButtonVisible = false;
+            AppTitleBar.Subtitle = "";
+            var home = new HomePage();
+            home.Attach(this);
+            ContentFrame.Content = home;
         }
-        ProjectPath = null;
-        AppTitleBar.IsBackButtonVisible = false;
-        AppTitleBar.Subtitle = "";
-        var home = new HomePage();
-        home.Attach(this);
-        ContentFrame.Content = home;
+        catch (Exception exception) { ShowError(exception, "Close project"); }
+        finally { navigation.Release(); }
     }
     private void BackRequested(TitleBar sender, object args) => GoHome();
     private void SettingsClicked(object sender, RoutedEventArgs args) => App.OpenSettings();
@@ -170,7 +236,7 @@ public sealed partial class MainWindow : Window
     {
         if (!args.DataView.Contains(StandardDataFormats.StorageItems)) return;
         args.AcceptedOperation = DataPackageOperation.Copy;
-        args.DragUIOverride.Caption = editor is null ? "Drop to transcribe" : "Open as a new project";
+        args.DragUIOverride.Caption = editor is null ? "Import video in this window" : "Open in this window after saving";
     }
     private async void FileDropped(object sender, DragEventArgs args)
     {
@@ -180,7 +246,7 @@ public sealed partial class MainWindow : Window
             try
             {
                 var items = await args.DataView.GetStorageItemsAsync();
-                if (items.FirstOrDefault() is { } file) await (editor is null ? this : App.NewWindow()).OpenPathAsync(file.Path);
+                if (items.FirstOrDefault() is { } file) await OpenPathAsync(file.Path);
             }
             finally { deferral.Complete(); }
         }

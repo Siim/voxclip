@@ -23,9 +23,12 @@ public sealed class TranscriptView : UserControl
     private bool showPauses = true;
     private double fontSize = 16;
     private readonly Popup correction = new() { IsLightDismissEnabled = true };
-    private sealed record WordRun(int Index, Run Run, int Offset, int Length);
+    private sealed record WordRun(int Index, Run Run);
     private sealed record PauseRun(Pause Pause, Run Run);
-    private sealed record ParagraphVisual(RichTextBlock Text, List<WordRun> Runs, List<PauseRun> Pauses);
+    private sealed record ParagraphVisual(RichTextBlock Text, List<WordRun> Runs, List<PauseRun> Pauses)
+    {
+        internal int[] HighlightStarts { get; set; } = [];
+    }
     public bool CorrectionOpen => correction.IsOpen;
     public event EventHandler? SeekRequested;
     public event EventHandler? MakeClipRequested;
@@ -119,7 +122,7 @@ public sealed class TranscriptView : UserControl
             var word = model.Words[index];
             var run = new Run { Text = model.DisplayText(word) + " " };
             paragraph.Inlines.Add(run);
-            runs.Add(new(index, run, 0, run.Text.Length));
+            runs.Add(new(index, run));
             if (showPauses && model.State?.Pauses.FirstOrDefault(pause => pause.AfterIndex == index) is { } pause)
             {
                 var pauseRun = new Run { Text = " ‖ " + pause.Label + " ", FontSize = 11, FontFamily = (FontFamily)Application.Current.Resources["VcFontGeistMono"], Foreground = Brush("VcTextMutedBrush") };
@@ -127,7 +130,6 @@ public sealed class TranscriptView : UserControl
             }
         }
         rich.Blocks.Add(paragraph);
-        runs = runs.Select(run => run with { Offset = run.Run.ContentStart.Offset - rich.ContentStart.Offset }).ToList();
         realized[grid] = new(rich, runs, pauses);
         rich.PointerPressed -= Pressed; rich.PointerPressed += Pressed;
         rich.PointerMoved -= Moved; rich.PointerMoved += Moved;
@@ -144,6 +146,7 @@ public sealed class TranscriptView : UserControl
         foreach (var visual in realized.Values)
         {
             visual.Text.TextHighlighters.Clear();
+            var textChanged = visual.HighlightStarts.Length != visual.Runs.Count;
             foreach (var run in visual.Runs)
             {
                 var word = model.Words.ElementAtOrDefault(run.Index);
@@ -156,16 +159,30 @@ public sealed class TranscriptView : UserControl
                     while (run.Index + count < model.Words.Count && state.CutWordIds.Contains(model.Words[run.Index + count].Id)) count++;
                     text = run.Index > 0 && state.CutWordIds.Contains(model.Words[run.Index - 1].Id) ? "" : $"⋯ {count} cut ";
                 }
-                if (run.Run.Text != text) run.Run.Text = text;
+                if (run.Run.Text != text) { run.Run.Text = text; textChanged = true; }
                 run.Run.TextDecorations = cut && showCuts ? TextDecorations.Strikethrough : IsFiller(model.DisplayText(word)) || lowConfidence && word.Conf is < 0.6 ? TextDecorations.Underline : TextDecorations.None;
                 run.Run.Foreground = Brush(cut ? "VcWordCutBrush" : IsFiller(model.DisplayText(word)) ? "VcStatusWarningBrush" : "VcTextPrimaryBrush");
                 if (state.ActiveClipId is { } id && state.Clips.FirstOrDefault(clip => clip.Id == id) is { } active &&
                     (run.Index < model.Index(active.StartWordId) || run.Index > model.Index(active.EndWordId))) run.Run.Foreground = Brush("VcTextDisabledBrush");
+            }
+            if (textChanged)
+            {
+                var pauseAfter = visual.Pauses.ToDictionary(pause => pause.Pause.AfterIndex, pause => pause.Run.Text);
+                visual.HighlightStarts = TranscriptTextRanges.Starts(
+                    visual.Runs.Select(run => run.Run.Text).ToArray(),
+                    visual.Runs.Select(run => pauseAfter.GetValueOrDefault(run.Index)).ToArray());
+            }
+            for (var index = 0; index < visual.Runs.Count; index++)
+            {
+                var run = visual.Runs[index];
+                var word = model.Words.ElementAtOrDefault(run.Index);
+                if (word is null) continue;
                 var selected = model.HasSelection && run.Index >= model.SelectionStart && run.Index <= model.SelectionEnd;
                 var playing = model.SourceTime >= word.Start && model.SourceTime < word.End;
-                if (!selected && !playing) continue;
+                var length = run.Run.Text.TrimEnd().Length;
+                if ((!selected && !playing) || length == 0) continue;
                 var highlighter = new TextHighlighter { Background = Brush(selected ? "SystemControlHighlightAccentBrush" : "VcWordPlayingBackgroundBrush"), Foreground = Brush(playing ? "VcWordPlayingForegroundBrush" : "SystemControlHighlightAltChromeWhiteBrush") };
-                highlighter.Ranges.Add(new TextRange { StartIndex = run.Run.ContentStart.Offset - visual.Text.ContentStart.Offset, Length = run.Run.Text.Length });
+                highlighter.Ranges.Add(new TextRange { StartIndex = visual.HighlightStarts[index], Length = length });
                 visual.Text.TextHighlighters.Add(highlighter);
             }
             foreach (var pause in visual.Pauses) pause.Run.TextDecorations = state.CutPauseIds.Contains(pause.Pause.Id) ? TextDecorations.Strikethrough : TextDecorations.None;

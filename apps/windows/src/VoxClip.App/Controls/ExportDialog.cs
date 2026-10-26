@@ -30,7 +30,7 @@ internal sealed class ExportDialog : ContentDialog
     private bool running;
     private string? exported;
 
-    internal ExportDialog(MainWindow owner, EditorViewModel model, bool demo, Func<CancellationToken, EditState?, Task<ComposeSnapshot>> snapshot)
+    internal ExportDialog(MainWindow owner, EditorViewModel model, bool demo, Func<CancellationToken, EditState?, Task<ComposeSnapshot>> snapshot, bool preferSelectedClips = false)
     {
         this.owner = owner; this.model = model; this.demo = demo; this.snapshot = snapshot;
         Title = "Export"; PrimaryButtonText = "Export"; CloseButtonText = "Cancel"; DefaultButton = ContentDialogButton.Primary;
@@ -38,7 +38,7 @@ internal sealed class ExportDialog : ContentDialog
         body.Children.Add(Ui.Text("Your source stays untouched. Captions are burned into the exported video.", "HelperText"));
         aspect = Ui.Radios("Aspect", ["Source", "16:9", "9:16", "1:1"], (int)model.Project.Export.Aspect);
         quality = Ui.Radios("Quality", ["Standard", "High"], (int)model.Project.Export.Quality);
-        target = Ui.Radios("Export", ["Full edit", $"Selected clips ({model.SelectedClipCount})"]);
+        target = Ui.Radios("Export scope", ["Full edit", $"Selected clips ({model.SelectedClipCount})"], preferSelectedClips ? 1 : 0);
         srt.IsChecked = model.Project.Export.Srt;
         folder.Text = model.Project.Export.Folder ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyVideos), "VoxClip");
         styles = Ui.Choice("Caption style", []);

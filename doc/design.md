@@ -16,6 +16,12 @@ This section supersedes the Mac Welcome scene, automatic first-run tour, and the
 
 This follows Apple's official macOS HIG for fewer nested levels, visible sidebars, main-task toolbar actions, native document windows, menu equivalents, and resizing. The desktop and UX skills support recognition over recall, visible system status, and keyboard operation. Spotify informs only the stable navigation and persistent playback, not visual branding or a card dashboard. Narrow widths keep Home and the main task usable; the inspector can be hidden. Light and dark appearances retain system controls and accessible labels.
 
+### Windows clipping workspace correction (2026-10-26)
+
+Home, recents, import and the editor share the main window. Make Clip from Selection and Find Clips are visible primary actions. The Clips pane opens by default; toolbar, keyboard and transcript context-menu clip creation all reveal the result. Caption styling is secondary. Find Clips expands its connector form in place, and transcription presents an explicit local or cloud choice with the ElevenLabs key and consent controls when needed. Settings stays in the title bar. Compact widths stack transcript and preview and offer a reachable Clips overlay; Escape returns to the transcript.
+
+Clip rows, preview clocks and export use the same edit plan. Playback stops at the selected clip's end, and the selected-clips footer opens that export scope. Home, project replacement, native window close and Ctrl+W freeze edits before the final save. Save or replacement-open failure retains the old editor and restores editing with an inline explanation. Export cannot begin while leaving. Update restart is a separate application-wide save boundary and remains pending verification; normal window-close evidence does not establish updater behavior.
+
 ---
 
 ## 0. Design stance
@@ -194,6 +200,7 @@ How it is built:
 - `KeyboardAccelerator` on every command. Tooltips show the shortcut (Windows' equivalent of menu-bar discoverability).
 - No "double-card" borders: cards and panes use theme `Layer*`/`Card*` brushes, never custom hex fills over Mica. Corner radii: 4 (controls), 8 (overlays, cards).
 - **Project files** (architecture.md section 2.6): importing a video creates `<video name>.voxclip` next to the video (" 2", " 3" when taken) and autosaves it there. When the video's folder is not writable, the project lives in VoxClip's data folder and an InfoBar (Informational) says "Saved in VoxClip's folder. Use Save project as… to keep it with the video." **Save project as…** uses a `FileSavePicker` and moves the project; **Show project file** reveals it in Explorer. Double-clicking a `.voxclip` that is already open activates its window.
+- **Leaving an editor:** Home, replacing the open project, and window close hold project edits still before the final save. The old editor stays available until a replacement project and editor have opened successfully. A failed save or open restores editing in the old editor with its current edits. An active transcription, clip search, or export must finish or be cancelled before leaving; late results cannot change a project that is leaving.
 
 ---
 

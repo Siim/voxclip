@@ -22,6 +22,7 @@ public sealed class EditorViewModel : ObservableObject
     private int selectionAnchor = -1;
     private int selectionEnd = -1;
     private double sourceTime;
+    private bool isLeaving;
 
     public EditorViewModel(Project project, Func<EditState, EditOperation, EditState>? reduce = null,
         Func<EditState, EditSummary>? summarize = null)
@@ -39,6 +40,18 @@ public sealed class EditorViewModel : ObservableObject
     }
 
     public Project Project => project;
+    public bool IsLeaving => isLeaving;
+    internal void BeginLeaving()
+    {
+        isLeaving = true;
+        Notice = "Saving this project before leaving. Editing is paused.";
+        OnPropertyChanged(nameof(CanExport));
+    }
+    internal void ResumeEditing()
+    {
+        isLeaving = false;
+        OnPropertyChanged(nameof(CanExport));
+    }
     internal void RequireLegacyRendering(EditState? renderState)
     {
         var scoped = renderState is null ? project : project with { Edits = project.Edits with
@@ -59,7 +72,7 @@ public sealed class EditorViewModel : ObservableObject
     public string Notice { get => notice; set => SetProperty(ref notice, value); }
     public bool Busy { get => busy; set { if (SetProperty(ref busy, value)) OnPropertyChanged(nameof(CanExport)); } }
     public bool HasTranscript => state is not null;
-    public bool CanExport => !Busy && Summary.CanExport;
+    public bool CanExport => !Busy && !isLeaving && Summary.CanExport;
     public bool CanUndo => undo.Count > 0;
     public bool CanRedo => redo.Count > 0;
     public int SelectionStart => Math.Min(selectionAnchor, selectionEnd);
@@ -92,7 +105,7 @@ public sealed class EditorViewModel : ObservableObject
 
     public bool Apply(EditOperation operation)
     {
-        if (state is null) return false;
+        if (isLeaving || state is null) return false;
         try
         {
             var next = reduce(state, operation);
@@ -183,6 +196,7 @@ public sealed class EditorViewModel : ObservableObject
     }
     public void SetShareCaption(string targetId, string text)
     {
+        if (isLeaving) return;
         var captions = new Dictionary<string, string>(project.Share.Captions) { [targetId] = text };
         project = project with { Share = new(captions), ModifiedAt = DateTimeOffset.UtcNow };
         SaveRequested?.Invoke(this, EventArgs.Empty);
@@ -192,7 +206,7 @@ public sealed class EditorViewModel : ObservableObject
     public void Redo() => MoveHistory(redo, undo);
     private void MoveHistory(Stack<EditState> from, Stack<EditState> to)
     {
-        if (state is null || !from.TryPop(out var next)) return;
+        if (isLeaving || state is null || !from.TryPop(out var next)) return;
         to.Push(state);
         state = next;
         SyncProject();
@@ -201,24 +215,28 @@ public sealed class EditorViewModel : ObservableObject
 
     public void SetCaptionStyle(string id)
     {
+        if (isLeaving) return;
         project = project with { Captions = project.Captions with { StyleId = id }, ModifiedAt = DateTimeOffset.UtcNow };
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
     public void SetExport(ProjectExport value)
     {
+        if (isLeaving) return;
         project = project with { Export = value, ModifiedAt = DateTimeOffset.UtcNow };
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
     public void SetCaptionOverrides(System.Text.Json.JsonElement value)
     {
+        if (isLeaving) return;
         project = project with { Captions = project.Captions with { Overrides = value.Clone() }, ModifiedAt = DateTimeOffset.UtcNow };
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
     public void SetTranscript(Core.Domain.Transcript.Transcript value)
     {
+        if (isLeaving) return;
         if (state is not null)
         {
             state = EditingEngine.Reduce(state, new EditOperation.ReplaceTranscript(value));
@@ -231,6 +249,7 @@ public sealed class EditorViewModel : ObservableObject
 
     public void AddAiResult(AiResult result)
     {
+        if (isLeaving) return;
         var previous = project.Ai;
         project = project with { Ai = new(project.Ai.Results.Append(result).ToArray()) };
         if (!Apply(new EditOperation.AddAiClips(result.Id, result.Clips))) project = project with { Ai = previous };
@@ -285,8 +304,13 @@ public sealed class EditorViewModel : ObservableObject
                 var last = Index(clip.EndWordId);
                 if (first < 0 || last < first) continue;
                 var suggestion = project.Ai.Results.FirstOrDefault(result => result.Id == clip.AiResultId)?.Clips.ElementAtOrDefault(clip.AiClipIndex ?? -1);
+                var scoped = state with { ActiveClipId = clip.Id };
+                var source = project.Media.Source;
+                var sampleRate = source.Audio?.SampleRate is > 0 ? source.Audio.SampleRate : 48000;
+                var plan = EditingEngine.BuildEditPlan(EditingEngine.BuildSegments(scoped, source.DurationSeconds),
+                    source.DurationSeconds, sampleRate, scoped.PauseKeepSeconds);
                 Clips.Add(new(clip, clip.Title ?? suggestion?.Title ?? $"Clip {Clips.Count + 1}",
-                    Timecode(Words[last].End - Words[first].Start) + (suggestion is null ? " · Manual" : $" · {suggestion.Score}/10"),
+                    Timecode(plan.Duration) + (suggestion is null ? " · Manual" : $" · {suggestion.Score}/10"),
                     string.Join(" ", Words.Skip(first).Take(last - first + 1).Select(DisplayText)), suggestion?.Reason ?? ""));
             }
         }

@@ -24,6 +24,7 @@ internal sealed class InspectorView : UserControl
     private readonly SelectorBar tabs = new();
     private readonly SelectorBarItem captions = new() { Text = "Captions" };
     private readonly SelectorBarItem clips = new() { Text = "Clips" };
+    private Expander? findForm;
     private IReadOnlyList<ProviderEntry> providers = [];
     private ComboBox? provider;
     private TextBox? modelId;
@@ -46,8 +47,8 @@ internal sealed class InspectorView : UserControl
     {
         this.model = model; this.ct = ct;
         IsTabStop = true;
-        tabs.Items.Add(captions); tabs.Items.Add(clips); tabs.Items.Add(new SelectorBarItem { Text = "AI", IsEnabled = false });
-        tabs.SelectedItem = captions;
+        tabs.Items.Add(clips); tabs.Items.Add(captions);
+        tabs.SelectedItem = clips;
         var layout = new Grid { Padding = new Thickness(16), RowSpacing = 16 };
         layout.RowDefinitions.Add(new() { Height = GridLength.Auto }); layout.RowDefinitions.Add(new());
         layout.Children.Add(tabs);
@@ -62,6 +63,22 @@ internal sealed class InspectorView : UserControl
         Render();
     }
     internal void SelectTab(bool showClips) => tabs.SelectedItem = showClips ? clips : captions;
+    internal void ShowFind()
+    {
+        SelectTab(true);
+        if (findForm is not null)
+        {
+            findForm.IsExpanded = true;
+            RenderResults();
+            body.UpdateLayout();
+        }
+        if (!model.HasTranscript) Ui.Show(notice, "Transcribe this video before finding clips. Your video is still here.");
+        else
+        {
+            provider?.StartBringIntoView();
+            provider?.Focus(FocusState.Programmatic);
+        }
+    }
     internal void UpdateStill(PixelBuffer frame)
     {
         if (still is not null || frame.Width <= 0 || frame.Height <= 0) return;
@@ -149,9 +166,13 @@ internal sealed class InspectorView : UserControl
     }
     private void RenderClips()
     {
-        body.Children.Add(Ui.Text("Find clips in this take", "SubtitleTextBlockStyle"));
-        body.Children.Add(Ui.Text("You can also select words and press Ctrl+K to make a clip yourself.", "HelperText"));
-        body.Children.Add(Ui.Button("Make clip from selection", () => model.MakeClip()));
+        body.Children.Add(Ui.Text("Clips in this take", "SubtitleTextBlockStyle"));
+        body.Children.Add(Ui.Text("Select words and choose Make Clip from Selection. Manual clips need no connector.", "HelperText"));
+        results = Ui.Stack(16); body.Children.Add(results); RenderResults();
+        findForm = new Expander { Header = "Find clips with AI", IsExpanded = false, HorizontalAlignment = HorizontalAlignment.Stretch };
+        AutomationProperties.SetName(findForm, "Find clips with AI and choose a connector");
+        var form = Ui.Stack(12);
+        findForm.Content = form;
         provider = new ComboBox { Header = "Connector", HorizontalAlignment = HorizontalAlignment.Stretch };
         AutomationProperties.SetName(provider, "Connector");
         provider.Items.Add(new ComboBoxItem { Content = "Choose a connector…" });
@@ -166,14 +187,16 @@ internal sealed class InspectorView : UserControl
         modelId = new TextBox { Header = "Model ID", Text = selected.Length == 0 ? "" : App.Services.Get("llm.model." + selected, providers.FirstOrDefault(entry => entry.WireId == selected)?.DefaultModel ?? ""), PlaceholderText = "Choose a connector first" };
         const string noConnector = "Choose how VoxClip finds clips: your API key, a model on this computer, or an installed CLI.";
         var flow = Ui.Text(noConnector, "HelperText");
+        string Disclosure(ProviderEntry? entry) => entry is null ? noConnector : entry.Group == "local"
+            ? "Runs on this PC. Nothing leaves it." : "Sends transcript text with word numbers. No audio or video.";
+        flow.Text = Disclosure(SelectedProvider());
         connectorStatus = Ui.Text("", "HelperText");
         inlineKey = Ui.Stack(8);
         provider.SelectionChanged += async (_, _) =>
         {
             var entry = SelectedProvider();
             modelId.Text = entry is null ? "" : App.Services.Get("llm.model." + entry.WireId, entry.DefaultModel);
-            flow.Text = entry is null ? noConnector : entry.Group == "local"
-                ? "Runs on this PC. Nothing leaves it." : "Sends transcript text with word numbers. No audio or video.";
+            flow.Text = Disclosure(entry);
             if (entry is not null) await Ui.RunAsync(notice, () => App.Services.SetAsync("llm.connector", entry.WireId, ct), "Connector");
             await RefreshConnectorAsync();
         };
@@ -184,11 +207,13 @@ internal sealed class InspectorView : UserControl
         AutomationProperties.SetName(finding, "Finding clips…");
         findingLabel = Ui.Text("Finding clips…", "HelperText"); findingLabel.Visibility = Visibility.Collapsed;
         cancelFinding = Ui.Button("Cancel", () => search?.Cancel()); cancelFinding.Visibility = Visibility.Collapsed;
-        body.Children.Add(provider); body.Children.Add(connectorStatus); body.Children.Add(flow); body.Children.Add(inlineKey); body.Children.Add(modelId); body.Children.Add(preset); body.Children.Add(instructions);
-        body.Children.Add(Ui.Button("Find clips", () => _ = Ui.RunAsync(notice, FindAsync, "Find clips"), true));
-        body.Children.Add(finding); body.Children.Add(findingLabel); body.Children.Add(cancelFinding);
-        body.Children.Add(Ui.Button("Providers & Keys…", App.OpenSettings));
-        results = Ui.Stack(16); body.Children.Add(results); RenderResults();
+        form.Children.Add(Ui.Text("Choose a connector. No provider runs automatically.", "HelperText"));
+        form.Children.Add(provider);
+        form.Children.Add(Ui.Button("Find clips", () => _ = Ui.RunAsync(notice, FindAsync, "Find clips"), true));
+        form.Children.Add(connectorStatus); form.Children.Add(flow); form.Children.Add(inlineKey); form.Children.Add(modelId); form.Children.Add(preset); form.Children.Add(instructions);
+        form.Children.Add(finding); form.Children.Add(findingLabel); form.Children.Add(cancelFinding);
+        form.Children.Add(Ui.Button("Providers & Keys…", App.OpenSettings));
+        body.Children.Add(findForm);
         _ = RefreshConnectorAsync();
     }
     private ProviderEntry? SelectedProvider() => (provider?.SelectedItem as ComboBoxItem)?.Tag as ProviderEntry;
@@ -223,12 +248,13 @@ internal sealed class InspectorView : UserControl
     }
     private async Task FindAsync()
     {
-        if (model.Busy || model.State is null) return;
+        if (model.Busy || model.IsLeaving || model.State is null) return;
         if (preset?.SelectedIndex == 4 && string.IsNullOrWhiteSpace(instructions?.Text)) { Ui.Show(notice, "Describe the clips you want."); instructions?.Focus(FocusState.Programmatic); return; }
         if (SelectedProvider() is not { } entry) { Ui.Show(notice, "Choose how VoxClip finds clips: your API key, a model on this computer, or an installed CLI. Manual clips work without one."); return; }
         var status = await App.Services.Connector(entry.Id).GetStatusAsync(ct);
+        if (model.IsLeaving) return;
         if (status is not ConnectorStatus.Ready) { Ui.Show(notice, ProviderCatalog.Status(status), InfoBarSeverity.Warning); return; }
-        if (!await ProviderCatalog.ConsentAsync(entry, XamlRoot, ct)) return;
+        if (!await ProviderCatalog.ConsentAsync(entry, XamlRoot, ct) || model.IsLeaving) return;
         search?.Dispose(); search = CancellationTokenSource.CreateLinkedTokenSource(ct);
         model.Busy = true; App.Services.BusyOperations++;
         if (finding is not null) { finding.IsActive = true; finding.Visibility = Visibility.Visible; }
@@ -240,7 +266,11 @@ internal sealed class InspectorView : UserControl
             var request = new ClipFinderRequest(state.Transcript.Words, state.Corrections, state.CutWordIds, (ClipPreset)(preset?.SelectedIndex ?? 0), instructions?.Text,
                 state.Transcript.Language, entry.Id, modelId?.Text.Trim() ?? entry.DefaultModel);
             var result = await App.Services.ClipFinder.FindClipsAsync(request, new Progress<ClipFinderProgress>(value => Ui.Show(notice, value.Stage)), search.Token);
-            model.AddAiResult(result); Ui.Show(notice, result.Clips.Count == 0 ? "No clips matched. Try another style or describe what you want." : $"Found {result.Clips.Count} clips. Your cuts are unchanged.");
+            if (!model.IsLeaving)
+            {
+                model.AddAiResult(result);
+                Ui.Show(notice, result.Clips.Count == 0 ? "No clips matched. Try another style or describe what you want." : $"Found {result.Clips.Count} clips. Your cuts are unchanged.");
+            }
         }
         finally
         {
@@ -254,23 +284,32 @@ internal sealed class InspectorView : UserControl
     {
         if (results is null) return;
         results.Children.Clear();
-        if (model.Clips.Count == 0) results.Children.Add(Ui.Text("No clips yet. Select words to make your first clip.", "HelperText"));
+        if (model.Clips.Count == 0) results.Children.Add(Ui.Text(model.HasTranscript ? "No clips yet. Select words to make one, or choose Find Clips." : "Transcribe this video to make clips.", "HelperText"));
         foreach (var row in model.Clips)
         {
-            var card = Ui.Stack(8);
+            var card = Ui.Stack(6);
             var selected = new CheckBox { Content = row.Title, IsChecked = row.Selected };
             selected.Click += (_, _) => model.Apply(new EditOperation.SetClipSelected(row.Id, selected.IsChecked == true));
             card.Children.Add(selected); card.Children.Add(Ui.Text(row.Detail, "HelperText")); card.Children.Add(Ui.Text(row.Excerpt));
             if (row.Reason.Length > 0) card.Children.Add(Ui.Text(row.Reason, "HelperText"));
+            if (model.State?.ActiveClipId == row.Id) card.Children.Add(Ui.Text("Previewing this clip", "HelperText"));
+            else card.Children.Add(Ui.Button("Preview clip", () => model.Apply(new EditOperation.SetActiveClip(row.Id))));
+            var edit = new Expander { Header = "Edit clip", IsExpanded = false };
+            var editBody = Ui.Stack(8);
             var name = new TextBox { Header = "Clip title", Text = row.Title };
             name.LostFocus += (_, _) => { if (name.Text != row.Title) model.Apply(new EditOperation.RenameClip(row.Id, name.Text.Trim())); };
-            card.Children.Add(name);
-            var nudges = Ui.Stack(4); nudges.Orientation = Orientation.Horizontal;
-            nudges.Children.Add(Ui.Button("Start −", () => model.Nudge(row, true, -1))); nudges.Children.Add(Ui.Button("Start +", () => model.Nudge(row, true, 1)));
-            nudges.Children.Add(Ui.Button("End −", () => model.Nudge(row, false, -1))); nudges.Children.Add(Ui.Button("End +", () => model.Nudge(row, false, 1)));
-            card.Children.Add(nudges); card.Children.Add(Ui.Button("Preview clip", () => model.Apply(new EditOperation.SetActiveClip(row.Id))));
-            card.Children.Add(Ui.Button("Copy transcript", () => ShareHelpers.Copy(row.Excerpt)));
-            card.Children.Add(Ui.Button("Remove clip", () => model.Apply(new EditOperation.RemoveClip(row.Id))));
+            editBody.Children.Add(name);
+            var startRow = Ui.Stack(4); startRow.Orientation = Orientation.Horizontal;
+            startRow.Children.Add(Ui.Button("Start −", () => model.Nudge(row, true, -1)));
+            startRow.Children.Add(Ui.Button("Start +", () => model.Nudge(row, true, 1)));
+            var endRow = Ui.Stack(4); endRow.Orientation = Orientation.Horizontal;
+            endRow.Children.Add(Ui.Button("End −", () => model.Nudge(row, false, -1)));
+            endRow.Children.Add(Ui.Button("End +", () => model.Nudge(row, false, 1)));
+            editBody.Children.Add(startRow); editBody.Children.Add(endRow);
+            editBody.Children.Add(Ui.Button("Copy transcript", () => ShareHelpers.Copy(row.Excerpt)));
+            editBody.Children.Add(Ui.Button("Remove clip", () => model.Apply(new EditOperation.RemoveClip(row.Id))));
+            edit.Content = editBody;
+            card.Children.Add(edit);
             results.Children.Add(card);
         }
         if (model.Clips.Count > 0) results.Children.Add(Ui.Button("Back to full take", () => model.Apply(new EditOperation.SetActiveClip(null))));

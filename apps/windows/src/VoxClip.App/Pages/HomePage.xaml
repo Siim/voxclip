@@ -5,7 +5,8 @@
         <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
         <StackPanel Spacing="8">
             <TextBlock x:Uid="HomeHeadline" Text="Cut video by its words." Style="{ThemeResource TitleTextBlockStyle}" />
-            <TextBlock x:Uid="HomeDescription" Text="Drop a talking-head video. VoxClip transcribes it so you can cut text." TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+            <TextBlock x:Uid="HomeDescription" Text="Import a video to create a project, or open a VoxClip project to continue editing." TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+            <TextBlock Text="Import → Choose on this PC or ElevenLabs → Make or find clips → Review → Export" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
         </StackPanel>
         <Grid Grid.Row="1" MinHeight="220">
             <Rectangle Stroke="{ThemeResource VcOverlayDropZoneBorderBrush}" StrokeThickness="2" StrokeDashArray="6,4" RadiusX="16" RadiusY="16" />
@@ -14,7 +15,7 @@
                 <TextBlock Text="Drop a video here" Style="{ThemeResource SubtitleTextBlockStyle}" HorizontalAlignment="Center" />
                 <TextBlock Text=".mov   .mp4   .m4v   .mkv   .webm" Style="{StaticResource HelperText}" HorizontalAlignment="Center" />
                 <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center">
-                    <Button Content="Choose file…" Click="ImportClicked" AutomationProperties.Name="Import video, Ctrl+O" ToolTipService.ToolTip="Choose file… (Ctrl+O)" />
+                    <Button Content="Import video…" Style="{StaticResource AccentButtonStyle}" Click="ImportClicked" AutomationProperties.Name="Import video, Ctrl+O" ToolTipService.ToolTip="Import video (Ctrl+O)" />
                     <Button Content="Open project…" Click="OpenClicked" />
                 </StackPanel>
             </StackPanel>

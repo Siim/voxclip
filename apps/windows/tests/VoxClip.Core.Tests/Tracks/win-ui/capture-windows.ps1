@@ -4,6 +4,7 @@ $root = $Root
 $shots = Join-Path $root 'screenshots'
 New-Item -ItemType Directory -Force $shots | Out-Null
 Add-Type -AssemblyName System.Drawing
+Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
 Add-Type @'
 using System;
 using System.Collections.Generic;
@@ -20,6 +21,7 @@ public static class VoxClipScreen {
     [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr window, IntPtr after, int x, int y, int width, int height, uint flags);
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr window);
     [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr window, int command);
+    [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
     [DllImport("user32.dll")] private static extern void keybd_event(byte key, byte scan, uint flags, UIntPtr extra);
     public static void DismissShell() { keybd_event(0x1B, 0, 0, UIntPtr.Zero); keybd_event(0x1B, 0, 2, UIntPtr.Zero); }
     [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
@@ -40,6 +42,16 @@ public static class VoxClipScreen {
         keybd_event(0x45, 0, 0, UIntPtr.Zero);
         keybd_event(0x45, 0, 2, UIntPtr.Zero);
         keybd_event(0x11, 0, 2, UIntPtr.Zero);
+    }
+    public static void SelectOpeningWords() {
+        keybd_event(0x24, 0, 0, UIntPtr.Zero);
+        keybd_event(0x24, 0, 2, UIntPtr.Zero);
+        keybd_event(0x10, 0, 0, UIntPtr.Zero);
+        for (var index = 0; index < 5; index++) {
+            keybd_event(0x27, 0, 0, UIntPtr.Zero);
+            keybd_event(0x27, 0, 2, UIntPtr.Zero);
+        }
+        keybd_event(0x10, 0, 2, UIntPtr.Zero);
     }
     public static bool HasContent(System.Drawing.Bitmap bitmap) {
         if (bitmap.Width < 100 || bitmap.Height < 120) return false;
@@ -72,11 +84,16 @@ function Save-Window([string]$Name, [IntPtr]$Window) {
     Start-Sleep -Milliseconds 700
     $bounds = New-Object VoxClipScreen+Rect
     if (-not [VoxClipScreen]::GetWindowRect($Window, [ref]$bounds)) { throw 'The self-check window has no capture bounds.' }
+    [void][VoxClipScreen]::SetCursorPos(($bounds.Left + 280), ($bounds.Top + 25))
+    Start-Sleep -Milliseconds 750
     $bitmap = New-Object System.Drawing.Bitmap(($bounds.Right - $bounds.Left), ($bounds.Bottom - $bounds.Top))
     $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
     try {
         $graphics.CopyFromScreen($bounds.Left, $bounds.Top, 0, 0, $bitmap.Size)
-        if (-not [VoxClipScreen]::HasContent($bitmap)) { throw "The $Name window is blank. No successful screenshot was saved." }
+        if (-not [VoxClipScreen]::HasContent($bitmap)) {
+            $bitmap.Save((Join-Path $shots "$Name-rejected.png"), [System.Drawing.Imaging.ImageFormat]::Png)
+            throw "The $Name window is blank. No successful screenshot was saved. Inspect its rejected diagnostic image."
+        }
         $bitmap.Save((Join-Path $shots "$Name-window.png"), [System.Drawing.Imaging.ImageFormat]::Png)
         $bitmap.Save((Join-Path $shots "$Name-window.jpg"), [System.Drawing.Imaging.ImageFormat]::Jpeg)
     } finally { $graphics.Dispose(); $bitmap.Dispose() }
@@ -105,6 +122,15 @@ try {
         Start-Sleep -Seconds 2
     }
     if (-not $app) { Save-Screen 'startup-failed'; throw 'VoxClip did not remain running.' }
+    $receipt = Join-Path $root 'capture-data\windows-runtime-agreement.txt'
+    if (-not (Test-Path $receipt)) {
+        $termsHost = [IntPtr]$app.MainWindowHandle
+        if ($termsHost -eq [IntPtr]::Zero -or -not [VoxClipScreen]::BelongsTo($termsHost, $app.Id)) { throw 'The first-launch terms host does not belong to VoxClip.' }
+        $accept = Find-Control $termsHost 'Accept and continue'
+        Use-Control $accept
+        for ($acceptAttempt = 0; $acceptAttempt -lt 20 -and -not (Test-Path $receipt); $acceptAttempt++) { Start-Sleep -Milliseconds 250 }
+        if (-not (Test-Path $receipt)) { throw 'Explicit first-launch acceptance did not write the isolated receipt.' }
+    }
     $report = Join-Path $shots "$Screen-self-check.json"
     $check = $null
     for ($attempt = 0; $attempt -lt 30; $attempt++) {
@@ -122,13 +148,46 @@ try {
     Save-Window $Screen $window
     Save-Screen $Screen
     if ($Exercise) {
-        Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
         $checks = New-Object 'System.Collections.Generic.List[string]'
         if ($Screen -eq 'editor') {
+            [void](Find-Control $window 'Make clip from selected transcript words')
+            [void](Find-Control $window 'Find clips with a chosen connector')
+            Save-Window 'editor-clips' $window
+            $checks.Add('Make Clip from Selection and Find Clips are visible in the editor; clip results open by default')
+            Use-Control (Find-Control $window 'Find clips with a chosen connector')
+            [void](Find-Control $window 'Connector')
+            [void](Find-Control $window 'Find clips')
+            Save-Window 'editor-find-clips' $window
+            $checks.Add('Find Clips exposes the connector and action without starting a provider')
+            $transcript = Find-Control $window 'Transcript. Select words to cut. Enter corrects spelling. Control K makes a clip.'
+            $transcript.SetFocus()
+            [VoxClipScreen]::SelectOpeningWords()
+            Start-Sleep -Milliseconds 400
+            Use-Control (Find-Control $window 'Make clip from selected transcript words')
+            [void](Find-Control $window 'Export 1 clip')
+            Save-Window 'editor-manual-clip' $window
+            $checks.Add('Keyboard-selected transcript words created a selected manual clip row')
+            Use-Control (Find-Control $window 'Preview clip')
+            [void](Find-Control $window 'Previewing this clip')
+            Save-Window 'editor-preview-clip' $window
+            $checks.Add('The manual clip is the active preview range')
+            Use-Control (Find-Control $window 'Play or pause (Space)')
+            Start-Sleep -Seconds 4
+            $clock = [System.Windows.Automation.AutomationElement]::FromHandle($window).FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition) | Where-Object { $_.Current.Name -match '^Clip ([0-9:.]+) / ([0-9:.]+)$' } | Select-Object -First 1
+            if (-not $clock -or $clock.Current.Name -notmatch '^Clip ([0-9:.]+) / \1$') { throw 'Clip preview did not stop at its scoped duration.' }
+            Save-Window 'editor-preview-end' $window
+            $checks.Add('Clip preview stops at its local duration')
+            Use-Control (Find-Control $window 'Export 1 clip')
+            [void](Find-Control $window 'Selected clips (1)')
+            Save-Window 'export-selected-clip' $window
+            $checks.Add('The clip action opens Export with Selected clips (1) scope')
+            Use-Control (Find-Control $window 'Cancel')
+            Use-Control (Find-Control $window 'Captions')
             $off = Find-Control $window 'Off, just the video'
             if ($off.Current.ControlType -ne [System.Windows.Automation.ControlType]::RadioButton) { throw 'Caption styles do not expose radio-button semantics.' }
             $selected = Find-Control $window 'Bold'
             if (-not $selected.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Current.IsSelected) { throw 'The fixture caption style is not selected in the gallery.' }
+            Save-Window 'editor-captions' $window
             $checks.Add('Caption styles expose named radio buttons and the fixture selection')
             Use-Control (Find-Control $window ('Export' + [char]0x2026))
             [void](Find-Control $window 'Cancel')
@@ -136,9 +195,17 @@ try {
             $checks.Add('Export button opens the export sheet without exporting the fixture')
             Use-Control (Find-Control $window 'Cancel')
             Use-Control (Find-Control $window 'Clips')
-            [void](Find-Control $window 'Make clip from selection')
-            Save-Window 'editor-clips' $window
-            $checks.Add('Clips inspector remains available without a provider key')
+            $scale = [double]$check.rasterizationScale
+            [void][VoxClipScreen]::SetWindowPos($window, [IntPtr]::Zero, 32, 32, [int](900 * $scale), [int](720 * $scale), 0x0040)
+            Start-Sleep -Milliseconds 600
+            Save-Window 'editor-compact' $window
+            Use-Control (Find-Control $window 'Clips and captions')
+            [void](Find-Control $window 'Previewing this clip')
+            Save-Window 'editor-compact-clips' $window
+            [VoxClipScreen]::DismissShell()
+            Start-Sleep -Milliseconds 400
+            Save-Window 'editor-compact-return' $window
+            $checks.Add('Compact editor keeps clip results reachable in the overlay pane and a stacked preview/transcript')
         }
         if ($Screen -eq 'settings') {
             $main = @([VoxClipScreen]::Windows($app.Id) | Where-Object { $_ -ne $window })[0]
@@ -171,6 +238,10 @@ try {
             Save-Window 'settings-general-dark' $window
             [void][VoxClipScreen]::ShowWindow($window, 0)
             Save-Window 'editor-dark' $main
+            $scale = [double]$check.rasterizationScale
+            [void][VoxClipScreen]::SetWindowPos($main, [IntPtr]::Zero, 32, 32, [int](900 * $scale), [int](720 * $scale), 0x0040)
+            Start-Sleep -Milliseconds 600
+            Save-Window 'editor-compact-dark' $main
             $checks.Add('Dark appearance selected through Settings and applied to both windows')
             [void][VoxClipScreen]::ShowWindow($window, 5)
             [void][VoxClipScreen]::SetForegroundWindow($window)

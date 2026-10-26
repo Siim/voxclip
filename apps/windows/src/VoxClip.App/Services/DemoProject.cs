@@ -76,8 +76,7 @@ internal sealed class DemoPreviewEngine : IPreviewEngine
     private double origin;
     private double duration;
     private long generation;
-    private EditState? edit;
-    internal void SetEdit(EditState? value) { lock (sync) edit = value; }
+    private EditPlan? plan;
     public PreviewPosition Position
     {
         get
@@ -85,23 +84,31 @@ internal sealed class DemoPreviewEngine : IPreviewEngine
             lock (sync)
             {
             var time = Math.Min(duration, origin + clock.Elapsed.TotalSeconds);
-            if (edit is not null)
-            {
-                var cut = edit.Transcript.Words.FirstOrDefault(word => edit.CutWordIds.Contains(word.Id) && word.Start <= time && time < word.End);
-                if (cut is not null) { origin = cut.End; if (clock.IsRunning) clock.Restart(); else clock.Reset(); time = cut.End; }
-                var pause = edit.Pauses.FirstOrDefault(pause => edit.CutPauseIds.Contains(pause.Id) && pause.Start <= time && time < pause.End);
-                if (pause is not null) { origin = pause.End; if (clock.IsRunning) clock.Restart(); else clock.Reset(); time = pause.End; }
-            }
             if (time >= duration) clock.Stop();
-            return new(time, time, clock.IsRunning);
+            var sourcePoint = plan is null ? time : plan.SourceTime(Math.Min(time, Math.Max(0, duration - 1 / plan.SampleRate)));
+            return new(time, sourcePoint, clock.IsRunning);
             }
         }
     }
-    public Task LoadAsync(ComposeSnapshot snapshot, IProgress<MediaProgress>? progress, CancellationToken ct) { ct.ThrowIfCancellationRequested(); lock (sync) duration = snapshot.Media.DurationSeconds; return Task.CompletedTask; }
-    public Task PlayAsync(CancellationToken ct) { ct.ThrowIfCancellationRequested(); lock (sync) { if (Position.SourceTime >= duration) origin = 0; clock.Restart(); } return Task.CompletedTask; }
-    public Task PauseAsync(CancellationToken ct) { ct.ThrowIfCancellationRequested(); lock (sync) { origin = Position.SourceTime; clock.Reset(); } return Task.CompletedTask; }
+    public Task LoadAsync(ComposeSnapshot snapshot, IProgress<MediaProgress>? progress, CancellationToken ct) { ct.ThrowIfCancellationRequested(); lock (sync) { plan = snapshot.Plan; duration = plan.Duration; origin = 0; clock.Reset(); } return Task.CompletedTask; }
+    public Task PlayAsync(CancellationToken ct) { ct.ThrowIfCancellationRequested(); lock (sync) { if (Position.EditedTime >= duration) origin = 0; clock.Restart(); } return Task.CompletedTask; }
+    public Task PauseAsync(CancellationToken ct) { ct.ThrowIfCancellationRequested(); lock (sync) { origin = Position.EditedTime; clock.Reset(); } return Task.CompletedTask; }
     public Task SeekAsync(double editedTime, bool exact, CancellationToken ct) { ct.ThrowIfCancellationRequested(); lock (sync) { origin = Math.Clamp(editedTime, 0, duration); if (clock.IsRunning) clock.Restart(); Interlocked.Increment(ref generation); } return Task.CompletedTask; }
-    public Task UpdateSnapshotAsync(ComposeSnapshot snapshot, CancellationToken ct) { ct.ThrowIfCancellationRequested(); return Task.CompletedTask; }
+    public Task UpdateSnapshotAsync(ComposeSnapshot snapshot, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        lock (sync)
+        {
+            var source = Position.SourceTime;
+            var playing = clock.IsRunning;
+            plan = snapshot.Plan;
+            duration = plan.Duration;
+            origin = plan.MapTime(source);
+            if (playing && origin < duration) clock.Restart(); else clock.Reset();
+            Interlocked.Increment(ref generation);
+        }
+        return Task.CompletedTask;
+    }
     public Task UpdateCaptionsAsync(CaptionTrack? captions, CancellationToken ct) { ct.ThrowIfCancellationRequested(); return Task.CompletedTask; }
     public async IAsyncEnumerable<PreviewFrame> ReadFramesAsync([EnumeratorCancellation] CancellationToken ct)
     {

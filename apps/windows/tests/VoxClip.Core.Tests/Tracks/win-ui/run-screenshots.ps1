@@ -6,7 +6,7 @@ $script = Join-Path $root 'apps\windows\tests\VoxClip.Core.Tests\Tracks\win-ui\c
 $shots = Join-Path $root 'screenshots'
 New-Item -ItemType Directory -Force $shots | Out-Null
 if ($Configuration -eq 'Release' -and ($Screen -ne 'home' -or $Exercise)) { throw 'Release probes support Home only; fixture exercises are debug-only.' }
-$captureNames = @('editor', 'home', 'settings', 'export', 'editor-clips', 'settings-providers-keys', 'settings-local-models', 'settings-export', 'settings-accounts', 'settings-about', 'onboarding-1', 'onboarding-2', 'onboarding-3', 'settings-general-dark', 'editor-dark')
+$captureNames = @('terms', 'editor', 'home', 'settings', 'export', 'export-selected-clip', 'editor-clips', 'editor-find-clips', 'editor-manual-clip', 'editor-preview-clip', 'editor-preview-end', 'editor-captions', 'editor-compact', 'editor-compact-clips', 'editor-compact-return', 'editor-compact-dark', 'settings-providers-keys', 'settings-local-models', 'settings-export', 'settings-accounts', 'settings-about', 'onboarding-1', 'onboarding-2', 'onboarding-3', 'settings-general-dark', 'editor-dark')
 foreach ($name in $captureNames) {
     Remove-Item (Join-Path $shots "$name-window.png"), (Join-Path $shots "$name-window.jpg"), (Join-Path $shots "$name-self-check.json"), (Join-Path $shots "$name-interactions.json") -Force -ErrorAction SilentlyContinue
 }

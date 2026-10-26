@@ -1,9 +1,63 @@
 # win-ui contract notes
 
-Date: 2026-10-25. The newest integration record is first; older VM connectivity
+Date: 2026-10-26. The newest integration record is first; older VM connectivity
 and blank-window entries below are retained as history, not current status.
 This track does not change other tracks' declarations. The lead owns the root
 `apps/windows/CONTRACTS.md` ledger; these notes are in the permitted track folder.
+
+## Final native leave and Voice Lab guard check (2026-10-26)
+
+- Merged only main `068816de116deedecfa2adcb3840458001e8f03a` as the second parent of `266934a`; both platform contract ledgers, ADR-R23/R24/030, the Windows snapshot guard and the CLI plan/error boundary remain present. A narrow follow-up routes Ctrl+W through the same final save as window closing, disables export while leaving, shows the paused state, and clears that state after a failed replacement open.
+- The final Debug ARM64 WinUI app built with zero warnings and errors, one compile job. The focused UI companion passed 41 tests with its native media pipeline test skipped on both macOS and native ARM64 (the native test DLL was launched directly after `dotnet test` reported a runner handshake error). Its delayed-save test persisted the pre-transition manual clip, rejected late mutations, and restored editing after a failed save/open. The native companion also covered the Voice Lab full-scope rejection, excluded source-only clip, and disabled replacement; this was Core/view-model execution, not a WinUI media render.
+- With an isolated data root, explicit runtime-terms acceptance and no live provider, a native Debug demo opened the schema-v2 passage fixture in a rendered editor window. Its visible InfoBar said this build cannot preview or export generated voice segments and that the video and edits remain. A separate normal v2 open with missing synthetic source stayed savable: a forced save failure vetoed Home and retained the manual clip; restoring the path let Home save and reopen in the same HWND. A corrupt replacement activation kept the prior editor and showed both the file error and “This project is still open. You can keep editing.”
+- The first immediate Ctrl+W probe left two clips on disk after the editor had shown three, and its rejected screenshot/error were retained. The old shortcut called `Close()` directly. After routing it through `RequestCloseAsync`, a repeat using the same duplicate selection saved all three clips. A distinct end-of-transcript clip then gave the controlled pending-autosave check: UI showed three clips, disk still held two immediately before Ctrl+W, and after process exit disk held three, with the v2 segment still enabled. The accepted clip is therefore read back from the actual project file, not inferred from an on-screen count alone. This check did not stall the native disk writer or exercise updater restart.
+- Exact owned-window evidence is under `/tmp/voxclip-win-ui-final-20261026/`: `voice-lab-guard-window.jpg`, `v2-save-failure-veto.jpg`, `v2-reopened.jpg`, `v2-open-failure-retained.jpg`, `normal-v2.json`, and the rejected earlier-run images/error. No transcription, generated media, provider, real preview/export, or installer behavior was claimed. Earlier R1 synthetic UX screenshots remain under `/tmp/voxclip-win-ui-ux-20261026/` for their original revision.
+
+## Project leave boundary correction (2026-10-26)
+
+- Controlled inspection found a post-save edit window in the prior Home/open/close guard: the save received `ViewModel.Project` before replacement load/probe, while the old editor remained interactive. A later edit could be cancelled with its debounced autosave in `CloseAsync`. `ProjectStore.SaveAsync` takes a project argument before its writer wait and atomic disk write, so a later view-model change is not included in that save.
+- The view model now refuses project mutations from UI and async completions during the final save and replacement preparation. Busy transcription, clip search, and export veto leaving; Save As observes the same boundary. A failed save resumes editing immediately, and a failed replacement load or editor open restores the previous page, path, title, and editing state. The old editor is disposed only after the new editor opens.
+- The cross-platform UI companion's delayed-save test reads the saved project back: the pre-transition manual clip persists, attempted late clip/transcription/cut mutations are refused, and a failed replacement resume accepts the next clip. A forced save failure also restores editing. This is source/fake persistence evidence; native Windows compilation and interaction for this correction await the VM slot. The earlier synthetic screenshots and ARM64 Debug pass at `f55f6e0` remain evidence for that revision only.
+
+## Windows shell correction and native review (2026-10-26)
+
+- This continues the single authorized merge of main `d1121611527b32e9d0378dbe33f22fccbf686b5a` into the `ca5c022` baseline. No later main or track merge was taken. The Windows app retains one Home/editor shell with a trailing title-bar Settings command and a visible Clips location. The unfinished AI tab and duplicate wide Clips/Captions links were removed. Find Clips expands the connector and explicit action without starting a provider. At compact width the Clips and captions button opens a reachable overlay; Escape returns focus to the unobscured transcript. Home distinguishes Import video from Open project and explains local versus ElevenLabs transcription.
+- Make Clip from Selection in the toolbar, Ctrl+K, and the transcript context menu now use one action that reveals the created clip. Text highlights use rendered UTF-16 character offsets while pointer hit testing retains TextPointer positions, so Unicode corrections, pauses, and hidden cuts do not displace the selection. A clip row uses the scoped edit-plan duration (including boundary padding and cuts), the same duration used by preview and export. The fixture's six selected words span 3.0 seconds; its clip edit plan is 3.2 seconds, and both the row and bounded clip clock now display `00:03.2`. The synthetic preview follows the plan and stops at its end.
+- Home, open/recent, file activation, drag-and-drop replacement, and window close check a final project save before disposing of an editor. Navigation serializes these transitions. A failed save keeps the current editor, its unsaved manual clip, and the same window visible with an actionable error and Save project as route. `CloseAsync` disposes only after this guard. A native forced failure (temporarily replacing the owned fixture project path with a directory) confirmed Home was vetoed; the fixture was restored afterward. The guard is also used by open/drop and close, but those failure paths were not each independently driven in the VM.
+- The ARM64 Debug build at the actual `bin/ARM64/Debug` launch path passed with zero warnings/errors. The local UI companion had 39 total, 38 passed and one Windows-only synthetic media test skipped. On native Windows, an isolated synthetic color-bars import showed the explicit local model choice, no automatic transcription or provider call, an empty editor in the same HWND, a recent project on Home, and reopening in that same HWND. The native refusal path exited without an acceptance receipt. Earlier receipt tests (5 passed) and the existing native acceptance capture remain the agreement baseline; the legal gate was not changed. The settings exercise traversed its panes and onboarding, selected Dark, and captured desktop and compact editor states. The editor exercise confirmed selected-clip export scope, clip-bounded synthetic playback, compact overlay return, and caption gallery access. No real provider, transcription, export success, Narrator, or High Contrast acceptance is claimed.
+- Inspected owned-window JPEGs and interaction reports are retained outside VM scratch at `/tmp/voxclip-win-ui-ux-20261026/`: `home-window.jpg`, `editor-find-clips-window.jpg`, `editor-manual-clip-window.jpg`, `editor-preview-end-window.jpg`, `export-selected-clip-window.jpg`, `editor-compact-clips-window.jpg`, `editor-compact-return-window.jpg`, `editor-compact-dark-window.jpg`, `normal-transcription-window.jpg`, `normal-home-recents-window.jpg`, `normal-reopened-editor-window.jpg`, and `save-failure-veto-window.jpg`. All media shown in these checks is synthetic. The normal import probe's UI Automation report records same-window navigation; its early rejected capture and the terms-host image obscured by a foreign terminal are not visual evidence. Owner scratch stayed below 1 GiB and C: free above 6 GiB; final lock release is recorded in the handoff.
+
+## Windows clipping workspace correction (2026-10-26)
+
+- This branch normally merged only the authorized main `d1121611527b32e9d0378dbe33f22fccbf686b5a`
+  into clean `ca5c0225fb41bfe963ad1041d3288619d0d71092`. The merge changed
+  two macOS test files. The Windows app changes stay in the track's owned files;
+  neither the root contract ledger nor ADR-030, runtime notices, package pins,
+  Core, CLI or media code was edited.
+- Home and Editor remain pages in one WinUI main window, with the native title
+  bar showing the project. A dropped video now opens in that shell. The editor
+  gives Make Clip from Selection and Find Clips a persistent top-level route.
+  The Clips pane is the default at desktop width, with clip results before the
+  contextual, collapsed connector form. Find Clips opens that form and focuses
+  its connector; a provider never runs merely because the pane opens. Caption
+  styling remains the existing renderer-backed gallery in a secondary tab.
+  The disabled M2 AI tab is retained per the root contract note.
+- Imports present an explicit transcription dialog. A compatible local model
+  no longer starts transcription on dialog opening. The dialog shows the
+  local/cloud data flow, installed-model prerequisite, inline ElevenLabs key
+  entry, and a clear per-take upload checkbox. Neither route starts until
+  Transcribe is chosen; cloud still checks its key and consent first.
+- The editor shows the active clip in its context line and keeps playback and
+  Export visible. Its clip-footer export opens with Selected clips chosen,
+  while the top Export opens with Full edit; the existing `ExportSelection.Scope`
+  remains the single plan/caption scope for either choice. The clip range list,
+  timeline, transcript edits, undo, autosave and renderer are reused. At compact
+  widths the inspector overlays, the preview stacks above the transcript, and
+  optional aspect controls yield space while clipping actions stay available.
+- Local checks before the native pass: UI companion 32 passed, 1 Windows-only
+  integration skip; focused agreement receipt tests 5 passed; edited XAML
+  parsed and `git diff --check` passed. Native WinUI compilation, owned-window
+  captures and keyboard/resize acceptance are recorded in a follow-up entry.
 
 ## Final native UI and publish check at `f357e32` (2026-10-25)
 

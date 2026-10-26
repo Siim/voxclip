@@ -4,7 +4,7 @@
     <Grid x:Name="Root" AllowDrop="True" DragOver="FileDragOver" Drop="FileDropped">
         <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
         <TitleBar x:Name="AppTitleBar" Title="VoxClip" BackRequested="BackRequested">
-            <TitleBar.Content><Button Click="SettingsClicked" HorizontalAlignment="Right" Style="{ThemeResource SubtleButtonStyle}" AutomationProperties.Name="Settings (Ctrl+,)" ToolTipService.ToolTip="Settings (Ctrl+,)"><SymbolIcon Symbol="Setting" /></Button></TitleBar.Content>
+            <TitleBar.RightHeader><Button Click="SettingsClicked" Style="{ThemeResource SubtleButtonStyle}" AutomationProperties.Name="Settings (Ctrl+,)" ToolTipService.ToolTip="Settings (Ctrl+,)"><SymbolIcon Symbol="Setting" /></Button></TitleBar.RightHeader>
         </TitleBar>
         <InfoBar x:Name="WindowNotice" Grid.Row="1" IsOpen="False" />
         <Frame x:Name="ContentFrame" Grid.Row="2" />

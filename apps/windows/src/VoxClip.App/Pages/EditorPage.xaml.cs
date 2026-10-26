@@ -30,10 +30,13 @@ public sealed partial class EditorPage : Page
     private bool narrow;
     private CancellationTokenSource? autosave;
     private Task pendingSave = Task.CompletedTask;
+    private ProjectLeaveBoundary leave = null!;
     private readonly SemaphoreSlim previewChanges = new(1, 1);
     private readonly SemaphoreSlim saves = new(1, 1);
     private string pauseBreath = "natural";
     private double previewWidth = 380;
+    private double previewDuration;
+    private string? previewClipId;
     public EditorPage() { InitializeComponent(); Loaded += (_, _) => Transcript.Focus(FocusState.Programmatic); }
     public static bool HasText(string? text) => !string.IsNullOrEmpty(text);
 
@@ -48,18 +51,21 @@ public sealed partial class EditorPage : Page
         ViewModel = new(project);
         preview = new PreviewEngine();
 #endif
+        leave = new(ViewModel);
         preview.PlaybackFaulted += PlaybackFaulted;
         ViewModel.Changed += ModelChanged;
+        ViewModel.SelectionChanged += SelectionChanged;
         ViewModel.SaveRequested += SaveRequested;
         pauseBreath = App.Services.Get("editing.pauseBreath", "natural");
         App.Services.SettingsChanged += EditorSettingsChanged;
         Transcript.Attach(ViewModel);
         Timeline.Attach(ViewModel);
         Transcript.SeekRequested += (_, _) => _ = RunAsync(() => SeekSourceAsync(ViewModel.SourceTime), "Preview");
-        Transcript.MakeClipRequested += (_, _) => ViewModel.MakeClip();
+        Transcript.MakeClipRequested += (_, _) => MakeClipAndReveal();
         Transcript.PlayRequested += (_, _) => _ = RunAsync(async () => { await SeekSourceAsync(ViewModel.SourceTime); if (preview is not null) await preview.PlayAsync(lifetime.Token); }, "Preview");
         Timeline.SeekRequested += (_, time) => _ = RunAsync(() => SeekSourceAsync(time), "Preview");
         Untranscribed.Visibility = ViewModel.HasTranscript ? Visibility.Collapsed : Visibility.Visible;
+        UpdateClipContext();
         Bindings.Update();
         Aspect.SelectedIndex = (int)project.Export.Aspect;
         inspector = new(ViewModel, async state => await SnapshotAsync(lifetime.Token, state), lifetime.Token);
@@ -79,7 +85,9 @@ public sealed partial class EditorPage : Page
         await RunAsync(async () =>
         {
             if (media is null || preview is null) return;
-            await preview.LoadAsync(await SnapshotAsync(ct), null, ct);
+            var snapshot = await SnapshotAsync(ct);
+            previewDuration = snapshot.Plan.Duration;
+            await preview.LoadAsync(snapshot, null, ct);
             presenter = new(PreviewImage, preview, PositionChanged, exception => ViewModel.Notice = UiError.Message(exception, "Preview"), frame => inspector?.UpdateStill(frame));
             presenter.Start(); PreviewEmpty.Visibility = Visibility.Collapsed;
         }, "Preview");
@@ -99,7 +107,7 @@ public sealed partial class EditorPage : Page
         ViewModel.RequireLegacyRendering(state);
         var samples = (long)(source.DurationSeconds * rate);
         var plan = new EditPlan(rate, samples, [], [new(0, samples)], samples, []);
-        if (!demo && state is not null) plan = EditingEngine.BuildEditPlan(EditingEngine.BuildSegments(state, source.DurationSeconds), source.DurationSeconds, rate, state.PauseKeepSeconds);
+        if (state is not null) plan = EditingEngine.BuildEditPlan(EditingEngine.BuildSegments(state, source.DurationSeconds), source.DurationSeconds, rate, state.PauseKeepSeconds);
         var outputSize = ExportPresets.OutputSize(source.OrientedSize, ViewModel.Project.Export.Aspect);
         var fps = ExportPresets.OutputFrameRate(source.Video?.FrameRate ?? 30);
         CaptionTrack? captions = null;
@@ -110,9 +118,14 @@ public sealed partial class EditorPage : Page
     private void PositionChanged(PreviewPosition position)
     {
         if (disposed) return;
-        var changed = Math.Abs(ViewModel.SourceTime - position.SourceTime) > 0.02;
-        ViewModel.SourceTime = position.SourceTime;
-        TransportTime.Text = ViewModel.TimeLabel + " / " + EditorViewModel.Timecode(media?.DurationSeconds ?? 0);
+        var sourceTime = position.SourceTime;
+        if (ViewModel.State?.ActiveClipId is { } clipId && position.EditedTime >= previewDuration &&
+            ViewModel.Clips.FirstOrDefault(clip => clip.Id == clipId) is { } active &&
+            ViewModel.Words.FirstOrDefault(word => word.Id == active.Clip.EndWordId) is { } endWord)
+            sourceTime = endWord.End;
+        var changed = Math.Abs(ViewModel.SourceTime - sourceTime) > 0.02;
+        ViewModel.SourceTime = sourceTime;
+        TransportTime.Text = PreviewClockLabel.Format(position.EditedTime, previewDuration, ViewModel.State?.ActiveClipId is not null);
         PlayCommand.IsChecked = position.IsPlaying; PlayCommand.Label = position.IsPlaying ? "Pause" : "Play";
         Timeline.Position(position.SourceTime);
         if (changed) Transcript.RefreshVisuals();
@@ -126,14 +139,24 @@ public sealed partial class EditorPage : Page
         FooterExport.Content = inspector?.ClipsActive == true ? ViewModel.ClipExportLabel : "Export…";
         FooterExport.IsEnabled = ViewModel.CanExport && (inspector?.ClipsActive != true || ViewModel.SelectedClipCount > 0);
     }
+    private void SelectionChanged(object? sender, EventArgs args) => UpdateClipContext();
+    private void UpdateClipContext()
+    {
+        if (ViewModel is null) return;
+        var active = ViewModel.Clips.FirstOrDefault(clip => clip.Id == ViewModel.State?.ActiveClipId);
+        ClipContext.Text = !ViewModel.HasTranscript ? "Choose transcription first. Your source video stays untouched."
+            : active is not null ? $"Previewing {active.Title} · {ViewModel.Clips.Count} {ClipNoun(ViewModel.Clips.Count)} in this take"
+            : ViewModel.HasSelection ? $"{ViewModel.SelectionEnd - ViewModel.SelectionStart + 1} words selected · {ViewModel.Clips.Count} {ClipNoun(ViewModel.Clips.Count)} in this take"
+            : ViewModel.Clips.Count == 0 ? "Select words in the transcript or find clips with AI."
+            : $"{ViewModel.Clips.Count} {ClipNoun(ViewModel.Clips.Count)} in this take · Select words to make another.";
+    }
+    private static string ClipNoun(int count) => count == 1 ? "clip" : "clips";
     private void ModelChanged(object? sender, EventArgs args)
     {
         if (!ready || disposed) return;
         UpdateFooter();
+        UpdateClipContext();
         Untranscribed.Visibility = ViewModel.HasTranscript ? Visibility.Collapsed : Visibility.Visible;
-#if DEBUG
-        if (preview is DemoPreviewEngine synthetic) synthetic.SetEdit(ViewModel.State);
-#endif
         _ = RunAsync(UpdatePreviewAsync, "Preview");
         SaveRequested(sender, args);
     }
@@ -148,7 +171,7 @@ public sealed partial class EditorPage : Page
     }
     private void EditorSettingsChanged(object? sender, EventArgs args)
     {
-        if (disposed) return;
+        if (disposed || ViewModel.IsLeaving) return;
         Transcript.ApplySettings();
         var next = App.Services.Get("editing.pauseBreath", "natural");
         if (next == pauseBreath) return;
@@ -172,14 +195,23 @@ public sealed partial class EditorPage : Page
     {
         if (preview is null || media is null) return;
         await previewChanges.WaitAsync(lifetime.Token);
-        try { await preview.UpdateSnapshotAsync(await SnapshotAsync(lifetime.Token), lifetime.Token); }
+        try
+        {
+            var state = ViewModel.State;
+            var snapshot = await SnapshotAsync(lifetime.Token, state);
+            var clipChanged = previewClipId != state?.ActiveClipId;
+            previewClipId = state?.ActiveClipId;
+            previewDuration = snapshot.Plan.Duration;
+            await preview.UpdateSnapshotAsync(snapshot, lifetime.Token);
+            if (clipChanged && previewClipId is not null) await preview.SeekAsync(0, true, lifetime.Token);
+        }
         finally { previewChanges.Release(); }
     }
     private async Task SeekSourceAsync(double source)
     {
         if (preview is null) return;
         var snapshot = await SnapshotAsync(lifetime.Token);
-        await preview.SeekAsync(demo ? source : snapshot.Plan.MapTime(source), true, lifetime.Token);
+        await preview.SeekAsync(snapshot.Plan.MapTime(source), true, lifetime.Token);
     }
     private async Task RunAsync(Func<Task> action, string label)
     {
@@ -192,7 +224,26 @@ public sealed partial class EditorPage : Page
     private void RestoreClicked(object sender, RoutedEventArgs args) => ViewModel.Apply(new EditOperation.RestoreCuts());
     private void UndoClicked(object sender, RoutedEventArgs args) => ViewModel.Undo();
     private void RedoClicked(object sender, RoutedEventArgs args) => ViewModel.Redo();
-    private void MakeClipClicked(object sender, RoutedEventArgs args) { ViewModel.MakeClip(); inspector?.SelectTab(true); }
+    private void MakeClipAndReveal()
+    {
+        if (ViewModel.MakeClip()) ShowClipsPane();
+    }
+    private void MakeClipClicked(object sender, RoutedEventArgs args) => MakeClipAndReveal();
+    private void FindClipsClicked(object sender, RoutedEventArgs args)
+    {
+        InspectorSplit.IsPaneOpen = true;
+        inspector?.ShowFind();
+    }
+    private void CaptionsClicked(object sender, RoutedEventArgs args)
+    {
+        InspectorSplit.IsPaneOpen = true;
+        inspector?.SelectTab(false);
+    }
+    private void ShowClipsPane()
+    {
+        InspectorSplit.IsPaneOpen = true;
+        inspector?.SelectTab(true);
+    }
     private async void PlayClicked(object sender, RoutedEventArgs args) => await RunAsync(TogglePlaybackAsync, "Preview");
     private async Task TogglePlaybackAsync()
     {
@@ -213,12 +264,13 @@ public sealed partial class EditorPage : Page
         picker.FileTypeChoices.Add("VoxClip project", [".voxclip"]);
         WinRT.Interop.InitializeWithWindow.Initialize(picker, WinRT.Interop.WindowNative.GetWindowHandle(owner));
         var file = await picker.PickSaveFileAsync();
-        if (file is not null)
+        if (file is not null && !ViewModel.IsLeaving)
         {
             autosave?.Cancel(); await pendingSave;
             await saves.WaitAsync(lifetime.Token);
             try
             {
+                if (ViewModel.IsLeaving) return;
                 var previous = owner.ProjectPath;
                 await App.Services.Projects.SaveAsync(ViewModel.Project, file.Path, lifetime.Token); owner.SetProjectPath(file.Path);
                 if (previous is not null && !previous.Equals(file.Path, StringComparison.OrdinalIgnoreCase) && Path.GetDirectoryName(previous)?.TrimEnd(Path.DirectorySeparatorChar).Equals(App.Services.Data.Autosave.TrimEnd(Path.DirectorySeparatorChar), StringComparison.OrdinalIgnoreCase) == true) File.Delete(previous);
@@ -229,10 +281,12 @@ public sealed partial class EditorPage : Page
     private void ShowProjectClicked(object sender, RoutedEventArgs args) { if (owner.ProjectPath is { } path) ShareHelpers.Reveal(path); }
     private async void ExportClicked(object sender, RoutedEventArgs args) => await RunAsync(async () =>
     {
-        await new ExportDialog(owner, ViewModel, demo, SnapshotAsync) { XamlRoot = XamlRoot }.ShowAsync();
+        if (!ViewModel.CanExport) return;
+        var selectedClips = ReferenceEquals(sender, FooterExport) && inspector?.ClipsActive == true && ViewModel.SelectedClipCount > 0;
+        await new ExportDialog(owner, ViewModel, demo, SnapshotAsync, selectedClips) { XamlRoot = XamlRoot }.ShowAsync();
     }, "Export");
-    internal async Task PromptTranscriptionAsync(bool startLocalWhenReady = false) => await RunAsync(async () =>
-        await new TranscriptionDialog(owner, ViewModel, startLocalWhenReady) { XamlRoot = XamlRoot }.ShowAsync(), "Transcription");
+    internal async Task PromptTranscriptionAsync() => await RunAsync(async () =>
+        await new TranscriptionDialog(owner, ViewModel) { XamlRoot = XamlRoot }.ShowAsync(), "Transcription");
     private async void TranscribeClicked(object sender, RoutedEventArgs args) => await PromptTranscriptionAsync();
     private async void TranscribeAgainClicked(object sender, RoutedEventArgs args)
     {
@@ -256,7 +310,7 @@ public sealed partial class EditorPage : Page
         Add(VirtualKey.Z, VirtualKeyModifiers.Control, ViewModel.Undo);
         Add(VirtualKey.Y, VirtualKeyModifiers.Control, ViewModel.Redo);
         Add(VirtualKey.Z, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, ViewModel.Redo);
-        Add(VirtualKey.K, VirtualKeyModifiers.Control, () => MakeClipClicked(this, new()));
+        Add(VirtualKey.K, VirtualKeyModifiers.Control, MakeClipAndReveal);
         Add(VirtualKey.U, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, () => ViewModel.Apply(new EditOperation.CutFillers()));
         Add(VirtualKey.P, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, () => ViewModel.Apply(new EditOperation.TightenPauses()));
         Add(VirtualKey.R, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, () => ViewModel.Apply(new EditOperation.RestoreCuts()));
@@ -272,8 +326,8 @@ public sealed partial class EditorPage : Page
         Add(VirtualKey.Right, VirtualKeyModifiers.Control, () => { ViewModel.MoveSentence(1); _ = RunAsync(() => SeekSourceAsync(ViewModel.SourceTime), "Preview"); });
         Add(VirtualKey.Home, VirtualKeyModifiers.Control, () => ViewModel.Select(0));
         Add(VirtualKey.End, VirtualKeyModifiers.Control, () => ViewModel.Select(ViewModel.Words.Count - 1));
-        Add(VirtualKey.Number1, VirtualKeyModifiers.Control, () => { InspectorSplit.IsPaneOpen = true; inspector?.SelectTab(false); });
-        Add(VirtualKey.Number2, VirtualKeyModifiers.Control, () => { InspectorSplit.IsPaneOpen = true; inspector?.SelectTab(true); });
+        Add(VirtualKey.Number1, VirtualKeyModifiers.Control, () => CaptionsClicked(this, new()));
+        Add(VirtualKey.Number2, VirtualKeyModifiers.Control, ShowClipsPane);
         Add(VirtualKey.I, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, () => InspectorSplit.IsPaneOpen = !InspectorSplit.IsPaneOpen);
         Add(VirtualKey.F1, VirtualKeyModifiers.None, () => ShortcutsClicked(this, new()));
     }
@@ -286,6 +340,13 @@ public sealed partial class EditorPage : Page
             var panes = InspectorSplit.IsPaneOpen ? new Control[] { Transcript, PreviewPlay, Timeline, inspector! } : [Transcript, PreviewPlay, Timeline];
             var current = Array.FindIndex(panes, pane => InputState.DescendsFrom(focused as DependencyObject, pane));
             panes[(current + (InputState.Down(VirtualKey.Shift) ? -1 : 1) + panes.Length) % panes.Length].Focus(FocusState.Keyboard); args.Handled = true; return;
+        }
+        if (args.Key == VirtualKey.Escape && narrow && InspectorSplit.IsPaneOpen)
+        {
+            InspectorSplit.IsPaneOpen = false;
+            Transcript.Focus(FocusState.Keyboard);
+            args.Handled = true;
+            return;
         }
         var editorFocus = InputState.DescendsFrom(focused as DependencyObject, Transcript) || InputState.DescendsFrom(focused as DependencyObject, PreviewPane) || InputState.DescendsFrom(focused as DependencyObject, Timeline);
         var control = InputState.Down(VirtualKey.Control);
@@ -316,6 +377,7 @@ public sealed partial class EditorPage : Page
     {
         if (InspectorSplit is null || ContentPanes is null) return;
         var isNarrow = args.NewSize.Width < 1200;
+        PanelsButton.Visibility = isNarrow ? Visibility.Visible : Visibility.Collapsed;
         if (isNarrow != narrow)
         {
             narrow = isNarrow; InspectorSplit.DisplayMode = narrow ? SplitViewDisplayMode.Overlay : SplitViewDisplayMode.Inline; InspectorSplit.IsPaneOpen = !narrow;
@@ -323,17 +385,60 @@ public sealed partial class EditorPage : Page
         }
         var stacked = args.NewSize.Width < 960;
         PreviewColumn.Width = stacked ? new(0) : new(previewWidth);
-        ContentPanes.RowDefinitions[0].Height = stacked ? new(2, GridUnitType.Star) : new(1, GridUnitType.Star);
-        ContentPanes.RowDefinitions[1].Height = stacked ? new(3, GridUnitType.Star) : new(0);
+        ContentPanes.ColumnDefinitions[1].Width = new(stacked ? 0 : 4);
+        PaneSplitter.Visibility = stacked ? Visibility.Collapsed : Visibility.Visible;
+        PreviewStage.MinHeight = stacked ? 120 : 180;
+        Aspect.Visibility = stacked ? Visibility.Collapsed : Visibility.Visible;
+        PreviewDescription.Visibility = stacked ? Visibility.Collapsed : Visibility.Visible;
+        ContentPanes.RowDefinitions[0].Height = stacked ? new(1, GridUnitType.Star) : new(1, GridUnitType.Star);
+        ContentPanes.RowDefinitions[1].Height = stacked ? new(1, GridUnitType.Star) : new(0);
         Grid.SetColumn(PreviewPane, stacked ? 0 : 2); Grid.SetRow(TranscriptPane, stacked ? 1 : 0);
+    }
+    internal async Task<bool> TrySaveBeforeLeavingAsync()
+    {
+        if (ViewModel.Busy)
+        {
+            EditorNotice.Severity = InfoBarSeverity.Warning;
+            ViewModel.Notice = "Finish or cancel the current task before leaving this project. Your edits are still here.";
+            return false;
+        }
+        try
+        {
+            await leave.BeginAsync(async () =>
+            {
+                autosave?.Cancel();
+                await pendingSave;
+                await SaveAsync(CancellationToken.None);
+            });
+            return true;
+        }
+        catch (Exception)
+        {
+            EditorSettingsChanged(this, EventArgs.Empty);
+            EditorNotice.Severity = InfoBarSeverity.Error;
+            ViewModel.Notice = "Could not save this project. It is still open with your edits. Use Save project as… or check the folder, then try again.";
+            App.Services.Log.Write(Core.Services.Logging.LogLevel.Warn, "project", "save before navigation failed");
+            return false;
+        }
+    }
+    internal void ResumeAfterFailedLeave()
+    {
+        leave.Resume();
+        EditorSettingsChanged(this, EventArgs.Empty);
+        ViewModel.Notice = "This project is still open. You can keep editing.";
     }
     internal async Task CloseAsync()
     {
         if (disposed) return;
         disposed = true; autosave?.Cancel(); await lifetime.CancelAsync();
-        try { await pendingSave; if (!demo) await SaveAsync(CancellationToken.None); } catch (Exception) { App.Services.Log.Write(Core.Services.Logging.LogLevel.Warn, "import", "project flush failed"); }
-        ViewModel.Changed -= ModelChanged; Transcript.Detach(); Timeline.Detach(); inspector?.Detach();
-        ViewModel.SaveRequested -= SaveRequested;
+        await pendingSave;
+        if (ViewModel is not null)
+        {
+            ViewModel.Changed -= ModelChanged;
+            ViewModel.SelectionChanged -= SelectionChanged;
+            ViewModel.SaveRequested -= SaveRequested;
+        }
+        Transcript.Detach(); Timeline.Detach(); inspector?.Detach();
         App.Services.SettingsChanged -= EditorSettingsChanged;
         if (preview is not null) preview.PlaybackFaulted -= PlaybackFaulted;
         if (presenter is not null) await presenter.DisposeAsync(); else if (preview is not null) await preview.DisposeAsync();

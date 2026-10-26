@@ -71,6 +71,22 @@ public sealed class ViewModelTests
         Assert.Equal(ClipOrigin.Manual, model.Clips.Last().Clip.Origin); Assert.True(model.Clips.Last().Selected);
     }
     [Fact]
+    public void ClipRowDurationMatchesItsPreviewAndExportPlan()
+    {
+        var model = new EditorViewModel(Fixture());
+        model.Select(3); model.Select(8, true);
+        Assert.True(model.MakeClip());
+        var row = model.Clips.Last();
+        var scoped = ExportSelection.Scope(model.State, new ExportTarget.Clip(row.Id))!;
+        var source = model.Project.Media.Source;
+        var rate = source.Audio?.SampleRate is > 0 ? source.Audio.SampleRate : 48000;
+        var plan = EditingEngine.BuildEditPlan(EditingEngine.BuildSegments(scoped, source.DurationSeconds),
+            source.DurationSeconds, rate, scoped.PauseKeepSeconds);
+        Assert.StartsWith(EditorViewModel.Timecode(plan.Duration) + " · ", row.Detail);
+        var wordSpan = model.Words[8].End - model.Words[3].Start;
+        Assert.True(plan.Duration > wordSpan);
+    }
+    [Fact]
     public void MissingSelectionDoesNotCreateClip()
     {
         var model = Demo(); Assert.False(model.MakeClip()); Assert.Contains("No key", model.Notice);
@@ -167,6 +183,61 @@ public sealed class ViewModelTests
         var model = Demo(); model.Select(1); model.CutSelection(); model.SetTranscript(model.Project.Transcript!);
         Assert.Empty(model.State!.CutWordIds); Assert.Empty(model.Clips); Assert.False(model.CanUndo); Assert.False(model.HasSelection);
     }
+    [Fact]
+    public async Task LeavingHoldsOneSavedSnapshotAcrossDelayedReplacement()
+    {
+        var model = new EditorViewModel(Fixture());
+        model.Select(0); model.Select(2, true); Assert.True(model.MakeClip());
+        var acceptedClip = Assert.Single(model.Clips).Id;
+        var acceptedProject = model.Project;
+        var boundary = new ProjectLeaveBoundary(model);
+        var saveStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var finishSave = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var folder = Path.Combine(Path.GetTempPath(), "voxclip-win-ui-leave-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        try
+        {
+            var path = Path.Combine(folder, "take.voxclip");
+            var leaving = boundary.BeginAsync(async () =>
+            {
+                saveStarted.SetResult();
+                await finishSave.Task;
+                await new VoxClip.Core.Services.Project.ProjectStore().SaveAsync(model.Project, path, TestContext.Current.CancellationToken);
+            });
+            await saveStarted.Task;
+            Assert.False(model.CanExport);
+            Assert.Equal("Saving this project before leaving. Editing is paused.", model.Notice);
+            model.Select(4); model.Select(6, true);
+            Assert.False(model.MakeClip());
+            model.SetTranscript(model.Project.Transcript!); // a late transcription result must be refused too
+            model.SetShareCaption("full", "late caption");
+            model.SetCaptionStyle("off");
+            model.Undo();
+            Assert.Same(acceptedProject, model.Project);
+            finishSave.SetResult();
+            await leaving;
+            Assert.True(boundary.IsLeaving);
+            Assert.False(model.Apply(new EditOperation.CutFillers())); // delayed load/probe after save
+            var saved = ProjectSerialization.Deserialize(await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken));
+            Assert.Equal(acceptedClip, Assert.Single(saved.Edits.Clips).Id);
+            Assert.Equal(acceptedClip, Assert.Single(model.Clips).Id);
+            boundary.Resume(); // replacement load failed; the old editor remains usable
+            Assert.True(model.CanExport);
+            Assert.True(model.MakeClip());
+            Assert.Equal(2, model.Clips.Count);
+        }
+        finally { Directory.Delete(folder, true); }
+    }
+    [Fact]
+    public async Task FailedLeaveSaveRestoresEditing()
+    {
+        var model = new EditorViewModel(Fixture());
+        var boundary = new ProjectLeaveBoundary(model);
+        await Assert.ThrowsAsync<IOException>(() => boundary.BeginAsync(() => throw new IOException("controlled save failure")));
+        Assert.False(boundary.IsLeaving);
+        model.Select(1); model.Select(3, true);
+        Assert.True(model.MakeClip());
+    }
     [Theory]
     [InlineData(true, false, false, false, true, false)]
     [InlineData(false, true, false, false, true, false)]
@@ -187,8 +258,60 @@ public sealed class ViewModelTests
     {
         var model = Demo(); model.Select(0); model.CutSelection();
         await using var engine = new DemoPreviewEngine();
-        engine.SetEdit(model.State); await engine.SeekAsync(model.Words[0].Start, true, CancellationToken.None);
+        var snapshot = Snapshot(model);
+        await engine.LoadAsync(snapshot, null, CancellationToken.None);
+        await engine.SeekAsync(snapshot.Plan.MapTime(model.Words[0].Start), true, CancellationToken.None);
         Assert.False(engine.Position.IsPlaying);
+    }
+
+    [Fact]
+    public async Task SyntheticClipPreviewUsesScopedDurationAndStopsAtItsBoundary()
+    {
+        var model = Demo();
+        model.Select(1); model.Select(3, true);
+        Assert.True(model.MakeClip());
+        var clip = Assert.Single(model.Clips);
+        Assert.True(model.Apply(new EditOperation.SetActiveClip(clip.Id)));
+        var snapshot = Snapshot(model);
+        Assert.InRange(snapshot.Plan.Duration, 0.5, 3.0);
+        await using var engine = new DemoPreviewEngine();
+        await engine.LoadAsync(snapshot, null, CancellationToken.None);
+        await engine.SeekAsync(snapshot.Plan.Duration + 10, true, CancellationToken.None);
+        Assert.Equal(snapshot.Plan.Duration, engine.Position.EditedTime, 3);
+        Assert.InRange(engine.Position.SourceTime, model.Words[1].Start, snapshot.Plan.Kept[^1].EndSample / snapshot.Plan.SampleRate);
+        await engine.PlayAsync(CancellationToken.None);
+        Assert.InRange(engine.Position.EditedTime, 0, 0.5);
+    }
+
+    [Fact]
+    public void HighlightOffsetsFollowRenderedUtf16TextIncludingPausesAndCollapsedCuts()
+    {
+        var words = new[] { "Tere! ", "asukoht ", "⋯ 2 cut ", "", "👩🏽‍💻 " };
+        string?[] pauses = [null, " ‖ pause 1.2s ", null, null, null];
+        var starts = TranscriptTextRanges.Starts(words, pauses);
+        var rendered = string.Concat(words.Select((word, index) => word + pauses[index]));
+        Assert.Equal(0, starts[0]);
+        Assert.Equal(words[0].Length + words[1].Length + pauses[1]!.Length, starts[2]);
+        for (var index = 0; index < words.Length; index++)
+            Assert.Equal(words[index].TrimEnd(), rendered.Substring(starts[index], words[index].TrimEnd().Length));
+        Assert.Equal(starts[3], starts[4]);
+    }
+
+    [Theory]
+    [InlineData(0, 3, true, "Clip 00:00.0 / 00:03.0")]
+    [InlineData(4, 3, true, "Clip 00:03.0 / 00:03.0")]
+    [InlineData(7, 16, false, "Edit 00:07.0 / 00:16.0")]
+    public void PreviewClockNamesItsScope(double position, double duration, bool clip, string expected)
+        => Assert.Equal(expected, PreviewClockLabel.Format(position, duration, clip));
+
+    private static ComposeSnapshot Snapshot(EditorViewModel model)
+    {
+        var duration = model.Project.Media.Source.DurationSeconds;
+        const int rate = 48_000;
+        var state = model.State!;
+        var plan = EditingEngine.BuildEditPlan(EditingEngine.BuildSegments(state, duration), duration, rate, state.PauseKeepSeconds);
+        var size = new PixelSize(640, 360);
+        return new(new("synthetic", duration, null, null, size, null, null, false, 0, -1, 0), plan, null, new(size, 30, 1_000_000));
     }
 }
 #endif
