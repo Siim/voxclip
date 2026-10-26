@@ -1,5 +1,9 @@
 # macOS implementation contracts
 
+### 2026-10-26 — Paired rendering prerequisite status
+
+- The Windows audited runtime pin now includes `atempo` after native ARM64 and emulated x64 graph and strict shipping checks. This does not validate either platform's production duration fit or generated-audio composition. Mac composition and disclosure remain under review, and both App/CLI active-synth guards remain enforced. The development machine's disk reserve is an execution constraint, not a product rendering requirement.
+
 ### 2026-10-26 — Approved disclosure staging route (ADR-R27)
 
 - The reviewed helper API uses one reusable `VoiceLabDisclosureOverlay(plan:width:height:fontURL:captionBlocks:)`, drawing after captions via `draw(into:at:)`. Interval-wide caption bounds come from the existing renderer. `VoiceLabDisclosureWriter.stage(sourceMP4:stagedMP4:finalFilename:project:prepared:appVersion:createdAt:)` takes finalized muxer output, stages a marked MP4 and returns sidecar bytes for the existing export transaction.

@@ -209,12 +209,24 @@ class ComponentTests(unittest.TestCase):
             self.assertIn(codec + "_d3d11va2", build.COMPONENTS["hwaccel"])
             self.assertIn(codec + "_d3d11va", build.COMPONENTS["hwaccel"])
 
-    def test_unconditional_buffer_filters_are_also_audited(self):
+    def test_atempo_and_unconditional_filters_are_exactly_registered(self):
+        self.assertEqual(build.components("win-x64")["filter"], ["atempo"])
+        self.assertEqual(build.components("win-arm64")["filter"], ["atempo"])
+        self.assertEqual(set(build.FILTER_SYMBOLS),
+                         {"af_atempo", "asrc_abuffer", "asink_abuffer",
+                          "vsrc_buffer", "vsink_buffer"})
         header = "\n".join("#define CONFIG_" + name.upper() + "_" + kind.upper() + " 1"
                            for kind, names in build.components("win-x64").items() for name in names)
         registration = "\n".join("&ff_" + name + "," for name in build.FILTER_SYMBOLS)
         actual = build.validate_components(header, "win-x64", registration)
-        self.assertEqual(len(actual["filter"]), 4)
+        self.assertEqual(set(actual["filter"]),
+                         {"atempo", "abuffer", "abuffersink", "buffer", "buffersink"})
+        with self.assertRaisesRegex(build.PinError, "component mismatch"):
+            build.validate_components(header.replace("#define CONFIG_ATEMPO_FILTER 1", ""),
+                                      "win-x64", registration)
+        with self.assertRaisesRegex(build.PinError, "registered filters"):
+            build.validate_components(header, "win-x64",
+                                      registration.replace("&ff_af_atempo,", ""))
         with self.assertRaisesRegex(build.PinError, "registered filters"):
             build.validate_components(header, "win-x64", registration + "\n&ff_vf_drawtext,")
 
@@ -223,7 +235,7 @@ class ComponentTests(unittest.TestCase):
         self.assertNotIn("automake", {asset["component"] for asset in LOCK["sourceAssets"]})
         for rid in build.TARGETS:
             self.assertIn("--disable-libzimg", build.configure_arguments(rid, LOCK))
-            self.assertEqual(build.components(rid)["filter"], [])
+            self.assertEqual(build.components(rid)["filter"], ["atempo"])
             self.assertIn("libdav1d", build.components(rid)["decoder"])
             self.assertNotIn("av1", build.components(rid)["decoder"])
             self.assertNotIn("av1_d3d11va2", build.components(rid)["hwaccel"])

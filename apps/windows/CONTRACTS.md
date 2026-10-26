@@ -1,5 +1,11 @@
 # Windows fixed contracts
 
+### 2026-10-26 — Audited atempo runtime integration
+
+- Integrated the reviewed runtime pin and native diagnostic through `16f0510`. Both reproducible RID builds enable `atempo` plus the four unconditional buffer filters. The build-input digest is `fd879b5d763b4bbb4fc3af17da076a6d2e96e5a20661cbeae468adb067a0827f`; all six DLLs must come from that RID's audited ZIP. The sole newly linked FFmpeg source is LGPL `af_atempo.c`, whose header credits an MIT antecedent. Linked dependency members and generated notices are unchanged.
+- Native ARM64 and x64 under ARM64 emulation each passed 26 graph cases, 22 converter/oracle cases, 49 strict shipping cases and two cleanup cases, with no skips. The graph, test and CLI module inventories matched all six audited DLL paths, sizes and hashes; each shipping run retained 72 colour samples. The build-driver suite passed 35 cases. Detailed measurements and the retained initial x64 disk-floor stop are recorded in `tools/ffmpeg-build/README.md`.
+- Raw atempo output is not sample exact. First output PTS was zero, but prefix markers did not scale with stretch and finite-window output counts differed from nominal duration. Production body/handle/trim/seam acceptance and physical x64/Snapdragon performance remain open. This integration changes no App/CLI rendering guard and establishes no package, provider or publication result.
+
 ### 2026-10-26 — Approved disclosure staging route (ADR-R27)
 
 - The reviewed helper API uses one reusable `VoiceLabDisclosureOverlay(plan, width, height, fontPath, captionBlocks)`, drawing after captions via `Draw(output, time, ct)`. Interval-wide caption bounds come from the existing renderer. `VoiceLabDisclosureWriter.StageAsync(sourceMp4, stagedMp4, finalFilename, project, prepared, appVersion, createdAt, ct)` takes finalized muxer output, stages a marked MP4 and returns sidecar bytes for the existing export transaction.

@@ -24,7 +24,7 @@ promise to decode every codec that a supported container can hold.
 | Bitstream filters | `aac_adtstoasc`, `h264_mp4toannexb`, `hevc_mp4toannexb`, `extract_extradata`, `av1_frame_split`, `vp9_superframe_split` | Container/decoder framing and codec extradata, including M2 AVC/HEVC video passthrough; `Pipeline/Exporter.cs:199`; ingest section 6 |
 | Demuxers | `mov`, `matroska`, `wav` | MP4/MOV/M4V; MKV/WebM; managed WAV re-read; `Ffmpeg/Native.cs:29` and handed-off native tests |
 | Muxers | `mp4`, `mov` | Seekable faststart MP4 export (`Pipeline/Exporter.cs:199`, `:222`), and M2 MOV video/LPCM recording (ingest ING-2) |
-| Filters | `buffer`, `buffersink`, `abuffer`, `abuffersink` | Unconditional source/sink registrations in the ABI-required avfilter library. No optional HDR graph is enabled: `Ffmpeg/ToneMapper.cs:12` checks for zscale and `VideoDecoder.cs` falls back to direct swscale with the architecture section 6.5 warning |
+| Filters | `atempo`, `buffer`, `buffersink`, `abuffer`, `abuffersink` | `atempo` supplies pitch-preserving duration fit for nonunity Voice Lab replacement audio. The four sources/sinks are unconditional registrations in the ABI-required avfilter library. No optional HDR graph is enabled: `Ffmpeg/ToneMapper.cs:12` checks for zscale and `VideoDecoder.cs` falls back to direct swscale with the architecture section 6.5 warning |
 | Hwaccels | `h264_d3d11va`, `h264_d3d11va2`, `hevc_d3d11va`, `hevc_d3d11va2`, `vp9_d3d11va`, `vp9_d3d11va2` | Device creation and frame download; `Ffmpeg/DecodeSession.cs:41`, `VideoDecoder.cs:73`. The app uses the `AV_PIX_FMT_D3D11` v2 variants. FFmpeg 9.0.2's Makefile gates each shared implementation object on the legacy flag, so both registrations are required to link without changing upstream FFmpeg |
 | Protocols | `file` | The only allowed input and output transport; `Ffmpeg/Native.cs:28`; `Pipeline/Exporter.cs` |
 
@@ -32,11 +32,13 @@ The resolved allowlist also includes `h263` decode (selected by `mpeg4`),
 the `ac3` parser and `vp9_superframe` bitstream filter (selected by the MOV
 muxer). These framing helpers do not promise AC-3 audio decode. The final
 counts are 23 decoders, 6 encoders (5 on ARM64), 10 parsers, 7 bitstream
-filters, 3 demuxers, 2 muxers, 4 filters, 6 hwaccels and 1 protocol.
+filters, 3 demuxers, 2 muxers, 5 filters, 6 hwaccels and 1 protocol.
 FFmpeg always registers `buffer`, `buffersink`, `abuffer` and `abuffersink`
 when avfilter is built; they have no CONFIG component macros and cannot
-be disabled separately. The recipe enables no configurable filters and
-checks the four symbols in the generated filter registration table.
+be disabled separately. The recipe enables only `atempo` and checks all five
+symbols in the generated filter registration table. `atempo` uses FFmpeg's
+internal transform implementation; the linked objects and their notices are
+selected by the per-RID link-map audit rather than assumed here.
 The build checks the exact resolved component set against this allowlist;
 any further addition or silently disabled requested feature is a failure.
 

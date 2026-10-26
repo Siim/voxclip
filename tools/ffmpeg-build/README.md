@@ -104,6 +104,10 @@ supports the source/configuration audit; it does not replace it.
 FFmpeg x64 and dav1d x64 assembly use the pinned NASM 2.16.03 source build;
 dav1d ARM64 assembly uses clang's integrated assembler. ARM64 disables
 arm-crc, pmull and eor3 to exclude FFmpeg's GPL-headed `aarch64/crc.S`.
+The sole configurable filter is `atempo` for pitch-preserving Voice Lab
+duration fit. The resolved CONFIG flag and generated registration must match
+the allowlist alongside the four unconditional buffer source/sink filters.
+The link-map audit covers its internal transform objects.
 AV1 uses dav1d software decode; native AV1 hardware wrappers are not needed
 by the current media contract. Windows performance and device acceptance
 remain separate from these cross-build checks.
@@ -116,6 +120,128 @@ property; build into the cache, not a sibling worktree. Running its output
 with the manifest path checks all six ABI majors without loading a DLL.
 This is in addition to building the read-only media test-project snapshot;
 it is not a Windows decoder/encoder runtime test.
+
+## Native atempo graph diagnostic
+
+`native-atempo/` is a standalone .NET 10 diagnostic using the same pinned
+FFmpeg.AutoGen 9.0.1.1 assembly as the Windows app. It adds no package. Build
+it with `-m:1` and `-p:BindingsAssembly=<absolute path to the pinned
+FFmpeg.AutoGen.dll>`. Building on macOS checks the bindings and C# structure;
+it does not execute a Windows DLL. Run it only on an explicitly assigned VM
+slot, with four arguments: `win-arm64|win-x64`, an extracted directory with
+exactly the audited six DLLs, its matching `report.json`, and the committed
+`apps/windows/build/ffmpeg.json`. The diagnostic fails closed on RID, manifest,
+DLL size/hash, actual loaded absolute module path and ABI major. Its JSON output
+includes the process and OS architecture; `win-x64` on an ARM64 OS is emulation,
+not physical x64 evidence. Save stdout even when its exit code is 1.
+
+It runs 24 synthetic cases: 24/48 kHz, mono/stereo, stored stretches
+0.92/1.00/1.08 and 0.18/3.00 second inputs. Each graph is
+`abuffer(flt)` → `atempo(1/storedStretch)` → `abuffersink`. Two extra cases
+cancel after three feeds and dispose without EOF. Feed and sink request sizes
+are at most 4096 frames; each completed case sends EOF once and drains to
+`AVERROR_EOF`, handling `EAGAIN` between feeds. The input has a 440 Hz tone,
+chirp, and two short nonconstant markers. Output rows record expected and
+actual frame counts, the sink time base and first/last output-frame PTS,
+marker positions, dominant frequency, finite PCM,
+maximum feed/drain size, EAGAIN count and EOF count. The diagnostic retains
+completed PCM for analysis, with an explicit two-times-input cap; this is a
+measurement tool, not the production streaming implementation.
+
+The predeclared diagnostic gates allow count error at most the greater of
+1024 frames or 2%, marker displacement at most the greater of 1024 frames or
+30 ms, and long-stream pitch error at most 1%. Short-stream frequency is
+reported but not gated because its 180 ms spectral window has poor resolution.
+These are coarse graph checks, not a promise that raw atempo emits a
+sample-exact duration or gapless boundary. A failed measured row must remain
+failed evidence; the Media owner must define trim, latency, handle and seam
+compensation from measured output rather than changing playback sample rate.
+No live provider, paid asset, ffprobe library, or test-only BtbN DLL is an
+input to this diagnostic.
+
+The diagnostic files are outside `build_inputs_digest()`'s executable recipe
+set (`build.py`, `dependencies.sh`, `linker.py`, `licences.py`, patches and
+`sources.json`). Adding this tool does not repin or invalidate the four clean
+build reports. The runtime acceptance record below is updated after each
+native run; an unrun RID remains explicitly pending.
+
+### 2026-10-26 atempo runtime acceptance record
+
+- Prepared on track `track/win-ffmpeg-pin` from clean `9ad75f33539a12ab4855d02e6a75d7891e80266c`.
+- Local .NET 10 build: passed, zero warnings/errors, pinned FFmpeg.AutoGen
+  9.0.1.1; 35/35 build-driver tests passed. `build.py verify` reconfirmed
+  byte-identical ZIPs and six DLLs across both clean attempts per RID.
+- Audited build-input SHA-256 remains
+  `fd879b5d763b4bbb4fc3af17da076a6d2e96e5a20661cbeae468adb067a0827f`.
+  The verified x64 ZIP is 14,593,212 bytes, SHA-256
+  `571a1151c7019154982a3aff76ff3d0efde35cc702fd1fc7be5d0fb3db4e6433`;
+  the ARM64 ZIP is 7,902,908 bytes, SHA-256
+  `60d3b12b3175b7e92f665b00ec073852d0ed44f749cf559370dbc31383dde3b8`.
+- Committed diagnostic `ac567799b0f4ce2ff80d290e36abb67c63c41f59`
+  ran on Windows ARM64 using the audited ARM64 ZIP, then as a self-contained
+  x64 process under Windows ARM64 emulation using the audited x64 ZIP. These
+  are native ARM64 and emulated x64 results, not physical x64 results. Each
+  process loaded exactly the six expected DLL absolute paths and matched
+  every report size, SHA-256 and ABI major. All 26 cases per RID passed the
+  predeclared coarse gates; 24 completed cases sent EOF once and reached
+  sink EOF once, with finite PCM, at most 4096 frames per feed/drain, and
+  observed EAGAIN between feeds. Two cancellation cases each disposed after
+  three feeds without EOF. No owned process residue remained.
+- The two RIDs emitted identical graph measurements. Mono and stereo counts
+  also matched for each rate, duration and stretch. Counts below are frames;
+  the decimal targets are `inputFrames * storedStretch`, not a claim of
+  sample-exact output.
+
+  | Rate | Input | Stretch | Nominal output | Measured output | Prefix / tail marker output |
+  | --- | ---: | ---: | ---: | ---: | ---: |
+  | 24 kHz | 0.18 s | 0.92 | 3974.4 | 4058 | 840 / 3262 |
+  | 24 kHz | 0.18 s | 1.00 | 4320 | 4320 | 840 / 3480 |
+  | 24 kHz | 0.18 s | 1.08 | 4665.6 | 4538 | 840 / 3698 |
+  | 24 kHz | 3.00 s | 0.92 | 66240 | 66381 | 840 / 65537 |
+  | 24 kHz | 3.00 s | 1.00 | 72000 | 72000 | 840 / 71156 |
+  | 24 kHz | 3.00 s | 1.08 | 77760 | 77669 | 840 / 76662 |
+  | 48 kHz | 0.18 s | 0.92 | 7948.8 | 8116 | 1680 / 6525 |
+  | 48 kHz | 0.18 s | 1.00 | 8640 | 8640 | 1680 / 6960 |
+  | 48 kHz | 0.18 s | 1.08 | 9331.2 | 9075 | 1680 / 7395 |
+  | 48 kHz | 3.00 s | 0.92 | 132480 | 132759 | 1680 / 131079 |
+  | 48 kHz | 3.00 s | 1.00 | 144000 | 144000 | 1680 / 142320 |
+  | 48 kHz | 3.00 s | 1.08 | 155520 | 155337 | 1680 / 153332 |
+
+- The sink time base was `1/sampleRate`; first output-frame PTS was zero in
+  every completed case. Last output-frame PTS is recorded in each JSON row
+  and is the *start* of that frame, not an output length or tail timestamp.
+  The prefix marker at 35 ms remained at input frame 840 or 1680 even for
+  nonunity stretch. The short nonunity count residual reached −256.2 or
+  +167.2 frames at 48 kHz; long residual reached −183 or +279 frames.
+  Dominant frequency was 440 Hz in all measured rows. These results expose
+  atempo's finite-window count and marker behavior. First PTS zero and the
+  coarse graph pass do not establish a fitted body origin, exact duration,
+  complete handles, or a seamless touching cut. The Media owner must map
+  output to source-grid handles, trim to the requested body, and check
+  roomtone/seam continuity in production; changing sample rate would change
+  pitch and is not compensation for these residuals.
+- The unchanged strict shipping selection ran from committed track HEAD
+  with the new pin and existing synthetic fixtures. ARM64 used source HEAD
+  `5c7816104f259b2cd35137337d8bb30b03776b76`; x64 used
+  `ac567799b0f4ce2ff80d290e36abb67c63c41f59`. The selected
+  `apps/windows`, `shared` and notices trees are identical at these HEADs.
+  Each RID passed 22 converter/oracle, 49 shipping and two cleanup cases
+  with zero skips/failures. Each 72-row bar CSV retained High profile,
+  yuv420p, BT.709 primaries/transfer/matrix and limited range. Test and CLI
+  module records each identify all six audited DLL sizes and hashes. The
+  initial x64 run stopped before tests when self-contained publish reduced
+  VM free space to 5.92 GiB; that failure log is retained. Deleting only
+  already-copied owned diagnostic scratch raised free space to 6.20 GiB;
+  the unchanged x64 runner then passed, ending at 6.16 GiB and 1,944 MiB
+  owned scratch. No thresholds, fixtures, source tests or encoder settings
+  changed.
+- Full per-case JSON, first-attempt logs, build/publish logs, and compressed
+  shipping logs/module records/CSV/JSON reports are retained on the Mac at
+  `~/Library/Caches/voxclip-ffmpeg-atempo-20261026/native-atempo-vm-5c78161/`.
+  The exclusive token `win-atempo-r2-5c78161` was removed after exact owned
+  scratch cleanup; VM C: free was 8.07 GiB and Mac free was 16.09 GiB.
+  Physical x64/iGPU, Snapdragon performance, and Voice Lab production
+  composition acceptance remain separate.
 
 ## Release handoff
 

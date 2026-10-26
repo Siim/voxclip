@@ -3,23 +3,23 @@
   "version": "n9.0.2",
   "sourceCommit": "946fcce07b6dcd0331c8cc609192aeff5e1924f8",
   "recipe": "tools/ffmpeg-build",
-  "buildInputsSha256": "049f309525d2e22ab186539890732cbcb526d3c4f3b65c78ccc5b01839ba2ed7",
+  "buildInputsSha256": "fd879b5d763b4bbb4fc3af17da076a6d2e96e5a20661cbeae468adb067a0827f",
   "recipeCommit": "BUILD_COMMIT",
   "configure": {
-    "win-x64": "--disable-everything --disable-autodetect --disable-programs --disable-doc --disable-avdevice --enable-shared --disable-static --disable-gpl --disable-nonfree --disable-version3 --disable-network --disable-debug --disable-pthreads --enable-w32threads --disable-dxva2 --enable-cross-compile --target-os=mingw32 --arch=x86_64 --prefix=/voxclip --cross-prefix=x86_64-w64-mingw32- --cc=x86_64-w64-mingw32-clang --cxx=x86_64-w64-mingw32-clang++ --ld=voxclip-link --pkg-config=pkg-config --pkg-config-flags=--static --extra-version=voxclip-lgpl1 --extra-cflags='-I../prefix/include -O2 -g0 -fno-ident -ffile-prefix-map=../../=/build/' --extra-ldflags='-L../prefix/lib -static -Wl,--no-insert-timestamp' --extra-libs='-lc++ -lc++abi -lunwind -lwinpthread' --enable-avcodec --enable-avformat --enable-avutil --enable-avfilter --enable-swscale --enable-swresample --enable-mediafoundation --enable-d3d11va --enable-ffnvcodec --enable-nvenc --enable-amf --enable-libdav1d --disable-libzimg --enable-libvpl --enable-decoder='h264,hevc,vp8,vp9,libdav1d,aac,opus,vorbis,mpeg4,h263,ffv1,pcm_u8,pcm_s8,pcm_s16le,pcm_s16be,pcm_s24le,pcm_s24be,pcm_s32le,pcm_s32be,pcm_f32le,pcm_f32be,pcm_f64le,pcm_f64be' --enable-encoder='h264_nvenc,h264_qsv,h264_amf,h264_mf,aac,pcm_s16le' --enable-parser='h264,hevc,vp8,vp9,av1,aac,opus,vorbis,mpeg4video,ac3' --enable-bsf='aac_adtstoasc,h264_mp4toannexb,hevc_mp4toannexb,extract_extradata,av1_frame_split,vp9_superframe_split,vp9_superframe' --enable-demuxer='mov,matroska,wav' --enable-muxer='mp4,mov' --enable-hwaccel='h264_d3d11va,h264_d3d11va2,hevc_d3d11va,hevc_d3d11va2,vp9_d3d11va,vp9_d3d11va2' --enable-protocol=file",
-    "win-arm64": "--disable-everything --disable-autodetect --disable-programs --disable-doc --disable-avdevice --enable-shared --disable-static --disable-gpl --disable-nonfree --disable-version3 --disable-network --disable-debug --disable-pthreads --enable-w32threads --disable-dxva2 --enable-cross-compile --target-os=mingw32 --arch=aarch64 --prefix=/voxclip --cross-prefix=aarch64-w64-mingw32- --cc=aarch64-w64-mingw32-clang --cxx=aarch64-w64-mingw32-clang++ --ld=voxclip-link --pkg-config=pkg-config --pkg-config-flags=--static --extra-version=voxclip-lgpl1 --extra-cflags='-I../prefix/include -O2 -g0 -fno-ident -ffile-prefix-map=../../=/build/' --extra-ldflags='-L../prefix/lib -static -Wl,--no-insert-timestamp' --extra-libs='-lc++ -lc++abi -lunwind -lwinpthread' --enable-avcodec --enable-avformat --enable-avutil --enable-avfilter --enable-swscale --enable-swresample --enable-mediafoundation --enable-d3d11va --enable-ffnvcodec --enable-nvenc --enable-amf --enable-libdav1d --disable-libzimg --disable-libvpl --disable-arm-crc --disable-pmull --disable-eor3 --enable-decoder='h264,hevc,vp8,vp9,libdav1d,aac,opus,vorbis,mpeg4,h263,ffv1,pcm_u8,pcm_s8,pcm_s16le,pcm_s16be,pcm_s24le,pcm_s24be,pcm_s32le,pcm_s32be,pcm_f32le,pcm_f32be,pcm_f64le,pcm_f64be' --enable-encoder='h264_nvenc,h264_amf,h264_mf,aac,pcm_s16le' --enable-parser='h264,hevc,vp8,vp9,av1,aac,opus,vorbis,mpeg4video,ac3' --enable-bsf='aac_adtstoasc,h264_mp4toannexb,hevc_mp4toannexb,extract_extradata,av1_frame_split,vp9_superframe_split,vp9_superframe' --enable-demuxer='mov,matroska,wav' --enable-muxer='mp4,mov' --enable-hwaccel='h264_d3d11va,h264_d3d11va2,hevc_d3d11va,hevc_d3d11va2,vp9_d3d11va,vp9_d3d11va2' --enable-protocol=file"
+    "win-x64": "--disable-everything --disable-autodetect --disable-programs --disable-doc --disable-avdevice --enable-shared --disable-static --disable-gpl --disable-nonfree --disable-version3 --disable-network --disable-debug --disable-pthreads --enable-w32threads --disable-dxva2 --enable-cross-compile --target-os=mingw32 --arch=x86_64 --prefix=/voxclip --cross-prefix=x86_64-w64-mingw32- --cc=x86_64-w64-mingw32-clang --cxx=x86_64-w64-mingw32-clang++ --ld=voxclip-link --pkg-config=pkg-config --pkg-config-flags=--static --extra-version=voxclip-lgpl1 --extra-cflags='-I../prefix/include -O2 -g0 -fno-ident -ffile-prefix-map=../../=/build/' --extra-ldflags='-L../prefix/lib -static -Wl,--no-insert-timestamp' --extra-libs='-lc++ -lc++abi -lunwind -lwinpthread' --enable-avcodec --enable-avformat --enable-avutil --enable-avfilter --enable-swscale --enable-swresample --enable-mediafoundation --enable-d3d11va --enable-ffnvcodec --enable-nvenc --enable-amf --enable-libdav1d --disable-libzimg --enable-libvpl --enable-decoder='h264,hevc,vp8,vp9,libdav1d,aac,opus,vorbis,mpeg4,h263,ffv1,pcm_u8,pcm_s8,pcm_s16le,pcm_s16be,pcm_s24le,pcm_s24be,pcm_s32le,pcm_s32be,pcm_f32le,pcm_f32be,pcm_f64le,pcm_f64be' --enable-encoder='h264_nvenc,h264_qsv,h264_amf,h264_mf,aac,pcm_s16le' --enable-parser='h264,hevc,vp8,vp9,av1,aac,opus,vorbis,mpeg4video,ac3' --enable-bsf='aac_adtstoasc,h264_mp4toannexb,hevc_mp4toannexb,extract_extradata,av1_frame_split,vp9_superframe_split,vp9_superframe' --enable-demuxer='mov,matroska,wav' --enable-muxer='mp4,mov' --enable-filter=atempo --enable-hwaccel='h264_d3d11va,h264_d3d11va2,hevc_d3d11va,hevc_d3d11va2,vp9_d3d11va,vp9_d3d11va2' --enable-protocol=file",
+    "win-arm64": "--disable-everything --disable-autodetect --disable-programs --disable-doc --disable-avdevice --enable-shared --disable-static --disable-gpl --disable-nonfree --disable-version3 --disable-network --disable-debug --disable-pthreads --enable-w32threads --disable-dxva2 --enable-cross-compile --target-os=mingw32 --arch=aarch64 --prefix=/voxclip --cross-prefix=aarch64-w64-mingw32- --cc=aarch64-w64-mingw32-clang --cxx=aarch64-w64-mingw32-clang++ --ld=voxclip-link --pkg-config=pkg-config --pkg-config-flags=--static --extra-version=voxclip-lgpl1 --extra-cflags='-I../prefix/include -O2 -g0 -fno-ident -ffile-prefix-map=../../=/build/' --extra-ldflags='-L../prefix/lib -static -Wl,--no-insert-timestamp' --extra-libs='-lc++ -lc++abi -lunwind -lwinpthread' --enable-avcodec --enable-avformat --enable-avutil --enable-avfilter --enable-swscale --enable-swresample --enable-mediafoundation --enable-d3d11va --enable-ffnvcodec --enable-nvenc --enable-amf --enable-libdav1d --disable-libzimg --disable-libvpl --disable-arm-crc --disable-pmull --disable-eor3 --enable-decoder='h264,hevc,vp8,vp9,libdav1d,aac,opus,vorbis,mpeg4,h263,ffv1,pcm_u8,pcm_s8,pcm_s16le,pcm_s16be,pcm_s24le,pcm_s24be,pcm_s32le,pcm_s32be,pcm_f32le,pcm_f32be,pcm_f64le,pcm_f64be' --enable-encoder='h264_nvenc,h264_amf,h264_mf,aac,pcm_s16le' --enable-parser='h264,hevc,vp8,vp9,av1,aac,opus,vorbis,mpeg4video,ac3' --enable-bsf='aac_adtstoasc,h264_mp4toannexb,hevc_mp4toannexb,extract_extradata,av1_frame_split,vp9_superframe_split,vp9_superframe' --enable-demuxer='mov,matroska,wav' --enable-muxer='mp4,mov' --enable-filter=atempo --enable-hwaccel='h264_d3d11va,h264_d3d11va2,hevc_d3d11va,hevc_d3d11va2,vp9_d3d11va,vp9_d3d11va2' --enable-protocol=file"
   },
   "license": "LGPL version 2.1 or later",
   "builds": {
     "win-x64": {
       "name": "voxclip-ffmpeg-n9.0.2-win-x64.zip",
-      "sha256": "f4df8380abc9847bdc8f0f12b6242379c8d9c6f4efcc77a7be9a57d1dc55c869",
-      "size": 14579388
+      "sha256": "571a1151c7019154982a3aff76ff3d0efde35cc702fd1fc7be5d0fb3db4e6433",
+      "size": 14593212
     },
     "win-arm64": {
       "name": "voxclip-ffmpeg-n9.0.2-win-arm64.zip",
-      "sha256": "4ed4745035847c70b73e64babbdcda6cbb5f910ce292511ca9a80748261b905c",
-      "size": 7891644
+      "sha256": "60d3b12b3175b7e92f665b00ec073852d0ed44f749cf559370dbc31383dde3b8",
+      "size": 7902908
     }
   },
   "sourceAssets": [
@@ -142,14 +142,14 @@
   "reproducibility": {
     "win-x64": {
       "identical": true,
-      "firstSha256": "f4df8380abc9847bdc8f0f12b6242379c8d9c6f4efcc77a7be9a57d1dc55c869",
-      "secondSha256": "f4df8380abc9847bdc8f0f12b6242379c8d9c6f4efcc77a7be9a57d1dc55c869",
+      "firstSha256": "571a1151c7019154982a3aff76ff3d0efde35cc702fd1fc7be5d0fb3db4e6433",
+      "secondSha256": "571a1151c7019154982a3aff76ff3d0efde35cc702fd1fc7be5d0fb3db4e6433",
       "differences": {}
     },
     "win-arm64": {
       "identical": true,
-      "firstSha256": "4ed4745035847c70b73e64babbdcda6cbb5f910ce292511ca9a80748261b905c",
-      "secondSha256": "4ed4745035847c70b73e64babbdcda6cbb5f910ce292511ca9a80748261b905c",
+      "firstSha256": "60d3b12b3175b7e92f665b00ec073852d0ed44f749cf559370dbc31383dde3b8",
+      "secondSha256": "60d3b12b3175b7e92f665b00ec073852d0ed44f749cf559370dbc31383dde3b8",
       "differences": {}
     }
   },

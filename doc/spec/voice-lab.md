@@ -727,6 +727,8 @@ Let `r = duration(trimmed TTS) / duration(W)`:
    - **`lipsync`**: §9, with `sync_mode = "remap"`.
    - Otherwise the hunk is rejected: "This change is too long to patch. Re-record this sentence instead."
 
+The audited Windows runtime now includes `atempo`; its reproducible build and native graph evidence are recorded in `tools/ffmpeg-build/README.md`. The graph's first output PTS of zero does not establish a proportional body origin or exact output duration. Finite-window count differences and marker shifts must be handled and verified in the production composition path with the declared trim and seam handles. The app and CLI guards remain until that path passes; the runtime prerequisite alone does not enable rendering.
+
 ### 8.10 Seams
 
 - Apply equal-power crossfades of `SEAM_FADE` at both seams, or `HARD_SEAM_FADE` at hard seams. The synthetic audio and the source audio overlap by the fade length, centred on the seam.

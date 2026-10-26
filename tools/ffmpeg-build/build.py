@@ -52,7 +52,7 @@ COMPONENTS = {
            "av1_frame_split vp9_superframe_split vp9_superframe".split(),
     "demuxer": "mov matroska wav".split(),
     "muxer": "mp4 mov".split(),
-    "filter": [],
+    "filter": ["atempo"],
     "hwaccel": "h264_d3d11va h264_d3d11va2 hevc_d3d11va hevc_d3d11va2 "
                "vp9_d3d11va vp9_d3d11va2".split(),
     "protocol": ["file"],
@@ -62,8 +62,9 @@ EXTERNAL_SOURCES = {"ffnvcodec": "ffnvcodec", "amf": "amf", "libvpl": "libvpl",
 GPL_MARKERS = (b"fftw-", b"fftw_wisdom", b"fftw_plan_", b"fftwf_plan_",
                b"x264_encoder_", b"x265_encoder_", b"x265_api_get", b"libpostproc",
                b"postproc_license", b"chromaprint_", b"rsvg_handle_", b"rav1e_context_")
-FILTER_SYMBOLS = {"asrc_abuffer": "abuffer", "vsrc_buffer": "buffer",
-                  "asink_abuffer": "abuffersink", "vsink_buffer": "buffersink"}
+FILTER_SYMBOLS = {"af_atempo": "atempo", "asrc_abuffer": "abuffer",
+                  "vsrc_buffer": "buffer", "asink_abuffer": "abuffersink",
+                  "vsink_buffer": "buffersink"}
 
 
 class PinError(Exception):
