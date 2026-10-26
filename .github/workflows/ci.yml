@@ -497,6 +497,7 @@ jobs:
         shell: bash
         run: |
           npm --prefix tools/design run generate
+          npm --prefix tools/design test
           git diff --exit-code
           untracked=$(git status --porcelain --untracked-files=all)
           if [ -n "$untracked" ]; then echo "::error::Generated token files are not committed:"; echo "$untracked"; exit 1; fi

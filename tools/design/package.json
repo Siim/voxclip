@@ -7,6 +7,7 @@
   "scripts": {
     "generate": "node generate.mjs",
     "check": "node generate.mjs --check",
+    "contrast": "node contrast.mjs",
     "test": "node --test"
   }
 }

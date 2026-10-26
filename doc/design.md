@@ -689,6 +689,8 @@ Voice: short, factual, calm, always reassuring about the media. No exclamation m
 
 Naming: token path `color.text.primary` → Swift `vcTextPrimary`, XAML `VcTextPrimaryBrush`. Generated files carry `GENERATED from shared/design/tokens.json - do not edit`. CI regenerates and fails on drift.
 
+Contrast is a test, not a note: `npm --prefix tools/design test` computes WCAG 2.x contrast for every text-on-surface pair (4.5:1), every text or glyph on the accent (4.5:1, including the macOS system white and the Windows `TextOnAccentFillColorPrimary` from `App.xaml`) and every UI boundary and mark (3:1), in light and dark, and fails when a colour token is neither checked nor exempt with a reason. `npm --prefix tools/design run contrast` prints the table. Lowest pairs: text 4.63:1 (light `word.cut` on `bg.surface`), on-accent 4.65:1 (dark `accent.on` on `accent.default`), boundaries 3.12:1 (light `line.strong` on `bg.sunken`).
+
 The palette is the Document direction from the October 2026 design study: paper and ink neutrals and one accent, Petrol. Each colour token's `source` extension names the study token its value comes from; for example `bg.elevated` is the study's raised and `text.muted` its pause label. `line.subtle` was removed because the study has two separators. `text.disabled`, `record.*`, `stage`, `overlay.scrim` and `overlay.transportOpaque` keep values the study does not define.
 
 Summary (full values in tokens.json):

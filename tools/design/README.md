@@ -7,6 +7,7 @@ only source of token values. This implements `doc/design.md` section 16.
 npm --prefix tools/design run generate
 npm --prefix tools/design run check
 npm --prefix tools/design test
+npm --prefix tools/design run contrast   # print every contrast pair
 ```
 
 `generate` writes exactly the two app `Tokens` files and the macOS colour
@@ -39,6 +40,14 @@ host-dependent paths in the outputs.
   shared resources use the declared system fallback. Successful file descriptors
   are cached on the main actor. No fonts are copied into an app source tree.
 
+`contrast.mjs` computes WCAG 2.x contrast for the pairs the apps draw, in light
+and dark: text on surfaces (4.5:1), text and glyphs on the accent (4.5:1), and
+UI boundaries and marks (3:1). Windows on-accent pairs read the accent ramp
+from `App.xaml`; translucent colours are composited over what they sit on.
+`npm test` fails on any pair below its minimum, on a colour token that no pair
+checks and that is not listed as exempt with a reason, and on an `App.xaml`
+ramp that differs from the accent tokens.
+
 Edit the shared tokens, regenerate, and review both output diffs as a design
-change. Never edit either generated file by hand. Consumer-specific aliases
+change. Never edit a generated file by hand. Consumer-specific aliases
 are not generated; use the canonical resource keys above.

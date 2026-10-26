@@ -10,7 +10,8 @@
             <!-- Petrol accent ramp (doc/design.md section 14): light fills use Dark1 (accent.default) and
                  Dark2 (accent.pressed); dark fills use Light2 (accent.text). High Contrast keeps the system colours.
                  WinUI 2.3.9 builds TextOnAccentFillColorPrimaryBrush from its own colour with StaticResource, so
-                 framework controls may keep #FFFFFF / #000000 on the accent; both still pass 4.5:1. -->
+                 framework controls may keep #FFFFFF / #000000 on the accent; both still pass 4.5:1.
+                 tools/design/contrast.test.mjs checks this ramp against tokens.json. -->
             <ResourceDictionary.ThemeDictionaries>
                 <ResourceDictionary x:Key="Light">
                     <Color x:Key="SystemAccentColorDark1">#1C6B69</Color>
