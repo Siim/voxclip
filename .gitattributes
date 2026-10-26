@@ -1,0 +1,7 @@
+# Text files use LF in the repository and in every checkout, on every OS.
+# Exact-text fixtures, notices and the hashed Windows runtime terms must not
+# change when a Windows machine (or a CI runner with core.autocrlf) checks out.
+* text=auto eol=lf
+
+# Upstream font licences stay byte-identical to the files they came from.
+shared/fonts/**/OFL.txt -text
