@@ -35,10 +35,9 @@ public sealed partial class HomePage : Page
         try
         {
             var project = ProjectSerialization.Deserialize(await System.IO.File.ReadAllTextAsync(row.Path));
-            var duration = TimeSpan.FromSeconds(project.Media.Source.DurationSeconds);
             var age = DateTimeOffset.Now.Date - project.ModifiedAt.LocalDateTime.Date;
             var when = age.TotalDays switch { 0 => "today", 1 => "yesterday", <= 6 and >= 2 => project.ModifiedAt.ToLocalTime().ToString("dddd"), _ => project.ModifiedAt.ToLocalTime().ToString("d") };
-            row.Detail = $"{(int)duration.TotalMinutes}:{duration.Seconds:00} · {when}";
+            row.Detail = $"{EditorViewModel.Duration(project.Media.Source.DurationSeconds)} · {when}";
             if (!System.IO.File.Exists(project.Media.Source.AbsolutePath)) return;
             try
             {

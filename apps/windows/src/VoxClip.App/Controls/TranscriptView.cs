@@ -21,7 +21,7 @@ public sealed class TranscriptView : UserControl
     private bool dragging;
     private bool showCuts = true;
     private bool showPauses = true;
-    private double fontSize = 16;
+    private double fontSize = DefaultFontSize;
     private readonly Popup correction = new() { IsLightDismissEnabled = true };
     private sealed record WordRun(int Index, Run Run);
     private sealed record PauseRun(Pause Pause, Run Run);
@@ -51,9 +51,12 @@ public sealed class TranscriptView : UserControl
         Unloaded += (_, _) => correction.IsOpen = false;
     }
 
+    /// <summary>Segoe UI Variable Text at 19 epx is the Windows transcript default; design §4.1 (C4).</summary>
+    internal static double DefaultFontSize => (double)Application.Current.Resources["VcLayoutTranscriptFontSize"];
+    private static double LineHeight(double size) => size * (double)Application.Current.Resources["VcLayoutTranscriptLineHeight"] / DefaultFontSize;
     public void Attach(EditorViewModel viewModel)
     {
-        fontSize = Math.Clamp(App.Services.Get("general.transcriptTextSize", 16d), 13, 28);
+        fontSize = Math.Clamp(App.Services.Get("general.transcriptTextSize", DefaultFontSize), 13, 28);
         if (model is not null) { model.Changed -= ModelChanged; model.SelectionChanged -= ModelChanged; model.Announcement -= Announce; }
         model = viewModel;
         model.Changed += ModelChanged;
@@ -75,12 +78,12 @@ public sealed class TranscriptView : UserControl
     }
     public void Zoom(double delta, bool reset = false)
     {
-        fontSize = reset ? 16 : Math.Clamp(fontSize + delta, 13, 28);
-        foreach (var visual in realized.Values) { visual.Text.FontSize = fontSize; visual.Text.LineHeight = fontSize * 26 / 16; }
+        fontSize = reset ? DefaultFontSize : Math.Clamp(fontSize + delta, 13, 28);
+        foreach (var visual in realized.Values) { visual.Text.FontSize = fontSize; visual.Text.LineHeight = LineHeight(fontSize); }
     }
     public void ApplySettings()
     {
-        fontSize = Math.Clamp(App.Services.Get("general.transcriptTextSize", 16d), 13, 28);
+        fontSize = Math.Clamp(App.Services.Get("general.transcriptTextSize", DefaultFontSize), 13, 28);
         Zoom(0); RefreshVisuals();
     }
     protected override AutomationPeer OnCreateAutomationPeer() => new TranscriptPeer(this);
@@ -102,12 +105,13 @@ public sealed class TranscriptView : UserControl
         var item = model.Paragraphs[args.Index];
         var gutter = (TextBlock)grid.Children[0];
         gutter.Text = item.Timecode + (item.Speaker is null ? "" : "\n" + item.Speaker);
-        gutter.FontFamily = (FontFamily)Application.Current.Resources["VcFontGeistMono"];
-        gutter.Foreground = Brush("VcTextMutedBrush");
+        gutter.FontFamily = (FontFamily)Application.Current.Resources["VcMonoFontFamily"];
+        gutter.FontSize = (double)Application.Current.Resources["VcLayoutTimecodeFontSize"];
+        gutter.Foreground = Brush("VcTextTertiaryBrush");
         var rich = (RichTextBlock)grid.Children[1];
-        rich.FontFamily = (FontFamily)Application.Current.Resources["VcFontDmSans"];
+        rich.FontFamily = (FontFamily)Application.Current.Resources["ContentControlThemeFontFamily"];
         rich.FontSize = fontSize;
-        rich.LineHeight = fontSize * 26 / 16;
+        rich.LineHeight = LineHeight(fontSize);
         var rtl = model.State?.Transcript.Language?.Split('-')[0] is "ar" or "he" or "fa" or "ur";
         rich.FlowDirection = rtl ? FlowDirection.RightToLeft : FlowDirection.LeftToRight;
         Grid.SetColumn(gutter, rtl ? 1 : 0); Grid.SetColumn(rich, rtl ? 0 : 1);
@@ -125,7 +129,7 @@ public sealed class TranscriptView : UserControl
             runs.Add(new(index, run));
             if (showPauses && model.State?.Pauses.FirstOrDefault(pause => pause.AfterIndex == index) is { } pause)
             {
-                var pauseRun = new Run { Text = " ‖ " + pause.Label + " ", FontSize = 11, FontFamily = (FontFamily)Application.Current.Resources["VcFontGeistMono"], Foreground = Brush("VcTextMutedBrush") };
+                var pauseRun = new Run { Text = " ‖ " + pause.Label + " ", FontSize = (double)Application.Current.Resources["VcLayoutPauseTokenFontSize"], FontFamily = (FontFamily)Application.Current.Resources["VcMonoFontFamily"], Foreground = Brush("VcTextMutedBrush") };
                 paragraph.Inlines.Add(pauseRun); pauses.Add(new(pause, pauseRun));
             }
         }

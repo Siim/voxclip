@@ -270,11 +270,22 @@ public sealed class ViewModelTests
     public void ShortcutsRespectTextFocusAndAltGr(bool text, bool correction, bool control, bool alt, bool editor, bool expected)
         => Assert.Equal(expected, ShortcutPolicy.EditorMayHandle(text, correction, control, alt, editor));
     [Theory]
-    [InlineData(0, "00:00.0")]
-    [InlineData(-10, "00:00.0")]
-    [InlineData(16.4, "00:16.4")]
+    [InlineData(0, "0:00.0")]
+    [InlineData(-10, "0:00.0")]
+    [InlineData(16.4, "0:16.4")]
+    [InlineData(16.6, "0:16.6")]
+    [InlineData(59.96, "1:00.0")]
     [InlineData(3601.2, "1:00:01.2")]
+    [InlineData(3723.4, "1:02:03.4")]
+    [InlineData(double.NaN, "0:00.0")]
     public void TimecodesUseStablePrecision(double value, string expected) => Assert.Equal(expected, EditorViewModel.Timecode(value));
+    [Theory]
+    [InlineData(0, "0:00")]
+    [InlineData(14.6, "0:15")]
+    [InlineData(146.2, "2:26")]
+    [InlineData(3723.4, "62:03")]
+    [InlineData(double.PositiveInfinity, "0:00")]
+    public void DurationsUseMinutesAndSeconds(double value, string expected) => Assert.Equal(expected, EditorViewModel.Duration(value));
     [Fact]
     public async Task PausedDemoDoesNotStartWhenSeekingIntoCut()
     {
@@ -320,9 +331,9 @@ public sealed class ViewModelTests
     }
 
     [Theory]
-    [InlineData(0, 3, true, "Clip 00:00.0 / 00:03.0")]
-    [InlineData(4, 3, true, "Clip 00:03.0 / 00:03.0")]
-    [InlineData(7, 16, false, "Edit 00:07.0 / 00:16.0")]
+    [InlineData(0, 3, true, "Clip 0:00.0 / 0:03.0")]
+    [InlineData(4, 3, true, "Clip 0:03.0 / 0:03.0")]
+    [InlineData(7, 16, false, "Edit 0:07.0 / 0:16.0")]
     public void PreviewClockNamesItsScope(double position, double duration, bool clip, string expected)
         => Assert.Equal(expected, PreviewClockLabel.Format(position, duration, clip));
 

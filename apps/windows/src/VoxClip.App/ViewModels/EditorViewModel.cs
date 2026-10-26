@@ -271,11 +271,22 @@ public sealed class EditorViewModel : ObservableObject
         var word = Words[index];
         return DisplayText(word) + (state?.CutWordIds.Contains(word.Id) == true ? ", cut" : "") + (HasSelection && index >= SelectionStart && index <= SelectionEnd ? ", selected" : "");
     }
+    /// <summary>Playhead and paragraph times as <c>m:ss.d</c>, or <c>h:mm:ss.d</c> past an hour; design §4.1 (C4).</summary>
     public static string Timecode(double seconds)
     {
-        var time = TimeSpan.FromSeconds(Math.Max(0, double.IsFinite(seconds) ? seconds : 0));
-        return time.TotalHours >= 1 ? time.ToString(@"h\:mm\:ss\.f", CultureInfo.InvariantCulture) : time.ToString(@"mm\:ss\.f", CultureInfo.InvariantCulture);
+        var tenths = (long)Math.Round(Clamp(seconds) * 10, MidpointRounding.AwayFromZero);
+        var clock = string.Create(CultureInfo.InvariantCulture, $"{tenths / 10 % 60:00}.{tenths % 10}");
+        return tenths >= 36_000
+            ? string.Create(CultureInfo.InvariantCulture, $"{tenths / 36_000}:{tenths / 600 % 60:00}:{clock}")
+            : string.Create(CultureInfo.InvariantCulture, $"{tenths / 600}:{clock}");
     }
+    /// <summary>Edited lengths of clips, takes and projects as <c>m:ss</c>, rounded to the second; design §3.4.</summary>
+    public static string Duration(double seconds)
+    {
+        var total = (long)Math.Round(Clamp(seconds), MidpointRounding.AwayFromZero);
+        return string.Create(CultureInfo.InvariantCulture, $"{total / 60}:{total % 60:00}");
+    }
+    private static double Clamp(double seconds) => double.IsFinite(seconds) ? Math.Clamp(seconds, 0, long.MaxValue / 100) : 0;
     private static string Plural(int count, string value) => count == 1 ? value : value + "s";
 
     private void SyncProject()

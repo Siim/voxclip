@@ -119,7 +119,7 @@ public sealed partial class SettingsWindow : Window
         appearance.SelectionChanged += (_, _) => Save("general.appearance", new[] { "system", "light", "dark" }[appearance.SelectedIndex]); AddSetting(appearance);
         var reopen = new ToggleSwitch { Header = "Open the last project at launch", IsOn = App.Services.Get("general.openLastProject", false) };
         reopen.Toggled += (_, _) => Save("general.openLastProject", reopen.IsOn); AddSetting(reopen);
-        var textSize = new Slider { Header = "Transcript text size", Minimum = 13, Maximum = 28, StepFrequency = 1, Value = App.Services.Get("general.transcriptTextSize", 16d) };
+        var textSize = new Slider { Header = "Transcript text size", Minimum = 13, Maximum = 28, StepFrequency = 1, Value = App.Services.Get("general.transcriptTextSize", TranscriptView.DefaultFontSize) };
         textSize.ValueChanged += (_, _) => Save("general.transcriptTextSize", textSize.Value); AddSetting(textSize);
         var confidence = new ToggleSwitch { Header = "Mark low-confidence words", IsOn = App.Services.Get("general.showLowConfidence", false) };
         confidence.Toggled += (_, _) => Save("general.showLowConfidence", confidence.IsOn); AddSetting(confidence);
