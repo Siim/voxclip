@@ -342,6 +342,8 @@ Back to full take                [ Export 2 clips ]
 
 Hidden in M1. M2 rows: **Tighten with AI** (the LLM suggests pure cuts; shown as suggested-filler style underlines with "Cut all suggestions"), **Clean audio** (ElevenLabs Voice Isolator, voice-lab.md section 4; cost line "Uses your ElevenLabs credits"). M3 "Voice Lab (beta)" rows appear only when Settings → Voice Lab is on: Clone my voice (consent-guarded), Voice changer, Re-voice a phrase (patch mode), Lip sync; every row shows its cost line, what it sends, and the disclosure label that export will add. None of these may block the core loop.
 
+When rewritten speech requires a different video duration, show **Lip sync** and **Retimed source video** together and let the user choose for that rewrite (ADR-R28; Voice Lab §8.9). Explain the lip-sync provider and cost, and the retimed option's speed change and slight crop. Show why an option is unavailable. Require a fresh choice for each rewrite; a previous selection or a failed option must not silently select the other. This is the intended workflow; current unsupported-video capability guards remain until those paths are implemented and verified.
+
 ---
 
 ## 7. Welcome window (macOS) and Home page (Windows)

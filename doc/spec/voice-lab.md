@@ -720,12 +720,12 @@ Let `r = duration(trimmed TTS) / duration(W)`:
    - If the TTS is longer, widen `W` into the neighbouring gaps, keeping at least `PAUSE_SLACK_KEEP` of silence next to each kept word.
    - If the TTS is shorter, pad room tone (or silence) equally at both seams, up to 0.3 s per side.
    - Recompute `r`. If it now falls in `STRETCH_OK`, go to step 1.
-3. **Change the timeline.** Otherwise the output length changes (`outDuration ≠ inDuration`), and a video mode is needed:
-   - **`zoomCover`** (the default without lip sync): a jump cut to 1.12× around the face during the replaced range, with source frames retimed by `duration(W) / outDuration`. Only allowed when that factor is in `RETIME_VIDEO_OK`.
+3. **Choose how to match the video.** Otherwise the output length changes (`outDuration ≠ inDuration`). Show both **Lip sync** and **Retimed source video** for each rewrite and require the user's choice (ADR-R28). Do not automatically choose a mode or reuse the last rewrite's choice. Keep an unavailable option visible with its reason; do not fall back to the other option after a failure.
+   - **Retimed source video (`zoomCover`)**: a jump cut to 1.12× around the face during the replaced range, with source frames retimed by `duration(W) / outDuration`. Explain the speed change and slight crop before selection. Only allowed when that factor is in `RETIME_VIDEO_OK`.
      - Face centre: Vision `VNDetectFaceRectanglesRequest` on macOS, `Windows.Media.FaceAnalysis.FaceDetector` on Windows, sampled every 0.5 s and averaged.
      - With no face, use the frame centre.
-   - **`lipsync`**: §9, with `sync_mode = "remap"`.
-   - Otherwise the hunk is rejected: "This change is too long to patch. Re-record this sentence instead."
+   - **Lip sync (`lipsync`)**: §9, with `sync_mode = "remap"`. Show the provider, what is sent and the current cost before the separate paid-action approval.
+   - If neither approach can handle the range, the hunk is rejected: "This change is too long to patch. Re-record this sentence instead."
 
 The audited Windows runtime now includes `atempo`; its reproducible build and native graph evidence are recorded in `tools/ffmpeg-build/README.md`. The graph's first output PTS of zero does not establish a proportional body origin or exact output duration. Finite-window count differences and marker shifts must be handled and verified in the production composition path with the declared trim and seam handles. The app and CLI guards remain until that path passes; the runtime prerequisite alone does not enable rendering.
 
