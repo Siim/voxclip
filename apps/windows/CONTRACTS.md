@@ -1,5 +1,11 @@
 # Windows fixed contracts
 
+### 2026-10-26 — Native clipping keyboard and activation integration
+
+- Integrated the reviewed Windows UI track through `8150a2f`. F6 targets the native timeline slider and selected inspector tab; clip preview moves focus to transport and Escape returns to the clip. Rebuilding clip results preserves checkbox focus. Recent projects expose their names, and Alt+Left reaches Home without editor key handling consuming it.
+- Redirected launches use `CommandLineToArgvW` and release its allocation with `LocalFree`. The selector accepts one project or video path, with or without the executable token, and ignores empty, executable-only, option-only and ambiguous launches. Failed media probes retain their actual error rather than reporting a present source as missing.
+- The exact App source passed an ARM64 Debug build with zero warnings/errors. The native companion passed 58 tests with one opt-in media prerequisite skip. The combined-main portable companion also built with zero warnings/errors and passed 58 tests with one Windows-native prerequisite skip. The committed native walk verified normal open, correction and clipping, selected-clip export dialog cancellation, compact focus, same-window Recent reopen, settled no-file reactivation, and file activation afterward. Parent review verified the evidence archive hash/integrity and saved correction/selected clip. Spoken Narrator output, exhaustive Settings/name-field shortcuts and installed-package acceptance remain open. App/CLI Voice Lab guards are unchanged.
+
 ### 2026-10-26 — Audited atempo runtime integration
 
 - Integrated the reviewed runtime pin and native diagnostic through `16f0510`. Both reproducible RID builds enable `atempo` plus the four unconditional buffer filters. The build-input digest is `fd879b5d763b4bbb4fc3af17da076a6d2e96e5a20661cbeae468adb067a0827f`; all six DLLs must come from that RID's audited ZIP. The sole newly linked FFmpeg source is LGPL `af_atempo.c`, whose header credits an MIT antecedent. Linked dependency members and generated notices are unchanged.

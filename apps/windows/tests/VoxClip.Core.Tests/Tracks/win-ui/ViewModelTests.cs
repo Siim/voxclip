@@ -242,6 +242,7 @@ public sealed class ViewModelTests
     [InlineData(true, false, false, false, true, false)]
     [InlineData(false, true, false, false, true, false)]
     [InlineData(false, false, true, true, true, false)]
+    [InlineData(false, false, false, true, true, false)]
     [InlineData(false, false, false, false, false, false)]
     [InlineData(false, false, false, false, true, true)]
     [InlineData(false, false, true, false, true, true)]

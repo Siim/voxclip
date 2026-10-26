@@ -17,7 +17,7 @@ public sealed class TimelineView : UserControl
     public event EventHandler<double>? SeekRequested;
     public TimelineView()
     {
-        IsTabStop = true;
+        IsTabStop = false;
         var grid = new Grid { Padding = new Thickness(24, 0, 24, 0), Height = 56 };
         grid.RowDefinitions.Add(new() { Height = new GridLength(36) });
         grid.RowDefinitions.Add(new() { Height = GridLength.Auto });
@@ -30,6 +30,7 @@ public sealed class TimelineView : UserControl
         ActualThemeChanged += (_, _) => Draw();
     }
     public void Attach(EditorViewModel value) { model = value; model.Changed += Changed; Draw(); }
+    internal Control FocusTarget => slider;
     public void Detach() { if (model is not null) model.Changed -= Changed; }
     private void Changed(object? sender, EventArgs args) => Draw();
     public void Position(double value)

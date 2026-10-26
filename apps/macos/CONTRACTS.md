@@ -1,5 +1,9 @@
 # macOS implementation contracts
 
+### 2026-10-26 — Windows native activation integration
+
+- The paired Windows UI integration through `8150a2f` changes only Windows focus, launch handling, companion tests and native evidence. Swift source and shared project/render contracts are unchanged. Windows normal open, same-window Recent reopen and no-file reactivation passed the committed native walk; this does not establish a new Mac scene or generated-media acceptance result.
+
 ### 2026-10-26 — Paired rendering prerequisite status
 
 - The Windows audited runtime pin now includes `atempo` after native ARM64 and emulated x64 graph and strict shipping checks. This does not validate either platform's production duration fit or generated-audio composition. Mac composition and disclosure remain under review, and both App/CLI active-synth guards remain enforced. The development machine's disk reserve is an execution constraint, not a product rendering requirement.

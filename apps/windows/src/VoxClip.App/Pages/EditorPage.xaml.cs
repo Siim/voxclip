@@ -37,7 +37,19 @@ public sealed partial class EditorPage : Page
     private double previewWidth = 380;
     private double previewDuration;
     private string? previewClipId;
-    public EditorPage() { InitializeComponent(); Loaded += (_, _) => Transcript.Focus(FocusState.Programmatic); }
+    private Control? focusAfterPaneClose;
+    public EditorPage()
+    {
+        InitializeComponent();
+        Loaded += (_, _) => Transcript.Focus(FocusState.Programmatic);
+        InspectorSplit.PaneClosed += (_, _) =>
+        {
+            if (!narrow) return;
+            var target = focusAfterPaneClose ?? Transcript;
+            focusAfterPaneClose = null;
+            DispatcherQueue.TryEnqueue(() => target.Focus(FocusState.Keyboard));
+        };
+    }
     public static bool HasText(string? text) => !string.IsNullOrEmpty(text);
 
     internal async Task OpenAsync(MainWindow window, Project project, string? mediaPath, bool demoMode, CancellationToken ct)
@@ -70,12 +82,17 @@ public sealed partial class EditorPage : Page
         Aspect.SelectedIndex = (int)project.Export.Aspect;
         inspector = new(ViewModel, async state => await SnapshotAsync(lifetime.Token, state), lifetime.Token);
         inspector.TabChanged += (_, _) => UpdateFooter();
+        inspector.PreviewRequested += _ =>
+        {
+            if (narrow) { focusAfterPaneClose = PreviewPlay; InspectorSplit.IsPaneOpen = false; }
+            PreviewPlay.Focus(FocusState.Keyboard);
+        };
         InspectorHost.Children.Add(inspector);
         await inspector.InitializeAsync();
         InstallAccelerators();
         if (demo) media = MediaFromProject(project);
         else if (mediaPath is not null) await RunAsync(async () => media = await App.Services.Probe.ProbeAsync(mediaPath, ct), "Preview");
-        if (media is null) ViewModel.Notice = $"Can't find {Path.GetFileName(project.Media.Source.AbsolutePath)}. Edits are saved.";
+        if (mediaPath is null) ViewModel.Notice = $"Can't find {Path.GetFileName(project.Media.Source.AbsolutePath)}. Edits are saved.";
         if (demo)
         {
             ViewModel.Notice = "Demo project · Synthetic preview. Changes are not saved to the fixture.";
@@ -340,8 +357,9 @@ public sealed partial class EditorPage : Page
         var focused = FocusManager.GetFocusedElement(XamlRoot);
         if (args.Key == VirtualKey.F6)
         {
-            var panes = InspectorSplit.IsPaneOpen ? new Control[] { Transcript, PreviewPlay, Timeline, inspector! } : [Transcript, PreviewPlay, Timeline];
-            var current = Array.FindIndex(panes, pane => InputState.DescendsFrom(focused as DependencyObject, pane));
+            var panes = InspectorSplit.IsPaneOpen ? new Control[] { Transcript, PreviewPlay, Timeline.FocusTarget, inspector!.FocusTarget } : [Transcript, PreviewPlay, Timeline.FocusTarget];
+            var regions = InspectorSplit.IsPaneOpen ? new FrameworkElement[] { TranscriptPane, PreviewPane, Timeline, InspectorHost } : [TranscriptPane, PreviewPane, Timeline];
+            var current = Array.FindIndex(regions, pane => InputState.DescendsFrom(focused as DependencyObject, pane));
             panes[(current + (InputState.Down(VirtualKey.Shift) ? -1 : 1) + panes.Length) % panes.Length].Focus(FocusState.Keyboard); args.Handled = true; return;
         }
         if (args.Key == VirtualKey.Escape && narrow && InspectorSplit.IsPaneOpen)
@@ -366,7 +384,14 @@ public sealed partial class EditorPage : Page
             case VirtualKey.Home: ViewModel.Select(0); break;
             case VirtualKey.End: ViewModel.Select(ViewModel.Words.Count - 1); break;
             case VirtualKey.Enter: case VirtualKey.C: Transcript.BeginCorrection(); break;
-            case VirtualKey.Escape: ViewModel.Apply(new EditOperation.SetActiveClip(null)); break;
+            case VirtualKey.Escape:
+                if (ViewModel.State?.ActiveClipId is { } activeClipId)
+                {
+                    ViewModel.Apply(new EditOperation.SetActiveClip(null));
+                    if (narrow) InspectorSplit.IsPaneOpen = true;
+                    inspector?.FocusClip(activeClipId);
+                }
+                break;
             case VirtualKey.I: ViewModel.SetClipEdgeAtCaret(true); break;
             case VirtualKey.O: ViewModel.SetClipEdgeAtCaret(false); break;
             case (VirtualKey)219: ViewModel.CycleClip(-1); break;

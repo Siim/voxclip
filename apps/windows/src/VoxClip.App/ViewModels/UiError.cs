@@ -36,5 +36,5 @@ public static class UiError
 public static class ShortcutPolicy
 {
     public static bool EditorMayHandle(bool textFocus, bool correctionOpen, bool control, bool alt, bool editorFocus) =>
-        editorFocus && !textFocus && !correctionOpen && !(control && alt);
+        editorFocus && !textFocus && !correctionOpen && !alt;
 }

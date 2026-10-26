@@ -39,14 +39,17 @@ internal sealed class InspectorView : UserControl
     private CancellationTokenSource? search;
     private ImageSource? still;
     private readonly SemaphoreSlim tileJobs = new(1, 1);
+    private readonly Dictionary<string, CheckBox> clipChecks = new(StringComparer.Ordinal);
     internal IReadOnlyList<CaptionStyle> Styles { get; private set; } = [];
     internal bool ClipsActive => tabs.SelectedItem == clips;
+    internal Control FocusTarget => ClipsActive ? clips : captions;
+    internal event Action<string>? PreviewRequested;
     internal event EventHandler? TabChanged;
 
     internal InspectorView(EditorViewModel model, Func<EditState?, Task<ComposeSnapshot>> snapshot, CancellationToken ct)
     {
         this.model = model; this.ct = ct;
-        IsTabStop = true;
+        IsTabStop = false;
         tabs.Items.Add(clips); tabs.Items.Add(captions);
         tabs.SelectedItem = clips;
         var layout = new Grid { Padding = new Thickness(16), RowSpacing = 16 };
@@ -63,6 +66,7 @@ internal sealed class InspectorView : UserControl
         Render();
     }
     internal void SelectTab(bool showClips) => tabs.SelectedItem = showClips ? clips : captions;
+    internal bool FocusClip(string id) => clipChecks.TryGetValue(id, out var check) && check.Focus(FocusState.Keyboard);
     internal void ShowFind()
     {
         SelectTab(true);
@@ -283,18 +287,28 @@ internal sealed class InspectorView : UserControl
     private void RenderResults()
     {
         if (results is null) return;
+        var focused = XamlRoot is null ? null : Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(XamlRoot);
+        var focusedClipId = focused is CheckBox { Tag: string id } && clipChecks.TryGetValue(id, out var oldCheck) && ReferenceEquals(focused, oldCheck) ? id : null;
         results.Children.Clear();
+        clipChecks.Clear();
         if (model.Clips.Count == 0) results.Children.Add(Ui.Text(model.HasTranscript ? "No clips yet. Select words to make one, or choose Find Clips." : "Transcribe this video to make clips.", "HelperText"));
         foreach (var row in model.Clips)
         {
             var card = Ui.Stack(6);
-            var selected = new CheckBox { Content = row.Title, IsChecked = row.Selected };
+            var selected = new CheckBox { Content = row.Title, IsChecked = row.Selected, Tag = row.Id };
             selected.Click += (_, _) => model.Apply(new EditOperation.SetClipSelected(row.Id, selected.IsChecked == true));
+            clipChecks[row.Id] = selected;
             card.Children.Add(selected); card.Children.Add(Ui.Text(row.Detail, "HelperText")); card.Children.Add(Ui.Text(row.Excerpt));
             if (row.Reason.Length > 0) card.Children.Add(Ui.Text(row.Reason, "HelperText"));
             if (model.State?.ActiveClipId == row.Id) card.Children.Add(Ui.Text("Previewing this clip", "HelperText"));
-            else card.Children.Add(Ui.Button("Preview clip", () => model.Apply(new EditOperation.SetActiveClip(row.Id))));
+            else
+            {
+                var preview = Ui.Button("Preview clip", () => { model.Apply(new EditOperation.SetActiveClip(row.Id)); PreviewRequested?.Invoke(row.Id); });
+                AutomationProperties.SetName(preview, $"Preview {row.Title}");
+                card.Children.Add(preview);
+            }
             var edit = new Expander { Header = "Edit clip", IsExpanded = false };
+            AutomationProperties.SetName(edit, $"Edit {row.Title}");
             var editBody = Ui.Stack(8);
             var name = new TextBox { Header = "Clip title", Text = row.Title };
             name.LostFocus += (_, _) => { if (name.Text != row.Title) model.Apply(new EditOperation.RenameClip(row.Id, name.Text.Trim())); };
@@ -313,6 +327,7 @@ internal sealed class InspectorView : UserControl
             results.Children.Add(card);
         }
         if (model.Clips.Count > 0) results.Children.Add(Ui.Button("Back to full take", () => model.Apply(new EditOperation.SetActiveClip(null))));
+        if (focusedClipId is not null) FocusClip(focusedClipId);
     }
     private void ModelChanged(object? sender, EventArgs args) { if (ClipsActive) RenderResults(); }
     internal void Detach() { model.Changed -= ModelChanged; search?.Cancel(); search?.Dispose(); }

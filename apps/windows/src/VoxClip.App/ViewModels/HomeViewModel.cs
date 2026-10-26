@@ -16,6 +16,7 @@ public sealed class RecentProject(string path, string name) : ObservableObject
 {
     public string Path { get; } = path;
     public string Name { get; } = name;
+    public override string ToString() => Name;
     private string detail = "Loading project…";
     public string Detail { get => detail; set => SetProperty(ref detail, value); }
 #if !WIN_UI_TESTS

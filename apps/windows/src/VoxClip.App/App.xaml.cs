@@ -3,6 +3,7 @@ using VoxClip.App.Services;
 using VoxClip.App.Controls;
 using VoxClip.Core.Services.Project;
 using Windows.ApplicationModel.Activation;
+using System.Runtime.InteropServices;
 namespace VoxClip.App;
 
 /// <summary>WinUI application lifecycle; architecture §7.2. No native model/media work runs during startup.</summary>
@@ -40,7 +41,11 @@ public partial class App : Application
                 var target = Windows.FirstOrDefault() ?? NewWindow();
                 target.Activate();
                 if (activation.Data is IFileActivatedEventArgs files && files.Files.FirstOrDefault() is { } file) await target.OpenPathAsync(file.Path);
-                else if (activation.Data is ILaunchActivatedEventArgs launch && !string.IsNullOrWhiteSpace(launch.Arguments)) await target.OpenPathAsync(launch.Arguments.Trim('"'));
+                else if (activation.Data is ILaunchActivatedEventArgs launch && !string.IsNullOrWhiteSpace(launch.Arguments))
+                {
+                    var path = RedirectedLaunchPath(launch.Arguments);
+                    if (path is not null) await target.OpenPathAsync(path);
+                }
             });
 #if DEBUG
             var restartProbeIndex = Array.IndexOf(Program.Arguments, "--restart-probe");
@@ -82,6 +87,23 @@ public partial class App : Application
             if (window is not null) await StartupDiagnostics.ProbeAsync(screen == "settings" && Settings is not null ? Settings : window, screen);
         }
     }
+
+    private static string? RedirectedLaunchPath(string commandLine)
+    {
+        var arguments = CommandLineToArgvW(commandLine, out var count);
+        if (arguments == IntPtr.Zero) return null;
+        try
+        {
+            var values = Enumerable.Range(0, count).Select(index => Marshal.PtrToStringUni(Marshal.ReadIntPtr(arguments, index * IntPtr.Size)) ?? "").ToArray();
+            return RedirectedLaunchSelection.FilePath(values, Environment.ProcessPath);
+        }
+        finally { LocalFree(arguments); }
+    }
+
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
+    private static extern IntPtr CommandLineToArgvW(string commandLine, out int argumentCount);
+    [DllImport("kernel32.dll")]
+    private static extern IntPtr LocalFree(IntPtr memory);
 
     internal static MainWindow NewWindow()
     {

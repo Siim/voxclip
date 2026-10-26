@@ -266,7 +266,7 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
         WindowNotice.Severity = InfoBarSeverity.Warning;
         WindowNotice.Message = message;
         WindowNotice.IsOpen = true;
-        App.Services.Log.Write(Core.Services.Logging.LogLevel.Warn, "import", exception is VoxClipException known ? known.WireCode : exception.GetType().Name);
+        App.Services.Log.Write(Core.Services.Logging.LogLevel.Warn, "import", $"action={action} code={(exception is VoxClipException known ? known.WireCode : exception.GetType().Name)} inner={exception.GetBaseException().GetType().Name} hresult=0x{exception.GetBaseException().HResult:X8}");
     }
     private void FileDragOver(object sender, DragEventArgs args)
     {
