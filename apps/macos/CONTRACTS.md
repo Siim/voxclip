@@ -1,5 +1,13 @@
 # macOS implementation contracts
 
+### 2026-10-26 — Reviewed paid-audio boundary integration
+
+- Integrated the paired asset preparation and review fixes through `57d6230`. Prepared handles own private snapshots with verified hash, decoded format, rate, duration and trim; they never remove paid originals. Combined-main verification passed seven Media asset tests, six Core project tests and the actual CLI active/disabled rendering boundary test. Swift test compilation retains the existing unrelated Foundation Models unnecessary-`try` warning. Current app and CLI rendering guards remain in place; no generated-audio playback or export is enabled.
+
+### 2026-10-26 — Voice Lab Media asset preflight follow-up
+
+- A named pipe at a valid paid `.wav` path blocked the final `openat` before type or cancellation checks in a bounded, owned production-call test. Media now opens that final entry nonblocking and rejects it as `unsafePath` after `fstat`, before reading; regular WAV and FLAC preparation still uses the exact-byte snapshot. A changed source caption correction with identical audio pieces rejects the stale output plan, while the rebuilt plan prepares normally. The focused Swift run passed 7 Media asset tests and 6 Core project tests; `swift build -j 2` passed. No composition or playback capability is added.
+
 ### 2026-10-26 — Voice Lab v2 project and Core output pieces (ADR-R24)
 
 - `ProjectVoiceLab` now retains typed `VoiceLabAsset` and `VoiceLabSegment` records in schemaVersion 2. Version 1 still writes only empty `segments`; generated assets require the version bump. `VoiceLabProject` validates and performs immutable accept, enable, disable, delete and candidate-selection transitions without changing source words or deleting assets. `VoiceLabOutputPlanner.build(_:scope:)` returns ordered source/synth sample pieces, mapping and captions for explicit full or clip scope. `requireLegacyRendering` rejects active synth for callers still using a source-only `EditPlan`. App, CLI and Media integration is a separate handoff; no rendering, consent capture or lip-sync is implied.
@@ -923,7 +931,7 @@ Paths are relative to apps/macos. Nested public types are qualified with their e
 | `AudioExtractionResult` | `Sources/VoxClipCore/Domain/Shared/MediaContracts.swift` | common (frozen; lead approval) |
 | `AudioExtractor` | `Sources/VoxClipCore/Domain/Shared/MediaContracts.swift` | common (frozen; lead approval) |
 | `AVAudioExtractor` | `Sources/VoxClipMedia/Audio/AudioPipeline.swift` | mac-media |
-| `AVExporter` | `Sources/VoxClipMedia/Pipeline/MediaPipeline.swift` | mac-media |
+| `AVExporter` | `Sources/VoxClipMedia/Pipeline/Exporter.swift` | mac-media |
 | `AVMediaProbe` | `Sources/VoxClipMedia/Pipeline/MediaPipeline.swift` | mac-media |
 | `BoundaryRefinement` | `Sources/VoxClipCore/Domain/Transcript/TranscriptContracts.swift` | mac-speech |
 | `BundledModelCatalog` | `Sources/VoxClipCore/Services/Models/ModelCatalog.swift` | mac-speech |
@@ -1064,7 +1072,7 @@ Paths are relative to apps/macos. Nested public types are qualified with their e
 | `ExportPreset` | `Sources/VoxClipCore/Domain/Shared/Project.swift` | common (frozen; lead approval) |
 | `ExportProgress` | `Sources/VoxClipCore/Domain/Shared/MediaContracts.swift` | common (frozen; lead approval) |
 | `ExportQuality` | `Sources/VoxClipCore/Domain/Shared/Project.swift` | common (frozen; lead approval) |
-| `ExportQueue` | `Sources/VoxClipMedia/Pipeline/MediaPipeline.swift` | mac-media |
+| `ExportQueue` | `Sources/VoxClipMedia/Pipeline/Exporter.swift` | mac-media |
 | `ExportResult` | `Sources/VoxClipCore/Domain/Shared/MediaContracts.swift` | common (frozen; lead approval) |
 | `ExportTarget` | `Sources/VoxClipCore/Domain/Shared/MediaContracts.swift` | common (frozen; lead approval) |
 | `ExtractedAudio` | `Sources/VoxClipCore/Services/Speech/Transcriber.swift` | mac-speech |
@@ -1131,7 +1139,7 @@ Paths are relative to apps/macos. Nested public types are qualified with their e
 | `PreviewEngine` | `Sources/VoxClipCore/Domain/Shared/MediaContracts.swift` | common (frozen; lead approval) |
 | `PreviewEvent` | `Sources/VoxClipCore/Domain/Shared/MediaContracts.swift` | common (frozen; lead approval) |
 | `PreviewFrame` | `Sources/VoxClipCore/Domain/Shared/MediaContracts.swift` | common (frozen; lead approval) |
-| `PreviewPlayerController` | `Sources/VoxClipMedia/Pipeline/MediaPipeline.swift` | mac-media |
+| `PreviewPlayerController` | `Sources/VoxClipMedia/Pipeline/PreviewPlayerController.swift` | mac-media |
 | `ProcessRequest` | `Sources/VoxClipCore/Services/Process/ProcessRunner.swift` | mac-ai |
 | `ProcessResult` | `Sources/VoxClipCore/Services/Process/ProcessRunner.swift` | mac-ai |
 | `ProcessRunner` | `Sources/VoxClipCore/Services/Process/ProcessRunner.swift` | mac-ai |

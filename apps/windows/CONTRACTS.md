@@ -1,10 +1,18 @@
 # Windows fixed contracts
 
+### 2026-10-26 — Reviewed paid-audio boundary integration
+
+- Integrated the paired asset preparation and review fixes through `57d6230`. Prepared handles own verified PCM/float WAV snapshots; FLAC remains explicitly unsupported by this shipping decoder path. The combined portable Release build passed with zero warnings/errors; five Media asset tests, three actual CLI rendering-boundary tests and seven Core project tests passed without skips. Windows-native reparse and lifecycle checks remain pending. App and CLI rendering guards remain in place; no generated-audio playback or export is enabled.
+
 ### 2026-10-26 — Reviewed Windows colour conversion integration
 
 - Integrated the shared exact BT.709 decoder conversion and AVX2/AdvSimd acceleration from `track/win-media` through `c5d09a9`; converter source tested natively is `997134ef`. Preview and export continue to share the decoder and compositor. Unsupported matrices, siting, interlace and formats retain the native fallback; source-size changes scale the converted BGRA. No fixture, RGB/YUV tolerance, shipping DLL or encoder setting changed.
 - Retained Windows evidence passed 22 converter/oracle, 49 strict shipping and two cleanup tests per RID, zero skips. x64 ran under ARM64 emulation; ARM64 ran natively. Parent independently checked all test counts, both 72-sample CSVs, metadata, and six loaded test/CLI DLL identities per RID against the audited build reports. E2E suite times improved from 64.930 to 58.743 seconds (x64 emulated) and 29.668 to 25.626 seconds (ARM64); physical x64/iGPU and Snapdragon performance acceptance remains open.
 - Combined-main portable Release build passed with zero warnings/errors; 27 converter, process cleanup and actual CLI Voice Lab boundary cases passed without skips. The caption comparison selection passed its portable cases with the Python oracle skipped because NumPy is unavailable in the selected local interpreter. Native test details and evidence locations are retained in `tests/VoxClip.Media.Tests/HANDOFF.md`. Hosted combined CI and hardware GPU acceptance are not established by these runs.
+
+### 2026-10-26 — Voice Lab Media caption-plan preflight follow-up
+
+- Media now compares the rebuilt output plan's caption values as well as its sample grid and audio pieces. A changed source caption correction with identical pieces rejects the stale plan; the rebuilt plan prepares the paid snapshot normally. The focused .NET run passed 5 Media asset tests and 7 Core project tests, and the portable Release build had zero warnings and errors. Windows-native reparse and lifecycle acceptance remains open; this does not enable synthetic playback or export.
 
 ### 2026-10-26 — Voice Lab v2 project and Core output pieces (ADR-R24)
 
