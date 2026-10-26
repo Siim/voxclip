@@ -10,10 +10,17 @@ npm --prefix tools/design test
 npm --prefix tools/design run contrast   # print every contrast pair
 ```
 
-`generate` writes exactly the two app `Tokens` files and the macOS colour
-assets. `check` generates the same strings in memory, never writes, and exits 1
-if any output is missing or has drifted. There are no timestamps or
-host-dependent paths in the outputs.
+`generate` writes exactly these generated files, none of which may be edited by
+hand:
+
+- `apps/macos/Sources/VoxClip/Design/Tokens.swift`;
+- `apps/windows/src/VoxClip.App/Themes/Tokens.xaml`;
+- `apps/macos/Resources/Assets.xcassets/AccentColor.colorset/Contents.json`,
+  one colorset per `macosAsset` token.
+
+`check` generates the same strings in memory, never writes, and exits 1 if any
+output is missing or has drifted. There are no timestamps or host-dependent
+paths in the outputs.
 
 - Colour `color.text.primary` becomes `Color.vcTextPrimary` and
   `VcTextPrimaryBrush`. Swift colours use dynamic NSColor providers; XAML has
