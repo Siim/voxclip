@@ -26,6 +26,7 @@ const tokenPairs = [
   ['text', 'text.secondary', ['clip.badgeBackground', 'glass.sidebar', 'bg.surface'], 'neutral clip badge on the sidebar glass'],
   ['text', 'text.primary', 'selection.transcript', 'Windows transcript selection'],
   ['text', 'word.cut', 'bg.surface'],
+  ['text', 'word.cut', 'pause.background', 'cut word that matches a search'],
   ['text', 'word.filler', 'bg.surface'],
   ['text', 'text.primary', ['overlay.drop', 'text.primary']],
   ['text', 'overlay.foreground', 'stage'],

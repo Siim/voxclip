@@ -172,10 +172,13 @@ struct TranscriptAppearance: Equatable {
 
     private func style(_ span: TranscriptSpan, state: TranscriptAppearance) -> [NSAttributedString.Key: Any] {
         let cut = span.pause ? state.cutPauses.contains(span.id) : state.cutWords.contains(span.id)
-        var result: [NSAttributedString.Key: Any] = [.foregroundColor: DesignValues.nsColor(cut ? "word.cut" : span.pause ? "text.muted" : "text.primary"), .vcStrike: cut]
+        var result: [NSAttributedString.Key: Any] = [.foregroundColor: DesignValues.nsColor(cut ? "word.cut" : "text.primary"), .vcStrike: cut]
         if !span.ids.isEmpty || span.pause {
+            // Pause tokens and collapsed "⋯ N cut" runs are text.muted on pause.background, cut or
+            // not; a cut pause keeps its cut.stroke strike.
+            result[.foregroundColor] = DesignValues.nsColor("text.muted")
             result[.vcRounded] = DesignValues.nsColor("pause.background"); result[.vcRadius] = 6.0
-            if !span.ids.isEmpty { result[.foregroundColor] = DesignValues.nsColor("word.cut"); result[.vcStrike] = false }
+            if !span.ids.isEmpty { result[.vcStrike] = false }
             return result
         }
         if let scope = state.scope, let position = positions[span.id], !scope.contains(position) { result[.foregroundColor] = DesignValues.nsColor("text.primary").withAlphaComponent(0.35) }

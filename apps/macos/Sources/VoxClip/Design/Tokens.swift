@@ -139,8 +139,8 @@ extension Color {
 
     static let vcWordCut = Color(nsColor: NSColor(name: NSColor.Name("vcWordCut")) { appearance in
         appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-            ? NSColor(srgbRed: 142.0 / 255, green: 144.0 / 255, blue: 151.0 / 255, alpha: 255.0 / 255)
-            : NSColor(srgbRed: 111.0 / 255, green: 113.0 / 255, blue: 120.0 / 255, alpha: 255.0 / 255)
+            ? NSColor(srgbRed: 147.0 / 255, green: 149.0 / 255, blue: 156.0 / 255, alpha: 255.0 / 255)
+            : NSColor(srgbRed: 102.0 / 255, green: 104.0 / 255, blue: 111.0 / 255, alpha: 255.0 / 255)
     })
 
     static let vcWordFiller = Color(nsColor: NSColor(name: NSColor.Name("vcWordFiller")) { appearance in

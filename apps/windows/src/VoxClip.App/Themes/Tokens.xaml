@@ -24,7 +24,7 @@
             <SolidColorBrush x:Key="VcSelectionTranscriptBrush" Color="#1F4C4B" />
             <SolidColorBrush x:Key="VcWordPlayingBackgroundBrush" Color="#237D7A" />
             <SolidColorBrush x:Key="VcWordPlayingForegroundBrush" Color="#FAF9F6" />
-            <SolidColorBrush x:Key="VcWordCutBrush" Color="#8E9097" />
+            <SolidColorBrush x:Key="VcWordCutBrush" Color="#93959C" />
             <SolidColorBrush x:Key="VcWordFillerBrush" Color="#E0AE55" />
             <SolidColorBrush x:Key="VcWordLowConfidenceBrush" Color="#7C7E85" />
             <SolidColorBrush x:Key="VcWordCorrectionDotBrush" Color="#8F9198" />
@@ -82,7 +82,7 @@
             <SolidColorBrush x:Key="VcSelectionTranscriptBrush" Color="#C5D7D4" />
             <SolidColorBrush x:Key="VcWordPlayingBackgroundBrush" Color="#1C6B69" />
             <SolidColorBrush x:Key="VcWordPlayingForegroundBrush" Color="#FAF9F6" />
-            <SolidColorBrush x:Key="VcWordCutBrush" Color="#6F7178" />
+            <SolidColorBrush x:Key="VcWordCutBrush" Color="#66686F" />
             <SolidColorBrush x:Key="VcWordFillerBrush" Color="#9A5B00" />
             <SolidColorBrush x:Key="VcWordLowConfidenceBrush" Color="#7E8087" />
             <SolidColorBrush x:Key="VcWordCorrectionDotBrush" Color="#66696F" />
