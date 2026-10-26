@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { copyFile, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -157,6 +157,15 @@ test('CLI detects drift and missing files through symlinked paths without writin
     await rm(path.join(copied, 'apps/macos/Resources'), { recursive: true });
     assert.match(run(['--check'], 1).stderr, /drift: apps\/macos\/Resources\/Assets\.xcassets\/AccentColor\.colorset/);
     run([], 0);
+    run(['--check'], 0);
+    const stale = path.join(copied, 'apps/macos/Resources/Assets.xcassets/OldAccent.colorset/Contents.json');
+    await mkdir(path.dirname(stale), { recursive: true });
+    await writeFile(stale, '{}\n');
+    await writeFile(path.join(copied, 'apps/macos/Resources/Assets.xcassets/.DS_Store'), '');
+    assert.match(run(['--check'], 1).stderr, /drift: apps\/macos\/Resources\/Assets\.xcassets\/OldAccent\.colorset\/Contents\.json is not generated/);
+    assert.equal(await readFile(stale, 'utf8'), '{}\n');
+    assert.match(run([], 0).stdout, /removed apps\/macos\/Resources\/Assets\.xcassets\/OldAccent\.colorset\/Contents\.json/);
+    await assert.rejects(readdir(path.dirname(stale)), { code: 'ENOENT' });
     run(['--check'], 0);
     run(['--unknown'], 1);
   } finally {

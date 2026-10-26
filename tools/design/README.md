@@ -19,8 +19,10 @@ hand:
   one colorset per `macosAsset` token.
 
 `check` generates the same strings in memory, never writes, and exits 1 if any
-output is missing or has drifted. There are no timestamps or host-dependent
-paths in the outputs.
+output is missing or has drifted. The generator owns
+`apps/macos/Resources/Assets.xcassets`, which `bundle.sh` compiles whole: any
+other file there is drift for `check`, and `generate` removes it. There are no
+timestamps or host-dependent paths in the outputs.
 
 - Colour `color.text.primary` becomes `Color.vcTextPrimary` and
   `VcTextPrimaryBrush`. Swift colours use dynamic NSColor providers; XAML has

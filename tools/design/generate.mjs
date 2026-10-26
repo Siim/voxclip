@@ -1,4 +1,4 @@
-import { mkdir, readFile, realpath, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, realpath, rm, rmdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -236,6 +236,17 @@ ${xamlValues.join('\n')}
   return { swift, xaml, assets, colorCount: colors.length, constantCount: constants.length };
 }
 
+// Every file under the asset catalog, relative to the repository, except Finder metadata.
+async function catalogFiles(directory = path.join(root, assetCatalog)) {
+  let entries;
+  try { entries = await readdir(directory, { withFileTypes: true }); }
+  catch (error) { if (error.code === 'ENOENT') return []; throw error; }
+  const files = await Promise.all(entries.filter(entry => entry.name !== '.DS_Store').map(entry => entry.isDirectory()
+    ? catalogFiles(path.join(directory, entry.name))
+    : [path.relative(root, path.join(directory, entry.name)).split(path.sep).join('/')]));
+  return files.flat().sort();
+}
+
 async function main() {
   const arguments_ = process.argv.slice(2);
   if (arguments_.length > 1 || (arguments_.length === 1 && arguments_[0] !== '--check')) throw new Error('Usage: node generate.mjs [--check]');
@@ -243,6 +254,19 @@ async function main() {
   const source = JSON.parse(await readFile(path.join(root, 'shared/design/tokens.json'), 'utf8'));
   const output = buildOutputs(source);
   let drift = false;
+  // The generator owns the asset catalog, which bundle.sh compiles whole: a file it does not
+  // produce is drift in --check and removed by generate, so a stale colorset cannot ship.
+  const produced = new Set(output.assets.map(([relative]) => relative));
+  for (const relative of await catalogFiles()) {
+    if (produced.has(relative)) continue;
+    if (check) { drift = true; console.error(`drift: ${relative} is not generated from tokens.json`); continue; }
+    await rm(path.join(root, relative));
+    for (let directory = path.dirname(relative); directory !== assetCatalog && directory.startsWith(`${assetCatalog}/`); directory = path.dirname(directory)) {
+      if ((await readdir(path.join(root, directory))).length > 0) break;
+      await rmdir(path.join(root, directory));
+    }
+    console.log(`removed ${relative}`);
+  }
   for (const [relative, text] of [[swiftTarget, output.swift], [xamlTarget, output.xaml], ...output.assets]) {
     const destination = path.join(root, relative);
     if (check) {
