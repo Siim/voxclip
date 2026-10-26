@@ -7,6 +7,7 @@ const header = 'GENERATED from shared/design/tokens.json - do not edit';
 const namespace = 'com.voxconvo.voxclip';
 const swiftTarget = 'apps/macos/Sources/VoxClip/Design/Tokens.swift';
 const xamlTarget = 'apps/windows/src/VoxClip.App/Themes/Tokens.xaml';
+const assetCatalog = 'apps/macos/Resources/Assets.xcassets';
 const capitalize = value => value[0].toUpperCase() + value.slice(1);
 const suffix = parts => parts.map(capitalize).join('');
 const swiftName = parts => parts[0] + suffix(parts.slice(1));
@@ -35,6 +36,12 @@ function swiftColor(value, token) {
   const bytes = value.slice(1).match(/../g).map(byte => Number.parseInt(byte, 16));
   if (bytes.length === 3) bytes.push(255);
   return `NSColor(srgbRed: ${bytes[0]}.0 / 255, green: ${bytes[1]}.0 / 255, blue: ${bytes[2]}.0 / 255, alpha: ${bytes[3]}.0 / 255)`;
+}
+
+function assetColor(value, token) {
+  if (!/^#[0-9a-f]{6}(?:[0-9a-f]{2})?$/i.test(value ?? '')) throw new Error(`macOS asset colours must be hex: ${token.path.join('.')}`);
+  const [red, green, blue, alpha = 'FF'] = value.slice(1).toUpperCase().match(/../g);
+  return { 'color-space': 'srgb', components: { alpha: (Number.parseInt(alpha, 16) / 255).toFixed(3), blue: `0x${blue}`, green: `0x${green}`, red: `0x${red}` } };
 }
 
 function xamlColor(token, theme) {
@@ -200,6 +207,19 @@ ${[100, 200, 300, 400, 500, 600, 700, 800, 900].map(weight => `        case ${we
 ${fontLoaders.join('\n\n')}
 }
 `;
+  const assets = colors.filter(token => extensions(token).macosAsset !== undefined).map(token => {
+    const name = extensions(token).macosAsset;
+    if (!/^[A-Za-z][A-Za-z0-9]*$/.test(name)) throw new Error(`Invalid macOS asset name: ${token.path.join('.')}`);
+    const contents = {
+      colors: [
+        { color: assetColor(token.$value.light, token), idiom: 'universal' },
+        { appearances: [{ appearance: 'luminosity', value: 'dark' }], color: assetColor(token.$value.dark, token), idiom: 'universal' },
+      ],
+      info: { author: header, version: 1 },
+    };
+    return [`${assetCatalog}/${name}.colorset/Contents.json`, `${JSON.stringify(contents, null, 2)}\n`];
+  });
+  if (new Set(assets.map(([relative]) => relative)).size !== assets.length) throw new Error('Duplicate macOS asset name');
   const themes = ['Default', 'Light', 'HighContrast'].map(theme => `        <ResourceDictionary x:Key="${theme}">\n${colors.map(token => `            ${xamlColor(token, theme)}`).join('\n')}\n        </ResourceDictionary>`);
   const xaml = `<!-- ${header} -->
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
@@ -209,7 +229,7 @@ ${themes.join('\n')}
 ${xamlValues.join('\n')}
 </ResourceDictionary>
 `;
-  return { swift, xaml, colorCount: colors.length, constantCount: constants.length };
+  return { swift, xaml, assets, colorCount: colors.length, constantCount: constants.length };
 }
 
 async function main() {
@@ -219,7 +239,7 @@ async function main() {
   const source = JSON.parse(await readFile(path.join(root, 'shared/design/tokens.json'), 'utf8'));
   const output = buildOutputs(source);
   let drift = false;
-  for (const [relative, text] of [[swiftTarget, output.swift], [xamlTarget, output.xaml]]) {
+  for (const [relative, text] of [[swiftTarget, output.swift], [xamlTarget, output.xaml], ...output.assets]) {
     const destination = path.join(root, relative);
     if (check) {
       let existing;

@@ -57,6 +57,27 @@ test('font URLs, missing-file fallbacks and dimensional resources are generated'
   assert.ok(output.xaml.includes('<Thickness x:Key="VcSpacingPanePaddingWindowsThickness">24</Thickness>'));
 });
 
+test('the macOS AccentColor asset comes from the flagged token in both appearances', () => {
+  const output = buildOutputs(source);
+  assert.deepEqual(output.assets.map(([relative]) => relative), ['apps/macos/Resources/Assets.xcassets/AccentColor.colorset/Contents.json']);
+  const components = value => ({ alpha: '1.000', blue: `0x${value.slice(5, 7)}`, green: `0x${value.slice(3, 5)}`, red: `0x${value.slice(1, 3)}` });
+  const [any, dark] = JSON.parse(output.assets[0][1]).colors;
+  assert.equal(any.appearances, undefined);
+  assert.deepEqual(any.color.components, components(source.color.accent.default.$value.light));
+  assert.deepEqual(dark.appearances, [{ appearance: 'luminosity', value: 'dark' }]);
+  assert.deepEqual(dark.color.components, components(source.color.accent.default.$value.dark));
+  const translucent = structuredClone(source);
+  translucent.color.accent.default.$value.dark = '#237D7A80';
+  assert.equal(JSON.parse(buildOutputs(translucent).assets[0][1]).colors[1].color.components.alpha, '0.502');
+  const system = structuredClone(source);
+  system.color.accent.default.$value.light = 'system:green';
+  Object.assign(system.color.accent.default.$extensions['com.voxconvo.voxclip'], { macos: 'NSColor.systemGreen', windows: 'SystemAccentColor' });
+  assert.throws(() => buildOutputs(system), /macOS asset colours must be hex/);
+  const named = structuredClone(source);
+  named.color.accent.default.$extensions['com.voxconvo.voxclip'].macosAsset = '../Accent';
+  assert.throws(() => buildOutputs(named), /Invalid macOS asset name/);
+});
+
 test('unknown formats, missing system mappings and unsafe font paths fail clearly', () => {
   const changed = structuredClone(source);
   changed.$extensions['com.voxconvo.voxclip'].format = 'future';
@@ -76,7 +97,8 @@ test('CLI detects drift and missing files through symlinked paths without writin
     const linked = path.join(temporary, 'linked');
     const swiftPath = 'apps/macos/Sources/VoxClip/Design/Tokens.swift';
     const xamlPath = 'apps/windows/src/VoxClip.App/Themes/Tokens.xaml';
-    for (const relative of ['tools/design/generate.mjs', 'shared/design/tokens.json', swiftPath, xamlPath]) {
+    const assetPath = 'apps/macos/Resources/Assets.xcassets/AccentColor.colorset/Contents.json';
+    for (const relative of ['tools/design/generate.mjs', 'shared/design/tokens.json', swiftPath, xamlPath, assetPath]) {
       const destination = path.join(copied, relative);
       await mkdir(path.dirname(destination), { recursive: true });
       await copyFile(new URL(`../../${relative}`, import.meta.url), destination);
@@ -99,6 +121,10 @@ test('CLI detects drift and missing files through symlinked paths without writin
     await rm(path.join(copied, xamlPath));
     run(['--check'], 1);
     await assert.rejects(readFile(path.join(copied, xamlPath)), { code: 'ENOENT' });
+    run([], 0);
+    run(['--check'], 0);
+    await rm(path.join(copied, 'apps/macos/Resources'), { recursive: true });
+    assert.match(run(['--check'], 1).stderr, /drift: apps\/macos\/Resources\/Assets\.xcassets\/AccentColor\.colorset/);
     run([], 0);
     run(['--check'], 0);
     run(['--unknown'], 1);

@@ -683,6 +683,7 @@ Voice: short, factual, calm, always reassuring about the media. No exclamation m
 
 - `apps/macos/Sources/VoxClip/Design/Tokens.swift`: `extension Color { static let vcTextPrimary = Color(nsColor: NSColor(name: "vcTextPrimary") { $0.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? dark : light }) }`, plus `CGFloat` constants and `Font` helpers that load the bundled DM Sans and Geist Mono by file URL. `system:` values map to the named `NSColor`.
 - `apps/windows/src/VoxClip.App/Themes/Tokens.xaml`: a `ResourceDictionary` with `ThemeDictionaries` keyed `Default` (dark), `Light` and `HighContrast` (from `windowsHighContrast`), `SolidColorBrush` per colour token named `Vc<Group><Name>Brush`, `x:Double` and `Thickness`/`CornerRadius` resources for dimensions.
+- `apps/macos/Resources/Assets.xcassets/AccentColor.colorset`: `accent.default` (marked `macosAsset`), light for Any and dark for Dark, compiled by `bundle.sh`.
 
 Naming: token path `color.text.primary` → Swift `vcTextPrimary`, XAML `VcTextPrimaryBrush`. Generated files carry `GENERATED from shared/design/tokens.json - do not edit`. CI regenerates and fails on drift.
 

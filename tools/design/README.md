@@ -9,15 +9,21 @@ npm --prefix tools/design run check
 npm --prefix tools/design test
 ```
 
-`generate` writes exactly the two app `Tokens` files. `check` generates the same
-strings in memory, never writes, and exits 1 if either output is missing or has
-drifted. There are no timestamps or host-dependent paths in the outputs.
+`generate` writes exactly the two app `Tokens` files and the macOS colour
+assets. `check` generates the same strings in memory, never writes, and exits 1
+if any output is missing or has drifted. There are no timestamps or
+host-dependent paths in the outputs.
 
 - Colour `color.text.primary` becomes `Color.vcTextPrimary` and
   `VcTextPrimaryBrush`. Swift colours use dynamic NSColor providers; XAML has
   `Default`, `Light` and `HighContrast` dictionaries. Straight RGBA is converted
   to XAML ARGB. System colours use the declared platform resources, never a hex
   approximation; system brush tokens use resource aliases.
+- A colour token whose extensions name a `macosAsset` also becomes
+  `apps/macos/Resources/Assets.xcassets/<name>.colorset/Contents.json`, with the
+  light value for Any and the dark value for Dark. `accent.default` is the
+  `AccentColor` asset; `bundle.sh` compiles the catalog with actool and
+  `Info.plist` names it in `NSAccentColorName`.
 - Dimensions are `CGFloat` constants on `VCTokens`, for example
   `spacingPanePaddingWindows` and `sizeWindowDefaultWidth`. XAML numeric keys
   are `VcSpacingPanePaddingWindows` and `VcSizeWindowDefaultWidth`. Spacing and
