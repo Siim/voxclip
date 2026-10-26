@@ -104,14 +104,14 @@ struct TimelineProjection: Sendable {
             }
             context.fill(keptPath, with: .color(kept)); context.fill(cutPath, with: .color(cut)); context.fill(pausePath, with: .color(pause))
             context.stroke(stripes, with: .color(hatch), lineWidth: 2)
-            let band = DesignValues.color("timeline.clipBand"), bracketColor = DesignValues.color("timeline.clipBracket")
+            let band = DesignValues.color("timeline.clipBand"), bracketColor = DesignValues.accentText
             for clip in projection.clips {
                 let range = edited ? clip.edited : clip.source
                 let lower = range.lowerBound * size.width, upper = range.upperBound * size.width
                 if clip.active { context.fill(Path(CGRect(x: lower, y: 16, width: max(1, upper - lower), height: 28)), with: .color(band)) }
                 var bracket = Path(); bracket.move(to: CGPoint(x: lower, y: 12)); bracket.addLine(to: CGPoint(x: lower, y: 6)); bracket.addLine(to: CGPoint(x: upper, y: 6)); bracket.addLine(to: CGPoint(x: upper, y: 12))
                 context.stroke(bracket, with: .color(bracketColor), lineWidth: 2)
-                context.draw(Text("\(clip.number)").font(DesignValues.mono(9)), at: CGPoint(x: lower + 6, y: 10))
+                context.draw(Text("\(clip.number)").font(DesignValues.mono(9)).foregroundStyle(bracketColor), at: CGPoint(x: lower + 6, y: 10))
             }
         }
     }
@@ -125,7 +125,7 @@ struct TimelineProjection: Sendable {
         Canvas { context, size in
             let current = min(1, max(0, fraction)) * size.width
             var head = Path(); head.move(to: CGPoint(x: current, y: 16)); head.addLine(to: CGPoint(x: current, y: 44))
-            let color = DesignValues.color("timeline.playhead")
+            let color = DesignValues.accentText
             context.stroke(head, with: .color(color), lineWidth: 2)
             var triangle = Path(); triangle.move(to: CGPoint(x: current - 3.5, y: 12)); triangle.addLine(to: CGPoint(x: current + 3.5, y: 12)); triangle.addLine(to: CGPoint(x: current, y: 19)); triangle.closeSubpath()
             context.fill(triangle, with: .color(color))

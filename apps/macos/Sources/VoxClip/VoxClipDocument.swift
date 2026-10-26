@@ -119,7 +119,7 @@ extension UTType {
     }
     override public func makeWindowControllers() {
         let app = AppModel.sharedModel
-        let hosting = NSHostingController(rootView: EditorView(document: self, app: app).environment(app))
+        let hosting = NSHostingController(rootView: EditorView(document: self, app: app).environment(app).sceneAccent())
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1280, height: 800), styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
         window.contentViewController = hosting
         window.minSize = NSSize(width: 800, height: 560)

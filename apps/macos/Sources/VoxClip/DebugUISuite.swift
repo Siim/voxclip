@@ -974,7 +974,7 @@ import ApplicationServices
     static func snapshot<Content: View>(_ content: Content, name: String, size: NSSize, appearance: NSAppearance.Name, directory: URL, active: Bool = false) async throws {
         ExportToolbarButton.offscreenActive = active
         defer { ExportToolbarButton.offscreenActive = nil }
-        let controller = NSHostingController(rootView: content.background(DesignValues.color("bg.window")).preferredColorScheme(appearance == .darkAqua ? .dark : .light).environment(\.controlActiveState, active ? .key : .inactive))
+        let controller = NSHostingController(rootView: content.background(DesignValues.color("bg.window")).sceneAccent().preferredColorScheme(appearance == .darkAqua ? .dark : .light).environment(\.controlActiveState, active ? .key : .inactive))
         let hosting = controller.view
         let window = OffscreenSnapshotWindow(contentRect: NSRect(origin: NSPoint(x: -10000, y: -10000), size: size), styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
         window.rendersActive = active

@@ -107,7 +107,7 @@ import VoxClipCore
     @objc private func settings(_ sender: Any?) { openSettings() }
     func openSettings() {
         if settingsWindow == nil {
-            let host = NSHostingController(rootView: SettingsView().environment(model))
+            let host = NSHostingController(rootView: SettingsView().environment(model).sceneAccent())
             let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 620), styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
             window.isReleasedWhenClosed = false
             window.title = "VoxClip Settings"

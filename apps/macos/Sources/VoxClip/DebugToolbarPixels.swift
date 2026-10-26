@@ -2,7 +2,7 @@
 import AppKit
 
 @MainActor enum DebugToolbarPixels {
-    struct Metrics: Codable { let name: String; let labelPixels: Int; let contrast: Double }
+    struct Metrics: Codable { let name: String; let labelPixels: Int; let contrast: Double; let bezel: String }
     static func measure(window: NSWindow, name: String, directory: URL, active: Bool) throws -> [DebugUISuite.Result] {
         func buttons(_ view: NSView) -> [NSButton] {
             (view as? NSButton).map { [$0] } ?? view.subviews.flatMap(buttons)
@@ -14,26 +14,32 @@ import AppKit
         let top = root.isFlipped ? rect.minY : root.bounds.height - rect.maxY
         let region = CGRect(x: rect.minX * scale, y: top * scale, width: rect.width * scale, height: rect.height * scale).integral
         guard let image = surface.cgImage?.cropping(to: region) else { throw CocoaError(.coderInvalidValue) }
-        let bitmap = NSBitmapImageRep(cgImage: image)
-        var count = 0, contrast = 0.0
+        // The cache is in the display's profile, which colorAt does not apply, so redraw the
+        // crop in sRGB (the space WCAG luminance is defined in) and read its raw components.
+        guard let srgb = CGColorSpace(name: CGColorSpace.sRGB),
+              let context = CGContext(data: nil, width: image.width, height: image.height, bitsPerComponent: 8, bytesPerRow: 0, space: srgb, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { throw CocoaError(.coderInvalidValue) }
+        context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+        guard let converted = context.makeImage() else { throw CocoaError(.coderInvalidValue) }
+        let bitmap = NSBitmapImageRep(cgImage: converted)
+        var count = 0, contrast = 0.0, bezel = ""
         button.effectiveAppearance.performAsCurrentDrawingAppearance {
-            guard let label = DesignValues.nsColor(active ? "accent.on" : "text.primary").usingColorSpace(.deviceRGB) else { return }
+            guard let label = DesignValues.nsColor(active ? "accent.on" : "text.primary").usingColorSpace(.sRGB) else { return }
             let expected = [label.redComponent, label.greenComponent, label.blueComponent]
             for row in 0..<bitmap.pixelsHigh {
                 for column in 0..<bitmap.pixelsWide {
-                    guard let pixel = bitmap.colorAt(x: column, y: row)?.usingColorSpace(.deviceRGB) else { continue }
+                    guard let pixel = bitmap.colorAt(x: column, y: row) else { continue }
                     if zip([pixel.redComponent, pixel.greenComponent, pixel.blueComponent], expected).allSatisfy({ abs($0 - $1) < 0.08 }) { count += 1 }
                 }
             }
             let row = max(0, bitmap.pixelsHigh - max(4, bitmap.pixelsHigh / 5))
-            let samples = (bitmap.pixelsWide / 4..<bitmap.pixelsWide * 3 / 4).compactMap { bitmap.colorAt(x: $0, y: row)?.usingColorSpace(.deviceRGB) }
-            let luminances = samples.map(luminance).sorted()
-            if let background = luminances.dropFirst(luminances.count / 2).first {
-                let foreground = luminance(label)
+            let samples = (bitmap.pixelsWide / 4..<bitmap.pixelsWide * 3 / 4).compactMap { bitmap.colorAt(x: $0, y: row) }
+            if let median = samples.sorted(by: { luminance($0) < luminance($1) }).dropFirst(samples.count / 2).first {
+                let background = luminance(median), foreground = luminance(label)
                 contrast = (max(background, foreground) + 0.05) / (min(background, foreground) + 0.05)
+                bezel = String(format: "#%02X%02X%02X", Int((median.redComponent * 255).rounded()), Int((median.greenComponent * 255).rounded()), Int((median.blueComponent * 255).rounded()))
             }
         }
-        let metrics = Metrics(name: name, labelPixels: count, contrast: contrast)
+        let metrics = Metrics(name: name, labelPixels: count, contrast: contrast, bezel: bezel)
         try JSONEncoder().encode(metrics).write(to: directory.appendingPathComponent("\(name)-contrast.json"))
         if let image = bitmap.representation(using: .jpeg, properties: [.compressionFactor: 0.85]) { try image.write(to: directory.appendingPathComponent("\(name)-export-control.jpg")) }
         return [.init(name: "\(name) Export label-to-bezel pixel contrast", passed: count > 8 && contrast >= 4.5)]

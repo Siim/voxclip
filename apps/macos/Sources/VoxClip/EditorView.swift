@@ -164,6 +164,12 @@ extension FocusedValues { var editor: EditorModel? { get { self[EditorFocusKey.s
     }
 }
 
+/// Export stays a painted accent.default capsule. Offscreen renders of the standard
+/// .glassProminent and .borderedProminent toolbar styles never put the label on Petrol
+/// (no glass material, and the test app is never active), and their dark labels measured
+/// 1.23:1 and 4.37:1. The button is borderless on the toolbar's own glass platter, so no
+/// glass bezel (which offscreen captures cannot show) covers the painted token, and there
+/// is no glass on glass. DebugToolbarPixels holds it to 4.5:1 in key and inactive windows.
 @MainActor struct EditorExportControl: NSViewRepresentable {
     @Environment(\.isEnabled) private var isEnabled
     let title: String
@@ -172,9 +178,7 @@ extension FocusedValues { var editor: EditorModel? { get { self[EditorFocusKey.s
     func makeNSView(context: Context) -> ExportToolbarButton {
         let button = ExportToolbarButton(title: "Export…", target: nil, action: nil)
         button.setButtonType(.momentaryPushIn)
-        button.bezelStyle = .glass
-        button.tintProminence = .primary
-        button.bezelColor = DesignValues.nsColor("accent.default")
+        button.isBordered = false
         button.target = button
         button.action = #selector(ExportToolbarButton.invoke)
         return button
@@ -186,7 +190,10 @@ extension FocusedValues { var editor: EditorModel? { get { self[EditorFocusKey.s
         button.needsDisplay = true
     }
     func sizeThatFits(_ proposal: ProposedViewSize, nsView: ExportToolbarButton, context: Context) -> CGSize? {
-        CGSize(width: max(86, nsView.intrinsicContentSize.width), height: nsView.intrinsicContentSize.height)
+        let glass = NSButton(title: title, target: nil, action: nil)
+        glass.bezelStyle = .glass
+        glass.controlSize = nsView.controlSize
+        return CGSize(width: max(86, glass.intrinsicContentSize.width), height: glass.intrinsicContentSize.height)
     }
 }
 
@@ -222,8 +229,8 @@ extension FocusedValues { var editor: EditorModel? { get { self[EditorFocusKey.s
         controller.splitView.dividerStyle = .thin
         controller.splitView.identifier = NSUserInterfaceItemIdentifier("voxclip.editor.split")
         if !AppModel.isTestSession { controller.splitView.autosaveName = "VoxClip.editor.\(model.project.id)" }
-        let transcript = NSHostingController(rootView: WorkspaceMainColumn(model: model).frame(maxWidth: .infinity, maxHeight: .infinity))
-        let preview = NSHostingController(rootView: PreviewColumn(model: model).frame(maxWidth: .infinity, maxHeight: .infinity))
+        let transcript = NSHostingController(rootView: WorkspaceMainColumn(model: model).frame(maxWidth: .infinity, maxHeight: .infinity).sceneAccent())
+        let preview = NSHostingController(rootView: PreviewColumn(model: model).frame(maxWidth: .infinity, maxHeight: .infinity).sceneAccent())
         transcript.sizingOptions = []; preview.sizingOptions = []
         transcript.view.setFrameSize(NSSize(width: 580, height: 680))
         preview.view.setFrameSize(NSSize(width: 380, height: 680))
