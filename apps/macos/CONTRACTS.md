@@ -1,5 +1,15 @@
 # macOS implementation contracts
 
+### 2026-10-26 — Reviewed Voice Lab v3 Core integration
+
+- Integrated the paired render contract through `f2a58e3`, including typed malformed-input and label-position rejection, public Swift recipe construction, detached Windows prepared collections, selected-scope seam checks and stretch-aware half-handle requirements. Existing v1/v2 schema definitions and the three frozen service artifacts remain unchanged. `prepare`/`verify` is the native composition handoff; active-synth app and CLI guards remain enforced.
+- Combined-main verification passed 415 Swift Core tests and 8 selected Media/actual-CLI checks. The .NET Release build had zero warnings and errors; the full Core run passed 1,375 tests with 27 existing native/live/informative skips and no failures, followed by 8 Media/actual-CLI checks without skips. The stale future-schema tests now use version 4 and retain their file-preservation assertions. Twelve project fixtures and three transcript fixtures passed schema validation; render generators reproduced their files unchanged.
+- Native mixed-audio/video composition, visible disclosure, XMP and transactional provenance output remain pending. The Windows shipping runtime lacks the specified `atempo` filter, so pitch-preserving fitting needs an audited runtime update. No provider call, push, package or release is established by this integration.
+
+### 2026-10-26 — Voice Lab v3 render contract (ADR-R26)
+
+- Core now reads/writes explicit schemaVersion 3 candidate recipes and prepares a request-bound output plan, selected recipes and per-scope disclosure. Source-video capability requires equal rounded input/output lengths; known other video modes stay stored but fail preparation. Seam handles, one-sample gaps, clipped edges, QA, room tone and bounded chunks have paired generated fixture coverage. `RenderTimeline` is inert; actual app/CLI/Media synth refusal stays active. Version 1 and 2 remain untouched and are never promoted automatically. Speaker matching, native composition, visible label, XMP and sidecar remain later integration work.
+
 ### 2026-10-26 — Reviewed paid-audio boundary integration
 
 - Integrated the paired asset preparation and review fixes through `57d6230`. Prepared handles own private snapshots with verified hash, decoded format, rate, duration and trim; they never remove paid originals. Combined-main verification passed seven Media asset tests, six Core project tests and the actual CLI active/disabled rendering boundary test. Swift test compilation retains the existing unrelated Foundation Models unnecessary-`try` warning. Current app and CLI rendering guards remain in place; no generated-audio playback or export is enabled.

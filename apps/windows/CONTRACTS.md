@@ -1,5 +1,11 @@
 # Windows fixed contracts
 
+### 2026-10-26 — Reviewed Voice Lab v3 Core integration
+
+- Integrated the paired render contract through `f2a58e3`, including typed malformed-input and label-position rejection, public Swift recipe construction, detached Windows prepared collections, selected-scope seam checks and stretch-aware half-handle requirements. Existing v1/v2 schema definitions and the three frozen service artifacts remain unchanged. `prepare`/`verify` is the native composition handoff; active-synth app and CLI guards remain enforced.
+- Combined-main verification passed 415 Swift Core tests and 8 selected Media/actual-CLI checks. The .NET Release build had zero warnings and errors; the full Core run passed 1,375 tests with 27 existing native/live/informative skips and no failures, followed by 8 Media/actual-CLI checks without skips. The stale future-schema tests now use version 4 and retain their file-preservation assertions. Twelve project fixtures and three transcript fixtures passed schema validation; render generators reproduced their files unchanged.
+- Native mixed-audio/video composition, visible disclosure, XMP and transactional provenance output remain pending. The Windows shipping runtime lacks the specified `atempo` filter, so pitch-preserving fitting needs an audited runtime update. No provider call, push, package or release is established by this integration.
+
 ### 2026-10-26 — Reviewed paid-audio boundary integration
 
 - Integrated the paired asset preparation and review fixes through `57d6230`. Prepared handles own verified PCM/float WAV snapshots; FLAC remains explicitly unsupported by this shipping decoder path. The combined portable Release build passed with zero warnings/errors; five Media asset tests, three actual CLI rendering-boundary tests and seven Core project tests passed without skips. Windows-native reparse and lifecycle checks remain pending. App and CLI rendering guards remain in place; no generated-audio playback or export is enabled.
@@ -9,6 +15,10 @@
 - Integrated the shared exact BT.709 decoder conversion and AVX2/AdvSimd acceleration from `track/win-media` through `c5d09a9`; converter source tested natively is `997134ef`. Preview and export continue to share the decoder and compositor. Unsupported matrices, siting, interlace and formats retain the native fallback; source-size changes scale the converted BGRA. No fixture, RGB/YUV tolerance, shipping DLL or encoder setting changed.
 - Retained Windows evidence passed 22 converter/oracle, 49 strict shipping and two cleanup tests per RID, zero skips. x64 ran under ARM64 emulation; ARM64 ran natively. Parent independently checked all test counts, both 72-sample CSVs, metadata, and six loaded test/CLI DLL identities per RID against the audited build reports. E2E suite times improved from 64.930 to 58.743 seconds (x64 emulated) and 29.668 to 25.626 seconds (ARM64); physical x64/iGPU and Snapdragon performance acceptance remains open.
 - Combined-main portable Release build passed with zero warnings/errors; 27 converter, process cleanup and actual CLI Voice Lab boundary cases passed without skips. The caption comparison selection passed its portable cases with the Python oracle skipped because NumPy is unavailable in the selected local interpreter. Native test details and evidence locations are retained in `tests/VoxClip.Media.Tests/HANDOFF.md`. Hosted combined CI and hardware GPU acceptance are not established by these runs.
+
+### 2026-10-26 — Voice Lab v3 render contract (ADR-R26)
+
+- Core now reads/writes explicit schemaVersion 3 candidate recipes and prepares a request-bound output plan, selected recipes and per-scope disclosure. Prepared collections detach and freeze nested recipe, piece, caption and disclosure lists. Integer and unknown enum wire values reject. Source-video capability requires equal rounded input/output lengths; known other video modes stay stored but fail preparation. `RenderTimeline` is inert; actual app/CLI/Media synth refusal stays active. Version 1 and 2 remain untouched and are never promoted automatically. Speaker matching, native composition, visible label, XMP and sidecar remain later integration work.
 
 ### 2026-10-26 — Voice Lab Media caption-plan preflight follow-up
 

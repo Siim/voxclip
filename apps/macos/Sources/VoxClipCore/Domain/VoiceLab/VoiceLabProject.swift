@@ -53,15 +53,17 @@ public struct VoiceLabCandidate: Codable, Sendable, Equatable {
     public var assetId: String?
     public var score: Double?
     public var rejected: String?
+    public var recipe: VoiceLabRenderRecipe?
     public init(assetId: String?, score: Double?, rejected: String? = nil) {
-        self.assetId = assetId; self.score = score; self.rejected = rejected
+        self.assetId = assetId; self.score = score; self.rejected = rejected; self.recipe = nil
     }
-    private enum CodingKeys: String, CodingKey { case assetId, score, rejected }
+    private enum CodingKeys: String, CodingKey { case assetId, score, rejected, recipe }
     public func encode(to encoder: any Encoder) throws {
         var values = encoder.container(keyedBy: CodingKeys.self)
         try values.encode(assetId, forKey: .assetId)
         try values.encode(score, forKey: .score)
         try values.encode(rejected, forKey: .rejected)
+        try values.encodeIfPresent(recipe, forKey: .recipe)
     }
 }
 public struct VoiceLabProvenance: Codable, Sendable, Equatable {
@@ -73,11 +75,13 @@ public struct VoiceLabProvenance: Codable, Sendable, Equatable {
     public var requestId: String?
     public var seed: UInt32?
     public var createdAt: Date
+    public var region: String?
     public init(provider: String, endpoint: String, model: String, voiceId: String, consentRecordId: String?, requestId: String?, seed: UInt32?, createdAt: Date) {
         self.provider = provider; self.endpoint = endpoint; self.model = model; self.voiceId = voiceId
         self.consentRecordId = consentRecordId; self.requestId = requestId; self.seed = seed; self.createdAt = createdAt
+        self.region = nil
     }
-    private enum CodingKeys: String, CodingKey { case provider, endpoint, model, voiceId, consentRecordId, requestId, seed, createdAt }
+    private enum CodingKeys: String, CodingKey { case provider, endpoint, model, voiceId, consentRecordId, requestId, seed, createdAt, region }
     public func encode(to encoder: any Encoder) throws {
         var values = encoder.container(keyedBy: CodingKeys.self)
         try values.encode(provider, forKey: .provider); try values.encode(endpoint, forKey: .endpoint)
@@ -85,6 +89,7 @@ public struct VoiceLabProvenance: Codable, Sendable, Equatable {
         try values.encode(consentRecordId, forKey: .consentRecordId)
         try values.encode(requestId, forKey: .requestId); try values.encode(seed, forKey: .seed)
         try values.encode(createdAt, forKey: .createdAt)
+        try values.encodeIfPresent(region, forKey: .region)
     }
 }
 public struct VoiceLabQA: Codable, Sendable, Equatable {
@@ -116,12 +121,15 @@ public struct VoiceLabSegment: Codable, Sendable, Equatable {
     public var qa: VoiceLabQA
     public var candidates: [VoiceLabCandidate]
     public var selectedCandidateIndex: Int
+    public var scope: VoiceLabSegmentScope?
+    public var groupId: String?
     public init(id: String, kind: VoiceLabSegmentKind, enabled: Bool, replace: VoiceLabReplacement, outDuration: Double, audio: VoiceLabAudio, text: VoiceLabText?, words: [VoiceLabWord]?, provenance: VoiceLabProvenance, qa: VoiceLabQA, candidates: [VoiceLabCandidate], selectedCandidateIndex: Int) {
         self.id = id; self.kind = kind; self.enabled = enabled; self.replace = replace; self.outDuration = outDuration
         self.audio = audio; self.text = text; self.words = words; self.provenance = provenance; self.qa = qa
         self.candidates = candidates; self.selectedCandidateIndex = selectedCandidateIndex
+        self.scope = nil; self.groupId = nil
     }
-    private enum CodingKeys: String, CodingKey { case id, kind, enabled, replace, outDuration, audio, text, words, provenance, qa, candidates, selectedCandidateIndex }
+    private enum CodingKeys: String, CodingKey { case id, kind, enabled, replace, outDuration, audio, text, words, provenance, qa, candidates, selectedCandidateIndex, scope, groupId }
     public func encode(to encoder: any Encoder) throws {
         var values = encoder.container(keyedBy: CodingKeys.self)
         try values.encode(id, forKey: .id); try values.encode(kind, forKey: .kind)
@@ -131,12 +139,16 @@ public struct VoiceLabSegment: Codable, Sendable, Equatable {
         try values.encode(provenance, forKey: .provenance); try values.encode(qa, forKey: .qa)
         try values.encode(candidates, forKey: .candidates)
         try values.encode(selectedCandidateIndex, forKey: .selectedCandidateIndex)
+        try values.encodeIfPresent(scope, forKey: .scope)
+        try values.encodeIfPresent(groupId, forKey: .groupId)
     }
 }
 
 public enum VoiceLabProjectError: Error, Equatable, Sendable {
     case invalidAsset, unsafePath, invalidSegment, invalidRange, invalidWords, danglingAsset, overlappingReplacement
     case missingSegment, invalidCandidate, unsupportedRendering, invalidScope
+    case missingRenderPolicy, needsVoiceLabUpgrade, videoModeUnsupported, alignmentUnavailable, consentUnverified
+    case qaRejected, invalidFadeHandles, overlappingFades, unsupportedAssetFormat, cleanAudioUnsupported, staleRenderContract, endpointUnsupported
 }
 
 public enum VoiceLabProject {
@@ -146,10 +158,12 @@ public enum VoiceLabProject {
     }
     public static func validate(_ project: Project) throws {
         if project.schemaVersion == 1 {
-            guard project.voiceLab.segments.isEmpty, project.voiceLab.assets == nil else { throw VoiceLabProjectError.invalidSegment }
+            guard project.voiceLab.segments.isEmpty, project.voiceLab.assets == nil,
+                  project.voiceLab.cleanAudio == nil, project.voiceLab.voices == nil, project.voiceLab.videoAssets == nil else { throw VoiceLabProjectError.invalidSegment }
             return
         }
-        guard project.schemaVersion == 2, let assets = project.voiceLab.assets else { throw VoiceLabProjectError.invalidSegment }
+        guard (project.schemaVersion == 2 || project.schemaVersion == 3), let assets = project.voiceLab.assets else { throw VoiceLabProjectError.invalidSegment }
+        if project.schemaVersion == 2 && (project.voiceLab.cleanAudio != nil || project.voiceLab.voices != nil || project.voiceLab.videoAssets != nil || project.voiceLab.segments.contains(where: { $0.scope != nil || $0.groupId != nil || $0.provenance.region != nil || $0.candidates.contains(where: { $0.recipe != nil }) })) { throw VoiceLabProjectError.invalidSegment }
         guard matches(project.id, "[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}") else {
             throw VoiceLabProjectError.unsafePath
         }
@@ -232,16 +246,22 @@ public enum VoiceLabProject {
         if enabled.count > 1 {
             for index in 1..<enabled.count where enabled[index].0 < enabled[index - 1].1 { throw VoiceLabProjectError.overlappingReplacement }
         }
+        if project.schemaVersion == 3 { try VoiceLabRenderValidation.validate(project) }
     }
 
     public static func accept(_ segment: VoiceLabSegment, assets: [VoiceLabAsset], into project: Project) throws -> Project {
         var result = project
         if result.schemaVersion == 1 { result.schemaVersion = 2; result.voiceLab.assets = [] }
+        guard segment.candidates.indices.contains(segment.selectedCandidateIndex) else { throw VoiceLabProjectError.invalidCandidate }
         guard Set(assets.map(\.id)).count == assets.count,
               assets.allSatisfy({ asset in result.voiceLab.assets?.contains(where: { $0.id == asset.id }) == false }) else { throw VoiceLabProjectError.invalidAsset }
         result.voiceLab.assets?.append(contentsOf: assets)
         guard !result.voiceLab.segments.contains(where: { $0.id == segment.id }) else { throw VoiceLabProjectError.invalidSegment }
         result.voiceLab.segments.append(segment)
+        if result.schemaVersion == 3,
+           let recipe = segment.candidates[segment.selectedCandidateIndex].recipe,
+           recipe.voiceSource == .own,
+           result.voiceLab.voices?.first(where: { $0.id == recipe.voiceRefId })?.status != .active { throw VoiceLabProjectError.consentUnverified }
         try validate(result)
         return result
     }
@@ -264,6 +284,15 @@ public enum VoiceLabProject {
         guard candidates.indices.contains(index), let assetID = candidates[index].assetId, candidates[index].rejected == nil,
               let asset = result.voiceLab.assets?.first(where: { $0.id == assetID }) else { throw VoiceLabProjectError.invalidCandidate }
         result.voiceLab.segments[position].selectedCandidateIndex = index
+        if result.schemaVersion == 3 {
+            guard let recipe = candidates[index].recipe else { throw VoiceLabProjectError.missingRenderPolicy }
+            result.voiceLab.segments[position].outDuration = recipe.outDuration
+            result.voiceLab.segments[position].audio = recipe.audio
+            result.voiceLab.segments[position].words = recipe.words
+            result.voiceLab.segments[position].provenance = recipe.provenance
+            result.voiceLab.segments[position].qa = VoiceLabQA(transcriptMatch: recipe.qa.transcriptMatch, lufsJumpLu: recipe.qa.lufsJumpLu, peakDbfs: recipe.qa.peakDbfs, speakerScore: recipe.qa.speakerScore)
+            try validate(result); return result
+        }
         result.voiceLab.segments[position].audio.assetId = assetID
         result.voiceLab.segments[position].audio.trimStart = 0
         result.voiceLab.segments[position].audio.trimEnd = asset.durationSeconds

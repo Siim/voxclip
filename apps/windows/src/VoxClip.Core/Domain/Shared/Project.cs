@@ -60,4 +60,10 @@ public sealed record VoiceLabPlaceholder(IReadOnlyList<VoiceLabSegment> Segments
     /// <summary>Absent in version 1 and required in version 2.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public IReadOnlyList<VoiceLabAsset>? Assets { get; init; }
+    /// <summary>Explicit clean-audio policy for schema v3; absent in older projects.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public VoiceLabCleanAudio? CleanAudio { get; init; }
+    /// <summary>Owned voice references and consent identities, without recordings or embeddings.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public IReadOnlyList<VoiceLabVoiceReference>? Voices { get; init; }
+    /// <summary>Generated video assets used only by explicit future video modes.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public IReadOnlyList<VoiceLabVideoAsset>? VideoAssets { get; init; }
 }

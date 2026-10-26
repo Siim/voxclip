@@ -28,10 +28,29 @@ public enum ProjectJSON {
 
     public static func decode(_ data: Data) throws -> Project {
         let document = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-        if let version = document?["schemaVersion"] as? Int, version > 2 { throw VoxClipError.projectTooNew }
+        if let version = document?["schemaVersion"] as? Int, version > 3 { throw VoxClipError.projectTooNew }
+        if document?["schemaVersion"] as? Int == 3 { try validateV3Wire(document) }
         let project = try decoder().decode(Project.self, from: data)
         try validate(project)
         return project
+    }
+
+    private static func validateV3Wire(_ document: [String: Any]?) throws {
+        func contains(_ object: [String: Any], _ keys: [String]) -> Bool { keys.allSatisfy { object.keys.contains($0) } }
+        guard let voice = document?["voiceLab"] as? [String: Any],
+              let clean = voice["cleanAudio"] as? [String: Any],
+              contains(clean, ["mode", "assetId", "mix"]),
+              let segments = voice["segments"] as? [[String: Any]] else { throw VoxClipError.projectUnreadable("Incomplete Voice Lab render policy") }
+        let recipeKeys = ["audio", "words", "outDuration", "seed", "chunks", "roomTone", "seams", "video", "qa", "provenance", "cost", "voiceSource", "voiceRefId", "consentVerifiedAt"]
+        let qaKeys = ["transcriptTokens", "transcriptExact", "transcriptMatch", "lufsJumpLu", "peakDbfs", "speakerScore", "speakerThreshold", "speakerModel", "speakerPassed"]
+        for segment in segments {
+            guard let candidates = segment["candidates"] as? [[String: Any]] else { throw VoxClipError.projectUnreadable("Incomplete Voice Lab candidates") }
+            for candidate in candidates {
+                if let rejected = candidate["rejected"], !(rejected is NSNull), candidate["recipe"] == nil { continue }
+                guard let recipe = candidate["recipe"] as? [String: Any], contains(recipe, recipeKeys),
+                      let qa = recipe["qa"] as? [String: Any], contains(qa, qaKeys) else { throw VoxClipError.projectUnreadable("Incomplete Voice Lab render recipe") }
+            }
+        }
     }
 
     public static func encode(_ project: Project) throws -> Data {
@@ -40,7 +59,7 @@ public enum ProjectJSON {
     }
 
     public static func validate(_ project: Project) throws {
-        guard project.format == "voxclip-project", (1...2).contains(project.schemaVersion) else {
+        guard project.format == "voxclip-project", (1...3).contains(project.schemaVersion) else {
             throw VoxClipError.projectUnreadable("Unsupported document format or Voice Lab schema")
         }
         if let transcript = project.transcript {

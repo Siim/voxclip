@@ -18,17 +18,29 @@ public sealed record VoiceLabReplacement(double Start, double End, string FirstW
 public sealed record VoiceLabAudio(string AssetId, double TrimStart, double TrimEnd, double Stretch, double GainDb);
 public sealed record VoiceLabText(string Original, string New);
 public sealed record VoiceLabWord(string Text, double Start, double End, bool Synthetic);
-public sealed record VoiceLabCandidate(string? AssetId, double? Score, string? Rejected);
+public sealed record VoiceLabCandidate(string? AssetId, double? Score, string? Rejected)
+{
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public VoiceLabRenderRecipe? Recipe { get; init; }
+}
 public sealed record VoiceLabProvenance(string Provider, string Endpoint, string Model, string VoiceId,
-    string? ConsentRecordId, string? RequestId, uint? Seed, DateTimeOffset CreatedAt);
+    string? ConsentRecordId, string? RequestId, uint? Seed, DateTimeOffset CreatedAt)
+{
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? Region { get; init; }
+}
 public sealed record VoiceLabQa(double? TranscriptMatch, double? LufsJumpLu, double? PeakDbfs, double? SpeakerScore);
 public sealed record VoiceLabSegment(string Id, VoiceLabSegmentKind Kind, bool Enabled, VoiceLabReplacement Replace,
     double OutDuration, VoiceLabAudio Audio, VoiceLabText? Text, IReadOnlyList<VoiceLabWord>? Words,
-    VoiceLabProvenance Provenance, VoiceLabQa Qa, IReadOnlyList<VoiceLabCandidate> Candidates, int SelectedCandidateIndex);
+    VoiceLabProvenance Provenance, VoiceLabQa Qa, IReadOnlyList<VoiceLabCandidate> Candidates, int SelectedCandidateIndex)
+{
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public VoiceLabSegmentScope? Scope { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? GroupId { get; init; }
+}
 public enum VoiceLabProjectErrorCode
 {
     InvalidAsset, UnsafePath, InvalidSegment, InvalidRange, InvalidWords, DanglingAsset,
-    OverlappingReplacement, MissingSegment, InvalidCandidate, UnsupportedRendering, InvalidScope
+    OverlappingReplacement, MissingSegment, InvalidCandidate, UnsupportedRendering, InvalidScope,
+    MissingRenderPolicy, NeedsVoiceLabUpgrade, VideoModeUnsupported, AlignmentUnavailable, ConsentUnverified,
+    QaRejected, InvalidFadeHandles, OverlappingFades, UnsupportedAssetFormat, CleanAudioUnsupported, StaleRenderContract, EndpointUnsupported
 }
 public sealed class VoiceLabProjectException(VoiceLabProjectErrorCode code) : Exception(code.ToString())
 {
@@ -48,10 +60,12 @@ public static class VoiceLabProject
     {
         if (project.SchemaVersion == 1)
         {
-            Require(project.VoiceLab.Segments.Count == 0 && project.VoiceLab.Assets is null, VoiceLabProjectErrorCode.InvalidSegment);
+            Require(project.VoiceLab.Segments.Count == 0 && project.VoiceLab.Assets is null && project.VoiceLab.CleanAudio is null && project.VoiceLab.Voices is null && project.VoiceLab.VideoAssets is null, VoiceLabProjectErrorCode.InvalidSegment);
             return;
         }
-        Require(project.SchemaVersion == 2 && project.VoiceLab.Assets is not null, VoiceLabProjectErrorCode.InvalidSegment);
+        Require(project.SchemaVersion is 2 or 3 && project.VoiceLab.Assets is not null, VoiceLabProjectErrorCode.InvalidSegment);
+        if (project.SchemaVersion == 2) Require(project.VoiceLab.CleanAudio is null && project.VoiceLab.Voices is null && project.VoiceLab.VideoAssets is null &&
+            project.VoiceLab.Segments.All(segment => segment.Scope is null && segment.GroupId is null && segment.Provenance.Region is null && segment.Candidates.All(candidate => candidate.Recipe is null)), VoiceLabProjectErrorCode.InvalidSegment);
         Require(Matches(project.Id, "[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}"), VoiceLabProjectErrorCode.UnsafePath);
         var assets = project.VoiceLab.Assets!;
         var assetIds = assets.Select(asset => asset.Id).ToHashSet(StringComparer.Ordinal);
@@ -133,15 +147,20 @@ public static class VoiceLabProject
         enabled.Sort((left, right) => left.start.CompareTo(right.start));
         for (var i = 1; i < enabled.Count; i++)
             Require(enabled[i].start >= enabled[i - 1].end, VoiceLabProjectErrorCode.OverlappingReplacement);
+        if (project.SchemaVersion == 3) VoiceLabRenderValidation.Validate(project);
     }
     public static Project Accept(Project project, IReadOnlyList<VoiceLabAsset> newAssets, VoiceLabSegment segment)
     {
+        Require(segment.Candidates is { Count: > 0 } && segment.SelectedCandidateIndex >= 0 &&
+            segment.SelectedCandidateIndex < segment.Candidates.Count, VoiceLabProjectErrorCode.InvalidCandidate);
         var assets = project.VoiceLab.Assets?.ToList() ?? [];
         Require(newAssets.Select(item => item.Id).Distinct(StringComparer.Ordinal).Count() == newAssets.Count &&
             newAssets.All(item => !assets.Any(existing => existing.Id == item.Id)), VoiceLabProjectErrorCode.InvalidAsset);
         assets.AddRange(newAssets);
         Require(!project.VoiceLab.Segments.Any(item => item.Id == segment.Id), VoiceLabProjectErrorCode.InvalidSegment);
-        var result = project with { SchemaVersion = 2, VoiceLab = new(project.VoiceLab.Segments.Append(segment).ToArray()) { Assets = assets } };
+        if (project.SchemaVersion == 3 && segment.Candidates[segment.SelectedCandidateIndex].Recipe is { VoiceSource: VoiceLabVoiceSource.Own } recipe)
+            Require(project.VoiceLab.Voices?.FirstOrDefault(v => v.Id == recipe.VoiceRefId)?.Status == VoiceLabVoiceStatus.Active, VoiceLabProjectErrorCode.ConsentUnverified);
+        var result = project with { SchemaVersion = project.SchemaVersion == 3 ? 3 : 2, VoiceLab = project.VoiceLab with { Segments = project.VoiceLab.Segments.Append(segment).ToArray(), Assets = assets } };
         Validate(result); return result;
     }
     public static Project SetEnabled(Project project, string id, bool enabled)
@@ -165,6 +184,14 @@ public static class VoiceLabProject
         var assetId = segment!.Candidates[index].AssetId!;
         var asset = project.VoiceLab.Assets?.FirstOrDefault(item => item.Id == assetId);
         Require(asset is not null, VoiceLabProjectErrorCode.DanglingAsset);
+        if (project.SchemaVersion == 3)
+        {
+            var recipe = segment.Candidates[index].Recipe ?? throw new VoiceLabProjectException(VoiceLabProjectErrorCode.MissingRenderPolicy);
+            var updated = segment with { SelectedCandidateIndex = index, OutDuration = recipe.OutDuration, Audio = recipe.Audio, Words = recipe.Words,
+                Provenance = recipe.Provenance, Qa = new(recipe.Qa.TranscriptMatch, recipe.Qa.LufsJumpLu, recipe.Qa.PeakDbfs, recipe.Qa.SpeakerScore) };
+            var v3 = project with { VoiceLab = project.VoiceLab with { Segments = project.VoiceLab.Segments.Select(item => item.Id == id ? updated : item).ToArray() } };
+            Validate(v3); return v3;
+        }
         var selected = segment with { SelectedCandidateIndex = index,
             Audio = segment.Audio with { AssetId = assetId, TrimStart = 0, TrimEnd = asset!.DurationSeconds, Stretch = segment.OutDuration / asset.DurationSeconds } };
         var result = project with { VoiceLab = project.VoiceLab with { Segments = project.VoiceLab.Segments.Select(item => item.Id == id ? selected : item).ToArray() } };

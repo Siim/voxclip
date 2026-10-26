@@ -51,7 +51,7 @@ import Testing
             else { #expect(throws: VoxClipError.self) { try JSONProjectStore.decode(data) } }
         }
         var changed = root; changed["unexpected"] = .bool(true); try rejected(changed)
-        changed = root; changed["schemaVersion"] = .number(3); try rejected(changed, error: .projectTooNew)
+        changed = root; changed["schemaVersion"] = .number(4); try rejected(changed, error: .projectTooNew)
         changed = root; changed["schemaVersion"] = .number(0); try rejected(changed)
         changed = root; changed["format"] = .string("another"); try rejected(changed)
         changed = root; changed["id"] = .string("not-uuid"); try rejected(changed)

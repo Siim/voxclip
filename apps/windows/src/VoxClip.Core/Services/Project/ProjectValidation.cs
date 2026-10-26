@@ -19,11 +19,11 @@ internal static class ProjectValidation
         var root = document.RootElement;
         RejectDuplicateKeys(root);
         Require(root.ValueKind == JsonValueKind.Object);
-        if (root.TryGetProperty("schemaVersion", out var version) && version.ValueKind == JsonValueKind.Number && version.TryGetInt32(out var number) && number > 2)
+        if (root.TryGetProperty("schemaVersion", out var version) && version.ValueKind == JsonValueKind.Number && version.TryGetInt32(out var number) && number > 3)
             throw new VoxClipException(VoxClipErrorCode.ProjectTooNew, "This project was saved by a newer VoxClip. Update VoxClip to open it.");
         Object(root, "format schemaVersion id createdAt modifiedAt savedBy media transcript edits captions export share ai voiceLab", "title extensions");
         String(root.GetProperty("format"), "voxclip-project");
-        Number(root.GetProperty("schemaVersion"), 1, 2, true);
+        Number(root.GetProperty("schemaVersion"), 1, 3, true);
         String(root.GetProperty("id"), "[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}");
         Timestamp(root.GetProperty("createdAt")); Timestamp(root.GetProperty("modifiedAt"));
         if (root.TryGetProperty("title", out var title)) Text(title, 0, 200);
@@ -77,26 +77,59 @@ internal static class ProjectValidation
         });
         UniqueIds(ai.GetProperty("results").EnumerateArray().Select(result => result.GetProperty("id").GetString()!));
         var voice = root.GetProperty("voiceLab");
-        if (root.GetProperty("schemaVersion").GetInt32() == 1)
+        var projectVersion = root.GetProperty("schemaVersion").GetInt32();
+        if (projectVersion == 1)
         {
             Object(voice, "segments"); Require(voice.GetProperty("segments").ValueKind == JsonValueKind.Array && voice.GetProperty("segments").GetArrayLength() == 0);
         }
         else
         {
-            Object(voice, "assets segments");
+            Object(voice, projectVersion == 3 ? "assets segments cleanAudio voices videoAssets" : "assets segments");
             Array(voice.GetProperty("assets"), asset => Object(asset, "id kind file sha256 durationSeconds sampleRate createdAt"));
             Array(voice.GetProperty("segments"), segment =>
             {
-                Object(segment, "id kind enabled replace outDuration audio text words provenance qa candidates selectedCandidateIndex");
+                Object(segment, "id kind enabled replace outDuration audio text words provenance qa candidates selectedCandidateIndex" + (projectVersion == 3 ? " scope" : ""), projectVersion == 3 ? "groupId" : "");
+                if (projectVersion == 3) { Choice(segment.GetProperty("scope"), "passage", "fullTake"); Choice(segment.GetProperty("kind"), "tts", "voiceChanger"); }
                 Object(segment.GetProperty("replace"), "start end firstWordId lastWordId");
                 Object(segment.GetProperty("audio"), "assetId trimStart trimEnd stretch gainDb");
                 Nullable(segment.GetProperty("text"), text => Object(text, "original new"));
                 Nullable(segment.GetProperty("words"), words => Array(words, word => Object(word, "text start end synthetic")));
-                Object(segment.GetProperty("provenance"), "provider endpoint model voiceId consentRecordId requestId seed createdAt");
+                Object(segment.GetProperty("provenance"), "provider endpoint model voiceId consentRecordId requestId seed createdAt" + (projectVersion == 3 ? " region" : ""));
                 Object(segment.GetProperty("qa"), "transcriptMatch lufsJumpLu peakDbfs speakerScore");
-                Array(segment.GetProperty("candidates"), candidate => Object(candidate, "assetId score rejected"));
+                Array(segment.GetProperty("candidates"), candidate =>
+                {
+                    Object(candidate, "assetId score rejected" + (projectVersion == 3 && candidate.GetProperty("rejected").ValueKind == JsonValueKind.Null ? " recipe" : ""), projectVersion == 3 ? "recipe" : "");
+                    if (candidate.TryGetProperty("recipe", out var recipe)) RenderRecipe(recipe);
+                });
             });
+            if (projectVersion == 3)
+            {
+                Object(voice.GetProperty("cleanAudio"), "mode assetId mix");
+                Choice(voice.GetProperty("cleanAudio").GetProperty("mode"), "off", "on");
+                Array(voice.GetProperty("voices"), item => { Object(item, "id provider voiceId consentRecordId displayName status"); Choice(item.GetProperty("status"), "active", "deleted"); });
+                Array(voice.GetProperty("videoAssets"), item => Object(item, "id file sha256 durationSeconds frameRate width height"));
+            }
         }
+    }
+
+    private static void RenderRecipe(JsonElement recipe)
+    {
+        Object(recipe, "audio words outDuration seed chunks roomTone seams video qa provenance cost voiceSource voiceRefId consentVerifiedAt");
+        Object(recipe.GetProperty("audio"), "assetId trimStart trimEnd stretch gainDb");
+        Nullable(recipe.GetProperty("words"), words => Array(words, word => Object(word, "text start end synthetic")));
+        Array(recipe.GetProperty("chunks"), item => Object(item, "sourceStartSample sourceEndSample requestId seed assetId assetSha256 assembledStartFrame assembledEndFrame"));
+        Nullable(recipe.GetProperty("roomTone"), item => Object(item, "sourceStartSample sourceEndSample gainDb"));
+        var seams = recipe.GetProperty("seams"); Object(seams, "in out");
+        Object(seams.GetProperty("in"), "kind fadeSamples sourceHandleSamples assetHandleFrames");
+        Object(seams.GetProperty("out"), "kind fadeSamples sourceHandleSamples assetHandleFrames");
+        Choice(seams.GetProperty("in").GetProperty("kind"), "none", "gap", "hard", "synthToSynth");
+        Choice(seams.GetProperty("out").GetProperty("kind"), "none", "gap", "hard", "synthToSynth");
+        Object(recipe.GetProperty("video"), "mode sourceStartSample sourceEndSample outputSamples", "retimeFactor zoom faceX faceY assetId provider model requestId windowStartSample windowEndSample syncMode");
+        Choice(recipe.GetProperty("video").GetProperty("mode"), "source", "retimed", "zoomCover", "lipsync");
+        Choice(recipe.GetProperty("voiceSource"), "own", "stock");
+        Object(recipe.GetProperty("qa"), "transcriptTokens transcriptExact transcriptMatch lufsJumpLu peakDbfs speakerScore speakerThreshold speakerModel speakerPassed");
+        Object(recipe.GetProperty("provenance"), "provider endpoint model voiceId consentRecordId requestId seed createdAt region");
+        Object(recipe.GetProperty("cost"), "quoteId usd");
     }
 
     private static void Transcript(JsonElement transcript)

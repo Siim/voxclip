@@ -773,28 +773,39 @@ public struct ProjectVoiceLab: Codable, Sendable, Equatable {
     public var segments: [VoiceLabSegment]
     /// Absent in v1; present in v2, even when empty.
     public var assets: [VoiceLabAsset]?
+    public var cleanAudio: VoiceLabCleanAudio?
+    public var voices: [VoiceLabVoiceReference]?
+    public var videoAssets: [VoiceLabVideoAsset]?
 
     /// Creates an explicit value without I/O or generated identifiers.
-    public init(segments: [VoiceLabSegment] = [], assets: [VoiceLabAsset]? = nil) {
+    public init(segments: [VoiceLabSegment] = [], assets: [VoiceLabAsset]? = nil, cleanAudio: VoiceLabCleanAudio? = nil, voices: [VoiceLabVoiceReference]? = nil, videoAssets: [VoiceLabVideoAsset]? = nil) {
         self.segments = segments
         self.assets = assets
+        self.cleanAudio = cleanAudio
+        self.voices = voices
+        self.videoAssets = videoAssets
     }
 
     private enum CodingKeys: String, CodingKey {
         case segments
         case assets
+        case cleanAudio, voices, videoAssets
     }
 
     public init(from decoder: any Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         self.segments = try values.decode([VoiceLabSegment].self, forKey: .segments)
         self.assets = try values.decodeIfPresent([VoiceLabAsset].self, forKey: .assets)
+        self.cleanAudio = try values.decodeIfPresent(VoiceLabCleanAudio.self, forKey: .cleanAudio)
+        self.voices = try values.decodeIfPresent([VoiceLabVoiceReference].self, forKey: .voices)
+        self.videoAssets = try values.decodeIfPresent([VoiceLabVideoAsset].self, forKey: .videoAssets)
     }
 
     public func encode(to encoder: any Encoder) throws {
         var values = encoder.container(keyedBy: CodingKeys.self)
         try values.encode(self.segments, forKey: .segments)
         try values.encodeIfPresent(self.assets, forKey: .assets)
+        if let voices { try values.encode(cleanAudio, forKey: .cleanAudio); try values.encode(voices, forKey: .voices); try values.encode(videoAssets, forKey: .videoAssets) }
     }
 
 }

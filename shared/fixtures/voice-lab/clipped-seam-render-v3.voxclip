@@ -1,0 +1,767 @@
+{
+  "format": "voxclip-project",
+  "schemaVersion": 3,
+  "id": "5b7e0f7a-3c1d-4b8e-9a51-2f6d0c8e4a11",
+  "title": "Interview take 3",
+  "createdAt": "2026-10-25T09:12:03Z",
+  "modifiedAt": "2026-10-25T09:31:47Z",
+  "savedBy": {
+    "app": "VoxClip",
+    "version": "0.1.0",
+    "platform": "macos"
+  },
+  "media": {
+    "source": {
+      "absolutePath": "/Users/alex/Movies/VoxClip/interview-take-3.mov",
+      "relativePath": "interview-take-3.mov",
+      "sizeBytes": 9437184,
+      "durationSeconds": 7,
+      "contentKey": "a12b2e004311fcd7687a1e7dce95e15790e043ee2af00b39fed7b06fd5c88393",
+      "video": {
+        "width": 1920,
+        "height": 1080,
+        "frameRate": 30,
+        "rotationDegrees": 0
+      },
+      "audio": {
+        "sampleRate": 1000,
+        "channels": 1
+      }
+    }
+  },
+  "transcript": {
+    "schemaVersion": 1,
+    "words": [
+      {
+        "id": "w1",
+        "text": "So",
+        "kind": "word",
+        "start": 0.3,
+        "end": 0.6,
+        "rawStart": 0.34,
+        "rawEnd": 0.57,
+        "conf": 0.99,
+        "speaker": null,
+        "timing": "native"
+      },
+      {
+        "id": "w2",
+        "text": "um,",
+        "kind": "word",
+        "start": 0.7,
+        "end": 1,
+        "rawStart": 0.74,
+        "rawEnd": 0.97,
+        "conf": 0.81,
+        "speaker": null,
+        "timing": "native"
+      },
+      {
+        "id": "w3",
+        "text": "today",
+        "kind": "word",
+        "start": 1.1,
+        "end": 1.5,
+        "rawStart": 1.14,
+        "rawEnd": 1.47,
+        "conf": 0.98,
+        "speaker": null,
+        "timing": "native"
+      },
+      {
+        "id": "w4",
+        "text": "we",
+        "kind": "word",
+        "start": 2.6,
+        "end": 2.75,
+        "rawStart": 2.64,
+        "rawEnd": 2.72,
+        "conf": 0.99,
+        "speaker": null,
+        "timing": "native"
+      },
+      {
+        "id": "w5",
+        "text": "ship",
+        "kind": "word",
+        "start": 2.8,
+        "end": 3.2,
+        "rawStart": 2.84,
+        "rawEnd": 3.07,
+        "conf": 0.97,
+        "speaker": null,
+        "timing": "native"
+      },
+      {
+        "id": "w6",
+        "text": "uh",
+        "kind": "word",
+        "start": 3.2,
+        "end": 3.4,
+        "rawStart": 3.24,
+        "rawEnd": 3.37,
+        "conf": 0.77,
+        "speaker": null,
+        "timing": "native"
+      },
+      {
+        "id": "w7",
+        "text": "the",
+        "kind": "word",
+        "start": 3.5,
+        "end": 3.6,
+        "rawStart": 3.54,
+        "rawEnd": 3.57,
+        "conf": 0.99,
+        "speaker": null,
+        "timing": "native"
+      },
+      {
+        "id": "w8",
+        "text": "clipper.",
+        "kind": "word",
+        "start": 3.65,
+        "end": 4.2,
+        "rawStart": 3.69,
+        "rawEnd": 4.17,
+        "conf": 0.96,
+        "speaker": null,
+        "timing": "native"
+      },
+      {
+        "id": "w9",
+        "text": "Thanks",
+        "kind": "word",
+        "start": 5.5,
+        "end": 5.9,
+        "rawStart": 5.54,
+        "rawEnd": 5.87,
+        "conf": 0.99,
+        "speaker": null,
+        "timing": "native"
+      }
+    ],
+    "language": "en",
+    "languageProbability": 0.99,
+    "durationSeconds": 7,
+    "engine": {
+      "id": "elevenlabs",
+      "modelId": "scribe_v2",
+      "modelSha256": null,
+      "engineVersion": "scribe_v2",
+      "locale": null
+    },
+    "verbatim": true,
+    "refined": true,
+    "pipelineVersion": 1,
+    "rawKey": "1c030c022ede1c5e2e0277f1c50750593503573d674b82084a060e9c67351d4d",
+    "createdAt": "2026-10-25T09:12:41Z"
+  },
+  "edits": {
+    "pauseThresholdSeconds": 0.8,
+    "pauseKeepSeconds": 0.15,
+    "cutWordIds": [],
+    "cutPauseIds": [],
+    "corrections": {},
+    "clips": [
+      {
+        "id": "clip-edge",
+        "startWordId": "w6",
+        "endWordId": "w8",
+        "title": "Seam edge",
+        "origin": "manual",
+        "aiResultId": null,
+        "aiClipIndex": null,
+        "selected": true
+      }
+    ],
+    "activeClipId": "clip-edge"
+  },
+  "captions": {
+    "styleId": "vox-bold",
+    "overrides": {},
+    "position": null,
+    "positionByAspect": {}
+  },
+  "export": {
+    "aspect": "9:16",
+    "quality": "standard",
+    "srt": false,
+    "folder": null
+  },
+  "share": {
+    "captions": {
+      "full": "Today we shipped the clipper. Thanks"
+    }
+  },
+  "ai": {
+    "results": []
+  },
+  "voiceLab": {
+    "assets": [
+      {
+        "id": "asset-one",
+        "kind": "audio",
+        "file": "5b7e0f7a-3c1d-4b8e-9a51-2f6d0c8e4a11/asset-one.wav",
+        "sha256": "f89d9092f56d06276191795adbfafa0cc73df5b216c9170b20202cd6b1201771",
+        "durationSeconds": 0.9,
+        "sampleRate": 24000,
+        "createdAt": "2026-10-25T12:10:00Z"
+      },
+      {
+        "id": "asset-two",
+        "kind": "audio",
+        "file": "5b7e0f7a-3c1d-4b8e-9a51-2f6d0c8e4a11/asset-two.wav",
+        "sha256": "13a83c1e1006fb36a61049bb15979582210bc7a9a06d6f902f7a474764483666",
+        "durationSeconds": 1,
+        "sampleRate": 24000,
+        "createdAt": "2026-10-25T12:10:00Z"
+      }
+    ],
+    "segments": [
+      {
+        "id": "vl-passage",
+        "kind": "tts",
+        "enabled": true,
+        "replace": {
+          "start": 2.5,
+          "end": 3.2,
+          "firstWordId": "w4",
+          "lastWordId": "w5"
+        },
+        "outDuration": 0.7,
+        "audio": {
+          "assetId": "asset-one",
+          "trimStart": 0.1,
+          "trimEnd": 0.8,
+          "stretch": 0.9999999999999999,
+          "gainDb": 0
+        },
+        "text": {
+          "original": "we ship",
+          "new": "new words"
+        },
+        "words": [
+          {
+            "text": "new",
+            "start": 0.1,
+            "end": 0.3,
+            "synthetic": true
+          },
+          {
+            "text": "words",
+            "start": 0.3,
+            "end": 0.6,
+            "synthetic": true
+          }
+        ],
+        "provenance": {
+          "provider": "elevenlabs",
+          "endpoint": "v1/text-to-speech/fixture/with-timestamps",
+          "model": "fixture-model",
+          "voiceId": "fixture-voice",
+          "consentRecordId": "consent-fixture",
+          "requestId": "request-7",
+          "seed": 7,
+          "createdAt": "2026-10-25T12:10:00Z",
+          "region": "us"
+        },
+        "qa": {
+          "transcriptMatch": 1,
+          "lufsJumpLu": 0.2,
+          "peakDbfs": -1,
+          "speakerScore": 0.9
+        },
+        "candidates": [
+          {
+            "assetId": "asset-one",
+            "score": 0.9,
+            "rejected": null,
+            "recipe": {
+              "audio": {
+                "assetId": "asset-one",
+                "trimStart": 0.1,
+                "trimEnd": 0.8,
+                "stretch": 0.9999999999999999,
+                "gainDb": 0
+              },
+              "words": [
+                {
+                  "text": "new",
+                  "start": 0.1,
+                  "end": 0.3,
+                  "synthetic": true
+                },
+                {
+                  "text": "words",
+                  "start": 0.3,
+                  "end": 0.6,
+                  "synthetic": true
+                }
+              ],
+              "outDuration": 0.7,
+              "seed": 7,
+              "chunks": [
+                {
+                  "sourceStartSample": 2500,
+                  "sourceEndSample": 3200,
+                  "requestId": "request-7",
+                  "seed": 7,
+                  "assetId": "asset-one",
+                  "assetSha256": "f89d9092f56d06276191795adbfafa0cc73df5b216c9170b20202cd6b1201771",
+                  "assembledStartFrame": 2400,
+                  "assembledEndFrame": 19200
+                }
+              ],
+              "roomTone": {
+                "sourceStartSample": 4500,
+                "sourceEndSample": 5000,
+                "gainDb": 0
+              },
+              "seams": {
+                "in": {
+                  "kind": "gap",
+                  "fadeSamples": 20,
+                  "sourceHandleSamples": 10,
+                  "assetHandleFrames": 240
+                },
+                "out": {
+                  "kind": "synthToSynth",
+                  "fadeSamples": 20,
+                  "sourceHandleSamples": 0,
+                  "assetHandleFrames": 480
+                }
+              },
+              "video": {
+                "mode": "source",
+                "sourceStartSample": 2500,
+                "sourceEndSample": 3200,
+                "outputSamples": 700,
+                "retimeFactor": null,
+                "zoom": null,
+                "faceX": null,
+                "faceY": null,
+                "assetId": null,
+                "provider": null,
+                "model": null,
+                "requestId": null,
+                "windowStartSample": null,
+                "windowEndSample": null,
+                "syncMode": null
+              },
+              "qa": {
+                "transcriptTokens": 2,
+                "transcriptExact": true,
+                "transcriptMatch": 1,
+                "lufsJumpLu": 0.2,
+                "peakDbfs": -1,
+                "speakerScore": 0.9,
+                "speakerThreshold": 0.8,
+                "speakerModel": "calibrated-fixture",
+                "speakerPassed": true
+              },
+              "provenance": {
+                "provider": "elevenlabs",
+                "endpoint": "v1/text-to-speech/fixture/with-timestamps",
+                "model": "fixture-model",
+                "voiceId": "fixture-voice",
+                "consentRecordId": "consent-fixture",
+                "requestId": "request-7",
+                "seed": 7,
+                "createdAt": "2026-10-25T12:10:00Z",
+                "region": "us"
+              },
+              "cost": {
+                "quoteId": "quote-7",
+                "usd": null
+              },
+              "voiceSource": "own",
+              "voiceRefId": "voice-fixture",
+              "consentVerifiedAt": "2026-10-25T12:09:00Z"
+            }
+          },
+          {
+            "assetId": "asset-two",
+            "score": 0.8,
+            "rejected": null,
+            "recipe": {
+              "audio": {
+                "assetId": "asset-two",
+                "trimStart": 0.2,
+                "trimEnd": 0.9,
+                "stretch": 1.0,
+                "gainDb": -1
+              },
+              "words": [
+                {
+                  "text": "new",
+                  "start": 0.12,
+                  "end": 0.32,
+                  "synthetic": true
+                },
+                {
+                  "text": "words",
+                  "start": 0.32,
+                  "end": 0.62,
+                  "synthetic": true
+                }
+              ],
+              "outDuration": 0.7,
+              "seed": 8,
+              "chunks": [
+                {
+                  "sourceStartSample": 2500,
+                  "sourceEndSample": 3200,
+                  "requestId": "request-8",
+                  "seed": 8,
+                  "assetId": "asset-two",
+                  "assetSha256": "13a83c1e1006fb36a61049bb15979582210bc7a9a06d6f902f7a474764483666",
+                  "assembledStartFrame": 4800,
+                  "assembledEndFrame": 21600
+                }
+              ],
+              "roomTone": {
+                "sourceStartSample": 4500,
+                "sourceEndSample": 5000,
+                "gainDb": 0
+              },
+              "seams": {
+                "in": {
+                  "kind": "gap",
+                  "fadeSamples": 20,
+                  "sourceHandleSamples": 10,
+                  "assetHandleFrames": 240
+                },
+                "out": {
+                  "kind": "synthToSynth",
+                  "fadeSamples": 20,
+                  "sourceHandleSamples": 0,
+                  "assetHandleFrames": 480
+                }
+              },
+              "video": {
+                "mode": "source",
+                "sourceStartSample": 2500,
+                "sourceEndSample": 3200,
+                "outputSamples": 700,
+                "retimeFactor": null,
+                "zoom": null,
+                "faceX": null,
+                "faceY": null,
+                "assetId": null,
+                "provider": null,
+                "model": null,
+                "requestId": null,
+                "windowStartSample": null,
+                "windowEndSample": null,
+                "syncMode": null
+              },
+              "qa": {
+                "transcriptTokens": 2,
+                "transcriptExact": true,
+                "transcriptMatch": 1,
+                "lufsJumpLu": 0.2,
+                "peakDbfs": -1,
+                "speakerScore": 0.9,
+                "speakerThreshold": 0.8,
+                "speakerModel": "calibrated-fixture",
+                "speakerPassed": true
+              },
+              "provenance": {
+                "provider": "elevenlabs",
+                "endpoint": "v1/text-to-speech/fixture/with-timestamps",
+                "model": "fixture-model",
+                "voiceId": "fixture-voice",
+                "consentRecordId": "consent-fixture",
+                "requestId": "request-8",
+                "seed": 8,
+                "createdAt": "2026-10-25T12:10:00Z",
+                "region": "us"
+              },
+              "cost": {
+                "quoteId": "quote-8",
+                "usd": null
+              },
+              "voiceSource": "own",
+              "voiceRefId": "voice-fixture",
+              "consentVerifiedAt": "2026-10-25T12:09:00Z"
+            }
+          }
+        ],
+        "selectedCandidateIndex": 0,
+        "scope": "passage"
+      },
+      {
+        "id": "vl-follow",
+        "kind": "tts",
+        "enabled": true,
+        "replace": {
+          "start": 3.2,
+          "end": 3.5,
+          "firstWordId": "w6",
+          "lastWordId": "w6"
+        },
+        "outDuration": 0.3,
+        "audio": {
+          "assetId": "asset-one",
+          "trimStart": 0.1,
+          "trimEnd": 0.4,
+          "stretch": 1,
+          "gainDb": 0
+        },
+        "text": {
+          "original": "uh",
+          "new": "next"
+        },
+        "words": [
+          {
+            "text": "next",
+            "start": 0.05,
+            "end": 0.25,
+            "synthetic": true
+          }
+        ],
+        "provenance": {
+          "provider": "elevenlabs",
+          "endpoint": "v1/text-to-speech/fixture/with-timestamps",
+          "model": "fixture-model",
+          "voiceId": "fixture-voice",
+          "consentRecordId": "consent-fixture",
+          "requestId": "request-7",
+          "seed": 7,
+          "createdAt": "2026-10-25T12:10:00Z",
+          "region": "us"
+        },
+        "qa": {
+          "transcriptMatch": 1,
+          "lufsJumpLu": 0.2,
+          "peakDbfs": -1,
+          "speakerScore": 0.9
+        },
+        "candidates": [
+          {
+            "assetId": "asset-one",
+            "score": 0.9,
+            "rejected": null,
+            "recipe": {
+              "audio": {
+                "assetId": "asset-one",
+                "trimStart": 0.1,
+                "trimEnd": 0.4,
+                "stretch": 1,
+                "gainDb": 0
+              },
+              "words": [
+                {
+                  "text": "next",
+                  "start": 0.05,
+                  "end": 0.25,
+                  "synthetic": true
+                }
+              ],
+              "outDuration": 0.3,
+              "seed": 7,
+              "chunks": [
+                {
+                  "sourceStartSample": 3200,
+                  "sourceEndSample": 3500,
+                  "requestId": "request-7",
+                  "seed": 7,
+                  "assetId": "asset-one",
+                  "assetSha256": "f89d9092f56d06276191795adbfafa0cc73df5b216c9170b20202cd6b1201771",
+                  "assembledStartFrame": 2400,
+                  "assembledEndFrame": 9600
+                }
+              ],
+              "roomTone": {
+                "sourceStartSample": 4500,
+                "sourceEndSample": 5000,
+                "gainDb": 0
+              },
+              "seams": {
+                "in": {
+                  "kind": "synthToSynth",
+                  "fadeSamples": 20,
+                  "sourceHandleSamples": 0,
+                  "assetHandleFrames": 480
+                },
+                "out": {
+                  "kind": "gap",
+                  "fadeSamples": 20,
+                  "sourceHandleSamples": 10,
+                  "assetHandleFrames": 240
+                }
+              },
+              "video": {
+                "mode": "source",
+                "sourceStartSample": 3200,
+                "sourceEndSample": 3500,
+                "outputSamples": 300,
+                "retimeFactor": null,
+                "zoom": null,
+                "faceX": null,
+                "faceY": null,
+                "assetId": null,
+                "provider": null,
+                "model": null,
+                "requestId": null,
+                "windowStartSample": null,
+                "windowEndSample": null,
+                "syncMode": null
+              },
+              "qa": {
+                "transcriptTokens": 2,
+                "transcriptExact": true,
+                "transcriptMatch": 1,
+                "lufsJumpLu": 0.2,
+                "peakDbfs": -1,
+                "speakerScore": 0.9,
+                "speakerThreshold": 0.8,
+                "speakerModel": "calibrated-fixture",
+                "speakerPassed": true
+              },
+              "provenance": {
+                "provider": "elevenlabs",
+                "endpoint": "v1/text-to-speech/fixture/with-timestamps",
+                "model": "fixture-model",
+                "voiceId": "fixture-voice",
+                "consentRecordId": "consent-fixture",
+                "requestId": "request-7",
+                "seed": 7,
+                "createdAt": "2026-10-25T12:10:00Z",
+                "region": "us"
+              },
+              "cost": {
+                "quoteId": "quote-7",
+                "usd": null
+              },
+              "voiceSource": "own",
+              "voiceRefId": "voice-fixture",
+              "consentVerifiedAt": "2026-10-25T12:09:00Z"
+            }
+          },
+          {
+            "assetId": "asset-two",
+            "score": 0.8,
+            "rejected": null,
+            "recipe": {
+              "audio": {
+                "assetId": "asset-two",
+                "trimStart": 0.2,
+                "trimEnd": 0.5,
+                "stretch": 1,
+                "gainDb": -1
+              },
+              "words": [
+                {
+                  "text": "next",
+                  "start": 0.05,
+                  "end": 0.25,
+                  "synthetic": true
+                }
+              ],
+              "outDuration": 0.3,
+              "seed": 8,
+              "chunks": [
+                {
+                  "sourceStartSample": 3200,
+                  "sourceEndSample": 3500,
+                  "requestId": "request-8",
+                  "seed": 8,
+                  "assetId": "asset-two",
+                  "assetSha256": "13a83c1e1006fb36a61049bb15979582210bc7a9a06d6f902f7a474764483666",
+                  "assembledStartFrame": 4800,
+                  "assembledEndFrame": 12000
+                }
+              ],
+              "roomTone": {
+                "sourceStartSample": 4500,
+                "sourceEndSample": 5000,
+                "gainDb": 0
+              },
+              "seams": {
+                "in": {
+                  "kind": "synthToSynth",
+                  "fadeSamples": 20,
+                  "sourceHandleSamples": 0,
+                  "assetHandleFrames": 480
+                },
+                "out": {
+                  "kind": "gap",
+                  "fadeSamples": 20,
+                  "sourceHandleSamples": 10,
+                  "assetHandleFrames": 240
+                }
+              },
+              "video": {
+                "mode": "source",
+                "sourceStartSample": 3200,
+                "sourceEndSample": 3500,
+                "outputSamples": 300,
+                "retimeFactor": null,
+                "zoom": null,
+                "faceX": null,
+                "faceY": null,
+                "assetId": null,
+                "provider": null,
+                "model": null,
+                "requestId": null,
+                "windowStartSample": null,
+                "windowEndSample": null,
+                "syncMode": null
+              },
+              "qa": {
+                "transcriptTokens": 2,
+                "transcriptExact": true,
+                "transcriptMatch": 1,
+                "lufsJumpLu": 0.2,
+                "peakDbfs": -1,
+                "speakerScore": 0.9,
+                "speakerThreshold": 0.8,
+                "speakerModel": "calibrated-fixture",
+                "speakerPassed": true
+              },
+              "provenance": {
+                "provider": "elevenlabs",
+                "endpoint": "v1/text-to-speech/fixture/with-timestamps",
+                "model": "fixture-model",
+                "voiceId": "fixture-voice",
+                "consentRecordId": "consent-fixture",
+                "requestId": "request-8",
+                "seed": 8,
+                "createdAt": "2026-10-25T12:10:00Z",
+                "region": "us"
+              },
+              "cost": {
+                "quoteId": "quote-8",
+                "usd": null
+              },
+              "voiceSource": "own",
+              "voiceRefId": "voice-fixture",
+              "consentVerifiedAt": "2026-10-25T12:09:00Z"
+            }
+          }
+        ],
+        "selectedCandidateIndex": 0,
+        "scope": "passage"
+      }
+    ],
+    "cleanAudio": {
+      "mode": "off",
+      "assetId": null,
+      "mix": null
+    },
+    "voices": [
+      {
+        "id": "voice-fixture",
+        "provider": "elevenlabs",
+        "voiceId": "fixture-voice",
+        "consentRecordId": "consent-fixture",
+        "displayName": "Fixture voice",
+        "status": "deleted"
+      }
+    ],
+    "videoAssets": []
+  },
+  "extensions": {}
+}

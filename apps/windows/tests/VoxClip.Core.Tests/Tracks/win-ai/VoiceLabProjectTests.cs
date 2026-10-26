@@ -31,7 +31,7 @@ public sealed class VoiceLabProjectTests
         Assert.Equal(2, v2.SchemaVersion);
         var json = ProjectSerialization.Serialize(v2);
         Assert.Equal(json, ProjectSerialization.Serialize(ProjectSerialization.Deserialize(json)));
-        Assert.Equal(VoxClipErrorCode.ProjectTooNew, Assert.Throws<VoxClipException>(() => ProjectSerialization.Deserialize(json.Replace("\"schemaVersion\": 2", "\"schemaVersion\": 3", StringComparison.Ordinal))).Code);
+        Assert.Equal(VoxClipErrorCode.ProjectTooNew, Assert.Throws<VoxClipException>(() => ProjectSerialization.Deserialize(json.Replace("\"schemaVersion\": 2", "\"schemaVersion\": 4", StringComparison.Ordinal))).Code);
         using var extension = JsonDocument.Parse("{\"nested\":[7]}");
         var updated = v2 with { Extensions = new Dictionary<string, JsonElement> { ["example.keep"] = extension.RootElement.Clone() } };
         Assert.Equal(7, ProjectSerialization.Deserialize(ProjectSerialization.Serialize(updated)).Extensions!["example.keep"].GetProperty("nested")[0].GetInt32());

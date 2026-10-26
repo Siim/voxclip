@@ -1,0 +1,72 @@
+{
+  "source-video-equal-passage": {
+    "file": "passage-render-v3.voxclip",
+    "outputSamples": 7000,
+    "aiSeconds": 0.7,
+    "persistent": false,
+    "labelIntervals": [
+      [
+        0,
+        3.7
+      ]
+    ]
+  },
+  "source-video-equal-full-take-two-chunks": {
+    "file": "full-take-render-v3.voxclip",
+    "outputSamples": 7000,
+    "aiSeconds": 7,
+    "persistent": true,
+    "labelIntervals": [
+      [
+        0,
+        7
+      ]
+    ]
+  },
+  "at-all-ai-threshold": {
+    "file": "disclosure-at-30-render-v3.voxclip",
+    "aiSeconds": 2.1,
+    "persistent": false
+  },
+  "above-all-ai-threshold": {
+    "file": "disclosure-above-30-render-v3.voxclip",
+    "aiSeconds": 2.101,
+    "persistent": true
+  },
+  "stock-conversion-at-half": {
+    "file": "voice-changer-half-render-v3.voxclip",
+    "aiSeconds": 3.5,
+    "persistent": true,
+    "kinds": [
+      "voiceChanger"
+    ]
+  },
+  "touching-synth-one-seam": {
+    "file": "touching-render-v3.voxclip",
+    "sharedFadeSamples": 20
+  },
+  "one-sample-source-gap": {
+    "file": "one-sample-gap-render-v3.voxclip",
+    "keptGapSamples": 1,
+    "preparationError": "overlappingFades"
+  },
+  "clipped-internal-seam": {
+    "file": "clipped-seam-render-v3.voxclip",
+    "clipId": "clip-edge",
+    "preparationError": "invalidFadeHandles"
+  },
+  "sample-grid-half-up": {
+    "seconds": 0.0005,
+    "rate": 1000,
+    "samples": 1
+  },
+  "mapping-only-1100-for-1000": {
+    "sourceSamples": 3000,
+    "replace": [
+      1000,
+      2000
+    ],
+    "outputSamples": 3100,
+    "sourceVideoCapability": "videoModeUnsupported"
+  }
+}

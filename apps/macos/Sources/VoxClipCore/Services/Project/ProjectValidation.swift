@@ -50,28 +50,52 @@ enum ProjectValidation {
             let result = try object(rawResult, required: "id createdAt provider model preset instructions language inputSha256 clips")
             for clip in try array(result["clips"]) { _ = try object(clip, required: "title reason score startWordId endWordId") }
         }
-        let version = root["schemaVersion"] == .number(2) ? 2 : 1
-        let voice = try object(root["voiceLab"], required: version == 2 ? "segments assets" : "segments")
+        let version = root["schemaVersion"] == .number(3) ? 3 : root["schemaVersion"] == .number(2) ? 2 : 1
+        let voice = try object(root["voiceLab"], required: version == 3 ? "segments assets cleanAudio voices videoAssets" : version == 2 ? "segments assets" : "segments")
         if version == 1 { try require(try array(voice["segments"]).isEmpty, "Version 1 Voice Lab must be empty") }
-        if version == 2 {
+        if version >= 2 {
             for asset in try array(voice["assets"]) {
                 _ = try object(asset, required: "id kind file sha256 durationSeconds sampleRate createdAt")
             }
             for segment in try array(voice["segments"]) {
-                let item = try object(segment, required: "id kind enabled replace outDuration audio text words provenance qa candidates selectedCandidateIndex")
+                let item = try object(segment, required: "id kind enabled replace outDuration audio text words provenance qa candidates selectedCandidateIndex" + (version == 3 ? " scope" : ""), optional: version == 3 ? "groupId" : "")
                 _ = try object(item["replace"], required: "start end firstWordId lastWordId")
                 _ = try object(item["audio"], required: "assetId trimStart trimEnd stretch gainDb")
                 if item["text"] != .null { _ = try object(item["text"], required: "original new") }
                 if item["words"] != .null {
                     for word in try array(item["words"]) { _ = try object(word, required: "text start end synthetic") }
                 }
-                _ = try object(item["provenance"], required: "provider endpoint model voiceId consentRecordId requestId seed createdAt")
+                _ = try object(item["provenance"], required: "provider endpoint model voiceId consentRecordId requestId seed createdAt" + (version == 3 ? " region" : ""))
                 _ = try object(item["qa"], required: "transcriptMatch lufsJumpLu peakDbfs speakerScore")
-                for candidate in try array(item["candidates"]) { _ = try object(candidate, required: "assetId score rejected") }
+                for candidate in try array(item["candidates"]) {
+                    let record = try object(candidate, required: "assetId score rejected" + (version == 3 && (try map(candidate))["rejected"] == .null ? " recipe" : ""), optional: version == 3 ? "recipe" : "")
+                    if let recipe = record["recipe"] { try validateRenderRecipe(recipe) }
+                }
             }
+        }
+        if version == 3 {
+            let clean = try object(voice["cleanAudio"], required: "mode assetId mix")
+            try require(clean["mode"] == .string("off") || clean["mode"] == .string("on"), "Invalid clean-audio mode")
+            for value in try array(voice["voices"]) { _ = try object(value, required: "id provider voiceId consentRecordId displayName status") }
+            for value in try array(voice["videoAssets"]) { _ = try object(value, required: "id file sha256 durationSeconds frameRate width height") }
         }
         if let extensions = root["extensions"] { _ = try map(extensions) }
         try validateDates(raw)
+    }
+
+    static func validateRenderRecipe(_ value: JSONValue) throws {
+        let recipe = try object(value, required: "audio words outDuration seed chunks roomTone seams video qa provenance cost voiceSource voiceRefId consentVerifiedAt")
+        _ = try object(recipe["audio"], required: "assetId trimStart trimEnd stretch gainDb")
+        if recipe["words"] != .null { for word in try array(recipe["words"]) { _ = try object(word, required: "text start end synthetic") } }
+        for value in try array(recipe["chunks"]) { _ = try object(value, required: "sourceStartSample sourceEndSample requestId seed assetId assetSha256 assembledStartFrame assembledEndFrame") }
+        if recipe["roomTone"] != .null { _ = try object(recipe["roomTone"], required: "sourceStartSample sourceEndSample gainDb") }
+        let seams = try object(recipe["seams"], required: "in out")
+        _ = try object(seams["in"], required: "kind fadeSamples sourceHandleSamples assetHandleFrames")
+        _ = try object(seams["out"], required: "kind fadeSamples sourceHandleSamples assetHandleFrames")
+        _ = try object(recipe["video"], required: "mode sourceStartSample sourceEndSample outputSamples", optional: "retimeFactor zoom faceX faceY assetId provider model requestId windowStartSample windowEndSample syncMode")
+        _ = try object(recipe["qa"], required: "transcriptTokens transcriptExact transcriptMatch lufsJumpLu peakDbfs speakerScore speakerThreshold speakerModel speakerPassed")
+        _ = try object(recipe["provenance"], required: "provider endpoint model voiceId consentRecordId requestId seed createdAt region")
+        _ = try object(recipe["cost"], required: "quoteId usd")
     }
 
     static func validateDates(_ raw: JSONValue) throws {

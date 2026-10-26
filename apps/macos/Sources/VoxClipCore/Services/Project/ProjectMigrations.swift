@@ -7,8 +7,8 @@ enum ProjectMigrations {
             throw VoxClipError.projectUnreadable("Invalid project version")
         }
         switch version {
-        case 1, 2: return
-        case let newer where newer > 2: throw VoxClipError.projectTooNew
+        case 1, 2, 3: return
+        case let newer where newer > 3: throw VoxClipError.projectTooNew
         default: throw VoxClipError.projectUnreadable("No migration exists before schema version 1")
         }
     }
