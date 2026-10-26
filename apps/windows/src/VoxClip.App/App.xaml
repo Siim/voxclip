@@ -8,12 +8,15 @@
                 <ResourceDictionary Source="Themes/Tokens.xaml" />
             </ResourceDictionary.MergedDictionaries>
             <!-- Petrol accent ramp (doc/design.md section 14): light fills use Dark1 (accent.default) and
-                 Dark2 (accent.pressed); dark fills use Light2 (accent.text). High Contrast keeps the system colours.
+                 Dark2 (accent.pressed); dark fills use Light2 (accent.text). SystemAccentColor is #237D7A in both
+                 themes, so text selection and SystemControlHighlightAccentBrush never fall back to the user's
+                 accent. High Contrast keeps the system colours.
                  WinUI 2.3.9 builds TextOnAccentFillColorPrimaryBrush from its own colour with StaticResource, so
                  framework controls may keep #FFFFFF / #000000 on the accent; both still pass 4.5:1.
-                 tools/design/contrast.test.mjs checks this ramp against tokens.json. -->
+                 tools/design/contrast.test.mjs pins this ramp and checks every text and fill WinUI draws from it. -->
             <ResourceDictionary.ThemeDictionaries>
                 <ResourceDictionary x:Key="Light">
+                    <Color x:Key="SystemAccentColor">#237D7A</Color>
                     <Color x:Key="SystemAccentColorDark1">#1C6B69</Color>
                     <Color x:Key="SystemAccentColorDark2">#155755</Color>
                     <Color x:Key="SystemAccentColorDark3">#0F4544</Color>

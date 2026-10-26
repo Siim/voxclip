@@ -58,15 +58,20 @@ test('every colour token is checked or explicitly exempt', () => {
   assert.deepEqual(coverage(source), { missing: [], staleExemptions: [] });
 });
 
-test('the Windows accent ramp in App.xaml matches the tokens and leaves High Contrast alone', () => {
+test('the Windows accent ramp in App.xaml is the pinned Petrol ramp and leaves High Contrast alone', () => {
   const ramp = windowsRamp(xaml);
-  assert.deepEqual(Object.keys(ramp).sort(), ['Default', 'Light']);
-  assert.deepEqual(Object.keys(ramp.Light).sort(), ['SystemAccentColorDark1', 'SystemAccentColorDark2', 'SystemAccentColorDark3', 'TextOnAccentFillColorPrimary']);
-  assert.deepEqual(Object.keys(ramp.Default).sort(), ['SystemAccentColor', 'SystemAccentColorLight1', 'SystemAccentColorLight2', 'SystemAccentColorLight3', 'TextOnAccentFillColorPrimary']);
+  assert.deepEqual(ramp, {
+    Light: { SystemAccentColor: '#237D7A', SystemAccentColorDark1: '#1C6B69', SystemAccentColorDark2: '#155755', SystemAccentColorDark3: '#0F4544', TextOnAccentFillColorPrimary: '#FAF9F6' },
+    Default: { SystemAccentColor: '#237D7A', SystemAccentColorLight1: '#3F9E98', SystemAccentColorLight2: '#63BDB6', SystemAccentColorLight3: '#8FD3CD', TextOnAccentFillColorPrimary: '#141517' },
+  });
+  assert.equal(ramp.Light.SystemAccentColor, value('accent.default', 'dark'));
   assert.equal(ramp.Light.SystemAccentColorDark1, value('accent.default', 'light'));
   assert.equal(ramp.Light.SystemAccentColorDark2, value('accent.pressed', 'light'));
   assert.equal(ramp.Light.TextOnAccentFillColorPrimary, value('accent.on', 'light'));
   assert.equal(ramp.Default.SystemAccentColor, value('accent.default', 'dark'));
   assert.equal(ramp.Default.SystemAccentColorLight2, value('accent.text', 'dark'));
-  assert.notEqual(ramp.Default.TextOnAccentFillColorPrimary, '#000000');
+  const rows = contrastRows(source, xaml).filter(row => row.platform === 'windows');
+  for (const [mode, keys] of [['light', Object.keys(ramp.Light)], ['dark', Object.keys(ramp.Default)]]) {
+    for (const key of keys) assert.ok(rows.some(row => row.mode === mode && [row.foreground, ...row.background.split(' over ')].some(layer => layer.split('@')[0] === key)), `${mode} ${key} is measured`);
+  }
 });

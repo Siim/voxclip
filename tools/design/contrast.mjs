@@ -73,23 +73,33 @@ export const exempt = {
   'overlay.dropZoneBorder': 'decorative; the zone icon and label identify it',
 };
 
-// Windows draws on-accent text from the App.xaml ramp, not from tokens.
+// Windows draws accent text and on-accent text from the App.xaml ramp, not from tokens. The
+// labels name the WinUI 2.3.9 brushes that use each ramp colour.
 const windowsPairs = {
   Light: [
     ['accent', 'TextOnAccentFillColorPrimary', 'SystemAccentColorDark1', 'AccentButton rest'],
     ['accent', 'TextOnAccentFillColorPrimary', ['SystemAccentColorDark1@0.9', 'bg.window'], 'AccentButton pointer over'],
-    ['accent', '#FFFFFF', 'SystemAccentColorDark1', 'WinUI default on-accent text'],
-    ['text', 'SystemAccentColorDark2', 'bg.window', 'AccentTextFillColorPrimary'],
-    ['text', 'SystemAccentColorDark2', 'bg.surface', 'AccentTextFillColorPrimary'],
+    ['accent', '#FFFFFF', 'SystemAccentColorDark1', 'WinUI default on-accent text, AccentAAFillColorDefault'],
+    ['accent', '#FFFFFF', 'SystemAccentColorDark2', 'AccentAAFillColorSecondary'],
+    ['accent', '#FFFFFF', 'SystemAccentColor', 'selected text, SystemControlHighlightAccentBrush, AccentAAFillColorTertiary'],
+    ...['bg.window', 'bg.surface'].flatMap(background => [
+      ['text', 'SystemAccentColorDark2', background, 'AccentTextFillColorPrimary'],
+      ['text', 'SystemAccentColorDark3', background, 'AccentTextFillColorSecondary'],
+      ['text', 'SystemAccentColorDark1', background, 'AccentTextFillColorTertiary'],
+    ]),
     ['ui', 'SystemAccentColorDark1', 'bg.surface', 'checked or on state fill'],
   ],
   Default: [
     ['accent', 'TextOnAccentFillColorPrimary', 'SystemAccentColorLight2', 'AccentButton rest'],
     ['accent', 'TextOnAccentFillColorPrimary', ['SystemAccentColorLight2@0.9', 'bg.window'], 'AccentButton pointer over'],
-    ['accent', '#000000', 'SystemAccentColorLight2', 'WinUI default on-accent text'],
-    ['accent', '#FFFFFF', 'SystemAccentColor', 'white text on SystemControlHighlightAccentBrush'],
-    ['text', 'SystemAccentColorLight3', 'bg.window', 'AccentTextFillColorPrimary'],
-    ['text', 'SystemAccentColorLight3', 'bg.surface', 'AccentTextFillColorPrimary'],
+    ['accent', '#000000', 'SystemAccentColorLight2', 'WinUI default on-accent text, AccentAAFillColorDefault'],
+    ['accent', '#000000', 'SystemAccentColorLight3', 'AccentAAFillColorSecondary'],
+    ['accent', '#000000', 'SystemAccentColorLight1', 'AccentAAFillColorTertiary'],
+    ['accent', '#FFFFFF', 'SystemAccentColor', 'selected text, SystemControlHighlightAccentBrush'],
+    ...['bg.window', 'bg.surface'].flatMap(background => [
+      ['text', 'SystemAccentColorLight3', background, 'AccentTextFillColorPrimary and Secondary'],
+      ['text', 'SystemAccentColorLight2', background, 'AccentTextFillColorTertiary'],
+    ]),
     ['ui', 'SystemAccentColorLight2', 'bg.surface', 'checked or on state fill'],
   ],
 };
