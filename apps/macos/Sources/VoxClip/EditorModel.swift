@@ -41,6 +41,7 @@ import VoxClipMedia
     var showTranscribe = false
     var correctionID: String?
     var correctionText = ""
+    var rewrite: ClosedRange<Int>?
     var preset = ClipPresetID.best
     var instruction = ""
     var clipError: String?
@@ -312,6 +313,9 @@ import VoxClipMedia
         projectRevision += 1
         scopeDurations.removeAll(keepingCapacity: true)
         scopeCards.removeAll(keepingCapacity: true)
+        if transcriptChanged || renderedEdits?.clips != edits.clips || renderedVoiceLab != project.voiceLab {
+            transcriptLayoutRevision += 1
+        }
         if transcriptChanged || renderedEdits?.corrections != edits.corrections {
             transcriptLayoutRevision += 1
             fillerCandidateIDs = Set(words.filter { word in

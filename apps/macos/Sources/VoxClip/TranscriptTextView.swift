@@ -18,7 +18,7 @@ import VoxClipCore
         text.textContainerInset = NSSize(width: VCTokens.spacingTranscriptGutter, height: 8)
         text.selectedTextAttributes = TranscriptNSTextView.selectionAttributes
         text.setAccessibilityLabel("Transcript. Select words, then Delete to cut. Return corrects spelling.")
-        text.setAccessibilityCustomRotors(["Cuts", "Pauses", "Suggested fillers", "Clips"].map { NSAccessibilityCustomRotor(label: $0, itemSearchDelegate: text) })
+        text.setAccessibilityCustomRotors(["Cuts", "Pauses", "Suggested fillers", "Clips", "AI words"].map { NSAccessibilityCustomRotor(label: $0, itemSearchDelegate: text) })
         text.setAccessibilityCustomActions([NSAccessibilityCustomAction(name: "Cut selected words", target: text, selector: #selector(TranscriptNSTextView.accessibleCut)), NSAccessibilityCustomAction(name: "Restore selection", target: text, selector: #selector(TranscriptNSTextView.accessibleRestore)), NSAccessibilityCustomAction(name: "Correct spelling", target: text, selector: #selector(TranscriptNSTextView.accessibleCorrect)), NSAccessibilityCustomAction(name: "Play from here", target: text, selector: #selector(TranscriptNSTextView.accessiblePlay))])
         scroll.documentView = text; scroll.hasVerticalScroller = true; scroll.drawsBackground = false
         context.coordinator.text = text
@@ -39,11 +39,12 @@ import VoxClipCore
             coordinator.hiddenCuts = model.cutWordIDs
             coordinator.renderer.rebuild(model: model)
         }
-        coordinator.renderer.update(TranscriptAppearance(cutWords: model.cutWordIDs, cutPauses: model.cutPauseIDs, fillers: model.fillerIDs, playing: model.playingWordID, query: model.query, scope: model.scopeBounds, lowConfidence: model.app.bool("general.showLowConfidence")))
+        coordinator.renderer.update(TranscriptAppearance(cutWords: model.cutWordIDs, cutPauses: model.cutPauseIDs, fillers: model.fillerIDs, playing: model.playingWordID, query: model.query, scope: model.scopeBounds, lowConfidence: model.app.bool("general.showLowConfidence"), activeClipID: model.activeClip?.id, rewrite: model.rewrite))
         let selected = (model.selectedWordIDs.union(model.selectedPauseIDs)).compactMap { text.map.span(id: $0) }.sorted { $0.range.location < $1.range.location }
         if let first = selected.first, let last = selected.last {
             let range = NSRange(location: first.range.location, length: NSMaxRange(last.range) - first.range.location)
-            if text.selectedRange() != range { text.setSelectedRange(range) }
+            let ranges = text.map.selectionRanges(in: range).map { NSValue(range: $0) }
+            if text.selectedRanges != ranges { text.selectedRanges = ranges }
         }
         coordinator.updating = false; text.updateCorrection()
     }
@@ -56,14 +57,13 @@ import VoxClipCore
         let renderer = TranscriptRenderer()
         init(model: EditorModel) { self.model = model }
         func textView(_ textView: NSTextView, willChangeSelectionFromCharacterRanges old: [NSValue], toCharacterRanges proposed: [NSValue]) -> [NSValue] {
-            guard !updating, let text = textView as? TranscriptNSTextView, let range = proposed.first?.rangeValue else { return proposed }
-            let spans = text.map.intersecting(range)
-            guard let first = spans.first, let last = spans.last else { return proposed }
-            return [NSValue(range: NSRange(location: first.range.location, length: NSMaxRange(last.range) - first.range.location))]
+            guard !updating, let text = textView as? TranscriptNSTextView else { return proposed }
+            let ranges = proposed.flatMap { text.map.selectionRanges(in: $0.rangeValue) }
+            return ranges.isEmpty ? old : ranges.map { NSValue(range: $0) }
         }
         func textViewDidChangeSelection(_ notification: Notification) {
             guard !updating, let text else { return }
-            let spans = text.map.intersecting(text.selectedRange()); model.selectedWordIDs = Set(spans.filter { !$0.pause }.flatMap { $0.ids.isEmpty ? [$0.id] : $0.ids })
+            let spans = text.selectedRanges.flatMap { text.map.intersecting($0.rangeValue).filter(\.selectable) }; model.selectedWordIDs = Set(spans.filter { !$0.pause }.flatMap { $0.ids.isEmpty ? [$0.id] : $0.ids })
             model.selectedPauseIDs = Set(spans.filter(\.pause).map(\.id))
             if !model.isPlaying, let id = spans.first?.id, let position = model.index(id) { model.seek(source: model.words[position].start) }
         }
@@ -80,7 +80,7 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
 
 @MainActor final class TranscriptLayoutFragment: NSTextLayoutFragment, @unchecked Sendable {
     weak var renderer: TranscriptRenderer?
-    override var renderingSurfaceBounds: CGRect { super.renderingSurfaceBounds.union(CGRect(x: -64, y: 0, width: 64, height: layoutFragmentFrame.height)) }
+    override var renderingSurfaceBounds: CGRect { super.renderingSurfaceBounds.union(CGRect(x: -84, y: 0, width: 84, height: layoutFragmentFrame.height)) }
     override func draw(at point: CGPoint, in context: CGContext) {
         let drawingContext = TranscriptDrawingContext(value: context)
         let fragment = TranscriptDrawingFragment(value: self)
@@ -95,6 +95,35 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
             let offset = content.offset(from: content.documentRange.location, to: elementRange.location)
             for line in textLineFragments {
                 let lineRange = NSRange(location: offset + line.characterRange.location, length: line.characterRange.length)
+                func rect(for range: NSRange) -> CGRect {
+                    let intersection = NSIntersectionRange(range, lineRange)
+                    let start = line.locationForCharacter(at: intersection.location - offset)
+                    let end = line.locationForCharacter(at: NSMaxRange(intersection) - offset)
+                    return CGRect(x: point.x + line.typographicBounds.minX + min(start.x, end.x) - 2,
+                                  y: point.y + line.typographicBounds.minY, width: max(4, abs(end.x - start.x) + 4), height: line.typographicBounds.height)
+                }
+                if !foreground {
+                    for clip in renderer.clipMarks where NSIntersectionRange(clip.range, lineRange).length > 0 {
+                        let selected = renderer.appearance?.activeClipID == clip.id
+                        context.setStrokeColor((selected ? NSColor(DesignValues.accentText) : DesignValues.nsColor("line.strong")).cgColor)
+                        context.setLineWidth(2)
+                        context.setLineDash(phase: 0, lengths: clip.suggested ? [3, 3] : [])
+                        let lower = point.y + line.typographicBounds.minY
+                        let upper = lower + line.typographicBounds.height
+                        context.move(to: CGPoint(x: point.x - 14, y: lower))
+                        context.addLine(to: CGPoint(x: point.x - 14, y: upper))
+                        context.strokePath()
+                    }
+                }
+                let rewriting = text.map.intersecting(lineRange).filter { renderer.isRewriting($0.id) }
+                if let first = rewriting.first, let last = rewriting.last {
+                    let range = NSRange(location: first.range.location, length: NSMaxRange(last.range) - first.range.location)
+                    let shape = CGPath(roundedRect: rect(for: range), cornerWidth: 4, cornerHeight: 4, transform: nil)
+                    context.setLineDash(phase: 0, lengths: [])
+                    context.addPath(shape)
+                    if foreground { context.setStrokeColor(NSColor(DesignValues.accentText).cgColor); context.setLineWidth(1); context.strokePath() }
+                    else { context.setFillColor(NSColor(DesignValues.accentSoft).cgColor); context.fillPath() }
+                }
                 for span in text.map.intersecting(lineRange) {
                     let intersection = NSIntersectionRange(span.range, lineRange)
                     guard intersection.length > 0 else { continue }
@@ -102,6 +131,10 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
                     let end = line.locationForCharacter(at: NSMaxRange(intersection) - offset)
                     let rect = CGRect(x: point.x + line.typographicBounds.minX + min(start.x, end.x) - 2, y: point.y + line.typographicBounds.minY, width: max(4, abs(end.x - start.x) + 4), height: line.typographicBounds.height)
                     let attributes = renderer.attributes[span.id] ?? [:]
+                    if foreground, !span.selectable {
+                        drawMarker(span, rect: rect, renderer: renderer, context: context)
+                        continue
+                    }
                     if !foreground, let color = attributes[.vcRounded] as? NSColor {
                         let radius = CGFloat((attributes[.vcRadius] as? NSNumber)?.doubleValue ?? 4)
                         context.setFillColor(color.cgColor); context.addPath(CGPath(roundedRect: rect, cornerWidth: radius, cornerHeight: radius, transform: nil)); context.fillPath()
@@ -120,7 +153,7 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
                     }
                     if let underline = attributes[.vcUnderline] as? Int, let color = attributes[.vcUnderlineColor] as? NSColor {
                         let row = baseline - font.underlinePosition + 1
-                        context.setStrokeColor(color.cgColor); context.setLineWidth(1)
+                        context.setStrokeColor(color.cgColor); context.setLineWidth(underline == 1 ? 1.5 : 1)
                         context.setLineCap(underline == 1 ? .round : .butt)
                         context.setLineDash(phase: 0, lengths: underline == 1 ? [0.5, 2.5] : [4, 3])
                         context.move(to: CGPoint(x: lower, y: row)); context.addLine(to: CGPoint(x: upper, y: row)); context.strokePath()
@@ -134,9 +167,61 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
         }
         if foreground, let paragraph = textElement as? NSTextParagraph, paragraph.attributedString.length > 0, let time = paragraph.attributedString.attribute(.vcTimecode, at: 0, effectiveRange: nil) as? NSAttributedString {
             NSGraphicsContext.saveGraphicsState(); NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: true)
-            time.draw(at: CGPoint(x: point.x - 59, y: point.y + 5))
+            time.draw(at: CGPoint(x: point.x - 30 - time.size().width, y: point.y + 5))
             NSGraphicsContext.restoreGraphicsState()
         }
+    }
+
+    private func drawMarker(_ span: TranscriptSpan, rect: CGRect, renderer: TranscriptRenderer, context: CGContext) {
+        let accent = NSColor(DesignValues.accentText)
+        var box = CGRect(x: rect.minX + 2, y: rect.midY - 8, width: 16, height: 16)
+        var label = ""
+        var foreground = DesignValues.nsColor("text.secondary")
+        var fill = DesignValues.nsColor("clip.badgeBackground")
+        var outline: NSColor?
+        var dashed = false
+        switch span.kind {
+        case .text: return
+        case .badge(let number, let clipID, let suggested):
+            label = String(number)
+            dashed = suggested
+            if renderer.appearance?.activeClipID == clipID {
+                fill = DesignValues.accentFill
+                foreground = DesignValues.nsColor("accent.on")
+            }
+            if suggested { outline = DesignValues.nsColor("line.strong") }
+        case .bracket(let clipID, let suggested):
+            context.setStrokeColor((renderer.appearance?.activeClipID == clipID ? accent : DesignValues.nsColor("line.strong")).cgColor)
+            context.setLineWidth(1.5)
+            context.setLineDash(phase: 0, lengths: suggested ? [3, 3] : [])
+            let edge = rect.minX + 6
+            context.move(to: CGPoint(x: edge - 4, y: box.minY))
+            context.addLine(to: CGPoint(x: edge, y: box.minY))
+            context.addLine(to: CGPoint(x: edge, y: box.maxY))
+            context.addLine(to: CGPoint(x: edge - 4, y: box.maxY))
+            context.strokePath()
+            return
+        case .ai:
+            box.size.width = 23
+            label = "AI"
+            foreground = accent
+            fill = NSColor(DesignValues.accentSoft)
+            outline = accent
+        }
+        context.setFillColor(fill.cgColor)
+        let path = CGPath(roundedRect: box, cornerWidth: 4, cornerHeight: 4, transform: nil)
+        context.addPath(path); context.fillPath()
+        if let outline {
+            context.setStrokeColor(outline.cgColor); context.setLineWidth(1)
+            context.setLineDash(phase: 0, lengths: dashed ? [3, 3] : [])
+            context.addPath(path); context.strokePath()
+        }
+        let font = NSFont.monospacedSystemFont(ofSize: span.kind == .ai ? 10 : 11, weight: .semibold)
+        let title = NSAttributedString(string: label, attributes: [.font: font, .foregroundColor: foreground])
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: true)
+        title.draw(at: CGPoint(x: box.midX - title.size().width / 2, y: box.midY - title.size().height / 2))
+        NSGraphicsContext.restoreGraphicsState()
     }
 }
 
@@ -190,6 +275,11 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
             case "Pauses": span.pause
             case "Suggested fillers": model.fillerIDs.contains(span.id)
             case "Clips": model.sortedClips.contains { $0.startWordId == span.id }
+            case "AI words": model.voiceLabPlan?.pieces.contains { piece in
+                guard piece.kind == .synth, let position = model.index(span.id), let rate = model.voiceLabPlan?.sampleRate else { return false }
+                let word = model.words[position]
+                return word.start >= Double(piece.sourceStartSample) / rate && word.end <= Double(piece.sourceEndSample) / rate
+            } ?? false
             default: false
             }
         }
@@ -199,8 +289,24 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
         guard let span else { return nil }
         let result = NSAccessibilityCustomRotor.ItemResult(targetElement: self)
         result.targetRange = span.range
-        result.customLabel = "\((string as NSString).substring(with: span.range)), \(rotor.label)"
+        result.customLabel = "\(spoken(span)), \(rotor.label)"
         return result
+    }
+    override func accessibilityString(for range: NSRange) -> String? {
+        map.intersecting(range).filter(\.selectable).map(spoken).joined(separator: " ")
+    }
+    private func spoken(_ span: TranscriptSpan) -> String {
+        guard let model else { return (string as NSString).substring(with: span.range) }
+        if span.pause, let pause = model.pauseIndex[span.id] {
+            let suffix = model.cutPauseIDs.contains(span.id) ? ", cut" : ""
+            return "pause \(toFixed1(pause.duration)) seconds\(suffix)"
+        }
+        var value = (string as NSString).substring(with: span.range)
+        if let position = model.index(span.id), let plan = model.voiceLabPlan {
+            let word = model.words[position]
+            if plan.pieces.contains(where: { $0.kind == .synth && word.start >= Double($0.sourceStartSample) / plan.sampleRate && word.end <= Double($0.sourceEndSample) / plan.sampleRate }) { value += ", AI modified" }
+        }
+        return value
     }
     override func keyDown(with event: NSEvent) {
         guard let model, !hasMarkedText(), correction == nil else { super.keyDown(with: event); return }

@@ -29,6 +29,7 @@ import VoxClipCore
         text.textContainer?.widthTracksTextView = true
         text.textContainerInset = NSSize(width: 8, height: 8)
         text.isEditable = false; text.isSelectable = false; text.drawsBackground = true
+        text.model = model
         text.textLayoutManager?.delegate = coordinator
         coordinator.text = text; coordinator.renderer.text = text
         let renderer = coordinator.renderer
@@ -85,8 +86,87 @@ import VoxClipCore
             }
         }
         results.append(.init(name: "transcript decorations never relayout storage", passed: renderer.storageRevision == revision))
+        var pageProject = model.project
+        pageProject.edits.clips = [ClipRange(id: "pixel-clip", startWordId: "pixel-low", endWordId: "pixel-playing", title: "Pixel clip")]
+        model.document.replaceProject(pageProject)
+        model.refresh()
+        renderer.rebuild(model: model)
+        var pageState = TranscriptAppearance(cutWords: model.cutWordIDs, scope: 0...0)
+        renderer.update(pageState)
+        let decorations = text.map.spans.filter { !$0.selectable }
+        let selected = text.map.selectionRanges(in: NSRange(location: 0, length: text.string.utf16.count))
+        let avoidsDecorations = decorations.allSatisfy { decoration in selected.allSatisfy { NSIntersectionRange($0, decoration.range).length == 0 } }
+        results.append(.init(name: "word-snapped selection excludes clip badge and end-bracket placeholders", passed: decorations.count == 2 && avoidsDecorations && text.map.span(at: decorations[0].range.location)?.selectable == true))
+        let copied = selected.flatMap { text.map.intersecting($0).filter(\.selectable) }.filter { !$0.pause }.map { (text.string as NSString).substring(with: $0.range) }.joined(separator: " ")
+        results.append(.init(name: "Copy Text's word map never includes a badge or bracket", passed: !copied.contains(" ") && !copied.contains("]") && copied.contains("uncertain")))
+        if let pause = model.pauses.first {
+            let uncut = renderer.attributes[pause.id]?[.vcRounded] == nil
+            pageProject.edits.cutPauseIds = [pause.id]
+            model.document.replaceProject(pageProject)
+            model.refresh()
+            pageState.cutPauses = [pause.id]
+            renderer.update(pageState)
+            results.append(.init(name: "only a cut pause has the radius-6 chip", passed: uncut && renderer.attributes[pause.id]?[.vcRounded] is NSColor && renderer.attributes[pause.id]?[.vcRadius] as? Double == 6))
+            results.append(.init(name: "the pause's accessible description includes duration and cut", passed: text.map.span(id: pause.id).flatMap { text.accessibilityString(for: $0.range) }?.hasSuffix(", cut") == true))
+        }
+        manager.ensureLayout(for: manager.documentRange)
+        manager.textViewportLayoutController.layoutViewport()
+        for (name, mode) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
+            let appearance = NSAppearance(named: mode)!
+            window.appearance = appearance
+            appearance.performAsCurrentDrawingAppearance {
+                text.backgroundColor = DesignValues.nsColor("bg.surface")
+                text.needsDisplay = true
+                guard let cached = text.bitmapImageRepForCachingDisplay(in: text.bounds) else { return }
+                text.cacheDisplay(in: text.bounds, to: cached)
+                guard let image = cached.cgImage, let space = CGColorSpace(name: CGColorSpace.sRGB),
+                      let context = CGContext(data: nil, width: image.width, height: image.height, bitsPerComponent: 8, bytesPerRow: 0, space: space, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return }
+                context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+                guard let converted = context.makeImage() else { return }
+                let bitmap = NSBitmapImageRep(cgImage: converted)
+                @MainActor func rect(_ id: String) -> CGRect {
+                    guard let span = text.map.span(id: id), let content = manager.textContentManager,
+                          let location = content.location(content.documentRange.location, offsetBy: span.range.location),
+                          let fragment = manager.textLayoutFragment(for: location), let element = fragment.textElement?.elementRange else { return .zero }
+                    let offset = content.offset(from: content.documentRange.location, to: element.location)
+                    guard let line = fragment.textLineFragments.first(where: { NSLocationInRange(span.range.location - offset, $0.characterRange) }) else { return .zero }
+                    let start = line.locationForCharacter(at: span.range.location - offset)
+                    let end = line.locationForCharacter(at: NSMaxRange(span.range) - offset)
+                    return CGRect(x: text.textContainerOrigin.x + fragment.layoutFragmentFrame.minX + line.typographicBounds.minX + min(start.x, end.x),
+                                  y: text.textContainerOrigin.y + fragment.layoutFragmentFrame.minY + line.typographicBounds.minY,
+                                  width: max(1, abs(end.x - start.x)), height: line.typographicBounds.height)
+                }
+                let badgePixels = opaquePixels(bitmap, rect: rect("clip-start:pixel-clip"), size: text.bounds.size, color: DesignValues.nsColor("clip.badgeBackground"))
+                let scopedPixels = opaquePixels(bitmap, rect: rect("pixel-low"), size: text.bounds.size, color: DesignValues.nsColor("text.secondary"))
+                let strikePixels = opaquePixels(bitmap, rect: rect("pixel-cut"), size: text.bounds.size, color: DesignValues.nsColor("cut.stroke"))
+                results.append(.init(name: "\(name) clip badge paints clip.badgeBackground over the page (\(badgePixels) pixels)", passed: badgePixels >= 8))
+                results.append(.init(name: "\(name) out-of-scope glyphs paint opaque text.secondary (\(scopedPixels) pixels)", passed: scopedPixels >= 3))
+                results.append(.init(name: "\(name) cut strike matches cut.stroke within three channels (\(strikePixels) pixels)", passed: strikePixels >= 3))
+                if let data = bitmap.representation(using: .png, properties: [:]) { try? data.write(to: directory.appendingPathComponent("transcript-page-\(name).png")) }
+            }
+        }
         try JSONEncoder().encode(probes).write(to: directory.appendingPathComponent("transcript-decoration-pixels.json"))
         return results
+    }
+    private static func opaquePixels(_ bitmap: NSBitmapImageRep, rect: CGRect, size: NSSize, color: NSColor) -> Int {
+        guard let foreground = color.usingColorSpace(.sRGB), let background = DesignValues.nsColor("bg.surface").usingColorSpace(.sRGB), rect.width > 0, rect.height > 0 else { return 0 }
+        let alpha = foreground.alphaComponent
+        let target = NSColor(srgbRed: foreground.redComponent * alpha + background.redComponent * (1 - alpha),
+                             green: foreground.greenComponent * alpha + background.greenComponent * (1 - alpha),
+                             blue: foreground.blueComponent * alpha + background.blueComponent * (1 - alpha), alpha: 1)
+        let scale = Double(bitmap.pixelsWide) / size.width
+        let lowerX = max(0, Int(rect.minX * scale)), upperX = min(bitmap.pixelsWide, Int(rect.maxX * scale))
+        let lowerY = max(0, Int(rect.minY * scale)), upperY = min(bitmap.pixelsHigh, Int(rect.maxY * scale))
+        guard lowerX < upperX, lowerY < upperY else { return 0 }
+        var count = 0
+        let tolerance = 3.0 / 255.0
+        for row in lowerY..<upperY {
+            for column in lowerX..<upperX {
+                guard let pixel = bitmap.colorAt(x: column, y: row) else { continue }
+                if abs(pixel.redComponent - target.redComponent) <= tolerance && abs(pixel.greenComponent - target.greenComponent) <= tolerance && abs(pixel.blueComponent - target.blueComponent) <= tolerance { count += 1 }
+            }
+        }
+        return count
     }
     private static func matchingColumns(_ bitmap: NSBitmapImageRep, lower: Double, upper: Double, row: Double, size: NSSize, color: NSColor, background: NSColor) -> Int {
         guard let color = color.usingColorSpace(.deviceRGB), let background = background.usingColorSpace(.deviceRGB) else { return 0 }

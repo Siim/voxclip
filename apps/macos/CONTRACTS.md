@@ -1,5 +1,12 @@
 # macOS implementation contracts
 
+### 2026-10-27 — Round-2 step 9: transcript page rendering
+
+- TextKit draws the 84-point gutter, clip rules, nonselectable numbered badges/end brackets, AI chips/underlines and per-line Rewrite outlines. Range mapping, selection and Copy Text exclude decorations; Clips and AI words have rotors and pause/AI descriptions.
+- Out-of-scope glyphs use opaque `text.secondary`; cut pauses alone have a chip. Strike, filler and playing-word colors follow current Ink tokens rather than superseded Petrol examples.
+- Build and 576 Core tests pass; UI 297/297, save boundaries 45/45. Transcript performance remains within its harness budget. Pixel tests convert the capture into sRGB before comparing strike, badge and scope colors.
+- Light/dark captures: `/private/tmp/voxclip-sol-mac-redesign/step9/ui/`. Native font rasterization differs from the HTML reference; Rewrite is a model/rendering hook until round 3 supplies its panel.
+
 ### 2026-10-27 — Round-2 recovery, title writes and Ink consumers
 
 - Refused never-saved recoveries with an autosave stay registered in `WorkspaceShell.pendingRecovery`; neither recovery entry point closes the only copy. Import completion and the leave boundary retry through `replaceProject`, preserving the native keep/delete review. The main window remains restorable.
