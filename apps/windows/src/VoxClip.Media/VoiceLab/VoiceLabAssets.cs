@@ -163,7 +163,7 @@ public static class VoiceLabAssets
         }
     }
 
-    private static void RequireWithinRoot(string root, string file, SafeFileHandle handle, string label)
+    internal static void RequireWithinRoot(string root, string file, SafeFileHandle handle, string label)
     {
         string canonicalRoot, canonicalFile;
         if (OperatingSystem.IsWindows())
