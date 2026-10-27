@@ -42,12 +42,13 @@ public sealed class ClipSemanticsTests
     public void FindClipsAddsSuggestionsAsOneUndoStep()
     {
         var model = Clean();
-        model.AddAiResult(Result(model, (0, 3), (5, 8), (10, 14)));
+        var added = model.AddAiResult(Result(model, (0, 3), (5, 8), (10, 14)));
+        Assert.Equal(model.SuggestedClips.Select(clip => clip.Id), added);
         Assert.Equal(3, model.SuggestedClips.Count);
         Assert.Empty(model.KeptClips);
         Assert.All(model.Clips, clip => Assert.True(clip.IsSuggested && !clip.Selected));
         Assert.Single(model.Project.Ai.Results);
-        Assert.Equal("Reason 1 (8/10)", model.Clips[0].ToolTip);
+        Assert.Equal("8/10 · Reason 1", model.Clips[0].ToolTip);
 
         model.Undo();
         Assert.Empty(model.Clips);

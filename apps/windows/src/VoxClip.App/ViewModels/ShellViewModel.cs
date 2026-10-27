@@ -3,7 +3,10 @@ using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace VoxClip.App.ViewModels;
 
-public enum SidebarKind { Home, Separator, Project, FullTake, Clip, SuggestedHeader, Suggestion, Action, RecentHeader, Recent }
+public enum SidebarKind { Home, Separator, Project, FullTake, Clip, SuggestedHeader, Suggestion, Action, RecentHeader, Recent, Empty, Finding, Callout }
+
+/// <summary>A callout under the sidebar actions (design §13): no connector, or a problem finding clips.</summary>
+public sealed record SidebarCallout(string Title, string Message, string Action);
 
 /// <summary>One NavigationView row. Rows keep their instance by <see cref="Key"/> across rebuilds so selection and focus survive; design §3.4.</summary>
 public sealed class SidebarRow(SidebarKind kind, string key) : ObservableObject
@@ -17,6 +20,7 @@ public sealed class SidebarRow(SidebarKind kind, string key) : ObservableObject
     private bool isActive;
     private bool isEnabled = true;
     private MediaTile? media;
+    private bool showsKeepAll;
     public SidebarKind Kind { get; } = kind;
     public string Key { get; } = key;
     /// <summary>The clip id of a clip or suggestion row.</summary>
@@ -26,17 +30,24 @@ public sealed class SidebarRow(SidebarKind kind, string key) : ObservableObject
     public string Title { get => title; set => SetProperty(ref title, value); }
     /// <summary>Second header line: the project's file name, or an action's shortcut.</summary>
     public string Detail { get => detail; set => SetProperty(ref detail, value); }
-    public string Meta { get => meta; set => SetProperty(ref meta, value); }
+    public string Meta { get => meta; set { if (SetProperty(ref meta, value)) OnPropertyChanged(nameof(HasAction)); } }
     /// <summary>Display number of a clip or suggestion; never stored (design §2).</summary>
-    public string Number { get => number; set => SetProperty(ref number, value); }
+    public string Number { get => number; set { if (SetProperty(ref number, value)) { OnPropertyChanged(nameof(KeepName)); OnPropertyChanged(nameof(DismissName)); } } }
+    /// <summary>A suggestion's Keep and Dismiss buttons: "Keep suggested clip 5", "Dismiss suggested clip 5".</summary>
+    public string KeepName => $"Keep suggested clip {Number}";
+    public string DismissName => $"Dismiss suggested clip {Number}";
     public string AccessibleName { get => accessibleName; set => SetProperty(ref accessibleName, value); }
     public string ToolTip { get => toolTip; set => SetProperty(ref toolTip, value); }
     /// <summary>The row's clip is the active clip: its badge takes the accent fill.</summary>
     public bool IsActive { get => isActive; set { if (SetProperty(ref isActive, value)) OnPropertyChanged(nameof(IsNeutral)); } }
     public bool IsNeutral => !isActive;
     public bool IsEnabled { get => isEnabled; set => SetProperty(ref isEnabled, value); }
-    /// <summary>The Full take row's thumbnail: the take's frame, else its caption card (design §5.4).</summary>
+    /// <summary>The row's thumbnail: the take's or clip's frame, else its caption card (design §5.4).</summary>
     public MediaTile? Media { get => media; set => SetProperty(ref media, value); }
+    /// <summary>The Suggested header offers Keep all from two suggestions up.</summary>
+    public bool ShowsKeepAll { get => showsKeepAll; set => SetProperty(ref showsKeepAll, value); }
+    /// <summary>A callout's action: "Set up AI…", "Retry" or "Find clips…"; empty for none.</summary>
+    public bool HasAction => Meta.Length > 0;
     public override string ToString() => AccessibleName.Length > 0 ? AccessibleName : Title;
 }
 
@@ -49,6 +60,12 @@ public sealed class ShellViewModel
     public SidebarRow Home => Row(SidebarKind.Home, "home");
     /// <summary>The open take's thumbnail for the Full take row; the window sets it as the frame and card arrive.</summary>
     public MediaTile? TakeMedia { get; set; }
+    /// <summary>Clip and suggestion thumbnails by clip id, set by the window as frames and cards arrive.</summary>
+    public IReadOnlyDictionary<string, MediaTile> ClipMedia { get; set; } = new Dictionary<string, MediaTile>();
+    /// <summary>While Find clips runs: the connector line for the "Finding clips…" row; null otherwise.</summary>
+    public string? Finding { get; set; }
+    /// <summary>The callout under the sidebar actions, or null.</summary>
+    public SidebarCallout? Callout { get; set; }
 
     /// <summary>The row that shows the editor's current scope: the active clip's row, or Full take.</summary>
     public SidebarRow? ScopeRow(string? activeClipId)
@@ -86,6 +103,13 @@ public sealed class ShellViewModel
             var active = editor.State?.ActiveClipId;
             var kept = editor.Clips.Where(clip => !IsSuggestion(clip)).ToArray();
             var suggested = editor.Clips.Where(IsSuggestion).ToArray();
+            if (editor.HasTranscript && editor.Clips.Count == 0 && Finding is null)
+            {
+                var empty = Row(SidebarKind.Empty, "empty");
+                empty.Title = "No clips yet. Select words and press Ctrl+K.";
+                empty.AccessibleName = empty.Title;
+                next.Add(empty);
+            }
             var number = 0;
             foreach (var clip in kept.Concat(suggested))
             {
@@ -98,17 +122,20 @@ public sealed class ShellViewModel
                 row.AccessibleName = suggestion
                     ? $"Suggested clip {number}, {clip.Title}, {Spoken(clip.DurationSeconds)}"
                     : $"Clip {number}, {clip.Title}, {Spoken(clip.DurationSeconds)}";
-                row.ToolTip = clip.Reason;
+                row.ToolTip = clip.ToolTip;
                 row.IsActive = clip.Id == active;
-                if (suggestion && number == kept.Length + 1)
-                {
-                    var header = Row(SidebarKind.SuggestedHeader, "suggested");
-                    header.Title = suggested.Length >= 2 ? $"Suggested ({suggested.Length})" : "Suggested";
-                    header.AccessibleName = header.Title;
-                    header.IsEnabled = suggested.Length >= 2;
-                    next.Add(header);
-                }
+                row.Media = ClipMedia.GetValueOrDefault(clip.Id);
+                if (suggestion && number == kept.Length + 1) next.Add(SuggestedHeader(suggested.Length));
                 next.Add(row);
+            }
+            if (Finding is { } connector)
+            {
+                if (suggested.Length == 0) next.Add(SuggestedHeader(0));
+                var finding = Row(SidebarKind.Finding, "finding");
+                finding.Title = "Finding clips…";
+                finding.Detail = connector;
+                finding.AccessibleName = $"Finding clips, {connector}";
+                next.Add(finding);
             }
             if (!showingHome)
             {
@@ -127,6 +154,15 @@ public sealed class ShellViewModel
                 find.AccessibleName = "Find clips with AI";
                 find.IsEnabled = editor.HasTranscript && !editor.Busy && !editor.IsLeaving;
                 next.Add(find);
+                if (Callout is { } callout)
+                {
+                    var row = Row(SidebarKind.Callout, "callout");
+                    row.Title = callout.Title;
+                    row.Detail = callout.Message;
+                    row.Meta = callout.Action;
+                    row.AccessibleName = $"{callout.Title} {callout.Message}".Trim();
+                    next.Add(row);
+                }
             }
         }
         if (showingHome)
@@ -150,6 +186,16 @@ public sealed class ShellViewModel
             }
         }
         Reconcile(next);
+    }
+
+    /// <summary>"Suggested", or "Suggested (N)" with Keep all from two suggestions up (design §3.4).</summary>
+    private SidebarRow SuggestedHeader(int count)
+    {
+        var header = Row(SidebarKind.SuggestedHeader, "suggested");
+        header.Title = count >= 2 ? $"Suggested ({count})" : "Suggested";
+        header.AccessibleName = header.Title;
+        header.ShowsKeepAll = count >= 2;
+        return header;
     }
 
     /// <summary>Suggestions are AI clips that are not kept (design §2); manual clips are always kept.</summary>

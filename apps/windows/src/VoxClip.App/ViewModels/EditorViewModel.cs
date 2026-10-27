@@ -306,17 +306,20 @@ public sealed class EditorViewModel : ObservableObject
     }
 
     /// <summary>Cache the run, then add its clips as suggestions (not kept) in one undo step; delta §6.2.</summary>
-    public void AddAiResult(AiResult result)
+    /// <summary>Add a Find clips result as suggestions in one undo step and return the new suggestions' ids.</summary>
+    public IReadOnlyList<string> AddAiResult(AiResult result)
     {
-        if (isLeaving || state is null) return;
+        if (isLeaving || state is null) return [];
         var previous = project.Ai;
         project = project with { Ai = new(project.Ai.Results.Append(result).ToArray()) };
         var add = new EditOperation.AddAiClips(result.Id, result.Clips);
         var before = state.Clips.Select(clip => clip.Id).ToHashSet(StringComparer.Ordinal);
-        IEnumerable<string> added;
+        string[] added;
         try { added = reduce(state, add).Clips.Select(clip => clip.Id).Where(id => !before.Contains(id)).ToArray(); }
         catch (Exception exception) when (exception is not OutOfMemoryException) { added = []; }
-        if (!ApplyBatch([add, .. added.Select(id => new EditOperation.SetClipSelected(id, false))])) project = project with { Ai = previous };
+        if (ApplyBatch([add, .. added.Select(id => new EditOperation.SetClipSelected(id, false))])) return added;
+        project = project with { Ai = previous };
+        return [];
     }
 
     public string DisplayText(TimedWord word) => state?.Corrections.GetValueOrDefault(word.Id) ?? word.Text;
@@ -443,7 +446,7 @@ public sealed record ClipRow(ClipRange Clip, int Number, string Title, string Ex
     public string? Thumbnail { get; init; }
     public ClipExportState ExportState { get; init; }
     /// <summary>Hover text: the AI reason with its score; empty for manual clips.</summary>
-    public string ToolTip => Score is { } score ? (Reason.Length == 0 ? $"Score {score}/10" : $"{Reason} ({score}/10)") : Reason;
+    public string ToolTip => Score is { } score ? (Reason.Length == 0 ? $"{score}/10" : $"{score}/10 · {Reason}") : Reason;
 }
 
 internal static class StringExtensions

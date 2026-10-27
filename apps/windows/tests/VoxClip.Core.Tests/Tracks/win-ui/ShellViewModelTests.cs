@@ -1,5 +1,6 @@
 #if WIN_UI_TESTS
 using VoxClip.App.ViewModels;
+using VoxClip.Core.Domain.Clips;
 using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Shared;
 using Xunit;
@@ -141,6 +142,100 @@ public sealed class ShellViewModelTests
         editor.Busy = true;
         shell.Update(editor, false, [], null);
         Assert.All(shell.Rows.Where(row => row.Kind == SidebarKind.Action), row => Assert.False(row.IsEnabled));
+    }
+
+    [Fact]
+    public void EmptyRowSitsUnderFullTakeUntilThereIsAClip()
+    {
+        var editor = WithSuggestion();
+        foreach (var clip in editor.Clips.ToArray()) Assert.True(editor.Remove(clip.Id));
+        var shell = new ShellViewModel();
+        shell.Update(editor, false, [], null);
+        var empty = shell.Rows.Single(row => row.Kind == SidebarKind.Empty);
+        Assert.Equal(SidebarKind.FullTake, shell.Rows[shell.Rows.IndexOf(empty) - 1].Kind);
+        Assert.Equal("No clips yet. Select words and press Ctrl+K.", empty.Title);
+        shell.Finding = "Claude Code · reading 2:10 of transcript";
+        shell.Update(editor, false, [], null);
+        Assert.DoesNotContain(shell.Rows, row => row.Kind == SidebarKind.Empty);
+        shell.Finding = null;
+        editor.Select(0); editor.Select(2, true);
+        Assert.NotNull(editor.MakeClip());
+        shell.Update(editor, false, [], null);
+        Assert.DoesNotContain(shell.Rows, row => row.Kind == SidebarKind.Empty);
+    }
+
+    [Fact]
+    public void FindingRowSitsUnderSuggestedWithItsConnectorLine()
+    {
+        var editor = WithSuggestion();
+        var shell = new ShellViewModel { Finding = "Claude Code · reading 2:10 of transcript" };
+        shell.Update(editor, false, [], null);
+        Assert.Equal([SidebarKind.SuggestedHeader, SidebarKind.Suggestion, SidebarKind.Finding, SidebarKind.Separator],
+            shell.Rows.SkipWhile(row => row.Kind != SidebarKind.SuggestedHeader).Take(4).Select(row => row.Kind));
+        var finding = shell.Rows.Single(row => row.Kind == SidebarKind.Finding);
+        Assert.Equal(("Finding clips…", "Claude Code · reading 2:10 of transcript"), (finding.Title, finding.Detail));
+        Assert.True(editor.Dismiss(editor.Clips.Single(ShellViewModel.IsSuggestion).Id));
+        shell.Update(editor, false, [], null);
+        Assert.Equal([SidebarKind.Clip, SidebarKind.SuggestedHeader, SidebarKind.Finding],
+            shell.Rows.SkipWhile(row => row.Kind != SidebarKind.Clip).Take(3).Select(row => row.Kind));
+        Assert.Equal("Suggested", shell.Rows.Single(row => row.Kind == SidebarKind.SuggestedHeader).Title);
+        shell.Finding = null;
+        shell.Update(editor, false, [], null);
+        Assert.DoesNotContain(shell.Rows, row => row.Kind is SidebarKind.Finding or SidebarKind.SuggestedHeader);
+    }
+
+    [Fact]
+    public void CalloutFollowsTheActionsOnlyInTheEditor()
+    {
+        var editor = WithSuggestion();
+        var shell = new ShellViewModel { Callout = new("Couldn't find clips.", "Claude Code isn't signed in.", "Retry") };
+        shell.Update(editor, false, [], null);
+        var callout = shell.Rows[^1];
+        Assert.Equal((SidebarKind.Callout, "Couldn't find clips.", "Claude Code isn't signed in.", "Retry", true),
+            (callout.Kind, callout.Title, callout.Detail, callout.Meta, callout.HasAction));
+        Assert.Equal(SidebarKind.Action, shell.Rows[^2].Kind);
+        shell.Callout = new("Transcribe this video before finding clips.", "Your video is still here.", "");
+        shell.Update(editor, false, [], null);
+        Assert.Same(callout, shell.Rows[^1]);
+        Assert.False(callout.HasAction);
+        shell.Update(editor, true, [], null);
+        Assert.DoesNotContain(shell.Rows, row => row.Kind == SidebarKind.Callout);
+    }
+
+    [Fact]
+    public void SuggestedHeaderCountsFromTwoAndOffersKeepAll()
+    {
+        var project = Fixture("clip-from-long-take.voxclip");
+        var editor = new EditorViewModel(project with { Edits = project.Edits with { Clips = [], ActiveClipId = null } });
+        var words = editor.Words;
+        editor.AddAiResult(new("run-1", DateTimeOffset.UtcNow, "anthropic", "test-model", ClipPreset.Best, null, "et", new string('0', 64),
+            [new("One", "Strong hook", 8, words[0].Id, words[3].Id), new("Two", "", 6, words[5].Id, words[8].Id)]));
+        var shell = new ShellViewModel();
+        shell.Update(editor, false, [], null);
+        var header = shell.Rows.Single(row => row.Kind == SidebarKind.SuggestedHeader);
+        Assert.Equal(("Suggested (2)", true), (header.Title, header.ShowsKeepAll));
+        var suggestions = shell.Rows.Where(row => row.Kind == SidebarKind.Suggestion).ToArray();
+        Assert.Equal(("8/10 · Strong hook", "6/10"), (suggestions[0].ToolTip, suggestions[1].ToolTip));
+        Assert.Equal(("Keep suggested clip 1", "Dismiss suggested clip 1"), (suggestions[0].KeepName, suggestions[0].DismissName));
+        Assert.True(editor.Keep(suggestions[0].ClipId!));
+        shell.Update(editor, false, [], null);
+        Assert.Equal(("Suggested", false), (header.Title, header.ShowsKeepAll));
+        Assert.Equal(("Keep suggested clip 2", "2"), (suggestions[1].KeepName, suggestions[1].Number));
+        Assert.True(editor.KeepAll());
+        shell.Update(editor, false, [], null);
+        Assert.DoesNotContain(shell.Rows, row => row.Kind is SidebarKind.SuggestedHeader or SidebarKind.Suggestion);
+    }
+
+    [Fact]
+    public void ClipRowsTakeTheirTilesById()
+    {
+        var editor = WithSuggestion();
+        var suggestion = editor.Clips.Single(ShellViewModel.IsSuggestion);
+        var tile = new MediaTile("take|" + suggestion.Id, null, null, MediaStatus.None);
+        var shell = new ShellViewModel { ClipMedia = new Dictionary<string, MediaTile> { [suggestion.Id] = tile } };
+        shell.Update(editor, false, [], null);
+        Assert.Same(tile, shell.Rows.Single(row => row.Kind == SidebarKind.Suggestion).Media);
+        Assert.Null(shell.Rows.Single(row => row.Kind == SidebarKind.Clip).Media);
     }
 }
 #endif

@@ -48,6 +48,10 @@ public sealed partial class SettingsWindow : Window
     }
     [DllImport("user32.dll")]
     private static extern uint GetDpiForWindow(IntPtr window);
+    internal void ShowSection(string tag)
+    {
+        if (Navigation.MenuItems.OfType<NavigationViewItem>().FirstOrDefault(item => (string)item.Tag == tag) is { } item) Navigation.SelectedItem = item;
+    }
     private void SettingsChanged(object? sender, EventArgs args) => App.Services.ApplyTheme(Root);
     private async void PaneChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
     {

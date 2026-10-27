@@ -38,23 +38,18 @@ public sealed partial class EditorPage : Page
     private double previewWidth = 380;
     private double previewDuration;
     private string? previewClipId;
-    private Control? focusAfterPaneClose;
     public EditorPage()
     {
         InitializeComponent();
         Loaded += (_, _) => Transcript.Focus(FocusState.Programmatic);
-        InspectorSplit.PaneClosed += (_, _) =>
-        {
-            if (!narrow) return;
-            var target = focusAfterPaneClose ?? Transcript;
-            focusAfterPaneClose = null;
-            DispatcherQueue.TryEnqueue(() => target.Focus(FocusState.Keyboard));
-        };
+        InspectorSplit.PaneClosed += (_, _) => { if (narrow) DispatcherQueue.TryEnqueue(() => Transcript.Focus(FocusState.Keyboard)); };
     }
     public static bool HasText(string? text) => !string.IsNullOrEmpty(text);
     /// <summary>The take's resolved video, or null when it can't be found or the project is a demo fixture.</summary>
     internal string? MediaPath { get; private set; }
     internal bool IsDemo => demo;
+    /// <summary>Find clips in this take: its flyout, and the "Finding clips…" row and callout it puts in the pane.</summary>
+    internal FindClipsFlyout FindClips { get; private set; } = null!;
 
     internal async Task OpenAsync(MainWindow window, Project project, string? mediaPath, bool demoMode, CancellationToken ct)
     {
@@ -69,6 +64,8 @@ public sealed partial class EditorPage : Page
         preview = new PreviewEngine();
 #endif
         leave = new(ViewModel);
+        FindClips = new(ViewModel, lifetime.Token);
+        FindClips.Announcement += (_, text) => Transcript.Announce(text);
         preview.PlaybackFaulted += PlaybackFaulted;
         ViewModel.Changed += ModelChanged;
         ViewModel.SelectionChanged += SelectionChanged;
@@ -86,12 +83,6 @@ public sealed partial class EditorPage : Page
         Bindings.Update();
         Aspect.SelectedIndex = (int)project.Export.Aspect;
         inspector = new(ViewModel, async state => await SnapshotAsync(lifetime.Token, state), lifetime.Token);
-        inspector.TabChanged += (_, _) => UpdateFooter();
-        inspector.PreviewRequested += _ =>
-        {
-            if (narrow) { focusAfterPaneClose = PreviewPlay; InspectorSplit.IsPaneOpen = false; }
-            PreviewPlay.Focus(FocusState.Keyboard);
-        };
         InspectorHost.Children.Add(inspector);
         await inspector.InitializeAsync();
         InstallAccelerators();
@@ -181,11 +172,6 @@ public sealed partial class EditorPage : Page
     {
         DispatcherQueue.TryEnqueue(() => { if (!disposed) ViewModel.Notice = UiError.Message(exception, "Preview"); });
     }
-    private void UpdateFooter()
-    {
-        FooterExport.Content = inspector?.ClipsActive == true && ViewModel.SelectedClipCount > 0 ? $"Export {ViewModel.SelectedClipCount} {(ViewModel.SelectedClipCount == 1 ? "clip" : "clips")}" : "Export…";
-        FooterExport.IsEnabled = ViewModel.CanExport && (inspector?.ClipsActive != true || ViewModel.SelectedClipCount > 0);
-    }
     private void SelectionChanged(object? sender, EventArgs args) => UpdateClipContext();
     private void UpdateClipContext()
     {
@@ -201,7 +187,6 @@ public sealed partial class EditorPage : Page
     private void ModelChanged(object? sender, EventArgs args)
     {
         if (!ready || disposed) return;
-        UpdateFooter();
         UpdateClipContext();
         Untranscribed.Visibility = ViewModel.HasTranscript ? Visibility.Collapsed : Visibility.Visible;
         _ = RunAsync(UpdatePreviewAsync, "Preview");
@@ -289,38 +274,26 @@ public sealed partial class EditorPage : Page
     private void RestoreClicked(object sender, RoutedEventArgs args) => ViewModel.Apply(new EditOperation.RestoreCuts());
     private void UndoClicked(object sender, RoutedEventArgs args) => ViewModel.Undo();
     private void RedoClicked(object sender, RoutedEventArgs args) => ViewModel.Redo();
+    /// <summary>Make a clip, then select its pane row; the transcript keeps its selection (design §6.2).</summary>
     private void MakeClipAndReveal()
     {
-        if (ViewModel.MakeClip() is not null) ShowClipsPane();
+        if (ViewModel.MakeClip() is { } id) owner.RevealClip(id);
     }
     private void MakeClipClicked(object sender, RoutedEventArgs args) => MakeClipAndReveal();
-    private void FindClipsClicked(object sender, RoutedEventArgs args) => ShowFindClips();
+    private void FindClipsClicked(object sender, RoutedEventArgs args) => ShowFindClips(sender as FrameworkElement);
     /// <summary>The sidebar's "New clip from selection" action.</summary>
     internal void MakeClipFromPane() => MakeClipAndReveal();
-    /// <summary>The sidebar's "Find clips with AI" action.</summary>
-    internal void ShowFindClips()
-    {
-        InspectorSplit.IsPaneOpen = true;
-        inspector?.ShowFind();
-    }
+    /// <summary>Open Find clips at the control that asked for it: the pane action, its callout or the page's button.</summary>
+    internal void ShowFindClips(FrameworkElement? anchor) => _ = RunAsync(() => FindClips.ShowAsync(anchor ?? FindClipsAction), "Find clips");
     /// <summary>Home pauses playback and keeps this page alive; design §2.</summary>
     internal void PausePlayback() => _ = RunAsync(async () => { if (preview?.Position.IsPlaying == true) await preview.PauseAsync(lifetime.Token); }, "Preview");
-    /// <summary>A sidebar row sets the scope through the existing setActiveClip step; a clip also selects its first word.</summary>
-    internal void SelectScope(string? clipId)
+    /// <summary>A sidebar row sets the scope through the existing setActiveClip step; a clip also selects its first word unless
+    /// the transcript keeps its selection, as after making a clip.</summary>
+    internal void SelectScope(string? clipId, bool keepSelection = false)
     {
         ViewModel.Apply(new EditOperation.SetActiveClip(clipId));
-        if (clipId is not null && ViewModel.State?.ActiveClipId == clipId && ViewModel.Clips.FirstOrDefault(clip => clip.Id == clipId) is { } row)
+        if (!keepSelection && clipId is not null && ViewModel.State?.ActiveClipId == clipId && ViewModel.Clips.FirstOrDefault(clip => clip.Id == clipId) is { } row)
             ViewModel.Select(ViewModel.Index(row.Clip.StartWordId));
-    }
-    private void CaptionsClicked(object sender, RoutedEventArgs args)
-    {
-        InspectorSplit.IsPaneOpen = true;
-        inspector?.SelectTab(false);
-    }
-    private void ShowClipsPane()
-    {
-        InspectorSplit.IsPaneOpen = true;
-        inspector?.SelectTab(true);
     }
     private async void PlayClicked(object sender, RoutedEventArgs args) => await RunAsync(TogglePlaybackAsync, "Preview");
     private async Task TogglePlaybackAsync()
@@ -357,11 +330,13 @@ public sealed partial class EditorPage : Page
         }
     }, "Save project");
     private void ShowProjectClicked(object sender, RoutedEventArgs args) { if (owner.ProjectPath is { } path) ShareHelpers.Reveal(path); }
-    private async void ExportClicked(object sender, RoutedEventArgs args) => await RunAsync(async () =>
+    private async void ExportClicked(object sender, RoutedEventArgs args) => await ExportAsync(false);
+    /// <summary>A clip row's "Export kept clips…": Export opens with the kept clips chosen.</summary>
+    internal Task ExportKeptClipsAsync() => ExportAsync(true);
+    private Task ExportAsync(bool keptClips) => RunAsync(async () =>
     {
         if (!ViewModel.CanExport) return;
-        var selectedClips = ReferenceEquals(sender, FooterExport) && inspector?.ClipsActive == true && ViewModel.SelectedClipCount > 0;
-        await new ExportDialog(owner, ViewModel, demo, SnapshotAsync, selectedClips) { XamlRoot = XamlRoot }.ShowAsync();
+        await new ExportDialog(owner, ViewModel, demo, SnapshotAsync, keptClips && ViewModel.SelectedClipCount > 0) { XamlRoot = XamlRoot }.ShowAsync();
     }, "Export");
     internal async Task PromptTranscriptionAsync() => await RunAsync(async () =>
     {
@@ -374,7 +349,7 @@ public sealed partial class EditorPage : Page
         var confirmation = new ContentDialog { XamlRoot = XamlRoot, Title = "Transcribe again?", Content = $"Transcribe again? This replaces the transcript and removes {ViewModel.Summary.CutWordCount + ViewModel.Summary.CutPauseCount} cuts, {ViewModel.Project.Edits.Corrections.Count} corrections, {ViewModel.Clips.Count} clips and the AI suggestions.", PrimaryButtonText = "Transcribe Again", CloseButtonText = "Cancel", DefaultButton = ContentDialogButton.Close };
         if (await confirmation.ShowAsync() == ContentDialogResult.Primary) TranscribeClicked(sender, args);
     }
-    private async void ShortcutsClicked(object sender, RoutedEventArgs args) => await new ContentDialog { XamlRoot = XamlRoot, Title = "Keyboard shortcuts", CloseButtonText = "Done", Content = new TextBlock { Text = "Space  Play / pause\nJ / K / L  Back / stop / forward\nDelete  Cut or restore selected words\nEnter  Correct spelling\nCtrl+Z / Ctrl+Y  Undo / redo\nCtrl+K  Make a clip (no key needed)\nCtrl+1 / Ctrl+2  Captions / Clips\nCtrl+E  Export\nCtrl+F  Find\nCtrl+,  Settings\nF6  Next pane\n\nEditor keys never run while typing in a text field.", TextWrapping = TextWrapping.Wrap } }.ShowAsync();
+    private async void ShortcutsClicked(object sender, RoutedEventArgs args) => await new ContentDialog { XamlRoot = XamlRoot, Title = "Keyboard shortcuts", CloseButtonText = "Done", Content = new TextBlock { Text = "Space  Play / pause\nJ / K / L  Back / stop / forward\nDelete  Cut or restore selected words\nEnter  Correct spelling\nCtrl+Z / Ctrl+Y  Undo / redo\nCtrl+K  Make a clip (no key needed)\nCtrl+Shift+K  Find clips\nCtrl+1 / Ctrl+2  Home / Full take\nCtrl+E  Export\nCtrl+F  Find\nCtrl+,  Settings\nF6  Next pane\n\nEditor keys never run while typing in a text field.", TextWrapping = TextWrapping.Wrap } }.ShowAsync();
     private void AspectChanged(object sender, SelectionChangedEventArgs args) { if (ready) ViewModel.SetExport(ViewModel.Project.Export with { Aspect = (ExportAspect)Math.Max(0, Aspect.SelectedIndex) }); }
     private void InstallAccelerators()
     {
@@ -407,8 +382,7 @@ public sealed partial class EditorPage : Page
         Add(VirtualKey.Right, VirtualKeyModifiers.Control, () => { ViewModel.MoveSentence(1); _ = RunAsync(() => SeekSourceAsync(ViewModel.SourceTime), "Preview"); });
         Add(VirtualKey.Home, VirtualKeyModifiers.Control, () => ViewModel.Select(0));
         Add(VirtualKey.End, VirtualKeyModifiers.Control, () => ViewModel.Select(ViewModel.Words.Count - 1));
-        Add(VirtualKey.Number1, VirtualKeyModifiers.Control, () => CaptionsClicked(this, new()));
-        Add(VirtualKey.Number2, VirtualKeyModifiers.Control, ShowClipsPane);
+        Add(VirtualKey.K, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, () => ShowFindClips(null));
         Add(VirtualKey.I, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, () => InspectorSplit.IsPaneOpen = !InspectorSplit.IsPaneOpen);
         Add(VirtualKey.F1, VirtualKeyModifiers.None, () => ShortcutsClicked(this, new()));
     }
@@ -445,14 +419,7 @@ public sealed partial class EditorPage : Page
             case VirtualKey.Home: ViewModel.Select(0); break;
             case VirtualKey.End: ViewModel.Select(ViewModel.Words.Count - 1); break;
             case VirtualKey.Enter: case VirtualKey.C: Transcript.BeginCorrection(); break;
-            case VirtualKey.Escape:
-                if (ViewModel.State?.ActiveClipId is { } activeClipId)
-                {
-                    ViewModel.Apply(new EditOperation.SetActiveClip(null));
-                    if (narrow) InspectorSplit.IsPaneOpen = true;
-                    inspector?.FocusClip(activeClipId);
-                }
-                break;
+            case VirtualKey.Escape: if (ViewModel.State?.ActiveClipId is not null) owner.ShowScope(null, keepSelection: true); break;
             case VirtualKey.I: ViewModel.SetClipEdgeAtCaret(true); break;
             case VirtualKey.O: ViewModel.SetClipEdgeAtCaret(false); break;
             case (VirtualKey)219: ViewModel.CycleClip(-1); break;

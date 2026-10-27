@@ -131,4 +131,10 @@ public partial class App : Application
         }
         Settings.Activate();
     }
+    /// <summary>Open Settings at one section, named by its tag; Find clips' Change… and Set up AI… open the connector section.</summary>
+    internal static void OpenSettings(string section)
+    {
+        OpenSettings();
+        Settings?.ShowSection(section);
+    }
 }

@@ -32,6 +32,7 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
     private readonly Microsoft.UI.Dispatching.DispatcherQueueTimer takeRefresh;
     private CancellationTokenSource takeLoads = new();
     private (string Path, string? Frame, CaptionCard? Card, bool Unreadable, bool Demo, bool Missing, bool AudioOnly)? take;
+    private Dictionary<string, (string? Frame, CaptionCard? Card)> clipTiles = [];
 #if DEBUG
     internal EditorPage? DebugEditor => editor;
     internal bool DebugHoldNavigation() => navigation.Wait(0);
@@ -69,6 +70,8 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
         Root.KeyboardAccelerators.Add(Accelerator(VirtualKey.N, VirtualKeyModifiers.Control, () => App.NewWindow()));
         Root.KeyboardAccelerators.Add(Accelerator((VirtualKey)188, VirtualKeyModifiers.Control, App.OpenSettings));
         Root.KeyboardAccelerators.Add(Accelerator(VirtualKey.Left, VirtualKeyModifiers.Menu, ShowHome));
+        Root.KeyboardAccelerators.Add(Accelerator(VirtualKey.Number1, VirtualKeyModifiers.Control, ShowHome));
+        Root.KeyboardAccelerators.Add(Accelerator(VirtualKey.Number2, VirtualKeyModifiers.Control, () => ShowScope(null)));
         Root.KeyboardAccelerators.Add(Accelerator(VirtualKey.W, VirtualKeyModifiers.Control, () => _ = RequestCloseAsync()));
         AppWindow.Closing += (appWindow, args) =>
         {
@@ -273,16 +276,22 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
         finally { navigation.Release(); }
     }
     /// <summary>Show the editor scoped to Full take (null) or one clip; a scope change is the existing setActiveClip step.</summary>
-    internal void ShowScope(string? clipId)
+    internal void ShowScope(string? clipId, bool keepSelection = false)
     {
         if (editor is not { } current || App.Restart.IsPreparing || !navigation.Wait(0)) { SyncSelection(); return; }
         try
         {
             if (!ReferenceEquals(ContentFrame.Content, current)) ShowContent(current);
-            current.SelectScope(clipId);
+            current.SelectScope(clipId, keepSelection);
         }
         finally { navigation.Release(); }
         SyncSelection();
+    }
+    /// <summary>A clip just made, or the one that already covers the words, is selected and scrolled into view (design §6.2).</summary>
+    internal void RevealClip(string clipId)
+    {
+        ShowScope(clipId, keepSelection: true);
+        if (Shell.ScopeRow(clipId) is { ClipId: not null } row) DispatcherQueue.TryEnqueue(() => (Nav.ContainerFromMenuItem(row) as UIElement)?.StartBringIntoView());
     }
     /// <summary>Opening the project a window already holds returns to its editor at the current scope; Home keeps it open.</summary>
     private void ShowOpenProject()
@@ -300,6 +309,8 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
     private bool ShowingHome => editor is null || ContentFrame.Content is HomePage;
     private void UpdateShell()
     {
+        Shell.Finding = editor?.FindClips.Running;
+        Shell.Callout = editor?.FindClips.Callout;
         Shell.Update(editor?.ViewModel, ShowingHome, home.ViewModel.RecentProjects, ProjectPath);
         SyncSelection();
     }
@@ -315,11 +326,16 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
     private void Watch(EditorPage? previous, EditorPage next)
     {
         if (previous?.ViewModel is { } old) { old.Changed -= EditorEdited; old.SelectionChanged -= EditorChanged; old.PropertyChanged -= EditorPropertyChanged; }
+        if (previous is not null) { previous.FindClips.Changed -= EditorChanged; previous.FindClips.Found -= SuggestionsFound; }
+        next.FindClips.Changed += EditorChanged;
+        next.FindClips.Found += SuggestionsFound;
         next.ViewModel.Changed += EditorEdited;
         next.ViewModel.SelectionChanged += EditorChanged;
         next.ViewModel.PropertyChanged += EditorPropertyChanged;
     }
     private void EditorChanged(object? sender, EventArgs args) => UpdateShell();
+    /// <summary>New suggestions appear under Suggested and the first takes focus without being selected (design §6.2).</summary>
+    private void SuggestionsFound(object? sender, string clipId) => FocusRow(Shell.Rows.FirstOrDefault(row => row.ClipId == clipId));
     /// <summary>An edit can change the take's first kept words, so the Full take thumbnail follows once edits settle.</summary>
     private void EditorEdited(object? sender, EventArgs args)
     {
@@ -332,21 +348,32 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
     {
         takeRefresh.Stop();
         takeLoads.Cancel();
-        if (editor is not { } current || ProjectPath is not { } path) { take = null; ApplyTake(); return; }
-        if (take?.Path != path) { take = null; ApplyTake(); }
+        if (editor is not { } current || ProjectPath is not { } path) { take = null; clipTiles = []; ApplyTake(); return; }
+        if (take?.Path != path) { take = null; clipTiles = []; ApplyTake(); }
         var loads = takeLoads = new CancellationTokenSource();
         var project = current.ViewModel.Project;
         var title = current.ViewModel.Title;
         var (words, style) = (App.Services.Get("general.showPlaceholderWords", true), App.Services.Get("captions.defaultStyleId", "vox-highlight"));
+        var clips = current.ViewModel.Clips.Select(clip => (clip.Id, clip.Title)).ToArray();
         CaptionCard? card = null;
         string? frame = null;
         var unreadable = false;
+        var tiles = new Dictionary<string, (string? Frame, CaptionCard? Card)>(StringComparer.Ordinal);
         try
         {
-            card = await Task.Run(() => App.Services.Cards?.Card(project, null, title, words, style), loads.Token);
+            // Clip rows use each clip's own first kept words and frame (design §3.4), centre-cropped to 9:16 by the tile.
+            (card, var clipCards) = await Task.Run(() => (App.Services.Cards?.Card(project, null, title, words, style),
+                clips.Select(clip => (clip.Id, Card: App.Services.Cards?.Card(project, clip.Id, clip.Title, words, style))).ToArray()), loads.Token);
+            foreach (var (id, clipCard) in clipCards) tiles[id] = (null, clipCard);
             if (current.MediaPath is { } media && project.Media.Source.Video is { } video)
             {
-                try { frame = await App.Services.Thumbnails.GetAsync(project.Media.Source.ContentKey, media, Thumbnails.Candidates(project, null), video.RotationDegrees, loads.Token); }
+                var source = project.Media.Source;
+                try
+                {
+                    frame = await App.Services.Thumbnails.GetAsync(source.ContentKey, media, Thumbnails.Candidates(project, null), video.RotationDegrees, loads.Token);
+                    foreach (var (id, _) in clips)
+                        tiles[id] = (await App.Services.Thumbnails.GetAsync(source.ContentKey, media, Thumbnails.Candidates(project, id), video.RotationDegrees, loads.Token), tiles[id].Card);
+                }
                 catch (Exception exception) when (exception is not OperationCanceledException)
                 {
                     unreadable = true;
@@ -361,6 +388,7 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
         }
         if (loads.IsCancellationRequested || !ReferenceEquals(editor, current)) return;
         take = (path, frame, card, unreadable, current.IsDemo, current.MediaPath is null && !current.IsDemo, project.Media.Source.Video is null);
+        clipTiles = tiles;
         ApplyTake();
     }
     private void ApplyTake()
@@ -374,7 +402,76 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
                 : transcription is not null ? MediaStatus.Transcribing : current.AudioOnly ? MediaStatus.AudioOnly : MediaStatus.None;
             Shell.TakeMedia = new(current.Path, current.Frame, current.Card, status, transcription);
         }
+        // Clip rows carry no chips: in the editor the InfoBar names a missing or unreadable video (design §5.4.4).
+        var state = Shell.TakeMedia?.Status ?? MediaStatus.None;
+        var frameless = state is MediaStatus.Missing or MediaStatus.Unreadable or MediaStatus.Demo or MediaStatus.AudioOnly;
+        Shell.ClipMedia = clipTiles.ToDictionary(pair => pair.Key, pair => new MediaTile($"{ProjectPath}|{pair.Key}", frameless ? null : pair.Value.Frame, pair.Value.Card, state is MediaStatus.Transcribing ? MediaStatus.None : state));
         UpdateShell();
+    }
+    /// <summary>A suggestion's Keep and Dismiss buttons act without selecting their row.</summary>
+    private void RowButtonTapped(object sender, TappedRoutedEventArgs args) => args.Handled = true;
+    /// <summary>A row's keys (F2, Delete, Ctrl+Enter) act only while focus is in that row, never from the transcript.</summary>
+    private void ScopeRowKeys(object sender, RoutedEventArgs args)
+    {
+        if (sender is UIElement row) foreach (var accelerator in row.KeyboardAccelerators) accelerator.ScopeOwner = row;
+    }
+    private void KeepClicked(object sender, RoutedEventArgs args) { if (sender is FrameworkElement { Tag: string id }) ClipCommand(id, model => model.Keep(id)); }
+    private void DismissClicked(object sender, RoutedEventArgs args) { if (sender is FrameworkElement { Tag: string id }) ClipCommand(id, model => model.Dismiss(id)); }
+    private void KeepSuggestionInvoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args) => args.Handled = RowCommand(args, (model, id) => model.Keep(id));
+    private void DismissSuggestionInvoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args) => args.Handled = RowCommand(args, (model, id) => model.Dismiss(id));
+    private void RemoveClipInvoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args) => args.Handled = RowCommand(args, (model, id) => model.Remove(id));
+    private void RemoveClipClicked(object sender, RoutedEventArgs args) { if (sender is FrameworkElement { Tag: string id }) ClipCommand(id, model => model.Remove(id)); }
+    private void KeepAllClicked(object sender, RoutedEventArgs args) => editor?.ViewModel.KeepAll();
+    private void CancelFindingClicked(object sender, RoutedEventArgs args) => editor?.FindClips.Cancel();
+    private void CalloutClosed(InfoBar sender, object args) => editor?.FindClips.Dismiss();
+    private async void CalloutActionClicked(object sender, RoutedEventArgs args)
+    {
+        if (editor is not { } current || Shell.Callout is not { } callout) return;
+        if (callout.Action == "Retry") await current.FindClips.RetryAsync();
+        else if (callout.Action == "Find clips…") current.ShowFindClips(Nav.ContainerFromMenuItem(Shell.Rows.FirstOrDefault(row => row.Key == "action:find")) as FrameworkElement);
+        else App.OpenSettings("Providers & Keys");
+    }
+    private async void RenameClipInvoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
+    {
+        if ((args.Element as FrameworkElement)?.Tag is not string id) return;
+        args.Handled = true;
+        await RenameClipAsync(id);
+    }
+    private async void RenameClipClicked(object sender, RoutedEventArgs args) { if (sender is FrameworkElement { Tag: string id }) await RenameClipAsync(id); }
+    private void CopyClipTextClicked(object sender, RoutedEventArgs args)
+    {
+        if (sender is FrameworkElement { Tag: string id } && editor?.ViewModel.Clips.FirstOrDefault(clip => clip.Id == id) is { } clip) ShareHelpers.Copy(clip.Excerpt);
+    }
+    private async void ExportClipsClicked(object sender, RoutedEventArgs args) { if (editor is not null) await editor.ExportKeptClipsAsync(); }
+    private async Task RenameClipAsync(string id)
+    {
+        if (editor?.ViewModel is not { } model || model.Clips.FirstOrDefault(clip => clip.Id == id) is not { } clip) return;
+        var name = new TextBox { Header = "Clip title", Text = clip.Title, MaxLength = 200 };
+        name.SelectAll();
+        var dialog = new ContentDialog { XamlRoot = Root.XamlRoot, Title = "Rename clip", Content = name, PrimaryButtonText = "Rename", CloseButtonText = "Cancel", DefaultButton = ContentDialogButton.Primary };
+        if (await dialog.ShowAsync() == ContentDialogResult.Primary && name.Text.Trim() != clip.Title) model.Rename(id, name.Text);
+        FocusRow(Shell.Rows.FirstOrDefault(row => row.ClipId == id));
+    }
+    private bool RowCommand(KeyboardAcceleratorInvokedEventArgs args, Func<EditorViewModel, string, bool> command)
+    {
+        if ((args.Element as FrameworkElement)?.Tag is not string id) return false;
+        ClipCommand(id, model => command(model, id));
+        return true;
+    }
+    /// <summary>Run a Keep, Dismiss or Remove, then move focus to the next clip or suggestion row, or to Full take when there is
+    /// none (design §3.4).</summary>
+    private void ClipCommand(string id, Func<EditorViewModel, bool> command)
+    {
+        if (editor?.ViewModel is not { } model) return;
+        var after = Shell.Rows.SkipWhile(row => row.ClipId != id).Skip(1).Where(row => row.ClipId is not null).Select(row => row.ClipId).ToArray();
+        if (!command(model)) return;
+        var next = after.Select(clipId => Shell.Rows.FirstOrDefault(row => row.ClipId == clipId)).FirstOrDefault(row => row is not null);
+        FocusRow(next ?? Shell.Rows.FirstOrDefault(row => row.Kind == SidebarKind.FullTake));
+    }
+    private void FocusRow(SidebarRow? row)
+    {
+        if (row is null) return;
+        DispatcherQueue.TryEnqueue(() => (Nav.ContainerFromMenuItem(row) as Control)?.Focus(FocusState.Keyboard));
     }
     private void EditorPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs args)
     {
@@ -399,7 +496,7 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
     {
         if (row.Kind == SidebarKind.Recent && row.Recent is { } recent) await OpenPathAsync(recent.Path);
         else if (row.Key == "action:make") editor?.MakeClipFromPane();
-        else if (row.Key == "action:find") editor?.ShowFindClips();
+        else if (row.Key == "action:find") editor?.ShowFindClips(Nav.ContainerFromMenuItem(row) as FrameworkElement);
     }
     private void PaneToggleRequested(TitleBar sender, object args) => Nav.IsPaneOpen = !Nav.IsPaneOpen;
     private void RootSizeChanged(object sender, SizeChangedEventArgs args)

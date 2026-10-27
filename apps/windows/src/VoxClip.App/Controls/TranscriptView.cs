@@ -93,7 +93,9 @@ public sealed class TranscriptView : UserControl
         protected override AutomationControlType GetAutomationControlTypeCore() => AutomationControlType.Document;
     }
     private void ModelChanged(object? sender, EventArgs args) => RefreshVisuals();
-    private void Announce(object? sender, string text)
+    private void Announce(object? sender, string text) => Announce(text);
+    /// <summary>Tell Narrator what an edit or a clip command did.</summary>
+    internal void Announce(string text)
     {
         FrameworkElementAutomationPeer.FromElement(this)?.RaiseNotificationEvent(AutomationNotificationKind.ActionCompleted, AutomationNotificationProcessing.MostRecent, text, "edit");
     }

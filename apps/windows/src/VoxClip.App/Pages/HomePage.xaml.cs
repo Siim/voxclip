@@ -172,7 +172,7 @@ public sealed partial class HomePage : Page
     private async void AiActionClicked(object sender, RoutedEventArgs args)
     {
         if (callout?.Action == "Check again") await RefreshAiAsync();
-        else App.OpenSettings();
+        else App.OpenSettings("Providers & Keys");
     }
     private void GridSizeChanged(object sender, SizeChangedEventArgs args)
     {
