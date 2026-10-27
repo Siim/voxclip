@@ -505,7 +505,8 @@ A Professional Voice Clone path, where ElevenLabs runs its own voice-captcha ver
 ### 7.2 Scope and chunking
 
 - The scope is a selection of words, or the whole take. The converted range runs from the selection's first word start minus 0.1 s to its last word end plus 0.1 s, clamped to the neighbouring gaps.
-- Chunks are at most 290 s, because the API maximum segment is 5 minutes. Split at the quietest 10 ms frame of the transcript pause (gap ≥ 0.4 s) nearest each 280 s mark.
+- The voice changer accepts at most 5 minutes of audio per request, and the uploaded file must be smaller than 50 MB, on every plan ([Voice changer guide](https://elevenlabs.io/docs/eleven-creative/playground/voice-changer)). Core's voice-changer upload cap is therefore 50,000,000 bytes, exclusive. It replaces the shared 16 MiB cap for this endpoint only; the other endpoints keep their own caps.
+- A chunk holds at most `maxFrames = min(290 × sourceRate, floor((50,000,000 − 1 − 44) / 2))` source frames: 44 bytes of WAV header and 2 bytes per mono PCM16 frame. That is 290 s up to a source rate of 86.2 kHz, 283.4 s at 88.2 kHz and 260.4 s at 96 kHz. Split at the quietest 10 ms frame of the transcript pause (gap ≥ 0.4 s) nearest each `maxFrames − 10 s` mark (280 s at 48 kHz).
 - One request at a time. All chunks use one random `seed` from 0 to 4294967295, stored with the segment.
 
 ### 7.3 Request
