@@ -30,6 +30,38 @@ import VoxClipCore
         }
     }
 
+    @Test func preflightDefaultsToTopRightAndCollisionMovesToTheOppositeTopCorner() throws {
+        // Which top corners the chip darkens on row 70 of a white 1000 × 1000 frame at 0.3 s.
+        func corners(_ disclosure: VoiceLabDisclosurePlan, _ blocks: [VoiceLabDisclosureCaptionBlock]) throws -> [Bool] {
+            let overlay = try VoiceLabDisclosureOverlay(plan: disclosure, width: 1000, height: 1000, fontURL: font(), captionBlocks: blocks)
+            var buffer: CVPixelBuffer?
+            #expect(CVPixelBufferCreate(kCFAllocatorDefault, 1000, 1000, kCVPixelFormatType_32BGRA, nil, &buffer) == kCVReturnSuccess)
+            let frame = try #require(buffer)
+            CVPixelBufferLockBaseAddress(frame, [])
+            if let raw = CVPixelBufferGetBaseAddress(frame) { memset(raw, 255, CVPixelBufferGetDataSize(frame)) }
+            CVPixelBufferUnlockBaseAddress(frame, [])
+            try overlay.draw(into: frame, at: 0.3)
+            CVPixelBufferLockBaseAddress(frame, .readOnly)
+            defer { CVPixelBufferUnlockBaseAddress(frame, .readOnly) }
+            let raw = try #require(CVPixelBufferGetBaseAddress(frame)).assumingMemoryBound(to: UInt8.self)
+            let stride = CVPixelBufferGetBytesPerRow(frame)
+            return [50..<500, 500..<1000].map { columns in columns.contains { raw[70 * stride + $0 * 4] < 255 } }
+        }
+        let value = try project("full-take-render-v3")
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("voxclip-unused-paid-root", isDirectory: true)
+        let input = try #require(try VoiceLabRenderPreflight.prepare(project: value, scope: .full, paidRoot: root))
+        #expect(input.labelPosition == .topRight && input.prepared.disclosure.position == .topRight)
+        let rightCaption = VoiceLabDisclosureCaptionBlock(start: 2, end: 4, bounds: CGRect(x: 500, y: 0, width: 500, height: 200))
+        #expect(try corners(input.prepared.disclosure, []) == [false, true])
+        #expect(try corners(input.prepared.disclosure, [rightCaption]) == [true, false])
+        // An explicit position is still honoured, and moves to the other top corner the same way.
+        let left = try #require(try VoiceLabRenderPreflight.prepare(project: value, scope: .full, paidRoot: root, labelPosition: .topLeft))
+        #expect(left.prepared.disclosure.position == .topLeft)
+        let leftCaption = VoiceLabDisclosureCaptionBlock(start: 2, end: 4, bounds: CGRect(x: 0, y: 0, width: 500, height: 200))
+        #expect(try corners(left.prepared.disclosure, []) == [true, false])
+        #expect(try corners(left.prepared.disclosure, [leftCaption]) == [false, true])
+    }
+
     @Test func nonfiniteCaptionBlocksCannotSkipIntervalCollision() throws {
         let disclosure = try prepared("full-take-render-v3").1.disclosure
         for block in [VoiceLabDisclosureCaptionBlock(start: .nan, end: 7,

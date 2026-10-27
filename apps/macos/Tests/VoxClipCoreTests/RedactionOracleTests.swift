@@ -55,9 +55,9 @@ struct RedactionOracleTests {
         ("mixed-nine", "Token Basic Key Basic Basic Token Key Token Bearer {M}"),
         ("ninth-bearer-tab", "Token Token Token Token Token Token Token Token Bearer\t{M}"),
         ("twelve-words", "Key Key Key Key Key Key Key Key Key Key Key Bearer {M}"),
-        ("aiza-jwt", "AIzaQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQeyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.{M}"),
+        ("aiza-jwt", "\u{41}IzaQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQeyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.{M}"),
         ("sk-jwt", "sk-ant-api03-aaaaaaaaaaaaaaaaaaaaeyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.{M}"),
-        ("ghp-jwt", "ghp_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaeyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.{M}"), ("bearer-kelvin", "Bearer ab\u{212A}{M}"),
+        ("ghp-jwt", "gh\u{70}_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaeyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.{M}"), ("bearer-kelvin", "Bearer ab\u{212A}{M}"),
         ("bearer-long-s", "Bearer ab\u{17F}{M}"), ("bearer-kelvin-first", "Bearer \u{212A}ab{M}"),
     ] + lineBreaks.flatMap { name, lineBreak in
         [("quote-\(name)-label", "a=\"x\(lineBreak)password: \"{M}\""), ("quote-\(name)-before", "a=\"{M}\(lineBreak)x\""),

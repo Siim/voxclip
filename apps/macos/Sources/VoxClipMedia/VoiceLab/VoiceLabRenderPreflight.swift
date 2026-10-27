@@ -13,7 +13,7 @@ public enum VoiceLabRenderPreflight {
     /// Bind a caller's exact project and scope before any paid-asset or output I/O.
     /// Source-only scopes retain the ordinary renderer, including older projects.
     public static func prepare(project: Project, scope: VoiceLabOutputScope, paidRoot: URL,
-                               labelPosition: VoiceLabLabelPosition = .topLeft) throws -> VoiceLabRenderInput? {
+                               labelPosition: VoiceLabLabelPosition = .topRight) throws -> VoiceLabRenderInput? {
         if project.schemaVersion < 3 {
             try VoiceLabProject.requireLegacyRendering(project, scope: scope)
             return nil

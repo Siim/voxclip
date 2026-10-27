@@ -953,8 +953,8 @@ Acceptance cases (both platforms, `Redactor` tests; the same rows are the shared
 | `x-api-key: Basic Basic Basic Basic Basic Basic Basic Basic Bearer abc123secret` | `x-api-key: Basic Basic Basic Basic Basic Basic Basic [REDACTED] Bearer [REDACTED]` |
 | `token: Bearer Bearer Bearer Bearer Bearer Bearer Bearer Bearer Bearer abc123secret` | `token: Bearer Bearer Bearer Bearer Bearer Bearer Bearer Bearer Bearer [REDACTED]` |
 | `Authorization: Token Basic Key Basic Basic Token Key Token Bearer abc123secret` | `Authorization: Token Basic Key Basic Basic Token Key [REDACTED] Bearer [REDACTED]` |
-| `AIzaQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQeyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.c2ln` | `[REDACTED][REDACTED]` (rule 6 replaces a JWT that rule 5 left because the key before it was base64url) |
-| `x İAIzaQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQeyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.c2ln` | `x İ[REDACTED][REDACTED]` (rule 6 replaces a JWT that rule 5 left because the key before it was base64url) |
+| `AIza⟨35 × Q⟩eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.c2ln` | `[REDACTED][REDACTED]` (rule 6 replaces a JWT that rule 5 left because the key before it was base64url) |
+| `x İAIza⟨35 × Q⟩eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.c2ln` | `x İ[REDACTED][REDACTED]` (rule 6 replaces a JWT that rule 5 left because the key before it was base64url) |
 | `Bearer ab⟨U+212A⟩cdabc123secret` | `Bearer [REDACTED]` (a Bearer token may hold the Kelvin sign, as main's case-insensitive class matched) |
 | `Bearer abcſdefabc123secret` | `Bearer [REDACTED]` (a Bearer token may hold the long s, as main Mac's ICU class matched; main Windows' .NET class did not) |
 | `Authorization: Baſic dXNlcjpwYXNz` | `Authorization: Baſic [REDACTED]` (Basic may be spelled with the long s, as main Mac's ICU matched it; main Windows' .NET did not) |

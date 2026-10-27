@@ -46,6 +46,7 @@ internal static class SettingsValidation
             {
                 case "general.appearance": Choice(value, "system", "light", "dark"); break;
                 case "general.transcriptTextSize": if (value.ValueKind != JsonValueKind.Null) Require(value.ValueKind == JsonValueKind.Number && value.TryGetDouble(out var size) && double.IsFinite(size) && size >= 13 && size <= 28); break;
+                case "ui.rightColumnWidth": if (value.ValueKind != JsonValueKind.Null) Require(value.ValueKind == JsonValueKind.Number && value.TryGetDouble(out var width) && double.IsFinite(width) && width >= 240 && width <= 720); break;
                 case "general.recentProjects": Strings(value, 20, false, false); break;
                 case "editing.pauseBreath": Choice(value, "tight", "natural", "relaxed"); break;
                 case "captions.defaultStyleId": Pattern(value, "[a-z0-9]+(?:-[a-z0-9]+)*"); break;

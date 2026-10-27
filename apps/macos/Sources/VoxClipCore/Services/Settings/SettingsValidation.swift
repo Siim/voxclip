@@ -7,7 +7,7 @@ extension SettingsDocument {
     }
 
     public static let defaults: [String: JSONValue] = [
-        "general.appearance": .string("system"), "general.transcriptTextSize": .null,
+        "general.appearance": .string("system"), "general.transcriptTextSize": .null, "ui.rightColumnWidth": .null,
         "general.showLowConfidence": .bool(false), "general.showPlaceholderWords": .bool(true), "general.openLastProject": .bool(false), "general.recentProjects": .array([]),
         "onboarding.completed": .bool(false), "editing.pauseBreath": .string("natural"), "captions.defaultStyleId": .string("vox-highlight"),
         "cache.limitGB": .number(5), "transcription.engineMode": .string("local"), "transcription.language": .string("auto"),
@@ -62,6 +62,8 @@ extension SettingsDocument {
                 guard case .number(let number) = value, [2, 5, 10, 20].contains(number) else { throw VoxClipError.projectUnreadable("Invalid cache limit") }
             case "general.transcriptTextSize":
                 if value != .null { guard case .number(let number) = value else { throw VoxClipError.projectUnreadable("Invalid text size") }; try ProjectValidation.number(number, min: 13, max: 28) }
+            case "ui.rightColumnWidth":
+                if value != .null { guard case .number(let number) = value else { throw VoxClipError.projectUnreadable("Invalid column width") }; try ProjectValidation.number(number, min: 240, max: 720) }
             case "general.recentProjects", "transcription.recentLanguages":
                 let items = try ProjectValidation.array(value)
                 try ProjectValidation.require(items.count <= (key == "general.recentProjects" ? 20 : 10), "Too many recent entries")
