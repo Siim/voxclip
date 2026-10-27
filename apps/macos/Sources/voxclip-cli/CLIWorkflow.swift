@@ -51,7 +51,9 @@ enum CLIWorkflow {
     }
 
     static func imported(_ source: URL, probe: MediaProbeResult, transcript: Transcript?) throws -> Project {
+        try Task.checkCancellation()
         let key = try JSONProjectStore.contentKey(for: source)
+        try Task.checkCancellation()
         let attributes = try FileManager.default.attributesOfItem(atPath: source.path)
         guard let bytes = (attributes[.size] as? NSNumber)?.int64Value else { throw VoxClipError.mediaMissing(source.lastPathComponent) }
         return Project(id: UUID().uuidString, title: source.deletingPathExtension().lastPathComponent, createdAt: Date(), modifiedAt: Date(),
@@ -166,6 +168,7 @@ enum CLIWorkflow {
     }
 
     static func export(_ options: Export, input: String) async throws -> JSONValue {
+        try Task.checkCancellation()
         let inputURL = URL(fileURLWithPath: input).standardizedFileURL
         if inputURL.pathExtension.lowercased() == "voxclip", options.transcript != nil {
             throw ValidationError("--transcript only applies when --open is a media file.")
@@ -174,20 +177,26 @@ enum CLIWorkflow {
         let inputs = [inputURL] + (options.transcript.map { [URL(fileURLWithPath: $0)] } ?? [])
         try validateOutputs(outputs, inputs: inputs)
         if let id = options.style { _ = try style(id) }
+        try Task.checkCancellation()
         var project: Project
         let source: URL
         let probe: MediaProbeResult
         if inputURL.pathExtension.lowercased() == "voxclip" {
             let store = JSONProjectStore()
             project = try await store.load(from: inputURL)
+            try Task.checkCancellation()
             source = try await store.resolveSource(for: project, projectURL: inputURL)
             try validateOutputs(outputs, inputs: inputs + [source])
+            try Task.checkCancellation()
             probe = try await AVMediaProbe().probe(source)
+            try Task.checkCancellation()
             try validateExportArguments(options, probe: probe, styleID: options.style ?? project.captions.styleId)
             try validateRequestedScope(options, project: project)
         } else {
             source = inputURL
+            try Task.checkCancellation()
             probe = try await AVMediaProbe().probe(source)
+            try Task.checkCancellation()
             try validateExportArguments(options, probe: probe, styleID: options.style ?? "off")
             if options.clip != nil { throw ValidationError("The requested clip does not exist.") }
             let transcript: Transcript
@@ -196,9 +205,12 @@ enum CLIWorkflow {
                 catch { throw VoxClipError.projectUnreadable("The transcript could not be read") }
             }
             else { transcript = try await transcribed(source: source, probe: probe, engine: options.engine, model: options.model, language: options.language) }
+            try Task.checkCancellation()
             project = try imported(source, probe: probe, transcript: transcript)
             try validateRequestedScope(options, project: project)
         }
+        await CLIInterruptTiming.testOnly?.pauseBeforeExportIfRequested()
+        try Task.checkCancellation()
         var state: EditState?
         if options.cutFillers || options.tightenPauses || options.clip != nil || options.wordRange != nil {
             var editState = try self.state(project)
@@ -214,6 +226,7 @@ enum CLIWorkflow {
             if options.tightenPauses { editState = EditReducer.reduce(editState, command: .tightenPauses) }
             state = editState
         }
+        try Task.checkCancellation()
         let effectiveState = try state ?? (project.transcript == nil ? nil : self.state(project, derivePauses: project.schemaVersion >= 3))
         if let effectiveState { project.edits = effectiveState.projectEdits }
         let aspect = options.aspect.flatMap(AspectRatio.init(rawValue:)) ?? project.export.aspect
@@ -223,11 +236,14 @@ enum CLIWorkflow {
         project.captions.styleId = styleID
         project.export.aspect = aspect; project.export.quality = quality
         let scope = project.edits.activeClipId.map { VoiceLabOutputScope.clip($0) } ?? .full
+        try Task.checkCancellation()
         let voiceLab = try VoiceLabRenderPreflight.prepare(project: project, scope: scope,
             paidRoot: DataLocations().root.appendingPathComponent("VoiceLab", isDirectory: true))
+        try Task.checkCancellation()
         let plan = try sourcePlan(project, state: effectiveState)
         guard (voiceLab?.prepared.outputPlan.outputSamples ?? plan.outputSamples) > 0,
               voiceLab != nil || effectiveState?.summary.canExport != false else { throw VoxClipError.everythingCut }
+        try Task.checkCancellation()
         let output = try OutputSpec.resolved(source: probe, aspect: aspect, quality: quality, fps: options.fps.flatMap(Double.init))
         let activeClip = effectiveState.flatMap { state in state.clips.first { $0.id == state.activeClipId } }
         let render: RenderRequest
@@ -237,20 +253,26 @@ enum CLIWorkflow {
         case .export(let prepared): render = prepared
         case .render: throw VoxClipError.exportFailed("Invalid caption operation")
         }
+        try Task.checkCancellation()
         let exporter = AVExporter(appVersion: VoxClipCLI.configuration.version)
         let job = ExportJob(render: render, aspect: aspect, quality: quality, outputURL: URL(fileURLWithPath: options.output!),
             writeSRT: options.srt != nil, srtURL: options.srt.map { URL(fileURLWithPath: $0) })
         let audioDestination = options.audioOut.map { URL(fileURLWithPath: $0).standardizedFileURL.resolvingSymlinksInPath() }
         var audioStaging: URL?
         defer { if let audioStaging { try? FileManager.default.removeItem(at: audioStaging) } }
+        try Task.checkCancellation()
         if let audioDestination {
             try await exporter.preflightCombinedExport(job, editedAudioURL: audioDestination)
+            try Task.checkCancellation()
             audioStaging = try await exporter.stageEditedAudio(render, to: audioDestination)
+            try Task.checkCancellation()
         }
         let additionalOutputs = audioDestination.flatMap { destination in
             audioStaging.map { [(partial: $0, destination: destination)] }
         } ?? []
         let reporter = CLIProgressReporter(quiet: options.quiet)
+        try Task.checkCancellation()
+        CLIInterruptTiming.testOnly?.exportStarting()
         let result = try await exporter.export(job, additionalOutputs: additionalOutputs) { progress in
             reporter.report(progress)
         }
@@ -301,6 +323,7 @@ enum CLIWorkflow {
                         captions: .init(overrides: project.captions.overrides, position: project.captions.position,
                                         positionByAspect: project.captions.positionByAspect),
                         words: plan.captions.map { .init(id: $0.id, text: $0.text, start: $0.start, end: $0.end) })
+                    try Task.checkCancellation()
                     let pipeline = try CaptionPipeline(shared: SharedResources.locate())
                     let layout = try await pipeline.layout(input: input, style: style)
                     request.captionLayout = layout; request.captions = layout.track
@@ -309,9 +332,11 @@ enum CLIWorkflow {
                 return .export(request)
             }
             guard let style = request.style, let state, !state.transcript.words.isEmpty else { return .export(request) }
+            try Task.checkCancellation()
             let words = try captionCopy(buildSegments(state, activeClip: activeClip), plan: request.plan)
             let pipeline = try CaptionPipeline(shared: SharedResources.locate())
             let resolution = await pipeline.resolve(style, overrides: overrides, frame: request.output.size)
+            try Task.checkCancellation()
             let layout = try await pipeline.layout(words: words, language: language, style: resolution.style,
                 position: request.placement, frame: request.output.size, duration: request.plan.duration)
             request.style = nil

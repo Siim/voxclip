@@ -4,14 +4,58 @@ import ArgumentParser
 import VoxClipCore
 import VoxClipMedia
 import VideoToolbox
+import Synchronization
+
+/// Opt-in subprocess-test instrumentation; timestamps never appear in normal CLI output.
+final class CLIInterruptTiming: Sendable {
+    static let testOnly: CLIInterruptTiming? = ProcessInfo.processInfo.environment["VOXCLIP_TEST_INTERRUPT_TIMING"] == "1"
+        ? CLIInterruptTiming() : nil
+    private struct State {
+        var handler: UInt64?
+        var exportStart: UInt64?
+    }
+    private let state = Mutex(State())
+
+    func interrupt() {
+        let now = DispatchTime.now().uptimeNanoseconds
+        state.withLock { if $0.handler == nil { $0.handler = now } }
+    }
+
+    func exportStarting() {
+        let now = DispatchTime.now().uptimeNanoseconds
+        state.withLock { if $0.exportStart == nil { $0.exportStart = now } }
+    }
+
+    func pauseBeforeExportIfRequested() async {
+        guard ProcessInfo.processInfo.environment["VOXCLIP_TEST_PRE_EXPORT_PAUSE"] == "1" else { return }
+        FileHandle.standardError.write(Data("VOXCLIP_TEST_PRE_EXPORT_PAUSE ready\n".utf8))
+        // Return on cancellation so the following production checkpoint, rather
+        // than the hook, must stop preparation before exporter entry.
+        try? await Task.sleep(for: .seconds(60))
+    }
+
+    func exiting() {
+        let now = DispatchTime.now().uptimeNanoseconds
+        let stamps = state.withLock { $0 }
+        guard let handler = stamps.handler else { return }
+        // Zero means cancellation prevented exporter entry. execute() reaches
+        // this boundary after cleanup and cancellation output, just before exit(6).
+        let line = "VOXCLIP_TEST_INTERRUPT_TIMING handler=\(handler) exportStart=\(stamps.exportStart ?? 0) exit=\(now)\n"
+        FileHandle.standardError.write(Data(line.utf8))
+    }
+}
 
 /// Architecture §9.1 primary export form, with §9.2 subcommands.
 @main struct VoxClipCLI: AsyncParsableCommand {
     static func main() async {
         signal(SIGINT, SIG_IGN)
+        let timing = CLIInterruptTiming.testOnly
         let task = Task { await execute() }
         let interrupt = DispatchSource.makeSignalSource(signal: SIGINT, queue: .global())
-        interrupt.setEventHandler { @Sendable in task.cancel() }
+        interrupt.setEventHandler { @Sendable in
+            timing?.interrupt()
+            task.cancel()
+        }
         interrupt.resume()
         await task.value
         interrupt.cancel()
@@ -38,6 +82,7 @@ import VideoToolbox
                 let sink = status == .success ? FileHandle.standardOutput : FileHandle.standardError
                 sink.write(Data((CLIExecution.redactor().redact(message) + "\n").utf8))
             }
+            if status.rawValue == 6 { CLIInterruptTiming.testOnly?.exiting() }
             Darwin.exit(status == .validationFailure ? 2 : status.rawValue)
         }
     }
@@ -132,7 +177,9 @@ enum CLIExecution {
     static func run(command: String, json: Bool, operation: () async throws -> JSONValue) async throws {
         do {
             // The App's launch check before any work: the shared root and its share-text rules.
+            try Task.checkCancellation()
             try SharePostText.preflight()
+            try Task.checkCancellation()
             let value = try await operation()
             if json { try printJSON(value) }
         } catch let error as ValidationError {

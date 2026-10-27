@@ -12,11 +12,62 @@ struct CLIResult: Sendable {
     let stderr: String
     let interruptLatency: Double?
     let watchdogFired: Bool
+    let interruptReadinessObserved: Bool
     var json: [String: Any] { get throws { try #require(JSONSerialization.jsonObject(with: stdout) as? [String: Any]) } }
+
+    struct InterruptTiming {
+        let handler: UInt64
+        let exportStart: UInt64
+        let exit: UInt64
+    }
+
+    var internalInterruptTiming: InterruptTiming {
+        get throws {
+            let prefix = "VOXCLIP_TEST_INTERRUPT_TIMING "
+            let lines = stderr.split(separator: "\n").filter { $0.hasPrefix(prefix) }
+            let line = try #require(lines.count == 1 ? lines.first : nil, "Expected one CLI-owned interrupt timing record: \(stderr)")
+            let fields = line.dropFirst(prefix.count).split(separator: " ")
+            try #require(fields.count == 3)
+            try #require(fields[0].hasPrefix("handler=") && fields[1].hasPrefix("exportStart=") && fields[2].hasPrefix("exit="))
+            let handler = try #require(UInt64(fields[0].dropFirst("handler=".count)))
+            let exportStart = try #require(UInt64(fields[1].dropFirst("exportStart=".count)))
+            let exit = try #require(UInt64(fields[2].dropFirst("exit=".count)))
+            try #require(handler > 0 && exit >= max(handler, exportStart))
+            return InterruptTiming(handler: handler, exportStart: exportStart, exit: exit)
+        }
+    }
+
+    var internalStopPathLatency: Double {
+        get throws {
+            let timing = try internalInterruptTiming
+            try #require(timing.exportStart > 0 && timing.handler >= timing.exportStart,
+                "The interrupt must arrive during the export")
+            return Double(timing.exit - max(timing.handler, timing.exportStart)) / 1e9
+        }
+    }
+
+}
+
+private final class CLIProcessTiming: Sendable {
+    private struct State {
+        var interruptedAt: ContinuousClock.Instant?
+        var watchdogFired = false
+    }
+    private let state = Mutex(State())
+    func interrupted() { state.withLock { $0.interruptedAt = .now } }
+    func watchdog() { state.withLock { $0.watchdogFired = true } }
+    var watchdogFired: Bool { state.withLock { $0.watchdogFired } }
+    func latency(to end: ContinuousClock.Instant) -> Double? {
+        state.withLock { $0.interruptedAt }.map {
+            let duration = $0.duration(to: end).components
+            return Double(duration.seconds) + Double(duration.attoseconds) / 1e18
+        }
+    }
 }
 
 func runCLI(_ arguments: [String], directory: URL, interruptAfter: Double? = nil,
-                    interruptTimeout: Double? = nil, timeout: Double = 20, sharedRoot: URL? = nil) throws -> CLIResult {
+                    interruptTimeout: Double = 15, timeout: Double = 20, sharedRoot: URL? = nil,
+                    recordInterruptTiming: Bool = true, interruptBeforeExport: Bool = false) throws -> CLIResult {
     var package = URL(fileURLWithPath: #filePath)
     for _ in 0..<4 { package.deleteLastPathComponent() }
     let stdoutURL = directory.appendingPathComponent("stdout-\(UUID().uuidString)")
@@ -36,6 +87,8 @@ func runCLI(_ arguments: [String], directory: URL, interruptAfter: Double? = nil
     environment["VOXCLIP_LIVE_TESTS"] = "0"
     environment["VOXCLIP_TEST_DOWNLOAD"] = "0"
     environment["VOXCLIP_NO_KEYCHAIN"] = "1"
+    environment["VOXCLIP_TEST_INTERRUPT_TIMING"] = interruptAfter != nil && recordInterruptTiming ? "1" : nil
+    environment["VOXCLIP_TEST_PRE_EXPORT_PAUSE"] = interruptBeforeExport ? "1" : nil
     environment["VOXCLIP_DATA_DIR"] = directory.appendingPathComponent("data").path
     environment["VOXCLIP_SHARED_DIR"] = try (sharedRoot ?? FixtureLoader.sharedRoot(environment: [:])).path
     // Each subprocess owns its renderer scratch; concurrent Media tests must not
@@ -45,34 +98,60 @@ func runCLI(_ arguments: [String], directory: URL, interruptAfter: Double? = nil
     environment["TMPDIR"] = scratch.path
     process.environment = environment
     process.standardOutput = stdout; process.standardError = stderr
+    let partial: URL?
+    if interruptAfter != nil && !interruptBeforeExport {
+        let index = try #require(arguments.firstIndex(of: "--export"))
+        try #require(index + 1 < arguments.count)
+        partial = URL(fileURLWithPath: arguments[index + 1] + ".partial")
+    } else { partial = nil }
     try process.run()
-    let interruptedAt = Mutex<ContinuousClock.Instant?>(nil)
-    let interrupt = DispatchWorkItem {
-        if process.isRunning {
-            interruptedAt.withLock { $0 = .now }
-            process.interrupt()
-        }
-    }
-    if let interruptAfter { DispatchQueue.global().asyncAfter(deadline: .now() + interruptAfter, execute: interrupt) }
-    let watchdogFired = Mutex(false)
+    let timing = CLIProcessTiming()
     let watchdog = DispatchWorkItem {
         if process.isRunning {
-            watchdogFired.withLock { $0 = true }
+            timing.watchdog()
             kill(process.processIdentifier, SIGKILL)
         }
     }
-    let deadline = interruptAfter.flatMap { offset in interruptTimeout.map { offset + $0 } } ?? timeout
-    DispatchQueue.global().asyncAfter(deadline: .now() + deadline, execute: watchdog)
+    let interrupt = DispatchWorkItem {
+        if process.isRunning {
+            timing.interrupted()
+            process.interrupt()
+            DispatchQueue.global().asyncAfter(deadline: .now() + interruptTimeout, execute: watchdog)
+        }
+    }
+    var readinessObserved = false
+    if let interruptAfter {
+        // Preparation has its own hang guard. The 15 s stop guard begins only
+        // when SIGINT is actually sent, after readiness and the seeded offset.
+        let readinessDeadline = ContinuousClock.now + .seconds(60)
+        while process.isRunning {
+            if let partial {
+                readinessObserved = FileManager.default.fileExists(atPath: partial.path)
+            } else {
+                let data = try? Data(contentsOf: stderrURL)
+                readinessObserved = data.map { String(decoding: $0, as: UTF8.self)
+                    .contains("VOXCLIP_TEST_PRE_EXPORT_PAUSE ready\n") } ?? false
+            }
+            if readinessObserved { break }
+            if ContinuousClock.now >= readinessDeadline {
+                timing.watchdog()
+                kill(process.processIdentifier, SIGKILL)
+                break
+            }
+            Thread.sleep(forTimeInterval: 0.01)
+        }
+        if readinessObserved {
+            DispatchQueue.global().asyncAfter(deadline: .now() + interruptAfter, execute: interrupt)
+        }
+    } else {
+        DispatchQueue.global().asyncAfter(deadline: .now() + timeout, execute: watchdog)
+    }
     process.waitUntilExit()
     let exitedAt = ContinuousClock.now
-    let latency = interruptedAt.withLock { $0 }.map {
-        let duration = $0.duration(to: exitedAt).components
-        return Double(duration.seconds) + Double(duration.attoseconds) / 1e18
-    }
     interrupt.cancel(); watchdog.cancel()
     return CLIResult(status: process.terminationReason == .uncaughtSignal ? 128 + process.terminationStatus : process.terminationStatus, stdout: try Data(contentsOf: stdoutURL),
-        stderr: String(decoding: try Data(contentsOf: stderrURL), as: UTF8.self), interruptLatency: latency,
-        watchdogFired: watchdogFired.withLock { $0 })
+        stderr: String(decoding: try Data(contentsOf: stderrURL), as: UTF8.self), interruptLatency: timing.latency(to: exitedAt),
+        watchdogFired: timing.watchdogFired, interruptReadinessObserved: readinessObserved)
 }
 
 func cliDirectory() throws -> URL {
@@ -348,6 +427,54 @@ func cliCaptionHarnessRejectsAmbiguousArguments(_ arguments: [String]) throws {
 }
 
 @Suite(.serialized) struct CLIInterruptTests {
+@Test(.timeLimit(.minutes(5))) func cliInterruptTimingIsAbsentWithoutTestMode() async throws {
+    let source = try await NativeMediaFixtures.shared.file("interrupt-aac.mov")
+    let directory = try cliDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let transcript = Transcript(durationSeconds: 60, engine: EngineRef(id: .elevenlabs, engineVersion: "synthetic-fixture"),
+        rawKey: String(repeating: "0", count: 64), createdAt: Date(timeIntervalSince1970: 0))
+    let transcriptURL = directory.appendingPathComponent("transcript.json")
+    try ProjectJSON.encoder().encode(transcript).write(to: transcriptURL)
+    let output = directory.appendingPathComponent("out.mp4")
+    let result = try runCLI(["export", "--open", source.path, "--transcript", transcriptURL.path,
+        "--export", output.path, "--style", "off", "--json", "--quiet"], directory: directory,
+        interruptAfter: 0.5, recordInterruptTiming: false)
+    #expect(result.interruptReadinessObserved)
+    #expect(!result.watchdogFired)
+    #expect(result.status == 6)
+    #expect(result.stderr.isEmpty)
+    #expect((try result.json["error"] as? [String: Any])?["code"] as? String == "cancelled")
+    #expect(!FileManager.default.fileExists(atPath: output.path))
+    #expect(!FileManager.default.fileExists(atPath: output.path + ".partial"))
+}
+
+@Test(.timeLimit(.minutes(5))) func cliInterruptBeforeExportExitsSixWithoutCreatingOutput() async throws {
+    let source = try await NativeMediaFixtures.shared.file("bars-tone.mov")
+    let directory = try cliDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let transcript = Transcript(durationSeconds: 2, engine: EngineRef(id: .elevenlabs, engineVersion: "synthetic-fixture"),
+        rawKey: String(repeating: "0", count: 64), createdAt: Date(timeIntervalSince1970: 0))
+    let transcriptURL = directory.appendingPathComponent("transcript.json")
+    try ProjectJSON.encoder().encode(transcript).write(to: transcriptURL)
+    let output = directory.appendingPathComponent("early.mp4")
+    let result = try runCLI(["export", "--open", source.path, "--transcript", transcriptURL.path,
+        "--export", output.path, "--style", "off", "--json", "--quiet"], directory: directory,
+        interruptAfter: 0.05, interruptBeforeExport: true)
+    try #require(result.interruptReadinessObserved, "No readiness line before exit or the 60 s deadline: exit \(result.status), deadline \(result.watchdogFired), \(result.stderr)")
+    try #require(!result.watchdogFired)
+    try #require(result.status == 6)
+    let timing = try result.internalInterruptTiming
+    #expect(timing.exportStart == 0, "Cancellation must prevent exporter entry")
+    let error = try #require(result.json["error"] as? [String: Any])
+    #expect(error["code"] as? String == "cancelled")
+    #expect(error["message"] as? String == "")
+    #expect(!FileManager.default.fileExists(atPath: output.path))
+    #expect(!FileManager.default.fileExists(atPath: output.path + ".partial"))
+    let internalSeconds = Double(timing.exit - timing.handler) / 1e9
+    let wallSeconds = try #require(result.interruptLatency)
+    print("SIGINT_EARLY exportStart=0 internal=\(internalSeconds) wall=\(wallSeconds) watchdogs=0")
+}
+
 @Test(.timeLimit(.minutes(5))) func cliConcurrentInterruptWatchdogDeletesPartialAndUsesExitSix() async throws {
     let source = try await NativeMediaFixtures.shared.file("interrupt-aac.mov")
     let asset = AVURLAsset(url: source)
@@ -367,12 +494,13 @@ func cliCaptionHarnessRejectsAmbiguousArguments(_ arguments: [String]) throws {
     let unrelated = directory.appendingPathComponent("interrupted-0.mp4.partial.sb-existing")
     try Data("preserve this file".utf8).write(to: unrelated)
     var latencies: [Double] = []
+    var wallLatencies: [Double] = []
     var random: UInt64 = 0x564f58434c495034
     for iteration in 0..<30 {
         var offsets: [Double] = []
         for _ in 0..<2 {
             random = random &* 6364136223846793005 &+ 1442695040888963407
-            offsets.append(0.5 + 2 * Double(random >> 11) / Double(UInt64.max >> 11))
+            offsets.append(2 * Double(random >> 11) / Double(UInt64.max >> 11))
         }
         let pair = try await withThrowingTaskGroup(of: (Int, CLIResult).self) { group in
             for pump in 0..<2 {
@@ -384,7 +512,7 @@ func cliCaptionHarnessRejectsAmbiguousArguments(_ arguments: [String]) throws {
                             continuation.resume(with: Result {
                                 try runCLI(["export", "--open", source.path, "--transcript", transcriptURL.path,
                                     "--export", output.path, "--aspect", "9:16", "--style", "off", "--json", "--quiet"],
-                                    directory: directory, interruptAfter: offset, interruptTimeout: 2)
+                                    directory: directory, interruptAfter: offset)
                             })
                         }
                     }
@@ -397,11 +525,13 @@ func cliCaptionHarnessRejectsAmbiguousArguments(_ arguments: [String]) throws {
         }
         for (pump, result) in pair {
             let output = directory.appendingPathComponent("interrupted-\(pump).mp4")
+            try #require(result.interruptReadinessObserved, "Pair \(iteration), export \(pump): no partial before exit or the 60 s deadline: exit \(result.status), deadline \(result.watchdogFired), \(result.stderr)")
             try #require(!result.watchdogFired, "SIGINT watchdog fired in pair \(iteration), export \(pump)")
             try #require(result.status == 6, "SIGINT pair \(iteration), export \(pump), offset \(offsets[pump]): exit \(result.status), \(result.stderr)")
-            let latency = try #require(result.interruptLatency)
+            let latency = try result.internalStopPathLatency
             #expect(latency <= 2)
             latencies.append(latency)
+            wallLatencies.append(try #require(result.interruptLatency))
             let error = try #require(result.json["error"] as? [String: Any])
             #expect(error["code"] as? String == "cancelled")
             #expect(error["message"] as? String == "")
@@ -412,7 +542,9 @@ func cliCaptionHarnessRejectsAmbiguousArguments(_ arguments: [String]) throws {
         #expect(remaining.filter { $0.contains(".partial") || $0.hasPrefix("voxclip-export-") || $0.hasPrefix("Remaker-") } == [unrelated.lastPathComponent])
     }
     #expect(try Data(contentsOf: unrelated) == Data("preserve this file".utf8))
-    print("SIGINT_STRESS pairs=30 exports=\(latencies.count) watchdogs=0 min=\(latencies.min() ?? 0) max=\(latencies.max() ?? 0) mean=\(latencies.reduce(0, +) / Double(latencies.count))")
+    let internalSummary = "internal_min=\(latencies.min() ?? 0) internal_max=\(latencies.max() ?? 0) internal_mean=\(latencies.reduce(0, +) / Double(latencies.count))"
+    let wallSummary = "wall_min=\(wallLatencies.min() ?? 0) wall_max=\(wallLatencies.max() ?? 0) wall_mean=\(wallLatencies.reduce(0, +) / Double(wallLatencies.count))"
+    print("SIGINT_STRESS pairs=30 exports=\(latencies.count) watchdogs=0 \(internalSummary) \(wallSummary)")
 }
 }
 

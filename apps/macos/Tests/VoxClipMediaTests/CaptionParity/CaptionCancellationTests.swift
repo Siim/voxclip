@@ -17,6 +17,27 @@ private final class CaptionShadowFault: @unchecked Sendable {
     }
 }
 
+private final class CaptionShadowCancellation: @unchecked Sendable {
+    private let lock = NSLock()
+    private var armedIndex: Int?
+    private var count = 0
+
+    func arm(at index: Int) { lock.withLock { armedIndex = index } }
+    var cancellations: Int { lock.withLock { count } }
+
+    func check(_ index: Int) {
+        let cancel = lock.withLock {
+            guard armedIndex == index else { return false }
+            armedIndex = nil
+            count += 1
+            return true
+        }
+        // The existing hook runs on the rendering task after a shadow-mask
+        // mutation. Its next production cancellation check must throw.
+        if cancel { withUnsafeCurrentTask { $0?.cancel() } }
+    }
+}
+
 @Suite(.serialized)
 struct CaptionCancellationTests {
     private func compare(_ actual: CaptionRaster, _ expected: CaptionRaster, context: String) {
@@ -61,6 +82,8 @@ struct CaptionCancellationTests {
     @Test("Cancelled different-page frames cannot poison the next active word")
     func cancelledRenderRecovery() async throws {
         let shared = try CaptionMediaFixtures.shared()
+        var cancellations = 0
+        var attempts = 0
         for name in ["neon", "editorial"] {
             let track = try await layout(name, shared: shared)
             let before = 0.4, after = 0.62, interrupted = name == "neon" ? 4.0 : 5.2
@@ -69,27 +92,33 @@ struct CaptionCancellationTests {
             #expect(first.page != CaptionTimeline.evaluate(track, time: interrupted).page)
             let expected = try CaptionRenderPool(shared: shared, cacheLimit: 0)
                 .band(track, time: after, width: 1080, reduceMotion: false).raster()
-            var cancellations = 0
+            try #require(!track.style.shadows.isEmpty)
             for limit in [0, 64 * 1024 * 1024] {
-                for delay in [0, 250, 1_000, 3_000, 8_000, 12_000] {
-                    let pool = CaptionRenderPool(shared: shared, cacheLimit: limit)
-                    _ = try pool.band(track, time: before, width: 1080, reduceMotion: false)
-                    let (started, continuation) = AsyncStream<Void>.makeStream()
-                    let task = Task.detached {
-                        continuation.yield(()); continuation.finish()
-                        return try pool.band(track, time: interrupted, width: 1080, reduceMotion: false)
+                for width in [720, 1080, 1440] {
+                    for shadow in Set([0, track.style.shadows.count - 1]).sorted() {
+                        attempts += 1
+                        let cancellation = CaptionShadowCancellation()
+                        let pool = CaptionRenderPool(shared: shared, cacheLimit: limit, shadowPassHook: cancellation.check)
+                        _ = try pool.band(track, time: before, width: 1080, reduceMotion: false)
+                        cancellation.arm(at: shadow)
+                        let task = Task.detached {
+                            try pool.band(track, time: interrupted, width: width, reduceMotion: false)
+                        }
+                        do {
+                            _ = try await task.value
+                            Issue.record("The shadow-pass cancellation must reach the renderer's cancellation check")
+                        } catch is CancellationError { cancellations += 1 }
+                        #expect(cancellation.cancellations == 1)
+                        let actual = try pool.band(track, time: after, width: 1080, reduceMotion: false).raster()
+                        compare(actual, expected, context: "\(name), limit=\(limit), width=\(width), shadow=\(shadow)")
+                        #expect(pool.statistics.renderedBands == 2, "A cancelled band must not be published")
                     }
-                    for await _ in started { break }
-                    if delay > 0 { try await Task.sleep(for: .microseconds(delay)) }
-                    task.cancel()
-                    do { _ = try await task.value }
-                    catch is CancellationError { cancellations += 1 }
-                    let actual = try pool.band(track, time: after, width: 1080, reduceMotion: false).raster()
-                    compare(actual, expected, context: "\(name), limit=\(limit), cancel delay=\(delay)µs")
                 }
             }
-            #expect(cancellations > 0, "\(name) must exercise cancellation")
         }
+        #expect(attempts == 18)
+        #expect(cancellations == attempts)
+        print("CAPTION_CANCELLATION cancellations=\(cancellations) pixel_comparisons=\(attempts)")
     }
 
     @Test("A deterministic throw during shadow mutation invalidates renderer caches")
