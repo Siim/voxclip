@@ -1446,7 +1446,18 @@
         "mode",
         "sourceStartSample",
         "sourceEndSample",
-        "outputSamples"
+        "outputSamples",
+        "retimeFactor",
+        "zoom",
+        "faceX",
+        "faceY",
+        "assetId",
+        "provider",
+        "model",
+        "requestId",
+        "windowStartSample",
+        "windowEndSample",
+        "syncMode"
       ],
       "properties": {
         "mode": {

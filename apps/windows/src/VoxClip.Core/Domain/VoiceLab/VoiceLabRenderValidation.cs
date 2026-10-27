@@ -26,9 +26,7 @@ public static class VoiceLabRenderValidation
             Require(Enum.IsDefined(voice.Status) && Id(voice.Id) && Id(voice.ConsentRecordId) && voice.Provider.Length > 0 && voice.VoiceId.Length > 0 && voice.DisplayName.Length > 0, VoiceLabProjectErrorCode.ConsentUnverified);
         Require(videoAssets!.Select(v => v.Id).Distinct(StringComparer.Ordinal).Count() == videoAssets!.Count, VoiceLabProjectErrorCode.InvalidAsset);
         foreach (var video in videoAssets!)
-            Require(Regex.IsMatch(video.Id, "\\A[a-z0-9][a-z0-9_-]{0,63}\\z", RegexOptions.CultureInvariant) &&
-                !Regex.IsMatch(video.Id, "\\A(?:con|prn|aux|nul|com[1-9]|lpt[1-9])\\z", RegexOptions.CultureInvariant) &&
-                video.File == project.Id + "/" + video.Id + ".mp4" &&
+            Require(VoiceLabAssetNaming.SafeVideoFile(project.Id, video.Id) == video.File &&
                 Regex.IsMatch(video.Sha256, "\\A[0-9a-f]{64}\\z", RegexOptions.CultureInvariant) &&
                 double.IsFinite(video.DurationSeconds) && video.DurationSeconds > 0 && double.IsFinite(video.FrameRate) &&
                 video.FrameRate > 0 && video.DurationSeconds*video.FrameRate < long.MaxValue && video.Width > 0 && video.Height > 0, VoiceLabProjectErrorCode.InvalidAsset);
@@ -37,14 +35,20 @@ public static class VoiceLabRenderValidation
         foreach (var segment in project.VoiceLab.Segments)
         {
             Require(Enum.IsDefined(segment.Kind), VoiceLabProjectErrorCode.InvalidSegment);
+            // A v3 segment must record its scope (§10.5); only a scope outside the enum is malformed.
+            Require(segment.Scope is not null, VoiceLabProjectErrorCode.MissingRenderPolicy);
             Require(segment.Scope is { } scopeValue && Enum.IsDefined(scopeValue), VoiceLabProjectErrorCode.InvalidSegment);
-            Require(segment.Scope is not null && (segment.Scope == VoiceLabSegmentScope.Passage && segment.GroupId is null ||
-                segment.Scope == VoiceLabSegmentScope.FullTake && Id(segment.GroupId)), VoiceLabProjectErrorCode.MissingRenderPolicy);
-            foreach (var candidate in segment.Candidates.Where(c => c.Rejected is null))
+            Require(segment.Scope == VoiceLabSegmentScope.Passage && segment.GroupId is null ||
+                segment.Scope == VoiceLabSegmentScope.FullTake && Id(segment.GroupId), VoiceLabProjectErrorCode.MissingRenderPolicy);
+            foreach (var candidate in segment.Candidates)
             {
-                var recipe = candidate.Recipe ?? throw new VoiceLabProjectException(VoiceLabProjectErrorCode.MissingRenderPolicy);
-                ValidateRecipe(recipe, segment, project, rate, total);
-                Require(candidate.AssetId == recipe.Audio.AssetId, VoiceLabProjectErrorCode.InvalidCandidate);
+                if (candidate.Rejected is null)
+                {
+                    var recipe = candidate.Recipe ?? throw new VoiceLabProjectException(VoiceLabProjectErrorCode.MissingRenderPolicy);
+                    ValidateRecipe(recipe, segment, project, rate, total);
+                    Require(candidate.AssetId == recipe.Audio.AssetId, VoiceLabProjectErrorCode.InvalidCandidate);
+                }
+                if (candidate.Recipe is { } stored) ValidateShape(stored);
             }
             var chosen = segment.Candidates[segment.SelectedCandidateIndex].Recipe;
             Require(chosen is not null && segment.Audio == chosen.Audio && segment.OutDuration == chosen.OutDuration &&
@@ -81,6 +85,8 @@ public static class VoiceLabRenderValidation
         Require(Id(recipe.Cost.QuoteId) && (recipe.Cost.Usd is null || recipe.Cost.Usd is { } usd && double.IsFinite(usd) && usd >= 0) &&
             recipe.Provenance.Region?.Length > 0 &&
             Id(recipe.Provenance.RequestId) && recipe.Provenance.Seed == recipe.Seed, VoiceLabProjectErrorCode.MissingRenderPolicy);
+        // Selection copies this provenance into the segment, whose rule refuses an endpoint URL with the same code.
+        Require(recipe.Provenance.Endpoint is null || !recipe.Provenance.Endpoint.Contains("://", StringComparison.Ordinal), VoiceLabProjectErrorCode.InvalidSegment);
         Require(recipe.Chunks.Count > 0, VoiceLabProjectErrorCode.MissingRenderPolicy);
         var cursor = start; var assembled = Samples(audio.TrimStart, asset!.SampleRate);
         foreach (var chunk in recipe.Chunks)
@@ -166,6 +172,35 @@ public static class VoiceLabRenderValidation
                     qa.SpeakerModel?.Length > 0 && qa.SpeakerPassed == true && score >= threshold, VoiceLabProjectErrorCode.QaRejected);
         }
         else Require(recipe.VoiceRefId is null && recipe.ConsentVerifiedAt is null && recipe.Provenance.ConsentRecordId is null, VoiceLabProjectErrorCode.InvalidSegment);
+    }
+    /// <summary>The project.schema.json shape of every stored recipe, rejected or not, whatever its kind or voice source.
+    /// Render policy runs first for unrejected candidates, so this only reports what policy leaves unchecked.</summary>
+    static void ValidateShape(VoiceLabRenderRecipe recipe)
+    {
+        static bool Unit(double? value) => value is not { } number || double.IsFinite(number) && number is >= 0 and <= 1;
+        static bool Finite(double? value) => value is not { } number || double.IsFinite(number);
+        var audio = recipe.Audio; var video = recipe.Video; var qa = recipe.Qa; var provenance = recipe.Provenance;
+        Require(Id(audio.AssetId) && double.IsFinite(audio.TrimStart) && audio.TrimStart >= 0 && double.IsFinite(audio.TrimEnd) && audio.TrimEnd >= 0 &&
+            double.IsFinite(audio.Stretch) && audio.Stretch > 0 && double.IsFinite(audio.GainDb) && double.IsFinite(recipe.OutDuration) && recipe.OutDuration > 0 &&
+            (recipe.RoomTone is not { } tone || tone.SourceStartSample >= 0 && tone.SourceEndSample >= 0 && double.IsFinite(tone.GainDb)), VoiceLabProjectErrorCode.InvalidSegment);
+        Require(recipe.Words is null || recipe.Words.Count > 0 && recipe.Words.All(word => !string.IsNullOrEmpty(word.Text) &&
+            double.IsFinite(word.Start) && word.Start >= 0 && double.IsFinite(word.End) && word.End >= 0), VoiceLabProjectErrorCode.InvalidSegment);
+        Require(recipe.Chunks is { Count: > 0 } && recipe.Chunks.All(chunk => chunk.SourceStartSample >= 0 && chunk.SourceEndSample >= 0 &&
+            Id(chunk.RequestId) && Id(chunk.AssetId) && chunk.AssetSha256 is not null && Regex.IsMatch(chunk.AssetSha256, "\\A[0-9a-f]{64}\\z", RegexOptions.CultureInvariant) &&
+            chunk.AssembledStartFrame >= 0 && chunk.AssembledEndFrame >= 0), VoiceLabProjectErrorCode.InvalidSegment);
+        Require(new[] { recipe.Seams.In, recipe.Seams.Out }.All(seam => Enum.IsDefined(seam.Kind) && seam.FadeSamples >= 0 &&
+            seam.SourceHandleSamples >= 0 && seam.AssetHandleFrames >= 0), VoiceLabProjectErrorCode.InvalidSegment);
+        Require(Enum.IsDefined(video.Mode) && video.SourceStartSample >= 0 && video.SourceEndSample >= 0 && video.OutputSamples >= 0 &&
+            Finite(video.RetimeFactor) && Finite(video.Zoom) && Unit(video.FaceX) && Unit(video.FaceY) && (video.AssetId is null || Id(video.AssetId)) &&
+            video.Provider is null or { Length: > 0 } && video.Model is null or { Length: > 0 } && (video.RequestId is null || Id(video.RequestId)) &&
+            video.WindowStartSample is null or >= 0 && video.WindowEndSample is null or >= 0 && video.SyncMode is null or "remap", VoiceLabProjectErrorCode.InvalidSegment);
+        Require(qa.TranscriptTokens is null or >= 0 && Unit(qa.TranscriptMatch) && double.IsFinite(qa.LufsJumpLu) && double.IsFinite(qa.PeakDbfs) &&
+            Unit(qa.SpeakerScore) && Unit(qa.SpeakerThreshold) && qa.SpeakerModel is null or { Length: > 0 }, VoiceLabProjectErrorCode.InvalidSegment);
+        Require(provenance.Provider is not null && Regex.IsMatch(provenance.Provider, "\\A[a-z0-9-]+\\z", RegexOptions.CultureInvariant) &&
+            !string.IsNullOrEmpty(provenance.Endpoint) && !string.IsNullOrEmpty(provenance.Model) && !string.IsNullOrEmpty(provenance.VoiceId) &&
+            (provenance.ConsentRecordId is null || Id(provenance.ConsentRecordId)) && (provenance.RequestId is null || Id(provenance.RequestId)) &&
+            provenance.Region is { Length: > 0 } && Id(recipe.Cost.QuoteId) && (recipe.Cost.Usd is not { } usd || double.IsFinite(usd) && usd >= 0) &&
+            Enum.IsDefined(recipe.VoiceSource) && (recipe.VoiceRefId is null || Id(recipe.VoiceRefId)), VoiceLabProjectErrorCode.InvalidSegment);
     }
     static void ValidateSeam(VoiceLabSeam seam, bool edge, long sourceAvailable, VoiceLabAsset asset, double trim, double stretch, double rate, bool incoming)
     {

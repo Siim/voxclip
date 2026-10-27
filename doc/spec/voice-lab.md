@@ -351,7 +351,7 @@ The app is open source, so the guard is good-faith friction and an audit trail, 
   - "This is my own voice."
   - "I am 18 or older."
   - "I will use it only on videos of myself."
-- **Display name**: 1 to 60 characters, used in the statement and the voice name.
+- **Display name**: 1 to 60 Unicode scalars after trimming Unicode whitespace; the trimmed name is stored and used in the statement and the voice name. The consent form applies the same count as `addVoiceReference` (§10.5) before the paid clone is created, so a name the reference would refuse never reaches ElevenLabs. Grapheme clusters and UTF-16 units are not the measure: 31 decomposed `õ` (62 scalars) are refused.
 
 ### 6.2 Consent statement
 
@@ -1015,6 +1015,22 @@ One lip-sync job per provider at a time, queued. Progress shows "Lip sync · que
 
 A v2 asset is `{id, kind: "audio", file, sha256, durationSeconds, sampleRate, createdAt}`. `file` is a relative `<projectId>/<assetId>.wav` or `.flac` name under the paid VoiceLab store. Asset IDs used as file components contain only lowercase ASCII letters, digits, `_` and `-`; Windows device names (`con`, `prn`, `aux`, `nul`, `com1`–`com9`, `lpt1`–`lpt9`) are rejected. There is no colon, trailing dot/space, absolute path, URI, parent traversal or backslash path. A project carries no audio bytes, credentials, or consent-statement recording. Assets are immutable paid outputs and delete/disable operations do not erase them. A media adapter must resolve the store path, verify SHA-256 and duration before rendering; this Core round only validates the reference and plans pieces.
 
+**Explicit upgrade and asset naming (2026-10-26).** `VoiceLabProject.upgradeToV3` (Swift `upgradeToV3(_:)`, C# `UpgradeToV3(project)`) is the only promotion between versions. Loading and saving never call it.
+
+It validates the input first, then:
+- A version 1 project, or a version 2 project without segments, becomes version 3 with `voiceLab` = `{assets, segments: [], cleanAudio: {mode: "off", assetId: null, mix: null}, voices: [], videoAssets: []}`. A version 2 project keeps its assets.
+- Every other field is unchanged, including the transcript, word times, edits, captions, share text, export settings and reverse-DNS extensions.
+- A version 2 project with any segment, enabled or disabled, throws `legacySegmentsNeedReview`.
+- A version 3 project is returned unchanged.
+
+Accept upgrades a version 1 or segment-free version 2 project before it appends, so it never writes version 2. A recipe-less segment therefore fails version 3 validation with `missingRenderPolicy`, because it lacks the scope and recipes of §10.5, instead of creating a version 2 project.
+
+`VoiceLabAssetNaming.file(projectId:assetId:extension:)` (C# `VoiceLabAssetNaming.File(projectId, assetId, fileExtension)`) states the asset file rule above once. Given a lowercase canonical project UUID, a safe asset ID and the exact extension `wav` or `flac`, it returns `<projectId>/<assetId>.<extension>`. Otherwise it throws `invalidAsset`. Media writers name new paid assets with it.
+
+Core validation applies the same rule in two places:
+- It checks every stored asset file and reports `unsafePath` when the stored name differs.
+- It names each §10.5 video asset `<projectId>/<videoAssetId>.mp4` and reports `invalidAsset` when that name differs.
+
 A v2 segment has `{id, kind, enabled, replace, outDuration, audio, text, words, provenance, qa, candidates, selectedCandidateIndex}`. `kind` is `tts` or `voiceChanger`. `replace` has source seconds `start` and `end` plus `firstWordId` and `lastWordId`; this round supports positive-length passage and full-take replacement. Insertion (`afterWordId` and a zero-length source range) is reserved for a later version with an explicit inverse mapping rule. `audio` identifies the selected asset, trim bounds, stretch and gain. `outDuration` must equal the trimmed asset duration times stretch within one asset sample. `candidates` retain their asset IDs, score and rejection reason; the selected index must name an unrejected candidate and match `audio.assetId`. `provenance` records provider endpoint name, model, voice ID, optional consent **record ID**, optional request ID, optional seed and creation time. `qa` has optional transcript match, loudness jump, peak and speaker score. All persisted numbers must be finite.
 
 For `tts`, `text` contains original and new spoken text and `words` contains positive, ordered times relative to the output start, each with a `synthetic` flag. In version 2 only, `synthetic: false` marks a bridge word whose text was kept although its audio was re-voiced. In version 3 recipes every TTS word, bridge words included, is `synthetic: true` (§8.8, §10.5). `voiceChanger` stores `text: null` and `words: null`; captions retain the source words. This v2 object is the first audio-only project format, not the final Voice Lab schema.
@@ -1050,6 +1066,8 @@ Accept, turn off, turn on, delete, choosing another candidate, and changing the 
 
 The v2 Core functions return new project values for accept, enable/disable, delete and candidate selection. They do not register app `UndoManager`/`EditHistory` steps. App undo wiring, lip-sync tier changes and eventual asset cleanup remain integration work; no Core transition deletes a paid asset.
 
+Since 2026-10-26, accept upgrades a version 1 or segment-free version 2 project to version 3 before appending (§10.1), so the result is always a version 3 project. Accept still returns a new value, and the earlier value restores the project byte for byte. `upgradeToV3`, `addVoiceReference` and `markVoiceDeleted` are likewise pure values without I/O or undo registration.
+
 ### 10.4 Paid-audio Media boundary (2026-10-26)
 
 Mac `VoiceLabAssets.prepare(project:plan:paidRoot:)` and Windows `VoiceLabAssets.PrepareAsync(project, plan, paidRoot, cancellationToken)` validate the project through Core and prepare only `synth` pieces in the explicit full or clip plan. Before preparation, Media rebuilds the plan from the current project and selected scope and requires its sample grid, ordered pieces and captions to match; a changed caption correction invalidates an earlier plan even when audio pieces are unchanged. Results are keyed by segment ID, so two segments may select the same paid asset with different trims. A prepared handle gives the selected asset ID, a private audio snapshot URL/path, decoded sample rate, channels and frame count, half-open trim frames, stretch and gain. Trim seconds use JavaScript half-up rounding on the **asset's** sample grid. Core already owns the piece's source/output bounds and verifies its `audio.assetId` against the selected candidate; Media checks the selected file bytes before composition. The caller retains the handle through preview/export and releases it afterwards; release removes only the private snapshot, never the paid file.
@@ -1065,6 +1083,43 @@ Mac `EditorModel`, `CLIWorkflow` and `CompositionBuilder`, and Windows `EditorVi
 Version 3 adds explicit `voiceLab.cleanAudio`, `voices`, and `videoAssets` and requires every unrejected candidate to carry a complete `recipe`. `cleanAudio` records `off` with null asset and mix, or `on` with an asset and mix; Core reports `cleanAudioUnsupported` for active non-null use until Media implements it. A segment records `scope: passage | fullTake`; a full-take group covers the take without the patch 15%/60-word budget. Candidate recipes record asset trim, fit factor, gain, relative words (every TTS word `synthetic: true`, bridge words included), bounded source and assembled chunk spans with request IDs and seeds, room tone or explicit null, in/out seam policy, tagged video mode, applicable QA, provenance, cost quote and own/stock voice source. `usd: null` means the price was unknown. The source transcript, word times, cuts and reverse-DNS extensions remain unchanged. No v2 segment is promoted automatically; recovery needs explicit future per-segment review.
 
 `VoiceLabRenderContract.prepare(project, scope, labelPosition)` uses `VoiceLabOutputPlanner` as the sole source of ordered pieces, mapping and captions. It returns an immutable selected-recipe snapshot and `VoiceLabDisclosurePlan` for that exact project, scope and position; downstream consumers must call `verify` before using it. Full ignores `activeClipId`; a clip cannot bisect an enabled replacement. Disabled and excluded replacements remain source-renderable. Candidate selection transfers the complete validated candidate recipe into segment fields, and accept/enable/disable/delete remain reversible project transitions that never delete paid assets. New own-voice acceptance requires an active consent reference; a previously accepted asset remains playable after voice deletion because rendering uses its stored consent evidence, not a provider lookup or a new speaker match. A record is evidence of generation/accept review, not speaker verification by itself.
+
+**Voice references (2026-10-26).** `addVoiceReference` adds an own-voice reference to a version 3 project, and `markVoiceDeleted` sets an existing one to `deleted`. Both refuse version 1 and 2 projects with `requiresVersion3`, and both return a new project without changing segments or assets.
+
+A new reference must meet every condition below; any violation throws `invalidVoice`:
+
+- an ID and consent record ID that follow the Voice Lab ID rule, with the ID unique in the project;
+- provider `elevenlabs`;
+- a voice ID of 1–128 ASCII letters, digits, `_` or `-`, matching the provider client's path-safe rule;
+- status `active`;
+- a display name of 1–60 Unicode scalars after trimming Unicode whitespace; the trimmed name is stored (§6.1);
+- no other active reference with the same provider and voice ID. A deleted reference does not block it.
+
+Marking a missing ID throws `missingVoice`. Marking an already deleted reference returns an equal project. Deletion never removes the reference, a segment or an asset.
+
+Earlier own-voice segments still validate and prepare with their stored consent evidence. Accept, however, requires every unrejected own-voice candidate in the segment to name an active reference, selected or not, and throws `consentUnverified` otherwise. A rejected candidate cannot be selected, so it needs no active reference. Candidate selection does not check voice status: a take accepted while consent was active stays selectable and renderable after deletion.
+
+A loaded project whose references share an ID fails with `consentUnverified`, the code for every other defect in a single reference. These transitions are pure values without I/O or undo registration (§10.3).
+
+**Stored recipe shape (2026-10-26).** Version 3 validation checks the project schema shape of every stored recipe, rejected or not, of any kind or voice source. The check includes:
+
+- ID and SHA-256 patterns;
+- non-empty chunks, region, endpoint, model and voice ID;
+- the provenance provider pattern `[a-z0-9-]+`;
+- the cost quote ID, and a `usd` that is null or at least 0;
+- finite numbers;
+- non-negative counts and sample positions;
+- `transcriptMatch`, `speakerScore`, `speakerThreshold`, `faceX` and `faceY` within [0, 1];
+- a non-empty `speakerModel`, video provider and video model when present;
+- `syncMode` null or `remap`.
+
+For each candidate in order, an unrejected candidate first passes render policy, then every stored recipe passes the shape check; the first failure is reported, and a shape failure is `invalidSegment`. Accept therefore never returns a project that fails `project.schema.json` or cannot be written as JSON.
+
+Render policy also refuses an unrejected candidate whose provenance endpoint contains `://`, with `invalidSegment`. Selecting that candidate would copy the endpoint into the segment, whose provenance rule refuses it with the same code.
+
+Every saved `video` object carries all 15 keys, with `null` for the fields its mode does not use. The schema and both platforms' project readers require every key, explicit `null` included (architecture §2.1 rule 8). Files written by development builds before 2026-10-26 that omit these keys are refused.
+
+The shared cases are `shared/fixtures/voice-lab/upgrade-cases.json`, generated by `tools/fixtures/voice-lab/generate_upgrade.py` and described in `upgrade-README.md`.
 
 All source intervals use JavaScript half-up rounding on the source sample grid; trim and handle frames use the asset sample grid. A centered N-frame seam has left half `floor(N/2)` and right half `N − floor(N/2)`. Equal-power gains use `u = i/(N−1)` for `N ≥ 2`, with exact endpoints. Stored gap seams use 20 ms and hard seams 12 ms; real take edges use explicit `none`. Every gap or hard seam's centred fade lies inside the take (§8.4 step 5); window placement refuses a hunk whose hard seam cannot meet this with `seamFadeOutsideTake`. Touching synth pieces share one agreeing seam. Missing handles, a fade shorter than two frames, a clip ending on an internal seam, or overlapping windows fail preparation without shortening a fade or swallowing even a one-sample source gap. Ordinary source cut joins retain their separate 5 ms linear fade. Passage TTS with Clean audio off requires the stored 0.5 s room-tone run; when no source gap holds a whole run, the passage is refused with `roomToneUnavailable` before any paid take, and the UI offers Clean audio (§8.7). Full take and voice changing have an explicit null policy when room tone is not needed.
 

@@ -112,8 +112,12 @@ import Testing
         #expect(try VoiceLabOutputPlanner.build(deleted, scope: .full).outputSamples == 7000)
         #expect(deleted.transcript == original.transcript && deleted.edits == original.edits)
         let v1 = try JSONProjectStore.decode(FixtureLoader.data("fixtures/projects/interview-take.voxclip"))
-        let accepted = try VoiceLabProject.accept(original.voiceLab.segments[0], assets: original.voiceLab.assets!, into: v1)
-        #expect(accepted.schemaVersion == 2 && v1.schemaVersion == 1)
+        // Accept upgrades v1 to v3 first, so a recipe-less v2 segment can no longer create a v2 project.
+        #expect(throws: VoiceLabProjectError.missingRenderPolicy) { try VoiceLabProject.accept(original.voiceLab.segments[0], assets: original.voiceLab.assets!, into: v1) }
+        #expect(v1.schemaVersion == 1)
+        var second = original.voiceLab.segments[0]
+        second.id = "vl-second"
+        #expect(throws: VoiceLabProjectError.legacySegmentsNeedReview) { try VoiceLabProject.accept(second, assets: [], into: original) }
     }
 
     @Test func seamCutsAndVoiceChangerCaptions() throws {
@@ -149,5 +153,39 @@ import Testing
         let reopened = try await store.load(from: path)
         #expect(reopened.schemaVersion == 2 && reopened.voiceLab == project.voiceLab)
         #expect(try VoiceLabOutputPlanner.build(reopened, scope: .full).outputSamples == 7300)
+    }
+
+    @Test func assetNamingAcceptsOnlySafeStoreNames() throws {
+        let project = "5b7e0f7a-3c1d-4b8e-9a51-2f6d0c8e4a11"
+        let accepted = [("asset-one", "wav"), ("take_2", "flac"), ("0", "wav"), ("console", "wav"), ("con-take", "wav"),
+                        ("com0", "wav"), ("com10", "flac"), ("lpt0", "wav"), (String(repeating: "a", count: 64), "wav")]
+        for (assetId, fileExtension) in accepted {
+            #expect(try VoiceLabAssetNaming.file(projectId: project, assetId: assetId, extension: fileExtension) == "\(project)/\(assetId).\(fileExtension)")
+        }
+        let reserved = ["con", "prn", "aux", "nul"] + (1...9).flatMap { ["com\($0)", "lpt\($0)"] }
+        let unsafeAssets = reserved + ["Asset-one", "ASSET", "asset:stream", "asset.", "asset ", "asset..", "../asset", "..", "asset/../x",
+                                       "a\\b", "/etc/passwd", "file:///tmp/a", "https://example.com/a", "", "-asset", "_asset", "asset.wav", "ässet",
+                                       String(repeating: "a", count: 65)]
+        for assetId in unsafeAssets {
+            #expect(throws: VoiceLabProjectError.invalidAsset, "\(assetId)") { try VoiceLabAssetNaming.file(projectId: project, assetId: assetId, extension: "wav") }
+        }
+        for projectId in [project.uppercased(), "../" + project, project + "/..", "/tmp/" + project, "C:\\" + project, "file:///" + project, "", "not-a-uuid"] {
+            #expect(throws: VoiceLabProjectError.invalidAsset, "\(projectId)") { try VoiceLabAssetNaming.file(projectId: projectId, assetId: "asset-one", extension: "wav") }
+        }
+        for fileExtension in ["WAV", "mp3", "mp4", ".wav", "wav ", "", "wav/x"] {
+            #expect(throws: VoiceLabProjectError.invalidAsset, "\(fileExtension)") { try VoiceLabAssetNaming.file(projectId: project, assetId: "asset-one", extension: fileExtension) }
+        }
+        // §10.5 video assets use the same rule with a fixed .mp4 extension; the public name stays audio-only.
+        #expect(VoiceLabAssetNaming.safeVideoFile(projectId: project, assetId: "lipsync-take") == project + "/lipsync-take.mp4")
+        for assetId in unsafeAssets { #expect(VoiceLabAssetNaming.safeVideoFile(projectId: project, assetId: assetId) == nil, "\(assetId)") }
+        // Validation applies the same rule to stored files and keeps reporting unsafePath.
+        var stored = try fixture()
+        stored.voiceLab.assets![0].file = project + "/asset-one.flac"
+        try VoiceLabProject.validate(stored)
+        for file in [project + "/asset-one.WAV", project + "/asset-two.wav", project + "\\asset-one.wav", "/" + project + "/asset-one.wav",
+                     project + "/asset-one.wav.wav", project + "/asset-one", "file:///" + project + "/asset-one.wav"] {
+            stored.voiceLab.assets![0].file = file
+            #expect(throws: VoiceLabProjectError.unsafePath, "\(file)") { try VoiceLabProject.validate(stored) }
+        }
     }
 }
