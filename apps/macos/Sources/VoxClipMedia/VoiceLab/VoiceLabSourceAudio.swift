@@ -240,7 +240,7 @@ public enum VoiceLabSourceAudio {
         let provider = reader.outputProvider(for: output)
         guard reader.startReading() else { throw VoiceLabSourceAudioError.unreadable }
         var accumulator = ConversionAccumulator(rate: rate, channels: channels, startSample: startSample,
-                                              endSample: endSample, frames: frames)
+                                              endSample: endSample, frames: frames, origin: 0.0)
         do {
             while !accumulator.isComplete, let sample = try await MediaSupport.nextSample(provider) {
                 try Task.checkCancellation()
@@ -262,17 +262,19 @@ public enum VoiceLabSourceAudio {
         private let channels: Int
         private let startSample: Int64
         private let endSample: Int64
+        private let origin: Double
         private var previousEnd: Int64?
         private var values: [Float] = []
         private(set) var next: Int64
         private(set) var wav: Data
         var isComplete: Bool { next == endSample }
 
-        init(rate: Int, channels: Int, startSample: Int64, endSample: Int64, frames: Int) {
+        init(rate: Int, channels: Int, startSample: Int64, endSample: Int64, frames: Int, origin: Double = 0.0) {
             self.rate = rate
             self.channels = channels
             self.startSample = startSample
             self.endSample = endSample
+            self.origin = origin
             next = startSample
             wav = VoiceLabAssetStore.wavHeader(frames: frames, sampleRate: rate)
             wav.append(Data(count: 2 * frames))
@@ -283,7 +285,7 @@ public enum VoiceLabSourceAudio {
             let count: Int = Int(sample.sampleCount)
             guard count > 0 else { return }
             let first = try VoiceLabSourceAudio.bufferFirstSample(presentationTime: sample.presentationTimeStamp,
-                                                                 rate: rate, previousEnd: previousEnd)
+                                                                 rate: rate, previousEnd: previousEnd, origin: origin)
             let decodedEnd: Int64 = first + Int64(count)
             previousEnd = decodedEnd
             guard first <= next else { throw VoiceLabSourceAudioError.rangeOutsideMedia }
@@ -328,38 +330,31 @@ public enum VoiceLabSourceAudio {
         }
     }
 
-    static func bufferFirstSample(presentationTime: CMTime, rate: Int, previousEnd: Int64?) throws -> Int64 {
+    static func bufferFirstSample(presentationTime: CMTime, rate: Int, previousEnd: Int64?, origin: Double = 0.0) throws -> Int64 {
         guard presentationTime.isValid else {
             if let previousEnd { return previousEnd }
             throw VoiceLabSourceAudioError.unreadable
         }
         guard presentationTime.isNumeric, presentationTime.timescale > 0 else { throw VoiceLabSourceAudioError.unreadable }
-        let scale: Int64 = Int64(presentationTime.timescale)
-        let tickSamples: Double = Double(rate) / Double(scale)
+        let scale: Double = Double(presentationTime.timescale)
+        let timeBase: Double = 1.0 / scale
+        let seconds: Double = Double(presentationTime.value) * timeBase
+        let relativeSeconds: Double = seconds - origin
+        let sampleRate: Double = Double(rate)
+        let position: Double = relativeSeconds * sampleRate
+        guard position.isFinite, position >= -0x1p62, position < 0x1p62 else { throw VoiceLabSourceAudioError.unreadable }
+        let tickNumerator: Double = sampleRate * 1.0
+        let tickSamples: Double = tickNumerator / scale
         let tolerance: Double = max(1.0, tickSamples)
-        let product: (partialValue: Int64, overflow: Bool) = presentationTime.value.multipliedReportingOverflow(by: Int64(rate))
-        let first: Int64
-        let distance: Double
-        if !product.overflow, product.partialValue % scale == 0 {
-            first = product.partialValue / scale
-            guard first >= -(1 << 62), first < 1 << 62 else { throw VoiceLabSourceAudioError.unreadable }
-            if let previousEnd {
-                let difference: (partialValue: Int64, overflow: Bool) = first.subtractingReportingOverflow(previousEnd)
-                distance = difference.overflow ? abs(Double(first) - Double(previousEnd)) : abs(Double(difference.partialValue))
-            } else { distance = .infinity }
-        } else {
-            let exact: Double = product.overflow
-                ? Double(presentationTime.value) * Double(rate) / Double(scale)
-                : Double(product.partialValue) / Double(scale)
-            guard exact.isFinite, exact >= -0x1p62, exact < 0x1p62 else { throw VoiceLabSourceAudioError.unreadable }
-            let halfUpPosition: Double = exact + 0.5
-            let roundedPosition: Double = halfUpPosition.rounded(.down)
-            first = Int64(roundedPosition)
-            if let previousEnd { distance = abs(exact - Double(previousEnd)) }
-            else { distance = .infinity }
+        if let previousEnd {
+            let previousPosition: Double = Double(previousEnd)
+            let difference: Double = position - previousPosition
+            let distance: Double = abs(difference)
+            if distance < tolerance { return previousEnd }
         }
-        if let previousEnd, distance < tolerance { return previousEnd }
-        return first
+        let halfUpPosition: Double = position + 0.5
+        let roundedPosition: Double = floor(halfUpPosition)
+        return Int64(roundedPosition)
     }
 }
 

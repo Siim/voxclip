@@ -199,6 +199,22 @@ import VoxClipCore
         }
     }
 
+    @Test(arguments: [100, 101, 102])
+    func timestampHalfSampleTiesUseTheDecodeSessionBinary64Order(value: Int64) throws {
+        let timestamp = CMTime(value: value, timescale: 96_000)
+        let expected: Int64 = value == 102 ? 51 : 50
+        let first = try VoiceLabSourceAudio.bufferFirstSample(presentationTime: timestamp, rate: 48_000,
+                                                            previousEnd: nil, origin: 0.0)
+        #expect(first == expected)
+    }
+
+    @Test func timestampPlacementSubtractsTheSuppliedOriginBeforeScaling() throws {
+        let timestamp = CMTime(value: 134_501, timescale: 96_000)
+        let first = try VoiceLabSourceAudio.bufferFirstSample(presentationTime: timestamp, rate: 48_000,
+                                                            previousEnd: nil, origin: 1.4)
+        #expect(first == 51)
+    }
+
     @Test func firstFrameUsesItsOwnHalfUpAnchorAndNegativeOverlap() throws {
         let early = CMTime(value: 23_997, timescale: 240_000)
         #expect(try VoiceLabSourceAudio.bufferFirstSample(presentationTime: early, rate: 48_000, previousEnd: nil) == 4_799)

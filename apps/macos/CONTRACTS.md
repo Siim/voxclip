@@ -1,5 +1,9 @@
 # macOS implementation contracts
 
+### 2026-10-28 — sol-followups-8 round 3: binary64 extraction anchors
+
+- Voice Lab §7.2 placement uses DecodeSession's binary64 order on both platforms: seconds = value × (numerator / denominator), position = (seconds − origin) × rate, tick = rate × numerator / denominator left to right, and half-up = floor(position + 0.5). The Mac exact Int64 path is removed. Its production origin remains 0.0 on the AVFoundation asset timeline; the placement helper and production accumulator accept an origin for shared replay. The first anchor, strict continuity, negative/missing behavior and Windows-compatible overflow guard are unchanged. Windows production arithmetic is unchanged. `timestampHalfSampleTiesUseTheDecodeSessionBinary64Order` pins timestamps 100/101/102 at 1/96,000 and 48 kHz to 50/50/51; `timestampPlacementSubtractsTheSuppliedOriginBeforeScaling` pins the 1.4 s origin.
+
 ### 2026-10-28 — sol-followups-8 round 2: shared extraction placement
 
 - Merged local main `a974ad6e` before changes and moved the three round-one entries to the top, newest first, preserving both contract histories. Voice Lab §7.2 supersedes round one's first-buffer comparison against the requested start: the first decoded frame half-up anchors itself; only subsequent decoded frames compare against the prior full decoded end. Negative overlap is allowed. An invalid/missing timestamp is unreadable before an anchor and sequential after it. The Mac asset timeline and each frame's CMTime resolution remain unchanged.
