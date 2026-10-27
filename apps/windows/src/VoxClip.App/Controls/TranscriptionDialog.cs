@@ -20,11 +20,12 @@ internal sealed class TranscriptionDialog : ContentDialog
     private readonly TextBlock cloudKeyStatus = Ui.Text("Checking ElevenLabs key…", "HelperText");
     private readonly PasswordBox cloudKey = new() { Header = "ElevenLabs API key", PasswordRevealMode = PasswordRevealMode.Hidden, PlaceholderText = "Paste a key to save for your Windows account" };
     private readonly CancellationTokenSource lifetime = new();
+    private readonly string? projectPath;
     private bool running;
 
     internal TranscriptionDialog(MainWindow owner, EditorViewModel model)
     {
-        this.model = model; Title = model.HasTranscript ? "Transcribe again" : "Transcribe video";
+        this.model = model; projectPath = owner.ProjectPath; Title = model.HasTranscript ? "Transcribe again" : "Transcribe video";
         PrimaryButtonText = "Transcribe"; CloseButtonText = "Not now";
         engine.SelectedIndex = App.Services.Get("transcription.engineMode", "local") == "elevenlabs" ? 1 : 0;
         var savedLanguage = App.Services.Get("transcription.language", "auto");
@@ -110,20 +111,32 @@ internal sealed class TranscriptionDialog : ContentDialog
             }
             if (model.IsLeaving) return;
             running = true; model.Busy = true; App.Services.BusyOperations++; IsPrimaryButtonEnabled = false; progress.Visibility = Visibility.Visible;
+            // Home tiles in any window show this run's stage and can cancel it, as "Not now" does (design §5.4.4 d).
+            void Cancel() { if (running) lifetime.Cancel(); }
+            void Report(TranscriptionStep step, double? fraction) { if (projectPath is not null && running) TranscriptionActivity.Report(projectPath, step, fraction, Cancel); }
+            Report(TranscriptionStep.Reading, null);
             try
             {
                 var source = model.Project.Media.Source;
                 var media = await App.Services.Probe.ProbeAsync(source.AbsolutePath, lifetime.Token);
+                Report(TranscriptionStep.Extracting, null);
                 var audio = await App.Services.Audio.ExtractAsync(new(media, source.ContentKey, App.Services.Data.Cache), null, lifetime.Token);
                 var requestedLanguage = language.Text.Trim().ToLowerInvariant();
                 var plan = new TranscriptionPlan(engine.SelectedIndex == 0 ? TranscriptEngine.Whispercpp : TranscriptEngine.Elevenlabs,
                     models.SelectedItem as string, requestedLanguage.Length == 0 || requestedLanguage == "auto" ? new LanguageChoice.Auto() : new LanguageChoice.Forced(requestedLanguage), new());
                 var transcript = await App.Services.Transcription.TranscribeAsync(new(plan, audio.Audio, source.ContentKey), new Progress<TranscriptionProgress>(value =>
-                { progress.IsIndeterminate = value.Fraction is null; progress.Value = (value.Fraction ?? 0) * 100; Ui.Show(notice, value.Stage.ToString()); }), lifetime.Token);
+                {
+                    progress.IsIndeterminate = value.Fraction is null; progress.Value = (value.Fraction ?? 0) * 100; Ui.Show(notice, value.Stage.ToString());
+                    Report(value.Stage == TranscriptionStage.Aligning ? TranscriptionStep.Aligning : TranscriptionStep.Transcribing, value.Fraction);
+                }), lifetime.Token);
                 if (model.IsLeaving) return;
                 model.SetTranscript(transcript);
             }
-            finally { running = false; model.Busy = false; App.Services.BusyOperations--; IsPrimaryButtonEnabled = !lifetime.IsCancellationRequested; progress.Visibility = Visibility.Collapsed; }
+            finally
+            {
+                running = false; model.Busy = false; App.Services.BusyOperations--; IsPrimaryButtonEnabled = !lifetime.IsCancellationRequested; progress.Visibility = Visibility.Collapsed;
+                if (projectPath is not null) TranscriptionActivity.End(projectPath);
+            }
             Hide();
         }, "Transcription");
     }

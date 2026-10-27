@@ -1,8 +1,43 @@
-<!-- Hand-written layout sizes for the ADR-R29 clips-first workspace (doc/design.md sections 3-7) that have no C16
-     token yet. Typography, the sidebar width and the breakpoints come from the generated Tokens.xaml. -->
+<!-- Hand-written layout sizes and media chip brushes for the ADR-R29 clips-first workspace (doc/design.md sections 3-7)
+     that have no C16 token yet. Typography, the sidebar width and the breakpoints come from the generated Tokens.xaml. -->
 <ResourceDictionary
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <!-- Media chips and the progress line, design §5.4.8: the proposed chip.media* tokens until tokens.json carries them.
+         They sit on media, so Light and Dark match; the opaque pair is for transparency effects off. High Contrast uses
+         the system window colours, and the media under them stays black. -->
+    <ResourceDictionary.ThemeDictionaries>
+        <ResourceDictionary x:Key="Default">
+            <SolidColorBrush x:Key="VcChipMediaBackgroundBrush" Color="#9E000000"/>
+            <SolidColorBrush x:Key="VcChipMediaStrokeBrush" Color="#2EFFFFFF"/>
+            <SolidColorBrush x:Key="VcChipMediaBackgroundOpaqueBrush" Color="#1A1A1C"/>
+            <SolidColorBrush x:Key="VcChipMediaStrokeOpaqueBrush" Color="#66FFFFFF"/>
+            <SolidColorBrush x:Key="VcChipMediaForegroundBrush" Color="#FFFFFF"/>
+            <SolidColorBrush x:Key="VcChipMediaWarningGlyphBrush" Color="#E3B25C"/>
+            <SolidColorBrush x:Key="VcMediaProgressTrackBrush" Color="#8C000000"/>
+            <SolidColorBrush x:Key="VcMediaProgressFillBrush" Color="#F5F4F0"/>
+        </ResourceDictionary>
+        <ResourceDictionary x:Key="Light">
+            <SolidColorBrush x:Key="VcChipMediaBackgroundBrush" Color="#9E000000"/>
+            <SolidColorBrush x:Key="VcChipMediaStrokeBrush" Color="#2EFFFFFF"/>
+            <SolidColorBrush x:Key="VcChipMediaBackgroundOpaqueBrush" Color="#1A1A1C"/>
+            <SolidColorBrush x:Key="VcChipMediaStrokeOpaqueBrush" Color="#66FFFFFF"/>
+            <SolidColorBrush x:Key="VcChipMediaForegroundBrush" Color="#FFFFFF"/>
+            <SolidColorBrush x:Key="VcChipMediaWarningGlyphBrush" Color="#E3B25C"/>
+            <SolidColorBrush x:Key="VcMediaProgressTrackBrush" Color="#8C000000"/>
+            <SolidColorBrush x:Key="VcMediaProgressFillBrush" Color="#F5F4F0"/>
+        </ResourceDictionary>
+        <ResourceDictionary x:Key="HighContrast">
+            <SolidColorBrush x:Key="VcChipMediaBackgroundBrush" Color="{ThemeResource SystemColorWindowColor}"/>
+            <SolidColorBrush x:Key="VcChipMediaStrokeBrush" Color="{ThemeResource SystemColorWindowTextColor}"/>
+            <SolidColorBrush x:Key="VcChipMediaBackgroundOpaqueBrush" Color="{ThemeResource SystemColorWindowColor}"/>
+            <SolidColorBrush x:Key="VcChipMediaStrokeOpaqueBrush" Color="{ThemeResource SystemColorWindowTextColor}"/>
+            <SolidColorBrush x:Key="VcChipMediaForegroundBrush" Color="{ThemeResource SystemColorWindowTextColor}"/>
+            <SolidColorBrush x:Key="VcChipMediaWarningGlyphBrush" Color="{ThemeResource SystemColorWindowTextColor}"/>
+            <SolidColorBrush x:Key="VcMediaProgressTrackBrush" Color="{ThemeResource SystemColorWindowColor}"/>
+            <SolidColorBrush x:Key="VcMediaProgressFillBrush" Color="{ThemeResource SystemColorWindowTextColor}"/>
+        </ResourceDictionary>
+    </ResourceDictionary.ThemeDictionaries>
     <!-- Timecodes, durations and badges: Cascadia Mono, falling back to Consolas (C1). -->
     <FontFamily x:Key="VcMonoFontFamily">Cascadia Mono, Consolas</FontFamily>
     <x:Double x:Key="VcLayoutBadgeFontSize">11</x:Double>

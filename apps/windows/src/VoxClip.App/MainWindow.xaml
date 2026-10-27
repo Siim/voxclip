@@ -32,7 +32,8 @@
                     </Setter.Value>
                 </Setter>
             </Style>
-            <!-- Sidebar rows, design §3.4. Clip rows carry their number on the thumbnail badge. Media placeholders are stage-black. -->
+            <!-- Sidebar rows, design §3.4. Clip rows carry their number on the thumbnail badge. Thumbnails are media tiles: a
+                 frame, else the downscaled caption card with no plates, else stage black (design §5.4). -->
             <DataTemplate x:Key="HomeRow" x:DataType="vm:SidebarRow">
                 <NavigationViewItem Content="{x:Bind Title, Mode=OneWay}" AutomationProperties.Name="{x:Bind AccessibleName, Mode=OneWay}" ToolTipService.ToolTip="Home (Ctrl+1)">
                     <NavigationViewItem.Icon><SymbolIcon Symbol="Home"/></NavigationViewItem.Icon>
@@ -53,7 +54,7 @@
                 <NavigationViewItem MinHeight="{StaticResource VcLayoutFullTakeRowHeight}" AutomationProperties.Name="{x:Bind AccessibleName, Mode=OneWay}" ToolTipService.ToolTip="Full take (Ctrl+2)">
                     <Grid ColumnSpacing="12">
                         <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                        <Border Width="{StaticResource VcLayoutRowThumbColumnWidth}" Height="{StaticResource VcLayoutTakeThumbHeight}" CornerRadius="3" Background="{ThemeResource VcStageBrush}" BorderBrush="{ThemeResource VcLineDefaultBrush}" BorderThickness="1"/>
+                        <controls:MediaThumbnail Width="{StaticResource VcLayoutRowThumbColumnWidth}" Height="{StaticResource VcLayoutTakeThumbHeight}" CornerRadius="3" Surface="Sidebar" Media="{x:Bind Media, Mode=OneWay}"/>
                         <StackPanel Grid.Column="1" VerticalAlignment="Center">
                             <TextBlock Text="{x:Bind Title, Mode=OneWay}" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"/>
                             <TextBlock Text="{x:Bind Meta, Mode=OneWay}" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"/>
@@ -116,13 +117,16 @@
                 <NavigationViewItemHeader Content="{x:Bind Title}" AutomationProperties.Name="{x:Bind AccessibleName}"/>
             </DataTemplate>
             <DataTemplate x:Key="RecentRow" x:DataType="vm:SidebarRow">
-                <NavigationViewItem SelectsOnInvoked="False" MinHeight="{StaticResource VcLayoutFullTakeRowHeight}" AutomationProperties.Name="{x:Bind AccessibleName, Mode=OneWay}" ToolTipService.ToolTip="{x:Bind Recent.Path}">
+                <NavigationViewItem SelectsOnInvoked="False" MinHeight="{StaticResource VcLayoutFullTakeRowHeight}" AutomationProperties.Name="{x:Bind Recent.AccessibleName, Mode=OneWay}" ToolTipService.ToolTip="{x:Bind Recent.Path}">
                     <Grid ColumnSpacing="12">
                         <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                        <Border Width="{StaticResource VcLayoutRowThumbColumnWidth}" Height="{StaticResource VcLayoutTakeThumbHeight}" CornerRadius="3" Background="{ThemeResource VcStageBrush}" BorderBrush="{ThemeResource VcLineDefaultBrush}" BorderThickness="1"/>
+                        <controls:MediaThumbnail Width="{StaticResource VcLayoutRowThumbColumnWidth}" Height="{StaticResource VcLayoutTakeThumbHeight}" CornerRadius="3" Surface="Sidebar" Media="{x:Bind Recent.Media, Mode=OneWay}"/>
                         <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                            <TextBlock Text="{x:Bind Title, Mode=OneWay}" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"/>
-                            <TextBlock Text="{x:Bind Recent.Detail, Mode=OneWay}" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"/>
+                            <TextBlock Text="{x:Bind Recent.Title, Mode=OneWay}" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"/>
+                            <TextBlock Text="{x:Bind Recent.Detail, Mode=OneWay}" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"
+                                Visibility="{x:Bind Recent.DetailIsPlain, Mode=OneWay}"/>
+                            <TextBlock Text="{x:Bind Recent.Detail, Mode=OneWay}" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource VcStatusWarningBrush}" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"
+                                Visibility="{x:Bind Recent.DetailIsWarning, Mode=OneWay}"/>
                         </StackPanel>
                     </Grid>
                 </NavigationViewItem>

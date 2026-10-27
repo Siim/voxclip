@@ -16,6 +16,7 @@ public sealed class SidebarRow(SidebarKind kind, string key) : ObservableObject
     private string toolTip = "";
     private bool isActive;
     private bool isEnabled = true;
+    private MediaTile? media;
     public SidebarKind Kind { get; } = kind;
     public string Key { get; } = key;
     /// <summary>The clip id of a clip or suggestion row.</summary>
@@ -34,6 +35,8 @@ public sealed class SidebarRow(SidebarKind kind, string key) : ObservableObject
     public bool IsActive { get => isActive; set { if (SetProperty(ref isActive, value)) OnPropertyChanged(nameof(IsNeutral)); } }
     public bool IsNeutral => !isActive;
     public bool IsEnabled { get => isEnabled; set => SetProperty(ref isEnabled, value); }
+    /// <summary>The Full take row's thumbnail: the take's frame, else its caption card (design §5.4).</summary>
+    public MediaTile? Media { get => media; set => SetProperty(ref media, value); }
     public override string ToString() => AccessibleName.Length > 0 ? AccessibleName : Title;
 }
 
@@ -44,6 +47,8 @@ public sealed class ShellViewModel
     private readonly Dictionary<string, SidebarRow> known = new(StringComparer.Ordinal);
     public ObservableCollection<SidebarRow> Rows { get; } = [];
     public SidebarRow Home => Row(SidebarKind.Home, "home");
+    /// <summary>The open take's thumbnail for the Full take row; the window sets it as the frame and card arrive.</summary>
+    public MediaTile? TakeMedia { get; set; }
 
     /// <summary>The row that shows the editor's current scope: the active clip's row, or Full take.</summary>
     public SidebarRow? ScopeRow(string? activeClipId)
@@ -74,8 +79,9 @@ public sealed class ShellViewModel
             next.Add(project);
             var full = Row(SidebarKind.FullTake, "full");
             full.Title = "Full take";
-            full.Meta = EditorViewModel.Duration(editor.FullTakeDuration);
-            full.AccessibleName = $"Full take, {Spoken(editor.FullTakeDuration)} after cuts";
+            full.Meta = TakeMedia?.Transcription is { } transcribing ? transcribing.Label + transcribing.Percent : EditorViewModel.Duration(editor.FullTakeDuration);
+            full.AccessibleName = $"Full take, {Spoken(editor.FullTakeDuration)} after cuts" + (TakeMedia?.Spoken is { Length: > 0 } state ? $", {state}" : "");
+            full.Media = TakeMedia;
             next.Add(full);
             var active = editor.State?.ActiveClipId;
             var kept = editor.Clips.Where(clip => !IsSuggestion(clip)).ToArray();
@@ -136,8 +142,9 @@ public sealed class ShellViewModel
                 foreach (var item in others)
                 {
                     var row = Row(SidebarKind.Recent, "recent:" + item.Path.ToUpperInvariant(), recent: item);
-                    row.Title = item.Name;
-                    row.AccessibleName = item.Name;
+                    // The row template reads the card's title, meta and missing state directly, so they follow its lazy load.
+                    row.Title = item.Title;
+                    row.AccessibleName = item.AccessibleName;
                     next.Add(row);
                 }
             }

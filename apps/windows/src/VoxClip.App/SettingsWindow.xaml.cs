@@ -2,6 +2,7 @@ using System.Net.Http;
 using System.Runtime.InteropServices;
 using CommunityToolkit.WinUI.Controls;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using VoxClip.App.Controls;
@@ -123,6 +124,12 @@ public sealed partial class SettingsWindow : Window
         textSize.ValueChanged += (_, _) => Save("general.transcriptTextSize", textSize.Value); AddSetting(textSize);
         var confidence = new ToggleSwitch { Header = "Mark low-confidence words", IsOn = App.Services.Get("general.showLowConfidence", false) };
         confidence.Toggled += (_, _) => Save("general.showLowConfidence", confidence.IsOn); AddSetting(confidence);
+        // Caption cards (design §5.4.2). The key is not in the shared settings schema yet; unknown keys survive saves.
+        var placeholders = new ToggleSwitch { Header = "Show transcript words on placeholders", IsOn = App.Services.Get("general.showPlaceholderWords", true) };
+        placeholders.Toggled += (_, _) => Save("general.showPlaceholderWords", placeholders.IsOn); AddSetting(placeholders);
+        const string placeholderHelp = "When off, placeholders show the project title instead of its first words.";
+        AutomationProperties.SetHelpText(placeholders, placeholderHelp);
+        Body.Children.Add(Ui.Text(placeholderHelp, "HelperText"));
         var breath = Ui.Choice("Breath kept in tightened pauses", ["Tight · 0.05 s", "Natural · 0.15 s", "Relaxed · 0.30 s"], Array.IndexOf(new[] { "tight", "natural", "relaxed" }, App.Services.Get("editing.pauseBreath", "natural")));
         breath.SelectionChanged += (_, _) => Save("editing.pauseBreath", new[] { "tight", "natural", "relaxed" }[breath.SelectedIndex]); AddSetting(breath);
         Body.Children.Add(Ui.Text("New-project defaults only. Existing projects keep their choices.", "HelperText"));

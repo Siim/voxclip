@@ -29,6 +29,9 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
     private EditorPage? editor;
     private bool syncingSelection;
     private string? dropName;
+    private readonly Microsoft.UI.Dispatching.DispatcherQueueTimer takeRefresh;
+    private CancellationTokenSource takeLoads = new();
+    private (string Path, string? Frame, CaptionCard? Card, bool Unreadable, bool Demo, bool Missing, bool AudioOnly)? take;
 #if DEBUG
     internal EditorPage? DebugEditor => editor;
     internal bool DebugHoldNavigation() => navigation.Wait(0);
@@ -76,13 +79,23 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
         };
         Closed += WindowClosed;
         Root.SizeChanged += RootSizeChanged;
+        takeRefresh = DispatcherQueue.CreateTimer();
+        takeRefresh.IsRepeating = false;
+        takeRefresh.Interval = TimeSpan.FromMilliseconds(500);
+        takeRefresh.Tick += (_, _) => _ = RefreshTakeAsync();
+        TranscriptionActivity.Changed += TranscriptionChanged;
         home.Attach(this);
         home.ViewModel.RecentProjects.CollectionChanged += (_, _) => UpdateShell();
         ShowContent(home);
         _ = CheckUpdatesAsync();
     }
 
-    private void SettingsChanged(object? sender, EventArgs args) => App.Services.ApplyTheme(Root);
+    private void SettingsChanged(object? sender, EventArgs args)
+    {
+        App.Services.ApplyTheme(Root);
+        if (editor is not null) takeRefresh.Start();
+    }
+    private void TranscriptionChanged(object? sender, EventArgs args) => ApplyTake();
     private async Task RequestCloseAsync()
     {
         if (closingInProgress || App.Restart.IsPreparing) return;
@@ -217,6 +230,7 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
             editor = incoming;
             installed = true;
             UpdateShell();
+            _ = RefreshTakeAsync();
             if (previous is not null)
             {
                 try { await previous.CloseAsync(); }
@@ -300,12 +314,68 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
     }
     private void Watch(EditorPage? previous, EditorPage next)
     {
-        if (previous?.ViewModel is { } old) { old.Changed -= EditorChanged; old.SelectionChanged -= EditorChanged; old.PropertyChanged -= EditorPropertyChanged; }
-        next.ViewModel.Changed += EditorChanged;
+        if (previous?.ViewModel is { } old) { old.Changed -= EditorEdited; old.SelectionChanged -= EditorChanged; old.PropertyChanged -= EditorPropertyChanged; }
+        next.ViewModel.Changed += EditorEdited;
         next.ViewModel.SelectionChanged += EditorChanged;
         next.ViewModel.PropertyChanged += EditorPropertyChanged;
     }
     private void EditorChanged(object? sender, EventArgs args) => UpdateShell();
+    /// <summary>An edit can change the take's first kept words, so the Full take thumbnail follows once edits settle.</summary>
+    private void EditorEdited(object? sender, EventArgs args)
+    {
+        UpdateShell();
+        takeRefresh.Start();
+    }
+    /// <summary>The Full take row's thumbnail (design §5.4): the take's poster frame, else its caption card, with its status.
+    /// Made off the UI thread when the project opens and again after edits or placeholder settings change.</summary>
+    private async Task RefreshTakeAsync()
+    {
+        takeRefresh.Stop();
+        takeLoads.Cancel();
+        if (editor is not { } current || ProjectPath is not { } path) { take = null; ApplyTake(); return; }
+        if (take?.Path != path) { take = null; ApplyTake(); }
+        var loads = takeLoads = new CancellationTokenSource();
+        var project = current.ViewModel.Project;
+        var title = current.ViewModel.Title;
+        var (words, style) = (App.Services.Get("general.showPlaceholderWords", true), App.Services.Get("captions.defaultStyleId", "vox-highlight"));
+        CaptionCard? card = null;
+        string? frame = null;
+        var unreadable = false;
+        try
+        {
+            card = await Task.Run(() => App.Services.Cards?.Card(project, null, title, words, style), loads.Token);
+            if (current.MediaPath is { } media && project.Media.Source.Video is { } video)
+            {
+                try { frame = await App.Services.Thumbnails.GetAsync(project.Media.Source.ContentKey, media, Thumbnails.Candidates(project, null), video.RotationDegrees, loads.Token); }
+                catch (Exception exception) when (exception is not OperationCanceledException)
+                {
+                    unreadable = true;
+                    App.Services.Log.Write(Core.Services.Logging.LogLevel.Warn, "project", $"action=Poster frame code={(exception is VoxClipException known ? known.WireCode : exception.GetType().Name)}");
+                }
+            }
+        }
+        catch (OperationCanceledException) { return; }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or System.Text.Json.JsonException or InvalidDataException or KeyNotFoundException)
+        {
+            App.Services.Log.Write(Core.Services.Logging.LogLevel.Warn, "project", $"action=Caption card code={exception.GetType().Name}");
+        }
+        if (loads.IsCancellationRequested || !ReferenceEquals(editor, current)) return;
+        take = (path, frame, card, unreadable, current.IsDemo, current.MediaPath is null && !current.IsDemo, project.Media.Source.Video is null);
+        ApplyTake();
+    }
+    private void ApplyTake()
+    {
+        if (take is not { } current || !string.Equals(current.Path, ProjectPath, StringComparison.OrdinalIgnoreCase))
+            Shell.TakeMedia = ProjectPath is { } path ? MediaTile.Empty(path) : null;
+        else
+        {
+            var transcription = TranscriptionActivity.Status(current.Path);
+            var status = current.Demo ? MediaStatus.Demo : current.Missing ? MediaStatus.Missing : current.Unreadable ? MediaStatus.Unreadable
+                : transcription is not null ? MediaStatus.Transcribing : current.AudioOnly ? MediaStatus.AudioOnly : MediaStatus.None;
+            Shell.TakeMedia = new(current.Path, current.Frame, current.Card, status, transcription);
+        }
+        UpdateShell();
+    }
     private void EditorPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs args)
     {
         if (args.PropertyName is nameof(EditorViewModel.Busy) or nameof(EditorViewModel.CanExport)) UpdateShell();
@@ -443,6 +513,10 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
     private async void WindowClosed(object sender, WindowEventArgs args)
     {
         await lifetime.CancelAsync();
+        takeRefresh.Stop();
+        takeLoads.Cancel();
+        TranscriptionActivity.Changed -= TranscriptionChanged;
+        home.Detach();
         if (editor is not null) await editor.CloseAsync();
         App.Services.SettingsChanged -= SettingsChanged;
         App.Services.BusyChanged -= BusyChanged;

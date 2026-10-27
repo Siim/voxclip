@@ -34,6 +34,10 @@ internal sealed class AppServices : IAsyncDisposable
     internal IClipFinder ClipFinder { get; private set; } = null!;
     internal IEncoderProbe Encoders { get; } = new EncoderProbe();
     internal IUpdateChecker Updates { get; }
+    /// <summary>Home and sidebar poster frames in each source's content-key cache entry (design §5.4.7).</summary>
+    internal Thumbnails Thumbnails { get; }
+    /// <summary>Caption cards for media with no frame (design §5.4); null when the caption resources are missing.</summary>
+    internal CaptionCards? Cards { get; private set; }
     internal string? SharedRoot { get; private set; }
     internal string StartupNotice { get; private set; } = "";
     internal bool IsBusy => BusyOperations > 0;
@@ -61,12 +65,14 @@ internal sealed class AppServices : IAsyncDisposable
         Keys = new(Data.Secrets, Log);
         Downloads = new ModelStore(Models, Data.Root);
         Updates = new UpdateChecker(new VelopackUpdates(this));
+        Thumbnails = new(Data.Cache);
     }
 
     internal async Task InitializeAsync(CancellationToken ct)
     {
         try { SharedRoot = SharedResources.ResolveRoot(); }
         catch (Exception exception) { StartupNotice = UiError.Message(exception, "Startup"); }
+        if (SharedRoot is not null) Cards = new(SharedRoot);
         try { settingsWrites.Initialize(await SettingsStore.LoadAsync(ct)); }
         catch (Exception exception) { StartupNotice = UiError.Message(exception, "Settings"); }
         localSpeech = new WhisperNetTranscriber(Models, Downloads, Data.Root, Log);

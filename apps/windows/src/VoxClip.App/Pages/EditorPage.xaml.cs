@@ -52,11 +52,15 @@ public sealed partial class EditorPage : Page
         };
     }
     public static bool HasText(string? text) => !string.IsNullOrEmpty(text);
+    /// <summary>The take's resolved video, or null when it can't be found or the project is a demo fixture.</summary>
+    internal string? MediaPath { get; private set; }
+    internal bool IsDemo => demo;
 
     internal async Task OpenAsync(MainWindow window, Project project, string? mediaPath, bool demoMode, CancellationToken ct)
     {
         owner = window;
         demo = demoMode;
+        MediaPath = demoMode ? null : mediaPath;
 #if DEBUG
         ViewModel = demo ? new(project, DemoProject.Reduce, DemoProject.Summarize) : new(project);
         preview = demo ? new DemoPreviewEngine() : new PreviewEngine();
