@@ -155,18 +155,18 @@ import VoxClipCore
         let rate: Int = 48_000
         let next: Int64 = 4_800
         let early = CMTime(value: 23_997, timescale: 240_000)
-        #expect(try VoiceLabSourceAudio.bufferFirstSample(presentationTime: early, rate: rate, next: next) == next)
+        #expect(try VoiceLabSourceAudio.bufferFirstSample(presentationTime: early, rate: rate, previousEnd: next) == next)
         #expect(try VoiceLabSourceAudio.bufferFirstSample(presentationTime: CMTime(value: next - 1, timescale: 48_000),
-                                                        rate: rate, next: next) == next - 1)
+                                                        rate: rate, previousEnd: next) == next - 1)
         #expect(try VoiceLabSourceAudio.bufferFirstSample(presentationTime: CMTime(value: 99, timescale: 1_000),
-                                                        rate: rate, next: next) == 4_752)
+                                                        rate: rate, previousEnd: next) == 4_752)
         var decodedEnd: Int64 = 0
         let buffers: Range<Int64> = 0..<10
         for buffer in buffers {
             let start: Int64 = buffer * 4_807
             let timestamp: CMTime = CMTimeConvertScale(CMTime(value: start, timescale: 48_000),
                                                       timescale: 1_000, method: .roundHalfAwayFromZero)
-            let placed = try VoiceLabSourceAudio.bufferFirstSample(presentationTime: timestamp, rate: rate, next: decodedEnd)
+            let placed = try VoiceLabSourceAudio.bufferFirstSample(presentationTime: timestamp, rate: rate, previousEnd: decodedEnd)
             #expect(placed == start)
             decodedEnd = placed + 4_807
         }
@@ -174,7 +174,7 @@ import VoxClipCore
     }
 
     @Test(arguments: [48_000, 1_000])
-    func timestampBuffersRefuseExactOneTickAndTwoTickGaps(timescale: Int) throws {
+    func timestampPlacementKeepsExactOneTickAndTwoTickGaps(timescale: Int) throws {
         let next: Int64 = 4_800
         let tick: Int64 = Int64(48_000 / timescale)
         for ticks in 1...2 {
@@ -183,10 +183,27 @@ import VoxClipCore
             let bytes = Data(count: 4_800 * 4)
             let buffer = try Self.block(bytes, start: 4_800, frames: 4_800, rate: 48_000, channels: 1,
                                         float: true, presentationTime: timestamp)
-            #expect(throws: VoiceLabSourceAudioError.rangeOutsideMedia) {
-                try VoiceLabSourceAudio.bufferFirstSample(presentationTime: buffer.presentationTimeStamp, rate: 48_000, next: next)
-            }
+            let first = try VoiceLabSourceAudio.bufferFirstSample(presentationTime: buffer.presentationTimeStamp,
+                                                                rate: 48_000, previousEnd: next)
+            #expect(first == position)
+            #expect(first > next)
         }
+    }
+
+    @Test func firstFrameUsesItsOwnHalfUpAnchorAndNegativeOverlap() throws {
+        let early = CMTime(value: 23_997, timescale: 240_000)
+        #expect(try VoiceLabSourceAudio.bufferFirstSample(presentationTime: early, rate: 48_000, previousEnd: nil) == 4_799)
+        #expect(try VoiceLabSourceAudio.bufferFirstSample(presentationTime: early, rate: 48_000, previousEnd: 4_800) == 4_800)
+        let negative = CMTime(value: -3, timescale: 240_000)
+        #expect(try VoiceLabSourceAudio.bufferFirstSample(presentationTime: negative, rate: 48_000, previousEnd: nil) == -1)
+        #expect(try VoiceLabSourceAudio.bufferFirstSample(presentationTime: negative, rate: 48_000, previousEnd: 0) == 0)
+    }
+
+    @Test func missingTimestampRequiresAnAnchorThenContinuesSequentially() throws {
+        #expect(throws: VoiceLabSourceAudioError.unreadable) {
+            try VoiceLabSourceAudio.bufferFirstSample(presentationTime: .invalid, rate: 48_000, previousEnd: nil)
+        }
+        #expect(try VoiceLabSourceAudio.bufferFirstSample(presentationTime: .invalid, rate: 48_000, previousEnd: 1_920) == 1_920)
     }
 
     @Test(arguments: [0, 4_800]) func bufferPointSixSamplesEarlyLosesNoDecodedSample(start: Int) throws {
@@ -198,13 +215,13 @@ import VoxClipCore
         let buffer = try Self.block(bytes, start: start, frames: 4_800, rate: 48_000, channels: 1, float: true,
                                     presentationTime: CMTime(value: timestampValue, timescale: 240_000))
         let first = try VoiceLabSourceAudio.bufferFirstSample(presentationTime: buffer.presentationTimeStamp,
-                                                            rate: 48_000, next: next)
+                                                            rate: 48_000, previousEnd: next)
         let skip: Int = Int(next - first)
         #expect(skip == 0)
         #expect(Array(content.dropFirst(skip)) == content)
         #expect(first + Int64(buffer.sampleCount) == Int64(end))
         let overlap = CMTime(value: next - 1, timescale: 48_000)
-        #expect(try VoiceLabSourceAudio.bufferFirstSample(presentationTime: overlap, rate: 48_000, next: next) == next - 1)
+        #expect(try VoiceLabSourceAudio.bufferFirstSample(presentationTime: overlap, rate: 48_000, previousEnd: next) == next - 1)
     }
 
     @Test func stereoChunkIsTheChannelMeanOnTheSourceGridWithHalfOpenBounds() async throws {

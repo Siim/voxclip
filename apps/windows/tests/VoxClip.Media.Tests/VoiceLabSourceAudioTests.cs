@@ -54,6 +54,24 @@ public sealed class VoiceLabSourceAudioTests
         => Assert.Equal(code, (await Assert.ThrowsAsync<VoiceLabSourceAudioException>(action)).Code);
 
     [Theory]
+    [InlineData(-0.6, null, -1)]
+    [InlineData(-0.6, 0L, 0)]
+    [InlineData(4799.4, null, 4799)]
+    [InlineData(4799.4, 4800L, 4800)]
+    public void FirstFrameUsesItsOwnHalfUpAnchorAndNegativeOverlap(double exact, long? previousEnd, long first)
+        => Assert.Equal(first, VoiceLabSourceAudio.SourceFrame(exact, previousEnd, 48_000, 1, 48_000));
+
+    [Theory]
+    [InlineData(double.NegativeInfinity)]
+    [InlineData(double.PositiveInfinity)]
+    [InlineData(double.NaN)]
+    [InlineData(-9.223372036854776e18)]
+    [InlineData(4.611686018427388e18)]
+    public void NonfiniteAndOverflowingPositionsAreUnreadable(double position)
+        => Refuses(VoiceLabSourceAudioErrorCode.Unreadable,
+            () => VoiceLabSourceAudio.SourceFrame(position, null, 48_000, 1, 48_000));
+
+    [Theory]
     [InlineData(1024.0, 1024)]
     [InlineData(1071.9999999999998, 1024)]
     [InlineData(976.0000000000001, 1024)]

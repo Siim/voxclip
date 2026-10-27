@@ -243,12 +243,15 @@ public enum VoiceLabSourceAudio {
         wav.append(Data(count: 2 * frames))
         var values: [Float] = []
         var next = startSample
+        var previousEnd: Int64?
         do {
             while next < endSample, let sample = try await MediaSupport.nextSample(provider) {
                 try Task.checkCancellation()
                 let count = Int(sample.sampleCount)
                 guard count > 0 else { continue }
-                let first = try bufferFirstSample(presentationTime: sample.presentationTimeStamp, rate: rate, next: next)
+                let first = try bufferFirstSample(presentationTime: sample.presentationTimeStamp, rate: rate, previousEnd: previousEnd)
+                previousEnd = first + Int64(count)
+                guard first <= next else { throw VoiceLabSourceAudioError.rangeOutsideMedia }
                 guard first + Int64(count) > next else { continue }
                 let skip = Int(next - first)
                 let take = min(count - skip, Int(endSample - next))
@@ -291,8 +294,9 @@ public enum VoiceLabSourceAudio {
         return wav
     }
 
-    static func bufferFirstSample(presentationTime: CMTime, rate: Int, next: Int64) throws -> Int64 {
+    static func bufferFirstSample(presentationTime: CMTime, rate: Int, previousEnd: Int64?) throws -> Int64 {
         guard presentationTime.isNumeric, presentationTime.timescale > 0 else {
+            if let previousEnd { return previousEnd }
             throw VoiceLabSourceAudioError.unreadable
         }
         let scale: Int64 = Int64(presentationTime.timescale)
@@ -304,17 +308,20 @@ public enum VoiceLabSourceAudio {
         if !product.overflow, product.partialValue % scale == 0 {
             first = product.partialValue / scale
             guard first >= -(1 << 62), first < 1 << 62 else { throw VoiceLabSourceAudioError.unreadable }
-            distance = first < 0 ? abs(Double(first) - Double(next)) : abs(Double(first - next))
+            if let previousEnd {
+                let difference: (partialValue: Int64, overflow: Bool) = first.subtractingReportingOverflow(previousEnd)
+                distance = difference.overflow ? abs(Double(first) - Double(previousEnd)) : abs(Double(difference.partialValue))
+            } else { distance = .infinity }
         } else {
             let exact: Double = product.overflow
                 ? Double(presentationTime.value) * Double(rate) / Double(scale)
                 : Double(product.partialValue) / Double(scale)
             guard exact.isFinite, exact >= -0x1p62, exact < 0x1p62 else { throw VoiceLabSourceAudioError.unreadable }
             first = Int64((exact + 0.5).rounded(.down))
-            distance = abs(exact - Double(next))
+            if let previousEnd { distance = abs(exact - Double(previousEnd)) }
+            else { distance = .infinity }
         }
-        if distance < tolerance { return next }
-        guard first <= next else { throw VoiceLabSourceAudioError.rangeOutsideMedia }
+        if let previousEnd, distance < tolerance { return previousEnd }
         return first
     }
 }
