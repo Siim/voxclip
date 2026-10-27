@@ -1,5 +1,10 @@
 # Windows fixed contracts
 
+### 2026-10-28 — sol-win-redesign 15a — Gated entry points
+
+- `RewriteEntryPolicy.BuildEnabled` is true only under DEBUG. Release hides the overflow, selection and context entries and refuses Ctrl+R; enabling the persisted Voice Lab setting cannot bypass it. DEBUG selection/context/shortcut entries require editable selected words, and Insert Words requires a between-word context caret. Overflow while off shows the one-time §5 disclosure and saves enablement only after Turn on. The existing tree had the setting and gated placeholders but no Windows enablement sheet; this is its single implementation.
+- `EveryEntryRespectsTheReleaseGate` covers all five routes; `DisabledVoiceLabOnlyOffersTheOneTimeOverflowFlow` covers off, missing caret and the Release constant. Results are recorded after sequential verification.
+
 ### 2026-10-27 — sol-win-redesign round 5 — Portable acceptance
 
 - Release cross-platform, UI and App typecheck builds have zero warnings/errors. Core passes 1,871 / 1,899 with 28 explicit skips; UI passes 352 / 355 with three native prerequisites skipped. XAML has zero problems; design generation and all 16 tests pass. The output-sensitive nested query visits 14 words for two matches (bound 30); the real managed frame function measures zero bytes over 4,096 changing ticks (bound 1,024 bytes). Both Windows ledgers preserve older evidence as history, not current native acceptance.

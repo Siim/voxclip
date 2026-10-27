@@ -34,10 +34,13 @@ public sealed class TranscriptView : UserControl
         internal int[] HighlightStarts { get; set; } = [];
     }
     public bool CorrectionOpen => correction.IsOpen;
-    internal bool CanRewrite => RewriteRequested is not null && model is { HasSelection: true, IsReadOnly: false, Busy: false } && App.Services.Get("voiceLab.enabled", false);
+    internal bool CanRewrite => RewriteRequested is not null && RewriteEntryPolicy.Resolve(RewriteEntry.Selection,
+        App.Services.Get("voiceLab.enabled", false), model is { IsReadOnly: false, Busy: false, IsLeaving: false },
+        model?.HasSelection == true, false, RewriteEntryPolicy.BuildEnabled) == RewriteEntryAction.OpenPassage;
+    internal int InsertionAfterIndex { get; private set; } = -1;
     internal void RequestRewrite()
     {
-        if (!App.Services.Get("voiceLab.enabled", false) || model is null) return;
+        if (!RewriteEntryPolicy.BuildEnabled || !App.Services.Get("voiceLab.enabled", false) || model is null) return;
         if (CanRewrite) RewriteRequested?.Invoke(this, EventArgs.Empty);
         else if (RewriteRequested is null) { model.Notice = "Rewrite is not available in this build."; Announce(model.Notice); }
     }
@@ -62,7 +65,7 @@ public sealed class TranscriptView : UserControl
         IsTabStop = true;
         UseSystemFocusVisuals = true;
         selectionFlyout = new(this, () => MakeClipRequested?.Invoke(this, EventArgs.Empty), () => model?.CutSelection(),
-            () => model?.CutSelection(true), () => RewriteRequested?.Invoke(this, EventArgs.Empty));
+            () => model?.CutSelection(true), RequestRewrite);
         AutomationProperties.SetName(this, "Transcript. Select words to cut. Enter corrects spelling. Control K makes a clip.");
         repeater = new ItemsRepeater
         {
@@ -155,7 +158,7 @@ public sealed class TranscriptView : UserControl
         var cut = model.Words.Skip(model.SelectionStart).Take(model.SelectionEnd - model.SelectionStart + 1).Any(word => model.State!.CutWordIds.Contains(word.Id))
             || model.State!.Pauses.Any(pause => pause.AfterIndex >= model.SelectionStart && pause.AfterIndex < model.SelectionEnd && model.State.CutPauseIds.Contains(pause.Id));
         selectionFlyout.Show(new(first.X, top, Math.Max(1, first.Width), bottom - top), below, keyboard, !model.IsReadOnly && !model.Busy,
-            cut, App.Services.Get("voiceLab.enabled", false), RewriteRequested is not null,
+            cut, RewriteEntryPolicy.BuildEnabled && App.Services.Get("voiceLab.enabled", false), CanRewrite,
             model.Clips.FirstOrDefault(clip => model.Index(clip.Clip.StartWordId) == model.SelectionStart && model.Index(clip.Clip.EndWordId) == model.SelectionEnd) is { } existing
                 ? $"Clip {existing.Number} already covers these words." : null);
     }
@@ -361,13 +364,14 @@ public sealed class TranscriptView : UserControl
                 var word = model.Words.ElementAtOrDefault(run.Index);
                 if (word is null) continue;
                 var selected = model.HasSelection && run.Index >= model.SelectionStart && run.Index <= model.SelectionEnd;
+                var rewriting = run.Index >= model.RewriteStart && run.Index <= model.RewriteEnd;
                 var playing = model.SourceTime >= word.Start && model.SourceTime < word.End;
                 var length = run.Run.Text.TrimEnd().Length;
                 var decoration = TranscriptWordDecoration.For(state.CutWordIds.Contains(word.Id), false, EditingAlgorithms.IsFillerText(model.DisplayText(word)),
                     lowConfidence && word.Conf is < 0.6, state.Corrections.ContainsKey(word.Id), word.Text);
                 visual.Overlay.Word(run.Run, state.CutWordIds.Contains(word.Id) && showCuts, decoration.Filler, decoration.LowConfidence,
-                    decoration.Corrected, model.IsAiWord(run.Index), playing, run.Index >= model.RewriteStart && run.Index <= model.RewriteEnd);
-                if (length == 0 || TranscriptWordHighlight.For(selected, playing, Ui.HighContrast) is not { } highlight) continue;
+                    decoration.Corrected, model.IsAiWord(run.Index), playing, rewriting);
+                if (length == 0 || TranscriptWordHighlight.For(selected && !rewriting, playing, Ui.HighContrast) is not { } highlight) continue;
                 // Selected words draw in text.primary on the selection fill, which also overrides the cut and filler colours
                 // (they fail contrast on it); High Contrast maps the fill to Highlight, so the text takes HighlightText.
                 var highlighter = new TextHighlighter
@@ -485,19 +489,34 @@ public sealed class TranscriptView : UserControl
     {
         selectionFlyout.Hide();
         var contextIndex = -1;
+        InsertionAfterIndex = -1;
         if (sender is RichTextBlock rich && model is not null)
         {
             var index = Hit(rich, args.GetPosition(rich));
             contextIndex = index;
             if (index >= 0 && (!model.HasSelection || index < model.SelectionStart || index > model.SelectionEnd)) model.Select(index);
+            var pointer = rich.GetPositionFromPoint(args.GetPosition(rich));
+            var runs = realized.Values.FirstOrDefault(value => value.Text == rich)?.Runs;
+            if (pointer is not null && runs is not null)
+                for (var runIndex = 0; runIndex + 1 < runs.Count; runIndex++)
+                {
+                    var run = runs[runIndex].Run;
+                    var end = run.ContentStart.Offset + run.Text.TrimEnd().Length;
+                    if (pointer.Offset >= end && pointer.Offset < runs[runIndex + 1].Run.ContentStart.Offset &&
+                        RewriteEntryPolicy.BetweenWords(model.Words, runs[runIndex].Index))
+                        InsertionAfterIndex = runs[runIndex].Index;
+                }
         }
         var menu = new MenuFlyout();
         void Add(string label, Action action, bool enabled = true, string? key = null) { var item = new MenuFlyoutItem { Text = label, IsEnabled = enabled, KeyboardAcceleratorTextOverride = key ?? "" }; item.Click += (_, _) => action(); menu.Items.Add(item); }
         Add("Make clip", () => MakeClipRequested?.Invoke(this, EventArgs.Empty), model is { IsReadOnly: false, Busy: false, HasSelection: true });
-        if (App.Services.Get("voiceLab.enabled", false))
+        if (RewriteEntryPolicy.BuildEnabled && App.Services.Get("voiceLab.enabled", false))
         {
-            Add("Rewrite…", () => RewriteRequested?.Invoke(this, EventArgs.Empty), RewriteRequested is not null && model is { IsReadOnly: false });
-            Add("Insert words…", () => InsertWordsRequested?.Invoke(this, EventArgs.Empty), InsertWordsRequested is not null && model is { IsReadOnly: false });
+            Add("Rewrite…", RequestRewrite, CanRewrite, "Ctrl+R");
+            if (InsertionAfterIndex >= 0)
+                Add("Insert Words…", () => InsertWordsRequested?.Invoke(this, EventArgs.Empty), InsertWordsRequested is not null &&
+                    RewriteEntryPolicy.Resolve(RewriteEntry.InsertWords, true, model is { IsReadOnly: false, Busy: false, IsLeaving: false },
+                        false, true, RewriteEntryPolicy.BuildEnabled) == RewriteEntryAction.OpenInsertion);
         }
         Add("Cut", () => model?.CutSelection());
         Add("Restore", () => model?.CutSelection(true));

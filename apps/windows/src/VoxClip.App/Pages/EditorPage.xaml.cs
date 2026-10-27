@@ -270,8 +270,8 @@ public sealed partial class EditorPage : Page
     {
         MakeClipCommand.IsEnabled = ViewModel.HasSelection;
         PreviewCutCommand.IsEnabled = ViewModel.CanPreviewCut;
-        RewriteCommand.Visibility = App.Services.Get("voiceLab.enabled", false) ? Visibility.Visible : Visibility.Collapsed;
-        RewriteCommand.IsEnabled = Transcript.CanRewrite;
+        RewriteCommand.Visibility = RewriteEntryPolicy.BuildEnabled ? Visibility.Visible : Visibility.Collapsed;
+        RewriteCommand.IsEnabled = !App.Services.Get("voiceLab.enabled", false) || Transcript.CanRewrite;
         if (ready && ViewModel.IsReadOnly) pendingStandIn = RenderUnavailableCaptionsAsync();
     }
     private async Task RenderUnavailableCaptionsAsync()
@@ -461,7 +461,18 @@ public sealed partial class EditorPage : Page
         if (ViewModel.MakeClip() is { } id) owner.RevealClip(id);
     }
     private void MakeClipClicked(object sender, RoutedEventArgs args) => MakeClipAndReveal();
-    private void RewriteClicked(object sender, RoutedEventArgs args) => Transcript.RequestRewrite();
+    private async void RewriteClicked(object sender, RoutedEventArgs args)
+    {
+        if (!RewriteEntryPolicy.BuildEnabled) return;
+        if (!App.Services.Get("voiceLab.enabled", false))
+        {
+            var dialog = new ContentDialog { XamlRoot = XamlRoot, Title = "Turn on Voice Lab",
+                Content = Ui.Text(RewriteEntryPolicy.EnablementCopy), PrimaryButtonText = "Turn on", CloseButtonText = "Cancel" };
+            if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
+            await App.Services.SetAsync("voiceLab.enabled", true, lifetime.Token);
+        }
+        Transcript.RequestRewrite();
+    }
     private void CutSelectionClicked(object sender, RoutedEventArgs args) => ViewModel.CutSelection();
     private void RestoreSelectionClicked(object sender, RoutedEventArgs args) => ViewModel.CutSelection(true);
     private void CorrectClicked(object sender, RoutedEventArgs args) => Transcript.BeginCorrection();

@@ -24,6 +24,7 @@
     <Compile Include="RoundThreeTests.cs" />
     <Compile Include="RoundFourTests.cs" />
     <Compile Include="RoundFiveTests.cs" />
+    <Compile Include="RewritePanelTests.cs" />
     <Compile Include="ExportWorkflowTests.cs" />
     <Compile Include="ExportEquivalenceTests.cs" />
     <Compile Include="RelinkViewModelTests.cs" />
