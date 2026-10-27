@@ -1364,12 +1364,7 @@ Record the results in the catalogue: `verbatim` (9.9) and `dtwDefault` (9.7). Ch
 
 ## 18. Provenance
 
-Research reports (2026-10-25, `/tmp/clipper-planning/research/`):
-
-- `local-models.md`: engines, measured Apple locales, word shape, `refineWordBoundaries`, the measured filler gap, Superscribe `ModelManager`.
-- `eleven-ai.md`: Scribe v2 parameters and prices.
-- `native-video.md` §3.4: audio extraction and the AAC priming warning.
-- `ss-mac.md` §2.5 and `ss-win.md` §2.4: model manager behaviour and the confirmation sheet.
+Project measurements from the 2026-10-25 research (the working notes are not in the repository): the engines and the measured Apple locales, word shape, `refineWordBoundaries`, the measured filler gap, audio extraction and the AAC priming warning, and the model manager's behaviour and confirmation sheet.
 
 Vendor sources, checked on 2026-10-25:
 

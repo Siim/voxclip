@@ -529,7 +529,8 @@ python3 -c "import json,glob; [json.load(open(p)) for p in glob.glob('shared/fix
 
 ```sh
 cd apps/macos
-swift build 2>&1 | tee /tmp/mac-core-build.log; grep -c "warning:" /tmp/mac-core-build.log
+mkdir -p .build
+swift build 2>&1 | tee .build/mac-core-build.log; grep -c "warning:" .build/mac-core-build.log
 VOXCLIP_SHARED_DIR="$PWD/../../shared" swift test
 grep -rn "notImplemented" Sources/VoxClipCore/Domain Sources/VoxClipCore/Services/{Project,Settings,LLM,Process,Speech,Models} Sources/VoxClipMedia/{Captions,Speech,Intelligence}
 ```
@@ -568,7 +569,7 @@ grep -rn "notImplemented" Sources/VoxClipCore/Domain Sources/VoxClipCore/Service
 ```sh
 cd apps/macos
 swift build && VOXCLIP_SHARED_DIR="$PWD/../../shared" swift test
-swift build --product voxclip-cli && VOXCLIP_CLI="$(swift build --show-bin-path)/voxclip-cli" VOXCLIP_E2E_OUT=/tmp/e2e-macos VOXCLIP_SHARED_DIR="$PWD/../../shared" swift test --filter E2E
+swift build --product voxclip-cli && VOXCLIP_CLI="$(swift build --show-bin-path)/voxclip-cli" VOXCLIP_E2E_OUT="$PWD/.build/e2e-macos" VOXCLIP_SHARED_DIR="$PWD/../../shared" swift test --filter E2E
 swift run voxclip-cli version
 swift run voxclip-cli plan --open ../../shared/fixtures/projects/interview-take.voxclip --json
 ./bundle.sh && codesign --verify --deep --strict dist/VoxClip.app
@@ -692,9 +693,10 @@ python3 -c "import yaml; yaml.safe_load(open('.github/workflows/ci.yml'))"
 python3 -m unittest discover -s tools/parity -p 'test_*.py'
 bash -n tools/parity/plan_parity.sh tools/captions/parity.sh && shellcheck tools/parity/plan_parity.sh tools/captions/parity.sh
 # Part B
-bash tools/captions/parity.sh /tmp/voxclip-parity
+artifacts="$(mktemp -d)"
+bash tools/captions/parity.sh "$artifacts/voxclip-parity"
 bash tools/parity/plan_parity.sh
-python3 tools/parity/compare_e2e.py /tmp/e2e-macos /tmp/e2e-windows
+python3 tools/parity/compare_e2e.py "<downloaded macOS E2E reports>" "<downloaded Windows E2E reports>"
 ```
 
 ### 5.7 `vox-site`: voxconvo.com download page and redirects
@@ -729,7 +731,8 @@ Out of scope: the `/device` page (W6), the sidebar entry (W8), every vox-api cha
 
 ```sh
 cd <vox>/vox-web
-git status --short > /tmp/vox-web-status-before.txt   # run once, before any edit
+status_before="$(mktemp -t voxclip-web-status.XXXXXX)"
+git status --short > "$status_before"   # run once, before any edit
 npm test
 npm run build
 PORT=3199 node server.mjs & sleep 2
@@ -739,7 +742,7 @@ VOXCLIP_WINDOWS_AVAILABLE=false PORT=3199 node server.mjs & sleep 2
 curl -sI http://127.0.0.1:3199/download/windows | grep -i location
 curl -s http://127.0.0.1:3199/download | grep -c '/download/windows'
 kill %1
-git status --short | diff /tmp/vox-web-status-before.txt -
+git status --short | diff "$status_before" -
 ```
 
 ## 6. 0.1.0 release checklist

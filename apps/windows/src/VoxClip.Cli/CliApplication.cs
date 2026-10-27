@@ -207,7 +207,7 @@ internal static class CliApplication
         Add(clips, "--connector", "Connector catalog id.", true);
         Add(clips, "--model", "Model id.");
         Flag(clips, "--no-snap", "Disable line-boundary snapping.");
-        Flag(clips, "--dry-run", "Print rendered prompts without sending (not yet implemented).");
+        Flag(clips, "--dry-run", "Print rendered prompts without sending.");
         Stub(clips, "find-clips");
         var test = Command(root, "llm-test", "Run the connector test.");
         Add(test, "--connector", "Connector catalog id.", true);

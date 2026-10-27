@@ -375,10 +375,19 @@ internal static class CliOperations
         var model = arguments.GetValue<string?>("--model") ?? await DefaultModelAsync(connector, ct).ConfigureAwait(false);
         var preset = Enum.Parse<ClipPreset>(Required(arguments, "--preset"), true);
         var finder = await AiMergeAdapter.CreateClipFinderAsync(ct).ConfigureAwait(false);
+        var dryRun = arguments.GetValue<bool>("--dry-run");
         var result = await finder.FindClipsAsync(new(project.Transcript.Words, project.Edits.Corrections,
             project.Edits.CutWordIds.ToHashSet(StringComparer.Ordinal), preset, arguments.GetValue<string?>("--instruction"), project.Transcript.Language,
-            connector, model, !arguments.GetValue<bool>("--no-snap"), arguments.GetValue<bool>("--dry-run")),
+            connector, model, !arguments.GetValue<bool>("--no-snap"), dryRun),
             Progress<ClipFinderProgress>(arguments, value => (value.Stage, value.Fraction)), ct).ConfigureAwait(false);
+        if (dryRun)
+        {
+            var prompts = finder.DryRunRequests.Select(request => (JsonNode)new JsonObject
+            {
+                ["system"] = request.System, ["cachedBlock"] = request.CachedBlock ?? "", ["instruction"] = request.Instruction
+            }).ToArray();
+            return new() { ["prompts"] = new JsonArray(prompts) };
+        }
         return AiMergeAdapter.ClipResult(result);
     }
 

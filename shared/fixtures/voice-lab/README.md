@@ -1,5 +1,26 @@
 # Voice Lab Core contract fixtures
 
+CI runs every `tools/fixtures/voice-lab/generate*.py` with Python 3.12 and the
+existing `numpy==2.5.4` pin, then rejects any tracked or untracked output drift.
+The schema generator runs too, checking `shared/schemas/project.schema.json`.
+From the repository root, regenerate all outputs with:
+
+```sh
+for generator in tools/fixtures/voice-lab/generate*.py; do python "$generator"; done
+python tools/fixtures/voice-lab/check_drift.py
+git diff --exit-code
+test -z "$(git status --porcelain --untracked-files=all)"
+```
+
+The audio-math generator produces identical bytes with NumPy 2.2.5 and 2.5.4 on
+Apple silicon: SHA-256 `8ff014b4949f7476a0640ad94f455115f634d3efd1f6eb1e736d741bd34d7a34`.
+On the hosted Ubuntu runner, libm (`log10`, `tan`, `pow`) and NumPy's SIMD sums
+change the last bits of some floats (up to about 1e-13 in accumulated loudness). CI
+therefore checks `audio-math-cases.json` with `tools/fixtures/voice-lab/check_drift.py`
+after the generators: identical structure, strings, booleans and integers, and floats
+within a relative 1e-10 and an absolute 1e-12. Every other output must match byte for
+byte. Locally, run `python tools/fixtures/voice-lab/check_drift.py` before the diff.
+
 `contract.json` is the shared Mac and Windows behavioral contract for the first Core service path. The values are synthetic and contain no real voice sample or provider asset. Tests construct mocked discovery and generation responses from these cases; no live request is needed.
 
 `voiceChoices` gives the only stock categories: `premade`, and owner-created `generated`. `own` means a cloned voice with matching active consent, speaker match and completed provider verification. Other categories are denied before a paid request. `quoteMutations` changes one reviewed input after preparation; every changed case must cause zero paid sends. The `same` case permits one send. A quote includes operation, caller request ID, provider, region, endpoint, model, voice choice, language, consent identity and state, text or audio SHA-256, and the displayed estimate. Rewrite quotes also include scope, full timed source words, instruction, language, connector, model and prompt/schema identity. Quotes are service-issued, instance-scoped and single use. They are consumed synchronously before the first possible paid dispatch. Discovery and preparation are separate; preparation performs no network I/O.

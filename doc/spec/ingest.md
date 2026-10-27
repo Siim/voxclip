@@ -229,12 +229,12 @@ Core stays free of Network framework, CryptoKit and FFmpeg; Media never depends 
 
 Take names: `{yyyy-MM-dd HH.mm} Live take.mov` in local time. Collisions append ` (2)`, ` (3)` before the extension. Phone uploads and camera imports keep the sanitized original name (section 10.5) with the same collision rule.
 
-Take sidecar:
+Take sidecar (`file` is the take's absolute path in the Received folder, written here as `<Received>/…`):
 
 ```json
 {
   "schema": "voxclip-ingest-take/1",
-  "file": "/Users/alice/Movies/VoxClip/Received/2026-10-25 14.03 Live take.mov",
+  "file": "<Received>/2026-10-25 14.03 Live take.mov",
   "contentKey": "<64 hex>",
   "startedAt": "2026-10-25T11:03:11Z",
   "protocol": "rtmp",

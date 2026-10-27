@@ -1,0 +1,34 @@
+{
+  "schema": "voxclip-cli-fixtures/1",
+  "result": {
+    "expected": {
+      "ok": true,
+      "command": "find-clips",
+      "id": "fixture-run",
+      "createdAt": "2026-10-27T12:34:56.123Z",
+      "provider": "openai",
+      "model": "fixture-model",
+      "preset": "best",
+      "instructions": null,
+      "language": null,
+      "inputSha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      "clips": [
+        {
+          "title": "A synthetic suggestion",
+          "reason": "A complete thought",
+          "score": 8,
+          "startWordId": "w1",
+          "endWordId": "w9"
+        }
+      ]
+    }
+  },
+  "dryRun": {
+    "project": "projects/interview-take.voxclip",
+    "arguments": ["--preset", "best", "--connector", "openai", "--model", "fixture-model"],
+    "expected": {"ok": true, "command": "find-clips"},
+    "keys": ["ok", "command", "version", "prompts"],
+    "promptKeys": ["system", "cachedBlock", "instruction"],
+    "promptCount": 1
+  }
+}

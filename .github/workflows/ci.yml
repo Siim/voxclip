@@ -540,13 +540,11 @@ jobs:
           fi
 
       - name: Set up Python
-        if: steps.detect.outputs.styles == 'true' || steps.detect.outputs.schemas == 'true'
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
-      - name: Install caption style checker dependencies
-        if: steps.detect.outputs.styles == 'true' || steps.detect.outputs.schemas == 'true'
+      - name: Install fixture and caption style checker dependencies
         shell: bash
         env:
           STYLES_REQS: ${{ steps.detect.outputs.styles_reqs }}
@@ -554,23 +552,46 @@ jobs:
           if [ "$STYLES_REQS" = "true" ]; then
             python -m pip install -r tools/captions/requirements.txt
           else
-            python -m pip install "jsonschema>=4.18,<5"
+            python -m pip install "jsonschema==4.26.0" "numpy==2.5.4"
           fi
 
+      - name: Regenerate Voice Lab fixtures and check for drift
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: |
+          for generator in tools/fixtures/voice-lab/generate*.py; do
+            python "$generator"
+          done
+          status=0
+          python tools/fixtures/voice-lab/check_drift.py || status=1
+          git diff --exit-code || status=1
+          untracked=$(git status --porcelain --untracked-files=all)
+          if [ -n "$untracked" ]; then
+            echo "::error::A Voice Lab generator produced files that are not committed:"
+            echo "$untracked"
+            status=1
+          fi
+          if [ "$status" -ne 0 ]; then
+            # Leave a clean tree, so the checks after this one report only their own drift.
+            git checkout -- .
+            git clean -fdq
+          fi
+          exit "$status"
+
       - name: Caption styles are valid (schema and semantic rules)
-        if: steps.detect.outputs.styles == 'true'
+        if: ${{ !cancelled() && steps.detect.outputs.styles == 'true' }}
         run: python tools/captions/check_styles.py
 
       - name: Example projects validate against shared/schemas
-        if: steps.detect.outputs.schemas == 'true'
+        if: ${{ !cancelled() && steps.detect.outputs.schemas == 'true' }}
         run: python tools/schemas/validate.py
 
       - name: Install design token generator dependencies
-        if: steps.detect.outputs.tokens == 'true' && steps.detect.outputs.tokens_lock == 'true'
+        if: ${{ !cancelled() && steps.detect.outputs.tokens == 'true' && steps.detect.outputs.tokens_lock == 'true' }}
         run: npm ci --prefix tools/design
 
       - name: Regenerate design tokens (Tokens.swift, Tokens.xaml, AccentColor colorset)
-        if: steps.detect.outputs.tokens == 'true'
+        if: ${{ !cancelled() && steps.detect.outputs.tokens == 'true' }}
         shell: bash
         run: |
           npm --prefix tools/design run generate
@@ -580,10 +601,11 @@ jobs:
           if [ -n "$untracked" ]; then echo "::error::Generated token files are not committed:"; echo "$untracked"; exit 1; fi
 
       - name: Versions agree (Info.plist and Directory.Build.props)
-        if: steps.detect.outputs.version == 'true'
+        if: ${{ !cancelled() && steps.detect.outputs.version == 'true' }}
         run: bash tools/release/check-version.sh
 
       - name: Validate JSON in shared/
+        if: ${{ !cancelled() }}
         shell: bash
         run: |
           status=0
@@ -595,6 +617,7 @@ jobs:
           exit $status
 
       - name: No secrets, env files or non-ASCII PowerShell in tracked files
+        if: ${{ !cancelled() }}
         shell: bash
         run: |
           status=0

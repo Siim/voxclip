@@ -994,6 +994,17 @@ VoxClip sends no analytics, crash reports or usage pings. The only network reque
 | `e2e-parity` | `ubuntu-latest` | downloads both structured report artifacts and compares exactly ten case IDs with `tools/parity/compare_e2e.py` |
 | `fixtures` | `ubuntu-latest` | regenerate the editing fixtures with the generator's `generate` script (`npm --prefix tools/fixtures/editing run generate`; it also deletes stale fixtures) when the VoxConvo reference is available (vendored `tools/fixtures/editing/reference/*.ts`), then `git diff --exit-code` and no untracked files; without the reference, only check that every editing fixture parses and carries `"schema": "voxclip-editing-fixture/1"`; the same regenerate-and-diff for `tools/fixtures/llm` when present; caption style check (`python3 tools/captions/check_styles.py`); project and settings validation (`python3 tools/schemas/validate.py`, every `shared/fixtures/projects/*.voxclip` against `project.schema.json`); design-token regeneration check (`npm --prefix tools/design run generate`); version check (`tools/release/check-version.sh`); JSON validity of `shared/` (`*.json` and `*.voxclip`); secret-pattern scan of tracked files |
 
+The fixtures job also runs every `tools/fixtures/voice-lab/generate*.py` with the
+existing NumPy 2.5.4 pin and rejects any tracked or untracked output drift,
+including `shared/fixtures/voice-lab/` and `shared/schemas/project.schema.json`.
+`audio-math-cases.json` holds computed floats whose last bits depend on libm and
+NumPy's SIMD reductions (hosted Ubuntu and Apple silicon differ by up to about 1e-13),
+so `tools/fixtures/voice-lab/check_drift.py` compares it structurally, with floats
+within a relative 1e-10 and an absolute 1e-12, and every other output byte for byte.
+That step and every check after it run with `if: ${{ !cancelled() }}`, and a failing
+drift step restores the tree first, so one failing check never hides or fails the
+others, including the secret scan.
+
 Signed releases are not produced in CI (release.md).
 
 The test-only FFmpeg directory is never an input to release packaging. Setup and downloads finish before the offline test process, which keeps `VOXCLIP_LIVE_TESTS=0` and `VOXCLIP_TEST_DOWNLOAD=0`. The comparison job is wired but has no hosted acceptance result yet. Local macOS case 8 passes under ADR-R22; hosted cross-platform evidence remains pending.

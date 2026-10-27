@@ -1092,6 +1092,28 @@ The command syntax, output object and exit codes follow architecture §9. This s
 - `voxclip-cli llm-test --connector <id> [--model <id>] --json` runs §10.2 and exits 0 on pass. This command is new and must be added to architecture §9.2.
 - Keys come from environment variables only (§8.1). Exit codes follow §5.1.
 
+Both platforms follow architecture §9's flattened JSON-object convention, not a
+`result` wrapper. Successful `find-clips --json` output contains exactly:
+
+- `ok: true`, `command: "find-clips"`, `version: string`;
+- the §11.8 run fields at the top level: `id: string`, `createdAt: string` (UTC
+  RFC 3339 with exactly three fractional-second digits), `provider: string`,
+  `model: string`, `preset: "best" | "hooks" | "topics" | "quotes" | "custom"`,
+  `instructions: string | null`, `language: string | null`,
+  `inputSha256: string` (64 lowercase hexadecimal characters), and `clips: array`;
+- each clip is `{title: string, reason: string, score: integer, startWordId: string,
+  endWordId: string}`. `clips` may be empty; nullable fields are present as JSON null.
+
+With `--dry-run --json`, the complete object is instead `{ok: true,
+command: "find-clips", version: string, prompts: array}`. In window order, each
+prompt is `{system: string, cachedBlock: string, instruction: string}`; an absent
+cached block is the empty string. No run metadata or clips are emitted, no provider
+is contacted, and the project is unchanged. Failures use architecture §9's common
+`{ok: false, command, error: {code: string, message: string}, version}` object.
+Key order and string escaping are not specified and differ between the platforms;
+consumers parse the object and compare values, never bytes. `version` is the build's
+own version string. Both native CLI suites check `shared/fixtures/cli/find-clips.json`.
+
 ---
 
 ## 11. Clip finder pipeline (M1)
@@ -1617,12 +1639,7 @@ Each item needs a check before 0.1.0. The owner records the result in this file.
   - the 3-attempt retry with 1 s and 2 s backoff, and the 429/529 fallback model;
   - the Test button round trip and the retired-model migration;
   - `SecretStore` for the Keychain and DPAPI.
-- **Research reports** in `/tmp/clipper-planning/research/`:
-  - `ss-mac.md` §2.2 and §3, and `ss-win.md` §2.1–§2.2 (Superscribe LLM client);
-  - `local-models.md` §8 and §10 (Apple Foundation Models measurements: 8192-token context, 24 locales, no Estonian, 2.28 and 3.50 tokens per word; Ollama `/api/chat` and `num_ctx`; LM Studio; the window algorithm; the provider abstraction);
-  - `vox-captions.md` §4 (the clip finder, verbatim);
-  - `eleven-ai.md` §5.1–§5.4 (AI tighten as cut-only L1, line-based edits, subsequence verification);
-  - `vox-editing.md` §2, §4.13 and §8 (word and cut model, the clip range layer, numeric parity rules).
+- **Project measurements** from the 2026-10-25 research (the working notes are not in the repository): Apple Foundation Models (8192-token context, 24 locales, no Estonian, 2.28 and 3.50 tokens per word); Ollama `/api/chat` and `num_ctx`; LM Studio; the window algorithm and the provider abstraction.
 - **Anthropic API facts** come from the bundled Claude API reference (cached 2026-10-06):
   - the `anthropic-version` value `2026-10-21` rejects sampling parameters on every model;
   - Opus 5.5 rejects `thinking: disabled` and forced `tool_choice`;

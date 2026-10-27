@@ -1571,10 +1571,12 @@ Manual QA with real keys runs locally, never in CI:
 
 ## 16. Provenance
 
-Research:
+Law, guidance and standards behind §11 (checked 2026-10-27):
 
-- `/tmp/clipper-planning/research/eleven-ai.md`: ElevenLabs product and price facts, lipsync providers, EU AI Act, X and LinkedIn rules, C2PA, and the AI re-take design.
-- `local-models.md` §9: local TTS and lipsync options, rejected for v1.
+- [Regulation (EU) 2024/1689](https://eur-lex.europa.eu/eli/reg/2024/1689/oj) (the AI Act): Article 50 and its application date, and Article 2(12), whose open-source exemption does not reach Article 50.
+- The Commission Guidelines on the transparency obligations under Article 50, approved on 20 July 2026 (C(2026) 5054 final), and the Commission's [Article 50 questions and answers](https://digital-strategy.ec.europa.eu/en/faqs/transparency-obligations-under-article-50-ai-act): speech synthesis in a specific person's voice is in scope; noise reduction is standard editing.
+- The [C2PA specifications](https://spec.c2pa.org/specifications/) (manifest and actions, §11.7).
+- LinkedIn's Help Center article on Content Credentials, which says images and videos signed with C2PA show a "Cr" label. Whether that happens for a self-signed manifest after LinkedIn's transcode is unverified (§11.5).
 
 Vendor documentation checked on 2026-10-25:
 

@@ -19,7 +19,7 @@ namespace VoxClip.Cli;
 
 internal static class AiMergeAdapter
 {
-    internal static async Task<IClipFinder> CreateClipFinderAsync(CancellationToken ct)
+    internal static async Task<ClipFinder> CreateClipFinderAsync(CancellationToken ct)
     {
         var keys = new EnvironmentKeyProvider();
         var redactor = await CreateRedactorAsync(keys, ct).ConfigureAwait(false);
@@ -55,8 +55,7 @@ internal static class AiMergeAdapter
 
     internal static JsonObject ClipResult(AiResult result)
     {
-        // TODO(merge): emit the win-ai dry-run rendered prompt payload once AiResult exposes it; never reconstruct prompts here.
-        return new() { ["result"] = System.Text.Json.JsonSerializer.SerializeToNode(result, ProjectJsonContext.Default.AiResult) };
+        return System.Text.Json.JsonSerializer.SerializeToNode(result, ProjectJsonContext.Default.AiResult)!.AsObject();
     }
 }
 

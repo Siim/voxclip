@@ -19,6 +19,16 @@
 - Verification on the merged tree, macOS 27.0.1 / Swift 6.4, with the absolute worktree `VOXCLIP_SHARED_DIR`, live providers and downloads off: `swift build --jobs 2` passed; Core passed 545 reported tests in 38 suites (8 expected skips); CI's full Media command, `swift test --jobs 2 --filter VoxClipMediaTests --skip CaptionParityTests`, passed 258 in 27 suites (12 expected test skips, plus 2 XCTest skips); CaptionParity passed all 4 tests, including 262 samples and 38 tiles. The full Media stress run peaked at 0.147665 s internally and 0.154938 s in the parent. The long-expression test build passed with no warnings in the four changed Swift files; only unchanged files were flagged. The exact CI secret pattern was clean over all surviving changed files.
 - Five repetitions of `swift test --skip-build --jobs 2 --filter 'CLIInterruptTests|CaptionCancellationTests|builderAndEditedWaveUseMixedSourceGrid'` passed 35/35 selected tests, 300 stress exports, 5 early interrupts, 5 no-instrumentation cancellations and 90 caption cancellations across 18 distinct cases per run, with no watchdog firing. Internal stop-path maxima, in run order: 0.502357, 0.259565, 0.532358, 0.142965, 0.271832 s. Early-interrupt parent-observed exit times: 0.013449, 0.012973, 0.022811, 0.010230, 0.008019 s; every early record had `exportStart=0`. Parent-observed stress latency peaked at 0.575054 s. The host was shared and busy (recorded one-minute load averages about 19–69), with no artificial load. The Voice Lab builder passed 5/5 in 5.633, 4.502, 4.196, 3.311 and 2.389 s; its earlier timeout remains unexplained and `VoiceLabCompositionTests.swift` is unchanged. Hosted Xcode 26 confirmation remains pending. Windows needs no change: its CLI passes the Ctrl+C cancellation token to every pre-export step, checks it before the exporter creates a partial, deletes owned partials and exits 6 (`CliOutputParityTests` pins a pre-cancelled export); it has no wall-clock subprocess timing test.
 
+### 2026-10-27 — Find-clips CLI JSON parity (sol-followups-1)
+
+- The lead-approved cross-platform follow-up preserves the Mac command's flattened
+  result and dry-run prompt objects (architecture §9, AI §10.4). Windows now matches;
+  no public Core signature, project format or App/UI source changes.
+- Both native CLI suites read `shared/fixtures/cli/find-clips.json` for populated
+  and empty results, explicit nulls and the real offline dry-run command. The Mac
+  Media test target imports the existing CLI target to exercise its production
+  serializer; no external dependency is added.
+
 ### 2026-10-27 — Manual clip titles in VoxClipCore (opus-win-redesign, lead-approved)
 
 - New `Sources/VoxClipCore/Domain/Editing/EditingAlgorithms.swift`: public `enum EditingAlgorithms`, named for its VoxClip.Core counterpart, with `clipTitleWords` (7) and `clipTitle(_ words: some Sequence<String>) -> String?`. A manual clip's title is the first seven words of the selection as shown (corrections applied), joined by one space, trimmed with `EditingPrimitives.jsTrim`, cut to `EditingLimits.maxClipTitleScalars` (120) Unicode scalars and trimmed again; nil when nothing is left (design §6.2). Additive: the reducer, `.addClip` and project encoding are unchanged.

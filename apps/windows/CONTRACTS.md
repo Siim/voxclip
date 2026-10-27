@@ -1,5 +1,16 @@
 # Windows fixed contracts
 
+### 2026-10-27 — Find-clips CLI JSON parity (sol-followups-1)
+
+- The lead-approved cross-platform follow-up removes the Windows-only `result`
+  wrapper, matching architecture §9 and the other object-valued commands. AI §10.4
+  specifies every field and type, including explicit nulls and empty clip arrays.
+- Dry-run output now uses the concrete finder's existing `DryRunRequests`, with
+  top-level `prompts` containing `system`, `cachedBlock` and `instruction` strings.
+  No prompts are reconstructed and no provider call or project write is added.
+- Both native CLI suites check `shared/fixtures/cli/find-clips.json`; public Core
+  signatures and App/UI sources are unchanged.
+
 ### 2026-10-27 — Caption gallery review fixes (round 2)
 
 - Supersedes the round-1 override, lookup and failure-backdrop wording below. Implements captions §6.1, §8.1–8.2, §15.2–15.3 and design §5.4.2–5.4.4, §6.1 on merged `origin/main` `196b25c7`. Public gallery signatures are unchanged. `ScopeWords` takes explicit overrides: caption cards pass the project's, while gallery pages pass them only for `style.id == project.captions.styleId`. Every unselected tile uses empty overrides, including when captions are off (`"off"` in the current project schema; it matches no library style).
