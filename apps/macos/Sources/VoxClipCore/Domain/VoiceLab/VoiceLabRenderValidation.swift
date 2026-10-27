@@ -2,6 +2,13 @@ import Foundation
 
 /// Structural v3 validation. Physical file verification remains the Media asset boundary.
 public enum VoiceLabRenderValidation {
+    static func contentMatchesDuration(_ audio: VoiceLabAudio, outDuration: Double, assetSampleRate: Int) -> Bool {
+        let assetRate: Double = Double(assetSampleRate)
+        let tolerance: Double = 1 / assetRate
+        let duration: Double = (audio.trimEnd - audio.trimStart) * audio.stretch
+        return abs(duration - outDuration) <= tolerance
+    }
+
     public static func validate(_ project: Project) throws {
         guard let clean = project.voiceLab.cleanAudio, let voices = project.voiceLab.voices,
               let videoAssets = project.voiceLab.videoAssets,
@@ -103,9 +110,29 @@ public enum VoiceLabRenderValidation {
               recipe.audio.trimStart.isFinite, recipe.audio.trimEnd.isFinite, recipe.audio.gainDb.isFinite,
               recipe.audio.trimStart >= 0, recipe.audio.trimEnd <= asset.durationSeconds,
               recipe.audio.trimEnd > recipe.audio.trimStart, recipe.audio.stretch.isFinite,
-              abs(recipe.audio.stretch - recipe.outDuration / (recipe.audio.trimEnd - recipe.audio.trimStart)) <= 1e-6,
-              (0.92...1.08).contains((recipe.audio.trimEnd - recipe.audio.trimStart) / recipe.outDuration)
+              recipe.audio.stretch == 1 || abs(recipe.audio.stretch - recipe.outDuration / (recipe.audio.trimEnd - recipe.audio.trimStart)) <= 1e-6,
+              recipe.audio.stretch == 1 || (0.92...1.08).contains((recipe.audio.trimEnd - recipe.audio.trimStart) / recipe.outDuration)
         else { throw VoiceLabProjectError.invalidRange }
+        if recipe.audio.stretch == 1 {
+            let assetRate = Double(asset.sampleRate)
+            let contentFrames = samples(recipe.audio.trimEnd, assetRate) - samples(recipe.audio.trimStart, assetRate)
+            let windowSamples: Int64 = end - start
+            let windowSampleCount: Double = Double(windowSamples)
+            let windowFrameCount: Double = windowSampleCount * assetRate / rate
+            let windowFrames: Double = EditingPrimitives.jsRound(windowFrameCount)
+            func fits(_ windowDuration: Double) -> Bool {
+                let residualFrames = EditingPrimitives.jsRound((recipe.outDuration - windowDuration) * assetRate)
+                let duration = windowDuration + residualFrames / assetRate
+                let tolerance: Double = 4 * max(recipe.outDuration.ulp, windowDuration.ulp)
+                return contentFrames > 0 && Double(contentFrames) == windowFrames + residualFrames &&
+                    abs(recipe.outDuration - duration) <= tolerance
+            }
+            guard fits(segment.replace.end - segment.replace.start) ||
+                    (recipe.outDuration == Double(out) / rate && fits(Double(end - start) / rate))
+            else { throw VoiceLabProjectError.invalidRange }
+            guard contentMatchesDuration(recipe.audio, outDuration: recipe.outDuration, assetSampleRate: asset.sampleRate)
+            else { throw VoiceLabProjectError.invalidSegment }
+        }
         guard validID(recipe.cost.quoteId), recipe.cost.usd.map({ $0.isFinite && $0 >= 0 }) ?? true,
               recipe.provenance.region?.isEmpty == false,
               recipe.provenance.requestId.map(validID) == true,

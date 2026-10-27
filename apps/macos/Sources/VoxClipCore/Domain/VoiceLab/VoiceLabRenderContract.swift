@@ -51,7 +51,8 @@ public enum VoiceLabRenderContract {
                 !recipe.provenance.endpoint.hasSuffix("/with-timestamps") || recipe.provenance.model == "eleven_v4") {
                 throw VoiceLabProjectError.endpointUnsupported
             }
-            if recipe.video.mode != .source || piece.sourceEndSample - piece.sourceStartSample != piece.outputEndSample - piece.outputStartSample {
+            if recipe.video.mode == .retimed || (recipe.video.mode == .source &&
+                piece.sourceEndSample - piece.sourceStartSample != piece.outputEndSample - piece.outputStartSample) {
                 throw VoiceLabProjectError.videoModeUnsupported
             }
             guard let asset = project.voiceLab.assets?.first(where: { $0.id == recipe.audio.assetId }) else { throw VoiceLabProjectError.danglingAsset }

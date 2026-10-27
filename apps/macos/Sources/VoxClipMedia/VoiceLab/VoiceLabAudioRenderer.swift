@@ -23,7 +23,8 @@ public final class VoiceLabRenderLease: @unchecked Sendable {
 enum VoiceLabAudioRenderer {
     private static let block = 4096
 
-    static func stage(request: RenderRequest, isolation: isolated (any Actor)? = #isolation) async throws -> VoiceLabRenderLease {
+    /// The asset snapshots and the mix are staged in fresh folders under `scratchRoot`.
+    static func stage(request: RenderRequest, scratchRoot: URL, isolation: isolated (any Actor)? = #isolation) async throws -> VoiceLabRenderLease {
         try VoiceLabRenderPreflight.validate(request)
         guard let input = request.voiceLab else { throw VoiceLabAssetError.invalidSelection("render input") }
         try input.prepared.verify(project: input.project, scope: input.scope, labelPosition: input.labelPosition)
@@ -34,10 +35,9 @@ enum VoiceLabAudioRenderer {
             throw VoiceLabAssetError.invalidSelection("output plan")
         }
         let estimate = try scratchEstimate(input: input)
-        let temporaryRoot = FileManager.default.temporaryDirectory
-        try reserveDisk(temporaryRoot, frames: estimate.frames, additionalBytes: estimate.snapshots)
-        let prepared = try VoiceLabAssets.prepare(project: input.project, plan: plan, paidRoot: input.paidRoot)
-        let scratch = FileManager.default.temporaryDirectory.appendingPathComponent("voxclip-mix-\(UUID().uuidString)", isDirectory: true)
+        try reserveDisk(scratchRoot, frames: estimate.frames, additionalBytes: estimate.snapshots)
+        let prepared = try VoiceLabAssets.prepare(project: input.project, plan: plan, paidRoot: input.paidRoot, scratchRoot: scratchRoot)
+        let scratch = scratchRoot.appendingPathComponent("voxclip-mix-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: false)
         do {
             let sourceURL = scratch.appendingPathComponent("source.caf")

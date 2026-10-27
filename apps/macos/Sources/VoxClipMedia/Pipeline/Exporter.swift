@@ -63,8 +63,8 @@ public actor AVExporter: Exporter {
     private let capacityProvider: DiskCapacity.Provider
     public init(appVersion: String? = nil) { builder = CompositionBuilder(); appendCheck = nil; pumpObserver = nil; pullCheck = nil; decodeCheck = nil; writerObservation = nil; self.appVersion = appVersion; capacityProvider = DiskCapacity.systemVolume }
     public init(rasterizer: any CaptionRasterizer, appVersion: String? = nil) { builder = CompositionBuilder(rasterizer: rasterizer); appendCheck = nil; pumpObserver = nil; pullCheck = nil; decodeCheck = nil; writerObservation = nil; self.appVersion = appVersion; capacityProvider = DiskCapacity.systemVolume }
-    init(capacityProvider: @escaping DiskCapacity.Provider, appVersion: String? = nil) {
-        builder = CompositionBuilder(); appendCheck = nil; pumpObserver = nil; pullCheck = nil
+    init(capacityProvider: @escaping DiskCapacity.Provider, scratchRoot: URL = FileManager.default.temporaryDirectory, appVersion: String? = nil) {
+        builder = CompositionBuilder(scratchRoot: scratchRoot); appendCheck = nil; pumpObserver = nil; pullCheck = nil
         decodeCheck = nil; writerObservation = nil; self.appVersion = appVersion; self.capacityProvider = capacityProvider
     }
     init(appendCheck: @escaping @Sendable (Int, Int64) throws -> Void,
@@ -210,7 +210,7 @@ public actor AVExporter: Exporter {
         }
         let outputNeeds = needs
         if let input = job.render.voiceLab, input.prepared.outputPlan.requiresSyntheticRendering {
-            needs.append(.init(directory: FileManager.default.temporaryDirectory,
+            needs.append(.init(directory: builder.scratchRoot,
                                bytes: try VoiceLabAudioRenderer.scratchBytes(input: input)))
         }
         try DiskCapacity.check(needs, provider: capacityProvider)
@@ -581,7 +581,7 @@ public actor AVExporter: Exporter {
         var needs = [DiskCapacity.Need(directory: destination.deletingLastPathComponent(),
                                        bytes: try DiskCapacity.checkedAdd(bytes, DiskCapacity.fileBytes(destination), at: destination))]
         if synthetic, let input = request.voiceLab {
-            needs.append(.init(directory: FileManager.default.temporaryDirectory,
+            needs.append(.init(directory: builder.scratchRoot,
                                bytes: try VoiceLabAudioRenderer.scratchBytes(input: input)))
         }
         try DiskCapacity.check(needs, provider: capacityProvider)

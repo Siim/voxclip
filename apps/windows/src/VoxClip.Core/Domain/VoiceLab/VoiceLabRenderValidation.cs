@@ -6,6 +6,9 @@ namespace VoxClip.Core.Domain.VoiceLab;
 
 public static class VoiceLabRenderValidation
 {
+    internal static bool ContentMatchesDuration(VoiceLabAudio audio, double outDuration, int assetSampleRate) =>
+        Math.Abs((audio.TrimEnd - audio.TrimStart) * audio.Stretch - outDuration) <= 1.0 / assetSampleRate;
+
     static void Require(bool condition, VoiceLabProjectErrorCode code) { if (!condition) throw new VoiceLabProjectException(code); }
     static bool Id(string? value) => value is not null && VoiceLabProject.Matches(value, "[A-Za-z0-9][A-Za-z0-9._:-]{0,63}");
     static long Samples(double seconds, double rate) => (long)EditingMath.Round(seconds * rate);
@@ -79,8 +82,26 @@ public static class VoiceLabRenderValidation
         Require(output > 0 &&
             double.IsFinite(audio.TrimStart) && double.IsFinite(audio.TrimEnd) && double.IsFinite(audio.GainDb) &&
             audio.TrimStart >= 0 && audio.TrimEnd <= asset!.DurationSeconds && audio.TrimEnd > audio.TrimStart &&
-            double.IsFinite(audio.Stretch) && Math.Abs(audio.Stretch - recipe.OutDuration / (audio.TrimEnd-audio.TrimStart)) <= 1e-6 &&
-            (audio.TrimEnd-audio.TrimStart)/recipe.OutDuration is >= 0.92 and <= 1.08, VoiceLabProjectErrorCode.InvalidRange);
+            double.IsFinite(audio.Stretch) && (audio.Stretch == 1 || Math.Abs(audio.Stretch - recipe.OutDuration / (audio.TrimEnd-audio.TrimStart)) <= 1e-6) &&
+            (audio.Stretch == 1 || (audio.TrimEnd-audio.TrimStart)/recipe.OutDuration is >= 0.92 and <= 1.08), VoiceLabProjectErrorCode.InvalidRange);
+        if (audio.Stretch == 1)
+        {
+            double assetRate = asset!.SampleRate;
+            var contentFrames = Samples(audio.TrimEnd, assetRate) - Samples(audio.TrimStart, assetRate);
+            var windowFrames = EditingMath.Round((end - start) * assetRate / rate);
+            bool Fits(double windowDuration)
+            {
+                var residualFrames = EditingMath.Round((recipe.OutDuration - windowDuration) * assetRate);
+                var duration = windowDuration + residualFrames / assetRate;
+                var tolerance = 4 * Math.Max(Math.BitIncrement(recipe.OutDuration) - recipe.OutDuration,
+                    Math.BitIncrement(windowDuration) - windowDuration);
+                return contentFrames > 0 && contentFrames == windowFrames + residualFrames &&
+                    Math.Abs(recipe.OutDuration - duration) <= tolerance;
+            }
+            Require(Fits(segment.Replace.End - segment.Replace.Start) ||
+                (recipe.OutDuration == output / rate && Fits((end - start) / rate)), VoiceLabProjectErrorCode.InvalidRange);
+            Require(ContentMatchesDuration(audio, recipe.OutDuration, asset.SampleRate), VoiceLabProjectErrorCode.InvalidSegment);
+        }
         Require(Id(recipe.Cost.QuoteId) && (recipe.Cost.Usd is null || recipe.Cost.Usd is { } usd && double.IsFinite(usd) && usd >= 0) &&
             recipe.Provenance.Region?.Length > 0 &&
             Id(recipe.Provenance.RequestId) && recipe.Provenance.Seed == recipe.Seed, VoiceLabProjectErrorCode.MissingRenderPolicy);

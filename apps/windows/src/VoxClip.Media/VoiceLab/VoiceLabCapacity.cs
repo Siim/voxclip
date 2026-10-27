@@ -34,12 +34,15 @@ internal static class VoiceLabCapacity
     }
 
     internal static void Require(ComposeSnapshot snapshot, params Allocation[] outputs)
+        => Require(snapshot, Path.GetTempPath(), outputs);
+
+    internal static void Require(ComposeSnapshot snapshot, string scratchRoot, params Allocation[] outputs)
     {
         if (snapshot.VoiceLab is not { Prepared.OutputPlan.RequiresSyntheticRendering: true } input) return;
         VerifySource(snapshot);
         var project = input.IsolatedProject();
         var allocations = new List<Allocation>(outputs);
-        var temporary = Path.GetTempPath();
+        var temporary = scratchRoot;
         foreach (var item in input.Prepared.SelectedSegmentRecipes)
         {
             var asset = project.VoiceLab.Assets!.Single(asset => asset.Id == item.Recipe.Audio.AssetId);

@@ -12,6 +12,8 @@ public struct VoiceLabRenderInput: Sendable, Equatable {
     public init(project: Project, scope: VoiceLabOutputScope, labelPosition: VoiceLabLabelPosition,
                 paidRoot: URL, prepared: VoiceLabPreparedRender) throws {
         try prepared.verify(project: project, scope: scope, labelPosition: labelPosition)
+        guard prepared.selectedSegmentRecipes.allSatisfy({ $0.recipe.video.mode == .source })
+        else { throw VoiceLabProjectError.videoModeUnsupported }
         self.project = project
         self.scope = scope
         self.labelPosition = labelPosition

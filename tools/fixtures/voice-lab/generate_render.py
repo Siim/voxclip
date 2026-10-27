@@ -239,4 +239,13 @@ cases = {
     'sample-grid-half-up': {'seconds': .0005, 'rate': 1000, 'samples': js_half_up(.0005*1000)},
     'mapping-only-1100-for-1000': {'sourceSamples': 3000, 'replace': [1000, 2000], 'outputSamples': 3100, 'sourceVideoCapability': 'videoModeUnsupported'}
 }
+cases['unity-binary64-residual-eight'] = {'replace': [1.5, 2.503], 'sourceRate': 44100, 'assetRate': 24000,
+    'residualFrames': 8, 'outputFrames': 24080, 'outDuration': 1.0033333333333334, 'baseline': 'binary64'}
+cases['unity-binary64-residual-nine'] = {'replace': [1.5, 2.503], 'sourceRate': 44100, 'assetRate': 24000,
+    'residualFrames': 9, 'outputFrames': 24081, 'outDuration': (2.503 - 1.5) + 9 / 24000, 'baseline': 'binary64'}
+cases['unity-legacy-source-grid-only'] = {'replace': [1.5, 2.503], 'sourceRate': 44100, 'assetRate': 24000,
+    'residualFrames': 0, 'outputFrames': 24072, 'outDuration': 44232 / 44100, 'baseline': 'sourceGridOnly'}
+cases['unity-inconsistent-alternate'] = {'replace': [1.5000416666666667, 2.503], 'sourceRate': 8000, 'assetRate': 96000,
+    'outputFrames': 96288, 'outDuration': 1.003, 'baseline': 'sourceGridOnly',
+    'alternateOutputFrames': 96292, 'validationError': 'invalidSegment'}
 (fixtures / 'render-cases.json').write_text(json.dumps(cases, indent=2) + '\n')

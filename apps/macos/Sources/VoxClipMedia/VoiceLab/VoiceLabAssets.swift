@@ -55,6 +55,11 @@ public enum VoiceLabAssets {
 
     /// Prepare only assets used by this scope; source-only plans need no paid files.
     public static func prepare(project: Project, plan: VoiceLabOutputPlan, paidRoot: URL) throws -> [String: PreparedVoiceLabAsset] {
+        try prepare(project: project, plan: plan, paidRoot: paidRoot, scratchRoot: FileManager.default.temporaryDirectory)
+    }
+
+    /// Each snapshot goes in a fresh folder under `scratchRoot`.
+    static func prepare(project: Project, plan: VoiceLabOutputPlan, paidRoot: URL, scratchRoot: URL) throws -> [String: PreparedVoiceLabAsset] {
         try VoiceLabProject.validate(project)
         guard try VoiceLabOutputPlanner.build(project, scope: plan.scope) == plan else {
             throw VoiceLabAssetError.invalidSelection("output plan")
@@ -67,13 +72,20 @@ public enum VoiceLabAssets {
                 throw VoiceLabAssetError.invalidSelection(piece.segmentId ?? "segment")
             }
             if prepared[segmentId] == nil {
-                prepared[segmentId] = try prepare(asset: asset, audio: audio, segmentId: segmentId, project: project, paidRoot: paidRoot)
+                prepared[segmentId] = try prepare(asset: asset, audio: audio, segmentId: segmentId, project: project, paidRoot: paidRoot,
+                                                  scratchRoot: scratchRoot)
             }
         }
         return prepared
     }
 
     public static func prepare(asset: VoiceLabAsset, audio: VoiceLabAudio, segmentId: String, project: Project, paidRoot: URL) throws -> PreparedVoiceLabAsset {
+        try prepare(asset: asset, audio: audio, segmentId: segmentId, project: project, paidRoot: paidRoot,
+                    scratchRoot: FileManager.default.temporaryDirectory)
+    }
+
+    static func prepare(asset: VoiceLabAsset, audio: VoiceLabAudio, segmentId: String, project: Project, paidRoot: URL,
+                        scratchRoot: URL) throws -> PreparedVoiceLabAsset {
         try VoiceLabProject.validate(project)
         guard project.voiceLab.assets?.contains(asset) == true,
               project.voiceLab.segments.first(where: { $0.id == segmentId })?.audio == audio,
@@ -101,7 +113,7 @@ public enum VoiceLabAssets {
         guard fstat(sourceFD, &info) == 0, (info.st_mode & mode_t(S_IFMT)) == mode_t(S_IFREG) else { throw VoiceLabAssetError.unsafePath(asset.file) }
         guard info.st_size > 0, info.st_size <= maxBytes else { throw VoiceLabAssetError.tooLarge(asset.file) }
 
-        let scratch = FileManager.default.temporaryDirectory.appendingPathComponent("voxclip-voice-\(UUID().uuidString)", isDirectory: true)
+        let scratch = scratchRoot.appendingPathComponent("voxclip-voice-\(UUID().uuidString)", isDirectory: true)
         do { try FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: false) }
         catch { throw VoiceLabAssetError.unreadable(asset.file) }
         do {
