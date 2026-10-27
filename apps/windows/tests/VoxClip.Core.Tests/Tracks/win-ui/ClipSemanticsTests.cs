@@ -86,6 +86,61 @@ public sealed class ClipSemanticsTests
         Assert.Equal(4, model.Clips.Count);
     }
 
+    /// <summary>Export's "Selected clips" exports the kept clips (ADR-R29): every manual clip, whatever its stored selected
+    /// flag, and the AI clips the user kept, never a suggestion.</summary>
+    [Fact]
+    public void ExportedClipsAreTheKeptClipsWithEveryManualClip()
+    {
+        var model = Clean();
+        var manual = Clip(model, 20, 24);
+        Assert.True(model.Apply(new EditOperation.SetClipSelected(manual, false)));
+        var suggestions = model.AddAiResult(Result(model, (0, 3), (5, 8)));
+        Assert.True(model.Apply(new EditOperation.SetClipSelected(suggestions[1], true)));
+        Assert.Equal([suggestions[1], manual], model.KeptClips.Select(clip => clip.Id));
+        Assert.Equal([suggestions[0]], model.SuggestedClips.Select(clip => clip.Id));
+        Assert.False(model.Clips.Single(clip => clip.Id == manual).Selected);
+    }
+
+    /// <summary>Rename takes at most 120 code points once trimmed; the dialog explains a longer title instead of the reducer
+    /// dropping it.</summary>
+    [Fact]
+    public void RenameExplainsATitleOverTheLimit()
+    {
+        var model = Clean();
+        var id = Clip(model, 0, 3);
+        var longest = string.Concat(Enumerable.Repeat("👩🏽‍💻", 30));
+        Assert.Equal(120, longest.EnumerateRunes().Count());
+        Assert.True(longest.Length > 120);
+        Assert.Null(EditorViewModel.ClipTitleProblem(longest));
+        Assert.Null(EditorViewModel.ClipTitleProblem("  " + new string('a', 120) + "  "));
+        Assert.Null(EditorViewModel.ClipTitleProblem(""));
+        Assert.Equal("Use 120 characters or fewer.", EditorViewModel.ClipTitleProblem(new string('a', 121)));
+        Assert.Equal("Use 120 characters or fewer.", EditorViewModel.ClipTitleProblem(longest + "!"));
+        Assert.True(model.Rename(id, longest));
+        Assert.Equal(longest, model.Project.Edits.Clips.Single(clip => clip.Id == id).Title);
+        // What the dialog refuses, the reducer would have dropped without a word.
+        Assert.False(model.Rename(id, new string('a', 121)));
+        Assert.Equal(longest, model.Project.Edits.Clips.Single(clip => clip.Id == id).Title);
+    }
+
+    /// <summary>Ctrl+E, the Export button and a clip row's Export clip… share one reason (delta §3.5).</summary>
+    [Fact]
+    public void ExportSaysWhyItCannotRunForTheScope()
+    {
+        var model = Clean();
+        Assert.Null(model.ExportBlocked(false, false, null));
+        var suggestion = model.AddAiResult(Result(model, (0, 3)))[0];
+        Assert.Equal("Keep this clip to export it.", model.ExportBlocked(false, false, suggestion));
+        Assert.Equal("Locate the video to export.", model.ExportBlocked(false, true, suggestion));
+        Assert.Equal("Demo projects have no video to export.", model.ExportBlocked(true, true, null));
+        model.Busy = true;
+        Assert.Equal("Finish the current task first.", model.ExportBlocked(false, false, null));
+        model.Busy = false;
+        model.Select(0); model.Select(model.Words.Count - 1, true);
+        model.CutSelection(false);
+        Assert.Equal("Keep at least one word before exporting.", model.ExportBlocked(false, false, null));
+    }
+
     [Fact]
     public void DismissRemovesOnlyTheSuggestion()
     {
@@ -115,6 +170,68 @@ public sealed class ClipSemanticsTests
         Assert.Equal(["Clip 1 already covers these words."], announced);
     }
 
+    /// <summary>Delta §6.2: making a clip is one addClip undo step that selects it, so revealing its row (MainWindow.RevealClip
+    /// → EditorPage.SelectScope, which applies setActiveClip) adds no second step and Narrator hears "Clip 1 made.".</summary>
+    [Fact]
+    public void MakeClipIsOneUndoStepAndRevealingItAddsNone()
+    {
+        var model = Clean();
+        var announced = new List<string>();
+        model.Announcement += (_, text) => announced.Add(text);
+        var id = Clip(model, 4, 9);
+        Assert.Equal(id, model.State!.ActiveClipId);
+        Assert.False(model.Apply(new EditOperation.SetActiveClip(id)));
+        Assert.Equal(["Clip 1 made."], announced);
+        model.Undo();
+        Assert.Empty(model.Clips);
+        Assert.Null(model.State!.ActiveClipId);
+        Assert.False(model.CanUndo);
+    }
+
+    [Fact]
+    public void MakingAnExistingClipSelectsItAndSaysSoOnce()
+    {
+        var model = Clean();
+        var first = Clip(model, 0, 2);
+        var second = Clip(model, 4, 6);
+        var announced = new List<string>();
+        model.Announcement += (_, text) => announced.Add(text);
+        model.Select(0); model.Select(2, true);
+        Assert.Equal(first, model.MakeClip());
+        Assert.Equal(first, model.State!.ActiveClipId);
+        // Revealing the row changes nothing more, and the edit summary never replaces the message.
+        Assert.False(model.Apply(new EditOperation.SetActiveClip(first)));
+        Assert.Equal(["Clip 1 already covers these words."], announced);
+        model.Undo();
+        Assert.Equal((second, 2), (model.State!.ActiveClipId, model.Clips.Count));
+    }
+
+    /// <summary>Design §6.2: a manual clip is titled with the first seven words of the selection, as shown.</summary>
+    [Fact]
+    public void ManualClipsTakeTheFirstSevenWordsAsTheirTitle()
+    {
+        var model = Clean();
+        var whole = Clip(model, 0, 9);
+        Assert.Equal("Tere! Täna näitan, kuidas lõigata videot sõnade", model.Clips.Single(clip => clip.Id == whole).Title);
+        model.Select(2);
+        model.Correct("näitasin,");
+        var corrected = Clip(model, 1, 3);
+        Assert.Equal("Täna näitasin, kuidas", model.Clips.Single(clip => clip.Id == corrected).Title);
+        Assert.Equal("Täna näitasin, kuidas", model.Project.Edits.Clips.Single(clip => clip.Id == corrected).Title);
+    }
+
+    [Fact]
+    public void RemovingAnEarlierClipKeepsALaterClipsTitle()
+    {
+        var model = Clean();
+        var early = Clip(model, 0, 2);
+        var later = Clip(model, 12, 20);
+        Assert.Equal(("Tere! Täna näitan,", 1), (model.Clips.Single(clip => clip.Id == early).Title, model.Clips.Single(clip => clip.Id == early).Number));
+        Assert.True(model.Remove(early));
+        var row = model.Clips.Single(clip => clip.Id == later);
+        Assert.Equal(("palju kiirem kui ajateljel kerimine. Iga sõna", 1), (row.Title, row.Number));
+    }
+
     [Fact]
     public void ClipCommandsAnnounceWhatTheyDid()
     {
@@ -137,6 +254,7 @@ public sealed class ClipSemanticsTests
         var one = Clip(model, 0, 2);
         var two = Clip(model, 12, 14);
         model.AddAiResult(Result(model, (5, 8)));
+        Assert.True(model.Apply(new EditOperation.SetActiveClip(null)));
         model.CycleClip(1);
         Assert.Equal(one, model.State!.ActiveClipId);
         model.CycleClip(1);
@@ -167,8 +285,9 @@ public sealed class ClipSemanticsTests
         var a = Clip(model, 12, 20);
         var b = Clip(model, 21, 25);
         string[] Words(params int[] indexes) => indexes.Select(index => model.Words[index].Id).ToArray();
-        // Making a clip leaves the scope on Full take.
-        Assert.Null(model.State!.ActiveClipId);
+        // Making a clip makes it the scope (design §6.2); go back to Full take.
+        Assert.Equal(b, model.State!.ActiveClipId);
+        Assert.True(model.Apply(new EditOperation.SetActiveClip(null)));
         // Three cut runs: words 2–3, 14 and 18–19.
         Assert.True(model.Apply(new EditOperation.SetWordCuts(Words(2, 3, 14, 18, 19), true)));
         Assert.Equal("0:14 after cuts · 3 cuts", model.SummaryLine);

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using VoxClip.App.ViewModels;
 using VoxClip.Core.Services.LLM;
 
 namespace VoxClip.App.Services;
@@ -8,6 +9,8 @@ internal sealed record ProviderEntry(ConnectorId Id, string WireId, string Label
 {
     internal bool Cloud => Group == "apiKey";
     internal bool Cli => Group == "cli";
+    /// <summary>The name connector copy uses: "Claude Code", not the catalogue's "Claude Code (installed CLI)".</summary>
+    internal string ShortName => ClipCallouts.ConnectorName(Label, Group);
     public override string ToString() => Label;
 }
 

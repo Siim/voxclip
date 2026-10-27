@@ -83,11 +83,12 @@
             <DataTemplate x:DataType="models:RecentProject">
                 <Grid Margin="0,0,16,16" Background="Transparent" AutomationProperties.HelpText="{x:Bind Description, Mode=OneWay}">
                     <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="64"/></Grid.RowDefinitions>
-                    <!-- The media tile, design §5.4: frame, else caption card, else stage black, with its chip and progress line. -->
-                    <controls:MediaThumbnail CornerRadius="10" Surface="HomeTile" Media="{x:Bind Media, Mode=OneWay}"/>
+                    <!-- The media tile, design §5.4: frame, else caption card, else stage black, with its chip and progress line, and
+                         in the normal state the duration chip (design §7). -->
+                    <controls:MediaThumbnail CornerRadius="10" Surface="HomeTile" Media="{x:Bind Media, Mode=OneWay}" Duration="{x:Bind Duration, Mode=OneWay}"/>
                     <StackPanel Grid.Row="1" Padding="0,8,0,0">
                         <TextBlock Text="{x:Bind Title, Mode=OneWay}" Style="{ThemeResource BodyStrongTextBlockStyle}" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"/>
-                        <!-- Cancel and Locate… sit on the meta line, 32 high (design §7). -->
+                        <!-- Cancel and Open sit on the meta line, 32 high (design §7). -->
                         <StackPanel Orientation="Horizontal" Spacing="4" Visibility="{x:Bind ShowsMeta, Mode=OneWay}">
                             <TextBlock Text="{x:Bind Meta, Mode=OneWay}" Style="{ThemeResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                 TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" VerticalAlignment="Center"/>
@@ -96,7 +97,7 @@
                         </StackPanel>
                         <StackPanel Orientation="Horizontal" Spacing="4" Visibility="{x:Bind ShowsWarning, Mode=OneWay}">
                             <TextBlock Text="{x:Bind Warning, Mode=OneWay}" Style="{ThemeResource CaptionTextBlockStyle}" Foreground="{ThemeResource VcStatusWarningBrush}" VerticalAlignment="Center"/>
-                            <HyperlinkButton Content="Locate…" Height="32" Padding="6,0" Tag="{x:Bind Path}" Click="LocateClicked" AutomationProperties.Name="{x:Bind LocateName, Mode=OneWay}"/>
+                            <HyperlinkButton Content="Open" Height="32" Padding="6,0" Tag="{x:Bind Path}" Click="OpenMissingClicked" AutomationProperties.Name="{x:Bind OpenName, Mode=OneWay}"/>
                         </StackPanel>
                     </StackPanel>
                     <Grid.ContextFlyout>

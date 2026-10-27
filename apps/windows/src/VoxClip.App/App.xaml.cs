@@ -1,3 +1,4 @@
+using VoxClip.App.ViewModels;
 using Microsoft.UI.Xaml;
 using VoxClip.App.Services;
 using VoxClip.App.Controls;
@@ -40,11 +41,11 @@ public partial class App : Application
             {
                 var target = Windows.FirstOrDefault() ?? NewWindow();
                 target.Activate();
-                if (activation.Data is IFileActivatedEventArgs files && files.Files.FirstOrDefault() is { } file) await target.OpenPathAsync(file.Path);
+                if (activation.Data is IFileActivatedEventArgs files && files.Files.FirstOrDefault() is { } file) await target.OpenPathAsync(file.Path, ShellPath.FileActivation);
                 else if (activation.Data is ILaunchActivatedEventArgs launch && !string.IsNullOrWhiteSpace(launch.Arguments))
                 {
                     var path = RedirectedLaunchPath(launch.Arguments);
-                    if (path is not null) await target.OpenPathAsync(path);
+                    if (path is not null) await target.OpenPathAsync(path, ShellPath.FileActivation);
                 }
             });
 #if DEBUG
@@ -65,20 +66,20 @@ public partial class App : Application
             var demoIndex = Array.IndexOf(Program.Arguments, "--demo-project");
             if (demoIndex >= 0 && demoIndex + 1 < Program.Arguments.Length)
             {
-                await window.OpenPathAsync(Program.Arguments[demoIndex + 1], true);
+                await window.OpenPathAsync(Program.Arguments[demoIndex + 1], ShellPath.Launch, true);
                 screen = "editor";
                 var screenIndex = Array.IndexOf(Program.Arguments, "--demo-screen");
                 if (screenIndex >= 0 && screenIndex + 1 < Program.Arguments.Length)
                 {
-                    if (Program.Arguments[screenIndex + 1] == "home") { window.ShowHome(); screen = "home"; }
+                    if (Program.Arguments[screenIndex + 1] == "home") { window.ShowHome(ShellPath.SidebarHome); screen = "home"; }
                     else if (Program.Arguments[screenIndex + 1] == "settings") { OpenSettings(); screen = "settings"; }
                 }
                 return;
             }
 #endif
             var path = Program.Arguments.Where((argument, index) => !argument.StartsWith('-') && (index == 0 || Program.Arguments[index - 1] != "--self-check")).FirstOrDefault();
-            if (path is not null) await window.OpenPathAsync(path);
-            else if (Services.Get("general.openLastProject", false) && Services.Get<string[]>("general.recentProjects", []).FirstOrDefault() is { } recent) await window.OpenPathAsync(recent);
+            if (path is not null) await window.OpenPathAsync(path, ShellPath.Launch);
+            else if (Services.Get("general.openLastProject", false) && Services.Get<string[]>("general.recentProjects", []).FirstOrDefault() is { } recent) await window.OpenPathAsync(recent, ShellPath.Launch);
             else if (!Program.Arguments.Contains("--self-check") && !Services.Get("onboarding.completed", false)) await window.ShowOnboardingAsync();
             screen = window.CurrentScreen;
         }

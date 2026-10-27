@@ -54,4 +54,19 @@ public static class ShortcutPolicy
 {
     public static bool EditorMayHandle(bool textFocus, bool correctionOpen, bool control, bool alt, bool editorFocus) =>
         editorFocus && !textFocus && !correctionOpen && !alt;
+
+    /// <summary>The editor shortcuts that also act while focus is in the sidebar pane (design §11.1), written as gestures. The
+    /// window forwards them to the attached editor; single-letter keys stay with the editor.</summary>
+    public static IReadOnlyList<string> PaneGestures { get; } =
+        ["Ctrl+Z", "Ctrl+Y", "Ctrl+Shift+Z", "Ctrl+K", "Ctrl+E", "Ctrl+Shift+K", "Ctrl+Shift+I", "Ctrl+Shift+U", "Ctrl+Shift+P", "Ctrl+Shift+R", "F1"];
+
+    /// <summary>"Ctrl+Shift+K" for K with Control and Shift.</summary>
+    public static string Gesture(string key, bool control, bool shift) => (control ? "Ctrl+" : "") + (shift ? "Shift+" : "") + key;
+
+    public static bool PaneForwards(string gesture) => PaneGestures.Contains(gesture, StringComparer.Ordinal);
+
+    /// <summary>[ and ] on a clip or suggestion row step to the previous or next kept clip (design §11.1): -1 or 1, and 0
+    /// where the key doesn't act, which is any other row or with a modifier held.</summary>
+    public static int RowClipStep(char key, SidebarKind row, bool modifier) =>
+        modifier || row is not (SidebarKind.Clip or SidebarKind.Suggestion) ? 0 : key switch { '[' => -1, ']' => 1, _ => 0 };
 }

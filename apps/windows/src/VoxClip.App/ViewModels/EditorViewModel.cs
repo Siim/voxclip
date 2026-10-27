@@ -79,6 +79,10 @@ public sealed class EditorViewModel : ObservableObject
     public bool Busy { get => busy; set { if (SetProperty(ref busy, value)) OnPropertyChanged(nameof(CanExport)); } }
     public bool HasTranscript => state is not null;
     public bool CanExport => !Busy && !isLeaving && Summary.CanExport;
+    /// <summary>Why Export can't run for <paramref name="clipId"/>'s scope (null is Full take), or null when it can. The Export
+    /// button, Ctrl+E and a clip row's Export clip… share it (delta §3.5).</summary>
+    public string? ExportBlocked(bool demo, bool videoUnavailable, string? clipId) =>
+        EditorLayout.ExportBlocked(demo, videoUnavailable, Busy || isLeaving, Summary.CanExport, Clips.FirstOrDefault(clip => clip.Id == clipId)?.IsSuggested == true);
     public bool CanUndo => undo.Count > 0;
     public bool CanRedo => redo.Count > 0;
     public int SelectionStart => Math.Min(selectionAnchor, selectionEnd);
@@ -92,9 +96,7 @@ public sealed class EditorViewModel : ObservableObject
     public string SummaryLine { get; private set; } = "";
     /// <summary>"{source} source · {w} words cut in {r} places · {p} pauses cut", for the same scope.</summary>
     public string SummaryTooltip { get; private set; } = "";
-    /// <summary>Kept clips; the export dialog's clip scope still counts them until its own redesign (round 2).</summary>
-    public int SelectedClipCount => Clips.Count(clip => clip.Selected);
-    /// <summary>Manual clips and kept AI clips, numbered 1…n.</summary>
+    /// <summary>Manual clips and kept AI clips, numbered 1…n; Export's "Selected clips" exports these (ADR-R29).</summary>
     public IReadOnlyList<ClipRow> KeptClips => Clips.Where(clip => !clip.IsSuggested).ToArray();
     /// <summary>AI clips not kept yet, numbered after the kept ones.</summary>
     public IReadOnlyList<ClipRow> SuggestedClips => Clips.Where(clip => clip.IsSuggested).ToArray();
@@ -159,8 +161,10 @@ public sealed class EditorViewModel : ObservableObject
         if (HasSelection && !string.IsNullOrWhiteSpace(value)) Apply(new EditOperation.Correct(Words[SelectionStart].Id, value.Trim().Normalize()));
     }
 
-    /// <summary>Make a manual clip from the selection and return its id. When a clip already covers exactly these words,
-    /// return that clip's id and say so instead of adding a duplicate.</summary>
+    /// <summary>Make a manual clip from the selection and return its id (design §6.2). The clip is titled with the first seven
+    /// words of the selection and becomes the scope in the same undo step, so revealing its row adds no second step and the
+    /// announcement is "Clip N made.". When a clip already covers exactly these words, that clip becomes the scope, with no
+    /// summary announcement, and the announcement says so instead of adding a duplicate.</summary>
     public string? MakeClip()
     {
         if (!HasSelection) { Notice = "Select words to make a clip. No key or account is needed."; return null; }
@@ -170,11 +174,14 @@ public sealed class EditorViewModel : ObservableObject
         if (Clips.FirstOrDefault(clip => clip.Clip.StartWordId == start && clip.Clip.EndWordId == end) is { } existing)
         {
             Notice = "";
-            Announcement?.Invoke(this, $"Clip {existing.Number} already covers these words.");
+            ApplyBatch([new EditOperation.SetActiveClip(existing.Id)]);
+            Announcement?.Invoke(this, $"Clip {Number(existing.Id)} already covers these words.");
             return existing.Id;
         }
         var id = Guid.NewGuid().ToString("N");
-        return Announce(ApplyBatch([new EditOperation.AddClip(new(id, start, end, null, ClipOrigin.Manual, null, null, true))]), () => $"Clip {Number(id)} made.") ? id : null;
+        var title = EditingAlgorithms.ClipTitle(Words.Skip(SelectionStart).Take(SelectionEnd - SelectionStart + 1).Select(DisplayText));
+        return Announce(ApplyBatch([new EditOperation.AddClip(new(id, start, end, title, ClipOrigin.Manual, null, null, true)), new EditOperation.SetActiveClip(id)]),
+            () => $"Clip {Number(id)} made.") ? id : null;
     }
     /// <summary>Keep a suggestion: it becomes the next numbered clip.</summary>
     public bool Keep(string id) => Announce(ApplyBatch([new EditOperation.SetClipSelected(id, true)]), () => $"Clip {Number(id)} kept.");
@@ -192,6 +199,11 @@ public sealed class EditorViewModel : ObservableObject
         return Announce(ApplyBatch([new EditOperation.RemoveClip(id)]), () => $"Clip {number} removed.");
     }
     public bool Rename(string id, string? title) => ApplyBatch([new EditOperation.RenameClip(id, string.IsNullOrWhiteSpace(title) ? null : title.Trim())]);
+    /// <summary>Why <see cref="Rename"/> can't take this title, or null: a title is at most 120 code points once trimmed
+    /// (project.schema.json), and the reducer would drop a longer one. The rename dialog shows it inline.</summary>
+    public static string? ClipTitleProblem(string? title) =>
+        title is not null && title.Trim().EnumerateRunes().Count() > EditingLimits.MaxClipTitleCodePoints
+            ? $"Use {EditingLimits.MaxClipTitleCodePoints} characters or fewer." : null;
     /// <summary>The clip's display number, never stored (design §2).</summary>
     private string Number(string id) => Clips.FirstOrDefault(clip => clip.Id == id)?.Number.ToString(CultureInfo.InvariantCulture) ?? "";
     /// <summary>Clip commands announce what they did (design §13) instead of the edit summary.</summary>
@@ -423,7 +435,7 @@ public sealed class EditorViewModel : ObservableObject
             UpdateSummaryLine(source.DurationSeconds);
         }
         else { SummaryLine = ""; SummaryTooltip = ""; }
-        foreach (var name in new[] { nameof(Project), nameof(State), nameof(Summary), nameof(SummaryLine), nameof(SummaryTooltip), nameof(KeptClips), nameof(SuggestedClips), nameof(FillerLabel), nameof(CanExport), nameof(CanUndo), nameof(CanRedo), nameof(SelectedClipCount), nameof(HasTranscript), nameof(FullTakeDuration) }) OnPropertyChanged(name);
+        foreach (var name in new[] { nameof(Project), nameof(State), nameof(Summary), nameof(SummaryLine), nameof(SummaryTooltip), nameof(KeptClips), nameof(SuggestedClips), nameof(FillerLabel), nameof(CanExport), nameof(CanUndo), nameof(CanRedo), nameof(HasTranscript), nameof(FullTakeDuration) }) OnPropertyChanged(name);
         Changed?.Invoke(this, EventArgs.Empty);
     }
 }

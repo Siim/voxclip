@@ -30,6 +30,9 @@ internal sealed class FindClipsFlyout
     private readonly Button find = new() { Content = "Find clips", HorizontalAlignment = HorizontalAlignment.Right };
     private ProviderEntry? entry;
     private CancellationTokenSource? search;
+    /// <summary>A Find is past its first check: set before the awaited preflight, so a second click or Enter can't start
+    /// another run.</summary>
+    private bool starting;
     private FrameworkElement? anchor;
 
     internal FindClipsFlyout(EditorViewModel model, CancellationToken ct)
@@ -88,13 +91,13 @@ internal sealed class FindClipsFlyout
             return;
         }
         Set(null);
-        connector.Text = $"{entry.Label} · checking…";
+        connector.Text = $"{entry.ShortName} · checking…";
         footnote.Text = entry.Group == "local" ? "Runs on this PC. Nothing leaves it." : "Sends transcript text with word numbers. No audio or video.";
         problem.Visibility = Visibility.Collapsed;
         flyout.ShowAt(target);
-        try { connector.Text = $"{entry.Label} · {ProviderCatalog.ShortStatus(await App.Services.Connector(entry.Id).GetStatusAsync(ct))}"; }
+        try { connector.Text = $"{entry.ShortName} · {ProviderCatalog.ShortStatus(await App.Services.Connector(entry.Id).GetStatusAsync(ct))}"; }
         catch (OperationCanceledException) { }
-        catch (Exception exception) when (exception is not OutOfMemoryException) { connector.Text = $"{entry.Label} · {ProviderCatalog.ShortStatus(new ConnectorStatus.Unavailable(exception.GetType().Name))}"; }
+        catch (Exception exception) when (exception is not OutOfMemoryException) { connector.Text = $"{entry.ShortName} · {ProviderCatalog.ShortStatus(new ConnectorStatus.Unavailable(exception.GetType().Name))}"; }
     }
 
     /// <summary>Run the last search again from the callout's Retry.</summary>
@@ -108,13 +111,20 @@ internal sealed class FindClipsFlyout
 
     private async Task FindAsync()
     {
-        if (Running is not null || model.Busy || model.IsLeaving || model.State is null || entry is not { } chosen) return;
+        if (starting || Running is not null || model.Busy || model.IsLeaving || model.State is null || entry is not { } chosen) return;
         if (preset.SelectedIndex == 4 && string.IsNullOrWhiteSpace(instructions.Text))
         {
             Problem("Describe the clips you want.");
             instructions.Focus(FocusState.Programmatic);
             return;
         }
+        starting = true;
+        try { await FindWithAsync(chosen); }
+        finally { starting = false; }
+    }
+
+    private async Task FindWithAsync(ProviderEntry chosen)
+    {
         try
         {
             // The connector's preflight (AI spec §4): a connector that isn't ready explains itself under the actions.
@@ -136,11 +146,11 @@ internal sealed class FindClipsFlyout
             return;
         }
         flyout.Hide();
+        if (model.State is not { } state) return;
         search?.Dispose();
         search = CancellationTokenSource.CreateLinkedTokenSource(ct);
         model.Busy = true; App.Services.BusyOperations++;
-        var state = model.State;
-        Running = $"{chosen.Label} · reading {EditorViewModel.Duration(model.Project.Media.Source.DurationSeconds)} of transcript";
+        Running = $"{chosen.ShortName} · reading {EditorViewModel.Duration(model.Project.Media.Source.DurationSeconds)} of transcript";
         NoneFound = null;
         Set(null);
         Announcement?.Invoke(this, "Finding clips");

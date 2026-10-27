@@ -60,12 +60,13 @@ internal sealed class AppServices : IAsyncDisposable
         settingsWrites.Changed += key =>
         {
             if (key == "transcription.elevenlabs.region" && localSpeech is not null) ConfigureCloudSpeech();
-            SettingsChanged?.Invoke(this, EventArgs.Empty);
+            // Window layout (ui.*, such as the splitter's width) changes nothing the listeners show.
+            if (!key.StartsWith("ui.", StringComparison.Ordinal)) SettingsChanged?.Invoke(this, EventArgs.Empty);
         };
         Keys = new(Data.Secrets, Log);
         Downloads = new ModelStore(Models, Data.Root);
         Updates = new UpdateChecker(new VelopackUpdates(this));
-        Thumbnails = new(Data.Cache);
+        Thumbnails = new(Data.Cache, message => Log.Write(LogLevel.Warn, "thumbnails", message));
     }
 
     internal async Task InitializeAsync(CancellationToken ct)

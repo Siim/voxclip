@@ -370,7 +370,13 @@ public sealed partial class EditorPage : Page
     internal Task ExportClipAsync(string clipId) => ExportAsync(clipId);
     private Task ExportAsync(string? clipId) => RunAsync(async () =>
     {
-        if (!ViewModel.CanExport) return;
+        // Ctrl+E and the row's Export clip… stop where the button is disabled, and say why.
+        if (ViewModel.ExportBlocked(demo, MediaPath is null || media is null, clipId) is { } reason)
+        {
+            ViewModel.Notice = reason;
+            AnnounceNotice();
+            return;
+        }
         await new ExportDialog(owner, ViewModel, demo, SnapshotAsync, clipId) { XamlRoot = XamlRoot }.ShowAsync();
     }, "Export");
     internal async Task PromptTranscriptionAsync() => await RunAsync(async () =>
@@ -391,6 +397,16 @@ public sealed partial class EditorPage : Page
         ViewModel.SetExport(ViewModel.Project.Export with { Aspect = EditorLayout.Frames[Aspect.SelectedIndex] });
         SizeStage();
     }
+    /// <summary>The editor's accelerator actions by gesture, so the window can hand it the ones that act from the pane.</summary>
+    private readonly Dictionary<string, Action> shortcuts = new(StringComparer.Ordinal);
+    /// <summary>A shortcut pressed while focus is in the sidebar pane (design §11.1). MainWindow forwards only
+    /// ShortcutPolicy.PaneGestures, and runs the same action as the editor's own accelerator.</summary>
+    internal bool InvokeFromPane(string gesture)
+    {
+        if (!ready || !ShortcutPolicy.PaneForwards(gesture) || !shortcuts.TryGetValue(gesture, out var action)) return false;
+        action();
+        return true;
+    }
     private void InstallAccelerators()
     {
         void Add(VirtualKey key, VirtualKeyModifiers modifiers, Action action)
@@ -402,6 +418,7 @@ public sealed partial class EditorPage : Page
                 action(); args.Handled = true;
             };
             EditorRoot.KeyboardAccelerators.Add(accelerator);
+            shortcuts[ShortcutPolicy.Gesture(key.ToString(), modifiers.HasFlag(VirtualKeyModifiers.Control), modifiers.HasFlag(VirtualKeyModifiers.Shift))] = action;
         }
         Add(VirtualKey.Z, VirtualKeyModifiers.Control, ViewModel.Undo);
         Add(VirtualKey.Y, VirtualKeyModifiers.Control, ViewModel.Redo);
@@ -460,7 +477,7 @@ public sealed partial class EditorPage : Page
     {
         var active = ViewModel.Clips.FirstOrDefault(clip => clip.Id == ViewModel.State?.ActiveClipId);
         var label = active is null ? "Export video…" : "Export clip…";
-        var reason = EditorLayout.ExportBlocked(demo, MediaPath is null || media is null, ViewModel.CanExport, active?.IsSuggested == true);
+        var reason = ViewModel.ExportBlocked(demo, MediaPath is null || media is null, active?.Id);
         ExportButton.Content = label;
         ExportButton.IsEnabled = reason is null;
         ToolTipService.SetToolTip(ExportHost, reason ?? $"{label} (Ctrl+E)");
@@ -491,13 +508,14 @@ public sealed partial class EditorPage : Page
         TranscriptColumn.MinWidth = viewerForced ? 0 : Token("VcLayoutTranscriptMinWidth");
         RightPane.Visibility = ViewerSplitter.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
         RightColumn.MinWidth = visible ? Token("VcSizeRightColumnMin") : 0;
-        RightColumn.Width = new(visible ? owner.RightColumnWidth ?? DefaultRightWidth() : 0);
+        RightColumn.Width = new(visible ? StoredRightWidth() ?? DefaultRightWidth() : 0);
         Timeline.ShowsTransport = !visible;
     }
     private static double Token(string key) => (double)Application.Current.Resources[key];
     private double DefaultRightWidth() => EditorLayout.RightColumnWidth(XamlRoot?.Size.Width ?? 1280, Token("VcSizeRightColumnMin"), Token("VcSizeRightColumnMax"));
+    private double? StoredRightWidth() => owner.RightColumnWidth(Token("VcSizeRightColumnMin"), Token("VcSizeRightColumnMax"));
     private bool TranscriptFits(double pageWidth) =>
-        EditorLayout.TranscriptFits(pageWidth, ViewerSplitter.Width, owner.RightColumnWidth ?? DefaultRightWidth(), Token("VcLayoutTranscriptMinWidth"));
+        EditorLayout.TranscriptFits(pageWidth, ViewerSplitter.Width, StoredRightWidth() ?? DefaultRightWidth(), Token("VcLayoutTranscriptMinWidth"));
     private void EditorSizeChanged(object sender, SizeChangedEventArgs args) { if (ready) FitViewer(args.NewSize.Width); }
     /// <summary>The right column collapses first when the transcript would drop below 588 and returns when there is room.</summary>
     private void FitViewer(double pageWidth)
@@ -506,7 +524,7 @@ public sealed partial class EditorPage : Page
         if (fits && viewerForced) { viewerForced = false; ShowViewer(true); }
         else if (Viewer.IsChecked == true && !fits && !viewerForced) { viewerSqueezed = true; ShowViewer(false); }
         else if (viewerSqueezed && fits) { viewerSqueezed = false; ShowViewer(true); }
-        else if (Viewer.IsChecked == true && owner.RightColumnWidth is null) RightColumn.Width = new(DefaultRightWidth());
+        else if (Viewer.IsChecked == true && StoredRightWidth() is null) RightColumn.Width = new(DefaultRightWidth());
     }
     /// <summary>Enter collapses the viewer; the splitter's arrow keys step 16 (delta §3.3).</summary>
     private void SplitterKeyDown(object sender, KeyRoutedEventArgs args)
@@ -519,8 +537,8 @@ public sealed partial class EditorPage : Page
     }
     private void SplitterKeyUp(object sender, KeyRoutedEventArgs args) { if (args.Key is VirtualKey.Left or VirtualKey.Right) RememberRightWidth(); }
     private void SplitterDragged(object sender, ManipulationCompletedRoutedEventArgs args) => RememberRightWidth();
-    /// <summary>A width the user chose stays with the window across projects; settings.schema.json has no key for it.</summary>
-    private void RememberRightWidth() => owner.RightColumnWidth = RightColumn.ActualWidth;
+    /// <summary>Only moving the splitter, by drag or arrow keys, stores a width (ui.rightColumnWidth).</summary>
+    private void RememberRightWidth() => owner.RememberRightColumnWidth(RightColumn.ActualWidth, Token("VcSizeRightColumnMin"), Token("VcSizeRightColumnMax"));
     private void RightPaneSizeChanged(object sender, SizeChangedEventArgs args)
     {
         AutomationProperties.SetItemStatus(ViewerSplitter, $"{Math.Round(args.NewSize.Width)} px");

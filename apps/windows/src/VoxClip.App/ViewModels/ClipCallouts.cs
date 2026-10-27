@@ -16,11 +16,16 @@ public static class ClipCallouts
     public static SidebarCallout NoConnector { get; } = new("Choose how VoxClip finds clips: your API key, a model on this computer, or an installed CLI.",
         "You can also select words and press Ctrl+K to make a clip yourself.", SetUp);
 
+    /// <summary>A connector's name in copy: a CLI's short name, from its catalogue label ("Claude Code (installed CLI)" reads
+    /// "Claude Code"); API-key and local connectors keep their label.</summary>
+    public static string ConnectorName(string label, string group) =>
+        group == "cli" && label.IndexOf(" (", StringComparison.Ordinal) is > 0 and var cut ? label[..cut] : label;
+
     /// <summary>The chosen connector is not ready when Find clips runs: §13's CLI and local-server rows, else the §5 message
     /// with Retry. <paramref name="label"/> is the catalogue label; the CLI rows use the short name.</summary>
     public static SidebarCallout NotReady(ConnectorId connector, string label, ConnectorStatus status, string? installHint, string? signInHint)
     {
-        var cli = connector == ConnectorId.Codex ? "Codex" : "Claude Code";
+        var cli = ConnectorName(label, "cli");
         var ollama = connector == ConnectorId.Ollama;
         return status switch
         {

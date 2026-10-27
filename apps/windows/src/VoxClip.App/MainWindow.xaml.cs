@@ -42,7 +42,7 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
     /// <summary>Select a row as a click does: the NavigationView raises the same SelectionChanged.</summary>
     internal void DebugSelect(SidebarRow row) => Nav.SelectedItem = row;
     internal Task DebugInvokeAsync(SidebarRow row) => InvokeRowAsync(row);
-    internal Task DebugRequestCloseAsync() => RequestCloseAsync();
+    internal Task DebugRequestCloseAsync() => RequestCloseAsync(ShellPath.CloseWindow);
     internal FrameworkElement? DebugContainer(SidebarRow row) => Nav.ContainerFromMenuItem(row) as FrameworkElement;
     internal bool DebugCalloutTipOpen => CalloutTip.IsOpen;
 #endif
@@ -73,21 +73,25 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
         Root.KeyboardAccelerators.Add(Accelerator(VirtualKey.O, VirtualKeyModifiers.Control, async () => await ChooseAsync(false)));
         Root.KeyboardAccelerators.Add(Accelerator(VirtualKey.N, VirtualKeyModifiers.Control, () => App.NewWindow()));
         Root.KeyboardAccelerators.Add(Accelerator((VirtualKey)188, VirtualKeyModifiers.Control, App.OpenSettings));
-        Root.KeyboardAccelerators.Add(Accelerator(VirtualKey.Left, VirtualKeyModifiers.Menu, ShowHome));
-        Root.KeyboardAccelerators.Add(Accelerator(VirtualKey.Number1, VirtualKeyModifiers.Control, ShowHome));
-        Root.KeyboardAccelerators.Add(Accelerator(VirtualKey.Number2, VirtualKeyModifiers.Control, () => ShowScope(null)));
-        Root.KeyboardAccelerators.Add(Accelerator(VirtualKey.W, VirtualKeyModifiers.Control, () => _ = RequestCloseAsync()));
+        Root.KeyboardAccelerators.Add(Accelerator(VirtualKey.Left, VirtualKeyModifiers.Menu, () => ShowHome(ShellPath.Back)));
+        Root.KeyboardAccelerators.Add(Accelerator(VirtualKey.Number1, VirtualKeyModifiers.Control, () => ShowHome(ShellPath.HomeShortcut)));
+        Root.KeyboardAccelerators.Add(Accelerator(VirtualKey.Number2, VirtualKeyModifiers.Control, () => ShowScope(null, via: ShellPath.EditorShortcut)));
+        Root.KeyboardAccelerators.Add(Accelerator(VirtualKey.W, VirtualKeyModifiers.Control, () => _ = RequestCloseAsync(ShellPath.CloseShortcut)));
         AppWindow.Closing += (appWindow, args) =>
         {
             if (App.Restart.IsPreparing) { args.Cancel = true; return; }
             if (closingApproved || editor is null) return;
             args.Cancel = true;
-            _ = RequestCloseAsync();
+            _ = RequestCloseAsync(ShellPath.CloseWindow);
         };
         Closed += WindowClosed;
         Root.SizeChanged += RootSizeChanged;
         // F6 is the window's, wherever focus is; a page that handles the key first doesn't stop the cycle.
         Root.AddHandler(UIElement.KeyDownEvent, new KeyEventHandler(RegionKeyDown), true);
+        // The editor's accelerators are scoped to its page, so the ones design §11.1 keeps working from the sidebar pane are
+        // window accelerators that hand the key to the attached editor; [ and ] act on clip and suggestion rows.
+        foreach (var gesture in ShortcutPolicy.PaneGestures) Root.KeyboardAccelerators.Add(PaneAccelerator(gesture));
+        Nav.AddHandler(UIElement.KeyDownEvent, new KeyEventHandler(PaneRowKeyDown), false);
         takeRefresh = DispatcherQueue.CreateTimer();
         takeRefresh.IsRepeating = false;
         takeRefresh.Interval = TimeSpan.FromMilliseconds(500);
@@ -105,7 +109,9 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
         if (editor is not null) takeRefresh.Start();
     }
     private void TranscriptionChanged(object? sender, EventArgs args) => ApplyTake();
-    private async Task RequestCloseAsync()
+    /// <summary>Close the window through the leave boundary (design §2): a refused save keeps the project open and, from
+    /// Home, brings its editor back.</summary>
+    private async Task RequestCloseAsync(ShellPath via)
     {
         if (closingInProgress || App.Restart.IsPreparing) return;
         closingInProgress = true;
@@ -115,12 +121,14 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
             try
             {
                 if (App.Restart.IsPreparing) return;
-                if (ShellNavigation.Close(editor is not null) == ShellRoute.Close || await editor!.TrySaveBeforeLeavingAsync())
+                var open = editor;
+                var leave = await ShellNavigation.LeaveAsync(ShellNavigation.Route(via, false, open is not null), ShowingHome, () => open!.TrySaveBeforeLeavingAsync());
+                if (leave == LeaveResult.Proceed)
                 {
                     closingApproved = true;
                     Close();
                 }
-                else ShowRefusedLeave(editor);
+                else if (leave == LeaveResult.ShowEditor) ShowRefusedLeave(open!);
             }
             finally { navigation.Release(); }
         }
@@ -157,6 +165,41 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
         updateRestart.IsEnabled = !App.Services.IsBusy;
         ToolTipService.SetToolTip(updateRestart, App.Services.IsBusy ? "Finish the current task first." : "Restart to update VoxClip.");
     }
+    /// <summary>A pane gesture ("Ctrl+Shift+K") as a window accelerator that runs the attached editor's shortcut while focus is
+    /// on a sidebar row and the editor is showing. Elsewhere it does nothing, so the editor's own scoped accelerator or a
+    /// text field takes the key; on Home nothing acts on the hidden editor.</summary>
+    private KeyboardAccelerator PaneAccelerator(string gesture)
+    {
+        var parts = gesture.Split('+');
+        var accelerator = new KeyboardAccelerator
+        {
+            Key = Enum.Parse<VirtualKey>(parts[^1]),
+            Modifiers = (parts.Contains("Ctrl") ? VirtualKeyModifiers.Control : VirtualKeyModifiers.None) | (parts.Contains("Shift") ? VirtualKeyModifiers.Shift : VirtualKeyModifiers.None)
+        };
+        accelerator.Invoked += (_, args) =>
+        {
+            if (editor is { } page && !ShowingHome && FocusInPane() && !InputState.IsTextFocus(FocusManager.GetFocusedElement(Root.XamlRoot))
+                && page.InvokeFromPane(gesture)) args.Handled = true;
+        };
+        return accelerator;
+    }
+    /// <summary>[ and ] on a clip or suggestion row step through the kept clips, and focus follows to the new scope's row.</summary>
+    private void PaneRowKeyDown(object sender, KeyRoutedEventArgs args)
+    {
+        if (editor is not { } page || ShowingHome || args.Key is not ((VirtualKey)219 or (VirtualKey)221) || !FocusInPane() || FocusedRow() is not { } row) return;
+        var modifier = InputState.Down(VirtualKey.Control) || InputState.Down(VirtualKey.Menu) || InputState.Down(VirtualKey.Shift);
+        var step = ShortcutPolicy.RowClipStep(args.Key == (VirtualKey)219 ? '[' : ']', row.Kind, modifier);
+        if (step == 0) return;
+        args.Handled = true;
+        page.ViewModel.CycleClip(step);
+        if (Shell.ScopeRow(page.ViewModel.State?.ActiveClipId) is { } next && Nav.ContainerFromMenuItem(next) is Control container) container.Focus(FocusState.Keyboard);
+    }
+    private SidebarRow? FocusedRow()
+    {
+        for (var element = FocusManager.GetFocusedElement(Root.XamlRoot) as DependencyObject; element is not null; element = VisualTreeHelper.GetParent(element))
+            if (element is NavigationViewItem item) return Nav.MenuItemFromContainer(item) as SidebarRow;
+        return null;
+    }
     internal static KeyboardAccelerator Accelerator(VirtualKey key, VirtualKeyModifiers modifiers, Action action)
     {
         var accelerator = new KeyboardAccelerator { Key = key, Modifiers = modifiers };
@@ -176,18 +219,20 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
             WinRT.Interop.InitializeWithWindow.Initialize(picker, WinRT.Interop.WindowNative.GetWindowHandle(this));
             foreach (var extension in projectOnly ? new[] { ".voxclip" } : new[] { ".mp4", ".mov", ".m4v", ".mkv", ".webm", ".voxclip" }) picker.FileTypeFilter.Add(extension);
             var file = await picker.PickSingleFileAsync();
-            if (file is not null) await OpenPathAsync(file.Path);
+            if (file is not null) await OpenPathAsync(file.Path, projectOnly ? ShellPath.OpenProject : ShellPath.ImportVideo);
         }
         catch (Exception exception) { ShowError(exception, "Open video"); }
     }
 
-    internal async Task OpenPathAsync(string path, bool demo = false)
+    /// <summary>Open a video or project in place (design §2): a window that already holds it comes forward instead, and the
+    /// open project is saved through the leave boundary first. <paramref name="via"/> names the path for ShellNavigation.</summary>
+    internal async Task OpenPathAsync(string path, ShellPath via, bool demo = false)
     {
         if (App.Restart.IsPreparing) return;
         var fullPath = Path.GetFullPath(path);
         var newImport = !Path.GetExtension(fullPath).Equals(".voxclip", StringComparison.OrdinalIgnoreCase);
         var existing = App.Windows.FirstOrDefault(window => string.Equals(window.ProjectPath, fullPath, StringComparison.OrdinalIgnoreCase));
-        if (ShellNavigation.Open(existing is not null, editor is not null) == ShellRoute.ShowHoldingWindow) { existing!.Activate(); existing.ShowOpenProject(); return; }
+        if (ShellNavigation.Route(via, existing is not null, editor is not null, fullPath) == ShellRoute.ShowHoldingWindow) { existing!.Activate(); existing.ShowOpenProject(); return; }
         await navigation.WaitAsync();
         if (App.Restart.IsPreparing) { navigation.Release(); return; }
         var previous = editor;
@@ -197,9 +242,10 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
         var installed = false;
         try
         {
-            if (ShellNavigation.Open(false, previous is not null) == ShellRoute.LeaveThenOpen && !await previous!.TrySaveBeforeLeavingAsync())
+            var leave = await ShellNavigation.LeaveAsync(ShellNavigation.Route(via, false, previous is not null, fullPath), ShowingHome, () => previous!.TrySaveBeforeLeavingAsync());
+            if (leave != LeaveResult.Proceed)
             {
-                ShowRefusedLeave(previous);
+                if (leave == LeaveResult.ShowEditor) ShowRefusedLeave(previous!);
                 return;
             }
             Core.Domain.Shared.Project project;
@@ -275,14 +321,30 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
     }
 
     internal void SetProjectPath(string path) => ProjectPath = path;
-    /// <summary>The right column width the user chose with the splitter; window state, kept across projects (delta §3.3).</summary>
-    internal double? RightColumnWidth { get; set; }
+    private double? rightColumnWidth;
+    /// <summary>The right column width the user chose with the splitter (delta §3.3), from ui.rightColumnWidth and kept to
+    /// the column's range, or null while the column follows the window. It holds across projects.</summary>
+    internal double? RightColumnWidth(double min, double max) =>
+        EditorLayout.StoredRightColumnWidth(rightColumnWidth ?? App.Services.Settings.GetDouble("ui.rightColumnWidth"), min, max);
+    /// <summary>The user moved the splitter: the width applies in this window at once and is then stored in
+    /// ui.rightColumnWidth. Nothing else writes the key.</summary>
+    internal void RememberRightColumnWidth(double width, double min, double max)
+    {
+        if (EditorLayout.RightColumnWidthToStore(width, min, max) is not { } stored || stored == rightColumnWidth) return;
+        rightColumnWidth = stored;
+        _ = SaveRightColumnWidthAsync(stored);
+    }
+    private static async Task SaveRightColumnWidthAsync(double width)
+    {
+        try { await App.Services.SetAsync("ui.rightColumnWidth", width); }
+        catch (Exception exception) { App.Services.Log.Write(Core.Services.Logging.LogLevel.Warn, "settings", exception.GetType().Name); }
+    }
     /// <summary>Showing the viewer where the transcript has no room closes the pane (delta §3.7).</summary>
     internal void CloseNavigationPane() => Nav.IsPaneOpen = false;
     /// <summary>Show Home without leaving the project: playback pauses and the editor page stays alive (ADR-R29).</summary>
-    internal void ShowHome()
+    internal void ShowHome(ShellPath via)
     {
-        if (App.Restart.IsPreparing || !navigation.Wait(0)) { SyncSelection(); return; }
+        if (ShellNavigation.Route(via, false, editor is not null) != ShellRoute.ShowHome || App.Restart.IsPreparing || !navigation.Wait(0)) { SyncSelection(); return; }
         try
         {
             editor?.PausePlayback();
@@ -292,9 +354,9 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
     }
     /// <summary>Show the editor scoped to Full take (null) or one clip; a scope change is the existing setActiveClip step.
     /// Choosing a row keeps focus on the row; Ctrl+2 from Home's content moves focus into the transcript (design C15).</summary>
-    internal void ShowScope(string? clipId, bool keepSelection = false)
+    internal void ShowScope(string? clipId, bool keepSelection = false, ShellPath via = ShellPath.ScopeRow)
     {
-        if (editor is not { } current || App.Restart.IsPreparing || !navigation.Wait(0)) { SyncSelection(); return; }
+        if (ShellNavigation.Route(via, false, editor is not null) != ShellRoute.ShowEditor || editor is not { } current || App.Restart.IsPreparing || !navigation.Wait(0)) { SyncSelection(); return; }
         var fromHome = !ReferenceEquals(ContentFrame.Content, current);
         var fromPane = FocusInPane();
         try
@@ -312,7 +374,6 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
     /// shows is seen and heard (design §2).</summary>
     private void ShowRefusedLeave(EditorPage open)
     {
-        if (!ShellNavigation.ShowEditorAfterRefusedLeave(ShowingHome)) return;
         ShowContent(open);
         open.FocusTranscript();
         open.AnnounceNotice();
@@ -396,32 +457,40 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
         string? frame = null;
         var unreadable = false;
         var tiles = new Dictionary<string, (string? Frame, CaptionCard? Card)>(StringComparer.Ordinal);
+        // Cards and frames fail apart: a card that can't be made never stops the poster frames, and the other way round.
         try
         {
             // Clip rows use each clip's own first kept words and frame (design §3.4), centre-cropped to 9:16 by the tile.
             (card, var clipCards) = await Task.Run(() => (App.Services.Cards?.Card(project, null, words, style),
                 clips.Select(id => (Id: id, Card: App.Services.Cards?.Card(project, id, words, style))).ToArray()), loads.Token);
             foreach (var (id, clipCard) in clipCards) tiles[id] = (null, clipCard);
-            if (current.MediaPath is { } media && project.Media.Source.Video is { } video)
-            {
-                var source = project.Media.Source;
-                try
-                {
-                    frame = await App.Services.Thumbnails.GetAsync(source.ContentKey, media, Thumbnails.Candidates(project, null), video.RotationDegrees, loads.Token);
-                    foreach (var id in clips)
-                        tiles[id] = (await App.Services.Thumbnails.GetAsync(source.ContentKey, media, Thumbnails.Candidates(project, id), video.RotationDegrees, loads.Token), tiles[id].Card);
-                }
-                catch (Exception exception) when (exception is not OperationCanceledException)
-                {
-                    unreadable = true;
-                    App.Services.Log.Write(Core.Services.Logging.LogLevel.Warn, "project", $"action=Poster frame code={(exception is VoxClipException known ? known.WireCode : exception.GetType().Name)}");
-                }
-            }
         }
         catch (OperationCanceledException) { return; }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or System.Text.Json.JsonException or InvalidDataException or KeyNotFoundException)
+        catch (Exception exception)
         {
             App.Services.Log.Write(Core.Services.Logging.LogLevel.Warn, "project", $"action=Caption card code={exception.GetType().Name}");
+        }
+        if (current.MediaPath is { } media && project.Media.Source.Video is { } video)
+        {
+            var source = project.Media.Source;
+            try
+            {
+                frame = await App.Services.Thumbnails.GetAsync(source.ContentKey, media, Thumbnails.Candidates(project, null), video.RotationDegrees, loads.Token);
+                foreach (var id in clips)
+                    tiles[id] = (await App.Services.Thumbnails.GetAsync(source.ContentKey, media, Thumbnails.Candidates(project, id), video.RotationDegrees, loads.Token),
+                        tiles.TryGetValue(id, out var tile) ? tile.Card : null);
+            }
+            catch (OperationCanceledException) { return; }
+            catch (VoxClipException exception)
+            {
+                // The decoder can't read the video (design §5.4.4 f).
+                unreadable = true;
+                App.Services.Log.Write(Core.Services.Logging.LogLevel.Warn, "project", $"action=Poster frame code={exception.WireCode}");
+            }
+            catch (Exception exception)
+            {
+                App.Services.Log.Write(Core.Services.Logging.LogLevel.Warn, "project", $"action=Poster frame code={exception.GetType().Name}");
+            }
         }
         if (loads.IsCancellationRequested || !ReferenceEquals(editor, current)) return;
         take = (path, frame, card, unreadable, current.IsDemo, current.MediaPath is null && !current.IsDemo, project.Media.Source.Video is null);
@@ -507,10 +576,28 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
     private async Task RenameClipAsync(string id)
     {
         if (editor?.ViewModel is not { } model || model.Clips.FirstOrDefault(clip => clip.Id == id) is not { } clip) return;
-        var name = new TextBox { Header = "Clip title", Text = clip.Title, MaxLength = 200 };
+        // A title is at most 120 code points; a longer one keeps the dialog open with the reason under the box. MaxLength
+        // counts UTF-16 units, so it only stops a paste far past the limit.
+        var name = new TextBox { Header = "Clip title", Text = clip.Title, MaxLength = 2 * Core.Domain.Editing.EditingLimits.MaxClipTitleCodePoints };
+        var problem = new TextBlock { TextWrapping = TextWrapping.Wrap, Foreground = Ui.ThemeBrush(Root, "VcStatusDangerForegroundBrush"), Visibility = Visibility.Collapsed };
         name.SelectAll();
-        var dialog = new ContentDialog { XamlRoot = Root.XamlRoot, Title = "Rename clip", Content = name, PrimaryButtonText = "Rename", CloseButtonText = "Cancel", DefaultButton = ContentDialogButton.Primary };
-        if (await dialog.ShowAsync() == ContentDialogResult.Primary && name.Text.Trim() != clip.Title) model.Rename(id, name.Text);
+        name.TextChanged += (_, _) => problem.Visibility = Visibility.Collapsed;
+        var body = new StackPanel { Spacing = 8 };
+        body.Children.Add(name);
+        body.Children.Add(problem);
+        var dialog = new ContentDialog { XamlRoot = Root.XamlRoot, Title = "Rename clip", Content = body, PrimaryButtonText = "Rename", CloseButtonText = "Cancel", DefaultButton = ContentDialogButton.Primary };
+        dialog.PrimaryButtonClick += (_, args) =>
+        {
+            if (EditorViewModel.ClipTitleProblem(name.Text) is not { } reason) return;
+            args.Cancel = true;
+            problem.Text = reason;
+            problem.Visibility = Visibility.Visible;
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetHelpText(name, reason);
+            Microsoft.UI.Xaml.Automation.Peers.FrameworkElementAutomationPeer.FromElement(name)?.RaiseNotificationEvent(Microsoft.UI.Xaml.Automation.Peers.AutomationNotificationKind.Other,
+                Microsoft.UI.Xaml.Automation.Peers.AutomationNotificationProcessing.MostRecent, reason, "rename");
+        };
+        if (await dialog.ShowAsync() == ContentDialogResult.Primary && name.Text.Trim() != clip.Title && !model.Rename(id, name.Text))
+            model.Notice = "This clip couldn't be renamed. Your edits are still here.";
         FocusRow(Shell.Rows.FirstOrDefault(row => row.ClipId == id));
     }
     private bool RowCommand(KeyboardAcceleratorInvokedEventArgs args, Func<EditorViewModel, string, bool> command)
@@ -543,7 +630,7 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
         if (syncingSelection || args.SelectedItem is not SidebarRow row) return;
         switch (row.Kind)
         {
-            case SidebarKind.Home: ShowHome(); break;
+            case SidebarKind.Home: ShowHome(ShellPath.SidebarHome); break;
             case SidebarKind.FullTake: ShowScope(null); break;
             case SidebarKind.Clip or SidebarKind.Suggestion: ShowScope(row.ClipId); break;
         }
@@ -555,7 +642,7 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
     /// <summary>Rows that do not select: a Recent project opens in place through OpenPathAsync; actions run on the editor.</summary>
     private async Task InvokeRowAsync(SidebarRow row)
     {
-        if (row.Kind == SidebarKind.Recent && row.Recent is { } recent) await OpenPathAsync(recent.Path);
+        if (row.Kind == SidebarKind.Recent && row.Recent is { } recent) await OpenPathAsync(recent.Path, ShellPath.RecentRow);
         else if (row.Key == "action:make") editor?.MakeClipFromPane();
         else if (row.Key == "action:find") editor?.ShowFindClips(Nav.ContainerFromMenuItem(row) as FrameworkElement);
     }
@@ -612,14 +699,14 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
     /// <summary>A dropped file replaces the open project through OpenPathAsync, which saves it first; design §7.</summary>
     internal async Task OpenDroppedAsync(string path)
     {
-        if (ShellNavigation.UnsupportedDrop(path) is { } unsupported)
+        if (ShellNavigation.Route(ShellPath.Drop, false, editor is not null, path) == ShellRoute.Unsupported)
         {
             WindowNotice.Severity = InfoBarSeverity.Informational;
-            WindowNotice.Message = unsupported;
+            WindowNotice.Message = ShellNavigation.UnsupportedDrop(path) ?? "";
             WindowNotice.IsOpen = true;
             return;
         }
-        await OpenPathAsync(path);
+        await OpenPathAsync(path, ShellPath.Drop);
     }
     /// <summary>F6 and Shift+F6 move between regions in design §16 order: the sidebar, then the editor's command row,
     /// transcript, viewer, Captions and timeline, or Home's content. Focus outside every region counts as the sidebar, so

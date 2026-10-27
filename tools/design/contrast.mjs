@@ -60,6 +60,15 @@ const tokenPairs = [
   ['ui', 'status.success', 'status.successBackground'],
   ['ui', 'accent.text', 'status.infoBackground'],
   ['ui', 'overlay.dropBorder', ['overlay.drop', 'bg.surface']],
+  // Media chips and the progress line sit on any frame (design 5.4.8): checked over white, the worst frame, and over black.
+  ['text', 'chip.mediaForeground', ['chip.mediaBackground', '#FFFFFF'], 'media chip over a white frame'],
+  ['text', 'chip.mediaForeground', ['chip.mediaBackground', 'stage'], 'media chip over black'],
+  ['text', 'chip.mediaForeground', 'chip.mediaBackgroundOpaque', 'media chip with transparency off'],
+  ['ui', 'chip.warningGlyph', ['chip.mediaBackground', '#FFFFFF'], 'corrupt-file chip glyph over a white frame'],
+  ['ui', 'chip.warningGlyph', 'chip.mediaBackgroundOpaque', 'corrupt-file chip glyph with transparency off'],
+  ['ui', 'chip.mediaStrokeOpaque', 'chip.mediaBackgroundOpaque', 'opaque chip outline'],
+  ['ui', 'overlay.foreground', ['media.progressTrack', '#FFFFFF'], 'progress line over a white frame'],
+  ['ui', 'overlay.foreground', ['media.progressTrack', 'stage'], 'progress line over black'],
 ];
 
 // Colour tokens no pair checks, with the reason. Every other colour token must appear in a pair.
@@ -71,6 +80,9 @@ export const exempt = {
   'record.live': 'M2 recording UI, not drawn yet',
   'timeline.scopeDim': 'dims the track outside the selected clip on purpose; brackets and trim handles mark the scope',
   'overlay.dropZoneBorder': 'decorative; the zone icon and label identify it',
+  'chip.mediaStroke': 'decorative inner line of a translucent chip; its fill and text carry it',
+  'media.rim': 'decorative 1 px rim on media; the tile title and accessible name identify it',
+  'media.sheen': 'loading shimmer; the Loading meta text and the accessible name carry the state',
 };
 
 // Windows draws accent text and on-accent text from the App.xaml ramp, not from tokens. The

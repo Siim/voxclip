@@ -10,7 +10,7 @@ $env:VOXCLIP_SHARED_DIR=Join-Path $root 'shared'
 $exe=Join-Path $root 'apps\windows\src\VoxClip.App\bin\ARM64\Debug\net10.0-windows10.0.26100.0\win-arm64\VoxClip.exe'
 $started=[DateTime]::UtcNow
 $owned=@{}
-$result=[ordered]@{homeRenderedSelfCheck=$false; homeLaunch=$false; editorRenderedSelfCheck=$false; editorUiAObserved=$false; editorScreenshotCaptured=$false; normalOpen=$false; paneRows=$false; keyboardClip=$false; correctionTextIsolated=$false; clipRowScope=$false; escapeFullTake=$false; f6Order=$false; homeKeepsEditor=$false; findAction=$false; compactPane=$false; sameWindowReopen=$false; noArgumentReactivation=$false; fileActivationAfterNoArgument=$false; keyboardWalk=$false; providerDispatched=$false; exportStarted=$false}
+$result=[ordered]@{homeRenderedSelfCheck=$false; homeLaunch=$false; editorRenderedSelfCheck=$false; editorUiAObserved=$false; editorScreenshotCaptured=$false; normalOpen=$false; paneRows=$false; keyboardClip=$false; correctionTextIsolated=$false; clipRowScope=$false; paneShortcuts=$false; escapeFullTake=$false; f6Order=$false; homeKeepsEditor=$false; findAction=$false; compactPane=$false; sameWindowReopen=$false; noArgumentReactivation=$false; fileActivationAfterNoArgument=$false; keyboardWalk=$false; providerDispatched=$false; exportStarted=$false}
 function StartOwned([string]$arguments) {
  $start=New-Object System.Diagnostics.ProcessStartInfo($exe)
  $start.UseShellExecute=$false
@@ -219,6 +219,20 @@ try{
  if(-not (IsSelected $clip) -or -not $afterChoose.StartsWith('Clip 1, ')){throw "Choosing the clip row did not select it and keep focus: $afterChoose"}
  Dump $w 'clip-scope';Capture $w 'clip-scope'
  $result.clipRowScope=$true
+ # Editor shortcuts act from the pane (design 11.1). Ctrl+E on the chosen clip row opens Export with only that clip.
+ [R1Native]::Chord(0x11,0x45);Start-Sleep -Milliseconds 800
+ [void](FindName $w 'Selected clips (1)')
+ Dump $w 'pane-export';Capture $w 'pane-export'
+ [R1Native]::Key(0x1B);Start-Sleep -Milliseconds 600
+ if(HasVisibleName $w 'Selected clips (1)'){throw 'Escape did not close Export'}
+ # Delete on the row removes the clip, and Ctrl+Z with focus still in the pane brings it back.
+ $clip=FindPrefix $w 'Clip 1, ';$clip.SetFocus();Start-Sleep -Milliseconds 200
+ [R1Native]::Key(0x2E);Start-Sleep -Milliseconds 600
+ if(HasPrefix $w 'Clip 1, '){throw 'Delete on the clip row did not remove the clip'}
+ [R1Native]::Chord(0x11,0x5A);Start-Sleep -Milliseconds 600
+ [void](FindPrefix $w 'Clip 1, ')
+ [IO.File]::WriteAllText((Join-Path $shots 'pane-shortcuts.txt'),"focus=$(Focused)")
+ $result.paneShortcuts=$true
  $transcript=FindName $w $transcriptName
  $transcript.SetFocus();Start-Sleep -Milliseconds 150;[R1Native]::Key(0x1B);Start-Sleep -Milliseconds 500
  if(-not (IsSelected (FindPrefix $w 'Full take, '))){throw 'Escape in the transcript did not return to Full take'}

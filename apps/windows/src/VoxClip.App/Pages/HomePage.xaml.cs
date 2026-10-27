@@ -14,6 +14,11 @@ public sealed partial class HomePage : Page
     private readonly Dictionary<string, DateTime> loadedAt = new(StringComparer.OrdinalIgnoreCase);
     private AiCallout? callout;
     private DateTime aiCheckedAt;
+    /// <summary>The connector check in flight; a newer check cancels it and only the newest result is shown.</summary>
+    private CancellationTokenSource? aiCheck;
+    /// <summary>The connector settings the last check saw, and whether it must run again when Home is next shown.</summary>
+    private string aiSettings = "";
+    private bool aiStale = true;
     private (bool Words, string Style) cardSettings;
     /// <summary>UI-thread view model.</summary>
     public HomeViewModel ViewModel { get; } = new();
@@ -21,8 +26,8 @@ public sealed partial class HomePage : Page
     public HomePage()
     {
         InitializeComponent();
-        // Metadata and thumbnail reads stop while Home is hidden; the next Refresh resumes the cancelled ones.
-        Unloaded += (_, _) => { loads.Cancel(); loads = new(); };
+        // Metadata, thumbnail and connector reads stop while Home is hidden; the next Refresh resumes the cancelled ones.
+        Unloaded += (_, _) => { if (aiCheck is not null) aiStale = true; loads.Cancel(); loads = new(); };
     }
     internal void Attach(MainWindow owner)
     {
@@ -43,7 +48,12 @@ public sealed partial class HomePage : Page
     }
     private void SettingsChanged(object? sender, EventArgs args)
     {
-        _ = RefreshAiAsync();
+        // Only a change to the chosen connector's settings looks at it again, and not while Home is hidden.
+        if (ConnectorSettings(App.Services.Get("llm.connector", "")) != aiSettings)
+        {
+            aiStale = true;
+            if (IsLoaded) _ = RefreshAiAsync();
+        }
         // "Show transcript words on placeholders" or the default caption style changed: make every card again.
         if (CardSettings() == cardSettings) return;
         cardSettings = CardSettings();
@@ -79,7 +89,7 @@ public sealed partial class HomePage : Page
             if (!loadedAt.TryGetValue(row.Path, out var stamp) || stamp != Stamp(row.Path)) _ = LoadRecentAsync(row, loads.Token);
         }
         // A CLI sign-in or a local server can change outside VoxClip; look again at most once a minute.
-        if (DateTime.UtcNow - aiCheckedAt > TimeSpan.FromMinutes(1)) _ = RefreshAiAsync();
+        if (HomeViewModel.ConnectorCheckDue(aiStale, aiCheck is { IsCancellationRequested: false }, aiCheckedAt, DateTime.UtcNow)) _ = RefreshAiAsync();
     }
     private static DateTime Stamp(string path)
     {
@@ -106,11 +116,16 @@ public sealed partial class HomePage : Page
             var source = project.Media.Source;
             if (media is null || source.Video is null) { row.FramePath = null; return; }
             try { row.FramePath = await App.Services.Thumbnails.GetAsync(source.ContentKey, media, Thumbnails.Candidates(project, null), source.Video.RotationDegrees, ct); }
+            catch (VoxClipException exception)
+            {
+                // The video is there but the decoder can't read it: the card with the warning chip, and Open (design §5.4.4 f).
+                row.Unreadable = true;
+                App.Services.Log.Write(Core.Services.Logging.LogLevel.Warn, "home", $"action=Poster frame code={exception.WireCode}");
+            }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
-                // The video is there but the decoder can't read it: the card with the warning chip, and Locate… (design §5.4.4 f).
-                row.Unreadable = true;
-                App.Services.Log.Write(Core.Services.Logging.LogLevel.Warn, "home", $"action=Poster frame code={(exception is VoxClipException known ? known.WireCode : exception.GetType().Name)}");
+                // Not the video's fault: the card stands in.
+                App.Services.Log.Write(Core.Services.Logging.LogLevel.Warn, "home", $"action=Poster frame code={exception.GetType().Name}");
             }
         }
         catch (OperationCanceledException) { loadedAt.Remove(row.Path); }
@@ -132,41 +147,57 @@ public sealed partial class HomePage : Page
     private static CaptionCard? Card(Project project, bool wordsVisible, string defaultStyle)
     {
         try { return App.Services.Cards?.Card(project, null, wordsVisible, defaultStyle); }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or System.Text.Json.JsonException or InvalidDataException or KeyNotFoundException)
+        catch (Exception exception) when (exception is not OperationCanceledException)
         {
             App.Services.Log.Write(Core.Services.Logging.LogLevel.Warn, "home", $"action=Caption card code={exception.GetType().Name}");
             return null;
         }
     }
-    /// <summary>The AI callout (delta §7): shown only when it gives a next step, hidden when the connector is ready.</summary>
+    /// <summary>The AI callout (delta §7): shown only when it gives a next step, hidden when the connector is ready. One
+    /// check runs at a time: a newer one cancels it, hiding Home cancels it, and only the newest result is shown.</summary>
     private async Task RefreshAiAsync()
     {
-        AiCallout? next;
+        aiCheck?.Cancel();
+        using var check = CancellationTokenSource.CreateLinkedTokenSource(loads.Token);
+        aiCheck = check;
+        var selected = App.Services.Get("llm.connector", "");
+        aiSettings = ConnectorSettings(selected);
+        aiStale = false;
         aiCheckedAt = DateTime.UtcNow;
         try
         {
-            var selected = App.Services.Get("llm.connector", "");
-            var entry = selected.Length == 0 ? null : (await ProviderCatalog.ReadAsync(loads.Token)).FirstOrDefault(item => item.WireId == selected);
+            var next = await CheckAiAsync(selected, check.Token);
+            if (aiCheck != check) return;
+            callout = next;
+            AiBar.IsOpen = next is not null;
+            if (next is null) return;
+            AiBar.Title = next.Title;
+            AiBar.Message = next.Message;
+            AiAction.Content = next.Action;
+        }
+        catch (OperationCanceledException) { if (aiCheck == check) aiStale = true; }
+        finally { if (aiCheck == check) aiCheck = null; }
+    }
+    private static string ConnectorSettings(string selected) =>
+        HomeViewModel.ConnectorSettings(selected, key => App.Services.Settings.Values.TryGetValue(key, out var value) ? value.GetRawText() : null);
+    private static async Task<AiCallout?> CheckAiAsync(string selected, CancellationToken ct)
+    {
+        try
+        {
+            var entry = selected.Length == 0 ? null : (await ProviderCatalog.ReadAsync(ct)).FirstOrDefault(item => item.WireId == selected);
             ConnectorStatus? status = null;
             if (entry is not null)
             {
-                try { status = await App.Services.Connector(entry.Id).GetStatusAsync(loads.Token); }
+                try { status = await App.Services.Connector(entry.Id).GetStatusAsync(ct); }
                 catch (Exception exception) when (exception is not OperationCanceledException) { status = new ConnectorStatus.Unavailable(exception.GetType().Name); }
             }
-            next = HomeViewModel.Callout(entry?.Label, entry?.Group, status);
+            return HomeViewModel.Callout(entry?.ShortName, entry?.Group, status);
         }
-        catch (OperationCanceledException) { return; }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or System.Text.Json.JsonException)
         {
             App.Services.Log.Write(Core.Services.Logging.LogLevel.Warn, "home", $"action=AI callout code={exception.GetType().Name}");
-            next = null;
+            return null;
         }
-        callout = next;
-        AiBar.IsOpen = next is not null;
-        if (next is null) return;
-        AiBar.Title = next.Title;
-        AiBar.Message = next.Message;
-        AiAction.Content = next.Action;
     }
     private async void AiActionClicked(object sender, RoutedEventArgs args)
     {
@@ -206,13 +237,14 @@ public sealed partial class HomePage : Page
     }
     private async void OpenRecent(object sender, RoutedEventArgs args)
     {
-        if (window is not null && sender is FrameworkElement { Tag: string path }) await window.OpenPathAsync(path);
+        if (window is not null && sender is FrameworkElement { Tag: string path }) await window.OpenPathAsync(path, ShellPath.HomeTileOpen);
     }
-    /// <summary>Locate… opens the project in place through the save-before-leaving boundary; the editor then says which
-    /// file it can't find (design §13 "Media missing").</summary>
-    private async void LocateClicked(object sender, RoutedEventArgs args)
+    /// <summary>The Open link beside a missing or unreadable video opens the project in place through the save-before-leaving
+    /// boundary, and the editor says which file it can't find (design §13 "Media missing"). Design §7's Locate… also relinks;
+    /// Windows has no relink flow yet, so the link is named for what it does.</summary>
+    private async void OpenMissingClicked(object sender, RoutedEventArgs args)
     {
-        if (window is not null && sender is FrameworkElement { Tag: string path }) await window.OpenPathAsync(path);
+        if (window is not null && sender is FrameworkElement { Tag: string path }) await window.OpenPathAsync(path, ShellPath.HomeTileOpen);
     }
     private void CancelTranscriptionClicked(object sender, RoutedEventArgs args)
     {
@@ -222,6 +254,6 @@ public sealed partial class HomePage : Page
     private async void OpenClicked(object sender, RoutedEventArgs args) { if (window is not null) await window.ChooseAsync(true); }
     private async void RecentClicked(object sender, ItemClickEventArgs args)
     {
-        if (window is not null && args.ClickedItem is RecentProject project) await window.OpenPathAsync(project.Path);
+        if (window is not null && args.ClickedItem is RecentProject project) await window.OpenPathAsync(project.Path, ShellPath.HomeTile);
     }
 }

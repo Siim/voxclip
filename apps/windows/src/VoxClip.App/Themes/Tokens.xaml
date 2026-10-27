@@ -57,6 +57,15 @@
             <SolidColorBrush x:Key="VcOverlayDropBrush" Color="#EB1B1C1F" />
             <SolidColorBrush x:Key="VcOverlayDropBorderBrush" Color="#63BDB6" />
             <SolidColorBrush x:Key="VcOverlayDropZoneBorderBrush" Color="#66ECEAE4" />
+            <SolidColorBrush x:Key="VcChipMediaBackgroundBrush" Color="#9E000000" />
+            <SolidColorBrush x:Key="VcChipMediaStrokeBrush" Color="#2EFFFFFF" />
+            <SolidColorBrush x:Key="VcChipMediaBackgroundOpaqueBrush" Color="#1A1A1C" />
+            <SolidColorBrush x:Key="VcChipMediaStrokeOpaqueBrush" Color="#66FFFFFF" />
+            <SolidColorBrush x:Key="VcChipMediaForegroundBrush" Color="#FFFFFF" />
+            <SolidColorBrush x:Key="VcChipWarningGlyphBrush" Color="#E3B25C" />
+            <SolidColorBrush x:Key="VcMediaProgressTrackBrush" Color="#8C000000" />
+            <SolidColorBrush x:Key="VcMediaRimBrush" Color="#1AFFFFFF" />
+            <SolidColorBrush x:Key="VcMediaSheenBrush" Color="#13FFFFFF" />
             <SolidColorBrush x:Key="VcFocusRingBrush" Color="#63BDB6" />
         </ResourceDictionary>
         <ResourceDictionary x:Key="Light">
@@ -115,6 +124,15 @@
             <SolidColorBrush x:Key="VcOverlayDropBrush" Color="#EBFAF9F6" />
             <SolidColorBrush x:Key="VcOverlayDropBorderBrush" Color="#1C6B69" />
             <SolidColorBrush x:Key="VcOverlayDropZoneBorderBrush" Color="#661A1B1F" />
+            <SolidColorBrush x:Key="VcChipMediaBackgroundBrush" Color="#9E000000" />
+            <SolidColorBrush x:Key="VcChipMediaStrokeBrush" Color="#2EFFFFFF" />
+            <SolidColorBrush x:Key="VcChipMediaBackgroundOpaqueBrush" Color="#1A1A1C" />
+            <SolidColorBrush x:Key="VcChipMediaStrokeOpaqueBrush" Color="#66FFFFFF" />
+            <SolidColorBrush x:Key="VcChipMediaForegroundBrush" Color="#FFFFFF" />
+            <SolidColorBrush x:Key="VcChipWarningGlyphBrush" Color="#E3B25C" />
+            <SolidColorBrush x:Key="VcMediaProgressTrackBrush" Color="#8C000000" />
+            <SolidColorBrush x:Key="VcMediaRimBrush" Color="#1AFFFFFF" />
+            <SolidColorBrush x:Key="VcMediaSheenBrush" Color="#13FFFFFF" />
             <SolidColorBrush x:Key="VcFocusRingBrush" Color="#1C6B69" />
         </ResourceDictionary>
         <ResourceDictionary x:Key="HighContrast">
@@ -173,6 +191,15 @@
             <SolidColorBrush x:Key="VcOverlayDropBrush" Color="{ThemeResource SystemColorWindowColor}" />
             <SolidColorBrush x:Key="VcOverlayDropBorderBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
             <SolidColorBrush x:Key="VcOverlayDropZoneBorderBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="VcChipMediaBackgroundBrush" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="VcChipMediaStrokeBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="VcChipMediaBackgroundOpaqueBrush" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="VcChipMediaStrokeOpaqueBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="VcChipMediaForegroundBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="VcChipWarningGlyphBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="VcMediaProgressTrackBrush" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="VcMediaRimBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="VcMediaSheenBrush" Color="#00000000" />
             <SolidColorBrush x:Key="VcFocusRingBrush" Color="{ThemeResource SystemColorHighlightColor}" />
         </ResourceDictionary>
     </ResourceDictionary.ThemeDictionaries>

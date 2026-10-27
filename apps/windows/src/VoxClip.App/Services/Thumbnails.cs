@@ -8,8 +8,9 @@ namespace VoxClip.App.Services;
 /// kept word, skipping black frames, and the JPEG is kept in the source's content-key cache entry as
 /// <c>Cache/&lt;contentKey&gt;/thumbs/poster-&lt;t&gt;-&lt;px&gt;.jpg</c>, so cache eviction counts and removes it. When every
 /// candidate is black, an empty <c>.none</c> file records that the caption card stands in. Decodes run off the UI thread,
-/// two at a time, and stop when cancelled. The Windows shell is never asked: it answers MKV and WEBM with a file-type icon.</summary>
-internal sealed class Thumbnails(string cacheRoot)
+/// two at a time, and stop when cancelled. The Windows shell is never asked: it answers MKV and WEBM with a file-type icon.
+/// A cache entry that can't be written is a cache miss, reported to <paramref name="warn"/>, never an unreadable video.</summary>
+internal sealed class Thumbnails(string cacheRoot, Action<string>? warn = null)
 {
     /// <summary>Frames cover 480 × 270: a 226 × 127 Home tile at 200% scale.</summary>
     public const int CoverWidth = 480;
@@ -17,8 +18,9 @@ internal sealed class Thumbnails(string cacheRoot)
     private readonly SemaphoreSlim decodes = new(2);
 
     /// <summary>The cached poster frame for the source at <paramref name="mediaPath"/>, made on first use from
-    /// <paramref name="candidates"/> (see <see cref="PosterFrames.Candidates"/>); null when every candidate is black or the
-    /// content key is not a cache key. Decode failures propagate, so the caller can show the unreadable state.</summary>
+    /// <paramref name="candidates"/> (see <see cref="PosterFrames.Candidates"/>); null when every candidate is black, the
+    /// content key is not a cache key or the cache can't take the frame (logged, and tried again next time). Decode failures
+    /// propagate as <see cref="VoxClipException"/>, so the caller can show the unreadable state.</summary>
     public async Task<string?> GetAsync(string contentKey, string mediaPath, IReadOnlyList<double> candidates, int rotationDegrees, CancellationToken ct)
     {
         if (candidates.Count == 0 || PathFor(contentKey, candidates[0]) is not { } target) return null;
@@ -29,23 +31,36 @@ internal sealed class Thumbnails(string cacheRoot)
         try
         {
             if (File.Exists(target)) return target;
+            // Only decode what the cache entry can keep.
+            try { Directory.CreateDirectory(Path.GetDirectoryName(target)!); }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException) { return CacheMiss(exception); }
             var jpeg = await PosterFrames.ReadJpegAsync(mediaPath, candidates, rotationDegrees, CoverWidth, CoverHeight, ct).ConfigureAwait(false);
-            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
-            if (jpeg is null)
-            {
-                await File.WriteAllBytesAsync(none, [], ct).ConfigureAwait(false);
-                return null;
-            }
             var temporary = $"{target}.{Guid.NewGuid():N}.tmp";
             try
             {
+                if (jpeg is null)
+                {
+                    await File.WriteAllBytesAsync(none, [], ct).ConfigureAwait(false);
+                    return null;
+                }
                 await File.WriteAllBytesAsync(temporary, jpeg, ct).ConfigureAwait(false);
                 File.Move(temporary, target, true);
+                return target;
             }
-            finally { File.Delete(temporary); }
-            return target;
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException) { return CacheMiss(exception); }
+            finally
+            {
+                try { File.Delete(temporary); }
+                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException) { }
+            }
         }
         finally { decodes.Release(); }
+    }
+
+    private string? CacheMiss(Exception exception)
+    {
+        warn?.Invoke($"action=Poster cache code={exception.GetType().Name}");
+        return null;
     }
 
     /// <summary>The frames to try for the edited take (<paramref name="clipId"/> null) or one of its clips (design §5.4.7):

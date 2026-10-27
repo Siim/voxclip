@@ -56,4 +56,7 @@ public sealed record MediaTile(string Id, string? FramePath, CaptionCard? Card, 
     };
     /// <summary>"{title}, {state}", or the title alone in the normal state.</summary>
     public string Name(string title) => Spoken.Length == 0 ? title : $"{title}, {Spoken}";
+    /// <summary>Whether a Home tile shows its duration chip (design §7, §5.4.4 a): in the normal state, after the hold, once
+    /// the duration has loaded. Every other state has its own chip.</summary>
+    public bool ShowsDuration(string duration, bool holding) => Status is MediaStatus.None && !holding && duration.Length > 0;
 }

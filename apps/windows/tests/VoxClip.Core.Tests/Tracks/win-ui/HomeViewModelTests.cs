@@ -66,8 +66,26 @@ public sealed class HomeViewModelTests
         Assert.Equal("file-name", Tile(Take(" ", Now)).Title);
     }
 
+    /// <summary>Design §7 and §5.4.4 a: the duration chip sits on a loaded tile in the normal state, after the hold; every other
+    /// state shows its own chip instead.</summary>
     [Fact]
-    public void MissingVideoKeepsTheTitleAndOffersLocate()
+    public void TheDurationChipShowsOnlyOnANormalLoadedTile()
+    {
+        var take = Take("First year at the café", Now);
+        var unloaded = new RecentProject(@"C:\Projects\cafe.voxclip", "cafe");
+        Assert.Equal("", unloaded.Duration);
+        Assert.False(unloaded.Media.ShowsDuration(unloaded.Duration, false));
+        var tile = Tile(take);
+        Assert.Equal(EditorViewModel.Duration(take.Media.Source.DurationSeconds), tile.Duration);
+        Assert.True(tile.Media.ShowsDuration(tile.Duration, false));
+        Assert.False(tile.Media.ShowsDuration(tile.Duration, true));
+        Assert.False(Tile(take, missing: true).Media.ShowsDuration(tile.Duration, false));
+        foreach (var status in new MediaStatus[] { new MediaStatus.Loading(), new MediaStatus.Unreadable(), new MediaStatus.Transcribing(0.42, MediaTranscriptionStage.Transcribing), new MediaStatus.Demo(), new MediaStatus.AudioOnly() })
+            Assert.False((tile.Media with { Status = status }).ShowsDuration(tile.Duration, false), status.ToString());
+    }
+
+    [Fact]
+    public void MissingVideoKeepsTheTitleAndOffersOpen()
     {
         var tile = Tile(Take("Latte art for beginners", Now.AddDays(-9)), missing: true);
         tile.FramePath = @"C:\stale.jpg";
@@ -80,7 +98,7 @@ public sealed class HomeViewModelTests
         Assert.Equal(("", "⚠ Video not found"), (tile.DetailTime, tile.DetailStatus));
         Assert.True(tile.ShowsWarning && !tile.ShowsMeta && tile.DetailIsWarning);
         Assert.Equal("Latte art for beginners, video not found", tile.AccessibleName);
-        Assert.Equal("Locate the video for Latte art for beginners", tile.LocateName);
+        Assert.Equal("Open Latte art for beginners", tile.OpenName);
     }
 
     [Fact]
@@ -239,6 +257,49 @@ public sealed class HomeViewModelTests
         Assert.Null(HomeViewModel.Callout("Ollama", "local", new ConnectorStatus.Ready()));
     }
 
+    /// <summary>Connector copy names a CLI by its short name, taken from the catalogue label the App reads (ProviderEntry.ShortName).</summary>
+    [Fact]
+    public void ConnectorCopyUsesTheCliShortName()
+    {
+        var root = new DirectoryInfo(AppContext.BaseDirectory);
+        while (root is not null && !File.Exists(Path.Combine(root.FullName, "shared", "catalog", "llm-providers.json"))) root = root.Parent;
+        Assert.NotNull(root);
+        using var catalog = System.Text.Json.JsonDocument.Parse(File.ReadAllText(Path.Combine(root.FullName, "shared", "catalog", "llm-providers.json")));
+        var names = catalog.RootElement.GetProperty("connectors").EnumerateArray()
+            .ToDictionary(entry => entry.GetProperty("id").GetString()!, entry => ClipCallouts.ConnectorName(entry.GetProperty("label").GetString()!, entry.GetProperty("group").GetString()!));
+        Assert.Equal("Claude Code", names["claude-code"]);
+        Assert.Equal("Codex", names["codex"]);
+        Assert.Equal("Google Gemini", names["gemini"]);
+        Assert.Equal("LM Studio", names["lmstudio"]);
+        Assert.Equal("Anthropic", names["anthropic"]);
+        Assert.Equal("Claude Code isn't signed in, so Find clips with AI can't run.", HomeViewModel.Callout(names["claude-code"], "cli", new ConnectorStatus.CliSignedOut())!.Title);
+        Assert.Equal("Codex isn't signed in. Open Terminal and run codex login. Your edits are saved.",
+            ClipCallouts.NotReady(ConnectorId.Codex, "Codex (installed CLI)", new ConnectorStatus.CliSignedOut(), null, "Open Terminal and run codex login.").Message);
+    }
+
+    /// <summary>Home looks at the connector as it is shown at most once a minute, again at once when the connector's own settings
+    /// change or a check was cancelled, and never while one runs.</summary>
+    [Fact]
+    public void HomeChecksTheConnectorOnlyWhenItMayHaveChanged()
+    {
+        var checkedAt = new DateTime(2026, 10, 27, 9, 0, 0, DateTimeKind.Utc);
+        Assert.False(HomeViewModel.ConnectorCheckDue(false, false, checkedAt, checkedAt.AddSeconds(59)));
+        Assert.True(HomeViewModel.ConnectorCheckDue(false, false, checkedAt, checkedAt.AddSeconds(61)));
+        Assert.True(HomeViewModel.ConnectorCheckDue(true, false, checkedAt, checkedAt.AddSeconds(1)));
+        Assert.False(HomeViewModel.ConnectorCheckDue(true, true, checkedAt, checkedAt.AddMinutes(5)));
+
+        var settings = new Dictionary<string, string> { ["llm.connector"] = "\"ollama\"", ["llm.baseUrl.ollama"] = "\"http://127.0.0.1:11434\"", ["general.transcriptTextSize"] = "17" };
+        string? Raw(string key) => settings.TryGetValue(key, out var value) ? value : null;
+        var before = HomeViewModel.ConnectorSettings("ollama", Raw);
+        settings["general.transcriptTextSize"] = "20";
+        settings["captions.defaultStyleId"] = "\"vox-box\"";
+        Assert.Equal(before, HomeViewModel.ConnectorSettings("ollama", Raw));
+        settings["llm.baseUrl.ollama"] = "\"http://127.0.0.1:11500\"";
+        Assert.NotEqual(before, HomeViewModel.ConnectorSettings("ollama", Raw));
+        settings["llm.cloudConsent.claude-code"] = "true";
+        Assert.NotEqual(HomeViewModel.ConnectorSettings("ollama", Raw), HomeViewModel.ConnectorSettings("claude-code", Raw));
+    }
+
     // PosterFrames' own candidate, black-frame and FFmpeg decode tests live with it in tests/VoxClip.Media.Tests/Thumbnails.
     [Fact]
     public void PosterCandidatesStartAtTheScopesFirstKeptWord()
@@ -290,6 +351,29 @@ public sealed class HomeViewModelTests
             Assert.Null(await cache.GetAsync("not-a-key", Path.Combine(root, "missing.mp4"), [2], 0, TestContext.Current.CancellationToken));
         }
         finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+    }
+
+    /// <summary>A cache that can't be written (here a file stands where the cache folder belongs) is a logged cache miss: no
+    /// frame, the caption card stands in, and nothing is reported as an unreadable video. The source is never decoded.</summary>
+    [Fact]
+    public async Task AnUnwritableCacheIsACacheMissNotAnUnreadableVideo()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var root = Path.Combine(Path.GetTempPath(), "voxclip-posters-" + Guid.NewGuid().ToString("N"));
+        await File.WriteAllBytesAsync(root, [], ct);
+        try
+        {
+            var warnings = new List<string>();
+            var cache = new Thumbnails(root, warnings.Add);
+            var key = new string('d', 64);
+            Assert.Null(await cache.GetAsync(key, Path.Combine(Path.GetTempPath(), "voxclip-missing-" + Guid.NewGuid().ToString("N") + ".mp4"), [2, 3], 0, ct));
+            var warning = Assert.Single(warnings);
+            Assert.StartsWith("action=Poster cache code=", warning);
+            Assert.True(warning.EndsWith("IOException", StringComparison.Ordinal) || warning.EndsWith("DirectoryNotFoundException", StringComparison.Ordinal), warning);
+            // A miss is tried again next time, so a cache that recovers gets its frame; nothing was remembered.
+            Assert.False(File.Exists(Path.ChangeExtension(cache.PathFor(key, 2)!, ".none")));
+        }
+        finally { File.Delete(root); }
     }
 
     [Fact]

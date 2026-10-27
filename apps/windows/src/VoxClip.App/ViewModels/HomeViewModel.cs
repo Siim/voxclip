@@ -56,7 +56,18 @@ public sealed class HomeViewModel : ObservableObject
         OnPropertyChanged(nameof(HasNoMatch));
     }
 
-    /// <summary>The AI callout for the chosen connector (delta §7); null when Find clips with AI can run.</summary>
+    /// <summary>The settings Home's AI callout reads: the chosen connector and its base URL, CLI path and consent, as
+    /// <paramref name="raw"/> gives them. A settings change that leaves these alone doesn't look at the connector again.</summary>
+    public static string ConnectorSettings(string connector, Func<string, string?> raw) =>
+        string.Join('\n', new[] { "llm.connector", "llm.baseUrl." + connector, "llm.cliPath." + connector, "llm.cloudConsent." + connector }.Select(key => key + "=" + raw(key)));
+
+    /// <summary>Whether Home looks at the connector again as it is shown: when a check is owed (its settings changed, or the
+    /// last check was cancelled) or a minute after the last one, and never while one is running.</summary>
+    public static bool ConnectorCheckDue(bool owed, bool running, DateTime checkedAt, DateTime now) =>
+        !running && (owed || now - checkedAt > TimeSpan.FromMinutes(1));
+
+    /// <summary>The AI callout for the chosen connector (delta §7); null when Find clips with AI can run. The label is the
+    /// connector's name in copy (<see cref="ClipCallouts.ConnectorName"/>).</summary>
     public static AiCallout? Callout(string? connectorLabel, string? group, ConnectorStatus? status)
     {
         const string byHand = "You can still make clips by hand.";
@@ -125,7 +136,7 @@ public sealed class RecentProject(string path, string name) : ObservableObject
     public string Meta => unavailable ? "Project unavailable · Show in Explorer or remove from list" : !loaded ? (stalled ? "Loading…" : "")
         : Transcribing ? "Transcribing on this PC"
         : $"{Duration} · {(IsOpen ? "Open now" : When(modifiedAt, now))} · {(clipCount == 0 ? "No clips yet" : $"{clipCount} {(clipCount == 1 ? "clip" : "clips")}")}";
-    /// <summary>The warning that replaces the meta beside Locate…: "⚠ Video not found." or "⚠ Can't read video."</summary>
+    /// <summary>The warning that replaces the meta beside Open: "⚠ Video not found." or "⚠ Can't read video."</summary>
     public string Warning => !loaded ? "" : missing ? "⚠ Video not found." : unreadable ? "⚠ Can't read video." : "";
     public bool ShowsWarning => Warning.Length > 0;
     public bool ShowsMeta => !ShowsWarning;
@@ -143,7 +154,9 @@ public sealed class RecentProject(string path, string name) : ObservableObject
     /// <summary>The sidebar draws <see cref="Detail"/> in the warning colour.</summary>
     public bool DetailIsWarning => loaded && (missing || unreadable);
     public bool DetailIsPlain => !DetailIsWarning;
-    public string LocateName => $"Locate the video for {Title}";
+    /// <summary>The Open link beside a missing or unreadable video. Design §7 calls it Locate…, but Windows has no relink flow
+    /// yet, so it says what it does: open the project, whose editor names the file it can't find.</summary>
+    public string OpenName => $"Open {Title}";
     public string CancelName => $"Cancel transcribing {Title}";
     /// <summary>"{title}, {state}" (design §5.4.9), with no "·".</summary>
     public string AccessibleName => unavailable ? $"{Title}, project unavailable" : Media.Name(Title);
@@ -189,6 +202,6 @@ public sealed class RecentProject(string path, string name) : ObservableObject
     {
         foreach (var name in new[] { nameof(Meta), nameof(Detail), nameof(DetailTime), nameof(DetailStatus), nameof(Duration), nameof(ClipCount), nameof(Transcribing), nameof(Status), nameof(Media),
             nameof(Warning), nameof(ShowsWarning), nameof(ShowsMeta), nameof(ShowsCancel), nameof(DetailIsWarning), nameof(DetailIsPlain),
-            nameof(LocateName), nameof(CancelName), nameof(AccessibleName), nameof(Description) }) OnPropertyChanged(name);
+            nameof(OpenName), nameof(CancelName), nameof(AccessibleName), nameof(Description) }) OnPropertyChanged(name);
     }
 }

@@ -38,7 +38,7 @@ internal static class ShellNativeProbe
             foreach (var path in new[] { first, second, third }) File.Copy(fixture, path, true);
 
             Require(window.CurrentScreen == "home" && window.DebugSelectedRow?.Kind == SidebarKind.Home, "launch did not show Home");
-            await window.OpenPathAsync(first);
+            await window.OpenPathAsync(first, ShellPath.Launch);
             var editor = window.DebugEditor;
             Require(editor is not null && window.CurrentScreen == "editor" && window.ProjectPath == first, "first project did not open");
             Require(window.DebugSelectedRow?.Kind == SidebarKind.FullTake, "Full take is not selected after opening");
@@ -55,7 +55,7 @@ internal static class ShellNativeProbe
                 "the project section left the sidebar on Home");
             Require(!window.Shell.Rows.Any(row => row.Kind == SidebarKind.Action), "pane actions showed on Home");
             checks.Add("sidebar Home kept the same editor object, its project section and its edits, without the leave boundary");
-            await window.OpenPathAsync(first);
+            await window.OpenPathAsync(first, ShellPath.HomeTile);
             Require(window.CurrentScreen == "editor" && ReferenceEquals(window.DebugEditor, editor) && !editor.ViewModel.IsLeaving,
                 "opening the open project from Home did not return to its editor");
             window.DebugSelect(window.Shell.Home);

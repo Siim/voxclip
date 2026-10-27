@@ -1,4 +1,5 @@
 #if DEBUG
+using VoxClip.App.ViewModels;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using VoxClip.Core.Domain.Shared;
@@ -39,9 +40,9 @@ internal static class RestartNativeProbe
             File.Copy(fixture, firstPath, true);
             File.Copy(fixture, secondPath, true);
             await App.Services.SetAsync("editing.pauseBreath", "natural");
-            await first.OpenPathAsync(firstPath);
+            await first.OpenPathAsync(firstPath, ShellPath.Launch);
             var second = App.NewWindow();
-            await second.OpenPathAsync(secondPath);
+            await second.OpenPathAsync(secondPath, ShellPath.Launch);
             Require(first.DebugEditor is not null && second.DebugEditor is not null, "both project windows must be open");
             var firstModel = first.DebugEditor!.ViewModel;
             var secondModel = second.DebugEditor!.ViewModel;
@@ -109,8 +110,8 @@ internal static class RestartNativeProbe
             }, CancellationToken.None);
             Require(App.Restart.IsPreparing && !settings.DebugNavigationEnabled, "Settings was not paused during drain");
             Require(ReferenceEquals(first, App.NewWindow()) && App.Windows.Count == 2, "new window bypassed preparation");
-            first.ShowHome();
-            await first.OpenPathAsync(secondPath);
+            first.ShowHome(ShellPath.SidebarHome);
+            await first.OpenPathAsync(secondPath, ShellPath.HomeTile);
             Require(first.CurrentScreen == "editor" && first.ProjectPath == firstPath, "navigation bypassed preparation");
             App.OpenSettings();
             Require(ReferenceEquals(settings, App.Settings), "Settings entry bypassed preparation");

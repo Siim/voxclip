@@ -31,6 +31,8 @@ public sealed partial class MediaThumbnail : UserControl
         new PropertyMetadata(null, (owner, _) => ((MediaThumbnail)owner).MediaChanged()));
     public static readonly DependencyProperty SurfaceProperty = DependencyProperty.Register(nameof(Surface), typeof(CaptionCardSurface), typeof(MediaThumbnail),
         new PropertyMetadata(CaptionCardSurface.Sidebar, (owner, _) => ((MediaThumbnail)owner).SurfaceChanged()));
+    public static readonly DependencyProperty DurationProperty = DependencyProperty.Register(nameof(Duration), typeof(string), typeof(MediaThumbnail),
+        new PropertyMetadata("", (owner, _) => ((MediaThumbnail)owner).Apply()));
     private const int HoldMilliseconds = 300;
     private readonly Grid layers = new();
     private readonly Image card = new() { Stretch = Stretch.Fill, Visibility = Visibility.Collapsed };
@@ -47,6 +49,9 @@ public sealed partial class MediaThumbnail : UserControl
     private readonly TextBlock chipText = new() { FontSize = 12, LineHeight = 16, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center };
     private readonly Run chipLabel = new();
     private readonly Run chipNumber = new();
+    // The Home tile's duration: mono 11/600 at the bottom trailing corner, with the chip's size, fill and stroke (design §7).
+    private readonly Border durationChip = new() { Height = 24, CornerRadius = new(4), BorderThickness = new(1), Padding = new(8, 0, 8, 0), Margin = new(8), HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Bottom, Visibility = Visibility.Collapsed };
+    private readonly TextBlock durationText = new() { FontSize = 11, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center };
     private readonly Grid progress = new() { VerticalAlignment = VerticalAlignment.Bottom, Visibility = Visibility.Collapsed };
     private readonly Rectangle progressFill = new() { HorizontalAlignment = HorizontalAlignment.Left, RenderTransform = new TranslateTransform() };
     private readonly DispatcherQueueTimer hold;
@@ -79,8 +84,10 @@ public sealed partial class MediaThumbnail : UserControl
         chipContent.Children.Add(chipGlyph);
         chipContent.Children.Add(chipText);
         chip.Child = chipContent;
+        durationText.FontFamily = chipNumber.FontFamily;
+        durationChip.Child = durationText;
         progress.Children.Add(progressFill);
-        foreach (var layer in new UIElement[] { card, frame, dots, sheen, rim, chip, progress }) layers.Children.Add(layer);
+        foreach (var layer in new UIElement[] { card, frame, dots, sheen, rim, chip, durationChip, progress }) layers.Children.Add(layer);
         Content = layers;
         hold = DispatcherQueue.CreateTimer();
         hold.IsRepeating = false;
@@ -103,6 +110,9 @@ public sealed partial class MediaThumbnail : UserControl
     public MediaTile? Media { get => (MediaTile?)GetValue(MediaProperty); set => SetValue(MediaProperty, value); }
     /// <summary>Home tiles carry chips and plates; sidebar and clip-row thumbnails are downscaled cards with neither.</summary>
     public CaptionCardSurface Surface { get => (CaptionCardSurface)GetValue(SurfaceProperty); set => SetValue(SurfaceProperty, value); }
+    /// <summary>A Home tile's duration chip text ("2:26"); empty until it loads. The chip has no accessible name: the tile's
+    /// description carries the duration.</summary>
+    public string Duration { get => (string)GetValue(DurationProperty); set => SetValue(DurationProperty, value); }
 
     private void EffectsChanged(object? sender, EventArgs args) => DispatcherQueue.TryEnqueue(() => { Paint(); Apply(); });
 
@@ -114,7 +124,21 @@ public sealed partial class MediaThumbnail : UserControl
         var dotFill = Ui.ThemeBrush(this, "VcChipMediaForegroundBrush");
         foreach (var item in dot) item.Fill = dotFill;
         rim.BorderBrush = Ui.ThemeBrush(this, "VcMediaRimBrush");
-        sheen.Fill = Ui.ThemeBrush(this, "VcMediaSheenBrush");
+        // The sheen band peaks at media.sheen and fades out on both sides at 105 degrees (design §5.4.5); High Contrast's
+        // value is clear, so it draws nothing.
+        var peak = Ui.ThemeBrush(this, "VcMediaSheenBrush") is SolidColorBrush solid ? solid.Color : default;
+        var clear = Microsoft.UI.ColorHelper.FromArgb(0, peak.R, peak.G, peak.B);
+        sheen.Fill = new LinearGradientBrush
+        {
+            StartPoint = new(0, 0.37),
+            EndPoint = new(1, 0.63),
+            GradientStops =
+            {
+                new Microsoft.UI.Xaml.Media.GradientStop { Color = clear, Offset = 0 },
+                new Microsoft.UI.Xaml.Media.GradientStop { Color = peak, Offset = 0.5 },
+                new Microsoft.UI.Xaml.Media.GradientStop { Color = clear, Offset = 1 },
+            }
+        };
     }
 
     private void SurfaceChanged()
@@ -253,7 +277,19 @@ public sealed partial class MediaThumbnail : UserControl
         sheen.Visibility = stalled ? Visibility.Visible : Visibility.Collapsed;
         Animate(ref sheenMotion, stalled, SheenMotion);
         ApplyChip(media, home && !held);
+        ApplyDuration(home && media?.ShowsDuration(Duration, held) == true);
         ApplyProgress(media, !held && (home || hasFrame), animate);
+    }
+
+    private void ApplyDuration(bool visible)
+    {
+        durationChip.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+        if (!visible) return;
+        var opaque = !Ui.TransparencyEnabled;
+        durationChip.Background = Ui.ThemeBrush(this, opaque ? "VcChipMediaBackgroundOpaqueBrush" : "VcChipMediaBackgroundBrush");
+        durationChip.BorderBrush = Ui.ThemeBrush(this, opaque ? "VcChipMediaStrokeOpaqueBrush" : "VcChipMediaStrokeBrush");
+        durationText.Foreground = Ui.ThemeBrush(this, "VcChipMediaForegroundBrush");
+        durationText.Text = Duration;
     }
 
     private void ApplyChip(MediaTile? media, bool visible)
@@ -264,7 +300,7 @@ public sealed partial class MediaThumbnail : UserControl
         chip.Background = Ui.ThemeBrush(this, opaque ? "VcChipMediaBackgroundOpaqueBrush" : "VcChipMediaBackgroundBrush");
         chip.BorderBrush = Ui.ThemeBrush(this, opaque ? "VcChipMediaStrokeOpaqueBrush" : "VcChipMediaStrokeBrush");
         var foreground = Ui.ThemeBrush(this, "VcChipMediaForegroundBrush");
-        var warning = Ui.ThemeBrush(this, "VcChipMediaWarningGlyphBrush");
+        var warning = Ui.ThemeBrush(this, "VcChipWarningGlyphBrush");
         chipText.Foreground = foreground;
         // Missing and unreadable chips are icon-only: the meta line beside the tile carries the words.
         var iconOnly = status is MediaStatus.Missing or MediaStatus.Unreadable;
@@ -304,7 +340,7 @@ public sealed partial class MediaThumbnail : UserControl
         progress.Height = contrast ? 4 : 2;
         // With transparency effects off the line is opaque: chip white on stage black.
         progress.Background = Ui.ThemeBrush(this, opaque && !contrast ? "VcStageBrush" : "VcMediaProgressTrackBrush");
-        progressFill.Fill = Ui.ThemeBrush(this, opaque && !contrast ? "VcChipMediaForegroundBrush" : "VcMediaProgressFillBrush");
+        progressFill.Fill = Ui.ThemeBrush(this, opaque && !contrast ? "VcChipMediaForegroundBrush" : "VcOverlayForegroundBrush");
         progressFill.Width = Math.Max(0, ActualWidth * (fraction ?? 0.3));
         if (fraction is not null) ((TranslateTransform)progressFill.RenderTransform).X = 0;
         Animate(ref progressMotion, fraction is null, ProgressMotion);

@@ -280,6 +280,33 @@ public sealed class ViewModelTests
     [InlineData(false, false, true, false, true, true)]
     public void ShortcutsRespectTextFocusAndAltGr(bool text, bool correction, bool control, bool alt, bool editor, bool expected)
         => Assert.Equal(expected, ShortcutPolicy.EditorMayHandle(text, correction, control, alt, editor));
+    [Fact]
+    public void ThePaneForwardsTheEditorsCommandShortcutsOnly()
+    {
+        // Design §11.1: these act from the sidebar pane while an editor is attached; single-letter keys and text shortcuts
+        // (Ctrl+A, Ctrl+C, Ctrl+F) stay with the editor.
+        Assert.Equal(["Ctrl+Z", "Ctrl+Y", "Ctrl+Shift+Z", "Ctrl+K", "Ctrl+E", "Ctrl+Shift+K", "Ctrl+Shift+I", "Ctrl+Shift+U", "Ctrl+Shift+P", "Ctrl+Shift+R", "F1"], ShortcutPolicy.PaneGestures);
+        // EditorPage files each accelerator under VirtualKey.ToString() and its modifiers; MainWindow parses the same strings.
+        Assert.Equal("Ctrl+Shift+Z", ShortcutPolicy.Gesture("Z", true, true));
+        Assert.Equal("Ctrl+E", ShortcutPolicy.Gesture("E", true, false));
+        Assert.Equal("F1", ShortcutPolicy.Gesture("F1", false, false));
+        Assert.True(ShortcutPolicy.PaneForwards(ShortcutPolicy.Gesture("K", true, false)));
+        Assert.True(ShortcutPolicy.PaneForwards(ShortcutPolicy.Gesture("R", true, true)));
+        foreach (var gesture in new[] { "Ctrl+A", "Ctrl+C", "Ctrl+F", "Ctrl+Shift+H", "Delete", "Space", "K", "I", "O", "ctrl+z", "Shift+Z" })
+            Assert.False(ShortcutPolicy.PaneForwards(gesture), gesture);
+    }
+    [Theory]
+    [InlineData('[', SidebarKind.Clip, false, -1)]
+    [InlineData(']', SidebarKind.Clip, false, 1)]
+    [InlineData('[', SidebarKind.Suggestion, false, -1)]
+    [InlineData(']', SidebarKind.Suggestion, false, 1)]
+    [InlineData(']', SidebarKind.Clip, true, 0)]
+    [InlineData('[', SidebarKind.FullTake, false, 0)]
+    [InlineData(']', SidebarKind.Recent, false, 0)]
+    [InlineData(']', SidebarKind.Home, false, 0)]
+    [InlineData(']', SidebarKind.Action, false, 0)]
+    [InlineData('k', SidebarKind.Clip, false, 0)]
+    public void BracketsStepClipsFromClipAndSuggestionRows(char key, SidebarKind row, bool modifier, int expected) => Assert.Equal(expected, ShortcutPolicy.RowClipStep(key, row, modifier));
     [Theory]
     [InlineData(0, "0:00.0")]
     [InlineData(-10, "0:00.0")]
@@ -315,7 +342,9 @@ public sealed class ViewModelTests
         model.Select(1); model.Select(3, true);
         Assert.NotNull(model.MakeClip());
         var clip = Assert.Single(model.Clips);
-        Assert.True(model.Apply(new EditOperation.SetActiveClip(clip.Id)));
+        // Making a clip makes it the scope in the same step (design §6.2), so selecting it again changes nothing.
+        Assert.Equal(clip.Id, model.State!.ActiveClipId);
+        Assert.False(model.Apply(new EditOperation.SetActiveClip(clip.Id)));
         var snapshot = Snapshot(model);
         Assert.InRange(snapshot.Plan.Duration, 0.5, 3.0);
         await using var engine = new DemoPreviewEngine();

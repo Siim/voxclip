@@ -13,6 +13,16 @@ public static class EditorLayout
     /// 388 at 1440 and 348 at 1280.</summary>
     public static double RightColumnWidth(double windowWidth, double min, double max) => Math.Clamp(388 - (1440 - windowWidth) * 0.25, min, max);
 
+    /// <summary>The width ui.rightColumnWidth holds, kept to the column's own range (300–560 from the tokens; the schema
+    /// allows 240–720), or null when the user has never moved the splitter and the column follows
+    /// <see cref="RightColumnWidth"/>.</summary>
+    public static double? StoredRightColumnWidth(double? stored, double min, double max) =>
+        stored is { } width && double.IsFinite(width) ? Math.Clamp(width, min, max) : null;
+
+    /// <summary>The width to store after the user moves the splitter: whole epx in the column's range.</summary>
+    public static double? RightColumnWidthToStore(double width, double min, double max) =>
+        double.IsFinite(width) ? Math.Clamp(Math.Round(width), min, max) : null;
+
     /// <summary>Whether the transcript keeps its minimum beside the splitter and a right column of this width.</summary>
     public static bool TranscriptFits(double pageWidth, double splitter, double rightColumn, double transcriptMin) =>
         pageWidth - splitter - rightColumn >= transcriptMin;
@@ -33,11 +43,13 @@ public static class EditorLayout
     }
 
     /// <summary>Why Export is unavailable for the scope, or null when it can run. The text is the button's tooltip and
-    /// accessible description (delta §3.5, placeholder spec §5.4.4).</summary>
-    public static string? ExportBlocked(bool demo, bool videoUnavailable, bool canExport, bool suggestionSelected) =>
+    /// accessible description (delta §3.5, placeholder spec §5.4.4), and what Ctrl+E says. While transcription, clip search
+    /// or an export runs it is design §14's "Finish the current task first."</summary>
+    public static string? ExportBlocked(bool demo, bool videoUnavailable, bool busy, bool hasKeptWords, bool suggestionSelected) =>
         demo ? "Demo projects have no video to export."
         : videoUnavailable ? "Locate the video to export."
-        : !canExport ? "Keep at least one word before exporting."
+        : busy ? "Finish the current task first."
+        : !hasKeptWords ? "Keep at least one word before exporting."
         : suggestionSelected ? "Keep this clip to export it."
         : null;
 }

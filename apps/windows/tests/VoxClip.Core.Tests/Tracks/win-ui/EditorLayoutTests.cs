@@ -18,6 +18,34 @@ public sealed class EditorLayoutTests
     [InlineData(2400, 560)]
     public void RightColumnFollowsTheWindowWidth(double window, double expected) => Assert.Equal(expected, EditorLayout.RightColumnWidth(window, Min, Max));
 
+    /// <summary>ui.rightColumnWidth: null until the user moves the splitter; the schema allows 240–720 and the column keeps
+    /// its own 300–560.</summary>
+    [Theory]
+    [InlineData(null, null)]
+    [InlineData(420.0, 420.0)]
+    [InlineData(240.0, 300.0)]
+    [InlineData(720.0, 560.0)]
+    [InlineData(double.NaN, null)]
+    public void AStoredRightColumnWidthKeepsTheColumnsRange(double? stored, double? expected) => Assert.Equal(expected, EditorLayout.StoredRightColumnWidth(stored, Min, Max));
+
+    [Theory]
+    [InlineData(347.6, 348.0)]
+    [InlineData(300.0, 300.0)]
+    [InlineData(120.0, 300.0)]
+    [InlineData(900.0, 560.0)]
+    [InlineData(double.PositiveInfinity, null)]
+    public void MovingTheSplitterStoresAWholeWidthInTheColumnsRange(double width, double? expected)
+    {
+        var stored = EditorLayout.RightColumnWidthToStore(width, Min, Max);
+        Assert.Equal(expected, stored);
+        // What the splitter stores is a width the schema accepts and reads back unchanged.
+        if (stored is { } value)
+        {
+            Assert.InRange(value, 240, 720);
+            Assert.Equal(value, EditorLayout.StoredRightColumnWidth(value, Min, Max));
+        }
+    }
+
     [Theory]
     [InlineData(1440, true)]
     [InlineData(1280, true)]
@@ -68,11 +96,12 @@ public sealed class EditorLayoutTests
     [Fact]
     public void ExportNamesWhyItIsUnavailable()
     {
-        Assert.Equal("Demo projects have no video to export.", EditorLayout.ExportBlocked(true, true, true, false));
-        Assert.Equal("Locate the video to export.", EditorLayout.ExportBlocked(false, true, true, false));
-        Assert.Equal("Keep at least one word before exporting.", EditorLayout.ExportBlocked(false, false, false, true));
-        Assert.Equal("Keep this clip to export it.", EditorLayout.ExportBlocked(false, false, true, true));
-        Assert.Null(EditorLayout.ExportBlocked(false, false, true, false));
+        Assert.Equal("Demo projects have no video to export.", EditorLayout.ExportBlocked(true, true, true, true, false));
+        Assert.Equal("Locate the video to export.", EditorLayout.ExportBlocked(false, true, true, true, false));
+        Assert.Equal("Finish the current task first.", EditorLayout.ExportBlocked(false, false, true, false, true));
+        Assert.Equal("Keep at least one word before exporting.", EditorLayout.ExportBlocked(false, false, false, false, true));
+        Assert.Equal("Keep this clip to export it.", EditorLayout.ExportBlocked(false, false, false, true, true));
+        Assert.Null(EditorLayout.ExportBlocked(false, false, false, true, false));
     }
 }
 #endif

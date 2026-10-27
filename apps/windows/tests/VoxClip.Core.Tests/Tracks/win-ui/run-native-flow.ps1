@@ -50,7 +50,15 @@ try {
     if ($result.status -ne 'passed') { throw "The shell probe failed: $($result.error)" }
     Write-Output "Shell probe passed $(@($result.checks).Count) checks."
 } finally {
-    if ($probeApp -and -not $probeApp.HasExited) { Stop-Process -Id $probeApp.Id -Force -ErrorAction SilentlyContinue }
-    if (Test-Path -LiteralPath $probeData) { Copy-Item (Join-Path $probeData 'Logs\voxclip.log') (Join-Path $evidence 'shell-probe.log') -ErrorAction SilentlyContinue; Remove-Item -LiteralPath $probeData -Recurse -Force }
+    # Wait for a stopped probe to exit, so it no longer holds its log or data root open when they are copied and removed.
+    if ($probeApp -and -not $probeApp.HasExited) {
+        Stop-Process -Id $probeApp.Id -Force -ErrorAction SilentlyContinue
+        [void]$probeApp.WaitForExit(15000)
+    }
+    if (Test-Path -LiteralPath $probeData) {
+        Copy-Item (Join-Path $probeData 'Logs\voxclip.log') (Join-Path $evidence 'shell-probe.log') -ErrorAction SilentlyContinue
+        try { Remove-Item -LiteralPath $probeData -Recurse -Force }
+        catch { Write-Warning "The shell probe's data root could not be removed: $($_.Exception.Message)" }
+    }
     Pop-Location
 }
