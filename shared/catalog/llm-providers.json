@@ -510,6 +510,7 @@
         },
         "authErrorMarkers": ["401", "Unauthorized", "Not logged in"],
         "limitMarkers": ["usage limit", "rate limit", "429"],
+        "overloadMarkers": ["overloaded"],
         "modelErrorMarkers": ["model_not_found", "does not exist", "not supported"],
         "signInHint": "Open Terminal and run codex login.",
         "installHint": "Install Codex (developers.openai.com/codex), then run codex login."

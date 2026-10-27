@@ -126,8 +126,16 @@ public sealed class ProcessAndCliTests
         var stdout = input["stdout"]!.GetValue<string>();
         using var runner = new FixtureProcessRunner(connectorId, Catalog(), new());
         var stderr = input["stderr"]?.GetValue<string>() ?? "";
-        runner.Override = command => command.Arguments.Contains("-p") || command.Arguments.Contains("--output-schema") || command.Arguments.Contains("app-server")
-            ? new(0, stdout, stderr, TimeSpan.Zero, false) : null;
+        var requestedModel = input["model"]!.GetValue<string>();
+        var runnerMode = input["mode"]?.GetValue<string>() == "runner";
+        runner.Override = command =>
+        {
+            if (!command.Arguments.Contains("-p") && !command.Arguments.Contains("--output-schema") && !command.Arguments.Contains("app-server")) return null;
+            var modelIndex = command.Arguments.ToList().IndexOf("--model");
+            var generationModel = modelIndex >= 0 ? command.Arguments[modelIndex + 1] : "default";
+            var output = runnerMode && generationModel != requestedModel ? input["fallbackStdout"]!.GetValue<string>() : stdout;
+            return new(0, output, stderr, TimeSpan.Zero, false);
+        };
         using var http = new HttpClient();
         var connector = new LlmConnector(connectorId, Catalog(), http, new MemoryKeys(null), new Redactor(), processes: runner, binaryOverride: runner.BinaryPath);
         if (input["mode"]?.GetValue<string>() == "app-server")
@@ -137,28 +145,40 @@ public sealed class ProcessAndCliTests
             return;
         }
         var schema = input["schema"]!.DeepClone().AsObject();
-        var request = new LlmRequest(LlmFeature.VoiceRewrite, "Rewrite the source.", null, "Return the rewrite.", "voice_rewrite_proposal", schema, 512,
+        var request = new LlmRequest(runnerMode ? LlmFeature.Test : LlmFeature.VoiceRewrite, "Rewrite the source.", null, "Return the rewrite.", "voice_rewrite_proposal", schema, 512,
             Effort.Medium, TimeSpan.FromSeconds(120), "en", "cli-reply");
         string outcome;
         try
         {
-            var answer = await connector.SendAsync(request, input["model"]!.GetValue<string>(), TestContext.Current.CancellationToken);
-            if (expected["usage"] is JsonObject expectedUsage)
+            if (runnerMode)
             {
-                long? Count(string key) => expectedUsage[key] is { } value ? (long)LlmOutput.Number(value) : null;
-                Assert.Equal(new LlmUsage(Count("input"), Count("output"), Count("cacheRead"), Count("cacheWrite")), answer.Usage);
+                var result = await new LlmRunner(new MemoryKeys(null), Catalog(), new Redactor())
+                    .RunAsync(request, connector, requestedModel, TestContext.Current.CancellationToken);
+                Assert.Equal(expected["rewrite"]!.GetValue<string>(), result.Object["rewrite"]!.GetValue<string>());
+                Assert.Equal(expected["model"]!.GetValue<string>(), result.Model);
+                Assert.Equal(expected["usedFallback"]!.GetValue<bool>(), result.UsedFallback);
+                outcome = "reply";
             }
-            switch (answer.Stop)
+            else
             {
-                case StopKind.Truncated: outcome = "truncated"; break;
-                case StopKind.Refused refused: Assert.Null(refused.Category); outcome = "refused"; break;
-                default:
-                    var parsed = LlmOutput.Validate(answer, schema);
-                    if (parsed.Object is null) { outcome = "invalidOutput"; break; }
-                    Assert.Equal(expected["rewrite"]!.GetValue<string>(), parsed.Object["rewrite"]!.GetValue<string>());
-                    Assert.Equal(expected["model"]!.GetValue<string>(), answer.Model);
-                    outcome = "reply";
-                    break;
+                var answer = await connector.SendAsync(request, requestedModel, TestContext.Current.CancellationToken);
+                if (expected["usage"] is JsonObject expectedUsage)
+                {
+                    long? Count(string key) => expectedUsage[key] is { } value ? (long)LlmOutput.Number(value) : null;
+                    Assert.Equal(new LlmUsage(Count("input"), Count("output"), Count("cacheRead"), Count("cacheWrite")), answer.Usage);
+                }
+                switch (answer.Stop)
+                {
+                    case StopKind.Truncated: outcome = "truncated"; break;
+                    case StopKind.Refused refused: Assert.Null(refused.Category); outcome = "refused"; break;
+                    default:
+                        var parsed = LlmOutput.Validate(answer, schema);
+                        if (parsed.Object is null) { outcome = "invalidOutput"; break; }
+                        Assert.Equal(expected["rewrite"]!.GetValue<string>(), parsed.Object["rewrite"]!.GetValue<string>());
+                        Assert.Equal(expected["model"]!.GetValue<string>(), answer.Model);
+                        outcome = "reply";
+                        break;
+                }
             }
         }
         catch (LlmException exception)
@@ -168,6 +188,15 @@ public sealed class ProcessAndCliTests
             outcome = char.ToLowerInvariant(outcome[0]) + outcome[1..];
         }
         Assert.Equal(expected["error"]?.GetValue<string>() ?? "reply", outcome);
+        if (runnerMode)
+        {
+            var models = runner.Requests.Where(command => command.Arguments.Contains("--output-schema")).Select(command =>
+            {
+                var modelIndex = command.Arguments.ToList().IndexOf("--model");
+                return modelIndex >= 0 ? command.Arguments[modelIndex + 1] : "default";
+            });
+            Assert.Equal(expected["generationModels"]!.AsArray().Select(value => value!.GetValue<string>()), models);
+        }
     }
 
     [Theory]

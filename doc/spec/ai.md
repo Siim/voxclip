@@ -907,13 +907,14 @@ Then emit a closing `"`. The argument is `developer_instructions=` followed by t
 **Parsing.**
 1. Split stdout into lines at LF and read each line as a transport envelope (§4.5), skipping lines that are not one. `error` events whose message starts with `Reconnecting...` are progress, not failures.
 2. Success means exit 0, a `turn.completed` event was seen and no `turn.failed` event was seen (even one without a usable message). The text is `last.json` if it is non-empty, otherwise the `text` of the last `item.completed` whose `item.type` is `agent_message`. That text is a reply (§4.5).
-3. Failure: `message` is `turn.failed.error.message`, else the last non-progress `error` event message, else the first stderr line selected by §6.8, including its empty-stderr fallback. Classify case-insensitively:
+3. Failure: `message` is `turn.failed.error.message`, else the last non-progress `error` event message, else the first stderr line selected by §6.8, including its empty-stderr fallback. Classify case-insensitively; the first matching category in this list wins. Marker text comes only from the connector's catalog lists:
    - `authErrorMarkers` means `cliSignedOut`.
    - `limitMarkers` means `planLimit(message)`.
+   - `overloadMarkers` means `overloaded`.
    - `modelErrorMarkers` means `modelNotFound`.
    - "context" together with "length" or "window" means `contextTooLong`.
    - Anything else means `cliFailed(message)`.
-4. Usage comes from `turn.completed.usage`: `input_tokens`, `cached_input_tokens`, `output_tokens`.
+4. Usage comes only from `turn.completed.usage`: `input_tokens`, `cached_input_tokens`, `output_tokens`. All other fields, including `cache_write_input_tokens`, are ignored; cache-write usage is absent.
 5. On `planLimit` or `overloaded`, the runner re-runs once with the fallback model (§4.3).
 
 **Models.**

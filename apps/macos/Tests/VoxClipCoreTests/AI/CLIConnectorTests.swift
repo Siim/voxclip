@@ -265,7 +265,7 @@ struct CLIConnectorTests {
     func sharedClaudeResultEnvelopes() async throws {
         let data = try Data(contentsOf: aiGoldenSharedRoot().appendingPathComponent("fixtures/llm/cli-replies.json"))
         let cases = try JSONDecoder().decode(JSONValue.self, from: data)[ai: "cases"].aiArray
-        #expect(cases.count == 86)
+        #expect(cases.count == 98)
         let catalog = try cliTestCatalog()
         for item in cases {
             let id = item[ai: "id"].aiString ?? "?"
@@ -274,8 +274,14 @@ struct CLIConnectorTests {
             let connectorID = try #require(input[ai: "connector"].aiString.flatMap(ConnectorID.init(rawValue:)))
             let stdout = try #require(input[ai: "stdout"].aiString, "\(id): stdout")
             let stderr = input[ai: "stderr"].aiString ?? ""
-            let runner = CLIFakeRunner(id: connectorID, catalog: catalog, generation: { _ in
-                ProcessResult(exitCode: 0, stdout: Data(stdout.utf8), stderr: Data(stderr.utf8))
+            let requestedModel = try #require(input[ai: "model"].aiString)
+            let runnerMode = input[ai: "mode"].aiString == "runner"
+            let fallbackStdout = input[ai: "fallbackStdout"].aiString ?? stdout
+            let runner = CLIFakeRunner(id: connectorID, catalog: catalog, generation: { (process: ProcessRequest) in
+                let modelIndex = process.arguments.firstIndex(of: "--model")
+                let generationModel = modelIndex.map { (index: Int) -> String in let next: Int = index + 1; return process.arguments[next] } ?? "default"
+                let output = runnerMode && generationModel != requestedModel ? fallbackStdout : stdout
+                return ProcessResult(exitCode: 0, stdout: Data(output.utf8), stderr: Data(stderr.utf8))
             })
             let connector = cliTestConnector(connectorID, runner: runner, catalog: catalog)
             if input[ai: "mode"].aiString == "app-server" {
@@ -284,23 +290,31 @@ struct CLIConnectorTests {
                 #expect(models.map(\.id) == expected[ai: "models"].aiArray.compactMap(\.aiString), "\(id): models")
                 continue
             }
-            let request = LLMRequest(feature: .voiceRewrite, system: "Rewrite the source.", instruction: "Return the rewrite.",
+            let request = LLMRequest(feature: runnerMode ? .test : .voiceRewrite, system: "Rewrite the source.", instruction: "Return the rewrite.",
                                      schemaName: "voice_rewrite_proposal", schema: input[ai: "schema"], maxOutputTokens: 512,
                                      effort: .medium, timeout: .seconds(120), tag: "cli-reply")
             var outcome = "reply"
             do {
-                let completion = try await connector.send(request, model: try #require(input[ai: "model"].aiString))
-                if case .object(let expectedUsage) = expected[ai: "usage"] {
-                    func count(_ key: String) -> Int? {
-                        guard case .number(let number) = expectedUsage[key] else { return nil }
-                        return Int(exactly: number)
+                if runnerMode {
+                    let result = try await LLMRunner(keys: CLIReviewKeys(), catalog: catalog, log: CLITestLog())
+                        .run(request, on: connector, model: requestedModel)
+                    #expect(result.object[ai: "rewrite"].aiString == expected[ai: "rewrite"].aiString, "\(id): rewrite")
+                    #expect(result.model == expected[ai: "model"].aiString, "\(id): answering model")
+                    #expect(result.usedFallback == expected[ai: "usedFallback"].aiBool, "\(id): fallback")
+                } else {
+                    let completion = try await connector.send(request, model: requestedModel)
+                    if case .object(let expectedUsage) = expected[ai: "usage"] {
+                        func count(_ key: String) -> Int? {
+                            guard case .number(let number) = expectedUsage[key] else { return nil }
+                            return Int(exactly: number)
+                        }
+                        #expect(completion.usage == LLMUsage(input: count("input"), output: count("output"),
+                            cacheRead: count("cacheRead"), cacheWrite: count("cacheWrite")), "\(id): usage")
                     }
-                    #expect(completion.usage == LLMUsage(input: count("input"), output: count("output"),
-                        cacheRead: count("cacheRead"), cacheWrite: count("cacheWrite")), "\(id): usage")
+                    let parsed = try CanonicalResponseParser.validate(completion, schema: request.schema)
+                    #expect(parsed.object[ai: "rewrite"].aiString == expected[ai: "rewrite"].aiString, "\(id): rewrite")
+                    #expect(completion.model == expected[ai: "model"].aiString, "\(id): answering model")
                 }
-                let parsed = try CanonicalResponseParser.validate(completion, schema: request.schema)
-                #expect(parsed.object[ai: "rewrite"].aiString == expected[ai: "rewrite"].aiString, "\(id): rewrite")
-                #expect(completion.model == expected[ai: "model"].aiString, "\(id): answering model")
             } catch LLMError.cliFailed(let message) {
                 if let expectedMessage = expected[ai: "message"].aiString { #expect(message == expectedMessage, "\(id): stderr") }
                 outcome = "cliFailed"
@@ -317,8 +331,21 @@ struct CLIConnectorTests {
                 outcome = "cliSignedOut"
             } catch LLMError.planLimit {
                 outcome = "planLimit"
+            } catch LLMError.modelNotFound {
+                outcome = "modelNotFound"
+            } catch LLMError.contextTooLong {
+                outcome = "contextTooLong"
             }
             #expect(outcome == (expected[ai: "error"].aiString ?? "reply"), "\(id)")
+            if runnerMode {
+                let generations = await runner.requests.filter { (process: ProcessRequest) in
+                    process.arguments.first == "exec" && process.arguments.contains("--json")
+                }
+                let models = generations.map { (process: ProcessRequest) in
+                    process.arguments.firstIndex(of: "--model").map { (index: Int) -> String in let next: Int = index + 1; return process.arguments[next] } ?? "default"
+                }
+                #expect(models == expected[ai: "generationModels"].aiArray.compactMap(\.aiString), "\(id): attempts")
+            }
         }
     }
 
@@ -472,7 +499,7 @@ struct CLIConnectorTests {
         var request = cliTestRequest()
         request.system = "\"\\\u{8}\t\n\u{c}\r\u{0}\u{1}\u{1f}\u{7f}Tere 世界"
         let completion = try await connector.send(request, model: "default")
-        #expect(completion.usage == LLMUsage(input: 12240, output: 15, cacheRead: 0, cacheWrite: 0))
+        #expect(completion.usage == LLMUsage(input: 12240, output: 15, cacheRead: 0, cacheWrite: nil))
         let generation = try #require(await runner.requests.last)
         let io = generation.workingDirectory.deletingLastPathComponent().appendingPathComponent("io")
         #expect(generation.arguments == [
