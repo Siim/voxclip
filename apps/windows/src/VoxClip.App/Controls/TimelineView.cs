@@ -36,6 +36,7 @@ public sealed class TimelineView : UserControl
     private readonly Polygon head = new() { Points = [new(0, 0), new(12, 0), new(12, 3), new(6, 7), new(0, 3)], IsHitTestVisible = false };
     private readonly StackPanel transport = new() { Orientation = Orientation.Horizontal, Spacing = 8, VerticalAlignment = VerticalAlignment.Center, Visibility = Visibility.Collapsed };
     private readonly SymbolIcon playGlyph = new(Symbol.Play);
+    private readonly Button play;
     private readonly TextBlock time = new() { FontSize = 13, VerticalAlignment = VerticalAlignment.Center };
     private readonly Run elapsed = new();
     private readonly Run total = new();
@@ -43,6 +44,8 @@ public sealed class TimelineView : UserControl
     private readonly DispatcherTimer animation = new() { Interval = TimeSpan.FromMilliseconds(16) };
     private readonly Stopwatch animationClock = new();
     private EditorViewModel? model;
+    private readonly TimelineViewportState viewport = new();
+    private readonly TimelineFrame frame = new();
     private EditPlan? plan;
     private TimelineWindow view = new(0, 1);
     private TimelineWindow animationStart;
@@ -84,9 +87,10 @@ public sealed class TimelineView : UserControl
         mode.SelectedIndex = 1;
         AutomationProperties.SetName(mode, "Timeline time");
         mode.SelectionChanged += (_, _) => Rebuild(true);
-        var play = new Button { Width = 32, Height = 32, Padding = new Thickness(0), CornerRadius = new(16), Content = playGlyph };
-        AutomationProperties.SetName(play, "Play or pause (Space)");
-        ToolTipService.SetToolTip(play, "Play or pause (Space)");
+        play = new Button { Width = 32, Height = 32, Padding = new Thickness(0), CornerRadius = new(16), Content = playGlyph };
+        AutomationProperties.SetName(play, "Play");
+        AutomationProperties.SetAcceleratorKey(play, "Space");
+        ToolTipService.SetToolTip(play, "Play (Space)");
         play.Click += (_, _) => PlayRequested?.Invoke(this, EventArgs.Empty);
         time.FontFamily = (FontFamily)Application.Current.Resources["VcMonoFontFamily"];
         time.Inlines.Add(elapsed); time.Inlines.Add(total);
@@ -136,6 +140,8 @@ public sealed class TimelineView : UserControl
     {
         elapsed.Text = elapsedTime; total.Text = " / " + length;
         playGlyph.Symbol = playing ? Symbol.Pause : Symbol.Play;
+        AutomationProperties.SetName(play, PlaybackPresentation.Name(playing));
+        ToolTipService.SetToolTip(play, PlaybackPresentation.Hint(playing));
     }
     internal void SetWaveform(IReadOnlyList<float> levels) { waveform = levels; Draw(); }
     public void Attach(EditorViewModel value)
@@ -157,8 +163,8 @@ public sealed class TimelineView : UserControl
     }
     private void EffectsChanged(object? sender, EventArgs args) => DispatcherQueue.TryEnqueue(() =>
     {
-        if (Ui.AnimationsEnabled || !animation.IsEnabled) return;
-        animation.Stop(); view = animationEnd; Draw();
+        if (!Ui.AnimationsEnabled && animation.IsEnabled) { animation.Stop(); view = animationEnd; }
+        ApplyBrushes(); Draw();
     });
     private Brush Brush(string key) => Ui.ThemeBrush(this, key);
     private void ApplyBrushes()
@@ -177,15 +183,17 @@ public sealed class TimelineView : UserControl
     private double FromDisplay(double displayed) => Edited && plan is not null ? plan.SourceTime(displayed) : displayed;
     private (double Start, double End)? ClipBounds()
     {
-        if (model?.State?.ActiveClipId is not { } id || model.Clips.FirstOrDefault(clip => clip.Id == id) is not { } clip) return null;
-        var first = trimming && trimId == id ? trimFirst : model.Index(clip.Clip.StartWordId);
-        var last = trimming && trimId == id ? trimLast : model.Index(clip.Clip.EndWordId);
-        return first >= 0 && last >= first ? (model.Words[first].Start, model.Words[last].End) : null;
+        var pending = trimming && trimId == viewport.ActiveClip?.Id;
+        return viewport.Bounds(pending ? trimFirst : viewport.First, pending ? trimLast : viewport.Last);
     }
     private void Rebuild(bool forceZoom)
     {
         if (model is null) return;
+        viewport.Reset(model);
+        if (AutomationProperties.GetName(startHandle) != viewport.StartName) AutomationProperties.SetName(startHandle, viewport.StartName);
+        if (AutomationProperties.GetName(endHandle) != viewport.EndName) AutomationProperties.SetName(endHandle, viewport.EndName);
         plan = TimelineLayout.Plan(model);
+        viewport.Prepare(plan);
         var bounds = ClipBounds();
         var source = TimelineLayout.Window(model.Project.Media.Source.DurationSeconds, bounds?.Start, bounds?.End);
         var next = new TimelineWindow(ToDisplay(source.Start), ToDisplay(source.End));
@@ -201,22 +209,12 @@ public sealed class TimelineView : UserControl
     }
     public void Position(double source)
     {
-        var horizontal = view.X(ToDisplay(source), track.ActualWidth);
-        Canvas.SetLeft(playhead, Math.Clamp(horizontal - 1, 0, Math.Max(0, track.ActualWidth - 2)));
-        Canvas.SetTop(playhead, TrackTop - 1);
-        Canvas.SetLeft(head, Math.Clamp(horizontal - 6, 0, Math.Max(0, track.ActualWidth - 12)));
-        Canvas.SetTop(head, TrackTop - 7);
-        slider.Refresh();
+        UpdateViewport(source: source);
     }
 
     private TimelineRange ReadPlayhead()
     {
-        var value = ToDisplay(model?.SourceTime ?? 0);
-        var next = model is null ? -1 : TimelineLayout.Step(model.Words, model.SourceTime, 1, false);
-        var step = next < 0 ? 0.1 : Math.Max(0.001, ToDisplay(model!.Words[next].Start) - value);
-        return new(view.Start, Math.Max(view.Start, view.End), Math.Clamp(value, view.Start, Math.Max(view.Start, view.End)), step,
-            TimelineLayout.ValueText(value, Edited ? plan?.Duration ?? 0 : model?.Project.Media.Source.DurationSeconds ?? 0,
-                (model?.Summary.CutWordCount ?? 0) + (model?.Summary.CutPauseCount ?? 0), Edited));
+        return plan is null ? new(0, 1, 0, 0.1, "") : frame.Playhead;
     }
     private void Seek(double source)
     {
@@ -292,9 +290,7 @@ public sealed class TimelineView : UserControl
         handle.PointerMoved += (_, args) =>
         {
             if (!trimming || trimStart != start || model is null) return;
-            var target = TimelineLayout.WordAt(model.Words, PointerTime(args));
-            (trimFirst, trimLast) = TimelineLayout.Trim(trimFirst, trimLast, target, model.Words.Count, start);
-            UpdateViewport(); args.Handled = true;
+            UpdateViewport(args.GetCurrentPoint(track).Position.X); args.Handled = true;
         };
         handle.PointerReleased += (_, args) =>
         {
@@ -308,12 +304,7 @@ public sealed class TimelineView : UserControl
     }
     private TimelineRange ReadTrim(bool start)
     {
-        if (model?.State?.ActiveClipId is not { } id || model.Clips.FirstOrDefault(clip => clip.Id == id) is not { } clip) return new(0, 0, 0, 1, "");
-        var first = trimming ? trimFirst : model.Index(clip.Clip.StartWordId);
-        var last = trimming ? trimLast : model.Index(clip.Clip.EndWordId);
-        var value = start ? first : last;
-        return new(start ? 0 : first, start ? last : model.Words.Count - 1, value, 1,
-            EditorViewModel.Timecode(start ? model.Words[value].Start : model.Words[value].End));
+        return start ? frame.Start : frame.End;
     }
     private void ChangeTrim(bool start, int target)
     {
@@ -327,6 +318,7 @@ public sealed class TimelineView : UserControl
     {
         var width = track.ActualWidth;
         if (model is null || width <= 0 || plan is null) return;
+        leftDim.Fill = rightDim.Fill = Brush("VcTimelineScopeDimBrush");
         rendered = animation.IsEnabled ? new(Math.Min(view.Start, animationEnd.Start), Math.Max(view.End, animationEnd.End)) : view;
         scene.Build(model, plan, rendered, waveform, width, Edited);
         canvas.Clip = new RectangleGeometry { Rect = new(0, 0, width, 60) };
@@ -370,46 +362,34 @@ public sealed class TimelineView : UserControl
         Canvas.SetTop(badge, TimelineLayout.BadgeTop);
         return badge;
     }
-    private void UpdateViewport()
+    private void UpdateViewport(double? pointer = null, double? source = null)
     {
-        if (model is null) return;
-        var width = track.ActualWidth;
+        if (model is null || plan is null) return;
+        frame.Compute(viewport, scene, plan, rendered, view, track.ActualWidth, source ?? model.SourceTime, Edited,
+            trimming, trimStart, trimId, trimFirst, trimLast, !model.IsReadOnly && !model.Busy, pointer);
+        trimFirst = frame.First; trimLast = frame.Last;
         retained.Move(view);
-        viewportTransform.ScaleX = rendered.Duration / view.Duration;
-        viewportTransform.TranslateX = (rendered.Start - view.Start) / view.Duration * width;
-        for (var index = 0; index < scene.Clips.Count; index++)
+        viewportTransform.ScaleX = frame.Scale;
+        viewportTransform.TranslateX = frame.Translation;
+        for (var index = 0; index < frame.BadgeCount; index++)
         {
             var badge = retained.Nodes[TimelineRetainedPool<object>.Layers + index];
-            var horizontal = view.X(scene.Clips[index].Start, width);
-            if (trimming && scene.Clips[index].Clip.Id == trimId && ClipBounds() is { } pendingBounds) horizontal = view.X(ToDisplay(pendingBounds.Start), width);
-            badge.Visibility = horizontal < -18 || horizontal > width ? Visibility.Collapsed : Visibility.Visible;
-            Canvas.SetLeft(badge, Math.Clamp(horizontal, 0, Math.Max(0, width - 18)));
+            badge.Visibility = frame.Badges[index].Visible ? Visibility.Visible : Visibility.Collapsed;
+            Canvas.SetLeft(badge, frame.Badges[index].Left);
         }
-        leftDim.Fill = rightDim.Fill = Brush("VcTimelineScopeDimBrush");
-        leftDim.Width = rightDim.Width = 0;
-        bracketTransform.ScaleX = 1; bracketTransform.TranslateX = 0;
-        if (ClipBounds() is { } bounds)
+        leftDim.Width = frame.LeftDim; rightDim.Width = frame.RightDim; Canvas.SetLeft(rightDim, frame.RightEdge);
+        bracketTransform.ScaleX = frame.BracketScale; bracketTransform.TranslateX = frame.BracketTranslation;
+        startHandle.Visibility = endHandle.Visibility = frame.HasTrim ? Visibility.Visible : Visibility.Collapsed;
+        if (frame.HasTrim)
         {
-            var left = Math.Clamp(view.X(ToDisplay(bounds.Start), width), 0, width);
-            var right = Math.Clamp(view.X(ToDisplay(bounds.End), width), 0, width);
-            if (trimming && scene.Layers[12].Count > 0 && scene.Layers[12][0] is { Width: > 0 } originalBracket)
-            {
-                var start = rendered.X(ToDisplay(bounds.Start), width);
-                var end = rendered.X(ToDisplay(bounds.End), width);
-                bracketTransform.ScaleX = Math.Max(0, end - start) / originalBracket.Width;
-                bracketTransform.TranslateX = start - originalBracket.X * bracketTransform.ScaleX;
-            }
-            leftDim.Width = left; rightDim.Width = width - right; Canvas.SetLeft(rightDim, right);
-            startHandle.Visibility = endHandle.Visibility = Visibility.Visible;
-            startHandle.IsEnabled = endHandle.IsEnabled = !model.IsReadOnly && !model.Busy;
-            Canvas.SetLeft(startHandle, left - 12); Canvas.SetLeft(endHandle, right - 12);
+            startHandle.IsEnabled = endHandle.IsEnabled = frame.TrimEnabled;
+            Canvas.SetLeft(startHandle, frame.StartLeft); Canvas.SetLeft(endHandle, frame.EndLeft);
             Canvas.SetTop(startHandle, TrackTop - 3); Canvas.SetTop(endHandle, TrackTop - 3);
-            var number = model.Clips.First(clip => clip.Id == model.State!.ActiveClipId).Number;
-            AutomationProperties.SetName(startHandle, $"Clip {number} start"); AutomationProperties.SetName(endHandle, $"Clip {number} end");
             startHandle.Refresh(); endHandle.Refresh();
         }
-        else startHandle.Visibility = endHandle.Visibility = Visibility.Collapsed;
-        Position(model.SourceTime);
+        Canvas.SetLeft(playhead, frame.PlayheadLeft); Canvas.SetTop(playhead, TrackTop - 1);
+        Canvas.SetLeft(head, frame.HeadLeft); Canvas.SetTop(head, TrackTop - 7);
+        slider.Refresh();
     }
     private static PathGeometry Geometry(IEnumerable<TimelineMark> marks, bool lines, bool rounded = false)
     {

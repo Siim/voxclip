@@ -40,18 +40,29 @@ internal sealed class SelectionFlyout
         timer.Tick += (_, _) => { timer.Stop(); var action = pending; pending = null; action?.Invoke(); };
         flyout.Opened += (_, _) =>
         {
-            foreach (var popup in VisualTreeHelper.GetOpenPopupsForXamlRoot(owner.XamlRoot))
-                if (FindBar(popup.Child) is { } bar)
-                {
-                    var surface = (SolidColorBrush)Ui.ThemeBrush(owner, "VcBgElevatedBrush");
-                    bar.SystemBackdrop = null;
-                    bar.Background = Ui.HighContrast || !Ui.TransparencyEnabled ? surface
-                        : new AcrylicBrush { TintColor = surface.Color, TintOpacity = 0.85, FallbackColor = surface.Color };
-                    bar.KeyDown -= Escape;
-                    bar.KeyDown += Escape;
-                }
+            ApplyEffects();
             if (flyout.ShowMode == FlyoutShowMode.Standard) make.Focus(FocusState.Keyboard);
         };
+        owner.Loaded += (_, _) => Ui.EffectsChanged += EffectsChanged;
+        owner.Unloaded += (_, _) => Ui.EffectsChanged -= EffectsChanged;
+    }
+
+    private void EffectsChanged(object? sender, EventArgs args) => owner.DispatcherQueue.TryEnqueue(ApplyEffects);
+    private void ApplyEffects()
+    {
+        flyout.AreOpenCloseAnimationsEnabled = Ui.EffectPolicy.Animations;
+        if (owner.XamlRoot is null) return;
+        foreach (var popup in VisualTreeHelper.GetOpenPopupsForXamlRoot(owner.XamlRoot))
+            if (FindBar(popup.Child) is { } bar)
+            {
+                var surface = (SolidColorBrush)Ui.ThemeBrush(owner, "VcBgElevatedBrush");
+                var opaque = Ui.EffectPolicy.OpaqueTransientSurfaces;
+                bar.SystemBackdrop = null;
+                bar.Background = opaque ? surface : new AcrylicBrush { TintColor = surface.Color, TintOpacity = 0.85, FallbackColor = surface.Color };
+                bar.BorderBrush = Ui.ThemeBrush(owner, "VcLineStrongBrush");
+                bar.BorderThickness = new(opaque ? 1 : 0);
+                bar.KeyDown -= Escape; bar.KeyDown += Escape;
+            }
     }
 
     private AppBarButton Button(string label, Symbol symbol, Action action, bool labelled = false)
@@ -80,6 +91,7 @@ internal sealed class SelectionFlyout
 
     internal void Show(Rect selection, bool below, bool keyboard, bool editable, bool canRestore, bool voiceLab, bool rewriteAvailable, string? existingClip)
     {
+        flyout.AreOpenCloseAnimationsEnabled = Ui.EffectPolicy.Animations;
         ToolTipService.SetToolTip(make, existingClip ?? "Make clip (Ctrl+K)");
         cut.IsEnabled = make.IsEnabled = editable;
         restore.IsEnabled = editable && canRestore;

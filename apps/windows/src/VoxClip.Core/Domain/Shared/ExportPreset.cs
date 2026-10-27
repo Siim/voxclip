@@ -66,6 +66,13 @@ public sealed record ReframeSettings(string Mode = "center", double Zoom = 1);
 /// <summary>Pure output-size and bitrate rules; architecture §4.1.</summary>
 public static class ExportPresets
 {
+    /// <summary>Canonical encoder settings shared by snapshot capture, export and its fingerprint.</summary>
+    public static OutputSpec Output(PixelSize source, double sourceRate, ExportAspect aspect, ExportQuality quality, string codec = "h264")
+    {
+        var size = OutputSize(source, aspect);
+        var fps = OutputFrameRate(sourceRate);
+        return new(size, fps, VideoBitrate(size, aspect, quality, fps), 48_000, 2, 160_000, codec);
+    }
     /// <summary>Returns even output dimensions, capped at 1920 for source aspect.</summary>
     public static PixelSize OutputSize(PixelSize source, ExportAspect aspect)
     {

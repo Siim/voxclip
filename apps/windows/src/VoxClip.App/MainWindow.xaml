@@ -92,10 +92,10 @@
                         <!-- A 27x48 media tile in a 32 column; the 16 badge sits over its top-left corner at -4 with a 1 px page ring. -->
                         <Grid Width="{StaticResource VcLayoutRowThumbColumnWidth}" Height="{StaticResource VcLayoutClipThumbHeight}">
                             <controls:MediaThumbnail Width="{StaticResource VcLayoutClipThumbWidth}" Height="{StaticResource VcLayoutClipThumbHeight}" HorizontalAlignment="Right" CornerRadius="4" Surface="ClipRow" Media="{x:Bind Media, Mode=OneWay}"/>
-                            <Border Width="18" Height="18" Margin="0,-5,0,0" HorizontalAlignment="Left" VerticalAlignment="Top" CornerRadius="5" BorderThickness="1" BorderBrush="{ThemeResource VcBgSurfaceBrush}" Background="{ThemeResource VcClipBadgeBackgroundBrush}" Visibility="{x:Bind IsNeutral, Mode=OneWay}">
+                            <Border Width="16" Height="16" Margin="1,-4,0,0" HorizontalAlignment="Left" VerticalAlignment="Top" CornerRadius="4" BorderThickness="1" BorderBrush="{ThemeResource VcBgSurfaceBrush}" Background="{ThemeResource VcClipBadgeBackgroundBrush}" Visibility="{x:Bind IsNeutral, Mode=OneWay}">
                                 <TextBlock Text="{x:Bind Number, Mode=OneWay}" FontFamily="{StaticResource VcMonoFontFamily}" FontSize="{StaticResource VcLayoutBadgeFontSize}" FontWeight="SemiBold" Foreground="{ThemeResource VcTextSecondaryBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                             </Border>
-                            <Border Width="18" Height="18" Margin="0,-5,0,0" HorizontalAlignment="Left" VerticalAlignment="Top" CornerRadius="5" BorderThickness="1" BorderBrush="{ThemeResource VcBgSurfaceBrush}" Background="{ThemeResource AccentFillColorDefaultBrush}" Visibility="{x:Bind IsActive, Mode=OneWay}">
+                            <Border Width="16" Height="16" Margin="1,-4,0,0" HorizontalAlignment="Left" VerticalAlignment="Top" CornerRadius="4" BorderThickness="1" BorderBrush="{ThemeResource VcBgSurfaceBrush}" Background="{ThemeResource AccentFillColorDefaultBrush}" Visibility="{x:Bind IsActive, Mode=OneWay}">
                                 <TextBlock Text="{x:Bind Number, Mode=OneWay}" FontFamily="{StaticResource VcMonoFontFamily}" FontSize="{StaticResource VcLayoutBadgeFontSize}" FontWeight="SemiBold" Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                             </Border>
                         </Grid>
@@ -133,10 +133,12 @@
                         <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                         <Grid Width="{StaticResource VcLayoutRowThumbColumnWidth}" Height="{StaticResource VcLayoutClipThumbHeight}">
                             <controls:MediaThumbnail Width="{StaticResource VcLayoutClipThumbWidth}" Height="{StaticResource VcLayoutClipThumbHeight}" HorizontalAlignment="Right" CornerRadius="4" Surface="ClipRow" Media="{x:Bind Media, Mode=OneWay}"/>
-                            <Grid Width="18" Height="18" Margin="0,-5,0,0" HorizontalAlignment="Left" VerticalAlignment="Top">
-                                <Rectangle Fill="{ThemeResource VcBgSurfaceBrush}" Stroke="{ThemeResource VcLineStrongBrush}" StrokeThickness="1" StrokeDashArray="2,2" RadiusX="5" RadiusY="5"/>
-                                <TextBlock Text="{x:Bind Number, Mode=OneWay}" FontFamily="{StaticResource VcMonoFontFamily}" FontSize="{StaticResource VcLayoutBadgeFontSize}" FontWeight="SemiBold" Foreground="{ThemeResource VcTextSecondaryBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                            </Grid>
+                            <Border Width="16" Height="16" Margin="1,-4,0,0" HorizontalAlignment="Left" VerticalAlignment="Top" CornerRadius="4" BorderThickness="1" BorderBrush="{ThemeResource VcBgSurfaceBrush}">
+                                <Grid>
+                                    <Rectangle Fill="{ThemeResource VcBgSurfaceBrush}" Stroke="{ThemeResource VcLineStrongBrush}" StrokeThickness="1" StrokeDashArray="2,2" RadiusX="4" RadiusY="4"/>
+                                    <TextBlock Text="{x:Bind Number, Mode=OneWay}" FontFamily="{StaticResource VcMonoFontFamily}" FontSize="{StaticResource VcLayoutBadgeFontSize}" FontWeight="SemiBold" Foreground="{ThemeResource VcTextSecondaryBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Grid>
+                            </Border>
                         </Grid>
                         <StackPanel Grid.Column="1" VerticalAlignment="Center">
                             <TextBlock Text="{x:Bind Title, Mode=OneWay}" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"/>

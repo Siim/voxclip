@@ -68,8 +68,7 @@ internal static class CaptionStyleResolver
             }
         }
         Semantic(style, data);
-        var preset = Preset(request.Frame);
-        var position = preset is not null && request.Captions.PositionByAspect.TryGetValue(preset, out var byAspect) ? byAspect : request.Captions.Position;
+        var position = CaptionEngine.StoredPosition(request.Captions, request.Frame);
         if (position is { } stored && style.Position.UserDraggable) style = style with { Position = style.Position with { X = stored.X, Y = stored.Y } };
         return style;
     }

@@ -139,10 +139,9 @@ public sealed class Exporter : IExporter
         FfmpegLoader.InitializeAsync(ct).GetAwaiter().GetResult();
         var timer = Stopwatch.StartNew();
         var snapshot = job.Snapshot;
-        var size = ExportPresets.OutputSize(snapshot.Media.OrientedSize, job.Aspect);
-        var fps = ExportPresets.OutputFrameRate(snapshot.Output.FrameRate);
-        var output = snapshot.Output with { Size = size, FrameRate = fps,
-            VideoBitrate = ExportPresets.VideoBitrate(size, job.Aspect, job.Quality, fps), AudioSampleRate = 48_000, AudioChannels = 2, AudioBitrate = 160_000 };
+        var output = ExportPresets.Output(snapshot.Media.OrientedSize, snapshot.Output.FrameRate, job.Aspect, job.Quality, snapshot.Output.VideoCodec);
+        var size = output.Size;
+        var fps = output.FrameRate;
         snapshot = snapshot with { Output = output };
         var frames = Native.Round(snapshot.Timeline.Duration * fps);
         var samples = snapshot.Media.Audio is null ? 0 : Native.Round(snapshot.Timeline.Duration * 48_000);

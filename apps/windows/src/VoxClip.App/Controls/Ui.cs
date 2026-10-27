@@ -1,5 +1,6 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
+using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using VoxClip.App.ViewModels;
@@ -15,6 +16,7 @@ internal static class Ui
     internal static bool AnimationsEnabled => Effects.AnimationsEnabled;
     /// <summary>Windows "Transparency effects": off selects the opaque media chips (design §5.4.9).</summary>
     internal static bool TransparencyEnabled => Effects.AdvancedEffectsEnabled;
+    internal static AccessibilityEffects EffectPolicy => new(AnimationsEnabled, TransparencyEnabled, HighContrast);
     /// <summary>Animation or transparency effects were turned on or off. Raised on a background thread.</summary>
     internal static event EventHandler? EffectsChanged;
 
@@ -22,6 +24,23 @@ internal static class Ui
     {
         Effects.AdvancedEffectsEnabledChanged += (_, _) => EffectsChanged?.Invoke(null, EventArgs.Empty);
         Effects.AnimationsEnabledChanged += (_, _) => EffectsChanged?.Invoke(null, EventArgs.Empty);
+        Accessibility.HighContrastChanged += (_, _) => EffectsChanged?.Invoke(null, EventArgs.Empty);
+    }
+    internal static void Announce(FrameworkElement owner, string text, string activity)
+    {
+        if (text.Length == 0) return;
+        FrameworkElementAutomationPeer.CreatePeerForElement(owner)?.RaiseNotificationEvent(AutomationNotificationKind.ActionCompleted,
+            AutomationNotificationProcessing.MostRecent, text, activity);
+    }
+    internal static void ApplyFlyoutEffects(Flyout flyout, FrameworkElement owner)
+    {
+        flyout.AreOpenCloseAnimationsEnabled = EffectPolicy.Animations;
+        if (!EffectPolicy.OpaqueTransientSurfaces) { flyout.FlyoutPresenterStyle = null; return; }
+        var style = new Style(typeof(FlyoutPresenter));
+        style.Setters.Add(new Setter(Control.BackgroundProperty, ThemeBrush(owner, "VcBgElevatedBrush")));
+        style.Setters.Add(new Setter(Control.BorderBrushProperty, ThemeBrush(owner, "VcLineStrongBrush")));
+        style.Setters.Add(new Setter(Control.BorderThicknessProperty, new Thickness(1)));
+        flyout.FlyoutPresenterStyle = style;
     }
     internal static Brush ThemeBrush(FrameworkElement owner, string key)
     {

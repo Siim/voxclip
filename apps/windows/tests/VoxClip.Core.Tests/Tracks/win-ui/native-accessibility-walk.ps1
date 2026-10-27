@@ -1,13 +1,14 @@
-param([Parameter(Mandatory=$true)][string]$Root, [Parameter(Mandatory=$true)][string]$DataRoot, [Parameter(Mandatory=$true)][string]$EvidenceDir, [string]$NormalProject)
+param([Parameter(Mandatory=$true)][string]$Root, [Parameter(Mandatory=$true)][string]$DataRoot, [Parameter(Mandatory=$true)][string]$EvidenceDir, [string]$NormalProject, [ValidateSet('win-x64','win-arm64')][string]$RuntimeIdentifier='win-arm64')
 $ErrorActionPreference='Stop'
 $root=(Resolve-Path $Root).Path
-$shots=$EvidenceDir
+$shots=Join-Path $EvidenceDir $RuntimeIdentifier
 New-Item -ItemType Directory -Force $shots | Out-Null
 trap { [IO.File]::WriteAllText((Join-Path $shots 'error.txt'),($_ | Out-String)); break }
 $env:VOXCLIP_DATA_DIR=$DataRoot
 if(-not (Test-Path (Join-Path $DataRoot 'windows-runtime-agreement.txt'))){throw 'Accept the bundled Windows runtime terms explicitly in this isolated data root before the walk.'}
 $env:VOXCLIP_SHARED_DIR=Join-Path $root 'shared'
-$exe=Join-Path $root 'apps\windows\src\VoxClip.App\bin\ARM64\Debug\net10.0-windows10.0.26100.0\win-arm64\VoxClip.exe'
+$platform=if($RuntimeIdentifier -eq 'win-arm64'){'ARM64'}else{'x64'}
+$exe=Join-Path $root "apps\windows\src\VoxClip.App\bin\$platform\Debug\net10.0-windows10.0.26100.0\$RuntimeIdentifier\VoxClip.exe"
 $started=[DateTime]::UtcNow
 $owned=@{}
 $result=[ordered]@{homeRenderedSelfCheck=$false; homeLaunch=$false; editorRenderedSelfCheck=$false; editorUiAObserved=$false; editorScreenshotCaptured=$false; normalOpen=$false; paneRows=$false; keyboardClip=$false; correctionTextIsolated=$false; clipRowScope=$false; paneShortcuts=$false; escapeFullTake=$false; f6Order=$false; homeKeepsEditor=$false; findAction=$false; compactPane=$false; sameWindowReopen=$false; noArgumentReactivation=$false; fileActivationAfterNoArgument=$false; keyboardWalk=$false; providerDispatched=$false; exportStarted=$false}
@@ -252,9 +253,22 @@ try{
  $transcript=FindName $w $transcriptName
  $transcript.SetFocus();Start-Sleep -Milliseconds 200
  $walk=@()
- for($i=0;$i -lt 6;$i++){[R1Native]::Key(0x75);Start-Sleep -Milliseconds 300;$e=[System.Windows.Automation.AutomationElement]::FocusedElement;$walk+=,@($e.Current.Name,$e.Current.ControlType.ProgrammaticName,(InCommandBar $e))}
+ $focusEvidence=@()
+ for($i=0;$i -lt 6;$i++){
+  [R1Native]::Key(0x75);Start-Sleep -Milliseconds 300
+  $e=[System.Windows.Automation.AutomationElement]::FocusedElement
+  $walk+=,@($e.Current.Name,$e.Current.ControlType.ProgrammaticName,(InCommandBar $e))
+  $bounds=$e.Current.BoundingRectangle
+  if($bounds.IsEmpty -or $e.Current.IsOffscreen){throw 'F6 focused an empty or offscreen element'}
+  $name='focus-region-'+($i+1)
+  Capture $w $name
+  $focusEvidence+=@{image="$name.png";name=$e.Current.Name;bounds=@{x=$bounds.X;y=$bounds.Y;width=$bounds.Width;height=$bounds.Height};twoRingVisual='pending pixel review';blackRectangleAbsent='pending pixel review';narrator='not observed'}
+ }
+ [IO.File]::WriteAllText((Join-Path $shots 'f6-visual-evidence.json'),(ConvertTo-Json -Depth 6 -InputObject @{
+  runtime=$RuntimeIdentifier;regions=$focusEvidence;acceptance='UIA order alone does not prove Fluent two-ring focus, absence of a black rectangle, or spoken Narrator output'
+ }))
  [IO.File]::WriteAllText((Join-Path $shots 'f6-order.txt'),(($walk | ForEach-Object { $_ -join ' | ' }) -join "`n"))
- if($walk[0][0] -ne 'Play or pause (Space)' -or $walk[1][1] -notin @('ControlType.List','ControlType.ListItem') -or -not $walk[2][0].StartsWith('Playhead') -or -not $walk[3][0].StartsWith('Full take, ') -or -not $walk[4][2] -or $walk[5][0] -ne $transcriptName){throw 'F6 did not walk the viewer, Captions, timeline, sidebar, command row and transcript in order'}
+ if($walk[0][0] -notin @('Play','Pause') -or $walk[1][1] -notin @('ControlType.List','ControlType.ListItem') -or -not $walk[2][0].StartsWith('Playhead') -or -not $walk[3][0].StartsWith('Full take, ') -or -not $walk[4][2] -or $walk[5][0] -ne $transcriptName){throw 'F6 did not walk the viewer, Captions, timeline, sidebar, command row and transcript in order'}
  [R1Native]::Chord(0x10,0x75);Start-Sleep -Milliseconds 300
  if(-not (InCommandBar ([System.Windows.Automation.AutomationElement]::FocusedElement))){throw 'Shift+F6 from the transcript did not return to the command row'}
  $result.f6Order=$true

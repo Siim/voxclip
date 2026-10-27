@@ -117,9 +117,11 @@ public sealed class EditorViewModel : ObservableObject
     }
 
     public Project Project => project;
+    internal CaptionDragSession CaptionDrag { get; } = new();
     public bool IsLeaving => isLeaving;
     internal void BeginLeaving()
     {
+        CaptionDrag.Cancel();
         isLeaving = true;
         Notice = "Saving this project before leaving. Editing is paused.";
         OnPropertyChanged(nameof(CanExport));
@@ -130,15 +132,7 @@ public sealed class EditorViewModel : ObservableObject
         OnPropertyChanged(nameof(CanExport));
     }
     internal Project ScopedProject(EditState? renderState)
-    {
-        return renderState is null ? project : project with { Edits = project.Edits with
-        {
-            Clips = renderState.Clips.ToArray(), ActiveClipId = renderState.ActiveClipId,
-            CutWordIds = renderState.CutWordIds.ToArray(), CutPauseIds = renderState.CutPauseIds.ToArray(),
-            Corrections = new Dictionary<string, string>(renderState.Corrections),
-            PauseThresholdSeconds = renderState.PauseThresholdSeconds, PauseKeepSeconds = renderState.PauseKeepSeconds
-        } };
-    }
+        => ExportRenderInput.ScopedProject(project, renderState);
     internal void RequireLegacyRendering(EditState? renderState)
     {
         var scoped = ScopedProject(renderState);
@@ -231,6 +225,7 @@ public sealed class EditorViewModel : ObservableObject
             var next = state;
             foreach (var operation in operations) next = reduce(next, operation);
             if (next == state) return false;
+            CaptionDrag.Cancel();
             undo.Push(new(state, project.Captions));
             redo.Clear();
             state = next;
@@ -374,6 +369,7 @@ public sealed class EditorViewModel : ObservableObject
     private void MoveHistory(Stack<History> from, Stack<History> to)
     {
         if (isLeaving || from.Count == 0 || IsReadOnly && !ReferenceEquals(from.Peek().State, state)) return;
+        CaptionDrag.Cancel();
         var next = from.Pop();
         to.Push(new(state, project.Captions));
         state = next.State;
@@ -385,6 +381,7 @@ public sealed class EditorViewModel : ObservableObject
     public void SetCaptionStyle(string id)
     {
         if (isLeaving || IsReadOnly || Busy) return;
+        CaptionDrag.Cancel();
         project = project with { Captions = project.Captions with { StyleId = id }, ModifiedAt = DateTimeOffset.UtcNow };
         Changed?.Invoke(this, EventArgs.Empty);
     }
@@ -392,6 +389,7 @@ public sealed class EditorViewModel : ObservableObject
     public void SetExport(ProjectExport value)
     {
         if (isLeaving || IsReadOnly || Busy) return;
+        if (project.Export.Aspect != value.Aspect) CaptionDrag.Cancel();
         project = project with { Export = value, ModifiedAt = DateTimeOffset.UtcNow };
         Changed?.Invoke(this, EventArgs.Empty);
     }
@@ -399,6 +397,7 @@ public sealed class EditorViewModel : ObservableObject
     public void SetCaptionOverrides(System.Text.Json.JsonElement value)
     {
         if (isLeaving || IsReadOnly || Busy) return;
+        CaptionDrag.Cancel();
         project = project with { Captions = project.Captions with { Overrides = value.Clone() }, ModifiedAt = DateTimeOffset.UtcNow };
         Changed?.Invoke(this, EventArgs.Empty);
     }
@@ -406,17 +405,23 @@ public sealed class EditorViewModel : ObservableObject
     public void SetCaptions(ProjectCaptions value)
     {
         if (isLeaving || IsReadOnly || Busy) return;
+        CaptionDrag.Cancel();
         project = project with { Captions = value, ModifiedAt = DateTimeOffset.UtcNow };
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
     internal void MoveCaptionAnchor(CaptionPosition anchor)
         => MoveCaptionSettings(CaptionFineTune.Anchor(project, anchor));
+    internal void CompleteCaptionDrag(CaptionPosition anchor)
+    {
+        if (CaptionDrag.Complete(project.Export.Aspect)) MoveCaptionAnchor(anchor);
+    }
     internal void MoveCaptionPosition(int choice)
         => MoveCaptionSettings(CaptionFineTune.Position(project, choice));
     private void MoveCaptionSettings(ProjectCaptions captions)
     {
         if (isLeaving || Busy) return;
+        CaptionDrag.Cancel();
         if (CaptionFineTune.StoredPosition(project) == CaptionFineTune.StoredPosition(project with { Captions = captions })) return;
         undo.Push(new(state, project.Captions)); redo.Clear();
         project = project with { Captions = captions, ModifiedAt = DateTimeOffset.UtcNow };
@@ -426,6 +431,7 @@ public sealed class EditorViewModel : ObservableObject
     public void SetTranscript(Core.Domain.Transcript.Transcript value)
     {
         if (isLeaving) return;
+        CaptionDrag.Cancel();
         if (state is not null)
         {
             state = EditingEngine.Reduce(state, new EditOperation.ReplaceTranscript(value));
