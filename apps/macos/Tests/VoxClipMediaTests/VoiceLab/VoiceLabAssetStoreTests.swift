@@ -222,9 +222,9 @@ import VoxClipCore
         let file = open(probe.path, O_RDONLY | O_CLOEXEC), directory = open(paid.path, O_RDONLY | O_DIRECTORY | O_CLOEXEC)
         defer { close(file); close(directory) }
         #expect(file >= 0 && directory >= 0)
-        #expect(VoiceLabAssetStore.fullSync(file) && VoiceLabAssetStore.fullSync(directory))
+        #expect(VoiceLabPaidRoot.fullSync(file) && VoiceLabPaidRoot.fullSync(directory))
         // Only ENOTSUP and EINVAL fall back to fsync; a bad descriptor stays a failure.
-        #expect(!VoiceLabAssetStore.fullSync(-1))
+        #expect(!VoiceLabPaidRoot.fullSync(-1))
     }
 
     @Test func failuresAfterPublishKeepTheFileAndSayWhetherItWasConfirmed() throws {

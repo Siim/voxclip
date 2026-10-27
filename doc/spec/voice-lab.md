@@ -166,7 +166,7 @@ public struct CostEstimate: Codable, Sendable, Hashable {
     public var unit: String              // "minute" | "character" | "second" | "call"
     public var usd: Decimal?             // nil when the price is unknown
     public var credits: Int?             // ElevenLabs credits, when known
-    public var basis: String             // "list-2026-10-25" | "provider-estimate" | "provider-pricing-api"
+    public var basis: String             // "list-<checked>" (§3.2) | "provider-estimate" | "provider-pricing-api" | "unknown"
 }
 ```
 
@@ -175,30 +175,86 @@ public struct CostEstimate: Codable, Sendable, Hashable {
 | under $0.50 and known | shown on the button: "Clean audio · ≈ $0.36", "Re-voice · 3 takes · ≈ $0.02". One click runs it |
 | $0.50 or more, any lip sync, or unknown | a confirmation: "This will cost about {amount} on your {provider} account." (or "VoxClip can't tell what this costs. Check {provider}'s pricing.") with [Continue] and [Cancel] |
 
-Amounts are formatted as "≈ $0.04": two significant digits, with "< $0.01" as the minimum.
+`VoiceLabCostPresentation` in Core applies the table on both platforms:
 
-Spend ledger and soft cap:
+- `kind(estimate, isLipSync:providerName:cap:)` is inline only when `usd` is known, below 0.50 before rounding, the action is not lip sync, and it does not cross the monthly cap (below). A $0.4999 action stays on the button as "≈ $0.50". Everything else confirms.
+- An action whose estimate is exactly $0, such as creating or deleting a voice, shows no amount anywhere: `kind` is inline with empty text, its button is just the action, and the ledger does not record it. Lip sync is the exception and always confirms. A valid lip-sync estimate is never $0 anyway, because zero seconds is invalid input (§3.2).
+- In the confirmation, `{amount}` is the formatted amount without "≈ " ("$0.50", "$12", "$1,200"). A known amount below a cent reads "This will cost less than $0.01 on your {provider} account." `{provider}` is the provider's display name ("ElevenLabs", "fal.ai", "sync.so").
+- `buttonTitle(action, takes:kind:)` joins the action, the take count ("1 take", "3 takes") and an inline amount with " · ". A button whose action confirms carries no amount: "Clean audio", "Lip sync", "Re-voice · 3 takes".
 
-- `<data>/VoiceLab/spend.json` sums the estimates of actions that were run, per provider and calendar month.
-- Settings → Voice Lab → "Warn me above $__ a month per provider" has no default. When an action would cross the cap, the confirmation adds "This takes you past your ${cap} limit for {provider} this month."
+`format(usd)` writes every amount:
+
+- Below $0.01 it is "< $0.01", with no "≈".
+- Otherwise the amount is rounded once, half away from zero, to two significant digits or to the cent, whichever is coarser. Amounts below $10 show two decimals; amounts from $10 show whole dollars with comma thousands. The text starts with "≈ ".
+- Examples: 0.0144 → "≈ $0.01", 0.015 → "≈ $0.02", 0.36 → "≈ $0.36", 0.4999 → "≈ $0.50", 1.2 → "≈ $1.20", 9.949 → "≈ $9.90", 9.95 → "≈ $10", 12345.6 → "≈ $12,000".
+
+Spend ledger:
+
+- `<data>/VoiceLab/spend.json` sums the estimates of actions that were run, per provider and calendar month, in the format `voxclip-voice-lab-spend/1`:
+
+  ```json
+  {
+    "schema": "voxclip-voice-lab-spend/1",
+    "months": {
+      "2026-10": {
+        "elevenlabs": {
+          "usd": "0.36",
+          "unknownCount": 0
+        }
+      }
+    }
+  }
+  ```
+
+  `usd` is the sum of the known estimates as a decimal string with at most 10 decimals. `unknownCount` counts the actions whose price was unknown. Months and providers are written in ordinal order, with a two-space indent, LF line ends and a final LF.
+- `ElevenLabsVoiceLab` calls `record(estimate, at:)` itself, once for each action the provider accepted. Acceptance is the 2xx status line: once a 2xx status and its headers arrive, the provider has billed. The record of the approved quote's estimate, with the time the request was sent, starts at that point and is never undone. A cancellation after that point does not prevent it.
+  - If reading the body then fails, through a cancellation mid-body, a dropped connection, or a body over the size limit (by `Content-Length` or as read), the record still finishes before the error is thrown. The user sees the error and gets no receipt, but the money is counted.
+  - Nothing is recorded for a refused authorization, a failed request, a 4xx or 5xx reply, or a cancellation before the status line.
+  - The record runs off the caller's actor and thread, in a detached task on macOS and on the thread pool on Windows, never on the main actor or the UI thread. It ignores the caller's cancellation.
+  - The App and CLI never record and never call a Voice Lab provider directly.
+  - A $0 estimate is not recorded and touches nothing.
+  - The month key is the local calendar month at the time the request was sent, in the device's time zone as it is when the action is recorded, not when the ledger was created: an action started at 23:30 on 31 October counts in October even if it finishes in November.
+- A recorder takes the advisory lock `spend.json.lock` beside the file: an exclusive `flock` on macOS and an exclusive `FileShare.None` open on Windows. Readers, including the cap check, take a shared lock (`FileShare.Read` on Windows) and wait at most 0.5 seconds, so they never read through a replacement. The lock is polled every 10 ms for up to 5 seconds without blocking a thread: `record` is async on both platforms. Only another holder (`EWOULDBLOCK`, or a sharing or lock violation on Windows) is waited for; any other failure, such as read-only media or a full disk, is `writeFailed` at once. Cancelling the wait gives `cancelled`.
+- Under the lock the recorder reads the file, adds the estimate, writes a 0600 temporary file in the same directory and moves it over `spend.json`. macOS flushes the temporary file with `F_FULLFSYNC` and the directory after the rename; Windows flushes it with `Flush(true)` before `File.Replace`. The lock file is never deleted. Two recorders in separate processes never lose an update.
+- `<data>/VoiceLab` is created as the paid-asset writer creates it: only its last component, mode 0700, inside an existing data folder. A missing data folder is `writeFailed`, never created.
+- A file that is not exactly this format is renamed to `spend.corrupt-<Unix milliseconds>.json` and a fresh ledger starts. This covers invalid UTF-8, a byte-order mark, an extra or repeated key, a bad month or provider key, and a bad amount or count.
+- Recording never throws into the provider path. It returns a typed warning instead (`replacedCorruptLedger` with the backup name, `lockTimedOut`, `cancelled`, `writeFailed` or `invalidEstimate`), and the action's result stands. `ElevenLabsVoiceLab` logs the warning and returns it as `spendWarning` on the action's `VoiceLabReceipt`, which the audio and clone results forward. The caller shows it as a notice, never as a failure. When the body failed, the caller gets the error instead, and the warning is only logged. The service's own records ignore cancellation, so `cancelled` reaches only a direct caller of `record` that cancels the wait.
 - The ledger is an estimate, not a bill. The provider's own credit quota, such as the restricted key's limit, is the hard stop.
+
+Soft cap:
+
+- Settings → Voice Lab → "Warn me above $__ a month per provider" has no default. It is stored as `voiceLab.monthlyCapUsd.<provider>`: a decimal string with at most two decimals (`"20"`, `"12.5"`), or null or absent for no cap.
+- An action crosses the cap when its estimate is known and takes the provider's known total for that month from at most the cap to above it. `kind` takes the cap and that total (`VoiceLabMonthlyCap(limit:spent:)`): an action that crosses always confirms, even under $0.50, and the confirmation adds "This takes you past your ${cap} limit for {provider} this month." The cap is written "$20", "$12.50" or "$1,000".
+- `wouldCross(cap:provider:estimate:at:)` and `total(provider:at:)` read the ledger under the shared lock. When the ledger cannot be read in time, the total is unknown and nothing crosses.
 
 ### 3.2 Prices (API list prices, USD, checked 2026-10-25)
 
-Prices live in a data file, `shared/catalog/voice-lab.json`, created with the M2 implementation, so they can be updated without code changes. Initial values:
+Prices live in a data file, `shared/catalog/voice-lab.json` (format `voxclip-voice-lab-prices/1`), so they can be updated without code changes. `tools/schemas/validate.py` checks it against `shared/schemas/voice-lab-prices.schema.json`. Each entry is `{provider, operation, model?, endpoint?, unit, formula, usdParameters, creditsParameters?, checked, source}`:
+
+- Prices are decimal strings such as `"0.22"`, never binary floating point. Both platforms compute in decimal and round `usd` half away from zero to 10 decimals.
+- `formula` is `perHour`, `perMinute`, `perSecond`, `perThousandCharacters`, `flatThenPerSecond`, `zero` or `estimateApi`. The schema fixes each formula's unit and parameter keys.
+- Duration rows take seconds, TTS rows take characters (Unicode scalars), and creating or deleting a voice takes one call. A lip sync of zero seconds is invalid input, with or without a catalog entry: the caller refuses an empty window before it asks.
+- An entry applies when provider, operation and endpoint match; an entry without `model` applies to every model. A catalog with two entries that could price the same request, or with any other defect, does not load (`sharedResourcesMissing`).
+- `VoiceLabPricing.estimate(operation:model:units:candidates:characterMultiplier:catalog:)`, whose `operation` names the provider, operation, endpoint and unit, gives the basis `list-<checked>`. A model or operation without an entry gives `usd` nil and the basis `unknown`, never a guess. So does an `estimateApi` entry, until a §3.3 live price arrives through `applying(_:to:)`.
+- TTS bills each model at its own row's list price. The `model_rates.character_cost_multiplier` that `GET /v1/models` reports is a credit multiplier, so it scales credits only, never dollars. When absent it is 1. Outside 0.01 to 100 it is invalid input to an estimate and a malformed response from discovery.
+- Credits: Voice Isolator and Voice Changer cost 1,000 per minute, rounded up to a whole credit. TTS costs ceil(characters × candidates × multiplier × credits per character). Every other operation has unknown credits.
+- `shared/fixtures/voice-lab/pricing-cases.json` pins every entry, the format boundaries, the ledger and the cap for both platforms.
+
+Initial values:
 
 | Operation | Price | Formula |
 |---|---|---|
 | ElevenLabs Scribe v2 (consent check, patch QA) | $0.22 per audio hour | `seconds / 3600 × 0.22` |
-| ElevenLabs Voice Isolator | $0.12 per minute; 1,000 credits per minute on credit plans | `minutes × 0.12` |
-| ElevenLabs Voice Changer | $0.12 per minute; 1,000 credits per minute | `minutes × 0.12` |
-| ElevenLabs TTS `eleven_v4`, `eleven_v3`, `eleven_multilingual_v2` | $0.08 per 1,000 characters | `characters × candidates × multiplier / 1000 × 0.08`, with `multiplier = model_rates.character_cost_multiplier` from `GET /v1/models` (default 1) |
-| ElevenLabs TTS `eleven_flash_v2_5`, `eleven_v4_turbo` | $0.04 per 1,000 characters | as above |
+| ElevenLabs Voice Isolator | $0.12 per minute; 1,000 credits per minute on credit plans | `seconds / 60 × 0.12` |
+| ElevenLabs Voice Changer | $0.12 per minute; 1,000 credits per minute | `seconds / 60 × 0.12` |
+| ElevenLabs TTS `eleven_v4`, `eleven_v3`, `eleven_multilingual_v2` | $0.08 per 1,000 characters; 1 credit per character × multiplier | `characters × candidates / 1000 × 0.08`; credits `ceil(characters × candidates × multiplier)`, with `multiplier = model_rates.character_cost_multiplier` from `GET /v1/models` (default 1) |
+| ElevenLabs TTS `eleven_flash_v2_5`, `eleven_v4_turbo` | $0.04 per 1,000 characters, already the half rate; their multiplier (0.5) halves credits, not dollars | `characters × candidates / 1000 × 0.04`; credits as above |
 | ElevenLabs Forced Alignment | $0.22 per audio hour | as for Scribe |
 | ElevenLabs Instant Voice Clone | no per-call charge (Starter plan or higher) | 0 |
+| ElevenLabs voice deletion | no charge (lead decision, 2026-10-27) | 0 |
 | fal `fal-ai/latentsync` | $0.20 flat up to 40 s, then $0.005 per second | `0.20 + max(0, s − 40) × 0.005` |
 | fal `fal-ai/sync-lipsync/v2`, model `lipsync-2` | $3.00 per minute | `s × 0.05` |
-| fal `fal-ai/sync-lipsync/v2`, model `lipsync-2-pro` | $5.00 per minute (shown as 1.67 × lipsync-2) | `s × 5 / 60` |
+| fal `fal-ai/sync-lipsync/v2`, model `lipsync-2-pro` | $5.00 per minute (shown as 1.67 × lipsync-2, checked 2026-10-26) | `s × 5 / 60` |
 | fal `fal-ai/sync-lipsync/v3` (sync-3) | $8.00 per minute (model page, checked 2026-10-26) | `s × 8 / 60` |
 | sync.so `lipsync-2`, `lipsync-2-pro`, `sync-3` | $0.04–0.05, $0.067–0.083 and $0.107–0.133 per second, depending on plan | from the estimate API (§3.3) |
 

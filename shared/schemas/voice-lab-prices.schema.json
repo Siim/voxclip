@@ -1,0 +1,139 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Siim/voxclip/main/shared/schemas/voice-lab-prices.schema.json",
+  "title": "Voice Lab price catalog (shared/catalog/voice-lab.json), voxclip-voice-lab-prices/1",
+  "description": "API list prices for every Voice Lab action that can bill a provider (voice-lab.md sections 3.1 and 3.2). Prices are decimal strings, never JSON numbers, so no reader goes through binary floating point. Both Cores also refuse two entries that could price the same request: the same provider, operation and endpoint, with equal models or one entry without a model.",
+  "type": "object",
+  "required": ["schema", "entries"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": { "const": "voxclip-voice-lab-prices/1" },
+    "description": { "type": "string" },
+    "entries": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/entry" } }
+  },
+  "$defs": {
+    "decimal": { "type": "string", "pattern": "^(0|[1-9][0-9]{0,8})(\\.[0-9]{1,8})?$", "description": "A non-negative decimal string such as \"0.22\"." },
+    "entry": {
+      "type": "object",
+      "required": ["provider", "operation", "unit", "formula", "usdParameters", "checked", "source"],
+      "additionalProperties": false,
+      "properties": {
+        "provider": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$", "description": "CostEstimate.provider: elevenlabs, fal or syncso." },
+        "operation": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]{0,63}$", "description": "CostEstimate.operation, for example textToSpeech or lipsync." },
+        "model": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$", "description": "Omitted when every model of the operation has this price." },
+        "endpoint": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._/-]{0,127}$", "description": "The provider endpoint id where one provider prices endpoints separately, such as fal-ai/latentsync." },
+        "unit": { "enum": ["second", "character", "call"], "description": "What the estimate's units count." },
+        "formula": { "enum": ["perHour", "perMinute", "perSecond", "perThousandCharacters", "flatThenPerSecond", "zero", "estimateApi"] },
+        "usdParameters": { "type": "object" },
+        "creditsParameters": { "type": "object", "description": "ElevenLabs credits; omitted where credits are unknown." },
+        "checked": { "type": "string", "format": "date", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$", "description": "The day the price was checked at its source; the estimate basis is list-<checked>." },
+        "source": { "type": "string", "pattern": "^https://[^\\s]+$" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "formula": { "const": "perHour" } } },
+          "then": {
+            "properties": {
+              "unit": { "const": "second" },
+              "usdParameters": { "$ref": "#/$defs/perHour" }
+            },
+            "not": { "required": ["creditsParameters"] }
+          }
+        },
+        {
+          "if": { "properties": { "formula": { "const": "perMinute" } } },
+          "then": {
+            "properties": {
+              "unit": { "const": "second" },
+              "usdParameters": { "$ref": "#/$defs/perMinute" },
+              "creditsParameters": { "$ref": "#/$defs/perMinute" }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "formula": { "const": "perSecond" } } },
+          "then": {
+            "properties": {
+              "unit": { "const": "second" },
+              "usdParameters": { "$ref": "#/$defs/perSecond" }
+            },
+            "not": { "required": ["creditsParameters"] }
+          }
+        },
+        {
+          "if": { "properties": { "formula": { "const": "perThousandCharacters" } } },
+          "then": {
+            "properties": {
+              "unit": { "const": "character" },
+              "usdParameters": { "$ref": "#/$defs/perThousandCharacters" },
+              "creditsParameters": { "$ref": "#/$defs/perCharacter" }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "formula": { "const": "flatThenPerSecond" } } },
+          "then": {
+            "properties": {
+              "unit": { "const": "second" },
+              "usdParameters": { "$ref": "#/$defs/flatThenPerSecond" }
+            },
+            "not": { "required": ["creditsParameters"] }
+          }
+        },
+        {
+          "if": { "properties": { "formula": { "const": "zero" } } },
+          "then": {
+            "properties": { "usdParameters": { "maxProperties": 0 } },
+            "not": { "required": ["creditsParameters"] }
+          }
+        },
+        {
+          "if": { "properties": { "formula": { "const": "estimateApi" } } },
+          "then": {
+            "properties": {
+              "unit": { "const": "second" },
+              "usdParameters": { "$ref": "#/$defs/estimateApi" }
+            },
+            "not": { "required": ["creditsParameters"] }
+          }
+        }
+      ]
+    },
+    "perHour": {
+      "type": "object", "required": ["perHour"], "additionalProperties": false,
+      "properties": { "perHour": { "$ref": "#/$defs/decimal" } }
+    },
+    "perMinute": {
+      "type": "object", "required": ["perMinute"], "additionalProperties": false,
+      "properties": { "perMinute": { "$ref": "#/$defs/decimal" } }
+    },
+    "perSecond": {
+      "type": "object", "required": ["perSecond"], "additionalProperties": false,
+      "properties": { "perSecond": { "$ref": "#/$defs/decimal" } }
+    },
+    "perThousandCharacters": {
+      "type": "object", "required": ["perThousandCharacters"], "additionalProperties": false,
+      "properties": { "perThousandCharacters": { "$ref": "#/$defs/decimal" } }
+    },
+    "perCharacter": {
+      "type": "object", "required": ["perCharacter"], "additionalProperties": false,
+      "properties": { "perCharacter": { "$ref": "#/$defs/decimal" } }
+    },
+    "flatThenPerSecond": {
+      "type": "object", "required": ["flat", "includedSeconds", "perSecond"], "additionalProperties": false,
+      "properties": {
+        "flat": { "$ref": "#/$defs/decimal" },
+        "includedSeconds": { "$ref": "#/$defs/decimal" },
+        "perSecond": { "$ref": "#/$defs/decimal" }
+      }
+    },
+    "estimateApi": {
+      "type": "object", "additionalProperties": false,
+      "description": "The provider's published plan range, for reference only. The price comes from the provider's estimate call (section 3.3); from the catalog alone it is unknown.",
+      "properties": {
+        "minPerSecond": { "$ref": "#/$defs/decimal" },
+        "maxPerSecond": { "$ref": "#/$defs/decimal" }
+      }
+    }
+  }
+}

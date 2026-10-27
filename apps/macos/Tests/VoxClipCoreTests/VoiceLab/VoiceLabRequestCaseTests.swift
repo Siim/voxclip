@@ -132,7 +132,7 @@ struct VoiceLabRequestCaseTests {
                 "audio_base64": Data(count: 4_800).base64EncodedString(), "alignment": alignment] as [String: Any]))
         }
         let lab = ElevenLabsVoiceLab(keys: SpeechTestKeys(value: key), session: URLSession(configuration: SpeechStubHTTP.configuration(for: base)),
-                                     region: .default, logger: SpeechTestLogger())
+                                     region: .default, logger: SpeechTestLogger(), prices: VoiceLabPricingTests.catalogIfPresent)
         await lab.useMultipartBoundary(boundary)
         return (lab, recorder)
     }

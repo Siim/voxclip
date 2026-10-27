@@ -33,7 +33,7 @@ internal static class SettingsValidation
 
     internal static bool KnownKey(string key)
         => KnownKeys.Contains(key) || key is "llm.baseUrl.ollama" or "llm.baseUrl.lmstudio" ||
-            Regex.IsMatch(key, "\\A(?:llm\\.(?:model|cloudConsent)|voiceLab\\.providerConsent)\\.[a-z0-9]+(?:-[a-z0-9]+)*\\z", RegexOptions.CultureInvariant);
+            Regex.IsMatch(key, "\\A(?:llm\\.(?:model|cloudConsent)|voiceLab\\.(?:providerConsent|monthlyCapUsd))\\.[a-z0-9]+(?:-[a-z0-9]+)*\\z", RegexOptions.CultureInvariant);
 
     internal static void Validate(AppSettings settings)
     {
@@ -76,6 +76,8 @@ internal static class SettingsValidation
                 default:
                     if (Regex.IsMatch(pair.Key, "\\Allm\\.model\\.[a-z0-9]+(?:-[a-z0-9]+)*\\z", RegexOptions.CultureInvariant)) Text(value, 1, 128);
                     else if (Regex.IsMatch(pair.Key, "\\A(?:llm\\.cloudConsent|voiceLab\\.providerConsent)\\.[a-z0-9]+(?:-[a-z0-9]+)*\\z", RegexOptions.CultureInvariant)) Boolean(value);
+                    else if (Regex.IsMatch(pair.Key, "\\AvoiceLab\\.monthlyCapUsd\\.[a-z0-9]+(?:-[a-z0-9]+)*\\z", RegexOptions.CultureInvariant) && value.ValueKind != JsonValueKind.Null)
+                        Require(value.ValueKind == JsonValueKind.String && AppSettings.ParseMonthlyCap(value.GetString()!) is not null);
                     break;
             }
         }

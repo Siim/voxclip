@@ -56,6 +56,7 @@
   "patternProperties": {
     "^llm\\.model\\.[a-z0-9]+(?:-[a-z0-9]+)*$": { "type": "string", "minLength": 1, "maxLength": 128, "description": "Model id per connector (never one shared key). Default: the catalog defaultModel." },
     "^llm\\.cloudConsent\\.[a-z0-9]+(?:-[a-z0-9]+)*$": { "type": "boolean", "description": "First-use consent per thirdPartyCloud connector. ai.md section 4.8." },
-    "^voiceLab\\.providerConsent\\.[a-z0-9]+(?:-[a-z0-9]+)*$": { "type": "boolean", "description": "M2/M3 provider consent. voice-lab.md section 2.5." }
+    "^voiceLab\\.providerConsent\\.[a-z0-9]+(?:-[a-z0-9]+)*$": { "type": "boolean", "description": "M2/M3 provider consent. voice-lab.md section 2.5." },
+    "^voiceLab\\.monthlyCapUsd\\.[a-z0-9]+(?:-[a-z0-9]+)*$": { "type": ["string", "null"], "pattern": "^(0|[1-9][0-9]{0,8})(\\.[0-9]{1,2})?$", "description": "Settings → Voice Lab → \"Warn me above $__ a month per provider\": a USD amount as a decimal string, or null for no cap. It has no default. voice-lab.md section 3.1." }
   }
 }

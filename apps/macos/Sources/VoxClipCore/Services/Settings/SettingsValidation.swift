@@ -3,7 +3,24 @@ import Foundation
 extension SettingsDocument {
     static func isKnownKey(_ key: String) -> Bool {
         defaults[key] != nil || ["llm.baseUrl.ollama", "llm.baseUrl.lmstudio"].contains(key) ||
-        ProjectValidation.matches(key, "(?:llm\\.model|llm\\.cloudConsent|voiceLab\\.providerConsent)\\.[a-z0-9]+(?:-[a-z0-9]+)*")
+        ProjectValidation.matches(key, "(?:llm\\.model|llm\\.cloudConsent|voiceLab\\.providerConsent|voiceLab\\.monthlyCapUsd)\\.[a-z0-9]+(?:-[a-z0-9]+)*")
+    }
+
+    /// Settings → Voice Lab → "Warn me above $__ a month per provider"; nil means no cap (voice-lab §3.1).
+    public func voiceLabMonthlyCap(for provider: String) -> Decimal? {
+        guard case .string(let text) = values["voiceLab.monthlyCapUsd." + provider] else { return nil }
+        return VoiceLabMoney.parse(text, wholeDigits: 9, fractionDigits: 2)
+    }
+
+    /// Stores the cap as a canonical decimal string, or removes it for nil. Throws `invalidInput` for a value the
+    /// settings schema refuses: negative, more than two decimals or at least $1,000,000,000.
+    public mutating func setVoiceLabMonthlyCap(_ cap: Decimal?, for provider: String) throws {
+        let key = "voiceLab.monthlyCapUsd." + provider
+        guard ProjectValidation.matches(provider, ProjectValidation.slugPattern) else { throw VoiceLabError.invalidInput }
+        guard let cap else { values.removeValue(forKey: key); return }
+        let text = VoiceLabMoney.canonical(cap)
+        guard VoiceLabMoney.parse(text, wholeDigits: 9, fractionDigits: 2) != nil else { throw VoiceLabError.invalidInput }
+        values[key] = .string(text)
     }
 
     public static let defaults: [String: JSONValue] = [
@@ -50,6 +67,13 @@ extension SettingsDocument {
             }
             if ProjectValidation.matches(key, "(?:llm\\.cloudConsent|voiceLab\\.providerConsent)\\.[a-z0-9]+(?:-[a-z0-9]+)*") {
                 guard case .bool = value else { throw VoxClipError.projectUnreadable("Invalid provider consent") }
+                continue
+            }
+            if ProjectValidation.matches(key, "voiceLab\\.monthlyCapUsd\\.[a-z0-9]+(?:-[a-z0-9]+)*") {
+                if value == .null { continue }
+                guard case .string(let text) = value, VoiceLabMoney.parse(text, wholeDigits: 9, fractionDigits: 2) != nil else {
+                    throw VoxClipError.projectUnreadable("Invalid Voice Lab cap")
+                }
                 continue
             }
             if ProjectValidation.matches(key, "llm\\.model\\.[a-z0-9]+(?:-[a-z0-9]+)*") {

@@ -1,5 +1,53 @@
 # Windows fixed contracts
 
+### 2026-10-27 — Voice Lab pricing, cost presentation and spend ledger (opus-vl-pricing)
+
+- The lead's decisions for voice-lab §3.1 and §3.2, with a typed hook for §3.3 live prices, revised after review rounds 1 to 3 and matching the Mac Core entry of the same date. This is an in-place Core change. The approval flow, quote fingerprints and request bodies are unchanged. `ElevenLabsVoiceLab` records each accepted action itself. App and CLI need no wiring: neither constructs the service, and no App or CLI path calls a Voice Lab provider outside it. The CLI's `HttpClient` serves model downloads and LLM connectors. Old → new:
+  - The public `ElevenLabsVoiceLab` constructor gains `VoiceLabSpendLedger? spend = null`. Null there means `<data>/VoiceLab/spend.json` from `DataLocations.Resolve()`. The internal `ForTesting(...)` gains the same parameter, where null records nothing.
+  - `VoiceLabReceipt` gains a final positional `VoiceLabSpendWarning? SpendWarning`, and `VoiceLabAudioResult.SpendWarning` and `VoiceLabCloneResult.SpendWarning` forward it. Deletion returns the receipt itself.
+  - A lip sync of zero seconds is invalid input to `VoiceLabPricing.Estimate`, and `Kind` confirms every lip sync, even at $0.
+  - The private `SendAsync` takes the approved action as `billing` and records it on the reply's 2xx status line (round 4). The round-3 `SpentAsync` is gone.
+  - `ElevenLabsVoiceLab(IKeyProvider, ElevenLabsRegion, ILog?)` and the internal `ForTesting(...)` gain `VoiceLabPriceCatalog? prices = null`. Null loads `catalog/voice-lab.json` through `VoiceLabPrices.Load()` on first use; a missing or defective catalog is `SharedResourcesMissing`.
+  - The private `Unknown(operation, units, unit)` is replaced by the public `CostEstimate Estimate(VoiceLabOperation operation, string? modelId, double units, int candidates = 1)`, which uses the discovered credit multiplier.
+  - Quotes carry catalog estimates. TTS counts runes with the unit `character`. The voice changer counts `wav.Seconds` with the unit `second` (was minutes, `minute`). Creating or deleting a voice is one free `call`.
+  - Discovery refuses a multiplier outside 0.01–100 (`MalformedResponse`).
+  - New `VoiceLabEstimate.ToCostEstimate()`.
+- New public API; every type is listed in the declaration inventory under opus-vl-pricing:
+  - `VoiceLabPricedOperation(Provider, Operation, Endpoint, Unit)` with `ElevenLabsSpeechToText`, `ElevenLabsAudioIsolation`, `ElevenLabsVoiceChange`, `ElevenLabsTextToSpeech`, `ElevenLabsForcedAlignment`, `ElevenLabsCreateClone`, `ElevenLabsDeleteClone`, `SyncsoLipsync` and `FalLipsync(endpoint)`.
+  - `VoiceLabPriceFormula` and `VoiceLabPriceEntry`. `VoiceLabPriceCatalog` has `Format`, `Entries`, `Parse(ReadOnlyMemory<byte>)` and `Find(operation, model)`, and `VoiceLabPrices.Load(string? sharedRoot = null)` loads it.
+  - `VoiceLabPricing.Estimate(operation, model, units, candidates, characterMultiplier, catalog)`, `Apply(VoiceLabProviderPrice, CostEstimate)` and `IsCharacterMultiplier(double)` (0.01–100). The hook uses `VoiceLabProviderPrice(decimal Usd, int? Credits, VoiceLabProviderPriceBasis Basis)` and `VoiceLabProviderPriceBasis` (`ProviderEstimate`, `ProviderPricingApi`). C# takes every argument of `Estimate` explicitly, because a defaulted parameter cannot come before `catalog`.
+  - `VoiceLabCostPresentation` with `Kind(estimate, isLipSync, providerName, VoiceLabMonthlyCap? cap = null)` → `VoiceLabCostPresentationResult(VoiceLabCostPresentationKind Kind, string Text)`, `Format(decimal)`, `ButtonTitle(action, int? takes, kind)` and `CapWarning(cap, providerName)`.
+  - `VoiceLabMonthlyCap(decimal Limit, decimal Spent)` with `IsCrossedBy(CostEstimate)`.
+  - `VoiceLabSpendTotal(decimal Usd, int UnknownCount)`, and `VoiceLabSpendDocument` with `Format`, `Months`, `Parse(byte[])`, `Month(start, TimeZoneInfo)`, `Total`, `Record` and `Encode()`.
+  - `VoiceLabSpendLedger(DataLocations, TimeZoneInfo?, TimeSpan?)` and `(string filePath, TimeZoneInfo?, TimeSpan?)`. It offers `FilePath`, `TimeZone` (null means the system zone), `LockTimeout`, `ReadTimeout`, `Month`, `ReadAsync(ct)` → `VoiceLabSpendDocument?`, `TotalAsync(provider, start, ct)` → `VoiceLabSpendTotal?`, `RecordAsync(estimate, start, ct = default)` and `WouldCrossAsync(cap, provider, estimate, start, ct)`. `RecordAsync`'s token applies only to the wait for the lock.
+  - `VoiceLabSpendWarning(VoiceLabSpendWarningKind Kind, string? BackupFileName)` with `ReplacedCorruptLedger`, `LockTimedOut`, `Cancelled`, `WriteFailed` and `InvalidEstimate`. The lead accepted `Cancelled` in round 3.
+  - `SpendWarning` on `VoiceLabReceipt`, `VoiceLabAudioResult` and `VoiceLabCloneResult`.
+  - `AppSettings.GetVoiceLabMonthlyCap(provider)` and `SetVoiceLabMonthlyCap(provider, decimal?)`.
+  - `AtomicFile.WriteAsync` gains an optional `UnixFileMode? unixCreateMode`; existing callers are unchanged.
+- Rules are the Mac entry's. On Windows specifically:
+  - **Recording:** as soon as a 2xx status arrives, after the redirect check, `SendAsync` starts `RecordAsync` through `Task.Run` with `CancellationToken.None`, never on the caller's synchronization context. It awaits the record in `finally`, so a cancelled, broken or oversized body is counted before its error reaches the caller. The service therefore never gets `Cancelled`. The start time comes from the service's `TimeProvider`. A deletion answered 404 is not a 2xx reply and records nothing.
+  - **Locks:** a writer takes an exclusive `FileShare.None` open of `spend.json.lock` for up to 5 s, and a reader a shared `FileShare.Read` open for at most 0.5 s. .NET maps these to `flock` off Windows. Only a sharing or lock violation (HResult 32 or 33), or `EWOULDBLOCK` off Windows, is waited for. Any other `IOException`, such as read-only media or a full disk, is `WriteFailed` at once.
+  - **Directory:** only `VoiceLab` itself is created, inside an existing data folder, with mode 0700 off Windows.
+  - **Durability:** `AtomicFile` flushes the 0600 temporary file with `Flush(true)` before `File.Replace`.
+  - **Time zone:** without an injected zone, `Month` calls `TimeZoneInfo.ClearCachedData()` before reading `TimeZoneInfo.Local`. This is cheap, because only the local zone reloads when next asked for. It is safe, because held instances stay valid. A zone change therefore applies to the next action.
+  - **Byte-order mark:** the check is spelled `'\uFEFF'`.
+- **Real Windows share-mode locking is unverified.** These suites ran on macOS ARM64, where .NET emulates `FileShare.None` with an advisory `flock`. Windows's real sharing violations, and `File.Replace` racing a reader, wait for the Windows build VM. `VoiceLabPricingTests.WindowsShareModesKeepWritersApartAndReadersOutOfTheReplaceWindow` is that VM test: it skips elsewhere. It checks that a second exclusive open fails with HResult 32, that a writer then times out, and that a reader racing 100 records never sees a total fall. The same race runs on every platform in `ReadersRacingAWriterSeeOnlyWholeLedgers`.
+- The fixture is `shared/fixtures/voice-lab/pricing-cases.json` with 247 cases, SHA-256 `5e2adb4f69f52c92933f5e2077712b91710b7fcc6ce3e7848d1b1de975bb62c7`:
+  - 117 estimates, 5 provider prices, 29 formats, 21 presentations, 10 buttons and 6 quotes;
+  - 47 ledger cases;
+  - 12 settings values.
+
+  `VoiceLabPricingTests` replays every case.
+- The App and CLI ship `shared\**` except the fixtures, so the catalog ships without a per-file list.
+- Verification on macOS ARM64 (round 4), on the tree merged with main `f777c433`:
+  - `dotnet build VoxClip.CrossPlatform.slnf -c Release -nodeReuse:false -p:UseSharedCompilation=false` had 0 warnings and 0 errors.
+  - Core tests passed 1,509 of 1,537, with 28 skipped (the 27 existing prerequisites and the Windows VM test) and 0 failed.
+  - The pricing class ran 27 tests: 26 passed and 1 VM test was skipped. The three service tests are the Mac ones, with a stubbed `HttpMessageHandler`. On Windows the read-only case uses a read-only lock file, because Windows ignores the read-only attribute on folders.
+  - The status-line test serves its bodies through a scripted `Stream`. It records once each for a 200 cancelled after a first 64-byte chunk, an `IOException` after that chunk, a `Content-Length` over the 44 MiB limit, an endless body that passes the limit, and a cancellation after the last byte, which still returns the audio.
+  - A cancellation check after the read loop, and recording only after the whole body, each failed the status-line test.
+  - Round 3: recording before `SendAsync` failed the first service test.
+  - Round 2: with the writer's lock opened `FileShare.ReadWrite`, the two-writer test failed in 3 of 3 runs.
+
 ### 2026-10-27 — Shared share-text rules and disclosure line in Core (share-core)
 
 - Same API as the Mac Core (publishing.md §2.1, voice-lab.md §11.3). `Domain/Share` declares `ShareDestination` (`X`, `LinkedIn`, `VoxConvo`), the internal `ShareTextRules`, and `ShareDisclosure` (`RemovedWarning`, `ShareAnyway`, `RestoreLine`, `XMadeWithAiTip`, `IsPresent(caption, line)`, and the internal `FieldText(savedOrDefault, line, rules)`). `Services/Share/SharePostText` (`Preflight`, `Limit`, `XWeight`, `LinkedInLength`, `VoxConvoLength`, `ComposerText(caption, destination, disclosureLine)`, `DefaultCaption(title, words)`, `FieldText(savedOrDefault, line)`, `CapCaption(caption)`) loads `shared/data/share-text.json` once through `SharedResources.ResolveRoot()` and passes the rules to Domain. The public field text was `ShareDisclosure.FieldText(savedOrDefault, line)`, which read `ShareTextRulesLoader.Current`: file I/O and global state in Domain, against architecture §3. It is now `SharePostText.FieldText`, as on the Mac. A missing or invalid file throws `VoxClipException` with `SharedResourcesMissing`. A lone surrogate reads as U+FFFD, as a Swift string holds it, so NFC never throws.
@@ -224,6 +272,11 @@ Every listed declaration maps to its containing file and one owner. Nested union
 | `EngineRef`, `RawToken`, `RawTranscript`, `RawWord`, `GroupingEnd`, `GroupingConfidence`, `GroupingRule`, `LanguageChoice`, `LanguageChoice.Auto`, `LanguageChoice.Forced`, `TranscriptionOptions`, `TranscriptionPlan`, `ExtractedAudio`, `TranscriptionRequest`, `TranscriptionStage`, `TranscriptionProgress`, `TranscriberCapabilities`, `Readiness`, `Readiness.Ready`, `Readiness.NeedsKey`, `Readiness.NeedsModels`, `Readiness.NeedsSystemAssets`, `Readiness.UnsupportedLanguage`, `Readiness.Unavailable`, `AudioEnvelope`, `WordAssembler`, `TranscriptPostProcessor` | `src/VoxClip.Core/Domain/Transcript/TranscriptionModels.cs` | win-speech |
 | `ClipFinderRequest`, `ClipFinderProgress`, `IClipFinder`, `ClipFinder` | `src/VoxClip.Core/Services/LLM/ClipFinder.cs` | win-ai |
 | `ElevenLabsVoiceLab`, `VoiceRewriteService` | `src/VoxClip.Core/Services/VoiceLab/ElevenLabsVoiceLab.cs`, `src/VoxClip.Core/Services/VoiceLab/VoiceRewriteService.cs` | win-ai |
+| `VoiceLabPricedOperation`, `VoiceLabPriceFormula`, `VoiceLabPriceEntry`, `VoiceLabPriceCatalog`, `VoiceLabProviderPriceBasis`, `VoiceLabProviderPrice`, `VoiceLabPricing` | `src/VoxClip.Core/Domain/VoiceLab/VoiceLabPricing.cs` | opus-vl-pricing |
+| `VoiceLabCostPresentationKind`, `VoiceLabCostPresentationResult`, `VoiceLabMonthlyCap`, `VoiceLabCostPresentation` | `src/VoxClip.Core/Domain/VoiceLab/VoiceLabCostPresentation.cs` | opus-vl-pricing |
+| `VoiceLabSpendTotal`, `VoiceLabSpendDocument` | `src/VoxClip.Core/Domain/VoiceLab/VoiceLabSpend.cs` | opus-vl-pricing |
+| `VoiceLabPrices`, `VoiceLabSpendWarningKind`, `VoiceLabSpendWarning`, `VoiceLabSpendLedger` | `src/VoxClip.Core/Services/VoiceLab/VoiceLabSpendLedger.cs` | opus-vl-pricing |
+| `VoiceLabPricingTests` | `tests/VoxClip.Core.Tests/Tracks/voice-lab/VoiceLabPricingTests.cs` | opus-vl-pricing |
 | `ClipFinderGateKind`, `ClipFinderGateException` | `src/VoxClip.Core/Services/LLM/ClipFinderGateException.cs` | win-ai |
 | `ConnectorId`, `LlmFeature`, `Effort`, `ModelSource`, `LlmRequest`, `StopKind`, `StopKind.Complete`, `StopKind.Truncated`, `StopKind.Refused`, `LlmUsage`, `RawCompletion`, `LlmResult`, `LlmModel`, `LlmConnectionTestResult`, `CliDetectionInfo`, `ConnectorStatus`, `ConnectorStatus.Ready`, `ConnectorStatus.NeedsKey`, `ConnectorStatus.NotRunning`, `ConnectorStatus.NoModels`, `ConnectorStatus.Unavailable`, `ConnectorStatus.CliMissing`, `ConnectorStatus.CliTooOld`, `ConnectorStatus.CliSignedOut`, `ILlmConnector`, `IKeyProvider`, `LlmErrorKind`, `LlmError`, `LlmException`, `LlmCatalog`, `LlmRunner`, `LlmConnector` | `src/VoxClip.Core/Services/LLM/LlmContracts.cs` | win-ai |
 | `LlmJsonContext` | `src/VoxClip.Core/Services/LLM/LlmJsonContext.cs` | win-ai |

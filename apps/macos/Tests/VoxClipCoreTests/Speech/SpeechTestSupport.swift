@@ -71,6 +71,9 @@ final class SpeechStubHTTP: URLProtocol {
         /// delivers the bytes sent before it, but URLSession discards bytes its delegate has not
         /// taken when the failure arrives first.
         var failWhen: (@Sendable () -> Bool)? = nil
+        /// Leaves the reply open after `body`, as a server that stops sending does, without blocking the loading thread
+        /// that every stubbed session shares. The task then ends only when it is cancelled.
+        var stalls = false
     }
     static let handlers = Mutex<[String: @Sendable (URLRequest) throws -> Reply]>([:])
     static func register(_ handler: @escaping Handler) -> URL {
@@ -104,6 +107,7 @@ final class SpeechStubHTTP: URLProtocol {
             let response = HTTPURLResponse(url: request.url!, statusCode: reply.status, httpVersion: "HTTP/1.1", headerFields: reply.headers)!
             client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
             client?.urlProtocol(self, didLoad: reply.body)
+            if reply.stalls { return }
             if let failure = reply.failure {
                 if let failWhen = reply.failWhen {
                     let deadline = ContinuousClock.now.advanced(by: .seconds(10))

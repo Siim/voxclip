@@ -1,5 +1,71 @@
 # macOS implementation contracts
 
+### 2026-10-27 — Voice Lab pricing, cost presentation and spend ledger (opus-vl-pricing)
+
+- The lead's decisions for voice-lab §3.1 and §3.2, with a typed hook for §3.3 live prices, revised after review rounds 1 to 3. This is an in-place Core change. The approval flow, quote fingerprints and request bodies left by wave2-vl-request-bodies are unchanged. `ElevenLabsVoiceLab` records each accepted action itself. App and CLI need no wiring: neither constructs the service, and no App or CLI path calls a Voice Lab provider outside it. The Settings key test only sends the free `GET /v1/user/subscription`, and transcription goes through `ElevenLabsTranscriber`, which is not a Voice Lab action. Old → new:
+  - `ElevenLabsVoiceLab.estimate(_:units:unit:) throws -> CostEstimate` → `estimate(_ operation: VoiceLabOperation, modelID: String?, units: Double, candidates: Int = 1) throws -> CostEstimate`. It prices from the catalog with the discovered credit multiplier.
+  - Both `ElevenLabsVoiceLab` initializers gain `spend:`. The production `init(keys:region:logger:prices:spend:)` takes `spend: VoiceLabSpendLedger = VoiceLabSpendLedger(locations: DataLocations())`. The session initializer takes `spend: VoiceLabSpendLedger? = nil`, so a test or another caller with its own transport records nothing unless it passes a ledger.
+  - `VoiceLabReceipt` gains `spendWarning: VoiceLabSpendWarning?`, and `VoiceLabAudioResult.spendWarning` and `VoiceLabCloneResult.spendWarning` forward it. Deletion returns the receipt itself.
+  - The private `send` takes the approved action as `billing:` and records it on the reply's 2xx status line (round 4, below). The call sites no longer record.
+  - A complete 2xx reply is still kept when the task is cancelled after its last byte, and a cancelled non-2xx reply still throws `cancelled`. The internal test seam `runAfterLastByte(_:)` runs a hook at that point.
+  - A lip sync of zero seconds is invalid input to `VoiceLabPricing.estimate`, and `kind` confirms every lip sync, even at $0.
+  - Both `ElevenLabsVoiceLab` initializers gain `prices: VoiceLabPriceCatalog? = nil`. Nil loads `catalog/voice-lab.json` through `SharedResources.locate()` on first use; a missing or defective catalog is `sharedResourcesMissing`. Main's Media test `VoiceLabSourceAudioTests` builds the service without `prices:` and prepares a conversion, so it now reads the shared catalog. CI sets `VOXCLIP_SHARED_DIR`, and the suite passes on the tree merged with main `f777c433`.
+  - Quotes carry catalog estimates. TTS counts Unicode scalars with the unit `character` (was `characters`). The voice changer counts WAV seconds, frames / rate, with the unit `second` (was 1 `call`). Creating or deleting a voice is one free `call`.
+  - Model discovery refuses a `character_cost_multiplier` that is null, a boolean, a string, or a number outside 0.01–100 (`malformedResponse`). A missing or null `model_rates`, or one without the multiplier, means 1.
+  - Main's paid-asset helpers moved from Media `VoiceLabAssetStore` to Core as `package enum VoiceLabPaidRoot`: `open(_:)`, `directory(_:in:)`, `fullSync(_:)` and `Failure`. The ledger therefore opens `<data>/VoiceLab` exactly as the asset writer does. The asset store maps `Failure` to its own errors for the file. Its behaviour is unchanged, and its test now calls `VoiceLabPaidRoot.fullSync`.
+- New public API:
+  - `VoiceLabPricedOperation(provider:operation:endpoint:unit:)` with `.elevenLabsSpeechToText`, `.elevenLabsAudioIsolation`, `.elevenLabsVoiceChange`, `.elevenLabsTextToSpeech`, `.elevenLabsForcedAlignment`, `.elevenLabsCreateClone`, `.elevenLabsDeleteClone`, `.syncsoLipsync` and `.falLipsync(endpoint:)`.
+  - `VoiceLabPriceCatalog(data:) throws`, with `format`, `Formula`, `Entry`, `entries` and `entry(for:model:)`, plus `VoiceLabPriceCatalog.load(shared:)`.
+  - `VoiceLabPricing.estimate(operation:model:units:candidates: = 1, characterMultiplier: = nil, catalog:) throws -> CostEstimate`, `applying(_ price: VoiceLabProviderPrice, to:) throws -> CostEstimate` and `characterMultiplierRange` (0.01...100). The hook uses `VoiceLabProviderPrice(usd:credits:basis:)` and `VoiceLabProviderPriceBasis` (`provider-estimate`, `provider-pricing-api`).
+  - `VoiceLabCostPresentation` with `Kind` (`.inline(String)`, `.confirm(String)`), `kind(_:isLipSync:providerName:cap: VoiceLabMonthlyCap? = nil)`, `format(_:)`, `buttonTitle(_:takes:kind:)` and `capWarning(cap:providerName:)`.
+  - `VoiceLabMonthlyCap(limit:spent:)` with `isCrossed(by:)`.
+  - `VoiceLabSpendTotal(usd:unknownCount:)`, and `VoiceLabSpendDocument` with `months`, `init?(data:)`, `month(of:in:)`, `total(provider:month:)`, `record(_:month:) throws` and `encoded()`.
+  - `VoiceLabSpendLedger(locations:timeZone: = .autoupdatingCurrent, lockTimeout: = .seconds(5))` and `(url:timeZone:lockTimeout:)`. It offers `month(of:)`, `readTimeout`, `read() async -> VoiceLabSpendDocument?`, `total(provider:at:) async -> VoiceLabSpendTotal?`, `record(_:at:) async -> VoiceLabSpendWarning?` and `wouldCross(cap:provider:estimate:at:) async -> Bool`.
+  - `VoiceLabSpendWarning`: `replacedCorruptLedger(backupFileName:)`, `lockTimedOut`, `cancelled`, `writeFailed` and `invalidEstimate`. The lead accepted `cancelled` in round 3.
+  - `spendWarning` on `VoiceLabReceipt`, `VoiceLabAudioResult` and `VoiceLabCloneResult`.
+  - `SettingsDocument.voiceLabMonthlyCap(for:)` and `setVoiceLabMonthlyCap(_:for:) throws`.
+- Rules, all pinned by the fixture:
+  - **TTS dollars** come from the model's own list price: characters × candidates × price / 1000. The discovered multiplier is a credit multiplier: credits = ceil(characters × candidates × multiplier × credits per character).
+  - **Recording:** acceptance is the 2xx status line, because the provider has billed by then. As soon as a 2xx status and headers arrive, `send` starts recording the approved quote's estimate once, in a detached task off the service's actor and the main actor.
+    - The record is never undone, and a cancellation after that point does not prevent it.
+    - If the body then fails, through a cancellation mid-body, a dropped connection or `responseTooLarge` (by `Content-Length` or by the buffered size), the record still finishes before the error is rethrown. The user sees the error and gets no receipt, but the money is counted.
+    - A refused authorization, a failed request, a 4xx or 5xx reply and a cancellation before the status line record nothing.
+    - The warning is logged (`voice-lab`, `warn`) and returned as `spendWarning` when the action succeeds. It never fails the action. Because the service's records ignore cancellation, `cancelled` reaches only direct callers of `record`.
+  - **Copy:** a $0 estimate is inline with empty text, its button is just the action, and the ledger does not record it. Lip sync always confirms instead. A sub-cent confirmation reads "This will cost less than $0.01 on your {provider} account." An action that crosses the cap always confirms, with the cap sentence appended.
+  - **Ledger locking:** `record`, `read`, `total` and `wouldCross` are nonisolated async methods. They poll a nonblocking `flock` with `Task.sleep`, so no thread is ever blocked. Writers take the lock exclusively for up to 5 s; readers take it shared for at most 0.5 s. Only `EWOULDBLOCK` is waited for: any other failure, such as a read-only folder, is `writeFailed` at once, and a cancelled task gets `cancelled`.
+  - **Ledger storage:** the root is created through `VoiceLabPaidRoot`: only `VoiceLab`, with mode 0700, never the data folder. Writes flush the 0600 temporary file with `F_FULLFSYNC`, rename it, then flush the directory. Months use `TimeZone.autoupdatingCurrent`. A repeated key makes a file corrupt.
+  - **Invalid input** for an estimate means:
+    - units that are not finite or fall outside 0…1,000,000;
+    - fractional characters or calls;
+    - a lip sync of zero seconds, with or without an entry;
+    - candidates outside 1–3, or more than 1 on a formula other than TTS;
+    - a multiplier outside 0.01–100;
+    - a unit that does not match the entry.
+
+    A missing entry and an `estimateApi` entry give `usd` nil and the basis `unknown`. `usd` is rounded half away from zero to 10 decimals.
+- Shared files:
+  - `shared/catalog/voice-lab.json` (18 entries, `voxclip-voice-lab-prices/1`, including the zero `deleteClone` entry) and `shared/schemas/voice-lab-prices.schema.json`, both checked by `tools/schemas/validate.py`.
+  - The settings key `voiceLab.monthlyCapUsd.<provider>`, added to `settings.schema.json`.
+  - `shared/fixtures/voice-lab/pricing-cases.json`, written by `tools/fixtures/voice-lab/generate_pricing.py`, which produces identical bytes on every run. It holds 247 cases, SHA-256 `5e2adb4f69f52c92933f5e2077712b91710b7fcc6ce3e7848d1b1de975bb62c7`:
+    - 117 estimates, including 7 zero-second lip syncs from the catalog rows and 2 named ones, 5 provider prices, 29 formats, 21 presentations, 10 buttons and 6 quotes;
+    - 47 ledger cases: the empty file, 2 month rollovers with 11 records (2 of them free), 1 free-only case, 1 concurrent pair of 2 writers × 50 records, 26 existing files (22 corrupt, 5 repeating a key), 10 cap checks and 6 cap sentences;
+    - 12 settings values.
+
+    Both Cores replay every case.
+- The Mac bundle copies every tracked file in `shared/catalog` (`bundle.sh` `SHARED_DIRS`), so the catalog ships without a per-file list.
+- Test support: `SpeechStubHTTP.Reply.stalls` leaves a reply open after its body, as a server that stops sending does, and returns from `startLoading`. A `failWhen` wait blocks the loading thread that every stubbed session shares, so `URLSession.bytes(for:)` never sees the head. A stalled reply also needs a content type, or URLSession holds the head back to sniff the first 512 bytes.
+- Verification (round 4), on the tree merged with main `f777c433`, with `VOXCLIP_SHARED_DIR`, live tests off and downloads off:
+  - `swift build` had no warnings.
+  - `swift build --build-tests` with `-warn-long-expression-type-checking=300` flagged no expression in this track's files.
+  - `swift test --filter VoxClipCoreTests` passed 537 tests in 37 suites, including the 18-test pricing suite. Its three service tests use the stubbed transport:
+    - one record per accepted TTS and voice-changer action, and none for a free clone or deletion, a refusal, a 401, 429 or 500, or a cancellation before sending or before the status line;
+    - one record each for a 200 cancelled after its head and first 64 bytes (a stalled reply), a 200 whose `Content-Length` is over the 32 MiB limit, and a 200 cancelled after its last byte through `runAfterLastByte`, which still returns the audio;
+    - a call into a read-only data folder still succeeds and carries `writeFailed`.
+  - The Media Voice Lab suites ran 56 tests in 7 suites, and 55 passed. `VoiceLabCompositionTests.nonunityFitRefusesBeforeSnapshotAndPublication` compares the shared temporary folder's listing, and it failed while the parallel caller suite wrote there. That test is unchanged from main, and the scratch folders it counts come from other Media Voice Lab code. Run alone, the composition suite passed 21 of 21. `VoiceLabSourceAudioTests` and `VoiceLabAssetStoreTests` passed 20 tests.
+  - Checking for cancellation after the last byte failed the status-line test.
+  - Round 3: recording before `send` failed the first service test.
+  - Round 2: with the lock disabled, the two-writer test failed in 3 of 3 runs.
+
 ### 2026-10-27 — Persisted timestamps round-trip exactly (opus-project-dates)
 
 - `Sources/VoxClipCore/Domain/Shared/UTCTimestamp.swift` now reads and writes every persisted timestamp (editing §10.1), and `ProjectJSON` uses its `.utcTimestamp` date strategies. The old encoder (`Date.ISO8601FormatStyle`) truncated binary seconds, and the old decoder (`ISO8601DateFormatter`) returned a `Date` one binary step below the written millisecond. So a load and save moved about 42 % of millisecond timestamps 1 ms earlier, again on every later save: up to −5 ms after 100 saves in the probe. Foundation's Gregorian calendar is Julian before 1582-10-15, so earlier dates were days off the Windows text (10 days in 1581, 2 in year 1). The new code is integer proleptic Gregorian arithmetic.
