@@ -38,6 +38,18 @@ enum SpeechTestFiles {
     }
 }
 
+enum SpeechTestWait {
+    /// Polls a condition without a deadline; the suite time limit ends a test that never gets there.
+    static func until(_ condition: () async -> Bool) async throws {
+        while await !condition() { try await Task.sleep(for: .milliseconds(1)) }
+    }
+    /// Awaits an unstructured task and cancels it if the test is cancelled, so the time limit also
+    /// ends a job stuck in a queue instead of leaving the run waiting on it.
+    static func value<T: Sendable>(_ task: Task<T, any Error>) async throws -> T {
+        try await withTaskCancellationHandler { try await task.value } onCancel: { task.cancel() }
+    }
+}
+
 actor SpeechTestLogger: Redacting {
     private var redactor = Redactor()
     private(set) var entries: [LogEntry] = []
@@ -59,6 +71,9 @@ final class SpeechStubHTTP: URLProtocol {
         /// delivers the bytes sent before it, but URLSession discards bytes its delegate has not
         /// taken when the failure arrives first.
         var failWhen: (@Sendable () -> Bool)? = nil
+        /// Leaves the reply open after `body`, as a server that stops sending does, without blocking the loading thread
+        /// that every stubbed session shares. The task then ends only when it is cancelled.
+        var stalls = false
     }
     static let handlers = Mutex<[String: @Sendable (URLRequest) throws -> Reply]>([:])
     static func register(_ handler: @escaping Handler) -> URL {
@@ -92,6 +107,7 @@ final class SpeechStubHTTP: URLProtocol {
             let response = HTTPURLResponse(url: request.url!, statusCode: reply.status, httpVersion: "HTTP/1.1", headerFields: reply.headers)!
             client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
             client?.urlProtocol(self, didLoad: reply.body)
+            if reply.stalls { return }
             if let failure = reply.failure {
                 if let failWhen = reply.failWhen {
                     let deadline = ContinuousClock.now.advanced(by: .seconds(10))

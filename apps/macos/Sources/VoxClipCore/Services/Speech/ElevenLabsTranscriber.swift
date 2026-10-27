@@ -71,6 +71,7 @@ public actor ElevenLabsTranscriber: Transcriber {
             _ = try await catalog.models()
             guard let apiKey = try await keys.key(for: "elevenlabs"), !apiKey.isEmpty else { throw VoxClipError.keyMissing("elevenlabs") }
             try FileManager.default.createDirectory(at: cacheURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try SpeechRawCacheEntry.setAside(cacheURL, unlessPlaceholderFor: key)
             try SpeechRawCacheEntry(key: key, raw: nil, providerResponse: nil).write(cacheURL)
             let raw = try await performTranscription(request, cacheURL: cacheURL, bytes: bytes, key: apiKey, progress: progress)
             return (raw, false)

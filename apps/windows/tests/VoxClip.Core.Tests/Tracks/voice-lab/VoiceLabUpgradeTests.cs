@@ -323,7 +323,9 @@ public sealed class VoiceLabUpgradeTests
             var item = node!;
             var id = item["id"]!.GetValue<string>();
             var (json, error) = Replay(cases, item);
-            var expected = item["error"] is { } refusal ? refusal.GetValue<string>() : Canonical(cases["projects"]![item["expected"]!.GetValue<string>()]);
+            // Expected projects keep their source fixtures' whole seconds, which a save writes in canonical form (editing §10.1).
+            var expected = item["error"] is { } refusal ? refusal.GetValue<string>()
+                : Canonical(TimestampWireRuleTests.CanonicalTimestamps(cases["projects"]![item["expected"]!.GetValue<string>()]));
             var actual = json is null ? error : Canonical(JsonNode.Parse(json));
             Assert.Equal(id + ": " + expected, id + ": " + actual);
             if (json is not null) ProjectSerialization.Deserialize(json);

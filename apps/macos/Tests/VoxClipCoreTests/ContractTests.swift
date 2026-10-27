@@ -15,7 +15,9 @@ func portableProjectRoundTrip(name: String) throws {
     let document = try ProjectJSON.decode(data)
     let encoded = try ProjectJSON.encode(document)
     #expect(try ProjectJSON.decode(encoded) == document)
-    let original = try JSONSerialization.jsonObject(with: data) as? NSDictionary
+    // The examples store whole seconds, which a save writes once in canonical form (editing §10.1).
+    let stored = try JSONEncoder().encode(TimestampWireRule.canonicalTimestamps(JSONDecoder().decode(JSONValue.self, from: data)))
+    let original = try JSONSerialization.jsonObject(with: stored) as? NSDictionary
     let result = try JSONSerialization.jsonObject(with: encoded) as? NSDictionary
     #expect(original == result)
 }

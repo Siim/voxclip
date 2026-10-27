@@ -8,7 +8,7 @@ extension ModelStore {
     func fileURL(_ model: ModelDescriptor, _ file: ModelFile) -> URL { modelDirectory(model).appendingPathComponent(file.name) }
     func isInstalled(_ model: ModelDescriptor) -> Bool {
         let url = modelDirectory(model).appendingPathComponent("installed.json")
-        let decoder = JSONDecoder(); decoder.dateDecodingStrategy = .iso8601
+        let decoder = JSONDecoder(); decoder.dateDecodingStrategy = .utcTimestamp
         guard let data = try? Data(contentsOf: url), let marker = try? decoder.decode(Marker.self, from: data),
               marker.files.map({ Partial(url: URL(fileURLWithPath: $0.name), bytes: $0.bytes, sha256: $0.sha256) }) == model.files.map({ Partial(url: URL(fileURLWithPath: $0.name), bytes: $0.bytes, sha256: $0.sha256) }) else { return false }
         return model.files.allSatisfy { size(fileURL(model, $0)) == $0.bytes }
@@ -88,7 +88,7 @@ extension ModelStore {
                 } else {
                     object = try JSONSerialization.jsonObject(with: JSONEncoder().encode(entry)) as? [String: Any] ?? [:]
                 }
-                object["installedAt"] = ISO8601DateFormatter().string(from: Date())
+                object["installedAt"] = UTCTimestamp.string(from: Date())
                 try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys, .withoutEscapingSlashes]).write(to: modelDirectory(entry).appendingPathComponent("installed.json"), options: .atomic)
             }
         } catch {

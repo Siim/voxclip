@@ -1,5 +1,7 @@
+using System.Globalization;
 using Velopack;
 using Velopack.Sources;
+using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Services.Updates;
 
 namespace VoxClip.App.Services;
@@ -17,9 +19,10 @@ internal sealed class VelopackUpdates(AppServices services) : IUpdateChecker
         await check.WaitAsync(ct);
         try
         {
-            if (!manual && DateTimeOffset.TryParse(services.Get("update.lastCheckAt", ""), out var last) && DateTimeOffset.UtcNow - last < TimeSpan.FromHours(24)) return null;
+            if (!manual && DateTimeOffset.TryParse(services.Get("update.lastCheckAt", ""), CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var last)
+                && DateTimeOffset.UtcNow - last < TimeSpan.FromHours(24)) return null;
             available = await manager.CheckForUpdatesAsync().WaitAsync(ct);
-            await services.SetAsync("update.lastCheckAt", DateTimeOffset.UtcNow.ToString("O"), ct);
+            await services.SetAsync("update.lastCheckAt", UtcTimestamp.Format(DateTimeOffset.UtcNow), ct);
             return available is null ? null : new(available.TargetFullRelease.Version.ToString(), new("https://github.com/Siim/voxclip/releases"), false);
         }
         finally { check.Release(); }

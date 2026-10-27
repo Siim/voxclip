@@ -74,11 +74,23 @@ struct SpeechRawCacheEntry: Codable, Sendable {
         return try providerResponse.map { try JSONEncoder().encode($0) }
     }
     static func read(_ url: URL) throws -> Self {
-        let decoder = JSONDecoder(); decoder.dateDecodingStrategy = .iso8601
+        let decoder = JSONDecoder(); decoder.dateDecodingStrategy = .utcTimestamp
+        decoder.userInfo[modified] = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
         return try decoder.decode(Self.self, from: Data(contentsOf: url))
     }
+    /// Moves the file at `url` aside as `<name>.unreadable-<unix ms>` unless it is the placeholder for `key`, so a paid
+    /// response that no longer decodes, or that belongs to another key or schema, is kept instead of overwritten. The
+    /// move never replaces an existing file.
+    static func setAside(_ url: URL, unlessPlaceholderFor key: SpeechRawCacheKey) throws {
+        guard FileManager.default.fileExists(atPath: url.path) else { return }
+        if let entry = try? read(url), entry.schema == "voxclip-raw-transcript/1", entry.key == key,
+           entry.raw == nil, entry.providerResponse == nil, entry.providerResponseBytes == nil { return }
+        var milliseconds = Int64(Date().timeIntervalSince1970 * 1000)
+        while FileManager.default.fileExists(atPath: url.appendingPathExtension("unreadable-\(milliseconds)").path) { milliseconds += 1 }
+        try FileManager.default.moveItem(at: url, to: url.appendingPathExtension("unreadable-\(milliseconds)"))
+    }
     func write(_ url: URL) throws {
-        let encoder = JSONEncoder(); encoder.dateEncodingStrategy = .iso8601; encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+        let encoder = JSONEncoder(); encoder.dateEncodingStrategy = .utcTimestamp; encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
         try encoder.encode(self).write(to: url, options: .atomic)
     }
     func encode(to encoder: any Encoder) throws {
@@ -88,21 +100,73 @@ struct SpeechRawCacheEntry: Codable, Sendable {
         try container.encode(providerResponse, forKey: .providerResponse)
         try container.encodeIfPresent(providerResponseBytes, forKey: .providerResponseBytes)
     }
+    private static let modified = CodingUserInfoKey(rawValue: "voxclip.rawCacheModified")!
+    private enum CodingKeys: String, CodingKey { case schema, key, createdAt, raw, providerResponse, providerResponseBytes }
 }
 
+extension SpeechRawCacheEntry {
+    /// Reads `createdAt` leniently: a missing date, or one in another format, falls back to the file's modification
+    /// date, so a date-format change alone never makes a paid response unreadable (editing.md §10.1).
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        schema = try container.decode(String.self, forKey: .schema)
+        key = try container.decode(SpeechRawCacheKey.self, forKey: .key)
+        createdAt = (try? container.decode(Date.self, forKey: .createdAt)) ?? (decoder.userInfo[Self.modified] as? Date) ?? Date()
+        raw = try container.decodeIfPresent(RawTranscript.self, forKey: .raw)
+        providerResponse = try container.decodeIfPresent(JSONValue.self, forKey: .providerResponse)
+        providerResponseBytes = try container.decodeIfPresent(Data.self, forKey: .providerResponseBytes)
+    }
+}
+
+/// App-wide speech job queue: one local job, two ElevenLabs jobs and one job per key at a time;
+/// transcription §13.4. Waiters start in arrival order once their kind has room and their key is
+/// free, so a waiter never holds back the other kind or another key. A release hands the slot to
+/// the next waiter before any later caller can take it.
 actor SpeechJobGate {
     static let shared = SpeechJobGate()
+    struct Snapshot: Equatable { var local: Int; var cloud: Int; var waiting: [String] }
+    private struct Waiter { let id: Int; let local: Bool; let key: String; let continuation: CheckedContinuation<Void, any Error> }
     private var localJobs = 0
     private var cloudJobs = 0
     private var keys: Set<String> = []
+    private var waiters: [Waiter] = []
+    private var nextWaiter = 0
+    /// Returns holding a slot, or throws `CancellationError` holding nothing. A slot handed over
+    /// just before a cancellation stays with the caller, which releases it as usual.
     func acquire(local: Bool, key: String) async throws {
-        while keys.contains(key) || (local ? localJobs >= 1 : cloudJobs >= 2) { try await Task.sleep(for: .milliseconds(50)) }
         try Task.checkCancellation()
-        keys.insert(key)
-        if local { localJobs += 1 } else { cloudJobs += 1 }
+        if canStart(local: local, key: key) { start(local: local, key: key); return }
+        nextWaiter += 1
+        let id = nextWaiter
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                waiters.append(Waiter(id: id, local: local, key: key, continuation: continuation))
+            }
+        } onCancel: {
+            Task { await self.cancel(id) }
+        }
     }
     func release(local: Bool, key: String) {
         keys.remove(key)
         if local { localJobs -= 1 } else { cloudJobs -= 1 }
+        var index = 0
+        while index < waiters.count {
+            let waiter = waiters[index]
+            guard canStart(local: waiter.local, key: waiter.key) else { index += 1; continue }
+            waiters.remove(at: index)
+            start(local: waiter.local, key: waiter.key)
+            waiter.continuation.resume()
+        }
+    }
+    /// Running counts and waiting keys in arrival order, for tests.
+    func snapshot() -> Snapshot { Snapshot(local: localJobs, cloud: cloudJobs, waiting: waiters.map(\.key)) }
+    private func canStart(local: Bool, key: String) -> Bool { !keys.contains(key) && (local ? localJobs < 1 : cloudJobs < 2) }
+    private func start(local: Bool, key: String) {
+        keys.insert(key)
+        if local { localJobs += 1 } else { cloudJobs += 1 }
+    }
+    private func cancel(_ id: Int) {
+        guard let index = waiters.firstIndex(where: { $0.id == id }) else { return }
+        waiters.remove(at: index).continuation.resume(throwing: CancellationError())
     }
 }

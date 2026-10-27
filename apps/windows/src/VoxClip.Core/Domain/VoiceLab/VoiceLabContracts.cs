@@ -1,6 +1,7 @@
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Services.LLM;
 using VoxClip.Core.Services.Speech;
+using VoxClip.Core.Services.VoiceLab;
 #pragma warning disable CS1591
 
 namespace VoxClip.Core.Domain.VoiceLab;
@@ -22,7 +23,16 @@ public sealed class VoiceLabException(VoiceLabErrorKind kind, string? detail = n
 
 /// <summary>Unknown provider price and credits stay unknown. Each preparation creates a fresh estimate.</summary>
 public sealed record VoiceLabEstimate(string Provider, VoiceLabOperation Operation, double Units, string Unit,
-    decimal? Usd, int? Credits, string Basis);
+    decimal? Usd, int? Credits, string Basis)
+{
+    /// <summary>The same estimate as a shared <see cref="CostEstimate"/>, with the camel-case operation name, for
+    /// <see cref="VoiceLabCostPresentation"/> and the spend ledger; Voice Lab §3.1.</summary>
+    public CostEstimate ToCostEstimate()
+    {
+        var name = Operation.ToString();
+        return new(Provider, char.ToLowerInvariant(name[0]) + name[1..], Units, Unit, Usd, Credits, Basis);
+    }
+}
 public enum VoiceLabLanguageModeKind { Explicit, AutoDetected }
 public sealed record VoiceLabLanguageMode(VoiceLabLanguageModeKind Kind, string ExpectedLanguage);
 /// <summary>The exact destination and input the caller reviews before approving a paid action. For a clone, <c>ContentSha256</c>
@@ -86,14 +96,22 @@ public sealed record VoiceLabVoiceChoice(string Id, VoiceLabVoiceKind Kind, OwnV
 }
 /// <summary>Per-request TTS inputs (voice-lab §8.5). Core keeps the 300 Unicode scalars of context nearest the window and drops a cut word.</summary>
 public sealed record VoiceLabSpeechOptions(uint Seed, string? PreviousText = null, string? NextText = null);
+/// <summary><c>SpendWarning</c> is set when the spend ledger could not record this accepted action as asked; Voice Lab §3.1. The action
+/// still succeeded, so the caller shows it as a notice, never as a failure.</summary>
 public sealed record VoiceLabReceipt(string Provider, ElevenLabsRegion Region, string Endpoint, string? ModelId,
-    string? VoiceId, Guid ActionId, string? ProviderRequestId);
+    string? VoiceId, Guid ActionId, string? ProviderRequestId, VoiceLabSpendWarning? SpendWarning);
 public sealed record VoiceLabCharacterTiming(string Character, double Start, double End);
 /// <summary>Signed PCM16LE, mono at 24 kHz; alignment exists only for timestamped TTS.</summary>
 public sealed record VoiceLabAudioResult(byte[] Pcm, int SampleRate,
-    IReadOnlyList<VoiceLabCharacterTiming>? Alignment, VoiceLabReceipt Receipt);
+    IReadOnlyList<VoiceLabCharacterTiming>? Alignment, VoiceLabReceipt Receipt)
+{
+    public VoiceLabSpendWarning? SpendWarning => Receipt.SpendWarning;
+}
 public sealed record VoiceLabCloneResult(string VoiceId, bool RequiresVerification, string ConsentRecordId,
-    VoiceLabReceipt Receipt);
+    VoiceLabReceipt Receipt)
+{
+    public VoiceLabSpendWarning? SpendWarning => Receipt.SpendWarning;
+}
 public enum VoiceLabCloneSampleRole { ConsentStatement, Training }
 /// <summary>A complete mono PCM16 WAV file. Other upload formats wait for spike S5 (voice-lab §6.5).</summary>
 public sealed record VoiceLabCloneSample(VoiceLabCloneSampleRole Role, byte[] Wav);

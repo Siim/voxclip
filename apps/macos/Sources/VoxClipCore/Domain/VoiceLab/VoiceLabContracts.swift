@@ -135,6 +135,9 @@ public struct VoiceLabReceipt: Sendable, Equatable {
     public let voiceID: String?
     public let requestID: UUID
     public let providerRequestID: String?
+    /// Set when the spend ledger could not record this accepted action as asked; voice-lab §3.1. The action still succeeded,
+    /// so the caller shows it as a notice, never as a failure.
+    public let spendWarning: VoiceLabSpendWarning?
 }
 
 /// PCM is signed 16-bit little-endian mono; timing starts at zero in generated audio.
@@ -143,6 +146,7 @@ public struct VoiceLabAudioResult: Sendable, Equatable {
     public let sampleRate: Int
     public let alignment: [VoiceLabCharacterTiming]?
     public let receipt: VoiceLabReceipt
+    public var spendWarning: VoiceLabSpendWarning? { receipt.spendWarning }
 }
 
 public struct VoiceLabCharacterTiming: Sendable, Equatable {
@@ -156,6 +160,7 @@ public struct VoiceLabCloneResult: Sendable, Equatable {
     public let requiresVerification: Bool
     public let consentRecordID: String
     public let receipt: VoiceLabReceipt
+    public var spendWarning: VoiceLabSpendWarning? { receipt.spendWarning }
 }
 
 public enum VoiceLabCloneSampleRole: String, Sendable, Equatable { case consentStatement, training }

@@ -3,6 +3,7 @@ import json
 import os
 from pathlib import Path
 import plistlib
+import re
 import select
 import shutil
 import subprocess
@@ -11,7 +12,16 @@ import unittest
 
 
 PACKAGE = Path(__file__).resolve().parents[1]
+SHARED = PACKAGE.parents[1] / "shared"
 SUBMISSION_ID = "01234567-89ab-cdef-0123-456789abcdef"
+
+
+def bundle_shared_directories():
+    """bundle.sh's SHARED_DIRS: the shared/ folders a release copies."""
+    for line in (PACKAGE / "bundle.sh").read_text().splitlines():
+        if line.startswith("SHARED_DIRS=(") and line.endswith(")"):
+            return tuple(line[len("SHARED_DIRS=("):-1].split())
+    raise AssertionError("bundle.sh declares no SHARED_DIRS")
 
 
 class ReleaseSafetyTests(unittest.TestCase):
@@ -706,7 +716,7 @@ fi
     def prepare_shared_resources(self):
         repository = self.root / "resource-repo"
         repository.mkdir()
-        self.shared_directories = ("caption-styles", "catalog", "design", "fonts", "prompts", "schemas")
+        self.shared_directories = bundle_shared_directories()
         for directory in (*self.shared_directories, "ingest"):
             source = repository / "shared" / directory
             source.mkdir(parents=True)
@@ -724,7 +734,16 @@ fi
         return app / "Contents/Resources/shared"
 
     def copy_resources(self):
-        return self.run_function("SHARED_DIRS=(caption-styles catalog design fonts prompts schemas); copy_shared_resources")
+        return self.run_function(f"SHARED_DIRS=({' '.join(self.shared_directories)}); copy_shared_resources")
+
+    def test_bundled_shared_resources_cover_every_folder_the_code_reads(self):
+        # Each shared/ folder a shipped target opens through the shared root. Fixtures never ship; only debug code reads them.
+        read = set()
+        for source in (PACKAGE / "Sources").rglob("*.swift"):
+            read.update(re.findall(r'appendingPathComponent\("([a-z-]+)/', source.read_text()))
+        read = {folder for folder in read if (SHARED / folder).is_dir()} - {"fixtures"}
+        self.assertLessEqual({"caption-styles", "catalog", "data", "design", "fonts", "prompts"}, read)
+        self.assertLessEqual(read, set(bundle_shared_directories()))
 
     def test_only_tracked_resources_ship_without_fixtures_or_ingest(self):
         resources = self.prepare_shared_resources()

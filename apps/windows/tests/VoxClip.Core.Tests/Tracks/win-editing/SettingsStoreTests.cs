@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -11,6 +12,31 @@ namespace VoxClip.Core.Tests.Tracks.WinEditing;
 
 public sealed class SettingsStoreTests
 {
+    /// <summary>update.lastCheckAt is written in the canonical form (editing §10.1), and the "O" text earlier builds wrote
+    /// still saves, loads and parses.</summary>
+    [Fact]
+    public async Task UpdateCheckTimesKeepTheCanonicalAndEarlierForms()
+    {
+        using var storage = new TestStorage();
+        var path = storage.PathFor("settings.json");
+        var store = new SettingsStore(path);
+        var checkedAt = new DateTimeOffset(2026, 10, 26, 7, 0, 0, TimeSpan.Zero).AddTicks(2_505_000);
+        Assert.Equal("2026-10-26T07:00:00.251Z", UtcTimestamp.Format(checkedAt));
+        foreach (var text in new[] { UtcTimestamp.Format(checkedAt), checkedAt.ToString("O") })
+        {
+            var settings = await store.LoadAsync(TestContext.Current.CancellationToken);
+            settings.Values["update.lastCheckAt"] = JsonSerializer.SerializeToElement(text);
+            await store.SaveAsync(settings, TestContext.Current.CancellationToken);
+            await store.FlushAsync(TestContext.Current.CancellationToken);
+            Assert.Equal(text, (await new SettingsStore(path).LoadAsync(TestContext.Current.CancellationToken)).Values["update.lastCheckAt"].GetString());
+            Assert.True(DateTimeOffset.TryParse(text, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var read));
+            Assert.True(Math.Abs((read - checkedAt).TotalMilliseconds) < 1);
+        }
+        var invalid = await store.LoadAsync(TestContext.Current.CancellationToken);
+        invalid.Values["update.lastCheckAt"] = JsonSerializer.SerializeToElement("yesterday");
+        await Assert.ThrowsAsync<JsonException>(() => store.SaveAsync(invalid, TestContext.Current.CancellationToken));
+    }
+
     [Fact]
     public async Task FirstLoadReadsPreferencesThatReappearAfterAReplacementNameGap()
     {

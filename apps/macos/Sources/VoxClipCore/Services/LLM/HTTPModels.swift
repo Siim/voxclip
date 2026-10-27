@@ -112,7 +112,7 @@ private actor AIModelCache {
             let existing = (try? Data(contentsOf: url)).flatMap { try? JSONDecoder().decode(JSONValue.self, from: $0) }
             var document = existing?.aiObject ?? [:]
             let encodedModels = try JSONDecoder().decode(JSONValue.self, from: JSONEncoder().encode(models))
-            document[id.rawValue] = .object(["fetchedAt": .string(Date().ISO8601Format()), "models": encodedModels])
+            document[id.rawValue] = .object(["fetchedAt": UTCTimestamp.string(from: Date()).map { .string($0) } ?? .null, "models": encodedModels])
             try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
             try JSONValue.object(document).aiEncoded().write(to: url, options: .atomic)
         } catch {}

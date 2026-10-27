@@ -7,6 +7,7 @@ using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Services.Logging;
 using VoxClip.Core.Services.Project;
 using VoxClip.Core.Services.Settings;
+using VoxClip.Core.Services.Share;
 using VoxClip.Core.Services.Media;
 using VoxClip.Core.Services.Models;
 using VoxClip.Core.Services.Speech;
@@ -71,7 +72,8 @@ internal sealed class AppServices : IAsyncDisposable
 
     internal async Task InitializeAsync(CancellationToken ct)
     {
-        try { SharedRoot = SharedResources.ResolveRoot(); }
+        // Share-text rules load now, so an invalid shared/data/share-text.json fails at launch, not in the Export dialog.
+        try { SharedRoot = SharedResources.ResolveRoot(); SharePostText.Preflight(); }
         catch (Exception exception) { StartupNotice = UiError.Message(exception, "Startup"); }
         if (SharedRoot is not null) Cards = new(SharedRoot);
         try { settingsWrites.Initialize(await SettingsStore.LoadAsync(ct)); }

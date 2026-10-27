@@ -34,11 +34,13 @@ import Testing
         FixtureValue(try JSONDecoder().decode(JSONValue.self, from: FixtureLoader.data("fixtures/voice-lab/upgrade-cases.json")))
     }
     private func encoded(_ value: FixtureValue) throws -> Data { try JSONEncoder().encode(value.value) }
-    /// Sorted-key JSON whose numbers are binary64 values, the comparison form in upgrade-README.md.
-    private func canonical(_ data: Data) throws -> String {
+    /// Sorted-key JSON whose numbers are binary64 values, the comparison form in upgrade-README.md. `rewritingTimestamps`
+    /// writes stored timestamps as a save does (editing §10.1): expected projects keep their source fixtures' whole seconds.
+    private func canonical(_ data: Data, rewritingTimestamps: Bool = false) throws -> String {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
-        return String(decoding: try encoder.encode(JSONDecoder().decode(JSONValue.self, from: data)), as: UTF8.self)
+        let value = try JSONDecoder().decode(JSONValue.self, from: data)
+        return String(decoding: try encoder.encode(rewritingTimestamps ? TimestampWireRule.canonicalTimestamps(value) : value), as: UTF8.self)
     }
     /// The `videoRecipes` entry for one mode in upgrade-cases.json; the fields a mode does not use stay nil.
     private func video(_ mode: VoiceLabVideoMode, outputSamples: Int64 = 48_000, retimeFactor: Double? = nil, zoom: Double? = nil,
@@ -285,7 +287,7 @@ import Testing
         #expect(!cases["cases"].array.isEmpty)
         for item in cases["cases"].array {
             let outcome = try replay(item, in: cases)
-            let expected = try item["error"].isNull ? canonical(encoded(cases["projects"][item["expected"].string])) : item["error"].string
+            let expected = try item["error"].isNull ? canonical(encoded(cases["projects"][item["expected"].string]), rewritingTimestamps: true) : item["error"].string
             let actual: String
             if let json = outcome.json {
                 actual = try canonical(json)

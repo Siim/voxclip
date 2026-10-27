@@ -101,7 +101,7 @@ public sealed class ModelStore : IModelDownloader
                     writer.WriteStartObject();
                     foreach (var property in entry.RawMetadata.EnumerateObject())
                         if (property.Name != "installedAt") property.WriteTo(writer);
-                    writer.WriteString("installedAt", DateTimeOffset.UtcNow);
+                    writer.WriteString("installedAt", UtcTimestamp.Format(DateTimeOffset.UtcNow));
                     writer.WriteEndObject();
                 }, ct).ConfigureAwait(false);
                 }

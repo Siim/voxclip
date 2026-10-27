@@ -1,7 +1,9 @@
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 using VoxClip.Core.Domain.Shared;
+using VoxClip.Core.Domain.VoiceLab;
 using VoxClip.Core.Services.Project;
 namespace VoxClip.Core.Services.Settings;
 
@@ -45,6 +47,27 @@ public sealed record AppSettings
 
     /// <summary>Read a string preference or its schema default; missing/wrong-type values return null.</summary>
     public string? GetString(string key) => Lookup(key) is { ValueKind: JsonValueKind.String } value ? value.GetString() : null;
+
+    /// <summary>Settings → Voice Lab → "Warn me above $__ a month per provider"; null means no cap (Voice Lab §3.1).</summary>
+    public decimal? GetVoiceLabMonthlyCap(string provider) =>
+        Values.TryGetValue("voiceLab.monthlyCapUsd." + provider, out var value) && value.ValueKind == JsonValueKind.String ? ParseMonthlyCap(value.GetString()!) : null;
+
+    /// <summary>Store the cap as a canonical decimal string, or remove it for null. Throws <c>InvalidInput</c> for a value the settings schema
+    /// refuses: negative, more than two decimals or at least $1,000,000,000.</summary>
+    public void SetVoiceLabMonthlyCap(string provider, decimal? cap)
+    {
+        ArgumentNullException.ThrowIfNull(provider);
+        if (!Regex.IsMatch(provider, "\\A[a-z0-9]+(?:-[a-z0-9]+)*\\z", RegexOptions.CultureInvariant))
+            throw new VoiceLabException(VoiceLabErrorKind.InvalidInput);
+        if (cap is not { } amount) { Set("voiceLab.monthlyCapUsd." + provider, null); return; }
+        var text = VoiceLabMoney.Canonical(amount);
+        if (ParseMonthlyCap(text) is null) throw new VoiceLabException(VoiceLabErrorKind.InvalidInput);
+        using var document = JsonDocument.Parse("\"" + text + "\"");
+        Set("voiceLab.monthlyCapUsd." + provider, document.RootElement);
+    }
+
+    /// <summary>A cap is a decimal string with up to nine whole digits and two decimals.</summary>
+    internal static decimal? ParseMonthlyCap(string text) => VoiceLabMoney.Parse(text, 9, 2);
 
     /// <summary>Set an independent JSON value; a null argument removes the stored override, plan W8.</summary>
     public void Set(string key, JsonElement? value)

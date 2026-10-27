@@ -239,6 +239,26 @@ public sealed class HttpConnectorTests
         Assert.Equal(models, await connector.GetModelsAsync(false, TestContext.Current.CancellationToken)); Assert.Single(handler.Requests);
     }
 
+    /// <summary>The model-list cache records its fetch time in the canonical form (editing §10.1).</summary>
+    [Fact]
+    public async Task RefreshedModelListRecordsItsFetchTimeInCanonicalForm()
+    {
+        var directory = Directory.CreateTempSubdirectory("voxclip-model-list-");
+        try
+        {
+            var cacheFile = Path.Combine(directory.FullName, "llm-models.json");
+            using var handler = new StubHttp((_, _, _) => Task.FromResult(Response(200, "{\"data\":[{\"id\":\"gpt-new\",\"created\":30}]}")));
+            using var client = new HttpClient(handler);
+            var connector = new LlmConnector(ConnectorId.OpenAI, Catalog(), client, new MemoryKeys(), new Redactor(), cacheFile: cacheFile);
+            await connector.GetModelsAsync(true, TestContext.Current.CancellationToken);
+            var saved = JsonNode.Parse(await File.ReadAllTextAsync(cacheFile, TestContext.Current.CancellationToken))!;
+            var fetchedAt = saved[LlmCatalog.WireId(ConnectorId.OpenAI)]!["fetchedAt"]!.GetValue<string>();
+            Assert.Equal(UtcTimestamp.Format(connector.ModelsFetchedAt!.Value), fetchedAt);
+            Assert.Matches(@"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$", fetchedAt);
+        }
+        finally { directory.Delete(true); }
+    }
+
     [Fact]
     public async Task LocalContextAndThinkingComeFromNativeOllamaDetails()
     {

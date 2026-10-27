@@ -45,7 +45,7 @@ enum CLIWorkflow {
     }
 
     static func success(_ command: String, value: some Encodable) throws -> JSONValue {
-        let encoded = try JSONDecoder().decode(JSONValue.self, from: JSONEncoder().encode(value))
+        let encoded = try JSONDecoder().decode(JSONValue.self, from: ProjectJSON.encoder().encode(value))
         if case .object(let fields) = encoded { return success(command, fields: fields) }
         return success(command, fields: ["result": encoded])
     }

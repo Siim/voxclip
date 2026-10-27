@@ -47,8 +47,8 @@ public static partial class EditingAlgorithms
 
     /// <summary>A manual clip's title, design §6.2: the first <see cref="ClipTitleWords"/> words of the selection as shown
     /// (corrections applied), joined by one space, trimmed, cut to <see cref="EditingLimits.MaxClipTitleCodePoints"/> code
-    /// points and trimmed again. Null when nothing is left. Both platforms check it against
-    /// shared/fixtures/clips/manual-titles.json.</summary>
+    /// points and trimmed again. Null when nothing is left. Both Cores check it against
+    /// shared/fixtures/clips/manual-titles.json: this one and VoxClipCore's EditingAlgorithms.clipTitle.</summary>
     public static string? ClipTitle(IEnumerable<string> selectedWords)
     {
         ArgumentNullException.ThrowIfNull(selectedWords);
@@ -57,7 +57,8 @@ public static partial class EditingAlgorithms
         return title.Length == 0 ? null : title;
     }
 
-    private static string NormalizeForMatch(string text)
+    /// <summary>Invariant lowercase letters and numbers only, editing §4.7.</summary>
+    public static string NormalizeForMatch(string text)
     {
         var result = new StringBuilder();
         foreach (var scalar in text.EnumerateRunes())

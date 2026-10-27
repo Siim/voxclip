@@ -36,7 +36,7 @@ public enum VoiceLabConform {
     // Spec: voice-lab.md §4.4 step 3 "normalised cross-correlation", read as Pearson over each lag's overlap (lead decision).
     public static func decide(inputEnvelope: AudioEnvelope, outputEnvelope: AudioEnvelope, inputSamples: Int, outputSamples: Int,
                               sampleRate: Int, searchSeconds: Double) throws -> VoiceLabConformDecision {
-        let frame = sampleRate > 0 ? VoiceLabLoudness.sampleCount(0.01, sampleRate) : 0
+        let frame = sampleRate > 0 ? VoiceLabLoudness.sampleCount(VoiceLabPatchConstants.RMS_FRAME, sampleRate) : 0
         guard frame >= 1, inputSamples >= 0, outputSamples >= 0,
               searchSeconds.isFinite, searchSeconds >= 0, searchSeconds * Double(sampleRate) < 0x1p53,
               matches(inputEnvelope, frames: inputSamples / frame, frame: frame, sampleRate: sampleRate),

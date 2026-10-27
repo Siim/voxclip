@@ -77,6 +77,9 @@ struct ModelStoreTests {
         #expect(try await store.installedModels() == [model.id])
         #expect(try await store.verify(id: model.id))
         #expect(try Data(contentsOf: modelDirectory.appendingPathComponent("model.bin")) == payload)
+        let marker = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: modelDirectory.appendingPathComponent("installed.json"))) as? [String: Any])
+        let installedAt = try #require(marker["installedAt"] as? String)
+        #expect(installedAt.range(of: #"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$"#, options: .regularExpression) != nil)
         try await store.install(id: model.id) { _ in }
         #expect(confirmations.withLock { $0 } == 1)
         try await store.remove(id: model.id)

@@ -147,7 +147,7 @@ public enum VoiceLabAssetStore {
                 }
                 start += count
             }
-            guard fullSync(fd) else { throw VoiceLabAssetStoreError.unwritable(file) }
+            guard VoiceLabPaidRoot.fullSync(fd) else { throw VoiceLabAssetStoreError.unwritable(file) }
         }
         try Task.checkCancellation()
         guard renameatx_np(projectFD, temporary, projectFD, name, UInt32(RENAME_EXCL)) == 0 else {
@@ -156,7 +156,7 @@ public enum VoiceLabAssetStore {
         // From here the paid file exists under its final name and is kept, whatever happens next.
         published = true
         afterPublish?()
-        guard fullSync(projectFD) else { throw VoiceLabAssetStoreError.publishedUnverified(file) }
+        guard VoiceLabPaidRoot.fullSync(projectFD) else { throw VoiceLabAssetStoreError.publishedUnverified(file) }
         let digest = hash.finalize().map { String(format: "%02x", $0) }.joined()
         guard try readBack(projectFD, name, bytes: 44 + 2 * frames, file: file) == digest else {
             throw VoiceLabAssetStoreError.altered(file)
@@ -165,52 +165,16 @@ public enum VoiceLabAssetStore {
                              sampleRate: sampleRate, createdAt: createdAt)
     }
 
-    /// The paid root as a directory descriptor, resolved as `VoiceLabAssets.prepare` resolves it. When only its last
-    /// component is missing, that component is created inside the existing parent, which is opened without following
-    /// a link. Intermediate components are never created: a missing parent is `rootMissing`.
+    /// The paid root as a directory descriptor, opened as Core's `VoiceLabPaidRoot.open` opens it for every writer there:
+    /// only a missing last component is created, with mode 0700, and a missing parent is `rootMissing`.
     private static func openRoot(_ paidRoot: URL, file: String) throws -> Int32 {
-        let root = paidRoot.standardizedFileURL
-        let fd = Darwin.open(root.resolvingSymlinksInPath().path, O_RDONLY | O_DIRECTORY | O_CLOEXEC)
-        if fd >= 0 { return fd }
-        guard errno == ENOENT else {
-            throw errno == ENOTDIR ? VoiceLabAssetStoreError.unsafePath(file) : VoiceLabAssetStoreError.unwritable(file)
-        }
-        let parent = Darwin.open(root.deletingLastPathComponent().resolvingSymlinksInPath().path,
-                                 O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
-        guard parent >= 0 else {
-            switch errno {
-            case ENOENT: throw VoiceLabAssetStoreError.rootMissing(file)
-            case ENOTDIR, ELOOP: throw VoiceLabAssetStoreError.unsafePath(file)
-            default: throw VoiceLabAssetStoreError.unwritable(file)
-            }
-        }
-        defer { Darwin.close(parent) }
-        return try directory(root.lastPathComponent, in: parent, file: file)
+        do { return try VoiceLabPaidRoot.open(paidRoot) } catch let failure as VoiceLabPaidRoot.Failure { throw failure.storeError(file) }
     }
 
-    /// Creates `name` in `parent` with mode 0700 when it is missing, flushing the parent, then opens it as a directory
-    /// without following a link.
+    /// `name` in `parent` as a directory descriptor, created with mode 0700 when it is missing and never followed
+    /// through a link (`VoiceLabPaidRoot.directory`).
     private static func directory(_ name: String, in parent: Int32, file: String) throws -> Int32 {
-        if Darwin.mkdirat(parent, name, 0o700) == 0 {
-            guard fullSync(parent) else { throw VoiceLabAssetStoreError.unwritable(file) }
-        } else if errno != EEXIST {
-            throw VoiceLabAssetStoreError.unwritable(file)
-        }
-        let fd = Darwin.openat(parent, name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
-        guard fd >= 0 else {
-            throw errno == ELOOP || errno == ENOTDIR ? VoiceLabAssetStoreError.unsafePath(file) : VoiceLabAssetStoreError.unwritable(file)
-        }
-        return fd
-    }
-
-    /// Flushes through the drive's own write cache, which `fsync` alone does not (`man 2 fsync`). A volume that refuses
-    /// `F_FULLFSYNC` with ENOTSUP or EINVAL falls back to `fsync`.
-    static func fullSync(_ fd: Int32) -> Bool {
-        while Darwin.fcntl(fd, F_FULLFSYNC) == -1 {
-            if errno == EINTR { continue }
-            return (errno == ENOTSUP || errno == EINVAL) && Darwin.fsync(fd) == 0
-        }
-        return true
+        do { return try VoiceLabPaidRoot.directory(name, in: parent) } catch let failure as VoiceLabPaidRoot.Failure { throw failure.storeError(file) }
     }
 
     private static func writeAll(_ fd: Int32, _ bytes: UnsafeRawBufferPointer, _ file: String) throws {
@@ -253,5 +217,16 @@ public enum VoiceLabAssetStore {
         }
         guard total == bytes else { throw VoiceLabAssetStoreError.altered(file) }
         return hash.finalize().map { String(format: "%02x", $0) }.joined()
+    }
+}
+
+extension VoiceLabPaidRoot.Failure {
+    /// The asset store's error for `file`.
+    fileprivate func storeError(_ file: String) -> VoiceLabAssetStoreError {
+        switch self {
+        case .rootMissing: .rootMissing(file)
+        case .unsafePath: .unsafePath(file)
+        case .unwritable: .unwritable(file)
+        }
     }
 }

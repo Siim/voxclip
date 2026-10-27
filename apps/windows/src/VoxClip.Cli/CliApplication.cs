@@ -9,6 +9,7 @@ using System.Text.Json.Serialization;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Services.LLM;
 using VoxClip.Core.Services.Project;
+using VoxClip.Core.Services.Share;
 namespace VoxClip.Cli;
 
 internal static class CliApplication
@@ -69,6 +70,8 @@ internal static class CliApplication
             }
             runtimeAgreementWork = false;
             normalWorkAuthorized = !informationalAction;
+            // The App's launch check before any work: the shared root and its share-text rules.
+            if (!informationalAction) SharePostText.Preflight();
             return await result.InvokeAsync(new InvocationConfiguration { EnableDefaultExceptionHandler = false, ProcessTerminationTimeout = null }, ct).ConfigureAwait(false);
         }
         catch (InvalidDataException exception) when (runtimeAgreementWork) { return FailRun("runtimeTermsUnavailable", exception.Message, 7); }

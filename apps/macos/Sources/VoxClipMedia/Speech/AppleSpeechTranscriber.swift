@@ -101,14 +101,14 @@ public actor AppleSpeechTranscriber: Transcriber, SpeechCacheIdentityProviding {
     private struct LedgerEntry: Codable { var locale: String; var lastUsed: Date }
     private var ledgerURL: URL { locations.root.appendingPathComponent("apple-speech-locales.json") }
     private func ledger() -> [LedgerEntry] {
-        let decoder = JSONDecoder(); decoder.dateDecodingStrategy = .iso8601
+        let decoder = JSONDecoder(); decoder.dateDecodingStrategy = .utcTimestamp
         return (try? decoder.decode([LedgerEntry].self, from: Data(contentsOf: ledgerURL))) ?? []
     }
     private func touch(_ locale: Locale) throws {
         var entries = ledger().filter { $0.locale != locale.identifier(.bcp47) }
         entries.append(LedgerEntry(locale: locale.identifier(.bcp47), lastUsed: Date()))
         try FileManager.default.createDirectory(at: locations.root, withIntermediateDirectories: true)
-        let encoder = JSONEncoder(); encoder.dateEncodingStrategy = .iso8601
+        let encoder = JSONEncoder(); encoder.dateEncodingStrategy = .utcTimestamp
         try encoder.encode(entries).write(to: ledgerURL, options: .atomic)
     }
     private func reserve(_ locale: Locale) async throws {

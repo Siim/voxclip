@@ -6,7 +6,9 @@ public struct SharedResources: Sendable, Equatable {
     public init(root: URL) { self.root = root }
     public static func locate(environment: [String: String] = ProcessInfo.processInfo.environment, executableURL: URL = URL(fileURLWithPath: CommandLine.arguments[0]), bundleURL: URL? = Bundle.main.resourceURL) throws -> SharedResources {
         let manager = FileManager.default
-        func valid(_ url: URL) -> Bool { manager.fileExists(atPath: url.appendingPathComponent("caption-styles").path) }
+        func valid(_ url: URL) -> Bool {
+            ["caption-styles", "data/share-text.json"].allSatisfy { manager.fileExists(atPath: url.appendingPathComponent($0).path) }
+        }
         if let path = environment["VOXCLIP_SHARED_DIR"], !path.isEmpty {
             let url = URL(fileURLWithPath: path, isDirectory: true)
             guard valid(url) else { throw VoxClipError.sharedResourcesMissing }

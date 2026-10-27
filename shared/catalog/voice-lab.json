@@ -1,0 +1,190 @@
+{
+  "schema": "voxclip-voice-lab-prices/1",
+  "description": "API list prices for Voice Lab actions, in USD. Normative rules are in doc/spec/voice-lab.md section 3. Prices are decimal strings that apps parse into a decimal type, never binary floating point. A catalog estimate has the basis list-<checked>. Duration rows take seconds, text-to-speech rows take characters and a clone takes one call. A row without a model applies to every model of its operation.",
+  "entries": [
+    {
+      "provider": "elevenlabs",
+      "operation": "speechToText",
+      "model": "scribe_v2",
+      "unit": "second",
+      "formula": "perHour",
+      "usdParameters": { "perHour": "0.22" },
+      "checked": "2026-10-25",
+      "source": "https://elevenlabs.io/pricing/api"
+    },
+    {
+      "provider": "elevenlabs",
+      "operation": "audioIsolation",
+      "unit": "second",
+      "formula": "perMinute",
+      "usdParameters": { "perMinute": "0.12" },
+      "creditsParameters": { "perMinute": "1000" },
+      "checked": "2026-10-25",
+      "source": "https://elevenlabs.io/pricing/api"
+    },
+    {
+      "provider": "elevenlabs",
+      "operation": "voiceChange",
+      "unit": "second",
+      "formula": "perMinute",
+      "usdParameters": { "perMinute": "0.12" },
+      "creditsParameters": { "perMinute": "1000" },
+      "checked": "2026-10-25",
+      "source": "https://elevenlabs.io/pricing/api"
+    },
+    {
+      "provider": "elevenlabs",
+      "operation": "textToSpeech",
+      "model": "eleven_v4",
+      "unit": "character",
+      "formula": "perThousandCharacters",
+      "usdParameters": { "perThousandCharacters": "0.08" },
+      "creditsParameters": { "perCharacter": "1" },
+      "checked": "2026-10-25",
+      "source": "https://elevenlabs.io/pricing/api"
+    },
+    {
+      "provider": "elevenlabs",
+      "operation": "textToSpeech",
+      "model": "eleven_v3",
+      "unit": "character",
+      "formula": "perThousandCharacters",
+      "usdParameters": { "perThousandCharacters": "0.08" },
+      "creditsParameters": { "perCharacter": "1" },
+      "checked": "2026-10-25",
+      "source": "https://elevenlabs.io/pricing/api"
+    },
+    {
+      "provider": "elevenlabs",
+      "operation": "textToSpeech",
+      "model": "eleven_multilingual_v2",
+      "unit": "character",
+      "formula": "perThousandCharacters",
+      "usdParameters": { "perThousandCharacters": "0.08" },
+      "creditsParameters": { "perCharacter": "1" },
+      "checked": "2026-10-25",
+      "source": "https://elevenlabs.io/pricing/api"
+    },
+    {
+      "provider": "elevenlabs",
+      "operation": "textToSpeech",
+      "model": "eleven_flash_v2_5",
+      "unit": "character",
+      "formula": "perThousandCharacters",
+      "usdParameters": { "perThousandCharacters": "0.04" },
+      "creditsParameters": { "perCharacter": "1" },
+      "checked": "2026-10-25",
+      "source": "https://elevenlabs.io/pricing/api"
+    },
+    {
+      "provider": "elevenlabs",
+      "operation": "textToSpeech",
+      "model": "eleven_v4_turbo",
+      "unit": "character",
+      "formula": "perThousandCharacters",
+      "usdParameters": { "perThousandCharacters": "0.04" },
+      "creditsParameters": { "perCharacter": "1" },
+      "checked": "2026-10-25",
+      "source": "https://elevenlabs.io/pricing/api"
+    },
+    {
+      "provider": "elevenlabs",
+      "operation": "forcedAlignment",
+      "unit": "second",
+      "formula": "perHour",
+      "usdParameters": { "perHour": "0.22" },
+      "checked": "2026-10-25",
+      "source": "https://elevenlabs.io/pricing/api"
+    },
+    {
+      "provider": "elevenlabs",
+      "operation": "createClone",
+      "unit": "call",
+      "formula": "zero",
+      "usdParameters": {},
+      "checked": "2026-10-25",
+      "source": "https://elevenlabs.io/pricing/api"
+    },
+    {
+      "provider": "elevenlabs",
+      "operation": "deleteClone",
+      "unit": "call",
+      "formula": "zero",
+      "usdParameters": {},
+      "checked": "2026-10-27",
+      "source": "https://elevenlabs.io/pricing/api"
+    },
+    {
+      "provider": "fal",
+      "operation": "lipsync",
+      "endpoint": "fal-ai/latentsync",
+      "unit": "second",
+      "formula": "flatThenPerSecond",
+      "usdParameters": { "flat": "0.20", "includedSeconds": "40", "perSecond": "0.005" },
+      "checked": "2026-10-25",
+      "source": "https://fal.ai/models/fal-ai/latentsync"
+    },
+    {
+      "provider": "fal",
+      "operation": "lipsync",
+      "endpoint": "fal-ai/sync-lipsync/v2",
+      "model": "lipsync-2",
+      "unit": "second",
+      "formula": "perSecond",
+      "usdParameters": { "perSecond": "0.05" },
+      "checked": "2026-10-25",
+      "source": "https://fal.ai/models/fal-ai/sync-lipsync/v2"
+    },
+    {
+      "provider": "fal",
+      "operation": "lipsync",
+      "endpoint": "fal-ai/sync-lipsync/v2",
+      "model": "lipsync-2-pro",
+      "unit": "second",
+      "formula": "perMinute",
+      "usdParameters": { "perMinute": "5.00" },
+      "checked": "2026-10-26",
+      "source": "https://fal.ai/models/fal-ai/sync-lipsync/v2"
+    },
+    {
+      "provider": "fal",
+      "operation": "lipsync",
+      "endpoint": "fal-ai/sync-lipsync/v3",
+      "unit": "second",
+      "formula": "perMinute",
+      "usdParameters": { "perMinute": "8.00" },
+      "checked": "2026-10-26",
+      "source": "https://fal.ai/models/fal-ai/sync-lipsync/v3"
+    },
+    {
+      "provider": "syncso",
+      "operation": "lipsync",
+      "model": "lipsync-2",
+      "unit": "second",
+      "formula": "estimateApi",
+      "usdParameters": { "minPerSecond": "0.04", "maxPerSecond": "0.05" },
+      "checked": "2026-10-25",
+      "source": "https://sync.so/pricing"
+    },
+    {
+      "provider": "syncso",
+      "operation": "lipsync",
+      "model": "lipsync-2-pro",
+      "unit": "second",
+      "formula": "estimateApi",
+      "usdParameters": { "minPerSecond": "0.067", "maxPerSecond": "0.083" },
+      "checked": "2026-10-25",
+      "source": "https://sync.so/pricing"
+    },
+    {
+      "provider": "syncso",
+      "operation": "lipsync",
+      "model": "sync-3",
+      "unit": "second",
+      "formula": "estimateApi",
+      "usdParameters": { "minPerSecond": "0.107", "maxPerSecond": "0.133" },
+      "checked": "2026-10-25",
+      "source": "https://sync.so/pricing"
+    }
+  ]
+}

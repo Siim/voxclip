@@ -5,6 +5,7 @@ using VoxClip.App.Services;
 using VoxClip.App.ViewModels;
 using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Shared;
+using VoxClip.Core.Services.Share;
 
 namespace VoxClip.App.Controls;
 
@@ -31,6 +32,7 @@ internal sealed class ExportDialog : ContentDialog
     /// count (ADR-R29).</summary>
     private readonly string? onlyClip;
     private bool running;
+    private bool composing;
     private string? exported;
 
     internal ExportDialog(MainWindow owner, EditorViewModel model, bool demo, Func<CancellationToken, EditState?, Task<ComposeSnapshot>> snapshot, string? clipId = null)
@@ -57,14 +59,35 @@ internal sealed class ExportDialog : ContentDialog
         body.Children.Add(target); body.Children.Add(aspect); body.Children.Add(quality); body.Children.Add(styles); body.Children.Add(srt); body.Children.Add(folder);
         body.Children.Add(Ui.Button("Choose folder…", () => _ = Ui.RunAsync(notice, ChooseFolderAsync, "Export folder")));
         body.Children.Add(progress); body.Children.Add(notice);
-        caption.MaxLength = 3000;
+        // share.captions holds 3,000 Unicode scalars (voice-lab §11.3), but MaxLength counts UTF-16 units, so it is only a loose
+        // bound: TextChanging cuts typed, pasted and loaded text with SharePostText.CapCaption, as the Mac field does, and keeps
+        // the caret where it was.
+        caption.MaxLength = 6000;
+        caption.TextChanging += (_, _) =>
+        {
+            var capped = SharePostText.CapCaption(caption.Text);
+            if (capped.Length == caption.Text.Length) return;
+            var caret = Math.Min(caption.SelectionStart, capped.Length);
+            caption.Text = capped;
+            caption.Select(caret, 0);
+        };
         var counts = Ui.Text("", "HelperText");
-        caption.TextChanged += (_, _) => { model.SetShareCaption(captionTarget, caption.Text); counts.Text = $"LinkedIn {caption.Text.EnumerateRunes().Count():N0}/3,000 · X checks length in its composer."; };
+        caption.TextChanged += (_, _) =>
+        {
+            model.SetShareCaption(captionTarget, caption.Text);
+            try
+            {
+                var weight = SharePostText.XWeight(caption.Text);
+                counts.Text = $"X {weight}/280 · LinkedIn {SharePostText.LinkedInLength(caption.Text):N0}/3,000";
+                if (weight > 280) counts.Foreground = Ui.ThemeBrush(counts, "VcStatusWarningBrush"); else counts.ClearValue(TextBlock.ForegroundProperty);
+            }
+            catch (Exception exception) { Ui.Show(notice, UiError.Message(exception, "Share"), InfoBarSeverity.Warning); }
+        };
         share.Visibility = Visibility.Collapsed; share.Children.Add(Ui.Text("Ready to share", "SubtitleTextBlockStyle")); share.Children.Add(exportedFiles); share.Children.Add(caption); share.Children.Add(counts);
         share.Children.Add(Ui.Button("Copy caption", () => { ShareHelpers.Copy(caption.Text); Ui.Show(notice, "Caption copied."); }));
         share.Children.Add(Ui.Button("Show in Explorer", () => { if (exported is not null) ShareHelpers.Reveal(exported); }));
-        share.Children.Add(Ui.Button("Open X composer", () => _ = Ui.RunAsync(notice, () => ShareHelpers.OpenComposerAsync("x", caption.Text, exported!), "Share")));
-        share.Children.Add(Ui.Button("Open LinkedIn composer", () => _ = Ui.RunAsync(notice, () => ShareHelpers.OpenComposerAsync("linkedin", caption.Text, exported!), "Share")));
+        share.Children.Add(Ui.Button("Open X composer", () => _ = OpenComposerAsync("x")));
+        share.Children.Add(Ui.Button("Open LinkedIn composer", () => _ = OpenComposerAsync("linkedin")));
         share.Children.Add(Ui.Text("Attach the revealed video in your browser. VoxClip never posts for you.", "HelperText")); body.Children.Add(share);
         Content = new ScrollViewer { Content = body, MaxHeight = 620 };
         PrimaryButtonClick += Export;
@@ -72,6 +95,14 @@ internal sealed class ExportDialog : ContentDialog
         Closing += (_, args) => { if (running) { lifetime.Cancel(); args.Cancel = true; } };
         Closed += (_, _) => lifetime.Dispose();
         if (demo) { IsPrimaryButtonEnabled = false; Ui.Show(notice, "Demo fixtures use a synthetic preview and cannot be exported. Open a real project to export."); }
+    }
+    /// <summary>One composer at a time: a click while the X text is still being cut does nothing.</summary>
+    private async Task OpenComposerAsync(string destination)
+    {
+        if (composing) return;
+        composing = true;
+        try { await Ui.RunAsync(notice, () => ShareHelpers.OpenComposerAsync(destination, caption.Text, exported!), "Share"); }
+        finally { composing = false; }
     }
     private async Task ChooseFolderAsync()
     {

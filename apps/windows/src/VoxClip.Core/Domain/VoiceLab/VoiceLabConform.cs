@@ -41,7 +41,7 @@ public static class VoiceLabConform
     public static VoiceLabConformDecision Decide(AudioEnvelope inputEnvelope, AudioEnvelope outputEnvelope, long inputSamples,
         long outputSamples, int sampleRate, double searchSeconds)
     {
-        var frame = sampleRate > 0 ? VoiceLabLoudness.SampleCount(0.01, sampleRate) : 0;
+        var frame = sampleRate > 0 ? VoiceLabLoudness.SampleCount(VoiceLabPatchConstants.RMS_FRAME, sampleRate) : 0;
         if (frame < 1 || inputSamples < 0 || outputSamples < 0 ||
             !double.IsFinite(searchSeconds) || searchSeconds < 0 || searchSeconds * sampleRate >= 9007199254740992.0 ||
             !Matches(inputEnvelope, inputSamples / frame, frame, sampleRate) || !Matches(outputEnvelope, outputSamples / frame, frame, sampleRate))

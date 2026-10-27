@@ -22,7 +22,9 @@ internal static class AtomicFile
         }
     }
 
-    internal static async Task WriteAsync(string path, string content, CancellationToken ct, AtomicFileOperations? operations = null)
+    /// <summary><paramref name="unixCreateMode"/> sets the temporary file's mode where the platform has modes; the rename keeps it.</summary>
+    internal static async Task WriteAsync(string path, string content, CancellationToken ct, AtomicFileOperations? operations = null,
+        UnixFileMode? unixCreateMode = null)
     {
         operations ??= new AtomicFileOperations();
         ct.ThrowIfCancellationRequested();
@@ -37,7 +39,12 @@ internal static class AtomicFile
         var committed = false;
         try
         {
-            await using (var stream = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None, 65536, FileOptions.Asynchronous))
+            var options = new FileStreamOptions
+            {
+                Mode = FileMode.CreateNew, Access = FileAccess.Write, Share = FileShare.None, BufferSize = 65536, Options = FileOptions.Asynchronous
+            };
+            if (unixCreateMode is { } mode && !OperatingSystem.IsWindows()) options.UnixCreateMode = mode;
+            await using (var stream = new FileStream(temporary, options))
             {
                 await stream.WriteAsync(Encoding.UTF8.GetBytes(content), ct).ConfigureAwait(false);
                 await stream.FlushAsync(ct).ConfigureAwait(false);

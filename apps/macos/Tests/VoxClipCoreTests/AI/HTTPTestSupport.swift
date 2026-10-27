@@ -214,7 +214,7 @@ struct HTTPHarness: Sendable {
     let sleeps: HTTPSleeps
     let session: URLSession
 
-    init(_ id: ConnectorID, replies: [HTTPReply], key: String? = "test", cancelSleep: Bool = false, baseURL: URL? = nil, catalog: LLMCatalog? = nil, keys: (any KeyProvider)? = nil) throws {
+    init(_ id: ConnectorID, replies: [HTTPReply], key: String? = "test", cancelSleep: Bool = false, baseURL: URL? = nil, catalog: LLMCatalog? = nil, keys: (any KeyProvider)? = nil, cacheURL: URL? = nil) throws {
         HTTPStubProtocol.install(replies)
         self.catalog = try catalog ?? HTTPFixtures.catalog()
         self.keys = keys ?? HTTPKeys(value: key)
@@ -222,7 +222,7 @@ struct HTTPHarness: Sendable {
         sleeps = HTTPSleeps(cancel: cancelSleep)
         session = URLSession(configuration: HTTPStubProtocol.configuration())
         let clock = sleeps
-        connector = try HTTPConnector(id: id, keys: self.keys, catalog: self.catalog, log: log, baseURL: baseURL, session: session, appVersion: "9.8.7", cacheURL: nil, sleep: { try clock.sleep($0) })
+        connector = try HTTPConnector(id: id, keys: self.keys, catalog: self.catalog, log: log, baseURL: baseURL, session: session, appVersion: "9.8.7", cacheURL: cacheURL, sleep: { try clock.sleep($0) })
     }
 
     var model: String {

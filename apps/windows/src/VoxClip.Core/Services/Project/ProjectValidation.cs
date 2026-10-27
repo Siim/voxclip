@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -169,10 +168,7 @@ internal static class ProjectValidation
     }
 
     private static void Timestamp(JsonElement value)
-    {
-        String(value, "[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z");
-        Require(DateTimeOffset.TryParse(value.GetString(), CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out _));
-    }
+        => Require(value.ValueKind == JsonValueKind.String && UtcTimestamp.TryParse(value.GetString(), out _));
 
     private static void Object(JsonElement value, string required, string optional = "")
     {

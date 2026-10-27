@@ -114,6 +114,8 @@ extension ProviderChoice {
         self.modelDownloader = modelDownloader
         do { shared = try SharedResources.locate() }
         catch { shared = nil; startupError = .sharedResourcesMissing }
+        // Share-text rules load now, so an invalid shared/data/share-text.json fails at launch, not in the Export sheet.
+        if shared != nil { do { try SharePostText.preflight() } catch { startupError = .sharedResourcesMissing } }
         DesignValues.registerFonts()
         loadCatalogue()
     }
@@ -148,7 +150,7 @@ extension ProviderChoice {
         #endif
         guard bool("update.autoCheck", fallback: true) else { return }
         let last = string("update.lastCheckAt")
-        if let date = ISO8601DateFormatter().date(from: last), Date().timeIntervalSince(date) < 86_400 { return }
+        if let date = UTCTimestamp.date(from: last, allowingOffset: true), Date().timeIntervalSince(date) < 86_400 { return }
         updateTask = Task { [weak self] in
             do { try await Task.sleep(for: .seconds(10)) } catch { return }
             await self?.checkUpdates(manual: false)
@@ -240,7 +242,7 @@ extension ProviderChoice {
     func checkUpdates(manual: Bool) async {
         do {
             update = try await updates.check(currentVersion: Self.version)
-            set("update.lastCheckAt", .string(Date().ISO8601Format()))
+            if let now = UTCTimestamp.string(from: Date()) { set("update.lastCheckAt", .string(now)) }
             if let update {
                 set("update.latestVersion", .string(update.version)); set("update.htmlURL", .string(update.htmlURL.absoluteString))
                 notice = "VoxClip \(update.version) is available."

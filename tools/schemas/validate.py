@@ -2,11 +2,12 @@
 """Validate VoxClip JSON documents against the schemas in shared/schemas.
 
 Usage:
-  python3 tools/schemas/validate.py                 # projects and media transcripts
-  python3 tools/schemas/validate.py FILE [FILE...]  # projects, settings or *.transcript.json
+  python3 tools/schemas/validate.py                 # projects, media transcripts and the Voice Lab price catalog
+  python3 tools/schemas/validate.py FILE [FILE...]  # projects, settings, price catalogs or *.transcript.json
 
 A file ending in .voxclip is checked against project.schema.json; a JSON object whose
-"schema" is "voxclip-settings/1" against settings.schema.json; *.transcript.json
+"schema" is "voxclip-settings/1" against settings.schema.json, and one whose "schema" is
+"voxclip-voice-lab-prices/1" against voice-lab-prices.schema.json; *.transcript.json
 against project.schema.json's $defs/transcript. References between the
 schemas (project.schema.json -> timed-word.schema.json) resolve through a local registry,
 never over the network. Needs jsonschema >= 4.18 (tools/captions/requirements.txt).
@@ -46,7 +47,10 @@ def schema_for(path, document, by_name):
         return {"$ref": project["$id"] + "#/$defs/transcript"}
     if isinstance(document, dict) and document.get("schema") == "voxclip-settings/1":
         return by_name["settings.schema.json"]
-    raise SystemExit(f"{path}: no schema applies (expected .voxclip, .transcript.json or voxclip-settings/1)")
+    if isinstance(document, dict) and document.get("schema") == "voxclip-voice-lab-prices/1":
+        return by_name["voice-lab-prices.schema.json"]
+    raise SystemExit(f"{path}: no schema applies (expected .voxclip, .transcript.json, voxclip-settings/1 "
+                     "or voxclip-voice-lab-prices/1)")
 
 
 def main(argv):
@@ -55,7 +59,7 @@ def main(argv):
     files = [pathlib.Path(a) for a in argv] or sorted([
         *fixtures.joinpath("projects").glob("*.voxclip"),
         *fixtures.joinpath("media").glob("*.transcript.json"),
-    ])
+    ]) + [ROOT / "shared" / "catalog" / "voice-lab.json"]
     if not files:
         print("no files to validate", file=sys.stderr)
         return 1

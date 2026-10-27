@@ -256,14 +256,15 @@ public sealed class CacheIndex
 }
 
 /// <summary>Cache timestamps: written as RFC 3339 UTC ending in Z, read with any offset, because extractors before
-/// 2026-10-27 wrote "+00:00" (architecture §8.2).</summary>
+/// 2026-10-27 wrote "+00:00" (architecture §8.2). A read rounds as a write does, and an instant that rounds past
+/// 9999-12-31T23:59:59.999Z makes the metadata corrupt, so the entry is a cache miss rather than a failed rewrite.</summary>
 internal sealed class CacheTimestampConverter : JsonConverter<DateTimeOffset>
 {
     private static readonly UtcTimestampConverter Utc = new();
 
     public override DateTimeOffset Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         => DateTimeOffset.TryParse(reader.GetString(), CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var value)
-            ? value : throw new JsonException("Expected an RFC3339 timestamp.");
+            && UtcTimestamp.TryRound(value, out var rounded) ? rounded : throw new JsonException("Expected an RFC3339 timestamp.");
 
     public override void Write(Utf8JsonWriter writer, DateTimeOffset value, JsonSerializerOptions options) => Utc.Write(writer, value, options);
 }

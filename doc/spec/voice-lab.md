@@ -166,7 +166,7 @@ public struct CostEstimate: Codable, Sendable, Hashable {
     public var unit: String              // "minute" | "character" | "second" | "call"
     public var usd: Decimal?             // nil when the price is unknown
     public var credits: Int?             // ElevenLabs credits, when known
-    public var basis: String             // "list-2026-10-25" | "provider-estimate" | "provider-pricing-api"
+    public var basis: String             // "list-<checked>" (§3.2) | "provider-estimate" | "provider-pricing-api" | "unknown"
 }
 ```
 
@@ -175,30 +175,86 @@ public struct CostEstimate: Codable, Sendable, Hashable {
 | under $0.50 and known | shown on the button: "Clean audio · ≈ $0.36", "Re-voice · 3 takes · ≈ $0.02". One click runs it |
 | $0.50 or more, any lip sync, or unknown | a confirmation: "This will cost about {amount} on your {provider} account." (or "VoxClip can't tell what this costs. Check {provider}'s pricing.") with [Continue] and [Cancel] |
 
-Amounts are formatted as "≈ $0.04": two significant digits, with "< $0.01" as the minimum.
+`VoiceLabCostPresentation` in Core applies the table on both platforms:
 
-Spend ledger and soft cap:
+- `kind(estimate, isLipSync:providerName:cap:)` is inline only when `usd` is known, below 0.50 before rounding, the action is not lip sync, and it does not cross the monthly cap (below). A $0.4999 action stays on the button as "≈ $0.50". Everything else confirms.
+- An action whose estimate is exactly $0, such as creating or deleting a voice, shows no amount anywhere: `kind` is inline with empty text, its button is just the action, and the ledger does not record it. Lip sync is the exception and always confirms. A valid lip-sync estimate is never $0 anyway, because zero seconds is invalid input (§3.2).
+- In the confirmation, `{amount}` is the formatted amount without "≈ " ("$0.50", "$12", "$1,200"). A known amount below a cent reads "This will cost less than $0.01 on your {provider} account." `{provider}` is the provider's display name ("ElevenLabs", "fal.ai", "sync.so").
+- `buttonTitle(action, takes:kind:)` joins the action, the take count ("1 take", "3 takes") and an inline amount with " · ". A button whose action confirms carries no amount: "Clean audio", "Lip sync", "Re-voice · 3 takes".
 
-- `<data>/VoiceLab/spend.json` sums the estimates of actions that were run, per provider and calendar month.
-- Settings → Voice Lab → "Warn me above $__ a month per provider" has no default. When an action would cross the cap, the confirmation adds "This takes you past your ${cap} limit for {provider} this month."
+`format(usd)` writes every amount:
+
+- Below $0.01 it is "< $0.01", with no "≈".
+- Otherwise the amount is rounded once, half away from zero, to two significant digits or to the cent, whichever is coarser. Amounts below $10 show two decimals; amounts from $10 show whole dollars with comma thousands. The text starts with "≈ ".
+- Examples: 0.0144 → "≈ $0.01", 0.015 → "≈ $0.02", 0.36 → "≈ $0.36", 0.4999 → "≈ $0.50", 1.2 → "≈ $1.20", 9.949 → "≈ $9.90", 9.95 → "≈ $10", 12345.6 → "≈ $12,000".
+
+Spend ledger:
+
+- `<data>/VoiceLab/spend.json` sums the estimates of actions that were run, per provider and calendar month, in the format `voxclip-voice-lab-spend/1`:
+
+  ```json
+  {
+    "schema": "voxclip-voice-lab-spend/1",
+    "months": {
+      "2026-10": {
+        "elevenlabs": {
+          "usd": "0.36",
+          "unknownCount": 0
+        }
+      }
+    }
+  }
+  ```
+
+  `usd` is the sum of the known estimates as a decimal string with at most 10 decimals. `unknownCount` counts the actions whose price was unknown. Months and providers are written in ordinal order, with a two-space indent, LF line ends and a final LF.
+- `ElevenLabsVoiceLab` calls `record(estimate, at:)` itself, once for each action the provider accepted. Acceptance is the 2xx status line: once a 2xx status and its headers arrive, the provider has billed. The record of the approved quote's estimate, with the time the request was sent, starts at that point and is never undone. A cancellation after that point does not prevent it.
+  - If reading the body then fails, through a cancellation mid-body, a dropped connection, or a body over the size limit (by `Content-Length` or as read), the record still finishes before the error is thrown. The user sees the error and gets no receipt, but the money is counted.
+  - Nothing is recorded for a refused authorization, a failed request, a 4xx or 5xx reply, or a cancellation before the status line.
+  - The record runs off the caller's actor and thread, in a detached task on macOS and on the thread pool on Windows, never on the main actor or the UI thread. It ignores the caller's cancellation.
+  - The App and CLI never record and never call a Voice Lab provider directly.
+  - A $0 estimate is not recorded and touches nothing.
+  - The month key is the local calendar month at the time the request was sent, in the device's time zone as it is when the action is recorded, not when the ledger was created: an action started at 23:30 on 31 October counts in October even if it finishes in November.
+- A recorder takes the advisory lock `spend.json.lock` beside the file: an exclusive `flock` on macOS and an exclusive `FileShare.None` open on Windows. Readers, including the cap check, take a shared lock (`FileShare.Read` on Windows) and wait at most 0.5 seconds, so they never read through a replacement. The lock is polled every 10 ms for up to 5 seconds without blocking a thread: `record` is async on both platforms. Only another holder (`EWOULDBLOCK`, or a sharing or lock violation on Windows) is waited for; any other failure, such as read-only media or a full disk, is `writeFailed` at once. Cancelling the wait gives `cancelled`.
+- Under the lock the recorder reads the file, adds the estimate, writes a 0600 temporary file in the same directory and moves it over `spend.json`. macOS flushes the temporary file with `F_FULLFSYNC` and the directory after the rename; Windows flushes it with `Flush(true)` before `File.Replace`. The lock file is never deleted. Two recorders in separate processes never lose an update.
+- `<data>/VoiceLab` is created as the paid-asset writer creates it: only its last component, mode 0700, inside an existing data folder. A missing data folder is `writeFailed`, never created.
+- A file that is not exactly this format is renamed to `spend.corrupt-<Unix milliseconds>.json` and a fresh ledger starts. This covers invalid UTF-8, a byte-order mark, an extra or repeated key, a bad month or provider key, and a bad amount or count.
+- Recording never throws into the provider path. It returns a typed warning instead (`replacedCorruptLedger` with the backup name, `lockTimedOut`, `cancelled`, `writeFailed` or `invalidEstimate`), and the action's result stands. `ElevenLabsVoiceLab` logs the warning and returns it as `spendWarning` on the action's `VoiceLabReceipt`, which the audio and clone results forward. The caller shows it as a notice, never as a failure. When the body failed, the caller gets the error instead, and the warning is only logged. The service's own records ignore cancellation, so `cancelled` reaches only a direct caller of `record` that cancels the wait.
 - The ledger is an estimate, not a bill. The provider's own credit quota, such as the restricted key's limit, is the hard stop.
+
+Soft cap:
+
+- Settings → Voice Lab → "Warn me above $__ a month per provider" has no default. It is stored as `voiceLab.monthlyCapUsd.<provider>`: a decimal string with at most two decimals (`"20"`, `"12.5"`), or null or absent for no cap.
+- An action crosses the cap when its estimate is known and takes the provider's known total for that month from at most the cap to above it. `kind` takes the cap and that total (`VoiceLabMonthlyCap(limit:spent:)`): an action that crosses always confirms, even under $0.50, and the confirmation adds "This takes you past your ${cap} limit for {provider} this month." The cap is written "$20", "$12.50" or "$1,000".
+- `wouldCross(cap:provider:estimate:at:)` and `total(provider:at:)` read the ledger under the shared lock. When the ledger cannot be read in time, the total is unknown and nothing crosses.
 
 ### 3.2 Prices (API list prices, USD, checked 2026-10-25)
 
-Prices live in a data file, `shared/catalog/voice-lab.json`, created with the M2 implementation, so they can be updated without code changes. Initial values:
+Prices live in a data file, `shared/catalog/voice-lab.json` (format `voxclip-voice-lab-prices/1`), so they can be updated without code changes. `tools/schemas/validate.py` checks it against `shared/schemas/voice-lab-prices.schema.json`. Each entry is `{provider, operation, model?, endpoint?, unit, formula, usdParameters, creditsParameters?, checked, source}`:
+
+- Prices are decimal strings such as `"0.22"`, never binary floating point. Both platforms compute in decimal and round `usd` half away from zero to 10 decimals.
+- `formula` is `perHour`, `perMinute`, `perSecond`, `perThousandCharacters`, `flatThenPerSecond`, `zero` or `estimateApi`. The schema fixes each formula's unit and parameter keys.
+- Duration rows take seconds, TTS rows take characters (Unicode scalars), and creating or deleting a voice takes one call. A lip sync of zero seconds is invalid input, with or without a catalog entry: the caller refuses an empty window before it asks.
+- An entry applies when provider, operation and endpoint match; an entry without `model` applies to every model. A catalog with two entries that could price the same request, or with any other defect, does not load (`sharedResourcesMissing`).
+- `VoiceLabPricing.estimate(operation:model:units:candidates:characterMultiplier:catalog:)`, whose `operation` names the provider, operation, endpoint and unit, gives the basis `list-<checked>`. A model or operation without an entry gives `usd` nil and the basis `unknown`, never a guess. So does an `estimateApi` entry, until a §3.3 live price arrives through `applying(_:to:)`.
+- TTS bills each model at its own row's list price. The `model_rates.character_cost_multiplier` that `GET /v1/models` reports is a credit multiplier, so it scales credits only, never dollars. When absent it is 1. Outside 0.01 to 100 it is invalid input to an estimate and a malformed response from discovery.
+- Credits: Voice Isolator and Voice Changer cost 1,000 per minute, rounded up to a whole credit. TTS costs ceil(characters × candidates × multiplier × credits per character). Every other operation has unknown credits.
+- `shared/fixtures/voice-lab/pricing-cases.json` pins every entry, the format boundaries, the ledger and the cap for both platforms.
+
+Initial values:
 
 | Operation | Price | Formula |
 |---|---|---|
 | ElevenLabs Scribe v2 (consent check, patch QA) | $0.22 per audio hour | `seconds / 3600 × 0.22` |
-| ElevenLabs Voice Isolator | $0.12 per minute; 1,000 credits per minute on credit plans | `minutes × 0.12` |
-| ElevenLabs Voice Changer | $0.12 per minute; 1,000 credits per minute | `minutes × 0.12` |
-| ElevenLabs TTS `eleven_v4`, `eleven_v3`, `eleven_multilingual_v2` | $0.08 per 1,000 characters | `characters × candidates × multiplier / 1000 × 0.08`, with `multiplier = model_rates.character_cost_multiplier` from `GET /v1/models` (default 1) |
-| ElevenLabs TTS `eleven_flash_v2_5`, `eleven_v4_turbo` | $0.04 per 1,000 characters | as above |
+| ElevenLabs Voice Isolator | $0.12 per minute; 1,000 credits per minute on credit plans | `seconds / 60 × 0.12` |
+| ElevenLabs Voice Changer | $0.12 per minute; 1,000 credits per minute | `seconds / 60 × 0.12` |
+| ElevenLabs TTS `eleven_v4`, `eleven_v3`, `eleven_multilingual_v2` | $0.08 per 1,000 characters; 1 credit per character × multiplier | `characters × candidates / 1000 × 0.08`; credits `ceil(characters × candidates × multiplier)`, with `multiplier = model_rates.character_cost_multiplier` from `GET /v1/models` (default 1) |
+| ElevenLabs TTS `eleven_flash_v2_5`, `eleven_v4_turbo` | $0.04 per 1,000 characters, already the half rate; their multiplier (0.5) halves credits, not dollars | `characters × candidates / 1000 × 0.04`; credits as above |
 | ElevenLabs Forced Alignment | $0.22 per audio hour | as for Scribe |
 | ElevenLabs Instant Voice Clone | no per-call charge (Starter plan or higher) | 0 |
+| ElevenLabs voice deletion | no charge (lead decision, 2026-10-27) | 0 |
 | fal `fal-ai/latentsync` | $0.20 flat up to 40 s, then $0.005 per second | `0.20 + max(0, s − 40) × 0.005` |
 | fal `fal-ai/sync-lipsync/v2`, model `lipsync-2` | $3.00 per minute | `s × 0.05` |
-| fal `fal-ai/sync-lipsync/v2`, model `lipsync-2-pro` | $5.00 per minute (shown as 1.67 × lipsync-2) | `s × 5 / 60` |
+| fal `fal-ai/sync-lipsync/v2`, model `lipsync-2-pro` | $5.00 per minute (shown as 1.67 × lipsync-2, checked 2026-10-26) | `s × 5 / 60` |
 | fal `fal-ai/sync-lipsync/v3` (sync-3) | $8.00 per minute (model page, checked 2026-10-26) | `s × 8 / 60` |
 | sync.so `lipsync-2`, `lipsync-2-pro`, `sync-3` | $0.04–0.05, $0.067–0.083 and $0.107–0.133 per second, depending on plan | from the estimate API (§3.3) |
 
@@ -659,16 +715,34 @@ The six silence-fit constants (`PAUSE_SLACK_KEEP`, `SEAM_PAD_MAX`, `HARD_SEAM_PA
 
 ### 8.4 Window and join placement
 
-For each accepted voice hunk replacing source words `[a..b]`, or inserting between `k` and `k+1`:
+For each accepted voice hunk replacing source words `[a..b]`, or inserting between `k` and `k+1`, the window is placed for the render scope (the full take or one clip) exactly as `VoiceLabOutputPlanner` builds that scope (§10.2), beside the replacements already in the project:
 
-1. **Left seam.** Look left from `a`, over up to `SEAM_SEARCH_WORDS` words, for a gap of at least `SEAM_MIN_GAP`.
-   - If one is found, place the seam at the **centre of the quietest 10 ms frame inside that gap**, choosing only among frames that meet step 5. The words between the gap and `a` become left bridge words.
-   - Otherwise, place the seam at `a.start − min(0.03, gapBefore / 2)` and use `HARD_SEAM_FADE`.
-   - **Take start.** When no transcript item (word, event or unlabeled speech) lies before the window's first word, the window instead extends to the take start (sample 0), and the seam has kind `none` (§10.5). There is no fade.
-2. **Right seam.** The mirror image: look right from `b`. When no transcript item lies after the window's last word, the window extends to the take end (`totalSamples`) with kind `none`.
+- The **replacements** are the scope's enabled segments, selected as the output planner selects them: enabled and, in a clip scope, overlapping the clip's range (`clipTimes`). An enabled segment outside the take, or a replacement that crosses that range, has no synth samples, has no selected recipe or overlaps another, leaves the scope unrenderable, and the hunk is refused with `invalidInput`. Each replacement's fades come from its selected recipe's seams. An item wholly inside a replacement is a **replaced item**: it is already re-voiced.
+- **Kept source** is the complement of the scope's edit-plan cuts (`buildSegments` and `buildEditPlan`, `editing.md` §7.2–§7.3, with a clip's head and tail ranges) and of every synth range. It is computed after the words and pauses inside every replacement and inside the window are dropped, as the output planner drops them, so nested and overlapping items, cut pauses, clip edges and other replacements all count.
+- A **kept item** is a transcript item (word, event or unlabeled speech) that the scope does not cut: it is not in `cutWordIds`, and in a clip scope it lies inside the clip.
+- The **gap** before an item runs from the latest end of the items before it to the earliest start of that item and the items after it.
+- The transcript must follow the project rule (finite times, `0 ≤ start < end`, starts in transcript order, unique IDs). Otherwise the hunk is refused with `invalidInput`.
+
+1. **Left seam.** Look left from `a`, over up to `SEAM_SEARCH_WORDS` words, for a gap of at least `SEAM_MIN_GAP`. Only kept words bridge: the search stops at a cut word, a word outside the clip, a replaced item, an event or unlabeled speech.
+   - If one is found, place the seam at the **centre of the quietest 10 ms frame inside that gap**, sample `i·F + ceil(F/2)` of frame `i`. Choose only among frames whose centred fade lies wholly in kept source (step 5) and clear of each replacement's own outer fade halves: `floor(N/2)` samples before its start and `ceil(N/2)` after its end. Ties go to the frame nearest the gap centre, then the earlier one. A gap with no such frame is skipped, and the search goes on. The words between the gap and `a` become left bridge words.
+   - A cut's reach depends on which items the window drops. The left search therefore measures kept source against the widest window the right side could reach: its farthest bridge, or the take end when the right side could extend to it. The right search mirrors this, and step 5 checks the final window.
+   - Otherwise, place the seam at `a.start − min(0.03, max(0, gapBefore) / 2)` and use `HARD_SEAM_FADE`. Overlapping items leave no gap, so the reach is clamped at zero, as `editing.md` §7.3 clamps a cut's reach.
+   - A replacement R that ends no later than the end of `gapBefore` moves the gap's start to the later of its own start and `(jsRound(R.end × rate) + ceil(N_R/2) + floor(N_hard/2)) / rate`, where `N_R` is R's outgoing fade and `N_hard` is `HARD_SEAM_FADE` in samples. The hard seam then leaves the outer halves of both fades in the kept source between R and `a` whenever the silence holds them. When it does not, step 6 refuses the hunk.
+   - **Take start.** Take edges count kept and replaced items only. When no kept or replaced item lies before the window's first word, the window instead extends to the take start (sample 0), and the seam has kind `none` (§10.5). There is no fade. This covers a passage with no item before it and one where every earlier item is cut. Earlier cut items are absorbed into the window and replaced with it, so a cut filler at 0.0 s before a rewrite of the first sentence leaves no fade across the cut. The rule applies whatever the gap, and whether or not a fade would cross the edge. In a clip scope the window extends only when the clip's range (`clipTimes`) starts at 0, because the output plan refuses a replacement outside the clip (§10.2).
+2. **Right seam.** The mirror image: look right from `b`. A replacement R that starts no earlier than the start of the gap after `b` moves the hard seam's gap end to the earlier of its own end and `(jsRound(R.start × rate) − floor(N_R/2) − ceil(N_hard/2)) / rate`, with `N_R` R's incoming fade. When no kept or replaced item lies after the window's last word, the window extends to the take end with kind `none` and absorbs any later cut items. The take end is exactly `media.source.durationSeconds`, on sample `jsRound(durationSeconds × rate)`, never `totalSamples / rate`. In a clip scope the window extends only when the clip's range ends at or after `durationSeconds`.
 3. **Insertions.** If the gap between `k` and `k+1` is at least `SEAM_MIN_GAP`, both seams lie inside it, `PAUSE_SLACK_KEEP` from each word. Otherwise treat it as a replace of `k+1` with bridging.
-4. **Window.** `W = [seamIn, seamOut]`, and the patch text is left bridge + new words + right bridge.
-5. **Fade inside the take.** A seam's centred fade of `N` source samples (`SEAM_FADE` or `HARD_SEAM_FADE`) must lie inside the take: `seam − floor(N/2) ≥ 0` and `seam + ceil(N/2) ≤ totalSamples`, with `seam` on the source sample grid. A gap frame whose centre breaks this is not a candidate in steps 1 and 2. A hard seam that breaks it refuses the hunk with `seamFadeOutsideTake`.
+4. **Window.** `W = [seamIn, seamOut]`, and the patch text is left bridge + new words + right bridge. The replace range's first and last word IDs are the first and last items wholly inside `W`, absorbed cut items included. `W` also absorbs an event or unlabeled speech wholly inside it, such as an event that starts with the passage or one nested in its last word. An item that crosses a seam refuses the hunk with `windowCrossesWord`, and so does a kept word wholly inside `W` that is neither a passage nor a bridge word, because its speech would be lost.
+5. **Fades.** A seam's centred fade of `N` source samples (`SEAM_FADE` or `HARD_SEAM_FADE`) has a left half of `floor(N/2)` and a right half of `ceil(N/2)`, with `seam` on the source sample grid. §10.5 never shortens a fade, so every seam with a fade must meet three rules:
+   - **Inside the take.** `seam − floor(N/2) ≥ 0` and `seam + ceil(N/2) ≤ totalSamples`. A hard seam that breaks this refuses the hunk with `seamFadeOutsideTake`.
+   - **Outer half in kept source.** The kept source contiguous with the seam, measured for the final window, must hold `floor(N/2)` samples before an incoming seam and `ceil(N/2)` after an outgoing one. Otherwise the hunk is refused with `seamFadeCrossesCut`, which reports the side and the needed and available samples. A fade therefore never crosses a cut word's reach, a cut pause or a clip edge. The window does not absorb a cut word to avoid this, because that would undo the user's cut timing and lengthen the take; the refusal comes before any paid take. The UI may later offer to include the cut word in the passage or to restore it.
+   - **Fades fit the window.** `ceil(Nin/2) + floor(Nout/2) ≤ seamOut − seamIn` in samples, which is the render validator's `overlappingFades` rule (§10.5). A shorter window refuses the hunk with `windowTooShort`, which reports the needed and available samples. Nothing bridges it automatically.
+6. **Replacements.** A window that overlaps a replacement, by the validator's `overlappingReplacement` rule in seconds, refuses the hunk with `overlapsReplacement` and that segment's ID. The final check measures the pieces the output plan builds with the window as one more replacement, and the pieces it builds without the window:
+   - A window that touches a replacement, with no kept source between them, refuses with `adjacentReplacement` and that segment's ID. So does a single kept piece between them shorter than `ceil(Nout/2) + floor(Nin/2)`, prepare's `overlappingFades` rule across one piece.
+   - Every replacement's seams are checked as the window's are: each fade's outer half lies in the kept source right beside its seam, and a single kept piece between two replacements holds both outer halves. The window's dropped items can lengthen a cut's reach (`editing.md` §7.3), for example when no kept word follows a cut pause any more. A check that holds without the window and fails with it refuses the hunk with `adjacentReplacement` and that replacement's ID.
+   - A check that already fails without the window is not the window's doing. An edit after acceptance, such as cutting the pause that a replacement's seam lies in, can leave its fade across a cut, and prepare still renders it. Such a seam is judged by prepare's own rule: the neighbouring output piece is source and holds the fade's outer half, and the kept source between this replacement and the next one, the window included, holds both fades' outer halves. If the rule holds with the window, the check passes. If it fails with the window but holds without it, the hunk is refused with `adjacentReplacement`. If it fails without the window too, the scope does not render today, and the hunk is refused with `invalidInput` and that replacement's ID.
+   - `place` never emits `synthToSynth` seams, because changing the recipe of an accepted, paid segment is out of scope. A later UX can offer to re-voice touching passages together.
+
+When several rules fail, the first in this order is reported: `invalidInput` for the window's own samples, `overlapsReplacement`, `windowCrossesWord` (a crossing item, then a lost word), `seamFadeOutsideTake`, then for the incoming side `adjacentReplacement` (or `invalidInput` naming that replacement) and `seamFadeCrossesCut`, then the same for the outgoing side, `windowTooShort`, and finally each replacement in source order, its incoming seam, outgoing seam and then the kept piece after it, with `adjacentReplacement` or `invalidInput` and its ID.
 
 ### 8.5 TTS request
 
@@ -759,7 +833,7 @@ A field that is empty after this is omitted. The quote binds the seed and the tr
    - **True peak.** Measure it as in ITU-R BS.1770-4 Annex 2, with the 48-tap, 4-phase interpolating filter: 4× below 96 kHz, 2× below 192 kHz using the filter's even phases 0 and 2, and the sample peak from 192 kHz. The audio is silent outside the trimmed TTS, so the ringing of an abrupt start or end counts. The true peak is the larger of the interpolated peak and the sample peak, because no Annex 2 phase lands on an input sample. Both rules can only lower the gain, which is the safe direction.
    - **Failure.** The source level depends only on the source and `W`, so it is measured when `W` is placed. If neither side of `W` has a voiced frame, the window is refused with `noVoicedAudio` before any paid take, as for `roomToneUnavailable`. A take with no voiced frame of its own is rejected as `noVoicedAudio`.
 3. **Room tone** (only when Clean audio is off):
-   - Find the quietest 0.5 s run (sliding 10 ms RMS) inside source gaps of at least 0.5 s.
+   - Find the quietest 0.5 s run inside source gaps of at least 0.5 s between items of any kind: the lowest summed power over 50 whole 10 ms frames. A run must hold both 50 whole frames and `jsRound(0.5 × rate)` samples, and the stored range is the second. Ties go to the earliest run.
    - Loop it under the patch at its natural level, with 50 ms crossfades between loops.
    - Store the room-tone source range with the segment. With Clean audio on, skip room tone: both sides are already clean.
    - If no source gap holds a whole `ROOM_TONE_MIN_RUN`, passage TTS with Clean audio off is refused with `roomToneUnavailable` before any paid take, and the UI offers Clean audio (§4) instead.
@@ -779,7 +853,7 @@ if s != nil && buf != "": words.append((buf, s, e))
 
 Then:
 
-1. **Check.** The derived tokens (normalised) must equal the patch text's tokens.
+1. **Check.** Each derived token and each patch-text token is NFC-normalised, then normalised with `normalizeForMatch` (`editing.md` §4.7, which is defined on NFC text). The results must be equal, compared ordinally. A token that holds a lone surrogate or a noncharacter (U+FDD0–U+FDEF, or U+xFFFE or U+xFFFF in any plane) fails the check. Every platform tests for both before NFC and never relies on normalisation throwing. Words keep the provider's characters as their text.
 2. **Fallback, in order**, when the check fails or the alignment is null:
    1. Forced Alignment, but only when the language is in `eleven_multilingual_v2`'s `languages`. That list does not include Estonian.
       ```
@@ -1174,7 +1248,7 @@ Every saved `video` object carries all 15 keys, with `null` for the fields its m
 
 The shared cases are `shared/fixtures/voice-lab/upgrade-cases.json`, generated by `tools/fixtures/voice-lab/generate_upgrade.py` and described in `upgrade-README.md`.
 
-All source intervals use JavaScript half-up rounding on the source sample grid; trim and handle frames use the asset sample grid. A centered N-frame seam has left half `floor(N/2)` and right half `N − floor(N/2)`. Equal-power gains use `u = i/(N−1)` for `N ≥ 2`, with exact endpoints. Stored gap seams use 20 ms and hard seams 12 ms; real take edges use explicit `none`. Every gap or hard seam's centred fade lies inside the take (§8.4 step 5); window placement refuses a hunk whose hard seam cannot meet this with `seamFadeOutsideTake`. Touching synth pieces share one agreeing seam. Missing handles, a fade shorter than two frames, a clip ending on an internal seam, or overlapping windows fail preparation without shortening a fade or swallowing even a one-sample source gap. Ordinary source cut joins retain their separate 5 ms linear fade. Passage TTS with Clean audio off requires the stored 0.5 s room-tone run; when no source gap holds a whole run, the passage is refused with `roomToneUnavailable` before any paid take, and the UI offers Clean audio (§8.7). Full take and voice changing have an explicit null policy when room tone is not needed.
+All source intervals use JavaScript half-up rounding on the source sample grid; trim and handle frames use the asset sample grid. A centered N-frame seam has left half `floor(N/2)` and right half `N − floor(N/2)`. Equal-power gains use `u = i/(N−1)` for `N ≥ 2`, with exact endpoints. Stored gap seams use 20 ms and hard seams 12 ms; real take edges use explicit `none`. Every gap or hard seam's centred fade lies inside the take, its outer half lies in the kept source beside the seam, and the window holds both inner halves (§8.4 step 5). Window placement refuses a hunk that cannot meet these with `seamFadeOutsideTake`, `seamFadeCrossesCut` or `windowTooShort`, and one beside another enabled replacement that cannot keep both pieces' fades with `overlapsReplacement` or `adjacentReplacement` (§8.4 step 6). A scope where one replacement's seams already fail prepare's rule (§8.4 step 6) is refused with `invalidInput` and that replacement's ID. So in a scope that validates and prepares without the new window, every window it returns also validates and prepares, including with other enabled replacements, and a replacement whose fade a later cut has crossed, which prepare still renders, does not block a window elsewhere. Touching synth pieces share one agreeing seam. Missing handles, a fade shorter than two frames, a clip ending on an internal seam, or overlapping windows fail preparation without shortening a fade or swallowing even a one-sample source gap. Ordinary source cut joins retain their separate 5 ms linear fade. Passage TTS with Clean audio off requires the stored 0.5 s room-tone run; when no source gap holds a whole run, the passage is refused with `roomToneUnavailable` before any paid take, and the UI offers Clean audio (§8.7). Full take and voice changing have an explicit null policy when room tone is not needed.
 
 An incoming synth seam needs `floor(N/2)` output samples of asset handle before its trim; an outgoing seam needs `ceil(N/2)` after its trim, including when two synth pieces share the seam. For a needed half of `k` source-grid output samples, the minimum raw handle is `ceil(k × assetSampleRate / (sourceSampleRate × audio.stretch))` asset frames. A touching synth seam has zero source handle on both sides and keeps the one N-frame fade.
 
@@ -1258,9 +1332,12 @@ When `required`, a disclosure line is appended to the caption text that Copy cap
 | `voiceChanger`, stock voice | The voice in this video was changed with AI. | Selle video häält on muudetud tehisintellektiga. |
 | also `lipsync` (appended sentence) | Lip movements in parts of it were generated with AI. | Osa huulte liikumisest on loodud tehisintellektiga. |
 
-- The language is the transcript language when that is `et`, otherwise English.
-- The user may edit the line. Removing it shows "Your post no longer says the video contains AI-modified parts." before sharing, with [Share anyway] and [Restore line].
-- Truncation for X (`doc/publishing.md` §2.1) and for VoxConvo's 2,048-character `text` cuts the caption body. The disclosure line is never cut.
+- Core builds the line (`VoiceLabDisclosurePlan.postText`) from the sentences in this order: `tts`, then `voiceChanger` (own clone or stock voice), then `lipsync`, joined by single spaces. It is the only source of the line.
+- The line is Estonian when the primary language subtag of the transcript language (the part before the first `-`) is `et`, compared ASCII case-insensitively: `et`, `et-EE` and `ET` match, `eto` does not. Otherwise it is English.
+- The caption field opens with the saved or default caption. When a line exists and is not present, White_Space at the end of the caption is dropped and the line is appended after a blank line (`SharePostText.fieldText`). The field text stays within the 3,000 Unicode scalars of `share.captions`: when the caption, the blank line and the line would pass 3,000, the caption is cut with the composer rules of `doc/publishing.md` §2.1 (rules 4 to 6, with `…`), measured in Unicode scalars against 3,000. The line is never cut.
+- The line is present when the caption contains it after both are NFC-normalized, every run of White_Space is collapsed to one space and the ends are trimmed (`ShareDisclosure.isPresent`). Any other edit to the line counts as removing it.
+- The user may edit the line. Removing it shows "Your post no longer says the video contains AI-modified parts." before sharing, with [Share anyway] and [Restore line]. Restore line puts it back with `SharePostText.fieldText`.
+- Truncation for X and for VoxConvo's 2,048-unit `text` (the composer text in `doc/publishing.md` §2.1) removes the line's last occurrence, cuts the rest of the caption and appends the line after a blank line. The disclosure line is never cut, and in truncated text it is always last. A caption that fits is sent unchanged, wherever the line is. Copy caption and Open LinkedIn never truncate.
 
 ### 11.4 X
 
@@ -1322,18 +1399,19 @@ Every export that has Clean audio or any synthetic segment gets `<export name>.p
 {
   "schema": "voxclip-provenance/1",
   "app": { "name": "VoxClip", "version": "0.3.0", "platform": "macos" },
-  "export": { "file": "intro-9x16.mp4", "sha256": "…", "durationSeconds": 42.317, "createdAt": "2026-10-25T12:30:00Z" },
+  "export": { "file": "intro-9x16.mp4", "sha256": "…", "durationSeconds": 42.317, "createdAt": "2026-10-25T12:30:00.000Z" },
   "source": { "contentKey": "…", "durationSeconds": 612.4 },
   "edits": { "cutWords": 17, "cutPauses": 4, "corrections": 2 },
   "cleanAudio": { "provider": "elevenlabs", "endpoint": "audio-isolation", "mix": 1.0 },
   "aiSegments": [
     { "kind": "tts", "outputStart": 12.10, "outputEnd": 13.78, "text": "I said 2025",
       "provider": "elevenlabs", "model": "eleven_v4", "voice": "own-clone", "seed": 3141592653,
-      "lipsync": { "provider": "fal", "model": "fal-ai/latentsync" } }
+      "lipsync": { "provider": "fal", "model": "fal-ai/latentsync" },
+      "generatedAt": "2026-10-25T12:10:00.000Z", "consentRecordId": "6f0c2c1e-…" }
   ],
   "disclosure": { "required": true, "persistent": false, "labelIntervals": [[0, 3.0], [11.6, 14.28]],
                   "postText": "Some words in this video were re-voiced with an AI copy of my own voice.", "c2pa": true },
-  "consent": [ { "recordId": "6f0c2c1e-…", "statementSha256": "…", "createdAt": "2026-10-25T12:00:00Z" } ]
+  "consent": [ { "recordId": "6f0c2c1e-…", "verifiedAt": "2026-10-25T12:00:00.000Z" } ]
 }
 ```
 
@@ -1419,9 +1497,13 @@ Unit tests run in both suites (`VoxClipCoreTests`, `VoxClip.Core.Tests`), with s
 2. **Patch budget.** 61 changed words, or 16% of the words, disables voice hunks.
 3. **Seam placement (§8.4).**
    - A gap of 0.2 s two words to the left puts the seam at its quietest frame.
-   - No gap within 3 words gives a hard seam at `a.start − min(0.03, gap/2)`.
-   - A passage that starts at the take's first item extends the window to sample 0 with seam kind `none`; one that ends at the last item extends it to `totalSamples`.
-   - A gap frame whose centred fade would leave the take is never chosen. A hard seam whose fade would leave the take refuses the hunk with `seamFadeOutsideTake`.
+   - No gap within 3 words gives a hard seam at `a.start − min(0.03, max(0, gap)/2)`.
+   - A window with no kept or replaced item before its first word extends to sample 0 with seam kind `none`. It absorbs earlier cut items, so a cut "um" at 0.0 s before a rewrite of the first sentence renders. A window with no kept or replaced item after its last word extends to exactly `durationSeconds`, also off the sample grid. In a clip scope this happens only at a take edge that the clip's range touches.
+   - A gap frame whose centred fade would leave kept source is never chosen: the take, a cut's reach, a cut pause or a clip's head or tail. A hard seam whose fade would leave the take refuses the hunk with `seamFadeOutsideTake`. A seam without the outer half of its fade in kept source beside it refuses with `seamFadeCrossesCut`. A window too short for both inner halves refuses with `windowTooShort`. At 22.05 and 44.1 kHz, where `floor(N/2)` and `ceil(N/2)` differ, named vectors pin each half.
+   - An event that starts with the passage or lies inside its last word is absorbed, and a kept word inside the window outside the passage and its bridges refuses with `windowCrossesWord`. A transcript that breaks the project rule refuses with `invalidInput`.
+   - Re-voicing the sentence after an accepted one places its seam clear of that replacement's fade: in a gap, or as a hard seam when only 18 ms of silence separates them. A window over a replacement refuses with `overlapsReplacement`. One that would touch a replacement, leave too little kept source between them on either side, or move a cut until another replacement's fade crosses it refuses with `adjacentReplacement`. A disabled replacement, or one outside the clip, changes nothing.
+   - After a replacement is accepted, cutting the pause its seam lies in does not block re-voicing the first sentence: that window is accepted and renders. A scope that a replacement already leaves unrenderable, such as one whose fade now meets a 5 ms sliver of kept source, refuses with `invalidInput` and that replacement's ID, and so does a pair of replacements too close for both fades.
+   - Property: every window placed for a random take, at 44.1 and 48 kHz and in full or clip scope, passes `VoiceLabProject.validate` and `VoiceLabRenderContract.prepare`, and so does every window placed beside one or two replacements that `place` itself put there, including after later cuts and replacements enabled again. `window-cases.json` carries a fixed-seed sample of each 20,000-case fuzz, and both suites validate and prepare every accepted case, named vectors included, with every replacement in the project.
 4. **Duration fit (§8.9), with `fit-cases.json`.**
    - A take 5% longer than its window (`D = 1.05 × w`) whose punctuation pauses can give up the residual above their floors fits exactly: `outDuration == end − start`, the fit factor is 1, and every word keeps its aligned duration.
    - A take 5% shorter (`D = 0.95 × w`) lengthens its pauses within `PAUSE_GROWTH_MAX`, pads what remains equally at its two gap seams, and fits exactly.

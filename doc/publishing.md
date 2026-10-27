@@ -29,12 +29,49 @@ They appear in the Export sheet after a successful export (design.md section 8) 
 
 ### 2.1 Caption text
 
-- Default caption for a clip: `<clip title>` + blank line + the clip's first sentence in its edited, corrected text (words after cuts, corrections applied, punctuation kept). For the full edit: the first sentence of the edited take. Sentence end = the first word ending in `.`, `?`, `!` or `…`; if none within 40 words, the first 40 words followed by `…`.
+- Default caption for a clip: `<clip title>` + blank line + the clip's first sentence in its edited, corrected text (words after cuts, corrections applied, punctuation kept), words joined by single spaces. For the full edit: the first sentence of the edited take, with no title. Sentence end = the first word whose last character is `.`, `?`, `!` or `…`; if none of the first 40 words ends a sentence, the caption takes those words (at most 40) followed by `…`. An empty title or sentence is left out together with the blank line. Core: `SharePostText.defaultCaption(title:words:)` (C# `DefaultCaption(title, words)`), where `words` are the target's kept, corrected word texts in transcript order.
 - The user can edit it in the caption field. The edited text is stored in the project per export target in `share.captions[targetId]` (`project.schema.json` `$defs/share`; `targetId` is `full` or the clip id; at most 3,000 characters) and reused next time. Removing a clip drops its entry (editing spec 10.4).
 - Counters under the field:
-  - **X:** weighted length with the twitter-text v3 rules: `maxWeightedTweetLength 280`, `scale 100`, `defaultWeight 200`, weight 100 for code points in `0–4351`, `8192–8205`, `8208–8223`, `8242–8247`; every URL counts as 23; each emoji sequence counts as 2. Shown as `212/280`.
-  - **LinkedIn:** Unicode scalar count, limit 3,000. Shown as `212/3,000`.
-- Over the X limit the counter turns `status.warning` and Open X truncates at the last word boundary that fits, appending `…` (the copied text is never truncated).
+  - **X:** the X weight below. Shown as `212/280`.
+  - **LinkedIn:** Unicode scalar count of the text as typed, limit 3,000. Shown as `212/3,000`.
+- Over the X limit the counter turns `status.warning`. Open X sends the composer text below. The copied text is never truncated.
+
+Core implements these rules with the same API on both platforms (`SharePostText`, `ShareDisclosure`). Their constants are in `shared/data/share-text.json`: the weights and ranges, the limits, the URL weight, the TLD list, the emoji table with its source and the ellipsis. `shared/fixtures/share/generate_share_cases.py` generates that file and `shared/fixtures/share/cases.json`, which both Core suites replay. "White space" here is the Unicode White_Space set: U+0009–U+000D, U+0020, U+0085, U+00A0, U+1680, U+2000–U+200A, U+2028, U+2029, U+202F, U+205F, U+3000.
+
+**X weight** (`xWeight`), the twitter-text v3 weighted length (`maxWeightedTweetLength 280`, `scale 100`, `defaultWeight 200`, `transformedURLLength 23`):
+
+1. NFC-normalize the text, as twitter-text does. Foundation's NFC leaves a precomposed Hangul LV syllable before a trailing jamo (U+AC00 U+11A8 stays two scalars, NFC gives U+AC01), so Swift Core composes that pair afterwards (Unicode §3.12). The composer text below and the line check of voice-lab.md §11.3 normalize the same way.
+2. Each URL counts 23.
+3. Each extended grapheme cluster outside a URL that is an emoji counts 2.
+4. Every other scalar counts 1 when its code point is in `0–4351`, `8192–8205`, `8208–8223` or `8242–8247`, otherwise 2. Thai (U+0E00–U+0E7F), for example, counts 1; CJK and Hangul count 2.
+
+**URL.** A URL is a maximal run of non-white-space that either:
+
+- (a) starts with `http://` or `https://` (ASCII case-insensitive) and is not preceded by an ASCII letter or digit; or
+- (b) is a bare host that is not preceded by `@`, an ASCII letter or digit, `.`, `-` or `/`. The host is two or more labels `[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?` joined by dots, and its last label is a TLD from the data file (ASCII case-insensitive). It may be followed by `:` and digits, and by `/` and any non-white-space.
+
+The URL begins at the first position in the run where (a) or (b) holds and ends at the end of the run. The characters `. , : ; ! ? ' " ’ ” ) ] } > …` are stripped from the end repeatedly and do not belong to the URL. So an e-mail address is not a URL, and neither is `https://` inside a word. The TLD list is the common gTLDs plus the EU and Nordic ccTLDs: `ai app co com de dev dk ee es eu fi fr gg info io it lt lv ly me net nl no org pl se tv uk xyz`. This approximates twitter-text, which uses the full IANA TLD list and more detailed rules.
+
+**Emoji.** An extended grapheme cluster is an emoji when any of its scalars has Emoji_Presentation=Yes in Unicode 15.1 `emoji-data.txt` (its URL and sha256 are recorded in the data file), or is U+FE0F, U+20E3 or a Regional Indicator. The clusters are Swift `Character`s and .NET `StringInfo` text elements. They agree on the fixtures, which use only emoji from Unicode 15.0, but not on every text: the toolchains implement different Unicode versions, .NET 10 lacks the Indic conjunct rule GB9c, and some non-RGI ZWJ sequences of Emoji=No pictographs split differently.
+
+**VoxConvo length** (`voxConvoLength`): UTF-16 code units of the text as sent, limit 2,048. This is a deliberately conservative bound. vox-api validates `NewPostInput.text` with class-validator `@Length(0, 2048)`, which calls validator.js `isLength`; that counts UTF-16 units minus surrogate pairs and U+FE0E/U+FE0F selectors, so any text within 2,048 UTF-16 units is accepted.
+
+**Composer text** (`composerText(caption, destination, disclosureLine)`) is what Open X (limit 280 by X weight) and VoxConvo publish (limit 2,048 by UTF-16 length) send. Open LinkedIn sends the caption unchanged.
+
+1. A caption that fits is sent unchanged, byte for byte.
+2. Otherwise the caption is NFC-normalized. If the disclosure line is present (voice-lab.md §11.3), its last occurrence is removed, comparing white-space runs as equal; the white space at the join is trimmed, and the two remaining parts are joined with a blank line when both are non-empty. White space at the end is dropped. What remains is the body.
+3. If the body, a blank line and the line fit, they are sent without cutting.
+4. Otherwise the body is cut at the longest prefix that ends just before a white-space character and contains a word, such that the prefix without its trailing white space, then `…` (U+2026: 2 for X, 1 UTF-16 unit), then the blank line and the line, fits. Paragraph breaks and newlines inside the prefix are kept; words are never re-joined. A cut that would end inside a grapheme cluster is skipped: a Prepend scalar such as U+0600 and the space after it are one cluster.
+5. If not even the first word fits, the cut falls at the last grapheme-cluster boundary inside the first word that fits. No cut splits a cluster or a surrogate pair.
+6. The line follows the cut body after a blank line. It is never cut and is always last. Without a line, the cut body ends the text. If not even `…` and the line fit, the line alone is sent.
+
+The result is the longest candidate that fits, by the destination's measure of the whole candidate text. A longer rule-4 prefix never measures less, and neither does a longer rule-5 cut, except for X, where a URL can appear or vanish as a first-word cut grows. So both Cores bisect the rule-4 candidates and, for VoxConvo and the field text, the rule-5 cuts, measuring each candidate whole. For X, rule 5 weighs every first-word cut in one pass (`lastFittingXCut`, C# `LastFittingXCut`) and takes the first that fits from the longest down, the cut a scan of whole candidates picks:
+
+- A cut keeps the body up to a grapheme-cluster boundary, then `…` and the tail (the blank line and the line). The body is NFC and `…` never composes with the scalar before it, so the candidate's NFC text is these pieces joined.
+- The candidate's URLs are those of the body and the tail, except in the run the cut ends. That run, with `…` and its trailing punctuation stripped, holds the URL starting at the first position that holds for its stripped end. One sweep finds that position for every end: a start holds for some ends inside its host or port and, from one end on, for every later end, and the host runs of different starts never overlap.
+- URL starts are ASCII letters or digits, cuts are cluster boundaries, and `…` and the trailing punctuation stand alone: ASCII or General Punctuation, not white space or emoji, and their own cluster after a letter, an emoji ZWJ sequence and a virama. So no piece splits an emoji cluster, and a candidate weighs prefix sums of per-scalar weights outside its URL (an emoji cluster's 2 on its first scalar), 23 for the URL, and the weight of `…` and the tail. Both loaders reject a data file whose ellipsis or trailing punctuation breaks this.
+
+A 3,000-scalar first word cuts for X in about 1 ms in an optimized build; scanning whole candidates from the longest down took up to 0.7 s on the Mac. `generate_share_cases.py` scans every candidate from the longest down and asserts that the one-pass X cut picks the same cut for every fixture case and 60 random first words; the fixtures pin both Cores to its results, and both Core suites also compare the one-pass cut with the scan on random words.
 
 ### 2.2 Actions
 

@@ -95,7 +95,7 @@ struct VoiceLabServiceTests {
     }
     private func service(_ handler: @escaping SpeechStubHTTP.Handler, region: ElevenLabsRegion = .eu) -> ElevenLabsVoiceLab {
         let base = SpeechStubHTTP.register(handler)
-        return ElevenLabsVoiceLab(keys: SpeechTestKeys(value: key), session: URLSession(configuration: SpeechStubHTTP.configuration(for: base)), region: region, logger: SpeechTestLogger())
+        return ElevenLabsVoiceLab(keys: SpeechTestKeys(value: key), session: URLSession(configuration: SpeechStubHTTP.configuration(for: base)), region: region, logger: SpeechTestLogger(), prices: VoiceLabPricingTests.catalogIfPresent)
     }
     private func fixture(_ key: String) throws -> [[String: Any]] {
         let data = try FixtureLoader.data("fixtures/voice-lab/contract.json")
@@ -141,8 +141,9 @@ struct VoiceLabServiceTests {
         #expect(try await service.models().count == 2)
         #expect(try await service.plan().canClone)
         #expect(try await service.voices().count == 2)
-        let estimate = try await service.estimate(.textToSpeech, units: 2, unit: "characters")
-        #expect(estimate.usd == nil && estimate.credits == nil)
+        // The catalog does not list this discovered model, so its price stays unknown rather than guessed.
+        let estimate = try await service.estimate(.textToSpeech, modelID: "new_speech_model", units: 2)
+        #expect(estimate.usd == nil && estimate.credits == nil && estimate.basis == "unknown" && estimate.unit == "character")
         let id = UUID()
         let context = VoiceLabSpeechOptions(seed: 7, previousText: " Before ", nextText: "After\n")
         let speechQuote = try await service.prepareSynthesis(text: "Hi", modelID: "new_speech_model", voice: .own(voiceID: "own123", policy: policy), language: "en", options: context, requestID: id)
@@ -518,7 +519,7 @@ struct VoiceLabServiceTests {
                 return SpeechStubHTTP.Reply(status: code, headers: [:], body: code == 200 ? self.timing("Hi", audio: audio) : Data("busy".utf8))
             }
         }
-        let lab = ElevenLabsVoiceLab(keys: SpeechTestKeys(value: key), session: URLSession(configuration: SpeechStubHTTP.configuration(for: base)), region: .eu, logger: SpeechTestLogger())
+        let lab = ElevenLabsVoiceLab(keys: SpeechTestKeys(value: key), session: URLSession(configuration: SpeechStubHTTP.configuration(for: base)), region: .eu, logger: SpeechTestLogger(), prices: VoiceLabPricingTests.catalogIfPresent)
         _ = try await lab.models(); _ = try await lab.voices()
         let voice = VoiceLabVoiceChoice.stock(voiceID: "stock123"), id = UUID()
         let quote = try await lab.prepareSynthesis(text: "Hi", modelID: "new_speech_model", voice: voice, language: "en", options: speech, requestID: id)
@@ -801,7 +802,7 @@ struct VoiceRewriteServiceTests {
             default: throw URLError(.badURL)
             }
         }
-        let voice = ElevenLabsVoiceLab(keys: SpeechTestKeys(value: "synthetic-voice-lab-key"), session: URLSession(configuration: SpeechStubHTTP.configuration(for: base)), logger: SpeechTestLogger())
+        let voice = ElevenLabsVoiceLab(keys: SpeechTestKeys(value: "synthetic-voice-lab-key"), session: URLSession(configuration: SpeechStubHTTP.configuration(for: base)), logger: SpeechTestLogger(), prices: VoiceLabPricingTests.catalogIfPresent)
         _ = try await voice.models(); _ = try await voice.voices()
         let speechQuote = try await voice.prepareSynthesis(text: proposal.proposedText, modelID: "speech_model", voice: .stock(voiceID: "stock123"), language: "en", options: speech, requestID: proposal.id)
         let denied = VoiceLabAuthorization(quote: speechQuote, approved: false)

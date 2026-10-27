@@ -125,6 +125,24 @@ import Testing
         #expect(try Data(contentsOf: locations.settings) == original)
     }
 
+    /// update.lastCheckAt is written in the canonical form (editing.md §10.1), and the whole-second text earlier builds
+    /// wrote still saves, loads and parses.
+    @Test func updateCheckTimesKeepTheCanonicalAndEarlierForms() async throws {
+        let directory = try EditingPersistence().temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let locations = DataLocations(environment: ["VOXCLIP_DATA_DIR": directory.path])
+        let store = JSONSettingsStore(locations: locations)
+        let checked = Date(timeIntervalSince1970: 1_792_998_000.25)
+        #expect(UTCTimestamp.string(from: checked) == "2026-10-26T07:00:00.250Z")
+        for text in [try #require(UTCTimestamp.string(from: checked)), checked.ISO8601Format()] {
+            try await store.save(SettingsDocument(values: ["update.lastCheckAt": .string(text)]))
+            try await store.flush()
+            #expect(try await JSONSettingsStore(locations: locations).load()["update.lastCheckAt"] == .string(text))
+            #expect(UTCTimestamp.date(from: text, allowingOffset: true) != nil)
+        }
+        await #expect(throws: VoxClipError.self) { try await store.save(SettingsDocument(values: ["update.lastCheckAt": .string("yesterday")])) }
+    }
+
     @Test func settingsReadFailuresUseCoreErrors() async throws {
         let directory = try EditingPersistence().temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }

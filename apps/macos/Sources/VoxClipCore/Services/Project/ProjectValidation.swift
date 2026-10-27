@@ -106,9 +106,7 @@ enum ProjectValidation {
             for result in try array(ai["results"]) { dates.append(try map(result)["createdAt"]) }
         }
         for value in dates {
-            guard case .string(let text) = value,
-                  matches(text, "[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z"),
-                  (try? ProjectJSON.decoder().decode(Date.self, from: JSONEncoder().encode(text))) != nil else { try fail("Invalid UTC timestamp") }
+            guard case .string(let text) = value, UTCTimestamp.date(from: text) != nil else { try fail("Invalid UTC timestamp") }
         }
     }
 
