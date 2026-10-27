@@ -1,5 +1,10 @@
 # macOS implementation contracts
 
+### 2026-10-28 — Round-3 A8: Off in the live chip
+
+- Turning captions off paints the exact “Off” label inside the black 64×36 live chip (design §6.1), while the style summary separately says Off. It no longer leaves an unexplained blank stage.
+- `DebugCaptionsSection` captures both appearances and recognises both rendered Off labels, proving the chip label exists rather than passing from the summary alone.
+
 ### 2026-10-28 — Round-3 A7: untruncated caption summary
 
 - The Captions header uses two rows below 440 pt, including 360 pt, retaining the complete “Paper · As said · 3 words” summary. The viewer's Frame label has a fixed intrinsic width rather than collapsing to “Fra…”.

@@ -67,7 +67,12 @@ enum CaptionStyleGroup: String, CaseIterable {
     private var liveChip: some View {
         Group {
             if let style { CaptionTile(input: chipInput(style), pipeline: model.app.captions) }
-            else { DesignValues.color("stage") }
+            else {
+                ZStack {
+                    DesignValues.color("stage")
+                    Text("Off").font(.system(size: 11, weight: .medium)).foregroundStyle(.white)
+                }
+            }
         }.frame(width: 64, height: 36).clipShape(.rect(cornerRadius: 6)).accessibilityHidden(true)
     }
     private var styleSummary: some View {

@@ -96,6 +96,21 @@ import VoxClipCore
                 }
                 window.close()
             }
+            model.setCaptionsEnabled(false)
+            let offView = NSHostingView(rootView: CaptionsSection(model: model).frame(width: 360, height: 160).background(DesignValues.color("bg.surface")))
+            offView.frame = CGRect(x: 0, y: 0, width: 360, height: 160)
+            let offWindow = NSWindow(contentRect: offView.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+            offWindow.isReleasedWhenClosed = false; offWindow.contentView = offView; offWindow.appearance = NSAppearance(named: appearance)
+            offView.layoutSubtreeIfNeeded()
+            if let bitmap = offView.bitmapImageRepForCachingDisplay(in: offView.bounds) {
+                offView.cacheDisplay(in: offView.bounds, to: bitmap)
+                let rendered = try recognizedText(bitmap.cgImage)
+                let offLabels = rendered.components(separatedBy: "Off").count - 1
+                check("\(name) Off is rendered inside the live chip as well as its style label", offLabels >= 2)
+                if let data = bitmap.representation(using: .png, properties: [:]) { try data.write(to: directory.appendingPathComponent("captions-off-\(name).png")) }
+            }
+            offWindow.close()
+            model.setCaptionsEnabled(true)
         }
         try JSONEncoder().encode(results).write(to: directory.appendingPathComponent("caption-results.json"), options: .atomic)
         return results
