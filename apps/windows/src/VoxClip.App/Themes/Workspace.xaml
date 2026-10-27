@@ -43,7 +43,9 @@
     <x:Double x:Key="VcLayoutBadgeFontSize">11</x:Double>
     <!-- The transcript column's minimum on Windows, delta §3.7: below it the right column collapses. -->
     <x:Double x:Key="VcLayoutTranscriptMinWidth">588</x:Double>
-    <!-- Sidebar rows, design §3.4: Full take and Recent 44 high with a 32x18 thumbnail; clips 60 high with a 27x48 thumbnail in a 32 column and a 16 badge. -->
+    <!-- Sidebar rows, design §3.4: nav rows (Home, Recent) 40 high and Full take 44, both with a 32x18 thumbnail; clips 60 high
+         with a 27x48 thumbnail in a 32 column and a 16 badge. -->
+    <x:Double x:Key="VcLayoutNavRowHeight">40</x:Double>
     <x:Double x:Key="VcLayoutFullTakeRowHeight">44</x:Double>
     <x:Double x:Key="VcLayoutClipRowHeight">60</x:Double>
     <x:Double x:Key="VcLayoutRowThumbColumnWidth">32</x:Double>

@@ -3,7 +3,7 @@
     <Grid x:Name="EditorRoot" KeyDown="EditorKeyDown" SizeChanged="EditorSizeChanged">
         <Grid.RowDefinitions><RowDefinition Height="56"/><RowDefinition Height="*"/><RowDefinition Height="72"/></Grid.RowDefinitions>
         <!-- Command row (delta §3.5): the title over the edit summary, the commands, then the one accent Export. -->
-        <Grid Padding="16,0" ColumnSpacing="12" BorderBrush="{ThemeResource VcLineDefaultBrush}" BorderThickness="0,0,0,1">
+        <Grid x:Name="CommandRow" Padding="16,0" ColumnSpacing="12" BorderBrush="{ThemeResource VcLineDefaultBrush}" BorderThickness="0,0,0,1">
             <!-- The bar takes the star column so its dynamic overflow sees the room it has; the heading truncates past 360. -->
             <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" MaxWidth="360"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
             <StackPanel VerticalAlignment="Center">
@@ -129,7 +129,7 @@
                     </Grid>
                 </Grid>
                 <!-- Frame row (delta §5.1): 9:16 · 1:1 · 16:9 · Original, written to export.aspect. -->
-                <Grid Grid.Row="1" Height="32" Margin="16,8,16,12" ColumnSpacing="12">
+                <Grid x:Name="FrameRow" Grid.Row="1" Height="32" Margin="16,8,16,12" ColumnSpacing="12">
                     <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                     <TextBlock Text="Frame" VerticalAlignment="Center" FontSize="14" Foreground="{ThemeResource VcTextSecondaryBrush}"/>
                     <toolkit:Segmented x:Name="Aspect" Grid.Column="1" HorizontalAlignment="Stretch" SelectionChanged="AspectChanged" AutomationProperties.Name="Frame">

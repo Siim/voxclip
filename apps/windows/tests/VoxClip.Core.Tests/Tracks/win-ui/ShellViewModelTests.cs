@@ -3,6 +3,7 @@ using VoxClip.App.ViewModels;
 using VoxClip.Core.Domain.Clips;
 using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Shared;
+using VoxClip.Core.Services.LLM;
 using Xunit;
 
 namespace VoxClip.Ui.Tests;
@@ -44,6 +45,10 @@ public sealed class ShellViewModelTests
         Assert.StartsWith("Clip 1, Iga sõna asukoht, ", kept.AccessibleName);
         Assert.StartsWith("Suggested clip 2, Miks sõnade kaupa on kiirem, ", suggestion.AccessibleName);
         Assert.EndsWith(" · Suggested", suggestion.Meta);
+        // Design §3.4: the duration alone is set in Cascadia Mono; " · Suggested" is UI text.
+        Assert.Equal((suggestion.MetaTime, " · Suggested"), (suggestion.Meta[..^" · Suggested".Length], suggestion.MetaStatus));
+        Assert.Matches(@"^\d+:\d{2}$", kept.MetaTime);
+        Assert.Equal(("", kept.MetaTime), (kept.MetaStatus, kept.Meta));
         Assert.Equal("Suggested", shell.Rows.Single(row => row.Kind == SidebarKind.SuggestedHeader).Title);
         Assert.Equal("Sõnade kaupa lõikamine", shell.Rows.Single(row => row.Kind == SidebarKind.Project).Title);
         Assert.Equal("voxclip-demo.mp4", shell.Rows.Single(row => row.Kind == SidebarKind.Project).Detail);
@@ -188,18 +193,96 @@ public sealed class ShellViewModelTests
     public void CalloutFollowsTheActionsOnlyInTheEditor()
     {
         var editor = WithSuggestion();
-        var shell = new ShellViewModel { Callout = new("Couldn't find clips.", "Claude Code isn't signed in.", "Retry") };
+        var shell = new ShellViewModel { Callout = ClipCallouts.NoConnector };
         shell.Update(editor, false, [], null);
         var callout = shell.Rows[^1];
-        Assert.Equal((SidebarKind.Callout, "Couldn't find clips.", "Claude Code isn't signed in.", "Retry", true),
-            (callout.Kind, callout.Title, callout.Detail, callout.Meta, callout.HasAction));
+        Assert.Equal((SidebarKind.Callout, "Choose how VoxClip finds clips: your API key, a model on this computer, or an installed CLI.",
+            "You can also select words and press Ctrl+K to make a clip yourself.", "Set up AI…", true),
+            (callout.Kind, callout.Title, callout.Detail, callout.Action, callout.HasAction));
         Assert.Equal(SidebarKind.Action, shell.Rows[^2].Kind);
-        shell.Callout = new("Transcribe this video before finding clips.", "Your video is still here.", "");
+        shell.Callout = ClipCallouts.NotReady(ConnectorId.Codex, "Codex (installed CLI)", new ConnectorStatus.CliMissing(), "Install Codex, then run codex login.", null);
         shell.Update(editor, false, [], null);
         Assert.Same(callout, shell.Rows[^1]);
-        Assert.False(callout.HasAction);
+        Assert.Equal(("", "Codex isn't installed. Install Codex, then run codex login. Your edits are saved.", false),
+            (callout.Title, callout.Detail, callout.HasAction));
         shell.Update(editor, true, [], null);
         Assert.DoesNotContain(shell.Rows, row => row.Kind == SidebarKind.Callout);
+    }
+
+    /// <summary>Design §13's callout rows and AI spec §5's messages, each ending "Your edits are saved." once (AI spec §5).</summary>
+    [Fact]
+    public void ClipCalloutsUseTheDesignCopy()
+    {
+        static (string, string) Read(SidebarCallout callout) => (callout.Message, callout.Action);
+        Assert.Equal(("Claude Code isn't signed in. Open Terminal, run claude, and sign in. Your edits are saved.", "Sign-in help"),
+            Read(ClipCallouts.NotReady(ConnectorId.ClaudeCode, "Claude Code (installed CLI)", new ConnectorStatus.CliSignedOut(), null, "Open Terminal, run claude, and sign in.")));
+        Assert.Equal(("Ollama isn't running at http://127.0.0.1:11434. Start Ollama and try again. Your edits are saved.", ""),
+            Read(ClipCallouts.NotReady(ConnectorId.Ollama, "Ollama", new ConnectorStatus.NotRunning("http://127.0.0.1:11434"), null, null)));
+        Assert.Equal(("LM Studio's server isn't running at http://127.0.0.1:1234. Start it from LM Studio's Developer tab. Your edits are saved.", ""),
+            Read(ClipCallouts.NotReady(ConnectorId.LmStudio, "LM Studio", new ConnectorStatus.NotRunning("http://127.0.0.1:1234"), null, null)));
+        Assert.Equal(("Add your Anthropic API key in Settings › AI. Your edits are saved.", "Retry"),
+            Read(ClipCallouts.NotReady(ConnectorId.Anthropic, "Anthropic", new ConnectorStatus.NeedsKey(), null, null)));
+        Assert.Equal(("Ollama has no chat models. Run `ollama pull <model>`, then refresh. Your edits are saved.", "Retry"),
+            Read(ClipCallouts.NotReady(ConnectorId.Ollama, "Ollama", new ConnectorStatus.NoModels(), null, null)));
+        Assert.Equal(("Load or download a model in LM Studio, then refresh. Your edits are saved.", "Retry"),
+            Read(ClipCallouts.NotReady(ConnectorId.LmStudio, "LM Studio", new ConnectorStatus.NoModels(), null, null)));
+        Assert.Equal(("Your Codex 0.9.1 is too old for VoxClip. Update it, then try again. Your edits are saved.", "Retry"),
+            Read(ClipCallouts.NotReady(ConnectorId.Codex, "Codex (installed CLI)", new ConnectorStatus.CliTooOld("0.9.1", ["--json"]), null, null)));
+        Assert.Equal(("Your Claude Code is too old for VoxClip. Update it, then try again. Your edits are saved.", "Retry"),
+            Read(ClipCallouts.NotReady(ConnectorId.ClaudeCode, "Claude Code (installed CLI)", new ConnectorStatus.CliTooOld("unknown", []), null, null)));
+        Assert.Equal(("The model returned clips VoxClip can't use. Try again. Your edits are saved.", "Retry"),
+            Read(ClipCallouts.Failed("The model returned clips VoxClip can't use. Try again. Your edits are saved.")));
+        Assert.Equal(("You're offline. Your edits are saved.", "Retry"), Read(ClipCallouts.Failed("You're offline.")));
+    }
+
+    /// <summary>Design §7.1: without a transcript the Full take reads "Not transcribed" and the actions explain why they're off.</summary>
+    [Fact]
+    public void UntranscribedTakeSaysSoAndExplainsTheActions()
+    {
+        var project = Fixture("clip-from-long-take.voxclip");
+        var editor = new EditorViewModel(project with
+        {
+            Transcript = null, Edits = project.Edits with { Clips = [], CutWordIds = [], CutPauseIds = [], ActiveClipId = null }, Ai = project.Ai with { Results = [] }
+        });
+        Assert.False(editor.HasTranscript);
+        var shell = new ShellViewModel();
+        shell.Update(editor, false, [], null);
+        var full = shell.Rows.Single(row => row.Kind == SidebarKind.FullTake);
+        Assert.Equal(("", "Not transcribed", "Not transcribed", "Full take, not transcribed", false),
+            (full.MetaTime, full.MetaStatus, full.Meta, full.AccessibleName, full.ShowsCancel));
+        Assert.DoesNotContain(shell.Rows, row => row.Kind == SidebarKind.Empty);
+        var actions = shell.Rows.Where(row => row.Kind == SidebarKind.Action).ToArray();
+        Assert.Equal(2, actions.Length);
+        Assert.All(actions, row => Assert.Equal((false, "Transcribe the video to select words."), (row.IsEnabled, row.ToolTip)));
+
+        shell.TakeMedia = new MediaTile("take", null, null, MediaStatus.Transcribing, new(TranscriptionStep.Transcribing, 0.42));
+        shell.Update(editor, false, [], null);
+        Assert.Equal(("", "Transcribing · 42%", true, "Cancel transcribing Sõnade kaupa lõikamine", "Full take, transcribing 42 percent"),
+            (full.MetaTime, full.MetaStatus, full.ShowsCancel, full.CancelName, full.AccessibleName));
+    }
+
+    /// <summary>Design §13 "Clips: none found": the prompt file's message under Suggested, until the next run.</summary>
+    [Fact]
+    public void NoneFoundSitsUnderSuggested()
+    {
+        var editor = WithSuggestion();
+        Assert.True(editor.Dismiss(editor.Clips.Single(ShellViewModel.IsSuggestion).Id));
+        var shell = new ShellViewModel { NoneFound = "No clips matched. Try another style or describe what you want." };
+        shell.Update(editor, false, [], null);
+        Assert.Equal([SidebarKind.Clip, SidebarKind.SuggestedHeader, SidebarKind.NoneFound, SidebarKind.Separator],
+            shell.Rows.SkipWhile(row => row.Kind != SidebarKind.Clip).Take(4).Select(row => row.Kind));
+        var none = shell.Rows.Single(row => row.Kind == SidebarKind.NoneFound);
+        Assert.Equal(("No clips matched. Try another style or describe what you want.", "No clips matched. Try another style or describe what you want."),
+            (none.Title, none.AccessibleName));
+        Assert.Equal("Suggested", shell.Rows.Single(row => row.Kind == SidebarKind.SuggestedHeader).Title);
+        // A new run replaces it with the Finding row; a run that finds clips clears it.
+        shell.Finding = "Claude Code · reading 2:10 of transcript";
+        shell.Update(editor, false, [], null);
+        Assert.DoesNotContain(shell.Rows, row => row.Kind == SidebarKind.NoneFound);
+        shell.Finding = null;
+        shell.NoneFound = null;
+        shell.Update(editor, false, [], null);
+        Assert.DoesNotContain(shell.Rows, row => row.Kind is SidebarKind.NoneFound or SidebarKind.SuggestedHeader);
     }
 
     [Fact]

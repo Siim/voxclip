@@ -35,6 +35,19 @@ internal static class ProviderCatalog
         return entries;
     }
 
+    /// <summary>A Find clips message from shared/prompts/clip-finder.json (AI spec §5: feature-level messages come from the prompt
+    /// files' <c>messages</c> objects); null when the file can't be read.</summary>
+    internal static async Task<string?> ClipMessageAsync(string key, CancellationToken ct)
+    {
+        if (App.Services.SharedRoot is null) return null;
+        try
+        {
+            using var document = JsonDocument.Parse(await File.ReadAllTextAsync(Path.Combine(App.Services.SharedRoot, "prompts", "clip-finder.json"), ct));
+            return document.RootElement.TryGetProperty("messages", out var messages) && messages.TryGetProperty(key, out var message) ? message.GetString() : null;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or JsonException) { return null; }
+    }
+
     internal static string Status(ConnectorStatus status) => status switch
     {
         ConnectorStatus.Ready => "Ready", ConnectorStatus.NeedsKey => "Add an API key", ConnectorStatus.CliMissing => "Not installed. Install the CLI and sign in outside VoxClip.",

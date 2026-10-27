@@ -10,7 +10,7 @@ $env:VOXCLIP_SHARED_DIR=Join-Path $root 'shared'
 $exe=Join-Path $root 'apps\windows\src\VoxClip.App\bin\ARM64\Debug\net10.0-windows10.0.26100.0\win-arm64\VoxClip.exe'
 $started=[DateTime]::UtcNow
 $owned=@{}
-$result=[ordered]@{homeRenderedSelfCheck=$false; homeLaunch=$false; editorRenderedSelfCheck=$false; editorUiAObserved=$false; editorScreenshotCaptured=$false; normalOpen=$false; paneRows=$false; keyboardClip=$false; correctionTextIsolated=$false; clipRowScope=$false; escapeFullTake=$false; homeKeepsEditor=$false; findAction=$false; compactPane=$false; sameWindowReopen=$false; noArgumentReactivation=$false; fileActivationAfterNoArgument=$false; keyboardWalk=$false; providerDispatched=$false; exportStarted=$false}
+$result=[ordered]@{homeRenderedSelfCheck=$false; homeLaunch=$false; editorRenderedSelfCheck=$false; editorUiAObserved=$false; editorScreenshotCaptured=$false; normalOpen=$false; paneRows=$false; keyboardClip=$false; correctionTextIsolated=$false; clipRowScope=$false; escapeFullTake=$false; f6Order=$false; homeKeepsEditor=$false; findAction=$false; compactPane=$false; sameWindowReopen=$false; noArgumentReactivation=$false; fileActivationAfterNoArgument=$false; keyboardWalk=$false; providerDispatched=$false; exportStarted=$false}
 function StartOwned([string]$arguments) {
  $start=New-Object System.Diagnostics.ProcessStartInfo($exe)
  $start.UseShellExecute=$false
@@ -142,6 +142,7 @@ function FindId([IntPtr]$w,[string]$id) {
 }
 function IsSelected($x){$p=$null;if($x.TryGetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern,[ref]$p)){return $p.Current.IsSelected};return $false}
 function Focused{[System.Windows.Automation.AutomationElement]::FocusedElement.Current.Name}
+function InCommandBar($e){$walker=[System.Windows.Automation.TreeWalker]::RawViewWalker;for($p=$e;$p -ne $null;$p=$walker.GetParent($p)){if($p.Current.ClassName -eq 'CommandBar'){return $true}};return $false}
 function Choose($x){$x.SetFocus();Start-Sleep -Milliseconds 150;[R1Native]::Key(0x0D);Start-Sleep -Milliseconds 600}
 $transcriptName='Transcript. Select words to cut. Enter corrects spelling. Control K makes a clip.'
 try{
@@ -222,6 +223,16 @@ try{
  $transcript.SetFocus();Start-Sleep -Milliseconds 150;[R1Native]::Key(0x1B);Start-Sleep -Milliseconds 500
  if(-not (IsSelected (FindPrefix $w 'Full take, '))){throw 'Escape in the transcript did not return to Full take'}
  $result.escapeFullTake=$true
+ # F6 walks the regions in design section 16 order and Shift+F6 walks back; F6 from the pane lands on the command row.
+ $transcript=FindName $w $transcriptName
+ $transcript.SetFocus();Start-Sleep -Milliseconds 200
+ $walk=@()
+ for($i=0;$i -lt 6;$i++){[R1Native]::Key(0x75);Start-Sleep -Milliseconds 300;$e=[System.Windows.Automation.AutomationElement]::FocusedElement;$walk+=,@($e.Current.Name,$e.Current.ControlType.ProgrammaticName,(InCommandBar $e))}
+ [IO.File]::WriteAllText((Join-Path $shots 'f6-order.txt'),(($walk | ForEach-Object { $_ -join ' | ' }) -join "`n"))
+ if($walk[0][0] -ne 'Play or pause (Space)' -or $walk[1][1] -ne 'ControlType.RadioButton' -or -not $walk[2][0].StartsWith('Playhead') -or -not $walk[3][0].StartsWith('Full take, ') -or -not $walk[4][2] -or $walk[5][0] -ne $transcriptName){throw 'F6 did not walk the viewer, Captions, timeline, sidebar, command row and transcript in order'}
+ [R1Native]::Chord(0x10,0x75);Start-Sleep -Milliseconds 300
+ if(-not (InCommandBar ([System.Windows.Automation.AutomationElement]::FocusedElement))){throw 'Shift+F6 from the transcript did not return to the command row'}
+ $result.f6Order=$true
  # Home keeps the open project in the sidebar and returns to the same editor.
  Choose (FindName $w 'Home')
  [void](FindName $w 'Import video, Ctrl+O')
@@ -237,9 +248,14 @@ try{
  Choose (FindPrefix $w 'Full take, ')
  [void](FindName $w $transcriptName)
  $result.homeKeepsEditor=$true
+ # With no connector, Find clips shows the callout under the actions, whose action is an enabled, named button (design section 13).
  Choose (FindName $w 'Find clips with AI')
- [void](FindName $w 'Connector')
- Start-Sleep -Milliseconds 500;Capture $w 'find'
+ Start-Sleep -Milliseconds 600
+ $setUpName='Set up AI'+[char]0x2026
+ if(HasVisibleName $w $setUpName){if(-not (FindName $w $setUpName).Current.IsEnabled){throw 'The no-connector callout action is disabled'}}
+ else{[void](FindName $w 'Find clips in this take')}
+ Capture $w 'find'
+ if(-not (HasVisibleName $w $setUpName)){[R1Native]::Key(0x1B);Start-Sleep -Milliseconds 300}
  $result.findAction=$true
  [void][R1Native]::SetWindowPos($w,[IntPtr]::Zero,32,32,[int](900*$check.rasterizationScale),[int](720*$check.rasterizationScale),0x40)
  Start-Sleep -Milliseconds 900

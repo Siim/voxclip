@@ -4,6 +4,7 @@ using VoxClip.App.ViewModels;
 using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Domain.Transcript;
+using VoxClip.Core.Services.LLM;
 using Xunit;
 
 namespace VoxClip.Ui.Tests;
@@ -178,6 +179,14 @@ public sealed class ViewModelTests
     }
     [Fact]
     public void CancellationIsSilent() => Assert.Empty(UiError.Message(new OperationCanceledException(), "Export"));
+    [Fact]
+    public void AiFailuresSayTheirEditsAreSavedOnce()
+    {
+        // Core's messages already end "Your edits are saved." (AI spec §5); a bare message gets it once, and a cancel says nothing.
+        Assert.Equal("You're offline. Your edits are saved.", UiError.Message(new LlmException(new(LlmErrorKind.Network, VoxClipErrorCode.Offline, "You're offline. Your edits are saved.")), "Find clips"));
+        Assert.Equal("You're offline. Your edits are saved.", UiError.Message(new LlmException(new(LlmErrorKind.Network, VoxClipErrorCode.Offline, "You're offline.")), "Find clips"));
+        Assert.Empty(UiError.Message(new LlmException(new(LlmErrorKind.Cancelled, VoxClipErrorCode.Cancelled, "")), "Find clips"));
+    }
     [Fact]
     public void ShareCaptionPersistsWithoutRecomposingPreview()
     {

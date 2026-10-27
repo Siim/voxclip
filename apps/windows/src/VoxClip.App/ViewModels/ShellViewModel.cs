@@ -3,9 +3,9 @@ using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace VoxClip.App.ViewModels;
 
-public enum SidebarKind { Home, Separator, Project, FullTake, Clip, SuggestedHeader, Suggestion, Action, RecentHeader, Recent, Empty, Finding, Callout }
+public enum SidebarKind { Home, Separator, Project, FullTake, Clip, SuggestedHeader, Suggestion, Action, RecentHeader, Recent, Empty, Finding, Callout, NoneFound }
 
-/// <summary>A callout under the sidebar actions (design §13): no connector, or a problem finding clips.</summary>
+/// <summary>A callout under the sidebar actions (design §13): no connector, or a problem finding clips. See <see cref="ClipCallouts"/>.</summary>
 public sealed record SidebarCallout(string Title, string Message, string Action);
 
 /// <summary>One NavigationView row. Rows keep their instance by <see cref="Key"/> across rebuilds so selection and focus survive; design §3.4.</summary>
@@ -13,7 +13,9 @@ public sealed class SidebarRow(SidebarKind kind, string key) : ObservableObject
 {
     private string title = "";
     private string detail = "";
-    private string meta = "";
+    private string metaTime = "";
+    private string metaStatus = "";
+    private string action = "";
     private string number = "";
     private string accessibleName = "";
     private string toolTip = "";
@@ -21,6 +23,8 @@ public sealed class SidebarRow(SidebarKind kind, string key) : ObservableObject
     private bool isEnabled = true;
     private MediaTile? media;
     private bool showsKeepAll;
+    private bool showsCancel;
+    private string cancelName = "";
     public SidebarKind Kind { get; } = kind;
     public string Key { get; } = key;
     /// <summary>The clip id of a clip or suggestion row.</summary>
@@ -30,7 +34,16 @@ public sealed class SidebarRow(SidebarKind kind, string key) : ObservableObject
     public string Title { get => title; set => SetProperty(ref title, value); }
     /// <summary>Second header line: the project's file name, or an action's shortcut.</summary>
     public string Detail { get => detail; set => SetProperty(ref detail, value); }
-    public string Meta { get => meta; set { if (SetProperty(ref meta, value)) OnPropertyChanged(nameof(HasAction)); } }
+    /// <summary>The meta line (design §3.4 grammar): the m:ss duration in Cascadia Mono, then " · " and the status in the UI
+    /// font. Either part may be empty: "Not transcribed" and "Transcribing · 42%" have no duration.</summary>
+    public string Meta => metaTime + metaStatus;
+    public string MetaTime { get => metaTime; set { if (SetProperty(ref metaTime, value)) OnPropertyChanged(nameof(Meta)); } }
+    public string MetaStatus { get => metaStatus; set { if (SetProperty(ref metaStatus, value)) OnPropertyChanged(nameof(Meta)); } }
+    /// <summary>A callout's one action: "Set up AI…", "Sign-in help" or "Retry"; empty for none.</summary>
+    public string Action { get => action; set { if (SetProperty(ref action, value)) OnPropertyChanged(nameof(HasAction)); } }
+    /// <summary>The Full take row offers Cancel while its video transcribes (design §3.4).</summary>
+    public bool ShowsCancel { get => showsCancel; set => SetProperty(ref showsCancel, value); }
+    public string CancelName { get => cancelName; set => SetProperty(ref cancelName, value); }
     /// <summary>Display number of a clip or suggestion; never stored (design §2).</summary>
     public string Number { get => number; set { if (SetProperty(ref number, value)) { OnPropertyChanged(nameof(KeepName)); OnPropertyChanged(nameof(DismissName)); } } }
     /// <summary>A suggestion's Keep and Dismiss buttons: "Keep suggested clip 5", "Dismiss suggested clip 5".</summary>
@@ -46,8 +59,7 @@ public sealed class SidebarRow(SidebarKind kind, string key) : ObservableObject
     public MediaTile? Media { get => media; set => SetProperty(ref media, value); }
     /// <summary>The Suggested header offers Keep all from two suggestions up.</summary>
     public bool ShowsKeepAll { get => showsKeepAll; set => SetProperty(ref showsKeepAll, value); }
-    /// <summary>A callout's action: "Set up AI…", "Retry" or "Find clips…"; empty for none.</summary>
-    public bool HasAction => Meta.Length > 0;
+    public bool HasAction => Action.Length > 0;
     public override string ToString() => AccessibleName.Length > 0 ? AccessibleName : Title;
 }
 
@@ -66,6 +78,11 @@ public sealed class ShellViewModel
     public string? Finding { get; set; }
     /// <summary>The callout under the sidebar actions, or null.</summary>
     public SidebarCallout? Callout { get; set; }
+    /// <summary>The last Find clips run found nothing: the prompt file's message, shown under Suggested with Find clips…
+    /// (design §13 "Clips: none found"); null otherwise.</summary>
+    public string? NoneFound { get; set; }
+    /// <summary>The disabled actions' tooltip and help text while the take has no transcript (design §7.1).</summary>
+    public const string TranscribeFirst = "Transcribe the video to select words.";
 
     /// <summary>The row that shows the editor's current scope: the active clip's row, or Full take.</summary>
     public SidebarRow? ScopeRow(string? activeClipId)
@@ -96,8 +113,15 @@ public sealed class ShellViewModel
             next.Add(project);
             var full = Row(SidebarKind.FullTake, "full");
             full.Title = "Full take";
-            full.Meta = TakeMedia?.Transcription is { } transcribing ? transcribing.Label + transcribing.Percent : EditorViewModel.Duration(editor.FullTakeDuration);
-            full.AccessibleName = $"Full take, {Spoken(editor.FullTakeDuration)} after cuts" + (TakeMedia?.Spoken is { Length: > 0 } state ? $", {state}" : "");
+            // "Transcribing · 42%" with Cancel while transcribing; "Not transcribed" without a transcript; else the edited length.
+            var transcribing = TakeMedia?.Transcription;
+            full.MetaTime = transcribing is null && editor.HasTranscript ? EditorViewModel.Duration(editor.FullTakeDuration) : "";
+            full.MetaStatus = transcribing is { } status ? status.Label + status.Percent : editor.HasTranscript ? "" : "Not transcribed";
+            full.ShowsCancel = transcribing is not null;
+            full.CancelName = $"Cancel transcribing {editor.Title}";
+            var state = TakeMedia?.Spoken is { Length: > 0 } spoken ? $", {spoken}" : "";
+            full.AccessibleName = editor.HasTranscript ? $"Full take, {Spoken(editor.FullTakeDuration)} after cuts{state}"
+                : "Full take" + (state.Length > 0 ? state : ", not transcribed");
             full.Media = TakeMedia;
             next.Add(full);
             var active = editor.State?.ActiveClipId;
@@ -118,7 +142,8 @@ public sealed class ShellViewModel
                 var row = Row(suggestion ? SidebarKind.Suggestion : SidebarKind.Clip, (suggestion ? "suggested:" : "clip:") + clip.Id, clip.Id);
                 row.Title = clip.Title;
                 row.Number = number.ToString(System.Globalization.CultureInfo.InvariantCulture);
-                row.Meta = EditorViewModel.Duration(clip.DurationSeconds) + (suggestion ? " · Suggested" : "");
+                row.MetaTime = EditorViewModel.Duration(clip.DurationSeconds);
+                row.MetaStatus = suggestion ? " · Suggested" : "";
                 row.AccessibleName = suggestion
                     ? $"Suggested clip {number}, {clip.Title}, {Spoken(clip.DurationSeconds)}"
                     : $"Clip {number}, {clip.Title}, {Spoken(clip.DurationSeconds)}";
@@ -137,20 +162,28 @@ public sealed class ShellViewModel
                 finding.AccessibleName = $"Finding clips, {connector}";
                 next.Add(finding);
             }
+            else if (NoneFound is { } message)
+            {
+                if (suggested.Length == 0) next.Add(SuggestedHeader(0));
+                var none = Row(SidebarKind.NoneFound, "nonefound");
+                none.Title = message;
+                none.AccessibleName = message;
+                next.Add(none);
+            }
             if (!showingHome)
             {
                 next.Add(Row(SidebarKind.Separator, "separator:actions"));
                 var make = Row(SidebarKind.Action, "action:make");
                 make.Title = "New clip from selection";
                 make.Detail = "Ctrl+K";
-                make.ToolTip = "Make a clip from the selected words (Ctrl+K)";
+                make.ToolTip = editor.HasTranscript ? "Make a clip from the selected words (Ctrl+K)" : TranscribeFirst;
                 make.AccessibleName = "New clip from selection";
                 make.IsEnabled = editor.HasTranscript && editor.HasSelection && !editor.Busy && !editor.IsLeaving;
                 next.Add(make);
                 var find = Row(SidebarKind.Action, "action:find");
                 find.Title = "Find clips with AI";
                 find.Detail = "Ctrl+Shift+K";
-                find.ToolTip = "Find clips with AI (Ctrl+Shift+K)";
+                find.ToolTip = editor.HasTranscript ? "Find clips with AI (Ctrl+Shift+K)" : TranscribeFirst;
                 find.AccessibleName = "Find clips with AI";
                 find.IsEnabled = editor.HasTranscript && !editor.Busy && !editor.IsLeaving;
                 next.Add(find);
@@ -159,7 +192,7 @@ public sealed class ShellViewModel
                     var row = Row(SidebarKind.Callout, "callout");
                     row.Title = callout.Title;
                     row.Detail = callout.Message;
-                    row.Meta = callout.Action;
+                    row.Action = callout.Action;
                     row.AccessibleName = $"{callout.Title} {callout.Message}".Trim();
                     next.Add(row);
                 }

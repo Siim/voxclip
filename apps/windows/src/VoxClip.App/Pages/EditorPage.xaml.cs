@@ -41,11 +41,9 @@ public sealed partial class EditorPage : Page
     private string pauseBreath = "natural";
     private double previewDuration;
     private string? previewClipId;
-    public EditorPage()
-    {
-        InitializeComponent();
-        Loaded += (_, _) => Transcript.Focus(FocusState.Programmatic);
-    }
+    // Home keeps this page alive and re-inserts it, so Loaded moves no focus: a chosen sidebar row keeps it (design C15).
+    // Opening a project focuses the transcript once, at the end of OpenAsync.
+    public EditorPage() => InitializeComponent();
     public static bool HasText(string? text) => !string.IsNullOrEmpty(text);
     /// <summary>The take's resolved video, or null when it can't be found or the project is a demo fixture.</summary>
     internal string? MediaPath { get; private set; }
@@ -84,6 +82,7 @@ public sealed partial class EditorPage : Page
         Timeline.PlayRequested += (_, _) => _ = RunAsync(TogglePlaybackAsync, "Preview");
         ViewModel.PropertyChanged += (_, args) => { if (args.PropertyName == nameof(EditorViewModel.CanExport)) UpdateExport(); };
         Untranscribed.Visibility = ViewModel.HasTranscript ? Visibility.Collapsed : Visibility.Visible;
+        UpdateFindClips();
         Bindings.Update();
         Aspect.SelectedIndex = EditorLayout.Frames.ToList().IndexOf(project.Export.Aspect);
         inspector = new(ViewModel, async state => await SnapshotAsync(lifetime.Token, state), lifetime.Token);
@@ -195,6 +194,7 @@ public sealed partial class EditorPage : Page
         UpdateExport();
         SizeStage();
         Untranscribed.Visibility = ViewModel.HasTranscript ? Visibility.Collapsed : Visibility.Visible;
+        UpdateFindClips();
         _ = RunAsync(UpdatePreviewAsync, "Preview");
         SaveRequested(sender, args);
     }
@@ -293,6 +293,28 @@ public sealed partial class EditorPage : Page
     /// <summary>Open Find clips at the control that asked for it: the pane action, its callout or the page's button.</summary>
     internal void ShowFindClips(FrameworkElement? anchor) =>
         _ = RunAsync(() => FindClips.ShowAsync(anchor ?? (FindClipsCommand.IsInOverflow ? Commands : FindClipsCommand)), "Find clips");
+    /// <summary>The F6 regions after the sidebar (design §16): the command row, the transcript, the viewer (with its splitter
+    /// and frame row) and Captions while the right column shows, then the timeline. MainWindow runs the cycle.</summary>
+    internal IEnumerable<(FrameworkElement[] Areas, Func<Control?> Target)> FocusRegions()
+    {
+        yield return ([CommandRow], () => FocusManager.FindFirstFocusableElement(Commands) as Control ?? ExportButton);
+        yield return ([TranscriptPane], () => Transcript);
+        if (RightPane.Visibility == Visibility.Visible)
+        {
+            yield return ([ViewerSplitter, PreviewPane, FrameRow], () => PreviewPlay);
+            if (inspector is { } captions) yield return ([InspectorHost], () => captions.FocusTarget);
+        }
+        yield return ([Timeline], () => Timeline.FocusTarget);
+    }
+    internal void FocusTranscript() => Transcript.Focus(FocusState.Programmatic);
+    /// <summary>Say the editor's notice again, for a refused leave seen from Home.</summary>
+    internal void AnnounceNotice() { if (ViewModel.Notice.Length > 0) Transcript.Announce(ViewModel.Notice); }
+    /// <summary>Find clips needs a transcript; the pane actions carry the same reason (design §7.1).</summary>
+    private void UpdateFindClips()
+    {
+        FindClipsCommand.IsEnabled = ViewModel.HasTranscript;
+        ToolTipService.SetToolTip(FindClipsCommand, ViewModel.HasTranscript ? "Find clips (Ctrl+Shift+K)" : ShellViewModel.TranscribeFirst);
+    }
     /// <summary>Home pauses playback and keeps this page alive; design §2.</summary>
     internal void PausePlayback() => _ = RunAsync(async () => { if (preview?.Position.IsPlaying == true) await preview.PauseAsync(lifetime.Token); }, "Preview");
     /// <summary>A sidebar row sets the scope through the existing setActiveClip step; a clip also selects its first word unless
@@ -405,16 +427,8 @@ public sealed partial class EditorPage : Page
     }
     private async void EditorKeyDown(object sender, KeyRoutedEventArgs args)
     {
-        if (!ready) return;
+        if (!ready || args.Key == VirtualKey.F6) return;
         var focused = FocusManager.GetFocusedElement(XamlRoot);
-        if (args.Key == VirtualKey.F6)
-        {
-            var viewer = RightPane.Visibility == Visibility.Visible;
-            var panes = viewer ? new Control[] { Transcript, PreviewPlay, Timeline.FocusTarget, inspector!.FocusTarget } : [Transcript, Timeline.FocusTarget];
-            var regions = viewer ? new FrameworkElement[] { TranscriptPane, PreviewPane, Timeline, InspectorHost } : [TranscriptPane, Timeline];
-            var current = Array.FindIndex(regions, pane => InputState.DescendsFrom(focused as DependencyObject, pane));
-            panes[(current + (InputState.Down(VirtualKey.Shift) ? -1 : 1) + panes.Length) % panes.Length].Focus(FocusState.Keyboard); args.Handled = true; return;
-        }
         var editorFocus = InputState.DescendsFrom(focused as DependencyObject, Transcript) || InputState.DescendsFrom(focused as DependencyObject, PreviewPane) || InputState.DescendsFrom(focused as DependencyObject, Timeline);
         var control = InputState.Down(VirtualKey.Control);
         if (!ShortcutPolicy.EditorMayHandle(InputState.IsTextFocus(focused), Transcript.CorrectionOpen, control, InputState.Down(VirtualKey.Menu), editorFocus) || control) return;

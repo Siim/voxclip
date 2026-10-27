@@ -134,6 +134,10 @@ public sealed class RecentProject(string path, string name) : ObservableObject
         : missing ? "⚠ Video not found" : unreadable ? "⚠ Can't read video"
         : Transcription is { } status ? status.Label + status.Percent
         : $"{Duration} · {When(modifiedAt, now)}";
+    /// <summary><see cref="Detail"/> in the two runs the sidebar draws (design §3.4): the m:ss duration in Cascadia Mono, then
+    /// " · {date}" in the UI font; the other states are all status.</summary>
+    public string DetailTime => loaded && !missing && !unreadable && Transcription is null ? Duration : "";
+    public string DetailStatus => DetailTime.Length > 0 ? Detail[DetailTime.Length..] : Detail;
     /// <summary>The sidebar draws <see cref="Detail"/> in the warning colour.</summary>
     public bool DetailIsWarning => loaded && (missing || unreadable);
     public bool DetailIsPlain => !DetailIsWarning;
@@ -181,7 +185,7 @@ public sealed class RecentProject(string path, string name) : ObservableObject
 
     private void Changed()
     {
-        foreach (var name in new[] { nameof(Meta), nameof(Detail), nameof(Duration), nameof(ClipCount), nameof(Transcribing), nameof(Status), nameof(Media),
+        foreach (var name in new[] { nameof(Meta), nameof(Detail), nameof(DetailTime), nameof(DetailStatus), nameof(Duration), nameof(ClipCount), nameof(Transcribing), nameof(Status), nameof(Media),
             nameof(Warning), nameof(ShowsWarning), nameof(ShowsMeta), nameof(ShowsCancel), nameof(DetailIsWarning), nameof(DetailIsPlain),
             nameof(LocateName), nameof(CancelName), nameof(AccessibleName), nameof(Description) }) OnPropertyChanged(name);
     }

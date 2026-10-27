@@ -20,6 +20,7 @@ public sealed partial class SidebarItems : DataTemplateSelector
     public DataTemplate? Empty { get; set; }
     public DataTemplate? Finding { get; set; }
     public DataTemplate? Callout { get; set; }
+    public DataTemplate? NoneFound { get; set; }
 
     /// <summary>Fluent glyph for an action row: New clip from selection, or Find clips with AI.</summary>
     public static string ActionGlyph(string key) => key == "action:find" ? "\uE721" : "\uE710";
@@ -38,6 +39,7 @@ public sealed partial class SidebarItems : DataTemplateSelector
         SidebarKind.Empty => Empty,
         SidebarKind.Finding => Finding,
         SidebarKind.Callout => Callout,
+        SidebarKind.NoneFound => NoneFound,
         _ => Recent
     };
 

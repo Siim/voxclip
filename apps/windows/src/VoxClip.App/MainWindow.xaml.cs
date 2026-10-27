@@ -41,6 +41,9 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
     /// <summary>Select a row as a click does: the NavigationView raises the same SelectionChanged.</summary>
     internal void DebugSelect(SidebarRow row) => Nav.SelectedItem = row;
     internal Task DebugInvokeAsync(SidebarRow row) => InvokeRowAsync(row);
+    internal Task DebugRequestCloseAsync() => RequestCloseAsync();
+    internal FrameworkElement? DebugContainer(SidebarRow row) => Nav.ContainerFromMenuItem(row) as FrameworkElement;
+    internal bool DebugCalloutTipOpen => CalloutTip.IsOpen;
 #endif
     private Button? updateRestart;
     /// <summary>Construct the shell on the DispatcherQueue thread; architecture §7.2.</summary>
@@ -82,6 +85,8 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
         };
         Closed += WindowClosed;
         Root.SizeChanged += RootSizeChanged;
+        // F6 is the window's, wherever focus is; a page that handles the key first doesn't stop the cycle.
+        Root.AddHandler(UIElement.KeyDownEvent, new KeyEventHandler(RegionKeyDown), true);
         takeRefresh = DispatcherQueue.CreateTimer();
         takeRefresh.IsRepeating = false;
         takeRefresh.Interval = TimeSpan.FromMilliseconds(500);
@@ -109,11 +114,12 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
             try
             {
                 if (App.Restart.IsPreparing) return;
-                if (editor is null || await editor.TrySaveBeforeLeavingAsync())
+                if (ShellNavigation.Close(editor is not null) == ShellRoute.Close || await editor!.TrySaveBeforeLeavingAsync())
                 {
                     closingApproved = true;
                     Close();
                 }
+                else ShowRefusedLeave(editor);
             }
             finally { navigation.Release(); }
         }
@@ -180,7 +186,7 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
         var fullPath = Path.GetFullPath(path);
         var newImport = !Path.GetExtension(fullPath).Equals(".voxclip", StringComparison.OrdinalIgnoreCase);
         var existing = App.Windows.FirstOrDefault(window => string.Equals(window.ProjectPath, fullPath, StringComparison.OrdinalIgnoreCase));
-        if (existing is not null) { existing.Activate(); existing.ShowOpenProject(); return; }
+        if (ShellNavigation.Open(existing is not null, editor is not null) == ShellRoute.ShowHoldingWindow) { existing!.Activate(); existing.ShowOpenProject(); return; }
         await navigation.WaitAsync();
         if (App.Restart.IsPreparing) { navigation.Release(); return; }
         var previous = editor;
@@ -190,7 +196,11 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
         var installed = false;
         try
         {
-            if (previous is not null && !await previous.TrySaveBeforeLeavingAsync()) return;
+            if (ShellNavigation.Open(false, previous is not null) == ShellRoute.LeaveThenOpen && !await previous!.TrySaveBeforeLeavingAsync())
+            {
+                ShowRefusedLeave(previous);
+                return;
+            }
             Core.Domain.Shared.Project project;
             string? mediaPath;
 #if DEBUG
@@ -279,17 +289,32 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
         }
         finally { navigation.Release(); }
     }
-    /// <summary>Show the editor scoped to Full take (null) or one clip; a scope change is the existing setActiveClip step.</summary>
+    /// <summary>Show the editor scoped to Full take (null) or one clip; a scope change is the existing setActiveClip step.
+    /// Choosing a row keeps focus on the row; Ctrl+2 from Home's content moves focus into the transcript (design C15).</summary>
     internal void ShowScope(string? clipId, bool keepSelection = false)
     {
         if (editor is not { } current || App.Restart.IsPreparing || !navigation.Wait(0)) { SyncSelection(); return; }
+        var fromHome = !ReferenceEquals(ContentFrame.Content, current);
+        var fromPane = FocusInPane();
         try
         {
-            if (!ReferenceEquals(ContentFrame.Content, current)) ShowContent(current);
+            if (fromHome) ShowContent(current);
             current.SelectScope(clipId, keepSelection);
         }
         finally { navigation.Release(); }
         SyncSelection();
+        if (fromHome && !fromPane) current.FocusTranscript();
+    }
+    private bool FocusInPane() => FocusManager.GetFocusedElement(Root.XamlRoot) is DependencyObject focused
+        && InputState.DescendsFrom(focused, Nav) && !InputState.DescendsFrom(focused, ContentLayer);
+    /// <summary>A refused leave keeps the project open and editable. From Home its editor comes back, so the explanation it
+    /// shows is seen and heard (design §2).</summary>
+    private void ShowRefusedLeave(EditorPage open)
+    {
+        if (!ShellNavigation.ShowEditorAfterRefusedLeave(ShowingHome)) return;
+        ShowContent(open);
+        open.FocusTranscript();
+        open.AnnounceNotice();
     }
     /// <summary>A clip just made, or the one that already covers the words, is selected and scrolled into view (design §6.2).</summary>
     internal void RevealClip(string clipId)
@@ -301,7 +326,12 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
     private void ShowOpenProject()
     {
         if (editor is not { } current || App.Restart.IsPreparing || !navigation.Wait(0)) return;
-        try { if (!ReferenceEquals(ContentFrame.Content, current)) ShowContent(current); }
+        try
+        {
+            if (ReferenceEquals(ContentFrame.Content, current)) return;
+            ShowContent(current);
+            current.FocusTranscript();
+        }
         finally { navigation.Release(); }
     }
     private void ShowContent(Page page)
@@ -315,7 +345,9 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
     {
         Shell.Finding = editor?.FindClips.Running;
         Shell.Callout = editor?.FindClips.Callout;
+        Shell.NoneFound = editor?.FindClips.NoneFound;
         Shell.Update(editor?.ViewModel, ShowingHome, home.ViewModel.RecentProjects, ProjectPath);
+        if (Shell.Callout is null || ShowingHome) CalloutTip.IsOpen = false;
         SyncSelection();
     }
     /// <summary>Keep the selected row equal to the shown page and the editor's activeClipId, without re-entering selection.</summary>
@@ -330,9 +362,10 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
     private void Watch(EditorPage? previous, EditorPage next)
     {
         if (previous?.ViewModel is { } old) { old.Changed -= EditorEdited; old.SelectionChanged -= EditorChanged; old.PropertyChanged -= EditorPropertyChanged; }
-        if (previous is not null) { previous.FindClips.Changed -= EditorChanged; previous.FindClips.Found -= SuggestionsFound; }
+        if (previous is not null) { previous.FindClips.Changed -= EditorChanged; previous.FindClips.Found -= SuggestionsFound; previous.FindClips.CalloutShown -= CalloutShown; }
         next.FindClips.Changed += EditorChanged;
         next.FindClips.Found += SuggestionsFound;
+        next.FindClips.CalloutShown += CalloutShown;
         next.ViewModel.Changed += EditorEdited;
         next.ViewModel.SelectionChanged += EditorChanged;
         next.ViewModel.PropertyChanged += EditorPropertyChanged;
@@ -428,13 +461,36 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
     private void KeepAllClicked(object sender, RoutedEventArgs args) => editor?.ViewModel.KeepAll();
     private void CancelFindingClicked(object sender, RoutedEventArgs args) => editor?.FindClips.Cancel();
     private void CalloutClosed(InfoBar sender, object args) => editor?.FindClips.Dismiss();
+    /// <summary>Retry runs the search again; Set up AI… and Sign-in help open Settings at the AI page.</summary>
     private async void CalloutActionClicked(object sender, RoutedEventArgs args)
     {
         if (editor is not { } current || Shell.Callout is not { } callout) return;
-        if (callout.Action == "Retry") await current.FindClips.RetryAsync();
-        else if (callout.Action == "Find clips…") current.ShowFindClips(Nav.ContainerFromMenuItem(Shell.Rows.FirstOrDefault(row => row.Key == "action:find")) as FrameworkElement);
+        CalloutTip.IsOpen = false;
+        if (callout.Action == ClipCallouts.Retry) await current.FindClips.RetryAsync();
         else App.OpenSettings("Providers & Keys");
     }
+    private void CalloutTipActionClicked(TeachingTip sender, object args) => CalloutActionClicked(sender, new RoutedEventArgs());
+    /// <summary>The none-found row's Find clips… opens the flyout at itself.</summary>
+    private void FindClipsAgainClicked(object sender, RoutedEventArgs args) => editor?.ShowFindClips(sender as FrameworkElement);
+    /// <summary>A Find clips callout must be seen (design §13): the pane opens and scrolls to it, and when Find clips was
+    /// asked for away from the pane, a tip points at it.</summary>
+    private void CalloutShown(object? sender, FrameworkElement? anchor)
+    {
+        var fromPane = anchor is not null && InputState.DescendsFrom(anchor, Nav) && !InputState.DescendsFrom(anchor, ContentLayer);
+        if (!Nav.IsPaneOpen) Nav.IsPaneOpen = true;
+        DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+        {
+            if (Shell.Rows.FirstOrDefault(row => row.Kind == SidebarKind.Callout) is not { } row || Nav.ContainerFromMenuItem(row) is not FrameworkElement container) return;
+            container.StartBringIntoView();
+            if (fromPane) return;
+            CalloutTip.Target = container;
+            CalloutTip.Title = row.Title.Length > 0 ? row.Title : row.Detail;
+            CalloutTip.ActionButtonContent = row.HasAction ? row.Action : null;
+            CalloutTip.IsOpen = true;
+        });
+    }
+    private void CancelTakeTranscriptionClicked(object sender, RoutedEventArgs args) { if (ProjectPath is { } path) TranscriptionActivity.Cancel(path); }
+    private void CancelRecentTranscriptionClicked(object sender, RoutedEventArgs args) { if (sender is FrameworkElement { Tag: string path }) TranscriptionActivity.Cancel(path); }
     private async void RenameClipInvoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
     {
         if ((args.Element as FrameworkElement)?.Tag is not string id) return;
@@ -518,7 +574,6 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
         WindowNotice.IsOpen = true;
         App.Services.Log.Write(Core.Services.Logging.LogLevel.Warn, "import", $"action={action} code={(exception is VoxClipException known ? known.WireCode : exception.GetType().Name)} inner={exception.GetBaseException().GetType().Name} hresult=0x{exception.GetBaseException().HResult:X8}");
     }
-    private static readonly string[] OpenableExtensions = [".mp4", ".mov", ".m4v", ".mkv", ".webm", ".voxclip"];
     /// <summary>Whole-window drop target: overlay copy from design §7 and §13.</summary>
     private async void FileDragOver(object sender, DragEventArgs args)
     {
@@ -556,15 +611,31 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
     /// <summary>A dropped file replaces the open project through OpenPathAsync, which saves it first; design §7.</summary>
     internal async Task OpenDroppedAsync(string path)
     {
-        var extension = Path.GetExtension(path);
-        if (extension.Length > 0 && !OpenableExtensions.Contains(extension, StringComparer.OrdinalIgnoreCase))
+        if (ShellNavigation.UnsupportedDrop(path) is { } unsupported)
         {
             WindowNotice.Severity = InfoBarSeverity.Informational;
-            WindowNotice.Message = $"VoxClip can't open {extension.TrimStart('.').ToUpperInvariant()} files on PC yet. Export the video as MP4 or MOV and try again.";
+            WindowNotice.Message = unsupported;
             WindowNotice.IsOpen = true;
             return;
         }
         await OpenPathAsync(path);
+    }
+    /// <summary>F6 and Shift+F6 move between regions in design §16 order: the sidebar, then the editor's command row,
+    /// transcript, viewer, Captions and timeline, or Home's content. Focus outside every region counts as the sidebar, so
+    /// F6 from the pane lands on the command row. A region that can't take focus, such as a closed pane, is skipped.</summary>
+    private void RegionKeyDown(object sender, KeyRoutedEventArgs args)
+    {
+        if (args.Key != VirtualKey.F6 || InputState.Down(VirtualKey.Control) || InputState.Down(VirtualKey.Menu)) return;
+        var regions = new List<(FrameworkElement[] Areas, Func<Control?> Target)>
+            { ([], () => Nav.SelectedItem is { } selected ? Nav.ContainerFromMenuItem(selected) as Control : null) };
+        if (ContentFrame.Content is EditorPage page) regions.AddRange(page.FocusRegions());
+        else if (ContentFrame.Content is HomePage shown) regions.Add(([shown], () => FocusManager.FindFirstFocusableElement(shown) as Control));
+        var focused = FocusManager.GetFocusedElement(Root.XamlRoot) as DependencyObject;
+        var current = Math.Max(0, regions.FindIndex(region => region.Areas.Any(area => InputState.DescendsFrom(focused, area))));
+        var step = InputState.Down(VirtualKey.Shift) ? -1 : 1;
+        for (var tried = 1; tried < regions.Count + 1; tried++)
+            if (regions[((current + step * tried) % regions.Count + regions.Count) % regions.Count].Target() is { } target && target.Focus(FocusState.Keyboard)) break;
+        args.Handled = true;
     }
 #if DEBUG
     internal string DebugNotice => WindowNotice.IsOpen ? WindowNotice.Message : "";

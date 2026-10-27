@@ -42,7 +42,9 @@ public static class UiError
                 _ => string.IsNullOrWhiteSpace(known.Message) ? $"{action} stopped. Your video and edits are still here. Try again." : known.Message
             };
         }
-        if (exception is LlmException llm) return llm.Error.Kind == LlmErrorKind.Cancelled ? "" : llm.Error.UserMessage + " Your edits are saved.";
+        // Core's AI messages already end "Your edits are saved." (architecture §10.1 rule 1); never say it twice.
+        if (exception is LlmException llm) return llm.Error.Kind == LlmErrorKind.Cancelled ? ""
+            : llm.Error.UserMessage.EndsWith("Your edits are saved.", StringComparison.Ordinal) ? llm.Error.UserMessage : llm.Error.UserMessage + " Your edits are saved.";
         if (exception is IOException or UnauthorizedAccessException) return $"{action} couldn't access the file. Your video and edits are still here.";
         return $"{action} stopped. Your video and edits are still here. Try again.";
     }

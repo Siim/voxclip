@@ -52,6 +52,8 @@ public sealed class HomeViewModelTests
         Assert.Equal("First year at the café", tile.Title);
         Assert.Equal($"{duration} · Today · 2 clips", tile.Meta);
         Assert.Equal($"{duration} · Today", tile.Detail);
+        // Design §3.4: only the duration is set in Cascadia Mono.
+        Assert.Equal((duration, " · Today"), (tile.DetailTime, tile.DetailStatus));
         Assert.Equal($"{duration}, 2 clips, opened Today", tile.Description);
         Assert.Equal("First year at the café", tile.ToString());
         Assert.Equal(MediaStatus.None, tile.Status);
@@ -74,6 +76,7 @@ public sealed class HomeViewModelTests
         Assert.Null(tile.Media.FramePath);
         Assert.Equal("⚠ Video not found.", tile.Warning);
         Assert.Equal("⚠ Video not found", tile.Detail);
+        Assert.Equal(("", "⚠ Video not found"), (tile.DetailTime, tile.DetailStatus));
         Assert.True(tile.ShowsWarning && !tile.ShowsMeta && tile.DetailIsWarning);
         Assert.Equal("Latte art for beginners, video not found", tile.AccessibleName);
         Assert.Equal("Locate the video for Latte art for beginners", tile.LocateName);
@@ -102,6 +105,7 @@ public sealed class HomeViewModelTests
         Assert.Equal("Transcribing on this PC", tile.Meta);
         Assert.True(tile.ShowsCancel);
         Assert.Equal("Transcribing · 42%", tile.Detail);
+        Assert.Equal(("", "Transcribing · 42%"), (tile.DetailTime, tile.DetailStatus));
         Assert.Equal("Grinder shootout, transcribing 42 percent", tile.AccessibleName);
         Assert.Equal("Cancel transcribing Grinder shootout", tile.CancelName);
 
