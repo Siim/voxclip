@@ -4,26 +4,17 @@ import ArgumentParser
 import VoxClipCore
 import VoxClipMedia
 import VideoToolbox
-import Synchronization
 
 /// Opt-in subprocess-test instrumentation; timestamps never appear in normal CLI output.
 final class CLIInterruptTiming: Sendable {
     static let testOnly: CLIInterruptTiming? = ProcessInfo.processInfo.environment["VOXCLIP_TEST_INTERRUPT_TIMING"] == "1"
         ? CLIInterruptTiming() : nil
-    private struct State {
-        var handler: UInt64?
-        var exportStart: UInt64?
-    }
-    private let state = Mutex(State())
-
     func interrupt() {
-        let now = DispatchTime.now().uptimeNanoseconds
-        state.withLock { if $0.handler == nil { $0.handler = now } }
+        ExportInterruptTiming.testOnly?.mark(.handler)
     }
 
     func exportStarting() {
-        let now = DispatchTime.now().uptimeNanoseconds
-        state.withLock { if $0.exportStart == nil { $0.exportStart = now } }
+        ExportInterruptTiming.testOnly?.mark(.exportStart)
     }
 
     func pauseBeforeExportIfRequested() async {
@@ -36,11 +27,11 @@ final class CLIInterruptTiming: Sendable {
 
     func exiting() {
         let now = DispatchTime.now().uptimeNanoseconds
-        let stamps = state.withLock { $0 }
-        guard let handler = stamps.handler else { return }
-        // Zero means cancellation prevented exporter entry. execute() reaches
-        // this boundary after cleanup and cancellation output, just before exit(6).
-        let line = "VOXCLIP_TEST_INTERRUPT_TIMING handler=\(handler) exportStart=\(stamps.exportStart ?? 0) exit=\(now)\n"
+        guard let stamps = ExportInterruptTiming.testOnly?.stamps, stamps[.handler] != nil else { return }
+        let fields = ExportInterruptTiming.Phase.allCases.map { (phase: ExportInterruptTiming.Phase) -> String in
+            "\(phase.rawValue)=\(stamps[phase] ?? 0)"
+        }.joined(separator: " ")
+        let line = "VOXCLIP_TEST_INTERRUPT_TIMING \(fields) exit=\(now)\n"
         FileHandle.standardError.write(Data(line.utf8))
     }
 }

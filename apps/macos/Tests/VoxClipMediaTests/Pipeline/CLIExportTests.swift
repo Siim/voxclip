@@ -19,6 +19,30 @@ struct CLIResult: Sendable {
         let handler: UInt64
         let exportStart: UInt64
         let exit: UInt64
+        let phases: [String: UInt64]
+
+        var breakdown: String {
+            func seconds(_ start: String, _ end: String) -> String {
+                guard let first = phases[start], let last = phases[end], first > 0, last >= first else { return "notReached" }
+                let elapsed: Double = Double(last - first) / 1e9
+                return String(format: "%.6f", elapsed)
+            }
+            let intervals: [(String, String, String)] = [
+                ("handler_to_cancel", "handler", "cancelRequest"),
+                ("cancel_to_pumps", "cancelRequest", "pumpsStopped"),
+                ("cancel_to_teardown", "cancelRequest", "teardownStart"),
+                ("reader_teardown", "teardownStart", "readersStopped"),
+                ("video_reader_cancel", "videoReaderCancelStart", "videoReaderCancelEnd"),
+                ("audio_reader_cancel", "audioReaderCancelStart", "audioReaderCancelEnd"),
+                ("writer_teardown", "writerCancelStart", "writerCancelEnd"),
+                ("partial_delete", "writerCancelEnd", "partialDeleted"),
+                ("resource_release", "partialDeleted", "exportReturned"),
+                ("return_to_exit", "exportReturned", "exit")
+            ]
+            return intervals.map { (interval: (String, String, String)) -> String in
+                "\(interval.0)=\(seconds(interval.1, interval.2))"
+            }.joined(separator: " ")
+        }
     }
 
     var internalInterruptTiming: InterruptTiming {
@@ -27,13 +51,18 @@ struct CLIResult: Sendable {
             let lines = stderr.split(separator: "\n").filter { $0.hasPrefix(prefix) }
             let line = try #require(lines.count == 1 ? lines.first : nil, "Expected one CLI-owned interrupt timing record: \(stderr)")
             let fields = line.dropFirst(prefix.count).split(separator: " ")
-            try #require(fields.count == 3)
-            try #require(fields[0].hasPrefix("handler=") && fields[1].hasPrefix("exportStart=") && fields[2].hasPrefix("exit="))
-            let handler = try #require(UInt64(fields[0].dropFirst("handler=".count)))
-            let exportStart = try #require(UInt64(fields[1].dropFirst("exportStart=".count)))
-            let exit = try #require(UInt64(fields[2].dropFirst("exit=".count)))
+            var phases: [String: UInt64] = [:]
+            for field in fields {
+                let pair = field.split(separator: "=", maxSplits: 1)
+                try #require(pair.count == 2)
+                let value = try #require(UInt64(pair[1]))
+                try #require(phases.updateValue(value, forKey: String(pair[0])) == nil)
+            }
+            let handler = try #require(phases["handler"])
+            let exportStart = try #require(phases["exportStart"])
+            let exit = try #require(phases["exit"])
             try #require(handler > 0 && exit >= max(handler, exportStart))
-            return InterruptTiming(handler: handler, exportStart: exportStart, exit: exit)
+            return InterruptTiming(handler: handler, exportStart: exportStart, exit: exit, phases: phases)
         }
     }
 
@@ -497,6 +526,8 @@ func cliCaptionHarnessRejectsAmbiguousArguments(_ arguments: [String]) throws {
     try Data("preserve this file".utf8).write(to: unrelated)
     var latencies: [Double] = []
     var wallLatencies: [Double] = []
+    var slowestLatency: Double = -1
+    var slowestBreakdown: String = ""
     var random: UInt64 = 0x564f58434c495034
     for iteration in 0..<30 {
         var offsets: [Double] = []
@@ -531,6 +562,17 @@ func cliCaptionHarnessRejectsAmbiguousArguments(_ arguments: [String]) throws {
             try #require(!result.watchdogFired, "SIGINT watchdog fired in pair \(iteration), export \(pump)")
             try #require(result.status == 6, "SIGINT pair \(iteration), export \(pump), offset \(offsets[pump]): exit \(result.status), \(result.stderr)")
             let latency = try result.internalStopPathLatency
+            let timing = try result.internalInterruptTiming
+            let breakdown = "pair=\(iteration) export=\(pump) internal=\(latency) \(timing.breakdown)"
+            if latency > 1 { print("SIGINT_SLOW \(breakdown)") }
+            if latency > slowestLatency {
+                slowestLatency = latency
+                slowestBreakdown = breakdown
+            }
+            for phase in ["cancelRequest", "teardownStart", "readersStopped", "writerCancelStart", "writerCancelEnd", "partialDeleted", "exportReturned"] {
+                let stamp = try #require(timing.phases[phase])
+                #expect(stamp >= timing.handler && stamp <= timing.exit, "Missing or invalid stop phase \(phase): \(result.stderr)")
+            }
             #expect(latency <= 2)
             latencies.append(latency)
             wallLatencies.append(try #require(result.interruptLatency))
@@ -546,7 +588,7 @@ func cliCaptionHarnessRejectsAmbiguousArguments(_ arguments: [String]) throws {
     #expect(try Data(contentsOf: unrelated) == Data("preserve this file".utf8))
     let internalSummary = "internal_min=\(latencies.min() ?? 0) internal_max=\(latencies.max() ?? 0) internal_mean=\(latencies.reduce(0, +) / Double(latencies.count))"
     let wallSummary = "wall_min=\(wallLatencies.min() ?? 0) wall_max=\(wallLatencies.max() ?? 0) wall_mean=\(wallLatencies.reduce(0, +) / Double(wallLatencies.count))"
-    print("SIGINT_STRESS pairs=30 exports=\(latencies.count) watchdogs=0 \(internalSummary) \(wallSummary)")
+    print("SIGINT_STRESS pairs=30 exports=\(latencies.count) watchdogs=0 \(internalSummary) \(wallSummary) slowest_\(slowestBreakdown)")
 }
 }
 
