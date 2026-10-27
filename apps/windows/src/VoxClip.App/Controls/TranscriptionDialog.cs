@@ -2,6 +2,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using VoxClip.App.Services;
 using VoxClip.App.ViewModels;
+using VoxClip.Core.Domain.Captions;
 using VoxClip.Core.Domain.Transcript;
 using VoxClip.Core.Services.Project;
 
@@ -114,13 +115,13 @@ internal sealed class TranscriptionDialog : ContentDialog
             running = true; model.Busy = true; App.Services.BusyOperations++; IsPrimaryButtonEnabled = false; progress.Visibility = Visibility.Visible;
             // Home tiles in any window show this run's stage and can cancel it, as "Not now" does (design §5.4.4 d).
             void Cancel() { if (running) lifetime.Cancel(); }
-            void Report(TranscriptionStep step, double? fraction) { if (projectPath is not null && running) TranscriptionActivity.Report(projectPath, step, fraction, Cancel); }
-            Report(TranscriptionStep.Reading, null);
+            void Report(MediaTranscriptionStage step, double? fraction) { if (projectPath is not null && running) TranscriptionActivity.Report(projectPath, step, fraction, Cancel); }
+            Report(MediaTranscriptionStage.ReadingVideo, null);
             try
             {
                 var source = model.Project.Media.Source;
                 var media = await App.Services.Probe.ProbeAsync(source.AbsolutePath, lifetime.Token);
-                Report(TranscriptionStep.Extracting, null);
+                Report(MediaTranscriptionStage.ExtractingAudio, null);
                 var audio = await new CacheIndex(App.Services.Data.Cache).ExtractAudioAsync(App.Services.Audio, media, source.ContentKey, null, lifetime.Token);
                 var requestedLanguage = language.Text.Trim().ToLowerInvariant();
                 var plan = new TranscriptionPlan(engine.SelectedIndex == 0 ? TranscriptEngine.Whispercpp : TranscriptEngine.Elevenlabs,
@@ -128,7 +129,7 @@ internal sealed class TranscriptionDialog : ContentDialog
                 var transcript = await App.Services.Transcription.TranscribeAsync(new(plan, audio.Audio, source.ContentKey), new Progress<TranscriptionProgress>(value =>
                 {
                     progress.IsIndeterminate = value.Fraction is null; progress.Value = (value.Fraction ?? 0) * 100; Ui.Show(notice, value.Stage.ToString());
-                    Report(value.Stage == TranscriptionStage.Aligning ? TranscriptionStep.Aligning : TranscriptionStep.Transcribing, value.Fraction);
+                    Report(value.Stage == TranscriptionStage.Aligning ? MediaTranscriptionStage.Aligning : MediaTranscriptionStage.Transcribing, value.Fraction);
                 }), lifetime.Token);
                 if (model.IsLeaving) return;
                 model.SetTranscript(transcript);

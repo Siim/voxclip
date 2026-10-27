@@ -1,4 +1,5 @@
 using VoxClip.App.ViewModels;
+using VoxClip.Core.Domain.Captions;
 
 namespace VoxClip.App.Services;
 
@@ -9,7 +10,7 @@ internal static class TranscriptionActivity
     private static readonly Dictionary<string, (TranscriptionStatus Status, Action Cancel)> Running = new(StringComparer.OrdinalIgnoreCase);
     internal static event EventHandler? Changed;
 
-    internal static void Report(string projectPath, TranscriptionStep step, double? fraction, Action cancel)
+    internal static void Report(string projectPath, MediaTranscriptionStage step, double? fraction, Action cancel)
     {
         Running[projectPath] = (new(step, fraction is { } value && double.IsFinite(value) ? Math.Clamp(value, 0, 1) : null), cancel);
         Changed?.Invoke(null, EventArgs.Empty);

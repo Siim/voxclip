@@ -151,9 +151,17 @@ public sealed class ClipSemanticsTests
     public void SummaryLineCountsCutRunsAndPausesInScope()
     {
         var model = Clean();
-        string Length(string id) => model.Clips.Single(clip => clip.Id == id).Duration;
-        var full = () => EditorViewModel.Duration(model.FullTakeDuration);
-        Assert.Equal($"{full()} · No cuts yet", model.SummaryLine);
+        // The length export renders for a scope, worked out without the view model: ExportSelection's frozen state, then
+        // the edit plan.
+        double Planned(ExportTarget target)
+        {
+            var state = ExportSelection.Scope(model.State, target)!;
+            var source = model.Project.Media.Source;
+            var sampleRate = source.Audio?.SampleRate is > 0 ? source.Audio.SampleRate : 48000;
+            return EditingEngine.BuildEditPlan(EditingEngine.BuildSegments(state, source.DurationSeconds), source.DurationSeconds, sampleRate, state.PauseKeepSeconds).Duration;
+        }
+        Assert.Equal("0:16 · No cuts yet", model.SummaryLine);
+        Assert.Equal(Planned(new ExportTarget.FullEdit()), model.FullTakeDuration, 9);
 
         // The long take has pauses after words 16 and 22; clip A spans 12–20 and clip B 21–25.
         var a = Clip(model, 12, 20);
@@ -161,21 +169,28 @@ public sealed class ClipSemanticsTests
         string[] Words(params int[] indexes) => indexes.Select(index => model.Words[index].Id).ToArray();
         // Making a clip leaves the scope on Full take.
         Assert.Null(model.State!.ActiveClipId);
+        // Three cut runs: words 2–3, 14 and 18–19.
         Assert.True(model.Apply(new EditOperation.SetWordCuts(Words(2, 3, 14, 18, 19), true)));
-        Assert.Equal($"{full()} after cuts · 3 cuts", model.SummaryLine);
+        Assert.Equal("0:14 after cuts · 3 cuts", model.SummaryLine);
         Assert.Equal("0:16 source · 5 words cut in 3 places · 0 pauses cut", model.SummaryTooltip);
+        Assert.Equal(Planned(new ExportTarget.FullEdit()), model.FullTakeDuration, 9);
 
+        // Clip A holds the runs at 14 and 18–19; clip B holds none until its pause is cut.
         Assert.True(model.Apply(new EditOperation.SetActiveClip(a)));
-        Assert.Equal($"Clip 1 · {Length(a)} after cuts · 2 cuts", model.SummaryLine);
+        Assert.Equal("Clip 1 · 0:04 after cuts · 2 cuts", model.SummaryLine);
+        Assert.Equal(EditorViewModel.Duration(Planned(new ExportTarget.Clip(a))), model.Clips.Single(clip => clip.Id == a).Duration);
         Assert.True(model.Apply(new EditOperation.SetActiveClip(b)));
-        Assert.Equal($"Clip 2 · {Length(b)} · No cuts yet", model.SummaryLine);
+        Assert.Equal("Clip 2 · 0:04 · No cuts yet", model.SummaryLine);
 
         var pause = model.State!.Pauses.Single(item => item.AfterIndex == 22).Id;
         Assert.True(model.Apply(new EditOperation.SetPauseCuts([pause], true)));
-        Assert.Equal($"Clip 2 · {Length(b)} after cuts · 1 cut", model.SummaryLine);
+        Assert.Equal("Clip 2 · 0:03 after cuts · 1 cut", model.SummaryLine);
+        Assert.Equal(EditorViewModel.Duration(Planned(new ExportTarget.Clip(b))), model.Clips.Single(clip => clip.Id == b).Duration);
         Assert.True(model.Apply(new EditOperation.SetActiveClip(null)));
-        Assert.Equal($"{full()} after cuts · 4 cuts", model.SummaryLine);
+        Assert.Equal("0:13 after cuts · 4 cuts", model.SummaryLine);
         Assert.Equal("0:16 source · 5 words cut in 3 places · 1 pause cut", model.SummaryTooltip);
+        // A clip in scope never changes the Full take length.
+        Assert.Equal(Planned(new ExportTarget.FullEdit()), model.FullTakeDuration, 9);
     }
 }
 #endif

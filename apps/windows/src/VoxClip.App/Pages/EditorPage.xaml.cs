@@ -166,9 +166,11 @@ public sealed partial class EditorPage : Page
             sourceTime = endWord.End;
         var changed = Math.Abs(ViewModel.SourceTime - sourceTime) > 0.02;
         ViewModel.SourceTime = sourceTime;
-        TransportTime.Text = PreviewClockLabel.Format(position.EditedTime, previewDuration, ViewModel.State?.ActiveClipId is not null);
+        var (elapsed, total) = PreviewClockLabel.Parts(position.EditedTime, previewDuration);
+        TransportElapsed.Text = elapsed;
+        TransportTotal.Text = " / " + total;
         PlayGlyph.Symbol = position.IsPlaying ? Symbol.Pause : Symbol.Play;
-        Timeline.SetTransport(TransportTime.Text, position.IsPlaying);
+        Timeline.SetTransport(elapsed, total, position.IsPlaying);
         Timeline.Position(position.SourceTime);
         if (changed) Transcript.RefreshVisuals();
     }
@@ -362,15 +364,14 @@ public sealed partial class EditorPage : Page
         }
     }, "Save project");
     private void ShowProjectClicked(object sender, RoutedEventArgs args) { if (owner.ProjectPath is { } path) ShareHelpers.Reveal(path); }
-    /// <summary>Export video… for Full take; Export clip… opens Export with the kept clips chosen until the single-clip scope
-    /// arrives with the export dialog (step 12).</summary>
-    private async void ExportClicked(object sender, RoutedEventArgs args) => await ExportAsync(ViewModel.State?.ActiveClipId is not null);
-    /// <summary>A clip row's "Export kept clips…": Export opens with the kept clips chosen.</summary>
-    internal Task ExportKeptClipsAsync() => ExportAsync(true);
-    private Task ExportAsync(bool keptClips) => RunAsync(async () =>
+    /// <summary>Export video… for Full take; Export clip… opens Export with only the active clip chosen (design §2 step 7).</summary>
+    private async void ExportClicked(object sender, RoutedEventArgs args) => await ExportAsync(ViewModel.State?.ActiveClipId);
+    /// <summary>A kept clip row's "Export clip…": Export opens with only that clip chosen (design §6.2).</summary>
+    internal Task ExportClipAsync(string clipId) => ExportAsync(clipId);
+    private Task ExportAsync(string? clipId) => RunAsync(async () =>
     {
         if (!ViewModel.CanExport) return;
-        await new ExportDialog(owner, ViewModel, demo, SnapshotAsync, keptClips && ViewModel.SelectedClipCount > 0) { XamlRoot = XamlRoot }.ShowAsync();
+        await new ExportDialog(owner, ViewModel, demo, SnapshotAsync, clipId) { XamlRoot = XamlRoot }.ShowAsync();
     }, "Export");
     internal async Task PromptTranscriptionAsync() => await RunAsync(async () =>
     {

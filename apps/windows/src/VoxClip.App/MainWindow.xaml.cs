@@ -10,6 +10,7 @@ using System.Runtime.InteropServices;
 using Windows.Storage.Pickers;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.System;
+using VoxClip.Core.Domain.Captions;
 using VoxClip.Core.Domain.Shared;
 namespace VoxClip.App;
 
@@ -389,9 +390,8 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
         if (take?.Path != path) { take = null; clipTiles = []; ApplyTake(); }
         var loads = takeLoads = new CancellationTokenSource();
         var project = current.ViewModel.Project;
-        var title = current.ViewModel.Title;
-        var (words, style) = (App.Services.Get("general.showPlaceholderWords", true), App.Services.Get("captions.defaultStyleId", "vox-highlight"));
-        var clips = current.ViewModel.Clips.Select(clip => (clip.Id, clip.Title)).ToArray();
+        var (words, style) = (App.Services.ShowPlaceholderWords, App.Services.Get("captions.defaultStyleId", "vox-highlight"));
+        var clips = current.ViewModel.Clips.Select(clip => clip.Id).ToArray();
         CaptionCard? card = null;
         string? frame = null;
         var unreadable = false;
@@ -399,8 +399,8 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
         try
         {
             // Clip rows use each clip's own first kept words and frame (design §3.4), centre-cropped to 9:16 by the tile.
-            (card, var clipCards) = await Task.Run(() => (App.Services.Cards?.Card(project, null, title, words, style),
-                clips.Select(clip => (clip.Id, Card: App.Services.Cards?.Card(project, clip.Id, clip.Title, words, style))).ToArray()), loads.Token);
+            (card, var clipCards) = await Task.Run(() => (App.Services.Cards?.Card(project, null, words, style),
+                clips.Select(id => (Id: id, Card: App.Services.Cards?.Card(project, id, words, style))).ToArray()), loads.Token);
             foreach (var (id, clipCard) in clipCards) tiles[id] = (null, clipCard);
             if (current.MediaPath is { } media && project.Media.Source.Video is { } video)
             {
@@ -408,7 +408,7 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
                 try
                 {
                     frame = await App.Services.Thumbnails.GetAsync(source.ContentKey, media, Thumbnails.Candidates(project, null), video.RotationDegrees, loads.Token);
-                    foreach (var (id, _) in clips)
+                    foreach (var id in clips)
                         tiles[id] = (await App.Services.Thumbnails.GetAsync(source.ContentKey, media, Thumbnails.Candidates(project, id), video.RotationDegrees, loads.Token), tiles[id].Card);
                 }
                 catch (Exception exception) when (exception is not OperationCanceledException)
@@ -435,14 +435,15 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
         else
         {
             var transcription = TranscriptionActivity.Status(current.Path);
-            var status = current.Demo ? MediaStatus.Demo : current.Missing ? MediaStatus.Missing : current.Unreadable ? MediaStatus.Unreadable
-                : transcription is not null ? MediaStatus.Transcribing : current.AudioOnly ? MediaStatus.AudioOnly : MediaStatus.None;
-            Shell.TakeMedia = new(current.Path, current.Frame, current.Card, status, transcription);
+            MediaStatus status = current.Demo ? new MediaStatus.Demo() : current.Missing ? new MediaStatus.Missing() : current.Unreadable ? new MediaStatus.Unreadable()
+                : transcription is { } running ? running.Status : current.AudioOnly ? new MediaStatus.AudioOnly() : new MediaStatus.None();
+            Shell.TakeMedia = new(current.Path, current.Frame, current.Card, status);
         }
-        // Clip rows carry no chips: in the editor the InfoBar names a missing or unreadable video (design §5.4.4).
-        var state = Shell.TakeMedia?.Status ?? MediaStatus.None;
-        var frameless = state is MediaStatus.Missing or MediaStatus.Unreadable or MediaStatus.Demo or MediaStatus.AudioOnly;
-        Shell.ClipMedia = clipTiles.ToDictionary(pair => pair.Key, pair => new MediaTile($"{ProjectPath}|{pair.Key}", frameless ? null : pair.Value.Frame, pair.Value.Card, state is MediaStatus.Transcribing ? MediaStatus.None : state));
+        // Clip rows carry no chips: in the editor the InfoBar names a missing or unreadable video (design §5.4.4). A clip has
+        // words, so a transcription doesn't change its tile.
+        var state = Shell.TakeMedia?.Status ?? new MediaStatus.None();
+        Shell.ClipMedia = clipTiles.ToDictionary(pair => pair.Key, pair => new MediaTile($"{ProjectPath}|{pair.Key}", pair.Value.Frame, pair.Value.Card,
+            state is MediaStatus.Transcribing ? new MediaStatus.None() : state));
         UpdateShell();
     }
     /// <summary>A suggestion's Keep and Dismiss buttons act without selecting their row.</summary>
@@ -502,7 +503,7 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
     {
         if (sender is FrameworkElement { Tag: string id } && editor?.ViewModel.Clips.FirstOrDefault(clip => clip.Id == id) is { } clip) ShareHelpers.Copy(clip.Excerpt);
     }
-    private async void ExportClipsClicked(object sender, RoutedEventArgs args) { if (editor is not null) await editor.ExportKeptClipsAsync(); }
+    private async void ExportClipClicked(object sender, RoutedEventArgs args) { if (editor is not null && sender is FrameworkElement { Tag: string id }) await editor.ExportClipAsync(id); }
     private async Task RenameClipAsync(string id)
     {
         if (editor?.ViewModel is not { } model || model.Clips.FirstOrDefault(clip => clip.Id == id) is not { } clip) return;

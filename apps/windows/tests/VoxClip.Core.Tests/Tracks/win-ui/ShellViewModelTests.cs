@@ -1,5 +1,6 @@
 #if WIN_UI_TESTS
 using VoxClip.App.ViewModels;
+using VoxClip.Core.Domain.Captions;
 using VoxClip.Core.Domain.Clips;
 using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Shared;
@@ -255,7 +256,7 @@ public sealed class ShellViewModelTests
         Assert.Equal(2, actions.Length);
         Assert.All(actions, row => Assert.Equal((false, "Transcribe the video to select words."), (row.IsEnabled, row.ToolTip)));
 
-        shell.TakeMedia = new MediaTile("take", null, null, MediaStatus.Transcribing, new(TranscriptionStep.Transcribing, 0.42));
+        shell.TakeMedia = new MediaTile("take", null, null, new MediaStatus.Transcribing(0.42, MediaTranscriptionStage.Transcribing));
         shell.Update(editor, false, [], null);
         Assert.Equal(("", "Transcribing · 42%", true, "Cancel transcribing Sõnade kaupa lõikamine", "Full take, transcribing 42 percent"),
             (full.MetaTime, full.MetaStatus, full.ShowsCancel, full.CancelName, full.AccessibleName));
@@ -314,7 +315,7 @@ public sealed class ShellViewModelTests
     {
         var editor = WithSuggestion();
         var suggestion = editor.Clips.Single(ShellViewModel.IsSuggestion);
-        var tile = new MediaTile("take|" + suggestion.Id, null, null, MediaStatus.None);
+        var tile = new MediaTile("take|" + suggestion.Id, null, null, new MediaStatus.None());
         var shell = new ShellViewModel { ClipMedia = new Dictionary<string, MediaTile> { [suggestion.Id] = tile } };
         shell.Update(editor, false, [], null);
         Assert.Same(tile, shell.Rows.Single(row => row.Kind == SidebarKind.Suggestion).Media);

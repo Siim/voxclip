@@ -50,7 +50,7 @@ public sealed partial class HomePage : Page
         loadedAt.Clear();
         Refresh();
     }
-    private static (bool Words, string Style) CardSettings() => (App.Services.Get("general.showPlaceholderWords", true), App.Services.Get("captions.defaultStyleId", "vox-highlight"));
+    private static (bool Words, string Style) CardSettings() => (App.Services.ShowPlaceholderWords, App.Services.Get("captions.defaultStyleId", "vox-highlight"));
     private void TranscriptionChanged(object? sender, EventArgs args)
     {
         foreach (var row in ViewModel.RecentProjects) row.Transcription = TranscriptionActivity.Status(row.Path);
@@ -100,8 +100,7 @@ public sealed partial class HomePage : Page
             {
                 var project = ProjectSerialization.Deserialize(await File.ReadAllTextAsync(row.Path, ct));
                 var media = await App.Services.Projects.ResolveMediaAsync(project.Media.Source, row.Path, ct);
-                var title = string.IsNullOrWhiteSpace(project.Title) ? row.Name : project.Title.Trim();
-                return (project, media, Card(project, title, wordsVisible, defaultStyle));
+                return (project, media, Card(project, wordsVisible, defaultStyle));
             }, ct);
             row.Load(project, media is null, DateTimeOffset.Now, card);
             var source = project.Media.Source;
@@ -130,9 +129,9 @@ public sealed partial class HomePage : Page
         if (!row.IsLoaded) row.IsStalled = true;
     }
     /// <summary>The take's caption card; null, and stage black, when the caption resources can't be read.</summary>
-    private static CaptionCard? Card(Project project, string title, bool wordsVisible, string defaultStyle)
+    private static CaptionCard? Card(Project project, bool wordsVisible, string defaultStyle)
     {
-        try { return App.Services.Cards?.Card(project, null, title, wordsVisible, defaultStyle); }
+        try { return App.Services.Cards?.Card(project, null, wordsVisible, defaultStyle); }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or System.Text.Json.JsonException or InvalidDataException or KeyNotFoundException)
         {
             App.Services.Log.Write(Core.Services.Logging.LogLevel.Warn, "home", $"action=Caption card code={exception.GetType().Name}");

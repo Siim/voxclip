@@ -96,6 +96,10 @@ internal sealed class AppServices : IAsyncDisposable
 
     internal Task SetAsync<T>(string key, T value, CancellationToken ct = default) => settingsWrites.SetAsync(key, value, ct);
 
+    /// <summary>Settings → General → "Show transcript words on placeholders" (design §5.4.2), from the Core settings with
+    /// their schema default.</summary>
+    internal bool ShowPlaceholderWords => Settings.GetBool("general.showPlaceholderWords") ?? true;
+
     internal void FreezeSettings() => settingsWrites.Freeze();
     internal Task DrainSettingsAsync(CancellationToken ct) => settingsWrites.DrainAsync(ct);
     internal Task FlushSettingsAsync(CancellationToken ct) => settingsWrites.FlushAsync(ct);

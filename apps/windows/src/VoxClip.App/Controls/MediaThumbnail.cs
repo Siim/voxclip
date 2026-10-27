@@ -1,6 +1,5 @@
 using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.WindowsRuntime;
-using Microsoft.UI;
 using Microsoft.UI.Composition;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
@@ -15,23 +14,24 @@ using Microsoft.UI.Xaml.Media.Imaging;
 using Microsoft.UI.Xaml.Shapes;
 using VoxClip.App.Services;
 using VoxClip.App.ViewModels;
+using VoxClip.Core.Domain.Captions;
 
 namespace VoxClip.App.Controls;
 
-/// <summary>The one media tile (design §5.4) for Home tiles and sidebar rows. It draws what its <see cref="MediaTile"/>
-/// decides: a real frame, else the caption card, else stage black, with the status chip and progress line on top. Media
-/// is never recoloured, so the tile stays black in every theme, High Contrast included. The loading ladder (§5.4.5): for
-/// 300 ms the tile holds stage black and its rim, and a frame that arrives then cuts in; after that the card shows, and a
-/// later frame cross-fades over it in 150 ms. A stalled read sweeps one neutral sheen. Motion stops when Windows animations
-/// are off. The tile is decorative: its row or grid item carries the name, and chips have none of their own.</summary>
+/// <summary>The one media tile (design §5.4) for Home tiles and sidebar rows. It draws the stand-in Core's
+/// <see cref="MediaStandIn.Resolve"/> picks for its <see cref="MediaTile"/>: a real frame, the caption card or stage black,
+/// with the status chip and progress line on top. Media is never recoloured, so the tile stays black in every theme, High
+/// Contrast included; the chip, dots, rim, sheen and progress line take the theme's media brushes. The loading ladder
+/// (§5.4.5): for 300 ms the tile holds stage black and its rim, and a frame that arrives then cuts in; after that the card
+/// shows, and a later frame cross-fades over it in 150 ms. A stalled read sweeps one neutral sheen. Motion stops when
+/// Windows animations are off. The tile is decorative: its row or grid item carries the name, and chips have none of their own.</summary>
 public sealed partial class MediaThumbnail : UserControl
 {
     public static readonly DependencyProperty MediaProperty = DependencyProperty.Register(nameof(Media), typeof(MediaTile), typeof(MediaThumbnail),
         new PropertyMetadata(null, (owner, _) => ((MediaThumbnail)owner).MediaChanged()));
-    public static readonly DependencyProperty SurfaceProperty = DependencyProperty.Register(nameof(Surface), typeof(CardSurface), typeof(MediaThumbnail),
-        new PropertyMetadata(CardSurface.Sidebar, (owner, _) => ((MediaThumbnail)owner).SurfaceChanged()));
+    public static readonly DependencyProperty SurfaceProperty = DependencyProperty.Register(nameof(Surface), typeof(CaptionCardSurface), typeof(MediaThumbnail),
+        new PropertyMetadata(CaptionCardSurface.Sidebar, (owner, _) => ((MediaThumbnail)owner).SurfaceChanged()));
     private const int HoldMilliseconds = 300;
-    private readonly SolidColorBrush black = new(Colors.Black);
     private readonly Grid layers = new();
     private readonly Image card = new() { Stretch = Stretch.Fill, Visibility = Visibility.Collapsed };
     private readonly Image frame = new() { Stretch = Stretch.UniformToFill, Opacity = 0 };
@@ -67,21 +67,10 @@ public sealed partial class MediaThumbnail : UserControl
     {
         IsTabStop = false;
         AutomationProperties.SetAccessibilityView(this, AccessibilityView.Raw);
-        layers.Background = black;
         var dotRow = new StackPanel { Orientation = Orientation.Horizontal };
-        foreach (var (item, opacity) in dot.Zip(new[] { 1, 0.55, 0.28 })) { item.Fill = new SolidColorBrush(Colors.White); item.Opacity = opacity; dotRow.Children.Add(item); }
+        // White 100%, 55% and 28%, with no accent (design §5.4.4 d).
+        foreach (var (item, opacity) in dot.Zip(new[] { 1, 0.55, 0.28 })) { item.Opacity = opacity; dotRow.Children.Add(item); }
         dots.Child = dotRow;
-        sheen.Fill = new LinearGradientBrush
-        {
-            // One white 7.5% band at 105°, fading out on both sides.
-            StartPoint = new(0, 0.37), EndPoint = new(1, 0.63),
-            GradientStops =
-            {
-                new GradientStop { Color = Colors.Transparent, Offset = 0 },
-                new GradientStop { Color = ColorHelper.FromArgb(0x13, 0xFF, 0xFF, 0xFF), Offset = 0.5 },
-                new GradientStop { Color = Colors.Transparent, Offset = 1 }
-            }
-        };
         chipGlyph.Children.Add(chipIcon);
         chipGlyph.Children.Add(chipStrike);
         chipNumber.FontFamily = (FontFamily)Application.Current.Resources["VcMonoFontFamily"];
@@ -102,9 +91,10 @@ public sealed partial class MediaThumbnail : UserControl
         resized.Interval = TimeSpan.FromMilliseconds(150);
         resized.Tick += (_, _) => { RenderCard(); Apply(); };
         SizeChanged += (_, _) => { Shape(); resized.Start(); };
-        Loaded += (_, _) => { Ui.EffectsChanged += EffectsChanged; Shape(); Apply(); };
+        // Unloaded cancels a card still rendering; a container that comes back (a recycled row, Home shown again) renders it again.
+        Loaded += (_, _) => { Ui.EffectsChanged += EffectsChanged; Paint(); Shape(); RenderCard(); Apply(); };
         Unloaded += (_, _) => { Ui.EffectsChanged -= EffectsChanged; Stop(ref sheenMotion); Stop(ref dotsMotion); Stop(ref progressMotion); cardRender?.Cancel(); };
-        ActualThemeChanged += (_, _) => Apply();
+        ActualThemeChanged += (_, _) => { Paint(); Apply(); };
         RegisterPropertyChangedCallback(CornerRadiusProperty, (_, _) => Shape());
         SurfaceChanged();
     }
@@ -112,21 +102,27 @@ public sealed partial class MediaThumbnail : UserControl
     /// <summary>The take's or clip's frame, card and status.</summary>
     public MediaTile? Media { get => (MediaTile?)GetValue(MediaProperty); set => SetValue(MediaProperty, value); }
     /// <summary>Home tiles carry chips and plates; sidebar and clip-row thumbnails are downscaled cards with neither.</summary>
-    public CardSurface Surface { get => (CardSurface)GetValue(SurfaceProperty); set => SetValue(SurfaceProperty, value); }
+    public CaptionCardSurface Surface { get => (CaptionCardSurface)GetValue(SurfaceProperty); set => SetValue(SurfaceProperty, value); }
 
-    private void EffectsChanged(object? sender, EventArgs args) => DispatcherQueue.TryEnqueue(Apply);
+    private void EffectsChanged(object? sender, EventArgs args) => DispatcherQueue.TryEnqueue(() => { Paint(); Apply(); });
+
+    /// <summary>The theme's media brushes: stage black under everything, then the dots, rim and sheen. High Contrast keeps
+    /// the media black and draws the decoration in the system colours.</summary>
+    private void Paint()
+    {
+        layers.Background = Ui.ThemeBrush(this, "VcStageBrush");
+        var dotFill = Ui.ThemeBrush(this, "VcChipMediaForegroundBrush");
+        foreach (var item in dot) item.Fill = dotFill;
+        rim.BorderBrush = Ui.ThemeBrush(this, "VcMediaRimBrush");
+        sheen.Fill = Ui.ThemeBrush(this, "VcMediaSheenBrush");
+    }
 
     private void SurfaceChanged()
     {
-        var home = Surface == CardSurface.Home;
+        var home = Surface == CaptionCardSurface.HomeTile;
         var size = home ? 8 : 3;
         foreach (var item in dot) item.Width = item.Height = size;
         ((StackPanel)dots.Child).Spacing = home ? 5 : 2;
-        // On Home the dots sit in a dark pill so they read on any backdrop; at sidebar sizes they stand alone.
-        dots.Padding = home ? new(9, 7, 9, 7) : new(0);
-        dots.CornerRadius = new(home ? 11 : 0);
-        dots.Background = home ? new SolidColorBrush(ColorHelper.FromArgb(0x73, 0, 0, 0)) : null;
-        rim.BorderBrush = new SolidColorBrush(ColorHelper.FromArgb(home ? (byte)0x1A : (byte)0x1F, 0xFF, 0xFF, 0xFF));
         cardKey = null;
         RenderCard();
         Apply();
@@ -235,8 +231,9 @@ public sealed partial class MediaThumbnail : UserControl
         var media = Media;
         var animate = Ui.AnimationsEnabled;
         var held = Held;
-        var home = Surface == CardSurface.Home;
-        var hasFrame = shownFrame is not null && shownFrame == media?.FramePath;
+        var home = Surface == CaptionCardSurface.HomeTile;
+        var standIn = media?.StandIn(shownFrame is not null && shownFrame == media?.FramePath, held) ?? new MediaStandIn.Black();
+        var hasFrame = standIn is MediaStandIn.Frame;
         if (hasFrame && frame.Opacity < 1)
         {
             // Cut in during the hold, cross-fade 150 ms over a card that was already showing.
@@ -244,13 +241,15 @@ public sealed partial class MediaThumbnail : UserControl
             frame.Opacity = 1;
         }
         else if (!hasFrame) { frame.OpacityTransition = null; frame.Opacity = 0; }
-        var wantsCard = media is not null && (media.HasWords || media.ShowsDots) && card.Source is not null && !held;
-        if (wantsCard && !hasFrame) cardShown = true;
-        card.Visibility = wantsCard ? Visibility.Visible : Visibility.Collapsed;
-        var showsDots = media?.ShowsDots == true && !hasFrame && !held;
+        var showsCard = standIn is MediaStandIn.Card && card.Source is not null;
+        if (showsCard) cardShown = true;
+        // A frame fades in over the card it replaces, so the card stays under it.
+        card.Visibility = showsCard || hasFrame && cardShown && card.Source is not null ? Visibility.Visible : Visibility.Collapsed;
+        // A card with no words is the style's backdrop while transcribing with no frame yet: three dots (§5.4.4 d).
+        var showsDots = standIn is MediaStandIn.Card { Text.Words.Count: 0 };
         dots.Visibility = showsDots ? Visibility.Visible : Visibility.Collapsed;
         Animate(ref dotsMotion, showsDots && animate, DotsMotion);
-        var stalled = media?.Status == MediaStatus.Loading && !held && animate;
+        var stalled = media?.Status is MediaStatus.Loading && !held && animate;
         sheen.Visibility = stalled ? Visibility.Visible : Visibility.Collapsed;
         Animate(ref sheenMotion, stalled, SheenMotion);
         ApplyChip(media, home && !held);
@@ -259,8 +258,8 @@ public sealed partial class MediaThumbnail : UserControl
 
     private void ApplyChip(MediaTile? media, bool visible)
     {
-        var status = media?.Status ?? MediaStatus.None;
-        if (!visible || status is MediaStatus.None or MediaStatus.Loading) { chip.Visibility = Visibility.Collapsed; return; }
+        var status = media?.Status;
+        if (!visible || status is null or MediaStatus.None or MediaStatus.Loading) { chip.Visibility = Visibility.Collapsed; return; }
         var opaque = !Ui.TransparencyEnabled;
         chip.Background = Ui.ThemeBrush(this, opaque ? "VcChipMediaBackgroundOpaqueBrush" : "VcChipMediaBackgroundBrush");
         chip.BorderBrush = Ui.ThemeBrush(this, opaque ? "VcChipMediaStrokeOpaqueBrush" : "VcChipMediaStrokeBrush");
@@ -270,18 +269,18 @@ public sealed partial class MediaThumbnail : UserControl
         // Missing and unreadable chips are icon-only: the meta line beside the tile carries the words.
         var iconOnly = status is MediaStatus.Missing or MediaStatus.Unreadable;
         chip.Width = iconOnly ? 24 : double.NaN;
-        chip.Padding = iconOnly ? new(0) : status == MediaStatus.AudioOnly ? new(6, 0, 8, 0) : new(8, 0, 8, 0);
+        chip.Padding = iconOnly ? new(0) : status is MediaStatus.AudioOnly ? new(6, 0, 8, 0) : new(8, 0, 8, 0);
         chipGlyph.Visibility = status is MediaStatus.Missing or MediaStatus.Unreadable or MediaStatus.AudioOnly ? Visibility.Visible : Visibility.Collapsed;
         chipText.Visibility = iconOnly ? Visibility.Collapsed : Visibility.Visible;
         // Segoe Fluent Icons has no video-off glyph, so the missing chip strikes through Video.
-        chipIcon.Glyph = status switch { MediaStatus.Missing => "", MediaStatus.Unreadable => "", _ => "" };
+        chipIcon.Glyph = status switch { MediaStatus.Missing => "\uE714", MediaStatus.Unreadable => "\uE7BA", _ => "\uE8D6" };
         chipIcon.FontSize = iconOnly ? 16 : 14;
         chipIcon.Foreground = iconOnly ? warning : foreground;
         chipGlyph.Width = chipGlyph.Height = chipIcon.FontSize;
-        chipStrike.Visibility = status == MediaStatus.Missing ? Visibility.Visible : Visibility.Collapsed;
+        chipStrike.Visibility = status is MediaStatus.Missing ? Visibility.Visible : Visibility.Collapsed;
         chipStrike.X2 = chipStrike.Y2 = chipIcon.FontSize - 1.5;
         chipStrike.Stroke = warning;
-        var transcription = media?.Transcription ?? new TranscriptionStatus(TranscriptionStep.Transcribing, null);
+        var transcription = media?.Transcription ?? new TranscriptionStatus(MediaTranscriptionStage.Transcribing, null);
         chipLabel.Text = status switch
         {
             MediaStatus.Transcribing => Ui.AnimationsEnabled || transcription.Fraction is not null ? transcription.Label : "Transcribing",
@@ -289,22 +288,23 @@ public sealed partial class MediaThumbnail : UserControl
             MediaStatus.AudioOnly => "Audio only",
             _ => ""
         };
-        chipNumber.Text = status == MediaStatus.Transcribing ? transcription.Percent : "";
+        chipNumber.Text = status is MediaStatus.Transcribing ? transcription.Percent : "";
         chip.Visibility = Visibility.Visible;
     }
 
     private void ApplyProgress(MediaTile? media, bool visible, bool animate)
     {
-        var fraction = media?.Transcription is { Step: TranscriptionStep.Transcribing, Fraction: { } value } ? value : (double?)null;
+        var fraction = media?.Transcription is { Step: MediaTranscriptionStage.Transcribing, Fraction: { } value } ? value : (double?)null;
         // The indeterminate segment slides; under Reduce Motion the line is hidden and the chip reads "Transcribing".
-        visible = visible && media?.Status == MediaStatus.Transcribing && (fraction is not null || animate);
+        visible = visible && media?.Status is MediaStatus.Transcribing && (fraction is not null || animate);
         progress.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
         if (!visible) { Animate(ref progressMotion, false, ProgressMotion); return; }
         var contrast = Ui.HighContrast;
         var opaque = !Ui.TransparencyEnabled;
         progress.Height = contrast ? 4 : 2;
-        progress.Background = contrast ? Ui.ThemeBrush(this, "VcMediaProgressTrackBrush") : opaque ? black : Ui.ThemeBrush(this, "VcMediaProgressTrackBrush");
-        progressFill.Fill = contrast ? Ui.ThemeBrush(this, "VcMediaProgressFillBrush") : opaque ? new SolidColorBrush(Colors.White) : Ui.ThemeBrush(this, "VcMediaProgressFillBrush");
+        // With transparency effects off the line is opaque: chip white on stage black.
+        progress.Background = Ui.ThemeBrush(this, opaque && !contrast ? "VcStageBrush" : "VcMediaProgressTrackBrush");
+        progressFill.Fill = Ui.ThemeBrush(this, opaque && !contrast ? "VcChipMediaForegroundBrush" : "VcMediaProgressFillBrush");
         progressFill.Width = Math.Max(0, ActualWidth * (fraction ?? 0.3));
         if (fraction is not null) ((TranslateTransform)progressFill.RenderTransform).X = 0;
         Animate(ref progressMotion, fraction is null, ProgressMotion);

@@ -1,6 +1,7 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Documents;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Shapes;
 using VoxClip.App.ViewModels;
@@ -17,6 +18,8 @@ public sealed class TimelineView : UserControl
     private readonly StackPanel transport = new() { Orientation = Orientation.Horizontal, Spacing = 8, Padding = new Thickness(16, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, Visibility = Visibility.Collapsed };
     private readonly SymbolIcon playGlyph = new(Symbol.Play);
     private readonly TextBlock time = new() { FontSize = 13, VerticalAlignment = VerticalAlignment.Center };
+    private readonly Run elapsed = new();
+    private readonly Run total = new();
     private EditorViewModel? model;
     private bool updating;
     public event EventHandler<double>? SeekRequested;
@@ -38,18 +41,23 @@ public sealed class TimelineView : UserControl
         ToolTipService.SetToolTip(play, "Play or pause (Space)");
         play.Click += (_, _) => PlayRequested?.Invoke(this, EventArgs.Empty);
         time.FontFamily = (FontFamily)Application.Current.Resources["VcMonoFontFamily"];
+        time.Inlines.Add(elapsed);
+        time.Inlines.Add(total);
+        total.Foreground = Brush("VcTextSecondaryBrush");
         transport.Children.Add(play); transport.Children.Add(time);
         grid.Children.Add(transport); grid.Children.Add(track);
         Content = grid;
         slider.ValueChanged += (_, args) => { if (!updating) SeekRequested?.Invoke(this, args.NewValue); };
         track.SizeChanged += (_, _) => Draw();
-        ActualThemeChanged += (_, _) => Draw();
+        ActualThemeChanged += (_, _) => { total.Foreground = Brush("VcTextSecondaryBrush"); Draw(); };
     }
     /// <summary>Show the compact transport while the viewer is collapsed; Space, J, K and L work either way.</summary>
     internal bool ShowsTransport { set => transport.Visibility = value ? Visibility.Visible : Visibility.Collapsed; }
-    internal void SetTransport(string text, bool playing)
+    /// <summary>The edited clock as the viewer shows it: the elapsed time, then " / " and the length in text.secondary.</summary>
+    internal void SetTransport(string elapsedTime, string length, bool playing)
     {
-        time.Text = text;
+        elapsed.Text = elapsedTime;
+        total.Text = " / " + length;
         playGlyph.Symbol = playing ? Symbol.Pause : Symbol.Play;
     }
     public void Attach(EditorViewModel value) { model = value; model.Changed += Changed; Draw(); }

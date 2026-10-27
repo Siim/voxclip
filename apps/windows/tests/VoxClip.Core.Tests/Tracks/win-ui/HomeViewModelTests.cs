@@ -9,7 +9,6 @@ using VoxClip.Core.Services.LLM;
 using VoxClip.Media.Pipeline;
 using VoxClip.Media.Thumbnails;
 using Xunit;
-using MediaStatus = VoxClip.App.ViewModels.MediaStatus;
 
 namespace VoxClip.Ui.Tests;
 
@@ -57,7 +56,7 @@ public sealed class HomeViewModelTests
         Assert.Equal((duration, " · Today"), (tile.DetailTime, tile.DetailStatus));
         Assert.Equal($"{duration}, 2 clips, opened Today", tile.Description);
         Assert.Equal("First year at the café", tile.ToString());
-        Assert.Equal(MediaStatus.None, tile.Status);
+        Assert.IsType<MediaStatus.None>(tile.Status);
         Assert.True(tile.ShowsMeta && !tile.ShowsWarning && !tile.ShowsCancel && tile.DetailIsPlain);
 
         tile.IsOpen = true;
@@ -73,8 +72,9 @@ public sealed class HomeViewModelTests
         var tile = Tile(Take("Latte art for beginners", Now.AddDays(-9)), missing: true);
         tile.FramePath = @"C:\stale.jpg";
         Assert.True(tile.Missing);
-        Assert.Equal(MediaStatus.Missing, tile.Media.Status);
-        Assert.Null(tile.Media.FramePath);
+        Assert.IsType<MediaStatus.Missing>(tile.Media.Status);
+        // Core's precedence never shows a frame for a missing video, even a stale cached one.
+        Assert.IsNotType<MediaStandIn.Frame>(tile.Media.StandIn(true, false));
         Assert.Equal("⚠ Video not found.", tile.Warning);
         Assert.Equal("⚠ Video not found", tile.Detail);
         Assert.Equal(("", "⚠ Video not found"), (tile.DetailTime, tile.DetailStatus));
@@ -88,21 +88,21 @@ public sealed class HomeViewModelTests
     {
         var tile = Tile(Take("Night shift notes", Now));
         tile.Unreadable = true;
-        Assert.Equal(MediaStatus.Unreadable, tile.Status);
+        Assert.IsType<MediaStatus.Unreadable>(tile.Status);
         Assert.Equal("⚠ Can't read video.", tile.Warning);
         Assert.Equal("⚠ Can't read video", tile.Detail);
         Assert.Equal("Night shift notes, video can't be read", tile.AccessibleName);
         // Reading the project again clears it until the decoder fails again.
         tile.Load(Take("Night shift notes", Now), false, Now);
-        Assert.Equal(MediaStatus.None, tile.Status);
+        Assert.IsType<MediaStatus.None>(tile.Status);
     }
 
     [Fact]
     public void TranscribingPutsCancelOnTheMetaLine()
     {
         var tile = Tile(Take("Grinder shootout", Now));
-        tile.Transcription = new(TranscriptionStep.Transcribing, 0.42);
-        Assert.Equal(MediaStatus.Transcribing, tile.Media.Status);
+        tile.Transcription = new(MediaTranscriptionStage.Transcribing, 0.42);
+        Assert.Equal(new MediaStatus.Transcribing(0.42, MediaTranscriptionStage.Transcribing), tile.Media.Status);
         Assert.Equal("Transcribing on this PC", tile.Meta);
         Assert.True(tile.ShowsCancel);
         Assert.Equal("Transcribing · 42%", tile.Detail);
@@ -110,10 +110,10 @@ public sealed class HomeViewModelTests
         Assert.Equal("Grinder shootout, transcribing 42 percent", tile.AccessibleName);
         Assert.Equal("Cancel transcribing Grinder shootout", tile.CancelName);
 
-        tile.Transcription = new(TranscriptionStep.Transcribing, null);
+        tile.Transcription = new(MediaTranscriptionStage.Transcribing, null);
         Assert.Equal("Transcribing", tile.Detail);
         Assert.Equal("Grinder shootout, transcribing", tile.AccessibleName);
-        tile.Transcription = new(TranscriptionStep.Extracting, null);
+        tile.Transcription = new(MediaTranscriptionStage.ExtractingAudio, null);
         Assert.Equal("Extracting audio…", tile.Detail);
         Assert.Equal("Grinder shootout, extracting audio", tile.AccessibleName);
         tile.Transcription = null;
@@ -123,12 +123,12 @@ public sealed class HomeViewModelTests
     [Fact]
     public void ChipCopyFollowsTheTranscriptionStage()
     {
-        Assert.Equal(("Transcribing · ", "42%"), Chip(new(TranscriptionStep.Transcribing, 0.4249)));
-        Assert.Equal(("Transcribing · ", "100%"), Chip(new(TranscriptionStep.Transcribing, 1.2)));
-        Assert.Equal(("Transcribing", ""), Chip(new(TranscriptionStep.Transcribing, null)));
-        Assert.Equal(("Reading video…", ""), Chip(new(TranscriptionStep.Reading, null)));
-        Assert.Equal(("Extracting audio…", ""), Chip(new(TranscriptionStep.Extracting, 0.5)));
-        Assert.Equal(("Aligning words…", ""), Chip(new(TranscriptionStep.Aligning, 0.5)));
+        Assert.Equal(("Transcribing · ", "42%"), Chip(new(MediaTranscriptionStage.Transcribing, 0.4249)));
+        Assert.Equal(("Transcribing · ", "100%"), Chip(new(MediaTranscriptionStage.Transcribing, 1.2)));
+        Assert.Equal(("Transcribing", ""), Chip(new(MediaTranscriptionStage.Transcribing, null)));
+        Assert.Equal(("Reading video…", ""), Chip(new(MediaTranscriptionStage.ReadingVideo, null)));
+        Assert.Equal(("Extracting audio…", ""), Chip(new(MediaTranscriptionStage.ExtractingAudio, 0.5)));
+        Assert.Equal(("Aligning words…", ""), Chip(new(MediaTranscriptionStage.Aligning, 0.5)));
         static (string, string) Chip(TranscriptionStatus status) => (status.Label, status.Percent);
     }
 
@@ -136,24 +136,24 @@ public sealed class HomeViewModelTests
     public void LoadingHoldsBlankThenSaysLoading()
     {
         var tile = new RecentProject(@"C:\Projects\Opening day recap.voxclip", "Opening day recap");
-        Assert.Equal(MediaStatus.None, tile.Status);
+        Assert.IsType<MediaStatus.None>(tile.Status);
         Assert.Equal("", tile.Meta);
         Assert.Equal("", tile.Detail);
         Assert.Equal("Opening day recap", tile.AccessibleName);
 
         tile.IsStalled = true;
-        Assert.Equal(MediaStatus.Loading, tile.Media.Status);
+        Assert.IsType<MediaStatus.Loading>(tile.Media.Status);
         Assert.Equal("Loading…", tile.Meta);
         Assert.Equal("Loading…", tile.Detail);
         Assert.Equal("Opening day recap, loading", tile.AccessibleName);
 
         tile.Load(Take("Opening day recap", Now), false, Now);
         Assert.False(tile.IsStalled);
-        Assert.Equal(MediaStatus.None, tile.Status);
+        Assert.IsType<MediaStatus.None>(tile.Status);
 
         var unavailable = new RecentProject(@"C:\Projects\Broken.voxclip", "Broken") { IsStalled = true };
         unavailable.Fail();
-        Assert.Equal(MediaStatus.None, unavailable.Status);
+        Assert.IsType<MediaStatus.None>(unavailable.Status);
         Assert.Equal("Broken, project unavailable", unavailable.AccessibleName);
     }
 
@@ -163,22 +163,30 @@ public sealed class HomeViewModelTests
         var take = Take("Morning pages", Now);
         var tile = Tile(take with { Media = take.Media with { Source = take.Media.Source with { Video = null } } });
         tile.FramePath = @"C:\poster.jpg";
-        Assert.Equal(MediaStatus.AudioOnly, tile.Status);
-        Assert.Null(tile.Media.FramePath);
+        Assert.IsType<MediaStatus.AudioOnly>(tile.Status);
+        Assert.IsNotType<MediaStandIn.Frame>(tile.Media.StandIn(true, false));
         Assert.Equal("Morning pages, audio only", tile.AccessibleName);
     }
 
+    /// <summary>Tiles draw Core's MediaStandIn.Resolve (design §5.4.1); the shared cases are in cards.json.</summary>
     [Fact]
-    public void MediaTilesPickTheirStandIn()
+    public void MediaTilesDrawCoresStandIn()
     {
-        var words = new CaptionCard("k", new(["Honestly"], 0, CardSource.Transcript), "vox-bold", "{}", "en");
-        var none = new CaptionCard("n", CardText.None, "vox-bold", "{}", "en");
-        Assert.True(new MediaTile("a", null, words, MediaStatus.None).HasWords);
-        Assert.False(new MediaTile("a", null, none, MediaStatus.None).HasWords);
-        Assert.True(new MediaTile("a", null, none, MediaStatus.Transcribing).ShowsDots);
-        Assert.False(new MediaTile("a", "frame.jpg", none, MediaStatus.Transcribing).ShowsDots);
-        Assert.False(new MediaTile("a", null, words, MediaStatus.Transcribing).ShowsDots);
-        Assert.Equal("Interview take 3, demo project, no video", new MediaTile("a", null, words, MediaStatus.Demo).Name("Interview take 3"));
+        var words = new CaptionCard("k", new(CaptionCardSource.Transcript, [new CaptionCardWord("w1", "Honestly", "HONESTLY", false)], 0, 1, false, 0), "vox-bold", "{}", "en");
+        var none = new CaptionCard("n", CaptionCardText.None, "vox-bold", "{}", "en");
+        var transcribing = new MediaStatus.Transcribing(null, MediaTranscriptionStage.Transcribing);
+        // A decoded frame wins, even during the 300 ms hold; the hold is black; then the card.
+        Assert.IsType<MediaStandIn.Frame>(new MediaTile("a", "frame.jpg", words, new MediaStatus.None()).StandIn(true, true));
+        Assert.IsType<MediaStandIn.Black>(new MediaTile("a", "frame.jpg", words, new MediaStatus.None()).StandIn(false, true));
+        Assert.Equal(new MediaStandIn.Card(words.Text, "vox-bold"), new MediaTile("a", "frame.jpg", words, new MediaStatus.None()).StandIn(false, false));
+        // A frame still decoding, or no path at all, is no frame.
+        Assert.IsType<MediaStandIn.Black>(new MediaTile("a", null, words, new MediaStatus.None()).StandIn(true, true));
+        // No words: stage black, except the style's backdrop while transcribing.
+        Assert.IsType<MediaStandIn.Black>(new MediaTile("a", null, none, new MediaStatus.None()).StandIn(false, false));
+        Assert.Equal(new MediaStandIn.Card(none.Text, "vox-bold"), new MediaTile("a", null, none, transcribing).StandIn(false, false));
+        Assert.Equal(new MediaStandIn.Card(words.Text, "vox-bold"), new MediaTile("a", "frame.jpg", words, new MediaStatus.Missing()).StandIn(true, true));
+        Assert.Equal("Interview take 3, demo project, no video", new MediaTile("a", null, words, new MediaStatus.Demo()).Name("Interview take 3"));
+        Assert.Equal("Take, transcribing", new MediaTile("a", null, none, transcribing).Name("Take"));
         Assert.Equal("Take", MediaTile.Empty("a").Name("Take"));
     }
 

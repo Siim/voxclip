@@ -341,12 +341,17 @@ public sealed class ViewModelTests
         Assert.Equal(starts[3], starts[4]);
     }
 
+    /// <summary>Design §5: "1:37.7 / 2:26.0", with no scope prefix; the elapsed time stays inside the scope.</summary>
     [Theory]
-    [InlineData(0, 3, true, "Clip 0:00.0 / 0:03.0")]
-    [InlineData(4, 3, true, "Clip 0:03.0 / 0:03.0")]
-    [InlineData(7, 16, false, "Edit 0:07.0 / 0:16.0")]
-    public void PreviewClockNamesItsScope(double position, double duration, bool clip, string expected)
-        => Assert.Equal(expected, PreviewClockLabel.Format(position, duration, clip));
+    [InlineData(0, 3, "0:00.0", "0:03.0")]
+    [InlineData(4, 3, "0:03.0", "0:03.0")]
+    [InlineData(-1, 16, "0:00.0", "0:16.0")]
+    [InlineData(97.7, 146, "1:37.7", "2:26.0")]
+    public void PreviewClockReadsElapsedOverTotal(double position, double duration, string elapsed, string total)
+    {
+        Assert.Equal((elapsed, total), PreviewClockLabel.Parts(position, duration));
+        Assert.Equal($"{elapsed} / {total}", PreviewClockLabel.Format(position, duration));
+    }
 
     private static ComposeSnapshot Snapshot(EditorViewModel model)
     {

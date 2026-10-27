@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using VoxClip.App.Services;
+using VoxClip.Core.Domain.Captions;
 using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Services.LLM;
@@ -111,12 +112,13 @@ public sealed class RecentProject(string path, string name) : ObservableObject
     public int ClipCount => clipCount;
     public string Duration => loaded ? EditorViewModel.Duration(durationSeconds) : "";
 
-    /// <summary>The tile's status, in precedence order: unread, missing, unreadable, transcribing, then audio only.</summary>
-    public MediaStatus Status => !loaded ? (stalled && !unavailable ? MediaStatus.Loading : MediaStatus.None)
-        : missing ? MediaStatus.Missing : unreadable ? MediaStatus.Unreadable : Transcribing ? MediaStatus.Transcribing
-        : audioOnly ? MediaStatus.AudioOnly : MediaStatus.None;
-    /// <summary>The Home tile and sidebar thumbnail: a real frame, else the caption card, else stage black.</summary>
-    public MediaTile Media => new(Path, missing || unreadable || audioOnly ? null : FramePath, card, Status, Transcription);
+    /// <summary>The tile's Core media state (design §5.4.4), checked in order: unread, missing, unreadable, transcribing,
+    /// then audio only.</summary>
+    public MediaStatus Status => !loaded ? (stalled && !unavailable ? new MediaStatus.Loading() : new MediaStatus.None())
+        : missing ? new MediaStatus.Missing() : unreadable ? new MediaStatus.Unreadable() : Transcription is { } running ? running.Status
+        : audioOnly ? new MediaStatus.AudioOnly() : new MediaStatus.None();
+    /// <summary>The Home tile and sidebar thumbnail; Core picks the frame, the caption card or stage black.</summary>
+    public MediaTile Media => new(Path, FramePath, card, Status);
 
     /// <summary>Tile meta: "{duration} · {date} · {n} clips", with "Open now" and "No clips yet"; "Transcribing on this PC"
     /// beside Cancel; "Loading…" once the read stalls.</summary>

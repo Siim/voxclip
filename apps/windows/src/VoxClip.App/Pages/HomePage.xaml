@@ -9,18 +9,19 @@
         Padding="32,32,16,32" SizeChanged="GridSizeChanged" AutomationProperties.Name="Recent projects" TabNavigation="Once">
         <GridView.Header>
             <StackPanel Margin="0,0,16,16" Spacing="16">
-                <!-- First run: a 232-high hero instead of the drop bar, with no Recent header. -->
-                <Grid x:Name="Hero" Height="232" Visibility="{x:Bind ViewModel.IsFirstRun, Mode=OneWay}">
+                <!-- First run: a 232-high hero instead of the drop bar, with no Recent header, 150 below the top of the page as
+                     in the home-empty mockup (the grid's padding gives 32). -->
+                <Grid x:Name="Hero" Height="232" Margin="0,118,0,0" Visibility="{x:Bind ViewModel.IsFirstRun, Mode=OneWay}">
                     <Rectangle Fill="{ThemeResource VcBgSunkenBrush}" Stroke="{ThemeResource VcLineStrongBrush}" StrokeThickness="1.5" StrokeDashArray="4,2.7" RadiusX="10" RadiusY="10"/>
-                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8">
-                        <FontIcon Glyph="&#xE896;" FontSize="28" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"/>
-                        <TextBlock Text="Drop a talking-head video" Style="{ThemeResource SubtitleTextBlockStyle}" HorizontalAlignment="Center"/>
-                        <TextBlock Text="VoxClip transcribes it so you can cut by words, make clips and add captions." Foreground="{ThemeResource TextFillColorSecondaryBrush}" HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap"/>
-                        <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center" Margin="0,8,0,0">
+                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <FontIcon Glyph="&#xE896;" FontSize="32" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"/>
+                        <TextBlock Text="Drop a talking-head video" Style="{ThemeResource SubtitleTextBlockStyle}" HorizontalAlignment="Center" Margin="0,10,0,0"/>
+                        <TextBlock Text="VoxClip transcribes it so you can cut by words, make clips and add captions." Foreground="{ThemeResource TextFillColorSecondaryBrush}" HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" Margin="0,4,0,0"/>
+                        <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center" Margin="0,16,0,0">
                             <Button Content="Import video…" Style="{StaticResource AccentButtonStyle}" Height="40" Click="ImportClicked" AutomationProperties.Name="Import video, Ctrl+O" ToolTipService.ToolTip="Import video (Ctrl+O)"/>
                             <Button Content="Open project…" Height="40" Click="OpenClicked"/>
                         </StackPanel>
-                        <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Center">
+                        <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Center" Margin="0,12,0,0">
                             <FontIcon Glyph="&#xE72E;" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                             <TextBlock Text="MP4, MOV, M4V, MKV, WEBM · Media and edits stay on this PC." Style="{ThemeResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                         </StackPanel>
@@ -45,8 +46,9 @@
                     </Grid>
                 </Grid>
                 <!-- Startup problems (shared resources or settings) keep their own warning above the AI callout. -->
-                <InfoBar x:Name="StartupBar" IsOpen="False" Severity="Warning"/>
-                <InfoBar x:Name="AiBar" IsOpen="False" IsClosable="False" Severity="Informational">
+                <!-- A closed InfoBar stays in the layout at zero height and still takes the panel's spacing, so it collapses. -->
+                <InfoBar x:Name="StartupBar" IsOpen="False" Severity="Warning" Visibility="{x:Bind StartupBar.IsOpen, Mode=OneWay}"/>
+                <InfoBar x:Name="AiBar" IsOpen="False" IsClosable="False" Severity="Informational" Visibility="{x:Bind AiBar.IsOpen, Mode=OneWay}">
                     <InfoBar.ActionButton><Button x:Name="AiAction" Click="AiActionClicked"/></InfoBar.ActionButton>
                 </InfoBar>
                 <Grid Height="32" ColumnSpacing="8" Margin="0,8,0,0" Visibility="{x:Bind ViewModel.HasProjects, Mode=OneWay}">
@@ -82,7 +84,7 @@
                 <Grid Margin="0,0,16,16" Background="Transparent" AutomationProperties.HelpText="{x:Bind Description, Mode=OneWay}">
                     <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="64"/></Grid.RowDefinitions>
                     <!-- The media tile, design §5.4: frame, else caption card, else stage black, with its chip and progress line. -->
-                    <controls:MediaThumbnail CornerRadius="10" Surface="Home" Media="{x:Bind Media, Mode=OneWay}"/>
+                    <controls:MediaThumbnail CornerRadius="10" Surface="HomeTile" Media="{x:Bind Media, Mode=OneWay}"/>
                     <StackPanel Grid.Row="1" Padding="0,8,0,0">
                         <TextBlock Text="{x:Bind Title, Mode=OneWay}" Style="{ThemeResource BodyStrongTextBlockStyle}" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"/>
                         <!-- Cancel and Locate… sit on the meta line, 32 high (design §7). -->

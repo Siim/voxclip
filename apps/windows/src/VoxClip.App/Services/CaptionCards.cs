@@ -1,45 +1,32 @@
 using System.Collections.Frozen;
 using System.Globalization;
-using System.Text;
 using System.Text.Json;
 using SkiaSharp;
 using VoxClip.Core.Domain.Captions;
-using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Services.Settings;
 using VoxClip.Media.Captions;
 
 namespace VoxClip.App.Services;
 
-/// <summary>Where a caption card is drawn; each surface has its own text box and size range (design §5.4.3).</summary>
-public enum CardSurface { Home, Sidebar, ClipRow }
-
-/// <summary>Where a card's words come from (design §5.4.2).</summary>
-public enum CardSource { None, Transcript, Title }
-
-/// <summary>A card's words and its key word, which gets the style's active-word or emphasis treatment.</summary>
-public sealed record CardText(IReadOnlyList<string> Words, int KeyIndex, CardSource Source)
-{
-    /// <summary>No words: the take was never transcribed or every word in scope is cut.</summary>
-    public static CardText None { get; } = new([], 0, CardSource.None);
-}
-
-/// <summary>One take's or clip's caption card, ready to draw at any size: its words in the project's own caption style.
-/// <see cref="Key"/> covers everything the drawing depends on except the surface and pixel size.</summary>
-public sealed record CaptionCard(string Key, CardText Text, string StyleId, string Overrides, string? Language);
+/// <summary>One take's or clip's caption card, ready to draw at any size: Core's <see cref="CaptionCardText"/> for the scope,
+/// made in <see cref="StyleId"/> with the project's caption overrides. <see cref="Key"/> covers everything the drawing
+/// depends on except the surface and pixel size.</summary>
+public sealed record CaptionCard(string Key, CaptionCardText Text, string StyleId, string Overrides, string? Language);
 
 /// <summary>An opaque card bitmap: premultiplied BGRA, top-left origin, <c>Width × 4</c> bytes per row.</summary>
 public sealed record CardBitmap(byte[] Pixels, int Width, int Height);
 
-/// <summary>Caption cards (design §5.4): with no frame to show, a media stand-in shows the opening caption page of the take
-/// or clip in the project's own caption style. Cards are drawn by the export caption renderer (HarfBuzz layout and
-/// <see cref="SkiaCaptionRasterizer"/>), never as UI text, onto stage black or the style's dark preview backdrop. They need
+/// <summary>Caption cards (design §5.4): with no frame to show, a media stand-in shows the scope's opening caption page in
+/// the project's own caption style. Core's <see cref="CaptionCardText"/> decides the words, the key word, the line limit,
+/// the drop order and the drawn moment; this class only draws them, with the export caption renderer (HarfBuzz layout and
+/// <see cref="SkiaCaptionRasterizer"/>), never as UI text, onto stage black or the style's dark preview backdrop. Cards need
 /// only the project file and the bundled caption resources, and are kept in memory only, in an 8 MB LRU.</summary>
 internal sealed class CaptionCards(string sharedRoot)
 {
     private const long CacheBytes = 8L << 20;
-    private const double WordSeconds = 0.4;
-    private static readonly FrozenSet<string> EnglishFillers = new[] { "so", "okay", "ok", "well", "yeah", "like" }.ToFrozenSet(StringComparer.Ordinal);
+    /// <summary>Highlight, the card style when the project's captions and the default style are both off (design §5.4.2).</summary>
+    private const string FallbackStyleId = "vox-highlight";
     private readonly Lazy<Library> library = new(() => Library.Load(sharedRoot));
     private readonly SemaphoreSlim renders = new(2);
     private readonly object sync = new();
@@ -47,63 +34,27 @@ internal sealed class CaptionCards(string sharedRoot)
     private readonly LinkedList<(string Key, CardBitmap Bitmap)> recency = new();
     private long cachedBytes;
 
-    /// <summary>The card for the edited take (<paramref name="clipId"/> null) or one of its clips. A project with captions
-    /// off, or an unknown style, uses <paramref name="defaultStyleId"/>.</summary>
-    internal CaptionCard Card(Project project, string? clipId, string title, bool wordsVisible, string defaultStyleId)
+    /// <summary>The card for the edited take (<paramref name="clipId"/> null) or one stored clip, in the project's caption
+    /// style; with captions off, or a style this build doesn't bundle, in <paramref name="defaultStyleId"/>, then Highlight.
+    /// <paramref name="wordsVisible"/> is <c>general.showPlaceholderWords</c>.</summary>
+    internal CaptionCard Card(Project project, string? clipId, bool wordsVisible, string defaultStyleId)
     {
-        var styles = library.Value.Styles;
-        var style = styles.Find(project.Captions.StyleId) ?? styles.Find(defaultStyleId) ?? styles.Styles.FirstOrDefault();
-        if (style is null) return new("", CardText.None, "", "{}", null);
-        var own = style.Id == project.Captions.StyleId && project.Captions.Overrides.ValueKind == JsonValueKind.Object;
-        var overrides = own ? project.Captions.Overrides.GetRawText() : "{}";
-        var language = Language(project.Transcript?.Language);
-        var text = Text(project, clipId, title, wordsVisible, style, library.Value.Stopwords.GetValueOrDefault(language ?? ""));
-        var key = string.Join('\u001F', style.Id, overrides, language ?? "", text.Source, text.KeyIndex.ToString(CultureInfo.InvariantCulture), string.Join('\u001E', text.Words));
+        var resources = library.Value;
+        var style = resources.Styles.Find(project.Captions.StyleId) ?? resources.Styles.Find(defaultStyleId) ?? resources.Styles.Find(FallbackStyleId);
+        if (style is null) return new("", CaptionCardText.None, "", "{}", null);
+        var text = CaptionCardText.Create(project, clipId is null ? CaptionCardScope.FullTake : CaptionCardScope.Clip(clipId), style, wordsVisible, resources.Shaper.Resources);
+        // Core applies the project's overrides to whichever style the card uses, so the drawing does too.
+        var overrides = project.Captions.Overrides.ValueKind == JsonValueKind.Object ? project.Captions.Overrides.GetRawText() : "{}";
+        var language = project.Transcript?.Language;
+        var key = string.Join('\u001F', style.Id, overrides, language ?? "", text.Source, text.KeyIndex.ToString(CultureInfo.InvariantCulture),
+            text.StyleMaxLines.ToString(CultureInfo.InvariantCulture), text.Time.ToString("R", CultureInfo.InvariantCulture),
+            string.Join('\u001E', text.Words.Select(word => word.Id + '\u001D' + word.Text)));
         return new(key, text, style.Id, overrides, language);
-    }
-
-    /// <summary>The card's words (design §5.4.2): the first caption page of the scope, laid out over the edit plan so cut
-    /// words and pauses are out and corrections are in, at the style's own words per page capped at 4. Leading fillers are
-    /// skipped, pages of only fillers or stopwords are skipped and trailing stopwords are trimmed; a language with no
-    /// stopword list uses its first page as it is. The key word is the first number, otherwise the first content word. With
-    /// words hidden, the title stands in under the same key rule. This one function stands in for the shared Core
-    /// <c>CaptionCardText</c> (track opus-media-standins) and is replaced by it when that lands.</summary>
-    internal static CardText Text(Project project, string? clipId, string title, bool wordsVisible, CaptionStyle style, IReadOnlySet<string>? stopwords)
-    {
-        IReadOnlyList<CaptionWord> words;
-        try { words = KeptWords(project, clipId); }
-        catch (Exception exception) when (exception is ArgumentException or InvalidOperationException or KeyNotFoundException or IndexOutOfRangeException)
-        {
-            // An edit list that no longer matches its transcript draws no card; the editor reports it when the project opens.
-            return CardText.None;
-        }
-        if (words.Count == 0) return CardText.None;
-        var language = Language(project.Transcript?.Language);
-        bool Stop(string word) => IsStop(word, language, stopwords);
-        if (!wordsVisible)
-        {
-            var titleWords = title.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Take(8).ToArray();
-            return titleWords.Length == 0 ? CardText.None : new(titleWords, KeyIndex(titleWords, Stop), CardSource.Title);
-        }
-        var lead = 0;
-        while (lead < words.Count - 1 && IsFiller(words[lead].Text, language)) lead++;
-        var window = words.Skip(lead).Take(48).ToArray();
-        var measured = window.Select((word, index) => new MeasuredCaptionWord(index, word.Id, word.Text, word.Text, word.Start, word.End, 0, 0, [], 0, false, null, null, null)).ToArray();
-        var pages = CaptionEngine.PageWords(measured, style.Layout with { MaxWords = Math.Clamp(style.Layout.MaxWords, 1, 4) });
-        foreach (var page in pages)
-        {
-            var texts = page.Select(index => window[index].Text).ToList();
-            if (stopwords is not null && texts.All(Stop)) continue;
-            while (texts.Count > 1 && Stop(texts[^1])) texts.RemoveAt(texts.Count - 1);
-            return new(texts, KeyIndex(texts, Stop), CardSource.Transcript);
-        }
-        var first = pages[0].Select(index => window[index].Text).ToArray();
-        return new(first, KeyIndex(first, Stop), CardSource.Transcript);
     }
 
     /// <summary>Draw <paramref name="card"/> for <paramref name="surface"/> at <paramref name="width"/> × <paramref name="height"/>
     /// device pixels: its words, or only the style's backdrop when it has none. Null when no caption style is bundled.</summary>
-    internal async Task<CardBitmap?> RenderAsync(CaptionCard card, CardSurface surface, int width, int height, CancellationToken ct)
+    internal async Task<CardBitmap?> RenderAsync(CaptionCard card, CaptionCardSurface surface, int width, int height, CancellationToken ct)
     {
         if (width < 1 || height < 1 || card.StyleId.Length == 0) return null;
         var key = string.Create(CultureInfo.InvariantCulture, $"{card.Key}\n{surface}\n{width}x{height}");
@@ -126,39 +77,40 @@ internal sealed class CaptionCards(string sharedRoot)
         finally { renders.Release(); }
     }
 
-    private async Task<CardBitmap?> DrawAsync(CaptionCard card, CardSurface surface, int width, int height, CancellationToken ct)
+    private async Task<CardBitmap?> DrawAsync(CaptionCard card, CaptionCardSurface surface, int width, int height, CancellationToken ct)
     {
         var resources = library.Value;
         if (resources.Styles.Find(card.StyleId) is not { } style) return null;
         var declared = resources.Backgrounds.GetValueOrDefault(style.Id);
-        if (card.Text.Words.Count == 0) return Compose(width, height, Backdrop(style, declared), null);
+        var text = card.Text;
+        if (text.Words.Count == 0) return Compose(width, height, Backdrop(style, declared), null);
         var frame = new PixelSize(width, height);
-        var stopwords = resources.Stopwords.GetValueOrDefault(card.Language ?? "");
-        bool Stop(string word) => IsStop(word, card.Language, stopwords);
-        var words = card.Text.Words.ToList();
-        // The first layout resolves the project's overrides and the surface's aspect. The card then sets its own size,
-        // position and plates on that resolved style and lays out again with no overrides left to apply.
+        // The first layout resolves the project's overrides and the surface's aspect, so a clip row reads the style's 9:16
+        // caption height. The card then sets its own size, position and plates on that resolved style and lays out again
+        // with no overrides left to apply.
         var captions = new ProjectCaptions(card.StyleId, Parse(card.Overrides), null, new Dictionary<string, CaptionPosition>());
-        var resolved = (await CaptionEngine.BuildAsync(Request(style, captions, frame, words, card.Language, card.Text.KeyIndex), resources.Shaper, null, ct).ConfigureAwait(false)).Style;
+        var resolved = (await CaptionEngine.BuildAsync(new(style, captions, frame, text.LayoutWords, card.Language, text.Duration) { WordHints = text.LayoutHints },
+            resources.Shaper, null, ct).ConfigureAwait(false)).Style;
         var backdrop = Backdrop(resolved, declared);
-        var fit = Fit.For(surface, resolved, width, height);
+        var fit = Fit.For(surface, resolved, width, height, Math.Max(1, text.MaxLines(surface)));
         var restyled = Restyle(resolved, fit, frame, backdrop is null);
         var plain = new ProjectCaptions(card.StyleId, default, null, new Dictionary<string, CaptionPosition>());
         var reference = resolved.Font.SizeRef switch { CaptionFontSizeRefValue.Height => height, CaptionFontSizeRefValue.Width => width, _ => Math.Min(width, height) };
-        while (true)
+        for (var attempt = text; ;)
         {
-            var keyIndex = KeyIndex(words, Stop);
-            Task<CaptionTrack> Layout(double px) => CaptionEngine.BuildAsync(Request(restyled with
+            var words = attempt;
+            Task<CaptionTrack> Layout(double px) => CaptionEngine.BuildAsync(new(restyled with
             {
                 Font = restyled.Font with { SizeSh = px / reference, SizeScale = 1 },
-                Layout = restyled.Layout with { MaxWords = words.Count }
-            }, plain, frame, words, card.Language, keyIndex), resources.Shaper, null, ct);
+                Layout = restyled.Layout with { MaxWords = words.Words.Count }
+            }, plain, frame, words.LayoutWords, card.Language, words.Duration) { WordHints = words.LayoutHints }, resources.Shaper, null, ct);
             bool Fits(CaptionTrack track) => track.Pages.Count == 1 && track.Pages[0].Words.Count == track.Words.Count && !track.Pages[0].Shrunk
                 && track.Pages[0].Visual.Width <= fit.BoxWidth + 0.5 && track.Pages[0].Visual.Height <= fit.BoxHeight + 0.5;
             // The largest size on the half-pixel grid that fits the text box within the line limit (design §5.4.3).
             var steps = (int)Math.Floor((fit.MaxPx - fit.MinPx) / fit.StepPx + 1e-9);
             var best = await Layout(fit.MaxPx - steps * fit.StepPx).ConfigureAwait(false);
-            if (Fits(best) || words.Count == 1)
+            var shorter = words.DroppingLastWord();
+            if (Fits(best) || shorter is null)
             {
                 for (int low = 0, high = steps; low < high;)
                 {
@@ -169,49 +121,52 @@ internal sealed class CaptionCards(string sharedRoot)
                 }
                 if (!Fits(best)) best = await Layout(fit.MinPx).ConfigureAwait(false);
                 if (best.Pages.Count == 0) return Compose(width, height, backdrop, null);
-                var overlay = await resources.Rasterizer.RenderAsync(new(best, keyIndex * WordSeconds + 0.3, ReduceMotion: true, Scale: 1), ct).ConfigureAwait(false);
+                // Core's drawn moment: the key word active, or a reveal style's last word (design §5.4.2). A card never animates.
+                var overlay = await resources.Rasterizer.RenderAsync(new(best, words.Time, ReduceMotion: true, Scale: 1), ct).ConfigureAwait(false);
                 return Compose(width, height, backdrop, overlay);
             }
-            // Nothing fits at the smallest size: drop words from the end with any trailing stopwords. Never an ellipsis.
-            words.RemoveAt(words.Count - 1);
-            while (words.Count > 1 && Stop(words[^1])) words.RemoveAt(words.Count - 1);
+            // Nothing fits at the smallest size: Core's next shorter card drops the last word and any weak words before it.
+            // Never an ellipsis.
+            attempt = shorter;
         }
     }
 
     /// <summary>A surface's text box and size range in device pixels (design §5.4.3), scaled from the Windows sizes.</summary>
     private sealed record Fit(double BoxWidth, double BoxHeight, double Y, double MaxPx, double MinPx, double StepPx, int Lines, bool Plates)
     {
-        internal static Fit For(CardSurface surface, CaptionStyle style, int width, int height)
+        internal static Fit For(CaptionCardSurface surface, CaptionStyle style, int width, int height, int lines)
         {
-            var lines = Math.Clamp(style.Layout.MaxLines, 1, 2);
+            var plates = surface.DrawsPlates();
             switch (surface)
             {
-                case CardSurface.Home:
+                case CaptionCardSurface.HomeTile:
                     var home = width / 226.0;
-                    return new(176 * home, 71 * home, 0.5, 24 * home, 13 * home, 0.5 * home, lines, true);
-                case CardSurface.ClipRow:
+                    return new(176 * home, 71 * home, 0.5, 24 * home, 13 * home, 0.5 * home, lines, plates);
+                case CaptionCardSurface.HeaderChip:
+                    var chip = width / 64.0;
+                    return new(58 * chip, 24 * chip, 0.5, 8 * chip, 5 * chip, 0.5 * chip, lines, plates);
+                case CaptionCardSurface.ClipRow:
                     // Like a tiny 9:16 export frame: at the style's caption height, clamped to 0.60–0.78.
                     var clip = width / 27.0;
-                    return new(width - 4 * clip, 15 * clip, Math.Clamp(style.Position.Y, 0.60, 0.78), 9 * clip, 4 * clip, 0.5 * clip, lines, false);
+                    return new(width - 4 * clip, 15 * clip, Math.Clamp(style.Position.Y, 0.60, 0.78), 9 * clip, 4 * clip, 0.5 * clip, lines, plates);
                 default:
                     var row = height / 18.0;
-                    return new(width - 4 * row, height - 4 * row, 0.5, 10 * row, 4 * row, 0.5 * row, lines, false);
+                    return new(width - 4 * row, height - 4 * row, 0.5, 10 * row, 4 * row, 0.5 * row, lines, plates);
             }
         }
     }
 
-    /// <summary>The card's copy of a resolved style: centred in its text box, revealed whole, with no motion. At sidebar
-    /// sizes plates are not drawn, a boxed key word takes its box colour and dark text meant for a light plate turns white.
-    /// On stage black, near-black strokes and shadows are not drawn: they would only paint black on black.</summary>
+    /// <summary>The card's copy of a resolved style: centred in its text box with no page breaks. Reveal and motion stay as
+    /// the style has them, because the card is the style's own frame at Core's drawn moment. At sidebar sizes plates are not
+    /// drawn: a boxed word takes its box colour as its text colour and dark text meant for a light plate turns white
+    /// (design §5.4.3). On stage black, near-black strokes and shadows are not drawn: they would only paint black on black.</summary>
     private static CaptionStyle Restyle(CaptionStyle style, Fit fit, PixelSize frame, bool onBlack)
     {
         var fill = !fit.Plates && style.Box is not null && style.Fill is SolidPaint solid && Luminance(solid.Color, style) < 0.05 ? new SolidPaint("#FFFFFF") : style.Fill;
-        CaptionWordState? Unboxed(CaptionWordState? state) => state?.Box is { } box ? state with { Box = null, Fill = new SolidPaint(Legible(box.Color, style)) } : state;
+        static CaptionWordState? Unboxed(CaptionWordState? state) => state?.Box is { } box ? state with { Box = null, Fill = new SolidPaint(box.Color) } : state;
         return style with
         {
             Aspects = null,
-            Reveal = null,
-            Animation = null,
             Position = style.Position with { X = 0.5, Y = fit.Y, AnchorX = CaptionStylePositionAnchorXValue.Center, AnchorY = CaptionStylePositionAnchorYValue.Center },
             Layout = style.Layout with { MaxLines = fit.Lines, MaxLineWidthW = fit.BoxWidth / frame.Width, BreakOnSentence = false, BreakOnComma = false, BreakOnGapSec = null, MaxPageSec = null },
             Fill = fill,
@@ -279,51 +234,10 @@ internal sealed class CaptionCards(string sharedRoot)
         }
     }
 
-    private static IReadOnlyList<CaptionWord> KeptWords(Project project, string? clipId)
-    {
-        if (project.Transcript is null || EditingEngine.FromProject(project) is not { } state) return [];
-        if (clipId is not null && state.Clips.All(clip => clip.Id != clipId)) return [];
-        state = state with { ActiveClipId = clipId };
-        var duration = project.Media.Source.DurationSeconds;
-        var plan = EditingEngine.BuildEditPlan(EditingEngine.BuildSegments(state, duration), duration, 48000, state.PauseKeepSeconds);
-        return EditingEngine.CaptionWords(state, plan);
-    }
-
-    private static CaptionLayoutRequest Request(CaptionStyle style, ProjectCaptions captions, PixelSize frame, IReadOnlyList<string> words, string? language, int keyIndex) =>
-        new(style, captions, frame, words.Select((text, index) => new CaptionWord($"card-{index}", text, index * WordSeconds, index * WordSeconds + 0.35)).ToArray(),
-            language, words.Count * WordSeconds + 1)
-        { WordHints = words.Select((_, index) => new CaptionWordHints(Emphasis: index == keyIndex)).ToArray() };
-
     private static JsonElement Parse(string json)
     {
         using var document = JsonDocument.Parse(json);
         return document.RootElement.Clone();
-    }
-
-    /// <summary>"en-US" → "en"; null when the transcript names no language.</summary>
-    internal static string? Language(string? tag) => string.IsNullOrWhiteSpace(tag) ? null : tag.Split('-', '_')[0].Trim().ToLowerInvariant();
-
-    private static int KeyIndex(IReadOnlyList<string> words, Func<string, bool> stop)
-    {
-        for (var index = 0; index < words.Count; index++) if (words[index].Any(char.IsDigit)) return index;
-        for (var index = 0; index < words.Count; index++) if (!stop(words[index])) return index;
-        return 0;
-    }
-
-    private static bool IsStop(string word, string? language, IReadOnlySet<string>? stopwords)
-    {
-        if (stopwords is null) return false;
-        var key = Normalize(word);
-        return stopwords.Contains(key) || IsFiller(word, language) || key.Length < 2 && !key.Any(char.IsDigit);
-    }
-
-    private static bool IsFiller(string word, string? language) => EditingAlgorithms.IsFillerText(word.Trim()) || language == "en" && EnglishFillers.Contains(Normalize(word));
-
-    private static string Normalize(string word)
-    {
-        var builder = new StringBuilder(word.Length);
-        foreach (var character in word.ToLowerInvariant()) if (char.IsLetterOrDigit(character)) builder.Append(character);
-        return builder.ToString();
     }
 
     /// <summary>WCAG relative luminance of a caption colour, ignoring its alpha.</summary>
@@ -334,20 +248,10 @@ internal sealed class CaptionCards(string sharedRoot)
         return 0.2126 * Linear(r) + 0.7152 * Linear(g) + 0.0722 * Linear(b);
     }
 
-    /// <summary>A box colour used as text on black: dark colours move 45% toward white (violet #7C3AED reads as #B793F5).</summary>
-    private static string Legible(string color, CaptionStyle style)
+    private sealed record Library(CaptionStyleLibrary Styles, FrozenDictionary<string, string> Backgrounds, HarfBuzzGlyphShaper Shaper, SkiaCaptionRasterizer Rasterizer)
     {
-        var (r, g, b, _) = CaptionMath.ParseColor(color, style);
-        if (Luminance(color, style) >= 0.18) return string.Create(CultureInfo.InvariantCulture, $"#{r:X2}{g:X2}{b:X2}");
-        static byte Lift(byte value) => (byte)Math.Round(value + (255 - value) * 0.45);
-        return string.Create(CultureInfo.InvariantCulture, $"#{Lift(r):X2}{Lift(g):X2}{Lift(b):X2}");
-    }
-
-    private sealed record Library(CaptionStyleLibrary Styles, FrozenDictionary<string, string> Backgrounds, FrozenDictionary<string, FrozenSet<string>> Stopwords,
-        HarfBuzzGlyphShaper Shaper, SkiaCaptionRasterizer Rasterizer)
-    {
-        /// <summary>The bundled styles, the preview backgrounds their files declare (the decoded style fills in a default)
-        /// and the stopword lists by language.</summary>
+        /// <summary>The bundled styles, the preview backgrounds their files declare (the decoded style fills in a default),
+        /// and the renderer. The shaper's resource snapshot is the one Core makes the cards' words with.</summary>
         internal static Library Load(string root)
         {
             var backgrounds = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -359,12 +263,7 @@ internal sealed class CaptionCards(string sharedRoot)
                     && preview.TryGetProperty("background", out var background) && background.GetString() is { } value)
                     backgrounds[styleId] = value;
             }
-            var stopwords = new Dictionary<string, FrozenSet<string>>(StringComparer.Ordinal);
-            using (var document = JsonDocument.Parse(File.ReadAllText(Path.Combine(root, "caption-styles", "stopwords.json"))))
-                foreach (var language in document.RootElement.GetProperty("languages").EnumerateObject())
-                    stopwords[language.Name] = language.Value.EnumerateArray().Select(item => item.GetString() ?? "").ToFrozenSet(StringComparer.Ordinal);
-            return new(CaptionStyleLibrary.Load(root), backgrounds.ToFrozenDictionary(StringComparer.Ordinal), stopwords.ToFrozenDictionary(StringComparer.Ordinal),
-                new HarfBuzzGlyphShaper(root), new SkiaCaptionRasterizer(root));
+            return new(CaptionStyleLibrary.Load(root), backgrounds.ToFrozenDictionary(StringComparer.Ordinal), new HarfBuzzGlyphShaper(root), new SkiaCaptionRasterizer(root));
         }
     }
 }

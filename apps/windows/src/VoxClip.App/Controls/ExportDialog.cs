@@ -27,18 +27,21 @@ internal sealed class ExportDialog : ContentDialog
     private readonly StackPanel exportedFiles = Ui.Stack(4);
     private string captionTarget = "full";
     private readonly CancellationTokenSource lifetime = new();
+    /// <summary>Export clip… chooses only this clip (design §2 step 7); null offers the kept clips.</summary>
+    private readonly string? onlyClip;
     private bool running;
     private string? exported;
 
-    internal ExportDialog(MainWindow owner, EditorViewModel model, bool demo, Func<CancellationToken, EditState?, Task<ComposeSnapshot>> snapshot, bool preferSelectedClips = false)
+    internal ExportDialog(MainWindow owner, EditorViewModel model, bool demo, Func<CancellationToken, EditState?, Task<ComposeSnapshot>> snapshot, string? clipId = null)
     {
         this.owner = owner; this.model = model; this.demo = demo; this.snapshot = snapshot;
+        onlyClip = model.Clips.Any(clip => clip.Id == clipId) ? clipId : null;
         Title = "Export"; PrimaryButtonText = "Export"; CloseButtonText = "Cancel"; DefaultButton = ContentDialogButton.Primary;
         var body = Ui.Stack(16); body.MinWidth = 400;
         body.Children.Add(Ui.Text("Your source stays untouched. Captions are burned into the exported video.", "HelperText"));
         aspect = Ui.Radios("Aspect", ["Source", "16:9", "9:16", "1:1"], (int)model.Project.Export.Aspect);
         quality = Ui.Radios("Quality", ["Standard", "High"], (int)model.Project.Export.Quality);
-        target = Ui.Radios("Export scope", ["Full edit", $"Selected clips ({model.SelectedClipCount})"], preferSelectedClips ? 1 : 0);
+        target = Ui.Radios("Export scope", ["Full edit", $"Selected clips ({(onlyClip is null ? model.SelectedClipCount : 1)})"], onlyClip is null ? 0 : 1);
         srt.IsChecked = model.Project.Export.Srt;
         folder.Text = model.Project.Export.Folder ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyVideos), "VoxClip");
         styles = Ui.Choice("Caption style", []);
@@ -83,7 +86,7 @@ internal sealed class ExportDialog : ContentDialog
         {
             if (model.IsLeaving) return;
             if (!Path.IsPathFullyQualified(folder.Text)) { Ui.Show(notice, "Choose an absolute destination folder.", InfoBarSeverity.Warning); return; }
-            var selectedClips = target.SelectedIndex == 1 ? model.Clips.Where(clip => clip.Selected).ToArray() : [];
+            var selectedClips = target.SelectedIndex == 1 ? model.Clips.Where(clip => onlyClip is null ? clip.Selected : clip.Id == onlyClip).ToArray() : [];
             if (target.SelectedIndex == 1 && selectedClips.Length == 0) { Ui.Show(notice, "Choose clips to export."); return; }
             running = true; model.Busy = true; App.Services.BusyOperations++; IsPrimaryButtonEnabled = false; progress.Visibility = Visibility.Visible;
             try

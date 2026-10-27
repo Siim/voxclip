@@ -128,8 +128,8 @@ public sealed partial class SettingsWindow : Window
         textSize.ValueChanged += (_, _) => Save("general.transcriptTextSize", textSize.Value); AddSetting(textSize);
         var confidence = new ToggleSwitch { Header = "Mark low-confidence words", IsOn = App.Services.Get("general.showLowConfidence", false) };
         confidence.Toggled += (_, _) => Save("general.showLowConfidence", confidence.IsOn); AddSetting(confidence);
-        // Caption cards (design §5.4.2). The key is not in the shared settings schema yet; unknown keys survive saves.
-        var placeholders = new ToggleSwitch { Header = "Show transcript words on placeholders", IsOn = App.Services.Get("general.showPlaceholderWords", true) };
+        // Caption cards (design §5.4.2).
+        var placeholders = new ToggleSwitch { Header = "Show transcript words on placeholders", IsOn = App.Services.ShowPlaceholderWords };
         placeholders.Toggled += (_, _) => Save("general.showPlaceholderWords", placeholders.IsOn); AddSetting(placeholders);
         const string placeholderHelp = "When off, placeholders show the project title instead of its first words.";
         AutomationProperties.SetHelpText(placeholders, placeholderHelp);

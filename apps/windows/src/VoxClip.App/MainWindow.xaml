@@ -78,7 +78,7 @@
                     </NavigationViewItem.KeyboardAccelerators>
                     <NavigationViewItem.ContextFlyout>
                         <MenuFlyout>
-                            <MenuFlyoutItem Text="Export kept clips…" Tag="{x:Bind ClipId}" Click="ExportClipsClicked"/>
+                            <MenuFlyoutItem Text="Export clip…" Tag="{x:Bind ClipId}" Click="ExportClipClicked"/>
                             <MenuFlyoutItem Text="Rename…" KeyboardAcceleratorTextOverride="F2" Tag="{x:Bind ClipId}" Click="RenameClipClicked"/>
                             <MenuFlyoutItem Text="Copy text" Tag="{x:Bind ClipId}" Click="CopyClipTextClicked"/>
                             <MenuFlyoutSeparator/>
