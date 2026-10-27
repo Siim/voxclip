@@ -56,7 +56,7 @@ import VoxClipMedia
         model.findTask?.cancel()
         running = true; error = nil
         model.workTask = Task {
-            defer { running = false; model.progress = nil }
+            defer { running = false; model.progress = nil; model.progressFraction = nil; model.progressStage = nil }
             do {
                 let terms = keyterms.split(whereSeparator: { $0 == "," || $0.isNewline }).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
                 guard terms.count <= 100, !terms.contains(where: { $0.count > 50 }) else { error = "Use at most 100 keyterms, each up to 50 characters."; return }
@@ -64,7 +64,7 @@ import VoxClipMedia
                 switch engine { case "apple": adapter = AppleSpeechTranscriber(); case "elevenlabs": adapter = await ElevenLabsTranscriber(keys: model.app.secrets, settings: model.app.settings, logger: model.app.log); default: adapter = WhisperCppTranscriber(logger: model.app.log) }
                 let local = engine == "local" ? try await model.app.modelLibrary.localModel(language: language) : nil
                 let plan = TranscriptionPlan(engine: adapter.engine, model: local?.id, language: language == "auto" ? .auto : .forced(language), options: TranscriptionOptions(diarize: speakers != "off", numSpeakers: Int(speakers), keyterms: terms))
-                model.progress = "Reading video…"
+                model.progress = "Reading video…"; model.progressStage = .readingVideo
                 switch await adapter.readiness(for: plan) {
                 case .ready: break
                 case .needsKey(let provider): error = "Add your \(provider == "elevenlabs" ? "ElevenLabs" : provider) key in Settings to use it."; return
@@ -76,7 +76,7 @@ import VoxClipMedia
                 case .unavailable: error = "Transcription is not available in this build (mac-speech). Your video and edits are still here."; return
                 }
                 if remember { model.app.set("transcription.language", .string(language)) }
-                model.progress = "Extracting audio…"
+                model.progress = "Extracting audio…"; model.progressStage = .extractingAudio
                 let audio = try await CacheStore(locations: model.app.locations).extractAudio(sourceURL: model.sourceURL, contentKey: model.project.media.source.contentKey, durationSeconds: model.sourceDuration, using: AVAudioExtractor()) { _ in }
                 let service = TranscriptionService()
                 let watch = Task {
@@ -85,6 +85,8 @@ import VoxClipMedia
                     for await value in await service.progress() {
                         guard !Task.isCancelled else { return }
                         progress = value
+                        model.progressFraction = value.fraction
+                        model.progressStage = value.stage == .aligning ? .aligning : .transcribing
                         let percent = Int((value.fraction ?? 0) * 100)
                         switch value.stage {
                         case .preparing: model.progress = "Preparing the speech model…"
@@ -115,7 +117,7 @@ import VoxClipMedia
 extension EditorModel {
     func replaceTranscript(_ transcript: Transcript) {
         findTask?.cancel()
-        clipAnswer = nil
+        fallbackNote = nil; focusedSuggestion = nil
         var next = project
         next.replaceTranscript(transcript)
         replace(next, name: "Transcribe video")

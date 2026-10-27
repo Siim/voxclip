@@ -150,6 +150,17 @@ actor RegressionSettingsStore: SettingsStore {
         let resolvedProject = movedDocument.project
         _ = try await editor.resolveMediaIdentity()
         check("revalidating unchanged media does not change the project", movedDocument.project == resolvedProject && movedDocument.isDocumentEdited)
+        // A Save As or Move that lands while a reload checks the media rewrites only the
+        // relative path; the check still completes and the media stays resolved.
+        editor.mediaResolved = false
+        let checking = Task { try await editor.resolveMediaIdentity() }
+        await Task.yield()
+        var rewritten = movedDocument.project
+        rewritten.media.source.relativePath = "elsewhere/source.mov"
+        movedDocument.replaceProject(rewritten)
+        let checked = (try? await checking.value) != nil
+        check("a relative path rewritten during the media check keeps the media resolved (checked \(checked), resolved \(editor.mediaResolved))", checked && editor.mediaResolved)
+        movedDocument.replaceProject(resolvedProject)
         let absolute = scratch.appendingPathComponent("absolute.mov")
         try Data(contentsOf: url).write(to: absolute)
         defer { try? FileManager.default.removeItem(at: absolute) }
@@ -169,6 +180,12 @@ actor RegressionSettingsStore: SettingsStore {
         let unresolved = VoxClipDocument(project: movedProject)
         unresolved.adoptOpenedLocation(projectURL)
         check("unresolved media retains its relative relink hint on save", try unresolved.snapshot(contentType: .voxclipProject).media.source.relativePath == reference.relativePath)
+        // An edited document left open would autosave into the removed scratch folder, and
+        // AppKit's app-modal error would then block every later check's menu actions.
+        for leftover in [document, longDocument, opened, movedDocument, unresolved] {
+            leftover.updateChangeCount(.changeCleared)
+            leftover.close()
+        }
         return results
     }
 
@@ -206,8 +223,8 @@ actor RegressionSettingsStore: SettingsStore {
         model.apply(.restoreSelection(ids: []), name: "Empty selection")
         check("legitimate reducer no-ops are silent", model.error == nil && model.project == project)
         check("word index supports constant-time scope lookups", model.words.enumerated().allSatisfy { model.index($0.element.id) == $0.offset })
-        check("singular summary copy", EditorModel.summaryText(EditSummary(cutWordCount: 1, cutPauseCount: 1, hasEdits: true)) == "1 word and 1 pause cut.")
-        check("timecodes round across minute and hour boundaries", timecode(59.96) == "01:00.0" && timecode(3599.96) == "01:00:00.0" && timecode(.nan) == "00:00.0")
+        check("timecodes use m:ss.d and h:mm:ss.d", timecode(16.6) == "0:16.6" && timecode(3723.4) == "1:02:03.4")
+        check("timecodes round across minute and hour boundaries", timecode(59.96) == "1:00.0" && timecode(3599.96) == "1:00:00.0" && timecode(.nan) == "0:00.0")
         model.plan = EditPlan(sampleRate: 48_000, totalSamples: 48_000, cuts: [MediaInterval(startSample: 0, endSample: 48_000)], kept: [])
         do { _ = try await model.renderRequest(); check("zero-sample export uses everythingCut", false) }
         catch { check("zero-sample export uses everythingCut", error as? VoxClipError == .everythingCut) }

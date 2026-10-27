@@ -4,17 +4,13 @@ import AVFoundation
 import VoxClipCore
 import VoxClipMedia
 
-enum WorkspaceLocation: String, CaseIterable { case home = "Home", transcript = "Transcript", clips = "Clips" }
-
 @MainActor @Observable public final class EditorModel {
     let document: VoxClipDocument
     let app: AppModel
-    var showInspector = false
-    var sidebarVisibility: NavigationSplitViewVisibility = .all
-    var windowWidth = 1280.0
-    var location: WorkspaceLocation = .transcript
-    var importProgress: String?
-    var importError: String?
+    var showFindClips = false
+    var findClipsAnchor = FindClipsAnchor.toolbar
+    /// The sidebar's "Choose how VoxClip finds clips…" callout (no connector chosen).
+    var showAISetup = false
     var selectedWordIDs: Set<String> = []
     var selectedPauseIDs: Set<String> = []
     var previewStop: Double?
@@ -27,20 +23,33 @@ enum WorkspaceLocation: String, CaseIterable { case home = "Home", transcript = 
     var editedTimeline = false
     var findVisible = false
     var query = ""
-    var textSize = 17.0
+    var textSize = DesignValues.transcriptTextSize
     var error: String?
     var previewError: String?
     var captionError: String?
     var progress: String?
+    /// Transcription's completed fraction while `progress` shows a percentage.
+    var progressFraction: Double?
+    /// Transcription's stage while it runs, for the media chips (design §5.4.8).
+    var progressStage: MediaTranscriptionStage?
+    /// The running transcription as a media status (design §5.4.4 d), or nil.
+    var transcriptionStatus: MediaStatus? {
+        guard progress != nil, let progressStage else { return nil }
+        return .transcribing(fraction: progressStage == .transcribing ? progressFraction : nil, stage: progressStage)
+    }
     var showExport = false
     var showTranscribe = false
-    var showShortcuts = false
     var correctionID: String?
     var correctionText = ""
     var preset = ClipPresetID.best
     var instruction = ""
     var clipError: String?
-    var clipAnswer: String?
+    /// "Answered by {fallback} because {model} was busy." after a Find Clips run that
+    /// used the fallback model (ai.md §4.3), shown under the Suggested header.
+    var fallbackNote: String?
+    /// The suggestion that has keyboard focus after Find Clips, without being selected
+    /// (design §6.2): Return keeps it and ⌫ dismisses it.
+    var focusedSuggestion: String?
     var finding = false
     var exportProgress: ExportProgress?
     var exports: [ExportResult] = []
@@ -55,6 +64,22 @@ enum WorkspaceLocation: String, CaseIterable { case home = "Home", transcript = 
     var exportStartedAt: Date?
     var sourceURL: URL { URL(fileURLWithPath: project.media.source.absolutePath) }
     var mediaResolved = false { didSet { document.setMediaResolved(mediaResolved) } }
+    /// The project has a transcript. Unlike `project`, views observe it, so a transcript
+    /// that arrives or is undone redraws the transcript column.
+    private(set) var transcribed = false
+    /// Bumped by every refresh that finds the project changed. Views that derive what they
+    /// show from `project`, which they can't observe, read it (the toolbar's Export).
+    private(set) var projectRevision = 0
+    /// The video is there but can't be read (design §5.4.4 f, corrupt file).
+    var mediaUnreadable = false
+    /// The open project's media state for its stand-ins and Export (design §5.4.4).
+    var mediaStatus: MediaStatus {
+        if let transcriptionStatus { return transcriptionStatus }
+        if document.demo { return .demo }
+        if !mediaResolved { return .missing }
+        if mediaUnreadable { return .unreadable }
+        return project.media.source.video == nil ? .audioOnly : .none
+    }
     var plan: EditPlan?
     var voiceLabPlan: VoiceLabOutputPlan?
     var renderTimeline: RenderTimeline? {
@@ -82,6 +107,9 @@ enum WorkspaceLocation: String, CaseIterable { case home = "Home", transcript = 
     @ObservationIgnored private var planningSegments: [EditSegment]?
     @ObservationIgnored private var planningWordIndex: [String: Int] = [:]
     @ObservationIgnored private var summaryCache: [(edits: ProjectEdits, summary: EditSummary)] = []
+    /// Edited lengths and card words by scope ("full" or a clip id), cleared by refresh().
+    @ObservationIgnored private var scopeDurations: [String: Double] = [:]
+    @ObservationIgnored private var scopeCards: [String: CaptionCardText] = [:]
     @ObservationIgnored weak var undoManager: UndoManager? { didSet { undoManager?.levelsOfUndo = 500 } }
     @ObservationIgnored weak var window: NSWindow?
     @ObservationIgnored private var history: EditHistory?
@@ -94,25 +122,40 @@ enum WorkspaceLocation: String, CaseIterable { case home = "Home", transcript = 
     @ObservationIgnored var workTask: Task<Void, Never>?
     @ObservationIgnored var exportTask: Task<Void, Never>?
     @ObservationIgnored var findTask: Task<Void, Never>?
-    @ObservationIgnored var importTask: Task<Void, Never>?
     @ObservationIgnored private var initialised = false
+    /// Set by the shell's leave boundary: edits freeze, and late results cannot
+    /// change a project that is leaving.
+    @ObservationIgnored var isLeaving = false
+    /// Called when a refresh finds a different active clip, for example after Undo.
+    @ObservationIgnored var onActiveClipChange: ((String?) -> Void)?
+    /// A new editor puts keyboard focus in its transcript once it shows.
+    @ObservationIgnored var wantsTranscriptFocus = true
+    /// Shows the sidebar for the Find Clips setup callout and a run's progress (design §6.2).
+    @ObservationIgnored var onNeedsSidebar: (() -> Void)?
+    #if DEBUG
+    /// The last VoiceOver announcement, for harness checks.
+    @ObservationIgnored var lastAnnouncement: String?
+    /// Every VoiceOver announcement, for "announced once" checks.
+    @ObservationIgnored var announcements: [String] = []
+    /// Undo steps registered, for harness checks of one-step commands.
+    @ObservationIgnored var undoSteps = 0
+    #endif
+    @ObservationIgnored private var renderedActiveClipID: String?
 
     init(document: VoxClipDocument, app: AppModel, preview: (any PreviewEngine)? = nil, exporter: any Exporter = ExportQueue()) {
         self.document = document
         self.app = app
         self.exporter = exporter
-        location = document.project.media.source.absolutePath == "/" ? .home : .transcript
         mediaResolved = document.demo
         if let preview { self.preview = preview; nativePreview = nil }
         else {
             let native = PreviewPlayerController()
             self.preview = native; nativePreview = native
         }
-        textSize = app.number("general.transcriptTextSize", fallback: 17)
+        textSize = app.number("general.transcriptTextSize", fallback: DesignValues.transcriptTextSize)
     }
 
     var project: Project { document.project }
-    var isHome: Bool { project.media.source.absolutePath == "/" }
     var words: [TimedWord] { project.transcript?.words ?? [] }
     var activeClip: ClipRange? { project.edits.clips.first { $0.id == project.edits.activeClipId } }
     var sortedClips: [ClipRange] {
@@ -129,10 +172,54 @@ enum WorkspaceLocation: String, CaseIterable { case home = "Home", transcript = 
         if let progress { return progress }
         if !editingAvailable && !words.isEmpty { return "Editing is not available in this build. Your video and edits are still here." }
         if voiceLabPlan == nil && !summary.canExport && !words.isEmpty { return "Keep at least one word before exporting." }
-        return "\(timecode(duration)) after cuts · " + Self.summaryText(summary)
+        return summaryLine
     }
-    static func summaryText(_ summary: EditSummary) -> String {
-        summary.hasEdits ? "\(summary.cutWordCount) \(summary.cutWordCount == 1 ? "word" : "words") and \(summary.cutPauseCount) \(summary.cutPauseCount == 1 ? "pause" : "pauses") cut." : "No cuts yet."
+    /// The edit summary for the selected row (design §3.5): "{edited} after cuts · {n}
+    /// cuts", "Clip {k} · " first for a clip or suggestion, and "{edited} · No cuts yet"
+    /// when nothing in the scope is cut.
+    var summaryLine: String {
+        let scope = activeClip.flatMap { clipNumber($0.id) }.map { "Clip \($0) · " } ?? ""
+        let edited = durationLabel(duration), cuts = cutCount
+        return cuts == 0 ? "\(scope)\(edited) · No cuts yet" : "\(scope)\(edited) after cuts · \(cuts == 1 ? "1 cut" : "\(cuts) cuts")"
+    }
+    /// Cuts in the scope (design §3.5): the maximal runs of consecutive cut words, plus
+    /// the cut pauses between the scope's words.
+    var cutCount: Int { let cuts = scopeCuts; return cuts.runs + cuts.pauses }
+    /// The scope's cut words, the runs they form and its cut pauses.
+    private var scopeCuts: (words: Int, runs: Int, pauses: Int) {
+        guard !words.isEmpty else { return (0, 0, 0) }
+        let range = scopeBounds ?? 0...(words.count - 1)
+        var cut = 0, runs = 0, previous = false
+        for index in range {
+            let isCut = cutWordIDs.contains(words[index].id)
+            if isCut { cut += 1 }
+            if isCut && !previous { runs += 1 }
+            previous = isCut
+        }
+        let cutPauses = pauses.filter { cutPauseIDs.contains($0.id) && range.lowerBound <= $0.afterIndex && $0.afterIndex < range.upperBound }.count
+        return (cut, runs, cutPauses)
+    }
+    /// The edit summary's detail (design §3.5), which VoiceOver reads after the subtitle:
+    /// "{source} source · {w} words cut in {r} places · {p} pauses cut".
+    var summaryDetail: String {
+        let cuts = scopeCuts
+        let span = scopeBounds.flatMap { try? clipTimes(words, startIndex: $0.lowerBound, endIndex: $0.upperBound) }
+        let source = span.map { $0.end - $0.start } ?? sourceDuration
+        let cutWords = cuts.words == 1 ? "1 word" : "\(cuts.words) words", places = cuts.runs == 1 ? "1 place" : "\(cuts.runs) places"
+        let cutPauses = cuts.pauses == 1 ? "1 pause" : "\(cuts.pauses) pauses"
+        return "\(durationLabel(source)) source · \(cutWords) cut in \(places) · \(cutPauses) cut"
+    }
+    /// "Export Video…" for the full take, "Export Clip…" for a clip (design §3.5).
+    var exportTitle: String { activeClip == nil ? "Export Video…" : "Export Clip…" }
+    /// The video is there to export: not a demo, found and readable (design §5.4.4).
+    var mediaExportable: Bool { !document.demo && mediaResolved && !mediaUnreadable }
+    /// Why Export can't run for the scope, as its tooltip and accessible description
+    /// (design §3.5 and §5.4.4); nil when it can or while an export runs.
+    var exportUnavailable: String? {
+        if document.demo { return "Demo projects have no video to export." }
+        if !mediaExportable { return "Locate the video to export." }
+        if let clip = activeClip, isSuggestion(clip.id) { return "Keep this clip to export it." }
+        return canExport || exporting ? nil : "Keep at least one word before exporting."
     }
     var canExport: Bool { mediaResolved && !exporting && (voiceLabPlan.map { $0.outputSamples > 0 } ?? (words.isEmpty ? sourceDuration > 0 : editingAvailable && summary.canExport)) }
     var playingWordID: String? {
@@ -175,63 +262,38 @@ enum WorkspaceLocation: String, CaseIterable { case home = "Home", transcript = 
                     changed.media.source.video = probe.video; changed.media.source.audio = probe.audio
                     document.replaceProject(changed)
                 }
-            } catch { previewError = await app.safeError(error) }
+            } catch {
+                // The file resolved but its probe failed: it is there and can't be read.
+                mediaUnreadable = mediaResolved
+                previewError = await app.safeError(error)
+            }
         }
         refresh()
         if mediaResolved { await updatePreview(load: true) }
     }
     func close() {
         previewRevision &+= 1
-        workTask?.cancel(); exportTask?.cancel(); findTask?.cancel(); importTask?.cancel(); eventTask?.cancel(); updateTask?.cancel(); preview.close()
-        if app.activeHome === self { app.activeHome = nil }
+        workTask?.cancel(); exportTask?.cancel(); findTask?.cancel(); eventTask?.cancel(); updateTask?.cancel(); preview.close()
         app.openProjectKeys[project.id] = nil
     }
     func reloadFromDocument(previousProjectID: String) {
         app.openProjectKeys[previousProjectID] = nil
-        workTask?.cancel(); exportTask?.cancel(); findTask?.cancel(); importTask?.cancel(); updateTask?.cancel()
+        workTask?.cancel(); exportTask?.cancel(); findTask?.cancel(); updateTask?.cancel()
         preview.pause(); isPlaying = false; previewStop = nil
         history = nil
         renderedTranscript = nil; renderedEdits = nil; renderedMedia = nil; renderedVoiceLab = nil
         planningSegments = nil; planningWordIndex = [:]; summaryCache.removeAll()
         selectedWordIDs = []; selectedPauseIDs = []; correctionID = nil
-        clipAnswer = nil; clipError = nil; error = nil; previewError = nil
+        fallbackNote = nil; focusedSuggestion = nil; clipError = nil; error = nil; previewError = nil
         mediaResolved = document.demo
-        location = isHome ? .home : .transcript
         refresh()
         updateTask = Task { [weak self] in
-            guard let self, !isHome else { return }
+            guard let self, sourceURL.path != "/" else { return }
             do {
                 _ = try await resolveMediaIdentity()
                 await updatePreview(load: true)
             } catch is CancellationError {} catch { previewError = await app.safeError(error) }
         }
-    }
-    func closeEmptyWindow() { if isHome { window?.performClose(nil) } }
-    func importVideo(_ url: URL) async {
-        guard isHome, importProgress == nil else { return }
-        importProgress = "Importing video…"
-        importError = nil
-        defer { importProgress = nil }
-        do {
-            let imported = try await importedDocument(url, app: app)
-            let probe = try await AVMediaProbe().probe(url)
-            try Task.checkCancellation()
-            guard isHome else { return }
-            var next = imported.project
-            next.media.source.durationSeconds = probe.durationSeconds
-            next.media.source.video = probe.video
-            next.media.source.audio = probe.audio
-            app.openProjectKeys[project.id] = nil
-            document.replaceProject(next)
-            recordDocumentChange()
-            mediaResolved = true
-            app.openProjectKeys[next.id] = next.media.source.contentKey
-            if app.activeHome === self { app.activeHome = nil }
-            location = .transcript
-            refresh()
-            await updatePreview(load: true)
-        } catch is CancellationError {
-        } catch { importError = await app.safeError(error) }
     }
     func editState() -> EditState? {
         let project = project
@@ -246,6 +308,10 @@ enum WorkspaceLocation: String, CaseIterable { case home = "Home", transcript = 
         let transcriptChanged = renderedTranscript != project.transcript
         let editChanged = renderedEdits != edits
         guard transcriptChanged || editChanged || renderedMedia != project.media || renderedVoiceLab != project.voiceLab || renderedEdits == nil else { return }
+        if transcribed != (project.transcript != nil) { transcribed = project.transcript != nil }
+        projectRevision += 1
+        scopeDurations.removeAll(keepingCapacity: true)
+        scopeCards.removeAll(keepingCapacity: true)
         if transcriptChanged || renderedEdits?.corrections != edits.corrections {
             transcriptLayoutRevision += 1
             fillerCandidateIDs = Set(words.filter { word in
@@ -307,6 +373,10 @@ enum WorkspaceLocation: String, CaseIterable { case home = "Home", transcript = 
         renderedVoiceLab = project.voiceLab
         transcriptRevision += 1
         timeline = TimelineProjection(model: self)
+        if edits.activeClipId != renderedActiveClipID {
+            renderedActiveClipID = edits.activeClipId
+            onActiveClipChange?(edits.activeClipId)
+        }
     }
     func word(at source: Double, nearest: Bool = false) -> TimedWord? {
         let words = words
@@ -329,13 +399,21 @@ enum WorkspaceLocation: String, CaseIterable { case home = "Home", transcript = 
         return EditPlan(sampleRate: 48_000, totalSamples: total, cuts: [], kept: total > 0 ? [MediaInterval(startSample: 0, endSample: total)] : [])
     }
     func replace(_ newProject: Project, name: String) {
-        guard mediaResolved || name == "Locate media" else { return }
+        // A Versions-browser version is read-only.
+        guard !isLeaving, !document.isVersion, mediaResolved || name == "Locate media" else { return }
+        // The title follows the document's name, not the edit history (design §2), so
+        // undoing an edit made before a Save As or Rename keeps the new title.
+        var newProject = newProject
+        newProject.title = project.title
         guard newProject != project else { return }
         preview.pause(); isPlaying = false
         let previous = project
         let mediaChanged = previous.media.source != newProject.media.source
         undoManager?.registerUndo(withTarget: self) { model in model.replace(previous, name: name) }
         undoManager?.setActionName(name)
+        #if DEBUG
+        undoSteps += 1
+        #endif
         var changed = newProject
         changed.modifiedAt = Date()
         document.replaceProject(changed)
@@ -362,8 +440,12 @@ enum WorkspaceLocation: String, CaseIterable { case home = "Home", transcript = 
         let reference = project.media.source
         let resolved = try await app.projectStore.resolveSource(for: project, projectURL: document.fileURL ?? sourceURL.deletingLastPathComponent().appendingPathComponent("Untitled.voxclip"))
         try Task.checkCancellation()
-        guard project.media.source == reference else { throw CancellationError() }
-        if reference.absolutePath != resolved.path {
+        // Only a change to the media itself makes this check stale. A Save As or Move that
+        // lands meanwhile rewrites the relative path, and the check still holds.
+        let current = project.media.source
+        guard current.contentKey == reference.contentKey, current.sizeBytes == reference.sizeBytes,
+              current.absolutePath == reference.absolutePath else { throw CancellationError() }
+        if reference.absolutePath != resolved.path, !document.isVersion {
             var changed = project
             changed.media.source.absolutePath = resolved.path
             document.replaceProject(changed)
@@ -373,8 +455,35 @@ enum WorkspaceLocation: String, CaseIterable { case home = "Home", transcript = 
         app.openProjectKeys[project.id] = reference.contentKey
         return resolved
     }
-    func apply(_ command: EditCommand, name: String, base: Project? = nil) {
-        guard mediaResolved else { return }
+    /// The relink flow for missing media (editing §10.3): choose the file, confirm a
+    /// different-looking one, and attach it as one "Locate media" step.
+    func locateMedia() {
+        let panel = NSOpenPanel(); panel.allowedContentTypes = [.movie]; panel.allowsMultipleSelection = false
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        Task {
+            do {
+                let probe = try await AVMediaProbe().probe(url)
+                let next: Project
+                do {
+                    next = try await app.projectStore.relink(project, to: url, probe: probe)
+                } catch VoxClipError.mediaMissing(_) {
+                    guard probe.durationSeconds.isFinite, abs(probe.durationSeconds - sourceDuration) <= 0.05 else {
+                        previewError = "This file's duration differs by more than 0.05 seconds. Choose another file. Edits are saved."
+                        return
+                    }
+                    let alert = NSAlert(); alert.messageText = "This file looks different. Use it anyway?"; alert.addButton(withTitle: "Use it"); alert.addButton(withTitle: "Choose another")
+                    guard alert.runModal() == .alertFirstButtonReturn else { return }
+                    next = try await app.projectStore.relink(project, to: url, probe: probe, confirmedDifferent: true)
+                }
+                mediaResolved = true
+                mediaUnreadable = false
+                replace(next, name: "Locate media")
+                await updatePreview(load: true)
+            } catch { previewError = await app.safeError(error) }
+        }
+    }
+    func apply(_ command: EditCommand, name: String, base: Project? = nil, announcing message: String? = nil) {
+        guard mediaResolved, !isLeaving else { return }
         guard let state = editState() else { return }
         preview.pause(); isPlaying = false
         var next = base ?? project
@@ -387,7 +496,21 @@ enum WorkspaceLocation: String, CaseIterable { case home = "Home", transcript = 
         next.share.captions = next.share.captions.filter { $0.key == "full" || clipIDs.contains($0.key) }
         replace(next, name: name)
         if case .addAIClips = command, changed == state { clipError = "These clips are already in the list." }
-        announce(announcement(command, before: state, after: changed, fallback: name))
+        announce(message ?? announcement(command, before: state, after: changed, fallback: name))
+    }
+    /// Applies several commands as one undo step. Returns false when nothing changed.
+    @discardableResult func apply(_ commands: [EditCommand], name: String) -> Bool {
+        guard mediaResolved, !isLeaving, let state = editState() else { return false }
+        preview.pause(); isPlaying = false
+        if history?.state != state { history = EditHistory(state: state) }
+        var next = project
+        for command in commands { history?.apply(command, aiResults: next.ai.results) }
+        guard let changed = history?.state, changed != state else { return false }
+        next.edits = changed.projectEdits
+        let clipIDs = Set(changed.clips.map(\.id))
+        next.share.captions = next.share.captions.filter { $0.key == "full" || clipIDs.contains($0.key) }
+        replace(next, name: name)
+        return true
     }
     func announcement(_ command: EditCommand, before: EditState, after: EditState, fallback: String) -> String {
         if case .restoreCuts = command { return "Restored all cuts, corrections kept" }
@@ -407,12 +530,19 @@ enum WorkspaceLocation: String, CaseIterable { case home = "Home", transcript = 
         let restore = restore || ids.allSatisfy { project.edits.cutWordIds.contains($0) || project.edits.cutPauseIds.contains($0) }
         apply(restore ? .restoreSelection(ids: ids) : .cutSelection(ids: ids), name: restore ? "Restore selection" : "Cut selection")
     }
+    /// Make Clip (⌘K, design §3.4): one undo step adds the clip and selects its row. A
+    /// selection an existing clip already covers selects that clip instead.
     func makeClip() {
         guard let start = selectedIDs.first, let end = selectedIDs.last else { return }
-        guard !project.edits.clips.contains(where: { $0.startWordId == start && $0.endWordId == end }) else { location = .clips; return }
+        if let existing = project.edits.clips.first(where: { $0.startWordId == start && $0.endWordId == end }) {
+            let message = clipNumber(existing.id).map { "Clip \($0) already covers these words." } ?? "A clip already covers these words."
+            if activeClip?.id == existing.id { announce(message) } else { activate(existing, announcing: message) }
+            return
+        }
         let title = words.filter { selectedWordIDs.contains($0.id) }.prefix(7).map { text($0) }.joined(separator: " ")
-        apply(.addClip(ClipRange(id: UUID().uuidString.lowercased(), startWordId: start, endWordId: end, title: Self.clipTitle(title))), name: "Make clip from selection")
-        location = .clips
+        let clip = ClipRange(id: UUID().uuidString.lowercased(), startWordId: start, endWordId: end, title: Self.clipTitle(title))
+        guard apply([.addClip(clip), .setActiveClip(clipId: clip.id)], name: "Make clip from selection") else { return }
+        announce(clipNumber(clip.id).map { "Clip \($0) made." } ?? "Clip made.")
     }
     func nudge(_ clip: ClipRange, start: Bool, offset: Int) {
         guard let lower = index(clip.startWordId), let upper = index(clip.endWordId) else { return }
@@ -423,9 +553,13 @@ enum WorkspaceLocation: String, CaseIterable { case home = "Home", transcript = 
         guard start ? caret <= upper : caret >= lower else { return }
         apply(.updateClip(id: clip.id, startIndex: start ? caret : lower, endIndex: start ? upper : caret), name: "Set clip edge")
     }
-    func activate(_ clip: ClipRange?) {
-        apply(.setActiveClip(clipId: clip?.id), name: "Preview clip")
-        if let clip, let word = words.first(where: { $0.id == clip.startWordId }) { seek(source: word.start) }
+    func activate(_ clip: ClipRange?, announcing message: String? = nil) {
+        apply(.setActiveClip(clipId: clip?.id), name: "Preview clip", announcing: message)
+        if project.edits.activeClipId == clip?.id { seekToActiveClip() }
+    }
+    /// Moves the playhead to the active clip's first word.
+    private func seekToActiveClip() {
+        if let clip = activeClip, let word = words.first(where: { $0.id == clip.startWordId }) { seek(source: word.start) }
     }
     func moveClip(_ direction: Int) {
         guard !sortedClips.isEmpty else { return }
@@ -433,7 +567,93 @@ enum WorkspaceLocation: String, CaseIterable { case home = "Home", transcript = 
         activate(sortedClips[min(sortedClips.count - 1, max(0, position + direction))])
     }
     func removeClip(_ id: String) {
-        apply(.removeClip(id: id), name: "Remove clip")
+        rowAction([.removeClip(id: id)] + focusNext(after: id), name: "Remove clip", announcing: clipNumber(id).map { "Clip \($0) removed." } ?? "Clip removed.")
+    }
+
+    // Clips in the sidebar (design §3.4 and §6.2): kept clips number 1…n in transcript
+    // order and suggestions continue after them.
+    var keptClips: [ClipRange] { sortedClips.filter { $0.origin == .manual || $0.selected } }
+    var suggestedClips: [ClipRange] { sortedClips.filter { $0.origin == .ai && !$0.selected } }
+    func clipNumber(_ id: String) -> Int? {
+        let kept = keptClips
+        if let position = kept.firstIndex(where: { $0.id == id }) { return position + 1 }
+        return suggestedClips.firstIndex { $0.id == id }.map { kept.count + $0 + 1 }
+    }
+    func isSuggestion(_ id: String) -> Bool { suggestedClips.contains { $0.id == id } }
+    /// The row after a clip in sidebar order: the next kept clip or suggestion, else Full
+    /// take (nil).
+    func clipAfter(_ id: String) -> String? {
+        let rows = keptClips + suggestedClips
+        guard let position = rows.firstIndex(where: { $0.id == id }), position + 1 < rows.count else { return nil }
+        return rows[position + 1].id
+    }
+    /// Keep, Dismiss and Remove on the selected row move the selection to the next row in
+    /// the same undo step (design §3.4).
+    private func focusNext(after id: String) -> [EditCommand] {
+        project.edits.activeClipId == id ? [.setActiveClip(clipId: clipAfter(id))] : []
+    }
+    /// A row action as one undo step; the playhead follows when the selection moved.
+    private func rowAction(_ commands: [EditCommand], name: String, announcing message: String) {
+        let active = project.edits.activeClipId
+        guard apply(commands, name: name) else { return }
+        announce(message)
+        if project.edits.activeClipId != active { seekToActiveClip() }
+    }
+    func keep(_ id: String) {
+        let number = sortedClips.filter { $0.origin == .manual || $0.selected || $0.id == id }.firstIndex { $0.id == id }.map { $0 + 1 }
+        rowAction([.setClipSelected(id: id, selected: true)] + focusNext(after: id), name: "Keep clip", announcing: number.map { "Clip \($0) kept." } ?? "Clip kept.")
+    }
+    /// Keeps every suggestion as one undo step.
+    func keepAll() {
+        let ids = suggestedClips.map(\.id)
+        guard !ids.isEmpty, apply(ids.map { .setClipSelected(id: $0, selected: true) }, name: "Keep all suggestions") else { return }
+        announce(ids.count == 1 ? "Clip \(keptClips.count) kept." : "\(ids.count) clips kept.")
+    }
+    func dismiss(_ id: String) { rowAction([.removeClip(id: id)] + focusNext(after: id), name: "Dismiss suggestion", announcing: "Suggestion dismissed.") }
+    /// Return on the focused suggestion keeps it, ⌫ dismisses it, and focus moves to the
+    /// next suggestion (design §6.2). False when no suggestion has focus.
+    @discardableResult func actOnFocusedSuggestion(keep: Bool) -> Bool {
+        guard let id = focusedSuggestion, isSuggestion(id) else { focusedSuggestion = nil; return false }
+        let rows = suggestedClips.map(\.id)
+        let next: String? = rows.firstIndex(of: id).flatMap { (index: Int) -> String? in
+            let following: Int = index + 1
+            return following < rows.count ? rows[following] : nil
+        }
+        if keep { self.keep(id) } else { dismiss(id) }
+        focusedSuggestion = isSuggestion(id) ? id : next
+        return true
+    }
+    func renameClip(_ id: String, to title: String) {
+        let title = Self.clipTitle(title)
+        apply(.renameClip(id: id, title: title.isEmpty ? nil : title), name: "Rename clip")
+    }
+    /// The edited length of a clip, or of the full take for nil (design §3.4 meta line).
+    func editedDuration(_ clip: ClipRange?) -> Double {
+        let key = clip?.id ?? "full"
+        if let cached = scopeDurations[key] { return cached }
+        guard let state = editState(), let segments = try? buildSegments(state, activeClip: clip),
+              let plan = try? buildEditPlan(segments, duration: sourceDuration, sampleRate: Double(project.media.source.audio?.sampleRate ?? 48_000), pauseKeepSeconds: state.pauseKeepSeconds)
+        else { return clip == nil ? sourceDuration : 0 }
+        scopeDurations[key] = plan.duration
+        return plan.duration
+    }
+    /// The caption card's words for a scope (design §5.4.2), from VoxClipCore.
+    func cardText(_ scope: CaptionCardScope, wordsVisible: Bool) -> CaptionCardText {
+        guard let style = app.cardStyle(for: project), let resources = app.captionResources else { return .none }
+        let key: String
+        switch scope { case .fullTake: key = "full"; case .clip(let id): key = id }
+        let cacheKey = "\(key)|\(wordsVisible)|\(style.id)"
+        if let cached = scopeCards[cacheKey] { return cached }
+        let text = CaptionCardText.make(project: project, scope: scope, style: style, wordsVisible: wordsVisible, resources: resources)
+        scopeCards[cacheKey] = text
+        return text
+    }
+    /// The source time of a scope's first kept word, where its thumbnail frame is taken.
+    func firstKeptTime(_ clip: ClipRange?) -> Double? {
+        let cut = Set(project.edits.cutWordIds)
+        let lower = clip.flatMap { index($0.startWordId) } ?? 0, upper = clip.flatMap { index($0.endWordId) } ?? words.count - 1
+        guard lower <= upper, upper < words.count else { return nil }
+        return words[lower...upper].first { $0.kind == .word && !cut.contains($0.id) }?.start
     }
     func beginCorrection() {
         guard let id = selectedIDs.first, let word = words.first(where: { $0.id == id }) else { return }
@@ -505,9 +725,15 @@ enum WorkspaceLocation: String, CaseIterable { case home = "Home", transcript = 
         if size.width == size.height { return .square }
         return .source
     }
-    func zoom(_ amount: Double) { textSize = min(28, max(13, amount == 0 ? 17 : textSize + amount)); app.set("general.transcriptTextSize", .number(textSize)); transcriptRevision += 1 }
+    func zoom(_ amount: Double) { textSize = (amount == 0 ? DesignValues.transcriptTextSize : textSize + amount).clamped(to: DesignValues.transcriptZoom); app.set("general.transcriptTextSize", .number(textSize)); transcriptRevision += 1 }
     func copySelection() { copyText(words.filter { selectedWordIDs.contains($0.id) }.map { text($0) }.joined(separator: " ")) }
-    func announce(_ message: String) { NSAccessibility.post(element: NSApp as Any, notification: .announcementRequested, userInfo: [.announcement: message, .priority: NSAccessibilityPriorityLevel.medium.rawValue]) }
+    func announce(_ message: String) {
+        #if DEBUG
+        lastAnnouncement = message
+        announcements.append(message)
+        #endif
+        NSAccessibility.post(element: NSApp as Any, notification: .announcementRequested, userInfo: [.announcement: message, .priority: NSAccessibilityPriorityLevel.medium.rawValue])
+    }
     static func clipTitle(_ title: String) -> String {
         String(String.UnicodeScalarView(title.trimmingCharacters(in: .whitespacesAndNewlines).unicodeScalars.prefix(EditingLimits.maxClipTitleScalars)))
     }
@@ -593,3 +819,77 @@ enum WorkspaceLocation: String, CaseIterable { case home = "Home", transcript = 
 }
 
 @MainActor func copyText(_ text: String) { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(text, forType: .string) }
+
+extension EditorModel {
+    enum FindClipsAnchor { case toolbar, sidebar }
+    static let noClipsMatched = "No clips matched. Try another style or describe what you want."
+    /// The chosen clip-finding connector, nil when none is set up.
+    var findConnector: ProviderChoice? { app.providers.first { $0.id == app.string("llm.connector") } }
+    /// Opens the Find Clips popover at its anchor, or the sidebar's setup callout when
+    /// no connector is chosen (design §6.2).
+    func requestFindClips(from anchor: FindClipsAnchor) {
+        guard !words.isEmpty else { return }
+        guard findConnector != nil else { showFindClips = false; onNeedsSidebar?(); showAISetup = true; return }
+        showAISetup = false
+        findClipsAnchor = anchor
+        showFindClips = true
+    }
+    /// Asks the chosen connector for clips. They arrive as suggestions in one undo step.
+    func findClips() {
+        guard let shared = app.shared, let transcript = project.transcript, let provider = app.providers.first(where: { $0.id == app.string("llm.connector") }) else { return }
+        let corrections = project.edits.corrections
+        let cuts = Set(project.edits.cutWordIds)
+        let selectedModel = app.string("llm.model.\(provider.id)", fallback: provider.defaultModel ?? "")
+        let selectedPreset = preset
+        let instructions = instruction
+        let run = {
+            self.findTask?.cancel(); self.finding = true; self.clipError = nil; self.fallbackNote = nil; self.showAISetup = false
+            self.onNeedsSidebar?()
+            self.announce("Finding clips")
+            self.findTask = Task { [self] in
+                defer { self.finding = false }
+                do {
+                    let catalog = LLMCatalog(document: try JSONDecoder().decode(JSONValue.self, from: Data(contentsOf: shared.root.appendingPathComponent("catalog/llm-providers.json"))))
+                    let finder = ClipFinder(runner: LLMRunner(keys: app.secrets, catalog: catalog, log: app.log), shared: shared)
+                    let presets = try await finder.presets()
+                    guard let preset = presets.first(where: { $0.id == selectedPreset }) else { throw ClipFinderGateError.needInstructions(message: "Choose a clip preset.") }
+                    let result = try await finder.find(ClipFinderRequest(transcript: transcript, corrections: corrections, cutWordIds: cuts, preset: preset, instruction: instructions, snap: app.bool("llm.clips.snapToLines", fallback: true)), connector: app.connector(provider.id), model: selectedModel)
+                    try Task.checkCancellation()
+                    let usedFallback = await finder.lastUsedFallback == true && result.model != selectedModel
+                    guard project.transcript == transcript else { return }
+                    guard !result.clips.isEmpty else { clipError = Self.noClipsMatched; return }
+                    var next = project
+                    next.ai.results.append(result)
+                    let ranges = result.clips.enumerated().map { position, clip in ClipRange(id: UUID().uuidString.lowercased(), startWordId: clip.startWordId, endWordId: clip.endWordId, title: clip.title, origin: .ai, aiResultId: result.id, aiClipIndex: position) }
+                    // One undo step: the result arrives as suggestions, not kept clips.
+                    guard mediaResolved, !isLeaving, let state = editState() else { return }
+                    if history?.state != state { history = EditHistory(state: state) }
+                    let before = Set(state.clips.map(\.id))
+                    history?.apply(.addAIClips(resultId: result.id, clips: ranges), aiResults: next.ai.results)
+                    let added = (history?.state.clips ?? []).filter { !before.contains($0.id) }
+                    for clip in added { history?.apply(.setClipSelected(id: clip.id, selected: false), aiResults: next.ai.results) }
+                    guard let changed = history?.state, changed != state else { clipError = "These clips are already in the list."; return }
+                    next.edits = changed.projectEdits
+                    replace(next, name: "Find clips")
+                    // The first new suggestion in transcript order is focused, not selected
+                    // (design §6.2): the scope, playhead, Export and subtitle stay.
+                    focusedSuggestion = added.min { (index($0.startWordId) ?? .max) < (index($1.startWordId) ?? .max) }?.id
+                    fallbackNote = usedFallback ? "Answered by \(result.model) because \(selectedModel) was busy." : nil
+                    announce([added.count == 1 ? "Found 1 clip." : "Found \(added.count) clips.", fallbackNote].compactMap { $0 }.joined(separator: " "))
+                } catch is CancellationError {} catch LLMError.cancelled {} catch VoxClipError.cancelled {} catch {
+                    let message = await app.safeError(error, context: "ai:\(provider.label)")
+                    if !message.isEmpty { clipError = message }
+                }
+            }
+        }
+        if provider.privacy == "thirdPartyCloud" && !app.bool("llm.cloudConsent.\(provider.id)") {
+            let alert = NSAlert(); alert.messageText = "Find clips"
+            if let copy = provider.cliConsentCopy { alert.informativeText = copy }
+            else { alert.informativeText = "Find clips sends this project's transcript (\(words.count) words, no audio or video) to \(provider.label) using your API key." }
+            alert.addButton(withTitle: "Continue"); alert.addButton(withTitle: "Cancel")
+            guard alert.runModal() == .alertFirstButtonReturn else { return }
+            app.set("llm.cloudConsent.\(provider.id)", .bool(true))
+        }
+        run()
+    }
+}

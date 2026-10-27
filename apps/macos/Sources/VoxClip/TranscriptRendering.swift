@@ -77,9 +77,9 @@ struct TranscriptAppearance: Equatable {
         guard let text, let storage = text.textStorage else { return }
         let value = NSMutableAttributedString(string: "")
         let paragraph = NSMutableParagraphStyle()
-        paragraph.minimumLineHeight = (model.textSize * 1.65).rounded()
+        paragraph.minimumLineHeight = (model.textSize * DesignValues.transcriptLineHeightRatio).rounded()
         paragraph.maximumLineHeight = paragraph.minimumLineHeight
-        paragraph.paragraphSpacing = 12
+        paragraph.paragraphSpacing = DesignValues.transcriptParagraphGap
         paragraph.baseWritingDirection = .natural
         let body: [NSAttributedString.Key: Any] = [.font: DesignValues.transcriptFont(size: model.textSize), .foregroundColor: DesignValues.nsColor("text.primary"), .paragraphStyle: paragraph]
         let mono: [NSAttributedString.Key: Any] = [.font: DesignValues.monoFont(11), .foregroundColor: DesignValues.nsColor("text.muted"), .paragraphStyle: paragraph]

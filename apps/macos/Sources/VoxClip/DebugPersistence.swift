@@ -50,6 +50,10 @@ actor RegressionLogger: Logger {
         invalid.edits.clips.append(ClipRange(id: "reversed", startWordId: model.words.last!.id, endWordId: model.words.first!.id, title: "Invalid range"))
         document.replaceProject(invalid); model.refresh()
         check("share captions tolerate reversed clip bounds", model.shareCaption("reversed") == "Invalid range")
+        // Left edited at a file that was never written, the document would fail AppKit's
+        // autosave later, and that app-modal alert would block later checks' menu actions.
+        document.updateChangeCount(.changeCleared)
+        document.close()
         return results
     }
 }

@@ -104,7 +104,9 @@ struct TimelineProjection: Sendable {
             }
             context.fill(keptPath, with: .color(kept)); context.fill(cutPath, with: .color(cut)); context.fill(pausePath, with: .color(pause))
             context.stroke(stripes, with: .color(hatch), lineWidth: 2)
-            let band = DesignValues.color("timeline.clipBand"), bracketColor = DesignValues.accentText
+            // The active clip's band: the deprecated timeline.clipBand (the accent fill at 12%), following
+            // a system accent (C14), until the step 13 strip dims outside the scope with timeline.scopeDim.
+            let band = Color(nsColor: DesignValues.accentFill.withAlphaComponent(0.12)), bracketColor = DesignValues.accentText
             for clip in projection.clips {
                 let range = edited ? clip.edited : clip.source
                 let lower = range.lowerBound * size.width, upper = range.upperBound * size.width

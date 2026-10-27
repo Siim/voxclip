@@ -18,8 +18,6 @@ import VoxClipCore
     private var settingsWindow: NSWindow?
     private var terminating = false
     private var routingReady = false
-    private var launchFinished = false
-    private var openedExternalOnLaunch = false
 
     func applicationWillFinishLaunching(_ notification: Notification) {
         #if DEBUG
@@ -36,9 +34,21 @@ import VoxClipCore
     }
     func applicationDidFinishLaunching(_ notification: Notification) {
         model.launch()
-        launchFinished = true
-        if !openedExternalOnLaunch && NSDocumentController.shared.documents.isEmpty { NSDocumentController.shared.newDocument(nil) }
+        // One app-owned main window, opening on Home (ADR-R29). Projects and movies
+        // opened at launch attach to it through the file router.
+        MainWindowController.shared.show()
         #if DEBUG
+        // Crash recovery and accent checks from a bundle.sh build (DebugProbes).
+        if !AppModel.isTestSession, DebugProbes.requested { Task { await DebugProbes.run(app: model) } }
+        if !AppModel.isTestSession, let index = CommandLine.arguments.firstIndex(of: "-demoProject"), index + 1 < CommandLine.arguments.count {
+            Task {
+                do {
+                    let document = VoxClipDocument(project: try DemoEditing.loadFixture(URL(fileURLWithPath: CommandLine.arguments[index + 1])), demo: true)
+                    NSDocumentController.shared.addDocument(document)
+                    if !(await model.shell.replaceProject(with: document)) { document.close() }
+                } catch { model.shell.notice = await model.safeError(error) }
+            }
+        }
         if AppModel.isTestSession {
             Task {
                 await model.start()
@@ -60,16 +70,25 @@ import VoxClipCore
         }
         #endif
     }
-    func applicationShouldOpenUntitledFile(_ sender: NSApplication) -> Bool { NSDocumentController.shared.documents.isEmpty }
+    func applicationShouldOpenUntitledFile(_ sender: NSApplication) -> Bool { false }
+    /// The Dock icon brings the main window back, also while Settings is open.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        let window = MainWindowController.shared.window
+        if window?.isVisible != true || window?.isMiniaturized == true { MainWindowController.shared.show() }
+        return false
+    }
     func application(_ application: NSApplication, open urls: [URL]) {
-        if !launchFinished { openedExternalOnLaunch = true }
         if routingReady { model.fileRouter.receive(urls) }
         else { bufferedURLs.append(contentsOf: urls) }
     }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
+    /// Crash recovery restores the main window from secure-coded state (design §2).
+    func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool { true }
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard !terminating else { return .terminateLater }
         terminating = true
+        // A clip title still being typed is kept before the documents are reviewed.
+        model.shell.endRename()
         NSDocumentController.shared.reviewUnsavedDocuments(withAlertTitle: "Quit VoxClip?", cancellable: true, delegate: self, didReviewAllSelector: #selector(reviewedDocuments(_:didReviewAll:contextInfo:)), contextInfo: nil)
         return .terminateLater
     }
@@ -79,19 +98,29 @@ import VoxClipCore
     }
     func applicationWillTerminate(_ notification: Notification) { model.modelLibrary.task?.cancel() }
 
+    private var mainWindowIsKey: Bool { NSApp.keyWindow != nil && NSApp.keyWindow === model.shell.windowController?.window }
+    /// The editor, while it is showing in the key main window.
     private var editor: EditorModel? {
-        guard let active = model.activeEditor, NSApp.keyWindow === active.window else { return nil }
-        return active
+        guard mainWindowIsKey, !model.shell.showsHome else { return nil }
+        return model.shell.editor
     }
-    @objc private func newProject(_ sender: Any?) { NSDocumentController.shared.newDocument(sender) }
+    @objc private func newProject(_ sender: Any?) { chooseFile(app: model, moviesOnly: true) }
     @objc private func openProject(_ sender: Any?) { chooseFile(app: model) }
+    /// ⌘W closes the project and shows Home; on Home it closes the window (design §11).
+    @objc private func closeProject(_ sender: Any?) {
+        guard mainWindowIsKey else { NSApp.keyWindow?.performClose(sender); return }
+        if model.shell.document != nil { Task { await model.shell.closeProject() } }
+        else { model.shell.windowController?.window?.performClose(sender) }
+    }
+    @objc private func showMainWindow(_ sender: Any?) { MainWindowController.shared.show() }
     @objc private func openRecent(_ item: NSMenuItem) {
         if let url = item.representedObject as? URL { openFile(url, app: model) }
     }
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
+        model.recentProjects.refresh(model.recent)
         for url in model.recent {
-            let item = NSMenuItem(title: url.deletingPathExtension().lastPathComponent, action: #selector(openRecent(_:)), keyEquivalent: "")
+            let item = NSMenuItem(title: model.recentTitle(url), action: #selector(openRecent(_:)), keyEquivalent: "")
             item.representedObject = url
             item.target = self
             menu.addItem(item)
@@ -124,6 +153,16 @@ import VoxClipCore
     var settingsWindowForTests: NSWindow? { settingsWindow }
     #endif
     @objc private func performEditorCommand(_ item: NSMenuItem) {
+        let shell = model.shell
+        switch item.tag {
+        case 13: shell.selection = .home; return
+        case 14: if shell.document != nil { shell.selection = .fullTake }; return
+        case 16: shell.toggleSidebar(); return
+        // Help works on Home and with no project open; both sheets belong to the main window.
+        case 35: MainWindowController.shared.show(); shell.showShortcuts = true; return
+        case 36: MainWindowController.shared.show(); model.showTour = true; return
+        default: break
+        }
         guard let editor else { return }
         switch item.tag {
         case 1: editor.cutSelection()
@@ -137,11 +176,7 @@ import VoxClipCore
         case 9: editor.apply(.restoreCuts, name: "Restore cuts")
         case 10: editor.showCuts.toggle()
         case 11: editor.showPauses.toggle()
-        case 12: editor.showInspector.toggle()
-        case 13: editor.location = .home
-        case 14: if !editor.isHome { editor.location = .transcript }
-        case 15: if !editor.isHome { editor.location = .clips }
-        case 16: editor.sidebarVisibility = editor.sidebarVisibility == .all ? .detailOnly : .all
+        case 12: model.shell.toggleViewer()
         case 17: editor.editedTimeline.toggle()
         case 18: editor.zoom(1)
         case 19: editor.zoom(-1)
@@ -159,9 +194,7 @@ import VoxClipCore
         case 31: editor.setClipEdge(start: false)
         case 32: editor.moveClip(-1)
         case 33: editor.moveClip(1)
-        case 34: editor.location = .clips
-        case 35: editor.showShortcuts = true
-        case 36: model.showTour = true
+        case 34: editor.requestFindClips(from: .toolbar)
         case 37: confirmRetranscription()
         default: break
         }
@@ -199,22 +232,34 @@ import VoxClipCore
         if item.action == #selector(checkUpdates(_:)) {
             item.title = model.update.map { "VoxClip \($0.version) Available…" } ?? "Check for Updates…"
         }
+        if item.action == #selector(closeProject(_:)) {
+            item.title = mainWindowIsKey && model.shell.document != nil ? "Close Project" : "Close"
+            return NSApp.keyWindow != nil
+        }
         if item.action == #selector(performEditorCommand(_:)) {
+            switch item.tag {
+            case 13: return mainWindowIsKey
+            case 14: return mainWindowIsKey && model.shell.document != nil
+            case 16:
+                item.title = model.shell.sidebarShown ? "Hide Sidebar" : "Show Sidebar"
+                return mainWindowIsKey
+            case 35, 36: return true
+            default: break
+            }
             guard let editor else { return false }
             switch item.tag {
             case 1, 2, 3, 29: return !editor.selectedIDs.isEmpty
             case 7: return editor.summary.canCutFillers
             case 8: return editor.summary.canTighten
             case 9: return editor.summary.hasEdits
-            case 14, 15, 34: return !editor.isHome
+            case 34: return !editor.words.isEmpty
             case 10: item.title = editor.showCuts ? "Hide Cut Words" : "Show Cut Words"
             case 11: item.title = editor.showPauses ? "Hide Pauses" : "Show Pauses"
-            case 12: item.title = editor.showInspector ? "Hide Caption Inspector" : "Show Caption Inspector"
-            case 16: item.title = editor.sidebarVisibility == .all ? "Hide Sidebar" : "Show Sidebar"
+            case 12: item.title = model.shell.viewerVisible ? "Hide Viewer" : "Show Viewer"
             default: return true
             }
         }
-        if item.action == #selector(exportProject(_:)) { return editor?.canExport == true }
+        if item.action == #selector(exportProject(_:)) { return editor.map { $0.canExport && $0.exportUnavailable == nil } ?? false }
         if item.action == #selector(revealMedia(_:)) { return editor != nil }
         return true
     }
@@ -252,7 +297,7 @@ import VoxClipCore
         app.addItem(.separator())
         add(app, "Quit VoxClip", #selector(NSApplication.terminate(_:)), "q", target: NSApp)
         let file = menu("File")
-        add(file, "New Project", #selector(newProject(_:)), "n", target: self)
+        add(file, "New Project from Video…", #selector(newProject(_:)), "n", target: self)
         add(file, "Open…", #selector(openProject(_:)), "o", target: self)
         let recent = NSMenuItem(title: "Open Recent", action: nil, keyEquivalent: "")
         let recentMenu = NSMenu(title: "Open Recent")
@@ -260,7 +305,7 @@ import VoxClipCore
         recent.submenu = recentMenu
         file.addItem(recent)
         file.addItem(.separator())
-        add(file, "Close", #selector(NSWindow.performClose(_:)), "w")
+        add(file, "Close Project", #selector(closeProject(_:)), "w", target: self)
         add(file, "Save", #selector(NSDocument.save(_:)), "s")
         add(file, "Save As…", #selector(NSDocument.saveAs(_:)), "s", [.command, .shift])
         add(file, "Move To…", #selector(NSDocument.move(_:)))
@@ -291,11 +336,10 @@ import VoxClipCore
         let view = menu("View")
         command(view, "Show Cut Words", 10, "h", [.command, .shift])
         command(view, "Show Pauses", 11)
-        command(view, "Show Caption Inspector", 12, "i", [.command, .option])
+        command(view, "Hide Viewer", 12, "i", [.command, .option])
         command(view, "Home", 13, "1")
-        command(view, "Transcript", 14, "2")
-        command(view, "Clips", 15, "3")
-        command(view, "Toggle Sidebar", 16)
+        command(view, "Full Take", 14, "2")
+        command(view, "Hide Sidebar", 16, "s", [.command, .control])
         command(view, "Source / Edited Timeline", 17)
         command(view, "Bigger Text", 18, "+")
         command(view, "Smaller Text", 19, "-")
@@ -308,11 +352,13 @@ import VoxClipCore
         command(clip, "Set End", 31)
         command(clip, "Previous Clip", 32)
         command(clip, "Next Clip", 33)
-        command(clip, "Find Clips…", 34)
+        command(clip, "Find Clips…", 34, "k", [.command, .shift])
         let window = menu("Window")
         add(window, "Minimize", #selector(NSWindow.performMiniaturize(_:)), "m")
         add(window, "Zoom", #selector(NSWindow.performZoom(_:)))
         add(window, "Toggle Full Screen", #selector(NSWindow.toggleFullScreen(_:)), "f", [.command, .control])
+        window.addItem(.separator())
+        add(window, "VoxClip", #selector(showMainWindow(_:)), target: self)
         window.addItem(.separator())
         NSApp.windowsMenu = window
         let help = menu("Help")
@@ -327,31 +373,21 @@ import VoxClipCore
 
 let privacyCopy = "On-device transcription, editing, captions and export stay on this Mac. Your chosen cloud transcription engine receives audio only. Your chosen AI connector receives transcript text only, no audio or video. Installed CLIs use your own sign-in. Model downloads and update checks contact their publishers. No telemetry. Posting is optional and never happens without your click."
 
-@MainActor func openVoxClipSettings() { (NSApp.delegate as? AppDelegate)?.openSettings() }
+@MainActor func openVoxClipSettings(pane: String? = nil) {
+    if let pane { AppModel.sharedModel.settingsPane = pane }
+    (NSApp.delegate as? AppDelegate)?.openSettings()
+}
 
-@MainActor func chooseFile(app: AppModel, projectsOnly: Bool = false) {
+@MainActor func chooseFile(app: AppModel, projectsOnly: Bool = false, moviesOnly: Bool = false) {
     let panel = NSOpenPanel()
-    panel.allowedContentTypes = projectsOnly ? [.voxclipProject] : [.voxclipProject, .movie]
+    panel.allowedContentTypes = projectsOnly ? [.voxclipProject] : moviesOnly ? [.movie] : [.voxclipProject, .movie]
     panel.allowsMultipleSelection = false
     if panel.runModal() == .OK, let url = panel.url { openFile(url, app: app) }
 }
 @MainActor func openFile(_ url: URL, app: AppModel) { app.fileRouter.receive([url]) }
+/// Imports a movie as a new project in the main window (ADR-R29).
 @MainActor func openMovie(_ url: URL, app: AppModel) {
-    if let home = app.activeHome, home.isHome {
-        home.importTask = Task { await home.importVideo(url) }
-        return
-    }
-    Task {
-        do {
-            let document = try await importedDocument(url, app: app)
-            NSDocumentController.shared.addDocument(document)
-            document.makeWindowControllers()
-            document.showWindows()
-        } catch {
-            app.notice = await app.safeError(error)
-            if NSDocumentController.shared.documents.isEmpty { NSDocumentController.shared.newDocument(nil) }
-        }
-    }
+    Task { await app.shell.importVideo(url) }
 }
 @MainActor func importedDocument(_ url: URL, app: AppModel) async throws -> VoxClipDocument {
     await app.start()
@@ -368,22 +404,7 @@ let privacyCopy = "On-device transcription, editing, captions and export stay on
     private var bufferedMovies: [URL] = []
     private var movieOpener: ((URL) -> Void)?
     var projectOpener: (URL) -> Void = { url in
-        let originatingHome = AppModel.sharedModel.activeHome
-        let originatingWindow = originatingHome?.window
-        NSDocumentController.shared.openDocument(withContentsOf: url, display: true) { document, _, error in
-            Task { @MainActor in
-                if let error {
-                    AppModel.sharedModel.notice = await AppModel.sharedModel.safeError(error)
-                    if NSDocumentController.shared.documents.isEmpty { NSDocumentController.shared.newDocument(nil) }
-                }
-                else if document != nil { AppModel.sharedModel.noteRecent(url) }
-                if document != nil, let originatingHome, let originatingWindow,
-                        originatingHome.window === originatingWindow, originatingWindow.isVisible,
-                        originatingHome.isHome, originatingHome.importProgress == nil {
-                    originatingHome.closeEmptyWindow()
-                }
-            }
-        }
+        Task { await AppModel.sharedModel.shell.openProject(at: url) }
     }
     func installMovieOpener(_ opener: @escaping (URL) -> Void) {
         movieOpener = opener
@@ -396,7 +417,7 @@ let privacyCopy = "On-device transcription, editing, captions and export stay on
             if url.pathExtension.lowercased() == "voxclip" { projectOpener(url) }
             else if ["mov", "mp4", "m4v"].contains(url.pathExtension.lowercased()) {
                 if let movieOpener { movieOpener(url) } else { bufferedMovies.append(url) }
-            } else { AppModel.sharedModel.notice = "VoxClip can't open \(url.pathExtension.uppercased()) files on Mac yet. Export the video as MP4 or MOV and try again." }
+            } else { AppModel.sharedModel.shell.notice = "VoxClip can't open \(url.pathExtension.uppercased()) files on Mac yet. Export the video as MP4 or MOV and try again." }
         }
     }
 }

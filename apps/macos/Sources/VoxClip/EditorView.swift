@@ -1,140 +1,238 @@
 import SwiftUI
 import VoxClipCore
 
-struct EditorFocusKey: FocusedValueKey { typealias Value = EditorModel }
-extension FocusedValues { var editor: EditorModel? { get { self[EditorFocusKey.self] } set { self[EditorFocusKey.self] = newValue } } }
-
-@MainActor public struct EditorView: View {
-    @ObservedObject private var document: VoxClipDocument
-    @State private var model: EditorModel
-
-    init(document: VoxClipDocument, app: AppModel) {
-        self.document = document
-        var preview: (any PreviewEngine)?
-        #if DEBUG
-        if document.demo { preview = DemoPreviewEngine() }
-        #endif
-        _model = State(initialValue: EditorModel(document: document, app: app, preview: preview))
-    }
-    init(model: EditorModel) { document = model.document; _model = State(initialValue: model) }
-
-    public var body: some View {
-        NavigationSplitView(columnVisibility: $model.sidebarVisibility) {
-            List(selection: $model.location) {
-                Section("Library") {
-                    Label("Home", systemImage: "house").tag(WorkspaceLocation.home)
-                }
-                if !model.isHome {
-                    Section(model.project.title ?? "Project") {
-                        Label("Transcript", systemImage: "text.alignleft").tag(WorkspaceLocation.transcript)
-                        Label("Clips", systemImage: "film.stack").tag(WorkspaceLocation.clips)
-                    }
-                }
-            }
-            .listStyle(.sidebar)
-            .navigationSplitViewColumnWidth(min: 160, ideal: 190, max: 220)
-            .accessibilityLabel("Workspace navigation")
-        } detail: {
-            if model.isHome || model.location == .home {
-                HomeView(model: model)
-            } else {
-                GeometryReader { geometry in
-                    VStack(spacing: 0) {
-                        if geometry.size.width < 760 {
-                            if model.location == .clips {
-                                WorkspaceMainColumn(model: model)
-                                Divider()
-                                PreviewColumn(model: model, compact: true).frame(height: max(230, min(280, geometry.size.height * 0.4)))
-                            } else {
-                                PreviewColumn(model: model, compact: true).frame(height: min(220, geometry.size.height * 0.34))
-                                Divider()
-                                WorkspaceMainColumn(model: model)
-                            }
-                        } else {
-                            EditorSplitView(model: model)
-                        }
-                        Divider()
-                        TimelineStrip(model: model).frame(height: DesignValues.dimension("size.timelineHeight", fallback: 56))
-                    }
-                }
-            }
-        }
-        .inspector(isPresented: $model.showInspector) {
-            InspectorView(model: model).inspectorColumnWidth(min: 260, ideal: 300, max: 380)
-        }
-        .navigationSubtitle(model.isHome || model.location == .home ? "" : model.subtitle)
-        .toolbar { EditorToolbar(model: model, hasMedia: !model.isHome) }
-        .focusedSceneValue(\.editor, model)
-        .background(EditorWindowSetup(model: model))
-        .preferredColorScheme(model.app.appearance)
-        .sheet(isPresented: $model.showExport) { ExportSheet(model: model) }
-        .sheet(isPresented: $model.showTranscribe) { TranscriptionSheet(model: model) }
-        .sheet(isPresented: $model.showShortcuts) { ShortcutsView() }
-        .sheet(isPresented: Binding(get: { model.app.showTour }, set: { model.app.showTour = $0 })) { OnboardingView() }
-        .dropDestination(for: URL.self) { urls, _ in
-            guard let url = urls.first else { return false }
-            openFile(url, app: model.app)
-            return true
-        }
-        .task { model.undoManager = document.undoManager; document.editorModel = model; await model.start() }
-        .onDisappear { model.close() }
-        .onChange(of: model.app.pauseBreathRevision) { _, _ in
-            guard model.app.settingsLoaded else { return }
-            let value = model.app.string("editing.pauseBreath", fallback: "natural")
-            model.apply(.setPauseKeep(seconds: value == "tight" ? 0.05 : value == "relaxed" ? 0.3 : 0.15), name: "Change pause breath")
-        }
-        .frame(minWidth: 800, minHeight: 560)
-    }
-}
-
-@MainActor private struct EditorToolbar: ToolbarContent {
-    let model: EditorModel
-    let hasMedia: Bool
-
-    var body: some ToolbarContent {
-        if hasMedia {
-            ToolbarItemGroup(placement: .principal) {
-                Button("Find Clips", systemImage: "film.stack") { model.location = .clips }
-                    .labelStyle(.titleAndIcon)
-                    .help("Find and manage clips · ⌘3")
-            }
-            EditorPlayToolbar(model: model)
-            ToolbarSpacer(.flexible)
-            EditorExportToolbar(model: model)
-            ToolbarItem {
-                Button("Captions", systemImage: "textformat") { model.showInspector.toggle() }
-                    .help("Caption styles · ⌥⌘I")
-            }
-        }
-    }
-}
-
-@MainActor private struct EditorPlayToolbar: ToolbarContent {
-    let model: EditorModel
-
-    var body: some ToolbarContent {
-        #if compiler(>=6.4)
-        if #available(macOS 26.1, *) {
-            ToolbarItem { EditorPlayButton(model: model) }.visibilityPriority(.high)
-        } else {
-            ToolbarItem { EditorPlayButton(model: model) }
-        }
-        #else
-        ToolbarItem { EditorPlayButton(model: model) }
-        #endif
-    }
-}
-
-@MainActor private struct EditorPlayButton: View {
-    let model: EditorModel
+/// The main window's content (ADR-R29): the sidebar, then Home or the open
+/// project's editor. The shell owns the editor; this view only presents it.
+@MainActor struct WorkspaceView: View {
+    @Bindable var shell: WorkspaceShell
 
     var body: some View {
-        Button { model.transport(" ") } label: {
-            Label(timecode(model.playhead), systemImage: model.isPlaying ? "pause.fill" : "play.fill")
-                .labelStyle(.titleAndIcon)
-                .font(DesignValues.mono())
+        sheets(on: split)
+            .dropDestination(for: URL.self) { urls, _ in
+                guard let url = urls.first else { return false }
+                openFile(url, app: shell.app)
+                return true
+            } isTargeted: { shell.dropTargeted = $0 }
+            .overlay { if shell.dropTargeted { DropOverlay(savedFirst: shell.isHome ? nil : shell.projectTitle) } }
+            .onChange(of: shell.app.pauseBreathRevision) { _, _ in applyPauseBreath() }
+            .frame(minWidth: 640, minHeight: 480)
+            .onGeometryChange(for: Double.self) { $0.size.width } action: { shell.windowWidth = $0 }
+            .onChange(of: subtitleDetail, initial: true) { _, detail in
+                guard !detail.subtitle.isEmpty, let window = shell.windowController?.window else { return }
+                // The titlebar draws the new subtitle a moment later.
+                Task { @MainActor in
+                    for _ in 0..<20 where !describeSubtitle(in: window, detail: detail) { try? await Task.sleep(for: .milliseconds(30)) }
+                }
+            }
+    }
+    /// The sidebar and the detail column, with the window's title, subtitle and toolbar.
+    private var split: some View {
+        NavigationSplitView(columnVisibility: $shell.columnVisibility) {
+            WorkspaceSidebar(shell: shell)
+        } detail: {
+            detailColumn
         }
-        .help("Play or pause · Space")
+        .navigationTitle(shell.title)
+        .navigationSubtitle(windowSubtitle)
+        .toolbar { if !shell.showsHome, let editor = shell.editor { EditorToolbar(model: editor, shell: shell) } }
+        .preferredColorScheme(shell.app.appearance)
+    }
+    private var windowSubtitle: String {
+        guard !shell.showsHome, let editor = shell.editor else { return "" }
+        return editor.subtitle
+    }
+    /// Export, Transcribe Again, Keyboard Shortcuts and the tour.
+    private func sheets(on content: some View) -> some View {
+        content
+            .sheet(isPresented: editorFlag(\.showExport)) { if let editor = shell.editor { ExportSheet(model: editor) } }
+            .sheet(isPresented: editorFlag(\.showTranscribe)) { if let editor = shell.editor { TranscriptionSheet(model: editor) } }
+            .sheet(isPresented: $shell.showShortcuts) { ShortcutsView() }
+            .sheet(isPresented: Binding(get: { shell.app.showTour }, set: { shell.app.showTour = $0 })) { OnboardingView() }
+    }
+    /// A changed pause breath setting applies to the open project as one undo step.
+    private func applyPauseBreath() {
+        guard shell.app.settingsLoaded, let editor = shell.editor else { return }
+        let seconds: Double
+        switch shell.app.string("editing.pauseBreath", fallback: "natural") {
+        case "tight": seconds = 0.05
+        case "relaxed": seconds = 0.3
+        default: seconds = 0.15
+        }
+        editor.apply(.setPauseKeep(seconds: seconds), name: "Change pause breath")
+    }
+    /// Home or the editor. Below 960 the sidebar shows over it on request (design §3.7).
+    private var detailColumn: some View {
+        Group {
+            if shell.showsHome {
+                HomeView(shell: shell)
+            } else if let editor = shell.editor {
+                // A new project gets new AppKit hosts bound to its own editor.
+                EditorDetail(model: editor, shell: shell).id(ObjectIdentifier(editor))
+            }
+        }
+        .overlay(alignment: .leading) { if shell.sidebarOverlay { SidebarOverlay(shell: shell) } }
+    }
+    /// The edit summary's detail for the subtitle's accessibility help, with the
+    /// subtitle it belongs to (design §3.5, lead decision 3).
+    private var subtitleDetail: SubtitleDetail {
+        guard !shell.showsHome, let editor = shell.editor else { return SubtitleDetail(subtitle: "", detail: "") }
+        return SubtitleDetail(subtitle: editor.subtitle, detail: editor.summaryDetail)
+    }
+    /// A sheet or panel flag on the open editor; false while no project is open.
+    private func editorFlag(_ flag: ReferenceWritableKeyPath<EditorModel, Bool>) -> Binding<Bool> {
+        Binding(get: { shell.editor?[keyPath: flag] ?? false }, set: { shell.editor?[keyPath: flag] = $0 })
+    }
+}
+
+struct SubtitleDetail: Equatable {
+    let subtitle: String
+    let detail: String
+}
+
+/// Gives the window subtitle the edit summary's detail ("{source} source · {w} words cut
+/// in {r} places · {p} pauses cut") for VoiceOver, which reads it after the subtitle.
+/// There is no tooltip (lead decision 3). AppKit draws the subtitle in a titlebar text
+/// field, found by its text; a text field always reports its text as its accessibility
+/// value, so the detail is its accessibility help. Returns false when there is none.
+@MainActor @discardableResult func describeSubtitle(in window: NSWindow?, detail: SubtitleDetail) -> Bool {
+    guard let window, !detail.subtitle.isEmpty, window.subtitle == detail.subtitle, let frame = window.contentView?.superview else { return false }
+    @MainActor func field(in view: NSView) -> NSTextField? {
+        if let field = view as? NSTextField, field.stringValue == detail.subtitle { return field }
+        for child in view.subviews { if let found = field(in: child) { return found } }
+        return nil
+    }
+    guard let subtitle = frame.subviews.lazy.filter({ $0 !== window.contentView }).compactMap(field(in:)).first else { return false }
+    subtitle.setAccessibilityHelp(detail.detail)
+    return true
+}
+
+/// The whole-window drop target (design §7): one video at a time, and the open project
+/// is saved first.
+@MainActor private struct DropOverlay: View {
+    let savedFirst: String?
+    var body: some View {
+        RoundedRectangle(cornerRadius: VCTokens.radiusSheet)
+            .fill(DesignValues.color("overlay.drop"))
+            .overlay(RoundedRectangle(cornerRadius: VCTokens.radiusSheet).strokeBorder(DesignValues.accentText, style: StrokeStyle(lineWidth: VCTokens.strokeDropBorder, dash: [6, 4])))
+            .overlay {
+                VStack(spacing: VCTokens.spacing2) {
+                    Image(systemName: "arrow.down.to.line").font(.system(size: 24)).foregroundStyle(DesignValues.accentText)
+                    Text("Drop to transcribe").font(.system(size: 17, weight: .semibold)).foregroundStyle(DesignValues.color("text.primary"))
+                    Text(savedFirst.map { "\($0) is saved first." } ?? "One video at a time · MOV, MP4, M4V")
+                        .font(.system(size: 13)).foregroundStyle(DesignValues.color("text.secondary"))
+                }
+                .accessibilityElement(children: .combine)
+            }
+            .padding(VCTokens.spacing4)
+            .allowsHitTesting(false)
+    }
+}
+
+/// The editor detail (design §3.2): the transcript and the right column, then the
+/// 72-high timeline strip. With the viewer collapsed the strip carries the compact
+/// transport (§5.3).
+@MainActor private struct EditorDetail: View {
+    let model: EditorModel
+    let shell: WorkspaceShell
+    var body: some View {
+        VStack(spacing: 0) {
+            EditorSplitView(model: model, shell: shell, viewerVisible: shell.viewerVisible)
+            Divider()
+            TimelineStrip(model: model, compactTransport: !shell.viewerVisible).frame(height: VCTokens.sizeTimelineHeight)
+        }
+        .background(TranscriptFocusOnShow(model: model))
+    }
+}
+
+/// The transcript takes keyboard focus when the editor shows (design: "The transcript
+/// … gets keyboard focus by default"): always when a project opens or imports, and when
+/// the selection leaves Home unless the user is moving through the sidebar's rows. Its
+/// view arrives in the window a pass or two after this one, or once transcription ends.
+@MainActor private struct TranscriptFocusOnShow: NSViewRepresentable {
+    let model: EditorModel
+    func makeNSView(context: Context) -> FocusView { FocusView(model: model) }
+    func updateNSView(_ view: FocusView, context: Context) {}
+    final class FocusView: NSView {
+        private weak var model: EditorModel?
+        init(model: EditorModel) { self.model = model; super.init(frame: .zero) }
+        required init?(coder: NSCoder) { nil }
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            guard let window, let model, model.wantsTranscriptFocus || !(window.firstResponder is NSTableView) else { return }
+            // An untranscribed take keeps asking until its transcript arrives.
+            model.wantsTranscriptFocus = true
+            Task { @MainActor [weak self] in
+                for _ in 0..<40 {
+                    guard let window = self?.window, let model = self?.model, model.wantsTranscriptFocus else { return }
+                    if focusTranscript(in: window) { model.wantsTranscriptFocus = false; return }
+                    try? await Task.sleep(for: .milliseconds(25))
+                }
+            }
+        }
+    }
+}
+
+/// The editor toolbar (design §3.5). The title and edit summary lead; the trailing
+/// cluster is the edit commands in one capsule, Find Clips, Export and the viewer
+/// toggle. There is no Play. Below a 1100 window width the capsule is icon-only.
+@MainActor private struct EditorToolbar: ToolbarContent {
+    @Bindable var model: EditorModel
+    let shell: WorkspaceShell
+
+    var body: some ToolbarContent {
+        let compact = shell.windowWidth < 1100
+        ToolbarItemGroup {
+            EditCommandButton(title: "Cut Fillers", symbol: "scissors", shortcut: "⌥⌘U", count: model.summary.fillerCount, compact: compact) {
+                model.apply(.cutFillers, name: "Cut fillers")
+            }.disabled(!model.summary.canCutFillers)
+            EditCommandButton(title: "Tighten Pauses", symbol: "arrow.right.and.line.vertical.and.arrow.left", shortcut: "⌥⌘P", compact: compact) {
+                model.apply(.tightenPauses, name: "Tighten pauses")
+            }.disabled(!model.summary.canTighten)
+            EditCommandButton(title: "Restore Cuts", symbol: "arrow.uturn.backward", shortcut: "⌥⌘R", compact: compact) {
+                model.apply(.restoreCuts, name: "Restore cuts")
+            }.disabled(!model.summary.hasEdits)
+        }
+        ToolbarSpacer(.fixed)
+        ToolbarItem {
+            Button("Find Clips", systemImage: "sparkles") { model.requestFindClips(from: .toolbar) }
+                .labelStyle(.titleAndIcon)
+                .help("Find Clips (⇧⌘K)")
+                .disabled(model.words.isEmpty || model.finding)
+                .popover(isPresented: Binding(get: { model.showFindClips && model.findClipsAnchor == .toolbar }, set: { if !$0 { model.showFindClips = false } }), arrowEdge: .bottom) {
+                    FindClipsPopover(model: model)
+                }
+        }
+        ToolbarSpacer(.fixed)
+        EditorExportToolbar(model: model)
+        ToolbarSpacer(.fixed)
+        ToolbarItem {
+            Button(shell.viewerVisible ? "Hide Viewer" : "Show Viewer", systemImage: "sidebar.trailing") { shell.toggleViewer() }
+                .help(shell.viewerVisible ? "Hide Viewer (⌥⌘I)" : "Show Viewer (⌥⌘I)")
+        }
+    }
+}
+
+/// One command in the toolbar's edit capsule: its symbol and title, or the symbol alone
+/// when compact. Cut Fillers adds the scope's filler count in text.secondary.
+@MainActor private struct EditCommandButton: View {
+    let title: String
+    let symbol: String
+    let shortcut: String
+    var count: Int?
+    let compact: Bool
+    let action: () -> Void
+
+    var body: some View {
+        let count = self.count.flatMap { $0 > 0 ? $0 : nil }
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Image(systemName: symbol)
+                if !compact { Text(title) }
+                if let count { Text("\(count)").font(DesignValues.mono(11)).foregroundStyle(DesignValues.color("text.secondary")) }
+            }
+        }
+        .help("\(title) (\(shortcut))")
+        .accessibilityLabel(count.map { "\(title), \($0)" } ?? title)
     }
 }
 
@@ -154,29 +252,40 @@ extension FocusedValues { var editor: EditorModel? { get { self[EditorFocusKey.s
     }
 }
 
+/// Export Video… or Export Clip… (⌘E). Unavailable for a demo, a missing or unreadable
+/// video, a selected suggestion or a scope with every word cut; the reason is its
+/// tooltip and accessible description (design §3.5 and §5.4.4).
 @MainActor private struct EditorExportButton: View {
     let model: EditorModel
 
     var body: some View {
-        EditorExportControl(title: "Export…") { model.presentExport() }
-            .disabled(!model.canExport)
-            .help(model.canExport ? "Choose full video or clips to export · ⌘E" : "Keep at least one word before exporting.")
+        // Its title and reasons come from the project, which views can't observe.
+        let _ = model.projectRevision
+        let reason = model.exportUnavailable
+        EditorExportControl(title: model.exportTitle, help: reason ?? "\(model.exportTitle) (⌘E)", reason: reason) { model.presentExport() }
+            .disabled(reason != nil || !model.canExport)
     }
 }
 
-/// Export stays a painted accent.default capsule. Offscreen renders of the standard
-/// .glassProminent and .borderedProminent toolbar styles never put the label on Petrol
-/// (no glass material, and the test app is never active), and their dark labels measured
-/// 1.23:1 and 4.37:1. The button is borderless on the toolbar's own glass platter, so no
-/// glass bezel (which offscreen captures cannot show) covers the painted token, and there
-/// is no glass on glass. DebugToolbarPixels holds it to 4.5:1 in key and inactive windows.
+/// Export stays a painted accent capsule (see CONTRACTS.md, step 8). Offscreen renders of
+/// the standard .glassProminent and .borderedProminent toolbar styles never put the label
+/// on the accent (no glass material, and the test app is never active), and their dark
+/// labels measured 1.23:1 and 4.37:1; the on-screen check in key and inactive windows
+/// could not run in round 1. The button is borderless on the toolbar's own glass platter,
+/// so no glass bezel covers the painted fill, and there is no glass on glass. The fill
+/// is accent.default while the accent is Petrol and the system accent otherwise (C14).
+/// DebugToolbarPixels holds the label to 4.5:1 in key and inactive windows.
 @MainActor struct EditorExportControl: NSViewRepresentable {
     @Environment(\.isEnabled) private var isEnabled
     let title: String
+    var help = ""
+    var reason: String?
     let action: () -> Void
-    init(title: String = "Export…", action: @escaping () -> Void) { self.title = title; self.action = action }
+    init(title: String = "Export Video…", help: String = "", reason: String? = nil, action: @escaping () -> Void) {
+        self.title = title; self.help = help; self.reason = reason; self.action = action
+    }
     func makeNSView(context: Context) -> ExportToolbarButton {
-        let button = ExportToolbarButton(title: "Export…", target: nil, action: nil)
+        let button = ExportToolbarButton(title: title, target: nil, action: nil)
         button.setButtonType(.momentaryPushIn)
         button.isBordered = false
         button.target = button
@@ -185,8 +294,13 @@ extension FocusedValues { var editor: EditorModel? { get { self[EditorFocusKey.s
     }
     func updateNSView(_ button: ExportToolbarButton, context: Context) {
         button.isEnabled = isEnabled
+        // The title is also the button's accessible name, so it follows the scope.
+        button.title = title
+        button.setAccessibilityLabel(title)
         button.exportTitle = title
         button.handler = action
+        button.toolTip = help.isEmpty ? nil : help
+        button.setAccessibilityHelp(reason)
         button.needsDisplay = true
     }
     func sizeThatFits(_ proposal: ProposedViewSize, nsView: ExportToolbarButton, context: Context) -> CGSize? {
@@ -202,8 +316,22 @@ extension FocusedValues { var editor: EditorModel? { get { self[EditorFocusKey.s
     static var offscreenActive: Bool?
     #endif
     var handler: () -> Void = {}
-    var exportTitle = "Export…"
+    var exportTitle = "Export Video…"
     @objc func invoke() { handler() }
+    /// The fill follows the window's key state and the app's active state, which change
+    /// without SwiftUI updating the button, so those changes redraw it.
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        NotificationCenter.default.removeObserver(self)
+        guard let window else { return }
+        for name in [NSWindow.didBecomeKeyNotification, NSWindow.didResignKeyNotification] {
+            NotificationCenter.default.addObserver(self, selector: #selector(redrawForState), name: name, object: window)
+        }
+        for name in [NSApplication.didBecomeActiveNotification, NSApplication.didResignActiveNotification] {
+            NotificationCenter.default.addObserver(self, selector: #selector(redrawForState), name: name, object: NSApp)
+        }
+    }
+    @objc private func redrawForState() { needsDisplay = true }
     override func draw(_ dirtyRect: NSRect) {
         var active = NSApp.isActive
         #if DEBUG
@@ -211,7 +339,7 @@ extension FocusedValues { var editor: EditorModel? { get { self[EditorFocusKey.s
         #endif
         let tinted = isEnabled && window?.isKeyWindow == true && active
         if tinted {
-            DesignValues.nsColor("accent.default").setFill()
+            DesignValues.accentFill.setFill()
             NSBezierPath(roundedRect: bounds, xRadius: bounds.height / 2, yRadius: bounds.height / 2).fill()
         }
         let color = isEnabled ? DesignValues.nsColor(tinted ? "accent.on" : "text.primary") : NSColor.disabledControlTextColor
@@ -221,109 +349,137 @@ extension FocusedValues { var editor: EditorModel? { get { self[EditorFocusKey.s
     }
 }
 
+/// The transcript and the right column (design §3.2 and §3.6). The column starts at
+/// the shell's right width: where the user last dragged the divider, for every project,
+/// else clamp(360 − (1440 − window width) × 0.25, 300, 560). It collapses with the
+/// viewer toggle and the narrow-width rule.
 @MainActor private struct EditorSplitView: NSViewControllerRepresentable {
     let model: EditorModel
+    let shell: WorkspaceShell
+    let viewerVisible: Bool
+
+    func makeCoordinator() -> Coordinator { Coordinator(shell: shell) }
+
     func makeNSViewController(context: Context) -> NSSplitViewController {
         let controller = NSSplitViewController()
+        controller.splitView = EditorSplit()
         controller.splitView.isVertical = true
         controller.splitView.dividerStyle = .thin
         controller.splitView.identifier = NSUserInterfaceItemIdentifier("voxclip.editor.split")
-        if !AppModel.isTestSession { controller.splitView.autosaveName = "VoxClip.editor.\(model.project.id)" }
-        let transcript = NSHostingController(rootView: WorkspaceMainColumn(model: model).frame(maxWidth: .infinity, maxHeight: .infinity).sceneAccent())
-        let preview = NSHostingController(rootView: PreviewColumn(model: model).frame(maxWidth: .infinity, maxHeight: .infinity).sceneAccent())
-        transcript.sizingOptions = []; preview.sizingOptions = []
-        transcript.view.setFrameSize(NSSize(width: 580, height: 680))
-        preview.view.setFrameSize(NSSize(width: 380, height: 680))
+        let transcript = NSHostingController(rootView: TranscriptColumn(model: model, shell: shell).frame(maxWidth: .infinity, maxHeight: .infinity).sceneAccent())
+        let right = NSHostingController(rootView: RightColumn(model: model).frame(maxWidth: .infinity, maxHeight: .infinity).sceneAccent())
+        transcript.sizingOptions = []; right.sizingOptions = []
+        let thickness = shell.rightWidth
+        transcript.view.setFrameSize(NSSize(width: max(WorkspaceShell.minimumTranscriptPane, shell.windowWidth - Double(VCTokens.sizeSidebarIdeal) - thickness), height: 680))
+        right.view.setFrameSize(NSSize(width: thickness, height: 680))
         let transcriptItem = NSSplitViewItem(viewController: transcript)
-        transcriptItem.minimumThickness = 440
+        transcriptItem.minimumThickness = VCTokens.sizeTranscriptMinWidth
         transcriptItem.holdingPriority = .defaultLow
-        let previewItem = NSSplitViewItem(viewController: preview)
-        previewItem.minimumThickness = 300
-        previewItem.maximumThickness = 560
-        previewItem.holdingPriority = .defaultHigh
+        let rightItem = NSSplitViewItem(viewController: right)
+        rightItem.minimumThickness = VCTokens.sizeRightColumnMin
+        rightItem.maximumThickness = VCTokens.sizeRightColumnMax
+        rightItem.holdingPriority = .defaultHigh
+        rightItem.canCollapse = true
+        rightItem.isCollapsed = !viewerVisible
         controller.addSplitViewItem(transcriptItem)
-        controller.addSplitViewItem(previewItem)
+        controller.addSplitViewItem(rightItem)
+        context.coordinator.observe(controller)
         return controller
     }
-    func updateNSViewController(_ controller: NSSplitViewController, context: Context) {}
+
+    func updateNSViewController(_ controller: NSSplitViewController, context: Context) {
+        guard controller.splitViewItems.count == 2 else { return }
+        let item = controller.splitViewItems[1]
+        guard item.isCollapsed == viewerVisible else { return }
+        if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion || AppModel.isTestSession { item.isCollapsed = !viewerVisible }
+        else { item.animator().isCollapsed = !viewerVisible }
+    }
+
     func sizeThatFits(_ proposal: ProposedViewSize, nsViewController: NSSplitViewController, context: Context) -> CGSize? {
         CGSize(width: proposal.width ?? 960, height: proposal.height ?? 680)
     }
-}
 
-@MainActor private struct EditorWindowSetup: NSViewRepresentable {
-    let model: EditorModel
-    func makeNSView(context: Context) -> SetupView { SetupView(model: model) }
-    func updateNSView(_ view: SetupView, context: Context) {}
-    final class SetupView: NSView {
-        weak var model: EditorModel?
-        var configured = false
-        init(model: EditorModel) { self.model = model; super.init(frame: .zero) }
-        required init?(coder: NSCoder) { nil }
-        override func viewWillMove(toWindow newWindow: NSWindow?) {
-            if newWindow == nil {
-                NotificationCenter.default.removeObserver(self)
-                configured = false
-            }
-            super.viewWillMove(toWindow: newWindow)
-        }
-        override func viewDidMoveToWindow() {
-            guard let window, !configured else { return }
-            configured = true
-            NotificationCenter.default.addObserver(self, selector: #selector(windowResized), name: NSWindow.didResizeNotification, object: window)
-            Task { @MainActor [weak self, weak window] in
-                guard let self, let window, let model else { return }
-                model.window = window
-                model.windowWidth = window.frame.width
-                if model.isHome { model.app.activeHome = model }
-                @MainActor func focus(_ view: NSView) -> NSTextView? {
-                    if let text = view as? TranscriptNSTextView { return text }
-                    for child in view.subviews { if let text = focus(child) { return text } }
-                    return nil
+    /// Keeps the shell's viewer state in step when the user collapses the column by
+    /// dragging its divider, and remembers the width the user drags it to.
+    @MainActor final class Coordinator {
+        let shell: WorkspaceShell
+        private var observer: NSObjectProtocol?
+        init(shell: WorkspaceShell) { self.shell = shell }
+        func observe(_ controller: NSSplitViewController) {
+            (controller.splitView as? EditorSplit)?.onDividerDrag = { [weak self] width in self?.shell.rememberRightWidth(width) }
+            observer = NotificationCenter.default.addObserver(forName: NSSplitView.didResizeSubviewsNotification, object: controller.splitView, queue: .main) { [weak self, weak controller] _ in
+                MainActor.assumeIsolated {
+                    guard let self, let controller, controller.splitViewItems.count == 2 else { return }
+                    if controller.splitViewItems[1].isCollapsed == self.shell.viewerVisible { self.shell.toggleViewer() }
                 }
-                if model.location == .transcript, let root = window.contentView, let transcript = focus(root) { window.makeFirstResponder(transcript) }
             }
-            NotificationCenter.default.addObserver(self, selector: #selector(windowBecameKey), name: NSWindow.didBecomeKeyNotification, object: window)
         }
-        @objc private func windowBecameKey() {
-            guard let model else { return }
-            model.app.activeHome = model.isHome ? model : nil
-            model.app.activeEditor = model
-        }
-        @objc private func windowResized() {
-            guard let width = window?.frame.width, let model, abs(width - model.windowWidth) > 1 else { return }
-            model.windowWidth = width
+        isolated deinit { if let observer { NotificationCenter.default.removeObserver(observer) } }
+    }
+}
+
+/// The editor's split view. Only a drag of its own divider reports the right column's
+/// width: NSSplitView receives mouseDown only on (or beside) a divider, because its two
+/// panes cover the rest, and `super.mouseDown` returns when the drag ends. Toolbar
+/// toggles, window resizes and the sidebar's divider resize the panes without a
+/// mouseDown here, so they never store a width.
+@MainActor final class EditorSplit: NSSplitView {
+    var onDividerDrag: ((Double) -> Void)?
+    override func mouseDown(with event: NSEvent) {
+        let before = arrangedSubviews.last?.frame.width
+        super.mouseDown(with: event)
+        guard let right = arrangedSubviews.last, !isSubviewCollapsed(right), abs(right.frame.width - (before ?? 0)) > 0.5 else { return }
+        onDividerDrag?(right.frame.width)
+    }
+}
+
+/// The right column (design §3.6): the viewer, a hairline, then Captions, which fills
+/// the rest and scrolls. It sits on the window background with no card or inset.
+@MainActor private struct RightColumn: View {
+    @Bindable var model: EditorModel
+    var body: some View {
+        VStack(spacing: 0) {
+            PreviewColumn(model: model)
+            Divider()
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Captions").font(.headline)
+                    CaptionsInspector(model: model)
+                }
+                .padding(VCTokens.spacingPanePaddingMacos)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .controlSize(.small)
         }
     }
 }
 
-@MainActor private struct WorkspaceMainColumn: View {
-    let model: EditorModel
-    var body: some View {
-        if model.location == .clips { ClipsInspector(model: model) }
-        else { TranscriptColumn(model: model) }
+/// Puts keyboard focus in the transcript, as when a project opens. Returns false while
+/// the transcript isn't in the window yet.
+@MainActor @discardableResult func focusTranscript(in window: NSWindow?) -> Bool {
+    @MainActor func find(_ view: NSView) -> NSTextView? {
+        if let text = view as? TranscriptNSTextView { return text }
+        for child in view.subviews { if let text = find(child) { return text } }
+        return nil
     }
+    guard let window, let root = window.contentView, let transcript = find(root) else { return false }
+    return window.firstResponder === transcript || window.makeFirstResponder(transcript)
 }
 
 @MainActor private struct TranscriptColumn: View {
     @Bindable var model: EditorModel
+    let shell: WorkspaceShell
     @FocusState private var findFocused: Bool
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
-                Text("Transcript").font(.headline)
-                Spacer()
-                Button("Make Clip from Selection") { model.makeClip() }.disabled(model.selectedIDs.isEmpty)
-                    .help("Select words, then make a clip · ⌘K")
-                Menu("Edit Cuts", systemImage: "scissors") {
-                    Button("Cut Fillers") { model.apply(.cutFillers, name: "Cut fillers") }.disabled(!model.summary.canCutFillers)
-                    Button("Tighten Pauses") { model.apply(.tightenPauses, name: "Tighten pauses") }.disabled(!model.summary.canTighten)
-                    Button("Restore All Cuts") { model.apply(.restoreCuts, name: "Restore cuts") }.disabled(!model.summary.hasEdits)
-                }.menuStyle(.borderlessButton)
-                Button("Find", systemImage: "magnifyingglass") { model.findVisible = true; findFocused = true }
-                    .labelStyle(.iconOnly).help("Find in transcript · ⌘F")
-            }.padding(20)
-            if model.document.demo { Text("Demo fixture · synthetic preview · no media is exported").font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 20).padding(.bottom, 12) }
+            if model.document.demo {
+                Label { Text("Demo project with no video. ").fontWeight(.semibold) + Text("Changes aren't saved to the fixture.") } icon: { Image(systemName: "info.circle") }
+                    .font(.system(size: 13)).foregroundStyle(DesignValues.color("text.primary"))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 14).frame(minHeight: 40)
+                    .background(DesignValues.color("status.infoBackground"), in: .rect(cornerRadius: VCTokens.radiusPane))
+                    .padding(.horizontal, 20).padding(.top, 12)
+            }
             if model.findVisible {
                 HStack {
                     TextField("Find in transcript", text: $model.query).focused($findFocused).onSubmit { model.findNext() }
@@ -331,8 +487,10 @@ extension FocusedValues { var editor: EditorModel? { get { self[EditorFocusKey.s
                     Button("Next", systemImage: "chevron.down") { model.findNext() }.labelStyle(.iconOnly)
                     Button("Cut all \(model.words.filter { model.text($0).localizedCaseInsensitiveContains(model.query) }.count)") { model.cutMatches() }.disabled(model.query.isEmpty)
                     Button("Close find", systemImage: "xmark") { model.findVisible = false }.labelStyle(.iconOnly)
-                }.padding(.horizontal, 20).padding(.bottom, 12)
+                }.padding(.horizontal, 20).padding(.vertical, 12)
+                .onAppear { findFocused = true }
             }
+            if let notice = shell.notice { InlineNotice(text: notice) }
             if let error = model.error, !error.isEmpty { InlineNotice(text: error) }
             if let progress = model.progress {
                 VStack(alignment: .leading, spacing: 14) {
@@ -341,7 +499,7 @@ extension FocusedValues { var editor: EditorModel? { get { self[EditorFocusKey.s
                     Button("Cancel") { model.workTask?.cancel(); model.progress = nil }
                 }.padding(40)
                 Spacer()
-            } else if model.project.transcript == nil {
+            } else if !model.transcribed {
                 ContentUnavailableView { Label("This video isn't transcribed yet.", systemImage: "text.alignleft") }
                     description: { Text("Your video is still here. Transcribe it to cut by words.") }
                     actions: { Button("Transcribe…") { model.showTranscribe = true }; Button("Models and keys…") { openVoxClipSettings() } }

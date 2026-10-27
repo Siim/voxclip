@@ -13,9 +13,10 @@ import VoxClipCore
         text.model = model; text.delegate = context.coordinator; text.textLayoutManager?.delegate = context.coordinator
         text.isEditable = false; text.isSelectable = true; text.isRichText = true; text.drawsBackground = false
         text.isVerticallyResizable = true; text.isHorizontallyResizable = false; text.autoresizingMask = [.width]
-        text.textContainer?.widthTracksTextView = true
-        text.textContainer?.containerSize = NSSize(width: 640, height: CGFloat.greatestFiniteMagnitude)
-        text.textContainerInset = NSSize(width: 64, height: 8)
+        text.textContainer?.widthTracksTextView = false
+        text.textContainer?.containerSize = NSSize(width: TranscriptNSTextView.measure(forPane: 640), height: CGFloat.greatestFiniteMagnitude)
+        text.textContainerInset = NSSize(width: VCTokens.spacingTranscriptGutter, height: 8)
+        text.selectedTextAttributes = TranscriptNSTextView.selectionAttributes
         text.setAccessibilityLabel("Transcript. Select words, then Delete to cut. Return corrects spelling.")
         text.setAccessibilityCustomRotors(["Cuts", "Pauses", "Suggested fillers", "Clips"].map { NSAccessibilityCustomRotor(label: $0, itemSearchDelegate: text) })
         text.setAccessibilityCustomActions([NSAccessibilityCustomAction(name: "Cut selected words", target: text, selector: #selector(TranscriptNSTextView.accessibleCut)), NSAccessibilityCustomAction(name: "Restore selection", target: text, selector: #selector(TranscriptNSTextView.accessibleRestore)), NSAccessibilityCustomAction(name: "Correct spelling", target: text, selector: #selector(TranscriptNSTextView.accessibleCorrect)), NSAccessibilityCustomAction(name: "Play from here", target: text, selector: #selector(TranscriptNSTextView.accessiblePlay))])
@@ -107,7 +108,7 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
                     }
                     guard foreground else { continue }
                     let fontIndex = min(line.attributedString.length - 1, max(0, intersection.location - offset))
-                    let font = line.attributedString.attribute(.font, at: fontIndex, effectiveRange: nil) as? NSFont ?? DesignValues.transcriptFont(size: 17)
+                    let font = line.attributedString.attribute(.font, at: fontIndex, effectiveRange: nil) as? NSFont ?? DesignValues.transcriptFont(size: DesignValues.transcriptTextSize)
                     let baseline = point.y + line.typographicBounds.minY + line.glyphOrigin.y
                     let lower = rect.minX + 2, upper = rect.maxX - 2
                     if attributes[.vcStrike] as? Bool == true {
@@ -141,6 +142,40 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
 
 @MainActor final class TranscriptNSTextView: NSTextView, NSTextFieldDelegate, @preconcurrency NSAccessibilityCustomRotorItemSearchDelegate {
     weak var model: EditorModel?
+    /// Selected words read in text.primary on the platform selection (selection.text), so
+    /// cut and filler colours never sit on it; Increase Contrast takes the system's pair.
+    static let selectionAttributes: [NSAttributedString.Key: Any] = {
+        let primary = DesignValues.nsColor("text.primary")
+        let text = NSColor(name: NSColor.Name("voxclip.selectedTranscriptText")) { appearance in
+            appearance.bestMatch(from: [.accessibilityHighContrastAqua, .accessibilityHighContrastDarkAqua, .aqua, .darkAqua])?.rawValue.contains("HighContrast") == true ? .selectedTextColor : primary
+        }
+        return [.backgroundColor: NSColor.selectedTextBackgroundColor, .foregroundColor: text]
+    }()
+
+    /// The transcript measure (design §3.7): the pane less the 84 gutter and 32 of
+    /// trailing padding, kept between 480 and 680, and never wider than the pane after
+    /// the gutter, so a narrow pane wraps rather than clips. Text starts after the gutter.
+    static func measure(forPane width: Double) -> Double {
+        let gutter = Double(VCTokens.spacingTranscriptGutter)
+        return max(120, min((width - gutter - 32).clamped(to: 480...Double(VCTokens.sizeTranscriptMeasureMax)), width - gutter))
+    }
+    /// A transcript that arrives after the editor showed, for example when transcription
+    /// finishes, takes the keyboard focus the editor still wants.
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        guard let window, model?.wantsTranscriptFocus == true else { return }
+        Task { @MainActor [weak self] in
+            guard let self, self.window === window, let model = self.model, model.wantsTranscriptFocus else { return }
+            if window.makeFirstResponder(self) { model.wantsTranscriptFocus = false }
+        }
+    }
+    override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
+        let width = Self.measure(forPane: newSize.width)
+        if let container = textContainer, !container.widthTracksTextView, abs(container.containerSize.width - width) > 0.5 {
+            container.containerSize = NSSize(width: width, height: CGFloat.greatestFiniteMagnitude)
+        }
+    }
     var map = TranscriptRangeMap(spans: [])
     private var correction: NSTextField?
     @objc func accessibleCut() -> Bool { guard let model, !model.selectedIDs.isEmpty || !model.selectedPauseIDs.isEmpty else { return false }; model.cutSelection(); return true }

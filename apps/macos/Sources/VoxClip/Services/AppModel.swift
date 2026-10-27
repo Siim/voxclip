@@ -52,6 +52,12 @@ extension ProviderChoice {
         recent.insert(url, at: 0)
         recent = Array(recent.prefix(20))
     }
+    /// A recent project's name for File > Open Recent (design §2): the open project's
+    /// title, else the title read from its file, else the file name.
+    func recentTitle(_ url: URL) -> String {
+        if let open = shell.document?.fileURL, open.standardizedFileURL == url.standardizedFileURL { return shell.projectTitle }
+        return recentProjects.items[url]?.title ?? url.deletingPathExtension().lastPathComponent
+    }
     func moveRecent(from oldURL: URL, to newURL: URL) {
         recent.removeAll { $0.standardizedFileURL == oldURL.standardizedFileURL || $0.standardizedFileURL == newURL.standardizedFileURL }
         recent.insert(newURL, at: 0)
@@ -63,8 +69,35 @@ extension ProviderChoice {
     var update: UpdateRelease?
     var showTour = false
     let fileRouter = FileOpenRouter()
-    @ObservationIgnored weak var activeHome: EditorModel?
-    @ObservationIgnored weak var activeEditor: EditorModel?
+    /// The one main window's state (ADR-R29).
+    @ObservationIgnored lazy var shell = WorkspaceShell(app: self)
+    @ObservationIgnored lazy var recentProjects = RecentProjects(app: self)
+    /// The bundled caption resources that VoxClipCore's caption cards read (design §5.4.2).
+    @ObservationIgnored lazy var captionResources: CaptionResources? = shared.flatMap { try? CaptionResources.load(shared: $0) }
+    /// The style a project's caption cards use (design §5.4.2): its own, or with captions
+    /// off `captions.defaultStyleId`, or Highlight when that is off too.
+    func cardStyle(for project: Project) -> CaptionStyle? {
+        Self.cardStyle(project.captions.styleId, default: string("captions.defaultStyleId", fallback: "vox-highlight"), in: styles)
+    }
+    nonisolated static func cardStyle(_ id: String, default fallback: String, in styles: [CaptionStyle]) -> CaptionStyle? {
+        [id, fallback, "vox-highlight"].lazy.compactMap { id in styles.first { $0.id == id } }.first
+    }
+    /// Each caption style's declared preview.background, read from its file because a
+    /// decoded style fills in a default (design §5.4.3).
+    @ObservationIgnored lazy var previewBackgrounds: [String: String] = {
+        guard let folder = shared?.root.appendingPathComponent("caption-styles/styles"),
+              let files = try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil) else { return [:] }
+        var backgrounds: [String: String] = [:]
+        for file in files where file.pathExtension == "json" {
+            guard let data = try? Data(contentsOf: file), let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let id = object["id"] as? String, let background = (object["preview"] as? [String: Any])?["background"] as? String else { continue }
+            backgrounds[id] = background
+        }
+        return backgrounds
+    }()
+    /// The Settings tab to show; Set Up AI… and Change… open "ai".
+    var settingsPane = "general"
+    var activeEditor: EditorModel? { shell.editor }
     private(set) var settingsLoaded = false
     private(set) var loadingSettings = true
     private(set) var pauseBreathRevision = 0
@@ -116,7 +149,6 @@ extension ProviderChoice {
         catch { shared = nil; startupError = .sharedResourcesMissing }
         // Share-text rules load now, so an invalid shared/data/share-text.json fails at launch, not in the Export sheet.
         if shared != nil { do { try SharePostText.preflight() } catch { startupError = .sharedResourcesMissing } }
-        DesignValues.registerFonts()
         loadCatalogue()
     }
 
@@ -146,7 +178,7 @@ extension ProviderChoice {
         }
         restoreCachedUpdate()
         #if DEBUG
-        if Self.isTestSession { return }
+        if Self.isTestSession || DebugProbes.requested { return }
         #endif
         guard bool("update.autoCheck", fallback: true) else { return }
         let last = string("update.lastCheckAt")

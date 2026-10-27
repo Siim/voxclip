@@ -98,7 +98,10 @@ public actor CacheStore {
         return entry
     }
 
-    func isDirectory(_ url: URL) -> Bool {
+    func isDirectory(_ url: URL) -> Bool { Self.isRealDirectory(url) }
+    /// A real folder, never a symbolic link (architecture §8.2). The app's thumbnail
+    /// posters check their entry and `thumbs` folders with it too.
+    public nonisolated static func isRealDirectory(_ url: URL) -> Bool {
         guard let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey]) else { return false }
         return values.isDirectory == true && values.isSymbolicLink != true
     }

@@ -5,12 +5,12 @@ import VoxClipCore
     @Environment(AppModel.self) private var app
     public init() {}
     public var body: some View {
-        TabView {
-            GeneralSettings(app: app).tabItem { Label("General", systemImage: "gear") }
-            TranscriptionSettings(app: app).tabItem { Label("Transcription", systemImage: "waveform") }
-            ProviderSettings(app: app).tabItem { Label("AI", systemImage: "key") }
-            ExportSettings(app: app).tabItem { Label("Export", systemImage: "square.and.arrow.up") }
-            AboutSettings(app: app).tabItem { Label("About", systemImage: "info.circle") }
+        TabView(selection: Binding(get: { app.settingsPane }, set: { app.settingsPane = $0 })) {
+            GeneralSettings(app: app).tabItem { Label("General", systemImage: "gear") }.tag("general")
+            TranscriptionSettings(app: app).tabItem { Label("Transcription", systemImage: "waveform") }.tag("transcription")
+            ProviderSettings(app: app).tabItem { Label("AI", systemImage: "key") }.tag("ai")
+            ExportSettings(app: app).tabItem { Label("Export", systemImage: "square.and.arrow.up") }.tag("export")
+            AboutSettings(app: app).tabItem { Label("About", systemImage: "info.circle") }.tag("about")
         }
         .frame(minWidth: 600, minHeight: 480)
         .preferredColorScheme(app.appearance)
@@ -29,9 +29,13 @@ extension AppModel {
         Form {
             Section {
                 Picker("Appearance", selection: app.stringBinding("general.appearance", fallback: "system")) { Text("System").tag("system"); Text("Light").tag("light"); Text("Dark").tag("dark") }
-                LabeledContent("Transcript text size") { Slider(value: app.numberBinding("general.transcriptTextSize", fallback: 17), in: 13...28, step: 1); Text("\(Int(app.number("general.transcriptTextSize", fallback: 17)))").monospacedDigit() }
+                LabeledContent("Transcript text size") { Slider(value: app.numberBinding("general.transcriptTextSize", fallback: DesignValues.transcriptTextSize), in: DesignValues.transcriptZoom, step: 1); Text("\(Int(app.number("general.transcriptTextSize", fallback: DesignValues.transcriptTextSize)))").monospacedDigit() }
                 Picker("Pause breath", selection: app.stringBinding("editing.pauseBreath", fallback: "natural")) { Text("Tight · 0.05 s").tag("tight"); Text("Natural · 0.15 s").tag("natural"); Text("Relaxed · 0.30 s").tag("relaxed") }
                 Toggle("Show low-confidence words", isOn: app.boolBinding("general.showLowConfidence"))
+                Toggle(isOn: app.boolBinding("general.showPlaceholderWords", fallback: true)) {
+                    Text("Show transcript words on placeholders")
+                    Text("When off, placeholders show the project title instead of its first words.")
+                }
                 Picker("Default caption style", selection: app.stringBinding("captions.defaultStyleId", fallback: "vox-highlight")) { Text("Off").tag("off"); ForEach(app.styles, id: \.id) { Text($0.name).tag($0.id) } }
             }
             Section {

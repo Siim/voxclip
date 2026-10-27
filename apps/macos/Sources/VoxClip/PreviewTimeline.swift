@@ -16,9 +16,10 @@ import VoxClipMedia
     override func layout() { super.layout(); playerLayer.frame = bounds }
 }
 
+/// The viewer at the top of the right column. With no player (a demo or missing
+/// video) the stage stays black: the §5.4.6 overlays arrive with the viewer step.
 @MainActor struct PreviewColumn: View {
     @Bindable var model: EditorModel
-    var compact = false
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var pointerInside = false
@@ -34,24 +35,17 @@ import VoxClipMedia
         }
     }
     var body: some View {
-        VStack(spacing: compact ? 6 : 12) {
+        VStack(spacing: 12) {
             HStack {
                 Label(model.activeClip == nil ? "Full Video" : "Clip: \(model.activeClip?.title ?? "Untitled clip")", systemImage: model.activeClip == nil ? "play.rectangle" : "film")
-                    .font((compact ? Font.caption : Font.callout).weight(.medium)).lineLimit(1)
+                    .font(Font.callout.weight(.medium)).lineLimit(1)
                     .accessibilityLabel(model.activeClip == nil ? "Previewing full video" : "Previewing selected clip")
                 Spacer()
                 if model.activeClip != nil { Button("Full Video") { model.activate(nil) } }
             }
             ZStack(alignment: .bottom) {
                 Rectangle().fill(DesignValues.color("stage"))
-                if model.document.demo {
-                    #if DEBUG
-                    DemoFrame(model: model)
-                    #endif
-                } else if let native = model.nativePreview { PlayerSurface(player: native.player) }
-                if model.sourceDuration == 0 && !model.document.demo {
-                    Label("Your video will appear here.", systemImage: "play.rectangle").foregroundStyle(DesignValues.color("overlay.foreground").opacity(0.7))
-                }
+                if !model.document.demo, let native = model.nativePreview { PlayerSurface(player: native.player) }
                 if !model.document.demo, model.previewError == nil, let style = model.app.styles.first(where: { $0.id == model.project.captions.styleId }), style.position.userDraggable {
                     CaptionPositionOverlay(model: model, style: style)
                 }
@@ -68,15 +62,14 @@ import VoxClipMedia
             }
             Picker("Preview aspect", selection: Binding(get: { model.project.export.aspect }, set: { model.setAspect($0) })) {
                 ForEach(AspectRatio.allCases, id: \.self) { aspect in Text(aspect == .source ? "Source" : aspect.rawValue).tag(aspect) }
-            }.labelsHidden().pickerStyle(.segmented).controlSize(compact ? .mini : .small)
+            }.labelsHidden().pickerStyle(.segmented).controlSize(.small)
             if let error = model.previewError, !error.isEmpty {
                 InlineNotice(text: error)
-                if !model.mediaResolved, !model.document.demo { Button("Locate…") { locateMedia() } }
+                if !model.mediaResolved, !model.document.demo { Button("Locate…") { model.locateMedia() } }
             }
-            Spacer(minLength: 0)
         }
-        .padding(compact ? 8 : 20)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(VCTokens.spacingPanePaddingMacos)
+        .frame(maxWidth: .infinity)
         .focusable()
         .onKeyPress(characters: CharacterSet(charactersIn: " jklpico[]")) { key in model.transport(key.characters, shift: key.modifiers.contains(.shift)); return .handled }
         .accessibilityLabel("Video preview")
@@ -94,31 +87,6 @@ import VoxClipMedia
             Text("\(timecode(model.playhead)) / \(timecode(model.duration))").font(DesignValues.mono(13)).monospacedDigit()
             if model.playbackRate != 1 { Text("\(model.playbackRate.formatted())×").font(.caption) }
         }.foregroundStyle(DesignValues.color("overlay.foreground")).padding(.horizontal, 16).frame(height: 36)
-    }
-    private func locateMedia() {
-        let panel = NSOpenPanel(); panel.allowedContentTypes = [.movie]; panel.allowsMultipleSelection = false
-        if panel.runModal() == .OK, let url = panel.url {
-            Task {
-                do {
-                    let probe = try await VoxClipMedia.AVMediaProbe().probe(url)
-                    let next: Project
-                    do {
-                        next = try await model.app.projectStore.relink(model.project, to: url, probe: probe)
-                    } catch VoxClipError.mediaMissing(_) {
-                        guard probe.durationSeconds.isFinite, abs(probe.durationSeconds - model.sourceDuration) <= 0.05 else {
-                            model.previewError = "This file's duration differs by more than 0.05 seconds. Choose another file. Edits are saved."
-                            return
-                        }
-                        let alert = NSAlert(); alert.messageText = "This file looks different. Use it anyway?"; alert.addButton(withTitle: "Use it"); alert.addButton(withTitle: "Choose another")
-                        guard alert.runModal() == .alertFirstButtonReturn else { return }
-                        next = try await model.app.projectStore.relink(model.project, to: url, probe: probe, confirmedDifferent: true)
-                    }
-                    model.mediaResolved = true
-                    model.replace(next, name: "Locate media")
-                    await model.updatePreview(load: true)
-                } catch { model.previewError = await model.app.safeError(error) }
-            }
-        }
     }
 }
 
@@ -189,10 +157,22 @@ import VoxClipMedia
 
 @MainActor struct TimelineStrip: View {
     @Bindable var model: EditorModel
+    /// With the viewer collapsed the strip leads with Play and the edited time (§5.3).
+    var compactTransport = false
     @State private var hoveredSource: Double?
     var body: some View {
         HStack(spacing: 12) {
-            Text(timecode(model.playhead)).font(DesignValues.mono(11)).frame(width: 60)
+            if compactTransport {
+                Button { model.transport(" ") } label: {
+                    Image(systemName: model.isPlaying ? "pause.fill" : "play.fill").font(.system(size: 12, weight: .semibold)).frame(width: 28, height: 28)
+                }
+                .buttonStyle(.plain).background(DesignValues.color("bg.sunken"), in: Circle())
+                .accessibilityLabel(model.isPlaying ? "Pause" : "Play")
+                (Text(timecode(model.playhead)) + Text(" / \(timecode(model.duration))").foregroundStyle(DesignValues.color("text.secondary")))
+                    .font(DesignValues.mono(12)).monospacedDigit().fixedSize()
+            } else {
+                Text(timecode(model.playhead)).font(DesignValues.mono(11)).frame(width: 60)
+            }
             GeometryReader { geometry in
                 TimelineTrack(projection: model.timeline, edited: model.editedTimeline).equatable()
                     .overlay { TimelinePlayhead(model: model) }

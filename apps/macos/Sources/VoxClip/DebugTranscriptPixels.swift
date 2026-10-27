@@ -21,7 +21,7 @@ import VoxClipCore
         project.edits = ProjectEdits(cutWordIds: ["pixel-cut"])
         let model = EditorModel(document: VoxClipDocument(project: project), app: app, preview: DemoPreviewEngine())
         defer { model.close() }
-        model.textSize = 24; model.mediaResolved = true; model.refresh()
+        model.textSize = DesignValues.transcriptTextSize; model.mediaResolved = true; model.refresh()
         let coordinator = TranscriptTextView.Coordinator(model: model)
         let text = TranscriptNSTextView(usingTextLayoutManager: true)
         text.frame = NSRect(x: 0, y: 0, width: 640, height: 160)
@@ -46,6 +46,10 @@ import VoxClipCore
         let font = DesignValues.transcriptFont(size: model.textSize)
         let baseline = text.textContainerOrigin.y + fragment.layoutFragmentFrame.minY + line.typographicBounds.minY + line.glyphOrigin.y
         var results: [DebugUISuite.Result] = []
+        let storedFont = text.textStorage?.attribute(.font, at: 0, effectiveRange: nil) as? NSFont
+        let style = text.textStorage?.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle
+        results.append(.init(name: "transcript uses the system font at 19 pt", passed: storedFont?.familyName == NSFont.systemFont(ofSize: 19).familyName && storedFont?.pointSize == 19))
+        results.append(.init(name: "transcript lines are 32 high with an 18 paragraph gap", passed: style?.minimumLineHeight == 32 && style?.maximumLineHeight == 32 && style?.paragraphSpacing == 18 && abs(line.typographicBounds.height - 32) < 0.5))
         var probes: [Probe] = []
         for mode: NSAppearance.Name in [.aqua, .darkAqua] {
             let name = mode == .aqua ? "light" : "dark"
