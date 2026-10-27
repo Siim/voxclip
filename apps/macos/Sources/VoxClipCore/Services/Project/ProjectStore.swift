@@ -130,13 +130,16 @@ public actor JSONProjectStore: ProjectStore {
         let key = try Self.contentKey(for: sourceURL)
         let attributes = try FileManager.default.attributesOfItem(atPath: sourceURL.path)
         guard let size = (attributes[.size] as? NSNumber)?.int64Value else { throw VoxClipError.mediaMissing(sourceURL.lastPathComponent) }
-        let matches = size == project.media.source.sizeBytes && key == project.media.source.contentKey
-        guard matches || (confirmedDifferent && probe.durationSeconds.isFinite && abs(probe.durationSeconds - project.media.source.durationSeconds) <= 0.05) else {
+        let source = project.media.source
+        let decision = RelinkDecision.decide(storedSize: source.sizeBytes, storedKey: source.contentKey,
+            storedDuration: source.durationSeconds, size: size, key: key, duration: probe.durationSeconds,
+            confirmedDifferent: confirmedDifferent)
+        guard decision == .match || decision == .different else {
             throw VoxClipError.mediaMissing(sourceURL.lastPathComponent)
         }
         var result = project
         result.media.source.absolutePath = sourceURL.path
-        if !matches {
+        if decision == .different {
             result.media.source.sizeBytes = size
             result.media.source.contentKey = key
             result.media.source.video = probe.video

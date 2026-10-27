@@ -1,0 +1,116 @@
+{
+  "fixture": "voxclip-relink/1",
+  "storedSize": 100,
+  "storedKey": "original",
+  "storedDuration": 0.25,
+  "cases": [
+    {
+      "id": "match",
+      "size": 100,
+      "key": "original",
+      "duration": 2,
+      "storedDuration": 0.25,
+      "confirmed": false,
+      "expected": "match"
+    },
+    {
+      "id": "confirmed-within",
+      "size": 200,
+      "key": "different",
+      "duration": 0.29,
+      "storedDuration": 0.25,
+      "confirmed": true,
+      "expected": "different"
+    },
+    {
+      "id": "upper-boundary",
+      "size": 200,
+      "key": "different",
+      "duration": 0.3,
+      "storedDuration": 0.25,
+      "confirmed": true,
+      "expected": "different"
+    },
+    {
+      "id": "lower-boundary",
+      "size": 200,
+      "key": "different",
+      "duration": 0.2,
+      "storedDuration": 0.25,
+      "confirmed": true,
+      "expected": "different"
+    },
+    {
+      "id": "outside",
+      "size": 200,
+      "key": "different",
+      "duration": 0.3001,
+      "storedDuration": 0.25,
+      "confirmed": true,
+      "expected": "different"
+    },
+    {
+      "id": "unconfirmed",
+      "size": 200,
+      "key": "different",
+      "duration": 0.26,
+      "storedDuration": 0.25,
+      "confirmed": false,
+      "expected": "needsConfirmation"
+    },
+    {
+      "id": "same-size-other-key",
+      "size": 100,
+      "key": "different",
+      "duration": 0.25,
+      "storedDuration": 0.25,
+      "confirmed": false,
+      "expected": "needsConfirmation"
+    },
+    {
+      "id": "decimal-upper-boundary",
+      "size": 200,
+      "key": "different",
+      "duration": 10.05,
+      "storedDuration": 10.0,
+      "confirmed": true,
+      "expected": "different"
+    },
+    {
+      "id": "decimal-lower-boundary",
+      "size": 200,
+      "key": "different",
+      "duration": 9.95,
+      "storedDuration": 10.0,
+      "confirmed": true,
+      "expected": "different"
+    },
+    {
+      "id": "decimal-above",
+      "size": 200,
+      "key": "different",
+      "duration": 10.051,
+      "storedDuration": 10.0,
+      "confirmed": true,
+      "expected": "refused"
+    },
+    {
+      "id": "decimal-below",
+      "size": 200,
+      "key": "different",
+      "duration": 9.949,
+      "storedDuration": 10.0,
+      "confirmed": true,
+      "expected": "refused"
+    },
+    {
+      "id": "binary64-half-millisecond",
+      "size": 200,
+      "key": "different",
+      "duration": 0.551,
+      "storedDuration": 0.5005,
+      "confirmed": true,
+      "expected": "refused"
+    }
+  ]
+}

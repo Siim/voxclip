@@ -54,6 +54,13 @@
                 <AppBarToggleButton x:Name="Viewer" Icon="OpenPane" Label="Viewer" IsChecked="True" Click="ViewerClicked" ToolTipService.ToolTip="Show or hide the viewer (Ctrl+Shift+I)" DynamicOverflowOrder="5"/>
                 <CommandBar.SecondaryCommands>
                     <AppBarButton x:Name="MakeClipCommand" Label="Make clip" KeyboardAcceleratorTextOverride="Ctrl+K" IsEnabled="False" Click="MakeClipClicked"/>
+                    <AppBarButton x:Name="RewriteCommand" Label="Rewrite…" KeyboardAcceleratorTextOverride="Ctrl+R" IsEnabled="False" Visibility="Collapsed" Click="RewriteClicked"/>
+                    <AppBarButton Label="Cut selection" KeyboardAcceleratorTextOverride="Delete" Click="CutSelectionClicked"/>
+                    <AppBarButton Label="Restore selection" KeyboardAcceleratorTextOverride="Shift+Backspace" Click="RestoreSelectionClicked"/>
+                    <AppBarButton Label="Correct spelling…" KeyboardAcceleratorTextOverride="Enter" Click="CorrectClicked"/>
+                    <AppBarButton Label="Play from here" KeyboardAcceleratorTextOverride="Shift+Space" Click="PlayFromHereClicked"/>
+                    <AppBarButton x:Name="PreviewCutCommand" Label="Preview This Cut" KeyboardAcceleratorTextOverride="P" IsEnabled="False" Click="PreviewCutClicked"/>
+                    <AppBarButton Label="Forward 3 seconds" Click="ForwardClicked"/>
                     <AppBarToggleButton x:Name="ShowCuts" Label="Show cut words" KeyboardAcceleratorTextOverride="Ctrl+Shift+H" IsChecked="True" Click="DisplayChanged"/>
                     <AppBarToggleButton x:Name="ShowPauses" Label="Show pauses" IsChecked="True" Click="DisplayChanged"/>
                     <AppBarButton Label="Find" KeyboardAcceleratorTextOverride="Ctrl+F" Click="FindClicked"/>
@@ -80,7 +87,9 @@
             </Grid.ColumnDefinitions>
             <Grid x:Name="TranscriptPane" RowSpacing="8">
                 <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
-                <InfoBar x:Name="EditorNotice" IsOpen="{x:Bind local:EditorPage.HasText(ViewModel.Notice), Mode=OneWay}" Message="{x:Bind ViewModel.Notice, Mode=OneWay}" Severity="Informational"/>
+                <InfoBar x:Name="EditorNotice" IsOpen="{x:Bind local:EditorPage.HasText(ViewModel.Notice), Mode=OneWay}" Message="{x:Bind ViewModel.Notice, Mode=OneWay}" Severity="Warning">
+                    <InfoBar.ActionButton><HyperlinkButton x:Name="LocateMedia" Content="Locate…" Click="LocateClicked" Visibility="Collapsed"/></InfoBar.ActionButton>
+                </InfoBar>
                 <StackPanel x:Name="FindBar" Grid.Row="1" Orientation="Horizontal" Spacing="8" Margin="24,8,24,0" Visibility="Collapsed">
                     <TextBox x:Name="SearchText" Header="Find words" Width="160" TextChanged="SearchChanged"/>
                     <Button x:Name="CutMatches" Content="Cut all matches" VerticalAlignment="Bottom" Click="CutMatchesClicked"/>
@@ -116,16 +125,25 @@
                     <Border x:Name="PreviewStage" Background="{ThemeResource VcStageBrush}" RequestedTheme="Dark" CornerRadius="{StaticResource VcRadiusPaneCornerRadius}" Height="200" HorizontalAlignment="Center">
                         <Grid>
                             <Image x:Name="PreviewImage" Stretch="Uniform" AutomationProperties.Name="Video preview, full take"/>
-                            <TextBlock x:Name="PreviewEmpty" Text="Preview unavailable. Your video and edits are still here." TextWrapping="Wrap" TextAlignment="Center" Foreground="{ThemeResource TextFillColorPrimaryBrush}" Margin="20" VerticalAlignment="Center"/>
+                            <StackPanel x:Name="PreviewStandIn" Margin="20" Spacing="8" VerticalAlignment="Top" HorizontalAlignment="Center" IsHitTestVisible="False">
+                                <Grid x:Name="PreviewStateGlyphHost" Width="20" Height="20" HorizontalAlignment="Center">
+                                    <FontIcon x:Name="PreviewStateGlyph" FontSize="20" Foreground="{ThemeResource VcChipWarningGlyphBrush}"/>
+                                    <Line x:Name="PreviewMissingStrike" X1="1.5" Y1="1.5" X2="18.5" Y2="18.5" StrokeThickness="1.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Stroke="{ThemeResource VcChipWarningGlyphBrush}"/>
+                                </Grid>
+                                <TextBlock x:Name="PreviewEmpty" FontSize="14" LineHeight="20" FontWeight="SemiBold" TextWrapping="Wrap" TextAlignment="Center" Foreground="{ThemeResource VcChipMediaForegroundBrush}"/>
+                                <TextBlock x:Name="PreviewFile" TextWrapping="Wrap" TextAlignment="Center" FontFamily="{StaticResource VcMonoFontFamily}" FontSize="12" Opacity="0.66" Foreground="{ThemeResource VcChipMediaForegroundBrush}"/>
+                            </StackPanel>
+                            <controls:CaptionPositionOverlay x:Name="CaptionDrag"/>
                         </Grid>
                     </Border>
                     <!-- Viewer bar (delta §5.1): Back 3 seconds, Play, Forward 3 seconds, then the time. -->
                     <Grid Grid.Row="1" ColumnSpacing="4">
-                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                         <Button Width="32" Height="32" Padding="0" VerticalAlignment="Center" Style="{ThemeResource SubtleButtonStyle}" Click="BackClicked" AutomationProperties.Name="Back 3 seconds (J)" ToolTipService.ToolTip="Back 3 seconds (J)"><SymbolIcon Symbol="Previous"/></Button>
                         <Button x:Name="PreviewPlay" Grid.Column="1" Width="40" Height="40" Padding="0" CornerRadius="20" Click="PlayClicked" AutomationProperties.Name="Play or pause (Space)" ToolTipService.ToolTip="Play or pause (Space)"><SymbolIcon x:Name="PlayGlyph" Symbol="Play"/></Button>
                         <Button Grid.Column="2" Width="32" Height="32" Padding="0" VerticalAlignment="Center" Style="{ThemeResource SubtleButtonStyle}" Click="ForwardClicked" AutomationProperties.Name="Forward 3 seconds" ToolTipService.ToolTip="Forward 3 seconds"><SymbolIcon Symbol="Next"/></Button>
-                        <TextBlock x:Name="TransportTime" Grid.Column="3" HorizontalAlignment="Right" VerticalAlignment="Center" FontFamily="{StaticResource VcMonoFontFamily}" FontSize="13" Foreground="{ThemeResource VcTextPrimaryBrush}"><Run x:Name="TransportElapsed" Text="0:00.0"/><Run x:Name="TransportTotal" Foreground="{ThemeResource VcTextSecondaryBrush}"/></TextBlock>
+                        <Border x:Name="AiModified" Grid.Column="3" CornerRadius="4" BorderBrush="{ThemeResource VcAccentTextBrush}" BorderThickness="1" Padding="4,1" VerticalAlignment="Center" Visibility="Collapsed"><TextBlock Text="AI modified" FontSize="12" Foreground="{ThemeResource VcAccentTextBrush}"/></Border>
+                        <TextBlock x:Name="TransportTime" Grid.Column="4" HorizontalAlignment="Right" VerticalAlignment="Center" FontFamily="{StaticResource VcMonoFontFamily}" FontSize="13" Foreground="{ThemeResource VcTextPrimaryBrush}"><Run x:Name="TransportElapsed" Text="0:00.0"/><Run x:Name="TransportTotal" Foreground="{ThemeResource VcTextSecondaryBrush}"/></TextBlock>
                     </Grid>
                 </Grid>
                 <!-- Frame row (delta §5.1): 9:16 · 1:1 · 16:9 · Original, written to export.aspect. -->
@@ -139,7 +157,7 @@
                         <toolkit:SegmentedItem Content="Original"/>
                     </toolkit:Segmented>
                 </Grid>
-                <Grid x:Name="InspectorHost" Grid.Row="2" BorderBrush="{ThemeResource VcLineDefaultBrush}" BorderThickness="0,1,0,0"/>
+                <Grid x:Name="CaptionsHost" Grid.Row="2" BorderBrush="{ThemeResource VcLineDefaultBrush}" BorderThickness="0,1,0,0"/>
             </Grid>
         </Grid>
         <Border Grid.Row="2" BorderBrush="{ThemeResource VcLineDefaultBrush}" BorderThickness="0,1,0,0">

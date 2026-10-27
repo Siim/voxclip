@@ -11,6 +11,8 @@ namespace VoxClip.Core.Services.Project;
 
 /// <summary>Project load plus cleaned-reference warnings; editing §10.4.</summary>
 public sealed record ProjectOpenResult(ProjectModel Project, string? ResolvedMediaPath, bool IsReadOnly, IReadOnlyList<string> Warnings);
+/// <summary>A relink decision and its accepted document, without saving it.</summary>
+public sealed record ProjectRelinkResult(RelinkDecision Decision, ProjectModel? Project);
 /// <summary>Atomic project persistence and relinking boundary; editing §10.</summary>
 public interface IProjectStore
 {
@@ -22,6 +24,8 @@ public interface IProjectStore
     Task<string?> ResolveMediaAsync(MediaReference source, string projectPath, CancellationToken ct);
     /// <summary>Compute the shared content key, not a whole-file SHA256; architecture §8.1.</summary>
     Task<string> ComputeContentKeyAsync(string mediaPath, IProgress<double>? progress, CancellationToken ct);
+    /// <summary>Relink an explicitly selected file, preserving transcript, edits and source duration.</summary>
+    Task<ProjectRelinkResult> RelinkAsync(ProjectModel project, string mediaPath, MediaInfo probe, bool confirmedDifferent, CancellationToken ct);
 }
 /// <summary>Schema-v1 validation, reference cleanup, source resolution and atomic storage, editing §10.</summary>
 public sealed class ProjectStore : IProjectStore
@@ -34,6 +38,19 @@ public sealed class ProjectStore : IProjectStore
 
     /// <summary>Inject the runtime version; missing, blank or invalid values persist as 0.0.0.</summary>
     public ProjectStore(string? appVersion) => this.appVersion = AppVersion.ResolveProjectWriter(appVersion);
+
+    /// <inheritdoc />
+    public async Task<ProjectRelinkResult> RelinkAsync(ProjectModel project, string mediaPath, MediaInfo probe, bool confirmedDifferent, CancellationToken ct)
+    {
+        var key = await ComputeContentKeyAsync(mediaPath, null, ct).ConfigureAwait(false);
+        var size = new FileInfo(mediaPath).Length;
+        var source = project.Media.Source;
+        var decision = Relinking.Decide(source.SizeBytes, source.ContentKey, source.DurationSeconds, size, key, probe.DurationSeconds, confirmedDifferent);
+        if (decision is RelinkDecision.NeedsConfirmation or RelinkDecision.Refused) return new(decision, null);
+        source = source with { AbsolutePath = Path.GetFullPath(mediaPath) };
+        if (decision == RelinkDecision.Different) source = source with { SizeBytes = size, ContentKey = key, Video = probe.Video, Audio = probe.Audio };
+        return new(decision, project with { Media = new(source) });
+    }
 
     /// <summary>After consumer confirmation, replace words and clear transcript-dependent project data, editing §10.5.</summary>
     public static ProjectModel ReplaceTranscript(ProjectModel project, TranscriptModel transcript)

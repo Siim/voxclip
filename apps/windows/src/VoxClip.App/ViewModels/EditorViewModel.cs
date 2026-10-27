@@ -6,6 +6,7 @@ using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Services.LLM;
 using VoxClip.Core.Domain.Clips;
 using VoxClip.Core.Domain.VoiceLab;
+using VoxClip.Core.Services.Project;
 
 namespace VoxClip.App.ViewModels;
 
@@ -13,8 +14,9 @@ public sealed class EditorViewModel : ObservableObject
 {
     private readonly Func<EditState, EditOperation, EditState> reduce;
     private readonly Func<EditState, EditSummary> summarize;
-    private readonly Stack<EditState> undo = new();
-    private readonly Stack<EditState> redo = new();
+    private sealed record History(EditState? State, ProjectCaptions Captions);
+    private readonly Stack<History> undo = new();
+    private readonly Stack<History> redo = new();
     private Project project;
     private EditState? state;
     private string notice = "";
@@ -23,6 +25,81 @@ public sealed class EditorViewModel : ObservableObject
     private int selectionEnd = -1;
     private double sourceTime;
     private bool isLeaving;
+    private IReadOnlyList<ExportRecord> exportRecords = [];
+    private readonly Dictionary<string, ExportRowState> exportActivity = new(StringComparer.Ordinal);
+    internal event EventHandler? ExportStatesChanged;
+    internal void SetExportRecords(IReadOnlyList<ExportRecord> records)
+    {
+        exportRecords = records;
+        RefreshExportRows();
+    }
+    internal void SetExportActivity(ExportTarget target, ClipExportState state, double? progress = null)
+    {
+        var key = ExportFingerprint.TargetId(target);
+        if (state == ClipExportState.None) exportActivity.Remove(key); else exportActivity[key] = new(state, progress);
+        RefreshExportRows();
+    }
+    internal ExportRowState ExportStatus(string? clipId)
+    {
+        var key = clipId ?? "full";
+        if (exportActivity.TryGetValue(key, out var live)) return live;
+        var record = exportRecords.FirstOrDefault(record => record.ProjectId == project.Id && record.TargetId == key);
+        if (record is null) return new(ClipExportState.None);
+        ExportTarget target = clipId is null ? new ExportTarget.FullEdit() : new ExportTarget.Clip(clipId);
+        return new(record.PlanFingerprint == ExportFingerprint.For(project, target) ? ClipExportState.Exported : ClipExportState.ChangedSinceExport);
+    }
+    private void RefreshExportRows()
+    {
+        for (var index = 0; index < Clips.Count; index++)
+        {
+            var status = ExportStatus(Clips[index].Id);
+            Clips[index] = Clips[index] with { ExportState = status.State, ExportProgress = status.Progress };
+        }
+        ExportStatesChanged?.Invoke(this, EventArgs.Empty);
+    }
+    public bool IsReadOnly { get; private set; }
+    public bool IsRelinking { get; private set; }
+
+    public void SetMediaUnavailable(bool unavailable)
+    {
+        IsReadOnly = unavailable;
+        OnPropertyChanged(nameof(IsReadOnly));
+        OnPropertyChanged(nameof(CanExport));
+    }
+
+    public async Task<bool> RelinkAsync(IProjectStore store, string projectPath, Func<Task<string?>> choose,
+        Func<string, Task<MediaInfo>> probe, Func<Task<bool>> confirm, CancellationToken ct)
+    {
+        if (Busy || isLeaving || IsRelinking) return false;
+        IsRelinking = true;
+        Busy = true;
+        try
+        {
+            while (await choose() is { } selected)
+            {
+                var media = await probe(selected);
+                var result = await store.RelinkAsync(project, selected, media, false, ct);
+                if (result.Decision == RelinkDecision.NeedsConfirmation)
+                {
+                    if (!await confirm()) continue;
+                    result = await store.RelinkAsync(project, selected, media, true, ct);
+                }
+                if (result.Project is not { } relinked)
+                {
+                    Notice = "This video's duration doesn't match. Your media and edits are unchanged.";
+                    continue;
+                }
+                await store.SaveAsync(relinked, projectPath, ct);
+                project = relinked;
+                SetMediaUnavailable(false);
+                Notice = "";
+                Refresh();
+                return true;
+            }
+            return false;
+        }
+        finally { Busy = false; IsRelinking = false; }
+    }
 
     public EditorViewModel(Project project, Func<EditState, EditOperation, EditState>? reduce = null,
         Func<EditState, EditSummary>? summarize = null)
@@ -70,6 +147,16 @@ public sealed class EditorViewModel : ObservableObject
     public EditState? State => state;
     public string Title => project.Title ?? "Untitled take";
     public IReadOnlyList<TimedWord> Words => state?.Transcript.Words ?? [];
+    public int RewriteStart { get; private set; } = -1;
+    public int RewriteEnd { get; private set; } = -1;
+    public void SetRewriteRange(int first, int last)
+    {
+        RewriteStart = first;
+        RewriteEnd = last;
+        SelectionChanged?.Invoke(this, EventArgs.Empty);
+    }
+    public bool IsAiWord(int index) => index >= 0 && index < Words.Count && project.VoiceLab.Segments.Any(segment =>
+        segment.Enabled && Words[index].Start < segment.Replace.End && Words[index].End > segment.Replace.Start);
     public ObservableCollection<TranscriptParagraph> Paragraphs { get; } = [];
     public ObservableCollection<ClipRow> Clips { get; } = [];
     public EditSummary Summary { get; private set; } = new(0, 0, 0, 0, false, false, false, true);
@@ -78,11 +165,11 @@ public sealed class EditorViewModel : ObservableObject
     public string Notice { get => notice; set => SetProperty(ref notice, value); }
     public bool Busy { get => busy; set { if (SetProperty(ref busy, value)) OnPropertyChanged(nameof(CanExport)); } }
     public bool HasTranscript => state is not null;
-    public bool CanExport => !Busy && !isLeaving && Summary.CanExport;
+    public bool CanExport => !Busy && !isLeaving && !IsReadOnly && Summary.CanExport;
     /// <summary>Why Export can't run for <paramref name="clipId"/>'s scope (null is Full take), or null when it can. The Export
     /// button, Ctrl+E and a clip row's Export clip… share it (delta §3.5).</summary>
     public string? ExportBlocked(bool demo, bool videoUnavailable, string? clipId) =>
-        EditorLayout.ExportBlocked(demo, videoUnavailable, Busy || isLeaving, ScopeKeepsWords(clipId), Clips.FirstOrDefault(clip => clip.Id == clipId)?.IsSuggested == true);
+        EditorLayout.ExportBlocked(demo, videoUnavailable || IsReadOnly, Busy || isLeaving, ScopeKeepsWords(clipId), Clips.FirstOrDefault(clip => clip.Id == clipId)?.IsSuggested == true);
     /// <summary>Whether <paramref name="clipId"/>'s scope keeps a word. A clip row's Export clip… names a clip that need not
     /// be active, so a scope other than the active one is summarised on its own. With no transcript there are no clips, and
     /// the Full take exports as it is (design §7.1, §13 "No audio track").</summary>
@@ -138,13 +225,13 @@ public sealed class EditorViewModel : ObservableObject
     /// <summary>Reduce the operations one after another from the current state as one undo step, then sync and refresh once.</summary>
     public bool ApplyBatch(IEnumerable<EditOperation> operations)
     {
-        if (isLeaving || state is null) return false;
+        if (isLeaving || IsReadOnly || state is null) return false;
         try
         {
             var next = state;
             foreach (var operation in operations) next = reduce(next, operation);
             if (next == state) return false;
-            undo.Push(state);
+            undo.Push(new(state, project.Captions));
             redo.Clear();
             state = next;
             SyncProject();
@@ -168,7 +255,7 @@ public sealed class EditorViewModel : ObservableObject
 
     public void Correct(string value)
     {
-        if (HasSelection && !string.IsNullOrWhiteSpace(value)) Apply(new EditOperation.Correct(Words[SelectionStart].Id, value.Trim().Normalize()));
+        if (HasSelection) Apply(new EditOperation.Correct(Words[SelectionStart].Id, value));
     }
 
     /// <summary>Make a manual clip from the selection and return its id (design §6.2). The clip is titled with the first seven
@@ -284,34 +371,56 @@ public sealed class EditorViewModel : ObservableObject
 
     public void Undo() => MoveHistory(undo, redo);
     public void Redo() => MoveHistory(redo, undo);
-    private void MoveHistory(Stack<EditState> from, Stack<EditState> to)
+    private void MoveHistory(Stack<History> from, Stack<History> to)
     {
-        if (isLeaving || state is null || !from.TryPop(out var next)) return;
-        to.Push(state);
-        state = next;
+        if (isLeaving || from.Count == 0 || IsReadOnly && !ReferenceEquals(from.Peek().State, state)) return;
+        var next = from.Pop();
+        to.Push(new(state, project.Captions));
+        state = next.State;
+        project = project with { Captions = next.Captions, ModifiedAt = DateTimeOffset.UtcNow };
         SyncProject();
         Refresh();
     }
 
     public void SetCaptionStyle(string id)
     {
-        if (isLeaving) return;
+        if (isLeaving || IsReadOnly || Busy) return;
         project = project with { Captions = project.Captions with { StyleId = id }, ModifiedAt = DateTimeOffset.UtcNow };
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
     public void SetExport(ProjectExport value)
     {
-        if (isLeaving) return;
+        if (isLeaving || IsReadOnly || Busy) return;
         project = project with { Export = value, ModifiedAt = DateTimeOffset.UtcNow };
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
     public void SetCaptionOverrides(System.Text.Json.JsonElement value)
     {
-        if (isLeaving) return;
+        if (isLeaving || IsReadOnly || Busy) return;
         project = project with { Captions = project.Captions with { Overrides = value.Clone() }, ModifiedAt = DateTimeOffset.UtcNow };
         Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    public void SetCaptions(ProjectCaptions value)
+    {
+        if (isLeaving || IsReadOnly || Busy) return;
+        project = project with { Captions = value, ModifiedAt = DateTimeOffset.UtcNow };
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    internal void MoveCaptionAnchor(CaptionPosition anchor)
+        => MoveCaptionSettings(CaptionFineTune.Anchor(project, anchor));
+    internal void MoveCaptionPosition(int choice)
+        => MoveCaptionSettings(CaptionFineTune.Position(project, choice));
+    private void MoveCaptionSettings(ProjectCaptions captions)
+    {
+        if (isLeaving || Busy) return;
+        if (CaptionFineTune.StoredPosition(project) == CaptionFineTune.StoredPosition(project with { Captions = captions })) return;
+        undo.Push(new(state, project.Captions)); redo.Clear();
+        project = project with { Captions = captions, ModifiedAt = DateTimeOffset.UtcNow };
+        Refresh();
     }
 
     public void SetTranscript(Core.Domain.Transcript.Transcript value)
@@ -350,12 +459,19 @@ public sealed class EditorViewModel : ObservableObject
         for (var index = 0; index < Words.Count; index++) if (Words[index].Id == id) return index;
         return -1;
     }
-    public string AccessibleWord(int index)
+    public string AccessibleWord(int index, bool showLowConfidence = false)
     {
         if (index < 0 || index >= Words.Count) return "Transcript";
         var word = Words[index];
-        return DisplayText(word) + (state?.CutWordIds.Contains(word.Id) == true ? ", cut" : "") + (HasSelection && index >= SelectionStart && index <= SelectionEnd ? ", selected" : "");
+        return DisplayText(word) + (state?.CutWordIds.Contains(word.Id) == true ? ", cut" : "")
+            + (EditingAlgorithms.IsFillerText(DisplayText(word)) ? ", filler" : "")
+            + (showLowConfidence && word.Conf is < 0.6 ? ", low confidence" : "")
+            + (state?.Corrections.ContainsKey(word.Id) == true ? ", corrected, heard as: " + word.Text : "")
+            + (IsAiWord(index) ? ", AI modified" : "") + (HasSelection && index >= SelectionStart && index <= SelectionEnd ? ", selected" : "");
     }
+    public bool CanPreviewCut => HasSelection && CanExport;
+    internal TimeRange? PreviewCutRange() => CanPreviewCut
+        ? new TimeRange(Math.Max(0, Words[SelectionStart].Start - 2), Math.Min(project.Media.Source.DurationSeconds, Words[SelectionEnd].End + 2)) : null;
     /// <summary>Playhead and paragraph times as <c>m:ss.d</c>, or <c>h:mm:ss.d</c> past an hour; design §4.1 (C4).</summary>
     public static string Timecode(double seconds)
     {
@@ -444,7 +560,8 @@ public sealed class EditorViewModel : ObservableObject
             }
             UpdateSummaryLine(source.DurationSeconds);
         }
-        else { SummaryLine = ""; SummaryTooltip = ""; }
+        else { FullTakeDuration = project.Media.Source.DurationSeconds; SummaryLine = ""; SummaryTooltip = ""; }
+        RefreshExportRows();
         foreach (var name in new[] { nameof(Project), nameof(State), nameof(Summary), nameof(SummaryLine), nameof(SummaryTooltip), nameof(KeptClips), nameof(SuggestedClips), nameof(FillerLabel), nameof(CanExport), nameof(CanUndo), nameof(CanRedo), nameof(HasTranscript), nameof(FullTakeDuration) }) OnPropertyChanged(name);
         Changed?.Invoke(this, EventArgs.Empty);
     }
@@ -453,7 +570,7 @@ public sealed class EditorViewModel : ObservableObject
 public sealed record TranscriptParagraph(int StartIndex, int Count, string Timecode, string? Speaker);
 
 /// <summary>What the export ledger knows about a clip; the ledger arrives with the export dialog's redesign (round 2).</summary>
-public enum ClipExportState { None, Exported, ChangedSinceExport }
+public enum ClipExportState { None, Exported, ChangedSinceExport, Exporting, Failed }
 
 /// <summary>One clip in the pane (design §6.2). <see cref="Number"/> is its display number: kept clips 1…n, then suggestions.</summary>
 public sealed record ClipRow(ClipRange Clip, int Number, string Title, string Excerpt, string Reason, int? Score, double DurationSeconds)
@@ -467,6 +584,7 @@ public sealed record ClipRow(ClipRange Clip, int Number, string Title, string Ex
     /// <summary>The clip's poster frame once cached; null shows the bare stage tile.</summary>
     public string? Thumbnail { get; init; }
     public ClipExportState ExportState { get; init; }
+    public double? ExportProgress { get; init; }
     /// <summary>Hover text: the AI reason with its score; empty for manual clips.</summary>
     public string ToolTip => Score is { } score ? (Reason.Length == 0 ? $"{score}/10" : $"{score}/10 · {Reason}") : Reason;
 }

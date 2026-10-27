@@ -1,5 +1,120 @@
 # Windows fixed contracts
 
+### 2026-10-27 — sol-win-redesign round 3 — Local verification
+
+- The Release cross-platform build and the Debug/Release all-App C# typechecks pass with zero warnings/errors. The direct Core runner passes 1,781 of 1,809 cases with 28 explicit prerequisite skips; the final UI suite passes 315 of 317 with two native-media skips. The static XAML check has zero problems, the design generator check passes and all 16 design tests pass.
+- The exact CI secret pattern has no matches in the changed extant files, and changed PowerShell remains ASCII. The 11-case relink fixture regenerates byte-identically, SHA-256 `34b82cc35355d11b9fa5017cfd193e71bc33469d67b7be6960ab6353657ea036`.
+- Swift build and the 573-test Core run pass, with eight explicit skip notices. The required 300 ms slow-expression test build passes; its diagnostics are confined to unchanged source/test expressions and existing deprecation/throwing warnings, with no relink expression flagged. Every build ran alone under nice with at least 15 GB free.
+- The VM SSH connection times out. Native pixel probes, the changed-surface keyboard/Narrator walk, hour-long scroll/zoom timing, stage caption-drag interaction and light/dark screenshot alignment remain owed. The retained-timeline native probe now exercises 9,000 actual words with and without RMS using production path geometry, but no native result is claimed here. Hosted CI results are recorded in the round-3 hand-off report.
+
+### 2026-10-27 — sol-win-redesign round 3 — Step 13 keyboard and focus
+
+- The F6/Shift+F6 order is pane, CommandBar, transcript, viewer Play, Captions, timeline, with hidden/disabled regions skipped and native Fluent focus visuals. The ordered region model and wrap logic are tested; no custom transcript FocusVisualPrimaryBrush remains. The native walk now expects the grouped gallery's List/ListItem role and the new This clip export choice.
+- Ctrl+R uses the same gated Rewrite entry point as its menu; round-4 Rewrite remains unavailable rather than dispatching an inert provider flow. The command overflow exposes Cut/Restore selection, Correct, Play from here, Preview This Cut/P, Forward 3 seconds and Rewrite. Existing Ctrl+K/Shift+K, Ctrl+Shift+I, Ctrl+1/2, bracket cycling and row Keep/Dismiss/Rename/Remove keys remain shared with pane commands.
+- Shift+Space plays from the caret, Escape in the transcript returns to Full take only after correction/flyout handling, and Escape during caption dragging cancels that drag first. F1 and Ctrl+/ show the complete updated shortcut list. Text-entry and AltGr guards remain in place; Forward has no key. Native focus-ring, Narrator and keyboard acceptance still require Windows.
+
+### 2026-10-27 — sol-win-redesign round 3 — Step 12 export scope and ledger
+
+- Export's What choice defaults from the selected kept clip or Full take, and explicitly targets This clip, all kept clips in transcript order, or Full video. Aspect labels are 9:16/1:1/16:9/Original and map by value. Settings are applied before Busy, so the snapshot uses the chosen aspect. Shared scope logic and existing exporter/MP4/SRT queue routing are unchanged; legacy filename suffix, sanitizing and de-duplication behavior is extracted without changing it.
+- Each successful target writes app-local exports.json atomically, keyed by project id/target, with exportedAt, canonical SHA-256 scoped plan fingerprint, styleId, aspect and outputPath. Fingerprints exclude selection, save metadata, destination and unrelated scope cuts. Rows derive Exported/Edited since export, with a 76 px second line for changed clips, and queue-owned Exporting progress/Export failed with Retry. Progress changes do not recompose preview or autosave the document; late callbacks cannot replace a completed status. Undo returns to Exported when the fingerprint matches.
+- Accepted AI speech adds the specified disclosure above the buttons. Rendering replaces the form with a fixed-width progress bar. Dismissing the sheet keeps the existing sequential export work alive; Cancel still cancels. Retry opens the failed target's export dialog for explicit confirmation rather than automatically resubmitting it.
+- Regressions cover target lists, pre-change fixture naming and MP4/SRT routing, canonical fingerprint stability, aspect changes, persisted ledger records, changed/undo status, row height and live progress/failure. Native rendered-byte/keyboard checks remain Windows gates.
+- Successful targets record the immutable project captured with their compose snapshot, rather than the live editor state after export completes. A regression changes the editor before success and checks Edited since export, then Exported after undo.
+
+### 2026-10-27 — sol-win-redesign round 3 — A8 review minors
+
+- Selected correction strings always reach Core; U+0085 is tested from its code point. Locate displays the stored path as non-interactive text before opening the picker (Windows separators only, no path probing/canonicalization or URI interpretation).
+- Cut foreground wins outside scope. Filler dots, low-confidence dashes and correction dots/tooltips are independent, with matching word descriptions. Visible pauses omit the spoken "pause" prefix; accessible pause names keep it. Clip-exists/demo/corrupt copy follows design §13 exactly.
+- Gallery image widths use `(inner − 8)/2`, with zero container padding and complementary 4 px column margins yielding one 8 px gap and no outer gap. Tests cover 320/360/388 column widths.
+- Play from here starts at the context word; Preview This Cut and P play the selected cut plan from two seconds before to two seconds after, requiring a playable selection. No speech stretching is introduced.
+
+### 2026-10-27 — sol-win-redesign round 3 — A7 media stage states
+
+- Missing and corrupt stages have separate glyph/message/file-name presentations, exact editor notices, disabled transport and accessible names that include scope, media state and AI speech. All decode/playback failure paths enter the corrupt presentation; relink restores the resolved presentation. Late failures cannot leave Export enabled.
+- With unavailable media the existing caption renderer draws the scoped caption at its real place over black, without a new text renderer. Serialized, generation-checked stand-in requests follow selection/document changes and are awaited on close. Design §5.4.4 explicitly keeps caption position draggable in the missing state: this is a narrow exception to read-only transcript edits, with caption-only undo still available and export still blocked. Copy/state and caption-exception tests cover the model boundaries; graphical/Narrator behavior remains a native gate.
+
+### 2026-10-27 — sol-win-redesign round 3 — A6 caption dragging
+
+- The stage's named caption-position handle uses the Core page visual rectangle, including the next/previous page when no page is currently visible. Only userDraggable styles expose it. Dragging outlines the block without drawing text, shows platform-zone/centre/third guides, and commits the anchor once on release; cancel/capture loss does not mutate the document.
+- Snap order (one-third, centre, two-thirds), strict 0.025 threshold and [0,1] clamping match Mac PreviewTimeline.swift. Stored values use the same per-preset/global target as Position, outside overrides. App history captures caption settings together with edit state, giving one undo per drag. Tests pin Mac-equivalent anchors, portrait 12%/22% guide bands, persistence and undo/redo. Position remains the keyboard path.
+
+### 2026-10-27 — sol-win-redesign round 3 — A5 current gallery frames
+
+- Gallery decoding no longer uses the poster selector: a decoded black frame is content, not a cache miss. The new Media current-frame path orients the frame and uses ExportPresets.CenterCrop with the same floor/round source rectangle as FrameComposer before downscaling and selecting the caption band. The poster black-frame heuristic is unchanged.
+- Image regressions cover opaque black, landscape-to-portrait/square crop, and a rotated source. No second caption composition path is introduced; only undecorated backdrop pixels are read here.
+
+### 2026-10-27 — sol-win-redesign round 3 — A4 exact relink grid
+
+- Both Cores compare `abs(jsRound(probedSeconds × 1000) − jsRound(storedSeconds × 1000)) ≤ 50`, as editing §10.3 now states. This intentionally changes Mac behavior only at the tolerance boundary, including accepting the previous 0.0501-second example once rounded to 50 ms. Identity and confirmation rules are unchanged.
+- `tools/fixtures/projects/generate_relink.py` generates all 12 shared cases with an oracle that multiplies in binary64 and jsRounds exactly as both Cores do (lead fix at merge, replacing an exact decimal oracle that could disagree near half milliseconds; adds `binary64-half-millisecond`, 0.551 against 0.5005, refused); the fixture README now owns regeneration and review policy. It includes 10.00 against 10.05/9.95 and 10.051/9.949. The detached relink doc is folded into that README.
+
+### 2026-10-27 — sol-win-redesign round 3 — A3 retained timeline
+
+- Timeline drawing owns a fixed pool of 15 geometry paths and 64 retained badge roots; its custom track subtree is bounded by 256 elements, independent of word/envelope count (native control templates excluded). Visible words are culled by source window and aggregated into at most 1,024 horizontal bins; waveform sampling is bounded likewise. Brackets remain aggregated; overlapping number badges are decluttered at 20 px and capped at 64.
+- Zoom ticks and trim moves update the retained transform, badge positions, scope masks and handles without rebuilding the scene or creating elements. Geometry is rebuilt on document/size/sample changes and once when a zoom settles. Tests cover 9,000 kept words with/without a waveform, scoped culling and retained object identities; the native probe also checks viewport-update identities. Native hour-long scroll/zoom timing remains a Windows gate.
+
+### 2026-10-27 — sol-win-redesign round 3 — A2 export availability
+
+- The shared ExportBlocked decision includes media-unavailable/read-only state even when the previously probed path and media remain populated. Button, Ctrl+E and clip-row export receive "Locate the video to export." Tests exercise all three callers' full/clip scopes after a successful-probe state becomes unavailable. A successful relink also acknowledges its already-saved snapshot so an older pending snapshot cannot overwrite the new media reference.
+
+### 2026-10-27 — sol-win-redesign round 3 — A1 pending edits
+
+- Pending project snapshots/revisions are independent of media availability. A fault cannot turn an accepted edit's delayed save or leave/close flush into a successful no-op. Only an acknowledged safe write clears the captured revision; later edits remain dirty. A failed leave write resumes editing and blocks navigation.
+- Regressions cover a fault before the autosave delay followed by an actual safe write on leave, and a failed write retaining dirty state. Design §13 has no save-failure action string; open copy question: "Could not save this project. It is still open with your edits. Use Save project as… or check the folder, then try again."
+
+### 2026-10-27 — sol-win-redesign — Round-2 verification and hand-off
+
+- The cross-platform Release build and both Release/Debug all-App C# typechecks pass with zero warnings/errors; the static XAML check reports zero problems. The final UI suite reports 281 total, 279 passed and two native-prerequisite skips, including the last bracket/badge geometry regression.
+- The direct Core runner reports 1,809 total, 1,781 passed and 28 explicit skips with collection parallelism disabled. An earlier parallel run hit three existing timing-sensitive failures (Voice Lab cancellation, a redaction regex deadline and loopback TLS); all pass in the complete serialized rerun. No unrelated test or production timeout is changed.
+- Mac `swift build` and `swift test --filter VoxClipCoreTests` pass with the absolute shared path and live/download switches off: 573 tests in 43 suites, eight skip notices. The 300 ms typecheck diagnostic flags only unchanged main expressions/test macros; no relink expression is flagged. The design generator check and all 16 design tests pass. The exact CI secret pattern passes over all 234 changed tracked files; PowerShell remains ASCII.
+- The configured VM SSH target times out, so no VM lock or remote process was created. The native transcript/timeline raster probes, Narrator walk, hour-long transcript scroll budget and screenshot alignment gates remain unrun. Builds ran one at a time under `nice`, always with more than 15 GB free.
+- CI dispatches 40538795090 and 40540951297 both complete their Windows job successfully, including both WinUI RIDs with zero compiler warnings/errors. The second dispatch uses f53bcd4a; it supersedes the first workflow's unfinished Mac job. The final bracket-coordinate/test-only follow-up is verified locally and is not pushed: the permitted two dispatches are used, and no third dispatch or unrelated push is made.
+- At hand-off the second workflow's broader macOS job is still running Canonical macOS CLI E2E; the workflow as a whole is not reported green. Its Windows, fixture/hygiene and native-fixture jobs have passed.
+
+### 2026-10-27 — sol-win-redesign — Correction normalization ownership
+
+- `EditorViewModel.Correct` passes the original input to `EditOperation.Correct`; it no longer invokes the throwing .NET normalization API before the Core reducer. Editing §4.8 owns trimming and non-throwing NFC in one Core helper. View-model boundary tests construct U+FFFE and an unpaired surrogate from numeric char values and verify exact forwarding (including surrounding whitespace and a decomposed accent). After merging reviewed main at 61d052c0, production-reducer tests also verify U+FFFE preservation, replacement of an unpaired surrogate with U+FFFD, trimming and composed accents. Core's NFC helper remains owned by the rewrite-budget track.
+
+### 2026-10-27 — sol-win-redesign — Timeline strip (step 11)
+
+- `TimelineView` is rebuilt in place with the Source-default native Edited | Source picker, viewer-collapsed compact transport, token-only track, 50 ms RMS bars (or word capsules), 6/9 px cut hatches, filler base bars, clip brackets/badges, selection/Rewrite bands and the playhead. Clip scope uses the specified clamped padding and scope-dim token; its 240 ms zoom becomes instant with animations disabled.
+- The final mockup check pins the clip bracket 15 px above the track and centres its 18 px badge on that line, matching the board's y843/y858 relationship rather than overlapping the track.
+- `Waveform` combines the existing native 10 ms envelope off the UI thread, reuses the content-key cache and falls back to the existing FFmpeg extractor. Its bounded memory cache holds four sources. The editor owns cancellation, rejects stale results after relinking and awaits its last request on close. Decode failure leaves the specified word-capsule fallback.
+- `TimelineRangeControl` exposes Playhead and separate clip-boundary RangeValue peers. Trim hit areas are 24 px, grips are 7×36, and SmallChange is one word. Pointer motion changes only local pending bounds; release applies one Core UpdateClip, and Escape/capture loss cancels. Keyboard and accessibility changes use the same commit path. Core editing and persisted data are unchanged.
+- The UI suite passes (273 passed, two opt-in skips), covering scope padding, hatch constants, word/sentence stepping, one-step trims, RMS aggregation and persistent cache reuse. The Release App C# typecheck passes with zero warnings. The Debug shell probe now includes actual RenderTargetBitmap hatch/scope-alpha checks and a RangeValue one-word increment/Undo check; these graphical gates remain unrun because the Windows VM is unavailable.
+
+### 2026-10-27 — sol-win-redesign — Captions right column (step 10)
+
+- `InspectorView` is replaced in place by `CaptionsPanel`; the right-column host supplies the 12 px footer fade. A grouped native GridView replaces the radio-button gallery, without an Off tile. Only realized tiles and the selected style render. Selection has a token ring and a white check on the existing neutral 62%-black media-chip token. The session switch remembers the last style; the Expander contains size, case, words, punctuation, colour and frame-specific position controls, and Reset to Style. Overrides and position targets follow captions §2.4, without schema or reducer changes.
+- The viewer retains the explicit Original-to-Source mapping and 320-high stage cap; it now identifies scopes containing accepted AI speech. The preview API has no rate property and plays at 1×, so there is no non-1× suffix to display. Rewrite compaction is not active until the round-3 panel exists.
+- Gallery backdrops use the existing Media poster-frame decoder at the source clock, not the composited preview (which already contains captions). Reads are non-overlapping, throttled to four per second, skipped for unchanged quarter-second buckets and rejected across source/aspect/scope changes. Rendering and decoding stay off the UI thread. No second caption renderer is introduced.
+- Probe/decode failures now enter the same read-only Locate flow as a missing path, clear gallery loading and block export. The old shell probe explicitly verifies read-only first, then uses a synthetic resolved-media state for its unrelated save/navigation checks.
+- The App C# typecheck and static XAML checks pass with zero warnings/problems. The UI suite passes (263 passed, two opt-in skips), including gallery grouping, switch restoration, override/position preservation and summary grammar. The configured VM SSH target timed out; native screenshots and Narrator checks remain unrun.
+
+### 2026-10-27 — sol-win-redesign — Selection commands (step 9)
+
+- Final integration uses token-tinted native Acrylic when transparency is enabled, restores the opaque fallback on every open, avoids duplicate Escape handlers, suppresses delayed bars while a TextBox (including Find) has focus and supplies the existing-clip tooltip. Suggested transcript badges have dashed outlines and filler decorations use Core's existing rule rather than a second regex.
+- `SelectionFlyout` uses the native CommandBarFlyout, labelled Make clip and Rewrite commands, icon Cut/Restore commands, delayed pointer/scroll presentation, keyboard Standard mode and Escape focus return. Placement flips below clip text or a clipped first line and refuses to cover a selection when neither edge has room. Restore includes selected cut pauses. Opaque token surfaces replace Acrylic when contrast or transparency preferences require it.
+- Rewrite and Insert words entry points are shown only with `voiceLab.enabled`; they remain disabled until a round-3 panel subscribes to their request events. This tree has no Rewrite panel; enabling an inert command or introducing the out-of-scope provider flow would be misleading. Core Voice Lab is unchanged.
+- Pure placement cases cover flipping, viewport edges and no-room suppression. The native accessibility walk now exercises Shift+F10 and Escape in a normal project; it still requires Windows to run.
+
+### 2026-10-27 — sol-win-redesign — Transcript overlay (step 8)
+
+- Each realized paragraph has a Composition decoration layer, positioned from text-pointer character rectangles. It supplies cut strikes, filler dots, AI dashes, playing-word rounded fills, Rewrite outlines and clip rules; text runs retain native hit testing and selection. Inline clip badges, AI chips and cut-pause chips contribute placeholder offsets to the UTF-16 highlight map. Clip structure changes re-prepare the realized paragraphs.
+- Selection and playing colours use `TranscriptWordHighlight` from the reviewed Ink change. Playing wins without replacing the selection tint with an accent fill. Out-of-scope words use `text.secondary`.
+- The project-local `tests/VoxClip.App.TypeCheck` reproduces the round-1 Mac C# typecheck and static XAML checks without new dependencies. The App typecheck passes with zero warnings; the UI suite passes (254 passed, two opt-in skips). Native overlay pixels and hour-long scroll timing still require a Windows graphical session; typechecking is not evidence of those gates.
+- The Debug shell probe now renders a realized, badge-bearing transcript at 2× and checks cut-stroke pixels within ±3, out-of-scope glyph colour and distinct selection/playing fills against the tokens. This is a native graphical gate, not a Mac typecheck substitute; it remains unrun with the VM down.
+
+### 2026-10-27 — sol-win-redesign — Transcript-dependent placeholders
+
+- The pane already rebuilds its take and clip cards on `EditorViewModel.Changed`; its refresh is debounced 500 ms and rejects cancelled loads. The right column previously reacted only to style changes, so its preview words could stay stale after transcription. `CaptionGalleryViewModel` now owns and invalidates the Core page cache on every document change, including transcript replacement, and placeholder-settings changes explicitly refresh it. A view-model regression checks the no-transcript preview-to-page transition and the pane card's transcript words.
+
+### 2026-10-27 — sol-win-redesign — Gallery tile adoption
+
+- Inspector tiles use cached Core `CaptionGalleryPages` at the edited playhead, with the export frame, sample language, project placement and selected-style overrides only (captions §15.3). Preview samples retain Core's clamped active word.
+- Each tile owns a latest-request gate. Cancellation is checked again before storing an image, including when a cancelled rasterizer completes normally. Failed overlays leave the same frame band dimmed 35%, undimmed caption-card backdrop, or opaque stage-black loading backdrop, without UI text.
+- `PreviewPresenter` refreshes the still at most four times per second rather than keeping the first frame forever. Gallery page lookups do not rebuild their Core index on playhead changes. Model changes rebuild the page samples, including transcription completion.
+
 ### 2026-10-27 — First app-server response wins (sol-followups-5 item 3)
 
 - Core stops on the first id-2 response, including a malformed `result`; later replies cannot repair it. The process runner parses strict envelopes with `LlmOutput.CliInteger`, retains the first response for each requested id and ignores duplicates, including initialization (ai §6.10). Cached/curated fallback and public declarations are unchanged.
@@ -44,7 +159,6 @@
 
 - Current shared fixtures after this track: `shared/fixtures/llm/cli-replies.json` (69 cases) sha256 `6dc35edf82112e7b298d23846cc940588f875549734c8f39057f2e8dd3eabdbc`; `shared/fixtures/voice-lab/patch-rewrite-cases.json` (82 cases, 45 also replayed as passage rewrites) sha256 `db1477211f74150224413b66d813df35bfe8c6479d1da25b23b38b144188df81`. Older hash lines below are history.
 - The lead-approved Mac `LLMCatalog.resolvedContextTokens(for:model:)` now mirrors the existing Windows `ResolveContextTokensAsync(queryConnector: false)` path for Find Clips dry runs (ai §11.5). Both use curated metadata and the connector-class fallback without querying a connector or model list. Windows declarations and persisted formats are unchanged.
-
 ### 2026-10-27 — Windows early Ctrl+C audit (sol-followups-2)
 
 - Lead's narrowed item 3 is audit-only: no Windows CLI product change, timing hook, new test or architecture wording change is needed. `Program.cs` cancels the workflow token on `Console.CancelKeyPress`; `CliApplication.Stub` checks it before the export command runs. `RunAsync` maps `OperationCanceledException` to exit 6 with an empty message. Human cancellation is silent; JSON retains its existing `cancelled` envelope.
@@ -485,7 +599,7 @@ Every listed declaration maps to its containing file and one owner. Nested union
 
 - **2026-10-27 — opus-win-redesign — Round 1e lead decisions:**
   - **Swift Core parity (lead-approved Swift Core change):** VoxClipCore gains `EditingAlgorithms` (`clipTitleWords`, `clipTitle(_ words: some Sequence<String>) -> String?`) in `apps/macos/Sources/VoxClipCore/Domain/Editing/EditingAlgorithms.swift`, the same rule as `EditingAlgorithms.ClipTitle` here, and a swift-testing `ManualClipTitleTests` that replays `shared/fixtures/clips/manual-titles.json`. The Mac App is unchanged; its consumer action is in the round-1d entry below and in apps/macos/CONTRACTS.md.
-  - **Lead-approved temporary deviation from design §13 (also §5.4.4 and §7), until the relink the lead schedules for round 2:** Windows has no Locate… yet. Home's link beside a missing or unreadable video reads "Open" and opens the project in place, where the editor's notice names the missing file. The Export button's disabled reason for a missing or unreadable video, and what Ctrl+E says, reads "Open the project and find the video to export." on Windows only, instead of "Locate the video to export.". The relink restores both.
+  - **2026-10-27 — sol-win-redesign — Relink replaces the temporary deviation:** Home and the media-missing editor notice offer Locate…. Windows Core now exposes `IProjectStore.RelinkAsync`, `ProjectRelinkResult`, `Relinking.Decide` and `RelinkDecision`. Mac Core extracts the same pure decision without changing its store behavior. Both replay `shared/fixtures/projects/relink-cases.json`. Matching identity is silent; a different file needs “This file looks different. Use it anyway?” and the existing 0.05-second planning-duration bound. The atomic writer is unchanged and is called once per accepted relink; its next save recalculates relativePath. Unresolved projects block document mutation; accepted relinks leave read-only state. Export and Ctrl+E restore “Locate the video to export.”.
   - **Home acts on no hidden editor:** while Home shows, the project's clip, suggestion, Suggested and none-found rows only navigate. `SidebarRow.Edits` is false there; the window disables Export clip…, Rename…, Remove clip, Keep clip, Dismiss, the Keep and Dismiss buttons, Keep all and Find clips…, and ignores Delete, Ctrl+Enter and F2. Copy text stays.
   - `ShortcutPolicy.RowClipStep` accepts the Full take row, so ] from Full take selects clip 1 (design §6.2). `EditorViewModel.ExportBlocked` judges the requested clip's own scope, not the active one, and a blocked Ctrl+E or Export clip… only announces its reason, so the notice showing stays.
   - Find clips and its callout's Retry re-read `llm.connector` before the preflight (AI spec §11 gate 4); an empty or unknown setting shows §13 "Clips: no connector" (`ClipCallouts.Chosen`). Only the native walk exercises the re-read, so Retry after a connector change is an open native-walk check; `ChosenConnectorComesFromTheCurrentSetting` covers the choice itself.

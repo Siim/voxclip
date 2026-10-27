@@ -58,7 +58,7 @@ public static class ShortcutPolicy
     /// <summary>The editor shortcuts that also act while focus is in the sidebar pane (design §11.1), written as gestures. The
     /// window forwards them to the attached editor; single-letter keys stay with the editor.</summary>
     public static IReadOnlyList<string> PaneGestures { get; } =
-        ["Ctrl+Z", "Ctrl+Y", "Ctrl+Shift+Z", "Ctrl+K", "Ctrl+E", "Ctrl+Shift+K", "Ctrl+Shift+I", "Ctrl+Shift+U", "Ctrl+Shift+P", "Ctrl+Shift+R", "F1"];
+        ["Ctrl+Z", "Ctrl+Y", "Ctrl+Shift+Z", "Ctrl+K", "Ctrl+R", "Ctrl+E", "Ctrl+Shift+K", "Ctrl+Shift+I", "Ctrl+Shift+U", "Ctrl+Shift+P", "Ctrl+Shift+R", "F1"];
 
     /// <summary>"Ctrl+Shift+K" for K with Control and Shift.</summary>
     public static string Gesture(string key, bool control, bool shift) => (control ? "Ctrl+" : "") + (shift ? "Shift+" : "") + key;
