@@ -46,7 +46,7 @@ func viewerStageSize(ratio: Double, innerWidth: CGFloat, columnHeight: CGFloat, 
                 if !model.document.demo, model.mediaResolved, !model.mediaUnreadable, model.project.media.source.video != nil, let native = model.nativePreview {
                     PlayerSurface(player: native.player)
                 } else { ViewerStandIn(model: model) }
-                if !model.document.demo, model.previewError == nil, let style = model.app.styles.first(where: { $0.id == model.project.captions.styleId }), style.position.userDraggable {
+                if model.canMoveCaptions, let style = model.app.styles.first(where: { $0.id == model.project.captions.styleId }), style.position.userDraggable {
                     CaptionPositionOverlay(model: model, style: style)
                 }
             }
@@ -110,24 +110,28 @@ func viewerStageSize(ratio: Double, innerWidth: CGFloat, columnHeight: CGFloat, 
 
 @MainActor private struct ViewerStandIn: View {
     let model: EditorModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var body: some View {
         GeometryReader { geometry in
             ZStack(alignment: .topLeading) {
                 Rectangle().fill(backdrop)
                 if model.mediaStatus == .missing || model.mediaStatus == .unreadable {
                     VStack(spacing: 5) {
-                        Image(systemName: "exclamationmark.triangle").font(.system(size: 20)).foregroundStyle(MediaChipTokens.warningGlyph)
-                        Text(model.mediaStatus == .missing ? "Video not found" : "Video can’t be read").font(.system(size: 13, weight: .semibold))
+                        Image(systemName: model.mediaStatus == .missing ? "video.slash" : "exclamationmark.triangle").font(.system(size: 20)).foregroundStyle(MediaChipTokens.warningGlyph)
+                        Text(model.mediaStatus == .missing ? "Video not found" : "Can't read this video").font(.system(size: 13, weight: .semibold))
                         Text(model.sourceURL.lastPathComponent).font(DesignValues.mono(11)).opacity(0.66).lineLimit(1)
                     }.foregroundStyle(DesignValues.color("overlay.foreground"))
-                        .position(x: geometry.size.width / 2, y: geometry.size.height * 0.36)
+                        .position(x: geometry.size.width / 2, y: geometry.size.height * (model.project.export.aspect == .portrait ? 0.38 : 0.36))
+                } else if model.mediaStatus == .audioOnly, let waveform = model.waveform, !waveform.fine.isEmpty {
+                    audiogram(waveform)
                 } else if model.mediaStatus == .demo || model.mediaStatus == .audioOnly {
                     Canvas { context, size in
                         let span = model.project.export.aspect == .portrait ? 5.0 : 6.0
+                        let centre = reduceMotion ? floor(model.sourceTime / span) * span + span / 2 : model.sourceTime
                         let scale = size.width / span
-                        for word in model.words where word.end >= model.sourceTime - span / 2 && word.start <= model.sourceTime + span / 2 && !model.cutWordIDs.contains(word.id) {
+                        for word in model.words where word.end >= centre - span / 2 && word.start <= centre + span / 2 && !model.cutWordIDs.contains(word.id) {
                             let current = word.start <= model.sourceTime && word.end > model.sourceTime
-                            let left = size.width / 2 + (word.start - model.sourceTime) * scale
+                            let left = size.width / 2 + (word.start - centre) * scale
                             let width = max(2, (word.end - word.start) * scale - 2)
                             let height: CGFloat = current ? 12 : 6
                             let rect = CGRect(x: left, y: size.height * 0.42 - height / 2, width: width, height: height)
@@ -137,9 +141,32 @@ func viewerStageSize(ratio: Double, innerWidth: CGFloat, columnHeight: CGFloat, 
                         context.fill(Path(caret), with: .color(.white.opacity(0.55)))
                     }
                 }
+                if showsCaptions { StandInCaptions(model: model) }
                 if let label = chip { MediaChip(text: label).padding(6) }
             }
         }.allowsHitTesting(false).accessibilityHidden(true)
+    }
+    private func audiogram(_ waveform: WaveformData) -> some View {
+        Canvas { context, size in
+            let portrait = model.project.export.aspect == .portrait
+            let span = portrait ? 9.0 : 14.0
+            let centre = reduceMotion ? floor(model.sourceTime / span) * span + span / 2 : model.sourceTime
+            let baseline = size.height * 0.4
+            let maximum = size.height * (portrait ? 0.075 : 0.12)
+            for offset in stride(from: CGFloat.zero, to: size.width, by: 3.5) {
+                let source = centre + (offset / max(1, size.width) - 0.5) * span
+                let index = Int(source / 0.01)
+                guard source >= 0, waveform.fine.indices.contains(index) else { continue }
+                let amplitude: CGFloat = CGFloat(waveform.fine[index])
+                let scaledAmplitude: CGFloat = amplitude * maximum * 2
+                let height: CGFloat = max(1, min(maximum, scaledAmplitude))
+                let bar = CGRect(x: offset, y: baseline - height, width: 2, height: height * 2)
+                context.fill(Path(roundedRect: bar, cornerRadius: 1), with: .color(.white.opacity(source <= model.sourceTime ? 0.72 : 0.26)))
+            }
+            let line = CGRect(x: size.width / 2, y: baseline - maximum, width: 1, height: maximum * 2)
+            context.fill(Path(line), with: .color(.white.opacity(0.55)))
+            context.fill(Path(ellipseIn: CGRect(x: size.width / 2 - 2.5, y: baseline - maximum - 2.5, width: 5, height: 5)), with: .color(.white.opacity(0.55)))
+        }
     }
     private var chip: String? {
         switch model.mediaStatus {
@@ -150,9 +177,56 @@ func viewerStageSize(ratio: Double, innerWidth: CGFloat, columnHeight: CGFloat, 
         }
     }
     private var backdrop: Color {
-        guard let style = model.app.cardStyle(for: model.project),
+        switch model.mediaStatus {
+        case .loading, .missing, .unreadable, .transcribing: return DesignValues.color("stage")
+        default: break
+        }
+        guard let style = model.app.cardStyle(for: model.project) else { return DesignValues.color("stage") }
+        let scope: CaptionCardScope = model.activeClip.map { .clip($0.id) } ?? .fullTake
+        let card = model.cardText(scope, wordsVisible: model.app.bool("general.showPlaceholderWords", fallback: true))
+        let standIn = MediaStandIn.resolve(status: model.mediaStatus, hasFrame: false, card: card, styleId: style.id)
+        guard case .card = standIn,
               let hex = CaptionCardLook.backdrop(style, previewBackground: model.app.previewBackgrounds[style.id]) else { return DesignValues.color("stage") }
         return Color(nsColor: DesignValues.parse(hex))
+    }
+    private var showsCaptions: Bool {
+        if case .transcribing = model.mediaStatus { return false }
+        return true
+    }
+}
+
+@MainActor private struct StandInCaptions: View {
+    let model: EditorModel
+    @State private var layout: CaptionLayoutResult?
+    var body: some View {
+        ZStack {
+            Color.clear
+            if let layout { StandInCaptionImage(layout: layout, time: model.playhead, pipeline: model.app.captions) }
+        }
+            .task(id: model.projectRevision) {
+                layout = nil
+                let request = try? await model.renderRequest()
+                guard !Task.isCancelled else { return }
+                layout = request?.captionLayout
+            }
+    }
+}
+
+@MainActor private struct StandInCaptionImage: View {
+    struct Input: Equatable { let layout: CaptionLayoutResult; let time: Double }
+    let layout: CaptionLayoutResult
+    let time: Double
+    let pipeline: CaptionHandoff
+    @State private var image: NSImage?
+    var body: some View {
+        GeometryReader { geometry in
+            if let image { Image(nsImage: image).resizable().frame(width: geometry.size.width, height: geometry.size.height) }
+        }
+        .task(id: Input(layout: layout, time: time)) {
+            let rendered = await pipeline.stage(layout, time: time)
+            guard !Task.isCancelled else { return }
+            image = rendered
+        }
     }
 }
 
@@ -223,58 +297,142 @@ func viewerStageSize(ratio: Double, innerWidth: CGFloat, columnHeight: CGFloat, 
 
 @MainActor struct TimelineStrip: View {
     @Bindable var model: EditorModel
-    /// With the viewer collapsed the strip leads with Play and the edited time (§5.3).
     var compactTransport = false
     @State private var hoveredSource: Double?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var body: some View {
         HStack(spacing: 12) {
-            if compactTransport {
-                Button { model.transport(" ") } label: {
-                    Image(systemName: model.isPlaying ? "pause.fill" : "play.fill").font(.system(size: 12, weight: .semibold)).frame(width: 28, height: 28)
-                }
-                .buttonStyle(.plain).background(DesignValues.color("bg.sunken"), in: Circle())
-                .accessibilityLabel(model.isPlaying ? "Pause" : "Play")
-                (Text(timecode(model.playhead)) + Text(" / \(timecode(model.duration))").foregroundStyle(DesignValues.color("text.secondary")))
-                    .font(DesignValues.mono(12)).monospacedDigit().fixedSize()
-            }
+            if compactTransport { compactControls }
+            Picker("Timeline time", selection: $model.editedTimeline) {
+                Text("Edited").tag(true); Text("Source").tag(false)
+            }.labelsHidden().pickerStyle(.segmented).frame(width: 130, height: 24).controlSize(.small)
             GeometryReader { geometry in
-                TimelineTrack(projection: model.timeline, edited: model.editedTimeline).equatable()
-                    .overlay { TimelinePlayhead(model: model) }
-                    .contentShape(Rectangle())
-                    .gesture(DragGesture(minimumDistance: 0).onChanged { value in
-                        let ratio = min(1, max(0, value.location.x / max(1, geometry.size.width)))
-                        let source = model.editedTimeline ? model.renderTimeline?.sourceTime(ratio * model.duration) ?? 0 : ratio * model.sourceDuration
-                        if NSEvent.modifierFlags.contains(.shift), let word = model.word(at: source, nearest: true) { model.seek(source: word.start) } else { model.seek(source: source) }
-                    })
-                    .onTapGesture(count: 2) { location in
-                        let ratio = min(1, max(0, location.x / max(1, geometry.size.width)))
-                        let source = model.editedTimeline ? model.renderTimeline?.sourceTime(ratio * model.duration) ?? 0 : ratio * model.sourceDuration
-                        let wordIDs = model.word(at: source).map { model.cutWordIDs.contains($0.id) ? [$0.id] : [] } ?? []
-                        let pauseIDs = model.pause(at: source).map { model.cutPauseIDs.contains($0.id) ? [$0.id] : [] } ?? []
-                        if !wordIDs.isEmpty || !pauseIDs.isEmpty { model.apply(.restoreSelection(ids: wordIDs + pauseIDs), name: "Restore cut") }
+                ZStack(alignment: .topLeading) {
+                    track(width: geometry.size.width)
+                    if let clip = model.activeClip {
+                        TimelineTrimHandle(model: model, clip: clip, start: true, width: geometry.size.width)
+                        TimelineTrimHandle(model: model, clip: clip, start: false, width: geometry.size.width)
                     }
-                    .onContinuousHover { phase in
-                        if case .active(let point) = phase {
-                            let time = min(1, max(0, point.x / max(1, geometry.size.width))) * (model.editedTimeline ? model.duration : model.sourceDuration)
-                            hoveredSource = model.editedTimeline ? model.renderTimeline?.sourceTime(time) ?? time : time
-                        } else { hoveredSource = nil }
-                    }
-                    .help(hoveredSource.map { source in (model.word(at: source).map { model.text($0) + " · " } ?? "") + timecode(source) } ?? "Drag to scrub. Shift-drag snaps to word starts. Double-click a cut to restore it.")
+                }
+                .coordinateSpace(name: "voxclip.timeline")
             }
-            VStack(alignment: .trailing, spacing: 3) {
-                Picker("Timeline time", selection: $model.editedTimeline) { Text("Source").tag(false); Text("Edited").tag(true) }.labelsHidden().pickerStyle(.segmented).frame(width: 130).controlSize(.mini)
-            }.fixedSize(horizontal: true, vertical: false)
         }
+        .frame(height: 72)
         .padding(.horizontal, 16)
         .background(DesignValues.color("bg.surface"))
-        .focusable()
-        .onKeyPress(keys: [.leftArrow, .rightArrow], phases: .down) { key in model.step(key.key == .leftArrow ? -1 : 1, sentence: key.modifiers.contains(.shift)); return .handled }
-        .onKeyPress(.home) { if let word = model.words.first { model.select(word.id) }; return .handled }
-        .onKeyPress(.end) { if let word = model.words.last { model.select(word.id) }; return .handled }
-        .onKeyPress(characters: CharacterSet(charactersIn: " jklpico[]")) { key in model.transport(key.characters); return .handled }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Playhead")
-        .accessibilityValue(compactTransport ? "\(timecode(model.playhead)) of \(timecode(model.duration)) after cuts" : "\(model.summary.cutWordCount + model.summary.cutPauseCount) cuts")
-        .accessibilityAdjustableAction { direction in model.step(direction == .increment ? 1 : -1) }
+        .task(id: model.waveformKey) { await model.loadWaveform() }
+    }
+    private var compactControls: some View {
+        HStack(spacing: 8) {
+            Button { model.transport(" ") } label: {
+                Image(systemName: model.isPlaying ? "pause.fill" : "play.fill").font(.system(size: 12, weight: .semibold)).frame(width: 28, height: 28)
+            }
+            .buttonStyle(.plain).background(DesignValues.color("bg.sunken"), in: Circle())
+            .accessibilityLabel(model.isPlaying ? "Pause" : "Play")
+            (Text(timecode(model.playhead)) + Text(" / \(timecode(model.duration))").foregroundStyle(DesignValues.color("text.secondary")))
+                .font(DesignValues.mono(12)).monospacedDigit().fixedSize()
+                .accessibilityIdentifier("voxclip.compact.time")
+        }
+    }
+    private func track(width: CGFloat) -> some View {
+        let projection = model.displayTimeline
+        let current = model.editedTimeline ? model.playhead : model.sourceTime
+        return scrubTrack(projection: projection, current: current, width: width)
+            .focusable()
+            .onKeyPress(keys: [.leftArrow, .rightArrow], phases: .down) { key in
+                let direction: Int = key.key == .leftArrow ? -1 : 1
+                model.step(direction, sentence: key.modifiers.contains(.shift))
+                return .handled
+            }
+            .onKeyPress(.home) { seekBoundary(end: false); return .handled }
+            .onKeyPress(.end) { seekBoundary(end: true); return .handled }
+            .onKeyPress(characters: CharacterSet(charactersIn: " jklpico[]")) { key in model.transport(key.characters); return .handled }
+            .accessibilityRepresentation { slider(projection: projection, current: current) }
+            .animation(reduceMotion ? nil : .easeInOut(duration: 0.24), value: projection.zoom)
+    }
+    private func slider(projection: TimelineProjection, current: Double) -> some View {
+        let range = projection.visible(edited: model.editedTimeline)
+        let value = Binding(get: { current.clamped(to: range) }, set: { model.seek(source: sourceTime($0)) })
+        return Slider(value: value, in: range) { Text("Playhead") }
+            .accessibilityIdentifier("voxclip.timeline.playhead")
+            .accessibilityValue("\(timecode(model.playhead)) of \(timecode(model.duration)) after cuts, \(model.summary.cutWordCount + model.summary.cutPauseCount) cuts")
+            .accessibilityAdjustableAction { model.step($0 == .increment ? 1 : -1) }
+    }
+    private func seekBoundary(end: Bool) {
+        let source: Double
+        if let bounds = model.scopeBounds { source = end ? model.words[bounds.upperBound].end : model.words[bounds.lowerBound].start }
+        else { source = end ? model.sourceDuration : 0 }
+        model.seek(source: source)
+    }
+    private var hoverHelp: String {
+        guard let source = hoveredSource else { return "Drag to scrub. Shift-drag snaps to word starts. Double-click a cut to restore it." }
+        let word = model.word(at: source).map { model.text($0) + " · " } ?? ""
+        return word + timecode(source)
+    }
+    private func scrubTrack(projection: TimelineProjection, current: Double, width: CGFloat) -> some View {
+        return TimelineTrack(projection: projection, edited: model.editedTimeline).equatable()
+            .overlay { TimelinePlayhead(fraction: projection.fraction(current, edited: model.editedTimeline)) }
+            .contentShape(Rectangle())
+            .gesture(DragGesture(minimumDistance: 0).onChanged { value in
+                let time = projection.time(value.location.x / max(1, width), edited: model.editedTimeline)
+                let source = sourceTime(time)
+                if NSEvent.modifierFlags.contains(.shift), let word = model.word(at: source, nearest: true) { model.seek(source: word.start) }
+                else { model.seek(source: source) }
+            })
+            .onTapGesture(count: 2) { location in
+                let time = projection.time(location.x / max(1, width), edited: model.editedTimeline)
+                let source = sourceTime(time)
+                let wordIDs = model.word(at: source).map { model.cutWordIDs.contains($0.id) ? [$0.id] : [] } ?? []
+                let pauseIDs = model.pause(at: source).map { model.cutPauseIDs.contains($0.id) ? [$0.id] : [] } ?? []
+                if !wordIDs.isEmpty || !pauseIDs.isEmpty { model.apply(.restoreSelection(ids: wordIDs + pauseIDs), name: "Restore cut") }
+            }
+            .onContinuousHover { phase in
+                if case .active(let point) = phase { hoveredSource = sourceTime(projection.time(point.x / max(1, width), edited: model.editedTimeline)) }
+                else { hoveredSource = nil }
+            }
+            .help(hoverHelp)
+    }
+    private func sourceTime(_ time: Double) -> Double {
+        guard model.editedTimeline else { return time }
+        if time >= model.duration { return model.scopeBounds.map { model.words[$0.upperBound].end } ?? model.sourceDuration }
+        return model.renderTimeline?.sourceTime(time) ?? time
+    }
+}
+
+@MainActor private struct TimelineTrimHandle: View {
+    let model: EditorModel
+    let clip: ClipRange
+    let start: Bool
+    let width: CGFloat
+    @State private var candidate: Int?
+    private var index: Int { candidate ?? model.index(start ? clip.startWordId : clip.endWordId) ?? 0 }
+    private var source: Double {
+        guard model.words.indices.contains(index) else { return 0 }
+        return start ? model.words[index].start : model.words[index].end
+    }
+    var body: some View {
+        let time = model.editedTimeline ? model.renderTimeline?.mapTime(source) ?? source : source
+        let fraction = model.timeline.fraction(time, edited: model.editedTimeline)
+        Capsule().fill(DesignValues.accentText).frame(width: 7, height: 36)
+            .frame(width: 24, height: 44).contentShape(Rectangle())
+            .gesture(DragGesture(minimumDistance: 1, coordinateSpace: .named("voxclip.timeline"))
+                .onChanged { value in candidate = snappedIndex(value.location.x) }
+                .onEnded { value in
+                    if let index = snappedIndex(value.location.x) { model.trimClip(clip, start: start, index: index) }
+                    candidate = nil
+                })
+            .onKeyPress(.escape) { candidate = nil; return .handled }
+            .focusable()
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Clip \(model.clipNumber(clip.id) ?? 1) \(start ? "start" : "end")")
+            .accessibilityValue(timecode(source))
+            .accessibilityAdjustableAction { model.adjustTrim(start: start, offset: $0 == .increment ? 1 : -1) }
+            .position(x: fraction * width, y: 43)
+    }
+    private func snappedIndex(_ point: CGFloat) -> Int? {
+        let time = model.timeline.time(point / max(1, width), edited: model.editedTimeline)
+        let source = model.editedTimeline ? model.renderTimeline?.sourceTime(min(time, model.duration.nextDown)) ?? time : time
+        guard let index = model.trimIndex(start: start, source: source), let lower = model.index(clip.startWordId), let upper = model.index(clip.endWordId) else { return nil }
+        return start ? index.clamped(to: 0...upper) : index.clamped(to: lower...(model.words.count - 1))
     }
 }

@@ -35,6 +35,10 @@ import VoxClipCore
         let preview = model.captionTileInput(boxed)
         check("hidden placeholder words use the style's English preview sample", preview.sample == CaptionGallerySample.preview(boxed) && preview.language == "en")
         app.set("general.showPlaceholderWords", .bool(visible))
+        model.progress = "Transcribing"; model.progressStage = .transcribing
+        let loading = model.captionTileInput(boxed)
+        check("transcribing without a frame uses stage black and the style preview sample", loading.loading && loading.sample == CaptionGallerySample.preview(boxed))
+        model.progress = nil; model.progressStage = nil
         let state = CaptionTileState()
         let gate = CaptionRaceGate()
         let older = Task { await state.load(input) { _ in await gate.wait(); return nil } }

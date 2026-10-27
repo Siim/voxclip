@@ -108,6 +108,17 @@ struct CaptionTileInput: Sendable, Equatable {
         return await CaptionFrameCache.shared.frame(input)
     }
 
+    func stage(_ layout: CaptionLayoutResult, time: Double) async -> NSImage? {
+        guard let (_, rasterizer) = try? services(),
+              let raster = try? await rasterizer.rasterize(layout, time: time, previewWidth: 640, reduceMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion),
+              !Task.isCancelled, let provider = CGDataProvider(data: raster.rgba as CFData),
+              let image = CGImage(width: raster.width, height: raster.height, bitsPerComponent: 8, bitsPerPixel: 32,
+                                  bytesPerRow: raster.bytesPerRow, space: CGColorSpaceCreateDeviceRGB(),
+                                  bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.last.rawValue), provider: provider,
+                                  decode: nil, shouldInterpolate: true, intent: .defaultIntent) else { return nil }
+        return NSImage(cgImage: image, size: CGSize(width: raster.width, height: raster.height))
+    }
+
     func tileBackdrop(_ input: CaptionTileInput, still: CGImage?, overlay: CGImage? = nil, position: Double? = nil) -> NSImage? {
         let width = 320
         let ratio = Double(input.frame.height) / Double(max(1, input.frame.width))

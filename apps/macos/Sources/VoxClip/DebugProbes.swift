@@ -181,6 +181,24 @@ import VoxClipCore
             rows.append(measure(window, table, name: "\(name)-inactive", folder: folder, appearance: appearance))
             other.close()
         }
+        if let root = app.shared?.root,
+           let fixture = try? DemoEditing.loadFixture(root.appendingPathComponent("fixtures/projects/interview-take.voxclip")),
+           let project = try? DebugSidebar.fiveQuestions(from: fixture) {
+            let document = VoxClipDocument(project: project, demo: true)
+            NSDocumentController.shared.addDocument(document)
+            if await shell.replaceProject(with: document) {
+                await shell.started?.value
+                var exports: [[String: String]] = []
+                for (name, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
+                    NSApp.appearance = NSAppearance(named: appearance)
+                    window.makeKeyAndOrderFront(nil)
+                    try? await Task.sleep(for: .seconds(1))
+                    exports.append(measureExport(window, name: name, folder: folder))
+                }
+                write(exports, "export-window-colors.json", in: folder)
+                document.updateChangeCount(.changeCleared); document.close()
+            }
+        }
         NSApp.appearance = nil
         write(rows, "accent-results.json", in: folder)
         exit(0)
@@ -202,15 +220,26 @@ import VoxClipCore
         process.arguments = ["-x", "-o", "-l", String(window.windowNumber), file.path]
         guard (try? process.run()) != nil else { return ["capture": name, "error": "screencapture did not start"] }
         process.waitUntilExit()
-        guard let data = try? Data(contentsOf: file), let image = NSBitmapImageRep(data: data) else { return ["capture": name, "error": "no image"] }
+        guard let image = bitmap(file) else { return ["capture": name, "error": "no image"] }
         let scale = Double(image.pixelsWide) / window.frame.width
         let row = table.convert(table.rect(ofRow: 0), to: nil)
         func pixel(_ x: Double, _ y: Double) -> NSColor? {
             image.colorAt(x: Int(x * scale), y: Int((window.frame.height - y) * scale))?.usingColorSpace(.sRGB)
         }
         let fill = pixel(row.maxX - 14, row.midY)
-        var glyph: NSColor?
+        var label: NSColor?
         var farthest = 0.0
+        if let fill {
+            for column in stride(from: row.minX + 46, to: min(row.maxX - 16, row.minX + 125), by: 0.5) {
+                for line in stride(from: row.minY + 3, to: row.maxY - 3, by: 0.5) {
+                    guard let color = pixel(column, line) else { continue }
+                    let distance = abs(color.redComponent - fill.redComponent) + abs(color.greenComponent - fill.greenComponent) + abs(color.blueComponent - fill.blueComponent)
+                    if distance > farthest { farthest = distance; label = color }
+                }
+            }
+        }
+        var glyph: NSColor?
+        farthest = 0
         if let fill {
             for x in stride(from: row.minX + 2, to: row.minX + 44, by: 0.5) {
                 for y in stride(from: row.minY + 3, to: row.maxY - 3, by: 0.5) {
@@ -227,9 +256,59 @@ import VoxClipCore
             unemphasized = hex(NSColor.unemphasizedSelectedContentBackgroundColor)
             accentDefault = hex(DesignValues.nsColor("accent.default"))
         }
-        return ["capture": name, "selectionFill": hex(fill), "glyph": hex(glyph), "controlAccentColor": accent, "selectedContentBackgroundColor": selected,
+        return ["capture": name, "selectionFill": hex(fill), "glyph": hex(glyph), "label": hex(label), "labelContrast": contrast(label, fill), "controlAccentColor": accent, "selectedContentBackgroundColor": selected,
                 "unemphasizedSelectedContentBackgroundColor": unemphasized, "accentDefault": accentDefault,
                 "firstResponder": window.firstResponder.map { String(describing: type(of: $0)) } ?? "none", "key": String(window.isKeyWindow)]
+    }
+
+    private static func bitmap(_ file: URL) -> NSBitmapImageRep? {
+        guard let data = try? Data(contentsOf: file), let source = NSBitmapImageRep(data: data)?.cgImage,
+              let space = CGColorSpace(name: CGColorSpace.sRGB),
+              let context = CGContext(data: nil, width: source.width, height: source.height, bitsPerComponent: 8,
+                                      bytesPerRow: 0, space: space, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
+        context.draw(source, in: CGRect(x: 0, y: 0, width: source.width, height: source.height))
+        return context.makeImage().map { NSBitmapImageRep(cgImage: $0) }
+    }
+    private static func contrast(_ foreground: NSColor?, _ background: NSColor?) -> String {
+        guard let foreground, let background else { return "none" }
+        func luminance(_ color: NSColor) -> Double {
+            let channels = [color.redComponent, color.greenComponent, color.blueComponent].map { value in
+                value <= 0.04045 ? value / 12.92 : pow((value + 0.055) / 1.055, 2.4)
+            }
+            return channels[0] * 0.2126 + channels[1] * 0.7152 + channels[2] * 0.0722
+        }
+        let first = luminance(foreground), second = luminance(background)
+        return String(format: "%.3f", (max(first, second) + 0.05) / (min(first, second) + 0.05))
+    }
+    private static func measureExport(_ window: NSWindow, name: String, folder: URL) -> [String: String] {
+        func buttons(_ view: NSView) -> [NSButton] { (view as? NSButton).map { [$0] } ?? view.subviews.flatMap(buttons) }
+        guard let root = window.contentView?.superview, let button = buttons(root).first(where: { $0.isEnabled && $0.title.contains("Export") }) else { return ["capture": name, "error": "no enabled Export"] }
+        let file = folder.appendingPathComponent("window-export-\(name).png")
+        let process = Process(); process.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+        process.arguments = ["-x", "-o", "-l", String(window.windowNumber), file.path]
+        guard (try? process.run()) != nil else { return ["capture": name, "error": "capture failed"] }
+        process.waitUntilExit()
+        guard let image = bitmap(file) else { return ["capture": name, "error": "no image"] }
+        let scale = Double(image.pixelsWide) / window.frame.width
+        let bounds = button.convert(button.bounds, to: nil)
+        let top = window.frame.height - bounds.maxY
+        let middleX: Double = Double(bounds.midX)
+        let bottomY: Double = Double(top + bounds.height - 5)
+        let fillX: Double = middleX * scale
+        let fillY: Double = bottomY * scale
+        let fill = image.colorAt(x: Int(fillX), y: Int(fillY))
+        let expected = ExportToolbarButton.colors(for: button.effectiveAppearance).label.usingColorSpace(.sRGB)!
+        var label: NSColor?
+        var closest = Double.greatestFiniteMagnitude
+        let area = CGRect(x: bounds.minX + 14, y: top + 4, width: max(1, bounds.width - 28), height: max(1, bounds.height - 8))
+        for row in Int(area.minY * scale)..<Int(area.maxY * scale) {
+            for column in Int(area.minX * scale)..<Int(area.maxX * scale) {
+                guard let color = image.colorAt(x: column, y: row) else { continue }
+                let distance = abs(color.redComponent - expected.redComponent) + abs(color.greenComponent - expected.greenComponent) + abs(color.blueComponent - expected.blueComponent)
+                if distance < closest { closest = distance; label = color }
+            }
+        }
+        return ["capture": name, "fill": hex(fill), "label": hex(label), "contrast": contrast(label, fill)]
     }
 
     private static func hex(_ color: NSColor?) -> String {

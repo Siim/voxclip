@@ -81,6 +81,9 @@ import VoxClipMedia
     private(set) var projectRevision = 0
     /// The video is there but can't be read (design §5.4.4 f, corrupt file).
     var mediaUnreadable = false
+    var canMoveCaptions: Bool {
+        !document.demo && !document.isVersion && !isLeaving && !mediaUnreadable && (previewError == nil || !mediaResolved)
+    }
     /// The open project's media state for its stand-ins and Export (design §5.4.4).
     var mediaStatus: MediaStatus {
         if let transcriptionStatus { return transcriptionStatus }
@@ -108,6 +111,38 @@ import VoxClipMedia
     var scopeBounds: ClosedRange<Int>?
     var editingAvailable = false
     var timeline = TimelineProjection()
+    var waveform: WaveformData?
+    var waveformRevision = 0
+    var waveformKey: WaveformCache.Key? {
+        guard !document.demo, mediaResolved, !mediaUnreadable, project.media.source.audio != nil else { return nil }
+        return WaveformCache.Key(contentKey: project.media.source.contentKey, source: sourceURL, cache: app.locations.cache)
+    }
+    func loadWaveform() async {
+        let key = waveformKey
+        let value = if let key { await WaveformCache.shared.load(key) } else { nil as WaveformData? }
+        guard !Task.isCancelled, key == waveformKey else { return }
+        waveform = value; waveformRevision += 1
+        timeline = TimelineProjection(model: self)
+    }
+    var displayTimeline: TimelineProjection {
+        var display = timeline
+        let indices = selectedWordIDs.compactMap { wordIndex[$0] }
+        var starts = indices.map { words[$0].start }
+        var ends = indices.map { words[$0].end }
+        for id in selectedPauseIDs {
+            if let pause = pauseIndex[id] { starts.append(pause.start); ends.append(pause.end) }
+        }
+        if let start = starts.min(), let end = ends.max() { display.selection = timelineBand(start: start, end: end) }
+        if let rewrite, words.indices.contains(rewrite.lowerBound), words.indices.contains(rewrite.upperBound) {
+            display.rewrite = timelineBand(start: words[rewrite.lowerBound].start, end: words[rewrite.upperBound].end)
+        }
+        return display
+    }
+    private func timelineBand(start: Double, end: Double) -> TimelineBand {
+        let lower = renderTimeline?.mapTime(start) ?? start
+        let upper = renderTimeline?.mapTime(end) ?? end
+        return TimelineBand(source: start...max(start, end), edited: lower...max(lower, upper))
+    }
     @ObservationIgnored private var renderedTranscript: Transcript?
     @ObservationIgnored private var renderedEdits: ProjectEdits?
     @ObservationIgnored private var renderedMedia: ProjectMedia?
@@ -412,7 +447,7 @@ import VoxClipMedia
     }
     func replace(_ newProject: Project, name: String) {
         // A Versions-browser version is read-only.
-        guard !isLeaving, !document.isVersion, mediaResolved || name == "Locate media" else { return }
+        guard !isLeaving, !document.isVersion, mediaResolved || name == "Locate media" || onlyCaptionPositionChanged(newProject) else { return }
         // The title follows the document's name, not the edit history (design §2), so
         // undoing an edit made before a Save As or Rename keeps the new title.
         var newProject = newProject
@@ -447,6 +482,14 @@ import VoxClipMedia
     }
     private func recordDocumentChange() {
         document.updateChangeCount(undoManager?.isUndoing == true ? .changeUndone : undoManager?.isRedoing == true ? .changeRedone : .changeDone)
+    }
+    private func onlyCaptionPositionChanged(_ candidate: Project) -> Bool {
+        var positionEdit = project
+        positionEdit.captions.position = candidate.captions.position
+        positionEdit.captions.positionByAspect = candidate.captions.positionByAspect
+        positionEdit.modifiedAt = candidate.modifiedAt
+        positionEdit.title = candidate.title
+        return positionEdit == candidate
     }
     func resolveMediaIdentity() async throws -> URL {
         let reference = project.media.source
@@ -564,6 +607,32 @@ import VoxClipMedia
         guard let clip = activeClip, let id = selectedIDs.first, let caret = index(id), let lower = index(clip.startWordId), let upper = index(clip.endWordId) else { return }
         guard start ? caret <= upper : caret >= lower else { return }
         apply(.updateClip(id: clip.id, startIndex: start ? caret : lower, endIndex: start ? upper : caret), name: "Set clip edge")
+    }
+    func trimIndex(start: Bool, source: Double) -> Int? {
+        guard !words.isEmpty else { return nil }
+        var lower = 0
+        var upper = words.count
+        while lower < upper {
+            let middle = (lower + upper) / 2
+            let boundary = start ? words[middle].start : words[middle].end
+            if boundary < source { lower = middle + 1 } else { upper = middle }
+        }
+        if lower == 0 { return 0 }
+        if lower == words.count { return words.count - 1 }
+        let previous = start ? words[lower - 1].start : words[lower - 1].end
+        let next = start ? words[lower].start : words[lower].end
+        return source - previous <= next - source ? lower - 1 : lower
+    }
+    func trimClip(_ clip: ClipRange, start: Bool, index: Int) {
+        guard let lower = self.index(clip.startWordId), let upper = self.index(clip.endWordId) else { return }
+        let nextStart = start ? index.clamped(to: 0...upper) : lower
+        let nextEnd = start ? upper : index.clamped(to: lower...(words.count - 1))
+        guard nextStart != lower || nextEnd != upper else { return }
+        apply(.updateClip(id: clip.id, startIndex: nextStart, endIndex: nextEnd), name: "Trim clip")
+    }
+    func adjustTrim(start: Bool, offset: Int) {
+        guard let clip = activeClip, let current = index(start ? clip.startWordId : clip.endWordId) else { return }
+        trimClip(clip, start: start, index: current + offset)
     }
     func activate(_ clip: ClipRange?, announcing message: String? = nil) {
         apply(.setActiveClip(clipId: clip?.id), name: "Preview clip", announcing: message)
@@ -825,7 +894,7 @@ import VoxClipMedia
         if galleryPages[style.id] == nil, let resources = app.captionResources {
             galleryPages[style.id] = CaptionGalleryPages(project: project, scope: scope, style: style, wordsVisible: visible, resources: resources)
         }
-        let sample = galleryPages[style.id]?.sample(at: playhead) ?? CaptionGallerySample.preview(style)
+        let sample = transcriptionStatus != nil ? CaptionGallerySample.preview(style) : galleryPages[style.id]?.sample(at: playhead) ?? CaptionGallerySample.preview(style)
         let selected = style.id == project.captions.styleId
         let overrides = selected ? project.captions.overrides : [:]
         let placement = selected && style.position.userDraggable ? project.captions.positionByAspect[captionPreset.rawValue] ?? project.captions.position : nil
@@ -833,8 +902,10 @@ import VoxClipMedia
         let lower = activeClip.flatMap { clip in index(clip.startWordId).map { words[$0].start } } ?? 0
         let upper = activeClip.flatMap { clip in index(clip.endWordId).map { words[$0].end } } ?? sourceDuration
         let time = (floor(sourceTime * 4) / 4).clamped(to: lower...max(lower, upper))
+        let frameAvailable = !document.demo && mediaResolved && !mediaUnreadable && project.media.source.video != nil
+        let loading = mediaStatus == .loading || (transcriptionStatus != nil && !frameAvailable)
         return CaptionTileInput(state: nil, plan: nil, style: style, sampleWords: sample.words.map(\.text), language: sample.source == .preview ? "en" : project.transcript?.language, frame: outputSpec().size, overrides: overrides, position: placement, sourceURL: sourceURL, sourceTime: time,
-                                sample: sample, backdrop: CaptionCardLook.backdrop(resolved, previewBackground: app.previewBackgrounds[style.id]), frameAvailable: !document.demo && mediaResolved && !mediaUnreadable && project.media.source.video != nil,
+                                sample: sample, backdrop: CaptionCardLook.backdrop(resolved, previewBackground: app.previewBackgrounds[style.id]), frameAvailable: frameAvailable, loading: loading,
                                 contentKey: project.media.source.contentKey)
     }
     func outputSpec() -> OutputSpec {

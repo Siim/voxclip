@@ -55,6 +55,9 @@ import VoxClipCore
                 if let position = CommandLine.arguments.firstIndex(of: "-voiceRecipeAudit"), position + 1 < CommandLine.arguments.count {
                     await DebugVoiceRecipe.run(app: model, destination: URL(fileURLWithPath: CommandLine.arguments[position + 1]))
                 } else if CommandLine.arguments.contains("-uiSelfTest") { await DebugUISuite.run(app: model) }
+                else if let position = CommandLine.arguments.firstIndex(of: "-timelineAudit"), position + 1 < CommandLine.arguments.count {
+                    await DebugTimeline.audit(app: model, directory: URL(fileURLWithPath: CommandLine.arguments[position + 1]))
+                }
                 else if let position = CommandLine.arguments.firstIndex(of: "-sceneAudit"), position + 1 < CommandLine.arguments.count {
                     await DebugUISuite.sceneAudit(app: model, destination: URL(fileURLWithPath: CommandLine.arguments[position + 1]))
                 } else if let position = CommandLine.arguments.firstIndex(of: "-saveBoundaryAudit"), position + 1 < CommandLine.arguments.count {
