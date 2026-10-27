@@ -1,5 +1,19 @@
 # macOS implementation contracts
 
+### 2026-10-27 — Codex usage fields (sol-followups-6 item 2)
+
+- Codex records only `turn.completed.usage.input_tokens`, `cached_input_tokens` and `output_tokens` (ai §6.9 step 4). It no longer reads `cache_write_input_tokens`; cache-write usage is absent regardless of that field's value. Claude usage is unchanged, and Windows already follows this mapping.
+- Two new shared rows, `codex-cache-write-ignored-integral` and `codex-cache-write-ignored-out-of-range`, assert absent cache-write usage while preserving the three supported counts. Both platform connector suites replay them.
+- Current `shared/fixtures/llm/cli-replies.json`: 98 cases, sha256 `3c2ff55f41d61c8c2057b7fda6b1d1b5d479f71771969e5331f34cf3061944c8`. Older fixture entries below are history.
+- Verification: Mac build and the serialized full Core suite pass (578 tests reported in 43 suites, eight explicit skip notices, no failures), including all 98 CLI rows. The existing recorded Codex argument test now expects absent cache-write usage. A fresh 300 ms slow-expression build and its final incremental rebuild pass; the only slow-expression warning is the unchanged App debug expression at `DebugTranscriptPerformance.swift:22` (486 ms). Windows Release builds with zero warnings/errors; full Core reports 1,884 tests, 28 skipped, no failures. All 11 LLM files reproduce byte-for-byte across two generator runs and `--check`; exact CI secret-pattern, PowerShell ASCII, JSON, schemas, styles, tokens (16 tests), version (14 tests), whitespace and conflict checks pass. No App/UI source changes.
+
+### 2026-10-27 — Codex failure categories and fallback (sol-followups-6 item 1)
+
+- Codex classifies the selected failure message in ai §6.9 order: auth, limit, overload, model, context, then generic failure. Catalog `overloadMarkers` contains `overloaded`; no Codex-only literal shortcuts apply. `prompt is too long` matches no Codex marker and has no `context`, so it is `cliFailed`.
+- Ten new shared rows cover eight classification cases and two fake-runner fallback cases. The latter use Test requests, assert the exact primary/fallback models and two generation calls, and prove an overloaded fallback does not trigger another re-run. Claude and the runners' existing fallback policy are unchanged.
+- Current `shared/fixtures/llm/cli-replies.json`: 96 cases, sha256 `29cbf0f1172ad5199d1c0936a6a5fa90cade10edf4908a8bb9e109976dcc1063`. Older fixture entries below are history. CLI fixture source hashes now include the catalog used by the marker and fallback vectors.
+- Verification: Mac build and all 49 CLI connector tests pass, including every shared CLI row. Windows Release solution build has zero warnings/errors; all 425 shared/process/CLI tests pass without skips. All 11 LLM fixture files reproduce across two generator runs and `--check`.
+
 ### 2026-10-27 — Round-2 step 13: timeline strip
 
 - Timeline projections retain source seconds, Core clip numbering/state, filler markers, selection/Rewrite bands and clip zoom with 10% padding clamped to 1.5–3 seconds. Selection updates do not rebuild the cached transcript projection. Source is the default; Edited collapses cuts to seams. The native Slider accessibility representation keeps word/sentence navigation and a single playback time when the viewer is hidden.

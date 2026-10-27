@@ -450,7 +450,7 @@ public actor CLIConnector: LLMConnector {
         return RawCompletion(text: text, object: text.flatMap(cliExtractJSON), model: requestedModel, stop: .complete,
             usage: usage.map { LLMUsage(input: $0["input_tokens"]?.cliInt, output: $0["output_tokens"]?.cliInt,
                                         cacheRead: $0["cached_input_tokens"]?.cliInt,
-                                        cacheWrite: $0["cache_write_input_tokens"]?.cliInt) })
+                                        cacheWrite: nil) })
     }
 
     private func classify(_ message: String, status: Int?, model: String,
@@ -466,6 +466,7 @@ public actor CLIConnector: LLMConnector {
             if matches("overloadMarkers") || status == 529 { return .overloaded }
             if message.localizedCaseInsensitiveContains("prompt is too long") { return .contextTooLong }
         } else {
+            if matches("overloadMarkers") { return .overloaded }
             if matches("modelErrorMarkers") { return .modelNotFound(model) }
             let lower = message.lowercased()
             if lower.contains("context") && (lower.contains("length") || lower.contains("window")) { return .contextTooLong }

@@ -385,8 +385,9 @@ internal sealed class CliLlmAdapter(ConnectorId id, LlmCatalog catalog, IProcess
                 message.Contains("prompt is too long", StringComparison.OrdinalIgnoreCase) ? LlmErrorKind.ContextTooLong : LlmErrorKind.CliFailed;
             return Failure(claudeKind, model, feature, message);
         }
-        var kind = Matches("overloadMarkers") || message.Contains("overloaded", StringComparison.OrdinalIgnoreCase) ? LlmErrorKind.Overloaded :
-            Matches("modelErrorMarkers") ? LlmErrorKind.ModelNotFound : message.Contains("prompt is too long", StringComparison.OrdinalIgnoreCase) || message.Contains("context", StringComparison.OrdinalIgnoreCase) && (message.Contains("length", StringComparison.OrdinalIgnoreCase) || message.Contains("window", StringComparison.OrdinalIgnoreCase)) ? LlmErrorKind.ContextTooLong : LlmErrorKind.CliFailed;
+        var kind = Matches("overloadMarkers") ? LlmErrorKind.Overloaded :
+            Matches("modelErrorMarkers") ? LlmErrorKind.ModelNotFound :
+            message.Contains("context", StringComparison.OrdinalIgnoreCase) && (message.Contains("length", StringComparison.OrdinalIgnoreCase) || message.Contains("window", StringComparison.OrdinalIgnoreCase)) ? LlmErrorKind.ContextTooLong : LlmErrorKind.CliFailed;
         return Failure(kind, model, feature, message);
     }
     private LlmException Failure(LlmErrorKind kind, string model, LlmFeature feature, string? detail = null) => LlmErrors.Create(kind, Label, model, feature, detail: detail, redactor: redactor);
