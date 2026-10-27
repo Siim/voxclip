@@ -189,17 +189,22 @@ import VoxClipCore
         }
     }
 
-    @Test func bufferPointSixSamplesEarlyLosesNoDecodedSample() throws {
-        let content: [Float] = (4_800..<9_600).map { (frame: Int) -> Float in Self.left(frame) }
+    @Test(arguments: [0, 4_800]) func bufferPointSixSamplesEarlyLosesNoDecodedSample(start: Int) throws {
+        let end: Int = start + 4_800
+        let next: Int64 = Int64(start)
+        let timestampValue: Int64 = next * 5 - 3
+        let content: [Float] = (start..<end).map { (frame: Int) -> Float in Self.left(frame) }
         let bytes = content.withUnsafeBytes { Data($0) }
-        let buffer = try Self.block(bytes, start: 4_800, frames: 4_800, rate: 48_000, channels: 1, float: true,
-                                    presentationTime: CMTime(value: 23_997, timescale: 240_000))
+        let buffer = try Self.block(bytes, start: start, frames: 4_800, rate: 48_000, channels: 1, float: true,
+                                    presentationTime: CMTime(value: timestampValue, timescale: 240_000))
         let first = try VoiceLabSourceAudio.bufferFirstSample(presentationTime: buffer.presentationTimeStamp,
-                                                            rate: 48_000, next: 4_800)
-        let skip: Int = Int(4_800 - first)
+                                                            rate: 48_000, next: next)
+        let skip: Int = Int(next - first)
         #expect(skip == 0)
         #expect(Array(content.dropFirst(skip)) == content)
-        #expect(first + Int64(buffer.sampleCount) == 9_600)
+        #expect(first + Int64(buffer.sampleCount) == Int64(end))
+        let overlap = CMTime(value: next - 1, timescale: 48_000)
+        #expect(try VoiceLabSourceAudio.bufferFirstSample(presentationTime: overlap, rate: 48_000, next: next) == next - 1)
     }
 
     @Test func stereoChunkIsTheChannelMeanOnTheSourceGridWithHalfOpenBounds() async throws {

@@ -303,13 +303,13 @@ public enum VoiceLabSourceAudio {
         let distance: Double
         if !product.overflow, product.partialValue % scale == 0 {
             first = product.partialValue / scale
-            guard first >= 0, first < 1 << 62 else { throw VoiceLabSourceAudioError.unreadable }
-            distance = abs(Double(first - next))
+            guard first >= -(1 << 62), first < 1 << 62 else { throw VoiceLabSourceAudioError.unreadable }
+            distance = first < 0 ? abs(Double(first) - Double(next)) : abs(Double(first - next))
         } else {
             let exact: Double = product.overflow
                 ? Double(presentationTime.value) * Double(rate) / Double(scale)
                 : Double(product.partialValue) / Double(scale)
-            guard exact.isFinite, exact >= 0, exact < 0x1p62 else { throw VoiceLabSourceAudioError.unreadable }
+            guard exact.isFinite, exact >= -0x1p62, exact < 0x1p62 else { throw VoiceLabSourceAudioError.unreadable }
             first = Int64((exact + 0.5).rounded(.down))
             distance = abs(exact - Double(next))
         }
