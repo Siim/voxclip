@@ -14,6 +14,45 @@ import xml.etree.ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[2]
 VERSION = re.compile(r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:-beta\.(?:0|[1-9][0-9]*))?")
+SOURCE_EXTENSIONS = {".swift", ".cs", ".xaml", ".c", ".h", ".cpp", ".hpp", ".m", ".mm", ".fs", ".vb", ".rc"}
+EXCLUDED_DIRECTORIES = {"tests", "test", "fixtures", "fixture", ".build", "bin", "obj", ".git"}
+GENERATED_PATHS = {
+    "apps/macos/Sources/VoxClip/Design/Tokens.swift",
+    "apps/windows/src/VoxClip.App/Themes/Tokens.xaml",
+}
+VERSION_TOKEN = re.compile(r"(?<![0-9A-Za-z.])" + VERSION.pattern + r"(?![0-9A-Za-z]|\.[0-9]|-beta)")
+# The allow marker must be the line's trailing comment: its reason runs to the end of the line and holds no quote,
+# so marker text inside a string literal never counts.
+ALLOW_COMMENT = re.compile(r"(?://|/\*|<!--|')[ \t]*version-check: allow[ \t]+([^\"'\n]*?[^\"'\s])[ \t]*$")
+
+
+def check_source_versions(root, version):
+    failures = []
+    for relative in ("apps/macos/Sources", "apps/windows/src"):
+        for directory, directories, filenames in os.walk(root / relative):
+            directories[:] = sorted(name for name in directories if name.casefold() not in EXCLUDED_DIRECTORIES)
+            for name in sorted(filenames):
+                path = Path(directory) / name
+                if path.suffix.casefold() not in SOURCE_EXTENSIONS:
+                    continue
+                if re.search(r"\.(?:g(?:\.i)?|generated|designer)\.", name, re.IGNORECASE):
+                    continue
+                relative_path = path.relative_to(root).as_posix()
+                if relative_path in GENERATED_PATHS:
+                    continue
+                text = path.read_text(encoding="utf-8-sig")
+                for line_number, line in enumerate(text.splitlines(), 1):
+                    if not any(token[0] == version for token in VERSION_TOKEN.finditer(line)):
+                        continue
+                    allowance = ALLOW_COMMENT.search(line)
+                    before_marker = allowance is not None and all(
+                        token.end() <= allowance.start() for token in VERSION_TOKEN.finditer(line) if token[0] == version)
+                    if before_marker and allowance[1].strip().removesuffix("*/").removesuffix("-->").strip():
+                        print(f"allowed release version {version}: {relative_path}:{line_number}: {line.strip()}")
+                    else:
+                        failures.append(f"{relative_path}:{line_number}")
+    if failures:
+        raise ValueError(f"production source hard-codes release version {version}: " + ", ".join(failures))
 
 
 def require_version(value):
@@ -52,6 +91,7 @@ def main():
     if arguments.command == "check":
         if macos_version != windows_version:
             raise ValueError(f"version mismatch: macOS {macos_version}, Windows {windows_version}")
+        check_source_versions(ROOT, macos_version)
         print(f"ok version {macos_version} (macOS and Windows)")
         return
 

@@ -40,6 +40,8 @@ def load_reports(directory: Path, platform: str) -> tuple[dict, list[str]]:
             result = record.get("result")
             if not isinstance(result, dict) or type(result.get("ok")) is not bool or result.get("command") != "export":
                 raise ValueError("result must be an export JSON object with boolean ok")
+            if not isinstance(result.get("version"), str) or not result["version"]:
+                raise ValueError("result.version must be a nonempty string")
             if (record["exitCode"] == 0) != result["ok"]:
                 raise ValueError("exitCode and result.ok disagree")
             if result["ok"]:
@@ -77,6 +79,8 @@ def compare(mac_dir: Path, windows_dir: Path) -> list[str]:
     for case in CASE_IDS:
         left, right = mac[case], windows[case]
         mac_result, win_result = left["result"], right["result"]
+        if mac_result["version"] != win_result["version"]:
+            errors.append(f"{case}: version {mac_result['version']!r} != {win_result['version']!r}")
         if case == WEBM:
             if left["exitCode"] != 3 or mac_result["error"]["code"] != "unsupportedContainer":
                 errors.append(f"{case}: macOS must exit 3 with unsupportedContainer")

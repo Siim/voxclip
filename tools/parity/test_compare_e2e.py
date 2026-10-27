@@ -18,7 +18,7 @@ def reports(directory, platform):
             result = {"ok": False, "command": "export", "error": {
                 "code": "everythingCut" if exit_code == 5 else "unsupportedContainer"}}
         (directory / (case + ".json")).write_text(json.dumps({"caseId": case, "platform": platform,
-            "exitCode": exit_code, "result": result}), encoding="utf-8")
+            "exitCode": exit_code, "result": dict(result, version="9.8.7")}), encoding="utf-8")
 
 
 class ComparatorTests(unittest.TestCase):
@@ -63,6 +63,21 @@ class ComparatorTests(unittest.TestCase):
         self.assertTrue(any("error.code" in error for error in compare(self.mac, self.win)))
         self.mutate(self.mac, "e2e-9-tiny-webm", lambda report: report["result"]["error"].update(code="decodeFailed"))
         self.assertTrue(any("unsupportedContainer" in error for error in compare(self.mac, self.win)))
+
+    def test_version_matches_on_success_failure_and_webm(self):
+        for case in (CASE_IDS[0], "e2e-5-everything-cut", "e2e-9-tiny-webm"):
+            with self.subTest(case=case):
+                path = self.win / (case + ".json")
+                original = path.read_text()
+                self.mutate(self.win, case, lambda report: report["result"].update(version="9.8.8"))
+                self.assertTrue(any(f"{case}: version" in error for error in compare(self.mac, self.win)))
+                path.write_text(original)
+
+    def test_missing_and_empty_versions_fail(self):
+        self.mutate(self.win, CASE_IDS[0], lambda report: report["result"].pop("version"))
+        self.assertTrue(any("result.version" in error for error in compare(self.mac, self.win)))
+        self.mutate(self.win, CASE_IDS[0], lambda report: report["result"].update(version=""))
+        self.assertTrue(any("result.version" in error for error in compare(self.mac, self.win)))
 
     def test_missing_duplicate_malformed_and_wrong_platform(self):
         path = self.win / (CASE_IDS[0] + ".json")

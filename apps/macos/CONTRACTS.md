@@ -1,5 +1,40 @@
 # macOS implementation contracts
 
+### 2026-10-27 — Schema-valid writer fallback (sol-followups-3 round 2)
+
+- `AppVersion.current` keeps the CLI display fallback `unknown` for missing,
+  empty or whitespace-only metadata. `AppVersion.projectWriterVersion` and
+  `JSONProjectStore` instead persist `0.0.0` for missing, blank or invalid
+  versions; valid values use release §1's strict `X.Y.Z(-beta.N)?` grammar.
+- The four App document writer boundaries and CLI import pass the normalized
+  writer version; Domain stays I/O-free. Both Core suites save and reload all
+  18 shared `fixtures/projects/writer-versions.json` cases, including null,
+  blank, invalid, stable and beta versions. Display fallback tests stay separate.
+- Main's sidebar contracts and this track's earlier contracts are retained.
+  The release tripwire now scans whole source text, including comments, with
+  exact version-token boundaries and explicit generated-path/name exemptions.
+- The slow-check's four flagged test expressions are split. Per lead direction,
+  the existing local warning at `Sources/VoxClip/DebugTranscriptPerformance.swift:22`
+  remains untouched: hosted Xcode 26 passed it at `9f6917b7`, and the redesign
+  track owns App debug code.
+
+### 2026-10-27 — One release version source (sol-followups-3)
+
+- Lead-approved follow-up: `AppVersion.current` in Core Services reads the linked
+  `CFBundleShortVersionString`, falling back to `unknown`. CLI text/JSON,
+  connector factories, speech uploads and Voice Lab requests use this value.
+- `ProjectWriter.init` now requires `version`, and `Project.init` requires
+  `savedBy`; Domain remains deterministic and I/O-free. The CLI import and the
+  two App new-document constructors pass the runtime version explicitly. Existing
+  App save boundaries already use `AppModel.version` and are unchanged.
+- `JSONProjectStore` accepts an optional `appVersion` argument, defaulting to
+  runtime metadata, and stamps it on save. Tests inject a schema-valid synthetic
+  version because the test runner has no linked product plist. CLI/HTTP connector
+  injectable defaults now use runtime metadata, not a literal release version.
+- `version --json` matches the Windows version envelope. Release section 1 and
+  the version checker guard production literals on both platforms. No project
+  schema, dependency, authentication, media or subscription behavior changes.
+
 ### 2026-10-27 — Pre-merge fixes (opus-mac-redesign round 1e)
 
 - **The title follows the document's name (lead decision 1).** When Save As, Move or Rename gives the file a new base name, `Project.title` takes that name in the same write, but only while the title is unset, equals the video's base name as import sets it (trimmed, at most 200 scalars) or equals the previous file's base name. Any other title stays. `VoxClipDocument.followingTitle(_:previousNames:destination:)` holds the rule.
@@ -1527,6 +1562,7 @@ Paths are relative to apps/macos. Nested public types are qualified with their e
 | `AIText` | `Sources/VoxClipCore/Domain/Clips/AIJSON.swift` | mac-ai |
 | `AppleSpeechTranscriber` | `Sources/VoxClipMedia/Speech/AppleSpeechTranscriber.swift` | mac-speech |
 | `AppModel` | `Sources/VoxClip/VoxClipApp.swift` | mac-ui |
+| `AppVersion` | `Sources/VoxClipCore/Services/AppVersion.swift` | common (lead-approved follow-up) |
 | `AspectRatio` | `Sources/VoxClipCore/Domain/Shared/Project.swift` | common (frozen; lead approval) |
 | `AudioEnvelope` | `Sources/VoxClipCore/Domain/Transcript/TranscriptContracts.swift` | mac-speech |
 | `AudioExtractionRequest` | `Sources/VoxClipCore/Domain/Shared/MediaContracts.swift` | common (frozen; lead approval) |

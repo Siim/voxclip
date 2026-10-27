@@ -1,5 +1,4 @@
 using System.Globalization;
-using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -28,6 +27,13 @@ public interface IProjectStore
 public sealed class ProjectStore : IProjectStore
 {
     private readonly SemaphoreSlim writer = new(1, 1);
+    private readonly string appVersion;
+
+    /// <summary>Use the entry assembly version, with a schema-valid fallback.</summary>
+    public ProjectStore() : this(AppVersion.Current) { }
+
+    /// <summary>Inject the runtime version; missing, blank or invalid values persist as 0.0.0.</summary>
+    public ProjectStore(string? appVersion) => this.appVersion = AppVersion.ResolveProjectWriter(appVersion);
 
     /// <summary>After consumer confirmation, replace words and clear transcript-dependent project data, editing §10.5.</summary>
     public static ProjectModel ReplaceTranscript(ProjectModel project, TranscriptModel transcript)
@@ -65,20 +71,17 @@ public sealed class ProjectStore : IProjectStore
         finally { writer.Release(); }
     }
 
-    private static async Task SaveSnapshotAsync(ProjectModel project, string path, CancellationToken ct)
+    private async Task SaveSnapshotAsync(ProjectModel project, string path, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
         var directory = Path.GetDirectoryName(Path.GetFullPath(path))!;
         var source = project.Media.Source;
         var relative = RelativePath(directory, source.AbsolutePath);
-        var assembly = Assembly.GetEntryAssembly() ?? typeof(ProjectStore).Assembly;
-        var version = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion.Split('+')[0]
-            ?? assembly.GetName().Version?.ToString(3) ?? "0.0.0";
         project = EditingProject.Clean(project, []);
         var referenced = project.Edits.Clips.Where(clip => clip.AiResultId is not null).Select(clip => clip.AiResultId).ToHashSet(StringComparer.Ordinal);
         var newest = project.Ai.Results.Select((result, index) => (result, index))
             .OrderByDescending(pair => pair.result.CreatedAt).ThenByDescending(pair => pair.index).Take(10).Select(pair => pair.result.Id).ToHashSet(StringComparer.Ordinal);
-        project = project with { ModifiedAt = DateTimeOffset.UtcNow, SavedBy = new("VoxClip", version, OperatingSystem.IsWindows() ? "windows" : "macos"),
+        project = project with { ModifiedAt = DateTimeOffset.UtcNow, SavedBy = new("VoxClip", appVersion, OperatingSystem.IsWindows() ? "windows" : "macos"),
             Media = new(source with { RelativePath = relative }), Ai = new(project.Ai.Results.Where(result => referenced.Contains(result.Id) || newest.Contains(result.Id)).ToArray()) };
         var json = ProjectSerialization.Serialize(project);
         ProjectValidation.Validate(json);

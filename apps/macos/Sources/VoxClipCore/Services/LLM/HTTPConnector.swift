@@ -20,7 +20,7 @@ public actor HTTPConnector: LLMConnector {
     public var selectedModel: String?
     public internal(set) var assumedContextModels: Set<String> = []
 
-    public init(id: ConnectorID, keys: any KeyProvider, catalog: LLMCatalog, log: any Redacting, baseURL: URL? = nil, session: URLSession? = nil, appVersion: String = "0.1.0", cacheURL: URL? = nil, sleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) }) throws {
+    public init(id: ConnectorID, keys: any KeyProvider, catalog: LLMCatalog, log: any Redacting, baseURL: URL? = nil, session: URLSession? = nil, appVersion: String = AppVersion.current, cacheURL: URL? = nil, sleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) }) throws {
         guard [.anthropic, .openai, .xai, .gemini, .ollama, .lmstudio].contains(id) else { throw LLMError.noConnector }
         self.id = id
         self.keys = keys

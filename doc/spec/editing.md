@@ -838,6 +838,16 @@ On project load, both Cores normalize every transcript word text and correction 
 
 On every save, `modifiedAt` and `savedBy` are updated, and `relativePath` is recomputed against the directory of the file being written (null when the media is on a different volume or drive).
 
+`savedBy.version` uses the runtime release version on both platforms. Missing,
+blank or invalid metadata falls back to `0.0.0` so saves remain schema-valid;
+the CLI display fallback remains `unknown`. Valid writer versions use the
+release checker's `X.Y.Z(-beta.N)?` grammar: non-negative ASCII integers with no
+leading zeroes except zero itself. The shared edge cases in
+`shared/fixtures/projects/writer-versions.json`, written by
+`tools/fixtures/projects/generate_writer_versions.py`, are saved and reloaded by
+both Core suites. macOS App document saves use `AppVersion.projectWriterVersion`;
+the platform project stores normalize injected runtime versions by the same rule.
+
 - **macOS app.** `VoxClipDocument` uses the public macOS 26 `NSDocument` safe-writing lifecycle (architecture 2.6 and 7.1). Save and Save As snapshot the accepted project against the final destination URL before the temporary safe-write URL is chosen. A cross-folder Move uses that same safe writer for the destination and removes the original through file coordination; a same-folder Rename uses AppKit's coordinated native move because the relative media path does not change. Save Copy writes the target representation without adopting its location. Successful location-changing operations leave a portable `relativePath` immediately and a clean document and window if no later edit was accepted. An edit accepted after the write snapshot remains in memory, dirty and undoable while the file contains the earlier snapshot; both document and window stay marked edited after Move token completion. Failure or cancellation retains the prior file bytes, location and edited project. NSDocument's change-count token checkpoints a successful write; Undo and Redo return to and depart from the saved state without clearing later edits.
 - **Windows app and the CLI.** Every operation autosaves, debounced by about 1 s, and the file is also saved on close. Writes are atomic: write a temporary file in the same directory, flush it, then replace (Windows `File.Replace`, or `File.Move(temp, path, overwrite: true)` when there is no existing file; the macOS CLI uses `Data.write(options: .atomic)`).
 

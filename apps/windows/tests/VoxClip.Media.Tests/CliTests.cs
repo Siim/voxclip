@@ -3,6 +3,7 @@ using System.Text.Json.Nodes;
 using System.Globalization;
 using VoxClip.Cli;
 using VoxClip.Core.Domain.Shared;
+using VoxClip.Core.Services;
 using VoxClip.Tests.Support;
 using Xunit;
 
@@ -11,6 +12,9 @@ namespace VoxClip.Media.Tests;
 [Collection("CLI console")]
 public sealed class CliTests
 {
+    [Fact]
+    public void VersionUsesSharedRuntimeDisplayFallback() => Assert.Equal(AppVersion.Current, CliApplication.Version);
+
     [Theory]
     [InlineData("version --json", 0, true, "version")]
     [InlineData("--json", 2, false, "export")]

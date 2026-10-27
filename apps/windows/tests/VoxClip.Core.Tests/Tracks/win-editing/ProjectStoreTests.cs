@@ -13,6 +13,24 @@ namespace VoxClip.Core.Tests.Tracks.WinEditing;
 
 public sealed class ProjectStoreTests
 {
+    [Fact]
+    public async Task RuntimeWriterVersionsSaveAndReload()
+    {
+        using var storage = new TestStorage();
+        using var cases = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(FixtureLoader.SharedRoot, "fixtures", "projects", "writer-versions.json")));
+        var original = await new ProjectStore().LoadAsync(TestStorage.ProjectPath("interview-take.voxclip"), TestContext.Current.CancellationToken);
+        var destination = storage.PathFor("writer.voxclip");
+        foreach (var entry in cases.RootElement.EnumerateArray())
+        {
+            var store = new ProjectStore(entry.GetProperty("runtime").GetString());
+            await store.SaveAsync(original.Project, destination, TestContext.Current.CancellationToken);
+            var loaded = await store.LoadAsync(destination, TestContext.Current.CancellationToken);
+            Assert.Equal(entry.GetProperty("writer").GetString(), loaded.Project.SavedBy.Version);
+            Assert.Equal(JsonSerializer.Serialize(original.Project.Transcript), JsonSerializer.Serialize(loaded.Project.Transcript));
+            Assert.Equal(JsonSerializer.Serialize(original.Project.Edits), JsonSerializer.Serialize(loaded.Project.Edits));
+        }
+    }
+
     [Theory]
     [InlineData(@"\??\UNC\server\share\video.mp4", @"C:\project.voxclip", false)]
     [InlineData(@"\??\UNC\server\share\video.mp4", @"\\server\share\project.voxclip", false)]

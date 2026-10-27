@@ -437,7 +437,7 @@ public actor ElevenLabsVoiceLab {
         request.timeoutInterval = 300
         request.setValue(key, forHTTPHeaderField: "xi-api-key")
         if let contentType { request.setValue(contentType, forHTTPHeaderField: "Content-Type") }
-        request.setValue("VoxClip/0.1.0", forHTTPHeaderField: "User-Agent")
+        request.setValue("VoxClip/\(AppVersion.current)", forHTTPHeaderField: "User-Agent")
         let start = Date()
         var recording: Task<VoiceLabSpendWarning?, Never>?
         do {

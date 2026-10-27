@@ -93,7 +93,8 @@ enum CaptionMediaFixtures {
         }
         if let expected = expected as? NSNumber, let actual = actual as? NSNumber {
             let exact: Set<String> = ["units", "glyphs", "advances", "offsets", "clusters", "fontPx64", "limitPx64", "gapUnits", "emphasisUnits", "emphasisPoints", "activeWord", "visibleClusters", "words", "sourceIndex", "word", "line", "page", "index", "size"]
-            let field = path.split(separator: ".").last.map(String.init)?.split(separator: "[").first.map(String.init) ?? ""
+            let lastComponent: Substring = path.split(separator: ".").last ?? ""
+            let field: String = String(lastComponent.split(separator: "[").first ?? "")
             let fractions: Set<String> = ["sizeSh", "sizeScale", "x", "y", "maxLineWidthW"]
             let pixels: Set<String> = ["x", "y", "w", "h", "r", "top", "baseline", "width", "height", "cx", "cy", "fontPx", "pageDy", "dy", "jitter", "clampShift"]
             let tolerance: Double

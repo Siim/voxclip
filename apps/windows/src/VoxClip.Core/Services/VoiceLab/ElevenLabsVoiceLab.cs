@@ -524,7 +524,7 @@ public sealed class ElevenLabsVoiceLab : IDisposable
         {
             using var request = new HttpRequestMessage(method, url) { Content = body };
             request.Headers.TryAddWithoutValidation("xi-api-key", key);
-            request.Headers.UserAgent.ParseAdd("VoxClip/0.1.0");
+            request.Headers.UserAgent.ParseAdd($"VoxClip/{LlmRuntime.Version}");
             using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, deadline.Token).ConfigureAwait(false);
             if (response.RequestMessage?.RequestUri is { } final && (final.Scheme != url.Scheme || final.Host != url.Host || final.Port != url.Port || final.AbsolutePath != url.AbsolutePath))
                 throw new VoiceLabException(VoiceLabErrorKind.ProviderFailure);

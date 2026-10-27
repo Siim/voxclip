@@ -295,11 +295,11 @@ public actor StubLLMConnector: LLMConnector {
         self.factory = {
             switch id {
             case .claudeCode, .codex:
-                return CLIConnector(id: id, catalog: catalog, log: log, executable: cliPath.map { URL(fileURLWithPath: $0) })
+                return CLIConnector(id: id, catalog: catalog, log: log, executable: cliPath.map { URL(fileURLWithPath: $0) }, appVersion: AppVersion.current)
             case .appleFoundation:
                 throw LLMError.unavailable(reason: "Use the native FoundationModelsConnector from VoxClipMedia.")
             default:
-                return try HTTPConnector(id: id, keys: keys, catalog: catalog, log: log, baseURL: baseURL, cacheURL: cacheURL)
+                return try HTTPConnector(id: id, keys: keys, catalog: catalog, log: log, baseURL: baseURL, appVersion: AppVersion.current, cacheURL: cacheURL)
             }
         }
     }
@@ -326,9 +326,9 @@ public actor StubLLMConnector: LLMConnector {
         let log = RedactingLogger(homeDirectory: FileManager.default.homeDirectoryForCurrentUser.path)
         let connector: any LLMConnector
         switch id {
-        case .claudeCode, .codex: connector = CLIConnector(id: id, catalog: catalog, log: log)
+        case .claudeCode, .codex: connector = CLIConnector(id: id, catalog: catalog, log: log, appVersion: AppVersion.current)
         case .appleFoundation: throw LLMError.unavailable(reason: "Use the native FoundationModelsConnector from VoxClipMedia.")
-        default: connector = try HTTPConnector(id: id, keys: LLMEnvironmentKeyProvider(catalog: catalog), catalog: catalog, log: log, cacheURL: DataLocations().cache.appendingPathComponent("llm-models.json"))
+        default: connector = try HTTPConnector(id: id, keys: LLMEnvironmentKeyProvider(catalog: catalog), catalog: catalog, log: log, appVersion: AppVersion.current, cacheURL: DataLocations().cache.appendingPathComponent("llm-models.json"))
         }
         implementation = connector
         return connector

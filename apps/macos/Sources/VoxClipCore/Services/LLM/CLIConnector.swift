@@ -33,7 +33,7 @@ public actor CLIConnector: LLMConnector {
     public init(id: ConnectorID, runner: any ProcessRunner = FoundationProcessRunner(), catalog: LLMCatalog,
                 log: any Redacting, executable: URL? = nil, environment: [String: String]? = nil,
                 temporaryDirectory: URL = FileManager.default.temporaryDirectory,
-                appVersion: String = "0.1.0", loginShellPATH: String? = nil) {
+                appVersion: String = AppVersion.current, loginShellPATH: String? = nil) {
         self.id = id
         self.runner = runner
         self.catalog = catalog

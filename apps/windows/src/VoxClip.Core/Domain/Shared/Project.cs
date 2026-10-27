@@ -20,7 +20,7 @@ public sealed record Project(string Format, int SchemaVersion, string Id, DateTi
     public IReadOnlyDictionary<string, JsonElement>? Extensions { get; init; }
 }
 
-/// <summary>Writer identity; version comes from the entry assembly, never a second constant. Project schema.</summary>
+/// <summary>Writer identity; runtime release version or schema-valid 0.0.0 fallback. Editing §10.2.</summary>
 public sealed record SavedBy(string App, string Version, string Platform);
 
 /// <summary>Source media wrapper; project schema $defs/mediaReference.</summary>

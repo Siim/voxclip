@@ -609,7 +609,9 @@ jobs:
 
       - name: Versions agree (Info.plist and Directory.Build.props)
         if: ${{ !cancelled() && steps.detect.outputs.version == 'true' }}
-        run: bash tools/release/check-version.sh
+        run: |
+          bash tools/release/check-version.sh
+          python3 -m unittest discover -s tools/release -p 'test_*.py'
 
       - name: Validate JSON in shared/
         if: ${{ !cancelled() }}

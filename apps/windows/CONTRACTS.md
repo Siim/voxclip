@@ -1,5 +1,28 @@
 # Windows fixed contracts
 
+### 2026-10-27 — Schema-valid writer fallback (sol-followups-3 round 2)
+
+- Core Services `AppVersion.Current` reads entry assembly informational metadata
+  without its build suffix. Null, empty and whitespace-only display versions
+  become `unknown`; `CliApplication.Version` uses that helper.
+- `ProjectStore` accepts an injectable runtime version and persists `0.0.0` for
+  missing, blank or invalid values. Valid writer versions use release §1's strict
+  `X.Y.Z(-beta.N)?` grammar, independent of the CLI display fallback. Both Core
+  suites save and reload the 18 shared `fixtures/projects/writer-versions.json`
+  cases. Core display tests and a CLI wiring test pin the separate fallback.
+- Main's early Ctrl+C, project-pattern and sidebar contracts and this track's
+  earlier contracts are retained. Hosted CLI E2E parity still invokes
+  `tools/parity/compare_e2e.py`, including its required result-version comparison.
+
+### 2026-10-27 — One release version source (sol-followups-3)
+
+- Lead-approved follow-up: Voice Lab request User-Agent now uses
+  `LlmRuntime.Version`, the existing assembly informational version reader,
+  rather than a release literal. All mocked Voice Lab Core requests assert it.
+- No public signature, serialized shape, App/UI file, dependency or provider
+  dispatch behavior changes. Release section 1 and the shared version checker
+  reject the current release version in production source string literals.
+
 ### 2026-10-27 — Catalog-only context parity (sol-followups-4)
 
 - Current shared fixtures after this track: `shared/fixtures/llm/cli-replies.json` (69 cases) sha256 `6dc35edf82112e7b298d23846cc940588f875549734c8f39057f2e8dd3eabdbc`; `shared/fixtures/voice-lab/patch-rewrite-cases.json` (82 cases, 45 also replayed as passage rewrites) sha256 `db1477211f74150224413b66d813df35bfe8c6479d1da25b23b38b144188df81`. Older hash lines below are history.

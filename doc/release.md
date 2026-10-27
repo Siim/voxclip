@@ -28,6 +28,51 @@ Provenance: Superscribe's `apps/macos/bundle.sh`, `apps/windows/build-windows.sh
 | Velopack pack id | `VoxClip`; channels `win-x64`, `win-arm64` |
 | GitHub repo | `Siim/voxclip` |
 
+The macOS CLI reads the linked Info.plist through `AppVersion.current`, including
+`--version`, `version --json`, and every success/error JSON envelope. Missing or
+empty or whitespace-only bundle metadata reports `unknown`, as the Windows CLI
+does for null, empty or whitespace-only informational versions (after dropping
+assembly build metadata). Project writers receive an explicit version at
+import/save boundaries; Domain does no bundle I/O. On both platforms a missing,
+blank or invalid runtime writer version becomes `0.0.0`, not the CLI's `unknown`.
+Valid writer versions match `X.Y.Z(-beta.N)?`, with non-negative ASCII integers
+and no leading zeroes except the number zero itself, exactly as `version.py`.
+LLM, speech and Voice Lab clients use bundle metadata on macOS and assembly
+informational metadata on Windows, never a second release constant.
+
+`bash tools/release/check-version.sh` checks both version files and rejects the
+current Info.plist version as a complete token anywhere in production source
+text, **including comments**, under `apps/macos/Sources` and `apps/windows/src`.
+It scans Swift, C#, XAML, C/C++/Objective-C, F#, VB and resource-script files.
+Tokens match the same `X.Y.Z(-beta.N)?` grammar above, are not preceded by
+`[0-9A-Za-z.]`, and are not followed by `[0-9A-Za-z]`, a dot then a digit, or
+`-beta`. Only a whole matched token equal to the current version fails. Thus for
+`0.1.0`, `VoxClip/0.1.0` and `since 0.1.0` fail, but `0.1.0-beta.2`, `10.1.0`,
+`0.1.0.1`, `10.0.1.0` and `0.1.01` do not. Raw, verbatim and multiline strings
+are covered without interpreting their language syntax. This is a tripwire for
+whole version strings, not a proof: concatenations such as `"0.1." + "0"` are
+out of scope. Production comments should describe behavior, not release history.
+
+The scanner excludes test/tests and fixture/fixtures directories, build output
+(`.build`, `bin`, `obj`, `.git`), generated-name files (`.g.`, `.g.i.`,
+`.generated.`, `.designer.`), and the explicit generator outputs listed in
+`version.py`: `apps/macos/Sources/VoxClip/Design/Tokens.swift` and
+`apps/windows/src/VoxClip.App/Themes/Tokens.xaml`. A `Generated` header or a
+directory called `Generated` is not an exemption. A deliberate exception needs
+a same-line comment `version-check: allow <reason>` (after `//`, `/*`, `<!--` or
+the VB comment apostrophe) that ends the line, after every occurrence of the
+version; the reason holds no quote character, so marker text inside a string
+literal never counts. The checker prints every allowed matching line with its
+path, line number and reason. No blank reason is accepted. Info.plist and
+Directory.Build.props remain the only release version sources; test inputs may
+keep literal versions.
+CI's “Versions agree” step also runs `tools/release/test_version.py`, which plants
+literals in an isolated `/tmp` copy and checks that they fail without changing
+the working version files. It also checks the shared project-writer edge cases
+against the release grammar, alongside both platforms' save-and-reload tests.
+The CLI E2E comparator in `tools/parity` also requires matching, nonempty version
+fields on success and failure reports, including the platform-specific WebM case.
+
 ### 1.1 Release assets (constant names)
 
 | Asset | Platform | Notes |

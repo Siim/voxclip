@@ -66,7 +66,7 @@ extension UTType {
         demo = false
         let now = Date()
         let source = MediaReference(absolutePath: "/", sizeBytes: 0, durationSeconds: 0, contentKey: String(repeating: "0", count: 64))
-        state = Mutex(State(project: Project(id: UUID().uuidString.lowercased(), createdAt: now, modifiedAt: now, media: ProjectMedia(source: source))))
+        state = Mutex(State(project: Project(id: UUID().uuidString.lowercased(), createdAt: now, modifiedAt: now, savedBy: ProjectWriter(version: AppVersion.projectWriterVersion), media: ProjectMedia(source: source))))
         super.init()
     }
     init(data: Data) throws {
@@ -86,7 +86,7 @@ extension UTType {
         let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
         let source = MediaReference(absolutePath: url.path, sizeBytes: Int64(size), durationSeconds: 0, contentKey: key)
         let title = Self.defaultTitle(url.deletingPathExtension().lastPathComponent)
-        self.init(project: Project(id: UUID().uuidString.lowercased(), title: title, createdAt: now, modifiedAt: now, media: ProjectMedia(source: source)))
+        self.init(project: Project(id: UUID().uuidString.lowercased(), title: title, createdAt: now, modifiedAt: now, savedBy: ProjectWriter(version: AppVersion.projectWriterVersion), media: ProjectMedia(source: source)))
         setMediaResolved(true)
     }
 
@@ -214,7 +214,7 @@ extension UTType {
         let names = change.map { previousNames($0.previous) } ?? []
         let snapshot = state.withLock { current -> WriteSnapshot in
             var project = current.project
-            project.savedBy = ProjectWriter(version: AppModel.version)
+            project.savedBy = ProjectWriter(version: AppVersion.projectWriterVersion)
             project.modifiedAt = Date()
             if current.mediaResolved && project.media.source.absolutePath != "/" {
                 project.media.source.relativePath = JSONProjectStore.relativePath(source: URL(fileURLWithPath: project.media.source.absolutePath), projectURL: url)
@@ -406,7 +406,7 @@ extension UTType {
     func snapshot(contentType: UTType) throws -> Project { snapshotForTests(destination: fileURL) }
     func snapshotForTests(destination: URL?) -> Project {
         var copy = project
-        copy.savedBy = ProjectWriter(version: AppModel.version)
+        copy.savedBy = ProjectWriter(version: AppVersion.projectWriterVersion)
         copy.modifiedAt = Date()
         if state.withLock({ $0.mediaResolved }), let destination {
             copy.media.source.relativePath = JSONProjectStore.relativePath(source: URL(fileURLWithPath: copy.media.source.absolutePath), projectURL: destination)

@@ -57,7 +57,7 @@ public struct ProjectWriter: Codable, Sendable, Equatable {
     public var platform: ProjectPlatform
 
     /// Creates an explicit value without I/O or generated identifiers.
-    public init(app: String = "VoxClip", version: String = "0.1.0", platform: ProjectPlatform = .macos) {
+    public init(app: String = "VoxClip", version: String, platform: ProjectPlatform = .macos) {
         self.app = app
         self.version = version
         self.platform = platform
@@ -857,7 +857,7 @@ public struct Project: Codable, Sendable, Equatable {
     public var extensions: [String: JSONValue]?
 
     /// Creates an explicit value without I/O or generated identifiers.
-    public init(format: String = "voxclip-project", schemaVersion: Int = 1, id: String, title: String? = nil, createdAt: Date, modifiedAt: Date, savedBy: ProjectWriter = ProjectWriter(), media: ProjectMedia, transcript: Transcript? = nil, edits: ProjectEdits = ProjectEdits(), captions: CaptionSettings = CaptionSettings(), export: ProjectExport = ProjectExport(), share: ProjectShare = ProjectShare(), ai: ProjectAI = ProjectAI(), voiceLab: ProjectVoiceLab = ProjectVoiceLab(), extensions: [String: JSONValue]? = nil) {
+    public init(format: String = "voxclip-project", schemaVersion: Int = 1, id: String, title: String? = nil, createdAt: Date, modifiedAt: Date, savedBy: ProjectWriter, media: ProjectMedia, transcript: Transcript? = nil, edits: ProjectEdits = ProjectEdits(), captions: CaptionSettings = CaptionSettings(), export: ProjectExport = ProjectExport(), share: ProjectShare = ProjectShare(), ai: ProjectAI = ProjectAI(), voiceLab: ProjectVoiceLab = ProjectVoiceLab(), extensions: [String: JSONValue]? = nil) {
         self.format = format
         self.schemaVersion = schemaVersion
         self.id = id

@@ -163,7 +163,7 @@ func cliDirectory() throws -> URL {
 private func cliProject(source: URL, transcript: Transcript?, edits: ProjectEdits = ProjectEdits()) async throws -> Project {
     let probe = try await AVMediaProbe().probe(source)
     let attributes = try FileManager.default.attributesOfItem(atPath: source.path)
-    return Project(id: UUID().uuidString.lowercased(), createdAt: Date(), modifiedAt: Date(),
+    return Project(id: UUID().uuidString.lowercased(), createdAt: Date(), modifiedAt: Date(), savedBy: ProjectWriter(version: "9.8.7"),
         media: ProjectMedia(source: MediaReference(absolutePath: source.path,
             sizeBytes: try #require((attributes[.size] as? NSNumber)?.int64Value), durationSeconds: probe.durationSeconds,
             contentKey: try JSONProjectStore.contentKey(for: source), video: probe.video, audio: probe.audio)),
@@ -196,7 +196,7 @@ func cliSelectsExportScopeBeforeCuttingFillers(_ scope: String) async throws {
     } else {
         let project = try await cliProject(source: source, transcript: transcript,
             edits: ProjectEdits(clips: clips, activeClipId: "a"))
-        try await JSONProjectStore().save(project, to: input)
+        try await JSONProjectStore(appVersion: "9.8.7").save(project, to: input)
         expected.clips = clips
         expected.activeClipId = scope == "stored" ? "a" : "b"
         arguments = ["--open", input.path]
@@ -731,7 +731,7 @@ func cliRejectsUnknownScopeBeforeTranscription(_ scenario: String) async throws 
         let project = try await cliProject(source: source, transcript: transcript)
         wordCount = project.transcript?.words.count ?? 0
         input = directory.appendingPathComponent("take.voxclip")
-        try await JSONProjectStore().save(project, to: input)
+        try await JSONProjectStore(appVersion: "9.8.7").save(project, to: input)
     }
     let original = try Data(contentsOf: input)
     let output = directory.appendingPathComponent("out.mp4")
@@ -755,7 +755,7 @@ func cliMissingProjectMediaPrecedesInvalidScope(_ scope: String, _ scopeFirst: B
     var project = try await cliProject(source: source, transcript: nil)
     project.media.source.absolutePath = directory.appendingPathComponent("missing.mov").path
     let input = directory.appendingPathComponent("take.voxclip")
-    try await JSONProjectStore().save(project, to: input)
+    try await JSONProjectStore(appVersion: "9.8.7").save(project, to: input)
     let original = try Data(contentsOf: input)
     let output = directory.appendingPathComponent("out.mp4")
     try Data("original output".utf8).write(to: output)
@@ -789,13 +789,13 @@ func cliRejectsUnusableSidecarsBeforeTranscriptionAndEditing(_ scenario: String)
     if scenario.hasPrefix("project") {
         let probe = try await AVMediaProbe().probe(source)
         let attributes = try FileManager.default.attributesOfItem(atPath: source.path)
-        let project = Project(id: UUID().uuidString.lowercased(), createdAt: Date(), modifiedAt: Date(),
+        let project = Project(id: UUID().uuidString.lowercased(), createdAt: Date(), modifiedAt: Date(), savedBy: ProjectWriter(version: "9.8.7"),
             media: ProjectMedia(source: MediaReference(absolutePath: source.path,
                 sizeBytes: try #require((attributes[.size] as? NSNumber)?.int64Value), durationSeconds: probe.durationSeconds,
                 contentKey: try JSONProjectStore.contentKey(for: source), video: probe.video, audio: probe.audio)),
             transcript: allCut ? transcript : nil, edits: ProjectEdits(cutWordIds: allCut ? ["um"] : []))
         let projectURL = directory.appendingPathComponent("take.voxclip")
-        try await JSONProjectStore().save(project, to: projectURL)
+        try await JSONProjectStore(appVersion: "9.8.7").save(project, to: projectURL)
         let original = try Data(contentsOf: projectURL)
         arguments += ["--open", projectURL.path]
         let result = try runCLI(arguments + (silent ? ["--audio-out", audio.path] : ["--srt", srt.path]), directory: directory)
