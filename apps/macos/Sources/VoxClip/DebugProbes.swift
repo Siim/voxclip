@@ -1,5 +1,6 @@
 #if DEBUG
 import AppKit
+import ImageIO
 import VoxClipCore
 
 /// Checks run by hand from a bundle.sh build with the screen unlocked. They launch like a
@@ -184,10 +185,12 @@ import VoxClipCore
         if let root = app.shared?.root,
            let fixture = try? DemoEditing.loadFixture(root.appendingPathComponent("fixtures/projects/interview-take.voxclip")),
            let project = try? DebugSidebar.fiveQuestions(from: fixture) {
-            let document = VoxClipDocument(project: project, demo: true)
+            let document = VoxClipDocument(project: project)
             NSDocumentController.shared.addDocument(document)
             if await shell.replaceProject(with: document) {
                 await shell.started?.value
+                shell.editor?.mediaResolved = true
+                shell.editor?.mediaUnreadable = false
                 var exports: [[String: String]] = []
                 for (name, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
                     NSApp.appearance = NSAppearance(named: appearance)
@@ -261,13 +264,46 @@ import VoxClipCore
                 "firstResponder": window.firstResponder.map { String(describing: type(of: $0)) } ?? "none", "key": String(window.isKeyWindow)]
     }
 
-    private static func bitmap(_ file: URL) -> NSBitmapImageRep? {
+    private struct ProbeBitmap {
+        let pixelsWide: Int
+        let pixelsHigh: Int
+        let bytesPerRow: Int
+        let bytes: Data
+
+        func colorAt(x: Int, y: Int) -> NSColor? {
+            guard x >= 0, x < pixelsWide, y >= 0, y < pixelsHigh else { return nil }
+            let offset = y * bytesPerRow + x * 4
+            let scale: Double = 1.0 / 255.0
+            let red: Double = Double(bytes[offset]) * scale
+            let green: Double = Double(bytes[offset + 1]) * scale
+            let blue: Double = Double(bytes[offset + 2]) * scale
+            let alpha: Double = Double(bytes[offset + 3]) * scale
+            return NSColor(srgbRed: red, green: green, blue: blue, alpha: alpha)
+        }
+    }
+    static func colorReadbackChecks(directory: URL) throws -> [DebugUISuite.Result] {
+        let data = Data([44, 46, 53, 255, 236, 234, 228, 255, 243, 240, 231, 255, 26, 27, 30, 255])
+        let file = directory.appendingPathComponent("probe-srgb-colors.png")
+        guard let space = CGColorSpace(name: CGColorSpace.sRGB), let provider = CGDataProvider(data: data as CFData),
+              let image = CGImage(width: 4, height: 1, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: 16,
+                space: space, bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.last.rawValue), provider: provider,
+                decode: nil, shouldInterpolate: false, intent: .defaultIntent),
+              let destination = CGImageDestinationCreateWithURL(file as CFURL, "public.png" as CFString, 1, nil) else { throw CocoaError(.coderInvalidValue) }
+        CGImageDestinationAddImage(destination, image, nil)
+        guard CGImageDestinationFinalize(destination), let readback = bitmap(file) else { throw CocoaError(.fileReadCorruptFile) }
+        return ["#2C2E35", "#ECEAE4", "#F3F0E7", "#1A1B1E"].enumerated().map { index, expected in
+            .init(name: "sRGB screenshot readback preserves \(expected) without generic-RGB conversion", passed: hex(readback.colorAt(x: index, y: 0)) == expected)
+        }
+    }
+    private static func bitmap(_ file: URL) -> ProbeBitmap? {
         guard let data = try? Data(contentsOf: file), let source = NSBitmapImageRep(data: data)?.cgImage,
               let space = CGColorSpace(name: CGColorSpace.sRGB),
               let context = CGContext(data: nil, width: source.width, height: source.height, bitsPerComponent: 8,
                                       bytesPerRow: 0, space: space, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
         context.draw(source, in: CGRect(x: 0, y: 0, width: source.width, height: source.height))
-        return context.makeImage().map { NSBitmapImageRep(cgImage: $0) }
+        guard let bytes = context.data else { return nil }
+        return ProbeBitmap(pixelsWide: source.width, pixelsHigh: source.height, bytesPerRow: context.bytesPerRow,
+                           bytes: Data(bytes: bytes, count: context.bytesPerRow * source.height))
     }
     private static func contrast(_ foreground: NSColor?, _ background: NSColor?) -> String {
         guard let foreground, let background else { return "none" }
@@ -282,7 +318,11 @@ import VoxClipCore
     }
     private static func measureExport(_ window: NSWindow, name: String, folder: URL) -> [String: String] {
         func buttons(_ view: NSView) -> [NSButton] { (view as? NSButton).map { [$0] } ?? view.subviews.flatMap(buttons) }
-        guard let root = window.contentView?.superview, let button = buttons(root).first(where: { $0.isEnabled && $0.title.contains("Export") }) else { return ["capture": name, "error": "no enabled Export"] }
+        guard let root = window.contentView?.superview else { return ["capture": name, "error": "no window content"] }
+        guard let button = buttons(root).first(where: { $0.isEnabled && $0.title.contains("Export") }) else {
+            write(buttons(root).map { ["title": $0.title, "enabled": String($0.isEnabled), "hidden": String($0.isHidden)] }, "export-buttons-\(name).json", in: folder)
+            return ["capture": name, "error": "no enabled Export"]
+        }
         let file = folder.appendingPathComponent("window-export-\(name).png")
         let process = Process(); process.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
         process.arguments = ["-x", "-o", "-l", String(window.windowNumber), file.path]

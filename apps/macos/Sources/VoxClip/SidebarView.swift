@@ -57,11 +57,11 @@ import VoxClipCore
     }
     private var list: some View {
         List(selection: Binding(get: { shell.selection }, set: { if let row = $0 { shell.choose(row) } })) {
-            Label("Home", systemImage: "house").tag(SidebarItem.home)
+            Label("Home", systemImage: "house").modifier(SidebarRowForeground(emphasized: shell.selection == .home && listFocused)).tag(SidebarItem.home)
             if let document = shell.document, let editor = shell.editor {
                 ProjectSection(shell: shell, document: document, editor: editor, listFocused: listFocused)
             }
-            if shell.showsHome { RecentSection(shell: shell) }
+            if shell.showsHome { RecentSection(shell: shell, listFocused: listFocused) }
         }
         .listStyle(.sidebar)
         .focused($listFocused)
@@ -104,12 +104,12 @@ import VoxClipCore
 
     var body: some View {
         Section {
-            FullTakeRow(editor: editor).tag(SidebarItem.fullTake).id(SidebarItem.fullTake)
+            FullTakeRow(editor: editor, selectedFocused: shell.selection == .fullTake && listFocused).tag(SidebarItem.fullTake).id(SidebarItem.fullTake)
             if editor.sortedClips.isEmpty && !editor.finding && editor.clipError != EditorModel.noClipsMatched && !editor.words.isEmpty {
                 Text("No clips yet. Select words and press ⌘K.").font(.system(size: 11)).foregroundStyle(DesignValues.color("text.secondary")).selectionDisabled()
             }
             ForEach(editor.keptClips, id: \.id) { clip in
-                ClipRow(shell: shell, editor: editor, clip: clip, suggested: false).tag(SidebarItem.clip(clip.id)).id(SidebarItem.clip(clip.id))
+                ClipRow(shell: shell, editor: editor, clip: clip, suggested: false, selectedFocused: shell.selection == .clip(clip.id) && listFocused).tag(SidebarItem.clip(clip.id)).id(SidebarItem.clip(clip.id))
             }
             let suggestions = editor.suggestedClips
             let noMatch = editor.clipError == EditorModel.noClipsMatched
@@ -119,7 +119,7 @@ import VoxClipCore
                 if editor.finding { FindingRow(editor: editor).selectionDisabled() }
                 if noMatch { NoMatchRow(editor: editor).selectionDisabled() }
                 ForEach(suggestions, id: \.id) { clip in
-                    ClipRow(shell: shell, editor: editor, clip: clip, suggested: true, focused: listFocused && editor.focusedSuggestion == clip.id)
+                    ClipRow(shell: shell, editor: editor, clip: clip, suggested: true, focused: listFocused && editor.focusedSuggestion == clip.id, selectedFocused: shell.selection == .clip(clip.id) && listFocused)
                         .tag(SidebarItem.clip(clip.id)).id(SidebarItem.clip(clip.id))
                 }
             }
@@ -135,10 +135,11 @@ import VoxClipCore
 /// edited length, or the transcription status with Cancel.
 @MainActor private struct FullTakeRow: View {
     let editor: EditorModel
-    @Environment(\.backgroundProminence) private var prominence
+    var selectedFocused = false
+    @Environment(\.controlActiveState) private var activeState
 
     var body: some View {
-        let emphasized = prominence == .increased
+        let emphasized = selectedFocused && activeState == .key
         HStack(spacing: 8) {
             Color.clear.frame(width: 16, height: 16)
             SidebarThumbnail(editor: editor, clip: nil, emphasized: emphasized).frame(width: 36)
@@ -158,6 +159,7 @@ import VoxClipCore
             Spacer(minLength: 0)
         }
         .frame(height: 50)
+        .modifier(SidebarRowForeground(emphasized: emphasized))
         .accessibilityElement(children: .combine)
         .accessibilityLabel(!editor.transcribed && editor.progress == nil ? "Full take, not transcribed" : "Full take, \(SidebarStyle.spokenDuration(editor.editedDuration(nil))) after cuts")
     }
@@ -172,14 +174,15 @@ import VoxClipCore
     let clip: ClipRange
     let suggested: Bool
     var focused = false
+    var selectedFocused = false
     @FocusState private var editing: Bool
-    @Environment(\.backgroundProminence) private var prominence
+    @Environment(\.controlActiveState) private var activeState
 
     private var title: String { clip.title ?? "Untitled clip" }
 
     var body: some View {
         let number = editor.clipNumber(clip.id) ?? 0
-        let emphasized = prominence == .increased
+        let emphasized = selectedFocused && activeState == .key
         let duration = editor.editedDuration(clip)
         HStack(spacing: 8) {
             ClipBadge(number: number, kind: suggested ? .suggested : editor.project.edits.activeClipId == clip.id ? .selected : .neutral, emphasized: emphasized)
@@ -212,6 +215,7 @@ import VoxClipCore
             Spacer(minLength: 0)
         }
         .frame(height: 50)
+        .modifier(SidebarRowForeground(emphasized: emphasized))
         .overlay {
             if focused { RoundedRectangle(cornerRadius: VCTokens.radiusXs).strokeBorder(Color(nsColor: .keyboardFocusIndicatorColor), lineWidth: 2).padding(-2) }
         }
@@ -439,6 +443,7 @@ private struct KeepButtonStyle: ButtonStyle {
 /// Locate….
 @MainActor private struct RecentSection: View {
     let shell: WorkspaceShell
+    let listFocused: Bool
     var body: some View {
         let app = shell.app, recents = app.recentProjects
         let open = shell.document?.fileURL?.standardizedFileURL
@@ -446,7 +451,7 @@ private struct KeepButtonStyle: ButtonStyle {
         if !urls.isEmpty {
             Section("Recent") {
                 ForEach(urls, id: \.self) { url in
-                    RecentRow(url: url, item: recents.items[url], sources: recents.sources(url, row: true), status: recents.status(url), shell: shell)
+                    RecentRow(url: url, item: recents.items[url], sources: recents.sources(url, row: true), status: recents.status(url), shell: shell, emphasized: shell.selection == .recent(url) && listFocused)
                         .tag(SidebarItem.recent(url))
                 }
             }
@@ -460,6 +465,7 @@ private struct KeepButtonStyle: ButtonStyle {
     let sources: StandInSources
     let status: MediaStatus
     let shell: WorkspaceShell
+    let emphasized: Bool
 
     private var title: String { item?.title ?? url.deletingPathExtension().lastPathComponent }
 
@@ -480,6 +486,7 @@ private struct KeepButtonStyle: ButtonStyle {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .modifier(SidebarRowForeground(emphasized: emphasized))
         .accessibilityLabel(status.spokenState.map { "\(title), \($0)" } ?? title)
     }
 }
@@ -548,6 +555,15 @@ private struct KeepButtonStyle: ButtonStyle {
         case .black?, .unreadable?: frame = nil
         case nil: break
         }
+    }
+}
+
+@MainActor private struct SidebarRowForeground: ViewModifier {
+    let emphasized: Bool
+    @Environment(\.controlActiveState) private var activeState
+
+    func body(content: Content) -> some View {
+        content.foregroundStyle(emphasized && activeState == .key ? Color(nsColor: .alternateSelectedControlTextColor) : DesignValues.color("text.primary"))
     }
 }
 

@@ -893,6 +893,7 @@ import ApplicationServices
             results += try await DebugViewer.run(app: app, fixture: project, directory: destination)
             results += try await DebugCaptionsSection.run(app: app, fixture: project, directory: destination)
             results += try await DebugTimeline.run(app: app, fixture: project, directory: destination)
+            results += try DebugProbes.colorReadbackChecks(directory: destination)
             results += try await DebugPersistence.run(app: app, fixture: project, directory: destination)
             results += try await DebugExport.run(app: app, fixture: project, directory: destination)
             results += try await DebugRegressions.editor(app: app, project: project)
