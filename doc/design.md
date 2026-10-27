@@ -1015,7 +1015,8 @@ From the top:
    - Under it, a read-only diff line from the voice-lab.md §8.2 LCS:
      - removed words in `text.secondary` with a 1.5 px `cut.stroke` strike;
      - inserted words in `accent.text` with a 1.5 px solid underline;
-     - re-voiced bridge words in `text.primary` with a 1 px dashed `accent.text` underline.
+     - re-voiced bridge words in `text.primary` with a 1 px dashed `accent.text` underline;
+     - an event or unlabeled speech that a re-voiced change spans (voice-lab.md §8.2 `absorbedItemIds`) as a removed item: its transcript label in `text.secondary` with the same strike, because the new voice replaces it.
    - Its accessible description reads "one becomes on Sunday, seven becomes five, …".
    - Under the diff, one fit meter line per voice hunk in 11 `text.secondary`: "about 4.3 s for a 4.1 s gap: fits" or "about 4.3 s for a 4.1 s gap: will change length" (voice-lab.md §8.9.1). With more than one hunk, each line starts with that hunk's new words in quotes, for example "“on Sunday” · about 1.2 s for a 1.1 s gap: fits". It updates as the user types, and nothing is sent.
    - The transcript does not render proposed words; only accepted replacements appear there.
