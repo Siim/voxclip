@@ -143,6 +143,66 @@ public sealed class VoiceLabAssetStoreTests
         Refuses(VoiceLabAssetStoreErrorCode.UnsafePath, () => Write(storage));
     }
 
+    [Fact, Trait("Category", "RequiresWindows")]
+    public void WindowsWriteThroughPublicationMovesTheTemporaryHandleToFinalName()
+    {
+        NativeTest.Require(OperatingSystem.IsWindows(), "Windows file-system regressions require Windows.");
+        using (var storage = new VoiceLabTestStorage())
+        {
+            var final = Path.Combine(storage.PaidRoot, storage.ProjectId, "take.wav");
+            FileStream? temporaryView = null;
+            try
+            {
+                var asset = VoiceLabAssetStore.Write([1, 0, 254, 255], 24_000, storage.ProjectId, "take", storage.PaidRoot,
+                    CreatedAt, TestContext.Current.CancellationToken, () =>
+                    {
+                        var temporary = Assert.Single(Directory.GetFiles(Path.GetDirectoryName(final)!, "*.partial"));
+                        temporaryView = new FileStream(temporary, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+                    }, () => Assert.Equal(final, VoiceLabWindowsFiles.FinalPath(temporaryView!.SafeFileHandle), ignoreCase: true));
+                Assert.NotNull(temporaryView);
+                Assert.Equal(asset.Sha256, Convert.ToHexStringLower(SHA256.HashData(temporaryView)));
+                Assert.Equal(asset.Sha256, Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(final))));
+                Assert.Equal(new[] { final }, Directory.GetFiles(Path.GetDirectoryName(final)!));
+            }
+            finally { temporaryView?.Dispose(); }
+        }
+        VoiceLabTestStorage.NativePassed(nameof(WindowsWriteThroughPublicationMovesTheTemporaryHandleToFinalName));
+    }
+
+    [Fact, Trait("Category", "RequiresWindows")]
+    public void WindowsWriteThroughPublicationNeverReplacesAnExistingDestination()
+    {
+        NativeTest.Require(OperatingSystem.IsWindows(), "Windows file-system regressions require Windows.");
+        using (var storage = new VoiceLabTestStorage())
+        {
+            var final = Path.Combine(storage.PaidRoot, storage.ProjectId, "take.wav");
+            Refuses(VoiceLabAssetStoreErrorCode.AlreadyExists, () => VoiceLabAssetStore.Write([1, 0], 24_000,
+                storage.ProjectId, "take", storage.PaidRoot, CreatedAt, TestContext.Current.CancellationToken,
+                () => File.WriteAllBytes(final, [42]), null));
+            Assert.Equal(new byte[] { 42 }, File.ReadAllBytes(final));
+            Assert.Equal(new[] { final }, Directory.GetFiles(Path.GetDirectoryName(final)!));
+            Refuses(VoiceLabAssetStoreErrorCode.AlreadyExists, () => Write(storage));
+        }
+        VoiceLabTestStorage.NativePassed(nameof(WindowsWriteThroughPublicationNeverReplacesAnExistingDestination));
+    }
+
+    [Fact, Trait("Category", "RequiresWindows")]
+    public void WindowsWriteThroughPublicationKeepsFinalAfterConfirmationFailure()
+    {
+        NativeTest.Require(OperatingSystem.IsWindows(), "Windows file-system regressions require Windows.");
+        using (var storage = new VoiceLabTestStorage())
+        {
+            Refuses(VoiceLabAssetStoreErrorCode.PublishedUnverified, () => VoiceLabAssetStore.Write([1, 0], 24_000,
+                storage.ProjectId, "take", storage.PaidRoot, CreatedAt, TestContext.Current.CancellationToken,
+                null, () => throw new IOException("confirmation failed")));
+            var final = Path.Combine(storage.PaidRoot, storage.ProjectId, "take.wav");
+            Assert.Equal(new byte[] { 1, 0 }, File.ReadAllBytes(final)[44..]);
+            Assert.Equal(new[] { final }, Directory.GetFiles(Path.GetDirectoryName(final)!));
+            Refuses(VoiceLabAssetStoreErrorCode.AlreadyExists, () => Write(storage));
+        }
+        VoiceLabTestStorage.NativePassed(nameof(WindowsWriteThroughPublicationKeepsFinalAfterConfirmationFailure));
+    }
+
     [Fact]
     public void MacCompatibleRootAliasResolvesButProjectLinksAreRefused()
     {
@@ -196,12 +256,22 @@ public sealed class VoiceLabAssetStoreTests
 
 internal sealed class VoiceLabTestStorage : IDisposable
 {
+    private static readonly object EvidenceLock = new();
     private readonly string? previousData = Environment.GetEnvironmentVariable("VOXCLIP_DATA_DIR");
     internal string Root { get; } = Directory.CreateTempSubdirectory("voxclip-vl-media-").FullName;
     internal string ProjectId { get; } = "12345678-1234-1234-1234-123456789abc";
     internal string PaidRoot => Path.Combine(Root, "VoiceLab");
     internal VoiceLabTestStorage() => Environment.SetEnvironmentVariable("VOXCLIP_DATA_DIR", Root);
     internal string AssetPath(VoiceLabAsset asset) => Path.Combine(PaidRoot, asset.File.Replace('/', Path.DirectorySeparatorChar));
+    internal static void NativePassed(string name)
+    {
+        var output = Environment.GetEnvironmentVariable("VOXCLIP_E2E_OUT");
+        if (string.IsNullOrEmpty(output)) return;
+        var directory = Path.GetDirectoryName(Path.GetFullPath(output))!;
+        Directory.CreateDirectory(directory);
+        lock (EvidenceLock)
+            File.AppendAllText(Path.Combine(directory, "voice-lab-media-r2-tests.log"), "PASS " + name + Environment.NewLine);
+    }
     public void Dispose()
     {
         Environment.SetEnvironmentVariable("VOXCLIP_DATA_DIR", previousData);

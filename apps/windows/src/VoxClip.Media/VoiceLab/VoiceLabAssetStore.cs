@@ -222,7 +222,13 @@ public static class VoiceLabAssetStore
 
     private static void MoveExclusive(string temporary, string final, string file)
     {
-        if (OperatingSystem.IsWindows()) { System.IO.File.Move(temporary, final, overwrite: false); return; }
+        if (OperatingSystem.IsWindows())
+        {
+            if (!VoiceLabWindowsFiles.MoveFileExW(temporary, final, VoiceLabWindowsFiles.MoveWriteThrough))
+                throw Failure(Marshal.GetLastPInvokeError() is 80 or 183
+                    ? VoiceLabAssetStoreErrorCode.AlreadyExists : VoiceLabAssetStoreErrorCode.Unwritable, file);
+            return;
+        }
         var result = OperatingSystem.IsMacOS() ? RenameExclusive(temporary, final, 4) :
             RenameAtExclusive(-100, temporary, -100, final, 1);
         if (result != 0) throw Failure(Marshal.GetLastPInvokeError() == 17
