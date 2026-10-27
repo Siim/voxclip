@@ -3,7 +3,7 @@ using VoxClip.Core.Domain.Captions;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Media.Ffmpeg;
 
-namespace VoxClip.Media.Pipeline;
+namespace VoxClip.Media.Thumbnails;
 
 /// <summary>Poster frames for Home tiles and sidebar rows (design §5.4.7). The shipped FFmpeg decodes them in software,
 /// never the Windows shell, which answers MKV and WEBM with a file-type icon.</summary>

@@ -7,6 +7,7 @@ using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Services.LLM;
 using VoxClip.Media.Pipeline;
+using VoxClip.Media.Thumbnails;
 using Xunit;
 
 namespace VoxClip.Ui.Tests;
@@ -225,14 +226,7 @@ public sealed class HomeViewModelTests
         Assert.Null(HomeViewModel.Callout("Ollama", "local", new ConnectorStatus.Ready()));
     }
 
-    [Theory]
-    [InlineData(2.0, 0, 16, 16, new[] { 2.0, 3.0, 5.0, 1.6 })]
-    [InlineData(15.5, 0, 16, 16, new[] { 15.5, 15.95, 1.6 })]
-    [InlineData(4.0, 4.0, 5.0, 16, new[] { 4.0, 5.0, 7.0, 4.5 })]
-    [InlineData(double.NaN, 0, 0, double.NaN, new[] { 0.0, 1.0, 3.0 })]
-    public void PosterCandidatesRetryAfterTheFirstKeptWord(double first, double scopeStart, double scopeLength, double source, double[] expected)
-        => Assert.Equal(expected, PosterFrames.Candidates(first, scopeStart, scopeLength, source).Select(time => Math.Round(time, 6)));
-
+    // PosterFrames' own candidate, black-frame and FFmpeg decode tests live with it in tests/VoxClip.Media.Tests/Thumbnails.
     [Fact]
     public void PosterCandidatesStartAtTheScopesFirstKeptWord()
     {
@@ -250,29 +244,6 @@ public sealed class HomeViewModelTests
         var candidates = Thumbnails.Candidates(longTake, clip.Id);
         Assert.Equal(start, candidates[0]);
         Assert.Equal(start + (end - start) * 0.1, candidates[^1], 6);
-    }
-
-    [Fact]
-    public void BlackFramesAreFlatAndDark()
-    {
-        static PixelBuffer Frame(Func<int, int, byte> luma)
-        {
-            const int width = 64, height = 36;
-            var pixels = new byte[width * height * 4];
-            for (var y = 0; y < height; y++)
-                for (var x = 0; x < width; x++)
-                {
-                    var value = luma(x, y);
-                    pixels[(y * width + x) * 4] = pixels[(y * width + x) * 4 + 1] = pixels[(y * width + x) * 4 + 2] = value;
-                    pixels[(y * width + x) * 4 + 3] = 255;
-                }
-            return new(pixels, width, height, width * 4);
-        }
-        Assert.True(PosterFrames.IsBlack(Frame((_, _) => 0)));
-        Assert.True(PosterFrames.IsBlack(Frame((_, _) => 10)));
-        Assert.False(PosterFrames.IsBlack(Frame((_, _) => 40)));
-        // A dark frame with a bright title is content, not black.
-        Assert.False(PosterFrames.IsBlack(Frame((x, y) => (byte)(y is > 14 and < 22 && x is > 10 and < 54 ? 230 : 4))));
     }
 
     [Fact]

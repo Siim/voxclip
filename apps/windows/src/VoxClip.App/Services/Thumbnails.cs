@@ -1,6 +1,6 @@
 using System.Globalization;
 using VoxClip.Core.Domain.Shared;
-using VoxClip.Media.Pipeline;
+using VoxClip.Media.Thumbnails;
 
 namespace VoxClip.App.Services;
 
