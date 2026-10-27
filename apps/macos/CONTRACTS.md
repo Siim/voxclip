@@ -1,5 +1,10 @@
 # macOS implementation contracts
 
+### 2026-10-28 — Round-3 A3: spoken word states
+
+- VoiceOver word descriptions now append cut, playing, AI modified in that fixed order (design §15). Windows already orders cut before AI but has no playing suffix, so the missing state is inserted between those existing states.
+- `DebugTranscriptPixels.wordAccessibility` checks all eight combinations through the actual NSTextView accessibility string using a real Voice Lab fixture. Pause descriptions retain their existing duration/cut wording.
+
 ### 2026-10-28 — Round-3 A2: named Cut versus Delete
 
 - Named Cut commands, including the selection bar, context menu and VoiceOver, unconditionally cut. The app passes only uncut IDs to Core's toggling `cutSelection` command; an already-cut selection is a no-op. Restore remains separate. Only the transcript Delete key uses the all-cut toggle (design §4.2), matching Windows. Core and its shared fixtures remain unchanged.

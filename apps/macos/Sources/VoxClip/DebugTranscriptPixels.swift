@@ -46,7 +46,7 @@ import VoxClipCore
         guard let fragment = manager.textLayoutFragment(for: manager.documentRange.location), let line = fragment.textLineFragments.first else { throw CocoaError(.coderInvalidValue) }
         let font = DesignValues.transcriptFont(size: model.textSize)
         let baseline = text.textContainerOrigin.y + fragment.layoutFragmentFrame.minY + line.typographicBounds.minY + line.glyphOrigin.y
-        var results: [DebugUISuite.Result] = []
+        var results: [DebugUISuite.Result] = try wordAccessibility(app: app)
         for (name, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
             NSAppearance(named: appearance)?.performAsCurrentDrawingAppearance {
                 let background = DesignValues.nsColor("word.playingBackground")
@@ -146,6 +146,39 @@ import VoxClipCore
             }
         }
         try JSONEncoder().encode(probes).write(to: directory.appendingPathComponent("transcript-decoration-pixels.json"))
+        return results
+    }
+    private static func wordAccessibility(app: AppModel) throws -> [DebugUISuite.Result] {
+        guard let root = app.shared?.root else { throw CocoaError(.fileNoSuchFile) }
+        let fixture = root.appendingPathComponent("fixtures/voice-lab/passage-render-v3.voxclip")
+        let project = try JSONProjectStore.decode(Data(contentsOf: fixture))
+        let plan = try VoiceLabOutputPlanner.build(project, scope: .full)
+        let model = EditorModel(document: VoxClipDocument(project: project, demo: true), app: app, preview: DemoPreviewEngine())
+        defer { model.close() }
+        model.refresh()
+        guard let piece = plan.pieces.first(where: { (piece: VoiceLabOutputPiece) -> Bool in piece.kind == .synth }) else { throw CocoaError(.coderInvalidValue) }
+        let start: Double = Double(piece.sourceStartSample) / plan.sampleRate
+        let end: Double = Double(piece.sourceEndSample) / plan.sampleRate
+        guard let word = model.words.first(where: { (word: TimedWord) -> Bool in word.start >= start && word.end <= end }) else { throw CocoaError(.coderInvalidValue) }
+        let text = TranscriptNSTextView(usingTextLayoutManager: true)
+        text.model = model
+        let renderer = TranscriptRenderer()
+        renderer.text = text
+        var results: [DebugUISuite.Result] = []
+        for cut in [false, true] {
+            for playing in [false, true] {
+                for ai in [false, true] {
+                    model.cutWordIDs = cut ? [word.id] : []
+                    model.sourceTime = playing ? word.start : model.sourceDuration
+                    model.voiceLabPlan = ai ? plan : nil
+                    renderer.rebuild(model: model)
+                    guard let span = text.map.span(id: word.id) else { throw CocoaError(.coderInvalidValue) }
+                    let base = (text.string as NSString).substring(with: span.range)
+                    let expected: String = base + (cut ? ", cut" : "") + (playing ? ", playing" : "") + (ai ? ", AI modified" : "")
+                    results.append(.init(name: "VoiceOver word states use cut, playing, AI modified order (cut=\(cut), playing=\(playing), AI=\(ai))", passed: text.accessibilityString(for: span.range) == expected))
+                }
+            }
+        }
         return results
     }
     private static func opaquePixels(_ bitmap: NSBitmapImageRep, rect: CGRect, size: NSSize, color: NSColor) -> Int {

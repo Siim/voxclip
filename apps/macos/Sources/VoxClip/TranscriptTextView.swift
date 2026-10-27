@@ -415,9 +415,16 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
             return "pause \(toFixed1(pause.duration)) seconds\(suffix)"
         }
         var value = (string as NSString).substring(with: span.range)
+        if model.cutWordIDs.contains(span.id) { value += ", cut" }
+        if model.playingWordID == span.id { value += ", playing" }
         if let position = model.index(span.id), let plan = model.voiceLabPlan {
             let word = model.words[position]
-            if plan.pieces.contains(where: { $0.kind == .synth && word.start >= Double($0.sourceStartSample) / plan.sampleRate && word.end <= Double($0.sourceEndSample) / plan.sampleRate }) { value += ", AI modified" }
+            let modified: Bool = plan.pieces.contains { (piece: VoiceLabOutputPiece) -> Bool in
+                let start: Double = Double(piece.sourceStartSample) / plan.sampleRate
+                let end: Double = Double(piece.sourceEndSample) / plan.sampleRate
+                return piece.kind == .synth && word.start >= start && word.end <= end
+            }
+            if modified { value += ", AI modified" }
         }
         return value
     }
