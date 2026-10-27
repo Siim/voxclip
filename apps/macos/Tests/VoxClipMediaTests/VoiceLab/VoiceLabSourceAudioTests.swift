@@ -108,7 +108,8 @@ import VoxClipCore
         let source = try await stereo(in: folder)
         let wav = try await VoiceLabSourceAudio.conversionInput(source: source, startSample: 12_345, endSample: 60_007,
                                                                  sourceSampleRate: 48_000)
-        #expect(wav.count == 44 + 2 * 47_662)
+        let expectedBytes: Int = 44 + 2 * 47_662
+        #expect(wav.count == expectedBytes)
         #expect(wav.prefix(44) == VoiceLabAssetStore.wavHeader(frames: 47_662, sampleRate: 48_000))
         let values = samples(wav)
         let expected = (12_345..<60_007).map(expectedMean)
@@ -140,11 +141,18 @@ import VoxClipCore
         #expect(wav.prefix(44) == VoiceLabAssetStore.wavHeader(frames: 88_200, sampleRate: 44_100))
         let values = samples(wav)
         #expect(values.count == 88_200)
-        let stored = (0..<88_200).map(Self.mono)
-        #expect(zip(values, stored).allSatisfy { abs(Int($0) - Int($1)) <= 1 })
+        let stored: [Int16] = (0..<88_200).map(Self.mono)
+        let pairs: [(value: Int16, stored: Int16)] = Array(zip(values, stored))
+        #expect(pairs.allSatisfy { (pair: (value: Int16, stored: Int16)) -> Bool in abs(Int(pair.value) - Int(pair.stored)) <= 1 })
         // Decoded as v / 32768 and written as round(v × 32767 / 32768): exact up to 2^14 in magnitude, then 1 LSB closer to 0.
-        #expect(zip(values, stored).allSatisfy { Int($0) == (abs(Int($1)) > 16_384 ? Int($1) - Int($1).signum() : Int($1)) })
-        #expect(zip(values, stored).contains { $0 != $1 } && zip(values, stored).contains { $0 == $1 })
+        func written(_ stored: Int16) -> Int {
+            let value = Int(stored)
+            return abs(value) > 16_384 ? value - value.signum() : value
+        }
+        #expect(pairs.allSatisfy { (pair: (value: Int16, stored: Int16)) -> Bool in Int(pair.value) == written(pair.stored) })
+        let changed = pairs.contains { (pair: (value: Int16, stored: Int16)) -> Bool in pair.value != pair.stored }
+        let unchanged = pairs.contains { (pair: (value: Int16, stored: Int16)) -> Bool in pair.value == pair.stored }
+        #expect(changed && unchanged)
         let late = try await VoiceLabSourceAudio.conversionInput(source: source, startSample: 44_101, endSample: 44_983,
                                                                   sourceSampleRate: 44_100)
         #expect(samples(late) == Array(values[44_101..<44_983]))
@@ -419,12 +427,18 @@ import VoxClipCore
         // squares in order, Float32 RMS, and no partial final frame.
         func reference(_ samples: [Float], _ rate: Int) -> [Float] {
             let frame = (rate + 50) / 100
-            return stride(from: 0, through: samples.count - frame, by: frame).map { start in
-                Float((samples[start..<(start + frame)].reduce(0.0) { $0 + Double($1) * Double($1) } / Double(frame)).squareRoot())
+            return stride(from: 0, through: samples.count - frame, by: frame).map { (start: Int) -> Float in
+                let sum = samples[start..<(start + frame)].reduce(0.0) { (sum: Double, value: Float) -> Double in
+                    sum + Double(value) * Double(value)
+                }
+                return Float((sum / Double(frame)).squareRoot())
             }
         }
         for (rate, count) in [(22_050, 22_150), (24_000, 7_211), (44_100, 44_100), (48_000, 48_479)] {
-            let samples = (0..<count).map { Float(sin(Double($0) * 0.37) * (0.1 + 0.4 * Double(($0 / 300) % 3))) }
+            let samples: [Float] = (0..<count).map { (index: Int) -> Float in
+                let gain = 0.1 + 0.4 * Double((index / 300) % 3)
+                return Float(sin(Double(index) * 0.37) * gain)
+            }
             let envelope = VoiceLabSourceAudio.envelope(samples: samples, sampleRate: rate)
             #expect(envelope.sampleRate == Double(rate) && envelope.frameSeconds == 0.01)
             #expect(envelope.levels == reference(samples, rate))
