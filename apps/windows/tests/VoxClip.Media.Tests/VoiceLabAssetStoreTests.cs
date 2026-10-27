@@ -360,17 +360,26 @@ public sealed class VoiceLabAssetStoreTests
             }).ToArray()
         } };
         var plan = VoiceLabOutputPlanner.Build(project, VoiceLabOutputScope.Full);
-        var prepared = await VoiceLabAssets.PrepareAsync(project, plan, storage.PaidRoot, TestContext.Current.CancellationToken);
+        var scratch = Directory.CreateDirectory(Path.Combine(storage.Root, "prepared-scratch")).FullName;
+        var prepared = await VoiceLabAssets.PrepareAsync(project, plan, storage.PaidRoot, scratch, TestContext.Current.CancellationToken);
+        string? snapshot = null;
         try
         {
             var handle = Assert.Single(prepared).Value;
+            snapshot = handle.Path;
+            Assert.StartsWith(scratch + Path.DirectorySeparatorChar, snapshot, OperatingSystem.IsWindows()
+                ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
+            Assert.Single(Directory.GetFileSystemEntries(scratch));
             Assert.Equal(frames, handle.FrameCount); Assert.Equal(asset.SampleRate, handle.SampleRate); Assert.Equal(1, handle.Channels);
             var final = Path.Combine(storage.PaidRoot, asset.File.Replace('/', Path.DirectorySeparatorChar));
             var bytes = File.ReadAllBytes(final); bytes[1000] ^= 1; File.WriteAllBytes(final, bytes);
-            var failure = await Assert.ThrowsAsync<VoiceLabAssetException>(() => VoiceLabAssets.PrepareAsync(project, plan, storage.PaidRoot, TestContext.Current.CancellationToken));
+            var failure = await Assert.ThrowsAsync<VoiceLabAssetException>(() => VoiceLabAssets.PrepareAsync(project, plan, storage.PaidRoot, scratch, TestContext.Current.CancellationToken));
             Assert.Equal(VoiceLabAssetErrorCode.Altered, failure.Code); Assert.NotEqual(bytes, File.ReadAllBytes(handle.Path));
+            Assert.Single(Directory.GetFileSystemEntries(scratch));
         }
         finally { foreach (var handle in prepared.Values) handle.Dispose(); }
+        Assert.NotNull(snapshot); Assert.False(File.Exists(snapshot));
+        Assert.Empty(Directory.GetFileSystemEntries(scratch));
     }
 }
 
