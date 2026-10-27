@@ -838,11 +838,21 @@ The gallery shows Off first, then every style in `shared/caption-styles/styles/`
 
 ### 15.2 Tile rendering
 
-Tiles are 128×80 points. A tile renders the real style through the real rasterizer at the current export aspect's output size, scaled down (7.6), over a still from the user's video at the playhead dimmed 15%, or over `preview.background` when there is no video. The sample words are the current phrase (the page at the playhead, transform none) when there is one, else `preview.text`.
+A tile renders the real style through the real rasterizer at the current export aspect's output size, scaled down (7.6). The tile's size, the backdrop under the caption and its dimming are design.md's (section 6.1): the band of the current frame behind the style's caption position, dimmed 35%, or with no frame the caption card backdrop (design.md section 5.4.3), not dimmed. A tile that cannot render draws exactly the backdrop it would have had: the band of the current frame dimmed 35%, or the card backdrop (design.md section 5.4.3) when there is no frame, and stage black in the loading states (design.md section 5.4.4). It never draws text.
+
+The sample words are the caption page at the playhead, with the text as stored (transform none), or the style's `preview.text` when the scope has no caption words or Settings hides transcript words (15.3). A tile never shows the project title.
 
 ### 15.3 Tile state
 
-The tile is the caption state at a fixed moment: the sample words are timed `[0.4·i, 0.4·i + 0.35]` seconds; the track duration is `0.4·n + 0.5`; the tile time is `t = 0.4·a + 0.35·min(progress, 0.98)` with `a = min(preview.activeWord, n − 1)` and `progress = preview.progress`; the state is evaluated with Reduce Motion rules (11.5) so animations are at rest. `shared/fixtures/captions/preview-tiles.json` gives the expected page and state of every style at 1080×1920 and 1920×1080.
+The tile is the caption state at a fixed moment. Each Core decides it once, as `CaptionGallerySample` (VoxClipCore and VoxClip.Core), from the project, the scope (the edited take or a clip), the playhead in the scope's edited time, the library style and the caption resources.
+
+- **Sample.** Page words keep their caption-copy ids; preview words have ids `preview-{i}`, starting at `preview-0`. The `n` sample words are timed `[0.4·i, 0.4·i + 0.35]` seconds and carry no emphasis or emoji hints, so the style's own rules apply as in export. The track duration is `0.4·n + 0.5`. The state is evaluated with Reduce Motion rules (11.5), so animations are at rest.
+- **Page.** The scope's export captions (the caption copy, editing spec 7.6) are normalised and covered as in 3.1 and 4.4, and a word left with nothing is skipped. They are paged by 6.1 in the style resolved at the project's export frame. Only the selected tile (`style.id == project.captions.styleId`) uses the project's `captions.overrides` (2.4; a rejected patch is ignored); every other tile uses empty overrides. Captions off matches no tile. Paging runs without the fit test of 6.2, which needs glyph widths. Pages are visible on their 8.1 intervals over the scope's edited duration. The sample is the page visible at the playhead (8.2); in a gap between pages or before the first page it is the next page, and after the last page the last page. A playhead that is not finite counts as 0. The renderer pages the sample again at the tile's timing. Even without the 6.2 fit, the renderer splits an overlong page at that timing (for example with the Line override); the fit can split it further. The tile shows the part containing the drawn word. In the key-word case this may be the key word's part rather than the playhead's part. This is a known, accepted limit.
+- **Moment on a page.** When the page is visible and the playhead is inside its active word `a` (8.2: the last word that has started, until that word ends), `t = 0.4·a + 0.35·0.98`. Otherwise `t` is the caption card's drawn moment for the page (design.md section 5.4.2): 0.35 × 0.98 s into its key word, or, when the style's reveal unit is `word` or `char`, in its last word, at that word's end if `layout.holdGapSec > 0`.
+- **`preview.text`.** It stands in when the scope has no caption words (no transcript, every word cut, or none left after 3.1 and 4.4), when the scope cannot be planned or its style cannot be resolved, and when Settings → General → "Show transcript words on placeholders" is off. The words are `preview.text` split at spaces, and `t = 0.4·a + 0.35·min(progress, 0.98)` with `a = min(preview.activeWord, n − 1)` and `progress = preview.progress`. A style without `progress` uses 1, the schema default that `tools/captions/gen_fixtures.py` applies, so it is drawn 0.343 s into its active word.
+- **Layout inputs.** Lay the sample out at the project's export frame in the tile's library style, with the overrides selected by the Page rule above for both page and preview samples. Page samples use the transcript's BCP-47 language tag (`und` if absent); preview samples use `en`, the language of the bundled preview texts. Use the project's `captions.positionByAspect` and `captions.position` with the precedence in 2.4, falling back to the style's position. Evaluate at `t` with Reduce Motion.
+
+`shared/fixtures/captions/preview-tiles.json` gives the expected page and state of every style's `preview.text` at 1080×1920 and 1920×1080, using `en`, empty overrides and the style's default position. It is the uncustomised preview baseline: it records no word ids (gen_fixtures.py lays it out with ids `p{i}`), and its times are rounded to six decimal places for the layout fixture format; gallery sample ids and times follow the rules above. Selected-tile overrides and project positions can change that baseline. `shared/fixtures/captions/gallery-samples.json`, generated by `tools/captions/gen_gallery.py`, gives the expected sample (source, words, duration and time) for each case, and both Core suites replay every case.
 
 ---
 
@@ -850,7 +860,7 @@ The tile is the caption state at a fixed moment: the sample words are timed `[0.
 
 ### 16.1 Fixture files
 
-All in `shared/fixtures/captions/`, generated by `tools/captions/gen_fixtures.py` from `tools/captions/cases.json` and the files in section 0, except `cards.json`, which `tools/captions/gen_cards.py` generates from `tools/captions/card-cases.json`:
+All in `shared/fixtures/captions/`, generated by `tools/captions/gen_fixtures.py` from `tools/captions/cases.json` and the files in section 0, except `cards.json`, which `tools/captions/gen_cards.py` generates from `tools/captions/card-cases.json`, and `gallery-samples.json`, which `tools/captions/gen_gallery.py` generates from `tools/captions/gallery-cases.json`:
 
 | File | Contents |
 |---|---|
@@ -858,6 +868,7 @@ All in `shared/fixtures/captions/`, generated by `tools/captions/gen_fixtures.py
 | `text-normalization.json` | inputs × {keep, strip-keep-numeric} × {none, uppercase, lowercase}, matching keys, sentence and clause flags |
 | `math.json` | `roundHalfUp`, easing, mulberry32, jitter keys, blur kernels, box sizes and blurred rows, rounded-rect paths, gradient end points |
 | `preview-tiles.json` | gallery tile state per style (15.3) |
+| `gallery-samples.json` | gallery tile samples (15.3): per case the project, scope, style, playhead and words-hidden switch, and the expected source, words, duration and time |
 | `cards.json` | caption card text for media stand-ins (design.md section 5.4.2): per case the project, scope, style and words-hidden switch, and the expected words, key word, line limit per surface, drawn moment and the fit's word drops |
 | `index.json` | list of the files above that `gen_fixtures.py` writes |
 | `golden/` | pixel goldens (16.4), added when the renderers exist |

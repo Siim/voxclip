@@ -22,6 +22,7 @@ Run every script with `-I` (isolated mode). The scripts put their own folder on 
 | `build_casemap.py <UnicodeData.txt>` | Writes `shared/caption-styles/casemap.json` from the Unicode 16.0.0 UnicodeData.txt | none |
 | `gen_fixtures.py` | Builds every case of `cases.json` (plus the style × aspect matrix) and writes `shared/fixtures/captions/` | `fonttools`, `uharfbuzz`, `regex`, `jsonschema` |
 | `gen_cards.py` | Builds the caption card cases of `card-cases.json` (doc/design.md section 5.4.2), validates each project against the project schema and writes `shared/fixtures/captions/cards.json`. The scope's caption copy comes from the editing fixture generator's reference planner, run through `card_plans.mjs`. Every card and fit drop is laid out with the reference engine and refused unless its drawn moment shows the key word | `regex`, `jsonschema`, `fonttools`, `uharfbuzz`, Node.js 22 |
+| `gen_gallery.py` | Builds the gallery tile cases of `gallery-cases.json` (spec 15.3) with the card rules of `captionref.card` and writes `shared/fixtures/captions/gallery-samples.json`. Caption copies come from `card_plans.mjs`, as for `gen_cards.py`. It takes only words the style's primary font covers whole, and checks that the page at the tile time contains the drawn word, including when the tile timing splits the sample. With `jsonschema` installed it also validates each project | Node.js 22 (standard library otherwise) |
 | `compare_overlays.py` | The image comparison of spec section 16.5, for two PNGs or two folders of goldens | `numpy` |
 | `parity.sh` | Renders every golden sample with the Swift and the C# CLI and compares them (spec 16.6) | Xcode, .NET 10 SDK, `numpy` |
 
@@ -33,10 +34,11 @@ curl -o /tmp/voxclip-ucd/UnicodeData.txt https://www.unicode.org/Public/16.0.0/u
 $P -I tools/captions/build_casemap.py /tmp/voxclip-ucd/UnicodeData.txt
 $P -I tools/captions/gen_fixtures.py
 $P -I tools/captions/gen_cards.py                   # caption card fixtures
+python3 -I tools/captions/gen_gallery.py              # gallery tile samples; no venv needed
 git diff --stat shared/                               # review: a fixture diff is a behaviour change
 ```
 
-`gen_fixtures.py` and `gen_cards.py` are deterministic: running either twice gives byte-identical files. `gen_fixtures.py` deletes and rewrites `shared/fixtures/captions/layout/`.
+`gen_fixtures.py`, `gen_cards.py` and `gen_gallery.py` are deterministic: running any of them twice gives byte-identical files. `gen_fixtures.py` deletes and rewrites `shared/fixtures/captions/layout/`.
 
 ## Package `captionref`
 
@@ -44,12 +46,13 @@ git diff --stat shared/                               # review: a fixture diff i
 |---|---|
 | `util.py` | 1.3 rounding, JSON output |
 | `style.py` | 2.2 defaults, 2.4 resolution (aspect overrides, RFC 7396 patch, positions), 2.3 colours, 5.1 aspect class |
-| `text.py` | 3 normalisation, case map, punctuation, sentence and clause ends, matching keys, grapheme clusters |
+| `text.py` | 3 normalisation, case map, punctuation, sentence and clause ends, matching keys, grapheme clusters (only these need `regex`) |
 | `fontdb.py` | 4.1 manifest, 4.3 HarfBuzz shaping at `unitsPerEm` scale, 4.4 nearest-weight fallback |
 | `layout.py` | 4.4 to 4.6 measurement, 5 frame, 6 paging and line breaking, 7 placement, 8.1 page timing, 9 emphasis and emoji selection, 10.2 fill precedence |
 | `timeline.py` | 8.2 states, 10.3 to 10.5 reveal and cursor, 11 animation, jitter and mulberry32 |
 | `mathref.py` | 10.4 gradient end points, 12.1 rounded rectangles, 13.2 blur |
 | `card.py` | doc/design.md 5.4.2 caption card words, key word and drawn moment, with 6.1 paging and the 4.4 font cascade by coverage |
+| `takes.py` | Projects for the card and gallery cases (stored, patched or synthetic takes), their schema check, and caption copies through `card_plans.mjs` |
 
 It does not rasterise. Pixel goldens come from the macOS renderer (`voxclip-cli render-caption`), spec section 16.4.
 

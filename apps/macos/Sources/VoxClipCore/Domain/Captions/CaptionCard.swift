@@ -109,53 +109,82 @@ public struct CaptionCardText: Codable, Sendable, Equatable {
     /// transcript words on placeholders".
     public static func make(project: Project, scope: CaptionCardScope, style: CaptionStyle, wordsVisible: Bool,
                             resources: CaptionResources) -> CaptionCardText {
-        guard let transcript = project.transcript else { return .none }
-        let tag = transcript.language ?? "und", language = CaptionTextRules.language(tag)
-        let frame = exportFrame(project)
-        let input = CaptionLayoutInput(style: style.id, frame: .init(width: frame.width, height: frame.height), language: tag, duration: 0,
-            captions: .init(overrides: project.captions.overrides, position: project.captions.position,
-                             positionByAspect: project.captions.positionByAspect), words: [])
-        guard let resolved = try? CaptionStyleResolver.resolution(style, input: input, resources: resources).style,
-              let captions = try? VoiceLabOutputPlanner.build(project, scope: scope.outputScope).captions else { return .none }
-        func entry(_ id: String, _ text: String, _ start: Double, _ end: Double) -> Candidate? {
-            let normalised = CaptionTextRules.normalize(text, options: resolved.text, language: tag, resources: resources)
-            let request = GlyphShapeRequest(text: normalised, fontFile: resolved.font.file, fallbackFiles: resolved.font.fallbackFiles, language: tag)
-            guard !normalised.isEmpty, let runs = try? CaptionFontCascade.resolve(request, resources: resources).runs, !runs.isEmpty else { return nil }
-            return Candidate(id: id, text: text, raw: CaptionTextRules.raw(text), display: runs.map(\.text).joined(), start: start, end: end)
-        }
-        var words = captions.compactMap { entry($0.id, $0.text, $0.start, $0.end) }
-        guard !words.isEmpty else { return .none }
-        var layout = resolved.layout
+        guard let copy = ScopeWords(project: project, scope: scope, style: style, overrides: project.captions.overrides, resources: resources), !copy.words.isEmpty else { return .none }
+        var words = copy.words
+        var layout = copy.style.layout
         layout.maxWords = min(layout.maxWords, maxWords)
         var source = CaptionCardSource.transcript
         if !wordsVisible {
             source = .title
             let tokens = CaptionTextRules.raw(project.title ?? "").split(separator: " ").map(String.init)
-            words = tokens.enumerated().compactMap { entry("title-\($0.offset)", $0.element, 0, 0) }
+            words = tokens.enumerated().compactMap { copy.candidate("title-\($0.offset)", $0.element, 0, 0) }
             guard !words.isEmpty else { return .none }
             layout.breakOnGapSec = nil; layout.maxPageSec = nil
         }
-        let stopwords = resources.stopwords[language]
-        func weak(_ word: Candidate) -> Bool {
-            guard let stopwords else { return false }
-            return EditingPrimitives.filler(word.text) || stopwords.contains(CaptionTextRules.matchingKey(word.display, language: language, resources: resources))
-        }
-        if stopwords != nil, let lead = words.firstIndex(where: { !EditingPrimitives.filler($0.text) }) { words.removeFirst(lead) }
+        if copy.stopwords != nil, let lead = words.firstIndex(where: { !EditingPrimitives.filler($0.text) }) { words.removeFirst(lead) }
         let pages = CaptionLayoutEngine.pageGroups(count: words.count, layout: layout, raw: { words[$0].raw }, start: { words[$0].start },
                                                    end: { words[$0].end }) { _ in true }
         var page = pages[0]
-        if stopwords != nil {
-            page = pages.first { $0.contains { !weak(words[$0]) } } ?? pages[0]
-            while page.count > 1, let last = page.last, weak(words[last]) { page.removeLast() }
+        if copy.stopwords != nil {
+            page = pages.first { $0.contains { !copy.weak(words[$0]) } } ?? pages[0]
+            while page.count > 1, let last = page.last, copy.weak(words[last]) { page.removeLast() }
         }
-        let card = page.map { CaptionCardWord(id: words[$0].id, text: words[$0].text, display: words[$0].display, weak: weak(words[$0])) }
-        let reveal = resolved.reveal?.unit ?? .page
-        return CaptionCardText(source: source, words: card, keyIndex: keyIndex(card), styleMaxLines: resolved.layout.maxLines,
-                               drawsAtLastWord: reveal == .word || reveal == .char, holdGapSec: resolved.layout.holdGapSec)
+        return copy.card(source: source, words: page.map { words[$0] })
     }
 
     struct Candidate {
         var id: String, text: String, raw: String, display: String, start: Double, end: Double
+    }
+
+    /// The scope's caption copy (editing §7.6) in the resolved style: the library style with the supplied overrides at the
+    /// export frame, and only the words that normalisation and the bundled-font cascade leave a glyph (captions §3.1 and
+    /// §4.4). Caption cards and gallery samples (captions §15.2) both start from it.
+    struct ScopeWords {
+        let style: CaptionStyle
+        let tag: String
+        let language: String
+        let resources: CaptionResources
+        /// The scope's edited duration, which ends the last caption page (captions §8.1).
+        let duration: Double
+        /// The transcript language's stopwords. Nil when the language has none, and then no word is weak.
+        let stopwords: Set<String>?
+        private(set) var words: [Candidate] = []
+
+        /// Nil with no transcript, or when the style or the scope's plan cannot be built.
+        init?(project: Project, scope: CaptionCardScope, style: CaptionStyle, overrides: [String: JSONValue], resources: CaptionResources) {
+            guard let transcript = project.transcript else { return nil }
+            let tag = transcript.language ?? "und", frame = CaptionCardText.exportFrame(project)
+            let input = CaptionLayoutInput(style: style.id, frame: .init(width: frame.width, height: frame.height), language: tag, duration: 0,
+                captions: .init(overrides: overrides, position: project.captions.position,
+                                 positionByAspect: project.captions.positionByAspect), words: [])
+            guard let resolved = try? CaptionStyleResolver.resolution(style, input: input, resources: resources).style,
+                  let plan = try? VoiceLabOutputPlanner.build(project, scope: scope.outputScope) else { return nil }
+            self.style = resolved; self.tag = tag; language = CaptionTextRules.language(tag); self.resources = resources
+            duration = plan.duration; stopwords = resources.stopwords[language]
+            words = plan.captions.compactMap { candidate($0.id, $0.text, $0.start, $0.end) }
+        }
+
+        /// The word as a caption page holds it, or nil when nothing of it is drawn.
+        func candidate(_ id: String, _ text: String, _ start: Double, _ end: Double) -> Candidate? {
+            let normalised = CaptionTextRules.normalize(text, options: style.text, language: tag, resources: resources)
+            let request = GlyphShapeRequest(text: normalised, fontFile: style.font.file, fallbackFiles: style.font.fallbackFiles, language: tag)
+            guard !normalised.isEmpty, let runs = try? CaptionFontCascade.resolve(request, resources: resources).runs, !runs.isEmpty else { return nil }
+            return Candidate(id: id, text: text, raw: CaptionTextRules.raw(text), display: runs.map(\.text).joined(), start: start, end: end)
+        }
+
+        /// A filler or a stopword of the transcript language (design §5.4.2).
+        func weak(_ word: Candidate) -> Bool {
+            guard let stopwords else { return false }
+            return EditingPrimitives.filler(word.text) || stopwords.contains(CaptionTextRules.matchingKey(word.display, language: language, resources: resources))
+        }
+
+        /// The card of `words` in this style, with its key word and drawn moment (design §5.4.2).
+        func card(source: CaptionCardSource, words: [Candidate]) -> CaptionCardText {
+            let card = words.map { CaptionCardWord(id: $0.id, text: $0.text, display: $0.display, weak: weak($0)) }
+            let reveal = style.reveal?.unit ?? .page
+            return CaptionCardText(source: source, words: card, keyIndex: CaptionCardText.keyIndex(card), styleMaxLines: style.layout.maxLines,
+                                   drawsAtLastWord: reveal == .word || reveal == .char, holdGapSec: style.layout.holdGapSec)
+        }
     }
 
     static func keyIndex(_ words: [CaptionCardWord]) -> Int {

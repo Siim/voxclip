@@ -58,8 +58,8 @@ func captionCardFixtures() throws {
     }
 }
 
-/// One half-em glyph per kept scalar, so card layouts page and time without CoreText.
-private struct FixedAdvanceShaper: GlyphShaper {
+/// One half-em glyph per kept scalar, so card and gallery layouts page and time without CoreText.
+struct FixedAdvanceShaper: GlyphShaper {
     let resources: CaptionResources
     func shape(_ request: GlyphShapeRequest) async throws -> [ShapedRun] {
         try CaptionFontCascade.resolve(request, resources: resources).runs.map { run in

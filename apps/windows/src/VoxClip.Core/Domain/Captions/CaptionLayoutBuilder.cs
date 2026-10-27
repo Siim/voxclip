@@ -89,11 +89,8 @@ internal static class CaptionLayoutBuilder
             var shrunk = indices.Count == 1 && !Fits(widths[0]);
             var page64 = shrunk ? Math.Max((long)Math.Ceiling(font64 * style.Layout.MinShrink), Math.Min(font64, limit64 * font.UnitsPerEm / widths[0])) : font64;
             var start = words[indices[0]].Start;
-            var end = words[indices[^1]].End + style.Layout.HoldGapSec;
             var next = pageIndex + 1 < groups.Count ? words[groups[pageIndex + 1][0]].Start : double.PositiveInfinity;
-            end = Math.Min(end, next);
-            if (end - start < style.Layout.MinPageSec) end = Math.Min(start + style.Layout.MinPageSec, next);
-            end = Math.Min(end, request.Duration);
+            var end = PageEnd(start, words[indices[^1]].End, next, style.Layout, request.Duration);
             pages.Add(Place(pageIndex, indices, start, end, page64, shrunk, widths, lines, gap, style, font, request.Frame, safe, emphasised, emoji));
         }
         progress?.Report(1);
@@ -195,6 +192,15 @@ internal static class CaptionLayoutBuilder
         }
         if (current.Count > 0) pages.Add(current.ToArray());
         return pages.ToArray();
+    }
+
+    /// <summary>Captions §8.1: the end of a page that starts at start and whose last word ends at lastEnd. Next is the next
+    /// page's start, or infinity for the last page.</summary>
+    internal static double PageEnd(double start, double lastEnd, double next, CaptionLayout layout, double duration)
+    {
+        var end = Math.Min(lastEnd + layout.HoldGapSec, next);
+        if (end - start < layout.MinPageSec) end = Math.Min(start + layout.MinPageSec, next);
+        return Math.Min(end, duration);
     }
 
     internal static long Units(IReadOnlyList<long> widths, long gap, IReadOnlyList<int> indices) => indices.Sum(index => widths[index]) + gap * (indices.Count - 1);

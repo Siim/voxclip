@@ -149,7 +149,7 @@ public sealed class CaptionCardTests
     }
 
     /// <summary>One half-em glyph per UTF-16 unit, so card layouts page and time without HarfBuzz.</summary>
-    private sealed class FixedAdvanceShaper : IGlyphShaper
+    internal sealed class FixedAdvanceShaper : IGlyphShaper
     {
         public Task<ShapedRun> ShapeAsync(ShapingRequest request, CancellationToken ct)
         {

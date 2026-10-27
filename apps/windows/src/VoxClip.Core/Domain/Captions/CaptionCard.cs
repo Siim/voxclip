@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.Json;
 using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Domain.VoiceLab;
@@ -107,59 +108,98 @@ public sealed record CaptionCardText(CaptionCardSource Source, IReadOnlyList<Cap
         ArgumentNullException.ThrowIfNull(scope);
         ArgumentNullException.ThrowIfNull(style);
         ArgumentNullException.ThrowIfNull(resources);
-        if (project.Transcript is not { } transcript) return None;
-        var data = resources.Data;
-        var language = CaptionTextRules.Language(transcript.Language);
-        CaptionStyle resolved;
-        IReadOnlyList<CaptionWord> captions;
-        try
-        {
-            resolved = CaptionStyleResolver.Resolve(new CaptionLayoutRequest(style, project.Captions, ExportFrame(project), [], transcript.Language, 0), data, out _);
-            captions = VoiceLabOutputPlanner.Build(project, scope.ClipId is { } id ? VoiceLabOutputScope.Clip(id) : VoiceLabOutputScope.Full).Captions;
-        }
-        catch (Exception exception) when (exception is not OperationCanceledException) { return None; }
-        Candidate? Entry(string id, string text, double start, double end)
-        {
-            var normalised = CaptionTextRules.Normalize(text, resolved.Text, language, data);
-            if (normalised.Length == 0) return null;
-            var cascade = CaptionLayoutBuilder.Cascade(normalised, resolved.Font.File, resolved, data);
-            return cascade.Runs.Count == 0 ? null : new(id, text, CaptionTextRules.Raw(text), cascade.Kept, start, end);
-        }
-        var words = captions.Select(word => Entry(word.Id, word.Text, word.Start, word.End)).OfType<Candidate>().ToList();
-        if (words.Count == 0) return None;
-        var layout = resolved.Layout with { MaxWords = Math.Min(resolved.Layout.MaxWords, MaxWords) };
+        if (ScopeWords.Create(project, scope, style, project.Captions.Overrides, resources) is not { Words.Count: > 0 } copy) return None;
+        var words = copy.Words.ToList();
+        var layout = copy.Style.Layout with { MaxWords = Math.Min(copy.Style.Layout.MaxWords, MaxWords) };
         var source = CaptionCardSource.Transcript;
         if (!wordsVisible)
         {
             source = CaptionCardSource.Title;
             words = CaptionTextRules.Raw(project.Title ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries)
-                .Select((token, index) => Entry("title-" + index.ToString(CultureInfo.InvariantCulture), token, 0, 0)).OfType<Candidate>().ToList();
+                .Select((token, index) => copy.Entry("title-" + index.ToString(CultureInfo.InvariantCulture), token, 0, 0)).OfType<Candidate>().ToList();
             if (words.Count == 0) return None;
             layout = layout with { BreakOnGapSec = null, MaxPageSec = null };
         }
-        var stopwords = data.Stopwords.TryGetProperty(language, out var list)
-            ? list.EnumerateArray().Select(item => item.GetString()!).ToHashSet(StringComparer.Ordinal) : null;
-        bool Weak(Candidate word) => stopwords is not null
-            && (EditingAlgorithms.IsFillerText(word.Text) || stopwords.Contains(CaptionTextRules.Key(word.Display, language, data)));
-        if (stopwords is not null)
+        if (copy.Stopwords is not null)
         {
             var lead = words.FindIndex(word => !EditingAlgorithms.IsFillerText(word.Text));
             if (lead > 0) words.RemoveRange(0, lead);
         }
         var pages = CaptionLayoutBuilder.Group(words.Count, layout, index => words[index].Raw, index => words[index].Start, index => words[index].End, _ => true);
         var page = pages[0].ToList();
-        if (stopwords is not null)
+        if (copy.Stopwords is not null)
         {
-            page = (pages.FirstOrDefault(candidate => candidate.Any(index => !Weak(words[index]))) ?? pages[0]).ToList();
-            while (page.Count > 1 && Weak(words[page[^1]])) page.RemoveAt(page.Count - 1);
+            page = (pages.FirstOrDefault(candidate => candidate.Any(index => !copy.Weak(words[index]))) ?? pages[0]).ToList();
+            while (page.Count > 1 && copy.Weak(words[page[^1]])) page.RemoveAt(page.Count - 1);
         }
-        var card = page.Select(index => new CaptionCardWord(words[index].Id, words[index].Text, words[index].Display, Weak(words[index]))).ToArray();
-        var reveal = resolved.Reveal?.Unit ?? CaptionRevealUnitValue.Page;
-        return new(source, card, KeyIndexOf(card), resolved.Layout.MaxLines, reveal is CaptionRevealUnitValue.Word or CaptionRevealUnitValue.Char,
-            resolved.Layout.HoldGapSec);
+        return copy.Card(source, page.Select(index => words[index]).ToArray());
     }
 
-    private sealed record Candidate(string Id, string Text, string Raw, string Display, double Start, double End);
+    internal sealed record Candidate(string Id, string Text, string Raw, string Display, double Start, double End);
+
+    /// <summary>The scope's caption copy (editing §7.6) in the resolved style: the library style with the supplied overrides
+    /// at the export frame, and only the words that normalisation and the bundled-font cascade leave a glyph (captions §3.1
+    /// and §4.4). Caption cards and gallery samples (captions §15.2) both start from it. Duration is the scope's edited
+    /// duration, which ends the last caption page (captions §8.1). Stopwords is null when the transcript language has none,
+    /// and then no word is weak.</summary>
+    internal sealed class ScopeWords
+    {
+        private readonly CaptionData data;
+
+        private ScopeWords(CaptionStyle style, string language, double duration, HashSet<string>? stopwords, CaptionData data)
+        {
+            Style = style; Language = language; Duration = duration; Stopwords = stopwords; this.data = data;
+        }
+
+        internal CaptionStyle Style { get; }
+        internal string Language { get; }
+        internal double Duration { get; }
+        internal HashSet<string>? Stopwords { get; }
+        internal IReadOnlyList<Candidate> Words { get; private set; } = [];
+
+        /// <summary>Null with no transcript, or when the style or the scope's plan cannot be built.</summary>
+        internal static ScopeWords? Create(Project project, CaptionCardScope scope, CaptionStyle style, JsonElement overrides, CaptionResources resources)
+        {
+            if (project.Transcript is not { } transcript) return null;
+            var data = resources.Data;
+            CaptionStyle resolved;
+            VoiceLabOutputPlan plan;
+            try
+            {
+                resolved = CaptionStyleResolver.Resolve(new CaptionLayoutRequest(style, project.Captions with { Overrides = overrides }, ExportFrame(project), [], transcript.Language, 0), data, out _);
+                plan = VoiceLabOutputPlanner.Build(project, scope.ClipId is { } id ? VoiceLabOutputScope.Clip(id) : VoiceLabOutputScope.Full);
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException) { return null; }
+            var language = CaptionTextRules.Language(transcript.Language);
+            var stopwords = data.Stopwords.TryGetProperty(language, out var list)
+                ? list.EnumerateArray().Select(item => item.GetString()!).ToHashSet(StringComparer.Ordinal) : null;
+            var copy = new ScopeWords(resolved, language, plan.Duration, stopwords, data);
+            copy.Words = plan.Captions.Select(word => copy.Entry(word.Id, word.Text, word.Start, word.End)).OfType<Candidate>().ToArray();
+            return copy;
+        }
+
+        /// <summary>The word as a caption page holds it, or null when nothing of it is drawn.</summary>
+        internal Candidate? Entry(string id, string text, double start, double end)
+        {
+            var normalised = CaptionTextRules.Normalize(text, Style.Text, Language, data);
+            if (normalised.Length == 0) return null;
+            var cascade = CaptionLayoutBuilder.Cascade(normalised, Style.Font.File, Style, data);
+            return cascade.Runs.Count == 0 ? null : new(id, text, CaptionTextRules.Raw(text), cascade.Kept, start, end);
+        }
+
+        /// <summary>A filler or a stopword of the transcript language (design §5.4.2).</summary>
+        internal bool Weak(Candidate word) => Stopwords is not null
+            && (EditingAlgorithms.IsFillerText(word.Text) || Stopwords.Contains(CaptionTextRules.Key(word.Display, Language, data)));
+
+        /// <summary>The card of words in this style, with its key word and drawn moment (design §5.4.2).</summary>
+        internal CaptionCardText Card(CaptionCardSource source, IReadOnlyList<Candidate> words)
+        {
+            var card = words.Select(word => new CaptionCardWord(word.Id, word.Text, word.Display, Weak(word))).ToArray();
+            var reveal = Style.Reveal?.Unit ?? CaptionRevealUnitValue.Page;
+            return new(source, card, KeyIndexOf(card), Style.Layout.MaxLines, reveal is CaptionRevealUnitValue.Word or CaptionRevealUnitValue.Char,
+                Style.Layout.HoldGapSec);
+        }
+    }
 
     private static int KeyIndexOf(IReadOnlyList<CaptionCardWord> words)
     {

@@ -1,9 +1,11 @@
-"""Text normalisation (spec section 3). Uses shared/caption-styles/casemap.json for case mapping."""
+"""Text normalisation (spec section 3). Uses shared/caption-styles/casemap.json for case mapping.
+
+Only graphemes() needs the third-party `regex` package (UAX #29 clusters); everything else is standard library, so
+gen_gallery.py can use it without one.
+"""
 import os
 import re
 import unicodedata
-
-import regex  # third-party: \X extended grapheme clusters (UAX #29)
 
 from .util import STYLES, load_json
 
@@ -15,7 +17,6 @@ KEEP_ALWAYS = {ord(c) for c in "%#@&"}
 JOINERS = {0x27, 0x2019, 0x2D, 0x2010, 0x2011, 0x2013, 0x2014, 0x2E, 0x2F, 0xB7}
 NUMERIC_SEPARATORS = {0x2C, 0x3A}
 SIGNS = {0x2D, 0x2013}
-ABBREVIATION = regex.compile(r"^(?:\p{L}\.){2,}$")
 
 CLOSERS = "\"'”’)\\]»"
 SENTENCE_END = re.compile("[.!?…。！？][" + CLOSERS + "]*$")
@@ -106,7 +107,8 @@ def strip_punctuation(cps):
 
 
 def is_abbreviation(s):
-    return bool(ABBREVIATION.match(s))
+    """Two or more letters, each followed by a full stop (U.S., e.g.)."""
+    return len(s) >= 4 and len(s) % 2 == 0 and all(category(ord(c))[0] == "L" for c in s[::2]) and set(s[1::2]) == {"."}
 
 
 def normalize(raw, punctuation, transform, lang):
@@ -142,4 +144,6 @@ def matching_key(text, lang):
 
 
 def graphemes(s):
+    import regex  # third-party: \X extended grapheme clusters (UAX #29)
+
     return regex.findall(r"\X", s)

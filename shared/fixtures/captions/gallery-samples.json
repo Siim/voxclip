@@ -1,0 +1,3377 @@
+{
+ "fixture": "voxclip-caption-gallery/1",
+ "description": "Caption gallery tile samples (doc/spec/captions.md sections 15.2 and 15.3) for a project, a scope (null for the full take, else a clip id), a library style, the playhead in the scope's edited time and the Settings switch. The words are the caption page at the playhead (section 6.1 paging with project overrides only for the selected tile, without the 6.2 fit), the next page in a gap or before the first page, the last page after it, or the style's preview.text when the scope has no caption words or words are hidden. They are timed [0.4 i, 0.4 i + 0.35] with the text as stored and no emphasis; duration is 0.4 n + 0.5. time is 0.35 x 0.98 into the word the playhead is in; otherwise the caption card's drawn moment (doc/design.md section 5.4.2); for preview.text, 0.4 a + 0.35 min(progress, 0.98) with a = min(activeWord, n - 1) and progress 1 when absent.",
+ "projects": {
+  "all-cut": {
+   "format": "voxclip-project",
+   "schemaVersion": 1,
+   "id": "2b4d4819-7399-413b-65c7-04af6ebfeea1",
+   "title": "All cut",
+   "createdAt": "2026-10-25T09:12:03Z",
+   "modifiedAt": "2026-10-25T09:31:47Z",
+   "savedBy": {"app": "VoxClip", "version": "0.1.0", "platform": "macos"},
+   "media": {
+    "source": {
+     "absolutePath": "/Users/example/Movies/all-cut.mov",
+     "relativePath": "all-cut.mov",
+     "sizeBytes": 1048576,
+     "durationSeconds": 1.95,
+     "contentKey": "2b4d48197399413b65c704af6ebfeea1c72be8376227a7b34c9e750de0cb2b35",
+     "video": {"width": 1920, "height": 1080, "frameRate": 30, "rotationDegrees": 0},
+     "audio": {"sampleRate": 48000, "channels": 1}
+    }
+   },
+   "transcript": {
+    "schemaVersion": 1,
+    "words": [
+     {
+      "id": "w1",
+      "text": "Just",
+      "kind": "word",
+      "start": 0.2,
+      "end": 0.55,
+      "rawStart": 0.2,
+      "rawEnd": 0.55,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w2",
+      "text": "testing",
+      "kind": "word",
+      "start": 0.65,
+      "end": 1.0,
+      "rawStart": 0.65,
+      "rawEnd": 1.0,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w3",
+      "text": "this.",
+      "kind": "word",
+      "start": 1.1,
+      "end": 1.45,
+      "rawStart": 1.1,
+      "rawEnd": 1.45,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     }
+    ],
+    "language": "en",
+    "languageProbability": 0.99,
+    "durationSeconds": 1.95,
+    "engine": {
+     "id": "elevenlabs",
+     "modelId": "scribe_v2",
+     "modelSha256": null,
+     "engineVersion": "scribe_v2",
+     "locale": null
+    },
+    "verbatim": true,
+    "refined": true,
+    "pipelineVersion": 1,
+    "rawKey": "ad96ee3033c7cfe39605d32bb9986d85d9ad90e9e03dcb413750b8aed306fd16",
+    "createdAt": "2026-10-25T09:12:41Z"
+   },
+   "edits": {
+    "pauseThresholdSeconds": 0.8,
+    "pauseKeepSeconds": 0.15,
+    "cutWordIds": ["w1", "w2", "w3"],
+    "cutPauseIds": [],
+    "corrections": {},
+    "clips": [],
+    "activeClipId": null
+   },
+   "captions": {"styleId": "karaoke", "overrides": {}, "position": null, "positionByAspect": {}},
+   "export": {"aspect": "9:16", "quality": "standard", "srt": false, "folder": null},
+   "share": {"captions": {}},
+   "ai": {"results": []},
+   "voiceLab": {"segments": []},
+   "extensions": {}
+  },
+  "captions-off-override": {
+   "format": "voxclip-project",
+   "schemaVersion": 1,
+   "id": "640ee28e-c03e-d8e0-45e7-b7861c187ba2",
+   "title": "Captions off",
+   "createdAt": "2026-10-25T09:12:03Z",
+   "modifiedAt": "2026-10-25T09:31:47Z",
+   "savedBy": {"app": "VoxClip", "version": "0.1.0", "platform": "macos"},
+   "media": {
+    "source": {
+     "absolutePath": "/Users/example/Movies/captions-off-override.mov",
+     "relativePath": "captions-off-override.mov",
+     "sizeBytes": 1048576,
+     "durationSeconds": 2.4,
+     "contentKey": "640ee28ec03ed8e045e7b7861c187ba24ff3fa7f6e895a072fe2bce2298f7d0f",
+     "video": {"width": 1920, "height": 1080, "frameRate": 30, "rotationDegrees": 0},
+     "audio": {"sampleRate": 48000, "channels": 1}
+    }
+   },
+   "transcript": {
+    "schemaVersion": 1,
+    "words": [
+     {
+      "id": "w1",
+      "text": "Bright",
+      "kind": "word",
+      "start": 0.2,
+      "end": 0.55,
+      "rawStart": 0.2,
+      "rawEnd": 0.55,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w2",
+      "text": "ideas",
+      "kind": "word",
+      "start": 0.65,
+      "end": 1.0,
+      "rawStart": 0.65,
+      "rawEnd": 1.0,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w3",
+      "text": "travel",
+      "kind": "word",
+      "start": 1.1,
+      "end": 1.45,
+      "rawStart": 1.1,
+      "rawEnd": 1.45,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w4",
+      "text": "far",
+      "kind": "word",
+      "start": 1.55,
+      "end": 1.9,
+      "rawStart": 1.55,
+      "rawEnd": 1.9,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     }
+    ],
+    "language": "en",
+    "languageProbability": 0.99,
+    "durationSeconds": 2.4,
+    "engine": {
+     "id": "elevenlabs",
+     "modelId": "scribe_v2",
+     "modelSha256": null,
+     "engineVersion": "scribe_v2",
+     "locale": null
+    },
+    "verbatim": true,
+    "refined": true,
+    "pipelineVersion": 1,
+    "rawKey": "18c1753e0be5c82c65ae6c11181f743f625c36f07e88067acf39b246a8646480",
+    "createdAt": "2026-10-25T09:12:41Z"
+   },
+   "edits": {
+    "pauseThresholdSeconds": 0.8,
+    "pauseKeepSeconds": 0.15,
+    "cutWordIds": [],
+    "cutPauseIds": [],
+    "corrections": {},
+    "clips": [],
+    "activeClipId": null
+   },
+   "captions": {
+    "styleId": "off",
+    "overrides": {"layout": {"maxWords": 1, "maxLines": 1}},
+    "position": null,
+    "positionByAspect": {}
+   },
+   "export": {"aspect": "9:16", "quality": "standard", "srt": false, "folder": null},
+   "share": {"captions": {}},
+   "ai": {"results": []},
+   "voiceLab": {"segments": []},
+   "extensions": {}
+  },
+  "corrected-take": {
+   "format": "voxclip-project",
+   "schemaVersion": 1,
+   "id": "5b7e0f7a-3c1d-4b8e-9a51-2f6d0c8e4a11",
+   "title": "Interview take 3",
+   "createdAt": "2026-10-25T09:12:03Z",
+   "modifiedAt": "2026-10-25T09:31:47Z",
+   "savedBy": {"app": "VoxClip", "version": "0.1.0", "platform": "macos"},
+   "media": {
+    "source": {
+     "absolutePath": "/Users/alex/Movies/VoxClip/interview-take-3.mov",
+     "relativePath": "interview-take-3.mov",
+     "sizeBytes": 9437184,
+     "durationSeconds": 7,
+     "contentKey": "a12b2e004311fcd7687a1e7dce95e15790e043ee2af00b39fed7b06fd5c88393",
+     "video": {"width": 1920, "height": 1080, "frameRate": 30, "rotationDegrees": 0},
+     "audio": {"sampleRate": 48000, "channels": 1}
+    }
+   },
+   "transcript": {
+    "schemaVersion": 1,
+    "words": [
+     {
+      "id": "w1",
+      "text": "So",
+      "kind": "word",
+      "start": 0.3,
+      "end": 0.6,
+      "rawStart": 0.34,
+      "rawEnd": 0.57,
+      "conf": 0.99,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w2",
+      "text": "um,",
+      "kind": "word",
+      "start": 0.7,
+      "end": 1,
+      "rawStart": 0.74,
+      "rawEnd": 0.97,
+      "conf": 0.81,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w3",
+      "text": "today",
+      "kind": "word",
+      "start": 1.1,
+      "end": 1.5,
+      "rawStart": 1.14,
+      "rawEnd": 1.47,
+      "conf": 0.98,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w4",
+      "text": "we",
+      "kind": "word",
+      "start": 2.6,
+      "end": 2.75,
+      "rawStart": 2.64,
+      "rawEnd": 2.72,
+      "conf": 0.99,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w5",
+      "text": "ship",
+      "kind": "word",
+      "start": 2.8,
+      "end": 3.1,
+      "rawStart": 2.84,
+      "rawEnd": 3.07,
+      "conf": 0.97,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w6",
+      "text": "uh",
+      "kind": "word",
+      "start": 3.2,
+      "end": 3.4,
+      "rawStart": 3.24,
+      "rawEnd": 3.37,
+      "conf": 0.77,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w7",
+      "text": "the",
+      "kind": "word",
+      "start": 3.5,
+      "end": 3.6,
+      "rawStart": 3.54,
+      "rawEnd": 3.57,
+      "conf": 0.99,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w8",
+      "text": "clipper.",
+      "kind": "word",
+      "start": 3.65,
+      "end": 4.2,
+      "rawStart": 3.69,
+      "rawEnd": 4.17,
+      "conf": 0.96,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w9",
+      "text": "Thanks",
+      "kind": "word",
+      "start": 5.5,
+      "end": 5.9,
+      "rawStart": 5.54,
+      "rawEnd": 5.87,
+      "conf": 0.99,
+      "speaker": null,
+      "timing": "native"
+     }
+    ],
+    "language": "en",
+    "languageProbability": 0.99,
+    "durationSeconds": 7,
+    "engine": {
+     "id": "elevenlabs",
+     "modelId": "scribe_v2",
+     "modelSha256": null,
+     "engineVersion": "scribe_v2",
+     "locale": null
+    },
+    "verbatim": true,
+    "refined": true,
+    "pipelineVersion": 1,
+    "rawKey": "1c030c022ede1c5e2e0277f1c50750593503573d674b82084a060e9c67351d4d",
+    "createdAt": "2026-10-25T09:12:41Z"
+   },
+   "edits": {
+    "pauseThresholdSeconds": 0.8,
+    "pauseKeepSeconds": 0.15,
+    "cutWordIds": ["w1"],
+    "cutPauseIds": [],
+    "corrections": {"w2": "corrected"},
+    "clips": [
+     {
+      "id": "clip-opening",
+      "startWordId": "w1",
+      "endWordId": "w3",
+      "title": "So um, today",
+      "origin": "manual",
+      "aiResultId": null,
+      "aiClipIndex": null,
+      "selected": true
+     }
+    ],
+    "activeClipId": null
+   },
+   "captions": {"styleId": "vox-bold", "overrides": {}, "position": null, "positionByAspect": {}},
+   "export": {"aspect": "16:9", "quality": "standard", "srt": false, "folder": null},
+   "share": {"captions": {"full": "Today we shipped the clipper. Thanks"}},
+   "ai": {"results": []},
+   "voiceLab": {"segments": []},
+   "extensions": {}
+  },
+  "estonian": {
+   "format": "voxclip-project",
+   "schemaVersion": 1,
+   "id": "1e87066c-5ef8-0a64-149b-d87253664124",
+   "title": "Öine küpsetamine",
+   "createdAt": "2026-10-25T09:12:03Z",
+   "modifiedAt": "2026-10-25T09:31:47Z",
+   "savedBy": {"app": "VoxClip", "version": "0.1.0", "platform": "macos"},
+   "media": {
+    "source": {
+     "absolutePath": "/Users/example/Movies/estonian.mov",
+     "relativePath": "estonian.mov",
+     "sizeBytes": 1048576,
+     "durationSeconds": 5.1,
+     "contentKey": "1e87066c5ef80a64149bd872536641244a87aaab8cdd023b3e31f09251bf50e3",
+     "video": {"width": 1920, "height": 1080, "frameRate": 30, "rotationDegrees": 0},
+     "audio": {"sampleRate": 48000, "channels": 1}
+    }
+   },
+   "transcript": {
+    "schemaVersion": 1,
+    "words": [
+     {
+      "id": "w1",
+      "text": "Öösel",
+      "kind": "word",
+      "start": 0.2,
+      "end": 0.55,
+      "rawStart": 0.2,
+      "rawEnd": 0.55,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w2",
+      "text": "küpsetatud",
+      "kind": "word",
+      "start": 0.65,
+      "end": 1.0,
+      "rawStart": 0.65,
+      "rawEnd": 1.0,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w3",
+      "text": "šokolaadikook",
+      "kind": "word",
+      "start": 1.1,
+      "end": 1.45,
+      "rawStart": 1.1,
+      "rawEnd": 1.45,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w4",
+      "text": "on",
+      "kind": "word",
+      "start": 1.55,
+      "end": 1.9,
+      "rawStart": 1.55,
+      "rawEnd": 1.9,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w5",
+      "text": "päris",
+      "kind": "word",
+      "start": 2.0,
+      "end": 2.35,
+      "rawStart": 2.0,
+      "rawEnd": 2.35,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w6",
+      "text": "hõrk.",
+      "kind": "word",
+      "start": 2.45,
+      "end": 2.8,
+      "rawStart": 2.45,
+      "rawEnd": 2.8,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w7",
+      "text": "Homme",
+      "kind": "word",
+      "start": 2.9,
+      "end": 3.25,
+      "rawStart": 2.9,
+      "rawEnd": 3.25,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w8",
+      "text": "proovime",
+      "kind": "word",
+      "start": 3.35,
+      "end": 3.7,
+      "rawStart": 3.35,
+      "rawEnd": 3.7,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w9",
+      "text": "uuesti",
+      "kind": "word",
+      "start": 3.8,
+      "end": 4.15,
+      "rawStart": 3.8,
+      "rawEnd": 4.15,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w10",
+      "text": "õunakooki.",
+      "kind": "word",
+      "start": 4.25,
+      "end": 4.6,
+      "rawStart": 4.25,
+      "rawEnd": 4.6,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     }
+    ],
+    "language": "et",
+    "languageProbability": 0.99,
+    "durationSeconds": 5.1,
+    "engine": {
+     "id": "elevenlabs",
+     "modelId": "scribe_v2",
+     "modelSha256": null,
+     "engineVersion": "scribe_v2",
+     "locale": null
+    },
+    "verbatim": true,
+    "refined": true,
+    "pipelineVersion": 1,
+    "rawKey": "54aa0f8886b8a65fe44a1b727a61d7ac37b8ede65956625dd792d38153388185",
+    "createdAt": "2026-10-25T09:12:41Z"
+   },
+   "edits": {
+    "pauseThresholdSeconds": 0.8,
+    "pauseKeepSeconds": 0.15,
+    "cutWordIds": [],
+    "cutPauseIds": [],
+    "corrections": {},
+    "clips": [],
+    "activeClipId": null
+   },
+   "captions": {"styleId": "karaoke", "overrides": {}, "position": null, "positionByAspect": {}},
+   "export": {"aspect": "9:16", "quality": "standard", "srt": false, "folder": null},
+   "share": {"captions": {}},
+   "ai": {"results": []},
+   "voiceLab": {"segments": []},
+   "extensions": {}
+  },
+  "exact-gap": {
+   "format": "voxclip-project",
+   "schemaVersion": 1,
+   "id": "ef68aabc-3934-7703-be3c-4a760b87473c",
+   "title": "Exact gap",
+   "createdAt": "2026-10-25T09:12:03Z",
+   "modifiedAt": "2026-10-25T09:31:47Z",
+   "savedBy": {"app": "VoxClip", "version": "0.1.0", "platform": "macos"},
+   "media": {
+    "source": {
+     "absolutePath": "/Users/example/Movies/exact-gap.mov",
+     "relativePath": "exact-gap.mov",
+     "sizeBytes": 1048576,
+     "durationSeconds": 2.5,
+     "contentKey": "ef68aabc39347703be3c4a760b87473c7b80a2d9811de3d94416a89ef26d59e5",
+     "video": {"width": 1920, "height": 1080, "frameRate": 30, "rotationDegrees": 0},
+     "audio": {"sampleRate": 48000, "channels": 1}
+    }
+   },
+   "transcript": {
+    "schemaVersion": 1,
+    "words": [
+     {
+      "id": "w1",
+      "text": "Hello",
+      "kind": "word",
+      "start": 0.2,
+      "end": 0.5,
+      "rawStart": 0.2,
+      "rawEnd": 0.5,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w2",
+      "text": "bright",
+      "kind": "word",
+      "start": 1.3,
+      "end": 1.6,
+      "rawStart": 1.3,
+      "rawEnd": 1.6,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w3",
+      "text": "world",
+      "kind": "word",
+      "start": 1.7,
+      "end": 2.0,
+      "rawStart": 1.7,
+      "rawEnd": 2.0,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     }
+    ],
+    "language": "en",
+    "languageProbability": 0.99,
+    "durationSeconds": 2.5,
+    "engine": {
+     "id": "elevenlabs",
+     "modelId": "scribe_v2",
+     "modelSha256": null,
+     "engineVersion": "scribe_v2",
+     "locale": null
+    },
+    "verbatim": true,
+    "refined": true,
+    "pipelineVersion": 1,
+    "rawKey": "f9e3dae99cb758d183a73a28c4dd3fe91a044db5b09d1a66765cf893a70e78e7",
+    "createdAt": "2026-10-25T09:12:41Z"
+   },
+   "edits": {
+    "pauseThresholdSeconds": 0.8,
+    "pauseKeepSeconds": 0.15,
+    "cutWordIds": [],
+    "cutPauseIds": [],
+    "corrections": {},
+    "clips": [],
+    "activeClipId": null
+   },
+   "captions": {"styleId": "clean-subtitle", "overrides": {}, "position": null, "positionByAspect": {}},
+   "export": {"aspect": "9:16", "quality": "standard", "srt": false, "folder": null},
+   "share": {"captions": {}},
+   "ai": {"results": []},
+   "voiceLab": {"segments": []},
+   "extensions": {}
+  },
+  "grinder-clip": {
+   "format": "voxclip-project",
+   "schemaVersion": 1,
+   "id": "6b754519-191e-68a3-397b-ae804fb551f5",
+   "title": "Grinder shootout",
+   "createdAt": "2026-10-25T09:12:03Z",
+   "modifiedAt": "2026-10-25T09:31:47Z",
+   "savedBy": {"app": "VoxClip", "version": "0.1.0", "platform": "macos"},
+   "media": {
+    "source": {
+     "absolutePath": "/Users/example/Movies/grinder-clip.mov",
+     "relativePath": "grinder-clip.mov",
+     "sizeBytes": 1048576,
+     "durationSeconds": 7.8,
+     "contentKey": "6b754519191e68a3397bae804fb551f54a6c410941bc332667b2ba1655415412",
+     "video": {"width": 1920, "height": 1080, "frameRate": 30, "rotationDegrees": 0},
+     "audio": {"sampleRate": 48000, "channels": 1}
+    }
+   },
+   "transcript": {
+    "schemaVersion": 1,
+    "words": [
+     {
+      "id": "w1",
+      "text": "Okay",
+      "kind": "word",
+      "start": 0.2,
+      "end": 0.55,
+      "rawStart": 0.2,
+      "rawEnd": 0.55,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w2",
+      "text": "so",
+      "kind": "word",
+      "start": 0.65,
+      "end": 1.0,
+      "rawStart": 0.65,
+      "rawEnd": 1.0,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w3",
+      "text": "we",
+      "kind": "word",
+      "start": 1.1,
+      "end": 1.45,
+      "rawStart": 1.1,
+      "rawEnd": 1.45,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w4",
+      "text": "tested",
+      "kind": "word",
+      "start": 1.55,
+      "end": 1.9,
+      "rawStart": 1.55,
+      "rawEnd": 1.9,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w5",
+      "text": "12",
+      "kind": "word",
+      "start": 2.0,
+      "end": 2.35,
+      "rawStart": 2.0,
+      "rawEnd": 2.35,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w6",
+      "text": "grinders",
+      "kind": "word",
+      "start": 2.45,
+      "end": 2.8,
+      "rawStart": 2.45,
+      "rawEnd": 2.8,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w7",
+      "text": "over",
+      "kind": "word",
+      "start": 2.9,
+      "end": 3.25,
+      "rawStart": 2.9,
+      "rawEnd": 3.25,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w8",
+      "text": "three",
+      "kind": "word",
+      "start": 3.35,
+      "end": 3.7,
+      "rawStart": 3.35,
+      "rawEnd": 3.7,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w9",
+      "text": "weeks.",
+      "kind": "word",
+      "start": 3.8,
+      "end": 4.15,
+      "rawStart": 3.8,
+      "rawEnd": 4.15,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w10",
+      "text": "The",
+      "kind": "word",
+      "start": 4.25,
+      "end": 4.6,
+      "rawStart": 4.25,
+      "rawEnd": 4.6,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w11",
+      "text": "cheapest",
+      "kind": "word",
+      "start": 4.7,
+      "end": 5.05,
+      "rawStart": 4.7,
+      "rawEnd": 5.05,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w12",
+      "text": "one",
+      "kind": "word",
+      "start": 5.15,
+      "end": 5.5,
+      "rawStart": 5.15,
+      "rawEnd": 5.5,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w13",
+      "text": "won",
+      "kind": "word",
+      "start": 5.6,
+      "end": 5.95,
+      "rawStart": 5.6,
+      "rawEnd": 5.95,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w14",
+      "text": "by",
+      "kind": "word",
+      "start": 6.05,
+      "end": 6.4,
+      "rawStart": 6.05,
+      "rawEnd": 6.4,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w15",
+      "text": "a",
+      "kind": "word",
+      "start": 6.5,
+      "end": 6.85,
+      "rawStart": 6.5,
+      "rawEnd": 6.85,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w16",
+      "text": "mile.",
+      "kind": "word",
+      "start": 6.95,
+      "end": 7.3,
+      "rawStart": 6.95,
+      "rawEnd": 7.3,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     }
+    ],
+    "language": "en",
+    "languageProbability": 0.99,
+    "durationSeconds": 7.8,
+    "engine": {
+     "id": "elevenlabs",
+     "modelId": "scribe_v2",
+     "modelSha256": null,
+     "engineVersion": "scribe_v2",
+     "locale": null
+    },
+    "verbatim": true,
+    "refined": true,
+    "pipelineVersion": 1,
+    "rawKey": "1d57be528737f4df4c2e81ffcb2677d3c65a63b9d0b7c87dce614435b8238d83",
+    "createdAt": "2026-10-25T09:12:41Z"
+   },
+   "edits": {
+    "pauseThresholdSeconds": 0.8,
+    "pauseKeepSeconds": 0.15,
+    "cutWordIds": ["w8"],
+    "cutPauseIds": [],
+    "corrections": {},
+    "clips": [
+     {
+      "id": "clip-result",
+      "startWordId": "w4",
+      "endWordId": "w16",
+      "title": "The result",
+      "origin": "manual",
+      "aiResultId": null,
+      "aiClipIndex": null,
+      "selected": true
+     }
+    ],
+    "activeClipId": null
+   },
+   "captions": {"styleId": "active-pop", "overrides": {}, "position": null, "positionByAspect": {}},
+   "export": {"aspect": "9:16", "quality": "standard", "srt": false, "folder": null},
+   "share": {"captions": {}},
+   "ai": {"results": []},
+   "voiceLab": {"segments": []},
+   "extensions": {}
+  },
+  "interview-take": {
+   "format": "voxclip-project",
+   "schemaVersion": 1,
+   "id": "5b7e0f7a-3c1d-4b8e-9a51-2f6d0c8e4a11",
+   "title": "Interview take 3",
+   "createdAt": "2026-10-25T09:12:03Z",
+   "modifiedAt": "2026-10-25T09:31:47Z",
+   "savedBy": {"app": "VoxClip", "version": "0.1.0", "platform": "macos"},
+   "media": {
+    "source": {
+     "absolutePath": "/Users/alex/Movies/VoxClip/interview-take-3.mov",
+     "relativePath": "interview-take-3.mov",
+     "sizeBytes": 9437184,
+     "durationSeconds": 7,
+     "contentKey": "a12b2e004311fcd7687a1e7dce95e15790e043ee2af00b39fed7b06fd5c88393",
+     "video": {"width": 1920, "height": 1080, "frameRate": 30, "rotationDegrees": 0},
+     "audio": {"sampleRate": 48000, "channels": 1}
+    }
+   },
+   "transcript": {
+    "schemaVersion": 1,
+    "words": [
+     {
+      "id": "w1",
+      "text": "So",
+      "kind": "word",
+      "start": 0.3,
+      "end": 0.6,
+      "rawStart": 0.34,
+      "rawEnd": 0.57,
+      "conf": 0.99,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w2",
+      "text": "um,",
+      "kind": "word",
+      "start": 0.7,
+      "end": 1,
+      "rawStart": 0.74,
+      "rawEnd": 0.97,
+      "conf": 0.81,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w3",
+      "text": "today",
+      "kind": "word",
+      "start": 1.1,
+      "end": 1.5,
+      "rawStart": 1.14,
+      "rawEnd": 1.47,
+      "conf": 0.98,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w4",
+      "text": "we",
+      "kind": "word",
+      "start": 2.6,
+      "end": 2.75,
+      "rawStart": 2.64,
+      "rawEnd": 2.72,
+      "conf": 0.99,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w5",
+      "text": "ship",
+      "kind": "word",
+      "start": 2.8,
+      "end": 3.1,
+      "rawStart": 2.84,
+      "rawEnd": 3.07,
+      "conf": 0.97,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w6",
+      "text": "uh",
+      "kind": "word",
+      "start": 3.2,
+      "end": 3.4,
+      "rawStart": 3.24,
+      "rawEnd": 3.37,
+      "conf": 0.77,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w7",
+      "text": "the",
+      "kind": "word",
+      "start": 3.5,
+      "end": 3.6,
+      "rawStart": 3.54,
+      "rawEnd": 3.57,
+      "conf": 0.99,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w8",
+      "text": "clipper.",
+      "kind": "word",
+      "start": 3.65,
+      "end": 4.2,
+      "rawStart": 3.69,
+      "rawEnd": 4.17,
+      "conf": 0.96,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w9",
+      "text": "Thanks",
+      "kind": "word",
+      "start": 5.5,
+      "end": 5.9,
+      "rawStart": 5.54,
+      "rawEnd": 5.87,
+      "conf": 0.99,
+      "speaker": null,
+      "timing": "native"
+     }
+    ],
+    "language": "en",
+    "languageProbability": 0.99,
+    "durationSeconds": 7,
+    "engine": {
+     "id": "elevenlabs",
+     "modelId": "scribe_v2",
+     "modelSha256": null,
+     "engineVersion": "scribe_v2",
+     "locale": null
+    },
+    "verbatim": true,
+    "refined": true,
+    "pipelineVersion": 1,
+    "rawKey": "1c030c022ede1c5e2e0277f1c50750593503573d674b82084a060e9c67351d4d",
+    "createdAt": "2026-10-25T09:12:41Z"
+   },
+   "edits": {
+    "pauseThresholdSeconds": 0.8,
+    "pauseKeepSeconds": 0.15,
+    "cutWordIds": ["w2", "w6"],
+    "cutPauseIds": ["pause-after-w3"],
+    "corrections": {"w5": "shipped"},
+    "clips": [],
+    "activeClipId": null
+   },
+   "captions": {"styleId": "vox-bold", "overrides": {}, "position": null, "positionByAspect": {}},
+   "export": {"aspect": "9:16", "quality": "standard", "srt": false, "folder": null},
+   "share": {"captions": {"full": "Today we shipped the clipper. Thanks"}},
+   "ai": {"results": []},
+   "voiceLab": {"segments": []},
+   "extensions": {}
+  },
+  "line-override": {
+   "format": "voxclip-project",
+   "schemaVersion": 1,
+   "id": "5897bbe6-3c36-7f34-3652-d06b5898ae24",
+   "title": "Quick line",
+   "createdAt": "2026-10-25T09:12:03Z",
+   "modifiedAt": "2026-10-25T09:31:47Z",
+   "savedBy": {"app": "VoxClip", "version": "0.1.0", "platform": "macos"},
+   "media": {
+    "source": {
+     "absolutePath": "/Users/example/Movies/line-override.mov",
+     "relativePath": "line-override.mov",
+     "sizeBytes": 1048576,
+     "durationSeconds": 3.35,
+     "contentKey": "5897bbe63c367f343652d06b5898ae24ccd51a41bcd3554d30d15ed6be575bac",
+     "video": {"width": 1920, "height": 1080, "frameRate": 30, "rotationDegrees": 0},
+     "audio": {"sampleRate": 48000, "channels": 1}
+    }
+   },
+   "transcript": {
+    "schemaVersion": 1,
+    "words": [
+     {
+      "id": "w1",
+      "text": "So",
+      "kind": "word",
+      "start": 0.2,
+      "end": 0.45,
+      "rawStart": 0.2,
+      "rawEnd": 0.45,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w2",
+      "text": "today",
+      "kind": "word",
+      "start": 0.5,
+      "end": 0.75,
+      "rawStart": 0.5,
+      "rawEnd": 0.75,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w3",
+      "text": "we",
+      "kind": "word",
+      "start": 0.8,
+      "end": 1.05,
+      "rawStart": 0.8,
+      "rawEnd": 1.05,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w4",
+      "text": "ship",
+      "kind": "word",
+      "start": 1.1,
+      "end": 1.35,
+      "rawStart": 1.1,
+      "rawEnd": 1.35,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w5",
+      "text": "a",
+      "kind": "word",
+      "start": 1.4,
+      "end": 1.65,
+      "rawStart": 1.4,
+      "rawEnd": 1.65,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w6",
+      "text": "fast",
+      "kind": "word",
+      "start": 1.7,
+      "end": 1.95,
+      "rawStart": 1.7,
+      "rawEnd": 1.95,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w7",
+      "text": "small",
+      "kind": "word",
+      "start": 2.0,
+      "end": 2.25,
+      "rawStart": 2.0,
+      "rawEnd": 2.25,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w8",
+      "text": "new",
+      "kind": "word",
+      "start": 2.3,
+      "end": 2.55,
+      "rawStart": 2.3,
+      "rawEnd": 2.55,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w9",
+      "text": "clipper",
+      "kind": "word",
+      "start": 2.6,
+      "end": 2.85,
+      "rawStart": 2.6,
+      "rawEnd": 2.85,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     }
+    ],
+    "language": "en",
+    "languageProbability": 0.99,
+    "durationSeconds": 3.35,
+    "engine": {
+     "id": "elevenlabs",
+     "modelId": "scribe_v2",
+     "modelSha256": null,
+     "engineVersion": "scribe_v2",
+     "locale": null
+    },
+    "verbatim": true,
+    "refined": true,
+    "pipelineVersion": 1,
+    "rawKey": "f48abcee8461124b3f8b867f607a2027fadc0eba30582b65043294b52d103dd5",
+    "createdAt": "2026-10-25T09:12:41Z"
+   },
+   "edits": {
+    "pauseThresholdSeconds": 0.8,
+    "pauseKeepSeconds": 0.15,
+    "cutWordIds": [],
+    "cutPauseIds": [],
+    "corrections": {},
+    "clips": [],
+    "activeClipId": null
+   },
+   "captions": {
+    "styleId": "vox-bold",
+    "overrides": {"layout": {"maxWords": 16, "maxLines": 1}},
+    "position": null,
+    "positionByAspect": {}
+   },
+   "export": {"aspect": "9:16", "quality": "standard", "srt": false, "folder": null},
+   "share": {"captions": {}},
+   "ai": {"results": []},
+   "voiceLab": {"segments": []},
+   "extensions": {}
+  },
+  "one-word-override": {
+   "format": "voxclip-project",
+   "schemaVersion": 1,
+   "id": "5b7e0f7a-3c1d-4b8e-9a51-2f6d0c8e4a11",
+   "title": "Interview take 3",
+   "createdAt": "2026-10-25T09:12:03Z",
+   "modifiedAt": "2026-10-25T09:31:47Z",
+   "savedBy": {"app": "VoxClip", "version": "0.1.0", "platform": "macos"},
+   "media": {
+    "source": {
+     "absolutePath": "/Users/alex/Movies/VoxClip/interview-take-3.mov",
+     "relativePath": "interview-take-3.mov",
+     "sizeBytes": 9437184,
+     "durationSeconds": 7,
+     "contentKey": "a12b2e004311fcd7687a1e7dce95e15790e043ee2af00b39fed7b06fd5c88393",
+     "video": {"width": 1920, "height": 1080, "frameRate": 30, "rotationDegrees": 0},
+     "audio": {"sampleRate": 48000, "channels": 1}
+    }
+   },
+   "transcript": {
+    "schemaVersion": 1,
+    "words": [
+     {
+      "id": "w1",
+      "text": "So",
+      "kind": "word",
+      "start": 0.3,
+      "end": 0.6,
+      "rawStart": 0.34,
+      "rawEnd": 0.57,
+      "conf": 0.99,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w2",
+      "text": "um,",
+      "kind": "word",
+      "start": 0.7,
+      "end": 1,
+      "rawStart": 0.74,
+      "rawEnd": 0.97,
+      "conf": 0.81,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w3",
+      "text": "today",
+      "kind": "word",
+      "start": 1.1,
+      "end": 1.5,
+      "rawStart": 1.14,
+      "rawEnd": 1.47,
+      "conf": 0.98,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w4",
+      "text": "we",
+      "kind": "word",
+      "start": 2.6,
+      "end": 2.75,
+      "rawStart": 2.64,
+      "rawEnd": 2.72,
+      "conf": 0.99,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w5",
+      "text": "ship",
+      "kind": "word",
+      "start": 2.8,
+      "end": 3.1,
+      "rawStart": 2.84,
+      "rawEnd": 3.07,
+      "conf": 0.97,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w6",
+      "text": "uh",
+      "kind": "word",
+      "start": 3.2,
+      "end": 3.4,
+      "rawStart": 3.24,
+      "rawEnd": 3.37,
+      "conf": 0.77,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w7",
+      "text": "the",
+      "kind": "word",
+      "start": 3.5,
+      "end": 3.6,
+      "rawStart": 3.54,
+      "rawEnd": 3.57,
+      "conf": 0.99,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w8",
+      "text": "clipper.",
+      "kind": "word",
+      "start": 3.65,
+      "end": 4.2,
+      "rawStart": 3.69,
+      "rawEnd": 4.17,
+      "conf": 0.96,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w9",
+      "text": "Thanks",
+      "kind": "word",
+      "start": 5.5,
+      "end": 5.9,
+      "rawStart": 5.54,
+      "rawEnd": 5.87,
+      "conf": 0.99,
+      "speaker": null,
+      "timing": "native"
+     }
+    ],
+    "language": "en",
+    "languageProbability": 0.99,
+    "durationSeconds": 7,
+    "engine": {
+     "id": "elevenlabs",
+     "modelId": "scribe_v2",
+     "modelSha256": null,
+     "engineVersion": "scribe_v2",
+     "locale": null
+    },
+    "verbatim": true,
+    "refined": true,
+    "pipelineVersion": 1,
+    "rawKey": "1c030c022ede1c5e2e0277f1c50750593503573d674b82084a060e9c67351d4d",
+    "createdAt": "2026-10-25T09:12:41Z"
+   },
+   "edits": {
+    "pauseThresholdSeconds": 0.8,
+    "pauseKeepSeconds": 0.15,
+    "cutWordIds": ["w2", "w6"],
+    "cutPauseIds": ["pause-after-w3"],
+    "corrections": {"w5": "shipped"},
+    "clips": [],
+    "activeClipId": null
+   },
+   "captions": {
+    "styleId": "vox-bold",
+    "overrides": {"layout": {"maxWords": 1, "maxLines": 1}},
+    "position": null,
+    "positionByAspect": {}
+   },
+   "export": {"aspect": "9:16", "quality": "standard", "srt": false, "folder": null},
+   "share": {"captions": {"full": "Today we shipped the clipper. Thanks"}},
+   "ai": {"results": []},
+   "voiceLab": {"segments": []},
+   "extensions": {}
+  },
+  "selected-line-override": {
+   "format": "voxclip-project",
+   "schemaVersion": 1,
+   "id": "5897bbe6-3c36-7f34-3652-d06b5898ae24",
+   "title": "Quick line",
+   "createdAt": "2026-10-25T09:12:03Z",
+   "modifiedAt": "2026-10-25T09:31:47Z",
+   "savedBy": {"app": "VoxClip", "version": "0.1.0", "platform": "macos"},
+   "media": {
+    "source": {
+     "absolutePath": "/Users/example/Movies/line-override.mov",
+     "relativePath": "line-override.mov",
+     "sizeBytes": 1048576,
+     "durationSeconds": 3.35,
+     "contentKey": "5897bbe63c367f343652d06b5898ae24ccd51a41bcd3554d30d15ed6be575bac",
+     "video": {"width": 1920, "height": 1080, "frameRate": 30, "rotationDegrees": 0},
+     "audio": {"sampleRate": 48000, "channels": 1}
+    }
+   },
+   "transcript": {
+    "schemaVersion": 1,
+    "words": [
+     {
+      "id": "w1",
+      "text": "So",
+      "kind": "word",
+      "start": 0.2,
+      "end": 0.45,
+      "rawStart": 0.2,
+      "rawEnd": 0.45,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w2",
+      "text": "today",
+      "kind": "word",
+      "start": 0.5,
+      "end": 0.75,
+      "rawStart": 0.5,
+      "rawEnd": 0.75,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w3",
+      "text": "we",
+      "kind": "word",
+      "start": 0.8,
+      "end": 1.05,
+      "rawStart": 0.8,
+      "rawEnd": 1.05,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w4",
+      "text": "ship",
+      "kind": "word",
+      "start": 1.1,
+      "end": 1.35,
+      "rawStart": 1.1,
+      "rawEnd": 1.35,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w5",
+      "text": "a",
+      "kind": "word",
+      "start": 1.4,
+      "end": 1.65,
+      "rawStart": 1.4,
+      "rawEnd": 1.65,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w6",
+      "text": "fast",
+      "kind": "word",
+      "start": 1.7,
+      "end": 1.95,
+      "rawStart": 1.7,
+      "rawEnd": 1.95,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w7",
+      "text": "small",
+      "kind": "word",
+      "start": 2.0,
+      "end": 2.25,
+      "rawStart": 2.0,
+      "rawEnd": 2.25,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w8",
+      "text": "new",
+      "kind": "word",
+      "start": 2.3,
+      "end": 2.55,
+      "rawStart": 2.3,
+      "rawEnd": 2.55,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w9",
+      "text": "clipper",
+      "kind": "word",
+      "start": 2.6,
+      "end": 2.85,
+      "rawStart": 2.6,
+      "rawEnd": 2.85,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     }
+    ],
+    "language": "en",
+    "languageProbability": 0.99,
+    "durationSeconds": 3.35,
+    "engine": {
+     "id": "elevenlabs",
+     "modelId": "scribe_v2",
+     "modelSha256": null,
+     "engineVersion": "scribe_v2",
+     "locale": null
+    },
+    "verbatim": true,
+    "refined": true,
+    "pipelineVersion": 1,
+    "rawKey": "f48abcee8461124b3f8b867f607a2027fadc0eba30582b65043294b52d103dd5",
+    "createdAt": "2026-10-25T09:12:41Z"
+   },
+   "edits": {
+    "pauseThresholdSeconds": 0.8,
+    "pauseKeepSeconds": 0.15,
+    "cutWordIds": [],
+    "cutPauseIds": [],
+    "corrections": {},
+    "clips": [],
+    "activeClipId": null
+   },
+   "captions": {
+    "styleId": "karaoke",
+    "overrides": {"layout": {"maxWords": 16, "maxLines": 1}},
+    "position": null,
+    "positionByAspect": {}
+   },
+   "export": {"aspect": "9:16", "quality": "standard", "srt": false, "folder": null},
+   "share": {"captions": {}},
+   "ai": {"results": []},
+   "voiceLab": {"segments": []},
+   "extensions": {}
+  },
+  "selected-one-word-override": {
+   "format": "voxclip-project",
+   "schemaVersion": 1,
+   "id": "5b7e0f7a-3c1d-4b8e-9a51-2f6d0c8e4a11",
+   "title": "Interview take 3",
+   "createdAt": "2026-10-25T09:12:03Z",
+   "modifiedAt": "2026-10-25T09:31:47Z",
+   "savedBy": {"app": "VoxClip", "version": "0.1.0", "platform": "macos"},
+   "media": {
+    "source": {
+     "absolutePath": "/Users/alex/Movies/VoxClip/interview-take-3.mov",
+     "relativePath": "interview-take-3.mov",
+     "sizeBytes": 9437184,
+     "durationSeconds": 7,
+     "contentKey": "a12b2e004311fcd7687a1e7dce95e15790e043ee2af00b39fed7b06fd5c88393",
+     "video": {"width": 1920, "height": 1080, "frameRate": 30, "rotationDegrees": 0},
+     "audio": {"sampleRate": 48000, "channels": 1}
+    }
+   },
+   "transcript": {
+    "schemaVersion": 1,
+    "words": [
+     {
+      "id": "w1",
+      "text": "So",
+      "kind": "word",
+      "start": 0.3,
+      "end": 0.6,
+      "rawStart": 0.34,
+      "rawEnd": 0.57,
+      "conf": 0.99,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w2",
+      "text": "um,",
+      "kind": "word",
+      "start": 0.7,
+      "end": 1,
+      "rawStart": 0.74,
+      "rawEnd": 0.97,
+      "conf": 0.81,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w3",
+      "text": "today",
+      "kind": "word",
+      "start": 1.1,
+      "end": 1.5,
+      "rawStart": 1.14,
+      "rawEnd": 1.47,
+      "conf": 0.98,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w4",
+      "text": "we",
+      "kind": "word",
+      "start": 2.6,
+      "end": 2.75,
+      "rawStart": 2.64,
+      "rawEnd": 2.72,
+      "conf": 0.99,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w5",
+      "text": "ship",
+      "kind": "word",
+      "start": 2.8,
+      "end": 3.1,
+      "rawStart": 2.84,
+      "rawEnd": 3.07,
+      "conf": 0.97,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w6",
+      "text": "uh",
+      "kind": "word",
+      "start": 3.2,
+      "end": 3.4,
+      "rawStart": 3.24,
+      "rawEnd": 3.37,
+      "conf": 0.77,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w7",
+      "text": "the",
+      "kind": "word",
+      "start": 3.5,
+      "end": 3.6,
+      "rawStart": 3.54,
+      "rawEnd": 3.57,
+      "conf": 0.99,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w8",
+      "text": "clipper.",
+      "kind": "word",
+      "start": 3.65,
+      "end": 4.2,
+      "rawStart": 3.69,
+      "rawEnd": 4.17,
+      "conf": 0.96,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w9",
+      "text": "Thanks",
+      "kind": "word",
+      "start": 5.5,
+      "end": 5.9,
+      "rawStart": 5.54,
+      "rawEnd": 5.87,
+      "conf": 0.99,
+      "speaker": null,
+      "timing": "native"
+     }
+    ],
+    "language": "en",
+    "languageProbability": 0.99,
+    "durationSeconds": 7,
+    "engine": {
+     "id": "elevenlabs",
+     "modelId": "scribe_v2",
+     "modelSha256": null,
+     "engineVersion": "scribe_v2",
+     "locale": null
+    },
+    "verbatim": true,
+    "refined": true,
+    "pipelineVersion": 1,
+    "rawKey": "1c030c022ede1c5e2e0277f1c50750593503573d674b82084a060e9c67351d4d",
+    "createdAt": "2026-10-25T09:12:41Z"
+   },
+   "edits": {
+    "pauseThresholdSeconds": 0.8,
+    "pauseKeepSeconds": 0.15,
+    "cutWordIds": ["w2", "w6"],
+    "cutPauseIds": ["pause-after-w3"],
+    "corrections": {"w5": "shipped"},
+    "clips": [],
+    "activeClipId": null
+   },
+   "captions": {
+    "styleId": "karaoke",
+    "overrides": {"layout": {"maxWords": 1, "maxLines": 1}},
+    "position": null,
+    "positionByAspect": {}
+   },
+   "export": {"aspect": "9:16", "quality": "standard", "srt": false, "folder": null},
+   "share": {"captions": {"full": "Today we shipped the clipper. Thanks"}},
+   "ai": {"results": []},
+   "voiceLab": {"segments": []},
+   "extensions": {}
+  },
+  "untranscribed": {
+   "format": "voxclip-project",
+   "schemaVersion": 1,
+   "id": "9270b083-16fd-09d1-a3fa-6d79892379a0",
+   "title": "Untranscribed",
+   "createdAt": "2026-10-25T09:12:03Z",
+   "modifiedAt": "2026-10-25T09:31:47Z",
+   "savedBy": {"app": "VoxClip", "version": "0.1.0", "platform": "macos"},
+   "media": {
+    "source": {
+     "absolutePath": "/Users/example/Movies/untranscribed.mov",
+     "relativePath": "untranscribed.mov",
+     "sizeBytes": 1048576,
+     "durationSeconds": 1.0,
+     "contentKey": "9270b08316fd09d1a3fa6d79892379a0a46257ca5dbc7a7399c9090ad28219c0",
+     "video": {"width": 1920, "height": 1080, "frameRate": 30, "rotationDegrees": 0},
+     "audio": {"sampleRate": 48000, "channels": 1}
+    }
+   },
+   "transcript": null,
+   "edits": {
+    "pauseThresholdSeconds": 0.8,
+    "pauseKeepSeconds": 0.15,
+    "cutWordIds": [],
+    "cutPauseIds": [],
+    "corrections": {},
+    "clips": [],
+    "activeClipId": null
+   },
+   "captions": {"styleId": "karaoke", "overrides": {}, "position": null, "positionByAspect": {}},
+   "export": {"aspect": "9:16", "quality": "standard", "srt": false, "folder": null},
+   "share": {"captions": {}},
+   "ai": {"results": []},
+   "voiceLab": {"segments": []},
+   "extensions": {}
+  },
+  "weak-ending": {
+   "format": "voxclip-project",
+   "schemaVersion": 1,
+   "id": "cdfb03ab-f06a-475a-acf4-4a66cdc5660b",
+   "title": "Weak ending",
+   "createdAt": "2026-10-25T09:12:03Z",
+   "modifiedAt": "2026-10-25T09:31:47Z",
+   "savedBy": {"app": "VoxClip", "version": "0.1.0", "platform": "macos"},
+   "media": {
+    "source": {
+     "absolutePath": "/Users/example/Movies/weak-ending.mov",
+     "relativePath": "weak-ending.mov",
+     "sizeBytes": 1048576,
+     "durationSeconds": 2.2,
+     "contentKey": "cdfb03abf06a475aacf44a66cdc5660bfde735168a895c0182dac3a4f3ec0809",
+     "video": {"width": 1920, "height": 1080, "frameRate": 30, "rotationDegrees": 0},
+     "audio": {"sampleRate": 48000, "channels": 1}
+    }
+   },
+   "transcript": {
+    "schemaVersion": 1,
+    "words": [
+     {
+      "id": "w1",
+      "text": "Bright",
+      "kind": "word",
+      "start": 0.2,
+      "end": 0.5,
+      "rawStart": 0.2,
+      "rawEnd": 0.5,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w2",
+      "text": "ideas",
+      "kind": "word",
+      "start": 0.6,
+      "end": 0.9,
+      "rawStart": 0.6,
+      "rawEnd": 0.9,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w3",
+      "text": "in",
+      "kind": "word",
+      "start": 1.0,
+      "end": 1.3,
+      "rawStart": 1.0,
+      "rawEnd": 1.3,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w4",
+      "text": "the",
+      "kind": "word",
+      "start": 1.4,
+      "end": 1.7,
+      "rawStart": 1.4,
+      "rawEnd": 1.7,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     }
+    ],
+    "language": "en",
+    "languageProbability": 0.99,
+    "durationSeconds": 2.2,
+    "engine": {
+     "id": "elevenlabs",
+     "modelId": "scribe_v2",
+     "modelSha256": null,
+     "engineVersion": "scribe_v2",
+     "locale": null
+    },
+    "verbatim": true,
+    "refined": true,
+    "pipelineVersion": 1,
+    "rawKey": "d3db152589d99e37b8028bf7c7c2726436308848bf3d88fb76ec9299882768ee",
+    "createdAt": "2026-10-25T09:12:41Z"
+   },
+   "edits": {
+    "pauseThresholdSeconds": 0.8,
+    "pauseKeepSeconds": 0.15,
+    "cutWordIds": [],
+    "cutPauseIds": [],
+    "corrections": {},
+    "clips": [],
+    "activeClipId": null
+   },
+   "captions": {"styleId": "typewriter", "overrides": {}, "position": null, "positionByAspect": {}},
+   "export": {"aspect": "9:16", "quality": "standard", "srt": false, "folder": null},
+   "share": {"captions": {}},
+   "ai": {"results": []},
+   "voiceLab": {"segments": []},
+   "extensions": {}
+  }
+ },
+ "cases": [
+  {
+   "id": "selected-one-word-karaoke",
+   "project": "selected-one-word-override",
+   "style": "karaoke",
+   "scope": null,
+   "playhead": 1.7,
+   "wordsVisible": true,
+   "expected": {
+    "source": "page",
+    "words": [{"id": "w5", "text": "shipped", "start": 0.0, "end": 0.35}],
+    "duration": 0.9,
+    "time": 0.34299999999999997
+   }
+  },
+  {
+   "id": "selected-line-karaoke-inside-last-part",
+   "project": "selected-line-override",
+   "style": "karaoke",
+   "scope": null,
+   "playhead": 2.7,
+   "wordsVisible": true,
+   "expected": {
+    "source": "page",
+    "words": [
+     {"id": "w1", "text": "So", "start": 0.0, "end": 0.35},
+     {"id": "w2", "text": "today", "start": 0.4, "end": 0.75},
+     {"id": "w3", "text": "we", "start": 0.8, "end": 1.15},
+     {"id": "w4", "text": "ship", "start": 1.2000000000000002, "end": 1.5500000000000003},
+     {"id": "w5", "text": "a", "start": 1.6, "end": 1.9500000000000002},
+     {"id": "w6", "text": "fast", "start": 2.0, "end": 2.35},
+     {"id": "w7", "text": "small", "start": 2.4000000000000004, "end": 2.7500000000000004},
+     {"id": "w8", "text": "new", "start": 2.8000000000000003, "end": 3.1500000000000004},
+     {"id": "w9", "text": "clipper", "start": 3.2, "end": 3.5500000000000003}
+    ],
+    "duration": 4.1,
+    "time": 3.543
+   }
+  },
+  {
+   "id": "selected-line-karaoke-key-word-part",
+   "project": "selected-line-override",
+   "style": "karaoke",
+   "scope": null,
+   "playhead": 2.58,
+   "wordsVisible": true,
+   "expected": {
+    "source": "page",
+    "words": [
+     {"id": "w1", "text": "So", "start": 0.0, "end": 0.35},
+     {"id": "w2", "text": "today", "start": 0.4, "end": 0.75},
+     {"id": "w3", "text": "we", "start": 0.8, "end": 1.15},
+     {"id": "w4", "text": "ship", "start": 1.2000000000000002, "end": 1.5500000000000003},
+     {"id": "w5", "text": "a", "start": 1.6, "end": 1.9500000000000002},
+     {"id": "w6", "text": "fast", "start": 2.0, "end": 2.35},
+     {"id": "w7", "text": "small", "start": 2.4000000000000004, "end": 2.7500000000000004},
+     {"id": "w8", "text": "new", "start": 2.8000000000000003, "end": 3.1500000000000004},
+     {"id": "w9", "text": "clipper", "start": 3.2, "end": 3.5500000000000003}
+    ],
+    "duration": 4.1,
+    "time": 0.743
+   }
+  },
+  {
+   "id": "captions-off-karaoke-ignores-overrides",
+   "project": "captions-off-override",
+   "style": "karaoke",
+   "scope": null,
+   "playhead": 1.7,
+   "wordsVisible": true,
+   "expected": {
+    "source": "page",
+    "words": [
+     {"id": "w1", "text": "Bright", "start": 0.0, "end": 0.35},
+     {"id": "w2", "text": "ideas", "start": 0.4, "end": 0.75},
+     {"id": "w3", "text": "travel", "start": 0.8, "end": 1.15},
+     {"id": "w4", "text": "far", "start": 1.2000000000000002, "end": 1.5500000000000003}
+    ],
+    "duration": 2.1,
+    "time": 1.5430000000000001
+   }
+  },
+  {
+   "id": "boundary-karaoke-thanks-page-start",
+   "project": "interview-take",
+   "style": "karaoke",
+   "scope": null,
+   "playhead": 4.0,
+   "wordsVisible": true,
+   "expected": {
+    "source": "page",
+    "words": [{"id": "w9", "text": "Thanks", "start": 0.0, "end": 0.35}],
+    "duration": 0.9,
+    "time": 0.34299999999999997
+   }
+  },
+  {
+   "id": "boundary-karaoke-we-word-end",
+   "project": "interview-take",
+   "style": "karaoke",
+   "scope": null,
+   "playhead": 1.55,
+   "wordsVisible": true,
+   "expected": {
+    "source": "page",
+    "words": [
+     {"id": "w1", "text": "So", "start": 0.0, "end": 0.35},
+     {"id": "w3", "text": "today", "start": 0.4, "end": 0.75},
+     {"id": "w4", "text": "we", "start": 0.8, "end": 1.15},
+     {"id": "w5", "text": "shipped", "start": 1.2000000000000002, "end": 1.5500000000000003},
+     {"id": "w7", "text": "the", "start": 1.6, "end": 1.9500000000000002},
+     {"id": "w8", "text": "clipper.", "start": 2.0, "end": 2.35}
+    ],
+    "duration": 2.9000000000000004,
+    "time": 0.743
+   }
+  },
+  {
+   "id": "boundary-karaoke-today-word-end",
+   "project": "interview-take",
+   "style": "karaoke",
+   "scope": null,
+   "playhead": 1.1,
+   "wordsVisible": true,
+   "expected": {
+    "source": "page",
+    "words": [
+     {"id": "w1", "text": "So", "start": 0.0, "end": 0.35},
+     {"id": "w3", "text": "today", "start": 0.4, "end": 0.75},
+     {"id": "w4", "text": "we", "start": 0.8, "end": 1.15},
+     {"id": "w5", "text": "shipped", "start": 1.2000000000000002, "end": 1.5500000000000003},
+     {"id": "w7", "text": "the", "start": 1.6, "end": 1.9500000000000002},
+     {"id": "w8", "text": "clipper.", "start": 2.0, "end": 2.35}
+    ],
+    "duration": 2.9000000000000004,
+    "time": 0.743
+   }
+  },
+  {
+   "id": "boundary-karaoke-page-hold-end",
+   "project": "interview-take",
+   "style": "karaoke",
+   "scope": null,
+   "playhead": 3.1,
+   "wordsVisible": true,
+   "expected": {
+    "source": "page",
+    "words": [{"id": "w9", "text": "Thanks", "start": 0.0, "end": 0.35}],
+    "duration": 0.9,
+    "time": 0.34299999999999997
+   }
+  },
+  {
+   "id": "boundary-pop-touching-page-end-start",
+   "project": "interview-take",
+   "style": "active-pop",
+   "scope": null,
+   "playhead": 1.6,
+   "wordsVisible": true,
+   "expected": {
+    "source": "page",
+    "words": [
+     {"id": "w5", "text": "shipped", "start": 0.0, "end": 0.35},
+     {"id": "w7", "text": "the", "start": 0.4, "end": 0.75},
+     {"id": "w8", "text": "clipper.", "start": 0.8, "end": 1.15}
+    ],
+    "duration": 1.7000000000000002,
+    "time": 0.34299999999999997
+   }
+  },
+  {
+   "id": "boundary-karaoke-first-page-word-start",
+   "project": "interview-take",
+   "style": "karaoke",
+   "scope": null,
+   "playhead": 0.3,
+   "wordsVisible": true,
+   "expected": {
+    "source": "page",
+    "words": [
+     {"id": "w1", "text": "So", "start": 0.0, "end": 0.35},
+     {"id": "w3", "text": "today", "start": 0.4, "end": 0.75},
+     {"id": "w4", "text": "we", "start": 0.8, "end": 1.15},
+     {"id": "w5", "text": "shipped", "start": 1.2000000000000002, "end": 1.5500000000000003},
+     {"id": "w7", "text": "the", "start": 1.6, "end": 1.9500000000000002},
+     {"id": "w8", "text": "clipper.", "start": 2.0, "end": 2.35}
+    ],
+    "duration": 2.9000000000000004,
+    "time": 0.34299999999999997
+   }
+  },
+  {
+   "id": "boundary-karaoke-mid-page-word-start",
+   "project": "interview-take",
+   "style": "karaoke",
+   "scope": null,
+   "playhead": 1.6,
+   "wordsVisible": true,
+   "expected": {
+    "source": "page",
+    "words": [
+     {"id": "w1", "text": "So", "start": 0.0, "end": 0.35},
+     {"id": "w3", "text": "today", "start": 0.4, "end": 0.75},
+     {"id": "w4", "text": "we", "start": 0.8, "end": 1.15},
+     {"id": "w5", "text": "shipped", "start": 1.2000000000000002, "end": 1.5500000000000003},
+     {"id": "w7", "text": "the", "start": 1.6, "end": 1.9500000000000002},
+     {"id": "w8", "text": "clipper.", "start": 2.0, "end": 2.35}
+    ],
+    "duration": 2.9000000000000004,
+    "time": 1.5430000000000001
+   }
+  },
+  {
+   "id": "boundary-clean-exact-gap-next-word",
+   "project": "exact-gap",
+   "style": "clean-subtitle",
+   "scope": null,
+   "playhead": 1.3,
+   "wordsVisible": true,
+   "expected": {
+    "source": "page",
+    "words": [
+     {"id": "w2", "text": "bright", "start": 0.0, "end": 0.35},
+     {"id": "w3", "text": "world", "start": 0.4, "end": 0.75}
+    ],
+    "duration": 1.3,
+    "time": 0.34299999999999997
+   }
+  },
+  {
+   "id": "boundary-clean-exact-gap-inside-hold",
+   "project": "exact-gap",
+   "style": "clean-subtitle",
+   "scope": null,
+   "playhead": 0.9,
+   "wordsVisible": true,
+   "expected": {
+    "source": "page",
+    "words": [{"id": "w1", "text": "Hello", "start": 0.0, "end": 0.35}],
+    "duration": 0.9,
+    "time": 0.34299999999999997
+   }
+  },
+  {
+   "id": "weak-ending-typewriter-between-words",
+   "project": "weak-ending",
+   "style": "typewriter",
+   "scope": null,
+   "playhead": 1.35,
+   "wordsVisible": true,
+   "expected": {
+    "source": "page",
+    "words": [
+     {"id": "w1", "text": "Bright", "start": 0.0, "end": 0.35},
+     {"id": "w2", "text": "ideas", "start": 0.4, "end": 0.75},
+     {"id": "w3", "text": "in", "start": 0.8, "end": 1.15},
+     {"id": "w4", "text": "the", "start": 1.2000000000000002, "end": 1.5500000000000003}
+    ],
+    "duration": 2.1,
+    "time": 1.5500000000000003
+   }
+  },
+  {
+   "id": "interview-karaoke-inside-corrected-word",
+   "project": "interview-take",
+   "style": "karaoke",
+   "scope": null,
+   "playhead": 1.7,
+   "wordsVisible": true,
+   "expected": {
+    "source": "page",
+    "words": [
+     {"id": "w1", "text": "So", "start": 0.0, "end": 0.35},
+     {"id": "w3", "text": "today", "start": 0.4, "end": 0.75},
+     {"id": "w4", "text": "we", "start": 0.8, "end": 1.15},
+     {"id": "w5", "text": "shipped", "start": 1.2000000000000002, "end": 1.5500000000000003},
+     {"id": "w7", "text": "the", "start": 1.6, "end": 1.9500000000000002},
+     {"id": "w8", "text": "clipper.", "start": 2.0, "end": 2.35}
+    ],
+    "duration": 2.9000000000000004,
+    "time": 1.5430000000000001
+   }
+  },
+  {
+   "id": "interview-karaoke-between-words",
+   "project": "interview-take",
+   "style": "karaoke",
+   "scope": null,
+   "playhead": 1.25,
+   "wordsVisible": true,
+   "expected": {
+    "source": "page",
+    "words": [
+     {"id": "w1", "text": "So", "start": 0.0, "end": 0.35},
+     {"id": "w3", "text": "today", "start": 0.4, "end": 0.75},
+     {"id": "w4", "text": "we", "start": 0.8, "end": 1.15},
+     {"id": "w5", "text": "shipped", "start": 1.2000000000000002, "end": 1.5500000000000003},
+     {"id": "w7", "text": "the", "start": 1.6, "end": 1.9500000000000002},
+     {"id": "w8", "text": "clipper.", "start": 2.0, "end": 2.35}
+    ],
+    "duration": 2.9000000000000004,
+    "time": 0.743
+   }
+  },
+  {
+   "id": "interview-karaoke-hold-after-page",
+   "project": "interview-take",
+   "style": "karaoke",
+   "scope": null,
+   "playhead": 2.9,
+   "wordsVisible": true,
+   "expected": {
+    "source": "page",
+    "words": [
+     {"id": "w1", "text": "So", "start": 0.0, "end": 0.35},
+     {"id": "w3", "text": "today", "start": 0.4, "end": 0.75},
+     {"id": "w4", "text": "we", "start": 0.8, "end": 1.15},
+     {"id": "w5", "text": "shipped", "start": 1.2000000000000002, "end": 1.5500000000000003},
+     {"id": "w7", "text": "the", "start": 1.6, "end": 1.9500000000000002},
+     {"id": "w8", "text": "clipper.", "start": 2.0, "end": 2.35}
+    ],
+    "duration": 2.9000000000000004,
+    "time": 0.743
+   }
+  },
+  {
+   "id": "interview-karaoke-gap-between-pages",
+   "project": "interview-take",
+   "style": "karaoke",
+   "scope": null,
+   "playhead": 3.5,
+   "wordsVisible": true,
+   "expected": {
+    "source": "page",
+    "words": [{"id": "w9", "text": "Thanks", "start": 0.0, "end": 0.35}],
+    "duration": 0.9,
+    "time": 0.34299999999999997
+   }
+  },
+  {
+   "id": "interview-karaoke-before-first-page",
+   "project": "interview-take",
+   "style": "karaoke",
+   "scope": null,
+   "playhead": 0.1,
+   "wordsVisible": true,
+   "expected": {
+    "source": "page",
+    "words": [
+     {"id": "w1", "text": "So", "start": 0.0, "end": 0.35},
+     {"id": "w3", "text": "today", "start": 0.4, "end": 0.75},
+     {"id": "w4", "text": "we", "start": 0.8, "end": 1.15},
+     {"id": "w5", "text": "shipped", "start": 1.2000000000000002, "end": 1.5500000000000003},
+     {"id": "w7", "text": "the", "start": 1.6, "end": 1.9500000000000002},
+     {"id": "w8", "text": "clipper.", "start": 2.0, "end": 2.35}
+    ],
+    "duration": 2.9000000000000004,
+    "time": 0.743
+   }
+  },
+  {
+   "id": "interview-karaoke-after-last-page",
+   "project": "interview-take",
+   "style": "karaoke",
+   "scope": null,
+   "playhead": 5.5,
+   "wordsVisible": true,
+   "expected": {
+    "source": "page",
+    "words": [{"id": "w9", "text": "Thanks", "start": 0.0, "end": 0.35}],
+    "duration": 0.9,
+    "time": 0.34299999999999997
+   }
+  },
+  {
+   "id": "interview-pop-inside-word-after-cut",
+   "project": "interview-take",
+   "style": "active-pop",
+   "scope": null,
+   "playhead": 0.9,
+   "wordsVisible": true,
+   "expected": {
+    "source": "page",
+    "words": [
+     {"id": "w1", "text": "So", "start": 0.0, "end": 0.35},
+     {"id": "w3", "text": "today", "start": 0.4, "end": 0.75},
+     {"id": "w4", "text": "we", "start": 0.8, "end": 1.15}
+    ],
+    "duration": 1.7000000000000002,
+    "time": 0.743
+   }
+  },
+  {
+   "id": "interview-typewriter-inside-word",
+   "project": "interview-take",
+   "style": "typewriter",
+   "scope": null,
+   "playhead": 1.7,
+   "wordsVisible": true,
+   "expected": {
+    "source": "page",
+    "words": [
+     {"id": "w1", "text": "So", "start": 0.0, "end": 0.35},
+     {"id": "w3", "text": "today", "start": 0.4, "end": 0.75},
+     {"id": "w4", "text": "we", "start": 0.8, "end": 1.15},
+     {"id": "w5", "text": "shipped", "start": 1.2000000000000002, "end": 1.5500000000000003},
+     {"id": "w7", "text": "the", "start": 1.6, "end": 1.9500000000000002},
+     {"id": "w8", "text": "clipper.", "start": 2.0, "end": 2.35}
+    ],
+    "duration": 2.9000000000000004,
+    "time": 1.5430000000000001
+   }
+  },
+  {
+   "id": "interview-typewriter-between-words",
+   "project": "interview-take",
+   "style": "typewriter",
+   "scope": null,
+   "playhead": 1.25,
+   "wordsVisible": true,
+   "expected": {
+    "source": "page",
+    "words": [
+     {"id": "w1", "text": "So", "start": 0.0, "end": 0.35},
+     {"id": "w3", "text": "today", "start": 0.4, "end": 0.75},
+     {"id": "w4", "text": "we", "start": 0.8, "end": 1.15},
+     {"id": "w5", "text": "shipped", "start": 1.2000000000000002, "end": 1.5500000000000003},
+     {"id": "w7", "text": "the", "start": 1.6, "end": 1.9500000000000002},
+     {"id": "w8", "text": "clipper.", "start": 2.0, "end": 2.35}
+    ],
+    "duration": 2.9000000000000004,
+    "time": 2.35
+   }
+  },
+  {
+   "id": "interview-typewriter-gap-between-pages",
+   "project": "interview-take",
+   "style": "typewriter",
+   "scope": null,
+   "playhead": 3.6,
+   "wordsVisible": true,
+   "expected": {
+    "source": "page",
+    "words": [{"id": "w9", "text": "Thanks", "start": 0.0, "end": 0.35}],
+    "duration": 0.9,
+    "time": 0.35
+   }
+  },
+  {
+   "id": "interview-highlight-inside-word",
+   "project": "interview-take",
+   "style": "vox-highlight",
+   "scope": null,
+   "playhead": 1.7,
+   "wordsVisible": true,
+   "expected": {
+    "source": "page",
+    "words": [{"id": "w5", "text": "shipped", "start": 0.0, "end": 0.35}],
+    "duration": 0.9,
+    "time": 0.34299999999999997
+   }
+  },
+  {
+   "id": "interview-highlight-gap-between-words",
+   "project": "interview-take",
+   "style": "vox-highlight",
+   "scope": null,
+   "playhead": 1.25,
+   "wordsVisible": true,
+   "expected": {
+    "source": "page",
+    "words": [{"id": "w4", "text": "we", "start": 0.0, "end": 0.35}],
+    "duration": 0.9,
+    "time": 0.34299999999999997
+   }
+  },
+  {
+   "id": "interview-karaoke-words-hidden",
+   "project": "interview-take",
+   "style": "karaoke",
+   "scope": null,
+   "playhead": 1.7,
+   "wordsVisible": false,
+   "expected": {
+    "source": "preview",
+    "words": [
+     {"id": "preview-0", "text": "Say", "start": 0.0, "end": 0.35},
+     {"id": "preview-1", "text": "it", "start": 0.4, "end": 0.75},
+     {"id": "preview-2", "text": "like", "start": 0.8, "end": 1.15},
+     {"id": "preview-3", "text": "you", "start": 1.2000000000000002, "end": 1.5500000000000003},
+     {"id": "preview-4", "text": "mean", "start": 1.6, "end": 1.9500000000000002},
+     {"id": "preview-5", "text": "it", "start": 2.0, "end": 2.35}
+    ],
+    "duration": 2.9000000000000004,
+    "time": 1.01
+   }
+  },
+  {
+   "id": "interview-highlight-words-hidden",
+   "project": "interview-take",
+   "style": "vox-highlight",
+   "scope": null,
+   "playhead": 1.7,
+   "wordsVisible": false,
+   "expected": {
+    "source": "preview",
+    "words": [
+     {"id": "preview-0", "text": "Your", "start": 0.0, "end": 0.35},
+     {"id": "preview-1", "text": "story", "start": 0.4, "end": 0.75}
+    ],
+    "duration": 1.3,
+    "time": 0.743
+   }
+  },
+  {
+   "id": "override-one-word-karaoke",
+   "project": "one-word-override",
+   "style": "karaoke",
+   "scope": null,
+   "playhead": 1.7,
+   "wordsVisible": true,
+   "expected": {
+    "source": "page",
+    "words": [
+     {"id": "w1", "text": "So", "start": 0.0, "end": 0.35},
+     {"id": "w3", "text": "today", "start": 0.4, "end": 0.75},
+     {"id": "w4", "text": "we", "start": 0.8, "end": 1.15},
+     {"id": "w5", "text": "shipped", "start": 1.2000000000000002, "end": 1.5500000000000003},
+     {"id": "w7", "text": "the", "start": 1.6, "end": 1.9500000000000002},
+     {"id": "w8", "text": "clipper.", "start": 2.0, "end": 2.35}
+    ],
+    "duration": 2.9000000000000004,
+    "time": 1.5430000000000001
+   }
+  },
+  {
+   "id": "override-line-karaoke",
+   "project": "line-override",
+   "style": "karaoke",
+   "scope": null,
+   "playhead": 1.25,
+   "wordsVisible": true,
+   "expected": {
+    "source": "page",
+    "words": [
+     {"id": "w1", "text": "So", "start": 0.0, "end": 0.35},
+     {"id": "w2", "text": "today", "start": 0.4, "end": 0.75},
+     {"id": "w3", "text": "we", "start": 0.8, "end": 1.15},
+     {"id": "w4", "text": "ship", "start": 1.2000000000000002, "end": 1.5500000000000003},
+     {"id": "w5", "text": "a", "start": 1.6, "end": 1.9500000000000002},
+     {"id": "w6", "text": "fast", "start": 2.0, "end": 2.35}
+    ],
+    "duration": 2.9000000000000004,
+    "time": 1.5430000000000001
+   }
+  },
+  {
+   "id": "capture-highlight",
+   "project": "corrected-take",
+   "style": "vox-highlight",
+   "scope": "clip-opening",
+   "playhead": 0.0,
+   "wordsVisible": true,
+   "expected": {
+    "source": "page",
+    "words": [{"id": "w2", "text": "corrected", "start": 0.0, "end": 0.35}],
+    "duration": 0.9,
+    "time": 0.34299999999999997
+   }
+  },
+  {
+   "id": "capture-bold",
+   "project": "corrected-take",
+   "style": "vox-bold",
+   "scope": "clip-opening",
+   "playhead": 0.0,
+   "wordsVisible": true,
+   "expected": {
+    "source": "page",
+    "words": [{"id": "w2", "text": "corrected", "start": 0.0, "end": 0.35}],
+    "duration": 0.9,
+    "time": 0.34299999999999997
+   }
+  },
+  {
+   "id": "capture-karaoke",
+   "project": "corrected-take",
+   "style": "karaoke",
+   "scope": "clip-opening",
+   "playhead": 0.0,
+   "wordsVisible": true,
+   "expected": {
+    "source": "page",
+    "words": [
+     {"id": "w2", "text": "corrected", "start": 0.0, "end": 0.35},
+     {"id": "w3", "text": "today", "start": 0.4, "end": 0.75}
+    ],
+    "duration": 1.3,
+    "time": 0.34299999999999997
+   }
+  },
+  {
+   "id": "capture-pop",
+   "project": "corrected-take",
+   "style": "active-pop",
+   "scope": "clip-opening",
+   "playhead": 0.0,
+   "wordsVisible": true,
+   "expected": {
+    "source": "page",
+    "words": [
+     {"id": "w2", "text": "corrected", "start": 0.0, "end": 0.35},
+     {"id": "w3", "text": "today", "start": 0.4, "end": 0.75}
+    ],
+    "duration": 1.3,
+    "time": 0.34299999999999997
+   }
+  },
+  {
+   "id": "clip-karaoke-inside-word",
+   "project": "corrected-take",
+   "style": "karaoke",
+   "scope": "clip-opening",
+   "playhead": 0.6,
+   "wordsVisible": true,
+   "expected": {
+    "source": "page",
+    "words": [
+     {"id": "w2", "text": "corrected", "start": 0.0, "end": 0.35},
+     {"id": "w3", "text": "today", "start": 0.4, "end": 0.75}
+    ],
+    "duration": 1.3,
+    "time": 0.743
+   }
+  },
+  {
+   "id": "clip-karaoke-after-last-page",
+   "project": "corrected-take",
+   "style": "karaoke",
+   "scope": "clip-opening",
+   "playhead": 1.12,
+   "wordsVisible": true,
+   "expected": {
+    "source": "page",
+    "words": [
+     {"id": "w2", "text": "corrected", "start": 0.0, "end": 0.35},
+     {"id": "w3", "text": "today", "start": 0.4, "end": 0.75}
+    ],
+    "duration": 1.3,
+    "time": 0.34299999999999997
+   }
+  },
+  {
+   "id": "grinder-clip-pop-inside-word-after-cut",
+   "project": "grinder-clip",
+   "style": "active-pop",
+   "scope": "clip-result",
+   "playhead": 1.9,
+   "wordsVisible": true,
+   "expected": {
+    "source": "page",
+    "words": [
+     {"id": "w7", "text": "over", "start": 0.0, "end": 0.35},
+     {"id": "w9", "text": "weeks.", "start": 0.4, "end": 0.75}
+    ],
+    "duration": 1.3,
+    "time": 0.743
+   }
+  },
+  {
+   "id": "grinder-clip-pop-digit-key-word",
+   "project": "grinder-clip",
+   "style": "active-pop",
+   "scope": "clip-result",
+   "playhead": 0.0,
+   "wordsVisible": true,
+   "expected": {
+    "source": "page",
+    "words": [
+     {"id": "w4", "text": "tested", "start": 0.0, "end": 0.35},
+     {"id": "w5", "text": "12", "start": 0.4, "end": 0.75},
+     {"id": "w6", "text": "grinders", "start": 0.8, "end": 1.15}
+    ],
+    "duration": 1.7000000000000002,
+    "time": 0.743
+   }
+  },
+  {
+   "id": "grinder-take-karaoke-cut-inside-page",
+   "project": "grinder-clip",
+   "style": "karaoke",
+   "scope": null,
+   "playhead": 3.3,
+   "wordsVisible": true,
+   "expected": {
+    "source": "page",
+    "words": [
+     {"id": "w7", "text": "over", "start": 0.0, "end": 0.35},
+     {"id": "w9", "text": "weeks.", "start": 0.4, "end": 0.75}
+    ],
+    "duration": 1.3,
+    "time": 0.743
+   }
+  },
+  {
+   "id": "estonian-karaoke-inside-word",
+   "project": "estonian",
+   "style": "karaoke",
+   "scope": null,
+   "playhead": 1.2,
+   "wordsVisible": true,
+   "expected": {
+    "source": "page",
+    "words": [
+     {"id": "w1", "text": "Öösel", "start": 0.0, "end": 0.35},
+     {"id": "w2", "text": "küpsetatud", "start": 0.4, "end": 0.75},
+     {"id": "w3", "text": "šokolaadikook", "start": 0.8, "end": 1.15},
+     {"id": "w4", "text": "on", "start": 1.2000000000000002, "end": 1.5500000000000003},
+     {"id": "w5", "text": "päris", "start": 1.6, "end": 1.9500000000000002},
+     {"id": "w6", "text": "hõrk.", "start": 2.0, "end": 2.35}
+    ],
+    "duration": 2.9000000000000004,
+    "time": 1.143
+   }
+  },
+  {
+   "id": "estonian-pop-weak-leading-words",
+   "project": "estonian",
+   "style": "active-pop",
+   "scope": null,
+   "playhead": 1.95,
+   "wordsVisible": true,
+   "expected": {
+    "source": "page",
+    "words": [
+     {"id": "w4", "text": "on", "start": 0.0, "end": 0.35},
+     {"id": "w5", "text": "päris", "start": 0.4, "end": 0.75},
+     {"id": "w6", "text": "hõrk.", "start": 0.8, "end": 1.15}
+    ],
+    "duration": 1.7000000000000002,
+    "time": 1.143
+   }
+  },
+  {
+   "id": "estonian-highlight-inside-word",
+   "project": "estonian",
+   "style": "vox-highlight",
+   "scope": null,
+   "playhead": 4.3,
+   "wordsVisible": true,
+   "expected": {
+    "source": "page",
+    "words": [{"id": "w10", "text": "õunakooki.", "start": 0.0, "end": 0.35}],
+    "duration": 0.9,
+    "time": 0.34299999999999997
+   }
+  },
+  {
+   "id": "estonian-typewriter-hold-after-page",
+   "project": "estonian",
+   "style": "typewriter",
+   "scope": null,
+   "playhead": 2.85,
+   "wordsVisible": true,
+   "expected": {
+    "source": "page",
+    "words": [
+     {"id": "w1", "text": "Öösel", "start": 0.0, "end": 0.35},
+     {"id": "w2", "text": "küpsetatud", "start": 0.4, "end": 0.75},
+     {"id": "w3", "text": "šokolaadikook", "start": 0.8, "end": 1.15},
+     {"id": "w4", "text": "on", "start": 1.2000000000000002, "end": 1.5500000000000003},
+     {"id": "w5", "text": "päris", "start": 1.6, "end": 1.9500000000000002},
+     {"id": "w6", "text": "hõrk.", "start": 2.0, "end": 2.35}
+    ],
+    "duration": 2.9000000000000004,
+    "time": 2.35
+   }
+  },
+  {
+   "id": "untranscribed-karaoke",
+   "project": "untranscribed",
+   "style": "karaoke",
+   "scope": null,
+   "playhead": 0.5,
+   "wordsVisible": true,
+   "expected": {
+    "source": "preview",
+    "words": [
+     {"id": "preview-0", "text": "Say", "start": 0.0, "end": 0.35},
+     {"id": "preview-1", "text": "it", "start": 0.4, "end": 0.75},
+     {"id": "preview-2", "text": "like", "start": 0.8, "end": 1.15},
+     {"id": "preview-3", "text": "you", "start": 1.2000000000000002, "end": 1.5500000000000003},
+     {"id": "preview-4", "text": "mean", "start": 1.6, "end": 1.9500000000000002},
+     {"id": "preview-5", "text": "it", "start": 2.0, "end": 2.35}
+    ],
+    "duration": 2.9000000000000004,
+    "time": 1.01
+   }
+  },
+  {
+   "id": "untranscribed-pop",
+   "project": "untranscribed",
+   "style": "active-pop",
+   "scope": null,
+   "playhead": 0.5,
+   "wordsVisible": true,
+   "expected": {
+    "source": "preview",
+    "words": [
+     {"id": "preview-0", "text": "This", "start": 0.0, "end": 0.35},
+     {"id": "preview-1", "text": "changes", "start": 0.4, "end": 0.75},
+     {"id": "preview-2", "text": "everything", "start": 0.8, "end": 1.15}
+    ],
+    "duration": 1.7000000000000002,
+    "time": 0.743
+   }
+  },
+  {
+   "id": "untranscribed-highlight",
+   "project": "untranscribed",
+   "style": "vox-highlight",
+   "scope": null,
+   "playhead": 0.5,
+   "wordsVisible": true,
+   "expected": {
+    "source": "preview",
+    "words": [
+     {"id": "preview-0", "text": "Your", "start": 0.0, "end": 0.35},
+     {"id": "preview-1", "text": "story", "start": 0.4, "end": 0.75}
+    ],
+    "duration": 1.3,
+    "time": 0.743
+   }
+  },
+  {
+   "id": "untranscribed-typewriter",
+   "project": "untranscribed",
+   "style": "typewriter",
+   "scope": null,
+   "playhead": 0.5,
+   "wordsVisible": true,
+   "expected": {
+    "source": "preview",
+    "words": [
+     {"id": "preview-0", "text": "Hello,", "start": 0.0, "end": 0.35},
+     {"id": "preview-1", "text": "world.", "start": 0.4, "end": 0.75},
+     {"id": "preview-2", "text": "Let's", "start": 0.8, "end": 1.15},
+     {"id": "preview-3", "text": "begin.", "start": 1.2000000000000002, "end": 1.5500000000000003}
+    ],
+    "duration": 2.1,
+    "time": 0.743
+   }
+  },
+  {
+   "id": "all-cut-karaoke",
+   "project": "all-cut",
+   "style": "karaoke",
+   "scope": null,
+   "playhead": 0.0,
+   "wordsVisible": true,
+   "expected": {
+    "source": "preview",
+    "words": [
+     {"id": "preview-0", "text": "Say", "start": 0.0, "end": 0.35},
+     {"id": "preview-1", "text": "it", "start": 0.4, "end": 0.75},
+     {"id": "preview-2", "text": "like", "start": 0.8, "end": 1.15},
+     {"id": "preview-3", "text": "you", "start": 1.2000000000000002, "end": 1.5500000000000003},
+     {"id": "preview-4", "text": "mean", "start": 1.6, "end": 1.9500000000000002},
+     {"id": "preview-5", "text": "it", "start": 2.0, "end": 2.35}
+    ],
+    "duration": 2.9000000000000004,
+    "time": 1.01
+   }
+  },
+  {
+   "id": "style-active-pop-inside-word",
+   "project": "corrected-take",
+   "style": "active-pop",
+   "scope": null,
+   "playhead": 0.9,
+   "wordsVisible": true,
+   "expected": {
+    "source": "page",
+    "words": [
+     {"id": "w2", "text": "corrected", "start": 0.0, "end": 0.35},
+     {"id": "w3", "text": "today", "start": 0.4, "end": 0.75}
+    ],
+    "duration": 1.3,
+    "time": 0.743
+   }
+  },
+  {
+   "id": "style-active-pop-after-phrase",
+   "project": "corrected-take",
+   "style": "active-pop",
+   "scope": null,
+   "playhead": 1.5,
+   "wordsVisible": true,
+   "expected": {
+    "source": "page",
+    "words": [
+     {"id": "w2", "text": "corrected", "start": 0.0, "end": 0.35},
+     {"id": "w3", "text": "today", "start": 0.4, "end": 0.75}
+    ],
+    "duration": 1.3,
+    "time": 0.34299999999999997
+   }
+  },
+  {
+   "id": "style-bounce-inside-word",
+   "project": "corrected-take",
+   "style": "bounce",
+   "scope": null,
+   "playhead": 0.9,
+   "wordsVisible": true,
+   "expected": {
+    "source": "page",
+    "words": [
+     {"id": "w2", "text": "corrected", "start": 0.0, "end": 0.35},
+     {"id": "w3", "text": "today", "start": 0.4, "end": 0.75}
+    ],
+    "duration": 1.3,
+    "time": 0.743
+   }
+  },
+  {
+   "id": "style-bounce-after-phrase",
+   "project": "corrected-take",
+   "style": "bounce",
+   "scope": null,
+   "playhead": 1.5,
+   "wordsVisible": true,
+   "expected": {
+    "source": "page",
+    "words": [
+     {"id": "w2", "text": "corrected", "start": 0.0, "end": 0.35},
+     {"id": "w3", "text": "today", "start": 0.4, "end": 0.75}
+    ],
+    "duration": 1.3,
+    "time": 0.75
+   }
+  },
+  {
+   "id": "style-box-highlight-inside-word",
+   "project": "corrected-take",
+   "style": "box-highlight",
+   "scope": null,
+   "playhead": 0.9,
+   "wordsVisible": true,
+   "expected": {
+    "source": "page",
+    "words": [
+     {"id": "w2", "text": "corrected", "start": 0.0, "end": 0.35},
+     {"id": "w3", "text": "today", "start": 0.4, "end": 0.75}
+    ],
+    "duration": 1.3,
+    "time": 0.743
+   }
+  },
+  {
+   "id": "style-box-highlight-after-phrase",
+   "project": "corrected-take",
+   "style": "box-highlight",
+   "scope": null,
+   "playhead": 1.5,
+   "wordsVisible": true,
+   "expected": {
+    "source": "page",
+    "words": [
+     {"id": "w2", "text": "corrected", "start": 0.0, "end": 0.35},
+     {"id": "w3", "text": "today", "start": 0.4, "end": 0.75}
+    ],
+    "duration": 1.3,
+    "time": 0.34299999999999997
+   }
+  },
+  {
+   "id": "style-clean-subtitle-inside-word",
+   "project": "corrected-take",
+   "style": "clean-subtitle",
+   "scope": null,
+   "playhead": 0.9,
+   "wordsVisible": true,
+   "expected": {
+    "source": "page",
+    "words": [
+     {"id": "w2", "text": "corrected", "start": 0.0, "end": 0.35},
+     {"id": "w3", "text": "today", "start": 0.4, "end": 0.75}
+    ],
+    "duration": 1.3,
+    "time": 0.743
+   }
+  },
+  {
+   "id": "style-clean-subtitle-after-phrase",
+   "project": "corrected-take",
+   "style": "clean-subtitle",
+   "scope": null,
+   "playhead": 1.5,
+   "wordsVisible": true,
+   "expected": {
+    "source": "page",
+    "words": [
+     {"id": "w2", "text": "corrected", "start": 0.0, "end": 0.35},
+     {"id": "w3", "text": "today", "start": 0.4, "end": 0.75}
+    ],
+    "duration": 1.3,
+    "time": 0.34299999999999997
+   }
+  },
+  {
+   "id": "style-editorial-inside-word",
+   "project": "corrected-take",
+   "style": "editorial",
+   "scope": null,
+   "playhead": 0.9,
+   "wordsVisible": true,
+   "expected": {
+    "source": "page",
+    "words": [
+     {"id": "w2", "text": "corrected", "start": 0.0, "end": 0.35},
+     {"id": "w3", "text": "today", "start": 0.4, "end": 0.75}
+    ],
+    "duration": 1.3,
+    "time": 0.743
+   }
+  },
+  {
+   "id": "style-editorial-after-phrase",
+   "project": "corrected-take",
+   "style": "editorial",
+   "scope": null,
+   "playhead": 1.5,
+   "wordsVisible": true,
+   "expected": {
+    "source": "page",
+    "words": [
+     {"id": "w2", "text": "corrected", "start": 0.0, "end": 0.35},
+     {"id": "w3", "text": "today", "start": 0.4, "end": 0.75}
+    ],
+    "duration": 1.3,
+    "time": 0.34299999999999997
+   }
+  },
+  {
+   "id": "style-emoji-accent-inside-word",
+   "project": "corrected-take",
+   "style": "emoji-accent",
+   "scope": null,
+   "playhead": 0.9,
+   "wordsVisible": true,
+   "expected": {
+    "source": "page",
+    "words": [
+     {"id": "w2", "text": "corrected", "start": 0.0, "end": 0.35},
+     {"id": "w3", "text": "today", "start": 0.4, "end": 0.75}
+    ],
+    "duration": 1.3,
+    "time": 0.743
+   }
+  },
+  {
+   "id": "style-emoji-accent-after-phrase",
+   "project": "corrected-take",
+   "style": "emoji-accent",
+   "scope": null,
+   "playhead": 1.5,
+   "wordsVisible": true,
+   "expected": {
+    "source": "page",
+    "words": [
+     {"id": "w2", "text": "corrected", "start": 0.0, "end": 0.35},
+     {"id": "w3", "text": "today", "start": 0.4, "end": 0.75}
+    ],
+    "duration": 1.3,
+    "time": 0.34299999999999997
+   }
+  },
+  {
+   "id": "style-gradient-inside-word",
+   "project": "corrected-take",
+   "style": "gradient",
+   "scope": null,
+   "playhead": 0.9,
+   "wordsVisible": true,
+   "expected": {
+    "source": "page",
+    "words": [
+     {"id": "w2", "text": "corrected", "start": 0.0, "end": 0.35},
+     {"id": "w3", "text": "today", "start": 0.4, "end": 0.75}
+    ],
+    "duration": 1.3,
+    "time": 0.743
+   }
+  },
+  {
+   "id": "style-gradient-after-phrase",
+   "project": "corrected-take",
+   "style": "gradient",
+   "scope": null,
+   "playhead": 1.5,
+   "wordsVisible": true,
+   "expected": {
+    "source": "page",
+    "words": [
+     {"id": "w2", "text": "corrected", "start": 0.0, "end": 0.35},
+     {"id": "w3", "text": "today", "start": 0.4, "end": 0.75}
+    ],
+    "duration": 1.3,
+    "time": 0.34299999999999997
+   }
+  },
+  {
+   "id": "style-karaoke-inside-word",
+   "project": "corrected-take",
+   "style": "karaoke",
+   "scope": null,
+   "playhead": 0.9,
+   "wordsVisible": true,
+   "expected": {
+    "source": "page",
+    "words": [
+     {"id": "w2", "text": "corrected", "start": 0.0, "end": 0.35},
+     {"id": "w3", "text": "today", "start": 0.4, "end": 0.75}
+    ],
+    "duration": 1.3,
+    "time": 0.743
+   }
+  },
+  {
+   "id": "style-karaoke-after-phrase",
+   "project": "corrected-take",
+   "style": "karaoke",
+   "scope": null,
+   "playhead": 1.5,
+   "wordsVisible": true,
+   "expected": {
+    "source": "page",
+    "words": [
+     {"id": "w4", "text": "we", "start": 0.0, "end": 0.35},
+     {"id": "w5", "text": "ship", "start": 0.4, "end": 0.75},
+     {"id": "w6", "text": "uh", "start": 0.8, "end": 1.15},
+     {"id": "w7", "text": "the", "start": 1.2000000000000002, "end": 1.5500000000000003},
+     {"id": "w8", "text": "clipper.", "start": 1.6, "end": 1.9500000000000002}
+    ],
+    "duration": 2.5,
+    "time": 0.743
+   }
+  },
+  {
+   "id": "style-lower-third-inside-word",
+   "project": "corrected-take",
+   "style": "lower-third",
+   "scope": null,
+   "playhead": 0.9,
+   "wordsVisible": true,
+   "expected": {
+    "source": "page",
+    "words": [
+     {"id": "w2", "text": "corrected", "start": 0.0, "end": 0.35},
+     {"id": "w3", "text": "today", "start": 0.4, "end": 0.75}
+    ],
+    "duration": 1.3,
+    "time": 0.743
+   }
+  },
+  {
+   "id": "style-lower-third-after-phrase",
+   "project": "corrected-take",
+   "style": "lower-third",
+   "scope": null,
+   "playhead": 1.5,
+   "wordsVisible": true,
+   "expected": {
+    "source": "page",
+    "words": [
+     {"id": "w2", "text": "corrected", "start": 0.0, "end": 0.35},
+     {"id": "w3", "text": "today", "start": 0.4, "end": 0.75}
+    ],
+    "duration": 1.3,
+    "time": 0.34299999999999997
+   }
+  },
+  {
+   "id": "style-neon-inside-word",
+   "project": "corrected-take",
+   "style": "neon",
+   "scope": null,
+   "playhead": 0.9,
+   "wordsVisible": true,
+   "expected": {
+    "source": "page",
+    "words": [
+     {"id": "w2", "text": "corrected", "start": 0.0, "end": 0.35},
+     {"id": "w3", "text": "today", "start": 0.4, "end": 0.75}
+    ],
+    "duration": 1.3,
+    "time": 0.743
+   }
+  },
+  {
+   "id": "style-neon-after-phrase",
+   "project": "corrected-take",
+   "style": "neon",
+   "scope": null,
+   "playhead": 1.5,
+   "wordsVisible": true,
+   "expected": {
+    "source": "page",
+    "words": [
+     {"id": "w2", "text": "corrected", "start": 0.0, "end": 0.35},
+     {"id": "w3", "text": "today", "start": 0.4, "end": 0.75}
+    ],
+    "duration": 1.3,
+    "time": 0.34299999999999997
+   }
+  },
+  {
+   "id": "style-one-word-inside-word",
+   "project": "corrected-take",
+   "style": "one-word",
+   "scope": null,
+   "playhead": 0.9,
+   "wordsVisible": true,
+   "expected": {
+    "source": "page",
+    "words": [{"id": "w3", "text": "today", "start": 0.0, "end": 0.35}],
+    "duration": 0.9,
+    "time": 0.34299999999999997
+   }
+  },
+  {
+   "id": "style-one-word-after-phrase",
+   "project": "corrected-take",
+   "style": "one-word",
+   "scope": null,
+   "playhead": 1.5,
+   "wordsVisible": true,
+   "expected": {
+    "source": "page",
+    "words": [{"id": "w4", "text": "we", "start": 0.0, "end": 0.35}],
+    "duration": 0.9,
+    "time": 0.34299999999999997
+   }
+  },
+  {
+   "id": "style-outline-inside-word",
+   "project": "corrected-take",
+   "style": "outline",
+   "scope": null,
+   "playhead": 0.9,
+   "wordsVisible": true,
+   "expected": {
+    "source": "page",
+    "words": [
+     {"id": "w2", "text": "corrected", "start": 0.0, "end": 0.35},
+     {"id": "w3", "text": "today", "start": 0.4, "end": 0.75}
+    ],
+    "duration": 1.3,
+    "time": 0.743
+   }
+  },
+  {
+   "id": "style-outline-after-phrase",
+   "project": "corrected-take",
+   "style": "outline",
+   "scope": null,
+   "playhead": 1.5,
+   "wordsVisible": true,
+   "expected": {
+    "source": "page",
+    "words": [
+     {"id": "w2", "text": "corrected", "start": 0.0, "end": 0.35},
+     {"id": "w3", "text": "today", "start": 0.4, "end": 0.75}
+    ],
+    "duration": 1.3,
+    "time": 0.34299999999999997
+   }
+  },
+  {
+   "id": "style-pill-inside-word",
+   "project": "corrected-take",
+   "style": "pill",
+   "scope": null,
+   "playhead": 0.9,
+   "wordsVisible": true,
+   "expected": {
+    "source": "page",
+    "words": [
+     {"id": "w2", "text": "corrected", "start": 0.0, "end": 0.35},
+     {"id": "w3", "text": "today", "start": 0.4, "end": 0.75}
+    ],
+    "duration": 1.3,
+    "time": 0.743
+   }
+  },
+  {
+   "id": "style-pill-after-phrase",
+   "project": "corrected-take",
+   "style": "pill",
+   "scope": null,
+   "playhead": 1.5,
+   "wordsVisible": true,
+   "expected": {
+    "source": "page",
+    "words": [
+     {"id": "w2", "text": "corrected", "start": 0.0, "end": 0.35},
+     {"id": "w3", "text": "today", "start": 0.4, "end": 0.75}
+    ],
+    "duration": 1.3,
+    "time": 0.34299999999999997
+   }
+  },
+  {
+   "id": "style-two-tone-inside-word",
+   "project": "corrected-take",
+   "style": "two-tone",
+   "scope": null,
+   "playhead": 0.9,
+   "wordsVisible": true,
+   "expected": {
+    "source": "page",
+    "words": [
+     {"id": "w2", "text": "corrected", "start": 0.0, "end": 0.35},
+     {"id": "w3", "text": "today", "start": 0.4, "end": 0.75}
+    ],
+    "duration": 1.3,
+    "time": 0.743
+   }
+  },
+  {
+   "id": "style-two-tone-after-phrase",
+   "project": "corrected-take",
+   "style": "two-tone",
+   "scope": null,
+   "playhead": 1.5,
+   "wordsVisible": true,
+   "expected": {
+    "source": "page",
+    "words": [
+     {"id": "w2", "text": "corrected", "start": 0.0, "end": 0.35},
+     {"id": "w3", "text": "today", "start": 0.4, "end": 0.75}
+    ],
+    "duration": 1.3,
+    "time": 0.34299999999999997
+   }
+  },
+  {
+   "id": "style-typewriter-inside-word",
+   "project": "corrected-take",
+   "style": "typewriter",
+   "scope": null,
+   "playhead": 0.9,
+   "wordsVisible": true,
+   "expected": {
+    "source": "page",
+    "words": [
+     {"id": "w2", "text": "corrected", "start": 0.0, "end": 0.35},
+     {"id": "w3", "text": "today", "start": 0.4, "end": 0.75}
+    ],
+    "duration": 1.3,
+    "time": 0.743
+   }
+  },
+  {
+   "id": "style-typewriter-after-phrase",
+   "project": "corrected-take",
+   "style": "typewriter",
+   "scope": null,
+   "playhead": 1.5,
+   "wordsVisible": true,
+   "expected": {
+    "source": "page",
+    "words": [
+     {"id": "w2", "text": "corrected", "start": 0.0, "end": 0.35},
+     {"id": "w3", "text": "today", "start": 0.4, "end": 0.75}
+    ],
+    "duration": 1.3,
+    "time": 0.75
+   }
+  },
+  {
+   "id": "style-vhs-inside-word",
+   "project": "corrected-take",
+   "style": "vhs",
+   "scope": null,
+   "playhead": 0.9,
+   "wordsVisible": true,
+   "expected": {
+    "source": "page",
+    "words": [
+     {"id": "w2", "text": "corrected", "start": 0.0, "end": 0.35},
+     {"id": "w3", "text": "today", "start": 0.4, "end": 0.75}
+    ],
+    "duration": 1.3,
+    "time": 0.743
+   }
+  },
+  {
+   "id": "style-vhs-after-phrase",
+   "project": "corrected-take",
+   "style": "vhs",
+   "scope": null,
+   "playhead": 1.5,
+   "wordsVisible": true,
+   "expected": {
+    "source": "page",
+    "words": [
+     {"id": "w2", "text": "corrected", "start": 0.0, "end": 0.35},
+     {"id": "w3", "text": "today", "start": 0.4, "end": 0.75}
+    ],
+    "duration": 1.3,
+    "time": 0.34299999999999997
+   }
+  },
+  {
+   "id": "style-vox-bold-inside-word",
+   "project": "corrected-take",
+   "style": "vox-bold",
+   "scope": null,
+   "playhead": 0.9,
+   "wordsVisible": true,
+   "expected": {
+    "source": "page",
+    "words": [{"id": "w3", "text": "today", "start": 0.0, "end": 0.35}],
+    "duration": 0.9,
+    "time": 0.34299999999999997
+   }
+  },
+  {
+   "id": "style-vox-bold-after-phrase",
+   "project": "corrected-take",
+   "style": "vox-bold",
+   "scope": null,
+   "playhead": 1.5,
+   "wordsVisible": true,
+   "expected": {
+    "source": "page",
+    "words": [{"id": "w4", "text": "we", "start": 0.0, "end": 0.35}],
+    "duration": 0.9,
+    "time": 0.34299999999999997
+   }
+  },
+  {
+   "id": "style-vox-bold-plus-inside-word",
+   "project": "corrected-take",
+   "style": "vox-bold-plus",
+   "scope": null,
+   "playhead": 0.9,
+   "wordsVisible": true,
+   "expected": {
+    "source": "page",
+    "words": [{"id": "w3", "text": "today", "start": 0.0, "end": 0.35}],
+    "duration": 0.9,
+    "time": 0.34299999999999997
+   }
+  },
+  {
+   "id": "style-vox-bold-plus-after-phrase",
+   "project": "corrected-take",
+   "style": "vox-bold-plus",
+   "scope": null,
+   "playhead": 1.5,
+   "wordsVisible": true,
+   "expected": {
+    "source": "page",
+    "words": [{"id": "w4", "text": "we", "start": 0.0, "end": 0.35}],
+    "duration": 0.9,
+    "time": 0.34299999999999997
+   }
+  },
+  {
+   "id": "style-vox-highlight-inside-word",
+   "project": "corrected-take",
+   "style": "vox-highlight",
+   "scope": null,
+   "playhead": 0.9,
+   "wordsVisible": true,
+   "expected": {
+    "source": "page",
+    "words": [{"id": "w3", "text": "today", "start": 0.0, "end": 0.35}],
+    "duration": 0.9,
+    "time": 0.34299999999999997
+   }
+  },
+  {
+   "id": "style-vox-highlight-after-phrase",
+   "project": "corrected-take",
+   "style": "vox-highlight",
+   "scope": null,
+   "playhead": 1.5,
+   "wordsVisible": true,
+   "expected": {
+    "source": "page",
+    "words": [{"id": "w4", "text": "we", "start": 0.0, "end": 0.35}],
+    "duration": 0.9,
+    "time": 0.34299999999999997
+   }
+  }
+ ]
+}

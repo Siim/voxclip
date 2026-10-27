@@ -308,9 +308,7 @@ public enum CaptionLayoutEngine {
             previousEmoji = emoji?.1
             let start = words[indices[0]].input.start
             let next = pageIndex + 1 < groups.count ? words[groups[pageIndex + 1][0]].input.start : Double.infinity
-            var end = min(words[indices.last!].input.end + style.layout.holdGapSec, next)
-            if end - start < style.layout.minPageSec { end = min(start + style.layout.minPageSec, next) }
-            end = min(end, input.duration)
+            let end = pageEnd(start: start, lastEnd: words[indices.last!].input.end, next: next, layout: style.layout, duration: input.duration)
             let widths = indices.map { emphasised.keys.contains($0) ? words[$0].emphasisShaped!.units : words[$0].shaped.units }
             let lines = breakLines(widths: widths, gap: gap, balanced: style.layout.balance == .balanced, fits: fits)
             let shrunk = indices.count == 1 && !fits(widths[0])
@@ -358,6 +356,14 @@ public enum CaptionLayoutEngine {
         }
         if !current.isEmpty { groups.append(current) }
         return groups
+    }
+
+    /// Captions §8.1: the end of a page that starts at `start` and whose last word ends at `lastEnd`. `next` is the next
+    /// page's start, or infinity for the last page.
+    static func pageEnd(start: Double, lastEnd: Double, next: Double, layout: CaptionLayout, duration: Double) -> Double {
+        var end = min(lastEnd + layout.holdGapSec, next)
+        if end - start < layout.minPageSec { end = min(start + layout.minPageSec, next) }
+        return min(end, duration)
     }
 
     static func lineUnits(_ indices: [Int], _ widths: [Int], _ gap: Int) -> Int {

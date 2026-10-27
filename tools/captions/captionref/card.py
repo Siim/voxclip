@@ -107,6 +107,19 @@ def group(words, layout):
     return pages
 
 
+def entry(id_, text, start, end, st, lang, coverage):
+    """A caption-copy word as a caption page holds it (captions spec 3.1 and 4.4), or None when nothing of it is drawn."""
+    display = coverage.kept(tx.normalize(text, st["text"]["punctuation"], st["text"]["transform"], lang), st)
+    if not display:
+        return None
+    return {"id": id_, "text": text, "raw": tx.source_text(text), "display": display, "start": start, "end": end}
+
+
+def is_weak(word, lang, stops):
+    """A filler or a stopword of the transcript language; with no stopword list no word is weak."""
+    return stops is not None and bool(FILLER.match(word["text"]) or tx.matching_key(word["display"], lang) in stops)
+
+
 def key_index(words):
     """The first number, otherwise the first word that is not weak, otherwise the first word."""
     for i, w in enumerate(words):
@@ -135,15 +148,7 @@ def card(project, captions, style, words_visible, coverage, stopwords):
         return dict(NONE), None
     st = resolved_style(style, project)
     lang = language(transcript.get("language"))
-    punctuation, transform = st["text"]["punctuation"], st["text"]["transform"]
-
-    def entry(id_, text, start, end):
-        display = coverage.kept(tx.normalize(text, punctuation, transform, lang), st)
-        if not display:
-            return None
-        return {"id": id_, "text": text, "raw": tx.source_text(text), "display": display, "start": start, "end": end}
-
-    words = [e for e in (entry(w["id"], w["text"], w["start"], w["end"]) for w in captions) if e]
+    words = [e for e in (entry(w["id"], w["text"], w["start"], w["end"], st, lang, coverage) for w in captions) if e]
     if not words:
         return dict(NONE), st
     layout = dict(st["layout"], maxWords=min(st["layout"]["maxWords"], MAX_WORDS))
@@ -151,13 +156,13 @@ def card(project, captions, style, words_visible, coverage, stopwords):
     if not words_visible:
         source = "title"
         tokens = [t for t in tx.source_text(project.get("title") or "").split(" ") if t]
-        words = [e for e in (entry("title-%d" % i, t, 0.0, 0.0) for i, t in enumerate(tokens)) if e]
+        words = [e for e in (entry("title-%d" % i, t, 0.0, 0.0, st, lang, coverage) for i, t in enumerate(tokens)) if e]
         if not words:
             return dict(NONE), st
         layout.update(breakOnGapSec=None, maxPageSec=None)  # a title has no timing
     stops = stopwords.get(lang)
     for w in words:
-        w["weak"] = stops is not None and bool(FILLER.match(w["text"]) or tx.matching_key(w["display"], lang) in stops)
+        w["weak"] = is_weak(w, lang, stops)
     if stops is not None:
         lead = 0
         while lead < len(words) and FILLER.match(words[lead]["text"]):
