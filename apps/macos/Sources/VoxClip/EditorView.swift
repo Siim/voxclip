@@ -273,7 +273,7 @@ struct SubtitleDetail: Equatable {
 /// labels measured 1.23:1 and 4.37:1; the on-screen check in key and inactive windows
 /// could not run in round 1. The button is borderless on the toolbar's own glass platter,
 /// so no glass bezel covers the painted fill, and there is no glass on glass. The fill
-/// is accent.default while the accent is Petrol and the system accent otherwise (C14).
+/// and label use the appearance-specific Ink pair (ADR-R31).
 /// DebugToolbarPixels holds the label to 4.5:1 in key and inactive windows.
 @MainActor struct EditorExportControl: NSViewRepresentable {
     @Environment(\.isEnabled) private var isEnabled
@@ -312,6 +312,11 @@ struct SubtitleDetail: Equatable {
 }
 
 @MainActor final class ExportToolbarButton: NSButton {
+    static func colors(for appearance: NSAppearance) -> (fill: NSColor, label: NSColor) {
+        let dark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        return (DesignValues.nsColor(dark ? "accent.text" : "accent.default"),
+                DesignValues.nsColor(dark ? "word.playingForeground" : "accent.on"))
+    }
     #if DEBUG
     static var offscreenActive: Bool?
     #endif
@@ -338,11 +343,12 @@ struct SubtitleDetail: Equatable {
         if AppModel.isTestSession, let override = Self.offscreenActive { active = override }
         #endif
         let tinted = isEnabled && window?.isKeyWindow == true && active
+        let palette = Self.colors(for: effectiveAppearance)
         if tinted {
-            DesignValues.accentFill.setFill()
+            palette.fill.setFill()
             NSBezierPath(roundedRect: bounds, xRadius: bounds.height / 2, yRadius: bounds.height / 2).fill()
         }
-        let color = isEnabled ? DesignValues.nsColor(tinted ? "accent.on" : "text.primary") : NSColor.disabledControlTextColor
+        let color = isEnabled ? (tinted ? palette.label : DesignValues.nsColor("text.primary")) : NSColor.disabledControlTextColor
         let title = NSAttributedString(string: exportTitle, attributes: [.foregroundColor: color, .font: font ?? NSFont.systemFont(ofSize: NSFont.systemFontSize)])
         if !attributedTitle.isEqual(to: title) { attributedTitle = title }
         super.draw(dirtyRect)

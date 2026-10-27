@@ -272,7 +272,14 @@ import VoxClipCore
         check("crash recovery records an untitled project's autosave and reads it back; a saved project records nothing",
               decoded?.standardizedFileURL == autosave.standardizedFileURL && savedDecoded == nil)
         let recovering = WorkspaceShell(app: app)
-        let reopened = await recovering.reopenAutosave(autosave)
+        let finishImport = recovering.holdImportForTesting()
+        let recoveryRefused = await recovering.reopenAutosave(autosave)
+        check("an import-busy recovery keeps the registered document and its only autosave", !recoveryRefused && recovering.document == nil && recovering.pendingRecovery != nil && FileManager.default.fileExists(atPath: autosave.path))
+        finishImport()
+        await recovering.resumePendingRecovery()
+        for _ in 0..<100 where recovering.document == nil { try await Task.sleep(for: .milliseconds(10)) }
+        let reopened = recovering.document != nil
+        check("the pending recovery attaches after the import ends", reopened && recovering.pendingRecovery == nil)
         let recovered = recovering.document
         let recoveredCuts = Set(recovered?.project.edits.cutWordIds ?? [])
         check("the recorded autosave reopens in the shell untitled and edited, with its cuts (reopened \(reopened), untitled \(recovered?.fileURL == nil), edited \(recovered?.isDocumentEdited == true), cuts \(recoveredCuts == Set(cut.edits.cutWordIds)), notice \(recovering.notice ?? "none"))",
@@ -290,6 +297,22 @@ import VoxClipCore
         if appKitReopen !== recovered, let extra = appKitReopen as? VoxClipDocument { _ = recovering.closesRecoveredCopy(extra) }
         recovering.editor?.close()
         recovered?.close()
+
+        let appKitAutosave = directory.appendingPathComponent("appkit-recovery-autosave.voxclip")
+        try JSONProjectStore.encode(cut).write(to: appKitAutosave)
+        let appKitRecovered = VoxClipDocument(project: cut, demo: false)
+        appKitRecovered.autosavedContentsFileURL = appKitAutosave
+        NSDocumentController.shared.addDocument(appKitRecovered)
+        let finishAppKitImport = app.shell.holdImportForTesting()
+        appKitRecovered.makeWindowControllers()
+        for _ in 0..<100 where app.shell.pendingRecovery !== appKitRecovered { try await Task.sleep(for: .milliseconds(10)) }
+        check("AppKit's window recovery also retains a refused autosave during import", app.shell.pendingRecovery === appKitRecovered && FileManager.default.fileExists(atPath: appKitAutosave.path))
+        finishAppKitImport()
+        await app.shell.resumePendingRecovery()
+        for _ in 0..<100 where app.shell.document !== appKitRecovered { try await Task.sleep(for: .milliseconds(10)) }
+        check("AppKit's deferred recovery attaches through the normal replacement boundary", app.shell.document === appKitRecovered && app.shell.pendingRecovery == nil && appKitRecovered.isDocumentEdited)
+        app.shell.editor?.close()
+        appKitRecovered.close()
 
         // Help works on Home: Keyboard Shortcuts and Workspace Tour need no editor.
         let menuDelegate = NSApp.delegate as? AppDelegate
@@ -643,7 +666,7 @@ import VoxClipCore
         let find = NSApp.mainMenu?.items.compactMap(\.submenu).flatMap(\.items).first { $0.title == "Find Clips…" }
         check("Find Clips… is ⇧⌘K", find?.keyEquivalent == "k" && find?.keyEquivalentModifierMask == [.command, .shift])
         guard let light = NSAppearance(named: .aqua), let dark = NSAppearance(named: .darkAqua) else { throw CocoaError(.coderInvalidValue) }
-        check("a DEBUG build without the asset keeps VoxClip's Petrol accent", DesignValues.ownsAccent(light) && DesignValues.ownsAccent(dark))
+        check("a DEBUG build without the asset keeps VoxClip's Ink accent", DesignValues.ownsAccent(light) && DesignValues.ownsAccent(dark))
         var readable = true
         for appearance in [light, dark] {
             for accent in [NSColor.systemYellow, .systemBlue, .systemPink, .systemGray, .systemGreen] {
@@ -687,6 +710,12 @@ import VoxClipCore
         check("Show Viewer at 1024 hides the sidebar to make room", rule.viewerVisible && rule.columnVisibility == .detailOnly)
         rule.toggleViewer()
         check("Hide Viewer again restores the sidebar", !rule.viewerVisible && rule.columnVisibility == .all)
+        rule.toggleViewer()
+        rule.windowWidth = 900
+        rule.toggleViewer()
+        check("1024 → Show Viewer → 900 → Hide Viewer keeps the sidebar collapsed", !rule.viewerVisible && rule.columnVisibility == .detailOnly)
+        rule.windowWidth = 1100
+        check("the width-hidden sidebar returns only after widening", rule.columnVisibility == .all)
         rule.windowWidth = 900
         check("below 960 the sidebar collapses", rule.columnVisibility == .detailOnly)
         rule.revealSidebar()

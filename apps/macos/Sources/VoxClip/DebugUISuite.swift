@@ -402,6 +402,22 @@ import ApplicationServices
             try await move(native, to: chain.appendingPathComponent("C.voxclip"))
             check("a title that isn't a default stays through Rename", model.project.title == "Interview final" && window.title == "Interview final")
 
+            var following = model.project
+            following.title = "C"
+            let titleDocument = model.document
+            titleDocument.replaceProject(following)
+            let chainC = chain.appendingPathComponent("C.voxclip")
+            try await save(native, to: chainC)
+            titleDocument.injectTitleWriteFailure = true
+            let chainD = chain.appendingPathComponent("D.voxclip")
+            var failedTitleWrite = false
+            do { try await move(native, to: chainD) } catch { failedTitleWrite = true }
+            await titleDocument.pendingTitleWrite?.value
+            check("a failed deferred Rename title write marks the title edited for retry", failedTitleWrite && titleDocument.isDocumentEdited && titleDocument.project.title == "D")
+            let closedAfterTitleRetry = await app.shell.closeProject()
+            let titleAfterRetry = try VoxClipDocument(data: Data(contentsOf: chainD)).project.title
+            check("the leave boundary retries a failed Rename title write before closing", closedAfterTitleRetry && titleAfterRetry == "D")
+
         } catch {
             results.append(Result(name: "save boundary audit: \(error.localizedDescription)", passed: false))
         }

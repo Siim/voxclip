@@ -45,9 +45,27 @@ import VoxClipCore
         let wrong = backdrops.keys.sorted().filter { id in style(id).map { CaptionCardLook.backdrop($0, previewBackground: app.previewBackgrounds[id]) != backdrops[id]! } ?? true }
         check("card backdrops follow the style: stage black, dark preview colour or the plate grey\(wrong.isEmpty ? "" : " (wrong: \(wrong.joined(separator: ", ")))")", wrong.isEmpty)
         if var karaoke = style("karaoke") {
-            CaptionCardLook.adapt(&karaoke, fit: .home(), lines: 2, stageBlack: true)
+            CaptionCardLook.adapt(&karaoke, fit: .home(), lines: 2, backdrop: "#000000")
             check("cards on stage black drop near-black strokes and shadows", karaoke.stroke == nil && karaoke.shadows.isEmpty)
         }
+        if var boxed = style("box-highlight") {
+            CaptionCardLook.adapt(&boxed, fit: .row(), lines: 2, backdrop: "#000000")
+            check("the sidebar unboxes Box highlight into opaque readable key text", boxed.words?.active?.fill == .solid(color: "#B793F5"))
+        }
+        var waiting = fixture
+        waiting.transcript = nil
+        let arrivingDocument = VoxClipDocument(project: waiting, demo: true)
+        let arriving = EditorModel(document: arrivingDocument, app: app, preview: DemoPreviewEngine())
+        arriving.refresh()
+        let beforeWords = arriving.cardText(.fullTake, wordsVisible: true)
+        let beforeRevision = arriving.transcriptRevision
+        waiting.transcript = fixture.transcript
+        arrivingDocument.replaceProject(waiting)
+        arriving.refresh()
+        let afterWords = arriving.cardText(.fullTake, wordsVisible: true)
+        check("caption cards refresh when a transcript arrives instead of keeping YOUR STORY", afterWords.source == .transcript && afterWords != beforeWords && arriving.transcriptRevision > beforeRevision)
+        arriving.close()
+        arrivingDocument.close()
         var drawn = 0, rows = 0
         let opening = spoken("Um, The pattern starts with the milk.")
         for caption in app.styles {

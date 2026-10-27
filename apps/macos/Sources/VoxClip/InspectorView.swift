@@ -36,7 +36,7 @@ import CryptoKit
                         }
                         Picker("Position", selection: Binding(get: { storedPosition?.y ?? 0.8 }, set: { y in mutate { CaptionFineTuning.position(&$0, aspect: model.captionPreset, point: y == 0.8 ? nil : CaptionPosition(x: 0.5, y: y)) } })) { Text("Top").tag(0.2); Text("Middle").tag(0.5); Text("Bottom").tag(0.8) }.pickerStyle(.segmented).disabled(style?.position.userDraggable == false)
                         Text("Drag captions on the video to move them.").font(.caption).foregroundStyle(.secondary)
-                        Button("Reset to style") { mutate { CaptionFineTuning.reset(&$0) } }.buttonStyle(.link).tint(DesignValues.accentText)
+                        Button { mutate { CaptionFineTuning.reset(&$0) } } label: { Text("Reset to style").underline() }.buttonStyle(.plain).foregroundStyle(DesignValues.accentText)
                     }.padding(.top, 12)
                 }
             }.padding(16)

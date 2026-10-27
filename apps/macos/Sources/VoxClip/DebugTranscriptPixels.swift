@@ -46,6 +46,14 @@ import VoxClipCore
         let font = DesignValues.transcriptFont(size: model.textSize)
         let baseline = text.textContainerOrigin.y + fragment.layoutFragmentFrame.minY + line.typographicBounds.minY + line.glyphOrigin.y
         var results: [DebugUISuite.Result] = []
+        for (name, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
+            NSAppearance(named: appearance)?.performAsCurrentDrawingAppearance {
+                let background = DesignValues.nsColor("word.playingBackground")
+                let foreground = DesignValues.nsColor("word.playingForeground")
+                let contrast = DesignValues.contrast(foreground, background)
+                results.append(.init(name: "\(name) playing-word label contrast \(contrast):1", passed: contrast >= 4.5))
+            }
+        }
         let storedFont = text.textStorage?.attribute(.font, at: 0, effectiveRange: nil) as? NSFont
         let style = text.textStorage?.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle
         results.append(.init(name: "transcript uses the system font at 19 pt", passed: storedFont?.familyName == NSFont.systemFont(ofSize: 19).familyName && storedFont?.pointSize == 19))

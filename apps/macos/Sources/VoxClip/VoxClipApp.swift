@@ -89,7 +89,11 @@ import VoxClipCore
         terminating = true
         // A clip title still being typed is kept before the documents are reviewed.
         model.shell.endRename()
-        NSDocumentController.shared.reviewUnsavedDocuments(withAlertTitle: "Quit VoxClip?", cancellable: true, delegate: self, didReviewAllSelector: #selector(reviewedDocuments(_:didReviewAll:contextInfo:)), contextInfo: nil)
+        Task { @MainActor in
+            let documents = NSDocumentController.shared.documents.compactMap { $0 as? VoxClipDocument }
+            for document in documents { await document.pendingTitleWrite?.value }
+            NSDocumentController.shared.reviewUnsavedDocuments(withAlertTitle: "Quit VoxClip?", cancellable: true, delegate: self, didReviewAllSelector: #selector(reviewedDocuments(_:didReviewAll:contextInfo:)), contextInfo: nil)
+        }
         return .terminateLater
     }
     @objc private func reviewedDocuments(_ controller: NSDocumentController, didReviewAll: Bool, contextInfo: UnsafeMutableRawPointer?) {

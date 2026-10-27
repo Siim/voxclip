@@ -29,6 +29,10 @@ import VoxClipCore
     }
 
     static func run(app: AppModel) async {
+        guard Bundle.main.bundleIdentifier != "com.voxconvo.voxclip" else {
+            fputs("Debug probes require an isolated bundle identifier.\n", stderr)
+            exit(2)
+        }
         let arguments = CommandLine.arguments
         func value(_ flag: String) -> String? {
             guard let index: Int = arguments.firstIndex(of: flag) else { return nil }
@@ -113,6 +117,7 @@ import VoxClipCore
                             && NSApp.windows.filter { $0.isVisible && $0.styleMask.contains(.titled) && !($0 is NSPanel) }.count == 1))
         checks.append(Check(name: "reopened by: \(reopenedBy.isEmpty ? "nothing traced" : reopenedBy.joined(separator: "; "))", passed: !reopenedBy.isEmpty))
         write(checks, "recovery-results.json", in: folder)
+        guard let probeMarker = marker, document?.project.id == probeMarker.projectID else { exit(1) }
         // A normal quit still asks to keep or delete the never-saved project. Quit runs a
         // modal loop until the review ends, so a timer answers the prompt with Cancel.
         let answer = Timer(timeInterval: 0.2, repeats: true) { _ in
@@ -133,7 +138,6 @@ import VoxClipCore
                             passed: marker.map { quitName?.hasPrefix($0.title) == true } ?? false))
         write(checks, "recovery-results.json", in: folder)
         // The probe's autosave goes, and its document closes without the keep/delete prompt.
-        if let url = document?.autosavedContentsFileURL { try? FileManager.default.removeItem(at: url) }
         document?.close()
         exit(checks.allSatisfy(\.passed) ? 0 : 1)
     }
@@ -216,14 +220,15 @@ import VoxClipCore
                 }
             }
         }
-        var accent = "", selected = "", unemphasized = ""
+        var accent = "", selected = "", unemphasized = "", accentDefault = ""
         NSAppearance(named: appearance)?.performAsCurrentDrawingAppearance {
             accent = hex(NSColor.controlAccentColor)
             selected = hex(NSColor.selectedContentBackgroundColor)
             unemphasized = hex(NSColor.unemphasizedSelectedContentBackgroundColor)
+            accentDefault = hex(DesignValues.nsColor("accent.default"))
         }
         return ["capture": name, "selectionFill": hex(fill), "glyph": hex(glyph), "controlAccentColor": accent, "selectedContentBackgroundColor": selected,
-                "unemphasizedSelectedContentBackgroundColor": unemphasized, "petrol": appearance == .aqua ? "#1C6B69" : "#237D7A",
+                "unemphasizedSelectedContentBackgroundColor": unemphasized, "accentDefault": accentDefault,
                 "firstResponder": window.firstResponder.map { String(describing: type(of: $0)) } ?? "none", "key": String(window.isKeyWindow)]
     }
 

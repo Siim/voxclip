@@ -539,8 +539,8 @@ import VoxClipMedia
             if activeClip?.id == existing.id { announce(message) } else { activate(existing, announcing: message) }
             return
         }
-        let title = words.filter { selectedWordIDs.contains($0.id) }.prefix(7).map { text($0) }.joined(separator: " ")
-        let clip = ClipRange(id: UUID().uuidString.lowercased(), startWordId: start, endWordId: end, title: Self.clipTitle(title))
+        let title = EditingAlgorithms.clipTitle(words.lazy.filter { self.selectedWordIDs.contains($0.id) }.map { self.text($0) })
+        let clip = ClipRange(id: UUID().uuidString.lowercased(), startWordId: start, endWordId: end, title: title)
         guard apply([.addClip(clip), .setActiveClip(clipId: clip.id)], name: "Make clip from selection") else { return }
         announce(clipNumber(clip.id).map { "Clip \($0) made." } ?? "Clip made.")
     }
@@ -624,8 +624,7 @@ import VoxClipMedia
         return true
     }
     func renameClip(_ id: String, to title: String) {
-        let title = Self.clipTitle(title)
-        apply(.renameClip(id: id, title: title.isEmpty ? nil : title), name: "Rename clip")
+        apply(.renameClip(id: id, title: EditingAlgorithms.clipTitle([title])), name: "Rename clip")
     }
     /// The edited length of a clip, or of the full take for nil (design §3.4 meta line).
     func editedDuration(_ clip: ClipRange?) -> Double {
@@ -639,6 +638,7 @@ import VoxClipMedia
     }
     /// The caption card's words for a scope (design §5.4.2), from VoxClipCore.
     func cardText(_ scope: CaptionCardScope, wordsVisible: Bool) -> CaptionCardText {
+        _ = transcriptRevision
         guard let style = app.cardStyle(for: project), let resources = app.captionResources else { return .none }
         let key: String
         switch scope { case .fullTake: key = "full"; case .clip(let id): key = id }
@@ -733,9 +733,6 @@ import VoxClipMedia
         announcements.append(message)
         #endif
         NSAccessibility.post(element: NSApp as Any, notification: .announcementRequested, userInfo: [.announcement: message, .priority: NSAccessibilityPriorityLevel.medium.rawValue])
-    }
-    static func clipTitle(_ title: String) -> String {
-        String(String.UnicodeScalarView(title.trimmingCharacters(in: .whitespacesAndNewlines).unicodeScalars.prefix(EditingLimits.maxClipTitleScalars)))
     }
     func renderRequest(target: ExportTarget? = nil) async throws -> RenderRequest {
         let project = project

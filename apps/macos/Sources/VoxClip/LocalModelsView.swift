@@ -115,7 +115,7 @@ import VoxClipCore
                         Text("\(model.languages.joined(separator: ", ")) · \(ByteCountFormatter.string(fromByteCount: model.totalBytes, countStyle: .file)) · \(model.license)").font(.caption).foregroundStyle(.secondary)
                         Text(model.attribution).font(.caption2).textSelection(.enabled)
                         HStack {
-                            Link("Source", destination: model.sourcePage).tint(DesignValues.accentText)
+                            Link(destination: model.sourcePage) { Text("Source").underline() }.buttonStyle(.plain).foregroundStyle(DesignValues.accentText)
                             Spacer()
                             if let progress = library.progress, progress.modelID == model.id {
                                 ProgressView(value: Double(progress.receivedBytes), total: Double(max(1, progress.totalBytes))).frame(width: 120)

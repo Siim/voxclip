@@ -144,7 +144,7 @@ struct CaptionTileInput: Sendable, Equatable {
             return await Task.detached(priority: .utility) { CaptionCardLook.compose(nil, backdrop: backdrop, width: fit.width, height: fit.height) }.value
         }
         let lines = input.text.maxLines(on: fit.surface)
-        CaptionCardLook.adapt(&style, fit: fit, lines: lines, stageBlack: backdrop == nil)
+        CaptionCardLook.adapt(&style, fit: fit, lines: lines, backdrop: backdrop ?? "#000000")
         var next: CaptionCardText? = input.text
         while let card = next {
             // The card's own clock and emphasis; the adapted style is already resolved,

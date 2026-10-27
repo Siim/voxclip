@@ -1,5 +1,15 @@
 # macOS implementation contracts
 
+### 2026-10-27 — Round-2 recovery, title writes and Ink consumers
+
+- Refused never-saved recoveries with an autosave stay registered in `WorkspaceShell.pendingRecovery`; neither recovery entry point closes the only copy. Import completion and the leave boundary retry through `replaceProject`, preserving the native keep/delete review. The main window remains restorable.
+- Same-folder Rename retains `pendingTitleWrite`. Leaving and quitting await it before native document review. Failed title writes mark the document edited so autosave and the next save retry; the save-boundary audit injects this failure and checks the persisted retry.
+- The 1024 → Show Viewer → 900 → Hide Viewer sequence keeps a width-hidden sidebar collapsed until widening. The layout harness covers the sequence.
+- ADR-R31 Export uses one shared fill/label helper: ink/paper in light, paper/ink in dark; toolbar pixels use the same helper. Links are underlined, accent probes resolve the current token, and live accent terminology is Ink. Historical measurements below predate ADR-R31.
+- Every debug probe refuses the production bundle identifier. Recovery verification exits without closing or deleting any document whose project ID differs from its marker.
+- Manual clip creation and renaming use Core `EditingAlgorithms.clipTitle`. Sidebar key words use `CaptionCardColors.sidebarKeyText` against the resolved card backdrop, with opaque box RGB. Card text reads the observed transcript revision; a transcript-arrival regression checks that cached stand-in words refresh.
+- Follow-up validation and appearance evidence live under `/private/tmp/voxclip-sol-mac-redesign/followups/`; checklist steps 9–13 record their final gates separately.
+
 ### 2026-10-27 — Pre-merge fixes (opus-mac-redesign round 1e)
 
 - **The title follows the document's name (lead decision 1).** When Save As, Move or Rename gives the file a new base name, `Project.title` takes that name in the same write, but only while the title is unset, equals the video's base name as import sets it (trimmed, at most 200 scalars) or equals the previous file's base name. Any other title stays. `VoxClipDocument.followingTitle(_:previousNames:destination:)` holds the rule.
