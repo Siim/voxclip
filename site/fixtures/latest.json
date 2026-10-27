@@ -1,0 +1,31 @@
+{
+  "tag_name": "v0.1.0",
+  "html_url": "https://github.com/Siim/voxclip/releases/tag/v0.1.0",
+  "draft": false,
+  "prerelease": false,
+  "assets": [
+    {
+      "name": "VoxClip-macOS.dmg",
+      "size": 104857600,
+      "digest": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      "browser_download_url": "https://github.com/Siim/voxclip/releases/download/v0.1.0/VoxClip-macOS.dmg"
+    },
+    {
+      "name": "VoxClip-win-x64-Setup.exe",
+      "size": 125829120,
+      "digest": null,
+      "browser_download_url": "https://github.com/Siim/voxclip/releases/download/v0.1.0/VoxClip-win-x64-Setup.exe"
+    },
+    {
+      "name": "VoxClip-win-arm64-Setup.exe",
+      "size": 115343360,
+      "digest": "sha256:abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
+      "browser_download_url": "https://github.com/Siim/voxclip/releases/download/v0.1.0/VoxClip-win-arm64-Setup.exe"
+    },
+    {
+      "name": "VoxClip-win-ffmpeg-source.tar.xz",
+      "size": 20971520,
+      "browser_download_url": "https://github.com/Siim/voxclip/releases/download/v0.1.0/VoxClip-win-ffmpeg-source.tar.xz"
+    }
+  ]
+}

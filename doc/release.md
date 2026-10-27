@@ -2,7 +2,7 @@
 
 Status: normative for 0.1.0. Date: 2026-10-25.
 
-Releases are built and signed **locally**: macOS on the maintainer's Mac, Windows on the existing UTM Windows VM driven from the Mac over SSH. CI never signs. Every release is a **draft** GitHub Release on `github.com/Siim/voxclip` until a human publishes it. The voxconvo.com download page links to the latest published release's assets through constant asset names (publishing.md section 4).
+Releases are built and signed **locally**: macOS on the maintainer's Mac, Windows on the existing UTM Windows VM driven from the Mac over SSH. CI never signs. Every release is a **draft** GitHub Release on `github.com/Siim/voxclip` until a human publishes it. The clip.voxconvo.com page on GitHub Pages links directly to the latest stable release's assets (publishing.md section 4). The voxconvo.com/download page is dropped (user decision, 2026-10-27). Both platforms launch together; there is no Mac-only 0.1.0 (ADR-R33).
 
 **No secret ever enters this repository, a command line, a log or the VM disk.** Secrets are named here by variable and file location only.
 
@@ -274,7 +274,27 @@ The installed CLI smoke test sets `VOXCLIP_DATA_DIR` to a fresh directory under 
 6. Windows: start the VM, then `VOXCLIP_WIN_HOST=… VOXCLIP_SIGNING_ENV=… apps/windows/build/release-windows.sh` (uploads both Setup.exe files, the feeds, the packages and `SHA256SUMS-windows.txt` to the same draft).
 7. Smoke-test from the draft: `gh release download vX.Y.Z --pattern 'VoxClip-*' -D "$(mktemp -d)/vc-rc"` (outside the checkout, so no release artifact can be committed); on a second macOS account open the DMG (quarantined download) and launch; on a clean Windows VM snapshot run both installers. For stable releases only, check that an installed previous version updates (Windows) and that "Check for Updates…" sees the new version once published (macOS). Beta smoke tests cover the downloaded DMG and installers; neither update check offers betas (architecture.md sections 13.1 and 13.2).
 8. Publish stable releases with `gh release edit vX.Y.Z --draft=false --latest`. Publish betas with `gh release edit vX.Y.Z-beta.N --draft=false`, keeping the draft's prerelease flag; never pass `--latest` for a beta.
-9. **Stable releases only:** check the download page redirects: `curl -sI https://voxconvo.com/download/macos | grep -i location` (and `windows`, `windows-arm64`) point at `releases/latest/download/<asset>`, and those URLs return 302 to the new files. For betas, the download page keeps serving the last stable release.
+9. **Stable releases only:** after the approved Pages publication succeeds, inspect the download links on `https://clip.voxconvo.com`: Mac, Windows x64, Windows Arm and FFmpeg corresponding source must link to the correct new tag and actual assets on GitHub Releases; verify each target returns the expected file. Check the version, sizes, any listed SHA-256, and video/caption playback. There are no voxconvo.com/download redirects. Betas keep the last stable app release on the page.
+
+---
+
+### 4.1 Launch page go-live — user's approval required
+
+The page address is **clip.voxconvo.com**, served by GitHub Pages from this public repository (ADR-R32, user decision 2026-10-27). Pages is disabled until the user approves going live. The implementation task does not change DNS, repo settings, upload assets or publish releases.
+
+Prepare approved captures and completed `doc/media/CREDITS.md`. Commit the approved byte size and SHA-256 for every MP4 and VTT in `site/media.json` with the user's capture approval. Stage those exact bytes in the media release named there. Until all pins are approved, leave their size and SHA-256 entries null: fetching skips the media release entirely and the builder uses placeholders. Approved fetching requires the API size/digest and downloaded bytes to match the committed pins. Use a tag containing the Pages workflow, and mark this media release **not latest**, preserving the latest stable `vX.Y.Z` app release for downloads. Videos never enter Git. Production fetching requires the Mac, Windows x64 and Windows Arm installers and matching FFmpeg corresponding source. Both platforms must pass acceptance before publishing 0.1.0 (ADR-R33).
+
+Each of these go-live actions needs the user's approval:
+
+1. **Approval required:** verify `voxconvo.com` for the **Siim account** in GitHub account settings → Pages → verified domains. Add GitHub's supplied `_github-pages-challenge-…` TXT record at GoDaddy and complete verification.
+2. **Approval required:** enable Pages with **GitHub Actions** as the source and set this repository's custom domain to `clip.voxconvo.com`. In Settings → Environments → `github-pages` → Deployment branches and tags, keep `main` and add tag rules `v*` and `media-v*`.
+3. **Approval required:** only after account verification and repository custom-domain assignment, add the GoDaddy CNAME `clip` → `siim.github.io`.
+4. **Approval required:** wait for the certificate, then turn on **Enforce HTTPS**.
+5. **Approval required:** publish the release, or dispatch **Launch page** from `main`.
+
+Never point DNS at GitHub before steps 1–2 are complete. Keep the verification TXT record permanently. If Pages is disabled again, remove the CNAME so it no longer points at GitHub. Until the environment tag rules exist, a release run only builds: its tag-ref deploy is rejected by `github-pages`. A `workflow_dispatch` from `main` publishes the same page: every run, whatever its trigger, builds `site/` and `site/media.json` from `main`.
+
+The workflow tests the page offline, fetches public release assets, verifies their byte sizes and SHA-256, builds, uploads with `actions/upload-pages-artifact` and deploys with `actions/deploy-pages`. It never changes Pages settings. Confirm its deployment and run step 9 above before announcing the URL.
 
 ---
 
@@ -297,5 +317,5 @@ The installed CLI smoke test sets `VOXCLIP_DATA_DIR` to a fresh directory under 
 | Script dies on non-ASCII characters on the VM | Windows PowerShell 5.1 reads scripts as ANSI. Keep `.ps1` files ASCII (CI can check with `grep -nP '[^\x00-\x7F]'`) |
 | Timestamp or token errors on the VM | VM clock drift after the Mac slept. Resync: `w32tm /resync` |
 | Velopack update not found by users | The asset `releases.win-<arch>.json` is missing from the release, or the build was packed with a different `--channel`. Channels are permanent; never rename them |
-| Download page serves an old version | The new release is still a draft or marked pre-release. `releases/latest` only follows published, non-pre-release releases |
+| Launch page serves an old version | A release-published run uses a tag ref: the default `github-pages` environment allows only `main`, so missing `v*` / `media-v*` tag rules reject deployment after the build. Follow the approval-required environment setup in §4.1, or dispatch **Launch page** from `main` to publish the same page. Also check whether the app release is draft/pre-release, Pages is disabled, or latest-release metadata is wrong. Check the dispatch/release run and its joint-platform asset checks, then request a manual dispatch after approval. The media release must be marked not latest so `/releases/latest` continues to select the stable app release |
 | `azure-signing.env` missing in a git worktree | Not applicable to VoxClip: the env file is never in the repo; `VOXCLIP_SIGNING_ENV` names its absolute path |

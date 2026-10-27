@@ -17,7 +17,7 @@ Provenance: vox-api and vox-web as read on 2026-10-25 (working trees including u
 
 | Milestone | Publishing surface |
 |---|---|
-| M1 (0.1.0) | Share helpers after export: Show in Finder/Explorer, Copy caption, Open X (web intent), Open LinkedIn (composer), drag-out of the file. voxconvo.com `/download` page and redirects |
+| M1 (0.1.0) | Share helpers after export: Show in Finder/Explorer, Copy caption, Open X (web intent), Open LinkedIn (composer), drag-out of the file. clip.voxconvo.com launch page on GitHub Pages (ADR-R32, 2026-10-27) |
 | M2 | VoxConvo direct publish: device-flow sign-in, prerendered upload, `createNew`. Later in M2 or v1.1: `createClipPost` with idempotency |
 | Later | Optional "Use your own X app" (public PKCE client); server-side cross-posting to X and LinkedIn through vox-api |
 
@@ -134,27 +134,27 @@ The vox repos have uncommitted user edits. Edit files **in place**; never stash,
 | A4 | `src/index.ts` | Multer `filename`: derive the extension from `file.mimetype` / `originalname` (`video/mp4` → `.mp4`, `video/quicktime` → `.mov`, `video/webm` → `.webm`, default `.webm`). Also fixes Safari MP4 recordings published with captions Off | **before the M2 desktop release** |
 | A5 | `src/index.ts` | `requireSession` stores `response.locals.userId = user.id`. `/upload-video` reads `prerendered === 'true'`; when set it calls `videoSubtitleService.startPrerenderedJob(tempPostId, request.file.path, { userId })` and ignores `words`, `subtitleConfig`, `removePunctuation`, `uppercase`. Both modes persist `userId` on the job | M2 |
 | A6 | `src/services/videoSubtitleService.ts` (modified) | `startPrerenderedJob(postId, inputPath, owner)`: persist `{jobId, postId, status: 'pending', progress: 0, inputPath, userId}`; then `probeVideo`; reject when there is no video stream or the duration exceeds the configured limit; if `needsNormalizing(info)` normalise via `cutVideoSegments(path, [], …)` (no cuts) with a guard or branch for sources without audio; otherwise remux with `ffmpeg -i in -map 0 -c copy -movflags +faststart -y <name>_ready.mp4`; `uploadToS3` (an `.mp4` path → `ContentType: video/mp4`); complete the job and publish `VIDEO_JOB_PROGRESS`; delete temp files. Never call `buildSubtitleFilters` on this path. Add `userId?: string` to `VideoProcessingJob` and to `persistJob`'s `$set` | M2 |
-| A7 | `src/gql/resolvers/account/accountInputSchema.ts` | Reserved handles in `validateHandle`, case-insensitive: `download, device, voxclip, clipper, desktop, app, api, post, auth, edit, search, logout, settings, help, about, privacy, terms` | M1 (with the download page) |
+| A7 | `src/gql/resolvers/account/accountInputSchema.ts` | Reserved handles for device authentication and existing VoxConvo routes: `device, api, post, auth, edit, search, logout, settings, help, about, privacy, terms`, plus the brand names `voxclip` and `clipper`, kept so no account can impersonate the app VoxClip publishes from. The launch-only `download, desktop, app` reservations are dropped with voxconvo.com/download (ADR-R32, user decision 2026-10-27) | M2, before device flow |
 | A8 | `test/*.cjs` | Prerendered pass-through keeps MP4 bytes and `video/mp4`; never burns or cuts; a bearer token is accepted by `requireSession` and `/graphql`; device flow happy path, `authorization_pending`, `slow_down` (+5 s), `expired_token`, `access_denied` | M2 |
 | A9 | `src/gql/resolvers/post/{inputSchema,index}.ts`, `src/services/postService.ts` | `createClipPost(input: ClipPostInput!)` (section 3.6): job ownership (`job.userId == session.userId`, `status == completed`), idempotency through a unique partial index `(accountId, clientRequestId)` on `posts` | v1.1 |
 | A10 | `src/auth.ts`, `src/index.ts`, GraphQL context | Mark device-flow sessions (`clientId: 'voxclip'`, `scope: 'post:video'`) when the token is issued. A middleware limits such sessions to `POST /upload-video`, `GET /video-job/:id`, `POST /graphql` with only the operations `getMyAccount`, `createNew` and `createClipPost`, `GET /api/auth/get-session` and `POST /api/auth/sign-out`; anything else returns 403 `{"error":"insufficient_scope"}`. A8 tests cover the 403 for another route and another GraphQL operation | M2 (with A1) |
 
-Before launching the reserved list, run a read-only check: `db.accounts.find({ handle: /^(download|device|voxclip|clipper|desktop)$/i })`. A static route would shadow such a profile; resolve any hit with the owner first.
+Before launching A7, run a read-only account-handle check for its retained route names and resolve any hit with the owner. These reservations protect device authentication and existing VoxConvo routes; they serve no purpose for the GitHub Pages launch page.
 
 ### 3.4 vox-web change list
 
 | # | File | Change | When |
 |---|---|---|---|
-| W1 | `src/App.tsx` (untracked) | Routes `<Route path="/download" element={<DownloadPage/>} />` and `<Route path="/device" element={<DevicePage/>} />`. Static segments outrank `/:handle` in React Router 6.4. Add both to the standalone-for-logged-out list in `ConditionalLayout` and to the `PageMetadata` exclusion list (~line 70: `['post','auth','edit','search','logout','@']`) | M1 (`/download`), M2 (`/device`) |
-| W2 | `src/lib/metadata.ts` (untracked) | Same exclusions (~line 23) and titles: `/download` → "VoxClip: a free, fast clipper for Mac and Windows" + description; `/device` → "Connect VoxClip" | M1 / M2 |
-| W3 | `src/Layout.tsx` (modified) | `getHandleFromPath` (~lines 119–126): treat `/download` and `/device` as non-handle paths (otherwise it fires `GQL_GET_PROFILE` for handle "download"); `getPageTitle` entries | M1 / M2 |
-| W4 | `server.mjs` (untracked) | Download redirects **before** the SSR middleware (~line 37; that middleware skips any path with a file extension, so `/download/X.dmg` would 404) (section 4.2) | M1 |
-| W5 | `src/components/Download/index.tsx` (new) | The download page (section 4.1) | M1 |
+| W1 | `src/App.tsx` | `/device` route, standalone layout and metadata exclusions only; `/download` dropped (2026-10-27) | M2 |
+| W2 | `src/lib/metadata.ts` | `/device` title "Connect VoxClip" and route exclusion; no download metadata | M2 |
+| W3 | `src/Layout.tsx` | Treat `/device` as a non-handle path and add its title | M2 |
+| W4 | `server.mjs` | Download redirects dropped by user decision, 2026-10-27; no launch-page server work | Dropped |
+| W5 | `site/` in the public VoxClip repo | Replaces the dropped vox-web download page: clip.voxconvo.com on GitHub Pages (section 4) | M1 |
 | W6 | `src/components/Device/index.tsx` (new) | The device approval page (section 3.5.2) | M2 |
-| W7 | `src/components/Welcome/Splash.tsx` (modified) | "Desktop app" link to `/download` in the landing header nav (~lines 89–92) and footer (~line 123); `callbackURL` pass-through so sign-in from `/device?user_code=…` returns there | M1 / M2 |
-| W8 | `src/components/Sidebar/index.tsx` (modified) | Optional "Desktop app" entry | M1 |
-| W9 | `src/index.css` (modified) | Small additions for the download and device pages, reusing `.landing-page`, `.landing-header`, `.button-primary` | M1 |
-| W10 | `test/ssr.test.mjs` (untracked) | `/download` renders without a profile query; each redirect returns 302 with `Cache-Control: no-store` and the right `Location`; `/device` renders the sign-in prompt for logged-out users | M1 / M2 |
+| W7 | `src/components/Welcome/Splash.tsx` | "Desktop app" links point to `https://clip.voxconvo.com`; retain `callbackURL` pass-through so sign-in from `/device?user_code=…` returns there | M2, separately authorized |
+| W8 | `src/components/Sidebar/index.tsx` (modified) | Optional "Desktop app" entry linking to `https://clip.voxconvo.com` | M2, separately authorized |
+| W9 | `src/index.css` | Device-page additions only, reusing `.landing-page`, `.landing-header`, `.button-primary`; no download-page rules | M2 |
+| W10 | `test/ssr.test.mjs` | `/device` renders the sign-in prompt for logged-out users; no download-page/redirect tests. Launch-page tests live in `site/` | M2 |
 
 ### 3.5 Desktop flow
 
@@ -250,63 +250,34 @@ The server resolves the video URL from the job instead of trusting a URL from th
 
 ---
 
-## 4. Download page and redirects (M1)
+## 4. Launch page on GitHub Pages (M1)
 
-### 4.1 `/download` page (vox-web, SSR)
+### 4.1 clip.voxconvo.com
 
-- Standalone for everyone (landing header and footer). Hero: "VoxClip. Cut video by its words." Sub: "Free and open source. Bring your own keys, or run everything on your computer."
-- Buttons: **Download for Mac** (`/download/macos`, "Apple silicon · macOS 26 or later"), **Download for Windows** (`/download/windows`, "64-bit · Windows 10 or 11") with a secondary link "Windows on Arm" (`/download/windows-arm64`). Client-side OS detection (`navigator.userAgentData?.platform || navigator.platform`) highlights one button; SSR renders all of them.
-- Also: system requirements, a link to `https://github.com/Siim/voxclip` and its releases page, the SHA-256 note ("Checksums are attached to each GitHub release"), and the privacy line "No account required. Your keys stay on your device. VoxClip sends no telemetry."
-- Next to the Windows buttons: "The Windows app uses libraries from the FFmpeg project under the LGPL. Source: VoxClip-win-ffmpeg-source.tar.xz" linking to `https://github.com/Siim/voxclip/releases/latest/download/VoxClip-win-ffmpeg-source.tar.xz` (release.md section 1.1).
-- If the latest published release has no Windows assets (ADR-R17), the server-side config `VOXCLIP_WINDOWS_AVAILABLE=false` hides the Windows buttons, the Windows requirements and the FFmpeg source line, and their redirects answer 302 to the releases page instead (section 4.2). The server passes the flag to the SSR render and to the client, so hydration renders the same markup.
-- Unknown paths under `/download/` redirect to `/download` (section 4.2); the page never queries the VoxConvo API.
+**User decision, 2026-10-27 (ADR-R32):** voxconvo.com/download and its redirects are dropped. The public VoxClip repository owns `site/`, served by GitHub Pages at **clip.voxconvo.com**. Releases and installer files remain on GitHub Releases. No VoxConvo server or API is needed to serve the page.
 
-### 4.2 Redirects (`vox-web/server.mjs`, before the SSR middleware)
+- Hero: "Cut video by its words." Sections: editor capture, showreel, three downloads, four features, tutorials, privacy, MIT/source/notices and the VoxConvo footer. Pending captures are visibly labelled.
+- Mac: Apple silicon, macOS 26 or later (Package.swift); Windows x64/Arm64: Windows 10 2004 or later / Windows 11 (App csproj SupportedOSPlatformVersion). Only verified release asset URLs become links; sizes and optional SHA-256 come from saved release metadata.
+- Next to Windows downloads: "This software uses libraries from the FFmpeg project under the LGPL" and a link to that same release's `VoxClip-win-ffmpeg-source.tar.xz` (architecture §6.1). A Windows asset without its corresponding-source archive fails the build.
+- Local transcription requires a model download; cloud transcription sends audio to the chosen provider. Find Clips sends transcript text to the chosen connector; AI tighten (coming, ai §12) will do the same. Keys are stored in Keychain/DPAPI; there is no telemetry (architecture §11).
+- Voice Lab has not shipped. The page labels it **Voice Lab (beta, coming)** and says it sends the user's voice recordings, the words to speak and a little surrounding transcript for context to ElevenLabs with their key after consent; lip sync sends the selected video and audio to the chosen provider (voice-lab §1, §2.5, §12). No claim that all cloud processing receives only text.
+- Both platforms launch together (ADR-R33, user decision 2026-10-27). Production release fetching requires Mac and both Windows installers. Missing assets in an offline scaffold are labelled unavailable, never invented.
 
-```js
-const VOXCLIP_RELEASES = (process.env.VOXCLIP_RELEASES_BASE
-  || 'https://github.com/Siim/voxclip/releases/latest/download').replace(/\/$/, '')
-const VOXCLIP_RELEASES_PAGE = 'https://github.com/Siim/voxclip/releases'
-const VOXCLIP_WINDOWS = process.env.VOXCLIP_WINDOWS_AVAILABLE !== 'false'   // ADR-R17
-const VOXCLIP_ASSETS = {
-  macos: 'VoxClip-macOS.dmg',
-  windows: 'VoxClip-win-x64-Setup.exe',
-  'windows-x64': 'VoxClip-win-x64-Setup.exe',
-  'windows-arm64': 'VoxClip-win-arm64-Setup.exe',
-  'windows-ffmpeg-source': 'VoxClip-win-ffmpeg-source.tar.xz',
-}
-const voxclipTargets = new Map()   // keys are lower case
-for (const [alias, asset] of Object.entries(VOXCLIP_ASSETS)) {
-  const windowsAsset = alias.startsWith('windows')
-  const target = windowsAsset && !VOXCLIP_WINDOWS ? VOXCLIP_RELEASES_PAGE : `${VOXCLIP_RELEASES}/${asset}`
-  voxclipTargets.set(`/download/${alias}`.toLowerCase(), target)
-  voxclipTargets.set(`/download/${asset}`.toLowerCase(), target)
-}
-app.get(/^\/download(?:\/.*)?$/i, (req, res, next) => {
-  const path = req.path.replace(/\/+$/, '')
-  const normalizedPath = path.toLowerCase()
-  if (normalizedPath === '/download') {
-    if (path !== '/download') return res.redirect(301, '/download')   // e.g. /Download
-    return next()                                                     // the SSR page (section 4.1)
-  }
-  const target = voxclipTargets.get(normalizedPath)
-  return res.set('Cache-Control', 'no-store').redirect(302, target || '/download')
-})
-```
+### 4.2 Publication and approval
 
-Matching ignores case and trailing slashes. Redirect table (all `302`, `Cache-Control: no-store`):
+`.github/workflows/pages.yml` is dispatch- and release-published-only, with no push trigger. It checks Pages settings using a read-only API call, skips publication while disabled, fetches published app metadata and launch videos from the media release named in `site/media.json`, requires the API metadata and every video's/caption's bytes to match committed, approved size and SHA-256 pins (null pins keep placeholders without fetching media), builds and deploys through the Pages artifact actions. Site builds and tests run offline; media files enter only the build artifact and are never committed.
 
-| Path | Location |
-|---|---|
-| `/download/macos`, `/download/VoxClip-macOS.dmg` | `https://github.com/Siim/voxclip/releases/latest/download/VoxClip-macOS.dmg` |
-| `/download/windows`, `/download/windows-x64`, `/download/VoxClip-win-x64-Setup.exe` | `…/latest/download/VoxClip-win-x64-Setup.exe` |
-| `/download/windows-arm64`, `/download/VoxClip-win-arm64-Setup.exe` | `…/latest/download/VoxClip-win-arm64-Setup.exe` |
-| `/download/windows-ffmpeg-source`, `/download/VoxClip-win-ffmpeg-source.tar.xz` | `…/latest/download/VoxClip-win-ffmpeg-source.tar.xz` |
-| any other `/download/<name>` | `/download` |
+Each go-live action needs the user's approval, in this order (see [release §4.1](release.md#41-launch-page-go-live--users-approval-required)):
 
-`/download` itself, with any letter case other than exactly `/download`, answers `301` to `/download`. With `VOXCLIP_WINDOWS_AVAILABLE=false`, every `windows*` alias and Windows asset name answers 302 to `https://github.com/Siim/voxclip/releases` instead, and the page (section 4.1) renders no Windows buttons and no FFmpeg source line.
+1. **Approval required:** verify `voxconvo.com` for the **Siim account** in GitHub account settings → Pages → verified domains. Add GitHub's supplied `_github-pages-challenge-…` TXT record at GoDaddy and complete verification.
+2. **Approval required:** enable Pages with **GitHub Actions** as the source and set this repository's custom domain to `clip.voxconvo.com`. In Settings → Environments → `github-pages` → Deployment branches and tags, keep `main` and add tag rules `v*` and `media-v*`.
+3. **Approval required:** only after account verification and repository custom-domain assignment, add the GoDaddy CNAME `clip` → `siim.github.io`.
+4. **Approval required:** wait for the certificate, then turn on **Enforce HTTPS**.
+5. **Approval required:** publish the release, or dispatch **Launch page** from `main`.
 
-GitHub answers `releases/latest/download/<asset>` with a redirect to the newest published release's asset, so the page never needs a redeploy for a release. Caddy needs no change (voxconvo.com already proxies everything to the SSR server).
+Never point DNS at GitHub before steps 1–2 are complete. Keep the verification TXT record permanently. If Pages is disabled again, remove the CNAME so it no longer points at GitHub. Until the environment tag rules exist, a release run only builds: its tag-ref deploy is rejected by `github-pages`. A `workflow_dispatch` from `main` publishes the same page: every run, whatever its trigger, builds `site/` and `site/media.json` from `main`.
+
+No deployment or settings change is authorized by the tooling task.
 
 ---
 

@@ -48,3 +48,7 @@ apps/macos/dist/
 apps/windows/dist/
 *.tar
 *.tar.xz
+
+# Static launch-page output and local release metadata
+site/dist/
+site/latest.json

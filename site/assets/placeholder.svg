@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="900" viewBox="0 0 1440 900" role="img" aria-labelledby="title description">
+  <title id="title">Screenshot placeholder</title>
+  <desc id="description">A labelled empty frame, not an app screenshot.</desc>
+  <style>rect{fill:#F0EFEA;stroke:#85878E}path{fill:none;stroke:#85878E}text{fill:#575A61;font:24px system-ui,sans-serif;letter-spacing:3px}@media(prefers-color-scheme:dark){rect{fill:#141517;stroke:#6C6E75}path{stroke:#6C6E75}text{fill:#A8AAB0}}</style>
+  <rect x="1" y="1" width="1438" height="898" rx="10"/>
+  <path d="M64 64h48M64 64v48M1376 64h-48M1376 64v48M64 836h48M64 836v-48M1376 836h-48M1376 836v-48M688 450h64M720 418v64"/>
+  <text x="720" y="532" text-anchor="middle">CAPTURE PENDING</text>
+  <text x="720" y="578" text-anchor="middle" style="font-size:16px;letter-spacing:1px">Real interface. Final palette. Coming next.</text>
+</svg>

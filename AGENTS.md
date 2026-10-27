@@ -98,8 +98,8 @@ Caption timing and allocation checks are opt-in: `VOXCLIP_PERF_TESTS=1` and, for
 
 - One logical change per commit. Subject in the imperative, at most 72 characters ("Add join-fade tap to the composition builder"); the body says why, and names the spec or ADR it follows.
 - Follow the repository owner's attribution rule in [CLAUDE.md](CLAUDE.md): commit messages and pull request descriptions carry no AI attribution (no `Co-Authored-By` trailer for any agent, no "Generated with" line).
-- Never commit release artifacts (`.app`, `.dmg`, `.zip`, `Setup.exe`, `.nupkg`), models, caches, or media other than small synthetic fixtures (at most 2 MB each) under `shared/fixtures/`.
-- CI (`.github/workflows/ci.yml`) must be green: the macOS job (Swift build and tests, .NET core tests on macOS, caption parity), the Windows job (.NET tests, WinUI builds for x64 and arm64) and the fixtures job (editing fixtures, caption styles, tokens, version, JSON validity, secret scan).
+- Never commit release artifacts (`.app`, `.dmg`, `.zip`, `Setup.exe`, `.nupkg`), models, caches, or media other than small synthetic fixtures (at most 2 MB each) under `shared/fixtures/`. Exception: optimised launch images under `doc/media/` are allowed: at most 300,000 bytes per file; animated WebP only under `doc/media/teaser/`, at most 3,000,000 bytes each; the whole folder at most 6,000,000 bytes. Record consent and licences in `doc/media/CREDITS.md`; see `doc/media/README.md`. CI checks git-tracked files with `python3 tools/media/check_budget.py`.
+- CI (`.github/workflows/ci.yml`) must be green: the macOS job (Swift build and tests, .NET core tests on macOS, caption parity, standalone recorder), the Windows job (.NET tests, WinUI builds for x64 and arm64) and the fixtures job (editing fixtures, caption styles, tokens, version, JSON validity, launch media budgets and tests, static page, secret scan).
 
 ## Releases
 

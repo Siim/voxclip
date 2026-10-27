@@ -28,7 +28,7 @@ jobs:
     name: macOS (Swift app, .NET core on macOS)
     runs-on: macos-26
     # Every step after setup has its own budget; the job limit is their sum plus about five minutes of setup.
-    timeout-minutes: 172
+    timeout-minutes: 175
     steps:
       - uses: actions/checkout@v5
 
@@ -249,6 +249,13 @@ jobs:
           path: ${{ runner.temp }}/caption-parity/diff
           if-no-files-found: warn
           retention-days: 7
+
+      - name: Build and test the standalone window recorder
+        if: ${{ !cancelled() }}
+        timeout-minutes: 3
+        run: |
+          swift build --package-path tools/media/sckrec --jobs 2 -Xswiftc -Xfrontend -Xswiftc -warn-long-expression-type-checking=300
+          swift test --package-path tools/media/sckrec --jobs 2
 
   hevc-fixture:
     name: Test-only Windows Main 10 fixture
@@ -615,6 +622,22 @@ jobs:
             fi
           done < <(git ls-files -z 'shared/*.json' 'shared/**/*.json' 'shared/**/*.voxclip' skills-lock.json)
           exit $status
+
+      - name: Launch media stays within the Git budget
+        if: ${{ !cancelled() }}
+        run: python3 tools/media/check_budget.py
+
+      - name: Test synthetic launch media (offline)
+        if: ${{ !cancelled() }}
+        run: |
+          python -m pip install -r tools/media/requirements.txt
+          nice python -m unittest discover -s tools/media/tests -v
+
+      - name: Build and test the offline static launch page
+        if: ${{ !cancelled() }}
+        run: |
+          node site/build.mjs --release site/fixtures/latest.json
+          npm --prefix site test
 
       - name: No secrets, env files or non-ASCII PowerShell in tracked files
         if: ${{ !cancelled() }}

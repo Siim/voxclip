@@ -1,10 +1,10 @@
 # VoxClip implementation plan
 
-Status: M1 preview baseline and continuation of the full requested product. Updated 2026-10-26. Owner: the lead.
+Status: M1 preview baseline and continuation of the full requested product. Updated 2026-10-27. Owner: the lead.
 
 This plan splits M1 into seven tracks. Each track is built by one implementer in its own git worktree and owns a disjoint set of paths. Section 4 fixes the public API between tracks, so dependent tracks start at the same time against the same signatures. Section 5 holds the brief for each track. The orchestrator hands out these briefs as they are. Section 6 is the 0.1.0 release checklist.
 
-M1 is everything the specs mark M1 or 0.1.0: import, transcription (three engines), word editing, clips (manual and AI), captions (19 styles), export (source, 16:9, 9:16, 1:1), the share helpers, update checks, the CLI, release packaging on both platforms, and the voxconvo.com download page. M2 and M3 surfaces remain absent from the M1 preview until implemented. They remain part of the continuation below; the milestone split does not complete or reduce the user's request.
+M1 is everything the specs mark M1 or 0.1.0: import, transcription (three engines), word editing, clips (manual and AI), captions (19 styles), export (source, 16:9, 9:16, 1:1), the share helpers, update checks, the CLI, release packaging on both platforms, and the clip.voxconvo.com launch page on GitHub Pages (ADR-R32). M2 and M3 surfaces remain absent from the M1 preview until implemented. They remain part of the continuation below; the milestone split does not complete or reduce the user's request.
 
 ## 0. Full scope and current delivery status
 
@@ -22,7 +22,7 @@ Status on 2026-10-26 distinguishes implemented code, local test evidence, and de
 | Caption burner and styles | Shared preview/export composition, 19 styles and 300 cross-platform golden samples | Quiet-host timing and hosted CI on the final combined revision |
 | Signed apps | Signed and notarized local Mac 0.1.0 build 1 preview produced; it predates the workspace redesign | Refreshed signed Mac preview, signed Windows preview and public-release acceptance |
 | Open-source monorepo | Public MIT repository contains both native apps, shared data and specs | Continue shipping corresponding source and complete bundled payload notices |
-| VoxConvo download page | Local page and redirect changes are implemented and tested | Deployment and published downloadable artifacts |
+| Launch page (clip.voxconvo.com) | `site/` builder and tests, token-driven page and dispatch/release-only `pages.yml` exist in this repo (ADR-R32) | Approved captures, the media release and user-approved go-live (release §4.1); voxconvo.com/download is dropped |
 | VoxConvo, X and LinkedIn integration | Export/share helpers exist | VoxConvo sign-in/upload/publish and integrated sharing acceptance; composer links do not establish direct upload |
 | AI rewrite, own-voice clone and voice changer | Both native Core services, shared offline contracts, reversible v2/v3 projects, explicit render recipes, deterministic full/clip plans, paid-audio snapshots and the audited Windows atempo runtime (a diagnostic path only under ADR-R30) are integrated. Unity composition and visible/XMP/sidecar disclosure are integrated on both platforms. Mac and Windows App and CLI support reviewed, persisted v3 unity recipes with equal-length source video; native Mac preview/full/clip export, Windows ARM64 App preview/export and ARM64/emulated x64 CLI output are verified | Mac speaker-output listening, the ADR-R30 duration fit (length budget, fit planner, silence-fit Media, fit-cost ranking) and its listening check, consent recording and speaker verification, bounded full-take generation, preview/accept/undo and generation UI; installed Windows and physical x64 acceptance |
 | Lip-sync | Spec and interface seams only | Provider adapter, jobs/cancellation, media integration, disclosure and end-to-end acceptance |
@@ -37,7 +37,7 @@ Continuation order:
 2. Retain the integrated rewrite and ElevenLabs Core request-binding contracts on both platforms, and connect them to the native workflow with separate review and approval for each paid action. Live-provider and real local-model acceptance remain separate from offline tests.
 3. Use the integrated v3 recipes and paid-audio snapshots in the existing native preview/export composition paths, with matching captions and mandatory visible/XMP/provenance disclosure. Support both passage and full-take revisions. Implement the ADR-R30 duration fit: the length budget in the rewrite request with its live fit meter, the fit planner with shared fixtures, silence-fit Media that writes the SHA-bound fitted WAV, and fit-cost candidate ranking. Then run the user listening check that gates the policy (Voice Lab §8.9). Add native UI and verify save/reopen, preview, accept, disable, undo and export.
 4. Implement lip-sync using a verified provider API with explicit user selection, cost preview and cancellation. Do not assume speech synthesis alone supplies lip-sync. Complete the recording, Clean audio, AI tighten and ingest work recorded in the topic specs.
-5. Complete VoxConvo authentication and publishing, deploy the download integration, and validate sharing. Prepare signed artifacts and draft releases under the release policy; a human publishes public releases.
+5. Complete VoxConvo authentication and publishing, publish clip.voxconvo.com after the user approves the go-live in release §4.1, and validate sharing. Prepare signed artifacts and draft releases under the release policy; a human publishes public releases.
 
 ADR-R30 follow-up work items, part of item 3. The Voice Lab spec already describes the behaviour; these items change schemas, prompts, fixtures and code:
 
@@ -83,7 +83,7 @@ The original M1 track briefs below remain the baseline for their assigned work. 
 | `win-core` | Windows core: editing, transcription, captions, AI | `tooling` (fixtures, section 4.4) | `VoxClip.Core` domain and services, HarfBuzz and Skia captions, Whisper.net |
 | `win-app` | Windows media pipeline, app, CLI and packaging | `win-core` (section 4.2), `tooling` (tokens, media fixtures) | FFmpeg pipeline, WinUI 3 app, `voxclip-cli.exe`, Velopack, release scripts |
 | `parity` | Cross-platform parity and CI | `mac-app`, `win-app`, `mac-core`, `win-core` (section 4.3) | caption goldens, end-to-end comparison, CI wiring |
-| `vox-site` | voxconvo.com download page and redirects | none | `/download` page and `302` redirects in vox-web |
+| `vox-site` | clip.voxconvo.com launch page on GitHub Pages | none | `site/`, release-asset media and dispatch/release-only `pages.yml` in this repo; voxconvo.com/download dropped (user decision, 2026-10-27) |
 
 All seven tracks start together. A dependency means "codes against the contract in section 4", not "waits for".
 
@@ -93,7 +93,7 @@ Merge order:
 2. `mac-core` and `win-core`: merge in increments (editing, captions, transcription, AI). The app tracks rebase on each merge.
 3. `mac-app` and `win-app`.
 4. `parity`: the integrated CI requires current test projects, canonical media fixtures, caption assets, and plan and E2E reports. Earlier scaffold guards no longer waive these requirements.
-5. `vox-site` merges in the vox-web repository whenever it is ready; its deployment setting follows ADR-R17 (section 6).
+5. `vox-site` lands in this repo. Going live at clip.voxconvo.com needs the user's approval (release.md); ADR-R33 holds publication until both platforms are ready.
 
 Each core track covers four scaffold sub-areas: editing, speech, captions and ai. If one track is too large, the lead may split it along the scaffold's sub-track folders (`apps/*/CONTRACTS.md`, "Ownership"). No contract changes in that case, and the brief's acceptance list splits by the same folders.
 
@@ -699,55 +699,31 @@ bash tools/parity/plan_parity.sh
 python3 tools/parity/compare_e2e.py "<downloaded macOS E2E reports>" "<downloaded Windows E2E reports>"
 ```
 
-### 5.7 `vox-site`: voxconvo.com download page and redirects
+### 5.7 `vox-site`: clip.voxconvo.com on GitHub Pages
 
-**Goal.** Finish the M1 web part of publishing.md section 4: the `/download` page and the `302` redirects to the GitHub release assets, in vox-web. Nothing else.
+**ADR-R32 (user decision, 2026-10-27).** The voxconvo.com/download page and its redirects are dropped. Releases stay on GitHub Releases. The launch page lives in this public repository under `site/`, at **clip.voxconvo.com**, hosted by GitHub Pages. No work in vox-web or vox-api is authorized by this track.
 
-**Where.** `<vox>/vox-web`, a separate git repository with uncommitted user edits. Work in that working tree directly: no worktree, no branch, and no git command that changes state (`add`, `commit`, `checkout`, `stash`, `reset`, `restore`). The owner commits. Read `<vox>/CLAUDE.md` and `<vox>/AGENTS.md` first. Never modify `<vox>/x11-api` or `x11-ui`, and never touch `vox-api`.
+**Deliverables:** plain HTML/CSS, generated light/dark properties from `shared/design/tokens.json`, release-accurate Mac/Windows x64/Windows Arm links and corresponding FFmpeg source with the architecture §6.1 LGPL wording. Screenshots remain explicit placeholders until approved captures exist. Voice Lab is labelled "Voice Lab (beta, coming)" with the voice/video upload disclosure in publishing §4.1.
 
-**You may change only these files, and only their download-related parts:** `server.mjs` (the VoxClip redirect block), `src/components/Download/` (all), `src/App.tsx`, `src/lib/metadata.ts` and `src/Layout.tsx` (the `/download` entries), `src/entryServer.tsx` and `src/entryClient.tsx` (only to pass the Windows-availability flag to the page), `src/index.css` (download rules), `test/ssr.test.mjs` (download tests), and `.env.example` (variable names with empty values, no secrets). Save `git status --short` before you start, and check at the end that only these files changed.
+`.github/workflows/pages.yml` runs only on manual dispatch and release publication. It reads Pages settings and exits without deploying while Pages is disabled or uses another source. It never enables Pages or changes DNS/settings. It fetches the latest stable app release and, once approved, the media release named only in `site/media.json`. API size/digest and downloaded bytes must match the committed, approved size and SHA-256 pins. Null pins keep placeholders without fetching media. The workflow then builds, uploads the Pages artifact and deploys. Videos are never committed. Production builds require both platforms' installers (ADR-R33).
 
-**Read first:** `<repo>/doc/publishing.md` sections 1, 3.4 (rows W1 to W5, W7, W9, W10) and 4; `<repo>/doc/release.md` section 1.1 (asset names); `<repo>/doc/decisions.md` ADR-R17; and the existing download code in vox-web.
+**Acceptance:** media and site tests, all CSS variable references defined in both generated modes, deterministic generator/site rebuilds, Pages YAML and action-version checks, light/dark layout checks on the merged palette. See [media/README.md](media/README.md) for commands, assets and approval gates.
 
-**Current state.** Most of the work already exists in the vox-web working tree: the redirect block in `server.mjs` (case-insensitive, trailing slashes ignored, unknown names redirect to `/download`), `src/components/Download/index.tsx`, the route, metadata and layout entries, the "Desktop app" links in `Splash.tsx`, and SSR tests. Complete it in place. Do not rewrite it.
+**Awaiting:** approved captures and rights, committed media pins, the media release and both platforms' accepted installers. Each go-live action needs the user's approval, in the order in release §4.1:
 
-**Deliverables:**
+1. **Approval required:** verify `voxconvo.com` for the **Siim account** in GitHub account settings → Pages → verified domains. Add GitHub's supplied `_github-pages-challenge-…` TXT record at GoDaddy and complete verification.
+2. **Approval required:** enable Pages with **GitHub Actions** as the source and set this repository's custom domain to `clip.voxconvo.com`. In Settings → Environments → `github-pages` → Deployment branches and tags, keep `main` and add tag rules `v*` and `media-v*`.
+3. **Approval required:** only after account verification and repository custom-domain assignment, add the GoDaddy CNAME `clip` → `siim.github.io`.
+4. **Approval required:** wait for the certificate, then turn on **Enforce HTTPS**.
+5. **Approval required:** publish the release, or dispatch **Launch page** from `main`.
 
-1. Add the `windows-ffmpeg-source` alias and the `VoxClip-win-ffmpeg-source.tar.xz` asset to the redirect map, plus `VOXCLIP_RELEASES_PAGE`, exactly as publishing.md 4.2 shows.
-2. `VOXCLIP_WINDOWS_AVAILABLE=false` makes every `windows*` alias and Windows asset answer `302` to `https://github.com/Siim/voxclip/releases`. The page then renders no Windows buttons, no Windows requirements and no FFmpeg source line, and server render and hydration agree.
-3. The FFmpeg LGPL line next to the Windows buttons, with its link (publishing 4.1).
-4. Check the page copy against publishing 4.1 (hero, sub, buttons, requirements, repository and releases links, checksum note, privacy line) and fix any difference.
-5. Tests in `test/ssr.test.mjs`: the source-tarball redirects; the flag-off redirects and page (start the server with the variable set); `Cache-Control: no-store` on every redirect; no API query from any download path.
+Never point DNS at GitHub before steps 1–2 are complete. Keep the verification TXT record permanently. If Pages is disabled again, remove the CNAME so it no longer points at GitHub. Until the environment tag rules exist, a release run only builds: its tag-ref deploy is rejected by `github-pages`. A `workflow_dispatch` from `main` publishes the same page: every run, whatever its trigger, builds `site/` and `site/media.json` from `main`.
 
-Out of scope: the `/device` page (W6), the sidebar entry (W8), every vox-api change (including A7 reserved handles), and deployment.
-
-**Acceptance criteria:**
-
-- `npm test` and `npm run build` pass in vox-web. If either already fails on the untouched tree for reasons outside these files, show that with the output from before your change, and report it.
-- With a local server, these curl checks give the documented `Location` and `Cache-Control: no-store`: `/download/macos`, `/download/windows`, `/download/windows-arm64` and `/download/windows-ffmpeg-source`. Repeat with `VOXCLIP_WINDOWS_AVAILABLE=false`; the `windows*` paths must then answer with the releases page. `/download` returns 200 HTML, and with the flag off it contains no `/download/windows` link.
-- `git status --short` shows changes only in the allowed files, compared with the status you saved.
-
-**Verification commands:**
-
-```sh
-cd <vox>/vox-web
-status_before="$(mktemp -t voxclip-web-status.XXXXXX)"
-git status --short > "$status_before"   # run once, before any edit
-npm test
-npm run build
-PORT=3199 node server.mjs & sleep 2
-for p in macos windows windows-arm64 windows-ffmpeg-source; do curl -sI "http://127.0.0.1:3199/download/$p" | grep -iE '^(HTTP|location|cache-control)'; done
-kill %1
-VOXCLIP_WINDOWS_AVAILABLE=false PORT=3199 node server.mjs & sleep 2
-curl -sI http://127.0.0.1:3199/download/windows | grep -i location
-curl -s http://127.0.0.1:3199/download | grep -c '/download/windows'
-kill %1
-git status --short | diff "$status_before" -
-```
+No push, deployment or settings change is part of tooling implementation.
 
 ## 6. 0.1.0 release checklist
 
-Release policy (ADR-R17, a lead decision): 0.1.0 targets both platforms together. If macOS passes this checklist and Windows does not, the lead may publish macOS alone as 0.1.0. Windows then ships first in a later 0.1.x, and vox-web runs with `VOXCLIP_WINDOWS_AVAILABLE=false` until that release exists. Published releases are never edited.
+Release policy (ADR-R33, user decision on 2026-10-27): both platforms launch together. There is no Mac-only 0.1.0. Publish only after the macOS and Windows checklists pass; a blocked platform holds 0.1.0. Published releases are never edited.
 
 **Test machines:**
 
@@ -772,19 +748,19 @@ Machines that are not available are listed in the release notes as "not tested".
 7. Licences: the macOS `nm` gate and the Windows `avcodec_configuration()` gate pass. `VoxClip-win-ffmpeg-source.tar.xz` is attached. `THIRD_PARTY_NOTICES.md` covers every component (release.md section 4, step 3b).
 8. Subscription connector check (release.md section 4, step 3a; ADR-R20): `enabled` in `shared/catalog/llm-providers.json` matches the lead's decision.
 9. release.md section 4, steps 1 to 9, in order. `CHANGELOG.md` gets the release date.
-10. vox-web is deployed with `VOXCLIP_WINDOWS_AVAILABLE` set per ADR-R17. The release.md section 4 step 9 curl checks pass, including `/download/windows-ffmpeg-source`.
+10. After the user approves going live, clip.voxconvo.com is published through GitHub Pages. The release.md section 4 step 9 checks pass for all three installer links and the matching FFmpeg source link; launch media loads with captions.
 
 ## 7. Open questions for the lead
 
 1. ADR-R16: confirm the short-edge caption size, or choose `height` with rescaled portrait sizes and regenerated caption fixtures.
 2. **Decided 2026-10-25:** the vendored VoxConvo files (`tools/fixtures/editing/reference/*.ts`) and the clip-finder prompt are published under MIT.
-3. ADR-R17: approve the macOS-first fallback, or require both platforms in 0.1.0.
+3. **Decided 2026-10-27:** ADR-R33 requires both platforms in 0.1.0; no macOS-first fallback.
 4. ADR-R1 and ADR-R2 (the extra `VoxClipMedia` target and `VoxClip.Cli` project): confirm.
 5. **Decided 2026-10-25:** the CLI connectors ship enabled in 0.1.0 without waiting for written confirmation from Anthropic and OpenAI (ADR-R20). The requests stay open (ai.md section 14, item 8).
 6. The Estonian filler list stays deferred (editing.md section 12). Confirm that 0.1.0 ships English hesitations only.
 7. Default caption style `vox-highlight` (settings `captions.defaultStyleId`): confirm.
 8. whisper.cpp `b5454` is a GitHub pre-release; the newest non-prerelease build with an xcframework is `b4938`. Keep `b5454`?
-9. The vox-api reserved handles (publishing.md A7, M1 "with the download page") are outside `vox-site`. Who runs the read-only handle check against the production database, and when does A7 ship?
+9. Publishing A7 now protects device authentication and existing VoxConvo routes only; it is outside the launch-page track. Who runs its read-only handle check before the M2 device flow ships?
 10. Should the UI mention the roughly 12,000-token fixed overhead of the Codex connector in the connector's cost line?
 11. **Decided 2026-10-25:** FFmpeg.AutoGen 9.0.1.1 is MIT. The exact pinned NuGet `LICENSE.txt` text and copyright are in root `THIRD_PARTY_NOTICES.md`; the package repository pin is `7ec3390be7216bd1f8482b824f90c27cb601cd89`.
 12. Windows VM access for the `win-core`, `win-app` and `parity` implementers (release.md section 3.1 host). Without it, Windows-only checks wait for the lead.

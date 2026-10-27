@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="810" viewBox="0 0 1440 810" role="img" aria-labelledby="title description">
+  <title id="title">Video placeholder</title>
+  <desc id="description">An empty 16:9 poster. The approved recording will appear here.</desc>
+  <style>rect{fill:#F0EFEA}text{fill:#575A61;font:24px system-ui,sans-serif;letter-spacing:3px}@media(prefers-color-scheme:dark){rect{fill:#141517}text{fill:#A8AAB0}}</style>
+  <rect width="1440" height="810"/>
+  <text x="720" y="405" text-anchor="middle">RECORDING PENDING</text>
+  <text x="720" y="451" text-anchor="middle" style="font-size:16px;letter-spacing:1px">From import to export. Coming next.</text>
+</svg>

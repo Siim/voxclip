@@ -1,0 +1,77 @@
+{
+  "tag": "media-v1",
+  "videos": [
+    {
+      "id": "showreel",
+      "title": "The whole flow",
+      "video": "showreel.mp4",
+      "captions": "showreel.vtt"
+    },
+    {
+      "id": "import",
+      "title": "Import and transcribe",
+      "video": "tutorial-import.mp4",
+      "captions": "tutorial-import.vtt"
+    },
+    {
+      "id": "words",
+      "title": "Make clips from words",
+      "video": "tutorial-words.mp4",
+      "captions": "tutorial-words.vtt"
+    },
+    {
+      "id": "captions",
+      "title": "Choose captions",
+      "video": "tutorial-captions.mp4",
+      "captions": "tutorial-captions.vtt"
+    },
+    {
+      "id": "export",
+      "title": "Export your clip",
+      "video": "tutorial-export.mp4",
+      "captions": "tutorial-export.vtt"
+    }
+  ],
+  "integrity": {
+    "showreel.mp4": {
+      "size": null,
+      "sha256": null
+    },
+    "showreel.vtt": {
+      "size": null,
+      "sha256": null
+    },
+    "tutorial-import.mp4": {
+      "size": null,
+      "sha256": null
+    },
+    "tutorial-import.vtt": {
+      "size": null,
+      "sha256": null
+    },
+    "tutorial-words.mp4": {
+      "size": null,
+      "sha256": null
+    },
+    "tutorial-words.vtt": {
+      "size": null,
+      "sha256": null
+    },
+    "tutorial-captions.mp4": {
+      "size": null,
+      "sha256": null
+    },
+    "tutorial-captions.vtt": {
+      "size": null,
+      "sha256": null
+    },
+    "tutorial-export.mp4": {
+      "size": null,
+      "sha256": null
+    },
+    "tutorial-export.vtt": {
+      "size": null,
+      "sha256": null
+    }
+  }
+}
