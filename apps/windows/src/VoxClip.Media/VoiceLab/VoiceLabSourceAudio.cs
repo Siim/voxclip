@@ -150,10 +150,15 @@ public static class VoiceLabSourceAudio
         using var decoder = OpenDecoder(path, end.HasValue);
         var rate = decoder.Codec->sample_rate;
         var channels = decoder.Codec->ch_layout.nb_channels;
-        if (rate is < 8_000 or > 192_000) throw Failure(VoiceLabSourceAudioErrorCode.UnsupportedRate);
         if (expectedRate is { } expected && rate != expected) throw Failure(VoiceLabSourceAudioErrorCode.RateMismatch);
-        if (channels is < 1 or > 8) throw Failure(VoiceLabSourceAudioErrorCode.UnsupportedFormat);
-        if (start > 0) decoder.Seek(Math.Max(0, start / (double)rate - 0.5));
+        if (rate is < 8_000 or > 192_000) throw Failure(VoiceLabSourceAudioErrorCode.UnsupportedRate);
+        if (channels < 1 || !end.HasValue && channels > 8) throw Failure(VoiceLabSourceAudioErrorCode.UnsupportedFormat);
+        if (end.HasValue && decoder.Format->duration >= 0)
+        {
+            var sourceFrames = decoder.Format->duration * (double)rate / ffmpeg.AV_TIME_BASE;
+            if (end.Value > Math.Floor(sourceFrames + 0.5)) throw Failure(VoiceLabSourceAudioErrorCode.RangeOutsideMedia);
+            if (start > 0) decoder.Seek(Math.Max(0, start / (double)rate - 0.5));
+        }
         long next = start;
         long? previousEnd = null;
         NativeHandle? converter = null;
@@ -169,6 +174,7 @@ public static class VoiceLabSourceAudio
                 if (frame->ch_layout.nb_channels != channels || frame->extended_data == null || frame->nb_samples is < 0 or > 1_048_576)
                     throw Failure(VoiceLabSourceAudioErrorCode.UnsupportedFormat);
                 if (frame->nb_samples == 0) continue;
+                if (frame->nb_samples > Array.MaxLength / channels) throw Failure(VoiceLabSourceAudioErrorCode.TooLarge);
                 if (converter is null)
                 {
                     SwrContext* context = null;
@@ -226,6 +232,11 @@ public static class VoiceLabSourceAudio
     {
         var expected = (long)Math.Floor(samples.LongLength * (double)target / rate + 0.5);
         if (expected > Array.MaxLength) throw Failure(VoiceLabSourceAudioErrorCode.TooLarge);
+        var shortInput = samples.Length < 64;
+        if (shortInput)
+        {
+            var padded = new float[64]; samples.CopyTo(padded, 0); samples = padded;
+        }
         var layout = new AVChannelLayout();
         ffmpeg.av_channel_layout_default(&layout, 1);
         SwrContext* context = null;
@@ -260,6 +271,11 @@ public static class VoiceLabSourceAudio
                 if (converted == 0) break;
                 result.AddRange(buffer.AsSpan(0, converted));
             }
+        }
+        if (shortInput)
+        {
+            if (result.Count < expected) throw Failure(VoiceLabSourceAudioErrorCode.Unreadable);
+            return result.GetRange(0, (int)expected).ToArray();
         }
         return result.ToArray();
     }

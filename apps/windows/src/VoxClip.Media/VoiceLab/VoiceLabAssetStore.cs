@@ -161,7 +161,11 @@ public static class VoiceLabAssetStore
         { throw Failure(published ? VoiceLabAssetStoreErrorCode.PublishedUnverified : VoiceLabAssetStoreErrorCode.Unwritable, file); }
         finally
         {
-            if (temporaryCreated && !published && temporary is not null) System.IO.File.Delete(temporary);
+            if (temporaryCreated && !published && temporary is not null)
+            {
+                try { System.IO.File.Delete(temporary); }
+                catch (DirectoryNotFoundException) { }
+            }
         }
     }
 
@@ -206,7 +210,7 @@ public static class VoiceLabAssetStore
     private static SafeFileHandle? HoldDirectory(string path, string file)
     {
         if (!OperatingSystem.IsWindows()) return null;
-        var handle = CreateFileW(path, 0x80, FileShare.Read | FileShare.Write, IntPtr.Zero, FileMode.Open, 0x02200000, IntPtr.Zero);
+        var handle = CreateFileW(path, 0x80000000, FileShare.Read | FileShare.Write, IntPtr.Zero, FileMode.Open, 0x02200000, IntPtr.Zero);
         if (!handle.IsInvalid) return handle;
         handle.Dispose();
         throw Failure(VoiceLabAssetStoreErrorCode.Unwritable, file);

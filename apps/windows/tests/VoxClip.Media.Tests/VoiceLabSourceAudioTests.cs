@@ -158,10 +158,11 @@ public sealed class VoiceLabSourceAudioTests
             var actual = BinaryPrimitives.ReadInt16LittleEndian(wav.AsSpan(44 + index * 2));
             Assert.InRange(Math.Abs(actual - Pcm(mean)), 0, 1);
         }
-        var last = await VoiceLabSourceAudio.ConversionInputAsync(path, rate - 1000, rate + 123, rate, Cancellation);
-        Header(last, rate, 1123);
+        var tail = Math.Max(1000, (rate + 49) / 50);
+        var last = await VoiceLabSourceAudio.ConversionInputAsync(path, rate - tail, rate + 123, rate, Cancellation);
+        Header(last, rate, tail + 123);
         await RefusesAsync(VoiceLabSourceAudioErrorCode.RangeOutsideMedia,
-            () => VoiceLabSourceAudio.ConversionInputAsync(path, rate - 1000, rate + 124, rate, Cancellation));
+            () => VoiceLabSourceAudio.ConversionInputAsync(path, rate - tail, rate + 124, rate, Cancellation));
     }
 
     [Fact, Trait("Category", "RequiresFFmpeg"), Trait("Category", "RequiresWindows")]
@@ -187,6 +188,8 @@ public sealed class VoiceLabSourceAudioTests
         var path = FloatWave(storage, 48_000, 48_000);
         await RefusesAsync(VoiceLabSourceAudioErrorCode.RateMismatch, () => VoiceLabSourceAudio.ConversionInputAsync(path, 0, 24_000, 24_000, Cancellation));
         await RefusesAsync(VoiceLabSourceAudioErrorCode.RangeOutsideMedia, () => VoiceLabSourceAudio.ConversionInputAsync(path, 48_001, 49_001, 48_000, Cancellation));
+        await RefusesAsync(VoiceLabSourceAudioErrorCode.RangeOutsideMedia,
+            () => VoiceLabSourceAudio.ConversionInputAsync(path, long.MaxValue - 2000, long.MaxValue, 48_000, Cancellation));
         var malformed = FloatWave(storage, 48_000, 48_000, value: (_, _) => float.NaN);
         await RefusesAsync(VoiceLabSourceAudioErrorCode.InvalidAudio, () => VoiceLabSourceAudio.ConversionInputAsync(malformed, 0, 48_000, 48_000, Cancellation));
         using var cancelled = new CancellationTokenSource(); cancelled.Cancel();
@@ -247,6 +250,35 @@ public sealed class VoiceLabSourceAudioTests
         var peak = Enumerable.Range(0, decoded.Length).MaxBy(index => Math.Abs(decoded[index]));
         Assert.InRange(peak, (int)Math.Round(impulse * (double)target / rate) - 1, (int)Math.Round(impulse * (double)target / rate) + 1);
         Assert.True(Math.Abs(decoded[peak]) > 0.3);
+    }
+
+    [Theory, Trait("Category", "RequiresFFmpeg"), Trait("Category", "RequiresWindows")]
+    [InlineData(1, 24_000, 48_000)]
+    [InlineData(8, 48_000, 24_000)]
+    [InlineData(31, 44_100, 48_000)]
+    [InlineData(1, 192_000, 8_000)]
+    public async Task ShortStoredAssetsDrainTheFilterWithoutInventingExtraDuration(int frames, int rate, int target)
+    {
+        using var storage = new VoiceLabTestStorage();
+        await NativeTest.RequireAsync(windows: true);
+        var samples = new float[frames]; samples[0] = 0.9f;
+        var asset = VoiceLabAssetStore.WriteDerived(samples, rate, storage.ProjectId, "short", storage.PaidRoot, DateTimeOffset.UtcNow, Cancellation);
+        var decoded = VoiceLabSourceAudio.DecodeAsset(storage.AssetPath(asset), target, asset.Sha256, Cancellation);
+        var expected = (int)Math.Floor(frames * (double)target / rate + 0.5);
+        Assert.Equal(expected, decoded.Length);
+        if (expected > 0) Assert.True(Math.Abs(decoded[0]) > 0.1);
+    }
+
+    [Fact, Trait("Category", "RequiresFFmpeg"), Trait("Category", "RequiresWindows")]
+    public async Task ConversionDoesNotApplyThePaidAssetChannelCapToTheOriginalSource()
+    {
+        using var storage = new VoiceLabTestStorage();
+        await NativeTest.RequireAsync(windows: true);
+        var path = FloatWave(storage, 48_000, 2_000, channels: 16, value: (_, channel) => channel / 32f);
+        var wav = await VoiceLabSourceAudio.ConversionInputAsync(path, 0, 2_000, 48_000, Cancellation);
+        Header(wav, 48_000, 2_000);
+        for (var index = 0; index < 2_000; index++)
+            Assert.Equal(Pcm(7.5f / 32), BinaryPrimitives.ReadInt16LittleEndian(wav.AsSpan(44 + index * 2)));
     }
 
     [Fact, Trait("Category", "RequiresFFmpeg"), Trait("Category", "RequiresWindows")]
