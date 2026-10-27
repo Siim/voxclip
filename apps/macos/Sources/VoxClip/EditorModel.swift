@@ -42,6 +42,11 @@ import VoxClipMedia
     var correctionID: String?
     var correctionText = ""
     var rewrite: ClosedRange<Int>?
+    func beginRewrite() {
+        guard app.bool("voiceLab.enabled"), let first = selectedIDs.first, let last = selectedIDs.last,
+              let lower = index(first), let upper = index(last) else { return }
+        rewrite = lower...upper
+    }
     var preset = ClipPresetID.best
     var instruction = ""
     var clipError: String?

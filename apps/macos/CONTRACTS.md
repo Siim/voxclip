@@ -1,5 +1,12 @@
 # macOS implementation contracts
 
+### 2026-10-27 — Round-2 step 10: selection bar
+
+- `SelectionBar.swift` supplies pure collision-free placement and the 36-point document-coordinate glass bar. Reduced Transparency/Increase Contrast use opaque elevated fill and a strong border. Make Clip uses the native unfocused selection fill; Restore reflects cut state.
+- Transcript selection, mouse tracking and live-scroll notifications delay presentation 150 ms. Tab/Control-F6 focus Make Clip; Escape dismisses/returns to the transcript. Context menus and VoiceOver expose Make Clip and Voice-Lab-gated Rewrite. Rewrite records the passage for the round-3 panel, not a second rewriting implementation.
+- Build and 576 Core tests pass; UI 309/309, save boundaries 45/45 in `step10/save-final` (the first repeat hit an already-existing fixture file in the audit output, not a document regression). Geometry checks cover normal, toolbar flip, both clamps and no-safe-space; keyboard checks cover Tab/Escape and Find suppression.
+- Captures: `/private/tmp/voxclip-sol-mac-redesign/step10/ui/live-selection-bar-{light,dark}[-opaque].png` and selection pages. The harness fixture selects the first line, so the bar flips below it rather than matching the mockup's absolute y=333. Offscreen glass captures cannot reproduce WindowServer's backdrop; opaque captures are deterministic.
+
 ### 2026-10-27 — Round-2 step 9: transcript page rendering
 
 - TextKit draws the 84-point gutter, clip rules, nonselectable numbered badges/end brackets, AI chips/underlines and per-line Rewrite outlines. Range mapping, selection and Copy Text exclude decorations; Clips and AI words have rotors and pause/AI descriptions.
