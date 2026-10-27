@@ -33,6 +33,34 @@ public static partial class EditingAlgorithms
         return result;
     }
 
+    /// <summary>Unicode NFC that never throws, the one normaliser every Core rule uses (ADR-R19, editing §4.8). .NET's
+    /// <c>Normalize</c> rejects an unpaired surrogate and U+FFFE. An unpaired surrogate becomes U+FFFD, as in a Swift string.
+    /// U+FFFE is kept: it is a starter in no composition, so the NFC of the text is the NFC of each run between two U+FFFE,
+    /// joined with U+FFFE again.</summary>
+    internal static string Nfc(string value)
+    {
+        var text = WellFormed(value);
+        if (text.IndexOf(NonCharacter) < 0) return text.Normalize(NormalizationForm.FormC);
+        return string.Join(NonCharacter, text.Split(NonCharacter).Select(run => run.Normalize(NormalizationForm.FormC)));
+    }
+
+    /// <summary>The text with each unpaired surrogate replaced by U+FFFD, as a Swift string holds it.</summary>
+    internal static string WellFormed(string value)
+    {
+        ArgumentNullException.ThrowIfNull(value);
+        for (var index = 0; index < value.Length; index++)
+        {
+            if (!char.IsSurrogate(value[index])) continue;
+            if (char.IsHighSurrogate(value[index]) && index + 1 < value.Length && char.IsLowSurrogate(value[index + 1])) { index++; continue; }
+            var builder = new StringBuilder(value.Length);
+            foreach (var rune in value.EnumerateRunes()) builder.Append(rune.ToString());
+            return builder.ToString();
+        }
+        return value;
+    }
+
+    private const char NonCharacter = (char)0xFFFE;
+
     private static bool IsWhitespace(char value) => value is >= '\u0009' and <= '\u000d' or '\u0020' or '\u00a0' or '\u1680'
         or >= '\u2000' and <= '\u200a' or '\u2028' or '\u2029' or '\u202f' or '\u205f' or '\u3000' or '\ufeff';
 

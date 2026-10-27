@@ -101,7 +101,7 @@ struct ShareTextRules: Sendable, Equatable {
 
     /// The X weight before the division by `scale`.
     private func xTotal(_ text: String) -> Int {
-        let scalars = ShareDisclosure.nfc(text)
+        let scalars = Array(EditingPrimitives.nfc(text).unicodeScalars)
         var total = 0
         var position = 0
         for url in urlRanges(scalars) + [scalars.count..<scalars.count] {
@@ -145,7 +145,7 @@ struct ShareTextRules: Sendable, Equatable {
     func composerText(_ caption: String, destination: ShareDestination, disclosureLine: String?) -> String {
         guard destination != .linkedIn else { return caption }
         if measure(caption, for: destination) <= limit(destination) { return caption }
-        var body = ShareDisclosure.nfc(caption)
+        var body = Array(EditingPrimitives.nfc(caption).unicodeScalars)
         var line: String?
         if let disclosureLine, let span = ShareDisclosure.lastSpan(of: disclosureLine, in: body) {
             let left = ShareDisclosure.trimmingEnd(body[..<span.lowerBound]), right = ShareDisclosure.trimmingStart(body[span.upperBound...])

@@ -1,0 +1,647 @@
+{
+  "version": 1,
+  "rules": "ai.md \u00a712.8: the checks both Voice Lab rewrite sends make, from canned values.",
+  "contextSafetyFactor": 0.9,
+  "answeredBy": [
+    {
+      "id": "exact-id",
+      "connector": "openai",
+      "selected": "gpt-6.1-sol",
+      "answered": "gpt-6.1-sol",
+      "accepted": true,
+      "note": "The selected id itself."
+    },
+    {
+      "id": "dated-snapshot",
+      "connector": "openai",
+      "selected": "gpt-6.1-sol",
+      "answered": "gpt-6.1-sol-2026-10-01",
+      "accepted": true,
+      "note": "A dated snapshot with hyphens."
+    },
+    {
+      "id": "compact-dated-snapshot",
+      "connector": "anthropic",
+      "selected": "claude-sonnet-5-5",
+      "answered": "claude-sonnet-5-5-20261001",
+      "accepted": true,
+      "note": "A dated snapshot without hyphens."
+    },
+    {
+      "id": "leap-day",
+      "connector": "gemini",
+      "selected": "gemini-3.8-flash",
+      "answered": "gemini-3.8-flash-2028-02-29",
+      "accepted": true,
+      "note": "2028 is a leap year."
+    },
+    {
+      "id": "leap-day-of-a-400-year",
+      "connector": "xai",
+      "selected": "grok-4.7",
+      "answered": "grok-4.7-20000229",
+      "accepted": true,
+      "note": "2000 is divisible by 400, so it is a leap year."
+    },
+    {
+      "id": "no-leap-day",
+      "connector": "gemini",
+      "selected": "gemini-3.8-flash",
+      "answered": "gemini-3.8-flash-2026-02-29",
+      "accepted": false,
+      "note": "2026 has no 29 February."
+    },
+    {
+      "id": "no-leap-day-in-a-century",
+      "connector": "xai",
+      "selected": "grok-4.7",
+      "answered": "grok-4.7-21000229",
+      "accepted": false,
+      "note": "2100 is divisible by 100 and not by 400."
+    },
+    {
+      "id": "month-13",
+      "connector": "openai",
+      "selected": "gpt-6.1-sol",
+      "answered": "gpt-6.1-sol-2026-13-01",
+      "accepted": false,
+      "note": "There is no month 13."
+    },
+    {
+      "id": "day-0",
+      "connector": "openai",
+      "selected": "gpt-6.1-sol",
+      "answered": "gpt-6.1-sol-2026-10-00",
+      "accepted": false,
+      "note": "There is no day 0."
+    },
+    {
+      "id": "day-31-of-a-30-day-month",
+      "connector": "openai",
+      "selected": "gpt-6.1-sol",
+      "answered": "gpt-6.1-sol-2026-04-31",
+      "accepted": false,
+      "note": "April has 30 days."
+    },
+    {
+      "id": "last-day-of-a-month",
+      "connector": "openai",
+      "selected": "gpt-6.1-sol",
+      "answered": "gpt-6.1-sol-2026-04-30",
+      "accepted": true,
+      "note": "The month's last day."
+    },
+    {
+      "id": "local-server-snapshot",
+      "connector": "ollama",
+      "selected": "gemma4:12b",
+      "answered": "gemma4:12b-2026-10-01",
+      "accepted": true,
+      "note": "Local servers are HTTP connectors too."
+    },
+    {
+      "id": "local-server-other-model",
+      "connector": "lmstudio",
+      "selected": "local-model",
+      "answered": "local-model-v2",
+      "accepted": false,
+      "note": "A suffix that is no date."
+    },
+    {
+      "id": "non-date-suffix",
+      "connector": "openai",
+      "selected": "gpt-6.1-sol",
+      "answered": "gpt-6.1-sol-mini",
+      "accepted": false,
+      "note": "Another model of the same family."
+    },
+    {
+      "id": "date-then-suffix",
+      "connector": "openai",
+      "selected": "gpt-6.1-sol",
+      "answered": "gpt-6.1-sol-2026-10-01-preview",
+      "accepted": false,
+      "note": "Anything after the date."
+    },
+    {
+      "id": "date-without-hyphen",
+      "connector": "openai",
+      "selected": "gpt-6.1-sol",
+      "answered": "gpt-6.1-sol20261001",
+      "accepted": false,
+      "note": "The date must follow a hyphen."
+    },
+    {
+      "id": "mixed-date-form",
+      "connector": "openai",
+      "selected": "gpt-6.1-sol",
+      "answered": "gpt-6.1-sol-2026-1001",
+      "accepted": false,
+      "note": "Hyphens for all of the date or none of it."
+    },
+    {
+      "id": "nine-digit-date",
+      "connector": "openai",
+      "selected": "gpt-6.1-sol",
+      "answered": "gpt-6.1-sol-202610011",
+      "accepted": false,
+      "note": "Eight digits exactly."
+    },
+    {
+      "id": "other-script-digits",
+      "connector": "openai",
+      "selected": "gpt-6.1-sol",
+      "answered": "gpt-6.1-sol-\u0662\u0660\u0662\u0666\u0661\u0660\u0660\u0661",
+      "accepted": false,
+      "note": "Dates are ASCII digits."
+    },
+    {
+      "id": "prefix-of-the-selected-id",
+      "connector": "openai",
+      "selected": "gpt-6.1-sol",
+      "answered": "gpt-6.1",
+      "accepted": false,
+      "note": "A shorter id of the same family."
+    },
+    {
+      "id": "selected-id-as-a-prefix",
+      "connector": "openai",
+      "selected": "gpt-6.1",
+      "answered": "gpt-6.1-sol",
+      "accepted": false,
+      "note": "A longer id that starts with the selected one."
+    },
+    {
+      "id": "different-case",
+      "connector": "openai",
+      "selected": "gpt-6.1-sol",
+      "answered": "GPT-6.1-sol",
+      "accepted": false,
+      "note": "Ids compare ordinally, so case counts."
+    },
+    {
+      "id": "canonically-equivalent-id",
+      "connector": "lmstudio",
+      "selected": "caf\u00e9",
+      "answered": "cafe\u0301",
+      "accepted": false,
+      "note": "Ids compare as UTF-8 bytes, never by canonical equivalence."
+    },
+    {
+      "id": "codex-has-no-snapshots",
+      "connector": "codex",
+      "selected": "gpt-6.1-sol",
+      "answered": "gpt-6.1-sol-2026-10-01",
+      "accepted": false,
+      "note": "Only HTTP connectors take snapshots."
+    },
+    {
+      "id": "codex-default",
+      "connector": "codex",
+      "selected": "default",
+      "answered": "default",
+      "accepted": true,
+      "note": "The exact id."
+    },
+    {
+      "id": "codex-default-names-no-model",
+      "connector": "codex",
+      "selected": "default",
+      "answered": "gpt-6.1-sol",
+      "accepted": false,
+      "note": "Only Claude Code's default is an alias."
+    },
+    {
+      "id": "apple-has-no-snapshots",
+      "connector": "apple-foundation",
+      "selected": "system",
+      "answered": "system-2026-10-01",
+      "accepted": false,
+      "note": "Only HTTP connectors take snapshots."
+    },
+    {
+      "id": "claude-code-alias",
+      "connector": "claude-code",
+      "selected": "sonnet",
+      "answered": "claude-sonnet-5-5",
+      "accepted": true,
+      "note": "A curated alias and the id it stands for."
+    },
+    {
+      "id": "claude-code-alias-snapshot",
+      "connector": "claude-code",
+      "selected": "opus",
+      "answered": "claude-opus-5-5-20261001",
+      "accepted": true,
+      "note": "The alias rule takes any claude-opus- id."
+    },
+    {
+      "id": "claude-code-default",
+      "connector": "claude-code",
+      "selected": "default",
+      "answered": "claude-haiku-5-5",
+      "accepted": true,
+      "note": "default takes any claude- id."
+    },
+    {
+      "id": "claude-code-alias-itself",
+      "connector": "claude-code",
+      "selected": "haiku",
+      "answered": "haiku",
+      "accepted": true,
+      "note": "The exact id."
+    },
+    {
+      "id": "claude-code-other-alias",
+      "connector": "claude-code",
+      "selected": "sonnet",
+      "answered": "claude-opus-5-5",
+      "accepted": false,
+      "note": "Another alias's model."
+    },
+    {
+      "id": "claude-code-alias-without-hyphen",
+      "connector": "claude-code",
+      "selected": "opus",
+      "answered": "claude-opus5-5",
+      "accepted": false,
+      "note": "The alias must be followed by a hyphen."
+    },
+    {
+      "id": "claude-code-bare-family",
+      "connector": "claude-code",
+      "selected": "sonnet",
+      "answered": "claude-sonnet",
+      "accepted": false,
+      "note": "The family name alone."
+    },
+    {
+      "id": "claude-code-full-id-has-no-snapshots",
+      "connector": "claude-code",
+      "selected": "claude-sonnet-5-5",
+      "answered": "claude-sonnet-5-5-20261001",
+      "accepted": false,
+      "note": "A selected full id is no alias, and Claude Code takes no snapshots."
+    },
+    {
+      "id": "claude-code-default-other-vendor",
+      "connector": "claude-code",
+      "selected": "default",
+      "answered": "gpt-6.1-sol",
+      "accepted": false,
+      "note": "Not a claude- id."
+    },
+    {
+      "id": "http-connector-has-no-aliases",
+      "connector": "openai",
+      "selected": "sonnet",
+      "answered": "claude-sonnet-5-5",
+      "accepted": false,
+      "note": "Only Claude Code has aliases."
+    }
+  ],
+  "modelIds": [
+    {
+      "id": "empty",
+      "model": "",
+      "valid": false,
+      "note": "At least one byte."
+    },
+    {
+      "id": "one-byte",
+      "model": "a",
+      "valid": true,
+      "note": "The shortest id."
+    },
+    {
+      "id": "256-bytes",
+      "model": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "valid": true,
+      "note": "The longest id."
+    },
+    {
+      "id": "257-bytes",
+      "model": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "valid": false,
+      "note": "One byte too many."
+    },
+    {
+      "id": "256-bytes-with-a-two-byte-scalar",
+      "model": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\u00e9",
+      "valid": true,
+      "note": "U+00E9 is two UTF-8 bytes."
+    },
+    {
+      "id": "257-bytes-with-a-two-byte-scalar",
+      "model": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\u00e9",
+      "valid": false,
+      "note": "The limit counts bytes, not scalars."
+    },
+    {
+      "id": "256-bytes-with-an-astral-scalar",
+      "model": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\ud83d\ude00",
+      "valid": true,
+      "note": "U+1F600 is four UTF-8 bytes and two UTF-16 units."
+    },
+    {
+      "id": "257-bytes-with-an-astral-scalar",
+      "model": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\ud83d\ude00",
+      "valid": false,
+      "note": "The limit counts UTF-8 bytes, not UTF-16 units."
+    },
+    {
+      "id": "nul",
+      "model": "gpt\u00006",
+      "valid": false,
+      "note": "NUL is a control character."
+    },
+    {
+      "id": "tab",
+      "model": "gpt\t6",
+      "valid": false,
+      "note": "So is a tab."
+    },
+    {
+      "id": "line-feed",
+      "model": "gpt-6\n",
+      "valid": false,
+      "note": "So is a line feed."
+    },
+    {
+      "id": "delete",
+      "model": "gpt-6\u007f",
+      "valid": false,
+      "note": "DEL is Cc."
+    },
+    {
+      "id": "next-line",
+      "model": "gpt-6\u0085",
+      "valid": false,
+      "note": "NEL is Cc."
+    },
+    {
+      "id": "zero-width-space",
+      "model": "gpt-6\u200b",
+      "valid": true,
+      "note": "U+200B is Cf, not a control character."
+    },
+    {
+      "id": "space-inside",
+      "model": "my model",
+      "valid": true,
+      "note": "A space is no control character."
+    },
+    {
+      "id": "curated-ids",
+      "model": "claude-sonnet-5-5",
+      "valid": true,
+      "note": "An ordinary id."
+    }
+  ],
+  "outputCaps": [
+    {
+      "id": "minimum-512",
+      "sourceTokens": 1,
+      "promptCap": 16000,
+      "connectorCap": null,
+      "maxOutputTokens": 512,
+      "note": "A short source still gets 512 tokens."
+    },
+    {
+      "id": "one-and-a-half-below-512",
+      "sourceTokens": 341,
+      "promptCap": 16000,
+      "connectorCap": null,
+      "maxOutputTokens": 512,
+      "note": "1.5 \u00d7 341 = 511.5 rounds up to 512."
+    },
+    {
+      "id": "one-and-a-half-above-512",
+      "sourceTokens": 342,
+      "promptCap": 16000,
+      "connectorCap": null,
+      "maxOutputTokens": 513,
+      "note": "1.5 \u00d7 342 = 513."
+    },
+    {
+      "id": "prompt-cap-just-below",
+      "sourceTokens": 15999,
+      "promptCap": 16000,
+      "connectorCap": null,
+      "maxOutputTokens": 16000,
+      "note": "The prompt cap holds the source."
+    },
+    {
+      "id": "prompt-cap-at",
+      "sourceTokens": 16000,
+      "promptCap": 16000,
+      "connectorCap": null,
+      "maxOutputTokens": 16000,
+      "note": "The cap equals the source: allowed."
+    },
+    {
+      "id": "prompt-cap-just-above",
+      "sourceTokens": 16001,
+      "promptCap": 16000,
+      "connectorCap": null,
+      "maxOutputTokens": null,
+      "note": "The cap cannot hold the source."
+    },
+    {
+      "id": "apple-cap-just-below",
+      "sourceTokens": 1499,
+      "promptCap": 16000,
+      "connectorCap": 1500,
+      "maxOutputTokens": 1500,
+      "note": "Apple caps output at 1,500 tokens."
+    },
+    {
+      "id": "apple-cap-at",
+      "sourceTokens": 1500,
+      "promptCap": 16000,
+      "connectorCap": 1500,
+      "maxOutputTokens": 1500,
+      "note": "The cap equals the source."
+    },
+    {
+      "id": "apple-cap-just-above",
+      "sourceTokens": 1501,
+      "promptCap": 16000,
+      "connectorCap": 1500,
+      "maxOutputTokens": null,
+      "note": "One source token too many."
+    },
+    {
+      "id": "local-cap-at",
+      "sourceTokens": 4096,
+      "promptCap": 16000,
+      "connectorCap": 4096,
+      "maxOutputTokens": 4096,
+      "note": "Ollama and LM Studio cap output at 4,096 tokens."
+    },
+    {
+      "id": "local-cap-just-above",
+      "sourceTokens": 4097,
+      "promptCap": 16000,
+      "connectorCap": 4096,
+      "maxOutputTokens": null,
+      "note": "One source token too many."
+    },
+    {
+      "id": "prompt-cap-below-512",
+      "sourceTokens": 100,
+      "promptCap": 300,
+      "connectorCap": null,
+      "maxOutputTokens": 300,
+      "note": "A cap below 512 still binds."
+    }
+  ],
+  "contextResolution": [
+    {
+      "id": "cloud-without-listed-context",
+      "connector": "openai",
+      "model": "gpt-5.6-terra",
+      "connectorContext": null,
+      "modelContext": null,
+      "context": 128000,
+      "sourceWordCount": 1500,
+      "fits": true
+    },
+    {
+      "id": "local-without-listed-context",
+      "connector": "ollama",
+      "model": "local",
+      "connectorContext": null,
+      "modelContext": null,
+      "context": 4096,
+      "sourceWordCount": 1500,
+      "fits": false
+    },
+    {
+      "id": "connector-before-metadata",
+      "connector": "anthropic",
+      "model": "claude-sonnet-5-5",
+      "connectorContext": 8192,
+      "modelContext": 16384,
+      "context": 8192
+    },
+    {
+      "id": "metadata-before-curated",
+      "connector": "anthropic",
+      "model": "claude-sonnet-5-5",
+      "connectorContext": null,
+      "modelContext": 16384,
+      "context": 16384
+    },
+    {
+      "id": "curated-before-default",
+      "connector": "anthropic",
+      "model": "claude-sonnet-5-5",
+      "connectorContext": null,
+      "modelContext": null,
+      "context": 1000000
+    },
+    {
+      "id": "cli-default",
+      "connector": "codex",
+      "model": "default",
+      "connectorContext": null,
+      "modelContext": null,
+      "context": 128000
+    },
+    {
+      "id": "lmstudio-default",
+      "connector": "lmstudio",
+      "model": "local",
+      "connectorContext": null,
+      "modelContext": null,
+      "context": 4096
+    }
+  ],
+  "contexts": [
+    {
+      "id": "context-below-512",
+      "context": 511,
+      "required": 1,
+      "fits": false,
+      "note": "A context below 512 tokens fits nothing."
+    },
+    {
+      "id": "context-512-at",
+      "context": 512,
+      "required": 460,
+      "fits": true,
+      "note": "floor(512 \u00d7 0.9) = 460."
+    },
+    {
+      "id": "context-512-just-above",
+      "context": 512,
+      "required": 461,
+      "fits": false,
+      "note": "One token too many."
+    },
+    {
+      "id": "fallback-just-below",
+      "context": 4096,
+      "required": 3685,
+      "fits": true,
+      "note": "The 4,096-token fallback: floor(3686.4) = 3686."
+    },
+    {
+      "id": "fallback-at",
+      "context": 4096,
+      "required": 3686,
+      "fits": true,
+      "note": "Needing the whole limit fits."
+    },
+    {
+      "id": "fallback-just-above",
+      "context": 4096,
+      "required": 3687,
+      "fits": false,
+      "note": "One token too many."
+    },
+    {
+      "id": "exact-product-at",
+      "context": 1000,
+      "required": 900,
+      "fits": true,
+      "note": "1000 \u00d7 0.9 is exactly 900, and needing 900 fits."
+    },
+    {
+      "id": "exact-product-just-above",
+      "context": 1000,
+      "required": 901,
+      "fits": false,
+      "note": "One token too many."
+    },
+    {
+      "id": "cloud-context-at",
+      "context": 128000,
+      "required": 115200,
+      "fits": true,
+      "note": "A 128,000-token context."
+    },
+    {
+      "id": "cloud-context-just-above",
+      "context": 128000,
+      "required": 115201,
+      "fits": false,
+      "note": "One token too many."
+    },
+    {
+      "id": "million-token-context-at",
+      "context": 1000000,
+      "required": 900000,
+      "fits": true,
+      "note": "A 1,000,000-token context."
+    },
+    {
+      "id": "million-token-context-just-above",
+      "context": 1000000,
+      "required": 900001,
+      "fits": false,
+      "note": "One token too many."
+    }
+  ]
+}

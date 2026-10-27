@@ -102,14 +102,14 @@ private actor AIModelCache {
     static let shared = AIModelCache()
 
     func load(id: ConnectorID, from url: URL) -> [LLMModel]? {
-        guard let data = try? Data(contentsOf: url), let value = try? JSONDecoder().decode(JSONValue.self, from: data),
+        guard let data = try? Data(contentsOf: url), let value = CanonicalResponseParser.envelope(data),
               let encoded = try? value[ai: id.rawValue][ai: "models"].aiEncoded() else { return nil }
         return try? JSONDecoder().decode([LLMModel].self, from: encoded)
     }
 
     func save(_ models: [LLMModel], id: ConnectorID, to url: URL) {
         do {
-            let existing = (try? Data(contentsOf: url)).flatMap { try? JSONDecoder().decode(JSONValue.self, from: $0) }
+            let existing = (try? Data(contentsOf: url)).flatMap { CanonicalResponseParser.envelope($0) }
             var document = existing?.aiObject ?? [:]
             let encodedModels = try JSONDecoder().decode(JSONValue.self, from: JSONEncoder().encode(models))
             document[id.rawValue] = .object(["fetchedAt": UTCTimestamp.string(from: Date()).map { .string($0) } ?? .null, "models": encodedModels])

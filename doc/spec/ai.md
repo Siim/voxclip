@@ -49,7 +49,7 @@ LLMRequest {
   system: string                 // from the prompt file
   cachedBlock: string?           // "<transcript>\n" + lines + "\n</transcript>"; identical across presets of one take
   instruction: string            // the per-request text (§11.4, §12.4)
-  schemaName: string             // "clips", "tighten_edits", "voice_rewrite_proposal", "connection_test"
+  schemaName: string             // "clips", "tighten_edits", "voice_rewrite_proposal", "patch_edits", "connection_test"
   schema: JSON object            // canonical subset, §2.2
   maxOutputTokens: int           // 16000 for clipFinder and aiTighten; voiceRewrite reserves for selected text up to the connector cap; 2048 for test
   effort: low | medium | high | null
@@ -83,16 +83,16 @@ Every schema in `shared/prompts/` and the catalog's `testRequest` uses only thes
 
 This subset is accepted unchanged by Anthropic `output_config.format`, OpenAI and xAI strict `json_schema`, Gemini `responseJsonSchema`, Ollama `format`, LM Studio `response_format`, Claude Code `--json-schema` and Codex `--output-schema`, and it maps one to one onto Apple's `DynamicGenerationSchema`. A unit test validates every shared schema against this subset.
 
-### 2.3 Structural validation (lenient)
+### 2.3 Structural validation
 
 After a connector returns:
 
-1. Get a JSON object: use `RawCompletion.object` if present. Otherwise extract it from `text` (§4.5).
+1. Get a JSON object: use `RawCompletion.object` if present; it may hold at most 64 levels (§4.5). Otherwise extract it from `text` (§4.5).
 2. The object must contain the top-level array named by the schema (`clips` or `edits`), or for the test schema both `ok` and `echo`. If not, the reply is invalid (§4.6).
-3. Validate each array item separately. It must be an object holding every required key with the right JSON type: `string` needs a string, `integer` and `number` accept any JSON number, `boolean` needs a boolean, and an `enum` needs one of its strings. A failing item is dropped and counted in `droppedItems`. Extra keys are ignored.
+3. Validate each array item separately. It must be an object holding every required key with the right JSON type: `string` needs a string, `integer` and `number` accept any number the strict parse read (§4.5), integral or not, `boolean` needs a boolean, and an `enum` needs one of its strings. A failing item is dropped and counted in `droppedItems`. Extra keys are ignored.
 4. Integer-ness is not checked here. `finalizeClips` checks it (§11.7), so a `5.5` index drops one clip instead of failing the reply.
 
-Decoding must keep non-integral numbers. Swift decodes through `JSONSerialization` or a `JSONValue` enum that holds `Double`; C# reads `JsonElement.GetDouble()`. A strict `Int` decoder that throws for the whole reply must not be used.
+Decoding keeps non-integral numbers: the strict parse holds every number as a finite binary64 (Swift `JSONValue.number`, C# a `JsonValue` read as `double`). An integer decoder that throws for the whole reply must not be used.
 
 ### 2.4 Message assembly
 
@@ -263,6 +263,7 @@ When the final error for the chosen model is `rateLimited` (not quota) or `overl
 - Claude Code: the CLI implements the fallback through `--fallback-model` (§6.8). The runner does not re-run.
 - Codex: the runner re-runs once with the fallback model (§6.9).
 - Ollama, LM Studio and Apple have no fallback.
+- A `voiceRewrite` send (Voice Lab's Re-voice and Fix with AI) never falls back: no runner fallback, no `--fallback-model`, no Anthropic `fallbacks` and no beta resend (§12.8).
 
 ### 4.4 Timeouts
 
@@ -280,12 +281,27 @@ From `policy.timeoutsSeconds`. Each request is one window of one feature run.
 | Test button, CLI connectors | 120 |
 | CLI generation, per invocation | 300 |
 
-### 4.5 JSON extraction from text
+### 4.5 Strict JSON: replies and transport envelopes
 
-1. Trim whitespace. If the text starts with a code fence (```` ``` ```` or ```` ```json ````), drop the opening fence line and a closing fence.
-2. Try to parse the whole string.
-3. If that fails, find the first `{` and scan forward to its matching `}`, tracking JSON strings and backslash escapes. Parse that substring.
-4. Otherwise the reply is invalid.
+Both platforms read every LLM reply and every transport envelope with one strict JSON rule, so a text one platform rejects the other rejects too, as a typed error and never a crash:
+
+- The text is one RFC 8259 value with nothing around it but JSON whitespace. Comments, trailing commas, single quotes, `NaN` and `Infinity` are not JSON.
+- It nests at most 64 levels for a reply and 512 for an envelope. The outermost object or array is level 1, so `{"x":[]}` has two levels.
+- Every string escape is well formed, in key names too: an escaped high surrogate is followed by an escaped low surrogate, and a low surrogate never stands alone.
+- A number token is at most 1,024 bytes, including its sign, fraction and exponent. A longer token is invalid in both replies and transport envelopes, even for exact zero. Every number is a finite binary64. A number that rounds to zero does not fit either: its value is 0, yet a digit 1 to 9 appears before any `e` or `E`, as in `1e-400`. An exact zero with any exponent, such as `0e-400`, `0E1`, `0.00e-1` or `-0.0e5`, is zero.
+- A repeated key keeps its first value. The whole text is still checked, so an invalid later value of a repeated key makes the text invalid.
+
+Each Core builds the value while it checks the text (Swift `StrictJSON`, C# `LlmOutput.TryParse`). C# uses `JsonDocument` for JSON grammar, depth and string escapes; Core applies the number bound, finite/non-underflow checks and first-key rule explicitly.
+
+**Replies** are the model's answer: a reply text, and a reply object a connector parsed itself, such as Claude's `structured_output` (§6.8), which holds at most 64 levels like a parsed text. A reply text is read like this:
+
+1. Trim it with jsTrim (editing §4.5) and read it as Unicode scalars, never grapheme clusters, so a combining mark cannot hide a delimiter.
+2. If it starts with a code fence (```` ``` ```` or ```` ```json ````), drop the opening fence line up to its first line break, and a closing fence. A fence with no line break is all opening line, so nothing is left to parse.
+3. Parse the whole text. When it parses, it is the reply, and a value that is not an object is no reply (§2.3).
+4. Only when it does not parse, find the first `{` and scan forward to its matching `}`, tracking JSON strings and backslash escapes. Parse that substring.
+5. Otherwise the reply is invalid.
+
+**Transport envelopes** carry a reply or a connector's state: HTTP response bodies, the Claude CLI result (§6.8), each line of Codex `exec` and app-server output (§6.9), the model cache file (§9) and `claude auth status --json` output (§6.8). An envelope is trimmed with jsTrim and parsed whole, at most 512 levels deep, with no code fence or balanced-object scan; a CLI's output is split into lines at LF only. Text that is not one strict value is no envelope. An HTTP body that is not one counts as an empty object, so a success holds no reply. A Codex line that is not one is skipped, and a model cache that is not one is ignored. A Claude result that is not one fails the send with `cliFailed`, and Claude auth output that is not one fails the status probe.
 
 ### 4.6 One corrective retry
 
@@ -349,8 +365,8 @@ Errors are logged by their `LLMError` case plus the redacted user message. Never
 | `modelNotFound(model)` | 404, OpenAI `model_not_found`, Gemini `NOT_FOUND`, Ollama "model not found", CLI model errors | no | no | {label} doesn't offer the model "{model}" to this account. Pick another model or refresh the list. |
 | `contextTooLong` | 413, "prompt is too long", `context_length_exceeded`, Apple context errors after the shrink retry (§6.7) | no | no | This transcript is too long for {model}. Pick a model with a larger context. |
 | `badRequest(status, message)` | any other 4xx | no | no | {label} rejected the request ({status}): {message, at most 200 characters, redacted} |
-| `refused(category?)` | `stop_reason: refusal`, OpenAI `refusal` content, Gemini safety finish or block, Apple guardrail | no | no | Clip finder: "Clips could not be suggested for this recording." Tighten: "The model declined to tighten this recording." Test: "The model declined the test request." |
-| `truncated` | `max_tokens`, `incomplete`, `MAX_TOKENS`, Ollama `done_reason: length` | no | no | Clip finder: "The clip suggestions were incomplete. Please try again." Tighten: "The tighten suggestions were incomplete. Please try again." |
+| `refused(category?)` | `stop_reason: refusal`, OpenAI `refusal` content, Gemini safety finish or block, Apple guardrail | no | no | Clip finder: "Clips could not be suggested for this recording." Tighten: "The model declined to tighten this recording." Test: "The model declined the test request." Re-voice and Fix with AI: "The model declined to rewrite this recording." |
+| `truncated` | `max_tokens`, `incomplete`, `MAX_TOKENS`, Ollama `done_reason: length` | no | no | Clip finder: "The clip suggestions were incomplete. Please try again." Tighten: "The tighten suggestions were incomplete. Please try again." Re-voice and Fix with AI: "The rewrite was incomplete. Please try again." |
 | `invalidOutput(reason)` | §4.6 failed twice | no | no | The model's answer wasn't in the expected format. Try again or pick another model. |
 | `unsupportedLanguage(lang)` | Apple locale gate (§6.7) | no | no | Apple's on-device model doesn't support {language name}. Use an API key, a CLI or a local model for this project. |
 | `notRunning(url)` | Ollama or LM Studio connection refused | no | no | Ollama isn't running at {url}. Start Ollama and try again. / LM Studio's server isn't running at {url}. Start it from LM Studio's Developer tab. |
@@ -425,6 +441,7 @@ Headers:
 - When `cachedBlock` is null (the test request), send one text block without `cache_control`.
 - `fallbacks` is sent only together with the beta header.
 - If a 400 says the `anthropic-beta` value is unexpected, re-send once without the header and without `fallbacks`, and remember that for this session.
+- A `voiceRewrite` send carries neither the beta header nor `fallbacks`, so it is never re-sent (§12.8).
 - `output_config.effort` is sent when the model has `effort: true` in the catalog, or the cached model list reports `capabilities.effort.supported`, or (for a custom id) the id matches `^claude-(opus|sonnet|haiku|fable)-5`. Otherwise `effort` is omitted.
 - `output_config.format` is always sent. If the cached model list reports `capabilities.structured_outputs.supported == false` for a custom model, omit `format` and append to the instruction: `Reply with only a JSON object that matches this JSON Schema: {compact schema}`.
 - **Never send** `temperature`, `top_p`, `top_k`, `thinking` (current models think adaptively by default, and `{"type":"disabled"}` is a 400 on Opus 5.5 and Sonnet 5.5), an assistant prefill message, or `tool_choice` of type `any` or `tool`. On API version `2026-10-21`, sampling parameters are a 400 on every model.
@@ -762,7 +779,8 @@ claude -p --output-format json
        --tools ""
        --no-session-persistence
        [--model {model}]                 omitted when the model is "default"
-       [--fallback-model {fallback}]     first fallbackOrder entry ≠ model, if --fallback-model is supported
+       [--fallback-model {fallback}]     first fallbackOrder entry ≠ model, if --fallback-model is supported;
+                                         never for a voiceRewrite send (§12.8)
        [--effort {effort}]               if supported
        --safe-mode                       always (required flag)
        [--strict-mcp-config]             if supported
@@ -785,16 +803,16 @@ What the flags do:
 `--system-prompt-file` also works but is not listed in `--help`, so VoxClip doesn't rely on it.
 
 **Parsing.**
-1. Timeout means `timeout`. Empty or non-JSON stdout means `cliFailed` with the first stderr line, redacted.
+1. Timeout means `timeout`. stdout must be one transport envelope (§4.5): trimmed with jsTrim and parsed whole, at most 512 levels deep, with no code fence or balanced-object scan. Otherwise, or when it is empty, it is `cliFailed` with the first stderr line, redacted. No stderr-marker classification applies to malformed envelopes; the classification in step 4 applies only after a valid result envelope. Missing or wrongly typed `type` or `is_error` fields are malformed envelopes too.
 2. The object must have `type == "result"`.
-3. `is_error == false`: use `structured_output` (an object) as `RawCompletion.object`. If it is absent, extract JSON from the `result` string (§4.5).
+3. `is_error == false`: first the stop. `stop_reason` `max_tokens` is `truncated`, and `refusal` is `refused` with no category; any other value, or none, is a complete reply. Then use `structured_output` (an object) as `RawCompletion.object`. If it is absent, extract JSON from the `result` string (§4.5). Either way the reply holds at most 64 levels.
 4. `is_error == true`: `message = result`. Classify case-insensitively, first match wins:
    - `authErrorMarkers`, or `api_error_status` 401 or 403, means `cliSignedOut`.
    - `limitMarkers`, or `api_error_status` 429, means `planLimit(message)`.
    - `overloadMarkers`, or `api_error_status` 529, means `overloaded`.
    - "prompt is too long" means `contextTooLong`.
    - Anything else means `cliFailed(message)`.
-5. `model` is the `modelUsage` key with the most output tokens, or the requested alias.
+5. `model` is the `modelUsage` key with the most `outputTokens` (falling back to `output_tokens`, then zero), or the requested alias if there is no key. On a tie choose the smallest key in ordinal UTF-8 byte order, independent of JSON member order (§12.8).
 6. Usage comes from `usage`. `total_cost_usd` is ignored and never shown.
 
 **Models.** The curated aliases are `sonnet` (default), `opus` and `haiku`, plus "CLI default", which omits `--model`. A custom id may be any full model id the CLI accepts. There is no list endpoint, so model refresh is not offered for this connector.
@@ -881,8 +899,8 @@ stdin: {cachedBlock}\n\n{instruction}
 Then emit a closing `"`. The argument is `developer_instructions=` followed by that string.
 
 **Parsing.**
-1. Read stdout line by line and parse each line as JSON (skip lines that aren't). `error` events whose message starts with `Reconnecting...` are progress, not failures.
-2. Success means exit 0 and a `turn.completed` event was seen. The text is `last.json` if it is non-empty, otherwise the `text` of the last `item.completed` whose `item.type` is `agent_message`. Extract JSON (§4.5).
+1. Split stdout into lines at LF and read each line as a transport envelope (§4.5), skipping lines that are not one. `error` events whose message starts with `Reconnecting...` are progress, not failures.
+2. Success means exit 0 and a `turn.completed` event was seen. The text is `last.json` if it is non-empty, otherwise the `text` of the last `item.completed` whose `item.type` is `agent_message`. That text is a reply (§4.5).
 3. Failure: `message` is `turn.failed.error.message`, else the last non-progress `error` event message, else the first stderr line. Classify case-insensitively:
    - `authErrorMarkers` means `cliSignedOut`.
    - `limitMarkers` means `planLimit(message)`.
@@ -1216,10 +1234,12 @@ The duration line always uses the whole take's last word, even in a window.
 
 ### 11.5 Windows (chunking over 8000 words and small contexts)
 
+Each Core has one catalog context resolver, used by Find Clips and both Voice Lab rewrite services (§12.8). It applies the order below. Local connector probes run through `contextTokens(model)`; Apple always supplies its runtime context size, never a fixed fallback.
+
 ```text
 maxWords      = limits.maxWordsPerRequest (8000)
-context       = connector.contextTokens(model) ?? catalog model contextTokens ?? default
-                (cloud 128000; Ollama from /api/show, else 4096; LM Studio §6.6; Apple runtime)
+context       = connector.contextTokens(model) ?? selected model metadata ?? curated catalog contextTokens ?? default
+                (cloud API and CLI 128000; Ollama from /api/show, else 4096; LM Studio §6.6, else 4096; Apple runtime)
 outputReserve = min(generation.maxOutputTokens, connector.maxOutputTokensCap ?? generation.maxOutputTokens)
                 Ollama and LM Studio only: outputReserve = min(outputReserve, max(1024, floor(context / 4)))
 overhead      = est(system) + est(instruction rendered with the longest window lines, k = 99) + est(compact schema) + 64
@@ -1411,7 +1431,27 @@ Output: `proposals[] = {lineLabel, kind, cutWordIds, preselected = !review}`, pl
 
 ### 12.8 Voice Lab rewrite is separate
 
-Voice Lab can rewrite a passage or an entire selected take with the chosen connector and model. Its `voice_rewrite_proposal` schema contains spoken `rewrite` text, and both native Core consumers are `VoiceRewriteService`. It never reuses `tighten_edits`, so a tighten reply can never carry an insertion. `prepare` makes an instance-scoped, single-use quote without a provider call; it binds the scope, all source word values and timings, instruction, language, connector, model, prompt/schema identity and estimate. An affirmative authorization for that exact quote is required before the connector send. The quote is consumed before dispatch, even if the response later fails or the call is cancelled after sending. A new attempt requires a new quote and approval. The result retains the original timed words and has no effect until the user reviews it. Another affirmative authorization is needed to send approved text to ElevenLabs for synthesis. The connector's reply cannot select a provider, model, endpoint or URL. Before dispatch, both services check current connector readiness, selected-model availability, output capacity and context. They use connector, selected-model and curated context metadata in that order, with a conservative 4,096-token fallback. A failed nonbillable preflight leaves approval usable; only the atomic claim immediately before the one send consumes it. There is no automatic model fallback. `doc/spec/voice-lab.md` §2.6 and `shared/fixtures/voice-lab/contract.json` describe the shared Core contract and pending media/UI integration.
+Voice Lab can rewrite a passage or an entire selected take with the chosen connector and model. Its `voice_rewrite_proposal` schema contains spoken `rewrite` text, and both native Core consumers are `VoiceRewriteService`. It never reuses `tighten_edits`, so a tighten reply can never carry an insertion. `prepare` makes an instance-scoped, single-use quote without a provider call; it binds the scope, all source word values and timings, instruction, language, connector, model, prompt/schema identity and estimate. An affirmative authorization for that exact quote is required before the connector send. The quote is consumed before dispatch, even if the response later fails or the call is cancelled after sending. A new attempt requires a new quote and approval. The result retains the original timed words and has no effect until the user reviews it. Another affirmative authorization is needed to send approved text to ElevenLabs for synthesis. The connector's reply cannot select a provider, model, endpoint or URL. Before dispatch, both services check current connector readiness, selected-model availability, output capacity and context. They use connector, selected-model and curated context metadata in that order, with the context resolution rule of §11.5. A failed nonbillable preflight leaves approval usable; only the atomic claim immediately before the one send consumes it. Fix with AI (`doc/spec/voice-lab.md` §8.1, path 3) follows the same rules with its own `patch_edits` schema, and both native Core consumers are `PatchRewriteService`. `doc/spec/voice-lab.md` §2.6 and `shared/fixtures/voice-lab/contract.json` describe the shared Core contract and pending media/UI integration.
+
+There is no automatic model fallback: for both sends the Claude CLI gets no `--fallback-model`, and the Anthropic API gets neither `fallbacks` nor the beta header, so nothing is re-sent without them (§4.3, §6.1, §6.8). The reply must come from the quoted model:
+
+| Connector | Selected id | Accepted answering ids |
+| --- | --- | --- |
+| Claude Code | `sonnet`, `opus` or `haiku` | the alias, or any id that starts with `claude-<alias>-` (for `sonnet`, for example, `claude-sonnet-5-5`) |
+| Claude Code | `default` | `default`, or any id that starts with `claude-` |
+| Claude Code | any other | the selected id |
+| Anthropic, OpenAI, xAI, Gemini, Ollama, LM Studio | any | the selected id, or the selected id followed by a hyphen and a dated snapshot, `YYYY-MM-DD` or `YYYYMMDD` |
+| Apple Foundation Models, Codex | any | the selected id |
+
+A dated snapshot is ASCII digits naming a Gregorian date: `MM` from 01 to 12 and `DD` from 01 to the month's length, with 29 February only in a year divisible by 4 and not by 100, or divisible by 400. So `gpt-6.1-sol-2026-10-01` and `gpt-6.1-sol-20261001` answer for `gpt-6.1-sol`, but `gpt-6.1-sol-mini`, `gpt-6.1-sol-2026-02-29`, `gpt-6.1-sol20261001` and `gpt-6.1` do not. Ids compare ordinally, as UTF-8 bytes, never by case or canonical equivalence. A reply from another model fails with `invalidOutput`. Only then does the stop count: a truncated reply fails with `truncated`, and a refusal with `refused`, whose copy for both sends is "The model declined to rewrite this recording." The proposal records the model that answered. For Claude Code, choose the `modelUsage` key with the most output tokens (`outputTokens`, else `output_tokens`, else zero); ties choose the smallest key in ordinal UTF-8 byte order, never JSON order.
+
+**Preflight.** Both sends make the same checks on both platforms:
+
+- **Model id.** `prepare` refuses a model id that is not 1 to 256 UTF-8 bytes, or that holds a control character (Cc), as invalid input.
+- **Output cap.** `maxOutputTokens = min(promptCap, connectorCap, max(512, ⌈1.5 × sourceTokens⌉))`. `promptCap` is the prompt's `maxOutputTokens`, `connectorCap` the catalog's `maxOutputTokensCap` when the connector has one, and `sourceTokens` is `est()` (§11.5) of the source: the joined source words for a rewrite, the rendered transcript lines for Fix with AI. When `maxOutputTokens < sourceTokens` the answer cannot fit, and `prepare` fails with `contextTooLong`, as does the check before the send.
+- **Context.** `required = est(system + cachedBlock + instruction + compact schema) + maxOutputTokens + 64`, one `est()` of the joined text. The context follows the single catalog resolution rule of §11.5, including its connector-class fallbacks. The send fits when `context ≥ 512` and `required ≤ ⌊context × contextSafetyFactor⌋`, the product taken in binary64. Otherwise it fails with `contextTooLong` before the send, and the approval stays usable.
+
+`shared/fixtures/voice-lab/rewrite-checks-cases.json` holds the rows just below, at and just above each bound, the answering ids included. Each case in `shared/fixtures/llm/voice-rewrite-requests.json` and `patch-rewrite-requests.json` gives its `required` tokens and the smallest context that fits them.
 
 ---
 

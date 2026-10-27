@@ -6,11 +6,12 @@ The macOS and Windows apps send the same prompts to every LLM connector. The pro
 | --- | --- | --- |
 | `clip-finder.json` | AI clip finding: system prompt, request templates, presets (Best moments, Hooks, One per topic, Quotes, Custom), limits, output schema `clips` | M1 |
 | `ai-tighten.json` | AI tighten: system prompt, strength levels, verification limits, output schema `tighten_edits` | M2 |
-| `voice-rewrite.json` | Voice Lab passage/full-take proposal, output schema `voice_rewrite_proposal` | Swift and Windows Core services; native media/UI workflow pending |
+| `voice-rewrite.json` | Voice Lab passage/full-take proposal (`promptVersion` 1): system prompt, request templates with the length budget (`targetSeconds`, `minChars`, `maxChars`), output schema `voice_rewrite_proposal` | Swift and Windows Core services; native media/UI workflow pending |
+| `patch-rewrite.json` | Voice Lab Fix with AI line edits (`promptVersion` 1): system prompt with the editing rules, transcript block in the clip finder's line format, request templates for each line's range of letters and digits and for the instruction, output schema `patch_edits`, the "Check this" badge copy | Swift and Windows Core services; native media/UI workflow pending |
 
 The connector catalog, including the connection-test request, is `../catalog/llm-providers.json`. The normative behaviour (how requests are built, windowed, validated and finalised) is in [`doc/spec/ai.md`](../../doc/spec/ai.md).
 
-The Swift and Windows Core `VoiceRewriteService` implementations consume `voice-rewrite.json` and the shared review-only behavior fixtures.
+The Swift and Windows Core `VoiceRewriteService` implementations consume `voice-rewrite.json`, and the `PatchRewriteService` implementations consume `patch-rewrite.json`, each with shared review-only behavior fixtures.
 
 ## How the apps load these files
 
@@ -23,7 +24,7 @@ Both apps ship these files unchanged, copied at build time. They never download 
 
 ## Parity tests (must fail on drift)
 
-1. **Rendered-request parity.** Both test suites (`VoxClipCoreTests`, `VoxClip.Core.Tests`) render the clip-finder request for the golden transcript in `doc/spec/ai.md` §13.2: every preset, with and without instructions, one window and several. They compare `system`, `cachedBlock` and `instruction` byte for byte with `shared/fixtures/llm/clip-finder-requests.json`. A change to prompt text, templates or either app's rendering code fails both suites until the fixture is regenerated with `npm --prefix tools/fixtures/llm run generate` (an independent producer, not either app) and reviewed. `voxclip-cli find-clips --dry-run` prints the same three strings for manual comparison. AI tighten gets the same test with `ai-tighten-requests.json` in M2.
+1. **Rendered-request parity.** Both test suites (`VoxClipCoreTests`, `VoxClip.Core.Tests`) render the clip-finder request for the golden transcript in `doc/spec/ai.md` §13.2: every preset, with and without instructions, one window and several. They compare `system`, `cachedBlock` and `instruction` byte for byte with `shared/fixtures/llm/clip-finder-requests.json`. A change to prompt text, templates or either app's rendering code fails both suites until the fixture is regenerated with `npm --prefix tools/fixtures/llm run generate` (an independent producer, not either app) and reviewed. `voxclip-cli find-clips --dry-run` prints the same three strings for manual comparison. AI tighten gets the same test with `ai-tighten-requests.json` in M2. The Voice Lab rewrite gets it with `voice-rewrite-requests.json`, and Fix with AI with `patch-rewrite-requests.json`: each suite sends every case through its `VoiceRewriteService` or `PatchRewriteService` and compares the strings that would be sent.
 2. **Behaviour parity.** Both suites run every golden vector in `doc/spec/ai.md` §13: transcript formatting, `toFixed(1)`, `finalizeClips`, the VoxClip extensions, windowing, the AI tighten verifier, and request bodies per connector. They must reproduce the expected values exactly. The vectors live in `shared/fixtures/llm/`, transcribed from the spec.
 3. **Bundle parity.** `bundle.sh` (macOS, `diff -r` of every copied `shared/` folder, release.md section 2.3) and a Windows build test (SHA-256 of every file under the output's `shared\prompts\` and `shared\catalog\`) compare the built app's copies with this folder. A stale copy fails the build.
 4. **Schema subset.** A test checks every schema in these files and in the catalog against the canonical subset in spec §2.2.

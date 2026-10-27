@@ -28,7 +28,8 @@ extension HTTPConnector {
             if effortAllowed, let effort = canonical.effort { output["effort"] = effort.rawValue }
             body = ["model": model, "max_tokens": maximum, "system": canonical.system, "messages": [["role": "user", "content": content]]]
             body["output_config"] = output
-            if betaAvailable && modelConfiguration[ai: "serverSideFallback"].aiBool == true {
+            // A Voice Lab rewrite is billed for the quoted model only, so it never asks for a fallback (ai.md §12.8).
+            if canonical.feature != .voiceRewrite && betaAvailable && modelConfiguration[ai: "serverSideFallback"].aiBool == true {
                 beta = configuration[ai: "serverSideFallback"][ai: "betaHeader"].aiString
                 body["fallbacks"] = "default"
             }

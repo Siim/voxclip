@@ -86,9 +86,8 @@ public sealed class ClipFinder : IClipFinder
         var lines = ClipText.Lines(entries);
         var limits = prompts.ValidationLimits;
         if (!input.DryRun) await runner.PreflightAsync(connector, input.Model, LlmFeature.ClipFinder, ct, reportErrors: false).ConfigureAwait(false);
-        var context = input.DryRun ? null : await connector.GetContextTokensAsync(input.Model, ct).ConfigureAwait(false);
-        context ??= catalog.Model(input.Connector, input.Model)?["contextTokens"]?.GetValue<int>() ?? (input.Connector is ConnectorId.Ollama or ConnectorId.LmStudio ? 4096 : 128000);
-        var plan = prompts.Plan(lines, input.Preset.ToString().ToLowerInvariant(), instructions, input.Words[^1].End, context.Value, catalog.Cap(input.Connector, 16000),
+        var context = await catalog.ResolveContextTokensAsync(connector, input.Model, ct, queryConnector: !input.DryRun).ConfigureAwait(false);
+        var plan = prompts.Plan(lines, input.Preset.ToString().ToLowerInvariant(), instructions, input.Words[^1].End, context, catalog.Cap(input.Connector, 16000),
             localServer: input.Connector is ConnectorId.Ollama or ConnectorId.LmStudio, model: input.Model);
         var windows = plan.Windows;
         var candidates = new List<RawClip>();

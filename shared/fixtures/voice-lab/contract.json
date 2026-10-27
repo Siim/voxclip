@@ -31,6 +31,9 @@
     { "field": "language", "allowed": false },
     { "field": "connector", "allowed": false },
     { "field": "model", "allowed": false },
+    { "field": "targetSeconds", "allowed": false },
+    { "field": "minChars", "allowed": false },
+    { "field": "maxChars", "allowed": false },
     { "field": "same", "allowed": true }
   ],
   "replay": [

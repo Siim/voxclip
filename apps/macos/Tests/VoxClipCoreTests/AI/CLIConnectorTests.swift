@@ -89,6 +89,20 @@ struct CLIConnectorTests {
         #expect(await runner.allWorkspacesWerePrivate)
     }
 
+    @Test(arguments: ["voice-rewrite", "patch-rewrite"])
+    func voiceRewriteNamesNoFallbackModel(_ tag: String) async throws {
+        let catalog = try cliTestCatalog()
+        let runner = CLIFakeRunner(id: .claudeCode, catalog: catalog)
+        let connector = cliTestConnector(.claudeCode, runner: runner, catalog: catalog)
+        var request = cliTestRequest()
+        request.feature = .voiceRewrite
+        request.tag = tag
+        _ = try await connector.send(request, model: "haiku")
+        let generation = try #require(await runner.requests.first { $0.arguments.first == "-p" })
+        // ai.md §12.8: the quoted model answers or the send fails; there is no fallback.
+        #expect(generation.arguments.contains("haiku") && !generation.arguments.contains("--fallback-model"))
+    }
+
     @Test func claudeDefaultAndUnsupportedOptionalFlags() async throws {
         let catalog = try cliTestCatalog()
         let runner = CLIFakeRunner(id: .claudeCode, catalog: catalog)
@@ -243,6 +257,55 @@ struct CLIConnectorTests {
         #expect(completion.model == "claude-sonnet-5-5")
         #expect(completion.usage == LLMUsage(input: 2, output: 68, cacheRead: 0, cacheWrite: 1048))
         #expect(completion.stop == .complete)
+    }
+
+    /// `cli-replies.json` (ai.md §4.5 and §6.8): each Claude result envelope goes through the connector, then its reply is read
+    /// against the case's schema. The envelope is one strict parse of up to 512 levels; the reply, up to 64.
+    @Test(.enabled(if: aiSharedFixturesAvailable, aiSharedFixturesSkipReason))
+    func sharedClaudeResultEnvelopes() async throws {
+        let data = try Data(contentsOf: aiGoldenSharedRoot().appendingPathComponent("fixtures/llm/cli-replies.json"))
+        let cases = try JSONDecoder().decode(JSONValue.self, from: data)[ai: "cases"].aiArray
+        #expect(cases.count == 35)
+        let catalog = try cliTestCatalog()
+        for item in cases {
+            let id = item[ai: "id"].aiString ?? "?"
+            let input = item[ai: "input"], expected = item[ai: "expected"]
+            #expect(item[ai: "kind"].aiString == "cli-reply", "\(id): kind")
+            let connectorID = try #require(input[ai: "connector"].aiString.flatMap(ConnectorID.init(rawValue:)))
+            let stdout = try #require(input[ai: "stdout"].aiString, "\(id): stdout")
+            let stderr = input[ai: "stderr"].aiString ?? ""
+            let runner = CLIFakeRunner(id: connectorID, catalog: catalog, generation: { _ in
+                ProcessResult(exitCode: 0, stdout: Data(stdout.utf8), stderr: Data(stderr.utf8))
+            })
+            let connector = cliTestConnector(connectorID, runner: runner, catalog: catalog)
+            if input[ai: "mode"].aiString == "app-server" {
+                await runner.setProbeResult(["app-server", "--listen", "stdio://"], cliTestResult(stdout))
+                let models = try await connector.models(refresh: true)
+                #expect(models.map(\.id) == expected[ai: "models"].aiArray.compactMap(\.aiString), "\(id): models")
+                continue
+            }
+            let request = LLMRequest(feature: .voiceRewrite, system: "Rewrite the source.", instruction: "Return the rewrite.",
+                                     schemaName: "voice_rewrite_proposal", schema: input[ai: "schema"], maxOutputTokens: 512,
+                                     effort: .medium, timeout: .seconds(120), tag: "cli-reply")
+            var outcome = "reply"
+            do {
+                let completion = try await connector.send(request, model: try #require(input[ai: "model"].aiString))
+                let parsed = try CanonicalResponseParser.validate(completion, schema: request.schema)
+                #expect(parsed.object[ai: "rewrite"].aiString == expected[ai: "rewrite"].aiString, "\(id): rewrite")
+                #expect(completion.model == expected[ai: "model"].aiString, "\(id): answering model")
+            } catch LLMError.cliFailed(let message) {
+                if let expectedMessage = expected[ai: "message"].aiString { #expect(message == expectedMessage, "\(id): stderr") }
+                outcome = "cliFailed"
+            } catch LLMError.truncated {
+                outcome = "truncated"
+            } catch LLMError.refused(let category) {
+                #expect(category == nil, "\(id): no category")
+                outcome = "refused"
+            } catch LLMError.invalidOutput {
+                outcome = "invalidOutput"
+            }
+            #expect(outcome == (expected[ai: "error"].aiString ?? "reply"), "\(id)")
+        }
     }
 
     @Test(arguments: [ConnectorID.claudeCode, .codex])

@@ -1,7 +1,8 @@
 # LLM golden-fixture generator
 
 Independent, dependency-free Node >=20 ESM implementation of `doc/spec/ai.md`
-§2.2, §6, §11 and §12, under the repository's MIT licence. No app code or
+§2.2, §6, §11 and §12, and of the Voice Lab rewrite and Fix with AI requests in
+`doc/spec/voice-lab.md` §8.9.1 and §8.1, under the repository's MIT licence. No app code or
 VoxConvo/VoxConvo API implementation is imported or copied. Nothing calls a
 provider, reads credentials, or spawns an installed LLM CLI.
 
@@ -24,12 +25,23 @@ mode writes outside its output directory, apart from `check`'s temporary files.
   token budgets, Apple logical schema mapping and Codex TOML escaping.
 - `vectors.mjs`: independently transcribed §13.2–§13.6 expectations, synthetic
   transcript recipes and the specified deterministic PRNG.
+- `voicelab.mjs`: the Voice Lab rewrite and Fix with AI requests, rendered from
+  the templates in `shared/prompts/voice-rewrite.json` and
+  `shared/prompts/patch-rewrite.json`, and each quote's estimate, `est()` of
+  the whole rendered request; Fix with AI reuses the transcript formatter of
+  `reference.mjs`.
 - `gen.mjs`: fixture cases, self-checks, serialization and byte-diff checks.
+  It also states the Claude CLI result envelopes of `cli-replies.json` by
+  hand, with self-checks of their nesting, and works out each Voice Lab
+  request's preflight (ai.md §12.8).
 
 Inputs are the worktree's `shared/prompts/{clip-finder,ai-tighten}.json`,
 `shared/catalog/llm-providers.json`, and the existing editing fixture
-`shared/fixtures/editing/pauses/label-to-fixed.json`. Prompt/catalog SHA-256s are
-recorded in every output after normalizing source-file CRLF to LF; there are no
+`shared/fixtures/editing/pauses/label-to-fixed.json`, plus
+`shared/prompts/voice-rewrite.json` for `voice-rewrite-requests.json` and `cli-replies.json` only and
+`shared/prompts/patch-rewrite.json` for `patch-rewrite-requests.json` only. Prompt/catalog
+SHA-256s are recorded in every output after normalizing source-file CRLF to LF
+(a Voice Lab request file records only its own prompt); there are no
 absolute checkout paths or timestamps. Scoped `.gitattributes` files pin both
 generator sources and golden outputs to LF on Windows checkouts as well.
 During initial implementation these inputs and the specs were checked against

@@ -173,7 +173,7 @@ public enum CaptionTextRules {
     public static func raw(_ text: String) -> String {
         var result = ""
         var pendingSpace = false
-        for scalar in text.precomposedStringWithCanonicalMapping.unicodeScalars {
+        for scalar in EditingPrimitives.nfc(text).unicodeScalars {
             if whitespace(scalar) { pendingSpace = !result.isEmpty }
             else {
                 if pendingSpace { result.append(" "); pendingSpace = false }

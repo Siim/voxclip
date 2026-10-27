@@ -1,0 +1,200 @@
+{
+  "format": "voxclip-project",
+  "schemaVersion": 1,
+  "id": "5b7e0f7a-3c1d-4b8e-9a51-2f6d0c8e4a11",
+  "title": "Interview take 3",
+  "createdAt": "2026-10-25T09:12:03Z",
+  "modifiedAt": "2026-10-25T09:31:47Z",
+  "savedBy": {
+    "app": "VoxClip",
+    "version": "0.1.0",
+    "platform": "macos"
+  },
+  "media": {
+    "source": {
+      "absolutePath": "/Users/alex/Movies/VoxClip/interview-take-3.mov",
+      "relativePath": "interview-take-3.mov",
+      "sizeBytes": 9437184,
+      "durationSeconds": 7,
+      "contentKey": "a12b2e004311fcd7687a1e7dce95e15790e043ee2af00b39fed7b06fd5c88393",
+      "video": {
+        "width": 1920,
+        "height": 1080,
+        "frameRate": 30,
+        "rotationDegrees": 0
+      },
+      "audio": {
+        "sampleRate": 48000,
+        "channels": 1
+      }
+    }
+  },
+  "transcript": {
+    "schemaVersion": 1,
+    "words": [
+      {
+        "id": "w1",
+        "text": "\uac00\u11a8",
+        "kind": "word",
+        "start": 0.3,
+        "end": 0.6,
+        "rawStart": 0.34,
+        "rawEnd": 0.57,
+        "conf": 0.99,
+        "speaker": null,
+        "timing": "native"
+      },
+      {
+        "id": "w2",
+        "text": "\u1100\u1176",
+        "kind": "word",
+        "start": 0.7,
+        "end": 1,
+        "rawStart": 0.74,
+        "rawEnd": 0.97,
+        "conf": 0.81,
+        "speaker": null,
+        "timing": "native"
+      },
+      {
+        "id": "w3",
+        "text": "\u1113\u1161",
+        "kind": "word",
+        "start": 1.1,
+        "end": 1.5,
+        "rawStart": 1.14,
+        "rawEnd": 1.47,
+        "conf": 0.98,
+        "speaker": null,
+        "timing": "native"
+      },
+      {
+        "id": "w4",
+        "text": "\ud81b\udd68",
+        "kind": "word",
+        "start": 2.6,
+        "end": 2.75,
+        "rawStart": 2.64,
+        "rawEnd": 2.72,
+        "conf": 0.99,
+        "speaker": null,
+        "timing": "native"
+      },
+      {
+        "id": "w5",
+        "text": "ship",
+        "kind": "word",
+        "start": 2.8,
+        "end": 3.1,
+        "rawStart": 2.84,
+        "rawEnd": 3.07,
+        "conf": 0.97,
+        "speaker": null,
+        "timing": "native"
+      },
+      {
+        "id": "w6",
+        "text": "uh",
+        "kind": "word",
+        "start": 3.2,
+        "end": 3.4,
+        "rawStart": 3.24,
+        "rawEnd": 3.37,
+        "conf": 0.77,
+        "speaker": null,
+        "timing": "native"
+      },
+      {
+        "id": "w7",
+        "text": "the",
+        "kind": "word",
+        "start": 3.5,
+        "end": 3.6,
+        "rawStart": 3.54,
+        "rawEnd": 3.57,
+        "conf": 0.99,
+        "speaker": null,
+        "timing": "native"
+      },
+      {
+        "id": "w8",
+        "text": "clipper.",
+        "kind": "word",
+        "start": 3.65,
+        "end": 4.2,
+        "rawStart": 3.69,
+        "rawEnd": 4.17,
+        "conf": 0.96,
+        "speaker": null,
+        "timing": "native"
+      },
+      {
+        "id": "w9",
+        "text": "Thanks",
+        "kind": "word",
+        "start": 5.5,
+        "end": 5.9,
+        "rawStart": 5.54,
+        "rawEnd": 5.87,
+        "conf": 0.99,
+        "speaker": null,
+        "timing": "native"
+      }
+    ],
+    "language": "en",
+    "languageProbability": 0.99,
+    "durationSeconds": 7,
+    "engine": {
+      "id": "elevenlabs",
+      "modelId": "scribe_v2",
+      "modelSha256": null,
+      "engineVersion": "scribe_v2",
+      "locale": null
+    },
+    "verbatim": true,
+    "refined": true,
+    "pipelineVersion": 1,
+    "rawKey": "1c030c022ede1c5e2e0277f1c50750593503573d674b82084a060e9c67351d4d",
+    "createdAt": "2026-10-25T09:12:41Z"
+  },
+  "edits": {
+    "pauseThresholdSeconds": 0.8,
+    "pauseKeepSeconds": 0.15,
+    "cutWordIds": [
+      "w2",
+      "w6"
+    ],
+    "cutPauseIds": [
+      "pause-after-w3"
+    ],
+    "corrections": {
+      "w5": "\uac00\u11ab"
+    },
+    "clips": [],
+    "activeClipId": null
+  },
+  "captions": {
+    "styleId": "vox-bold",
+    "overrides": {},
+    "position": null,
+    "positionByAspect": {}
+  },
+  "export": {
+    "aspect": "9:16",
+    "quality": "standard",
+    "srt": false,
+    "folder": null
+  },
+  "share": {
+    "captions": {
+      "full": "Today we shipped the clipper. Thanks"
+    }
+  },
+  "ai": {
+    "results": []
+  },
+  "voiceLab": {
+    "segments": []
+  },
+  "extensions": {}
+}

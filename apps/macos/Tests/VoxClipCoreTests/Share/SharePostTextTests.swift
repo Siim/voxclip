@@ -2,6 +2,9 @@ import Foundation
 import Testing
 @testable import VoxClipCore
 
+/// The Core NFC (editing §4.8) as the scalars the share rules read.
+private func nfcScalars(_ text: String) -> [Unicode.Scalar] { Array(EditingPrimitives.nfc(text).unicodeScalars) }
+
 /// Replays shared/fixtures/share/cases.json; doc/publishing.md §2.1 and doc/spec/voice-lab.md §11.3.
 @Suite struct SharePostTextTests {
     struct Fixture: Decodable {
@@ -35,7 +38,7 @@ import Testing
     /// Run-length [scalars per Character, count] of the NFC text, the fixture's cluster encoding.
     private static func clusterRuns(_ text: String) -> [[Int]] {
         var runs: [[Int]] = []
-        for character in ShareDisclosure.string(ShareDisclosure.nfc(text)) {
+        for character in ShareDisclosure.string(nfcScalars(text)) {
             let size = character.unicodeScalars.count
             if let last = runs.last, last[0] == size { runs[runs.count - 1][1] += 1 } else { runs.append([size, 1]) }
         }
@@ -169,10 +172,10 @@ import Testing
             let caption = lead + word + (line.map { "\n\n" + $0 } ?? "")
             let text = rules.composerText(caption, destination: .x, disclosureLine: line)
             let expected = rules.xWeight(caption) <= rules.xLimit ? caption
-                : Self.longestFirstCut(ShareDisclosure.nfc(lead + word), line: line, rules: rules)
+                : Self.longestFirstCut(nfcScalars(lead + word), line: line, rules: rules)
             #expect(Self.bytes(text) == Self.bytes(expected), "\(Array(caption.unicodeScalars.map(\.value)))")
             if text != caption { cuts += 1 }
-            if text != caption, !rules.urlRanges(ShareDisclosure.nfc(text)).isEmpty { cutsWithURL += 1 }
+            if text != caption, !rules.urlRanges(nfcScalars(text)).isEmpty { cutsWithURL += 1 }
         }
         #expect(cuts >= 50 && cutsWithURL >= 15, "\(cuts) cuts, \(cutsWithURL) with a URL")
     }
@@ -234,12 +237,15 @@ import Testing
     }
 
     @Test func nfcComposesHangulLVAndT() {
-        // Foundation alone leaves U+AC00 U+11A8; NFC composes it to U+AC01. An LVT syllable takes no second T.
-        #expect(ShareDisclosure.nfc("\u{AC00}\u{11A8}").map(\.value) == [0xAC01])
-        #expect(ShareDisclosure.nfc("\u{C720}\u{11BD}").map(\.value) == [0xC736])
-        #expect(ShareDisclosure.nfc("\u{AC01}\u{11A8}").map(\.value) == [0xAC01, 0x11A8])
-        #expect(ShareDisclosure.nfc("\u{1100}\u{1161}\u{11A8}").map(\.value) == [0xAC01])
-        #expect(ShareDisclosure.nfc("o\u{303}\u{AC00}\u{301}\u{11A8}").map(\.value) == [0xF5, 0xAC00, 0x301, 0x11A8])
+        // Foundation alone leaves U+AC00 U+11A8; NFC composes it to U+AC01. An LVT syllable takes no second T, and U+11A7 and
+        // U+11C3 are no trailing consonants, although Foundation's own composition takes them.
+        #expect(nfcScalars("\u{AC00}\u{11A8}").map(\.value) == [0xAC01])
+        #expect(nfcScalars("\u{C720}\u{11BD}").map(\.value) == [0xC736])
+        #expect(nfcScalars("\u{AC01}\u{11A8}").map(\.value) == [0xAC01, 0x11A8])
+        #expect(nfcScalars("\u{1100}\u{1161}\u{11A8}").map(\.value) == [0xAC01])
+        #expect(nfcScalars("o\u{303}\u{AC00}\u{301}\u{11A8}").map(\.value) == [0xF5, 0xAC00, 0x301, 0x11A8])
+        #expect(nfcScalars("\u{1100}\u{1161}\u{11A7}").map(\.value) == [0xAC00, 0x11A7])
+        #expect(nfcScalars("\u{AC00}\u{11C3}").map(\.value) == [0xAC00, 0x11C3])
     }
 
     @Test func whiteSpaceIsTheCaptionSet() {

@@ -190,14 +190,22 @@ public struct VoiceLabCloneRequest: Sendable, Equatable {
 }
 
 public enum VoiceRewriteScope: String, Codable, Sendable { case passage, fullTake }
+/// One passage or full-take rewrite with its length budget (voice-lab §8.9.1). The caller computes the budget; the quote binds it.
 public struct VoiceRewriteRequest: Codable, Sendable {
     public let id: UUID
     public let scope: VoiceRewriteScope
     public let sourceWords: [TimedWord]
     public let instruction: String
     public let language: String
-    public init(id: UUID, scope: VoiceRewriteScope, sourceWords: [TimedWord], instruction: String, language: String) {
+    /// `w`, the part of the window the take must fill: finite, above 0 and at most 600 seconds.
+    public let targetSeconds: Double
+    /// The new words' `VoiceLabTextLength` range, with `1 ≤ minChars ≤ maxChars ≤ 5,000`.
+    public let minChars: Int
+    public let maxChars: Int
+    public init(id: UUID, scope: VoiceRewriteScope, sourceWords: [TimedWord], instruction: String, language: String,
+                targetSeconds: Double, minChars: Int, maxChars: Int) {
         self.id = id; self.scope = scope; self.sourceWords = sourceWords; self.instruction = instruction; self.language = language
+        self.targetSeconds = targetSeconds; self.minChars = minChars; self.maxChars = maxChars
     }
 }
 
@@ -232,4 +240,8 @@ public struct VoiceRewriteProposal: Sendable {
     public let connector: ConnectorID
     public let model: String
     public let providerRequestID: String?
+    /// Core's own `VoiceLabTextLength` of `proposedText`; models miscount, so the reply is never trusted for it.
+    public let proposedLength: Int
+    /// Whether `proposedLength` lies in the request's range. A proposal outside it is still returned, as it is (§8.9.1).
+    public let inRange: Bool
 }

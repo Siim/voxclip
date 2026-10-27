@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
+using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Domain.VoiceLab;
 using VoxClip.Core.Services.LLM;
@@ -30,12 +31,11 @@ public sealed class VoiceRewriteService
         if (input is null || input.SourceWords is null) throw Invalid();
         var snapshot = input with { SourceWords = input.SourceWords.ToArray() };
         var source = Validate(snapshot);
-        if (string.IsNullOrWhiteSpace(model) || model == "default" || model.Length > 128) throw Invalid();
-        var request = BuildRequest(snapshot, source, connector.Id, model);
-        var units = catalog.Estimate(source + snapshot.Instruction + request.System + request.Schema.ToJsonString());
-        return Task.FromResult(actions.Prepare(Fingerprint(snapshot, connector.Id, model, request),
-            new(LlmCatalog.WireId(connector.Id), VoiceLabOperation.VoiceRewrite, units, "estimated input token", null, null,
-                "Provider price and final token usage are unknown; review usage before approval."),
+        if (!VoiceLabLlmChecks.IsValidModel(model)) throw Invalid();
+        var prompt = VoiceLabLlmChecks.ReadPrompt(catalog, PromptFile);
+        var request = BuildRequest(snapshot, source, prompt.Document, connector.Id, model);
+        return Task.FromResult(actions.Prepare(Fingerprint(snapshot, connector.Id, model, request, prompt.Sha256),
+            VoiceLabLlmChecks.Estimate(catalog, connector.Id, VoiceLabOperation.VoiceRewrite, request),
             new(VoiceLabOperation.VoiceRewrite, snapshot.RequestId, LlmCatalog.WireId(connector.Id), null,
                 "voice-rewrite", model, null, new(VoiceLabLanguageModeKind.Explicit, snapshot.Language),
                 VoiceLabActionGate.ContentHash(Encoding.UTF8.GetBytes(source)), null)));
@@ -54,20 +54,20 @@ public sealed class VoiceRewriteService
         var snapshot = input with { SourceWords = input.SourceWords.ToArray() };
         var source = Validate(snapshot);
         // Bind the approved input before discovery, without consuming it for a nonbillable preflight failure.
-        var request = BuildRequest(snapshot, source, connector.Id, model);
-        var fingerprint = Fingerprint(snapshot, connector.Id, model, request);
+        var prompt = VoiceLabLlmChecks.ReadPrompt(catalog, PromptFile);
+        var request = BuildRequest(snapshot, source, prompt.Document, connector.Id, model);
+        var fingerprint = Fingerprint(snapshot, connector.Id, model, request, prompt.Sha256);
         actions.Verify(authorization, fingerprint, VoiceLabOperation.VoiceRewrite, snapshot.RequestId);
         var status = await connector.GetStatusAsync(ct).ConfigureAwait(false);
         ct.ThrowIfCancellationRequested();
-        if (status is not ConnectorStatus.Ready) throw StatusFailure(status, connector.Id, model);
+        if (status is not ConnectorStatus.Ready) throw VoiceLabLlmChecks.StatusFailure(catalog, status, connector.Id, model);
         var models = await connector.GetModelsAsync(false, ct).ConfigureAwait(false);
         ct.ThrowIfCancellationRequested();
         var selected = models.FirstOrDefault(candidate => candidate.Id == model);
         if (selected is null) throw LlmErrors.Create(LlmErrorKind.ModelNotFound, "", model, LlmFeature.VoiceRewrite);
-        var context = await connector.GetContextTokensAsync(model, ct).ConfigureAwait(false) ?? selected.ContextTokens ??
-            catalog.Model(connector.Id, model)?["contextTokens"]?.GetValue<int>() ?? 4096;
+        var context = await catalog.ResolveContextTokensAsync(connector, model, ct, models).ConfigureAwait(false);
         ct.ThrowIfCancellationRequested();
-        CheckContext(request, model, context);
+        VoiceLabLlmChecks.CheckContext(catalog, request, model, context);
         ct.ThrowIfCancellationRequested();
         // Claim is atomic and immediately precedes the only call that may dispatch a paid request.
         actions.Claim(authorization, fingerprint, VoiceLabOperation.VoiceRewrite, snapshot.RequestId);
@@ -75,21 +75,22 @@ public sealed class VoiceRewriteService
         try { answer = await connector.SendAsync(request, model, ct).ConfigureAwait(false); }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw LlmErrors.Create(LlmErrorKind.Cancelled, "", model, LlmFeature.VoiceRewrite); }
         ct.ThrowIfCancellationRequested();
-        if (answer.Model != model || answer.Stop is not StopKind.Complete)
-            throw LlmErrors.Create(answer.Stop is StopKind.Truncated ? LlmErrorKind.Truncated : LlmErrorKind.InvalidOutput, "", model, LlmFeature.VoiceRewrite);
+        VoiceLabLlmChecks.CheckAnswer(connector.Id, model, answer);
+        // §8.9.1: one spoken passage; extra keys are ignored, as in every reply (ai.md §2.3).
         var parsed = LlmOutput.Validate(answer, request.Schema);
-        if (parsed.Object is null || parsed.Dropped != 0 || parsed.Object.Count != 1 || parsed.Object["rewrite"] is not JsonValue value ||
-            !value.TryGetValue<string>(out var rewrite) || string.IsNullOrWhiteSpace(rewrite) || Encoding.UTF8.GetByteCount(rewrite) > 20000 ||
+        if (parsed.Object is null || parsed.Dropped != 0 || parsed.Object["rewrite"] is not JsonValue value ||
+            !value.TryGetValue<string>(out var rewrite) || EditingAlgorithms.JsTrim(rewrite).Length == 0 || Encoding.UTF8.GetByteCount(rewrite) > 20000 ||
             Url.IsMatch(rewrite) || rewrite.Any(character => char.IsControl(character) && character != '\n'))
             throw LlmErrors.Create(LlmErrorKind.InvalidOutput, "", model, LlmFeature.VoiceRewrite);
-        return new(Guid.NewGuid(), snapshot.Scope, snapshot.SourceWords, source, rewrite, connector.Id, model, answer.RequestId);
+        var length = VoiceLabTextLength.Length(rewrite);
+        return new(Guid.NewGuid(), snapshot.Scope, snapshot.SourceWords, source, rewrite, connector.Id, answer.Model, answer.RequestId,
+            length, length >= snapshot.MinChars && length <= snapshot.MaxChars);
     }
 
-    private LlmRequest BuildRequest(VoiceRewriteRequest input, string source, ConnectorId connector, string model)
+    private const string PromptFile = "prompts/voice-rewrite.json";
+
+    private LlmRequest BuildRequest(VoiceRewriteRequest input, string source, JsonObject prompt, ConnectorId connector, string model)
     {
-        JsonObject prompt;
-        try { prompt = catalog.ReadAsset("prompts/voice-rewrite.json"); }
-        catch (VoxClipException) { throw; }
         var system = prompt["system"]?.GetValue<string>();
         var name = prompt["schemaName"]?.GetValue<string>();
         if (string.IsNullOrWhiteSpace(system) || string.IsNullOrWhiteSpace(name) || prompt["schema"] is not JsonObject schema ||
@@ -97,54 +98,42 @@ public sealed class VoiceRewriteService
             prompt["maxOutputTokens"] is not JsonValue outputValue || !outputValue.TryGetValue<int>(out var promptCap) || promptCap is < 1 or > 16000)
             throw new VoxClipException(VoxClipErrorCode.SharedResourcesMissing, "VoxClip is missing some of its files. Reinstall VoxClip.");
         var sourceTokens = catalog.Estimate(source);
-        var maxOutput = Math.Min(Math.Min(promptCap, catalog.Cap(connector, promptCap)),
-            Math.Max(512, (int)Math.Ceiling(sourceTokens * 1.5)));
-        if (maxOutput < sourceTokens)
+        var maxOutput = VoiceLabLlmChecks.MaxOutputTokens(sourceTokens, promptCap, catalog.Cap(connector, promptCap)) ??
             throw LlmErrors.Create(LlmErrorKind.ContextTooLong, "", model, LlmFeature.VoiceRewrite);
-        var sourceBlock = $"SOURCE TRANSCRIPT ({ScopeWire(input.Scope)}, {input.Language}):\n{source}";
-        var instruction = "USER EDIT REQUEST:\n" + input.Instruction + "\n\nReturn rewritten spoken words for the entire selected source.";
+        var (sourceBlock, instruction) = RequestText(input, source, prompt);
         var timeout = catalog.Timeout(connector is ConnectorId.ClaudeCode or ConnectorId.Codex ? "cli" :
             connector is ConnectorId.Ollama or ConnectorId.LmStudio ? "localServer" : "cloud");
         return new(LlmFeature.VoiceRewrite, system, sourceBlock, instruction, name, schema.DeepClone().AsObject(),
             maxOutput, Effort.Medium, timeout, input.Language, "voice-rewrite");
     }
 
-    private void CheckContext(LlmRequest request, string model, int context)
+    /// <summary>Renders the request from the shared prompt's templates (voice-lab §8.9.1); no prompt text lives in code.</summary>
+    internal static (string CachedBlock, string Instruction) RequestText(VoiceRewriteRequest input, string source, JsonObject prompt)
     {
-        var required = catalog.Estimate(request.System + request.CachedBlock + request.Instruction + request.Schema.ToJsonString()) +
-            request.MaxOutputTokens + 64;
-        if (context < 512 || required >= context * catalog.Data["policy"]!["tokenEstimate"]!["contextSafetyFactor"]!.GetValue<double>())
-            throw LlmErrors.Create(LlmErrorKind.ContextTooLong, "", model, LlmFeature.VoiceRewrite);
-    }
-
-    private LlmException StatusFailure(ConnectorStatus status, ConnectorId connector, string model)
-    {
-        var kind = status switch
-        {
-            ConnectorStatus.NeedsKey => LlmErrorKind.MissingKey,
-            ConnectorStatus.NotRunning => LlmErrorKind.NotRunning,
-            ConnectorStatus.NoModels => LlmErrorKind.NoModels,
-            ConnectorStatus.CliMissing => LlmErrorKind.CliMissing,
-            ConnectorStatus.CliTooOld => LlmErrorKind.CliTooOld,
-            ConnectorStatus.CliSignedOut => LlmErrorKind.CliSignedOut,
-            _ => LlmErrorKind.Unavailable
-        };
-        var detail = status switch
-        {
-            ConnectorStatus.NotRunning local => local.Url,
-            ConnectorStatus.CliTooOld old => old.Version,
-            ConnectorStatus.CliMissing => catalog.Provider(connector)["cli"]?["installHint"]?.GetValue<string>(),
-            ConnectorStatus.Unavailable unavailable => unavailable.Reason,
-            _ => null
-        };
-        return LlmErrors.Create(kind, catalog.Provider(connector)["label"]!.GetValue<string>(), model, LlmFeature.VoiceRewrite, detail: detail);
+        string? Template(string key) => prompt["request"]?[key] is JsonValue value && value.TryGetValue<string>(out var text) ? text : null;
+        if (Template("sourceBlock") is not { } sourceBlock || Template("instructionBlock") is not { } requestBlock ||
+            Template("returnLine") is not { } returnLine || Template("lengthLine") is not { } lengthLine ||
+            !new[] { "{scope}", "{language}", "{source}" }.All(name => sourceBlock.Contains(name, StringComparison.Ordinal)) ||
+            !requestBlock.Contains("{instruction}", StringComparison.Ordinal) ||
+            !new[] { "{targetSeconds}", "{minChars}", "{maxChars}" }.All(name => lengthLine.Contains(name, StringComparison.Ordinal)))
+            throw new VoxClipException(VoxClipErrorCode.SharedResourcesMissing, "VoxClip is missing some of its files. Reinstall VoxClip.");
+        // User text goes in last, so it is never read as a placeholder.
+        var block = sourceBlock.Replace("{scope}", ScopeWire(input.Scope), StringComparison.Ordinal)
+            .Replace("{language}", input.Language, StringComparison.Ordinal).Replace("{source}", source, StringComparison.Ordinal);
+        var length = lengthLine.Replace("{targetSeconds}", EditingFormat.ToFixed1(input.TargetSeconds), StringComparison.Ordinal)
+            .Replace("{minChars}", input.MinChars.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal)
+            .Replace("{maxChars}", input.MaxChars.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal);
+        var request = EditingAlgorithms.JsTrim(input.Instruction);
+        return (block, (request.Length == 0 ? "" : requestBlock.Replace("{instruction}", request, StringComparison.Ordinal) + "\n\n") + returnLine + "\n" + length);
     }
 
     private static string Validate(VoiceRewriteRequest input)
     {
         if (input is null || input.RequestId == Guid.Empty || !Enum.IsDefined(input.Scope) || input.SourceWords is null || input.SourceWords.Count is < 1 or > 3000 ||
             input.Instruction is null || Encoding.UTF8.GetByteCount(input.Instruction) > 1000 ||
-            input.Language is null || !LanguageCode.IsMatch(input.Language)) throw Invalid();
+            input.Language is null || !LanguageCode.IsMatch(input.Language) ||
+            !double.IsFinite(input.TargetSeconds) || input.TargetSeconds is <= 0 or > 600 ||
+            input.MinChars < 1 || input.MinChars > input.MaxChars || input.MaxChars > 5000) throw Invalid();
         var previous = 0.0;
         foreach (var word in input.SourceWords)
         {
@@ -157,10 +146,12 @@ public sealed class VoiceRewriteService
         if (Encoding.UTF8.GetByteCount(source) > 20000) throw Invalid();
         return source;
     }
-    private static string Fingerprint(VoiceRewriteRequest input, ConnectorId connector, string model, LlmRequest request)
+    private static string Fingerprint(VoiceRewriteRequest input, ConnectorId connector, string model, LlmRequest request, string promptSha256)
     {
         var parts = new List<string?> { "voice-rewrite", input.RequestId.ToString("D"), LlmCatalog.WireId(connector), model, ScopeWire(input.Scope),
-            input.Instruction, input.Language, request.System, request.CachedBlock, request.Instruction, request.SchemaName,
+            input.Instruction, input.Language, input.TargetSeconds.ToString("R", CultureInfo.InvariantCulture),
+            input.MinChars.ToString(CultureInfo.InvariantCulture), input.MaxChars.ToString(CultureInfo.InvariantCulture), promptSha256,
+            request.System, request.CachedBlock, request.Instruction, request.SchemaName,
             request.Schema.ToJsonString(), request.MaxOutputTokens.ToString(CultureInfo.InvariantCulture) };
         foreach (var word in input.SourceWords)
         {

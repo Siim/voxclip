@@ -49,7 +49,7 @@ internal sealed class CliLlmAdapter(ConnectorId id, LlmCatalog catalog, IProcess
                 return new ConnectorStatus.CliSignedOut();
             if (id == ConnectorId.ClaudeCode)
             {
-                var auth = LlmOutput.Extract(result.StandardOutput);
+                var auth = LlmOutput.Envelope(result.StandardOutput) as JsonObject;
                 if (auth?["loggedIn"] is not JsonValue loggedInValue || !loggedInValue.TryGetValue<bool>(out var loggedIn)) throw ProbeFailure();
                 if (!loggedIn) return new ConnectorStatus.CliSignedOut();
                 if (result.ExitCode != 0) throw ProbeFailure();
@@ -249,10 +249,12 @@ internal sealed class CliLlmAdapter(ConnectorId id, LlmCatalog catalog, IProcess
 
     private RawCompletion ParseClaude(ProcessResult result, LlmRequest request, string model)
     {
-        var root = LlmOutput.Extract(result.StandardOutput);
-        if (root?["type"]?.GetValue<string>() != "result") throw Classify(FirstLine(result.StandardError), model, request.Feature);
-        var message = root["result"]?.GetValue<string>() ?? FirstLine(result.StandardError);
-        if (root["is_error"]?.GetValue<bool>() != false || result.ExitCode != 0)
+        var root = LlmOutput.Envelope(result.StandardOutput) as JsonObject;
+        if (root?["type"] is not JsonValue typeValue || !typeValue.TryGetValue<string>(out var type) || type != "result" ||
+            root["is_error"] is not JsonValue errorValue || !errorValue.TryGetValue<bool>(out var isError))
+            throw Failure(LlmErrorKind.CliFailed, model, request.Feature, FirstLine(result.StandardError));
+        var message = root["result"] is JsonValue resultValue && resultValue.TryGetValue<string>(out var resultText) ? resultText : FirstLine(result.StandardError);
+        if (isError || result.ExitCode != 0)
         {
             var status = root["api_error_status"]?.GetValue<int>();
             if (status is 401 or 403) throw Failure(LlmErrorKind.CliSignedOut, model, request.Feature);
@@ -260,9 +262,13 @@ internal sealed class CliLlmAdapter(ConnectorId id, LlmCatalog catalog, IProcess
             if (status == 529) throw Failure(LlmErrorKind.Overloaded, model, request.Feature);
             throw Classify(message, model, request.Feature);
         }
-        var answering = (root["modelUsage"] as JsonObject)?.OrderByDescending(pair => pair.Value?["outputTokens"]?.GetValue<int>() ?? 0).FirstOrDefault().Key ?? model;
+        var answering = (root["modelUsage"] as JsonObject)?.OrderByDescending(pair => Count(pair.Value, "outputTokens") ?? Count(pair.Value, "output_tokens") ?? 0)
+            .ThenBy(pair => System.Text.Encoding.UTF8.GetBytes(pair.Key), Utf8KeyComparer.Instance).FirstOrDefault().Key ?? model;
         var usage = root["usage"];
-        return new(message, root["structured_output"] is JsonObject structured ? structured.DeepClone() : null, answering, new StopKind.Complete(),
+        // ai.md §6.8: the stop reason, before the reply is read.
+        var stopReason = root["stop_reason"] is JsonValue stopValue && stopValue.TryGetValue<string>(out var stopText) ? stopText : null;
+        StopKind stop = stopReason switch { "max_tokens" => new StopKind.Truncated(), "refusal" => new StopKind.Refused(null), _ => new StopKind.Complete() };
+        return new(message, root["structured_output"] is JsonObject structured ? structured.DeepClone() : null, answering, stop,
             new(Count(usage, "input_tokens"), Count(usage, "output_tokens"), Count(usage, "cache_read_input_tokens"), Count(usage, "cache_creation_input_tokens")), null);
     }
 
@@ -274,7 +280,7 @@ internal sealed class CliLlmAdapter(ConnectorId id, LlmCatalog catalog, IProcess
         string? lastAgent = null;
         foreach (var line in result.StandardOutput.Split('\n'))
         {
-            if (LlmOutput.Parse(line) is not JsonObject item) continue;
+            if (LlmOutput.Envelope(line) is not JsonObject item) continue;
             switch (item["type"]?.GetValue<string>())
             {
                 case "turn.completed": completed = item; break;
@@ -313,7 +319,7 @@ internal sealed class CliLlmAdapter(ConnectorId id, LlmCatalog catalog, IProcess
             var result = processes is IAppServerRunner rpc ? await rpc.RunAppServerAsync(command, ct).ConfigureAwait(false) : await processes.RunAsync(command, null, ct).ConfigureAwait(false);
             foreach (var line in result.StandardOutput.Split('\n'))
             {
-                var response = LlmOutput.Parse(line);
+                var response = LlmOutput.Envelope(line);
                 if (response?["id"]?.ToString() != "2" || response["result"]?["data"] is not JsonArray data) continue;
                 var models = new List<LlmModel> { new("default", "CLI default", null, null, ModelSource.Curated) };
                 foreach (var item in data)
@@ -355,7 +361,12 @@ internal sealed class CliLlmAdapter(ConnectorId id, LlmCatalog catalog, IProcess
             });
         return builder.Append('"').ToString();
     }
-    private static int? Count(JsonNode? node, string key) => node?[key]?.GetValue<int>();
+    private sealed class Utf8KeyComparer : IComparer<byte[]>
+    {
+        internal static readonly Utf8KeyComparer Instance = new();
+        public int Compare(byte[]? left, byte[]? right) => left.AsSpan().SequenceCompareTo(right);
+    }
+    private static int? Count(JsonNode? node, string key) => node is JsonObject objectValue && objectValue[key] is JsonValue scalar && scalar.TryGetValue<int>(out var count) ? count : null;
     private static string FirstLine(string value) => value.Split('\n', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault()?.Trim() ?? "The CLI returned no result.";
     private LlmException Classify(string message, string model, LlmFeature feature)
     {

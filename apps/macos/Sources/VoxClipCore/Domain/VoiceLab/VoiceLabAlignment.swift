@@ -32,7 +32,7 @@ public enum VoiceLabAlignment {
         // A noncharacter makes the alignment mismatch, as on Windows, where NFC would otherwise throw for U+FFFE.
         func folded(_ token: String) throws -> String {
             guard !token.unicodeScalars.contains(where: isNoncharacter) else { throw VoiceLabGeometryError.alignmentMismatch }
-            return EditingPrimitives.normalizeForMatch(token.precomposedStringWithCanonicalMapping)
+            return EditingPrimitives.normalizeForMatch(EditingPrimitives.nfc(token))
         }
         let derived = try words.map { try folded($0.text) }
         let expected = try expectedText.unicodeScalars.split(whereSeparator: isWhiteSpace).map { try folded(String($0)) }

@@ -28,7 +28,7 @@ public static class VoiceLabAlignment
                 throw VoiceLabGeometry.Error(VoiceLabGeometryErrorCode.AlignmentMismatch);
             index += consumed;
         }
-        return EditingAlgorithms.NormalizeForMatch(token.Normalize(NormalizationForm.FormC));
+        return EditingAlgorithms.NormalizeForMatch(EditingAlgorithms.Nfc(token));
     }
 
     static IEnumerable<string> SplitWhiteSpace(string text)

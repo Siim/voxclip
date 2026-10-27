@@ -1,4 +1,3 @@
-using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using VoxClip.Core.Domain.Editing;
@@ -12,7 +11,7 @@ internal static class ProjectValidation
     private const string Hash = "[0-9a-f]{64}";
     private const string Slug = "[a-z0-9]+(?:-[a-z0-9]+)*";
 
-    internal static void Validate(string json)
+    internal static void Validate(string json, bool normalizeWordText = false)
     {
         using var document = JsonDocument.Parse(json);
         var root = document.RootElement;
@@ -44,11 +43,11 @@ internal static class ProjectValidation
         {
             Object(audio, "sampleRate channels"); Number(audio.GetProperty("sampleRate"), 1, int.MaxValue, true); Number(audio.GetProperty("channels"), 1, int.MaxValue, true);
         });
-        Nullable(root.GetProperty("transcript"), Transcript);
+        Nullable(root.GetProperty("transcript"), value => Transcript(value, normalizeWordText));
         var edits = root.GetProperty("edits"); Object(edits, "pauseThresholdSeconds pauseKeepSeconds cutWordIds cutPauseIds corrections clips activeClipId");
         Number(edits.GetProperty("pauseThresholdSeconds"), double.Epsilon, 10); Number(edits.GetProperty("pauseKeepSeconds"), 0, 1);
         UniqueStrings(edits.GetProperty("cutWordIds"), Id); UniqueStrings(edits.GetProperty("cutPauseIds"), "pause-after-" + Id);
-        Dictionary(edits.GetProperty("corrections"), key => Pattern(key, Id), value => WordText(value));
+        Dictionary(edits.GetProperty("corrections"), key => Pattern(key, Id), value => WordText(value, normalizeWordText));
         Array(edits.GetProperty("clips"), clip =>
         {
             Object(clip, "id startWordId endWordId title origin aiResultId aiClipIndex selected");
@@ -131,7 +130,7 @@ internal static class ProjectValidation
         Object(recipe.GetProperty("cost"), "quoteId usd");
     }
 
-    private static void Transcript(JsonElement transcript)
+    private static void Transcript(JsonElement transcript, bool normalizeWordText)
     {
         Object(transcript, "schemaVersion words language languageProbability durationSeconds engine verbatim refined pipelineVersion rawKey createdAt");
         Number(transcript.GetProperty("schemaVersion"), 1, 1, true);
@@ -145,7 +144,7 @@ internal static class ProjectValidation
         var previousStart = double.NegativeInfinity;
         Array(transcript.GetProperty("words"), word =>
         {
-            Object(word, "id text kind start end rawStart rawEnd conf speaker timing"); String(word.GetProperty("id"), Id); WordText(word.GetProperty("text")); Choice(word.GetProperty("kind"), "word", "event", "unlabeledSpeech");
+            Object(word, "id text kind start end rawStart rawEnd conf speaker timing"); String(word.GetProperty("id"), Id); WordText(word.GetProperty("text"), normalizeWordText); Choice(word.GetProperty("kind"), "word", "event", "unlabeledSpeech");
             Number(word.GetProperty("start"), 0); Number(word.GetProperty("end"), 0);
             var start = word.GetProperty("start").GetDouble();
             Require(start >= previousStart && word.GetProperty("end").GetDouble() > start && ids.Add(word.GetProperty("id").GetString()!));
@@ -155,11 +154,13 @@ internal static class ProjectValidation
         });
     }
 
-    private static void WordText(JsonElement value)
+    private static void WordText(JsonElement value, bool normalizeWordText)
     {
-        Text(value, 1, 200);
+        Require(value.ValueKind == JsonValueKind.String);
         var text = value.GetString()!;
-        Require(text == EditingAlgorithms.JsTrim(text) && text.IsNormalized(NormalizationForm.FormC));
+        if (normalizeWordText) text = EditingAlgorithms.Nfc(text);
+        Require(text.EnumerateRunes().Count() is >= 1 and <= 200);
+        Require(text == EditingAlgorithms.JsTrim(text) && string.Equals(EditingAlgorithms.Nfc(text), text, StringComparison.Ordinal));
     }
 
     private static void Position(JsonElement position)

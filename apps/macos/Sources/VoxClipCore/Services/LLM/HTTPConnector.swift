@@ -132,7 +132,7 @@ public actor HTTPConnector: LLMConnector {
             do {
                 let (data, response) = try await transport(wire)
                 guard let http = response as? HTTPURLResponse else { throw LLMError.network }
-                let value = (try? JSONDecoder().decode(JSONValue.self, from: data)) ?? .null
+                let value = CanonicalResponseParser.envelope(data) ?? .null
                 if (200..<300).contains(http.statusCode) {
                     let raw = try parseResponse(value, requestedModel: model, response: http)
                     await record(request, model: raw.model, attempt: attempt + 1, status: http.statusCode, started: started, raw: raw)
@@ -233,7 +233,7 @@ public actor HTTPConnector: LLMConnector {
         do {
             let (data, response) = try await transport(request)
             guard let http = response as? HTTPURLResponse else { throw LLMError.network }
-            let value = (try? JSONDecoder().decode(JSONValue.self, from: data)) ?? .null
+            let value = CanonicalResponseParser.envelope(data) ?? .null
             guard (200..<300).contains(http.statusCode) else { throw await mapError(value, status: http.statusCode, model: "") }
             guard value != .null else { throw LLMError.invalidOutput(reason: "not JSON") }
             return value

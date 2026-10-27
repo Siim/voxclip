@@ -177,6 +177,41 @@ public sealed class HttpConnectorTests
         Assert.Equal(kind, failure.Error.Kind); Assert.Single(handler.Requests);
     }
 
+    /// <summary>An Anthropic reply body whose text answers the connection test, with raw members appended.</summary>
+    private static string StrictBody(string extra = "") =>
+        "{\"model\":\"claude-sonnet-5-5\",\"stop_reason\":\"end_turn\",\"content\":[{\"type\":\"text\",\"text\":\"{\\\"ok\\\":true,\\\"echo\\\":\\\"VoxClip\\\"}\"}]" + extra + "}";
+
+    /// <summary>A body <paramref name="levels"/> deep: the object and arrays in a key nobody reads.</summary>
+    private static string NestedBody(int levels) => StrictBody(",\"x\":" + new string('[', levels - 1) + new string(']', levels - 1));
+
+    public static TheoryData<string, string, bool> StrictBodies() => new()
+    {
+        { "zero with an exponent", StrictBody(",\"x\":0e1"), true },
+        { "JavaScript whitespace around", "" + (char)0xFEFF + (char)0xA0 + StrictBody() + (char)0x3000 + "\n", true },
+        { "512 levels", NestedBody(512), true },
+        { "513 levels", NestedBody(513), false },
+        { "unpaired surrogate escape", StrictBody(",\"x\":\"" + (char)92 + "ud800\""), false },
+        { "code fence", "```json\n" + StrictBody() + "\n```", false },
+        { "prose before", "Result: " + StrictBody(), false }
+    };
+
+    /// <summary>ai.md §4.5: an HTTP response body is one strict JSON value of at most 512 levels, read whole after jsTrim with no
+    /// code fence or balanced-object scan. A body that is not one gives no reply.</summary>
+    [Theory]
+    [MemberData(nameof(StrictBodies))]
+    public async Task ResponseBodyIsOneStrictEnvelope(string label, string body, bool accepted)
+    {
+        using var handler = new StubHttp((_, _, _) => Task.FromResult(Response(200, body)));
+        using var client = new HttpClient(handler);
+        var catalog = Catalog();
+        var connector = new LlmConnector(ConnectorId.Anthropic, catalog, client, new MemoryKeys(), new Redactor());
+        var request = catalog.TestRequest(ConnectorId.Anthropic);
+        JsonObject? reply = null;
+        try { reply = LlmOutput.Validate(await connector.SendAsync(request, "model", TestContext.Current.CancellationToken), request.Schema).Object; }
+        catch (LlmException) { }
+        Assert.True(accepted == (reply?["ok"] is JsonValue ok && ok.TryGetValue<bool>(out var value) && value), label);
+    }
+
     [Fact]
     public async Task TimeoutIsDistinctFromCancellationAndNeitherRetries()
     {

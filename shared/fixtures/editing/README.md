@@ -25,7 +25,7 @@ shared/fixtures/editing/
 | `boundaries/` | `word-boundaries` | 8 | 5.6 |
 | `tighten/` | `word-tightening` | 4 | 5.5 |
 | `gaps/` | `unlabeled-speech` | 2 | 5.8 |
-| `ingest/` | `word-cleanup` | 1 | 5.2 |
+| `ingest/` | `word-cleanup` | 2 | 5.2, 4.8 |
 | `pipeline/` | `import-pipeline` | 2 | 5.0 |
 | `text/` | `text-whitespace` | 1 | 4.5 |
 | `media/` | `content-key` | 1 | 10.3 |

@@ -48,7 +48,13 @@ public actor JSONProjectStore: ProjectStore {
             let raw = try JSONDecoder().decode(JSONValue.self, from: data)
             try ProjectMigrations.checkVersion(raw)
             try ProjectValidation.validate(raw)
-            let project = try ProjectJSON.decode(data)
+            var project = try ProjectJSON.decode(data)
+            if project.transcript != nil {
+                for index in project.transcript!.words.indices {
+                    project.transcript!.words[index].text = EditingPrimitives.nfc(project.transcript!.words[index].text)
+                }
+            }
+            project.edits.corrections = project.edits.corrections.mapValues(EditingPrimitives.nfc)
             try ProjectValidation.validateModel(project)
             let cleaned = cleanReferences(project)
             return (cleaned.project, cleaned.warnings)

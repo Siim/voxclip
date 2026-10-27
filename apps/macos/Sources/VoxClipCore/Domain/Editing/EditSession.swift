@@ -72,7 +72,7 @@ func reduceEditingState(_ state: EditState, command: EditCommand, aiResults: [Pr
         for (index, word) in words.enumerated() where inScope(index, bounds: bounds) { result.cutWordIds.remove(word.id) }
         for pause in state.pauses where pauseInScope(pause, bounds: bounds) { result.cutPauseIds.remove(pause.id) }
     case .correct(let id, let text):
-        let corrected = EditingPrimitives.jsTrim(text.precomposedStringWithCanonicalMapping)
+        let corrected = EditingPrimitives.jsTrim(EditingPrimitives.nfc(text))
         guard corrected.unicodeScalars.count <= EditingLimits.maxCorrectionScalars else { return state }
         if let word = words.first(where: { $0.id == id && $0.kind == .word }), !corrected.isEmpty, corrected != state.textOf(word) {
             if corrected == word.text { result.corrections.removeValue(forKey: id) } else { result.corrections[id] = corrected }

@@ -35,7 +35,10 @@ extension HTTPConnectorTests {
         do { _ = try await harness.connector.send(request, model: harness.model); Issue.record("Expected beta rejection") }
         catch LLMError.badRequest {}
         #expect(HTTPStubProtocol.requests.count == 1)
-        #expect(HTTPStubProtocol.requests.first?.request.value(forHTTPHeaderField: "anthropic-beta") != nil)
+        // ai.md §12.8: the rewrite asks for no server-side fallback model at all.
+        let sent = try #require(HTTPStubProtocol.requests.first)
+        #expect(sent.request.value(forHTTPHeaderField: "anthropic-beta") == nil)
+        #expect(try sent.json()[ai: "fallbacks"] == .null)
         #expect(harness.sleeps.durations.isEmpty)
     }
 

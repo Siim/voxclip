@@ -19,7 +19,7 @@ public static class EditingImport
         foreach (var word in raw)
         {
             var kind = word.Kind == WordKind.Event ? WordKind.Event : WordKind.Word;
-            var text = EditingAlgorithms.JsTrim((word.Text ?? "").Normalize(NormalizationForm.FormC));
+            var text = EditingAlgorithms.JsTrim(EditingAlgorithms.Nfc(word.Text ?? ""));
             if (text.Length == 0) continue;
             var categories = text.EnumerateRunes().Select(Rune.GetUnicodeCategory).ToArray();
             if (kind == WordKind.Word && categories.All(IsPunctuation))

@@ -32,6 +32,26 @@ private struct HTTPStopFixture: Sendable {
     ]
 }
 
+/// An Anthropic reply body whose text answers the connection test, with raw members appended.
+private enum HTTPStrictBody {
+    static func body(extra: String = "") -> String {
+        #"{"model":"claude-sonnet-5-5","stop_reason":"end_turn","content":[{"type":"text","text":"{\"ok\":true,\"echo\":\"VoxClip\"}"}]"# + extra + "}"
+    }
+    /// A body `levels` deep: the object and arrays in a key nobody reads.
+    static func nested(_ levels: Int) -> String {
+        body(extra: #","x":"# + String(repeating: "[", count: levels - 1) + String(repeating: "]", count: levels - 1))
+    }
+    static let cases: [(String, String, Bool)] = [
+        ("zero with an exponent", body(extra: #","x":0e1"#), true),
+        ("JavaScript whitespace around", VoiceRewriteBudgetFixtures.scalars(0xFEFF, 0xA0) + body() + VoiceRewriteBudgetFixtures.scalars(0x3000, 0x0A), true),
+        ("512 levels", nested(512), true),
+        ("513 levels", nested(513), false),
+        ("unpaired surrogate escape", body(extra: #","x":"\#u{5C}ud800""#), false),
+        ("code fence", "```json\n" + body() + "\n```", false),
+        ("prose before", "Result: " + body(), false),
+    ]
+}
+
 private struct HTTPErrorFixture: Sendable {
     let id: ConnectorID
     let status: Int
@@ -102,6 +122,21 @@ extension HTTPConnectorTests {
     @Test(arguments: HTTPErrorFixture.all)
     fileprivate func mapsProviderErrorsWithoutRetry(_ fixture: HTTPErrorFixture) async throws {
         try await HTTPFixtures.error(fixture.id, .json(fixture.body, status: fixture.status), expected: fixture.expected)
+    }
+
+    /// ai.md §4.5: an HTTP response body is one strict JSON value of at most 512 levels, read whole after jsTrim with no code
+    /// fence or balanced-object scan. A body that is not one gives no reply.
+    @Test(arguments: HTTPStrictBody.cases)
+    func responseBodyIsOneStrictEnvelope(_ body: (String, String, Bool)) async throws {
+        let harness = try HTTPHarness(.anthropic, replies: [.json(body.1)])
+        defer { harness.finish() }
+        let request = try harness.catalog.connectionTest(for: .anthropic)
+        let completion = try? await harness.connector.send(request, model: harness.model)
+        var answered = false
+        if let completion, case .object(let reply)? = try? CanonicalResponseParser.validate(completion, schema: request.schema).object {
+            answered = reply["ok"] == .bool(true)
+        }
+        #expect(answered == body.2, "\(body.0)")
     }
 
     @Test

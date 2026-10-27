@@ -197,6 +197,6 @@ enum ProjectValidation {
 
     static func validateWordText(_ value: String) throws {
         try text(value, min: 1, max: EditingLimits.maxCorrectionScalars)
-        try require(EditingPrimitives.jsTrim(value) == value && Array(value.precomposedStringWithCanonicalMapping.unicodeScalars) == Array(value.unicodeScalars), "Invalid transcript text")
+        try require(EditingPrimitives.jsTrim(value) == value && Array(EditingPrimitives.nfc(value).unicodeScalars) == Array(value.unicodeScalars), "Invalid transcript text")
     }
 }

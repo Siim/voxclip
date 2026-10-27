@@ -344,6 +344,29 @@ for (const [id, seconds, sections, words, description] of [
     input: { rawWords: raw }, expected: { words: vc.cleanWords(raw.map(x => ({ ...x, start: fromJson(x.start), end: fromJson(x.end) }))) } })
 }
 {
+  // NFC is exact on both Cores (editing §4.8): U+FFFE stays and the runs around it compose on their own, a precomposed
+  // LV syllable takes a trailing jamo, and U+11A7 and U+11C3, which are no trailing consonants, compose with nothing.
+  const cp = (...points) => String.fromCodePoint(...points)
+  const raw = [
+    { text: cp(0x65, 0x301, 0xFFFE, 0x65, 0x301), start: 0.1, end: 0.4 },
+    { text: cp(0xFFFE), start: 0.5, end: 0.6 },
+    { text: cp(0xAC00, 0x11A8), start: 0.7, end: 1.0 },
+    { text: cp(0x1100, 0x1161, 0x11A8), start: 1.1, end: 1.4 },
+    { text: cp(0x1100, 0x1161, 0x11A7), start: 1.5, end: 1.8 },
+    { text: cp(0xAC00, 0x11C3), start: 1.9, end: 2.2 },
+    { text: cp(0x2C), start: 2.2, end: 2.2 },
+    { text: cp(0x1100, 0x1176), start: 2.3, end: 2.4 },
+    { text: cp(0x1113, 0x1161), start: 2.5, end: 2.6 },
+    { text: cp(0x1113, 0x1176, 0x11A8), start: 2.7, end: 2.8 }
+  ]
+  const words = vc.cleanWords(raw)
+  const stated = [[0xE9, 0xFFFE, 0xE9], [0xFFFE], [0xAC01], [0xAC01], [0xAC00, 0x11A7], [0xAC00, 0x11C3, 0x2C], [0x1100, 0x1176], [0x1113, 0x1161], [0x1113, 0x1176, 0x11A8]]
+  assert(isDeepStrictEqual(words.map(word => [...word.text].map(scalar => scalar.codePointAt(0))), stated), 'clean-words-unicode NFC')
+  add({ id: 'ingest/clean-words-unicode', kind: 'word-cleanup', origin: 'voxclip', source: 'doc/spec/editing.md §4.8 (cleanWords)',
+    description: 'NFC keeps U+FFFE and composes the runs around it on their own; a precomposed LV syllable and a trailing jamo compose to one syllable, as the decomposed L, V and T do; U+11A7 and U+11C3 are no trailing consonants, so they stay after the syllable; a comma joins the word before it.',
+    input: { rawWords: raw }, expected: { words } })
+}
+{
   const sections = [[0.4, 0.8, 'vowel'], [1.3, 1.6, 'vowel'], [2.0, 2.4, 'vowel'], [2.45, 2.7, 'vowel'], [3.6, 4.2, 'vowel']]
   const rawWords = [
     { text: 'So', start: 0.3, end: 0.8, conf: 0.9 }, { text: ',', start: 0.8, end: 0.8 },

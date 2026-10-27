@@ -282,13 +282,16 @@ public sealed class VoiceLabCoreTests
         var root = Path.Combine(Path.GetTempPath(), "voxclip-rewrite-test-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(Path.Combine(root, "catalog")); Directory.CreateDirectory(Path.Combine(root, "prompts"));
         File.Copy(Path.Combine(Catalog().SharedRoot, "catalog", "llm-providers.json"), Path.Combine(root, "catalog", "llm-providers.json"));
-        File.WriteAllText(Path.Combine(root, "prompts", "voice-rewrite.json"), "{\"schemaVersion\":1,\"system\":\"Return spoken words only.\",\"schemaName\":\"voice_rewrite_proposal\",\"schema\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"rewrite\"],\"properties\":{\"rewrite\":{\"type\":\"string\"}}},\"maxOutputTokens\":1024}");
+        var prompt = JsonNode.Parse(File.ReadAllText(Path.Combine(Catalog().SharedRoot, "prompts", "voice-rewrite.json")))!.AsObject();
+        prompt["system"] = "Return spoken words only.";
+        prompt["maxOutputTokens"] = 1024;
+        File.WriteAllText(Path.Combine(root, "prompts", "voice-rewrite.json"), prompt.ToJsonString());
         try
         {
             var service = new VoiceRewriteService(LlmCatalog.Load(root));
             var connector = new RewriteConnector();
             var source = new[] { Word(0, "Rough", 0, 0.5), Word(1, "passage", 0.6, 1.2) };
-            var input = new VoiceRewriteRequest(Guid.NewGuid(), VoiceRewriteScope.FullTake, source, "Improve it", "en");
+            var input = new VoiceRewriteRequest(Guid.NewGuid(), VoiceRewriteScope.FullTake, source, "Improve it", "en", 4.1, 10, 12);
             var prepared = await service.PrepareAsync(input, connector, "chosen", TestContext.Current.CancellationToken);
             Assert.Null(prepared.Estimate.Usd);
             var approval = service.Approve(prepared, true);

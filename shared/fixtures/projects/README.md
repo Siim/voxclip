@@ -13,6 +13,10 @@ Both test suites SHOULD also load each file, save it, reload it, and check that 
 
 Validate them with `python3 tools/schemas/validate.py` (CI runs it). After any change to these files, run `npm --prefix tools/fixtures/editing run generate` so `shared/fixtures/editing/projects/*.json` stays in step.
 
+## Legacy text normalization
+
+`tools/fixtures/projects/generate_normalization.py` writes `normalization/legacy-nfc.voxclip` and `normalization/legacy-nfc.expected.json`. The input has non-NFC LV+T word text and a correction, inert jamo boundary text, and a composed Kirat Rai letter. Both project loaders normalize word text and corrections in memory before text validation, silently; their serializers write exactly the same model as the expected file. Ids and source times stay fixed. Run the generator twice to check reproducibility.
+
 ## Timestamp cases
 
 `timestamps.json` pins the persisted timestamp rule of editing.md section 10.1. `tools/fixtures/projects/generate_timestamps.py` writes it with the Python standard library only, and two runs give identical bytes. Regenerate with `python3 tools/fixtures/projects/generate_timestamps.py` and review the diff as a behaviour change. Both Core suites replay every case: Mac `TimestampWireRule` (`Tests/VoxClipCoreTests/Editing/TimestampTests.swift`) and Windows `TimestampWireRuleTests`.

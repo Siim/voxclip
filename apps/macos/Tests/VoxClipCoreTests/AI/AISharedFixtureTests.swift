@@ -31,7 +31,7 @@ private struct AIGoldenVector: Sendable, CustomStringConvertible {
 }
 
 private enum AIGoldenCorpus {
-    static let files = ["ai-tighten-requests", "clip-finder-requests", "connector-requests", "extensions", "finalize-clips", "format-transcript", "tighten-verifier", "to-fixed"]
+    static let files = ["ai-tighten-requests", "cli-replies", "clip-finder-requests", "connector-requests", "extensions", "finalize-clips", "format-transcript", "patch-rewrite-requests", "tighten-verifier", "to-fixed", "voice-rewrite-requests"]
     static func document(_ file: String) throws -> JSONValue {
         try JSONDecoder().decode(JSONValue.self, from: Data(contentsOf: aiGoldenSharedRoot().appendingPathComponent("fixtures/llm/\(file).json")))
     }
@@ -43,7 +43,8 @@ private enum AIGoldenCorpus {
             guard case .array(let cases) = try load(file)[ai: "cases"], !cases.isEmpty else {
                 throw AIGoldenFailure("Missing fixture cases")
             }
-            return cases.filter { $0[ai: "kind"].aiString != "connector-request" }
+            // The CLI connector suites replay connector renderings and CLI replies.
+            return cases.filter { !["connector-request", "cli-reply"].contains($0[ai: "kind"].aiString ?? "") }
                 .map { AIGoldenVector(file: file, value: $0) }
         } catch { return [AIGoldenVector(file: file, value: .null)] }
     }
@@ -148,7 +149,7 @@ func aiSharedFixtureEnvelopes() throws {
     let root = try aiGoldenSharedRoot()
     let actualFiles = try FileManager.default.contentsOfDirectory(at: root.appendingPathComponent("fixtures/llm"), includingPropertiesForKeys: nil).filter { $0.pathExtension == "json" }.map { $0.deletingPathExtension().lastPathComponent }.sorted()
     #expect(actualFiles == AIGoldenCorpus.files)
-    let knownKinds: Set<String> = ["format-transcript", "to-fixed-1", "format-time", "to-fixed-random", "finalize-clips", "snap-pair", "prepare-entries", "string-helpers", "windows", "pack-lines", "tighten-verifier", "render-request", "connector-request"]
+    let knownKinds: Set<String> = ["format-transcript", "to-fixed-1", "format-time", "to-fixed-random", "finalize-clips", "snap-pair", "prepare-entries", "string-helpers", "windows", "pack-lines", "tighten-verifier", "render-request", "connector-request", "voice-rewrite-request", "patch-rewrite-request", "cli-reply"]
     for file in actualFiles {
         let document = try AIGoldenCorpus.document(file)
         #expect(document[ai: "schema"].aiString == "voxclip-llm-fixtures/1")
@@ -226,6 +227,12 @@ private func aiSharedGoldenVector(_ vector: AIGoldenVector) async throws {
         return
     case "render-request":
         try await aiGoldenRequest(vector)
+        return
+    case "voice-rewrite-request":
+        try await voiceRewriteGoldenRequest(item, label: vector.description)
+        return
+    case "patch-rewrite-request":
+        try await patchRewriteGoldenRequest(item, label: vector.description)
         return
     default: throw AIGoldenFailure("Unknown fixture kind in \(vector)")
     }

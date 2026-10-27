@@ -69,14 +69,16 @@ public sealed class VoiceLabFixtureTests
     public async Task RewriteMutationTableKeepsTimedSourceAndPreparationLocal()
     {
         var rows = Rows("rewriteMutations").ToArray();
-        Assert.Equal(8, rows.Length);
+        Assert.Equal(11, rows.Length);
+        // 4.12 renders as "4.1" too, so this row shows that the quote binds the value, not only the prompt text.
+        Assert.Equal(VoxClip.Core.Domain.Editing.EditingFormat.ToFixed1(4.1), VoxClip.Core.Domain.Editing.EditingFormat.ToFixed1(4.12));
         foreach (var row in rows)
         {
             var field = Text(row, "field");
             var service = new VoiceRewriteService(Catalog());
             var connector = new RewriteStub(ConnectorId.OpenAI);
             var words = new[] { Word(0, "Rough", 0, 0.5), Word(1, "passage", 0.6, 1.2) };
-            var input = new VoiceRewriteRequest(Guid.NewGuid(), VoiceRewriteScope.FullTake, words, "Improve it", "en");
+            var input = new VoiceRewriteRequest(Guid.NewGuid(), VoiceRewriteScope.FullTake, words, "Improve it", "en", 4.1, 10, 12);
             var prepared = await service.PrepareAsync(input, connector, "chosen", TestContext.Current.CancellationToken);
             Assert.Equal(0, connector.DiscoveryCalls);
             Assert.Equal("openai", prepared.Review.Provider);
@@ -90,6 +92,9 @@ public sealed class VoiceLabFixtureTests
                 "sourceTiming" => input with { SourceWords = [words[0] with { End = 0.51 }, words[1]] },
                 "instruction" => input with { Instruction = "Another instruction" },
                 "language" => input with { Language = "et" },
+                "targetSeconds" => input with { TargetSeconds = 4.12 },
+                "minChars" => input with { MinChars = 11 },
+                "maxChars" => input with { MaxChars = 13 },
                 _ => input
             };
             var selected = field == "connector" ? new RewriteStub(ConnectorId.Anthropic) : connector;
@@ -137,7 +142,7 @@ public sealed class VoiceLabFixtureTests
     {
         var service = new VoiceRewriteService(Catalog());
         var connector = new RewriteStub(ConnectorId.OpenAI);
-        var input = new VoiceRewriteRequest(Guid.NewGuid(), VoiceRewriteScope.Passage, [Word(0, "Hello", 0, 0.5)], "Improve it", language);
+        var input = new VoiceRewriteRequest(Guid.NewGuid(), VoiceRewriteScope.Passage, [Word(0, "Hello", 0, 0.5)], "Improve it", language, 4.1, 10, 12);
         Assert.Equal(VoiceLabErrorKind.InvalidInput, (await Assert.ThrowsAsync<VoiceLabException>(() =>
             service.PrepareAsync(input, connector, "chosen", TestContext.Current.CancellationToken))).Kind);
         Assert.Equal(0, connector.Sends);
@@ -148,7 +153,7 @@ public sealed class VoiceLabFixtureTests
     {
         var service = new VoiceRewriteService(Catalog());
         var connector = new RewriteStub(ConnectorId.OpenAI);
-        var input = new VoiceRewriteRequest(Guid.NewGuid(), VoiceRewriteScope.Passage, [Word(0, "Hello", 0, 0.5)], "Improve it", "en");
+        var input = new VoiceRewriteRequest(Guid.NewGuid(), VoiceRewriteScope.Passage, [Word(0, "Hello", 0, 0.5)], "Improve it", "en", 4.1, 10, 12);
         var approval = service.Approve(await service.PrepareAsync(input, connector, "chosen", TestContext.Current.CancellationToken), true);
         Assert.Equal(0, connector.DiscoveryCalls);
 
@@ -186,18 +191,14 @@ public sealed class VoiceLabFixtureTests
     }
 
     [Fact]
-    public async Task RewriteUnknownContextUsesConservativeFallbackAndOutputCap()
+    public async Task RewriteUnknownContextUsesCloudFallbackAndOutputCap()
     {
         var connector = new RewriteStub(ConnectorId.OpenAI) { Context = null,
             Models = [new LlmModel("chosen", "Chosen", null, null, ModelSource.Custom)] };
         var service = new VoiceRewriteService(Catalog());
         var longInput = new VoiceRewriteRequest(Guid.NewGuid(), VoiceRewriteScope.FullTake,
-            [Word(0, string.Join(' ', Enumerable.Repeat("word", 900)), 0, 1)], "Improve it", "en");
+            [Word(0, string.Join(' ', Enumerable.Repeat("word", 900)), 0, 1)], "Improve it", "en", 4.1, 10, 12);
         var approval = service.Approve(await service.PrepareAsync(longInput, connector, "chosen", TestContext.Current.CancellationToken), true);
-        Assert.Equal(LlmErrorKind.ContextTooLong, (await Assert.ThrowsAsync<LlmException>(() =>
-            service.ProposeAsync(longInput, connector, "chosen", approval, TestContext.Current.CancellationToken))).Error.Kind);
-        Assert.Equal(0, connector.Sends);
-        connector.Context = 32768;
         await service.ProposeAsync(longInput, connector, "chosen", approval, TestContext.Current.CancellationToken);
         Assert.Equal(1, connector.Sends);
 
@@ -220,7 +221,7 @@ public sealed class VoiceLabFixtureTests
         })
         {
             var service = new VoiceRewriteService(Catalog());
-            var input = new VoiceRewriteRequest(Guid.NewGuid(), VoiceRewriteScope.Passage, [Word(0, "Hello", 0, 0.5)], "Improve it", "en");
+            var input = new VoiceRewriteRequest(Guid.NewGuid(), VoiceRewriteScope.Passage, [Word(0, "Hello", 0, 0.5)], "Improve it", "en", 4.1, 10, 12);
             var approval = service.Approve(await service.PrepareAsync(input, connector, "chosen", TestContext.Current.CancellationToken), true);
             await Assert.ThrowsAnyAsync<Exception>(() => service.ProposeAsync(input, connector, "chosen", approval, TestContext.Current.CancellationToken));
             Assert.Equal(VoiceLabErrorKind.ConsentRequired, (await Assert.ThrowsAsync<VoiceLabException>(() =>

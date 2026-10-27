@@ -1,0 +1,35 @@
+{
+  "schema": "voxclip-editing-fixture/1",
+  "id": "ingest/clean-words-unicode",
+  "kind": "word-cleanup",
+  "origin": "voxclip",
+  "source": "doc/spec/editing.md §4.8 (cleanWords)",
+  "description": "NFC keeps U+FFFE and composes the runs around it on their own; a precomposed LV syllable and a trailing jamo compose to one syllable, as the decomposed L, V and T do; U+11A7 and U+11C3 are no trailing consonants, so they stay after the syllable; a comma joins the word before it.",
+  "input": {
+    "rawWords": [
+      {"text": "é￾é", "start": 0.1, "end": 0.4},
+      {"text": "￾", "start": 0.5, "end": 0.6},
+      {"text": "각", "start": 0.7, "end": 1},
+      {"text": "각", "start": 1.1, "end": 1.4},
+      {"text": "가ᆧ", "start": 1.5, "end": 1.8},
+      {"text": "가ᇃ", "start": 1.9, "end": 2.2},
+      {"text": ",", "start": 2.2, "end": 2.2},
+      {"text": "ᄀᅶ", "start": 2.3, "end": 2.4},
+      {"text": "ᄓᅡ", "start": 2.5, "end": 2.6},
+      {"text": "ᄓᅶᆨ", "start": 2.7, "end": 2.8}
+    ]
+  },
+  "expected": {
+    "words": [
+      {"text": "é￾é", "start": 0.1, "end": 0.4, "conf": null, "kind": "word", "speaker": null},
+      {"text": "￾", "start": 0.5, "end": 0.6, "conf": null, "kind": "word", "speaker": null},
+      {"text": "각", "start": 0.7, "end": 1, "conf": null, "kind": "word", "speaker": null},
+      {"text": "각", "start": 1.1, "end": 1.4, "conf": null, "kind": "word", "speaker": null},
+      {"text": "가ᆧ", "start": 1.5, "end": 1.8, "conf": null, "kind": "word", "speaker": null},
+      {"text": "가ᇃ,", "start": 1.9, "end": 2.2, "conf": null, "kind": "word", "speaker": null},
+      {"text": "ᄀᅶ", "start": 2.3, "end": 2.4, "conf": null, "kind": "word", "speaker": null},
+      {"text": "ᄓᅡ", "start": 2.5, "end": 2.6, "conf": null, "kind": "word", "speaker": null},
+      {"text": "ᄓᅶᆨ", "start": 2.7, "end": 2.8, "conf": null, "kind": "word", "speaker": null}
+    ]
+  }
+}

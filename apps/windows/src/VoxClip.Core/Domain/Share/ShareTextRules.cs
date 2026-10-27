@@ -1,7 +1,7 @@
 using System.Globalization;
-using System.Text;
 using System.Text.Json;
 using VoxClip.Core.Domain.Captions;
+using VoxClip.Core.Domain.Editing;
 
 namespace VoxClip.Core.Domain.Share;
 
@@ -98,7 +98,7 @@ internal sealed class ShareTextRules
     /// <summary>The X weight before the division by <see cref="Scale"/>.</summary>
     private long XTotal(string text)
     {
-        var nfc = ShareDisclosure.WellFormed(text).Normalize(NormalizationForm.FormC);
+        var nfc = EditingAlgorithms.Nfc(text);
         long total = 0;
         var position = 0;
         foreach (var (start, end) in UrlRanges(nfc).Append((nfc.Length, nfc.Length)))
@@ -155,7 +155,7 @@ internal sealed class ShareTextRules
     internal string ComposerText(string caption, ShareDestination destination, string? disclosureLine)
     {
         if (destination == ShareDestination.LinkedIn || Measure(caption, destination) <= Limit(destination)) return caption;
-        var body = ShareDisclosure.WellFormed(caption).Normalize(NormalizationForm.FormC);
+        var body = EditingAlgorithms.Nfc(caption);
         string? line = null;
         if (disclosureLine is not null && ShareDisclosure.LastSpan(disclosureLine, body) is { } span)
         {

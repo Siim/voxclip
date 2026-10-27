@@ -288,7 +288,7 @@ public actor CLIConnector: LLMConnector {
             throw LLMError.cliSignedOut
         }
         if id == .claudeCode {
-            let status = cliExtractJSON(String(decoding: result.stdout, as: UTF8.self))?.cliObject
+            let status = CanonicalResponseParser.envelope(result.stdout)?.cliObject
             if status?["loggedIn"]?.cliBool == false { throw LLMError.cliSignedOut }
             guard result.exitCode == 0, status?["loggedIn"]?.cliBool == true else { throw probeFailure }
             return status?["authMethod"]?.cliString
@@ -351,7 +351,8 @@ public actor CLIConnector: LLMConnector {
         var arguments = ["-p", "--output-format", "json", "--json-schema", schema, "--system-prompt", request.system,
                          "--tools", "", "--no-session-persistence"]
         if model != "default" { arguments += ["--model", model] }
-        if detected.flags.contains("--fallback-model"),
+        // A Voice Lab rewrite is billed for the quoted model only, so it never names a fallback (ai.md §12.8).
+        if request.feature != .voiceRewrite, detected.flags.contains("--fallback-model"),
            let fallback = configuration["fallbackOrder"]?.cliStrings.first(where: { $0 != model }) {
             arguments += ["--fallback-model", fallback]
         }
@@ -384,7 +385,7 @@ public actor CLIConnector: LLMConnector {
 
     private func parseClaude(_ result: ProcessResult, requestedModel: String,
                              configuration: [String: JSONValue]) async throws -> RawCompletion {
-        guard let object = (try? JSONDecoder().decode(JSONValue.self, from: result.stdout))?.cliObject,
+        guard let object = CanonicalResponseParser.envelope(result.stdout)?.cliObject,
               object["type"]?.cliString == "result", let isError = object["is_error"]?.cliBool else {
             throw LLMError.cliFailed(await safeMessage(cliFirstLine(result.stderr)))
         }
@@ -393,7 +394,7 @@ public actor CLIConnector: LLMConnector {
                                  status: object["api_error_status"]?.cliInt, model: requestedModel, configuration: configuration)
         }
         let modelUsage = object["modelUsage"]?.cliObject ?? [:]
-        let actualModel = modelUsage.keys.sorted().max { first, second in
+        let actualModel = modelUsage.keys.sorted { $0.utf8.lexicographicallyPrecedes($1.utf8) }.max { first, second in
             let firstUsage = modelUsage[first]?.cliObject ?? [:]
             let secondUsage = modelUsage[second]?.cliObject ?? [:]
             return (firstUsage["outputTokens"]?.cliInt ?? firstUsage["output_tokens"]?.cliInt ?? 0) <
@@ -401,6 +402,7 @@ public actor CLIConnector: LLMConnector {
         } ?? requestedModel
         let usage = object["usage"]?.cliObject
         let text = object["result"]?.cliString
+        // ai.md §6.8: the stop reason, before the reply is read.
         let stop: StopKind
         switch object["stop_reason"]?.cliString {
         case "max_tokens": stop = .truncated
@@ -422,8 +424,8 @@ public actor CLIConnector: LLMConnector {
         var failure: String?
         var sawFailure = false
         var lastError: String?
-        for line in String(decoding: result.stdout, as: UTF8.self).components(separatedBy: .newlines) {
-            guard let event = (try? JSONDecoder().decode(JSONValue.self, from: Data(line.utf8)))?.cliObject else { continue }
+        for line in cliLines(result.stdout) {
+            guard let event = CanonicalResponseParser.envelope(line)?.cliObject else { continue }
             switch event["type"]?.cliString {
             case "turn.completed": completed = event
             case "turn.failed":
@@ -506,8 +508,8 @@ public actor CLIConnector: LLMConnector {
             request.cliInitializationResponseID = 1
             let result = try await executeProbe(request)
             var entries: [JSONValue]?
-            for line in String(decoding: result.stdout, as: UTF8.self).components(separatedBy: .newlines) {
-                if let response = (try? JSONDecoder().decode(JSONValue.self, from: Data(line.utf8)))?.cliObject,
+            for line in cliLines(result.stdout) {
+                if let response = CanonicalResponseParser.envelope(line)?.cliObject,
                    response["id"]?.cliInt == 2 {
                     entries = response["result"]?.cliObject?["data"]?.cliArray
                 }
@@ -626,31 +628,16 @@ private func cliTOMLString(_ text: String) -> String {
     return encoded + "\""
 }
 
+/// The lines of a CLI's JSON Lines output, split at LF only, so a raw U+2028 inside a string stays in its line; each line is
+/// then read as an envelope (ai.md §4.5), whose jsTrim drops a CR.
+private func cliLines(_ data: Data) -> [String] {
+    String(decoding: data, as: UTF8.self).unicodeScalars.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+}
+
+/// The reply object of a CLI's text, read as every reply is (ai.md §4.5).
 private func cliExtractJSON(_ text: String) -> JSONValue? {
-    var trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-    if trimmed.hasPrefix("```"), let opening = trimmed.firstIndex(of: "\n") {
-        trimmed = String(trimmed[trimmed.index(after: opening)...]).trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.hasSuffix("```") { trimmed = String(trimmed.dropLast(3)).trimmingCharacters(in: .whitespacesAndNewlines) }
-    }
-    if let value = try? JSONDecoder().decode(JSONValue.self, from: Data(trimmed.utf8)), value.cliObject != nil { return value }
-    guard let start = trimmed.firstIndex(of: "{") else { return nil }
-    var depth = 0
-    var quoted = false
-    var escaped = false
-    for index in trimmed[start...].indices {
-        let character = trimmed[index]
-        if quoted {
-            if escaped { escaped = false }
-            else if character == "\\" { escaped = true }
-            else if character == "\"" { quoted = false }
-        } else if character == "\"" { quoted = true }
-        else if character == "{" { depth += 1 }
-        else if character == "}" {
-            depth -= 1
-            if depth == 0 { return try? JSONDecoder().decode(JSONValue.self, from: Data(trimmed[start...index].utf8)) }
-        }
-    }
-    return nil
+    guard let value = try? CanonicalResponseParser.extract(text), value.cliObject != nil else { return nil }
+    return value
 }
 
 private func cliReadOutput(_ url: URL) throws -> String? {

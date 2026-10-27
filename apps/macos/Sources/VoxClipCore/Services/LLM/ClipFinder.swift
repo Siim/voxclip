@@ -26,7 +26,7 @@ extension ClipFinder {
         try checkGates(request, builder: builder)
         try await runner.preflight(connector, feature: .clipFinder, model: model)
         let words = builder.clipWords(request.transcript, corrections: request.corrections)
-        let context = await connector.contextTokens(model: model) ?? catalog.curatedModels(for: connector.id).first { $0.id == model }?.contextTokens ?? (connector.id == .lmstudio || connector.id == .ollama ? 4096 : 128000)
+        let context = try await catalog.resolvedContextTokens(connector: connector, model: model)
         let cap = catalog.connector(connector.id)[ai: "maxOutputTokensCap"].aiInt
         try Task.checkCancellation()
         let estimated = try builder.windows(words: words, preset: request.preset, instruction: request.instruction, contextTokens: context, maxOutputTokensCap: cap, localServer: connector.id == .ollama || connector.id == .lmstudio)
@@ -48,7 +48,7 @@ extension ClipFinder {
         try await runner.preflight(connector, feature: .clipFinder, model: model)
         let words = builder.clipWords(request.transcript, corrections: request.corrections)
         let lines = try formatTranscript(words)
-        let context = await connector.contextTokens(model: model) ?? catalog.curatedModels(for: connector.id).first { $0.id == model }?.contextTokens ?? (connector.id == .lmstudio || connector.id == .ollama ? 4096 : 128000)
+        let context = try await catalog.resolvedContextTokens(connector: connector, model: model)
         let cap = catalog.connector(connector.id)[ai: "maxOutputTokensCap"].aiInt
         try Task.checkCancellation()
         let estimated = try builder.windows(words: words, preset: request.preset, instruction: request.instruction, contextTokens: context, maxOutputTokensCap: cap, localServer: connector.id == .ollama || connector.id == .lmstudio)

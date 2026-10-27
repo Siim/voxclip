@@ -23,6 +23,19 @@ extension LLMCatalog {
         }
     }
 
+    func resolvedContextTokens(connector: any LLMConnector, model: String, models: [LLMModel]? = nil) async throws -> Int {
+        if let context = await connector.contextTokens(model: model) { return context }
+        let choices: [LLMModel]
+        if let models { choices = models } else { choices = try await connector.models(refresh: false) }
+        if let context = choices.first(where: { $0.id == model })?.contextTokens { return context }
+        if let context = curatedModels(for: connector.id).first(where: { $0.id == model })?.contextTokens { return context }
+        switch connector.id {
+        case .ollama, .lmstudio: return 4_096
+        case .appleFoundation: throw LLMError.unavailable(reason: "The runtime context size is unavailable.")
+        default: return 128_000
+        }
+    }
+
     public func fallback(for id: ConnectorID, model: String) -> String? {
         connector(id)[ai: "fallbackOrder"].aiArray.compactMap(\.aiString).first { $0 != model }
     }

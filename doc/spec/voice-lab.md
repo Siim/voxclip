@@ -161,14 +161,16 @@ Every action that can bill a provider shows an estimate **before** it runs.
 ```swift
 public struct CostEstimate: Codable, Sendable, Hashable {
     public var provider: String          // "elevenlabs" | selected LLM connector | "fal" | "syncso"
-    public var operation: String         // "voiceRewrite", "createClone", "deleteClone", "textToSpeech", "voiceChange", plus later media operations
-    public var units: Double             // minutes, characters or seconds, per `unit`
-    public var unit: String              // "minute" | "character" | "second" | "call"
+    public var operation: String         // "voiceRewrite", "patchRewrite", "createClone", "deleteClone", "textToSpeech", "voiceChange", plus later media operations
+    public var units: Double             // minutes, characters, seconds or tokens, per `unit`
+    public var unit: String              // "minute" | "character" | "second" | "call" | "token"
     public var usd: Decimal?             // nil when the price is unknown
     public var credits: Int?             // ElevenLabs credits, when known
     public var basis: String             // "list-<checked>" (§3.2) | "provider-estimate" | "provider-pricing-api" | "unknown"
 }
 ```
+
+An LLM send, the rewrite (`voiceRewrite`, §8.9.1) or Fix with AI (`patchRewrite`, §8.1), estimates its request in tokens with basis `unknown` and no `usd` or `credits`, so it always reaches the confirmation for an unknown price.
 
 | Estimate | Presentation |
 |---|---|
@@ -639,7 +641,7 @@ The parts are framed as in §6.7.
 2. **Caret between two words, then "Insert words…".** This is an insertion.
 3. **"Fix with AI…"** The user's LLM (`doc/spec/ai.md` connectors) proposes line edits for an instruction, for example "I said 2024; it's 2025".
 
-   Fix with AI has its own prompt file, `shared/prompts/patch-rewrite.json` (created with M3), and its own schema name, `patch_edits`. It never reuses `tighten_edits` (`ai.md` §12.8). Its schema:
+   Fix with AI has its own prompt file, `shared/prompts/patch-rewrite.json` (`promptVersion` 1), and its own schema name, `patch_edits`. It never reuses `tighten_edits` (`ai.md` §12.8). Its schema:
 
    ```json
    { "type": "object", "additionalProperties": false, "required": ["edits"],
@@ -653,15 +655,70 @@ The parts are framed as in §6.7.
    - deleting is preferred;
    - keep the speaker's register;
    - never add facts, numbers, names or claims that are not in the transcript or the instruction;
-   - keep each edited line inside its character range;
+   - keep each edited line inside its character range; deleting a whole line is allowed, with empty text;
    - return an empty list when nothing should change.
 
-   Each line's character range comes from the length budget (§8.9.1), with the line's words treated as one replace hunk: the same `LENGTH_AIM_MIN` to `LENGTH_AIM_MAX` aim and the same `minChars` and `maxChars` formulas. The request states the range for every line.
+   Each line's character range comes from the length budget (§8.9.1), with the line's words treated as one replace hunk: the same `LENGTH_AIM_MIN` to `LENGTH_AIM_MAX` aim and the same `minChars` and `maxChars` formulas. The caller computes the ranges and Core takes them as given. The request states the range for every line.
 
-   Validation:
-   - `line` must match an emitted `[a-b]`; duplicates are dropped.
-   - Core counts each edit's letters and digits itself. An edit outside its line's range is shown as it is, with the fit meter (§8.9.1).
-   - An edit that introduces digits, URLs or capitalised tokens (not at a sentence start) that appear nowhere in the transcript or the instruction gets a warning badge: "Check this: it adds something you didn't say."
+   **Request.** Each Core's `PatchRewriteService` (`Services/VoiceLab/`) has the shape of `VoiceRewriteService`: prepare a quote, approve it, then propose. A `PatchRewriteRequest` holds:
+   - `entries`: the in-scope transcript items `{index, text, start, end}` (`ai.md` §11.2). There are 1 to 3,000 of them, with indices of 0 or more in strictly increasing order, finite times with 0 ≤ `start` ≤ `end`, and text that is not empty after `jsTrim` (`editing.md` §4.5). Their text joined with spaces is at most 20,000 UTF-8 bytes.
+   - `ranges`: one `{line, minChars, maxChars}` for each line `formatTranscript` makes of the entries, in line order. `line` is that line's `[a-b]`, and 1 ≤ `minChars` ≤ `maxChars` ≤ 5,000.
+   - `instruction`: not empty after `jsTrim`, and at most 1,000 UTF-8 bytes.
+   - `language`: a tag of the form `[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*`.
+
+   Any other value fails with the service's invalid-input error (`VoiceLabError.invalidInput`, `VoiceLabErrorKind.InvalidInput`) before a quote or a send. The quote binds the entries with their times, the ranges, the instruction, the language, the connector, the model and the prompt file, so any change needs a new quote and approval. Both Cores bind the prompt file as the SHA-256 of its bytes after CRLF→LF: any edit to the file refuses an earlier quote, but a checkout's line endings do not. A declined approval or a used quote sends nothing.
+
+   The quote's estimate is `est()` (`ai.md` §11.5) of the whole rendered request, `system + cachedBlock + instruction`, in the unit `token`, with basis `unknown` and no price or credits. Both Cores check the request before they estimate it.
+
+   **Rendering.** All request text comes from the prompt file.
+   - `cachedBlock` is `transcriptBlock.prefix + rendered + transcriptBlock.suffix`, where `rendered` is `formatTranscript` of the entries (`ai.md` §11.3).
+   - `instruction` is `request.rangesLine`, then one `request.rangeLine` per line in line order, each on its own line, with `{line}` and with `{minChars}` and `{maxChars}` as decimal integers. A blank line follows, then `request.instructionLine` with `{instruction}`, the instruction after `jsTrim`.
+
+   For three lines it reads:
+
+   ```text
+   Letters and digits allowed in the new text of each line, not counting spaces and punctuation:
+   [40-48] 27 to 31
+   [49-53] 17 to 21
+   [54-57] 12 to 15
+
+   Instruction: I said 2024; it's 2025.
+   ```
+
+   The send is a `voiceRewrite` request (`ai.md` §2.1) with medium effort, the schema `patch_edits` and the tag `patch-rewrite`, so, as for the passage rewrite, the connector makes one attempt, never resends it and names no fallback model (`ai.md` §12.8). Both suites send the 5 cases of `shared/fixtures/llm/patch-rewrite-requests.json` through `PatchRewriteService`, compare `system`, `cachedBlock` and `instruction` byte for byte, compare the quote's estimate with `expected.estimate`, and check the preflight of `ai.md` §12.8 with `expected.preflight`.
+
+   **Answer.** The answering model must be the quoted one, by the rule of `ai.md` §12.8, where a Claude Code alias accepts the model it names. A reply from any other model fails with the invalid-output error (`LLMError.invalidOutput`, `LlmErrorKind.InvalidOutput`). Then a truncated reply fails with the truncated error, and a refusal with the refused error (`LLMError.refused`, `LlmErrorKind.Refused`), which keeps the passage rewrite's copy: "The model declined to rewrite this recording."
+
+   **Strict JSON.** Both Cores read the reply by the strict JSON rule of `ai.md` §4.5, so a reply that one rejects the other rejects too, as a typed invalid-output error and never a crash.
+
+   **Validation.** The reply then passes the structural validation of `ai.md` §2.3.
+   - A reply with no JSON object, or with no `edits` array, fails with the invalid-output error.
+   - An item is malformed when it lacks a string `line`, `text` or `reason`, when its `text` or `reason` holds a control character (Cc) other than tab, or when its `text` is over 2,000 UTF-8 bytes. A malformed item is dropped and counted in `malformedItems`; it never fails the reply.
+   - Keys outside the schema are ignored.
+
+   Each remaining item is then checked in order:
+   - `line`, after `jsTrim`, must match an emitted `[a-b]`, compared as scalar sequences. Otherwise the item is dropped and counted in `unknownLines`.
+   - Duplicates are dropped. Only the first item for a line is kept, and each later one is counted in `duplicateLines`.
+   - Core counts each edit's letters and digits itself: `length` is the `VoiceLabTextLength` of `text`, and `inRange` says whether it lies in the line's range. An edit outside its line's range is kept and shown as it is, with the fit meter (§8.9.1).
+   - A `text` that is empty after `jsTrim` deletes the whole line. Such an edit has `isDeletion` true, `length` 0 and `inRange` true. A text of punctuation alone deletes nothing; its length is 0, so it is out of range.
+   - `checkThis` marks an edit that adds something found nowhere in the transcript or the instruction (the rules below). Such an edit gets a warning badge with the copy in `messages.checkThis`: "Check this: it adds something you didn't say."
+   - An empty `edits` list is a valid result: nothing needs to change.
+
+   The whole reply keeps the 20,000-byte rule: the kept edits' `text` values may hold at most 20,000 UTF-8 bytes together. A reply with more fails with the invalid-output error.
+
+   The `checkThis` rules:
+   - Texts are compared after NFC. The sources are the entry texts and the instruction.
+   - A *digit run* is a maximal run of Nd scalars. An edit adds one when its text holds a run that no source holds: `2025` is new next to `2024`, and so is `٢٠٢٥` next to `2025`.
+   - Tokens come from `splitWords` (`editing.md` §4.5). A token's *key* is its text without the scalars that are not letters (L*) or numbers (N*). This is `normalizeForMatch` (`editing.md` §4.7) without its lowercase step, so case counts. A token *appears* when some source token has the same key. Keys and digit runs compare as scalar sequences, never by canonical equivalence: a key that keeps two conjoining jamo differs from the precomposed Hangul syllable they spell.
+   - A token is a *URL* when it contains `://`, or when it starts with `www.` in any ASCII case once its leading scalars that are not letters or numbers are skipped.
+   - A token is *capitalised* when its first letter is Lu or Lt. It is *at a sentence start* when it is the edit's first token, or when the token before it ends a sentence by the `ai.md` §11.3 rule (`.`, `!`, `?`, `。`, `！` or `？`, followed only by `"`, `'`, `”`, `’` or `)`).
+   - `checkThis` is set when the edit adds a digit run, or holds a URL or a capitalised token not at a sentence start that does not appear.
+
+   These rules are a heuristic. They can badge an edit that adds no fact, for example a word capitalised after a colon that the transcript has in lower case, and they miss a new fact written in lower case. The badge only asks the user to look; it blocks nothing.
+
+   `PatchRewriteProposal` lists the edits in arrival order. Each edit carries `line`, `text` exactly as returned, `reason`, `length`, `inRange`, `checkThis` and `isDeletion`. The proposal also carries `unknownLines`, `duplicateLines`, `malformedItems`, the badge copy, and `model`, the model that answered. It is review data only: it changes no project and starts no generation.
+
+   There is no automatic retry. While S15 (§14) is open, asking again is a new send with its own quote and approval. Both suites replay the 72 cases of `shared/fixtures/voice-lab/patch-rewrite-cases.json`, written by `tools/fixtures/voice-lab/generate_patch_rewrite.py` from canned replies. 35 of them also go through `VoiceRewriteService`, so both services read the same replies alike.
 
 All three paths end in the word diff (§8.2).
 
@@ -887,7 +944,7 @@ Let `D = duration(trimmed TTS)` (§8.7 step 1). At a take edge (seam kind `none`
 
 `VoiceLabLengthBudget` in each Core (`Domain/VoiceLab/`) is free, pure and identical on both platforms.
 
-- **Length.** The length of a text is its number of letters and digits after Unicode NFC normalisation: scalars of general category L or Nd. Spaces and punctuation do not count, and Estonian õ, ä, ö and ü count as one letter each. ADR-R19 keeps NFC working on Windows.
+- **Length.** The length of a text is its number of letters and digits after Unicode NFC normalisation: scalars of general category L or Nd. Spaces, punctuation, symbols such as emoji, combining marks (M) and other number forms (No, Nl) do not count, and Estonian õ, ä, ö and ü count as one letter each, precomposed or not. Each Core computes it with one function, `VoiceLabTextLength` in `Domain/VoiceLab/` (Swift `length(_:)`, C# `Length(string)`), which the budget, the meter and every proposal check use. NFC is each Core's one exact helper, Swift `EditingPrimitives.nfc` and C# `EditingAlgorithms.Nfc` (`editing.md` §4.8; ADR-R19 keeps NFC working on Windows). Foundation's NSString canonical-mapping methods leave a precomposed syllable and a trailing jamo apart; the Swift helper composes them. .NET's normaliser rejects an unpaired surrogate and U+FFFE, so the C# helper makes an unpaired surrogate U+FFFD, as a Swift string holds it, and keeps U+FFFE, normalising the runs around it on their own. Neither U+FFFE nor U+FFFD is a letter or digit, so the length is the same on both platforms. Both suites replay the 39 cases of `shared/fixtures/voice-lab/text-length-cases.json`, written by `tools/fixtures/voice-lab/generate_text_length.py`.
 - **Rate.** Letters and digits per second, kept per voice ID, model ID and language. Until the project stores a candidate for that key, the rate comes from the take's own transcript: the length of its `word` items divided by the total duration of its voiced word spans. A voiced word span is a run of `word` items with no detected pause between them (editing.md §5.7), timed from its first word's start to its last word's end. Once stored candidates exist for the key, the rate is their total text length divided by the total of their aligned spans, each from the first character's start to the last character's end. The rate is learned only from candidates stored in the project; for privacy, there is no rate store shared across projects.
 - **Estimate.** A text of length `n` is expected to give a trimmed take (§8.7 step 1) of `n / rate + TTS_TRIM_LEAD + TTS_TRIM_TAIL` seconds.
 - **Target.** New wording aims at `LENGTH_AIM_MIN` to `LENGTH_AIM_MAX` of `w` (§8.9), so it comes out 3–8% short: the silence fit lengthens a take easily, but it can shorten one only by the pause time the take has. The character range for the words to be written, where `f` is the length of the bridge words the window already holds:
@@ -897,8 +954,12 @@ Let `D = duration(trimmed TTS)` (§8.7 step 1). At a take edge (seam kind `none`
   maxChars = max(minChars, ceil((LENGTH_AIM_MAX × w − TTS_TRIM_LEAD − TTS_TRIM_TAIL) × rate) − f)
   ```
 
-- **Rewrite request.** `VoiceRewriteRequest` gains `targetSeconds`, which is `w`, and `minChars` and `maxChars` from the range above. For a passage, `W` is the §8.4 window of the whole selection treated as one replace hunk, and `f` is the length of that window's bridge words. For a full take the budget is advisory, because the timeline follows each chunk's natural length (§13): `w` runs from the take's first word start to its last word end, and `f` is 0. Both Cores render the three fields into the instruction from `shared/prompts/voice-rewrite.json`. That is a prompt change under `shared/prompts/README.md`: the file gains a `promptVersion` (it has none today), and shared prompt fixtures that both platforms render identically. The instruction gives the target and the range, says that spaces and punctuation are not counted, and asks for natural wording inside the range. The rewrite quote binds the three fields like the rest of the request, so a changed budget needs a new quote and approval.
-- **Check.** LLMs miscount length, so Core counts the proposal itself. A proposal outside the range is shown as it is, with the meter. Asking the LLM again is a new send with its own quote and approval (`doc/spec/ai.md`), unless S15 (§14) allows one bounded automatic retry.
+- **Rewrite request.** `VoiceRewriteRequest` carries `targetSeconds`, which is `w`, and `minChars` and `maxChars` from the range above, as required members on both platforms. `targetSeconds` must be finite, above 0 and at most 600, and the range must satisfy 1 ≤ `minChars` ≤ `maxChars` ≤ 5,000. Any other value fails with the service's invalid-input error (`VoiceLabError.invalidInput`, `VoiceLabErrorKind.InvalidInput`) before a quote or a send. Core takes the three values from the caller and computes no window or rate itself. For a passage, `W` is the §8.4 window of the whole selection treated as one replace hunk, and `f` is the length of that window's bridge words. For a full take the budget is advisory, because the timeline follows each chunk's natural length (§13): `w` runs from the take's first word start to its last word end, and `f` is 0. `shared/prompts/voice-rewrite.json` (`promptVersion` 1, its first versioned form) holds all the request text, in `request`:
+  - `cachedBlock` is `sourceBlock` with `{scope}` (`passage` or `fullTake`), `{language}`, and `{source}`, the source words joined with single spaces.
+  - `instruction` is `instructionBlock` with `{instruction}`, the user's request after `jsTrim` (`editing.md` §4.5), followed by a blank line; this part is left out when the trimmed request is empty. Then come `returnLine`, a line break, and `lengthLine` with `{targetSeconds}` written by `toFixed1` (`ai.md` §11.3) and `{minChars}` and `{maxChars}` as decimal integers.
+
+  A 4.1 s gap with the range 52–55 renders "Length: the new words should take about 4.1 seconds to say, which is 52 to 55 letters and digits. Spaces and punctuation are not counted. Write natural wording that stays inside this range." Both suites send the 7 cases of `shared/fixtures/llm/voice-rewrite-requests.json` (passage and full take, with and without a request, six budgets including `minChars` = `maxChars`) through `VoiceRewriteService`, compare `system`, `cachedBlock` and `instruction` byte for byte, and check the preflight of `ai.md` §12.8 with `expected.preflight`. The rewrite quote binds the three fields like the rest of the request, so a changed budget needs a new quote and approval; `contract.json` has a `rewriteMutations` row for each. Like the Fix with AI quote (§8.1), it binds the prompt file as the SHA-256 of its bytes after CRLF→LF, and its estimate is `est()` of the whole rendered request, `system + cachedBlock + instruction`, in the unit `token`, with basis `unknown` and no price or credits; each case's `expected.estimate` pins it. Both Cores check the request, budget included, before they estimate it.
+- **Check.** LLMs miscount length, so Core counts the proposal itself: `VoiceRewriteProposal` carries `proposedLength` (C# `ProposedLength`), the `VoiceLabTextLength` of the proposed text, and `inRange` (`InRange`). A proposal outside the range is shown as it is, with the meter. Asking the LLM again is a new send with its own quote and approval (`doc/spec/ai.md`), unless S15 (§14) allows one bounded automatic retry.
 - **Fit meter.** It costs nothing and updates live as the user edits New words, including text they type. It is computed per voice hunk, for that hunk's patch text and window. The copy, with one decimal place, is "about 4.3 s for a 4.1 s gap: fits" or "about 4.3 s for a 4.1 s gap: will change length", where the first number is the estimate and the second is `w`. The meter says **fits** when the estimate is at most `w` plus the silence the seams can borrow, and at least `w` minus the pad each seam allows (`SEAM_PAD_MAX` at a gap seam or take edge, `HARD_SEAM_PAD_MAX` at a hard seam); otherwise it says **will change length**. The pauses inside a take are unknown until it exists, so a take can still fit when the meter says it will change length. The planner decides (§8.9.2).
 
 #### 8.9.2 Fit planner
@@ -1185,7 +1246,7 @@ Mapping probes round to that sample grid before lookup. As in the existing `Edit
 
 Enabled replacements may touch at a seam but cannot overlap. An enabled range covers source words fully inside it; their individual cuts and corrections are dormant while enabled. A cut from a neighboring word or pause stops at the synthetic seam. A clip may fully include or exclude a replacement, but a clip boundary through one is rejected as an invalid scope. Source intervals outside replacements retain the existing subtractive edit plan, including cuts, pause breath and clip range behavior. Disabling or deleting the segment restores that plan and its original source captions. A synthetic output piece contributes its rounded `outDuration`; source-to-edited and edited-to-source positions inside it interpolate linearly between its rounded bounds. Source captions within `voiceChanger` pieces follow that mapping, with the original source text. `tts` captions use the relative output word times. Core's `requireLegacyRendering` capability check throws for any active synthetic piece; old `EditPlan`-only Media, app and CLI consumers must call it before preview/export until they render these output pieces. There is no source-only fallback for active synthetic audio. Legacy callers enforce this check for their explicit scope; the reviewed v3 App/export paths in §10.5 use the prepared contract instead. Both legacy CLI plan commands still enforce it. An included replacement returns “This build cannot preview or export generated voice segments yet. Your video and edits are still here.” CLI reports `exportFailed` with exit 5 before encoding or creating output files. A source-only clip that excludes all enabled replacements and a project with only disabled replacements continue through the ordinary renderer.
 
-The shared `passage-project.voxclip`, `full-take-project.voxclip` and `plan-cases.json` fixtures under `shared/fixtures/voice-lab/` are generated by `tools/fixtures/voice-lab/generate.py` and consumed by both native Core tests. The separate `project-plan-README.md` describes them; the original provider-service `README.md` and `contract.json` stay unchanged. They contain no provider output or binary media.
+The shared `passage-project.voxclip`, `full-take-project.voxclip` and `plan-cases.json` fixtures under `shared/fixtures/voice-lab/` are generated by `tools/fixtures/voice-lab/generate.py` and consumed by both native Core tests. The separate `project-plan-README.md` describes them; `README.md` describes `contract.json`. `contract.json` is written by `tools/fixtures/voice-lab/generate_contract.py`, which reproduces its hand-written tables byte for byte and adds the `rewriteMutations` rows for `targetSeconds`, `minChars` and `maxChars` (§8.9.1). They contain no provider output or binary media.
 
 ### 10.3 Undo
 

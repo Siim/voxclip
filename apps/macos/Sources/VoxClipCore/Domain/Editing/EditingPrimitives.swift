@@ -53,6 +53,24 @@ public enum EditingPrimitives {
         text.unicodeScalars.split(whereSeparator: isJSWhitespace).map(String.init)
     }
 
+    /// Unicode NFC through Foundation's ICU-backed NFC transform, run by run between four inert jamo (editing §4.8).
+    /// Unlike NSString's canonical-mapping methods, the transform composes LV+T and Unicode 16 composites correctly.
+    public static func nfc(_ text: String) -> String {
+        func composed(_ run: String) -> String { run.applyingTransform(StringTransform("NFC"), reverse: false)! }
+        guard text.unicodeScalars.contains(where: isInertJamo) else { return composed(text) }
+        var result = ""
+        var run = ""
+        for scalar in text.unicodeScalars {
+            guard isInertJamo(scalar) else { run.unicodeScalars.append(scalar); continue }
+            result += composed(run)
+            result.unicodeScalars.append(scalar)
+            run = ""
+        }
+        return result + composed(run)
+    }
+
+    private static func isInertJamo(_ scalar: Unicode.Scalar) -> Bool { [0x1113, 0x1176, 0x11A7, 0x11C3].contains(scalar.value) }
+
     public static func normalizeForMatch(_ text: String) -> String {
         var result = ""
         for scalar in text.unicodeScalars {

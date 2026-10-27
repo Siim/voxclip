@@ -266,7 +266,7 @@ public sealed partial class LlmConnector
                 var responseText = feature == LlmFeature.VoiceRewrite
                     ? await ReadRewriteResponseAsync(response.Content, deadline.Token).ConfigureAwait(false)
                     : await response.Content.ReadAsStringAsync(deadline.Token).ConfigureAwait(false);
-                var parsed = LlmOutput.Parse(responseText) as JsonObject ?? new JsonObject();
+                var parsed = LlmOutput.Envelope(responseText) as JsonObject ?? new JsonObject();
                 var requestIdHeader = Provider["requestIdHeader"]?.GetValue<string>();
                 var requestId = requestIdHeader is not null && response.Headers.TryGetValues(requestIdHeader, out var values) ? values.FirstOrDefault() : null;
                 WriteAttempt(model, canonical, attempt, status, stopwatch.Elapsed, parsed, requestId, key);

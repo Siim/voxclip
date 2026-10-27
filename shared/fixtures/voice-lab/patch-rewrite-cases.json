@@ -1,0 +1,1857 @@
+{
+  "version": 1,
+  "rules": "voice-lab \u00a78.1, path 3: Fix with AI validation from canned replies.",
+  "copy": {
+    "checkThis": "Check this: it adds something you didn't say."
+  },
+  "language": "en",
+  "entries": [
+    {
+      "index": 40,
+      "text": "So",
+      "start": 0.0,
+      "end": 0.2
+    },
+    {
+      "index": 41,
+      "text": "last",
+      "start": 0.25,
+      "end": 0.5
+    },
+    {
+      "index": 42,
+      "text": "year,",
+      "start": 0.55,
+      "end": 0.9
+    },
+    {
+      "index": 43,
+      "text": "in",
+      "start": 0.95,
+      "end": 1.05
+    },
+    {
+      "index": 44,
+      "text": "2024,",
+      "start": 1.1,
+      "end": 1.6
+    },
+    {
+      "index": 45,
+      "text": "we",
+      "start": 1.65,
+      "end": 1.8
+    },
+    {
+      "index": 46,
+      "text": "moved",
+      "start": 1.85,
+      "end": 2.2
+    },
+    {
+      "index": 47,
+      "text": "to",
+      "start": 2.25,
+      "end": 2.35
+    },
+    {
+      "index": 48,
+      "text": "Tartu.",
+      "start": 2.4,
+      "end": 2.9
+    },
+    {
+      "index": 49,
+      "text": "The",
+      "start": 3.0,
+      "end": 3.15
+    },
+    {
+      "index": 50,
+      "text": "new",
+      "start": 3.2,
+      "end": 3.4
+    },
+    {
+      "index": 51,
+      "text": "studio",
+      "start": 3.45,
+      "end": 3.9
+    },
+    {
+      "index": 52,
+      "text": "is",
+      "start": 3.95,
+      "end": 4.05
+    },
+    {
+      "index": 53,
+      "text": "bigger.",
+      "start": 4.1,
+      "end": 4.6
+    },
+    {
+      "index": 54,
+      "text": "Come",
+      "start": 6.5,
+      "end": 6.8
+    },
+    {
+      "index": 55,
+      "text": "and",
+      "start": 6.85,
+      "end": 7.0
+    },
+    {
+      "index": 56,
+      "text": "visit",
+      "start": 7.05,
+      "end": 7.4
+    },
+    {
+      "index": 57,
+      "text": "us.",
+      "start": 7.45,
+      "end": 7.8
+    }
+  ],
+  "ranges": [
+    {
+      "line": "[40-48]",
+      "minChars": 27,
+      "maxChars": 31
+    },
+    {
+      "line": "[49-53]",
+      "minChars": 17,
+      "maxChars": 21
+    },
+    {
+      "line": "[54-57]",
+      "minChars": 12,
+      "maxChars": 15
+    }
+  ],
+  "cases": [
+    {
+      "id": "in-range-correction",
+      "note": "The year comes from the instruction and the name from the transcript, so nothing is flagged.",
+      "instruction": "I said 2024; it's 2025.",
+      "reply": "{\"edits\":[{\"line\":\"[40-48]\",\"text\":\"So last year, in 2025, we moved to Tartu.\",\"reason\":\"Corrects the year.\"}]}",
+      "expected": {
+        "edits": [
+          {
+            "line": "[40-48]",
+            "text": "So last year, in 2025, we moved to Tartu.",
+            "reason": "Corrects the year.",
+            "length": 30,
+            "inRange": true,
+            "checkThis": false,
+            "isDeletion": false
+          }
+        ],
+        "unknownLines": 0,
+        "duplicateLines": 0,
+        "malformedItems": 0
+      }
+    },
+    {
+      "id": "unknown-line-dropped",
+      "note": "An id that no line emitted is dropped and counted.",
+      "instruction": "I said 2024; it's 2025.",
+      "reply": "{\"edits\":[{\"line\":\"[99-120]\",\"text\":\"Nothing here.\",\"reason\":\"Fixes the line.\"},{\"line\":\"[49-53]\",\"text\":\"The new studio is larger.\",\"reason\":\"Fixes the line.\"}]}",
+      "expected": {
+        "edits": [
+          {
+            "line": "[49-53]",
+            "text": "The new studio is larger.",
+            "reason": "Fixes the line.",
+            "length": 20,
+            "inRange": true,
+            "checkThis": false,
+            "isDeletion": false
+          }
+        ],
+        "unknownLines": 1,
+        "duplicateLines": 0,
+        "malformedItems": 0
+      }
+    },
+    {
+      "id": "duplicate-line-keeps-first",
+      "note": "A second edit for the same line is dropped and counted; the first is kept.",
+      "instruction": "I said 2024; it's 2025.",
+      "reply": "{\"edits\":[{\"line\":\"[49-53]\",\"text\":\"The studio is bigger.\",\"reason\":\"First.\"},{\"line\":\"[49-53]\",\"text\":\"The new studio is much bigger.\",\"reason\":\"Second.\"}]}",
+      "expected": {
+        "edits": [
+          {
+            "line": "[49-53]",
+            "text": "The studio is bigger.",
+            "reason": "First.",
+            "length": 17,
+            "inRange": true,
+            "checkThis": false,
+            "isDeletion": false
+          }
+        ],
+        "unknownLines": 0,
+        "duplicateLines": 1,
+        "malformedItems": 0
+      }
+    },
+    {
+      "id": "out-of-range-low",
+      "note": "Too short for its range: kept with inRange false.",
+      "instruction": "I said 2024; it's 2025.",
+      "reply": "{\"edits\":[{\"line\":\"[49-53]\",\"text\":\"Bigger now.\",\"reason\":\"Shorter.\"}]}",
+      "expected": {
+        "edits": [
+          {
+            "line": "[49-53]",
+            "text": "Bigger now.",
+            "reason": "Shorter.",
+            "length": 9,
+            "inRange": false,
+            "checkThis": false,
+            "isDeletion": false
+          }
+        ],
+        "unknownLines": 0,
+        "duplicateLines": 0,
+        "malformedItems": 0
+      }
+    },
+    {
+      "id": "out-of-range-high",
+      "note": "Too long for its range: kept with inRange false.",
+      "instruction": "I said 2024; it's 2025.",
+      "reply": "{\"edits\":[{\"line\":\"[49-53]\",\"text\":\"The new studio is much, much bigger than the old one.\",\"reason\":\"Longer.\"}]}",
+      "expected": {
+        "edits": [
+          {
+            "line": "[49-53]",
+            "text": "The new studio is much, much bigger than the old one.",
+            "reason": "Longer.",
+            "length": 41,
+            "inRange": false,
+            "checkThis": false,
+            "isDeletion": false
+          }
+        ],
+        "unknownLines": 0,
+        "duplicateLines": 0,
+        "malformedItems": 0
+      }
+    },
+    {
+      "id": "new-digit-run",
+      "note": "A digit run found in neither the transcript nor the instruction.",
+      "instruction": "I said 2024; it's 2025.",
+      "reply": "{\"edits\":[{\"line\":\"[40-48]\",\"text\":\"So last year, in 2026, we moved to Tartu.\",\"reason\":\"Fixes the line.\"}]}",
+      "expected": {
+        "edits": [
+          {
+            "line": "[40-48]",
+            "text": "So last year, in 2026, we moved to Tartu.",
+            "reason": "Fixes the line.",
+            "length": 30,
+            "inRange": true,
+            "checkThis": true,
+            "isDeletion": false
+          }
+        ],
+        "unknownLines": 0,
+        "duplicateLines": 0,
+        "malformedItems": 0
+      }
+    },
+    {
+      "id": "digit-run-other-script",
+      "note": "Digit runs compare exactly, so Arabic-Indic 2025 is not the instruction's ASCII 2025.",
+      "instruction": "I said 2024; it's 2025.",
+      "reply": "{\"edits\":[{\"line\":\"[40-48]\",\"text\":\"So last year, in \u0662\u0660\u0662\u0665, we moved to Tartu.\",\"reason\":\"Fixes the line.\"}]}",
+      "expected": {
+        "edits": [
+          {
+            "line": "[40-48]",
+            "text": "So last year, in \u0662\u0660\u0662\u0665, we moved to Tartu.",
+            "reason": "Fixes the line.",
+            "length": 30,
+            "inRange": true,
+            "checkThis": true,
+            "isDeletion": false
+          }
+        ],
+        "unknownLines": 0,
+        "duplicateLines": 0,
+        "malformedItems": 0
+      }
+    },
+    {
+      "id": "new-url",
+      "note": "A token containing :// that the sources do not have.",
+      "instruction": "I said 2024; it's 2025.",
+      "reply": "{\"edits\":[{\"line\":\"[54-57]\",\"text\":\"Come and visit https://voxclip.example now.\",\"reason\":\"Fixes the line.\"}]}",
+      "expected": {
+        "edits": [
+          {
+            "line": "[54-57]",
+            "text": "Come and visit https://voxclip.example now.",
+            "reason": "Fixes the line.",
+            "length": 34,
+            "inRange": false,
+            "checkThis": true,
+            "isDeletion": false
+          }
+        ],
+        "unknownLines": 0,
+        "duplicateLines": 0,
+        "malformedItems": 0
+      }
+    },
+    {
+      "id": "url-from-instruction",
+      "note": "The same URL in the instruction, with a trailing full stop, appears.",
+      "instruction": "Add our site, https://voxclip.example.",
+      "reply": "{\"edits\":[{\"line\":\"[54-57]\",\"text\":\"Come and visit https://voxclip.example now.\",\"reason\":\"Fixes the line.\"}]}",
+      "expected": {
+        "edits": [
+          {
+            "line": "[54-57]",
+            "text": "Come and visit https://voxclip.example now.",
+            "reason": "Fixes the line.",
+            "length": 34,
+            "inRange": false,
+            "checkThis": false,
+            "isDeletion": false
+          }
+        ],
+        "unknownLines": 0,
+        "duplicateLines": 0,
+        "malformedItems": 0
+      }
+    },
+    {
+      "id": "new-www-url",
+      "note": "A token starting with www. is a URL too.",
+      "instruction": "I said 2024; it's 2025.",
+      "reply": "{\"edits\":[{\"line\":\"[54-57]\",\"text\":\"Come and visit www.voxclip.example today.\",\"reason\":\"Fixes the line.\"}]}",
+      "expected": {
+        "edits": [
+          {
+            "line": "[54-57]",
+            "text": "Come and visit www.voxclip.example today.",
+            "reason": "Fixes the line.",
+            "length": 34,
+            "inRange": false,
+            "checkThis": true,
+            "isDeletion": false
+          }
+        ],
+        "unknownLines": 0,
+        "duplicateLines": 0,
+        "malformedItems": 0
+      }
+    },
+    {
+      "id": "capitalised-mid-sentence",
+      "note": "A capitalised token after an ordinary word that the sources do not have.",
+      "instruction": "I said 2024; it's 2025.",
+      "reply": "{\"edits\":[{\"line\":\"[49-53]\",\"text\":\"The new studio in Tallinn is bigger.\",\"reason\":\"Fixes the line.\"}]}",
+      "expected": {
+        "edits": [
+          {
+            "line": "[49-53]",
+            "text": "The new studio in Tallinn is bigger.",
+            "reason": "Fixes the line.",
+            "length": 29,
+            "inRange": false,
+            "checkThis": true,
+            "isDeletion": false
+          }
+        ],
+        "unknownLines": 0,
+        "duplicateLines": 0,
+        "malformedItems": 0
+      }
+    },
+    {
+      "id": "capitalised-sentence-start",
+      "note": "Capitalised tokens at the line start and after a full stop are not checked.",
+      "instruction": "I said 2024; it's 2025.",
+      "reply": "{\"edits\":[{\"line\":\"[49-53]\",\"text\":\"The studio grew. Everyone is happy.\",\"reason\":\"Fixes the line.\"}]}",
+      "expected": {
+        "edits": [
+          {
+            "line": "[49-53]",
+            "text": "The studio grew. Everyone is happy.",
+            "reason": "Fixes the line.",
+            "length": 28,
+            "inRange": false,
+            "checkThis": false,
+            "isDeletion": false
+          }
+        ],
+        "unknownLines": 0,
+        "duplicateLines": 0,
+        "malformedItems": 0
+      }
+    },
+    {
+      "id": "capitalised-after-closing-quote",
+      "note": "A full stop followed by a closing quote ends a sentence (ai.md \u00a711.3).",
+      "instruction": "I said 2024; it's 2025.",
+      "reply": "{\"edits\":[{\"line\":\"[40-48]\",\"text\":\"We moved to \\\"Tartu.\\\" Then it grew.\",\"reason\":\"Fixes the line.\"}]}",
+      "expected": {
+        "edits": [
+          {
+            "line": "[40-48]",
+            "text": "We moved to \"Tartu.\" Then it grew.",
+            "reason": "Fixes the line.",
+            "length": 24,
+            "inRange": false,
+            "checkThis": false,
+            "isDeletion": false
+          }
+        ],
+        "unknownLines": 0,
+        "duplicateLines": 0,
+        "malformedItems": 0
+      }
+    },
+    {
+      "id": "capitalised-case-sensitive",
+      "note": "Appearing is case-sensitive: the transcript has \"studio\", not \"Studio\".",
+      "instruction": "I said 2024; it's 2025.",
+      "reply": "{\"edits\":[{\"line\":\"[49-53]\",\"text\":\"The new Studio is bigger.\",\"reason\":\"Fixes the line.\"}]}",
+      "expected": {
+        "edits": [
+          {
+            "line": "[49-53]",
+            "text": "The new Studio is bigger.",
+            "reason": "Fixes the line.",
+            "length": 20,
+            "inRange": true,
+            "checkThis": true,
+            "isDeletion": false
+          }
+        ],
+        "unknownLines": 0,
+        "duplicateLines": 0,
+        "malformedItems": 0
+      }
+    },
+    {
+      "id": "hangul-jamo-key-is-ordinal",
+      "note": "Keys compare as scalar sequences: the edit's Z, jamo, ZWJ, jamo token keeps two jamo, which are canonically equivalent to the instruction's precomposed syllable but not the same scalars, so it is new.",
+      "instruction": "Call it Z\uac00.",
+      "reply": "{\"edits\":[{\"line\":\"[49-53]\",\"text\":\"The Z\u1100\u200d\u1161 studio is bigger.\",\"reason\":\"Fixes the line.\"}]}",
+      "expected": {
+        "edits": [
+          {
+            "line": "[49-53]",
+            "text": "The Z\u1100\u200d\u1161 studio is bigger.",
+            "reason": "Fixes the line.",
+            "length": 20,
+            "inRange": true,
+            "checkThis": true,
+            "isDeletion": false
+          }
+        ],
+        "unknownLines": 0,
+        "duplicateLines": 0,
+        "malformedItems": 0
+      }
+    },
+    {
+      "id": "hangul-syllable-and-trailing-jamo",
+      "note": "NFC composes a precomposed syllable and a trailing jamo: the edit's Z, U+AC00, U+11A8 token is the instruction's Z, U+AC01 after NFC, so it appears and nothing is flagged.",
+      "instruction": "Call it Z\uac01.",
+      "reply": "{\"edits\":[{\"line\":\"[49-53]\",\"text\":\"The Z\uac00\u11a8 studio is bigger.\",\"reason\":\"Fixes the line.\"}]}",
+      "expected": {
+        "edits": [
+          {
+            "line": "[49-53]",
+            "text": "The Z\uac00\u11a8 studio is bigger.",
+            "reason": "Fixes the line.",
+            "length": 19,
+            "inRange": true,
+            "checkThis": false,
+            "isDeletion": false
+          }
+        ],
+        "unknownLines": 0,
+        "duplicateLines": 0,
+        "malformedItems": 0
+      }
+    },
+    {
+      "id": "decomposed-text",
+      "note": "NFC before matching: a decomposed o-tilde equals the instruction's precomposed one; text stays as sent.",
+      "instruction": "Say the studio belongs to T\u00f5nu.",
+      "reply": "{\"edits\":[{\"line\":\"[49-53]\",\"text\":\"The new studio is for To\u0303nu.\",\"reason\":\"Fixes the line.\"}]}",
+      "expected": {
+        "edits": [
+          {
+            "line": "[49-53]",
+            "text": "The new studio is for To\u0303nu.",
+            "reason": "Fixes the line.",
+            "length": 21,
+            "inRange": true,
+            "checkThis": false,
+            "isDeletion": false
+          }
+        ],
+        "unknownLines": 0,
+        "duplicateLines": 0,
+        "malformedItems": 0
+      }
+    },
+    {
+      "id": "delete-whole-line",
+      "note": "An empty text deletes the line: length 0, inRange true and isDeletion true.",
+      "instruction": "I said 2024; it's 2025.",
+      "reply": "{\"edits\":[{\"line\":\"[54-57]\",\"text\":\"\",\"reason\":\"Not needed.\"}]}",
+      "expected": {
+        "edits": [
+          {
+            "line": "[54-57]",
+            "text": "",
+            "reason": "Not needed.",
+            "length": 0,
+            "inRange": true,
+            "checkThis": false,
+            "isDeletion": true
+          }
+        ],
+        "unknownLines": 0,
+        "duplicateLines": 0,
+        "malformedItems": 0
+      }
+    },
+    {
+      "id": "delete-with-whitespace-text",
+      "note": "A text that is empty after jsTrim is a deletion too; the text stays as sent.",
+      "instruction": "I said 2024; it's 2025.",
+      "reply": "{\"edits\":[{\"line\":\"[54-57]\",\"text\":\"  \",\"reason\":\"Not needed.\"}]}",
+      "expected": {
+        "edits": [
+          {
+            "line": "[54-57]",
+            "text": "  ",
+            "reason": "Not needed.",
+            "length": 0,
+            "inRange": true,
+            "checkThis": false,
+            "isDeletion": true
+          }
+        ],
+        "unknownLines": 0,
+        "duplicateLines": 0,
+        "malformedItems": 0
+      }
+    },
+    {
+      "id": "punctuation-only-is-not-deletion",
+      "note": "A text of punctuation alone is not empty, so it is no deletion; its length is 0.",
+      "instruction": "I said 2024; it's 2025.",
+      "reply": "{\"edits\":[{\"line\":\"[54-57]\",\"text\":\"...\",\"reason\":\"Pause.\"}]}",
+      "expected": {
+        "edits": [
+          {
+            "line": "[54-57]",
+            "text": "...",
+            "reason": "Pause.",
+            "length": 0,
+            "inRange": false,
+            "checkThis": false,
+            "isDeletion": false
+          }
+        ],
+        "unknownLines": 0,
+        "duplicateLines": 0,
+        "malformedItems": 0
+      }
+    },
+    {
+      "id": "malformed-items-dropped",
+      "note": "Items missing a field or with a wrong type are dropped and counted (ai.md \u00a72.3).",
+      "instruction": "I said 2024; it's 2025.",
+      "reply": "{\"edits\":[{\"line\":\"[40-48]\",\"text\":\"So last year, in 2025, we moved to Tartu.\"},{\"line\":49,\"text\":\"The new studio.\",\"reason\":\"Typed.\"},{\"line\":\"[49-53]\",\"text\":\"The new studio is larger.\",\"reason\":\"Fixes the line.\"}]}",
+      "expected": {
+        "edits": [
+          {
+            "line": "[49-53]",
+            "text": "The new studio is larger.",
+            "reason": "Fixes the line.",
+            "length": 20,
+            "inRange": true,
+            "checkThis": false,
+            "isDeletion": false
+          }
+        ],
+        "unknownLines": 0,
+        "duplicateLines": 0,
+        "malformedItems": 2
+      }
+    },
+    {
+      "id": "control-character-in-text",
+      "note": "A text with NUL is dropped and counted as malformed; the other edit stays.",
+      "instruction": "I said 2024; it's 2025.",
+      "reply": "{\"edits\":[{\"line\":\"[49-53]\",\"text\":\"The new\\u0000studio is bigger.\",\"reason\":\"Fixes the line.\"},{\"line\":\"[54-57]\",\"text\":\"Come and see us.\",\"reason\":\"Fixes the line.\"}]}",
+      "expected": {
+        "edits": [
+          {
+            "line": "[54-57]",
+            "text": "Come and see us.",
+            "reason": "Fixes the line.",
+            "length": 12,
+            "inRange": true,
+            "checkThis": false,
+            "isDeletion": false
+          }
+        ],
+        "unknownLines": 0,
+        "duplicateLines": 0,
+        "malformedItems": 1
+      }
+    },
+    {
+      "id": "escape-character-in-text",
+      "note": "ESC is a control character too.",
+      "instruction": "I said 2024; it's 2025.",
+      "reply": "{\"edits\":[{\"line\":\"[49-53]\",\"text\":\"The new studio\\u001b is bigger.\",\"reason\":\"Fixes the line.\"}]}",
+      "expected": {
+        "edits": [],
+        "unknownLines": 0,
+        "duplicateLines": 0,
+        "malformedItems": 1
+      }
+    },
+    {
+      "id": "line-break-in-text",
+      "note": "A line break is a control character: the new text of a line is one line.",
+      "instruction": "I said 2024; it's 2025.",
+      "reply": "{\"edits\":[{\"line\":\"[49-53]\",\"text\":\"The new studio\\nis bigger.\",\"reason\":\"Fixes the line.\"}]}",
+      "expected": {
+        "edits": [],
+        "unknownLines": 0,
+        "duplicateLines": 0,
+        "malformedItems": 1
+      }
+    },
+    {
+      "id": "delete-and-c1-controls-in-text",
+      "note": "DEL and NEL are Cc as well.",
+      "instruction": "I said 2024; it's 2025.",
+      "reply": "{\"edits\":[{\"line\":\"[49-53]\",\"text\":\"The new studio\u007f is bigger.\",\"reason\":\"Fixes the line.\"},{\"line\":\"[54-57]\",\"text\":\"Come and\u0085 see us.\",\"reason\":\"Fixes the line.\"}]}",
+      "expected": {
+        "edits": [],
+        "unknownLines": 0,
+        "duplicateLines": 0,
+        "malformedItems": 2
+      }
+    },
+    {
+      "id": "tab-in-text-kept",
+      "note": "Tab is the one control character an edit may hold.",
+      "instruction": "I said 2024; it's 2025.",
+      "reply": "{\"edits\":[{\"line\":\"[54-57]\",\"text\":\"Come and\\tsee us.\",\"reason\":\"Fixes the line.\"}]}",
+      "expected": {
+        "edits": [
+          {
+            "line": "[54-57]",
+            "text": "Come and\tsee us.",
+            "reason": "Fixes the line.",
+            "length": 12,
+            "inRange": true,
+            "checkThis": false,
+            "isDeletion": false
+          }
+        ],
+        "unknownLines": 0,
+        "duplicateLines": 0,
+        "malformedItems": 0
+      }
+    },
+    {
+      "id": "control-character-in-reason",
+      "note": "A reason with a control character drops its edit too.",
+      "instruction": "I said 2024; it's 2025.",
+      "reply": "{\"edits\":[{\"line\":\"[54-57]\",\"text\":\"Come and see us.\",\"reason\":\"Clearer.\\u0007\"}]}",
+      "expected": {
+        "edits": [],
+        "unknownLines": 0,
+        "duplicateLines": 0,
+        "malformedItems": 1
+      }
+    },
+    {
+      "id": "text-of-2000-bytes-kept",
+      "note": "A text of exactly 2,000 UTF-8 bytes is kept (1,000 o-tildes, so far out of range).",
+      "instruction": "I said 2024; it's 2025.",
+      "reply": "{\"edits\":[{\"line\":\"[54-57]\",\"text\":\"\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\",\"reason\":\"Fixes the line.\"}]}",
+      "expected": {
+        "edits": [
+          {
+            "line": "[54-57]",
+            "text": "\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5",
+            "reason": "Fixes the line.",
+            "length": 1000,
+            "inRange": false,
+            "checkThis": false,
+            "isDeletion": false
+          }
+        ],
+        "unknownLines": 0,
+        "duplicateLines": 0,
+        "malformedItems": 0
+      }
+    },
+    {
+      "id": "text-over-2000-bytes-dropped",
+      "note": "One byte more and the edit is dropped and counted.",
+      "instruction": "I said 2024; it's 2025.",
+      "reply": "{\"edits\":[{\"line\":\"[54-57]\",\"text\":\"\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5a\",\"reason\":\"Fixes the line.\"}]}",
+      "expected": {
+        "edits": [],
+        "unknownLines": 0,
+        "duplicateLines": 0,
+        "malformedItems": 1
+      }
+    },
+    {
+      "id": "edits-of-20000-bytes-kept",
+      "note": "Ten edits of 2,000 bytes hold exactly 20,000 bytes of text, which is allowed.",
+      "instruction": "I said 2024; it's 2025.",
+      "reply": "{\"edits\":[{\"line\":\"[100-100]\",\"text\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"reason\":\"Fixes the line.\"},{\"line\":\"[101-101]\",\"text\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"reason\":\"Fixes the line.\"},{\"line\":\"[102-102]\",\"text\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"reason\":\"Fixes the line.\"},{\"line\":\"[103-103]\",\"text\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"reason\":\"Fixes the line.\"},{\"line\":\"[104-104]\",\"text\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"reason\":\"Fixes the line.\"},{\"line\":\"[105-105]\",\"text\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"reason\":\"Fixes the line.\"},{\"line\":\"[106-106]\",\"text\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"reason\":\"Fixes the line.\"},{\"line\":\"[107-107]\",\"text\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"reason\":\"Fixes the line.\"},{\"line\":\"[108-108]\",\"text\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"reason\":\"Fixes the line.\"},{\"line\":\"[109-109]\",\"text\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"reason\":\"Fixes the line.\"}]}",
+      "entries": [
+        {
+          "index": 100,
+          "text": "Line0.",
+          "start": 0.0,
+          "end": 0.5
+        },
+        {
+          "index": 101,
+          "text": "Line1.",
+          "start": 1.0,
+          "end": 1.5
+        },
+        {
+          "index": 102,
+          "text": "Line2.",
+          "start": 2.0,
+          "end": 2.5
+        },
+        {
+          "index": 103,
+          "text": "Line3.",
+          "start": 3.0,
+          "end": 3.5
+        },
+        {
+          "index": 104,
+          "text": "Line4.",
+          "start": 4.0,
+          "end": 4.5
+        },
+        {
+          "index": 105,
+          "text": "Line5.",
+          "start": 5.0,
+          "end": 5.5
+        },
+        {
+          "index": 106,
+          "text": "Line6.",
+          "start": 6.0,
+          "end": 6.5
+        },
+        {
+          "index": 107,
+          "text": "Line7.",
+          "start": 7.0,
+          "end": 7.5
+        },
+        {
+          "index": 108,
+          "text": "Line8.",
+          "start": 8.0,
+          "end": 8.5
+        },
+        {
+          "index": 109,
+          "text": "Line9.",
+          "start": 9.0,
+          "end": 9.5
+        },
+        {
+          "index": 110,
+          "text": "Line10.",
+          "start": 10.0,
+          "end": 10.5
+        }
+      ],
+      "ranges": [
+        {
+          "line": "[100-100]",
+          "minChars": 1,
+          "maxChars": 5000
+        },
+        {
+          "line": "[101-101]",
+          "minChars": 1,
+          "maxChars": 5000
+        },
+        {
+          "line": "[102-102]",
+          "minChars": 1,
+          "maxChars": 5000
+        },
+        {
+          "line": "[103-103]",
+          "minChars": 1,
+          "maxChars": 5000
+        },
+        {
+          "line": "[104-104]",
+          "minChars": 1,
+          "maxChars": 5000
+        },
+        {
+          "line": "[105-105]",
+          "minChars": 1,
+          "maxChars": 5000
+        },
+        {
+          "line": "[106-106]",
+          "minChars": 1,
+          "maxChars": 5000
+        },
+        {
+          "line": "[107-107]",
+          "minChars": 1,
+          "maxChars": 5000
+        },
+        {
+          "line": "[108-108]",
+          "minChars": 1,
+          "maxChars": 5000
+        },
+        {
+          "line": "[109-109]",
+          "minChars": 1,
+          "maxChars": 5000
+        },
+        {
+          "line": "[110-110]",
+          "minChars": 1,
+          "maxChars": 5000
+        }
+      ],
+      "expected": {
+        "edits": [
+          {
+            "line": "[100-100]",
+            "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "reason": "Fixes the line.",
+            "length": 2000,
+            "inRange": true,
+            "checkThis": false,
+            "isDeletion": false
+          },
+          {
+            "line": "[101-101]",
+            "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "reason": "Fixes the line.",
+            "length": 2000,
+            "inRange": true,
+            "checkThis": false,
+            "isDeletion": false
+          },
+          {
+            "line": "[102-102]",
+            "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "reason": "Fixes the line.",
+            "length": 2000,
+            "inRange": true,
+            "checkThis": false,
+            "isDeletion": false
+          },
+          {
+            "line": "[103-103]",
+            "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "reason": "Fixes the line.",
+            "length": 2000,
+            "inRange": true,
+            "checkThis": false,
+            "isDeletion": false
+          },
+          {
+            "line": "[104-104]",
+            "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "reason": "Fixes the line.",
+            "length": 2000,
+            "inRange": true,
+            "checkThis": false,
+            "isDeletion": false
+          },
+          {
+            "line": "[105-105]",
+            "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "reason": "Fixes the line.",
+            "length": 2000,
+            "inRange": true,
+            "checkThis": false,
+            "isDeletion": false
+          },
+          {
+            "line": "[106-106]",
+            "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "reason": "Fixes the line.",
+            "length": 2000,
+            "inRange": true,
+            "checkThis": false,
+            "isDeletion": false
+          },
+          {
+            "line": "[107-107]",
+            "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "reason": "Fixes the line.",
+            "length": 2000,
+            "inRange": true,
+            "checkThis": false,
+            "isDeletion": false
+          },
+          {
+            "line": "[108-108]",
+            "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "reason": "Fixes the line.",
+            "length": 2000,
+            "inRange": true,
+            "checkThis": false,
+            "isDeletion": false
+          },
+          {
+            "line": "[109-109]",
+            "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "reason": "Fixes the line.",
+            "length": 2000,
+            "inRange": true,
+            "checkThis": false,
+            "isDeletion": false
+          }
+        ],
+        "unknownLines": 0,
+        "duplicateLines": 0,
+        "malformedItems": 0
+      }
+    },
+    {
+      "id": "edits-over-20000-bytes",
+      "note": "An eleventh edit of one byte takes the kept edits past 20,000 bytes: the whole reply is invalid.",
+      "instruction": "I said 2024; it's 2025.",
+      "reply": "{\"edits\":[{\"line\":\"[100-100]\",\"text\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"reason\":\"Fixes the line.\"},{\"line\":\"[101-101]\",\"text\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"reason\":\"Fixes the line.\"},{\"line\":\"[102-102]\",\"text\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"reason\":\"Fixes the line.\"},{\"line\":\"[103-103]\",\"text\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"reason\":\"Fixes the line.\"},{\"line\":\"[104-104]\",\"text\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"reason\":\"Fixes the line.\"},{\"line\":\"[105-105]\",\"text\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"reason\":\"Fixes the line.\"},{\"line\":\"[106-106]\",\"text\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"reason\":\"Fixes the line.\"},{\"line\":\"[107-107]\",\"text\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"reason\":\"Fixes the line.\"},{\"line\":\"[108-108]\",\"text\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"reason\":\"Fixes the line.\"},{\"line\":\"[109-109]\",\"text\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"reason\":\"Fixes the line.\"},{\"line\":\"[110-110]\",\"text\":\"a\",\"reason\":\"Fixes the line.\"}]}",
+      "entries": [
+        {
+          "index": 100,
+          "text": "Line0.",
+          "start": 0.0,
+          "end": 0.5
+        },
+        {
+          "index": 101,
+          "text": "Line1.",
+          "start": 1.0,
+          "end": 1.5
+        },
+        {
+          "index": 102,
+          "text": "Line2.",
+          "start": 2.0,
+          "end": 2.5
+        },
+        {
+          "index": 103,
+          "text": "Line3.",
+          "start": 3.0,
+          "end": 3.5
+        },
+        {
+          "index": 104,
+          "text": "Line4.",
+          "start": 4.0,
+          "end": 4.5
+        },
+        {
+          "index": 105,
+          "text": "Line5.",
+          "start": 5.0,
+          "end": 5.5
+        },
+        {
+          "index": 106,
+          "text": "Line6.",
+          "start": 6.0,
+          "end": 6.5
+        },
+        {
+          "index": 107,
+          "text": "Line7.",
+          "start": 7.0,
+          "end": 7.5
+        },
+        {
+          "index": 108,
+          "text": "Line8.",
+          "start": 8.0,
+          "end": 8.5
+        },
+        {
+          "index": 109,
+          "text": "Line9.",
+          "start": 9.0,
+          "end": 9.5
+        },
+        {
+          "index": 110,
+          "text": "Line10.",
+          "start": 10.0,
+          "end": 10.5
+        }
+      ],
+      "ranges": [
+        {
+          "line": "[100-100]",
+          "minChars": 1,
+          "maxChars": 5000
+        },
+        {
+          "line": "[101-101]",
+          "minChars": 1,
+          "maxChars": 5000
+        },
+        {
+          "line": "[102-102]",
+          "minChars": 1,
+          "maxChars": 5000
+        },
+        {
+          "line": "[103-103]",
+          "minChars": 1,
+          "maxChars": 5000
+        },
+        {
+          "line": "[104-104]",
+          "minChars": 1,
+          "maxChars": 5000
+        },
+        {
+          "line": "[105-105]",
+          "minChars": 1,
+          "maxChars": 5000
+        },
+        {
+          "line": "[106-106]",
+          "minChars": 1,
+          "maxChars": 5000
+        },
+        {
+          "line": "[107-107]",
+          "minChars": 1,
+          "maxChars": 5000
+        },
+        {
+          "line": "[108-108]",
+          "minChars": 1,
+          "maxChars": 5000
+        },
+        {
+          "line": "[109-109]",
+          "minChars": 1,
+          "maxChars": 5000
+        },
+        {
+          "line": "[110-110]",
+          "minChars": 1,
+          "maxChars": 5000
+        }
+      ],
+      "expected": {
+        "error": "invalidOutput"
+      }
+    },
+    {
+      "id": "extra-keys-ignored",
+      "note": "Keys outside the schema are ignored.",
+      "instruction": "I said 2024; it's 2025.",
+      "reply": "{\"edits\":[{\"line\":\"[54-57]\",\"text\":\"Come and see us.\",\"reason\":\"Clearer.\",\"kind\":\"fix\"}]}",
+      "expected": {
+        "edits": [
+          {
+            "line": "[54-57]",
+            "text": "Come and see us.",
+            "reason": "Clearer.",
+            "length": 12,
+            "inRange": true,
+            "checkThis": false,
+            "isDeletion": false
+          }
+        ],
+        "unknownLines": 0,
+        "duplicateLines": 0,
+        "malformedItems": 0
+      }
+    },
+    {
+      "id": "trimmed-line-label",
+      "note": "The line id is compared after jsTrim.",
+      "instruction": "I said 2024; it's 2025.",
+      "reply": "{\"edits\":[{\"line\":\" [54-57] \",\"text\":\"Come and see us.\",\"reason\":\"Fixes the line.\"}]}",
+      "expected": {
+        "edits": [
+          {
+            "line": "[54-57]",
+            "text": "Come and see us.",
+            "reason": "Fixes the line.",
+            "length": 12,
+            "inRange": true,
+            "checkThis": false,
+            "isDeletion": false
+          }
+        ],
+        "unknownLines": 0,
+        "duplicateLines": 0,
+        "malformedItems": 0
+      }
+    },
+    {
+      "id": "code-fenced-reply",
+      "note": "A reply in a json code fence is extracted (ai.md \u00a74.5).",
+      "instruction": "I said 2024; it's 2025.",
+      "reply": "```json\n{\"edits\":[{\"line\":\"[54-57]\",\"text\":\"Come and see us.\",\"reason\":\"Fixes the line.\"}]}\n```",
+      "expected": {
+        "edits": [
+          {
+            "line": "[54-57]",
+            "text": "Come and see us.",
+            "reason": "Fixes the line.",
+            "length": 12,
+            "inRange": true,
+            "checkThis": false,
+            "isDeletion": false
+          }
+        ],
+        "unknownLines": 0,
+        "duplicateLines": 0,
+        "malformedItems": 0
+      }
+    },
+    {
+      "id": "one-line-code-fence",
+      "note": "A fence with no line break is all opening fence line, so nothing is left to parse (ai.md \u00a74.5).",
+      "instruction": "I said 2024; it's 2025.",
+      "reply": "```json{\"edits\":[{\"line\":\"[54-57]\",\"text\":\"Come and see us.\",\"reason\":\"Clearer.\"}],\"rewrite\":\"Fine.\"}```",
+      "expected": {
+        "error": "invalidOutput"
+      },
+      "rewriteExpected": {
+        "error": "invalidOutput"
+      }
+    },
+    {
+      "id": "prose-around-json",
+      "note": "Text around the object: the whole text fails to parse, so the first balanced object is used.",
+      "instruction": "I said 2024; it's 2025.",
+      "reply": "Here you go: {\"edits\":[{\"line\":\"[54-57]\",\"text\":\"Come and see us.\",\"reason\":\"Clearer.\"}],\"rewrite\":\"Fine.\"} Thanks!",
+      "expected": {
+        "edits": [
+          {
+            "line": "[54-57]",
+            "text": "Come and see us.",
+            "reason": "Clearer.",
+            "length": 12,
+            "inRange": true,
+            "checkThis": false,
+            "isDeletion": false
+          }
+        ],
+        "unknownLines": 0,
+        "duplicateLines": 0,
+        "malformedItems": 0
+      },
+      "rewriteExpected": {
+        "rewrite": "Fine.",
+        "proposedLength": 4
+      }
+    },
+    {
+      "id": "combining-mark-after-quote",
+      "note": "The balanced-object scan reads Unicode scalars: a combining mark after a quote does not hide the quote, so the brace inside the reason stays inside its string.",
+      "instruction": "I said 2024; it's 2025.",
+      "reply": "Here: {\"edits\":[{\"line\":\"[54-57]\",\"text\":\"Come and see us.\",\"reason\":\"\u0301} is fine\"}],\"rewrite\":\"Fine.\"}",
+      "expected": {
+        "edits": [
+          {
+            "line": "[54-57]",
+            "text": "Come and see us.",
+            "reason": "\u0301} is fine",
+            "length": 12,
+            "inRange": true,
+            "checkThis": false,
+            "isDeletion": false
+          }
+        ],
+        "unknownLines": 0,
+        "duplicateLines": 0,
+        "malformedItems": 0
+      },
+      "rewriteExpected": {
+        "rewrite": "Fine.",
+        "proposedLength": 4
+      }
+    },
+    {
+      "id": "byte-order-mark-before-json",
+      "note": "jsTrim removes a leading U+FEFF before parsing.",
+      "instruction": "I said 2024; it's 2025.",
+      "reply": "\ufeff{\"edits\":[{\"line\":\"[54-57]\",\"text\":\"Come and see us.\",\"reason\":\"Clearer.\"}],\"rewrite\":\"Fine.\"}",
+      "expected": {
+        "edits": [
+          {
+            "line": "[54-57]",
+            "text": "Come and see us.",
+            "reason": "Clearer.",
+            "length": 12,
+            "inRange": true,
+            "checkThis": false,
+            "isDeletion": false
+          }
+        ],
+        "unknownLines": 0,
+        "duplicateLines": 0,
+        "malformedItems": 0
+      },
+      "rewriteExpected": {
+        "rewrite": "Fine.",
+        "proposedLength": 4
+      }
+    },
+    {
+      "id": "top-level-array",
+      "note": "The whole text parses, but as an array, so there is no object (ai.md \u00a72.3).",
+      "instruction": "I said 2024; it's 2025.",
+      "reply": "[{\"edits\":[{\"line\":\"[54-57]\",\"text\":\"Come and see us.\",\"reason\":\"Clearer.\"}],\"rewrite\":\"Fine.\"}]",
+      "expected": {
+        "error": "invalidOutput"
+      },
+      "rewriteExpected": {
+        "error": "invalidOutput"
+      }
+    },
+    {
+      "id": "repeated-top-level-key",
+      "note": "A repeated key keeps its first value, for both services.",
+      "instruction": "I said 2024; it's 2025.",
+      "reply": "{\"edits\":[{\"line\":\"[54-57]\",\"text\":\"Come and see us.\",\"reason\":\"Clearer.\"}],\"rewrite\":\"Come and see us.\",\"edits\":[],\"rewrite\":\"Other.\"}",
+      "expected": {
+        "edits": [
+          {
+            "line": "[54-57]",
+            "text": "Come and see us.",
+            "reason": "Clearer.",
+            "length": 12,
+            "inRange": true,
+            "checkThis": false,
+            "isDeletion": false
+          }
+        ],
+        "unknownLines": 0,
+        "duplicateLines": 0,
+        "malformedItems": 0
+      },
+      "rewriteExpected": {
+        "rewrite": "Come and see us.",
+        "proposedLength": 12
+      }
+    },
+    {
+      "id": "repeated-key-in-item",
+      "note": "Inside an edit too: the first \"line\" is unknown, so the edit is dropped as unknown.",
+      "instruction": "I said 2024; it's 2025.",
+      "reply": "{\"edits\":[{\"line\":\"[99-120]\",\"line\":\"[54-57]\",\"text\":\"Come and see us.\",\"reason\":\"Clearer.\"}]}",
+      "expected": {
+        "edits": [],
+        "unknownLines": 1,
+        "duplicateLines": 0,
+        "malformedItems": 0
+      }
+    },
+    {
+      "id": "repeated-ignored-key",
+      "note": "Repeated keys outside the schema change nothing.",
+      "instruction": "I said 2024; it's 2025.",
+      "reply": "{\"edits\":[{\"line\":\"[54-57]\",\"text\":\"Come and see us.\",\"reason\":\"Clearer.\"}],\"rewrite\":\"Fine.\",\"x\":1,\"x\":2}",
+      "expected": {
+        "edits": [
+          {
+            "line": "[54-57]",
+            "text": "Come and see us.",
+            "reason": "Clearer.",
+            "length": 12,
+            "inRange": true,
+            "checkThis": false,
+            "isDeletion": false
+          }
+        ],
+        "unknownLines": 0,
+        "duplicateLines": 0,
+        "malformedItems": 0
+      },
+      "rewriteExpected": {
+        "rewrite": "Fine.",
+        "proposedLength": 4
+      }
+    },
+    {
+      "id": "repeated-key-value-still-checked",
+      "note": "The unused second value of a repeated key must still be valid: it holds an unpaired surrogate escape.",
+      "instruction": "I said 2024; it's 2025.",
+      "reply": "{\"edits\":[{\"line\":\"[54-57]\",\"text\":\"Come and see us.\",\"reason\":\"Clearer.\"}],\"rewrite\":\"Fine.\",\"x\":1,\"x\":\"\\ud800\"}",
+      "expected": {
+        "error": "invalidOutput"
+      },
+      "rewriteExpected": {
+        "error": "invalidOutput"
+      }
+    },
+    {
+      "id": "unpaired-surrogate-in-text",
+      "note": "An escaped unpaired surrogate in any string makes the reply invalid.",
+      "instruction": "I said 2024; it's 2025.",
+      "reply": "{\"edits\":[{\"line\":\"[54-57]\",\"text\":\"Come \\ud800 us.\",\"reason\":\"Fixes the line.\"}],\"rewrite\":\"Fine.\"}",
+      "expected": {
+        "error": "invalidOutput"
+      },
+      "rewriteExpected": {
+        "error": "invalidOutput"
+      }
+    },
+    {
+      "id": "unpaired-surrogate-in-reason",
+      "note": "The same in a reason.",
+      "instruction": "I said 2024; it's 2025.",
+      "reply": "{\"edits\":[{\"line\":\"[54-57]\",\"text\":\"Come and see us.\",\"reason\":\"Fix \\udfff\"}],\"rewrite\":\"Fine.\"}",
+      "expected": {
+        "error": "invalidOutput"
+      },
+      "rewriteExpected": {
+        "error": "invalidOutput"
+      }
+    },
+    {
+      "id": "unpaired-surrogate-in-ignored-key",
+      "note": "The same in a key outside the schema.",
+      "instruction": "I said 2024; it's 2025.",
+      "reply": "{\"edits\":[{\"line\":\"[54-57]\",\"text\":\"Come and see us.\",\"reason\":\"Clearer.\"}],\"rewrite\":\"Fine.\",\"x\":\"\\udc00\"}",
+      "expected": {
+        "error": "invalidOutput"
+      },
+      "rewriteExpected": {
+        "error": "invalidOutput"
+      }
+    },
+    {
+      "id": "unpaired-surrogate-in-key-name",
+      "note": "The same in a key name.",
+      "instruction": "I said 2024; it's 2025.",
+      "reply": "{\"\\ud800\":1,\"edits\":[{\"line\":\"[54-57]\",\"text\":\"Come and see us.\",\"reason\":\"Clearer.\"}],\"rewrite\":\"Fine.\"}",
+      "expected": {
+        "error": "invalidOutput"
+      },
+      "rewriteExpected": {
+        "error": "invalidOutput"
+      }
+    },
+    {
+      "id": "reversed-surrogate-pair",
+      "note": "A low surrogate escape before a high one is two unpaired surrogates.",
+      "instruction": "I said 2024; it's 2025.",
+      "reply": "{\"edits\":[{\"line\":\"[54-57]\",\"text\":\"Come \\ude00\\ud83d us.\",\"reason\":\"Fixes the line.\"}],\"rewrite\":\"Fine.\"}",
+      "expected": {
+        "error": "invalidOutput"
+      },
+      "rewriteExpected": {
+        "error": "invalidOutput"
+      }
+    },
+    {
+      "id": "escaped-surrogate-pair",
+      "note": "A high and low surrogate escape in order is one emoji, which does not count.",
+      "instruction": "I said 2024; it's 2025.",
+      "reply": "{\"edits\":[{\"line\":\"[54-57]\",\"text\":\"Come and see us \\ud83d\\ude00\",\"reason\":\"Fixes the line.\"}],\"rewrite\":\"Fine.\"}",
+      "expected": {
+        "edits": [
+          {
+            "line": "[54-57]",
+            "text": "Come and see us \ud83d\ude00",
+            "reason": "Fixes the line.",
+            "length": 12,
+            "inRange": true,
+            "checkThis": false,
+            "isDeletion": false
+          }
+        ],
+        "unknownLines": 0,
+        "duplicateLines": 0,
+        "malformedItems": 0
+      },
+      "rewriteExpected": {
+        "rewrite": "Fine.",
+        "proposedLength": 4
+      }
+    },
+    {
+      "id": "nesting-of-64-levels",
+      "note": "The top-level object and 63 arrays inside an ignored key: 64 levels are allowed.",
+      "instruction": "I said 2024; it's 2025.",
+      "reply": "{\"edits\":[{\"line\":\"[54-57]\",\"text\":\"Come and see us.\",\"reason\":\"Clearer.\"}],\"rewrite\":\"Fine.\",\"x\":[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]}",
+      "expected": {
+        "edits": [
+          {
+            "line": "[54-57]",
+            "text": "Come and see us.",
+            "reason": "Clearer.",
+            "length": 12,
+            "inRange": true,
+            "checkThis": false,
+            "isDeletion": false
+          }
+        ],
+        "unknownLines": 0,
+        "duplicateLines": 0,
+        "malformedItems": 0
+      },
+      "rewriteExpected": {
+        "rewrite": "Fine.",
+        "proposedLength": 4
+      }
+    },
+    {
+      "id": "nesting-of-65-levels",
+      "note": "One level more and the reply is invalid.",
+      "instruction": "I said 2024; it's 2025.",
+      "reply": "{\"edits\":[{\"line\":\"[54-57]\",\"text\":\"Come and see us.\",\"reason\":\"Clearer.\"}],\"rewrite\":\"Fine.\",\"x\":[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]}",
+      "expected": {
+        "error": "invalidOutput"
+      },
+      "rewriteExpected": {
+        "error": "invalidOutput"
+      }
+    },
+    {
+      "id": "number-out-of-range",
+      "note": "A number beyond the double range makes the reply invalid, even in an ignored key.",
+      "instruction": "I said 2024; it's 2025.",
+      "reply": "{\"edits\":[{\"line\":\"[54-57]\",\"text\":\"Come and see us.\",\"reason\":\"Clearer.\"}],\"rewrite\":\"Fine.\",\"x\":1e400}",
+      "expected": {
+        "error": "invalidOutput"
+      },
+      "rewriteExpected": {
+        "error": "invalidOutput"
+      }
+    },
+    {
+      "id": "negative-number-out-of-range",
+      "note": "The same below the double range.",
+      "instruction": "I said 2024; it's 2025.",
+      "reply": "{\"edits\":[{\"line\":\"[54-57]\",\"text\":\"Come and see us.\",\"reason\":\"Clearer.\"}],\"rewrite\":\"Fine.\",\"x\":-1e400}",
+      "expected": {
+        "error": "invalidOutput"
+      },
+      "rewriteExpected": {
+        "error": "invalidOutput"
+      }
+    },
+    {
+      "id": "integer-out-of-range",
+      "note": "A 310-digit integer does not fit a double either.",
+      "instruction": "I said 2024; it's 2025.",
+      "reply": "{\"edits\":[{\"line\":\"[54-57]\",\"text\":\"Come and see us.\",\"reason\":\"Clearer.\"}],\"rewrite\":\"Fine.\",\"x\":1000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000}",
+      "expected": {
+        "error": "invalidOutput"
+      },
+      "rewriteExpected": {
+        "error": "invalidOutput"
+      }
+    },
+    {
+      "id": "number-rounding-to-zero",
+      "note": "A non-zero number that rounds to zero does not fit.",
+      "instruction": "I said 2024; it's 2025.",
+      "reply": "{\"edits\":[{\"line\":\"[54-57]\",\"text\":\"Come and see us.\",\"reason\":\"Clearer.\"}],\"rewrite\":\"Fine.\",\"x\":1e-400}",
+      "expected": {
+        "error": "invalidOutput"
+      },
+      "rewriteExpected": {
+        "error": "invalidOutput"
+      }
+    },
+    {
+      "id": "subnormal-number",
+      "note": "A small number that a double still holds is fine.",
+      "instruction": "I said 2024; it's 2025.",
+      "reply": "{\"edits\":[{\"line\":\"[54-57]\",\"text\":\"Come and see us.\",\"reason\":\"Clearer.\"}],\"rewrite\":\"Fine.\",\"x\":1e-310}",
+      "expected": {
+        "edits": [
+          {
+            "line": "[54-57]",
+            "text": "Come and see us.",
+            "reason": "Clearer.",
+            "length": 12,
+            "inRange": true,
+            "checkThis": false,
+            "isDeletion": false
+          }
+        ],
+        "unknownLines": 0,
+        "duplicateLines": 0,
+        "malformedItems": 0
+      },
+      "rewriteExpected": {
+        "rewrite": "Fine.",
+        "proposedLength": 4
+      }
+    },
+    {
+      "id": "zero-with-large-exponent",
+      "note": "Zero is zero whatever its exponent.",
+      "instruction": "I said 2024; it's 2025.",
+      "reply": "{\"edits\":[{\"line\":\"[54-57]\",\"text\":\"Come and see us.\",\"reason\":\"Clearer.\"}],\"rewrite\":\"Fine.\",\"x\":0e-400}",
+      "expected": {
+        "edits": [
+          {
+            "line": "[54-57]",
+            "text": "Come and see us.",
+            "reason": "Clearer.",
+            "length": 12,
+            "inRange": true,
+            "checkThis": false,
+            "isDeletion": false
+          }
+        ],
+        "unknownLines": 0,
+        "duplicateLines": 0,
+        "malformedItems": 0
+      },
+      "rewriteExpected": {
+        "rewrite": "Fine.",
+        "proposedLength": 4
+      }
+    },
+    {
+      "id": "zero-with-exponent",
+      "note": "An exact zero with an exponent is a valid number.",
+      "instruction": "I said 2024; it's 2025.",
+      "reply": "{\"edits\":[{\"line\":\"[54-57]\",\"text\":\"Come and see us.\",\"reason\":\"Clearer.\"}],\"rewrite\":\"Fine.\",\"x\":0e1}",
+      "expected": {
+        "edits": [
+          {
+            "line": "[54-57]",
+            "text": "Come and see us.",
+            "reason": "Clearer.",
+            "length": 12,
+            "inRange": true,
+            "checkThis": false,
+            "isDeletion": false
+          }
+        ],
+        "unknownLines": 0,
+        "duplicateLines": 0,
+        "malformedItems": 0
+      },
+      "rewriteExpected": {
+        "rewrite": "Fine.",
+        "proposedLength": 4
+      }
+    },
+    {
+      "id": "zero-with-capital-exponent",
+      "note": "The same with a capital E.",
+      "instruction": "I said 2024; it's 2025.",
+      "reply": "{\"edits\":[{\"line\":\"[54-57]\",\"text\":\"Come and see us.\",\"reason\":\"Clearer.\"}],\"rewrite\":\"Fine.\",\"x\":0E1}",
+      "expected": {
+        "edits": [
+          {
+            "line": "[54-57]",
+            "text": "Come and see us.",
+            "reason": "Clearer.",
+            "length": 12,
+            "inRange": true,
+            "checkThis": false,
+            "isDeletion": false
+          }
+        ],
+        "unknownLines": 0,
+        "duplicateLines": 0,
+        "malformedItems": 0
+      },
+      "rewriteExpected": {
+        "rewrite": "Fine.",
+        "proposedLength": 4
+      }
+    },
+    {
+      "id": "zero-fraction-with-negative-exponent",
+      "note": "A zero fraction with a negative exponent is zero too.",
+      "instruction": "I said 2024; it's 2025.",
+      "reply": "{\"edits\":[{\"line\":\"[54-57]\",\"text\":\"Come and see us.\",\"reason\":\"Clearer.\"}],\"rewrite\":\"Fine.\",\"x\":0.00e-1}",
+      "expected": {
+        "edits": [
+          {
+            "line": "[54-57]",
+            "text": "Come and see us.",
+            "reason": "Clearer.",
+            "length": 12,
+            "inRange": true,
+            "checkThis": false,
+            "isDeletion": false
+          }
+        ],
+        "unknownLines": 0,
+        "duplicateLines": 0,
+        "malformedItems": 0
+      },
+      "rewriteExpected": {
+        "rewrite": "Fine.",
+        "proposedLength": 4
+      }
+    },
+    {
+      "id": "negative-zero-with-exponent",
+      "note": "So is a negative zero with an exponent.",
+      "instruction": "I said 2024; it's 2025.",
+      "reply": "{\"edits\":[{\"line\":\"[54-57]\",\"text\":\"Come and see us.\",\"reason\":\"Clearer.\"}],\"rewrite\":\"Fine.\",\"x\":-0.0e5}",
+      "expected": {
+        "edits": [
+          {
+            "line": "[54-57]",
+            "text": "Come and see us.",
+            "reason": "Clearer.",
+            "length": 12,
+            "inRange": true,
+            "checkThis": false,
+            "isDeletion": false
+          }
+        ],
+        "unknownLines": 0,
+        "duplicateLines": 0,
+        "malformedItems": 0
+      },
+      "rewriteExpected": {
+        "rewrite": "Fine.",
+        "proposedLength": 4
+      }
+    },
+    {
+      "id": "nan-literal",
+      "note": "NaN is not JSON.",
+      "instruction": "I said 2024; it's 2025.",
+      "reply": "{\"edits\":[{\"line\":\"[54-57]\",\"text\":\"Come and see us.\",\"reason\":\"Clearer.\"}],\"rewrite\":\"Fine.\",\"x\":NaN}",
+      "expected": {
+        "error": "invalidOutput"
+      },
+      "rewriteExpected": {
+        "error": "invalidOutput"
+      }
+    },
+    {
+      "id": "noncharacter-in-text",
+      "note": "An escaped U+FFFE in the new text and the rewrite is kept as sent and counts nothing.",
+      "instruction": "I said 2024; it's 2025.",
+      "reply": "{\"edits\":[{\"line\":\"[54-57]\",\"text\":\"Come and see\\ufffe us.\",\"reason\":\"Fixes the line.\"}],\"rewrite\":\"Fine\\ufffe.\"}",
+      "expected": {
+        "edits": [
+          {
+            "line": "[54-57]",
+            "text": "Come and see\ufffe us.",
+            "reason": "Fixes the line.",
+            "length": 12,
+            "inRange": true,
+            "checkThis": false,
+            "isDeletion": false
+          }
+        ],
+        "unknownLines": 0,
+        "duplicateLines": 0,
+        "malformedItems": 0
+      },
+      "rewriteExpected": {
+        "rewrite": "Fine\ufffe.",
+        "proposedLength": 4
+      }
+    },
+    {
+      "id": "raw-noncharacter-in-text",
+      "note": "The same with U+FFFE written as itself.",
+      "instruction": "I said 2024; it's 2025.",
+      "reply": "{\"edits\":[{\"line\":\"[54-57]\",\"text\":\"Come and see\ufffe us.\",\"reason\":\"Fixes the line.\"}],\"rewrite\":\"Fine.\"}",
+      "expected": {
+        "edits": [
+          {
+            "line": "[54-57]",
+            "text": "Come and see\ufffe us.",
+            "reason": "Fixes the line.",
+            "length": 12,
+            "inRange": true,
+            "checkThis": false,
+            "isDeletion": false
+          }
+        ],
+        "unknownLines": 0,
+        "duplicateLines": 0,
+        "malformedItems": 0
+      },
+      "rewriteExpected": {
+        "rewrite": "Fine.",
+        "proposedLength": 4
+      }
+    },
+    {
+      "id": "noncharacter-in-instruction",
+      "note": "U+FFFE in the instruction: its 2025 still appears, so nothing is flagged.",
+      "instruction": "I said 2024; it's 2025.\ufffe",
+      "reply": "{\"edits\":[{\"line\":\"[40-48]\",\"text\":\"So last year, in 2025, we moved to Tartu.\",\"reason\":\"Fixes the line.\"}]}",
+      "expected": {
+        "edits": [
+          {
+            "line": "[40-48]",
+            "text": "So last year, in 2025, we moved to Tartu.",
+            "reason": "Fixes the line.",
+            "length": 30,
+            "inRange": true,
+            "checkThis": false,
+            "isDeletion": false
+          }
+        ],
+        "unknownLines": 0,
+        "duplicateLines": 0,
+        "malformedItems": 0
+      }
+    },
+    {
+      "id": "rewrite-with-c1-control",
+      "note": "The rewrite rules reject every Cc but a line break: here DEL and NEL. The edits are fine.",
+      "instruction": "I said 2024; it's 2025.",
+      "reply": "{\"edits\":[{\"line\":\"[54-57]\",\"text\":\"Come and see us.\",\"reason\":\"Clearer.\"}],\"rewrite\":\"Fine\u007f\u0085.\"}",
+      "expected": {
+        "edits": [
+          {
+            "line": "[54-57]",
+            "text": "Come and see us.",
+            "reason": "Clearer.",
+            "length": 12,
+            "inRange": true,
+            "checkThis": false,
+            "isDeletion": false
+          }
+        ],
+        "unknownLines": 0,
+        "duplicateLines": 0,
+        "malformedItems": 0
+      },
+      "rewriteExpected": {
+        "error": "invalidOutput"
+      }
+    },
+    {
+      "id": "rewrite-of-only-a-byte-order-mark",
+      "note": "A rewrite that is empty after jsTrim is invalid; U+FEFF is JavaScript whitespace.",
+      "instruction": "I said 2024; it's 2025.",
+      "reply": "{\"edits\":[{\"line\":\"[54-57]\",\"text\":\"Come and see us.\",\"reason\":\"Clearer.\"}],\"rewrite\":\"\ufeff\"}",
+      "expected": {
+        "edits": [
+          {
+            "line": "[54-57]",
+            "text": "Come and see us.",
+            "reason": "Clearer.",
+            "length": 12,
+            "inRange": true,
+            "checkThis": false,
+            "isDeletion": false
+          }
+        ],
+        "unknownLines": 0,
+        "duplicateLines": 0,
+        "malformedItems": 0
+      },
+      "rewriteExpected": {
+        "error": "invalidOutput"
+      }
+    },
+    {
+      "id": "refused-stop",
+      "note": "A refusal is the refused error on both services, whatever the text.",
+      "instruction": "I said 2024; it's 2025.",
+      "reply": "{\"edits\":[{\"line\":\"[54-57]\",\"text\":\"Come and see us.\",\"reason\":\"Clearer.\"}],\"rewrite\":\"Fine.\"}",
+      "stop": "refused",
+      "expected": {
+        "error": "refused"
+      },
+      "rewriteExpected": {
+        "error": "refused"
+      }
+    },
+    {
+      "id": "truncated-stop",
+      "note": "An incomplete reply is the truncated error.",
+      "instruction": "I said 2024; it's 2025.",
+      "reply": "{\"edits\":[{\"line\":\"[54-57]\",\"text\":\"Come and see us.\",\"reason\":\"Clearer.\"}],\"rewrite\":\"Fine.\"}",
+      "stop": "truncated",
+      "expected": {
+        "error": "truncated"
+      },
+      "rewriteExpected": {
+        "error": "truncated"
+      }
+    },
+    {
+      "id": "empty-list",
+      "note": "An empty edits list is a valid result.",
+      "instruction": "I said 2024; it's 2025.",
+      "reply": "{\"edits\":[]}",
+      "expected": {
+        "edits": [],
+        "unknownLines": 0,
+        "duplicateLines": 0,
+        "malformedItems": 0
+      }
+    },
+    {
+      "id": "malformed-json",
+      "note": "A reply with no JSON object is a typed error.",
+      "instruction": "I said 2024; it's 2025.",
+      "reply": "I could not find anything to fix.",
+      "expected": {
+        "error": "invalidOutput"
+      },
+      "rewriteExpected": {
+        "error": "invalidOutput"
+      }
+    },
+    {
+      "id": "missing-edits",
+      "note": "A JSON object without \"edits\" is a typed error.",
+      "instruction": "I said 2024; it's 2025.",
+      "reply": "{\"changes\":[]}",
+      "expected": {
+        "error": "invalidOutput"
+      },
+      "rewriteExpected": {
+        "error": "invalidOutput"
+      }
+    }
+  ]
+}

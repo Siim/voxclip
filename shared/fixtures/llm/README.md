@@ -15,11 +15,16 @@ npm --prefix tools/fixtures/llm run check
 | `format-transcript.json` | 8 | F1, empty/sparse inputs, 41-entry limit, punctuation, gaps, minutes |
 | `to-fixed.json` | 110 | 13 normative rounding and 5 time vectors, 80 editing labels, boundaries, 100,000 randomized values |
 | `finalize-clips.json` | 29 | C1–C3, invalid numbers, ranking, UTF-16, exact length bounds for every preset |
-| `extensions.json` | 24 | All S1/M1/N1/W1 vectors, snapping integration, cuts, window budgets, entry preparation, strings |
+| `extensions.json` | 26 | All S1/M1/N1/W1 vectors, snapping integration, cuts, window budgets, entry preparation, strings |
 | `tighten-verifier.json` | 16 | T1–T8 plus duplicates, kinds, no-ops, Unicode, punctuation and review thresholds |
 | `clip-finder-requests.json` | 30 | Every preset, with/without instructions, single/multiple windows; 252 connector renderings |
 | `ai-tighten-requests.json` | 20 | All strengths, instructions, windows, sparse indices; 180 connector renderings |
 | `connector-requests.json` | 37 | Connection tests, capability branches, CLI escaping/flags, Apple mapping; 37 renderings |
+| `voice-rewrite-requests.json` | 7 | Voice Lab rewrite (voice-lab §8.9.1): passage and full take, with and without a request, six budgets including `minChars` = `maxChars`, a decomposed source; each with the quote's estimate and preflight |
+| `patch-rewrite-requests.json` | 5 | Voice Lab Fix with AI (voice-lab §8.1): the line ranges and instruction, equal `minChars` and `maxChars`, a trimmed instruction, F1, sparse indices, decomposed Estonian text; each with the quote's estimate and preflight |
+| `cli-replies.json` | 35 | Claude and Codex CLI transport envelopes (ai.md §4.5, §6.8): `end_turn`, `max_tokens`, `refusal` and no stop reason; replies as `structured_output` and as result text, fenced or not; replies of 64 and 65 levels inside envelopes deeper than 64; envelopes of 512 and 513 levels; jsTrim, no fence or brace scan, a strict escape, a zero with an exponent and a repeated key in the envelope |
+
+The 35 CLI rows include Claude output-token ties (UTF-8 ordinal keys, independent of JSON order), `output_tokens`, malformed envelopes with signed-out stderr, malformed envelope field types, and exact-zero number tokens of 1,024 and 1,025 bytes in both replies and envelopes. Codex exec and app-server rows cover CRLF, a trailing CR, raw U+2028 inside a JSON string, and a leading BOM. Both connector suites replay every row.
 
 Each UTF-8 file has stable insertion-order keys, LF line endings and one trailing
 newline. Its envelope is:
@@ -36,7 +41,8 @@ newline. Its envelope is:
 ```
 
 `source`, `origin` and optional `notes` are provenance, not assertions. The
-`sources` hashes are SHA-256 of UTF-8 source files with CRLF normalized to LF,
+`sources` hashes are SHA-256 of UTF-8 source files with CRLF normalized to LF
+(a Voice Lab request file lists only its own prompt),
 detecting prompt/catalog drift without depending on Windows checkout settings.
 The scoped `.gitattributes` pins the goldens themselves to LF. Numbers are binary64. Only numeric
 input fields may use the strings `NaN`, `Infinity`, `-Infinity` or `-0`; decode
@@ -97,6 +103,36 @@ those explicitly, never reinterpret ordinary text fields with the same content.
     byte-exact `title` values but omits string-enum names, so compare object
     titles with the logical fixture and derive enum builder names from their
     node paths rather than encoded JSON.
+11. `voice-rewrite-request`: build a `VoiceRewriteRequest` from `input` (each
+    source word is a `word` item), send it through the platform's
+    `VoiceRewriteService` with a stub connector, and compare the sent
+    `system`, `cachedBlock` and `instruction` as UTF-8 bytes, plus `feature`,
+    `schemaName`, `schema`, `effort` and `language`. These cases have no
+    connector renderings: the request travels the existing connector paths, and
+    its `maxOutputTokens` depends on the connector and the source length.
+    `expected.estimate` is the quote's estimate: `units` is `est()` (ai.md
+    §11.5) of `system + cachedBlock + instruction`, `unit` is `token` and
+    `basis` is `unknown`, with no price or credits. Compare it with the estimate
+    of the quote the service prepares for the stub connector.
+    `expected.preflight` is the ai.md §12.8 preflight for that stub connector,
+    OpenAI, which has no output cap of its own: `sourceTokens`, the sent
+    `maxOutputTokens`, `required` and `smallestContext`, the smallest context
+    of at least 512 tokens with `required ≤ ⌊context × 0.9⌋`. Compare the sent
+    `maxOutputTokens`, then send again through a stub that reports
+    `smallestContext`, which must send, and one that reports one token less,
+    which must fail with the context error before sending.
+12. `patch-rewrite-request`: build a `PatchRewriteRequest` from `input` (its
+    `entries` and one `ranges` item per formatted line), send it through the
+    platform's `PatchRewriteService` with a stub connector that returns an
+    empty `edits` list, and compare the sent request, the quote's estimate and
+    the preflight as in step 11. The tag must be `patch-rewrite`.
+13. `cli-reply`: run the platform's Claude Code connector with a fake process
+    whose generation writes `input.stdout` as it is, with exit 0 and no stderr,
+    for a `voiceRewrite` request with `input.model` and `input.schema`. Read
+    the completion as a reply against that schema (ai.md §2.3). `expected` is
+    either `rewrite` and the answering `model`, or `error`: `cliFailed` (stdout
+    is no envelope), `truncated`, `refused` (with no category) or
+    `invalidOutput`. Each platform's CLI connector suite replays these cases.
 
 No fixture calls a provider or installed CLI. All auth values are `<key>` or
 `Bearer <key>`. Runtime transport retries, process isolation/cleanup, auth

@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using System.Text.Json.Nodes;
+using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Shared;
 
 namespace VoxClip.Core.Domain.Clips;
@@ -68,7 +69,7 @@ internal static class TightenVerifier
     }
 
     private static string[] Tokens(string text, string strip) => text.Split(ClipText.TrimCharacters.ToCharArray(), StringSplitOptions.RemoveEmptyEntries)
-        .Select(part => Lower(part.Normalize(NormalizationForm.FormC)).Trim(strip.ToCharArray())).Where(part => part.Length > 0).ToArray();
+        .Select(part => Lower(EditingAlgorithms.Nfc(part)).Trim(strip.ToCharArray())).Where(part => part.Length > 0).ToArray();
 
     private static string Lower(string text)
     {

@@ -37,6 +37,24 @@ public sealed partial class LlmCatalog
         }
     }
     internal JsonObject Provider(ConnectorId id) => Data["connectors"]!.AsArray().OfType<JsonObject>().Single(provider => provider["id"]!.GetValue<string>() == WireId(id));
+    internal async Task<int> ResolveContextTokensAsync(ILlmConnector connector, string model, CancellationToken ct,
+        IReadOnlyList<LlmModel>? models = null, bool queryConnector = true)
+    {
+        if (queryConnector)
+        {
+            var context = await connector.GetContextTokensAsync(model, ct).ConfigureAwait(false);
+            if (context is not null) return context.Value;
+            models ??= await connector.GetModelsAsync(false, ct).ConfigureAwait(false);
+            if (models.FirstOrDefault(candidate => candidate.Id == model)?.ContextTokens is { } selected) return selected;
+        }
+        if (Model(connector.Id, model)?["contextTokens"]?.GetValue<int>() is { } curated) return curated;
+        return connector.Id switch {
+            ConnectorId.Ollama or ConnectorId.LmStudio => 4096,
+            ConnectorId.AppleFoundation => throw LlmErrors.Create(LlmErrorKind.Unavailable, "The runtime context size is unavailable."),
+            _ => 128000
+        };
+    }
+
     internal JsonObject? Model(ConnectorId id, string model) => Provider(id)["models"]?.AsArray().OfType<JsonObject>().FirstOrDefault(item => item["id"]!.GetValue<string>() == model);
     internal IReadOnlyList<LlmModel> Models(ConnectorId id) => Provider(id)["models"]!.AsArray().OfType<JsonObject>()
         .Select(model => new LlmModel(model["id"]!.GetValue<string>(), model["name"]!.GetValue<string>(), model["tier"]?.GetValue<string>(), model["contextTokens"]?.GetValue<int>(), ModelSource.Curated)).ToArray();

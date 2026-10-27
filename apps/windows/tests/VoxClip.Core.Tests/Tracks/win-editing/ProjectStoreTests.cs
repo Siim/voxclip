@@ -246,7 +246,7 @@ public sealed class ProjectStoreTests
             root => root["transcript"]!["words"]![0]!.AsObject().Remove("rawStart"),
             root => root["transcript"]!["words"]![0]!["start"] = "NaN",
             root => root["transcript"]!["words"]![0]!["kind"] = 0,
-            root => root["transcript"]!["words"]![0]!["text"] = "o\u0303",
+            root => root["transcript"]!["words"]![0]!["text"] = " o\u0303",
             root => root["transcript"]!["words"]![0]!["text"] = " um",
             root => root["transcript"]!["words"]![0]!["end"] = root["transcript"]!["words"]![0]!["start"]!.DeepClone(),
             root => root["transcript"]!["words"]![1]!["start"] = -1,

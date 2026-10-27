@@ -696,7 +696,7 @@ struct VoiceRewriteServiceTests {
         let connector = RewriteStub(output: "{\"rewrite\":\"Hello\"}")
         let input = VoiceRewriteRequest(id: UUID(), scope: .passage,
                                         sourceWords: [TimedWord(id: "w1", text: "Hi", start: 0, end: 0.3)],
-                                        instruction: "Improve", language: "en")
+                                        instruction: "Improve", language: "en", targetSeconds: 4.1, minChars: 10, maxChars: 12)
         let quote = try await service.prepare(input, connector: .openai, model: "selected-model")
         let authorization = VoiceRewriteAuthorization(quote: quote, approved: true)
         let first = Task { try await service.propose(input, connector: connector, model: "selected-model", authorization: authorization) }
@@ -712,18 +712,23 @@ struct VoiceRewriteServiceTests {
         let connector = RewriteStub(output: "{\"rewrite\":\"Hello\"}")
         let document = try #require(JSONSerialization.jsonObject(with: FixtureLoader.data("fixtures/voice-lab/contract.json")) as? [String: Any])
         let rows = try #require(document["rewriteMutations"] as? [[String: Any]])
+        #expect(rows.count == 11)
+        // 4.12 renders as "4.1" too, so this row shows that the quote binds the value, not only the prompt text.
+        #expect(toFixed1(4.12) == toFixed1(4.1))
         for row in rows {
             let field = try #require(row["field"] as? String)
             let allowed = try #require(row["allowed"] as? Bool)
             let words = [TimedWord(id: "w1", text: "Hi", start: 0, end: 0.3)]
-            let input = VoiceRewriteRequest(id: UUID(), scope: .passage, sourceWords: words, instruction: "Improve", language: "en")
+            let input = VoiceRewriteRequest(id: UUID(), scope: .passage, sourceWords: words, instruction: "Improve", language: "en", targetSeconds: 4.1, minChars: 10, maxChars: 12)
             let quote = try await service.prepare(input, connector: field == "connector" ? .anthropic : .openai, model: "selected-model")
             var changedWords = words
             if field == "sourceText" { changedWords[0].text = "Bye" }
             if field == "sourceTiming" { changedWords[0].end = 0.4 }
             let changed = VoiceRewriteRequest(id: input.id, scope: field == "scope" ? .fullTake : .passage,
                                               sourceWords: changedWords, instruction: field == "instruction" ? "Make longer" : "Improve",
-                                              language: field == "language" ? "et" : "en")
+                                              language: field == "language" ? "et" : "en",
+                                              targetSeconds: field == "targetSeconds" ? 4.12 : 4.1,
+                                              minChars: field == "minChars" ? 11 : 10, maxChars: field == "maxChars" ? 13 : 12)
             let before = await connector.calls
             do {
                 _ = try await service.propose(changed, connector: connector, model: field == "model" ? "other-model" : "selected-model",
@@ -743,7 +748,7 @@ struct VoiceRewriteServiceTests {
     func rewriteLanguageRejectsTrailingLineBreaksAndSpaces(_ language: String) async throws {
         let service = VoiceRewriteService(shared: SharedResources(root: try FixtureLoader.sharedRoot()))
         let input = VoiceRewriteRequest(id: UUID(), scope: .passage, sourceWords: [TimedWord(id: "w1", text: "Hi", start: 0, end: 0.3)],
-                                        instruction: "Improve", language: language)
+                                        instruction: "Improve", language: language, targetSeconds: 4.1, minChars: 10, maxChars: 12)
         do { _ = try await service.prepare(input, connector: .openai, model: "selected-model"); Issue.record("Expected language rejection") }
         catch VoiceLabError.invalidInput {}
     }
@@ -751,7 +756,7 @@ struct VoiceRewriteServiceTests {
         let shared = SharedResources(root: try FixtureLoader.sharedRoot())
         let connector = RewriteStub(output: "{\"rewrite\":\"Better words for a quick vlog.\"}")
         let source = [TimedWord(id: "w1", text: "Original", start: 1, end: 1.4), TimedWord(id: "w2", text: "words", start: 1.5, end: 1.8)]
-        let request = VoiceRewriteRequest(id: UUID(), scope: .fullTake, sourceWords: source, instruction: "Make it concise", language: "en")
+        let request = VoiceRewriteRequest(id: UUID(), scope: .fullTake, sourceWords: source, instruction: "Make it concise", language: "en", targetSeconds: 4.1, minChars: 10, maxChars: 12)
         let service = VoiceRewriteService(shared: shared)
         let estimate = try await service.estimate(request, connector: .openai)
         #expect(estimate.usd == nil && estimate.credits == nil)
@@ -765,7 +770,7 @@ struct VoiceRewriteServiceTests {
     @Test func rejectsModelGeneratedURL() async throws {
         let shared = SharedResources(root: try FixtureLoader.sharedRoot())
         let connector = RewriteStub(output: "{\"rewrite\":\"Visit https://example.invalid\"}")
-        let request = VoiceRewriteRequest(id: UUID(), scope: .passage, sourceWords: [TimedWord(id: "w1", text: "Hi", start: 0, end: 0.3)], instruction: "", language: "en")
+        let request = VoiceRewriteRequest(id: UUID(), scope: .passage, sourceWords: [TimedWord(id: "w1", text: "Hi", start: 0, end: 0.3)], instruction: "", language: "en", targetSeconds: 4.1, minChars: 10, maxChars: 12)
         let service = VoiceRewriteService(shared: shared)
         let authorization = VoiceRewriteAuthorization(quote: try await service.prepare(request, connector: .openai, model: "selected-model"), approved: true)
         do { _ = try await service.propose(request, connector: connector, model: "selected-model", authorization: authorization); Issue.record("Expected inert text validation") }
@@ -774,10 +779,11 @@ struct VoiceRewriteServiceTests {
     @Test func rewriteNeedsItsOwnApproval() async throws {
         let shared = SharedResources(root: try FixtureLoader.sharedRoot())
         let connector = RewriteStub(output: "{\"rewrite\":\"Hello\"}")
-        let request = VoiceRewriteRequest(id: UUID(), scope: .passage, sourceWords: [TimedWord(id: "w1", text: "Hi", start: 0, end: 0.3)], instruction: "", language: "en")
+        let request = VoiceRewriteRequest(id: UUID(), scope: .passage, sourceWords: [TimedWord(id: "w1", text: "Hi", start: 0, end: 0.3)], instruction: "", language: "en", targetSeconds: 4.1, minChars: 10, maxChars: 12)
         let service = VoiceRewriteService(shared: shared)
         let authorization = VoiceRewriteAuthorization(quote: try await service.prepare(request, connector: .openai, model: "selected-model"), approved: true)
-        let changed = VoiceRewriteRequest(id: request.id, scope: .fullTake, sourceWords: request.sourceWords, instruction: request.instruction, language: request.language)
+        let changed = VoiceRewriteRequest(id: request.id, scope: .fullTake, sourceWords: request.sourceWords, instruction: request.instruction, language: request.language,
+                                          targetSeconds: request.targetSeconds, minChars: request.minChars, maxChars: request.maxChars)
         do { _ = try await service.propose(changed, connector: connector, model: "selected-model", authorization: authorization); Issue.record("Expected approval failure") }
         catch VoiceLabError.consentRequired {}
         #expect(await connector.calls == 0)
@@ -786,7 +792,7 @@ struct VoiceRewriteServiceTests {
         let shared = SharedResources(root: try FixtureLoader.sharedRoot())
         let rewrite = VoiceRewriteService(shared: shared)
         let connector = RewriteStub(output: "{\"rewrite\":\"Hello\"}")
-        let request = VoiceRewriteRequest(id: UUID(), scope: .passage, sourceWords: [TimedWord(id: "w1", text: "Hi", start: 0, end: 0.3)], instruction: "Improve", language: "en")
+        let request = VoiceRewriteRequest(id: UUID(), scope: .passage, sourceWords: [TimedWord(id: "w1", text: "Hi", start: 0, end: 0.3)], instruction: "Improve", language: "en", targetSeconds: 4.1, minChars: 10, maxChars: 12)
         let review = VoiceRewriteAuthorization(quote: try await rewrite.prepare(request, connector: .openai, model: "selected-model"), approved: true)
         let proposal = try await rewrite.propose(request, connector: connector, model: "selected-model", authorization: review)
         let generated = Mutex(0)

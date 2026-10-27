@@ -1,4 +1,5 @@
 using System.Text.Json;
+using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.VoiceLab;
 namespace VoxClip.Core.Domain.Shared;
 
@@ -21,6 +22,14 @@ public static class ProjectSerialization
                 if (number == 3) ValidateV3EnumWire(document.RootElement);
             }
             var project = JsonSerializer.Deserialize(json, ProjectJsonContext.Default.Project) ?? throw new JsonException("Missing project.");
+            project = project with {
+                Transcript = project.Transcript is { } transcript ? transcript with {
+                    Words = transcript.Words.Select(word => word with { Text = EditingAlgorithms.Nfc(word.Text) }).ToArray()
+                } : null,
+                Edits = project.Edits with {
+                    Corrections = project.Edits.Corrections.ToDictionary(pair => pair.Key, pair => EditingAlgorithms.Nfc(pair.Value), StringComparer.Ordinal)
+                }
+            };
             Validate(project);
             return project;
         }

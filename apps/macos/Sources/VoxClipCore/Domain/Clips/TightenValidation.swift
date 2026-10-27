@@ -256,7 +256,7 @@ private struct TightenRules {
 
     func tokens(_ text: String) -> [String] {
         EditingPrimitives.splitWords(text).compactMap { part in
-            let lower = String(part).precomposedStringWithCanonicalMapping.lowercased(with: Locale(identifier: "en_US_POSIX"))
+            let lower = EditingPrimitives.nfc(String(part)).lowercased(with: Locale(identifier: "en_US_POSIX"))
             var scalars = lower.unicodeScalars[...]
             while let first = scalars.first, edgeCharacters.contains(first) { scalars = scalars.dropFirst() }
             while let last = scalars.last, edgeCharacters.contains(last) { scalars = scalars.dropLast() }

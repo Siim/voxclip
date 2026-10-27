@@ -6,7 +6,7 @@ using VoxClip.Core.Services.VoiceLab;
 
 namespace VoxClip.Core.Domain.VoiceLab;
 
-public enum VoiceLabOperation { CreateClone, DeleteClone, TextToSpeech, VoiceChange, VoiceRewrite }
+public enum VoiceLabOperation { CreateClone, DeleteClone, TextToSpeech, VoiceChange, VoiceRewrite, PatchRewrite }
 public enum VoiceLabErrorKind
 {
     InvalidInput, ConsentRequired, SpeakerMismatch, PlanUnavailable, NoVoiceSlots, MissingKey,
@@ -121,8 +121,13 @@ public sealed record VoiceLabCloneRequest(string DisplayName, string Language, I
     DateTimeOffset CreatedAt, bool RemoveBackgroundNoise);
 
 public enum VoiceRewriteScope { Passage, FullTake }
+/// <summary>One passage or full-take rewrite with its length budget (voice-lab §8.9.1), computed by the caller and bound by the quote.
+/// <c>TargetSeconds</c> is <c>w</c>, the part of the window the take must fill: finite, above 0 and at most 600. <c>MinChars</c> and
+/// <c>MaxChars</c> bound the new words' <see cref="VoiceLabTextLength"/>, with 1 ≤ MinChars ≤ MaxChars ≤ 5,000.</summary>
 public sealed record VoiceRewriteRequest(Guid RequestId, VoiceRewriteScope Scope, IReadOnlyList<TimedWord> SourceWords,
-    string Instruction, string Language);
-/// <summary>Review data cannot synthesize audio or change the original timed words.</summary>
+    string Instruction, string Language, double TargetSeconds, int MinChars, int MaxChars);
+/// <summary>Review data cannot synthesize audio or change the original timed words. <c>ProposedLength</c> is Core's own
+/// <see cref="VoiceLabTextLength"/> of the proposed text, and <c>InRange</c> says whether it lies in the request's range; a proposal
+/// outside the range is still returned, as it is (§8.9.1).</summary>
 public sealed record VoiceRewriteProposal(Guid Id, VoiceRewriteScope Scope, IReadOnlyList<TimedWord> SourceWords,
-    string SourceText, string ProposedText, ConnectorId Connector, string Model, string? ProviderRequestId);
+    string SourceText, string ProposedText, ConnectorId Connector, string Model, string? ProviderRequestId, int ProposedLength, bool InRange);

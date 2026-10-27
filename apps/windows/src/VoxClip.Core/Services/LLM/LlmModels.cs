@@ -136,7 +136,7 @@ public sealed partial class LlmConnector
         try
         {
             var saved = (await File.ReadAllTextAsync(cacheFile, ct).ConfigureAwait(false));
-            var entry = LlmOutput.Parse(saved)?[LlmCatalog.WireId(Id)];
+            var entry = LlmOutput.Envelope(saved)?[LlmCatalog.WireId(Id)];
             if (entry?["models"] is not JsonArray models) return;
             modelCache = models.OfType<JsonObject>().Select(item => new LlmModel(item["id"]!.GetValue<string>(), item["name"]!.GetValue<string>(), item["tier"]?.GetValue<string>(), item["contextTokens"]?.GetValue<int>(),
                 Enum.TryParse<ModelSource>(item["source"]?.GetValue<string>(), true, out var source) ? source : ModelSource.Discovered)).ToArray();
@@ -152,7 +152,7 @@ public sealed partial class LlmConnector
         var temporary = cacheFile + "." + Guid.NewGuid().ToString("N") + ".tmp";
         try
         {
-            var root = File.Exists(cacheFile) ? LlmOutput.Parse(await File.ReadAllTextAsync(cacheFile, ct).ConfigureAwait(false)) as JsonObject ?? new() : new JsonObject();
+            var root = File.Exists(cacheFile) ? LlmOutput.Envelope(await File.ReadAllTextAsync(cacheFile, ct).ConfigureAwait(false)) as JsonObject ?? new() : new JsonObject();
             var models = new JsonArray();
             foreach (var model in modelCache ?? []) models.Add((JsonNode)new JsonObject { ["id"] = model.Id, ["name"] = model.Name, ["tier"] = model.Tier, ["contextTokens"] = model.ContextTokens, ["source"] = model.Source.ToString().ToLowerInvariant() });
             root[LlmCatalog.WireId(Id)] = new JsonObject { ["fetchedAt"] = ModelsFetchedAt is { } fetched ? VoxClip.Core.Domain.Shared.UtcTimestamp.Format(fetched) : null, ["models"] = models };

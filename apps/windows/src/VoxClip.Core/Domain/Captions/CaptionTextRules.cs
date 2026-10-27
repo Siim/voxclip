@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using VoxClip.Core.Domain.Editing;
 
 namespace VoxClip.Core.Domain.Captions;
 
@@ -15,7 +16,7 @@ internal static class CaptionTextRules
     {
         var builder = new StringBuilder();
         var pending = false;
-        foreach (var rune in text.Normalize(NormalizationForm.FormC).EnumerateRunes())
+        foreach (var rune in EditingAlgorithms.Nfc(text).EnumerateRunes())
         {
             if (White(rune.Value)) { pending = builder.Length > 0; continue; }
             if (pending) builder.Append(' ');
@@ -82,6 +83,6 @@ internal static class CaptionTextRules
     }
 
     internal static string Key(string text, string language, CaptionData data)
-        => string.Concat(Case(text.Normalize(NormalizationForm.FormC), CaptionTextTransformValue.Lowercase, language, data).EnumerateRunes()
+        => string.Concat(Case(EditingAlgorithms.Nfc(text), CaptionTextTransformValue.Lowercase, language, data).EnumerateRunes()
             .Where(rune => !Punctuation(rune) && !White(rune.Value)).Select(rune => rune.ToString()));
 }

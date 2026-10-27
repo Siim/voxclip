@@ -19,7 +19,7 @@ or fails when `VOXCLIP_REQUIRE_SCHEMA_PYTHON=1`. Both macOS and Windows Core CI
 jobs must set that flag. Interpreter probes have 10-second deadlines; validator
 subprocesses have a 60-second deadline. All are terminated on cancellation.
 
-All 85 editing fixtures are discovered: 84 normative vectors run and the
+All 86 editing fixtures are discovered: 85 normative vectors run and the
 informative caption-transform vector is explicitly skipped, per editing
 §11.1. Four other-track placeholders remain outside this track. The real
 Windows file-sharing test runs only on Windows; injected Win32 replacement

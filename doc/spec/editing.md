@@ -301,9 +301,12 @@ The reference uses the host locale's `toLocaleLowerCase()`. VoxClip uses an inva
 
 ### 4.8 NFC
 
-`cleanWords` converts every engine text to NFC (Swift `precomposedStringWithCanonicalMapping`, C# `Normalize(NormalizationForm.FormC)`). Corrections are stored NFC as well.
+`cleanWords` converts every engine text to NFC. Corrections are stored NFC as well. Each Core has one NFC helper, and every Core rule that normalises text uses it (editing, captions, share text, project validation and Voice Lab): Swift `EditingPrimitives.nfc`, C# `EditingAlgorithms.Nfc`. Both give exact Unicode NFC for every string:
 
-.NET normalisation needs ICU. With `InvariantGlobalization` on, `string.Normalize(FormC)` silently returns its input unchanged (measured on .NET 10.0.102), so it MUST stay off in every .NET project (architecture 2.3). `VoxClip.Core.Tests` asserts `"õ".Normalize(NormalizationForm.FormC) == "õ"` so that a later property change fails CI. Fixtures `ingest/clean-words`, `fillers/anchors-and-case` and `text/js-whitespace` contain non-NFC input.
+- **Swift.** Foundation's canonical-mapping methods are not exact: they miss LV+T composition, have off-by-one Hangul bounds, and decompose some Unicode 16 composites without recomposing them. The helper uses Foundation's ICU-backed `NFC` transform, splitting runs at U+1113, U+1176, U+11A7 and U+11C3. These four scalars are starters that take part in no composition, so splitting there preserves exact NFC and prevents the range-boundary miscompositions. Unicode 16 composites such as Kirat Rai U+16D68 remain composed.
+- **C#.** `string.Normalize(NormalizationForm.FormC)` is exact, but it throws on an unpaired surrogate and on U+FFFE. The helper first maps each unpaired surrogate to U+FFFD, as a Swift string holds it, then normalises the runs between U+FFFE characters on their own and joins them with U+FFFE. U+FFFE is a starter in no composition, so the result is NFC of the whole text. Other noncharacters, such as U+FFFF, need no special step.
+
+.NET normalisation needs ICU. With `InvariantGlobalization` on, `string.Normalize(FormC)` silently returns its input unchanged (measured on .NET 10.0.102), so it MUST stay off in every .NET project (architecture 2.3). `VoxClip.Core.Tests` asserts `"õ".Normalize(NormalizationForm.FormC) == "õ"` so that a later property change fails CI. Fixtures `ingest/clean-words`, `fillers/anchors-and-case` and `text/js-whitespace` contain non-NFC input. `ingest/clean-words-unicode` holds U+FFFE, a precomposed LV syllable before a trailing jamo, decomposed L, V and T jamo, and all four inert jamo, which both Cores must keep as NFC does.
 
 ### 4.9 Float32 levels
 
@@ -820,6 +823,8 @@ Segments: `so` [1, 1.4] kept; `pause-after-so` [1.4, 3.4] cut; `right` [3.4, 3.9
 Schema: `shared/schemas/project.schema.json` (JSON Schema 2020-12; `transcript.words[]` items use `timed-word.schema.json`). Examples: `shared/fixtures/projects/*.voxclip`, with expected plans in `shared/fixtures/editing/projects/*.json`.
 
 ### 10.1 Encoding
+
+On project load, both Cores normalize every transcript word text and correction with their exact NFC helper before validating text, in memory. Older Mac projects may contain a precomposed Hangul LV syllable followed by a trailing jamo; they open normally, without a migration prompt or warning. The next save writes NFC. Normalization never changes word ids or source timings, trims no text and repairs no other invalid input: text still invalid after normalization is refused. The shared `projects/normalization/legacy-nfc.voxclip` fixture and `legacy-nfc.expected.json` pin the load and re-save result.
 
 - One UTF-8 JSON document without a BOM, extension `.voxclip`, identical on both platforms. Writers SHOULD indent with two spaces and end the file with LF. Key order is not significant.
 - Numbers are finite. Doubles MUST round-trip exactly (write the shortest representation that parses back to the same binary64). Reading and writing a file therefore never changes a time. Verify this for the encoder in use on each platform with a test that saves and reloads both example projects.

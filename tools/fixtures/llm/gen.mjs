@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url'
 import * as reference from './reference.mjs'
 import { appleSchema, canonicalRequest, clipInstruction, renderConnector, sha256, tomlBasicString, windowBudget, tightenWindowBudget } from './requests.mjs'
 import { candidate, f1Words, f1Rendered, fixedVectors, timeVectors, finalizeVectors, snapVectors, w1Bounds, tightenVectors, t1Entries, u100Words, syntheticWords, randomValues } from './vectors.mjs'
+import { patchRewriteRequest, voiceLabEstimate, voiceRewriteRequest } from './voicelab.mjs'
 
 assert(Number(process.versions.node.split('.')[0]) >= 20, 'Node >=20 is required')
 assert(process.argv.slice(2).every(argument => argument === '--check'), 'usage: node gen.mjs [--check]')
@@ -16,8 +17,14 @@ const sourceBytes = await Promise.all(inputPaths.map(path => readFile(join(root,
 const [clipFinder, aiTighten, catalog] = sourceBytes.map(text => JSON.parse(text))
 const prompts = { clipFinder, aiTighten }
 const sourceHashes = Object.fromEntries(inputPaths.map((path, index) => [path, sha256(sourceBytes[index].replace(/\r\n/g, '\n'))]))
-for (const source of [clipFinder, aiTighten, catalog]) assert.equal(source.schemaVersion, 1, 'unsupported shared input schemaVersion')
-for (const schema of [clipFinder.output.schema, aiTighten.output.schema, catalog.testRequest.schema]) reference.validateSchema(schema)
+// The Voice Lab prompts feed only their own request files, so each of those records just its prompt.
+const voiceLabPaths = { voiceRewrite: 'shared/prompts/voice-rewrite.json', patchRewrite: 'shared/prompts/patch-rewrite.json' }
+const voiceLabBytes = Object.fromEntries(await Promise.all(Object.entries(voiceLabPaths).map(async ([name, path]) => [name, await readFile(join(root, path), 'utf8')])))
+const voiceLabPrompts = Object.fromEntries(Object.entries(voiceLabBytes).map(([name, text]) => [name, JSON.parse(text)]))
+const voiceLabSources = name => ({ [voiceLabPaths[name]]: sha256(voiceLabBytes[name].replace(/\r\n/g, '\n')) })
+for (const source of [clipFinder, aiTighten, catalog, ...Object.values(voiceLabPrompts)]) assert.equal(source.schemaVersion, 1, 'unsupported shared input schemaVersion')
+for (const prompt of Object.values(voiceLabPrompts)) assert(Number.isInteger(prompt.promptVersion) && prompt.promptVersion >= 1, 'a Voice Lab prompt needs a promptVersion')
+for (const schema of [clipFinder.output.schema, aiTighten.output.schema, catalog.testRequest.schema, ...Object.values(voiceLabPrompts).map(prompt => prompt.schema)]) reference.validateSchema(schema)
 const presets = Object.fromEntries(clipFinder.presets.map(preset => [preset.id, preset]))
 const connectors = Object.fromEntries(catalog.connectors.map(connector => [connector.id, connector]))
 assert.deepEqual(Object.keys(connectors), ['anthropic', 'openai', 'xai', 'gemini', 'ollama', 'lmstudio', 'apple-foundation', 'claude-code', 'codex'], 'connector coverage changed')
@@ -282,6 +289,189 @@ for (const [feature, limit, choice, filename] of [['clipFinder', 500, 'custom', 
   renderCase(filename, 'utf16-user-instruction-limit', feature, f1Words, formattedF1.lines, choice, '\uFEFF' + 'x'.repeat(limit - 1) + '😀ignored\uFEFF')
 }
 
+// voice-lab §8.9.1: the rewrite request renders its length budget. Times are exact binary64 so inputs stay readable.
+// Both Cores estimate with the catalog's bytes per token, which must be the 2.2 of est() (ai.md §11.5).
+equal(catalog.policy.tokenEstimate.utf8BytesPerToken, 2.2, 'the Voice Lab estimate uses est()')
+const codePoints = (...values) => String.fromCodePoint(...values)
+const timedWords = text => text.split(' ').map((word, index) => ({ id: `w${index}`, text: word, start: index * 0.5, end: index * 0.5 + 0.4 }))
+const passageWords = timedWords('So we basically shipped the new editor last week, and it is faster.')
+const englishTake = timedWords('Hello and welcome back. Today I will show you the new editor.')
+const estonianTake = timedWords('Tere! T' + codePoints(0xE4) + 'na n' + codePoints(0xE4) + 'itan, kuidas uus montaa' + codePoints(0x17E) + ' t' + codePoints(0xF6, 0xF6) + 'tab.')
+const decomposedTake = timedWords('Uus montaaz' + codePoints(0x30C) + ' to' + codePoints(0x308) + 'o' + codePoints(0x308) + 'tab kiiresti ' + codePoints(0x1F680))
+const rewriteCases = [
+  ['passage-instruction', 'passage', 'en', passageWords, 'Say it was two weeks ago.', 2.35, 27, 30],
+  ['passage-plain', 'passage', 'en', passageWords, '', 12.25, 150, 158],
+  ['passage-whitespace-instruction', 'passage', 'en', passageWords, ' \n\t' + codePoints(0x3000), 4.1, 52, 55],
+  ['passage-trimmed-instruction', 'passage', 'en', passageWords, '  Make it friendlier.  ' + codePoints(0xFEFF), 4.1, 52, 55],
+  ['full-take-instruction-equal-range', 'fullTake', 'et', estonianTake, 'Tee see l' + codePoints(0xFC) + 'hemaks.', 0.95, 12, 12],
+  ['full-take-plain-upper-bounds', 'fullTake', 'en', englishTake, '', 600, 1, 5000],
+  ['full-take-decomposed-source', 'fullTake', 'et', decomposedTake, 'Hoia faktid.', 3.05, 30, 34]
+]
+// ai.md §12.8 preflight for the shared runners' stub connector, OpenAI, which has no output cap of its own: the output cap,
+// the tokens the send needs and the smallest context that holds them.
+equal(connectors.openai.maxOutputTokensCap, undefined, 'the stub connector has no output cap')
+const voiceLabPreflight = (request, source, prompt) => {
+  const sourceTokens = reference.estimateTokens(source)
+  const maxOutputTokens = Math.min(prompt.maxOutputTokens, Math.max(512, Math.ceil(sourceTokens * 1.5)))
+  assert(maxOutputTokens >= sourceTokens, 'the output cap holds the source')
+  const required = reference.estimateTokens(request.system + request.cachedBlock + request.instruction + JSON.stringify(request.schema)) + maxOutputTokens + 64
+  let smallestContext = 512
+  while (required > Math.floor(smallestContext * catalog.policy.tokenEstimate.contextSafetyFactor)) smallestContext += 1
+  return { sourceTokens, maxOutputTokens, required, smallestContext }
+}
+for (const [id, scope, language, sourceWords, instruction, targetSeconds, minChars, maxChars] of rewriteCases) {
+  const input = { scope, language, instruction, targetSeconds, minChars, maxChars, sourceWords }
+  const request = voiceRewriteRequest(input, voiceLabPrompts.voiceRewrite)
+  const preflight = voiceLabPreflight(request, sourceWords.map(word => word.text).join(' '), voiceLabPrompts.voiceRewrite)
+  add('voice-rewrite-requests', id, 'voice-rewrite-request', input, { request, estimate: voiceLabEstimate(request), preflight }, 'doc/spec/voice-lab.md §8.9.1')
+}
+const renderedRewrites = datasets.get('voice-rewrite-requests')
+equal(renderedRewrites[0].expected.request.instruction, 'USER EDIT REQUEST:\nSay it was two weeks ago.\n\nReturn rewritten spoken words for the entire selected source.\nLength: the new words should take about 2.4 seconds to say, which is 27 to 30 letters and digits. Spaces and punctuation are not counted. Write natural wording that stays inside this range.', 'rewrite length instruction')
+equal(renderedRewrites[0].expected.request.cachedBlock, 'SOURCE TRANSCRIPT (passage, en):\nSo we basically shipped the new editor last week, and it is faster.', 'rewrite source block')
+equal(renderedRewrites.map(test => test.expected.request.instruction.match(/about (\S+) seconds/)[1]), ['2.4', '12.3', '4.1', '4.1', '0.9', '600.0', '3.0'], 'rewrite targetSeconds uses toFixed1')
+equal(renderedRewrites[2].expected.request.instruction.startsWith('Return rewritten'), true, 'a whitespace-only request is left out')
+for (const scope of ['passage', 'fullTake']) for (const withRequest of [true, false]) {
+  assert(renderedRewrites.some(test => test.input.scope === scope && Boolean(reference.jsTrim(test.input.instruction)) === withRequest), `rewrite coverage: ${scope}, request ${withRequest}`)
+}
+assert(new Set(renderedRewrites.map(test => [test.input.targetSeconds, test.input.minChars, test.input.maxChars].join('/'))).size >= 3, 'at least three budgets')
+assert(renderedRewrites.some(test => test.input.minChars === test.input.maxChars), 'a budget with minChars == maxChars')
+
+// voice-lab §8.1 "Fix with AI": the clip finder's lines (ai.md §11.3), each with a synthetic character range.
+const patchSchema = { type: 'object', additionalProperties: false, required: ['edits'], properties: { edits: { type: 'array', items: {
+  type: 'object', additionalProperties: false, required: ['line', 'text', 'reason'],
+  properties: { line: { type: 'string' }, text: { type: 'string' }, reason: { type: 'string' } } } } } }
+equal(voiceLabPrompts.patchRewrite.schema, patchSchema, 'patch_edits is the voice-lab §8.1 schema')
+equal(voiceLabPrompts.patchRewrite.schemaName, 'patch_edits', 'Fix with AI schema name')
+const indexed = (first, timed) => timed.map(([text, start, end], offset) => ({ index: first + offset, text, start, end }))
+const plainEntries = entries => entries.map(({ index, text, start, end }) => ({ index, text, start, end }))
+const shortTake = indexed(40, [['So', 0, 0.2], ['last', 0.25, 0.5], ['year,', 0.55, 0.9], ['in', 0.95, 1.05], ['2024,', 1.1, 1.6], ['we', 1.65, 1.8],
+  ['moved', 1.85, 2.2], ['to', 2.25, 2.35], ['Tartu.', 2.4, 2.9], ['The', 3, 3.15], ['new', 3.2, 3.4], ['studio', 3.45, 3.9], ['is', 3.95, 4.05],
+  ['bigger.', 4.1, 4.6], ['Come', 6.5, 6.8], ['and', 6.85, 7], ['visit', 7.05, 7.4], ['us.', 7.45, 7.8]])
+const estonianLines = indexed(0, [['Tere!', 0, 0.4], ['Ta' + codePoints(0x308) + 'na', 0.5, 0.8], ['na' + codePoints(0x308) + 'itan', 0.85, 1.2],
+  ['uut', 1.25, 1.5], ['montaaz' + codePoints(0x30C) + 'i.', 1.55, 2.2], ['See', 4, 4.2], ['on', 4.25, 4.4], ['kiire.', 4.45, 5]])
+// Synthetic ranges: three characters a word, plus a spread.
+const rangesFor = (entries, spread) => reference.formatTranscript(entries).lines.map(line => {
+  const words = line.lastPos - line.firstPos + 1
+  return { line: `[${line.firstIndex}-${line.lastIndex}]`, minChars: 3 * words, maxChars: 3 * words + spread }
+})
+const patchCases = [
+  ['short-take', shortTake, [['[40-48]', 27, 31], ['[49-53]', 17, 21], ['[54-57]', 12, 15]], "I said 2024; it's 2025.", 'en'],
+  ['short-take-equal-ranges-trimmed-instruction', shortTake, [['[40-48]', 30, 30], ['[49-53]', 20, 20], ['[54-57]', 14, 14]],
+    "  I said 2024; it's 2025.  " + codePoints(0xFEFF), 'en'],
+  ['f1-transcript', plainEntries(f1Words), null, 'Say "fast and tidy" instead of "Fast and clean".', 'en'],
+  ['sparse-indices', plainEntries(sparseEntries), null, 'Drop the filler word.', 'en'],
+  ['estonian-decomposed', estonianLines, null, codePoints(0xDC) + 'tle, et see oli eile.', 'et']
+]
+for (const [id, entries, fixed, instruction, language] of patchCases) {
+  const ranges = fixed ? fixed.map(([line, minChars, maxChars]) => ({ line, minChars, maxChars })) : rangesFor(entries, 4)
+  const input = { language, instruction, ranges, entries }
+  const request = patchRewriteRequest(input, voiceLabPrompts.patchRewrite)
+  const preflight = voiceLabPreflight(request, reference.formatTranscript(entries).rendered, voiceLabPrompts.patchRewrite)
+  add('patch-rewrite-requests', id, 'patch-rewrite-request', input, { request, estimate: voiceLabEstimate(request), preflight }, 'doc/spec/voice-lab.md §8.1')
+}
+const renderedPatches = datasets.get('patch-rewrite-requests')
+equal(renderedPatches[0].expected.request.cachedBlock, '<transcript>\n[40-48] 0:00 So last year, in 2024, we moved to Tartu.\n[49-53] 0:03 The new studio is bigger.\n(pause 1.9s)\n[54-57] 0:06 Come and visit us.\n</transcript>', 'patch transcript block')
+equal(renderedPatches[0].expected.request.instruction, "Letters and digits allowed in the new text of each line, not counting spaces and punctuation:\n[40-48] 27 to 31\n[49-53] 17 to 21\n[54-57] 12 to 15\n\nInstruction: I said 2024; it's 2025.", 'patch request instruction')
+equal(renderedPatches[1].expected.request.instruction.endsWith("[54-57] 14 to 14\n\nInstruction: I said 2024; it's 2025."), true, 'patch instruction is trimmed')
+equal(renderedPatches[2].expected.request.cachedBlock, clipFinder.transcriptBlock.prefix + f1Rendered + clipFinder.transcriptBlock.suffix, 'patch block is the clip finder block')
+
+// ai.md §4.5 and §6.8: the Claude CLI's result envelope is one strict JSON value of at most 512 levels, read whole after jsTrim
+// with no code fence or balanced-object scan. The reply inside it, as structured_output or as result text, is read as every
+// reply is, at most 64 levels deep. The stop reason maps max_tokens to truncated and refusal to refused.
+const backslash = String.fromCharCode(92)
+const nestedArrays = levels => '['.repeat(levels) + ']'.repeat(levels)
+const fineReply = '{"rewrite":"Fine."}'
+const deepReply = levels => '{"rewrite":"Fine.","x":' + nestedArrays(levels - 1) + '}'
+const claudeResult = ({ result = '', structured = fineReply, stop = 'end_turn', extra = '' } = {}) =>
+  '{"type":"result","subtype":"success","is_error":false,"result":' + JSON.stringify(result) +
+  (structured === null ? '' : ',"structured_output":' + structured) + (stop === null ? '' : ',"stop_reason":' + JSON.stringify(stop)) +
+  ',"modelUsage":{"claude-sonnet-5-5":{"inputTokens":12,"outputTokens":9}},"usage":{"input_tokens":12,"output_tokens":9}' + extra + '}'
+const depthOf = value => value !== null && typeof value === 'object'
+  ? 1 + Object.values(value).reduce((deepest, item) => Math.max(deepest, depthOf(item)), 0) : 0
+const answered = { rewrite: 'Fine.', model: 'claude-sonnet-5-5' }
+const cliReplies = [
+  ['end-turn-structured-output', 'end_turn: the structured_output object is the reply.', claudeResult(), answered],
+  ['end-turn-text-reply', 'With no structured_output, the result text is read as a reply.', claudeResult({ result: fineReply, structured: null }), answered],
+  ['end-turn-fenced-text-reply', 'A reply text may sit in a code fence (ai.md §4.5).', claudeResult({ result: '```json\n' + fineReply + '\n```', structured: null }), answered],
+  ['no-stop-reason', 'With no stop reason the reply is complete.', claudeResult({ stop: null }), answered],
+  ['max-tokens', 'max_tokens is truncated, whatever the reply holds.', claudeResult({ stop: 'max_tokens' }), { error: 'truncated' }],
+  ['refusal', 'refusal is refused, with no category.', claudeResult({ stop: 'refusal' }), { error: 'refused' }],
+  ['reply-object-of-64-levels', 'A structured_output of 64 levels, in an envelope of 65.', claudeResult({ structured: deepReply(64) }), answered],
+  ['reply-object-of-65-levels', 'A structured_output of 65 levels, in an envelope of 66, is invalid output.', claudeResult({ structured: deepReply(65) }), { error: 'invalidOutput' }],
+  ['reply-text-of-65-levels', 'The same reply as result text is invalid output too.', claudeResult({ result: deepReply(65), structured: null }), { error: 'invalidOutput' }],
+  ['envelope-of-512-levels', 'An envelope of 512 levels is read.', claudeResult({ extra: ',"x":' + nestedArrays(511) }), answered],
+  ['envelope-of-513-levels', 'An envelope of 513 levels is no envelope, so the CLI failed.', claudeResult({ extra: ',"x":' + nestedArrays(512) }), { error: 'cliFailed' }],
+  ['envelope-after-byte-order-mark', 'jsTrim drops a leading byte order mark and a final line break.', String.fromCodePoint(0xFEFF) + claudeResult() + '\n', answered],
+  ['envelope-in-code-fence', 'An envelope gets no code fence scan.', '```json\n' + claudeResult() + '\n```', { error: 'cliFailed' }],
+  ['envelope-after-prose', 'Nor a balanced-object scan.', 'Done: ' + claudeResult(), { error: 'cliFailed' }],
+  ['envelope-with-unpaired-surrogate', 'An envelope is strict too: an unpaired surrogate escape in a key nobody reads.', claudeResult({ extra: ',"x":"' + backslash + 'ud800"' }), { error: 'cliFailed' }],
+  ['envelope-with-zero-exponent', 'An exact zero with an exponent is a valid number.', claudeResult({ extra: ',"x":0e1' }), answered],
+  ['envelope-with-repeated-type', 'A repeated key keeps its first value.', claudeResult({ extra: ',"type":"other"' }), answered]
+]
+for (const [id, notes, stdout, expected] of cliReplies) {
+  add('cli-replies', id, 'cli-reply', { connector: 'claude-code', model: 'sonnet', schema: voiceLabPrompts.voiceRewrite.schema, stdout }, expected, 'doc/spec/ai.md §4.5; §6.8', notes)
+}
+const replyCase = id => datasets.get('cli-replies').find(test => test.id === id).input.stdout
+equal(depthOf(JSON.parse(replyCase('reply-object-of-64-levels'))), 65, 'a 64-level reply in a 65-level envelope')
+equal(depthOf(JSON.parse(replyCase('reply-object-of-64-levels')).structured_output), 64, 'a 64-level reply')
+equal(depthOf(JSON.parse(replyCase('reply-object-of-65-levels')).structured_output), 65, 'a 65-level reply')
+equal(depthOf(JSON.parse(JSON.parse(replyCase('reply-text-of-65-levels')).result)), 65, 'a 65-level reply text')
+equal(depthOf(JSON.parse(replyCase('envelope-of-512-levels'))), 512, 'a 512-level envelope')
+equal(depthOf(JSON.parse(replyCase('envelope-of-513-levels'))), 513, 'a 513-level envelope')
+equal(JSON.parse(replyCase('envelope-with-unpaired-surrogate')).x, String.fromCharCode(0xD800), 'the escape is an unpaired surrogate')
+const numberToken = length => '0.' + '0'.repeat(length - 2)
+for (const length of [1024, 1025]) {
+  add('cli-replies', 'number-envelope-' + length, 'cli-reply', {
+    connector: 'claude-code', model: 'sonnet', schema: voiceLabPrompts.voiceRewrite.schema,
+    stdout: claudeResult({ extra: ',"x":' + numberToken(length) })
+  }, length === 1024 ? answered : { error: 'cliFailed' }, 'doc/spec/ai.md §4.5', 'The number token is ' + length + ' ASCII bytes.')
+  add('cli-replies', 'number-reply-' + length, 'cli-reply', {
+    connector: 'claude-code', model: 'sonnet', schema: voiceLabPrompts.voiceRewrite.schema,
+    stdout: claudeResult({ result: '{"rewrite":"Fine.","x":' + numberToken(length) + '}', structured: null })
+  }, length === 1024 ? answered : { error: 'invalidOutput' }, 'doc/spec/ai.md §4.5', 'The reply number has the same bound as an envelope.')
+}
+const withUsage = usage => {
+  const result = JSON.parse(claudeResult())
+  result.modelUsage = usage
+  return JSON.stringify(result)
+}
+for (const [id, usage, model] of [
+  ['model-usage-tie', { 'claude-z': { outputTokens: 9 }, 'claude-a': { outputTokens: 9 } }, 'claude-a'],
+  ['model-usage-tie-utf8', { [String.fromCodePoint(0x10000)]: { outputTokens: 9 }, [String.fromCodePoint(0xE000)]: { outputTokens: 9 } }, String.fromCodePoint(0xE000)],
+  ['model-usage-snake-case', { 'claude-a': { output_tokens: 10 }, 'claude-z': { outputTokens: 9 } }, 'claude-a']
+]) add('cli-replies', id, 'cli-reply', { connector: 'claude-code', model: 'sonnet', schema: voiceLabPrompts.voiceRewrite.schema,
+  stdout: withUsage(usage) }, { rewrite: 'Fine.', model }, 'doc/spec/ai.md §6.8; §12.8', 'Most output tokens wins; ties use the smallest UTF-8 key.')
+for (const [id, stdout] of [
+  ['non-envelope-signed-out-stderr', 'not an envelope'],
+  ['wrong-type-field', '{"type":false,"is_error":false}'],
+  ['wrong-is-error-field', '{"type":"result","is_error":"false"}']
+]) add('cli-replies', id, 'cli-reply', { connector: 'claude-code', model: 'sonnet', schema: voiceLabPrompts.voiceRewrite.schema,
+  stdout, stderr: 'Invalid API key' + String.fromCharCode(10) + 'ignored second line' }, { error: 'cliFailed', message: 'Invalid API key' },
+  'doc/spec/ai.md §4.5; §6.8', 'A malformed envelope is cliFailed, not a classified provider failure.')
+const codexExec = JSON.stringify({ type: 'item.completed', item: { type: 'agent_message', text: fineReply } })
+const codexComplete = JSON.stringify({ type: 'turn.completed', usage: { input_tokens: 12, output_tokens: 9 } })
+const codexModels = JSON.stringify({ id: 2, result: { data: [{ id: 'listed', supportedReasoningEfforts: [{ reasoningEffort: 'medium' }] }] } })
+for (const [ending, suffix] of [['crlf', String.fromCharCode(13, 10)], ['trailing-cr', String.fromCharCode(13)]]) {
+  add('cli-replies', 'codex-exec-' + ending, 'cli-reply', { connector: 'codex', mode: 'exec', model: 'default',
+    schema: voiceLabPrompts.voiceRewrite.schema, stdout: codexExec + String.fromCharCode(13, 10) + codexComplete + suffix },
+    { rewrite: 'Fine.', model: 'default' }, 'doc/spec/ai.md §4.5; §6.9', 'Split at LF only; jsTrim handles the remaining CR.')
+  add('cli-replies', 'codex-app-server-' + ending, 'cli-reply', { connector: 'codex', mode: 'app-server', model: 'default',
+    stdout: JSON.stringify({ id: 1, result: {} }) + String.fromCharCode(13, 10) + codexModels + suffix },
+    { models: ['default', 'listed'] }, 'doc/spec/ai.md §4.5; §6.9', 'App-server lines obey the same LF-only rule.')
+}
+for (const [id, input, expected] of [
+  ['codex-exec-unicode-line-separator', { mode: 'exec', schema: voiceLabPrompts.voiceRewrite.schema,
+    stdout: JSON.stringify({ type: 'item.completed', item: { type: 'agent_message', text: JSON.stringify({ rewrite: 'Fine.' + String.fromCodePoint(0x2028) + 'More.' }) } }) + String.fromCharCode(10) + codexComplete },
+    { rewrite: 'Fine.' + String.fromCodePoint(0x2028) + 'More.', model: 'default' }],
+  ['codex-app-server-unicode-line-separator', { mode: 'app-server', stdout: JSON.stringify({ id: 2, result: { data: [{ id: 'listed', displayName: 'Listed' + String.fromCodePoint(0x2028) + 'model' }] } }) },
+    { models: ['default', 'listed'] }],
+  ['codex-exec-bom', { mode: 'exec', schema: voiceLabPrompts.voiceRewrite.schema, stdout: String.fromCodePoint(0xFEFF) + codexExec + String.fromCharCode(10) + codexComplete },
+    { rewrite: 'Fine.', model: 'default' }],
+  ['codex-app-server-bom', { mode: 'app-server', stdout: String.fromCodePoint(0xFEFF) + codexModels }, { models: ['default', 'listed'] }]
+]) add('cli-replies', id, 'cli-reply', { connector: 'codex', model: 'default', ...input }, expected,
+  'doc/spec/ai.md §4.5; §6.9', 'LF alone separates envelopes; jsTrim removes a BOM and a Unicode line separator inside a string stays in it.')
+const datasetSources = { 'voice-rewrite-requests': voiceLabSources('voiceRewrite'), 'patch-rewrite-requests': voiceLabSources('patchRewrite'), 'cli-replies': voiceLabSources('voiceRewrite') }
+
 const bestRequest = canonicalRequest({ feature: 'clipFinder', words: f1Words, lines: formattedF1.lines, choice: 'best' }, prompts)
 const testRequest = { feature: 'test', system: catalog.testRequest.system, cachedBlock: null, instruction: catalog.testRequest.instruction, schemaName: catalog.testRequest.schemaName, schema: catalog.testRequest.schema, maxOutputTokens: catalog.testRequest.maxOutputTokens, effort: catalog.testRequest.effort, language: 'en' }
 for (const connector of catalog.connectors) {
@@ -416,7 +606,7 @@ const json = value => JSON.stringify(value, null, 2) + '\n'
 const writeFixtures = async directory => {
   await mkdir(directory, { recursive: true })
   for (const [name, cases] of datasets) {
-    const data = json({ schema: 'voxclip-llm-fixtures/1', id: name, origin: 'voxclip', sources: sourceHashes, cases })
+    const data = json({ schema: 'voxclip-llm-fixtures/1', id: name, origin: 'voxclip', sources: datasetSources[name] ?? sourceHashes, cases })
     assert(Buffer.byteLength(data) <= 2 * 1024 * 1024, `${name}.json exceeds the 2 MiB synthetic fixture limit`)
     JSON.parse(data)
     await writeFile(join(directory, `${name}.json`), data, 'utf8')

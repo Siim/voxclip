@@ -1,0 +1,279 @@
+{
+  "version": 1,
+  "rule": "Count the Unicode scalars of general category L* or Nd after NFC (voice-lab \u00a78.9.1).",
+  "cases": [
+    {
+      "id": "empty",
+      "text": "",
+      "scalars": "",
+      "length": 0,
+      "note": "The empty string."
+    },
+    {
+      "id": "whitespace-only",
+      "text": " \t\n\u00a0\u3000",
+      "scalars": "U+0020 U+0009 U+000A U+00A0 U+3000",
+      "length": 0,
+      "note": "Spaces, controls and ideographic space are not letters."
+    },
+    {
+      "id": "ascii-punctuation",
+      "text": "Wait... what?! (Really.)",
+      "scalars": "U+0057 U+0061 U+0069 U+0074 U+002E U+002E U+002E U+0020 U+0077 U+0068 U+0061 U+0074 U+003F U+0021 U+0020 U+0028 U+0052 U+0065 U+0061 U+006C U+006C U+0079 U+002E U+0029",
+      "length": 14,
+      "note": "Only the 14 letters count."
+    },
+    {
+      "id": "apostrophe-and-hyphen",
+      "text": "Don\u2019t stop \u2014 it\u2019s well-known.",
+      "scalars": "U+0044 U+006F U+006E U+2019 U+0074 U+0020 U+0073 U+0074 U+006F U+0070 U+0020 U+2014 U+0020 U+0069 U+0074 U+2019 U+0073 U+0020 U+0077 U+0065 U+006C U+006C U+002D U+006B U+006E U+006F U+0077 U+006E U+002E",
+      "length": 20,
+      "note": "Punctuation inside a word does not count."
+    },
+    {
+      "id": "estonian-precomposed",
+      "text": "\u00f5\u00e4\u00f6\u00fc\u0161\u017e",
+      "scalars": "U+00F5 U+00E4 U+00F6 U+00FC U+0161 U+017E",
+      "length": 6,
+      "note": "Precomposed o-tilde, a, o and u with diaeresis, s and z with caron."
+    },
+    {
+      "id": "estonian-precomposed-capitals",
+      "text": "\u00d5\u00c4\u00d6\u00dc\u0160\u017d",
+      "scalars": "U+00D5 U+00C4 U+00D6 U+00DC U+0160 U+017D",
+      "length": 6,
+      "note": "The same letters as precomposed capitals."
+    },
+    {
+      "id": "estonian-decomposed",
+      "text": "o\u0303a\u0308o\u0308u\u0308s\u030cz\u030c",
+      "scalars": "U+006F U+0303 U+0061 U+0308 U+006F U+0308 U+0075 U+0308 U+0073 U+030C U+007A U+030C",
+      "length": 6,
+      "note": "Base letter plus combining mark; NFC composes each pair into one letter."
+    },
+    {
+      "id": "estonian-sentence-mixed-forms",
+      "text": "To\u0303esti, \u00fche o\u0308o\u0308 j\u00e4a\u0308tis!",
+      "scalars": "U+0054 U+006F U+0303 U+0065 U+0073 U+0074 U+0069 U+002C U+0020 U+00FC U+0068 U+0065 U+0020 U+006F U+0308 U+006F U+0308 U+0020 U+006A U+00E4 U+0061 U+0308 U+0074 U+0069 U+0073 U+0021",
+      "length": 17,
+      "note": "A sentence mixing precomposed and decomposed letters."
+    },
+    {
+      "id": "hangul-syllables",
+      "text": "\ud55c\uad6d\uc5b4",
+      "scalars": "U+D55C U+AD6D U+C5B4",
+      "length": 3,
+      "note": "Precomposed Hangul syllables are Lo."
+    },
+    {
+      "id": "hangul-conjoining-jamo",
+      "text": "\u1112\u1161\u11ab\u1100\u116e\u11a8",
+      "scalars": "U+1112 U+1161 U+11AB U+1100 U+116E U+11A8",
+      "length": 2,
+      "note": "Six conjoining jamo (all Lo); NFC composes them into two syllables, so NFC changes this count."
+    },
+    {
+      "id": "hangul-modern-leading-archaic-vowel",
+      "text": "\u1100\u1176",
+      "scalars": "U+1100 U+1176",
+      "length": 2,
+      "note": "U+1176 is outside the modern vowel range."
+    },
+    {
+      "id": "hangul-archaic-leading-modern-vowel",
+      "text": "\u1113\u1161",
+      "scalars": "U+1113 U+1161",
+      "length": 2,
+      "note": "U+1113 is outside the modern leading range."
+    },
+    {
+      "id": "hangul-both-archaic-with-trailing",
+      "text": "\u1113\u1176\u11a8",
+      "scalars": "U+1113 U+1176 U+11A8",
+      "length": 3,
+      "note": "Neither archaic jamo composes."
+    },
+    {
+      "id": "hangul-compatibility-jamo",
+      "text": "\u314b\u314b\u314b",
+      "scalars": "U+314B U+314B U+314B",
+      "length": 3,
+      "note": "Compatibility jamo do not compose; each is Lo."
+    },
+    {
+      "id": "hangul-lv-syllable-and-trailing-jamo",
+      "text": "\uac00\u11a8",
+      "scalars": "U+AC00 U+11A8",
+      "length": 1,
+      "note": "A precomposed LV syllable and a trailing consonant compose to U+AC01, one letter."
+    },
+    {
+      "id": "hangul-lv-syllable-and-u11a7",
+      "text": "\uac00\u11a7",
+      "scalars": "U+AC00 U+11A7",
+      "length": 2,
+      "note": "U+11A7 is no trailing consonant (those run from U+11A8 to U+11C2), so nothing composes: two letters."
+    },
+    {
+      "id": "hangul-jamo-and-u11c3",
+      "text": "\u1100\u1161\u11c3",
+      "scalars": "U+1100 U+1161 U+11C3",
+      "length": 2,
+      "note": "The L and V jamo compose to U+AC00, but U+11C3 is no trailing consonant and stays: two letters."
+    },
+    {
+      "id": "arabic-indic-digits",
+      "text": "\u0662\u0660\u0662\u0665",
+      "scalars": "U+0662 U+0660 U+0662 U+0665",
+      "length": 4,
+      "note": "Arabic-Indic digits are Nd."
+    },
+    {
+      "id": "devanagari-digits",
+      "text": "\u0968\u0966\u0968\u096b",
+      "scalars": "U+0968 U+0966 U+0968 U+096B",
+      "length": 4,
+      "note": "Devanagari digits are Nd."
+    },
+    {
+      "id": "mixed-script-digits",
+      "text": "2025 \u0662\u0660\u0662\u0665 \u0968\u0966\u0968\u096b",
+      "scalars": "U+0032 U+0030 U+0032 U+0035 U+0020 U+0662 U+0660 U+0662 U+0665 U+0020 U+0968 U+0966 U+0968 U+096B",
+      "length": 12,
+      "note": "Digits from three scripts."
+    },
+    {
+      "id": "fullwidth-digits",
+      "text": "\uff12\uff10\uff12\uff15",
+      "scalars": "U+FF12 U+FF10 U+FF12 U+FF15",
+      "length": 4,
+      "note": "Fullwidth digits are Nd; NFC keeps them."
+    },
+    {
+      "id": "other-numbers-no",
+      "text": "\u00bd \u00b2 \u00b3 \u2460 \u2473 \u00bc",
+      "scalars": "U+00BD U+0020 U+00B2 U+0020 U+00B3 U+0020 U+2460 U+0020 U+2473 U+0020 U+00BC",
+      "length": 0,
+      "note": "Fractions, superscripts and circled numbers are No."
+    },
+    {
+      "id": "letter-numbers-nl",
+      "text": "\u216b \u2177 \u3007 \u16ee",
+      "scalars": "U+216B U+0020 U+2177 U+0020 U+3007 U+0020 U+16EE",
+      "length": 0,
+      "note": "Roman numerals, ideographic zero and a runic number are Nl."
+    },
+    {
+      "id": "digits-and-number-forms",
+      "text": "Chapter 3 \u00bd \u2163",
+      "scalars": "U+0043 U+0068 U+0061 U+0070 U+0074 U+0065 U+0072 U+0020 U+0033 U+0020 U+00BD U+0020 U+2163",
+      "length": 8,
+      "note": "Letters and the Nd digit count; the No and Nl forms do not."
+    },
+    {
+      "id": "emoji",
+      "text": "\ud83d\udc4d\ud83c\udf89\ud83d\ude42",
+      "scalars": "U+1F44D U+1F389 U+1F642",
+      "length": 0,
+      "note": "Emoji are So."
+    },
+    {
+      "id": "emoji-modifier-and-flag",
+      "text": "\ud83d\udc4d\ud83c\udffd \ud83c\uddea\ud83c\uddea",
+      "scalars": "U+1F44D U+1F3FD U+0020 U+1F1EA U+1F1EA",
+      "length": 0,
+      "note": "A skin-tone modifier (Sk) and regional indicators (So)."
+    },
+    {
+      "id": "zwj-sequences",
+      "text": "\ud83d\udc69\u200d\ud83d\udcbb \ud83d\udc68\u200d\ud83d\udc69\u200d\ud83d\udc67",
+      "scalars": "U+1F469 U+200D U+1F4BB U+0020 U+1F468 U+200D U+1F469 U+200D U+1F467",
+      "length": 0,
+      "note": "Emoji joined by ZERO WIDTH JOINER (Cf)."
+    },
+    {
+      "id": "zwj-sequence-in-text",
+      "text": "Code \ud83d\udc69\u200d\ud83d\udcbb ok",
+      "scalars": "U+0043 U+006F U+0064 U+0065 U+0020 U+1F469 U+200D U+1F4BB U+0020 U+006F U+006B",
+      "length": 6,
+      "note": "Letters around a ZWJ emoji sequence."
+    },
+    {
+      "id": "zwj-devanagari-half-form",
+      "text": "\u0915\u094d\u200d\u0937",
+      "scalars": "U+0915 U+094D U+200D U+0937",
+      "length": 2,
+      "note": "KA, virama (Mn), ZWJ (Cf), SSA: two letters."
+    },
+    {
+      "id": "combining-marks",
+      "text": "q\u0307 e\u0301 \u0301",
+      "scalars": "U+0071 U+0307 U+0020 U+0065 U+0301 U+0020 U+0301",
+      "length": 2,
+      "note": "q with a dot above has no precomposed form, e with an acute composes, and a lone mark (Mn) counts 0."
+    },
+    {
+      "id": "devanagari-vowel-signs",
+      "text": "\u0939\u093f\u0928\u094d\u0926\u0940",
+      "scalars": "U+0939 U+093F U+0928 U+094D U+0926 U+0940",
+      "length": 3,
+      "note": "Three consonants (Lo); vowel signs (Mc) and the virama (Mn) do not count."
+    },
+    {
+      "id": "kana-decomposed",
+      "text": "\u304b\u3099\u3044",
+      "scalars": "U+304B U+3099 U+3044",
+      "length": 2,
+      "note": "KA plus a combining voiced mark composes into GA under NFC."
+    },
+    {
+      "id": "cjk-and-kana",
+      "text": "\u65e5\u672c\u8a9e\u3067\u3059\u3002",
+      "scalars": "U+65E5 U+672C U+8A9E U+3067 U+3059 U+3002",
+      "length": 5,
+      "note": "Ideographs and kana are Lo; the ideographic full stop is Po."
+    },
+    {
+      "id": "modifier-and-titlecase-letters",
+      "text": "\u01c5emal Hawai\u02bbi",
+      "scalars": "U+01C5 U+0065 U+006D U+0061 U+006C U+0020 U+0048 U+0061 U+0077 U+0061 U+0069 U+02BB U+0069",
+      "length": 12,
+      "note": "A titlecase letter (Lt) and the okina, a modifier letter (Lm), both count."
+    },
+    {
+      "id": "astral-letters-and-digits",
+      "text": "\ud835\udc00\ud835\udfd0\ud840\udc00",
+      "scalars": "U+1D400 U+1D7D0 U+20000",
+      "length": 3,
+      "note": "Astral scalars count once each: a bold capital (Lu), a bold digit (Nd) and a CJK Extension B ideograph (Lo)."
+    },
+    {
+      "id": "noncharacter-fffe",
+      "text": "a\ufffeb",
+      "scalars": "U+0061 U+FFFE U+0062",
+      "length": 2,
+      "note": "U+FFFE is a noncharacter (Cn) and does not count. .NET Normalize rejects it, so the Windows Core first makes it U+FFFD."
+    },
+    {
+      "id": "noncharacter-fffe-alone",
+      "text": "\ufffe",
+      "scalars": "U+FFFE",
+      "length": 0,
+      "note": "A text that is only U+FFFE."
+    },
+    {
+      "id": "noncharacter-fffe-before-mark",
+      "text": "x\ufffe\u0301y",
+      "scalars": "U+0078 U+FFFE U+0301 U+0079",
+      "length": 2,
+      "note": "A combining mark after U+FFFE stays with it, and neither counts."
+    },
+    {
+      "id": "other-noncharacters",
+      "text": "a\uffffb\ufdd0c\ud83f\udffed\udbff\udfff",
+      "scalars": "U+0061 U+FFFF U+0062 U+FDD0 U+0063 U+1FFFE U+0064 U+10FFFF",
+      "length": 4,
+      "note": "U+FFFF, U+FDD0, U+1FFFE and U+10FFFF are noncharacters too; .NET normalises them, and none counts."
+    }
+  ]
+}

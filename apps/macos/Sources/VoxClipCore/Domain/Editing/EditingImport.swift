@@ -12,7 +12,7 @@ public enum EditingImport {
         var prefix = ""
         for word in words {
             let kind: WordKind = word.kind == .event ? .event : .word
-            let text = EditingPrimitives.jsTrim(word.text.precomposedStringWithCanonicalMapping)
+            let text = EditingPrimitives.jsTrim(EditingPrimitives.nfc(word.text))
             guard !text.isEmpty else { continue }
             if kind == .word, text.unicodeScalars.allSatisfy({ isPunctuation($0) }) {
                 if text.unicodeScalars.allSatisfy({ isOpening($0) }) { prefix += text }

@@ -98,7 +98,7 @@ internal static class EditingSession
                 break;
             case EditOperation.Correct correction:
                 var item = words.FirstOrDefault(word => word.Id == correction.Id);
-                var text = EditingAlgorithms.JsTrim(correction.Text.Normalize(NormalizationForm.FormC));
+                var text = EditingAlgorithms.JsTrim(EditingAlgorithms.Nfc(correction.Text));
                 if (text.Length == 0 || item is not { Kind: WordKind.Word } || text == Text(state, item)) return state;
                 if (!EditingLimits.ValidLength(text, EditingLimits.MaxCorrectionCodePoints)) return state;
                 if (text == item.Text) corrections.Remove(item.Id);

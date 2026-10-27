@@ -1,0 +1,951 @@
+{
+  "schema": "voxclip-llm-fixtures/1",
+  "id": "cli-replies",
+  "origin": "voxclip",
+  "sources": {
+    "shared/prompts/voice-rewrite.json": "f981955d21d7bbd739c90c5da3597997a315fb8bc503b9f1f83f486d85d4f4c0"
+  },
+  "cases": [
+    {
+      "id": "end-turn-structured-output",
+      "kind": "cli-reply",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §4.5; §6.8",
+      "notes": "end_turn: the structured_output object is the reply.",
+      "input": {
+        "connector": "claude-code",
+        "model": "sonnet",
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "rewrite"
+          ],
+          "properties": {
+            "rewrite": {
+              "type": "string"
+            }
+          }
+        },
+        "stdout": "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"result\":\"\",\"structured_output\":{\"rewrite\":\"Fine.\"},\"stop_reason\":\"end_turn\",\"modelUsage\":{\"claude-sonnet-5-5\":{\"inputTokens\":12,\"outputTokens\":9}},\"usage\":{\"input_tokens\":12,\"output_tokens\":9}}"
+      },
+      "expected": {
+        "rewrite": "Fine.",
+        "model": "claude-sonnet-5-5"
+      }
+    },
+    {
+      "id": "end-turn-text-reply",
+      "kind": "cli-reply",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §4.5; §6.8",
+      "notes": "With no structured_output, the result text is read as a reply.",
+      "input": {
+        "connector": "claude-code",
+        "model": "sonnet",
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "rewrite"
+          ],
+          "properties": {
+            "rewrite": {
+              "type": "string"
+            }
+          }
+        },
+        "stdout": "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"result\":\"{\\\"rewrite\\\":\\\"Fine.\\\"}\",\"stop_reason\":\"end_turn\",\"modelUsage\":{\"claude-sonnet-5-5\":{\"inputTokens\":12,\"outputTokens\":9}},\"usage\":{\"input_tokens\":12,\"output_tokens\":9}}"
+      },
+      "expected": {
+        "rewrite": "Fine.",
+        "model": "claude-sonnet-5-5"
+      }
+    },
+    {
+      "id": "end-turn-fenced-text-reply",
+      "kind": "cli-reply",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §4.5; §6.8",
+      "notes": "A reply text may sit in a code fence (ai.md §4.5).",
+      "input": {
+        "connector": "claude-code",
+        "model": "sonnet",
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "rewrite"
+          ],
+          "properties": {
+            "rewrite": {
+              "type": "string"
+            }
+          }
+        },
+        "stdout": "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"result\":\"```json\\n{\\\"rewrite\\\":\\\"Fine.\\\"}\\n```\",\"stop_reason\":\"end_turn\",\"modelUsage\":{\"claude-sonnet-5-5\":{\"inputTokens\":12,\"outputTokens\":9}},\"usage\":{\"input_tokens\":12,\"output_tokens\":9}}"
+      },
+      "expected": {
+        "rewrite": "Fine.",
+        "model": "claude-sonnet-5-5"
+      }
+    },
+    {
+      "id": "no-stop-reason",
+      "kind": "cli-reply",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §4.5; §6.8",
+      "notes": "With no stop reason the reply is complete.",
+      "input": {
+        "connector": "claude-code",
+        "model": "sonnet",
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "rewrite"
+          ],
+          "properties": {
+            "rewrite": {
+              "type": "string"
+            }
+          }
+        },
+        "stdout": "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"result\":\"\",\"structured_output\":{\"rewrite\":\"Fine.\"},\"modelUsage\":{\"claude-sonnet-5-5\":{\"inputTokens\":12,\"outputTokens\":9}},\"usage\":{\"input_tokens\":12,\"output_tokens\":9}}"
+      },
+      "expected": {
+        "rewrite": "Fine.",
+        "model": "claude-sonnet-5-5"
+      }
+    },
+    {
+      "id": "max-tokens",
+      "kind": "cli-reply",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §4.5; §6.8",
+      "notes": "max_tokens is truncated, whatever the reply holds.",
+      "input": {
+        "connector": "claude-code",
+        "model": "sonnet",
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "rewrite"
+          ],
+          "properties": {
+            "rewrite": {
+              "type": "string"
+            }
+          }
+        },
+        "stdout": "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"result\":\"\",\"structured_output\":{\"rewrite\":\"Fine.\"},\"stop_reason\":\"max_tokens\",\"modelUsage\":{\"claude-sonnet-5-5\":{\"inputTokens\":12,\"outputTokens\":9}},\"usage\":{\"input_tokens\":12,\"output_tokens\":9}}"
+      },
+      "expected": {
+        "error": "truncated"
+      }
+    },
+    {
+      "id": "refusal",
+      "kind": "cli-reply",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §4.5; §6.8",
+      "notes": "refusal is refused, with no category.",
+      "input": {
+        "connector": "claude-code",
+        "model": "sonnet",
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "rewrite"
+          ],
+          "properties": {
+            "rewrite": {
+              "type": "string"
+            }
+          }
+        },
+        "stdout": "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"result\":\"\",\"structured_output\":{\"rewrite\":\"Fine.\"},\"stop_reason\":\"refusal\",\"modelUsage\":{\"claude-sonnet-5-5\":{\"inputTokens\":12,\"outputTokens\":9}},\"usage\":{\"input_tokens\":12,\"output_tokens\":9}}"
+      },
+      "expected": {
+        "error": "refused"
+      }
+    },
+    {
+      "id": "reply-object-of-64-levels",
+      "kind": "cli-reply",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §4.5; §6.8",
+      "notes": "A structured_output of 64 levels, in an envelope of 65.",
+      "input": {
+        "connector": "claude-code",
+        "model": "sonnet",
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "rewrite"
+          ],
+          "properties": {
+            "rewrite": {
+              "type": "string"
+            }
+          }
+        },
+        "stdout": "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"result\":\"\",\"structured_output\":{\"rewrite\":\"Fine.\",\"x\":[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]},\"stop_reason\":\"end_turn\",\"modelUsage\":{\"claude-sonnet-5-5\":{\"inputTokens\":12,\"outputTokens\":9}},\"usage\":{\"input_tokens\":12,\"output_tokens\":9}}"
+      },
+      "expected": {
+        "rewrite": "Fine.",
+        "model": "claude-sonnet-5-5"
+      }
+    },
+    {
+      "id": "reply-object-of-65-levels",
+      "kind": "cli-reply",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §4.5; §6.8",
+      "notes": "A structured_output of 65 levels, in an envelope of 66, is invalid output.",
+      "input": {
+        "connector": "claude-code",
+        "model": "sonnet",
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "rewrite"
+          ],
+          "properties": {
+            "rewrite": {
+              "type": "string"
+            }
+          }
+        },
+        "stdout": "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"result\":\"\",\"structured_output\":{\"rewrite\":\"Fine.\",\"x\":[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]},\"stop_reason\":\"end_turn\",\"modelUsage\":{\"claude-sonnet-5-5\":{\"inputTokens\":12,\"outputTokens\":9}},\"usage\":{\"input_tokens\":12,\"output_tokens\":9}}"
+      },
+      "expected": {
+        "error": "invalidOutput"
+      }
+    },
+    {
+      "id": "reply-text-of-65-levels",
+      "kind": "cli-reply",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §4.5; §6.8",
+      "notes": "The same reply as result text is invalid output too.",
+      "input": {
+        "connector": "claude-code",
+        "model": "sonnet",
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "rewrite"
+          ],
+          "properties": {
+            "rewrite": {
+              "type": "string"
+            }
+          }
+        },
+        "stdout": "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"result\":\"{\\\"rewrite\\\":\\\"Fine.\\\",\\\"x\\\":[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]}\",\"stop_reason\":\"end_turn\",\"modelUsage\":{\"claude-sonnet-5-5\":{\"inputTokens\":12,\"outputTokens\":9}},\"usage\":{\"input_tokens\":12,\"output_tokens\":9}}"
+      },
+      "expected": {
+        "error": "invalidOutput"
+      }
+    },
+    {
+      "id": "envelope-of-512-levels",
+      "kind": "cli-reply",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §4.5; §6.8",
+      "notes": "An envelope of 512 levels is read.",
+      "input": {
+        "connector": "claude-code",
+        "model": "sonnet",
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "rewrite"
+          ],
+          "properties": {
+            "rewrite": {
+              "type": "string"
+            }
+          }
+        },
+        "stdout": "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"result\":\"\",\"structured_output\":{\"rewrite\":\"Fine.\"},\"stop_reason\":\"end_turn\",\"modelUsage\":{\"claude-sonnet-5-5\":{\"inputTokens\":12,\"outputTokens\":9}},\"usage\":{\"input_tokens\":12,\"output_tokens\":9},\"x\":[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]}"
+      },
+      "expected": {
+        "rewrite": "Fine.",
+        "model": "claude-sonnet-5-5"
+      }
+    },
+    {
+      "id": "envelope-of-513-levels",
+      "kind": "cli-reply",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §4.5; §6.8",
+      "notes": "An envelope of 513 levels is no envelope, so the CLI failed.",
+      "input": {
+        "connector": "claude-code",
+        "model": "sonnet",
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "rewrite"
+          ],
+          "properties": {
+            "rewrite": {
+              "type": "string"
+            }
+          }
+        },
+        "stdout": "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"result\":\"\",\"structured_output\":{\"rewrite\":\"Fine.\"},\"stop_reason\":\"end_turn\",\"modelUsage\":{\"claude-sonnet-5-5\":{\"inputTokens\":12,\"outputTokens\":9}},\"usage\":{\"input_tokens\":12,\"output_tokens\":9},\"x\":[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]}"
+      },
+      "expected": {
+        "error": "cliFailed"
+      }
+    },
+    {
+      "id": "envelope-after-byte-order-mark",
+      "kind": "cli-reply",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §4.5; §6.8",
+      "notes": "jsTrim drops a leading byte order mark and a final line break.",
+      "input": {
+        "connector": "claude-code",
+        "model": "sonnet",
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "rewrite"
+          ],
+          "properties": {
+            "rewrite": {
+              "type": "string"
+            }
+          }
+        },
+        "stdout": "﻿{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"result\":\"\",\"structured_output\":{\"rewrite\":\"Fine.\"},\"stop_reason\":\"end_turn\",\"modelUsage\":{\"claude-sonnet-5-5\":{\"inputTokens\":12,\"outputTokens\":9}},\"usage\":{\"input_tokens\":12,\"output_tokens\":9}}\n"
+      },
+      "expected": {
+        "rewrite": "Fine.",
+        "model": "claude-sonnet-5-5"
+      }
+    },
+    {
+      "id": "envelope-in-code-fence",
+      "kind": "cli-reply",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §4.5; §6.8",
+      "notes": "An envelope gets no code fence scan.",
+      "input": {
+        "connector": "claude-code",
+        "model": "sonnet",
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "rewrite"
+          ],
+          "properties": {
+            "rewrite": {
+              "type": "string"
+            }
+          }
+        },
+        "stdout": "```json\n{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"result\":\"\",\"structured_output\":{\"rewrite\":\"Fine.\"},\"stop_reason\":\"end_turn\",\"modelUsage\":{\"claude-sonnet-5-5\":{\"inputTokens\":12,\"outputTokens\":9}},\"usage\":{\"input_tokens\":12,\"output_tokens\":9}}\n```"
+      },
+      "expected": {
+        "error": "cliFailed"
+      }
+    },
+    {
+      "id": "envelope-after-prose",
+      "kind": "cli-reply",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §4.5; §6.8",
+      "notes": "Nor a balanced-object scan.",
+      "input": {
+        "connector": "claude-code",
+        "model": "sonnet",
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "rewrite"
+          ],
+          "properties": {
+            "rewrite": {
+              "type": "string"
+            }
+          }
+        },
+        "stdout": "Done: {\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"result\":\"\",\"structured_output\":{\"rewrite\":\"Fine.\"},\"stop_reason\":\"end_turn\",\"modelUsage\":{\"claude-sonnet-5-5\":{\"inputTokens\":12,\"outputTokens\":9}},\"usage\":{\"input_tokens\":12,\"output_tokens\":9}}"
+      },
+      "expected": {
+        "error": "cliFailed"
+      }
+    },
+    {
+      "id": "envelope-with-unpaired-surrogate",
+      "kind": "cli-reply",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §4.5; §6.8",
+      "notes": "An envelope is strict too: an unpaired surrogate escape in a key nobody reads.",
+      "input": {
+        "connector": "claude-code",
+        "model": "sonnet",
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "rewrite"
+          ],
+          "properties": {
+            "rewrite": {
+              "type": "string"
+            }
+          }
+        },
+        "stdout": "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"result\":\"\",\"structured_output\":{\"rewrite\":\"Fine.\"},\"stop_reason\":\"end_turn\",\"modelUsage\":{\"claude-sonnet-5-5\":{\"inputTokens\":12,\"outputTokens\":9}},\"usage\":{\"input_tokens\":12,\"output_tokens\":9},\"x\":\"\\ud800\"}"
+      },
+      "expected": {
+        "error": "cliFailed"
+      }
+    },
+    {
+      "id": "envelope-with-zero-exponent",
+      "kind": "cli-reply",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §4.5; §6.8",
+      "notes": "An exact zero with an exponent is a valid number.",
+      "input": {
+        "connector": "claude-code",
+        "model": "sonnet",
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "rewrite"
+          ],
+          "properties": {
+            "rewrite": {
+              "type": "string"
+            }
+          }
+        },
+        "stdout": "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"result\":\"\",\"structured_output\":{\"rewrite\":\"Fine.\"},\"stop_reason\":\"end_turn\",\"modelUsage\":{\"claude-sonnet-5-5\":{\"inputTokens\":12,\"outputTokens\":9}},\"usage\":{\"input_tokens\":12,\"output_tokens\":9},\"x\":0e1}"
+      },
+      "expected": {
+        "rewrite": "Fine.",
+        "model": "claude-sonnet-5-5"
+      }
+    },
+    {
+      "id": "envelope-with-repeated-type",
+      "kind": "cli-reply",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §4.5; §6.8",
+      "notes": "A repeated key keeps its first value.",
+      "input": {
+        "connector": "claude-code",
+        "model": "sonnet",
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "rewrite"
+          ],
+          "properties": {
+            "rewrite": {
+              "type": "string"
+            }
+          }
+        },
+        "stdout": "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"result\":\"\",\"structured_output\":{\"rewrite\":\"Fine.\"},\"stop_reason\":\"end_turn\",\"modelUsage\":{\"claude-sonnet-5-5\":{\"inputTokens\":12,\"outputTokens\":9}},\"usage\":{\"input_tokens\":12,\"output_tokens\":9},\"type\":\"other\"}"
+      },
+      "expected": {
+        "rewrite": "Fine.",
+        "model": "claude-sonnet-5-5"
+      }
+    },
+    {
+      "id": "number-envelope-1024",
+      "kind": "cli-reply",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §4.5",
+      "notes": "The number token is 1024 ASCII bytes.",
+      "input": {
+        "connector": "claude-code",
+        "model": "sonnet",
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "rewrite"
+          ],
+          "properties": {
+            "rewrite": {
+              "type": "string"
+            }
+          }
+        },
+        "stdout": "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"result\":\"\",\"structured_output\":{\"rewrite\":\"Fine.\"},\"stop_reason\":\"end_turn\",\"modelUsage\":{\"claude-sonnet-5-5\":{\"inputTokens\":12,\"outputTokens\":9}},\"usage\":{\"input_tokens\":12,\"output_tokens\":9},\"x\":0.00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000}"
+      },
+      "expected": {
+        "rewrite": "Fine.",
+        "model": "claude-sonnet-5-5"
+      }
+    },
+    {
+      "id": "number-reply-1024",
+      "kind": "cli-reply",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §4.5",
+      "notes": "The reply number has the same bound as an envelope.",
+      "input": {
+        "connector": "claude-code",
+        "model": "sonnet",
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "rewrite"
+          ],
+          "properties": {
+            "rewrite": {
+              "type": "string"
+            }
+          }
+        },
+        "stdout": "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"result\":\"{\\\"rewrite\\\":\\\"Fine.\\\",\\\"x\\\":0.00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000}\",\"stop_reason\":\"end_turn\",\"modelUsage\":{\"claude-sonnet-5-5\":{\"inputTokens\":12,\"outputTokens\":9}},\"usage\":{\"input_tokens\":12,\"output_tokens\":9}}"
+      },
+      "expected": {
+        "rewrite": "Fine.",
+        "model": "claude-sonnet-5-5"
+      }
+    },
+    {
+      "id": "number-envelope-1025",
+      "kind": "cli-reply",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §4.5",
+      "notes": "The number token is 1025 ASCII bytes.",
+      "input": {
+        "connector": "claude-code",
+        "model": "sonnet",
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "rewrite"
+          ],
+          "properties": {
+            "rewrite": {
+              "type": "string"
+            }
+          }
+        },
+        "stdout": "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"result\":\"\",\"structured_output\":{\"rewrite\":\"Fine.\"},\"stop_reason\":\"end_turn\",\"modelUsage\":{\"claude-sonnet-5-5\":{\"inputTokens\":12,\"outputTokens\":9}},\"usage\":{\"input_tokens\":12,\"output_tokens\":9},\"x\":0.000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000}"
+      },
+      "expected": {
+        "error": "cliFailed"
+      }
+    },
+    {
+      "id": "number-reply-1025",
+      "kind": "cli-reply",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §4.5",
+      "notes": "The reply number has the same bound as an envelope.",
+      "input": {
+        "connector": "claude-code",
+        "model": "sonnet",
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "rewrite"
+          ],
+          "properties": {
+            "rewrite": {
+              "type": "string"
+            }
+          }
+        },
+        "stdout": "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"result\":\"{\\\"rewrite\\\":\\\"Fine.\\\",\\\"x\\\":0.000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000}\",\"stop_reason\":\"end_turn\",\"modelUsage\":{\"claude-sonnet-5-5\":{\"inputTokens\":12,\"outputTokens\":9}},\"usage\":{\"input_tokens\":12,\"output_tokens\":9}}"
+      },
+      "expected": {
+        "error": "invalidOutput"
+      }
+    },
+    {
+      "id": "model-usage-tie",
+      "kind": "cli-reply",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §6.8; §12.8",
+      "notes": "Most output tokens wins; ties use the smallest UTF-8 key.",
+      "input": {
+        "connector": "claude-code",
+        "model": "sonnet",
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "rewrite"
+          ],
+          "properties": {
+            "rewrite": {
+              "type": "string"
+            }
+          }
+        },
+        "stdout": "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"result\":\"\",\"structured_output\":{\"rewrite\":\"Fine.\"},\"stop_reason\":\"end_turn\",\"modelUsage\":{\"claude-z\":{\"outputTokens\":9},\"claude-a\":{\"outputTokens\":9}},\"usage\":{\"input_tokens\":12,\"output_tokens\":9}}"
+      },
+      "expected": {
+        "rewrite": "Fine.",
+        "model": "claude-a"
+      }
+    },
+    {
+      "id": "model-usage-tie-utf8",
+      "kind": "cli-reply",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §6.8; §12.8",
+      "notes": "Most output tokens wins; ties use the smallest UTF-8 key.",
+      "input": {
+        "connector": "claude-code",
+        "model": "sonnet",
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "rewrite"
+          ],
+          "properties": {
+            "rewrite": {
+              "type": "string"
+            }
+          }
+        },
+        "stdout": "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"result\":\"\",\"structured_output\":{\"rewrite\":\"Fine.\"},\"stop_reason\":\"end_turn\",\"modelUsage\":{\"𐀀\":{\"outputTokens\":9},\"\":{\"outputTokens\":9}},\"usage\":{\"input_tokens\":12,\"output_tokens\":9}}"
+      },
+      "expected": {
+        "rewrite": "Fine.",
+        "model": ""
+      }
+    },
+    {
+      "id": "model-usage-snake-case",
+      "kind": "cli-reply",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §6.8; §12.8",
+      "notes": "Most output tokens wins; ties use the smallest UTF-8 key.",
+      "input": {
+        "connector": "claude-code",
+        "model": "sonnet",
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "rewrite"
+          ],
+          "properties": {
+            "rewrite": {
+              "type": "string"
+            }
+          }
+        },
+        "stdout": "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"result\":\"\",\"structured_output\":{\"rewrite\":\"Fine.\"},\"stop_reason\":\"end_turn\",\"modelUsage\":{\"claude-a\":{\"output_tokens\":10},\"claude-z\":{\"outputTokens\":9}},\"usage\":{\"input_tokens\":12,\"output_tokens\":9}}"
+      },
+      "expected": {
+        "rewrite": "Fine.",
+        "model": "claude-a"
+      }
+    },
+    {
+      "id": "non-envelope-signed-out-stderr",
+      "kind": "cli-reply",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §4.5; §6.8",
+      "notes": "A malformed envelope is cliFailed, not a classified provider failure.",
+      "input": {
+        "connector": "claude-code",
+        "model": "sonnet",
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "rewrite"
+          ],
+          "properties": {
+            "rewrite": {
+              "type": "string"
+            }
+          }
+        },
+        "stdout": "not an envelope",
+        "stderr": "Invalid API key\nignored second line"
+      },
+      "expected": {
+        "error": "cliFailed",
+        "message": "Invalid API key"
+      }
+    },
+    {
+      "id": "wrong-type-field",
+      "kind": "cli-reply",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §4.5; §6.8",
+      "notes": "A malformed envelope is cliFailed, not a classified provider failure.",
+      "input": {
+        "connector": "claude-code",
+        "model": "sonnet",
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "rewrite"
+          ],
+          "properties": {
+            "rewrite": {
+              "type": "string"
+            }
+          }
+        },
+        "stdout": "{\"type\":false,\"is_error\":false}",
+        "stderr": "Invalid API key\nignored second line"
+      },
+      "expected": {
+        "error": "cliFailed",
+        "message": "Invalid API key"
+      }
+    },
+    {
+      "id": "wrong-is-error-field",
+      "kind": "cli-reply",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §4.5; §6.8",
+      "notes": "A malformed envelope is cliFailed, not a classified provider failure.",
+      "input": {
+        "connector": "claude-code",
+        "model": "sonnet",
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "rewrite"
+          ],
+          "properties": {
+            "rewrite": {
+              "type": "string"
+            }
+          }
+        },
+        "stdout": "{\"type\":\"result\",\"is_error\":\"false\"}",
+        "stderr": "Invalid API key\nignored second line"
+      },
+      "expected": {
+        "error": "cliFailed",
+        "message": "Invalid API key"
+      }
+    },
+    {
+      "id": "codex-exec-crlf",
+      "kind": "cli-reply",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §4.5; §6.9",
+      "notes": "Split at LF only; jsTrim handles the remaining CR.",
+      "input": {
+        "connector": "codex",
+        "mode": "exec",
+        "model": "default",
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "rewrite"
+          ],
+          "properties": {
+            "rewrite": {
+              "type": "string"
+            }
+          }
+        },
+        "stdout": "{\"type\":\"item.completed\",\"item\":{\"type\":\"agent_message\",\"text\":\"{\\\"rewrite\\\":\\\"Fine.\\\"}\"}}\r\n{\"type\":\"turn.completed\",\"usage\":{\"input_tokens\":12,\"output_tokens\":9}}\r\n"
+      },
+      "expected": {
+        "rewrite": "Fine.",
+        "model": "default"
+      }
+    },
+    {
+      "id": "codex-app-server-crlf",
+      "kind": "cli-reply",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §4.5; §6.9",
+      "notes": "App-server lines obey the same LF-only rule.",
+      "input": {
+        "connector": "codex",
+        "mode": "app-server",
+        "model": "default",
+        "stdout": "{\"id\":1,\"result\":{}}\r\n{\"id\":2,\"result\":{\"data\":[{\"id\":\"listed\",\"supportedReasoningEfforts\":[{\"reasoningEffort\":\"medium\"}]}]}}\r\n"
+      },
+      "expected": {
+        "models": [
+          "default",
+          "listed"
+        ]
+      }
+    },
+    {
+      "id": "codex-exec-trailing-cr",
+      "kind": "cli-reply",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §4.5; §6.9",
+      "notes": "Split at LF only; jsTrim handles the remaining CR.",
+      "input": {
+        "connector": "codex",
+        "mode": "exec",
+        "model": "default",
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "rewrite"
+          ],
+          "properties": {
+            "rewrite": {
+              "type": "string"
+            }
+          }
+        },
+        "stdout": "{\"type\":\"item.completed\",\"item\":{\"type\":\"agent_message\",\"text\":\"{\\\"rewrite\\\":\\\"Fine.\\\"}\"}}\r\n{\"type\":\"turn.completed\",\"usage\":{\"input_tokens\":12,\"output_tokens\":9}}\r"
+      },
+      "expected": {
+        "rewrite": "Fine.",
+        "model": "default"
+      }
+    },
+    {
+      "id": "codex-app-server-trailing-cr",
+      "kind": "cli-reply",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §4.5; §6.9",
+      "notes": "App-server lines obey the same LF-only rule.",
+      "input": {
+        "connector": "codex",
+        "mode": "app-server",
+        "model": "default",
+        "stdout": "{\"id\":1,\"result\":{}}\r\n{\"id\":2,\"result\":{\"data\":[{\"id\":\"listed\",\"supportedReasoningEfforts\":[{\"reasoningEffort\":\"medium\"}]}]}}\r"
+      },
+      "expected": {
+        "models": [
+          "default",
+          "listed"
+        ]
+      }
+    },
+    {
+      "id": "codex-exec-unicode-line-separator",
+      "kind": "cli-reply",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §4.5; §6.9",
+      "notes": "LF alone separates envelopes; jsTrim removes a BOM and a Unicode line separator inside a string stays in it.",
+      "input": {
+        "connector": "codex",
+        "model": "default",
+        "mode": "exec",
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "rewrite"
+          ],
+          "properties": {
+            "rewrite": {
+              "type": "string"
+            }
+          }
+        },
+        "stdout": "{\"type\":\"item.completed\",\"item\":{\"type\":\"agent_message\",\"text\":\"{\\\"rewrite\\\":\\\"Fine. More.\\\"}\"}}\n{\"type\":\"turn.completed\",\"usage\":{\"input_tokens\":12,\"output_tokens\":9}}"
+      },
+      "expected": {
+        "rewrite": "Fine. More.",
+        "model": "default"
+      }
+    },
+    {
+      "id": "codex-app-server-unicode-line-separator",
+      "kind": "cli-reply",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §4.5; §6.9",
+      "notes": "LF alone separates envelopes; jsTrim removes a BOM and a Unicode line separator inside a string stays in it.",
+      "input": {
+        "connector": "codex",
+        "model": "default",
+        "mode": "app-server",
+        "stdout": "{\"id\":2,\"result\":{\"data\":[{\"id\":\"listed\",\"displayName\":\"Listed model\"}]}}"
+      },
+      "expected": {
+        "models": [
+          "default",
+          "listed"
+        ]
+      }
+    },
+    {
+      "id": "codex-exec-bom",
+      "kind": "cli-reply",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §4.5; §6.9",
+      "notes": "LF alone separates envelopes; jsTrim removes a BOM and a Unicode line separator inside a string stays in it.",
+      "input": {
+        "connector": "codex",
+        "model": "default",
+        "mode": "exec",
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "rewrite"
+          ],
+          "properties": {
+            "rewrite": {
+              "type": "string"
+            }
+          }
+        },
+        "stdout": "﻿{\"type\":\"item.completed\",\"item\":{\"type\":\"agent_message\",\"text\":\"{\\\"rewrite\\\":\\\"Fine.\\\"}\"}}\n{\"type\":\"turn.completed\",\"usage\":{\"input_tokens\":12,\"output_tokens\":9}}"
+      },
+      "expected": {
+        "rewrite": "Fine.",
+        "model": "default"
+      }
+    },
+    {
+      "id": "codex-app-server-bom",
+      "kind": "cli-reply",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §4.5; §6.9",
+      "notes": "LF alone separates envelopes; jsTrim removes a BOM and a Unicode line separator inside a string stays in it.",
+      "input": {
+        "connector": "codex",
+        "model": "default",
+        "mode": "app-server",
+        "stdout": "﻿{\"id\":2,\"result\":{\"data\":[{\"id\":\"listed\",\"supportedReasoningEfforts\":[{\"reasoningEffort\":\"medium\"}]}]}}"
+      },
+      "expected": {
+        "models": [
+          "default",
+          "listed"
+        ]
+      }
+    }
+  ]
+}

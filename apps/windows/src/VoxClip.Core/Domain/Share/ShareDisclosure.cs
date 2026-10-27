@@ -1,5 +1,6 @@
 using System.Text;
 using VoxClip.Core.Domain.Captions;
+using VoxClip.Core.Domain.Editing;
 
 namespace VoxClip.Core.Domain.Share;
 
@@ -25,8 +26,8 @@ public static class ShareDisclosure
     {
         ArgumentNullException.ThrowIfNull(caption);
         ArgumentNullException.ThrowIfNull(line);
-        var needle = CaptionTextRules.Raw(WellFormed(line));
-        return needle.Length == 0 || CaptionTextRules.Raw(WellFormed(caption)).Contains(needle, StringComparison.Ordinal);
+        var needle = CaptionTextRules.Raw(line);
+        return needle.Length == 0 || CaptionTextRules.Raw(caption).Contains(needle, StringComparison.Ordinal);
     }
 
     /// <summary>The caption field text: the line after a blank line when it is not present, the caption cut so the text stays
@@ -35,13 +36,13 @@ public static class ShareDisclosure
     internal static string FieldText(string savedOrDefault, string? line, ShareTextRules rules)
     {
         if (line is null || IsPresent(savedOrDefault, line)) return savedOrDefault;
-        return rules.Fit(TrimEnd(WellFormed(savedOrDefault)), line, ShareDestination.LinkedIn);
+        return rules.Fit(TrimEnd(EditingAlgorithms.WellFormed(savedOrDefault)), line, ShareDestination.LinkedIn);
     }
 
     /// <summary>The UTF-16 span of the line's last occurrence in NFC caption text, White_Space runs comparing equal.</summary>
     internal static (int Start, int End)? LastSpan(string line, string caption)
     {
-        var needle = CaptionTextRules.Raw(WellFormed(line));
+        var needle = CaptionTextRules.Raw(line);
         if (needle.Length == 0) return null;
         var collapsed = new StringBuilder(caption.Length);
         var spans = new List<(int Start, int End)>(caption.Length);
@@ -75,17 +76,4 @@ public static class ShareDisclosure
         return text[start..];
     }
 
-    /// <summary>Text with each lone surrogate replaced by U+FFFD, as a Swift string holds it; NFC rejects lone surrogates.</summary>
-    internal static string WellFormed(string text)
-    {
-        for (var index = 0; index < text.Length; index++)
-        {
-            if (!char.IsSurrogate(text[index])) continue;
-            if (char.IsHighSurrogate(text[index]) && index + 1 < text.Length && char.IsLowSurrogate(text[index + 1])) { index++; continue; }
-            var builder = new StringBuilder(text.Length);
-            foreach (var rune in text.EnumerateRunes()) builder.Append(rune.ToString());
-            return builder.ToString();
-        }
-        return text;
-    }
 }

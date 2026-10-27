@@ -128,7 +128,10 @@ public sealed partial class SharedFixtureTests
                 actual = new JsonObject { ["proposals"] = Array(verified.Proposals.Select(proposal => (JsonNode)new JsonObject { ["lineLabel"] = proposal.LineLabel, ["kind"] = proposal.Kind, ["cutWordIds"] = Array(proposal.CutWordIds.Select(value => (JsonNode)JsonValue.Create(value)!)), ["preselected"] = proposal.Preselected })), ["rejectedCount"] = verified.RejectedCount, ["rejected"] = Array(verified.Rejected.Select(rejection => (JsonNode)new JsonObject { ["editIndex"] = rejection.EditIndex, ["reason"] = rejection.Reason })) };
                 break;
             case "render-request": await RenderCase(file, input, expected!); return;
+            case "voice-rewrite-request": await VoiceRewriteRequestCase(input, expected!); return;
+            case "patch-rewrite-request": await PatchRewriteRequestCase(input, expected!); return;
             case "connector-request": await ConnectorCase(ReadRequest(input["request"]!), Text(input, "connector"), input["options"]!.AsObject(), expected!); return;
+            case "cli-reply": await ProcessAndCliTests.ClaudeReplyCase(input, expected!); return;
             default: Assert.Fail($"Unknown shared LLM fixture kind '{Text(item, "kind")}' in {file}/{id}."); return;
         }
         EqualJson(expected, actual);

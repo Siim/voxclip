@@ -117,6 +117,53 @@ public sealed class ProcessAndCliTests
         Assert.All(runner.Requests, command => Assert.False(Directory.Exists(command.WorkingDirectory)));
     }
 
+    /// <summary><c>cli-replies.json</c> (ai.md §4.5 and §6.8): each Claude result envelope goes through the connector, then its reply
+    /// is read against the case's schema. The envelope is one strict parse of up to 512 levels; the reply, up to 64. The shared
+    /// fixture runner calls this for every case.</summary>
+    internal static async Task ClaudeReplyCase(JsonNode input, JsonNode expected)
+    {
+        var connectorId = VoiceRewriteBudgetTests.Connector(input["connector"]!.GetValue<string>());
+        var stdout = input["stdout"]!.GetValue<string>();
+        using var runner = new FixtureProcessRunner(connectorId, Catalog(), new());
+        var stderr = input["stderr"]?.GetValue<string>() ?? "";
+        runner.Override = command => command.Arguments.Contains("-p") || command.Arguments.Contains("--output-schema") || command.Arguments.Contains("app-server")
+            ? new(0, stdout, stderr, TimeSpan.Zero, false) : null;
+        using var http = new HttpClient();
+        var connector = new LlmConnector(connectorId, Catalog(), http, new MemoryKeys(null), new Redactor(), processes: runner, binaryOverride: runner.BinaryPath);
+        if (input["mode"]?.GetValue<string>() == "app-server")
+        {
+            var models = await connector.GetModelsAsync(true, TestContext.Current.CancellationToken);
+            Assert.Equal(expected["models"]!.AsArray().Select(value => value!.GetValue<string>()), models.Select(model => model.Id));
+            return;
+        }
+        var schema = input["schema"]!.DeepClone().AsObject();
+        var request = new LlmRequest(LlmFeature.VoiceRewrite, "Rewrite the source.", null, "Return the rewrite.", "voice_rewrite_proposal", schema, 512,
+            Effort.Medium, TimeSpan.FromSeconds(120), "en", "cli-reply");
+        string outcome;
+        try
+        {
+            var answer = await connector.SendAsync(request, input["model"]!.GetValue<string>(), TestContext.Current.CancellationToken);
+            switch (answer.Stop)
+            {
+                case StopKind.Truncated: outcome = "truncated"; break;
+                case StopKind.Refused refused: Assert.Null(refused.Category); outcome = "refused"; break;
+                default:
+                    var parsed = LlmOutput.Validate(answer, schema);
+                    if (parsed.Object is null) { outcome = "invalidOutput"; break; }
+                    Assert.Equal(expected["rewrite"]!.GetValue<string>(), parsed.Object["rewrite"]!.GetValue<string>());
+                    Assert.Equal(expected["model"]!.GetValue<string>(), answer.Model);
+                    outcome = "reply";
+                    break;
+            }
+        }
+        catch (LlmException exception) when (exception.Error.Kind == LlmErrorKind.CliFailed)
+        {
+            if (expected["message"] is { } message) Assert.Equal(message.GetValue<string>(), exception.Error.Reason);
+            outcome = "cliFailed";
+        }
+        Assert.Equal(expected["error"]?.GetValue<string>() ?? "reply", outcome);
+    }
+
     [Theory]
     [InlineData(ConnectorId.ClaudeCode)]
     [InlineData(ConnectorId.Codex)]
