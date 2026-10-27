@@ -431,12 +431,16 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
     override func keyDown(with event: NSEvent) {
         guard let model, !hasMarkedText(), correction == nil else { super.keyDown(with: event); return }
         if event.keyCode == 53, selectionBarVisible { hideSelectionBar(dismissed: true); return }
+        if event.keyCode == 53 { model.activate(nil); return }
         if event.keyCode == 48 || event.keyCode == 97 && event.modifierFlags.contains(.control) {
             if !model.selectedIDs.isEmpty { showSelectionBar(focus: true); return }
         }
         let shift = event.modifierFlags.contains(.shift)
         if event.modifierFlags.contains(.command) {
-            if event.charactersIgnoringModifiers?.lowercased() == "k" { model.makeClip(); return }
+            if event.charactersIgnoringModifiers?.lowercased() == "k" {
+                if shift { model.requestFindClips(from: .toolbar) } else { model.makeClip() }
+                return
+            }
             if shift, event.charactersIgnoringModifiers?.lowercased() == "r" { model.beginRewrite(); return }
             if event.keyCode == 126, let first = model.words.first { model.select(first.id); return }
             if event.keyCode == 125, let last = model.words.last { model.select(last.id); return }

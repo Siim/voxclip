@@ -45,10 +45,21 @@ import VoxClipMedia
     var lastStyleId: String?
     @ObservationIgnored private var galleryKey = ""
     @ObservationIgnored private var galleryPages: [String: CaptionGalleryPages] = [:]
-    func beginRewrite() {
-        guard app.bool("voiceLab.enabled"), let first = selectedIDs.first, let last = selectedIDs.last,
+    var showVoiceLabOptIn = false
+    var rewriteInsertionAfterID: String?
+    private var pendingInsertion = false
+    func beginRewrite(inserting: Bool = false) {
+        guard let first = selectedIDs.first, let last = selectedIDs.last,
               let lower = index(first), let upper = index(last) else { return }
-        rewrite = lower...upper
+        pendingInsertion = inserting
+        guard app.bool("voiceLab.enabled") else { showVoiceLabOptIn = true; return }
+        rewriteInsertionAfterID = inserting ? last : nil
+        rewrite = inserting ? nil : lower...upper
+    }
+    func enableVoiceLab() {
+        app.set("voiceLab.enabled", .bool(true))
+        showVoiceLabOptIn = false
+        beginRewrite(inserting: pendingInsertion)
     }
     var preset = ClipPresetID.best
     var instruction = ""

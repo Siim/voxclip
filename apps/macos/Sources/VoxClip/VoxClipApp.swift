@@ -36,6 +36,11 @@ import VoxClipCore
         model.launch()
         // One app-owned main window, opening on Home (ADR-R29). Projects and movies
         // opened at launch attach to it through the file router.
+        #if DEBUG
+        if CommandLine.arguments.contains("-uiSelfTest") || CommandLine.arguments.contains("-timelineAudit") {
+            MainWindowController.shared.window?.setFrameOrigin(NSPoint(x: -10000, y: -10000))
+        }
+        #endif
         MainWindowController.shared.show()
         #if DEBUG
         // Crash recovery and accent checks from a bundle.sh build (DebugProbes).
@@ -105,7 +110,15 @@ import VoxClipCore
     }
     func applicationWillTerminate(_ notification: Notification) { model.modelLibrary.task?.cancel() }
 
-    private var mainWindowIsKey: Bool { NSApp.keyWindow != nil && NSApp.keyWindow === model.shell.windowController?.window }
+    #if DEBUG
+    weak var commandWindowForTesting: NSWindow?
+    #endif
+    private var mainWindowIsKey: Bool {
+        #if DEBUG
+        if let commandWindowForTesting { return commandWindowForTesting === model.shell.windowController?.window }
+        #endif
+        return NSApp.keyWindow != nil && NSApp.keyWindow === model.shell.windowController?.window
+    }
     /// The editor, while it is showing in the key main window.
     private var editor: EditorModel? {
         guard mainWindowIsKey, !model.shell.showsHome else { return nil }
@@ -203,8 +216,23 @@ import VoxClipCore
         case 33: editor.moveClip(1)
         case 34: editor.requestFindClips(from: .toolbar)
         case 37: confirmRetranscription()
+        case 38: editor.beginRewrite()
+        case 39: editor.beginRewrite(inserting: true)
+        case 40: if let id = selectedClipID { editor.keep(id) }
+        case 41: if let id = selectedClipID { editor.dismiss(id) }
+        case 42: editor.keepAll()
+        case 43: if let id = selectedClipID { shell.beginRename(id) }
+        case 44: if let id = selectedClipID { editor.removeClip(id) }
+        case 45: if let id = selectedClipID { editor.presentExport(clipIDs: [id]) }
+        case 46: editor.seek(source: max(0, editor.sourceTime - 3))
+        case 47: editor.seek(source: min(editor.sourceDuration, editor.sourceTime + 3))
+        case 48: editor.copySelection()
         default: break
         }
+    }
+    private var selectedClipID: String? {
+        guard case .clip(let id) = model.shell.selection else { return nil }
+        return id
     }
     @objc private func checkUpdates(_ sender: Any?) {
         if let url = model.update?.htmlURL, url.host == "github.com" { NSWorkspace.shared.open(url) }
@@ -255,7 +283,15 @@ import VoxClipCore
             }
             guard let editor else { return false }
             switch item.tag {
-            case 1, 2, 3, 29: return !editor.selectedIDs.isEmpty
+            case 1, 3, 29, 38, 39: return editor.editingAvailable && !editor.selectedIDs.isEmpty
+            case 48: return !editor.selectedIDs.isEmpty
+            case 2: return editor.editingAvailable && (!editor.selectedWordIDs.isDisjoint(with: editor.cutWordIDs) || !editor.selectedPauseIDs.isDisjoint(with: editor.cutPauseIDs))
+            case 40, 41: return selectedClipID.map(editor.isSuggestion) == true
+            case 42: return !editor.suggestedClips.isEmpty
+            case 43, 44: return selectedClipID.map { !editor.isSuggestion($0) } == true && editor.editingAvailable
+            case 45: return selectedClipID.map { !editor.isSuggestion($0) } == true && editor.canExport && editor.mediaExportable
+            case 46: return editor.mediaResolved && NSApp.keyWindow?.firstResponder is TranscriptNSTextView
+            case 47: return editor.mediaResolved
             case 7: return editor.summary.canCutFillers
             case 8: return editor.summary.canTighten
             case 9: return editor.summary.hasEdits
@@ -292,6 +328,7 @@ import VoxClipCore
         }
         let app = menu("VoxClip")
         add(app, "About VoxClip", #selector(NSApplication.orderFrontStandardAboutPanel(_:)), target: NSApp)
+        add(app, "Check for Updates…", #selector(checkUpdates(_:)), target: self)
         app.addItem(.separator())
         add(app, "Settings…", #selector(settings(_:)), ",", target: self)
         app.addItem(.separator())
@@ -315,6 +352,7 @@ import VoxClipCore
         add(file, "Close Project", #selector(closeProject(_:)), "w", target: self)
         add(file, "Save", #selector(NSDocument.save(_:)), "s")
         add(file, "Save As…", #selector(NSDocument.saveAs(_:)), "s", [.command, .shift])
+        add(file, "Duplicate", #selector(NSDocument.duplicate(_:)))
         add(file, "Move To…", #selector(NSDocument.move(_:)))
         add(file, "Rename…", #selector(NSDocument.rename(_:)))
         add(file, "Revert to Saved…", #selector(NSDocument.revertToSaved(_:)))
@@ -333,6 +371,9 @@ import VoxClipCore
         command(edit, "Cut Selection", 1)
         command(edit, "Restore Selection", 2)
         command(edit, "Correct Word", 3)
+        command(edit, "Rewrite…", 38, "r", [.command, .shift])
+        command(edit, "Insert Words…", 39)
+        command(edit, "Copy Text", 48)
         command(edit, "Find…", 4, "f")
         command(edit, "Find Next", 5, "g")
         command(edit, "Find Previous", 6, "g", [.command, .shift])
@@ -351,15 +392,24 @@ import VoxClipCore
         command(view, "Bigger Text", 18, "+")
         command(view, "Smaller Text", 19, "-")
         command(view, "Actual Size", 20, "0")
+        add(view, "Enter Full Screen", #selector(NSWindow.toggleFullScreen(_:)), "f", [.command, .control])
         let playback = menu("Playback")
         for (name, tag) in [("Play/Pause",21),("Play from Selection",22),("Preview Cut",23),("Shuttle Back",24),("Stop",25),("Shuttle Forward",26),("Go to Start",27),("Go to End",28)] { command(playback, name, tag) }
+        command(playback, "Back 3 Seconds", 46, "j", [])
+        command(playback, "Forward 3 Seconds", 47)
         let clip = menu("Clip")
         command(clip, "Make Clip from Selection", 29, "k")
+        command(clip, "Find Clips…", 34, "k", [.command, .shift])
+        command(clip, "Keep Suggestion", 40)
+        command(clip, "Dismiss Suggestion", 41)
+        command(clip, "Keep All Suggestions", 42)
+        command(clip, "Rename Clip…", 43)
+        command(clip, "Remove Clip", 44)
         command(clip, "Set Start", 30)
         command(clip, "Set End", 31)
         command(clip, "Previous Clip", 32)
         command(clip, "Next Clip", 33)
-        command(clip, "Find Clips…", 34, "k", [.command, .shift])
+        command(clip, "Export Clip…", 45)
         let window = menu("Window")
         add(window, "Minimize", #selector(NSWindow.performMiniaturize(_:)), "m")
         add(window, "Zoom", #selector(NSWindow.performZoom(_:)))
@@ -370,9 +420,8 @@ import VoxClipCore
         NSApp.windowsMenu = window
         let help = menu("Help")
         command(help, "Keyboard Shortcuts", 35, "/")
-        command(help, "Workspace Tour", 36)
+        command(help, "Welcome Tour", 36)
         add(help, "What Leaves This Mac", #selector(privacy(_:)), target: self)
-        add(help, "Check for Updates…", #selector(checkUpdates(_:)), target: self)
         add(help, "Reveal Logs", #selector(revealLogs(_:)), target: self)
         add(help, "Copy Diagnostics", #selector(copyDiagnostics(_:)), target: self)
     }

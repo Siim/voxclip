@@ -1,6 +1,21 @@
 import SwiftUI
 import VoxClipCore
 
+@MainActor struct VoiceLabOptInView: View {
+    @Bindable var editor: EditorModel
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Turn on Voice Lab").font(.title2)
+            Text("Voice Lab can clone your own voice, change your voice and re-voice a few words. Everything it makes is labelled 'AI MODIFIED' in exports, as EU law requires. It uses your ElevenLabs key and, for lip sync, your fal.ai or sync.so key.")
+            HStack {
+                Button("Cancel") { editor.showVoiceLabOptIn = false }.keyboardShortcut(.cancelAction)
+                Spacer()
+                Button("Turn on") { editor.enableVoiceLab() }.keyboardShortcut(.defaultAction)
+            }
+        }.padding(24).frame(width: 460)
+    }
+}
+
 /// The main window's content (ADR-R29): the sidebar, then Home or the open
 /// project's editor. The shell owns the editor; this view only presents it.
 @MainActor struct WorkspaceView: View {
@@ -46,6 +61,9 @@ import VoxClipCore
         content
             .sheet(isPresented: editorFlag(\.showExport)) { if let editor = shell.editor { ExportSheet(model: editor) } }
             .sheet(isPresented: editorFlag(\.showTranscribe)) { if let editor = shell.editor { TranscriptionSheet(model: editor) } }
+            .sheet(isPresented: editorFlag(\.showVoiceLabOptIn)) {
+                if let editor = shell.editor { VoiceLabOptInView(editor: editor) }
+            }
             .sheet(isPresented: $shell.showShortcuts) { ShortcutsView() }
             .sheet(isPresented: Binding(get: { shell.app.showTour }, set: { shell.app.showTour = $0 })) { OnboardingView() }
     }

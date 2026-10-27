@@ -37,11 +37,22 @@ import VoxClipCore
         defer { textWindow.close() }
         let words = Array(model.words.prefix(3))
         model.selectedWordIDs = Set(words.map(\.id))
+        let escapeProject = model.project
+        let escapeClip = ClipRange(id: "escape-scope", startWordId: words[0].id, endWordId: words[2].id)
+        model.apply(.addClip(escapeClip), name: "Escape fixture")
+        model.activate(escapeClip)
         text.selectedRanges = words.compactMap { text.map.span(id: $0.id).map { NSValue(range: $0.range) } }
         if let tab = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: textWindow.windowNumber, context: nil, characters: "\t", charactersIgnoringModifiers: "\t", isARepeat: false, keyCode: 48) { text.keyDown(with: tab) }
         results.append(.init(name: "keyboard Tab reveals the selection bar without a pointer", passed: text.selectionBarVisible))
         if let escape = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: textWindow.windowNumber, context: nil, characters: "", charactersIgnoringModifiers: "", isARepeat: false, keyCode: 53) { text.keyDown(with: escape) }
-        results.append(.init(name: "keyboard Escape dismisses the selection bar", passed: !text.selectionBarVisible))
+        results.append(.init(name: "keyboard Escape dismisses the bar before leaving the clip", passed: !text.selectionBarVisible && model.activeClip?.id == escapeClip.id))
+        if let escape = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: textWindow.windowNumber, context: nil, characters: "", charactersIgnoringModifiers: "", isARepeat: false, keyCode: 53) { text.keyDown(with: escape) }
+        results.append(.init(name: "Escape with no bar returns to Full Take", passed: model.activeClip == nil))
+        model.document.replaceProject(escapeProject); model.refresh(); coordinator.renderer.rebuild(model: model)
+        let clipsBeforeFind = model.project.edits.clips
+        if let find = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [.command, .shift], timestamp: 0, windowNumber: textWindow.windowNumber, context: nil, characters: "K", charactersIgnoringModifiers: "k", isARepeat: false, keyCode: 40) { text.keyDown(with: find) }
+        results.append(.init(name: "transcript Shift-Command-K opens Find Clips rather than making a clip", passed: model.showFindClips && model.project.edits.clips == clipsBeforeFind))
+        model.showFindClips = false
         model.findVisible = true; text.showSelectionBar()
         results.append(.init(name: "Find suppresses the selection bar", passed: !text.selectionBarVisible))
         model.findVisible = false
