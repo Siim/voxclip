@@ -187,8 +187,8 @@ Prices live in a data file, `shared/catalog/voice-lab.json`, created with the M2
 | ElevenLabs Instant Voice Clone | no per-call charge (Starter plan or higher) | 0 |
 | fal `fal-ai/latentsync` | $0.20 flat up to 40 s, then $0.005 per second | `0.20 + max(0, s − 40) × 0.005` |
 | fal `fal-ai/sync-lipsync/v2`, model `lipsync-2` | $3.00 per minute | `s × 0.05` |
-| fal `fal-ai/sync-lipsync/v2`, model `lipsync-2-pro` | about 1.67 × lipsync-2 | `s × 0.0835` |
-| fal `fal-ai/sync-lipsync/v3` (sync-3) | not published on the model page | from the pricing API (§3.3), else unknown |
+| fal `fal-ai/sync-lipsync/v2`, model `lipsync-2-pro` | $5.00 per minute (shown as 1.67 × lipsync-2) | `s × 5 / 60` |
+| fal `fal-ai/sync-lipsync/v3` (sync-3) | $8.00 per minute (model page, checked 2026-10-26) | `s × 8 / 60` |
 | sync.so `lipsync-2`, `lipsync-2-pro`, `sync-3` | $0.04–0.05, $0.067–0.083 and $0.107–0.133 per second, depending on plan | from the estimate API (§3.3) |
 
 ### 3.3 Live price sources (preferred when reachable)
@@ -935,7 +935,7 @@ Settings → Voice Lab → Lip sync has two choices: the provider (fal.ai, sync.
 1. **Upload** the mezzanine and the WAV:
    - `POST https://rest.fal.ai/storage/upload/initiate?storage_type=fal-cdn-v3` with header `Authorization: Key <key>` and body `{"file_name":"window.mp4","content_type":"video/mp4"}`. The response is `{upload_url, file_url}`.
    - `PUT <upload_url>` with the bytes and the same `Content-Type`.
-   - Spike S8 verifies the lifecycle header that limits retention of the uploaded files.
+   - The fal SDKs document CDN uploads, but this REST initiate path is not on fal's current public CDN page. Spike S8 verifies the path, and also the lifecycle header that limits retention of the uploaded files (`X-Fal-Object-Lifecycle-Preference`; the documented default is no expiry).
 2. **Submit** with `POST https://queue.fal.run/<endpoint>` and a JSON body. The response is `{request_id, status_url, response_url, cancel_url, queue_position}`.
 
    | Endpoint | Body |
@@ -959,6 +959,9 @@ Settings → Voice Lab → Lip sync has two choices: the provider (fal.ai, sync.
    | 400 `ALREADY_COMPLETED` | it already finished |
 
 6. **Retries.** A submit is retried only after an explicit 429 or 5xx response, never after a timeout, because a lost response may still have started a billed job.
+7. **Cleanup** after the download, or after a terminal failure or cancel:
+   - `DELETE https://api.fal.ai/v1/models/requests/{request_id}/payloads` removes the request payloads and output files.
+   - `POST https://rest.fal.ai/storage/files/delete` removes each uploaded input file.
 
 ### 9.5 sync.so flow
 
@@ -977,12 +980,13 @@ Settings → Voice Lab → Lip sync has two choices: the provider (fal.ai, sync.
      "outputFileName": "voxclip-<segmentId>" }
    → 201 { "id": "…", "status": "PENDING", … }      (200 + Idempotency-Replayed: true on a keyed replay)
    ```
-3. **Poll** with `GET https://api.sync.so/v2/generate/{id}?wait=true&timeout=10&include=progress`, repeatedly.
+3. **Poll** with `GET https://api.sync.so/v2/generate/{id}?include=progress` every 5 s; after 2 minutes, every 15 s. The API accepts either `wait=true&timeout≤10` or `include=progress`, not both together. Progress needs `include=progress`, so VoxClip does not use `wait`.
    - Statuses: `PENDING`, `PROCESSING`, `COMPLETED` (with `outputUrl` and `outputDuration`), `FAILED`, `REJECTED` (with `error` and `errorCode`).
    - The deadline is 30 minutes.
 4. **Errors.** A 429 with `errorCode: concurrency_limit_reached` waits `retryAfterSeconds` and retries with the same Idempotency-Key. Other error bodies show `message` and `suggestion`.
-5. **Cleanup.** Delete the uploaded assets after the download (the Assets API "Delete Asset" endpoint; spike S8 confirms the path).
-6. **Watermarks.** Hobbyist-plan output is watermarked. Before the first sync.so job, show "sync.so adds a watermark on its Hobbyist plan."
+5. **Cleanup** after the download: `DELETE https://api.sync.so/v2/assets/{id}` for both assets, then `DELETE https://api.sync.so/v2/generations/{id}`. The generation can be deleted only in a terminal state; while processing it returns 409 `generation_not_deletable_while_processing`.
+6. **No cancel.** sync.so has no cancel endpoint. [Cancel] stops polling only, and the job still finishes and bills. While a sync.so job runs, the progress row says "sync.so will finish and bill this job." VoxClip deletes the generation and assets once the job reaches a terminal state, on the next launch if needed.
+7. **Watermarks.** sync.so's pricing page lists "No watermark" from the Creator plan up, and a sync.so blog page says output is watermark-free on all paid plans. Spike S8 checks the lowest plan. Until then, before the first sync.so job, show "sync.so may add a watermark on its lowest plan."
 
 ### 9.6 Concurrency
 
@@ -1270,7 +1274,7 @@ The Guidelines do not settle whether a free, open-source, bring-your-own-key des
 | S5 | Which IVC upload formats are accepted (M4A AAC, WAV, FLAC)? How does multipart encode `labels`? | §6.5, §6.7 |
 | S6 | Pick and calibrate the speaker-embedding model (licence, ONNX Runtime on both platforms, τ) | §6.6, the M3 release |
 | S7 | Real processing times for fal LatentSync, lipsync-2 and sync-3 on 3 s and 10 s windows at 1080×1920 | §9 UX |
-| S8 | The fal storage lifecycle header for short retention. The sync.so asset delete path | §9.4, §9.5 |
+| S8 | The fal REST upload-initiate path and the storage lifecycle header for short retention. Whether sync.so watermarks output on its lowest plan | §9.4, §9.5 |
 | S9 | Validate the C2PA manifest against spec 2.4. Does a self-signed manifest survive and display on LinkedIn and X? | §11.7 |
 | S10 | Does `text_to_speech` permission also cover Text to Dialogue? Exact error-body fields for missing permissions | §2.2 |
 | S11 | Map ElevenLabs `tier` strings to "Pro or higher" for 44.1 kHz output | §2.3 |
@@ -1393,5 +1397,10 @@ Sources cited by the duration-fit research behind ADR-R30 (2026-10-26):
 - ElevenLabs: [TTS with timestamps](https://elevenlabs.io/docs/api-reference/text-to-speech/convert-with-timestamps) (no target-duration parameter), the [TTS guide](https://elevenlabs.io/docs/eleven-creative/playground/text-to-speech) (speed "not available for the Eleven v3 model"), [TTS best practices](https://elevenlabs.io/docs/overview/capabilities/text-to-speech/best-practices), the [models page](https://elevenlabs.io/docs/overview/models) (Estonian only on v3 and v4), the [skills repository's voice settings](https://github.com/elevenlabs/skills/blob/main/text-to-speech/references/voice-settings.md) (the contradicting speed claim) and [API pricing](https://elevenlabs.io/pricing/api).
 - sync.so: [sync mode](https://sync.so/docs/developer-guides/sync-mode) and [generate API](https://sync.so/docs/api-reference/api/generate-api/create.md), for changed-duration lip sync.
 - The stretchers that were compared or excluded, with their sources: `doc/archive/voice-lab-stretch-history.md`.
+
+Sources for the lip-sync corrections (lip-sync research, 2026-10-26):
+
+- fal.ai: the [sync-3 model page](https://fal.ai/models/fal-ai/sync-lipsync/v3) ($8.00 per minute), the [lipsync-2 model page](https://fal.ai/models/fal-ai/sync-lipsync/v2), [fal CDN](https://fal.ai/docs/documentation/model-apis/fal-cdn) and [media expiration](https://fal.ai/docs/documentation/model-apis/media-expiration) (uploads, lifecycle header), and [request payloads](https://fal.ai/docs/platform-apis/v1/models/requests/payloads.md) (payload deletion).
+- sync.so: [generate-api/get](https://sync.so/docs/api-reference/api/generate-api/get.md) (`wait` and `include=progress` are alternatives), [generate-api/delete](https://sync.so/docs/api-reference/api/generate-api/delete.md) (terminal states only), [assets-api/delete](https://sync.so/docs/api-reference/api/assets-api/delete.md), and the [pricing page](https://sync.so/pricing) (watermark by plan).
 
 Repository documents: `doc/spec/editing.md` (§2, §4.5, §4.7, §7, §10, §12), `doc/spec/ai.md` (§4.8, §11.3, §12.8), `doc/architecture.md` (§2.5, §8, §10, §11), `doc/design.md` (§6.3, Settings), `doc/publishing.md` (§2, §3.5.3, §5), and `shared/schemas/project.schema.json` (`voiceLab`).
