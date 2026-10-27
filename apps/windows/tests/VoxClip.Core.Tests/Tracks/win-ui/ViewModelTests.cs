@@ -4,6 +4,7 @@ using VoxClip.App.ViewModels;
 using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Domain.Transcript;
+using VoxClip.Core.Services.LLM;
 using Xunit;
 
 namespace VoxClip.Ui.Tests;
@@ -88,29 +89,31 @@ public sealed class ViewModelTests
     {
         var model = Demo(); model.Select(0); model.Select(3, true);
         var before = model.Clips.Count;
-        Assert.True(model.MakeClip()); Assert.Equal(before + 1, model.Clips.Count);
-        Assert.Equal(ClipOrigin.Manual, model.Clips.Last().Clip.Origin); Assert.True(model.Clips.Last().Selected);
+        var id = model.MakeClip(); Assert.NotNull(id); Assert.Equal(before + 1, model.Clips.Count);
+        var made = model.Clips.Single(clip => clip.Id == id);
+        Assert.Equal(ClipOrigin.Manual, made.Clip.Origin); Assert.True(made.Selected); Assert.False(made.IsSuggested);
     }
     [Fact]
     public void ClipRowDurationMatchesItsPreviewAndExportPlan()
     {
         var model = new EditorViewModel(Fixture());
         model.Select(3); model.Select(8, true);
-        Assert.True(model.MakeClip());
-        var row = model.Clips.Last();
+        var id = model.MakeClip();
+        var row = model.Clips.Single(clip => clip.Id == id);
         var scoped = ExportSelection.Scope(model.State, new ExportTarget.Clip(row.Id))!;
         var source = model.Project.Media.Source;
         var rate = source.Audio?.SampleRate is > 0 ? source.Audio.SampleRate : 48000;
         var plan = EditingEngine.BuildEditPlan(EditingEngine.BuildSegments(scoped, source.DurationSeconds),
             source.DurationSeconds, rate, scoped.PauseKeepSeconds);
-        Assert.StartsWith(EditorViewModel.Timecode(plan.Duration) + " · ", row.Detail);
+        Assert.Equal(plan.Duration, row.DurationSeconds, 9);
+        Assert.Equal(EditorViewModel.Duration(plan.Duration), row.Duration);
         var wordSpan = model.Words[8].End - model.Words[3].Start;
         Assert.True(plan.Duration > wordSpan);
     }
     [Fact]
     public void MissingSelectionDoesNotCreateClip()
     {
-        var model = Demo(); Assert.False(model.MakeClip()); Assert.Contains("No key", model.Notice);
+        var model = Demo(); Assert.Null(model.MakeClip()); Assert.Contains("No key", model.Notice);
     }
     [Fact]
     public void CutUndoRedoNeverChangesSourceTimings()
@@ -149,8 +152,8 @@ public sealed class ViewModelTests
     {
         var model = new EditorViewModel(Fixture());
         model.Select(3); model.Select(8, true);
-        Assert.True(model.MakeClip());
-        var clip = model.Clips.Last();
+        var id = model.MakeClip();
+        var clip = model.Clips.Single(row => row.Id == id);
         model.Apply(new EditOperation.SetActiveClip(clip.Id));
         var source = model.State!;
         var full = ExportSelection.Scope(source, new ExportTarget.FullEdit())!;
@@ -176,6 +179,14 @@ public sealed class ViewModelTests
     }
     [Fact]
     public void CancellationIsSilent() => Assert.Empty(UiError.Message(new OperationCanceledException(), "Export"));
+    [Fact]
+    public void AiFailuresSayTheirEditsAreSavedOnce()
+    {
+        // Core's messages already end "Your edits are saved." (AI spec §5); a bare message gets it once, and a cancel says nothing.
+        Assert.Equal("You're offline. Your edits are saved.", UiError.Message(new LlmException(new(LlmErrorKind.Network, VoxClipErrorCode.Offline, "You're offline. Your edits are saved.")), "Find clips"));
+        Assert.Equal("You're offline. Your edits are saved.", UiError.Message(new LlmException(new(LlmErrorKind.Network, VoxClipErrorCode.Offline, "You're offline.")), "Find clips"));
+        Assert.Empty(UiError.Message(new LlmException(new(LlmErrorKind.Cancelled, VoxClipErrorCode.Cancelled, "")), "Find clips"));
+    }
     [Fact]
     public void ShareCaptionPersistsWithoutRecomposingPreview()
     {
@@ -208,7 +219,7 @@ public sealed class ViewModelTests
     public async Task LeavingHoldsOneSavedSnapshotAcrossDelayedReplacement()
     {
         var model = new EditorViewModel(Fixture());
-        model.Select(0); model.Select(2, true); Assert.True(model.MakeClip());
+        model.Select(0); model.Select(2, true); Assert.NotNull(model.MakeClip());
         var acceptedClip = Assert.Single(model.Clips).Id;
         var acceptedProject = model.Project;
         var boundary = new ProjectLeaveBoundary(model);
@@ -229,7 +240,7 @@ public sealed class ViewModelTests
             Assert.False(model.CanExport);
             Assert.Equal("Saving this project before leaving. Editing is paused.", model.Notice);
             model.Select(4); model.Select(6, true);
-            Assert.False(model.MakeClip());
+            Assert.Null(model.MakeClip());
             model.SetTranscript(model.Project.Transcript!); // a late transcription result must be refused too
             model.SetShareCaption("full", "late caption");
             model.SetCaptionStyle("off");
@@ -244,7 +255,7 @@ public sealed class ViewModelTests
             Assert.Equal(acceptedClip, Assert.Single(model.Clips).Id);
             boundary.Resume(); // replacement load failed; the old editor remains usable
             Assert.True(model.CanExport);
-            Assert.True(model.MakeClip());
+            Assert.NotNull(model.MakeClip());
             Assert.Equal(2, model.Clips.Count);
         }
         finally { Directory.Delete(folder, true); }
@@ -257,7 +268,7 @@ public sealed class ViewModelTests
         await Assert.ThrowsAsync<IOException>(() => boundary.BeginAsync(() => throw new IOException("controlled save failure")));
         Assert.False(boundary.IsLeaving);
         model.Select(1); model.Select(3, true);
-        Assert.True(model.MakeClip());
+        Assert.NotNull(model.MakeClip());
     }
     [Theory]
     [InlineData(true, false, false, false, true, false)]
@@ -269,12 +280,52 @@ public sealed class ViewModelTests
     [InlineData(false, false, true, false, true, true)]
     public void ShortcutsRespectTextFocusAndAltGr(bool text, bool correction, bool control, bool alt, bool editor, bool expected)
         => Assert.Equal(expected, ShortcutPolicy.EditorMayHandle(text, correction, control, alt, editor));
+    [Fact]
+    public void ThePaneForwardsTheEditorsCommandShortcutsOnly()
+    {
+        // Design §11.1: these act from the sidebar pane while an editor is attached; single-letter keys and text shortcuts
+        // (Ctrl+A, Ctrl+C, Ctrl+F) stay with the editor.
+        Assert.Equal(["Ctrl+Z", "Ctrl+Y", "Ctrl+Shift+Z", "Ctrl+K", "Ctrl+E", "Ctrl+Shift+K", "Ctrl+Shift+I", "Ctrl+Shift+U", "Ctrl+Shift+P", "Ctrl+Shift+R", "F1"], ShortcutPolicy.PaneGestures);
+        // EditorPage files each accelerator under VirtualKey.ToString() and its modifiers; MainWindow parses the same strings.
+        Assert.Equal("Ctrl+Shift+Z", ShortcutPolicy.Gesture("Z", true, true));
+        Assert.Equal("Ctrl+E", ShortcutPolicy.Gesture("E", true, false));
+        Assert.Equal("F1", ShortcutPolicy.Gesture("F1", false, false));
+        Assert.True(ShortcutPolicy.PaneForwards(ShortcutPolicy.Gesture("K", true, false)));
+        Assert.True(ShortcutPolicy.PaneForwards(ShortcutPolicy.Gesture("R", true, true)));
+        foreach (var gesture in new[] { "Ctrl+A", "Ctrl+C", "Ctrl+F", "Ctrl+Shift+H", "Delete", "Space", "K", "I", "O", "ctrl+z", "Shift+Z" })
+            Assert.False(ShortcutPolicy.PaneForwards(gesture), gesture);
+    }
     [Theory]
-    [InlineData(0, "00:00.0")]
-    [InlineData(-10, "00:00.0")]
-    [InlineData(16.4, "00:16.4")]
+    [InlineData('[', SidebarKind.Clip, false, -1)]
+    [InlineData(']', SidebarKind.Clip, false, 1)]
+    [InlineData('[', SidebarKind.Suggestion, false, -1)]
+    [InlineData(']', SidebarKind.Suggestion, false, 1)]
+    [InlineData(']', SidebarKind.Clip, true, 0)]
+    [InlineData('[', SidebarKind.FullTake, false, -1)]
+    [InlineData(']', SidebarKind.FullTake, false, 1)]
+    [InlineData(']', SidebarKind.FullTake, true, 0)]
+    [InlineData(']', SidebarKind.Recent, false, 0)]
+    [InlineData(']', SidebarKind.Home, false, 0)]
+    [InlineData(']', SidebarKind.Action, false, 0)]
+    [InlineData('k', SidebarKind.Clip, false, 0)]
+    public void BracketsStepClipsFromTheFullTakeClipAndSuggestionRows(char key, SidebarKind row, bool modifier, int expected) => Assert.Equal(expected, ShortcutPolicy.RowClipStep(key, row, modifier));
+    [Theory]
+    [InlineData(0, "0:00.0")]
+    [InlineData(-10, "0:00.0")]
+    [InlineData(16.4, "0:16.4")]
+    [InlineData(16.6, "0:16.6")]
+    [InlineData(59.96, "1:00.0")]
     [InlineData(3601.2, "1:00:01.2")]
+    [InlineData(3723.4, "1:02:03.4")]
+    [InlineData(double.NaN, "0:00.0")]
     public void TimecodesUseStablePrecision(double value, string expected) => Assert.Equal(expected, EditorViewModel.Timecode(value));
+    [Theory]
+    [InlineData(0, "0:00")]
+    [InlineData(14.6, "0:15")]
+    [InlineData(146.2, "2:26")]
+    [InlineData(3723.4, "62:03")]
+    [InlineData(double.PositiveInfinity, "0:00")]
+    public void DurationsUseMinutesAndSeconds(double value, string expected) => Assert.Equal(expected, EditorViewModel.Duration(value));
     [Fact]
     public async Task PausedDemoDoesNotStartWhenSeekingIntoCut()
     {
@@ -291,9 +342,11 @@ public sealed class ViewModelTests
     {
         var model = Demo();
         model.Select(1); model.Select(3, true);
-        Assert.True(model.MakeClip());
+        Assert.NotNull(model.MakeClip());
         var clip = Assert.Single(model.Clips);
-        Assert.True(model.Apply(new EditOperation.SetActiveClip(clip.Id)));
+        // Making a clip makes it the scope in the same step (design §6.2), so selecting it again changes nothing.
+        Assert.Equal(clip.Id, model.State!.ActiveClipId);
+        Assert.False(model.Apply(new EditOperation.SetActiveClip(clip.Id)));
         var snapshot = Snapshot(model);
         Assert.InRange(snapshot.Plan.Duration, 0.5, 3.0);
         await using var engine = new DemoPreviewEngine();
@@ -319,12 +372,17 @@ public sealed class ViewModelTests
         Assert.Equal(starts[3], starts[4]);
     }
 
+    /// <summary>Design §5: "1:37.7 / 2:26.0", with no scope prefix; the elapsed time stays inside the scope.</summary>
     [Theory]
-    [InlineData(0, 3, true, "Clip 00:00.0 / 00:03.0")]
-    [InlineData(4, 3, true, "Clip 00:03.0 / 00:03.0")]
-    [InlineData(7, 16, false, "Edit 00:07.0 / 00:16.0")]
-    public void PreviewClockNamesItsScope(double position, double duration, bool clip, string expected)
-        => Assert.Equal(expected, PreviewClockLabel.Format(position, duration, clip));
+    [InlineData(0, 3, "0:00.0", "0:03.0")]
+    [InlineData(4, 3, "0:03.0", "0:03.0")]
+    [InlineData(-1, 16, "0:00.0", "0:16.0")]
+    [InlineData(97.7, 146, "1:37.7", "2:26.0")]
+    public void PreviewClockReadsElapsedOverTotal(double position, double duration, string elapsed, string total)
+    {
+        Assert.Equal((elapsed, total), PreviewClockLabel.Parts(position, duration));
+        Assert.Equal($"{elapsed} / {total}", PreviewClockLabel.Format(position, duration));
+    }
 
     private static ComposeSnapshot Snapshot(EditorViewModel model)
     {

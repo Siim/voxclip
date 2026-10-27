@@ -1,0 +1,97 @@
+{
+  "fixture": "voxclip-manual-clip-titles/1",
+  "description": "design.md section 6.2: a manual clip's title is the first seven words of the selection as shown (corrections applied), joined by one space, trimmed of whitespace, cut to 120 Unicode code points and trimmed again; null when nothing is left. Both Cores check every case: VoxClip.Core EditingAlgorithms.ClipTitle and VoxClipCore EditingAlgorithms.clipTitle.",
+  "maxWords": 7,
+  "maxCodePoints": 120,
+  "cases": [
+    {
+      "id": "seven-of-nine",
+      "words": [
+        "Iga",
+        "sõna",
+        "asukoht",
+        "on",
+        "juba",
+        "teada.",
+        "Proovime",
+        "kohe",
+        "järele."
+      ],
+      "expected": "Iga sõna asukoht on juba teada. Proovime"
+    },
+    {
+      "id": "fewer-than-seven",
+      "words": [
+        "So",
+        "today",
+        "we",
+        "shipped"
+      ],
+      "expected": "So today we shipped"
+    },
+    {
+      "id": "exactly-seven",
+      "words": [
+        "Here's",
+        "what",
+        "3",
+        "baristas",
+        "told",
+        "me",
+        "about"
+      ],
+      "expected": "Here's what 3 baristas told me about"
+    },
+    {
+      "id": "one-word",
+      "words": [
+        "Tere!"
+      ],
+      "expected": "Tere!"
+    },
+    {
+      "id": "whitespace-trimmed",
+      "words": [
+        " ",
+        "Hello",
+        "world "
+      ],
+      "expected": "Hello world"
+    },
+    {
+      "id": "code-point-cap",
+      "words": [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      ],
+      "expected": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    {
+      "id": "trimmed-after-the-cap",
+      "words": [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "b"
+      ],
+      "expected": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    {
+      "id": "code-points-not-utf16-units",
+      "words": [
+        "👩🏽‍💻👩🏽‍💻👩🏽‍💻👩🏽‍💻👩🏽‍💻👩🏽‍💻👩🏽‍💻👩🏽‍💻👩🏽‍💻👩🏽‍💻👩🏽‍💻👩🏽‍💻👩🏽‍💻👩🏽‍💻👩🏽‍💻👩🏽‍💻👩🏽‍💻👩🏽‍💻👩🏽‍💻👩🏽‍💻👩🏽‍💻👩🏽‍💻👩🏽‍💻👩🏽‍💻👩🏽‍💻👩🏽‍💻👩🏽‍💻👩🏽‍💻👩🏽‍💻👩🏽‍💻👩🏽‍💻👩🏽‍💻👩🏽‍💻👩🏽‍💻👩🏽‍💻👩🏽‍💻👩🏽‍💻👩🏽‍💻👩🏽‍💻👩🏽‍💻"
+      ],
+      "expected": "👩🏽‍💻👩🏽‍💻👩🏽‍💻👩🏽‍💻👩🏽‍💻👩🏽‍💻👩🏽‍💻👩🏽‍💻👩🏽‍💻👩🏽‍💻👩🏽‍💻👩🏽‍💻👩🏽‍💻👩🏽‍💻👩🏽‍💻👩🏽‍💻👩🏽‍💻👩🏽‍💻👩🏽‍💻👩🏽‍💻👩🏽‍💻👩🏽‍💻👩🏽‍💻👩🏽‍💻👩🏽‍💻👩🏽‍💻👩🏽‍💻👩🏽‍💻👩🏽‍💻👩🏽‍💻"
+    },
+    {
+      "id": "nothing-left",
+      "words": [
+        "",
+        " "
+      ],
+      "expected": null
+    },
+    {
+      "id": "no-words",
+      "words": [],
+      "expected": null
+    }
+  ]
+}

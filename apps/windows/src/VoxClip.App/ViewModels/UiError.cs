@@ -42,7 +42,9 @@ public static class UiError
                 _ => string.IsNullOrWhiteSpace(known.Message) ? $"{action} stopped. Your video and edits are still here. Try again." : known.Message
             };
         }
-        if (exception is LlmException llm) return llm.Error.Kind == LlmErrorKind.Cancelled ? "" : llm.Error.UserMessage + " Your edits are saved.";
+        // Core's AI messages already end "Your edits are saved." (architecture §10.1 rule 1); never say it twice.
+        if (exception is LlmException llm) return llm.Error.Kind == LlmErrorKind.Cancelled ? ""
+            : llm.Error.UserMessage.EndsWith("Your edits are saved.", StringComparison.Ordinal) ? llm.Error.UserMessage : llm.Error.UserMessage + " Your edits are saved.";
         if (exception is IOException or UnauthorizedAccessException) return $"{action} couldn't access the file. Your video and edits are still here.";
         return $"{action} stopped. Your video and edits are still here. Try again.";
     }
@@ -52,4 +54,20 @@ public static class ShortcutPolicy
 {
     public static bool EditorMayHandle(bool textFocus, bool correctionOpen, bool control, bool alt, bool editorFocus) =>
         editorFocus && !textFocus && !correctionOpen && !alt;
+
+    /// <summary>The editor shortcuts that also act while focus is in the sidebar pane (design §11.1), written as gestures. The
+    /// window forwards them to the attached editor; single-letter keys stay with the editor.</summary>
+    public static IReadOnlyList<string> PaneGestures { get; } =
+        ["Ctrl+Z", "Ctrl+Y", "Ctrl+Shift+Z", "Ctrl+K", "Ctrl+E", "Ctrl+Shift+K", "Ctrl+Shift+I", "Ctrl+Shift+U", "Ctrl+Shift+P", "Ctrl+Shift+R", "F1"];
+
+    /// <summary>"Ctrl+Shift+K" for K with Control and Shift.</summary>
+    public static string Gesture(string key, bool control, bool shift) => (control ? "Ctrl+" : "") + (shift ? "Shift+" : "") + key;
+
+    public static bool PaneForwards(string gesture) => PaneGestures.Contains(gesture, StringComparer.Ordinal);
+
+    /// <summary>[ and ] on the Full take, a clip or a suggestion row step to the previous or next kept clip (design §11.1 and
+    /// §6.2: from Full take, ] selects clip 1): -1 or 1, and 0 where the key doesn't act, which is any other row or with a
+    /// modifier held.</summary>
+    public static int RowClipStep(char key, SidebarKind row, bool modifier) =>
+        modifier || row is not (SidebarKind.FullTake or SidebarKind.Clip or SidebarKind.Suggestion) ? 0 : key switch { '[' => -1, ']' => 1, _ => 0 };
 }

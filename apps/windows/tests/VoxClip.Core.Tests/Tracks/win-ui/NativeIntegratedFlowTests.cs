@@ -49,7 +49,7 @@ public sealed class NativeIntegratedFlowTests
         model.SetCaptionStyle("vox-bold");
         model.Select(0); model.CutSelection();
         model.Select(2); model.Select(3, true);
-        Assert.True(model.MakeClip());
+        Assert.NotNull(model.MakeClip());
         var clip = Assert.Single(model.Clips);
         model.Apply(new EditOperation.SetActiveClip(clip.Id));
         var directory = Directory.CreateTempSubdirectory("voxclip-ui-native-").FullName;

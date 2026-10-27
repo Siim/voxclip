@@ -120,7 +120,7 @@ public sealed class UpdateRestartTests
     private static void AddClip(DiskWindow window, int first)
     {
         window.Model.Select(first); window.Model.Select(first + 2, true);
-        Assert.True(window.Model.MakeClip());
+        Assert.NotNull(window.Model.MakeClip());
     }
 
     [Fact]
@@ -172,7 +172,7 @@ public sealed class UpdateRestartTests
             var run = coordinator.RunAsync(new TestSettings(), _ => Task.CompletedTask, CancellationToken.None);
             await window.SaveStarted.Task;
             window.Model.Select(4); window.Model.Select(6, true);
-            Assert.False(window.Model.MakeClip());
+            Assert.Null(window.Model.MakeClip());
             window.Model.SetShareCaption("full", "late");
             window.Model.SetTranscript(window.Model.Project.Transcript!);
             window.ReleasePendingSave();
@@ -180,7 +180,7 @@ public sealed class UpdateRestartTests
             var stored = await window.ReadAsync();
             Assert.Equal(accepted, Assert.Single(stored.Edits.Clips).Id);
             Assert.Equal(originalCaption, stored.Share.Captions.GetValueOrDefault("full"));
-            Assert.True(window.Model.MakeClip()); // A fake dispatch returns without ending the process.
+            Assert.NotNull(window.Model.MakeClip()); // A fake dispatch returns without ending the process.
         }
         finally { Directory.Delete(folder, true); }
     }

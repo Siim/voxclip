@@ -1,6 +1,7 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Documents;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Shapes;
 using VoxClip.App.ViewModels;
@@ -12,22 +13,52 @@ public sealed class TimelineView : UserControl
     private readonly Canvas canvas = new() { Height = 28, IsHitTestVisible = false };
     private readonly Slider slider = new() { Minimum = 0, StepFrequency = 0.01, SmallChange = 0.1, IsTabStop = true, VerticalAlignment = VerticalAlignment.Top };
     private readonly TextBlock label = new() { FontSize = 11, Margin = new Thickness(0, 0, 0, 4) };
+    private readonly Grid track = new() { Padding = new Thickness(24, 0, 24, 0), VerticalAlignment = VerticalAlignment.Center };
+    // The compact transport (delta §5.3): a round Play and the edited time, only while the viewer is collapsed.
+    private readonly StackPanel transport = new() { Orientation = Orientation.Horizontal, Spacing = 8, Padding = new Thickness(16, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, Visibility = Visibility.Collapsed };
+    private readonly SymbolIcon playGlyph = new(Symbol.Play);
+    private readonly TextBlock time = new() { FontSize = 13, VerticalAlignment = VerticalAlignment.Center };
+    private readonly Run elapsed = new();
+    private readonly Run total = new();
     private EditorViewModel? model;
     private bool updating;
     public event EventHandler<double>? SeekRequested;
+    public event EventHandler? PlayRequested;
     public TimelineView()
     {
         IsTabStop = false;
-        var grid = new Grid { Padding = new Thickness(24, 0, 24, 0), Height = 56 };
-        grid.RowDefinitions.Add(new() { Height = new GridLength(36) });
-        grid.RowDefinitions.Add(new() { Height = GridLength.Auto });
-        grid.Children.Add(canvas);
-        grid.Children.Add(slider);
-        Grid.SetRow(label, 1); grid.Children.Add(label);
+        var grid = new Grid();
+        grid.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
+        grid.ColumnDefinitions.Add(new());
+        track.RowDefinitions.Add(new() { Height = new GridLength(36) });
+        track.RowDefinitions.Add(new() { Height = GridLength.Auto });
+        track.Children.Add(canvas);
+        track.Children.Add(slider);
+        Grid.SetRow(label, 1); track.Children.Add(label);
+        Grid.SetColumn(track, 1);
+        var play = new Button { Width = 32, Height = 32, Padding = new Thickness(0), CornerRadius = new CornerRadius(16), Content = playGlyph, VerticalAlignment = VerticalAlignment.Center };
+        AutomationProperties.SetName(play, "Play or pause (Space)");
+        ToolTipService.SetToolTip(play, "Play or pause (Space)");
+        play.Click += (_, _) => PlayRequested?.Invoke(this, EventArgs.Empty);
+        time.FontFamily = (FontFamily)Application.Current.Resources["VcMonoFontFamily"];
+        time.Inlines.Add(elapsed);
+        time.Inlines.Add(total);
+        total.Foreground = Brush("VcTextSecondaryBrush");
+        transport.Children.Add(play); transport.Children.Add(time);
+        grid.Children.Add(transport); grid.Children.Add(track);
         Content = grid;
         slider.ValueChanged += (_, args) => { if (!updating) SeekRequested?.Invoke(this, args.NewValue); };
-        SizeChanged += (_, _) => Draw();
-        ActualThemeChanged += (_, _) => Draw();
+        track.SizeChanged += (_, _) => Draw();
+        ActualThemeChanged += (_, _) => { total.Foreground = Brush("VcTextSecondaryBrush"); Draw(); };
+    }
+    /// <summary>Show the compact transport while the viewer is collapsed; Space, J, K and L work either way.</summary>
+    internal bool ShowsTransport { set => transport.Visibility = value ? Visibility.Visible : Visibility.Collapsed; }
+    /// <summary>The edited clock as the viewer shows it: the elapsed time, then " / " and the length in text.secondary.</summary>
+    internal void SetTransport(string elapsedTime, string length, bool playing)
+    {
+        elapsed.Text = elapsedTime;
+        total.Text = " / " + length;
+        playGlyph.Symbol = playing ? Symbol.Pause : Symbol.Play;
     }
     public void Attach(EditorViewModel value) { model = value; model.Changed += Changed; Draw(); }
     internal Control FocusTarget => slider;
@@ -42,8 +73,8 @@ public sealed class TimelineView : UserControl
     private void Draw()
     {
         canvas.Children.Clear();
-        if (model is null || ActualWidth <= 48) return;
-        var width = ActualWidth - 48;
+        if (model is null || track.ActualWidth <= 48) return;
+        var width = track.ActualWidth - 48;
         var duration = Math.Max(0.01, model.Project.Media.Source.DurationSeconds);
         slider.Maximum = duration;
         void Rect(double start, double end, Brush brush, double top = 8, double height = 22)
@@ -74,10 +105,10 @@ public sealed class TimelineView : UserControl
             var start = model.Words[first].Start;
             var end = model.Words[last].End;
             Rect(start, end, Brush("VcTimelineClipBracketBrush"), 3, 2);
-            var badge = new TextBlock { Text = (number++).ToString(), FontSize = 10, Foreground = Brush("VcTextPrimaryBrush") };
+            var badge = new TextBlock { Text = (number++).ToString(), FontFamily = (FontFamily)Application.Current.Resources["VcMonoFontFamily"], FontSize = (double)Application.Current.Resources["VcLayoutBadgeFontSize"], Foreground = Brush("VcTextPrimaryBrush") };
             Canvas.SetLeft(badge, start / duration * width); Canvas.SetTop(badge, 0); canvas.Children.Add(badge);
         }
-        label.Text = EditorViewModel.Timecode(duration) + " source · " + model.Status;
+        label.Text = EditorViewModel.Timecode(duration) + " source · " + model.SummaryLine;
         Position(model.SourceTime);
     }
 }

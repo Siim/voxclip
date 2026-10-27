@@ -6,6 +6,7 @@
             <ResourceDictionary.MergedDictionaries>
                 <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
                 <ResourceDictionary Source="Themes/Tokens.xaml" />
+                <ResourceDictionary Source="Themes/Workspace.xaml" />
             </ResourceDictionary.MergedDictionaries>
             <!-- Petrol accent ramp (doc/design.md section 14): light fills use Dark1 (accent.default) and
                  Dark2 (accent.pressed); dark fills use Light2 (accent.text). SystemAccentColor is #237D7A in both

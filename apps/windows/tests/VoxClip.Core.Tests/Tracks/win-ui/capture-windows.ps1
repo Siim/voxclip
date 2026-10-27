@@ -43,6 +43,18 @@ public static class VoxClipScreen {
         keybd_event(0x45, 0, 2, UIntPtr.Zero);
         keybd_event(0x11, 0, 2, UIntPtr.Zero);
     }
+    public static void MakeClipShortcut() {
+        keybd_event(0x11, 0, 0, UIntPtr.Zero);
+        keybd_event(0x4B, 0, 0, UIntPtr.Zero);
+        keybd_event(0x4B, 0, 2, UIntPtr.Zero);
+        keybd_event(0x11, 0, 2, UIntPtr.Zero);
+    }
+    public static void ContextMenuKey() {
+        keybd_event(0x10, 0, 0, UIntPtr.Zero);
+        keybd_event(0x79, 0, 0, UIntPtr.Zero);
+        keybd_event(0x79, 0, 2, UIntPtr.Zero);
+        keybd_event(0x10, 0, 2, UIntPtr.Zero);
+    }
     public static void SelectOpeningWords() {
         keybd_event(0x24, 0, 0, UIntPtr.Zero);
         keybd_event(0x24, 0, 2, UIntPtr.Zero);
@@ -107,10 +119,22 @@ function Find-Control([IntPtr]$Window, [string]$Name) {
     }
     throw "The expected accessible control '$Name' did not appear."
 }
+function Find-SelectedRow([IntPtr]$Window, [string]$Pattern) {
+    for ($attempt = 0; $attempt -lt 40; $attempt++) {
+        $rows = [System.Windows.Automation.AutomationElement]::FromHandle($Window).FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition) | Where-Object { $_.Current.Name -match $Pattern }
+        foreach ($row in $rows) {
+            $selection = $null
+            if ($row.TryGetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern, [ref]$selection) -and $selection.Current.IsSelected) { return $row }
+        }
+        Start-Sleep -Milliseconds 250
+    }
+    throw "No selected row matching '$Pattern' appeared."
+}
 function Use-Control($Control) {
     $pattern = $null
     if ($Control.TryGetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern, [ref]$pattern)) { $pattern.Select() }
     elseif ($Control.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern, [ref]$pattern)) { $pattern.Invoke() }
+    elseif ($Control.TryGetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern, [ref]$pattern)) { $pattern.Toggle() }
     else { throw "The control '$($Control.Current.Name)' has no selection or invoke pattern." }
     Start-Sleep -Milliseconds 500
 }
@@ -150,62 +174,55 @@ try {
     if ($Exercise) {
         $checks = New-Object 'System.Collections.Generic.List[string]'
         if ($Screen -eq 'editor') {
-            [void](Find-Control $window 'Make clip from selected transcript words')
-            [void](Find-Control $window 'Find clips with a chosen connector')
-            Save-Window 'editor-clips' $window
-            $checks.Add('Make Clip from Selection and Find Clips are visible in the editor; clip results open by default')
-            Use-Control (Find-Control $window 'Find clips with a chosen connector')
-            [void](Find-Control $window 'Connector')
             [void](Find-Control $window 'Find clips')
+            [void](Find-Control $window ('Export video' + [char]0x2026))
+            Save-Window 'editor-clips' $window
+            $checks.Add('The command row shows Find clips and the one Export video button')
+            Use-Control (Find-Control $window 'Find clips')
+            [void](Find-Control $window ('Set up AI' + [char]0x2026))
             Save-Window 'editor-find-clips' $window
-            $checks.Add('Find Clips exposes the connector and action without starting a provider')
+            $checks.Add('Find Clips with no connector shows the Set up AI callout under the pane actions without starting a provider')
             $transcript = Find-Control $window 'Transcript. Select words to cut. Enter corrects spelling. Control K makes a clip.'
             $transcript.SetFocus()
             [VoxClipScreen]::SelectOpeningWords()
             Start-Sleep -Milliseconds 400
-            Use-Control (Find-Control $window 'Make clip from selected transcript words')
-            [void](Find-Control $window 'Export 1 clip')
+            [VoxClipScreen]::MakeClipShortcut()
+            $clip = Find-SelectedRow $window '^Clip \d+, '
             Save-Window 'editor-manual-clip' $window
-            $checks.Add('Keyboard-selected transcript words created a selected manual clip row')
-            Use-Control (Find-Control $window 'Preview clip')
-            [void](Find-Control $window 'Previewing this clip')
-            Save-Window 'editor-preview-clip' $window
-            $checks.Add('The manual clip is the active preview range')
+            $checks.Add('Keyboard-selected transcript words made a clip whose pane row is selected, so it is the preview range')
             Use-Control (Find-Control $window 'Play or pause (Space)')
             Start-Sleep -Seconds 4
             $clock = [System.Windows.Automation.AutomationElement]::FromHandle($window).FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition) | Where-Object { $_.Current.Name -match '^Clip ([0-9:.]+) / ([0-9:.]+)$' } | Select-Object -First 1
             if (-not $clock -or $clock.Current.Name -notmatch '^Clip ([0-9:.]+) / \1$') { throw 'Clip preview did not stop at its scoped duration.' }
             Save-Window 'editor-preview-end' $window
             $checks.Add('Clip preview stops at its local duration')
-            Use-Control (Find-Control $window 'Export 1 clip')
+            $clip.SetFocus()
+            [VoxClipScreen]::ContextMenuKey()
+            Use-Control (Find-Control $window ('Export kept clips' + [char]0x2026))
             [void](Find-Control $window 'Selected clips (1)')
             Save-Window 'export-selected-clip' $window
-            $checks.Add('The clip action opens Export with Selected clips (1) scope')
+            $checks.Add('The clip row menu opens Export with Selected clips (1) scope')
             Use-Control (Find-Control $window 'Cancel')
-            Use-Control (Find-Control $window 'Captions')
             $off = Find-Control $window 'Off, just the video'
             if ($off.Current.ControlType -ne [System.Windows.Automation.ControlType]::RadioButton) { throw 'Caption styles do not expose radio-button semantics.' }
             $selected = Find-Control $window 'Bold'
             if (-not $selected.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Current.IsSelected) { throw 'The fixture caption style is not selected in the gallery.' }
             Save-Window 'editor-captions' $window
             $checks.Add('Caption styles expose named radio buttons and the fixture selection')
-            Use-Control (Find-Control $window ('Export' + [char]0x2026))
+            Use-Control (Find-Control $window ('Export clip' + [char]0x2026))
             [void](Find-Control $window 'Cancel')
             Save-Window 'export' $window
-            $checks.Add('Export button opens the export sheet without exporting the fixture')
+            $checks.Add('Export clip opens the export sheet without exporting the fixture')
             Use-Control (Find-Control $window 'Cancel')
-            Use-Control (Find-Control $window 'Clips')
             $scale = [double]$check.rasterizationScale
             [void][VoxClipScreen]::SetWindowPos($window, [IntPtr]::Zero, 32, 32, [int](900 * $scale), [int](720 * $scale), 0x0040)
             Start-Sleep -Milliseconds 600
+            [void](Find-Control $window 'Play or pause (Space)')
             Save-Window 'editor-compact' $window
-            Use-Control (Find-Control $window 'Clips and captions')
-            [void](Find-Control $window 'Previewing this clip')
-            Save-Window 'editor-compact-clips' $window
-            [VoxClipScreen]::DismissShell()
-            Start-Sleep -Milliseconds 400
-            Save-Window 'editor-compact-return' $window
-            $checks.Add('Compact editor keeps clip results reachable in the overlay pane and a stacked preview/transcript')
+            Use-Control (Find-Control $window 'Viewer')
+            [void](Find-Control $window 'Off, just the video')
+            Save-Window 'editor-compact-viewer' $window
+            $checks.Add('The compact editor collapses the viewer to a timeline transport, and Viewer brings captions back')
         }
         if ($Screen -eq 'settings') {
             $main = @([VoxClipScreen]::Windows($app.Id) | Where-Object { $_ -ne $window })[0]

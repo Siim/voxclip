@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using VoxClip.App.ViewModels;
 using VoxClip.Core.Services.LLM;
 
 namespace VoxClip.App.Services;
@@ -8,6 +9,8 @@ internal sealed record ProviderEntry(ConnectorId Id, string WireId, string Label
 {
     internal bool Cloud => Group == "apiKey";
     internal bool Cli => Group == "cli";
+    /// <summary>The name connector copy uses: "Claude Code", not the catalogue's "Claude Code (installed CLI)".</summary>
+    internal string ShortName => ClipCallouts.ConnectorName(Label, Group);
     public override string ToString() => Label;
 }
 
@@ -33,6 +36,19 @@ internal static class ProviderCatalog
                 entry.TryGetProperty("defaultModel", out var model) ? model.GetString() ?? "" : "", dataFlow, entry.Clone()));
         }
         return entries;
+    }
+
+    /// <summary>A Find clips message from shared/prompts/clip-finder.json (AI spec §5: feature-level messages come from the prompt
+    /// files' <c>messages</c> objects); null when the file can't be read.</summary>
+    internal static async Task<string?> ClipMessageAsync(string key, CancellationToken ct)
+    {
+        if (App.Services.SharedRoot is null) return null;
+        try
+        {
+            using var document = JsonDocument.Parse(await File.ReadAllTextAsync(Path.Combine(App.Services.SharedRoot, "prompts", "clip-finder.json"), ct));
+            return document.RootElement.TryGetProperty("messages", out var messages) && messages.TryGetProperty(key, out var message) ? message.GetString() : null;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or JsonException) { return null; }
     }
 
     internal static string Status(ConnectorStatus status) => status switch

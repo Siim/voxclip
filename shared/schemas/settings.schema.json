@@ -10,7 +10,7 @@
     "schema": { "const": "voxclip-settings/1" },
 
     "general.appearance": { "enum": ["system", "light", "dark"], "default": "system", "description": "design.md section 10, General." },
-    "general.transcriptTextSize": { "type": ["number", "null"], "minimum": 13, "maximum": 28, "default": null, "description": "Transcript font size in pt (macOS) or epx (Windows); null is the platform default (17 / 16). design.md section 4.1." },
+    "general.transcriptTextSize": { "type": ["number", "null"], "minimum": 13, "maximum": 28, "default": null, "description": "Transcript font size in pt (macOS) or epx (Windows); null is the platform default (macOS 17 until the Mac redesign lands, Windows 19). design.md section 4.1." },
     "ui.rightColumnWidth": { "type": ["number", "null"], "minimum": 240, "maximum": 720, "default": null, "description": "Width of the editor's right column in pt (macOS) or epx (Windows) after the user drags its divider; null is the platform's width-dependent default, and each platform clamps to its own range. design.md section 3." },
     "general.showLowConfidence": { "type": "boolean", "default": false, "description": "Dashed underline on low-confidence words. design.md section 4.1." },
     "general.showPlaceholderWords": { "type": "boolean", "default": true, "description": "Show transcript words on placeholders: caption cards show the scope's opening words; when false they show the project title. design.md section 5.4.2." },

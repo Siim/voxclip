@@ -52,7 +52,9 @@ test('font URLs, missing-file fallbacks and dimensional resources are generated'
   assert.ok(output.swift.includes('CTFontManagerRegisterFontsForURL(url as CFURL'));
   assert.ok(output.swift.includes('500: "dm-sans/DMSans-Medium.ttf"'));
   assert.ok(!output.swift.includes('"geist-mono/GeistMono-Regular.ttf"'));
-  assert.ok(output.xaml.includes('ms-appx:///shared/fonts/dm-sans/DMSans-Medium.ttf#DM Sans'));
+  // The video-only families stay on the Mac (Font.vcDmSans and vcGeistMono); Windows renders them from the font files.
+  assert.ok(output.swift.includes('static func vcGeistMono(size: CGFloat'));
+  assert.ok(!/VcFont(DmSans|GeistMono)|<FontFamily |ms-appx:\/\/\/shared\/fonts/.test(output.xaml));
   assert.ok(output.xaml.includes('<CornerRadius x:Key="VcRadiusLgCornerRadius">12</CornerRadius>'));
   assert.ok(output.xaml.includes('<Thickness x:Key="VcSpacingPanePaddingWindowsThickness">16</Thickness>'));
   assert.ok(output.swift.includes('static let sizeCaptionTileAspect: CGFloat = 0.45'));

@@ -2,6 +2,7 @@ using System.Net.Http;
 using System.Runtime.InteropServices;
 using CommunityToolkit.WinUI.Controls;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using VoxClip.App.Controls;
@@ -47,6 +48,10 @@ public sealed partial class SettingsWindow : Window
     }
     [DllImport("user32.dll")]
     private static extern uint GetDpiForWindow(IntPtr window);
+    internal void ShowSection(string tag)
+    {
+        if (Navigation.MenuItems.OfType<NavigationViewItem>().FirstOrDefault(item => (string)item.Tag == tag) is { } item) Navigation.SelectedItem = item;
+    }
     private void SettingsChanged(object? sender, EventArgs args) => App.Services.ApplyTheme(Root);
     private async void PaneChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
     {
@@ -119,10 +124,16 @@ public sealed partial class SettingsWindow : Window
         appearance.SelectionChanged += (_, _) => Save("general.appearance", new[] { "system", "light", "dark" }[appearance.SelectedIndex]); AddSetting(appearance);
         var reopen = new ToggleSwitch { Header = "Open the last project at launch", IsOn = App.Services.Get("general.openLastProject", false) };
         reopen.Toggled += (_, _) => Save("general.openLastProject", reopen.IsOn); AddSetting(reopen);
-        var textSize = new Slider { Header = "Transcript text size", Minimum = 13, Maximum = 28, StepFrequency = 1, Value = App.Services.Get("general.transcriptTextSize", 16d) };
+        var textSize = new Slider { Header = "Transcript text size", Minimum = 13, Maximum = 28, StepFrequency = 1, Value = App.Services.Get("general.transcriptTextSize", TranscriptView.DefaultFontSize) };
         textSize.ValueChanged += (_, _) => Save("general.transcriptTextSize", textSize.Value); AddSetting(textSize);
         var confidence = new ToggleSwitch { Header = "Mark low-confidence words", IsOn = App.Services.Get("general.showLowConfidence", false) };
         confidence.Toggled += (_, _) => Save("general.showLowConfidence", confidence.IsOn); AddSetting(confidence);
+        // Caption cards (design §5.4.2).
+        var placeholders = new ToggleSwitch { Header = "Show transcript words on placeholders", IsOn = App.Services.ShowPlaceholderWords };
+        placeholders.Toggled += (_, _) => Save("general.showPlaceholderWords", placeholders.IsOn); AddSetting(placeholders);
+        const string placeholderHelp = "When off, placeholders show the project title instead of its first words.";
+        AutomationProperties.SetHelpText(placeholders, placeholderHelp);
+        Body.Children.Add(Ui.Text(placeholderHelp, "HelperText"));
         var breath = Ui.Choice("Breath kept in tightened pauses", ["Tight · 0.05 s", "Natural · 0.15 s", "Relaxed · 0.30 s"], Array.IndexOf(new[] { "tight", "natural", "relaxed" }, App.Services.Get("editing.pauseBreath", "natural")));
         breath.SelectionChanged += (_, _) => Save("editing.pauseBreath", new[] { "tight", "natural", "relaxed" }[breath.SelectedIndex]); AddSetting(breath);
         Body.Children.Add(Ui.Text("New-project defaults only. Existing projects keep their choices.", "HelperText"));

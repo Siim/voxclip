@@ -35,6 +35,10 @@ internal sealed class AppServices : IAsyncDisposable
     internal IClipFinder ClipFinder { get; private set; } = null!;
     internal IEncoderProbe Encoders { get; } = new EncoderProbe();
     internal IUpdateChecker Updates { get; }
+    /// <summary>Home and sidebar poster frames in each source's content-key cache entry (design §5.4.7).</summary>
+    internal Thumbnails Thumbnails { get; }
+    /// <summary>Caption cards for media with no frame (design §5.4); null when the caption resources are missing.</summary>
+    internal CaptionCards? Cards { get; private set; }
     internal string? SharedRoot { get; private set; }
     internal string StartupNotice { get; private set; } = "";
     internal bool IsBusy => BusyOperations > 0;
@@ -57,11 +61,13 @@ internal sealed class AppServices : IAsyncDisposable
         settingsWrites.Changed += key =>
         {
             if (key == "transcription.elevenlabs.region" && localSpeech is not null) ConfigureCloudSpeech();
-            SettingsChanged?.Invoke(this, EventArgs.Empty);
+            // Window layout (ui.*, such as the splitter's width) changes nothing the listeners show.
+            if (!key.StartsWith("ui.", StringComparison.Ordinal)) SettingsChanged?.Invoke(this, EventArgs.Empty);
         };
         Keys = new(Data.Secrets, Log);
         Downloads = new ModelStore(Models, Data.Root);
         Updates = new UpdateChecker(new VelopackUpdates(this));
+        Thumbnails = new(Data.Cache, message => Log.Write(LogLevel.Warn, "thumbnails", message));
     }
 
     internal async Task InitializeAsync(CancellationToken ct)
@@ -69,6 +75,7 @@ internal sealed class AppServices : IAsyncDisposable
         // Share-text rules load now, so an invalid shared/data/share-text.json fails at launch, not in the Export dialog.
         try { SharedRoot = SharedResources.ResolveRoot(); SharePostText.Preflight(); }
         catch (Exception exception) { StartupNotice = UiError.Message(exception, "Startup"); }
+        if (SharedRoot is not null) Cards = new(SharedRoot);
         try { settingsWrites.Initialize(await SettingsStore.LoadAsync(ct)); }
         catch (Exception exception) { StartupNotice = UiError.Message(exception, "Settings"); }
         localSpeech = new WhisperNetTranscriber(Models, Downloads, Data.Root, Log);
@@ -91,6 +98,10 @@ internal sealed class AppServices : IAsyncDisposable
     }
 
     internal Task SetAsync<T>(string key, T value, CancellationToken ct = default) => settingsWrites.SetAsync(key, value, ct);
+
+    /// <summary>Settings → General → "Show transcript words on placeholders" (design §5.4.2), from the Core settings with
+    /// their schema default.</summary>
+    internal bool ShowPlaceholderWords => Settings.GetBool("general.showPlaceholderWords") ?? true;
 
     internal void FreezeSettings() => settingsWrites.Freeze();
     internal Task DrainSettingsAsync(CancellationToken ct) => settingsWrites.DrainAsync(ct);

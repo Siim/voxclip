@@ -566,7 +566,7 @@ The Apache License 2.0 text is reproduced above. `Package.resolved` pins https:/
 | .NET 10.0.2 runtime and host packs (self-contained, win-x64 / win-arm64) | managed runtime | MIT and package third-party notices below |
 | Microsoft.WindowsAppSDK 2.5.1 and resolved Windows App SDK component packages | WinUI 3 self-contained runtime | Microsoft redistributable terms and package notices below; not the MIT source repository licence |
 | Microsoft.Windows.AI.MachineLearning 2.1.74, Microsoft.Web.WebView2 1.0.3719.77 | transitive native runtime and WebView2 loader | Microsoft package terms and notices below; installed WebView2 browser runtime is an operating-system prerequisite, not bundled |
-| CommunityToolkit.Mvvm 8.4.2, CommunityToolkit.Common 8.2.1, CommunityToolkit.WinUI.Controls.SettingsControls / Triggers / Helpers / Extensions 8.2.251219 | view models and settings rows | package MIT texts and CommunityToolkit notices below |
+| CommunityToolkit.Mvvm 8.4.2, CommunityToolkit.Common 8.2.1, CommunityToolkit.WinUI.Controls.SettingsControls / Segmented / Sizers / Triggers / Helpers / Extensions 8.2.251219 | view models, settings rows, segmented pickers and the viewer splitter | package MIT texts and CommunityToolkit notices below |
 | SkiaSharp / SkiaSharp.HarfBuzz / SkiaSharp.NativeAssets.Win32 3.119.4 and HarfBuzzSharp / HarfBuzzSharp.NativeAssets.Win32 14.2.1.301 | caption rendering and shaping | package MIT text and native third-party notices below |
 | Whisper.net / Whisper.net.Runtime / Whisper.net.Runtime.NoAvx 1.9.1 | managed speech and CPU whisper.cpp / ggml DLLs | package and pinned native-source MIT texts below |
 | Microsoft.Extensions.AI.Abstractions 10.2.0 | Whisper.net managed transitive dependency | pinned source MIT text below |
@@ -813,9 +813,9 @@ SOFTWARE.
 END OF Sergio0694/ComputeSharp NOTICES AND INFORMATION
 ```
 
-### CommunityToolkit.WinUI SettingsControls, Triggers, Helpers, and Extensions
+### CommunityToolkit.WinUI SettingsControls, Segmented, Sizers, Triggers, Helpers, and Extensions
 
-All four resolved packages at 8.2.251219 carry the same `License.md`; source commit `a6b4dc451c0e54dd29f58743894a956100e7f713`.
+All six resolved packages at 8.2.251219 carry the same `License.md`; source commit `a6b4dc451c0e54dd29f58743894a956100e7f713`.
 
 ```text
 # Windows Community Toolkit

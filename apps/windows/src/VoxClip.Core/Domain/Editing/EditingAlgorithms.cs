@@ -42,6 +42,21 @@ public static partial class EditingAlgorithms
     /// <summary>Absolute-anchor, ASCII-only hesitation rule, editing §4.11.</summary>
     public static bool IsFillerText(string text) => FillerPattern().IsMatch(text);
 
+    /// <summary>Words a manual clip's title takes from its selection, design §6.2.</summary>
+    public const int ClipTitleWords = 7;
+
+    /// <summary>A manual clip's title, design §6.2: the first <see cref="ClipTitleWords"/> words of the selection as shown
+    /// (corrections applied), joined by one space, trimmed, cut to <see cref="EditingLimits.MaxClipTitleCodePoints"/> code
+    /// points and trimmed again. Null when nothing is left. Both Cores check it against
+    /// shared/fixtures/clips/manual-titles.json: this one and VoxClipCore's EditingAlgorithms.clipTitle.</summary>
+    public static string? ClipTitle(IEnumerable<string> selectedWords)
+    {
+        ArgumentNullException.ThrowIfNull(selectedWords);
+        var joined = JsTrim(string.Join(' ', selectedWords.Take(ClipTitleWords)));
+        var title = JsTrim(string.Concat(joined.EnumerateRunes().Take(EditingLimits.MaxClipTitleCodePoints).Select(rune => rune.ToString())));
+        return title.Length == 0 ? null : title;
+    }
+
     /// <summary>Invariant lowercase letters and numbers only, editing §4.7.</summary>
     public static string NormalizeForMatch(string text)
     {

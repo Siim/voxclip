@@ -21,6 +21,12 @@
     <PackageReference Include="xunit.runner.visualstudio" PrivateAssets="all" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <Compile Include="ViewModelTests.cs" />
+    <Compile Include="ShellViewModelTests.cs" />
+    <Compile Include="ShellNavigationTests.cs" />
+    <Compile Include="HomeViewModelTests.cs" />
+    <Compile Include="ClipSemanticsTests.cs" />
+    <Compile Include="CaptionCardTests.cs" />
+    <Compile Include="EditorLayoutTests.cs" />
     <Compile Include="UpdateRestartTests.cs" />
     <Compile Include="StartupCheckTests.cs" />
     <Compile Include="RedirectedLaunchSelectionTests.cs" />
@@ -31,6 +37,8 @@
     <Compile Include="../../../../src/VoxClip.App/Services/SettingsWriteQueue.cs" Link="Services/SettingsWriteQueue.cs" />
     <Compile Include="../../../../src/VoxClip.App/ViewModels/*.cs" LinkBase="ViewModels" />
     <Compile Include="../../../../src/VoxClip.App/Services/DemoProject.cs" Link="Services/DemoProject.cs" />
+    <Compile Include="../../../../src/VoxClip.App/Services/Thumbnails.cs" Link="Services/Thumbnails.cs" />
+    <Compile Include="../../../../src/VoxClip.App/Services/CaptionCards.cs" Link="Services/CaptionCards.cs" />
   </ItemGroup>
   <Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk" />
 </Project>

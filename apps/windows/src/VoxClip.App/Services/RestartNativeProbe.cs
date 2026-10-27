@@ -1,4 +1,5 @@
 #if DEBUG
+using VoxClip.App.ViewModels;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using VoxClip.Core.Domain.Shared;
@@ -39,17 +40,17 @@ internal static class RestartNativeProbe
             File.Copy(fixture, firstPath, true);
             File.Copy(fixture, secondPath, true);
             await App.Services.SetAsync("editing.pauseBreath", "natural");
-            await first.OpenPathAsync(firstPath);
+            await first.OpenPathAsync(firstPath, ShellPath.Launch);
             var second = App.NewWindow();
-            await second.OpenPathAsync(secondPath);
+            await second.OpenPathAsync(secondPath, ShellPath.Launch);
             Require(first.DebugEditor is not null && second.DebugEditor is not null, "both project windows must be open");
             var firstModel = first.DebugEditor!.ViewModel;
             var secondModel = second.DebugEditor!.ViewModel;
             firstModel.Select(0); firstModel.Select(1, true);
-            Require(firstModel.MakeClip(), "first accepted clip");
+            Require(firstModel.MakeClip() is not null, "first accepted clip");
             firstModel.Select(0); firstModel.Correct("native-r6");
             secondModel.Select(2); secondModel.Select(3, true);
-            Require(secondModel.MakeClip(), "second accepted clip");
+            Require(secondModel.MakeClip() is not null, "second accepted clip");
             secondModel.Select(2); secondModel.Correct("second-r6");
             checks.Add("two rendered project windows accepted clip and word edits");
 
@@ -109,8 +110,8 @@ internal static class RestartNativeProbe
             }, CancellationToken.None);
             Require(App.Restart.IsPreparing && !settings.DebugNavigationEnabled, "Settings was not paused during drain");
             Require(ReferenceEquals(first, App.NewWindow()) && App.Windows.Count == 2, "new window bypassed preparation");
-            await first.GoHomeAsync();
-            await first.OpenPathAsync(secondPath);
+            first.ShowHome(ShellPath.SidebarHome);
+            await first.OpenPathAsync(secondPath, ShellPath.HomeTile);
             Require(first.CurrentScreen == "editor" && first.ProjectPath == firstPath, "navigation bypassed preparation");
             App.OpenSettings();
             Require(ReferenceEquals(settings, App.Settings), "Settings entry bypassed preparation");
@@ -128,7 +129,7 @@ internal static class RestartNativeProbe
             await flushStarted.Task.WaitAsync(TimeSpan.FromSeconds(20));
             Require(!settings.DebugNavigationEnabled, "Settings became editable during flush");
             firstModel.Select(1); firstModel.Select(2, true);
-            Require(!firstModel.MakeClip(), "project edit was accepted while final flush was paused");
+            Require(firstModel.MakeClip() is null, "project edit was accepted while final flush was paused");
             try { await App.Services.SetAsync("probe.flush-late", true); throw new InvalidOperationException("flush-time write was accepted"); }
             catch (InvalidOperationException exception) when (exception.Message.Contains("paused", StringComparison.Ordinal)) { }
             Require(dispatched == 0, "dispatch preceded flush");

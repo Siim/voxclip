@@ -335,6 +335,60 @@ extension Color {
             : NSColor(srgbRed: 26.0 / 255, green: 27.0 / 255, blue: 31.0 / 255, alpha: 102.0 / 255)
     })
 
+    static let vcChipMediaBackground = Color(nsColor: NSColor(name: NSColor.Name("vcChipMediaBackground")) { appearance in
+        appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            ? NSColor(srgbRed: 0.0 / 255, green: 0.0 / 255, blue: 0.0 / 255, alpha: 158.0 / 255)
+            : NSColor(srgbRed: 0.0 / 255, green: 0.0 / 255, blue: 0.0 / 255, alpha: 158.0 / 255)
+    })
+
+    static let vcChipMediaStroke = Color(nsColor: NSColor(name: NSColor.Name("vcChipMediaStroke")) { appearance in
+        appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            ? NSColor(srgbRed: 255.0 / 255, green: 255.0 / 255, blue: 255.0 / 255, alpha: 46.0 / 255)
+            : NSColor(srgbRed: 255.0 / 255, green: 255.0 / 255, blue: 255.0 / 255, alpha: 46.0 / 255)
+    })
+
+    static let vcChipMediaBackgroundOpaque = Color(nsColor: NSColor(name: NSColor.Name("vcChipMediaBackgroundOpaque")) { appearance in
+        appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            ? NSColor(srgbRed: 26.0 / 255, green: 26.0 / 255, blue: 28.0 / 255, alpha: 255.0 / 255)
+            : NSColor(srgbRed: 26.0 / 255, green: 26.0 / 255, blue: 28.0 / 255, alpha: 255.0 / 255)
+    })
+
+    static let vcChipMediaStrokeOpaque = Color(nsColor: NSColor(name: NSColor.Name("vcChipMediaStrokeOpaque")) { appearance in
+        appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            ? NSColor(srgbRed: 255.0 / 255, green: 255.0 / 255, blue: 255.0 / 255, alpha: 102.0 / 255)
+            : NSColor(srgbRed: 255.0 / 255, green: 255.0 / 255, blue: 255.0 / 255, alpha: 102.0 / 255)
+    })
+
+    static let vcChipMediaForeground = Color(nsColor: NSColor(name: NSColor.Name("vcChipMediaForeground")) { appearance in
+        appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            ? NSColor(srgbRed: 255.0 / 255, green: 255.0 / 255, blue: 255.0 / 255, alpha: 255.0 / 255)
+            : NSColor(srgbRed: 255.0 / 255, green: 255.0 / 255, blue: 255.0 / 255, alpha: 255.0 / 255)
+    })
+
+    static let vcChipWarningGlyph = Color(nsColor: NSColor(name: NSColor.Name("vcChipWarningGlyph")) { appearance in
+        appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            ? NSColor(srgbRed: 227.0 / 255, green: 178.0 / 255, blue: 92.0 / 255, alpha: 255.0 / 255)
+            : NSColor(srgbRed: 227.0 / 255, green: 178.0 / 255, blue: 92.0 / 255, alpha: 255.0 / 255)
+    })
+
+    static let vcMediaProgressTrack = Color(nsColor: NSColor(name: NSColor.Name("vcMediaProgressTrack")) { appearance in
+        appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            ? NSColor(srgbRed: 0.0 / 255, green: 0.0 / 255, blue: 0.0 / 255, alpha: 140.0 / 255)
+            : NSColor(srgbRed: 0.0 / 255, green: 0.0 / 255, blue: 0.0 / 255, alpha: 140.0 / 255)
+    })
+
+    static let vcMediaRim = Color(nsColor: NSColor(name: NSColor.Name("vcMediaRim")) { appearance in
+        appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            ? NSColor(srgbRed: 255.0 / 255, green: 255.0 / 255, blue: 255.0 / 255, alpha: 26.0 / 255)
+            : NSColor(srgbRed: 255.0 / 255, green: 255.0 / 255, blue: 255.0 / 255, alpha: 26.0 / 255)
+    })
+
+    static let vcMediaSheen = Color(nsColor: NSColor(name: NSColor.Name("vcMediaSheen")) { appearance in
+        appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            ? NSColor(srgbRed: 255.0 / 255, green: 255.0 / 255, blue: 255.0 / 255, alpha: 19.0 / 255)
+            : NSColor(srgbRed: 255.0 / 255, green: 255.0 / 255, blue: 255.0 / 255, alpha: 19.0 / 255)
+    })
+
     static let vcFocusRing = Color(nsColor: NSColor(name: NSColor.Name("vcFocusRing")) { appearance in
         appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
             ? NSColor(srgbRed: 99.0 / 255, green: 189.0 / 255, blue: 182.0 / 255, alpha: 255.0 / 255)

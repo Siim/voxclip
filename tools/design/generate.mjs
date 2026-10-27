@@ -129,7 +129,7 @@ export function buildOutputs(source) {
   }
 
   for (const token of families) {
-    const { details, files, monospaced } = fontDetails(token);
+    const { files, monospaced } = fontDetails(token);
     const family = token.path.at(-1);
     const present = files.filter(([, metadata]) => metadata.present);
     const swiftFiles = present.map(([file, metadata]) => `${metadata.weight}: ${quote(file)}`).join(', ');
@@ -137,9 +137,8 @@ export function buildOutputs(source) {
     if (!Number.isFinite(defaultWeight)) throw new Error(`Missing font files: ${family}`);
     fontLoaders.push(`    static func ${family}(size: CGFloat, weight: Int) -> Font {\n        let files: [Int: String] = ${present.length ? `[${swiftFiles}]` : '[:]'}\n        return load(file: files[weight], size: size, weight: weight, monospaced: ${monospaced})\n    }`);
     swiftFonts.push(`    @MainActor static func vc${capitalize(family)}(size: CGFloat, weight: Int = ${defaultWeight}) -> Font {\n        VoxClipTokenFonts.${family}(size: size, weight: weight)\n    }`);
-    const windowsFamily = [...present.map(([file]) => `ms-appx:///shared/fonts/${file}#${token.$value}`), details.fallbackWindows].join(', ');
-    const name = `VcFont${capitalize(family)}`;
-    addResource(name, `    <FontFamily x:Key="${name}">${xml(windowsFamily)}</FontFamily>`);
+    // Tokens.xaml has no FontFamily for these: DM Sans and Geist Mono appear only in rendered video (design section 16),
+    // and the Windows caption renderer reads the shared font files itself.
     swiftValues.push(`    static let font${capitalize(family)}: String = ${quote(token.$value)}`);
   }
 

@@ -28,14 +28,14 @@ jobs:
     name: macOS (Swift app, .NET core on macOS)
     runs-on: macos-26
     # Every step after setup has its own budget; the job limit is their sum plus about five minutes of setup.
-    timeout-minutes: 162
+    timeout-minutes: 172
     steps:
       - uses: actions/checkout@v5
 
       - name: Require integrated macOS and .NET test projects
         shell: bash
         run: |
-          for file in apps/macos/Package.swift apps/windows/tests/VoxClip.Core.Tests/VoxClip.Core.Tests.csproj apps/windows/tests/VoxClip.Media.Tests/VoxClip.Media.Tests.csproj tools/captions/parity.sh; do
+          for file in apps/macos/Package.swift apps/windows/tests/VoxClip.Core.Tests/VoxClip.Core.Tests.csproj apps/windows/tests/VoxClip.Core.Tests/Tracks/win-ui/VoxClip.Ui.Tests.csproj apps/windows/tests/VoxClip.Media.Tests/VoxClip.Media.Tests.csproj tools/captions/parity.sh; do
             test -f "$file" || { echo "::error file=$file::Required test project or parity script is missing"; exit 1; }
           done
 
@@ -47,6 +47,7 @@ jobs:
           {
             echo "swift=$(has apps/macos/Package.swift)"
             echo "core_tests=$(has apps/windows/tests/VoxClip.Core.Tests/VoxClip.Core.Tests.csproj)"
+            echo "ui_tests=$(has apps/windows/tests/VoxClip.Core.Tests/Tracks/win-ui/VoxClip.Ui.Tests.csproj)"
             echo "media_tests=$(has apps/windows/tests/VoxClip.Media.Tests/VoxClip.Media.Tests.csproj)"
             echo "parity=$(has tools/captions/parity.sh)"
           } >> "$GITHUB_OUTPUT"
@@ -195,6 +196,18 @@ jobs:
         run: |
           dotnet build tests/VoxClip.Core.Tests/VoxClip.Core.Tests.csproj -c Release -m:1 -nodeReuse:false -p:UseSharedCompilation=false
           dotnet test --project tests/VoxClip.Core.Tests/VoxClip.Core.Tests.csproj -c Release --no-build
+
+      # The Windows App's view models, layout, navigation and Home rules (VoxClip.App ViewModels and services built under
+      # WIN_UI_TESTS). They need no Windows APIs; the two cases that need the ARM64 VM's native media skip themselves.
+      - name: .NET win-ui view-model tests on macOS
+        if: ${{ !cancelled() && steps.detect.outputs.ui_tests == 'true' }}
+        timeout-minutes: 10
+        working-directory: apps/windows
+        env:
+          VOXCLIP_SHARED_DIR: ${{ github.workspace }}/shared
+        run: |
+          dotnet build tests/VoxClip.Core.Tests/Tracks/win-ui/VoxClip.Ui.Tests.csproj -c Release -m:1 -nodeReuse:false -p:UseSharedCompilation=false
+          dotnet test --project tests/VoxClip.Core.Tests/Tracks/win-ui/VoxClip.Ui.Tests.csproj -c Release --no-build
 
       - name: .NET media tests on macOS (caption renderer; no FFmpeg, no Windows-only APIs)
         if: ${{ !cancelled() && steps.detect.outputs.media_tests == 'true' }}
