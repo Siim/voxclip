@@ -18,6 +18,7 @@ private actor GatedExporter: Exporter {
     func finish() { pending.removeFirst().resume() }
 }
 
+extension HeavyMediaTests {
 @Test(.timeLimit(.minutes(1))) func exportQueueSerializesAndCancelsWaitingJobs() async throws {
     let exporter = GatedExporter()
     let queue = ExportQueue(exporter: exporter)
@@ -92,4 +93,5 @@ private actor GatedExporter: Exporter {
         }
         #expect(abs(bestLag) < 48, "fraction=\(fraction), lag=\(bestLag)")
     }
+}
 }

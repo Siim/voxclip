@@ -43,12 +43,15 @@ public enum ProjectJSON {
               let segments = voice["segments"] as? [[String: Any]] else { throw VoxClipError.projectUnreadable("Incomplete Voice Lab render policy") }
         let recipeKeys = ["audio", "words", "outDuration", "seed", "chunks", "roomTone", "seams", "video", "qa", "provenance", "cost", "voiceSource", "voiceRefId", "consentVerifiedAt"]
         let qaKeys = ["transcriptTokens", "transcriptExact", "transcriptMatch", "lufsJumpLu", "peakDbfs", "speakerScore", "speakerThreshold", "speakerModel", "speakerPassed"]
+        let videoKeys = ["mode", "sourceStartSample", "sourceEndSample", "outputSamples", "retimeFactor", "zoom", "faceX", "faceY",
+                         "assetId", "provider", "model", "requestId", "windowStartSample", "windowEndSample", "syncMode"]
         for segment in segments {
             guard let candidates = segment["candidates"] as? [[String: Any]] else { throw VoxClipError.projectUnreadable("Incomplete Voice Lab candidates") }
             for candidate in candidates {
                 if let rejected = candidate["rejected"], !(rejected is NSNull), candidate["recipe"] == nil { continue }
                 guard let recipe = candidate["recipe"] as? [String: Any], contains(recipe, recipeKeys),
-                      let qa = recipe["qa"] as? [String: Any], contains(qa, qaKeys) else { throw VoxClipError.projectUnreadable("Incomplete Voice Lab render recipe") }
+                      let qa = recipe["qa"] as? [String: Any], contains(qa, qaKeys),
+                      let video = recipe["video"] as? [String: Any], contains(video, videoKeys) else { throw VoxClipError.projectUnreadable("Incomplete Voice Lab render recipe") }
             }
         }
     }

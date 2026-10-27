@@ -55,6 +55,10 @@ final class SpeechStubHTTP: URLProtocol {
         let headers: [String: String]
         let body: Data
         var failure: URLError.Code? = nil
+        /// Delays `failure` until this returns true (at most 10 s): a dropped connection still
+        /// delivers the bytes sent before it, but URLSession discards bytes its delegate has not
+        /// taken when the failure arrives first.
+        var failWhen: (@Sendable () -> Bool)? = nil
     }
     static let handlers = Mutex<[String: @Sendable (URLRequest) throws -> Reply]>([:])
     static func register(_ handler: @escaping Handler) -> URL {
@@ -79,13 +83,22 @@ final class SpeechStubHTTP: URLProtocol {
     override func startLoading() {
         do {
             guard let host = request.value(forHTTPHeaderField: "X-VoxClip-Test-Handler") ?? request.url?.host,
-                  let handler = Self.handlers.withLock({ $0[host] }) else { throw URLError(.badURL) }
+                  let handler = Self.handlers.withLock({ $0[host] }) else {
+                var details: [String: Any] = [NSLocalizedDescriptionKey: "No SpeechStubHTTP handler for \(request.httpMethod ?? "GET") \(request.url?.absoluteString ?? "")."]
+                if let url = request.url { details[NSURLErrorFailingURLErrorKey] = url }
+                throw URLError(.badURL, userInfo: details)
+            }
             let reply = try handler(request)
             let response = HTTPURLResponse(url: request.url!, statusCode: reply.status, httpVersion: "HTTP/1.1", headerFields: reply.headers)!
             client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
             client?.urlProtocol(self, didLoad: reply.body)
             if let failure = reply.failure {
-                Thread.sleep(forTimeInterval: 0.3)
+                if let failWhen = reply.failWhen {
+                    let deadline = ContinuousClock.now.advanced(by: .seconds(10))
+                    while !failWhen(), ContinuousClock.now < deadline { Thread.sleep(forTimeInterval: 0.01) }
+                } else {
+                    Thread.sleep(forTimeInterval: 0.3)
+                }
                 client?.urlProtocol(self, didFailWithError: URLError(failure))
                 return
             }

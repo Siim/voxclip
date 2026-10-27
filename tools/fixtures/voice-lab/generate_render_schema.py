@@ -32,7 +32,8 @@ video_fields = {'mode': {'enum': ['source', 'retimed', 'zoomCover', 'lipsync']},
                 'assetId': idref, 'provider': string, 'model': string, 'requestId': idref, 'windowStartSample': integer, 'windowEndSample': integer, 'syncMode': {'enum': ['remap']}}
 for key in set(video_fields) - {'mode', 'sourceStartSample', 'sourceEndSample', 'outputSamples'}:
     video_fields[key] = nullable(video_fields[key])
-d['voiceLabVideoRecipe'] = obj(video_fields, ['mode', 'sourceStartSample', 'sourceEndSample', 'outputSamples'])
+# Every key is written, with null for the fields a mode does not use, so both Cores read every saved recipe.
+d['voiceLabVideoRecipe'] = obj(video_fields)
 d['voiceLabVideoRecipe']['allOf'] = [
     {'if': {'properties': {'mode': {'const': 'retimed'}}}, 'then': {'required': ['retimeFactor']}},
     {'if': {'properties': {'mode': {'const': 'zoomCover'}}}, 'then': {'required': ['retimeFactor', 'zoom', 'faceX', 'faceY']}},

@@ -113,6 +113,22 @@ public struct VoiceLabVideoRecipe: Codable, Sendable, Equatable {
         self.model = model; self.requestId = requestId; self.windowStartSample = windowStartSample
         self.windowEndSample = windowEndSample; self.syncMode = syncMode
     }
+    private enum CodingKeys: String, CodingKey {
+        case mode, sourceStartSample, sourceEndSample, outputSamples, retimeFactor, zoom, faceX, faceY, assetId, provider, model, requestId
+        case windowStartSample, windowEndSample, syncMode
+    }
+    /// Writes every key, with null for the fields a mode does not use, as Windows and the schema require.
+    public func encode(to encoder: any Encoder) throws {
+        var values = encoder.container(keyedBy: CodingKeys.self)
+        try values.encode(mode, forKey: .mode); try values.encode(sourceStartSample, forKey: .sourceStartSample)
+        try values.encode(sourceEndSample, forKey: .sourceEndSample); try values.encode(outputSamples, forKey: .outputSamples)
+        try values.encode(retimeFactor, forKey: .retimeFactor); try values.encode(zoom, forKey: .zoom)
+        try values.encode(faceX, forKey: .faceX); try values.encode(faceY, forKey: .faceY)
+        try values.encode(assetId, forKey: .assetId); try values.encode(provider, forKey: .provider)
+        try values.encode(model, forKey: .model); try values.encode(requestId, forKey: .requestId)
+        try values.encode(windowStartSample, forKey: .windowStartSample); try values.encode(windowEndSample, forKey: .windowEndSample)
+        try values.encode(syncMode, forKey: .syncMode)
+    }
 }
 public enum VoiceLabVoiceSource: String, Codable, Sendable { case own, stock }
 public struct VoiceLabRenderQA: Codable, Sendable, Equatable {

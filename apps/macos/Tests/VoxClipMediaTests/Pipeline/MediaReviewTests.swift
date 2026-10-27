@@ -23,6 +23,7 @@ private struct ExportPresetFixture: Decodable {
     var cases: [Case]
 }
 
+extension HeavyMediaTests {
 @Test func allSharedExportPresetsMatchSizingAndCrop() throws {
     let fixture = try FixtureLoader.decode(ExportPresetFixture.self, at: "fixtures/export/presets.json")
     #expect(fixture.schema == "voxclip-export-fixture/1")
@@ -321,4 +322,5 @@ func non48kAudioKeepsTheVideoFrameGridAndExactAudioDuration(_ name: String) asyn
     #expect(result.frames == Int64((duration * 30).rounded()))
     #expect(result.audioSamples == total)
     #expect(try await sampledFrames(output, points: []).count == Int((duration * 30).rounded()))
+}
 }

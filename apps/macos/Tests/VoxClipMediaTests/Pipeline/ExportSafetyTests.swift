@@ -6,6 +6,7 @@ import Testing
 import VoxClipCore
 @testable import VoxClipMedia
 
+extension HeavyMediaTests {
 @Test func errorExitCodesMatchTheCompleteCLIContract() {
     let groups: [Int32: [VoxClipError]] = [
         1: [.modelChecksumMismatch("test"), .keyRejected("test"), .quotaExceeded("test"), .rateLimited("test"),
@@ -339,4 +340,5 @@ func cancellationAfterPublicationRestoresExistingAndRemovesNewDestinations(_ exi
     #expect(throws: (any Error).self) { try ExportSafety.publish(partial, to: victim) }
     #expect(try Data(contentsOf: sentinel) == Data("keep".utf8))
     #expect(try Data(contentsOf: partial) == Data("new".utf8))
+}
 }

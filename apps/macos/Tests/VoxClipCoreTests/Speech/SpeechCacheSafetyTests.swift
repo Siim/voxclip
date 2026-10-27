@@ -3,7 +3,7 @@ import Synchronization
 import Testing
 @testable import VoxClipCore
 
-@Suite("Paid speech cache safety")
+@Suite("Paid speech cache safety", .timeLimit(.minutes(1)))
 struct SpeechCacheSafetyTests {
     @Test(arguments: ["../x", "../../../../tmp/x", "en/x", "english"])
     func invalidLanguageCreatesNoFiles(_ language: String) async throws {

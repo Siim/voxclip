@@ -124,7 +124,7 @@ internal static class ProjectValidation
         Object(seams.GetProperty("out"), "kind fadeSamples sourceHandleSamples assetHandleFrames");
         Choice(seams.GetProperty("in").GetProperty("kind"), "none", "gap", "hard", "synthToSynth");
         Choice(seams.GetProperty("out").GetProperty("kind"), "none", "gap", "hard", "synthToSynth");
-        Object(recipe.GetProperty("video"), "mode sourceStartSample sourceEndSample outputSamples", "retimeFactor zoom faceX faceY assetId provider model requestId windowStartSample windowEndSample syncMode");
+        Object(recipe.GetProperty("video"), "mode sourceStartSample sourceEndSample outputSamples retimeFactor zoom faceX faceY assetId provider model requestId windowStartSample windowEndSample syncMode");
         Choice(recipe.GetProperty("video").GetProperty("mode"), "source", "retimed", "zoomCover", "lipsync");
         Choice(recipe.GetProperty("voiceSource"), "own", "stock");
         Object(recipe.GetProperty("qa"), "transcriptTokens transcriptExact transcriptMatch lufsJumpLu peakDbfs speakerScore speakerThreshold speakerModel speakerPassed");

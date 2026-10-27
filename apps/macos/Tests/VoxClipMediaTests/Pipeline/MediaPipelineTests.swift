@@ -25,6 +25,7 @@ private func request(plan: EditPlan = cutPlan(), size: PixelSize = PixelSize(wid
     RenderRequest(sourceURL: try await fixture(), plan: plan, output: OutputSpec(size: size, fps: 30, videoBitrate: 2_000_000))
 }
 
+extension HeavyMediaTests {
 @Test func rejectsUnsupportedContainersBeforeOpening() async throws {
     for ext in ["webm", "mkv", "WEBM"] {
         await #expect(throws: VoxClipError.unsupportedContainer(ext.uppercased())) {
@@ -355,4 +356,20 @@ actor TestCaptionRasterizer: CaptionRasterizer {
     #expect(!FileManager.default.fileExists(atPath: destination.path))
     #expect(try FileManager.default.contentsOfDirectory(atPath: directory.path).isEmpty)
     print("USER_CANCEL duration=\(try #require(stoppedAt.withLock { $0 }).duration(to: .now))")
+}
+
+@Test(.timeLimit(.minutes(1))) func fixtureWaitsEndWhileGenerationIsStuck() async throws {
+    let stall = AsyncStream<Void>.makeStream()
+    defer { stall.continuation.finish() }
+    let stuck = Task<URL, any Error> {
+        for await _ in stall.stream {}
+        throw CancellationError()
+    }
+    let waiter = Task { try await NativeMediaFixtures.value(of: stuck) }
+    waiter.cancel()
+    await #expect(throws: CancellationError.self) { try await waiter.value }
+    await #expect(throws: NativeMediaFixtures.Timeout.self) {
+        try await NativeMediaFixtures.value(of: stuck, within: .milliseconds(50))
+    }
+}
 }

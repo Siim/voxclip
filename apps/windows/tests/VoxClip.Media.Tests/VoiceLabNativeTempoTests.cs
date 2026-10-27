@@ -24,7 +24,8 @@ public sealed class VoiceLabNativeTempoTests(ITestOutputHelper output) : IAsyncL
     public async Task GraphReportsRealBodyAndTailMarkerPositionsAndCompositionRefusesUnprovenFit(
         int rate, int channels, double stretch, bool overdeclaredHandles)
     {
-        await new ShippingRuntimeIdentityTests().LoadedModulesMatchShippingReport();
+        NativeTest.RequireFilter("atempo");
+        await ShippingRuntimeIdentityTests.MatchShippingReportWhenEvidencePresentAsync();
         var ct = TestContext.Current.CancellationToken;
         var folder = Directory.CreateTempSubdirectory("voxclip-tempo-native-").FullName;
         try

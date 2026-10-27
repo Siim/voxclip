@@ -6,19 +6,17 @@ public enum VoiceLabRenderValidation {
         guard let clean = project.voiceLab.cleanAudio, let voices = project.voiceLab.voices,
               let videoAssets = project.voiceLab.videoAssets,
               clean.mode == .off ? (clean.assetId == nil && clean.mix == nil) :
-                (clean.assetId != nil && clean.mix.map { $0.isFinite && (0...1).contains($0) } == true),
-              Set(voices.map(\.id)).count == voices.count else { throw VoiceLabProjectError.missingRenderPolicy }
+                (clean.assetId != nil && clean.mix.map { $0.isFinite && (0...1).contains($0) } == true) else { throw VoiceLabProjectError.missingRenderPolicy }
         let assets = project.voiceLab.assets ?? []
         if let assetId = clean.assetId, !assets.contains(where: { $0.id == assetId }) { throw VoiceLabProjectError.danglingAsset }
+        var voiceIDs = Set<String>()
         for voice in voices {
-            guard validID(voice.id), validID(voice.consentRecordId), !voice.provider.isEmpty,
+            guard voiceIDs.insert(voice.id).inserted, validID(voice.id), validID(voice.consentRecordId), !voice.provider.isEmpty,
                   !voice.voiceId.isEmpty, !voice.displayName.isEmpty else { throw VoiceLabProjectError.consentUnverified }
         }
         guard Set(videoAssets.map(\.id)).count == videoAssets.count else { throw VoiceLabProjectError.invalidAsset }
         for video in videoAssets {
-            guard video.id.range(of: "\\A[a-z0-9][a-z0-9_-]{0,63}\\z", options: .regularExpression) != nil,
-                  video.id.range(of: "\\A(?:con|prn|aux|nul|com[1-9]|lpt[1-9])\\z", options: .regularExpression) == nil,
-                  video.file == project.id + "/" + video.id + ".mp4",
+            guard VoiceLabAssetNaming.safeVideoFile(projectId: project.id, assetId: video.id) == video.file,
                   video.sha256.range(of: "\\A[0-9a-f]{64}\\z", options: .regularExpression) != nil,
                   video.durationSeconds.isFinite, video.durationSeconds > 0,
                   video.frameRate.isFinite, video.frameRate > 0, video.durationSeconds * video.frameRate < Double(Int64.max),
@@ -31,10 +29,13 @@ public enum VoiceLabRenderValidation {
             guard let scope = segment.scope,
                   (scope == .passage && segment.groupId == nil) || (scope == .fullTake && segment.groupId.map(validID) == true)
             else { throw VoiceLabProjectError.missingRenderPolicy }
-            for candidate in segment.candidates where candidate.rejected == nil {
-                guard let recipe = candidate.recipe else { throw VoiceLabProjectError.missingRenderPolicy }
-                try validate(recipe, segment: segment, project: project, rate: rate, total: total)
-                guard candidate.assetId == recipe.audio.assetId else { throw VoiceLabProjectError.invalidCandidate }
+            for candidate in segment.candidates {
+                if candidate.rejected == nil {
+                    guard let recipe = candidate.recipe else { throw VoiceLabProjectError.missingRenderPolicy }
+                    try validate(recipe, segment: segment, project: project, rate: rate, total: total)
+                    guard candidate.assetId == recipe.audio.assetId else { throw VoiceLabProjectError.invalidCandidate }
+                }
+                if let recipe = candidate.recipe { try validateShape(recipe) }
             }
             guard let recipe = segment.candidates[segment.selectedCandidateIndex].recipe,
                   segment.audio == recipe.audio, segment.outDuration == recipe.outDuration, segment.words == recipe.words,
@@ -58,6 +59,39 @@ public enum VoiceLabRenderValidation {
         value.range(of: "\\A[A-Za-z0-9][A-Za-z0-9._:-]{0,63}\\z", options: .regularExpression) != nil
     }
     private static func samples(_ seconds: Double, _ rate: Double) -> Int64 { Int64(EditingPrimitives.jsRound(seconds * rate)) }
+    /// The project.schema.json shape of every stored recipe, rejected or not, whatever its kind or voice source.
+    /// Render policy runs first for unrejected candidates, so this only reports what policy leaves unchecked.
+    private static func validateShape(_ recipe: VoiceLabRenderRecipe) throws {
+        func unit(_ value: Double?) -> Bool { value.map { $0.isFinite && (0...1).contains($0) } ?? true }
+        let audio = recipe.audio, video = recipe.video, qa = recipe.qa, provenance = recipe.provenance
+        guard validID(audio.assetId), audio.trimStart.isFinite, audio.trimStart >= 0, audio.trimEnd.isFinite, audio.trimEnd >= 0,
+              audio.stretch.isFinite, audio.stretch > 0, audio.gainDb.isFinite, recipe.outDuration.isFinite, recipe.outDuration > 0,
+              recipe.words?.isEmpty != true, !recipe.chunks.isEmpty, recipe.roomTone.map({ $0.gainDb.isFinite }) ?? true,
+              (recipe.roomTone?.sourceStartSample ?? 0) >= 0, (recipe.roomTone?.sourceEndSample ?? 0) >= 0 else { throw VoiceLabProjectError.invalidSegment }
+        for word in recipe.words ?? [] {
+            guard !word.text.isEmpty, word.start.isFinite, word.start >= 0, word.end.isFinite, word.end >= 0 else { throw VoiceLabProjectError.invalidSegment }
+        }
+        for chunk in recipe.chunks {
+            guard chunk.sourceStartSample >= 0, chunk.sourceEndSample >= 0, validID(chunk.requestId), validID(chunk.assetId),
+                  chunk.assetSha256.range(of: "\\A[0-9a-f]{64}\\z", options: .regularExpression) != nil,
+                  chunk.assembledStartFrame >= 0, chunk.assembledEndFrame >= 0 else { throw VoiceLabProjectError.invalidSegment }
+        }
+        for seam in [recipe.seams.in, recipe.seams.out] {
+            guard seam.fadeSamples >= 0, seam.sourceHandleSamples >= 0, seam.assetHandleFrames >= 0 else { throw VoiceLabProjectError.invalidSegment }
+        }
+        guard video.sourceStartSample >= 0, video.sourceEndSample >= 0, video.outputSamples >= 0,
+              video.retimeFactor?.isFinite != false, video.zoom?.isFinite != false, unit(video.faceX), unit(video.faceY),
+              video.assetId.map(validID) ?? true, video.provider?.isEmpty != true, video.model?.isEmpty != true,
+              video.requestId.map(validID) ?? true, (video.windowStartSample ?? 0) >= 0, (video.windowEndSample ?? 0) >= 0,
+              video.syncMode.map({ $0 == "remap" }) ?? true else { throw VoiceLabProjectError.invalidSegment }
+        guard (qa.transcriptTokens ?? 0) >= 0, unit(qa.transcriptMatch), qa.lufsJumpLu.isFinite, qa.peakDbfs.isFinite,
+              unit(qa.speakerScore), unit(qa.speakerThreshold), qa.speakerModel?.isEmpty != true else { throw VoiceLabProjectError.invalidSegment }
+        guard provenance.provider.range(of: "\\A[a-z0-9-]+\\z", options: .regularExpression) != nil,
+              !provenance.endpoint.isEmpty, !provenance.model.isEmpty, !provenance.voiceId.isEmpty,
+              provenance.consentRecordId.map(validID) ?? true, provenance.requestId.map(validID) ?? true, provenance.region?.isEmpty == false,
+              validID(recipe.cost.quoteId), recipe.cost.usd.map({ $0.isFinite && $0 >= 0 }) ?? true,
+              recipe.voiceRefId.map(validID) ?? true else { throw VoiceLabProjectError.invalidSegment }
+    }
     private static func validate(_ recipe: VoiceLabRenderRecipe, segment: VoiceLabSegment, project: Project, rate: Double, total: Int64) throws {
         let assets = project.voiceLab.assets ?? []
         guard let asset = assets.first(where: { $0.id == recipe.audio.assetId }) else { throw VoiceLabProjectError.danglingAsset }
@@ -76,6 +110,8 @@ public enum VoiceLabRenderValidation {
               recipe.provenance.region?.isEmpty == false,
               recipe.provenance.requestId.map(validID) == true,
               recipe.provenance.seed == recipe.seed else { throw VoiceLabProjectError.missingRenderPolicy }
+        // Selection copies this provenance into the segment, whose rule refuses an endpoint URL with the same code.
+        guard !recipe.provenance.endpoint.contains("://") else { throw VoiceLabProjectError.invalidSegment }
         guard !recipe.chunks.isEmpty else { throw VoiceLabProjectError.missingRenderPolicy }
         var sourceCursor = start
         var assembledCursor = samples(recipe.audio.trimStart, Double(asset.sampleRate))

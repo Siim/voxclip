@@ -13,22 +13,40 @@ namespace VoxClip.Media.Tests;
 [Trait("Category", "RequiresWindows")]
 public sealed class ShippingRuntimeIdentityTests
 {
+    private const string EvidenceRemedy =
+        "Set VOXCLIP_SHIPPING_REPORT and VOXCLIP_MODULE_EVIDENCE for shipping runtime acceptance.";
+
     private static readonly string[] Names =
     [
         "avcodec-63.dll", "avformat-63.dll", "avutil-61.dll", "avfilter-12.dll",
         "swresample-7.dll", "swscale-10.dll"
     ];
 
+    private static bool EvidencePresent =>
+        !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("VOXCLIP_SHIPPING_REPORT")) &&
+        !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("VOXCLIP_MODULE_EVIDENCE"));
+
     [Fact]
     public async Task LoadedModulesMatchShippingReport()
     {
-        var reportPath = Environment.GetEnvironmentVariable("VOXCLIP_SHIPPING_REPORT");
-        var evidencePath = Environment.GetEnvironmentVariable("VOXCLIP_MODULE_EVIDENCE");
-        NativeTest.Require(!string.IsNullOrWhiteSpace(reportPath) && !string.IsNullOrWhiteSpace(evidencePath),
-            "Set VOXCLIP_SHIPPING_REPORT and VOXCLIP_MODULE_EVIDENCE for shipping runtime acceptance.");
+        NativeTest.RequireEvidence(EvidencePresent, EvidenceRemedy);
+        await MatchLoadedModulesAsync();
+    }
 
+    /// <summary>Behaviour tests run on any loaded FFmpeg and add this identity check whenever evidence is supplied.</summary>
+    internal static async Task MatchShippingReportWhenEvidencePresentAsync()
+    {
+        if (NativeTest.Outcome(NativeGate.Evidence, EvidencePresent) == NativeGateOutcome.Skip) return;
+        NativeTest.RequireEvidence(EvidencePresent, EvidenceRemedy);
+        await MatchLoadedModulesAsync();
+    }
+
+    private static async Task MatchLoadedModulesAsync()
+    {
         await NativeTest.RequireAsync(windows: true);
-        using var report = JsonDocument.Parse(File.ReadAllText(reportPath!));
+        var reportPath = Environment.GetEnvironmentVariable("VOXCLIP_SHIPPING_REPORT")!;
+        var evidencePath = Environment.GetEnvironmentVariable("VOXCLIP_MODULE_EVIDENCE")!;
+        using var report = JsonDocument.Parse(File.ReadAllText(reportPath));
         var expected = report.RootElement.GetProperty("dlls");
         var rid = report.RootElement.GetProperty("rid").GetString();
         Assert.Equal(rid switch
@@ -62,7 +80,7 @@ public sealed class ShippingRuntimeIdentityTests
         var license = ffmpeg.avcodec_license();
         Assert.StartsWith("LGPL version 2.1 or later", license);
         Directory.CreateDirectory(Path.GetDirectoryName(evidencePath)!);
-        File.WriteAllText(evidencePath!, JsonSerializer.Serialize(new
+        File.WriteAllText(evidencePath, JsonSerializer.Serialize(new
         {
             report = report.RootElement.GetProperty("sha256").GetString(),
             rid = report.RootElement.GetProperty("rid").GetString(),
@@ -76,9 +94,8 @@ public sealed class ShippingRuntimeIdentityTests
     [Fact]
     public async Task PcmFloatWavDecodesAndSeeksWithShippingDlls()
     {
-        if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("VOXCLIP_SHIPPING_REPORT")))
-            Assert.Skip("Set VOXCLIP_SHIPPING_REPORT for shipping runtime acceptance.");
-        await NativeTest.RequireAsync(windows: true);
+        NativeTest.RequireEvidence(EvidencePresent, EvidenceRemedy);
+        await MatchLoadedModulesAsync();
         var directory = Directory.CreateTempSubdirectory("voxclip-shipping-wav-").FullName;
         try
         {

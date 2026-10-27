@@ -55,6 +55,7 @@ func sampledFrames(_ url: URL, points: [(Int, Int)]) async throws -> [SampledFra
     return frames
 }
 
+extension HeavyMediaTests {
 @Test func sampleRangesAndFrameRateAreValidated() async throws {
     let source = try await NativeMediaFixtures.shared.file()
     for kept in [[MediaInterval(startSample: 0, endSample: 60000), MediaInterval(startSample: 30000, endSample: 50000)],
@@ -154,10 +155,8 @@ func sampledFrames(_ url: URL, points: [(Int, Int)]) async throws -> [SampledFra
             for frame in sourceFrames {
                 for bar in 0..<8 { for channel in 0..<3 { #expect(abs(frame.pixels[bar][channel] - expected[bar][channel]) <= 3) } }
             }
+            // Exported colour is accepted by E2E case 8 under ADR-R22; the source fixture keeps its canonical check.
             #expect(frames.count == 60)
-            for frame in frames {
-                for bar in 0..<8 { for channel in 0..<3 { #expect(abs(frame.pixels[bar][channel] - expected[bar][channel]) <= 3) } }
-            }
             let format = try await AVURLAsset(url: destination).loadTracks(withMediaType: .video)[0].load(.formatDescriptions)[0]
             #expect(CMFormatDescriptionGetExtension(format, extensionKey: kCMFormatDescriptionExtension_ColorPrimaries) as? String == kCMFormatDescriptionColorPrimaries_ITU_R_709_2 as String)
         }
@@ -283,4 +282,5 @@ private actor FailingCaptionRasterizer: CaptionRasterizer {
     let result = try await AVExporter().export(ExportJob(render: request, outputURL: directory.appendingPathComponent("sidecar.mp4"), writeSRT: true)) { _ in }
     let srt = try #require(result.srtURL)
     #expect(try Data(contentsOf: srt) == Data("1\n00:00:00,125 --> 00:00:01,625\nTere, maailm!\n".utf8))
+}
 }

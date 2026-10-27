@@ -141,8 +141,10 @@ public sealed class VoiceLabProjectTests
         Assert.Same(original.Transcript, deleted.Transcript);
         Assert.Same(original.Edits, deleted.Edits);
         var v1 = ProjectSerialization.Deserialize(File.ReadAllText(Path.Combine(FixtureLoader.SharedRoot, "fixtures", "projects", "interview-take.voxclip")));
-        var accepted = VoiceLabProject.Accept(v1, original.VoiceLab.Assets!, original.VoiceLab.Segments[0]);
-        Assert.Equal(2, accepted.SchemaVersion); Assert.Equal(1, v1.SchemaVersion);
+        // Accept upgrades v1 to v3 first, so a recipe-less v2 segment can no longer create a v2 project.
+        Error(VoiceLabProjectErrorCode.MissingRenderPolicy, () => VoiceLabProject.Accept(v1, original.VoiceLab.Assets!, original.VoiceLab.Segments[0]));
+        Assert.Equal(1, v1.SchemaVersion);
+        Error(VoiceLabProjectErrorCode.LegacySegmentsNeedReview, () => VoiceLabProject.Accept(original, [], original.VoiceLab.Segments[0] with { Id = "vl-second" }));
     }
 
     [Fact]
@@ -180,6 +182,40 @@ public sealed class VoiceLabProjectTests
         Assert.Equal(original.VoiceLab.Segments[0].Id, reopened.Project.VoiceLab.Segments[0].Id);
         Assert.True(reopened.Project.VoiceLab.Segments[0].Enabled);
         Assert.Equal(7300, VoiceLabOutputPlanner.Build(reopened.Project, VoiceLabOutputScope.Full).OutputSamples);
+    }
+
+    [Fact]
+    public void AssetNamingAcceptsOnlySafeStoreNames()
+    {
+        const string project = "5b7e0f7a-3c1d-4b8e-9a51-2f6d0c8e4a11";
+        (string AssetId, string Suffix)[] accepted = [("asset-one", "wav"), ("take_2", "flac"), ("0", "wav"), ("console", "wav"), ("con-take", "wav"),
+            ("com0", "wav"), ("com10", "flac"), ("lpt0", "wav"), (new string('a', 64), "wav")];
+        foreach (var (assetId, suffix) in accepted)
+            Assert.Equal($"{project}/{assetId}.{suffix}", VoiceLabAssetNaming.File(project, assetId, suffix));
+        var reserved = new[] { "con", "prn", "aux", "nul" }.Concat(Enumerable.Range(1, 9).SelectMany(n => new[] { $"com{n}", $"lpt{n}" }));
+        string[] unsafeAssets = [.. reserved, "Asset-one", "ASSET", "asset:stream", "asset.", "asset ", "asset..", "../asset", "..", "asset/../x",
+            "a\\b", "/etc/passwd", "file:///tmp/a", "https://example.com/a", "", "-asset", "_asset", "asset.wav", "ässet", new string('a', 65)];
+        foreach (var assetId in unsafeAssets)
+            Error(VoiceLabProjectErrorCode.InvalidAsset, () => VoiceLabAssetNaming.File(project, assetId, "wav"));
+        foreach (var projectId in new[] { project.ToUpperInvariant(), "../" + project, project + "/..", "/tmp/" + project, "C:\\" + project, "file:///" + project, "", "not-a-uuid" })
+            Error(VoiceLabProjectErrorCode.InvalidAsset, () => VoiceLabAssetNaming.File(projectId, "asset-one", "wav"));
+        foreach (var suffix in new[] { "WAV", "mp3", "mp4", ".wav", "wav ", "", "wav/x" })
+            Error(VoiceLabProjectErrorCode.InvalidAsset, () => VoiceLabAssetNaming.File(project, "asset-one", suffix));
+        // §10.5 video assets use the same rule with a fixed .mp4 extension; the public name stays audio-only.
+        Assert.Equal(project + "/lipsync-take.mp4", VoiceLabAssetNaming.SafeVideoFile(project, "lipsync-take"));
+        Assert.All(unsafeAssets, assetId => Assert.Null(VoiceLabAssetNaming.SafeVideoFile(project, assetId)));
+        // Validation applies the same rule to stored files and keeps reporting UnsafePath.
+        var good = Fixture();
+        Project WithFile(string file)
+        {
+            var assets = good.VoiceLab.Assets!.ToArray();
+            assets[0] = assets[0] with { File = file };
+            return good with { VoiceLab = good.VoiceLab with { Assets = assets } };
+        }
+        VoiceLabProject.Validate(WithFile(project + "/asset-one.flac"));
+        foreach (var file in new[] { project + "/asset-one.WAV", project + "/asset-two.wav", project + "\\asset-one.wav", "/" + project + "/asset-one.wav",
+            project + "/asset-one.wav.wav", project + "/asset-one", "file:///" + project + "/asset-one.wav" })
+            Error(VoiceLabProjectErrorCode.UnsafePath, () => VoiceLabProject.Validate(WithFile(file)));
     }
 
     [Fact]

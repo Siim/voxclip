@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -92,6 +93,90 @@ public sealed partial class VoiceLabAudioMixerTests
     {
         public void Compose(PixelBuffer decoded, PixelBuffer output, ComposeSnapshot snapshot, double editedTime,
             bool forPreview, CancellationToken ct) => output.Pixels.Span.Clear();
+    }
+
+    /// <summary>Holds the owner inside one composed frame, so a command queued meanwhile runs before its next clock tick.</summary>
+    private sealed class GatedComposer : IFrameComposer
+    {
+        private readonly SemaphoreSlim entered = new(0), released = new(0);
+        private int armed;
+        internal async Task HoldAsync(CancellationToken ct)
+        {
+            Volatile.Write(ref armed, 1);
+            Assert.True(await entered.WaitAsync(TimeSpan.FromSeconds(5), ct), "The owner composed no frame while playing.");
+        }
+        internal void Release() => released.Release();
+        public void Compose(PixelBuffer decoded, PixelBuffer output, ComposeSnapshot snapshot, double editedTime,
+            bool forPreview, CancellationToken ct)
+        {
+            if (Interlocked.Exchange(ref armed, 0) == 1) { entered.Release(); released.Wait(TimeSpan.FromSeconds(10)); }
+            output.Pixels.Span.Clear();
+        }
+    }
+
+    /// <summary>Device clock that runs while playing and stops when the device fails; a configure failure fails WASAPI Init.</summary>
+    private sealed class PreviewOutput(Exception? configureFailure = null) : IPreviewAudioOutput
+    {
+        private readonly object gate = new();
+        private readonly System.Diagnostics.Stopwatch device = new();
+        private readonly TaskCompletionSource stopped = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource started = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private long buffered;
+        private Exception? pauseFailure;
+        internal Task Started => started.Task;
+        public long FramesPlayed { get { lock (gate) return (long)(device.Elapsed.TotalSeconds * DeviceRate); } }
+        public int DeviceRate => 48_000;
+        public int BufferedBytes => (int)Math.Min(int.MaxValue, Interlocked.Read(ref buffered));
+        public Task Completion => stopped.Task;
+        public int Write(ReadOnlySpan<byte> bytes) { Interlocked.Add(ref buffered, bytes.Length); return bytes.Length; }
+        public Task ConfigureAsync(int sampleRate, int channels, bool play, CancellationToken ct) =>
+            configureFailure is null ? Task.CompletedTask : Task.FromException(configureFailure);
+        public Task PlayAsync(CancellationToken ct) { lock (gate) device.Start(); started.TrySetResult(); return Task.CompletedTask; }
+        public Task PauseAsync(CancellationToken ct)
+        {
+            lock (gate)
+            {
+                device.Stop();
+                if (pauseFailure is { } error) { pauseFailure = null; return Task.FromException(error); }
+            }
+            return Task.CompletedTask;
+        }
+        /// <summary>Stop the device clock and fault the owner, as WASAPI does when the endpoint is lost or fails.</summary>
+        internal void Fail(Exception error) { lock (gate) device.Stop(); stopped.TrySetException(error); }
+        /// <summary>Stop the device clock and fail the next pause call, as WASAPI does when the endpoint is lost before its
+        /// owner reports it.</summary>
+        internal void FailNextPause(Exception error) { lock (gate) { device.Stop(); pauseFailure = error; } }
+        public ValueTask DisposeAsync() { lock (gate) device.Stop(); stopped.TrySetResult(); return ValueTask.CompletedTask; }
+    }
+
+    /// <summary>One 30 fps preview frame: the tolerance for clock hand-overs.</summary>
+    private const double Frame = 1 / 30d;
+
+    private const int NotFound = unchecked((int)0x80070490), Invalidated = unchecked((int)0x88890004), InUse = unchecked((int)0x8889000A);
+
+    // Device errors that still fail preview: the endpoint refused the stream format, or the render buffer broke.
+    private const int UnsupportedFormat = unchecked((int)0x88890008), BufferError = unchecked((int)0x88890018);
+
+#pragma warning disable CA1416 // NAudio.Wasapi is marked Windows-only, but its managed COMException types construct on any OS.
+    /// <summary>The exception NAudio itself throws for a failed Core Audio HRESULT.</summary>
+    private static Exception CoreAudio(int hresult)
+    {
+        try { NAudio.CoreAudioApi.CoreAudioException.ThrowIfFailed(hresult); }
+        catch (Exception exception) { return exception; }
+        throw new ArgumentOutOfRangeException(nameof(hresult), "Not a failure HRESULT.");
+    }
+#pragma warning restore CA1416
+    private static Exception NoDefaultEndpoint() => CoreAudio(NotFound);
+
+    /// <summary>The seven-second passage over its reference media, with paid Voice Lab audio and no decoder.</summary>
+    private static ComposeSnapshot PassagePreview(Project project, string root)
+    {
+        var reference = project.Media.Source;
+        var prepared = VoiceLabRenderContract.Prepare(project, VoiceLabOutputScope.Full, VoiceLabLabelPosition.TopLeft);
+        return new ComposeSnapshot(new MediaInfo(reference.AbsolutePath, reference.DurationSeconds, reference.Video,
+                reference.Audio, new(640, 360), "h264", "aac", false, 0, 1, 0),
+            new EditPlan(1000, 7000, [], [new MediaInterval(0, 7000)], 7000, []), null, new(new(640, 360), 30, 2_000_000))
+            { VoiceLab = VoiceLabRenderInput.Capture(project, prepared, root) };
     }
 
     private sealed class CancelOnCompose(CancellationTokenSource cancellation) : IFrameComposer
@@ -858,9 +943,11 @@ public sealed partial class VoiceLabAudioMixerTests
     }
 
     [Fact]
-    public async Task PreviewPauseFailureDisposesProvisionalSynthSessionAndKeepsOldGraph()
+    public async Task PreviewPauseFailureDuringPlanChangeFaultsOnceAndStillSwapsTheGraph()
     {
+        var ct = TestContext.Current.CancellationToken;
         var (project, root) = Asset(Fixture("passage-render-v3.voxclip"));
+        var scratchBefore = Directory.GetDirectories(Path.GetTempPath(), "voxclip-voice-*").ToHashSet(StringComparer.OrdinalIgnoreCase);
         try
         {
             var plan = new EditPlan(1000, 7000, [], [new MediaInterval(0, 7000)], 7000, []);
@@ -877,7 +964,8 @@ public sealed partial class VoiceLabAudioMixerTests
                 VoiceLab = input
             };
             var failPause = 0;
-            await using var preview = new PreviewEngine(new PreviewComposer(), initialize: _ => { },
+            var faults = new List<Exception>();
+            await using (var preview = new PreviewEngine(new PreviewComposer(), initialize: _ => { },
                 createWorker: (_, _) => new PreviewWorker(), clockOverride: () =>
                 {
                     if (Volatile.Read(ref failPause) != 0 && new System.Diagnostics.StackTrace().GetFrames()!
@@ -887,17 +975,151 @@ public sealed partial class VoiceLabAudioMixerTests
                         throw new IOException("Pause clock failed");
                     }
                     return 0;
-                });
-            await preview.LoadAsync(legacy, null, TestContext.Current.CancellationToken);
-            await preview.PlayAsync(TestContext.Current.CancellationToken);
-            Volatile.Write(ref failPause, 1);
-            var error = await Assert.ThrowsAsync<IOException>(() => preview.UpdateSnapshotAsync(synthetic,
-                TestContext.Current.CancellationToken));
-            Assert.Contains("Pause clock failed", error.Message, StringComparison.Ordinal);
-            await preview.PauseAsync(TestContext.Current.CancellationToken);
-            await preview.SeekAsync(1, true, TestContext.Current.CancellationToken);
-            Assert.Equal(1, preview.Position.SourceTime, 5);
+                }))
+            {
+                preview.PlaybackFaulted += (_, fault) => faults.Add(fault);
+                await preview.LoadAsync(legacy, null, ct);
+                await preview.PlayAsync(ct);
+                Volatile.Write(ref failPause, 1);
+                // A fault while pausing for the swap is handled as on the owner tick, so the swap completes and the preview stays.
+                await preview.UpdateSnapshotAsync(synthetic, ct);
+                var fault = Assert.IsType<IOException>(Assert.Single(faults));
+                Assert.Contains("Pause clock failed", fault.Message, StringComparison.Ordinal);
+                Assert.False(preview.Position.IsPlaying);
+                Assert.Contains(Directory.GetDirectories(Path.GetTempPath(), "voxclip-voice-*"), path => !scratchBefore.Contains(path));
+                Assert.Same(fault, await Assert.ThrowsAsync<IOException>(() => preview.SeekAsync(1, true, ct))); // rethrown once
+                await preview.PauseAsync(ct);
+                await preview.SeekAsync(1, true, ct);
+                Assert.Equal(1, preview.Position.SourceTime, 5);
+                Assert.Single(faults);
+            }
             Assert.True(File.Exists(Path.Combine(root, project.Id, "asset-one.wav")));
+            Assert.DoesNotContain(Directory.GetDirectories(Path.GetTempPath(), "voxclip-voice-*"), path => !scratchBefore.Contains(path));
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
+    [Fact]
+    public async Task PreviewWithoutOutputDevicePlaysMutedAndReleasesSynthLease()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var (project, root) = Asset(Fixture("passage-render-v3.voxclip"));
+        var scratchBefore = Directory.GetDirectories(Path.GetTempPath(), "voxclip-voice-*").ToHashSet(StringComparer.OrdinalIgnoreCase);
+        try
+        {
+            var snapshot = PassagePreview(project, root);
+            var attempts = 0;
+            var statuses = new List<PreviewAudioStatus>();
+            await using (var preview = new PreviewEngine(new PreviewComposer(), initialize: _ => { },
+                createWorker: (_, _) => new PreviewWorker(), createAudio: () => { attempts++; throw NoDefaultEndpoint(); }))
+            {
+                IPreviewEngine contract = preview;
+                contract.AudioStatusChanged += (_, status) => statuses.Add(status);
+                await preview.LoadAsync(snapshot, null, ct);
+                await preview.SeekAsync(2.7, true, ct);
+                await preview.PlayAsync(ct);
+                Assert.Equal([PreviewAudioStatus.NoOutputDevice], statuses);
+                Assert.True(preview.Position.IsPlaying);
+                Assert.Contains(Directory.GetDirectories(Path.GetTempPath(), "voxclip-voice-*"), path => !scratchBefore.Contains(path));
+                await Task.Delay(350, ct);
+                Assert.True(preview.Position.EditedTime > 2.85, $"The muted clock did not advance: {preview.Position.EditedTime}");
+                await preview.PauseAsync(ct);
+                var paused = preview.Position.EditedTime;
+                await Task.Delay(100, ct);
+                Assert.False(preview.Position.IsPlaying);
+                Assert.InRange(preview.Position.EditedTime, paused - .01, paused + .01);
+                await preview.SeekAsync(3.6, true, ct);
+                Assert.InRange(preview.Position.EditedTime, 3.59, 3.61);
+                await preview.PlayAsync(ct);
+                await Task.Delay(200, ct);
+                Assert.True(preview.Position.EditedTime > 3.7, $"The muted clock did not advance after the seek: {preview.Position.EditedTime}");
+            }
+            Assert.Equal(2, attempts); // every Play retries the device
+            Assert.Equal([PreviewAudioStatus.NoOutputDevice], statuses); // an unchanged status is reported once
+            Assert.True(File.Exists(Path.Combine(root, project.Id, "asset-one.wav")));
+            Assert.DoesNotContain(Directory.GetDirectories(Path.GetTempPath(), "voxclip-voice-*"), path => !scratchBefore.Contains(path));
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
+    [Fact]
+    public async Task PreviewWithOutputInUsePlaysMutedThroughSeekAndPlanChange()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var (project, root) = Asset(Fixture("passage-render-v3.voxclip"));
+        var scratchBefore = Directory.GetDirectories(Path.GetTempPath(), "voxclip-voice-*").ToHashSet(StringComparer.OrdinalIgnoreCase);
+        try
+        {
+            var snapshot = PassagePreview(project, root);
+            // Another app keeps the endpoint in exclusive mode for three starts, then the endpoint disappears.
+            var opens = new Queue<int>([InUse, InUse, InUse, NotFound]);
+            var statuses = new List<PreviewAudioStatus>();
+            await using (var preview = new PreviewEngine(new PreviewComposer(), initialize: _ => { },
+                createWorker: (_, _) => new PreviewWorker(), createAudio: () => throw CoreAudio(opens.Dequeue())))
+            {
+                IPreviewEngine contract = preview;
+                contract.AudioStatusChanged += (_, status) => statuses.Add(status);
+                await preview.LoadAsync(snapshot, null, ct);
+                await preview.SeekAsync(1, true, ct);
+                await preview.PlayAsync(ct);
+                Assert.Equal([PreviewAudioStatus.OutputInUse], statuses);
+                await Task.Delay(200, ct);
+                Assert.True(preview.Position.EditedTime > 1.1, $"The muted clock did not advance: {preview.Position.EditedTime}");
+                await preview.SeekAsync(3.6, true, ct); // resumes and retries the device
+                Assert.True(preview.Position.IsPlaying);
+                await Task.Delay(200, ct);
+                Assert.True(preview.Position.EditedTime > 3.7, $"The muted clock did not advance after the seek: {preview.Position.EditedTime}");
+                var before = preview.Position.EditedTime;
+                await preview.UpdateSnapshotAsync(snapshot, ct); // resumes and retries the device
+                Assert.True(preview.Position.IsPlaying);
+                Assert.InRange(preview.Position.EditedTime, before - .01, before + .5);
+                Assert.Equal([PreviewAudioStatus.OutputInUse], statuses); // an unchanged status is reported once
+                await preview.PauseAsync(ct);
+                await preview.PlayAsync(ct);
+                Assert.Equal([PreviewAudioStatus.OutputInUse, PreviewAudioStatus.NoOutputDevice], statuses);
+                Assert.True(preview.Position.IsPlaying);
+            }
+            Assert.Empty(opens);
+            Assert.True(File.Exists(Path.Combine(root, project.Id, "asset-one.wav")));
+            Assert.DoesNotContain(Directory.GetDirectories(Path.GetTempPath(), "voxclip-voice-*"), path => !scratchBefore.Contains(path));
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
+    [Theory]
+    [InlineData(false)] // opening the endpoint fails
+    [InlineData(true)] // WASAPI Init refuses the stream
+    public async Task PreviewFatalDeviceErrorFailsTheStartWithoutMuting(bool atInit)
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var (project, root) = Asset(Fixture("passage-render-v3.voxclip"));
+        try
+        {
+            var attempts = 0;
+            var statuses = new List<PreviewAudioStatus>();
+            var faults = new List<Exception>();
+            await using var preview = new PreviewEngine(new PreviewComposer(), initialize: _ => { },
+                createWorker: (_, _) => new PreviewWorker(), createAudio: () =>
+                {
+                    attempts++;
+                    return atInit ? new PreviewOutput(CoreAudio(UnsupportedFormat)) : throw CoreAudio(UnsupportedFormat);
+                });
+            IPreviewEngine contract = preview;
+            contract.AudioStatusChanged += (_, status) => statuses.Add(status);
+            contract.PlaybackFaulted += (_, fault) => faults.Add(fault);
+            await preview.LoadAsync(PassagePreview(project, root), null, ct);
+            await preview.SeekAsync(2.7, true, ct);
+            var error = await Assert.ThrowsAnyAsync<COMException>(() => preview.PlayAsync(ct));
+            Assert.Equal(UnsupportedFormat, error.HResult);
+            Assert.False(preview.Position.IsPlaying);
+            Assert.Equal(2.7, preview.Position.EditedTime, 5);
+            // The engine stays usable, and the next start tries the device again.
+            await preview.SeekAsync(3.6, true, ct);
+            Assert.Equal(3.6, preview.Position.EditedTime, 5);
+            await Assert.ThrowsAnyAsync<COMException>(() => preview.PlayAsync(ct));
+            Assert.Equal(2, attempts);
+            Assert.Empty(statuses);
+            Assert.Empty(faults);
         }
         finally { Directory.Delete(root, true); }
     }
@@ -943,7 +1165,7 @@ public sealed partial class VoiceLabAudioMixerTests
     public async Task NativePassageUsesProductionWaveComposerAndMarkedExporter()
     {
         await NativeTest.RequireAsync(windows: true);
-        await new ShippingRuntimeIdentityTests().LoadedModulesMatchShippingReport();
+        await ShippingRuntimeIdentityTests.MatchShippingReportWhenEvidencePresentAsync();
         var source = Path.Combine(FixtureLoader.SharedRoot, "fixtures", "voice-lab", "voice-lab-7s.mkv");
         NativeTest.Require(File.Exists(source), "The committed seven-second Voice Lab source fixture is missing.");
         var ct = TestContext.Current.CancellationToken;

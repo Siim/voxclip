@@ -28,6 +28,7 @@ public sealed class PreviewEngine : IPreviewEngine
     private readonly IFrameComposer composer;
     private readonly Action<CancellationToken> initialize;
     private readonly Func<string, string, IPreviewVideoWorker> createWorker;
+    private readonly Func<IPreviewAudioOutput> createAudio;
     private readonly Func<double>? clockOverride;
     private Exception? terminalFailure;
     private Exception? playbackFailure;
@@ -41,7 +42,8 @@ public sealed class PreviewEngine : IPreviewEngine
     private int preparedPart = -1;
     private CancellationTokenSource? prefetchCancellation;
     private TimelineCursor? cursor;
-    private WasapiAudioPlayer? audio;
+    private IPreviewAudioOutput? audio;
+    private PreviewAudioStatus audioStatus;
     private CancellationTokenSource? audioCancellation;
     private Task? audioProducer;
     private long generation;
@@ -58,12 +60,13 @@ public sealed class PreviewEngine : IPreviewEngine
     public PreviewEngine(bool useFrameLeases) : this(new FrameComposer(), useFrameLeases) { }
     internal PreviewEngine(IFrameComposer composer, bool useFrameLeases = false,
         Action<CancellationToken>? initialize = null, Func<string, string, IPreviewVideoWorker>? createWorker = null,
-        Func<double>? clockOverride = null)
+        Func<double>? clockOverride = null, Func<IPreviewAudioOutput>? createAudio = null)
     {
         this.composer = composer;
         this.useFrameLeases = useFrameLeases;
         this.initialize = initialize ?? (ct => FfmpegLoader.InitializeAsync(ct).GetAwaiter().GetResult());
         this.createWorker = createWorker ?? ((path, name) => new VideoWorker(path, name));
+        this.createAudio = createAudio ?? CreateWasapi;
         this.clockOverride = clockOverride;
         new Thread(Own) { Name = "vc-preview", IsBackground = true }.Start();
     }
@@ -71,6 +74,8 @@ public sealed class PreviewEngine : IPreviewEngine
     public PreviewPosition Position => Volatile.Read(ref position);
     /// <inheritdoc />
     public event EventHandler<Exception>? PlaybackFaulted;
+    /// <inheritdoc />
+    public event EventHandler<PreviewAudioStatus>? AudioStatusChanged;
     /// <inheritdoc />
     public Task LoadAsync(ComposeSnapshot snapshot, IProgress<MediaProgress>? progress, CancellationToken ct)
     {
@@ -101,14 +106,7 @@ public sealed class PreviewEngine : IPreviewEngine
         if (playing) return;
         if (Position.EditedTime >= snapshot!.Timeline.Duration) Seek(0, ct);
         origin = Position.EditedTime;
-        if (snapshot!.Media.Audio is not null)
-        {
-            if (!OperatingSystem.IsWindows()) throw new VoxClipException(VoxClipErrorCode.DecodeFailed, "VoxClip couldn't decode this video: audio preview requires Windows WASAPI. Your edits are saved.");
-            StartAudio(origin, ct);
-            audio!.PlayAsync(ct).GetAwaiter().GetResult();
-        }
-        videoClock.Restart(); playing = true;
-        UpdatePosition(origin);
+        Resume(ct);
     }, ct);
     /// <inheritdoc />
     public Task PauseAsync(CancellationToken ct) => Invoke(Pause, ct);
@@ -141,9 +139,11 @@ public sealed class PreviewEngine : IPreviewEngine
         {
             nextSnapshot = CapPreview(snapshot);
             if (composer is FrameComposer concrete) concrete.PrepareDisclosure(nextSnapshot);
-            var source = Position.SourceTime;
             var resume = playing;
             Pause();
+            // A fault Pause recovered keeps playback stopped; the playhead it settled on carries over to the new plan.
+            resume &= playbackFailure is null;
+            var source = Position.SourceTime;
             if (!sameVoice) { StopAudio(); voiceSession?.Dispose(); voiceSession = nextSession; }
             Interlocked.Exchange(ref this.snapshot, nextSnapshot);
             swapped = true;
@@ -256,7 +256,9 @@ public sealed class PreviewEngine : IPreviewEngine
     {
         RequireSnapshot();
         var resume = playing;
-        Pause(); StopAudio();
+        Pause();
+        resume &= playbackFailure is null; // a fault Pause recovered keeps playback stopped
+        StopAudio();
         ClearPrefetch();
         origin = Math.Clamp(double.IsFinite(editedTime) ? editedTime : 0, 0, snapshot!.Timeline.Duration);
         cursor = new(snapshot.Timeline); currentPart = cursor.Part;
@@ -312,29 +314,55 @@ public sealed class PreviewEngine : IPreviewEngine
         }
     }
 
+    /// <summary>Stop at the clock. A device loss or fault seen here is handled exactly as on the owner tick, with the one reopen
+    /// or RecoverPlayback, so Pause never throws.</summary>
     private void Pause()
     {
         if (!playing) return;
-        var clock = Clock();
-        if (OperatingSystem.IsWindows()) audio?.PauseAsync(CancellationToken.None).GetAwaiter().GetResult();
-        playing = false; videoClock.Stop(); origin = clock; UpdatePosition(clock);
+        try
+        {
+            var clock = Clock();
+            try { audio?.PauseAsync(CancellationToken.None).GetAwaiter().GetResult(); }
+            catch (Exception exception) when (audio is { } failed && IPreviewAudioOutput.Unavailable(exception) is not null)
+            {
+                // Lost before its owner reported it: the same one reopen settles the status, and the next start opens the device.
+                ReopenAfterLoss(failed, exception);
+                StopAudio();
+            }
+            playing = false; videoClock.Stop(); origin = clock; UpdatePosition(clock);
+        }
+        catch (Exception exception) { RecoverPlayback(exception); }
     }
 
     private void Resume(CancellationToken ct)
     {
-        if (snapshot!.Media.Audio is not null)
-        {
-            if (!OperatingSystem.IsWindows()) throw new VoxClipException(VoxClipErrorCode.DecodeFailed, "VoxClip couldn't decode this video: audio preview requires Windows WASAPI. Your edits are saved.");
-            StartAudio(origin, ct); audio!.PlayAsync(ct).GetAwaiter().GetResult();
-        }
+        if (snapshot!.Media.Audio is not null) StartAudio(origin, ct);
         playing = true; videoClock.Restart(); UpdatePosition(origin);
     }
 
-    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    /// <summary>Without usable output, playback stays muted on the video clock; each start retries the device.</summary>
     private void StartAudio(double edited, CancellationToken ct)
     {
         StopAudio();
-        audio = new(); audio.ConfigureAsync(48_000, 2, false, ct).GetAwaiter().GetResult();
+        try { OpenAudio(edited, ct); }
+        catch (Exception exception) when (IPreviewAudioOutput.Unavailable(exception) is { } status)
+        {
+            StopAudio(); ReportAudio(status);
+            return;
+        }
+        catch { StopAudio(); throw; }
+        ReportAudio(PreviewAudioStatus.Available);
+    }
+
+    private static IPreviewAudioOutput CreateWasapi()
+    {
+        if (!OperatingSystem.IsWindows()) throw new VoxClipException(VoxClipErrorCode.DecodeFailed, "VoxClip couldn't decode this video: audio preview requires Windows WASAPI. Your edits are saved.");
+        return new WasapiAudioPlayer();
+    }
+
+    private void OpenAudio(double edited, CancellationToken ct)
+    {
+        audio = createAudio(); audio.ConfigureAsync(48_000, 2, false, ct).GetAwaiter().GetResult();
         audioCancellation = new CancellationTokenSource();
         var token = audioCancellation.Token;
         var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -365,18 +393,41 @@ public sealed class PreviewEngine : IPreviewEngine
             }
             catch (Exception exception) { ready.TrySetException(exception); throw; }
         }, token);
-        try { ready.Task.WaitAsync(ct).GetAwaiter().GetResult(); }
-        catch { StopAudio(); throw; }
+        ready.Task.WaitAsync(ct).GetAwaiter().GetResult();
+        audio.PlayAsync(ct).GetAwaiter().GetResult();
     }
 
     private double Clock()
     {
         if (audioProducer?.IsFaulted == true) audioProducer.GetAwaiter().GetResult();
         if (audioProducer?.IsCanceled == true) throw new IOException("The preview audio producer stopped unexpectedly.");
-        if (OperatingSystem.IsWindows() && audio?.Completion.IsFaulted == true) audio.Completion.GetAwaiter().GetResult();
+        if (audio is { Completion.IsFaulted: true } failed) ReopenAfterLoss(failed, failed.Completion.Exception!.InnerException!);
         if (clockOverride is not null) return clockOverride();
-        var elapsed = OperatingSystem.IsWindows() && audio is not null ? audio.FramesPlayed / (double)audio.DeviceRate : videoClock.Elapsed.TotalSeconds;
+        var elapsed = audio is not null ? audio.FramesPlayed / (double)audio.DeviceRate : videoClock.Elapsed.TotalSeconds;
         return Math.Min(snapshot!.Timeline.Duration, origin + elapsed);
+    }
+
+    /// <summary>A failed output device first lands the playhead on its last played frame. A lost device then gets exactly one
+    /// immediate reopen of the current default device from there, such as speakers after headphones are unplugged; without one,
+    /// playback continues muted. Any other device error, including one from the reopen, faults playback at that frame.</summary>
+    private void ReopenAfterLoss(IPreviewAudioOutput failed, Exception error)
+    {
+        var lost = Math.Min(snapshot!.Timeline.Duration, origin + failed.FramesPlayed / (double)failed.DeviceRate);
+        UpdatePosition(lost);
+        if (IPreviewAudioOutput.Unavailable(error) is null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(error).Throw();
+        StartAudio(lost, CancellationToken.None);
+        origin = lost;
+        videoClock.Restart();
+    }
+
+    private void ReportAudio(PreviewAudioStatus status)
+    {
+        if (audioStatus == status) return;
+        audioStatus = status;
+        if (AudioStatusChanged is { } handlers)
+            foreach (EventHandler<PreviewAudioStatus> handler in handlers.GetInvocationList())
+                try { handler(this, status); }
+                catch (Exception) { }
     }
 
     private void UpdatePosition(double edited)
@@ -392,7 +443,7 @@ public sealed class PreviewEngine : IPreviewEngine
         finally
         {
             audioProducer = null; audioCancellation?.Dispose(); audioCancellation = null;
-            try { if (OperatingSystem.IsWindows()) audio?.DisposeAsync().AsTask().GetAwaiter().GetResult(); }
+            try { audio?.DisposeAsync().AsTask().GetAwaiter().GetResult(); }
             catch (Exception) { }
             finally { audio = null; }
         }

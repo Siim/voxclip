@@ -149,11 +149,36 @@ public enum VoiceLabProjectError: Error, Equatable, Sendable {
     case missingSegment, invalidCandidate, unsupportedRendering, invalidScope
     case missingRenderPolicy, needsVoiceLabUpgrade, videoModeUnsupported, alignmentUnavailable, consentUnverified
     case qaRejected, invalidFadeHandles, overlappingFades, unsupportedAssetFormat, cleanAudioUnsupported, staleRenderContract, endpointUnsupported
+    case legacySegmentsNeedReview, requiresVersion3, invalidVoice, missingVoice
+}
+
+/// The §10.1 paid-asset file rule, shared by Core validation (also for §10.5 video assets) and the Media writers that name new assets.
+public enum VoiceLabAssetNaming {
+    /// Returns the relative `<projectId>/<assetId>.wav` or `.flac` name under the caller's paid Voice Lab store.
+    public static func file(projectId: String, assetId: String, extension fileExtension: String) throws -> String {
+        guard let file = safeFile(projectId: projectId, assetId: assetId, extension: fileExtension) else { throw VoiceLabProjectError.invalidAsset }
+        return file
+    }
+    static func isSafeProjectID(_ projectId: String) -> Bool {
+        VoiceLabProject.matches(projectId, "[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}")
+    }
+    static func safeFile(projectId: String, assetId: String, extension fileExtension: String) -> String? {
+        fileExtension == "wav" || fileExtension == "flac" ? safeName(projectId, assetId, fileExtension) : nil
+    }
+    /// A §10.5 video asset follows the same rule, always with the `mp4` extension.
+    static func safeVideoFile(projectId: String, assetId: String) -> String? { safeName(projectId, assetId, "mp4") }
+    private static func safeName(_ projectId: String, _ assetId: String, _ fileExtension: String) -> String? {
+        guard isSafeProjectID(projectId), VoiceLabProject.matches(assetId, "[a-z0-9][a-z0-9_-]{0,63}"),
+              !VoiceLabProject.matches(assetId, "con|prn|aux|nul|com[1-9]|lpt[1-9]") else { return nil }
+        return projectId + "/" + assetId + "." + fileExtension
+    }
 }
 
 public enum VoiceLabProject {
     private static let id = "[A-Za-z0-9][A-Za-z0-9._:-]{0,63}"
-    private static func matches(_ value: String, _ pattern: String) -> Bool {
+    /// The ElevenLabs client's path-safe ID rule, anchored so a trailing newline is refused.
+    private static let providerVoiceID = "[A-Za-z0-9_-]{1,128}"
+    fileprivate static func matches(_ value: String, _ pattern: String) -> Bool {
         value.range(of: "\\A(?:" + pattern + ")\\z", options: .regularExpression) != nil
     }
     public static func validate(_ project: Project) throws {
@@ -164,7 +189,7 @@ public enum VoiceLabProject {
         }
         guard (project.schemaVersion == 2 || project.schemaVersion == 3), let assets = project.voiceLab.assets else { throw VoiceLabProjectError.invalidSegment }
         if project.schemaVersion == 2 && (project.voiceLab.cleanAudio != nil || project.voiceLab.voices != nil || project.voiceLab.videoAssets != nil || project.voiceLab.segments.contains(where: { $0.scope != nil || $0.groupId != nil || $0.provenance.region != nil || $0.candidates.contains(where: { $0.recipe != nil }) })) { throw VoiceLabProjectError.invalidSegment }
-        guard matches(project.id, "[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}") else {
+        guard VoiceLabAssetNaming.isSafeProjectID(project.id) else {
             throw VoiceLabProjectError.unsafePath
         }
         let assetIDs = Set(assets.map(\.id))
@@ -172,9 +197,9 @@ public enum VoiceLabProject {
         for asset in assets {
             guard matches(asset.id, id), asset.kind == "audio", matches(asset.sha256, "[0-9a-f]{64}"),
                   asset.durationSeconds.isFinite, asset.durationSeconds > 0, asset.sampleRate > 0 else { throw VoiceLabProjectError.invalidAsset }
-            let reserved = matches(asset.id, "(?:con|prn|aux|nul|com[1-9]|lpt[1-9])")
-            guard matches(asset.id, "[a-z0-9][a-z0-9_-]{0,63}"), !reserved,
-                  asset.file == project.id + "/" + asset.id + ".wav" || asset.file == project.id + "/" + asset.id + ".flac" else {
+            // A stored file must be exactly the §10.1 name for its own asset ID.
+            let fileExtension = asset.file.split(separator: ".", omittingEmptySubsequences: false).last.map(String.init) ?? ""
+            guard VoiceLabAssetNaming.safeFile(projectId: project.id, assetId: asset.id, extension: fileExtension) == asset.file else {
                 throw VoiceLabProjectError.unsafePath
             }
         }
@@ -249,19 +274,61 @@ public enum VoiceLabProject {
         if project.schemaVersion == 3 { try VoiceLabRenderValidation.validate(project) }
     }
 
-    public static func accept(_ segment: VoiceLabSegment, assets: [VoiceLabAsset], into project: Project) throws -> Project {
+    /// The only v1/v2 to v3 promotion (§10.1, §10.5); loading and saving never call it. A v2 segment needs explicit review.
+    public static func upgradeToV3(_ project: Project) throws -> Project {
+        try validate(project)
+        if project.schemaVersion == 3 { return project }
+        guard project.voiceLab.segments.isEmpty else { throw VoiceLabProjectError.legacySegmentsNeedReview }
         var result = project
-        if result.schemaVersion == 1 { result.schemaVersion = 2; result.voiceLab.assets = [] }
+        result.schemaVersion = 3
+        result.voiceLab = ProjectVoiceLab(segments: [], assets: project.voiceLab.assets ?? [], cleanAudio: VoiceLabCleanAudio(mode: .off),
+                                          voices: [], videoAssets: [])
+        try validate(result)
+        return result
+    }
+
+    /// Appends a reviewed v3 segment; v1 and segment-free v2 projects are upgraded first, so accept never writes v2.
+    public static func accept(_ segment: VoiceLabSegment, assets: [VoiceLabAsset], into project: Project) throws -> Project {
+        var result = try project.schemaVersion == 3 ? project : upgradeToV3(project)
         guard segment.candidates.indices.contains(segment.selectedCandidateIndex) else { throw VoiceLabProjectError.invalidCandidate }
         guard Set(assets.map(\.id)).count == assets.count,
               assets.allSatisfy({ asset in result.voiceLab.assets?.contains(where: { $0.id == asset.id }) == false }) else { throw VoiceLabProjectError.invalidAsset }
         result.voiceLab.assets?.append(contentsOf: assets)
         guard !result.voiceLab.segments.contains(where: { $0.id == segment.id }) else { throw VoiceLabProjectError.invalidSegment }
         result.voiceLab.segments.append(segment)
-        if result.schemaVersion == 3,
-           let recipe = segment.candidates[segment.selectedCandidateIndex].recipe,
-           recipe.voiceSource == .own,
-           result.voiceLab.voices?.first(where: { $0.id == recipe.voiceRefId })?.status != .active { throw VoiceLabProjectError.consentUnverified }
+        // Every unrejected own-voice candidate is a new take, selected or not, so each needs an active consent reference (§6.10, §10.5).
+        for candidate in segment.candidates where candidate.rejected == nil {
+            guard let recipe = candidate.recipe, recipe.voiceSource == .own else { continue }
+            guard result.voiceLab.voices?.first(where: { $0.id == recipe.voiceRefId })?.status == .active else { throw VoiceLabProjectError.consentUnverified }
+        }
+        try validate(result)
+        return result
+    }
+    /// Adds an own-voice consent reference (§6.8, §10.5). The project stores only IDs and the trimmed display name.
+    public static func addVoiceReference(_ reference: VoiceLabVoiceReference, to project: Project) throws -> Project {
+        guard project.schemaVersion == 3 else { throw VoiceLabProjectError.requiresVersion3 }
+        var voice = reference
+        // §6.1: the name counts 1–60 Unicode scalars after trimming whitespace, and the trimmed name is stored.
+        voice.displayName = reference.displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let voices = project.voiceLab.voices ?? []
+        guard matches(voice.id, id), !voices.contains(where: { $0.id == voice.id }), matches(voice.consentRecordId, id),
+              voice.provider == "elevenlabs", matches(voice.voiceId, providerVoiceID), voice.status == .active,
+              (1...60).contains(voice.displayName.unicodeScalars.count),
+              !voices.contains(where: { $0.status == .active && $0.provider == voice.provider && $0.voiceId == voice.voiceId }) else {
+            throw VoiceLabProjectError.invalidVoice
+        }
+        var result = project
+        result.voiceLab.voices = voices + [voice]
+        try validate(result)
+        return result
+    }
+    /// Records provider deletion (§6.10). The reference, segments and paid assets stay; new own-voice accepts are refused.
+    public static func markVoiceDeleted(id voiceID: String, in project: Project) throws -> Project {
+        // §10.5: only version 3 holds voice references, so versions 1 and 2 report requiresVersion3.
+        guard project.schemaVersion == 3 else { throw VoiceLabProjectError.requiresVersion3 }
+        guard let index = project.voiceLab.voices?.firstIndex(where: { $0.id == voiceID }) else { throw VoiceLabProjectError.missingVoice }
+        var result = project
+        result.voiceLab.voices?[index].status = .deleted
         try validate(result)
         return result
     }
@@ -277,6 +344,7 @@ public enum VoiceLabProject {
         result.voiceLab.segments.removeAll { $0.id == id }
         try validate(result); return result
     }
+    /// Voice status is not checked: accept verified consent for every unrejected candidate, and its stored evidence keeps the take renderable (§10.5).
     public static func selectCandidate(_ index: Int, id: String, in project: Project) throws -> Project {
         var result = project
         guard let position = result.voiceLab.segments.firstIndex(where: { $0.id == id }) else { throw VoiceLabProjectError.missingSegment }

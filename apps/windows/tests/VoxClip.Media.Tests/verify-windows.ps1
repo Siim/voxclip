@@ -1,13 +1,17 @@
 param([string]$LockOwner = '', [string]$FfmpegDirectory = $env:VOXCLIP_FFMPEG_DIR, [switch]$WithoutEncoders, [switch]$DiagnoseMf, [switch]$ManagedOnly,
-    [switch]$ShippingAcceptance, [switch]$FocusedCaptions, [switch]$DiagnoseColorPath, [switch]$ConversionTiming, [switch]$ConversionTimingOnly, [string]$ShippingRid = '', [string]$BuildReport = '')
+    [switch]$ShippingAcceptance, [switch]$FocusedCaptions, [switch]$DiagnoseColorPath, [switch]$ConversionTiming, [switch]$ConversionTimingOnly, [string]$ShippingRid = '', [string]$BuildReport = '',
+    [string]$ScratchRoot = 'C:\voxclip-build\win-media')
 $ErrorActionPreference = 'Stop'
+if ($ScratchRoot -notmatch '^C:\\voxclip-build\\[a-z0-9][a-z0-9-]*$') { throw 'The scratch root must be one track directory directly under C:\voxclip-build.' }
 Set-Location (Resolve-Path (Join-Path $PSScriptRoot '..\..\..\..'))
-if (-not $PWD.Path.StartsWith('C:\voxclip-build\win-media\', [StringComparison]::OrdinalIgnoreCase)) { throw 'Run only in an archived win-media workspace.' }
+if (-not $PWD.Path.StartsWith("$ScratchRoot\", [StringComparison]::OrdinalIgnoreCase)) { throw "Run only in an archived workspace under $ScratchRoot." }
 if (-not (Test-Path 'C:\voxclip-build\vm.lock\owner') -or (Get-Content 'C:\voxclip-build\vm.lock\owner') -ne $LockOwner) { throw 'The caller must own the VM lock.' }
 if (-not $ManagedOnly -and (-not $FfmpegDirectory -or (-not $ShippingAcceptance -and -not (Test-Path $FfmpegDirectory)))) { throw 'Pass -FfmpegDirectory with the self-built LGPL FFmpeg 9 native directory.' }
-if ($FfmpegDirectory -and -not $FfmpegDirectory.StartsWith('C:\voxclip-build\win-media\', [StringComparison]::OrdinalIgnoreCase)) { throw 'Copy approved DLLs into the win-media VM directory first.' }
+if ($FfmpegDirectory -and -not $FfmpegDirectory.StartsWith("$ScratchRoot\", [StringComparison]::OrdinalIgnoreCase)) { throw "Copy approved DLLs into $ScratchRoot first." }
 $env:VOXCLIP_FFMPEG_DIR = $FfmpegDirectory
 $env:VOXCLIP_REQUIRE_NATIVE = '1'
+# The VM has a default audio output device, so the full and shipping-acceptance runs fail the real WASAPI preview test without one.
+$env:VOXCLIP_REQUIRE_AUDIO_OUTPUT = '1'
 $env:VOXCLIP_DATA_DIR = Join-Path $PWD 'apps\windows\tests\VoxClip.Media.Tests\.runs\data'
 $env:VOXCLIP_SHARED_DIR = Join-Path $PWD 'shared'
 $env:VOXCLIP_E2E_OUT = Join-Path $PWD 'apps\windows\tests\VoxClip.Media.Tests\.runs\e2e'
@@ -26,7 +30,7 @@ function Assert-ScratchBudget {
     $free = (Get-PSDrive C).Free
     if ($free -lt 6GB) { throw "C: free space fell below 6 GiB: $free bytes." }
     $owned = (Get-ChildItem $workspaceRoot -Recurse -File -ErrorAction Stop | Measure-Object Length -Sum).Sum
-    if ($owned -gt 2GB) { throw "Owned win-media scratch exceeded 2 GiB: $owned bytes." }
+    if ($owned -gt 2GB) { throw "Owned workspace scratch exceeded 2 GiB: $owned bytes." }
     Write-Output ("C: free GiB: {0:N2}; owned scratch MiB: {1:N1}" -f ($free / 1GB), ($owned / 1MB))
 }
 $acceptanceFailures = [System.Collections.Generic.List[string]]::new()
@@ -84,6 +88,7 @@ try {
         $env:VOXCLIP_SHIPPING_REPORT = $BuildReport
         $env:VOXCLIP_MODULE_EVIDENCE = Join-Path $runs 'loaded-modules.json'
         $env:VOXCLIP_CLI_MODULE_EVIDENCE = Join-Path $runs 'loaded-cli-modules.json'
+        $env:VOXCLIP_REQUIRE_VM_EVIDENCE = '1'
         Assert-ScratchBudget
     }
     Set-Location apps\windows
@@ -167,10 +172,12 @@ try {
                 @('shipping-colour', 'VoxClip.Media.Tests.E2E.SoftwareMfBarColorTests', 180),
                 @('shipping-native-conformance', 'VoxClip.Media.Tests.NativeMediaConformanceTests', 180),
                 @('shipping-native-pipeline', 'VoxClip.Media.Tests.NativePipelineTests', 300),
-                @('shipping-windows-pipeline', 'VoxClip.Media.Tests.WindowsPipelineTests', 300))) {
+                @('shipping-windows-pipeline', 'VoxClip.Media.Tests.WindowsPipelineTests', 300),
+                @('shipping-preview-audio', 'VoxClip.Media.Tests.VoiceLabAudioMixerTests', 180))) {
                 $arguments = if ($ShippingRid -eq 'win-x64') { @('-class', $suite[1]) } else { @($testExecutable, '-class', $suite[1]) }
                 if ($suite[0] -eq 'shipping-native-pipeline') { $arguments += @('-method-', 'VoxClip.Media.Tests.NativePipelineTests.DecoderReconfiguresWhenAudioChannelsChange') }
                 if ($suite[0] -eq 'shipping-windows-pipeline') { $arguments += @('-method-', 'VoxClip.Media.Tests.WindowsPipelineTests.IdentityExportAndPreviewAudioStartSeekFromZero') }
+                if ($suite[0] -eq 'shipping-preview-audio') { $arguments += @('-method', 'VoxClip.Media.Tests.VoiceLabAudioMixerTests.NativePreviewPlaysPausesSeeksAndReleasesSynthLease') }
                 Invoke-Bounded $suite[0] $arguments $suite[2] 0 $testRunner
             }
         }

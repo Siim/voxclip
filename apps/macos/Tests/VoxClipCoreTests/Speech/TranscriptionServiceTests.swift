@@ -3,7 +3,7 @@ import Synchronization
 import Testing
 @testable import VoxClipCore
 
-@Suite("Speech orchestration", .serialized)
+@Suite("Speech orchestration", .serialized, .timeLimit(.minutes(1)))
 struct TranscriptionServiceTests {
     @Test func applicationWideConcurrencyLimits() async throws {
         let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
@@ -17,6 +17,7 @@ struct TranscriptionServiceTests {
                     var request = try SpeechTestFiles.request(root.appendingPathComponent("job-\(index)"))
                     request.contentKey = "content-\(index)"
                     request.plan = TranscriptionPlan(engine: type, language: .forced("en"))
+                    await activity.submit(of: 7)
                     _ = try await service.transcribe(request, using: engine, envelope: nil)
                 }
             }
@@ -129,16 +130,25 @@ private actor SpeechJobActivity {
     var maximumLocal = 0
     var maximumCloud = 0
     var languages: [LanguageChoice] = []
+    var submitted = 0
+    var allSubmitted: ContinuousClock.Instant?
+    func submit(of total: Int) {
+        submitted += 1
+        if submitted == total { allSubmitted = .now }
+    }
     func start(_ engine: TranscriptEngine, language: LanguageChoice) {
         languages.append(language)
         if engine == .elevenlabs { cloud += 1; maximumCloud = max(maximumCloud, cloud) }
         else { local += 1; maximumLocal = max(maximumLocal, local) }
     }
     func end(_ engine: TranscriptEngine) { if engine == .elevenlabs { cloud -= 1 } else { local -= 1 } }
+    /// The service has five seconds to run one local and two cloud jobs together, counted from the
+    /// moment every job has reached it, not from this job's start.
     func waitForSaturation() async throws {
-        let deadline = ContinuousClock.now.advanced(by: .seconds(5))
         while maximumLocal < 1 || maximumCloud < 2 {
-            try #require(ContinuousClock.now < deadline, "Expected one local and two cloud jobs to run concurrently")
+            if let allSubmitted {
+                try #require(ContinuousClock.now < allSubmitted.advanced(by: .seconds(5)), "Expected one local and two cloud jobs to run concurrently")
+            }
             try await Task.sleep(for: .milliseconds(5))
         }
     }

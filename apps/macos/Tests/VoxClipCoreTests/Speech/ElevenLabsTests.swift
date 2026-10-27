@@ -3,7 +3,7 @@ import Synchronization
 import Testing
 @testable import VoxClipCore
 
-@Suite("ElevenLabs Scribe v2")
+@Suite("ElevenLabs Scribe v2", .timeLimit(.minutes(1)))
 struct ElevenLabsTests {
     private struct RecordedExpectation: Decodable {
         let schema: String

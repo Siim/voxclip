@@ -3,7 +3,7 @@ import Synchronization
 import Testing
 @testable import VoxClipCore
 
-@Suite("ElevenLabs regional routing")
+@Suite("ElevenLabs regional routing", .timeLimit(.minutes(1)))
 struct ElevenLabsRegionTests {
     @Test(arguments: [
         ("default", "https://api.elevenlabs.io"),

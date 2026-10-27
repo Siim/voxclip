@@ -2,6 +2,7 @@ import AVFoundation
 import Foundation
 import Synchronization
 import Testing
+import VideoToolbox
 import VoxClipCore
 @testable import VoxClipMedia
 
@@ -202,6 +203,43 @@ enum MacColorAcceptance {
         return DecodedVideo(frames: result, yuvFrameCount: Int64(yuv.0.count), rgbFrameCount: Int64(rgb.0.count))
     }
 
+    /// Decoded-YUV bound for the encoder that wrote the export (ADR-R22). Physical VideoToolbox hardware is the
+    /// required-hardware acceptance at ±1. Hosted CI's paravirtualized encoder is a drift guard at ±2; a matrix,
+    /// range or primaries error moves decoded YUV by tens of codes. Every other check is the same for both.
+    struct EncoderProfile: Equatable {
+        static let requiredHardware = EncoderProfile(encoderID: "com.apple.videotoolbox.videoencoder.ave.avc")
+        let encoderID: String
+        var isParavirtualized: Bool { encoderID.hasPrefix("paravirtualized:") }
+        var name: String { isParavirtualized ? "paravirtualized drift guard" : "required hardware" }
+        var decodedYUVTolerance: Int { isParavirtualized ? 2 : 1 }
+        var report: [String: Any] { ["encoderID": encoderID, "profile": name, "decodedYUVTolerance": decodedYUVTolerance] }
+
+        /// The encoder VideoToolbox selects for H.264 when hardware is required, as the exporter requires it, named
+        /// as VideoToolbox lists it. A session that reports no encoder, or one VideoToolbox does not list as hardware
+        /// H.264, is taken to use the only listed hardware H.264 encoder.
+        static func selected() -> EncoderProfile {
+            var list: CFArray?
+            let listed = VTCopyVideoEncoderList(nil, &list) == noErr ? ((list as? [Any]) ?? []).compactMap { $0 as? [String: Any] } : []
+            let hardware = listed.filter {
+                ($0[kVTVideoEncoderList_CodecType as String] as? NSNumber)?.uint32Value == kCMVideoCodecType_H264
+                    && ($0[kVTVideoEncoderList_IsHardwareAccelerated as String] as? Bool) == true
+            }.compactMap { $0[kVTVideoEncoderList_EncoderID as String] as? String }
+            var session: VTCompressionSession?
+            guard VTCompressionSessionCreate(allocator: kCFAllocatorDefault, width: 1920, height: 1080, codecType: kCMVideoCodecType_H264,
+                encoderSpecification: [kVTVideoEncoderSpecification_RequireHardwareAcceleratedVideoEncoder: true] as CFDictionary,
+                imageBufferAttributes: nil, compressedDataAllocator: nil, outputCallback: nil, refcon: nil,
+                compressionSessionOut: &session) == noErr, let session else { return EncoderProfile(encoderID: "unavailable") }
+            defer { VTCompressionSessionInvalidate(session) }
+            var id: CFString?
+            let status = withUnsafeMutablePointer(to: &id) {
+                VTSessionCopyProperty(session, key: kVTCompressionPropertyKey_EncoderID, allocator: kCFAllocatorDefault, valueOut: $0)
+            }
+            let reported = status == noErr ? id.map { $0 as String } : nil
+            if let reported, hardware.contains(reported) { return EncoderProfile(encoderID: reported) }
+            return EncoderProfile(encoderID: hardware.count == 1 ? hardware[0] : reported ?? "unknown")
+        }
+    }
+
     struct Row {
         let frame: Int64
         let point: Int
@@ -212,7 +250,7 @@ enum MacColorAcceptance {
         let rgb: [Int]
     }
 
-    static func validate(_ rows: [Row], metadata: Metadata, label: String) -> [String] {
+    static func validate(_ rows: [Row], metadata: Metadata, label: String, profile: EncoderProfile = .requiredHardware) -> [String] {
         var failures = metadata.failures.map { "\(label): \($0)" }
         let expectedKeys = Set(frames.flatMap { frame in (0..<24).map { "\(frame):\($0)" } })
         let keys = rows.map { "\($0.frame):\($0.point)" }
@@ -234,7 +272,7 @@ enum MacColorAcceptance {
                 if abs(row.input[channel] - canonical[bar][channel]) > 3 {
                     failures.append("\(label): frame \(row.frame) point \(row.point) preinput RGB \(channel) \(row.input[channel])")
                 }
-                if abs(row.yuv[channel] - forwardYUV[channel]) > 1 {
+                if abs(row.yuv[channel] - forwardYUV[channel]) > profile.decodedYUVTolerance {
                     failures.append("\(label): frame \(row.frame) point \(row.point) decoded YUV \(channel) \(row.yuv[channel]) vs \(forwardYUV[channel])")
                 }
             }
@@ -301,4 +339,38 @@ enum MacColorAcceptance {
     let metadataFailures = A.validate([base], metadata: wrong, label: "test").filter { !$0.contains("missing") }
     #expect(Set(metadataFailures) == Set(["profile High", "4:2:0", "8-bit", "limited range",
                                           "BT.709 primaries", "BT.709 transfer", "BT.709 matrix"].map { "test: \($0)" }))
+}
+
+@Test func macBT709EncoderProfilesBoundOnlyDecodedYUV() {
+    typealias A = MacColorAcceptance
+    let hosted = A.EncoderProfile(encoderID: "paravirtualized:com.apple.videotoolbox.videoencoder.ave.avc")
+    #expect(hosted.isParavirtualized && hosted.decodedYUVTolerance == 2)
+    #expect(!A.EncoderProfile.requiredHardware.isParavirtualized && A.EncoderProfile.requiredHardware.decodedYUVTolerance == 1)
+    #expect(hosted.report["encoderID"] as? String == hosted.encoderID && hosted.report["profile"] as? String == "paravirtualized drift guard")
+    let good = A.Metadata(codec: kCMVideoCodecType_H264, high: true, chroma420: true, eightBit: true,
+                          limited: true, primaries709: true, transfer709: true, matrix709: true)
+    let magenta = [191, 0, 191], expected = A.forward(magenta)
+    func row(_ yuv: [Int], input: [Int]) -> A.Row {
+        A.Row(frame: 30, point: 12, pts: 1, decodedPTS: 1, input: input, yuv: yuv, rgb: input)
+    }
+    func yuvFailures(_ row: A.Row, _ profile: A.EncoderProfile) -> [String] {
+        A.validate([row], metadata: good, label: "test", profile: profile).filter { $0.contains("decoded YUV") }
+    }
+    for channel in 0..<3 {
+        var two = expected, three = expected
+        two[channel] -= 2; three[channel] -= 3
+        #expect(!yuvFailures(row(two, input: magenta), .requiredHardware).isEmpty)
+        #expect(yuvFailures(row(two, input: magenta), hosted).isEmpty)
+        #expect(!yuvFailures(row(three, input: magenta), hosted).isEmpty)
+    }
+    // Matrix and range errors are tens of codes, so the drift guard still rejects them.
+    let bt601GreenY = Int(floor(16 + 0.587 * 191 * 219 / 255 + 0.5))
+    #expect(!yuvFailures(A.Row(frame: 30, point: 9, pts: 1, decodedPTS: 1, input: [0, 191, 0], yuv: [bt601GreenY, 63, 52], rgb: [0, 191, 0]), hosted).isEmpty)
+    #expect(!yuvFailures(A.Row(frame: 30, point: 21, pts: 1, decodedPTS: 1, input: [0, 0, 0], yuv: [0, 128, 128], rgb: [0, 0, 0]), hosted).isEmpty)
+    // Submitted RGB and format checks do not depend on the profile.
+    #expect(A.validate([row(expected, input: [195, 0, 191])], metadata: good, label: "test", profile: hosted).contains { $0.contains("preinput RGB 0") })
+    let wrong = A.Metadata(codec: kCMVideoCodecType_H264, high: false, chroma420: true, eightBit: true,
+                           limited: false, primaries709: true, transfer709: true, matrix709: false)
+    let tags = A.validate([row(expected, input: magenta)], metadata: wrong, label: "test", profile: hosted)
+    #expect(tags.contains("test: profile High") && tags.contains("test: limited range") && tags.contains("test: BT.709 matrix"))
 }

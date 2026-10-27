@@ -135,6 +135,7 @@ func verifyVoiceCallerAudio(_ output: URL, expected: VoiceLabOutputPlan) async t
     #expect(magnitude(880) > 3 * magnitude(440))
 }
 
+extension HeavyMediaTests {
 @Suite("voice-lab-callers", .serialized)
 struct VoiceLabCallerTests {
     @Test(.timeLimit(.minutes(3)), arguments: ["full", "clip", "off", "dormant-cuts", "source-only"])
@@ -202,4 +203,5 @@ struct VoiceLabCallerTests {
         for url in [output, wav, sidecar] { #expect(try Data(contentsOf: url) == sentinel) }
         #expect(try FileManager.default.contentsOfDirectory(atPath: directory.path).allSatisfy { !$0.contains(".partial") })
     }
+}
 }

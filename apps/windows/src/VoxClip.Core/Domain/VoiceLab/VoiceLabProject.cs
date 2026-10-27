@@ -40,18 +40,37 @@ public enum VoiceLabProjectErrorCode
     InvalidAsset, UnsafePath, InvalidSegment, InvalidRange, InvalidWords, DanglingAsset,
     OverlappingReplacement, MissingSegment, InvalidCandidate, UnsupportedRendering, InvalidScope,
     MissingRenderPolicy, NeedsVoiceLabUpgrade, VideoModeUnsupported, AlignmentUnavailable, ConsentUnverified,
-    QaRejected, InvalidFadeHandles, OverlappingFades, UnsupportedAssetFormat, CleanAudioUnsupported, StaleRenderContract, EndpointUnsupported
+    QaRejected, InvalidFadeHandles, OverlappingFades, UnsupportedAssetFormat, CleanAudioUnsupported, StaleRenderContract, EndpointUnsupported,
+    LegacySegmentsNeedReview, RequiresVersion3, InvalidVoice, MissingVoice
 }
 public sealed class VoiceLabProjectException(VoiceLabProjectErrorCode code) : Exception(code.ToString())
 {
     public VoiceLabProjectErrorCode Code { get; } = code;
 }
 
+/// <summary>The §10.1 paid-asset file rule, shared by Core validation (also for §10.5 video assets) and the Media writers that name new assets.</summary>
+public static class VoiceLabAssetNaming
+{
+    /// <summary>Returns the relative <c>projectId/assetId.wav</c> or <c>.flac</c> name under the caller's paid Voice Lab store.</summary>
+    public static string File(string projectId, string assetId, string fileExtension)
+        => SafeFile(projectId, assetId, fileExtension) ?? throw new VoiceLabProjectException(VoiceLabProjectErrorCode.InvalidAsset);
+    internal static bool IsSafeProjectId(string projectId) => VoiceLabProject.Matches(projectId, "[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}");
+    internal static string? SafeFile(string projectId, string assetId, string fileExtension)
+        => fileExtension is "wav" or "flac" ? SafeName(projectId, assetId, fileExtension) : null;
+    /// <summary>A §10.5 video asset follows the same rule, always with the <c>mp4</c> extension.</summary>
+    internal static string? SafeVideoFile(string projectId, string assetId) => SafeName(projectId, assetId, "mp4");
+    static string? SafeName(string projectId, string assetId, string fileExtension)
+        => IsSafeProjectId(projectId) && VoiceLabProject.Matches(assetId, "[a-z0-9][a-z0-9_-]{0,63}") &&
+            !VoiceLabProject.Matches(assetId, "con|prn|aux|nul|com[1-9]|lpt[1-9]") ? projectId + "/" + assetId + "." + fileExtension : null;
+}
+
 /// <summary>Pure validation and immutable project transitions; does not delete paid assets.</summary>
 public static class VoiceLabProject
 {
     private const string Id = "[A-Za-z0-9][A-Za-z0-9._:-]{0,63}";
-    private static bool Matches(string value, string pattern) => Regex.IsMatch(value, "\\A(?:" + pattern + ")\\z", RegexOptions.CultureInvariant);
+    /// <summary>The ElevenLabs client's path-safe ID rule, anchored so a trailing newline is refused.</summary>
+    private const string ProviderVoiceId = "[A-Za-z0-9_-]{1,128}";
+    internal static bool Matches(string value, string pattern) => Regex.IsMatch(value, "\\A(?:" + pattern + ")\\z", RegexOptions.CultureInvariant);
     private static void Require(bool condition, VoiceLabProjectErrorCode code)
     {
         if (!condition) throw new VoiceLabProjectException(code);
@@ -66,7 +85,7 @@ public static class VoiceLabProject
         Require(project.SchemaVersion is 2 or 3 && project.VoiceLab.Assets is not null, VoiceLabProjectErrorCode.InvalidSegment);
         if (project.SchemaVersion == 2) Require(project.VoiceLab.CleanAudio is null && project.VoiceLab.Voices is null && project.VoiceLab.VideoAssets is null &&
             project.VoiceLab.Segments.All(segment => segment.Scope is null && segment.GroupId is null && segment.Provenance.Region is null && segment.Candidates.All(candidate => candidate.Recipe is null)), VoiceLabProjectErrorCode.InvalidSegment);
-        Require(Matches(project.Id, "[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}"), VoiceLabProjectErrorCode.UnsafePath);
+        Require(VoiceLabAssetNaming.IsSafeProjectId(project.Id), VoiceLabProjectErrorCode.UnsafePath);
         var assets = project.VoiceLab.Assets!;
         var assetIds = assets.Select(asset => asset.Id).ToHashSet(StringComparer.Ordinal);
         Require(assetIds.Count == assets.Count, VoiceLabProjectErrorCode.InvalidAsset);
@@ -74,9 +93,8 @@ public static class VoiceLabProject
         {
             Require(Matches(asset.Id, Id) && asset.Kind == "audio" && Matches(asset.Sha256, "[0-9a-f]{64}") &&
                 double.IsFinite(asset.DurationSeconds) && asset.DurationSeconds > 0 && asset.SampleRate > 0, VoiceLabProjectErrorCode.InvalidAsset);
-            Require(Matches(asset.Id, "[a-z0-9][a-z0-9_-]{0,63}") &&
-                !Matches(asset.Id, "(?:con|prn|aux|nul|com[1-9]|lpt[1-9])") &&
-                (asset.File == project.Id + "/" + asset.Id + ".wav" || asset.File == project.Id + "/" + asset.Id + ".flac"),
+            // A stored file must be exactly the §10.1 name for its own asset ID.
+            Require(VoiceLabAssetNaming.SafeFile(project.Id, asset.Id, asset.File[(asset.File.LastIndexOf('.') + 1)..]) == asset.File,
                 VoiceLabProjectErrorCode.UnsafePath);
         }
         var words = project.Transcript?.Words ?? [];
@@ -149,8 +167,20 @@ public static class VoiceLabProject
             Require(enabled[i].start >= enabled[i - 1].end, VoiceLabProjectErrorCode.OverlappingReplacement);
         if (project.SchemaVersion == 3) VoiceLabRenderValidation.Validate(project);
     }
+    /// <summary>The only v1/v2 to v3 promotion (§10.1, §10.5); loading and saving never call it. A v2 segment needs explicit review.</summary>
+    public static Project UpgradeToV3(Project project)
+    {
+        Validate(project);
+        if (project.SchemaVersion == 3) return project;
+        Require(project.VoiceLab.Segments.Count == 0, VoiceLabProjectErrorCode.LegacySegmentsNeedReview);
+        var result = project with { SchemaVersion = 3, VoiceLab = new VoiceLabPlaceholder([]) { Assets = project.VoiceLab.Assets ?? [],
+            CleanAudio = new(VoiceLabCleanAudioMode.Off, null, null), Voices = [], VideoAssets = [] } };
+        Validate(result); return result;
+    }
+    /// <summary>Appends a reviewed v3 segment; v1 and segment-free v2 projects are upgraded first, so accept never writes v2.</summary>
     public static Project Accept(Project project, IReadOnlyList<VoiceLabAsset> newAssets, VoiceLabSegment segment)
     {
+        if (project.SchemaVersion != 3) project = UpgradeToV3(project);
         Require(segment.Candidates is { Count: > 0 } && segment.SelectedCandidateIndex >= 0 &&
             segment.SelectedCandidateIndex < segment.Candidates.Count, VoiceLabProjectErrorCode.InvalidCandidate);
         var assets = project.VoiceLab.Assets?.ToList() ?? [];
@@ -158,9 +188,37 @@ public static class VoiceLabProject
             newAssets.All(item => !assets.Any(existing => existing.Id == item.Id)), VoiceLabProjectErrorCode.InvalidAsset);
         assets.AddRange(newAssets);
         Require(!project.VoiceLab.Segments.Any(item => item.Id == segment.Id), VoiceLabProjectErrorCode.InvalidSegment);
-        if (project.SchemaVersion == 3 && segment.Candidates[segment.SelectedCandidateIndex].Recipe is { VoiceSource: VoiceLabVoiceSource.Own } recipe)
-            Require(project.VoiceLab.Voices?.FirstOrDefault(v => v.Id == recipe.VoiceRefId)?.Status == VoiceLabVoiceStatus.Active, VoiceLabProjectErrorCode.ConsentUnverified);
-        var result = project with { SchemaVersion = project.SchemaVersion == 3 ? 3 : 2, VoiceLab = project.VoiceLab with { Segments = project.VoiceLab.Segments.Append(segment).ToArray(), Assets = assets } };
+        // Every unrejected own-voice candidate is a new take, selected or not, so each needs an active consent reference (§6.10, §10.5).
+        foreach (var candidate in segment.Candidates.Where(item => item.Rejected is null))
+            if (candidate.Recipe is { VoiceSource: VoiceLabVoiceSource.Own } recipe)
+                Require(project.VoiceLab.Voices?.FirstOrDefault(v => v.Id == recipe.VoiceRefId)?.Status == VoiceLabVoiceStatus.Active, VoiceLabProjectErrorCode.ConsentUnverified);
+        var result = project with { VoiceLab = project.VoiceLab with { Segments = project.VoiceLab.Segments.Append(segment).ToArray(), Assets = assets } };
+        Validate(result); return result;
+    }
+    /// <summary>Adds an own-voice consent reference (§6.8, §10.5). The project stores only IDs and the trimmed display name.</summary>
+    public static Project AddVoiceReference(Project project, VoiceLabVoiceReference reference)
+    {
+        Require(project.SchemaVersion == 3, VoiceLabProjectErrorCode.RequiresVersion3);
+        // §6.1: the name counts 1–60 Unicode scalars after trimming whitespace, and the trimmed name is stored.
+        var voice = reference with { DisplayName = reference.DisplayName.Trim() };
+        var voices = project.VoiceLab.Voices ?? [];
+        Require(Matches(voice.Id, Id) && voices.All(item => item.Id != voice.Id) && Matches(voice.ConsentRecordId, Id) &&
+            voice.Provider == "elevenlabs" && Matches(voice.VoiceId, ProviderVoiceId) && voice.Status == VoiceLabVoiceStatus.Active &&
+            voice.DisplayName.EnumerateRunes().Count() is >= 1 and <= 60 &&
+            !voices.Any(item => item.Status == VoiceLabVoiceStatus.Active && item.Provider == voice.Provider && item.VoiceId == voice.VoiceId),
+            VoiceLabProjectErrorCode.InvalidVoice);
+        var result = project with { VoiceLab = project.VoiceLab with { Voices = [.. voices, voice] } };
+        Validate(result); return result;
+    }
+    /// <summary>Records provider deletion (§6.10). The reference, segments and paid assets stay; new own-voice accepts are refused.</summary>
+    public static Project MarkVoiceDeleted(Project project, string id)
+    {
+        // §10.5: only version 3 holds voice references, so versions 1 and 2 report RequiresVersion3.
+        Require(project.SchemaVersion == 3, VoiceLabProjectErrorCode.RequiresVersion3);
+        var voice = project.VoiceLab.Voices?.FirstOrDefault(item => item.Id == id);
+        Require(voice is not null, VoiceLabProjectErrorCode.MissingVoice);
+        var result = voice!.Status == VoiceLabVoiceStatus.Deleted ? project : project with { VoiceLab = project.VoiceLab with {
+            Voices = project.VoiceLab.Voices!.Select(item => item.Id == id ? item with { Status = VoiceLabVoiceStatus.Deleted } : item).ToArray() } };
         Validate(result); return result;
     }
     public static Project SetEnabled(Project project, string id, bool enabled)
@@ -175,6 +233,7 @@ public static class VoiceLabProject
         var result = project with { VoiceLab = project.VoiceLab with { Segments = project.VoiceLab.Segments.Where(item => item.Id != id).ToArray() } };
         Validate(result); return result;
     }
+    /// <summary>Voice status is not checked: accept verified consent for every unrejected candidate, and its stored evidence keeps the take renderable (§10.5).</summary>
     public static Project SelectCandidate(Project project, string id, int index)
     {
         var segment = project.VoiceLab.Segments.FirstOrDefault(item => item.Id == id);
