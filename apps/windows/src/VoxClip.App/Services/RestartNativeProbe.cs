@@ -46,10 +46,10 @@ internal static class RestartNativeProbe
             var firstModel = first.DebugEditor!.ViewModel;
             var secondModel = second.DebugEditor!.ViewModel;
             firstModel.Select(0); firstModel.Select(1, true);
-            Require(firstModel.MakeClip(), "first accepted clip");
+            Require(firstModel.MakeClip() is not null, "first accepted clip");
             firstModel.Select(0); firstModel.Correct("native-r6");
             secondModel.Select(2); secondModel.Select(3, true);
-            Require(secondModel.MakeClip(), "second accepted clip");
+            Require(secondModel.MakeClip() is not null, "second accepted clip");
             secondModel.Select(2); secondModel.Correct("second-r6");
             checks.Add("two rendered project windows accepted clip and word edits");
 
@@ -128,7 +128,7 @@ internal static class RestartNativeProbe
             await flushStarted.Task.WaitAsync(TimeSpan.FromSeconds(20));
             Require(!settings.DebugNavigationEnabled, "Settings became editable during flush");
             firstModel.Select(1); firstModel.Select(2, true);
-            Require(!firstModel.MakeClip(), "project edit was accepted while final flush was paused");
+            Require(firstModel.MakeClip() is null, "project edit was accepted while final flush was paused");
             try { await App.Services.SetAsync("probe.flush-late", true); throw new InvalidOperationException("flush-time write was accepted"); }
             catch (InvalidOperationException exception) when (exception.Message.Contains("paused", StringComparison.Ordinal)) { }
             Require(dispatched == 0, "dispatch preceded flush");

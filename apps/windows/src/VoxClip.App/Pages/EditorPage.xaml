@@ -82,7 +82,7 @@
             </Grid>
         </SplitView>
         <Grid Grid.Row="3" Padding="24,0,12,0"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-            <TextBlock Text="{x:Bind ViewModel.Status, Mode=OneWay}" FontSize="12" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+            <TextBlock Text="{x:Bind ViewModel.SummaryLine, Mode=OneWay}" ToolTipService.ToolTip="{x:Bind ViewModel.SummaryTooltip, Mode=OneWay}" FontSize="12" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
             <Button x:Name="FooterExport" Grid.Column="1" Content="Export…" Click="ExportClicked" Padding="8,2" MinHeight="28" IsEnabled="{x:Bind ViewModel.CanExport, Mode=OneWay}"/>
         </Grid>
     </Grid>

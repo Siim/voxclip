@@ -87,10 +87,17 @@ public sealed class EditorViewModel : ObservableObject
     public double SourceTime { get => sourceTime; set { if (SetProperty(ref sourceTime, value)) OnPropertyChanged(nameof(TimeLabel)); } }
     public string TimeLabel => Timecode(SourceTime);
     public string FillerLabel => $"Cut fillers ({Summary.FillerCount})";
-    public string Status => !Summary.CanExport ? "Keep at least one word before exporting." : Summary.CutWordCount + Summary.CutPauseCount == 0
-        ? "No cuts yet." : $"{Summary.CutWordCount} {Plural(Summary.CutWordCount, "word")} and {Summary.CutPauseCount} {Plural(Summary.CutPauseCount, "pause")} cut.";
+    /// <summary>The command row's second line for the selected row (delta §3.5): "2:26 after cuts · 11 cuts",
+    /// "Clip 2 · 0:20 after cuts · 2 cuts" or "Clip 3 · 0:19 · No cuts yet".</summary>
+    public string SummaryLine { get; private set; } = "";
+    /// <summary>"{source} source · {w} words cut in {r} places · {p} pauses cut", for the same scope.</summary>
+    public string SummaryTooltip { get; private set; } = "";
+    /// <summary>Kept clips; the export dialog's clip scope still counts them until its own redesign (round 2).</summary>
     public int SelectedClipCount => Clips.Count(clip => clip.Selected);
-    public string ClipExportLabel => SelectedClipCount == 0 ? "Choose clips to export" : $"Export {SelectedClipCount} {Plural(SelectedClipCount, "clip")}";
+    /// <summary>Manual clips and kept AI clips, numbered 1…n.</summary>
+    public IReadOnlyList<ClipRow> KeptClips => Clips.Where(clip => !clip.IsSuggested).ToArray();
+    /// <summary>AI clips not kept yet, numbered after the kept ones.</summary>
+    public IReadOnlyList<ClipRow> SuggestedClips => Clips.Where(clip => clip.IsSuggested).ToArray();
     public string SelectionText => HasSelection ? string.Join(" ", Words.Skip(SelectionStart).Take(SelectionEnd - SelectionStart + 1).Select(DisplayText)) : "";
     public event EventHandler? Changed;
     public event EventHandler? SaveRequested;
@@ -111,17 +118,25 @@ public sealed class EditorViewModel : ObservableObject
 
     public bool Apply(EditOperation operation)
     {
+        if (!ApplyBatch([operation])) return false;
+        Announcement?.Invoke(this, operation is EditOperation.RestoreCuts ? "Restored all cuts, corrections kept" : SummaryLine);
+        return true;
+    }
+
+    /// <summary>Reduce the operations one after another from the current state as one undo step, then sync and refresh once.</summary>
+    public bool ApplyBatch(IEnumerable<EditOperation> operations)
+    {
         if (isLeaving || state is null) return false;
         try
         {
-            var next = reduce(state, operation);
+            var next = state;
+            foreach (var operation in operations) next = reduce(next, operation);
             if (next == state) return false;
             undo.Push(state);
             redo.Clear();
             state = next;
             SyncProject();
             Refresh();
-            Announcement?.Invoke(this, operation is EditOperation.RestoreCuts ? "Restored all cuts, corrections kept" : Status);
             return true;
         }
         catch (Exception exception) when (exception is not OutOfMemoryException)
@@ -144,11 +159,46 @@ public sealed class EditorViewModel : ObservableObject
         if (HasSelection && !string.IsNullOrWhiteSpace(value)) Apply(new EditOperation.Correct(Words[SelectionStart].Id, value.Trim().Normalize()));
     }
 
-    public bool MakeClip()
+    /// <summary>Make a manual clip from the selection and return its id. When a clip already covers exactly these words,
+    /// return that clip's id and say so instead of adding a duplicate.</summary>
+    public string? MakeClip()
     {
-        if (!HasSelection) { Notice = "Select words to make a clip. No key or account is needed."; return false; }
-        return Apply(new EditOperation.AddClip(new(Guid.NewGuid().ToString("N"), Words[SelectionStart].Id, Words[SelectionEnd].Id,
-            null, ClipOrigin.Manual, null, null, true)));
+        if (!HasSelection) { Notice = "Select words to make a clip. No key or account is needed."; return null; }
+        if (isLeaving) return null;
+        var start = Words[SelectionStart].Id;
+        var end = Words[SelectionEnd].Id;
+        if (Clips.FirstOrDefault(clip => clip.Clip.StartWordId == start && clip.Clip.EndWordId == end) is { } existing)
+        {
+            Notice = "";
+            Announcement?.Invoke(this, $"Clip {existing.Number} already covers these words.");
+            return existing.Id;
+        }
+        var id = Guid.NewGuid().ToString("N");
+        return Announce(ApplyBatch([new EditOperation.AddClip(new(id, start, end, null, ClipOrigin.Manual, null, null, true))]), () => $"Clip {Number(id)} made.") ? id : null;
+    }
+    /// <summary>Keep a suggestion: it becomes the next numbered clip.</summary>
+    public bool Keep(string id) => Announce(ApplyBatch([new EditOperation.SetClipSelected(id, true)]), () => $"Clip {Number(id)} kept.");
+    /// <summary>Keep every suggestion as one undo step.</summary>
+    public bool KeepAll()
+    {
+        var count = SuggestedClips.Count;
+        return Announce(ApplyBatch(SuggestedClips.Select(clip => (EditOperation)new EditOperation.SetClipSelected(clip.Id, true)).ToArray()), () => count == 1 ? "1 clip kept." : $"{count} clips kept.");
+    }
+    /// <summary>Dismiss a suggestion; its AI result stays cached in the project.</summary>
+    public bool Dismiss(string id) => Announce(ApplyBatch([new EditOperation.RemoveClip(id)]), () => "Suggestion dismissed.");
+    public bool Remove(string id)
+    {
+        var number = Number(id);
+        return Announce(ApplyBatch([new EditOperation.RemoveClip(id)]), () => $"Clip {number} removed.");
+    }
+    public bool Rename(string id, string? title) => ApplyBatch([new EditOperation.RenameClip(id, string.IsNullOrWhiteSpace(title) ? null : title.Trim())]);
+    /// <summary>The clip's display number, never stored (design §2).</summary>
+    private string Number(string id) => Clips.FirstOrDefault(clip => clip.Id == id)?.Number.ToString(CultureInfo.InvariantCulture) ?? "";
+    /// <summary>Clip commands announce what they did (design §13) instead of the edit summary.</summary>
+    private bool Announce(bool applied, Func<string> text)
+    {
+        if (applied) Announcement?.Invoke(this, text());
+        return applied;
     }
 
     public void Nudge(ClipRow clip, bool start, int delta)
@@ -193,12 +243,14 @@ public sealed class EditorViewModel : ObservableObject
         var last = start ? Index(row.Clip.EndWordId) : SelectionEnd;
         if (first <= last) Apply(new EditOperation.UpdateClip(row.Id, first, last));
     }
+    /// <summary>[ and ] walk the kept clips; suggestions are skipped until kept.</summary>
     public void CycleClip(int delta)
     {
-        if (Clips.Count == 0) return;
-        var active = Clips.ToList().FindIndex(clip => clip.Id == state?.ActiveClipId);
-        var next = Math.Clamp(active + delta, 0, Clips.Count - 1);
-        Apply(new EditOperation.SetActiveClip(Clips[next].Id)); Select(Index(Clips[next].Clip.StartWordId));
+        var kept = KeptClips;
+        if (kept.Count == 0) return;
+        var active = kept.ToList().FindIndex(clip => clip.Id == state?.ActiveClipId);
+        var next = Math.Clamp(active + delta, 0, kept.Count - 1);
+        Apply(new EditOperation.SetActiveClip(kept[next].Id)); Select(Index(kept[next].Clip.StartWordId));
     }
     public void SetShareCaption(string targetId, string text)
     {
@@ -253,12 +305,18 @@ public sealed class EditorViewModel : ObservableObject
         InitializeState(); Refresh();
     }
 
+    /// <summary>Cache the run, then add its clips as suggestions (not kept) in one undo step; delta §6.2.</summary>
     public void AddAiResult(AiResult result)
     {
-        if (isLeaving) return;
+        if (isLeaving || state is null) return;
         var previous = project.Ai;
         project = project with { Ai = new(project.Ai.Results.Append(result).ToArray()) };
-        if (!Apply(new EditOperation.AddAiClips(result.Id, result.Clips))) project = project with { Ai = previous };
+        var add = new EditOperation.AddAiClips(result.Id, result.Clips);
+        var before = state.Clips.Select(clip => clip.Id).ToHashSet(StringComparer.Ordinal);
+        IEnumerable<string> added;
+        try { added = reduce(state, add).Clips.Select(clip => clip.Id).Where(id => !before.Contains(id)).ToArray(); }
+        catch (Exception exception) when (exception is not OutOfMemoryException) { added = []; }
+        if (!ApplyBatch([add, .. added.Select(id => new EditOperation.SetClipSelected(id, false))])) project = project with { Ai = previous };
     }
 
     public string DisplayText(TimedWord word) => state?.Corrections.GetValueOrDefault(word.Id) ?? word.Text;
@@ -291,6 +349,29 @@ public sealed class EditorViewModel : ObservableObject
     private static double Clamp(double seconds) => double.IsFinite(seconds) ? Math.Clamp(seconds, 0, long.MaxValue / 100) : 0;
     private static string Plural(int count, string value) => count == 1 ? value : value + "s";
 
+    /// <summary>Count cuts in the selected row's scope: maximal runs of consecutive cut words plus cut pauses (delta §3.5).</summary>
+    private void UpdateSummaryLine(double sourceSeconds)
+    {
+        var active = state?.ActiveClipId is { } id ? Clips.FirstOrDefault(clip => clip.Id == id) : null;
+        var first = active is null ? 0 : Index(active.Clip.StartWordId);
+        var last = active is null ? Words.Count - 1 : Index(active.Clip.EndWordId);
+        int cutWords = 0, runs = 0;
+        var inRun = false;
+        for (var index = Math.Max(0, first); index <= last; index++)
+        {
+            var cut = state!.CutWordIds.Contains(Words[index].Id);
+            if (cut) { cutWords++; if (!inRun) runs++; }
+            inRun = cut;
+        }
+        var cutPauses = state!.Pauses.Count(pause => state.CutPauseIds.Contains(pause.Id) && (active is null || pause.AfterIndex >= first && pause.AfterIndex < last));
+        var cuts = runs + cutPauses;
+        var edited = Duration(active?.DurationSeconds ?? FullTakeDuration);
+        var prefix = active is null ? "" : $"Clip {active.Number} · ";
+        SummaryLine = !Summary.CanExport ? "Keep at least one word before exporting."
+            : cuts == 0 ? $"{prefix}{edited} · No cuts yet" : $"{prefix}{edited} after cuts · {cuts} {Plural(cuts, "cut")}";
+        SummaryTooltip = $"{Duration(sourceSeconds)} source · {cutWords} {Plural(cutWords, "word")} cut in {runs} {Plural(runs, "place")} · {cutPauses} {Plural(cutPauses, "pause")} cut";
+    }
+
     private void SyncProject()
     {
         if (state is null) return;
@@ -321,28 +402,48 @@ public sealed class EditorViewModel : ObservableObject
                 source.DurationSeconds, sampleRate, scoped.PauseKeepSeconds).Duration;
             try { FullTakeDuration = EditedLength(state with { ActiveClipId = null }); }
             catch (VoxClipException) { FullTakeDuration = 0; }
-            foreach (var clip in state.Clips.OrderBy(clip => Index(clip.StartWordId)))
+            // Kept clips by start word, then creation order, numbered 1…n; then suggestions n+1… (design §2). Numbers are never stored.
+            var ranges = state.Clips.Select((clip, order) => (Clip: clip, First: Index(clip.StartWordId), Last: Index(clip.EndWordId), Order: order))
+                .Where(range => range.First >= 0 && range.Last >= range.First).ToArray();
+            static bool Suggested(ClipRange clip) => clip.Origin == ClipOrigin.Ai && !clip.Selected;
+            var number = 0;
+            foreach (var range in ranges.Where(range => !Suggested(range.Clip)).OrderBy(range => range.First).ThenBy(range => range.Order)
+                .Concat(ranges.Where(range => Suggested(range.Clip)).OrderBy(range => range.First).ThenBy(range => range.Order)))
             {
-                var first = Index(clip.StartWordId);
-                var last = Index(clip.EndWordId);
-                if (first < 0 || last < first) continue;
+                var clip = range.Clip;
                 var suggestion = project.Ai.Results.FirstOrDefault(result => result.Id == clip.AiResultId)?.Clips.ElementAtOrDefault(clip.AiClipIndex ?? -1);
-                var duration = EditedLength(state with { ActiveClipId = clip.Id });
-                Clips.Add(new(clip, clip.Title ?? suggestion?.Title ?? $"Clip {Clips.Count + 1}",
-                    Timecode(duration) + (suggestion is null ? " · Manual" : $" · {suggestion.Score}/10"),
-                    string.Join(" ", Words.Skip(first).Take(last - first + 1).Select(DisplayText)), suggestion?.Reason ?? "", duration));
+                number++;
+                Clips.Add(new(clip, number, clip.Title ?? suggestion?.Title ?? $"Clip {number}",
+                    string.Join(" ", Words.Skip(range.First).Take(range.Last - range.First + 1).Select(DisplayText)),
+                    suggestion?.Reason ?? "", suggestion?.Score, EditedLength(state with { ActiveClipId = clip.Id })));
             }
+            UpdateSummaryLine(source.DurationSeconds);
         }
-        foreach (var name in new[] { nameof(Project), nameof(State), nameof(Summary), nameof(Status), nameof(FillerLabel), nameof(CanExport), nameof(CanUndo), nameof(CanRedo), nameof(SelectedClipCount), nameof(ClipExportLabel), nameof(HasTranscript), nameof(FullTakeDuration) }) OnPropertyChanged(name);
+        else { SummaryLine = ""; SummaryTooltip = ""; }
+        foreach (var name in new[] { nameof(Project), nameof(State), nameof(Summary), nameof(SummaryLine), nameof(SummaryTooltip), nameof(KeptClips), nameof(SuggestedClips), nameof(FillerLabel), nameof(CanExport), nameof(CanUndo), nameof(CanRedo), nameof(SelectedClipCount), nameof(HasTranscript), nameof(FullTakeDuration) }) OnPropertyChanged(name);
         Changed?.Invoke(this, EventArgs.Empty);
     }
 }
 
 public sealed record TranscriptParagraph(int StartIndex, int Count, string Timecode, string? Speaker);
-public sealed record ClipRow(ClipRange Clip, string Title, string Detail, string Excerpt, string Reason, double DurationSeconds)
+
+/// <summary>What the export ledger knows about a clip; the ledger arrives with the export dialog's redesign (round 2).</summary>
+public enum ClipExportState { None, Exported, ChangedSinceExport }
+
+/// <summary>One clip in the pane (design §6.2). <see cref="Number"/> is its display number: kept clips 1…n, then suggestions.</summary>
+public sealed record ClipRow(ClipRange Clip, int Number, string Title, string Excerpt, string Reason, int? Score, double DurationSeconds)
 {
     public string Id => Clip.Id;
     public bool Selected => Clip.Selected;
+    /// <summary>An AI clip that is not kept yet (design §2); manual clips are always kept.</summary>
+    public bool IsSuggested => Clip.Origin == ClipOrigin.Ai && !Clip.Selected;
+    /// <summary>Edited length as <c>m:ss</c>, from the same plan as preview and export.</summary>
+    public string Duration => EditorViewModel.Duration(DurationSeconds);
+    /// <summary>The clip's poster frame once cached; null shows the bare stage tile.</summary>
+    public string? Thumbnail { get; init; }
+    public ClipExportState ExportState { get; init; }
+    /// <summary>Hover text: the AI reason with its score; empty for manual clips.</summary>
+    public string ToolTip => Score is { } score ? (Reason.Length == 0 ? $"Score {score}/10" : $"{Reason} ({score}/10)") : Reason;
 }
 
 internal static class StringExtensions

@@ -88,29 +88,31 @@ public sealed class ViewModelTests
     {
         var model = Demo(); model.Select(0); model.Select(3, true);
         var before = model.Clips.Count;
-        Assert.True(model.MakeClip()); Assert.Equal(before + 1, model.Clips.Count);
-        Assert.Equal(ClipOrigin.Manual, model.Clips.Last().Clip.Origin); Assert.True(model.Clips.Last().Selected);
+        var id = model.MakeClip(); Assert.NotNull(id); Assert.Equal(before + 1, model.Clips.Count);
+        var made = model.Clips.Single(clip => clip.Id == id);
+        Assert.Equal(ClipOrigin.Manual, made.Clip.Origin); Assert.True(made.Selected); Assert.False(made.IsSuggested);
     }
     [Fact]
     public void ClipRowDurationMatchesItsPreviewAndExportPlan()
     {
         var model = new EditorViewModel(Fixture());
         model.Select(3); model.Select(8, true);
-        Assert.True(model.MakeClip());
-        var row = model.Clips.Last();
+        var id = model.MakeClip();
+        var row = model.Clips.Single(clip => clip.Id == id);
         var scoped = ExportSelection.Scope(model.State, new ExportTarget.Clip(row.Id))!;
         var source = model.Project.Media.Source;
         var rate = source.Audio?.SampleRate is > 0 ? source.Audio.SampleRate : 48000;
         var plan = EditingEngine.BuildEditPlan(EditingEngine.BuildSegments(scoped, source.DurationSeconds),
             source.DurationSeconds, rate, scoped.PauseKeepSeconds);
-        Assert.StartsWith(EditorViewModel.Timecode(plan.Duration) + " · ", row.Detail);
+        Assert.Equal(plan.Duration, row.DurationSeconds, 9);
+        Assert.Equal(EditorViewModel.Duration(plan.Duration), row.Duration);
         var wordSpan = model.Words[8].End - model.Words[3].Start;
         Assert.True(plan.Duration > wordSpan);
     }
     [Fact]
     public void MissingSelectionDoesNotCreateClip()
     {
-        var model = Demo(); Assert.False(model.MakeClip()); Assert.Contains("No key", model.Notice);
+        var model = Demo(); Assert.Null(model.MakeClip()); Assert.Contains("No key", model.Notice);
     }
     [Fact]
     public void CutUndoRedoNeverChangesSourceTimings()
@@ -149,8 +151,8 @@ public sealed class ViewModelTests
     {
         var model = new EditorViewModel(Fixture());
         model.Select(3); model.Select(8, true);
-        Assert.True(model.MakeClip());
-        var clip = model.Clips.Last();
+        var id = model.MakeClip();
+        var clip = model.Clips.Single(row => row.Id == id);
         model.Apply(new EditOperation.SetActiveClip(clip.Id));
         var source = model.State!;
         var full = ExportSelection.Scope(source, new ExportTarget.FullEdit())!;
@@ -208,7 +210,7 @@ public sealed class ViewModelTests
     public async Task LeavingHoldsOneSavedSnapshotAcrossDelayedReplacement()
     {
         var model = new EditorViewModel(Fixture());
-        model.Select(0); model.Select(2, true); Assert.True(model.MakeClip());
+        model.Select(0); model.Select(2, true); Assert.NotNull(model.MakeClip());
         var acceptedClip = Assert.Single(model.Clips).Id;
         var acceptedProject = model.Project;
         var boundary = new ProjectLeaveBoundary(model);
@@ -229,7 +231,7 @@ public sealed class ViewModelTests
             Assert.False(model.CanExport);
             Assert.Equal("Saving this project before leaving. Editing is paused.", model.Notice);
             model.Select(4); model.Select(6, true);
-            Assert.False(model.MakeClip());
+            Assert.Null(model.MakeClip());
             model.SetTranscript(model.Project.Transcript!); // a late transcription result must be refused too
             model.SetShareCaption("full", "late caption");
             model.SetCaptionStyle("off");
@@ -244,7 +246,7 @@ public sealed class ViewModelTests
             Assert.Equal(acceptedClip, Assert.Single(model.Clips).Id);
             boundary.Resume(); // replacement load failed; the old editor remains usable
             Assert.True(model.CanExport);
-            Assert.True(model.MakeClip());
+            Assert.NotNull(model.MakeClip());
             Assert.Equal(2, model.Clips.Count);
         }
         finally { Directory.Delete(folder, true); }
@@ -257,7 +259,7 @@ public sealed class ViewModelTests
         await Assert.ThrowsAsync<IOException>(() => boundary.BeginAsync(() => throw new IOException("controlled save failure")));
         Assert.False(boundary.IsLeaving);
         model.Select(1); model.Select(3, true);
-        Assert.True(model.MakeClip());
+        Assert.NotNull(model.MakeClip());
     }
     [Theory]
     [InlineData(true, false, false, false, true, false)]
@@ -302,7 +304,7 @@ public sealed class ViewModelTests
     {
         var model = Demo();
         model.Select(1); model.Select(3, true);
-        Assert.True(model.MakeClip());
+        Assert.NotNull(model.MakeClip());
         var clip = Assert.Single(model.Clips);
         Assert.True(model.Apply(new EditOperation.SetActiveClip(clip.Id)));
         var snapshot = Snapshot(model);

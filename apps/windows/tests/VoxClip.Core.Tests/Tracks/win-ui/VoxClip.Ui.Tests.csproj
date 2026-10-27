@@ -23,6 +23,7 @@
     <Compile Include="ViewModelTests.cs" />
     <Compile Include="ShellViewModelTests.cs" />
     <Compile Include="HomeViewModelTests.cs" />
+    <Compile Include="ClipSemanticsTests.cs" />
     <Compile Include="CaptionCardTests.cs" />
     <Compile Include="UpdateRestartTests.cs" />
     <Compile Include="StartupCheckTests.cs" />

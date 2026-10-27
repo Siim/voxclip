@@ -183,7 +183,7 @@ public sealed partial class EditorPage : Page
     }
     private void UpdateFooter()
     {
-        FooterExport.Content = inspector?.ClipsActive == true ? ViewModel.ClipExportLabel : "Export…";
+        FooterExport.Content = inspector?.ClipsActive == true && ViewModel.SelectedClipCount > 0 ? $"Export {ViewModel.SelectedClipCount} {(ViewModel.SelectedClipCount == 1 ? "clip" : "clips")}" : "Export…";
         FooterExport.IsEnabled = ViewModel.CanExport && (inspector?.ClipsActive != true || ViewModel.SelectedClipCount > 0);
     }
     private void SelectionChanged(object? sender, EventArgs args) => UpdateClipContext();
@@ -291,7 +291,7 @@ public sealed partial class EditorPage : Page
     private void RedoClicked(object sender, RoutedEventArgs args) => ViewModel.Redo();
     private void MakeClipAndReveal()
     {
-        if (ViewModel.MakeClip()) ShowClipsPane();
+        if (ViewModel.MakeClip() is not null) ShowClipsPane();
     }
     private void MakeClipClicked(object sender, RoutedEventArgs args) => MakeClipAndReveal();
     private void FindClipsClicked(object sender, RoutedEventArgs args) => ShowFindClips();

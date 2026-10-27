@@ -84,7 +84,7 @@ public sealed class ShellViewModelTests
         Assert.Equal(before, shell.Rows);
         Assert.Equal(0, changes);
         editor.Select(0); editor.Select(2, true);
-        Assert.True(editor.MakeClip());
+        Assert.NotNull(editor.MakeClip());
         shell.Update(editor, false, [], null);
         Assert.Equal(1, changes);
         Assert.All(before, row => Assert.Contains(row, shell.Rows));

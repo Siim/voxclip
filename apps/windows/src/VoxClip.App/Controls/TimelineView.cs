@@ -77,7 +77,7 @@ public sealed class TimelineView : UserControl
             var badge = new TextBlock { Text = (number++).ToString(), FontFamily = (FontFamily)Application.Current.Resources["VcMonoFontFamily"], FontSize = (double)Application.Current.Resources["VcLayoutBadgeFontSize"], Foreground = Brush("VcTextPrimaryBrush") };
             Canvas.SetLeft(badge, start / duration * width); Canvas.SetTop(badge, 0); canvas.Children.Add(badge);
         }
-        label.Text = EditorViewModel.Timecode(duration) + " source · " + model.Status;
+        label.Text = EditorViewModel.Timecode(duration) + " source · " + model.SummaryLine;
         Position(model.SourceTime);
     }
 }

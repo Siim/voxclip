@@ -298,7 +298,7 @@ internal sealed class InspectorView : UserControl
             var selected = new CheckBox { Content = row.Title, IsChecked = row.Selected, Tag = row.Id };
             selected.Click += (_, _) => model.Apply(new EditOperation.SetClipSelected(row.Id, selected.IsChecked == true));
             clipChecks[row.Id] = selected;
-            card.Children.Add(selected); card.Children.Add(Ui.Text(row.Detail, "HelperText")); card.Children.Add(Ui.Text(row.Excerpt));
+            card.Children.Add(selected); card.Children.Add(Ui.Text(row.Duration, "HelperText")); card.Children.Add(Ui.Text(row.Excerpt));
             if (row.Reason.Length > 0) card.Children.Add(Ui.Text(row.Reason, "HelperText"));
             if (model.State?.ActiveClipId == row.Id) card.Children.Add(Ui.Text("Previewing this clip", "HelperText"));
             else

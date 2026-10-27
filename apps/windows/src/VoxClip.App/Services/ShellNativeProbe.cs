@@ -34,7 +34,7 @@ internal static class ShellNativeProbe
             Require(editor is not null && window.CurrentScreen == "editor" && window.ProjectPath == first, "first project did not open");
             Require(window.DebugSelectedRow?.Kind == SidebarKind.FullTake, "Full take is not selected after opening");
             editor!.ViewModel.Select(0); editor.ViewModel.Select(1, true);
-            Require(editor.ViewModel.MakeClip(), "manual clip was refused");
+            Require(editor.ViewModel.MakeClip() is not null, "manual clip was refused");
             await Task.Delay(1200); // let the 500 ms autosave settle before injecting failures
             checks.Add("opened the first project with Full take selected and made a clip");
 
