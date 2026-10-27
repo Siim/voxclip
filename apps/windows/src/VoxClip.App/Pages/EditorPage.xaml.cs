@@ -66,6 +66,7 @@ public sealed partial class EditorPage : Page
 #endif
         leave = new(ViewModel);
         preview.PlaybackFaulted += PlaybackFaulted;
+        preview.AudioStatusChanged += AudioStatusChanged;
         ViewModel.Changed += ModelChanged;
         ViewModel.SelectionChanged += SelectionChanged;
         ViewModel.SaveRequested += SaveRequested;
@@ -112,6 +113,7 @@ public sealed partial class EditorPage : Page
             catch
             {
                 preview.PlaybackFaulted -= PlaybackFaulted;
+                preview.AudioStatusChanged -= AudioStatusChanged;
                 await preview.DisposeAsync();
                 preview = null;
                 PreviewImage.Source = null;
@@ -176,6 +178,16 @@ public sealed partial class EditorPage : Page
     private void PlaybackFaulted(object? sender, Exception exception)
     {
         DispatcherQueue.TryEnqueue(() => { if (!disposed) ViewModel.Notice = UiError.Message(exception, "Preview"); });
+    }
+    private void AudioStatusChanged(object? sender, PreviewAudioStatus status)
+    {
+        const string noDevice = "No audio output device. Playing without sound.", inUse = "Another app is using the audio output. Playing without sound.";
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            if (disposed) return;
+            if (status != PreviewAudioStatus.Available) ViewModel.Notice = status == PreviewAudioStatus.OutputInUse ? inUse : noDevice;
+            else if (ViewModel.Notice is noDevice or inUse) ViewModel.Notice = "";
+        });
     }
     private void UpdateFooter()
     {
@@ -249,6 +261,7 @@ public sealed partial class EditorPage : Page
             {
                 preview = new PreviewEngine();
                 preview.PlaybackFaulted += PlaybackFaulted;
+                preview.AudioStatusChanged += AudioStatusChanged;
                 await preview.LoadAsync(snapshot, null, lifetime.Token);
                 presenter = new(PreviewImage, preview, PositionChanged,
                     exception => ViewModel.Notice = UiError.Message(exception, "Preview"), frame => inspector?.UpdateStill(frame));
@@ -259,7 +272,7 @@ public sealed partial class EditorPage : Page
         }
         catch
         {
-            if (preview is not null) preview.PlaybackFaulted -= PlaybackFaulted;
+            if (preview is not null) { preview.PlaybackFaulted -= PlaybackFaulted; preview.AudioStatusChanged -= AudioStatusChanged; }
             if (presenter is not null) { await presenter.DisposeAsync(); presenter = null; }
             else if (preview is not null) await preview.DisposeAsync();
             preview = null;
@@ -515,7 +528,7 @@ public sealed partial class EditorPage : Page
         await previewChanges.WaitAsync();
         try
         {
-            if (preview is not null) preview.PlaybackFaulted -= PlaybackFaulted;
+            if (preview is not null) { preview.PlaybackFaulted -= PlaybackFaulted; preview.AudioStatusChanged -= AudioStatusChanged; }
             if (presenter is not null) await presenter.DisposeAsync(); else if (preview is not null) await preview.DisposeAsync();
             presenter = null; preview = null;
         }

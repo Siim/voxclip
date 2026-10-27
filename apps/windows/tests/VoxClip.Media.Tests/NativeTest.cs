@@ -1,11 +1,12 @@
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Media.Ffmpeg;
 using FFmpeg.AutoGen;
+using NAudio.CoreAudioApi;
 using Xunit;
 
 namespace VoxClip.Media.Tests;
 
-internal enum NativeGate { Prerequisite, Evidence }
+internal enum NativeGate { Prerequisite, Evidence, AudioOutput }
 
 internal enum NativeGateOutcome { Run, Skip, Fail }
 
@@ -61,15 +62,39 @@ internal static class NativeTest
     /// <summary>Evidence only a VM or release run produces; hosted runs skip it even when native inputs are required.</summary>
     internal static void RequireEvidence(bool present, string remedy) => Apply(Outcome(NativeGate.Evidence, present), remedy);
 
+    /// <summary>The default render endpoint that real WASAPI preview opens. Hosted runners have none and skip; the scripted VM runs
+    /// set VOXCLIP_REQUIRE_AUDIO_OUTPUT=1, so a missing device fails them.</summary>
+    internal static void RequireAudioOutput() => Apply(Outcome(NativeGate.AudioOutput, HasDefaultRenderEndpoint()),
+        "This WASAPI preview test needs a default Windows audio output device, which hosted runners lack. verify-windows.ps1 (also run by verify-vm.sh) sets VOXCLIP_REQUIRE_AUDIO_OUTPUT=1 to require it.");
+
+    private static bool HasDefaultRenderEndpoint()
+    {
+        if (!OperatingSystem.IsWindows()) return false;
+        try
+        {
+            using var devices = new MMDeviceEnumerator();
+            return devices.HasDefaultAudioEndpoint(DataFlow.Render, Role.Console);
+        }
+        catch (Exception) { return false; }
+    }
+
     internal static NativeGateOutcome Outcome(NativeGate gate, bool present) => Decide(gate, present,
         Environment.GetEnvironmentVariable("VOXCLIP_REQUIRE_NATIVE"),
-        Environment.GetEnvironmentVariable("VOXCLIP_REQUIRE_VM_EVIDENCE"));
+        Environment.GetEnvironmentVariable("VOXCLIP_REQUIRE_VM_EVIDENCE"),
+        Environment.GetEnvironmentVariable("VOXCLIP_REQUIRE_AUDIO_OUTPUT"));
 
-    // VOXCLIP_REQUIRE_NATIVE governs only prerequisites and VOXCLIP_REQUIRE_VM_EVIDENCE only evidence.
-    internal static NativeGateOutcome Decide(NativeGate gate, bool present, string? requireNative, string? requireVmEvidence)
+    // Each flag governs only its own gate: VOXCLIP_REQUIRE_NATIVE prerequisites, VOXCLIP_REQUIRE_VM_EVIDENCE evidence
+    // and VOXCLIP_REQUIRE_AUDIO_OUTPUT the audio output device.
+    internal static NativeGateOutcome Decide(NativeGate gate, bool present, string? requireNative, string? requireVmEvidence,
+        string? requireAudioOutput)
     {
         if (present) return NativeGateOutcome.Run;
-        var required = gate == NativeGate.Evidence ? requireVmEvidence : requireNative;
+        var required = gate switch
+        {
+            NativeGate.Evidence => requireVmEvidence,
+            NativeGate.AudioOutput => requireAudioOutput,
+            _ => requireNative,
+        };
         return required == "1" ? NativeGateOutcome.Fail : NativeGateOutcome.Skip;
     }
 

@@ -24,6 +24,8 @@ public interface IPreviewEngine : IAsyncDisposable
     PreviewPosition Position { get; }
     /// <summary>Recoverable playback failure, raised on the engine owner thread; also fails the next Play or Seek once.</summary>
     event EventHandler<Exception>? PlaybackFaulted { add { } remove { } }
+    /// <summary>Non-fatal audio output change, raised on the engine owner thread only when the status changes. Without usable output, video and the clock keep playing; a lost device gets one immediate reopen and every later start retries.</summary>
+    event EventHandler<PreviewAudioStatus>? AudioStatusChanged { add { } remove { } }
     /// <summary>Load media and a plan snapshot.</summary>
     Task LoadAsync(ComposeSnapshot snapshot, IProgress<MediaProgress>? progress, CancellationToken ct);
     /// <summary>Start edited playback.</summary>
@@ -38,6 +40,16 @@ public interface IPreviewEngine : IAsyncDisposable
     Task UpdateCaptionsAsync(CaptionTrack? captions, CancellationToken ct);
     /// <summary>Read bounded frame hand-offs for the engine lifetime, across recoverable playback faults. No re-subscribe is needed; only disposal or a terminal owner failure completes the stream. Consumer presents only the newest frame due at the clock.</summary>
     IAsyncEnumerable<PreviewFrame> ReadFramesAsync(CancellationToken ct);
+}
+/// <summary>Preview audio output state; never fatal, and export never needs an output device.</summary>
+public enum PreviewAudioStatus
+{
+    /// <summary>Audio plays on the default output device, or no playback has needed one yet.</summary>
+    Available,
+    /// <summary>No default output device, or it was lost during playback; video keeps playing without sound.</summary>
+    NoOutputDevice,
+    /// <summary>Another app holds the output device exclusively; video keeps playing without sound.</summary>
+    OutputInUse,
 }
 /// <summary>Sequential MP4 exporter sharing the exact preview compose path; architecture §6.4.</summary>
 public interface IExporter

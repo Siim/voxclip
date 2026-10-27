@@ -10,6 +10,8 @@ if (-not $ManagedOnly -and (-not $FfmpegDirectory -or (-not $ShippingAcceptance 
 if ($FfmpegDirectory -and -not $FfmpegDirectory.StartsWith("$ScratchRoot\", [StringComparison]::OrdinalIgnoreCase)) { throw "Copy approved DLLs into $ScratchRoot first." }
 $env:VOXCLIP_FFMPEG_DIR = $FfmpegDirectory
 $env:VOXCLIP_REQUIRE_NATIVE = '1'
+# The VM has a default audio output device, so the full and shipping-acceptance runs fail the real WASAPI preview test without one.
+$env:VOXCLIP_REQUIRE_AUDIO_OUTPUT = '1'
 $env:VOXCLIP_DATA_DIR = Join-Path $PWD 'apps\windows\tests\VoxClip.Media.Tests\.runs\data'
 $env:VOXCLIP_SHARED_DIR = Join-Path $PWD 'shared'
 $env:VOXCLIP_E2E_OUT = Join-Path $PWD 'apps\windows\tests\VoxClip.Media.Tests\.runs\e2e'
@@ -170,10 +172,12 @@ try {
                 @('shipping-colour', 'VoxClip.Media.Tests.E2E.SoftwareMfBarColorTests', 180),
                 @('shipping-native-conformance', 'VoxClip.Media.Tests.NativeMediaConformanceTests', 180),
                 @('shipping-native-pipeline', 'VoxClip.Media.Tests.NativePipelineTests', 300),
-                @('shipping-windows-pipeline', 'VoxClip.Media.Tests.WindowsPipelineTests', 300))) {
+                @('shipping-windows-pipeline', 'VoxClip.Media.Tests.WindowsPipelineTests', 300),
+                @('shipping-preview-audio', 'VoxClip.Media.Tests.VoiceLabAudioMixerTests', 180))) {
                 $arguments = if ($ShippingRid -eq 'win-x64') { @('-class', $suite[1]) } else { @($testExecutable, '-class', $suite[1]) }
                 if ($suite[0] -eq 'shipping-native-pipeline') { $arguments += @('-method-', 'VoxClip.Media.Tests.NativePipelineTests.DecoderReconfiguresWhenAudioChannelsChange') }
                 if ($suite[0] -eq 'shipping-windows-pipeline') { $arguments += @('-method-', 'VoxClip.Media.Tests.WindowsPipelineTests.IdentityExportAndPreviewAudioStartSeekFromZero') }
+                if ($suite[0] -eq 'shipping-preview-audio') { $arguments += @('-method', 'VoxClip.Media.Tests.VoiceLabAudioMixerTests.NativePreviewPlaysPausesSeeksAndReleasesSynthLease') }
                 Invoke-Bounded $suite[0] $arguments $suite[2] 0 $testRunner
             }
         }

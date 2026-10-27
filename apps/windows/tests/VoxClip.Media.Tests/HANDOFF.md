@@ -474,19 +474,29 @@ SHA-256 values, license string, configuration and process architecture. The
 first CLI case separately records the six modules loaded by the shipping CLI
 from its own app directory and verifies their hashes.
 
-Evidence has its own gate. `NativeTest.Require` covers native prerequisites:
-Windows, the FFmpeg DLLs and their demuxers and filters, generated fixtures
-and committed sources; `VOXCLIP_REQUIRE_NATIVE=1` makes their absence a
-failure. `NativeTest.RequireEvidence` covers what only a VM or release run
-produces: `VOXCLIP_SHIPPING_REPORT` with `VOXCLIP_MODULE_EVIDENCE`, and the
-`VOXCLIP_APP_EVIDENCE_DIR` and `VOXCLIP_DYNAMIC_APP_EVIDENCE_DIR` App export
-folders. Without them those tests skip and name the variable, even under
-`VOXCLIP_REQUIRE_NATIVE=1`. `VOXCLIP_REQUIRE_VM_EVIDENCE=1` turns that skip into
-a failure. `verify-windows.ps1 -ShippingAcceptance` sets it, and `verify-vm.sh`
-passes it whenever `VOXCLIP_SHIPPING_RID` is set. Set it yourself for any other
-run that supplies evidence, such as a manual App-evidence run. Hosted CI
-requires native inputs but never sets `VOXCLIP_REQUIRE_VM_EVIDENCE`, and it
-loads the test-only FFmpeg tools. The Voice Lab tempo graph, mixer and native
+Evidence and the audio device have their own gates. `NativeTest.Require`
+covers native prerequisites: Windows, the FFmpeg DLLs and their demuxers and
+filters, generated fixtures and committed sources; `VOXCLIP_REQUIRE_NATIVE=1`
+makes their absence a failure. `NativeTest.RequireEvidence` covers what only a
+VM or release run produces: `VOXCLIP_SHIPPING_REPORT` with
+`VOXCLIP_MODULE_EVIDENCE`, and the `VOXCLIP_APP_EVIDENCE_DIR` and
+`VOXCLIP_DYNAMIC_APP_EVIDENCE_DIR` App export folders. Without them those tests
+skip and name the missing input, even under `VOXCLIP_REQUIRE_NATIVE=1`.
+`VOXCLIP_REQUIRE_VM_EVIDENCE=1` turns that skip into a failure.
+`verify-windows.ps1 -ShippingAcceptance` sets it, and `verify-vm.sh` passes it
+whenever `VOXCLIP_SHIPPING_RID` is set. Set it yourself for any other run that
+supplies evidence, such as a manual App-evidence run.
+`NativeTest.RequireAudioOutput` needs a default audio render endpoint for
+`NativePreviewPlaysPausesSeeksAndReleasesSynthLease`, the only Media test that
+opens a real WASAPI device. `VOXCLIP_REQUIRE_AUDIO_OUTPUT=1` turns its skip into
+a failure. `verify-windows.ps1` sets it for both of its VM runs: the full run,
+whose `tests` step runs the whole Media suite, and the shipping-acceptance run,
+whose `shipping-preview-audio` step runs that one test against the shipping
+DLLs. `verify-vm.sh` passes it to every run it starts. Hosted runners have no
+audio device, so hosted CI never sets `VOXCLIP_REQUIRE_AUDIO_OUTPUT` and the
+test skips there, naming the flag. Hosted CI requires native inputs but never
+sets `VOXCLIP_REQUIRE_VM_EVIDENCE`, and it loads the test-only FFmpeg tools.
+The Voice Lab tempo graph, mixer and native
 route tests therefore assert behaviour on whichever FFmpeg is loaded, and add
 the loaded-module comparison whenever the shipping report is supplied. A hosted
 pass of those tests says nothing about shipping identity.

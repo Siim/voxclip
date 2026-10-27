@@ -101,4 +101,5 @@ if [ -n "$native_zip" ]; then
 fi
 require_evidence=
 if [ -n "$shipping_rid" ]; then require_evidence="\$env:VOXCLIP_REQUIRE_VM_EVIDENCE='1'; "; fi
-remote_ps "$require_evidence& '$workspace\apps\windows\tests\VoxClip.Media.Tests\verify-windows.ps1' -LockOwner '$owner' -ScratchRoot '$root' $*" 1800
+# The VM has an audio output device, so every run requires the real WASAPI preview test; hosted CI never sets this.
+remote_ps "\$env:VOXCLIP_REQUIRE_AUDIO_OUTPUT='1'; $require_evidence& '$workspace\apps\windows\tests\VoxClip.Media.Tests\verify-windows.ps1' -LockOwner '$owner' -ScratchRoot '$root' $*" 1800
