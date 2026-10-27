@@ -6,6 +6,7 @@ import SwiftUI
 import VoxClipCore
 
 @MainActor enum DebugTimeline {
+    private static var endpointDocument: VoxClipDocument?
     static func audit(app: AppModel, directory: URL) async {
         do {
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -24,8 +25,11 @@ import VoxClipCore
         check("timeline clip zoom uses the 1.5-second minimum padding", timelineZoom(clip: 10...15, duration: 50) == 8.5...16.5)
         check("timeline clip zoom caps padding at three seconds", timelineZoom(clip: 10...50, duration: 80) == 7...53)
         check("timeline zoom clamps to source bounds", timelineZoom(clip: 0.5...9.5, duration: 10) == 0...10)
+        results += trimEndpoints(app: app, fixture: fixture)
+        mark("trim endpoints complete")
         let project = try DebugSidebar.fiveQuestions(from: fixture)
         let shell = WorkspaceShell(app: app)
+        mark("attach model")
         await shell.attachForTesting(VoxClipDocument(project: project, demo: true), selection: .fullTake)
         guard let model = shell.editor, let undo = model.undoManager else { throw CocoaError(.coderInvalidValue) }
         defer { model.close(); model.document.updateChangeCount(.changeCleared); model.document.close() }
@@ -153,6 +157,70 @@ import VoxClipCore
         try await DebugUISuite.save(document, to: destination)
         let saved = try VoxClipDocument(data: Data(contentsOf: destination)).project
         results.append(.init(name: "missing-media caption position saves through the native document path", passed: saved.captions.positionByAspect[model.captionPreset.rawValue] == point))
+        return results
+    }
+    private static func trimEndpoints(app: AppModel, fixture: Project) -> [DebugUISuite.Result] {
+        var project = fixture
+        project.media.source.durationSeconds = 60
+        project.transcript?.durationSeconds = 60
+        project.transcript?.words = (0..<60).map { (index: Int) -> TimedWord in
+            let start: Double = Double(index)
+            let end: Double = start + 1
+            return TimedWord(id: "trim-\(index)", text: "word", start: start, end: end)
+        }
+        let clip = ClipRange(id: "trim-scope", startWordId: "trim-10", endWordId: "trim-19")
+        project.edits = ProjectEdits(clips: [clip], activeClipId: clip.id)
+        let document = VoxClipDocument(project: project)
+        endpointDocument = document
+        let model = EditorModel(document: document, app: app, preview: DemoPreviewEngine())
+        defer { model.close(); model.document.updateChangeCount(.changeCleared); model.document.close() }
+        let undo = UndoManager()
+        undo.groupsByEvent = false
+        model.undoManager = undo
+        model.mediaResolved = true
+        model.refresh()
+        model.editedTimeline = true
+        var results: [DebugUISuite.Result] = []
+        func check(_ name: String, _ passed: Bool) { results.append(.init(name: name, passed: passed)) }
+        func trim(start: Bool, index: Int) {
+            let currentID = start ? model.activeClip?.startWordId : model.activeClip?.endWordId
+            guard model.words[index].id != currentID else { return }
+            undo.beginUndoGrouping()
+            model.trimClip(clip, start: start, index: index)
+            undo.endUndoGrouping()
+        }
+        for start in [false, true] {
+            let edge: String = start ? "left" : "right"
+            let fraction: Double = start ? 0 : 1
+            if let index = model.timelineTrimIndex(clip, start: start, fraction: fraction) {
+                trim(start: start, index: index)
+            }
+            check("Edited \(edge)-edge trim keeps exact 10–20-second clip word IDs in a 60-second source (\(model.activeClip?.startWordId ?? "nil")...\(model.activeClip?.endWordId ?? "nil"), undo=\(undo.canUndo), duration=\(model.duration))", model.activeClip?.startWordId == clip.startWordId && model.activeClip?.endWordId == clip.endWordId && !undo.canUndo)
+            let movedFraction: Double = start ? 0.2 : 0.8
+            if let index = model.timelineTrimIndex(clip, start: start, fraction: movedFraction) {
+                trim(start: start, index: index)
+            }
+            check("Edited \(edge)-handle drag creates one Trim clip undo", model.activeClip != clip && undo.undoActionName == "Trim clip")
+            undo.undo()
+            check("one undo of the Edited \(edge)-handle drag restores both exact saved word IDs", model.activeClip == clip && !undo.canUndo)
+            undo.removeAllActions()
+            let nearEdge: Double = start ? 0.0000001 : 0.9999999
+            if let index = model.timelineTrimIndex(clip, start: start, fraction: nearEdge) { trim(start: start, index: index) }
+            check("sample-rounded Edited \(edge) edge remains within the saved clip endpoints", model.activeClip == clip && !undo.canUndo)
+        }
+        undo.beginUndoGrouping()
+        model.apply(.cutSelection(ids: ["trim-14"]), name: "Cut selection")
+        undo.endUndoGrouping()
+        undo.removeAllActions()
+        let collapsedTime: Double = 4
+        let fraction: Double = collapsedTime / model.duration
+        let inverse: Double = model.timelineSourceTime(collapsedTime)
+        let index = model.timelineTrimIndex(clip, start: false, fraction: fraction)
+        check("trim and scrub share a right-continuous inverse across a collapsed cut", inverse == 15 && index == 14 && model.timelineTrimIndex(clip, start: true, fraction: fraction) == 15)
+        if let index { trim(start: false, index: index) }
+        check("dragging an Edited end across a collapsed cut snaps to its stable word boundary", model.activeClip?.endWordId == "trim-14" && undo.undoActionName == "Trim clip")
+        undo.undo()
+        check("one undo across a collapsed cut restores exact clip IDs without restoring the cut", model.activeClip == clip && model.cutWordIDs.contains("trim-14") && !undo.canUndo)
         return results
     }
     private static func audioCaptures(app: AppModel, fixture: Project, directory: URL) async throws -> [DebugUISuite.Result] {

@@ -393,9 +393,7 @@ func viewerStageSize(ratio: Double, innerWidth: CGFloat, columnHeight: CGFloat, 
             .help(hoverHelp)
     }
     private func sourceTime(_ time: Double) -> Double {
-        guard model.editedTimeline else { return time }
-        if time >= model.duration { return model.scopeBounds.map { model.words[$0.upperBound].end } ?? model.sourceDuration }
-        return model.renderTimeline?.sourceTime(time) ?? time
+        model.timelineSourceTime(time)
     }
 }
 
@@ -430,9 +428,8 @@ func viewerStageSize(ratio: Double, innerWidth: CGFloat, columnHeight: CGFloat, 
             .position(x: fraction * width, y: 43)
     }
     private func snappedIndex(_ point: CGFloat) -> Int? {
-        let time = model.timeline.time(point / max(1, width), edited: model.editedTimeline)
-        let source = model.editedTimeline ? model.renderTimeline?.sourceTime(min(time, model.duration.nextDown)) ?? time : time
-        guard let index = model.trimIndex(start: start, source: source), let lower = model.index(clip.startWordId), let upper = model.index(clip.endWordId) else { return nil }
-        return start ? index.clamped(to: 0...upper) : index.clamped(to: lower...(model.words.count - 1))
+        let safeWidth: CGFloat = max(1, width)
+        let fraction: Double = Double(point / safeWidth)
+        return model.timelineTrimIndex(clip, start: start, fraction: fraction)
     }
 }

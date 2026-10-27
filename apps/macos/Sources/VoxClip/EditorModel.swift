@@ -608,6 +608,21 @@ import VoxClipMedia
         guard start ? caret <= upper : caret >= lower else { return }
         apply(.updateClip(id: clip.id, startIndex: start ? caret : lower, endIndex: start ? upper : caret), name: "Set clip edge")
     }
+    func timelineSourceTime(_ time: Double) -> Double {
+        guard editedTimeline else { return time }
+        if time <= 0 { return scopeBounds.map { words[$0.lowerBound].start } ?? 0 }
+        if time >= duration { return scopeBounds.map { words[$0.upperBound].end } ?? sourceDuration }
+        let mapped: Double = renderTimeline?.sourceTime(time) ?? time
+        guard let scope = scopeBounds else { return mapped }
+        return mapped.clamped(to: words[scope.lowerBound].start...words[scope.upperBound].end)
+    }
+    func timelineTrimIndex(_ clip: ClipRange, start: Bool, fraction: Double) -> Int? {
+        let time: Double = timeline.time(fraction, edited: editedTimeline)
+        let source: Double = timelineSourceTime(time)
+        guard let candidate = trimIndex(start: start, source: source),
+              let lower = index(clip.startWordId), let upper = index(clip.endWordId) else { return nil }
+        return start ? candidate.clamped(to: 0...upper) : candidate.clamped(to: lower...(words.count - 1))
+    }
     func trimIndex(start: Bool, source: Double) -> Int? {
         guard !words.isEmpty else { return nil }
         var lower = 0

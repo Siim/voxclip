@@ -1,5 +1,10 @@
 # macOS implementation contracts
 
+### 2026-10-28 — Round-3 A1: Edited trim endpoints
+
+- Trim and scrub now share the scoped Edited-to-Source inverse. Explicit endpoints return the active clip's saved start/end, never the entire source end; collapsed cuts use the planner's stable right-continuous mapping, without floating-point `nextDown`.
+- `DebugTimeline.trimEndpoints` covers a 60-second source and 10–20-second clip, both edge mirrors, one-step undo and a drag across a collapsed cut. These regressions run in the final serialized round-3 gate.
+
 ### 2026-10-27 — sol-vl-word-diff round 2: current API and verification
 
 This entry supersedes the historical round-1 API and figures below. Decisions 1–8 are implemented in order, one commit each; `origin/main` `5d6a295a5b0c4a9c63701a3f72255cd487d1dcc6` is merged, with all entries from both contract histories retained and track entries first.
