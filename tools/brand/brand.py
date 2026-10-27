@@ -23,7 +23,7 @@ BRAND = REPO / "shared" / "brand"
 DM_SANS = REPO / "shared" / "fonts" / "dm-sans"
 
 # Colours. Plate and paper are the brand's own neutrals and coral its cut colour. They predate the
-# Petrol palette: the apps now draw cuts in tokens.json cut.stroke (dark #EE7F6E, light #C2402F).
+# token palette; the app accent (Ink) is GRAPHITE_TOP #2C2E35 itself. Cuts use tokens.json cut.stroke.
 GRAPHITE_TOP, GRAPHITE_BOTTOM = "#2C2E35", "#0F1013"
 PAPER, PAPER_TOP, PAPER_BOTTOM = "#F3F0E7", "#FBF9F3", "#E3E0D6"
 CORAL, CORAL_TOP, CORAL_BOTTOM = "#F38F83", "#FFA396", "#EE6A5E"

@@ -70,11 +70,11 @@ test('every colour token is checked or explicitly exempt', () => {
   assert.deepEqual(coverage(source), { missing: [], staleExemptions: [] });
 });
 
-test('the Windows accent ramp in App.xaml is the pinned Petrol ramp and leaves High Contrast alone', () => {
+test('the Windows accent ramp in App.xaml is the pinned Ink ramp and leaves High Contrast alone', () => {
   const ramp = windowsRamp(xaml);
   assert.deepEqual(ramp, {
-    Light: { SystemAccentColor: '#237D7A', SystemAccentColorDark1: '#1C6B69', SystemAccentColorDark2: '#155755', SystemAccentColorDark3: '#0F4544', TextOnAccentFillColorPrimary: '#FAF9F6' },
-    Default: { SystemAccentColor: '#237D7A', SystemAccentColorLight1: '#3F9E98', SystemAccentColorLight2: '#63BDB6', SystemAccentColorLight3: '#8FD3CD', TextOnAccentFillColorPrimary: '#141517' },
+    Light: { SystemAccentColor: '#6D6F73', SystemAccentColorDark1: '#2C2E35', SystemAccentColorDark2: '#1A1B1F', SystemAccentColorDark3: '#0F1013', TextOnAccentFillColorPrimary: '#FAF9F6' },
+    Default: { SystemAccentColor: '#6D6F73', SystemAccentColorLight1: '#D2D1CC', SystemAccentColorLight2: '#ECEAE4', SystemAccentColorLight3: '#FAF9F6', TextOnAccentFillColorPrimary: '#141517' },
   });
   assert.equal(ramp.Light.SystemAccentColor, value('accent.default', 'dark'));
   assert.equal(ramp.Light.SystemAccentColorDark1, value('accent.default', 'light'));

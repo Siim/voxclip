@@ -15,6 +15,7 @@ const surfaces = ['bg.surface', 'bg.sunken', 'bg.window', 'bg.elevated'];
 // rgba(237,236,231,0.80), dark rgba(46,47,51,0.78).
 export const materials = { 'glass.sidebar': { light: '#EDECE7CC', dark: '#2E2F33C7' } };
 const tokenPairs = [
+  ['accent', 'word.playingForeground', 'accent.text', 'macOS dark Export capsule'],
   ...[...surfaces, 'bg.input', 'bg.muted', 'pause.background', 'accent.soft',
     'status.dangerBackground', 'status.warningBackground', 'status.successBackground', 'status.infoBackground']
     .map(background => ['text', 'text.primary', background]),
@@ -42,7 +43,7 @@ const tokenPairs = [
   ['ui', 'line.strong', ['overlay.transportOpaque', 'stage']],
   ...['timeline.kept', 'cut.fill', 'cut.pauseFill', 'timeline.playhead', 'timeline.clipBracket'].map(foreground => ['ui', foreground, 'timeline.track']),
   // The Mac draws its playhead, clip brackets and clip numbers in DesignValues.accentText,
-  // which is accent.text while the system accent is Petrol; the timeline.* marks are Windows'.
+  // which is accent.text while the system accent is Ink; the timeline.* marks are Windows'.
   ['ui', 'accent.text', 'timeline.track', 'Mac playhead line on the track'],
   ['ui', 'accent.text', ['timeline.clipBand', 'timeline.track'], 'Mac playhead line in the active clip band'],
   ['text', 'accent.text', 'bg.surface', 'Mac 9 pt clip numbers on the timeline strip'],

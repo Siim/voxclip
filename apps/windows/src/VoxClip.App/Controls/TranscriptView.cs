@@ -186,14 +186,14 @@ public sealed class TranscriptView : UserControl
                 var selected = model.HasSelection && run.Index >= model.SelectionStart && run.Index <= model.SelectionEnd;
                 var playing = model.SourceTime >= word.Start && model.SourceTime < word.End;
                 var length = run.Run.Text.TrimEnd().Length;
-                if ((!selected && !playing) || length == 0) continue;
+                if (length == 0 || TranscriptWordHighlight.For(selected, playing, Ui.HighContrast) is not { } highlight) continue;
                 // Selected words draw in text.primary on the selection fill, which also overrides the cut and filler colours
                 // (they fail contrast on it); High Contrast maps the fill to Highlight, so the text takes HighlightText.
                 var highlighter = new TextHighlighter
                 {
-                    Background = Brush(selected ? "VcSelectionTranscriptBrush" : "VcWordPlayingBackgroundBrush"),
-                    Foreground = playing ? Brush("VcWordPlayingForegroundBrush") : Ui.HighContrast
-                        ? new SolidColorBrush((Windows.UI.Color)Application.Current.Resources["SystemColorHighlightTextColor"]) : Brush("VcTextPrimaryBrush")
+                    Background = Brush(highlight.BackgroundBrush),
+                    Foreground = highlight.ForegroundBrush == "SystemColorHighlightTextColor"
+                        ? new SolidColorBrush((Windows.UI.Color)Application.Current.Resources[highlight.ForegroundBrush]) : Brush(highlight.ForegroundBrush)
                 };
                 highlighter.Ranges.Add(new TextRange { StartIndex = visual.HighlightStarts[index], Length = length });
                 visual.Text.TextHighlighters.Add(highlighter);

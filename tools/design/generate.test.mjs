@@ -100,7 +100,7 @@ test('the macOS AccentColor asset comes from the flagged token in both appearanc
   assert.deepEqual(dark.appearances, [{ appearance: 'luminosity', value: 'dark' }]);
   assert.deepEqual(dark.color.components, components(source.color.accent.default.$value.dark));
   const translucent = structuredClone(source);
-  translucent.color.accent.default.$value.dark = '#237D7A80';
+  translucent.color.accent.default.$value.dark = '#6D6F7380';
   assert.equal(JSON.parse(buildOutputs(translucent).assets[0][1]).colors[1].color.components.alpha, '0.502');
   const system = structuredClone(source);
   system.color.accent.default.$value.light = 'system:green';

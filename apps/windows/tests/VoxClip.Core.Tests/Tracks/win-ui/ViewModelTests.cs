@@ -358,6 +358,23 @@ public sealed class ViewModelTests
         Assert.InRange(engine.Position.EditedTime, 0, 0.5);
     }
 
+    [Theory]
+    [InlineData(false, false, false, null, null)]
+    [InlineData(false, false, true, null, null)]
+    [InlineData(true, false, false, "VcSelectionTranscriptBrush", "VcTextPrimaryBrush")]
+    [InlineData(true, false, true, "VcSelectionTranscriptBrush", "SystemColorHighlightTextColor")]
+    [InlineData(false, true, false, "VcWordPlayingBackgroundBrush", "VcWordPlayingForegroundBrush")]
+    [InlineData(false, true, true, "VcWordPlayingBackgroundBrush", "VcWordPlayingForegroundBrush")]
+    [InlineData(true, true, false, "VcWordPlayingBackgroundBrush", "VcWordPlayingForegroundBrush")]
+    [InlineData(true, true, true, "VcWordPlayingBackgroundBrush", "VcWordPlayingForegroundBrush")]
+    public void TranscriptHighlightKeepsSelectionDistinctAndPlayingWins(bool selected, bool playing, bool highContrast,
+        string? background, string? foreground)
+    {
+        var highlight = TranscriptWordHighlight.For(selected, playing, highContrast);
+        Assert.Equal(background, highlight?.BackgroundBrush);
+        Assert.Equal(foreground, highlight?.ForegroundBrush);
+    }
+
     [Fact]
     public void HighlightOffsetsFollowRenderedUtf16TextIncludingPausesAndCollapsedCuts()
     {

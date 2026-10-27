@@ -85,20 +85,20 @@ extension Color {
 
     static let vcAccentDefault = Color(nsColor: NSColor(name: NSColor.Name("vcAccentDefault")) { appearance in
         appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-            ? NSColor(srgbRed: 35.0 / 255, green: 125.0 / 255, blue: 122.0 / 255, alpha: 255.0 / 255)
-            : NSColor(srgbRed: 28.0 / 255, green: 107.0 / 255, blue: 105.0 / 255, alpha: 255.0 / 255)
+            ? NSColor(srgbRed: 109.0 / 255, green: 111.0 / 255, blue: 115.0 / 255, alpha: 255.0 / 255)
+            : NSColor(srgbRed: 44.0 / 255, green: 46.0 / 255, blue: 53.0 / 255, alpha: 255.0 / 255)
     })
 
     static let vcAccentPressed = Color(nsColor: NSColor(name: NSColor.Name("vcAccentPressed")) { appearance in
         appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-            ? NSColor(srgbRed: 28.0 / 255, green: 103.0 / 255, blue: 100.0 / 255, alpha: 255.0 / 255)
-            : NSColor(srgbRed: 21.0 / 255, green: 87.0 / 255, blue: 85.0 / 255, alpha: 255.0 / 255)
+            ? NSColor(srgbRed: 92.0 / 255, green: 94.0 / 255, blue: 98.0 / 255, alpha: 255.0 / 255)
+            : NSColor(srgbRed: 26.0 / 255, green: 27.0 / 255, blue: 31.0 / 255, alpha: 255.0 / 255)
     })
 
     static let vcAccentText = Color(nsColor: NSColor(name: NSColor.Name("vcAccentText")) { appearance in
         appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-            ? NSColor(srgbRed: 99.0 / 255, green: 189.0 / 255, blue: 182.0 / 255, alpha: 255.0 / 255)
-            : NSColor(srgbRed: 28.0 / 255, green: 107.0 / 255, blue: 105.0 / 255, alpha: 255.0 / 255)
+            ? NSColor(srgbRed: 236.0 / 255, green: 234.0 / 255, blue: 228.0 / 255, alpha: 255.0 / 255)
+            : NSColor(srgbRed: 26.0 / 255, green: 27.0 / 255, blue: 31.0 / 255, alpha: 255.0 / 255)
     })
 
     static let vcAccentOn = Color(nsColor: NSColor(name: NSColor.Name("vcAccentOn")) { appearance in
@@ -109,8 +109,8 @@ extension Color {
 
     static let vcAccentSoft = Color(nsColor: NSColor(name: NSColor.Name("vcAccentSoft")) { appearance in
         appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-            ? NSColor(srgbRed: 31.0 / 255, green: 63.0 / 255, blue: 61.0 / 255, alpha: 255.0 / 255)
-            : NSColor(srgbRed: 211.0 / 255, green: 230.0 / 255, blue: 227.0 / 255, alpha: 255.0 / 255)
+            ? NSColor(srgbRed: 52.0 / 255, green: 53.0 / 255, blue: 55.0 / 255, alpha: 255.0 / 255)
+            : NSColor(srgbRed: 223.0 / 255, green: 222.0 / 255, blue: 220.0 / 255, alpha: 255.0 / 255)
     })
 
     static let vcSelectionText = Color(nsColor: NSColor(name: NSColor.Name("vcSelectionText")) { appearance in
@@ -121,19 +121,19 @@ extension Color {
 
     static let vcSelectionTranscript = Color(nsColor: NSColor(name: NSColor.Name("vcSelectionTranscript")) { appearance in
         appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-            ? NSColor(srgbRed: 31.0 / 255, green: 76.0 / 255, blue: 75.0 / 255, alpha: 255.0 / 255)
-            : NSColor(srgbRed: 197.0 / 255, green: 215.0 / 255, blue: 212.0 / 255, alpha: 255.0 / 255)
+            ? NSColor(srgbRed: 95.0 / 255, green: 96.0 / 255, blue: 97.0 / 255, alpha: 255.0 / 255)
+            : NSColor(srgbRed: 192.0 / 255, green: 193.0 / 255, blue: 195.0 / 255, alpha: 255.0 / 255)
     })
 
     static let vcWordPlayingBackground = Color(nsColor: NSColor(name: NSColor.Name("vcWordPlayingBackground")) { appearance in
         appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-            ? NSColor(srgbRed: 35.0 / 255, green: 125.0 / 255, blue: 122.0 / 255, alpha: 255.0 / 255)
-            : NSColor(srgbRed: 28.0 / 255, green: 107.0 / 255, blue: 105.0 / 255, alpha: 255.0 / 255)
+            ? NSColor(srgbRed: 210.0 / 255, green: 209.0 / 255, blue: 204.0 / 255, alpha: 255.0 / 255)
+            : NSColor(srgbRed: 44.0 / 255, green: 46.0 / 255, blue: 53.0 / 255, alpha: 255.0 / 255)
     })
 
     static let vcWordPlayingForeground = Color(nsColor: NSColor(name: NSColor.Name("vcWordPlayingForeground")) { appearance in
         appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-            ? NSColor(srgbRed: 250.0 / 255, green: 249.0 / 255, blue: 246.0 / 255, alpha: 255.0 / 255)
+            ? NSColor(srgbRed: 20.0 / 255, green: 21.0 / 255, blue: 23.0 / 255, alpha: 255.0 / 255)
             : NSColor(srgbRed: 250.0 / 255, green: 249.0 / 255, blue: 246.0 / 255, alpha: 255.0 / 255)
     })
 
@@ -277,20 +277,20 @@ extension Color {
 
     static let vcTimelineClipBracket = Color(nsColor: NSColor(name: NSColor.Name("vcTimelineClipBracket")) { appearance in
         appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-            ? NSColor(srgbRed: 99.0 / 255, green: 189.0 / 255, blue: 182.0 / 255, alpha: 255.0 / 255)
-            : NSColor(srgbRed: 28.0 / 255, green: 107.0 / 255, blue: 105.0 / 255, alpha: 255.0 / 255)
+            ? NSColor(srgbRed: 236.0 / 255, green: 234.0 / 255, blue: 228.0 / 255, alpha: 255.0 / 255)
+            : NSColor(srgbRed: 26.0 / 255, green: 27.0 / 255, blue: 31.0 / 255, alpha: 255.0 / 255)
     })
 
     static let vcTimelineClipBand = Color(nsColor: NSColor(name: NSColor.Name("vcTimelineClipBand")) { appearance in
         appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-            ? NSColor(srgbRed: 35.0 / 255, green: 125.0 / 255, blue: 122.0 / 255, alpha: 31.0 / 255)
-            : NSColor(srgbRed: 28.0 / 255, green: 107.0 / 255, blue: 105.0 / 255, alpha: 31.0 / 255)
+            ? NSColor(srgbRed: 236.0 / 255, green: 234.0 / 255, blue: 228.0 / 255, alpha: 31.0 / 255)
+            : NSColor(srgbRed: 44.0 / 255, green: 46.0 / 255, blue: 53.0 / 255, alpha: 31.0 / 255)
     })
 
     static let vcTimelinePlayhead = Color(nsColor: NSColor(name: NSColor.Name("vcTimelinePlayhead")) { appearance in
         appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-            ? NSColor(srgbRed: 99.0 / 255, green: 189.0 / 255, blue: 182.0 / 255, alpha: 255.0 / 255)
-            : NSColor(srgbRed: 28.0 / 255, green: 107.0 / 255, blue: 105.0 / 255, alpha: 255.0 / 255)
+            ? NSColor(srgbRed: 236.0 / 255, green: 234.0 / 255, blue: 228.0 / 255, alpha: 255.0 / 255)
+            : NSColor(srgbRed: 26.0 / 255, green: 27.0 / 255, blue: 31.0 / 255, alpha: 255.0 / 255)
     })
 
     static let vcStage = Color(nsColor: NSColor(name: NSColor.Name("vcStage")) { appearance in
@@ -325,8 +325,8 @@ extension Color {
 
     static let vcOverlayDropBorder = Color(nsColor: NSColor(name: NSColor.Name("vcOverlayDropBorder")) { appearance in
         appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-            ? NSColor(srgbRed: 99.0 / 255, green: 189.0 / 255, blue: 182.0 / 255, alpha: 255.0 / 255)
-            : NSColor(srgbRed: 28.0 / 255, green: 107.0 / 255, blue: 105.0 / 255, alpha: 255.0 / 255)
+            ? NSColor(srgbRed: 236.0 / 255, green: 234.0 / 255, blue: 228.0 / 255, alpha: 255.0 / 255)
+            : NSColor(srgbRed: 26.0 / 255, green: 27.0 / 255, blue: 31.0 / 255, alpha: 255.0 / 255)
     })
 
     static let vcOverlayDropZoneBorder = Color(nsColor: NSColor(name: NSColor.Name("vcOverlayDropZoneBorder")) { appearance in
@@ -391,8 +391,8 @@ extension Color {
 
     static let vcFocusRing = Color(nsColor: NSColor(name: NSColor.Name("vcFocusRing")) { appearance in
         appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-            ? NSColor(srgbRed: 99.0 / 255, green: 189.0 / 255, blue: 182.0 / 255, alpha: 255.0 / 255)
-            : NSColor(srgbRed: 28.0 / 255, green: 107.0 / 255, blue: 105.0 / 255, alpha: 255.0 / 255)
+            ? NSColor(srgbRed: 236.0 / 255, green: 234.0 / 255, blue: 228.0 / 255, alpha: 255.0 / 255)
+            : NSColor(srgbRed: 26.0 / 255, green: 27.0 / 255, blue: 31.0 / 255, alpha: 255.0 / 255)
     })
 }
 

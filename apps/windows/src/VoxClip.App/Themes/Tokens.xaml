@@ -15,15 +15,15 @@
             <SolidColorBrush x:Key="VcTextMutedBrush" Color="#9C9EA4" />
             <SolidColorBrush x:Key="VcTextTertiaryBrush" Color="#8F9198" />
             <SolidColorBrush x:Key="VcTextDisabledBrush" Color="#777C8D" />
-            <SolidColorBrush x:Key="VcAccentDefaultBrush" Color="#237D7A" />
-            <SolidColorBrush x:Key="VcAccentPressedBrush" Color="#1C6764" />
-            <SolidColorBrush x:Key="VcAccentTextBrush" Color="#63BDB6" />
+            <SolidColorBrush x:Key="VcAccentDefaultBrush" Color="#6D6F73" />
+            <SolidColorBrush x:Key="VcAccentPressedBrush" Color="#5C5E62" />
+            <SolidColorBrush x:Key="VcAccentTextBrush" Color="#ECEAE4" />
             <SolidColorBrush x:Key="VcAccentOnBrush" Color="#FAF9F6" />
-            <SolidColorBrush x:Key="VcAccentSoftBrush" Color="#1F3F3D" />
+            <SolidColorBrush x:Key="VcAccentSoftBrush" Color="#343537" />
             <SolidColorBrush x:Key="VcSelectionTextBrush" Color="{ThemeResource SystemAccentColor}" Opacity="0.4" />
-            <SolidColorBrush x:Key="VcSelectionTranscriptBrush" Color="#1F4C4B" />
-            <SolidColorBrush x:Key="VcWordPlayingBackgroundBrush" Color="#237D7A" />
-            <SolidColorBrush x:Key="VcWordPlayingForegroundBrush" Color="#FAF9F6" />
+            <SolidColorBrush x:Key="VcSelectionTranscriptBrush" Color="#5F6061" />
+            <SolidColorBrush x:Key="VcWordPlayingBackgroundBrush" Color="#D2D1CC" />
+            <SolidColorBrush x:Key="VcWordPlayingForegroundBrush" Color="#141517" />
             <SolidColorBrush x:Key="VcWordCutBrush" Color="#93959C" />
             <SolidColorBrush x:Key="VcWordFillerBrush" Color="#E0AE55" />
             <SolidColorBrush x:Key="VcWordLowConfidenceBrush" Color="#7C7E85" />
@@ -47,15 +47,15 @@
             <SolidColorBrush x:Key="VcTimelineKeptBackgroundBrush" Color="#17ECEAE4" />
             <SolidColorBrush x:Key="VcTimelineWaveformBrush" Color="#94ECEAE4" />
             <SolidColorBrush x:Key="VcTimelineScopeDimBrush" Color="#9E141517" />
-            <SolidColorBrush x:Key="VcTimelineClipBracketBrush" Color="#63BDB6" />
-            <SolidColorBrush x:Key="VcTimelineClipBandBrush" Color="#1F237D7A" />
-            <SolidColorBrush x:Key="VcTimelinePlayheadBrush" Color="#63BDB6" />
+            <SolidColorBrush x:Key="VcTimelineClipBracketBrush" Color="#ECEAE4" />
+            <SolidColorBrush x:Key="VcTimelineClipBandBrush" Color="#1FECEAE4" />
+            <SolidColorBrush x:Key="VcTimelinePlayheadBrush" Color="#ECEAE4" />
             <SolidColorBrush x:Key="VcStageBrush" Color="#000000" />
             <SolidColorBrush x:Key="VcOverlayForegroundBrush" Color="#F5F4F0" />
             <SolidColorBrush x:Key="VcOverlayScrimBrush" Color="#C70D0E11" />
             <SolidColorBrush x:Key="VcOverlayTransportOpaqueBrush" Color="#EB0D0E11" />
             <SolidColorBrush x:Key="VcOverlayDropBrush" Color="#EB1B1C1F" />
-            <SolidColorBrush x:Key="VcOverlayDropBorderBrush" Color="#63BDB6" />
+            <SolidColorBrush x:Key="VcOverlayDropBorderBrush" Color="#ECEAE4" />
             <SolidColorBrush x:Key="VcOverlayDropZoneBorderBrush" Color="#66ECEAE4" />
             <SolidColorBrush x:Key="VcChipMediaBackgroundBrush" Color="#9E000000" />
             <SolidColorBrush x:Key="VcChipMediaStrokeBrush" Color="#2EFFFFFF" />
@@ -66,7 +66,7 @@
             <SolidColorBrush x:Key="VcMediaProgressTrackBrush" Color="#8C000000" />
             <SolidColorBrush x:Key="VcMediaRimBrush" Color="#1AFFFFFF" />
             <SolidColorBrush x:Key="VcMediaSheenBrush" Color="#13FFFFFF" />
-            <SolidColorBrush x:Key="VcFocusRingBrush" Color="#63BDB6" />
+            <SolidColorBrush x:Key="VcFocusRingBrush" Color="#ECEAE4" />
         </ResourceDictionary>
         <ResourceDictionary x:Key="Light">
             <SolidColorBrush x:Key="VcBgWindowBrush" Color="#F0EFEA" />
@@ -82,14 +82,14 @@
             <SolidColorBrush x:Key="VcTextMutedBrush" Color="#5E6168" />
             <SolidColorBrush x:Key="VcTextTertiaryBrush" Color="#66696F" />
             <SolidColorBrush x:Key="VcTextDisabledBrush" Color="#9396A4" />
-            <SolidColorBrush x:Key="VcAccentDefaultBrush" Color="#1C6B69" />
-            <SolidColorBrush x:Key="VcAccentPressedBrush" Color="#155755" />
-            <SolidColorBrush x:Key="VcAccentTextBrush" Color="#1C6B69" />
+            <SolidColorBrush x:Key="VcAccentDefaultBrush" Color="#2C2E35" />
+            <SolidColorBrush x:Key="VcAccentPressedBrush" Color="#1A1B1F" />
+            <SolidColorBrush x:Key="VcAccentTextBrush" Color="#1A1B1F" />
             <SolidColorBrush x:Key="VcAccentOnBrush" Color="#FAF9F6" />
-            <SolidColorBrush x:Key="VcAccentSoftBrush" Color="#D3E6E3" />
+            <SolidColorBrush x:Key="VcAccentSoftBrush" Color="#DFDEDC" />
             <SolidColorBrush x:Key="VcSelectionTextBrush" Color="{ThemeResource SystemAccentColor}" Opacity="0.4" />
-            <SolidColorBrush x:Key="VcSelectionTranscriptBrush" Color="#C5D7D4" />
-            <SolidColorBrush x:Key="VcWordPlayingBackgroundBrush" Color="#1C6B69" />
+            <SolidColorBrush x:Key="VcSelectionTranscriptBrush" Color="#C0C1C3" />
+            <SolidColorBrush x:Key="VcWordPlayingBackgroundBrush" Color="#2C2E35" />
             <SolidColorBrush x:Key="VcWordPlayingForegroundBrush" Color="#FAF9F6" />
             <SolidColorBrush x:Key="VcWordCutBrush" Color="#66686F" />
             <SolidColorBrush x:Key="VcWordFillerBrush" Color="#9A5B00" />
@@ -114,15 +114,15 @@
             <SolidColorBrush x:Key="VcTimelineKeptBackgroundBrush" Color="#121A1B1F" />
             <SolidColorBrush x:Key="VcTimelineWaveformBrush" Color="#851A1B1F" />
             <SolidColorBrush x:Key="VcTimelineScopeDimBrush" Color="#A8F0EFEA" />
-            <SolidColorBrush x:Key="VcTimelineClipBracketBrush" Color="#1C6B69" />
-            <SolidColorBrush x:Key="VcTimelineClipBandBrush" Color="#1F1C6B69" />
-            <SolidColorBrush x:Key="VcTimelinePlayheadBrush" Color="#1C6B69" />
+            <SolidColorBrush x:Key="VcTimelineClipBracketBrush" Color="#1A1B1F" />
+            <SolidColorBrush x:Key="VcTimelineClipBandBrush" Color="#1F2C2E35" />
+            <SolidColorBrush x:Key="VcTimelinePlayheadBrush" Color="#1A1B1F" />
             <SolidColorBrush x:Key="VcStageBrush" Color="#000000" />
             <SolidColorBrush x:Key="VcOverlayForegroundBrush" Color="#F5F4F0" />
             <SolidColorBrush x:Key="VcOverlayScrimBrush" Color="#C70D0E11" />
             <SolidColorBrush x:Key="VcOverlayTransportOpaqueBrush" Color="#EB0D0E11" />
             <SolidColorBrush x:Key="VcOverlayDropBrush" Color="#EBFAF9F6" />
-            <SolidColorBrush x:Key="VcOverlayDropBorderBrush" Color="#1C6B69" />
+            <SolidColorBrush x:Key="VcOverlayDropBorderBrush" Color="#1A1B1F" />
             <SolidColorBrush x:Key="VcOverlayDropZoneBorderBrush" Color="#661A1B1F" />
             <SolidColorBrush x:Key="VcChipMediaBackgroundBrush" Color="#9E000000" />
             <SolidColorBrush x:Key="VcChipMediaStrokeBrush" Color="#2EFFFFFF" />
@@ -133,7 +133,7 @@
             <SolidColorBrush x:Key="VcMediaProgressTrackBrush" Color="#8C000000" />
             <SolidColorBrush x:Key="VcMediaRimBrush" Color="#1AFFFFFF" />
             <SolidColorBrush x:Key="VcMediaSheenBrush" Color="#13FFFFFF" />
-            <SolidColorBrush x:Key="VcFocusRingBrush" Color="#1C6B69" />
+            <SolidColorBrush x:Key="VcFocusRingBrush" Color="#1A1B1F" />
         </ResourceDictionary>
         <ResourceDictionary x:Key="HighContrast">
             <SolidColorBrush x:Key="VcBgWindowBrush" Color="{ThemeResource SystemColorWindowColor}" />
