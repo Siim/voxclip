@@ -303,18 +303,54 @@ class SeamLayout:
         return not 0 <= other < len(self.elements) or self.fades_fit(min(index, other))
 
 
-def place(project, clip_id, envelope, first_id, last_id):
-    """`project` holds the take: sampleRate, durationSeconds, words (every transcript item, in order), edits and segments
-    (the Voice Lab replacements already in the project). The window is placed for the render scope `clip_id` (None for the
-    full take) exactly as VoiceLabOutputPlanner builds it, with the scope's enabled replacements."""
+def checked_take(project):
+    """The take's rate, duration, items, edits and total samples, checked as place and lendable_silence read them. The
+    take is media.source.durationSeconds long and ends at sample jsRound(duration x rate)."""
     rate, duration, items, edits = project['sampleRate'], project['durationSeconds'], project['words'], project['edits']
-    # The take is media.source.durationSeconds long and ends at sample jsRound(duration x rate).
     if not (math.isfinite(rate) and rate > 0 and math.isfinite(duration) and duration > 0 and duration * rate < SAMPLE_LIMIT):
         raise GeometryError('invalidInput')
     total = samples(duration, rate)
     threshold, keep = edits['pauseThresholdSeconds'], edits['pauseKeepSeconds']
     if total <= 0 or not (math.isfinite(threshold) and threshold > 0 and math.isfinite(keep) and 0 <= keep <= 1):
         raise GeometryError('invalidInput')
+    return rate, duration, items, edits, total
+
+
+class ScopeSource:
+    """The render scope `clip_id` as VoiceLabOutputPlanner builds it (section 8.4): its enabled replacements, the editing
+    segments, which items it keeps and which are already re-voiced, and its kept source. place and lendable_silence both
+    build it."""
+
+    def __init__(self, project, clip_id, rate, duration, items, edits):
+        bounds, self.clip_range = resolve_scope(items, edits, clip_id)
+        self.scope = scope_replacements(project['segments'], self.clip_range, rate, duration)
+        self.segments = edit_segments(items, edits, bounds)
+        cut = {segment['id']: segment['cut'] for segment in self.segments if segment['kind'] == 'word'}
+        self.kept_item = [not cut[item['id']] for item in items]
+        # An item inside an enabled replacement is already re-voiced: it never bridges, and a take edge never absorbs it.
+        self.replaced = [any(other['start'] <= item['start'] and item['end'] <= other['end'] for other in self.scope)
+                         for item in items]
+        # The outer half of each replacement's own fades, which a gap seam beside it must leave free.
+        self.reserved = [(other['lo'] - other['in']['fadeSamples'] // 2, other['lo']) for other in self.scope] + \
+            [(other['hi'], other['hi'] + other['out']['fadeSamples'] - other['out']['fadeSamples'] // 2) for other in self.scope]
+        self.rate, self.duration, self.keep = rate, duration, edits['pauseKeepSeconds']
+
+    def kept_source(self, passage=None, window=()):
+        """Kept source pieces as the output plan builds them: the words and pauses inside every replacement and inside the
+        `passage` (start, end), when given, are dropped, and neither the cuts nor the synth ranges (with `window`) are
+        source."""
+        dropped = [(other['start'], other['end']) for other in self.scope] + ([passage] if passage is not None else [])
+        remaining = [segment for segment in self.segments if segment['kind'] not in ('word', 'pause')
+                     or not any(segment['start'] >= lo and segment['end'] <= hi for lo, hi in dropped)]
+        synth = [(other['lo'], other['hi']) for other in self.scope]
+        return subtract(edit_plan(remaining, self.duration, self.rate, self.keep)[1], synth + list(window))
+
+
+def place(project, clip_id, envelope, first_id, last_id):
+    """`project` holds the take: sampleRate, durationSeconds, words (every transcript item, in order), edits and segments
+    (the Voice Lab replacements already in the project). The window is placed for the render scope `clip_id` (None for the
+    full take) exactly as VoiceLabOutputPlanner builds it, with the scope's enabled replacements."""
+    rate, duration, items, edits, total = checked_take(project)
     check_envelope(envelope, rate)
     check_items(items, rate)
     ids = [item['id'] for item in items]
@@ -325,29 +361,12 @@ def place(project, clip_id, envelope, first_id, last_id):
     a, b = ids.index(first_id), ids.index(last_id)
     if a > b:
         raise GeometryError('reversedWords')
-    bounds, clip_range = resolve_scope(items, edits, clip_id)
-    scope = scope_replacements(project['segments'], clip_range, rate, duration)
-    segments = edit_segments(items, edits, bounds)
-    cut = {segment['id']: segment['cut'] for segment in segments if segment['kind'] == 'word'}
-    kept_item = [not cut[item['id']] for item in items]
-    # An item inside an enabled replacement is already re-voiced: it never bridges, and a take edge never absorbs it.
-    replaced = [any(other['start'] <= item['start'] and item['end'] <= other['end'] for other in scope) for item in items]
+    source = ScopeSource(project, clip_id, rate, duration, items, edits)
+    clip_range, scope, kept_item, replaced = source.clip_range, source.scope, source.kept_item, source.replaced
+    kept_source, reserved = source.kept_source, source.reserved
     blocking = [kept or covered for kept, covered in zip(kept_item, replaced)]
-    synth = [(other['lo'], other['hi']) for other in scope]
-    # The outer half of each replacement's own fades, which a gap seam beside it must leave free.
-    reserved = [(other['lo'] - other['in']['fadeSamples'] // 2, other['lo']) for other in scope] + \
-               [(other['hi'], other['hi'] + other['out']['fadeSamples'] - other['out']['fadeSamples'] // 2) for other in scope]
     levels, size, count = envelope['levels'], frame_size(rate), len(items)
     min_gap, gap_fade, hard_fade = samples(SEAM_MIN_GAP, rate), samples(SEAM_FADE, rate), samples(HARD_SEAM_FADE, rate)
-
-    def kept_source(passage=None, window=()):
-        """Kept source pieces as the output plan builds them: the words and pauses inside every replacement and inside the
-        `passage` (start, end), when given, are dropped, and neither the cuts nor the synth ranges (with `window`) are
-        source."""
-        dropped = [(other['start'], other['end']) for other in scope] + ([passage] if passage is not None else [])
-        remaining = [segment for segment in segments if segment['kind'] not in ('word', 'pause')
-                     or not any(segment['start'] >= lo and segment['end'] <= hi for lo, hi in dropped)]
-        return subtract(edit_plan(remaining, duration, rate, keep)[1], synth + list(window))
 
     def before_end(index):
         """The latest end of the items before `index`: where the silence before item `index` begins."""
@@ -515,6 +534,44 @@ def place(project, clip_id, envelope, first_id, last_id):
             'leftBridgeWordIds': ids[first:a], 'rightBridgeWordIds': ids[b + 1:last + 1],
             'start': start, 'end': end, 'startSample': left['sample'], 'endSample': right['sample'],
             'leftSeam': left, 'rightSeam': right}
+
+
+def lendable_silence(project, clip_id, window):
+    """voice-lab.md section 8.9.2 Inputs: what each gap seam of a window `place` returned can lend, in seconds (source
+    samples over the source rate). It is the kept source contiguous with the seam on its outer side, measured as section
+    8.4 step 5 measures it for the final window, with every replacement's outer fade halves taken out, up to the nearest
+    kept item outside the window. So it stops at that item, a cut item's reach, a cut pause, a clip edge or another
+    replacement's outer fade half. A take edge returns transcript silence to its nearest word inside the window;
+    a hard seam returns None. The pair feeds the fit planner directly."""
+    rate, duration, items, edits, total = checked_take(project)
+    check_items(items, rate)
+    lo, hi = window['startSample'], window['endSample']
+    if not (0 <= lo < hi <= total and window['leftSeam']['sample'] == lo and window['rightSeam']['sample'] == hi):
+        raise GeometryError('invalidInput')
+    source = ScopeSource(project, clip_id, rate, duration, items, edits)
+    kept = subtract(source.kept_source((window['start'], window['end']), [(lo, hi)]), source.reserved)
+    before = [samples(item['end'], rate) for item, kept_item in zip(items, source.kept_item)
+              if kept_item and item['end'] <= window['start']]
+    after = [samples(item['start'], rate) for item, kept_item in zip(items, source.kept_item)
+             if kept_item and item['start'] >= window['end']]
+
+    def lend(seam, incoming):
+        if seam['kind'] == 'none':
+            words = [item for item in items if item['kind'] == 'word'
+                     and item['start'] >= window['start'] and item['end'] <= window['end']]
+            if incoming:
+                return max(0.0, min((item['start'] for item in words), default=window['start']) - window['start'])
+            return max(0.0, window['end'] - max((item['end'] for item in words), default=window['end']))
+        if seam['kind'] != 'gap':
+            return None
+        piece = next(((a, b) for a, b in kept if (b if incoming else a) == seam['sample']), None)
+        if piece is None:
+            return 0 / rate
+        if incoming:
+            return max(0, seam['sample'] - max([piece[0]] + before)) / rate
+        return max(0, min([piece[1]] + after) - seam['sample']) / rate
+
+    return lend(window['leftSeam'], True), lend(window['rightSeam'], False)
 
 
 # The validate and prepare model (section 15 test 3): every window `place` returns validates and prepares in its render
@@ -948,11 +1005,11 @@ def passage_room_tone(expected, items, envelope, rate, duration):
 
 def window_case(name, items, duration, overrides=(), cut=(), first=None, last=None, rate=48000, after=None, envelope_rate=None,
                 clip=None, clips=(), cut_pauses=(), threshold=0.8, keep=0.15, replacements=(), later_cut=(), later_cut_pauses=(),
-                later_enabled=()):
+                later_enabled=(), lend=False):
     """A take with its edits and a render scope: `clip` names one of `clips` (id, first word, last word), or None for full.
     `replacements` (first word, last word, enabled, clip) are placed first, in order, by `place` itself in their own scope,
     and must each validate and prepare there. The `later_` edits come after they were accepted: more cut words and pauses,
-    and replacements enabled again."""
+    and replacements enabled again. With `lend`, the accepted window also records what each gap seam can lend."""
     levels = envelope_levels(items, rate, samples(duration, rate) // frame_size(rate), overrides)
     envelope = {'sampleRate': envelope_rate or rate, 'levels': levels}
     edits = {'cutWordIds': list(cut), 'cutPauseIds': list(cut_pauses), 'pauseThresholdSeconds': threshold, 'pauseKeepSeconds': keep,
@@ -973,6 +1030,10 @@ def window_case(name, items, duration, overrides=(), cut=(), first=None, last=No
     else:
         case['input'].update(firstWordId=first, lastWordId=last)
         case['expected'] = run_case(place, project, clip, envelope, first, last)
+        if lend:
+            assert 'error' not in case['expected'], name
+            incoming, outgoing = lendable_silence(project, clip, case['expected'])
+            case['lendableSilence'] = {'incoming': incoming, 'outgoing': outgoing}
     case['roomTone'] = passage_room_tone(case['expected'], items, envelope, rate, duration)
     if replacements:
         # Each replacement's recipe takes the take's room tone, whether or not this window is accepted.
@@ -1649,6 +1710,32 @@ assert by_name(room, 'fifty-frames-one-sample-short-22050') == {'error': 'roomTo
 assert by_name(room, 'min-run-fits-exactly-11025') == {'sourceStartSample': 2310, 'sourceEndSample': 2310 + 5513, 'gainDb': 0.0}
 assert by_name(room, 'min-run-one-sample-short-11025') == {'error': 'roomToneUnavailable'}
 
+# voice-lab.md section 8.9.2 Inputs: what each gap seam of an accepted window can lend the fit planner, one stop each.
+# Every lend runs from the seam outwards through kept source; the round-1 reading, the silence to the nearest kept item
+# from item times alone, would cross every stop but the first.
+lend_words = gaps_words([(0.20, 0.50), (0.80, 1.10), (1.60, 2.00), (2.50, 2.80), (3.10, 3.40)])
+cut_reach_words = [word('w1', 0.20, 0.50), word('um', 0.90, 1.00), word('w3', 1.60, 2.00), word('w4', 2.50, 2.80),
+                   word('w5', 3.10, 3.40)]
+# An event before the passage never bridges, so the seam search measures the cut pause as the final window does and
+# keeps the seam before it.
+cut_pause_words = [word('w1', 0.20, 0.50), word('ev', 0.80, 1.10, kind='event'), word('w3', 1.60, 2.00),
+                   word('w4', 3.20, 3.50), word('w5', 3.80, 4.10)]
+clip_words = gaps_words([(0.20, 0.50), (0.80, 1.10), (1.40, 1.80), (2.60, 2.90)])
+beside_words = gaps_words([(0.20, 0.50), (0.80, 1.10), (1.60, 2.00), (2.80, 3.10), (3.40, 3.70), (4.00, 4.30)])
+packed_words = gaps_words([(0.10, 0.50), (0.55, 0.90), (0.95, 1.30), (1.35, 1.70), (1.75, 2.10)])
+lend = [
+    window_case('lend-to-kept-items-44100', lend_words, 3.6, rate=44100, first='w3', last='w3', lend=True),
+    window_case('lend-to-kept-items', lend_words, 3.6, first='w3', last='w3', lend=True),
+    window_case('lend-to-cut-word-reach', cut_reach_words, 3.6, cut=('um',), first='w3', last='w3', lend=True),
+    window_case('lend-to-cut-pause', cut_pause_words, 4.4, {220: QUIET}, cut_pauses=('pause-after-w3',), keep=0.5,
+                first='w3', last='w3', lend=True),
+    window_case('lend-to-clip-edge', clip_words, 3.2, {185: QUIET}, clip='c1', clips=(('c1', 'w1', 'w3'),), first='w3',
+                last='w3', lend=True),
+    window_case('lend-to-replacement-fade', beside_words, 4.6, {210: QUIET, 270: QUIETER}, first='w3', last='w3',
+                replacements=(('w4', 'w4', True, None),), lend=True),
+    window_case('lend-none-from-hard-or-edge', packed_words, 2.4, first='w1', last='w1', lend=True),
+]
+
 # Property fuzz: PROPERTY_CASES random takes from a fixed seed, and MULTI_CASES takes that already hold one or two
 # replacements placed by `place` itself. No accepted window may fail the model, and every refusal must be typed. Every
 # stride-th case is committed as `propertyCases` or `multiSegmentCases`; both Core suites replay them and validate and
@@ -1763,6 +1850,36 @@ def fuzz_case(rng):
     return project, clip_id, {'sampleRate': rate, 'levels': levels}, items[a]['id'], items[b]['id']
 
 
+def widen_by_lend(project, clip_id, window, stats, failures):
+    """voice-lab.md section 8.9.2 Inputs on an accepted window: the fit planner borrows at most the lendable silence less
+    PAUSE_SLACK_KEEP at each gap seam. Borrowing all of it must absorb no transcript item and leave the window
+    renderable in its scope beside every replacement, so an exact fit never needs a second check of section 8.4."""
+    rate, items = project['sampleRate'], project['words']
+    lend = lendable_silence(project, clip_id, window)
+    keep = samples(PAUSE_SLACK_KEEP, rate)
+    seams = [window['leftSeam'], window['rightSeam']]
+    moved = [max(0, samples(silence, rate) - keep) if seam['kind'] == 'gap' else 0
+             for seam, silence in zip(seams, lend)]
+    stats['windows'] += 1
+    stats['gapSeams'] += sum(seam['kind'] == 'gap' for seam in seams)
+    stats['lendingSeams'] += sum(1 for step in moved if step)
+    if not any(moved):
+        return
+    lo, hi = window['startSample'] - moved[0], window['endSample'] + moved[1]
+    left = dict(window['leftSeam'], sample=lo, time=lo / rate) if moved[0] else window['leftSeam']
+    right = dict(window['rightSeam'], sample=hi, time=hi / rate) if moved[1] else window['rightSeam']
+    widened = dict(window, startSample=lo, endSample=hi, start=left['time'], end=right['time'], leftSeam=left, rightSeam=right)
+
+    def inside(span):
+        return [item['id'] for item in items if item['start'] >= span['start'] and item['end'] <= span['end']]
+
+    failure = 'absorbs an item' if inside(widened) != inside(window) else render_failure(project, clip_id, widened)
+    if failure is not None:
+        failures.append((failure, window, moved))
+
+
+lend_stats, lend_failures = {'windows': 0, 'gapSeams': 0, 'lendingSeams': 0}, []
+
 PROPERTY_SEED = 20261027
 PROPERTY_CASES = 20000
 PROPERTY_SAMPLE = 300
@@ -1783,6 +1900,7 @@ for index in range(PROPERTY_CASES):
         failure = render_failure(project, clip_id, expected)
         if failure is not None:
             failures.append((index, failure))
+        widen_by_lend(project, clip_id, expected, lend_stats, lend_failures)
         fuzz['accepted'] += 1
         fuzz['acceptedInClipScope'] += clip_id is not None
         pair = '%s/%s' % (expected['leftSeam']['kind'], expected['rightSeam']['kind'])
@@ -1795,6 +1913,9 @@ for index in range(PROPERTY_CASES):
         case['input'].update(firstWordId=first, lastWordId=last)
         # Every take holds a silence of at least 0.6 s, so every accepted case can carry a complete passage recipe.
         assert 'error' in expected or case['roomTone'] is not None, index
+        if 'error' not in expected:
+            incoming, outgoing = lendable_silence(project, clip_id, expected)
+            case['lendableSilence'] = {'incoming': incoming, 'outgoing': outgoing}
         property_cases.append(case)
 assert not failures, failures[:5]
 fuzz['renderFailures'] = len(failures)
@@ -1909,6 +2030,7 @@ for index in range(MULTI_CASES):
     if expected.get('error') == 'invalidInput' and 'segmentId' in expected:
         multi['invalidInputNamingReplacement'] += 1
     if multi_check(project, clip_id, expected):
+        widen_by_lend(project, clip_id, expected, lend_stats, lend_failures)
         multi['accepted'] += 1
         multi['acceptedAfterLaterEdits'] += later
         # Beside a replacement: an enabled one in the scope with no transcript item between it and the window.
@@ -1926,8 +2048,14 @@ for index in range(MULTI_CASES):
                 'expected': expected, 'roomTone': run_case(room_tone, items, envelope, rate, samples(duration, rate))}
         case['input'].update(firstWordId=first, lastWordId=last)
         assert 'error' not in case['roomTone'], index
+        if 'error' not in expected:
+            incoming, outgoing = lendable_silence(project, clip_id, expected)
+            case['lendableSilence'] = {'incoming': incoming, 'outgoing': outgoing}
         multi_cases.append(case)
 assert not multi_failures, multi_failures[:3]
+assert not lend_failures, [(failure, moved) for failure, _, moved in lend_failures[:5]]
+print('lendable silence: %d accepted windows, %d gap seams, %d lending beyond PAUSE_SLACK_KEEP, every widened window renders'
+      % (lend_stats['windows'], lend_stats['gapSeams'], lend_stats['lendingSeams']))
 multi['renderFailures'] = len(multi_failures)
 multi['refused'] = {code: count for code, count in multi['refused'].items() if count}
 print('multi-segment fuzz seed %d: %d cases, %d replacements (%d disabled), %d with later edits, %d accepted (%d beside a '
@@ -1937,17 +2065,18 @@ print('multi-segment fuzz seed %d: %d cases, %d replacements (%d disabled), %d w
          multi['invalidInputNamingReplacement'], len(multi_failures), len(multi_cases)))
 
 cases = {
-    'schema': 'voxclip-voice-lab-window-cases/3',
+    'schema': 'voxclip-voice-lab-window-cases/4',
     'constants': {'SEAM_MIN_GAP': SEAM_MIN_GAP, 'SEAM_SEARCH_WORDS': SEAM_SEARCH_WORDS, 'SEAM_FADE': SEAM_FADE,
                   'HARD_SEAM_FADE': HARD_SEAM_FADE, 'TTS_TRIM_LEAD': TTS_TRIM_LEAD, 'TTS_TRIM_TAIL': TTS_TRIM_TAIL,
                   'PAUSE_SLACK_KEEP': PAUSE_SLACK_KEEP, 'VOICED_FRAME': VOICED_FRAME, 'VOICED_FRAME_LEVEL': VOICED_FRAME_LEVEL,
                   'ROOM_TONE_MIN_RUN': ROOM_TONE_MIN_RUN, 'RMS_FRAME': RMS_FRAME},
     'window': window, 'handles': handles, 'trimHandles': trim_handles, 'alignment': alignment, 'trim': trim,
-    'relativeWords': relative, 'roomTone': room, 'propertyFuzz': fuzz, 'propertyCases': '@@propertyCases@@',
+    'relativeWords': relative, 'roomTone': room, 'lendableSilence': lend, 'lendableSilenceFuzz': lend_stats,
+    'propertyFuzz': fuzz, 'propertyCases': '@@propertyCases@@',
     'multiSegmentFuzz': multi, 'multiSegmentCases': '@@multiSegmentCases@@',
 }
 cases['caseCount'] = len(property_cases) + len(multi_cases) + sum(len(cases[key]) for key in (
-    'window', 'handles', 'trimHandles', 'alignment', 'trim', 'relativeWords', 'roomTone'))
+    'window', 'handles', 'trimHandles', 'alignment', 'trim', 'relativeWords', 'roomTone', 'lendableSilence'))
 # One property case per line keeps the file reviewable.
 text = json.dumps(cases, indent=2)
 for key, sample in (('propertyCases', property_cases), ('multiSegmentCases', multi_cases)):

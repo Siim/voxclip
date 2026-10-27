@@ -15,6 +15,14 @@ public static class VoiceLabPatchConstants
     public const double TTS_TRIM_LEAD = 0.03;
     public const double TTS_TRIM_TAIL = 0.06;
     public const double PAUSE_SLACK_KEEP = 0.15;
+    /// <summary>The silence-fit limits and the length aim (§8.9.1, §8.9.2).</summary>
+    public const double SEAM_PAD_MAX = 0.3;
+    public const double HARD_SEAM_PAD_MAX = 0.060;
+    public const double PAUSE_FLOOR_PHRASE = 0.060;
+    public const double PAUSE_FLOOR_PUNCT = 0.150;
+    public const double PAUSE_GROWTH_MAX = 0.25;
+    public const double LENGTH_AIM_MIN = 0.92;
+    public const double LENGTH_AIM_MAX = 0.97;
     /// <summary>dBFS of a 10 ms RMS frame.</summary>
     public const double VOICED_FRAME = -45.0;
     /// <summary>10^(VOICED_FRAME / 20) rounded to binary64, so no platform pow decides whether a frame is voiced.</summary>
@@ -28,7 +36,10 @@ public enum VoiceLabGeometryErrorCode
 {
     InvalidInput, UnknownWord, ReversedWords, InsertionUnsupported, WindowCrossesWord, SeamFadeOutsideTake, SeamFadeCrossesCut,
     WindowTooShort, OverlapsReplacement, AdjacentReplacement, InsufficientHandle, AlignmentUnavailable, AlignmentMismatch,
-    InvalidWordTiming, NoVoicedAudio, RoomToneUnavailable
+    InvalidWordTiming, NoVoicedAudio, RoomToneUnavailable,
+    /// <summary>A fit plan would edit voiced audio or lose count of its frames. The planner checks every plan before it
+    /// returns it (§8.9.2), so this is a planner fault, never a property of the take.</summary>
+    FitTouchesVoice
 }
 
 /// <summary>Typed refusals from the patch geometry. Nothing here shortens a fade or substitutes a fallback. SegmentId names
@@ -64,11 +75,11 @@ internal static class VoiceLabGeometry
     internal static long FrameSize(double rate) => (long)Math.Max(1, EditingMath.Round(rate * VoiceLabPatchConstants.RMS_FRAME));
     internal static VoiceLabGeometryException Error(VoiceLabGeometryErrorCode code, string? wordId = null) => new(code, wordId);
     /// <summary>Items follow the project transcript rule (ProjectSerialization): unique IDs, finite times, 0 &lt;= start &lt; end
-    /// and starts in transcript order.</summary>
-    internal static void Check(double rate, long totalSamples, AudioEnvelope envelope, IReadOnlyList<TimedWord> items)
+    /// and starts in transcript order. An envelope, when given, is on the source rate with finite, non-negative levels.</summary>
+    internal static void Check(double rate, long totalSamples, AudioEnvelope? envelope, IReadOnlyList<TimedWord> items)
     {
-        if (!double.IsFinite(rate) || rate <= 0 || totalSamples <= 0 || totalSamples >= SampleLimit || envelope.SampleRate != rate ||
-            envelope.Rms.Count == 0 || envelope.Rms.Any(level => !float.IsFinite(level) || level < 0) ||
+        if (!double.IsFinite(rate) || rate <= 0 || totalSamples <= 0 || totalSamples >= SampleLimit ||
+            envelope is not null && (envelope.SampleRate != rate || envelope.Rms.Count == 0 || envelope.Rms.Any(level => !float.IsFinite(level) || level < 0)) ||
             items.Select(item => item.Id).Distinct(StringComparer.Ordinal).Count() != items.Count)
             throw Error(VoiceLabGeometryErrorCode.InvalidInput);
         var previous = 0.0;
@@ -172,6 +183,85 @@ public static class VoiceLabWindowPlanner
         }
     }
 
+    /// <summary>The take a window is placed in, checked as Place and LendableSilence both read it. It is
+    /// media.source.durationSeconds long and ends on sample jsRound(durationSeconds × rate).</summary>
+    sealed record Take(IReadOnlyList<TimedWord> Words, double Duration, double Rate, long Total, double PauseKeepSeconds)
+    {
+        public static Take Of(Project project)
+        {
+            if (project.Transcript is not { } transcript) throw VoiceLabGeometry.Error(VoiceLabGeometryErrorCode.InvalidInput);
+            var edits = project.Edits;
+            var duration = project.Media.Source.DurationSeconds;
+            var rate = (double)(project.Media.Source.Audio?.SampleRate ?? 48000);
+            if (!double.IsFinite(duration) || duration <= 0 || !double.IsFinite(rate) || rate <= 0 || duration * rate >= VoiceLabGeometry.SampleLimit ||
+                !double.IsFinite(edits.PauseThresholdSeconds) || edits.PauseThresholdSeconds <= 0 || !double.IsFinite(edits.PauseKeepSeconds) ||
+                edits.PauseKeepSeconds < 0 || edits.PauseKeepSeconds > 1) throw VoiceLabGeometry.Error(VoiceLabGeometryErrorCode.InvalidInput);
+            return new(transcript.Words, duration, rate, VoiceLabGeometry.Samples(duration, rate), edits.PauseKeepSeconds);
+        }
+    }
+
+    /// <summary>The render scope as VoiceLabOutputPlanner.Build makes it (§8.4): the clip, the scope's enabled replacements, the
+    /// editing segments, which items the scope keeps and which are already re-voiced, and its kept source. Place and
+    /// LendableSilence both read it.</summary>
+    sealed class ScopeSource
+    {
+        readonly Take take;
+        readonly IReadOnlyList<EditSegment> segments;
+        public TimeRange? ClipRange { get; }
+        public IReadOnlyList<SynthPiece> Replacements { get; }
+        public bool[] KeptItem { get; }
+        public bool[] Replaced { get; }
+        /// <summary>The outer half of each replacement's own fades, which a gap seam beside it must leave free.</summary>
+        public MediaInterval[] Reserved { get; }
+
+        public ScopeSource(Project project, VoiceLabOutputScope scope, Take take)
+        {
+            this.take = take;
+            var words = take.Words;
+            var state = Editing(() => EditingEngine.FromProject(project)) ?? throw VoiceLabGeometry.Error(VoiceLabGeometryErrorCode.InvalidInput);
+            state = state with { ActiveClipId = scope.ClipId };
+            if (scope.ClipId is { } clipId)
+            {
+                var clip = state.Clips.FirstOrDefault(item => item.Id == clipId);
+                var clipStart = clip is null ? -1 : IndexOf(words, clip.StartWordId);
+                var clipEnd = clip is null ? -1 : IndexOf(words, clip.EndWordId);
+                if (clipStart < 0 || clipEnd < clipStart) throw VoiceLabGeometry.Error(VoiceLabGeometryErrorCode.InvalidInput);
+                ClipRange = EditingAlgorithms.ClipTimes(words, clipStart, clipEnd);
+            }
+            var replacements = ScopeReplacements(project, ClipRange, take.Rate, take.Duration);
+            Replacements = replacements;
+            segments = Editing(() => EditingEngine.BuildSegments(state, take.Duration));
+            var cutIds = segments.Where(segment => segment.Kind == EditSegmentKind.Word && segment.Cut).Select(segment => segment.Id).ToHashSet(StringComparer.Ordinal);
+            KeptItem = words.Select(word => !cutIds.Contains(word.Id)).ToArray();
+            // An item inside an enabled replacement is already re-voiced: it never bridges, and a take edge never absorbs it.
+            Replaced = words.Select(word => replacements.Any(piece => piece.Start <= word.Start && word.End <= piece.End)).ToArray();
+            Reserved = replacements.Select(piece => new MediaInterval(piece.Range.StartSample - piece.InFade / 2, piece.Range.StartSample))
+                .Concat(replacements.Select(piece => new MediaInterval(piece.Range.EndSample, piece.Range.EndSample + piece.OutFade - piece.OutFade / 2)))
+                .ToArray();
+        }
+
+        /// <summary>Kept source pieces as the output plan builds them: the words and pauses inside every replacement and inside
+        /// the passage, when given, are dropped, and neither the cuts nor the synth ranges (with window) are source.</summary>
+        public IReadOnlyList<MediaInterval> KeptSource((double Start, double End)? passage, MediaInterval? window = null)
+        {
+            var dropped = new List<(double Start, double End)>(Replacements.Select(piece => (piece.Start, piece.End)));
+            if (passage is { } passageRange) dropped.Add(passageRange);
+            var remaining = segments.Where(segment => segment.Kind is not (EditSegmentKind.Word or EditSegmentKind.Pause) ||
+                !dropped.Any(range => segment.Start >= range.Start && segment.End <= range.End)).ToArray();
+            var kept = Editing(() => EditingEngine.BuildEditPlan(remaining, take.Duration, take.Rate, take.PauseKeepSeconds).Kept);
+            var synth = Replacements.Select(piece => piece.Range).ToList();
+            if (window is { } own) synth.Add(own);
+            return VoiceLabGeometry.Subtract(kept, synth);
+        }
+    }
+
+    /// <summary>Editing failures in the take become InvalidInput.</summary>
+    static T Editing<T>(Func<T> body)
+    {
+        try { return body(); }
+        catch (ArgumentException) { throw VoiceLabGeometry.Error(VoiceLabGeometryErrorCode.InvalidInput); }
+    }
+
     /// <summary>The enabled replacements VoiceLabOutputPlanner.Build renders in this scope, by start. One that crosses the
     /// clip's range, has no synth samples, has no selected recipe or overlaps another leaves the scope unrenderable.</summary>
     static IReadOnlyList<SynthPiece> ScopeReplacements(Project project, TimeRange? clipRange, double rate, double duration)
@@ -208,15 +298,11 @@ public static class VoiceLabWindowPlanner
     /// and every seam with a fade keeps its outer half in the kept source beside it (§10.5).</summary>
     public static VoiceLabWindow Place(Project project, VoiceLabOutputScope scope, AudioEnvelope envelope, string firstWordId, string lastWordId)
     {
-        if (project.Transcript is not { } transcript) throw VoiceLabGeometry.Error(VoiceLabGeometryErrorCode.InvalidInput);
-        var words = transcript.Words;
-        var edits = project.Edits;
-        var duration = project.Media.Source.DurationSeconds;
-        var rate = (double)(project.Media.Source.Audio?.SampleRate ?? 48000);
-        if (!double.IsFinite(duration) || duration <= 0 || !double.IsFinite(rate) || rate <= 0 || duration * rate >= VoiceLabGeometry.SampleLimit ||
-            !double.IsFinite(edits.PauseThresholdSeconds) || edits.PauseThresholdSeconds <= 0 || !double.IsFinite(edits.PauseKeepSeconds) ||
-            edits.PauseKeepSeconds < 0 || edits.PauseKeepSeconds > 1) throw VoiceLabGeometry.Error(VoiceLabGeometryErrorCode.InvalidInput);
-        var total = VoiceLabGeometry.Samples(duration, rate);
+        var take = Take.Of(project);
+        var words = take.Words;
+        var duration = take.Duration;
+        var rate = take.Rate;
+        var total = take.Total;
         VoiceLabGeometry.Check(rate, total, envelope, words);
         var a = IndexOf(words, firstWordId);
         if (a < 0) throw VoiceLabGeometry.Error(VoiceLabGeometryErrorCode.UnknownWord, firstWordId);
@@ -224,47 +310,15 @@ public static class VoiceLabWindowPlanner
         if (b < 0) throw VoiceLabGeometry.Error(VoiceLabGeometryErrorCode.UnknownWord, lastWordId);
         if (a > b) throw VoiceLabGeometry.Error(VoiceLabGeometryErrorCode.ReversedWords);
 
-        // The editing state, clip, replacements and segments VoiceLabOutputPlanner builds for this scope.
-        static T Editing<T>(Func<T> body)
-        {
-            try { return body(); }
-            catch (ArgumentException) { throw VoiceLabGeometry.Error(VoiceLabGeometryErrorCode.InvalidInput); }
-        }
-        var state = Editing(() => EditingEngine.FromProject(project)) ?? throw VoiceLabGeometry.Error(VoiceLabGeometryErrorCode.InvalidInput);
-        state = state with { ActiveClipId = scope.ClipId };
-        TimeRange? clipRange = null;
-        if (scope.ClipId is { } clipId)
-        {
-            var clip = state.Clips.FirstOrDefault(item => item.Id == clipId);
-            var clipStart = clip is null ? -1 : IndexOf(words, clip.StartWordId);
-            var clipEnd = clip is null ? -1 : IndexOf(words, clip.EndWordId);
-            if (clipStart < 0 || clipEnd < clipStart) throw VoiceLabGeometry.Error(VoiceLabGeometryErrorCode.InvalidInput);
-            clipRange = EditingAlgorithms.ClipTimes(words, clipStart, clipEnd);
-        }
-        var replacements = ScopeReplacements(project, clipRange, rate, duration);
-        var segments = Editing(() => EditingEngine.BuildSegments(state, duration));
-        var cutIds = segments.Where(segment => segment.Kind == EditSegmentKind.Word && segment.Cut).Select(segment => segment.Id).ToHashSet(StringComparer.Ordinal);
-        var keptItem = words.Select(word => !cutIds.Contains(word.Id)).ToArray();
-        // An item inside an enabled replacement is already re-voiced: it never bridges, and a take edge never absorbs it.
-        var replaced = words.Select(word => replacements.Any(piece => piece.Start <= word.Start && word.End <= piece.End)).ToArray();
+        // The clip, replacements, segments and kept source VoiceLabOutputPlanner builds for this scope.
+        var source = new ScopeSource(project, scope, take);
+        var clipRange = source.ClipRange;
+        var replacements = source.Replacements;
+        var keptItem = source.KeptItem;
+        var replaced = source.Replaced;
+        var reserved = source.Reserved;
         var blocking = keptItem.Zip(replaced, (kept, covered) => kept || covered).ToArray();
-        // The outer half of each replacement's own fades, which a gap seam beside it must leave free.
-        var reserved = replacements.Select(piece => new MediaInterval(piece.Range.StartSample - piece.InFade / 2, piece.Range.StartSample))
-            .Concat(replacements.Select(piece => new MediaInterval(piece.Range.EndSample, piece.Range.EndSample + piece.OutFade - piece.OutFade / 2)))
-            .ToArray();
-        // Kept source pieces as the output plan builds them: the words and pauses inside every replacement and inside the
-        // passage, when given, are dropped, and neither the cuts nor the synth ranges (with window) are source.
-        IReadOnlyList<MediaInterval> KeptSource((double Start, double End)? passage, MediaInterval? window = null)
-        {
-            var dropped = new List<(double Start, double End)>(replacements.Select(piece => (piece.Start, piece.End)));
-            if (passage is { } passageRange) dropped.Add(passageRange);
-            var remaining = segments.Where(segment => segment.Kind is not (EditSegmentKind.Word or EditSegmentKind.Pause) ||
-                !dropped.Any(range => segment.Start >= range.Start && segment.End <= range.End)).ToArray();
-            var kept = Editing(() => EditingEngine.BuildEditPlan(remaining, duration, rate, edits.PauseKeepSeconds).Kept);
-            var synth = replacements.Select(piece => piece.Range).ToList();
-            if (window is { } own) synth.Add(own);
-            return VoiceLabGeometry.Subtract(kept, synth);
-        }
+        IReadOnlyList<MediaInterval> KeptSource((double Start, double End)? passage, MediaInterval? window = null) => source.KeptSource(passage, window);
         // Where the silence before item index begins: the latest end of the items before it.
         double BeforeEnd(int index) => index > 0 ? words.Take(index).Max(word => word.End) : 0;
         // Where the silence before item index ends: the earliest start of the items from it on.
@@ -438,6 +492,44 @@ public static class VoiceLabWindowPlanner
         }
         return new(words[inside[0]].Id, words[inside[^1]].Id, words.Skip(firstIndex).Take(a - firstIndex).Select(word => word.Id).ToArray(),
             words.Skip(b + 1).Take(lastIndex - b).Select(word => word.Id).ToArray(), start, end, leftSeam.Sample, rightSeam.Sample, leftSeam, rightSeam);
+    }
+
+    /// <summary>The §8.9.2 lendable silence of each gap seam of window, a window Place returned for this scope, in seconds
+    /// (source samples over the source rate). It is the kept source contiguous with the seam on its outer side, measured as
+    /// §8.4 step 5 measures it for the final window, with every replacement's outer fade halves taken out, up to the nearest
+    /// kept item outside the window. So it stops at that item, a cut item's reach, a cut pause, a clip edge or another
+    /// replacement's outer fade half. A take edge returns the silence to the nearest word inside the window, in transcript
+    /// seconds; a hard seam returns null. Pass both results directly to VoiceLabFitPlanner.Plan. Only a gap seam can borrow,
+    /// at most this less PAUSE_SLACK_KEEP.</summary>
+    public static (double? Incoming, double? Outgoing) LendableSilence(Project project, VoiceLabOutputScope scope, VoiceLabWindow window)
+    {
+        var take = Take.Of(project);
+        VoiceLabGeometry.Check(take.Rate, take.Total, null, take.Words);
+        if (window.StartSample < 0 || window.StartSample >= window.EndSample || window.EndSample > take.Total ||
+            window.LeftSeam.Sample != window.StartSample || window.RightSeam.Sample != window.EndSample)
+            throw VoiceLabGeometry.Error(VoiceLabGeometryErrorCode.InvalidInput);
+        var source = new ScopeSource(project, scope, take);
+        var kept = VoiceLabGeometry.Subtract(source.KeptSource((window.Start, window.End), new MediaInterval(window.StartSample, window.EndSample)),
+            source.Reserved);
+        var before = take.Words.Where((word, index) => source.KeptItem[index] && word.End <= window.Start)
+            .Select(word => VoiceLabGeometry.Samples(word.End, take.Rate)).ToArray();
+        var after = take.Words.Where((word, index) => source.KeptItem[index] && word.Start >= window.End)
+            .Select(word => VoiceLabGeometry.Samples(word.Start, take.Rate)).ToArray();
+        double? Lend(VoiceLabSeamPlacement seam, bool incoming)
+        {
+            if (seam.Kind == VoiceLabSeamKind.None)
+            {
+                var words = take.Words.Where(word => word.Kind == WordKind.Word && word.Start >= window.Start && word.End <= window.End);
+                return incoming ? Math.Max(0, words.Select(word => word.Start).DefaultIfEmpty(window.Start).Min() - window.Start)
+                    : Math.Max(0, window.End - words.Select(word => word.End).DefaultIfEmpty(window.End).Max());
+            }
+            if (seam.Kind != VoiceLabSeamKind.Gap) return null;
+            var beside = kept.Where(piece => (incoming ? piece.EndSample : piece.StartSample) == seam.Sample).ToArray();
+            if (beside.Length == 0) return 0;
+            var stop = incoming ? before.Append(beside[0].StartSample).Max() : after.Append(beside[0].EndSample).Min();
+            return Math.Max(0, incoming ? seam.Sample - stop : stop - seam.Sample) / take.Rate;
+        }
+        return (Lend(window.LeftSeam, true), Lend(window.RightSeam, false));
     }
 
     static int IndexOf(IReadOnlyList<TimedWord> words, string id)

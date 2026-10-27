@@ -40,7 +40,7 @@ internal sealed unsafe class VoiceLabTempoTrack : IDisposable
             preHandleFrames > asset.TrimStartFrame || postHandleFrames > asset.FrameCount - asset.TrimEndFrame)
             throw new VoiceLabTempoException();
         VoiceLabTempo.RequireCapability(() => ffmpeg.avfilter_get_by_name("atempo") != null);
-        VoiceLabTempo.RequireVerifiedPlacement();
+        VoiceLabTempo.RefuseNonunityFit();
         var inputStart = asset.TrimStartFrame - preHandleFrames;
         var inputEnd = asset.TrimEndFrame + postHandleFrames;
         var expected = checked((long)Math.Round((inputEnd - inputStart) * asset.Stretch,

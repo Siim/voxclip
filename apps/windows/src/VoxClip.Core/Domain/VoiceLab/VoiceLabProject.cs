@@ -126,7 +126,7 @@ public static class VoiceLabProject
             Require(double.IsFinite(audio.TrimStart) && double.IsFinite(audio.TrimEnd) && double.IsFinite(audio.Stretch) &&
                 double.IsFinite(audio.GainDb) && audio.TrimStart >= 0 && audio.TrimEnd > audio.TrimStart &&
                 audio.TrimEnd <= asset!.DurationSeconds && audio.Stretch > 0 &&
-                Math.Abs((audio.TrimEnd - audio.TrimStart) * audio.Stretch - segment.OutDuration) <= 1.0 / asset.SampleRate,
+                VoiceLabRenderValidation.ContentMatchesDuration(audio, segment.OutDuration, asset.SampleRate),
                 VoiceLabProjectErrorCode.InvalidSegment);
             Require(segment.Candidates.Count > 0 && segment.SelectedCandidateIndex >= 0 && segment.SelectedCandidateIndex < segment.Candidates.Count &&
                 segment.Candidates[segment.SelectedCandidateIndex].AssetId == audio.AssetId &&

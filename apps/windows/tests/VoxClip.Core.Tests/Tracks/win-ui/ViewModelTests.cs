@@ -134,6 +134,44 @@ public sealed class ViewModelTests
         var model = Demo(); model.Select(1); model.Correct("corrected"); model.CutSelection(); model.Apply(new EditOperation.RestoreCuts());
         Assert.Equal("corrected", model.DisplayText(model.Words[1])); Assert.Empty(model.State!.CutWordIds);
     }
+    [Theory]
+    [InlineData(0xFFFE)]
+    [InlineData(0xD800)]
+    public void CorrectionPassesPastedNoncharactersUnchangedToTheCoreReducer(int codeUnit)
+    {
+        EditOperation.Correct? received = null;
+        var model = new EditorViewModel(Fixture(), (state, operation) =>
+        {
+            received = Assert.IsType<EditOperation.Correct>(operation);
+            return state;
+        }, DemoProject.Summarize);
+        var pasted = "  pasted " + (char)codeUnit + " e" + (char)0x0301 + "  ";
+        model.Select(1);
+        var exception = Record.Exception(() => model.Correct(pasted));
+        Assert.Null(exception);
+        Assert.NotNull(received);
+        Assert.Equal(model.Words[1].Id, received.Id);
+        Assert.Equal(pasted, received.Text);
+    }
+    [Fact]
+    public void CorrectionUsesTheCoreTrimAndNfcRules()
+    {
+        var model = new EditorViewModel(Fixture());
+        model.Select(1);
+        model.Correct("  cafe" + (char)0x0301 + "  ");
+        Assert.Equal("caf" + (char)0x00E9, model.State!.Corrections[model.Words[1].Id]);
+    }
+    [Theory]
+    [InlineData(0xFFFE, 0xFFFE)]
+    [InlineData(0xD800, 0xFFFD)]
+    public void PastedInvalidNormalizationInputCorrectsThroughTheProductionReducer(int input, int expected)
+    {
+        var model = new EditorViewModel(Fixture());
+        model.Select(1);
+        model.Correct("  pasted " + (char)input + " e" + (char)0x0301 + "  ");
+        Assert.Equal("pasted " + (char)expected + " " + (char)0x00E9, model.State!.Corrections[model.Words[1].Id]);
+        Assert.Equal("", model.Notice);
+    }
     [Fact]
     public void PauseIdsMatchPersistedContract()
     {
@@ -285,7 +323,7 @@ public sealed class ViewModelTests
     {
         // Design §11.1: these act from the sidebar pane while an editor is attached; single-letter keys and text shortcuts
         // (Ctrl+A, Ctrl+C, Ctrl+F) stay with the editor.
-        Assert.Equal(["Ctrl+Z", "Ctrl+Y", "Ctrl+Shift+Z", "Ctrl+K", "Ctrl+E", "Ctrl+Shift+K", "Ctrl+Shift+I", "Ctrl+Shift+U", "Ctrl+Shift+P", "Ctrl+Shift+R", "F1"], ShortcutPolicy.PaneGestures);
+        Assert.Equal(["Ctrl+Z", "Ctrl+Y", "Ctrl+Shift+Z", "Ctrl+K", "Ctrl+R", "Ctrl+E", "Ctrl+Shift+K", "Ctrl+Shift+I", "Ctrl+Shift+U", "Ctrl+Shift+P", "Ctrl+Shift+R", "F1"], ShortcutPolicy.PaneGestures);
         // EditorPage files each accelerator under VirtualKey.ToString() and its modifiers; MainWindow parses the same strings.
         Assert.Equal("Ctrl+Shift+Z", ShortcutPolicy.Gesture("Z", true, true));
         Assert.Equal("Ctrl+E", ShortcutPolicy.Gesture("E", true, false));
@@ -388,6 +426,32 @@ public sealed class ViewModelTests
             Assert.Equal(words[index].TrimEnd(), rendered.Substring(starts[index], words[index].TrimEnd().Length));
         Assert.Equal(starts[3], starts[4]);
     }
+
+    [Fact]
+    public void HighlightOffsetsIncludeBadgesAiChipsEndMarkersAndCutPauses()
+    {
+        string[] words = ["Tere! ", "👩🏽‍💻 ", "é ", "שלום "];
+        string?[] pauses = [null, " ‖ pause 1.2s ", null, null];
+        int[] before = [1, 2, 0, 0];
+        int[] after = [0, 1, 1, 1];
+        var starts = TranscriptTextRanges.Starts(words, pauses, before, after);
+        var rendered = string.Concat(words.Select((word, index) => new string('◆', before[index]) + word + pauses[index] + new string('◆', after[index])));
+        for (var index = 0; index < words.Length; index++)
+            Assert.Equal(words[index], rendered.Substring(starts[index], words[index].Length));
+        Assert.Throws<ArgumentException>(() => TranscriptTextRanges.Starts(words, pauses, [1]));
+    }
+
+    [Theory]
+    [InlineData(20, 45, 400, false, false, true)]
+    [InlineData(120, 145, 400, true, false, true)]
+    [InlineData(120, 145, 400, true, true, false)]
+    [InlineData(320, 345, 360, true, false, false)]
+    public void SelectionBarAvoidsSelectedLines(double top, double bottom, double viewport, bool above, bool below, bool expected)
+        => Assert.Equal(expected, SelectionBarLayout.Below(top, bottom, viewport, above, below));
+
+    [Fact]
+    public void SelectionBarStaysHiddenWhenNeitherEdgeHasRoom()
+        => Assert.Null(SelectionBarLayout.Below(0, 390, 400, false, false));
 
     /// <summary>Design §5: "1:37.7 / 2:26.0", with no scope prefix; the elapsed time stays inside the scope.</summary>
     [Theory]

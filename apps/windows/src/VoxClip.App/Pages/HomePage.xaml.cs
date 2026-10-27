@@ -239,12 +239,10 @@ public sealed partial class HomePage : Page
     {
         if (window is not null && sender is FrameworkElement { Tag: string path }) await window.OpenPathAsync(path, ShellPath.HomeTileOpen);
     }
-    /// <summary>The Open link beside a missing or unreadable video opens the project in place through the save-before-leaving
-    /// boundary, and the editor says which file it can't find (design §13 "Media missing"). Design §7's Locate… also relinks;
-    /// Windows has no relink flow yet, so the link is named for what it does.</summary>
+    /// <summary>Locate opens the project through its save-before-leaving boundary, then offers the editor's video picker.</summary>
     private async void OpenMissingClicked(object sender, RoutedEventArgs args)
     {
-        if (window is not null && sender is FrameworkElement { Tag: string path }) await window.OpenPathAsync(path, ShellPath.HomeTileOpen);
+        if (window is not null && sender is FrameworkElement { Tag: string path }) await window.LocateProjectAsync(path);
     }
     private void CancelTranscriptionClicked(object sender, RoutedEventArgs args)
     {

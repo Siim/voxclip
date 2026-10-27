@@ -62,7 +62,9 @@ public sealed class VoiceLabAssetTests
                 VoiceLabOutputPlanner.Build(disabled, VoiceLabOutputScope.Full), root, TestContext.Current.CancellationToken));
             var selected = VoiceLabProject.SelectCandidate(project, "vl-passage", 1);
             await Error(VoiceLabAssetErrorCode.InvalidSelection, () => VoiceLabAssets.PrepareAsync(selected, plan, root));
-            var prepared = await VoiceLabAssets.PrepareAsync(project, plan, root, TestContext.Current.CancellationToken);
+            var scratchRoot = System.IO.Path.Combine(root, "scratch");
+            Directory.CreateDirectory(scratchRoot);
+            var prepared = await VoiceLabAssets.PrepareAsync(project, plan, root, scratchRoot, TestContext.Current.CancellationToken);
             using var handle = prepared["vl-passage"];
             Assert.Equal("asset-one", handle.AssetId);
             Assert.Equal(24_000, handle.FrameCount);
@@ -71,9 +73,12 @@ public sealed class VoiceLabAssetTests
             Assert.Equal(0, handle.TrimStartFrame);
             Assert.Equal(24_000, handle.TrimEndFrame);
             Assert.Equal(File.ReadAllBytes(file), File.ReadAllBytes(handle.Path));
+            Assert.Equal(scratchRoot, System.IO.Path.GetDirectoryName(System.IO.Path.GetDirectoryName(handle.Path)));
             File.WriteAllText(file, "changed");
             Assert.Equal(Wave(), File.ReadAllBytes(handle.Path));
             Assert.True(File.Exists(file));
+            handle.Dispose();
+            Assert.Empty(Directory.EnumerateFileSystemEntries(scratchRoot));
         }
         finally { Directory.Delete(root, true); }
     }

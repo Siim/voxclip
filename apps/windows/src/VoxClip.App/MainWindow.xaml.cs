@@ -76,6 +76,7 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
         Root.KeyboardAccelerators.Add(Accelerator(VirtualKey.Left, VirtualKeyModifiers.Menu, () => ShowHome(ShellPath.Back)));
         Root.KeyboardAccelerators.Add(Accelerator(VirtualKey.Number1, VirtualKeyModifiers.Control, () => ShowHome(ShellPath.HomeShortcut)));
         Root.KeyboardAccelerators.Add(Accelerator(VirtualKey.Number2, VirtualKeyModifiers.Control, () => ShowScope(null, via: ShellPath.EditorShortcut)));
+        Root.KeyboardAccelerators.Add(Accelerator((VirtualKey)191, VirtualKeyModifiers.Control, () => _ = ShowKeyboardHelpAsync()));
         Root.KeyboardAccelerators.Add(Accelerator(VirtualKey.W, VirtualKeyModifiers.Control, () => _ = RequestCloseAsync(ShellPath.CloseShortcut)));
         AppWindow.Closing += (appWindow, args) =>
         {
@@ -322,6 +323,11 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
     }
 
     internal void SetProjectPath(string path) => ProjectPath = path;
+    internal async Task LocateProjectAsync(string path)
+    {
+        await OpenPathAsync(path, ShellPath.HomeTileOpen);
+        if (string.Equals(ProjectPath, path, StringComparison.OrdinalIgnoreCase) && editor is not null) await editor.LocateAsync();
+    }
     private double? rightColumnWidth;
     /// <summary>The right column width the user chose with the splitter (delta §3.3), from ui.rightColumnWidth and kept to
     /// the column's range, or null while the column follows the window. It holds across projects.</summary>
@@ -424,16 +430,21 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
     }
     private void Watch(EditorPage? previous, EditorPage next)
     {
-        if (previous?.ViewModel is { } old) { old.Changed -= EditorEdited; old.SelectionChanged -= EditorChanged; old.PropertyChanged -= EditorPropertyChanged; }
+        if (previous?.ViewModel is { } old) { old.Changed -= EditorEdited; old.SelectionChanged -= EditorChanged; old.PropertyChanged -= EditorPropertyChanged; old.ExportStatesChanged -= EditorChanged; }
         if (previous is not null) { previous.FindClips.Changed -= EditorChanged; previous.FindClips.Found -= SuggestionsFound; previous.FindClips.CalloutShown -= CalloutShown; }
         next.FindClips.Changed += EditorChanged;
         next.FindClips.Found += SuggestionsFound;
         next.FindClips.CalloutShown += CalloutShown;
         next.ViewModel.Changed += EditorEdited;
+        next.ViewModel.ExportStatesChanged += EditorChanged;
         next.ViewModel.SelectionChanged += EditorChanged;
         next.ViewModel.PropertyChanged += EditorPropertyChanged;
     }
     private void EditorChanged(object? sender, EventArgs args) => UpdateShell();
+    private async void RetryExportClicked(object sender, RoutedEventArgs args)
+    {
+        if (editor is { } current && ReferenceEquals(ContentFrame.Content, current)) await current.RetryExportAsync((sender as FrameworkElement)?.Tag as string);
+    }
     /// <summary>New suggestions appear under Suggested and the first takes focus without being selected (design §6.2).</summary>
     private void SuggestionsFound(object? sender, string clipId) => FocusRow(Shell.Rows.FirstOrDefault(row => row.ClipId == clipId));
     /// <summary>An edit can change the take's first kept words, so the Full take thumbnail follows once edits settle.</summary>
@@ -726,10 +737,17 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
         else if (ContentFrame.Content is HomePage shown) regions.Add(([shown], () => FocusManager.FindFirstFocusableElement(shown) as Control));
         var focused = FocusManager.GetFocusedElement(Root.XamlRoot) as DependencyObject;
         var current = Math.Max(0, regions.FindIndex(region => region.Areas.Any(area => InputState.DescendsFrom(focused, area))));
-        var step = InputState.Down(VirtualKey.Shift) ? -1 : 1;
-        for (var tried = 1; tried < regions.Count + 1; tried++)
-            if (regions[((current + step * tried) % regions.Count + regions.Count) % regions.Count].Target() is { } target && target.Focus(FocusState.Keyboard)) break;
+        foreach (var index in FocusCycle.NextIndices(current, regions.Count, InputState.Down(VirtualKey.Shift)))
+            if (regions[index].Target() is { IsEnabled: true, Visibility: Visibility.Visible } target && target.Focus(FocusState.Keyboard)) break;
         args.Handled = true;
+    }
+    internal async Task ShowKeyboardHelpAsync()
+    {
+        await new ContentDialog
+        {
+            XamlRoot = Root.XamlRoot, Title = "Keyboard shortcuts", CloseButtonText = "Done",
+            Content = new ScrollViewer { MaxHeight = 520, Content = new TextBlock { Text = KeyboardHelp.Text, TextWrapping = TextWrapping.Wrap } }
+        }.ShowAsync();
     }
 #if DEBUG
     internal string DebugNotice => WindowNotice.IsOpen ? WindowNotice.Message : "";

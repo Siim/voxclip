@@ -629,8 +629,6 @@ public sealed partial class VoiceLabAudioMixerTests
     public async Task NativeFinalUnityBoundaryStopsRealFitBeforeSnapshotOrOutput(double stretch, bool accepted)
     {
         await NativeTest.RequireAsync(windows: true);
-        // A build without atempo refuses with a different reason before reaching the timing guard.
-        if (!accepted) NativeTest.RequireFilter("atempo");
         await ShippingRuntimeIdentityTests.MatchShippingReportWhenEvidencePresentAsync();
         var (project, snapshot, root) = await NativeCase("passage-render-v3.voxclip", false,
             storedStretch: stretch);
@@ -638,12 +636,12 @@ public sealed partial class VoiceLabAudioMixerTests
         {
             var paid = Path.Combine(root, project.Id, "asset-one.wav");
             var paidHash = SHA256.HashData(File.ReadAllBytes(paid));
-            var scratchBefore = Directory.GetDirectories(Path.GetTempPath(), "voxclip-voice-*")
-                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var scratchRoot = Path.Combine(root, "scratch");
+            Directory.CreateDirectory(scratchRoot);
             if (accepted)
             {
                 var output = Path.Combine(root, "unity.wav");
-                await EditedWaveWriter.WriteAsync(snapshot, output, TestContext.Current.CancellationToken, true);
+                await EditedWaveWriter.WriteAsync(snapshot, output, TestContext.Current.CancellationToken, true, scratchRoot);
                 Assert.Equal(44 + 336_000L * 8, new FileInfo(output).Length);
                 Assert.InRange(WaveFrequency(output, 2.8), 630, 690);
             }
@@ -651,12 +649,11 @@ public sealed partial class VoiceLabAudioMixerTests
             {
                 var output = Path.Combine(root, "refused.wav");
                 var refusal = await Assert.ThrowsAsync<VoiceLabTempoException>(() =>
-                    EditedWaveWriter.WriteAsync(snapshot, output, TestContext.Current.CancellationToken, true));
-                Assert.Contains("unverified body and seam timing", refusal.Message, StringComparison.Ordinal);
+                    EditedWaveWriter.WriteAsync(snapshot, output, TestContext.Current.CancellationToken, true, scratchRoot));
+                Assert.Contains("which VoxClip does not support", refusal.Message, StringComparison.Ordinal);
                 Assert.False(File.Exists(output)); Assert.False(File.Exists(output + ".partial"));
             }
-            Assert.DoesNotContain(Directory.GetDirectories(Path.GetTempPath(), "voxclip-voice-*"),
-                path => !scratchBefore.Contains(path));
+            Assert.Empty(Directory.EnumerateFileSystemEntries(scratchRoot));
             Assert.Equal(paidHash, SHA256.HashData(File.ReadAllBytes(paid)));
         }
         finally { Directory.Delete(root, true); }

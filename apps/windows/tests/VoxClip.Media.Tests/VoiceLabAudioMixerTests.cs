@@ -753,6 +753,39 @@ public sealed partial class VoiceLabAudioMixerTests
     }
 
     [Fact]
+    public async Task SessionCapacityUsesItsScratchVolumeBeforeCopyingPaidAudio()
+    {
+        var (project, root) = Asset(Fixture("passage-render-v3.voxclip"));
+        try
+        {
+            var scratch = Path.Combine(root, "scratch");
+            Directory.CreateDirectory(scratch);
+            var prepared = VoiceLabRenderContract.Prepare(project, VoiceLabOutputScope.Full, VoiceLabLabelPosition.TopLeft);
+            var input = VoiceLabRenderInput.Capture(project, prepared, root);
+            var reference = project.Media.Source;
+            var media = new MediaInfo(reference.AbsolutePath, reference.DurationSeconds, reference.Video, reference.Audio,
+                new(640, 360), "h264", "aac", false, 0, 1, 0);
+            var plan = new EditPlan(1000, 7000, [], [new MediaInterval(0, 7000)], 7000, []);
+            var snapshot = new ComposeSnapshot(media, plan, null, new(new(640, 360), 30, 4_000_000)) { VoiceLab = input };
+            var queried = new List<string>();
+            VoiceLabCapacity.VolumeIdentity.Value = path => path.StartsWith(scratch, StringComparison.Ordinal) ? "scratch-volume" : "other-volume";
+            VoiceLabCapacity.AvailableBytes.Value = volume => { queried.Add(volume); return volume == "scratch-volume" ? 0 : long.MaxValue; };
+            var error = await Assert.ThrowsAsync<VoxClipException>(() => VoiceLabRenderSession.PrepareAsync(snapshot,
+                TestContext.Current.CancellationToken, scratch));
+            Assert.Equal(VoxClipErrorCode.DiskFull, error.Code);
+            Assert.Equal(["scratch-volume"], queried);
+            Assert.Empty(Directory.EnumerateFileSystemEntries(scratch));
+            Assert.True(File.Exists(Path.Combine(root, project.Id, "asset-one.wav")));
+        }
+        finally
+        {
+            VoiceLabCapacity.AvailableBytes.Value = null;
+            VoiceLabCapacity.VolumeIdentity.Value = null;
+            Directory.Delete(root, true);
+        }
+    }
+
+    [Fact]
     public void CapacityAddsPeakStagesOnTheSameVolumeAndRejectsOverflow()
     {
         var directory = Directory.CreateTempSubdirectory("voxclip-capacity-test-").FullName;

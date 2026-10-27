@@ -383,25 +383,25 @@ struct VoiceLabCompositionTests {
                                    videoBitrate: 2_000_000), voiceLab: input)
             let paid = caseRoot.appendingPathComponent(project.id).appendingPathComponent("asset-one.wav")
             let paidBytes = try Data(contentsOf: paid)
-            let before = try Set(FileManager.default.contentsOfDirectory(atPath: FileManager.default.temporaryDirectory.path)
-                .filter { $0.hasPrefix("voxclip-voice-") || $0.hasPrefix("voxclip-mix-") })
-            await #expect(throws: VoiceLabRenderCapabilityError.pitchPreservingFitUnverified) {
-                _ = try await CompositionBuilder().build(request)
+            // The case's own scratch folder: no other test's render can land in it.
+            let scratch = caseRoot.appendingPathComponent("scratch")
+            try FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: false)
+            await #expect(throws: VoiceLabRenderCapabilityError.nonunityFitUnsupported) {
+                _ = try await CompositionBuilder(scratchRoot: scratch).build(request)
             }
             let wav = caseRoot.appendingPathComponent("edited.wav")
-            await #expect(throws: VoiceLabRenderCapabilityError.pitchPreservingFitUnverified) {
-                _ = try await AVExporter().stageEditedAudio(request, to: wav)
+            await #expect(throws: VoiceLabRenderCapabilityError.nonunityFitUnsupported) {
+                _ = try await AVExporter(capacityProvider: DiskCapacity.systemVolume, scratchRoot: scratch).stageEditedAudio(request, to: wav)
             }
             let video = caseRoot.appendingPathComponent("marked.mp4")
             let sidecar = caseRoot.appendingPathComponent("marked.mp4.provenance.json")
             let oldVideo = Data("old video".utf8), oldSidecar = Data("old sidecar".utf8)
             try oldVideo.write(to: video); try oldSidecar.write(to: sidecar)
-            await #expect(throws: VoiceLabRenderCapabilityError.pitchPreservingFitUnverified) {
-                _ = try await AVExporter(appVersion: "0.1.0").export(ExportJob(render: request, outputURL: video)) { _ in }
+            await #expect(throws: VoiceLabRenderCapabilityError.nonunityFitUnsupported) {
+                _ = try await AVExporter(capacityProvider: DiskCapacity.systemVolume, scratchRoot: scratch, appVersion: "0.1.0")
+                    .export(ExportJob(render: request, outputURL: video)) { _ in }
             }
-            let after = try Set(FileManager.default.contentsOfDirectory(atPath: FileManager.default.temporaryDirectory.path)
-                .filter { $0.hasPrefix("voxclip-voice-") || $0.hasPrefix("voxclip-mix-") })
-            #expect(before == after)
+            #expect(try FileManager.default.contentsOfDirectory(atPath: scratch.path).isEmpty)
             #expect(try Data(contentsOf: paid) == paidBytes)
             #expect(try Data(contentsOf: video) == oldVideo)
             #expect(try Data(contentsOf: sidecar) == oldSidecar)
@@ -460,7 +460,7 @@ struct VoiceLabCompositionTests {
                 let request = RenderRequest(sourceURL: media, plan: try legacyPlan(project),
                     output: OutputSpec(size: PixelSize(width: 640, height: 360), fps: 30,
                                        videoBitrate: 2_000_000), voiceLab: input)
-                #expect(throws: VoiceLabRenderCapabilityError.pitchPreservingFitUnverified) {
+                #expect(throws: VoiceLabRenderCapabilityError.nonunityFitUnsupported) {
                     try VoiceLabRenderPreflight.validate(request)
                 }
                 let asset = try #require(VoiceLabAssets.prepare(project: project, plan: input.prepared.outputPlan,
@@ -862,16 +862,15 @@ struct VoiceLabCompositionTests {
         let wavBytes = try PCMFile.plannedBytes(frames: request.timeline.outputSamples, channels: 2, bits: 32)
         let scratch = try VoiceLabAudioRenderer.scratchBytes(input: input)
         let stageOnlyFree = scratch + wavBytes + Int64(oldWAV.count) + 1_000_000
-        let before = try Set(FileManager.default.contentsOfDirectory(atPath: FileManager.default.temporaryDirectory.path)
-            .filter { $0.hasPrefix("voxclip-voice-") || $0.hasPrefix("voxclip-mix-") })
+        // The test's own scratch folder: no other test's render can land in it.
+        let scratchRoot = root.appendingPathComponent("scratch")
+        try FileManager.default.createDirectory(at: scratchRoot, withIntermediateDirectories: false)
         do {
-            try await AVExporter(capacityProvider: { _ in .init(id: 1, freeBytes: stageOnlyFree) },
+            try await AVExporter(capacityProvider: { _ in .init(id: 1, freeBytes: stageOnlyFree) }, scratchRoot: scratchRoot,
                                  appVersion: "0.1.0").preflightCombinedExport(job, editedAudioURL: wav)
             Issue.record("Whole transaction must exceed WAV plus scratch capacity")
         } catch VoxClipError.diskFull { /* expected before staging */ }
-        let after = try Set(FileManager.default.contentsOfDirectory(atPath: FileManager.default.temporaryDirectory.path)
-            .filter { $0.hasPrefix("voxclip-voice-") || $0.hasPrefix("voxclip-mix-") })
-        #expect(before == after)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: scratchRoot.path).isEmpty)
         #expect(try Data(contentsOf: video) == oldVideo)
         #expect(try Data(contentsOf: wav) == oldWAV)
         #expect(!FileManager.default.fileExists(atPath: video.path + ".partial"))

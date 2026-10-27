@@ -1,5 +1,6 @@
 using System.Text.Json;
 using VoxClip.Core.Domain.Shared;
+using VoxClip.App.ViewModels;
 
 namespace VoxClip.App.Services;
 
@@ -18,9 +19,5 @@ internal static class ProjectFactory
             new(new Dictionary<string, string>()), new([]), new([])) { Title = Path.GetFileNameWithoutExtension(path) };
     }
     internal static string AvailablePath(string requested)
-    {
-        var path = requested;
-        for (var suffix = 2; File.Exists(path); suffix++) path = Path.Combine(Path.GetDirectoryName(requested)!, Path.GetFileNameWithoutExtension(requested) + " " + suffix + Path.GetExtension(requested));
-        return path;
-    }
+        => ExportSelection.AvailablePath(requested);
 }

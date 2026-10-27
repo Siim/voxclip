@@ -13,6 +13,14 @@ Both test suites SHOULD also load each file, save it, reload it, and check that 
 
 Validate them with `python3 tools/schemas/validate.py` (CI runs it). After any change to these files, run `npm --prefix tools/fixtures/editing run generate` so `shared/fixtures/editing/projects/*.json` stays in step.
 
+## Relink decisions
+
+Regenerate `relink-cases.json` with `python3 tools/fixtures/projects/generate_relink.py`; run it twice and compare SHA-256. Expected decisions are derived the way both Cores compute them: `seconds × 1000` in binary64, then jsRound (floor, plus one at a remainder of 0.5 or more), independently of both native implementations. Review regenerated changes as behavior changes; do not hand-edit expectations.
+
+Both Core suites replay all 12 cases: the original seven identity/confirmation/boundary cases plus 10.00 against 10.05 and 9.95 (accepted), 10.051 and 9.949 (refused), and `binary64-half-millisecond`: 0.551 against 0.5005 is refused, because 0.5005 × 1000 is just below 500.5 in binary64 and rounds to 500 (an exact decimal oracle would accept it). The legacy `outside` case (0.25 against 0.3001) is now accepted: both durations round onto grid values 250 and 300, whose difference is exactly 50. This intentional boundary-only Mac behavior change replaces its old floating-subtraction comparison.
+
+A size/key match ignores probe duration. Different files require confirmation and the inclusive grid rule of editing §10.3. Accepted differences replace size, key and track facts, not source duration, transcript or edits. The store sets the new absolute path; the safe writer recomputes the relative path on save.
+
 ## Legacy text normalization
 
 `tools/fixtures/projects/generate_normalization.py` writes `normalization/legacy-nfc.voxclip` and `normalization/legacy-nfc.expected.json`. The input has non-NFC LV+T word text and a correction, inert jamo boundary text, and a composed Kirat Rai letter. Both project loaders normalize word text and corrections in memory before text validation, silently; their serializers write exactly the same model as the expected file. Ids and source times stay fixed. Run the generator twice to check reproducibility.

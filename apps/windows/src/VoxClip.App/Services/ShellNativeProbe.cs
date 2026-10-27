@@ -42,6 +42,11 @@ internal static class ShellNativeProbe
             var editor = window.DebugEditor;
             Require(editor is not null && window.CurrentScreen == "editor" && window.ProjectPath == first, "first project did not open");
             Require(window.DebugSelectedRow?.Kind == SidebarKind.FullTake, "Full take is not selected after opening");
+            Require(editor!.ViewModel.IsReadOnly && !editor.ViewModel.CanExport, "missing fixture media was not read-only");
+            checks.Add("missing media is read-only; remaining navigation checks use a synthetic resolved-media state");
+            editor.ViewModel.SetMediaUnavailable(false);
+            await TimelineNativeProbe.RunAsync(window, editor.ViewModel.Project, checks);
+            await TranscriptNativeProbe.RunAsync(window, editor.ViewModel.Project, checks);
             editor!.ViewModel.Select(0); editor.ViewModel.Select(1, true);
             Require(editor.ViewModel.MakeClip() is not null, "manual clip was refused");
             await Task.Delay(1200); // let the 500 ms autosave settle before injecting failures
@@ -79,7 +84,7 @@ internal static class ShellNativeProbe
                 await window.DebugInvokeAsync(recent!);
             Require(ReferenceEquals(window.DebugEditor, editor) && window.ProjectPath == first, "a failed save let Recent replace the first project");
             Require(!editor.ViewModel.IsLeaving && editor.ViewModel.CanExport, "the first editor stayed frozen after the failed save");
-            Require(editor.ViewModel.Notice.StartsWith("Could not save this project.", StringComparison.Ordinal), "the failed save did not explain itself");
+            Require(editor.ViewModel.Notice.StartsWith("Couldn't save this project.", StringComparison.Ordinal), "the failed save did not explain itself");
             checks.Add("Recent with an injected save failure kept the first editor, editable, with the save notice");
 
             Require(window.CurrentScreen == "editor", "the refused leave stayed on Home, so its notice was hidden");
@@ -90,7 +95,7 @@ internal static class ShellNativeProbe
                 await window.DebugRequestCloseAsync();
             Require(App.Windows.Contains(window) && ReferenceEquals(window.DebugEditor, editor) && window.CurrentScreen == "editor",
                 "a refused close from Home closed the window or left the editor hidden");
-            Require(editor.ViewModel.Notice.StartsWith("Could not save this project.", StringComparison.Ordinal), "the refused close did not explain itself");
+            Require(editor.ViewModel.Notice.StartsWith("Couldn't save this project.", StringComparison.Ordinal), "the refused close did not explain itself");
             checks.Add("closing from Home with an injected save failure kept the window and showed the editor with its notice");
 
             window.DebugSelect(window.Shell.Home);
@@ -102,6 +107,7 @@ internal static class ShellNativeProbe
             checks.Add("Recent saved the first project, then replaced it in place");
 
             var replaced = window.DebugEditor!;
+            replaced.ViewModel.SetMediaUnavailable(false);
             replaced.ViewModel.Select(2); replaced.ViewModel.Correct("probe-drop");
             await Task.Delay(1200);
             await using (new FileStream(second, FileMode.Open, FileAccess.Read, FileShare.None))

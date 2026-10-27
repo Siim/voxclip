@@ -175,6 +175,85 @@ import Testing
         #expect(throws: VoiceLabProjectError.invalidFadeHandles) { try VoiceLabProject.validate(withHandles(239, 240)) }
         #expect(throws: VoiceLabProjectError.invalidFadeHandles) { try VoiceLabProject.validate(withHandles(240, 239)) }
     }
+    @Test func unityDurationBaselines() throws {
+        let cases = try JSONSerialization.jsonObject(with: FixtureLoader.data("fixtures/voice-lab/render-cases.json")) as! [String: [String: Any]]
+        for name in ["unity-binary64-residual-eight", "unity-binary64-residual-nine", "unity-legacy-source-grid-only", "unity-inconsistent-alternate"] {
+            let vector = try #require(cases[name])
+            let range = vector["replace"] as! [Double]
+            let rate = (vector["sourceRate"] as! NSNumber).doubleValue
+            let assetRate = (vector["assetRate"] as! NSNumber).intValue
+            let frames = (vector["outputFrames"] as! NSNumber).int64Value
+            let duration = vector["outDuration"] as! Double
+            var project = try fixture()
+            project.media.source.audio?.sampleRate = Int(rate)
+            project.transcript?.words = [TimedWord(id: "w4", text: "source", kind: .word, start: 2, end: 2.4)]
+            project.edits.clips = []; project.edits.activeClipId = nil
+            var segment = project.voiceLab.segments[0]
+            segment.replace = VoiceLabReplacement(start: range[0], end: range[1], firstWordId: "w4", lastWordId: "w4")
+            var recipe = try #require(segment.candidates[0].recipe)
+            let halfAssetRate: Int = assetRate / 2
+            let trimStartFrame: Int64 = Int64(halfAssetRate)
+            let trimEndFrame = trimStartFrame + frames
+            let trimEnd = Double(trimEndFrame) / Double(assetRate)
+            recipe.audio = VoiceLabAudio(assetId: recipe.audio.assetId, trimStart: 0.5, trimEnd: trimEnd)
+            recipe.outDuration = duration
+            recipe.words = [VoiceLabWord(text: "Patch", start: 0.1, end: 0.7, synthetic: true)]
+            recipe.qa.transcriptTokens = 1
+            recipe.roomTone = VoiceLabRoomTone(sourceStartSample: 0, sourceEndSample: VoiceLabGeometry.samples(0.5, rate), gainDb: 0)
+            let start = VoiceLabGeometry.samples(range[0], rate), end = VoiceLabGeometry.samples(range[1], rate)
+            let windowSamples: Int64 = end - start
+            let windowSampleCount: Double = Double(windowSamples)
+            let assetFrameRate: Double = Double(assetRate)
+            let windowFrameCount: Double = windowSampleCount * assetFrameRate / rate
+            let windowFrames: Double = EditingPrimitives.jsRound(windowFrameCount)
+            let baseline: Double = range[1] - range[0]
+            let residualFrameCount: Double = (duration - baseline) * assetFrameRate
+            let residual: Double = EditingPrimitives.jsRound(residualFrameCount)
+            let binaryDuration: Double = baseline + residual / assetFrameRate
+            let tolerance: Double = 4 * max(duration.ulp, baseline.ulp)
+            let binaryFits = windowFrames + residual == Double(frames) && abs(duration - binaryDuration) <= tolerance
+            #expect(binaryFits == ((vector["baseline"] as! String) == "binary64"), "\(name)")
+            recipe.chunks = [VoiceLabChunk(sourceStartSample: start, sourceEndSample: end, requestId: "request-baseline", seed: recipe.seed,
+                                           assetId: recipe.audio.assetId, assetSha256: project.voiceLab.assets![0].sha256,
+                                           assembledStartFrame: trimStartFrame, assembledEndFrame: trimEndFrame)]
+            let fade = VoiceLabGeometry.samples(VoiceLabPatchConstants.HARD_SEAM_FADE, rate)
+            recipe.seams = VoiceLabSeams(
+                in: try VoiceLabHandles.seam(kind: .hard, fadeSamples: fade, incoming: true, assetSampleRate: assetRate, sourceSampleRate: rate, stretch: 1),
+                out: try VoiceLabHandles.seam(kind: .hard, fadeSamples: fade, incoming: false, assetSampleRate: assetRate, sourceSampleRate: rate, stretch: 1))
+            recipe.video.sourceStartSample = start; recipe.video.sourceEndSample = end
+            recipe.video.outputSamples = VoiceLabGeometry.samples(duration, rate)
+            project.voiceLab.assets![0].sampleRate = assetRate; project.voiceLab.assets![0].durationSeconds = trimEnd + 0.5
+            segment.audio = recipe.audio; segment.outDuration = duration; segment.words = recipe.words
+            segment.candidates = [VoiceLabCandidate(assetId: recipe.audio.assetId, score: 0.9)]
+            segment.candidates[0].recipe = recipe
+            project.voiceLab.segments = [segment]
+            try VoiceLabProject.validate(project)
+            try VoiceLabRenderValidation.validate(project)
+            if let alternateFrames = vector["alternateOutputFrames"] as? NSNumber {
+                let alternateEndFrame: Int64 = trimStartFrame + alternateFrames.int64Value
+                let alternateEnd: Double = Double(alternateEndFrame) / Double(assetRate)
+                var alternate = recipe
+                alternate.audio.trimEnd = alternateEnd
+                alternate.chunks[0].assembledEndFrame = alternateEndFrame
+                var candidate = segment.candidates[0]
+                candidate.recipe = alternate
+                project.voiceLab.segments[0].candidates.append(candidate)
+                #expect(vector["validationError"] as? String == "invalidSegment")
+                #expect(throws: VoiceLabProjectError.invalidSegment) { try VoiceLabProject.validate(project) }
+                #expect(throws: VoiceLabProjectError.invalidSegment) { try VoiceLabRenderValidation.validate(project) }
+                #expect(throws: VoiceLabProjectError.invalidSegment) {
+                    try VoiceLabProject.selectCandidate(1, id: segment.id, in: project)
+                }
+                project.voiceLab.segments[0].candidates[1].rejected = "fixture"
+                try VoiceLabProject.validate(project)
+                try VoiceLabRenderValidation.validate(project)
+            }
+            if name != "unity-binary64-residual-nine" {
+                #expect(duration == Double(VoiceLabGeometry.samples(duration, rate)) / rate)
+            }
+        }
+    }
+
     @Test func halfUpAndRequestBinding() throws {
         let cases = try JSONSerialization.jsonObject(with: FixtureLoader.data("fixtures/voice-lab/render-cases.json")) as! [String: [String: Any]]
         let vector = cases["sample-grid-half-up"]!

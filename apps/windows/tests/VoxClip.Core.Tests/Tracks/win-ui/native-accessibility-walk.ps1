@@ -223,13 +223,13 @@ try{
  # project has no video, so there Ctrl+E is refused: no dialog opens and the Export button carries the reason.
  [R1Native]::Chord(0x11,0x45);Start-Sleep -Milliseconds 800
  if($NormalProject){
-  [void](FindName $w 'Selected clips (1)')
+  [void](FindPrefix $w 'This clip')
   Dump $w 'pane-export';Capture $w 'pane-export'
   [R1Native]::Key(0x1B);Start-Sleep -Milliseconds 600
-  if(HasVisibleName $w 'Selected clips (1)'){throw 'Escape did not close Export'}
+  if(HasPrefix $w 'This clip'){throw 'Escape did not close Export'}
  }else{
   Start-Sleep -Milliseconds 1200
-  if(HasVisibleName $w 'Selected clips (1)'){throw 'Ctrl+E opened Export for a demo project'}
+  if(HasPrefix $w 'This clip'){throw 'Ctrl+E opened Export for a demo project'}
   $export=FindId $w 'ExportButton'
   $reason=$export.Current.HelpText
   [IO.File]::WriteAllText((Join-Path $shots 'pane-export-blocked.txt'),"enabled=$($export.Current.IsEnabled)`nreason=$reason`nfocus=$(Focused)")
@@ -254,10 +254,20 @@ try{
  $walk=@()
  for($i=0;$i -lt 6;$i++){[R1Native]::Key(0x75);Start-Sleep -Milliseconds 300;$e=[System.Windows.Automation.AutomationElement]::FocusedElement;$walk+=,@($e.Current.Name,$e.Current.ControlType.ProgrammaticName,(InCommandBar $e))}
  [IO.File]::WriteAllText((Join-Path $shots 'f6-order.txt'),(($walk | ForEach-Object { $_ -join ' | ' }) -join "`n"))
- if($walk[0][0] -ne 'Play or pause (Space)' -or $walk[1][1] -ne 'ControlType.RadioButton' -or -not $walk[2][0].StartsWith('Playhead') -or -not $walk[3][0].StartsWith('Full take, ') -or -not $walk[4][2] -or $walk[5][0] -ne $transcriptName){throw 'F6 did not walk the viewer, Captions, timeline, sidebar, command row and transcript in order'}
+ if($walk[0][0] -ne 'Play or pause (Space)' -or $walk[1][1] -notin @('ControlType.List','ControlType.ListItem') -or -not $walk[2][0].StartsWith('Playhead') -or -not $walk[3][0].StartsWith('Full take, ') -or -not $walk[4][2] -or $walk[5][0] -ne $transcriptName){throw 'F6 did not walk the viewer, Captions, timeline, sidebar, command row and transcript in order'}
  [R1Native]::Chord(0x10,0x75);Start-Sleep -Milliseconds 300
  if(-not (InCommandBar ([System.Windows.Automation.AutomationElement]::FocusedElement))){throw 'Shift+F6 from the transcript did not return to the command row'}
  $result.f6Order=$true
+ if($NormalProject){
+  $transcript=FindName $w $transcriptName
+  $transcript.SetFocus();[R1Native]::Key(0x24);[R1Native]::Chord(0x10,0x27)
+  [R1Native]::Chord(0x10,0x79)
+  $make=FindName $w 'Make clip'
+  if([System.Windows.Automation.AutomationElement]::FocusedElement.Current.Name -ne 'Make clip'){throw 'Shift+F10 did not focus Make clip'}
+  [R1Native]::Key(0x1B)
+  if([System.Windows.Automation.AutomationElement]::FocusedElement.Current.Name -ne $transcriptName){throw 'Escape did not restore transcript focus'}
+  $result.selectionFlyoutKeyboard=$true
+ }
  # Home keeps the open project in the sidebar and returns to the same editor.
  Choose (FindName $w 'Home')
  [void](FindName $w 'Import video, Ctrl+O')

@@ -24,6 +24,8 @@ public sealed class VoiceLabRenderInput
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(paidRoot);
         prepared.Verify(project, prepared.OutputPlan.Scope, prepared.Disclosure.Position);
+        if (prepared.SelectedSegmentRecipes.Any(item => item.Recipe.Video.Mode != VoiceLabVideoMode.Source))
+            throw new VoiceLabProjectException(VoiceLabProjectErrorCode.VideoModeUnsupported);
         var json = ProjectSerialization.Serialize(project);
         var isolated = ProjectSerialization.Deserialize(json);
         prepared.Verify(isolated, prepared.OutputPlan.Scope, prepared.Disclosure.Position);

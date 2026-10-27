@@ -18,14 +18,14 @@ private extension JSONValue {
 /// Shared `window-cases.json` vectors (tools/fixtures/voice-lab/generate_window.py) and a v3 round trip.
 @Suite("Voice Lab window geometry")
 struct VoiceLabWindowTests {
-    private static let categories = ["window", "handles", "trimHandles", "alignment", "trim", "relativeWords", "roomTone", "propertyCases",
-                                     "multiSegmentCases"]
+    private static let categories = ["window", "handles", "trimHandles", "alignment", "trim", "relativeWords", "roomTone", "lendableSilence",
+                                     "propertyCases", "multiSegmentCases"]
     /// The passage fixture. Its replacement is the template every recipe here starts from.
     private static let passage = try? JSONProjectStore.decode(FixtureLoader.data("fixtures/voice-lab/passage-render-v3.voxclip"))
 
     private func document() throws -> JSONValue {
         let document = try JSONDecoder().decode(JSONValue.self, from: FixtureLoader.data("fixtures/voice-lab/window-cases.json"))
-        #expect(document["schema"].vectorString == "voxclip-voice-lab-window-cases/3")
+        #expect(document["schema"].vectorString == "voxclip-voice-lab-window-cases/4")
         return document
     }
     private func cases(_ key: String) throws -> [JSONValue] { try #require(document()[key].vectorItems) }
@@ -68,6 +68,7 @@ struct VoiceLabWindowTests {
         case .invalidWordTiming: ["error": "invalidWordTiming"]
         case .noVoicedAudio: ["error": "noVoicedAudio"]
         case .roomToneUnavailable: ["error": "roomToneUnavailable"]
+        case .fitTouchesVoice: ["error": "fitTouchesVoice"]
         }
     }
     private func expectedError(_ value: JSONValue) -> [String: AnyHashable]? {
@@ -156,7 +157,7 @@ struct VoiceLabWindowTests {
 
     @Test func everyVectorIsConsumed() throws {
         let document = try document()
-        #expect(Set(document.vectorFields.keys) == Set(Self.categories + ["schema", "constants", "caseCount", "propertyFuzz", "multiSegmentFuzz"]))
+        #expect(Set(document.vectorFields.keys) == Set(Self.categories + ["schema", "constants", "caseCount", "lendableSilenceFuzz", "propertyFuzz", "multiSegmentFuzz"]))
         #expect(try Self.categories.reduce(0) { try $0 + cases($1).count } == Int(document["caseCount"].vectorInteger))
         let constants = document["constants"]
         #expect(constants["SEAM_MIN_GAP"].vectorNumber == VoiceLabPatchConstants.SEAM_MIN_GAP)
@@ -175,7 +176,7 @@ struct VoiceLabWindowTests {
     /// Replays window-shaped cases through `place`. Every accepted window must validate and prepare in the case's scope,
     /// beside the take's replacements. A case that carries `roomTone` selects that room tone and builds a one-word passage
     /// recipe; one without room tone builds a voice-changer recipe, the minimal recipe that needs none.
-    private func replayWindows(_ tests: [JSONValue]) throws -> (accepted: Int, passages: Int, rendered: Int) {
+    private func replayWindows(_ tests: [JSONValue], requireLend: Bool = false) throws -> (accepted: Int, passages: Int, rendered: Int) {
         var accepted = 0, passages = 0, rendered = 0
         for test in tests {
             let input = test["input"], expected = test["expected"], tone = test["roomTone"]
@@ -193,6 +194,13 @@ struct VoiceLabWindowTests {
                 }
                 accepted += 1
                 do {
+                    let silence = try VoiceLabWindowPlanner.lendableSilence(project: project, scope: scope, window: placed)
+                    if requireLend { try #require(!test["lendableSilence"].isVectorNull, "\(name)") }
+                    if !test["lendableSilence"].isVectorNull {
+                        func seconds(_ value: JSONValue) -> Double? { value.isVectorNull ? nil : value.vectorNumber }
+                        #expect(silence.incoming == seconds(test["lendableSilence"]["incoming"]), "\(name)")
+                        #expect(silence.outgoing == seconds(test["lendableSilence"]["outgoing"]), "\(name)")
+                    }
                     if tone.isVectorNull {
                         _ = try assemble(project, window: placed, tone: nil, words: nil, trimStart: 0.5, patch: nil, scope: scope)
                     } else {
@@ -220,7 +228,7 @@ struct VoiceLabWindowTests {
     @Test func propertyCases() throws {
         let document = try document(), fuzz = document["propertyFuzz"], tests = try #require(document["propertyCases"].vectorItems)
         #expect(fuzz["cases"].vectorInteger >= 20_000 && fuzz["renderFailures"].vectorInteger == 0)
-        let (accepted, passages, rendered) = try replayWindows(tests)
+        let (accepted, passages, rendered) = try replayWindows(tests, requireLend: true)
         #expect(tests.count == 300 && accepted > 0 && passages == accepted && rendered == accepted)
     }
 
@@ -229,9 +237,139 @@ struct VoiceLabWindowTests {
     @Test func multiSegmentCases() throws {
         let document = try document(), fuzz = document["multiSegmentFuzz"], tests = try #require(document["multiSegmentCases"].vectorItems)
         #expect(fuzz["cases"].vectorInteger >= 20_000 && fuzz["renderFailures"].vectorInteger == 0)
-        let (accepted, passages, rendered) = try replayWindows(tests)
+        let (accepted, passages, rendered) = try replayWindows(tests, requireLend: true)
         #expect(tests.count == 150 && accepted > 0 && passages == accepted && rendered == accepted)
         #expect(tests.contains { ($0["input"]["segments"].vectorItems ?? []).contains { $0["enabled"].vectorBool == true } })
+    }
+
+    /// §8.9.2 lendable silence: each case's window places, validates and prepares, and each gap seam lends the kept source
+    /// beside it up to the stop the case names. The fuzz widened every accepted window by what its gap seams lend, less
+    /// `PAUSE_SLACK_KEEP`, and every widened window still rendered.
+    @Test func lendableSilenceVectors() throws {
+        let document = try document(), fuzz = document["lendableSilenceFuzz"], tests = try #require(document["lendableSilence"].vectorItems)
+        #expect(fuzz["windows"].vectorInteger >= 20_000 && fuzz["lendingSeams"].vectorInteger > 0)
+        let (accepted, _, rendered) = try replayWindows(tests)
+        #expect(accepted == tests.count && rendered == accepted)
+        func seconds(_ value: JSONValue) -> Double? { value.isVectorNull ? nil : value.vectorNumber }
+        for test in tests {
+            let input = test["input"], expected = test["lendableSilence"], name = test["name"].vectorString ?? "?"
+            let lent = try VoiceLabWindowPlanner.lendableSilence(project: try take(input, tone: test["roomTone"]), scope: scope(input),
+                                                                 window: window(test["expected"]))
+            #expect(lent.incoming == seconds(expected["incoming"]) && lent.outgoing == seconds(expected["outgoing"]), "\(name)")
+        }
+    }
+
+    @Test func placedWindowsFeedFitPlannerAndRenderValidator() throws {
+        var kinds = Set<VoiceLabSeamKind>()
+        for test in try cases("lendableSilence") {
+            let input = test["input"], tone = test["roomTone"]
+            let project = try take(input, tone: tone), scope = scope(input), rate = input["sampleRate"].vectorNumber
+            let placed = try VoiceLabWindowPlanner.place(project: project, scope: scope, envelope: envelope(input["envelope"]),
+                                                         firstWordId: input["firstWordId"].vectorString ?? "", lastWordId: input["lastWordId"].vectorString ?? "")
+            kinds.formUnion([placed.leftSeam.kind, placed.rightSeam.kind])
+            let silence = try VoiceLabWindowPlanner.lendableSilence(project: project, scope: scope, window: placed)
+            let take = VoiceLabFitTake(assetFrames: 12_000, assetSampleRate: 24_000, trimStart: 0.02, trimEnd: 0.41,
+                                       words: [VoiceLabWord(text: "patch", start: 0.05, end: 0.35, synthetic: true)],
+                                       envelope: AudioEnvelope(sampleRate: 24_000, levels: Array(repeating: 0.1, count: 50)))
+            let result = try VoiceLabFitPlanner.plan(window: placed, incomingSilence: silence.incoming, outgoingSilence: silence.outgoing,
+                                                     take: take, tokens: ["patch"], sourceSampleRate: rate)
+            let plan: VoiceLabFitPlan, duration: Double
+            switch result {
+            case let .exact(value): plan = value; duration = value.windowEnd - value.windowStart
+            case let .changedDuration(value, _, residual): plan = value; duration = value.windowEnd - value.windowStart + residual
+            }
+            var window = placed
+            window.start = plan.windowStart; window.end = plan.windowEnd
+            window.startSample = plan.windowStartSample; window.endSample = plan.windowEndSample
+            let words = tone.isVectorNull ? nil : plan.words
+            let (segment, asset) = try passageSegment(project, id: "segment-fitted", window: window, tone: tone.isVectorNull ? nil : roomTone(tone), words: words,
+                                                      trimStart: 0.5, patch: words == nil ? nil : "patch", fit: plan, duration: duration)
+            var built = project
+            built.voiceLab.segments.append(segment); built.voiceLab.assets?.append(asset)
+            try VoiceLabProject.validate(built)
+            var broken = built
+            broken.voiceLab.segments[broken.voiceLab.segments.count - 1].candidates[0].recipe?.audio.trimEnd += 1 / 24_000
+            #expect(throws: VoiceLabProjectError.invalidRange) { try VoiceLabRenderValidation.validate(broken) }
+        }
+        #expect(kinds == Set([.none, .gap, .hard]))
+    }
+
+    @Test func millisecondWindowsFitThroughRenderPreparation() throws {
+        for variant in ["hard-hard-exact", "take-end-exact", "hard-hard-changed"] {
+            let atEnd = variant == "take-end-exact", changed = variant == "hard-hard-changed"
+            let rate: Double = 44_100
+            var project = try fixture()
+            project.media.source.audio?.sampleRate = Int(rate)
+            project.media.source.durationSeconds = atEnd ? 3.143 : 4.6
+            project.transcript?.words = [
+                TimedWord(id: "w0", text: "zero", kind: .word, start: 0.7, end: 1),
+                TimedWord(id: "w1", text: "one", kind: .word, start: 1.1, end: 1.4),
+                TimedWord(id: "w2", text: "two", kind: .word, start: 1.5, end: 2.1),
+                TimedWord(id: "w3", text: "before", kind: .word, start: 2.2, end: 2.5),
+                TimedWord(id: "w4", text: "old", kind: .word, start: 2.586, end: 2.75),
+                TimedWord(id: "w5", text: "words", kind: .word, start: 2.8, end: 3.113)
+            ]
+            if !atEnd {
+                project.transcript?.words.append(contentsOf: [
+                    TimedWord(id: "w6", text: "after", kind: .word, start: 3.2, end: 3.5),
+                    TimedWord(id: "w7", text: "seven", kind: .word, start: 3.6, end: 3.8),
+                    TimedWord(id: "w8", text: "eight", kind: .word, start: 3.9, end: 4.1),
+                    TimedWord(id: "w9", text: "nine", kind: .word, start: 4.2, end: 4.5)
+                ])
+            }
+            project.edits.cutWordIds = []; project.edits.cutPauseIds = []; project.edits.clips = []; project.edits.activeClipId = nil
+            project.voiceLab.cleanAudio = VoiceLabCleanAudio(mode: .off)
+            let voicedFrames: Int = atEnd ? 255 : 400
+            let levels = Array(repeating: Float(0.001), count: 60) + Array(repeating: Float(0.1), count: voicedFrames)
+            let sourceEnvelope = AudioEnvelope(sampleRate: rate, levels: levels)
+            let placed = try VoiceLabWindowPlanner.place(project: project, scope: .full, envelope: sourceEnvelope, firstWordId: "w4", lastWordId: "w5")
+            #expect(placed.start == 2.556 && placed.end == 3.143, "\(variant)")
+            #expect(placed.leftSeam.kind == .hard && placed.rightSeam.kind == (atEnd ? .none : .hard), "\(variant)")
+            let silence = try VoiceLabWindowPlanner.lendableSilence(project: project, scope: .full, window: placed)
+            let take = VoiceLabFitTake(assetFrames: 16_800, assetSampleRate: 24_000, trimStart: 0.02, trimEnd: changed ? 0.62 : 0.52,
+                                       words: [VoiceLabWord(text: "patch", start: 0.05, end: changed ? 0.56 : 0.45, synthetic: true)],
+                                       envelope: AudioEnvelope(sampleRate: 24_000, levels: Array(repeating: 0.1, count: 70)))
+            let result = try VoiceLabFitPlanner.plan(window: placed, incomingSilence: silence.incoming, outgoingSilence: silence.outgoing,
+                                                     take: take, tokens: ["patch"], sourceSampleRate: rate)
+            let fitted = result.plan
+            let residual: Double
+            switch result {
+            case .exact: residual = 0; #expect(!changed, "\(variant)")
+            case let .changedDuration(_, _, seconds): residual = seconds; #expect(changed, "\(variant)")
+            }
+            let duration = fitted.windowEnd - fitted.windowStart + residual
+            var window = placed
+            window.start = fitted.windowStart; window.end = fitted.windowEnd
+            window.startSample = fitted.windowStartSample; window.endSample = fitted.windowEndSample
+            let total = VoiceLabGeometry.samples(project.media.source.durationSeconds, rate)
+            let tone = try VoiceLabRoomToneSelection.select(items: project.transcript!.words, envelope: sourceEnvelope, sourceSampleRate: rate, totalSamples: total)
+            var (segment, asset) = try passageSegment(project, id: "segment-ms", window: window, tone: tone, words: fitted.words,
+                                                      trimStart: 0.5, patch: "patch", fit: fitted, duration: duration)
+            if changed {
+                var recipe = try #require(segment.candidates[0].recipe)
+                recipe.video.mode = .zoomCover
+                let sourceSamples = Double(fitted.windowEndSample - fitted.windowStartSample)
+                let outputSamples = Double(recipe.video.outputSamples)
+                recipe.video.retimeFactor = sourceSamples / outputSamples
+                recipe.video.zoom = 1.12; recipe.video.faceX = 0.5; recipe.video.faceY = 0.5
+                segment.candidates[0].recipe = recipe
+            }
+            project.voiceLab.segments = [segment]; project.voiceLab.assets = [asset]
+            try VoiceLabProject.validate(project); try VoiceLabRenderValidation.validate(project)
+            let output = try VoiceLabOutputPlanner.build(project, scope: .full)
+            let synth = try #require(output.pieces.first { $0.kind == .synth })
+            let prepared = try VoiceLabRenderContract.prepare(project, scope: .full, labelPosition: .topRight)
+            if changed {
+                #expect(prepared.selectedSegmentRecipes.first?.recipe.video.mode == .zoomCover)
+                #expect(throws: VoiceLabProjectError.videoModeUnsupported) {
+                    try VoiceLabRenderInput(project: project, scope: .full, labelPosition: .topRight,
+                                            paidRoot: URL(fileURLWithPath: "/not-opened"), prepared: prepared)
+                }
+            } else {
+                #expect(synth.sourceEndSample - synth.sourceStartSample == synth.outputEndSample - synth.outputStartSample, "\(variant)")
+                #expect(prepared.selectedSegmentRecipes.first?.recipe.video.mode == .source, "\(variant)")
+            }
+        }
     }
 
     @Test func handleVectors() throws {
@@ -327,10 +465,22 @@ struct VoiceLabWindowTests {
     /// own asset. The asset holds `trimStart` seconds before the passage and 0.5 s after it. Without `words` the segment is a
     /// voice changer, which carries no text, words or room tone.
     private func passageSegment(_ project: Project, id: String, window: VoiceLabWindow, tone: VoiceLabRoomTone?, words: [VoiceLabWord]?,
-                                trimStart: Double, patch: String?) throws -> (VoiceLabSegment, VoiceLabAsset) {
+                                trimStart: Double, patch: String?, fit: VoiceLabFitPlan? = nil, duration: Double? = nil) throws -> (VoiceLabSegment, VoiceLabAsset) {
         let rate = Double(try #require(project.media.source.audio?.sampleRate))
-        let outDuration = Double(window.endSample - window.startSample) / rate
-        let trimEnd = trimStart + outDuration, assetDuration = trimEnd + 0.5
+        let assetRate: Double = 24_000
+        let windowSamples: Int64 = window.endSample - window.startSample
+        let windowSampleCount: Double = Double(windowSamples)
+        let sourceDuration: Double = windowSampleCount / rate
+        let outDuration: Double = duration ?? sourceDuration
+        let windowFrameCount: Double = windowSampleCount * assetRate / rate
+        let roundedWindowFrames: Double = EditingPrimitives.jsRound(windowFrameCount)
+        let windowFrames: Int64 = Int64(roundedWindowFrames)
+        let frames: Int64 = fit?.outputFrames ?? windowFrames
+        let trimStartFrame: Int64 = VoiceLabGeometry.samples(trimStart, assetRate)
+        let trimEndFrame: Int64 = trimStartFrame + frames
+        let trimEndFrameCount: Double = Double(trimEndFrame)
+        let trimEnd: Double = trimEndFrameCount / assetRate
+        let assetDuration: Double = trimEnd + 0.5
         let seams = VoiceLabSeams(
             in: try VoiceLabHandles.seam(kind: window.leftSeam.kind, fadeSamples: window.leftSeam.fadeSamples, incoming: true,
                                          assetSampleRate: 24_000, sourceSampleRate: rate, stretch: 1),
@@ -351,7 +501,7 @@ struct VoiceLabWindowTests {
         recipe.roomTone = tone
         recipe.seams = seams
         recipe.video = VoiceLabVideoRecipe(mode: .source, sourceStartSample: window.startSample, sourceEndSample: window.endSample,
-                                           outputSamples: window.endSample - window.startSample, retimeFactor: nil, zoom: nil, faceX: nil, faceY: nil,
+                                           outputSamples: VoiceLabGeometry.samples(outDuration, rate), retimeFactor: nil, zoom: nil, faceX: nil, faceY: nil,
                                            assetId: nil, provider: nil, model: nil, requestId: nil, windowStartSample: nil, windowEndSample: nil, syncMode: nil)
         if let words { recipe.qa.transcriptTokens = words.count }
         segment.id = id

@@ -1,4 +1,3 @@
-using FFmpeg.AutoGen;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Domain.VoiceLab;
 using VoxClip.Media.Ffmpeg;
@@ -18,27 +17,24 @@ internal sealed class VoiceLabRenderSession : IDisposable
 
     internal static async Task<VoiceLabRenderSession?> PrepareAsync(ComposeSnapshot snapshot, CancellationToken ct,
         params VoiceLabCapacity.Allocation[] outputs)
+        => await PrepareAsync(snapshot, ct, Path.GetTempPath(), outputs).ConfigureAwait(false);
+
+    internal static async Task<VoiceLabRenderSession?> PrepareAsync(ComposeSnapshot snapshot, CancellationToken ct,
+        string scratchRoot, params VoiceLabCapacity.Allocation[] outputs)
     {
         if (snapshot.VoiceLab is not { } input) return null;
         var project = input.IsolatedProject();
         input.Prepared.Verify(project, input.Prepared.OutputPlan.Scope, input.Prepared.Disclosure.Position);
         VoiceLabCapacity.VerifySource(snapshot);
         if (!input.Prepared.OutputPlan.RequiresSyntheticRendering) return null;
-        VoiceLabCapacity.Require(snapshot, outputs);
+        VoiceLabCapacity.Require(snapshot, scratchRoot, outputs);
         if (snapshot.Media.Audio is null)
             throw new VoxClipException(VoxClipErrorCode.DecodeFailed,
                 "This generated voice edit needs a source audio track. Your edits are saved.");
+        // No build stretches voiced speech (ADR-R30), so this refusal needs no FFmpeg capability.
         foreach (var item in input.Prepared.SelectedSegmentRecipes)
-        {
-            var audio = item.Recipe.Audio;
-            if (VoiceLabTempo.RequiresFit(audio.Stretch))
-            {
-                await FfmpegLoader.InitializeAsync(ct).ConfigureAwait(false);
-                VoiceLabTempo.RequireCapability(HasTempo);
-                VoiceLabTempo.RequireVerifiedPlacement();
-            }
-        }
-        var handles = await VoiceLabAssets.PrepareAsync(project, input.Prepared.OutputPlan, input.PaidRoot, ct).ConfigureAwait(false);
+            if (VoiceLabTempo.RequiresFit(item.Recipe.Audio.Stretch)) VoiceLabTempo.RefuseNonunityFit();
+        var handles = await VoiceLabAssets.PrepareAsync(project, input.Prepared.OutputPlan, input.PaidRoot, scratchRoot, ct).ConfigureAwait(false);
         var tracks = new Dictionary<string, VoiceLabTempoTrack>(StringComparer.Ordinal);
         try
         {
@@ -70,8 +66,6 @@ internal sealed class VoiceLabRenderSession : IDisposable
         }
     }
 
-    private static unsafe bool HasTempo() => ffmpeg.avfilter_get_by_name("atempo") != null;
-
     internal VoiceLabAudioMixer CreateMixer(IVoiceLabSource source, long startSample = 0, CancellationToken ct = default)
     {
         ObjectDisposedException.ThrowIf(disposed, this);
@@ -89,22 +83,21 @@ internal sealed class VoiceLabRenderSession : IDisposable
 
 #pragma warning disable CS1591 // The typed render failure is surfaced by the native App and CLI.
 public sealed class VoiceLabTempoException(string? reason = null) : Exception(reason ??
-    "This Windows build cannot apply the required pitch-preserving Voice Lab duration fit. Your generated audio and edits are saved.");
+    "This Voice Lab take was stretched to fit its window, which VoxClip does not support. Your generated audio and edits are saved.");
 #pragma warning restore CS1591
 
 internal static class VoiceLabTempo
 {
     // Decimal duration arithmetic can serialize exact unity as either adjacent
-    // binary double. Any wider difference needs the pitch-preserving fit.
+    // binary double. Any wider difference is a nonunity fit, which VoxClip refuses.
     internal static bool RequiresFit(double stretch)
         => !double.IsFinite(stretch) || stretch < Math.BitDecrement(1d) || stretch > Math.BitIncrement(1d);
 
     internal static void RequireCapability(Func<bool> available)
     { if (!available()) throw new VoiceLabTempoException(); }
 
-    internal static void RequireVerifiedPlacement()
-        => throw new VoiceLabTempoException(
-            "The pitch-preserving Voice Lab fit has unverified body and seam timing on this Windows build. Your generated audio and edits are saved.");
+    // The permanent nonunity refusal (voice-lab.md §10.5). It stays until a later ADR adopts a micro-stretch (§8.9.5).
+    internal static void RefuseNonunityFit() => throw new VoiceLabTempoException();
 }
 
 internal sealed class NativeVoiceLabSource(AudioDecoder decoder) : IVoiceLabSource

@@ -164,7 +164,7 @@ public sealed class ClipSemanticsTests
         Assert.Null(model.ExportBlocked(false, false, null));
         var suggestion = model.AddAiResult(Result(model, (0, 3)))[0];
         Assert.Equal("Keep this clip to export it.", model.ExportBlocked(false, false, suggestion));
-        Assert.Equal("Open the project and find the video to export.", model.ExportBlocked(false, true, suggestion));
+        Assert.Equal("Locate the video to export.", model.ExportBlocked(false, true, suggestion));
         Assert.Equal("Demo projects have no video to export.", model.ExportBlocked(true, true, null));
         model.Busy = true;
         Assert.Equal("Finish the current task first.", model.ExportBlocked(false, false, null));

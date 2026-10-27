@@ -2,10 +2,12 @@ import Foundation
 import VoxClipCore
 
 public enum VoiceLabRenderCapabilityError: Error, LocalizedError, Sendable, Equatable {
-    case pitchPreservingFitUnverified
+    /// A recipe whose fit factor is not 1. VoxClip never time-stretches voiced speech (ADR-R30), so this refusal is
+    /// permanent until a later ADR adopts a micro-stretch (voice-lab.md §8.9.5, §10.5).
+    case nonunityFitUnsupported
 
     public var errorDescription: String? {
-        "This Mac build cannot verify the timing of a stretched Voice Lab take. The generated audio and edits are unchanged."
+        "This Voice Lab take was stretched to fit its window, which VoxClip does not support. The generated audio and edits are unchanged."
     }
 }
 
@@ -29,7 +31,7 @@ public enum VoiceLabRenderPreflight {
         if prepared.outputPlan.requiresSyntheticRendering && prepared.selectedSegmentRecipes.contains(where: {
             abs($0.recipe.audio.stretch - 1) > 4 * Double.ulpOfOne
         }) {
-            throw VoiceLabRenderCapabilityError.pitchPreservingFitUnverified
+            throw VoiceLabRenderCapabilityError.nonunityFitUnsupported
         }
     }
 

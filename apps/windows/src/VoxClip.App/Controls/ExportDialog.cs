@@ -6,6 +6,7 @@ using VoxClip.App.ViewModels;
 using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Services.Share;
+using VoxClip.Core.Domain.VoiceLab;
 
 namespace VoxClip.App.Controls;
 
@@ -19,10 +20,13 @@ internal sealed class ExportDialog : ContentDialog
     private readonly RadioButtons quality;
     private readonly RadioButtons target;
     private readonly ComboBox styles;
-    private readonly CheckBox srt = new() { Content = "Also save captions as SRT" };
-    private readonly TextBox folder = new() { Header = "Destination folder" };
+    private readonly CheckBox srt = new() { Content = "Also save .srt" };
+    private readonly TextBox folder = new() { Header = "Save to" };
     private readonly InfoBar notice = Ui.Notice();
-    private readonly ProgressBar progress = new() { Visibility = Visibility.Collapsed };
+    private readonly ProgressBar progress = new() { Visibility = Visibility.Collapsed, Width = 360 };
+    private readonly StackPanel form = Ui.Stack(16);
+    private readonly TextBlock disclosure = Ui.Text("This video contains AI-modified speech. It will show AI MODIFIED.", "HelperText");
+    private readonly List<ExportScopeKind> scopeKinds = [];
     private readonly TextBox caption = new() { Header = "Share caption", AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MinHeight = 90 };
     private readonly StackPanel share = Ui.Stack();
     private readonly StackPanel exportedFiles = Ui.Stack(4);
@@ -33,21 +37,34 @@ internal sealed class ExportDialog : ContentDialog
     private readonly string? onlyClip;
     private bool running;
     private bool composing;
+    private bool closed;
     private string? exported;
 
     internal ExportDialog(MainWindow owner, EditorViewModel model, bool demo, Func<CancellationToken, EditState?, Task<ComposeSnapshot>> snapshot, string? clipId = null)
     {
         this.owner = owner; this.model = model; this.demo = demo; this.snapshot = snapshot;
-        onlyClip = model.Clips.Any(clip => clip.Id == clipId) ? clipId : null;
+        var selected = clipId ?? model.State?.ActiveClipId;
+        onlyClip = model.KeptClips.Any(clip => clip.Id == selected) ? selected : null;
         Title = "Export"; PrimaryButtonText = "Export"; CloseButtonText = "Cancel"; DefaultButton = ContentDialogButton.Primary;
         var body = Ui.Stack(16); body.MinWidth = 400;
-        body.Children.Add(Ui.Text("Your source stays untouched. Captions are burned into the exported video.", "HelperText"));
-        aspect = Ui.Radios("Aspect", ["Source", "16:9", "9:16", "1:1"], (int)model.Project.Export.Aspect);
+        form.Children.Add(Ui.Text("Your source stays untouched. Captions are burned into the exported video.", "HelperText"));
+        aspect = Ui.Radios("Aspect", ["9:16", "1:1", "16:9", "Original"], EditorLayout.Frames.ToList().IndexOf(model.Project.Export.Aspect));
         quality = Ui.Radios("Quality", ["Standard", "High"], (int)model.Project.Export.Quality);
-        target = Ui.Radios("Export scope", ["Full edit", $"Selected clips ({(onlyClip is null ? model.KeptClips.Count : 1)})"], onlyClip is null ? 0 : 1);
+        target = new RadioButtons { Header = "What", MaxColumns = 1 };
+        if (onlyClip is not null)
+        {
+            var clip = model.KeptClips.Single(clip => clip.Id == onlyClip);
+            scopeKinds.Add(ExportScopeKind.ThisClip);
+            target.Items.Add(new RadioButton { Content = $"This clip\nClip {clip.Number} · {clip.Title} · {clip.Duration}" });
+        }
+        scopeKinds.Add(ExportScopeKind.AllClips);
+        target.Items.Add(new RadioButton { Content = $"All {model.KeptClips.Count} clips", IsEnabled = model.KeptClips.Count > 0 });
+        scopeKinds.Add(ExportScopeKind.FullVideo);
+        target.Items.Add(new RadioButton { Content = $"Full video · {EditorViewModel.Duration(model.FullTakeDuration)}" });
+        target.SelectedIndex = onlyClip is null ? scopeKinds.IndexOf(ExportScopeKind.FullVideo) : 0;
         srt.IsChecked = model.Project.Export.Srt;
         folder.Text = model.Project.Export.Folder ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyVideos), "VoxClip");
-        styles = Ui.Choice("Caption style", []);
+        styles = Ui.Choice("Captions", []);
         styles.SelectionChanged += (_, _) => { if (styles.SelectedItem is ComboBoxItem item && item.Tag is string id) model.SetCaptionStyle(id); };
         Opened += async (_, _) => await Ui.RunAsync(notice, async () =>
         {
@@ -56,8 +73,11 @@ internal sealed class ExportDialog : ContentDialog
             foreach (var entry in entries) styles.Items.Add(new ComboBoxItem { Content = entry.Name, Tag = entry.Id });
             styles.SelectedItem = styles.Items.OfType<ComboBoxItem>().FirstOrDefault(item => (string)item.Tag == model.Project.Captions.StyleId);
         }, "Caption styles");
-        body.Children.Add(target); body.Children.Add(aspect); body.Children.Add(quality); body.Children.Add(styles); body.Children.Add(srt); body.Children.Add(folder);
-        body.Children.Add(Ui.Button("Choose folder…", () => _ = Ui.RunAsync(notice, ChooseFolderAsync, "Export folder")));
+        form.Children.Add(target); form.Children.Add(aspect); form.Children.Add(quality); form.Children.Add(styles); form.Children.Add(srt); form.Children.Add(folder);
+        form.Children.Add(Ui.Button("Choose folder…", () => _ = Ui.RunAsync(notice, ChooseFolderAsync, "Export folder")));
+        form.Children.Add(disclosure); body.Children.Add(form);
+        target.SelectionChanged += (_, _) => UpdateDisclosure();
+        UpdateDisclosure();
         body.Children.Add(progress); body.Children.Add(notice);
         // share.captions holds 3,000 Unicode scalars (voice-lab §11.3), but MaxLength counts UTF-16 units, so it is only a loose
         // bound: TextChanging cuts typed, pasted and loaded text with SharePostText.CapCaption, as the Mac field does, and keeps
@@ -92,9 +112,25 @@ internal sealed class ExportDialog : ContentDialog
         Content = new ScrollViewer { Content = body, MaxHeight = 620 };
         PrimaryButtonClick += Export;
         CloseButtonClick += (_, args) => { if (running) { lifetime.Cancel(); args.Cancel = true; } };
-        Closing += (_, args) => { if (running) { lifetime.Cancel(); args.Cancel = true; } };
-        Closed += (_, _) => lifetime.Dispose();
+        Closed += (_, _) => { closed = true; if (!running) lifetime.Dispose(); };
         if (demo) { IsPrimaryButtonEnabled = false; Ui.Show(notice, "Demo fixtures use a synthetic preview and cannot be exported. Open a real project to export."); }
+    }
+    private IReadOnlyList<ExportTarget> Targets() => ExportSelection.Targets(scopeKinds[target.SelectedIndex], onlyClip, model.KeptClips.Select(clip => clip.Id).ToArray());
+    private void UpdateDisclosure()
+    {
+        var contains = false;
+        foreach (var item in Targets())
+        {
+            var scoped = model.ScopedProject(ExportSelection.Scope(model.State, item));
+            if (scoped.SchemaVersion != 3) continue;
+            try
+            {
+                var scope = item is ExportTarget.Clip clip ? VoiceLabOutputScope.Clip(clip.Id) : VoiceLabOutputScope.Full;
+                contains |= VoiceLabRenderContract.Prepare(scoped, scope, VoiceLabLabelPosition.TopRight).OutputPlan.RequiresSyntheticRendering;
+            }
+            catch (Exception exception) when (exception is not OutOfMemoryException) { }
+        }
+        disclosure.Visibility = contains ? Visibility.Visible : Visibility.Collapsed;
     }
     /// <summary>One composer at a time: a click while the X text is still being cut does nothing.</summary>
     private async Task OpenComposerAsync(string destination)
@@ -118,27 +154,38 @@ internal sealed class ExportDialog : ContentDialog
         {
             if (model.IsLeaving) return;
             if (!Path.IsPathFullyQualified(folder.Text)) { Ui.Show(notice, "Choose an absolute destination folder.", InfoBarSeverity.Warning); return; }
-            var selectedClips = target.SelectedIndex == 1 ? (onlyClip is null ? model.KeptClips : model.Clips.Where(clip => clip.Id == onlyClip)).ToArray() : [];
-            if (target.SelectedIndex == 1 && selectedClips.Length == 0) { Ui.Show(notice, "Choose clips to export."); return; }
+            var jobs = Targets();
+            if (jobs.Count == 0) { Ui.Show(notice, "Choose clips to export."); return; }
+            if (jobs.Select(job => model.ExportBlocked(demo, false, job is ExportTarget.Clip clip ? clip.Id : null)).FirstOrDefault(reason => reason is not null) is { } blocked) { Ui.Show(notice, blocked); return; }
+            var selectedAspect = EditorLayout.Frames[aspect.SelectedIndex];
+            model.SetExport(new(selectedAspect, (ExportQuality)quality.SelectedIndex, srt.IsChecked == true, folder.Text));
             running = true; model.Busy = true; App.Services.BusyOperations++; IsPrimaryButtonEnabled = false; progress.Visibility = Visibility.Visible;
+            form.Visibility = Visibility.Collapsed;
+            ExportTarget? currentTarget = null;
             try
             {
-                model.SetExport(new((ExportAspect)aspect.SelectedIndex, (ExportQuality)quality.SelectedIndex, srt.IsChecked == true, folder.Text));
                 Directory.CreateDirectory(folder.Text);
-                var jobs = selectedClips.Length == 0 ? new ClipRow?[] { null } : selectedClips.Cast<ClipRow?>().ToArray();
-                foreach (var clip in jobs)
+                var jobNumber = 0;
+                foreach (var exportTarget in jobs)
                 {
-                    ExportTarget exportTarget = clip is null ? new ExportTarget.FullEdit() : new ExportTarget.Clip(clip.Id);
+                    var currentJob = ++jobNumber;
+                    var clock = System.Diagnostics.Stopwatch.StartNew();
+                    currentTarget = exportTarget;
+                    var clip = exportTarget is ExportTarget.Clip clipTarget ? model.Clips.Single(clip => clip.Id == clipTarget.Id) : null;
+                    model.SetExportActivity(exportTarget, ClipExportState.Exporting, 0);
                     var state = ExportSelection.Scope(model.State, exportTarget);
+                    var exportedProject = model.Project;
                     var compose = await snapshot(lifetime.Token, state);
-                    var aspectName = new[] { "source", "16x9", "9x16", "1x1" }[aspect.SelectedIndex];
                     var pattern = App.Services.Get("export.fileNamePattern", "{project}-{clip}-{aspect}");
-                    var title = string.Join("_", pattern.Replace("{project}", model.Title, StringComparison.Ordinal).Replace("{clip}", clip?.Title ?? "full", StringComparison.Ordinal).Replace("{aspect}", aspectName, StringComparison.Ordinal).Split(Path.GetInvalidFileNameChars(), StringSplitOptions.RemoveEmptyEntries)).TrimEnd('.', ' ');
-                    if (title.Length > 180) title = string.Concat(title.EnumerateRunes().Take(90).Select(rune => rune.ToString()));
-                    var output = ProjectFactory.AvailablePath(Path.Combine(folder.Text, (title.Length == 0 ? "VoxClip" : title) + ".mp4"));
+                    var paths = ExportSelection.Paths(model.Title, clip?.Title, selectedAspect, srt.IsChecked == true, folder.Text, pattern);
+                    var output = paths.Mp4;
                     var result = await App.Services.Exporter.ExportAsync(new(compose, exportTarget,
-                        (ExportAspect)aspect.SelectedIndex, (ExportQuality)quality.SelectedIndex, output, srt.IsChecked == true ? Path.ChangeExtension(output, ".srt") : null),
-                        new Progress<ExportProgress>(value => { progress.IsIndeterminate = value.Fraction is null; progress.Value = (value.Fraction ?? 0) * 100; Ui.Show(notice, value.Phase); }), lifetime.Token);
+                        selectedAspect, (ExportQuality)quality.SelectedIndex, output, paths.Srt),
+                        new Progress<ExportProgress>(value => { if (!running || !ReferenceEquals(currentTarget, exportTarget)) return; progress.IsIndeterminate = value.Fraction is null; progress.Value = (value.Fraction ?? 0) * 100; model.SetExportActivity(exportTarget, ClipExportState.Exporting, value.Fraction); Ui.Show(notice, ExportProgressText.Format(currentJob, jobs.Count, value.Fraction, clock.Elapsed.TotalSeconds)); }), lifetime.Token);
+                    await App.Services.ExportLedger.RecordAsync(exportedProject, exportTarget, result.Output, lifetime.Token);
+                    model.SetExportRecords(App.Services.ExportLedger.Records);
+                    model.SetExportActivity(exportTarget, ClipExportState.None);
+                    currentTarget = null;
                     exported = result.Output;
                     if (result.SoftwareEncoding) Ui.Show(notice, "Exporting without hardware acceleration");
                     var fileRow = new Button { Content = Path.GetFileName(result.Output) + " · " + EditorViewModel.Timecode(result.DurationSeconds), CanDrag = true };
@@ -160,10 +207,17 @@ internal sealed class ExportDialog : ContentDialog
                     void SelectExport() { exported = result.Output; captionTarget = shareId; caption.Text = model.Project.Share.Captions.GetValueOrDefault(shareId) ?? defaultCaption; }
                     fileRow.Click += (_, _) => SelectExport(); SelectExport();
                 }
-                share.Visibility = Visibility.Visible; CloseButtonText = "Done"; Ui.Show(notice, $"Saved {jobs.Length} video(s) to {folder.Text}");
+                share.Visibility = Visibility.Visible; CloseButtonText = "Done"; Ui.Show(notice, $"Saved {jobs.Count} {(jobs.Count == 1 ? "video" : "videos")} to {folder.Text}");
                 if (App.Services.Get("export.openFolderAfter", false) && exported is not null) ShareHelpers.Reveal(exported);
             }
-            finally { running = false; model.Busy = false; App.Services.BusyOperations--; IsPrimaryButtonEnabled = !lifetime.IsCancellationRequested; progress.Visibility = Visibility.Collapsed; }
+            catch (OperationCanceledException) { if (currentTarget is not null) model.SetExportActivity(currentTarget, ClipExportState.None); throw; }
+            catch { if (currentTarget is not null) model.SetExportActivity(currentTarget, ClipExportState.Failed); throw; }
+            finally
+            {
+                running = false; model.Busy = false; App.Services.BusyOperations--; IsPrimaryButtonEnabled = !lifetime.IsCancellationRequested; progress.Visibility = Visibility.Collapsed;
+                if (share.Visibility != Visibility.Visible) form.Visibility = Visibility.Visible;
+                if (closed) lifetime.Dispose();
+            }
         }, "Export");
     }
 }

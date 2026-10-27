@@ -7,7 +7,7 @@ namespace VoxClip.Media.Audio;
 
 internal static class EditedWaveWriter
 {
-    internal static async Task WriteAsync(ComposeSnapshot snapshot, string path, CancellationToken ct, bool publish)
+    internal static async Task WriteAsync(ComposeSnapshot snapshot, string path, CancellationToken ct, bool publish, string? scratchRoot = null)
     {
         snapshot = snapshot.VoiceLab?.CaptureSnapshot(snapshot) ?? snapshot;
         if (snapshot.Timeline.OutputSamples <= 0)
@@ -27,7 +27,7 @@ internal static class EditedWaveWriter
             throw new VoxClipException(VoxClipErrorCode.ExportFailed,
                 "The edited WAV is too long for the supported WAV format. Your edits are saved.");
         var waveBytes = VoiceLabCapacity.Bytes(dataBytes, 1, 44);
-        using var session = await VoiceLabRenderSession.PrepareAsync(snapshot, ct,
+        using var session = await VoiceLabRenderSession.PrepareAsync(snapshot, ct, scratchRoot ?? Path.GetTempPath(),
             new VoiceLabCapacity.Allocation(destination, waveBytes),
             publish ? VoiceLabCapacity.Rollback(destination) : new VoiceLabCapacity.Allocation(destination, 0)).ConfigureAwait(false);
         await MediaThread.Run("vc-audio-wave", () =>

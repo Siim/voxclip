@@ -74,7 +74,8 @@ public static class VoiceLabRenderContract
             if (segment.Kind == VoiceLabSegmentKind.Tts && (!recipe.Provenance.Endpoint.StartsWith("v1/text-to-speech/", StringComparison.Ordinal) ||
                 !recipe.Provenance.Endpoint.EndsWith("/with-timestamps", StringComparison.Ordinal) || recipe.Provenance.Model == "eleven_v4"))
                 throw new VoiceLabProjectException(VoiceLabProjectErrorCode.EndpointUnsupported);
-            if (recipe.Video.Mode != VoiceLabVideoMode.Source || piece.SourceEndSample-piece.SourceStartSample != piece.OutputEndSample-piece.OutputStartSample)
+            if (recipe.Video.Mode == VoiceLabVideoMode.Retimed || (recipe.Video.Mode == VoiceLabVideoMode.Source &&
+                piece.SourceEndSample-piece.SourceStartSample != piece.OutputEndSample-piece.OutputStartSample))
                 throw new VoiceLabProjectException(VoiceLabProjectErrorCode.VideoModeUnsupported);
             var asset = project.VoiceLab.Assets!.First(a => a.Id == recipe.Audio.AssetId);
             if (asset.File.EndsWith(".flac", StringComparison.Ordinal)) throw new VoiceLabProjectException(VoiceLabProjectErrorCode.UnsupportedAssetFormat);
