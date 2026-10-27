@@ -18,6 +18,7 @@ internal sealed class RewritePanel : Grid
     private readonly TextBlock problem = Ui.Text("");
     private readonly StackPanel review = Ui.Stack(6);
     private readonly TextBlock changeSummary = Ui.Text("");
+    private readonly Button apply = new() { HorizontalAlignment = HorizontalAlignment.Right };
     private bool updating;
     internal Control FocusTarget => instruction;
     internal event EventHandler? Closed;
@@ -71,8 +72,12 @@ internal sealed class RewritePanel : Grid
         body.Children.Add(newHeader);
         body.Children.Add(words); body.Children.Add(review); body.Children.Add(problem);
         Children.Add(new ScrollViewer { Content = body, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled });
+        var footerContent = Ui.Stack(12);
+        footerContent.Children.Add(Small("Exports show AI MODIFIED on the video and in the post."));
+        footerContent.Children.Add(apply);
+        apply.Click += (_, _) => session.ApplyLocalChanges();
         var footer = new Border { Padding = new(16, 12, 16, 12), BorderThickness = new(0, 1, 0, 0),
-            BorderBrush = Ui.ThemeBrush(this, "VcLineDefaultBrush"), Child = Small("Exports show AI MODIFIED on the video and in the post.") };
+            BorderBrush = Ui.ThemeBrush(this, "VcLineDefaultBrush"), Child = footerContent };
         Grid.SetRow(footer, 1); Children.Add(footer);
         session.Changed += Changed;
         Unloaded += (_, _) => session.Changed -= Changed;
@@ -98,6 +103,9 @@ internal sealed class RewritePanel : Grid
         propose.Content = session.ProposalButton;
         Name(propose, session.ProposalButton);
         propose.IsEnabled = session.CanPropose;
+        apply.Content = session.LocalAction ?? "";
+        apply.Visibility = session.LocalAction is null ? Visibility.Collapsed : Visibility.Visible;
+        Name(apply, session.LocalAction ?? "Apply changes");
         estimate.Text = session.EstimateCopy;
         estimate.FontSize = 11;
         problem.Text = session.Problem;

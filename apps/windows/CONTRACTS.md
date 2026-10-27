@@ -1,5 +1,10 @@
 # Windows fixed contracts
 
+### 2026-10-28 — sol-win-redesign 15a — Local edits
+
+- A review with only cut/text-only hunks offers Apply Cuts or Apply Correction. `RewriteSession.ApplyLocalChanges` builds only existing `SetWordCuts` and whole-item `CorrectedTexts`/`Correct` operations, calls `EditorViewModel.ApplyBatch` once, and closes at the accepted editor change. A voice hunk never offers a local apply or acceptance. Captured project identity, read-only/busy/leave checks refuse stale application.
+- `ApplyCutsMatchesTheManualSavedProjectByteForByteAndUndoesOnce` compares exact serialized UTF-8 project bytes with manual `SetWordCuts` and checks Undo/Redo; the editor's optional clock makes both genuine modification timestamps identical, without stripping metadata. `ApplyCorrectionUsesWholeItemTextsAndOneUndoStepWithoutAi` covers multi-token items, multiple corrections and one Undo. `VoiceChangesCannotApplyLocalOrAcceptAndStateChangesCloseThePanel` covers voice and stale-state refusal. No Core or serialization change is made.
+
 ### 2026-10-28 — sol-win-redesign 15a — Core review wiring
 
 - `RewriteReview` consumes `VoiceLabWordDiff`, `VoiceLabPatchBudget`, `VoiceLabLengthBudget`, `VoiceLabWindowPlanner.Place`/`LendableSilence`, `VoiceLabFitMeter` and `VoiceLabDiffSummary` without reimplementing them. Each fit quote uses space-joined `NewTokens`; duration and pricing use complete placed patch texts, including window bridges. Refused/missing windows have no meter, patch text or header summary/price, never invented geometry. Without 15b's selected TTS model, no TTS amount is guessed.

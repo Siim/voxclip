@@ -2,6 +2,7 @@
 using System.Text.Json.Nodes;
 using VoxClip.App.ViewModels;
 using VoxClip.Core.Domain.Shared;
+using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Transcript;
 using VoxClip.Core.Domain.VoiceLab;
 using VoxClip.Core.Services.LLM;
@@ -19,11 +20,65 @@ public sealed class RewritePanelTests
         project = project with { Transcript = project.Transcript! with { Words = words },
             Media = project.Media with { Source = project.Media.Source with { DurationSeconds = 100, Audio = new(48000, 1) } },
             Edits = project.Edits with { CutWordIds = [], CutPauseIds = [], Corrections = new Dictionary<string, string>(), Clips = [], ActiveClipId = null } };
-        return new(project);
+        return new(project, now: () => new DateTimeOffset(2026, 10, 28, 0, 0, 0, TimeSpan.Zero));
     }
     private static TimedWord Word(int index, string text, WordKind kind = WordKind.Word) =>
         new("w" + index, text, kind, index + 1, index + 1.4, null, null, 1, null, TimingSource.Native);
     private static AudioEnvelope Envelope() => new(48000, 0.01, Enumerable.Repeat(0.01f, 10000).ToArray());
+
+    [Fact]
+    public void ApplyCutsMatchesTheManualSavedProjectByteForByteAndUndoesOnce()
+    {
+        var edited = Editor();
+        var manual = new EditorViewModel(edited.Project, now: () => new DateTimeOffset(2026, 10, 28, 0, 0, 0, TimeSpan.Zero));
+        using var session = new RewriteSession(edited, 10, 12, null, null);
+        session.Edit("word12");
+        Assert.Equal("Apply Cuts", session.LocalAction);
+        Assert.True(session.ApplyLocalChanges());
+        Assert.False(session.IsOpen);
+        Assert.True(manual.ApplyBatch([new EditOperation.SetWordCuts(["w10", "w11"], true)]));
+        Assert.Equal(System.Text.Encoding.UTF8.GetBytes(ProjectSerialization.Serialize(manual.Project)),
+            System.Text.Encoding.UTF8.GetBytes(ProjectSerialization.Serialize(edited.Project)));
+        edited.Undo();
+        Assert.Empty(edited.State!.CutWordIds);
+        Assert.False(edited.CanUndo);
+        edited.Redo();
+        Assert.Equal(new[] { "w10", "w11" }, edited.State.CutWordIds.Order());
+        Assert.False(session.ApplyLocalChanges());
+    }
+
+    [Fact]
+    public void ApplyCorrectionUsesWholeItemTextsAndOneUndoStepWithoutAi()
+    {
+        var words = Enumerable.Range(0, 80).Select(index => Word(index, "word" + index)).ToArray();
+        words[10] = Word(10, "Hello world"); words[11] = Word(11, "SUNDAY");
+        var editor = Editor(words);
+        var fake = new RecordingConnector();
+        using var session = new RewriteSession(editor, 10, 11, null, new(fake, "chosen", "Test", "local", ""));
+        session.Edit("hello WORLD, Sunday!");
+        Assert.Equal("Apply Correction", session.LocalAction);
+        Assert.True(session.ApplyLocalChanges());
+        Assert.Equal("hello WORLD,", editor.State!.Corrections["w10"]);
+        Assert.Equal("Sunday!", editor.State.Corrections["w11"]);
+        Assert.Equal(words, editor.Words);
+        Assert.Empty(fake.Calls);
+        editor.Undo();
+        Assert.Empty(editor.State.Corrections);
+        Assert.False(editor.CanUndo);
+    }
+
+    [Fact]
+    public void VoiceChangesCannotApplyLocalOrAcceptAndStateChangesCloseThePanel()
+    {
+        var editor = Editor();
+        using var session = new RewriteSession(editor, 10, 12, Envelope(), null);
+        session.Edit("Sunday");
+        Assert.Null(session.LocalAction);
+        Assert.False(session.ApplyLocalChanges());
+        editor.Apply(new EditOperation.SetWordCuts(["w1"], true));
+        Assert.False(session.IsOpen);
+        Assert.Equal(-1, editor.RewriteStart);
+    }
 
     [Fact]
     public void LiveReviewUsesCoreMetersAndCompletePatchPricingForEachHunk()

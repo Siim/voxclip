@@ -14,6 +14,7 @@ public sealed class EditorViewModel : ObservableObject
 {
     private readonly Func<EditState, EditOperation, EditState> reduce;
     private readonly Func<EditState, EditSummary> summarize;
+    private readonly Func<DateTimeOffset> now;
     private sealed record History(EditState? State, ProjectCaptions Captions);
     private readonly Stack<History> undo = new();
     private readonly Stack<History> redo = new();
@@ -102,11 +103,12 @@ public sealed class EditorViewModel : ObservableObject
     }
 
     public EditorViewModel(Project project, Func<EditState, EditOperation, EditState>? reduce = null,
-        Func<EditState, EditSummary>? summarize = null)
+        Func<EditState, EditSummary>? summarize = null, Func<DateTimeOffset>? now = null)
     {
         this.project = project;
         this.reduce = reduce ?? EditingEngine.Reduce;
         this.summarize = summarize ?? EditingEngine.Summarize;
+        this.now = now ?? (() => DateTimeOffset.UtcNow);
         InitializeState();
         Refresh();
     }
@@ -522,7 +524,7 @@ public sealed class EditorViewModel : ObservableObject
     private void SyncProject()
     {
         if (state is null) return;
-        project = project with { ModifiedAt = DateTimeOffset.UtcNow, Edits = new(state.PauseThresholdSeconds, state.PauseKeepSeconds,
+        project = project with { ModifiedAt = now(), Edits = new(state.PauseThresholdSeconds, state.PauseKeepSeconds,
             state.CutWordIds.ToArray(), state.CutPauseIds.ToArray(), new Dictionary<string, string>(state.Corrections), state.Clips.ToArray(), state.ActiveClipId) };
     }
 

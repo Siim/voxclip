@@ -39,6 +39,9 @@ internal sealed class RewriteSession : IDisposable
     internal bool CanPropose => IsOpen && !IsProposing && estimateShown && Prepared is not null;
     internal string Header { get; }
     internal RewriteReview? Review { get; private set; }
+    internal string? LocalAction => Review is { Diff.Hunks.Count: > 0 } review &&
+        review.Diff.Hunks.All(hunk => hunk.Kind != VoiceLabDiffHunkKind.Voice)
+        ? review.Diff.Hunks.Any(hunk => hunk.Kind == VoiceLabDiffHunkKind.TextOnly) ? "Apply Correction" : "Apply Cuts" : null;
     internal string SendLine => Connector?.Group switch
     {
         "apiKey" => $"Sends these {Source.Count(word => word.Kind == WordKind.Word)} words to {Connector.Name} with your key.",
@@ -171,6 +174,20 @@ internal sealed class RewriteSession : IDisposable
             Review = null;
             Problem = exception.Code == VoiceLabWordDiffErrorCode.TokenLimit ? VoiceLabPatchBudget.DisabledCopy : Refusal(exception);
         }
+    }
+
+    internal bool ApplyLocalChanges()
+    {
+        if (!IsOpen || LocalAction is null || !ReferenceEquals(Project, Editor.Project) || Editor.Busy || Editor.IsReadOnly || Editor.IsLeaving) return false;
+        List<EditOperation> operations = [];
+        foreach (var hunk in Review!.Diff.Hunks)
+        {
+            if (hunk.Kind == VoiceLabDiffHunkKind.Cut) operations.Add(new EditOperation.SetWordCuts(hunk.SourceWordIds, true));
+            else if (hunk.Kind == VoiceLabDiffHunkKind.TextOnly)
+                for (var index = 0; index < hunk.SourceWordIds.Count; index++)
+                    operations.Add(new EditOperation.Correct(hunk.SourceWordIds[index], hunk.CorrectedTexts[index]));
+        }
+        return Editor.ApplyBatch(operations);
     }
 
     private void InvalidateProposal() { revision++; sending?.Cancel(); }
