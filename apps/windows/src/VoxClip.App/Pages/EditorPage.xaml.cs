@@ -1,4 +1,5 @@
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
@@ -28,21 +29,22 @@ public sealed partial class EditorPage : Page
     private bool demo;
     private bool ready;
     private bool disposed;
-    private bool narrow;
+    /// <summary>The viewer collapsed because the transcript would drop below its minimum; it returns when there is room.</summary>
+    private bool viewerSqueezed;
+    /// <summary>The user showed the viewer where the transcript has no room; it stays until they hide it or the window grows.</summary>
+    private bool viewerForced;
     private CancellationTokenSource? autosave;
     private Task pendingSave = Task.CompletedTask;
     private ProjectLeaveBoundary leave = null!;
     private readonly SemaphoreSlim previewChanges = new(1, 1);
     private readonly SemaphoreSlim saves = new(1, 1);
     private string pauseBreath = "natural";
-    private double previewWidth = 380;
     private double previewDuration;
     private string? previewClipId;
     public EditorPage()
     {
         InitializeComponent();
         Loaded += (_, _) => Transcript.Focus(FocusState.Programmatic);
-        InspectorSplit.PaneClosed += (_, _) => { if (narrow) DispatcherQueue.TryEnqueue(() => Transcript.Focus(FocusState.Keyboard)); };
     }
     public static bool HasText(string? text) => !string.IsNullOrEmpty(text);
     /// <summary>The take's resolved video, or null when it can't be found or the project is a demo fixture.</summary>
@@ -78,10 +80,11 @@ public sealed partial class EditorPage : Page
         Transcript.MakeClipRequested += (_, _) => MakeClipAndReveal();
         Transcript.PlayRequested += (_, _) => _ = RunAsync(async () => { await SeekSourceAsync(ViewModel.SourceTime); if (preview is not null) await preview.PlayAsync(lifetime.Token); }, "Preview");
         Timeline.SeekRequested += (_, time) => _ = RunAsync(() => SeekSourceAsync(time), "Preview");
+        Timeline.PlayRequested += (_, _) => _ = RunAsync(TogglePlaybackAsync, "Preview");
+        ViewModel.PropertyChanged += (_, args) => { if (args.PropertyName == nameof(EditorViewModel.CanExport)) UpdateExport(); };
         Untranscribed.Visibility = ViewModel.HasTranscript ? Visibility.Collapsed : Visibility.Visible;
-        UpdateClipContext();
         Bindings.Update();
-        Aspect.SelectedIndex = (int)project.Export.Aspect;
+        Aspect.SelectedIndex = EditorLayout.Frames.ToList().IndexOf(project.Export.Aspect);
         inspector = new(ViewModel, async state => await SnapshotAsync(lifetime.Token, state), lifetime.Token);
         InspectorHost.Children.Add(inspector);
         await inspector.InitializeAsync();
@@ -89,12 +92,11 @@ public sealed partial class EditorPage : Page
         if (demo) media = MediaFromProject(project);
         else if (mediaPath is not null) await RunAsync(async () => media = await App.Services.Probe.ProbeAsync(mediaPath, ct), "Preview");
         if (mediaPath is null) ViewModel.Notice = $"Can't find {Path.GetFileName(project.Media.Source.AbsolutePath)}. Edits are saved.";
-        if (demo)
-        {
-            ViewModel.Notice = "Demo project · Synthetic preview. Changes are not saved to the fixture.";
-            PreviewDescription.Text = "Synthetic preview · source media is not loaded. Caption tiles use the shared renderer.";
-        }
+        if (demo) ViewModel.Notice = "Demo project · Synthetic preview. Changes are not saved to the fixture.";
         ready = true;
+        UpdateExport();
+        ShowViewer(true);
+        FitViewer(ActualWidth);
         await RunAsync(async () =>
         {
             if (media is null || preview is null) return;
@@ -164,7 +166,8 @@ public sealed partial class EditorPage : Page
         var changed = Math.Abs(ViewModel.SourceTime - sourceTime) > 0.02;
         ViewModel.SourceTime = sourceTime;
         TransportTime.Text = PreviewClockLabel.Format(position.EditedTime, previewDuration, ViewModel.State?.ActiveClipId is not null);
-        PlayCommand.IsChecked = position.IsPlaying; PlayCommand.Label = position.IsPlaying ? "Pause" : "Play";
+        PlayGlyph.Symbol = position.IsPlaying ? Symbol.Pause : Symbol.Play;
+        Timeline.SetTransport(TransportTime.Text, position.IsPlaying);
         Timeline.Position(position.SourceTime);
         if (changed) Transcript.RefreshVisuals();
     }
@@ -172,22 +175,13 @@ public sealed partial class EditorPage : Page
     {
         DispatcherQueue.TryEnqueue(() => { if (!disposed) ViewModel.Notice = UiError.Message(exception, "Preview"); });
     }
-    private void SelectionChanged(object? sender, EventArgs args) => UpdateClipContext();
-    private void UpdateClipContext()
-    {
-        if (ViewModel is null) return;
-        var active = ViewModel.Clips.FirstOrDefault(clip => clip.Id == ViewModel.State?.ActiveClipId);
-        ClipContext.Text = !ViewModel.HasTranscript ? "Choose transcription first. Your source video stays untouched."
-            : active is not null ? $"Previewing {active.Title} · {ViewModel.Clips.Count} {ClipNoun(ViewModel.Clips.Count)} in this take"
-            : ViewModel.HasSelection ? $"{ViewModel.SelectionEnd - ViewModel.SelectionStart + 1} words selected · {ViewModel.Clips.Count} {ClipNoun(ViewModel.Clips.Count)} in this take"
-            : ViewModel.Clips.Count == 0 ? "Select words in the transcript or find clips with AI."
-            : $"{ViewModel.Clips.Count} {ClipNoun(ViewModel.Clips.Count)} in this take · Select words to make another.";
-    }
-    private static string ClipNoun(int count) => count == 1 ? "clip" : "clips";
+    /// <summary>Make clip needs words selected (design §6.2).</summary>
+    private void SelectionChanged(object? sender, EventArgs args) => MakeClipCommand.IsEnabled = ViewModel.HasSelection;
     private void ModelChanged(object? sender, EventArgs args)
     {
         if (!ready || disposed) return;
-        UpdateClipContext();
+        UpdateExport();
+        SizeStage();
         Untranscribed.Visibility = ViewModel.HasTranscript ? Visibility.Collapsed : Visibility.Visible;
         _ = RunAsync(UpdatePreviewAsync, "Preview");
         SaveRequested(sender, args);
@@ -284,7 +278,8 @@ public sealed partial class EditorPage : Page
     /// <summary>The sidebar's "New clip from selection" action.</summary>
     internal void MakeClipFromPane() => MakeClipAndReveal();
     /// <summary>Open Find clips at the control that asked for it: the pane action, its callout or the page's button.</summary>
-    internal void ShowFindClips(FrameworkElement? anchor) => _ = RunAsync(() => FindClips.ShowAsync(anchor ?? FindClipsAction), "Find clips");
+    internal void ShowFindClips(FrameworkElement? anchor) =>
+        _ = RunAsync(() => FindClips.ShowAsync(anchor ?? (FindClipsCommand.IsInOverflow ? Commands : FindClipsCommand)), "Find clips");
     /// <summary>Home pauses playback and keeps this page alive; design §2.</summary>
     internal void PausePlayback() => _ = RunAsync(async () => { if (preview?.Position.IsPlaying == true) await preview.PauseAsync(lifetime.Token); }, "Preview");
     /// <summary>A sidebar row sets the scope through the existing setActiveClip step; a clip also selects its first word unless
@@ -296,12 +291,14 @@ public sealed partial class EditorPage : Page
             ViewModel.Select(ViewModel.Index(row.Clip.StartWordId));
     }
     private async void PlayClicked(object sender, RoutedEventArgs args) => await RunAsync(TogglePlaybackAsync, "Preview");
+    private async void BackClicked(object sender, RoutedEventArgs args) => await RunAsync(() => SeekSourceAsync(Math.Max(0, ViewModel.SourceTime - 3)), "Preview");
+    private async void ForwardClicked(object sender, RoutedEventArgs args) =>
+        await RunAsync(() => SeekSourceAsync(Math.Min(ViewModel.Project.Media.Source.DurationSeconds, ViewModel.SourceTime + 3)), "Preview");
     private async Task TogglePlaybackAsync()
     {
         if (preview is null) return;
         if (preview.Position.IsPlaying) await preview.PauseAsync(lifetime.Token); else await preview.PlayAsync(lifetime.Token);
     }
-    private void InspectorClicked(object sender, RoutedEventArgs args) => InspectorSplit.IsPaneOpen = !InspectorSplit.IsPaneOpen;
     private void DisplayChanged(object sender, RoutedEventArgs args) => Transcript.SetDisplay(ShowCuts.IsChecked == true, ShowPauses.IsChecked == true);
     private void FindClicked(object sender, RoutedEventArgs args) { FindBar.Visibility = Visibility.Visible; SearchText.Focus(FocusState.Programmatic); }
     private void CloseFindClicked(object sender, RoutedEventArgs args) { FindBar.Visibility = Visibility.Collapsed; Transcript.Focus(FocusState.Programmatic); }
@@ -330,7 +327,9 @@ public sealed partial class EditorPage : Page
         }
     }, "Save project");
     private void ShowProjectClicked(object sender, RoutedEventArgs args) { if (owner.ProjectPath is { } path) ShareHelpers.Reveal(path); }
-    private async void ExportClicked(object sender, RoutedEventArgs args) => await ExportAsync(false);
+    /// <summary>Export video… for Full take; Export clip… opens Export with the kept clips chosen until the single-clip scope
+    /// arrives with the export dialog (step 12).</summary>
+    private async void ExportClicked(object sender, RoutedEventArgs args) => await ExportAsync(ViewModel.State?.ActiveClipId is not null);
     /// <summary>A clip row's "Export kept clips…": Export opens with the kept clips chosen.</summary>
     internal Task ExportKeptClipsAsync() => ExportAsync(true);
     private Task ExportAsync(bool keptClips) => RunAsync(async () =>
@@ -349,8 +348,13 @@ public sealed partial class EditorPage : Page
         var confirmation = new ContentDialog { XamlRoot = XamlRoot, Title = "Transcribe again?", Content = $"Transcribe again? This replaces the transcript and removes {ViewModel.Summary.CutWordCount + ViewModel.Summary.CutPauseCount} cuts, {ViewModel.Project.Edits.Corrections.Count} corrections, {ViewModel.Clips.Count} clips and the AI suggestions.", PrimaryButtonText = "Transcribe Again", CloseButtonText = "Cancel", DefaultButton = ContentDialogButton.Close };
         if (await confirmation.ShowAsync() == ContentDialogResult.Primary) TranscribeClicked(sender, args);
     }
-    private async void ShortcutsClicked(object sender, RoutedEventArgs args) => await new ContentDialog { XamlRoot = XamlRoot, Title = "Keyboard shortcuts", CloseButtonText = "Done", Content = new TextBlock { Text = "Space  Play / pause\nJ / K / L  Back / stop / forward\nDelete  Cut or restore selected words\nEnter  Correct spelling\nCtrl+Z / Ctrl+Y  Undo / redo\nCtrl+K  Make a clip (no key needed)\nCtrl+Shift+K  Find clips\nCtrl+1 / Ctrl+2  Home / Full take\nCtrl+E  Export\nCtrl+F  Find\nCtrl+,  Settings\nF6  Next pane\n\nEditor keys never run while typing in a text field.", TextWrapping = TextWrapping.Wrap } }.ShowAsync();
-    private void AspectChanged(object sender, SelectionChangedEventArgs args) { if (ready) ViewModel.SetExport(ViewModel.Project.Export with { Aspect = (ExportAspect)Math.Max(0, Aspect.SelectedIndex) }); }
+    private async void ShortcutsClicked(object sender, RoutedEventArgs args) => await new ContentDialog { XamlRoot = XamlRoot, Title = "Keyboard shortcuts", CloseButtonText = "Done", Content = new TextBlock { Text = "Space  Play / pause\nJ / K / L  Back / stop / forward\nDelete  Cut or restore selected words\nEnter  Correct spelling\nCtrl+Z / Ctrl+Y  Undo / redo\nCtrl+K  Make a clip (no key needed)\nCtrl+Shift+K  Find clips\nCtrl+Shift+I  Show or hide the viewer\nCtrl+1 / Ctrl+2  Home / Full take\nCtrl+E  Export\nCtrl+F  Find\nCtrl+,  Settings\nF6  Next pane\n\nEditor keys never run while typing in a text field.", TextWrapping = TextWrapping.Wrap } }.ShowAsync();
+    private void AspectChanged(object sender, SelectionChangedEventArgs args)
+    {
+        if (!ready || Aspect.SelectedIndex < 0) return;
+        ViewModel.SetExport(ViewModel.Project.Export with { Aspect = EditorLayout.Frames[Aspect.SelectedIndex] });
+        SizeStage();
+    }
     private void InstallAccelerators()
     {
         void Add(VirtualKey key, VirtualKeyModifiers modifiers, Action action)
@@ -383,7 +387,7 @@ public sealed partial class EditorPage : Page
         Add(VirtualKey.Home, VirtualKeyModifiers.Control, () => ViewModel.Select(0));
         Add(VirtualKey.End, VirtualKeyModifiers.Control, () => ViewModel.Select(ViewModel.Words.Count - 1));
         Add(VirtualKey.K, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, () => ShowFindClips(null));
-        Add(VirtualKey.I, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, () => InspectorSplit.IsPaneOpen = !InspectorSplit.IsPaneOpen);
+        Add(VirtualKey.I, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, () => { Viewer.IsChecked = Viewer.IsChecked != true; ViewerClicked(this, new()); });
         Add(VirtualKey.F1, VirtualKeyModifiers.None, () => ShortcutsClicked(this, new()));
     }
     private async void EditorKeyDown(object sender, KeyRoutedEventArgs args)
@@ -392,17 +396,11 @@ public sealed partial class EditorPage : Page
         var focused = FocusManager.GetFocusedElement(XamlRoot);
         if (args.Key == VirtualKey.F6)
         {
-            var panes = InspectorSplit.IsPaneOpen ? new Control[] { Transcript, PreviewPlay, Timeline.FocusTarget, inspector!.FocusTarget } : [Transcript, PreviewPlay, Timeline.FocusTarget];
-            var regions = InspectorSplit.IsPaneOpen ? new FrameworkElement[] { TranscriptPane, PreviewPane, Timeline, InspectorHost } : [TranscriptPane, PreviewPane, Timeline];
+            var viewer = RightPane.Visibility == Visibility.Visible;
+            var panes = viewer ? new Control[] { Transcript, PreviewPlay, Timeline.FocusTarget, inspector!.FocusTarget } : [Transcript, Timeline.FocusTarget];
+            var regions = viewer ? new FrameworkElement[] { TranscriptPane, PreviewPane, Timeline, InspectorHost } : [TranscriptPane, Timeline];
             var current = Array.FindIndex(regions, pane => InputState.DescendsFrom(focused as DependencyObject, pane));
             panes[(current + (InputState.Down(VirtualKey.Shift) ? -1 : 1) + panes.Length) % panes.Length].Focus(FocusState.Keyboard); args.Handled = true; return;
-        }
-        if (args.Key == VirtualKey.Escape && narrow && InspectorSplit.IsPaneOpen)
-        {
-            InspectorSplit.IsPaneOpen = false;
-            Transcript.Focus(FocusState.Keyboard);
-            args.Handled = true;
-            return;
         }
         var editorFocus = InputState.DescendsFrom(focused as DependencyObject, Transcript) || InputState.DescendsFrom(focused as DependencyObject, PreviewPane) || InputState.DescendsFrom(focused as DependencyObject, Timeline);
         var control = InputState.Down(VirtualKey.Control);
@@ -428,27 +426,85 @@ public sealed partial class EditorPage : Page
         }
         args.Handled = handled;
     }
-    private void SplitterDragged(object sender, DragDeltaEventArgs args) { previewWidth = Math.Clamp(PreviewColumn.ActualWidth - args.HorizontalChange, 300, 560); PreviewColumn.Width = new(previewWidth); }
-    private void EditorSizeChanged(object sender, SizeChangedEventArgs args)
+    /// <summary>Export video… or Export clip… for the scope, disabled with its reason as tooltip and description (delta §3.5,
+    /// placeholder spec §5.4.4). The name says when the scope contains AI-modified speech.</summary>
+    private void UpdateExport()
     {
-        if (InspectorSplit is null || ContentPanes is null) return;
-        var isNarrow = args.NewSize.Width < 1200;
-        PanelsButton.Visibility = isNarrow ? Visibility.Visible : Visibility.Collapsed;
-        if (isNarrow != narrow)
-        {
-            narrow = isNarrow; InspectorSplit.DisplayMode = narrow ? SplitViewDisplayMode.Overlay : SplitViewDisplayMode.Inline; InspectorSplit.IsPaneOpen = !narrow;
-            InspectorSplit.PaneBackground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources[narrow ? "AcrylicBackgroundFillColorDefaultBrush" : "LayerFillColorDefaultBrush"];
-        }
-        var stacked = args.NewSize.Width < 960;
-        PreviewColumn.Width = stacked ? new(0) : new(previewWidth);
-        ContentPanes.ColumnDefinitions[1].Width = new(stacked ? 0 : 4);
-        PaneSplitter.Visibility = stacked ? Visibility.Collapsed : Visibility.Visible;
-        PreviewStage.MinHeight = stacked ? 120 : 180;
-        Aspect.Visibility = stacked ? Visibility.Collapsed : Visibility.Visible;
-        PreviewDescription.Visibility = stacked ? Visibility.Collapsed : Visibility.Visible;
-        ContentPanes.RowDefinitions[0].Height = stacked ? new(1, GridUnitType.Star) : new(1, GridUnitType.Star);
-        ContentPanes.RowDefinitions[1].Height = stacked ? new(1, GridUnitType.Star) : new(0);
-        Grid.SetColumn(PreviewPane, stacked ? 0 : 2); Grid.SetRow(TranscriptPane, stacked ? 1 : 0);
+        var active = ViewModel.Clips.FirstOrDefault(clip => clip.Id == ViewModel.State?.ActiveClipId);
+        var label = active is null ? "Export video…" : "Export clip…";
+        var reason = EditorLayout.ExportBlocked(demo, MediaPath is null || media is null, ViewModel.CanExport, active?.IsSuggested == true);
+        ExportButton.Content = label;
+        ExportButton.IsEnabled = reason is null;
+        ToolTipService.SetToolTip(ExportHost, reason ?? $"{label} (Ctrl+E)");
+        AutomationProperties.SetName(ExportButton, ScopeHasAiSpeech() ? label + ", contains AI-modified speech" : label);
+        AutomationProperties.SetHelpText(ExportButton, reason ?? "");
+    }
+    private bool ScopeHasAiSpeech()
+    {
+        var project = ViewModel.ScopedProject(ViewModel.State);
+        if (project.SchemaVersion != 3) return false;
+        var scope = project.Edits.ActiveClipId is { } id ? VoiceLabOutputScope.Clip(id) : VoiceLabOutputScope.Full;
+        try { return VoiceLabRenderContract.Prepare(project, scope, VoiceLabLabelPosition.TopRight).OutputPlan.RequiresSyntheticRendering; }
+        catch (Exception exception) when (exception is not OutOfMemoryException) { return false; }
+    }
+    private void ViewerClicked(object sender, RoutedEventArgs args)
+    {
+        var visible = Viewer.IsChecked == true;
+        viewerSqueezed = false;
+        viewerForced = visible && !TranscriptFits(ActualWidth);
+        ShowViewer(visible);
+        // Showing the viewer where the transcript would drop below its minimum hides the pane to make room (delta §3.7).
+        if (viewerForced) owner.CloseNavigationPane();
+    }
+    /// <summary>The right column and its splitter, or the compact transport in the timeline while it is collapsed.</summary>
+    private void ShowViewer(bool visible)
+    {
+        Viewer.IsChecked = visible;
+        TranscriptColumn.MinWidth = viewerForced ? 0 : Token("VcLayoutTranscriptMinWidth");
+        RightPane.Visibility = ViewerSplitter.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+        RightColumn.MinWidth = visible ? Token("VcSizeRightColumnMin") : 0;
+        RightColumn.Width = new(visible ? owner.RightColumnWidth ?? DefaultRightWidth() : 0);
+        Timeline.ShowsTransport = !visible;
+    }
+    private static double Token(string key) => (double)Application.Current.Resources[key];
+    private double DefaultRightWidth() => EditorLayout.RightColumnWidth(XamlRoot?.Size.Width ?? 1280, Token("VcSizeRightColumnMin"), Token("VcSizeRightColumnMax"));
+    private bool TranscriptFits(double pageWidth) =>
+        EditorLayout.TranscriptFits(pageWidth, ViewerSplitter.Width, owner.RightColumnWidth ?? DefaultRightWidth(), Token("VcLayoutTranscriptMinWidth"));
+    private void EditorSizeChanged(object sender, SizeChangedEventArgs args) { if (ready) FitViewer(args.NewSize.Width); }
+    /// <summary>The right column collapses first when the transcript would drop below 588 and returns when there is room.</summary>
+    private void FitViewer(double pageWidth)
+    {
+        var fits = TranscriptFits(pageWidth);
+        if (fits && viewerForced) { viewerForced = false; ShowViewer(true); }
+        else if (Viewer.IsChecked == true && !fits && !viewerForced) { viewerSqueezed = true; ShowViewer(false); }
+        else if (viewerSqueezed && fits) { viewerSqueezed = false; ShowViewer(true); }
+        else if (Viewer.IsChecked == true && owner.RightColumnWidth is null) RightColumn.Width = new(DefaultRightWidth());
+    }
+    /// <summary>Enter collapses the viewer; the splitter's arrow keys step 16 (delta §3.3).</summary>
+    private void SplitterKeyDown(object sender, KeyRoutedEventArgs args)
+    {
+        if (args.Key != VirtualKey.Enter) return;
+        args.Handled = true;
+        viewerSqueezed = viewerForced = false;
+        ShowViewer(false);
+        Transcript.Focus(FocusState.Keyboard);
+    }
+    private void SplitterKeyUp(object sender, KeyRoutedEventArgs args) { if (args.Key is VirtualKey.Left or VirtualKey.Right) RememberRightWidth(); }
+    private void SplitterDragged(object sender, ManipulationCompletedRoutedEventArgs args) => RememberRightWidth();
+    /// <summary>A width the user chose stays with the window across projects; settings.schema.json has no key for it.</summary>
+    private void RememberRightWidth() => owner.RightColumnWidth = RightColumn.ActualWidth;
+    private void RightPaneSizeChanged(object sender, SizeChangedEventArgs args)
+    {
+        AutomationProperties.SetItemStatus(ViewerSplitter, $"{Math.Round(args.NewSize.Width)} px");
+        SizeStage();
+    }
+    /// <summary>Size the stage for the frame and the column (delta §5.1) and name it for the scope.</summary>
+    private void SizeStage()
+    {
+        var oriented = media?.OrientedSize ?? new PixelSize(ViewModel.Project.Media.Source.Video?.Width ?? 16, ViewModel.Project.Media.Source.Video?.Height ?? 9);
+        (PreviewStage.Width, PreviewStage.Height) = EditorLayout.Stage(RightPane.ActualWidth - RightPane.BorderThickness.Left - 32, ViewModel.Project.Export.Aspect, oriented);
+        AutomationProperties.SetName(PreviewImage, ViewModel.State?.ActiveClipId is { } id && ViewModel.Clips.FirstOrDefault(clip => clip.Id == id) is { } clip
+            ? $"Video preview, clip {clip.Number}" : "Video preview, full take");
     }
     internal async Task<bool> TrySaveBeforeLeavingAsync()
     {

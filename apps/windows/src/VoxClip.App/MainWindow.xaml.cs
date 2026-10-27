@@ -264,6 +264,10 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
     }
 
     internal void SetProjectPath(string path) => ProjectPath = path;
+    /// <summary>The right column width the user chose with the splitter; window state, kept across projects (delta §3.3).</summary>
+    internal double? RightColumnWidth { get; set; }
+    /// <summary>Showing the viewer where the transcript has no room closes the pane (delta §3.7).</summary>
+    internal void CloseNavigationPane() => Nav.IsPaneOpen = false;
     /// <summary>Show Home without leaving the project: playback pauses and the editor page stays alive (ADR-R29).</summary>
     internal void ShowHome()
     {
