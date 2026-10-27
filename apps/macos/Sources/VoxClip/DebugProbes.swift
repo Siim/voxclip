@@ -275,9 +275,15 @@ import VoxClipCore
             let offset = y * bytesPerRow + x * 4
             let scale: Double = 1.0 / 255.0
             let red: Double = Double(bytes[offset]) * scale
-            let green: Double = Double(bytes[offset + 1]) * scale
-            let blue: Double = Double(bytes[offset + 2]) * scale
-            let alpha: Double = Double(bytes[offset + 3]) * scale
+            let greenIndex: Int = offset + 1
+            let blueIndex: Int = offset + 2
+            let alphaIndex: Int = offset + 3
+            let greenByte: Double = Double(bytes[greenIndex])
+            let blueByte: Double = Double(bytes[blueIndex])
+            let alphaByte: Double = Double(bytes[alphaIndex])
+            let green: Double = greenByte * scale
+            let blue: Double = blueByte * scale
+            let alpha: Double = alphaByte * scale
             return NSColor(srgbRed: red, green: green, blue: blue, alpha: alpha)
         }
     }
@@ -333,7 +339,8 @@ import VoxClipCore
         let bounds = button.convert(button.bounds, to: nil)
         let top = window.frame.height - bounds.maxY
         let middleX: Double = Double(bounds.midX)
-        let bottomY: Double = Double(top + bounds.height - 5)
+        let bottom: CGFloat = top + bounds.height - 5
+        let bottomY: Double = Double(bottom)
         let fillX: Double = middleX * scale
         let fillY: Double = bottomY * scale
         let fill = image.colorAt(x: Int(fillX), y: Int(fillY))

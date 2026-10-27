@@ -68,7 +68,10 @@ func viewerStageSize(ratio: Double, innerWidth: CGFloat, columnHeight: CGFloat, 
         }
         .padding(VCTokens.spacingPanePaddingMacos)
         .frame(maxWidth: .infinity)
-        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { innerWidth = max(1, $0 - 32) }
+        .onGeometryChange(for: CGFloat.self) { (geometry: GeometryProxy) -> CGFloat in geometry.size.width } action: { (width: CGFloat) in
+            let padded: CGFloat = width - 32
+            innerWidth = max(1, padded)
+        }
         .tint(DesignValues.accentText)
         .focusable()
         .onKeyPress(characters: CharacterSet(charactersIn: " jklpico[]")) { key in model.transport(key.characters, shift: key.modifiers.contains(.shift)); return .handled }
@@ -155,7 +158,8 @@ func viewerStageSize(ratio: Double, innerWidth: CGFloat, columnHeight: CGFloat, 
             let maximum = size.height * (portrait ? 0.075 : 0.12)
             for offset in stride(from: CGFloat.zero, to: size.width, by: 3.5) {
                 let source = centre + (offset / max(1, size.width) - 0.5) * span
-                let index = Int(source / 0.01)
+                let finePosition: Double = source / 0.01
+                let index: Int = Int(finePosition)
                 guard source >= 0, waveform.fine.indices.contains(index) else { continue }
                 let amplitude: CGFloat = CGFloat(waveform.fine[index])
                 let scaledAmplitude: CGFloat = amplitude * maximum * 2

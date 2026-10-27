@@ -51,7 +51,8 @@ import VoxClipCore
         white.setFillColor(NSColor.white.cgColor); white.fill(CGRect(x: 0, y: 0, width: 320, height: 180))
         let fallback = app.captions.tileBackdrop(input, still: white.makeImage())
         let pixel = fallback?.cgImage(forProposedRect: nil, context: nil, hints: nil).map { NSBitmapImageRep(cgImage: $0) }?.colorAt(x: 2, y: 2)?.usingColorSpace(.sRGB)
-        check("gallery fallback draws the same 35-percent-dim frame band without text", pixel.map { abs($0.redComponent - 0.65) < 0.02 && abs($0.greenComponent - 0.65) < 0.02 } ?? false)
+        let fallbackMatches: Bool = pixel.map { (color: NSColor) -> Bool in abs(color.redComponent - 0.65) < 0.02 && abs(color.greenComponent - 0.65) < 0.02 } ?? false
+        check("gallery fallback draws the same 35-percent-dim frame band without text", fallbackMatches)
         for (name, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
             for width in [360, 320] {
                 let view = NSHostingView(rootView: CaptionsSection(model: model).frame(width: CGFloat(width), height: 530).background(DesignValues.color("bg.surface")))

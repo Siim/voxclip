@@ -120,9 +120,12 @@ struct CaptionTileInput: Sendable, Equatable {
     }
 
     func tileBackdrop(_ input: CaptionTileInput, still: CGImage?, overlay: CGImage? = nil, position: Double? = nil) -> NSImage? {
-        let width = 320
-        let ratio = Double(input.frame.height) / Double(max(1, input.frame.width))
-        let height = max(1, Int((Double(width) * ratio).rounded()))
+        let width: Int = 320
+        let frameHeight: Double = Double(input.frame.height)
+        let frameWidth: Double = Double(max(1, input.frame.width))
+        let ratio: Double = frameHeight / frameWidth
+        let scaledHeight: Double = Double(width) * ratio
+        let height: Int = max(1, Int(scaledHeight.rounded()))
         guard let context = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
                                       space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
         let bounds = CGRect(x: 0, y: 0, width: width, height: height)
@@ -136,8 +139,13 @@ struct CaptionTileInput: Sendable, Equatable {
         }
         let resolved = (try? input.style.resolved(overrides: input.overrides, frame: input.frame)) ?? input.style
         let centre = input.position?.y ?? position ?? resolved.position.y
-        let bandHeight = min(Double(height), max(1, Double(height) * input.band))
-        let top = (centre * Double(height) - bandHeight / 2).clamped(to: 0...max(0, Double(height) - bandHeight))
+        let canvasHeight: Double = Double(height)
+        let requestedBand: Double = canvasHeight * input.band
+        let bandHeight: Double = min(canvasHeight, max(1, requestedBand))
+        let captionCentre: Double = centre * canvasHeight
+        let halfBand: Double = bandHeight / 2
+        let maximumTop: Double = max(0, canvasHeight - bandHeight)
+        let top: Double = (captionCentre - halfBand).clamped(to: 0...maximumTop)
         let band = CGRect(x: 0, y: top.rounded(.down), width: Double(width), height: bandHeight.rounded(.up))
         guard let background = context.makeImage()?.cropping(to: band),
               let tile = CGContext(data: nil, width: width, height: 144, bitsPerComponent: 8, bytesPerRow: 0,

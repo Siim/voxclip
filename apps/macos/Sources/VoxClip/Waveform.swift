@@ -4,11 +4,16 @@ import VoxClipCore
 struct WaveformData: Sendable {
     let fine: [Float]
     let buckets: [Float]
+    var byteCount: Int {
+        let count: Int = fine.count + buckets.count
+        return count * MemoryLayout<Float>.size
+    }
     init(fine: [Float]) {
         self.fine = fine
-        buckets = stride(from: 0, to: fine.count, by: 5).map { start in
-            let end = min(start + 5, fine.count)
-            let sum: Double = fine[start..<end].reduce(0.0) { partial, sample in
+        buckets = stride(from: 0, to: fine.count, by: 5).map { (start: Int) -> Float in
+            let limit: Int = start + 5
+            let end: Int = min(limit, fine.count)
+            let sum: Double = fine[start..<end].reduce(0.0) { (partial: Double, sample: Float) -> Double in
                 let amplitude: Double = Double(sample)
                 let squared: Double = amplitude * amplitude
                 return partial + squared
@@ -43,9 +48,10 @@ actor WaveformCache {
         pending[key] = task
         let value = await task.value
         pending[key] = nil
-        if let value, (value.fine.count + value.buckets.count) * 4 <= 24 << 20 {
+        let byteLimit: Int = 24 << 20
+        if let value, value.byteCount <= byteLimit {
             values[key] = value; order.append(key)
-            while order.count > 1, values.values.reduce(0, { $0 + ($1.fine.count + $1.buckets.count) * 4 }) > 24 << 20 {
+            while order.count > 1, values.values.reduce(0, { (total: Int, waveform: WaveformData) -> Int in total + waveform.byteCount }) > byteLimit {
                 values[order.removeFirst()] = nil
             }
         }

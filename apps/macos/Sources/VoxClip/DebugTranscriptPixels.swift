@@ -188,8 +188,14 @@ import VoxClipCore
                              green: foreground.greenComponent * alpha + background.greenComponent * (1 - alpha),
                              blue: foreground.blueComponent * alpha + background.blueComponent * (1 - alpha), alpha: 1)
         let scale = Double(bitmap.pixelsWide) / size.width
-        let lowerX = max(0, Int(rect.minX * scale)), upperX = min(bitmap.pixelsWide, Int(rect.maxX * scale))
-        let lowerY = max(0, Int(rect.minY * scale)), upperY = min(bitmap.pixelsHigh, Int(rect.maxY * scale))
+        let scaledMinX: Double = rect.minX * scale
+        let scaledMaxX: Double = rect.maxX * scale
+        let scaledMinY: Double = rect.minY * scale
+        let scaledMaxY: Double = rect.maxY * scale
+        let lowerX: Int = max(0, Int(scaledMinX))
+        let upperX: Int = min(bitmap.pixelsWide, Int(scaledMaxX))
+        let lowerY: Int = max(0, Int(scaledMinY))
+        let upperY: Int = min(bitmap.pixelsHigh, Int(scaledMaxY))
         guard lowerX < upperX, lowerY < upperY else { return 0 }
         var count = 0
         let tolerance = 3.0 / 255.0

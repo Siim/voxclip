@@ -56,7 +56,8 @@ import ApplicationServices
     private static func descendants(_ element: AXUIElement, depth: Int) -> [AXUIElement] {
         guard depth < 32 else { return [] }
         let children = attribute(element, kAXChildrenAttribute) as? [AXUIElement] ?? []
-        return [element] + children.flatMap { descendants($0, depth: depth + 1) }
+        let nextDepth: Int = depth + 1
+        return [element] + children.flatMap { (child: AXUIElement) -> [AXUIElement] in descendants(child, depth: nextDepth) }
     }
 }
 #endif

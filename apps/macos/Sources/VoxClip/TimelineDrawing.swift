@@ -145,7 +145,8 @@ struct TimelineProjection: Sendable {
                 let lower = voicePlan?.mapTime(source) ?? waveMap.map(source)
                 let upper = voicePlan?.mapTime(end) ?? waveMap.map(end)
                 guard upper > lower, !isReplaced(source, end) else { continue }
-                let target = Int(lower / 0.05)
+                let bucketPosition: Double = lower / 0.05
+                let target: Int = Int(bucketPosition)
                 if editedWaveform.indices.contains(target) { editedWaveform[target] = max(editedWaveform[target], amplitude) }
             }
         }

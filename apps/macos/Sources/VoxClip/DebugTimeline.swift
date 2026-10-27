@@ -127,7 +127,9 @@ import VoxClipCore
             let referenceBitmap = try capture(referenceWindow.contentView!, name: "timeline-dim-reference-\(name)", directory: directory)
             let expected = pixel(referenceBitmap, x: 60 * scale, y: 43 * scale)
             let actual = pixel(dimBitmap, x: 60 * scale, y: 43 * scale)
-            check("\(name) outside-clip pixels composite timeline.scopeDim at its token alpha", zip(actual, expected).allSatisfy { abs($0 - $1) < 1.0 / 255 })
+            let tolerance: Double = 1.0 / 255
+            let matches: Bool = zip(actual, expected).allSatisfy { (pair: (Double, Double)) -> Bool in abs(pair.0 - pair.1) < tolerance }
+            check("\(name) outside-clip pixels composite timeline.scopeDim at its token alpha", matches)
             referenceWindow.close()
             dimWindow.close()
             let contrastAppearance: NSAppearance.Name = name == "light" ? .accessibilityHighContrastAqua : .accessibilityHighContrastDarkAqua
@@ -311,7 +313,8 @@ import VoxClipCore
             try file.write(from: buffer)
         }
         let decoded = await WaveformCache.shared.load(.init(contentKey: String(repeating: "b", count: 64), source: wav, cache: cache))
-        results.append(.init(name: "off-main AVAssetReader fallback computes fifty-ms linear-PCM RMS", passed: decoded?.buckets.count == 20 && decoded?.buckets.allSatisfy { abs($0 - 0.25) < 0.001 } == true))
+        let levelsMatch: Bool = decoded?.buckets.allSatisfy { (level: Float) -> Bool in abs(level - 0.25) < 0.001 } == true
+        results.append(.init(name: "off-main AVAssetReader fallback computes fifty-ms linear-PCM RMS", passed: decoded?.buckets.count == 20 && levelsMatch))
         return results
     }
     private static func makeWindow(_ view: some View, width: CGFloat, appearance: NSAppearance.Name) -> NSWindow {
@@ -340,7 +343,10 @@ import VoxClipCore
         return [color.redComponent, color.greenComponent, color.blueComponent]
     }
     private static func repeats(_ bitmap: NSBitmapImageRep, from: Int, to: Int, row: Int, period: Int) -> Bool {
-        (from..<(to - period)).allSatisfy { offset in zip(pixel(bitmap, x: offset, y: row), pixel(bitmap, x: offset + period, y: row)).allSatisfy { abs($0 - $1) < 0.02 } }
+        (from..<(to - period)).allSatisfy { (offset: Int) -> Bool in
+            let next: Int = offset + period
+            return zip(pixel(bitmap, x: offset, y: row), pixel(bitmap, x: next, y: row)).allSatisfy { (pair: (Double, Double)) -> Bool in abs(pair.0 - pair.1) < 0.02 }
+        }
     }
     private static func attribute(_ element: AXUIElement, _ name: String) -> CFTypeRef? {
         var value: CFTypeRef?
@@ -354,7 +360,8 @@ import VoxClipCore
         func descendants(_ element: AXUIElement, depth: Int) -> [AXUIElement] {
             guard depth < 32 else { return [] }
             let children = attribute(element, kAXChildrenAttribute) as? [AXUIElement] ?? []
-            return [element] + children.flatMap { descendants($0, depth: depth + 1) }
+            let nextDepth: Int = depth + 1
+            return [element] + children.flatMap { (child: AXUIElement) -> [AXUIElement] in descendants(child, depth: nextDepth) }
         }
         return descendants(target, depth: 0)
     }

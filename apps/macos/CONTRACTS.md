@@ -1,5 +1,10 @@
 # macOS implementation contracts
 
+### 2026-10-28 — Round-3 A5: hosted compiler and asset ownership
+
+- Every inference-heavy arithmetic/closure site named by the round-2 reviewer now has typed intermediates and closure parameters. Waveform accounting uses a typed byte count; the 24 MiB bound is unchanged. The final fresh diagnostic build and hosted Xcode 26 run verify the result.
+- Hosted run 40589099514's hygiene job removed both custom transport symbolsets because the token generator owns all of `Assets.xcassets`. The symbols now live in the separate App-owned `Transport.xcassets`, compiled alongside generated accents. The release asset test asserts that both three-second symbols survive compilation; generator ownership and token outputs remain unchanged.
+
 ### 2026-10-28 — Round-3 A4: spoken timeline values
 
 - The Playhead slider now describes the active Source/Edited projection, source versus output duration and the exact §15 suffix. Whole-second formatting and ties-to-even rounding match Windows `TimelineLayout.ValueText`/`Spoken`, including minute boundaries.
