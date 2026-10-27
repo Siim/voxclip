@@ -1,4 +1,5 @@
 using VoxClip.Core.Domain.Editing;
+using VoxClip.Core.Domain.Shared;
 
 namespace VoxClip.App.ViewModels;
 
@@ -21,6 +22,8 @@ internal sealed class TimelineScene
     internal List<(double Start, double End, ClipRow Clip)> Clips { get; } = [];
     internal int BuildVersion { get; private set; }
     internal int VisitedWords { get; private set; }
+    private IReadOnlyList<TimedWord>? indexedWords;
+    private TimelineIntervalIndex intervalIndex = new([]);
     internal void Build(EditorViewModel model, EditPlan plan, TimelineWindow window, IReadOnlyList<float> waveform, double width, bool edited)
     {
         BuildVersion++;
@@ -34,26 +37,27 @@ internal sealed class TimelineScene
         void Mark(bool[] target, double start, double end)
         {
             var left = Display(start); var right = Display(end);
-            if (right < window.Start || left > window.End) return;
+            if (left >= right || right <= window.Start || left >= window.End) return;
             var first = Math.Clamp((int)Math.Floor(window.X(left, bins)), 0, bins - 1);
             var last = Math.Clamp((int)Math.Ceiling(window.X(right, bins)), first + 1, bins);
             Array.Fill(target, true, first, last - first);
         }
         var sourceStart = Source(window.Start); var sourceEnd = Source(window.End);
-        var begin = TimelineLayout.WordAt(model.Words, sourceStart);
-        for (var index = begin; index < model.Words.Count; index++)
+        if (!ReferenceEquals(indexedWords, model.Words))
         {
-            var word = model.Words[index];
-            if (word.Start >= sourceEnd) break;
-            VisitedWords++;
-            if (word.End <= sourceStart) continue;
+            indexedWords = model.Words;
+            intervalIndex = new(indexedWords);
+        }
+        intervalIndex.Query(sourceStart, sourceEnd, word =>
+        {
             if (model.State?.CutWordIds.Contains(word.Id) == true) { if (!edited) Mark(cuts, word.Start, word.End); }
             else
             {
                 Mark(kept, word.Start, word.End);
                 if (EditingAlgorithms.IsFillerText(model.DisplayText(word))) Mark(fillers, word.Start, word.End);
             }
-        }
+        });
+        VisitedWords = intervalIndex.VisitedWords;
         if (model.Words.Count == 0) Array.Fill(kept, true);
         void Runs(bool[] flags, int layer, double top, double height)
         {

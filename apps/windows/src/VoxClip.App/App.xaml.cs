@@ -33,6 +33,10 @@ public partial class App : Application
         termsHost = decision.Host;
         if (!decision.Accepted) { termsHost?.Close(); termsHost = null; Exit(); return; }
         await Services.InitializeAsync(CancellationToken.None);
+#if DEBUG
+        var captureAppearance = Program.Arguments.FirstOrDefault(argument => argument.StartsWith("--capture-appearance=", StringComparison.Ordinal))?.Split('=')[1];
+        if (captureAppearance is "light" or "dark") await Services.SetAsync("general.appearance", captureAppearance);
+#endif
         window = NewWindow();
         termsHost?.Close();
         termsHost = null;
@@ -67,6 +71,12 @@ public partial class App : Application
             if (demoIndex >= 0 && demoIndex + 1 < Program.Arguments.Length)
             {
                 await window.OpenPathAsync(Program.Arguments[demoIndex + 1], ShellPath.Launch, true);
+                if (Program.Arguments.Contains("--capture-fixture") && window.DebugEditor?.ViewModel is { } captureModel && captureModel.Words.Count >= 6)
+                {
+                    if (captureModel.KeptClips.Count == 0) { captureModel.Select(0); captureModel.Select(2, true); captureModel.MakeClip(); }
+                    if (captureModel.KeptClips.Count == 1) { captureModel.Select(captureModel.Words.Count - 3); captureModel.Select(captureModel.Words.Count - 1, true); captureModel.MakeClip(); }
+                    captureModel.Apply(new VoxClip.Core.Domain.Editing.EditOperation.SetActiveClip(null));
+                }
                 screen = "editor";
                 var screenIndex = Array.IndexOf(Program.Arguments, "--demo-screen");
                 if (screenIndex >= 0 && screenIndex + 1 < Program.Arguments.Length)

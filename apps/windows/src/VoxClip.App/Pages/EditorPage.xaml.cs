@@ -187,17 +187,12 @@ public sealed partial class EditorPage : Page
     }
 
     private static MediaInfo MediaFromProject(Project project)
+        => ExportRenderInput.Media(project);
+    private async Task<ComposeSnapshot> SnapshotAsync(CancellationToken ct, EditState? stateOverride = null, Project? projectOverride = null)
     {
-        var source = project.Media.Source;
-        var oriented = source.Video is { RotationDegrees: 90 or 270 } video ? new PixelSize(video.Height, video.Width) : new(source.Video?.Width ?? 1920, source.Video?.Height ?? 1080);
-        return new(source.AbsolutePath, source.DurationSeconds, source.Video, source.Audio, oriented, null, null, false, 0, source.Audio is null ? -1 : 0, 0);
-    }
-    private async Task<ComposeSnapshot> SnapshotAsync(CancellationToken ct, EditState? stateOverride = null)
-    {
-        var source = media ?? MediaFromProject(ViewModel.Project);
-        var rate = source.Audio?.SampleRate ?? 48000;
-        var state = stateOverride ?? ViewModel.State;
-        var project = ViewModel.ScopedProject(state);
+        var source = media ?? MediaFromProject(projectOverride ?? ViewModel.Project);
+        var state = projectOverride is null ? stateOverride ?? ViewModel.State : stateOverride;
+        var project = projectOverride ?? ViewModel.ScopedProject(state);
         var scope = project.Edits.ActiveClipId is { } id ? VoiceLabOutputScope.Clip(id) : VoiceLabOutputScope.Full;
         VoiceLabRenderInput? voice = null;
         if (project.SchemaVersion == 3)
@@ -207,18 +202,15 @@ public sealed partial class EditorPage : Page
                 voice = VoiceLabRenderInput.Capture(project, prepared, Path.Combine(App.Services.Data.Root, "VoiceLab"));
         }
         else VoiceLabProject.RequireLegacyRendering(project, scope);
-        var samples = checked((long)Math.Floor(source.DurationSeconds * rate + 0.5));
-        var plan = new EditPlan(rate, samples, [], [new(0, samples)], samples, []);
-        if (state is not null) plan = EditingEngine.BuildEditPlan(EditingEngine.BuildSegments(state, source.DurationSeconds), source.DurationSeconds, rate, state.PauseKeepSeconds);
-        var outputSize = ExportPresets.OutputSize(source.OrientedSize, ViewModel.Project.Export.Aspect);
-        var fps = ExportPresets.OutputFrameRate(source.Video?.FrameRate ?? 30);
+        var plan = ExportRenderInput.Plan(source, state);
+        var output = ExportRenderInput.Output(source, project.Export);
+        var outputSize = output.Size;
         CaptionTrack? captions = null;
-        if (!demo && state is not null && ViewModel.Project.Captions.StyleId != "off" && this.captions?.Styles.FirstOrDefault(style => style.Id == ViewModel.Project.Captions.StyleId) is { } style)
+        if (!demo && state is not null && project.Captions.StyleId != "off" && this.captions?.Styles.FirstOrDefault(style => style.Id == project.Captions.StyleId) is { } style)
             captions = await CaptionEngine.BuildAsync(new(style, project.Captions, outputSize,
                 voice?.Prepared.OutputPlan.Captions ?? EditingEngine.CaptionWords(state, plan), state.Transcript.Language,
                 voice?.Prepared.OutputPlan.Duration ?? plan.Duration), new HarfBuzzGlyphShaper(), null, ct);
-        var snapshot = new ComposeSnapshot(source, plan, captions,
-            new(outputSize, fps, ExportPresets.VideoBitrate(outputSize, project.Export.Aspect, project.Export.Quality, fps))) { VoiceLab = voice };
+        var snapshot = new ComposeSnapshot(source, plan, captions, output) { VoiceLab = voice };
         return voice?.CaptureSnapshot(snapshot) ?? snapshot;
     }
     private void PositionChanged(PreviewPosition position)
@@ -235,6 +227,8 @@ public sealed partial class EditorPage : Page
         TransportElapsed.Text = elapsed;
         TransportTotal.Text = " / " + total;
         PlayGlyph.Symbol = position.IsPlaying ? Symbol.Pause : Symbol.Play;
+        AutomationProperties.SetName(PreviewPlay, PlaybackPresentation.Name(position.IsPlaying));
+        ToolTipService.SetToolTip(PreviewPlay, PlaybackPresentation.Hint(position.IsPlaying));
         Timeline.SetTransport(elapsed, total, position.IsPlaying);
         Timeline.Position(position.SourceTime);
         CaptionDrag.Position(position.EditedTime);
@@ -519,7 +513,10 @@ public sealed partial class EditorPage : Page
     {
         ViewModel.Apply(new EditOperation.SetActiveClip(clipId));
         if (!keepSelection && clipId is not null && ViewModel.State?.ActiveClipId == clipId && ViewModel.Clips.FirstOrDefault(clip => clip.Id == clipId) is { } row)
+        {
             ViewModel.Select(ViewModel.Index(row.Clip.StartWordId));
+            Transcript.RevealWord(ViewModel.SelectionStart);
+        }
     }
     private async void PlayClicked(object sender, RoutedEventArgs args) => await RunAsync(TogglePlaybackAsync, "Preview");
     private async void BackClicked(object sender, RoutedEventArgs args) => await RunAsync(() => SeekSourceAsync(Math.Max(0, ViewModel.SourceTime - 3)), "Preview");
@@ -553,6 +550,7 @@ public sealed partial class EditorPage : Page
         var file = await picker.PickSaveFileAsync();
         if (file is not null && !ViewModel.IsLeaving)
         {
+            ViewModel.CaptionDrag.Cancel();
             autosave?.Cancel(); await pendingSave;
             await saves.WaitAsync(lifetime.Token);
             try
@@ -581,7 +579,7 @@ public sealed partial class EditorPage : Page
             Transcript.Announce(reason);
             return;
         }
-        await new ExportDialog(owner, ViewModel, demo, SnapshotAsync, clipId) { XamlRoot = XamlRoot }.ShowAsync();
+        await new ExportDialog(owner, ViewModel, demo, (project, state, ct) => SnapshotAsync(ct, state, project), clipId) { XamlRoot = XamlRoot }.ShowAsync();
     }, "Export");
     internal async Task PromptTranscriptionAsync() => await RunAsync(async () =>
     {
@@ -832,6 +830,7 @@ public sealed partial class EditorPage : Page
             ViewModel.SaveRequested -= SaveRequested;
         }
         Transcript.Detach(); Timeline.Detach(); captions?.Detach();
+        FindClips.Close();
         CaptionDrag.Cancel();
         App.Services.SettingsChanged -= EditorSettingsChanged;
         App.Services.ExportLedger.Changed -= LedgerChanged;

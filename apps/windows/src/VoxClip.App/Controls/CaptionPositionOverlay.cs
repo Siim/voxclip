@@ -22,7 +22,13 @@ public sealed class CaptionPositionOverlay : UserControl
     internal bool IsDragging => dragging;
     private CaptionPosition pending;
     private CaptionPosition origin;
-    internal void Attach(EditorViewModel value) => model = value;
+    internal void Attach(EditorViewModel value)
+    {
+        if (model is not null) model.CaptionDrag.Cancelled -= DragCancelled;
+        model = value;
+        model.CaptionDrag.Cancelled += DragCancelled;
+    }
+    private void DragCancelled(object? sender, EventArgs args) => Cancel();
     public CaptionPositionOverlay()
     {
         IsTabStop = false; Content = surface;
@@ -42,11 +48,12 @@ public sealed class CaptionPositionOverlay : UserControl
         track = value; time = editedTime; Refresh();
     }
     internal void Position(double editedTime) { time = editedTime; if (!dragging) Refresh(); }
-    internal void Cancel() { dragging = false; handle.ReleasePointerCaptures(); Refresh(); }
+    internal void Cancel() { dragging = false; model?.CaptionDrag.Cancel(); handle.ReleasePointerCaptures(); Refresh(); }
     private void Pressed(object sender, PointerRoutedEventArgs args)
     {
         if (track?.Style.Position.UserDraggable != true || model is null || model.Busy || !args.GetCurrentPoint(handle).Properties.IsLeftButtonPressed) return;
         origin = new(track.Style.Position.X, track.Style.Position.Y); pending = origin;
+        model.CaptionDrag.Begin(model.Project.Export.Aspect);
         dragging = true; handle.CapturePointer(args.Pointer); Refresh(); args.Handled = true;
     }
     private void Moved(object sender, PointerRoutedEventArgs args)
@@ -60,7 +67,7 @@ public sealed class CaptionPositionOverlay : UserControl
     {
         if (!dragging) return;
         Moved(sender, args); dragging = false; handle.ReleasePointerCapture(args.Pointer);
-        model?.MoveCaptionAnchor(pending); Refresh(); args.Handled = true;
+        model?.CompleteCaptionDrag(pending); Refresh(); args.Handled = true;
     }
     private void Refresh()
     {

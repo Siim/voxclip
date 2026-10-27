@@ -17,6 +17,7 @@ public sealed class TranscriptView : UserControl
 {
     private readonly ItemsRepeater repeater;
     private readonly ScrollViewer scroll;
+    private int pendingReveal = -1;
     private readonly SelectionFlyout selectionFlyout;
     private readonly Dictionary<Grid, ParagraphVisual> realized = [];
     private EditorViewModel? model;
@@ -77,7 +78,24 @@ public sealed class TranscriptView : UserControl
         KeyDown += SelectionKeyDown;
         KeyUp += (_, args) => { if (args.Key is Windows.System.VirtualKey.Left or Windows.System.VirtualKey.Right or Windows.System.VirtualKey.Home or Windows.System.VirtualKey.End) ScheduleFlyout(); };
         ActualThemeChanged += (_, _) => RefreshVisuals();
-        Unloaded += (_, _) => { correction.IsOpen = false; selectionFlyout.Hide(); };
+        Loaded += (_, _) => { Ui.EffectsChanged += EffectsChanged; if (pendingReveal >= 0) RevealWord(pendingReveal); };
+        Unloaded += (_, _) => { Ui.EffectsChanged -= EffectsChanged; correction.IsOpen = false; selectionFlyout.Hide(); };
+    }
+    private void EffectsChanged(object? sender, EventArgs args) => DispatcherQueue.TryEnqueue(RefreshVisuals);
+    internal void RevealWord(int wordIndex)
+    {
+        pendingReveal = wordIndex;
+        if (!IsLoaded || model is null) return;
+        pendingReveal = -1;
+        for (var index = 0; index < model.Paragraphs.Count; index++)
+        {
+            var paragraph = model.Paragraphs[index];
+            if (wordIndex < paragraph.StartIndex || wordIndex >= paragraph.StartIndex + paragraph.Count) continue;
+            var element = repeater.GetOrCreateElement(index);
+            repeater.UpdateLayout();
+            element.StartBringIntoView(new BringIntoViewOptions { AnimationDesired = Ui.EffectPolicy.Animations, VerticalAlignmentRatio = 0.2 });
+            break;
+        }
     }
 
     /// <summary>Segoe UI Variable Text at 19 epx is the Windows transcript default; design §4.1 (C4).</summary>
@@ -181,7 +199,7 @@ public sealed class TranscriptView : UserControl
     /// <summary>Tell Narrator what an edit or a clip command did.</summary>
     internal void Announce(string text)
     {
-        FrameworkElementAutomationPeer.FromElement(this)?.RaiseNotificationEvent(AutomationNotificationKind.ActionCompleted, AutomationNotificationProcessing.MostRecent, text, "edit");
+        Ui.Announce(this, text, "edit");
     }
     private Brush Brush(string key) => Ui.ThemeBrush(this, key);
     private SolidColorBrush Transparent(string key)

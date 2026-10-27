@@ -447,6 +447,42 @@ jobs:
         working-directory: apps/windows
         run: dotnet build src/VoxClip.Cli/VoxClip.Cli.csproj -c Release -m:1 -nodeReuse:false -p:UseSharedCompilation=false
 
+      - name: Compare pre-redesign and current dialog exports
+        if: ${{ !cancelled() && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/track/sol-win-redesign' }}
+        shell: pwsh
+        run: |
+          git fetch --no-tags origin 05105bae02f9199d47728143794b1d285b92357b
+          if ($LASTEXITCODE -ne 0) { throw 'The exact round-3 export parent could not be fetched.' }
+          python apps/windows/tests/VoxClip.Core.Tests/Tracks/win-ui/export-equivalence.py --tools "$env:GITHUB_WORKSPACE/apps/windows/build/.cache/ffmpeg/win-x64/test-tools" --evidence "$env:RUNNER_TEMP/voxclip-export-equivalence"
+          if ($LASTEXITCODE -ne 0) { throw 'Before/after export equivalence failed.' }
+
+      - name: Parse native capture and keyboard scripts
+        if: ${{ !cancelled() && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/track/sol-win-redesign' }}
+        shell: pwsh
+        run: |
+          $scripts = 'capture-windows.ps1', 'run-screenshots.ps1', 'launch-windows.ps1', 'native-accessibility-walk.ps1', 'run-native-flow.ps1'
+          foreach ($script in $scripts) {
+            $file = Join-Path 'apps/windows/tests/VoxClip.Core.Tests/Tracks/win-ui' $script
+            $tokens = $null; $parseErrors = $null
+            $null = [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $file), [ref]$tokens, [ref]$parseErrors)
+            if ($parseErrors.Count -gt 0) { throw ($parseErrors | Out-String) }
+            if ([IO.File]::ReadAllBytes((Resolve-Path $file)) | Where-Object { $_ -gt 127 }) { throw "$script must remain ASCII." }
+            Write-Output "PASS: $script parses; interactive execution still requires the VM."
+          }
+
+      - name: Upload dialog export comparison
+        if: always() && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/track/sol-win-redesign'
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-dialog-export-equivalence
+          path: |
+            ${{ runner.temp }}/voxclip-export-equivalence/*.json
+            ${{ runner.temp }}/voxclip-export-equivalence/*.log
+            ${{ runner.temp }}/voxclip-export-equivalence/*/manifest.json
+            ${{ runner.temp }}/voxclip-export-equivalence/**/*.srt
+          if-no-files-found: error
+          retention-days: 14
+
   e2e-parity:
     name: macOS and Windows CLI E2E parity
     needs: [macos, windows]

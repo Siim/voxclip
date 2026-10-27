@@ -80,6 +80,9 @@ public interface ICaptionRasterizer
 /// <summary>Caption-domain entry points; captions §3, §6, §7 and §11. Implement in place, not in the UI.</summary>
 public static class CaptionEngine
 {
+    /// <summary>Resolve only the stored position that reaches this output frame.</summary>
+    public static CaptionPosition? StoredPosition(ProjectCaptions captions, PixelSize frame)
+        => CaptionStyleResolver.Preset(frame) is { } preset && captions.PositionByAspect.TryGetValue(preset, out var position) ? position : captions.Position;
     /// <summary>Apply casemap and punctuation rules from bundled data; captions §3.</summary>
     public static string TransformText(string text, CaptionText options) => CaptionTextRules.Normalize(text, options, "", CaptionDataLoader.Current);
     /// <summary>Build paging, line breaking and placement once at export resolution.</summary>

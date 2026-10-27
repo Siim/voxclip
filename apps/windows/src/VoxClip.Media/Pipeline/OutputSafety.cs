@@ -71,9 +71,10 @@ internal static class OutputSafety
         var rollbackBytes = rollbackDestinations.Where(File.Exists).Sum(path => new FileInfo(path).Length);
         var needed = checked(additionalBytes + rollbackBytes);
         var root = Path.GetPathRoot(Resolve(destination)) ?? throw new IOException("The output volume is unavailable.");
-        if (new DriveInfo(root).AvailableFreeSpace < needed)
-            throw new VoxClipException(VoxClipErrorCode.ExportFailed,
-                "Export stopped: there is not enough free space for the marked MP4 and its rollback copy. Your edits are saved.");
+        var available = new DriveInfo(root).AvailableFreeSpace;
+        if (available < needed)
+            throw new VoxClipException(VoxClipErrorCode.DiskFull,
+                ExportErrors.DiskFullMessage(root, (needed - available).ToString("N0", System.Globalization.CultureInfo.InvariantCulture) + " bytes"));
     }
 
     private static void ValidatePartial(string path)

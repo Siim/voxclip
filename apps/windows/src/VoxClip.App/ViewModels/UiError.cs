@@ -2,11 +2,23 @@ using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Services.LLM;
 using VoxClip.Core.Domain.VoiceLab;
 using VoxClip.Media.VoiceLab;
+using VoxClip.Media.Pipeline;
 
 namespace VoxClip.App.ViewModels;
 
 public static class UiError
 {
+    public static string ExportMessage(Exception exception, string destination)
+    {
+        if (exception is OperationCanceledException or VoiceLabProjectException or VoiceLabAssetException or VoiceLabTempoException or LlmException)
+            return Message(exception, "Export");
+        if (exception is VoxClipException known and not MediaException)
+        {
+            if (known.Code != VoxClipErrorCode.ExportFailed || known.Message.StartsWith("Export stopped: ", StringComparison.Ordinal) && known.Message.EndsWith(". Your edits are saved.", StringComparison.Ordinal))
+                return Message(exception, "Export");
+        }
+        return ExportErrors.Map(exception, destination).Message;
+    }
     public static string Message(Exception exception, string action)
     {
         if (exception is OperationCanceledException) return "";
