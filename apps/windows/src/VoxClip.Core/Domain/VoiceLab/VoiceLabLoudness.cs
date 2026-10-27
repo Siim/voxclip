@@ -27,7 +27,6 @@ internal readonly record struct VoiceLabBiquad(double B0, double B1, double B2, 
 /// §8.7 item 2 and §8.11 items 2 and 3. No I/O, media framework or global state, and allocations stay O(input).</summary>
 public static class VoiceLabLoudness
 {
-    internal const double VoicedFrameDbfs = -45.0;
     internal const double LoudnessNeighbourhoodSeconds = 3.0;
     internal const double GainClampDb = 12.0;
     internal const double TruePeakLimitDbtp = -1.0;
@@ -218,8 +217,8 @@ public static class VoiceLabLoudness
     // is framed from its own first sample, and its trailing partial frame is ignored.
     private static double? VoicedLevel(ReadOnlySpan<float> before, ReadOnlySpan<float> after, int sampleRate)
     {
-        var size = SampleCount(0.01, sampleRate);
-        var threshold = Math.Pow(10, VoicedFrameDbfs / 20);
+        var size = SampleCount(VoiceLabPatchConstants.RMS_FRAME, sampleRate);
+        var threshold = VoiceLabPatchConstants.VOICED_FRAME_LEVEL;
         var total = 0.0;
         var voicedFrames = 0;
         AddVoicedFrames(before);
@@ -316,7 +315,7 @@ public static class VoiceLabLoudness
 
     internal static void Validate(ReadOnlySpan<float> samples, int sampleRate)
     {
-        if (sampleRate <= 0 || SampleCount(0.01, sampleRate) < 1) throw new VoiceLabAudioMathException(VoiceLabAudioMathErrorCode.InvalidInput);
+        if (sampleRate <= 0 || SampleCount(VoiceLabPatchConstants.RMS_FRAME, sampleRate) < 1) throw new VoiceLabAudioMathException(VoiceLabAudioMathErrorCode.InvalidInput);
         foreach (var value in samples)
             if (!float.IsFinite(value)) throw new VoiceLabAudioMathException(VoiceLabAudioMathErrorCode.InvalidInput);
     }

@@ -19,7 +19,6 @@ struct VoiceLabBiquad: Equatable, Sendable {
 /// and §8.11 items 2 and 3. No I/O, media framework or global state, and allocations stay O(input). The per-sample
 /// loops step raw pointers, so a minute of audio stays fast in unoptimised test builds too.
 public enum VoiceLabLoudness {
-    static let voicedFrameDbfs = -45.0
     static let loudnessNeighbourhoodSeconds = 3.0
     static let gainClampDb = 12.0
     static let truePeakLimitDbtp = -1.0
@@ -220,8 +219,8 @@ public enum VoiceLabLoudness {
     /// The RMS in dBFS over the voiced 10 ms frames of `sides`, in order, or nil when no frame is voiced. Each side is
     /// framed from its own first sample, and its trailing partial frame is ignored.
     private static func voicedLevel(_ samples: [Float], sides: [Range<Int>], sampleRate: Int) -> Double? {
-        let size = sampleCount(0.01, sampleRate)
-        let threshold = pow(10, voicedFrameDbfs / 20)
+        let size = sampleCount(VoiceLabPatchConstants.RMS_FRAME, sampleRate)
+        let threshold = VoiceLabPatchConstants.VOICED_FRAME_LEVEL
         var total = 0.0, voicedFrames = 0
         samples.withUnsafeBufferPointer { buffer in
             guard let base = buffer.baseAddress else { return }
@@ -324,7 +323,7 @@ public enum VoiceLabLoudness {
     }
 
     static func validate(_ samples: [Float], sampleRate: Int) throws {
-        guard sampleRate > 0, sampleCount(0.01, sampleRate) >= 1 else { throw VoiceLabAudioMathError.invalidInput }
+        guard sampleRate > 0, sampleCount(VoiceLabPatchConstants.RMS_FRAME, sampleRate) >= 1 else { throw VoiceLabAudioMathError.invalidInput }
         try requireFinite(samples)
     }
 

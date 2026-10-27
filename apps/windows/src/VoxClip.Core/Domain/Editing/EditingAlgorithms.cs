@@ -42,7 +42,8 @@ public static partial class EditingAlgorithms
     /// <summary>Absolute-anchor, ASCII-only hesitation rule, editing §4.11.</summary>
     public static bool IsFillerText(string text) => FillerPattern().IsMatch(text);
 
-    private static string NormalizeForMatch(string text)
+    /// <summary>Invariant lowercase letters and numbers only, editing §4.7.</summary>
+    public static string NormalizeForMatch(string text)
     {
         var result = new StringBuilder();
         foreach (var scalar in text.EnumerateRunes())
