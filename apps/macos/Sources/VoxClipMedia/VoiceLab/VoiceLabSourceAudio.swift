@@ -329,10 +329,11 @@ public enum VoiceLabSourceAudio {
     }
 
     static func bufferFirstSample(presentationTime: CMTime, rate: Int, previousEnd: Int64?) throws -> Int64 {
-        guard presentationTime.isNumeric, presentationTime.timescale > 0 else {
+        guard presentationTime.isValid else {
             if let previousEnd { return previousEnd }
             throw VoiceLabSourceAudioError.unreadable
         }
+        guard presentationTime.isNumeric, presentationTime.timescale > 0 else { throw VoiceLabSourceAudioError.unreadable }
         let scale: Int64 = Int64(presentationTime.timescale)
         let tickSamples: Double = Double(rate) / Double(scale)
         let tolerance: Double = max(1.0, tickSamples)

@@ -215,6 +215,14 @@ import VoxClipCore
         #expect(try VoiceLabSourceAudio.bufferFirstSample(presentationTime: .invalid, rate: 48_000, previousEnd: 1_920) == 1_920)
     }
 
+    @Test func nonfinitePresentationTimeIsNotAMissingTimestamp() throws {
+        for time in [CMTime.positiveInfinity, CMTime.negativeInfinity, CMTime.indefinite] {
+            #expect(throws: VoiceLabSourceAudioError.unreadable) {
+                try VoiceLabSourceAudio.bufferFirstSample(presentationTime: time, rate: 48_000, previousEnd: 1_920)
+            }
+        }
+    }
+
     @Test(arguments: [0, 4_800]) func bufferPointSixSamplesEarlyLosesNoDecodedSample(start: Int) throws {
         let first: [Float] = (0..<4_800).map { (frame: Int) -> Float in Self.left(frame) }
         let second: [Float] = (4_800..<9_600).map { (frame: Int) -> Float in Self.left(frame) }
