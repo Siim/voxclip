@@ -1,5 +1,9 @@
 # macOS implementation contracts
 
+### 2026-10-27 — Right column width setting
+
+- `SettingsDocument.defaults` gains `ui.rightColumnWidth` (null by default). Validation accepts null or a number from 240 to 720, matching `shared/schemas/settings.schema.json`. The App clamps the value to its own column range and stores it only after the user drags the divider. The key belongs to the ADR-R29 editor layout, and both redesign tracks use it.
+
 ### 2026-10-27 — Hosted CI fixes after the paid-asset merge
 
 - `VoiceLabSourceAudio.resample` feeds `AVAudioConverter` through the private, lock-protected `VoiceLabResampleInput`. The macOS 26 SDK marks the converter's input block `@Sendable`, so the captured `var offset` failed the hosted Swift build. The output and the public API are unchanged.

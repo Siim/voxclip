@@ -9,7 +9,7 @@ namespace VoxClip.Core.Services.Settings;
 public sealed record AppSettings
 {
     internal const string DefaultJson = """
-        {"schema":"voxclip-settings/1","general.appearance":"system","general.transcriptTextSize":null,
+        {"schema":"voxclip-settings/1","general.appearance":"system","general.transcriptTextSize":null,"ui.rightColumnWidth":null,
         "general.showLowConfidence":false,"general.showPlaceholderWords":true,"general.openLastProject":false,"general.recentProjects":[],"onboarding.completed":false,
         "editing.pauseBreath":"natural","captions.defaultStyleId":"vox-highlight","cache.limitGB":5,
         "transcription.engineMode":"local","transcription.language":"auto","transcription.recentLanguages":[],
