@@ -1,6 +1,6 @@
 {
   "fixture": "voxclip-manual-clip-titles/1",
-  "description": "design.md section 6.2: a manual clip's title is the first seven words of the selection as shown (corrections applied), joined by one space, trimmed of whitespace, cut to 120 Unicode code points and trimmed again; null when nothing is left. VoxClip.Core EditingAlgorithms.ClipTitle passes every case.",
+  "description": "design.md section 6.2: a manual clip's title is the first seven words of the selection as shown (corrections applied), joined by one space, trimmed of whitespace, cut to 120 Unicode code points and trimmed again; null when nothing is left. Both Cores check every case: VoxClip.Core EditingAlgorithms.ClipTitle and VoxClipCore EditingAlgorithms.clipTitle.",
   "maxWords": 7,
   "maxCodePoints": 120,
   "cases": [

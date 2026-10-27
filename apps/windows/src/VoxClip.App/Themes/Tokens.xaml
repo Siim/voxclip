@@ -331,8 +331,6 @@
     <x:Double x:Key="VcSizeMinHitTargetWindows">32</x:Double>
     <x:Double x:Key="VcSizeBreakpointThreeColumn">1200</x:Double>
     <x:Double x:Key="VcSizeBreakpointStack">960</x:Double>
-    <FontFamily x:Key="VcFontDmSans">ms-appx:///shared/fonts/dm-sans/DMSans-Medium.ttf#DM Sans, Segoe UI Variable</FontFamily>
-    <FontFamily x:Key="VcFontGeistMono">Cascadia Mono</FontFamily>
     <x:String x:Key="VcStatusFontFamily">Cascadia Mono</x:String>
     <x:Double x:Key="VcStatusFontWeight">400</x:Double>
     <x:Double x:Key="VcStatusFontSize">11</x:Double>

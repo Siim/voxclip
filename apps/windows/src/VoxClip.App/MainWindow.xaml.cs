@@ -528,7 +528,7 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
     private void DismissSuggestionInvoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args) => args.Handled = RowCommand(args, (model, id) => model.Dismiss(id));
     private void RemoveClipInvoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args) => args.Handled = RowCommand(args, (model, id) => model.Remove(id));
     private void RemoveClipClicked(object sender, RoutedEventArgs args) { if (sender is FrameworkElement { Tag: string id }) ClipCommand(id, model => model.Remove(id)); }
-    private void KeepAllClicked(object sender, RoutedEventArgs args) => editor?.ViewModel.KeepAll();
+    private void KeepAllClicked(object sender, RoutedEventArgs args) { if (RowEdits(SidebarKind.SuggestedHeader)) editor?.ViewModel.KeepAll(); }
     private void CancelFindingClicked(object sender, RoutedEventArgs args) => editor?.FindClips.Cancel();
     private void CalloutClosed(InfoBar sender, object args) => editor?.FindClips.Dismiss();
     /// <summary>Retry runs the search again; Set up AI… and Sign-in help open Settings at the AI page.</summary>
@@ -541,7 +541,7 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
     }
     private void CalloutTipActionClicked(TeachingTip sender, object args) => CalloutActionClicked(sender, new RoutedEventArgs());
     /// <summary>The none-found row's Find clips… opens the flyout at itself.</summary>
-    private void FindClipsAgainClicked(object sender, RoutedEventArgs args) => editor?.ShowFindClips(sender as FrameworkElement);
+    private void FindClipsAgainClicked(object sender, RoutedEventArgs args) { if (RowEdits(SidebarKind.NoneFound)) editor?.ShowFindClips(sender as FrameworkElement); }
     /// <summary>A Find clips callout must be seen (design §13): the pane opens and scrolls to it, and when Find clips was
     /// asked for away from the pane, a tip points at it.</summary>
     private void CalloutShown(object? sender, FrameworkElement? anchor)
@@ -563,7 +563,7 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
     private void CancelRecentTranscriptionClicked(object sender, RoutedEventArgs args) { if (sender is FrameworkElement { Tag: string path }) TranscriptionActivity.Cancel(path); }
     private async void RenameClipInvoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
     {
-        if ((args.Element as FrameworkElement)?.Tag is not string id) return;
+        if ((args.Element as FrameworkElement)?.Tag is not string id || !RowEdits(id)) return;
         args.Handled = true;
         await RenameClipAsync(id);
     }
@@ -572,10 +572,10 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
     {
         if (sender is FrameworkElement { Tag: string id } && editor?.ViewModel.Clips.FirstOrDefault(clip => clip.Id == id) is { } clip) ShareHelpers.Copy(clip.Excerpt);
     }
-    private async void ExportClipClicked(object sender, RoutedEventArgs args) { if (editor is not null && sender is FrameworkElement { Tag: string id }) await editor.ExportClipAsync(id); }
+    private async void ExportClipClicked(object sender, RoutedEventArgs args) { if (editor is not null && sender is FrameworkElement { Tag: string id } && RowEdits(id)) await editor.ExportClipAsync(id); }
     private async Task RenameClipAsync(string id)
     {
-        if (editor?.ViewModel is not { } model || model.Clips.FirstOrDefault(clip => clip.Id == id) is not { } clip) return;
+        if (!RowEdits(id) || editor?.ViewModel is not { } model || model.Clips.FirstOrDefault(clip => clip.Id == id) is not { } clip) return;
         // A title is at most 120 code points; a longer one keeps the dialog open with the reason under the box. MaxLength
         // counts UTF-16 units, so it only stops a paste far past the limit.
         var name = new TextBox { Header = "Clip title", Text = clip.Title, MaxLength = 2 * Core.Domain.Editing.EditingLimits.MaxClipTitleCodePoints };
@@ -600,9 +600,14 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
             model.Notice = "This clip couldn't be renamed. Your edits are still here.";
         FocusRow(Shell.Rows.FirstOrDefault(row => row.ClipId == id));
     }
+    /// <summary>Whether a row's commands may act: only rows that edit (<see cref="SidebarRow.Edits"/>). While Home shows, the
+    /// project's rows only navigate, so a key or click that still reaches one is ignored and nothing changes in the hidden
+    /// editor (design §2).</summary>
+    private bool RowEdits(string clipId) => Shell.Rows.Any(row => row.ClipId == clipId && row.Edits);
+    private bool RowEdits(SidebarKind kind) => Shell.Rows.Any(row => row.Kind == kind && row.Edits);
     private bool RowCommand(KeyboardAcceleratorInvokedEventArgs args, Func<EditorViewModel, string, bool> command)
     {
-        if ((args.Element as FrameworkElement)?.Tag is not string id) return false;
+        if ((args.Element as FrameworkElement)?.Tag is not string id || !RowEdits(id)) return false;
         ClipCommand(id, model => command(model, id));
         return true;
     }
@@ -610,7 +615,7 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
     /// none (design §3.4).</summary>
     private void ClipCommand(string id, Func<EditorViewModel, bool> command)
     {
-        if (editor?.ViewModel is not { } model) return;
+        if (editor?.ViewModel is not { } model || !RowEdits(id)) return;
         var after = Shell.Rows.SkipWhile(row => row.ClipId != id).Skip(1).Where(row => row.ClipId is not null).Select(row => row.ClipId).ToArray();
         if (!command(model)) return;
         var next = after.Select(clipId => Shell.Rows.FirstOrDefault(row => row.ClipId == clipId)).FirstOrDefault(row => row is not null);

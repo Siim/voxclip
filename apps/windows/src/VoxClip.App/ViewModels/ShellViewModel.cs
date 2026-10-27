@@ -21,6 +21,7 @@ public sealed class SidebarRow(SidebarKind kind, string key) : ObservableObject
     private string toolTip = "";
     private bool isActive;
     private bool isEnabled = true;
+    private bool edits = true;
     private MediaTile? media;
     private bool showsKeepAll;
     private bool showsCancel;
@@ -55,6 +56,10 @@ public sealed class SidebarRow(SidebarKind kind, string key) : ObservableObject
     public bool IsActive { get => isActive; set { if (SetProperty(ref isActive, value)) OnPropertyChanged(nameof(IsNeutral)); } }
     public bool IsNeutral => !isActive;
     public bool IsEnabled { get => isEnabled; set => SetProperty(ref isEnabled, value); }
+    /// <summary>Whether the row's commands act on the open project: Keep, Dismiss, Rename, Remove, Export clip…, Keep all and
+    /// Find clips…. False while Home shows, where the project's rows only navigate, because the editor they would act on
+    /// is hidden (design §2). The window disables the commands and ignores any key that still reaches them.</summary>
+    public bool Edits { get => edits; set => SetProperty(ref edits, value); }
     /// <summary>The row's thumbnail: the take's or clip's frame, else its caption card (design §5.4).</summary>
     public MediaTile? Media { get => media; set => SetProperty(ref media, value); }
     /// <summary>The Suggested header offers Keep all from two suggestions up.</summary>
@@ -150,12 +155,13 @@ public sealed class ShellViewModel
                 row.ToolTip = clip.ToolTip;
                 row.IsActive = clip.Id == active;
                 row.Media = ClipMedia.GetValueOrDefault(clip.Id);
-                if (suggestion && number == kept.Length + 1) next.Add(SuggestedHeader(suggested.Length));
+                row.Edits = !showingHome;
+                if (suggestion && number == kept.Length + 1) next.Add(SuggestedHeader(suggested.Length, showingHome));
                 next.Add(row);
             }
             if (Finding is { } connector)
             {
-                if (suggested.Length == 0) next.Add(SuggestedHeader(0));
+                if (suggested.Length == 0) next.Add(SuggestedHeader(0, showingHome));
                 var finding = Row(SidebarKind.Finding, "finding");
                 finding.Title = "Finding clips…";
                 finding.Detail = connector;
@@ -164,10 +170,11 @@ public sealed class ShellViewModel
             }
             else if (NoneFound is { } message)
             {
-                if (suggested.Length == 0) next.Add(SuggestedHeader(0));
+                if (suggested.Length == 0) next.Add(SuggestedHeader(0, showingHome));
                 var none = Row(SidebarKind.NoneFound, "nonefound");
                 none.Title = message;
                 none.AccessibleName = message;
+                none.Edits = !showingHome;
                 next.Add(none);
             }
             if (!showingHome)
@@ -221,13 +228,15 @@ public sealed class ShellViewModel
         Reconcile(next);
     }
 
-    /// <summary>"Suggested", or "Suggested (N)" with Keep all from two suggestions up (design §3.4).</summary>
-    private SidebarRow SuggestedHeader(int count)
+    /// <summary>"Suggested", or "Suggested (N)" with Keep all from two suggestions up (design §3.4); Keep all is disabled on
+    /// Home.</summary>
+    private SidebarRow SuggestedHeader(int count, bool showingHome)
     {
         var header = Row(SidebarKind.SuggestedHeader, "suggested");
         header.Title = count >= 2 ? $"Suggested ({count})" : "Suggested";
         header.AccessibleName = header.Title;
         header.ShowsKeepAll = count >= 2;
+        header.Edits = !showingHome;
         return header;
     }
 

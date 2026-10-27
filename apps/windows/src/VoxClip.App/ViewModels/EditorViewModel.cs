@@ -82,7 +82,16 @@ public sealed class EditorViewModel : ObservableObject
     /// <summary>Why Export can't run for <paramref name="clipId"/>'s scope (null is Full take), or null when it can. The Export
     /// button, Ctrl+E and a clip row's Export clip… share it (delta §3.5).</summary>
     public string? ExportBlocked(bool demo, bool videoUnavailable, string? clipId) =>
-        EditorLayout.ExportBlocked(demo, videoUnavailable, Busy || isLeaving, Summary.CanExport, Clips.FirstOrDefault(clip => clip.Id == clipId)?.IsSuggested == true);
+        EditorLayout.ExportBlocked(demo, videoUnavailable, Busy || isLeaving, ScopeKeepsWords(clipId), Clips.FirstOrDefault(clip => clip.Id == clipId)?.IsSuggested == true);
+    /// <summary>Whether <paramref name="clipId"/>'s scope keeps a word. A clip row's Export clip… names a clip that need not
+    /// be active, so a scope other than the active one is summarised on its own.</summary>
+    private bool ScopeKeepsWords(string? clipId)
+    {
+        if (state is null) return false;
+        if (clipId == state.ActiveClipId) return Summary.CanExport;
+        try { return summarize(state with { ActiveClipId = clipId }).CanExport; }
+        catch (VoxClipException) { return false; }
+    }
     public bool CanUndo => undo.Count > 0;
     public bool CanRedo => redo.Count > 0;
     public int SelectionStart => Math.Min(selectionAnchor, selectionEnd);

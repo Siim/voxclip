@@ -1,5 +1,12 @@
 # macOS implementation contracts
 
+### 2026-10-27 — Manual clip titles in VoxClipCore (opus-win-redesign, lead-approved)
+
+- New `Sources/VoxClipCore/Domain/Editing/EditingAlgorithms.swift`: public `enum EditingAlgorithms`, named for its VoxClip.Core counterpart, with `clipTitleWords` (7) and `clipTitle(_ words: some Sequence<String>) -> String?`. A manual clip's title is the first seven words of the selection as shown (corrections applied), joined by one space, trimmed with `EditingPrimitives.jsTrim`, cut to `EditingLimits.maxClipTitleScalars` (120) Unicode scalars and trimmed again; nil when nothing is left (design §6.2). Additive: the reducer, `.addClip` and project encoding are unchanged.
+- `Tests/VoxClipCoreTests/Editing/ManualClipTitleTests.swift` replays `shared/fixtures/clips/manual-titles.json` (`voxclip-manual-clip-titles/1`, 10 cases) and compares titles by Unicode scalars. VoxClip.Core's `ManualClipTitleTests` replays the same vector.
+- **Consumer action — Mac redesign track (lead decision):** switch `EditorModel.makeClip` to `EditingAlgorithms.clipTitle`. The Mac App is unchanged in this track. Until then its `EditorModel.clipTitle` keeps a trailing space for `trimmed-after-the-cap` and gives "" where the vector expects nil (`nothing-left`, `no-words`).
+- Verified on the Mac host: `swift build --build-tests -Xswiftc -Xfrontend -Xswiftc -warn-long-expression-type-checking=300` reported no slow expression in the two new files, and `swift test --filter VoxClipCoreTests` passed 539 tests in 38 suites with `VOXCLIP_SHARED_DIR` set as hosted CI sets it.
+
 ### 2026-10-27 — Voice Lab pricing, cost presentation and spend ledger (opus-vl-pricing)
 
 - The lead's decisions for voice-lab §3.1 and §3.2, with a typed hook for §3.3 live prices, revised after review rounds 1 to 3. This is an in-place Core change. The approval flow, quote fingerprints and request bodies left by wave2-vl-request-bodies are unchanged. `ElevenLabsVoiceLab` records each accepted action itself. App and CLI need no wiring: neither constructs the service, and no App or CLI path calls a Voice Lab provider outside it. The Settings key test only sends the free `GET /v1/user/subscription`, and transcription goes through `ElevenLabsTranscriber`, which is not a Voice Lab action. Old → new:
@@ -1456,6 +1463,7 @@ Paths are relative to apps/macos. Nested public types are qualified with their e
 | `DataLocations` | `Sources/VoxClipCore/Services/Settings/SharedResources.swift` | mac-editing |
 | `EditCommand` | `Sources/VoxClipCore/Domain/Editing/EditingContracts.swift` | mac-editing |
 | `EditHistory` | `Sources/VoxClipCore/Domain/Editing/EditingContracts.swift` | mac-editing |
+| `EditingAlgorithms` | `Sources/VoxClipCore/Domain/Editing/EditingAlgorithms.swift` | mac-editing (added by opus-win-redesign with lead approval) |
 | `EditorModel` | `Sources/VoxClip/EditorView.swift` | mac-ui |
 | `EditorView` | `Sources/VoxClip/EditorView.swift` | mac-ui |
 | `EditPlan` | `Sources/VoxClipCore/Domain/Editing/EditingContracts.swift` | mac-editing |

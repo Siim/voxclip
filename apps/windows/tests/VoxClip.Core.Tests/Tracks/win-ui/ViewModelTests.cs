@@ -301,12 +301,14 @@ public sealed class ViewModelTests
     [InlineData('[', SidebarKind.Suggestion, false, -1)]
     [InlineData(']', SidebarKind.Suggestion, false, 1)]
     [InlineData(']', SidebarKind.Clip, true, 0)]
-    [InlineData('[', SidebarKind.FullTake, false, 0)]
+    [InlineData('[', SidebarKind.FullTake, false, -1)]
+    [InlineData(']', SidebarKind.FullTake, false, 1)]
+    [InlineData(']', SidebarKind.FullTake, true, 0)]
     [InlineData(']', SidebarKind.Recent, false, 0)]
     [InlineData(']', SidebarKind.Home, false, 0)]
     [InlineData(']', SidebarKind.Action, false, 0)]
     [InlineData('k', SidebarKind.Clip, false, 0)]
-    public void BracketsStepClipsFromClipAndSuggestionRows(char key, SidebarKind row, bool modifier, int expected) => Assert.Equal(expected, ShortcutPolicy.RowClipStep(key, row, modifier));
+    public void BracketsStepClipsFromTheFullTakeClipAndSuggestionRows(char key, SidebarKind row, bool modifier, int expected) => Assert.Equal(expected, ShortcutPolicy.RowClipStep(key, row, modifier));
     [Theory]
     [InlineData(0, "0:00.0")]
     [InlineData(-10, "0:00.0")]

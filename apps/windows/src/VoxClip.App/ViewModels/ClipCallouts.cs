@@ -16,6 +16,11 @@ public static class ClipCallouts
     public static SidebarCallout NoConnector { get; } = new("Choose how VoxClip finds clips: your API key, a model on this computer, or an installed CLI.",
         "You can also select words and press Ctrl+K to make a clip yourself.", SetUp);
 
+    /// <summary>The connector llm.connector names now (AI spec §11 gate 4), from the catalogue's entries; null when the setting
+    /// is empty or names no connector this PC offers, which is §13 "Clips: no connector".</summary>
+    public static T? Chosen<T>(string selected, IEnumerable<T> catalogue, Func<T, string> wireId) where T : class =>
+        selected.Length == 0 ? null : catalogue.FirstOrDefault(entry => wireId(entry) == selected);
+
     /// <summary>A connector's name in copy: a CLI's short name, from its catalogue label ("Claude Code (installed CLI)" reads
     /// "Claude Code"); API-key and local connectors keep their label.</summary>
     public static string ConnectorName(string label, string group) =>

@@ -97,7 +97,7 @@ public sealed class EditorLayoutTests
     public void ExportNamesWhyItIsUnavailable()
     {
         Assert.Equal("Demo projects have no video to export.", EditorLayout.ExportBlocked(true, true, true, true, false));
-        Assert.Equal("Locate the video to export.", EditorLayout.ExportBlocked(false, true, true, true, false));
+        Assert.Equal("Open the project and find the video to export.", EditorLayout.ExportBlocked(false, true, true, true, false));
         Assert.Equal("Finish the current task first.", EditorLayout.ExportBlocked(false, false, true, false, true));
         Assert.Equal("Keep at least one word before exporting.", EditorLayout.ExportBlocked(false, false, false, false, true));
         Assert.Equal("Keep this clip to export it.", EditorLayout.ExportBlocked(false, false, false, true, true));

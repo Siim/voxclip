@@ -78,11 +78,12 @@
                     </NavigationViewItem.KeyboardAccelerators>
                     <NavigationViewItem.ContextFlyout>
                         <MenuFlyout>
-                            <MenuFlyoutItem Text="Export clip…" Tag="{x:Bind ClipId}" Click="ExportClipClicked"/>
-                            <MenuFlyoutItem Text="Rename…" KeyboardAcceleratorTextOverride="F2" Tag="{x:Bind ClipId}" Click="RenameClipClicked"/>
+                            <!-- On Home the project's rows only navigate: the commands that act on the hidden editor are disabled. -->
+                            <MenuFlyoutItem Text="Export clip…" Tag="{x:Bind ClipId}" Click="ExportClipClicked" IsEnabled="{x:Bind Edits, Mode=OneWay}"/>
+                            <MenuFlyoutItem Text="Rename…" KeyboardAcceleratorTextOverride="F2" Tag="{x:Bind ClipId}" Click="RenameClipClicked" IsEnabled="{x:Bind Edits, Mode=OneWay}"/>
                             <MenuFlyoutItem Text="Copy text" Tag="{x:Bind ClipId}" Click="CopyClipTextClicked"/>
                             <MenuFlyoutSeparator/>
-                            <MenuFlyoutItem Text="Remove clip" KeyboardAcceleratorTextOverride="Delete" Tag="{x:Bind ClipId}" Click="RemoveClipClicked"/>
+                            <MenuFlyoutItem Text="Remove clip" KeyboardAcceleratorTextOverride="Delete" Tag="{x:Bind ClipId}" Click="RemoveClipClicked" IsEnabled="{x:Bind Edits, Mode=OneWay}"/>
                         </MenuFlyout>
                     </NavigationViewItem.ContextFlyout>
                     <Grid ColumnSpacing="12">
@@ -109,7 +110,7 @@
                     <Grid ColumnSpacing="8">
                         <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                         <TextBlock Text="{x:Bind Title, Mode=OneWay}" VerticalAlignment="Center"/>
-                        <HyperlinkButton Grid.Column="1" Content="Keep all" Height="32" Padding="6,0" Click="KeepAllClicked" Visibility="{x:Bind ShowsKeepAll, Mode=OneWay}" AutomationProperties.Name="Keep all suggested clips"/>
+                        <HyperlinkButton Grid.Column="1" Content="Keep all" Height="32" Padding="6,0" Click="KeepAllClicked" Visibility="{x:Bind ShowsKeepAll, Mode=OneWay}" IsEnabled="{x:Bind Edits, Mode=OneWay}" AutomationProperties.Name="Keep all suggested clips"/>
                     </Grid>
                 </NavigationViewItemHeader>
             </DataTemplate>
@@ -122,8 +123,8 @@
                     </NavigationViewItem.KeyboardAccelerators>
                     <NavigationViewItem.ContextFlyout>
                         <MenuFlyout>
-                            <MenuFlyoutItem Text="Keep clip" KeyboardAcceleratorTextOverride="Ctrl+Enter" Tag="{x:Bind ClipId}" Click="KeepClicked"/>
-                            <MenuFlyoutItem Text="Dismiss" KeyboardAcceleratorTextOverride="Delete" Tag="{x:Bind ClipId}" Click="DismissClicked"/>
+                            <MenuFlyoutItem Text="Keep clip" KeyboardAcceleratorTextOverride="Ctrl+Enter" Tag="{x:Bind ClipId}" Click="KeepClicked" IsEnabled="{x:Bind Edits, Mode=OneWay}"/>
+                            <MenuFlyoutItem Text="Dismiss" KeyboardAcceleratorTextOverride="Delete" Tag="{x:Bind ClipId}" Click="DismissClicked" IsEnabled="{x:Bind Edits, Mode=OneWay}"/>
                         </MenuFlyout>
                     </NavigationViewItem.ContextFlyout>
                     <Grid ColumnSpacing="12">
@@ -141,9 +142,9 @@
                         </StackPanel>
                         <!-- Keep and Dismiss: 32x32 subtle icon buttons that never select the row. -->
                         <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
-                            <Button Width="32" Height="32" Padding="0" Style="{ThemeResource SubtleButtonStyle}" Tag="{x:Bind ClipId}" Click="KeepClicked" Tapped="RowButtonTapped"
+                            <Button Width="32" Height="32" Padding="0" Style="{ThemeResource SubtleButtonStyle}" Tag="{x:Bind ClipId}" Click="KeepClicked" Tapped="RowButtonTapped" IsEnabled="{x:Bind Edits, Mode=OneWay}"
                                 ToolTipService.ToolTip="Keep (Ctrl+Enter)" AutomationProperties.Name="{x:Bind KeepName, Mode=OneWay}"><FontIcon Glyph="&#xE73E;" FontSize="14"/></Button>
-                            <Button Width="32" Height="32" Padding="0" Style="{ThemeResource SubtleButtonStyle}" Tag="{x:Bind ClipId}" Click="DismissClicked" Tapped="RowButtonTapped"
+                            <Button Width="32" Height="32" Padding="0" Style="{ThemeResource SubtleButtonStyle}" Tag="{x:Bind ClipId}" Click="DismissClicked" Tapped="RowButtonTapped" IsEnabled="{x:Bind Edits, Mode=OneWay}"
                                 ToolTipService.ToolTip="Dismiss (Delete)" AutomationProperties.Name="{x:Bind DismissName, Mode=OneWay}"><FontIcon Glyph="&#xE711;" FontSize="14"/></Button>
                         </StackPanel>
                     </Grid>
@@ -173,7 +174,7 @@
                 <NavigationViewItemHeader Style="{StaticResource SidebarHeaderStyle}" AutomationProperties.Name="{x:Bind AccessibleName, Mode=OneWay}">
                     <StackPanel Padding="0,4">
                         <TextBlock Text="{x:Bind Title, Mode=OneWay}" Style="{StaticResource CaptionTextBlockStyle}" FontWeight="Normal" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"/>
-                        <HyperlinkButton Content="Find clips…" Height="32" Padding="6,0" Margin="-6,0,0,0" Click="FindClipsAgainClicked"/>
+                        <HyperlinkButton Content="Find clips…" Height="32" Padding="6,0" Margin="-6,0,0,0" Click="FindClipsAgainClicked" IsEnabled="{x:Bind Edits, Mode=OneWay}"/>
                     </StackPanel>
                 </NavigationViewItemHeader>
             </DataTemplate>

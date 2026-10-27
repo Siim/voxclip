@@ -47,7 +47,8 @@ public static class EditorLayout
     /// or an export runs it is design §14's "Finish the current task first."</summary>
     public static string? ExportBlocked(bool demo, bool videoUnavailable, bool busy, bool hasKeptWords, bool suggestionSelected) =>
         demo ? "Demo projects have no video to export."
-        : videoUnavailable ? "Locate the video to export."
+        // Design §5.4.4 says "Locate the video to export."; Windows has no Locate… yet (a lead-approved temporary deviation).
+        : videoUnavailable ? "Open the project and find the video to export."
         : busy ? "Finish the current task first."
         : !hasKeptWords ? "Keep at least one word before exporting."
         : suggestionSelected ? "Keep this clip to export it."

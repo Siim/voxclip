@@ -83,21 +83,20 @@ internal sealed class FindClipsFlyout
     {
         if (Running is not null || model.Busy || model.IsLeaving || !model.HasTranscript) return;
         anchor = target;
-        var selected = App.Services.Get("llm.connector", "");
-        entry = selected.Length == 0 ? null : (await ProviderCatalog.ReadAsync(ct)).FirstOrDefault(item => item.WireId == selected);
-        if (entry is null)
+        entry = await ChosenAsync();
+        if (entry is not { } chosen)
         {
             Show(ClipCallouts.NoConnector);
             return;
         }
         Set(null);
-        connector.Text = $"{entry.ShortName} · checking…";
-        footnote.Text = entry.Group == "local" ? "Runs on this PC. Nothing leaves it." : "Sends transcript text with word numbers. No audio or video.";
+        connector.Text = $"{chosen.ShortName} · checking…";
+        footnote.Text = chosen.Group == "local" ? "Runs on this PC. Nothing leaves it." : "Sends transcript text with word numbers. No audio or video.";
         problem.Visibility = Visibility.Collapsed;
         flyout.ShowAt(target);
-        try { connector.Text = $"{entry.ShortName} · {ProviderCatalog.ShortStatus(await App.Services.Connector(entry.Id).GetStatusAsync(ct))}"; }
+        try { connector.Text = $"{chosen.ShortName} · {ProviderCatalog.ShortStatus(await App.Services.Connector(chosen.Id).GetStatusAsync(ct))}"; }
         catch (OperationCanceledException) { }
-        catch (Exception exception) when (exception is not OutOfMemoryException) { connector.Text = $"{entry.ShortName} · {ProviderCatalog.ShortStatus(new ConnectorStatus.Unavailable(exception.GetType().Name))}"; }
+        catch (Exception exception) when (exception is not OutOfMemoryException) { connector.Text = $"{chosen.ShortName} · {ProviderCatalog.ShortStatus(new ConnectorStatus.Unavailable(exception.GetType().Name))}"; }
     }
 
     /// <summary>Run the last search again from the callout's Retry.</summary>
@@ -111,7 +110,7 @@ internal sealed class FindClipsFlyout
 
     private async Task FindAsync()
     {
-        if (starting || Running is not null || model.Busy || model.IsLeaving || model.State is null || entry is not { } chosen) return;
+        if (starting || Running is not null || model.Busy || model.IsLeaving || model.State is null) return;
         if (preset.SelectedIndex == 4 && string.IsNullOrWhiteSpace(instructions.Text))
         {
             Problem("Describe the clips you want.");
@@ -119,8 +118,34 @@ internal sealed class FindClipsFlyout
             return;
         }
         starting = true;
-        try { await FindWithAsync(chosen); }
+        try
+        {
+            // Find and the callout's Retry run with the connector chosen now, not when the flyout last opened: Settings may
+            // have changed or cleared it since (AI spec §11 gate 4).
+            try { entry = await ChosenAsync(); }
+            catch (OperationCanceledException) { return; }
+            catch (Exception exception) when (exception is not OutOfMemoryException)
+            {
+                flyout.Hide();
+                Fail(exception);
+                return;
+            }
+            if (entry is not { } chosen)
+            {
+                flyout.Hide();
+                Show(ClipCallouts.NoConnector);
+                return;
+            }
+            await FindWithAsync(chosen);
+        }
         finally { starting = false; }
+    }
+
+    /// <summary>The connector llm.connector names now, or null for none.</summary>
+    private async Task<ProviderEntry?> ChosenAsync()
+    {
+        var selected = App.Services.Get("llm.connector", "");
+        return selected.Length == 0 ? null : ClipCallouts.Chosen(selected, await ProviderCatalog.ReadAsync(ct), item => item.WireId);
     }
 
     private async Task FindWithAsync(ProviderEntry chosen)

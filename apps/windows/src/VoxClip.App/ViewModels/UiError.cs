@@ -65,8 +65,9 @@ public static class ShortcutPolicy
 
     public static bool PaneForwards(string gesture) => PaneGestures.Contains(gesture, StringComparer.Ordinal);
 
-    /// <summary>[ and ] on a clip or suggestion row step to the previous or next kept clip (design §11.1): -1 or 1, and 0
-    /// where the key doesn't act, which is any other row or with a modifier held.</summary>
+    /// <summary>[ and ] on the Full take, a clip or a suggestion row step to the previous or next kept clip (design §11.1 and
+    /// §6.2: from Full take, ] selects clip 1): -1 or 1, and 0 where the key doesn't act, which is any other row or with a
+    /// modifier held.</summary>
     public static int RowClipStep(char key, SidebarKind row, bool modifier) =>
-        modifier || row is not (SidebarKind.Clip or SidebarKind.Suggestion) ? 0 : key switch { '[' => -1, ']' => 1, _ => 0 };
+        modifier || row is not (SidebarKind.FullTake or SidebarKind.Clip or SidebarKind.Suggestion) ? 0 : key switch { '[' => -1, ']' => 1, _ => 0 };
 }

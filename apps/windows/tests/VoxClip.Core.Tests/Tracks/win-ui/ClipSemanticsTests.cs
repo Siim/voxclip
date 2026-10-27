@@ -101,6 +101,18 @@ public sealed class ClipSemanticsTests
         Assert.False(model.Clips.Single(clip => clip.Id == manual).Selected);
     }
 
+    /// <summary>Design §6.2: from the Full take row, ] selects clip 1; the window cycles by the row's step.</summary>
+    [Fact]
+    public void RightBracketFromFullTakeSelectsClipOne()
+    {
+        var model = Clean();
+        var first = Clip(model, 0, 3);
+        Clip(model, 10, 14);
+        Assert.True(model.Apply(new EditOperation.SetActiveClip(null)));
+        model.CycleClip(ShortcutPolicy.RowClipStep(']', SidebarKind.FullTake, false));
+        Assert.Equal(first, model.State!.ActiveClipId);
+    }
+
     /// <summary>Rename takes at most 120 code points once trimmed; the dialog explains a longer title instead of the reducer
     /// dropping it.</summary>
     [Fact]
@@ -123,6 +135,26 @@ public sealed class ClipSemanticsTests
         Assert.Equal(longest, model.Project.Edits.Clips.Single(clip => clip.Id == id).Title);
     }
 
+    /// <summary>A clip row's Export clip… is judged on its own clip, not on the active scope: a clip with kept words exports
+    /// while another clip with every word cut is active, and a clip with every word cut is refused from Full take.</summary>
+    [Fact]
+    public void ExportIsJudgedOnTheRequestedClip()
+    {
+        var model = Clean();
+        var first = Clip(model, 0, 3);
+        var second = Clip(model, 10, 14);
+        Assert.True(model.Apply(new EditOperation.SetActiveClip(first)));
+        model.Select(0); model.Select(3, true);
+        model.CutSelection(false);
+        const string NoWords = "Keep at least one word before exporting.";
+        Assert.Equal(NoWords, model.ExportBlocked(false, false, first));
+        Assert.Null(model.ExportBlocked(false, false, second));
+        Assert.True(model.Apply(new EditOperation.SetActiveClip(null)));
+        Assert.Equal(NoWords, model.ExportBlocked(false, false, first));
+        Assert.Null(model.ExportBlocked(false, false, second));
+        Assert.Null(model.ExportBlocked(false, false, null));
+    }
+
     /// <summary>Ctrl+E, the Export button and a clip row's Export clip… share one reason (delta §3.5).</summary>
     [Fact]
     public void ExportSaysWhyItCannotRunForTheScope()
@@ -131,7 +163,7 @@ public sealed class ClipSemanticsTests
         Assert.Null(model.ExportBlocked(false, false, null));
         var suggestion = model.AddAiResult(Result(model, (0, 3)))[0];
         Assert.Equal("Keep this clip to export it.", model.ExportBlocked(false, false, suggestion));
-        Assert.Equal("Locate the video to export.", model.ExportBlocked(false, true, suggestion));
+        Assert.Equal("Open the project and find the video to export.", model.ExportBlocked(false, true, suggestion));
         Assert.Equal("Demo projects have no video to export.", model.ExportBlocked(true, true, null));
         model.Busy = true;
         Assert.Equal("Finish the current task first.", model.ExportBlocked(false, false, null));

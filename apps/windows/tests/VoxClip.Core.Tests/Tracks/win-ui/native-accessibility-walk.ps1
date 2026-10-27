@@ -219,12 +219,23 @@ try{
  if(-not (IsSelected $clip) -or -not $afterChoose.StartsWith('Clip 1, ')){throw "Choosing the clip row did not select it and keep focus: $afterChoose"}
  Dump $w 'clip-scope';Capture $w 'clip-scope'
  $result.clipRowScope=$true
- # Editor shortcuts act from the pane (design 11.1). Ctrl+E on the chosen clip row opens Export with only that clip.
+ # Editor shortcuts act from the pane (design 11.1). Ctrl+E on the chosen clip row opens Export with only that clip. A demo
+ # project has no video, so there Ctrl+E is refused: no dialog opens and the Export button carries the reason.
  [R1Native]::Chord(0x11,0x45);Start-Sleep -Milliseconds 800
- [void](FindName $w 'Selected clips (1)')
- Dump $w 'pane-export';Capture $w 'pane-export'
- [R1Native]::Key(0x1B);Start-Sleep -Milliseconds 600
- if(HasVisibleName $w 'Selected clips (1)'){throw 'Escape did not close Export'}
+ if($NormalProject){
+  [void](FindName $w 'Selected clips (1)')
+  Dump $w 'pane-export';Capture $w 'pane-export'
+  [R1Native]::Key(0x1B);Start-Sleep -Milliseconds 600
+  if(HasVisibleName $w 'Selected clips (1)'){throw 'Escape did not close Export'}
+ }else{
+  Start-Sleep -Milliseconds 1200
+  if(HasVisibleName $w 'Selected clips (1)'){throw 'Ctrl+E opened Export for a demo project'}
+  $export=FindId $w 'ExportButton'
+  $reason=$export.Current.HelpText
+  [IO.File]::WriteAllText((Join-Path $shots 'pane-export-blocked.txt'),"enabled=$($export.Current.IsEnabled)`nreason=$reason`nfocus=$(Focused)")
+  if($export.Current.IsEnabled -or $reason -ne 'Demo projects have no video to export.'){throw "Ctrl+E in a demo project was not refused with its reason: $reason"}
+  Dump $w 'pane-export-blocked'
+ }
  # Delete on the row removes the clip, and Ctrl+Z with focus still in the pane brings it back.
  $clip=FindPrefix $w 'Clip 1, ';$clip.SetFocus();Start-Sleep -Milliseconds 200
  [R1Native]::Key(0x2E);Start-Sleep -Milliseconds 600

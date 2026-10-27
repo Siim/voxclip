@@ -30,6 +30,27 @@ public sealed class ShellViewModelTests
         return new EditorViewModel(project with { Edits = project.Edits with { Clips = clips, ActiveClipId = null } });
     }
 
+    /// <summary>Design §2: while Home shows, the editor is hidden, so the project's clip, suggestion, Suggested and none-found
+    /// rows only navigate. Keep, Dismiss, Rename, Remove, Export clip…, Keep all and Find clips… come back with the editor,
+    /// on the same row instances.</summary>
+    [Fact]
+    public void OnHomeTheProjectsRowsOnlyNavigate()
+    {
+        var editor = WithSuggestion();
+        var shell = new ShellViewModel { NoneFound = "No clips found. Try another preset." };
+        shell.Update(editor, true, [], null);
+        SidebarKind[] project = [SidebarKind.Clip, SidebarKind.SuggestedHeader, SidebarKind.Suggestion, SidebarKind.NoneFound];
+        var rows = shell.Rows.Where(row => project.Contains(row.Kind)).ToArray();
+        Assert.Equal(project, rows.Select(row => row.Kind));
+        Assert.All(rows, row => Assert.False(row.Edits, row.Key));
+        Assert.DoesNotContain(shell.Rows, row => row.Kind == SidebarKind.Action);
+        shell.Update(editor, false, [], null);
+        Assert.All(rows, row => Assert.Contains(row, shell.Rows));
+        Assert.All(rows, row => Assert.True(row.Edits, row.Key));
+        shell.Update(editor, true, [], null);
+        Assert.All(rows, row => Assert.False(row.Edits, row.Key));
+    }
+
     [Fact]
     public void EditorRowsFollowTheSharedOrder()
     {
@@ -208,6 +229,20 @@ public sealed class ShellViewModelTests
             (callout.Title, callout.Detail, callout.HasAction));
         shell.Update(editor, true, [], null);
         Assert.DoesNotContain(shell.Rows, row => row.Kind == SidebarKind.Callout);
+    }
+
+    /// <summary>Find clips and its callout's Retry use the connector llm.connector names when they run (AI spec §11 gate 4):
+    /// after Settings changes it they never reach the old one, and an empty or unknown setting is "Clips: no connector".</summary>
+    [Fact]
+    public void RetryUsesTheConnectorChosenNow()
+    {
+        string[] catalogue = ["anthropic", "ollama", "codex"];
+        Assert.Equal("ollama", ClipCallouts.Chosen("ollama", catalogue, id => id));
+        Assert.Equal("anthropic", ClipCallouts.Chosen("anthropic", catalogue, id => id));
+        Assert.Null(ClipCallouts.Chosen("", catalogue, id => id));
+        Assert.Null(ClipCallouts.Chosen("apple-foundation", catalogue, id => id));
+        Assert.Equal(("Choose how VoxClip finds clips: your API key, a model on this computer, or an installed CLI.", "Set up AI…"),
+            (ClipCallouts.NoConnector.Title, ClipCallouts.NoConnector.Action));
     }
 
     /// <summary>Design §13's callout rows and AI spec §5's messages, each ending "Your edits are saved." once (AI spec §5).</summary>

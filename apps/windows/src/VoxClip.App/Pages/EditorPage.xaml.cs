@@ -370,11 +370,11 @@ public sealed partial class EditorPage : Page
     internal Task ExportClipAsync(string clipId) => ExportAsync(clipId);
     private Task ExportAsync(string? clipId) => RunAsync(async () =>
     {
-        // Ctrl+E and the row's Export clip… stop where the button is disabled, and say why.
+        // Ctrl+E and the row's Export clip… stop where the button is disabled, and say why. The reason is only spoken, so a
+        // notice already showing (the missing file's name, say) stays.
         if (ViewModel.ExportBlocked(demo, MediaPath is null || media is null, clipId) is { } reason)
         {
-            ViewModel.Notice = reason;
-            AnnounceNotice();
+            Transcript.Announce(reason);
             return;
         }
         await new ExportDialog(owner, ViewModel, demo, SnapshotAsync, clipId) { XamlRoot = XamlRoot }.ShowAsync();
