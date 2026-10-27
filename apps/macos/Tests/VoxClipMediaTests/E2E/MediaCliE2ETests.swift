@@ -71,7 +71,9 @@ struct MediaCliE2ETests {
         }
         let invocation = try runCLI(arguments, directory: directory, timeout: 240)
         let result = try invocation.json
-        try writeReport(caseId, status: invocation.status, result: result)
+        // Case 8 is checked under the colour profile of the encoder that writes the export; the report records both.
+        let colorProfile = caseId == "e2e-8-bars" ? MacColorAcceptance.EncoderProfile.selected() : nil
+        try writeReport(caseId, status: invocation.status, result: result, colorAcceptance: colorProfile?.report)
         if caseId == "e2e-9-tiny-webm" {
             #expect(invocation.status == 3)
             #expect((result["error"] as? [String: Any])?["code"] as? String == "unsupportedContainer")
@@ -218,12 +220,16 @@ struct MediaCliE2ETests {
                 try MacColorAcceptance.csv(pairedRows, to: reportDirectory.appendingPathComponent("e2e-8-bars-paired-72.csv"))
                 try MacColorAcceptance.csv(cliRows, to: reportDirectory.appendingPathComponent("e2e-8-bars-cli-72.csv"))
             }
-            let companionFailures = MacColorAcceptance.validate(pairedRows, metadata: try await MacColorAcceptance.metadata(companionURL), label: "companion")
+            let profile = try #require(colorProfile)
+            let companionFailures = MacColorAcceptance.validate(pairedRows, metadata: try await MacColorAcceptance.metadata(companionURL),
+                                                                label: "companion", profile: profile)
             // CLI has no observer. The independent companion runs the same source, identity plan and settings;
             // its submitted BGRA is a witness, while CLI metadata and decoded pixels are checked separately.
-            let cliFailures = MacColorAcceptance.validate(cliRows, metadata: try await MacColorAcceptance.metadata(output), label: "CLI")
-            #expect(companionFailures.isEmpty, "\(companionFailures.joined(separator: "\n"))")
-            #expect(cliFailures.isEmpty, "\(cliFailures.joined(separator: "\n"))")
+            let cliFailures = MacColorAcceptance.validate(cliRows, metadata: try await MacColorAcceptance.metadata(output),
+                                                          label: "CLI", profile: profile)
+            let checkedUnder = "\(profile.name) (\(profile.encoderID), decoded YUV ±\(profile.decodedYUVTolerance))"
+            #expect(companionFailures.isEmpty, "\(checkedUnder)\n\(companionFailures.joined(separator: "\n"))")
+            #expect(cliFailures.isEmpty, "\(checkedUnder)\n\(cliFailures.joined(separator: "\n"))")
         }
     }
 
@@ -317,11 +323,12 @@ struct MediaCliE2ETests {
         return counts
     }
 
-    private func writeReport(_ caseId: String, status: Int32, result: [String: Any]) throws {
+    private func writeReport(_ caseId: String, status: Int32, result: [String: Any], colorAcceptance: [String: Any]? = nil) throws {
         guard let path = ProcessInfo.processInfo.environment["VOXCLIP_E2E_OUT"], !path.isEmpty else { return }
         let directory = URL(fileURLWithPath: path)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let report: [String: Any] = ["caseId": caseId, "platform": "macos", "exitCode": Int(status), "result": result]
+        var report: [String: Any] = ["caseId": caseId, "platform": "macos", "exitCode": Int(status), "result": result]
+        if let colorAcceptance { report["colorAcceptance"] = colorAcceptance }
         let data = try JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted, .sortedKeys])
         try data.write(to: directory.appendingPathComponent(caseId + ".json"), options: .atomic)
     }

@@ -39,14 +39,18 @@ public struct ProcessResult: Sendable, Equatable {
 public protocol ProcessRunner: Sendable { func run(_ request: ProcessRequest) async throws -> ProcessResult }
 /// Native argument-array execution in an independently terminated process group.
 public actor FoundationProcessRunner: ProcessRunner {
-    public init() {}
+    private let now: @Sendable () -> ContinuousClock.Instant
+    public init() { now = { ContinuousClock.now } }
+    /// Reads time through `now`, so tests can stand in for a runner thread that runs late.
+    init(now: @escaping @Sendable () -> ContinuousClock.Instant) { self.now = now }
     public func run(_ request: ProcessRequest) async throws -> ProcessResult {
         let cancellation = CLIProcessCancellation()
+        let now = now
         return try await withTaskCancellationHandler {
             if Task.isCancelled { throw LLMError.cancelled }
             return try await withCheckedThrowingContinuation { continuation in
                 DispatchQueue.global(qos: .userInitiated).async {
-                    do { continuation.resume(returning: try CLIProcessExecution.run(request, cancellation: cancellation)) }
+                    do { continuation.resume(returning: try CLIProcessExecution.run(request, cancellation: cancellation, now: now)) }
                     catch { continuation.resume(throwing: error) }
                 }
             }
@@ -65,7 +69,8 @@ private final class CLIProcessCancellation: Sendable {
 private enum CLIProcessExecution {
     private struct RPCResponse: Decodable { let id: Int?; let error: JSONValue? }
 
-    static func run(_ request: ProcessRequest, cancellation: CLIProcessCancellation) throws -> ProcessResult {
+    static func run(_ request: ProcessRequest, cancellation: CLIProcessCancellation,
+                    now: () -> ContinuousClock.Instant) throws -> ProcessResult {
         guard !cancellation.isCancelled else { throw LLMError.cancelled }
         guard request.timeout > .zero, request.maxOutputBytes >= 0 else {
             throw LLMError.cliFailed("Invalid process limits.")
@@ -150,8 +155,7 @@ private enum CLIProcessExecution {
         closeDescriptor(input.0)
         closeDescriptor(output.1)
         closeDescriptor(errors.1)
-        let clock = ContinuousClock()
-        let deadline = clock.now.advanced(by: request.timeout)
+        let deadline = now().advanced(by: request.timeout)
         let outputLimit = min(request.maxOutputBytes, 16 * 1024 * 1024)
         var stdout = Data()
         var stderr = Data()
@@ -177,27 +181,40 @@ private enum CLIProcessExecution {
         func terminate(_ error: LLMError?) {
             if failure == nil { failure = error }
             if terminationStarted == nil {
-                terminationStarted = clock.now
+                terminationStarted = now()
                 _ = kill(-processID, SIGTERM)
+            }
+        }
+        func reap() {
+            let waited = waitpid(processID, &processStatus, WNOHANG)
+            if waited == processID { reaped = true; reapedAt = now() }
+            else if waited < 0 && errno != EINTR {
+                reaped = true
+                terminate(.cliFailed("Unable to wait for CLI process."))
             }
         }
         var buffer = [UInt8](repeating: 0, count: 64 * 1024)
         while !reaped || outputOpen || errorsOpen ||
                 (terminationStarted != nil && killedAt == nil && kill(-processID, 0) == 0) {
             if cancellation.isCancelled { terminate(.cancelled) }
-            else if !reaped && clock.now >= deadline && terminationStarted == nil { terminate(.timeout) }
-            if let started = terminationStarted, clock.now - started >= .seconds(3), killedAt == nil {
-                _ = kill(-processID, SIGKILL)
-                killedAt = clock.now
+            else if !reaped && terminationStarted == nil && now() >= deadline {
+                // Past the deadline, a leader that has already exited is reaped, not timed out,
+                // however late this thread got to run.
+                reap()
+                if !reaped { terminate(.timeout) }
             }
-            if let reapedAt, terminationStarted == nil, clock.now - reapedAt >= .milliseconds(300) {
+            if let started = terminationStarted, now() - started >= .seconds(3), killedAt == nil {
+                _ = kill(-processID, SIGKILL)
+                killedAt = now()
+            }
+            if let reapedAt, terminationStarted == nil, now() - reapedAt >= .milliseconds(300) {
                 _ = kill(-processID, SIGTERM)
                 _ = kill(-processID, SIGKILL)
                 closeDescriptor(output.0)
                 closeDescriptor(errors.0)
                 break
             }
-            if let killedAt, clock.now - killedAt >= .milliseconds(500) {
+            if let killedAt, now() - killedAt >= .milliseconds(500) {
                 closeDescriptor(output.0)
                 closeDescriptor(errors.0)
                 break
@@ -250,14 +267,7 @@ private enum CLIProcessExecution {
                     }
                 }
             }
-            if !reaped {
-                let waited = waitpid(processID, &processStatus, WNOHANG)
-                if waited == processID { reaped = true; reapedAt = clock.now }
-                else if waited < 0 && errno != EINTR {
-                    reaped = true
-                    terminate(.cliFailed("Unable to wait for CLI process."))
-                }
-            }
+            if !reaped { reap() }
         }
         if cancellation.isCancelled { throw LLMError.cancelled }
         if let failure { throw failure }

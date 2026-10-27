@@ -2,7 +2,9 @@ import AVFoundation
 import CoreGraphics
 import Foundation
 import Darwin
+import Synchronization
 import VideoToolbox
+import VoxClipCore
 @testable import VoxClipMedia
 
 private let nativeFixtureRoot: URL = {
@@ -12,20 +14,89 @@ private let nativeFixtureRoot: URL = {
 }()
 
 actor NativeMediaFixtures {
+    struct Timeout: Error, CustomStringConvertible {
+        let limit: Duration
+        var description: String { "Fixture generation did not finish within \(limit)." }
+    }
+
     static let shared = NativeMediaFixtures()
+    static let generationLimit: Duration = .seconds(120)
+    private static let hardwareH264 = hardwareEncoderAvailable(kCMVideoCodecType_H264)
+    private static let hardwareHEVC = hardwareEncoderAvailable(kCMVideoCodecType_HEVC)
     private let root = nativeFixtureRoot
     private var pending: [String: Task<URL, any Error>] = [:]
 
+    /// A generated fixture. Every caller of one name shares a generation that runs off the actor and
+    /// fails, and is cancelled, after `generationLimit`; a caller's own cancellation, such as its time
+    /// limit, ends its wait.
     func file(_ name: String = "bars-tone.mov") async throws -> URL {
-        if let task = pending[name] { return try await task.value }
-        let task = Task { try await generate(name) }
+        let task = pending[name] ?? {
+            let generation = Task.detached { try await self.generate(name) }
+            return Task {
+                do { return try await Self.value(of: generation, within: Self.generationLimit) }
+                catch { generation.cancel(); throw error }
+            }
+        }()
         pending[name] = task
-        return try await task.value
+        return try await Self.value(of: task)
     }
 
-    private func generate(_ name: String) async throws -> URL {
-        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    /// The task's value, or an error as soon as the caller is cancelled or `limit` passes. The task
+    /// is not awaited after that, so a stalled AVFoundation call cannot hold every waiting test.
+    static func value<Value: Sendable>(of task: Task<Value, any Error>, within limit: Duration? = nil) async throws -> Value {
+        let waiter = Waiter<Value>()
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                waiter.start(continuation)
+                let timer = limit.map { limit in
+                    Task {
+                        try await Task.sleep(for: limit)
+                        waiter.resume(with: .failure(Timeout(limit: limit)))
+                    }
+                }
+                Task {
+                    let result = await task.result
+                    timer?.cancel()
+                    waiter.resume(with: result)
+                }
+                if Task.isCancelled { waiter.resume(with: .failure(CancellationError())) }
+            }
+        } onCancel: {
+            waiter.resume(with: .failure(CancellationError()))
+        }
+    }
+
+    /// One wait's continuation, resumed once by whichever of the result, the time limit and the
+    /// caller's cancellation comes first. A Sendable class, so the escaping tasks share it by reference.
+    private final class Waiter<Value: Sendable>: Sendable {
+        private let continuation: Mutex<CheckedContinuation<Value, any Error>?> = Mutex(nil)
+
+        func start(_ continuation: CheckedContinuation<Value, any Error>) {
+            self.continuation.withLock { $0 = continuation }
+        }
+
+        func resume(with result: Result<Value, any Error>) {
+            continuation.withLock { continuation in
+                defer { continuation = nil }
+                return continuation
+            }?.resume(with: result)
+        }
+    }
+
+    /// Fixtures need the hardware encoder, as export does; without one every caller fails at once.
+    private static func hardwareEncoderAvailable(_ codec: CMVideoCodecType) -> Bool {
+        var session: VTCompressionSession?
+        let status = VTCompressionSessionCreate(allocator: kCFAllocatorDefault, width: 320, height: 180, codecType: codec,
+            encoderSpecification: [kVTVideoEncoderSpecification_RequireHardwareAcceleratedVideoEncoder: true] as CFDictionary,
+            imageBufferAttributes: nil, compressedDataAllocator: nil, outputCallback: nil, refcon: nil, compressionSessionOut: &session)
+        if let session { VTCompressionSessionInvalidate(session) }
+        return status == noErr && session != nil
+    }
+
+    private nonisolated func generate(_ name: String) async throws -> URL {
         let pocket = name == "pocket-main10.mov"
+        guard pocket ? Self.hardwareHEVC : Self.hardwareH264 else { throw VoxClipError.encoderUnavailable }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         let big = name == "big.mov"
         let bars = name == "bars.mov"
         let counter = name == "counter.mov"
@@ -125,7 +196,7 @@ actor NativeMediaFixtures {
         return destination
     }
 
-    private func muxRoundedTail(_ composition: AVComposition, to destination: URL) async throws {
+    private nonisolated func muxRoundedTail(_ composition: AVComposition, to destination: URL) async throws {
         let writer = try AVAssetWriter(outputURL: destination, fileType: .mov)
         writer.movieTimeScale = 1000
         var inputs: [(AVAssetTrack, AVAssetWriterInput.SampleBufferReceiver)] = []
@@ -151,7 +222,7 @@ actor NativeMediaFixtures {
         try roundMoviePresentationEndsUp(destination)
     }
 
-    private func roundMoviePresentationEndsUp(_ destination: URL) throws {
+    private nonisolated func roundMoviePresentationEndsUp(_ destination: URL) throws {
         var data = try Data(contentsOf: destination)
         func integer(at offset: Int) -> UInt32 {
             data[offset..<(offset + 4)].reduce(0) { ($0 << 8) | UInt32($1) }
@@ -178,7 +249,7 @@ actor NativeMediaFixtures {
         try data.write(to: destination)
     }
 
-    private func encodeAAC(_ source: URL) async throws -> URL {
+    private nonisolated func encodeAAC(_ source: URL) async throws -> URL {
         let asset = AVURLAsset(url: source)
         let reader = try AVAssetReader(asset: asset)
         let track = try await asset.loadTracks(withMediaType: .audio)[0]
@@ -203,7 +274,7 @@ actor NativeMediaFixtures {
         return destination
     }
 
-    private func pixelBuffer(size: CGSize, frame: Int, counter: Bool, compactCounter: Bool, tenBit: Bool, bars: Bool) throws -> CVPixelBuffer {
+    private nonisolated func pixelBuffer(size: CGSize, frame: Int, counter: Bool, compactCounter: Bool, tenBit: Bool, bars: Bool) throws -> CVPixelBuffer {
         var output: CVPixelBuffer?
         let format = tenBit ? kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange : bars ? kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange : kCVPixelFormatType_32BGRA
         let status = CVPixelBufferCreate(kCFAllocatorDefault, Int(size.width), Int(size.height), format,

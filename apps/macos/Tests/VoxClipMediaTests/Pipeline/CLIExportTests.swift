@@ -91,6 +91,7 @@ private func cliProject(source: URL, transcript: Transcript?, edits: ProjectEdit
         transcript: transcript, edits: edits)
 }
 
+extension HeavyMediaTests {
 @Test(.timeLimit(.minutes(1)), arguments: ["clip", "range", "stored", "media"])
 func cliSelectsExportScopeBeforeCuttingFillers(_ scope: String) async throws {
     let directory = try cliDirectory()
@@ -546,7 +547,9 @@ func cliAudioFailuresLeaveTheVideoUnchanged(_ failure: String) async throws {
     }
     try #require(chmod(audioFolder.path, 0o700) == 0)
     let remaining = try FileManager.default.contentsOfDirectory(atPath: directory.path)
-    #expect(remaining.filter { !$0.hasPrefix("stdout-") && !$0.hasPrefix("stderr-") }.sorted() == ["audio", "out.mp4", "transcript.json"])
+    // runCLI owns stdout-*, stderr-* and the subprocess's tmp scratch, which the CLI must leave empty.
+    #expect(remaining.filter { !$0.hasPrefix("stdout-") && !$0.hasPrefix("stderr-") && $0 != "tmp" }.sorted() == ["audio", "out.mp4", "transcript.json"])
+    #expect(try FileManager.default.contentsOfDirectory(atPath: directory.appendingPathComponent("tmp").path).isEmpty)
     let expectedAudio = failure == "missing-parent" ? [] : failure == "partial" ? ["audio.wav", "audio.wav.partial"] : ["audio.wav"]
     #expect(try FileManager.default.contentsOfDirectory(atPath: audioFolder.path).sorted() == expectedAudio)
 }
@@ -814,14 +817,8 @@ func cliExportsNativeCapCropAndColourFixtures(_ name: String) async throws {
     #expect(result["audioSamples"] as? Int == (name == "bars.mov" ? 0 : 96000))
     #expect(result["audioSampleRate"] as? Int == 48000)
     #expect(try await AVMediaProbe().probe(destination).isPlayable)
-    if name == "bars.mov" {
-        #expect(try await AVURLAsset(url: destination).loadTracks(withMediaType: .audio).isEmpty)
-        let frames = try await sampledFrames(destination, points: (0..<8).map { (120 + 240 * $0, 540) })
-        let expected = [[191,191,191], [191,191,0], [0,191,191], [0,191,0], [191,0,191], [191,0,0], [0,0,191], [0,0,0]]
-        for frame in frames {
-            for bar in 0..<8 { for channel in 0..<3 { #expect(abs(frame.pixels[bar][channel] - expected[bar][channel]) <= 3) } }
-        }
-    }
+    // Exported bars colour is accepted by E2E case 8 under ADR-R22, not by decoded canonical RGB.
+    if name == "bars.mov" { #expect(try await AVURLAsset(url: destination).loadTracks(withMediaType: .audio).isEmpty) }
     if portrait {
         var points = [(185, 1000), (895, 1000)]
         let scale = 1920.0 / 1080.0
@@ -837,4 +834,5 @@ func cliExportsNativeCapCropAndColourFixtures(_ name: String) async throws {
             #expect(code == Int((frame.time * 30).rounded()))
         }
     }
+}
 }

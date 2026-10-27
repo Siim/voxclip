@@ -6,10 +6,46 @@ import Testing
 @testable import VoxClipMedia
 
 enum FoundationModelsFixtures {
-    static let available = ProcessInfo.processInfo.environment["VOXCLIP_SHARED_DIR"] != nil || root() != nil
-    static let skipReason: Comment = "No shared/ directory was selected or found by walking from the test source."
-    struct Failure: Error, CustomStringConvertible {
+    /// Shared files every comparison reads besides its corpus; each envelope pins them as `sources`.
+    static let sharedInputs = ["catalog/llm-providers.json", "prompts/ai-tighten.json", "prompts/clip-finder.json"]
+
+    struct Failure: Error, CustomStringConvertible, LocalizedError {
         let description: String
+        var errorDescription: String? { description }
+    }
+
+    /// The corpus file and shared inputs a comparison reads. Local runs skip a missing input and
+    /// name its path; a selected VOXCLIP_SHARED_DIR runs the test so the missing input fails.
+    struct Inputs: Sendable {
+        let root: Result<URL, Failure>
+        let selected: Bool
+
+        init(_ file: String, environment: [String: String] = ProcessInfo.processInfo.environment,
+             sourcePath: String = #filePath,
+             exists: (URL) -> Bool = { FileManager.default.fileExists(atPath: $0.path) }) {
+            selected = environment["VOXCLIP_SHARED_DIR"] != nil
+            guard let shared = FoundationModelsFixtures.root(environment: environment, sourcePath: sourcePath, exists: exists) else {
+                let location = environment["VOXCLIP_SHARED_DIR"].map { "VOXCLIP_SHARED_DIR \"\($0)\"" } ?? "shared/ above \(sourcePath)"
+                root = .failure(Failure(description: "Missing \(location); set VOXCLIP_SHARED_DIR to shared/."))
+                return
+            }
+            let missing = (["fixtures/llm/\(file).json"] + FoundationModelsFixtures.sharedInputs)
+                .map { shared.appendingPathComponent($0) }.first { !exists($0) }
+            root = missing.map { .failure(Failure(description: "Missing \($0.path).")) } ?? .success(shared)
+        }
+
+        var available: Bool { selected || (try? root.get()) != nil }
+        var skipReason: Comment {
+            switch root {
+            case .success: Comment(rawValue: "Every shared input is present.")
+            case .failure(let failure): Comment(rawValue: failure.description)
+            }
+        }
+    }
+
+    static func enabled(_ file: String) -> ConditionTrait {
+        let inputs = Inputs(file)
+        return .enabled(if: inputs.available, inputs.skipReason)
     }
 
     struct Envelope: Decodable {
@@ -127,9 +163,7 @@ enum FoundationModelsFixtures {
 
     static func arguments(_ file: String) -> [Argument] {
         do {
-            guard let root = root() else {
-                throw Failure(description: "Missing shared/fixtures/llm; set VOXCLIP_SHARED_DIR to shared/.")
-            }
+            let root = try Inputs(file).root.get()
             let data = try Data(contentsOf: root.appendingPathComponent("fixtures/llm/\(file).json"))
             let envelope = try JSONDecoder().decode(Envelope.self, from: data)
             guard envelope.schema == "voxclip-llm-fixtures/1", envelope.id == file,
@@ -138,7 +172,10 @@ enum FoundationModelsFixtures {
                 throw Failure(description: "Invalid fixture envelope or duplicate case IDs in \(file).")
             }
             for (path, expected) in envelope.sources {
-                let text = try String(contentsOf: root.deletingLastPathComponent().appendingPathComponent(path), encoding: .utf8)
+                guard path.hasPrefix("shared/"), sharedInputs.contains(String(path.dropFirst("shared/".count))) else {
+                    throw Failure(description: "\(file): source \(path) is not a checked shared input.")
+                }
+                let text = try String(contentsOf: root.appendingPathComponent(String(path.dropFirst("shared/".count))), encoding: .utf8)
                 let normalized = text.replacingOccurrences(of: "\r\n", with: "\n")
                 let actual = SHA256.hash(data: Data(normalized.utf8)).map { String(format: "%02x", $0) }.joined()
                 guard actual == expected else {
@@ -174,77 +211,122 @@ enum FoundationModelsFixtures {
     }
 
     static func mapped(_ schema: GenerationSchema, name: String) throws -> JSONValue {
-        let encoded = try JSONDecoder().decode(JSONValue.self, from: JSONEncoder().encode(schema))
-        return try mappedNode(encoded, root: encoded, name: name, depth: 0)
+        try mapped(encoded: JSONDecoder().decode(JSONValue.self, from: JSONEncoder().encode(schema)), name: name)
     }
 
-    private static func mappedNode(_ value: JSONValue, root: JSONValue, name: String, depth: Int) throws -> JSONValue {
+    /// Maps an encoded SDK schema to the logical rendering in the fixtures. SDK releases encode a
+    /// string enum differently: macOS 26 writes `anyOf` single-value string enums without `type`,
+    /// macOS 27 writes `type` with `enum`. `enum` without `type`, `oneOf`, `const`, `$ref` and
+    /// `$defs` map the same way; any other shape fails and names its JSON pointer.
+    static func mapped(encoded: JSONValue, name: String) throws -> JSONValue {
+        try mappedNode(encoded, root: encoded, name: name, path: "#", depth: 0)
+    }
+
+    private static let choiceKeywords = ["const", "enum", "anyOf", "oneOf"]
+
+    private static func resolved(_ value: JSONValue, root: JSONValue, path: String, depth: Int) throws
+        -> (node: [String: JSONValue], path: String, depth: Int) {
         guard depth < 64, case .object(let node) = value else {
-            throw Failure(description: "Invalid or recursive SDK schema at \(name).")
+            throw Failure(description: "Invalid or recursive SDK schema at \(path).")
         }
-        if case .string(let reference) = node["$ref"] {
-            let target: JSONValue
-            if reference == "#" {
-                target = root
-            } else if reference.hasPrefix("#/$defs/"), case .object(let fields) = root,
-                      case .object(let definitions) = fields["$defs"] {
-                let key = String(reference.dropFirst("#/$defs/".count))
-                    .replacingOccurrences(of: "~1", with: "/").replacingOccurrences(of: "~0", with: "~")
-                guard let definition = definitions[key] else { throw Failure(description: "Missing SDK schema reference \(reference).") }
-                target = definition
-            } else {
-                throw Failure(description: "Unsupported SDK schema reference \(reference).")
+        guard case .string(let reference) = node["$ref"] else { return (node, path, depth) }
+        let target: JSONValue
+        if reference == "#" {
+            target = root
+        } else if reference.hasPrefix("#/$defs/"), case .object(let fields) = root,
+                  case .object(let definitions) = fields["$defs"] {
+            let key = String(reference.dropFirst("#/$defs/".count))
+                .replacingOccurrences(of: "~1", with: "/").replacingOccurrences(of: "~0", with: "~")
+            guard let definition = definitions[key] else {
+                throw Failure(description: "Missing SDK schema reference \(reference) at \(path).")
             }
-            return try mappedNode(target, root: root, name: name, depth: depth + 1)
+            target = definition
+        } else {
+            throw Failure(description: "Unsupported SDK schema reference \(reference) at \(path).")
         }
-        guard case .string(let type) = node["type"] else { throw Failure(description: "Missing SDK schema type at \(name).") }
+        return try resolved(target, root: root, path: reference, depth: depth + 1)
+    }
+
+    private static func mappedNode(_ value: JSONValue, root: JSONValue, name: String, path: String, depth: Int) throws -> JSONValue {
+        let (node, path, depth) = try resolved(value, root: root, path: path, depth: depth)
+        if choiceKeywords.contains(where: { node[$0] != nil }) {
+            let choices = try stringChoices(node, root: root, path: path, depth: depth)
+            return .object(["name": .string(name), "anyOf": .array(choices.map(JSONValue.string))])
+        }
+        guard case .string(let type) = node["type"] else {
+            throw Failure(description: "Unsupported SDK schema at \(name) (\(path)) with keys \(node.keys.sorted()).")
+        }
         switch type {
         case "object":
             guard case .string(let title) = node["title"], case .object(let properties) = node["properties"],
                   case .array(let required) = node["required"],
                   case .array(let order) = node["x-order"] ?? node["required"],
                   node["additionalProperties"] == .bool(false) else {
-                throw Failure(description: "Invalid SDK object schema at \(name).")
+                throw Failure(description: "Invalid SDK object schema at \(name) (\(path)).")
             }
             let names = try order.map { value -> String in
-                guard case .string(let property) = value else { throw Failure(description: "Invalid SDK property order.") }
+                guard case .string(let property) = value else { throw Failure(description: "Invalid SDK property order at \(path).") }
                 return property
             }
             let requiredNames = try required.map { value -> String in
-                guard case .string(let property) = value else { throw Failure(description: "Invalid SDK required property.") }
+                guard case .string(let property) = value else { throw Failure(description: "Invalid SDK required property at \(path).") }
                 return property
             }
             guard names.count == properties.count, Set(names) == Set(properties.keys),
                   Set(requiredNames).count == requiredNames.count,
                   Set(requiredNames).isSubset(of: Set(names)) else {
-                throw Failure(description: "SDK properties and required names disagree at \(name).")
+                throw Failure(description: "SDK properties and required names disagree at \(name) (\(path)).")
             }
             let mapped = try names.map { property -> JSONValue in
                 guard let schema = properties[property] else {
-                    throw Failure(description: "Missing SDK property \(property).")
+                    throw Failure(description: "Missing SDK property \(property) at \(path).")
                 }
                 return try .object([
                     "name": .string(property),
-                    "schema": mappedNode(schema, root: root, name: title + "_" + property, depth: depth + 1),
+                    "schema": mappedNode(schema, root: root, name: title + "_" + property,
+                                         path: path + "/properties/" + property, depth: depth + 1),
                     "isOptional": .bool(!required.contains(.string(property)))
                 ])
             }
             return .object(["name": .string(title), "properties": .array(mapped)])
         case "array":
-            guard let item = node["items"] else { throw Failure(description: "Missing SDK array item at \(name).") }
+            guard let item = node["items"] else { throw Failure(description: "Missing SDK array item at \(name) (\(path)).") }
             return try .object([
-                "arrayOf": mappedNode(item, root: root, name: name + "_item", depth: depth + 1),
+                "arrayOf": mappedNode(item, root: root, name: name + "_item", path: path + "/items", depth: depth + 1),
                 "maximumElements": node["maxItems"] ?? .null
             ])
-        case "string":
-            if let choices = node["enum"] {
-                return .object(["name": .string(name), "anyOf": choices])
-            }
-            return .object(["type": .string("String")])
+        case "string": return .object(["type": .string("String")])
         case "integer": return .object(["type": .string("Int")])
         case "number": return .object(["type": .string("Double")])
         case "boolean": return .object(["type": .string("Bool")])
-        default: throw Failure(description: "Unsupported SDK schema type \(type).")
+        default: throw Failure(description: "Unsupported SDK schema type \(type) at \(path).")
+        }
+    }
+
+    /// The values of a string enum written as `const`, as `enum`, or as `anyOf`/`oneOf`
+    /// alternatives that are string enums themselves. `type` is absent or `string`.
+    private static func stringChoices(_ node: [String: JSONValue], root: JSONValue, path: String, depth: Int) throws -> [String] {
+        let keywords = choiceKeywords.filter { node[$0] != nil }
+        guard keywords.count == 1, node["type"] == nil || node["type"] == .string("string") else {
+            throw Failure(description: "Unsupported SDK string choices at \(path) with keys \(node.keys.sorted()).")
+        }
+        let keyword = keywords[0]
+        switch (keyword, node[keyword]) {
+        case ("const", .string(let constant)?):
+            return [constant]
+        case ("enum", .array(let values)?) where !values.isEmpty:
+            return try values.map { value in
+                guard case .string(let choice) = value else { throw Failure(description: "Non-string SDK enum value at \(path).") }
+                return choice
+            }
+        case ("anyOf", .array(let alternatives)?) where !alternatives.isEmpty,
+             ("oneOf", .array(let alternatives)?) where !alternatives.isEmpty:
+            return try alternatives.indices.flatMap { index in
+                let alternative = try resolved(alternatives[index], root: root, path: "\(path)/\(keyword)/\(index)", depth: depth + 1)
+                return try stringChoices(alternative.node, root: root, path: alternative.path, depth: alternative.depth)
+            }
+        default:
+            throw Failure(description: "Unsupported SDK \(keyword) at \(path).")
         }
     }
 
@@ -287,20 +369,17 @@ actor FoundationModelsFixtureProbe {
 }
 
 @Suite struct FoundationModelsFixtureTests {
-    @Test(.enabled(if: FoundationModelsFixtures.available, FoundationModelsFixtures.skipReason),
-          arguments: FoundationModelsFixtures.arguments("clip-finder-requests"))
+    @Test(FoundationModelsFixtures.enabled("clip-finder-requests"), arguments: FoundationModelsFixtures.arguments("clip-finder-requests"))
     func clipFinderLogicalRequests(_ argument: FoundationModelsFixtures.Argument) async throws {
         try await compare(argument)
     }
 
-    @Test(.enabled(if: FoundationModelsFixtures.available, FoundationModelsFixtures.skipReason),
-          arguments: FoundationModelsFixtures.arguments("ai-tighten-requests"))
+    @Test(FoundationModelsFixtures.enabled("ai-tighten-requests"), arguments: FoundationModelsFixtures.arguments("ai-tighten-requests"))
     func tightenLogicalRequests(_ argument: FoundationModelsFixtures.Argument) async throws {
         try await compare(argument)
     }
 
-    @Test(.enabled(if: FoundationModelsFixtures.available, FoundationModelsFixtures.skipReason),
-          arguments: FoundationModelsFixtures.arguments("connector-requests"))
+    @Test(FoundationModelsFixtures.enabled("connector-requests"), arguments: FoundationModelsFixtures.arguments("connector-requests"))
     func connectorLogicalRequests(_ argument: FoundationModelsFixtures.Argument) async throws {
         try await compare(argument)
     }
@@ -340,6 +419,78 @@ actor FoundationModelsFixtureProbe {
 
     @Test func missingSharedDirectoryCannotBeDiscovered() {
         #expect(FoundationModelsFixtures.root(environment: [:], sourcePath: "/missing/fixture.swift", exists: { _ in false }) == nil)
+    }
+
+    @Test func missingCorpusInputSkipsLocallyAndNamesItsPath() {
+        let present = ["/worktree/shared", "/worktree/apps"] + FoundationModelsFixtures.sharedInputs.map { "/worktree/shared/" + $0 }
+        let inputs = FoundationModelsFixtures.Inputs(
+            "ai-tighten-requests", environment: [:], sourcePath: "/worktree/apps/macos/Tests/fixture.swift",
+            exists: { present.contains($0.path) }
+        )
+        #expect(!inputs.available)
+        #expect(inputs.skipReason.rawValue == "Missing /worktree/shared/fixtures/llm/ai-tighten-requests.json.")
+        let complete = FoundationModelsFixtures.Inputs(
+            "ai-tighten-requests", environment: [:], sourcePath: "/worktree/apps/macos/Tests/fixture.swift",
+            exists: { (present + ["/worktree/shared/fixtures/llm/ai-tighten-requests.json"]).contains($0.path) }
+        )
+        #expect(complete.available)
+        #expect((try? complete.root.get())?.path == "/worktree/shared")
+    }
+
+    @Test func selectedSharedDirectoryTurnsAMissingInputIntoAFailure() {
+        let present = ["/fixture/shared", "/fixture/shared/fixtures/llm/ai-tighten-requests.json"]
+        let inputs = FoundationModelsFixtures.Inputs(
+            "ai-tighten-requests", environment: ["VOXCLIP_SHARED_DIR": "/fixture/shared"],
+            sourcePath: "/worktree/apps/macos/Tests/fixture.swift", exists: { present.contains($0.path) }
+        )
+        #expect(inputs.available)
+        let failure = #expect(throws: FoundationModelsFixtures.Failure.self) { try inputs.root.get() }
+        #expect(failure?.description == "Missing /fixture/shared/catalog/llm-providers.json.")
+    }
+
+    /// The ai-tighten item as the SDK encodes it, with `kind` replaced. macOS 26.5 also lists the
+    /// enum under `$defs`.
+    private static func encodedSDKSchema(kind: String) throws -> JSONValue {
+        try JSONDecoder().decode(JSONValue.self, from: Data("""
+            {"$defs":{"root_edits_item":{"additionalProperties":false,"properties":{"kind":\(kind),"start":{"type":"integer"}},
+            "required":["kind","start"],"title":"root_edits_item","type":"object","x-order":["kind","start"]},
+            "root_edits_item_kind":{"anyOf":[{"enum":["cut"],"type":"string"},{"enum":["keep"],"type":"string"}],
+            "title":"root_edits_item_kind"}},"additionalProperties":false,
+            "properties":{"edits":{"items":{"$ref":"#/$defs/root_edits_item"},"type":"array"}},
+            "required":["edits"],"title":"root","type":"object","x-order":["edits"]}
+            """.utf8))
+    }
+
+    @Test(arguments: [
+        #"{"anyOf":[{"enum":["cut"],"type":"string"},{"enum":["keep"],"type":"string"}],"title":"root_edits_item_kind"}"#,
+        #"{"enum":["cut","keep"],"type":"string"}"#,
+        #"{"enum":["cut","keep"],"title":"root_edits_item_kind"}"#,
+        #"{"oneOf":[{"const":"cut"},{"const":"keep","type":"string"}]}"#,
+        ##"{"$ref":"#/$defs/root_edits_item_kind"}"##
+    ])
+    func everySDKStringEnumShapeMapsToOneRendering(_ kind: String) throws {
+        let expected = try JSONDecoder().decode(JSONValue.self, from: Data("""
+            {"name":"root","properties":[{"name":"edits","isOptional":false,"schema":{"maximumElements":null,
+            "arrayOf":{"name":"root_edits_item","properties":[
+            {"name":"kind","isOptional":false,"schema":{"name":"root_edits_item_kind","anyOf":["cut","keep"]}},
+            {"name":"start","isOptional":false,"schema":{"type":"Int"}}]}}}]}
+            """.utf8))
+        #expect(try FoundationModelsFixtures.mapped(encoded: Self.encodedSDKSchema(kind: kind), name: "root") == expected)
+    }
+
+    @Test(arguments: [
+        (#"{"title":"root_edits_item_kind"}"#, "#/$defs/root_edits_item/properties/kind"),
+        (#"{"anyOf":[{"type":"string"},{"const":"keep"}]}"#, "#/$defs/root_edits_item/properties/kind/anyOf/0"),
+        (#"{"enum":["cut",1]}"#, "#/$defs/root_edits_item/properties/kind"),
+        (#"{"enum":[1,2],"type":"integer"}"#, "#/$defs/root_edits_item/properties/kind"),
+        (##"{"$ref":"#/$defs/missing"}"##, "#/$defs/root_edits_item/properties/kind")
+    ])
+    func unknownSDKSchemaShapesFailAndNameTheirNode(_ kind: String, path: String) throws {
+        let schema = try Self.encodedSDKSchema(kind: kind)
+        let failure = #expect(throws: FoundationModelsFixtures.Failure.self) {
+            try FoundationModelsFixtures.mapped(encoded: schema, name: "root")
+        }
+        #expect(failure?.description.contains(path) == true, "\(failure?.description ?? "No failure.")")
     }
 
     private func compare(_ argument: FoundationModelsFixtures.Argument) async throws {

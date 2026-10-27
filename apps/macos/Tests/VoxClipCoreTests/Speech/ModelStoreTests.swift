@@ -3,14 +3,15 @@ import Synchronization
 import Testing
 @testable import VoxClipCore
 
-@Suite("Speech model catalogue and downloads")
+@Suite("Speech model catalogue and downloads", .timeLimit(.minutes(1)))
 struct ModelStoreTests {
     @Test func twiceInterruptedDownloadResumesFromActualPartialSize() async throws {
         let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
         let payload = Data((0..<3000).map { UInt8($0 % 251) })
         let ranges = Mutex<[String?]>([])
+        let partial = SpeechTestFiles.locations(root).models.appendingPathComponent("whispercpp/test-model/model.bin.partial")
         let base = SpeechStubHTTP.registerStream { request in
-            // Serve from the requested offset: under load a dropped connection can leave fewer bytes on disk.
+            // Serve from the requested offset, and drop the connection only after the bytes sent before it are on disk.
             let range = request.value(forHTTPHeaderField: "Range")
             let attempt = ranges.withLock { $0.append(range); return $0.count }
             let offset = range.flatMap { Int($0.dropFirst("bytes=".count).dropLast()) } ?? 0
@@ -18,7 +19,8 @@ struct ModelStoreTests {
             return SpeechStubHTTP.Reply(status: range == nil ? 200 : 206,
                 headers: range == nil ? [:] : ["Content-Range": "bytes \(offset)-2999/3000"],
                 body: payload.subdata(in: offset..<end),
-                failure: attempt < 3 ? .networkConnectionLost : nil)
+                failure: attempt < 3 ? .networkConnectionLost : nil,
+                failWhen: { ((try? FileManager.default.attributesOfItem(atPath: partial.path)[.size]) as? NSNumber)?.intValue ?? 0 >= end })
         }
         let model = SpeechTestFiles.model(base.appendingPathComponent("model.bin"), data: payload)
         let store = ModelStore(catalog: SpeechTestCatalog(entries: [model]), locations: SpeechTestFiles.locations(root), configuration: SpeechStubHTTP.configuration(), confirm: { _, _ in true }, availableCapacity: { _ in Int64.max })

@@ -46,6 +46,31 @@ extension HTTPConnectorTests {
         }
     }
 
+    @Test func testsNeverTakeEachOthersStubbedReplies() async throws {
+        let waiting = HTTPStubProtocol.Scope(), asking = HTTPStubProtocol.Scope()
+        try await HTTPStubProtocol.withScope(waiting) {
+            HTTPStubProtocol.install([try HTTPFixtures.success(.openai)])
+            try await HTTPStubProtocol.withScope(asking) {
+                let harness = try HTTPHarness(.openai, replies: [])
+                defer { harness.finish() }
+                let request = try harness.catalog.connectionTest(for: .openai)
+                await #expect(throws: LLMError.network) { _ = try await harness.connector.send(request, model: harness.model) }
+                // Without a token and with several tests in flight, a request fails rather than guess.
+                let configuration = URLSessionConfiguration.ephemeral
+                configuration.protocolClasses = [HTTPStubProtocol.self]
+                let session = URLSession(configuration: configuration)
+                defer { session.invalidateAndCancel() }
+                let connector = try HTTPConnector(id: .openai, keys: HTTPKeys(), catalog: harness.catalog, log: HTTPLog(), session: session)
+                await #expect(throws: LLMError.network) { _ = try await connector.send(request, model: harness.model) }
+            }
+            #expect(HTTPStubProtocol.remaining == 1)
+            HTTPStubProtocol.install([])
+        }
+        #expect(asking.unexpected.count == 1)
+        #expect(asking.unexpected.first?.hasPrefix("POST https://api.openai.com/") == true)
+        #expect(waiting.unexpected.isEmpty)
+    }
+
     @Test(arguments: [ConnectorID.anthropic, .openai, .xai, .gemini], [false, true])
     func sameOriginRedirectNeverResendsStoredKeys(_ id: ConnectorID, sending: Bool) async throws {
         let catalog = try HTTPFixtures.catalog()

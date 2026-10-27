@@ -1,5 +1,38 @@
 # macOS implementation contracts
 
+### 2026-10-26 — Hosted macOS CI stall diagnosis and test isolation
+
+- Hosted runs 40234777065 (`d112161`) and 40379391363 (`2705fc8`) reached the 60-minute macOS job limit inside `swift test`. About 50 Media tests were awaiting `NativeMediaFixtures.shared.file()`. That wait could not be cancelled, so none of them returned, even after their one-minute time limits had been recorded, and output stopped about ten minutes into the test run. The HTTP connector tests named last in those logs were victims of the starved cooperative pool, not of their stubs: a delayed redirect decision still completes. Whether the runner offers a hardware H.264 encoder is not yet known; the new probe step prints it.
+- `NativeMediaFixtures` checks for a hardware encoder for the codec before generating and fails within seconds with `VoxClipError.encoderUnavailable` when there is none; there is no software fallback. Generation runs off the actor, and every wait ends on cancellation or after a 120-second generation limit. The Pipeline suites that generate, export or play media (CLIExportTests, MediaReviewTests, NativeVerificationTests, MediaPipelineTests, AudioAlignmentAndQueueTests, ExportSafetyTests and VoiceLabCallerTests) are nested under one serialized `HeavyMediaTests` parent. Every time limit is unchanged.
+- `FoundationProcessRunner` now checks whether the leader has exited before it treats a passed deadline as a timeout. Before, a leader whose exit was observed after its deadline was reported as a timeout, for example while a grandchild still held the output pipe. A deterministic test injects the clock through a new internal `init(now:)`; the public API is unchanged.
+- Test support:
+  - HTTPStubProtocol replies are scoped per test by a trait and a session header token. A request without a reply fails at once and names its method and URL. SpeechStubHTTP names unknown hosts.
+  - The Foundation Models schema mapper accepts `enum` without `type`, `anyOf`/`oneOf` and `$ref`/`$defs`, as macOS 26.5 encodes them, and names any unknown node. A missing shared corpus file skips locally and names its path; it fails when `VOXCLIP_SHARED_DIR` is set.
+  - CLI runner and transcription timing bounds are measured from their ready points. None was raised.
+- Hosted Swift 6.3.3 (Xcode 26.6, SDK 26.5) fixes:
+  - `NativeMediaFixtures` keeps each wait's continuation in a Sendable final class that owns the `Mutex`. Swift 6.3.3 rejected the escaping tasks that captured a local `Mutex`; behaviour is unchanged.
+  - `WhisperCppTranscriber` no longer has an isolated deinit. A private `WhisperContext` owns and frees the native context. The 6.3.3 optimizer cycled on `ActorIsolationRequest` for that deinit while optimizing `voxclip_cli` and reported "circular reference"; the Release test bundle optimizes the same code. Loading, unloading and freeing are unchanged.
+- CI changes:
+  - The macOS job runs a diagnostic encoder probe (`tools/ci/macos-encoder-probe.swift`). It builds the Release CLI right after the debug build; a failed build is rebuilt once with `-debug-cycles`, which names the declarations in a compiler request cycle.
+  - The Swift tests run as Core, Media and CaptionParityTests steps. The caption golden renders run alone, because beside the one-minute heavy media tests they kept all three runner cores busy.
+  - Every step has a budget. The E2E, .NET-on-macOS and parity steps run unless the run is cancelled. E2E and both parity steps need the Release CLI.
+  - The job limit is 157 minutes: 152 for the step budgets and 5 for setup.
+- Local verification used Xcode 27.0 with SDK 27.0 on a shared machine under heavy load:
+  - Core: 417 tests passed twice.
+  - Media wall time fell from 13:06, with 60 time-limit issues, to 3:58 with none.
+  - The four remaining issues came from a CLI scratch-directory assertion that predated this change; it is fixed.
+  - A load-sensitive two-second SIGINT latency bound in CLIExportTests failed both before and after. It is left unchanged.
+- Hosted run 40406723203 (`1c24ea8`) on macos-26 (3 CPUs, paravirtualized AVC encoder):
+  - The probe encoded 60 of 60 frames with the required hardware encoder.
+  - Swift build, Release CLI, Core, CaptionParityTests, .NET core and media, plan parity and caption parity passed.
+  - Media and E2E failed only on ADR-R22 colour checks. Two Media tests decode every bars sample 4 codes from canonical RGB against a bound of 3. E2E case 8 decodes V 202 against 204 at frame 30 magenta, against a bound of 1.
+- Colour acceptance after the lead's decision:
+  - `cliExportsNativeCapCropAndColourFixtures` and `exportCapsLargeSourcesAndPreserves709Bars` no longer apply the decoded-canonical RGB ±3 rule that ADR-R22 superseded to exported bars. Their format, tag, crop, cap and audio checks and the source fixture's canonical check remain. E2E case 8 is the macOS colour acceptance.
+  - Case 8 reads the encoder VideoToolbox selects for required-hardware H.264. It uses the session's encoder ID when VideoToolbox lists that ID as a hardware H.264 encoder, and otherwise the only listed hardware H.264 encoder. It records the encoder ID, profile and decoded-YUV bound as `colorAcceptance` in `e2e-8-bars.json`.
+  - An encoder ID starting with `paravirtualized:` is a drift guard: decoded Y, U and V must each be within ±2 of the independent BT.709 limited transform. Physical hardware keeps ±1. Submitted RGB ±3, format tags, profile, inverse RGB ±2 and PTS checks are the same for both. The ADR-R22 amendment for the drift guard is applied at merge.
+  - The paired and CLI case 8 exports of runs 40406723203 and 40412103093 have a maximum decoded Y/U/V error of 1/1/2, within the drift guard.
+  - Locally on M3 Max hardware after merging main, case 8 used the required-hardware profile (`com.apple.videotoolbox.videoencoder.ave.avc`, ±1) and passed with a maximum decoded Y/U/V error of 0/1/1. All ten E2E cases, 417 Core tests and the four CaptionParityTests passed. Media ran 231 tests; the one issue was the load-sensitive SIGINT watchdog latency noted above.
+
 ### 2026-10-26 — Saved v3 recipe App and CLI integration
 
 - Mac App and CLI now render already reviewed, persisted v3 recipes with unity audio fit and equal-rounded-length source video. This supersedes the Mac App/export active-synth guard described in the earlier entries below; active v2 synth, the legacy CLI `plan --json` shape, nonunity fit and unsupported video or clean-audio policies remain refused. This does not expose consent capture, generation, candidate acceptance, changed-duration video or lip sync. The user's finite-fit and Apple TimePitch listening comparisons both failed audible-quality acceptance; neither candidate is adopted.

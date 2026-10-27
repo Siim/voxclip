@@ -4,7 +4,7 @@ import Synchronization
 import Testing
 @testable import VoxClipCore
 
-@Suite(.serialized)
+@Suite(.serialized, .httpStubs, .timeLimit(.minutes(1)))
 struct HTTPConnectorTests {}
 
 struct HTTPReply: Sendable {
@@ -37,23 +37,60 @@ struct HTTPRecordedRequest: Sendable {
 }
 
 final class HTTPStubProtocol: URLProtocol, @unchecked Sendable {
-    private struct HTTPState: Sendable {
+    fileprivate struct HTTPState: Sendable {
         var replies: [HTTPReply] = []
         var requests: [HTTPRecordedRequest] = []
+        var unexpected: [String] = []
     }
 
-    private static let state = Mutex(HTTPState())
+    /// One test case's replies and requests. Sessions from `configuration()` send its token, so a
+    /// request only ever takes a reply that its own test installed.
+    final class Scope: Sendable {
+        static let header = "X-VoxClip-HTTP-Stub"
+        let token = UUID().uuidString
+        fileprivate let state = Mutex(HTTPState())
+
+        var remaining: Int { state.withLock { $0.replies.count } }
+        /// Requests that arrived with no reply left, as "METHOD URL".
+        var unexpected: [String] { state.withLock { $0.unexpected } }
+    }
+
+    @TaskLocal private static var current: Scope?
+    private static let scopes = Mutex<[String: Scope]>([:])
+
+    private static var scope: Scope {
+        if let current { return current }
+        Issue.record("HTTPStubProtocol needs the .httpStubs trait on the test or its suite.")
+        return Scope()
+    }
 
     static func install(_ replies: [HTTPReply]) {
-        state.withLock { $0 = HTTPState(replies: replies) }
+        scope.state.withLock { $0.replies = replies; $0.requests = [] }
     }
 
     static var requests: [HTTPRecordedRequest] {
-        state.withLock { $0.requests }
+        scope.state.withLock { $0.requests }
     }
 
     static var remaining: Int {
-        state.withLock { $0.replies.count }
+        scope.remaining
+    }
+
+    /// An ephemeral configuration whose requests reach only the current test's replies.
+    static func configuration() -> URLSessionConfiguration {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [HTTPStubProtocol.self]
+        configuration.httpCookieStorage = nil
+        configuration.urlCache = nil
+        if let current { configuration.httpAdditionalHeaders = [Scope.header: current.token] }
+        return configuration
+    }
+
+    /// Runs `body` with `scope` registered and current.
+    static func withScope<Value>(_ scope: Scope, _ body: () async throws -> Value) async rethrows -> Value {
+        scopes.withLock { $0[scope.token] = scope }
+        defer { scopes.withLock { _ = $0.removeValue(forKey: scope.token) } }
+        return try await $current.withValue(scope) { try await body() }
     }
 
     override class func canInit(with request: URLRequest) -> Bool { true }
@@ -71,14 +108,25 @@ final class HTTPStubProtocol: URLProtocol, @unchecked Sendable {
                 body.append(contentsOf: buffer.prefix(count))
             }
         }
-        let recorded = HTTPRecordedRequest(request: request, body: body)
-        let reply = Self.state.withLock { state -> HTTPReply? in
+        let token = request.value(forHTTPHeaderField: Scope.header)
+        var captured = request
+        captured.setValue(nil, forHTTPHeaderField: Scope.header)
+        let recorded = HTTPRecordedRequest(request: captured, body: body)
+        let target = "\(request.httpMethod ?? "GET") \(request.url?.absoluteString ?? "")"
+        // A session without a token belongs to the only test with a scope; with several, it is
+        // ambiguous and fails rather than take another test's reply.
+        let scope = Self.scopes.withLock { scopes in
+            token.map { scopes[$0] } ?? (scopes.count == 1 ? scopes.values.first : nil)
+        }
+        let reply = scope?.state.withLock { state -> HTTPReply? in
             state.requests.append(recorded)
-            return state.replies.isEmpty ? nil : state.replies.removeFirst()
+            guard !state.replies.isEmpty else { state.unexpected.append(target); return nil }
+            return state.replies.removeFirst()
         }
         guard let reply else {
-            Issue.record("Unexpected HTTP request: \(request.httpMethod ?? "") \(request.url?.path ?? "")")
-            client?.urlProtocol(self, didFailWithError: URLError(.resourceUnavailable))
+            var details: [String: Any] = [NSLocalizedDescriptionKey: "No stubbed reply for \(target)."]
+            if let url = request.url { details[NSURLErrorFailingURLErrorKey] = url }
+            client?.urlProtocol(self, didFailWithError: URLError(.resourceUnavailable, userInfo: details))
             return
         }
         if let failure = reply.failure {
@@ -104,6 +152,25 @@ final class HTTPStubProtocol: URLProtocol, @unchecked Sendable {
     }
 
     override func stopLoading() {}
+}
+
+/// Gives every test case its own HTTPStubProtocol scope and reports requests that found no reply.
+struct HTTPStubScope: TestTrait, SuiteTrait, TestScoping {
+    var isRecursive: Bool { true }
+
+    func provideScope(for test: Test, testCase: Test.Case?, performing function: @Sendable () async throws -> Void) async throws {
+        let scope = HTTPStubProtocol.Scope()
+        defer {
+            if !scope.unexpected.isEmpty {
+                Issue.record("Unexpected HTTP requests without a stubbed reply: \(scope.unexpected.joined(separator: ", "))")
+            }
+        }
+        try await HTTPStubProtocol.withScope(scope) { try await function() }
+    }
+}
+
+extension Trait where Self == HTTPStubScope {
+    static var httpStubs: Self { Self() }
 }
 
 struct HTTPKeys: KeyProvider {
@@ -153,11 +220,7 @@ struct HTTPHarness: Sendable {
         self.keys = keys ?? HTTPKeys(value: key)
         log = HTTPLog()
         sleeps = HTTPSleeps(cancel: cancelSleep)
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.protocolClasses = [HTTPStubProtocol.self]
-        configuration.httpCookieStorage = nil
-        configuration.urlCache = nil
-        session = URLSession(configuration: configuration)
+        session = URLSession(configuration: HTTPStubProtocol.configuration())
         let clock = sleeps
         connector = try HTTPConnector(id: id, keys: self.keys, catalog: self.catalog, log: log, baseURL: baseURL, session: session, appVersion: "9.8.7", cacheURL: nil, sleep: { try clock.sleep($0) })
     }

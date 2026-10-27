@@ -27,7 +27,8 @@ jobs:
   macos:
     name: macOS (Swift app, .NET core on macOS)
     runs-on: macos-26
-    timeout-minutes: 60
+    # Every step after setup has its own budget; the job limit is their sum plus about five minutes of setup.
+    timeout-minutes: 162
     steps:
       - uses: actions/checkout@v5
 
@@ -63,6 +64,19 @@ jobs:
           echo "macOS SDK $SDK"
           [ "${SDK%%.*}" -ge 26 ] || { echo "::error::macOS SDK $SDK is older than the macOS 26 minimum"; exit 1; }
 
+      - name: Release accent asset catalog (actool)
+        if: steps.detect.outputs.swift == 'true'
+        timeout-minutes: 5
+        shell: bash
+        run: python3 apps/macos/scripts/test_release.py -k asset_catalog
+
+      - name: Probe the video encoder (diagnostic only)
+        if: steps.detect.outputs.swift == 'true'
+        continue-on-error: true
+        timeout-minutes: 5
+        shell: bash
+        run: swift tools/ci/macos-encoder-probe.swift "$(xcrun --sdk macosx --show-sdk-version)" || echo "::warning::The encoder probe exited with status $?"
+
       - name: Set up Python (schema check and caption image comparator, macOS)
         id: py
         if: steps.detect.outputs.swift == 'true' || steps.detect.outputs.core_tests == 'true' || steps.detect.outputs.media_tests == 'true'
@@ -76,27 +90,70 @@ jobs:
         run: python -m pip install "jsonschema==4.26.0" "numpy==2.5.4"
 
       - name: Swift build
+        id: swift_build
         if: steps.detect.outputs.swift == 'true'
+        timeout-minutes: 10
         working-directory: apps/macos
         run: swift build --jobs 2
 
-      - name: Swift test
-        if: steps.detect.outputs.swift == 'true'
+      # Whole-module Release compile errors show here within minutes; E2E, plan parity and caption parity
+      # use this binary. A failed build is rebuilt once with -debug-cycles, which names the declarations
+      # behind a compiler request cycle ("<unknown>:0: error: circular reference").
+      - name: Build the Release CLI
+        id: release_cli
+        if: ${{ !cancelled() && steps.swift_build.outcome == 'success' }}
+        timeout-minutes: 12
+        working-directory: apps/macos
+        shell: bash
+        run: |
+          swift build -c release --jobs 2 --product voxclip-cli && exit 0
+          echo "::group::Release CLI rebuild with -debug-cycles"
+          swift build -c release --jobs 2 --product voxclip-cli -Xswiftc -Xfrontend -Xswiftc -debug-cycles > "$RUNNER_TEMP/release-cli-cycles.log" 2>&1 || true
+          grep -n -A 150 'CYCLE DETECTED' "$RUNNER_TEMP/release-cli-cycles.log" | head -n 1200 || tail -n 200 "$RUNNER_TEMP/release-cli-cycles.log"
+          echo "::endgroup::"
+          exit 1
+
+      # Core, Media and CaptionParityTests run as separate processes with separate budgets; together they are the
+      # whole suite.
+      - name: Swift test (VoxClipCoreTests)
+        if: ${{ !cancelled() && steps.swift_build.outcome == 'success' }}
+        timeout-minutes: 10
         working-directory: apps/macos
         env:
           VOXCLIP_SHARED_DIR: ${{ github.workspace }}/shared
           VOXCLIP_CAPTION_PYTHON: ${{ steps.py.outputs.python-path }}
-        run: swift test --jobs 2
+        run: swift test --jobs 2 --filter VoxClipCoreTests
 
+      - name: Swift test (VoxClipMediaTests)
+        if: ${{ !cancelled() && steps.swift_build.outcome == 'success' }}
+        timeout-minutes: 15
+        working-directory: apps/macos
+        env:
+          VOXCLIP_SHARED_DIR: ${{ github.workspace }}/shared
+          VOXCLIP_CAPTION_PYTHON: ${{ steps.py.outputs.python-path }}
+        run: swift test --jobs 2 --filter VoxClipMediaTests --skip CaptionParityTests
+
+      # The caption golden renders keep all three runner cores busy for minutes, so they run alone instead
+      # of beside the one-minute heavy media tests.
+      - name: Swift test (CaptionParityTests)
+        if: ${{ !cancelled() && steps.swift_build.outcome == 'success' }}
+        timeout-minutes: 15
+        working-directory: apps/macos
+        env:
+          VOXCLIP_SHARED_DIR: ${{ github.workspace }}/shared
+          VOXCLIP_CAPTION_PYTHON: ${{ steps.py.outputs.python-path }}
+        run: swift test --jobs 2 --filter CaptionParityTests
+
+      # Runs after a Swift test failure too, with the Release CLI built above.
       - name: Canonical macOS CLI E2E (Release)
-        if: steps.detect.outputs.swift == 'true'
+        if: ${{ !cancelled() && steps.release_cli.outcome == 'success' }}
+        timeout-minutes: 25
         shell: bash
         env:
           VOXCLIP_SHARED_DIR: ${{ github.workspace }}/shared
           VOXCLIP_REQUIRE_E2E: "1"
           VOXCLIP_E2E_OUT: ${{ runner.temp }}/voxclip-macos-e2e
         run: |
-          swift build --package-path apps/macos -c release --jobs 2 --product voxclip-cli
           VOXCLIP_CLI="$(swift build --package-path apps/macos -c release --show-bin-path)/voxclip-cli" \
             swift test --package-path apps/macos -c release --jobs 2 --filter MediaCliE2ETests
           python3 - "$VOXCLIP_E2E_OUT" <<'PY'
@@ -112,6 +169,7 @@ jobs:
 
       - name: Upload macOS CLI E2E reports
         if: always() && steps.detect.outputs.swift == 'true'
+        timeout-minutes: 5
         uses: actions/upload-artifact@v4
         with:
           name: macos-e2e-reports
@@ -120,13 +178,15 @@ jobs:
           retention-days: 14
 
       - name: Set up .NET 10
-        if: steps.detect.outputs.core_tests == 'true' || steps.detect.outputs.media_tests == 'true'
+        if: ${{ !cancelled() && (steps.detect.outputs.core_tests == 'true' || steps.detect.outputs.media_tests == 'true') }}
+        timeout-minutes: 5
         uses: actions/setup-dotnet@v5
         with:
           dotnet-version: "10.0.402"
 
       - name: .NET core tests on macOS
-        if: steps.detect.outputs.core_tests == 'true'
+        if: ${{ !cancelled() && steps.detect.outputs.core_tests == 'true' }}
+        timeout-minutes: 10
         working-directory: apps/windows
         env:
           VOXCLIP_SHARED_DIR: ${{ github.workspace }}/shared
@@ -137,7 +197,8 @@ jobs:
           dotnet test --project tests/VoxClip.Core.Tests/VoxClip.Core.Tests.csproj -c Release --no-build
 
       - name: .NET media tests on macOS (caption renderer; no FFmpeg, no Windows-only APIs)
-        if: steps.detect.outputs.media_tests == 'true'
+        if: ${{ !cancelled() && steps.detect.outputs.media_tests == 'true' }}
+        timeout-minutes: 10
         working-directory: apps/windows
         env:
           VOXCLIP_SHARED_DIR: ${{ github.workspace }}/shared
@@ -148,7 +209,8 @@ jobs:
           dotnet test --project tests/VoxClip.Media.Tests/VoxClip.Media.Tests.csproj -c Release --no-build --filter "Category!=RequiresFFmpeg&Category!=RequiresWindows"
 
       - name: Shared project plan parity
-        if: steps.detect.outputs.swift == 'true' && steps.detect.outputs.media_tests == 'true'
+        if: ${{ !cancelled() && steps.release_cli.outcome == 'success' && steps.detect.outputs.media_tests == 'true' }}
+        timeout-minutes: 5
         shell: bash
         env:
           VOXCLIP_PLAN_PYTHON: ${{ steps.py.outputs.python-path }}
@@ -158,7 +220,8 @@ jobs:
             bash tools/parity/plan_parity.sh
 
       - name: Caption parity (Swift vs C# renders)
-        if: steps.detect.outputs.parity == 'true' && steps.detect.outputs.swift == 'true' && steps.detect.outputs.media_tests == 'true'
+        if: ${{ !cancelled() && steps.release_cli.outcome == 'success' && steps.detect.outputs.parity == 'true' && steps.detect.outputs.media_tests == 'true' }}
+        timeout-minutes: 20
         env:
           VOXCLIP_SHARED_DIR: ${{ github.workspace }}/shared
           VOXCLIP_CAPTION_PYTHON: ${{ steps.py.outputs.python-path }}
@@ -166,6 +229,7 @@ jobs:
 
       - name: Upload caption parity differences
         if: always() && steps.detect.outputs.parity == 'true'
+        timeout-minutes: 5
         uses: actions/upload-artifact@v4
         with:
           name: caption-parity-differences
@@ -492,7 +556,7 @@ jobs:
         if: steps.detect.outputs.tokens == 'true' && steps.detect.outputs.tokens_lock == 'true'
         run: npm ci --prefix tools/design
 
-      - name: Regenerate design tokens (Tokens.swift, Tokens.xaml)
+      - name: Regenerate design tokens (Tokens.swift, Tokens.xaml, AccentColor colorset)
         if: steps.detect.outputs.tokens == 'true'
         shell: bash
         run: |

@@ -9,7 +9,7 @@ public actor WhisperCppTranscriber: Transcriber, SpeechCacheIdentityProviding, S
     private let catalog: BundledModelCatalog?
     private let locations: DataLocations
     private let logger: any Redacting
-    private var context: OpaquePointer?
+    private var context: WhisperContext?
     private var contextKey: String?
     private var expiry: Task<Void, Never>?
     private var active = false
@@ -19,7 +19,7 @@ public actor WhisperCppTranscriber: Transcriber, SpeechCacheIdentityProviding, S
         self.logger = logger
     }
     public init(catalog: BundledModelCatalog, locations: DataLocations, logger: any Redacting = RedactingLogger(homeDirectory: FileManager.default.homeDirectoryForCurrentUser.path)) { self.catalog = catalog; self.locations = locations; self.logger = logger }
-    isolated deinit { if let context { whisper_free(context) }; expiry?.cancel() }
+    deinit { expiry?.cancel() }
     public nonisolated func capabilities(model: String?) -> TranscriberCapabilities { TranscriberCapabilities(timing: .dtw, verbatim: false, autoLanguage: true, onDevice: true) }
     public func supports(_ language: LanguageChoice, model: String?) async -> Bool {
         guard let model, let catalog, let descriptor = try? await catalog.model(id: model),
@@ -190,11 +190,11 @@ public actor WhisperCppTranscriber: Transcriber, SpeechCacheIdentityProviding, S
             case "SMALL_EN": parameters.dtw_aheads_preset = WHISPER_AHEADS_SMALL_EN
             default: parameters.dtw_aheads_preset = WHISPER_AHEADS_LARGE_V3_TURBO
             }
-            context = path(model, file).withCString { whisper_init_from_file_with_params($0, parameters) }
+            context = path(model, file).withCString { whisper_init_from_file_with_params($0, parameters) }.map(WhisperContext.init)
             if context != nil { contextKey = key }
         }
         guard let context else { throw VoxClipError.transcriptionFailed("Could not load the whisper model") }
-        return context
+        return context.pointer
     }
     private func detect(_ samples: [Float], unit: Range<Int>, context: OpaquePointer) throws -> SpeechLanguageDetection {
         let count = min(unit.count, 480_000)
@@ -208,7 +208,7 @@ public actor WhisperCppTranscriber: Transcriber, SpeechCacheIdentityProviding, S
     }
     private func path(_ model: ModelDescriptor, _ file: ModelFile) -> String { locations.models.appendingPathComponent("whispercpp").appendingPathComponent(model.id).appendingPathComponent(file.name).path }
     private func unloadIfIdle() { if !active { unload() } }
-    private func unload() { if let context { whisper_free(context) }; context = nil; contextKey = nil }
+    private func unload() { context = nil; contextKey = nil }
     private func speechUnits(_ samples: [Float], model: String, cancellation: WhisperCallbacks) throws -> [Range<Int>] {
         try cancellation.check()
         var contextParameters = whisper_vad_default_context_params()
@@ -231,6 +231,14 @@ public actor WhisperCppTranscriber: Transcriber, SpeechCacheIdentityProviding, S
         }
         return units
     }
+}
+
+/// Owns one native context and frees it on release, so the actor's deinit needs no isolation. Swift 6.3.3
+/// reports a circular reference when optimized clients in other modules meet an isolated deinit.
+private final class WhisperContext {
+    let pointer: OpaquePointer
+    init(_ pointer: OpaquePointer) { self.pointer = pointer }
+    deinit { whisper_free(pointer) }
 }
 
 /// C decode calls are synchronous; the actor retains this box until callbacks stop, and shared state is mutex-protected.
