@@ -1,6 +1,7 @@
 using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Security.Cryptography;
+using System.Text.Json;
 using FFmpeg.AutoGen;
 using VoxClip.Core.Domain.Editing;
 using VoxClip.Media.Ffmpeg;
@@ -52,6 +53,50 @@ public sealed class VoiceLabSourceAudioTests
         => Assert.Equal(code, Assert.Throws<VoiceLabSourceAudioException>(action).Code);
     private static async Task RefusesAsync(VoiceLabSourceAudioErrorCode code, Func<Task> action)
         => Assert.Equal(code, (await Assert.ThrowsAsync<VoiceLabSourceAudioException>(action)).Code);
+
+    public static TheoryData<JsonElement> ContinuityCases
+    {
+        get
+        {
+            using var document = FixtureLoader.ReadJson("fixtures/voice-lab/continuity-cases.json");
+            Assert.Equal(38, document.RootElement.GetProperty("caseCount").GetInt32());
+            TheoryData<JsonElement> result = [];
+            foreach (var row in document.RootElement.GetProperty("cases").EnumerateArray()) result.Add(row.Clone());
+            Assert.Equal(38, result.Count);
+            return result;
+        }
+    }
+
+    [Theory]
+    [MemberData(nameof(ContinuityCases))]
+    public void SharedContinuityVectorsUseProductionPlacement(JsonElement row)
+    {
+        var expected = row.GetProperty("expected");
+        var timestamp = row.GetProperty("timestamp");
+        var previous = row.GetProperty("previousEnd");
+        long? previousEnd = previous.ValueKind == JsonValueKind.Null ? null : previous.GetInt64();
+        long Place() => VoiceLabSourceAudio.SourceFrame(
+            timestamp.ValueKind == JsonValueKind.Null ? ffmpeg.AV_NOPTS_VALUE : timestamp.GetProperty("value").GetInt64(),
+            0, previousEnd, row.GetProperty("rate").GetInt32(),
+            timestamp.ValueKind == JsonValueKind.Null ? 1 : timestamp.GetProperty("numerator").GetInt32(),
+            timestamp.ValueKind == JsonValueKind.Null ? 1 : timestamp.GetProperty("denominator").GetInt32());
+        var error = expected.TryGetProperty("error", out var refusal) ? refusal.GetString() : null;
+        if (error == "unreadable")
+        {
+            Refuses(VoiceLabSourceAudioErrorCode.Unreadable, () => Place());
+            return;
+        }
+        var first = Place();
+        Assert.Equal(expected.GetProperty("firstSample").GetInt64(), first);
+        var next = row.GetProperty("nextSample").GetInt64();
+        if (error == "rangeOutsideMedia") Assert.True(first > next, row.GetProperty("name").GetString());
+        else
+        {
+            Assert.True(first <= next, row.GetProperty("name").GetString());
+            var skip = Math.Min(row.GetProperty("sampleCount").GetInt64(), next - first);
+            Assert.Equal(expected.GetProperty("skipCount").GetInt64(), skip);
+        }
+    }
 
     [Theory]
     [InlineData(-0.6, null, -1)]

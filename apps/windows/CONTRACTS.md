@@ -1,5 +1,10 @@
 # Windows fixed contracts
 
+### 2026-10-28 — sol-followups-8 round 2: shared extraction placement
+
+- Voice Lab §7.2 permits finite negative positions in `VoiceLabSourceAudio.SourceFrame`, keeping the ±2^62 overflow guard, DecodeSession container-start origin, stream time base, first-frame half-up anchor and missing-timestamp fallback unchanged. `FirstFrameUsesItsOwnHalfUpAnchorAndNegativeOverlap` and `NonfiniteAndOverflowingPositionsAreUnreadable` cover the decision without changing other Windows production code.
+- `SharedContinuityVectorsUseProductionPlacement` replays all 38 cases in `shared/fixtures/voice-lab/continuity-cases.json` through production `SourceFrame`. SHA-256 is `e6ef42324766b693b083f3a59a77d07053b8a8fc23d59ad21e66c1d3149a948f`; two generator runs are byte-identical. Gap rows assert the placed index and decoder coverage condition; negative overlap, first versus anchored placement, missing timestamps, strict ticks and cumulative 40-sample gaps share the Swift oracle. No floating tolerance applies in `check_drift.py`.
+
 ### 2026-10-27 — sol-vl-media-win — Paid WAV durability and source coverage (rounds 2–4)
 
 - `VoiceLabAssetStore.Write(ReadOnlySpan<byte> pcm16, int sampleRate, string projectId, string assetId, string paidRoot, DateTimeOffset createdAt, CancellationToken cancellationToken = default)` and `WriteDerived(ReadOnlySpan<float> samples, ...)` publish canonical mono PCM16 WAVs named only by Core's `VoiceLabAssetNaming.File` (§10.1, §10.4). Derived samples use binary64 multiplication by 32767, ties to even and a ±32767 clamp; nonfinite values are refused before any file is created. Bounds remain 8–192 kHz, at least one frame and at most (UInt32.MaxValue − 36) / 2 frames.

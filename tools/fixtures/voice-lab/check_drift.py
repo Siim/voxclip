@@ -13,6 +13,7 @@ import subprocess
 import sys
 
 TOLERANT = ['shared/fixtures/voice-lab/audio-math-cases.json']
+EXACT = ['shared/fixtures/voice-lab/continuity-cases.json']
 REL_TOL = 1e-10
 ABS_TOL = 1e-12
 
@@ -37,6 +38,15 @@ def differences(committed, regenerated, where='$'):
 
 def main():
     failed = False
+    for path in EXACT:
+        committed_bytes = subprocess.run(['git', 'show', f'HEAD:{path}'], check=True, capture_output=True).stdout
+        with open(path, 'rb') as file:
+            regenerated_bytes = file.read()
+        if committed_bytes != regenerated_bytes:
+            failed = True
+            print(f'::error::{path} must match byte for byte')
+        else:
+            print(f'{path}: identical')
     for path in TOLERANT:
         committed_bytes = subprocess.run(['git', 'show', f'HEAD:{path}'], check=True, capture_output=True).stdout
         with open(path, 'rb') as file:
