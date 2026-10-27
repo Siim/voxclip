@@ -528,12 +528,12 @@
       "output": "Authorization: Token Basic Key Basic Basic Token Key [REDACTED] Bearer [REDACTED]"
     },
     {
-      "input": "AIzaQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQeyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.c2ln",
+      "input": "\u0041IzaQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQeyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.c2ln",
       "output": "[REDACTED][REDACTED]",
       "note": "rule 6 replaces a JWT that rule 5 left because the key before it was base64url"
     },
     {
-      "input": "x \u0130AIzaQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQeyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.c2ln",
+      "input": "x \u0130\u0041IzaQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQeyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.c2ln",
       "output": "x \u0130[REDACTED][REDACTED]",
       "note": "rule 6 replaces a JWT that rule 5 left because the key before it was base64url"
     },

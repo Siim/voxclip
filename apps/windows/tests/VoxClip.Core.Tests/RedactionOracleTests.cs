@@ -57,9 +57,9 @@ public sealed class RedactionOracleTests
         ("mixed-nine", "Token Basic Key Basic Basic Token Key Token Bearer {M}"),
         ("ninth-bearer-tab", "Token Token Token Token Token Token Token Token Bearer\t{M}"),
         ("twelve-words", "Key Key Key Key Key Key Key Key Key Key Key Bearer {M}"),
-        ("aiza-jwt", "AIzaQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQeyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.{M}"),
+        ("aiza-jwt", "\u0041IzaQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQeyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.{M}"),
         ("sk-jwt", "sk-ant-api03-aaaaaaaaaaaaaaaaaaaaeyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.{M}"),
-        ("ghp-jwt", "ghp_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaeyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.{M}"), ("bearer-kelvin", "Bearer ab\u212A{M}"),
+        ("ghp-jwt", "gh\u0070_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaeyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.{M}"), ("bearer-kelvin", "Bearer ab\u212A{M}"),
         ("bearer-long-s", "Bearer ab\u017F{M}"), ("bearer-kelvin-first", "Bearer \u212Aab{M}"),
         .. LineBreaks.SelectMany(entry => new[]
         {

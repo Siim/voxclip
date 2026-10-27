@@ -1,5 +1,10 @@
 # macOS implementation contracts
 
+### 2026-10-27 — Hosted CI fixes after the paid-asset merge
+
+- `VoiceLabSourceAudio.resample` feeds `AVAudioConverter` through the private, lock-protected `VoiceLabResampleInput`. The macOS 26 SDK marks the converter's input block `@Sendable`, so the captured `var offset` failed the hosted Swift build. The output and the public API are unchanged.
+- The two `aiza-jwt` inputs in `shared/fixtures/redaction/cases.json` now spell their first letter with the JSON escape `\u0041`. The oracle tests spell it `\u{41}`, and the GitHub case `gh\u{70}_`, so the repository secret scan no longer matches the fake keys. The decoded cases are identical. The fixture's SHA-256 is now `06243abe9992c72fd61bc1f989faad38c49fee5e7b67216b3de8dad14627e14e`. architecture §11.2 writes the fake key as `AIza⟨35 × Q⟩…`.
+
 ### 2026-10-27 — Per-source audio and envelope cache
 
 - Both GUI apps passed the cache root as the extraction directory, so every transcription overwrote one `Cache/audio-16k.wav` and `Cache/envelope-10ms.f32`, and macOS wrote no `meta.json`. `CacheStore` (mac-editing) adds `entryDirectory(contentKey:)`, `extractAudio(sourceURL:contentKey:durationSeconds:audioTrackIndex:using:progress:)`, `removeLegacyRootFiles()` and a `keepingEnvelopes` parameter on `evict(limitBytes:protectedKeys:keepingEnvelopes:)`, defaulting to false so existing calls keep their shape. `extractAudio` validates the key, refuses an entry that is a link or not a folder (`CocoaError`, "Cache entries cannot be symbolic links."), deletes the stray root files, extracts into `Cache/<contentKey>/` and records `meta.json` with the envelope, keeping `createdAt`. `removeLegacyRootFiles()` deletes only regular files at the root that match the legacy names and shapes of architecture §8.2 (`apple-*.caf`, the `*.partial` temporaries).

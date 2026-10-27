@@ -210,24 +210,15 @@ public enum VoiceLabSourceAudio {
         converter.primeMethod = .normal
         var result: [Float] = []
         result.reserveCapacity(Int((Double(samples.count) * target / rate).rounded(.up)) + 1)
-        var offset = 0, failed = false, idle = 0
+        let feed = VoiceLabResampleInput(samples: samples, format: input)
+        var idle = 0
         while true {
             try Task.checkCancellation()
             var error: NSError?
             let status = converter.convert(to: converted, error: &error) { packets, inputStatus in
-                guard offset < samples.count else { inputStatus.pointee = .endOfStream; return nil }
-                let count = min(Int(packets), samples.count - offset)
-                guard count > 0, let block = AVAudioPCMBuffer(pcmFormat: input, frameCapacity: AVAudioFrameCount(count)),
-                      let plane = block.floatChannelData?[0] else {
-                    failed = true; inputStatus.pointee = .endOfStream; return nil
-                }
-                samples.withUnsafeBufferPointer { plane.update(from: $0.baseAddress! + offset, count: count) }
-                block.frameLength = AVAudioFrameCount(count)
-                offset += count
-                inputStatus.pointee = .haveData
-                return block
+                feed.next(packets: packets, status: inputStatus)
             }
-            if failed || error != nil || status == .error { throw VoiceLabSourceAudioError.unreadable }
+            if feed.failed || error != nil || status == .error { throw VoiceLabSourceAudioError.unreadable }
             if converted.frameLength > 0, let plane = converted.floatChannelData?[0] {
                 result.append(contentsOf: UnsafeBufferPointer(start: plane, count: Int(converted.frameLength)))
             }
@@ -302,5 +293,30 @@ public enum VoiceLabSourceAudio {
         }
         if reader.status == .reading { reader.cancelReading() }
         return wav
+    }
+}
+
+/// Feeds `resample` from the converter's input block, which some SDKs mark `@Sendable`.
+private final class VoiceLabResampleInput: @unchecked Sendable {
+    private let lock = NSLock()
+    private let samples: [Float]
+    private let format: AVAudioFormat
+    private var offset = 0
+    private var failure = false
+    init(samples: [Float], format: AVAudioFormat) { self.samples = samples; self.format = format }
+    var failed: Bool { lock.lock(); defer { lock.unlock() }; return failure }
+    func next(packets: AVAudioPacketCount, status: UnsafeMutablePointer<AVAudioConverterInputStatus>) -> AVAudioBuffer? {
+        lock.lock(); defer { lock.unlock() }
+        guard offset < samples.count else { status.pointee = .endOfStream; return nil }
+        let count = min(Int(packets), samples.count - offset)
+        guard count > 0, let block = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(count)),
+              let plane = block.floatChannelData?[0] else {
+            failure = true; status.pointee = .endOfStream; return nil
+        }
+        samples.withUnsafeBufferPointer { plane.update(from: $0.baseAddress! + offset, count: count) }
+        block.frameLength = AVAudioFrameCount(count)
+        offset += count
+        status.pointee = .haveData
+        return block
     }
 }
