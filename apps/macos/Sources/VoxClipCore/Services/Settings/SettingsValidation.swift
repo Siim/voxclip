@@ -8,7 +8,7 @@ extension SettingsDocument {
 
     public static let defaults: [String: JSONValue] = [
         "general.appearance": .string("system"), "general.transcriptTextSize": .null,
-        "general.showLowConfidence": .bool(false), "general.openLastProject": .bool(false), "general.recentProjects": .array([]),
+        "general.showLowConfidence": .bool(false), "general.showPlaceholderWords": .bool(true), "general.openLastProject": .bool(false), "general.recentProjects": .array([]),
         "onboarding.completed": .bool(false), "editing.pauseBreath": .string("natural"), "captions.defaultStyleId": .string("vox-highlight"),
         "cache.limitGB": .number(5), "transcription.engineMode": .string("local"), "transcription.language": .string("auto"),
         "transcription.recentLanguages": .array([]), "transcription.elevenlabs.region": .string("default"), "transcription.cloudConsent.elevenlabs": .bool(false),

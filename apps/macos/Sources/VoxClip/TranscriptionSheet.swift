@@ -77,7 +77,7 @@ import VoxClipMedia
                 }
                 if remember { model.app.set("transcription.language", .string(language)) }
                 model.progress = "Extracting audio…"
-                let audio = try await AVAudioExtractor().extract(AudioExtractionRequest(sourceURL: model.sourceURL, contentKey: model.project.media.source.contentKey, durationSeconds: model.sourceDuration, cacheDirectory: model.app.locations.cache)) { _ in }
+                let audio = try await CacheStore(locations: model.app.locations).extractAudio(sourceURL: model.sourceURL, contentKey: model.project.media.source.contentKey, durationSeconds: model.sourceDuration, using: AVAudioExtractor()) { _ in }
                 let service = TranscriptionService()
                 let watch = Task {
                     var announced = -1

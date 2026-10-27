@@ -39,7 +39,7 @@ extension AppModel {
                 Picker("Cache size limit", selection: app.numberBinding("cache.limitGB", fallback: 5)) { ForEach([2.0, 5, 10, 20], id: \.self) { Text("\(Int($0)) GB").tag($0) } }
                 Button("Clear cache") {
                     Task {
-                        do { try await CacheStore(locations: app.locations).evict(limitBytes: 0, protectedKeys: Set(app.openProjectKeys.values)); app.notice = "Unused cache cleared. Your video, models and edits are still here." }
+                        do { try await CacheStore(locations: app.locations).evict(limitBytes: 0, protectedKeys: Set(app.openProjectKeys.values), keepingEnvelopes: true); app.notice = "Unused cache cleared. Your video, models and edits are still here." }
                         catch { app.notice = await app.safeError(error) }
                     }
                 }

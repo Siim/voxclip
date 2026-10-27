@@ -278,19 +278,8 @@ public enum CaptionLayoutEngine {
             let lines = breakLines(widths: widths, gap: gap, balanced: style.layout.balance == .balanced, fits: fits)
             return lines.count <= style.layout.maxLines && (indices.count == 1 || lines.allSatisfy { fits(lineUnits($0, widths, gap)) })
         }
-        var groups: [[Int]] = [], current: [Int] = []
-        for index in words.indices {
-            if let previous = current.last, let first = current.first {
-                let split = current.count >= style.layout.maxWords ||
-                    (style.layout.breakOnSentence && CaptionTextRules.sentenceEnd(words[previous].raw)) ||
-                    (style.layout.breakOnComma && current.count >= 2 && CaptionTextRules.clauseEnd(words[previous].raw)) ||
-                    style.layout.breakOnGapSec.map { words[index].input.start - words[previous].input.end >= $0 } == true ||
-                    style.layout.maxPageSec.map { words[index].input.end - words[first].input.start > $0 } == true || !pageFits(current + [index])
-                if split { groups.append(current); current = [] }
-            }
-            current.append(index)
-        }
-        if !current.isEmpty { groups.append(current) }
+        let groups = pageGroups(count: words.count, layout: style.layout, raw: { words[$0].raw }, start: { words[$0].input.start },
+                                end: { words[$0].input.end }, fits: pageFits)
         var paletteIndex = 0
         var previousEmoji: String?
         var pages: [CaptionPageLayout] = []
@@ -349,6 +338,26 @@ public enum CaptionLayoutEngine {
         let display = runs.map(\.text).joined()
         let cascade = try CaptionFontCascade.resolve(request, resources: resources)
         return ShapedWord(word: CaptionWord(id: word.id, text: display, start: word.start, end: word.end), runs: runs, units: units, clusters: cascade.clusters, droppedClusters: cascade.dropped)
+    }
+
+    /// Captions §6.1 paging over normalised words. `fits` is the §6.2 page fit test; caption cards, which have no
+    /// glyph widths yet, pass one that always fits (design §5.4.2).
+    static func pageGroups(count: Int, layout: CaptionLayout, raw: (Int) -> String, start: (Int) -> Double, end: (Int) -> Double,
+                           fits: ([Int]) -> Bool) -> [[Int]] {
+        var groups: [[Int]] = [], current: [Int] = []
+        for index in 0..<count {
+            if let previous = current.last, let first = current.first {
+                let split = current.count >= layout.maxWords ||
+                    (layout.breakOnSentence && CaptionTextRules.sentenceEnd(raw(previous))) ||
+                    (layout.breakOnComma && current.count >= 2 && CaptionTextRules.clauseEnd(raw(previous))) ||
+                    layout.breakOnGapSec.map { start(index) - end(previous) >= $0 } == true ||
+                    layout.maxPageSec.map { end(index) - start(first) > $0 } == true || !fits(current + [index])
+                if split { groups.append(current); current = [] }
+            }
+            current.append(index)
+        }
+        if !current.isEmpty { groups.append(current) }
+        return groups
     }
 
     static func lineUnits(_ indices: [Int], _ widths: [Int], _ gap: Int) -> Int {

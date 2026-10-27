@@ -333,7 +333,7 @@ internal static class CliOperations
                 throw new VoxClipException(VoxClipErrorCode.ModelMissing, "The selected Whisper model is not installed and verified.");
         }
         var key = await ServicesMergeAdapter.Projects().ComputeContentKeyAsync(media.Path, null, ct).ConfigureAwait(false);
-        var extracted = await new FfmpegAudioExtractor().ExtractAsync(new(media, key, Path.Combine(DataLocations.Resolve().Cache, key)),
+        var extracted = await new CacheIndex(DataLocations.Resolve().Cache).ExtractAudioAsync(new FfmpegAudioExtractor(), media, key,
             Progress<MediaProgress>(arguments, value => (value.Phase, value.Fraction)), ct).ConfigureAwait(false);
         var plan = new TranscriptionPlan(engine, model, language == "auto" ? new LanguageChoice.Auto() : new LanguageChoice.Forced(language),
             new(arguments.GetValue<bool>("--diarize"), Dtw: !arguments.GetValue<bool>("--no-dtw")));

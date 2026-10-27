@@ -122,8 +122,8 @@ enum CLIWorkflow {
             guard model != nil else { throw VoxClipError.modelMissing("whisper (\(language ?? "auto"))") }
         }
         let key = try JSONProjectStore.contentKey(for: source)
-        let extraction = try await AVAudioExtractor().extract(AudioExtractionRequest(sourceURL: source, contentKey: key, durationSeconds: probe.durationSeconds,
-            cacheDirectory: locations.cache.appendingPathComponent(key))) { _ in }
+        let extraction = try await CacheStore(locations: locations).extractAudio(sourceURL: source, contentKey: key, durationSeconds: probe.durationSeconds,
+            using: AVAudioExtractor()) { _ in }
         let plan = TranscriptionPlan(engine: selected, model: model, language: choice, options: options)
         let adapter: any Transcriber
         switch selected {

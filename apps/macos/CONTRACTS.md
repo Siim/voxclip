@@ -1,5 +1,22 @@
 # macOS implementation contracts
 
+### 2026-10-27 — Per-source audio and envelope cache
+
+- Both GUI apps passed the cache root as the extraction directory, so every transcription overwrote one `Cache/audio-16k.wav` and `Cache/envelope-10ms.f32`, and macOS wrote no `meta.json`. `CacheStore` (mac-editing) adds `entryDirectory(contentKey:)`, `extractAudio(sourceURL:contentKey:durationSeconds:audioTrackIndex:using:progress:)`, `removeLegacyRootFiles()` and a `keepingEnvelopes` parameter on `evict(limitBytes:protectedKeys:keepingEnvelopes:)`, defaulting to false so existing calls keep their shape. `extractAudio` validates the key, refuses an entry that is a link or not a folder (`CocoaError`, "Cache entries cannot be symbolic links."), deletes the stray root files, extracts into `Cache/<contentKey>/` and records `meta.json` with the envelope, keeping `createdAt`. `removeLegacyRootFiles()` deletes only regular files at the root that match the legacy names and shapes of architecture §8.2 (`apple-*.caf`, the `*.partial` temporaries).
+- Eviction runs two passes (architecture §8.2). Entries first shrink to `envelope-10ms.f32`, `transcripts/` and `meta.json`, and an entry left with neither an envelope nor a raw transcript goes whole. Whole entries go next, unless `keepingEnvelopes` is set, so Clear cache keeps envelopes and the raw transcripts that may have been paid for.
+- Call sites: `Sources/VoxClip/TranscriptionSheet.swift` and `Sources/voxclip-cli/CLIWorkflow.swift` call `extractAudio`, and Clear cache in `Sources/VoxClip/SettingsView.swift` passes `keepingEnvelopes: true`. There is no Clear everything control yet.
+- `Tests/VoxClipCoreTests/Editing/CacheEnvelopeTests.swift` covers two transcriptions that no longer overwrite each other, audio evicted before envelopes, and Clear cache keeping envelopes and raw transcripts (also of entries from before this fix) until everything is cleared.
+
+### 2026-10-27 — Media stand-in caption card core (design §5.4)
+
+- `Sources/VoxClipCore/Domain/Captions/CaptionCard.swift` (mac-captions) adds `CaptionCardScope`, `CaptionCardSource`, `CaptionCardSurface`, `CaptionCardWord` and `CaptionCardText`. `CaptionCardText.make(project:scope:style:wordsVisible:resources:)` is pure. It takes the scope's export captions from `VoiceLabOutputPlanner.build`, resolves the style and `captions.overrides` at the export frame, and applies design §5.4.2: normalisation, bundled-font coverage, weak words (the editing filler rule and `stopwords.json`), §6.1 paging capped at four words, the key word, and the project title when words are hidden. It returns `.none` with no transcript, with every word of the scope cut, or when nothing survives.
+- It measures nothing, so line breaks stay with the renderer. Callers fit with `maxLines(on:)`, shorten with `droppingLastWord()` and draw `layoutWords` at `time` through `CaptionHandoff`. `time` lies 0.35 × 0.98 into the key word, or in the last word for reveal styles, using the stored `holdGapSec` (design §5.4.2), so the page is visible even in Bold and Highlight. `CaptionCardText` is `Codable`, so the Home metadata cache can keep both cards (transcript and title) with the `general.showPlaceholderWords` value and resolved style id they were made with, and re-derive them when either changes (design §5.4.5). Callers choose the style; with captions off, design §5.4.2 picks `captions.defaultStyleId`.
+- `CaptionLayoutEngine.pageGroups(count:layout:raw:start:end:fits:)` is internal: the §6.1 pager moved out of `build` unchanged.
+- `Sources/VoxClipCore/Domain/Captions/MediaStandIn.swift` (mac-captions) adds the implementation.md §2 state model: `MediaStatus` (`none`, `loading`, `missing`, `unreadable`, `transcribing(fraction:stage:)`, `demo`, `audioOnly`), `MediaTranscriptionStage` (the §5.4.8 chip stages) and `MediaStandIn` (`frame`, `card(_:styleId:)`, `black`). `MediaStandIn.resolve(status:hasFrame:card:styleId:holding:)` is the design §5.4.1 precedence. The redesign tracks' views call it and overlay the status; they never decide precedence themselves. The 56 `standIns` cases in `cards.json` cover it on both platforms.
+- `SettingsDocument.defaults` gains `general.showPlaceholderWords = true` (design §5.4.2 and §10).
+- `Tests/VoxClipCoreTests/Captions/CaptionCardTests.swift` checks all 51 cases of `shared/fixtures/captions/cards.json`, which `tools/captions/gen_cards.py` generates and Windows also passes, plus the `Codable` round trip.
+- Round-2 verification on the tree merged with main `01e1b387`: `swift build` passed; `swift test --filter VoxClipCoreTests` passed 471 tests; `swift test --filter 'CaptionParityTests|CaptionPipelineTests'` passed 8; `gen_cards.py` was byte-identical over two runs (`cards.json` sha256 `6cfc1121efae9cf5cae78f7ae0a17e35432acf31d18681ebbf4c73c55040103f`).
+
 ### 2026-10-26 — Voice Lab request bodies (wave2-vl-request-bodies)
 
 - The lead approved this in-place Core change on 2026-10-26 for voice-lab §6.5 and §6.7 (own-voice clone), §7.3 (voice changer), §8.5 (alternative TTS request) and §15 tests 12 and 14. The old `ElevenLabsVoiceLab` signatures are replaced, not overloaded; App, CLI and Media have no callers, and only Core tests changed. Old → new:
@@ -1183,6 +1200,11 @@ Paths are relative to apps/macos. Nested public types are qualified with their e
 | `CaptionBox` | `Sources/VoxClipCore/Domain/Captions/CaptionStyle.swift` | mac-captions |
 | `CaptionBoxGeometry` | `Sources/VoxClipCore/Domain/Captions/CaptionLayoutEngine.swift` | mac-captions |
 | `CaptionBoxScope` | `Sources/VoxClipCore/Domain/Captions/CaptionStyle.swift` | mac-captions |
+| `CaptionCardScope` | `Sources/VoxClipCore/Domain/Captions/CaptionCard.swift` | mac-captions |
+| `CaptionCardSource` | `Sources/VoxClipCore/Domain/Captions/CaptionCard.swift` | mac-captions |
+| `CaptionCardSurface` | `Sources/VoxClipCore/Domain/Captions/CaptionCard.swift` | mac-captions |
+| `CaptionCardText` | `Sources/VoxClipCore/Domain/Captions/CaptionCard.swift` | mac-captions |
+| `CaptionCardWord` | `Sources/VoxClipCore/Domain/Captions/CaptionCard.swift` | mac-captions |
 | `CaptionCursorGeometry` | `Sources/VoxClipCore/Domain/Captions/CaptionTimeline.swift` | mac-captions |
 | `CaptionDroppedWord` | `Sources/VoxClipCore/Domain/Captions/CaptionLayoutEngine.swift` | mac-captions |
 | `CaptionEasing` | `Sources/VoxClipCore/Domain/Captions/CaptionContracts.swift` | mac-captions |
@@ -1360,6 +1382,9 @@ Paths are relative to apps/macos. Nested public types are qualified with their e
 | `MediaProbe` | `Sources/VoxClipCore/Domain/Shared/MediaContracts.swift` | common (frozen; lead approval) |
 | `MediaProbeResult` | `Sources/VoxClipCore/Domain/Shared/MediaContracts.swift` | common (frozen; lead approval) |
 | `MediaReference` | `Sources/VoxClipCore/Domain/Shared/Project.swift` | common (frozen; lead approval) |
+| `MediaStandIn` | `Sources/VoxClipCore/Domain/Captions/MediaStandIn.swift` | mac-captions |
+| `MediaStatus` | `Sources/VoxClipCore/Domain/Captions/MediaStandIn.swift` | mac-captions |
+| `MediaTranscriptionStage` | `Sources/VoxClipCore/Domain/Captions/MediaStandIn.swift` | mac-captions |
 | `MediaVideo` | `Sources/VoxClipCore/Domain/Shared/Project.swift` | common (frozen; lead approval) |
 | `ModelCatalog` | `Sources/VoxClipCore/Services/Models/ModelCatalog.swift` | mac-speech |
 | `ModelDescriptor` | `Sources/VoxClipCore/Services/Models/ModelCatalog.swift` | mac-speech |
