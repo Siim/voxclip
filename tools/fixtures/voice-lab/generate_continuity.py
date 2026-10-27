@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
-"""Portable exact-rational/binary64 oracle for Voice Lab section 7.2 placement."""
+"""Portable DecodeSession-order binary64 oracle for Voice Lab section 7.2 placement."""
 import hashlib
 import json
-from fractions import Fraction
 from math import floor
 from pathlib import Path
 
@@ -10,7 +9,7 @@ ROOT = Path(__file__).resolve().parents[3]
 OUT = ROOT / 'shared/fixtures/voice-lab/continuity-cases.json'
 
 
-def outcome(rate, timestamp, previous_end, next_sample, frames):
+def outcome(rate, timestamp, origin, previous_end, next_sample, frames):
     if timestamp is None:
         if previous_end is None:
             return dict(error='unreadable')
@@ -19,12 +18,13 @@ def outcome(rate, timestamp, previous_end, next_sample, frames):
         value = timestamp['value']
         numerator = timestamp['numerator']
         denominator = timestamp['denominator']
-        position = float(Fraction(value * numerator * rate, denominator))
+        seconds = float(value) * (float(numerator) / float(denominator))
+        position = (seconds - origin) * float(rate)
         if position < -4_611_686_018_427_387_904 or position >= 4_611_686_018_427_387_904:
             return dict(error='unreadable')
-        tick = float(rate) * numerator / denominator
+        tick = float(rate) * float(numerator) / float(denominator)
         first = floor(position + 0.5)
-        if previous_end is not None and abs(position - previous_end) < max(1.0, tick):
+        if previous_end is not None and abs(position - float(previous_end)) < max(1.0, tick):
             first = previous_end
     if first > next_sample:
         return dict(firstSample=first, error='rangeOutsideMedia')
@@ -34,10 +34,10 @@ def outcome(rate, timestamp, previous_end, next_sample, frames):
 def main():
     cases = []
 
-    def add(name, value, denominator, previous_end, next_sample, rate=48_000, frames=960):
+    def add(name, value, denominator, previous_end, next_sample, rate=48_000, frames=960, origin=0.0):
         timestamp = None if value is None else dict(value=value, numerator=1, denominator=denominator)
-        expected = outcome(rate, timestamp, previous_end, next_sample, frames)
-        cases.append(dict(name=name, rate=rate, timestamp=timestamp, previousEnd=previous_end,
+        expected = outcome(rate, timestamp, origin, previous_end, next_sample, frames)
+        cases.append(dict(name=name, rate=rate, timestamp=timestamp, origin=origin, previousEnd=previous_end,
                           nextSample=next_sample, sampleCount=frames, expected=expected))
         return expected.get('firstSample')
 
@@ -68,6 +68,23 @@ def main():
     add('forty-sample-gaps-second-refused', 40, 1_000, previous, previous, frames=920)
     add('first-overflowing-position', 9_223_372_036_854_775_807, 1, None, 0)
     add('first-negative-overflowing-position', -9_223_372_036_854_775_807, 1, None, 0)
+    for value in [100, 101, 102]:
+        add(f'binary64-half-sample-neighbor-{value}', value, 96_000, None, 50 if value <= 101 else 51)
+    add('binary64-half-sample-101-skips-at-51', 101, 96_000, None, 51)
+    add('binary64-half-sample-101-continues-at-51', 101, 96_000, 51, 51)
+    for value, first in [(1, 1), (3, 2), (5, 3)]:
+        add(f'exact-binary64-half-sample-{value}', value, 96_000, None, first)
+    add('exact-binary64-half-sample-first-is-a-gap', 1, 96_000, None, 0)
+    for value in [-3, -5, -101]:
+        add(f'negative-binary64-half-sample-{value}', value, 96_000, None, 0)
+    for value, first in [(0, 0), (1, 2), (2, 4)]:
+        add(f'millisecond-2k-half-sample-{value}', value, 1_000, None, first, rate=2_000, origin=0.00025)
+    add('origin-one-point-four-half-sample', 134_501, 96_000, None, 51, origin=1.4)
+    add('origin-one-point-four-zero', 1_400, 1_000, None, 0, rate=2_000, origin=1.4)
+    add('origin-one-point-four-negative-overlap', 1_399, 1_000, None, 0, rate=2_000, origin=1.4)
+    for direction, sign in [('early', -1), ('late', 1)]:
+        add(f'exact-binary64-one-sample-{direction}', sign * 2, 96_000, 0, 0)
+        add(f'exact-binary64-one-tick-{direction}', sign, 1_000, 0, 0, rate=2_000)
     document = dict(schema='voxclip-voice-lab-continuity/1', caseCount=len(cases), cases=cases)
     data = (json.dumps(document, ensure_ascii=True, indent=2) + '\n').encode('utf-8')
     OUT.write_bytes(data)

@@ -2,6 +2,7 @@
 
 ### 2026-10-28 — sol-followups-8 round 3: binary64 extraction anchors
 
+- `sharedContinuityVectorsUseProductionPlacement` replays all **60** cases through the placement helper and actual PCM accumulator, including the 101/96,000 tie, its neighbors, exact binary64 ties, negative ties, 2 kHz millisecond ties, nonzero origins including 1.4 s, and exact one-sample/one-tick strict boundaries. Every row now carries its origin. `continuity-cases.json` SHA-256 is `6273ac27cb2f5573452907d4a8e285c62c7fd9c79ee0dc3be68cf4ed3c5f0d27`; two generator runs are byte-identical. The oracle follows binary64 evaluation order, not exact rational arithmetic.
 - Voice Lab §7.2 placement uses DecodeSession's binary64 order on both platforms: seconds = value × (numerator / denominator), position = (seconds − origin) × rate, tick = rate × numerator / denominator left to right, and half-up = floor(position + 0.5). The Mac exact Int64 path is removed. Its production origin remains 0.0 on the AVFoundation asset timeline; the placement helper and production accumulator accept an origin for shared replay. The first anchor, strict continuity, negative/missing behavior and Windows-compatible overflow guard are unchanged. Windows production arithmetic is unchanged. `timestampHalfSampleTiesUseTheDecodeSessionBinary64Order` pins timestamps 100/101/102 at 1/96,000 and 48 kHz to 50/50/51; `timestampPlacementSubtractsTheSuppliedOriginBeforeScaling` pins the 1.4 s origin.
 
 ### 2026-10-28 — sol-followups-8 round 2: shared extraction placement

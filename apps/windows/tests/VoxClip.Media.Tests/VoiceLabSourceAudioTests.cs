@@ -59,10 +59,10 @@ public sealed class VoiceLabSourceAudioTests
         get
         {
             using var document = FixtureLoader.ReadJson("fixtures/voice-lab/continuity-cases.json");
-            Assert.Equal(38, document.RootElement.GetProperty("caseCount").GetInt32());
+            Assert.Equal(60, document.RootElement.GetProperty("caseCount").GetInt32());
             TheoryData<JsonElement> result = [];
             foreach (var row in document.RootElement.GetProperty("cases").EnumerateArray()) result.Add(row.Clone());
-            Assert.Equal(38, result.Count);
+            Assert.Equal(60, result.Count);
             return result;
         }
     }
@@ -77,7 +77,7 @@ public sealed class VoiceLabSourceAudioTests
         long? previousEnd = previous.ValueKind == JsonValueKind.Null ? null : previous.GetInt64();
         long Place() => VoiceLabSourceAudio.SourceFrame(
             timestamp.ValueKind == JsonValueKind.Null ? ffmpeg.AV_NOPTS_VALUE : timestamp.GetProperty("value").GetInt64(),
-            0, previousEnd, row.GetProperty("rate").GetInt32(),
+            row.GetProperty("origin").GetDouble(), previousEnd, row.GetProperty("rate").GetInt32(),
             timestamp.ValueKind == JsonValueKind.Null ? 1 : timestamp.GetProperty("numerator").GetInt32(),
             timestamp.ValueKind == JsonValueKind.Null ? 1 : timestamp.GetProperty("denominator").GetInt32());
         var error = expected.TryGetProperty("error", out var refusal) ? refusal.GetString() : null;

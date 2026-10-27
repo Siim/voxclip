@@ -1,6 +1,6 @@
 {
   "schema": "voxclip-voice-lab-continuity/1",
-  "caseCount": 38,
+  "caseCount": 60,
   "cases": [
     {
       "name": "first-4799-point-four-at-4800",
@@ -10,6 +10,7 @@
         "numerator": 1,
         "denominator": 240000
       },
+      "origin": 0.0,
       "previousEnd": null,
       "nextSample": 4800,
       "sampleCount": 960,
@@ -26,6 +27,7 @@
         "numerator": 1,
         "denominator": 240000
       },
+      "origin": 0.0,
       "previousEnd": 4800,
       "nextSample": 4800,
       "sampleCount": 960,
@@ -42,6 +44,7 @@
         "numerator": 1,
         "denominator": 240000
       },
+      "origin": 0.0,
       "previousEnd": null,
       "nextSample": 0,
       "sampleCount": 960,
@@ -58,6 +61,7 @@
         "numerator": 1,
         "denominator": 240000
       },
+      "origin": 0.0,
       "previousEnd": 0,
       "nextSample": 0,
       "sampleCount": 960,
@@ -74,6 +78,7 @@
         "numerator": 1,
         "denominator": 96000
       },
+      "origin": 0.0,
       "previousEnd": null,
       "nextSample": 0,
       "sampleCount": 960,
@@ -90,6 +95,7 @@
         "numerator": 1,
         "denominator": 48000
       },
+      "origin": 0.0,
       "previousEnd": null,
       "nextSample": 0,
       "sampleCount": 960,
@@ -102,6 +108,7 @@
       "name": "missing-before-anchor",
       "rate": 48000,
       "timestamp": null,
+      "origin": 0.0,
       "previousEnd": null,
       "nextSample": 0,
       "sampleCount": 960,
@@ -113,6 +120,7 @@
       "name": "missing-after-anchor",
       "rate": 48000,
       "timestamp": null,
+      "origin": 0.0,
       "previousEnd": 1920,
       "nextSample": 1920,
       "sampleCount": 960,
@@ -125,6 +133,7 @@
       "name": "missing-after-negative-anchor",
       "rate": 48000,
       "timestamp": null,
+      "origin": 0.0,
       "previousEnd": -16,
       "nextSample": 0,
       "sampleCount": 960,
@@ -141,6 +150,7 @@
         "numerator": 1,
         "denominator": 240000
       },
+      "origin": 0.0,
       "previousEnd": null,
       "nextSample": 4800,
       "sampleCount": 960,
@@ -157,6 +167,7 @@
         "numerator": 1,
         "denominator": 240000
       },
+      "origin": 0.0,
       "previousEnd": 4800,
       "nextSample": 4800,
       "sampleCount": 960,
@@ -173,6 +184,7 @@
         "numerator": 1,
         "denominator": 1000
       },
+      "origin": 0.0,
       "previousEnd": 4799,
       "nextSample": 4799,
       "sampleCount": 960,
@@ -189,6 +201,7 @@
         "numerator": 1,
         "denominator": 1000
       },
+      "origin": 0.0,
       "previousEnd": 4800,
       "nextSample": 4800,
       "sampleCount": 960,
@@ -205,6 +218,7 @@
         "numerator": 1,
         "denominator": 1000
       },
+      "origin": 0.0,
       "previousEnd": 4801,
       "nextSample": 4801,
       "sampleCount": 960,
@@ -221,6 +235,7 @@
         "numerator": 1,
         "denominator": 90000
       },
+      "origin": 0.0,
       "previousEnd": 0,
       "nextSample": 0,
       "sampleCount": 960,
@@ -237,6 +252,7 @@
         "numerator": 1,
         "denominator": 90000
       },
+      "origin": 0.0,
       "previousEnd": 0,
       "nextSample": 0,
       "sampleCount": 960,
@@ -253,6 +269,7 @@
         "numerator": 1,
         "denominator": 90000
       },
+      "origin": 0.0,
       "previousEnd": 0,
       "nextSample": 0,
       "sampleCount": 960,
@@ -269,6 +286,7 @@
         "numerator": 1,
         "denominator": 90000
       },
+      "origin": 0.0,
       "previousEnd": 0,
       "nextSample": 0,
       "sampleCount": 960,
@@ -285,6 +303,7 @@
         "numerator": 1,
         "denominator": 90000
       },
+      "origin": 0.0,
       "previousEnd": 0,
       "nextSample": 0,
       "sampleCount": 960,
@@ -301,6 +320,7 @@
         "numerator": 1,
         "denominator": 48000
       },
+      "origin": 0.0,
       "previousEnd": 4800,
       "nextSample": 4800,
       "sampleCount": 960,
@@ -317,6 +337,7 @@
         "numerator": 1,
         "denominator": 48000
       },
+      "origin": 0.0,
       "previousEnd": 4800,
       "nextSample": 4800,
       "sampleCount": 960,
@@ -333,6 +354,7 @@
         "numerator": 1,
         "denominator": 48000
       },
+      "origin": 0.0,
       "previousEnd": 4800,
       "nextSample": 4800,
       "sampleCount": 960,
@@ -349,6 +371,7 @@
         "numerator": 1,
         "denominator": 1000
       },
+      "origin": 0.0,
       "previousEnd": 4801,
       "nextSample": 4801,
       "sampleCount": 960,
@@ -365,6 +388,7 @@
         "numerator": 1,
         "denominator": 1000
       },
+      "origin": 0.0,
       "previousEnd": 4800,
       "nextSample": 4800,
       "sampleCount": 960,
@@ -381,6 +405,7 @@
         "numerator": 1,
         "denominator": 1000
       },
+      "origin": 0.0,
       "previousEnd": 4799,
       "nextSample": 4799,
       "sampleCount": 960,
@@ -397,6 +422,7 @@
         "numerator": 1,
         "denominator": 90000
       },
+      "origin": 0.0,
       "previousEnd": 0,
       "nextSample": 0,
       "sampleCount": 960,
@@ -413,6 +439,7 @@
         "numerator": 1,
         "denominator": 90000
       },
+      "origin": 0.0,
       "previousEnd": 0,
       "nextSample": 0,
       "sampleCount": 960,
@@ -429,6 +456,7 @@
         "numerator": 1,
         "denominator": 90000
       },
+      "origin": 0.0,
       "previousEnd": 0,
       "nextSample": 0,
       "sampleCount": 960,
@@ -445,6 +473,7 @@
         "numerator": 1,
         "denominator": 90000
       },
+      "origin": 0.0,
       "previousEnd": 0,
       "nextSample": 0,
       "sampleCount": 960,
@@ -461,6 +490,7 @@
         "numerator": 1,
         "denominator": 90000
       },
+      "origin": 0.0,
       "previousEnd": 0,
       "nextSample": 0,
       "sampleCount": 960,
@@ -477,6 +507,7 @@
         "numerator": 1,
         "denominator": 48000
       },
+      "origin": 0.0,
       "previousEnd": 4800,
       "nextSample": 4800,
       "sampleCount": 960,
@@ -493,6 +524,7 @@
         "numerator": 1,
         "denominator": 48000
       },
+      "origin": 0.0,
       "previousEnd": 4800,
       "nextSample": 4800,
       "sampleCount": 960,
@@ -509,6 +541,7 @@
         "numerator": 1,
         "denominator": 48000
       },
+      "origin": 0.0,
       "previousEnd": 4800,
       "nextSample": 4800,
       "sampleCount": 960,
@@ -525,6 +558,7 @@
         "numerator": 1,
         "denominator": 1000
       },
+      "origin": 0.0,
       "previousEnd": null,
       "nextSample": 0,
       "sampleCount": 920,
@@ -541,6 +575,7 @@
         "numerator": 1,
         "denominator": 1000
       },
+      "origin": 0.0,
       "previousEnd": 920,
       "nextSample": 920,
       "sampleCount": 920,
@@ -557,6 +592,7 @@
         "numerator": 1,
         "denominator": 1000
       },
+      "origin": 0.0,
       "previousEnd": 1840,
       "nextSample": 1840,
       "sampleCount": 920,
@@ -573,6 +609,7 @@
         "numerator": 1,
         "denominator": 1
       },
+      "origin": 0.0,
       "previousEnd": null,
       "nextSample": 0,
       "sampleCount": 960,
@@ -588,11 +625,386 @@
         "numerator": 1,
         "denominator": 1
       },
+      "origin": 0.0,
       "previousEnd": null,
       "nextSample": 0,
       "sampleCount": 960,
       "expected": {
         "error": "unreadable"
+      }
+    },
+    {
+      "name": "binary64-half-sample-neighbor-100",
+      "rate": 48000,
+      "timestamp": {
+        "value": 100,
+        "numerator": 1,
+        "denominator": 96000
+      },
+      "origin": 0.0,
+      "previousEnd": null,
+      "nextSample": 50,
+      "sampleCount": 960,
+      "expected": {
+        "firstSample": 50,
+        "skipCount": 0
+      }
+    },
+    {
+      "name": "binary64-half-sample-neighbor-101",
+      "rate": 48000,
+      "timestamp": {
+        "value": 101,
+        "numerator": 1,
+        "denominator": 96000
+      },
+      "origin": 0.0,
+      "previousEnd": null,
+      "nextSample": 50,
+      "sampleCount": 960,
+      "expected": {
+        "firstSample": 50,
+        "skipCount": 0
+      }
+    },
+    {
+      "name": "binary64-half-sample-neighbor-102",
+      "rate": 48000,
+      "timestamp": {
+        "value": 102,
+        "numerator": 1,
+        "denominator": 96000
+      },
+      "origin": 0.0,
+      "previousEnd": null,
+      "nextSample": 51,
+      "sampleCount": 960,
+      "expected": {
+        "firstSample": 51,
+        "skipCount": 0
+      }
+    },
+    {
+      "name": "binary64-half-sample-101-skips-at-51",
+      "rate": 48000,
+      "timestamp": {
+        "value": 101,
+        "numerator": 1,
+        "denominator": 96000
+      },
+      "origin": 0.0,
+      "previousEnd": null,
+      "nextSample": 51,
+      "sampleCount": 960,
+      "expected": {
+        "firstSample": 50,
+        "skipCount": 1
+      }
+    },
+    {
+      "name": "binary64-half-sample-101-continues-at-51",
+      "rate": 48000,
+      "timestamp": {
+        "value": 101,
+        "numerator": 1,
+        "denominator": 96000
+      },
+      "origin": 0.0,
+      "previousEnd": 51,
+      "nextSample": 51,
+      "sampleCount": 960,
+      "expected": {
+        "firstSample": 51,
+        "skipCount": 0
+      }
+    },
+    {
+      "name": "exact-binary64-half-sample-1",
+      "rate": 48000,
+      "timestamp": {
+        "value": 1,
+        "numerator": 1,
+        "denominator": 96000
+      },
+      "origin": 0.0,
+      "previousEnd": null,
+      "nextSample": 1,
+      "sampleCount": 960,
+      "expected": {
+        "firstSample": 1,
+        "skipCount": 0
+      }
+    },
+    {
+      "name": "exact-binary64-half-sample-3",
+      "rate": 48000,
+      "timestamp": {
+        "value": 3,
+        "numerator": 1,
+        "denominator": 96000
+      },
+      "origin": 0.0,
+      "previousEnd": null,
+      "nextSample": 2,
+      "sampleCount": 960,
+      "expected": {
+        "firstSample": 2,
+        "skipCount": 0
+      }
+    },
+    {
+      "name": "exact-binary64-half-sample-5",
+      "rate": 48000,
+      "timestamp": {
+        "value": 5,
+        "numerator": 1,
+        "denominator": 96000
+      },
+      "origin": 0.0,
+      "previousEnd": null,
+      "nextSample": 3,
+      "sampleCount": 960,
+      "expected": {
+        "firstSample": 3,
+        "skipCount": 0
+      }
+    },
+    {
+      "name": "exact-binary64-half-sample-first-is-a-gap",
+      "rate": 48000,
+      "timestamp": {
+        "value": 1,
+        "numerator": 1,
+        "denominator": 96000
+      },
+      "origin": 0.0,
+      "previousEnd": null,
+      "nextSample": 0,
+      "sampleCount": 960,
+      "expected": {
+        "firstSample": 1,
+        "error": "rangeOutsideMedia"
+      }
+    },
+    {
+      "name": "negative-binary64-half-sample--3",
+      "rate": 48000,
+      "timestamp": {
+        "value": -3,
+        "numerator": 1,
+        "denominator": 96000
+      },
+      "origin": 0.0,
+      "previousEnd": null,
+      "nextSample": 0,
+      "sampleCount": 960,
+      "expected": {
+        "firstSample": -1,
+        "skipCount": 1
+      }
+    },
+    {
+      "name": "negative-binary64-half-sample--5",
+      "rate": 48000,
+      "timestamp": {
+        "value": -5,
+        "numerator": 1,
+        "denominator": 96000
+      },
+      "origin": 0.0,
+      "previousEnd": null,
+      "nextSample": 0,
+      "sampleCount": 960,
+      "expected": {
+        "firstSample": -2,
+        "skipCount": 2
+      }
+    },
+    {
+      "name": "negative-binary64-half-sample--101",
+      "rate": 48000,
+      "timestamp": {
+        "value": -101,
+        "numerator": 1,
+        "denominator": 96000
+      },
+      "origin": 0.0,
+      "previousEnd": null,
+      "nextSample": 0,
+      "sampleCount": 960,
+      "expected": {
+        "firstSample": -50,
+        "skipCount": 50
+      }
+    },
+    {
+      "name": "millisecond-2k-half-sample-0",
+      "rate": 2000,
+      "timestamp": {
+        "value": 0,
+        "numerator": 1,
+        "denominator": 1000
+      },
+      "origin": 0.00025,
+      "previousEnd": null,
+      "nextSample": 0,
+      "sampleCount": 960,
+      "expected": {
+        "firstSample": 0,
+        "skipCount": 0
+      }
+    },
+    {
+      "name": "millisecond-2k-half-sample-1",
+      "rate": 2000,
+      "timestamp": {
+        "value": 1,
+        "numerator": 1,
+        "denominator": 1000
+      },
+      "origin": 0.00025,
+      "previousEnd": null,
+      "nextSample": 2,
+      "sampleCount": 960,
+      "expected": {
+        "firstSample": 2,
+        "skipCount": 0
+      }
+    },
+    {
+      "name": "millisecond-2k-half-sample-2",
+      "rate": 2000,
+      "timestamp": {
+        "value": 2,
+        "numerator": 1,
+        "denominator": 1000
+      },
+      "origin": 0.00025,
+      "previousEnd": null,
+      "nextSample": 4,
+      "sampleCount": 960,
+      "expected": {
+        "firstSample": 4,
+        "skipCount": 0
+      }
+    },
+    {
+      "name": "origin-one-point-four-half-sample",
+      "rate": 48000,
+      "timestamp": {
+        "value": 134501,
+        "numerator": 1,
+        "denominator": 96000
+      },
+      "origin": 1.4,
+      "previousEnd": null,
+      "nextSample": 51,
+      "sampleCount": 960,
+      "expected": {
+        "firstSample": 51,
+        "skipCount": 0
+      }
+    },
+    {
+      "name": "origin-one-point-four-zero",
+      "rate": 2000,
+      "timestamp": {
+        "value": 1400,
+        "numerator": 1,
+        "denominator": 1000
+      },
+      "origin": 1.4,
+      "previousEnd": null,
+      "nextSample": 0,
+      "sampleCount": 960,
+      "expected": {
+        "firstSample": 0,
+        "skipCount": 0
+      }
+    },
+    {
+      "name": "origin-one-point-four-negative-overlap",
+      "rate": 2000,
+      "timestamp": {
+        "value": 1399,
+        "numerator": 1,
+        "denominator": 1000
+      },
+      "origin": 1.4,
+      "previousEnd": null,
+      "nextSample": 0,
+      "sampleCount": 960,
+      "expected": {
+        "firstSample": -2,
+        "skipCount": 2
+      }
+    },
+    {
+      "name": "exact-binary64-one-sample-early",
+      "rate": 48000,
+      "timestamp": {
+        "value": -2,
+        "numerator": 1,
+        "denominator": 96000
+      },
+      "origin": 0.0,
+      "previousEnd": 0,
+      "nextSample": 0,
+      "sampleCount": 960,
+      "expected": {
+        "firstSample": -1,
+        "skipCount": 1
+      }
+    },
+    {
+      "name": "exact-binary64-one-tick-early",
+      "rate": 2000,
+      "timestamp": {
+        "value": -1,
+        "numerator": 1,
+        "denominator": 1000
+      },
+      "origin": 0.0,
+      "previousEnd": 0,
+      "nextSample": 0,
+      "sampleCount": 960,
+      "expected": {
+        "firstSample": -2,
+        "skipCount": 2
+      }
+    },
+    {
+      "name": "exact-binary64-one-sample-late",
+      "rate": 48000,
+      "timestamp": {
+        "value": 2,
+        "numerator": 1,
+        "denominator": 96000
+      },
+      "origin": 0.0,
+      "previousEnd": 0,
+      "nextSample": 0,
+      "sampleCount": 960,
+      "expected": {
+        "firstSample": 1,
+        "error": "rangeOutsideMedia"
+      }
+    },
+    {
+      "name": "exact-binary64-one-tick-late",
+      "rate": 2000,
+      "timestamp": {
+        "value": 1,
+        "numerator": 1,
+        "denominator": 1000
+      },
+      "origin": 0.0,
+      "previousEnd": 0,
+      "nextSample": 0,
+      "sampleCount": 960,
+      "expected": {
+        "firstSample": 2,
+        "error": "rangeOutsideMedia"
       }
     }
   ]

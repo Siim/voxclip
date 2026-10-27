@@ -1,5 +1,10 @@
 # Windows fixed contracts
 
+### 2026-10-28 — sol-followups-8 round 3: binary64 extraction parity
+
+- Windows production placement is unchanged this round. Voice Lab §7.2 retains DecodeSession's binary64 seconds = value × (numerator / denominator), position = (seconds − origin) × rate, tick = rate × numerator / denominator left to right, and floor(position + 0.5). Swift now uses the same expression instead of exact Int64 arithmetic. The merge of main `7169724a` preserves every entry from both Windows contract histories, newest first.
+- `SharedContinuityVectorsUseProductionPlacement` supplies each row's origin to production `SourceFrame` and replays all **60** shared cases. `continuity-cases.json` SHA-256 is `6273ac27cb2f5573452907d4a8e285c62c7fd9c79ee0dc3be68cf4ed3c5f0d27`; two generator runs are byte-identical. New rows pin 100/101/102 at 1/96,000 and 48 kHz to 50/50/51, exact and negative binary64 ties, 2 kHz millisecond ties, 1.4 s and fractional origins, and strict comparisons at exactly one sample and one tick. The original missing/negative/coarse-gap coverage is retained; no floating tolerance applies to drift checking.
+
 ### 2026-10-28 — sol-followups-8 round 2: shared extraction placement
 
 - Voice Lab §7.2 permits finite negative positions in `VoiceLabSourceAudio.SourceFrame`, keeping the ±2^62 overflow guard, DecodeSession container-start origin, stream time base, first-frame half-up anchor and missing-timestamp fallback unchanged. `FirstFrameUsesItsOwnHalfUpAnchorAndNegativeOverlap` and `NonfiniteAndOverflowingPositionsAreUnreadable` cover the decision without changing other Windows production code.
