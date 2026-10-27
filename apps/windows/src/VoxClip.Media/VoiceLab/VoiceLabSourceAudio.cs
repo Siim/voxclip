@@ -199,10 +199,7 @@ public static class VoiceLabSourceAudio
                 if (end.HasValue)
                 {
                     var exact = decoder.Timestamp * rate;
-                    if (!double.IsFinite(exact) || exact < 0 || exact >= Math.Pow(2, 62)) throw Failure(VoiceLabSourceAudioErrorCode.Unreadable);
-                    first = Native.Round(exact);
-                    var tolerance = Math.Max(1, (long)Math.Ceiling(ffmpeg.av_q2d(decoder.Stream->time_base) * rate));
-                    if (previousEnd is { } continuous && Math.Abs(first - continuous) <= tolerance) first = continuous;
+                    first = SourceFrame(exact, previousEnd);
                     previousEnd = first + frame->nb_samples;
                     if (first > next) throw Failure(VoiceLabSourceAudioErrorCode.RangeOutsideMedia);
                     if (first + frame->nb_samples <= next) continue;
@@ -226,6 +223,13 @@ public static class VoiceLabSourceAudio
             return rate;
         }
         finally { converter?.Dispose(); ffmpeg.av_channel_layout_uninit(&layout); }
+    }
+
+    internal static long SourceFrame(double exact, long? previousEnd)
+    {
+        if (!double.IsFinite(exact) || exact < 0 || exact >= Math.Pow(2, 62))
+            throw Failure(VoiceLabSourceAudioErrorCode.Unreadable);
+        return previousEnd is { } continuous && Math.Abs(exact - continuous) < 1 ? continuous : Native.Round(exact);
     }
 
     private static unsafe float[] Resample(float[] samples, int rate, int target, CancellationToken ct)

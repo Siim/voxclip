@@ -52,6 +52,16 @@ public sealed class VoiceLabSourceAudioTests
     private static async Task RefusesAsync(VoiceLabSourceAudioErrorCode code, Func<Task> action)
         => Assert.Equal(code, (await Assert.ThrowsAsync<VoiceLabSourceAudioException>(action)).Code);
 
+    [Theory]
+    [InlineData(1024.0, 1024)]
+    [InlineData(1024.75, 1024)]
+    [InlineData(1023.25, 1024)]
+    [InlineData(1025.0, 1025)]
+    [InlineData(1023.0, 1023)]
+    [InlineData(1072.0, 1072)]
+    public void TimestampContinuityAllowsOnlySubSampleQuantization(double exact, long first)
+        => Assert.Equal(first, VoiceLabSourceAudio.SourceFrame(exact, 1024));
+
     [Fact]
     public async Task ConversionRefusalsPrecedeOpeningTheSourceOrLoadingNativeCode()
     {
@@ -303,19 +313,19 @@ public sealed class VoiceLabSourceAudioTests
     }
 
     [Fact, Trait("Category", "RequiresFFmpeg"), Trait("Category", "RequiresWindows")]
-    public async Task CommittedContainerUsesTheSameSourceGridAndDoesNotChangeTheFixture()
+    public async Task CommittedCoarseTimestampContainerRefusesAmbiguousCoverageWithoutChangingFixture()
     {
         using var storage = new VoiceLabTestStorage();
         await NativeTest.RequireAsync(windows: true);
         var path = Path.Combine(FixtureLoader.SharedRoot, "fixtures", "voice-lab", "voice-lab-7s.mkv");
         NativeTest.Require(File.Exists(path), "The committed Voice Lab seven-second container is required.");
         var hash = SHA256.HashData(File.ReadAllBytes(path));
-        const int start = 48_123, end = 96_517;
+        const int start = 0, end = 1_024;
         var wav = await VoiceLabSourceAudio.ConversionInputAsync(path, start, end, 48_000, Cancellation);
         Header(wav, 48_000, end - start);
         using var reference = new AudioDecoder(path);
         var values = new float[end * reference.Channels]; reference.Read(values, end, Cancellation);
-        foreach (var index in new[] { start, start + 1, 55_013, end - 1 })
+        foreach (var index in new[] { start, start + 1, 511, end - 1 })
         {
             double sum = 0;
             for (var channel = 0; channel < reference.Channels; channel++) sum += values[index * reference.Channels + channel];
@@ -325,6 +335,66 @@ public sealed class VoiceLabSourceAudioTests
         var extracted = VoiceLabAssetStore.Write(wav.AsSpan(44), 48_000, storage.ProjectId, "container", storage.PaidRoot, DateTimeOffset.UtcNow, Cancellation);
         var decoded = VoiceLabSourceAudio.DecodeAsset(storage.AssetPath(extracted), 24_000, extracted.Sha256, Cancellation);
         Assert.InRange(decoded.Length, (end - start) / 2 - 1, (end - start) / 2 + 1);
+        await RefusesAsync(VoiceLabSourceAudioErrorCode.RangeOutsideMedia,
+            () => VoiceLabSourceAudio.ConversionInputAsync(path, 48_123, 96_517, 48_000, Cancellation));
         Assert.Equal(hash, SHA256.HashData(File.ReadAllBytes(path)));
+        VoiceLabTestStorage.NativePassed(nameof(CommittedCoarseTimestampContainerRefusesAmbiguousCoverageWithoutChangingFixture));
+    }
+
+    [Fact, Trait("Category", "RequiresFFmpeg"), Trait("Category", "RequiresWindows")]
+    public async Task ContinuousContainerExtractsExactlyAcrossPacketBoundaries()
+    {
+        await NativeTest.RequireAsync(windows: true);
+        using (var storage = new VoiceLabTestStorage())
+        {
+            var path = await TimestampContainerAsync(storage, gap: false);
+            const int start = 123, end = 9_517;
+            var wav = await VoiceLabSourceAudio.ConversionInputAsync(path, start, end, 48_000, Cancellation);
+            Header(wav, 48_000, end - start);
+            for (var frame = start; frame < end; frame++)
+                Assert.Equal(Pcm((float)(((double)Left(frame) + Right(frame)) / 2)),
+                    BinaryPrimitives.ReadInt16LittleEndian(wav.AsSpan(44 + (frame - start) * 2)));
+        }
+        VoiceLabTestStorage.NativePassed(nameof(ContinuousContainerExtractsExactlyAcrossPacketBoundaries));
+    }
+
+    [Fact, Trait("Category", "RequiresFFmpeg"), Trait("Category", "RequiresWindows")]
+    public async Task ContainerWithOneMillisecondTimestampGapIsRefused()
+    {
+        await NativeTest.RequireAsync(windows: true);
+        using (var storage = new VoiceLabTestStorage())
+        {
+            var path = await TimestampContainerAsync(storage, gap: true);
+            await RefusesAsync(VoiceLabSourceAudioErrorCode.RangeOutsideMedia,
+                () => VoiceLabSourceAudio.ConversionInputAsync(path, 0, 9_600, 48_000, Cancellation));
+        }
+        VoiceLabTestStorage.NativePassed(nameof(ContainerWithOneMillisecondTimestampGapIsRefused));
+    }
+
+    private static async Task<string> TimestampContainerAsync(VoiceLabTestStorage storage, bool gap)
+    {
+        var source = FloatWave(storage, 48_000, 9_600);
+        var path = Path.Combine(storage.Root, gap ? "gapped.mkv" : "continuous.mkv");
+        var tools = Environment.GetEnvironmentVariable("VOXCLIP_FFMPEG_DIR");
+        NativeTest.Require(!string.IsNullOrEmpty(tools) && File.Exists(Path.Combine(tools, "ffmpeg.exe")),
+            "The native timestamp tests need the pinned FFmpeg test-tools executable.");
+        var start = new ProcessStartInfo(Path.Combine(tools!, "ffmpeg.exe"))
+        {
+            UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true
+        };
+        foreach (var argument in new[] { "-nostdin", "-hide_banner", "-v", "error", "-i", source, "-af",
+            gap ? "asetnsamples=n=960:p=0,asetpts='PTS+gte(N,4800)*48'" : "asetnsamples=n=960:p=0",
+            "-c:a", "pcm_f32le", "-f", "matroska", path }) start.ArgumentList.Add(argument);
+        using var process = Process.Start(start)!;
+        var stdout = process.StandardOutput.ReadToEndAsync(Cancellation);
+        var stderr = process.StandardError.ReadToEndAsync(Cancellation);
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(Cancellation);
+        timeout.CancelAfter(TimeSpan.FromSeconds(30));
+        try { await process.WaitForExitAsync(timeout.Token); }
+        catch { if (!process.HasExited) { process.Kill(entireProcessTree: true); await process.WaitForExitAsync(CancellationToken.None); } throw; }
+        await stdout;
+        var errors = await stderr;
+        Assert.True(process.ExitCode == 0, "Timestamp container generation failed: " + errors);
+        return path;
     }
 }
