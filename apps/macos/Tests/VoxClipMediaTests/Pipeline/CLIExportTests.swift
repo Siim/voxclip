@@ -24,7 +24,10 @@ struct CLIResult: Sendable {
         var breakdown: String {
             func seconds(_ start: String, _ end: String) -> String {
                 guard let first = phases[start], let last = phases[end], first > 0, last >= first else { return "notReached" }
-                let elapsed: Double = Double(last - first) / 1e9
+                let difference: UInt64 = last - first
+                let elapsedNanoseconds: Double = Double(difference)
+                let nanosecondsPerSecond: Double = 1_000_000_000.0
+                let elapsed: Double = elapsedNanoseconds / nanosecondsPerSecond
                 return String(format: "%.6f", elapsed)
             }
             let intervals: [(String, String, String)] = [

@@ -91,7 +91,9 @@ private struct ContinuityCase: Decodable {
                 let expected: [Int16] = writtenPCM + padding
                 let actual: [Int16] = accumulator.wav.dropFirst(44).withUnsafeBytes { (raw: UnsafeRawBufferPointer) -> [Int16] in
                     (0..<count).map { (index: Int) -> Int16 in
-                        Int16(littleEndian: raw.loadUnaligned(fromByteOffset: index * 2, as: Int16.self))
+                        let byteOffset: Int = index * 2
+                        let stored: Int16 = raw.loadUnaligned(fromByteOffset: byteOffset, as: Int16.self)
+                        return Int16(littleEndian: stored)
                     }
                 }
                 #expect(actual == expected, Comment(rawValue: row.name))
