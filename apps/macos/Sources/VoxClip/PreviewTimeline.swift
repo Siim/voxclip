@@ -57,7 +57,7 @@ func viewerStageSize(ratio: Double, innerWidth: CGFloat, columnHeight: CGFloat, 
             .accessibilityLabel(stageLabel)
             viewerRow
             HStack(spacing: 8) {
-                Text("Frame").font(.system(size: 13)).foregroundStyle(DesignValues.color("text.secondary"))
+                Text("Frame").font(.system(size: 13)).foregroundStyle(DesignValues.color("text.secondary")).fixedSize()
                 Picker("Frame", selection: Binding(get: { model.project.export.aspect }, set: { model.setAspect($0) })) {
                     ForEach([AspectRatio.portrait, .square, .landscape, .source], id: \.self) { aspect in
                         Text(aspect == .source ? "Original" : aspect.rawValue)

@@ -1,5 +1,10 @@
 # macOS implementation contracts
 
+### 2026-10-28 — Round-3 A7: untruncated caption summary
+
+- The Captions header uses two rows below 440 pt, including 360 pt, retaining the complete “Paper · As said · 3 words” summary. The viewer's Frame label has a fixed intrinsic width rather than collapsing to “Fra…”.
+- `DebugCaptionsSection` recognises the actual captured pixels at 320/360 pt in light/dark and requires all summary words with no ellipsis. These are rendered-text checks, not the model's summary string; real-window verification remains separate.
+
 ### 2026-10-28 — Round-3 A6: legible caption gallery crops
 
 - Gallery tiles and the live chip reframe the export raster's visible caption block in its band context, using a 1280-pixel raster to avoid magnifying tiny glyphs. Font cap height bounds the crop scale; long blocks retain the active word and its neighbours instead of shrinking the whole sentence. Background and glyphs share the crop/scale. The chip requests its own 16:9 crop. No second renderer is added.

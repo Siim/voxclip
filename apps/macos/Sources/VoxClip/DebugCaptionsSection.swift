@@ -1,6 +1,7 @@
 #if DEBUG
 import AppKit
 import SwiftUI
+import Vision
 import VoxClipCore
 
 @MainActor private final class CaptionRaceGate {
@@ -89,6 +90,8 @@ import VoxClipCore
                 view.layoutSubtreeIfNeeded(); try await Task.sleep(for: .milliseconds(650))
                 if let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) {
                     view.cacheDisplay(in: view.bounds, to: bitmap)
+                    let rendered = try recognizedText(bitmap.cgImage)
+                    check("\(width) \(name) rendered summary includes Paper, As said and 3 words without truncation", rendered.contains("Paper") && rendered.contains("As said") && rendered.contains("3 words") && !rendered.contains("…"))
                     if let data = bitmap.representation(using: .png, properties: [:]) { try data.write(to: directory.appendingPathComponent("captions-\(width)-\(name).png")) }
                 }
                 window.close()
@@ -103,6 +106,16 @@ import VoxClipCore
         context.interpolationQuality = .high
         context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
         return context.makeImage().map { NSBitmapImageRep(cgImage: $0) }
+    }
+    private static func recognizedText(_ image: CGImage?) throws -> String {
+        guard let image else { return "" }
+        let request = VNRecognizeTextRequest()
+        request.recognitionLevel = .accurate
+        request.usesLanguageCorrection = false
+        try VNImageRequestHandler(cgImage: image).perform([request])
+        return (request.results ?? []).compactMap { (observation: VNRecognizedTextObservation) -> String? in
+            observation.topCandidates(1).first?.string
+        }.joined(separator: " ")
     }
     private static func glyphPixelHeight(_ bitmap: NSBitmapImageRep) -> Int {
         var longest = 0, run = 0

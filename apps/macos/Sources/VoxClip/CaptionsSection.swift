@@ -51,7 +51,7 @@ enum CaptionStyleGroup: String, CaseIterable {
     }
     private var sectionHeader: some View {
         VStack(alignment: .leading, spacing: 8) {
-            if width < 340 {
+            if width < 440 {
                 HStack { heading; Spacer(); captionsSwitch }
                 HStack(spacing: 8) { liveChip; styleSummary; Spacer(minLength: 0) }
             } else {
