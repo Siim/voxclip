@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import CoreText
 import VoxClipCore
 
 @MainActor struct TranscriptTextView: NSViewRepresentable {
@@ -219,11 +220,18 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
             context.addPath(path); context.strokePath()
         }
         let font = NSFont.monospacedSystemFont(ofSize: span.kind == .ai ? 10 : 11, weight: .semibold)
-        let title = NSAttributedString(string: label, attributes: [.font: font, .foregroundColor: foreground])
-        NSGraphicsContext.saveGraphicsState()
-        NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: true)
-        title.draw(at: CGPoint(x: box.midX - title.size().width / 2, y: box.midY - title.size().height / 2))
-        NSGraphicsContext.restoreGraphicsState()
+        let colorKey = NSAttributedString.Key(kCTForegroundColorAttributeName as String)
+        let title = NSAttributedString(string: label, attributes: [.font: font, colorKey: foreground.cgColor])
+        let line = CTLineCreateWithAttributedString(title)
+        let width = CTLineGetTypographicBounds(line, nil, nil, nil)
+        let baseline = box.midY + (font.ascender + font.descender) / 2
+        context.saveGState()
+        context.translateBy(x: box.midX - width / 2, y: baseline)
+        context.scaleBy(x: 1, y: -1)
+        context.textMatrix = .identity
+        context.textPosition = .zero
+        CTLineDraw(line, context)
+        context.restoreGState()
     }
 }
 

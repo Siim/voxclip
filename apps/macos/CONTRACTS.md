@@ -1,5 +1,13 @@
 # macOS implementation contracts
 
+### 2026-10-27 — Round-2 step 11: viewer section
+
+- Renamed the viewer in place to `ViewerSection`; removed its old header, Full Video button and fading transport pill. The centered radius-10 stage fills landscape width, caps portrait/square at 320 high and uses 124 high during Rewrite in a short column. Native playback center-crops to the output frame.
+- A separate 34-point transport row owns the only accessible playback time while expanded; the 24-point Frame picker orders portrait, square, landscape, Original and still stores `.source`. Stage names include scope, media state and AI speech. Preview errors/Locate remain actionable in the transcript rather than on the stage. No-video states show noninteractive chips, word rhythm or missing/unreadable copy.
+- Custom three-second symbol assets derive from SF Symbols' exported backward/forward templates (the current app names their aliases `arrow.trianglehead.counterclockwise`/`clockwise`) plus an outlined SF numeral. `actool` compiles both successfully.
+- The activated-window gate exposed an AppKit attributed-string measurement exception in the new transcript badge. Badge labels now draw through CoreText with a resolved CGColor, avoiding AppKit's dynamic-color measurement path.
+- Build, 578 Core tests, UI 319/319 and save boundaries 45/45 pass in `/private/tmp/voxclip-sol-mac-redesign/step11-verified/`. Six real accessibility-tree checks find exactly one viewer time. Light/dark stage captures include landscape, portrait and square. Demo media uses the specified synthetic stand-in rather than the mockup's real video frame; stage and row dimensions match the reference geometry.
+
 ### 2026-10-27 — Round-2 step 10: selection bar
 
 - `SelectionBar.swift` supplies pure collision-free placement and the 36-point document-coordinate glass bar. Reduced Transparency/Increase Contrast use opaque elevated fill and a strong border. Make Clip uses the native unfocused selection fill; Restore reflects cut state.

@@ -444,8 +444,9 @@ struct SubtitleDetail: Equatable {
 @MainActor private struct RightColumn: View {
     @Bindable var model: EditorModel
     var body: some View {
-        VStack(spacing: 0) {
-            PreviewColumn(model: model)
+        GeometryReader { geometry in
+          VStack(spacing: 0) {
+            ViewerSection(model: model, columnHeight: geometry.size.height)
             Divider()
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
@@ -456,6 +457,7 @@ struct SubtitleDetail: Equatable {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             .controlSize(.small)
+          }
         }
     }
 }
@@ -498,6 +500,10 @@ struct SubtitleDetail: Equatable {
             }
             if let notice = shell.notice { InlineNotice(text: notice) }
             if let error = model.error, !error.isEmpty { InlineNotice(text: error) }
+            if let error = model.previewError, !error.isEmpty { InlineNotice(text: error) }
+            if !model.document.demo, !model.mediaResolved {
+                Button("Locate…") { model.locateMedia() }
+            }
             if let progress = model.progress {
                 VStack(alignment: .leading, spacing: 14) {
                     ForEach(0..<6) { line in RoundedRectangle(cornerRadius: 4).fill(DesignValues.color("bg.muted")).frame(width: line.isMultiple(of: 2) ? 300 : 240, height: 12) }

@@ -11,19 +11,23 @@ import VoxClipMedia
 
 @MainActor final class PlayerLayerView: NSView {
     let playerLayer = AVPlayerLayer()
-    override init(frame: NSRect) { super.init(frame: frame); wantsLayer = true; layer?.addSublayer(playerLayer); playerLayer.videoGravity = .resizeAspect }
+    override init(frame: NSRect) { super.init(frame: frame); wantsLayer = true; layer?.masksToBounds = true; layer?.addSublayer(playerLayer); playerLayer.videoGravity = .resizeAspectFill }
     required init?(coder: NSCoder) { nil }
     override func layout() { super.layout(); playerLayer.frame = bounds }
 }
 
-/// The viewer at the top of the right column. With no player (a demo or missing
-/// video) the stage stays black: the §5.4.6 overlays arrive with the viewer step.
-@MainActor struct PreviewColumn: View {
+func viewerStageSize(ratio: Double, innerWidth: CGFloat, columnHeight: CGFloat, rewriting: Bool) -> CGSize {
+    let aspect = max(0.01, ratio)
+    let width = max(1, innerWidth)
+    let cap: CGFloat = rewriting && columnHeight < 760 ? 124 : aspect <= 1 ? 320 : .greatestFiniteMagnitude
+    let height = min(width / aspect, cap)
+    return CGSize(width: min(width, height * aspect), height: height)
+}
+
+@MainActor struct ViewerSection: View {
     @Bindable var model: EditorModel
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var pointerInside = false
-    @State private var showTransport = true
+    var columnHeight: CGFloat = 800
+    @State private var innerWidth: CGFloat = 328
     var ratio: Double {
         switch model.project.export.aspect {
         case .source:
@@ -35,58 +39,120 @@ import VoxClipMedia
         }
     }
     var body: some View {
-        VStack(spacing: 12) {
-            HStack {
-                Label(model.activeClip == nil ? "Full Video" : "Clip: \(model.activeClip?.title ?? "Untitled clip")", systemImage: model.activeClip == nil ? "play.rectangle" : "film")
-                    .font(Font.callout.weight(.medium)).lineLimit(1)
-                    .accessibilityLabel(model.activeClip == nil ? "Previewing full video" : "Previewing selected clip")
-                Spacer()
-                if model.activeClip != nil { Button("Full Video") { model.activate(nil) } }
-            }
-            ZStack(alignment: .bottom) {
+        let size = viewerStageSize(ratio: ratio, innerWidth: innerWidth, columnHeight: columnHeight, rewriting: model.rewrite != nil)
+        VStack(spacing: 10) {
+            ZStack {
                 Rectangle().fill(DesignValues.color("stage"))
-                if !model.document.demo, let native = model.nativePreview { PlayerSurface(player: native.player) }
+                if !model.document.demo, model.mediaResolved, !model.mediaUnreadable, model.project.media.source.video != nil, let native = model.nativePreview {
+                    PlayerSurface(player: native.player)
+                } else { ViewerStandIn(model: model) }
                 if !model.document.demo, model.previewError == nil, let style = model.app.styles.first(where: { $0.id == model.project.captions.styleId }), style.position.userDraggable {
                     CaptionPositionOverlay(model: model, style: style)
                 }
-                if showTransport || reduceMotion || !model.isPlaying {
-                    transport.padding(.bottom, 16)
-                }
             }
-            .aspectRatio(ratio, contentMode: .fit)
-            .clipShape(.rect(cornerRadius: 12))
-            .onHover { pointerInside = $0; if $0 { showTransport = true } }
-            .task(id: model.isPlaying && !pointerInside && !reduceMotion) {
-                guard model.isPlaying && !pointerInside && !reduceMotion else { showTransport = true; return }
-                do { try await Task.sleep(for: .seconds(2)); showTransport = false } catch {}
-            }
-            Picker("Preview aspect", selection: Binding(get: { model.project.export.aspect }, set: { model.setAspect($0) })) {
-                ForEach(AspectRatio.allCases, id: \.self) { aspect in Text(aspect == .source ? "Source" : aspect.rawValue).tag(aspect) }
-            }.labelsHidden().pickerStyle(.segmented).controlSize(.small)
-            if let error = model.previewError, !error.isEmpty {
-                InlineNotice(text: error)
-                if !model.mediaResolved, !model.document.demo { Button("Locate…") { model.locateMedia() } }
+            .frame(width: size.width, height: size.height)
+            .clipShape(.rect(cornerRadius: 10))
+            .frame(maxWidth: .infinity)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(stageLabel)
+            viewerRow
+            HStack(spacing: 8) {
+                Text("Frame").font(.system(size: 13)).foregroundStyle(DesignValues.color("text.secondary"))
+                Picker("Frame", selection: Binding(get: { model.project.export.aspect }, set: { model.setAspect($0) })) {
+                    ForEach([AspectRatio.portrait, .square, .landscape, .source], id: \.self) { aspect in
+                        Text(aspect == .source ? "Original" : aspect.rawValue)
+                            .fontWeight(model.project.export.aspect == aspect ? .semibold : .regular).tag(aspect)
+                    }
+                }.labelsHidden().pickerStyle(.segmented).frame(height: 24)
             }
         }
         .padding(VCTokens.spacingPanePaddingMacos)
         .frame(maxWidth: .infinity)
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { innerWidth = max(1, $0 - 32) }
+        .tint(DesignValues.accentText)
         .focusable()
         .onKeyPress(characters: CharacterSet(charactersIn: " jklpico[]")) { key in model.transport(key.characters, shift: key.modifiers.contains(.shift)); return .handled }
-        .accessibilityLabel("Video preview")
     }
-    @ViewBuilder private var transport: some View {
-        if reduceTransparency {
-            transportContent.background(DesignValues.color("overlay.transportOpaque"), in: Capsule()).overlay(Capsule().stroke(DesignValues.color("line.strong"), lineWidth: 1))
-        } else {
-            GlassEffectContainer { transportContent.glassEffect(.regular.interactive(), in: .capsule) }.environment(\.colorScheme, .dark)
+    private var stageLabel: String {
+        let scope = model.activeClip.flatMap { model.clipNumber($0.id) }.map { "clip \($0)" } ?? "full take"
+        let ai = model.voiceLabPlan?.pieces.contains { $0.kind == .synth } == true ? ", contains AI-modified speech" : ""
+        return "Video preview, \(scope)\(ai)\(model.mediaStatus.spokenState.map { ", " + $0 } ?? "")"
+    }
+    private var viewerRow: some View {
+        HStack(spacing: 4) {
+            if model.voiceLabPlan?.pieces.contains(where: { $0.kind == .synth }) == true {
+                Text("AI modified").font(.system(size: 11)).padding(.horizontal, 4).padding(.vertical, 2)
+                    .overlay { RoundedRectangle(cornerRadius: 4).stroke(DesignValues.accentText, lineWidth: 1) }
+            }
+            HStack(spacing: 0) {
+                Text(timecode(model.playhead))
+                Text(" / \(timecode(model.duration))").foregroundStyle(DesignValues.color("text.secondary"))
+                if model.playbackRate != 1 { Text(" · \(model.playbackRate.formatted())×").foregroundStyle(DesignValues.color("text.secondary")) }
+            }
+            .font(DesignValues.mono(12)).monospacedDigit().fixedSize()
+            .accessibilityElement(children: .ignore).accessibilityLabel("Playback time")
+            .accessibilityIdentifier("voxclip.viewer.time")
+            .accessibilityValue("\(timecode(floor(model.playhead))) of \(timecode(model.duration))")
+            Spacer(minLength: 4)
+            Button { model.transport("j") } label: { transportSymbol("gobackward.3", fallback: "gobackward").frame(width: 28, height: 28) }
+                .help("Back 3 Seconds (J)").accessibilityLabel("Back 3 seconds")
+            Button { model.transport(" ") } label: { Image(systemName: model.isPlaying ? "pause.fill" : "play.fill").frame(width: 34, height: 34) }
+                .background(DesignValues.color("bg.sunken"), in: Circle()).help("Play/Pause (Space)").accessibilityLabel(model.isPlaying ? "Pause" : "Play")
+            Button { model.seek(source: min(model.sourceDuration, model.sourceTime + 3)) } label: { transportSymbol("goforward.3", fallback: "goforward").frame(width: 28, height: 28) }
+                .help("Forward 3 Seconds").accessibilityLabel("Forward 3 seconds")
+        }.buttonStyle(.plain).foregroundStyle(DesignValues.color("text.primary")).frame(height: 34)
+    }
+    @ViewBuilder private func transportSymbol(_ name: String, fallback: String) -> some View {
+        if NSImage(named: name) != nil { Image(name).renderingMode(.template) }
+        else { Image(systemName: fallback).overlay { Text("3").font(.system(size: 7, weight: .semibold)).offset(y: 1) } }
+    }
+}
+
+@MainActor private struct ViewerStandIn: View {
+    let model: EditorModel
+    var body: some View {
+        GeometryReader { geometry in
+            ZStack(alignment: .topLeading) {
+                Rectangle().fill(backdrop)
+                if model.mediaStatus == .missing || model.mediaStatus == .unreadable {
+                    VStack(spacing: 5) {
+                        Image(systemName: "exclamationmark.triangle").font(.system(size: 20)).foregroundStyle(MediaChipTokens.warningGlyph)
+                        Text(model.mediaStatus == .missing ? "Video not found" : "Video can’t be read").font(.system(size: 13, weight: .semibold))
+                        Text(model.sourceURL.lastPathComponent).font(DesignValues.mono(11)).opacity(0.66).lineLimit(1)
+                    }.foregroundStyle(DesignValues.color("overlay.foreground"))
+                        .position(x: geometry.size.width / 2, y: geometry.size.height * 0.36)
+                } else if model.mediaStatus == .demo || model.mediaStatus == .audioOnly {
+                    Canvas { context, size in
+                        let span = model.project.export.aspect == .portrait ? 5.0 : 6.0
+                        let scale = size.width / span
+                        for word in model.words where word.end >= model.sourceTime - span / 2 && word.start <= model.sourceTime + span / 2 && !model.cutWordIDs.contains(word.id) {
+                            let current = word.start <= model.sourceTime && word.end > model.sourceTime
+                            let left = size.width / 2 + (word.start - model.sourceTime) * scale
+                            let width = max(2, (word.end - word.start) * scale - 2)
+                            let height: CGFloat = current ? 12 : 6
+                            let rect = CGRect(x: left, y: size.height * 0.42 - height / 2, width: width, height: height)
+                            context.fill(Path(roundedRect: rect, cornerRadius: 3), with: .color(.white.opacity(current ? 1 : word.end < model.sourceTime ? 0.62 : 0.26)))
+                        }
+                        let caret = CGRect(x: size.width / 2, y: size.height * 0.42 - 15, width: 1, height: 30)
+                        context.fill(Path(caret), with: .color(.white.opacity(0.55)))
+                    }
+                }
+                if let label = chip { MediaChip(text: label).padding(6) }
+            }
+        }.allowsHitTesting(false).accessibilityHidden(true)
+    }
+    private var chip: String? {
+        switch model.mediaStatus {
+        case .demo: "Demo · no video"
+        case .audioOnly: "Audio only"
+        case .transcribing(_, let stage): stage.chipText
+        default: nil
         }
     }
-    private var transportContent: some View {
-        HStack(spacing: 12) {
-            Button(model.isPlaying ? "Pause" : "Play", systemImage: model.isPlaying ? "pause.fill" : "play.fill") { model.transport(" ") }.labelStyle(.iconOnly).buttonStyle(.plain)
-            Text("\(timecode(model.playhead)) / \(timecode(model.duration))").font(DesignValues.mono(13)).monospacedDigit()
-            if model.playbackRate != 1 { Text("\(model.playbackRate.formatted())×").font(.caption) }
-        }.foregroundStyle(DesignValues.color("overlay.foreground")).padding(.horizontal, 16).frame(height: 36)
+    private var backdrop: Color {
+        guard let style = model.app.cardStyle(for: model.project),
+              let hex = CaptionCardLook.backdrop(style, previewBackground: model.app.previewBackgrounds[style.id]) else { return DesignValues.color("stage") }
+        return Color(nsColor: DesignValues.parse(hex))
     }
 }
 
@@ -170,8 +236,6 @@ import VoxClipMedia
                 .accessibilityLabel(model.isPlaying ? "Pause" : "Play")
                 (Text(timecode(model.playhead)) + Text(" / \(timecode(model.duration))").foregroundStyle(DesignValues.color("text.secondary")))
                     .font(DesignValues.mono(12)).monospacedDigit().fixedSize()
-            } else {
-                Text(timecode(model.playhead)).font(DesignValues.mono(11)).frame(width: 60)
             }
             GeometryReader { geometry in
                 TimelineTrack(projection: model.timeline, edited: model.editedTimeline).equatable()
@@ -198,7 +262,6 @@ import VoxClipMedia
                     .help(hoveredSource.map { source in (model.word(at: source).map { model.text($0) + " · " } ?? "") + timecode(source) } ?? "Drag to scrub. Shift-drag snaps to word starts. Double-click a cut to restore it.")
             }
             VStack(alignment: .trailing, spacing: 3) {
-                Text("\(timecode(model.duration)) after cuts · \(timecode(model.sourceDuration)) source").font(DesignValues.mono(10)).foregroundStyle(.secondary)
                 Picker("Timeline time", selection: $model.editedTimeline) { Text("Source").tag(false); Text("Edited").tag(true) }.labelsHidden().pickerStyle(.segmented).frame(width: 130).controlSize(.mini)
             }.fixedSize(horizontal: true, vertical: false)
         }
@@ -211,7 +274,7 @@ import VoxClipMedia
         .onKeyPress(characters: CharacterSet(charactersIn: " jklpico[]")) { key in model.transport(key.characters); return .handled }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Playhead")
-        .accessibilityValue("\(timecode(model.playhead)) of \(timecode(model.duration)) after cuts, \(model.summary.cutWordCount + model.summary.cutPauseCount) cuts")
+        .accessibilityValue(compactTransport ? "\(timecode(model.playhead)) of \(timecode(model.duration)) after cuts" : "\(model.summary.cutWordCount + model.summary.cutPauseCount) cuts")
         .accessibilityAdjustableAction { direction in model.step(direction == .increment ? 1 : -1) }
     }
 }

@@ -890,6 +890,7 @@ import ApplicationServices
             let project = try DemoEditing.loadFixture(fixture)
             results += try DebugTranscriptPixels.run(app: app, fixture: project, directory: destination)
             results += try await DebugSelectionBar.run(app: app, fixture: project, directory: destination)
+            results += try await DebugViewer.run(app: app, fixture: project, directory: destination)
             results += try await DebugPersistence.run(app: app, fixture: project, directory: destination)
             results += try await DebugExport.run(app: app, fixture: project, directory: destination)
             results += try await DebugRegressions.editor(app: app, project: project)
