@@ -168,7 +168,7 @@ import VoxClipCore
 /// A kept clip or a suggestion: badge, 26×46 thumbnail, title and meta. Suggestions
 /// carry Keep and Dismiss on their second line; a focused suggestion draws the
 /// keyboard focus ring without being selected.
-@MainActor private struct ClipRow: View {
+@MainActor struct ClipRow: View {
     @Bindable var shell: WorkspaceShell
     let editor: EditorModel
     let clip: ClipRange
@@ -184,6 +184,7 @@ import VoxClipCore
         let number = editor.clipNumber(clip.id) ?? 0
         let emphasized = selectedFocused && activeState == .key
         let duration = editor.editedDuration(clip)
+        let exportStatus: ClipExportStatus = suggested ? .none : editor.exportRowStatus(clip.id)
         HStack(spacing: 8) {
             ClipBadge(number: number, kind: suggested ? .suggested : editor.project.edits.activeClipId == clip.id ? .selected : .neutral, emphasized: emphasized)
             SidebarThumbnail(editor: editor, clip: clip, emphasized: emphasized).frame(width: 36)
@@ -201,6 +202,9 @@ import VoxClipCore
                 }
                 HStack(spacing: 4) {
                     Text(durationLabel(duration)).font(DesignValues.mono(11)).foregroundStyle(SidebarStyle.meta(emphasized))
+                    if !exportStatus.secondLine, exportStatus != .none {
+                        Text(exportStatus.label).font(.system(size: 11)).foregroundStyle(SidebarStyle.meta(emphasized)).lineLimit(1)
+                    }
                     Spacer(minLength: 4)
                     if suggested {
                         Button { editor.keep(clip.id) } label: { Image(systemName: "checkmark").font(.system(size: 11, weight: .semibold)) }
@@ -211,10 +215,20 @@ import VoxClipCore
                             .accessibilityLabel("Dismiss suggested clip \(number)")
                     }
                 }
+                if exportStatus.secondLine {
+                    HStack(spacing: 4) {
+                        Text(exportStatus.label).font(.system(size: 11)).foregroundStyle(emphasized ? Color(nsColor: .alternateSelectedControlTextColor) : DesignValues.color("status.warning")).lineLimit(1)
+                        if exportStatus == .failed {
+                            Button("Retry") { editor.retryExport(clip.id) }.font(.system(size: 11)).buttonStyle(.plain)
+                                .foregroundStyle(emphasized ? Color(nsColor: .alternateSelectedControlTextColor) : DesignValues.accentText)
+                                .disabled(!editor.mediaExportable || editor.exporting)
+                        }
+                    }
+                }
             }
             Spacer(minLength: 0)
         }
-        .frame(height: 50)
+        .frame(height: exportStatus.secondLine ? 66 : 50)
         .modifier(SidebarRowForeground(emphasized: emphasized))
         .overlay {
             if focused { RoundedRectangle(cornerRadius: VCTokens.radiusXs).strokeBorder(Color(nsColor: .keyboardFocusIndicatorColor), lineWidth: 2).padding(-2) }
@@ -235,7 +249,7 @@ import VoxClipCore
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(suggested ? "Suggested clip \(number), \(title), \(SidebarStyle.spokenDuration(duration))" : "Clip \(number), \(title), \(SidebarStyle.spokenDuration(duration))")
-        .accessibilityHint(suggested ? reason : "")
+        .accessibilityHint(suggested ? reason : exportStatus.label)
         .accessibilityActions {
             if suggested {
                 Button("Keep") { editor.keep(clip.id) }

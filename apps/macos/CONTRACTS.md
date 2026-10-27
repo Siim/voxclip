@@ -1,5 +1,12 @@
 # macOS implementation contracts
 
+### 2026-10-28 — Round-3 B2: export scope, ledger and row states
+
+- The export sheet offers This clip for a kept selection, All clips (kept only) and Full video; aspect order is 9:16, 1:1, 16:9, Original. Its disclosure comes from request-bound `VoiceLabRenderPreflight`. No Rewrite panel is added.
+- `exports.json` is app-local, atomic and keyed by project, target and aspect. Each successful target records its request snapshot, time, style and output path. SHA-256 covers canonical render inputs: scoped sample plan/caption words, effective caption position for the output aspect, style overrides, output encoding/quality, SRT intent and scoped synthetic render recipes/assets. It excludes confidence, speaker, modified time, titles, share copy and other aspects' positions. This follows the binding Windows round-5 fingerprint rule, not main's older whole-word/whole-captions implementation.
+- Kept rows expose Exported, Edited since export, Exporting {p}% and Export failed with Retry; warning rows are 74 pt including native row padding. Retry keeps the failed target/folder, cancellation marks that row failed, and undo recomputes the recorded fingerprint. Late progress cannot affect a different job.
+- `DebugExport` covers persistence/reload, per-aspect keys, both changed/unchanged fingerprint directions, cut/undo, cancellation/progress/retry, kept-only scopes, unchanged RenderRequest/filename/SRT bytes and light/dark scope and all row-state captures. ExportQueue and RenderRequest contracts are unchanged; final serial gate results follow.
+
 ### 2026-10-28 — Round-3 B1: missing-media caption-position UI
 
 - The missing-media exception in `canMoveCaptions` is retained for the black stage even with `previewError`; transcript edits and export remain blocked. The stage now contains, rather than hides, its caption-position accessibility control. Drag and native adjustable actions share the same position write, undo and save path (editing §10.3 step 4).

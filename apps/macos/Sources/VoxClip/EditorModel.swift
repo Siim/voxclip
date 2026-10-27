@@ -64,6 +64,8 @@ import VoxClipMedia
     var exports: [ExportResult] = []
     var exportError: String?
     var exportClipIDs: [String] = []
+    var activeExportKey: String?
+    var failedExports: [String: URL] = [:]
     var exporting = false
     func presentExport(clipIDs: [String]? = nil) {
         if !exporting { exports = []; exportError = nil; exportClipIDs = clipIDs ?? activeClip.map { [$0.id] } ?? [] }
@@ -937,13 +939,7 @@ import VoxClipMedia
                                 contentKey: project.media.source.contentKey)
     }
     func outputSpec() -> OutputSpec {
-        let video = project.media.source.video
-        let oriented = video.map(OutputSizing.orientedSize) ?? PixelSize(width: 1920, height: 1080)
-        let size = (try? OutputSizing.outputSize(source: oriented, aspect: project.export.aspect)) ?? PixelSize(width: 1920, height: 1080)
-        let fps = (try? OutputSizing.outputFrameRate(nominal: video?.frameRate ?? 30)) ?? 30
-        return OutputSpec(size: size, fps: fps,
-            videoBitrate: OutputSizing.videoBitrate(size: size, aspect: project.export.aspect, quality: project.export.quality, fps: fps),
-            quality: project.export.quality)
+        ExportFingerprint.output(project)
     }
     func updatePreview(load: Bool) async {
         guard mediaResolved else { return }
