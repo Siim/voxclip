@@ -448,14 +448,7 @@ struct SubtitleDetail: Equatable {
           VStack(spacing: 0) {
             ViewerSection(model: model, columnHeight: geometry.size.height)
             Divider()
-            ScrollView {
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Captions").font(.headline)
-                    CaptionsInspector(model: model)
-                }
-                .padding(VCTokens.spacingPanePaddingMacos)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
+            CaptionsSection(model: model).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .controlSize(.small)
           }
         }

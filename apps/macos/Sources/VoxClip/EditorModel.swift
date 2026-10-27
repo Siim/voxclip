@@ -42,6 +42,9 @@ import VoxClipMedia
     var correctionID: String?
     var correctionText = ""
     var rewrite: ClosedRange<Int>?
+    var lastStyleId: String?
+    @ObservationIgnored private var galleryKey = ""
+    @ObservationIgnored private var galleryPages: [String: CaptionGalleryPages] = [:]
     func beginRewrite() {
         guard app.bool("voiceLab.enabled"), let first = selectedIDs.first, let last = selectedIDs.last,
               let lower = index(first), let upper = index(last) else { return }
@@ -725,7 +728,32 @@ import VoxClipMedia
         select(matches[(current + (backward ? -1 : 1) + matches.count) % matches.count].id)
     }
     func cutMatches() { let ids = words.filter { text($0).localizedCaseInsensitiveContains(query) }.map(\.id); apply(.cutSelection(ids: ids), name: "Cut all matches") }
-    func setStyle(_ id: String) { var next = project; next.captions.styleId = id; replace(next, name: "Change caption style") }
+    func setStyle(_ id: String) {
+        if id == "off", project.captions.styleId != "off" { lastStyleId = project.captions.styleId }
+        else if id != "off" { lastStyleId = id }
+        var next = project; next.captions.styleId = id; replace(next, name: "Change caption style")
+    }
+    func setCaptionsEnabled(_ enabled: Bool) {
+        guard enabled else { setStyle("off"); return }
+        let previous = lastStyleId ?? app.string("captions.defaultStyleId")
+        setStyle(app.styles.contains { $0.id == previous } ? previous : app.styles.first?.id ?? "off")
+    }
+    var captionsEdited: Bool {
+        !project.captions.overrides.isEmpty || project.captions.positionByAspect[captionPreset.rawValue] != nil || project.captions.position != nil
+    }
+    var captionSummary: String {
+        guard let library = app.styles.first(where: { $0.id == project.captions.styleId }) else { return "Off" }
+        let resolved = (try? library.resolved(overrides: project.captions.overrides, frame: outputSpec().size)) ?? library
+        var parts: [String] = []
+        if let accent = resolved.accent {
+            let names = ["#FFE14D": "Yellow", "#4BE38A": "Green", "#5CE1FF": "Cyan", "#FF6FAE": "Pink", "#F3F0E7": "Paper", "#FFFFFF": "White"]
+            parts.append(names[accent.uppercased()] ?? "Colour")
+        }
+        parts.append(resolved.text.transform == .uppercase ? "ALL CAPS" : "As said")
+        let count = resolved.layout.maxWords
+        parts.append(count >= 16 ? "Line" : count == 1 ? "1 word" : "\(count) words")
+        return parts.joined(separator: " · ")
+    }
     func setAspect(_ aspect: AspectRatio) { var next = project; next.export.aspect = aspect; replace(next, name: "Change aspect") }
     var captionPreset: AspectRatio {
         let size = outputSpec().size
@@ -790,10 +818,24 @@ import VoxClipMedia
         }
     }
     func captionTileInput(_ style: CaptionStyle) -> CaptionTileInput {
-        let position = word(at: sourceTime).flatMap { index($0.id) } ?? 0
-        let sample = words.dropFirst(position).filter { !cutWordIDs.contains($0.id) }.prefix(6).map(text)
-        let placement = style.position.userDraggable ? project.captions.positionByAspect[captionPreset.rawValue] ?? project.captions.position : nil
-        return CaptionTileInput(state: editState(), plan: plan, style: style, sampleWords: sample, language: project.transcript?.language, frame: outputSpec().size, overrides: project.captions.overrides, position: placement, sourceURL: sourceURL, sourceTime: sourceTime)
+        let visible = app.bool("general.showPlaceholderWords", fallback: true)
+        let key = "\(projectRevision):\(activeClip?.id ?? "full"):\(visible)"
+        if galleryKey != key { galleryKey = key; galleryPages = [:] }
+        let scope: CaptionCardScope = activeClip.map { .clip($0.id) } ?? .fullTake
+        if galleryPages[style.id] == nil, let resources = app.captionResources {
+            galleryPages[style.id] = CaptionGalleryPages(project: project, scope: scope, style: style, wordsVisible: visible, resources: resources)
+        }
+        let sample = galleryPages[style.id]?.sample(at: playhead) ?? CaptionGallerySample.preview(style)
+        let selected = style.id == project.captions.styleId
+        let overrides = selected ? project.captions.overrides : [:]
+        let placement = selected && style.position.userDraggable ? project.captions.positionByAspect[captionPreset.rawValue] ?? project.captions.position : nil
+        let resolved = (try? style.resolved(overrides: overrides, frame: outputSpec().size)) ?? style
+        let lower = activeClip.flatMap { clip in index(clip.startWordId).map { words[$0].start } } ?? 0
+        let upper = activeClip.flatMap { clip in index(clip.endWordId).map { words[$0].end } } ?? sourceDuration
+        let time = (floor(sourceTime * 4) / 4).clamped(to: lower...max(lower, upper))
+        return CaptionTileInput(state: nil, plan: nil, style: style, sampleWords: sample.words.map(\.text), language: sample.source == .preview ? "en" : project.transcript?.language, frame: outputSpec().size, overrides: overrides, position: placement, sourceURL: sourceURL, sourceTime: time,
+                                sample: sample, backdrop: CaptionCardLook.backdrop(resolved, previewBackground: app.previewBackgrounds[style.id]), frameAvailable: !document.demo && mediaResolved && !mediaUnreadable && project.media.source.video != nil,
+                                contentKey: project.media.source.contentKey)
     }
     func outputSpec() -> OutputSpec {
         let video = project.media.source.video

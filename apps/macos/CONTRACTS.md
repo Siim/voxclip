@@ -1,5 +1,12 @@
 # macOS implementation contracts
 
+### 2026-10-27 — Round-2 step 12: Captions section
+
+- Renamed the inspector in place to `CaptionsSection`, preserving fine-tune bindings. The responsive header has the live chip, resolved summary, Edited state and native switch with remembered last style. The two-column, grouped gallery has no Off tile, uses Core gallery samples, scrolls on scope changes and exposes a native Picker.
+- `CaptionHandoff.tile` retains its signature and uses the real export layout/rasterizer. Only the selected style receives overrides. Current source frames are decoded off-main through a shared bounded cache; frame bands dim 35%, no-frame cards do not dim, and failures return the same backdrop with no text. Generation checks prevent cancelled older renders overwriting a newer image.
+- Build passes; 578 Core tests pass in `step12-final/core.log`. Two other full runs hit the existing escaped-pipe-holder subprocess timeout; no Core code changed. Final UI 327/327 and save audit 45/45 pass in `step12-accepted`. Regression coverage includes off/on restoration, exact summary, sample/default isolation, cancellation order and fallback pixels.
+- Captures: `/private/tmp/voxclip-sol-mac-redesign/step12-accepted/ui/captions-{360,320}-{light,dark}.png`. Tiles are 160×72 at 360 wide. The demo has no real frame; landscape phrases fit rather than clipping horizontally and therefore have smaller type than portrait mockup samples. The gallery's absolute y depends on viewer aspect/column height, not a fixed y=410.
+
 ### 2026-10-27 — Round-2 step 11: viewer section
 
 - Renamed the viewer in place to `ViewerSection`; removed its old header, Full Video button and fading transport pill. The centered radius-10 stage fills landscape width, caps portrait/square at 320 high and uses 124 high during Rewrite in a short column. Native playback center-crops to the output frame.

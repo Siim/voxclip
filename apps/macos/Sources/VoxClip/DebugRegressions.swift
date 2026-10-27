@@ -277,7 +277,7 @@ actor RegressionSettingsStore: SettingsStore {
             captionProject.captions.styleId = style.id
             model.document.replaceProject(captionProject)
             let tile = model.captionTileInput(style)
-            check("caption tile handoff retains state frame language and overrides", tile.state == model.editState() && tile.frame == model.outputSpec().size && tile.language == model.project.transcript?.language && tile.overrides == model.project.captions.overrides)
+            check("caption tile handoff retains Core sample, frame, language and overrides", tile.sample != nil && tile.sampleWords == tile.sample?.words.map(\.text) && tile.frame == model.outputSpec().size && tile.language == model.project.transcript?.language && tile.overrides == model.project.captions.overrides)
             let layout = try await model.buildCaptions(segments: try model.editState().map { try buildSegments($0, activeClip: $0.activeClip) }, plan: uncut, output: model.outputSpec(), forPreview: false, project: model.project, voiceLab: nil)
             check("captioned exports use prepared layout", layout != nil)
         }
