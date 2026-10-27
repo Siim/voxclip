@@ -133,13 +133,24 @@ Buttons: **Continue**, **Cancel**.
 
 `ElevenLabsVoiceLab` discovers models (`GET /v1/models`), subscription (`GET /v1/user/subscription`) and paginated voices (`GET /v2/voices`) through the selected ElevenLabs region. The caller on each platform selects a discovered model and voice. `VoiceRewriteService` takes a separate estimate and affirmative authorization for its selected LLM connector/model before sending source words and the user's instruction. It returns an inert proposal with original timed words intact. Rewriting a passage and rewriting the entire selected take are both supported requests. The service does not edit, synthesize, or follow URLs in model output. ADR-R30 adds a length budget to this request (§8.9.1).
 
-Creating an Instant Voice Clone takes a verified own-voice consent record and speaker-match policy input, plus explicit authorization for that operation. Core retains `requires_verification` without treating a pending voice as usable. `listOwnClones` filters owned cloned voices from the paginated voice list; deletion is a separate authorized call. Stock selection allows only `premade`, or owner-created `generated`; `cloned`, `professional`, `famous` and unknown categories are denied. The own path requires a matching active consent identity, speaker match and completed provider verification.
+Creating an Instant Voice Clone takes a verified own-voice consent record and speaker-match policy input, plus explicit authorization for that operation. The caller passes one clone request (`VoiceLabCloneRequest` on both platforms). It holds the display name, the language, the ordered samples, each marked as the consent statement or a training sample, the creation time and the noise-removal choice. §6.7 lists the request rules and the parts that are sent. Core retains `requires_verification` without treating a pending voice as usable. `listOwnClones` filters owned cloned voices from the paginated voice list; deletion is a separate authorized call. Stock selection allows only `premade`, or owner-created `generated`; `cloned`, `professional`, `famous` and unknown categories are denied. The own path requires a matching active consent identity, speaker match and completed provider verification.
 
-Each paid action starts with preparation on the same service instance that will dispatch it: Swift uses `prepareClone`, `prepareDelete`, `prepareSynthesis` or `prepareConversion`; Windows uses `PrepareClone`, `PrepareDeletion`, `PrepareSynthesis` or `PrepareConversion`. Preparation performs no provider call. Its immutable quote binds the operation and caller request ID, provider/region/endpoint, displayed estimate, selected model/voice/language, consent identity and verification state, and all billable text or the SHA-256 of exact audio bytes. The caller shows that quote and authorizes it after an affirmative action, using `VoiceLabAuthorization(quote:approved:)` in Swift or the service’s `Approve` method in Windows. The service validates current inputs against the prepared quote, then consumes it before the first possible billable dispatch. Quotes are instance-scoped, hold at most 32 outstanding entries and cannot be replayed sequentially or concurrently. A changed input, model, region, voice, estimate or consent state needs a new quote and approval. A rewrite proposal's ID is the request ID when preparing synthesis of its approved text.
+Each paid action starts with preparation on the same service instance that will dispatch it: Swift uses `prepareClone(_:policy:requestID:)`, `prepareDelete`, `prepareSynthesis(text:modelID:voice:language:options:requestID:)` or `prepareConversion(audio:modelID:voice:language:seed:cleanAudioOn:requestID:)`. Windows uses `PrepareClone(VoiceLabCloneRequest, …)`, `PrepareDeletion`, `PrepareSynthesis(…, VoiceLabSpeechOptions, …)` or `PrepareConversion(…, uint seed, bool cleanAudioOn, …)`. `VoiceLabSpeechOptions` carries the seed and the optional previous and next text. Preparation performs no provider call. Its immutable quote binds the operation and caller request ID, provider/region/endpoint, displayed estimate, selected model/voice/language, consent identity and verification state, and all billable text or the SHA-256 of exact audio bytes. It also binds every other request field that can change the paid result:
 
-The first Core synthesis path uses documented `POST /v1/text-to-speech/{voice_id}/with-timestamps` for discovered TTS-capable models supported by that endpoint, raw `pcm_24000`, and validated character timing. It sends explicit `language_code` for supported models except `eleven_multilingual_v2`, whose documented behavior is language auto-detection. The quote exposes `explicit(language)` or `autoDetected(expected: language)` so the caller can show which mode will run. The language must be in the discovered model's language list. Eleven v4 and v4 Turbo are discovered but reported as unsupported by this endpoint; the documented Text to Dialogue path remains for later integration. Voice conversion uses `POST /v1/voice-changer/{voice_id}` for discovered conversion-capable models and the same PCM output. Its documented request has no language field, so Core requires the chosen language in the model's capability list and marks the quote as auto-detected rather than implying forced language selection. Conversion input must be a complete RIFF/WAVE file whose declared RIFF length ends at the actual file boundary. Every chunk length and odd-length pad must fit; ordinary ancillary chunks may appear before, between or after audio chunks. Exactly one unambiguous PCM `fmt ` chunk (16 bytes, or 18 with zero extension length) and one `data` chunk are required. Audio is mono, 16-bit PCM at 8–96 kHz, with byte rate and block alignment matching the format, whole samples, at least 20 ms and at most 290 seconds. The whole upload is limited to 16 MiB and the quote binds its exact bytes. Invalid input is refused before a paid send. Missing or malformed alignment makes timestamped TTS invalid. Empty, odd-length, oversized or structurally encoded output is invalid; raw PCM samples with header-like first bytes remain valid. Encoded conversion content types are invalid. A generation is sent once; the caller must make a new estimate and affirmative authorization before trying again. Estimates retain unknown currency and credit amounts when pricing is unavailable. A cancellation before dispatch sends nothing; after dispatch, cancellation or network loss is ambiguous and the same quote stays consumed. No clone, speech or conversion request is retried automatically. Discovery rejects malformed or duplicate model/voice identities, repeated cursors and more than 20 voice pages.
+- **Speech:** the seed and the trimmed `previous_text` and `next_text`.
+- **Conversion:** the seed and the Clean audio state.
+- **Clone:** the trimmed display name, the `labels` language, the creation time, the noise-removal choice, and each sample's position, role and SHA-256.
 
-This Core boundary does not yet record consent, perform speaker embedding, join audio to the timeline, preview or undo a segment, or run lip sync. Those are required before the whole Voice Lab workflow is usable in the app. Both implementations consume the exact `shared/prompts/voice-rewrite.json` and `shared/fixtures/voice-lab/contract.json`, including the 31 conversion-input cases. Windows additionally validates clone samples declared as WAV with its complete mono-PCM16 parser; that stricter clone-input check is not yet shared by the Swift clone route. Conversion-input validation is shared.
+The caller shows that quote and authorizes it after an affirmative action, using `VoiceLabAuthorization(quote:approved:)` in Swift or the service’s `Approve` method in Windows. The service validates current inputs against the prepared quote, then consumes it before the first possible billable dispatch. Quotes are instance-scoped, hold at most 32 outstanding entries and cannot be replayed sequentially or concurrently. A changed input, model, region, voice, estimate or consent state needs a new quote and approval. A rewrite proposal's ID is the request ID when preparing synthesis of its approved text.
+
+The first Core synthesis path uses documented `POST /v1/text-to-speech/{voice_id}/with-timestamps` for discovered TTS-capable models supported by that endpoint, raw `pcm_24000`, and validated character timing. The JSON body is the §8.5 alternative request, including `voice_settings`, `seed`, the trimmed context and `apply_text_normalization: "auto"`. It sends explicit `language_code` for supported models except `eleven_multilingual_v2`, whose documented behavior is language auto-detection. The quote exposes `explicit(language)` or `autoDetected(expected: language)` so the caller can show which mode will run. The language must be in the discovered model's language list. Eleven v4 and v4 Turbo are discovered but reported as unsupported by this endpoint; the documented Text to Dialogue path remains for later integration. Voice conversion uses `POST /v1/voice-changer/{voice_id}` for discovered conversion-capable models and the same PCM output. Its documented request has no language field, so Core requires the chosen language in the model's capability list and marks the quote as auto-detected rather than implying forced language selection. The multipart body is the §7.3 request: `audio`, `model_id`, `voice_settings`, `seed`, and `remove_background_noise`, which is false when Clean audio is on. For the same boundary, both Cores write the same multipart bytes, framed as described in §6.7. Conversion input must be a complete RIFF/WAVE file whose declared RIFF length ends at the actual file boundary. Every chunk length and odd-length pad must fit; ordinary ancillary chunks may appear before, between or after audio chunks. Exactly one unambiguous PCM `fmt ` chunk (16 bytes, or 18 with zero extension length) and one `data` chunk are required. Audio is mono, 16-bit PCM at 8–96 kHz, with byte rate and block alignment matching the format, whole samples, at least 20 ms and at most 290 seconds. The whole upload is limited to 16 MiB and the quote binds its exact bytes. Invalid input is refused before a paid send. Missing or malformed alignment makes timestamped TTS invalid. Empty, odd-length, oversized or structurally encoded output is invalid; raw PCM samples with header-like first bytes remain valid. Encoded conversion content types are invalid. A generation is sent once; the caller must make a new estimate and affirmative authorization before trying again. Estimates retain unknown currency and credit amounts when pricing is unavailable. A cancellation before dispatch sends nothing; after dispatch, cancellation or network loss is ambiguous and the same quote stays consumed. No clone, speech or conversion request is retried automatically. Discovery rejects malformed or duplicate model/voice identities, repeated cursors and more than 20 voice pages.
+
+This Core boundary does not yet record consent, perform speaker embedding, join audio to the timeline, preview or undo a segment, or run lip sync. Those are required before the whole Voice Lab workflow is usable in the app. Both implementations consume the exact `shared/prompts/voice-rewrite.json` and `shared/fixtures/voice-lab/contract.json`, including the 31 conversion-input cases. Both Cores validate clone uploads with the same rules (§6.7) and conversion input with the same parser. Both also consume `shared/fixtures/voice-lab/request-cases.json`, which holds:
+
+- 21 request goldens: the exact method, path, query, headers and body for clone, TTS and voice changer requests. Multipart bodies are pinned byte for byte with a fixed boundary.
+- 18 quote mutations, each changing one field after approval.
+- 42 clone-input cases.
+- The Unicode White_Space set that both Cores trim with.
 
 ## 3. Cost preview
 
@@ -351,7 +362,7 @@ The app is open source, so the guard is good-faith friction and an audit trail, 
   - "This is my own voice."
   - "I am 18 or older."
   - "I will use it only on videos of myself."
-- **Display name**: 1 to 60 Unicode scalars after trimming Unicode whitespace; the trimmed name is stored and used in the statement and the voice name. The consent form applies the same count as `addVoiceReference` (§10.5) before the paid clone is created, so a name the reference would refuse never reaches ElevenLabs. Grapheme clusters and UTF-16 units are not the measure: 31 decomposed `õ` (62 scalars) are refused.
+- **Display name**: 1 to 60 Unicode scalars after trimming Unicode whitespace; the trimmed name is stored and used in the statement and the voice name. It must not contain a control character (§6.7). The consent form applies the same count as `addVoiceReference` (§10.5) before the paid clone is created, so a name the reference would refuse never reaches ElevenLabs. Grapheme clusters and UTF-16 units are not the measure: 31 decomposed `õ` (62 scalars) are refused.
 
 ### 6.2 Consent statement
 
@@ -395,13 +406,13 @@ Choose one source:
   - the estimated SNR is at least 20 dB (median speech-frame RMS against the take's 10th-percentile frame RMS).
 
   Take 60 to 120 s in total, in spans of 5 to 30 s, preferring spans between pauses.
-- **(b) A fresh read-aloud.** A 90 s script from `shared/voice-lab/scripts-<lang>.txt` (created with M3), recorded like §6.3.
+- **(b) A fresh read-aloud.** A 90 s script from `shared/voice-lab/scripts-<lang>.txt` (created with M3), recorded like §6.3. It is uploaded in spans of 5 to 30 s, preferring spans between pauses, as in (a).
 
 Then process the samples:
 
 1. Normalise each span to −20 dBFS RMS over voiced frames (frames above −45 dBFS), with true peak at most −3 dBTP.
-2. Encode as AAC-LC 256 kbps, 44.1 kHz mono, in M4A: AVAssetWriter on macOS, FFmpeg's native `aac` encoder on Windows. The upload format is spike S5 (§14). The fallback is 16-bit WAV.
-3. Upload at most 25 files, each at least 5 s long, totalling at least 10 s. The recommended total is 1 to 2 minutes. More than 3 minutes gives little improvement.
+2. Encode each span as mono 16-bit PCM WAV at its source rate (8–96 kHz). Core accepts only WAV until spike S5 (§14) settles the upload format. After S5, the candidate is AAC-LC 256 kbps, 44.1 kHz mono, in M4A: AVAssetWriter on macOS, FFmpeg's native `aac` encoder on Windows.
+3. Upload 1 to 25 files, counting the consent statement from step 4. Each file lasts 5 to 30 s, and together they last 10 to 240 s (§6.7). The recommended total is 1 to 2 minutes. More than 3 minutes gives little improvement.
 4. **Add the consent statement recording as one of the samples.** This makes the clone provably derived from the consenting speaker.
 5. Set `remove_background_noise=false`. It "can make the quality worse" on clean audio. Use `true` only when the SNR is below 20 dB and Clean audio has not been applied to the source take.
 
@@ -426,15 +437,44 @@ public protocol SpeakerEmbedder: Sendable {
 ```
 POST {base}/v1/voices/add
 xi-api-key: <key>
-Content-Type: multipart/form-data
+Content-Type: multipart/form-data; boundary="voxclip-<32 lowercase hex>"
   name                     = "{display name} (VoxClip)"
-  files[]                  = <sample 1>   (one "files[]" part per sample, consent recording included)
-  files[]                  = <sample 2> …
-  remove_background_noise  = false
-  description              = "VoxClip own-voice clone. Consent sha256:{statementSha256}. Created {RFC 3339 date}."
+  files[]                  = consent-statement.wav          (the consent statement recording; always the first file)
+  files[]                  = sample-02.wav, sample-03.wav …  (the training samples in caller order)
+  remove_background_noise  = false, or true per §6.5 step 5
+  description              = "VoxClip own-voice clone. Consent sha256:{statementSha256}. Created {created}."
   labels                   = {"language":"et"}       (a JSON string. The API documents only the keys language, accent, gender and age, so the consent marker goes in description; spike S5 verifies the encoding)
 → 200 { "voice_id": "c38kUX8pkfYO2kHyqfFy", "requires_verification": false }
 ```
+
+Core sends WAV only until spike S5 settles the upload format. Core refuses the request before any provider call unless all of these hold:
+
+- **Display name.** 1 to 60 Unicode scalars after trimming Unicode whitespace (the White_Space property) at both ends. The trimmed name is stored and sent.
+  - It must contain no control character (General Category Cc: U+0000–U+001F, U+007F and U+0080–U+009F) anywhere.
+  - Trimming runs first, so a line break or U+0085 at either end is removed, while one inside the name is refused.
+  - Format characters (Cf) such as U+200B ZERO WIDTH SPACE are not White_Space and are allowed, so they stay.
+  - The ElevenLabs API reference documents no length limit for `name`.
+- **Language.** Two or three lowercase ASCII letters (`[a-z]{2,3}`), matched against the whole value. It is sent as the `labels` language.
+- **Files.** 1 to 25 files, exactly one of them the consent statement. Each file is a complete mono PCM16 WAV at 8–96 kHz, as accepted by the conversion-input parser in §2.6. Each is at most 16 MiB and lasts 5 to 30 seconds; together they last 10 to 240 seconds.
+- **Created.** The creation time, floored to whole seconds, falls between 1970-01-01T00:00:00Z and 9999-12-31T23:59:59Z. `{created}` is that time in UTC, written as `YYYY-MM-DDTHH:MM:SSZ`.
+
+`{statementSha256}` is the lowercase hex SHA-256 of the consent statement file as sent. The quote binds:
+- the trimmed name;
+- the language;
+- the creation time;
+- the noise-removal choice;
+- each file's position, role and SHA-256.
+
+Any change to these needs a new quote and approval.
+
+Both Cores frame multipart parts identically:
+- Each part starts with `--`, the boundary and CRLF, then its header lines, each followed by CRLF.
+- Names and filenames are quoted, and there is no `filename*`.
+- A text part has only `Content-Disposition`. A file part has `Content-Disposition`, then `Content-Type: audio/wav`.
+- An empty line follows the headers, then the part's bytes and CRLF.
+- The body ends with `--`, the boundary, `--` and CRLF.
+
+The boundary is `voxclip-` plus 32 lowercase hex, quoted in the request's Content-Type.
 
 - `requires_verification == true`: do not use the voice. Show "ElevenLabs needs to verify this voice before it can be used. Finish verification on elevenlabs.io, then come back." Store the record with `status: "verificationRequired"`.
 - Errors map as in §4.3, with the permission `create_instant_voice_clone`.
@@ -522,8 +562,10 @@ Content-Type: multipart/form-data
   voice_settings           = {"stability":0.5,"similarity_boost":0.75}
   seed                     = <seed>
   remove_background_noise  = true, or false when Clean audio is on
-→ 200 audio bytes (WAV)
+→ 200 raw 16-bit little-endian mono PCM at 24 kHz (output_format=pcm_24000); WAV, MP3 and other encoded or container replies are refused
 ```
+
+The parts are framed as in §6.7.
 
 - **Duration check per chunk.** As in §4.4, but with a cross-correlation search of ±300 ms. The docs do not promise that timing is preserved.
 - **Language.** The voice changer lists 29 languages, and Estonian is not among them. For a language not in the model's `languages`, require a 10 s preview first: "ElevenLabs doesn't list {language} for the voice changer. Listen to a 10-second preview before converting."
@@ -610,7 +652,7 @@ GAIN_CLAMP            = ±12 dB, then a true-peak limit of −1 dBTP
 ROOM_TONE_MIN_RUN     = 0.5 s     searched inside gaps of at least 0.5 s
 ROOM_TONE_XFADE       = 50 ms
 CANDIDATES            = 3         most sequential takes per generation run (§8.6)
-PREV_TEXT_MAX         = 100 characters (Text to Dialogue, API limit), 300 (Text to Speech, VoxClip limit)
+PREV_TEXT_MAX         = 100 characters (Text to Dialogue, API limit), 300 Unicode scalars (Text to Speech, VoxClip limit; §8.5 trimming)
 ```
 
 The six silence-fit constants (`PAUSE_SLACK_KEEP`, `SEAM_PAD_MAX`, `HARD_SEAM_PAD_MAX`, `PAUSE_FLOOR_PHRASE`, `PAUSE_FLOOR_PUNCT` and `PAUSE_GROWTH_MAX`) are tuned by ear after the listening check (§8.9.4). `PAUSE_SLACK_KEEP` and `SEAM_PAD_MAX` keep the values of the earlier seam step, and the three pause constants are proposals from the duration-fit research. `HARD_SEAM_PAD_MAX` starts at the intra-phrase pause floor, because a hard seam sits in connected speech, where a longer inserted silence is heard as an artifact.
@@ -667,13 +709,24 @@ POST {base}/v1/text-to-speech/{voice_id}/with-timestamps?output_format=pcm_24000
   "model_id": "eleven_v3",
   "language_code": "et",                      // omit for eleven_multilingual_v2
   "voice_settings": { "stability": 0.5, "similarity_boost": 0.8 },
-  "seed": <candidate seed>,
-  "previous_text": "<≤300 characters before>",
-  "next_text": "<≤300 characters after>",
+  "seed": <candidate seed, UInt32>,
+  "previous_text": "<≤300 Unicode scalars before; see below>",   // omitted when empty
+  "next_text": "<≤300 Unicode scalars after; see below>",        // omitted when empty
   "apply_text_normalization": "auto"
 }
 → 200 { "audio_base64": "…", "alignment": … | null, "normalized_alignment": … | null }
 ```
+
+Core removes Unicode White_Space at both ends of `previous_text` and `next_text`. A trimmed text of at most 300 Unicode scalars is sent as it is. A longer `previous_text` keeps its last 300 scalars and a longer `next_text` its first 300, and two steps then adjust the cut:
+
+1. **Word rule.** If the kept scalars contain at least one White_Space character, a word split by the cut is dropped. White_Space beside the cut is kept.
+2. **Clean cut.** The cut then moves until it splits no cluster.
+   - A scalar *extends* a cluster when it is a combining mark (General Category M: Mn, Mc or Me), U+200D ZERO WIDTH JOINER, or a variation selector (U+FE00–U+FE0F, U+E0100–U+E01EF).
+   - A cut before scalar *i* is clean when scalar *i* does not extend a cluster and scalar *i* − 1 is not U+200D.
+   - `next_text` keeps scalars [0, *k*). While the cut at *k* is not clean, *k* decreases, so a partial cluster is dropped back to and including its base. A complete cluster before a clean cut is kept whole.
+   - `previous_text` keeps [*j*, *n*). While the cut at *j* is not clean, *j* increases, so orphaned marks and joiners are dropped.
+
+A field that is empty after this is omitted. The quote binds the seed and the trimmed strings.
 
 - **Audio.** With `pcm_*` formats, `audio_base64` is raw 16-bit little-endian mono PCM at that rate. Resample to the source rate.
 - **Alignment.** Use `alignment`, not `normalized_alignment`, so caption text equals the typed text ("2025", not "twenty twenty-five"). The current Core timestamped path rejects null or malformed alignment. The later media QA path may use the Scribe/interpolation recovery in §8.8, after it is implemented and tested; null alignment must never be presented as timestamped speech.

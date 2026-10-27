@@ -25,7 +25,8 @@ public sealed record VoiceLabEstimate(string Provider, VoiceLabOperation Operati
     decimal? Usd, int? Credits, string Basis);
 public enum VoiceLabLanguageModeKind { Explicit, AutoDetected }
 public sealed record VoiceLabLanguageMode(VoiceLabLanguageModeKind Kind, string ExpectedLanguage);
-/// <summary>The exact destination and input the caller reviews before approving a paid action.</summary>
+/// <summary>The exact destination and input the caller reviews before approving a paid action. For a clone, <c>ContentSha256</c>
+/// is the consent statement sample; the prepared action binds every sample.</summary>
 public sealed record VoiceLabReview(VoiceLabOperation Operation, Guid RequestId, string Provider,
     ElevenLabsRegion? Region, string Endpoint, string? ModelId, string? VoiceId,
     VoiceLabLanguageMode? LanguageMode, string? ContentSha256, string? ConsentRecordId,
@@ -83,6 +84,8 @@ public sealed record VoiceLabVoiceChoice(string Id, VoiceLabVoiceKind Kind, OwnV
     public static VoiceLabVoiceChoice Own(string id, OwnVoicePolicy policy) => new(id, VoiceLabVoiceKind.Own, policy);
     public static VoiceLabVoiceChoice Stock(string id) => new(id, VoiceLabVoiceKind.Stock, null);
 }
+/// <summary>Per-request TTS inputs (voice-lab §8.5). Core keeps the 300 Unicode scalars of context nearest the window and drops a cut word.</summary>
+public sealed record VoiceLabSpeechOptions(uint Seed, string? PreviousText = null, string? NextText = null);
 public sealed record VoiceLabReceipt(string Provider, ElevenLabsRegion Region, string Endpoint, string? ModelId,
     string? VoiceId, Guid ActionId, string? ProviderRequestId);
 public sealed record VoiceLabCharacterTiming(string Character, double Start, double End);
@@ -91,6 +94,13 @@ public sealed record VoiceLabAudioResult(byte[] Pcm, int SampleRate,
     IReadOnlyList<VoiceLabCharacterTiming>? Alignment, VoiceLabReceipt Receipt);
 public sealed record VoiceLabCloneResult(string VoiceId, bool RequiresVerification, string ConsentRecordId,
     VoiceLabReceipt Receipt);
+public enum VoiceLabCloneSampleRole { ConsentStatement, Training }
+/// <summary>A complete mono PCM16 WAV file. Other upload formats wait for spike S5 (voice-lab §6.5).</summary>
+public sealed record VoiceLabCloneSample(VoiceLabCloneSampleRole Role, byte[] Wav);
+/// <summary>One own-voice clone upload (voice-lab §6.5, §6.7). The single consent statement is sent first, then training samples in caller order.
+/// <c>Language</c> is <c>[a-z]{2,3}</c>; <c>CreatedAt</c> is sent as RFC 3339 UTC in whole seconds.</summary>
+public sealed record VoiceLabCloneRequest(string DisplayName, string Language, IReadOnlyList<VoiceLabCloneSample> Samples,
+    DateTimeOffset CreatedAt, bool RemoveBackgroundNoise);
 
 public enum VoiceRewriteScope { Passage, FullTake }
 public sealed record VoiceRewriteRequest(Guid RequestId, VoiceRewriteScope Scope, IReadOnlyList<TimedWord> SourceWords,

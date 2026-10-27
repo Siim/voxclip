@@ -117,6 +117,16 @@ public enum VoiceLabVoiceChoice: Sendable, Equatable {
     public func validate() throws { if case .own(_, let policy) = self { try policy.validate() } }
 }
 
+/// Per-request TTS inputs (voice-lab §8.5). Core keeps the 300 Unicode scalars of context nearest the window and drops a cut word.
+public struct VoiceLabSpeechOptions: Sendable, Equatable {
+    public let seed: UInt32
+    public let previousText: String?
+    public let nextText: String?
+    public init(seed: UInt32, previousText: String? = nil, nextText: String? = nil) {
+        self.seed = seed; self.previousText = previousText; self.nextText = nextText
+    }
+}
+
 public struct VoiceLabReceipt: Sendable, Equatable {
     public let provider: String
     public let region: ElevenLabsRegion
@@ -146,6 +156,32 @@ public struct VoiceLabCloneResult: Sendable, Equatable {
     public let requiresVerification: Bool
     public let consentRecordID: String
     public let receipt: VoiceLabReceipt
+}
+
+public enum VoiceLabCloneSampleRole: String, Sendable, Equatable { case consentStatement, training }
+
+/// A complete mono PCM16 WAV file. Other upload formats wait for spike S5 (voice-lab §6.5).
+public struct VoiceLabCloneSample: Sendable, Equatable {
+    public let role: VoiceLabCloneSampleRole
+    public let wav: Data
+    public init(role: VoiceLabCloneSampleRole, wav: Data) {
+        self.role = role; self.wav = wav
+    }
+}
+
+/// One own-voice clone upload (voice-lab §6.5, §6.7). The single consent statement is sent first, then training samples in caller order.
+public struct VoiceLabCloneRequest: Sendable, Equatable {
+    public let displayName: String
+    /// Statement language, `[a-z]{2,3}`, sent as the `language` label.
+    public let language: String
+    public let samples: [VoiceLabCloneSample]
+    /// Sent in the description as RFC 3339 UTC in whole seconds.
+    public let createdAt: Date
+    public let removeBackgroundNoise: Bool
+    public init(displayName: String, language: String, samples: [VoiceLabCloneSample], createdAt: Date, removeBackgroundNoise: Bool) {
+        self.displayName = displayName; self.language = language; self.samples = samples
+        self.createdAt = createdAt; self.removeBackgroundNoise = removeBackgroundNoise
+    }
 }
 
 public enum VoiceRewriteScope: String, Codable, Sendable { case passage, fullTake }

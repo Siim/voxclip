@@ -20,12 +20,15 @@ public sealed class ElevenLabsVoiceLab : IDisposable
     private const int MaxUpload = 16 * 1024 * 1024;
     private const int MaxPcm = 32 * 1024 * 1024;
     private const int MaxJsonAudio = 44 * 1024 * 1024;
-    private static readonly Regex SafeId = new("^[A-Za-z0-9_-]{1,128}$", RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1));
-    private static readonly Regex LanguageCode = new("^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$", RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1));
+    // \A…\z, not ^…$: .NET lets $ match before a final line break, which would put "voice\n" into a path.
+    private static readonly Regex SafeId = new(@"\A[A-Za-z0-9_-]{1,128}\z", RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1));
+    private static readonly Regex LanguageCode = new(@"\A[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*\z", RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1));
+    private static readonly Regex CloneLanguage = new(@"\A[a-z]{2,3}\z", RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1));
     private readonly IKeyProvider keys;
     private readonly ILog log;
     private readonly HttpClient http;
     private readonly VoiceLabActionGate actions;
+    private readonly string? fixedBoundary;
     private readonly object discoveredGate = new();
     private Dictionary<string, VoiceLabModel> models = new(StringComparer.Ordinal);
     private Dictionary<string, VoiceLabVoice> voices = new(StringComparer.Ordinal);
@@ -35,7 +38,8 @@ public sealed class ElevenLabsVoiceLab : IDisposable
     public ElevenLabsVoiceLab(IKeyProvider keys, ElevenLabsRegion region = ElevenLabsRegion.Default, ILog? logger = null)
         : this(keys, new HttpClient(SpeechTransport.CreateCloudHandler()) { Timeout = Timeout.InfiniteTimeSpan }, region, logger, null) { }
 
-    private ElevenLabsVoiceLab(IKeyProvider keys, HttpClient http, ElevenLabsRegion region, ILog? logger, TimeProvider? clock)
+    private ElevenLabsVoiceLab(IKeyProvider keys, HttpClient http, ElevenLabsRegion region, ILog? logger, TimeProvider? clock,
+        string? boundary = null)
     {
         this.keys = keys ?? throw new ArgumentNullException(nameof(keys));
         this.http = http;
@@ -43,14 +47,16 @@ public sealed class ElevenLabsVoiceLab : IDisposable
         _ = region.BaseUri();
         log = logger ?? new Log();
         actions = new VoiceLabActionGate(clock);
+        fixedBoundary = boundary;
     }
 
-    /// <summary>Only Core tests can inject a handler; production always owns a nonredirecting, cookieless transport.</summary>
+    /// <summary>Only Core tests can inject a handler or fix the multipart boundary, so whole bodies compare with the shared
+    /// goldens; production always owns a nonredirecting, cookieless transport.</summary>
     internal static ElevenLabsVoiceLab ForTesting(IKeyProvider keys, HttpMessageHandler handler, ElevenLabsRegion region,
-        ILog? logger = null, TimeProvider? clock = null)
+        ILog? logger = null, TimeProvider? clock = null, string? boundary = null)
     {
         ArgumentNullException.ThrowIfNull(handler);
-        return new(keys, new HttpClient(handler, disposeHandler: false) { Timeout = Timeout.InfiniteTimeSpan }, region, logger, clock);
+        return new(keys, new HttpClient(handler, disposeHandler: false) { Timeout = Timeout.InfiniteTimeSpan }, region, logger, clock, boundary);
     }
 
     public void Dispose() => http.Dispose();
@@ -157,28 +163,27 @@ public sealed class ElevenLabsVoiceLab : IDisposable
 
     public VoiceLabAuthorization Approve(VoiceLabPreparedAction action, bool affirmative) => actions.Approve(action, affirmative);
 
-    public VoiceLabPreparedAction PrepareSynthesis(string text, string modelId, VoiceLabVoiceChoice voice, string language, Guid requestId)
+    public VoiceLabPreparedAction PrepareSynthesis(string text, string modelId, VoiceLabVoiceChoice voice, string language,
+        VoiceLabSpeechOptions options, Guid requestId)
     {
         var model = SelectedModel(modelId, language, true);
         SelectedVoice(voice);
-        if (string.IsNullOrWhiteSpace(text) || Encoding.UTF8.GetByteCount(text) > 20000 ||
+        if (options is null || string.IsNullOrWhiteSpace(text) || Encoding.UTF8.GetByteCount(text) > 20000 ||
             text.EnumerateRunes().Count() > Math.Min(model.MaximumTextLength ?? 5000, 5000)) throw Invalid();
-        var fingerprint = SynthesisFingerprint(text, modelId, voice, language);
+        var fingerprint = SynthesisFingerprint(text, modelId, voice, language, options);
         return actions.Prepare(fingerprint, Unknown(VoiceLabOperation.TextToSpeech, text.EnumerateRunes().Count(), "character"),
             Review(VoiceLabOperation.TextToSpeech, requestId, "/v1/text-to-speech/" + voice.Id + "/with-timestamps?output_format=pcm_24000",
                 modelId, voice.Id, modelId == "eleven_multilingual_v2" ? Auto(language) : Explicit(language),
                 VoiceLabActionGate.ContentHash(Encoding.UTF8.GetBytes(text)), voice.Policy));
     }
 
-    public VoiceLabPreparedAction PrepareClone(string name, byte[] sample, string mimeType, OwnVoicePolicy policy, Guid requestId)
+    public VoiceLabPreparedAction PrepareClone(VoiceLabCloneRequest request, OwnVoicePolicy policy, Guid requestId)
     {
         policy.Validate();
-        if (sample is null) throw Invalid();
-        var snapshot = sample.ToArray();
-        ValidateCloneInput(name, snapshot, mimeType);
-        return actions.Prepare(CloneFingerprint(name, snapshot, mimeType, policy), Unknown(VoiceLabOperation.CreateClone, 1, "call"),
+        var upload = ValidatedClone(request);
+        return actions.Prepare(CloneFingerprint(upload, policy), Unknown(VoiceLabOperation.CreateClone, 1, "call"),
             Review(VoiceLabOperation.CreateClone, requestId, "/v1/voices/add", null, null, null,
-                VoiceLabActionGate.ContentHash(snapshot), policy) with { DisplayName = name, MimeType = mimeType });
+                upload.ConsentSha256, policy) with { DisplayName = upload.DisplayName, MimeType = "audio/wav" });
     }
 
     public VoiceLabPreparedAction PrepareDeletion(string voiceId, OwnVoicePolicy policy, Guid requestId)
@@ -189,43 +194,40 @@ public sealed class ElevenLabsVoiceLab : IDisposable
             Review(VoiceLabOperation.DeleteClone, requestId, "/v1/voices/" + voiceId, null, voiceId, null, null, policy));
     }
 
-    public VoiceLabPreparedAction PrepareConversion(byte[] sourceWav, string modelId, VoiceLabVoiceChoice voice, string language, Guid requestId)
+    public VoiceLabPreparedAction PrepareConversion(byte[] sourceWav, string modelId, VoiceLabVoiceChoice voice, string language,
+        uint seed, bool cleanAudioOn, Guid requestId)
     {
         SelectedModel(modelId, language, false);
         SelectedVoice(voice);
         if (sourceWav is null) throw Invalid();
         var snapshot = sourceWav.ToArray();
         if (snapshot.Length > MaxUpload || !TryParseWav(snapshot, out var wav)) throw Invalid();
-        return actions.Prepare(ConversionFingerprint(snapshot, modelId, voice, language),
+        return actions.Prepare(ConversionFingerprint(snapshot, modelId, voice, language, seed, cleanAudioOn),
             Unknown(VoiceLabOperation.VoiceChange, wav.Seconds / 60, "minute"),
             Review(VoiceLabOperation.VoiceChange, requestId, "/v1/voice-changer/" + voice.Id + "?output_format=pcm_24000",
                 modelId, voice.Id, Auto(language), VoiceLabActionGate.ContentHash(snapshot), voice.Policy));
     }
 
-    public async Task<VoiceLabCloneResult> CreateOwnCloneAsync(string name, byte[] sample, string mimeType, OwnVoicePolicy policy,
+    public async Task<VoiceLabCloneResult> CreateOwnCloneAsync(VoiceLabCloneRequest request, OwnVoicePolicy policy,
         VoiceLabAuthorization authorization, CancellationToken ct, Guid requestId)
     {
         policy.Validate();
-        if (sample is null) throw Invalid();
-        var snapshot = sample.ToArray();
-        ValidateCloneInput(name, snapshot, mimeType);
+        var upload = ValidatedClone(request);
         lock (discoveredGate)
         {
             if (subscription is null || !subscription.CanClone) throw new VoiceLabException(VoiceLabErrorKind.PlanUnavailable);
             if (subscription.VoiceSlotsUsed >= subscription.VoiceLimit) throw new VoiceLabException(VoiceLabErrorKind.NoVoiceSlots);
         }
-        var id = actions.Claim(authorization, CloneFingerprint(name, snapshot, mimeType, policy), VoiceLabOperation.CreateClone, requestId);
-        var boundary = "voxclip-" + Guid.NewGuid().ToString("N");
-        var fields = new[] { ("name", name) };
-        var extension = mimeType switch { "audio/wav" => "wav", "audio/mp4" => "m4a", "audio/mpeg" => "mp3", "audio/flac" => "flac", _ => throw Invalid() };
-        using var body = Multipart(boundary, fields, "files[]", "own-voice." + extension, mimeType, snapshot);
+        var boundary = NewBoundary();
+        using var body = Multipart(boundary, CloneParts(upload));
+        var id = actions.Claim(authorization, CloneFingerprint(upload, policy), VoiceLabOperation.CreateClone, requestId);
         using var reply = await SendAsync(HttpMethod.Post, "/v1/voices/add", body, 128 * 1024, ct).ConfigureAwait(false);
         using var json = Parse(reply.Bytes);
         if (json.RootElement.ValueKind != JsonValueKind.Object) throw Malformed();
         var voiceId = RequiredString(json.RootElement, "voice_id");
         if (!IsSafeId(voiceId)) throw Malformed();
         var requires = RequiredBool(json.RootElement, "requires_verification");
-        lock (discoveredGate) voices[voiceId] = new(voiceId, name, "cloned", true, requires, !requires);
+        lock (discoveredGate) voices[voiceId] = new(voiceId, upload.DisplayName + " (VoxClip)", "cloned", true, requires, !requires);
         return new(voiceId, requires, policy.RecordId, Receipt("/v1/voices/add", null, voiceId, id, reply));
     }
 
@@ -247,17 +249,25 @@ public sealed class ElevenLabsVoiceLab : IDisposable
     }
 
     public async Task<VoiceLabAudioResult> SynthesizeAsync(string text, string modelId, VoiceLabVoiceChoice voice,
-        string language, VoiceLabAuthorization authorization, CancellationToken ct, Guid requestId)
+        string language, VoiceLabSpeechOptions options, VoiceLabAuthorization authorization, CancellationToken ct, Guid requestId)
     {
         var model = SelectedModel(modelId, language, true);
         SelectedVoice(voice);
-        if (string.IsNullOrWhiteSpace(text) || Encoding.UTF8.GetByteCount(text) > 20000 ||
+        if (options is null || string.IsNullOrWhiteSpace(text) || Encoding.UTF8.GetByteCount(text) > 20000 ||
             text.EnumerateRunes().Count() > Math.Min(model.MaximumTextLength ?? 5000, 5000)) throw Invalid();
-        var id = actions.Claim(authorization, SynthesisFingerprint(text, modelId, voice, language), VoiceLabOperation.TextToSpeech, requestId);
         var path = "/v1/text-to-speech/" + voice.Id + "/with-timestamps?output_format=pcm_24000";
-        var payload = new JsonObject { ["text"] = text, ["model_id"] = modelId };
+        // Voice settings are spec constants (§8.5), not caller choices.
+        var payload = new JsonObject
+        {
+            ["text"] = text, ["model_id"] = modelId,
+            ["voice_settings"] = new JsonObject { ["stability"] = 0.5, ["similarity_boost"] = 0.8 },
+            ["seed"] = options.Seed, ["apply_text_normalization"] = "auto"
+        };
         if (modelId != "eleven_multilingual_v2") payload["language_code"] = language;
+        if (SpeechContext(options.PreviousText, true) is { } previous) payload["previous_text"] = previous;
+        if (SpeechContext(options.NextText, false) is { } next) payload["next_text"] = next;
         var jsonBody = Encoding.UTF8.GetBytes(payload.ToJsonString());
+        var id = actions.Claim(authorization, SynthesisFingerprint(text, modelId, voice, language, options), VoiceLabOperation.TextToSpeech, requestId);
         using var reply = await SendAsync(HttpMethod.Post, path, new ByteArrayContent(jsonBody) { Headers = { ContentType = new MediaTypeHeaderValue("application/json") } }, MaxJsonAudio, ct).ConfigureAwait(false);
         if (reply.ContentType is { } contentType && !contentType.Equals("application/json", StringComparison.OrdinalIgnoreCase)) throw new VoiceLabException(VoiceLabErrorKind.InvalidAudio);
         using var json = Parse(reply.Bytes);
@@ -271,16 +281,19 @@ public sealed class ElevenLabsVoiceLab : IDisposable
     }
 
     public async Task<VoiceLabAudioResult> ConvertAsync(byte[] sourceWav, string modelId, VoiceLabVoiceChoice voice,
-        string language, VoiceLabAuthorization authorization, CancellationToken ct, Guid requestId)
+        string language, uint seed, bool cleanAudioOn, VoiceLabAuthorization authorization, CancellationToken ct, Guid requestId)
     {
         SelectedModel(modelId, language, false);
         SelectedVoice(voice);
         if (sourceWav is null) throw Invalid();
         var snapshot = sourceWav.ToArray();
         if (snapshot.Length > MaxUpload || !TryParseWav(snapshot, out _)) throw Invalid();
-        var id = actions.Claim(authorization, ConversionFingerprint(snapshot, modelId, voice, language), VoiceLabOperation.VoiceChange, requestId);
-        var boundary = "voxclip-" + Guid.NewGuid().ToString("N");
-        using var body = Multipart(boundary, [("model_id", modelId)], "audio", "source.wav", "audio/wav", snapshot);
+        var boundary = NewBoundary();
+        // Voice settings are spec constants (§7.3). Clean audio already removed the noise, so it is not removed twice.
+        using var body = Multipart(boundary, [new("audio", null, "audio.wav", snapshot), new("model_id", modelId),
+            new("voice_settings", "{\"stability\":0.5,\"similarity_boost\":0.75}"), new("seed", seed.ToString(CultureInfo.InvariantCulture)),
+            new("remove_background_noise", cleanAudioOn ? "false" : "true")]);
+        var id = actions.Claim(authorization, ConversionFingerprint(snapshot, modelId, voice, language, seed, cleanAudioOn), VoiceLabOperation.VoiceChange, requestId);
         var path = "/v1/voice-changer/" + voice.Id + "?output_format=pcm_24000";
         using var reply = await SendAsync(HttpMethod.Post, path, body, MaxPcm, ct).ConfigureAwait(false);
         if (reply.ContentType is { } type && !new[] { "application/octet-stream", "audio/pcm", "audio/l16" }.Contains(type, StringComparer.OrdinalIgnoreCase))
@@ -324,18 +337,56 @@ public sealed class ElevenLabsVoiceLab : IDisposable
             throw new VoiceLabException(VoiceLabErrorKind.ConsentRequired);
     }
 
-    private string SynthesisFingerprint(string text, string model, VoiceLabVoiceChoice voice, string language) =>
-        Fingerprint(VoiceLabOperation.TextToSpeech, "/v1/text-to-speech/" + voice.Id + "/with-timestamps?output_format=pcm_24000", model, voice, language, VoiceLabActionGate.ContentHash(Encoding.UTF8.GetBytes(text)));
-    private string CloneFingerprint(string name, byte[] audio, string mimeType, OwnVoicePolicy policy) =>
-        VoiceLabActionGate.Fingerprint("elevenlabs", Region.ToString(), VoiceLabOperation.CreateClone.ToString(), "/v1/voices/add", name, mimeType,
-            VoiceLabActionGate.ContentHash(audio), PolicyIdentity(policy));
+    private string SynthesisFingerprint(string text, string model, VoiceLabVoiceChoice voice, string language, VoiceLabSpeechOptions options) =>
+        Fingerprint(VoiceLabOperation.TextToSpeech, "/v1/text-to-speech/" + voice.Id + "/with-timestamps?output_format=pcm_24000", model, voice, language,
+            VoiceLabActionGate.ContentHash(Encoding.UTF8.GetBytes(text)), options.Seed.ToString(CultureInfo.InvariantCulture),
+            ContextHash(SpeechContext(options.PreviousText, true)), ContextHash(SpeechContext(options.NextText, false)));
+    private static string? ContextHash(string? context) => context is null ? null : VoiceLabActionGate.ContentHash(Encoding.UTF8.GetBytes(context));
+    /// <summary>Voice-lab §8.5 context: Unicode White_Space is removed at both ends, then the last (previous) or first (next)
+    /// 300 Unicode scalars are kept. If they hold White_Space, a word split by the cut is dropped first. Then the cut
+    /// moves until it splits no cluster: previous text drops orphaned marks and joiners, next text drops a partial
+    /// cluster back to its base. Null means the field is omitted.</summary>
+    private static string? SpeechContext(string? text, bool previous)
+    {
+        if (text is null) return null;
+        var runes = text.EnumerateRunes().ToArray();
+        int start = 0, end = runes.Length;
+        while (start < end && Rune.IsWhiteSpace(runes[start])) start++;
+        while (end > start && Rune.IsWhiteSpace(runes[end - 1])) end--;
+        if (end - start > 300)
+        {
+            if (previous) start = end - 300;
+            else end = start + 300;
+            if (runes[start..end].Any(Rune.IsWhiteSpace))
+            {
+                if (previous && !Rune.IsWhiteSpace(runes[start - 1])) while (start < end && !Rune.IsWhiteSpace(runes[start])) start++;
+                if (!previous && !Rune.IsWhiteSpace(runes[end])) while (end > start && !Rune.IsWhiteSpace(runes[end - 1])) end--;
+            }
+            if (previous) while (start < end && Splits(runes, start)) start++;
+            else while (end > start && Splits(runes, end)) end--;
+        }
+        return start == end ? null : string.Concat(runes[start..end].Select(rune => rune.ToString()));
+    }
+    /// <summary>A cut before <paramref name="index"/> splits a cluster when that scalar extends one or follows a ZWJ.</summary>
+    private static bool Splits(Rune[] runes, int index) => Extends(runes[index]) || runes[index - 1].Value == 0x200D;
+    /// <summary>Combining marks (General Category M), ZWJ and variation selectors extend the cluster before them.</summary>
+    private static bool Extends(Rune rune) =>
+        Rune.GetUnicodeCategory(rune) is UnicodeCategory.NonSpacingMark or UnicodeCategory.SpacingCombiningMark or UnicodeCategory.EnclosingMark ||
+        rune.Value == 0x200D || rune.Value is >= 0xFE00 and <= 0xFE0F || rune.Value is >= 0xE0100 and <= 0xE01EF;
+    private string CloneFingerprint(CloneUpload upload, OwnVoicePolicy policy) =>
+        VoiceLabActionGate.Fingerprint(["elevenlabs", Region.ToString(), VoiceLabOperation.CreateClone.ToString(), "/v1/voices/add", upload.DisplayName,
+            upload.Language, upload.CreatedAt, upload.RemoveBackgroundNoise.ToString(), upload.Samples.Count.ToString(CultureInfo.InvariantCulture),
+            .. upload.Samples.SelectMany((sample, index) => new[] { index.ToString(CultureInfo.InvariantCulture), sample.Role.ToString(), sample.Sha256 }),
+            PolicyIdentity(policy)]);
     private string DeleteFingerprint(string id, OwnVoicePolicy policy) =>
         VoiceLabActionGate.Fingerprint("elevenlabs", Region.ToString(), VoiceLabOperation.DeleteClone.ToString(), "/v1/voices/" + id, PolicyIdentity(policy));
-    private string ConversionFingerprint(byte[] audio, string model, VoiceLabVoiceChoice voice, string language) =>
-        Fingerprint(VoiceLabOperation.VoiceChange, "/v1/voice-changer/" + voice.Id + "?output_format=pcm_24000", model, voice, language, VoiceLabActionGate.ContentHash(audio));
-    private string Fingerprint(VoiceLabOperation operation, string path, string model, VoiceLabVoiceChoice voice, string language, string content) =>
-        VoiceLabActionGate.Fingerprint("elevenlabs", Region.ToString(), operation.ToString(), path, model, voice.Id,
-            voice.Kind.ToString(), voice.Policy is null ? null : PolicyIdentity(voice.Policy), language, content);
+    private string ConversionFingerprint(byte[] audio, string model, VoiceLabVoiceChoice voice, string language, uint seed, bool cleanAudioOn) =>
+        Fingerprint(VoiceLabOperation.VoiceChange, "/v1/voice-changer/" + voice.Id + "?output_format=pcm_24000", model, voice, language,
+            VoiceLabActionGate.ContentHash(audio), seed.ToString(CultureInfo.InvariantCulture), cleanAudioOn.ToString());
+    private string Fingerprint(VoiceLabOperation operation, string path, string model, VoiceLabVoiceChoice voice, string language, string content,
+        params string?[] options) =>
+        VoiceLabActionGate.Fingerprint(["elevenlabs", Region.ToString(), operation.ToString(), path, model, voice.Id,
+            voice.Kind.ToString(), voice.Policy is null ? null : PolicyIdentity(voice.Policy), language, content, .. options]);
     private static string PolicyIdentity(OwnVoicePolicy policy) => VoiceLabActionGate.Fingerprint(policy.RecordId, policy.CloneVoiceId,
         policy.RecordActive.ToString(), policy.ProviderConsentGranted.ToString(), policy.StatementVerified.ToString(), policy.SpeakerMatched.ToString(), policy.OwnerConfirmed.ToString());
     private VoiceLabReview Review(VoiceLabOperation operation, Guid requestId, string endpoint, string? model, string? voice,
@@ -344,11 +395,47 @@ public sealed class ElevenLabsVoiceLab : IDisposable
             consent?.RecordId, ConsentPolicy: consent);
     private static VoiceLabLanguageMode Explicit(string language) => new(VoiceLabLanguageModeKind.Explicit, language);
     private static VoiceLabLanguageMode Auto(string language) => new(VoiceLabLanguageModeKind.AutoDetected, language);
-    private static void ValidateCloneInput(string name, byte[] audio, string mimeType)
+    private sealed record CloneFile(VoiceLabCloneSampleRole Role, byte[] Wav, string Sha256);
+    private sealed record CloneUpload(string DisplayName, string Language, string CreatedAt, bool RemoveBackgroundNoise,
+        IReadOnlyList<CloneFile> Samples, string ConsentSha256);
+    /// <summary>WAV only until spike S5: 1–25 complete mono PCM16 files of 5–30 s, 10–240 s in total, with exactly one consent statement.</summary>
+    private static CloneUpload ValidatedClone(VoiceLabCloneRequest request)
     {
-        if (string.IsNullOrWhiteSpace(name) || Encoding.UTF8.GetByteCount(name) > 100 || name.Contains('\r') || name.Contains('\n') ||
-            audio.Length is < 1 or > MaxUpload || mimeType is not ("audio/wav" or "audio/mp4" or "audio/mpeg" or "audio/flac")) throw Invalid();
-        if (mimeType == "audio/wav" && !TryParseWav(audio, out _)) throw Invalid();
+        if (request?.DisplayName is null || request.Language is null || request.Samples is null) throw Invalid();
+        var items = request.Samples.ToArray();
+        // Trim() follows char.IsWhiteSpace, which is exactly Unicode White_Space (all of it in the BMP).
+        var name = request.DisplayName.Trim();
+        var seconds = request.CreatedAt.ToUnixTimeSeconds();
+        // §6.1 display name: 1 to 60 Unicode scalars after trimming Unicode White_Space, with no control character left in
+        // it (char.IsControl is exactly General Category Cc, all of it in the BMP); the trimmed name is sent and bound.
+        if (name.EnumerateRunes().Count() is < 1 or > 60 || name.Any(char.IsControl) ||
+            !CloneLanguage.IsMatch(request.Language) || seconds is < 0 or > 253402300799 || items.Length is < 1 or > 25 ||
+            items.Any(sample => sample?.Wav is null || !Enum.IsDefined(sample.Role)) ||
+            items.Count(sample => sample.Role == VoiceLabCloneSampleRole.ConsentStatement) != 1) throw Invalid();
+        var samples = new List<CloneFile>();
+        var total = 0.0;
+        foreach (var sample in items)
+        {
+            var snapshot = sample.Wav.ToArray();
+            if (snapshot.Length > MaxUpload || !TryParseWav(snapshot, out var wav) ||
+                wav.DataBytes / 2 < 5UL * wav.SampleRate || wav.DataBytes / 2 > 30UL * wav.SampleRate) throw Invalid();
+            total += wav.DataBytes / 2 / (double)wav.SampleRate;
+            samples.Add(new(sample.Role, snapshot, VoiceLabActionGate.ContentHash(snapshot)));
+        }
+        if (total is < 10 or > 240) throw Invalid();
+        return new(name, request.Language, DateTimeOffset.FromUnixTimeSeconds(seconds).ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture),
+            request.RemoveBackgroundNoise, samples, samples.Single(sample => sample.Role == VoiceLabCloneSampleRole.ConsentStatement).Sha256);
+    }
+    private static IEnumerable<Part> CloneParts(CloneUpload upload)
+    {
+        yield return new("name", upload.DisplayName + " (VoxClip)");
+        yield return new("files[]", null, "consent-statement.wav", upload.Samples.Single(sample => sample.Role == VoiceLabCloneSampleRole.ConsentStatement).Wav);
+        var number = 2;
+        foreach (var sample in upload.Samples.Where(sample => sample.Role == VoiceLabCloneSampleRole.Training))
+            yield return new("files[]", null, "sample-" + (number++).ToString("00", CultureInfo.InvariantCulture) + ".wav", sample.Wav);
+        yield return new("remove_background_noise", upload.RemoveBackgroundNoise ? "true" : "false");
+        yield return new("description", "VoxClip own-voice clone. Consent sha256:" + upload.ConsentSha256 + ". Created " + upload.CreatedAt + ".");
+        yield return new("labels", "{\"language\":\"" + upload.Language + "\"}");
     }
     private static VoiceLabEstimate Unknown(VoiceLabOperation operation, double units, string unit) =>
         new("elevenlabs", operation, units, unit, null, null, "Provider price and account-specific credits are unknown; review ElevenLabs usage before approval.");
@@ -429,18 +516,31 @@ public sealed class ElevenLabsVoiceLab : IDisposable
         return new(VoiceLabErrorKind.ProviderFailure, status.ToString(CultureInfo.InvariantCulture));
     }
 
-    private static MultipartFormDataContent Multipart(string boundary, IEnumerable<(string Field, string Value)> fields,
-        string fileField, string filename, string mime, byte[] bytes)
+    /// <summary>Mac Core uses the same form; .NET quotes it in the Content-Type header, as Mac Core does.</summary>
+    private string NewBoundary() => fixedBoundary ?? "voxclip-" + Guid.NewGuid().ToString("N");
+    /// <summary>A text part has a value; a file part has a filename and WAV bytes.</summary>
+    private sealed record Part(string Field, string? Value, string? Filename = null, byte[]? File = null);
+    /// <summary>Parts in send order with quoted names and no filename* parameter. Text parts carry no Content-Type.
+    /// Headers are written in insertion order, so a file part has Content-Disposition, then Content-Type, as on Mac.</summary>
+    private static MultipartFormDataContent Multipart(string boundary, IEnumerable<Part> parts)
     {
         var body = new MultipartFormDataContent(boundary);
-        foreach (var (field, value) in fields)
+        foreach (var part in parts)
         {
-            if (value.Contains('\r') || value.Contains('\n') || Encoding.UTF8.GetByteCount(value) > 256) throw Invalid();
-            body.Add(new StringContent(value, Encoding.UTF8), field);
+            HttpContent content;
+            if (part.File is { } file) content = new ByteArrayContent(file);
+            else
+            {
+                var value = part.Value!;
+                if (value.Contains('\r') || value.Contains('\n') || Encoding.UTF8.GetByteCount(value) > 256) throw Invalid();
+                content = new StringContent(value, Encoding.UTF8);
+                content.Headers.ContentType = null;
+            }
+            content.Headers.ContentDisposition = new ContentDispositionHeaderValue("form-data")
+                { Name = "\"" + part.Field + "\"", FileName = part.Filename is null ? null : "\"" + part.Filename + "\"" };
+            if (part.File is not null) content.Headers.ContentType = new MediaTypeHeaderValue("audio/wav");
+            body.Add(content);
         }
-        var file = new ByteArrayContent(bytes);
-        file.Headers.ContentType = new MediaTypeHeaderValue(mime);
-        body.Add(file, fileField, filename);
         return body;
     }
 
