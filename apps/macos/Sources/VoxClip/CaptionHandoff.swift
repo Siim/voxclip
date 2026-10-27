@@ -20,7 +20,7 @@ struct CaptionTileInput: Sendable, Equatable {
     let sampleWords: [String]
     let language: String?
     let frame: PixelSize
-    let overrides: [String: JSONValue]
+    var overrides: [String: JSONValue]
     let position: CaptionPosition?
     let sourceURL: URL
     let sourceTime: Double
@@ -30,6 +30,7 @@ struct CaptionTileInput: Sendable, Equatable {
     var frameAvailable = true
     var loading = false
     var contentKey = ""
+    var tileSize = PixelSize(width: 320, height: 144)
 }
 
 @MainActor final class CaptionHandoff {
@@ -91,14 +92,25 @@ struct CaptionTileInput: Sendable, Equatable {
             let layout = try await pipeline.layout(words: words, language: input.language, style: resolution.style,
                 position: input.position, frame: input.frame, duration: sample.duration)
             try Task.checkCancellation()
-            let raster = try await rasterizer.rasterize(layout, time: sample.time, previewWidth: 320, reduceMotion: true)
+            let raster = try await rasterizer.rasterize(layout, time: sample.time, previewWidth: 1280, reduceMotion: true)
             try Task.checkCancellation()
             guard let provider = CGDataProvider(data: raster.rgba as CFData),
                   let overlay = CGImage(width: raster.width, height: raster.height, bitsPerComponent: 8, bitsPerPixel: 32,
                     bytesPerRow: raster.bytesPerRow, space: CGColorSpaceCreateDeviceRGB(),
                     bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.last.rawValue), provider: provider,
                     decode: nil, shouldInterpolate: false, intent: .defaultIntent) else { return tileBackdrop(input, still: still) }
-            return tileBackdrop(input, still: still, overlay: overlay, position: resolution.style.position.y)
+            let page = layout.page(at: sample.time)
+            let rasterScale: Double = Double(raster.width) / Double(input.frame.width)
+            let capRatio: Double = Double(layout.font.capHeight) / Double(layout.unitsPerEm)
+            let capHeight: Double = (page?.fontPx ?? 1) * capRatio * rasterScale
+            let activeIndex = page?.words.lastIndex { (word: CaptionWord) -> Bool in word.start <= sample.time }
+            let activeRect = activeIndex.flatMap { (index: Int) -> CaptionRect? in
+                guard let page, page.wordRects.indices.contains(index) else { return nil }
+                return page.wordRects[index]
+            }
+            let focus: Double? = activeRect.map { (rect: CaptionRect) -> Double in (rect.x + rect.width / 2) * rasterScale }
+            let crop = Self.captionCrop(raster, target: input.tileSize, capHeight: capHeight, focus: focus)
+            return tileBackdrop(input, still: still, overlay: overlay, position: resolution.style.position.y, crop: crop)
         } catch is CancellationError { return nil }
         catch { return tileBackdrop(input, still: still) }
     }
@@ -119,8 +131,38 @@ struct CaptionTileInput: Sendable, Equatable {
         return NSImage(cgImage: image, size: CGSize(width: raster.width, height: raster.height))
     }
 
-    func tileBackdrop(_ input: CaptionTileInput, still: CGImage?, overlay: CGImage? = nil, position: Double? = nil) -> NSImage? {
-        let width: Int = 320
+    static func captionCrop(_ raster: CaptionRaster, target: PixelSize, capHeight: Double, focus: Double?) -> CGRect? {
+        var left = raster.width, top = raster.height, right = 0, bottom = 0
+        raster.rgba.withUnsafeBytes { (bytes: UnsafeRawBufferPointer) in
+            for row in 0..<raster.height {
+                for column in 0..<raster.width {
+                    let offset: Int = row * raster.bytesPerRow + column * 4 + 3
+                    guard bytes[offset] >= 96 else { continue }
+                    left = min(left, column); right = max(right, column + 1)
+                    top = min(top, row); bottom = max(bottom, row + 1)
+                }
+            }
+        }
+        guard right > left, bottom > top else { return nil }
+        let block = CGRect(x: left, y: top, width: right - left, height: bottom - top)
+        let padding: Double = max(4, capHeight * 0.75)
+        let aspect: Double = Double(target.width) / Double(target.height)
+        let minimumWidth: Double = Double(target.width) * capHeight / 36
+        let maximumWidth: Double = Double(target.width) * capHeight / 24
+        let contextWidth: Double = max(block.width + padding * 2, (block.height + padding * 2) * aspect)
+        let cropWidth: Double = min(max(contextWidth, minimumWidth), maximumWidth)
+        let cropHeight: Double = cropWidth / aspect
+        let halfWidth: Double = cropWidth / 2
+        let leftCentre: Double = block.minX - padding + halfWidth
+        let rightCentre: Double = max(leftCentre, block.maxX + padding - halfWidth)
+        let focusedCentre: Double = (focus ?? block.midX).clamped(to: leftCentre...rightCentre)
+        let centre: Double = contextWidth <= cropWidth ? block.midX : focusedCentre
+        return CGRect(x: centre - halfWidth, y: block.midY - cropHeight / 2,
+                      width: cropWidth, height: cropHeight).integral
+    }
+
+    func tileBackdrop(_ input: CaptionTileInput, still: CGImage?, overlay: CGImage? = nil, position: Double? = nil, crop: CGRect? = nil) -> NSImage? {
+        let width: Int = overlay?.width ?? 640
         let frameHeight: Double = Double(input.frame.height)
         let frameWidth: Double = Double(max(1, input.frame.width))
         let ratio: Double = frameHeight / frameWidth
@@ -147,18 +189,19 @@ struct CaptionTileInput: Sendable, Equatable {
         let maximumTop: Double = max(0, canvasHeight - bandHeight)
         let top: Double = (captionCentre - halfBand).clamped(to: 0...maximumTop)
         let band = CGRect(x: 0, y: top.rounded(.down), width: Double(width), height: bandHeight.rounded(.up))
-        guard let background = context.makeImage()?.cropping(to: band),
-              let tile = CGContext(data: nil, width: width, height: 144, bitsPerComponent: 8, bytesPerRow: 0,
+        guard let background = context.makeImage(),
+              let tile = CGContext(data: nil, width: input.tileSize.width, height: input.tileSize.height, bitsPerComponent: 8, bytesPerRow: 0,
                                    space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
-        let target = CGRect(x: 0, y: 0, width: width, height: 144)
-        let backgroundScale = max(target.width / band.width, target.height / band.height)
-        let backgroundSize = CGSize(width: band.width * backgroundScale, height: band.height * backgroundScale)
-        tile.draw(background, in: CGRect(x: (target.width - backgroundSize.width) / 2, y: (target.height - backgroundSize.height) / 2, width: backgroundSize.width, height: backgroundSize.height))
-        if let caption = overlay?.cropping(to: band) {
-            let captionScale = min(target.width / band.width, target.height / band.height)
-            let captionSize = CGSize(width: band.width * captionScale, height: band.height * captionScale)
-            tile.draw(caption, in: CGRect(x: (target.width - captionSize.width) / 2, y: (target.height - captionSize.height) / 2, width: captionSize.width, height: captionSize.height))
-        }
+        let target = CGRect(x: 0, y: 0, width: input.tileSize.width, height: input.tileSize.height)
+        let region: CGRect = crop ?? band
+        let scale: Double = max(target.width / region.width, target.height / region.height)
+        let drawn = CGRect(x: -region.minX * scale, y: (region.maxY - bounds.height) * scale,
+                           width: bounds.width * scale, height: bounds.height * scale)
+        tile.setFillColor(DesignValues.parse(input.loading ? "#000000" : input.backdrop ?? "#000000").cgColor)
+        tile.fill(target)
+        tile.interpolationQuality = .high
+        tile.draw(background, in: drawn)
+        if let overlay { tile.draw(overlay, in: drawn) }
         guard let image = tile.makeImage() else { return nil }
         return NSImage(cgImage: image, size: target.size)
     }

@@ -1,5 +1,10 @@
 # macOS implementation contracts
 
+### 2026-10-28 — Round-3 A6: legible caption gallery crops
+
+- Gallery tiles and the live chip reframe the export raster's visible caption block in its band context, using a 1280-pixel raster to avoid magnifying tiny glyphs. Font cap height bounds the crop scale; long blocks retain the active word and its neighbours instead of shrinking the whole sentence. Background and glyphs share the crop/scale. The chip requests its own 16:9 crop. No second renderer is added.
+- `DebugCaptionsSection` measures internal glyph-edge rows in every style's 140×63 tile and default-style 64×36 chip at actual 1×, in light and dark; a box alone cannot satisfy the four-edge-row test. The selected tile additionally retains project overrides. Per-style PNGs accompany the gallery captures. Serial gate results are recorded at the end of this round.
+
 ### 2026-10-28 — Round-3 A5: hosted compiler and asset ownership
 
 - Every inference-heavy arithmetic/closure site named by the round-2 reviewer now has typed intermediates and closure parameters. Waveform accounting uses a typed byte count; the 24 MiB bound is unchanged. The final fresh diagnostic build and hosted Xcode 26 run verify the result.

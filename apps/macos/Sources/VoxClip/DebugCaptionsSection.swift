@@ -54,6 +54,33 @@ import VoxClipCore
         let fallbackMatches: Bool = pixel.map { (color: NSColor) -> Bool in abs(color.redComponent - 0.65) < 0.02 && abs(color.greenComponent - 0.65) < 0.02 } ?? false
         check("gallery fallback draws the same 35-percent-dim frame band without text", fallbackMatches)
         for (name, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
+            for captionStyle in app.styles {
+                var tileInput = model.captionTileInput(captionStyle)
+                tileInput.frameAvailable = false
+                tileInput.backdrop = name == "light" ? "#4B4B4B" : "#181818"
+                guard let image = await app.captions.tile(tileInput),
+                      let source = image.cgImage(forProposedRect: nil, context: nil, hints: nil),
+                      let bitmap = tileBitmap(source, width: 140, height: 63) else {
+                    check("\(name) \(captionStyle.id) gallery text raster exists", false)
+                    continue
+                }
+                let height = glyphPixelHeight(bitmap)
+                check("\(name) \(captionStyle.id) gallery text is at least 8 px at 1x (\(height))", height >= 8)
+                if let data = bitmap.representation(using: .png, properties: [:]) {
+                    try data.write(to: directory.appendingPathComponent("tile-\(captionStyle.id)-\(name)-1x.png"))
+                }
+                tileInput.tileSize = PixelSize(width: 128, height: 72)
+                tileInput.overrides = [:]
+                if let chip = await app.captions.tile(tileInput),
+                   let source = chip.cgImage(forProposedRect: nil, context: nil, hints: nil),
+                   let bitmap = tileBitmap(source, width: 64, height: 36) {
+                    let height = glyphPixelHeight(bitmap)
+                    check("\(name) \(captionStyle.id) live chip text is at least 8 px at 1x (\(height))", height >= 8)
+                    if let data = bitmap.representation(using: .png, properties: [:]) {
+                        try data.write(to: directory.appendingPathComponent("chip-\(captionStyle.id)-\(name)-1x.png"))
+                    }
+                } else { check("\(name) \(captionStyle.id) live chip text raster exists", false) }
+            }
             for width in [360, 320] {
                 let view = NSHostingView(rootView: CaptionsSection(model: model).frame(width: CGFloat(width), height: 530).background(DesignValues.color("bg.surface")))
                 view.frame = CGRect(x: 0, y: 0, width: width, height: 530)
@@ -67,7 +94,32 @@ import VoxClipCore
                 window.close()
             }
         }
+        try JSONEncoder().encode(results).write(to: directory.appendingPathComponent("caption-results.json"), options: .atomic)
         return results
+    }
+    private static func tileBitmap(_ image: CGImage, width: Int, height: Int) -> NSBitmapImageRep? {
+        guard let context = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
+                                      space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
+        context.interpolationQuality = .high
+        context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+        return context.makeImage().map { NSBitmapImageRep(cgImage: $0) }
+    }
+    private static func glyphPixelHeight(_ bitmap: NSBitmapImageRep) -> Int {
+        var longest = 0, run = 0
+        for row in 1..<(bitmap.pixelsHigh - 1) {
+            var transitions = 0
+            for column in 1..<(bitmap.pixelsWide - 1) {
+                guard let before = bitmap.colorAt(x: column - 1, y: row)?.usingColorSpace(.sRGB),
+                      let after = bitmap.colorAt(x: column, y: row)?.usingColorSpace(.sRGB) else { continue }
+                let red: Double = abs(before.redComponent - after.redComponent)
+                let green: Double = abs(before.greenComponent - after.greenComponent)
+                let blue: Double = abs(before.blueComponent - after.blueComponent)
+                if max(red, green, blue) >= 0.18 { transitions += 1 }
+            }
+            run = transitions >= 4 ? run + 1 : 0
+            longest = max(longest, run)
+        }
+        return longest
     }
 }
 #endif

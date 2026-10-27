@@ -66,7 +66,7 @@ enum CaptionStyleGroup: String, CaseIterable {
     }
     private var liveChip: some View {
         Group {
-            if let style { CaptionTile(input: model.captionTileInput(style), pipeline: model.app.captions) }
+            if let style { CaptionTile(input: chipInput(style), pipeline: model.app.captions) }
             else { DesignValues.color("stage") }
         }.frame(width: 64, height: 36).clipShape(.rect(cornerRadius: 6)).accessibilityHidden(true)
     }
@@ -81,6 +81,11 @@ enum CaptionStyleGroup: String, CaseIterable {
                     .font(.system(size: 11)).foregroundStyle(DesignValues.color("text.secondary")).lineLimit(1)
             }.buttonStyle(.plain).accessibilityLabel("Fine tune captions, \(model.captionSummary)").accessibilityValue(fineTune ? "Expanded" : "Collapsed")
         }
+    }
+    private func chipInput(_ style: CaptionStyle) -> CaptionTileInput {
+        var input = model.captionTileInput(style)
+        input.tileSize = PixelSize(width: 128, height: 72)
+        return input
     }
     private var gallery: some View {
         ScrollViewReader { reader in
