@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json.Nodes;
+using VoxClip.Core.Services.LLM;
 
 namespace VoxClip.Core.Services.Process;
 
@@ -20,12 +21,14 @@ public sealed partial class ProcessRunner : IAppServerRunner
         var errors = ReadAsync(child.Error, request.OutputLimitBytes, _ => { }, deadline.Token);
         var exit = child.WaitAsync();
         var output = new StringBuilder();
+        var responses = new Dictionary<long, JsonObject>();
         long outputBytes = 0;
         using var reader = new StreamReader(child.Output, Encoding.UTF8, false, 4096, true);
         var commands = (request.StandardInput ?? "").Split('\n', StringSplitOptions.RemoveEmptyEntries);
         async Task Send(string command) { await child.Input.WriteAsync(Encoding.UTF8.GetBytes(command + "\n"), deadline.Token).ConfigureAwait(false); await child.Input.FlushAsync(deadline.Token).ConfigureAwait(false); }
-        async Task ReadUntil(int id)
+        async Task ReadUntil(long id)
         {
+            if (responses.ContainsKey(id)) return;
             var line = new StringBuilder();
             var character = new char[1];
             while (await reader.ReadAsync(character.AsMemory(), deadline.Token).ConfigureAwait(false) > 0)
@@ -34,10 +37,11 @@ public sealed partial class ProcessRunner : IAppServerRunner
                 outputBytes += character[0] < 0x80 ? 1 : character[0] < 0x800 ? 2 : char.IsLowSurrogate(character[0]) ? 1 : 3;
                 if (outputBytes > request.OutputLimitBytes) throw new IOException("The app-server output limit was exceeded.");
                 if (character[0] != '\n') { line.Append(character[0]); continue; }
-                JsonNode? parsed;
-                try { parsed = JsonNode.Parse(line.ToString()); } catch (System.Text.Json.JsonException) { parsed = null; }
+                var parsed = LlmOutput.Envelope(line.ToString()) as JsonObject;
                 line.Clear();
-                if (parsed?["id"] is JsonValue value && value.TryGetValue<int>(out var received) && received == id) return;
+                if (parsed is null || LlmOutput.CliInteger(parsed["id"]) is not { } received || received is not (1 or 2) ||
+                    !responses.TryAdd(received, parsed)) continue;
+                if (received == id || received == 2) return;
             }
             throw new IOException("The app server stopped before returning a response.");
         }
@@ -46,6 +50,8 @@ public sealed partial class ProcessRunner : IAppServerRunner
             if (commands.Length != 3) throw new ArgumentException("An app-server handshake needs three messages.", nameof(request));
             await Send(commands[0]).ConfigureAwait(false);
             await ReadUntil(1).ConfigureAwait(false);
+            if (responses.ContainsKey(2)) return;
+            if (responses[1]["error"] is not null) throw new IOException("The app server could not initialize.");
             await Send(commands[1]).ConfigureAwait(false);
             await Send(commands[2]).ConfigureAwait(false);
             await ReadUntil(2).ConfigureAwait(false);

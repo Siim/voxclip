@@ -15,6 +15,9 @@ internal static class LlmOutput
     internal static double Number(JsonNode value) => value is JsonValue scalar && scalar.TryGetValue<double>(out var number) ? number :
         double.Parse(value.ToJsonString(), NumberStyles.Float, CultureInfo.InvariantCulture);
 
+    internal static long? CliInteger(JsonNode? value) => value is JsonValue scalar && scalar.TryGetValue<double>(out var number) &&
+        double.IsFinite(number) && number == Math.Truncate(number) && number >= -9223372036854775808d && number < 9223372036854775808d ? (long)number : null;
+
     /// <summary>ai.md §4.5: drop a code fence, parse the whole text, and only when that fails take the first balanced object. A
     /// whole text that parses as something other than an object holds no object (§2.3). Trimming uses JavaScript's whitespace,
     /// and every delimiter is one UTF-16 unit, so this reads the same Unicode scalars as the Mac.</summary>

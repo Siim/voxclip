@@ -256,13 +256,7 @@ internal sealed class CliLlmAdapter(ConnectorId id, LlmCatalog catalog, IProcess
             throw Failure(LlmErrorKind.CliFailed, model, request.Feature, FirstLine(result.StandardError));
         var message = root["result"] is JsonValue resultValue && resultValue.TryGetValue<string>(out var resultText) ? resultText : FirstLine(result.StandardError);
         if (isError || result.ExitCode != 0)
-        {
-            var status = Count(root, "api_error_status");
-            if (status is 401 or 403) throw Failure(LlmErrorKind.CliSignedOut, model, request.Feature);
-            if (status == 429) throw Failure(LlmErrorKind.PlanLimit, model, request.Feature, message);
-            if (status == 529) throw Failure(LlmErrorKind.Overloaded, model, request.Feature);
-            throw Classify(message, model, request.Feature);
-        }
+            throw Classify(message, model, request.Feature, Count(root, "api_error_status"));
         var answering = (root["modelUsage"] as JsonObject)?.OrderByDescending(pair => Count(pair.Value, "outputTokens") ?? Count(pair.Value, "output_tokens") ?? 0)
             .ThenBy(pair => System.Text.Encoding.UTF8.GetBytes(pair.Key), Utf8KeyComparer.Instance).FirstOrDefault().Key ?? model;
         var usage = root["usage"];
@@ -325,7 +319,9 @@ internal sealed class CliLlmAdapter(ConnectorId id, LlmCatalog catalog, IProcess
             foreach (var line in result.StandardOutput.Split('\n'))
             {
                 var response = LlmOutput.Envelope(line);
-                if (Count(response, "id") != 2 || (response?["result"] as JsonObject)?["data"] is not JsonArray data) continue;
+                if (Count(response, "id") != 2) continue;
+                if ((response?["result"] as JsonObject)?["data"] is not JsonArray data)
+                    throw new IOException("The app server returned no model list.");
                 var models = new List<LlmModel> { new("default", "CLI default", null, null, ModelSource.Curated) };
                 foreach (var item in data)
                 {
@@ -374,13 +370,22 @@ internal sealed class CliLlmAdapter(ConnectorId id, LlmCatalog catalog, IProcess
         public int Compare(byte[]? left, byte[]? right) => left.AsSpan().SequenceCompareTo(right);
     }
     private static string? Text(JsonNode? node) => node is JsonValue scalar && scalar.TryGetValue<string>(out var text) ? text : null;
-    private static int? Count(JsonNode? node, string key) => node is JsonObject objectValue && objectValue[key] is JsonValue scalar &&
-        scalar.TryGetValue<double>(out var count) && double.IsFinite(count) && count == Math.Truncate(count) && count >= int.MinValue && count <= int.MaxValue ? (int)count : null;
+    private static long? Count(JsonNode? node, string key) => node is JsonObject objectValue ? LlmOutput.CliInteger(objectValue[key]) : null;
     private static string FirstLine(string value) => value.Split('\n').Select(EditingAlgorithms.JsTrim).FirstOrDefault(line => line.Length != 0) ?? "The CLI exited without a result.";
-    private LlmException Classify(string message, string model, LlmFeature feature)
+    private LlmException Classify(string message, string model, LlmFeature feature, long? status = null)
     {
         bool Matches(string list) => (settings[list] as JsonArray ?? []).Any(marker => message.Contains(marker!.GetValue<string>(), StringComparison.OrdinalIgnoreCase));
-        var kind = Matches("authErrorMarkers") ? LlmErrorKind.CliSignedOut : Matches("limitMarkers") ? LlmErrorKind.PlanLimit : Matches("overloadMarkers") || message.Contains("overloaded", StringComparison.OrdinalIgnoreCase) ? LlmErrorKind.Overloaded :
+        if (Matches("authErrorMarkers") || id == ConnectorId.ClaudeCode && status is 401 or 403)
+            return Failure(LlmErrorKind.CliSignedOut, model, feature, message);
+        if (Matches("limitMarkers") || id == ConnectorId.ClaudeCode && status == 429)
+            return Failure(LlmErrorKind.PlanLimit, model, feature, message);
+        if (id == ConnectorId.ClaudeCode)
+        {
+            var claudeKind = Matches("overloadMarkers") || status == 529 ? LlmErrorKind.Overloaded :
+                message.Contains("prompt is too long", StringComparison.OrdinalIgnoreCase) ? LlmErrorKind.ContextTooLong : LlmErrorKind.CliFailed;
+            return Failure(claudeKind, model, feature, message);
+        }
+        var kind = Matches("overloadMarkers") || message.Contains("overloaded", StringComparison.OrdinalIgnoreCase) ? LlmErrorKind.Overloaded :
             Matches("modelErrorMarkers") ? LlmErrorKind.ModelNotFound : message.Contains("prompt is too long", StringComparison.OrdinalIgnoreCase) || message.Contains("context", StringComparison.OrdinalIgnoreCase) && (message.Contains("length", StringComparison.OrdinalIgnoreCase) || message.Contains("window", StringComparison.OrdinalIgnoreCase)) ? LlmErrorKind.ContextTooLong : LlmErrorKind.CliFailed;
         return Failure(kind, model, feature, message);
     }

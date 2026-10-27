@@ -1,5 +1,22 @@
 # Windows fixed contracts
 
+### 2026-10-27 — First app-server response wins (sol-followups-5 item 3)
+
+- Core stops on the first id-2 response, including a malformed `result`; later replies cannot repair it. The process runner parses strict envelopes with `LlmOutput.CliInteger`, retains the first response for each requested id and ignores duplicates, including initialization (ai §6.10). Cached/curated fallback and public declarations are unchanged.
+- Three new shared rows cover valid-then-malformed, malformed-then-valid and an integral-float id after ignored fractional/out-of-range ids. The existing wrong-optional-fields row now isolates model metadata rather than depending on a later duplicate. Native runner tests exercise both orders with integer/float ids (four cases) and a duplicate initialization response (one case).
+- Current `shared/fixtures/llm/cli-replies.json`: 86 cases, sha256 `04444fc06a9143a28798390a16c559adde066686e70355b9b4bf6fc728d33401`. Older fixture entries below are history.
+- Verification: Release solution build passes with zero warnings; the shared/process/CLI subset passes all 415 tests without skips and the full Core suite reports 1,863 tests, 28 skipped, no failures. Mac build and Core tests pass (575 tests reported, eight explicit skip notices), including all 86 CLI vectors and the five new native runner cases. The fresh Swift 300 ms slow-expression build passes with warnings only in unchanged expressions/declarations. All 11 LLM fixture files reproduce byte-for-byte across two generator runs and `--check`; the exact CI secret pattern, tracked PowerShell ASCII, JSON, schemas, styles, tokens (16 tests), version and whitespace checks pass. Windows-only native tests remain among the documented platform skips on this Mac host.
+
+### 2026-10-27 — Claude failure category order (sol-followups-5 item 2)
+
+- Claude passes its optional 64-bit status to `Classify` and uses the first matching category in ai §6.8 list order. Each category combines its markers OR status; statuses no longer take precedence over every marker. Claude's remaining context/failure categories match Mac; Codex classification is unchanged.
+- `shared/fixtures/llm/cli-replies.json`: 83 cases, sha256 `e9160b112633de26a7741a962e78a5d1665c6634eb654b10672f41bc479dc2db`. Four new conflicting-marker/status vectors replay on both platforms, including status `529.0`. Older fixture entries below are history.
+
+### 2026-10-27 — CLI signed 64-bit integers (sol-followups-5 item 1)
+
+- CLI `Count` now returns `long?` through `LlmOutput.CliInteger`: integral binary64 values in [-2^63, 2^63), including negative values; fractional, wrongly typed and out-of-range fields are absent (ai §4.5). `LlmUsage` fields are `long?`, preserving wide counts through completions, results, serialization and diagnostics; existing HTTP integer counts convert without changing their parsing. No App/UI or persisted project format changes.
+- `shared/fixtures/llm/cli-replies.json`: 79 cases, sha256 `75c624660858e3fb5c4c47edbb3c75758198171c1382a61f7fe4e3de9224b451`. Ten new cases cover counts above Int32, 2^53, negative values, the signed endpoints and Codex usage. Older fixture entries below are history.
+
 ### 2026-10-27 — Schema-valid writer fallback (sol-followups-3 round 2)
 
 - Core Services `AppVersion.Current` reads entry assembly informational metadata

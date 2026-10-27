@@ -1,5 +1,22 @@
 # macOS implementation contracts
 
+### 2026-10-27 — First app-server response wins (sol-followups-5 item 3)
+
+- Core stops on the first id-2 response, including a malformed `result`; later replies cannot replace it. The native runner parses strict envelopes with the shared signed-64-bit integer rule and handles each requested response id only once, including initialization (ai §6.10). Cached/curated fallback and public declarations are unchanged.
+- Three new shared rows cover valid-then-malformed, malformed-then-valid and an integral-float id after ignored fractional/out-of-range ids. The existing wrong-optional-fields row now isolates model metadata rather than depending on a later duplicate. Native runner tests exercise both orders with integer/float ids (four cases) and a duplicate initialization response (one case).
+- Current `shared/fixtures/llm/cli-replies.json`: 86 cases, sha256 `04444fc06a9143a28798390a16c559adde066686e70355b9b4bf6fc728d33401`. Older fixture entries below are history.
+- Verification: `swift build` and the full serialized Core suite pass (575 tests reported in 42 suites, eight explicit skip notices, no failures), including all 86 CLI vectors and the five new native runner cases. A fresh 300 ms slow-expression test build passes; its warnings are in unchanged expressions/declarations. Windows Release builds with zero warnings and its full Core suite reports 1,863 tests, 28 skipped, no failures. All 11 LLM fixture files reproduce byte-for-byte across two generator runs and `--check`; the exact CI secret pattern, tracked PowerShell ASCII, JSON, schemas, styles, tokens (16 tests), version and whitespace checks pass.
+
+### 2026-10-27 — Claude failure category order (sol-followups-5 item 2)
+
+- Claude failures use the first matching category in ai §6.8 list order. Within each category, markers OR the numeric status match; signed out precedes plan limit, which precedes overloaded. Mac classification already follows this rule; four conflicting-marker/status vectors now replay on both platforms, including status `529.0`.
+- `shared/fixtures/llm/cli-replies.json`: 83 cases, sha256 `e9160b112633de26a7741a962e78a5d1665c6634eb654b10672f41bc479dc2db`. Older fixture entries below are history.
+
+### 2026-10-27 — CLI signed 64-bit integers (sol-followups-5 item 1)
+
+- Every CLI envelope integer uses an integral binary64 value in [-2^63, 2^63), including negative values; fractional, wrongly typed and out-of-range fields are absent (ai §4.5). `JSONValue.cliInt` checks `Int64` exactly before converting to the platform `Int`. Ranking and recorded Claude/Codex usage replay the same boundary vectors as Windows.
+- `shared/fixtures/llm/cli-replies.json`: 79 cases, sha256 `75c624660858e3fb5c4c47edbb3c75758198171c1382a61f7fe4e3de9224b451`. Ten new cases cover counts above Int32, 2^53, negative values, the signed endpoints and Codex usage. Older fixture entries below are history.
+
 ### 2026-10-27 — Schema-valid writer fallback (sol-followups-3 round 2)
 
 - `AppVersion.current` keeps the CLI display fallback `unknown` for missing,

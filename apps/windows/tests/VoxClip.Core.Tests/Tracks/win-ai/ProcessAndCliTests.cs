@@ -143,6 +143,11 @@ public sealed class ProcessAndCliTests
         try
         {
             var answer = await connector.SendAsync(request, input["model"]!.GetValue<string>(), TestContext.Current.CancellationToken);
+            if (expected["usage"] is JsonObject expectedUsage)
+            {
+                long? Count(string key) => expectedUsage[key] is { } value ? (long)LlmOutput.Number(value) : null;
+                Assert.Equal(new LlmUsage(Count("input"), Count("output"), Count("cacheRead"), Count("cacheWrite")), answer.Usage);
+            }
             switch (answer.Stop)
             {
                 case StopKind.Truncated: outcome = "truncated"; break;
@@ -250,6 +255,40 @@ public sealed class ProcessAndCliTests
         var executable = OperatingSystem.IsWindows() ? Path.Combine(Environment.SystemDirectory, "where.exe") : "/bin/echo";
         var exception = await Assert.ThrowsAsync<ArgumentException>(() => new ProcessRunner().RunAsync(new(executable, [], Path.GetTempPath(), null, TimeSpan.FromSeconds(1), new Dictionary<string, string?> { [name] = "not-a-credential" }), null, CancellationToken.None));
         Assert.StartsWith("CLI authentication environment must be inherited unchanged.", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task AppServerFirstResponseDecides(bool malformedFirst, bool floatingId)
+    {
+        RequireMac();
+        var initializationId = floatingId ? "1.0" : "1";
+        var modelId = floatingId ? "2.0" : "2";
+        var validResult = "{\"data\":[]}";
+        var malformedResult = "\"not an object\"";
+        var firstResult = malformedFirst ? malformedResult : validResult;
+        var secondResult = malformedFirst ? validResult : malformedResult;
+        var script = $"IFS= read -r init; printf '%s\\n' '{{\"id\":{initializationId},\"result\":{{}}}}'; IFS= read -r ready; IFS= read -r list; printf '%s\\n' '{{\"id\":{modelId},\"result\":{firstResult}}}' '{{\"id\":2,\"result\":{secondResult}}}'; /bin/sleep 45";
+        var request = new ProcessRequest("/bin/sh", ["-c", script], Path.GetTempPath(), "initialize\ninitialized\nmodel/list\n", TimeSpan.FromSeconds(10));
+        var result = await ((IAppServerRunner)new ProcessRunner()).RunAppServerAsync(request, TestContext.Current.CancellationToken);
+        var responses = result.StandardOutput.Split('\n').Select(line => LlmOutput.Envelope(line)).OfType<JsonObject>()
+            .Where(response => LlmOutput.CliInteger(response["id"]) == 2);
+        var response = Assert.Single(responses);
+        Assert.Equal(malformedFirst, response["result"] is JsonValue);
+        Assert.True(result.Elapsed < TimeSpan.FromSeconds(5));
+    }
+
+    [Fact]
+    public async Task AppServerIgnoresDuplicateInitializationResponse()
+    {
+        RequireMac();
+        var script = "IFS= read -r init; printf '%s\\n' '{\"id\":1,\"result\":{}}' '{\"id\":1.0,\"error\":{\"message\":\"ignored duplicate\"}}'; IFS= read -r ready; IFS= read -r list; printf '%s\\n' '{\"id\":2,\"result\":{\"data\":[]}}'; /bin/sleep 45";
+        var request = new ProcessRequest("/bin/sh", ["-c", script], Path.GetTempPath(), "initialize\ninitialized\nmodel/list\n", TimeSpan.FromSeconds(10));
+        var result = await ((IAppServerRunner)new ProcessRunner()).RunAppServerAsync(request, TestContext.Current.CancellationToken);
+        Assert.Contains("\"id\":2", result.StandardOutput, StringComparison.Ordinal);
     }
 
     [Fact]

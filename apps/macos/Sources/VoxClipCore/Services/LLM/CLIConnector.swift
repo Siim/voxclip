@@ -512,6 +512,7 @@ public actor CLIConnector: LLMConnector {
                 if let response = CanonicalResponseParser.envelope(line)?.cliObject,
                    response["id"]?.cliInt == 2 {
                     entries = response["result"]?.cliObject?["data"]?.cliArray
+                    break
                 }
             }
             guard let entries else { throw probeFailure }
@@ -579,10 +580,14 @@ private extension JSONValue {
     var cliArray: [JSONValue]? { if case .array(let value) = self { value } else { nil } }
     var cliString: String? { if case .string(let value) = self { value } else { nil } }
     var cliBool: Bool? { if case .bool(let value) = self { value } else { nil } }
-    var cliInt: Int? {
-        if case .number(let value) = self, value.isFinite, value.rounded() == value { Int(exactly: value) } else { nil }
-    }
     var cliStrings: [String] { cliArray?.compactMap(\.cliString) ?? [] }
+}
+
+extension JSONValue {
+    var cliInt: Int? {
+        guard case .number(let value) = self, let integer = Int64(exactly: value) else { return nil }
+        return Int(exactly: integer)
+    }
 }
 
 private func cliEncode(_ value: JSONValue) throws -> String {
