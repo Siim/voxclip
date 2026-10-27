@@ -114,7 +114,10 @@ import VoxClipCore
         for (name, mode) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
             let appearance = NSAppearance(named: mode)!
             window.appearance = appearance
+            for pauseCut in [true, false] {
             appearance.performAsCurrentDrawingAppearance {
+                pageState.cutPauses = pauseCut ? Set(model.pauses.map(\.id)) : []
+                renderer.update(pageState)
                 text.backgroundColor = DesignValues.nsColor("bg.surface")
                 text.needsDisplay = true
                 guard let cached = text.bitmapImageRepForCachingDisplay(in: text.bounds) else { return }
@@ -139,10 +142,15 @@ import VoxClipCore
                 let badgePixels = opaquePixels(bitmap, rect: rect("clip-start:pixel-clip"), size: text.bounds.size, color: DesignValues.nsColor("clip.badgeBackground"))
                 let scopedPixels = opaquePixels(bitmap, rect: rect("pixel-low"), size: text.bounds.size, color: DesignValues.nsColor("text.secondary"))
                 let strikePixels = opaquePixels(bitmap, rect: rect("pixel-cut"), size: text.bounds.size, color: DesignValues.nsColor("cut.stroke"))
+                if let pause = model.pauses.first {
+                    let pausePixels = opaquePixels(bitmap, rect: rect(pause.id), size: text.bounds.size, color: DesignValues.nsColor("pause.background"), patch: 3)
+                    results.append(.init(name: "\(name) \(pauseCut ? "cut" : "uncut") pause bitmap \(pauseCut ? "paints" : "has no") chip fill (\(pausePixels) pixels)", passed: pauseCut ? pausePixels >= 8 : pausePixels == 0))
+                }
                 results.append(.init(name: "\(name) clip badge paints clip.badgeBackground over the page (\(badgePixels) pixels)", passed: badgePixels >= 8))
                 results.append(.init(name: "\(name) out-of-scope glyphs paint opaque text.secondary (\(scopedPixels) pixels)", passed: scopedPixels >= 3))
                 results.append(.init(name: "\(name) cut strike matches cut.stroke within three channels (\(strikePixels) pixels)", passed: strikePixels >= 3))
-                if let data = bitmap.representation(using: .png, properties: [:]) { try? data.write(to: directory.appendingPathComponent("transcript-page-\(name).png")) }
+                if let data = bitmap.representation(using: .png, properties: [:]) { try? data.write(to: directory.appendingPathComponent("transcript-page-\(name)-\(pauseCut ? "cut" : "uncut")-pause.png")) }
+            }
             }
         }
         try JSONEncoder().encode(probes).write(to: directory.appendingPathComponent("transcript-decoration-pixels.json"))
@@ -181,7 +189,7 @@ import VoxClipCore
         }
         return results
     }
-    private static func opaquePixels(_ bitmap: NSBitmapImageRep, rect: CGRect, size: NSSize, color: NSColor) -> Int {
+    private static func opaquePixels(_ bitmap: NSBitmapImageRep, rect: CGRect, size: NSSize, color: NSColor, patch: Int = 1) -> Int {
         guard let foreground = color.usingColorSpace(.sRGB), let background = DesignValues.nsColor("bg.surface").usingColorSpace(.sRGB), rect.width > 0, rect.height > 0 else { return 0 }
         let alpha = foreground.alphaComponent
         let target = NSColor(srgbRed: foreground.redComponent * alpha + background.redComponent * (1 - alpha),
@@ -199,10 +207,18 @@ import VoxClipCore
         guard lowerX < upperX, lowerY < upperY else { return 0 }
         var count = 0
         let tolerance = 3.0 / 255.0
+        let radius: Int = patch / 2
+        func matches(_ column: Int, _ row: Int) -> Bool {
+            guard column >= lowerX, column < upperX, row >= lowerY, row < upperY,
+                  let pixel = bitmap.colorAt(x: column, y: row) else { return false }
+            return abs(pixel.redComponent - target.redComponent) <= tolerance && abs(pixel.greenComponent - target.greenComponent) <= tolerance && abs(pixel.blueComponent - target.blueComponent) <= tolerance
+        }
         for row in lowerY..<upperY {
             for column in lowerX..<upperX {
-                guard let pixel = bitmap.colorAt(x: column, y: row) else { continue }
-                if abs(pixel.redComponent - target.redComponent) <= tolerance && abs(pixel.greenComponent - target.greenComponent) <= tolerance && abs(pixel.blueComponent - target.blueComponent) <= tolerance { count += 1 }
+                let filled: Bool = (-radius...radius).allSatisfy { (vertical: Int) -> Bool in
+                    (-radius...radius).allSatisfy { (horizontal: Int) -> Bool in matches(column + horizontal, row + vertical) }
+                }
+                if filled { count += 1 }
             }
         }
         return count

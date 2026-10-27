@@ -1,5 +1,10 @@
 # macOS implementation contracts
 
+### 2026-10-28 — Round-3 A10: pause fill bitmap coverage
+
+- `DebugTranscriptPixels` captures the same TextKit page with cut and uncut pauses in each appearance. It samples solid 3×3 `pause.background` patches inside the laid-out pause span: cut must paint at least eight interior pixels, uncut must paint none. Requiring a solid patch excludes coincidentally matching antialiased glyph edges. The existing radius/attribute check remains supplemental only (design §4.1).
+- Four PNGs retain the actual fill/absence evidence alongside strike, scoped-glyph and badge checks. The renderer itself is unchanged.
+
 ### 2026-10-28 — Round-3 A9: Reset to Style copy
 
 - Fine tuning's visible and accessible reset action is exactly “Reset to Style” (design §6.1). The underlying reset operation is unchanged.
