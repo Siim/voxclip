@@ -15,7 +15,10 @@ struct RewriteContextTests {
             let context = try await catalog.resolvedContextTokens(connector: connector, model: model, models: models)
             #expect(context == row["context"] as? Int, "\(row["id"] ?? "?")")
             guard let count = row["sourceWordCount"] as? Int else { continue }
-            let source = (0..<count).map { TimedWord(id: "w\($0)", text: "word", start: Double($0) / 10, end: Double($0) / 10 + 0.05) }
+            let source = (0..<count).map { (index: Int) -> TimedWord in
+                let start: Double = Double(index) / 10
+                return TimedWord(id: "w\(index)", text: "word", start: start, end: start + 0.05)
+            }
             let rewrite = VoiceRewriteRequest(id: UUID(), scope: .fullTake, sourceWords: source, instruction: "Improve", language: "en",
                                               targetSeconds: 150, minChars: 1, maxChars: 5000)
             let service = VoiceRewriteService(shared: SharedResources(root: try FixtureLoader.sharedRoot()))

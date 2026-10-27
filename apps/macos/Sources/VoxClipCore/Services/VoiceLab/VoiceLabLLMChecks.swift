@@ -77,7 +77,14 @@ enum VoiceLabLLMChecks {
             return false
         }
         guard digits.allSatisfy({ (UInt8(ascii: "0")...UInt8(ascii: "9")).contains($0) }) else { return false }
-        func number(_ range: Range<Int>) -> Int { digits[range].reduce(0) { $0 * 10 + Int($1 - UInt8(ascii: "0")) } }
+        func number(_ range: Range<Int>) -> Int {
+            var total = 0
+            for digit in digits[range] {
+                let value: Int = Int(digit - UInt8(ascii: "0"))
+                total = total * 10 + value
+            }
+            return total
+        }
         let year = number(0..<4), month = number(4..<6), day = number(6..<8)
         let leap = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0)
         let lengths = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
