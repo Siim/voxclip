@@ -625,6 +625,8 @@ Content-Type: multipart/form-data
 
 The parts are framed as in §6.7.
 
+**Conversion-input extraction, both platforms.** Decode the take at its native source rate, downmix by the channel mean, and write exactly the half-open source-grid range `[startSample, endSample)` as mono PCM16 WAV. For each decoded buffer, let `next` be the previous decoded end (initially `startSample`), `t` its presentation timestamp in seconds, and `tickSamples = rate / timestampTimescale` in binary64. If `|t × rate − next| < max(1, tickSamples)` (strictly less), place the buffer at `next`, not at its rounded timestamp. Otherwise place it at `round_half_up(t × rate)`: refuse a gap inside the requested range and skip overlapped samples. Advance by decoded sample counts, so timestamp drift cannot accumulate past one tick; gaps smaller than a container tick are undetectable. Compute the timestamp's source-sample position directly from its integer value and timescale: use `value × rate / timescale` in Int64 when exact and nonoverflowing, otherwise binary64, without first rounding through seconds.
+
 - **Duration check per chunk.** As in §4.4, but with a cross-correlation search of ±300 ms. The docs do not promise that timing is preserved.
 - **Language.** The voice changer lists 29 languages, and Estonian is not among them. For a language not in the model's `languages`, require a 10 s preview first: "ElevenLabs doesn't list {language} for the voice changer. Listen to a 10-second preview before converting."
 - **Preview.** "Preview 10 s" converts the first 10 s of speech in the scope. The cost is shown on the button.

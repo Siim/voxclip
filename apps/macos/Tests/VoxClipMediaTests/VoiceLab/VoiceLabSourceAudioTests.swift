@@ -25,7 +25,7 @@ import VoxClipCore
 
     /// One interleaved LPCM sample buffer, built from values alone so it can be sent to the writer.
     private static func block(_ bytes: Data, start: Int, frames: Int, rate: Int, channels: Int,
-                              float: Bool) throws -> CMReadySampleBuffer<CMSampleBuffer.DynamicContent> {
+                              float: Bool, presentationTime: CMTime? = nil) throws -> CMReadySampleBuffer<CMSampleBuffer.DynamicContent> {
         var block: CMBlockBuffer?
         guard CMBlockBufferCreateWithMemoryBlock(allocator: kCFAllocatorDefault, memoryBlock: nil, blockLength: bytes.count,
                                                  blockAllocator: kCFAllocatorDefault, customBlockSource: nil, offsetToData: 0,
@@ -36,7 +36,7 @@ import VoxClipCore
             throw CocoaError(.fileWriteUnknown)
         }
         let timing = CMSampleTimingInfo(duration: CMTime(value: 1, timescale: CMTimeScale(rate)),
-                                        presentationTimeStamp: CMTime(value: Int64(start), timescale: CMTimeScale(rate)),
+                                        presentationTimeStamp: presentationTime ?? CMTime(value: Int64(start), timescale: CMTimeScale(rate)),
                                         decodeTimeStamp: .invalid)
         return CMReadySampleBuffer(unsafeBuffer: try CMSampleBuffer(dataBuffer: block,
             formatDescription: format(rate: rate, channels: channels, float: float).formatDescription,
@@ -45,6 +45,7 @@ import VoxClipCore
 
     /// LPCM-in-MOV written by AVAssetWriter in passthrough, so every decoded sample is exact.
     private func movie(_ url: URL, rate: Int, channels: Int, frames: Int, float: Bool,
+                       bufferFrames: Int = 4_800, timescale: CMTimeScale? = nil, gapSamples: Int = 0,
                        value: (_ frame: Int, _ channel: Int) -> Double) async throws {
         let writer = try AVAssetWriter(outputURL: url, fileType: .mov)
         let input = AVAssetWriterInput(mediaType: .audio, outputSettings: nil,
@@ -56,7 +57,7 @@ import VoxClipCore
         let width = float ? 4 : 2
         var start = 0
         while start < frames {
-            let count = min(4_800, frames - start)
+            let count = min(bufferFrames, frames - start)
             var bytes = Data(count: count * channels * width)
             bytes.withUnsafeMutableBytes { raw in
                 for frame in 0..<count {
@@ -67,7 +68,13 @@ import VoxClipCore
                     }
                 }
             }
-            try await receiver.append(Self.block(bytes, start: start, frames: count, rate: rate, channels: channels, float: float))
+            let timestampSample: Int = start + (start >= bufferFrames ? gapSamples : 0)
+            let timestamp: CMTime = CMTime(value: Int64(timestampSample), timescale: CMTimeScale(rate))
+            let presentation: CMTime = timescale.map { (scale: CMTimeScale) -> CMTime in
+                CMTimeConvertScale(timestamp, timescale: scale, method: .roundHalfAwayFromZero)
+            } ?? timestamp
+            try await receiver.append(Self.block(bytes, start: start, frames: count, rate: rate, channels: channels,
+                                                  float: float, presentationTime: presentation))
             start += count
         }
         receiver.finish()
@@ -100,6 +107,91 @@ import VoxClipCore
 
     private func expectedMean(_ index: Int) -> Int16 {
         VoiceLabAssetStore.pcm16(Float((Double(Self.left(index)) + Double(Self.right(index))) / 2))
+    }
+
+    @Test(arguments: [48_000, 1_000])
+    func continuousWriterBuffersPreserveEverySample(timescale: Int) async throws {
+        let folder = try directory()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let source = folder.appendingPathComponent("continuous.mov")
+        try await movie(source, rate: 48_000, channels: 2, frames: 24_000, float: true,
+                        timescale: CMTimeScale(timescale)) { (frame: Int, channel: Int) -> Double in
+            Double(channel == 0 ? Self.left(frame) : Self.right(frame))
+        }
+        let wav = try await VoiceLabSourceAudio.conversionInput(source: source, startSample: 0, endSample: 24_000,
+                                                               sourceSampleRate: 48_000)
+        #expect(samples(wav) == (0..<24_000).map(expectedMean))
+        let asset = AVURLAsset(url: source)
+        let track = try #require(try await asset.loadTracks(withMediaType: .audio).first)
+        let storedScale = try await track.load(.naturalTimeScale)
+        print("VOICE_LAB_WRITER inputTimescale=\(timescale) storedTimescale=\(storedScale)")
+    }
+
+    @Test(arguments: [48_000, 1_000])
+    func writerNormalizesLPCMTimestampGaps(timescale: Int) async throws {
+        let folder = try directory()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let source = folder.appendingPathComponent("gap.mov")
+        let gap: Int = timescale == 48_000 ? 1 : 96
+        try await movie(source, rate: 48_000, channels: 1, frames: 24_000, float: true,
+                        timescale: CMTimeScale(timescale), gapSamples: gap) { (frame: Int, _: Int) -> Double in
+            Double(Self.left(frame))
+        }
+        let wav = try await VoiceLabSourceAudio.conversionInput(source: source, startSample: 0, endSample: 24_000,
+                                                               sourceSampleRate: 48_000)
+        let expected: [Int16] = (0..<24_000).map { (frame: Int) -> Int16 in VoiceLabAssetStore.pcm16(Self.left(frame)) }
+        #expect(samples(wav) == expected)
+    }
+
+    @Test func timestampPlacementUsesStrictStreamTickAndDecodedEnd() throws {
+        let rate: Int = 48_000
+        let next: Int64 = 4_800
+        let early = CMTime(value: 23_997, timescale: 240_000)
+        #expect(try VoiceLabSourceAudio.bufferFirstSample(presentationTime: early, rate: rate, next: next) == next)
+        #expect(try VoiceLabSourceAudio.bufferFirstSample(presentationTime: CMTime(value: next - 1, timescale: 48_000),
+                                                        rate: rate, next: next) == next - 1)
+        #expect(try VoiceLabSourceAudio.bufferFirstSample(presentationTime: CMTime(value: 99, timescale: 1_000),
+                                                        rate: rate, next: next) == 4_752)
+        var decodedEnd: Int64 = 0
+        let buffers: Range<Int64> = 0..<10
+        for buffer in buffers {
+            let start: Int64 = buffer * 4_807
+            let timestamp: CMTime = CMTimeConvertScale(CMTime(value: start, timescale: 48_000),
+                                                      timescale: 1_000, method: .roundHalfAwayFromZero)
+            let placed = try VoiceLabSourceAudio.bufferFirstSample(presentationTime: timestamp, rate: rate, next: decodedEnd)
+            #expect(placed == start)
+            decodedEnd = placed + 4_807
+        }
+        #expect(decodedEnd == 48_070)
+    }
+
+    @Test(arguments: [48_000, 1_000])
+    func timestampBuffersRefuseExactOneTickAndTwoTickGaps(timescale: Int) throws {
+        let next: Int64 = 4_800
+        let tick: Int64 = Int64(48_000 / timescale)
+        for ticks in 1...2 {
+            let position: Int64 = next + tick * Int64(ticks)
+            let timestamp = CMTime(value: position / tick, timescale: CMTimeScale(timescale))
+            let bytes = Data(count: 4_800 * 4)
+            let buffer = try Self.block(bytes, start: 4_800, frames: 4_800, rate: 48_000, channels: 1,
+                                        float: true, presentationTime: timestamp)
+            #expect(throws: VoiceLabSourceAudioError.rangeOutsideMedia) {
+                try VoiceLabSourceAudio.bufferFirstSample(presentationTime: buffer.presentationTimeStamp, rate: 48_000, next: next)
+            }
+        }
+    }
+
+    @Test func bufferPointSixSamplesEarlyLosesNoDecodedSample() throws {
+        let content: [Float] = (4_800..<9_600).map { (frame: Int) -> Float in Self.left(frame) }
+        let bytes = content.withUnsafeBytes { Data($0) }
+        let buffer = try Self.block(bytes, start: 4_800, frames: 4_800, rate: 48_000, channels: 1, float: true,
+                                    presentationTime: CMTime(value: 23_997, timescale: 240_000))
+        let first = try VoiceLabSourceAudio.bufferFirstSample(presentationTime: buffer.presentationTimeStamp,
+                                                            rate: 48_000, next: 4_800)
+        let skip: Int = Int(4_800 - first)
+        #expect(skip == 0)
+        #expect(Array(content.dropFirst(skip)) == content)
+        #expect(first + Int64(buffer.sampleCount) == 9_600)
     }
 
     @Test func stereoChunkIsTheChannelMeanOnTheSourceGridWithHalfOpenBounds() async throws {
