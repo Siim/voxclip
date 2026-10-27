@@ -143,6 +143,8 @@ import VoxClipCore
     private static func missingCaptionPosition(app: AppModel, fixture: Project, directory: URL) async throws -> [DebugUISuite.Result] {
         var project = fixture
         project.media.source.absolutePath = directory.appendingPathComponent("missing.mov").path
+        project.captions.styleId = "box-highlight"
+        project.export.aspect = .landscape
         let document = VoxClipDocument(project: project)
         let shell = WorkspaceShell(app: app)
         await shell.attachForTesting(document, selection: .fullTake)
@@ -152,11 +154,26 @@ import VoxClipCore
         model.previewError = "Can't find missing.mov. Edits are saved."
         var results = [DebugUISuite.Result(name: "missing-media caption position remains draggable", passed: model.canMoveCaptions)]
         let previous = model.project.captions
-        let point = CaptionPosition(x: 0.5, y: 0.4)
-        var moved = model.project
-        CaptionFineTuning.position(&moved.captions, aspect: model.captionPreset, point: point)
         undo.removeAllActions()
-        model.replace(moved, name: "Move captions")
+        for (name, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
+            let host = NSHostingView(rootView: ViewerSection(model: model).frame(width: 360, height: 340).background(DesignValues.color("bg.surface")))
+            host.frame = CGRect(x: 0, y: 0, width: 360, height: 340)
+            let window = NSWindow(contentRect: host.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+            window.isReleasedWhenClosed = false; window.contentView = host; window.appearance = NSAppearance(named: appearance)
+            window.setAccessibilityIdentifier("missing-caption-\(name)")
+            window.orderBack(nil); host.layoutSubtreeIfNeeded()
+            try await Task.sleep(for: .milliseconds(150))
+            let control = accessibility(window).first { attribute($0, kAXIdentifierAttribute) as? String == "voxclip.caption.position" }
+            results.append(.init(name: "\(name) missing-media stage exposes the caption-position UI despite previewError", passed: control != nil))
+            if name == "light", let control {
+                results.append(.init(name: "missing-media caption-position control handles a native UI move", passed: AXUIElementPerformAction(control, kAXDecrementAction as CFString) == .success))
+                try await Task.sleep(for: .milliseconds(80))
+            }
+            _ = try capture(host, name: "viewer-missing-caption-\(name)", directory: directory)
+            window.close()
+        }
+        let moved = model.project
+        let point = moved.captions.positionByAspect[model.captionPreset.rawValue]
         results.append(.init(name: "missing-media caption drag changes only position and registers undo", passed: model.project.captions != previous && undo.undoActionName == "Move captions"))
         undo.undo()
         results.append(.init(name: "missing-media caption position undo restores its prior placement", passed: model.project.captions == previous))
@@ -168,7 +185,11 @@ import VoxClipCore
         let destination = directory.appendingPathComponent("missing-caption.voxclip")
         try await DebugUISuite.save(document, to: destination)
         let saved = try VoxClipDocument(data: Data(contentsOf: destination)).project
-        results.append(.init(name: "missing-media caption position saves through the native document path", passed: saved.captions.positionByAspect[model.captionPreset.rawValue] == point))
+        results.append(.init(name: "missing-media caption position saves through the native document path", passed: point != nil && saved.captions.positionByAspect[model.captionPreset.rawValue] == point))
+        model.selectedWordIDs = Set(model.words.prefix(1).map(\.id))
+        let beforeCut = model.project.edits.cutWordIds
+        model.cutSelection()
+        results.append(.init(name: "missing-media caption move does not unblock transcript edits or export", passed: model.project.edits.cutWordIds == beforeCut && !model.canExport))
         return results
     }
     private static func trimEndpoints(app: AppModel, fixture: Project) -> [DebugUISuite.Result] {

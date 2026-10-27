@@ -53,7 +53,7 @@ func viewerStageSize(ratio: Double, innerWidth: CGFloat, columnHeight: CGFloat, 
             .frame(width: size.width, height: size.height)
             .clipShape(.rect(cornerRadius: 10))
             .frame(maxWidth: .infinity)
-            .accessibilityElement(children: .ignore)
+            .accessibilityElement(children: .contain)
             .accessibilityLabel(stageLabel)
             viewerRow
             HStack(spacing: 8) {
@@ -282,6 +282,7 @@ func viewerStageSize(ratio: Double, innerWidth: CGFloat, columnHeight: CGFloat, 
                     state = normalized(value.location, size: geometry.size)
                 }.onEnded { value in move(normalized(value.location, size: geometry.size)) })
                 .accessibilityLabel("Caption position. Drag to move captions.")
+                .accessibilityIdentifier("voxclip.caption.position")
                 .accessibilityAdjustableAction { direction in move(CGPoint(x: position.x, y: min(1, max(0, position.y + (direction == .increment ? 0.05 : -0.05))))) }
         }.coordinateSpace(name: "caption-stage")
     }
