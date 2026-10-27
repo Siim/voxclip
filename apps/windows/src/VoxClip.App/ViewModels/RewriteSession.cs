@@ -17,6 +17,8 @@ internal sealed class RewriteSession : IDisposable
     private VoiceRewriteRequest? request;
     private int revision;
     private bool estimateShown;
+    private readonly VoiceLabPriceCatalog? prices;
+    private readonly string? synthesisModel;
     internal EditorViewModel Editor { get; }
     internal Project Project { get; }
     internal IReadOnlyList<TimedWord> Transcript { get; }
@@ -36,6 +38,7 @@ internal sealed class RewriteSession : IDisposable
     internal string EstimateCopy => Estimate?.Text is { Length: > 0 } text ? text : Prepared is null ? "" : "No charge.";
     internal bool CanPropose => IsOpen && !IsProposing && estimateShown && Prepared is not null;
     internal string Header { get; }
+    internal RewriteReview? Review { get; private set; }
     internal string SendLine => Connector?.Group switch
     {
         "apiKey" => $"Sends these {Source.Count(word => word.Kind == WordKind.Word)} words to {Connector.Name} with your key.",
@@ -46,7 +49,7 @@ internal sealed class RewriteSession : IDisposable
     internal event EventHandler? Changed;
 
     internal RewriteSession(EditorViewModel editor, int first, int last, AudioEnvelope? envelope, RewriteConnector? connector,
-        int? insertionAfter = null)
+        int? insertionAfter = null, VoiceLabPriceCatalog? prices = null, string? synthesisModel = null)
     {
         Editor = editor;
         Project = editor.Project;
@@ -56,11 +59,14 @@ internal sealed class RewriteSession : IDisposable
         Envelope = envelope;
         Connector = connector;
         InsertionAfter = insertionAfter;
+        this.prices = prices;
+        this.synthesisModel = synthesisModel;
         NewWords = string.Join(" ", Source.Where(word => word.Kind == WordKind.Word).Select(word => word.Text));
         var start = insertionAfter is { } after ? Transcript[after].End : Source.FirstOrDefault()?.Start ?? 0;
         Header = $"{Source.Count(word => word.Kind == WordKind.Word)} words at {EditorViewModel.Timecode(start)}";
         editor.SetRewriteRange(insertionAfter ?? first, insertionAfter is null ? last : insertionAfter.Value + 1);
         editor.Changed += EditorChanged;
+        RefreshReview();
     }
 
     internal async Task SetInstructionAsync(string text)
@@ -125,6 +131,7 @@ internal sealed class RewriteSession : IDisposable
             var result = await service.ProposeAsync(input, Connector.Connector, Connector.Model, service.Approve(action, true), cancellation.Token);
             if (!IsOpen || revision != current) return false;
             NewWords = result.ProposedText;
+            RefreshReview();
             return true;
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { return false; }
@@ -152,7 +159,18 @@ internal sealed class RewriteSession : IDisposable
         if (!IsOpen) return;
         InvalidateProposal();
         NewWords = text;
+        RefreshReview();
         Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void RefreshReview()
+    {
+        try { Review = RewriteReview.Build(this, prices, synthesisModel); }
+        catch (VoiceLabWordDiffException exception)
+        {
+            Review = null;
+            Problem = exception.Code == VoiceLabWordDiffErrorCode.TokenLimit ? VoiceLabPatchBudget.DisabledCopy : Refusal(exception);
+        }
     }
 
     private void InvalidateProposal() { revision++; sending?.Cancel(); }

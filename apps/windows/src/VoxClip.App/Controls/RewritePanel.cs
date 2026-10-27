@@ -17,6 +17,7 @@ internal sealed class RewritePanel : Grid
     private readonly TextBlock estimate = Ui.Text("");
     private readonly TextBlock problem = Ui.Text("");
     private readonly StackPanel review = Ui.Stack(6);
+    private readonly TextBlock changeSummary = Ui.Text("");
     private bool updating;
     internal Control FocusTarget => instruction;
     internal event EventHandler? Closed;
@@ -62,7 +63,12 @@ internal sealed class RewritePanel : Grid
         };
         body.Children.Add(instruction); body.Children.Add(propose);
         body.Children.Add(Small(session.SendLine)); body.Children.Add(estimate);
-        body.Children.Add(Ui.Text("New words", "BodyStrongTextBlockStyle"));
+        var newHeader = new Grid();
+        newHeader.Children.Add(Ui.Text("New words", "BodyStrongTextBlockStyle"));
+        changeSummary.HorizontalAlignment = HorizontalAlignment.Right;
+        changeSummary.FontSize = 11;
+        newHeader.Children.Add(changeSummary);
+        body.Children.Add(newHeader);
         body.Children.Add(words); body.Children.Add(review); body.Children.Add(problem);
         Children.Add(new ScrollViewer { Content = body, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled });
         var footer = new Border { Padding = new(16, 12, 16, 12), BorderThickness = new(0, 1, 0, 0),
@@ -96,6 +102,15 @@ internal sealed class RewritePanel : Grid
         estimate.FontSize = 11;
         problem.Text = session.Problem;
         problem.Visibility = session.Problem.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+        review.Children.Clear();
+        changeSummary.Text = session.Review?.ChangeSummary ?? "";
+        if (session.Review is { } current)
+        {
+            review.Children.Add(new RewriteDiffLine(current));
+            foreach (var hunk in current.VoiceHunks) review.Children.Add(Small(hunk.Meter?.Copy ?? hunk.Refusal ?? ""));
+            if (current.Summary is { } summary) review.Children.Add(Small(summary.Copy));
+            if (current.Budget.Copy is { } budget) review.Children.Add(Small(budget));
+        }
         if (session.Prepared is { } action) DispatcherQueue.TryEnqueue(() => session.MarkEstimateShown(action));
     }
     private void Escape(object sender, KeyRoutedEventArgs args)

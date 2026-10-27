@@ -59,6 +59,19 @@ internal sealed class TranscriptOverlay : IDisposable
     {
         foreach (var rect in Cached(inline)) Rectangle(above, new(rect.X, rect.Y + rect.Height * 0.52, rect.Width, 1.5), "VcCutStrokeBrush");
     }
+    internal void Diff(Run run, VoxClip.App.ViewModels.RewriteDiffKind kind)
+    {
+        foreach (var rect in Cached(run))
+            switch (kind)
+            {
+                case VoxClip.App.ViewModels.RewriteDiffKind.Removed:
+                    Rectangle(above, new(rect.X, rect.Y + rect.Height * 0.52, rect.Width, 1.5), "VcCutStrokeBrush"); break;
+                case VoxClip.App.ViewModels.RewriteDiffKind.Inserted:
+                    Rectangle(above, new(rect.X, rect.Y + rect.Height - 1, rect.Width, 1.5), "VcAccentTextBrush"); break;
+                case VoxClip.App.ViewModels.RewriteDiffKind.Bridge:
+                    Pattern(rect.X, rect.Y + rect.Height - 1, rect.Width, "VcAccentTextBrush", 4, 7, 1); break;
+            }
+    }
 
     internal void Clip(double top, double bottom, bool selected, bool suggested, double gutter)
     {
@@ -68,10 +81,10 @@ internal sealed class TranscriptOverlay : IDisposable
             Rectangle(above, new(gutter, vertical, 2, Math.Min(4, bottom - vertical)), key);
     }
 
-    private void Pattern(double left, double top, double width, string key, double dash, double period)
+    private void Pattern(double left, double top, double width, string key, double dash, double period, double thickness = 2)
     {
         for (var horizontal = 0.0; horizontal < width; horizontal += period)
-            Rectangle(above, new(left + horizontal, top, Math.Min(dash, width - horizontal), 2), key);
+            Rectangle(above, new(left + horizontal, top, Math.Min(dash, width - horizontal), thickness), key);
     }
 
     private void Rectangle(ShapeVisual visual, Rect rect, string fill, double radius = 0, string? stroke = null, double thickness = 0)

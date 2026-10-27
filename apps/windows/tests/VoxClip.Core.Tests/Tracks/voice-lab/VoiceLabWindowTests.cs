@@ -104,6 +104,20 @@ public sealed class VoiceLabWindowTests
         Assert.Equal(VoiceLabPatchConstants.RMS_FRAME, Number(constants, "RMS_FRAME"));
     }
 
+    [Theory]
+    [InlineData("hard-fade-outside-take-start", true)]
+    [InlineData("hard-fade-outside-take-end", false)]
+    public void TakeEdgeRefusalNamesTheEdgeWithoutChangingTheSharedError(string name, bool start)
+    {
+        var test = Cases("window").Single(test => Text(test, "name") == name);
+        var input = test.GetProperty("input");
+        var failure = Assert.Throws<VoiceLabGeometryException>(() => VoiceLabWindowPlanner.Place(Take(input, test.GetProperty("roomTone")),
+            Scope(input), Envelope(input.GetProperty("envelope")), Text(input, "firstWordId"), Text(input, "lastWordId")));
+        Assert.Equal(VoiceLabGeometryErrorCode.SeamFadeOutsideTake, failure.Code);
+        Assert.Equal(start, failure.TakeEdgeIsStart);
+        Assert.Null(failure.Incoming);
+    }
+
     /// <summary>Replays window-shaped cases through Place. Every accepted window must validate and prepare in the case's scope,
     /// beside the take's replacements. A case that carries roomTone selects that room tone and builds a one-word passage
     /// recipe; one without room tone builds a voice-changer recipe, the minimal recipe that needs none.</summary>

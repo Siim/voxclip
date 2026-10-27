@@ -1,5 +1,12 @@
 # Windows fixed contracts
 
+### 2026-10-28 — sol-win-redesign 15a — Core review wiring
+
+- `RewriteReview` consumes `VoiceLabWordDiff`, `VoiceLabPatchBudget`, `VoiceLabLengthBudget`, `VoiceLabWindowPlanner.Place`/`LendableSilence`, `VoiceLabFitMeter` and `VoiceLabDiffSummary` without reimplementing them. Each fit quote uses space-joined `NewTokens`; duration and pricing use complete placed patch texts, including window bridges. Refused/missing windows have no meter, patch text or header summary/price, never invented geometry. Without 15b's selected TTS model, no TTS amount is guessed.
+- The one wiring-only Core addition is `VoiceLabGeometryException.TakeEdgeIsStart`, populated by the existing hard-fade-outside-take guard. This lets the App choose the exact start/end §13 row without guessing geometry. It changes no placement, refusal code, existing Incoming metadata, fixtures or wire format. `TakeEdgeRefusalNamesTheEdgeWithoutChangingTheSharedError` pins both real shared start/end cases. The diff/budget/meter/summary implementations remain unchanged.
+- The read-only diff uses Core operations/bridge and absorbed IDs: removed labels in secondary with a 1.5 cut strike, inserted tokens in accent with a 1.5 underline, and re-voiced bridges with a 1 px dashed underline. Its accessible description groups the Core operations as “one becomes on Sunday, seven becomes five”; absorbed transcript labels are explicitly removed. It does not write proposed text into the transcript.
+- Tests: `LiveReviewUsesCoreMetersAndCompletePatchPricingForEachHunk`, `MissingWindowsAndUnknownModelNeverInventAHeaderPrice`, `DiffLineIncludesAbsorbedLabelsBridgesAndTheSpokenDescription`, `PatchBudgetUsesTheWholeTranscriptAndUpdatesWithoutCalls`. These check caller wiring, not duplicated shared diff vectors. Native rendered stroke and spoken description acceptance remains owed.
+
 ### 2026-10-28 — sol-win-redesign 15a — Panel and proposal boundary
 
 - `RewritePanel` replaces Captions in the flush right-column slot, with the passage header/Beta/Close Rewrite, What should change?, bordered Rewrite action, selected connector disclosure, plain New words, and the disclosure footer. No Voice, Takes, generation or acceptance control is introduced. The transcript and timeline use the existing passage-outline/band paths and never receive proposed words.
