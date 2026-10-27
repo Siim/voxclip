@@ -38,6 +38,18 @@ enum SpeechTestFiles {
     }
 }
 
+enum SpeechTestWait {
+    /// Polls a condition without a deadline; the suite time limit ends a test that never gets there.
+    static func until(_ condition: () async -> Bool) async throws {
+        while await !condition() { try await Task.sleep(for: .milliseconds(1)) }
+    }
+    /// Awaits an unstructured task and cancels it if the test is cancelled, so the time limit also
+    /// ends a job stuck in a queue instead of leaving the run waiting on it.
+    static func value<T: Sendable>(_ task: Task<T, any Error>) async throws -> T {
+        try await withTaskCancellationHandler { try await task.value } onCancel: { task.cancel() }
+    }
+}
+
 actor SpeechTestLogger: Redacting {
     private var redactor = Redactor()
     private(set) var entries: [LogEntry] = []

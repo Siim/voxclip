@@ -5,26 +5,119 @@ import Testing
 
 @Suite("Speech orchestration", .serialized, .timeLimit(.minutes(1)))
 struct TranscriptionServiceTests {
+    /// Seven services share one queue: one local and two cloud jobs run together, the others wait,
+    /// and each finished job hands its slot to the oldest waiter of its kind; transcription §13.4.
+    /// Jobs stay in their engines until the test lets them go, so no step races a clock, and a
+    /// private gate keeps the ElevenLabs suites running in parallel out of the shared slots.
     @Test func applicationWideConcurrencyLimits() async throws {
         let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let gate = SpeechJobGate()
         let activity = SpeechJobActivity()
+        let local = Set(0..<3)
+        func job(_ key: String) -> Int? { (0..<7).first { key.contains("/content-\($0)/") } }
+        /// Every unfinished job is in an engine or queued, and every admitted job has reached its engine.
+        func settled(_ unfinished: Int) async -> Bool {
+            let state = await gate.snapshot(), running = await activity.running
+            return state.local + state.cloud == running.count && running.count + state.waiting.count == unfinished
+        }
         try await withThrowingTaskGroup(of: Void.self) { group in
             for index in 0..<7 {
-                group.addTask {
-                    let type: TranscriptEngine = index < 3 ? .whispercpp : .elevenlabs
-                    let engine = CountingSpeechEngine(engine: type, activity: activity, waitForConcurrency: true)
-                    let service = TranscriptionService(locations: SpeechTestFiles.locations(root))
-                    var request = try SpeechTestFiles.request(root.appendingPathComponent("job-\(index)"))
-                    request.contentKey = "content-\(index)"
-                    request.plan = TranscriptionPlan(engine: type, language: .forced("en"))
-                    await activity.submit(of: 7)
-                    _ = try await service.transcribe(request, using: engine, envelope: nil)
-                }
+                let type: TranscriptEngine = local.contains(index) ? .whispercpp : .elevenlabs
+                let engine = CountingSpeechEngine(engine: type, activity: activity, delay: .zero, job: index, holdUntilFinished: true)
+                let service = TranscriptionService(locations: SpeechTestFiles.locations(root), gate: gate)
+                var request = try SpeechTestFiles.request(root.appendingPathComponent("job-\(index)"))
+                request.contentKey = "content-\(index)"
+                request.plan = TranscriptionPlan(engine: type, language: .forced("en"))
+                let value = request
+                group.addTask { _ = try await service.transcribe(value, using: engine, envelope: nil) }
+            }
+            var finished: Set<Int> = []
+            var handOff: (running: [Int], next: Int?)?
+            while finished.count < 7 {
+                try await SpeechTestWait.until { await settled(7 - finished.count) }
+                let running = await activity.running, waiting = await gate.snapshot().waiting.compactMap(job)
+                let left = Set(0..<7).subtracting(finished)
+                #expect(running.filter(local.contains).count == min(1, left.filter(local.contains).count))
+                #expect(running.filter { !local.contains($0) }.count == min(2, left.filter { !local.contains($0) }.count))
+                if let handOff { #expect(Set(running).subtracting(handOff.running) == Set([handOff.next].compactMap { $0 })) }
+                guard let next = running.first else { group.cancelAll(); break }
+                handOff = (running, waiting.first { local.contains($0) == local.contains(next) })
+                finished.insert(next)
+                await activity.finish(next)
             }
             try await group.waitForAll()
         }
         #expect(await activity.maximumLocal == 1)
         #expect(await activity.maximumCloud == 2)
+        #expect(await gate.snapshot() == SpeechJobGate.Snapshot(local: 0, cloud: 0, waiting: []))
+        #expect(await TranscriptionService().gate === SpeechJobGate.shared)
+        #expect(await TranscriptionService(locations: SpeechTestFiles.locations(root)).gate === SpeechJobGate.shared)
+    }
+
+    /// A queued job that is cancelled never reaches its engine, and a failed job hands its slot on;
+    /// transcription §13.2 and §13.4.
+    @Test func cancelledQueuedAndFailedJobsGiveBackTheirPlaces() async throws {
+        let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let gate = SpeechJobGate()
+        let activity = SpeechJobActivity()
+        func submit(_ index: Int, hold: Bool = false, fails: Bool = false) throws -> Task<Transcript, any Error> {
+            let engine = CountingSpeechEngine(engine: .whispercpp, activity: activity, delay: .zero, job: index, holdUntilFinished: hold, fails: fails)
+            let service = TranscriptionService(locations: SpeechTestFiles.locations(root), gate: gate)
+            var request = try SpeechTestFiles.request(root.appendingPathComponent("job-\(index)"))
+            request.contentKey = "content-\(index)"
+            request.plan = TranscriptionPlan(engine: .whispercpp, language: .forced("en"))
+            let value = request
+            return Task { try await service.transcribe(value, using: engine, envelope: nil) }
+        }
+        let running = try submit(0, hold: true)
+        try await SpeechTestWait.until { await activity.running == [0] }
+        let cancelled = try submit(1)
+        try await SpeechTestWait.until { await gate.snapshot().waiting.count == 1 }
+        let failing = try submit(2, fails: true)
+        try await SpeechTestWait.until { await gate.snapshot().waiting.count == 2 }
+        cancelled.cancel()
+        do { _ = try await SpeechTestWait.value(cancelled); Issue.record("Expected cancellation") }
+        catch let error as VoxClipError { #expect(error.code == .cancelled) }
+        #expect(await gate.snapshot().waiting.count == 1)
+        await activity.finish(0)
+        _ = try await SpeechTestWait.value(running)
+        await #expect(throws: VoxClipError.transcriptionFailed("Synthetic engine failure")) { try await SpeechTestWait.value(failing) }
+        _ = try await SpeechTestWait.value(submit(3))
+        #expect(await activity.started == [0, 2, 3])
+        #expect(await gate.snapshot() == SpeechJobGate.Snapshot(local: 0, cloud: 0, waiting: []))
+    }
+
+    /// Identical jobs in one data folder run one at a time and the second reads the first one's
+    /// cache entry, while the same job for another data folder starts at once; transcription §13.4.
+    @Test func identicalJobsWaitForEachOtherOnlyInOneDataFolder() async throws {
+        let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let elsewhere = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: elsewhere) }
+        let gate = SpeechJobGate()
+        let activity = SpeechJobActivity()
+        let request = try SpeechTestFiles.request(root)
+        func submit(_ index: Int, in folder: URL, hold: Bool = true) -> Task<TranscriptionResult, any Error> {
+            let engine = CountingSpeechEngine(engine: .elevenlabs, activity: activity, delay: .zero, job: index, holdUntilFinished: hold)
+            let service = TranscriptionService(locations: SpeechTestFiles.locations(folder), gate: gate)
+            return Task { try await service.transcribeResult(request, using: engine, envelope: nil) }
+        }
+        let first = submit(0, in: root)
+        try await SpeechTestWait.until { await activity.running == [0] }
+        // Not held, so a cache miss fails the expectations below instead of the time limit.
+        let duplicate = submit(1, in: root, hold: false)
+        try await SpeechTestWait.until { await gate.snapshot().waiting.count == 1 }
+        // The duplicate waits although a cloud slot is free, and the job for the other folder takes it.
+        #expect(await gate.snapshot().cloud == 1)
+        let other = submit(2, in: elsewhere)
+        try await SpeechTestWait.until { await activity.running == [0, 2] }
+        let waiting = await gate.snapshot().waiting
+        #expect(waiting.count == 1 && waiting.allSatisfy { $0.hasPrefix(SpeechTestFiles.locations(root).cache.path + "/") })
+        await activity.finish(0)
+        #expect(try await SpeechTestWait.value(first).fromCache == false)
+        #expect(try await SpeechTestWait.value(duplicate).fromCache)
+        await activity.finish(2)
+        #expect(try await SpeechTestWait.value(other).fromCache == false)
+        #expect(await activity.started == [0, 2])
+        #expect(await gate.snapshot() == SpeechJobGate.Snapshot(local: 0, cloud: 0, waiting: []))
     }
 
     @Test func cancellationReleasesGlobalSlotAndDoesNotCache() async throws {
@@ -130,27 +223,29 @@ private actor SpeechJobActivity {
     var maximumLocal = 0
     var maximumCloud = 0
     var languages: [LanguageChoice] = []
-    var submitted = 0
-    var allSubmitted: ContinuousClock.Instant?
-    func submit(of total: Int) {
-        submitted += 1
-        if submitted == total { allSubmitted = .now }
-    }
-    func start(_ engine: TranscriptEngine, language: LanguageChoice) {
+    /// Jobs that reached an engine, and the ones still inside, oldest first.
+    var started: [Int] = []
+    var running: [Int] = []
+    private var held: [Int: CheckedContinuation<Void, Never>] = [:]
+    /// Records the start; a held job then stays in its engine until `finish(_:)`, or until the
+    /// suite time limit cancels the test, so a scheduling bug fails the test instead of hanging it.
+    func start(_ engine: TranscriptEngine, language: LanguageChoice, job: Int, hold: Bool) async {
         languages.append(language)
+        started.append(job)
+        running.append(job)
         if engine == .elevenlabs { cloud += 1; maximumCloud = max(maximumCloud, cloud) }
         else { local += 1; maximumLocal = max(maximumLocal, local) }
-    }
-    func end(_ engine: TranscriptEngine) { if engine == .elevenlabs { cloud -= 1 } else { local -= 1 } }
-    /// The service has five seconds to run one local and two cloud jobs together, counted from the
-    /// moment every job has reached it, not from this job's start.
-    func waitForSaturation() async throws {
-        while maximumLocal < 1 || maximumCloud < 2 {
-            if let allSubmitted {
-                try #require(ContinuousClock.now < allSubmitted.advanced(by: .seconds(5)), "Expected one local and two cloud jobs to run concurrently")
-            }
-            try await Task.sleep(for: .milliseconds(5))
+        guard hold else { return }
+        await withTaskCancellationHandler {
+            await withCheckedContinuation { held[job] = $0 }
+        } onCancel: {
+            Task { await self.finish(job) }
         }
+    }
+    func finish(_ job: Int) { held.removeValue(forKey: job)?.resume() }
+    func end(_ engine: TranscriptEngine, job: Int) {
+        running.removeAll { $0 == job }
+        if engine == .elevenlabs { cloud -= 1 } else { local -= 1 }
     }
 }
 
@@ -158,7 +253,9 @@ private struct CountingSpeechEngine: Transcriber {
     let engine: TranscriptEngine
     let activity: SpeechJobActivity
     var delay: Duration = .milliseconds(75)
-    var waitForConcurrency = false
+    var job = 0
+    var holdUntilFinished = false
+    var fails = false
     var kind: WordKind = .word
     var verbatim = true
     func capabilities(model: String?) -> TranscriberCapabilities { TranscriberCapabilities(timing: .native, verbatim: true, autoLanguage: false, onDevice: engine != .elevenlabs) }
@@ -166,13 +263,13 @@ private struct CountingSpeechEngine: Transcriber {
     func readiness(for plan: TranscriptionPlan) async -> Readiness { .ready }
     func prepare(for plan: TranscriptionPlan, progress: @escaping @Sendable (Double) -> Void) async throws {}
     func transcribe(_ request: TranscriptionRequest, progress: @escaping @Sendable (TranscriptionProgress) -> Void) async throws -> RawTranscript {
-        await activity.start(engine, language: request.plan.language)
+        await activity.start(engine, language: request.plan.language, job: job, hold: holdUntilFinished)
         do {
-            if waitForConcurrency { try await activity.waitForSaturation() }
+            if fails { throw VoxClipError.transcriptionFailed("Synthetic engine failure") }
             for index in 0..<1000 { progress(TranscriptionProgress(stage: .transcribing, fraction: Double(index) / 1000)) }
             try await Task.sleep(for: delay)
-            await activity.end(engine)
-            return RawTranscript(engine: EngineRef(id: engine, engineVersion: "test"), grouping: GroupingRule(end: .lastToken, conf: .single, bracketEvents: false), tokens: [RawToken(text: "hello", start: 0.1, end: 0.4, kind: kind)], language: "en", verbatim: verbatim, timing: .native)
-        } catch { await activity.end(engine); throw error }
+            await activity.end(engine, job: job)
+            return RawTranscript(engine: EngineRef(id: engine, modelId: engine == .elevenlabs ? "scribe_v2" : nil, engineVersion: "test"), grouping: GroupingRule(end: .lastToken, conf: .single, bracketEvents: false), tokens: [RawToken(text: "hello", start: 0.1, end: 0.4, kind: kind)], language: "en", verbatim: verbatim, timing: .native)
+        } catch { await activity.end(engine, job: job); throw error }
     }
 }

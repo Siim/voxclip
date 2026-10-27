@@ -190,28 +190,32 @@ public struct TranscriptionResult: Sendable {
 public actor TranscriptionService {
     private let locations: DataLocations
     private let catalog: BundledModelCatalog?
+    /// The app-wide queue every public initializer shares; tests pass a private one.
+    let gate: SpeechJobGate
     private var active = false
     private var generation = UUID()
     private var observers: [UUID: AsyncStream<TranscriptionProgress>.Continuation] = [:]
     public init() {
         locations = DataLocations()
         catalog = (try? SharedResources.locate()).map { BundledModelCatalog(shared: $0) }
+        gate = .shared
     }
-    public init(locations: DataLocations, catalog: BundledModelCatalog? = nil) { self.locations = locations; self.catalog = catalog }
+    public init(locations: DataLocations, catalog: BundledModelCatalog? = nil) { self.init(locations: locations, catalog: catalog, gate: .shared) }
+    init(locations: DataLocations, catalog: BundledModelCatalog? = nil, gate: SpeechJobGate) { self.locations = locations; self.catalog = catalog; self.gate = gate }
     public func detectLanguage(_ request: TranscriptionRequest, using detector: any SpeechLanguageDetector) async throws -> SpeechLanguageDetection {
         guard !active else { throw VoxClipError.transcriptionFailed("This project already has a transcription job") }
         active = true
         defer { active = false }
-        let key = request.contentKey + "-language-detection"
-        do { try await SpeechJobGate.shared.acquire(local: true, key: key) }
+        let key = locations.cache.appendingPathComponent(request.contentKey).appendingPathComponent("language-detection").path
+        do { try await gate.acquire(local: true, key: key) }
         catch is CancellationError { throw VoxClipError.cancelled }
         do {
             let detection = try await detector.detectLanguage(request)
             try Task.checkCancellation()
-            await SpeechJobGate.shared.release(local: true, key: key)
+            await gate.release(local: true, key: key)
             return detection
         } catch {
-            await SpeechJobGate.shared.release(local: true, key: key)
+            await gate.release(local: true, key: key)
             if Task.isCancelled || error is CancellationError { throw VoxClipError.cancelled }
             throw error
         }
@@ -254,7 +258,9 @@ public actor TranscriptionService {
         let rawKey = try key.digest()
         let directory = locations.cache.appendingPathComponent(request.contentKey).appendingPathComponent("transcripts")
         let url = try key.url(in: directory)
-        do { try await SpeechJobGate.shared.acquire(local: engine.engine != .elevenlabs, key: request.contentKey + rawKey) }
+        // One job per raw cache entry: identical jobs in one data folder run one at a time (transcription §13.4).
+        let local = engine.engine != .elevenlabs, gateKey = url.path
+        do { try await gate.acquire(local: local, key: gateKey) }
         catch is CancellationError { throw VoxClipError.cancelled }
         do {
             try Task.checkCancellation()
@@ -294,10 +300,10 @@ public actor TranscriptionService {
             await reporter.finish()
             delivery.continuation.finish()
             await publishing.value
-            await SpeechJobGate.shared.release(local: engine.engine != .elevenlabs, key: request.contentKey + rawKey)
+            await gate.release(local: local, key: gateKey)
             return TranscriptionResult(transcript: result, fromCache: fromCache)
         } catch {
-            await SpeechJobGate.shared.release(local: engine.engine != .elevenlabs, key: request.contentKey + rawKey)
+            await gate.release(local: local, key: gateKey)
             if Task.isCancelled || error is CancellationError { throw VoxClipError.cancelled }
             throw error
         }

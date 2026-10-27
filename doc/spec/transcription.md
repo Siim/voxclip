@@ -1204,6 +1204,7 @@ Logs record the engine, model id, durations, HTTP status, byte counts and `trans
 - A project runs at most one transcription job at a time.
 - Local jobs (whisper and Apple) run one at a time across the app, because they share the GPU and memory. Other local jobs wait and show "Waiting for the current transcription…".
 - At most two ElevenLabs jobs run at once across the app, alongside any local job.
+- Jobs for the same source with the same settings and data folder share one raw result entry (14.2) and run one at a time. A job starts at once when its kind has room and no identical job is running. Otherwise it waits without holding a place, so it never holds back a job of the other kind or a job for another source, other settings or another data folder. When a job finishes, its place goes to the oldest waiting job of its kind whose identical job is not running, and no job that asked after that one can take the place first.
 
 ---
 

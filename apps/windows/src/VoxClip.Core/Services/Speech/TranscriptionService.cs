@@ -14,9 +14,6 @@ namespace VoxClip.Core.Services.Speech;
 /// <summary>Queued import orchestration and raw-result reuse; transcription §5, §13 and §14.</summary>
 public sealed class TranscriptionService : ITranscriptionService
 {
-    private static readonly SemaphoreSlim LocalJobs = new(1, 1);
-    private static readonly SemaphoreSlim CloudJobs = new(2, 2);
-    private static readonly ConcurrentDictionary<string, SemaphoreSlim> ContentJobs = new(StringComparer.Ordinal);
     private static readonly ConcurrentDictionary<string, PaidRecovery> PendingPaidResponses = new(StringComparer.Ordinal);
     private sealed record PaidRecovery(byte[] Key, JsonElement Response);
     private readonly SemaphoreSlim projectJob = new(1, 1);
@@ -35,12 +32,21 @@ public sealed class TranscriptionService : ITranscriptionService
     /// <summary>One service belongs to one project; engine queues are shared app-wide.</summary>
     public TranscriptionService(IEnumerable<ITranscriber> transcribers, IModelCatalog? modelCatalog = null, string? dataRoot = null,
         Func<TranscriptionRequest, CancellationToken, Task<AudioEnvelope?>>? analysisEnvelope = null)
+        : this(transcribers, SpeechJobQueues.Shared, modelCatalog, dataRoot, analysisEnvelope) { }
+
+    /// <summary>Tests pass private queues so jobs from parallel test classes cannot take the app-wide slots.</summary>
+    internal TranscriptionService(IEnumerable<ITranscriber> transcribers, SpeechJobQueues queues, IModelCatalog? modelCatalog = null, string? dataRoot = null,
+        Func<TranscriptionRequest, CancellationToken, Task<AudioEnvelope?>>? analysisEnvelope = null)
     {
         engines = transcribers.ToDictionary(engine => engine.Engine);
         catalog = modelCatalog ?? new ModelCatalog();
         root = Path.GetFullPath(dataRoot ?? DataLocations.Resolve().Root);
         envelopeProvider = analysisEnvelope;
+        Queues = queues;
     }
+
+    /// <summary>The engine queues this service waits in; transcription §13.4.</summary>
+    internal SpeechJobQueues Queues { get; }
 
     /// <inheritdoc />
     public Task<Transcript> TranscribeAsync(TranscriptionRequest request, IProgress<TranscriptionProgress> progress, CancellationToken ct) =>
@@ -64,22 +70,24 @@ public sealed class TranscriptionService : ITranscriptionService
             request = request with { Plan = request.Plan with { Language = new LanguageChoice.Forced(await bundled.NormalizeLanguageAsync(languageChoice.Code, ct).ConfigureAwait(false)) } };
         var reporting = new SpeechProgress<TranscriptionProgress>(progress);
         await projectJob.WaitAsync(ct).ConfigureAwait(false);
-        var contentGate = ContentJobs.GetOrAdd(Path.Combine(root, request.ContentKey), _ => new SemaphoreSlim(1, 1));
         try
         {
-            await contentGate.WaitAsync(ct).ConfigureAwait(false);
+            reporting.Report(new(TranscriptionStage.Preparing, 0));
+            var model = request.Plan.Model is { } id ? await catalog.GetModelAsync(id, ct).ConfigureAwait(false) : null;
+            var key = CacheKey(request, model);
+            var rawKey = Convert.ToHexStringLower(SHA256.HashData(key));
+            var language = request.Plan.Language is LanguageChoice.Forced forced ? forced.Code.ToLowerInvariant().Split('-')[0] : "auto";
+            if (language.Any(character => !char.IsAsciiLetterLower(character))) throw SpeechCopy.InvalidIdentifier(request.Plan.Engine);
+            var directory = Path.Combine(root, "Cache", request.ContentKey, "transcripts");
+            var modelId = request.Plan.Engine == TranscriptEngine.Elevenlabs ? "scribe_v2" : request.Plan.Model ?? "none";
+            ModelPaths.ValidateId(modelId);
+            var cachePath = Path.Combine(directory, $"{EngineName(request.Plan.Engine)}-{modelId}-{language}-{rawKey[..8]}.json");
+            // One arrival-ordered wait for a slot of the job's kind and its raw cache entry (transcription §13.4). Holding
+            // both to the end also guards the entry's file, its preflight probe and its PendingPaidResponses slot.
+            var onDevice = engine.Capabilities(request.Plan.Model).OnDevice;
+            await Queues.EnterAsync(onDevice, cachePath, ct).ConfigureAwait(false);
             try
             {
-                reporting.Report(new(TranscriptionStage.Preparing, 0));
-                var model = request.Plan.Model is { } id ? await catalog.GetModelAsync(id, ct).ConfigureAwait(false) : null;
-                var key = CacheKey(request, model);
-                var rawKey = Convert.ToHexStringLower(SHA256.HashData(key));
-                var language = request.Plan.Language is LanguageChoice.Forced forced ? forced.Code.ToLowerInvariant().Split('-')[0] : "auto";
-                if (language.Any(character => !char.IsAsciiLetterLower(character))) throw SpeechCopy.InvalidIdentifier(request.Plan.Engine);
-                var directory = Path.Combine(root, "Cache", request.ContentKey, "transcripts");
-                var modelId = request.Plan.Engine == TranscriptEngine.Elevenlabs ? "scribe_v2" : request.Plan.Model ?? "none";
-                ModelPaths.ValidateId(modelId);
-                var cachePath = Path.Combine(directory, $"{EngineName(request.Plan.Engine)}-{modelId}-{language}-{rawKey[..8]}.json");
                 var raw = await ReadCacheAsync(cachePath, key, engine, request.Plan, ct).ConfigureAwait(false);
                 if (raw is null && engine is ElevenLabsTranscriber) SetAsideUnreadableCache(cachePath);
                 if (raw is null && engine is ElevenLabsTranscriber recoveryEngine && PendingPaidResponses.TryGetValue(cachePath, out var recovery) &&
@@ -96,30 +104,24 @@ public sealed class TranscriptionService : ITranscriptionService
                     {
                         await PreflightCacheAsync(cachePath, request.Audio.DurationSeconds, ct).ConfigureAwait(false);
                     }
-                    var queue = engine.Capabilities(request.Plan.Model).OnDevice ? LocalJobs : CloudJobs;
-                    await queue.WaitAsync(ct).ConfigureAwait(false);
-                    try
-                    {
-                        var readiness = await engine.ReadinessAsync(request.Plan, ct).ConfigureAwait(false);
-                        RequireReady(readiness, request.Plan, model);
-                        if (!await engine.SupportsAsync(request.Plan.Language, request.Plan.Model, ct).ConfigureAwait(false))
-                            throw SpeechCopy.Unsupported(request.Plan.Engine, language);
-                        await engine.PrepareAsync(request.Plan, null, ct).ConfigureAwait(false);
-                        raw = engine is ElevenLabsTranscriber paid
-                            ? await paid.TranscribeAndCacheAsync(request, reporting,
-                                response =>
-                                {
-                                    PendingPaidResponses[cachePath] = new(key, response);
-                                    return WriteCacheAsync(cachePath, key, null, response, CancellationToken.None, required: true);
-                                }, ct).ConfigureAwait(false)
-                            : await engine.TranscribeAsync(request, reporting, ct).ConfigureAwait(false);
-                        if (engine.Engine != TranscriptEngine.Elevenlabs) ct.ThrowIfCancellationRequested();
-                        var provider = engine is ElevenLabsTranscriber elevenlabs ? elevenlabs.ProviderResponse(raw) : null;
-                        if (!await WriteCacheAsync(cachePath, key, raw, provider,
-                            engine.Engine == TranscriptEngine.Elevenlabs ? CancellationToken.None : ct).ConfigureAwait(false) && engine is ElevenLabsTranscriber cacheEngine)
-                            cacheEngine.WarnCacheUnavailable();
-                    }
-                    finally { queue.Release(); }
+                    var readiness = await engine.ReadinessAsync(request.Plan, ct).ConfigureAwait(false);
+                    RequireReady(readiness, request.Plan, model);
+                    if (!await engine.SupportsAsync(request.Plan.Language, request.Plan.Model, ct).ConfigureAwait(false))
+                        throw SpeechCopy.Unsupported(request.Plan.Engine, language);
+                    await engine.PrepareAsync(request.Plan, null, ct).ConfigureAwait(false);
+                    raw = engine is ElevenLabsTranscriber paid
+                        ? await paid.TranscribeAndCacheAsync(request, reporting,
+                            response =>
+                            {
+                                PendingPaidResponses[cachePath] = new(key, response);
+                                return WriteCacheAsync(cachePath, key, null, response, CancellationToken.None, required: true);
+                            }, ct).ConfigureAwait(false)
+                        : await engine.TranscribeAsync(request, reporting, ct).ConfigureAwait(false);
+                    if (engine.Engine != TranscriptEngine.Elevenlabs) ct.ThrowIfCancellationRequested();
+                    var provider = engine is ElevenLabsTranscriber elevenlabs ? elevenlabs.ProviderResponse(raw) : null;
+                    if (!await WriteCacheAsync(cachePath, key, raw, provider,
+                        engine.Engine == TranscriptEngine.Elevenlabs ? CancellationToken.None : ct).ConfigureAwait(false) && engine is ElevenLabsTranscriber cacheEngine)
+                        cacheEngine.WarnCacheUnavailable();
                 }
                 ct.ThrowIfCancellationRequested();
                 reporting.Report(new(TranscriptionStage.Aligning, 0));
@@ -142,7 +144,7 @@ public sealed class TranscriptionService : ITranscriptionService
                 ct.ThrowIfCancellationRequested();
                 return result with { FromCache = fromCache };
             }
-            finally { contentGate.Release(); }
+            finally { Queues.Release(onDevice, cachePath); }
         }
         finally { projectJob.Release(); }
     }
@@ -318,5 +320,88 @@ public sealed class TranscriptionService : ITranscriptionService
             return rate > 0 ? new(rate, Math.Max(1, Math.Floor(rate * 0.01 + 0.5)) / rate, levels) : null;
         }
         catch (Exception error) when (error is IOException or JsonException or InvalidOperationException or UnauthorizedAccessException) { return null; }
+    }
+}
+
+/// <summary>App-wide speech job queue, ported from the macOS <c>SpeechJobGate</c>: one local job, two ElevenLabs jobs and
+/// one job per raw cache entry at a time; transcription §13.4. Waiters start in arrival order once their kind has room and
+/// no identical job holds their entry, so a waiter never holds back the other kind or another entry. A release hands its
+/// place to the oldest waiter that can start before any later caller can take it.</summary>
+internal sealed class SpeechJobQueues
+{
+    private readonly object gate = new();
+    private readonly HashSet<string> entries = new(StringComparer.Ordinal);
+    private readonly List<Waiter> waiters = [];
+    private int local, cloud;
+
+    /// <summary>The queues every public constructor shares across the app.</summary>
+    internal static SpeechJobQueues Shared { get; } = new();
+
+    /// <summary>Jobs holding a slot of each kind.</summary>
+    internal (int Local, int Cloud) Running { get { lock (gate) return (local, cloud); } }
+
+    /// <summary>Jobs queued for a slot of each kind.</summary>
+    internal (int Local, int Cloud) Waiting
+    {
+        get { lock (gate) return (waiters.Count(waiter => waiter.OnDevice), waiters.Count(waiter => !waiter.OnDevice)); }
+    }
+
+    /// <summary>Takes a slot of the job's kind and its raw cache entry, waiting in arrival order while the kind is full or
+    /// an identical job holds the entry. A cancelled waiter leaves holding nothing; a slot granted just before the
+    /// cancellation stays with its job, which gives it back with <see cref="Release"/> as usual.</summary>
+    internal async Task EnterAsync(bool onDevice, string entry, CancellationToken ct)
+    {
+        Waiter waiter;
+        lock (gate)
+        {
+            ct.ThrowIfCancellationRequested();
+            if (CanStart(onDevice, entry)) { Start(onDevice, entry); return; }
+            waiters.Add(waiter = new(onDevice, entry));
+        }
+        using (ct.Register(() => Withdraw(waiter, ct)))
+            await waiter.Granted.Task.ConfigureAwait(false);
+    }
+
+    /// <summary>Gives back the slot and the entry together, then starts every waiter that now can, oldest first.</summary>
+    internal void Release(bool onDevice, string entry)
+    {
+        lock (gate)
+        {
+            entries.Remove(entry);
+            if (onDevice) local--; else cloud--;
+            for (var index = 0; index < waiters.Count;)
+            {
+                var waiter = waiters[index];
+                if (!CanStart(waiter.OnDevice, waiter.Entry)) { index++; continue; }
+                waiters.RemoveAt(index);
+                Start(waiter.OnDevice, waiter.Entry);
+                waiter.Granted.SetResult();
+            }
+        }
+    }
+
+    private bool CanStart(bool onDevice, string entry) => !entries.Contains(entry) && (onDevice ? local < 1 : cloud < 2);
+
+    private void Start(bool onDevice, string entry)
+    {
+        entries.Add(entry);
+        if (onDevice) local++; else cloud++;
+    }
+
+    private void Withdraw(Waiter waiter, CancellationToken ct)
+    {
+        lock (gate)
+        {
+            if (!waiters.Remove(waiter)) return;
+        }
+        waiter.Granted.SetCanceled(ct);
+    }
+
+    private sealed class Waiter(bool onDevice, string entry)
+    {
+        internal bool OnDevice { get; } = onDevice;
+        internal string Entry { get; } = entry;
+        /// <summary>Continuations run asynchronously, so granting under the gate's lock never runs a job inside it.</summary>
+        internal TaskCompletionSource Granted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
     }
 }

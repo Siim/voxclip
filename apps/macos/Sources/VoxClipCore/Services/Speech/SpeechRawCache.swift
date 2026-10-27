@@ -118,19 +118,55 @@ extension SpeechRawCacheEntry {
     }
 }
 
+/// App-wide speech job queue: one local job, two ElevenLabs jobs and one job per key at a time;
+/// transcription §13.4. Waiters start in arrival order once their kind has room and their key is
+/// free, so a waiter never holds back the other kind or another key. A release hands the slot to
+/// the next waiter before any later caller can take it.
 actor SpeechJobGate {
     static let shared = SpeechJobGate()
+    struct Snapshot: Equatable { var local: Int; var cloud: Int; var waiting: [String] }
+    private struct Waiter { let id: Int; let local: Bool; let key: String; let continuation: CheckedContinuation<Void, any Error> }
     private var localJobs = 0
     private var cloudJobs = 0
     private var keys: Set<String> = []
+    private var waiters: [Waiter] = []
+    private var nextWaiter = 0
+    /// Returns holding a slot, or throws `CancellationError` holding nothing. A slot handed over
+    /// just before a cancellation stays with the caller, which releases it as usual.
     func acquire(local: Bool, key: String) async throws {
-        while keys.contains(key) || (local ? localJobs >= 1 : cloudJobs >= 2) { try await Task.sleep(for: .milliseconds(50)) }
         try Task.checkCancellation()
-        keys.insert(key)
-        if local { localJobs += 1 } else { cloudJobs += 1 }
+        if canStart(local: local, key: key) { start(local: local, key: key); return }
+        nextWaiter += 1
+        let id = nextWaiter
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                waiters.append(Waiter(id: id, local: local, key: key, continuation: continuation))
+            }
+        } onCancel: {
+            Task { await self.cancel(id) }
+        }
     }
     func release(local: Bool, key: String) {
         keys.remove(key)
         if local { localJobs -= 1 } else { cloudJobs -= 1 }
+        var index = 0
+        while index < waiters.count {
+            let waiter = waiters[index]
+            guard canStart(local: waiter.local, key: waiter.key) else { index += 1; continue }
+            waiters.remove(at: index)
+            start(local: waiter.local, key: waiter.key)
+            waiter.continuation.resume()
+        }
+    }
+    /// Running counts and waiting keys in arrival order, for tests.
+    func snapshot() -> Snapshot { Snapshot(local: localJobs, cloud: cloudJobs, waiting: waiters.map(\.key)) }
+    private func canStart(local: Bool, key: String) -> Bool { !keys.contains(key) && (local ? localJobs < 1 : cloudJobs < 2) }
+    private func start(local: Bool, key: String) {
+        keys.insert(key)
+        if local { localJobs += 1 } else { cloudJobs += 1 }
+    }
+    private func cancel(_ id: Int) {
+        guard let index = waiters.firstIndex(where: { $0.id == id }) else { return }
+        waiters.remove(at: index).continuation.resume(throwing: CancellationError())
     }
 }

@@ -290,23 +290,271 @@ public sealed class RoutingAndCacheTests
         Assert.Equal(JsonNode.Parse(response)!.ToJsonString(), JsonNode.Parse(saved.GetRawText())!.ToJsonString());
     }
 
-    [Theory]
-    [InlineData(TranscriptEngine.Elevenlabs, 2)]
-    [InlineData(TranscriptEngine.Whispercpp, 1)]
-    public async Task AppWideQueuesBoundCloudAndLocalConcurrency(TranscriptEngine engineId, int expectedParallelism)
+    /// <summary>Seven services share private queues: one local and two cloud jobs run together, the others wait, and
+    /// each finished job lets exactly one waiter of its kind in (transcription §13.4). Jobs stay in their engines until
+    /// the test finishes them, so no step races a clock, and parallel test classes cannot take the slots.</summary>
+    [Fact(Timeout = 60_000)]
+    public async Task AppWideQueuesBoundCloudAndLocalConcurrency()
     {
         using var files = new SpeechFiles();
-        var engine = new QueueEngine(engineId);
-        var jobs = Enumerable.Range(0, 4).Select(index =>
+        var queues = new SpeechJobQueues();
+        var held = new HeldJobs();
+        var ct = TestContext.Current.CancellationToken;
+        var keys = Enumerable.Range(0, 7).Select(index => new string((char)('0' + index), 64)).ToArray();
+        static bool IsLocal(string key) => key[0] < '3';
+        var jobs = keys.Select(key => StartHeldJob(files, queues, held, key, IsLocal(key), ct)).ToArray();
+        var left = keys.ToHashSet();
+        while (left.Count > 0)
         {
-            var request = files.Request();
-            request = request with { ContentKey = new string((char)('a' + index), 64),
-                Plan = request.Plan with { Engine = engineId, Model = engineId == TranscriptEngine.Whispercpp ? "whisper-base.en-q5_1" : null } };
-            return new TranscriptionService([engine], dataRoot: files.Root).TranscribeAsync(request,
-                new CaptureProgress<TranscriptionProgress>(), TestContext.Current.CancellationToken);
-        });
+            // Settled: finished jobs have left, each kind runs as many jobs as its limit and the remaining jobs allow,
+            // only those hold slots, and every other job waits in its kind's queue.
+            var (localLeft, cloudLeft) = (left.Count(IsLocal), left.Count(key => !IsLocal(key)));
+            string[] running = [];
+            await Until(() =>
+            {
+                running = held.Running;
+                var (local, cloud) = (running.Count(IsLocal), running.Count(key => !IsLocal(key)));
+                return running.All(left.Contains) && local == Math.Min(1, localLeft) && cloud == Math.Min(2, cloudLeft) &&
+                    queues.Running == (local, cloud) && queues.Waiting == (localLeft - local, cloudLeft - cloud);
+            }, ct, jobs);
+            left.Remove(running[0]);
+            held.Finish(running[0]);
+        }
         await Task.WhenAll(jobs);
-        Assert.Equal(expectedParallelism, engine.Maximum);
+        Assert.Equal((1, 2), (held.MaximumLocal, held.MaximumCloud));
+        Assert.Equal(((0, 0), (0, 0)), (queues.Running, queues.Waiting));
+        Assert.Same(SpeechJobQueues.Shared, new TranscriptionService([new StubEngine()], dataRoot: files.Root).Queues);
+    }
+
+    /// <summary>A local job queued for the local slot holds nothing else, so a cloud job for the same source reaches its
+    /// engine at once; only an identical job waits for another (transcription §13.4).</summary>
+    [Fact(Timeout = 60_000)]
+    public async Task QueuedLocalJobLetsACloudJobForTheSameSourceRun()
+    {
+        using var files = new SpeechFiles();
+        var queues = new SpeechJobQueues();
+        var held = new HeldJobs();
+        var ct = TestContext.Current.CancellationToken;
+        string other = new('0', 64), source = new('a', 64);
+        var first = StartHeldJob(files, queues, held, other, local: true, ct);
+        await Until(() => held.Running.SequenceEqual([other]), ct, first);
+        var queued = StartHeldJob(files, queues, held, source, local: true, ct);
+        await Until(() => queues.Waiting == (1, 0), ct, first, queued);
+        var cloud = StartHeldJob(files, queues, held, source, local: false, ct);
+        await Until(() => held.Running.SequenceEqual([other, source]), ct, first, queued, cloud);
+        Assert.Equal(((1, 1), (1, 0)), (queues.Running, queues.Waiting));
+        held.Finish(source);
+        await cloud;
+        held.Finish(other);
+        await first;
+        await Until(() => held.Running.SequenceEqual([source]), ct, queued);
+        held.Finish(source);
+        await queued;
+        Assert.Equal(((0, 0), (0, 0)), (queues.Running, queues.Waiting));
+    }
+
+    /// <summary>A runs locally on source 1 and B queues locally on source 2; then C (cloud, source 2) and D (cloud,
+    /// source 3) ask in that order. C must not wait behind B while D, which asked later, runs (transcription §13.4).</summary>
+    [Fact(Timeout = 60_000)]
+    public async Task CloudJobForASourceWithAQueuedLocalJobRunsWithALaterOne()
+    {
+        using var files = new SpeechFiles();
+        var queues = new SpeechJobQueues();
+        var held = new HeldJobs();
+        var ct = TestContext.Current.CancellationToken;
+        string one = new('1', 64), two = new('2', 64), three = new('3', 64);
+        var a = StartHeldJob(files, queues, held, one, local: true, ct);
+        await Until(() => held.Running.SequenceEqual([one]), ct, a);
+        var b = StartHeldJob(files, queues, held, two, local: true, ct);
+        await Until(() => queues.Waiting == (1, 0), ct, a, b);
+        var c = StartHeldJob(files, queues, held, two, local: false, ct);
+        var d = StartHeldJob(files, queues, held, three, local: false, ct);
+        await Until(() => held.Running.Order(StringComparer.Ordinal).SequenceEqual([one, two, three]), ct, a, b, c, d);
+        Assert.Equal((1, 0), queues.Waiting);
+        Assert.False(b.IsCompleted);
+        held.Finish(two);
+        await c;
+        held.Finish(three);
+        await d;
+        held.Finish(one);
+        await a;
+        await Until(() => held.Running.SequenceEqual([two]), ct, b);
+        held.Finish(two);
+        await b;
+        Assert.Equal(((0, 0), (0, 0)), (queues.Running, queues.Waiting));
+    }
+
+    /// <summary>A release goes to the oldest waiter, never to a later caller (transcription §13.4).</summary>
+    [Fact(Timeout = 60_000)]
+    public async Task AppWideQueuesHandEachReleaseToTheOldestWaiter()
+    {
+        var queues = new SpeechJobQueues();
+        var ct = TestContext.Current.CancellationToken;
+        await queues.EnterAsync(true, "running", ct);
+        var first = queues.EnterAsync(true, "first", ct);
+        var second = queues.EnterAsync(true, "second", ct);
+        queues.Release(true, "running");
+        await first;
+        var later = queues.EnterAsync(true, "later", ct);
+        Assert.False(second.IsCompleted);
+        queues.Release(true, "first");
+        await second;
+        Assert.False(later.IsCompleted);
+        queues.Release(true, "second");
+        await later;
+        queues.Release(true, "later");
+        Assert.Equal(((0, 0), (0, 0)), (queues.Running, queues.Waiting));
+    }
+
+    /// <summary>A release passes over a waiter whose identical job still runs and keeps the arrival order of the rest;
+    /// once the identical job ends, its duplicate is the oldest waiter that can start (transcription §13.4).</summary>
+    [Fact(Timeout = 60_000)]
+    public async Task AppWideQueuesSkipAWaiterWhoseIdenticalJobRuns()
+    {
+        var queues = new SpeechJobQueues();
+        var ct = TestContext.Current.CancellationToken;
+        await queues.EnterAsync(false, "a", ct);
+        await queues.EnterAsync(false, "b", ct);
+        var duplicate = queues.EnterAsync(false, "a", ct);
+        var first = queues.EnterAsync(false, "c", ct);
+        var second = queues.EnterAsync(false, "d", ct);
+        Assert.Equal(((0, 2), (0, 3)), (queues.Running, queues.Waiting));
+        // "b" ends while "a" still runs: its place passes over the duplicate to the oldest job that can start.
+        queues.Release(false, "b");
+        Assert.Same(first, await Task.WhenAny(duplicate, first, second));
+        var later = queues.EnterAsync(false, "e", ct);
+        // Once "a" ends, its duplicate is the oldest job that can start, and a later caller never goes first.
+        queues.Release(false, "a");
+        Assert.Same(duplicate, await Task.WhenAny(duplicate, second, later));
+        queues.Release(false, "c");
+        Assert.Same(second, await Task.WhenAny(second, later));
+        queues.Release(false, "a");
+        await later;
+        queues.Release(false, "d");
+        queues.Release(false, "e");
+        Assert.Equal(((0, 0), (0, 0)), (queues.Running, queues.Waiting));
+    }
+
+    /// <summary>A cancelled caller leaves the queue holding nothing, and a slot handed over just before a cancellation
+    /// stays with its job until the job gives it back (transcription §13.2 and §13.4).</summary>
+    [Fact(Timeout = 60_000)]
+    public async Task AppWideQueuesDropACancelledWaiter()
+    {
+        var queues = new SpeechJobQueues();
+        var ct = TestContext.Current.CancellationToken;
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => queues.EnterAsync(true, "early", new CancellationToken(canceled: true)));
+        await queues.EnterAsync(true, "running", ct);
+        using var dropped = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        using var kept = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        var cancelled = queues.EnterAsync(true, "cancelled", dropped.Token);
+        var granted = queues.EnterAsync(true, "granted", kept.Token);
+        Assert.Equal(((1, 0), (2, 0)), (queues.Running, queues.Waiting));
+        await dropped.CancelAsync();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => cancelled);
+        Assert.Equal(((1, 0), (1, 0)), (queues.Running, queues.Waiting));
+        // The release hands the slot over before the cancellation arrives, so the slot stays with its job.
+        queues.Release(true, "running");
+        await kept.CancelAsync();
+        await granted;
+        Assert.Equal(((1, 0), (0, 0)), (queues.Running, queues.Waiting));
+        queues.Release(true, "granted");
+        Assert.Equal(((0, 0), (0, 0)), (queues.Running, queues.Waiting));
+    }
+
+    /// <summary>The review's first order, on the two cloud slots: L0 and K0 run, then J1, its identical J2 and J3 queue.
+    /// L0 ends and J1 starts; K0 ends while J1 runs, so J2 keeps waiting and J3 starts; J4 queues. J1 is cancelled
+    /// after it started, and J2 takes its place before J4, which asked later (transcription §13.4).</summary>
+    [Fact(Timeout = 60_000)]
+    public async Task QueuedDuplicateTakesThePlaceOfItsCancelledTwin()
+    {
+        using var files = new SpeechFiles();
+        var queues = new SpeechJobQueues();
+        var held = new HeldJobs();
+        var ct = TestContext.Current.CancellationToken;
+        using var cancel = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        string l0 = new('0', 64), k0 = new('1', 64), twin = new('a', 64), j3 = new('b', 64), j4 = new('c', 64);
+        var first = StartHeldJob(files, queues, held, l0, local: false, ct);
+        await Until(() => held.Running.SequenceEqual([l0]), ct, first);
+        var second = StartHeldJob(files, queues, held, k0, local: false, ct);
+        await Until(() => held.Running.Length == 2, ct, first, second);
+        var j1 = StartHeldJob(files, queues, held, twin, local: false, cancel.Token);
+        await Until(() => queues.Waiting == (0, 1), ct, first, second, j1);
+        var j2 = StartHeldJob(files, queues, held, twin, local: false, ct);
+        await Until(() => queues.Waiting == (0, 2), ct, first, second, j1, j2);
+        var third = StartHeldJob(files, queues, held, j3, local: false, ct);
+        await Until(() => queues.Waiting == (0, 3), ct, first, second, j1, j2, third);
+        held.Finish(l0);
+        await first;
+        await Until(() => held.Running.Length == 2, ct, second, j1, j2, third);
+        Assert.Equal([k0, twin], held.Running);
+        held.Finish(k0);
+        await second;
+        await Until(() => held.Running.Length == 2, ct, j1, j2, third);
+        Assert.Equal([twin, j3], held.Running);
+        var fourth = StartHeldJob(files, queues, held, j4, local: false, ct);
+        await Until(() => queues.Waiting == (0, 2), ct, j1, j2, third, fourth);
+        await cancel.CancelAsync();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => j1);
+        await Until(() => held.Running.Length == 2, ct, j2, third, fourth);
+        Assert.Equal([j3, twin], held.Running);
+        held.Finish(j3);
+        await third;
+        await Until(() => held.Running.Length == 2, ct, j2, fourth);
+        held.Finish(twin);
+        held.Finish(j4);
+        await Task.WhenAll(j2, fourth);
+        Assert.Equal([l0, k0, twin, j3, twin, j4], held.Started);
+        Assert.Equal(((0, 0), (0, 0)), (queues.Running, queues.Waiting));
+    }
+
+    /// <summary>The review's second order, on the two cloud slots: A and B run, then A's identical C, D and E queue. B
+    /// ends while A runs, so C keeps waiting and D starts. A is then cancelled, or its engine fails, without leaving a
+    /// cache entry: C takes its place before E, which asked later, and E starts when D ends (transcription §13.4).</summary>
+    [Theory(Timeout = 60_000)]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task DuplicateRunsBeforeALaterJobWhenItsTwinEndsWithoutAnEntry(bool engineFails)
+    {
+        using var files = new SpeechFiles();
+        var queues = new SpeechJobQueues();
+        var held = new HeldJobs();
+        var ct = TestContext.Current.CancellationToken;
+        using var cancel = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        string one = new('1', 64), nine = new('9', 64), two = new('2', 64), three = new('3', 64);
+        var a = StartHeldJob(files, queues, held, one, local: false, cancel.Token);
+        await Until(() => held.Running.SequenceEqual([one]), ct, a);
+        var b = StartHeldJob(files, queues, held, nine, local: false, ct);
+        await Until(() => held.Running.Length == 2, ct, a, b);
+        var c = StartHeldJob(files, queues, held, one, local: false, ct);
+        await Until(() => queues.Waiting == (0, 1), ct, a, b, c);
+        var d = StartHeldJob(files, queues, held, two, local: false, ct);
+        await Until(() => queues.Waiting == (0, 2), ct, a, b, c, d);
+        var e = StartHeldJob(files, queues, held, three, local: false, ct);
+        await Until(() => queues.Waiting == (0, 3), ct, a, b, c, d, e);
+        held.Finish(nine);
+        await b;
+        await Until(() => held.Running.Length == 2, ct, a, c, d, e);
+        Assert.Equal([one, two], held.Running);
+        if (engineFails)
+        {
+            held.Fail(one);
+            await Assert.ThrowsAsync<InvalidOperationException>(() => a);
+        }
+        else
+        {
+            await cancel.CancelAsync();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => a);
+        }
+        await Until(() => held.Running.Length == 2, ct, c, d, e);
+        Assert.Equal([two, one], held.Running);
+        held.Finish(two);
+        await d;
+        await Until(() => held.Running.Length == 2, ct, c, e);
+        held.Finish(one);
+        held.Finish(three);
+        await Task.WhenAll(c, e);
+        Assert.Equal([one, nine, two, one, three], held.Started);
+        Assert.Equal(((0, 0), (0, 0)), (queues.Running, queues.Waiting));
     }
 
     private sealed class InstalledOnly(string[] ids) : IModelDownloader
@@ -337,10 +585,67 @@ public sealed class RoutingAndCacheTests
         }
     }
 
-    private sealed class QueueEngine(TranscriptEngine engine) : ITranscriber
+    /// <summary>Starts a whisper or ElevenLabs job for <paramref name="key"/> on its own service, as another project
+    /// would, sharing the test's private queues.</summary>
+    private static Task<Transcript> StartHeldJob(SpeechFiles files, SpeechJobQueues queues, HeldJobs held, string key, bool local, CancellationToken ct)
     {
-        private int active;
-        internal int Maximum { get; private set; }
+        var request = files.Request();
+        request = request with { ContentKey = key, Plan = request.Plan with
+        {
+            Engine = local ? TranscriptEngine.Whispercpp : TranscriptEngine.Elevenlabs, Model = local ? "whisper-base.en-q5_1" : null
+        } };
+        ITranscriber[] engines = [new HeldEngine(TranscriptEngine.Whispercpp, held), new HeldEngine(TranscriptEngine.Elevenlabs, held)];
+        return new TranscriptionService(engines, queues, dataRoot: files.Root).TranscribeAsync(request, new CaptureProgress<TranscriptionProgress>(), ct);
+    }
+
+    /// <summary>Waits for the condition with no deadline of its own (the test's timeout bounds it) and fails at once
+    /// when a job faults.</summary>
+    private static async Task Until(Func<bool> condition, CancellationToken ct, params Task[] jobs)
+    {
+        while (true)
+        {
+            if (jobs.FirstOrDefault(job => job.IsFaulted) is { } failed) await failed;
+            if (condition()) return;
+            await Task.Delay(1, ct);
+        }
+    }
+
+    /// <summary>Jobs inside the engines by content key, oldest first; each stays until the test finishes or fails it.
+    /// Two identical jobs (same kind and source) inside at once would break transcription §13.4, so the second one
+    /// fails at once and the test with it.</summary>
+    private sealed class HeldJobs
+    {
+        private readonly List<string> running = [], started = [];
+        private readonly HashSet<(bool, string)> inside = [];
+        private readonly Dictionary<string, TaskCompletionSource> gates = [];
+        private int local, cloud;
+        internal int MaximumLocal { get; private set; }
+        internal int MaximumCloud { get; private set; }
+        internal string[] Running { get { lock (running) return [.. running]; } }
+        /// <summary>Every job that reached an engine, in order.</summary>
+        internal string[] Started { get { lock (running) return [.. started]; } }
+        internal Task Enter(bool isLocal, string key)
+        {
+            lock (running)
+            {
+                if (!inside.Add((isLocal, key))) throw new InvalidOperationException("Two identical jobs ran at once for " + key);
+                running.Add(key);
+                started.Add(key);
+                if (isLocal) MaximumLocal = Math.Max(MaximumLocal, ++local); else MaximumCloud = Math.Max(MaximumCloud, ++cloud);
+                return (gates[key] = new(TaskCreationOptions.RunContinuationsAsynchronously)).Task;
+            }
+        }
+        internal void Leave(bool isLocal, string key)
+        {
+            lock (running) { running.Remove(key); inside.Remove((isLocal, key)); if (isLocal) local--; else cloud--; }
+        }
+        internal void Finish(string key) => Gate(key).SetResult();
+        internal void Fail(string key) => Gate(key).SetException(new InvalidOperationException("Synthetic engine failure"));
+        private TaskCompletionSource Gate(string key) { lock (running) return gates[key]; }
+    }
+
+    private sealed class HeldEngine(TranscriptEngine engine, HeldJobs held) : ITranscriber
+    {
         public TranscriptEngine Engine => engine;
         public TranscriberCapabilities Capabilities(string? model) => new(TimingSource.Native, true, true, null, null, Engine == TranscriptEngine.Whispercpp);
         public Task<bool> SupportsAsync(LanguageChoice language, string? model, CancellationToken ct) => Task.FromResult(true);
@@ -348,15 +653,15 @@ public sealed class RoutingAndCacheTests
         public Task PrepareAsync(TranscriptionPlan plan, IProgress<double>? progress, CancellationToken ct) => Task.CompletedTask;
         public async Task<RawTranscript> TranscribeAsync(TranscriptionRequest request, IProgress<TranscriptionProgress> progress, CancellationToken ct)
         {
-            var current = Interlocked.Increment(ref active);
-            lock (this) Maximum = Math.Max(Maximum, current);
+            var isLocal = Engine == TranscriptEngine.Whispercpp;
+            var entered = held.Enter(isLocal, request.ContentKey);
             try
             {
-                await Task.Delay(120, ct);
+                await entered.WaitAsync(ct);
                 return new(new(Engine, request.Plan.Model, null, "test-engine", null), 1, new(GroupingEnd.LastToken, GroupingConfidence.Single, false),
                     [new("hello", false, 0.1, 0.4, null, null, null, 0)], "en", null, true, TimingSource.Native, null);
             }
-            finally { Interlocked.Decrement(ref active); }
+            finally { held.Leave(isLocal, request.ContentKey); }
         }
     }
 }
