@@ -27,6 +27,8 @@ public sealed partial class EditorPage : Page
     private IPreviewEngine? preview;
     private PreviewPresenter? presenter;
     private CaptionsPanel? captions;
+    private Controls.RightColumn? rightContent;
+    private RewriteSession? rewrite;
     private MediaInfo? media;
     private EditorMediaState mediaState;
     private long standInGeneration;
@@ -94,6 +96,8 @@ public sealed partial class EditorPage : Page
         pauseBreath = App.Services.Get("editing.pauseBreath", "natural");
         App.Services.SettingsChanged += EditorSettingsChanged;
         Transcript.Attach(ViewModel);
+        Transcript.RewriteRequested += (_, _) => _ = RunAsync(() => OpenRewriteAsync(false), "Rewrite");
+        Transcript.InsertWordsRequested += (_, _) => _ = RunAsync(() => OpenRewriteAsync(true), "Rewrite");
         Timeline.Attach(ViewModel);
         CaptionDrag.Attach(ViewModel);
         Transcript.SeekRequested += (_, _) => _ = RunAsync(() => SeekSourceAsync(ViewModel.SourceTime), "Preview");
@@ -108,7 +112,8 @@ public sealed partial class EditorPage : Page
         Bindings.Update();
         Aspect.SelectedIndex = EditorLayout.Frames.ToList().IndexOf(project.Export.Aspect);
         captions = new(ViewModel, () => MediaPath, lifetime.Token);
-        CaptionsHost.Children.Add(new Controls.RightColumn(captions));
+        rightContent = new(captions);
+        CaptionsHost.Children.Add(rightContent);
         await captions.InitializeAsync();
         InstallAccelerators();
         if (demo) media = MediaFromProject(project);
@@ -472,6 +477,28 @@ public sealed partial class EditorPage : Page
             await App.Services.SetAsync("voiceLab.enabled", true, lifetime.Token);
         }
         Transcript.RequestRewrite();
+    }
+    private async Task OpenRewriteAsync(bool insertion)
+    {
+        if (!RewriteEntryPolicy.BuildEnabled || !App.Services.Get("voiceLab.enabled", false) ||
+            ViewModel.IsReadOnly || ViewModel.Busy || ViewModel.IsLeaving || rightContent is null ||
+            (insertion ? Transcript.InsertionAfterIndex < 0 : !ViewModel.HasSelection)) return;
+        rewrite?.Dispose();
+        var project = ViewModel.Project;
+        var first = ViewModel.SelectionStart; var last = ViewModel.SelectionEnd;
+        var after = insertion ? Transcript.InsertionAfterIndex : (int?)null;
+        var envelope = media is not null ? await App.Services.Waveform.GetEnvelopeAsync(media, project.Media.Source.ContentKey, lifetime.Token) : null;
+        var entry = (await ProviderCatalog.ReadAsync(lifetime.Token)).FirstOrDefault(item => item.WireId == App.Services.Get("llm.connector", ""));
+        var connector = entry is null ? null : new RewriteConnector(App.Services.Connector(entry.Id),
+            App.Services.Get("llm.model." + entry.WireId, entry.DefaultModel), entry.ShortName,
+            entry.Cloud ? "apiKey" : entry.Cli ? "cli" : "local", entry.Id == VoxClip.Core.Services.LLM.ConnectorId.ClaudeCode ? "Claude plan" : "ChatGPT plan");
+        if (!ReferenceEquals(project, ViewModel.Project) || disposed || ViewModel.IsLeaving) return;
+        rewrite = new(ViewModel, first, last, envelope, connector, after);
+        var panel = new RewritePanel(rewrite);
+        panel.Closed += (_, _) => rightContent.CloseRewrite();
+        ShowViewer(true);
+        rightContent.ShowRewrite(panel);
+        await rewrite.SetInstructionAsync("");
     }
     private void CutSelectionClicked(object sender, RoutedEventArgs args) => ViewModel.CutSelection();
     private void RestoreSelectionClicked(object sender, RoutedEventArgs args) => ViewModel.CutSelection(true);

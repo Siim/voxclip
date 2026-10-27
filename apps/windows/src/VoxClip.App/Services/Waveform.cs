@@ -10,6 +10,15 @@ internal sealed class Waveform(IAudioExtractor extractor, string cacheRoot)
 {
     private readonly SemaphoreSlim gate = new(1, 1);
     private readonly Dictionary<string, IReadOnlyList<float>> cached = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, AudioEnvelope> envelopes = new(StringComparer.Ordinal);
+    internal async Task<AudioEnvelope?> GetEnvelopeAsync(MediaInfo media, string contentKey, CancellationToken ct)
+    {
+        if (media.Audio is null) return null;
+        await GetAsync(media, contentKey, ct).ConfigureAwait(false);
+        await gate.WaitAsync(ct).ConfigureAwait(false);
+        try { return envelopes.GetValueOrDefault(contentKey); }
+        finally { gate.Release(); }
+    }
     internal async Task<IReadOnlyList<float>> GetAsync(MediaInfo media, string contentKey, CancellationToken ct)
     {
         if (media.Audio is null) return [];
@@ -32,12 +41,14 @@ internal sealed class Waveform(IAudioExtractor extractor, string cacheRoot)
                     if (levels.All(level => float.IsFinite(level) && level >= 0)) envelope = new(metadata.SampleRate, metadata.FrameSeconds, levels);
                 }
                 envelope ??= (await index.ExtractAudioAsync(extractor, media, contentKey, null, ct).ConfigureAwait(false)).Envelope;
-                return Rms50(envelope);
+                return envelope;
             }, ct).ConfigureAwait(false);
             ct.ThrowIfCancellationRequested();
-            if (cached.Count >= 4) cached.Remove(cached.Keys.First());
-            cached[contentKey] = result;
-            return result;
+            if (cached.Count >= 4) { var oldest = cached.Keys.First(); cached.Remove(oldest); envelopes.Remove(oldest); }
+            envelopes[contentKey] = result;
+            var waveform = Rms50(result);
+            cached[contentKey] = waveform;
+            return waveform;
         }
         finally { gate.Release(); }
     }

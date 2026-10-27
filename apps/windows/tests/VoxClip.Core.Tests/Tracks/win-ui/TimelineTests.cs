@@ -104,8 +104,15 @@ public sealed class TimelineTests
             var levels = await service.GetAsync(media, key, CancellationToken.None);
             Assert.Same(levels, await service.GetAsync(media, key, CancellationToken.None));
             Assert.Equal(levels, await new Waveform(extractor, root).GetAsync(media, key, CancellationToken.None));
+            var envelope = Assert.IsType<AudioEnvelope>(await service.GetEnvelopeAsync(media, key, CancellationToken.None));
+            Assert.Equal(0.01, envelope.FrameSeconds);
+            Assert.Equal(48000, envelope.SampleRate);
+            Assert.Equal(10, envelope.Rms.Count);
+            Assert.Equal(levels, Waveform.Rms50(envelope));
+            Assert.Same(envelope, await service.GetEnvelopeAsync(media, key, CancellationToken.None));
             Assert.Equal(1, extractor.Calls);
             Assert.Empty(await service.GetAsync(media with { Audio = null }, key, CancellationToken.None));
+            Assert.Null(await service.GetEnvelopeAsync(media with { Audio = null }, key, CancellationToken.None));
             using var cancelled = new CancellationTokenSource(); cancelled.Cancel();
             await Assert.ThrowsAnyAsync<OperationCanceledException>(() => service.GetAsync(media, key, cancelled.Token));
         }

@@ -1,5 +1,11 @@
 # Windows fixed contracts
 
+### 2026-10-28 — sol-win-redesign 15a — Panel and proposal boundary
+
+- `RewritePanel` replaces Captions in the flush right-column slot, with the passage header/Beta/Close Rewrite, What should change?, bordered Rewrite action, selected connector disclosure, plain New words, and the disclosure footer. No Voice, Takes, generation or acceptance control is introduced. The transcript and timeline use the existing passage-outline/band paths and never receive proposed words.
+- `RewriteSession` freezes the project, effective source words, scope and instruction. Preparation uses Core window placement, lendable silence and passage length budget, then `VoiceRewriteService.PrepareAsync`; it performs no connector discovery or send. A displayed exact quote and affirmative approval are required before Propose. Edits cancel stale requests; project edits close the session. Waveform retains its actual 10 ms envelope for Core planning, never synthesizing one from its 50 ms display buckets.
+- `PanelProposalIsInertUntilTheDisplayedEstimateIsApproved` and `ChangedInstructionInvalidatesTheDisplayedAuthorizationWithoutDiscovery` use a recording fake connector. No provider is contacted during verification. Proposed words are inert until explicit local edit application.
+
 ### 2026-10-28 — sol-win-redesign 15a — Gated entry points
 
 - `RewriteEntryPolicy.BuildEnabled` is true only under DEBUG. Release hides the overflow, selection and context entries and refuses Ctrl+R; enabling the persisted Voice Lab setting cannot bypass it. DEBUG selection/context/shortcut entries require editable selected words, and Insert Words requires a between-word context caret. Overflow while off shows the one-time §5 disclosure and saves enablement only after Turn on. The existing tree had the setting and gated placeholders but no Windows enablement sheet; this is its single implementation.
