@@ -251,7 +251,9 @@ Content-Type: multipart/form-data
 
 1. Decode the output and resample it to the input rate.
 2. `Δ = outputSamples − inputSamples`. If `|Δ| ≤ round(0.020 × rate)`, trim or zero-pad the end to the input length. Done.
-3. Otherwise compute 10 ms RMS envelopes of the input and the output. Find the lag `L` in ±500 ms that maximises their normalised cross-correlation.
+3. Otherwise compute 10 ms RMS envelopes of the input and the output: frames of `round_half_up(rate × 0.01)` samples from sample 0, without the partial final frame. Search whole-frame lags up to `floor(round_half_up(0.5 s × rate) ÷ frame)` frames on each side, or ±0.3 s for the voice changer (§7.3).
+   - **Score.** Each lag scores the Pearson correlation of the overlapping frames, with both means taken over that overlap, clamped to at most 1. A constant overlap scores 0. So does an overlap shorter than half the shorter envelope, `ceil(min(nIn, nOut) / 2)` frames, because two frames correlate ±1 by construction and would beat the true lag of a one-word chunk.
+   - **Choice.** `L` is the first lag with the strictly highest score, searched in the order 0, −1, +1, −2, +2, …. Ties go to the smallest `|L|`, then to the negative lag. A positive `L` means the output is late.
 4. If the peak is below 0.5, or `|Δ − L|` is above 20 ms, fail with "Clean audio came back out of sync, so it was not applied. Try again." The cost was spent; say so.
 5. Otherwise shift by `L`, then trim or pad to the input length.
 6. Join chunks by concatenation. The split points lie in silence, so no crossfade is needed.
@@ -688,7 +690,7 @@ POST {base}/v1/text-to-speech/{voice_id}/with-timestamps?output_format=pcm_24000
 - Rank the rest by `score = 0.6 × (1 − fitCost) + 0.3 × matchRatio + 0.1 × flatness`, where:
   - `fitCost` is 0 when the planner fits the take exactly; otherwise it is `min(1, |residualSeconds| / (0.25 × w))`, rising with the residual that `changedDuration` reports (§8.9.2);
   - `matchRatio` is the LCS ratio from §8.11;
-  - `flatness = 1 − min(1, stdev(momentary LUFS over the candidate) / 6)`.
+  - `flatness = 1 − min(1, stdev / 6)`, where `stdev` is the population standard deviation of the candidate's momentary loudness (§8.11 item 3). Measure the trimmed take every `round_half_up(0.1 × rate)` samples from its first sample, with 400 ms windows, keeping whole windows only. Drop windows below −70 LUFS, so silence between words does not count as variation. With fewer than two windows left, flatness is 1.
 - Show the best candidate. The user can audition every take ("Take 1 · 2 · 3") and pick one.
 - If every take is rejected: "These takes didn't sound right. Try different wording or re-record."
 - Another run (Generate Again, Try Another) needs a new user action and its own quote; no take is generated automatically. The estimate shown before a run covers all `CANDIDATES` takes (§3.2), and the spend ledger records only the takes that were sent (§3.1).
@@ -696,7 +698,13 @@ POST {base}/v1/text-to-speech/{voice_id}/with-timestamps?output_format=pcm_24000
 ### 8.7 Trim, level, room tone
 
 1. **Trim** the TTS audio to `[firstCharStart − TTS_TRIM_LEAD, lastCharEnd + TTS_TRIM_TAIL]` using `alignment`, clamped to the asset. When alignment is null, the trim runs from the start of the first to the end of the last 10 ms frame above `VOICED_FRAME`, widened by `TTS_TRIM_LEAD` before and `TTS_TRIM_TAIL` after, and clamped to the asset.
-2. **Level.** Take voiced frames in `±LOUDNESS_NEIGHBOURHOOD` around `W` from the source audio (or from the Clean audio when it is on). Gain the TTS so its voiced-frame RMS matches theirs, clamp the gain to `GAIN_CLAMP`, then apply a true-peak limit of −1 dBTP.
+2. **Level.** The TTS gets one static gain, stored as `audio.gainDb`. Nothing limits dynamically, and the voice itself is not altered.
+   - **Frames.** A frame is 10 ms, `round_half_up(rate × 0.01)` samples. It is voiced when its RMS is above `VOICED_FRAME`. A voiced RMS is taken over every sample of the voiced frames: 20·log10 of the square root of their pooled mean square.
+   - **Source level.** Take the source audio (or the Clean audio when it is on) in `[start − LOUDNESS_NEIGHBOURHOOD, start)` and `[end, end + LOUDNESS_NEIGHBOURHOOD)` around `W = [start, end)`, each side clamped to the take. `W` itself is excluded, because it is the audio being replaced. Frame each side on its own grid from its first sample, and ignore a trailing partial frame. Pool the voiced frames of both sides into one mean square.
+   - **TTS level.** Take the voiced frames of the trimmed TTS (item 1) in the same way, framed from its first sample.
+   - **Gain.** `min(clamp(sourceLevel − ttsLevel, −GAIN_CLAMP, +GAIN_CLAMP), −1 dBTP − ttsTruePeak)`. The −1 dBTP limit is a cap on this one gain.
+   - **True peak.** Measure it as in ITU-R BS.1770-4 Annex 2, with the 48-tap, 4-phase interpolating filter: 4× below 96 kHz, 2× below 192 kHz using the filter's even phases 0 and 2, and the sample peak from 192 kHz. The audio is silent outside the trimmed TTS, so the ringing of an abrupt start or end counts. The true peak is the larger of the interpolated peak and the sample peak, because no Annex 2 phase lands on an input sample. Both rules can only lower the gain, which is the safe direction.
+   - **Failure.** The source level depends only on the source and `W`, so it is measured when `W` is placed. If neither side of `W` has a voiced frame, the window is refused with `noVoicedAudio` before any paid take, as for `roomToneUnavailable`. A take with no voiced frame of its own is rejected as `noVoicedAudio`.
 3. **Room tone** (only when Clean audio is off):
    - Find the quietest 0.5 s run (sliding 10 ms RMS) inside source gaps of at least 0.5 s.
    - Loop it under the patch at its natural level, with 50 ms crossfades between loops.
@@ -827,8 +835,13 @@ A micro-stretch of at most ±3% on the dry TTS, before room tone is added, with 
 1. **Re-transcribe** the final patched window, `[seamIn − 0.5 s, seamOut + 0.5 s]` of the mixed audio with the silence fit applied (§8.9), with Scribe v2 and `language_code`. Compare the normalised recognised tokens inside the window with the intended text, bridge words included:
    - for 5 tokens or fewer, require exact equality;
    - otherwise require an LCS ratio of at least 0.9 (`2 × LCS / (expected + recognised)`).
-2. **No clipping.** The sample peak is below 0 dBFS after the limiter.
-3. **Loudness jump.** The momentary loudness (400 ms, BS.1770) jumps by at most 2 LU across each seam.
+2. **No clipping.** The sample peak of the final mixed window, with the static gain of §8.7 item 2 applied, is below 0 dBFS. The window is the same span as item 1. The sample peak is 20·log10(max |x|) and is stored as `qa.peakDbfs`. There is no dynamic limiter: the true-peak cap in §8.7 item 2 is the only limit.
+3. **Loudness jump.** The momentary loudness jumps by at most 2 LU across each seam.
+   - **Momentary loudness.** Momentary loudness is BS.1770-4: −0.691 + 10·log10 of the K-weighted mean square, with channel weight 1, over `round_half_up(0.4 × rate)` samples. The K-weighting runs over the mixed audio from its first sample, with zero filter state, so the audio before a window sets the filter state. Its biquads follow libebur128's bilinear-transform derivation (MIT), prewarped at each f0: the shelf at f0 1681.974450955533 Hz, gain 3.999843853973347 dB and Q 0.7071752369554196 with the mid-band numerator term Vh^0.4996667741545416, and the RLB high-pass at f0 38.13547087602444 Hz and Q 0.5003270373238773 with the numerator [1, −2, 1] not divided by a0. At 48 kHz this meets the published BS.1770 coefficients within 1e-6, and those coefficients are the normative anchor.
+   - **Windows.** Measure `[seam − 0.4 s, seam)` and `[seam, seam + 0.4 s)` on the mixed audio's own sample grid. A window cut short by the audio's edge is shortened. If either window is then shorter than 0.1 s, the seam fails with `insufficientContext`.
+   - **Floor.** Floor each window's loudness at −70 LUFS, the BS.1770 absolute gate. The jump is `|max(M_after, −70) − max(M_before, −70)|`. It is always finite, and two windows at the floor give 0. A cut from room tone to digital silence is audible, so it reads the room tone's distance from −70 LUFS, and QA can catch it.
+   - **Recipe value.** `qa.lufsJumpLu` is the largest jump over the seams whose kind is not `none`, and 0 when there is no such seam.
+   - The shared vectors `shared/fixtures/voice-lab/audio-math-cases.json` pin every rule in §4.4 step 3, §8.6 flatness, §8.7 item 2 and this item; `shared/fixtures/voice-lab/audio-math-README.md` names the case for each.
 4. **Speaker.** The TTS's embedding scores ≥ τ against the consent embedding. This catches voice drift.
 
 QA results are stored with the segment (§10.1). A candidate that fails is not offered.

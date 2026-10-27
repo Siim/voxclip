@@ -1,0 +1,3675 @@
+{
+  "version": 1,
+  "generator": "tools/fixtures/voice-lab/generate_audio_math.py",
+  "tolerances": {
+    "db": 0.01,
+    "truePeakDb": 0.05,
+    "flatness": 0.001,
+    "correlation": 1e-09,
+    "coefficient": 1e-12
+  },
+  "publishedKWeighting48k": {
+    "shelf": [
+      1.53512485958697,
+      -2.69169618940638,
+      1.19839281085285,
+      -1.69065929318241,
+      0.73248077421585
+    ],
+    "highPass": [
+      1.0,
+      -2.0,
+      1.0,
+      -1.99004745483398,
+      0.99007225036621
+    ]
+  },
+  "cases": [
+    {
+      "id": "k-weighting-16000",
+      "kind": "kWeighting",
+      "rate": 16000,
+      "expected": {
+        "shelf": [
+          1.4432952234913587,
+          -1.8315753812604594,
+          0.6816587574119699,
+          -1.1015337691069942,
+          0.3949123687498637
+        ],
+        "highPass": [
+          1.0,
+          -2.0,
+          1.0,
+          -1.9702895280044335,
+          0.9705104905358434
+        ]
+      }
+    },
+    {
+      "id": "k-weighting-22050",
+      "kind": "kWeighting",
+      "rate": 22050,
+      "expected": {
+        "shelf": [
+          1.4798253509777464,
+          -2.1707286128568293,
+          0.8608424847265516,
+          -1.3383053360661337,
+          0.5082445589136019
+        ],
+        "highPass": [
+          1.0,
+          -2.0,
+          1.0,
+          -1.9783976025901193,
+          0.9785144195032509
+        ]
+      }
+    },
+    {
+      "id": "k-weighting-24000",
+      "kind": "kWeighting",
+      "rate": 24000,
+      "expected": {
+        "shelf": [
+          1.4879002209622763,
+          -2.2462054681411368,
+          0.904909123246438,
+          -1.3902346051928203,
+          0.5368384812603979
+        ],
+        "highPass": [
+          1.0,
+          -2.0,
+          1.0,
+          -1.9801441262289323,
+          0.9802428178592764
+        ]
+      }
+    },
+    {
+      "id": "k-weighting-32000",
+      "kind": "kWeighting",
+      "rate": 32000,
+      "expected": {
+        "shelf": [
+          1.5111778995687646,
+          -2.464889413360141,
+          1.0416332735222955,
+          -1.5390450962506403,
+          0.626966855981559
+        ],
+        "highPass": [
+          1.0,
+          -2.0,
+          1.0,
+          -1.9850896689886883,
+          0.9851453206695515
+        ]
+      }
+    },
+    {
+      "id": "k-weighting-44100",
+      "kind": "kWeighting",
+      "rate": 44100,
+      "expected": {
+        "shelf": [
+          1.5308412300503478,
+          -2.6509799951547297,
+          1.169079079921587,
+          -1.6636551132560204,
+          0.7125954280732254
+        ],
+        "highPass": [
+          1.0,
+          -2.0,
+          1.0,
+          -1.989169673629796,
+          0.9891990357870393
+        ]
+      }
+    },
+    {
+      "id": "k-weighting-48000",
+      "kind": "kWeighting",
+      "rate": 48000,
+      "expected": {
+        "shelf": [
+          1.5351248595869702,
+          -2.6916961894063807,
+          1.19839281085285,
+          -1.6906592931824103,
+          0.7324807742158501
+        ],
+        "highPass": [
+          1.0,
+          -2.0,
+          1.0,
+          -1.9900474548339797,
+          0.9900722503662099
+        ]
+      }
+    },
+    {
+      "id": "k-weighting-88200",
+      "kind": "kWeighting",
+      "rate": 88200,
+      "expected": {
+        "shelf": [
+          1.557515375579654,
+          -2.905627079926345,
+          1.3613339774722122,
+          -1.8309199879623321,
+          0.8441422610878527
+        ],
+        "highPass": [
+          1.0,
+          -2.0,
+          1.0,
+          -1.9945775154503445,
+          0.9945848758780549
+        ]
+      }
+    },
+    {
+      "id": "k-weighting-96000",
+      "kind": "kWeighting",
+      "rate": 96000,
+      "expected": {
+        "shelf": [
+          1.5597142289757966,
+          -2.9267415782510824,
+          1.3782612023158187,
+          -1.8446094698901085,
+          0.8558433229306412
+        ],
+        "highPass": [
+          1.0,
+          -2.0,
+          1.0,
+          -1.9950175447247156,
+          0.9950237590409233
+        ]
+      }
+    },
+    {
+      "id": "k-weighting-192000",
+      "kind": "kWeighting",
+      "rate": 192000,
+      "expected": {
+        "shelf": [
+          1.572227215091279,
+          -3.0472830515615508,
+          1.4779713409796094,
+          -1.9222022306074886,
+          0.925117735116826
+        ],
+        "highPass": [
+          1.0,
+          -2.0,
+          1.0,
+          -1.9975072228407,
+          0.9975087783555097
+        ]
+      }
+    },
+    {
+      "id": "voiced-edge-48k",
+      "kind": "voiced",
+      "signal": {
+        "rate": 48000,
+        "parts": [
+          {
+            "type": "sine",
+            "samples": 24000,
+            "frequency": 1000.0,
+            "peakDbfs": -41.93970004336019,
+            "phase": 0.0
+          },
+          {
+            "type": "sine",
+            "samples": 24000,
+            "frequency": 1000.0,
+            "peakDbfs": -42.039700043360185,
+            "phase": 0.0
+          }
+        ]
+      },
+      "expected": {
+        "voicedRmsDb": -44.95000002348114
+      }
+    },
+    {
+      "id": "voiced-below-edge-44k",
+      "kind": "voiced",
+      "signal": {
+        "rate": 44100,
+        "parts": [
+          {
+            "type": "sine",
+            "samples": 44100,
+            "frequency": 1000.0,
+            "peakDbfs": -42.039700043360185,
+            "phase": 0.0
+          }
+        ]
+      },
+      "expected": {
+        "voicedRmsDb": null
+      }
+    },
+    {
+      "id": "voiced-partial-frame-24k",
+      "kind": "voiced",
+      "signal": {
+        "rate": 24000,
+        "parts": [
+          {
+            "type": "noise",
+            "samples": 4920,
+            "seed": 3,
+            "peakDbfs": -30.0
+          },
+          {
+            "type": "silence",
+            "samples": 2400
+          },
+          {
+            "type": "noise",
+            "samples": 100,
+            "seed": 4,
+            "peakDbfs": 0.0
+          }
+        ]
+      },
+      "expected": {
+        "voicedRmsDb": -34.9948602791105
+      }
+    },
+    {
+      "id": "voiced-silent-48k",
+      "kind": "voiced",
+      "signal": {
+        "rate": 48000,
+        "parts": [
+          {
+            "type": "silence",
+            "samples": 48000
+          }
+        ]
+      },
+      "expected": {
+        "voicedRmsDb": null
+      }
+    },
+    {
+      "id": "voiced-gain-step-48k",
+      "kind": "voiced",
+      "signal": {
+        "rate": 48000,
+        "parts": [
+          {
+            "type": "sine",
+            "samples": 24000,
+            "frequency": 1000.0,
+            "peakDbfs": -36.98970004336019,
+            "phase": 0.0
+          },
+          {
+            "type": "sine",
+            "samples": 24000,
+            "frequency": 1000.0,
+            "peakDbfs": -26.989700043360187,
+            "phase": 0.0
+          }
+        ],
+        "gainDb": -10.0
+      },
+      "expected": {
+        "voicedRmsDb": -40.00000004856724
+      }
+    },
+    {
+      "id": "inter-sample-peak-48000",
+      "kind": "peaks",
+      "signal": {
+        "rate": 48000,
+        "parts": [
+          {
+            "type": "sine",
+            "samples": 4800,
+            "frequency": 12000.0,
+            "peakDbfs": 0.0,
+            "phase": 0.7853981633974483
+          }
+        ]
+      },
+      "expected": {
+        "oversampling": 4,
+        "samplePeakDbfs": -3.0103001052924827,
+        "truePeakDbtp": 0.08264821434811129
+      }
+    },
+    {
+      "id": "inter-sample-peak-44100",
+      "kind": "peaks",
+      "signal": {
+        "rate": 44100,
+        "parts": [
+          {
+            "type": "sine",
+            "samples": 4410,
+            "frequency": 11025.0,
+            "peakDbfs": 0.0,
+            "phase": 0.7853981633974483
+          }
+        ]
+      },
+      "expected": {
+        "oversampling": 4,
+        "samplePeakDbfs": -3.0103001052924827,
+        "truePeakDbtp": 0.08264821434811129
+      }
+    },
+    {
+      "id": "inter-sample-peak-24000",
+      "kind": "peaks",
+      "signal": {
+        "rate": 24000,
+        "parts": [
+          {
+            "type": "sine",
+            "samples": 2400,
+            "frequency": 6000.0,
+            "peakDbfs": 0.0,
+            "phase": 0.7853981633974483
+          }
+        ]
+      },
+      "expected": {
+        "oversampling": 4,
+        "samplePeakDbfs": -3.0103001052924827,
+        "truePeakDbtp": 0.08264821434811129
+      }
+    },
+    {
+      "id": "inter-sample-peak-96000",
+      "kind": "peaks",
+      "signal": {
+        "rate": 96000,
+        "parts": [
+          {
+            "type": "sine",
+            "samples": 9600,
+            "frequency": 24000.0,
+            "peakDbfs": 0.0,
+            "phase": 0.7853981633974483
+          }
+        ]
+      },
+      "expected": {
+        "oversampling": 2,
+        "samplePeakDbfs": -3.0103001052924827,
+        "truePeakDbtp": 0.08264821434811129
+      }
+    },
+    {
+      "id": "inter-sample-peak-192000",
+      "kind": "peaks",
+      "signal": {
+        "rate": 192000,
+        "parts": [
+          {
+            "type": "sine",
+            "samples": 19200,
+            "frequency": 48000.0,
+            "peakDbfs": 0.0,
+            "phase": 0.7853981633974483
+          }
+        ]
+      },
+      "expected": {
+        "oversampling": 1,
+        "samplePeakDbfs": -3.0103001052924827,
+        "truePeakDbtp": -3.0103001052924827
+      }
+    },
+    {
+      "id": "peaks-997hz-48k",
+      "kind": "peaks",
+      "signal": {
+        "rate": 48000,
+        "parts": [
+          {
+            "type": "sine",
+            "samples": 48000,
+            "frequency": 997.0,
+            "peakDbfs": 0.0,
+            "phase": 0.0
+          }
+        ]
+      },
+      "expected": {
+        "oversampling": 4,
+        "samplePeakDbfs": 0.0,
+        "truePeakDbtp": 0.00884866277419805
+      }
+    },
+    {
+      "id": "peaks-noise-24k",
+      "kind": "peaks",
+      "signal": {
+        "rate": 24000,
+        "parts": [
+          {
+            "type": "noise",
+            "samples": 24000,
+            "seed": 5,
+            "peakDbfs": -6.0
+          }
+        ]
+      },
+      "expected": {
+        "oversampling": 4,
+        "samplePeakDbfs": -6.000362043300522,
+        "truePeakDbtp": -1.8333960950903883
+      }
+    },
+    {
+      "id": "peaks-burst-96k",
+      "kind": "peaks",
+      "signal": {
+        "rate": 96000,
+        "parts": [
+          {
+            "type": "silence",
+            "samples": 20
+          },
+          {
+            "type": "noise",
+            "samples": 3,
+            "seed": 17,
+            "peakDbfs": -6.0
+          },
+          {
+            "type": "silence",
+            "samples": 20
+          }
+        ]
+      },
+      "expected": {
+        "oversampling": 2,
+        "samplePeakDbfs": -9.862001410761025,
+        "truePeakDbtp": -9.546618004456974
+      }
+    },
+    {
+      "id": "peaks-silent-44k",
+      "kind": "peaks",
+      "signal": {
+        "rate": 44100,
+        "parts": [
+          {
+            "type": "silence",
+            "samples": 44100
+          }
+        ]
+      },
+      "expected": {
+        "oversampling": 4,
+        "samplePeakDbfs": null,
+        "truePeakDbtp": null
+      }
+    },
+    {
+      "id": "peaks-crest-end-48k",
+      "kind": "peaks",
+      "signal": {
+        "rate": 48000,
+        "parts": [
+          {
+            "type": "sine",
+            "samples": 24013,
+            "frequency": 1000.0,
+            "peakDbfs": -6.0,
+            "phase": 0.0
+          }
+        ]
+      },
+      "expected": {
+        "oversampling": 4,
+        "samplePeakDbfs": -6.0000004906757844,
+        "truePeakDbtp": -5.014233502713823
+      }
+    },
+    {
+      "id": "peaks-crest-end-96k",
+      "kind": "peaks",
+      "signal": {
+        "rate": 96000,
+        "parts": [
+          {
+            "type": "sine",
+            "samples": 48025,
+            "frequency": 1000.0,
+            "peakDbfs": -6.0,
+            "phase": 0.0
+          }
+        ]
+      },
+      "expected": {
+        "oversampling": 2,
+        "samplePeakDbfs": -6.0000004906757844,
+        "truePeakDbtp": -5.039008712735823
+      }
+    },
+    {
+      "id": "peaks-zero-end-96k",
+      "kind": "peaks",
+      "signal": {
+        "rate": 96000,
+        "parts": [
+          {
+            "type": "sine",
+            "samples": 48001,
+            "frequency": 1000.0,
+            "peakDbfs": -6.0,
+            "phase": 0.0
+          }
+        ]
+      },
+      "expected": {
+        "oversampling": 2,
+        "samplePeakDbfs": -6.0000004906757844,
+        "truePeakDbtp": -5.988055601517731
+      }
+    },
+    {
+      "id": "peaks-click-48k",
+      "kind": "peaks",
+      "signal": {
+        "rate": 48000,
+        "parts": [
+          {
+            "type": "silence",
+            "samples": 20
+          },
+          {
+            "type": "sine",
+            "samples": 1,
+            "frequency": 1000.0,
+            "peakDbfs": 0.0,
+            "phase": 1.5707963267948966
+          },
+          {
+            "type": "silence",
+            "samples": 20
+          }
+        ]
+      },
+      "expected": {
+        "oversampling": 4,
+        "samplePeakDbfs": 0.0,
+        "truePeakDbtp": 0.0
+      }
+    },
+    {
+      "id": "peaks-click-96k",
+      "kind": "peaks",
+      "signal": {
+        "rate": 96000,
+        "parts": [
+          {
+            "type": "silence",
+            "samples": 20
+          },
+          {
+            "type": "sine",
+            "samples": 1,
+            "frequency": 1000.0,
+            "peakDbfs": 0.0,
+            "phase": 1.5707963267948966
+          },
+          {
+            "type": "silence",
+            "samples": 20
+          }
+        ]
+      },
+      "expected": {
+        "oversampling": 2,
+        "samplePeakDbfs": 0.0,
+        "truePeakDbtp": 0.0
+      }
+    },
+    {
+      "id": "neighbourhood-take-start-48k",
+      "kind": "neighbourhood",
+      "signal": {
+        "rate": 48000,
+        "parts": [
+          {
+            "type": "noise",
+            "samples": 24005,
+            "seed": 41,
+            "peakDbfs": -20.0
+          },
+          {
+            "type": "noise",
+            "samples": 48005,
+            "seed": 42,
+            "peakDbfs": -6.0
+          },
+          {
+            "type": "noise",
+            "samples": 144000,
+            "seed": 43,
+            "peakDbfs": -30.0
+          },
+          {
+            "type": "noise",
+            "samples": 24000,
+            "seed": 44,
+            "peakDbfs": -10.0
+          }
+        ]
+      },
+      "window": [
+        24005,
+        72010
+      ],
+      "expected": {
+        "voicedRmsDb": -31.17568991053237
+      }
+    },
+    {
+      "id": "neighbourhood-one-voiced-side-44k",
+      "kind": "neighbourhood",
+      "signal": {
+        "rate": 44100,
+        "parts": [
+          {
+            "type": "noise",
+            "samples": 132300,
+            "seed": 45,
+            "peakDbfs": -60.0
+          },
+          {
+            "type": "noise",
+            "samples": 22050,
+            "seed": 46,
+            "peakDbfs": -10.0
+          },
+          {
+            "type": "noise",
+            "samples": 88200,
+            "seed": 47,
+            "peakDbfs": -24.0
+          }
+        ]
+      },
+      "window": [
+        132300,
+        154350
+      ],
+      "expected": {
+        "voicedRmsDb": -28.774524317185858
+      }
+    },
+    {
+      "id": "neighbourhood-own-grid-24k",
+      "kind": "neighbourhood",
+      "signal": {
+        "rate": 24000,
+        "parts": [
+          {
+            "type": "silence",
+            "samples": 2400
+          },
+          {
+            "type": "noise",
+            "samples": 77,
+            "seed": 48,
+            "peakDbfs": -10.0
+          },
+          {
+            "type": "noise",
+            "samples": 2400,
+            "seed": 49,
+            "peakDbfs": -6.0
+          },
+          {
+            "type": "noise",
+            "samples": 43,
+            "seed": 50,
+            "peakDbfs": -10.0
+          },
+          {
+            "type": "silence",
+            "samples": 24000
+          }
+        ]
+      },
+      "window": [
+        2477,
+        4877
+      ],
+      "expected": {
+        "voicedRmsDb": -21.547447695103234
+      }
+    },
+    {
+      "id": "neighbourhood-silent-sides-48k",
+      "kind": "neighbourhood",
+      "signal": {
+        "rate": 48000,
+        "parts": [
+          {
+            "type": "silence",
+            "samples": 48000
+          },
+          {
+            "type": "noise",
+            "samples": 48000,
+            "seed": 51,
+            "peakDbfs": -10.0
+          },
+          {
+            "type": "silence",
+            "samples": 48000
+          }
+        ]
+      },
+      "window": [
+        48000,
+        96000
+      ],
+      "expected": {
+        "error": "noVoicedAudio"
+      }
+    },
+    {
+      "id": "gain-plain-48k-to-24k",
+      "kind": "levelGain",
+      "source": {
+        "rate": 48000,
+        "parts": [
+          {
+            "type": "noise",
+            "samples": 48000,
+            "seed": 11,
+            "peakDbfs": -20.0
+          }
+        ]
+      },
+      "window": [
+        19200,
+        28800
+      ],
+      "candidate": {
+        "rate": 24000,
+        "parts": [
+          {
+            "type": "noise",
+            "samples": 24000,
+            "seed": 12,
+            "peakDbfs": -26.0
+          }
+        ]
+      },
+      "expected": {
+        "sourceVoicedRmsDb": -24.74029832222062,
+        "candidateVoicedRmsDb": -30.781918347653452,
+        "candidateTruePeakDbtp": -21.91586693350113,
+        "gainDb": 6.041620025432831
+      }
+    },
+    {
+      "id": "gain-clamp-plus-48k",
+      "kind": "levelGain",
+      "source": {
+        "rate": 48000,
+        "parts": [
+          {
+            "type": "noise",
+            "samples": 48000,
+            "seed": 13,
+            "peakDbfs": -10.0
+          }
+        ]
+      },
+      "window": [
+        19200,
+        28800
+      ],
+      "candidate": {
+        "rate": 48000,
+        "parts": [
+          {
+            "type": "noise",
+            "samples": 48000,
+            "seed": 14,
+            "peakDbfs": -35.0
+          }
+        ]
+      },
+      "expected": {
+        "sourceVoicedRmsDb": -14.795159563226685,
+        "candidateVoicedRmsDb": -39.77145311808631,
+        "candidateTruePeakDbtp": -30.406330550351036,
+        "gainDb": 12.0
+      }
+    },
+    {
+      "id": "gain-clamp-minus-44k",
+      "kind": "levelGain",
+      "source": {
+        "rate": 44100,
+        "parts": [
+          {
+            "type": "noise",
+            "samples": 44100,
+            "seed": 15,
+            "peakDbfs": -40.0
+          }
+        ]
+      },
+      "window": [
+        17640,
+        26460
+      ],
+      "candidate": {
+        "rate": 44100,
+        "parts": [
+          {
+            "type": "noise",
+            "samples": 44100,
+            "seed": 16,
+            "peakDbfs": -10.0
+          }
+        ]
+      },
+      "expected": {
+        "sourceVoicedRmsDb": -44.73663243129674,
+        "candidateVoicedRmsDb": -14.778235249139582,
+        "candidateTruePeakDbtp": -5.557274334526005,
+        "gainDb": -12.0
+      }
+    },
+    {
+      "id": "gain-true-peak-cap-48k-to-24k",
+      "kind": "levelGain",
+      "source": {
+        "rate": 48000,
+        "parts": [
+          {
+            "type": "sine",
+            "samples": 48000,
+            "frequency": 997.0,
+            "peakDbfs": 0.0,
+            "phase": 0.0
+          }
+        ]
+      },
+      "window": [
+        19200,
+        28800
+      ],
+      "candidate": {
+        "rate": 24000,
+        "parts": [
+          {
+            "type": "sine",
+            "samples": 24000,
+            "frequency": 6000.0,
+            "peakDbfs": -10.0,
+            "phase": 0.7853981633974483
+          }
+        ]
+      },
+      "expected": {
+        "sourceVoicedRmsDb": -3.0097935062731156,
+        "candidateVoicedRmsDb": -13.010300060642958,
+        "candidateTruePeakDbtp": -9.917351741002339,
+        "gainDb": 8.917351741002339
+      }
+    },
+    {
+      "id": "gain-edge-ringing-cap-48k",
+      "kind": "levelGain",
+      "source": {
+        "rate": 48000,
+        "parts": [
+          {
+            "type": "sine",
+            "samples": 48000,
+            "frequency": 997.0,
+            "peakDbfs": 0.0,
+            "phase": 0.0
+          }
+        ]
+      },
+      "window": [
+        19200,
+        28800
+      ],
+      "candidate": {
+        "rate": 48000,
+        "parts": [
+          {
+            "type": "sine",
+            "samples": 24013,
+            "frequency": 1000.0,
+            "peakDbfs": -6.0,
+            "phase": 0.0
+          }
+        ]
+      },
+      "expected": {
+        "sourceVoicedRmsDb": -3.0097935062731156,
+        "candidateVoicedRmsDb": -9.010300014146614,
+        "candidateTruePeakDbtp": -5.014233502713823,
+        "gainDb": 4.014233502713823
+      }
+    },
+    {
+      "id": "gain-silent-source-48k",
+      "kind": "levelGain",
+      "source": {
+        "rate": 48000,
+        "parts": [
+          {
+            "type": "silence",
+            "samples": 48000
+          }
+        ]
+      },
+      "window": [
+        19200,
+        28800
+      ],
+      "candidate": {
+        "rate": 24000,
+        "parts": [
+          {
+            "type": "noise",
+            "samples": 24000,
+            "seed": 17,
+            "peakDbfs": -20.0
+          }
+        ]
+      },
+      "expected": {
+        "sourceVoicedRmsDb": null,
+        "candidateVoicedRmsDb": -24.757452435412453,
+        "candidateTruePeakDbtp": -15.482858137419733,
+        "error": "noVoicedAudio"
+      }
+    },
+    {
+      "id": "gain-silent-candidate-44k",
+      "kind": "levelGain",
+      "source": {
+        "rate": 44100,
+        "parts": [
+          {
+            "type": "noise",
+            "samples": 44100,
+            "seed": 18,
+            "peakDbfs": -20.0
+          }
+        ]
+      },
+      "window": [
+        17640,
+        26460
+      ],
+      "candidate": {
+        "rate": 24000,
+        "parts": [
+          {
+            "type": "silence",
+            "samples": 24000
+          }
+        ]
+      },
+      "expected": {
+        "sourceVoicedRmsDb": -24.780748340675572,
+        "candidateVoicedRmsDb": null,
+        "candidateTruePeakDbtp": null,
+        "error": "noVoicedAudio"
+      }
+    },
+    {
+      "id": "anchor-997hz-0dbfs-48k",
+      "kind": "momentary",
+      "signal": {
+        "rate": 48000,
+        "parts": [
+          {
+            "type": "sine",
+            "samples": 48000,
+            "frequency": 997.0,
+            "peakDbfs": 0.0,
+            "phase": 0.0
+          }
+        ]
+      },
+      "windowStart": 28800,
+      "expected": {
+        "lufs": -3.010660397605483
+      }
+    },
+    {
+      "id": "anchor-997hz-minus20dbfs-48k",
+      "kind": "momentary",
+      "signal": {
+        "rate": 48000,
+        "parts": [
+          {
+            "type": "sine",
+            "samples": 48000,
+            "frequency": 997.0,
+            "peakDbfs": -20.0,
+            "phase": 0.0
+          }
+        ]
+      },
+      "windowStart": 28800,
+      "expected": {
+        "lufs": -23.010660398460107
+      }
+    },
+    {
+      "id": "anchor-997hz-0dbfs-44k",
+      "kind": "momentary",
+      "signal": {
+        "rate": 44100,
+        "parts": [
+          {
+            "type": "sine",
+            "samples": 44100,
+            "frequency": 997.0,
+            "peakDbfs": 0.0,
+            "phase": 0.0
+          }
+        ]
+      },
+      "windowStart": 26460,
+      "expected": {
+        "lufs": -3.007879197099226
+      }
+    },
+    {
+      "id": "anchor-997hz-minus20dbfs-44k",
+      "kind": "momentary",
+      "signal": {
+        "rate": 44100,
+        "parts": [
+          {
+            "type": "sine",
+            "samples": 44100,
+            "frequency": 997.0,
+            "peakDbfs": -20.0,
+            "phase": 0.0
+          }
+        ]
+      },
+      "windowStart": 26460,
+      "expected": {
+        "lufs": -23.00787919902618
+      }
+    },
+    {
+      "id": "momentary-997hz-0dbfs-24k",
+      "kind": "momentary",
+      "signal": {
+        "rate": 24000,
+        "parts": [
+          {
+            "type": "sine",
+            "samples": 24000,
+            "frequency": 997.0,
+            "peakDbfs": 0.0,
+            "phase": 0.0
+          }
+        ]
+      },
+      "windowStart": 14400,
+      "expected": {
+        "lufs": -2.9845013581402853
+      }
+    },
+    {
+      "id": "momentary-997hz-0dbfs-16k",
+      "kind": "momentary",
+      "signal": {
+        "rate": 16000,
+        "parts": [
+          {
+            "type": "sine",
+            "samples": 16000,
+            "frequency": 997.0,
+            "peakDbfs": 0.0,
+            "phase": 0.0
+          }
+        ]
+      },
+      "windowStart": 9600,
+      "expected": {
+        "lufs": -2.9699823176924296
+      }
+    },
+    {
+      "id": "momentary-997hz-0dbfs-96k",
+      "kind": "momentary",
+      "signal": {
+        "rate": 96000,
+        "parts": [
+          {
+            "type": "sine",
+            "samples": 96000,
+            "frequency": 997.0,
+            "peakDbfs": 0.0,
+            "phase": 0.0
+          }
+        ]
+      },
+      "windowStart": 57600,
+      "expected": {
+        "lufs": -3.028088579945832
+      }
+    },
+    {
+      "id": "momentary-997hz-0dbfs-192k",
+      "kind": "momentary",
+      "signal": {
+        "rate": 192000,
+        "parts": [
+          {
+            "type": "sine",
+            "samples": 192000,
+            "frequency": 997.0,
+            "peakDbfs": 0.0,
+            "phase": 0.0
+          }
+        ]
+      },
+      "windowStart": 115200,
+      "expected": {
+        "lufs": -3.0378875132124983
+      }
+    },
+    {
+      "id": "momentary-noise-48k",
+      "kind": "momentary",
+      "signal": {
+        "rate": 48000,
+        "parts": [
+          {
+            "type": "noise",
+            "samples": 48000,
+            "seed": 19,
+            "peakDbfs": -20.0
+          }
+        ]
+      },
+      "windowStart": 4800,
+      "expected": {
+        "lufs": -21.629756244659372
+      }
+    },
+    {
+      "id": "momentary-silent-44k",
+      "kind": "momentary",
+      "signal": {
+        "rate": 44100,
+        "parts": [
+          {
+            "type": "silence",
+            "samples": 44100
+          }
+        ]
+      },
+      "windowStart": 26460,
+      "expected": {
+        "lufs": null
+      }
+    },
+    {
+      "id": "momentary-click-before-window-48k",
+      "kind": "momentary",
+      "signal": {
+        "rate": 48000,
+        "parts": [
+          {
+            "type": "silence",
+            "samples": 4799
+          },
+          {
+            "type": "sine",
+            "samples": 1,
+            "frequency": 1000.0,
+            "peakDbfs": 0.0,
+            "phase": 1.5707963267948966
+          },
+          {
+            "type": "silence",
+            "samples": 19680
+          }
+        ]
+      },
+      "windowStart": 4800,
+      "expected": {
+        "lufs": -55.86530552645743
+      }
+    },
+    {
+      "id": "momentary-click-window-start-48k",
+      "kind": "momentary",
+      "signal": {
+        "rate": 48000,
+        "parts": [
+          {
+            "type": "silence",
+            "samples": 4800
+          },
+          {
+            "type": "sine",
+            "samples": 1,
+            "frequency": 1000.0,
+            "peakDbfs": 0.0,
+            "phase": 1.5707963267948966
+          },
+          {
+            "type": "silence",
+            "samples": 19679
+          }
+        ]
+      },
+      "windowStart": 4800,
+      "expected": {
+        "lufs": -39.69495697662184
+      }
+    },
+    {
+      "id": "momentary-click-window-end-48k",
+      "kind": "momentary",
+      "signal": {
+        "rate": 48000,
+        "parts": [
+          {
+            "type": "silence",
+            "samples": 23999
+          },
+          {
+            "type": "sine",
+            "samples": 1,
+            "frequency": 1000.0,
+            "peakDbfs": 0.0,
+            "phase": 1.5707963267948966
+          },
+          {
+            "type": "silence",
+            "samples": 480
+          }
+        ]
+      },
+      "windowStart": 4800,
+      "expected": {
+        "lufs": -39.8011381940373
+      }
+    },
+    {
+      "id": "seam-steady-48k",
+      "kind": "seamJump",
+      "signal": {
+        "rate": 48000,
+        "parts": [
+          {
+            "type": "sine",
+            "samples": 57600,
+            "frequency": 1000.0,
+            "peakDbfs": -20.0,
+            "phase": 0.0
+          }
+        ]
+      },
+      "seams": [
+        28800
+      ],
+      "expected": {
+        "jumps": [
+          3.552713678800501e-14
+        ],
+        "lufsJumpLu": 3.552713678800501e-14
+      }
+    },
+    {
+      "id": "seam-1.9lu-44k",
+      "kind": "seamJump",
+      "signal": {
+        "rate": 44100,
+        "parts": [
+          {
+            "type": "sine",
+            "samples": 26460,
+            "frequency": 1000.0,
+            "peakDbfs": -20.0,
+            "phase": 0.0
+          },
+          {
+            "type": "sine",
+            "samples": 26460,
+            "frequency": 1000.0,
+            "peakDbfs": -18.1,
+            "phase": 0.0
+          }
+        ]
+      },
+      "seams": [
+        26460
+      ],
+      "expected": {
+        "jumps": [
+          1.8999039138617277
+        ],
+        "lufsJumpLu": 1.8999039138617277
+      }
+    },
+    {
+      "id": "seam-2.1lu-24k",
+      "kind": "seamJump",
+      "signal": {
+        "rate": 24000,
+        "parts": [
+          {
+            "type": "sine",
+            "samples": 14400,
+            "frequency": 1000.0,
+            "peakDbfs": -20.0,
+            "phase": 0.0
+          },
+          {
+            "type": "sine",
+            "samples": 14400,
+            "frequency": 1000.0,
+            "peakDbfs": -17.9,
+            "phase": 0.0
+          }
+        ]
+      },
+      "seams": [
+        14400
+      ],
+      "expected": {
+        "jumps": [
+          2.0998944562110715
+        ],
+        "lufsJumpLu": 2.0998944562110715
+      }
+    },
+    {
+      "id": "seam-both-quiet-48k",
+      "kind": "seamJump",
+      "signal": {
+        "rate": 48000,
+        "parts": [
+          {
+            "type": "sine",
+            "samples": 48000,
+            "frequency": 1000.0,
+            "peakDbfs": -75.0,
+            "phase": 0.0
+          }
+        ]
+      },
+      "seams": [
+        24000
+      ],
+      "expected": {
+        "jumps": [
+          0.0
+        ],
+        "lufsJumpLu": 0.0
+      }
+    },
+    {
+      "id": "seam-edge-shortened-48k",
+      "kind": "seamJump",
+      "signal": {
+        "rate": 48000,
+        "parts": [
+          {
+            "type": "sine",
+            "samples": 12000,
+            "frequency": 1000.0,
+            "peakDbfs": -20.0,
+            "phase": 0.0
+          },
+          {
+            "type": "sine",
+            "samples": 36000,
+            "frequency": 1000.0,
+            "peakDbfs": -21.0,
+            "phase": 0.0
+          }
+        ]
+      },
+      "seams": [
+        12000
+      ],
+      "expected": {
+        "jumps": [
+          0.9994517463805117
+        ],
+        "lufsJumpLu": 0.9994517463805117
+      }
+    },
+    {
+      "id": "seam-under-100ms-44k",
+      "kind": "seamJump",
+      "signal": {
+        "rate": 44100,
+        "parts": [
+          {
+            "type": "sine",
+            "samples": 44100,
+            "frequency": 1000.0,
+            "peakDbfs": -20.0,
+            "phase": 0.0
+          }
+        ]
+      },
+      "seams": [
+        2205
+      ],
+      "expected": {
+        "error": "insufficientContext"
+      }
+    },
+    {
+      "id": "seam-recipe-max-48k",
+      "kind": "seamJump",
+      "signal": {
+        "rate": 48000,
+        "parts": [
+          {
+            "type": "noise",
+            "samples": 28800,
+            "seed": 21,
+            "peakDbfs": -20.0
+          },
+          {
+            "type": "noise",
+            "samples": 28800,
+            "seed": 22,
+            "peakDbfs": -21.0
+          },
+          {
+            "type": "noise",
+            "samples": 14400,
+            "seed": 23,
+            "peakDbfs": -24.0
+          }
+        ]
+      },
+      "seams": [
+        28800,
+        57600
+      ],
+      "expected": {
+        "jumps": [
+          0.9963394213088002,
+          2.952585354741114
+        ],
+        "lufsJumpLu": 2.952585354741114
+      }
+    },
+    {
+      "id": "seam-none-24k",
+      "kind": "seamJump",
+      "signal": {
+        "rate": 24000,
+        "parts": [
+          {
+            "type": "noise",
+            "samples": 24000,
+            "seed": 24,
+            "peakDbfs": -20.0
+          }
+        ]
+      },
+      "seams": [],
+      "expected": {
+        "jumps": [],
+        "lufsJumpLu": 0.0
+      }
+    },
+    {
+      "id": "seam-click-before-48k",
+      "kind": "seamJump",
+      "signal": {
+        "rate": 48000,
+        "parts": [
+          {
+            "type": "silence",
+            "samples": 23999
+          },
+          {
+            "type": "sine",
+            "samples": 1,
+            "frequency": 1000.0,
+            "peakDbfs": 0.0,
+            "phase": 1.5707963267948966
+          },
+          {
+            "type": "silence",
+            "samples": 24000
+          }
+        ]
+      },
+      "seams": [
+        24000
+      ],
+      "expected": {
+        "jumps": [
+          16.064167332420134
+        ],
+        "lufsJumpLu": 16.064167332420134
+      }
+    },
+    {
+      "id": "seam-room-tone-to-silence-48k",
+      "kind": "seamJump",
+      "signal": {
+        "rate": 48000,
+        "parts": [
+          {
+            "type": "noise",
+            "samples": 24000,
+            "seed": 61,
+            "peakDbfs": -60.0
+          },
+          {
+            "type": "silence",
+            "samples": 24000
+          }
+        ]
+      },
+      "seams": [
+        24000
+      ],
+      "expected": {
+        "jumps": [
+          8.343107712627969
+        ],
+        "lufsJumpLu": 8.343107712627969
+      }
+    },
+    {
+      "id": "seam-speech-to-silence-24k",
+      "kind": "seamJump",
+      "signal": {
+        "rate": 24000,
+        "parts": [
+          {
+            "type": "noise",
+            "samples": 12000,
+            "seed": 63,
+            "peakDbfs": -20.0
+          },
+          {
+            "type": "silence",
+            "samples": 12000
+          }
+        ]
+      },
+      "seams": [
+        12000
+      ],
+      "expected": {
+        "jumps": [
+          48.18157785259193
+        ],
+        "lufsJumpLu": 48.18157785259193
+      }
+    },
+    {
+      "id": "seam-silence-to-speech-48k",
+      "kind": "seamJump",
+      "signal": {
+        "rate": 48000,
+        "parts": [
+          {
+            "type": "silence",
+            "samples": 24000
+          },
+          {
+            "type": "noise",
+            "samples": 24000,
+            "seed": 64,
+            "peakDbfs": -20.0
+          }
+        ]
+      },
+      "seams": [
+        24000
+      ],
+      "expected": {
+        "jumps": [
+          48.403015091363855
+        ],
+        "lufsJumpLu": 48.403015091363855
+      }
+    },
+    {
+      "id": "seam-click-at-48k",
+      "kind": "seamJump",
+      "signal": {
+        "rate": 48000,
+        "parts": [
+          {
+            "type": "silence",
+            "samples": 24000
+          },
+          {
+            "type": "sine",
+            "samples": 1,
+            "frequency": 1000.0,
+            "peakDbfs": 0.0,
+            "phase": 1.5707963267948966
+          },
+          {
+            "type": "silence",
+            "samples": 23999
+          }
+        ]
+      },
+      "seams": [
+        24000
+      ],
+      "expected": {
+        "jumps": [
+          30.30504302337816
+        ],
+        "lufsJumpLu": 30.30504302337816
+      }
+    },
+    {
+      "id": "seam-below-floor-against-above-48k",
+      "kind": "seamJump",
+      "signal": {
+        "rate": 48000,
+        "parts": [
+          {
+            "type": "noise",
+            "samples": 24000,
+            "seed": 65,
+            "peakDbfs": -78.0
+          },
+          {
+            "type": "noise",
+            "samples": 24000,
+            "seed": 66,
+            "peakDbfs": -50.0
+          }
+        ]
+      },
+      "seams": [
+        24000
+      ],
+      "expected": {
+        "jumps": [
+          18.352740047421662
+        ],
+        "lufsJumpLu": 18.352740047421662
+      }
+    },
+    {
+      "id": "flatness-steady-48k",
+      "kind": "flatness",
+      "signal": {
+        "rate": 48000,
+        "parts": [
+          {
+            "type": "sine",
+            "samples": 96000,
+            "frequency": 1000.0,
+            "peakDbfs": -20.0,
+            "phase": 0.0
+          }
+        ]
+      },
+      "expected": {
+        "windows": 17,
+        "stdev": 7.052013494057054e-05,
+        "flatness": 0.9999882466441766
+      }
+    },
+    {
+      "id": "flatness-steps-44k",
+      "kind": "flatness",
+      "signal": {
+        "rate": 44100,
+        "parts": [
+          {
+            "type": "noise",
+            "samples": 22050,
+            "seed": 31,
+            "peakDbfs": -20.0
+          },
+          {
+            "type": "noise",
+            "samples": 22050,
+            "seed": 32,
+            "peakDbfs": -23.0
+          },
+          {
+            "type": "noise",
+            "samples": 22050,
+            "seed": 33,
+            "peakDbfs": -26.0
+          },
+          {
+            "type": "noise",
+            "samples": 22050,
+            "seed": 34,
+            "peakDbfs": -20.0
+          }
+        ]
+      },
+      "expected": {
+        "windows": 17,
+        "stdev": 2.050372217512629,
+        "flatness": 0.6582712970812286
+      }
+    },
+    {
+      "id": "flatness-wide-24k",
+      "kind": "flatness",
+      "signal": {
+        "rate": 24000,
+        "parts": [
+          {
+            "type": "noise",
+            "samples": 12000,
+            "seed": 35,
+            "peakDbfs": -10.0
+          },
+          {
+            "type": "noise",
+            "samples": 12000,
+            "seed": 36,
+            "peakDbfs": -30.0
+          },
+          {
+            "type": "noise",
+            "samples": 12000,
+            "seed": 37,
+            "peakDbfs": -10.0
+          },
+          {
+            "type": "noise",
+            "samples": 12000,
+            "seed": 38,
+            "peakDbfs": -30.0
+          }
+        ]
+      },
+      "expected": {
+        "windows": 17,
+        "stdev": 7.76748777370886,
+        "flatness": 0.0
+      }
+    },
+    {
+      "id": "flatness-one-window-48k",
+      "kind": "flatness",
+      "signal": {
+        "rate": 48000,
+        "parts": [
+          {
+            "type": "noise",
+            "samples": 21600,
+            "seed": 39,
+            "peakDbfs": -20.0
+          }
+        ]
+      },
+      "expected": {
+        "windows": 1,
+        "stdev": 0.0,
+        "flatness": 1.0
+      }
+    },
+    {
+      "id": "flatness-silence-padded-48k",
+      "kind": "flatness",
+      "signal": {
+        "rate": 48000,
+        "parts": [
+          {
+            "type": "silence",
+            "samples": 24000
+          },
+          {
+            "type": "noise",
+            "samples": 48000,
+            "seed": 40,
+            "peakDbfs": -20.0
+          },
+          {
+            "type": "silence",
+            "samples": 24000
+          }
+        ]
+      },
+      "expected": {
+        "windows": 14,
+        "stdev": 11.95448052213587,
+        "flatness": 0.0
+      }
+    },
+    {
+      "id": "flatness-silent-44k",
+      "kind": "flatness",
+      "signal": {
+        "rate": 44100,
+        "parts": [
+          {
+            "type": "silence",
+            "samples": 44100
+          }
+        ]
+      },
+      "expected": {
+        "windows": 0,
+        "stdev": 0.0,
+        "flatness": 1.0
+      }
+    },
+    {
+      "id": "conform-trim-20ms-48k",
+      "kind": "conform",
+      "input": {
+        "rate": 48000,
+        "parts": [
+          {
+            "type": "noise",
+            "samples": 11040,
+            "seed": 100,
+            "peakDbfs": -18.0
+          },
+          {
+            "type": "silence",
+            "samples": 5280
+          },
+          {
+            "type": "noise",
+            "samples": 17760,
+            "seed": 102,
+            "peakDbfs": -24.0
+          },
+          {
+            "type": "silence",
+            "samples": 3360
+          },
+          {
+            "type": "noise",
+            "samples": 9120,
+            "seed": 104,
+            "peakDbfs": -15.0
+          },
+          {
+            "type": "silence",
+            "samples": 10080
+          },
+          {
+            "type": "noise",
+            "samples": 19680,
+            "seed": 106,
+            "peakDbfs": -21.0
+          },
+          {
+            "type": "silence",
+            "samples": 6240
+          },
+          {
+            "type": "noise",
+            "samples": 13920,
+            "seed": 108,
+            "peakDbfs": -27.0
+          },
+          {
+            "type": "silence",
+            "samples": 8160
+          }
+        ]
+      },
+      "output": {
+        "rate": 48000,
+        "parts": [
+          {
+            "type": "noise",
+            "samples": 11040,
+            "seed": 100,
+            "peakDbfs": -18.0
+          },
+          {
+            "type": "silence",
+            "samples": 5280
+          },
+          {
+            "type": "noise",
+            "samples": 17760,
+            "seed": 102,
+            "peakDbfs": -24.0
+          },
+          {
+            "type": "silence",
+            "samples": 3360
+          },
+          {
+            "type": "noise",
+            "samples": 9120,
+            "seed": 104,
+            "peakDbfs": -15.0
+          },
+          {
+            "type": "silence",
+            "samples": 10080
+          },
+          {
+            "type": "noise",
+            "samples": 19680,
+            "seed": 106,
+            "peakDbfs": -21.0
+          },
+          {
+            "type": "silence",
+            "samples": 6240
+          },
+          {
+            "type": "noise",
+            "samples": 13920,
+            "seed": 108,
+            "peakDbfs": -27.0
+          },
+          {
+            "type": "silence",
+            "samples": 8160
+          },
+          {
+            "type": "silence",
+            "samples": 960
+          }
+        ]
+      },
+      "searchSeconds": 0.5,
+      "expected": {
+        "kind": "trimOrPad",
+        "delta": 960
+      }
+    },
+    {
+      "id": "conform-pad-20ms-44k",
+      "kind": "conform",
+      "input": {
+        "rate": 44100,
+        "parts": [
+          {
+            "type": "noise",
+            "samples": 10143,
+            "seed": 200,
+            "peakDbfs": -18.0
+          },
+          {
+            "type": "silence",
+            "samples": 4851
+          },
+          {
+            "type": "noise",
+            "samples": 16317,
+            "seed": 202,
+            "peakDbfs": -24.0
+          },
+          {
+            "type": "silence",
+            "samples": 3087
+          },
+          {
+            "type": "noise",
+            "samples": 8379,
+            "seed": 204,
+            "peakDbfs": -15.0
+          },
+          {
+            "type": "silence",
+            "samples": 9261
+          },
+          {
+            "type": "noise",
+            "samples": 18081,
+            "seed": 206,
+            "peakDbfs": -21.0
+          },
+          {
+            "type": "silence",
+            "samples": 5733
+          },
+          {
+            "type": "noise",
+            "samples": 12789,
+            "seed": 208,
+            "peakDbfs": -27.0
+          },
+          {
+            "type": "silence",
+            "samples": 7497
+          }
+        ]
+      },
+      "output": {
+        "rate": 44100,
+        "parts": [
+          {
+            "type": "noise",
+            "samples": 10143,
+            "seed": 200,
+            "peakDbfs": -18.0
+          },
+          {
+            "type": "silence",
+            "samples": 4851
+          },
+          {
+            "type": "noise",
+            "samples": 16317,
+            "seed": 202,
+            "peakDbfs": -24.0
+          },
+          {
+            "type": "silence",
+            "samples": 3087
+          },
+          {
+            "type": "noise",
+            "samples": 8379,
+            "seed": 204,
+            "peakDbfs": -15.0
+          },
+          {
+            "type": "silence",
+            "samples": 9261
+          },
+          {
+            "type": "noise",
+            "samples": 18081,
+            "seed": 206,
+            "peakDbfs": -21.0
+          },
+          {
+            "type": "silence",
+            "samples": 5733
+          },
+          {
+            "type": "noise",
+            "samples": 12789,
+            "seed": 208,
+            "peakDbfs": -27.0
+          },
+          {
+            "type": "silence",
+            "samples": 6615
+          }
+        ]
+      },
+      "searchSeconds": 0.3,
+      "expected": {
+        "kind": "trimOrPad",
+        "delta": -882
+      }
+    },
+    {
+      "id": "conform-21ms-24k",
+      "kind": "conform",
+      "input": {
+        "rate": 24000,
+        "parts": [
+          {
+            "type": "noise",
+            "samples": 5520,
+            "seed": 300,
+            "peakDbfs": -18.0
+          },
+          {
+            "type": "silence",
+            "samples": 2640
+          },
+          {
+            "type": "noise",
+            "samples": 8880,
+            "seed": 302,
+            "peakDbfs": -24.0
+          },
+          {
+            "type": "silence",
+            "samples": 1680
+          },
+          {
+            "type": "noise",
+            "samples": 4560,
+            "seed": 304,
+            "peakDbfs": -15.0
+          },
+          {
+            "type": "silence",
+            "samples": 5040
+          },
+          {
+            "type": "noise",
+            "samples": 9840,
+            "seed": 306,
+            "peakDbfs": -21.0
+          },
+          {
+            "type": "silence",
+            "samples": 3120
+          },
+          {
+            "type": "noise",
+            "samples": 6960,
+            "seed": 308,
+            "peakDbfs": -27.0
+          },
+          {
+            "type": "silence",
+            "samples": 4080
+          }
+        ]
+      },
+      "output": {
+        "rate": 24000,
+        "parts": [
+          {
+            "type": "silence",
+            "samples": 504
+          },
+          {
+            "type": "noise",
+            "samples": 5520,
+            "seed": 300,
+            "peakDbfs": -18.0
+          },
+          {
+            "type": "silence",
+            "samples": 2640
+          },
+          {
+            "type": "noise",
+            "samples": 8880,
+            "seed": 302,
+            "peakDbfs": -24.0
+          },
+          {
+            "type": "silence",
+            "samples": 1680
+          },
+          {
+            "type": "noise",
+            "samples": 4560,
+            "seed": 304,
+            "peakDbfs": -15.0
+          },
+          {
+            "type": "silence",
+            "samples": 5040
+          },
+          {
+            "type": "noise",
+            "samples": 9840,
+            "seed": 306,
+            "peakDbfs": -21.0
+          },
+          {
+            "type": "silence",
+            "samples": 3120
+          },
+          {
+            "type": "noise",
+            "samples": 6960,
+            "seed": 308,
+            "peakDbfs": -27.0
+          },
+          {
+            "type": "silence",
+            "samples": 4080
+          }
+        ]
+      },
+      "searchSeconds": 0.3,
+      "expected": {
+        "kind": "shift",
+        "lag": 480,
+        "peak": 0.9952264406063759
+      }
+    },
+    {
+      "id": "conform-shift-120ms-48k",
+      "kind": "conform",
+      "input": {
+        "rate": 48000,
+        "parts": [
+          {
+            "type": "noise",
+            "samples": 11040,
+            "seed": 100,
+            "peakDbfs": -18.0
+          },
+          {
+            "type": "silence",
+            "samples": 5280
+          },
+          {
+            "type": "noise",
+            "samples": 17760,
+            "seed": 102,
+            "peakDbfs": -24.0
+          },
+          {
+            "type": "silence",
+            "samples": 3360
+          },
+          {
+            "type": "noise",
+            "samples": 9120,
+            "seed": 104,
+            "peakDbfs": -15.0
+          },
+          {
+            "type": "silence",
+            "samples": 10080
+          },
+          {
+            "type": "noise",
+            "samples": 19680,
+            "seed": 106,
+            "peakDbfs": -21.0
+          },
+          {
+            "type": "silence",
+            "samples": 6240
+          },
+          {
+            "type": "noise",
+            "samples": 13920,
+            "seed": 108,
+            "peakDbfs": -27.0
+          },
+          {
+            "type": "silence",
+            "samples": 8160
+          }
+        ]
+      },
+      "output": {
+        "rate": 48000,
+        "parts": [
+          {
+            "type": "silence",
+            "samples": 5760
+          },
+          {
+            "type": "noise",
+            "samples": 11040,
+            "seed": 100,
+            "peakDbfs": -18.0
+          },
+          {
+            "type": "silence",
+            "samples": 5280
+          },
+          {
+            "type": "noise",
+            "samples": 17760,
+            "seed": 102,
+            "peakDbfs": -24.0
+          },
+          {
+            "type": "silence",
+            "samples": 3360
+          },
+          {
+            "type": "noise",
+            "samples": 9120,
+            "seed": 104,
+            "peakDbfs": -15.0
+          },
+          {
+            "type": "silence",
+            "samples": 10080
+          },
+          {
+            "type": "noise",
+            "samples": 19680,
+            "seed": 106,
+            "peakDbfs": -21.0
+          },
+          {
+            "type": "silence",
+            "samples": 6240
+          },
+          {
+            "type": "noise",
+            "samples": 13920,
+            "seed": 108,
+            "peakDbfs": -27.0
+          },
+          {
+            "type": "silence",
+            "samples": 8160
+          }
+        ]
+      },
+      "searchSeconds": 0.5,
+      "expected": {
+        "kind": "shift",
+        "lag": 5760,
+        "peak": 1.0
+      }
+    },
+    {
+      "id": "conform-shift-negative-44k",
+      "kind": "conform",
+      "input": {
+        "rate": 44100,
+        "parts": [
+          {
+            "type": "silence",
+            "samples": 8820
+          },
+          {
+            "type": "noise",
+            "samples": 10143,
+            "seed": 200,
+            "peakDbfs": -18.0
+          },
+          {
+            "type": "silence",
+            "samples": 4851
+          },
+          {
+            "type": "noise",
+            "samples": 16317,
+            "seed": 202,
+            "peakDbfs": -24.0
+          },
+          {
+            "type": "silence",
+            "samples": 3087
+          },
+          {
+            "type": "noise",
+            "samples": 8379,
+            "seed": 204,
+            "peakDbfs": -15.0
+          },
+          {
+            "type": "silence",
+            "samples": 9261
+          },
+          {
+            "type": "noise",
+            "samples": 18081,
+            "seed": 206,
+            "peakDbfs": -21.0
+          },
+          {
+            "type": "silence",
+            "samples": 5733
+          },
+          {
+            "type": "noise",
+            "samples": 12789,
+            "seed": 208,
+            "peakDbfs": -27.0
+          },
+          {
+            "type": "silence",
+            "samples": 7497
+          }
+        ]
+      },
+      "output": {
+        "rate": 44100,
+        "parts": [
+          {
+            "type": "silence",
+            "samples": 2205
+          },
+          {
+            "type": "noise",
+            "samples": 10143,
+            "seed": 200,
+            "peakDbfs": -18.0
+          },
+          {
+            "type": "silence",
+            "samples": 4851
+          },
+          {
+            "type": "noise",
+            "samples": 16317,
+            "seed": 202,
+            "peakDbfs": -24.0
+          },
+          {
+            "type": "silence",
+            "samples": 3087
+          },
+          {
+            "type": "noise",
+            "samples": 8379,
+            "seed": 204,
+            "peakDbfs": -15.0
+          },
+          {
+            "type": "silence",
+            "samples": 9261
+          },
+          {
+            "type": "noise",
+            "samples": 18081,
+            "seed": 206,
+            "peakDbfs": -21.0
+          },
+          {
+            "type": "silence",
+            "samples": 5733
+          },
+          {
+            "type": "noise",
+            "samples": 12789,
+            "seed": 208,
+            "peakDbfs": -27.0
+          },
+          {
+            "type": "silence",
+            "samples": 7497
+          }
+        ]
+      },
+      "searchSeconds": 0.3,
+      "expected": {
+        "kind": "shift",
+        "lag": -6615,
+        "peak": 1.0
+      }
+    },
+    {
+      "id": "conform-out-of-sync-peak-24k",
+      "kind": "conform",
+      "input": {
+        "rate": 24000,
+        "parts": [
+          {
+            "type": "noise",
+            "samples": 5520,
+            "seed": 300,
+            "peakDbfs": -18.0
+          },
+          {
+            "type": "silence",
+            "samples": 2640
+          },
+          {
+            "type": "noise",
+            "samples": 8880,
+            "seed": 302,
+            "peakDbfs": -24.0
+          },
+          {
+            "type": "silence",
+            "samples": 1680
+          },
+          {
+            "type": "noise",
+            "samples": 4560,
+            "seed": 304,
+            "peakDbfs": -15.0
+          },
+          {
+            "type": "silence",
+            "samples": 5040
+          },
+          {
+            "type": "noise",
+            "samples": 9840,
+            "seed": 306,
+            "peakDbfs": -21.0
+          },
+          {
+            "type": "silence",
+            "samples": 3120
+          },
+          {
+            "type": "noise",
+            "samples": 6960,
+            "seed": 308,
+            "peakDbfs": -27.0
+          },
+          {
+            "type": "silence",
+            "samples": 4080
+          }
+        ]
+      },
+      "output": {
+        "rate": 24000,
+        "parts": [
+          {
+            "type": "noise",
+            "samples": 54720,
+            "seed": 399,
+            "peakDbfs": -20.0
+          }
+        ]
+      },
+      "searchSeconds": 0.3,
+      "expected": {
+        "kind": "outOfSync",
+        "peak": 0.16359388524063181,
+        "lag": -7200
+      }
+    },
+    {
+      "id": "conform-out-of-sync-offset-48k",
+      "kind": "conform",
+      "input": {
+        "rate": 48000,
+        "parts": [
+          {
+            "type": "noise",
+            "samples": 11040,
+            "seed": 100,
+            "peakDbfs": -18.0
+          },
+          {
+            "type": "silence",
+            "samples": 5280
+          },
+          {
+            "type": "noise",
+            "samples": 17760,
+            "seed": 102,
+            "peakDbfs": -24.0
+          },
+          {
+            "type": "silence",
+            "samples": 3360
+          },
+          {
+            "type": "noise",
+            "samples": 9120,
+            "seed": 104,
+            "peakDbfs": -15.0
+          },
+          {
+            "type": "silence",
+            "samples": 10080
+          },
+          {
+            "type": "noise",
+            "samples": 19680,
+            "seed": 106,
+            "peakDbfs": -21.0
+          },
+          {
+            "type": "silence",
+            "samples": 6240
+          },
+          {
+            "type": "noise",
+            "samples": 13920,
+            "seed": 108,
+            "peakDbfs": -27.0
+          },
+          {
+            "type": "silence",
+            "samples": 8160
+          }
+        ]
+      },
+      "output": {
+        "rate": 48000,
+        "parts": [
+          {
+            "type": "noise",
+            "samples": 11040,
+            "seed": 100,
+            "peakDbfs": -18.0
+          },
+          {
+            "type": "silence",
+            "samples": 5280
+          },
+          {
+            "type": "noise",
+            "samples": 17760,
+            "seed": 102,
+            "peakDbfs": -24.0
+          },
+          {
+            "type": "silence",
+            "samples": 3360
+          },
+          {
+            "type": "noise",
+            "samples": 9120,
+            "seed": 104,
+            "peakDbfs": -15.0
+          },
+          {
+            "type": "silence",
+            "samples": 10080
+          },
+          {
+            "type": "noise",
+            "samples": 19680,
+            "seed": 106,
+            "peakDbfs": -21.0
+          },
+          {
+            "type": "silence",
+            "samples": 6240
+          },
+          {
+            "type": "noise",
+            "samples": 13920,
+            "seed": 108,
+            "peakDbfs": -27.0
+          },
+          {
+            "type": "silence",
+            "samples": 8160
+          },
+          {
+            "type": "silence",
+            "samples": 4800
+          }
+        ]
+      },
+      "searchSeconds": 0.5,
+      "expected": {
+        "kind": "outOfSync",
+        "peak": 1.0,
+        "lag": 0
+      }
+    },
+    {
+      "id": "conform-search-300ms-44k",
+      "kind": "conform",
+      "input": {
+        "rate": 44100,
+        "parts": [
+          {
+            "type": "noise",
+            "samples": 10143,
+            "seed": 200,
+            "peakDbfs": -18.0
+          },
+          {
+            "type": "silence",
+            "samples": 4851
+          },
+          {
+            "type": "noise",
+            "samples": 16317,
+            "seed": 202,
+            "peakDbfs": -24.0
+          },
+          {
+            "type": "silence",
+            "samples": 3087
+          },
+          {
+            "type": "noise",
+            "samples": 8379,
+            "seed": 204,
+            "peakDbfs": -15.0
+          },
+          {
+            "type": "silence",
+            "samples": 9261
+          },
+          {
+            "type": "noise",
+            "samples": 18081,
+            "seed": 206,
+            "peakDbfs": -21.0
+          },
+          {
+            "type": "silence",
+            "samples": 5733
+          },
+          {
+            "type": "noise",
+            "samples": 12789,
+            "seed": 208,
+            "peakDbfs": -27.0
+          },
+          {
+            "type": "silence",
+            "samples": 7497
+          }
+        ]
+      },
+      "output": {
+        "rate": 44100,
+        "parts": [
+          {
+            "type": "silence",
+            "samples": 17640
+          },
+          {
+            "type": "noise",
+            "samples": 10143,
+            "seed": 200,
+            "peakDbfs": -18.0
+          },
+          {
+            "type": "silence",
+            "samples": 4851
+          },
+          {
+            "type": "noise",
+            "samples": 16317,
+            "seed": 202,
+            "peakDbfs": -24.0
+          },
+          {
+            "type": "silence",
+            "samples": 3087
+          },
+          {
+            "type": "noise",
+            "samples": 8379,
+            "seed": 204,
+            "peakDbfs": -15.0
+          },
+          {
+            "type": "silence",
+            "samples": 9261
+          },
+          {
+            "type": "noise",
+            "samples": 18081,
+            "seed": 206,
+            "peakDbfs": -21.0
+          },
+          {
+            "type": "silence",
+            "samples": 5733
+          },
+          {
+            "type": "noise",
+            "samples": 12789,
+            "seed": 208,
+            "peakDbfs": -27.0
+          },
+          {
+            "type": "silence",
+            "samples": 7497
+          }
+        ]
+      },
+      "searchSeconds": 0.3,
+      "expected": {
+        "kind": "outOfSync",
+        "peak": 0.10845227317584846,
+        "lag": 13230
+      }
+    },
+    {
+      "id": "conform-search-500ms-44k",
+      "kind": "conform",
+      "input": {
+        "rate": 44100,
+        "parts": [
+          {
+            "type": "noise",
+            "samples": 10143,
+            "seed": 200,
+            "peakDbfs": -18.0
+          },
+          {
+            "type": "silence",
+            "samples": 4851
+          },
+          {
+            "type": "noise",
+            "samples": 16317,
+            "seed": 202,
+            "peakDbfs": -24.0
+          },
+          {
+            "type": "silence",
+            "samples": 3087
+          },
+          {
+            "type": "noise",
+            "samples": 8379,
+            "seed": 204,
+            "peakDbfs": -15.0
+          },
+          {
+            "type": "silence",
+            "samples": 9261
+          },
+          {
+            "type": "noise",
+            "samples": 18081,
+            "seed": 206,
+            "peakDbfs": -21.0
+          },
+          {
+            "type": "silence",
+            "samples": 5733
+          },
+          {
+            "type": "noise",
+            "samples": 12789,
+            "seed": 208,
+            "peakDbfs": -27.0
+          },
+          {
+            "type": "silence",
+            "samples": 7497
+          }
+        ]
+      },
+      "output": {
+        "rate": 44100,
+        "parts": [
+          {
+            "type": "silence",
+            "samples": 17640
+          },
+          {
+            "type": "noise",
+            "samples": 10143,
+            "seed": 200,
+            "peakDbfs": -18.0
+          },
+          {
+            "type": "silence",
+            "samples": 4851
+          },
+          {
+            "type": "noise",
+            "samples": 16317,
+            "seed": 202,
+            "peakDbfs": -24.0
+          },
+          {
+            "type": "silence",
+            "samples": 3087
+          },
+          {
+            "type": "noise",
+            "samples": 8379,
+            "seed": 204,
+            "peakDbfs": -15.0
+          },
+          {
+            "type": "silence",
+            "samples": 9261
+          },
+          {
+            "type": "noise",
+            "samples": 18081,
+            "seed": 206,
+            "peakDbfs": -21.0
+          },
+          {
+            "type": "silence",
+            "samples": 5733
+          },
+          {
+            "type": "noise",
+            "samples": 12789,
+            "seed": 208,
+            "peakDbfs": -27.0
+          },
+          {
+            "type": "silence",
+            "samples": 7497
+          }
+        ]
+      },
+      "searchSeconds": 0.5,
+      "expected": {
+        "kind": "shift",
+        "lag": 17640,
+        "peak": 1.0
+      }
+    },
+    {
+      "id": "conform-silent-48k",
+      "kind": "conform",
+      "input": {
+        "rate": 48000,
+        "parts": [
+          {
+            "type": "silence",
+            "samples": 48000
+          }
+        ]
+      },
+      "output": {
+        "rate": 48000,
+        "parts": [
+          {
+            "type": "silence",
+            "samples": 52800
+          }
+        ]
+      },
+      "searchSeconds": 0.5,
+      "expected": {
+        "kind": "outOfSync",
+        "peak": 0.0,
+        "lag": 0
+      }
+    },
+    {
+      "id": "conform-short-chunk-48k",
+      "kind": "conform",
+      "input": {
+        "rate": 48000,
+        "parts": [
+          {
+            "type": "noise",
+            "samples": 3120,
+            "seed": 600,
+            "peakDbfs": -60.0
+          },
+          {
+            "type": "noise",
+            "samples": 5760,
+            "seed": 601,
+            "peakDbfs": -18.0
+          },
+          {
+            "type": "noise",
+            "samples": 3120,
+            "seed": 602,
+            "peakDbfs": -60.0
+          }
+        ]
+      },
+      "output": {
+        "rate": 48000,
+        "parts": [
+          {
+            "type": "noise",
+            "samples": 1440,
+            "seed": 650,
+            "peakDbfs": -60.0
+          },
+          {
+            "type": "noise",
+            "samples": 3120,
+            "seed": 600,
+            "peakDbfs": -60.0
+          },
+          {
+            "type": "noise",
+            "samples": 5760,
+            "seed": 601,
+            "peakDbfs": -18.0
+          },
+          {
+            "type": "noise",
+            "samples": 3120,
+            "seed": 602,
+            "peakDbfs": -60.0
+          }
+        ],
+        "gainDb": -0.9151498112135024
+      },
+      "searchSeconds": 0.3,
+      "expected": {
+        "kind": "shift",
+        "lag": 1440,
+        "peak": 0.9999999999999987
+      }
+    },
+    {
+      "id": "conform-reach-plus-two-frames-48k",
+      "kind": "conform",
+      "input": {
+        "rate": 48000,
+        "parts": [
+          {
+            "type": "noise",
+            "samples": 4800,
+            "seed": 602,
+            "peakDbfs": -60.0
+          },
+          {
+            "type": "noise",
+            "samples": 5760,
+            "seed": 603,
+            "peakDbfs": -18.0
+          },
+          {
+            "type": "noise",
+            "samples": 4800,
+            "seed": 604,
+            "peakDbfs": -60.0
+          }
+        ]
+      },
+      "output": {
+        "rate": 48000,
+        "parts": [
+          {
+            "type": "noise",
+            "samples": 1440,
+            "seed": 652,
+            "peakDbfs": -60.0
+          },
+          {
+            "type": "noise",
+            "samples": 4800,
+            "seed": 602,
+            "peakDbfs": -60.0
+          },
+          {
+            "type": "noise",
+            "samples": 5760,
+            "seed": 603,
+            "peakDbfs": -18.0
+          },
+          {
+            "type": "noise",
+            "samples": 4800,
+            "seed": 604,
+            "peakDbfs": -60.0
+          }
+        ],
+        "gainDb": -0.9151498112135024
+      },
+      "searchSeconds": 0.3,
+      "expected": {
+        "kind": "shift",
+        "lag": 1440,
+        "peak": 0.9999999999999984
+      }
+    },
+    {
+      "id": "conform-offset-at-tolerance-48k",
+      "kind": "conform",
+      "input": {
+        "rate": 48000,
+        "parts": [
+          {
+            "type": "noise",
+            "samples": 11040,
+            "seed": 100,
+            "peakDbfs": -18.0
+          },
+          {
+            "type": "silence",
+            "samples": 5280
+          },
+          {
+            "type": "noise",
+            "samples": 17760,
+            "seed": 102,
+            "peakDbfs": -24.0
+          },
+          {
+            "type": "silence",
+            "samples": 3360
+          },
+          {
+            "type": "noise",
+            "samples": 9120,
+            "seed": 104,
+            "peakDbfs": -15.0
+          },
+          {
+            "type": "silence",
+            "samples": 10080
+          },
+          {
+            "type": "noise",
+            "samples": 19680,
+            "seed": 106,
+            "peakDbfs": -21.0
+          },
+          {
+            "type": "silence",
+            "samples": 6240
+          },
+          {
+            "type": "noise",
+            "samples": 13920,
+            "seed": 108,
+            "peakDbfs": -27.0
+          },
+          {
+            "type": "silence",
+            "samples": 8160
+          }
+        ]
+      },
+      "output": {
+        "rate": 48000,
+        "parts": [
+          {
+            "type": "silence",
+            "samples": 1920
+          },
+          {
+            "type": "noise",
+            "samples": 11040,
+            "seed": 100,
+            "peakDbfs": -18.0
+          },
+          {
+            "type": "silence",
+            "samples": 5280
+          },
+          {
+            "type": "noise",
+            "samples": 17760,
+            "seed": 102,
+            "peakDbfs": -24.0
+          },
+          {
+            "type": "silence",
+            "samples": 3360
+          },
+          {
+            "type": "noise",
+            "samples": 9120,
+            "seed": 104,
+            "peakDbfs": -15.0
+          },
+          {
+            "type": "silence",
+            "samples": 10080
+          },
+          {
+            "type": "noise",
+            "samples": 19680,
+            "seed": 106,
+            "peakDbfs": -21.0
+          },
+          {
+            "type": "silence",
+            "samples": 6240
+          },
+          {
+            "type": "noise",
+            "samples": 13920,
+            "seed": 108,
+            "peakDbfs": -27.0
+          },
+          {
+            "type": "silence",
+            "samples": 8160
+          },
+          {
+            "type": "silence",
+            "samples": 960
+          }
+        ]
+      },
+      "searchSeconds": 0.3,
+      "expected": {
+        "kind": "shift",
+        "lag": 1920,
+        "peak": 1.0
+      }
+    },
+    {
+      "id": "conform-offset-over-tolerance-48k",
+      "kind": "conform",
+      "input": {
+        "rate": 48000,
+        "parts": [
+          {
+            "type": "noise",
+            "samples": 11040,
+            "seed": 100,
+            "peakDbfs": -18.0
+          },
+          {
+            "type": "silence",
+            "samples": 5280
+          },
+          {
+            "type": "noise",
+            "samples": 17760,
+            "seed": 102,
+            "peakDbfs": -24.0
+          },
+          {
+            "type": "silence",
+            "samples": 3360
+          },
+          {
+            "type": "noise",
+            "samples": 9120,
+            "seed": 104,
+            "peakDbfs": -15.0
+          },
+          {
+            "type": "silence",
+            "samples": 10080
+          },
+          {
+            "type": "noise",
+            "samples": 19680,
+            "seed": 106,
+            "peakDbfs": -21.0
+          },
+          {
+            "type": "silence",
+            "samples": 6240
+          },
+          {
+            "type": "noise",
+            "samples": 13920,
+            "seed": 108,
+            "peakDbfs": -27.0
+          },
+          {
+            "type": "silence",
+            "samples": 8160
+          }
+        ]
+      },
+      "output": {
+        "rate": 48000,
+        "parts": [
+          {
+            "type": "silence",
+            "samples": 1920
+          },
+          {
+            "type": "noise",
+            "samples": 11040,
+            "seed": 100,
+            "peakDbfs": -18.0
+          },
+          {
+            "type": "silence",
+            "samples": 5280
+          },
+          {
+            "type": "noise",
+            "samples": 17760,
+            "seed": 102,
+            "peakDbfs": -24.0
+          },
+          {
+            "type": "silence",
+            "samples": 3360
+          },
+          {
+            "type": "noise",
+            "samples": 9120,
+            "seed": 104,
+            "peakDbfs": -15.0
+          },
+          {
+            "type": "silence",
+            "samples": 10080
+          },
+          {
+            "type": "noise",
+            "samples": 19680,
+            "seed": 106,
+            "peakDbfs": -21.0
+          },
+          {
+            "type": "silence",
+            "samples": 6240
+          },
+          {
+            "type": "noise",
+            "samples": 13920,
+            "seed": 108,
+            "peakDbfs": -27.0
+          },
+          {
+            "type": "silence",
+            "samples": 8160
+          },
+          {
+            "type": "silence",
+            "samples": 961
+          }
+        ]
+      },
+      "searchSeconds": 0.3,
+      "expected": {
+        "kind": "outOfSync",
+        "peak": 1.0,
+        "lag": 1920
+      }
+    },
+    {
+      "id": "conform-reach-floor-22k",
+      "kind": "conform",
+      "input": {
+        "rate": 22050,
+        "parts": [
+          {
+            "type": "noise",
+            "samples": 5072,
+            "seed": 400,
+            "peakDbfs": -18.0
+          },
+          {
+            "type": "silence",
+            "samples": 2426
+          },
+          {
+            "type": "noise",
+            "samples": 8159,
+            "seed": 402,
+            "peakDbfs": -24.0
+          },
+          {
+            "type": "silence",
+            "samples": 1544
+          },
+          {
+            "type": "noise",
+            "samples": 4190,
+            "seed": 404,
+            "peakDbfs": -15.0
+          },
+          {
+            "type": "silence",
+            "samples": 4631
+          },
+          {
+            "type": "noise",
+            "samples": 9041,
+            "seed": 406,
+            "peakDbfs": -21.0
+          },
+          {
+            "type": "silence",
+            "samples": 2867
+          },
+          {
+            "type": "noise",
+            "samples": 6395,
+            "seed": 408,
+            "peakDbfs": -27.0
+          },
+          {
+            "type": "silence",
+            "samples": 3749
+          }
+        ]
+      },
+      "output": {
+        "rate": 22050,
+        "parts": [
+          {
+            "type": "silence",
+            "samples": 6630
+          },
+          {
+            "type": "noise",
+            "samples": 5072,
+            "seed": 400,
+            "peakDbfs": -18.0
+          },
+          {
+            "type": "silence",
+            "samples": 2426
+          },
+          {
+            "type": "noise",
+            "samples": 8159,
+            "seed": 402,
+            "peakDbfs": -24.0
+          },
+          {
+            "type": "silence",
+            "samples": 1544
+          },
+          {
+            "type": "noise",
+            "samples": 4190,
+            "seed": 404,
+            "peakDbfs": -15.0
+          },
+          {
+            "type": "silence",
+            "samples": 4631
+          },
+          {
+            "type": "noise",
+            "samples": 9041,
+            "seed": 406,
+            "peakDbfs": -21.0
+          },
+          {
+            "type": "silence",
+            "samples": 2867
+          },
+          {
+            "type": "noise",
+            "samples": 6395,
+            "seed": 408,
+            "peakDbfs": -27.0
+          },
+          {
+            "type": "silence",
+            "samples": 3749
+          }
+        ]
+      },
+      "searchSeconds": 0.3,
+      "expected": {
+        "kind": "shift",
+        "lag": 6409,
+        "peak": 0.9255230699589213
+      }
+    },
+    {
+      "id": "conform-tie-zero-48k",
+      "kind": "conformEnvelope",
+      "rate": 48000,
+      "inputLevels": [
+        1.0,
+        0.0,
+        1.0,
+        0.0,
+        1.0,
+        0.0,
+        1.0,
+        0.0,
+        1.0,
+        0.0
+      ],
+      "outputLevels": [
+        1.0,
+        0.0,
+        1.0,
+        0.0,
+        1.0,
+        0.0,
+        1.0,
+        0.0,
+        1.0,
+        0.0,
+        1.0,
+        0.0,
+        1.0
+      ],
+      "inputSamples": 4800,
+      "outputSamples": 6240,
+      "searchSeconds": 0.3,
+      "expected": {
+        "kind": "outOfSync",
+        "peak": 1.0,
+        "lag": 0
+      }
+    },
+    {
+      "id": "conform-tie-negative-48k",
+      "kind": "conformEnvelope",
+      "rate": 48000,
+      "inputLevels": [
+        1.0,
+        0.0,
+        1.0,
+        0.0,
+        1.0,
+        0.0,
+        1.0,
+        0.0,
+        1.0,
+        0.0
+      ],
+      "outputLevels": [
+        0.0,
+        1.0,
+        0.0,
+        1.0,
+        0.0,
+        1.0,
+        0.0,
+        1.0,
+        0.0,
+        1.0,
+        0.0,
+        1.0,
+        0.0,
+        1.0
+      ],
+      "inputSamples": 4800,
+      "outputSamples": 6720,
+      "searchSeconds": 0.3,
+      "expected": {
+        "kind": "outOfSync",
+        "peak": 1.0,
+        "lag": -480
+      }
+    },
+    {
+      "id": "conform-floor-at-half-48k",
+      "kind": "conformEnvelope",
+      "rate": 48000,
+      "inputLevels": [
+        0.0,
+        3.0,
+        0.0,
+        2.0
+      ],
+      "outputLevels": [
+        1.0,
+        1.0,
+        4.0,
+        4.0,
+        0.0,
+        2.0,
+        2.0
+      ],
+      "inputSamples": 1920,
+      "outputSamples": 3360,
+      "searchSeconds": 0.1,
+      "expected": {
+        "kind": "shift",
+        "lag": 1920,
+        "peak": 0.5
+      }
+    },
+    {
+      "id": "conform-floor-below-half-48k",
+      "kind": "conformEnvelope",
+      "rate": 48000,
+      "inputLevels": [
+        0.001,
+        3.0,
+        0.0,
+        2.0
+      ],
+      "outputLevels": [
+        1.0,
+        1.0,
+        4.0,
+        4.0,
+        0.0,
+        2.0,
+        2.0
+      ],
+      "inputSamples": 1920,
+      "outputSamples": 3360,
+      "searchSeconds": 0.1,
+      "expected": {
+        "kind": "outOfSync",
+        "peak": 0.4997499374846511,
+        "lag": 1920
+      }
+    },
+    {
+      "id": "conform-pearson-loud-lead-in-48k",
+      "kind": "conformEnvelope",
+      "rate": 48000,
+      "inputLevels": [
+        0.2,
+        0.8,
+        0.3,
+        0.9,
+        0.1,
+        0.7,
+        0.4,
+        0.6,
+        0.2,
+        0.5,
+        0.3,
+        0.8
+      ],
+      "outputLevels": [
+        4.0,
+        4.0,
+        4.0,
+        0.2,
+        0.8,
+        0.3,
+        0.9,
+        0.1,
+        0.7,
+        0.4,
+        0.6,
+        0.2,
+        0.5,
+        0.3,
+        0.8
+      ],
+      "inputSamples": 5760,
+      "outputSamples": 7200,
+      "searchSeconds": 0.3,
+      "expected": {
+        "kind": "shift",
+        "lag": 1440,
+        "peak": 1.0
+      }
+    }
+  ]
+}
