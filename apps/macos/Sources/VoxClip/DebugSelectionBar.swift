@@ -45,6 +45,22 @@ import VoxClipCore
         model.findVisible = true; text.showSelectionBar()
         results.append(.init(name: "Find suppresses the selection bar", passed: !text.selectionBarVisible))
         model.findVisible = false
+        let original = model.project
+        let selected = Set(words.map(\.id))
+        text.selectedRanges = words.compactMap { text.map.span(id: $0.id).map { NSValue(range: $0.range) } }
+        model.selectedWordIDs = selected
+        model.cutSelection()
+        model.cutSelection()
+        results.append(.init(name: "the selection bar's named Cut always cuts an already-cut selection", passed: selected.isSubset(of: model.cutWordIDs)))
+        let accessibleCut = text.accessibleCut()
+        results.append(.init(name: "VoiceOver Cut never restores an already-cut selection", passed: accessibleCut && model.selectedWordIDs.isSubset(of: model.cutWordIDs)))
+        if let delete = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: textWindow.windowNumber, context: nil, characters: "", charactersIgnoringModifiers: "", isARepeat: false, keyCode: 51) { text.keyDown(with: delete) }
+        results.append(.init(name: "only the Delete key toggles an already-cut selection to restored", passed: model.selectedWordIDs.isDisjoint(with: model.cutWordIDs)))
+        model.cutSelection()
+        _ = text.accessibleRestore()
+        results.append(.init(name: "VoiceOver Restore remains a separate unconditional restore action", passed: model.selectedWordIDs.isDisjoint(with: model.cutWordIDs)))
+        model.document.replaceProject(original)
+        model.refresh()
         for (name, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
             textWindow.appearance = NSAppearance(named: appearance)
             text.showSelectionBar()

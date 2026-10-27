@@ -927,11 +927,13 @@ import ApplicationServices
             } else { check("pause-only selection cuts", false) }
             if let pause = model.pauses.first(where: { model.cutPauseIDs.contains($0.id) }) {
                 model.selectedWordIDs = []; model.selectedPauseIDs = [pause.id]
-                undo.beginUndoGrouping(); model.cutSelection(); undo.endUndoGrouping()
-                check("cutting an already-cut pause restores it", !model.project.edits.cutPauseIds.contains(pause.id))
+                model.cutSelection()
+                check("named Cut does not restore an already-cut pause", model.project.edits.cutPauseIds.contains(pause.id))
+                undo.beginUndoGrouping(); model.toggleSelectionCut(); undo.endUndoGrouping()
+                check("Delete toggles an already-cut pause back to restored", !model.project.edits.cutPauseIds.contains(pause.id))
                 undo.undo()
                 model.selectedPauseIDs = []
-            } else { check("cutting an already-cut pause restores it", false) }
+            } else { check("Delete toggles an already-cut pause back to restored", false) }
             var tuning = CaptionSettings(styleId: "vox-highlight")
             CaptionFineTuning.size(&tuning, scale: 1.45)
             check("XL stores normative scale", CaptionFineTuning.value(tuning, group: "font", key: "sizeScale") == .number(1.45))

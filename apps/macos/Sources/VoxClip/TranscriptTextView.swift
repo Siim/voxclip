@@ -436,7 +436,9 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
             super.keyDown(with: event); return
         }
         switch event.keyCode {
-        case 51, 117: model.cutSelection(restore: shift)
+        case 51, 117:
+            if shift { model.cutSelection(restore: true) }
+            else { model.toggleSelectionCut() }
         case 123: model.step(-1, extend: shift, sentence: event.modifierFlags.contains(.option))
         case 124: model.step(1, extend: shift, sentence: event.modifierFlags.contains(.option))
         case 115: if let first = model.words.first { model.select(first.id) }

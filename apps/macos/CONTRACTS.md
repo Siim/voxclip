@@ -1,5 +1,10 @@
 # macOS implementation contracts
 
+### 2026-10-28 — Round-3 A2: named Cut versus Delete
+
+- Named Cut commands, including the selection bar, context menu and VoiceOver, unconditionally cut. The app passes only uncut IDs to Core's toggling `cutSelection` command; an already-cut selection is a no-op. Restore remains separate. Only the transcript Delete key uses the all-cut toggle (design §4.2), matching Windows. Core and its shared fixtures remain unchanged.
+- `DebugSelectionBar` checks named Cut and VoiceOver Cut on an already-cut selection, Delete toggling and explicit VoiceOver Restore. Final round-3 gates run these regressions.
+
 ### 2026-10-28 — Round-3 A1: Edited trim endpoints
 
 - Trim and scrub now share the scoped Edited-to-Source inverse. Explicit endpoints return the active clip's saved start/end, never the entire source end; collapsed cuts use the planner's stable right-continuous mapping, without floating-point `nextDown`.

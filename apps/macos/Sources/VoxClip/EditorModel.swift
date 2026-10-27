@@ -580,10 +580,17 @@ import VoxClipMedia
         return fallback
     }
     func cutSelection(restore: Bool = false) {
-        let ids = selectedIDs + selectedPauseIDs.sorted()
+        let selected = selectedIDs + selectedPauseIDs.sorted()
+        let ids = restore ? selected : selected.filter { (id: String) -> Bool in
+            !cutWordIDs.contains(id) && !cutPauseIDs.contains(id)
+        }
         guard !ids.isEmpty else { return }
-        let restore = restore || ids.allSatisfy { project.edits.cutWordIds.contains($0) || project.edits.cutPauseIds.contains($0) }
         apply(restore ? .restoreSelection(ids: ids) : .cutSelection(ids: ids), name: restore ? "Restore selection" : "Cut selection")
+    }
+    func toggleSelectionCut() {
+        let ids = selectedIDs + selectedPauseIDs.sorted()
+        let restore: Bool = !ids.isEmpty && ids.allSatisfy { (id: String) -> Bool in cutWordIDs.contains(id) || cutPauseIDs.contains(id) }
+        cutSelection(restore: restore)
     }
     /// Make Clip (⌘K, design §3.4): one undo step adds the clip and selects its row. A
     /// selection an existing clip already covers selects that clip instead.
