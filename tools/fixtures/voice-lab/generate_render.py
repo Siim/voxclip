@@ -248,4 +248,11 @@ cases['unity-legacy-source-grid-only'] = {'replace': [1.5, 2.503], 'sourceRate':
 cases['unity-inconsistent-alternate'] = {'replace': [1.5000416666666667, 2.503], 'sourceRate': 8000, 'assetRate': 96000,
     'outputFrames': 96288, 'outDuration': 1.003, 'baseline': 'sourceGridOnly',
     'alternateOutputFrames': 96292, 'validationError': 'invalidSegment'}
+for name, stretch in [('nonunity-inconsistent-alternate', 1.0000009), ('nonunity-consistent-alternate', 1.0000004)]:
+    vector = {'replace': [1.5, 21.5], 'sourceRate': 8000, 'assetRate': 96000,
+        'assetDuration': 21.5, 'outputFrames': 1920000, 'outDuration': 20.0, 'baseline': 'binary64',
+        'alternateOutputFrames': 1920000, 'alternateStretch': stretch}
+    if name == 'nonunity-inconsistent-alternate':
+        vector['validationError'] = 'invalidSegment'
+    cases[name] = vector
 (fixtures / 'render-cases.json').write_text(json.dumps(cases, indent=2) + '\n')
