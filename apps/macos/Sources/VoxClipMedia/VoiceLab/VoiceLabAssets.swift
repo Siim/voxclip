@@ -50,8 +50,8 @@ public final class PreparedVoiceLabAsset: @unchecked Sendable {
 }
 
 public enum VoiceLabAssets {
-    private static let maxBytes: Int64 = 8 * 1024 * 1024 * 1024
-    private static let maxFrames: Int64 = 192_000 * 86_400
+    static let maxBytes: Int64 = 8 * 1024 * 1024 * 1024
+    static let maxFrames: Int64 = 192_000 * 86_400
 
     /// Prepare only assets used by this scope; source-only plans need no paid files.
     public static func prepare(project: Project, plan: VoiceLabOutputPlan, paidRoot: URL) throws -> [String: PreparedVoiceLabAsset] {
