@@ -86,13 +86,18 @@ struct PatchRewriteServiceTests {
     @Test func sharedBehaviourCases() async throws {
         let document = try PatchRewriteFixtures.document()
         let cases = document[ai: "cases"].aiArray
-        #expect(cases.count == 72)
+        #expect(cases.count == 82)
         for item in cases {
             let id = try #require(item[ai: "id"].aiString)
             let expected = item[ai: "expected"]
             let instruction: String = try #require(item[ai: "instruction"].aiString)
             let request = try PatchRewriteFixtures.request(document, instruction: instruction, entries: item[ai: "entries"], ranges: item[ai: "ranges"])
             let reply = try #require(item[ai: "reply"].aiString)
+            if id.hasPrefix("json-keys-") {
+                let valid = expected[ai: "error"] == .null
+                #expect((CanonicalResponseParser.strictDecode(reply) != nil) == valid, "\(id): strict reply")
+                #expect((CanonicalResponseParser.envelope(reply) != nil) == valid, "\(id): strict envelope")
+            }
             let stop = PatchRewriteFixtures.stop(item)
             if item[ai: "rewriteExpected"] != .null {
                 try await PatchRewriteFixtures.rewrite(id, reply: reply, stop: stop, expected: item[ai: "rewriteExpected"], patch: request)

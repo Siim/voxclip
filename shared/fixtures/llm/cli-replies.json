@@ -756,6 +756,281 @@
       }
     },
     {
+      "id": "claude-api-status-fraction",
+      "kind": "cli-reply",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §4.5; §6.8",
+      "notes": "An optional integer accepts an integral number, not a fraction or a string.",
+      "input": {
+        "connector": "claude-code",
+        "model": "sonnet",
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "rewrite"
+          ],
+          "properties": {
+            "rewrite": {
+              "type": "string"
+            }
+          }
+        },
+        "stdout": "{\"type\":\"result\",\"is_error\":true,\"result\":\"Request failed.\",\"api_error_status\":529.5}"
+      },
+      "expected": {
+        "error": "cliFailed",
+        "message": "Request failed."
+      }
+    },
+    {
+      "id": "claude-api-status-string",
+      "kind": "cli-reply",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §4.5; §6.8",
+      "notes": "An optional integer accepts an integral number, not a fraction or a string.",
+      "input": {
+        "connector": "claude-code",
+        "model": "sonnet",
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "rewrite"
+          ],
+          "properties": {
+            "rewrite": {
+              "type": "string"
+            }
+          }
+        },
+        "stdout": "{\"type\":\"result\",\"is_error\":true,\"result\":\"Request failed.\",\"api_error_status\":\"529\"}"
+      },
+      "expected": {
+        "error": "cliFailed",
+        "message": "Request failed."
+      }
+    },
+    {
+      "id": "claude-api-status-integral-float",
+      "kind": "cli-reply",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §4.5; §6.8",
+      "notes": "An optional integer accepts an integral number, not a fraction or a string.",
+      "input": {
+        "connector": "claude-code",
+        "model": "sonnet",
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "rewrite"
+          ],
+          "properties": {
+            "rewrite": {
+              "type": "string"
+            }
+          }
+        },
+        "stdout": "{\"type\":\"result\",\"is_error\":true,\"result\":\"Request failed.\",\"api_error_status\":529.0}"
+      },
+      "expected": {
+        "error": "overloaded"
+      }
+    },
+    {
+      "id": "claude-model-usage-integral-float",
+      "kind": "cli-reply",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §6.8",
+      "notes": "Integral float usage is an integer too.",
+      "input": {
+        "connector": "claude-code",
+        "model": "sonnet",
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "rewrite"
+          ],
+          "properties": {
+            "rewrite": {
+              "type": "string"
+            }
+          }
+        },
+        "stdout": "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"result\":\"\",\"structured_output\":{\"rewrite\":\"Fine.\"},\"stop_reason\":\"end_turn\",\"modelUsage\":{\"claude-sonnet-5-5\":{\"inputTokens\":12,\"outputTokens\":9.0}},\"usage\":{\"input_tokens\":12,\"output_tokens\":9}}"
+      },
+      "expected": {
+        "rewrite": "Fine.",
+        "model": "claude-sonnet-5-5"
+      }
+    },
+    {
+      "id": "codex-turn-failed-string-error",
+      "kind": "cli-reply",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §4.5; §6.9",
+      "notes": "Optional fields of the wrong JSON type are absent; turn.failed still fails.",
+      "input": {
+        "connector": "codex",
+        "model": "default",
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "rewrite"
+          ],
+          "properties": {
+            "rewrite": {
+              "type": "string"
+            }
+          }
+        },
+        "stdout": "{\"type\":\"turn.completed\",\"usage\":{\"input_tokens\":12,\"output_tokens\":9}}\n{\"type\":\"turn.failed\",\"error\":\"not an object\"}",
+        "stderr": "No result."
+      },
+      "expected": {
+        "error": "cliFailed",
+        "message": "No result."
+      }
+    },
+    {
+      "id": "codex-numeric-event-type",
+      "kind": "cli-reply",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §4.5; §6.9",
+      "notes": "Optional fields of the wrong JSON type are absent; turn.failed still fails.",
+      "input": {
+        "connector": "codex",
+        "model": "default",
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "rewrite"
+          ],
+          "properties": {
+            "rewrite": {
+              "type": "string"
+            }
+          }
+        },
+        "stdout": "{\"type\":42}\n{\"type\":\"item.completed\",\"item\":{\"type\":\"agent_message\",\"text\":\"{\\\"rewrite\\\":\\\"Fine.\\\"}\"}}\n{\"type\":\"turn.completed\",\"usage\":{\"input_tokens\":12,\"output_tokens\":9}}",
+        "stderr": "No result."
+      },
+      "expected": {
+        "rewrite": "Fine.",
+        "model": "default"
+      }
+    },
+    {
+      "id": "codex-wrong-error-message",
+      "kind": "cli-reply",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §4.5; §6.9",
+      "notes": "Optional fields of the wrong JSON type are absent; turn.failed still fails.",
+      "input": {
+        "connector": "codex",
+        "model": "default",
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "rewrite"
+          ],
+          "properties": {
+            "rewrite": {
+              "type": "string"
+            }
+          }
+        },
+        "stdout": "{\"type\":\"turn.failed\",\"error\":{\"message\":42}}",
+        "stderr": "No result."
+      },
+      "expected": {
+        "error": "cliFailed",
+        "message": "No result."
+      }
+    },
+    {
+      "id": "codex-wrong-message",
+      "kind": "cli-reply",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §4.5; §6.9",
+      "notes": "Optional fields of the wrong JSON type are absent; turn.failed still fails.",
+      "input": {
+        "connector": "codex",
+        "model": "default",
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "rewrite"
+          ],
+          "properties": {
+            "rewrite": {
+              "type": "string"
+            }
+          }
+        },
+        "stdout": "{\"type\":\"error\",\"message\":\"Earlier error.\"}\n{\"type\":\"error\",\"message\":42}",
+        "stderr": "No result."
+      },
+      "expected": {
+        "error": "cliFailed",
+        "message": "Earlier error."
+      }
+    },
+    {
+      "id": "codex-wrong-item-fields",
+      "kind": "cli-reply",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §4.5; §6.9",
+      "notes": "Optional fields of the wrong JSON type are absent; turn.failed still fails.",
+      "input": {
+        "connector": "codex",
+        "model": "default",
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "rewrite"
+          ],
+          "properties": {
+            "rewrite": {
+              "type": "string"
+            }
+          }
+        },
+        "stdout": "{\"type\":\"item.completed\",\"item\":\"not an object\"}\n{\"type\":\"item.completed\",\"item\":{\"type\":42,\"text\":\"{\\\"rewrite\\\":\\\"Fine.\\\"}\"}}\n{\"type\":\"item.completed\",\"item\":{\"type\":\"agent_message\",\"text\":42}}\n{\"type\":\"item.completed\",\"item\":{\"type\":\"agent_message\",\"text\":\"{\\\"rewrite\\\":\\\"Fine.\\\"}\"}}\n{\"type\":\"turn.completed\",\"usage\":{\"input_tokens\":12,\"output_tokens\":9}}",
+        "stderr": "No result."
+      },
+      "expected": {
+        "rewrite": "Fine.",
+        "model": "default"
+      }
+    },
+    {
+      "id": "codex-app-server-wrong-optional-fields",
+      "kind": "cli-reply",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §4.5; §6.9",
+      "notes": "Model metadata obeys the same optional-field rule.",
+      "input": {
+        "connector": "codex",
+        "mode": "app-server",
+        "model": "default",
+        "stdout": "{\"id\":2,\"result\":\"not an object\"}\n{\"id\":2,\"result\":{\"data\":[42,{\"id\":42},{\"id\":\"listed\",\"hidden\":\"false\",\"displayName\":42,\"supportedReasoningEfforts\":[42,{\"reasoningEffort\":42},{\"reasoningEffort\":\"medium\"}]}]}}"
+      },
+      "expected": {
+        "models": [
+          "default",
+          "listed"
+        ]
+      }
+    },
+    {
       "id": "codex-exec-crlf",
       "kind": "cli-reply",
       "origin": "voxclip",
@@ -945,6 +1220,700 @@
           "default",
           "listed"
         ]
+      }
+    },
+    {
+      "id": "claude-malformed-stderr-leading-blank",
+      "kind": "cli-reply",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §6.8; §6.9; §6.10",
+      "notes": "LF-only splitting, jsTrim and the first non-empty line precede marker classification; malformed Claude envelopes never classify.",
+      "input": {
+        "connector": "claude-code",
+        "model": "sonnet",
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "rewrite"
+          ],
+          "properties": {
+            "rewrite": {
+              "type": "string"
+            }
+          }
+        },
+        "stdout": "not an envelope",
+        "stderr": "\n  Request failed.  \nignored"
+      },
+      "expected": {
+        "error": "cliFailed",
+        "message": "Request failed."
+      }
+    },
+    {
+      "id": "claude-error-stderr-leading-blank",
+      "kind": "cli-reply",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §6.8; §6.9; §6.10",
+      "notes": "LF-only splitting, jsTrim and the first non-empty line precede marker classification; malformed Claude envelopes never classify.",
+      "input": {
+        "connector": "claude-code",
+        "model": "sonnet",
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "rewrite"
+          ],
+          "properties": {
+            "rewrite": {
+              "type": "string"
+            }
+          }
+        },
+        "stdout": "{\"type\":\"result\",\"is_error\":true}",
+        "stderr": "\n  Request failed.  \nignored"
+      },
+      "expected": {
+        "error": "cliFailed",
+        "message": "Request failed."
+      }
+    },
+    {
+      "id": "codex-error-stderr-leading-blank",
+      "kind": "cli-reply",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §6.8; §6.9; §6.10",
+      "notes": "LF-only splitting, jsTrim and the first non-empty line precede marker classification; malformed Claude envelopes never classify.",
+      "input": {
+        "connector": "codex",
+        "model": "default",
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "rewrite"
+          ],
+          "properties": {
+            "rewrite": {
+              "type": "string"
+            }
+          }
+        },
+        "stdout": "{\"type\":\"turn.failed\"}",
+        "stderr": "\n  Request failed.  \nignored"
+      },
+      "expected": {
+        "error": "cliFailed",
+        "message": "Request failed."
+      }
+    },
+    {
+      "id": "claude-malformed-stderr-empty",
+      "kind": "cli-reply",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §6.8; §6.9; §6.10",
+      "notes": "LF-only splitting, jsTrim and the first non-empty line precede marker classification; malformed Claude envelopes never classify.",
+      "input": {
+        "connector": "claude-code",
+        "model": "sonnet",
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "rewrite"
+          ],
+          "properties": {
+            "rewrite": {
+              "type": "string"
+            }
+          }
+        },
+        "stdout": "not an envelope",
+        "stderr": ""
+      },
+      "expected": {
+        "error": "cliFailed",
+        "message": "The CLI exited without a result."
+      }
+    },
+    {
+      "id": "claude-error-stderr-empty",
+      "kind": "cli-reply",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §6.8; §6.9; §6.10",
+      "notes": "LF-only splitting, jsTrim and the first non-empty line precede marker classification; malformed Claude envelopes never classify.",
+      "input": {
+        "connector": "claude-code",
+        "model": "sonnet",
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "rewrite"
+          ],
+          "properties": {
+            "rewrite": {
+              "type": "string"
+            }
+          }
+        },
+        "stdout": "{\"type\":\"result\",\"is_error\":true}",
+        "stderr": ""
+      },
+      "expected": {
+        "error": "cliFailed",
+        "message": "The CLI exited without a result."
+      }
+    },
+    {
+      "id": "codex-error-stderr-empty",
+      "kind": "cli-reply",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §6.8; §6.9; §6.10",
+      "notes": "LF-only splitting, jsTrim and the first non-empty line precede marker classification; malformed Claude envelopes never classify.",
+      "input": {
+        "connector": "codex",
+        "model": "default",
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "rewrite"
+          ],
+          "properties": {
+            "rewrite": {
+              "type": "string"
+            }
+          }
+        },
+        "stdout": "{\"type\":\"turn.failed\"}",
+        "stderr": ""
+      },
+      "expected": {
+        "error": "cliFailed",
+        "message": "The CLI exited without a result."
+      }
+    },
+    {
+      "id": "claude-malformed-stderr-crlf",
+      "kind": "cli-reply",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §6.8; §6.9; §6.10",
+      "notes": "LF-only splitting, jsTrim and the first non-empty line precede marker classification; malformed Claude envelopes never classify.",
+      "input": {
+        "connector": "claude-code",
+        "model": "sonnet",
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "rewrite"
+          ],
+          "properties": {
+            "rewrite": {
+              "type": "string"
+            }
+          }
+        },
+        "stdout": "not an envelope",
+        "stderr": " \r\n  Request failed.  \r\nignored"
+      },
+      "expected": {
+        "error": "cliFailed",
+        "message": "Request failed."
+      }
+    },
+    {
+      "id": "claude-error-stderr-crlf",
+      "kind": "cli-reply",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §6.8; §6.9; §6.10",
+      "notes": "LF-only splitting, jsTrim and the first non-empty line precede marker classification; malformed Claude envelopes never classify.",
+      "input": {
+        "connector": "claude-code",
+        "model": "sonnet",
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "rewrite"
+          ],
+          "properties": {
+            "rewrite": {
+              "type": "string"
+            }
+          }
+        },
+        "stdout": "{\"type\":\"result\",\"is_error\":true}",
+        "stderr": " \r\n  Request failed.  \r\nignored"
+      },
+      "expected": {
+        "error": "cliFailed",
+        "message": "Request failed."
+      }
+    },
+    {
+      "id": "codex-error-stderr-crlf",
+      "kind": "cli-reply",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §6.8; §6.9; §6.10",
+      "notes": "LF-only splitting, jsTrim and the first non-empty line precede marker classification; malformed Claude envelopes never classify.",
+      "input": {
+        "connector": "codex",
+        "model": "default",
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "rewrite"
+          ],
+          "properties": {
+            "rewrite": {
+              "type": "string"
+            }
+          }
+        },
+        "stdout": "{\"type\":\"turn.failed\"}",
+        "stderr": " \r\n  Request failed.  \r\nignored"
+      },
+      "expected": {
+        "error": "cliFailed",
+        "message": "Request failed."
+      }
+    },
+    {
+      "id": "claude-malformed-stderr-marker-second-line",
+      "kind": "cli-reply",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §6.8; §6.9; §6.10",
+      "notes": "LF-only splitting, jsTrim and the first non-empty line precede marker classification; malformed Claude envelopes never classify.",
+      "input": {
+        "connector": "claude-code",
+        "model": "sonnet",
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "rewrite"
+          ],
+          "properties": {
+            "rewrite": {
+              "type": "string"
+            }
+          }
+        },
+        "stdout": "not an envelope",
+        "stderr": "\n  Not logged in\nignored"
+      },
+      "expected": {
+        "error": "cliFailed",
+        "message": "Not logged in"
+      }
+    },
+    {
+      "id": "claude-error-stderr-marker-second-line",
+      "kind": "cli-reply",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §6.8; §6.9; §6.10",
+      "notes": "LF-only splitting, jsTrim and the first non-empty line precede marker classification; malformed Claude envelopes never classify.",
+      "input": {
+        "connector": "claude-code",
+        "model": "sonnet",
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "rewrite"
+          ],
+          "properties": {
+            "rewrite": {
+              "type": "string"
+            }
+          }
+        },
+        "stdout": "{\"type\":\"result\",\"is_error\":true}",
+        "stderr": "\n  Not logged in\nignored"
+      },
+      "expected": {
+        "error": "cliSignedOut"
+      }
+    },
+    {
+      "id": "codex-error-stderr-marker-second-line",
+      "kind": "cli-reply",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §6.8; §6.9; §6.10",
+      "notes": "LF-only splitting, jsTrim and the first non-empty line precede marker classification; malformed Claude envelopes never classify.",
+      "input": {
+        "connector": "codex",
+        "model": "default",
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "rewrite"
+          ],
+          "properties": {
+            "rewrite": {
+              "type": "string"
+            }
+          }
+        },
+        "stdout": "{\"type\":\"turn.failed\"}",
+        "stderr": "\n  Not logged in\nignored"
+      },
+      "expected": {
+        "error": "cliSignedOut"
+      }
+    },
+    {
+      "id": "claude-malformed-stderr-ignored-marker-second-line",
+      "kind": "cli-reply",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §6.8; §6.9; §6.10",
+      "notes": "LF-only splitting, jsTrim and the first non-empty line precede marker classification; malformed Claude envelopes never classify.",
+      "input": {
+        "connector": "claude-code",
+        "model": "sonnet",
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "rewrite"
+          ],
+          "properties": {
+            "rewrite": {
+              "type": "string"
+            }
+          }
+        },
+        "stdout": "not an envelope",
+        "stderr": "Request failed.\nNot logged in"
+      },
+      "expected": {
+        "error": "cliFailed",
+        "message": "Request failed."
+      }
+    },
+    {
+      "id": "claude-error-stderr-ignored-marker-second-line",
+      "kind": "cli-reply",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §6.8; §6.9; §6.10",
+      "notes": "LF-only splitting, jsTrim and the first non-empty line precede marker classification; malformed Claude envelopes never classify.",
+      "input": {
+        "connector": "claude-code",
+        "model": "sonnet",
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "rewrite"
+          ],
+          "properties": {
+            "rewrite": {
+              "type": "string"
+            }
+          }
+        },
+        "stdout": "{\"type\":\"result\",\"is_error\":true}",
+        "stderr": "Request failed.\nNot logged in"
+      },
+      "expected": {
+        "error": "cliFailed",
+        "message": "Request failed."
+      }
+    },
+    {
+      "id": "codex-error-stderr-ignored-marker-second-line",
+      "kind": "cli-reply",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §6.8; §6.9; §6.10",
+      "notes": "LF-only splitting, jsTrim and the first non-empty line precede marker classification; malformed Claude envelopes never classify.",
+      "input": {
+        "connector": "codex",
+        "model": "default",
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "rewrite"
+          ],
+          "properties": {
+            "rewrite": {
+              "type": "string"
+            }
+          }
+        },
+        "stdout": "{\"type\":\"turn.failed\"}",
+        "stderr": "Request failed.\nNot logged in"
+      },
+      "expected": {
+        "error": "cliFailed",
+        "message": "Request failed."
+      }
+    },
+    {
+      "id": "claude-malformed-stderr-whitespace-only",
+      "kind": "cli-reply",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §6.8; §6.9; §6.10",
+      "notes": "LF-only splitting, jsTrim and the first non-empty line precede marker classification; malformed Claude envelopes never classify.",
+      "input": {
+        "connector": "claude-code",
+        "model": "sonnet",
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "rewrite"
+          ],
+          "properties": {
+            "rewrite": {
+              "type": "string"
+            }
+          }
+        },
+        "stdout": "not an envelope",
+        "stderr": "﻿ \r\n\t "
+      },
+      "expected": {
+        "error": "cliFailed",
+        "message": "The CLI exited without a result."
+      }
+    },
+    {
+      "id": "claude-error-stderr-whitespace-only",
+      "kind": "cli-reply",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §6.8; §6.9; §6.10",
+      "notes": "LF-only splitting, jsTrim and the first non-empty line precede marker classification; malformed Claude envelopes never classify.",
+      "input": {
+        "connector": "claude-code",
+        "model": "sonnet",
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "rewrite"
+          ],
+          "properties": {
+            "rewrite": {
+              "type": "string"
+            }
+          }
+        },
+        "stdout": "{\"type\":\"result\",\"is_error\":true}",
+        "stderr": "﻿ \r\n\t "
+      },
+      "expected": {
+        "error": "cliFailed",
+        "message": "The CLI exited without a result."
+      }
+    },
+    {
+      "id": "codex-error-stderr-whitespace-only",
+      "kind": "cli-reply",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §6.8; §6.9; §6.10",
+      "notes": "LF-only splitting, jsTrim and the first non-empty line precede marker classification; malformed Claude envelopes never classify.",
+      "input": {
+        "connector": "codex",
+        "model": "default",
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "rewrite"
+          ],
+          "properties": {
+            "rewrite": {
+              "type": "string"
+            }
+          }
+        },
+        "stdout": "{\"type\":\"turn.failed\"}",
+        "stderr": "﻿ \r\n\t "
+      },
+      "expected": {
+        "error": "cliFailed",
+        "message": "The CLI exited without a result."
+      }
+    },
+    {
+      "id": "claude-malformed-stderr-unicode-line-separator",
+      "kind": "cli-reply",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §6.8; §6.9; §6.10",
+      "notes": "LF-only splitting, jsTrim and the first non-empty line precede marker classification; malformed Claude envelopes never classify.",
+      "input": {
+        "connector": "claude-code",
+        "model": "sonnet",
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "rewrite"
+          ],
+          "properties": {
+            "rewrite": {
+              "type": "string"
+            }
+          }
+        },
+        "stdout": "not an envelope",
+        "stderr": "Request failed. Details."
+      },
+      "expected": {
+        "error": "cliFailed",
+        "message": "Request failed. Details."
+      }
+    },
+    {
+      "id": "claude-error-stderr-unicode-line-separator",
+      "kind": "cli-reply",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §6.8; §6.9; §6.10",
+      "notes": "LF-only splitting, jsTrim and the first non-empty line precede marker classification; malformed Claude envelopes never classify.",
+      "input": {
+        "connector": "claude-code",
+        "model": "sonnet",
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "rewrite"
+          ],
+          "properties": {
+            "rewrite": {
+              "type": "string"
+            }
+          }
+        },
+        "stdout": "{\"type\":\"result\",\"is_error\":true}",
+        "stderr": "Request failed. Details."
+      },
+      "expected": {
+        "error": "cliFailed",
+        "message": "Request failed. Details."
+      }
+    },
+    {
+      "id": "codex-error-stderr-unicode-line-separator",
+      "kind": "cli-reply",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §6.8; §6.9; §6.10",
+      "notes": "LF-only splitting, jsTrim and the first non-empty line precede marker classification; malformed Claude envelopes never classify.",
+      "input": {
+        "connector": "codex",
+        "model": "default",
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "rewrite"
+          ],
+          "properties": {
+            "rewrite": {
+              "type": "string"
+            }
+          }
+        },
+        "stdout": "{\"type\":\"turn.failed\"}",
+        "stderr": "Request failed. Details."
+      },
+      "expected": {
+        "error": "cliFailed",
+        "message": "Request failed. Details."
+      }
+    },
+    {
+      "id": "claude-malformed-stderr-carriage-return",
+      "kind": "cli-reply",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §6.8; §6.9; §6.10",
+      "notes": "LF-only splitting, jsTrim and the first non-empty line precede marker classification; malformed Claude envelopes never classify.",
+      "input": {
+        "connector": "claude-code",
+        "model": "sonnet",
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "rewrite"
+          ],
+          "properties": {
+            "rewrite": {
+              "type": "string"
+            }
+          }
+        },
+        "stdout": "not an envelope",
+        "stderr": "Request failed.\rDetails."
+      },
+      "expected": {
+        "error": "cliFailed",
+        "message": "Request failed.\rDetails."
+      }
+    },
+    {
+      "id": "claude-error-stderr-carriage-return",
+      "kind": "cli-reply",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §6.8; §6.9; §6.10",
+      "notes": "LF-only splitting, jsTrim and the first non-empty line precede marker classification; malformed Claude envelopes never classify.",
+      "input": {
+        "connector": "claude-code",
+        "model": "sonnet",
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "rewrite"
+          ],
+          "properties": {
+            "rewrite": {
+              "type": "string"
+            }
+          }
+        },
+        "stdout": "{\"type\":\"result\",\"is_error\":true}",
+        "stderr": "Request failed.\rDetails."
+      },
+      "expected": {
+        "error": "cliFailed",
+        "message": "Request failed.\rDetails."
+      }
+    },
+    {
+      "id": "codex-error-stderr-carriage-return",
+      "kind": "cli-reply",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §6.8; §6.9; §6.10",
+      "notes": "LF-only splitting, jsTrim and the first non-empty line precede marker classification; malformed Claude envelopes never classify.",
+      "input": {
+        "connector": "codex",
+        "model": "default",
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "rewrite"
+          ],
+          "properties": {
+            "rewrite": {
+              "type": "string"
+            }
+          }
+        },
+        "stdout": "{\"type\":\"turn.failed\"}",
+        "stderr": "Request failed.\rDetails."
+      },
+      "expected": {
+        "error": "cliFailed",
+        "message": "Request failed.\rDetails."
       }
     }
   ]

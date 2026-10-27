@@ -1,5 +1,10 @@
 # Windows fixed contracts
 
+### 2026-10-27 — Catalog-only context parity (sol-followups-4)
+
+- Current shared fixtures after this track: `shared/fixtures/llm/cli-replies.json` (69 cases) sha256 `6dc35edf82112e7b298d23846cc940588f875549734c8f39057f2e8dd3eabdbc`; `shared/fixtures/voice-lab/patch-rewrite-cases.json` (82 cases, 45 also replayed as passage rewrites) sha256 `db1477211f74150224413b66d813df35bfe8c6479d1da25b23b38b144188df81`. Older hash lines below are history.
+- The lead-approved Mac `LLMCatalog.resolvedContextTokens(for:model:)` now mirrors the existing Windows `ResolveContextTokensAsync(queryConnector: false)` path for Find Clips dry runs (ai §11.5). Both use curated metadata and the connector-class fallback without querying a connector or model list. Windows declarations and persisted formats are unchanged.
+
 ### 2026-10-27 — Windows early Ctrl+C audit (sol-followups-2)
 
 - Lead's narrowed item 3 is audit-only: no Windows CLI product change, timing hook, new test or architecture wording change is needed. `Program.cs` cancels the workflow token on `Console.CancelKeyPress`; `CliApplication.Stub` checks it before the export command runs. `RunAsync` maps `OperationCanceledException` to exit 6 with an empty message. Human cancellation is silent; JSON retains its existing `cancelled` envelope.

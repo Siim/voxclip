@@ -44,13 +44,20 @@ public sealed class PatchRewriteServiceTests
     {
         var document = Cases();
         var cases = document["cases"]!.AsArray();
-        Assert.Equal(72, cases.Count);
+        Assert.Equal(82, cases.Count);
         foreach (var item in cases)
         {
             var id = item!["id"]!.GetValue<string>();
             var expected = item["expected"]!;
             var request = Request(document, item["instruction"]!.GetValue<string>(), item["entries"], item["ranges"]);
             var connector = new CapturingLlmConnector(item["reply"]!.GetValue<string>(), stop: Stop(item));
+            if (id.StartsWith("json-keys-", StringComparison.Ordinal))
+            {
+                var valid = expected["error"] is null;
+                var reply = item["reply"]!.GetValue<string>();
+                Assert.Equal(valid, LlmOutput.TryParse(reply, out _));
+                Assert.Equal(valid, LlmOutput.Envelope(reply) is not null);
+            }
             if (item["rewriteExpected"] is { } rewrite) await RewriteCase(id, item, rewrite, request);
             if (expected["error"] is { } error)
             {

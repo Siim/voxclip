@@ -265,7 +265,7 @@ struct CLIConnectorTests {
     func sharedClaudeResultEnvelopes() async throws {
         let data = try Data(contentsOf: aiGoldenSharedRoot().appendingPathComponent("fixtures/llm/cli-replies.json"))
         let cases = try JSONDecoder().decode(JSONValue.self, from: data)[ai: "cases"].aiArray
-        #expect(cases.count == 35)
+        #expect(cases.count == 69)
         let catalog = try cliTestCatalog()
         for item in cases {
             let id = item[ai: "id"].aiString ?? "?"
@@ -303,6 +303,12 @@ struct CLIConnectorTests {
                 outcome = "refused"
             } catch LLMError.invalidOutput {
                 outcome = "invalidOutput"
+            } catch LLMError.overloaded {
+                outcome = "overloaded"
+            } catch LLMError.cliSignedOut {
+                outcome = "cliSignedOut"
+            } catch LLMError.planLimit {
+                outcome = "planLimit"
             }
             #expect(outcome == (expected[ai: "error"].aiString ?? "reply"), "\(id)")
         }
@@ -493,7 +499,7 @@ struct CLIConnectorTests {
         let runner = CLIFakeRunner(id: .codex, catalog: catalog, generation: { _ in
             cliTestResult(#"{"type":"item.completed","item":{"type":"agent_message","text":"{\"ok\":true}"}}"#)
         })
-        await #expect(throws: LLMError.cliFailed("CLI exited without a result.")) {
+        await #expect(throws: LLMError.cliFailed("The CLI exited without a result.")) {
             try await cliTestConnector(.codex, runner: runner, catalog: catalog).send(cliTestRequest(), model: "default")
         }
     }

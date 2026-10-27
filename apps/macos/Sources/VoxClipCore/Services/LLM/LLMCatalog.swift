@@ -28,8 +28,12 @@ extension LLMCatalog {
         let choices: [LLMModel]
         if let models { choices = models } else { choices = try await connector.models(refresh: false) }
         if let context = choices.first(where: { $0.id == model })?.contextTokens { return context }
-        if let context = curatedModels(for: connector.id).first(where: { $0.id == model })?.contextTokens { return context }
-        switch connector.id {
+        return try resolvedContextTokens(for: connector.id, model: model)
+    }
+
+    public func resolvedContextTokens(for id: ConnectorID, model: String) throws -> Int {
+        if let context = curatedModels(for: id).first(where: { $0.id == model })?.contextTokens { return context }
+        switch id {
         case .ollama, .lmstudio: return 4_096
         case .appleFoundation: throw LLMError.unavailable(reason: "The runtime context size is unavailable.")
         default: return 128_000

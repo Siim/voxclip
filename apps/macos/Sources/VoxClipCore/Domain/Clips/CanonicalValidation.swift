@@ -176,6 +176,7 @@ struct StrictJSON {
     private struct Frame {
         let isObject: Bool
         var members: [String: JSONValue] = [:]
+        var rawKeys: Set<[UInt8]> = []
         var items: [JSONValue] = []
         var key = ""
 
@@ -183,8 +184,13 @@ struct StrictJSON {
         var value: JSONValue { isObject ? .object(members) : .array(items) }
 
         /// A repeated key keeps its first value; the later one was still checked.
-        mutating func add(_ item: JSONValue) {
-            if !isObject { items.append(item) } else if members[key] == nil { members[key] = item }
+        mutating func add(_ item: JSONValue) -> Bool {
+            if !isObject { items.append(item); return true }
+            let bytes = Array(key.utf8)
+            guard rawKeys.contains(bytes) || members[key] == nil else { return false }
+            rawKeys.insert(bytes)
+            if members[key] == nil { members[key] = item }
+            return true
         }
     }
 
@@ -219,7 +225,7 @@ struct StrictJSON {
             // The value goes into its container; a closing bracket finishes that container in turn.
             while true {
                 guard var frame = open.popLast() else { return finished }
-                frame.add(finished)
+                guard frame.add(finished) else { return nil }
                 space()
                 if head == UInt8(ascii: ",") {
                     at += 1

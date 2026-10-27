@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
+using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Services.Process;
 
@@ -53,7 +54,7 @@ internal sealed class CliLlmAdapter(ConnectorId id, LlmCatalog catalog, IProcess
                 if (auth?["loggedIn"] is not JsonValue loggedInValue || !loggedInValue.TryGetValue<bool>(out var loggedIn)) throw ProbeFailure();
                 if (!loggedIn) return new ConnectorStatus.CliSignedOut();
                 if (result.ExitCode != 0) throw ProbeFailure();
-                AuthMethod = auth?["authMethod"]?.GetValue<string>();
+                AuthMethod = Text(auth?["authMethod"]);
                 IsApiKeyAuth = AuthMethod?.Contains("api", StringComparison.OrdinalIgnoreCase) == true;
                 return new ConnectorStatus.Ready();
             }
@@ -256,7 +257,7 @@ internal sealed class CliLlmAdapter(ConnectorId id, LlmCatalog catalog, IProcess
         var message = root["result"] is JsonValue resultValue && resultValue.TryGetValue<string>(out var resultText) ? resultText : FirstLine(result.StandardError);
         if (isError || result.ExitCode != 0)
         {
-            var status = root["api_error_status"]?.GetValue<int>();
+            var status = Count(root, "api_error_status");
             if (status is 401 or 403) throw Failure(LlmErrorKind.CliSignedOut, model, request.Feature);
             if (status == 429) throw Failure(LlmErrorKind.PlanLimit, model, request.Feature, message);
             if (status == 529) throw Failure(LlmErrorKind.Overloaded, model, request.Feature);
@@ -277,24 +278,28 @@ internal sealed class CliLlmAdapter(ConnectorId id, LlmCatalog catalog, IProcess
         JsonObject? completed = null;
         string? message = null;
         string? failed = null;
+        var sawFailure = false;
         string? lastAgent = null;
         foreach (var line in result.StandardOutput.Split('\n'))
         {
             if (LlmOutput.Envelope(line) is not JsonObject item) continue;
-            switch (item["type"]?.GetValue<string>())
+            switch (Text(item["type"]))
             {
                 case "turn.completed": completed = item; break;
-                case "turn.failed": failed = item["error"]?["message"]?.GetValue<string>(); break;
+                case "turn.failed":
+                    sawFailure = true;
+                    failed = Text((item["error"] as JsonObject)?["message"]);
+                    break;
                 case "error":
-                    var error = item["message"]?.GetValue<string>();
-                    if (error?.StartsWith("Reconnecting...", StringComparison.Ordinal) != true) message = error;
+                    var error = Text(item["message"]);
+                    if (error is not null && !error.StartsWith("Reconnecting...", StringComparison.Ordinal)) message = error;
                     break;
                 case "item.completed":
-                    if (item["item"]?["type"]?.GetValue<string>() == "agent_message") lastAgent = item["item"]?["text"]?.GetValue<string>();
+                    if (item["item"] is JsonObject agent && Text(agent["type"]) == "agent_message") lastAgent = Text(agent["text"]);
                     break;
             }
         }
-        if (result.ExitCode != 0 || completed is null || failed is not null) throw Classify(failed ?? message ?? FirstLine(result.StandardError), model, request.Feature);
+        if (result.ExitCode != 0 || completed is null || sawFailure) throw Classify(failed ?? message ?? FirstLine(result.StandardError), model, request.Feature);
         if (File.Exists(outputFile) && new FileInfo(outputFile).Length > 16 * 1024 * 1024) throw Failure(LlmErrorKind.CliFailed, model, request.Feature, "CLI output exceeded the 16 MB limit.");
         var text = File.Exists(outputFile) ? await File.ReadAllTextAsync(outputFile, ct).ConfigureAwait(false) : null;
         if (string.IsNullOrWhiteSpace(text)) text = lastAgent;
@@ -320,13 +325,15 @@ internal sealed class CliLlmAdapter(ConnectorId id, LlmCatalog catalog, IProcess
             foreach (var line in result.StandardOutput.Split('\n'))
             {
                 var response = LlmOutput.Envelope(line);
-                if (response?["id"]?.ToString() != "2" || response["result"]?["data"] is not JsonArray data) continue;
+                if (Count(response, "id") != 2 || (response?["result"] as JsonObject)?["data"] is not JsonArray data) continue;
                 var models = new List<LlmModel> { new("default", "CLI default", null, null, ModelSource.Curated) };
                 foreach (var item in data)
                 {
-                    if (item?["hidden"]?.GetValue<bool>() == true || item?["id"]?.GetValue<string>() is not { } model) continue;
-                    efforts[model] = (item["supportedReasoningEfforts"] as JsonArray ?? []).Select(effort => effort?["reasoningEffort"]?.GetValue<string>() ?? "").ToHashSet(StringComparer.Ordinal);
-                    models.Add(new(model, item["displayName"]?.GetValue<string>() ?? model, null, null, ModelSource.Discovered));
+                    if (item is not JsonObject entry || entry["hidden"] is JsonValue hidden && hidden.TryGetValue<bool>(out var isHidden) && isHidden ||
+                        Text(entry["id"]) is not { } model) continue;
+                    efforts[model] = (entry["supportedReasoningEfforts"] as JsonArray ?? []).Select(effort => Text((effort as JsonObject)?["reasoningEffort"]))
+                        .OfType<string>().ToHashSet(StringComparer.Ordinal);
+                    models.Add(new(model, Text(entry["displayName"]) ?? model, null, null, ModelSource.Discovered));
                 }
                 LastRefreshError = null;
                 ModelsFetchedAt = DateTimeOffset.UtcNow;
@@ -366,8 +373,10 @@ internal sealed class CliLlmAdapter(ConnectorId id, LlmCatalog catalog, IProcess
         internal static readonly Utf8KeyComparer Instance = new();
         public int Compare(byte[]? left, byte[]? right) => left.AsSpan().SequenceCompareTo(right);
     }
-    private static int? Count(JsonNode? node, string key) => node is JsonObject objectValue && objectValue[key] is JsonValue scalar && scalar.TryGetValue<int>(out var count) ? count : null;
-    private static string FirstLine(string value) => value.Split('\n', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault()?.Trim() ?? "The CLI returned no result.";
+    private static string? Text(JsonNode? node) => node is JsonValue scalar && scalar.TryGetValue<string>(out var text) ? text : null;
+    private static int? Count(JsonNode? node, string key) => node is JsonObject objectValue && objectValue[key] is JsonValue scalar &&
+        scalar.TryGetValue<double>(out var count) && double.IsFinite(count) && count == Math.Truncate(count) && count >= int.MinValue && count <= int.MaxValue ? (int)count : null;
+    private static string FirstLine(string value) => value.Split('\n').Select(EditingAlgorithms.JsTrim).FirstOrDefault(line => line.Length != 0) ?? "The CLI exited without a result.";
     private LlmException Classify(string message, string model, LlmFeature feature)
     {
         bool Matches(string list) => (settings[list] as JsonArray ?? []).Any(marker => message.Contains(marker!.GetValue<string>(), StringComparison.OrdinalIgnoreCase));

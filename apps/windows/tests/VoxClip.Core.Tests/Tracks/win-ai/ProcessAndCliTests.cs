@@ -156,10 +156,11 @@ public sealed class ProcessAndCliTests
                     break;
             }
         }
-        catch (LlmException exception) when (exception.Error.Kind == LlmErrorKind.CliFailed)
+        catch (LlmException exception)
         {
             if (expected["message"] is { } message) Assert.Equal(message.GetValue<string>(), exception.Error.Reason);
-            outcome = "cliFailed";
+            outcome = exception.Error.Kind.ToString();
+            outcome = char.ToLowerInvariant(outcome[0]) + outcome[1..];
         }
         Assert.Equal(expected["error"]?.GetValue<string>() ?? "reply", outcome);
     }

@@ -79,11 +79,16 @@ internal static class LlmOutput
         {
             case JsonValueKind.Object:
                 var result = new JsonObject();
+                var normalizedKeys = new Dictionary<string, string>(StringComparer.Ordinal);
                 foreach (var property in element.EnumerateObject())
                 {
                     // Reading the name and building the value check both, even when a repeated key's value is then unused.
                     var name = property.Name;
                     var value = Build(property.Value);
+                    var normalized = EditingAlgorithms.Nfc(name);
+                    if (normalizedKeys.TryGetValue(normalized, out var previous) && !string.Equals(previous, name, StringComparison.Ordinal))
+                        throw new FormatException("Object keys are canonically equivalent but byte-different.");
+                    normalizedKeys.TryAdd(normalized, name);
                     if (!result.ContainsKey(name)) result.Add(name, value);
                 }
                 return result;

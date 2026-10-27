@@ -451,6 +451,32 @@ for (const [id, stdout] of [
 const codexExec = JSON.stringify({ type: 'item.completed', item: { type: 'agent_message', text: fineReply } })
 const codexComplete = JSON.stringify({ type: 'turn.completed', usage: { input_tokens: 12, output_tokens: 9 } })
 const codexModels = JSON.stringify({ id: 2, result: { data: [{ id: 'listed', supportedReasoningEfforts: [{ reasoningEffort: 'medium' }] }] } })
+for (const [id, status, expected] of [
+  ['claude-api-status-fraction', '529.5', { error: 'cliFailed', message: 'Request failed.' }],
+  ['claude-api-status-string', '"529"', { error: 'cliFailed', message: 'Request failed.' }],
+  ['claude-api-status-integral-float', '529.0', { error: 'overloaded' }]
+]) add('cli-replies', id, 'cli-reply', { connector: 'claude-code', model: 'sonnet', schema: voiceLabPrompts.voiceRewrite.schema,
+  stdout: '{"type":"result","is_error":true,"result":"Request failed.","api_error_status":' + status + '}' }, expected,
+  'doc/spec/ai.md §4.5; §6.8', 'An optional integer accepts an integral number, not a fraction or a string.')
+add('cli-replies', 'claude-model-usage-integral-float', 'cli-reply', { connector: 'claude-code', model: 'sonnet',
+  schema: voiceLabPrompts.voiceRewrite.schema, stdout: claudeResult().replace('"outputTokens":9', '"outputTokens":9.0') }, answered,
+  'doc/spec/ai.md §6.8', 'Integral float usage is an integer too.')
+for (const [id, stdout, expected] of [
+  ['codex-turn-failed-string-error', codexComplete + '\n' + JSON.stringify({ type: 'turn.failed', error: 'not an object' }), { error: 'cliFailed', message: 'No result.' }],
+  ['codex-numeric-event-type', JSON.stringify({ type: 42 }) + '\n' + codexExec + '\n' + codexComplete, { rewrite: 'Fine.', model: 'default' }],
+  ['codex-wrong-error-message', JSON.stringify({ type: 'turn.failed', error: { message: 42 } }), { error: 'cliFailed', message: 'No result.' }],
+  ['codex-wrong-message', JSON.stringify({ type: 'error', message: 'Earlier error.' }) + '\n' + JSON.stringify({ type: 'error', message: 42 }), { error: 'cliFailed', message: 'Earlier error.' }],
+  ['codex-wrong-item-fields', [
+    { type: 'item.completed', item: 'not an object' },
+    { type: 'item.completed', item: { type: 42, text: fineReply } },
+    { type: 'item.completed', item: { type: 'agent_message', text: 42 } }
+  ].map(event => JSON.stringify(event)).join('\n') + '\n' + codexExec + '\n' + codexComplete, { rewrite: 'Fine.', model: 'default' }]
+]) add('cli-replies', id, 'cli-reply', { connector: 'codex', model: 'default', schema: voiceLabPrompts.voiceRewrite.schema,
+  stdout, stderr: 'No result.' }, expected, 'doc/spec/ai.md §4.5; §6.9', 'Optional fields of the wrong JSON type are absent; turn.failed still fails.')
+add('cli-replies', 'codex-app-server-wrong-optional-fields', 'cli-reply', { connector: 'codex', mode: 'app-server', model: 'default',
+  stdout: JSON.stringify({ id: 2, result: 'not an object' }) + '\n' + JSON.stringify({ id: 2, result: { data: [42, { id: 42 },
+    { id: 'listed', hidden: 'false', displayName: 42, supportedReasoningEfforts: [42, { reasoningEffort: 42 }, { reasoningEffort: 'medium' }] }] } }) },
+  { models: ['default', 'listed'] }, 'doc/spec/ai.md §4.5; §6.9', 'Model metadata obeys the same optional-field rule.')
 for (const [ending, suffix] of [['crlf', String.fromCharCode(13, 10)], ['trailing-cr', String.fromCharCode(13)]]) {
   add('cli-replies', 'codex-exec-' + ending, 'cli-reply', { connector: 'codex', mode: 'exec', model: 'default',
     schema: voiceLabPrompts.voiceRewrite.schema, stdout: codexExec + String.fromCharCode(13, 10) + codexComplete + suffix },
@@ -471,6 +497,24 @@ for (const [id, input, expected] of [
 ]) add('cli-replies', id, 'cli-reply', { connector: 'codex', model: 'default', ...input }, expected,
   'doc/spec/ai.md §4.5; §6.9', 'LF alone separates envelopes; jsTrim removes a BOM and a Unicode line separator inside a string stays in it.')
 const datasetSources = { 'voice-rewrite-requests': voiceLabSources('voiceRewrite'), 'patch-rewrite-requests': voiceLabSources('patchRewrite'), 'cli-replies': voiceLabSources('voiceRewrite') }
+for (const [suffix, stderr, message, classified = 'cliFailed'] of [
+  ['leading-blank', '\n  Request failed.  \nignored', 'Request failed.'],
+  ['empty', '', 'The CLI exited without a result.'],
+  ['crlf', ' \r\n  Request failed.  \r\nignored', 'Request failed.'],
+  ['marker-second-line', '\n  Not logged in\nignored', 'Not logged in', 'cliSignedOut'],
+  ['ignored-marker-second-line', 'Request failed.\nNot logged in', 'Request failed.'],
+  ['whitespace-only', codePoints(0xFEFF, 0xA0) + '\r\n\t ', 'The CLI exited without a result.'],
+  ['unicode-line-separator', 'Request failed.' + codePoints(0x2028) + 'Details.', 'Request failed.' + codePoints(0x2028) + 'Details.'],
+  ['carriage-return', 'Request failed.\rDetails.', 'Request failed.\rDetails.']
+]) {
+  for (const [prefix, connector, stdout, error] of [
+    ['claude-malformed', 'claude-code', 'not an envelope', 'cliFailed'],
+    ['claude-error', 'claude-code', '{"type":"result","is_error":true}', classified],
+    ['codex-error', 'codex', '{"type":"turn.failed"}', classified]
+  ]) add('cli-replies', prefix + '-stderr-' + suffix, 'cli-reply', { connector, model: connector === 'codex' ? 'default' : 'sonnet',
+    schema: voiceLabPrompts.voiceRewrite.schema, stdout, stderr }, { error, ...(error === 'cliFailed' ? { message } : {}) },
+    'doc/spec/ai.md §6.8; §6.9; §6.10', 'LF-only splitting, jsTrim and the first non-empty line precede marker classification; malformed Claude envelopes never classify.')
+}
 
 const bestRequest = canonicalRequest({ feature: 'clipFinder', words: f1Words, lines: formattedF1.lines, choice: 'best' }, prompts)
 const testRequest = { feature: 'test', system: catalog.testRequest.system, cachedBlock: null, instruction: catalog.testRequest.instruction, schemaName: catalog.testRequest.schemaName, schema: catalog.testRequest.schema, maxOutputTokens: catalog.testRequest.maxOutputTokens, effort: catalog.testRequest.effort, language: 'en' }

@@ -45,7 +45,7 @@ Each case has:
 - `expected`: either `{"error": …}` with `invalidOutput`, `refused` or `truncated`, or the kept `edits` in order (each with `line`, `text`, `reason`, `length`, `inRange`, `checkThis` and `isDeletion`) and the `unknownLines`, `duplicateLines` and `malformedItems` counts;
 - optional `rewriteExpected`: what `VoiceRewriteService` makes of the same reply and stop for a passage of the same words, either `{"rewrite", "proposedLength"}` or `{"error": …}`.
 
-The generator works out each expected result with its own Python reading of the §8.1 rules: the strict JSON rule and extraction (ai.md §4.5), structural validation (§2.3), malformed edits, line matching, duplicates, deletions, the letter-and-digit length against the line's range, the 20,000-byte total and `checkThis`, and for `rewriteExpected` the passage rewrite's output rules (§8.9.1). Each case also states its outcome by hand, and the generator fails if the two disagree. The 72 cases cover:
+The generator works out each expected result with its own Python reading of the §8.1 rules: the strict JSON rule and extraction (ai.md §4.5), structural validation (§2.3), malformed edits, line matching, duplicates, deletions, the letter-and-digit length against the line's range, the 20,000-byte total and `checkThis`, and for `rewriteExpected` the passage rewrite's output rules (§8.9.1). Each case also states its outcome by hand, and the generator fails if the two disagree. The 82 cases cover:
 
 - edits in range, below it and above it, which are all kept;
 - an unknown line, and a duplicate line, where the first is kept;
@@ -60,6 +60,7 @@ The generator works out each expected result with its own Python reading of the 
 - edits holding exactly 20,000 bytes of text, which are kept, and more, which is invalid output;
 - extra keys, a padded line label, a code-fenced reply, a one-line fence, prose around the JSON, a combining mark after a quote, a byte order mark, and a top-level array;
 - repeated keys at the top level, in an item and in an ignored key, where the first value counts, and an invalid value of a repeated key, which fails;
+- ten strict-key vectors built from explicit Python code points: Latin NFC/NFD in both orders, Kelvin, Hangul, nested and null-valued collisions; byte-identical repeats, different escape spellings, sibling objects and distinct-case keys. Both Core suites also replay these through the strict reply and transport-envelope parsers;
 - unpaired surrogate escapes in the text, the reason, an ignored key and a key name, and a reversed pair, which all fail, and an escaped pair, which is valid;
 - 64 levels of nesting, which is valid, and 65, which is not;
 - numbers out of range, negative, as an integer and rounding to zero, and `NaN`, which all fail, and a subnormal number and zeros with an exponent (`0e-400`, `0e1`, `0E1`, `0.00e-1` and `-0.0e5`), which are valid;
@@ -69,4 +70,4 @@ The generator works out each expected result with its own Python reading of the 
 - an empty list;
 - invalid output: no JSON, and no `edits` array.
 
-Both suites send every case through their `PatchRewriteService` with a stub connector, and the 35 cases with `rewriteExpected` through their `VoiceRewriteService` too.
+Both suites send every case through their `PatchRewriteService` with a stub connector, and the 45 cases with `rewriteExpected` through their `VoiceRewriteService` too.

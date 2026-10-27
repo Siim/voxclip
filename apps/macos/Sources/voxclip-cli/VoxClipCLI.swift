@@ -390,7 +390,7 @@ struct FindClips: AsyncParsableCommand {
             if dryRun {
                 let builder = ClipRequestBuilder(prompt: prompt)
                 let words = builder.clipWords(transcript, corrections: project.edits.corrections)
-                let context = catalog.curatedModels(for: id).first { $0.id == selectedModel }?.contextTokens ?? 128000
+                let context = try catalog.resolvedContextTokens(for: id, model: selectedModel)
                 let windows = try builder.windows(words: words, preset: chosen, instruction: instruction, contextTokens: context, localServer: id == .ollama || id == .lmstudio)
                 let requests: [JSONValue] = windows.enumerated().map { index, window in
                     let request = builder.request(words: words, window: window, preset: chosen, instruction: instruction,

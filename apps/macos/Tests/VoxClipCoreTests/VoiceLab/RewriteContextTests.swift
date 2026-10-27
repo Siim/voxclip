@@ -3,6 +3,18 @@ import Testing
 @testable import VoxClipCore
 
 struct RewriteContextTests {
+    @Test func catalogOnlyContextResolution() throws {
+        let catalog = try LLMCatalog(shared: SharedResources(root: try FixtureLoader.sharedRoot()))
+        #expect(try catalog.resolvedContextTokens(for: .ollama, model: "unknown-local") == 4_096)
+        #expect(try catalog.resolvedContextTokens(for: .lmstudio, model: "unknown-local") == 4_096)
+        #expect(try catalog.resolvedContextTokens(for: .openai, model: "unknown-cloud") == 128_000)
+        let curated = try #require(catalog.curatedModels(for: .anthropic).first { $0.contextTokens != nil })
+        #expect(try catalog.resolvedContextTokens(for: .anthropic, model: curated.id) == curated.contextTokens)
+        #expect(throws: LLMError.unavailable(reason: "The runtime context size is unavailable.")) {
+            try catalog.resolvedContextTokens(for: .appleFoundation, model: "default")
+        }
+    }
+
     @Test func sharedContextResolution() async throws {
         let rows = try #require(VoiceRewriteBudgetFixtures.document("rewrite-checks-cases.json")["contextResolution"] as? [[String: Any]])
         let catalog = try LLMCatalog(shared: SharedResources(root: try FixtureLoader.sharedRoot()))

@@ -474,7 +474,7 @@ public actor CLIConnector: LLMConnector {
     }
 
     private func safeMessage(_ message: String) async -> String {
-        String((await log.redact(message.isEmpty ? "CLI exited without a result." : message)).prefix(200))
+        String((await log.redact(message.isEmpty ? cliNoResultMessage : message)).prefix(200))
     }
 
     private func policyTimeout(_ key: String, default seconds: Int) -> Duration {
@@ -606,8 +606,10 @@ private func cliAllRegexMatches(_ pattern: String, in text: String) -> [String] 
     }
 }
 
+private let cliNoResultMessage = "The CLI exited without a result."
+
 private func cliFirstLine(_ data: Data) -> String {
-    String(decoding: data, as: UTF8.self).components(separatedBy: .newlines).first ?? ""
+    cliLines(data).lazy.map(AIText.trim).first { !$0.isEmpty } ?? cliNoResultMessage
 }
 
 private func cliTOMLString(_ text: String) -> String {

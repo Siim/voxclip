@@ -1316,6 +1316,182 @@
       }
     },
     {
+      "id": "json-keys-latin-collision",
+      "note": "UTF-8 keys compare by bytes; canonically equivalent byte-different keys are invalid within one object. Identical decoded bytes keep the first value.",
+      "instruction": "I said 2024; it's 2025.",
+      "reply": "{\"edits\":[{\"line\":\"[54-57]\",\"text\":\"Come and see us.\",\"reason\":\"Clearer.\"}],\"rewrite\":\"Fine.\",\"caf\u00e9\":1,\"cafe\u0301\":9}",
+      "expected": {
+        "error": "invalidOutput"
+      },
+      "rewriteExpected": {
+        "error": "invalidOutput"
+      }
+    },
+    {
+      "id": "json-keys-latin-reversed-collision",
+      "note": "UTF-8 keys compare by bytes; canonically equivalent byte-different keys are invalid within one object. Identical decoded bytes keep the first value.",
+      "instruction": "I said 2024; it's 2025.",
+      "reply": "{\"edits\":[{\"line\":\"[54-57]\",\"text\":\"Come and see us.\",\"reason\":\"Clearer.\"}],\"rewrite\":\"Fine.\",\"cafe\u0301\":1,\"caf\u00e9\":9}",
+      "expected": {
+        "error": "invalidOutput"
+      },
+      "rewriteExpected": {
+        "error": "invalidOutput"
+      }
+    },
+    {
+      "id": "json-keys-kelvin-collision",
+      "note": "UTF-8 keys compare by bytes; canonically equivalent byte-different keys are invalid within one object. Identical decoded bytes keep the first value.",
+      "instruction": "I said 2024; it's 2025.",
+      "reply": "{\"edits\":[{\"line\":\"[54-57]\",\"text\":\"Come and see us.\",\"reason\":\"Clearer.\"}],\"rewrite\":\"Fine.\",\"K\":1,\"\u212a\":9}",
+      "expected": {
+        "error": "invalidOutput"
+      },
+      "rewriteExpected": {
+        "error": "invalidOutput"
+      }
+    },
+    {
+      "id": "json-keys-nested-collision",
+      "note": "UTF-8 keys compare by bytes; canonically equivalent byte-different keys are invalid within one object. Identical decoded bytes keep the first value.",
+      "instruction": "I said 2024; it's 2025.",
+      "reply": "{\"edits\":[{\"line\":\"[54-57]\",\"text\":\"Come and see us.\",\"reason\":\"Clearer.\"}],\"rewrite\":\"Fine.\",\"x\":{\"caf\u00e9\":1,\"cafe\u0301\":9}}",
+      "expected": {
+        "error": "invalidOutput"
+      },
+      "rewriteExpected": {
+        "error": "invalidOutput"
+      }
+    },
+    {
+      "id": "json-keys-null-collision",
+      "note": "UTF-8 keys compare by bytes; canonically equivalent byte-different keys are invalid within one object. Identical decoded bytes keep the first value.",
+      "instruction": "I said 2024; it's 2025.",
+      "reply": "{\"edits\":[{\"line\":\"[54-57]\",\"text\":\"Come and see us.\",\"reason\":\"Clearer.\"}],\"rewrite\":\"Fine.\",\"caf\u00e9\":null,\"cafe\u0301\":9}",
+      "expected": {
+        "error": "invalidOutput"
+      },
+      "rewriteExpected": {
+        "error": "invalidOutput"
+      }
+    },
+    {
+      "id": "json-keys-byte-identical-repeat",
+      "note": "UTF-8 keys compare by bytes; canonically equivalent byte-different keys are invalid within one object. Identical decoded bytes keep the first value.",
+      "instruction": "I said 2024; it's 2025.",
+      "reply": "{\"edits\":[{\"line\":\"[54-57]\",\"text\":\"Come and see us.\",\"reason\":\"Clearer.\"}],\"rewrite\":\"Fine.\",\"caf\u00e9\":1,\"caf\u00e9\":9}",
+      "expected": {
+        "edits": [
+          {
+            "line": "[54-57]",
+            "text": "Come and see us.",
+            "reason": "Clearer.",
+            "length": 12,
+            "inRange": true,
+            "checkThis": false,
+            "isDeletion": false
+          }
+        ],
+        "unknownLines": 0,
+        "duplicateLines": 0,
+        "malformedItems": 0
+      },
+      "rewriteExpected": {
+        "rewrite": "Fine.",
+        "proposedLength": 4
+      }
+    },
+    {
+      "id": "json-keys-separate-objects",
+      "note": "UTF-8 keys compare by bytes; canonically equivalent byte-different keys are invalid within one object. Identical decoded bytes keep the first value.",
+      "instruction": "I said 2024; it's 2025.",
+      "reply": "{\"edits\":[{\"line\":\"[54-57]\",\"text\":\"Come and see us.\",\"reason\":\"Clearer.\"}],\"rewrite\":\"Fine.\",\"x\":{\"caf\u00e9\":1},\"y\":{\"cafe\u0301\":9}}",
+      "expected": {
+        "edits": [
+          {
+            "line": "[54-57]",
+            "text": "Come and see us.",
+            "reason": "Clearer.",
+            "length": 12,
+            "inRange": true,
+            "checkThis": false,
+            "isDeletion": false
+          }
+        ],
+        "unknownLines": 0,
+        "duplicateLines": 0,
+        "malformedItems": 0
+      },
+      "rewriteExpected": {
+        "rewrite": "Fine.",
+        "proposedLength": 4
+      }
+    },
+    {
+      "id": "json-keys-distinct-case",
+      "note": "UTF-8 keys compare by bytes; canonically equivalent byte-different keys are invalid within one object. Identical decoded bytes keep the first value.",
+      "instruction": "I said 2024; it's 2025.",
+      "reply": "{\"edits\":[{\"line\":\"[54-57]\",\"text\":\"Come and see us.\",\"reason\":\"Clearer.\"}],\"rewrite\":\"Fine.\",\"K\":1,\"k\":9}",
+      "expected": {
+        "edits": [
+          {
+            "line": "[54-57]",
+            "text": "Come and see us.",
+            "reason": "Clearer.",
+            "length": 12,
+            "inRange": true,
+            "checkThis": false,
+            "isDeletion": false
+          }
+        ],
+        "unknownLines": 0,
+        "duplicateLines": 0,
+        "malformedItems": 0
+      },
+      "rewriteExpected": {
+        "rewrite": "Fine.",
+        "proposedLength": 4
+      }
+    },
+    {
+      "id": "json-keys-escaped-byte-repeat",
+      "note": "UTF-8 keys compare by bytes; canonically equivalent byte-different keys are invalid within one object. Identical decoded bytes keep the first value.",
+      "instruction": "I said 2024; it's 2025.",
+      "reply": "{\"edits\":[{\"line\":\"[54-57]\",\"text\":\"Come and see us.\",\"reason\":\"Clearer.\"}],\"rewrite\":\"Fine.\",\"\\u00e9\":1,\"\u00e9\":9}",
+      "expected": {
+        "edits": [
+          {
+            "line": "[54-57]",
+            "text": "Come and see us.",
+            "reason": "Clearer.",
+            "length": 12,
+            "inRange": true,
+            "checkThis": false,
+            "isDeletion": false
+          }
+        ],
+        "unknownLines": 0,
+        "duplicateLines": 0,
+        "malformedItems": 0
+      },
+      "rewriteExpected": {
+        "rewrite": "Fine.",
+        "proposedLength": 4
+      }
+    },
+    {
+      "id": "json-keys-hangul-collision",
+      "note": "UTF-8 keys compare by bytes; canonically equivalent byte-different keys are invalid within one object. Identical decoded bytes keep the first value.",
+      "instruction": "I said 2024; it's 2025.",
+      "reply": "{\"edits\":[{\"line\":\"[54-57]\",\"text\":\"Come and see us.\",\"reason\":\"Clearer.\"}],\"rewrite\":\"Fine.\",\"\uac00\u11a8\":1,\"\uac01\":9}",
+      "expected": {
+        "error": "invalidOutput"
+      },
+      "rewriteExpected": {
+        "error": "invalidOutput"
+      }
+    },
+    {
       "id": "repeated-key-value-still-checked",
       "note": "The unused second value of a repeated key must still be valid: it holds an unpaired surrogate escape.",
       "instruction": "I said 2024; it's 2025.",

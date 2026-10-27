@@ -289,9 +289,10 @@ Both platforms read every LLM reply and every transport envelope with one strict
 - It nests at most 64 levels for a reply and 512 for an envelope. The outermost object or array is level 1, so `{"x":[]}` has two levels.
 - Every string escape is well formed, in key names too: an escaped high surrogate is followed by an escaped low surrogate, and a low surrogate never stands alone.
 - A number token is at most 1,024 bytes, including its sign, fraction and exponent. A longer token is invalid in both replies and transport envelopes, even for exact zero. Every number is a finite binary64. A number that rounds to zero does not fit either: its value is 0, yet a digit 1 to 9 appears before any `e` or `E`, as in `1e-400`. An exact zero with any exponent, such as `0e-400`, `0E1`, `0.00e-1` or `-0.0e5`, is zero.
-- A repeated key keeps its first value. The whole text is still checked, so an invalid later value of a repeated key makes the text invalid.
+- Keys compare as UTF-8 bytes after JSON string escapes are decoded. Within one object, two byte-different but canonically equivalent keys make the whole text invalid, on both platforms. For example, precomposed and decomposed `café`, or `K` and KELVIN SIGN U+212A, cannot both be keys in one object. This check is per object, not across sibling objects.
+- A byte-identical repeated key keeps its first value, including when its JSON escape spelling differs. The whole text is still checked, so an invalid later value of a repeated key makes the text invalid.
 
-Each Core builds the value while it checks the text (Swift `StrictJSON`, C# `LlmOutput.TryParse`). C# uses `JsonDocument` for JSON grammar, depth and string escapes; Core applies the number bound, finite/non-underflow checks and first-key rule explicitly.
+Each Core builds the value while it checks the text (Swift `StrictJSON`, C# `LlmOutput.TryParse`). Swift tracks each object's raw key bytes beside its canonically equivalent dictionary keys; C# detects canonical collisions with the Core's exact NFC helper, compared ordinally. C# uses `JsonDocument` for JSON grammar, depth and string escapes; Core applies the number bound, finite/non-underflow checks and key rules explicitly.
 
 **Replies** are the model's answer: a reply text, and a reply object a connector parsed itself, such as Claude's `structured_output` (§6.8), which holds at most 64 levels like a parsed text. A reply text is read like this:
 
@@ -815,6 +816,10 @@ What the flags do:
 5. `model` is the `modelUsage` key with the most `outputTokens` (falling back to `output_tokens`, then zero), or the requested alias if there is no key. On a tie choose the smallest key in ordinal UTF-8 byte order, independent of JSON member order (§12.8).
 6. Usage comes from `usage`. `total_cost_usd` is ignored and never shown.
 
+Optional envelope fields of the wrong JSON type are absent, including error status, event messages, agent items and model metadata. Integer fields accept an integral binary64 number such as `529.0`, but not a fraction or a string. A Codex `turn.failed` event still fails the send when its optional error message is absent (§6.9).
+
+**First stderr line (both CLIs).** Split stderr at LF only, as stdout in §4.5. Apply jsTrim to each line, which drops a trailing CR, then take the first non-empty line. If no line remains, use "The CLI exited without a result." Redact that message before showing it. When a failure path classifies stderr markers, it classifies only the line selected by this rule, never later lines. Malformed Claude envelopes still skip marker classification (step 1).
+
 **Models.** The curated aliases are `sonnet` (default), `opus` and `haiku`, plus "CLI default", which omits `--model`. A custom id may be any full model id the CLI accepts. There is no list endpoint, so model refresh is not offered for this connector.
 
 ### 6.9 Codex CLI (`codex exec`)
@@ -900,8 +905,8 @@ Then emit a closing `"`. The argument is `developer_instructions=` followed by t
 
 **Parsing.**
 1. Split stdout into lines at LF and read each line as a transport envelope (§4.5), skipping lines that are not one. `error` events whose message starts with `Reconnecting...` are progress, not failures.
-2. Success means exit 0 and a `turn.completed` event was seen. The text is `last.json` if it is non-empty, otherwise the `text` of the last `item.completed` whose `item.type` is `agent_message`. That text is a reply (§4.5).
-3. Failure: `message` is `turn.failed.error.message`, else the last non-progress `error` event message, else the first stderr line. Classify case-insensitively:
+2. Success means exit 0, a `turn.completed` event was seen and no `turn.failed` event was seen (even one without a usable message). The text is `last.json` if it is non-empty, otherwise the `text` of the last `item.completed` whose `item.type` is `agent_message`. That text is a reply (§4.5).
+3. Failure: `message` is `turn.failed.error.message`, else the last non-progress `error` event message, else the first stderr line selected by §6.8, including its empty-stderr fallback. Classify case-insensitively:
    - `authErrorMarkers` means `cliSignedOut`.
    - `limitMarkers` means `planLimit(message)`.
    - `modelErrorMarkers` means `modelNotFound`.
@@ -942,7 +947,7 @@ macOS GUI apps get a minimal `PATH`, so PATH alone is never enough.
 - Delete both after every run, including failed and cancelled runs.
 - If `cwd` is not empty after a run, log `warning cli-wrote-files` before deleting it.
 
-**I/O.** Write stdin as UTF-8 and close it. Read stdout and stderr concurrently to avoid a pipe deadlock, each capped at 16 MB.
+**I/O.** Write stdin as UTF-8 and close it. Read stdout and stderr concurrently to avoid a pipe deadlock, each capped at 16 MB. Both connectors select a failure's first stderr line using the LF-only, jsTrim and shared fallback rule in §6.8.
 
 **Timeout and cancel.**
 - macOS: start the child in its own process group (`posix_spawn` with `POSIX_SPAWN_SETPGROUP`). Send `SIGTERM` to the group, then `SIGKILL` after 3 s.
@@ -1234,7 +1239,7 @@ The duration line always uses the whole take's last word, even in a window.
 
 ### 11.5 Windows (chunking over 8000 words and small contexts)
 
-Each Core has one catalog context resolver, used by Find Clips and both Voice Lab rewrite services (§12.8). It applies the order below. Local connector probes run through `contextTokens(model)`; Apple always supplies its runtime context size, never a fixed fallback.
+Each Core has one catalog context resolver, used by Find Clips and both Voice Lab rewrite services (§12.8). It applies the order below. A Find Clips CLI dry run uses its catalog-only form: no connector or model-list query, then curated metadata and the same connector-class fallback. Local connector probes run through `contextTokens(model)`; Apple always supplies its runtime context size, never a fixed fallback.
 
 ```text
 maxWords      = limits.maxWordsPerRequest (8000)

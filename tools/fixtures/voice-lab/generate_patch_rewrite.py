@@ -117,10 +117,17 @@ class Strict:
         if self.peek() == close:
             self.at += 1
             return True
+        keys = {}
         while True:
             if close == '}':
+                start = self.at
                 if self.peek() != '"' or not self.string():
                     return False
+                key = json.loads(self.text[start:self.at])
+                normalized = nfc(key)
+                if normalized in keys and keys[normalized] != key:
+                    return False
+                keys[normalized] = key
                 self.space()
                 if self.peek() != ':':
                     return False
@@ -504,6 +511,31 @@ case('repeated-key-in-item', 'Inside an edit too: the first "line" is unknown, s
      '{"edits":[{"line":"[99-120]","line":' + literal(C) + ',"text":' + literal(SEE_US) + ',"reason":"Clearer."}]}', [], (1, 0, 0))
 case('repeated-ignored-key', 'Repeated keys outside the schema change nothing.',
      both([SEE_US_ITEM], extra=',"x":1,"x":2'), [(C, True, False, False)], rewritten='Fine.')
+
+KEY_NFC = 'caf' + chr(0xE9)
+KEY_NFD = 'cafe' + chr(0x301)
+
+
+def key_pair(first, second, first_value='1'):
+    return literal(first) + ':' + first_value + ',' + literal(second) + ':9'
+
+
+for suffix, extra, valid in [
+    ('latin-collision', ',' + key_pair(KEY_NFC, KEY_NFD), False),
+    ('latin-reversed-collision', ',' + key_pair(KEY_NFD, KEY_NFC), False),
+    ('kelvin-collision', ',' + key_pair(chr(0x4B), chr(0x212A)), False),
+    ('nested-collision', ',"x":{' + key_pair(KEY_NFC, KEY_NFD) + '}', False),
+    ('null-collision', ',' + key_pair(KEY_NFC, KEY_NFD, 'null'), False),
+    ('byte-identical-repeat', ',' + key_pair(KEY_NFC, KEY_NFC), True),
+    ('separate-objects', ',"x":{' + literal(KEY_NFC) + ':1},"y":{' + literal(KEY_NFD) + ':9}', True),
+    ('distinct-case', ',' + key_pair(chr(0x4B), chr(0x6B)), True),
+    ('escaped-byte-repeat', ',"' + escape('00e9') + '":1,' + literal(chr(0xE9)) + ':9', True),
+    ('hangul-collision', ',' + key_pair(chr(0xAC00) + chr(0x11A8), chr(0xAC01)), False),
+]:
+    case('json-keys-' + suffix, 'UTF-8 keys compare by bytes; canonically equivalent byte-different keys are invalid '
+         'within one object. Identical decoded bytes keep the first value.', both([SEE_US_ITEM], extra=extra),
+         [(C, True, False, False)] if valid else 'invalidOutput', rewritten='Fine.' if valid else 'invalidOutput')
+
 case('repeated-key-value-still-checked', 'The unused second value of a repeated key must still be valid: it holds an '
      'unpaired surrogate escape.', both([SEE_US_ITEM], extra=',"x":1,"x":"' + escape('d800') + '"'), 'invalidOutput',
      rewritten='invalidOutput')
