@@ -178,7 +178,8 @@ public static class VoiceLabAssetStore
         else
         {
             var parent = Path.GetDirectoryName(root);
-            if (parent is null || !Directory.Exists(parent)) throw Failure(VoiceLabAssetStoreErrorCode.RootMissing, file);
+            if (parent is null || !EntryExists(parent)) throw Failure(VoiceLabAssetStoreErrorCode.RootMissing, file);
+            if (!Directory.Exists(parent)) throw Failure(VoiceLabAssetStoreErrorCode.UnsafePath, file);
             RequireDirectory(root, file, create: true);
         }
         return root;
