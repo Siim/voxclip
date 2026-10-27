@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
-"""Build small synthetic Voice Lab v2 project fixtures from the unchanged v1 interview."""
+"""Build small synthetic Voice Lab v2 project fixtures from the unchanged v1 interview, then the fit planner's
+vectors (fit-cases.json) from their reference module, generate_fit.py."""
 import copy
 import hashlib
 import json
+import runpy
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -66,3 +68,6 @@ expected = {'sampleRate': 1000,
                      'mapping': [[0, 0], [3.5, 4], [7, 8]]},
             'clip': {'sourceStart': 1.05, 'sourceEnd': 4.45, 'outputSamples': 3700}}
 (OUT / 'plan-cases.json').write_text(json.dumps(expected, indent=2) + '\n')
+
+# voice-lab.md section 8.9.2: the fit planner's vectors, from its standard-library reference.
+runpy.run_path(str(Path(__file__).with_name('generate_fit.py')), run_name='__main__')

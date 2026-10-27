@@ -451,6 +451,29 @@ for (const [id, stdout] of [
 const codexExec = JSON.stringify({ type: 'item.completed', item: { type: 'agent_message', text: fineReply } })
 const codexComplete = JSON.stringify({ type: 'turn.completed', usage: { input_tokens: 12, output_tokens: 9 } })
 const codexModels = JSON.stringify({ id: 2, result: { data: [{ id: 'listed', supportedReasoningEfforts: [{ reasoningEffort: 'medium' }] }] } })
+const codexFailure = message => JSON.stringify({ type: 'turn.failed', error: { message } })
+const codexMarkers = connectors.codex.cli
+const overloadMarker = codexMarkers.overloadMarkers[0].toUpperCase()
+for (const [id, message, error] of [
+  ['codex-overload-marker', overloadMarker, 'overloaded'],
+  ['codex-limit-before-overload', overloadMarker + ' ' + codexMarkers.limitMarkers[0], 'planLimit'],
+  ['codex-overload-before-model', codexMarkers.modelErrorMarkers[0] + ' ' + overloadMarker, 'overloaded'],
+  ['codex-auth-before-limit', codexMarkers.limitMarkers[0] + ' ' + codexMarkers.authErrorMarkers[0], 'cliSignedOut'],
+  ['codex-model-before-context', 'context window ' + codexMarkers.modelErrorMarkers[0], 'modelNotFound'],
+  ['codex-context-window', 'CONTEXT WINDOW exceeded', 'contextTooLong'],
+  ['codex-context-length', 'Context length exceeded', 'contextTooLong'],
+  ['codex-prompt-too-long-cli-failed', 'prompt is too long', 'cliFailed']
+]) add('cli-replies', id, 'cli-reply', { connector: 'codex', model: 'default', schema: voiceLabPrompts.voiceRewrite.schema,
+  stdout: codexFailure(message) }, { error }, 'doc/spec/ai.md §6.9 step 3',
+  'First matching category wins; prompt is too long matches no Codex catalog marker and contains no context.')
+for (const [id, fallbackStdout, expected] of [
+  ['codex-overloaded-fallback', codexExec + '\n' + codexComplete,
+    { rewrite: 'Fine.', model: connectors.codex.fallbackOrder[0], usedFallback: true }],
+  ['codex-overloaded-fallback-fails', codexFailure(overloadMarker), { error: 'overloaded' }]
+]) add('cli-replies', id, 'cli-reply', { connector: 'codex', mode: 'runner', model: 'gpt-6.1-sol',
+  schema: voiceLabPrompts.voiceRewrite.schema, stdout: codexFailure(overloadMarker), fallbackStdout },
+  { ...expected, generationModels: ['gpt-6.1-sol', connectors.codex.fallbackOrder[0]] }, 'doc/spec/ai.md §4.3; §6.9 step 5',
+  'A Test request runs the primary and exactly one fallback, including when the fallback is overloaded too.')
 for (const [id, status, expected] of [
   ['claude-api-status-fraction', '529.5', { error: 'cliFailed', message: 'Request failed.' }],
   ['claude-api-status-string', '"529"', { error: 'cliFailed', message: 'Request failed.' }],
@@ -458,9 +481,46 @@ for (const [id, status, expected] of [
 ]) add('cli-replies', id, 'cli-reply', { connector: 'claude-code', model: 'sonnet', schema: voiceLabPrompts.voiceRewrite.schema,
   stdout: '{"type":"result","is_error":true,"result":"Request failed.","api_error_status":' + status + '}' }, expected,
   'doc/spec/ai.md §4.5; §6.8', 'An optional integer accepts an integral number, not a fraction or a string.')
+for (const [id, message, status, error] of [
+  ['claude-auth-marker-overload-status', 'Not logged in', '529', 'cliSignedOut'],
+  ['claude-auth-marker-overload-float-status', 'Not logged in', '529.0', 'cliSignedOut'],
+  ['claude-limit-marker-auth-status', 'Usage limit reached', '401', 'cliSignedOut'],
+  ['claude-overload-marker-limit-status', 'Overloaded', '429', 'planLimit']
+]) add('cli-replies', id, 'cli-reply', { connector: 'claude-code', model: 'sonnet', schema: voiceLabPrompts.voiceRewrite.schema,
+  stdout: '{"type":"result","is_error":true,"result":' + JSON.stringify(message) + ',"api_error_status":' + status + '}' },
+{ error }, 'doc/spec/ai.md §6.8', 'The first category in list order matching a marker or status wins.')
 add('cli-replies', 'claude-model-usage-integral-float', 'cli-reply', { connector: 'claude-code', model: 'sonnet',
   schema: voiceLabPrompts.voiceRewrite.schema, stdout: claudeResult().replace('"outputTokens":9', '"outputTokens":9.0') }, answered,
   'doc/spec/ai.md §6.8', 'Integral float usage is an integer too.')
+for (const [suffix, token, count, model] of [
+  ['above-int32', '2147483648.0', 2147483648, 'claude-sonnet-5-5'],
+  ['binary64-exact', '9007199254740992.0', 9007199254740992, 'claude-sonnet-5-5'],
+  ['out-of-range', '9.3e18', null, 'claude-haiku-5-5'],
+  ['negative', '-1.0', -1, 'claude-haiku-5-5'],
+  ['minimum', '-9223372036854775808.0', -9223372036854775808, 'claude-haiku-5-5'],
+  ['below-minimum', '-9.3e18', null, 'claude-haiku-5-5'],
+  ['maximum-binary64', '9223372036854774784.0', 9223372036854774784, 'claude-sonnet-5-5'],
+  ['rounded-upper-bound', '9223372036854775807', null, 'claude-haiku-5-5']
+]) add('cli-replies', 'claude-integer-' + suffix, 'cli-reply', { connector: 'claude-code', model: 'sonnet',
+  schema: voiceLabPrompts.voiceRewrite.schema, stdout: '{"type":"result","is_error":false,"structured_output":' + fineReply +
+    ',"modelUsage":{"claude-sonnet-5-5":{"outputTokens":' + token + '},"claude-haiku-5-5":{"outputTokens":5}},' +
+    '"usage":{"input_tokens":' + token + ',"output_tokens":' + token + ',"cache_read_input_tokens":' + token + ',"cache_creation_input_tokens":' + token + '}}'
+}, { rewrite: 'Fine.', model, usage: { input: count, output: count, cacheRead: count, cacheWrite: count } },
+'doc/spec/ai.md §4.5; §6.8', 'Ranking and every recorded usage count use integral binary64 values in the signed 64-bit range.')
+for (const [suffix, token, count] of [['wide', '9007199254740992.0', 9007199254740992], ['out-of-range', '9.3e18', null]]) {
+  add('cli-replies', 'codex-integer-usage-' + suffix, 'cli-reply', { connector: 'codex', model: 'default',
+    schema: voiceLabPrompts.voiceRewrite.schema, stdout: codexExec + '\n{"type":"turn.completed","usage":{"input_tokens":' + token +
+      ',"output_tokens":' + token + ',"cached_input_tokens":' + token + '}}'
+  }, { rewrite: 'Fine.', model: 'default', usage: { input: count, output: count, cacheRead: count, cacheWrite: null } },
+  'doc/spec/ai.md §4.5; §6.9', 'Codex recorded usage uses the same signed 64-bit range as Claude.')
+}
+for (const [suffix, token] of [['integral', '9007199254740992.0'], ['out-of-range', '9.3e18']]) {
+  add('cli-replies', 'codex-cache-write-ignored-' + suffix, 'cli-reply', { connector: 'codex', model: 'default',
+    schema: voiceLabPrompts.voiceRewrite.schema, stdout: codexExec + '\n{"type":"turn.completed","usage":{"input_tokens":12,' +
+      '"cached_input_tokens":3,"output_tokens":9,"cache_write_input_tokens":' + token + '}}'
+  }, { rewrite: 'Fine.', model: 'default', usage: { input: 12, output: 9, cacheRead: 3, cacheWrite: null } },
+  'doc/spec/ai.md §6.9 step 4', 'Codex ignores cache_write_input_tokens regardless of its value; Claude usage is unchanged.')
+}
 for (const [id, stdout, expected] of [
   ['codex-turn-failed-string-error', codexComplete + '\n' + JSON.stringify({ type: 'turn.failed', error: 'not an object' }), { error: 'cliFailed', message: 'No result.' }],
   ['codex-numeric-event-type', JSON.stringify({ type: 42 }) + '\n' + codexExec + '\n' + codexComplete, { rewrite: 'Fine.', model: 'default' }],
@@ -474,9 +534,17 @@ for (const [id, stdout, expected] of [
 ]) add('cli-replies', id, 'cli-reply', { connector: 'codex', model: 'default', schema: voiceLabPrompts.voiceRewrite.schema,
   stdout, stderr: 'No result.' }, expected, 'doc/spec/ai.md §4.5; §6.9', 'Optional fields of the wrong JSON type are absent; turn.failed still fails.')
 add('cli-replies', 'codex-app-server-wrong-optional-fields', 'cli-reply', { connector: 'codex', mode: 'app-server', model: 'default',
-  stdout: JSON.stringify({ id: 2, result: 'not an object' }) + '\n' + JSON.stringify({ id: 2, result: { data: [42, { id: 42 },
+  stdout: JSON.stringify({ id: 2, result: { data: [42, { id: 42 },
     { id: 'listed', hidden: 'false', displayName: 42, supportedReasoningEfforts: [42, { reasoningEffort: 42 }, { reasoningEffort: 'medium' }] }] } }) },
   { models: ['default', 'listed'] }, 'doc/spec/ai.md §4.5; §6.9', 'Model metadata obeys the same optional-field rule.')
+const codexMalformedModels = JSON.stringify({ id: 2, result: 'not an object' })
+for (const [id, stdout, models] of [
+  ['codex-app-server-valid-then-malformed', codexModels + '\n' + codexMalformedModels, ['default', 'listed']],
+  ['codex-app-server-malformed-then-valid', codexMalformedModels + '\n' + codexModels, connectors.codex.models.map(model => model.id)],
+  ['codex-app-server-integral-float-id', '{"id":2.5,"result":"ignored"}\n{"id":9.3e18,"result":"ignored"}\n' +
+    codexModels.replace('"id":2', '"id":2.0') + '\n' + codexMalformedModels, ['default', 'listed']]
+]) add('cli-replies', id, 'cli-reply', { connector: 'codex', mode: 'app-server', model: 'default', stdout }, { models },
+'doc/spec/ai.md §4.5; §6.10', 'The first response with an integral request id decides; duplicates cannot replace or repair it.')
 for (const [ending, suffix] of [['crlf', String.fromCharCode(13, 10)], ['trailing-cr', String.fromCharCode(13)]]) {
   add('cli-replies', 'codex-exec-' + ending, 'cli-reply', { connector: 'codex', mode: 'exec', model: 'default',
     schema: voiceLabPrompts.voiceRewrite.schema, stdout: codexExec + String.fromCharCode(13, 10) + codexComplete + suffix },
@@ -496,7 +564,8 @@ for (const [id, input, expected] of [
   ['codex-app-server-bom', { mode: 'app-server', stdout: String.fromCodePoint(0xFEFF) + codexModels }, { models: ['default', 'listed'] }]
 ]) add('cli-replies', id, 'cli-reply', { connector: 'codex', model: 'default', ...input }, expected,
   'doc/spec/ai.md §4.5; §6.9', 'LF alone separates envelopes; jsTrim removes a BOM and a Unicode line separator inside a string stays in it.')
-const datasetSources = { 'voice-rewrite-requests': voiceLabSources('voiceRewrite'), 'patch-rewrite-requests': voiceLabSources('patchRewrite'), 'cli-replies': voiceLabSources('voiceRewrite') }
+const datasetSources = { 'voice-rewrite-requests': voiceLabSources('voiceRewrite'), 'patch-rewrite-requests': voiceLabSources('patchRewrite'),
+  'cli-replies': { ...voiceLabSources('voiceRewrite'), 'shared/catalog/llm-providers.json': sourceHashes['shared/catalog/llm-providers.json'] } }
 for (const [suffix, stderr, message, classified = 'cliFailed'] of [
   ['leading-blank', '\n  Request failed.  \nignored', 'Request failed.'],
   ['empty', '', 'The CLI exited without a result.'],

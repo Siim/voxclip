@@ -68,5 +68,54 @@
     ],
     "outputSamples": 3100,
     "sourceVideoCapability": "videoModeUnsupported"
+  },
+  "unity-binary64-residual-eight": {
+    "replace": [
+      1.5,
+      2.503
+    ],
+    "sourceRate": 44100,
+    "assetRate": 24000,
+    "residualFrames": 8,
+    "outputFrames": 24080,
+    "outDuration": 1.0033333333333334,
+    "baseline": "binary64"
+  },
+  "unity-binary64-residual-nine": {
+    "replace": [
+      1.5,
+      2.503
+    ],
+    "sourceRate": 44100,
+    "assetRate": 24000,
+    "residualFrames": 9,
+    "outputFrames": 24081,
+    "outDuration": 1.0033750000000001,
+    "baseline": "binary64"
+  },
+  "unity-legacy-source-grid-only": {
+    "replace": [
+      1.5,
+      2.503
+    ],
+    "sourceRate": 44100,
+    "assetRate": 24000,
+    "residualFrames": 0,
+    "outputFrames": 24072,
+    "outDuration": 1.0029931972789117,
+    "baseline": "sourceGridOnly"
+  },
+  "unity-inconsistent-alternate": {
+    "replace": [
+      1.5000416666666667,
+      2.503
+    ],
+    "sourceRate": 8000,
+    "assetRate": 96000,
+    "outputFrames": 96288,
+    "outDuration": 1.003,
+    "baseline": "sourceGridOnly",
+    "alternateOutputFrames": 96292,
+    "validationError": "invalidSegment"
   }
 }

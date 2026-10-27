@@ -34,6 +34,9 @@ internal sealed class CaptionCards(string sharedRoot)
     private readonly LinkedList<(string Key, CardBitmap Bitmap)> recency = new();
     private long cachedBytes;
 
+    internal CardBitmap GalleryBackdrop(CaptionStyle style, int width, int height) =>
+        Compose(width, height, Backdrop(style, library.Value.Backgrounds.GetValueOrDefault(style.Id)), null);
+
     /// <summary>The card for the edited take (<paramref name="clipId"/> null) or one stored clip, in the project's caption
     /// style; with captions off, or a style this build doesn't bundle, in <paramref name="defaultStyleId"/>, then Highlight.
     /// <paramref name="wordsVisible"/> is <c>general.showPlaceholderWords</c>.</summary>

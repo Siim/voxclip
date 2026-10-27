@@ -22,9 +22,17 @@ npm --prefix tools/fixtures/llm run check
 | `connector-requests.json` | 37 | Connection tests, capability branches, CLI escaping/flags, Apple mapping; 37 renderings |
 | `voice-rewrite-requests.json` | 7 | Voice Lab rewrite (voice-lab §8.9.1): passage and full take, with and without a request, six budgets including `minChars` = `maxChars`, a decomposed source; each with the quote's estimate and preflight |
 | `patch-rewrite-requests.json` | 5 | Voice Lab Fix with AI (voice-lab §8.1): the line ranges and instruction, equal `minChars` and `maxChars`, a trimmed instruction, F1, sparse indices, decomposed Estonian text; each with the quote's estimate and preflight |
-| `cli-replies.json` | 69 | Claude and Codex CLI transport envelopes (ai.md §4.5, §6.8): `end_turn`, `max_tokens`, `refusal` and no stop reason; replies as `structured_output` and as result text, fenced or not; replies of 64 and 65 levels inside envelopes deeper than 64; envelopes of 512 and 513 levels; jsTrim, no fence or brace scan, a strict escape, a zero with an exponent and a repeated key in the envelope |
+| `cli-replies.json` | 98 | Claude and Codex CLI transport envelopes (ai.md §4.5, §6.8–§6.10): stops, structured/text replies, depth and strict-JSON bounds, signed 64-bit integer ranking and usage, ignored Codex cache-write counts, category-ordered failures, single Codex fallback, first app-server response selection, optional fields, line endings and stderr selection |
 
-The 69 CLI rows include Claude output-token ties (UTF-8 ordinal keys, independent of JSON order), `output_tokens`, malformed envelopes with signed-out stderr, malformed envelope field types, and exact-zero number tokens of 1,024 and 1,025 bytes in both replies and envelopes. Optional envelope fields of the wrong type are absent, and integral float status and usage fields are accepted. Codex exec and app-server rows cover wrong event and metadata types, CRLF, a trailing CR, raw U+2028 inside a JSON string, and a leading BOM. The stderr rows cover leading blank lines, empty and whitespace-only stderr, CRLF, internal CR and U+2028, and markers on selected or ignored second lines for malformed Claude envelopes, Claude errors and Codex errors. Both connector suites replay every row.
+The CLI rows include Claude output-token ties (UTF-8 ordinal keys, independent of JSON order), `output_tokens`, malformed envelopes with signed-out stderr, malformed envelope field types, and exact-zero number tokens of 1,024 and 1,025 bytes in both replies and envelopes. Optional envelope fields of the wrong type are absent, and integral float status and usage fields are accepted. Integer ranking and recorded usage cover counts above Int32, 2^53, -1, -2^63, the largest binary64 below 2^63 and out-of-range values, including a decimal that rounds to the excluded upper bound. Four conflicting marker/status rows pin Claude's first matching category in list order, including integral float status. Codex exec and app-server rows cover wrong event and metadata types, wide and absent usage, CRLF, a trailing CR, raw U+2028 inside a JSON string, and a leading BOM. The stderr rows cover leading blank lines, empty and whitespace-only stderr, CRLF, internal CR and U+2028, and markers on selected or ignored second lines for malformed Claude envelopes, Claude errors and Codex errors. Both connector suites replay every row.
+
+App-server duplicate-id rows pin both valid-then-malformed and malformed-then-valid order: the first id-2 response decides, with curated fallback for a malformed first result. Another row accepts `2.0` after ignoring fractional/out-of-range ids and ignores a later duplicate id 2. The wrong-optional-fields row isolates metadata parsing in that first response.
+
+Codex failure rows pin auth before limit, limit before overload, overload before model, model before context, and both context length/window forms. The uppercase overload marker comes from the catalog. `prompt is too long` matches no Codex marker and has no `context`, so it is `cliFailed`. Two runner rows assert the exact two generation models for a successful fallback and a fallback that is overloaded too; neither can re-run a third time.
+
+Two Codex usage rows supply integral and out-of-range `cache_write_input_tokens` values. Both expect absent cache-write usage and preserve only input, cached input and output counts (§6.9 step 4). Claude's cache-creation usage is unchanged.
+
+Current `cli-replies.json` SHA-256: `3c2ff55f41d61c8c2057b7fda6b1d1b5d479f71771969e5331f34cf3061944c8`.
 
 Each UTF-8 file has stable insertion-order keys, LF line endings and one trailing
 newline. Its envelope is:
@@ -42,7 +50,7 @@ newline. Its envelope is:
 
 `source`, `origin` and optional `notes` are provenance, not assertions. The
 `sources` hashes are SHA-256 of UTF-8 source files with CRLF normalized to LF
-(a Voice Lab request file lists only its own prompt),
+(a Voice Lab request file lists only its own prompt; CLI replies list their prompt and catalog),
 detecting prompt/catalog drift without depending on Windows checkout settings.
 The scoped `.gitattributes` pins the goldens themselves to LF. Numbers are binary64. Only numeric
 input fields may use the strings `NaN`, `Infinity`, `-Infinity` or `-0`; decode
@@ -126,13 +134,18 @@ those explicitly, never reinterpret ordinary text fields with the same content.
     platform's `PatchRewriteService` with a stub connector that returns an
     empty `edits` list, and compare the sent request, the quote's estimate and
     the preflight as in step 11. The tag must be `patch-rewrite`.
-13. `cli-reply`: run the platform's Claude Code connector with a fake process
-    whose generation writes `input.stdout` as it is, with exit 0 and no stderr,
+13. `cli-reply`: run `input.connector` with a fake process whose generation
+    writes `input.stdout` as it is, with exit 0 and optional `input.stderr`,
     for a `voiceRewrite` request with `input.model` and `input.schema`. Read
     the completion as a reply against that schema (ai.md §2.3). `expected` is
     either `rewrite` and the answering `model`, or `error`: `cliFailed` (stdout
     is no envelope), `truncated`, `refused` (with no category) or
-    `invalidOutput`. Each platform's CLI connector suite replays these cases.
+    `invalidOutput`, or the classified failure from §6.8/§6.9. With
+    `mode: runner`, send a Test request through the platform's LLM runner;
+    the fallback model receives `input.fallbackStdout`. Assert the result,
+    `usedFallback` and every generation model against `expected.generationModels`,
+    including the exact attempt count on failure. With `mode: app-server`,
+    compare the refreshed model ids. Both suites replay every case.
 
 No fixture calls a provider or installed CLI. All auth values are `<key>` or
 `Bearer <key>`. Runtime transport retries, process isolation/cleanup, auth

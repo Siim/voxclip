@@ -97,7 +97,7 @@
                         </StackPanel>
                         <StackPanel Orientation="Horizontal" Spacing="4" Visibility="{x:Bind ShowsWarning, Mode=OneWay}">
                             <TextBlock Text="{x:Bind Warning, Mode=OneWay}" Style="{ThemeResource CaptionTextBlockStyle}" Foreground="{ThemeResource VcStatusWarningBrush}" VerticalAlignment="Center"/>
-                            <HyperlinkButton Content="Open" Height="32" Padding="6,0" Tag="{x:Bind Path}" Click="OpenMissingClicked" AutomationProperties.Name="{x:Bind OpenName, Mode=OneWay}"/>
+                            <HyperlinkButton Content="Locate…" Height="32" Padding="6,0" Tag="{x:Bind Path}" Click="OpenMissingClicked" AutomationProperties.Name="Locate video"/>
                         </StackPanel>
                     </StackPanel>
                     <Grid.ContextFlyout>

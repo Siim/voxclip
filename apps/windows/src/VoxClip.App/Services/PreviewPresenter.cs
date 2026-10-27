@@ -18,7 +18,7 @@ internal sealed class PreviewPresenter(Image image, IPreviewEngine engine, Actio
     private WriteableBitmap? bitmap;
     private long generation = -1;
     private int failed;
-    private bool stillSent;
+    private long lastStill;
 
     internal void Start()
     {
@@ -81,7 +81,8 @@ internal sealed class PreviewPresenter(Image image, IPreviewEngine engine, Actio
                 using var stream = bitmap.PixelBuffer.AsStream();
                 for (var row = 0; row < buffer.Height; row++) stream.Write(buffer.Pixels.Span.Slice(row * buffer.Stride, buffer.Width * 4));
                 bitmap.Invalidate();
-                if (!stillSent) { stillSent = true; still?.Invoke(buffer); }
+                var now = Environment.TickCount64;
+                if (now - lastStill >= 250) { lastStill = now; still?.Invoke(buffer); }
             }
             catch (Exception exception) { Fail(exception); return; }
         }

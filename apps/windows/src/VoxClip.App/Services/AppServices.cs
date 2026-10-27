@@ -29,6 +29,7 @@ internal sealed class AppServices : IAsyncDisposable
     internal IMediaProbe Probe { get; } = new FfmpegMediaProbe();
     internal IAudioExtractor Audio { get; } = new FfmpegAudioExtractor();
     internal IExporter Exporter { get; } = new Exporter();
+    internal ExportLedger ExportLedger { get; }
     internal IModelCatalog Models { get; } = new ModelCatalog();
     internal IModelDownloader Downloads { get; }
     internal ITranscriptionService Transcription { get; private set; } = null!;
@@ -37,6 +38,7 @@ internal sealed class AppServices : IAsyncDisposable
     internal IUpdateChecker Updates { get; }
     /// <summary>Home and sidebar poster frames in each source's content-key cache entry (design §5.4.7).</summary>
     internal Thumbnails Thumbnails { get; }
+    internal Waveform Waveform { get; }
     /// <summary>Caption cards for media with no frame (design §5.4); null when the caption resources are missing.</summary>
     internal CaptionCards? Cards { get; private set; }
     internal string? SharedRoot { get; private set; }
@@ -68,10 +70,14 @@ internal sealed class AppServices : IAsyncDisposable
         Downloads = new ModelStore(Models, Data.Root);
         Updates = new UpdateChecker(new VelopackUpdates(this));
         Thumbnails = new(Data.Cache, message => Log.Write(LogLevel.Warn, "thumbnails", message));
+        Waveform = new(Audio, Data.Cache);
+        ExportLedger = new(Path.Combine(Data.Root, "exports.json"));
     }
 
     internal async Task InitializeAsync(CancellationToken ct)
     {
+        try { await ExportLedger.LoadAsync(ct); }
+        catch (Exception exception) { StartupNotice = UiError.Message(exception, "Export history"); }
         // Share-text rules load now, so an invalid shared/data/share-text.json fails at launch, not in the Export dialog.
         try { SharedRoot = SharedResources.ResolveRoot(); SharePostText.Preflight(); }
         catch (Exception exception) { StartupNotice = UiError.Message(exception, "Startup"); }

@@ -230,7 +230,8 @@ public enum VoiceLabProject {
             let audio = segment.audio
             guard audio.trimStart.isFinite, audio.trimEnd.isFinite, audio.stretch.isFinite, audio.gainDb.isFinite,
                   audio.trimStart >= 0, audio.trimEnd > audio.trimStart, audio.trimEnd <= asset.durationSeconds,
-                  audio.stretch > 0, abs((audio.trimEnd - audio.trimStart) * audio.stretch - segment.outDuration) <= 1 / Double(asset.sampleRate) else { throw VoiceLabProjectError.invalidSegment }
+                  audio.stretch > 0, VoiceLabRenderValidation.contentMatchesDuration(audio, outDuration: segment.outDuration,
+                                                                                  assetSampleRate: asset.sampleRate) else { throw VoiceLabProjectError.invalidSegment }
             guard !segment.candidates.isEmpty, segment.candidates.indices.contains(segment.selectedCandidateIndex),
                   segment.candidates[segment.selectedCandidateIndex].assetId == audio.assetId,
                   segment.candidates[segment.selectedCandidateIndex].rejected == nil else { throw VoiceLabProjectError.invalidCandidate }

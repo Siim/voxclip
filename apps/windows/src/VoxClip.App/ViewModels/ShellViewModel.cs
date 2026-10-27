@@ -26,6 +26,23 @@ public sealed class SidebarRow(SidebarKind kind, string key) : ObservableObject
     private bool showsKeepAll;
     private bool showsCancel;
     private string cancelName = "";
+    private ClipExportState exportState;
+    private double? exportProgress;
+    public ClipExportState ExportState
+    {
+        get => exportState;
+        set
+        {
+            if (!SetProperty(ref exportState, value)) return;
+            foreach (var name in new[] { nameof(IsExporting), nameof(ExportDetail), nameof(HasExportDetail), nameof(ShowsRetry), nameof(RowHeight) }) OnPropertyChanged(name);
+        }
+    }
+    public double? ExportProgress { get => exportProgress; set => SetProperty(ref exportProgress, value); }
+    public bool IsExporting => ExportState == ClipExportState.Exporting;
+    public string ExportDetail => ExportState is ClipExportState.ChangedSinceExport or ClipExportState.Failed ? new ExportRowState(ExportState).Label : "";
+    public bool HasExportDetail => ExportDetail.Length > 0;
+    public bool ShowsRetry => ExportState == ClipExportState.Failed && Edits;
+    public double RowHeight => HasExportDetail ? 76 : Kind == SidebarKind.FullTake ? 44 : 60;
     public SidebarKind Kind { get; } = kind;
     public string Key { get; } = key;
     /// <summary>The clip id of a clip or suggestion row.</summary>
@@ -59,7 +76,7 @@ public sealed class SidebarRow(SidebarKind kind, string key) : ObservableObject
     /// <summary>Whether the row's commands act on the open project: Keep, Dismiss, Rename, Remove, Export clip…, Keep all and
     /// Find clips…. False while Home shows, where the project's rows only navigate, because the editor they would act on
     /// is hidden (design §2). The window disables the commands and ignores any key that still reaches them.</summary>
-    public bool Edits { get => edits; set => SetProperty(ref edits, value); }
+    public bool Edits { get => edits; set { if (SetProperty(ref edits, value)) OnPropertyChanged(nameof(ShowsRetry)); } }
     /// <summary>The row's thumbnail: the take's or clip's frame, else its caption card (design §5.4).</summary>
     public MediaTile? Media { get => media; set => SetProperty(ref media, value); }
     /// <summary>The Suggested header offers Keep all from two suggestions up.</summary>
@@ -123,11 +140,16 @@ public sealed class ShellViewModel
             full.MetaTime = transcribing is null && editor.HasTranscript ? EditorViewModel.Duration(editor.FullTakeDuration) : "";
             full.MetaStatus = transcribing is { } status ? status.Label + status.Percent : editor.HasTranscript ? "" : "Not transcribed";
             full.ShowsCancel = transcribing is not null;
+            var fullExport = editor.ExportStatus(null);
+            full.ExportState = fullExport.State; full.ExportProgress = fullExport.Progress;
+            if (transcribing is null && fullExport.State is ClipExportState.Exported or ClipExportState.Exporting) full.MetaStatus += " · " + fullExport.Label;
             full.CancelName = $"Cancel transcribing {editor.Title}";
             var state = TakeMedia?.Spoken is { Length: > 0 } spoken ? $", {spoken}" : "";
             full.AccessibleName = editor.HasTranscript ? $"Full take, {Spoken(editor.FullTakeDuration)} after cuts{state}"
                 : "Full take" + (state.Length > 0 ? state : ", not transcribed");
             full.Media = TakeMedia;
+            if (fullExport.Label.Length > 0) full.AccessibleName += ", " + fullExport.Label;
+            full.Edits = !showingHome;
             next.Add(full);
             var active = editor.State?.ActiveClipId;
             var kept = editor.Clips.Where(clip => !IsSuggestion(clip)).ToArray();
@@ -149,10 +171,14 @@ public sealed class ShellViewModel
                 row.Number = number.ToString(System.Globalization.CultureInfo.InvariantCulture);
                 row.MetaTime = EditorViewModel.Duration(clip.DurationSeconds);
                 row.MetaStatus = suggestion ? " · Suggested" : "";
+                var export = suggestion ? new ExportRowState(ClipExportState.None) : editor.ExportStatus(clip.Id);
+                row.ExportState = export.State; row.ExportProgress = export.Progress;
+                if (export.State is ClipExportState.Exported or ClipExportState.Exporting) row.MetaStatus += " · " + export.Label;
                 row.AccessibleName = suggestion
                     ? $"Suggested clip {number}, {clip.Title}, {Spoken(clip.DurationSeconds)}"
                     : $"Clip {number}, {clip.Title}, {Spoken(clip.DurationSeconds)}";
                 row.ToolTip = clip.ToolTip;
+                if (export.Label.Length > 0) row.AccessibleName += ", " + export.Label;
                 row.IsActive = clip.Id == active;
                 row.Media = ClipMedia.GetValueOrDefault(clip.Id);
                 row.Edits = !showingHome;

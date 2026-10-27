@@ -63,6 +63,10 @@ public static class VoiceLabAssets
     /// <summary>Prepare only paid assets used by a Core output plan. Caller disposes each handle.</summary>
     public static async Task<IReadOnlyDictionary<string, PreparedVoiceLabAsset>> PrepareAsync(Project project,
         VoiceLabOutputPlan plan, string paidRoot, CancellationToken cancellationToken = default)
+        => await PrepareAsync(project, plan, paidRoot, System.IO.Path.GetTempPath(), cancellationToken).ConfigureAwait(false);
+
+    internal static async Task<IReadOnlyDictionary<string, PreparedVoiceLabAsset>> PrepareAsync(Project project,
+        VoiceLabOutputPlan plan, string paidRoot, string scratchRoot, CancellationToken cancellationToken = default)
     {
         VoiceLabProject.Validate(project);
         var expected = VoiceLabOutputPlanner.Build(project, plan.Scope);
@@ -80,7 +84,7 @@ public static class VoiceLabAssets
                     ?? throw new VoiceLabAssetException(VoiceLabAssetErrorCode.InvalidSelection, piece.SegmentId ?? "segment");
                 if (piece.SegmentId is null) throw new VoiceLabAssetException(VoiceLabAssetErrorCode.InvalidSelection, asset.File);
                 if (!prepared.ContainsKey(piece.SegmentId))
-                    prepared.Add(piece.SegmentId, await PrepareAsync(project, asset, audio, piece.SegmentId, paidRoot, cancellationToken).ConfigureAwait(false));
+                    prepared.Add(piece.SegmentId, await PrepareAsync(project, asset, audio, piece.SegmentId, paidRoot, scratchRoot, cancellationToken).ConfigureAwait(false));
             }
             return prepared;
         }
@@ -93,6 +97,10 @@ public static class VoiceLabAssets
 
     public static async Task<PreparedVoiceLabAsset> PrepareAsync(Project project, VoiceLabAsset asset,
         VoiceLabAudio audio, string segmentId, string paidRoot, CancellationToken cancellationToken = default)
+        => await PrepareAsync(project, asset, audio, segmentId, paidRoot, System.IO.Path.GetTempPath(), cancellationToken).ConfigureAwait(false);
+
+    internal static async Task<PreparedVoiceLabAsset> PrepareAsync(Project project, VoiceLabAsset asset,
+        VoiceLabAudio audio, string segmentId, string paidRoot, string scratchRoot, CancellationToken cancellationToken = default)
     {
         VoiceLabProject.Validate(project);
         if (project.VoiceLab.Assets?.Contains(asset) != true ||
@@ -101,7 +109,7 @@ public static class VoiceLabAssets
             throw new VoiceLabAssetException(VoiceLabAssetErrorCode.InvalidSelection, asset.File);
         var rootPath = System.IO.Path.GetFullPath(paidRoot);
         var sourcePath = System.IO.Path.Combine(rootPath, project.Id, System.IO.Path.GetFileName(asset.File));
-        var scratch = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "voxclip-voice-" + Guid.NewGuid().ToString("N"));
+        var scratch = System.IO.Path.Combine(scratchRoot, "voxclip-voice-" + Guid.NewGuid().ToString("N"));
         try { Directory.CreateDirectory(scratch); }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         { throw new VoiceLabAssetException(VoiceLabAssetErrorCode.Unreadable, asset.File); }

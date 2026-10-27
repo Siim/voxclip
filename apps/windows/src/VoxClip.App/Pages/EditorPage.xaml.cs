@@ -14,6 +14,8 @@ using VoxClip.Core.Services.Media;
 using VoxClip.Media.Pipeline;
 using VoxClip.Media.Captions;
 using Windows.System;
+using System.Runtime.InteropServices.WindowsRuntime;
+using Microsoft.UI.Xaml.Media.Imaging;
 
 namespace VoxClip.App.Pages;
 
@@ -24,8 +26,11 @@ public sealed partial class EditorPage : Page
     private MainWindow owner = null!;
     private IPreviewEngine? preview;
     private PreviewPresenter? presenter;
-    private InspectorView? inspector;
+    private CaptionsPanel? captions;
     private MediaInfo? media;
+    private EditorMediaState mediaState;
+    private long standInGeneration;
+    private Task pendingStandIn = Task.CompletedTask;
     private bool demo;
     private bool ready;
     private bool disposed;
@@ -35,15 +40,24 @@ public sealed partial class EditorPage : Page
     private bool viewerForced;
     private CancellationTokenSource? autosave;
     private Task pendingSave = Task.CompletedTask;
+    private PendingProjectSave projectWrites = null!;
+    private Task pendingWaveform = Task.CompletedTask;
+    private CancellationTokenSource? waveformRequest;
     private ProjectLeaveBoundary leave = null!;
     private readonly SemaphoreSlim previewChanges = new(1, 1);
     private readonly SemaphoreSlim saves = new(1, 1);
     private string pauseBreath = "natural";
     private double previewDuration;
+    private double? previewStop;
     private string? previewClipId;
     // Home keeps this page alive and re-inserts it, so Loaded moves no focus: a chosen sidebar row keeps it (design C15).
     // Opening a project focuses the transcript once, at the end of OpenAsync.
-    public EditorPage() => InitializeComponent();
+    public EditorPage()
+    {
+        InitializeComponent();
+        SearchText.GotFocus += (_, _) => Transcript.HideSelectionFlyout();
+        PreviewStandIn.SizeChanged += (_, _) => PositionStageMessage();
+    }
     public static bool HasText(string? text) => !string.IsNullOrEmpty(text);
     /// <summary>The take's resolved video, or null when it can't be found or the project is a demo fixture.</summary>
     internal string? MediaPath { get; private set; }
@@ -55,6 +69,7 @@ public sealed partial class EditorPage : Page
     {
         owner = window;
         demo = demoMode;
+        mediaState = demo ? EditorMediaState.Demo : mediaPath is null ? EditorMediaState.Missing : project.Media.Source.Video is null ? EditorMediaState.AudioOnly : EditorMediaState.Ready;
         MediaPath = demoMode ? null : mediaPath;
 #if DEBUG
         ViewModel = demo ? new(project, DemoProject.Reduce, DemoProject.Summarize) : new(project);
@@ -63,6 +78,11 @@ public sealed partial class EditorPage : Page
         ViewModel = new(project);
         preview = new PreviewEngine();
 #endif
+        ViewModel.SetMediaUnavailable(!demo && mediaPath is null);
+        projectWrites = new(project);
+        ViewModel.SetExportRecords(App.Services.ExportLedger.Records);
+        App.Services.ExportLedger.Changed += LedgerChanged;
+        LocateMedia.Visibility = ViewModel.IsReadOnly ? Visibility.Visible : Visibility.Collapsed;
         leave = new(ViewModel);
         FindClips = new(ViewModel, lifetime.Token);
         FindClips.Announcement += (_, text) => Transcript.Announce(text);
@@ -75,9 +95,11 @@ public sealed partial class EditorPage : Page
         App.Services.SettingsChanged += EditorSettingsChanged;
         Transcript.Attach(ViewModel);
         Timeline.Attach(ViewModel);
+        CaptionDrag.Attach(ViewModel);
         Transcript.SeekRequested += (_, _) => _ = RunAsync(() => SeekSourceAsync(ViewModel.SourceTime), "Preview");
         Transcript.MakeClipRequested += (_, _) => MakeClipAndReveal();
-        Transcript.PlayRequested += (_, _) => _ = RunAsync(async () => { await SeekSourceAsync(ViewModel.SourceTime); if (preview is not null) await preview.PlayAsync(lifetime.Token); }, "Preview");
+        Transcript.PlayRequested += (_, _) => _ = RunAsync(async () => { if (ViewModel.IsReadOnly || ViewModel.Busy) return; await SeekSourceAsync(ViewModel.SourceTime); if (preview is not null) await preview.PlayAsync(lifetime.Token); }, "Preview");
+        Transcript.PreviewCutRequested += (_, _) => _ = RunAsync(PreviewCutAsync, "Preview");
         Timeline.SeekRequested += (_, time) => _ = RunAsync(() => SeekSourceAsync(time), "Preview");
         Timeline.PlayRequested += (_, _) => _ = RunAsync(TogglePlaybackAsync, "Preview");
         ViewModel.PropertyChanged += (_, args) => { if (args.PropertyName == nameof(EditorViewModel.CanExport)) UpdateExport(); };
@@ -85,15 +107,21 @@ public sealed partial class EditorPage : Page
         UpdateFindClips();
         Bindings.Update();
         Aspect.SelectedIndex = EditorLayout.Frames.ToList().IndexOf(project.Export.Aspect);
-        inspector = new(ViewModel, async state => await SnapshotAsync(lifetime.Token, state), lifetime.Token);
-        InspectorHost.Children.Add(inspector);
-        await inspector.InitializeAsync();
+        captions = new(ViewModel, () => MediaPath, lifetime.Token);
+        CaptionsHost.Children.Add(new Controls.RightColumn(captions));
+        await captions.InitializeAsync();
         InstallAccelerators();
         if (demo) media = MediaFromProject(project);
-        else if (mediaPath is not null) await RunAsync(async () => media = await App.Services.Probe.ProbeAsync(mediaPath, ct), "Preview");
-        if (mediaPath is null) ViewModel.Notice = $"Can't find {Path.GetFileName(project.Media.Source.AbsolutePath)}. Edits are saved.";
-        if (demo) ViewModel.Notice = "Demo project · Synthetic preview. Changes are not saved to the fixture.";
+        else if (mediaPath is not null)
+        {
+            try { media = await App.Services.Probe.ProbeAsync(mediaPath, ct); }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+            catch (Exception exception) { PreviewFailed(exception); }
+        }
+        if (mediaPath is null || demo) ViewModel.Notice = EditorMediaPresentation.Notice(mediaState, EditorMediaPresentation.FileName(project.Media.Source.AbsolutePath));
         ready = true;
+        projectWrites.Mark(ViewModel.Project);
+        UpdateAiTag();
         UpdateExport();
         ShowViewer(true);
         FitViewer(ActualWidth);
@@ -105,31 +133,68 @@ public sealed partial class EditorPage : Page
                 var snapshot = await SnapshotAsync(ct);
                 previewDuration = snapshot.Timeline.Duration;
                 await preview.LoadAsync(snapshot, null, ct);
+                CaptionDrag.Update(snapshot.Captions, 0);
             }
-            catch
+            catch (Exception exception)
             {
                 preview.PlaybackFaulted -= PlaybackFaulted;
                 preview.AudioStatusChanged -= AudioStatusChanged;
                 await preview.DisposeAsync();
                 preview = null;
                 PreviewImage.Source = null;
-                PreviewEmpty.Visibility = Visibility.Visible;
-                throw;
+                PreviewStandIn.Visibility = Visibility.Visible;
+                ViewModel.SetMediaUnavailable(true);
+                LocateMedia.Visibility = Visibility.Visible;
+                captions?.MediaUnavailable();
+                PreviewFailed(exception);
+                return;
             }
-            presenter = new(PreviewImage, preview, PositionChanged, exception => ViewModel.Notice = UiError.Message(exception, "Preview"), frame => inspector?.UpdateStill(frame));
-            presenter.Start(); PreviewEmpty.Visibility = Visibility.Collapsed;
+            presenter = new(PreviewImage, preview, PositionChanged, PreviewFailed, demo ? frame => captions?.UpdateStill(frame) : null);
+            presenter.Start(); PreviewStandIn.Visibility = Visibility.Collapsed;
         }, "Preview");
+        RequestWaveform();
+        if (ViewModel.IsReadOnly) pendingStandIn = RenderUnavailableCaptionsAsync();
         Transcript.Focus(FocusState.Programmatic);
+    }
+
+    private void RequestWaveform()
+    {
+        waveformRequest?.Cancel();
+        Timeline.SetWaveform([]);
+        if (disposed || demo || ViewModel.IsReadOnly || media is not { Audio: not null } source) return;
+        var request = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
+        waveformRequest = request;
+        pendingWaveform = LoadWaveformAsync(source, ViewModel.Project.Media.Source.ContentKey, request, pendingWaveform);
+    }
+    private async Task LoadWaveformAsync(MediaInfo source, string contentKey, CancellationTokenSource request, Task previous)
+    {
+        try
+        {
+            await previous;
+            var levels = await App.Services.Waveform.GetAsync(source, contentKey, request.Token);
+            if (!disposed && !request.IsCancellationRequested && ReferenceEquals(waveformRequest, request)) Timeline.SetWaveform(levels);
+        }
+        catch (OperationCanceledException) when (request.IsCancellationRequested) { }
+        catch (Exception exception)
+        {
+            App.Services.Log.Write(Core.Services.Logging.LogLevel.Warn, "waveform", UiError.Message(exception, "Waveform"));
+        }
+        finally
+        {
+            if (ReferenceEquals(waveformRequest, request)) waveformRequest = null;
+            request.Dispose();
+        }
     }
 
     private static MediaInfo MediaFromProject(Project project)
     {
         var source = project.Media.Source;
-        return new(source.AbsolutePath, source.DurationSeconds, source.Video, source.Audio, new(source.Video?.Width ?? 1920, source.Video?.Height ?? 1080), null, null, false, 0, source.Audio is null ? -1 : 0, 0);
+        var oriented = source.Video is { RotationDegrees: 90 or 270 } video ? new PixelSize(video.Height, video.Width) : new(source.Video?.Width ?? 1920, source.Video?.Height ?? 1080);
+        return new(source.AbsolutePath, source.DurationSeconds, source.Video, source.Audio, oriented, null, null, false, 0, source.Audio is null ? -1 : 0, 0);
     }
     private async Task<ComposeSnapshot> SnapshotAsync(CancellationToken ct, EditState? stateOverride = null)
     {
-        var source = media ?? throw new InvalidOperationException("No media is open.");
+        var source = media ?? MediaFromProject(ViewModel.Project);
         var rate = source.Audio?.SampleRate ?? 48000;
         var state = stateOverride ?? ViewModel.State;
         var project = ViewModel.ScopedProject(state);
@@ -148,7 +213,7 @@ public sealed partial class EditorPage : Page
         var outputSize = ExportPresets.OutputSize(source.OrientedSize, ViewModel.Project.Export.Aspect);
         var fps = ExportPresets.OutputFrameRate(source.Video?.FrameRate ?? 30);
         CaptionTrack? captions = null;
-        if (!demo && state is not null && ViewModel.Project.Captions.StyleId != "off" && inspector?.Styles.FirstOrDefault(style => style.Id == ViewModel.Project.Captions.StyleId) is { } style)
+        if (!demo && state is not null && ViewModel.Project.Captions.StyleId != "off" && this.captions?.Styles.FirstOrDefault(style => style.Id == ViewModel.Project.Captions.StyleId) is { } style)
             captions = await CaptionEngine.BuildAsync(new(style, project.Captions, outputSize,
                 voice?.Prepared.OutputPlan.Captions ?? EditingEngine.CaptionWords(state, plan), state.Transcript.Language,
                 voice?.Prepared.OutputPlan.Duration ?? plan.Duration), new HarfBuzzGlyphShaper(), null, ct);
@@ -172,11 +237,29 @@ public sealed partial class EditorPage : Page
         PlayGlyph.Symbol = position.IsPlaying ? Symbol.Pause : Symbol.Play;
         Timeline.SetTransport(elapsed, total, position.IsPlaying);
         Timeline.Position(position.SourceTime);
+        CaptionDrag.Position(position.EditedTime);
+        captions?.UpdatePosition(position.EditedTime, sourceTime);
+        if (previewStop is { } stop && sourceTime >= stop && preview is not null)
+        { previewStop = null; _ = RunAsync(() => preview.PauseAsync(lifetime.Token), "Preview"); }
         if (changed) Transcript.RefreshVisuals();
     }
     private void PlaybackFaulted(object? sender, Exception exception)
     {
-        DispatcherQueue.TryEnqueue(() => { if (!disposed) ViewModel.Notice = UiError.Message(exception, "Preview"); });
+        DispatcherQueue.TryEnqueue(() => { if (!disposed) PreviewFailed(exception); });
+    }
+    private void PreviewFailed(Exception exception)
+    {
+        if (disposed) return;
+        ViewModel.SetMediaUnavailable(true);
+        mediaState = EditorMediaState.Corrupt;
+        PreviewImage.Source = null;
+        LocateMedia.Visibility = Visibility.Visible;
+        captions?.MediaUnavailable();
+        ViewModel.Notice = EditorMediaPresentation.Notice(mediaState, EditorMediaPresentation.FileName(ViewModel.Project.Media.Source.AbsolutePath));
+        App.Services.Log.Write(Core.Services.Logging.LogLevel.Warn, "preview", UiError.Message(exception, "Preview"));
+        SizeStage();
+        pendingStandIn = RenderUnavailableCaptionsAsync();
+        UpdateExport();
     }
     private void AudioStatusChanged(object? sender, PreviewAudioStatus status)
     {
@@ -189,21 +272,58 @@ public sealed partial class EditorPage : Page
         });
     }
     /// <summary>Make clip needs words selected (design §6.2).</summary>
-    private void SelectionChanged(object? sender, EventArgs args) => MakeClipCommand.IsEnabled = ViewModel.HasSelection;
+    private void SelectionChanged(object? sender, EventArgs args)
+    {
+        MakeClipCommand.IsEnabled = ViewModel.HasSelection;
+        PreviewCutCommand.IsEnabled = ViewModel.CanPreviewCut;
+        RewriteCommand.Visibility = App.Services.Get("voiceLab.enabled", false) ? Visibility.Visible : Visibility.Collapsed;
+        RewriteCommand.IsEnabled = Transcript.CanRewrite;
+        if (ready && ViewModel.IsReadOnly) pendingStandIn = RenderUnavailableCaptionsAsync();
+    }
+    private async Task RenderUnavailableCaptionsAsync()
+    {
+        var previous = pendingStandIn;
+        var generation = ++standInGeneration;
+        try
+        {
+            await previous;
+            if (disposed || !ViewModel.IsReadOnly || generation != standInGeneration) return;
+            var snapshot = await SnapshotAsync(lifetime.Token);
+            var track = snapshot.Captions;
+            var editedTime = snapshot.Timeline.MapTime(ViewModel.SourceTime);
+            PixelBuffer? pixels = null;
+            if (track is not null)
+            {
+                var scale = (PreviewStage.ActualWidth > 0 ? PreviewStage.ActualWidth : 320) / track.Frame.Width;
+                pixels = await Task.Run(() => new SkiaCaptionRasterizer().RenderAsync(new(track, editedTime, ReduceMotion: true, Scale: scale), lifetime.Token), lifetime.Token);
+            }
+            if (disposed || !ViewModel.IsReadOnly || generation != standInGeneration) return;
+            CaptionDrag.Update(track, editedTime);
+            if (pixels is not { } frame) { PreviewImage.Source = null; return; }
+            var image = new WriteableBitmap(frame.Width, frame.Height);
+            using (var stream = image.PixelBuffer.AsStream()) stream.Write(frame.Pixels.Span);
+            image.Invalidate(); PreviewImage.Source = image;
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception exception) { App.Services.Log.Write(Core.Services.Logging.LogLevel.Warn, "preview-card", UiError.Message(exception, "Preview")); }
+    }
     private void ModelChanged(object? sender, EventArgs args)
     {
         if (!ready || disposed) return;
         UpdateExport();
         SizeStage();
+        UpdateAiTag();
         Untranscribed.Visibility = ViewModel.HasTranscript ? Visibility.Collapsed : Visibility.Visible;
         UpdateFindClips();
         _ = RunAsync(UpdatePreviewAsync, "Preview");
-        SaveRequested(sender, args);
+        if (ViewModel.IsReadOnly) pendingStandIn = RenderUnavailableCaptionsAsync();
+        if (!ViewModel.IsRelinking) SaveRequested(sender, args);
     }
     private void SaveRequested(object? sender, EventArgs args)
     {
-        if (ready && !disposed && !demo)
+        if (ready && !disposed && !demo && !ViewModel.IsRelinking)
         {
+            projectWrites.Mark(ViewModel.Project);
             autosave?.Cancel(); autosave?.Dispose();
             autosave = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
             pendingSave = SaveAfterDelayAsync(autosave.Token);
@@ -213,6 +333,8 @@ public sealed partial class EditorPage : Page
     {
         if (disposed || ViewModel.IsLeaving) return;
         Transcript.ApplySettings();
+        SelectionChanged(this, EventArgs.Empty);
+        captions?.RefreshSamples();
         var next = App.Services.Get("editing.pauseBreath", "natural");
         if (next == pauseBreath) return;
         pauseBreath = next;
@@ -226,14 +348,65 @@ public sealed partial class EditorPage : Page
     }
     private async Task SaveAsync(CancellationToken ct)
     {
-        if (demo || owner.ProjectPath is null) return;
+        if (demo) return;
         await saves.WaitAsync(ct);
-        try { await App.Services.Projects.SaveAsync(ViewModel.Project, owner.ProjectPath, ct); }
+        try
+        {
+            var path = owner.ProjectPath;
+            if (path is not null) await projectWrites.FlushAsync((project, token) => App.Services.Projects.SaveAsync(project, path, token), ct);
+        }
         finally { saves.Release(); }
     }
+    private void LedgerChanged(object? sender, EventArgs args) => DispatcherQueue.TryEnqueue(() =>
+    {
+        if (!disposed) ViewModel.SetExportRecords(App.Services.ExportLedger.Records);
+    });
+    private async void LocateClicked(object sender, RoutedEventArgs args) => await LocateAsync();
+    internal async Task LocateAsync() => await RunAsync(async () =>
+    {
+        if (owner.ProjectPath is not { } projectPath || demo) return;
+        autosave?.Cancel();
+        await pendingSave;
+        MediaInfo? selectedMedia = null;
+        var relinked = await ViewModel.RelinkAsync(App.Services.Projects, projectPath, async () =>
+        {
+            var locate = new ContentDialog { XamlRoot = XamlRoot, Title = "Locate video", Content = new TextBlock
+                { Text = ViewModel.Project.Media.Source.AbsolutePath.Replace('/', (char)92), TextWrapping = TextWrapping.Wrap },
+                PrimaryButtonText = "Choose video…", CloseButtonText = "Cancel", DefaultButton = ContentDialogButton.Close };
+            if (await locate.ShowAsync() != ContentDialogResult.Primary) return null;
+            var picker = new Windows.Storage.Pickers.FileOpenPicker();
+            WinRT.Interop.InitializeWithWindow.Initialize(picker, WinRT.Interop.WindowNative.GetWindowHandle(owner));
+            foreach (var extension in new[] { ".mp4", ".mov", ".m4v", ".mkv", ".webm", ".avi" }) picker.FileTypeFilter.Add(extension);
+            return (await picker.PickSingleFileAsync())?.Path;
+        }, async selected => selectedMedia = await App.Services.Probe.ProbeAsync(selected, lifetime.Token), async () =>
+        {
+            var dialog = new ContentDialog { XamlRoot = XamlRoot, Title = "This file looks different. Use it anyway?",
+                Content = new TextBlock { Text = ViewModel.Project.Media.Source.AbsolutePath, TextWrapping = TextWrapping.Wrap },
+                PrimaryButtonText = "Use it", CloseButtonText = "Choose another", DefaultButton = ContentDialogButton.Close };
+            return await dialog.ShowAsync() == ContentDialogResult.Primary;
+        }, lifetime.Token);
+        if (!relinked) return;
+        projectWrites = new(ViewModel.Project);
+        MediaPath = ViewModel.Project.Media.Source.AbsolutePath;
+        media = selectedMedia;
+        mediaState = media?.Video is null ? EditorMediaState.AudioOnly : EditorMediaState.Ready;
+        LocateMedia.Visibility = Visibility.Collapsed;
+        if (preview is not null)
+        {
+            preview.PlaybackFaulted -= PlaybackFaulted;
+            preview.AudioStatusChanged -= AudioStatusChanged;
+            if (presenter is not null) await presenter.DisposeAsync();
+            else await preview.DisposeAsync();
+        }
+        presenter = null;
+        preview = null;
+        await UpdatePreviewAsync();
+        RequestWaveform();
+        UpdateExport();
+    }, "Locate video");
     private async Task UpdatePreviewAsync()
     {
-        if (media is null) return;
+        if (media is null || ViewModel.IsReadOnly) return;
         await previewChanges.WaitAsync(lifetime.Token);
         try
         {
@@ -249,26 +422,31 @@ public sealed partial class EditorPage : Page
                 preview.AudioStatusChanged += AudioStatusChanged;
                 await preview.LoadAsync(snapshot, null, lifetime.Token);
                 presenter = new(PreviewImage, preview, PositionChanged,
-                    exception => ViewModel.Notice = UiError.Message(exception, "Preview"), frame => inspector?.UpdateStill(frame));
-                presenter.Start(); PreviewEmpty.Visibility = Visibility.Collapsed;
+                    PreviewFailed);
+                presenter.Start(); PreviewStandIn.Visibility = Visibility.Collapsed;
             }
             else await preview.UpdateSnapshotAsync(snapshot, lifetime.Token);
+            CaptionDrag.Update(snapshot.Captions, preview.Position.EditedTime);
             if (clipChanged && previewClipId is not null) await preview.SeekAsync(0, true, lifetime.Token);
         }
-        catch
+        catch (Exception exception)
         {
             if (preview is not null) { preview.PlaybackFaulted -= PlaybackFaulted; preview.AudioStatusChanged -= AudioStatusChanged; }
             if (presenter is not null) { await presenter.DisposeAsync(); presenter = null; }
             else if (preview is not null) await preview.DisposeAsync();
             preview = null;
-            if (!disposed) { PreviewImage.Source = null; PreviewEmpty.Visibility = Visibility.Visible; }
-            throw;
+            if (!disposed) { PreviewImage.Source = null; PreviewStandIn.Visibility = Visibility.Visible; PreviewFailed(exception); }
         }
         finally { previewChanges.Release(); }
     }
     private async Task SeekSourceAsync(double source)
     {
-        if (preview is null) return;
+        previewStop = null;
+        if (preview is null || ViewModel.IsReadOnly)
+        {
+            if (ViewModel.IsReadOnly) pendingStandIn = RenderUnavailableCaptionsAsync();
+            return;
+        }
         var snapshot = await SnapshotAsync(lifetime.Token);
         await preview.SeekAsync(snapshot.Timeline.MapTime(source), true, lifetime.Token);
     }
@@ -289,6 +467,19 @@ public sealed partial class EditorPage : Page
         if (ViewModel.MakeClip() is { } id) owner.RevealClip(id);
     }
     private void MakeClipClicked(object sender, RoutedEventArgs args) => MakeClipAndReveal();
+    private void RewriteClicked(object sender, RoutedEventArgs args) => Transcript.RequestRewrite();
+    private void CutSelectionClicked(object sender, RoutedEventArgs args) => ViewModel.CutSelection();
+    private void RestoreSelectionClicked(object sender, RoutedEventArgs args) => ViewModel.CutSelection(true);
+    private void CorrectClicked(object sender, RoutedEventArgs args) => Transcript.BeginCorrection();
+    private async void PreviewCutClicked(object sender, RoutedEventArgs args) => await RunAsync(PreviewCutAsync, "Preview");
+    private async void PlayFromHereClicked(object sender, RoutedEventArgs args) => await RunAsync(PlayFromHereAsync, "Preview");
+    private async Task PlayFromHereAsync()
+    {
+        if (preview is null || ViewModel.IsReadOnly || ViewModel.Busy) return;
+        previewStop = null;
+        if (ViewModel.HasSelection) ViewModel.SourceTime = ViewModel.Words[ViewModel.SelectionStart].Start;
+        await SeekSourceAsync(ViewModel.SourceTime); await preview.PlayAsync(lifetime.Token);
+    }
     private void FindClipsClicked(object sender, RoutedEventArgs args) => ShowFindClips(sender as FrameworkElement);
     /// <summary>The sidebar's "New clip from selection" action.</summary>
     internal void MakeClipFromPane() => MakeClipAndReveal();
@@ -299,14 +490,17 @@ public sealed partial class EditorPage : Page
     /// and frame row) and Captions while the right column shows, then the timeline. MainWindow runs the cycle.</summary>
     internal IEnumerable<(FrameworkElement[] Areas, Func<Control?> Target)> FocusRegions()
     {
-        yield return ([CommandRow], () => FocusManager.FindFirstFocusableElement(Commands) as Control ?? ExportButton);
-        yield return ([TranscriptPane], () => Transcript);
-        if (RightPane.Visibility == Visibility.Visible)
+        foreach (var region in FocusCycle.Regions(RightPane.Visibility == Visibility.Visible).Skip(1))
         {
-            yield return ([ViewerSplitter, PreviewPane, FrameRow], () => PreviewPlay);
-            if (inspector is { } captions) yield return ([InspectorHost], () => captions.FocusTarget);
+            switch (region)
+            {
+                case EditorFocusRegion.CommandBar: yield return ([CommandRow], () => FocusManager.FindFirstFocusableElement(Commands) as Control ?? ExportButton); break;
+                case EditorFocusRegion.Transcript: yield return ([TranscriptPane], () => Transcript); break;
+                case EditorFocusRegion.Viewer: yield return ([ViewerSplitter, PreviewPane, FrameRow], () => PreviewPlay); break;
+                case EditorFocusRegion.Captions: if (captions is { } panel) yield return ([CaptionsHost], () => panel.FocusTarget); break;
+                case EditorFocusRegion.Timeline: yield return ([Timeline], () => Timeline.FocusTarget); break;
+            }
         }
-        yield return ([Timeline], () => Timeline.FocusTarget);
     }
     internal void FocusTranscript() => Transcript.Focus(FocusState.Programmatic);
     /// <summary>Say the editor's notice again, for a refused leave seen from Home.</summary>
@@ -333,8 +527,16 @@ public sealed partial class EditorPage : Page
         await RunAsync(() => SeekSourceAsync(Math.Min(ViewModel.Project.Media.Source.DurationSeconds, ViewModel.SourceTime + 3)), "Preview");
     private async Task TogglePlaybackAsync()
     {
-        if (preview is null) return;
+        if (preview is null || ViewModel.IsReadOnly) return;
+        previewStop = null;
         if (preview.Position.IsPlaying) await preview.PauseAsync(lifetime.Token); else await preview.PlayAsync(lifetime.Token);
+    }
+    private async Task PreviewCutAsync()
+    {
+        if (preview is null || ViewModel.PreviewCutRange() is not { } range) return;
+        await SeekSourceAsync(range.Start);
+        previewStop = range.End;
+        await preview.PlayAsync(lifetime.Token);
     }
     private void DisplayChanged(object sender, RoutedEventArgs args) => Transcript.SetDisplay(ShowCuts.IsChecked == true, ShowPauses.IsChecked == true);
     private void FindClicked(object sender, RoutedEventArgs args) { FindBar.Visibility = Visibility.Visible; SearchText.Focus(FocusState.Programmatic); }
@@ -368,6 +570,7 @@ public sealed partial class EditorPage : Page
     private async void ExportClicked(object sender, RoutedEventArgs args) => await ExportAsync(ViewModel.State?.ActiveClipId);
     /// <summary>A kept clip row's "Export clip…": Export opens with only that clip chosen (design §6.2).</summary>
     internal Task ExportClipAsync(string clipId) => ExportAsync(clipId);
+    internal Task RetryExportAsync(string? clipId) => ExportAsync(clipId);
     private Task ExportAsync(string? clipId) => RunAsync(async () =>
     {
         // Ctrl+E and the row's Export clip… stop where the button is disabled, and say why. A row's clip need not be the
@@ -391,7 +594,7 @@ public sealed partial class EditorPage : Page
         var confirmation = new ContentDialog { XamlRoot = XamlRoot, Title = "Transcribe again?", Content = $"Transcribe again? This replaces the transcript and removes {ViewModel.Summary.CutWordCount + ViewModel.Summary.CutPauseCount} cuts, {ViewModel.Project.Edits.Corrections.Count} corrections, {ViewModel.Clips.Count} clips and the AI suggestions.", PrimaryButtonText = "Transcribe Again", CloseButtonText = "Cancel", DefaultButton = ContentDialogButton.Close };
         if (await confirmation.ShowAsync() == ContentDialogResult.Primary) TranscribeClicked(sender, args);
     }
-    private async void ShortcutsClicked(object sender, RoutedEventArgs args) => await new ContentDialog { XamlRoot = XamlRoot, Title = "Keyboard shortcuts", CloseButtonText = "Done", Content = new TextBlock { Text = "Space  Play / pause\nJ / K / L  Back / stop / forward\nDelete  Cut or restore selected words\nEnter  Correct spelling\nCtrl+Z / Ctrl+Y  Undo / redo\nCtrl+K  Make a clip (no key needed)\nCtrl+Shift+K  Find clips\nCtrl+Shift+I  Show or hide the viewer\nCtrl+1 / Ctrl+2  Home / Full take\nCtrl+E  Export\nCtrl+F  Find\nCtrl+,  Settings\nF6  Next pane\n\nEditor keys never run while typing in a text field.", TextWrapping = TextWrapping.Wrap } }.ShowAsync();
+    private async void ShortcutsClicked(object sender, RoutedEventArgs args) => await owner.ShowKeyboardHelpAsync();
     private void AspectChanged(object sender, SelectionChangedEventArgs args)
     {
         if (!ready || Aspect.SelectedIndex < 0) return;
@@ -425,6 +628,7 @@ public sealed partial class EditorPage : Page
         Add(VirtualKey.Y, VirtualKeyModifiers.Control, ViewModel.Redo);
         Add(VirtualKey.Z, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, ViewModel.Redo);
         Add(VirtualKey.K, VirtualKeyModifiers.Control, MakeClipAndReveal);
+        Add(VirtualKey.R, VirtualKeyModifiers.Control, Transcript.RequestRewrite);
         Add(VirtualKey.U, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, () => ViewModel.Apply(new EditOperation.CutFillers()));
         Add(VirtualKey.P, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, () => ViewModel.Apply(new EditOperation.TightenPauses()));
         Add(VirtualKey.R, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, () => ViewModel.Apply(new EditOperation.RestoreCuts()));
@@ -447,6 +651,7 @@ public sealed partial class EditorPage : Page
     private async void EditorKeyDown(object sender, KeyRoutedEventArgs args)
     {
         if (!ready || args.Key == VirtualKey.F6) return;
+        if (args.Key == VirtualKey.Escape && CaptionDrag.IsDragging) { CaptionDrag.Cancel(); args.Handled = true; return; }
         var focused = FocusManager.GetFocusedElement(XamlRoot);
         var editorFocus = InputState.DescendsFrom(focused as DependencyObject, Transcript) || InputState.DescendsFrom(focused as DependencyObject, PreviewPane) || InputState.DescendsFrom(focused as DependencyObject, Timeline);
         var control = InputState.Down(VirtualKey.Control);
@@ -454,20 +659,21 @@ public sealed partial class EditorPage : Page
         var handled = true;
         switch (args.Key)
         {
-            case VirtualKey.Space: await RunAsync(TogglePlaybackAsync, "Preview"); break;
-            case VirtualKey.K: if (preview is not null) await RunAsync(() => preview.PauseAsync(lifetime.Token), "Preview"); break;
-            case VirtualKey.L: if (preview is not null) await RunAsync(() => preview.PlayAsync(lifetime.Token), "Preview"); break;
+            case VirtualKey.Space: await RunAsync(InputState.Down(VirtualKey.Shift) ? PlayFromHereAsync : TogglePlaybackAsync, "Preview"); break;
+            case VirtualKey.K: previewStop = null; if (preview is not null) await RunAsync(() => preview.PauseAsync(lifetime.Token), "Preview"); break;
+            case VirtualKey.L: previewStop = null; if (preview is not null && !ViewModel.IsReadOnly) await RunAsync(() => preview.PlayAsync(lifetime.Token), "Preview"); break;
             case VirtualKey.J: await RunAsync(() => SeekSourceAsync(Math.Max(0, ViewModel.SourceTime - 3)), "Preview"); break;
+            case VirtualKey.P: await RunAsync(PreviewCutAsync, "Preview"); break;
             case VirtualKey.Back: case VirtualKey.Delete: ViewModel.CutSelection(InputState.Down(VirtualKey.Shift)); break;
             case VirtualKey.Left: case VirtualKey.Right: ViewModel.Select((ViewModel.HasSelection ? ViewModel.SelectionEnd : 0) + (args.Key == VirtualKey.Right ? 1 : -1), InputState.Down(VirtualKey.Shift)); await RunAsync(() => SeekSourceAsync(ViewModel.SourceTime), "Preview"); break;
             case VirtualKey.Home: ViewModel.Select(0); break;
             case VirtualKey.End: ViewModel.Select(ViewModel.Words.Count - 1); break;
             case VirtualKey.Enter: case VirtualKey.C: Transcript.BeginCorrection(); break;
-            case VirtualKey.Escape: if (ViewModel.State?.ActiveClipId is not null) owner.ShowScope(null, keepSelection: true); break;
+            case VirtualKey.Escape: if (InputState.DescendsFrom(focused as DependencyObject, Transcript) && ViewModel.State?.ActiveClipId is not null) owner.ShowScope(null, keepSelection: true); else handled = false; break;
             case VirtualKey.I: ViewModel.SetClipEdgeAtCaret(true); break;
             case VirtualKey.O: ViewModel.SetClipEdgeAtCaret(false); break;
-            case (VirtualKey)219: ViewModel.CycleClip(-1); break;
-            case (VirtualKey)221: ViewModel.CycleClip(1); break;
+            case (VirtualKey)219: if (!InputState.Down(VirtualKey.Shift)) ViewModel.CycleClip(-1); else handled = false; break;
+            case (VirtualKey)221: if (!InputState.Down(VirtualKey.Shift)) ViewModel.CycleClip(1); else handled = false; break;
             default: handled = false; break;
         }
         args.Handled = handled;
@@ -476,6 +682,7 @@ public sealed partial class EditorPage : Page
     /// placeholder spec §5.4.4). The name says when the scope contains AI-modified speech.</summary>
     private void UpdateExport()
     {
+        PreviewCutCommand.IsEnabled = ViewModel.CanPreviewCut;
         var active = ViewModel.Clips.FirstOrDefault(clip => clip.Id == ViewModel.State?.ActiveClipId);
         var label = active is null ? "Export video…" : "Export clip…";
         var reason = ViewModel.ExportBlocked(demo, MediaPath is null || media is null, active?.Id);
@@ -548,10 +755,35 @@ public sealed partial class EditorPage : Page
     /// <summary>Size the stage for the frame and the column (delta §5.1) and name it for the scope.</summary>
     private void SizeStage()
     {
-        var oriented = media?.OrientedSize ?? new PixelSize(ViewModel.Project.Media.Source.Video?.Width ?? 16, ViewModel.Project.Media.Source.Video?.Height ?? 9);
+        var oriented = media?.OrientedSize ?? MediaFromProject(ViewModel.Project).OrientedSize;
         (PreviewStage.Width, PreviewStage.Height) = EditorLayout.Stage(RightPane.ActualWidth - RightPane.BorderThickness.Left - 32, ViewModel.Project.Export.Aspect, oriented);
-        AutomationProperties.SetName(PreviewImage, ViewModel.State?.ActiveClipId is { } id && ViewModel.Clips.FirstOrDefault(clip => clip.Id == id) is { } clip
-            ? $"Video preview, clip {clip.Number}" : "Video preview, full take");
+        var clip = ViewModel.Clips.FirstOrDefault(clip => clip.Id == ViewModel.State?.ActiveClipId);
+        var name = EditorMediaPresentation.Accessible(mediaState, clip?.Number, ScopeHasAiSpeech());
+        AutomationProperties.SetName(PreviewStage, name); AutomationProperties.SetName(PreviewImage, name);
+        PreviewEmpty.Text = EditorMediaPresentation.Title(mediaState);
+        PreviewFile.Text = mediaState is EditorMediaState.Missing or EditorMediaState.Corrupt ? EditorMediaPresentation.FileName(ViewModel.Project.Media.Source.AbsolutePath) : "";
+        PreviewStateGlyph.Glyph = ((char)(mediaState == EditorMediaState.Corrupt ? 0xE7BA : 0xE714)).ToString();
+        PreviewStateGlyphHost.Visibility = mediaState is EditorMediaState.Missing or EditorMediaState.Corrupt ? Visibility.Visible : Visibility.Collapsed;
+        PreviewMissingStrike.Visibility = mediaState == EditorMediaState.Missing ? Visibility.Visible : Visibility.Collapsed;
+        PreviewStandIn.Visibility = mediaState is EditorMediaState.Missing or EditorMediaState.Corrupt ? Visibility.Visible : Visibility.Collapsed;
+        foreach (var button in ((Grid)PreviewPlay.Parent).Children.OfType<Button>()) button.IsEnabled = !ViewModel.IsReadOnly;
+        PositionStageMessage();
+    }
+    private void PositionStageMessage()
+    {
+        if (ViewModel is null) return;
+        var fraction = EditorMediaPresentation.MessageFraction(PreviewStage.Width * 10 < PreviewStage.Height * 9);
+        PreviewStandIn.Margin = new(20, Math.Max(0, PreviewStage.Height * fraction - PreviewStandIn.ActualHeight / 2), 20, 0);
+    }
+    private void UpdateAiTag()
+    {
+        var first = 0;
+        var last = ViewModel.Words.Count - 1;
+        if (ViewModel.State?.ActiveClipId is { } id && ViewModel.Clips.FirstOrDefault(clip => clip.Id == id) is { } clip)
+        {
+            first = ViewModel.Index(clip.Clip.StartWordId); last = ViewModel.Index(clip.Clip.EndWordId);
+        }
+        AiModified.Visibility = first >= 0 && Enumerable.Range(first, Math.Max(0, last - first + 1)).Any(ViewModel.IsAiWord) ? Visibility.Visible : Visibility.Collapsed;
     }
     internal async Task<bool> TrySaveBeforeLeavingAsync()
     {
@@ -575,7 +807,7 @@ public sealed partial class EditorPage : Page
         {
             EditorSettingsChanged(this, EventArgs.Empty);
             EditorNotice.Severity = InfoBarSeverity.Error;
-            ViewModel.Notice = "Could not save this project. It is still open with your edits. Use Save project as… or check the folder, then try again.";
+            ViewModel.Notice = "Couldn't save this project. Your edits are still open. Check the folder or use Save project as…, then try again.";
             App.Services.Log.Write(Core.Services.Logging.LogLevel.Warn, "project", "save before navigation failed");
             return false;
         }
@@ -591,14 +823,18 @@ public sealed partial class EditorPage : Page
         if (disposed) return;
         disposed = true; autosave?.Cancel(); await lifetime.CancelAsync();
         await pendingSave;
+        await pendingWaveform;
+        await pendingStandIn;
         if (ViewModel is not null)
         {
             ViewModel.Changed -= ModelChanged;
             ViewModel.SelectionChanged -= SelectionChanged;
             ViewModel.SaveRequested -= SaveRequested;
         }
-        Transcript.Detach(); Timeline.Detach(); inspector?.Detach();
+        Transcript.Detach(); Timeline.Detach(); captions?.Detach();
+        CaptionDrag.Cancel();
         App.Services.SettingsChanged -= EditorSettingsChanged;
+        App.Services.ExportLedger.Changed -= LedgerChanged;
         await previewChanges.WaitAsync();
         try
         {

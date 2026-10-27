@@ -67,8 +67,6 @@ private final class CLIProcessCancellation: Sendable {
 }
 
 private enum CLIProcessExecution {
-    private struct RPCResponse: Decodable { let id: Int?; let error: JSONValue? }
-
     static func run(_ request: ProcessRequest, cancellation: CLIProcessCancellation,
                     now: () -> ContinuousClock.Instant) throws -> ProcessResult {
         guard !cancellation.isCancelled else { throw LLMError.cancelled }
@@ -159,6 +157,7 @@ private enum CLIProcessExecution {
         let outputLimit = min(request.maxOutputBytes, 16 * 1024 * 1024)
         var stdout = Data()
         var stderr = Data()
+        var responseIDs: Set<Int> = []
         var inputOffset = 0
         var inputLimit = request.cliInitializationResponseID == nil ? request.stdin.count :
             request.stdin.firstIndex(of: 10).map { $0 + 1 } ?? request.stdin.count
@@ -258,12 +257,16 @@ private enum CLIProcessExecution {
                 while let newline = stdout[responseOffset...].firstIndex(of: 10) {
                     let line = stdout.subdata(in: responseOffset..<newline)
                     responseOffset = newline + 1
-                    if let response = try? JSONDecoder().decode(RPCResponse.self, from: line) {
-                        if response.id == request.cliInitializationResponseID {
-                            if response.error != nil { terminate(nil) }
+                    if let text = String(data: line, encoding: .utf8),
+                       let value = CanonicalResponseParser.envelope(text), case .object(let response) = value,
+                       let receivedID = response["id"]?.cliInt,
+                       receivedID == request.cliInitializationResponseID || receivedID == responseID,
+                       responseIDs.insert(receivedID).inserted {
+                        if receivedID == request.cliInitializationResponseID {
+                            if let error = response["error"], error != .null { terminate(nil) }
                             else { inputLimit = request.stdin.count }
                         }
-                        if response.id == responseID { terminate(nil) }
+                        if receivedID == responseID { terminate(nil) }
                     }
                 }
             }

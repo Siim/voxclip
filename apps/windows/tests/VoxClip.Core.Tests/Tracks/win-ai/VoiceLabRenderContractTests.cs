@@ -182,6 +182,69 @@ public sealed class VoiceLabRenderContractTests
         Error(VoiceLabProjectErrorCode.InvalidFadeHandles, () => VoiceLabProject.Validate(WithHandles(240, 239)));
     }
     [Fact]
+    public void UnityDurationBaselines()
+    {
+        using var document = FixtureLoader.ReadJson("fixtures/voice-lab/render-cases.json");
+        foreach (var name in new[] { "unity-binary64-residual-eight", "unity-binary64-residual-nine", "unity-legacy-source-grid-only", "unity-inconsistent-alternate" })
+        {
+            var vector = document.RootElement.GetProperty(name);
+            double startTime = vector.GetProperty("replace")[0].GetDouble(), endTime = vector.GetProperty("replace")[1].GetDouble();
+            double rate = vector.GetProperty("sourceRate").GetDouble();
+            var assetRate = vector.GetProperty("assetRate").GetInt32();
+            var frames = vector.GetProperty("outputFrames").GetInt64();
+            var duration = vector.GetProperty("outDuration").GetDouble();
+            var project = Fixture();
+            project = project with {
+                Media = project.Media with { Source = project.Media.Source with { Audio = project.Media.Source.Audio! with { SampleRate = (int)rate } } },
+                Transcript = project.Transcript! with { Words = [new TimedWord("w4", "source", WordKind.Word, 2, 2.4, null, null, null, null, VoxClip.Core.Domain.Transcript.TimingSource.Native)] },
+                Edits = project.Edits with { Clips = [], ActiveClipId = null }
+            };
+            var segment = project.VoiceLab.Segments[0];
+            var recipe = segment.Candidates[0].Recipe!;
+            var asset = project.VoiceLab.Assets![0];
+            long trimStartFrame = assetRate / 2;
+            var trimEndFrame = trimStartFrame + frames;
+            var trimEnd = trimEndFrame / (double)assetRate;
+            var start = VoiceLabGeometry.Samples(startTime, rate); var end = VoiceLabGeometry.Samples(endTime, rate);
+            var windowFrames = VoxClip.Core.Domain.Editing.EditingMath.Round((end - start) * (double)assetRate / rate);
+            var baseline = endTime - startTime;
+            var residual = VoxClip.Core.Domain.Editing.EditingMath.Round((duration - baseline) * assetRate);
+            var binaryDuration = baseline + residual / assetRate;
+            var tolerance = 4 * Math.Max(Math.BitIncrement(duration) - duration, Math.BitIncrement(baseline) - baseline);
+            var binaryFits = windowFrames + residual == frames && Math.Abs(duration - binaryDuration) <= tolerance;
+            Assert.Equal(vector.GetProperty("baseline").GetString() == "binary64", binaryFits);
+            var fade = VoiceLabGeometry.Samples(VoiceLabPatchConstants.HARD_SEAM_FADE, rate);
+            recipe = recipe with {
+                Audio = new VoiceLabAudio(asset.Id, 0.5, trimEnd, 1, 0), OutDuration = duration,
+                Words = [new VoiceLabWord("Patch", 0.1, 0.7, true)], Qa = recipe.Qa with { TranscriptTokens = 1 },
+                RoomTone = new VoiceLabRoomTone(0, VoiceLabGeometry.Samples(0.5, rate), 0),
+                Chunks = [new VoiceLabChunk(start, end, "request-baseline", recipe.Seed, asset.Id, asset.Sha256, trimStartFrame, trimEndFrame)],
+                Seams = new VoiceLabSeams(VoiceLabHandles.Seam(VoiceLabSeamKind.Hard, fade, true, assetRate, rate, 1), VoiceLabHandles.Seam(VoiceLabSeamKind.Hard, fade, false, assetRate, rate, 1)),
+                Video = recipe.Video with { SourceStartSample = start, SourceEndSample = end, OutputSamples = VoiceLabGeometry.Samples(duration, rate) }
+            };
+            segment = segment with { Replace = new VoiceLabReplacement(startTime, endTime, "w4", "w4"), Audio = recipe.Audio,
+                OutDuration = duration, Words = recipe.Words, Candidates = [segment.Candidates[0] with { Recipe = recipe }] };
+            project = project with { VoiceLab = project.VoiceLab with { Segments = [segment], Assets = [asset with { SampleRate = assetRate, DurationSeconds = trimEnd + 0.5 }] } };
+            VoiceLabProject.Validate(project); VoiceLabRenderValidation.Validate(project);
+            if (vector.TryGetProperty("alternateOutputFrames", out var alternateFrames))
+            {
+                var alternateEndFrame = trimStartFrame + alternateFrames.GetInt64();
+                var alternateEnd = alternateEndFrame / (double)assetRate;
+                var alternate = recipe with { Audio = recipe.Audio with { TrimEnd = alternateEnd },
+                    Chunks = [recipe.Chunks[0] with { AssembledEndFrame = alternateEndFrame }] };
+                var candidate = segment.Candidates[0] with { Recipe = alternate };
+                project = Replace(project, segment with { Candidates = [segment.Candidates[0], candidate] });
+                Assert.Equal("invalidSegment", vector.GetProperty("validationError").GetString());
+                Error(VoiceLabProjectErrorCode.InvalidSegment, () => VoiceLabProject.Validate(project));
+                Error(VoiceLabProjectErrorCode.InvalidSegment, () => VoiceLabRenderValidation.Validate(project));
+                Error(VoiceLabProjectErrorCode.InvalidSegment, () => VoiceLabProject.SelectCandidate(project, segment.Id, 1));
+                project = Replace(project, segment with { Candidates = [segment.Candidates[0], candidate with { Rejected = "fixture" }] });
+                VoiceLabProject.Validate(project); VoiceLabRenderValidation.Validate(project);
+            }
+            if (name != "unity-binary64-residual-nine") Assert.Equal(VoiceLabGeometry.Samples(duration, rate) / rate, duration);
+        }
+    }
+    [Fact]
     public void HalfUpAndRequestBinding()
     {
         using var document = System.Text.Json.JsonDocument.Parse(File.ReadAllText(Path.Combine(FixtureLoader.SharedRoot, "fixtures", "voice-lab", "render-cases.json")));

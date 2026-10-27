@@ -450,7 +450,7 @@ public actor CLIConnector: LLMConnector {
         return RawCompletion(text: text, object: text.flatMap(cliExtractJSON), model: requestedModel, stop: .complete,
             usage: usage.map { LLMUsage(input: $0["input_tokens"]?.cliInt, output: $0["output_tokens"]?.cliInt,
                                         cacheRead: $0["cached_input_tokens"]?.cliInt,
-                                        cacheWrite: $0["cache_write_input_tokens"]?.cliInt) })
+                                        cacheWrite: nil) })
     }
 
     private func classify(_ message: String, status: Int?, model: String,
@@ -466,6 +466,7 @@ public actor CLIConnector: LLMConnector {
             if matches("overloadMarkers") || status == 529 { return .overloaded }
             if message.localizedCaseInsensitiveContains("prompt is too long") { return .contextTooLong }
         } else {
+            if matches("overloadMarkers") { return .overloaded }
             if matches("modelErrorMarkers") { return .modelNotFound(model) }
             let lower = message.lowercased()
             if lower.contains("context") && (lower.contains("length") || lower.contains("window")) { return .contextTooLong }
@@ -512,6 +513,7 @@ public actor CLIConnector: LLMConnector {
                 if let response = CanonicalResponseParser.envelope(line)?.cliObject,
                    response["id"]?.cliInt == 2 {
                     entries = response["result"]?.cliObject?["data"]?.cliArray
+                    break
                 }
             }
             guard let entries else { throw probeFailure }
@@ -579,10 +581,14 @@ private extension JSONValue {
     var cliArray: [JSONValue]? { if case .array(let value) = self { value } else { nil } }
     var cliString: String? { if case .string(let value) = self { value } else { nil } }
     var cliBool: Bool? { if case .bool(let value) = self { value } else { nil } }
-    var cliInt: Int? {
-        if case .number(let value) = self, value.isFinite, value.rounded() == value { Int(exactly: value) } else { nil }
-    }
     var cliStrings: [String] { cliArray?.compactMap(\.cliString) ?? [] }
+}
+
+extension JSONValue {
+    var cliInt: Int? {
+        guard case .number(let value) = self, let integer = Int64(exactly: value) else { return nil }
+        return Int(exactly: integer)
+    }
 }
 
 private func cliEncode(_ value: JSONValue) throws -> String {

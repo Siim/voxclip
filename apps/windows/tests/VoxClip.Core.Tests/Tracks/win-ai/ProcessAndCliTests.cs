@@ -126,8 +126,16 @@ public sealed class ProcessAndCliTests
         var stdout = input["stdout"]!.GetValue<string>();
         using var runner = new FixtureProcessRunner(connectorId, Catalog(), new());
         var stderr = input["stderr"]?.GetValue<string>() ?? "";
-        runner.Override = command => command.Arguments.Contains("-p") || command.Arguments.Contains("--output-schema") || command.Arguments.Contains("app-server")
-            ? new(0, stdout, stderr, TimeSpan.Zero, false) : null;
+        var requestedModel = input["model"]!.GetValue<string>();
+        var runnerMode = input["mode"]?.GetValue<string>() == "runner";
+        runner.Override = command =>
+        {
+            if (!command.Arguments.Contains("-p") && !command.Arguments.Contains("--output-schema") && !command.Arguments.Contains("app-server")) return null;
+            var modelIndex = command.Arguments.ToList().IndexOf("--model");
+            var generationModel = modelIndex >= 0 ? command.Arguments[modelIndex + 1] : "default";
+            var output = runnerMode && generationModel != requestedModel ? input["fallbackStdout"]!.GetValue<string>() : stdout;
+            return new(0, output, stderr, TimeSpan.Zero, false);
+        };
         using var http = new HttpClient();
         var connector = new LlmConnector(connectorId, Catalog(), http, new MemoryKeys(null), new Redactor(), processes: runner, binaryOverride: runner.BinaryPath);
         if (input["mode"]?.GetValue<string>() == "app-server")
@@ -137,23 +145,40 @@ public sealed class ProcessAndCliTests
             return;
         }
         var schema = input["schema"]!.DeepClone().AsObject();
-        var request = new LlmRequest(LlmFeature.VoiceRewrite, "Rewrite the source.", null, "Return the rewrite.", "voice_rewrite_proposal", schema, 512,
+        var request = new LlmRequest(runnerMode ? LlmFeature.Test : LlmFeature.VoiceRewrite, "Rewrite the source.", null, "Return the rewrite.", "voice_rewrite_proposal", schema, 512,
             Effort.Medium, TimeSpan.FromSeconds(120), "en", "cli-reply");
         string outcome;
         try
         {
-            var answer = await connector.SendAsync(request, input["model"]!.GetValue<string>(), TestContext.Current.CancellationToken);
-            switch (answer.Stop)
+            if (runnerMode)
             {
-                case StopKind.Truncated: outcome = "truncated"; break;
-                case StopKind.Refused refused: Assert.Null(refused.Category); outcome = "refused"; break;
-                default:
-                    var parsed = LlmOutput.Validate(answer, schema);
-                    if (parsed.Object is null) { outcome = "invalidOutput"; break; }
-                    Assert.Equal(expected["rewrite"]!.GetValue<string>(), parsed.Object["rewrite"]!.GetValue<string>());
-                    Assert.Equal(expected["model"]!.GetValue<string>(), answer.Model);
-                    outcome = "reply";
-                    break;
+                var result = await new LlmRunner(new MemoryKeys(null), Catalog(), new Redactor())
+                    .RunAsync(request, connector, requestedModel, TestContext.Current.CancellationToken);
+                Assert.Equal(expected["rewrite"]!.GetValue<string>(), result.Object["rewrite"]!.GetValue<string>());
+                Assert.Equal(expected["model"]!.GetValue<string>(), result.Model);
+                Assert.Equal(expected["usedFallback"]!.GetValue<bool>(), result.UsedFallback);
+                outcome = "reply";
+            }
+            else
+            {
+                var answer = await connector.SendAsync(request, requestedModel, TestContext.Current.CancellationToken);
+                if (expected["usage"] is JsonObject expectedUsage)
+                {
+                    long? Count(string key) => expectedUsage[key] is { } value ? (long)LlmOutput.Number(value) : null;
+                    Assert.Equal(new LlmUsage(Count("input"), Count("output"), Count("cacheRead"), Count("cacheWrite")), answer.Usage);
+                }
+                switch (answer.Stop)
+                {
+                    case StopKind.Truncated: outcome = "truncated"; break;
+                    case StopKind.Refused refused: Assert.Null(refused.Category); outcome = "refused"; break;
+                    default:
+                        var parsed = LlmOutput.Validate(answer, schema);
+                        if (parsed.Object is null) { outcome = "invalidOutput"; break; }
+                        Assert.Equal(expected["rewrite"]!.GetValue<string>(), parsed.Object["rewrite"]!.GetValue<string>());
+                        Assert.Equal(expected["model"]!.GetValue<string>(), answer.Model);
+                        outcome = "reply";
+                        break;
+                }
             }
         }
         catch (LlmException exception)
@@ -163,6 +188,15 @@ public sealed class ProcessAndCliTests
             outcome = char.ToLowerInvariant(outcome[0]) + outcome[1..];
         }
         Assert.Equal(expected["error"]?.GetValue<string>() ?? "reply", outcome);
+        if (runnerMode)
+        {
+            var models = runner.Requests.Where(command => command.Arguments.Contains("--output-schema")).Select(command =>
+            {
+                var modelIndex = command.Arguments.ToList().IndexOf("--model");
+                return modelIndex >= 0 ? command.Arguments[modelIndex + 1] : "default";
+            });
+            Assert.Equal(expected["generationModels"]!.AsArray().Select(value => value!.GetValue<string>()), models);
+        }
     }
 
     [Theory]
@@ -250,6 +284,40 @@ public sealed class ProcessAndCliTests
         var executable = OperatingSystem.IsWindows() ? Path.Combine(Environment.SystemDirectory, "where.exe") : "/bin/echo";
         var exception = await Assert.ThrowsAsync<ArgumentException>(() => new ProcessRunner().RunAsync(new(executable, [], Path.GetTempPath(), null, TimeSpan.FromSeconds(1), new Dictionary<string, string?> { [name] = "not-a-credential" }), null, CancellationToken.None));
         Assert.StartsWith("CLI authentication environment must be inherited unchanged.", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task AppServerFirstResponseDecides(bool malformedFirst, bool floatingId)
+    {
+        RequireMac();
+        var initializationId = floatingId ? "1.0" : "1";
+        var modelId = floatingId ? "2.0" : "2";
+        var validResult = "{\"data\":[]}";
+        var malformedResult = "\"not an object\"";
+        var firstResult = malformedFirst ? malformedResult : validResult;
+        var secondResult = malformedFirst ? validResult : malformedResult;
+        var script = $"IFS= read -r init; printf '%s\\n' '{{\"id\":{initializationId},\"result\":{{}}}}'; IFS= read -r ready; IFS= read -r list; printf '%s\\n' '{{\"id\":{modelId},\"result\":{firstResult}}}' '{{\"id\":2,\"result\":{secondResult}}}'; /bin/sleep 45";
+        var request = new ProcessRequest("/bin/sh", ["-c", script], Path.GetTempPath(), "initialize\ninitialized\nmodel/list\n", TimeSpan.FromSeconds(10));
+        var result = await ((IAppServerRunner)new ProcessRunner()).RunAppServerAsync(request, TestContext.Current.CancellationToken);
+        var responses = result.StandardOutput.Split('\n').Select(line => LlmOutput.Envelope(line)).OfType<JsonObject>()
+            .Where(response => LlmOutput.CliInteger(response["id"]) == 2);
+        var response = Assert.Single(responses);
+        Assert.Equal(malformedFirst, response["result"] is JsonValue);
+        Assert.True(result.Elapsed < TimeSpan.FromSeconds(5));
+    }
+
+    [Fact]
+    public async Task AppServerIgnoresDuplicateInitializationResponse()
+    {
+        RequireMac();
+        var script = "IFS= read -r init; printf '%s\\n' '{\"id\":1,\"result\":{}}' '{\"id\":1.0,\"error\":{\"message\":\"ignored duplicate\"}}'; IFS= read -r ready; IFS= read -r list; printf '%s\\n' '{\"id\":2,\"result\":{\"data\":[]}}'; /bin/sleep 45";
+        var request = new ProcessRequest("/bin/sh", ["-c", script], Path.GetTempPath(), "initialize\ninitialized\nmodel/list\n", TimeSpan.FromSeconds(10));
+        var result = await ((IAppServerRunner)new ProcessRunner()).RunAppServerAsync(request, TestContext.Current.CancellationToken);
+        Assert.Contains("\"id\":2", result.StandardOutput, StringComparison.Ordinal);
     }
 
     [Fact]

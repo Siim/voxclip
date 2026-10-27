@@ -9,6 +9,14 @@ public enum VoiceLabPatchConstants {
     public static let TTS_TRIM_LEAD = 0.03
     public static let TTS_TRIM_TAIL = 0.06
     public static let PAUSE_SLACK_KEEP = 0.15
+    /// The silence-fit limits and the length aim (§8.9.1, §8.9.2).
+    public static let SEAM_PAD_MAX = 0.3
+    public static let HARD_SEAM_PAD_MAX = 0.060
+    public static let PAUSE_FLOOR_PHRASE = 0.060
+    public static let PAUSE_FLOOR_PUNCT = 0.150
+    public static let PAUSE_GROWTH_MAX = 0.25
+    public static let LENGTH_AIM_MIN = 0.92
+    public static let LENGTH_AIM_MAX = 0.97
     /// dBFS of a 10 ms RMS frame.
     public static let VOICED_FRAME = -45.0
     /// 10^(VOICED_FRAME / 20) rounded to binary64, so no platform `pow` decides whether a frame is voiced.
@@ -40,6 +48,9 @@ public enum VoiceLabGeometryError: Error, Equatable, Sendable {
     case invalidWordTiming
     case noVoicedAudio
     case roomToneUnavailable
+    /// A fit plan would edit voiced audio or lose count of its frames. The planner checks every plan before it returns
+    /// it (§8.9.2), so this is a planner fault, never a property of the take.
+    case fitTouchesVoice
 }
 
 /// One window edge. `time` and `sample` agree under jsRound; `none` is a real take edge with no fade.
@@ -83,11 +94,15 @@ enum VoiceLabGeometry {
     /// `AudioEnvelopeBuilder`'s 10 ms frame: frame `i` covers samples `[i·size, (i+1)·size)`.
     static func frameSize(_ rate: Double) -> Int64 { Int64(max(1, EditingPrimitives.jsRound(rate * VoiceLabPatchConstants.RMS_FRAME))) }
     /// Items follow the project transcript rule (`ProjectJSON.validate`): unique IDs, finite times, `0 <= start < end`
-    /// and starts in transcript order.
-    static func check(rate: Double, totalSamples: Int64, envelope: AudioEnvelope, items: [TimedWord]) throws {
-        guard rate.isFinite, rate > 0, totalSamples > 0, Double(totalSamples) < sampleLimit, envelope.sampleRate == rate,
-              !envelope.levels.isEmpty, envelope.levels.allSatisfy({ $0.isFinite && $0 >= 0 }),
+    /// and starts in transcript order. An envelope, when given, is on the source rate with finite, non-negative levels.
+    static func check(rate: Double, totalSamples: Int64, envelope: AudioEnvelope?, items: [TimedWord]) throws {
+        guard rate.isFinite, rate > 0, totalSamples > 0, Double(totalSamples) < sampleLimit,
               Set(items.map(\.id)).count == items.count else { throw VoiceLabGeometryError.invalidInput() }
+        if let envelope {
+            guard envelope.sampleRate == rate, !envelope.levels.isEmpty, envelope.levels.allSatisfy({ $0.isFinite && $0 >= 0 }) else {
+                throw VoiceLabGeometryError.invalidInput()
+            }
+        }
         var previous = 0.0
         for item in items {
             guard item.start.isFinite, item.end.isFinite, previous <= item.start, item.start < item.end, item.end * rate < sampleLimit else {
@@ -186,6 +201,97 @@ public enum VoiceLabWindowPlanner {
         }
     }
 
+    /// The take a window is placed in, checked as `place` and `lendableSilence` both read it. It is
+    /// `media.source.durationSeconds` long and ends on sample `jsRound(durationSeconds × rate)`.
+    private struct Take {
+        let transcript: Transcript
+        let edits: ProjectEdits
+        let duration: Double
+        let rate: Double
+        let total: Int64
+        var words: [TimedWord] { transcript.words }
+
+        init(_ project: Project) throws {
+            guard let transcript = project.transcript else { throw VoiceLabGeometryError.invalidInput() }
+            self.transcript = transcript
+            edits = project.edits
+            duration = project.media.source.durationSeconds
+            rate = Double(project.media.source.audio?.sampleRate ?? 48_000)
+            guard duration.isFinite, duration > 0, rate.isFinite, rate > 0, duration * rate < VoiceLabGeometry.sampleLimit,
+                  edits.pauseThresholdSeconds.isFinite, edits.pauseThresholdSeconds > 0, edits.pauseKeepSeconds.isFinite,
+                  (0...1).contains(edits.pauseKeepSeconds) else { throw VoiceLabGeometryError.invalidInput() }
+            total = VoiceLabGeometry.samples(duration, rate)
+        }
+    }
+
+    /// The render scope as `VoiceLabOutputPlanner.build` makes it (§8.4): the clip, the scope's enabled replacements, the
+    /// editing segments, which items the scope keeps and which are already re-voiced, and its kept source. `place` and
+    /// `lendableSilence` both read it.
+    private struct ScopeSource {
+        let take: Take
+        let clipRange: TimeRange?
+        let replacements: [SynthPiece]
+        let segments: [EditSegment]
+        let keptItem: [Bool]
+        let replaced: [Bool]
+        /// The outer half of each replacement's own fades, which a gap seam beside it must leave free.
+        let reserved: [MediaInterval]
+
+        init(_ project: Project, scope: VoiceLabOutputScope, take: Take) throws {
+            self.take = take
+            let words = take.words, edits = take.edits
+            let pauses = try editing { try detectPauses(words, thresholdSeconds: edits.pauseThresholdSeconds) }
+            let state = EditState(transcript: take.transcript, pauses: pauses, pauseThresholdSeconds: edits.pauseThresholdSeconds,
+                                  pauseKeepSeconds: edits.pauseKeepSeconds, cutWordIds: Set(edits.cutWordIds),
+                                  cutPauseIds: Set(edits.cutPauseIds), corrections: edits.corrections, clips: edits.clips)
+            var activeClip: ClipRange?, clipRange: TimeRange?
+            if case .clip(let id) = scope {
+                guard let clip = edits.clips.first(where: { $0.id == id }), let indices = clipIndices(clip, words: words) else {
+                    throw VoiceLabGeometryError.invalidInput()
+                }
+                activeClip = clip
+                clipRange = try editing { try clipTimes(words, startIndex: indices.lowerBound, endIndex: indices.upperBound) }
+            }
+            self.clipRange = clipRange
+            let replacements = try scopeReplacements(project, clipRange: clipRange, rate: take.rate, duration: take.duration)
+            self.replacements = replacements
+            let segments = try editing { try buildSegments(state, activeClip: activeClip) }
+            self.segments = segments
+            let cutIds = Set(segments.filter { $0.kind == .word && $0.cut }.map(\.id))
+            keptItem = words.map { !cutIds.contains($0.id) }
+            // An item inside an enabled replacement is already re-voiced: it never bridges, and a take edge never absorbs it.
+            replaced = words.map { word in replacements.contains { $0.start <= word.start && word.end <= $0.end } }
+            let incomingHandles: [MediaInterval] = replacements.map { (replacement: SynthPiece) -> MediaInterval in
+                let halfFade: Int64 = replacement.incoming.fade / 2
+                let start: Int64 = replacement.range.startSample - halfFade
+                return MediaInterval(startSample: start, endSample: replacement.range.startSample)
+            }
+            let outgoingHandles: [MediaInterval] = replacements.map { (replacement: SynthPiece) -> MediaInterval in
+                let halfFade: Int64 = replacement.outgoing.fade / 2
+                let end: Int64 = replacement.range.endSample + replacement.outgoing.fade - halfFade
+                return MediaInterval(startSample: replacement.range.endSample, endSample: end)
+            }
+            reserved = incomingHandles + outgoingHandles
+        }
+
+        /// Kept source pieces as the output plan builds them: the words and pauses inside every replacement and inside the
+        /// `passage`, when given, are dropped, and neither the cuts nor the synth ranges (with `window`) are source.
+        func keptSource(_ passage: (start: Double, end: Double)?, window: [MediaInterval] = []) throws -> [MediaInterval] {
+            let dropped = replacements.map { ($0.start, $0.end) } + (passage.map { [($0.start, $0.end)] } ?? [])
+            let remaining = segments.filter { segment in
+                !(segment.kind == .word || segment.kind == .pause) || !dropped.contains { segment.start >= $0.0 && segment.end <= $0.1 }
+            }
+            let keep = take.edits.pauseKeepSeconds
+            let kept = try editing { try buildEditPlan(remaining, duration: take.duration, sampleRate: take.rate, pauseKeepSeconds: keep).kept }
+            return VoiceLabGeometry.subtract(kept, replacements.map(\.range) + window)
+        }
+    }
+
+    /// Editing failures in the take become `invalidInput`.
+    private static func editing<T>(_ body: () throws -> T) throws -> T {
+        do { return try body() } catch { throw VoiceLabGeometryError.invalidInput() }
+    }
+
     /// The enabled replacements `VoiceLabOutputPlanner.build` renders in this scope, by start. One that crosses the clip's
     /// range, has no synth samples, has no selected recipe or overlaps another leaves the scope unrenderable.
     private static func scopeReplacements(_ project: Project, clipRange: TimeRange?, rate: Double, duration: Double) throws -> [SynthPiece] {
@@ -223,54 +329,20 @@ public enum VoiceLabWindowPlanner {
     /// then earlier), and every seam with a fade keeps its outer half in the kept source beside it (§10.5).
     public static func place(project: Project, scope: VoiceLabOutputScope, envelope: AudioEnvelope, firstWordId: String,
                              lastWordId: String) throws -> VoiceLabWindow {
-        guard let transcript = project.transcript else { throw VoiceLabGeometryError.invalidInput() }
-        let words = transcript.words, edits = project.edits
-        let duration = project.media.source.durationSeconds
-        let rate = Double(project.media.source.audio?.sampleRate ?? 48_000)
-        guard duration.isFinite, duration > 0, rate.isFinite, rate > 0, duration * rate < VoiceLabGeometry.sampleLimit,
-              edits.pauseThresholdSeconds.isFinite, edits.pauseThresholdSeconds > 0, edits.pauseKeepSeconds.isFinite,
-              (0...1).contains(edits.pauseKeepSeconds) else { throw VoiceLabGeometryError.invalidInput() }
-        let total = VoiceLabGeometry.samples(duration, rate)
+        let take = try Take(project)
+        let words = take.words, duration = take.duration, rate = take.rate, total = take.total
         try VoiceLabGeometry.check(rate: rate, totalSamples: total, envelope: envelope, items: words)
         guard let a = words.firstIndex(where: { $0.id == firstWordId }) else { throw VoiceLabGeometryError.unknownWord(firstWordId) }
         guard let b = words.firstIndex(where: { $0.id == lastWordId }) else { throw VoiceLabGeometryError.unknownWord(lastWordId) }
         guard a <= b else { throw VoiceLabGeometryError.reversedWords }
 
-        // The editing state, clip, replacements and segments VoiceLabOutputPlanner builds for this scope.
-        func editing<T>(_ body: () throws -> T) throws -> T {
-            do { return try body() } catch { throw VoiceLabGeometryError.invalidInput() }
-        }
-        let pauses = try editing { try detectPauses(words, thresholdSeconds: edits.pauseThresholdSeconds) }
-        let state = EditState(transcript: transcript, pauses: pauses, pauseThresholdSeconds: edits.pauseThresholdSeconds,
-                              pauseKeepSeconds: edits.pauseKeepSeconds, cutWordIds: Set(edits.cutWordIds),
-                              cutPauseIds: Set(edits.cutPauseIds), corrections: edits.corrections, clips: edits.clips)
-        var activeClip: ClipRange?, clipRange: TimeRange?
-        if case .clip(let id) = scope {
-            guard let clip = edits.clips.first(where: { $0.id == id }), let indices = clipIndices(clip, words: words) else {
-                throw VoiceLabGeometryError.invalidInput()
-            }
-            activeClip = clip
-            clipRange = try editing { try clipTimes(words, startIndex: indices.lowerBound, endIndex: indices.upperBound) }
-        }
-        let replacements = try scopeReplacements(project, clipRange: clipRange, rate: rate, duration: duration)
-        let segments = try editing { try buildSegments(state, activeClip: activeClip) }
-        let cutIds = Set(segments.filter { $0.kind == .word && $0.cut }.map(\.id))
-        let keptItem = words.map { !cutIds.contains($0.id) }
-        // An item inside an enabled replacement is already re-voiced: it never bridges, and a take edge never absorbs it.
-        let replaced = words.map { word in replacements.contains { $0.start <= word.start && word.end <= $0.end } }
+        // The clip, replacements, segments and kept source VoiceLabOutputPlanner builds for this scope.
+        let source = try ScopeSource(project, scope: scope, take: take)
+        let clipRange = source.clipRange, replacements = source.replacements, reserved = source.reserved
+        let keptItem = source.keptItem, replaced = source.replaced
         let blocking = zip(keptItem, replaced).map { $0 || $1 }
-        // The outer half of each replacement's own fades, which a gap seam beside it must leave free.
-        let reserved = replacements.map { MediaInterval(startSample: $0.range.startSample - $0.incoming.fade / 2, endSample: $0.range.startSample) }
-            + replacements.map { MediaInterval(startSample: $0.range.endSample, endSample: $0.range.endSample + $0.outgoing.fade - $0.outgoing.fade / 2) }
-        /// Kept source pieces as the output plan builds them: the words and pauses inside every replacement and inside the
-        /// `passage`, when given, are dropped, and neither the cuts nor the synth ranges (with `window`) are source.
         func keptSource(_ passage: (start: Double, end: Double)?, window: [MediaInterval] = []) throws -> [MediaInterval] {
-            let dropped = replacements.map { ($0.start, $0.end) } + (passage.map { [($0.start, $0.end)] } ?? [])
-            let remaining = segments.filter { segment in
-                !(segment.kind == .word || segment.kind == .pause) || !dropped.contains { segment.start >= $0.0 && segment.end <= $0.1 }
-            }
-            let kept = try editing { try buildEditPlan(remaining, duration: duration, sampleRate: rate, pauseKeepSeconds: edits.pauseKeepSeconds).kept }
-            return VoiceLabGeometry.subtract(kept, replacements.map(\.range) + window)
+            try source.keptSource(passage, window: window)
         }
         /// Where the silence before item `index` begins: the latest end of the items before it.
         func beforeEnd(_ index: Int) -> Double { words[..<index].map(\.end).max() ?? 0 }
@@ -440,6 +512,49 @@ public enum VoiceLabWindowPlanner {
                               leftBridgeWordIds: words[first..<a].map(\.id), rightBridgeWordIds: words[(b + 1)..<(last + 1)].map(\.id),
                               start: start, end: end, startSample: leftSeam.sample, endSample: rightSeam.sample,
                               leftSeam: leftSeam, rightSeam: rightSeam)
+    }
+}
+
+extension VoiceLabWindowPlanner {
+    /// The §8.9.2 lendable silence of each gap seam of `window`, a window `place` returned for this `scope`, in seconds
+    /// (source samples over the source rate). It is the kept source contiguous with the seam on its outer side, measured
+    /// as §8.4 step 5 measures it for the final window, with every replacement's outer fade halves taken out, up to the
+    /// nearest kept item outside the window. So it stops at that item, a cut item's reach, a cut pause, a clip edge or
+    /// another replacement's outer fade half. A take-edge seam returns the silence to the nearest word inside the window,
+    /// in transcript seconds, and a hard seam returns nil. Pass both results directly to `VoiceLabFitPlanner.plan`;
+    /// only a gap seam can borrow, at most this less `PAUSE_SLACK_KEEP`.
+    public static func lendableSilence(project: Project, scope: VoiceLabOutputScope,
+                                       window: VoiceLabWindow) throws -> (incoming: Double?, outgoing: Double?) {
+        let take = try Take(project)
+        try VoiceLabGeometry.check(rate: take.rate, totalSamples: take.total, envelope: nil, items: take.words)
+        guard 0 <= window.startSample, window.startSample < window.endSample, window.endSample <= take.total,
+              window.leftSeam.sample == window.startSample, window.rightSeam.sample == window.endSample else {
+            throw VoiceLabGeometryError.invalidInput()
+        }
+        let source = try ScopeSource(project, scope: scope, take: take)
+        let range = MediaInterval(startSample: window.startSample, endSample: window.endSample)
+        let kept = VoiceLabGeometry.subtract(try source.keptSource((window.start, window.end), window: [range]), source.reserved)
+        var before: [Int64] = [], after: [Int64] = []
+        for (word, isKept) in zip(take.words, source.keptItem) where isKept {
+            if word.end <= window.start { before.append(VoiceLabGeometry.samples(word.end, take.rate)) }
+            if word.start >= window.end { after.append(VoiceLabGeometry.samples(word.start, take.rate)) }
+        }
+        func lend(_ seam: VoiceLabSeamPlacement, incoming: Bool) -> Double? {
+            if seam.kind == .none {
+                let words = take.words.filter { $0.kind == .word && $0.start >= window.start && $0.end <= window.end }
+                if incoming { return max(0, (words.map(\.start).min() ?? window.start) - window.start) }
+                return max(0, window.end - (words.map(\.end).max() ?? window.end))
+            }
+            guard seam.kind == .gap else { return nil }
+            guard let piece = kept.first(where: { (incoming ? $0.endSample : $0.startSample) == seam.sample }) else { return 0 }
+            let stop = incoming ? max(piece.startSample, before.max() ?? piece.startSample)
+                                : min(piece.endSample, after.min() ?? piece.endSample)
+            let distance: Int64 = incoming ? seam.sample - stop : stop - seam.sample
+            let samples: Int64 = max(0, distance)
+            let sampleCount: Double = Double(samples)
+            return sampleCount / take.rate
+        }
+        return (lend(window.leftSeam, incoming: true), lend(window.rightSeam, incoming: false))
     }
 }
 

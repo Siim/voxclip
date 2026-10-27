@@ -87,7 +87,7 @@ public sealed class VoiceLabNativeTempoTests(ITestOutputHelper output) : IAsyncL
                 (long)Math.Round((trimEnd - trimStart) * stretch, MidpointRounding.AwayFromZero), rate,
                 beforeHandle, afterHandle, fadeSamples - incomingOutside,
                 fadeSamples - outgoingOutside, ct));
-            Assert.Contains("unverified body and seam timing", refusal.Message, StringComparison.Ordinal);
+            Assert.Contains("which VoxClip does not support", refusal.Message, StringComparison.Ordinal);
         }
         finally { if (Directory.Exists(folder)) Directory.Delete(folder, true); }
     }

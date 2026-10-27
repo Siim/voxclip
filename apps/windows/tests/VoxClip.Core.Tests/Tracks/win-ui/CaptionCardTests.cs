@@ -1,6 +1,7 @@
 #if WIN_UI_TESTS
 using System.Text.Json;
 using VoxClip.App.Services;
+using VoxClip.App.ViewModels;
 using VoxClip.Core.Domain.Captions;
 using VoxClip.Core.Domain.Shared;
 using Xunit;
@@ -12,8 +13,77 @@ namespace VoxClip.Ui.Tests;
 /// card and draws it on the right surface.</summary>
 public sealed class CaptionCardTests
 {
+    [Fact]
+    public void TranscriptionRefreshesPaneCardsAndGallerySamples()
+    {
+        var original = HomeViewModelTests.Fixture("interview-take.voxclip");
+        var editor = new EditorViewModel(original with { Transcript = null });
+        var renderer = new CaptionGalleryRenderer(Shared);
+        var library = Core.Services.Settings.CaptionStyleLibrary.Load(Shared);
+        var style = library.Find("vox-highlight")!;
+        using var gallery = new CaptionGalleryViewModel(editor, renderer.Resources, () => true);
+        Assert.Equal(CaptionGallerySampleSource.Preview, gallery.Sample(style, 0).Source);
+        var pane = Cards.Card(editor.Project, null, true, "vox-highlight");
+        editor.Changed += (_, _) => pane = Cards.Card(editor.Project, null, true, "vox-highlight");
+        var changed = 0;
+        gallery.Changed += (_, _) => changed++;
+        editor.SetTranscript(original.Transcript!);
+        Assert.Equal(1, changed);
+        Assert.Equal(CaptionGallerySampleSource.Page, gallery.Sample(style, 0).Source);
+        Assert.Equal(CaptionCardSource.Transcript, pane.Text.Source);
+        Assert.NotEmpty(pane.Text.Words);
+    }
     private static readonly string Shared = SharedRoot();
     private static readonly CaptionCards Cards = new(Shared);
+
+    [Fact]
+    public void GalleryGroupsContainEveryBundledStyleInOrderWithNoOtherOrOffTile()
+    {
+        var styles = Core.Services.Settings.CaptionStyleLibrary.Load(Shared).Styles;
+        Assert.DoesNotContain(styles, style => CaptionFineTune.Group(style) == "Other");
+        var groups = styles.GroupBy(CaptionFineTune.Group).OrderBy(group => CaptionFineTune.GroupOrder(group.Key)).ToArray();
+        Assert.Equal(new[] { "Word by word", "Phrase", "Sentence" }, groups.Select(group => group.Key));
+        Assert.Equal(styles.Count, groups.Sum(group => group.Count()));
+        Assert.DoesNotContain(styles, style => style.Id == "off");
+    }
+
+    [Fact]
+    public void SwitchRoundTripRestoresTheStyleAndFallsBackOnlyWithoutOne()
+    {
+        Assert.Equal("vox-box-highlight", CaptionFineTune.TurnOn("vox-box-highlight", "vox-bold"));
+        Assert.Equal("vox-bold", CaptionFineTune.TurnOn(null, "vox-bold"));
+        Assert.Equal("vox-bold", CaptionFineTune.TurnOn("off", "vox-bold"));
+    }
+
+    [Fact]
+    public void GallerySummaryUsesTheCurrentOverridesAndCorrectGrammar()
+    {
+        var project = HomeViewModelTests.Fixture("interview-take.voxclip");
+        var style = Core.Services.Settings.CaptionStyleLibrary.Load(Shared).Styles.Single(style => style.Name == "Box highlight");
+        var captions = project.Captions with { Overrides = JsonDocument.Parse("{\"accent\":\"#F3F0E7\",\"text\":{\"transform\":\"none\"},\"layout\":{\"maxWords\":3}}").RootElement.Clone() };
+        Assert.Equal("Paper · As said · 3 words", CaptionFineTune.Summary(style, project with { Captions = captions }));
+    }
+
+    [Fact]
+    public void FineTunePreservesUnchangedOverridesAndStoresPositionsOutsideThePatch()
+    {
+        var project = HomeViewModelTests.Fixture("interview-take.voxclip");
+        var model = new EditorViewModel(project);
+        model.SetCaptionOverrides(CaptionFineTune.Change(model.Project.Captions, "font", ("sizeScale", System.Text.Json.Nodes.JsonValue.Create(1.2))));
+        model.SetCaptionOverrides(CaptionFineTune.Change(model.Project.Captions, "text", ("transform", System.Text.Json.Nodes.JsonValue.Create("none"))));
+        Assert.Equal(1.2, model.Project.Captions.Overrides.GetProperty("font").GetProperty("sizeScale").GetDouble());
+        model.SetCaptions(CaptionFineTune.Position(model.Project, 0));
+        Assert.True(CaptionFineTune.Edited(model.Project));
+        Assert.Equal(0.2, model.Project.Captions.PositionByAspect[CaptionFineTune.Preset(project)!].Y);
+        Assert.False(model.Project.Captions.Overrides.TryGetProperty("position", out _));
+        var text = model.Project.Transcript;
+        var edits = model.Project.Edits;
+        model.SetCaptions(CaptionFineTune.Reset(model.Project.Captions));
+        Assert.False(CaptionFineTune.Edited(model.Project));
+        Assert.Empty(model.Project.Captions.PositionByAspect);
+        Assert.Same(text, model.Project.Transcript);
+        Assert.Equal(edits, model.Project.Edits);
+    }
 
     private static string SharedRoot()
     {

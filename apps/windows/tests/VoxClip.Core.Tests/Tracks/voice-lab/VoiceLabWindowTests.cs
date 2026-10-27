@@ -11,15 +11,15 @@ namespace VoxClip.Core.Tests.Tracks.VoiceLabPatch;
 /// <summary>Shared window-cases.json vectors (tools/fixtures/voice-lab/generate_window.py) and a v3 round trip.</summary>
 public sealed class VoiceLabWindowTests
 {
-    static readonly string[] Categories = ["window", "handles", "trimHandles", "alignment", "trim", "relativeWords", "roomTone", "propertyCases",
-        "multiSegmentCases"];
+    static readonly string[] Categories = ["window", "handles", "trimHandles", "alignment", "trim", "relativeWords", "roomTone", "lendableSilence",
+        "propertyCases", "multiSegmentCases"];
     /// <summary>The passage fixture. Its replacement is the template every recipe here starts from.</summary>
     static readonly Lazy<Project> Passage = new(() => ProjectSerialization.Deserialize(FixtureLoader.ReadText("fixtures/voice-lab/passage-render-v3.voxclip")));
 
     static JsonElement Document()
     {
         using var document = FixtureLoader.ReadJson("fixtures/voice-lab/window-cases.json");
-        Assert.Equal("voxclip-voice-lab-window-cases/3", document.RootElement.GetProperty("schema").GetString());
+        Assert.Equal("voxclip-voice-lab-window-cases/4", document.RootElement.GetProperty("schema").GetString());
         return document.RootElement.Clone();
     }
     static JsonElement[] Cases(string key) => Document().GetProperty(key).EnumerateArray().ToArray();
@@ -87,7 +87,7 @@ public sealed class VoiceLabWindowTests
     public void EveryVectorIsConsumed()
     {
         var document = Document();
-        Assert.Equal(Categories.Concat(["schema", "constants", "caseCount", "propertyFuzz", "multiSegmentFuzz"]).Order(StringComparer.Ordinal),
+        Assert.Equal(Categories.Concat(["schema", "constants", "caseCount", "lendableSilenceFuzz", "propertyFuzz", "multiSegmentFuzz"]).Order(StringComparer.Ordinal),
             document.EnumerateObject().Select(property => property.Name).Order(StringComparer.Ordinal));
         Assert.Equal(document.GetProperty("caseCount").GetInt32(), Categories.Sum(key => Cases(key).Length));
         var constants = document.GetProperty("constants");
@@ -107,7 +107,7 @@ public sealed class VoiceLabWindowTests
     /// <summary>Replays window-shaped cases through Place. Every accepted window must validate and prepare in the case's scope,
     /// beside the take's replacements. A case that carries roomTone selects that room tone and builds a one-word passage
     /// recipe; one without room tone builds a voice-changer recipe, the minimal recipe that needs none.</summary>
-    static (int Accepted, int Passages, int Rendered) ReplayWindows(IEnumerable<JsonElement> tests)
+    static (int Accepted, int Passages, int Rendered) ReplayWindows(IEnumerable<JsonElement> tests, bool requireLend = false)
     {
         var accepted = 0;
         var passages = 0;
@@ -138,6 +138,14 @@ public sealed class VoiceLabWindowTests
                 accepted++;
                 try
                 {
+                    var silence = VoiceLabWindowPlanner.LendableSilence(project, scope, window);
+                    if (requireLend) Assert.True(test.TryGetProperty("lendableSilence", out _), name);
+                    if (test.TryGetProperty("lendableSilence", out var lent))
+                    {
+                        static double? Seconds(JsonElement value) => value.ValueKind == JsonValueKind.Null ? null : value.GetDouble();
+                        Assert.True(silence.Incoming == Seconds(lent.GetProperty("incoming")), name);
+                        Assert.True(silence.Outgoing == Seconds(lent.GetProperty("outgoing")), name);
+                    }
                     if (tone.ValueKind != JsonValueKind.Object)
                         Assemble(project, window, null, null, 0.5, null, scope);
                     else
@@ -175,7 +183,7 @@ public sealed class VoiceLabWindowTests
         var fuzz = document.GetProperty("propertyFuzz");
         Assert.True(fuzz.GetProperty("cases").GetInt32() >= 20000 && fuzz.GetProperty("renderFailures").GetInt32() == 0);
         var tests = document.GetProperty("propertyCases").EnumerateArray().ToArray();
-        var (accepted, passages, rendered) = ReplayWindows(tests);
+        var (accepted, passages, rendered) = ReplayWindows(tests, requireLend: true);
         Assert.Equal(300, tests.Length);
         Assert.True(accepted > 0 && passages == accepted && rendered == accepted, $"{rendered} of {accepted} rendered");
     }
@@ -189,10 +197,34 @@ public sealed class VoiceLabWindowTests
         var fuzz = document.GetProperty("multiSegmentFuzz");
         Assert.True(fuzz.GetProperty("cases").GetInt32() >= 20000 && fuzz.GetProperty("renderFailures").GetInt32() == 0);
         var tests = document.GetProperty("multiSegmentCases").EnumerateArray().ToArray();
-        var (accepted, passages, rendered) = ReplayWindows(tests);
+        var (accepted, passages, rendered) = ReplayWindows(tests, requireLend: true);
         Assert.Equal(150, tests.Length);
         Assert.True(accepted > 0 && passages == accepted && rendered == accepted, $"{rendered} of {accepted} rendered");
         Assert.Contains(tests, test => test.GetProperty("input").GetProperty("segments").EnumerateArray().Any(segment => segment.GetProperty("enabled").GetBoolean()));
+    }
+
+    /// <summary>§8.9.2 lendable silence: each case's window places, validates and prepares, and each gap seam lends the kept
+    /// source beside it up to the stop the case names. The fuzz widened every accepted window by what its gap seams lend, less
+    /// PAUSE_SLACK_KEEP, and every widened window still rendered.</summary>
+    [Fact]
+    public void LendableSilenceVectors()
+    {
+        var document = Document();
+        var fuzz = document.GetProperty("lendableSilenceFuzz");
+        Assert.True(fuzz.GetProperty("windows").GetInt32() >= 20000 && fuzz.GetProperty("lendingSeams").GetInt32() > 0);
+        var tests = document.GetProperty("lendableSilence").EnumerateArray().ToArray();
+        var (accepted, _, rendered) = ReplayWindows(tests);
+        Assert.True(accepted == tests.Length && rendered == accepted, $"{rendered} of {accepted} rendered");
+        foreach (var test in tests)
+        {
+            var input = test.GetProperty("input");
+            var expected = test.GetProperty("lendableSilence");
+            var name = Text(test, "name");
+            var (incoming, outgoing) = VoiceLabWindowPlanner.LendableSilence(Take(input, test.GetProperty("roomTone")), Scope(input),
+                Window(test.GetProperty("expected")));
+            Assert.True(incoming == Lent(expected.GetProperty("incoming")) && outgoing == Lent(expected.GetProperty("outgoing")), name);
+        }
+        static double? Lent(JsonElement value) => value.ValueKind == JsonValueKind.Null ? null : value.GetDouble();
     }
 
     [Fact]
@@ -287,6 +319,44 @@ public sealed class VoiceLabWindowTests
         }
     }
 
+    [Fact]
+    public void PlacedWindowsFeedFitPlannerAndRenderValidator()
+    {
+        var kinds = new HashSet<VoiceLabSeamKind>();
+        foreach (var test in Cases("lendableSilence"))
+        {
+            var input = test.GetProperty("input");
+            var tone = test.GetProperty("roomTone");
+            var project = Take(input, tone);
+            var scope = Scope(input);
+            var rate = Number(input, "sampleRate");
+            var placed = VoiceLabWindowPlanner.Place(project, scope, Envelope(input.GetProperty("envelope")),
+                Text(input, "firstWordId"), Text(input, "lastWordId"));
+            kinds.UnionWith([placed.LeftSeam.Kind, placed.RightSeam.Kind]);
+            var silence = VoiceLabWindowPlanner.LendableSilence(project, scope, placed);
+            var take = new VoiceLabFitTake(12000, 24000, 0.02, 0.41,
+                [new VoiceLabWord("patch", 0.05, 0.35, true)], new AudioEnvelope(24000, 0.01, Enumerable.Repeat(0.1f, 50).ToArray()));
+            var result = VoiceLabFitPlanner.Plan(placed, silence.Incoming, silence.Outgoing, take, ["patch"], rate);
+            var plan = result.Plan;
+            var duration = plan.WindowEnd - plan.WindowStart;
+            if (result is VoiceLabFitResult.ChangedDuration changed) duration = plan.WindowEnd - plan.WindowStart + changed.ResidualSeconds;
+            var window = placed with { Start = plan.WindowStart, End = plan.WindowEnd,
+                StartSample = plan.WindowStartSample, EndSample = plan.WindowEndSample };
+            var words = tone.ValueKind == JsonValueKind.Null ? null : plan.Words;
+            var (segment, asset) = PassageSegment(project, "segment-fitted", window, tone.ValueKind == JsonValueKind.Null ? null : Tone(tone), words, 0.5,
+                words is null ? null : "patch", plan, duration);
+            var built = project with { VoiceLab = project.VoiceLab with
+                { Segments = [..project.VoiceLab.Segments, segment], Assets = [..project.VoiceLab.Assets!, asset] } };
+            VoiceLabProject.Validate(built);
+            var recipe = segment.Candidates[0].Recipe!;
+            var broken = segment with { Candidates = [segment.Candidates[0] with
+                { Recipe = recipe with { Audio = recipe.Audio with { TrimEnd = recipe.Audio.TrimEnd + 1d / 24000 } } }] };
+            var invalid = built with { VoiceLab = built.VoiceLab with { Segments = [..project.VoiceLab.Segments, broken] } };
+            Error(VoiceLabProjectErrorCode.InvalidRange, () => VoiceLabRenderValidation.Validate(invalid));
+        }
+        Assert.True(kinds.SetEquals([VoiceLabSeamKind.None, VoiceLabSeamKind.Gap, VoiceLabSeamKind.Hard]));
+    }
+
     static void Error(VoiceLabProjectErrorCode code, Action action) => Assert.Equal(code, Assert.Throws<VoiceLabProjectException>(action).Code);
     static Project WithRecipe(Project project, VoiceLabRenderRecipe recipe)
     {
@@ -319,15 +389,88 @@ public sealed class VoiceLabWindowTests
         return Assemble(project, window, tone, relative, trimStart, patch, VoiceLabOutputScope.Full, id);
     }
 
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public void MillisecondWindowsFitThroughRenderPreparation(bool atEnd, bool changed)
+    {
+        const double rate = 44100;
+        var project = Passage.Value;
+        var words = new List<TimedWord>
+        {
+            new("w0", "zero", WordKind.Word, 0.7, 1, null, null, null, null, TimingSource.Native),
+            new("w1", "one", WordKind.Word, 1.1, 1.4, null, null, null, null, TimingSource.Native),
+            new("w2", "two", WordKind.Word, 1.5, 2.1, null, null, null, null, TimingSource.Native),
+            new("w3", "before", WordKind.Word, 2.2, 2.5, null, null, null, null, TimingSource.Native),
+            new("w4", "old", WordKind.Word, 2.586, 2.75, null, null, null, null, TimingSource.Native),
+            new("w5", "words", WordKind.Word, 2.8, 3.113, null, null, null, null, TimingSource.Native),
+        };
+        if (!atEnd) words.AddRange([
+            new("w6", "after", WordKind.Word, 3.2, 3.5, null, null, null, null, TimingSource.Native),
+            new("w7", "seven", WordKind.Word, 3.6, 3.8, null, null, null, null, TimingSource.Native),
+            new("w8", "eight", WordKind.Word, 3.9, 4.1, null, null, null, null, TimingSource.Native),
+            new("w9", "nine", WordKind.Word, 4.2, 4.5, null, null, null, null, TimingSource.Native)]);
+        project = project with
+        {
+            Media = project.Media with { Source = project.Media.Source with { Audio = project.Media.Source.Audio! with { SampleRate = (int)rate }, DurationSeconds = atEnd ? 3.143 : 4.6 } },
+            Transcript = project.Transcript! with { Words = words },
+            Edits = project.Edits with { CutWordIds = [], CutPauseIds = [], Clips = [], ActiveClipId = null },
+            VoiceLab = project.VoiceLab with { Segments = [], Assets = [], CleanAudio = new VoiceLabCleanAudio(VoiceLabCleanAudioMode.Off, null, null) },
+        };
+        var levels = Enumerable.Repeat(0.001f, 60).Concat(Enumerable.Repeat(0.1f, atEnd ? 255 : 400)).ToArray();
+        var sourceEnvelope = new AudioEnvelope((int)rate, 0.01, levels);
+        var placed = VoiceLabWindowPlanner.Place(project, VoiceLabOutputScope.Full, sourceEnvelope, "w4", "w5");
+        Assert.Equal(2.556, placed.Start); Assert.Equal(3.143, placed.End);
+        Assert.Equal(VoiceLabSeamKind.Hard, placed.LeftSeam.Kind);
+        Assert.Equal(atEnd ? VoiceLabSeamKind.None : VoiceLabSeamKind.Hard, placed.RightSeam.Kind);
+        var silence = VoiceLabWindowPlanner.LendableSilence(project, VoiceLabOutputScope.Full, placed);
+        var take = new VoiceLabFitTake(16800, 24000, 0.02, changed ? 0.62 : 0.52,
+            [new VoiceLabWord("patch", 0.05, changed ? 0.56 : 0.45, true)], new AudioEnvelope(24000, 0.01, Enumerable.Repeat(0.1f, 70).ToArray()));
+        var result = VoiceLabFitPlanner.Plan(placed, silence.Incoming, silence.Outgoing, take, ["patch"], rate);
+        Assert.Equal(changed, result is VoiceLabFitResult.ChangedDuration);
+        var fitted = result.Plan;
+        var residual = result is VoiceLabFitResult.ChangedDuration partial ? partial.ResidualSeconds : 0;
+        var duration = fitted.WindowEnd - fitted.WindowStart + residual;
+        var window = placed with { Start = fitted.WindowStart, End = fitted.WindowEnd, StartSample = fitted.WindowStartSample, EndSample = fitted.WindowEndSample };
+        var total = VoiceLabGeometry.Samples(project.Media.Source.DurationSeconds, rate);
+        var tone = VoiceLabRoomToneSelection.Select(words, sourceEnvelope, rate, total);
+        var (segment, asset) = PassageSegment(project, "segment-ms", window, tone, fitted.Words, 0.5, "patch", fitted, duration);
+        if (changed)
+        {
+            var recipe = segment.Candidates[0].Recipe!;
+            var factor = (fitted.WindowEndSample - fitted.WindowStartSample) / (double)recipe.Video.OutputSamples;
+            recipe = recipe with { Video = recipe.Video with { Mode = VoiceLabVideoMode.ZoomCover, RetimeFactor = factor, Zoom = 1.12, FaceX = 0.5, FaceY = 0.5 } };
+            segment = segment with { Candidates = [segment.Candidates[0] with { Recipe = recipe }] };
+        }
+        project = project with { VoiceLab = project.VoiceLab with { Segments = [segment], Assets = [asset] } };
+        VoiceLabProject.Validate(project); VoiceLabRenderValidation.Validate(project);
+        var output = VoiceLabOutputPlanner.Build(project, VoiceLabOutputScope.Full);
+        var synth = Assert.Single(output.Pieces, piece => piece.Kind == VoiceLabOutputPieceKind.Synth);
+        var prepared = VoiceLabRenderContract.Prepare(project, VoiceLabOutputScope.Full, VoiceLabLabelPosition.TopRight);
+        if (changed)
+        {
+            Assert.Equal(VoiceLabVideoMode.ZoomCover, Assert.Single(prepared.SelectedSegmentRecipes).Recipe.Video.Mode);
+            Assert.Equal(VoiceLabProjectErrorCode.VideoModeUnsupported,
+                Assert.Throws<VoiceLabProjectException>(() => VoiceLabRenderInput.Capture(project, prepared, "not-opened")).Code);
+        }
+        else
+        {
+            Assert.Equal(synth.SourceEndSample - synth.SourceStartSample, synth.OutputEndSample - synth.OutputStartSample);
+            Assert.Equal(VoiceLabVideoMode.Source, Assert.Single(prepared.SelectedSegmentRecipes).Recipe.Video.Mode);
+        }
+    }
+
     /// <summary>The selected recipe a candidate would carry for window, built only from the geometry above, as segment id with
     /// its own asset. The asset holds trimStart seconds before the passage and 0.5 s after it. Without words the segment is
     /// a voice changer, which carries no text, words or room tone.</summary>
     static (VoiceLabSegment Segment, VoiceLabAsset Asset) PassageSegment(Project project, string id, VoiceLabWindow window, VoiceLabRoomTone? tone,
-        IReadOnlyList<VoiceLabWord>? words, double trimStart, string? patch)
+        IReadOnlyList<VoiceLabWord>? words, double trimStart, string? patch, VoiceLabFitPlan? fit = null, double? duration = null)
     {
         double rate = project.Media.Source.Audio!.SampleRate;
-        var outDuration = (window.EndSample - window.StartSample) / rate;
-        var trimEnd = trimStart + outDuration;
+        var outDuration = duration ?? (window.EndSample - window.StartSample) / rate;
+        var frames = fit?.OutputFrames ?? (long)EditingMath.Round((window.EndSample - window.StartSample) * 24000 / rate);
+        var trimEnd = (VoiceLabGeometry.Samples(trimStart, 24000) + frames) / 24000d;
         var assetDuration = trimEnd + 0.5;
         var seams = new VoiceLabSeams(
             VoiceLabHandles.Seam(window.LeftSeam.Kind, window.LeftSeam.FadeSamples, true, 24000, rate, 1),
@@ -348,7 +491,7 @@ public sealed class VoiceLabWindowTests
                 VoiceLabGeometry.Samples(trimStart, 24000), VoiceLabGeometry.Samples(trimEnd, 24000))],
             RoomTone = tone,
             Seams = seams,
-            Video = new VoiceLabVideoRecipe(VoiceLabVideoMode.Source, window.StartSample, window.EndSample, window.EndSample - window.StartSample,
+            Video = new VoiceLabVideoRecipe(VoiceLabVideoMode.Source, window.StartSample, window.EndSample, VoiceLabGeometry.Samples(outDuration, rate),
                 null, null, null, null, null, null, null, null, null, null, null),
             Qa = words is null ? recipe.Qa : recipe.Qa with { TranscriptTokens = words.Count },
         };

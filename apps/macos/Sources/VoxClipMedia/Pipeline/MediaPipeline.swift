@@ -63,11 +63,15 @@ public struct RenderGraph {
 public struct CompositionBuilder: Sendable {
     private let rasterizer: (any CaptionRasterizer)?
     private let sharedRasterizer: Result<CoreTextCaptionRasterizer, any Error>
+    /// Where a Voice Lab render keeps its asset snapshots and mix: the temporary directory, or a test's own folder.
+    let scratchRoot: URL
     public init() { self.init(legacyRasterizer: nil) }
     public init(rasterizer: any CaptionRasterizer) { self.init(legacyRasterizer: rasterizer) }
-    private init(legacyRasterizer: (any CaptionRasterizer)?) {
+    init(scratchRoot: URL) { self.init(legacyRasterizer: nil, scratchRoot: scratchRoot) }
+    private init(legacyRasterizer: (any CaptionRasterizer)?, scratchRoot: URL = FileManager.default.temporaryDirectory) {
         rasterizer = legacyRasterizer
         sharedRasterizer = Result { try CoreTextCaptionRasterizer(shared: SharedResources.locate()) }
+        self.scratchRoot = scratchRoot
     }
 
     public func build(_ request: RenderRequest, isolation: isolated (any Actor)? = #isolation) async throws -> RenderGraph {
@@ -126,7 +130,7 @@ public struct CompositionBuilder: Sendable {
         var lease: VoiceLabRenderLease?
         if synthetic {
             guard sourceAudio != nil, let audio, let voicePlan else { throw VoxClipError.noAudioTrack }
-            lease = try await VoiceLabAudioRenderer.stage(request: request)
+            lease = try await VoiceLabAudioRenderer.stage(request: request, scratchRoot: scratchRoot)
             let mixed = AVURLAsset(url: lease!.mixedAudioURL)
             guard let mixedTrack = try await MediaSupport.audioTrack(in: mixed) else { throw VoxClipError.decodeFailed("Mixed CAF has no audio track") }
             try audio.insertTimeRange(CMTimeRange(start: .zero, duration: CMTime(value: voicePlan.outputSamples, timescale: rate)),
