@@ -104,7 +104,7 @@ public actor ElevenLabsTranscriber: Transcriber {
         upload.setValue(key, forHTTPHeaderField: "xi-api-key")
         upload.setValue("application/json", forHTTPHeaderField: "Accept")
         upload.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
-        upload.setValue("VoxClip/0.1.0 (macOS \(SpeechRuntimeVersion.macOS); arm64)", forHTTPHeaderField: "User-Agent")
+        upload.setValue("VoxClip/\(AppVersion.current) (macOS \(SpeechRuntimeVersion.macOS); arm64)", forHTTPHeaderField: "User-Agent")
         let reporter = SpeechProgressThrottle(callback: progress)
         defer { reporter.cancel() }
         for attempt in 0..<3 {

@@ -1,0 +1,20 @@
+[
+  { "runtime": null, "writer": "0.0.0" },
+  { "runtime": "", "writer": "0.0.0" },
+  { "runtime": " \t\n", "writer": "0.0.0" },
+  { "runtime": "unknown", "writer": "0.0.0" },
+  { "runtime": "invalid", "writer": "0.0.0" },
+  { "runtime": "1.2", "writer": "0.0.0" },
+  { "runtime": "1.2.3.4", "writer": "0.0.0" },
+  { "runtime": "01.2.3", "writer": "0.0.0" },
+  { "runtime": "1.02.3", "writer": "0.0.0" },
+  { "runtime": "1.2.03", "writer": "0.0.0" },
+  { "runtime": "1.2.3-beta.01", "writer": "0.0.0" },
+  { "runtime": "1.2.3-alpha.1", "writer": "0.0.0" },
+  { "runtime": "1.2.3+build", "writer": "0.0.0" },
+  { "runtime": "1.2.3\n", "writer": "0.0.0" },
+  { "runtime": "1.2.3", "writer": "1.2.3" },
+  { "runtime": "9.8.7-beta.2", "writer": "9.8.7-beta.2" },
+  { "runtime": "0.0.0", "writer": "0.0.0" },
+  { "runtime": "0.0.0-beta.0", "writer": "0.0.0-beta.0" }
+]

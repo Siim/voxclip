@@ -98,7 +98,7 @@ import Testing
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
         let path = directory.appendingPathComponent("take.voxclip")
-        let store = JSONProjectStore()
+        let store = JSONProjectStore(appVersion: "9.8.7")
         try await store.save(value, to: path)
         return try await store.load(from: path)
     }
@@ -339,7 +339,7 @@ import Testing
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("voxclip-v3-schema-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
-        let store = JSONProjectStore()
+        let store = JSONProjectStore(appVersion: "9.8.7")
         var files: [URL] = []
         for (name, value) in [("v1-extension", try extendedV1()), ("v2-asset", try segmentFreeV2())] {
             let url = directory.appendingPathComponent(name + ".voxclip")

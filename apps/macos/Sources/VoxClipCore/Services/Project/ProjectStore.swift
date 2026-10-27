@@ -10,8 +10,15 @@ public protocol ProjectStore: Sendable {
 public actor JSONProjectStore: ProjectStore {
     public private(set) var loadWarnings: [String] = []
     private let logger: any Logger
-    public init() { logger = RedactingLogger(homeDirectory: NSHomeDirectory()) }
-    public init(logger: any Logger) { self.logger = logger }
+    private let appVersion: String
+    public init(appVersion: String? = AppVersion.current) {
+        logger = RedactingLogger(homeDirectory: NSHomeDirectory())
+        self.appVersion = AppVersion.resolveProjectWriter(appVersion)
+    }
+    public init(logger: any Logger, appVersion: String? = AppVersion.current) {
+        self.logger = logger
+        self.appVersion = AppVersion.resolveProjectWriter(appVersion)
+    }
     public func load(from url: URL) async throws -> Project {
         try await loadReportingWarnings(from: url).0
     }
@@ -32,7 +39,7 @@ public actor JSONProjectStore: ProjectStore {
         var snapshot = Self.cleanReferences(project).project
         if let resolved = try? await resolveSource(for: snapshot, projectURL: url) { snapshot.media.source.absolutePath = resolved.path }
         snapshot.modifiedAt = Date()
-        snapshot.savedBy = ProjectWriter()
+        snapshot.savedBy = ProjectWriter(version: appVersion)
         snapshot.media.source.relativePath = Self.relativePath(source: URL(fileURLWithPath: snapshot.media.source.absolutePath), projectURL: url)
         let data = try Self.encode(snapshot)
         do { try AtomicJSON.write(data, to: url) }

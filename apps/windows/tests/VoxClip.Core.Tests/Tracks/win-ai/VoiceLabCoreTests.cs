@@ -44,6 +44,7 @@ public sealed class VoiceLabCoreTests
         internal List<(string Method, string Url, string Body, string? Header)> Calls { get; } = [];
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
         {
+            Assert.Equal($"VoxClip/{LlmRuntime.Version}", request.Headers.UserAgent.ToString());
             Calls.Add((request.Method.Method, request.RequestUri!.AbsoluteUri,
                 request.Content is null ? "" : await request.Content.ReadAsStringAsync(ct),
                 request.Headers.GetValues("xi-api-key").Single()));

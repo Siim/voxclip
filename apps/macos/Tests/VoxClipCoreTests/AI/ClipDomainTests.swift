@@ -57,7 +57,15 @@ func aiTimeVector(value: Double, expected: String) { #expect(AIText.formatTime(v
     let candidate = AIClipTestData.candidate
     let topics = try finalizeClips([candidate(0,30,7,"A","a"), candidate(30,60,8,"B","b"),candidate(61,99,6,"C","c"),candidate(70,90,9,"D","d"),candidate(0,20,5,"E","e")], words: words, preset: AIClipTestData.preset(.topics), lines: [], options: FinalizeClipsOptions(snap: false))
     #expect(topics.map(\.title) == ["E","B","D"])
-    let quotes = try finalizeClips((0...7).map { candidate(Double(12 * $0), Double(12 * $0 + 5), $0.isMultiple(of: 2) ? 7 : 8, "Q\($0)", "q") }, words: words, preset: AIClipTestData.preset(.quotes), lines: [], options: FinalizeClipsOptions(snap: false))
+    let quoteCandidates: [ClipCandidate] = (0...7).map { index in
+        let startSeconds: Int = 12 * index
+        let endSeconds: Int = startSeconds + 5
+        let start: Double = Double(startSeconds)
+        let end: Double = Double(endSeconds)
+        let score: Double = index.isMultiple(of: 2) ? 7 : 8
+        return candidate(start, end, score, "Q\(index)", "q")
+    }
+    let quotes = try finalizeClips(quoteCandidates, words: words, preset: AIClipTestData.preset(.quotes), lines: [], options: FinalizeClipsOptions(snap: false))
     #expect(quotes.map(\.title) == ["Q0","Q1","Q2","Q3","Q5","Q7"])
 }
 

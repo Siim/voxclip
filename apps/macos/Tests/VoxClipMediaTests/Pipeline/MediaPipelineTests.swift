@@ -86,7 +86,8 @@ extension HeavyMediaTests {
     let destination = directory.appendingPathComponent("edited.wav")
     try await AVExporter().writeEditedAudio(request(), to: destination)
     let data = try Data(contentsOf: destination)
-    #expect(data.count == 44 + 84000 * 8)
+    let expectedByteCount: Int = 44 + 84_000 * 8
+    #expect(data.count == expectedByteCount)
     let values = data.dropFirst(44).withUnsafeBytes { Array($0.bindMemory(to: Float.self)) }
     for frame in 23997...24003 {
         #expect(abs(values[frame * 2]) < 0.01)

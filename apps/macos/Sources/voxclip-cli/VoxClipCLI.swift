@@ -90,7 +90,7 @@ final class CLIInterruptTiming: Sendable {
     static let configuration = CommandConfiguration(
         commandName: "voxclip-cli", abstract: "Edit video by words. Native, headless VoxClip tools.",
         discussion: "Primary export: voxclip-cli --open <project-or-media> --export <out.mp4> [options]. Use 'voxclip-cli export --help' for export options.",
-        version: "0.1.0",
+        version: AppVersion.current,
         subcommands: [Export.self, Probe.self, Transcribe.self, Models.self, Plan.self, RenderCaption.self, FindClips.self, LLMTest.self, Encoders.self, Version.self],
         defaultSubcommand: Export.self
     )
@@ -188,7 +188,7 @@ enum CLIExecution {
         } catch VoiceLabProjectError.unsupportedRendering {
             let message = "This build cannot preview or export generated voice segments yet. Your video and edits are still here."
             if json {
-                try printJSON(.object(["ok": .bool(false), "command": .string(command), "error": .object(["code": .string("exportFailed"), "message": .string(message)]), "version": .string("0.1.0")]))
+                try printJSON(.object(["ok": .bool(false), "command": .string(command), "error": .object(["code": .string("exportFailed"), "message": .string(message)]), "version": .string(AppVersion.current)]))
             } else { FileHandle.standardError.write(Data((message + "\n").utf8)) }
             throw ExitCode(5)
         } catch let error as VoiceLabProjectError {
@@ -202,14 +202,14 @@ enum CLIExecution {
             }
             let message = reason + " Your video and edits are still here."
             if json {
-                try printJSON(.object(["ok": .bool(false), "command": .string(command), "error": .object(["code": .string("exportFailed"), "message": .string(message)]), "version": .string("0.1.0")]))
+                try printJSON(.object(["ok": .bool(false), "command": .string(command), "error": .object(["code": .string("exportFailed"), "message": .string(message)]), "version": .string(AppVersion.current)]))
             } else { FileHandle.standardError.write(Data((message + "\n").utf8)) }
             throw ExitCode(5)
         } catch {
             let failure = error is CancellationError ? VoxClipError.cancelled : (error as? VoxClipError ?? (error is DecodingError ? .projectUnreadable("Invalid input JSON") : .exportFailed(redactor().redact(error.localizedDescription))))
             let message = redactor().redact(failure.errorDescription ?? "")
             if json {
-                try printJSON(.object(["ok": .bool(false), "command": .string(command), "error": .object(["code": .string(failure.code.rawValue), "message": .string(message)]), "version": .string("0.1.0")]))
+                try printJSON(.object(["ok": .bool(false), "command": .string(command), "error": .object(["code": .string(failure.code.rawValue), "message": .string(message)]), "version": .string(AppVersion.current)]))
             } else if failure != .cancelled {
                 FileHandle.standardError.write(Data((message + "\n").utf8))
             }
@@ -221,7 +221,7 @@ enum CLIExecution {
         let message = redactor().redact(message)
         if json {
             try printJSON(.object(["ok": .bool(false), "command": .string(command),
-                "error": .object(["code": .string("usageError"), "message": .string(message)]), "version": .string("0.1.0")]))
+                "error": .object(["code": .string("usageError"), "message": .string(message)]), "version": .string(AppVersion.current)]))
         } else { FileHandle.standardError.write(Data((message + "\n").utf8)) }
     }
 
@@ -446,11 +446,15 @@ struct Encoders: AsyncParsableCommand {
 
 struct Version: ParsableCommand {
     static let configuration = CommandConfiguration(abstract: "Print VoxClip version and platform.")
-    mutating func run() {
+    @Flag(help: "Print JSON.") var json = false
+    mutating func run() throws {
         #if arch(arm64)
-        print("VoxClip 0.1.0 (macos-arm64)")
+        let platform = "macos-arm64"
         #else
-        print("VoxClip 0.1.0 (macos-x64)")
+        let platform = "macos-x64"
         #endif
+        let text = "VoxClip \(AppVersion.current) (\(platform))"
+        if json { try CLIExecution.printJSON(CLIWorkflow.success("version", fields: ["result": .string(text)])) }
+        else { print(text) }
     }
 }

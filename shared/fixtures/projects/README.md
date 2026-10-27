@@ -17,6 +17,10 @@ Validate them with `python3 tools/schemas/validate.py` (CI runs it). After any c
 
 `tools/fixtures/projects/generate_normalization.py` writes `normalization/legacy-nfc.voxclip` and `normalization/legacy-nfc.expected.json`. The input has non-NFC LV+T word text and a correction, inert jamo boundary text, and a composed Kirat Rai letter. Both project loaders normalize word text and corrections in memory before text validation, silently; their serializers write exactly the same model as the expected file. Ids and source times stay fixed. Run the generator twice to check reproducibility.
 
+## Writer versions
+
+`writer-versions.json` pins the project writer-version rule of editing.md section 10.1: a runtime version that matches the release grammar (`X.Y.Z` or `X.Y.Z-beta.N`, no leading zeroes) is stamped as is, and a missing, blank or invalid one is stamped `0.0.0`. `tools/fixtures/projects/generate_writer_versions.py` writes its 18 cases; regenerate with `python3 tools/fixtures/projects/generate_writer_versions.py` and review the diff as a behaviour change. `tools/release/test_version.py` fails if the committed file differs from the generator's output, and both Core suites save and reload every case (Mac `PersistenceTests`, Windows `ProjectStoreTests`).
+
 ## Timestamp cases
 
 `timestamps.json` pins the persisted timestamp rule of editing.md section 10.1. `tools/fixtures/projects/generate_timestamps.py` writes it with the Python standard library only, and two runs give identical bytes. Regenerate with `python3 tools/fixtures/projects/generate_timestamps.py` and review the diff as a behaviour change. Both Core suites replay every case: Mac `TimestampWireRule` (`Tests/VoxClipCoreTests/Editing/TimestampTests.swift`) and Windows `TimestampWireRuleTests`.

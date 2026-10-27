@@ -128,8 +128,10 @@ struct CLIProcessRunnerTests {
             workingDirectory: directory.url, environment: [:], stdin: Data(repeating: 65, count: 400_000),
             timeout: .seconds(5), maxOutputBytes: 300_000))
         #expect(result.exitCode == 0)
-        #expect(result.stdout.count == 4 * 65536 + 8)
-        #expect(result.stderr.count == 4 * 65536)
+        let pipeBytes: Int = 4 * 65_536
+        let stdoutBytes: Int = pipeBytes + 8
+        #expect(result.stdout.count == stdoutBytes)
+        #expect(result.stderr.count == pipeBytes)
         #expect(result.stdout.suffix(8) == Data("finished".utf8))
     }
 

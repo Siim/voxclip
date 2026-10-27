@@ -3,6 +3,27 @@ import Testing
 @testable import VoxClipCore
 
 @Suite struct EditingPersistence {
+    struct WriterVersionCase: Decodable, Sendable {
+        let runtime: String?
+        let writer: String
+    }
+
+    @Test func runtimeWriterVersionsSaveAndReload() async throws {
+        let cases = try FixtureLoader.decode([WriterVersionCase].self, at: "fixtures/projects/writer-versions.json")
+        let original = try project()
+        let directory = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let destination = directory.appendingPathComponent("writer.voxclip")
+        for entry in cases {
+            let store = JSONProjectStore(appVersion: entry.runtime)
+            try await store.save(original, to: destination)
+            let loaded = try await store.load(from: destination)
+            #expect(loaded.savedBy.version == entry.writer)
+            #expect(loaded.transcript == original.transcript)
+            #expect(loaded.edits == original.edits)
+        }
+    }
+
     static var projectFixtureNames: [String] {
         guard let root = try? FixtureLoader.sharedRoot(), let files = try? FileManager.default.contentsOfDirectory(at: root.appendingPathComponent("fixtures/projects"), includingPropertiesForKeys: nil) else { return [] }
         return files.filter { $0.pathExtension == "voxclip" }.map { $0.deletingPathExtension().lastPathComponent }.sorted()
@@ -24,12 +45,12 @@ import Testing
         let directory = try temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
         let url = directory.appendingPathComponent(name + ".voxclip")
-        let store = JSONProjectStore()
+        let store = JSONProjectStore(appVersion: "9.8.7")
         try await store.save(original, to: url)
         let loaded = try await store.load(from: url)
         #expect(loaded.transcript == original.transcript)
         #expect(loaded.edits == original.edits)
-        #expect(loaded.savedBy == ProjectWriter())
+        #expect(loaded.savedBy == ProjectWriter(version: "9.8.7"))
         #expect(loaded.modifiedAt != original.modifiedAt)
         #expect(loaded.media.source.relativePath == JSONProjectStore.relativePath(source: URL(fileURLWithPath: original.media.source.absolutePath), projectURL: url))
         let raw = try Data(contentsOf: url)
@@ -129,7 +150,7 @@ import Testing
         project.media.source.relativePath = "source.bin"
         project.media.source.sizeBytes = 4
         project.media.source.contentKey = try JSONProjectStore.contentKey(for: source)
-        let store = JSONProjectStore(), projectURL = directory.appendingPathComponent("test.voxclip")
+        let store = JSONProjectStore(appVersion: "9.8.7"), projectURL = directory.appendingPathComponent("test.voxclip")
         #expect(try await store.resolveSource(for: project, projectURL: projectURL) == source)
         try await store.save(project, to: projectURL)
         #expect(try await store.load(from: projectURL).media.source.absolutePath == source.path)
@@ -147,7 +168,7 @@ import Testing
         let existing = Data("previous document".utf8)
         try existing.write(to: destination)
         var invalid = try project(); invalid.media.source.durationSeconds = -.infinity
-        await #expect(throws: (any Error).self) { try await JSONProjectStore().save(invalid, to: destination) }
+        await #expect(throws: (any Error).self) { try await JSONProjectStore(appVersion: "9.8.7").save(invalid, to: destination) }
         #expect(try Data(contentsOf: destination) == existing)
     }
 
@@ -156,7 +177,7 @@ import Testing
         defer { try? FileManager.default.removeItem(at: directory) }
         let source = directory.appendingPathComponent("source.bin")
         try Data([1, 2, 3]).write(to: source)
-        let original = try project(), store = JSONProjectStore()
+        let original = try project(), store = JSONProjectStore(appVersion: "9.8.7")
         let probe = MediaProbeResult(durationSeconds: original.media.source.durationSeconds + 0.04, isPlayable: true)
         await #expect(throws: VoxClipError.self) { try await store.relink(original, to: source, probe: probe) }
         let linked = try await store.relink(original, to: source, probe: probe, confirmedDifferent: true)
@@ -302,7 +323,7 @@ import Testing
         #expect(project.ai.results.count == 15)
         let directory = try temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
-        let url = directory.appendingPathComponent("retained.voxclip"), store = JSONProjectStore()
+        let url = directory.appendingPathComponent("retained.voxclip"), store = JSONProjectStore(appVersion: "9.8.7")
         try await store.save(project, to: url)
         let loaded = try await store.load(from: url)
         #expect(loaded.ai.results.map(\.id) == expectedIDs)

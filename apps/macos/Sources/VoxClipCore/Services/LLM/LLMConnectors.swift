@@ -20,7 +20,7 @@ public enum LLMConnectors {
         if id == .claudeCode || id == .codex {
             let path = settings.values["llm.cliPath.\(id.rawValue)"]?.aiString ?? ""
             return CLIConnector(id: id, runner: processes, catalog: catalog, log: log,
-                                executable: path.isEmpty ? nil : URL(fileURLWithPath: path))
+                                executable: path.isEmpty ? nil : URL(fileURLWithPath: path), appVersion: AppVersion.current)
         }
         do {
             let value = id == .ollama || id == .lmstudio
@@ -34,7 +34,7 @@ public enum LLMConnectors {
                 baseURL = parsed
             }
             return try HTTPConnector(id: id, keys: keys, catalog: catalog, log: log, baseURL: baseURL,
-                                     cacheURL: DataLocations().cache.appendingPathComponent("llm-models.json"))
+                                     appVersion: AppVersion.current, cacheURL: DataLocations().cache.appendingPathComponent("llm-models.json"))
         } catch {
             let failure = error as? LLMError ?? .unavailable(reason: "VoxClip is missing its AI configuration. Reinstall VoxClip.")
             return UnavailableLLMConnector(id: id, reason: failure.userMessage(label: label, includeEditsSaved: false) ?? "")

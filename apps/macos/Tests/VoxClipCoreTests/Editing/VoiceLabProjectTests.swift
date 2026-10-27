@@ -148,7 +148,7 @@ import Testing
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
         let path = directory.appendingPathComponent("take.voxclip")
-        let store = JSONProjectStore()
+        let store = JSONProjectStore(appVersion: "9.8.7")
         try await store.save(project, to: path)
         let reopened = try await store.load(from: path)
         #expect(reopened.schemaVersion == 2 && reopened.voiceLab == project.voiceLab)

@@ -41,7 +41,7 @@ enum CLIWorkflow {
         return status == noErr && session != nil
     }
     static func success(_ command: String, fields: [String: JSONValue] = [:]) -> JSONValue {
-        .object(fields.merging(["ok": .bool(true), "command": .string(command), "version": .string("0.1.0")]) { _, new in new })
+        .object(fields.merging(["ok": .bool(true), "command": .string(command), "version": .string(AppVersion.current)]) { _, new in new })
     }
 
     static func success(_ command: String, value: some Encodable) throws -> JSONValue {
@@ -57,6 +57,7 @@ enum CLIWorkflow {
         let attributes = try FileManager.default.attributesOfItem(atPath: source.path)
         guard let bytes = (attributes[.size] as? NSNumber)?.int64Value else { throw VoxClipError.mediaMissing(source.lastPathComponent) }
         return Project(id: UUID().uuidString, title: source.deletingPathExtension().lastPathComponent, createdAt: Date(), modifiedAt: Date(),
+            savedBy: ProjectWriter(version: AppVersion.projectWriterVersion),
             media: ProjectMedia(source: MediaReference(absolutePath: source.path, sizeBytes: bytes, durationSeconds: probe.durationSeconds,
                                                        contentKey: key, video: probe.video, audio: probe.audio)), transcript: transcript,
             edits: ProjectEdits(pauseThresholdSeconds: transcript?.refined == true ? 0.8 : 1.0))

@@ -16,7 +16,12 @@ The setter changes `CFBundleShortVersionString`, increments the integer-string
 Both files are validated and staged before replacement; XML formatting and
 unrelated values are preserved. Binary plists are also supported. Versions are
 `X.Y.Z` or `X.Y.Z-beta.N`, without leading zeroes in numeric components. The
-checker exits 1 on mismatched or invalid versions and never changes either file.
+checker exits 1 on mismatched or invalid versions, or production string literals
+containing the current release version (release section 1), and never changes
+either version file.
+
+Run the regression suite with `python3 -m unittest discover -s tools/release -p
+'test_*.py'`. It uses isolated copies under `/tmp/voxclip-sol-followups-3`.
 
 Test the setter only in a temporary directory containing copies of these tools
 and the two version files in their original relative locations. Do not bump the

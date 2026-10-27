@@ -141,7 +141,7 @@ struct ElevenLabsTests {
             #expect(request.httpMethod == "POST")
             #expect(request.url?.path == "/v1/speech-to-text")
             #expect(request.value(forHTTPHeaderField: "xi-api-key") == "synthetic-key-for-tests")
-            #expect(request.value(forHTTPHeaderField: "User-Agent") == "VoxClip/0.1.0 (macOS \(SpeechRuntimeVersion.macOS); arm64)")
+            #expect(request.value(forHTTPHeaderField: "User-Agent") == "VoxClip/\(AppVersion.current) (macOS \(SpeechRuntimeVersion.macOS); arm64)")
             let attempt = calls.withLock { $0 += 1; return $0 }
             return attempt == 1 ? (429, ["Retry-After": "0"], Data("busy".utf8)) : (200, [:], RecordedSpeech.scribe)
         }

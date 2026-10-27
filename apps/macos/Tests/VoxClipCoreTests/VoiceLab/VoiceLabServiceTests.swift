@@ -94,7 +94,10 @@ struct VoiceLabServiceTests {
         return Data("{\"audio_base64\":\"\(audio.base64EncodedString())\",\(times)}".utf8)
     }
     private func service(_ handler: @escaping SpeechStubHTTP.Handler, region: ElevenLabsRegion = .eu) -> ElevenLabsVoiceLab {
-        let base = SpeechStubHTTP.register(handler)
+        let base = SpeechStubHTTP.register { request in
+            #expect(request.value(forHTTPHeaderField: "User-Agent") == "VoxClip/\(AppVersion.current)")
+            return try handler(request)
+        }
         return ElevenLabsVoiceLab(keys: SpeechTestKeys(value: key), session: URLSession(configuration: SpeechStubHTTP.configuration(for: base)), region: region, logger: SpeechTestLogger(), prices: VoiceLabPricingTests.catalogIfPresent)
     }
     private func fixture(_ key: String) throws -> [[String: Any]] {

@@ -2,11 +2,11 @@ using System.CommandLine;
 using System.CommandLine.Help;
 using System.CommandLine.Parsing;
 using System.Globalization;
-using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using VoxClip.Core.Domain.Shared;
+using VoxClip.Core.Services;
 using VoxClip.Core.Services.LLM;
 using VoxClip.Core.Services.Project;
 using VoxClip.Core.Services.Share;
@@ -20,7 +20,7 @@ internal static class CliApplication
     private static readonly Option<string?> AcceptRuntimeTerms = new("--accept-runtime-terms") { Description = "Accept the displayed Windows component terms SHA-256 for this user.", Recursive = true };
     private static readonly Redactor BasicRedactor = new([], Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
     private static readonly Lazy<Redactor> DiagnosticRedactor = new(ServicesMergeAdapter.DiagnosticRedactor);
-    internal static string Version => Assembly.GetEntryAssembly()?.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion.Split('+')[0] ?? "unknown";
+    internal static string Version => AppVersion.Current;
 
     internal static async Task<int> RunAsync(string[] args, CancellationToken ct, ExportInputReader? openExport = null, ExportPreparer? prepareExport = null,
         WindowsRuntimeAgreement? runtimeAgreement = null, Func<string, bool>? inputExists = null)
