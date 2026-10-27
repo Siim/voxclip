@@ -105,11 +105,11 @@ import VoxClipCore
         }
     }
 
-    private static func floatBuffer(_ content: [Float], channels: Int = 1,
-                                    time: CMTime) throws -> CMReadySampleBuffer<CMSampleBuffer.DynamicContent> {
+    static func floatBuffer(_ content: [Float], rate: Int = 48_000, channels: Int = 1,
+                            time: CMTime) throws -> CMReadySampleBuffer<CMSampleBuffer.DynamicContent> {
         let bytes: Data = content.withUnsafeBytes { Data($0) }
         let frames: Int = content.count / channels
-        return try block(bytes, start: 0, frames: frames, rate: 48_000, channels: channels, float: true,
+        return try block(bytes, start: 0, frames: frames, rate: rate, channels: channels, float: true,
                          presentationTime: time)
     }
 
