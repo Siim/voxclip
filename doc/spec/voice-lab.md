@@ -1340,18 +1340,19 @@ Every export that has Clean audio or any synthetic segment gets `<export name>.p
 {
   "schema": "voxclip-provenance/1",
   "app": { "name": "VoxClip", "version": "0.3.0", "platform": "macos" },
-  "export": { "file": "intro-9x16.mp4", "sha256": "…", "durationSeconds": 42.317, "createdAt": "2026-10-25T12:30:00Z" },
+  "export": { "file": "intro-9x16.mp4", "sha256": "…", "durationSeconds": 42.317, "createdAt": "2026-10-25T12:30:00.000Z" },
   "source": { "contentKey": "…", "durationSeconds": 612.4 },
   "edits": { "cutWords": 17, "cutPauses": 4, "corrections": 2 },
   "cleanAudio": { "provider": "elevenlabs", "endpoint": "audio-isolation", "mix": 1.0 },
   "aiSegments": [
     { "kind": "tts", "outputStart": 12.10, "outputEnd": 13.78, "text": "I said 2025",
       "provider": "elevenlabs", "model": "eleven_v4", "voice": "own-clone", "seed": 3141592653,
-      "lipsync": { "provider": "fal", "model": "fal-ai/latentsync" } }
+      "lipsync": { "provider": "fal", "model": "fal-ai/latentsync" },
+      "generatedAt": "2026-10-25T12:10:00.000Z", "consentRecordId": "6f0c2c1e-…" }
   ],
   "disclosure": { "required": true, "persistent": false, "labelIntervals": [[0, 3.0], [11.6, 14.28]],
                   "postText": "Some words in this video were re-voiced with an AI copy of my own voice.", "c2pa": true },
-  "consent": [ { "recordId": "6f0c2c1e-…", "statementSha256": "…", "createdAt": "2026-10-25T12:00:00Z" } ]
+  "consent": [ { "recordId": "6f0c2c1e-…", "verifiedAt": "2026-10-25T12:00:00.000Z" } ]
 }
 ```
 

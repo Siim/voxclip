@@ -123,7 +123,12 @@ public enum VoiceLabDisclosureWriter {
 
     private static func sidecar(project: Project, prepared: VoiceLabPreparedRender, filename: String,
                                 hash: String, appVersion: String, createdAt: Date) throws -> Data {
-        let iso = ISO8601DateFormatter()
+        func timestamp(_ date: Date) throws -> String {
+            guard let text = UTCTimestamp.string(from: date) else {
+                throw EncodingError.invalidValue(date, EncodingError.Context(codingPath: [], debugDescription: "Timestamp outside years 0001-9999"))
+            }
+            return text
+        }
         var segments: [[String: Any]] = []
         var consent: [[String: Any]] = []
         for selected in prepared.selectedSegmentRecipes {
@@ -141,7 +146,7 @@ public enum VoiceLabDisclosureWriter {
                 "provider": provenance.provider, "endpoint": provenance.endpoint,
                 "model": provenance.model, "voice": selected.recipe.voiceSource.rawValue,
                 "voiceId": provenance.voiceId, "seed": selected.recipe.seed,
-                "generatedAt": iso.string(from: provenance.createdAt)
+                "generatedAt": try timestamp(provenance.createdAt)
             ]
             if let text = segment.text?.new { item["text"] = text }
             if let region = provenance.region { item["region"] = region }
@@ -156,7 +161,7 @@ public enum VoiceLabDisclosureWriter {
                 item["consentRecordId"] = record
                 if !consent.contains(where: { $0["recordId"] as? String == record }) {
                     var identity: [String: Any] = ["recordId": record]
-                    if let verified = selected.recipe.consentVerifiedAt { identity["verifiedAt"] = iso.string(from: verified) }
+                    if let verified = selected.recipe.consentVerifiedAt { identity["verifiedAt"] = try timestamp(verified) }
                     consent.append(identity)
                 }
             }
@@ -167,7 +172,7 @@ public enum VoiceLabDisclosureWriter {
             "schema": "voxclip-provenance/1",
             "app": ["name": "VoxClip", "version": appVersion, "platform": "macos"],
             "export": ["file": filename, "sha256": hash, "durationSeconds": prepared.outputPlan.duration,
-                       "createdAt": iso.string(from: createdAt)],
+                       "createdAt": try timestamp(createdAt)],
             "source": ["contentKey": project.media.source.contentKey,
                        "durationSeconds": project.media.source.durationSeconds],
             "scope": scopeValue(prepared.outputPlan.scope),

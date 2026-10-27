@@ -132,7 +132,7 @@ import VoxClipCore
         try Data("prior destination".utf8).write(to: destination)
         let (project, prepared) = try prepared("passage-render-v3")
         let result = try VoiceLabDisclosureWriter.stage(sourceMP4: native, stagedMP4: stage, finalFilename: "render.mp4",
-            project: project, prepared: prepared, appVersion: "0.1.0", createdAt: Date(timeIntervalSince1970: 1_792_998_000))
+            project: project, prepared: prepared, appVersion: "0.1.0", createdAt: Date(timeIntervalSince1970: 1_792_998_000.0625))
         #expect(try Data(contentsOf: destination) == Data("prior destination".utf8))
         #expect(result.sidecarFilename == "render.mp4.provenance.json")
         let bytes = try Data(contentsOf: stage)
@@ -153,6 +153,12 @@ import VoxClipCore
         let export = try #require(sidecar["export"] as? [String: Any])
         #expect(export["file"] as? String == "render.mp4")
         #expect(export["sha256"] as? String == result.sha256)
+        // 62.5 ms is an exact half, so the sidecar shows the later millisecond (editing.md §10.1).
+        #expect(export["createdAt"] as? String == "2026-10-26T07:00:00.063Z")
+        let segments = try #require(sidecar["aiSegments"] as? [[String: Any]])
+        #expect(segments.map { $0["generatedAt"] as? String } == ["2026-10-25T12:10:00.000Z"])
+        let consent = try #require(sidecar["consent"] as? [[String: Any]])
+        #expect(consent.map { $0["verifiedAt"] as? String } == ["2026-10-25T12:09:00.000Z"])
         #expect(!(String(data: result.sidecarData, encoding: .utf8) ?? "").contains(project.media.source.absolutePath))
         #expect(throws: VoiceLabDisclosureError.self) {
             try VoiceLabDisclosureWriter.stage(sourceMP4: native, stagedMP4: stage, finalFilename: "render.mp4",

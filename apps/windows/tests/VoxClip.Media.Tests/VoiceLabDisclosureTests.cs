@@ -172,8 +172,9 @@ public sealed class VoiceLabDisclosureTests
             File.WriteAllText(destination, "prior destination");
             var project = Project("passage-render-v3");
             var prepared = Prepare(project);
+            // 62.5 ms is an exact half, so the sidecar shows the later millisecond (editing §10.1).
             var result = await VoiceLabDisclosureWriter.StageAsync(source, stage, "render.mp4", project, prepared,
-                "0.1.0", DateTimeOffset.Parse("2026-10-26T12:00:00Z"), TestContext.Current.CancellationToken);
+                "0.1.0", new DateTimeOffset(2026, 10, 26, 12, 0, 0, TimeSpan.Zero).AddTicks(625_000), TestContext.Current.CancellationToken);
             if (Environment.GetEnvironmentVariable("VOXCLIP_DISCLOSURE_EVIDENCE") is { } evidence)
             {
                 Directory.CreateDirectory(evidence);
@@ -195,6 +196,9 @@ public sealed class VoiceLabDisclosureTests
             Assert.Equal("windows", rootElement.GetProperty("app").GetProperty("platform").GetString());
             Assert.Equal(project.Media.Source.ContentKey, rootElement.GetProperty("source").GetProperty("contentKey").GetString());
             Assert.Equal(result.Sha256, rootElement.GetProperty("export").GetProperty("sha256").GetString());
+            Assert.Equal("2026-10-26T12:00:00.063Z", rootElement.GetProperty("export").GetProperty("createdAt").GetString());
+            Assert.Equal(["2026-10-25T12:10:00.000Z"], rootElement.GetProperty("aiSegments").EnumerateArray().Select(segment => segment.GetProperty("generatedAt").GetString()));
+            Assert.Equal(["2026-10-25T12:09:00.000Z"], rootElement.GetProperty("consent").EnumerateArray().Select(identity => identity.GetProperty("verifiedAt").GetString()));
             Assert.False(rootElement.GetProperty("disclosure").GetProperty("c2pa").GetBoolean());
             Assert.DoesNotContain(project.Media.Source.AbsolutePath, Encoding.UTF8.GetString(result.SidecarData), StringComparison.Ordinal);
             Assert.Throws<IOException>(() => VoiceLabDisclosureWriter.StageAsync(source, stage, "render.mp4", project, prepared,

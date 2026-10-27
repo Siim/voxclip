@@ -81,6 +81,7 @@ public sealed class TranscriptionService : ITranscriptionService
                 ModelPaths.ValidateId(modelId);
                 var cachePath = Path.Combine(directory, $"{EngineName(request.Plan.Engine)}-{modelId}-{language}-{rawKey[..8]}.json");
                 var raw = await ReadCacheAsync(cachePath, key, engine, request.Plan, ct).ConfigureAwait(false);
+                if (raw is null && engine is ElevenLabsTranscriber) SetAsideUnreadableCache(cachePath);
                 if (raw is null && engine is ElevenLabsTranscriber recoveryEngine && PendingPaidResponses.TryGetValue(cachePath, out var recovery) &&
                     recovery.Key.AsSpan().SequenceEqual(key))
                 {
@@ -228,6 +229,23 @@ public sealed class TranscriptionService : ITranscriptionService
         return buffer.ToArray();
     }
 
+    /// <summary>Moves a paid cache file that did not read as this request's entry to <c>&lt;name&gt;.unreadable-&lt;unix ms&gt;</c>,
+    /// so the next write never overwrites a paid response. The move never replaces an existing file.</summary>
+    internal static void SetAsideUnreadableCache(string path)
+    {
+        try
+        {
+            if (!File.Exists(path)) return;
+            var milliseconds = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            while (File.Exists($"{path}.unreadable-{milliseconds}")) milliseconds++;
+            File.Move(path, $"{path}.unreadable-{milliseconds}");
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            throw new VoxClipException(VoxClipErrorCode.TranscriptionFailed, "Transcription stopped: the transcript cache is unavailable. Your video is still here.");
+        }
+    }
+
     internal static long EstimatedResponseBytes(double durationSeconds) =>
         (long)Math.Max(4 * 1024 * 1024, Math.Ceiling(Math.Clamp(double.IsFinite(durationSeconds) ? durationSeconds : 36_000, 0, 36_000) * 1024));
 
@@ -266,7 +284,7 @@ public sealed class TranscriptionService : ITranscriptionService
             {
                 writer.WriteStartObject(); writer.WriteString("schema", "voxclip-raw-transcript/1");
                 writer.WritePropertyName("key"); writer.WriteRawValue(key);
-                writer.WriteString("createdAt", DateTimeOffset.UtcNow.ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'", System.Globalization.CultureInfo.InvariantCulture));
+                writer.WriteString("createdAt", UtcTimestamp.Format(DateTimeOffset.UtcNow));
                 writer.WritePropertyName("raw"); JsonSerializer.Serialize(writer, raw, TranscriptJsonContext.Default.RawTranscript);
                 writer.WritePropertyName("providerResponse");
                 if (provider is { } json) json.WriteTo(writer); else writer.WriteNullValue();

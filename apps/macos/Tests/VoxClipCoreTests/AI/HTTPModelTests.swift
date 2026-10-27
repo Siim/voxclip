@@ -30,6 +30,20 @@ extension HTTPConnectorTests {
         #expect(harness.sleeps.durations.isEmpty)
     }
 
+    /// The model-list cache records its fetch time in the canonical form (editing.md §10.1).
+    @Test
+    func refreshedModelListRecordsItsFetchTimeInCanonicalForm() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("voxclip-model-list-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let cache = directory.appendingPathComponent("llm-models.json")
+        let harness = try HTTPHarness(.openai, replies: [.json(#"{"data":[{"id":"gpt-custom-one","created":2}]}"#)], cacheURL: cache)
+        defer { harness.finish() }
+        _ = try await harness.connector.models(refresh: true)
+        let document = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: cache)) as? [String: Any])
+        let fetchedAt = try #require((document["openai"] as? [String: Any])?["fetchedAt"] as? String)
+        #expect(fetchedAt.range(of: #"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$"#, options: .regularExpression) != nil)
+    }
+
     @Test
     func refreshedCacheSurvivesFailureAndSuccessfulRefreshClearsWarning() async throws {
         let first = HTTPReply.json(#"{"data":[{"id":"gpt-custom-one","created":2},{"id":"o9-custom","created":1}]}"#)

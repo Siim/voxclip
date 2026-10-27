@@ -524,7 +524,8 @@ internal sealed class CliInputException(VoxClipException failure) : Exception(fa
     internal VoxClipException Failure { get; } = failure;
 }
 [JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase, UseStringEnumConverter = true,
-    RespectRequiredConstructorParameters = true, RespectNullableAnnotations = true, UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow)]
+    RespectRequiredConstructorParameters = true, RespectNullableAnnotations = true, UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
+    Converters = new[] { typeof(UtcTimestampConverter) })]
 [JsonSerializable(typeof(MediaInfo))]
 [JsonSerializable(typeof(EncoderInfo[]))]
 [JsonSerializable(typeof(ExportResult))]

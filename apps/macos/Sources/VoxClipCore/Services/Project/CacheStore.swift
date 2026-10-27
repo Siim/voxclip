@@ -92,8 +92,9 @@ public actor CacheStore {
     }
 
     func readEntry(_ directory: URL) -> CacheEntry? {
+        let decoder = JSONDecoder(); decoder.dateDecodingStrategy = .utcTimestamp(allowingOffset: true)  // any RFC 3339 offset (architecture §8.2)
         guard let data = try? Data(contentsOf: directory.appendingPathComponent("meta.json")),
-              let entry = try? ProjectJSON.decoder().decode(CacheEntry.self, from: data), entry.schema == "voxclip-cache/1", entry.bytes >= 0 else { return nil }
+              let entry = try? decoder.decode(CacheEntry.self, from: data), entry.schema == "voxclip-cache/1", entry.bytes >= 0 else { return nil }
         return entry
     }
 

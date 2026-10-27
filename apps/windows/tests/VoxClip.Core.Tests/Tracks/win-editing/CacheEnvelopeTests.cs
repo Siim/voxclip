@@ -1,5 +1,6 @@
 using System.Buffers.Binary;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Domain.Transcript;
 using VoxClip.Core.Services.Media;
@@ -65,6 +66,36 @@ public sealed class CacheEnvelopeTests
         var entry = Assert.Single(await new CacheIndex(storage.Root).ReadAsync(TestContext.Current.CancellationToken));
         Assert.Equal(createdAt, entry.CreatedAt);
         Assert.Equal(new CacheEnvelope(44100, 0.01, 16), entry.Envelope);
+    }
+
+    [Theory]
+    [InlineData("createdAt", "9999-12-31T23:59:59.9995Z")]
+    [InlineData("lastAccessAt", "9999-12-31T23:59:59.9999999+00:00")]
+    public async Task MetadataPastTheLastMillisecondIsAMissNotACrash(string field, string text)
+    {
+        using var storage = new TestStorage();
+        var index = new CacheIndex(storage.Root);
+        var key = new string('d', 64);
+        var directory = storage.PathFor(key);
+        async Task Seed()
+        {
+            var meta = JsonNode.Parse(RecordingExtractor.Metadata(key, 4064, DateTimeOffset.UtcNow))!;
+            meta[field] = text;
+            Directory.CreateDirectory(directory);
+            await File.WriteAllTextAsync(Path.Combine(directory, "meta.json"), meta.ToJsonString(), TestContext.Current.CancellationToken);
+        }
+        await Seed();
+        Assert.Empty(await index.ReadAsync(TestContext.Current.CancellationToken));
+        await index.ExtractAudioAsync(new RecordingExtractor(), Media(storage), key, null, TestContext.Current.CancellationToken);
+        Assert.True(Assert.Single(await index.ReadAsync(TestContext.Current.CancellationToken)).CreatedAt > DateTimeOffset.UtcNow.AddMinutes(-1));
+        await Seed();
+        await index.TouchAsync(key, 4064, null, TestContext.Current.CancellationToken);
+        Assert.Single(await index.ReadAsync(TestContext.Current.CancellationToken));
+        await Seed();
+        foreach (var path in Directory.EnumerateFiles(directory)) File.SetLastWriteTimeUtc(path, DateTime.UtcNow.AddHours(-2));
+        Directory.SetLastWriteTimeUtc(directory, DateTime.UtcNow.AddHours(-2));
+        Assert.Equal([key], await index.EvictAsync(0, new HashSet<string>(), TestContext.Current.CancellationToken));
+        Assert.False(Directory.Exists(directory));
     }
 
     [Fact]

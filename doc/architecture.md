@@ -568,6 +568,7 @@ Acceptance: average bitrate within ±15% of target on the on-demand `--motion-60
   audio-16k.wav             16-bit PCM mono 16 kHz, round(duration × 16000) samples
   envelope-10ms.f32         little-endian binary32 frames, exactly editing spec 5.1 level[] (frameSize = max(1, jsRound(rate × 0.01)), power summed over channels)
   transcripts/<engine>-<model or "none">-<language or "auto">-<opts8>.json   raw engine results (transcription spec 14.1; the normalised transcript lives in the project)
+  transcripts/<raw file>.unreadable-<unix ms>   an unreadable raw file set aside before a paid upload (transcription spec 14.3); never read back
   thumbs/strip-160.jpg      filmstrip, 160 px high
   faces/                    M2 detections
 <data>/Cache/encoders.json        Windows encoder probe result

@@ -144,7 +144,7 @@ public static class VoiceLabDisclosureWriter
             json.WriteStartObject("app"); json.WriteString("name", "VoxClip"); json.WriteString("version", appVersion);
             json.WriteString("platform", "windows"); json.WriteEndObject();
             json.WriteStartObject("export"); json.WriteString("file", filename); json.WriteString("sha256", hash);
-            json.WriteNumber("durationSeconds", prepared.OutputPlan.Duration); json.WriteString("createdAt", createdAt.ToUniversalTime()); json.WriteEndObject();
+            json.WriteNumber("durationSeconds", prepared.OutputPlan.Duration); json.WriteString("createdAt", UtcTimestamp.Format(createdAt)); json.WriteEndObject();
             json.WriteStartObject("source"); json.WriteString("contentKey", project.Media.Source.ContentKey);
             json.WriteNumber("durationSeconds", project.Media.Source.DurationSeconds); json.WriteEndObject();
             json.WriteStartObject("scope"); json.WriteString("kind", prepared.OutputPlan.Scope.ClipId is null ? "full" : "clip");
@@ -165,7 +165,7 @@ public static class VoiceLabDisclosureWriter
                 json.WriteString("provider", provenance.Provider); json.WriteString("endpoint", provenance.Endpoint);
                 json.WriteString("model", provenance.Model); json.WriteString("voice", selected.Recipe.VoiceSource == VoiceLabVoiceSource.Own ? "own" : "stock");
                 json.WriteString("voiceId", provenance.VoiceId); json.WriteNumber("seed", selected.Recipe.Seed);
-                json.WriteString("generatedAt", provenance.CreatedAt.ToUniversalTime());
+                json.WriteString("generatedAt", UtcTimestamp.Format(provenance.CreatedAt));
                 if (segment.Text is { } text) json.WriteString("text", text.New);
                 if (provenance.Region is { } region) json.WriteString("region", region);
                 if (provenance.RequestId is { } request) json.WriteString("requestId", request);
@@ -193,7 +193,7 @@ public static class VoiceLabDisclosureWriter
                 .GroupBy(item => item.Recipe.Provenance.ConsentRecordId!, StringComparer.Ordinal))
             {
                 json.WriteStartObject(); json.WriteString("recordId", group.Key);
-                if (group.First().Recipe.ConsentVerifiedAt is { } verified) json.WriteString("verifiedAt", verified.ToUniversalTime());
+                if (group.First().Recipe.ConsentVerifiedAt is { } verified) json.WriteString("verifiedAt", UtcTimestamp.Format(verified));
                 json.WriteEndObject();
             }
             json.WriteEndArray(); json.WriteEndObject();

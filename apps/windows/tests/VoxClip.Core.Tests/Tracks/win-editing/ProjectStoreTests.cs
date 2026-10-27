@@ -100,7 +100,8 @@ public sealed class ProjectStoreTests
         Assert.Equal((byte)'\n', first[^1]);
         var loaded = await store.LoadAsync(path, TestContext.Current.CancellationToken);
         Assert.Empty(loaded.Warnings);
-        var original = JsonNode.Parse(await File.ReadAllBytesAsync(TestStorage.ProjectPath(name), TestContext.Current.CancellationToken))!;
+        // The examples store whole seconds, which a save writes once in canonical form (editing §10.1).
+        var original = TimestampWireRuleTests.CanonicalTimestamps(JsonNode.Parse(await File.ReadAllBytesAsync(TestStorage.ProjectPath(name), TestContext.Current.CancellationToken)))!;
         original["media"]!["source"]!["absolutePath"] = source.Project.Media.Source.AbsolutePath;
         using var originalDocument = JsonDocument.Parse(original.ToJsonString());
         using var savedDocument = JsonDocument.Parse(first);

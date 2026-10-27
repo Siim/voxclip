@@ -35,7 +35,7 @@ public sealed class ModelStoreTests
         await VoxClip.Core.Tests.Tracks.WinCoreNative.TextOutputTests.AssertFileAsync(Path.Combine(installed.Directory, "installed.json"));
         using var marker = JsonDocument.Parse(await File.ReadAllTextAsync(Path.Combine(installed.Directory, "installed.json"), TestContext.Current.CancellationToken));
         Assert.Equal(ModelId, marker.RootElement.GetProperty("id").GetString());
-        Assert.True(marker.RootElement.TryGetProperty("installedAt", out _));
+        Assert.Matches(@"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$", marker.RootElement.GetProperty("installedAt").GetString());
         Assert.True(marker.RootElement.TryGetProperty("attribution", out _));
         Assert.Equal(2, (await store.ListInstalledAsync(TestContext.Current.CancellationToken)).Count);
         await Task.WhenAll(store.InstallAsync(ModelId, null, TestContext.Current.CancellationToken), store.InstallAsync(ModelId, null, TestContext.Current.CancellationToken));

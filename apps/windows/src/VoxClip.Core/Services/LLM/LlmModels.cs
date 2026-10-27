@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
@@ -139,7 +140,7 @@ public sealed partial class LlmConnector
             if (entry?["models"] is not JsonArray models) return;
             modelCache = models.OfType<JsonObject>().Select(item => new LlmModel(item["id"]!.GetValue<string>(), item["name"]!.GetValue<string>(), item["tier"]?.GetValue<string>(), item["contextTokens"]?.GetValue<int>(),
                 Enum.TryParse<ModelSource>(item["source"]?.GetValue<string>(), true, out var source) ? source : ModelSource.Discovered)).ToArray();
-            if (DateTimeOffset.TryParse(entry["fetchedAt"]?.GetValue<string>(), out var time)) ModelsFetchedAt = time;
+            if (DateTimeOffset.TryParse(entry["fetchedAt"]?.GetValue<string>(), CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var time)) ModelsFetchedAt = time;
         }
         catch (Exception exception) when (exception is IOException or JsonException or InvalidOperationException or ArgumentException) { }
     }
@@ -154,7 +155,7 @@ public sealed partial class LlmConnector
             var root = File.Exists(cacheFile) ? LlmOutput.Parse(await File.ReadAllTextAsync(cacheFile, ct).ConfigureAwait(false)) as JsonObject ?? new() : new JsonObject();
             var models = new JsonArray();
             foreach (var model in modelCache ?? []) models.Add((JsonNode)new JsonObject { ["id"] = model.Id, ["name"] = model.Name, ["tier"] = model.Tier, ["contextTokens"] = model.ContextTokens, ["source"] = model.Source.ToString().ToLowerInvariant() });
-            root[LlmCatalog.WireId(Id)] = new JsonObject { ["fetchedAt"] = ModelsFetchedAt?.ToString("O"), ["models"] = models };
+            root[LlmCatalog.WireId(Id)] = new JsonObject { ["fetchedAt"] = ModelsFetchedAt is { } fetched ? VoxClip.Core.Domain.Shared.UtcTimestamp.Format(fetched) : null, ["models"] = models };
             Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(cacheFile))!);
             await File.WriteAllTextAsync(temporary, root.ToJsonString(VoxClip.Core.Domain.Shared.JsonFormatting.CreateOptions()) + "\n", ct).ConfigureAwait(false);
             File.Move(temporary, cacheFile, true);

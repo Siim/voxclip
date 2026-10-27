@@ -89,7 +89,8 @@ public sealed class SharedContractTests
             var source = File.ReadAllText(path);
             var project = ProjectSerialization.Deserialize(source);
             var roundTrip = ProjectSerialization.Serialize(project);
-            Assert.True(JsonNode.DeepEquals(JsonNode.Parse(source), JsonNode.Parse(roundTrip)), Path.GetFileName(path));
+            // The examples store whole seconds, which a save writes once in canonical form (editing §10.1).
+            Assert.True(JsonNode.DeepEquals(TimestampWireRuleTests.CanonicalTimestamps(JsonNode.Parse(source)), JsonNode.Parse(roundTrip)), Path.GetFileName(path));
         }
     }
 

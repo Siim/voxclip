@@ -1218,6 +1218,7 @@ Under `<data>/Cache/<contentKey>/` (`doc/architecture.md` §8). `contentKey` is 
 | `audio-16k.wav` | the extracted transcription audio (section 4) |
 | `apple-<rate>-<channels>.caf` | Apple's input copy (10.4) |
 | `transcripts/<engine>-<model or "none">-<language or "auto">-<opts8>.json` | the raw result (14.2) |
+| `transcripts/<raw file>.unreadable-<unix ms>` | a file that stood at a raw-result path but did not read as that request's entry, set aside before a paid upload (14.3); kept for manual recovery and never read back |
 
 The normalised `Transcript` lives only in the project file. It is not cached.
 
@@ -1229,7 +1230,7 @@ The normalised `Transcript` lives only in the project file. It is not cached.
   "key": { "engine": "whispercpp", "model": "taltech-et-verbatim-2604-q8_0",
            "modelSha256": "0e6308a9…", "adapterVersion": 1, "language": "et", "locale": null,
            "diarize": false, "numSpeakers": null, "keyterms": [], "dtw": true, "audioTrackIndex": 0 },
-  "createdAt": "2026-10-25T12:00:00Z",
+  "createdAt": "2026-10-25T12:00:00.000Z",
   "raw": { /* RawTranscript (3.2) */ },
   "providerResponse": null
 }
@@ -1248,6 +1249,7 @@ The normalised `Transcript` lives only in the project file. It is not cached.
 - Writes are atomic: a temp file, then a rename.
 - Eviction follows `doc/architecture.md` §8.2: least recently used, with a 5 GB default cap, and never for entries an open project uses. Because the project file holds the transcript, eviction never loses work. It can only cost a repeat transcription of a re-imported file. Raw ElevenLabs results should be the last files evicted inside an entry, since they are small and were paid for.
 - Before an ElevenLabs upload, look up the entry. On a hit, skip the upload and show "Using the earlier ElevenLabs transcript of this file (no charge)." The same reuse applies to local engines.
+- A paid response is never overwritten. Before an ElevenLabs upload, a file at the entry path that is not this request's readable entry (it does not decode, or it has another key or schema; on macOS, anything but this key's own placeholder) is renamed to `<name>.unreadable-<unix ms>`, never replacing an existing file. If the rename fails, transcription stops with the cache-unavailable error. Set-aside files are never read back; eviction keeps them with `transcripts/` in its first pass and removes them only with the whole entry (`doc/architecture.md` §8.2).
 
 ### 14.4 Re-transcription
 

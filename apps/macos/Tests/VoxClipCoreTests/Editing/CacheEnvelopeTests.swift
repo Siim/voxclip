@@ -119,6 +119,27 @@ private struct RecordingExtractor: AudioExtractor {
         #expect(FileManager.default.fileExists(atPath: locations.cache.appendingPathComponent(keys[2]).appendingPathComponent("audio-16k.wav").path))
     }
 
+    /// Metadata whose instant rounds past 9999-12-31T23:59:59.999Z is corrupt: a cache miss that extraction replaces and
+    /// eviction removes, never an error (editing.md §10.1).
+    @Test(arguments: [("createdAt", "9999-12-31T23:59:59.9995Z"), ("lastAccessAt", "9999-12-31T23:59:59.9999999+00:00")])
+    func metadataPastTheLastMillisecondIsAMiss(_ field: String, _ text: String) async throws {
+        let locations = try locations()
+        defer { try? FileManager.default.removeItem(at: locations.root) }
+        let store = CacheStore(locations: locations)
+        let key = String(repeating: "d", count: 64), entry = locations.cache.appendingPathComponent(key)
+        let other = field == "createdAt" ? "lastAccessAt" : "createdAt"
+        let meta = Data(#"{"schema": "voxclip-cache/1", "contentKey": "\#(key)", "\#(field)": "\#(text)", "\#(other)": "2026-10-26T21:13:05.123Z", "bytes": 4}"#.utf8)
+        try FileManager.default.createDirectory(at: entry, withIntermediateDirectories: true)
+        try meta.write(to: entry.appendingPathComponent("meta.json"))
+        #expect(try await store.entry(contentKey: key) == nil)
+        _ = try await store.extractAudio(sourceURL: locations.root, contentKey: key, durationSeconds: 1, using: RecordingExtractor()) { _ in }
+        let created = try #require(try await store.entry(contentKey: key)).createdAt
+        #expect(abs(created.timeIntervalSinceNow) < 60)
+        try meta.write(to: entry.appendingPathComponent("meta.json"))
+        try await store.evict(limitBytes: 0, protectedKeys: [])
+        #expect(!FileManager.default.fileExists(atPath: entry.path))
+    }
+
     @Test func clearCacheKeepsEnvelopesAndTranscriptsUnlessClearingEverything() async throws {
         let locations = try locations()
         defer { try? FileManager.default.removeItem(at: locations.root) }

@@ -1,28 +1,17 @@
 import Foundation
 
-/// Portable document encoding; editing §10.1. No default Date strategy is used.
+/// Portable document encoding; editing §10.1. Dates use `UTCTimestamp`, never a default Date strategy.
 public enum ProjectJSON {
     public static func encoder() -> JSONEncoder {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
-        encoder.dateEncodingStrategy = .custom { date, encoder in
-            var container = encoder.singleValueContainer()
-            let fractional = date.timeIntervalSince1970.truncatingRemainder(dividingBy: 1) != 0
-            try container.encode(date.formatted(.iso8601.year().month().day().dateSeparator(.dash).timeSeparator(.colon).timeZone(separator: .omitted).time(includingFractionalSeconds: fractional)))
-        }
+        encoder.dateEncodingStrategy = .utcTimestamp
         return encoder
     }
 
     public static func decoder() -> JSONDecoder {
         let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .custom { decoder in
-            let container = try decoder.singleValueContainer()
-            let text = try container.decode(String.self)
-            let fractional = ISO8601DateFormatter()
-            fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-            if let date = fractional.date(from: text) ?? ISO8601DateFormatter().date(from: text) { return date }
-            throw DecodingError.dataCorruptedError(in: container, debugDescription: "Expected UTC RFC 3339 timestamp")
-        }
+        decoder.dateDecodingStrategy = .utcTimestamp
         return decoder
     }
 

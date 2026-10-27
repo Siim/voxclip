@@ -137,6 +137,62 @@ struct SpeechCacheSafetyTests {
         #expect(result.transcript.words.first?.text == "Tere,")
     }
 
+    @Test(arguments: ["truncated", "binary", "newer schema"])
+    func unreadableEntryIsSetAsideBeforeANewUpload(_ seed: String) async throws {
+        let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let request = try SpeechTestFiles.request(root)
+        let key = SpeechRawCacheKey(request: request, identity: EngineRef(id: .elevenlabs, modelId: "scribe_v2", engineVersion: "scribe_v2"))
+        let directory = root.appendingPathComponent("Cache/synthetic-content/transcripts")
+        let url = try key.url(in: directory)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        switch seed {
+        case "truncated": try Data(#"{"schema":"voxclip-raw-transcript/1","key":"#.utf8).write(to: url)
+        case "binary": try Data([0xff, 0x00, 0x7b]).write(to: url)
+        default: try SpeechRawCacheEntry(schema: "voxclip-raw-transcript/2", key: key, raw: nil, providerResponse: nil, providerResponseBytes: RecordedSpeech.scribe).write(url)
+        }
+        let seeded = try Data(contentsOf: url)
+        let calls = Mutex(0)
+        let base = SpeechStubHTTP.register { _ in calls.withLock { $0 += 1 }; return (200, [:], RecordedSpeech.scribe) }
+        let engine = ElevenLabsTranscriber(keys: SpeechTestKeys(value: "synthetic-key-for-tests"), session: URLSession(configuration: SpeechStubHTTP.configuration(for: base)), catalog: try SpeechTestFiles.catalog())
+        let service = TranscriptionService(locations: SpeechTestFiles.locations(root))
+        #expect(try await service.transcribeResult(request, using: engine, envelope: nil).fromCache == false)
+        #expect(try await service.transcribeResult(request, using: engine, envelope: nil).fromCache)
+        #expect(calls.withLock { $0 } == 1)
+        let aside = try FileManager.default.contentsOfDirectory(atPath: directory.path).filter { $0 != url.lastPathComponent }
+        #expect(aside.count == 1)
+        let name = try #require(aside.first)
+        let prefix = url.lastPathComponent + ".unreadable-"
+        #expect(name.hasPrefix(prefix) && Int64(name.dropFirst(prefix.count)) != nil)
+        #expect(try Data(contentsOf: directory.appendingPathComponent(name)) == seeded)
+        #expect(try SpeechRawCacheEntry.read(url).providerResponseBytes == RecordedSpeech.scribe)
+    }
+
+    @Test(arguments: ["missing", "number", "spaced", "offset"])
+    func foreignCreatedAtStillServesThePaidResponse(_ form: String) async throws {
+        let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let request = try SpeechTestFiles.request(root)
+        let key = SpeechRawCacheKey(request: request, identity: EngineRef(id: .elevenlabs, modelId: "scribe_v2", engineVersion: "scribe_v2"))
+        let directory = root.appendingPathComponent("Cache/synthetic-content/transcripts")
+        let url = try key.url(in: directory)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try SpeechRawCacheEntry(key: key, raw: nil, providerResponse: nil, providerResponseBytes: RecordedSpeech.scribe).write(url)
+        var object = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
+        let foreign: [String: Any] = ["number": 783_000_000, "spaced": "2026-10-27 12:00:00", "offset": "2026-10-27T14:00:00+02:00"]
+        object["createdAt"] = foreign[form]
+        try JSONSerialization.data(withJSONObject: object).write(to: url)
+        let modified = Date(timeIntervalSince1970: 1_792_998_000)
+        try FileManager.default.setAttributes([.modificationDate: modified], ofItemAtPath: url.path)
+        #expect(try SpeechRawCacheEntry.read(url).createdAt == modified)
+        let base = SpeechStubHTTP.register { _ in Issue.record("A retained paid response must never upload"); throw URLError(.badURL) }
+        let engine = ElevenLabsTranscriber(keys: SpeechTestKeys(value: nil), session: URLSession(configuration: SpeechStubHTTP.configuration(for: base)), catalog: try SpeechTestFiles.catalog())
+        let result = try await TranscriptionService(locations: SpeechTestFiles.locations(root)).transcribeResult(request, using: engine, envelope: nil)
+        #expect(result.fromCache)
+        #expect(result.transcript.words.first?.text == "Tere,")
+        let rewritten = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
+        let createdAt = try #require(rewritten["createdAt"] as? String)
+        #expect(createdAt.range(of: #"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$"#, options: .regularExpression) != nil)
+    }
+
     @Test(arguments: [1, 2, 3, 4])
     func paidResponseRetriesUnwritableCacheWithoutRebilling(_ restoreOnRetry: Int) async throws {
         let root = try SpeechTestFiles.directory()

@@ -1,5 +1,8 @@
 using System.Security.AccessControl;
 using System.Security.Principal;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Domain.Transcript;
 using VoxClip.Core.Services.Logging;
@@ -97,6 +100,60 @@ public sealed class PaidCacheSafetyTests
             return Task.CompletedTask;
         }, TestContext.Current.CancellationToken));
         Assert.Equal(3, writes);
+    }
+
+    [Theory]
+    [InlineData("{\"schema\":\"voxclip-raw-transcript/1\",\"key\":")]
+    [InlineData("{\"schema\":\"voxclip-raw-transcript/2\",\"key\":{},\"raw\":null,\"providerResponse\":{\"text\":\"paid\"}}")]
+    public async Task UnreadableEntryIsSetAsideBeforeANewUpload(string seeded)
+    {
+        using var files = new SpeechFiles();
+        var request = files.Request();
+        var directory = Path.Combine(files.Root, "Cache", request.ContentKey, "transcripts");
+        using var handler = new StubHttp(async (message, ct) =>
+        {
+            await message.Content!.CopyToAsync(Stream.Null, ct);
+            return StubHttp.Json(ElevenLabsTests.Response);
+        });
+        TranscriptionService Service() => new([ElevenLabsTranscriber.ForTesting(new TestKeys(), handler, region: ElevenLabsRegion.Default)], dataRoot: files.Root);
+        await Service().TranscribeAsync(request, null, null, TestContext.Current.CancellationToken);
+        var path = Assert.Single(Directory.EnumerateFiles(directory, "*.json"));
+        var bytes = Encoding.UTF8.GetBytes(seeded);
+        await File.WriteAllBytesAsync(path, bytes, TestContext.Current.CancellationToken);
+        Assert.False((await Service().TranscribeAsync(request, null, null, TestContext.Current.CancellationToken)).FromCache);
+        Assert.True((await Service().TranscribeAsync(request, null, null, TestContext.Current.CancellationToken)).FromCache);
+        Assert.Equal(2, handler.Calls);
+        var aside = Assert.Single(Directory.EnumerateFiles(directory, "*.unreadable-*"));
+        Assert.StartsWith(path + ".unreadable-", aside);
+        Assert.Matches(@"\.json\.unreadable-\d+$", aside);
+        Assert.Equal(bytes, await File.ReadAllBytesAsync(aside, TestContext.Current.CancellationToken));
+        using var entry = JsonDocument.Parse(await File.ReadAllBytesAsync(path, TestContext.Current.CancellationToken));
+        Assert.Matches(@"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$", entry.RootElement.GetProperty("createdAt").GetString());
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("27 Oct 2026")]
+    [InlineData("2026-10-27T14:00:00+02:00")]
+    public async Task ForeignCreatedAtStillServesThePaidResponse(string? createdAt)
+    {
+        using var files = new SpeechFiles();
+        var request = files.Request();
+        var directory = Path.Combine(files.Root, "Cache", request.ContentKey, "transcripts");
+        using var handler = new StubHttp(async (message, ct) =>
+        {
+            await message.Content!.CopyToAsync(Stream.Null, ct);
+            return StubHttp.Json(ElevenLabsTests.Response);
+        });
+        TranscriptionService Service() => new([ElevenLabsTranscriber.ForTesting(new TestKeys(), handler, region: ElevenLabsRegion.Default)], dataRoot: files.Root);
+        await Service().TranscribeAsync(request, null, null, TestContext.Current.CancellationToken);
+        var path = Assert.Single(Directory.EnumerateFiles(directory, "*.json"));
+        var entry = JsonNode.Parse(await File.ReadAllBytesAsync(path, TestContext.Current.CancellationToken))!.AsObject();
+        if (createdAt is null) entry.Remove("createdAt"); else entry["createdAt"] = createdAt;
+        await File.WriteAllTextAsync(path, entry.ToJsonString(), TestContext.Current.CancellationToken);
+        Assert.True((await Service().TranscribeAsync(request, null, null, TestContext.Current.CancellationToken)).FromCache);
+        Assert.Equal(1, handler.Calls);
+        Assert.Empty(Directory.EnumerateFiles(directory, "*.unreadable-*"));
     }
 
     [Fact]
