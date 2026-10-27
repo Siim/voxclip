@@ -7,6 +7,19 @@ an unrejected alternate whose content exceeds its output duration by four asset
 frames. Both project and render validation must refuse it with `invalidSegment`;
 marking the alternate rejected restores acceptance.
 
+The nonunity vectors `nonunity-inconsistent-alternate` and
+`nonunity-consistent-alternate` use a valid selected unity recipe at an 8 kHz
+source and a 96 kHz, 21.5-second asset. Their alternate trims are [0.5, 20.5]
+and their declared duration is 20 seconds. Stretch 1.0000009 has an 18 µs
+duration error and fails `invalidSegment` while unselected; 1.0000004 has an
+8 µs error and validates before and after selection. Both pass the existing
+ratio and `STRETCH_OK` checks. This is validation coverage, not permission to
+render nonunity audio: both Media implementations still refuse it (ADR-R30).
+
+Current `render-cases.json`: 16 cases, SHA-256
+`fc9a6422cf6ca8e63e91d33650ae40ce2fe7fe3f04c7f8c6aabc706f4c71edab`.
+All eight generated render project files are unchanged.
+
 CI runs every `tools/fixtures/voice-lab/generate*.py` with Python 3.12 and the
 existing `numpy==2.5.4` pin, then rejects any tracked or untracked output drift.
 The schema generator runs too, checking `shared/schemas/project.schema.json`.

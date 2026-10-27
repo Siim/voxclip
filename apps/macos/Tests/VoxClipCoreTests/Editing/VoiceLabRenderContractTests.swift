@@ -175,9 +175,10 @@ import Testing
         #expect(throws: VoiceLabProjectError.invalidFadeHandles) { try VoiceLabProject.validate(withHandles(239, 240)) }
         #expect(throws: VoiceLabProjectError.invalidFadeHandles) { try VoiceLabProject.validate(withHandles(240, 239)) }
     }
-    @Test func unityDurationBaselines() throws {
+    @Test func candidateDurationBaselines() throws {
         let cases = try JSONSerialization.jsonObject(with: FixtureLoader.data("fixtures/voice-lab/render-cases.json")) as! [String: [String: Any]]
-        for name in ["unity-binary64-residual-eight", "unity-binary64-residual-nine", "unity-legacy-source-grid-only", "unity-inconsistent-alternate"] {
+        for name in ["unity-binary64-residual-eight", "unity-binary64-residual-nine", "unity-legacy-source-grid-only", "unity-inconsistent-alternate",
+                     "nonunity-inconsistent-alternate", "nonunity-consistent-alternate"] {
             let vector = try #require(cases[name])
             let range = vector["replace"] as! [Double]
             let rate = (vector["sourceRate"] as! NSNumber).doubleValue
@@ -186,6 +187,8 @@ import Testing
             let duration = vector["outDuration"] as! Double
             var project = try fixture()
             project.media.source.audio?.sampleRate = Int(rate)
+            let minimumSourceDuration: Double = range[1] + 1.5
+            project.media.source.durationSeconds = max(project.media.source.durationSeconds, minimumSourceDuration)
             project.transcript?.words = [TimedWord(id: "w4", text: "source", kind: .word, start: 2, end: 2.4)]
             project.edits.clips = []; project.edits.activeClipId = nil
             var segment = project.voiceLab.segments[0]
@@ -222,7 +225,9 @@ import Testing
                 out: try VoiceLabHandles.seam(kind: .hard, fadeSamples: fade, incoming: false, assetSampleRate: assetRate, sourceSampleRate: rate, stretch: 1))
             recipe.video.sourceStartSample = start; recipe.video.sourceEndSample = end
             recipe.video.outputSamples = VoiceLabGeometry.samples(duration, rate)
-            project.voiceLab.assets![0].sampleRate = assetRate; project.voiceLab.assets![0].durationSeconds = trimEnd + 0.5
+            let defaultAssetDuration: Double = trimEnd + 0.5
+            project.voiceLab.assets![0].sampleRate = assetRate
+            project.voiceLab.assets![0].durationSeconds = vector["assetDuration"] as? Double ?? defaultAssetDuration
             segment.audio = recipe.audio; segment.outDuration = duration; segment.words = recipe.words
             segment.candidates = [VoiceLabCandidate(assetId: recipe.audio.assetId, score: 0.9)]
             segment.candidates[0].recipe = recipe
@@ -234,15 +239,33 @@ import Testing
                 let alternateEnd: Double = Double(alternateEndFrame) / Double(assetRate)
                 var alternate = recipe
                 alternate.audio.trimEnd = alternateEnd
+                alternate.audio.stretch = vector["alternateStretch"] as? Double ?? 1
                 alternate.chunks[0].assembledEndFrame = alternateEndFrame
                 var candidate = segment.candidates[0]
                 candidate.recipe = alternate
                 project.voiceLab.segments[0].candidates.append(candidate)
-                #expect(vector["validationError"] as? String == "invalidSegment")
-                #expect(throws: VoiceLabProjectError.invalidSegment) { try VoiceLabProject.validate(project) }
-                #expect(throws: VoiceLabProjectError.invalidSegment) { try VoiceLabRenderValidation.validate(project) }
-                #expect(throws: VoiceLabProjectError.invalidSegment) {
-                    try VoiceLabProject.selectCandidate(1, id: segment.id, in: project)
+                if vector["alternateStretch"] != nil {
+                    let contentDuration: Double = alternateEnd - alternate.audio.trimStart
+                    let expectedStretch: Double = duration / contentDuration
+                    #expect(abs(alternate.audio.stretch - expectedStretch) <= 1e-6)
+                    #expect((0.92...1.08).contains(contentDuration / duration))
+                }
+                if vector["validationError"] != nil {
+                    #expect(vector["validationError"] as? String == "invalidSegment")
+                    #expect(throws: VoiceLabProjectError.invalidSegment) { try VoiceLabProject.validate(project) }
+                    #expect(throws: VoiceLabProjectError.invalidSegment) { try VoiceLabRenderValidation.validate(project) }
+                    #expect(throws: VoiceLabProjectError.invalidSegment) {
+                        try VoiceLabProject.selectCandidate(1, id: segment.id, in: project)
+                    }
+                } else {
+                    try VoiceLabProject.validate(project)
+                    try VoiceLabRenderValidation.validate(project)
+                    let selected = try VoiceLabProject.selectCandidate(1, id: segment.id, in: project)
+                    try VoiceLabProject.validate(selected)
+                    try VoiceLabRenderValidation.validate(selected)
+                    #expect(try VoiceLabRenderContract.prepare(selected, scope: .full, labelPosition: .topRight)
+                        .selectedSegmentRecipes[0].recipe.audio.stretch == alternate.audio.stretch)
+                    candidateSelectionParity(project, recipe: alternate)
                 }
                 project.voiceLab.segments[0].candidates[1].rejected = "fixture"
                 try VoiceLabProject.validate(project)
@@ -252,6 +275,57 @@ import Testing
                 #expect(duration == Double(VoiceLabGeometry.samples(duration, rate)) / rate)
             }
         }
+    }
+
+    private func candidateSelectionParity(_ project: Project, recipe: VoiceLabRenderRecipe) {
+        func accepts(_ operation: () throws -> Void) -> Bool {
+            do { try operation(); return true }
+            catch is VoiceLabProjectError { return false }
+            catch { Issue.record(error); return false }
+        }
+        var accepted: Int = 0
+        var refused: Int = 0
+        func check(_ alternate: VoiceLabRenderRecipe) {
+            var probe = project
+            probe.voiceLab.segments[0].candidates[1].recipe = alternate
+            let renderAccepts: Bool = accepts { try VoiceLabRenderValidation.validate(probe) }
+            let projectAccepts: Bool = accepts { try VoiceLabProject.validate(probe) }
+            let selectionAccepts: Bool = accepts {
+                _ = try VoiceLabProject.selectCandidate(1, id: probe.voiceLab.segments[0].id, in: probe)
+            }
+            #expect(renderAccepts == projectAccepts)
+            #expect(selectionAccepts == renderAccepts,
+                    "trim=\(alternate.audio.trimEnd), duration=\(alternate.outDuration), stretch=\(alternate.audio.stretch)")
+            if renderAccepts { accepted += 1 } else { refused += 1 }
+        }
+        let assetRate: Double = 96_000
+        let sourceRate: Double = 8_000
+        let stretches: [Double] = [0.9999991, 0.9999996, 1, 1.0000004, 1.0000009, 1.0000011, 1.05, 1 / 1.08, 1 / 0.92]
+        for trimOffset: Int64 in -2...2 {
+            for durationOffset: Int64 in -2...2 {
+                for stretch: Double in stretches {
+                    var alternate = recipe
+                    let trimDelta: Double = Double(trimOffset) / assetRate
+                    let durationDelta: Double = Double(durationOffset) / assetRate
+                    alternate.audio.trimEnd += trimDelta
+                    alternate.audio.stretch = stretch
+                    alternate.outDuration += durationDelta
+                    alternate.chunks[0].assembledEndFrame += trimOffset
+                    alternate.video.outputSamples = VoiceLabGeometry.samples(alternate.outDuration, sourceRate)
+                    check(alternate)
+                }
+            }
+        }
+        var alternate = recipe
+        alternate.chunks = []; check(alternate)
+        alternate = recipe; alternate.seams.in.assetHandleFrames = 0; check(alternate)
+        alternate = recipe; alternate.qa.peakDbfs = 0; check(alternate)
+        alternate = recipe; alternate.words![0].synthetic = false; check(alternate)
+        alternate = recipe; alternate.provenance.endpoint = "https://example.invalid"; check(alternate)
+        alternate = recipe; alternate.consentVerifiedAt = nil; check(alternate)
+        alternate = recipe; alternate.video.outputSamples += 1; check(alternate)
+        #expect(accepted > 0 && refused > 0 && accepted + refused == 232)
+        print("Candidate selection parity: \(accepted) accepted, \(refused) refused; no reverse gap")
     }
 
     @Test func halfUpAndRequestBinding() throws {

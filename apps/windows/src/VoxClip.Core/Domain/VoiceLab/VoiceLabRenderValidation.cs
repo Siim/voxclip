@@ -100,8 +100,8 @@ public static class VoiceLabRenderValidation
             }
             Require(Fits(segment.Replace.End - segment.Replace.Start) ||
                 (recipe.OutDuration == output / rate && Fits((end - start) / rate)), VoiceLabProjectErrorCode.InvalidRange);
-            Require(ContentMatchesDuration(audio, recipe.OutDuration, asset.SampleRate), VoiceLabProjectErrorCode.InvalidSegment);
         }
+        Require(ContentMatchesDuration(audio, recipe.OutDuration, asset!.SampleRate), VoiceLabProjectErrorCode.InvalidSegment);
         Require(Id(recipe.Cost.QuoteId) && (recipe.Cost.Usd is null || recipe.Cost.Usd is { } usd && double.IsFinite(usd) && usd >= 0) &&
             recipe.Provenance.Region?.Length > 0 &&
             Id(recipe.Provenance.RequestId) && recipe.Provenance.Seed == recipe.Seed, VoiceLabProjectErrorCode.MissingRenderPolicy);

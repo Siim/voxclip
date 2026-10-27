@@ -182,10 +182,11 @@ public sealed class VoiceLabRenderContractTests
         Error(VoiceLabProjectErrorCode.InvalidFadeHandles, () => VoiceLabProject.Validate(WithHandles(240, 239)));
     }
     [Fact]
-    public void UnityDurationBaselines()
+    public void CandidateDurationBaselines()
     {
         using var document = FixtureLoader.ReadJson("fixtures/voice-lab/render-cases.json");
-        foreach (var name in new[] { "unity-binary64-residual-eight", "unity-binary64-residual-nine", "unity-legacy-source-grid-only", "unity-inconsistent-alternate" })
+        foreach (var name in new[] { "unity-binary64-residual-eight", "unity-binary64-residual-nine", "unity-legacy-source-grid-only", "unity-inconsistent-alternate",
+            "nonunity-inconsistent-alternate", "nonunity-consistent-alternate" })
         {
             var vector = document.RootElement.GetProperty(name);
             double startTime = vector.GetProperty("replace")[0].GetDouble(), endTime = vector.GetProperty("replace")[1].GetDouble();
@@ -195,7 +196,8 @@ public sealed class VoiceLabRenderContractTests
             var duration = vector.GetProperty("outDuration").GetDouble();
             var project = Fixture();
             project = project with {
-                Media = project.Media with { Source = project.Media.Source with { Audio = project.Media.Source.Audio! with { SampleRate = (int)rate } } },
+                Media = project.Media with { Source = project.Media.Source with { Audio = project.Media.Source.Audio! with { SampleRate = (int)rate },
+                    DurationSeconds = Math.Max(project.Media.Source.DurationSeconds, endTime + 1.5) } },
                 Transcript = project.Transcript! with { Words = [new TimedWord("w4", "source", WordKind.Word, 2, 2.4, null, null, null, null, VoxClip.Core.Domain.Transcript.TimingSource.Native)] },
                 Edits = project.Edits with { Clips = [], ActiveClipId = null }
             };
@@ -224,25 +226,91 @@ public sealed class VoiceLabRenderContractTests
             };
             segment = segment with { Replace = new VoiceLabReplacement(startTime, endTime, "w4", "w4"), Audio = recipe.Audio,
                 OutDuration = duration, Words = recipe.Words, Candidates = [segment.Candidates[0] with { Recipe = recipe }] };
-            project = project with { VoiceLab = project.VoiceLab with { Segments = [segment], Assets = [asset with { SampleRate = assetRate, DurationSeconds = trimEnd + 0.5 }] } };
+            project = project with { VoiceLab = project.VoiceLab with { Segments = [segment], Assets = [asset with { SampleRate = assetRate,
+                DurationSeconds = vector.TryGetProperty("assetDuration", out var assetDuration) ? assetDuration.GetDouble() : trimEnd + 0.5 }] } };
             VoiceLabProject.Validate(project); VoiceLabRenderValidation.Validate(project);
             if (vector.TryGetProperty("alternateOutputFrames", out var alternateFrames))
             {
                 var alternateEndFrame = trimStartFrame + alternateFrames.GetInt64();
                 var alternateEnd = alternateEndFrame / (double)assetRate;
-                var alternate = recipe with { Audio = recipe.Audio with { TrimEnd = alternateEnd },
+                var alternate = recipe with { Audio = recipe.Audio with { TrimEnd = alternateEnd,
+                    Stretch = vector.TryGetProperty("alternateStretch", out var alternateStretch) ? alternateStretch.GetDouble() : 1 },
                     Chunks = [recipe.Chunks[0] with { AssembledEndFrame = alternateEndFrame }] };
                 var candidate = segment.Candidates[0] with { Recipe = alternate };
                 project = Replace(project, segment with { Candidates = [segment.Candidates[0], candidate] });
-                Assert.Equal("invalidSegment", vector.GetProperty("validationError").GetString());
-                Error(VoiceLabProjectErrorCode.InvalidSegment, () => VoiceLabProject.Validate(project));
-                Error(VoiceLabProjectErrorCode.InvalidSegment, () => VoiceLabRenderValidation.Validate(project));
-                Error(VoiceLabProjectErrorCode.InvalidSegment, () => VoiceLabProject.SelectCandidate(project, segment.Id, 1));
+                if (vector.TryGetProperty("alternateStretch", out _))
+                {
+                    var contentDuration = alternateEnd - alternate.Audio.TrimStart;
+                    Assert.True(Math.Abs(alternate.Audio.Stretch - duration / contentDuration) <= 1e-6);
+                    Assert.InRange(contentDuration / duration, 0.92, 1.08);
+                }
+                if (vector.TryGetProperty("validationError", out var validationError))
+                {
+                    Assert.Equal("invalidSegment", validationError.GetString());
+                    Error(VoiceLabProjectErrorCode.InvalidSegment, () => VoiceLabProject.Validate(project));
+                    Error(VoiceLabProjectErrorCode.InvalidSegment, () => VoiceLabRenderValidation.Validate(project));
+                    Error(VoiceLabProjectErrorCode.InvalidSegment, () => VoiceLabProject.SelectCandidate(project, segment.Id, 1));
+                }
+                else
+                {
+                    VoiceLabProject.Validate(project); VoiceLabRenderValidation.Validate(project);
+                    var selected = VoiceLabProject.SelectCandidate(project, segment.Id, 1);
+                    VoiceLabProject.Validate(selected); VoiceLabRenderValidation.Validate(selected);
+                    Assert.Equal(alternate.Audio.Stretch, VoiceLabRenderContract.Prepare(selected, VoiceLabOutputScope.Full,
+                        VoiceLabLabelPosition.TopRight).SelectedSegmentRecipes[0].Recipe.Audio.Stretch);
+                    CandidateSelectionParity(project, alternate);
+                }
                 project = Replace(project, segment with { Candidates = [segment.Candidates[0], candidate with { Rejected = "fixture" }] });
                 VoiceLabProject.Validate(project); VoiceLabRenderValidation.Validate(project);
             }
             if (name != "unity-binary64-residual-nine") Assert.Equal(VoiceLabGeometry.Samples(duration, rate) / rate, duration);
         }
+    }
+    private static void CandidateSelectionParity(Project project, VoiceLabRenderRecipe recipe)
+    {
+        static bool Accepts(Action operation)
+        {
+            try { operation(); return true; }
+            catch (VoiceLabProjectException) { return false; }
+        }
+        var accepted = 0;
+        var refused = 0;
+        void Check(VoiceLabRenderRecipe alternate)
+        {
+            var segment = project.VoiceLab.Segments[0];
+            var probe = Replace(project, segment with { Candidates = [segment.Candidates[0], segment.Candidates[1] with { Recipe = alternate }] });
+            var renderAccepts = Accepts(() => VoiceLabRenderValidation.Validate(probe));
+            var projectAccepts = Accepts(() => VoiceLabProject.Validate(probe));
+            var selectionAccepts = Accepts(() => VoiceLabProject.SelectCandidate(probe, segment.Id, 1));
+            Assert.Equal(renderAccepts, projectAccepts);
+            Assert.Equal(renderAccepts, selectionAccepts);
+            if (renderAccepts) accepted++; else refused++;
+        }
+        double assetRate = 96_000;
+        double sourceRate = 8_000;
+        double[] stretches = [0.9999991, 0.9999996, 1, 1.0000004, 1.0000009, 1.0000011, 1.05, 1 / 1.08, 1 / 0.92];
+        for (var trimOffset = -2; trimOffset <= 2; trimOffset++)
+        for (var durationOffset = -2; durationOffset <= 2; durationOffset++)
+        foreach (var stretch in stretches)
+        {
+            var duration = recipe.OutDuration + durationOffset / assetRate;
+            Check(recipe with {
+                Audio = recipe.Audio with { TrimEnd = recipe.Audio.TrimEnd + trimOffset / assetRate, Stretch = stretch },
+                OutDuration = duration,
+                Chunks = [recipe.Chunks[0] with { AssembledEndFrame = recipe.Chunks[0].AssembledEndFrame + trimOffset }],
+                Video = recipe.Video with { OutputSamples = VoiceLabGeometry.Samples(duration, sourceRate) }
+            });
+        }
+        Check(recipe with { Chunks = [] });
+        Check(recipe with { Seams = recipe.Seams with { In = recipe.Seams.In with { AssetHandleFrames = 0 } } });
+        Check(recipe with { Qa = recipe.Qa with { PeakDbfs = 0 } });
+        Check(recipe with { Words = [recipe.Words![0] with { Synthetic = false }] });
+        Check(recipe with { Provenance = recipe.Provenance with { Endpoint = "https://example.invalid" } });
+        Check(recipe with { ConsentVerifiedAt = null });
+        Check(recipe with { Video = recipe.Video with { OutputSamples = recipe.Video.OutputSamples + 1 } });
+        Assert.True(accepted > 0 && refused > 0);
+        Assert.Equal(232, accepted + refused);
+        Console.WriteLine($"Candidate selection parity: {accepted} accepted, {refused} refused; no reverse gap");
     }
     [Fact]
     public void HalfUpAndRequestBinding()
