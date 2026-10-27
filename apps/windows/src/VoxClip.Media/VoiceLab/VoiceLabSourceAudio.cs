@@ -175,6 +175,9 @@ public static class VoiceLabSourceAudio
                     throw Failure(VoiceLabSourceAudioErrorCode.UnsupportedFormat);
                 if (frame->nb_samples == 0) continue;
                 if (frame->nb_samples > Array.MaxLength / channels) throw Failure(VoiceLabSourceAudioErrorCode.TooLarge);
+                var first = end.HasValue
+                    ? SourceFrame(frame->best_effort_timestamp, decoder.Origin, previousEnd, rate, decoder.Stream->time_base.num, decoder.Stream->time_base.den)
+                    : next;
                 if (converter is null)
                 {
                     SwrContext* context = null;
@@ -195,11 +198,8 @@ public static class VoiceLabSourceAudio
                     Native.Check(count, "Decode Voice Lab samples");
                     if (count != frame->nb_samples) throw Failure(VoiceLabSourceAudioErrorCode.Unreadable);
                 }
-                var first = next;
                 if (end.HasValue)
                 {
-                    var exact = decoder.Timestamp * rate;
-                    first = SourceFrame(exact, previousEnd, rate, decoder.Stream->time_base.num, decoder.Stream->time_base.den);
                     previousEnd = first + frame->nb_samples;
                     if (first > next) throw Failure(VoiceLabSourceAudioErrorCode.RangeOutsideMedia);
                     if (first + frame->nb_samples <= next) continue;
@@ -223,6 +223,14 @@ public static class VoiceLabSourceAudio
             return rate;
         }
         finally { converter?.Dispose(); ffmpeg.av_channel_layout_uninit(&layout); }
+    }
+
+    internal static long SourceFrame(long timestamp, double origin, long? previousEnd, int rate, int timeBaseNumerator, int timeBaseDenominator)
+    {
+        if (timestamp == ffmpeg.AV_NOPTS_VALUE)
+            return previousEnd ?? throw Failure(VoiceLabSourceAudioErrorCode.Unreadable);
+        var exact = (timestamp * ((double)timeBaseNumerator / timeBaseDenominator) - origin) * rate;
+        return SourceFrame(exact, previousEnd, rate, timeBaseNumerator, timeBaseDenominator);
     }
 
     internal static long SourceFrame(double exact, long? previousEnd, int rate, int timeBaseNumerator, int timeBaseDenominator)

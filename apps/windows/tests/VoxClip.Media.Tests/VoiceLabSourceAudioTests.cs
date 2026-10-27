@@ -96,6 +96,29 @@ public sealed class VoiceLabSourceAudioTests
         Assert.True(first > previousEnd);
     }
 
+    [Theory]
+    [InlineData(0.0)]
+    [InlineData(2.0)]
+    [InlineData(double.NaN)]
+    public void MissingInitialTimestampIsUnreadable(double origin)
+        => Refuses(VoiceLabSourceAudioErrorCode.Unreadable,
+            () => VoiceLabSourceAudio.SourceFrame(ffmpeg.AV_NOPTS_VALUE, origin, null, 48_000, 1, 1_000));
+
+    [Theory]
+    [InlineData(0.0)]
+    [InlineData(2.0)]
+    [InlineData(double.NaN)]
+    public void MissingMidstreamTimestampUsesPreviousDecodedEnd(double origin)
+        => Assert.Equal(1_920, VoiceLabSourceAudio.SourceFrame(ffmpeg.AV_NOPTS_VALUE, origin, 1_920, 48_000, 1, 1_000));
+
+    [Theory]
+    [InlineData(1_003, 0.0, 48_000, 1_000, 48_144)]
+    [InlineData(3_003, 2.0, 48_000, 1_000, 48_144)]
+    [InlineData(1_024, 0.0, 48_000, 48_000, 1_024)]
+    [InlineData(8_192, 1.0, 8_000, 8_000, 192)]
+    public void TimestampedFramesKeepTheDecodeSessionOriginAndHalfUpAnchor(long timestamp, double origin, int rate, int denominator, long first)
+        => Assert.Equal(first, VoiceLabSourceAudio.SourceFrame(timestamp, origin, null, rate, 1, denominator));
+
     [Fact]
     public async Task ConversionRefusalsPrecedeOpeningTheSourceOrLoadingNativeCode()
     {
@@ -411,7 +434,7 @@ public sealed class VoiceLabSourceAudioTests
             const int start = 96_000, end = 98_123;
             var reference = TimestampAnchoredSamples(path, start, end);
             var anchor = Native.Round(reference.Precise);
-            Assert.Equal(anchor, VoiceLabSourceAudio.SourceFrame(reference.Precise, null, 48_000, 1, 1_000));
+            Assert.Equal(anchor, VoiceLabSourceAudio.SourceFrame(reference.Timestamp, 0, null, 48_000, 1, 1_000));
             var sequentialAnchor = SequentialFrameForTimestamp(path, reference.Timestamp);
             Assert.Equal(48_144, anchor);
             Assert.Equal(48_128, sequentialAnchor);
