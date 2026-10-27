@@ -9,6 +9,7 @@ using VoxClip.Core.Services.LLM;
 using VoxClip.Media.Pipeline;
 using VoxClip.Media.Thumbnails;
 using Xunit;
+using MediaStatus = VoxClip.App.ViewModels.MediaStatus;
 
 namespace VoxClip.Ui.Tests;
 

@@ -33,7 +33,7 @@ public actor VoiceRewriteService {
               input.instruction.utf8.count <= 1_000 else { throw VoiceLabError.invalidInput }
         let source = input.sourceWords.map(\.text).joined(separator: " ")
         guard !AIText.trim(source).isEmpty, source.utf8.count <= 20_000,
-              input.language.range(of: "^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$", options: .regularExpression) != nil else { throw VoiceLabError.invalidInput }
+              input.language.range(of: #"\A[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*\z"#, options: .regularExpression) != nil else { throw VoiceLabError.invalidInput }
     }
 
     private func fingerprint(_ input: VoiceRewriteRequest, connector: ConnectorID, model: String) throws -> String {
@@ -57,7 +57,7 @@ public actor VoiceRewriteService {
         try validate(input)
         let source = input.sourceWords.map(\.text).joined(separator: " ")
         guard !AIText.trim(source).isEmpty, source.utf8.count <= 20_000,
-              input.language.range(of: "^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$", options: .regularExpression) != nil else { throw VoiceLabError.invalidInput }
+              input.language.range(of: #"\A[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*\z"#, options: .regularExpression) != nil else { throw VoiceLabError.invalidInput }
         let document = try JSONDecoder().decode(JSONValue.self, from: Data(contentsOf: shared.root.appendingPathComponent("prompts/voice-rewrite.json")))
         let catalog = try LLMCatalog(shared: shared)
         guard document[ai: "schemaVersion"].aiInt == 1,

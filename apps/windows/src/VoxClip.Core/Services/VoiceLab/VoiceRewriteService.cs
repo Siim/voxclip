@@ -11,7 +11,7 @@ namespace VoxClip.Core.Services.VoiceLab;
 /// <summary>One selected connector and model, one billed send, and inert review data for a passage or full take.</summary>
 public sealed class VoiceRewriteService
 {
-    private static readonly Regex LanguageCode = new("^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$", RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1));
+    private static readonly Regex LanguageCode = new(@"\A[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*\z", RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1));
     private static readonly Regex Url = new("https?://", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase, TimeSpan.FromSeconds(1));
     private readonly LlmCatalog catalog;
     private readonly VoiceLabActionGate actions;

@@ -112,9 +112,12 @@ internal static class CaptionLayoutBuilder
 
     private sealed record Measurement(string Text, int Clusters, long Units, IReadOnlyList<ShapedRun> Runs, IReadOnlyList<string> Dropped);
 
-    private static async Task<Measurement?> MeasureAsync(string text, string primary, double scale, CaptionStyle style, CaptionData data, IGlyphShaper shaper, string language, CancellationToken ct)
+    internal sealed record CascadeResult(IReadOnlyList<(string File, StringBuilder Text, List<int> ClusterOf)> Runs, string Kept,
+        IReadOnlyList<string> Dropped, int Clusters);
+
+    /// <summary>The bundled-font cascade per grapheme cluster, before shaping; captions §4.4.</summary>
+    internal static CascadeResult Cascade(string text, string primary, CaptionStyle style, CaptionData data)
     {
-        var reference = data.Fonts[style.Font.File];
         var cascade = new[] { primary }.Concat(style.Font.FallbackFiles).Append(data.NotoFor(data.Fonts[primary].Weight)).Distinct().ToArray();
         var runs = new List<(string File, StringBuilder Text, List<int> ClusterOf)>();
         var kept = new StringBuilder();
@@ -135,6 +138,13 @@ internal static class CaptionLayoutBuilder
             foreach (var rune in remaining) { runs[^1].Text.Append(rune.ToString()); runs[^1].ClusterOf.Add(clusterIndex); kept.Append(rune.ToString()); }
             clusterIndex++;
         }
+        return new(runs, kept.ToString(), dropped, clusterIndex);
+    }
+
+    private static async Task<Measurement?> MeasureAsync(string text, string primary, double scale, CaptionStyle style, CaptionData data, IGlyphShaper shaper, string language, CancellationToken ct)
+    {
+        var reference = data.Fonts[style.Font.File];
+        var (runs, kept, dropped, clusterIndex) = Cascade(text, primary, style, data);
         if (runs.Count == 0) return null;
         var shaped = new List<ShapedRun>();
         long units = 0;
@@ -162,18 +172,23 @@ internal static class CaptionLayoutBuilder
     }
 
     internal static IReadOnlyList<IReadOnlyList<int>> Group(IReadOnlyList<MeasuredCaptionWord> words, CaptionLayout layout, Func<IReadOnlyList<int>, bool> fits)
+        => Group(words.Count, layout, index => words[index].Raw, index => words[index].Start, index => words[index].End, fits);
+
+    /// <summary>Captions §6.1 paging. Caption cards have no glyph widths yet and pass a fit test that always fits; design §5.4.2.</summary>
+    internal static IReadOnlyList<IReadOnlyList<int>> Group(int count, CaptionLayout layout, Func<int, string> raw, Func<int, double> start,
+        Func<int, double> end, Func<IReadOnlyList<int>, bool> fits)
     {
         var pages = new List<IReadOnlyList<int>>();
         var current = new List<int>();
-        for (var index = 0; index < words.Count; index++)
+        for (var index = 0; index < count; index++)
         {
             if (current.Count > 0)
             {
-                var previous = words[current[^1]];
-                if (current.Count >= layout.MaxWords || layout.BreakOnSentence && CaptionTextRules.Ends(previous.Raw, true)
-                    || layout.BreakOnComma && current.Count >= 2 && CaptionTextRules.Ends(previous.Raw, false)
-                    || layout.BreakOnGapSec is { } gap && words[index].Start - previous.End >= gap
-                    || layout.MaxPageSec is { } duration && words[index].End - words[current[0]].Start > duration || !fits(current.Append(index).ToArray()))
+                var previous = current[^1];
+                if (current.Count >= layout.MaxWords || layout.BreakOnSentence && CaptionTextRules.Ends(raw(previous), true)
+                    || layout.BreakOnComma && current.Count >= 2 && CaptionTextRules.Ends(raw(previous), false)
+                    || layout.BreakOnGapSec is { } gap && start(index) - end(previous) >= gap
+                    || layout.MaxPageSec is { } duration && end(index) - start(current[0]) > duration || !fits(current.Append(index).ToArray()))
                 { pages.Add(current.ToArray()); current.Clear(); }
             }
             current.Add(index);

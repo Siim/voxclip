@@ -345,7 +345,8 @@ Export statuses come from an app-local export ledger (§6.2), not from the proje
 - A clip shows the first kept frame of the clip (the start of its first uncut word), centre-cropped to 9:16. The full take shows the first kept frame of the edited video at its own aspect.
 - Thumbnails are generated off the main thread and cached by `(media contentKey, source time rounded to 0.1 s, pixel size)`. They regenerate when the clip's first kept word changes.
 - Border: a 1 px `line.default` hairline, radius 4.
-- While loading: a `bg.sunken` fill. When the media is missing: a `bg.sunken` fill with a warning glyph.
+- Frames come from VoxClip's own decoder, never from the system shell (§5.4.7).
+- With no frame, the thumbnail is the caption card at sidebar size: a downscaled card with no plates (§5.4.3). Loading follows the §5.4.5 ladder, and the media states are in §5.4.4.
 
 **Accessibility.**
 
@@ -533,7 +534,7 @@ Restore is disabled when nothing in the selection is cut. When the selection alr
   - 16:9 and Original-landscape fill the column's inner width: 328×184 at 360, and 355×200 on Windows at 388.
   - 9:16 and 1:1 are centred, at most 320 high and never wider than the inner width (180×320 for 9:16). A 9:16 or 1:1 frame is a centre crop of the source with no pillar bars, as in export.
   - While Rewrite is open and the column is shorter than 760, the stage drops to 220×124 (16:9; other frames fit inside a 124-high box). On Windows the time, the AI tag and the transport stack beside it. On macOS the viewer row stays under it.
-- There is no transport pill and no overlay on the stage except the caption overlay and the compositor's AI MODIFIED chip.
+- There is no transport pill and no overlay on the stage except the caption overlay and the compositor's AI MODIFIED chip. The one exception: with no video, the stage shows the §5.4.6 overlays (the message, the word rhythm, the audiogram and the status chip). None of them is interactive; Locate… stays in the transcript InfoBar.
 - **Caption position.** The caption block on the stage is draggable and snaps to the centre line and the thirds. While dragging, safe-zone guides for the frame appear (9:16: bands over the top 12% and the bottom 22%). This is unchanged.
 
 **Viewer bar.**
@@ -556,7 +557,7 @@ Restore is disabled when nothing in the selection is cut. When the selection alr
 
 **Accessibility.**
 
-- The stage's accessible name: "Video preview, clip 2", or "Video preview, full take". It adds ", contains AI-modified speech" when the scope does.
+- The stage's accessible name: "Video preview, clip 2", or "Video preview, full take". It adds ", contains AI-modified speech" when the scope does. With no video it also adds the media state: "Video preview, full take, video not found", "…, video can't be read", "…, audio only" or "…, demo project" (§5.4.6).
 - The time is a live region, updated at most once a second for screen readers.
 
 ### 5.2 Timeline strip (72)
@@ -572,7 +573,7 @@ There is no time readout and no "after cuts · source" label; the viewer bar own
 | Element | Spec |
 |---|---|
 | Track | 30 high, radius 6, `timeline.track`. In Source mode it covers the whole take (Full take scope) or the clip ± padding (clip scope). In Edited mode cuts collapse into 1 px `cut.stroke` seams |
-| Kept speech | `timeline.keptBackground`, with RMS waveform bars (50 ms buckets) in `timeline.waveform`, centred, 2 px wide on a 3 px pitch |
+| Kept speech | `timeline.keptBackground`, with RMS waveform bars (50 ms buckets) in `timeline.waveform`, centred, 2 px wide on a 3 px pitch. With no envelope, one capsule per kept word (§5.4.10) |
 | Cut word range | 16% `cut.stroke` fill, plus a 45° hatch in full `cut.stroke`, 2 px stripes every 6 |
 | Cut pause range | 10% `cut.stroke` fill, plus the same hatch with 2 px stripes every 9. Stripe spacing tells pause cuts from word cuts, not opacity |
 | Uncut pause | the track shows through |
@@ -603,6 +604,255 @@ At the strip's leading edge:
 
 Space, J, K and L work as always. The track takes the remaining width.
 
+### 5.4 Media stand-ins
+
+When VoxClip has no frame to show, it shows **the project's own words in the project's own caption style**. This stand-in is the **caption card**. It is used wherever media stands in: Home tiles, sidebar thumbnails, the caption header chip and gallery (§6.1) and the stage (§5.1).
+
+**Mockups.** The maintainer keeps the placeholder mockups outside the repository, each a PNG rendered by a script kept beside it: `before-after.png`, `windows-home-light.png`, `windows-home-dark.png`, `mac-home-light.png`, `mac-home-dark.png`, `windows-editor-light.png`, `windows-editor-light-frames.png`, `mac-editor-dark.png`, `mac-editor-dark-frames.png`, `surfaces-light.png` and `surfaces-dark.png`. Where a mockup and this section disagree, this section wins.
+
+#### 5.4.1 Principle
+
+**Precedence.** Each surface uses the first source that is available:
+
+1. **A real frame.** This is the first kept frame of the scope (§3.4), cached. It always wins: there is no stand-in while transcribing if a frame exists, and none for a video whose first frame is black (§5.4.7).
+2. **The caption card.** It needs only the project file and the bundled caption resources, so it works on any computer and after the cache is cleared.
+3. **Stage black** with a status chip, when there are no words either (never transcribed, or every word of the scope cut).
+
+Each Core decides this precedence once, with `MediaStandIn.resolve` (Windows: `Resolve`). It takes the scope's `MediaStatus` (the states of §5.4.4), whether a frame is ready, the card, and whether the first 300 ms hold of §5.4.5 is still running. Views draw the result, overlay the status's chip and copy, and never decide precedence themselves. A card without words draws only the style's backdrop, as while transcribing with no frame yet. The shared cases are the `standIns` of `shared/fixtures/captions/cards.json`.
+
+The card replaces every earlier stand-in, and the apps remove them: the shell's file-type icon and the `SymbolIcon Video` fallback on Windows Home, "Your video will appear here." and the DEBUG person-icon "Synthetic preview" frame on the macOS stage, and "Preview unavailable. Your video and edits are still here." on the Windows stage.
+
+#### 5.4.2 The card's words
+
+The words are the **opening caption page of the scope**. They come from the scope's export captions, the caption copy over the edit plan (editing spec §7.6), so cut words and cut pauses are left out and corrections apply.
+
+- **Scope.** Home tiles and the Full take row use the edited take; a clip row uses the clip's own first kept words. The header chip follows the selected row's scope: the edited take or the selected clip. The stage and the gallery never draw the opening card. They draw the caption at the playhead over the card backdrop (§5.4.4, §6.1).
+- **Style.** The project's caption style with `captions.overrides`, resolved at the project's export frame (`export.aspect`), so case, punctuation and words per page are what export would draw. An override patch the style rejects is ignored (captions spec §2.4). With captions off, the card uses `captions.defaultStyleId`, or Highlight (`vox-highlight`) when that is off too.
+- **Text.** Each word is normalised as the caption renderer normalises it (captions spec §3.1). Characters that no bundled font covers are dropped (captions spec §4.4), and a word left with nothing is skipped.
+- **Pages.** Words are paged as captions spec §6.1 pages them, with `layout.maxWords` capped at **4**. The fit waits until the card is drawn (§5.4.3). One-word styles (Bold, Highlight, Bold+, One word) give one word.
+- **Weak words** are fillers (the editing filler rule, editing spec §4.11) and the stopwords of the transcript language (`shared/caption-styles/stopwords.json`). A language with no stopword list has no weak words, so its card is its first page as it is.
+- **Skipping.**
+  - Skip leading fillers, unless every word is one.
+  - Use the first page that has a word that is not weak, or the first page when none has.
+  - Trim trailing weak words, keeping at least one word.
+- **Key word.** The first word with a digit, otherwise the first word that is not weak, otherwise the first word. It gets the style's active-word or emphasis treatment:
+  - Karaoke fills up to and including it;
+  - Pop and Two-tone colour it;
+  - Box highlight boxes it;
+  - Editorial uses its gold;
+  - Neon dims the words after it.
+- **The drawn moment.** A card is one caption frame at a fixed moment, as a gallery tile is (captions spec §15.3). Word *i* runs from 0.4·*i* to 0.4·*i* + 0.35 s, and only the key word carries emphasis.
+  - The frame is taken 0.35 × 0.98 s into the key word *k*, at 0.4·*k* + 0.343 s, as a gallery tile's is. A page shows only until its last word ends plus the style's `holdGapSec`, and Bold and Highlight hold nothing, so a frame at the word's end would be empty.
+  - Styles that reveal by word or by character (Typewriter, Bounce) are drawn in their last word instead, so every word on the card shows: at its end while the style holds the page after it, otherwise 0.343 s into it.
+  - A card never animates.
+- **No words.** There is no card when `transcript == null`, when every word of the scope is cut, or when no word survives the rules above (states c and d in §5.4.4).
+- **Words hidden.** Settings → General → **"Show transcript words on placeholders"** (`general.showPlaceholderWords`) is **on** by default. When it is off, the card sets the **project title** instead of transcript words, with the same style, skipping and key rules and with no timing breaks. The title already shows under the tile, so nothing new is exposed when sharing a screen. The switch changes only the text: a project with no card still has none, and an untitled project has none.
+
+Each Core implements these rules once, as `CaptionCardText` (VoxClipCore and VoxClip.Core). Both test suites check them against `shared/fixtures/captions/cards.json`, which `tools/captions/gen_cards.py` generates. The generator and both suites also lay out every card and its fit drops, and fail unless the drawn moment shows the key word as the active word, or every word of a reveal style.
+
+#### 5.4.3 Typesetting and backdrop
+
+**Renderer.**
+
+- Cards are always drawn into a bitmap by the **export caption renderer**: CoreText on macOS (`CaptionHandoff`), Skia and HarfBuzz on Windows (`SkiaCaptionRasterizer`).
+- They are never drawn as UI text, so bundled fonts still appear only in rendered media (§16).
+- Cards are decorative images with no accessible name. The surfaces carry the names (§5.4.9).
+
+**Backdrop.**
+
+- The default backdrop is **stage black** (`stage`, #000000).
+- If the style's `preview.background` is dark (relative luminance below 0.10), the backdrop is that colour as a radial (a 78%×92% ellipse) vignetted to stage black: Bold and Highlight `#3A3C45`, Neon `#16171D`, VHS `#21232B`.
+- If the style's look is a near-black plate with no preview background (Subtitle, Lower third, Typewriter), the backdrop is `#3A3C45`, vignetted the same way. Otherwise the plate would vanish on black.
+- A light preview background is not used (Bold+ `#C9CBD0` would read as a spotlight). Its white text is legible on black.
+- Strokes and shadows whose colour is near black (luminance below 0.012) are **not drawn** on a stage-black backdrop. They would only paint black on black, and any mismatch in black level shows as a lumpy plate.
+- A 1 px white 10% inner rim separates the card from dark pages. It is decorative.
+
+**Fit.**
+
+| Surface | Size (Windows / macOS) | Text box | Size range | Lines, at most | Plates |
+|---|---|---|---|---|---|
+| Home tile | 226×127 / 225×126 | centred 176×71 (macOS 175×70) | 24 → 13 px | 2 | yes |
+| Header chip | 64×36 | 58×24 | 8 → 5 px | 1 | yes |
+| Gallery tile | 173×78 / 160×72 | inset 9, 12 | 13 px × sizeSh / 0.062, at least 9 (macOS: 12 px base) | 2 | yes |
+| Full take, Recent | 32×18 / 36×20 | inset 2, centred | 10 (macOS 11) → 4 px | 2 | **no** |
+| Clip row | 27×48 / 26×46 | full width minus 4, 15 high, centred on the style's 9:16 caption y, clamped to 0.60–0.78 | 9 → 4 px | 2 | **no** |
+| Stage | the stage | the style's position and real size (sizeSh × short edge, with overrides), as export | n/a | the style's | yes |
+
+- **Lines.** A card never takes more lines than the style's `layout.maxLines`, so a one-line style stays one line on every surface.
+- **Fitting.** Use the largest size that fits within the line limit. If nothing fits at the smallest size, drop the last word together with any weak words before it, keeping one word. Never use an ellipsis.
+- **Sidebar sizes are a downscaled card**, not a bar mark. At 1x they read as the texture of a title card in the project's colours, as a downscaled frame would. The title beside them carries the meaning.
+- **No plates at sidebar sizes.** At 18 px high, a boxed word reads as a tag control. The boxed key word takes the box colour as its text colour (Paper `#F3F0E7`, violet `#B79CFF`), and Pill text becomes white.
+
+#### 5.4.4 States
+
+States, per surface. Copy is exact.
+
+| State | Home tile | Sidebar 32×18 / 36×20 | Clip row 27×48 / 26×46 | Stage | Caption previews |
+|---|---|---|---|---|---|
+| **a · normal** | the first kept frame, with the duration chip (§7) | frame | frame | video | the frame band dimmed 35% (unchanged) |
+| **b · loading** | the loading ladder (§5.4.5) | the ladder | the ladder | the caption at the playhead over black at once; a 20 px ring after 500 ms | stage black until the band exists |
+| **c · video missing** | card and the **missing chip**; meta "⚠ Video not found." **Locate…** | card; Windows meta "⚠ Video not found", macOS trailing "⚠ Not found" | card (in the editor the InfoBar carries the state; rows don't repeat it) | the caption at its real place over black, still draggable; centred glyph, **"Video not found"** and the file name in mono; transport disabled | samples over the card backdrop, not dimmed |
+| **c · never transcribed** | stage black and the missing chip | stage black | n/a (no clips without words) | the glyph, "Video not found" and the file name only | as c |
+| **d · transcribing** | frame, the **"Transcribing · 42%"** chip and a 2 px progress line; meta "Transcribing on this {Mac/PC}" **Cancel** | frame and the 2 px line; meta "Transcribing · 42%" **Cancel** | none (clips need words) | the video plays, with no captions | the frame band; sample "Your story" |
+| **d · no frame yet** | the style's backdrop, three dots (no accent: white 100%, 55% and 28%), the chip and the line | three dots | n/a | caption-free black, with the ring rule of b | as b |
+| **e · demo** | card and the **"Demo"** chip | card | card | the **"Demo · no video"** chip; the take's word rhythm (§5.4.6); captions at their real place on the synthetic clock | samples on the card backdrop |
+| **f · audio only** (`video == null`) | card and the **"Audio only"** chip | card | card | the **"Audio only"** chip; the live audiogram (§5.4.6); captions | samples on the card backdrop |
+| **f · corrupt file** | card and the **warning chip**; meta "⚠ Can't read video." **Locate…** | card; meta "⚠ Can't read video" | card | warning glyph, **"Can't read this video"** and the file name; transport disabled | as c |
+| **f · black first frame** | the next usable frame (§5.4.7), with no chip | frame | frame | the real (black) video: black is content | the frame band |
+
+**Notes.**
+
+- **Home (e)** appears only for a project that carries a demo or sample marker. The DEBUG fixtures never enter Recent, so (e) on Home ships only with a sample project.
+- **Locate…** sits in the meta line on Home and in the transcript InfoBar in the editor (§13 "Media missing"). It is never on the stage.
+- **Export** is disabled in the missing (c), corrupt (f) and demo (e) states, with its reason as the tooltip and the accessible description:
+  - c and corrupt f: "Locate the video to export.";
+  - e: "Demo projects have no video to export."
+
+#### 5.4.5 Loading ladder
+
+This ladder applies to every frame-backed surface.
+
+1. **0–300 ms: hold.** Stage black and the rim, nothing else. A frame that arrives now cuts in with no fade, so cached frames never flash.
+2. **After 300 ms, if the project file is still unread** (Home only): one neutral sheen sweeps the tile. It is a white 7.5% band at 105° and 40% of the width, sweeping in 2.4 s ease-in-out with a 0.6 s rest. The meta reads "Loading…". The sheen stops when the tile scrolls off or the data arrives.
+3. **After 300 ms, words ready, frame pending:** the card, with no chip.
+4. **Frame decoded:** a 150 ms crossfade over the card (`motion.standard`, ease-out).
+
+Home's metadata cache (§7) keeps, for each project, the card inputs or both cards (the transcript card and the title card), whether it has video and whether it is missing. It records the `general.showPlaceholderWords` value and the resolved style id the cards were made with, and re-derives them when either changes, for example when `captions.defaultStyleId` changes while captions are off. Step 2 therefore happens only the first time Home sees a project. Rendered cards stay in memory only, in an LRU capped at 8 MB and keyed by project path, modification date, scope, style id, overrides hash, pixel size and the switch. They are never written to disk.
+
+**Stage.** The caption at the playhead is drawn at once, at its real position. A 20 px ring (a white 20% track and a white 80% arc) appears only after 500 ms. When the video arrives it fades in under the caption, and the caption does not move.
+
+#### 5.4.6 Stage overlays with no video
+
+These overlays are the one exception to §5.1's rule of no overlay on the stage. They are non-interactive: **there is no button on the stage**. Locate… lives only in the transcript InfoBar, so there is one tab stop and one name.
+
+**Message cluster** (states c and corrupt f):
+
+- centred at 36% of the stage height (9:16: 38%);
+- a 20 px glyph in `status.warning` dark, `#E3B25C`;
+- line 1 in 14/20 semibold (Windows) or 13/17 semibold (macOS), `overlay.foreground`;
+- line 2, the file name, in Cascadia Mono 12 or SF Mono 11, white 66%.
+
+**Word rhythm** (state e):
+
+- one capsule per kept word, its width set by the spoken duration and its height 6 px;
+- centred at 42% of the height over a 6 s span (9:16: 5 s) around a fixed centre playhead (1 px, white 55%, 30 high);
+- played words white 62%, the word at the playhead white 100% at 12 px, upcoming words white 26%;
+- no accent and no glow.
+
+**Audiogram** (state f, audio only):
+
+- the cached 10 ms envelope (architecture.md §8.2);
+- 2 px bars on a 3.5 px pitch over 14 s (9:16: 9 s) around a fixed centre playhead, a 1 px white line with a 5 px dot;
+- bars reach ±12% of the stage height (9:16: ±7.5%), centred at 40%;
+- played bars white 72%, upcoming bars white 26%;
+- no accent, no glow and no bloom;
+- with no envelope, the word rhythm instead.
+
+**Chips** (§5.4.8) sit top-leading, inset 8 (Windows) or 6 (macOS).
+
+**Accessible names** (added to §5.1):
+
+- "Video preview, full take, video not found";
+- "…, video can't be read";
+- "…, audio only";
+- "…, demo project".
+
+#### 5.4.7 Choosing frames
+
+- **Thumbnail time.** Thumbnails come from VoxClip's own decoder at the first kept word's source time, never from the system shell.
+- **Black frames.** Decode at 32×18 first. If the mean luma is below 0.06 and its standard deviation below 0.02, retry at +1 s, +3 s and 10% into the scope. If all of these are black, use the card with no chip.
+- **Frame cache.** Frames are cached by `(contentKey, time rounded to 0.1 s, pixel size)`. A persisted poster sits in the source's cache entry, under `thumbs/` (architecture.md §8.2).
+
+#### 5.4.8 Chips and progress line
+
+**Chips.**
+
+| Token | Value |
+|---|---|
+| `chip.mediaBackground` | `#0000009E` (black 62%) |
+| `chip.mediaStroke` | `#FFFFFF2E` (1 px, inside) |
+| `chip.mediaBackgroundOpaque` | `#1A1A1C`, stroke `#FFFFFF66` (Reduce Transparency, transparency effects off) |
+| `chip.mediaForeground` | `#FFFFFF` |
+| `chip.warningGlyph` | `#E3B25C` (`status.warning` dark, used on media in both themes) |
+| Size, Windows | 24 high, padding 0 8, radius 4, Segoe UI Variable 12/16 semibold; icon-only 24×24 with a 16 px glyph |
+| Size, macOS | 20 high, padding 0 7, radius 4, SF 11/14 semibold; icon-only 22×22 with a 14 px glyph |
+| Numbers | Cascadia Mono or SF Mono with tabular figures, so "42%" never jitters |
+
+- **Glyphs.** Missing uses `video.slash` (SF Symbols) or the Segoe Fluent Icons video-off glyph. Corrupt uses `exclamationmark.triangle` or the Fluent warning glyph. Audio only uses `waveform` or the Fluent audio glyph.
+- **Chip copy:** "Transcribing · {p}%", "Transcribing" (no fraction), "Extracting audio…", "Reading video…", "Aligning words…" (the §13 stages), "Demo", "Demo · no video" (stage) and "Audio only".
+- The missing and corrupt chips are icon-only. The meta text beside them carries the words.
+
+**Progress line.**
+
+- 2 px along the bottom edge of the tile or thumbnail;
+- a fill of `overlay.foreground` (#F5F4F0) on a track of black 55%;
+- a contrast of 4.3:1 or more over any frame, and 19:1 over black;
+- it spends no accent and needs no runtime accent derivation;
+- **indeterminate** (the engine reports no fraction): a 30% segment slides across in 1.6 s. Under Reduce Motion the line is hidden and the chip reads "Transcribing".
+
+#### 5.4.9 Accessibility
+
+**Names.**
+
+- Tiles and rows with a media state are named "{title}, {state}", with no "·" in names:
+  - "Latte art for beginners, video not found";
+  - "Grinder shootout, transcribing 42 percent";
+  - "…, loading";
+  - "…, demo project, no video";
+  - "…, audio only";
+  - "…, video can't be read".
+- Chips have no accessible name of their own, so nothing is announced twice. Cards are decorative.
+- Recent rows keep "{title}, video not found", and Return opens Locate… (§7).
+
+**Reduce Motion** (macOS `accessibilityReduceMotion`, Windows `UISettings.AnimationsEnabled == false`):
+
+- no sheen (static black);
+- no crossfade (a cut);
+- static dots;
+- the text "Loading video…" instead of the stage ring;
+- the word rhythm and the audiogram page every 6 s or 14 s instead of scrolling;
+- the indeterminate segment is hidden.
+
+**Reduce Transparency, Increase Contrast, transparency effects off:**
+
+- chips use the opaque tokens;
+- the progress track becomes opaque `#000000` and the fill pure white;
+- Increase Contrast raises the chip stroke to white 100%.
+
+**Windows High Contrast:**
+
+- the stage and cards stay black: they are media, and media is never recoloured (§14);
+- chips use `SystemColorWindowColor` with `SystemColorWindowTextColor` text, glyph and 1 px border;
+- the progress line uses `SystemColorWindowTextColor` on `SystemColorWindowColor` (a 4 px track).
+
+**Contrast.**
+
+| Element | Ratio |
+|---|---|
+| chip text on black | 21:1 |
+| chip text over the worst frame pixel | 6.2:1 |
+| amber glyph on black | 10.8:1 |
+| stage line 1 | 21:1 |
+| stage file name (white 66%) | 8.8:1 |
+| progress fill against its track | 4.3:1 or more |
+| played rhythm (white 62%) | 7.5:1 |
+| played audiogram (white 72%) | 10:1 |
+
+- Decorative and carrying no state: the upcoming rhythm and audiogram (white 26%), the rim and the sheen. State is always in a chip, in text or in the accessible name.
+- A black tile on a dark page is 1.2:1. It is an image, not a control boundary, and the rim helps as it does for frames.
+
+#### 5.4.10 Timeline without an envelope
+
+When the envelope is missing (state e, or c on another computer):
+
+- each kept word draws its `timeline.keptBackground` bed with one 8 px capsule in `timeline.waveform`, inset 2 at each end;
+- cut words and cut pauses keep their hatching;
+- the brackets, the scope dimming and the playhead are unchanged.
+
+#### 5.4.11 Copy
+
+The stand-in copy is in §13: the corrupt Recent project, the corrupt file, the two Export tooltips, the demo project, the stage lines and the Settings switch.
+
 ---
 
 ## 6. Clips, captions and Voice Lab
@@ -620,7 +870,7 @@ The inspector and its Captions, Clips and AI tabs are gone. The commands ⌘1–
 
 - **One row, 36 high**, used on macOS when the column is 340 or wider:
   - "Captions" 13/600;
-  - a 64×36 live chip of the current style on the current frame;
+  - a 64×36 live chip of the current style on the current frame, or the one-line caption card when there is no frame (§5.4.3);
   - the style name, 13/600, followed by "Edited" in 11 `text.secondary` when overrides exist;
   - under the name, the Fine Tune disclosure label "› {summary}" in 11 `text.secondary`;
   - on the trailing side, a regular switch (38×22).
@@ -669,7 +919,7 @@ There is no separate Fine Tune row and no "Off" tile.
   | Sentence | `sentence` | Subtitle, Lower third, Typewriter, Editorial |
 
   A style with none of these tags goes into an "Other" group at the end. A test asserts that the bundled styles produce no "Other" group.
-- **Tile content.** Each tile renders the real style with the export renderer: the current phrase at the playhead (fallback "Your story"), with that style's word count and casing. It is drawn over the band of the current frame behind the style's caption position, dimmed 35%. In clip scope the playhead is inside the clip. The selected tile is drawn with the active overrides.
+- **Tile content.** Each tile renders the real style with the export renderer: the current phrase at the playhead (fallback "Your story"), with that style's word count and casing. It is drawn over the band of the current frame behind the style's caption position, dimmed 35%. With no frame, samples sit on the card backdrop (§5.4.3), not dimmed. In clip scope the playhead is inside the clip. The selected tile is drawn with the active overrides.
 - **Selected tile:** a 2 px `accent.text` outline at offset 2, a check badge (a white check on a 62% black disc, 18, top-right, inset 6), and the name "Box highlight · Edited" in 600 `text.primary`. Other names are 11 (macOS) or 12 (Windows) `text.secondary`.
 - **Scrolling.** The grid scrolls the selected tile into view when the scope changes. The scroll view ends 8 above the strip with a 24 (macOS) or 12 (Windows) fade to the column background.
 - **Accessibility.** Options are named "{name}: {description}" ("Box highlight: a box behind the spoken word, a few words at a time").
@@ -895,17 +1145,18 @@ There is no Recent header and no grid.
 
 - **Header:** "Recent projects" (15/600 or 20/28), with a sort menu on the trailing side: Last Opened ⌄, Name.
 - **Layout:** an adaptive grid with a 200–280 card width and a 16 gap. That gives 4 columns of 225×126 (macOS) or 226×127 (Windows) at 1280. Every recent project appears, including the open one.
-- **Card thumbnail:** 16:9, radius 10, the first kept frame. The duration sits as a mono 11/600 chip at the bottom trailing corner, on black at 62% with white text.
+- **Card thumbnail:** 16:9, radius 10, the first kept frame, or the caption card when there is none (§5.4). The duration sits as a mono 11/600 chip at the bottom trailing corner, on black at 62% with white text.
 - **Card text:** the title (13/600 or 14/20 semibold), then a meta line in `text.secondary`: "{n} clips · {relative date}" (macOS), or "{duration} · {date} · {n} clips" (Windows). "No clips yet" when there are none, and "Open now" for the open project.
-- **Missing video:** the thumbnail is desaturated and dimmed, with a centred warning triangle in `status.warning`. The meta line becomes "Video not found." in `status.warning` with **Locate…** (a link button, 32 high on Windows).
+- **Missing video:** the caption card (§5.4) with the icon-only missing chip. The meta line becomes "⚠ Video not found." in `status.warning` with **Locate…** (a link button, 32 high on Windows).
   - Locate… opens the project in place and immediately runs the existing relink flow (§13 "Media missing"). Cancelling leaves the project open in its missing-media state.
-  - In the sidebar, the same project's Recent row shows a trailing "⚠ Not found" in `status.warning`. Its accessible name is "{title}, video not found", and Return opens Locate….
-- **Transcribing:** an overlay on the card's thumbnail with "Transcribing · 42%", a 2 px progress line and **Cancel**. The meta line reads "Transcribing on this {Mac/PC}".
+  - In the sidebar, the same project's Recent row shows the card, with a trailing "⚠ Not found" in `status.warning` on macOS or the meta line "⚠ Video not found" on Windows. Its accessible name is "{title}, video not found", and Return opens Locate….
+- **Unreadable video:** the caption card with the icon-only warning chip. The meta line becomes "⚠ Can't read video." in `status.warning` with **Locate…**, and the Recent row shows "⚠ Can't read video".
+- **Transcribing:** the thumbnail keeps its frame and gains the chip "Transcribing · 42%" and a 2 px progress line (§5.4.8). Neither is interactive. The meta line reads "Transcribing on this {Mac/PC}" with **Cancel** (a 32-high `HyperlinkButton` on Windows, a link on macOS), where Locate… sits for a missing video.
 - **Card actions:**
   - click or Return opens the project in place (§2);
   - the context menu offers Open, Show in Finder or Show in Explorer, and Remove from List.
-- **Accessibility:** the card's name is the project title, its description "{duration}, {n} clips, opened {date}".
-- **Metadata loading:** thumbnail, duration, clip count and missing state are read lazily from each project file and its media, off the main thread, and cached by the project file's modification date.
+- **Accessibility:** the card's name is the project title, followed by its media state when it has one ("Latte art for beginners, video not found"; §5.4.9). Its description is "{duration}, {n} clips, opened {date}".
+- **Metadata loading:** thumbnail, duration, clip count and missing state are read lazily from each project file and its media, off the main thread, and cached by the project file's modification date. The cache also keeps the card inputs, or both cards, with the switch value and resolved style id they were made with, and re-derives them when either changes (§5.4.5). Reading metadata never saves a project, because saving changes the date Home shows.
 
 **Sidebar on Home.**
 
@@ -948,7 +1199,7 @@ Opening a video makes it playable at once (section 13, "Importing"). Transcripti
 
 ## 8. Export and share
 
-macOS: a sheet on the main window. Windows: a `ContentDialog` (`DefaultButton="Primary"`). It opens from **Export Video…** or **Export Clip…** (⌘E / Ctrl+E), the sidebar row menu (Export Clip…) and, on macOS, File > Export…. Disabled with the reason "Keep at least one word before exporting." when everything is cut (`!summary.canExport`).
+macOS: a sheet on the main window. Windows: a `ContentDialog` (`DefaultButton="Primary"`). It opens from **Export Video…** or **Export Clip…** (⌘E / Ctrl+E), the sidebar row menu (Export Clip…) and, on macOS, File > Export…. Disabled with the reason "Keep at least one word before exporting." when everything is cut (`!summary.canExport`), and with the reasons in §5.4.4 while the video is missing or unreadable and for demo projects.
 
 The sheet edits the project: **Aspect**, **Quality**, **Also save .srt** and **Save to** read and write the project's `export` object (`aspect`, `quality`, `srt`, `folder`), and the **Captions** picker reads and writes `captions.styleId`, the same value as Captions in the right column (§6.1); the picker keeps "Off" (`"off"`). New projects start from the Settings → Export defaults. Output size, bitrate and frame rate are derived from architecture.md section 4.1 and never stored.
 
@@ -1047,7 +1298,7 @@ macOS                                                    Windows
 
 | Pane | Rows |
 |---|---|
-| **General** | Appearance: System · Light · Dark (`general.appearance`). Transcript text size (`general.transcriptTextSize`). Pause breath: Tight 0.05 s · Natural 0.15 s · Relaxed 0.30 s (`editing.pauseBreath`). Show low-confidence words (`general.showLowConfidence`). Default caption style (`captions.defaultStyleId`). Open last project on launch (Windows only, `general.openLastProject`). Check for updates automatically (`update.autoCheck`). Cache size limit 2 · 5 · 10 · 20 GB (`cache.limitGB`) + Clear cache. The filler rule and the pause threshold are not settings in 0.1.0 (editing spec sections 5.0 and 12). |
+| **General** | Appearance: System · Light · Dark (`general.appearance`). Transcript text size (`general.transcriptTextSize`). Pause breath: Tight 0.05 s · Natural 0.15 s · Relaxed 0.30 s (`editing.pauseBreath`). Show low-confidence words (`general.showLowConfidence`). Default caption style (`captions.defaultStyleId`). Open last project on launch (Windows only, `general.openLastProject`). Check for updates automatically (`update.autoCheck`). Show transcript words on placeholders, on by default (`general.showPlaceholderWords`; help "When off, placeholders show the project title instead of its first words."; §5.4.2). Cache size limit 2 · 5 · 10 · 20 GB (`cache.limitGB`) + Clear cache, which keeps each video's waveform envelope and its saved transcription results, and Clear everything, which removes those too (architecture.md §8.2). The filler rule and the pause threshold are not settings in 0.1.0 (editing spec sections 5.0 and 12). |
 | **Transcription** | Engine: On this {Mac/PC} · ElevenLabs Scribe · Apple on-device (macOS) · Ask each time (`transcription.engineMode`). Language: Auto or a list (`transcription.language`). ElevenLabs key row (SecureField / PasswordBox → Save · Test · Forget); footnote "Sends the audio track to ElevenLabs, which keeps it under its terms. You confirm before the first upload."; Advanced → Region (`transcription.elevenlabs.region`). Models list (row pattern below). Footer: "Models download on first use and never ship inside the app. Each runs entirely on this {Mac/PC}." Storage location and total size, Reveal in Finder/Explorer. |
 | **AI** | Normative content in AI spec section 10.1: connector picker grouped as *Your API key* / *On this computer* / *Installed CLI (your own sign-in)*; model picker `{name} ({tier})` + **Custom…** + **Refresh models**; per kind: key row, local server URL and status line, Apple availability and supported languages, CLI status line ("Found claude 2.1.309 at ~/.local/bin/claude · Signed in") with **Choose…** and **Sign-in help**; **Test**; "Snap clip edges to sentence boundaries". Footnote per group on what is sent. Layout follows this document (grouped form rows, no cards). |
 | **Export** | Defaults for new projects: aspect (`export.defaultAspect`), Quality: Standard · High (`export.quality`), Captions: Burn in · Burn in + .srt (`export.srt`). File name pattern (`export.fileNamePattern`). Default folder (`export.folder`). Open folder after export (`export.openFolderAfter`). Windows: Encoder (read-only, from the probe) + "Re-check encoders". |
@@ -1149,12 +1400,13 @@ Voice: short, factual, calm, always reassuring about the media. No exclamation m
 | No project (empty library) | Home | Hero "Drop a talking-head video". Sub "VoxClip transcribes it so you can cut by words, make clips and add captions." Buttons "Import Video…", "Open Project…". Footnote "{types} · Media and edits stay on this {Mac/PC}." |
 | Home search, no results | Home | "No projects match “{query}”." |
 | AI callout | Home | four variants by readiness (§7) |
-| Recent project missing | Home card; sidebar Recent row | Card: "Video not found." [Locate…]; row: "⚠ Not found" |
+| Recent project missing | Home card; sidebar Recent row | Card: "Video not found." [Locate…]; row: "⚠ Not found" (macOS) or "⚠ Video not found" (Windows) |
+| Recent project, corrupt file | Home card; sidebar Recent row | Card: "Can't read video." [Locate…]; row: "⚠ Can't read video" |
 | Drag over | whole window | "Drop to transcribe" on `overlay.drop`, 2 dashed `overlay.dropBorder`, radius 14. Line: macOS "One video at a time · MOV, MP4, M4V"; Windows "{file} · VoxClip makes a new project next to the video". With a project open: "{project} is saved first." Not allowed (M2 while recording): "Finish or close the recording first" |
 | Unsupported file (macOS WebM/MKV) | Home / drop | "VoxClip can't open {ext} files on Mac yet. Export the video as MP4 or MOV and try again." (Informational) |
 | Not transcribed | Editor (transcript page) | "This video isn't transcribed yet." [Transcribe…] (shown while `transcript == null`; section 7.1) |
 | Importing | Editor | The video is playable immediately. The transcript page shows 6 skeleton lines (static under Reduce Motion) and the stages "Reading video… → Extracting audio… → Transcribing on this {Mac/PC} · 42% → Aligning words…" (ElevenLabs: "Transcribing with ElevenLabs · 42%") with **Cancel**. Announcements every 10%. |
-| Transcribing | Home card overlay; Full take row; editor | Card and row: "Transcribing · {p}%" [Cancel]; card meta "Transcribing on this {Mac/PC}". Editor: unchanged (6 skeleton lines and stages) |
+| Transcribing | Home card; Full take row; editor | Card: chip "Transcribing · {p}%" and progress line; meta "Transcribing on this {Mac/PC}" [Cancel]. Row: "Transcribing · {p}%" [Cancel]. Editor: unchanged (6 skeleton lines and stages) |
 | Transcribed | Editor | "Transcribed on this {Mac/PC} · 1,842 words" (Success, auto-dismiss after 6 s). |
 | Model missing | Editor | "Download the {model} model ({size}) to transcribe on this {Mac/PC}." [Download] [Use ElevenLabs instead] (Informational) |
 | Model downloading | Editor / Settings | "Downloading {model} · 37% · {done} of {total}" [Cancel] |
@@ -1166,6 +1418,14 @@ Voice: short, factual, calm, always reassuring about the media. No exclamation m
 | No audio output device (Windows) | Editor, when preview plays | "No audio output device. Playing without sound." (Informational) Shown when the PC has no default output device, or the device is removed during playback and no other device can take over. Video, captions and the playing word keep moving, and pause and seek still work. Each later Play, or resuming after a seek or edit, tries again; the notice clears when sound plays. When headphones are unplugged and speakers remain, sound moves to the speakers and no notice appears. Export is unaffected. |
 | Audio output in use (Windows) | Editor, when preview plays | "Another app is using the audio output. Playing without sound." (Informational) Shown when another app holds the output device in exclusive mode, at Play or during playback. Otherwise the same as "No audio output device": playback continues without sound, each later Play or resume tries again, and the notice clears when sound plays. |
 | Media missing | Editor | "Can't find {file}. Edits are saved." [Locate…] (Warning) |
+| Corrupt file | Editor | "Can't read {file}. Edits are saved." [Locate…] (Warning) |
+| Media missing or corrupt, Export | Export tooltip | "Locate the video to export." |
+| Demo project | Editor InfoBar or callout (Informational) | "Demo project with no video. Changes aren't saved to the fixture." |
+| Demo project, Export | Export tooltip | "Demo projects have no video to export." |
+| Stage, missing | stage (non-interactive) | "Video not found" and the file name |
+| Stage, corrupt | stage (non-interactive) | "Can't read this video" and the file name |
+| Stage, loading under Reduce Motion | stage | "Loading video…" |
+| Placeholder words | Settings → General | "Show transcript words on placeholders" (on); help "When off, placeholders show the project title instead of its first words." |
 | Relinked file differs | Editor | "This file looks different. Use it anyway?" [Use it] [Choose another] |
 | Clips: no connector | callout under the sidebar actions | "Choose how VoxClip finds clips: your API key, a model on this computer, or an installed CLI." [Set Up AI…], plus "You can also select words and press ⌘K to make a clip yourself." (Windows: Ctrl+K) |
 | Clips: CLI not found | callout under the sidebar actions | "{Claude Code/Codex} isn't installed. {installHint}" (hint from the catalogue) |
@@ -1218,7 +1478,7 @@ Voice: short, factual, calm, always reassuring about the media. No exclamation m
 
 ## 14. Appearance and materials
 
-- **Light and dark** follow the system. Dark is the hero look for screenshots. The video stage stays black in both and in High Contrast.
+- **Light and dark** follow the system. Dark is the hero look for screenshots. The video stage stays black in both and in High Contrast, and so do caption cards (§5.4).
 - **macOS Liquid Glass is chrome only:** the sidebar, toolbar, sheets, menus and popovers (system), plus one custom glass element, the transcript selection bar (§4.3). Content surfaces are opaque tokens (`bg.surface` for the transcript, `stage` for video, `timeline.*` for the strip). Never glass on glass. Custom surfaces check `accessibilityReduceTransparency` and switch to opaque fills with `line.strong` borders; system glass handles Reduce Transparency and Increase Contrast itself. Tint glass only to convey meaning (only Export, and Import Video… on Home, are prominent).
 - **Windows:** Mica on the main window and the Settings window, applied once. `LayerOnMicaBaseAltFillColorDefaultBrush` behind the CommandBar. Acrylic only for transient surfaces: menus, flyouts, the selection `CommandBarFlyout` and the Find Clips flyout. Cards and panes use theme `Layer*` / `Card*` brushes. `TitleBar` for chrome, `CommandBar` for grouped commands, `NavigationView` for the sidebar, `CommunityToolkit` `Segmented` for Frame and Edited/Source, `InfoBar` for status, `ContentDialog` for Export, `TeachingTip` for first-run hints.
 - **Accent: Petrol**, in two tones. `accent.default` (`#1C6B69` light, `#237D7A` dark) is the fill that carries text: prominent buttons, the selected choice, the playing word. `accent.text` (`#1C6B69` light, `#63BDB6` dark) is for marks, rings, links, clip badges and the playhead. Both tones pass with each platform's own text on the accent.
@@ -1232,6 +1492,7 @@ Voice: short, factual, calm, always reassuring about the media. No exclamation m
   - Petrol solids per screen are at most four: Export, the playing word, the switch that is on, and the selected clip's badge. Home has one: Import Video….
   - System focus fills (the focused sidebar selection on macOS) do not count.
   - Clip identity uses neutral badges on `clip.badgeBackground` and `line.strong` rules. The gallery check is neutral. Toolbar glyphs are monochrome. Only the Home sidebar glyph keeps the system's accent tint.
+  - Media stand-ins spend no Petrol: their chips, progress lines, word rhythm and audiogram are neutral (§5.4). Near media, the only accent marks remain the selection ring and the playhead.
 - **Colour rules:** one accent, Petrol; red only for cuts and recording; amber only for warnings and suggestions; no pure black except the stage; no gradients on native surfaces.
 - **High Contrast (Windows):** the `HighContrast` theme dictionary maps every token to its `windowsHighContrast` system colour (tokens.json). Strikethrough survives High Contrast, so cut state stays visible.
 
@@ -1243,11 +1504,11 @@ Voice: short, factual, calm, always reassuring about the media. No exclamation m
 - **Timeline** is a slider: "Playhead, 42 seconds of 2 minutes 15 after cuts, 12 cuts". Arrow keys step by word.
 - **Caption gallery** is a single-choice picker named "Caption style"; each option is named "{name}: {description}".
 - **Keyboard.** The whole loop (import → cut → captions → clips → export → share) works without a pointer. Focus and F6 / ⌃F6 order: sidebar → toolbar or `CommandBar` → transcript → viewer → Captions or Rewrite panel → timeline. On macOS the selection bar, while it shows, comes right after the transcript (§4.3). On Windows Shift+F6 goes back, from any focused descendant. On macOS, Full Keyboard Access reaches every control with Tab. Icon-only buttons have explicit names: Back 3 seconds, Play, Forward 3 seconds, Close Rewrite, Reject take 2, Keep suggested clip 5, Dismiss suggested clip 5, Hide Viewer. The Windows splitter is focusable: ← and → resize by 16 within 300–560, and Enter collapses or expands the column. It is named "Resize viewer". The macOS divider relies on View > Show/Hide Viewer and the `AXSplitter` increment and decrement actions. System focus rings / focus visuals; custom rings are 2 `focus.ring`, offset 2.
-- **Sidebar and panel focus.** Choosing a sidebar row keeps focus on the row; Enter on Windows invokes it. F6 from the pane lands on the `CommandBar`. After Keep, Dismiss or Remove, focus moves to the next row, or to Full take. Opening Rewrite focuses "What should change?", and Esc returns to the words. Alt+Left from the editor selects Home. A recent project's accessible name is its visible title. A missing one adds ", video not found".
+- **Sidebar and panel focus.** Choosing a sidebar row keeps focus on the row; Enter on Windows invokes it. F6 from the pane lands on the `CommandBar`. After Keep, Dismiss or Remove, focus moves to the next row, or to Full take. Opening Rewrite focuses "What should change?", and Esc returns to the words. Alt+Left from the editor selects Home. A recent project's accessible name is its visible title. A missing one adds ", video not found", and the other media states add theirs (§5.4.9).
 - **Colour independence.** Cut = strike + dimming; timeline cuts = hatching; clips = brackets and numbers; fillers = dotted underline + tooltip. No state depends on red versus green. The selected clip is shown by an accent badge plus the row selection, and the selected Frame by a semibold label; suggestions by dashes and the Suggested header; AI words by the AI chip and a dashed underline; exported state by a glyph and a word.
 - **Contrast** (WCAG 2.x, Petrol palette): every text pair is at least 4.5:1 and every UI boundary at least 3:1, in light and dark, on macOS and Windows, including on-accent text. `npm --prefix tools/design test` enforces this through `tools/design/contrast.mjs`, which prints the measured table and fails on any colour token that is neither checked nor exempted; see §16 for the values. Cut words stay at least 4.5:1 because they are still content, and pause-token text uses `text.muted`, struck through in `cut.stroke` when cut. Re-check when a surface token changes.
-- **Motion.** Under Reduce Motion (macOS `accessibilityDisplayShouldReduceMotion`, Windows `UISettings.AnimationsEnabled`): sidebar selection jump-scrolls the transcript; the timeline zoom switches without animating; the selection bar and the Rewrite panel appear without slide or scale (a crossfade of 150 ms or less); gallery tiles are static; the strike draw-in, the playing-word slide and the M2 countdown scaling are off.
-- **Reduced transparency.** Under Reduce Transparency or Increase Contrast (Windows: Transparency effects off or a contrast theme), the sidebar's custom parts and the selection bar become opaque `bg.elevated` with a 1 px `line.strong` edge.
+- **Motion.** Under Reduce Motion (macOS `accessibilityDisplayShouldReduceMotion`, Windows `UISettings.AnimationsEnabled`): sidebar selection jump-scrolls the transcript; the timeline zoom switches without animating; the selection bar and the Rewrite panel appear without slide or scale (a crossfade of 150 ms or less); gallery tiles are static; the strike draw-in, the playing-word slide and the M2 countdown scaling are off. Media stand-ins drop their sheen, crossfade, moving dots and stage ring, and the word rhythm and audiogram page instead of scrolling (§5.4.9).
+- **Reduced transparency.** Under Reduce Transparency or Increase Contrast (Windows: Transparency effects off or a contrast theme), the sidebar's custom parts and the selection bar become opaque `bg.elevated` with a 1 px `line.strong` edge. Media chips switch to their opaque tokens (§5.4.8).
 - **Targets.** macOS controls are at least 24 pt in the sidebar and selection bar and 22 pt elsewhere; words get 2 pt vertical hit slop. Windows targets are at least 32×32 epx. The timeline track's whole 30 high band is the scrub target. Trim handles have 24 wide hit regions.
 - **Text size.** Transcript zoom 13–28. Windows honours the system text-size setting through the Fluent type ramp.
 - **Captions as accessibility.** `.srt` sidecar export; default styles are readable on any frame (the bold styles have a stroke).
@@ -1267,9 +1528,11 @@ Naming: token path `color.text.primary` → Swift `vcTextPrimary`, XAML `VcTextP
 
 Contrast is a test, not a note: `npm --prefix tools/design test` computes WCAG 2.x contrast for every text-on-surface pair the apps draw (4.5:1), every text or glyph on the accent (4.5:1, including the macOS system white and the Windows `App.xaml` ramp, whose ten values are pinned) and every UI boundary and mark (3:1), in light and dark. It fails when a colour token is neither checked nor exempt with a reason, and when the text hierarchy stops falling from `text.primary` through `text.secondary` to `text.muted` and `text.tertiary` on any surface. System glass the apps never paint is approximated from the ADR-R29 mockups (`glass.sidebar` in `contrast.mjs`). `npm --prefix tools/design run contrast` prints the table. Lowest pairs: text 4.58:1 (dark `text.secondary` on `clip.badgeBackground` over the sidebar glass), on-accent 4.65:1 (dark `accent.on` on `accent.default`), boundaries 3.12:1 (light `line.strong` on `bg.sunken`); on Windows, on-accent 4.90:1 (white on `SystemAccentColor` `#237D7A`).
 
-The palette is the Document direction from the October 2026 design study: paper and ink neutrals and one accent, Petrol. Each colour token's `source` extension names the study token its value comes from (for example `bg.elevated` is the study's raised), or the ADR-R29 mockup token. `line.subtle` was removed because the study has two separators. `text.disabled`, `record.*`, `overlay.scrim` and `overlay.transportOpaque` keep values the study does not define. `stage` stays `#000000` rather than the study's `#0B0B0C`, because letterboxed video wants true black (§14). Three values step away from their sources so every pair passes: `text.muted` sits between `text.secondary` and `text.tertiary` (the study's pause label was brighter than `text.secondary`), `word.cut` is one step past the study's cutText so cut words pass on `pause.background`, and the dark `clip.badgeBackground` is 10% rather than the ADR-R29 delta's 13% so badge numerals pass on the sidebar glass.
+The palette is the Document direction from the October 2026 design study: paper and ink neutrals and one accent, Petrol. Each colour token's `source` extension names the study token its value comes from (for example `bg.elevated` is the study's raised), or the ADR-R29 mockup token. `line.subtle` was removed because the study has two separators. `text.disabled`, `record.*`, `overlay.scrim` and `overlay.transportOpaque` keep values the study does not define. `stage` stays `#000000` rather than the study's `#0B0B0C`, because letterboxed video wants true black (§14). It is also the caption card's backdrop (§5.4.3). Three values step away from their sources so every pair passes: `text.muted` sits between `text.secondary` and `text.tertiary` (the study's pause label was brighter than `text.secondary`), `word.cut` is one step past the study's cutText so cut words pass on `pause.background`, and the dark `clip.badgeBackground` is 10% rather than the ADR-R29 delta's 13% so badge numerals pass on the sidebar glass.
 
 ADR-R29 adds `clip.badgeBackground`, `timeline.keptBackground`, `timeline.scopeDim` and `selection.transcript`, and retunes `timeline.waveform`. `timeline.clipBracket` marks the selected clip only; unselected brackets use `line.strong`. `timeline.clipBand`, `size.inspector`, `size.welcomeWindow`, `size.transportPillHeight`, `size.footerStatusHeightWindows` and `size.breakpointThreeColumn` are deprecated and removed with the old layout.
+
+The media stand-ins (§5.4) add `chip.mediaBackground`, `chip.mediaStroke`, `chip.mediaBackgroundOpaque`, `chip.mediaForeground` and `chip.warningGlyph` (§5.4.8). They have one value in both themes because they sit on media. They join tokens.json, with their pairs in `tools/design/contrast.mjs`, when the first chip is built.
 
 Summary (full values in tokens.json):
 
@@ -1293,7 +1556,7 @@ Summary (full values in tokens.json):
 | `timeline.track` / `.kept` / `.playhead` | `#26272B` / `#7A7D85` / `#63BDB6` | `#E4E2DC` / `#74777E` / `#1C6B69` | strip |
 | `timeline.keptBackground` / `.waveform` / `.scopeDim` | `#ECEAE417` / `#ECEAE494` / `#1415179E` | `#1A1B1F12` / `#1A1B1F85` / `#F0EFEAA8` | kept-speech bed, waveform bars, dim outside the selected clip |
 | `overlay.foreground` | `#F5F4F0` | `#F5F4F0` | text over video |
-| `stage` | `#000000` | `#000000` | video surround |
+| `stage` | `#000000` | `#000000` | video surround and caption-card backdrop |
 
 Typography uses the system font: the transcript at 19/32 (SF Pro; Segoe UI Variable Text on Windows; zoom 13–28 with the line height at 32/19) and SF Mono / Cascadia Mono for timecodes, status labels and pause tokens. DM Sans and Geist Mono appear only in rendered video. Spacing is a 4-point grid with pane padding 16 on both platforms, a transcript gutter of 84 / 76 and a paragraph gap of 18 / 20 (macOS / Windows). Radii are 4 for badges, chips and the playing word, the aliases `control` 6, `pane` 10 and `sheet` 14, and 8, 12, 16 and capsule. Motion is 120 / 150 / 240 ms, ease-out `cubic-bezier(.23,1,.32,1)`, spring 0.32 / 0.82, instant under Reduce Motion. Fixed sizes include the sidebar (220–320, ideal 252; Windows 264), the right column (300–560, ideal 360 / 388), the timeline (72, with a 30 track), the selection bar (36 / 40), the largest 9:16 stage (180 × 320) and caption tiles at 0.45 of their width high.
 

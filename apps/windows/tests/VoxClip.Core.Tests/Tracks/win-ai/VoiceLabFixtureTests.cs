@@ -128,6 +128,21 @@ public sealed class VoiceLabFixtureTests
         }
     }
 
+    /// <summary><c>\A…\z</c>, not <c>^…$</c>: .NET lets <c>$</c> match before a final line break, which would put "en\n" into the prompt.</summary>
+    [Theory]
+    [InlineData("en\n")]
+    [InlineData("en\r\n")]
+    [InlineData("en ")]
+    public async Task RewriteLanguageRejectsTrailingLineBreaksAndSpaces(string language)
+    {
+        var service = new VoiceRewriteService(Catalog());
+        var connector = new RewriteStub(ConnectorId.OpenAI);
+        var input = new VoiceRewriteRequest(Guid.NewGuid(), VoiceRewriteScope.Passage, [Word(0, "Hello", 0, 0.5)], "Improve it", language);
+        Assert.Equal(VoiceLabErrorKind.InvalidInput, (await Assert.ThrowsAsync<VoiceLabException>(() =>
+            service.PrepareAsync(input, connector, "chosen", TestContext.Current.CancellationToken))).Kind);
+        Assert.Equal(0, connector.Sends);
+    }
+
     [Fact]
     public async Task RewritePreflightPreservesApprovalUntilOneValidDispatch()
     {
@@ -215,39 +230,34 @@ public sealed class VoiceLabFixtureTests
     }
 
     [Fact]
-    public async Task LanguageModesAndMimeTypesMatchOutboundFields()
+    public async Task LanguageModesAndCloneFieldsMatchOutboundRequests()
     {
         using var handler = new Handler(request => Task.FromResult(request.Method == HttpMethod.Post ?
             request.RequestUri!.AbsolutePath.StartsWith("/v1/text-to-speech/", StringComparison.Ordinal) ? Json(200, TtsReply("Hi")) :
             request.RequestUri.AbsolutePath == "/v1/voices/add" ? Json(200, "{\"voice_id\":\"created123\",\"requires_verification\":false}") : Audio(Pcm()) : Discovery(request)));
         using var service = ElevenLabsVoiceLab.ForTesting(new MemoryKeys(), handler, ElevenLabsRegion.Default);
-        var name = "Voice ä";
-        var sample = Wav();
+        var request = VoiceLabTestCalls.CloneRequest(" Voice ä ");
+        var consentSha256 = Convert.ToHexStringLower(SHA256.HashData(request.Samples[0].Wav));
         var before = handler.AllSends;
-        var clone = service.PrepareClone(name, sample, "audio/wav", Policy(null));
+        var clone = service.PrepareClone(request, Policy(null));
         Assert.Equal(before, handler.AllSends);
-        Assert.Equal(name, clone.Review.DisplayName);
+        Assert.Equal("Voice ä", clone.Review.DisplayName);
         Assert.Equal("audio/wav", clone.Review.MimeType);
+        Assert.Equal(consentSha256, clone.Review.ContentSha256);
         await service.DiscoverSubscriptionAsync(TestContext.Current.CancellationToken);
-        var result = await service.CreateOwnCloneAsync(name, sample, "audio/wav", Policy(null), service.Approve(clone, true), TestContext.Current.CancellationToken);
+        var result = await service.CreateOwnCloneAsync(request, Policy(null), service.Approve(clone, true), TestContext.Current.CancellationToken);
         Assert.Equal("created123", result.VoiceId);
         var multipart = Encoding.UTF8.GetString(handler.LastBody!);
-        Assert.True(multipart.Contains("name=\"name\"", StringComparison.Ordinal) || multipart.Contains("name=name", StringComparison.Ordinal));
-        Assert.Contains("\r\n\r\n" + name + "\r\n", multipart);
-        Assert.DoesNotContain("(VoxClip)", multipart);
-        foreach (var mime in new[] { "audio/mp4", "audio/mpeg", "audio/flac" })
-        {
-            var data = Encoding.ASCII.GetBytes("synthetic-" + mime);
-            var quote = service.PrepareClone(name, data, mime, Policy(null));
-            Assert.Equal(mime, quote.Review.MimeType);
-            await service.CreateOwnCloneAsync(name, data, mime, Policy(null), service.Approve(quote, true), TestContext.Current.CancellationToken);
-            Assert.Contains("Content-Type: " + mime, Encoding.UTF8.GetString(handler.LastBody!));
-            Assert.True(handler.LastBody!.AsSpan().IndexOf(data) >= 0);
-        }
-        Assert.Equal(VoiceLabErrorKind.InvalidInput, Assert.Throws<VoiceLabException>(() => service.PrepareClone(new string('x', 101), sample, "audio/wav", Policy(null))).Kind);
-        Assert.Equal(100, Encoding.UTF8.GetByteCount(new string('ä', 50)));
-        _ = service.PrepareClone(new string('ä', 50), sample, "audio/wav", Policy(null));
-        Assert.Equal(VoiceLabErrorKind.InvalidInput, Assert.Throws<VoiceLabException>(() => service.PrepareClone(new string('ä', 51), sample, "audio/wav", Policy(null))).Kind);
+        Assert.Contains("name=\"name\"", multipart);
+        Assert.Contains("\r\n\r\nVoice ä (VoxClip)\r\n", multipart);
+        Assert.Contains("name=\"files[]\"; filename=\"consent-statement.wav\"", multipart);
+        Assert.Contains("name=\"files[]\"; filename=\"sample-02.wav\"", multipart);
+        Assert.Contains("\r\n\r\nVoxClip own-voice clone. Consent sha256:" + consentSha256 + ". Created 2026-10-26T09:15:42Z.\r\n", multipart);
+        Assert.Contains("\r\n\r\n{\"language\":\"en\"}\r\n", multipart);
+        Assert.DoesNotContain("filename*", multipart);
+        Assert.DoesNotContain("text/plain", multipart);
+        Assert.Equal(VoiceLabErrorKind.InvalidInput, Assert.Throws<VoiceLabException>(() => service.PrepareClone(request with
+            { Samples = [request.Samples[0], new(VoiceLabCloneSampleRole.Training, Encoding.ASCII.GetBytes("synthetic-audio/mp4"))] }, Policy(null))).Kind);
 
         await Discover(service);
         foreach (var (model, mode, hasCode) in new[]
@@ -296,12 +306,12 @@ public sealed class VoiceLabFixtureTests
         var wav = Wav();
         var selected = VoiceLabVoiceChoice.Stock("stock123");
         var callerId = Guid.NewGuid();
-        var prepared = service.PrepareConversion(wav, "changer", selected, "en", callerId);
+        var prepared = service.PrepareConversion(wav, "changer", selected, "en", 7, false, callerId);
         var approval = service.Approve(prepared, true);
         Assert.Equal(VoiceLabErrorKind.ConsentRequired, (await Assert.ThrowsAsync<VoiceLabException>(() =>
-            service.ConvertAsync(wav, "changer", selected, "en", approval, TestContext.Current.CancellationToken, Guid.NewGuid()))).Kind);
+            service.ConvertAsync(wav, "changer", selected, "en", 7, false, approval, TestContext.Current.CancellationToken, Guid.NewGuid()))).Kind);
         Assert.Equal(0, handler.PaidSends);
-        var result = await service.ConvertAsync(wav, "changer", selected, "en", approval, TestContext.Current.CancellationToken, callerId);
+        var result = await service.ConvertAsync(wav, "changer", selected, "en", 7, false, approval, TestContext.Current.CancellationToken, callerId);
         Assert.Equal(callerId, result.Receipt.ActionId);
         Assert.Equal(1, handler.PaidSends);
     }
@@ -349,8 +359,8 @@ public sealed class VoiceLabFixtureTests
             var requestId = Guid.NewGuid();
             var wav = Wav();
             var own = VoiceLabVoiceChoice.Own("own123", Policy());
-            var prepared = field == "text" ? service.PrepareSynthesis("Hi", "speech", own, "en", requestId) :
-                service.PrepareConversion(wav, "changer", own, "en", requestId);
+            var prepared = field == "text" ? service.PrepareSynthesis("Hi", "speech", own, "en", VoiceLabTestCalls.Speech, requestId) :
+                service.PrepareConversion(wav, "changer", own, "en", 7, false, requestId);
             Assert.Equal(requestId, prepared.Review.RequestId);
             Assert.Equal("elevenlabs", prepared.Review.Provider);
             Assert.Equal(ElevenLabsRegion.Eu, prepared.Review.Region);
@@ -362,19 +372,19 @@ public sealed class VoiceLabFixtureTests
             var changed = wav.ToArray(); changed[^1] = 1;
             async Task Send() => _ = field switch
             {
-                "text" => await service.SynthesizeAsync("Changed words", "speech", own, "en", approval, TestContext.Current.CancellationToken, requestId),
+                "text" => await service.SynthesizeAsync("Changed words", "speech", own, "en", VoiceLabTestCalls.Speech, approval, TestContext.Current.CancellationToken, requestId),
                 "region" => await OtherRegionSend(),
                 _ => await service.ConvertAsync(field == "audioByte" ? changed : wav,
                     field == "model" ? "other_model" : "changer",
                     field == "voice" ? VoiceLabVoiceChoice.Stock("other_voice") :
                     field == "consentRecord" ? VoiceLabVoiceChoice.Own("own123", Policy(record: "other_record")) : own,
-                    field == "language" ? "et" : "en", approval, TestContext.Current.CancellationToken, requestId)
+                    field == "language" ? "et" : "en", 7, false, approval, TestContext.Current.CancellationToken, requestId)
             };
             async Task<VoiceLabAudioResult> OtherRegionSend()
             {
                 using var other = ElevenLabsVoiceLab.ForTesting(new MemoryKeys(), handler, ElevenLabsRegion.Us);
                 await Discover(other);
-                return await other.ConvertAsync(wav, "changer", own, "en", approval, TestContext.Current.CancellationToken, requestId);
+                return await other.ConvertAsync(wav, "changer", own, "en", 7, false, approval, TestContext.Current.CancellationToken, requestId);
             }
             if (Flag(row, "allowed")) await Send();
             else await Assert.ThrowsAnyAsync<Exception>(Send);

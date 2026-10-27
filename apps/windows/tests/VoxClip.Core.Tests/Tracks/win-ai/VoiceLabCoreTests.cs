@@ -75,11 +75,14 @@ public sealed class VoiceLabCoreTests
         Assert.Null(prepared.Estimate.Usd); Assert.Null(prepared.Estimate.Credits);
         var approval = service.Approve(prepared, true);
         await Assert.ThrowsAsync<VoiceLabException>(() => service.SynthesizeAsync("Ho", "speech", VoiceLabVoiceChoice.Stock("stock123"), "en", approval, TestContext.Current.CancellationToken));
+        Assert.Equal(VoiceLabErrorKind.ConsentRequired, (await Assert.ThrowsAsync<VoiceLabException>(() => service.SynthesizeAsync("Hi", "speech",
+            VoiceLabVoiceChoice.Stock("stock123"), "en", approval, TestContext.Current.CancellationToken, new VoiceLabSpeechOptions(8)))).Kind);
         var result = await service.SynthesizeAsync("Hi", "speech", VoiceLabVoiceChoice.Stock("stock123"), "en", approval, TestContext.Current.CancellationToken);
         Assert.Equal(pcm, result.Pcm); Assert.Equal(24000, result.SampleRate); Assert.Equal(2, result.Alignment!.Count);
         Assert.Equal("api.eu.residency.elevenlabs.io", new Uri(handler.Calls[^1].Url).Host);
         Assert.EndsWith("?output_format=pcm_24000", handler.Calls[^1].Url);
-        Assert.Equal("en", JsonNode.Parse(handler.Calls[^1].Body)!["language_code"]!.GetValue<string>());
+        Assert.True(JsonNode.DeepEquals(JsonNode.Parse("{\"text\":\"Hi\",\"model_id\":\"speech\",\"language_code\":\"en\",\"seed\":7,\"apply_text_normalization\":\"auto\",\"voice_settings\":{\"stability\":0.5,\"similarity_boost\":0.8}}"),
+            JsonNode.Parse(handler.Calls[^1].Body)));
         Assert.Equal("synthetic-test-key", handler.Calls[^1].Header);
         await Assert.ThrowsAsync<VoiceLabException>(() => service.SynthesizeAsync("Hi", "speech", VoiceLabVoiceChoice.Stock("stock123"), "en", approval, TestContext.Current.CancellationToken));
         var wav = Wav();
@@ -87,10 +90,14 @@ public sealed class VoiceLabCoreTests
         var altered = wav.ToArray(); altered[^1] = 1;
         Assert.Equal(VoiceLabErrorKind.ConsentRequired,
             (await Assert.ThrowsAsync<VoiceLabException>(() => service.ConvertAsync(altered, "changer", VoiceLabVoiceChoice.Stock("stock123"), "en", convert, TestContext.Current.CancellationToken))).Kind);
+        Assert.Equal(VoiceLabErrorKind.ConsentRequired, (await Assert.ThrowsAsync<VoiceLabException>(() => service.ConvertAsync(wav, "changer",
+            VoiceLabVoiceChoice.Stock("stock123"), "en", convert, TestContext.Current.CancellationToken, cleanAudioOn: true))).Kind);
         var changed = await service.ConvertAsync(wav, "changer", VoiceLabVoiceChoice.Stock("stock123"), "en", convert, TestContext.Current.CancellationToken);
         Assert.Null(changed.Alignment);
-        Assert.True(handler.Calls[^1].Body.Contains("name=audio", StringComparison.Ordinal) || handler.Calls[^1].Body.Contains("name=\"audio\"", StringComparison.Ordinal));
+        Assert.Contains("name=\"audio\"; filename=\"audio.wav\"", handler.Calls[^1].Body);
         Assert.Contains("Content-Type: audio/wav", handler.Calls[^1].Body);
+        Assert.Contains("\r\n\r\n{\"stability\":0.5,\"similarity_boost\":0.75}\r\n", handler.Calls[^1].Body);
+        Assert.Contains("name=\"remove_background_noise\"\r\n\r\ntrue\r\n", handler.Calls[^1].Body);
         Assert.Equal(4, handler.Calls.Count);
     }
 
@@ -122,14 +129,17 @@ public sealed class VoiceLabCoreTests
             return Discovery(request);
         });
         using var service = ElevenLabsVoiceLab.ForTesting(new MemoryKeys(), handler, ElevenLabsRegion.Us);
-        var audio = Wav();
+        var clone = VoiceLabTestCalls.CloneRequest();
         await service.DiscoverSubscriptionAsync(TestContext.Current.CancellationToken);
-        var prepared = await service.PrepareCloneAsync("Mine", audio, Policy(null), TestContext.Current.CancellationToken);
+        var prepared = service.PrepareClone(clone, Policy(null));
         Assert.Equal(VoiceLabErrorKind.ConsentRequired, Assert.Throws<VoiceLabException>(() => service.Approve(prepared, false)).Kind);
         var approval = service.Approve(prepared, true);
-        var first = await Assert.ThrowsAsync<VoiceLabException>(() => service.CreateOwnCloneAsync("Mine", audio, Policy(null), approval, TestContext.Current.CancellationToken));
+        Assert.Equal(VoiceLabErrorKind.ConsentRequired, (await Assert.ThrowsAsync<VoiceLabException>(() =>
+            service.CreateOwnCloneAsync(VoiceLabTestCalls.CloneRequest(trainingFill: 2), Policy(null), approval, TestContext.Current.CancellationToken))).Kind);
+        Assert.Equal(0, mutations);
+        var first = await Assert.ThrowsAsync<VoiceLabException>(() => service.CreateOwnCloneAsync(clone, Policy(null), approval, TestContext.Current.CancellationToken));
         Assert.Equal(VoiceLabErrorKind.RateLimited, first.Kind);
-        Assert.Equal(VoiceLabErrorKind.ConsentRequired, (await Assert.ThrowsAsync<VoiceLabException>(() => service.CreateOwnCloneAsync("Mine", audio, Policy(null), approval, TestContext.Current.CancellationToken))).Kind);
+        Assert.Equal(VoiceLabErrorKind.ConsentRequired, (await Assert.ThrowsAsync<VoiceLabException>(() => service.CreateOwnCloneAsync(clone, Policy(null), approval, TestContext.Current.CancellationToken))).Kind);
         Assert.Equal(1, mutations);
         Assert.True(handler.Calls[^1].Body.Contains("name=files[]", StringComparison.Ordinal) || handler.Calls[^1].Body.Contains("name=\"files[]\"", StringComparison.Ordinal));
         Assert.Equal("api.us.elevenlabs.io", new Uri(handler.Calls[^1].Url).Host);
@@ -147,11 +157,11 @@ public sealed class VoiceLabCoreTests
             _ => Json(404, "{}")
         }));
         using var service = ElevenLabsVoiceLab.ForTesting(new MemoryKeys(), handler, ElevenLabsRegion.Default);
-        var wav = Wav();
+        var clone = VoiceLabTestCalls.CloneRequest();
         await service.DiscoverSubscriptionAsync(TestContext.Current.CancellationToken);
         var createPolicy = Policy(null);
-        var create = service.Approve(await service.PrepareCloneAsync("Mine", wav, createPolicy, TestContext.Current.CancellationToken), true);
-        var result = await service.CreateOwnCloneAsync("Mine", wav, createPolicy, create, TestContext.Current.CancellationToken);
+        var create = service.Approve(service.PrepareClone(clone, createPolicy), true);
+        var result = await service.CreateOwnCloneAsync(clone, createPolicy, create, TestContext.Current.CancellationToken);
         Assert.True(result.RequiresVerification);
         await service.DiscoverModelsAsync(TestContext.Current.CancellationToken);
         Assert.Equal(VoiceLabErrorKind.ConsentRequired,
@@ -231,6 +241,39 @@ public sealed class VoiceLabCoreTests
         Assert.Equal(VoiceLabErrorKind.MalformedResponse,
             (await Assert.ThrowsAsync<VoiceLabException>(() => service.DiscoverVoicesAsync(TestContext.Current.CancellationToken))).Kind);
         Assert.Equal(2, handler.Calls.Count);
+    }
+
+    [Theory]
+    [InlineData("\n")]
+    [InlineData("\r\n")]
+    [InlineData(" ")]
+    public async Task ProviderIdsRejectTrailingLineBreaksAndSpaces(string suffix)
+    {
+        var badModel = new JsonArray(new JsonObject { ["model_id"] = "model" + suffix, ["can_do_text_to_speech"] = true }).ToJsonString();
+        var badLanguage = new JsonArray(new JsonObject { ["model_id"] = "speech", ["can_do_text_to_speech"] = true,
+            ["languages"] = new JsonArray(new JsonObject { ["language_id"] = "en" + suffix }) }).ToJsonString();
+        foreach (var models in new[] { badModel, badLanguage })
+        {
+            using var modelHandler = new VoiceHttp((_, _) => Task.FromResult(Json(200, models)));
+            using var modelLab = ElevenLabsVoiceLab.ForTesting(new MemoryKeys(), modelHandler, ElevenLabsRegion.Default);
+            Assert.Equal(VoiceLabErrorKind.MalformedResponse,
+                (await Assert.ThrowsAsync<VoiceLabException>(() => modelLab.DiscoverModelsAsync(TestContext.Current.CancellationToken))).Kind);
+        }
+        var badVoice = new JsonObject { ["voices"] = new JsonArray(new JsonObject { ["voice_id"] = "voice" + suffix, ["name"] = "Bad", ["category"] = "premade" }), ["has_more"] = false }.ToJsonString();
+        using var voiceHandler = new VoiceHttp((_, _) => Task.FromResult(Json(200, badVoice)));
+        using var voiceLab = ElevenLabsVoiceLab.ForTesting(new MemoryKeys(), voiceHandler, ElevenLabsRegion.Default);
+        Assert.Equal(VoiceLabErrorKind.MalformedResponse,
+            (await Assert.ThrowsAsync<VoiceLabException>(() => voiceLab.DiscoverVoicesAsync(TestContext.Current.CancellationToken))).Kind);
+
+        using var handler = new VoiceHttp((request, _) => Discovery(request));
+        using var service = ElevenLabsVoiceLab.ForTesting(new MemoryKeys(), handler, ElevenLabsRegion.Default);
+        await service.DiscoverModelsAsync(TestContext.Current.CancellationToken);
+        await service.DiscoverVoicesAsync(TestContext.Current.CancellationToken);
+        Assert.Equal(VoiceLabErrorKind.InvalidInput, Assert.Throws<VoiceLabException>(() => service.PrepareSynthesis("Hi", "speech", VoiceLabVoiceChoice.Stock("stock123" + suffix), "en")).Kind);
+        Assert.Equal(VoiceLabErrorKind.InvalidInput, Assert.Throws<VoiceLabException>(() => service.PrepareSynthesis("Hi", "speech" + suffix, VoiceLabVoiceChoice.Stock("stock123"), "en")).Kind);
+        Assert.Equal(VoiceLabErrorKind.InvalidInput, Assert.Throws<VoiceLabException>(() => service.PrepareSynthesis("Hi", "speech", VoiceLabVoiceChoice.Stock("stock123"), "en" + suffix)).Kind);
+        Assert.Equal(VoiceLabErrorKind.InvalidInput, Assert.Throws<VoiceLabException>(() => service.PrepareDeletion("own123" + suffix, Policy("own123" + suffix))).Kind);
+        Assert.DoesNotContain(handler.Calls, call => call.Method is "POST" or "DELETE");
     }
 
     [Fact]

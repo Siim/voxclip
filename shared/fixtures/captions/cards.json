@@ -1,0 +1,5372 @@
+{
+ "fixture": "voxclip-caption-cards/1",
+ "description": "Caption card text (doc/design.md section 5.4.2) for a project, a scope (null for the full take, else a clip id), a caption style and the Settings switch. Layout words are timed [0.4 i, 0.4 i + 0.35] with only the key word emphasised, and drawn at time: 0.35 x 0.98 into the key word (captions spec 15.3), or for a reveal style at its last word, at that word's end when holdGapSec > 0. Drops are the fit's successive shorter cards (section 5.4.3). standIns are the section 5.4.1 precedence over the 5.4.4 states: frame, card (a card without words draws only the style's backdrop) or black.",
+ "maxWords": 4,
+ "surfaces": [
+  {"surface": "homeTile", "lines": 2, "plates": true},
+  {"surface": "headerChip", "lines": 1, "plates": true},
+  {"surface": "sidebar", "lines": 2, "plates": false},
+  {"surface": "clipRow", "lines": 2, "plates": false}
+ ],
+ "projects": {
+  "all-cut-clip": {
+   "format": "voxclip-project",
+   "schemaVersion": 1,
+   "id": "45f701ef-303a-6725-a130-8b94f03a6ceb",
+   "title": "Milk first",
+   "createdAt": "2026-10-25T09:12:03Z",
+   "modifiedAt": "2026-10-25T09:31:47Z",
+   "savedBy": {"app": "VoxClip", "version": "0.1.0", "platform": "macos"},
+   "media": {
+    "source": {
+     "absolutePath": "/Users/example/Movies/all-cut-clip.mov",
+     "relativePath": "all-cut-clip.mov",
+     "sizeBytes": 1048576,
+     "durationSeconds": 3.75,
+     "contentKey": "45f701ef303a6725a1308b94f03a6cebe7e3025e7e4b2a62920808f0feadd422",
+     "video": {"width": 1920, "height": 1080, "frameRate": 30, "rotationDegrees": 0},
+     "audio": {"sampleRate": 48000, "channels": 1}
+    }
+   },
+   "transcript": {
+    "schemaVersion": 1,
+    "words": [
+     {
+      "id": "w1",
+      "text": "Coffee",
+      "kind": "word",
+      "start": 0.2,
+      "end": 0.55,
+      "rawStart": 0.2,
+      "rawEnd": 0.55,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w2",
+      "text": "first.",
+      "kind": "word",
+      "start": 0.65,
+      "end": 1.0,
+      "rawStart": 0.65,
+      "rawEnd": 1.0,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w3",
+      "text": "Then",
+      "kind": "word",
+      "start": 1.1,
+      "end": 1.45,
+      "rawStart": 1.1,
+      "rawEnd": 1.45,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w4",
+      "text": "we",
+      "kind": "word",
+      "start": 1.55,
+      "end": 1.9,
+      "rawStart": 1.55,
+      "rawEnd": 1.9,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w5",
+      "text": "talk",
+      "kind": "word",
+      "start": 2.0,
+      "end": 2.35,
+      "rawStart": 2.0,
+      "rawEnd": 2.35,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w6",
+      "text": "about",
+      "kind": "word",
+      "start": 2.45,
+      "end": 2.8,
+      "rawStart": 2.45,
+      "rawEnd": 2.8,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w7",
+      "text": "milk.",
+      "kind": "word",
+      "start": 2.9,
+      "end": 3.25,
+      "rawStart": 2.9,
+      "rawEnd": 3.25,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     }
+    ],
+    "language": "en",
+    "languageProbability": 0.99,
+    "durationSeconds": 3.75,
+    "engine": {
+     "id": "elevenlabs",
+     "modelId": "scribe_v2",
+     "modelSha256": null,
+     "engineVersion": "scribe_v2",
+     "locale": null
+    },
+    "verbatim": true,
+    "refined": true,
+    "pipelineVersion": 1,
+    "rawKey": "896a34753991676c5175895ec7356f6a1ab48786c23718d97179c8d1aea344c6",
+    "createdAt": "2026-10-25T09:12:41Z"
+   },
+   "edits": {
+    "pauseThresholdSeconds": 0.8,
+    "pauseKeepSeconds": 0.15,
+    "cutWordIds": ["w1", "w2"],
+    "cutPauseIds": [],
+    "corrections": {},
+    "clips": [
+     {
+      "id": "clip-coffee",
+      "startWordId": "w1",
+      "endWordId": "w2",
+      "title": "Coffee first",
+      "origin": "manual",
+      "aiResultId": null,
+      "aiClipIndex": null,
+      "selected": true
+     }
+    ],
+    "activeClipId": null
+   },
+   "captions": {"styleId": "karaoke", "overrides": {}, "position": null, "positionByAspect": {}},
+   "export": {"aspect": "9:16", "quality": "standard", "srt": false, "folder": null},
+   "share": {"captions": {}},
+   "ai": {"results": []},
+   "voiceLab": {"segments": []},
+   "extensions": {}
+  },
+  "as-said": {
+   "format": "voxclip-project",
+   "schemaVersion": 1,
+   "id": "8363d830-0f5a-bc5d-1ee9-24f71cfd1a0e",
+   "title": "Barista lessons",
+   "createdAt": "2026-10-25T09:12:03Z",
+   "modifiedAt": "2026-10-25T09:31:47Z",
+   "savedBy": {"app": "VoxClip", "version": "0.1.0", "platform": "macos"},
+   "media": {
+    "source": {
+     "absolutePath": "/Users/example/Movies/style-matrix.mov",
+     "relativePath": "style-matrix.mov",
+     "sizeBytes": 1048576,
+     "durationSeconds": 3.75,
+     "contentKey": "8363d8300f5abc5d1ee924f71cfd1a0eaac774d74739488ecfacedd4802b08b3",
+     "video": {"width": 1920, "height": 1080, "frameRate": 30, "rotationDegrees": 0},
+     "audio": {"sampleRate": 48000, "channels": 1}
+    }
+   },
+   "transcript": {
+    "schemaVersion": 1,
+    "words": [
+     {
+      "id": "w1",
+      "text": "Here's",
+      "kind": "word",
+      "start": 0.2,
+      "end": 0.55,
+      "rawStart": 0.2,
+      "rawEnd": 0.55,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w2",
+      "text": "what",
+      "kind": "word",
+      "start": 0.65,
+      "end": 1.0,
+      "rawStart": 0.65,
+      "rawEnd": 1.0,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w3",
+      "text": "3",
+      "kind": "word",
+      "start": 1.1,
+      "end": 1.45,
+      "rawStart": 1.1,
+      "rawEnd": 1.45,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w4",
+      "text": "baristas",
+      "kind": "word",
+      "start": 1.55,
+      "end": 1.9,
+      "rawStart": 1.55,
+      "rawEnd": 1.9,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w5",
+      "text": "taught",
+      "kind": "word",
+      "start": 2.0,
+      "end": 2.35,
+      "rawStart": 2.0,
+      "rawEnd": 2.35,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w6",
+      "text": "me,",
+      "kind": "word",
+      "start": 2.45,
+      "end": 2.8,
+      "rawStart": 2.45,
+      "rawEnd": 2.8,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w7",
+      "text": "honestly.",
+      "kind": "word",
+      "start": 2.9,
+      "end": 3.25,
+      "rawStart": 2.9,
+      "rawEnd": 3.25,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     }
+    ],
+    "language": "en",
+    "languageProbability": 0.99,
+    "durationSeconds": 3.75,
+    "engine": {
+     "id": "elevenlabs",
+     "modelId": "scribe_v2",
+     "modelSha256": null,
+     "engineVersion": "scribe_v2",
+     "locale": null
+    },
+    "verbatim": true,
+    "refined": true,
+    "pipelineVersion": 1,
+    "rawKey": "3f2b907e5e7986849ba5a79dba2cc54e01d456c6b5e045a3c5c8c798867569e8",
+    "createdAt": "2026-10-25T09:12:41Z"
+   },
+   "edits": {
+    "pauseThresholdSeconds": 0.8,
+    "pauseKeepSeconds": 0.15,
+    "cutWordIds": [],
+    "cutPauseIds": [],
+    "corrections": {},
+    "clips": [],
+    "activeClipId": null
+   },
+   "captions": {
+    "styleId": "karaoke",
+    "overrides": {"text": {"transform": "none"}},
+    "position": null,
+    "positionByAspect": {}
+   },
+   "export": {"aspect": "9:16", "quality": "standard", "srt": false, "folder": null},
+   "share": {"captions": {}},
+   "ai": {"results": []},
+   "voiceLab": {"segments": []},
+   "extensions": {}
+  },
+  "cafe-clip": {
+   "format": "voxclip-project",
+   "schemaVersion": 1,
+   "id": "dc02bcaa-3e21-e632-c67a-705ac526715c",
+   "title": "Espresso machines",
+   "createdAt": "2026-10-25T09:12:03Z",
+   "modifiedAt": "2026-10-25T09:31:47Z",
+   "savedBy": {"app": "VoxClip", "version": "0.1.0", "platform": "macos"},
+   "media": {
+    "source": {
+     "absolutePath": "/Users/example/Movies/cafe-clip.mov",
+     "relativePath": "cafe-clip.mov",
+     "sizeBytes": 1048576,
+     "durationSeconds": 5.55,
+     "contentKey": "dc02bcaa3e21e632c67a705ac526715c817f42e3ac563e818f10599fcb91afdc",
+     "video": {"width": 1920, "height": 1080, "frameRate": 30, "rotationDegrees": 0},
+     "audio": {"sampleRate": 48000, "channels": 1}
+    }
+   },
+   "transcript": {
+    "schemaVersion": 1,
+    "words": [
+     {
+      "id": "w1",
+      "text": "Welcome",
+      "kind": "word",
+      "start": 0.2,
+      "end": 0.55,
+      "rawStart": 0.2,
+      "rawEnd": 0.55,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w2",
+      "text": "back.",
+      "kind": "word",
+      "start": 0.65,
+      "end": 1.0,
+      "rawStart": 0.65,
+      "rawEnd": 1.0,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w3",
+      "text": "Today",
+      "kind": "word",
+      "start": 1.1,
+      "end": 1.45,
+      "rawStart": 1.1,
+      "rawEnd": 1.45,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w4",
+      "text": "we",
+      "kind": "word",
+      "start": 1.55,
+      "end": 1.9,
+      "rawStart": 1.55,
+      "rawEnd": 1.9,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w5",
+      "text": "compare",
+      "kind": "word",
+      "start": 2.0,
+      "end": 2.35,
+      "rawStart": 2.0,
+      "rawEnd": 2.35,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w6",
+      "text": "two",
+      "kind": "word",
+      "start": 2.45,
+      "end": 2.8,
+      "rawStart": 2.45,
+      "rawEnd": 2.8,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w7",
+      "text": "espresso",
+      "kind": "word",
+      "start": 2.9,
+      "end": 3.25,
+      "rawStart": 2.9,
+      "rawEnd": 3.25,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w8",
+      "text": "machines",
+      "kind": "word",
+      "start": 3.35,
+      "end": 3.7,
+      "rawStart": 3.35,
+      "rawEnd": 3.7,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w9",
+      "text": "side",
+      "kind": "word",
+      "start": 3.8,
+      "end": 4.15,
+      "rawStart": 3.8,
+      "rawEnd": 4.15,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w10",
+      "text": "by",
+      "kind": "word",
+      "start": 4.25,
+      "end": 4.6,
+      "rawStart": 4.25,
+      "rawEnd": 4.6,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w11",
+      "text": "side.",
+      "kind": "word",
+      "start": 4.7,
+      "end": 5.05,
+      "rawStart": 4.7,
+      "rawEnd": 5.05,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     }
+    ],
+    "language": "en",
+    "languageProbability": 0.99,
+    "durationSeconds": 5.55,
+    "engine": {
+     "id": "elevenlabs",
+     "modelId": "scribe_v2",
+     "modelSha256": null,
+     "engineVersion": "scribe_v2",
+     "locale": null
+    },
+    "verbatim": true,
+    "refined": true,
+    "pipelineVersion": 1,
+    "rawKey": "37bf0053980cd1b691d6d2cc40aca3f02877c59b3accae6dc8cdeb20238a3658",
+    "createdAt": "2026-10-25T09:12:41Z"
+   },
+   "edits": {
+    "pauseThresholdSeconds": 0.8,
+    "pauseKeepSeconds": 0.15,
+    "cutWordIds": ["w3"],
+    "cutPauseIds": [],
+    "corrections": {},
+    "clips": [
+     {
+      "id": "clip-compare",
+      "startWordId": "w3",
+      "endWordId": "w11",
+      "title": "Two machines",
+      "origin": "manual",
+      "aiResultId": null,
+      "aiClipIndex": null,
+      "selected": true
+     }
+    ],
+    "activeClipId": null
+   },
+   "captions": {"styleId": "neon", "overrides": {}, "position": null, "positionByAspect": {}},
+   "export": {"aspect": "9:16", "quality": "standard", "srt": false, "folder": null},
+   "share": {"captions": {}},
+   "ai": {"results": []},
+   "voiceLab": {"segments": []},
+   "extensions": {}
+  },
+  "cafe-keep": {
+   "format": "voxclip-project",
+   "schemaVersion": 1,
+   "id": "dc02bcaa-3e21-e632-c67a-705ac526715c",
+   "title": "Espresso machines",
+   "createdAt": "2026-10-25T09:12:03Z",
+   "modifiedAt": "2026-10-25T09:31:47Z",
+   "savedBy": {"app": "VoxClip", "version": "0.1.0", "platform": "macos"},
+   "media": {
+    "source": {
+     "absolutePath": "/Users/example/Movies/cafe-clip.mov",
+     "relativePath": "cafe-clip.mov",
+     "sizeBytes": 1048576,
+     "durationSeconds": 5.55,
+     "contentKey": "dc02bcaa3e21e632c67a705ac526715c817f42e3ac563e818f10599fcb91afdc",
+     "video": {"width": 1920, "height": 1080, "frameRate": 30, "rotationDegrees": 0},
+     "audio": {"sampleRate": 48000, "channels": 1}
+    }
+   },
+   "transcript": {
+    "schemaVersion": 1,
+    "words": [
+     {
+      "id": "w1",
+      "text": "Welcome",
+      "kind": "word",
+      "start": 0.2,
+      "end": 0.55,
+      "rawStart": 0.2,
+      "rawEnd": 0.55,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w2",
+      "text": "back.",
+      "kind": "word",
+      "start": 0.65,
+      "end": 1.0,
+      "rawStart": 0.65,
+      "rawEnd": 1.0,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w3",
+      "text": "Today",
+      "kind": "word",
+      "start": 1.1,
+      "end": 1.45,
+      "rawStart": 1.1,
+      "rawEnd": 1.45,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w4",
+      "text": "we",
+      "kind": "word",
+      "start": 1.55,
+      "end": 1.9,
+      "rawStart": 1.55,
+      "rawEnd": 1.9,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w5",
+      "text": "compare",
+      "kind": "word",
+      "start": 2.0,
+      "end": 2.35,
+      "rawStart": 2.0,
+      "rawEnd": 2.35,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w6",
+      "text": "two",
+      "kind": "word",
+      "start": 2.45,
+      "end": 2.8,
+      "rawStart": 2.45,
+      "rawEnd": 2.8,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w7",
+      "text": "espresso",
+      "kind": "word",
+      "start": 2.9,
+      "end": 3.25,
+      "rawStart": 2.9,
+      "rawEnd": 3.25,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w8",
+      "text": "machines",
+      "kind": "word",
+      "start": 3.35,
+      "end": 3.7,
+      "rawStart": 3.35,
+      "rawEnd": 3.7,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w9",
+      "text": "side",
+      "kind": "word",
+      "start": 3.8,
+      "end": 4.15,
+      "rawStart": 3.8,
+      "rawEnd": 4.15,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w10",
+      "text": "by",
+      "kind": "word",
+      "start": 4.25,
+      "end": 4.6,
+      "rawStart": 4.25,
+      "rawEnd": 4.6,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w11",
+      "text": "side.",
+      "kind": "word",
+      "start": 4.7,
+      "end": 5.05,
+      "rawStart": 4.7,
+      "rawEnd": 5.05,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     }
+    ],
+    "language": "en",
+    "languageProbability": 0.99,
+    "durationSeconds": 5.55,
+    "engine": {
+     "id": "elevenlabs",
+     "modelId": "scribe_v2",
+     "modelSha256": null,
+     "engineVersion": "scribe_v2",
+     "locale": null
+    },
+    "verbatim": true,
+    "refined": true,
+    "pipelineVersion": 1,
+    "rawKey": "37bf0053980cd1b691d6d2cc40aca3f02877c59b3accae6dc8cdeb20238a3658",
+    "createdAt": "2026-10-25T09:12:41Z"
+   },
+   "edits": {
+    "pauseThresholdSeconds": 0.8,
+    "pauseKeepSeconds": 0.15,
+    "cutWordIds": ["w3"],
+    "cutPauseIds": [],
+    "corrections": {},
+    "clips": [
+     {
+      "id": "clip-compare",
+      "startWordId": "w3",
+      "endWordId": "w11",
+      "title": "Two machines",
+      "origin": "manual",
+      "aiResultId": null,
+      "aiClipIndex": null,
+      "selected": true
+     }
+    ],
+    "activeClipId": null
+   },
+   "captions": {
+    "styleId": "active-pop",
+    "overrides": {"text": {"punctuation": "keep"}},
+    "position": null,
+    "positionByAspect": {}
+   },
+   "export": {"aspect": "9:16", "quality": "standard", "srt": false, "folder": null},
+   "share": {"captions": {}},
+   "ai": {"results": []},
+   "voiceLab": {"segments": []},
+   "extensions": {}
+  },
+  "cut-start": {
+   "format": "voxclip-project",
+   "schemaVersion": 1,
+   "id": "20d8864b-a31e-172c-2f5f-4ddd17b59df7",
+   "title": "Pour-over in four steps",
+   "createdAt": "2026-10-25T09:12:03Z",
+   "modifiedAt": "2026-10-25T09:31:47Z",
+   "savedBy": {"app": "VoxClip", "version": "0.1.0", "platform": "macos"},
+   "media": {
+    "source": {
+     "absolutePath": "/Users/example/Movies/cut-start.mov",
+     "relativePath": "cut-start.mov",
+     "sizeBytes": 1048576,
+     "durationSeconds": 4.2,
+     "contentKey": "20d8864ba31e172c2f5f4ddd17b59df7442c6838b723a03bf6566b01120acf1c",
+     "video": {"width": 1920, "height": 1080, "frameRate": 30, "rotationDegrees": 0},
+     "audio": {"sampleRate": 48000, "channels": 1}
+    }
+   },
+   "transcript": {
+    "schemaVersion": 1,
+    "words": [
+     {
+      "id": "w1",
+      "text": "Okay",
+      "kind": "word",
+      "start": 0.2,
+      "end": 0.55,
+      "rawStart": 0.2,
+      "rawEnd": 0.55,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w2",
+      "text": "so",
+      "kind": "word",
+      "start": 0.65,
+      "end": 1.0,
+      "rawStart": 0.65,
+      "rawEnd": 1.0,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w3",
+      "text": "first",
+      "kind": "word",
+      "start": 1.1,
+      "end": 1.45,
+      "rawStart": 1.1,
+      "rawEnd": 1.45,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w4",
+      "text": "the",
+      "kind": "word",
+      "start": 1.55,
+      "end": 1.9,
+      "rawStart": 1.55,
+      "rawEnd": 1.9,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w5",
+      "text": "beans",
+      "kind": "word",
+      "start": 2.0,
+      "end": 2.35,
+      "rawStart": 2.0,
+      "rawEnd": 2.35,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w6",
+      "text": "then",
+      "kind": "word",
+      "start": 2.45,
+      "end": 2.8,
+      "rawStart": 2.45,
+      "rawEnd": 2.8,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w7",
+      "text": "the",
+      "kind": "word",
+      "start": 2.9,
+      "end": 3.25,
+      "rawStart": 2.9,
+      "rawEnd": 3.25,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w8",
+      "text": "water.",
+      "kind": "word",
+      "start": 3.35,
+      "end": 3.7,
+      "rawStart": 3.35,
+      "rawEnd": 3.7,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     }
+    ],
+    "language": "en",
+    "languageProbability": 0.99,
+    "durationSeconds": 4.2,
+    "engine": {
+     "id": "elevenlabs",
+     "modelId": "scribe_v2",
+     "modelSha256": null,
+     "engineVersion": "scribe_v2",
+     "locale": null
+    },
+    "verbatim": true,
+    "refined": true,
+    "pipelineVersion": 1,
+    "rawKey": "98000c587e59c14febb7f969c50598656ba3973c4b966977465145f245f39425",
+    "createdAt": "2026-10-25T09:12:41Z"
+   },
+   "edits": {
+    "pauseThresholdSeconds": 0.8,
+    "pauseKeepSeconds": 0.15,
+    "cutWordIds": ["w1", "w2"],
+    "cutPauseIds": [],
+    "corrections": {},
+    "clips": [],
+    "activeClipId": null
+   },
+   "captions": {"styleId": "pill", "overrides": {}, "position": null, "positionByAspect": {}},
+   "export": {"aspect": "9:16", "quality": "standard", "srt": false, "folder": null},
+   "share": {"captions": {}},
+   "ai": {"results": []},
+   "voiceLab": {"segments": []},
+   "extensions": {}
+  },
+  "empty-transcript": {
+   "format": "voxclip-project",
+   "schemaVersion": 1,
+   "id": "55853000-f3f4-8c88-434a-f6721eba3651",
+   "title": "Silent take",
+   "createdAt": "2026-10-25T09:12:03Z",
+   "modifiedAt": "2026-10-25T09:31:47Z",
+   "savedBy": {"app": "VoxClip", "version": "0.1.0", "platform": "macos"},
+   "media": {
+    "source": {
+     "absolutePath": "/Users/example/Movies/empty-transcript.mov",
+     "relativePath": "empty-transcript.mov",
+     "sizeBytes": 1048576,
+     "durationSeconds": 1.0,
+     "contentKey": "55853000f3f48c88434af6721eba365154275a59315309064cfca434c88a1a29",
+     "video": {"width": 1920, "height": 1080, "frameRate": 30, "rotationDegrees": 0},
+     "audio": {"sampleRate": 48000, "channels": 1}
+    }
+   },
+   "transcript": {
+    "schemaVersion": 1,
+    "words": [],
+    "language": "en",
+    "languageProbability": 0.99,
+    "durationSeconds": 1.0,
+    "engine": {
+     "id": "elevenlabs",
+     "modelId": "scribe_v2",
+     "modelSha256": null,
+     "engineVersion": "scribe_v2",
+     "locale": null
+    },
+    "verbatim": true,
+    "refined": true,
+    "pipelineVersion": 1,
+    "rawKey": "841cd7f381c90bca14911464ae57f4a3bf5562f9b834defd438c4de77d4714c3",
+    "createdAt": "2026-10-25T09:12:41Z"
+   },
+   "edits": {
+    "pauseThresholdSeconds": 0.8,
+    "pauseKeepSeconds": 0.15,
+    "cutWordIds": [],
+    "cutPauseIds": [],
+    "corrections": {},
+    "clips": [],
+    "activeClipId": null
+   },
+   "captions": {"styleId": "karaoke", "overrides": {}, "position": null, "positionByAspect": {}},
+   "export": {"aspect": "9:16", "quality": "standard", "srt": false, "folder": null},
+   "share": {"captions": {}},
+   "ai": {"results": []},
+   "voiceLab": {"segments": []},
+   "extensions": {}
+  },
+  "estonian": {
+   "format": "voxclip-project",
+   "schemaVersion": 1,
+   "id": "729df0c1-d9b2-0a9a-eeb2-853d97604cb1",
+   "title": "Öine küpsetamine",
+   "createdAt": "2026-10-25T09:12:03Z",
+   "modifiedAt": "2026-10-25T09:31:47Z",
+   "savedBy": {"app": "VoxClip", "version": "0.1.0", "platform": "macos"},
+   "media": {
+    "source": {
+     "absolutePath": "/Users/example/Movies/estonian.mov",
+     "relativePath": "estonian.mov",
+     "sizeBytes": 1048576,
+     "durationSeconds": 3.3,
+     "contentKey": "729df0c1d9b20a9aeeb2853d97604cb1408908b380b5e920c7fb03b657ee54a7",
+     "video": {"width": 1920, "height": 1080, "frameRate": 30, "rotationDegrees": 0},
+     "audio": {"sampleRate": 48000, "channels": 1}
+    }
+   },
+   "transcript": {
+    "schemaVersion": 1,
+    "words": [
+     {
+      "id": "w1",
+      "text": "Öösel",
+      "kind": "word",
+      "start": 0.2,
+      "end": 0.55,
+      "rawStart": 0.2,
+      "rawEnd": 0.55,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w2",
+      "text": "küpsetatud",
+      "kind": "word",
+      "start": 0.65,
+      "end": 1.0,
+      "rawStart": 0.65,
+      "rawEnd": 1.0,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w3",
+      "text": "šokolaadikook",
+      "kind": "word",
+      "start": 1.1,
+      "end": 1.45,
+      "rawStart": 1.1,
+      "rawEnd": 1.45,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w4",
+      "text": "on",
+      "kind": "word",
+      "start": 1.55,
+      "end": 1.9,
+      "rawStart": 1.55,
+      "rawEnd": 1.9,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w5",
+      "text": "päris",
+      "kind": "word",
+      "start": 2.0,
+      "end": 2.35,
+      "rawStart": 2.0,
+      "rawEnd": 2.35,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w6",
+      "text": "hõrk.",
+      "kind": "word",
+      "start": 2.45,
+      "end": 2.8,
+      "rawStart": 2.45,
+      "rawEnd": 2.8,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     }
+    ],
+    "language": "et",
+    "languageProbability": 0.99,
+    "durationSeconds": 3.3,
+    "engine": {
+     "id": "elevenlabs",
+     "modelId": "scribe_v2",
+     "modelSha256": null,
+     "engineVersion": "scribe_v2",
+     "locale": null
+    },
+    "verbatim": true,
+    "refined": true,
+    "pipelineVersion": 1,
+    "rawKey": "9943f8dbdaa0c92287092b9832172fdbef7c33caa92c708a76e4a1d5db4badce",
+    "createdAt": "2026-10-25T09:12:41Z"
+   },
+   "edits": {
+    "pauseThresholdSeconds": 0.8,
+    "pauseKeepSeconds": 0.15,
+    "cutWordIds": [],
+    "cutPauseIds": [],
+    "corrections": {},
+    "clips": [],
+    "activeClipId": null
+   },
+   "captions": {"styleId": "box-highlight", "overrides": {}, "position": null, "positionByAspect": {}},
+   "export": {"aspect": "9:16", "quality": "standard", "srt": false, "folder": null},
+   "share": {"captions": {}},
+   "ai": {"results": []},
+   "voiceLab": {"segments": []},
+   "extensions": {}
+  },
+  "filler-opening": {
+   "format": "voxclip-project",
+   "schemaVersion": 1,
+   "id": "44eb44bd-38cb-a592-e28f-0c9a04a3da89",
+   "title": "Latte art basics",
+   "createdAt": "2026-10-25T09:12:03Z",
+   "modifiedAt": "2026-10-25T09:31:47Z",
+   "savedBy": {"app": "VoxClip", "version": "0.1.0", "platform": "macos"},
+   "media": {
+    "source": {
+     "absolutePath": "/Users/example/Movies/filler-opening.mov",
+     "relativePath": "filler-opening.mov",
+     "sizeBytes": 1048576,
+     "durationSeconds": 5.1,
+     "contentKey": "44eb44bd38cba592e28f0c9a04a3da892bfbba9787b419d1f7665340986488f8",
+     "video": {"width": 1920, "height": 1080, "frameRate": 30, "rotationDegrees": 0},
+     "audio": {"sampleRate": 48000, "channels": 1}
+    }
+   },
+   "transcript": {
+    "schemaVersion": 1,
+    "words": [
+     {
+      "id": "w1",
+      "text": "Um,",
+      "kind": "word",
+      "start": 0.2,
+      "end": 0.55,
+      "rawStart": 0.2,
+      "rawEnd": 0.55,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w2",
+      "text": "so,",
+      "kind": "word",
+      "start": 0.65,
+      "end": 1.0,
+      "rawStart": 0.65,
+      "rawEnd": 1.0,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w3",
+      "text": "okay…",
+      "kind": "word",
+      "start": 1.1,
+      "end": 1.45,
+      "rawStart": 1.1,
+      "rawEnd": 1.45,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w4",
+      "text": "latte",
+      "kind": "word",
+      "start": 1.55,
+      "end": 1.9,
+      "rawStart": 1.55,
+      "rawEnd": 1.9,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w5",
+      "text": "art",
+      "kind": "word",
+      "start": 2.0,
+      "end": 2.35,
+      "rawStart": 2.0,
+      "rawEnd": 2.35,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w6",
+      "text": "for",
+      "kind": "word",
+      "start": 2.45,
+      "end": 2.8,
+      "rawStart": 2.45,
+      "rawEnd": 2.8,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w7",
+      "text": "beginners",
+      "kind": "word",
+      "start": 2.9,
+      "end": 3.25,
+      "rawStart": 2.9,
+      "rawEnd": 3.25,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w8",
+      "text": "is",
+      "kind": "word",
+      "start": 3.35,
+      "end": 3.7,
+      "rawStart": 3.35,
+      "rawEnd": 3.7,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w9",
+      "text": "mostly",
+      "kind": "word",
+      "start": 3.8,
+      "end": 4.15,
+      "rawStart": 3.8,
+      "rawEnd": 4.15,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w10",
+      "text": "patience.",
+      "kind": "word",
+      "start": 4.25,
+      "end": 4.6,
+      "rawStart": 4.25,
+      "rawEnd": 4.6,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     }
+    ],
+    "language": "en",
+    "languageProbability": 0.99,
+    "durationSeconds": 5.1,
+    "engine": {
+     "id": "elevenlabs",
+     "modelId": "scribe_v2",
+     "modelSha256": null,
+     "engineVersion": "scribe_v2",
+     "locale": null
+    },
+    "verbatim": true,
+    "refined": true,
+    "pipelineVersion": 1,
+    "rawKey": "02ade474232c2130c7fefc4df1d1f40879021e018ed1e26adc1474f909b676d0",
+    "createdAt": "2026-10-25T09:12:41Z"
+   },
+   "edits": {
+    "pauseThresholdSeconds": 0.8,
+    "pauseKeepSeconds": 0.15,
+    "cutWordIds": [],
+    "cutPauseIds": [],
+    "corrections": {},
+    "clips": [],
+    "activeClipId": null
+   },
+   "captions": {"styleId": "karaoke", "overrides": {}, "position": null, "positionByAspect": {}},
+   "export": {"aspect": "9:16", "quality": "standard", "srt": false, "folder": null},
+   "share": {"captions": {}},
+   "ai": {"results": []},
+   "voiceLab": {"segments": []},
+   "extensions": {}
+  },
+  "fillers-only": {
+   "format": "voxclip-project",
+   "schemaVersion": 1,
+   "id": "4400012c-dbf5-eba6-17ff-65ee76e6d109",
+   "title": "Warm-up",
+   "createdAt": "2026-10-25T09:12:03Z",
+   "modifiedAt": "2026-10-25T09:31:47Z",
+   "savedBy": {"app": "VoxClip", "version": "0.1.0", "platform": "macos"},
+   "media": {
+    "source": {
+     "absolutePath": "/Users/example/Movies/fillers-only.mov",
+     "relativePath": "fillers-only.mov",
+     "sizeBytes": 1048576,
+     "durationSeconds": 1.5,
+     "contentKey": "4400012cdbf5eba617ff65ee76e6d109ad21e2d04978ae90950869ce44362da7",
+     "video": {"width": 1920, "height": 1080, "frameRate": 30, "rotationDegrees": 0},
+     "audio": {"sampleRate": 48000, "channels": 1}
+    }
+   },
+   "transcript": {
+    "schemaVersion": 1,
+    "words": [
+     {
+      "id": "w1",
+      "text": "Um.",
+      "kind": "word",
+      "start": 0.2,
+      "end": 0.55,
+      "rawStart": 0.2,
+      "rawEnd": 0.55,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w2",
+      "text": "Uh.",
+      "kind": "word",
+      "start": 0.65,
+      "end": 1.0,
+      "rawStart": 0.65,
+      "rawEnd": 1.0,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     }
+    ],
+    "language": "en",
+    "languageProbability": 0.99,
+    "durationSeconds": 1.5,
+    "engine": {
+     "id": "elevenlabs",
+     "modelId": "scribe_v2",
+     "modelSha256": null,
+     "engineVersion": "scribe_v2",
+     "locale": null
+    },
+    "verbatim": true,
+    "refined": true,
+    "pipelineVersion": 1,
+    "rawKey": "536e0f6b86de4d357b023567381e55204f850fcd32a4edf1ce030821506d1828",
+    "createdAt": "2026-10-25T09:12:41Z"
+   },
+   "edits": {
+    "pauseThresholdSeconds": 0.8,
+    "pauseKeepSeconds": 0.15,
+    "cutWordIds": [],
+    "cutPauseIds": [],
+    "corrections": {},
+    "clips": [],
+    "activeClipId": null
+   },
+   "captions": {"styleId": "karaoke", "overrides": {}, "position": null, "positionByAspect": {}},
+   "export": {"aspect": "9:16", "quality": "standard", "srt": false, "folder": null},
+   "share": {"captions": {}},
+   "ai": {"results": []},
+   "voiceLab": {"segments": []},
+   "extensions": {}
+  },
+  "gap": {
+   "format": "voxclip-project",
+   "schemaVersion": 1,
+   "id": "9188f410-1e30-9c55-d9bb-5a4f9e61bfbe",
+   "title": "Beans",
+   "createdAt": "2026-10-25T09:12:03Z",
+   "modifiedAt": "2026-10-25T09:31:47Z",
+   "savedBy": {"app": "VoxClip", "version": "0.1.0", "platform": "macos"},
+   "media": {
+    "source": {
+     "absolutePath": "/Users/example/Movies/gap.mov",
+     "relativePath": "gap.mov",
+     "sizeBytes": 1048576,
+     "durationSeconds": 4.6,
+     "contentKey": "9188f4101e309c55d9bb5a4f9e61bfbea8514f641e32dcb3a7feb547aa94d5a0",
+     "video": {"width": 1920, "height": 1080, "frameRate": 30, "rotationDegrees": 0},
+     "audio": {"sampleRate": 48000, "channels": 1}
+    }
+   },
+   "transcript": {
+    "schemaVersion": 1,
+    "words": [
+     {
+      "id": "w1",
+      "text": "Coffee",
+      "kind": "word",
+      "start": 0.2,
+      "end": 0.6,
+      "rawStart": 0.2,
+      "rawEnd": 0.6,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w2",
+      "text": "beans",
+      "kind": "word",
+      "start": 0.7,
+      "end": 1.1,
+      "rawStart": 0.7,
+      "rawEnd": 1.1,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w3",
+      "text": "matter",
+      "kind": "word",
+      "start": 2.6,
+      "end": 3.0,
+      "rawStart": 2.6,
+      "rawEnd": 3.0,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w4",
+      "text": "most",
+      "kind": "word",
+      "start": 3.1,
+      "end": 3.5,
+      "rawStart": 3.1,
+      "rawEnd": 3.5,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w5",
+      "text": "today.",
+      "kind": "word",
+      "start": 3.6,
+      "end": 4.1,
+      "rawStart": 3.6,
+      "rawEnd": 4.1,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     }
+    ],
+    "language": "en",
+    "languageProbability": 0.99,
+    "durationSeconds": 4.6,
+    "engine": {
+     "id": "elevenlabs",
+     "modelId": "scribe_v2",
+     "modelSha256": null,
+     "engineVersion": "scribe_v2",
+     "locale": null
+    },
+    "verbatim": true,
+    "refined": true,
+    "pipelineVersion": 1,
+    "rawKey": "57bb9429c6a5f8d403bbd08bd611a2e7bb3fb197d9e203c3daef98ef214d4c04",
+    "createdAt": "2026-10-25T09:12:41Z"
+   },
+   "edits": {
+    "pauseThresholdSeconds": 0.8,
+    "pauseKeepSeconds": 0.15,
+    "cutWordIds": [],
+    "cutPauseIds": [],
+    "corrections": {},
+    "clips": [],
+    "activeClipId": null
+   },
+   "captions": {"styleId": "karaoke", "overrides": {}, "position": null, "positionByAspect": {}},
+   "export": {"aspect": "9:16", "quality": "standard", "srt": false, "folder": null},
+   "share": {"captions": {}},
+   "ai": {"results": []},
+   "voiceLab": {"segments": []},
+   "extensions": {}
+  },
+  "gap-cut": {
+   "format": "voxclip-project",
+   "schemaVersion": 1,
+   "id": "9188f410-1e30-9c55-d9bb-5a4f9e61bfbe",
+   "title": "Beans",
+   "createdAt": "2026-10-25T09:12:03Z",
+   "modifiedAt": "2026-10-25T09:31:47Z",
+   "savedBy": {"app": "VoxClip", "version": "0.1.0", "platform": "macos"},
+   "media": {
+    "source": {
+     "absolutePath": "/Users/example/Movies/gap.mov",
+     "relativePath": "gap.mov",
+     "sizeBytes": 1048576,
+     "durationSeconds": 4.6,
+     "contentKey": "9188f4101e309c55d9bb5a4f9e61bfbea8514f641e32dcb3a7feb547aa94d5a0",
+     "video": {"width": 1920, "height": 1080, "frameRate": 30, "rotationDegrees": 0},
+     "audio": {"sampleRate": 48000, "channels": 1}
+    }
+   },
+   "transcript": {
+    "schemaVersion": 1,
+    "words": [
+     {
+      "id": "w1",
+      "text": "Coffee",
+      "kind": "word",
+      "start": 0.2,
+      "end": 0.6,
+      "rawStart": 0.2,
+      "rawEnd": 0.6,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w2",
+      "text": "beans",
+      "kind": "word",
+      "start": 0.7,
+      "end": 1.1,
+      "rawStart": 0.7,
+      "rawEnd": 1.1,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w3",
+      "text": "matter",
+      "kind": "word",
+      "start": 2.6,
+      "end": 3.0,
+      "rawStart": 2.6,
+      "rawEnd": 3.0,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w4",
+      "text": "most",
+      "kind": "word",
+      "start": 3.1,
+      "end": 3.5,
+      "rawStart": 3.1,
+      "rawEnd": 3.5,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w5",
+      "text": "today.",
+      "kind": "word",
+      "start": 3.6,
+      "end": 4.1,
+      "rawStart": 3.6,
+      "rawEnd": 4.1,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     }
+    ],
+    "language": "en",
+    "languageProbability": 0.99,
+    "durationSeconds": 4.6,
+    "engine": {
+     "id": "elevenlabs",
+     "modelId": "scribe_v2",
+     "modelSha256": null,
+     "engineVersion": "scribe_v2",
+     "locale": null
+    },
+    "verbatim": true,
+    "refined": true,
+    "pipelineVersion": 1,
+    "rawKey": "57bb9429c6a5f8d403bbd08bd611a2e7bb3fb197d9e203c3daef98ef214d4c04",
+    "createdAt": "2026-10-25T09:12:41Z"
+   },
+   "edits": {
+    "pauseThresholdSeconds": 0.8,
+    "pauseKeepSeconds": 0.15,
+    "cutWordIds": [],
+    "cutPauseIds": ["pause-after-w2"],
+    "corrections": {},
+    "clips": [],
+    "activeClipId": null
+   },
+   "captions": {"styleId": "karaoke", "overrides": {}, "position": null, "positionByAspect": {}},
+   "export": {"aspect": "9:16", "quality": "standard", "srt": false, "folder": null},
+   "share": {"captions": {}},
+   "ai": {"results": []},
+   "voiceLab": {"segments": []},
+   "extensions": {}
+  },
+  "german": {
+   "format": "voxclip-project",
+   "schemaVersion": 1,
+   "id": "8204a248-245c-210f-e6ed-2008c6cea363",
+   "title": "Kaffeepause",
+   "createdAt": "2026-10-25T09:12:03Z",
+   "modifiedAt": "2026-10-25T09:31:47Z",
+   "savedBy": {"app": "VoxClip", "version": "0.1.0", "platform": "macos"},
+   "media": {
+    "source": {
+     "absolutePath": "/Users/example/Movies/german.mov",
+     "relativePath": "german.mov",
+     "sizeBytes": 1048576,
+     "durationSeconds": 3.3,
+     "contentKey": "8204a248245c210fe6ed2008c6cea3636376caa903501677a95ce61aa249f2c9",
+     "video": {"width": 1920, "height": 1080, "frameRate": 30, "rotationDegrees": 0},
+     "audio": {"sampleRate": 48000, "channels": 1}
+    }
+   },
+   "transcript": {
+    "schemaVersion": 1,
+    "words": [
+     {
+      "id": "w1",
+      "text": "Um",
+      "kind": "word",
+      "start": 0.2,
+      "end": 0.55,
+      "rawStart": 0.2,
+      "rawEnd": 0.55,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w2",
+      "text": "zehn",
+      "kind": "word",
+      "start": 0.65,
+      "end": 1.0,
+      "rawStart": 0.65,
+      "rawEnd": 1.0,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w3",
+      "text": "Uhr",
+      "kind": "word",
+      "start": 1.1,
+      "end": 1.45,
+      "rawStart": 1.1,
+      "rawEnd": 1.45,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w4",
+      "text": "trinken",
+      "kind": "word",
+      "start": 1.55,
+      "end": 1.9,
+      "rawStart": 1.55,
+      "rawEnd": 1.9,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w5",
+      "text": "wir",
+      "kind": "word",
+      "start": 2.0,
+      "end": 2.35,
+      "rawStart": 2.0,
+      "rawEnd": 2.35,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w6",
+      "text": "Kaffee.",
+      "kind": "word",
+      "start": 2.45,
+      "end": 2.8,
+      "rawStart": 2.45,
+      "rawEnd": 2.8,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     }
+    ],
+    "language": "de",
+    "languageProbability": 0.99,
+    "durationSeconds": 3.3,
+    "engine": {
+     "id": "elevenlabs",
+     "modelId": "scribe_v2",
+     "modelSha256": null,
+     "engineVersion": "scribe_v2",
+     "locale": null
+    },
+    "verbatim": true,
+    "refined": true,
+    "pipelineVersion": 1,
+    "rawKey": "a0367406cde13ed6611540e4062b43b71f349331b1c877185f09de0dde04206f",
+    "createdAt": "2026-10-25T09:12:41Z"
+   },
+   "edits": {
+    "pauseThresholdSeconds": 0.8,
+    "pauseKeepSeconds": 0.15,
+    "cutWordIds": [],
+    "cutPauseIds": [],
+    "corrections": {},
+    "clips": [],
+    "activeClipId": null
+   },
+   "captions": {"styleId": "karaoke", "overrides": {}, "position": null, "positionByAspect": {}},
+   "export": {"aspect": "9:16", "quality": "standard", "srt": false, "folder": null},
+   "share": {"captions": {}},
+   "ai": {"results": []},
+   "voiceLab": {"segments": []},
+   "extensions": {}
+  },
+  "interview-karaoke": {
+   "format": "voxclip-project",
+   "schemaVersion": 1,
+   "id": "5b7e0f7a-3c1d-4b8e-9a51-2f6d0c8e4a11",
+   "title": "Interview take 3",
+   "createdAt": "2026-10-25T09:12:03Z",
+   "modifiedAt": "2026-10-25T09:31:47Z",
+   "savedBy": {"app": "VoxClip", "version": "0.1.0", "platform": "macos"},
+   "media": {
+    "source": {
+     "absolutePath": "/Users/alex/Movies/VoxClip/interview-take-3.mov",
+     "relativePath": "interview-take-3.mov",
+     "sizeBytes": 9437184,
+     "durationSeconds": 7,
+     "contentKey": "a12b2e004311fcd7687a1e7dce95e15790e043ee2af00b39fed7b06fd5c88393",
+     "video": {"width": 1920, "height": 1080, "frameRate": 30, "rotationDegrees": 0},
+     "audio": {"sampleRate": 48000, "channels": 1}
+    }
+   },
+   "transcript": {
+    "schemaVersion": 1,
+    "words": [
+     {
+      "id": "w1",
+      "text": "So",
+      "kind": "word",
+      "start": 0.3,
+      "end": 0.6,
+      "rawStart": 0.34,
+      "rawEnd": 0.57,
+      "conf": 0.99,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w2",
+      "text": "um,",
+      "kind": "word",
+      "start": 0.7,
+      "end": 1,
+      "rawStart": 0.74,
+      "rawEnd": 0.97,
+      "conf": 0.81,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w3",
+      "text": "today",
+      "kind": "word",
+      "start": 1.1,
+      "end": 1.5,
+      "rawStart": 1.14,
+      "rawEnd": 1.47,
+      "conf": 0.98,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w4",
+      "text": "we",
+      "kind": "word",
+      "start": 2.6,
+      "end": 2.75,
+      "rawStart": 2.64,
+      "rawEnd": 2.72,
+      "conf": 0.99,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w5",
+      "text": "ship",
+      "kind": "word",
+      "start": 2.8,
+      "end": 3.1,
+      "rawStart": 2.84,
+      "rawEnd": 3.07,
+      "conf": 0.97,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w6",
+      "text": "uh",
+      "kind": "word",
+      "start": 3.2,
+      "end": 3.4,
+      "rawStart": 3.24,
+      "rawEnd": 3.37,
+      "conf": 0.77,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w7",
+      "text": "the",
+      "kind": "word",
+      "start": 3.5,
+      "end": 3.6,
+      "rawStart": 3.54,
+      "rawEnd": 3.57,
+      "conf": 0.99,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w8",
+      "text": "clipper.",
+      "kind": "word",
+      "start": 3.65,
+      "end": 4.2,
+      "rawStart": 3.69,
+      "rawEnd": 4.17,
+      "conf": 0.96,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w9",
+      "text": "Thanks",
+      "kind": "word",
+      "start": 5.5,
+      "end": 5.9,
+      "rawStart": 5.54,
+      "rawEnd": 5.87,
+      "conf": 0.99,
+      "speaker": null,
+      "timing": "native"
+     }
+    ],
+    "language": "en",
+    "languageProbability": 0.99,
+    "durationSeconds": 7,
+    "engine": {
+     "id": "elevenlabs",
+     "modelId": "scribe_v2",
+     "modelSha256": null,
+     "engineVersion": "scribe_v2",
+     "locale": null
+    },
+    "verbatim": true,
+    "refined": true,
+    "pipelineVersion": 1,
+    "rawKey": "1c030c022ede1c5e2e0277f1c50750593503573d674b82084a060e9c67351d4d",
+    "createdAt": "2026-10-25T09:12:41Z"
+   },
+   "edits": {
+    "pauseThresholdSeconds": 0.8,
+    "pauseKeepSeconds": 0.15,
+    "cutWordIds": ["w2", "w6"],
+    "cutPauseIds": ["pause-after-w3"],
+    "corrections": {"w5": "shipped"},
+    "clips": [],
+    "activeClipId": null
+   },
+   "captions": {"styleId": "karaoke", "overrides": {}, "position": null, "positionByAspect": {}},
+   "export": {"aspect": "9:16", "quality": "standard", "srt": false, "folder": null},
+   "share": {"captions": {"full": "Today we shipped the clipper. Thanks"}},
+   "ai": {"results": []},
+   "voiceLab": {"segments": []},
+   "extensions": {}
+  },
+  "interview-off": {
+   "format": "voxclip-project",
+   "schemaVersion": 1,
+   "id": "5b7e0f7a-3c1d-4b8e-9a51-2f6d0c8e4a11",
+   "title": "Interview take 3",
+   "createdAt": "2026-10-25T09:12:03Z",
+   "modifiedAt": "2026-10-25T09:31:47Z",
+   "savedBy": {"app": "VoxClip", "version": "0.1.0", "platform": "macos"},
+   "media": {
+    "source": {
+     "absolutePath": "/Users/alex/Movies/VoxClip/interview-take-3.mov",
+     "relativePath": "interview-take-3.mov",
+     "sizeBytes": 9437184,
+     "durationSeconds": 7,
+     "contentKey": "a12b2e004311fcd7687a1e7dce95e15790e043ee2af00b39fed7b06fd5c88393",
+     "video": {"width": 1920, "height": 1080, "frameRate": 30, "rotationDegrees": 0},
+     "audio": {"sampleRate": 48000, "channels": 1}
+    }
+   },
+   "transcript": {
+    "schemaVersion": 1,
+    "words": [
+     {
+      "id": "w1",
+      "text": "So",
+      "kind": "word",
+      "start": 0.3,
+      "end": 0.6,
+      "rawStart": 0.34,
+      "rawEnd": 0.57,
+      "conf": 0.99,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w2",
+      "text": "um,",
+      "kind": "word",
+      "start": 0.7,
+      "end": 1,
+      "rawStart": 0.74,
+      "rawEnd": 0.97,
+      "conf": 0.81,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w3",
+      "text": "today",
+      "kind": "word",
+      "start": 1.1,
+      "end": 1.5,
+      "rawStart": 1.14,
+      "rawEnd": 1.47,
+      "conf": 0.98,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w4",
+      "text": "we",
+      "kind": "word",
+      "start": 2.6,
+      "end": 2.75,
+      "rawStart": 2.64,
+      "rawEnd": 2.72,
+      "conf": 0.99,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w5",
+      "text": "ship",
+      "kind": "word",
+      "start": 2.8,
+      "end": 3.1,
+      "rawStart": 2.84,
+      "rawEnd": 3.07,
+      "conf": 0.97,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w6",
+      "text": "uh",
+      "kind": "word",
+      "start": 3.2,
+      "end": 3.4,
+      "rawStart": 3.24,
+      "rawEnd": 3.37,
+      "conf": 0.77,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w7",
+      "text": "the",
+      "kind": "word",
+      "start": 3.5,
+      "end": 3.6,
+      "rawStart": 3.54,
+      "rawEnd": 3.57,
+      "conf": 0.99,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w8",
+      "text": "clipper.",
+      "kind": "word",
+      "start": 3.65,
+      "end": 4.2,
+      "rawStart": 3.69,
+      "rawEnd": 4.17,
+      "conf": 0.96,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w9",
+      "text": "Thanks",
+      "kind": "word",
+      "start": 5.5,
+      "end": 5.9,
+      "rawStart": 5.54,
+      "rawEnd": 5.87,
+      "conf": 0.99,
+      "speaker": null,
+      "timing": "native"
+     }
+    ],
+    "language": "en",
+    "languageProbability": 0.99,
+    "durationSeconds": 7,
+    "engine": {
+     "id": "elevenlabs",
+     "modelId": "scribe_v2",
+     "modelSha256": null,
+     "engineVersion": "scribe_v2",
+     "locale": null
+    },
+    "verbatim": true,
+    "refined": true,
+    "pipelineVersion": 1,
+    "rawKey": "1c030c022ede1c5e2e0277f1c50750593503573d674b82084a060e9c67351d4d",
+    "createdAt": "2026-10-25T09:12:41Z"
+   },
+   "edits": {
+    "pauseThresholdSeconds": 0.8,
+    "pauseKeepSeconds": 0.15,
+    "cutWordIds": ["w2", "w6"],
+    "cutPauseIds": ["pause-after-w3"],
+    "corrections": {"w5": "shipped"},
+    "clips": [],
+    "activeClipId": null
+   },
+   "captions": {"styleId": "off", "overrides": {}, "position": null, "positionByAspect": {}},
+   "export": {"aspect": "9:16", "quality": "standard", "srt": false, "folder": null},
+   "share": {"captions": {"full": "Today we shipped the clipper. Thanks"}},
+   "ai": {"results": []},
+   "voiceLab": {"segments": []},
+   "extensions": {}
+  },
+  "interview-take": {
+   "format": "voxclip-project",
+   "schemaVersion": 1,
+   "id": "5b7e0f7a-3c1d-4b8e-9a51-2f6d0c8e4a11",
+   "title": "Interview take 3",
+   "createdAt": "2026-10-25T09:12:03Z",
+   "modifiedAt": "2026-10-25T09:31:47Z",
+   "savedBy": {"app": "VoxClip", "version": "0.1.0", "platform": "macos"},
+   "media": {
+    "source": {
+     "absolutePath": "/Users/alex/Movies/VoxClip/interview-take-3.mov",
+     "relativePath": "interview-take-3.mov",
+     "sizeBytes": 9437184,
+     "durationSeconds": 7,
+     "contentKey": "a12b2e004311fcd7687a1e7dce95e15790e043ee2af00b39fed7b06fd5c88393",
+     "video": {"width": 1920, "height": 1080, "frameRate": 30, "rotationDegrees": 0},
+     "audio": {"sampleRate": 48000, "channels": 1}
+    }
+   },
+   "transcript": {
+    "schemaVersion": 1,
+    "words": [
+     {
+      "id": "w1",
+      "text": "So",
+      "kind": "word",
+      "start": 0.3,
+      "end": 0.6,
+      "rawStart": 0.34,
+      "rawEnd": 0.57,
+      "conf": 0.99,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w2",
+      "text": "um,",
+      "kind": "word",
+      "start": 0.7,
+      "end": 1,
+      "rawStart": 0.74,
+      "rawEnd": 0.97,
+      "conf": 0.81,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w3",
+      "text": "today",
+      "kind": "word",
+      "start": 1.1,
+      "end": 1.5,
+      "rawStart": 1.14,
+      "rawEnd": 1.47,
+      "conf": 0.98,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w4",
+      "text": "we",
+      "kind": "word",
+      "start": 2.6,
+      "end": 2.75,
+      "rawStart": 2.64,
+      "rawEnd": 2.72,
+      "conf": 0.99,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w5",
+      "text": "ship",
+      "kind": "word",
+      "start": 2.8,
+      "end": 3.1,
+      "rawStart": 2.84,
+      "rawEnd": 3.07,
+      "conf": 0.97,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w6",
+      "text": "uh",
+      "kind": "word",
+      "start": 3.2,
+      "end": 3.4,
+      "rawStart": 3.24,
+      "rawEnd": 3.37,
+      "conf": 0.77,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w7",
+      "text": "the",
+      "kind": "word",
+      "start": 3.5,
+      "end": 3.6,
+      "rawStart": 3.54,
+      "rawEnd": 3.57,
+      "conf": 0.99,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w8",
+      "text": "clipper.",
+      "kind": "word",
+      "start": 3.65,
+      "end": 4.2,
+      "rawStart": 3.69,
+      "rawEnd": 4.17,
+      "conf": 0.96,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w9",
+      "text": "Thanks",
+      "kind": "word",
+      "start": 5.5,
+      "end": 5.9,
+      "rawStart": 5.54,
+      "rawEnd": 5.87,
+      "conf": 0.99,
+      "speaker": null,
+      "timing": "native"
+     }
+    ],
+    "language": "en",
+    "languageProbability": 0.99,
+    "durationSeconds": 7,
+    "engine": {
+     "id": "elevenlabs",
+     "modelId": "scribe_v2",
+     "modelSha256": null,
+     "engineVersion": "scribe_v2",
+     "locale": null
+    },
+    "verbatim": true,
+    "refined": true,
+    "pipelineVersion": 1,
+    "rawKey": "1c030c022ede1c5e2e0277f1c50750593503573d674b82084a060e9c67351d4d",
+    "createdAt": "2026-10-25T09:12:41Z"
+   },
+   "edits": {
+    "pauseThresholdSeconds": 0.8,
+    "pauseKeepSeconds": 0.15,
+    "cutWordIds": ["w2", "w6"],
+    "cutPauseIds": ["pause-after-w3"],
+    "corrections": {"w5": "shipped"},
+    "clips": [],
+    "activeClipId": null
+   },
+   "captions": {"styleId": "vox-bold", "overrides": {}, "position": null, "positionByAspect": {}},
+   "export": {"aspect": "9:16", "quality": "standard", "srt": false, "folder": null},
+   "share": {"captions": {"full": "Today we shipped the clipper. Thanks"}},
+   "ai": {"results": []},
+   "voiceLab": {"segments": []},
+   "extensions": {}
+  },
+  "line-override": {
+   "format": "voxclip-project",
+   "schemaVersion": 1,
+   "id": "8363d830-0f5a-bc5d-1ee9-24f71cfd1a0e",
+   "title": "Barista lessons",
+   "createdAt": "2026-10-25T09:12:03Z",
+   "modifiedAt": "2026-10-25T09:31:47Z",
+   "savedBy": {"app": "VoxClip", "version": "0.1.0", "platform": "macos"},
+   "media": {
+    "source": {
+     "absolutePath": "/Users/example/Movies/style-matrix.mov",
+     "relativePath": "style-matrix.mov",
+     "sizeBytes": 1048576,
+     "durationSeconds": 3.75,
+     "contentKey": "8363d8300f5abc5d1ee924f71cfd1a0eaac774d74739488ecfacedd4802b08b3",
+     "video": {"width": 1920, "height": 1080, "frameRate": 30, "rotationDegrees": 0},
+     "audio": {"sampleRate": 48000, "channels": 1}
+    }
+   },
+   "transcript": {
+    "schemaVersion": 1,
+    "words": [
+     {
+      "id": "w1",
+      "text": "Here's",
+      "kind": "word",
+      "start": 0.2,
+      "end": 0.55,
+      "rawStart": 0.2,
+      "rawEnd": 0.55,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w2",
+      "text": "what",
+      "kind": "word",
+      "start": 0.65,
+      "end": 1.0,
+      "rawStart": 0.65,
+      "rawEnd": 1.0,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w3",
+      "text": "3",
+      "kind": "word",
+      "start": 1.1,
+      "end": 1.45,
+      "rawStart": 1.1,
+      "rawEnd": 1.45,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w4",
+      "text": "baristas",
+      "kind": "word",
+      "start": 1.55,
+      "end": 1.9,
+      "rawStart": 1.55,
+      "rawEnd": 1.9,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w5",
+      "text": "taught",
+      "kind": "word",
+      "start": 2.0,
+      "end": 2.35,
+      "rawStart": 2.0,
+      "rawEnd": 2.35,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w6",
+      "text": "me,",
+      "kind": "word",
+      "start": 2.45,
+      "end": 2.8,
+      "rawStart": 2.45,
+      "rawEnd": 2.8,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w7",
+      "text": "honestly.",
+      "kind": "word",
+      "start": 2.9,
+      "end": 3.25,
+      "rawStart": 2.9,
+      "rawEnd": 3.25,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     }
+    ],
+    "language": "en",
+    "languageProbability": 0.99,
+    "durationSeconds": 3.75,
+    "engine": {
+     "id": "elevenlabs",
+     "modelId": "scribe_v2",
+     "modelSha256": null,
+     "engineVersion": "scribe_v2",
+     "locale": null
+    },
+    "verbatim": true,
+    "refined": true,
+    "pipelineVersion": 1,
+    "rawKey": "3f2b907e5e7986849ba5a79dba2cc54e01d456c6b5e045a3c5c8c798867569e8",
+    "createdAt": "2026-10-25T09:12:41Z"
+   },
+   "edits": {
+    "pauseThresholdSeconds": 0.8,
+    "pauseKeepSeconds": 0.15,
+    "cutWordIds": [],
+    "cutPauseIds": [],
+    "corrections": {},
+    "clips": [],
+    "activeClipId": null
+   },
+   "captions": {
+    "styleId": "pill",
+    "overrides": {"layout": {"maxWords": 16, "maxLines": 1}},
+    "position": null,
+    "positionByAspect": {}
+   },
+   "export": {"aspect": "9:16", "quality": "standard", "srt": false, "folder": null},
+   "share": {"captions": {}},
+   "ai": {"results": []},
+   "voiceLab": {"segments": []},
+   "extensions": {}
+  },
+  "long-take": {
+   "format": "voxclip-project",
+   "schemaVersion": 1,
+   "id": "c2a4e6f8-1b3d-4f5a-8c7e-9d0b2a4c6e8f",
+   "title": "Sõnade kaupa lõikamine",
+   "createdAt": "2026-10-24T18:02:11Z",
+   "modifiedAt": "2026-10-25T07:45:30Z",
+   "savedBy": {"app": "VoxClip", "version": "0.1.0", "platform": "windows"},
+   "media": {
+    "source": {
+     "absolutePath": "C:\\Users\\mari\\Videos\\voxclip-demo.mp4",
+     "relativePath": "../Videos/voxclip-demo.mp4",
+     "sizeBytes": 31457280,
+     "durationSeconds": 16,
+     "contentKey": "57b4c88847792026348b90412999d8bcf58cdb14367c7d5cfee893c6e4610547",
+     "video": {"width": 1920, "height": 1080, "frameRate": 29.97, "rotationDegrees": 0},
+     "audio": {"sampleRate": 44100, "channels": 2}
+    }
+   },
+   "transcript": {
+    "schemaVersion": 1,
+    "words": [
+     {
+      "id": "w1",
+      "text": "Tere!",
+      "kind": "word",
+      "start": 0.42,
+      "end": 0.8,
+      "rawStart": 0.44,
+      "rawEnd": 1.3,
+      "conf": 0.9,
+      "speaker": null,
+      "timing": "dtw"
+     },
+     {
+      "id": "w2",
+      "text": "Täna",
+      "kind": "word",
+      "start": 1.3,
+      "end": 1.62,
+      "rawStart": 1.32,
+      "rawEnd": 1.66,
+      "conf": 0.9,
+      "speaker": null,
+      "timing": "dtw"
+     },
+     {
+      "id": "w3",
+      "text": "näitan,",
+      "kind": "word",
+      "start": 1.66,
+      "end": 2.1,
+      "rawStart": 1.68,
+      "rawEnd": 2.2,
+      "conf": 0.9,
+      "speaker": null,
+      "timing": "dtw"
+     },
+     {
+      "id": "w4",
+      "text": "kuidas",
+      "kind": "word",
+      "start": 2.2,
+      "end": 2.52,
+      "rawStart": 2.22,
+      "rawEnd": 2.56,
+      "conf": 0.9,
+      "speaker": null,
+      "timing": "dtw"
+     },
+     {
+      "id": "w5",
+      "text": "lõigata",
+      "kind": "word",
+      "start": 2.56,
+      "end": 3.02,
+      "rawStart": 2.58,
+      "rawEnd": 3.06,
+      "conf": 0.9,
+      "speaker": null,
+      "timing": "dtw"
+     },
+     {
+      "id": "w6",
+      "text": "videot",
+      "kind": "word",
+      "start": 3.06,
+      "end": 3.48,
+      "rawStart": 3.08,
+      "rawEnd": 3.52,
+      "conf": 0.9,
+      "speaker": null,
+      "timing": "dtw"
+     },
+     {
+      "id": "w7",
+      "text": "sõnade",
+      "kind": "word",
+      "start": 3.52,
+      "end": 3.9,
+      "rawStart": 3.54,
+      "rawEnd": 3.94,
+      "conf": 0.9,
+      "speaker": null,
+      "timing": "dtw"
+     },
+     {
+      "id": "w8",
+      "text": "kaupa.",
+      "kind": "word",
+      "start": 3.94,
+      "end": 4.4,
+      "rawStart": 3.96,
+      "rawEnd": 5.1,
+      "conf": 0.9,
+      "speaker": null,
+      "timing": "dtw"
+     },
+     {
+      "id": "w9",
+      "text": "…",
+      "kind": "unlabeledSpeech",
+      "start": 5.1,
+      "end": 5.42,
+      "rawStart": null,
+      "rawEnd": null,
+      "conf": null,
+      "speaker": null,
+      "timing": "detected"
+     },
+     {
+      "id": "w10",
+      "text": "See",
+      "kind": "word",
+      "start": 5.9,
+      "end": 6.08,
+      "rawStart": 5.92,
+      "rawEnd": 6.12,
+      "conf": 0.9,
+      "speaker": null,
+      "timing": "dtw"
+     },
+     {
+      "id": "w11",
+      "text": "on",
+      "kind": "word",
+      "start": 6.12,
+      "end": 6.24,
+      "rawStart": 6.14,
+      "rawEnd": 6.28,
+      "conf": 0.9,
+      "speaker": null,
+      "timing": "dtw"
+     },
+     {
+      "id": "w12",
+      "text": "tegelikult",
+      "kind": "word",
+      "start": 6.28,
+      "end": 6.9,
+      "rawStart": 6.3,
+      "rawEnd": 6.96,
+      "conf": 0.9,
+      "speaker": null,
+      "timing": "dtw"
+     },
+     {
+      "id": "w13",
+      "text": "palju",
+      "kind": "word",
+      "start": 6.96,
+      "end": 7.3,
+      "rawStart": 6.98,
+      "rawEnd": 7.34,
+      "conf": 0.9,
+      "speaker": null,
+      "timing": "dtw"
+     },
+     {
+      "id": "w14",
+      "text": "kiirem",
+      "kind": "word",
+      "start": 7.34,
+      "end": 7.74,
+      "rawStart": 7.36,
+      "rawEnd": 7.78,
+      "conf": 0.9,
+      "speaker": null,
+      "timing": "dtw"
+     },
+     {
+      "id": "w15",
+      "text": "kui",
+      "kind": "word",
+      "start": 7.78,
+      "end": 7.92,
+      "rawStart": 7.8,
+      "rawEnd": 7.96,
+      "conf": 0.9,
+      "speaker": null,
+      "timing": "dtw"
+     },
+     {
+      "id": "w16",
+      "text": "ajateljel",
+      "kind": "word",
+      "start": 7.96,
+      "end": 8.56,
+      "rawStart": 7.98,
+      "rawEnd": 8.6,
+      "conf": 0.9,
+      "speaker": null,
+      "timing": "dtw"
+     },
+     {
+      "id": "w17",
+      "text": "kerimine.",
+      "kind": "word",
+      "start": 8.6,
+      "end": 9.2,
+      "rawStart": 8.62,
+      "rawEnd": 10.4,
+      "conf": 0.9,
+      "speaker": null,
+      "timing": "dtw"
+     },
+     {
+      "id": "w18",
+      "text": "Iga",
+      "kind": "word",
+      "start": 10.4,
+      "end": 10.62,
+      "rawStart": 10.42,
+      "rawEnd": 10.66,
+      "conf": 0.9,
+      "speaker": null,
+      "timing": "dtw"
+     },
+     {
+      "id": "w19",
+      "text": "sõna",
+      "kind": "word",
+      "start": 10.66,
+      "end": 10.98,
+      "rawStart": 10.68,
+      "rawEnd": 11.02,
+      "conf": 0.9,
+      "speaker": null,
+      "timing": "dtw"
+     },
+     {
+      "id": "w20",
+      "text": "asukot",
+      "kind": "word",
+      "start": 11.02,
+      "end": 11.52,
+      "rawStart": 11.04,
+      "rawEnd": 11.56,
+      "conf": 0.9,
+      "speaker": null,
+      "timing": "dtw"
+     },
+     {
+      "id": "w21",
+      "text": "on",
+      "kind": "word",
+      "start": 11.56,
+      "end": 11.68,
+      "rawStart": 11.58,
+      "rawEnd": 11.72,
+      "conf": 0.9,
+      "speaker": null,
+      "timing": "dtw"
+     },
+     {
+      "id": "w22",
+      "text": "juba",
+      "kind": "word",
+      "start": 11.72,
+      "end": 11.98,
+      "rawStart": 11.74,
+      "rawEnd": 12.02,
+      "conf": 0.9,
+      "speaker": null,
+      "timing": "dtw"
+     },
+     {
+      "id": "w23",
+      "text": "teada.",
+      "kind": "word",
+      "start": 12.02,
+      "end": 12.5,
+      "rawStart": 12.04,
+      "rawEnd": 13.6,
+      "conf": 0.9,
+      "speaker": null,
+      "timing": "dtw"
+     },
+     {
+      "id": "w24",
+      "text": "Proovime",
+      "kind": "word",
+      "start": 13.6,
+      "end": 14.1,
+      "rawStart": 13.62,
+      "rawEnd": 14.14,
+      "conf": 0.9,
+      "speaker": null,
+      "timing": "dtw"
+     },
+     {
+      "id": "w25",
+      "text": "kohe",
+      "kind": "word",
+      "start": 14.14,
+      "end": 14.4,
+      "rawStart": 14.16,
+      "rawEnd": 14.44,
+      "conf": 0.9,
+      "speaker": null,
+      "timing": "dtw"
+     },
+     {
+      "id": "w26",
+      "text": "järele.",
+      "kind": "word",
+      "start": 14.44,
+      "end": 15,
+      "rawStart": 14.46,
+      "rawEnd": 15,
+      "conf": 0.9,
+      "speaker": null,
+      "timing": "dtw"
+     }
+    ],
+    "language": "et",
+    "languageProbability": null,
+    "durationSeconds": 16,
+    "engine": {
+     "id": "whispercpp",
+     "modelId": "taltech-et-verbatim-2604-q8_0",
+     "modelSha256": "0e6308a9300d497ca1bcce41f53c17e4702b62b14ad237db40e108b00a53b127",
+     "engineVersion": "Whisper.net 1.9.1 (whisper.cpp 1.8.5)",
+     "locale": null
+    },
+    "verbatim": false,
+    "refined": true,
+    "pipelineVersion": 1,
+    "rawKey": "2a0c148bbcc500abeaf7405141fcb065ba7e172e73d762169ad642be2ca74938",
+    "createdAt": "2026-10-24T18:03:52Z"
+   },
+   "edits": {
+    "pauseThresholdSeconds": 0.8,
+    "pauseKeepSeconds": 0.05,
+    "cutWordIds": ["w9"],
+    "cutPauseIds": ["pause-after-w17", "pause-after-w23"],
+    "corrections": {"w20": "asukoht"},
+    "clips": [
+     {
+      "id": "clip-2f1c",
+      "startWordId": "w10",
+      "endWordId": "w17",
+      "title": "Miks sõnade kaupa on kiirem",
+      "origin": "ai",
+      "aiResultId": "air-7d3e",
+      "aiClipIndex": 0,
+      "selected": true
+     },
+     {
+      "id": "clip-9a0b",
+      "startWordId": "w18",
+      "endWordId": "w26",
+      "title": "Iga sõna asukoht",
+      "origin": "manual",
+      "aiResultId": null,
+      "aiClipIndex": null,
+      "selected": false
+     }
+    ],
+    "activeClipId": "clip-2f1c"
+   },
+   "captions": {
+    "styleId": "karaoke",
+    "overrides": {"text": {"transform": "uppercase"}},
+    "position": {"x": 0.5, "y": 0.72},
+    "positionByAspect": {"16:9": {"x": 0.5, "y": 0.85}}
+   },
+   "export": {"aspect": "9:16", "quality": "high", "srt": true, "folder": "C:\\Users\\mari\\Videos\\VoxClip"},
+   "share": {"captions": {"clip-2f1c": "Miks sõnade kaupa on kiirem\n\nSee on tegelikult palju kiirem."}},
+   "ai": {
+    "results": [
+     {
+      "id": "air-7d3e",
+      "createdAt": "2026-10-25T07:40:02Z",
+      "provider": "claude-code",
+      "model": "sonnet",
+      "preset": "hooks",
+      "instructions": null,
+      "language": "et",
+      "inputSha256": "21febfbe9ef740acbc34f3bc7b469e5977dd5c34b27ea487c52604d33ab33817",
+      "clips": [
+       {
+        "title": "Miks sõnade kaupa on kiirem",
+        "reason": "Selge väide ja võrdlus, mis haarab kohe.",
+        "score": 8,
+        "startWordId": "w10",
+        "endWordId": "w17"
+       },
+       {
+        "title": "Iga sõna asukoht",
+        "reason": "Lühike ja tsiteeritav lause.",
+        "score": 6,
+        "startWordId": "w18",
+        "endWordId": "w23"
+       }
+      ]
+     }
+    ]
+   },
+   "voiceLab": {"segments": []},
+   "extensions": {}
+  },
+  "long-word": {
+   "format": "voxclip-project",
+   "schemaVersion": 1,
+   "id": "1cbaa5f7-5074-1058-0c09-3b5c3c7fa62b",
+   "title": "Sünnipäev",
+   "createdAt": "2026-10-25T09:12:03Z",
+   "modifiedAt": "2026-10-25T09:31:47Z",
+   "savedBy": {"app": "VoxClip", "version": "0.1.0", "platform": "macos"},
+   "media": {
+    "source": {
+     "absolutePath": "/Users/example/Movies/long-word.mov",
+     "relativePath": "long-word.mov",
+     "sizeBytes": 1048576,
+     "durationSeconds": 1.95,
+     "contentKey": "1cbaa5f7507410580c093b5c3c7fa62b42e2d130110875571ce9dfebb92c7698",
+     "video": {"width": 1920, "height": 1080, "frameRate": 30, "rotationDegrees": 0},
+     "audio": {"sampleRate": 48000, "channels": 1}
+    }
+   },
+   "transcript": {
+    "schemaVersion": 1,
+    "words": [
+     {
+      "id": "w1",
+      "text": "Sünnipäevakingitusteostmisvõimalused",
+      "kind": "word",
+      "start": 0.2,
+      "end": 0.55,
+      "rawStart": 0.2,
+      "rawEnd": 0.55,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w2",
+      "text": "on",
+      "kind": "word",
+      "start": 0.65,
+      "end": 1.0,
+      "rawStart": 0.65,
+      "rawEnd": 1.0,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w3",
+      "text": "lõputud.",
+      "kind": "word",
+      "start": 1.1,
+      "end": 1.45,
+      "rawStart": 1.1,
+      "rawEnd": 1.45,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     }
+    ],
+    "language": "et",
+    "languageProbability": 0.99,
+    "durationSeconds": 1.95,
+    "engine": {
+     "id": "elevenlabs",
+     "modelId": "scribe_v2",
+     "modelSha256": null,
+     "engineVersion": "scribe_v2",
+     "locale": null
+    },
+    "verbatim": true,
+    "refined": true,
+    "pipelineVersion": 1,
+    "rawKey": "760d998e2e8dddf82ed01e3c8d7ea577f56663faf2db6a54d0acdf53c6f7c2a4",
+    "createdAt": "2026-10-25T09:12:41Z"
+   },
+   "edits": {
+    "pauseThresholdSeconds": 0.8,
+    "pauseKeepSeconds": 0.15,
+    "cutWordIds": [],
+    "cutPauseIds": [],
+    "corrections": {},
+    "clips": [],
+    "activeClipId": null
+   },
+   "captions": {"styleId": "vox-highlight", "overrides": {}, "position": null, "positionByAspect": {}},
+   "export": {"aspect": "9:16", "quality": "standard", "srt": false, "folder": null},
+   "share": {"captions": {}},
+   "ai": {"results": []},
+   "voiceLab": {"segments": []},
+   "extensions": {}
+  },
+  "long-word-subtitle": {
+   "format": "voxclip-project",
+   "schemaVersion": 1,
+   "id": "1cbaa5f7-5074-1058-0c09-3b5c3c7fa62b",
+   "title": "Sünnipäev",
+   "createdAt": "2026-10-25T09:12:03Z",
+   "modifiedAt": "2026-10-25T09:31:47Z",
+   "savedBy": {"app": "VoxClip", "version": "0.1.0", "platform": "macos"},
+   "media": {
+    "source": {
+     "absolutePath": "/Users/example/Movies/long-word.mov",
+     "relativePath": "long-word.mov",
+     "sizeBytes": 1048576,
+     "durationSeconds": 1.95,
+     "contentKey": "1cbaa5f7507410580c093b5c3c7fa62b42e2d130110875571ce9dfebb92c7698",
+     "video": {"width": 1920, "height": 1080, "frameRate": 30, "rotationDegrees": 0},
+     "audio": {"sampleRate": 48000, "channels": 1}
+    }
+   },
+   "transcript": {
+    "schemaVersion": 1,
+    "words": [
+     {
+      "id": "w1",
+      "text": "Sünnipäevakingitusteostmisvõimalused",
+      "kind": "word",
+      "start": 0.2,
+      "end": 0.55,
+      "rawStart": 0.2,
+      "rawEnd": 0.55,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w2",
+      "text": "on",
+      "kind": "word",
+      "start": 0.65,
+      "end": 1.0,
+      "rawStart": 0.65,
+      "rawEnd": 1.0,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w3",
+      "text": "lõputud.",
+      "kind": "word",
+      "start": 1.1,
+      "end": 1.45,
+      "rawStart": 1.1,
+      "rawEnd": 1.45,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     }
+    ],
+    "language": "et",
+    "languageProbability": 0.99,
+    "durationSeconds": 1.95,
+    "engine": {
+     "id": "elevenlabs",
+     "modelId": "scribe_v2",
+     "modelSha256": null,
+     "engineVersion": "scribe_v2",
+     "locale": null
+    },
+    "verbatim": true,
+    "refined": true,
+    "pipelineVersion": 1,
+    "rawKey": "760d998e2e8dddf82ed01e3c8d7ea577f56663faf2db6a54d0acdf53c6f7c2a4",
+    "createdAt": "2026-10-25T09:12:41Z"
+   },
+   "edits": {
+    "pauseThresholdSeconds": 0.8,
+    "pauseKeepSeconds": 0.15,
+    "cutWordIds": [],
+    "cutPauseIds": [],
+    "corrections": {},
+    "clips": [],
+    "activeClipId": null
+   },
+   "captions": {"styleId": "clean-subtitle", "overrides": {}, "position": null, "positionByAspect": {}},
+   "export": {"aspect": "9:16", "quality": "standard", "srt": false, "folder": null},
+   "share": {"captions": {}},
+   "ai": {"results": []},
+   "voiceLab": {"segments": []},
+   "extensions": {}
+  },
+  "never-transcribed": {
+   "format": "voxclip-project",
+   "schemaVersion": 1,
+   "id": "16e3dfdf-f664-3f75-4ae6-51c0698bd47b",
+   "title": "Studio tour",
+   "createdAt": "2026-10-25T09:12:03Z",
+   "modifiedAt": "2026-10-25T09:31:47Z",
+   "savedBy": {"app": "VoxClip", "version": "0.1.0", "platform": "macos"},
+   "media": {
+    "source": {
+     "absolutePath": "/Users/example/Movies/never-transcribed.mov",
+     "relativePath": "never-transcribed.mov",
+     "sizeBytes": 1048576,
+     "durationSeconds": 1.0,
+     "contentKey": "16e3dfdff6643f754ae651c0698bd47be1f64bc80d065d88b5238ffdf67b7d1e",
+     "video": {"width": 1920, "height": 1080, "frameRate": 30, "rotationDegrees": 0},
+     "audio": {"sampleRate": 48000, "channels": 1}
+    }
+   },
+   "transcript": null,
+   "edits": {
+    "pauseThresholdSeconds": 0.8,
+    "pauseKeepSeconds": 0.15,
+    "cutWordIds": [],
+    "cutPauseIds": [],
+    "corrections": {},
+    "clips": [],
+    "activeClipId": null
+   },
+   "captions": {"styleId": "karaoke", "overrides": {}, "position": null, "positionByAspect": {}},
+   "export": {"aspect": "9:16", "quality": "standard", "srt": false, "folder": null},
+   "share": {"captions": {}},
+   "ai": {"results": []},
+   "voiceLab": {"segments": []},
+   "extensions": {}
+  },
+  "number-opening": {
+   "format": "voxclip-project",
+   "schemaVersion": 1,
+   "id": "87c6cc69-fc7c-ea22-8d9b-a0bb5e04f11b",
+   "title": "Grinder shootout",
+   "createdAt": "2026-10-25T09:12:03Z",
+   "modifiedAt": "2026-10-25T09:31:47Z",
+   "savedBy": {"app": "VoxClip", "version": "0.1.0", "platform": "macos"},
+   "media": {
+    "source": {
+     "absolutePath": "/Users/example/Movies/number-opening.mov",
+     "relativePath": "number-opening.mov",
+     "sizeBytes": 1048576,
+     "durationSeconds": 3.75,
+     "contentKey": "87c6cc69fc7cea228d9ba0bb5e04f11b50686f4ed60433f0b2a08dbf5ba11523",
+     "video": null,
+     "audio": {"sampleRate": 48000, "channels": 1}
+    }
+   },
+   "transcript": {
+    "schemaVersion": 1,
+    "words": [
+     {
+      "id": "w1",
+      "text": "We",
+      "kind": "word",
+      "start": 0.2,
+      "end": 0.55,
+      "rawStart": 0.2,
+      "rawEnd": 0.55,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w2",
+      "text": "tested",
+      "kind": "word",
+      "start": 0.65,
+      "end": 1.0,
+      "rawStart": 0.65,
+      "rawEnd": 1.0,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w3",
+      "text": "12",
+      "kind": "word",
+      "start": 1.1,
+      "end": 1.45,
+      "rawStart": 1.1,
+      "rawEnd": 1.45,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w4",
+      "text": "grinders",
+      "kind": "word",
+      "start": 1.55,
+      "end": 1.9,
+      "rawStart": 1.55,
+      "rawEnd": 1.9,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w5",
+      "text": "for",
+      "kind": "word",
+      "start": 2.0,
+      "end": 2.35,
+      "rawStart": 2.0,
+      "rawEnd": 2.35,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w6",
+      "text": "3",
+      "kind": "word",
+      "start": 2.45,
+      "end": 2.8,
+      "rawStart": 2.45,
+      "rawEnd": 2.8,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w7",
+      "text": "weeks.",
+      "kind": "word",
+      "start": 2.9,
+      "end": 3.25,
+      "rawStart": 2.9,
+      "rawEnd": 3.25,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     }
+    ],
+    "language": "en",
+    "languageProbability": 0.99,
+    "durationSeconds": 3.75,
+    "engine": {
+     "id": "elevenlabs",
+     "modelId": "scribe_v2",
+     "modelSha256": null,
+     "engineVersion": "scribe_v2",
+     "locale": null
+    },
+    "verbatim": true,
+    "refined": true,
+    "pipelineVersion": 1,
+    "rawKey": "93bb3db34eb1a007e3d56c3e0331972757d2bccb422607385426739ef66b2180",
+    "createdAt": "2026-10-25T09:12:41Z"
+   },
+   "edits": {
+    "pauseThresholdSeconds": 0.8,
+    "pauseKeepSeconds": 0.15,
+    "cutWordIds": [],
+    "cutPauseIds": [],
+    "corrections": {},
+    "clips": [],
+    "activeClipId": null
+   },
+   "captions": {"styleId": "two-tone", "overrides": {}, "position": null, "positionByAspect": {}},
+   "export": {"aspect": "source", "quality": "standard", "srt": false, "folder": null},
+   "share": {"captions": {}},
+   "ai": {"results": []},
+   "voiceLab": {"segments": []},
+   "extensions": {}
+  },
+  "one-word-override": {
+   "format": "voxclip-project",
+   "schemaVersion": 1,
+   "id": "8363d830-0f5a-bc5d-1ee9-24f71cfd1a0e",
+   "title": "Barista lessons",
+   "createdAt": "2026-10-25T09:12:03Z",
+   "modifiedAt": "2026-10-25T09:31:47Z",
+   "savedBy": {"app": "VoxClip", "version": "0.1.0", "platform": "macos"},
+   "media": {
+    "source": {
+     "absolutePath": "/Users/example/Movies/style-matrix.mov",
+     "relativePath": "style-matrix.mov",
+     "sizeBytes": 1048576,
+     "durationSeconds": 3.75,
+     "contentKey": "8363d8300f5abc5d1ee924f71cfd1a0eaac774d74739488ecfacedd4802b08b3",
+     "video": {"width": 1920, "height": 1080, "frameRate": 30, "rotationDegrees": 0},
+     "audio": {"sampleRate": 48000, "channels": 1}
+    }
+   },
+   "transcript": {
+    "schemaVersion": 1,
+    "words": [
+     {
+      "id": "w1",
+      "text": "Here's",
+      "kind": "word",
+      "start": 0.2,
+      "end": 0.55,
+      "rawStart": 0.2,
+      "rawEnd": 0.55,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w2",
+      "text": "what",
+      "kind": "word",
+      "start": 0.65,
+      "end": 1.0,
+      "rawStart": 0.65,
+      "rawEnd": 1.0,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w3",
+      "text": "3",
+      "kind": "word",
+      "start": 1.1,
+      "end": 1.45,
+      "rawStart": 1.1,
+      "rawEnd": 1.45,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w4",
+      "text": "baristas",
+      "kind": "word",
+      "start": 1.55,
+      "end": 1.9,
+      "rawStart": 1.55,
+      "rawEnd": 1.9,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w5",
+      "text": "taught",
+      "kind": "word",
+      "start": 2.0,
+      "end": 2.35,
+      "rawStart": 2.0,
+      "rawEnd": 2.35,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w6",
+      "text": "me,",
+      "kind": "word",
+      "start": 2.45,
+      "end": 2.8,
+      "rawStart": 2.45,
+      "rawEnd": 2.8,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w7",
+      "text": "honestly.",
+      "kind": "word",
+      "start": 2.9,
+      "end": 3.25,
+      "rawStart": 2.9,
+      "rawEnd": 3.25,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     }
+    ],
+    "language": "en",
+    "languageProbability": 0.99,
+    "durationSeconds": 3.75,
+    "engine": {
+     "id": "elevenlabs",
+     "modelId": "scribe_v2",
+     "modelSha256": null,
+     "engineVersion": "scribe_v2",
+     "locale": null
+    },
+    "verbatim": true,
+    "refined": true,
+    "pipelineVersion": 1,
+    "rawKey": "3f2b907e5e7986849ba5a79dba2cc54e01d456c6b5e045a3c5c8c798867569e8",
+    "createdAt": "2026-10-25T09:12:41Z"
+   },
+   "edits": {
+    "pauseThresholdSeconds": 0.8,
+    "pauseKeepSeconds": 0.15,
+    "cutWordIds": [],
+    "cutPauseIds": [],
+    "corrections": {},
+    "clips": [],
+    "activeClipId": null
+   },
+   "captions": {
+    "styleId": "box-highlight",
+    "overrides": {"layout": {"maxWords": 1, "maxLines": 1}},
+    "position": null,
+    "positionByAspect": {}
+   },
+   "export": {"aspect": "9:16", "quality": "standard", "srt": false, "folder": null},
+   "share": {"captions": {}},
+   "ai": {"results": []},
+   "voiceLab": {"segments": []},
+   "extensions": {}
+  },
+  "rejected-override": {
+   "format": "voxclip-project",
+   "schemaVersion": 1,
+   "id": "8363d830-0f5a-bc5d-1ee9-24f71cfd1a0e",
+   "title": "Barista lessons",
+   "createdAt": "2026-10-25T09:12:03Z",
+   "modifiedAt": "2026-10-25T09:31:47Z",
+   "savedBy": {"app": "VoxClip", "version": "0.1.0", "platform": "macos"},
+   "media": {
+    "source": {
+     "absolutePath": "/Users/example/Movies/style-matrix.mov",
+     "relativePath": "style-matrix.mov",
+     "sizeBytes": 1048576,
+     "durationSeconds": 3.75,
+     "contentKey": "8363d8300f5abc5d1ee924f71cfd1a0eaac774d74739488ecfacedd4802b08b3",
+     "video": {"width": 1920, "height": 1080, "frameRate": 30, "rotationDegrees": 0},
+     "audio": {"sampleRate": 48000, "channels": 1}
+    }
+   },
+   "transcript": {
+    "schemaVersion": 1,
+    "words": [
+     {
+      "id": "w1",
+      "text": "Here's",
+      "kind": "word",
+      "start": 0.2,
+      "end": 0.55,
+      "rawStart": 0.2,
+      "rawEnd": 0.55,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w2",
+      "text": "what",
+      "kind": "word",
+      "start": 0.65,
+      "end": 1.0,
+      "rawStart": 0.65,
+      "rawEnd": 1.0,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w3",
+      "text": "3",
+      "kind": "word",
+      "start": 1.1,
+      "end": 1.45,
+      "rawStart": 1.1,
+      "rawEnd": 1.45,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w4",
+      "text": "baristas",
+      "kind": "word",
+      "start": 1.55,
+      "end": 1.9,
+      "rawStart": 1.55,
+      "rawEnd": 1.9,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w5",
+      "text": "taught",
+      "kind": "word",
+      "start": 2.0,
+      "end": 2.35,
+      "rawStart": 2.0,
+      "rawEnd": 2.35,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w6",
+      "text": "me,",
+      "kind": "word",
+      "start": 2.45,
+      "end": 2.8,
+      "rawStart": 2.45,
+      "rawEnd": 2.8,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w7",
+      "text": "honestly.",
+      "kind": "word",
+      "start": 2.9,
+      "end": 3.25,
+      "rawStart": 2.9,
+      "rawEnd": 3.25,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     }
+    ],
+    "language": "en",
+    "languageProbability": 0.99,
+    "durationSeconds": 3.75,
+    "engine": {
+     "id": "elevenlabs",
+     "modelId": "scribe_v2",
+     "modelSha256": null,
+     "engineVersion": "scribe_v2",
+     "locale": null
+    },
+    "verbatim": true,
+    "refined": true,
+    "pipelineVersion": 1,
+    "rawKey": "3f2b907e5e7986849ba5a79dba2cc54e01d456c6b5e045a3c5c8c798867569e8",
+    "createdAt": "2026-10-25T09:12:41Z"
+   },
+   "edits": {
+    "pauseThresholdSeconds": 0.8,
+    "pauseKeepSeconds": 0.15,
+    "cutWordIds": [],
+    "cutPauseIds": [],
+    "corrections": {},
+    "clips": [],
+    "activeClipId": null
+   },
+   "captions": {"styleId": "karaoke", "overrides": {"layout": {"maxWords": 99}}, "position": null, "positionByAspect": {}},
+   "export": {"aspect": "9:16", "quality": "standard", "srt": false, "folder": null},
+   "share": {"captions": {}},
+   "ai": {"results": []},
+   "voiceLab": {"segments": []},
+   "extensions": {}
+  },
+  "style-matrix": {
+   "format": "voxclip-project",
+   "schemaVersion": 1,
+   "id": "8363d830-0f5a-bc5d-1ee9-24f71cfd1a0e",
+   "title": "Barista lessons",
+   "createdAt": "2026-10-25T09:12:03Z",
+   "modifiedAt": "2026-10-25T09:31:47Z",
+   "savedBy": {"app": "VoxClip", "version": "0.1.0", "platform": "macos"},
+   "media": {
+    "source": {
+     "absolutePath": "/Users/example/Movies/style-matrix.mov",
+     "relativePath": "style-matrix.mov",
+     "sizeBytes": 1048576,
+     "durationSeconds": 3.75,
+     "contentKey": "8363d8300f5abc5d1ee924f71cfd1a0eaac774d74739488ecfacedd4802b08b3",
+     "video": {"width": 1920, "height": 1080, "frameRate": 30, "rotationDegrees": 0},
+     "audio": {"sampleRate": 48000, "channels": 1}
+    }
+   },
+   "transcript": {
+    "schemaVersion": 1,
+    "words": [
+     {
+      "id": "w1",
+      "text": "Here's",
+      "kind": "word",
+      "start": 0.2,
+      "end": 0.55,
+      "rawStart": 0.2,
+      "rawEnd": 0.55,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w2",
+      "text": "what",
+      "kind": "word",
+      "start": 0.65,
+      "end": 1.0,
+      "rawStart": 0.65,
+      "rawEnd": 1.0,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w3",
+      "text": "3",
+      "kind": "word",
+      "start": 1.1,
+      "end": 1.45,
+      "rawStart": 1.1,
+      "rawEnd": 1.45,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w4",
+      "text": "baristas",
+      "kind": "word",
+      "start": 1.55,
+      "end": 1.9,
+      "rawStart": 1.55,
+      "rawEnd": 1.9,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w5",
+      "text": "taught",
+      "kind": "word",
+      "start": 2.0,
+      "end": 2.35,
+      "rawStart": 2.0,
+      "rawEnd": 2.35,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w6",
+      "text": "me,",
+      "kind": "word",
+      "start": 2.45,
+      "end": 2.8,
+      "rawStart": 2.45,
+      "rawEnd": 2.8,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w7",
+      "text": "honestly.",
+      "kind": "word",
+      "start": 2.9,
+      "end": 3.25,
+      "rawStart": 2.9,
+      "rawEnd": 3.25,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     }
+    ],
+    "language": "en",
+    "languageProbability": 0.99,
+    "durationSeconds": 3.75,
+    "engine": {
+     "id": "elevenlabs",
+     "modelId": "scribe_v2",
+     "modelSha256": null,
+     "engineVersion": "scribe_v2",
+     "locale": null
+    },
+    "verbatim": true,
+    "refined": true,
+    "pipelineVersion": 1,
+    "rawKey": "3f2b907e5e7986849ba5a79dba2cc54e01d456c6b5e045a3c5c8c798867569e8",
+    "createdAt": "2026-10-25T09:12:41Z"
+   },
+   "edits": {
+    "pauseThresholdSeconds": 0.8,
+    "pauseKeepSeconds": 0.15,
+    "cutWordIds": [],
+    "cutPauseIds": [],
+    "corrections": {},
+    "clips": [],
+    "activeClipId": null
+   },
+   "captions": {"styleId": "karaoke", "overrides": {}, "position": null, "positionByAspect": {}},
+   "export": {"aspect": "9:16", "quality": "standard", "srt": false, "folder": null},
+   "share": {"captions": {}},
+   "ai": {"results": []},
+   "voiceLab": {"segments": []},
+   "extensions": {}
+  },
+  "uncovered": {
+   "format": "voxclip-project",
+   "schemaVersion": 1,
+   "id": "5e479e2c-1619-da9f-0c9c-b16da2734b59",
+   "title": "Morning",
+   "createdAt": "2026-10-25T09:12:03Z",
+   "modifiedAt": "2026-10-25T09:31:47Z",
+   "savedBy": {"app": "VoxClip", "version": "0.1.0", "platform": "macos"},
+   "media": {
+    "source": {
+     "absolutePath": "/Users/example/Movies/uncovered.mov",
+     "relativePath": "uncovered.mov",
+     "sizeBytes": 1048576,
+     "durationSeconds": 2.85,
+     "contentKey": "5e479e2c1619da9f0c9cb16da2734b59eccd1d119adeaaace3f59cd7b9a73bf9",
+     "video": {"width": 1920, "height": 1080, "frameRate": 30, "rotationDegrees": 0},
+     "audio": {"sampleRate": 48000, "channels": 1}
+    }
+   },
+   "transcript": {
+    "schemaVersion": 1,
+    "words": [
+     {
+      "id": "w1",
+      "text": "こんにちは",
+      "kind": "word",
+      "start": 0.2,
+      "end": 0.55,
+      "rawStart": 0.2,
+      "rawEnd": 0.55,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w2",
+      "text": "🔥",
+      "kind": "word",
+      "start": 0.65,
+      "end": 1.0,
+      "rawStart": 0.65,
+      "rawEnd": 1.0,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w3",
+      "text": "Great",
+      "kind": "word",
+      "start": 1.1,
+      "end": 1.45,
+      "rawStart": 1.1,
+      "rawEnd": 1.45,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w4",
+      "text": "coffee",
+      "kind": "word",
+      "start": 1.55,
+      "end": 1.9,
+      "rawStart": 1.55,
+      "rawEnd": 1.9,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w5",
+      "text": "today.",
+      "kind": "word",
+      "start": 2.0,
+      "end": 2.35,
+      "rawStart": 2.0,
+      "rawEnd": 2.35,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     }
+    ],
+    "language": "en",
+    "languageProbability": 0.99,
+    "durationSeconds": 2.85,
+    "engine": {
+     "id": "elevenlabs",
+     "modelId": "scribe_v2",
+     "modelSha256": null,
+     "engineVersion": "scribe_v2",
+     "locale": null
+    },
+    "verbatim": true,
+    "refined": true,
+    "pipelineVersion": 1,
+    "rawKey": "cfe4ab53d982474dde812cee8fe8f9106d53ea1276f2d92234ee063469145eaa",
+    "createdAt": "2026-10-25T09:12:41Z"
+   },
+   "edits": {
+    "pauseThresholdSeconds": 0.8,
+    "pauseKeepSeconds": 0.15,
+    "cutWordIds": [],
+    "cutPauseIds": [],
+    "corrections": {},
+    "clips": [],
+    "activeClipId": null
+   },
+   "captions": {"styleId": "emoji-accent", "overrides": {}, "position": null, "positionByAspect": {}},
+   "export": {"aspect": "9:16", "quality": "standard", "srt": false, "folder": null},
+   "share": {"captions": {}},
+   "ai": {"results": []},
+   "voiceLab": {"segments": []},
+   "extensions": {}
+  },
+  "untitled": {
+   "format": "voxclip-project",
+   "schemaVersion": 1,
+   "id": "d4c8d7f0-4b0a-c534-bb34-406df02aefec",
+   "createdAt": "2026-10-25T09:12:03Z",
+   "modifiedAt": "2026-10-25T09:31:47Z",
+   "savedBy": {"app": "VoxClip", "version": "0.1.0", "platform": "macos"},
+   "media": {
+    "source": {
+     "absolutePath": "/Users/example/Movies/untitled.mov",
+     "relativePath": "untitled.mov",
+     "sizeBytes": 1048576,
+     "durationSeconds": 1.5,
+     "contentKey": "d4c8d7f04b0ac534bb34406df02aefec0835a6ba230e7cf2d31b5041078de513",
+     "video": {"width": 1920, "height": 1080, "frameRate": 30, "rotationDegrees": 0},
+     "audio": {"sampleRate": 48000, "channels": 1}
+    }
+   },
+   "transcript": {
+    "schemaVersion": 1,
+    "words": [
+     {
+      "id": "w1",
+      "text": "Coffee",
+      "kind": "word",
+      "start": 0.2,
+      "end": 0.55,
+      "rawStart": 0.2,
+      "rawEnd": 0.55,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     },
+     {
+      "id": "w2",
+      "text": "first.",
+      "kind": "word",
+      "start": 0.65,
+      "end": 1.0,
+      "rawStart": 0.65,
+      "rawEnd": 1.0,
+      "conf": 0.95,
+      "speaker": null,
+      "timing": "native"
+     }
+    ],
+    "language": "en",
+    "languageProbability": 0.99,
+    "durationSeconds": 1.5,
+    "engine": {
+     "id": "elevenlabs",
+     "modelId": "scribe_v2",
+     "modelSha256": null,
+     "engineVersion": "scribe_v2",
+     "locale": null
+    },
+    "verbatim": true,
+    "refined": true,
+    "pipelineVersion": 1,
+    "rawKey": "6f46e33b3b5a9f0b4b3dcc413f20efcafd0edf65ea7ec16d207d8fc082a19d45",
+    "createdAt": "2026-10-25T09:12:41Z"
+   },
+   "edits": {
+    "pauseThresholdSeconds": 0.8,
+    "pauseKeepSeconds": 0.15,
+    "cutWordIds": [],
+    "cutPauseIds": [],
+    "corrections": {},
+    "clips": [],
+    "activeClipId": null
+   },
+   "captions": {"styleId": "karaoke", "overrides": {}, "position": null, "positionByAspect": {}},
+   "export": {"aspect": "9:16", "quality": "standard", "srt": false, "folder": null},
+   "share": {"captions": {}},
+   "ai": {"results": []},
+   "voiceLab": {"segments": []},
+   "extensions": {}
+  }
+ },
+ "cases": [
+  {
+   "id": "interview-take",
+   "project": "interview-take",
+   "style": "vox-bold",
+   "scope": null,
+   "wordsVisible": true,
+   "expected": {
+    "source": "transcript",
+    "keyIndex": 0,
+    "styleMaxLines": 1,
+    "drawsAtLastWord": false,
+    "holdGapSec": 0,
+    "words": [{"id": "w3", "text": "today", "display": "TODAY", "weak": false}],
+    "maxLines": {"homeTile": 1, "headerChip": 1, "sidebar": 1, "clipRow": 1},
+    "layout": {
+     "words": [{"id": "w3", "text": "today", "start": 0.0, "end": 0.35, "emphasis": true}],
+     "duration": 0.9,
+     "time": 0.34299999999999997
+    },
+    "drops": []
+   }
+  },
+  {
+   "id": "interview-take-words-hidden",
+   "project": "interview-take",
+   "style": "vox-bold",
+   "scope": null,
+   "wordsVisible": false,
+   "expected": {
+    "source": "title",
+    "keyIndex": 0,
+    "styleMaxLines": 1,
+    "drawsAtLastWord": false,
+    "holdGapSec": 0,
+    "words": [{"id": "title-0", "text": "Interview", "display": "INTERVIEW", "weak": false}],
+    "maxLines": {"homeTile": 1, "headerChip": 1, "sidebar": 1, "clipRow": 1},
+    "layout": {
+     "words": [{"id": "title-0", "text": "Interview", "start": 0.0, "end": 0.35, "emphasis": true}],
+     "duration": 0.9,
+     "time": 0.34299999999999997
+    },
+    "drops": []
+   }
+  },
+  {
+   "id": "interview-take-title-number",
+   "project": "interview-karaoke",
+   "style": "karaoke",
+   "scope": null,
+   "wordsVisible": false,
+   "expected": {
+    "source": "title",
+    "keyIndex": 2,
+    "styleMaxLines": 2,
+    "drawsAtLastWord": false,
+    "holdGapSec": 0.4,
+    "words": [
+     {"id": "title-0", "text": "Interview", "display": "INTERVIEW", "weak": false},
+     {"id": "title-1", "text": "take", "display": "TAKE", "weak": false},
+     {"id": "title-2", "text": "3", "display": "3", "weak": false}
+    ],
+    "maxLines": {"homeTile": 2, "headerChip": 1, "sidebar": 2, "clipRow": 2},
+    "layout": {
+     "words": [
+      {"id": "title-0", "text": "Interview", "start": 0.0, "end": 0.35, "emphasis": false},
+      {"id": "title-1", "text": "take", "start": 0.4, "end": 0.75, "emphasis": false},
+      {"id": "title-2", "text": "3", "start": 0.8, "end": 1.15, "emphasis": true}
+     ],
+     "duration": 1.7000000000000002,
+     "time": 1.143
+    },
+    "drops": [
+     {"words": ["title-0", "title-1"], "keyIndex": 0, "time": 0.34299999999999997},
+     {"words": ["title-0"], "keyIndex": 0, "time": 0.34299999999999997}
+    ]
+   }
+  },
+  {
+   "id": "interview-captions-off",
+   "project": "interview-off",
+   "style": "vox-highlight",
+   "scope": null,
+   "wordsVisible": true,
+   "expected": {
+    "source": "transcript",
+    "keyIndex": 0,
+    "styleMaxLines": 1,
+    "drawsAtLastWord": false,
+    "holdGapSec": 0,
+    "words": [{"id": "w3", "text": "today", "display": "TODAY", "weak": false}],
+    "maxLines": {"homeTile": 1, "headerChip": 1, "sidebar": 1, "clipRow": 1},
+    "layout": {
+     "words": [{"id": "w3", "text": "today", "start": 0.0, "end": 0.35, "emphasis": true}],
+     "duration": 0.9,
+     "time": 0.34299999999999997
+    },
+    "drops": []
+   }
+  },
+  {
+   "id": "long-take",
+   "project": "long-take",
+   "style": "karaoke",
+   "scope": null,
+   "wordsVisible": true,
+   "expected": {
+    "source": "transcript",
+    "keyIndex": 0,
+    "styleMaxLines": 2,
+    "drawsAtLastWord": false,
+    "holdGapSec": 0.4,
+    "words": [{"id": "w1", "text": "Tere!", "display": "TERE", "weak": false}],
+    "maxLines": {"homeTile": 2, "headerChip": 1, "sidebar": 2, "clipRow": 2},
+    "layout": {
+     "words": [{"id": "w1", "text": "Tere!", "start": 0.0, "end": 0.35, "emphasis": true}],
+     "duration": 0.9,
+     "time": 0.34299999999999997
+    },
+    "drops": []
+   }
+  },
+  {
+   "id": "long-take-clip-2f1c",
+   "project": "long-take",
+   "style": "karaoke",
+   "scope": "clip-2f1c",
+   "wordsVisible": true,
+   "expected": {
+    "source": "transcript",
+    "keyIndex": 3,
+    "styleMaxLines": 2,
+    "drawsAtLastWord": false,
+    "holdGapSec": 0.4,
+    "words": [
+     {"id": "w10", "text": "See", "display": "SEE", "weak": true},
+     {"id": "w11", "text": "on", "display": "ON", "weak": true},
+     {"id": "w12", "text": "tegelikult", "display": "TEGELIKULT", "weak": true},
+     {"id": "w13", "text": "palju", "display": "PALJU", "weak": false}
+    ],
+    "maxLines": {"homeTile": 2, "headerChip": 1, "sidebar": 2, "clipRow": 2},
+    "layout": {
+     "words": [
+      {"id": "w10", "text": "See", "start": 0.0, "end": 0.35, "emphasis": false},
+      {"id": "w11", "text": "on", "start": 0.4, "end": 0.75, "emphasis": false},
+      {"id": "w12", "text": "tegelikult", "start": 0.8, "end": 1.15, "emphasis": false},
+      {"id": "w13", "text": "palju", "start": 1.2000000000000002, "end": 1.5500000000000003, "emphasis": true}
+     ],
+     "duration": 2.1,
+     "time": 1.5430000000000001
+    },
+    "drops": [{"words": ["w10"], "keyIndex": 0, "time": 0.34299999999999997}]
+   }
+  },
+  {
+   "id": "long-take-clip-9a0b",
+   "project": "long-take",
+   "style": "karaoke",
+   "scope": "clip-9a0b",
+   "wordsVisible": true,
+   "expected": {
+    "source": "transcript",
+    "keyIndex": 0,
+    "styleMaxLines": 2,
+    "drawsAtLastWord": false,
+    "holdGapSec": 0.4,
+    "words": [
+     {"id": "w18", "text": "Iga", "display": "IGA", "weak": false},
+     {"id": "w19", "text": "sõna", "display": "SÕNA", "weak": false},
+     {"id": "w20", "text": "asukoht", "display": "ASUKOHT", "weak": false}
+    ],
+    "maxLines": {"homeTile": 2, "headerChip": 1, "sidebar": 2, "clipRow": 2},
+    "layout": {
+     "words": [
+      {"id": "w18", "text": "Iga", "start": 0.0, "end": 0.35, "emphasis": true},
+      {"id": "w19", "text": "sõna", "start": 0.4, "end": 0.75, "emphasis": false},
+      {"id": "w20", "text": "asukoht", "start": 0.8, "end": 1.15, "emphasis": false}
+     ],
+     "duration": 1.7000000000000002,
+     "time": 0.34299999999999997
+    },
+    "drops": [
+     {"words": ["w18", "w19"], "keyIndex": 0, "time": 0.34299999999999997},
+     {"words": ["w18"], "keyIndex": 0, "time": 0.34299999999999997}
+    ]
+   }
+  },
+  {
+   "id": "long-take-clip-words-hidden",
+   "project": "long-take",
+   "style": "karaoke",
+   "scope": "clip-9a0b",
+   "wordsVisible": false,
+   "expected": {
+    "source": "title",
+    "keyIndex": 0,
+    "styleMaxLines": 2,
+    "drawsAtLastWord": false,
+    "holdGapSec": 0.4,
+    "words": [
+     {"id": "title-0", "text": "Sõnade", "display": "SÕNADE", "weak": false},
+     {"id": "title-1", "text": "kaupa", "display": "KAUPA", "weak": false},
+     {"id": "title-2", "text": "lõikamine", "display": "LÕIKAMINE", "weak": false}
+    ],
+    "maxLines": {"homeTile": 2, "headerChip": 1, "sidebar": 2, "clipRow": 2},
+    "layout": {
+     "words": [
+      {"id": "title-0", "text": "Sõnade", "start": 0.0, "end": 0.35, "emphasis": true},
+      {"id": "title-1", "text": "kaupa", "start": 0.4, "end": 0.75, "emphasis": false},
+      {"id": "title-2", "text": "lõikamine", "start": 0.8, "end": 1.15, "emphasis": false}
+     ],
+     "duration": 1.7000000000000002,
+     "time": 0.34299999999999997
+    },
+    "drops": [
+     {"words": ["title-0", "title-1"], "keyIndex": 0, "time": 0.34299999999999997},
+     {"words": ["title-0"], "keyIndex": 0, "time": 0.34299999999999997}
+    ]
+   }
+  },
+  {
+   "id": "filler-opening",
+   "project": "filler-opening",
+   "style": "karaoke",
+   "scope": null,
+   "wordsVisible": true,
+   "expected": {
+    "source": "transcript",
+    "keyIndex": 0,
+    "styleMaxLines": 2,
+    "drawsAtLastWord": false,
+    "holdGapSec": 0.4,
+    "words": [
+     {"id": "w4", "text": "latte", "display": "LATTE", "weak": false},
+     {"id": "w5", "text": "art", "display": "ART", "weak": false},
+     {"id": "w6", "text": "for", "display": "FOR", "weak": true},
+     {"id": "w7", "text": "beginners", "display": "BEGINNERS", "weak": false}
+    ],
+    "maxLines": {"homeTile": 2, "headerChip": 1, "sidebar": 2, "clipRow": 2},
+    "layout": {
+     "words": [
+      {"id": "w4", "text": "latte", "start": 0.0, "end": 0.35, "emphasis": true},
+      {"id": "w5", "text": "art", "start": 0.4, "end": 0.75, "emphasis": false},
+      {"id": "w6", "text": "for", "start": 0.8, "end": 1.15, "emphasis": false},
+      {
+       "id": "w7",
+       "text": "beginners",
+       "start": 1.2000000000000002,
+       "end": 1.5500000000000003,
+       "emphasis": false
+      }
+     ],
+     "duration": 2.1,
+     "time": 0.34299999999999997
+    },
+    "drops": [
+     {"words": ["w4", "w5"], "keyIndex": 0, "time": 0.34299999999999997},
+     {"words": ["w4"], "keyIndex": 0, "time": 0.34299999999999997}
+    ]
+   }
+  },
+  {
+   "id": "fillers-only",
+   "project": "fillers-only",
+   "style": "karaoke",
+   "scope": null,
+   "wordsVisible": true,
+   "expected": {
+    "source": "transcript",
+    "keyIndex": 0,
+    "styleMaxLines": 2,
+    "drawsAtLastWord": false,
+    "holdGapSec": 0.4,
+    "words": [{"id": "w1", "text": "Um.", "display": "UM", "weak": true}],
+    "maxLines": {"homeTile": 2, "headerChip": 1, "sidebar": 2, "clipRow": 2},
+    "layout": {
+     "words": [{"id": "w1", "text": "Um.", "start": 0.0, "end": 0.35, "emphasis": true}],
+     "duration": 0.9,
+     "time": 0.34299999999999997
+    },
+    "drops": []
+   }
+  },
+  {
+   "id": "number-opening",
+   "project": "number-opening",
+   "style": "two-tone",
+   "scope": null,
+   "wordsVisible": true,
+   "expected": {
+    "source": "transcript",
+    "keyIndex": 2,
+    "styleMaxLines": 2,
+    "drawsAtLastWord": false,
+    "holdGapSec": 0.5,
+    "words": [
+     {"id": "w1", "text": "We", "display": "WE", "weak": true},
+     {"id": "w2", "text": "tested", "display": "TESTED", "weak": false},
+     {"id": "w3", "text": "12", "display": "12", "weak": false},
+     {"id": "w4", "text": "grinders", "display": "GRINDERS", "weak": false}
+    ],
+    "maxLines": {"homeTile": 2, "headerChip": 1, "sidebar": 2, "clipRow": 2},
+    "layout": {
+     "words": [
+      {"id": "w1", "text": "We", "start": 0.0, "end": 0.35, "emphasis": false},
+      {"id": "w2", "text": "tested", "start": 0.4, "end": 0.75, "emphasis": false},
+      {"id": "w3", "text": "12", "start": 0.8, "end": 1.15, "emphasis": true},
+      {
+       "id": "w4",
+       "text": "grinders",
+       "start": 1.2000000000000002,
+       "end": 1.5500000000000003,
+       "emphasis": false
+      }
+     ],
+     "duration": 2.1,
+     "time": 1.143
+    },
+    "drops": [
+     {"words": ["w1", "w2", "w3"], "keyIndex": 2, "time": 1.143},
+     {"words": ["w1", "w2"], "keyIndex": 1, "time": 0.743},
+     {"words": ["w1"], "keyIndex": 0, "time": 0.34299999999999997}
+    ]
+   }
+  },
+  {
+   "id": "estonian",
+   "project": "estonian",
+   "style": "box-highlight",
+   "scope": null,
+   "wordsVisible": true,
+   "expected": {
+    "source": "transcript",
+    "keyIndex": 0,
+    "styleMaxLines": 2,
+    "drawsAtLastWord": false,
+    "holdGapSec": 0.5,
+    "words": [
+     {"id": "w1", "text": "Öösel", "display": "ÖÖSEL", "weak": false},
+     {"id": "w2", "text": "küpsetatud", "display": "KÜPSETATUD", "weak": false},
+     {"id": "w3", "text": "šokolaadikook", "display": "ŠOKOLAADIKOOK", "weak": false}
+    ],
+    "maxLines": {"homeTile": 2, "headerChip": 1, "sidebar": 2, "clipRow": 2},
+    "layout": {
+     "words": [
+      {"id": "w1", "text": "Öösel", "start": 0.0, "end": 0.35, "emphasis": true},
+      {"id": "w2", "text": "küpsetatud", "start": 0.4, "end": 0.75, "emphasis": false},
+      {"id": "w3", "text": "šokolaadikook", "start": 0.8, "end": 1.15, "emphasis": false}
+     ],
+     "duration": 1.7000000000000002,
+     "time": 0.34299999999999997
+    },
+    "drops": [
+     {"words": ["w1", "w2"], "keyIndex": 0, "time": 0.34299999999999997},
+     {"words": ["w1"], "keyIndex": 0, "time": 0.34299999999999997}
+    ]
+   }
+  },
+  {
+   "id": "long-word",
+   "project": "long-word",
+   "style": "vox-highlight",
+   "scope": null,
+   "wordsVisible": true,
+   "expected": {
+    "source": "transcript",
+    "keyIndex": 0,
+    "styleMaxLines": 1,
+    "drawsAtLastWord": false,
+    "holdGapSec": 0,
+    "words": [
+     {
+      "id": "w1",
+      "text": "Sünnipäevakingitusteostmisvõimalused",
+      "display": "SÜNNIPÄEVAKINGITUSTEOSTMISVÕIMALUSED",
+      "weak": false
+     }
+    ],
+    "maxLines": {"homeTile": 1, "headerChip": 1, "sidebar": 1, "clipRow": 1},
+    "layout": {
+     "words": [
+      {
+       "id": "w1",
+       "text": "Sünnipäevakingitusteostmisvõimalused",
+       "start": 0.0,
+       "end": 0.35,
+       "emphasis": true
+      }
+     ],
+     "duration": 0.9,
+     "time": 0.34299999999999997
+    },
+    "drops": []
+   }
+  },
+  {
+   "id": "long-word-subtitle",
+   "project": "long-word-subtitle",
+   "style": "clean-subtitle",
+   "scope": null,
+   "wordsVisible": true,
+   "expected": {
+    "source": "transcript",
+    "keyIndex": 0,
+    "styleMaxLines": 2,
+    "drawsAtLastWord": false,
+    "holdGapSec": 0.8,
+    "words": [
+     {
+      "id": "w1",
+      "text": "Sünnipäevakingitusteostmisvõimalused",
+      "display": "Sünnipäevakingitusteostmisvõimalused",
+      "weak": false
+     },
+     {"id": "w2", "text": "on", "display": "on", "weak": true},
+     {"id": "w3", "text": "lõputud.", "display": "lõputud.", "weak": false}
+    ],
+    "maxLines": {"homeTile": 2, "headerChip": 1, "sidebar": 2, "clipRow": 2},
+    "layout": {
+     "words": [
+      {
+       "id": "w1",
+       "text": "Sünnipäevakingitusteostmisvõimalused",
+       "start": 0.0,
+       "end": 0.35,
+       "emphasis": true
+      },
+      {"id": "w2", "text": "on", "start": 0.4, "end": 0.75, "emphasis": false},
+      {"id": "w3", "text": "lõputud.", "start": 0.8, "end": 1.15, "emphasis": false}
+     ],
+     "duration": 1.7000000000000002,
+     "time": 0.34299999999999997
+    },
+    "drops": [{"words": ["w1"], "keyIndex": 0, "time": 0.34299999999999997}]
+   }
+  },
+  {
+   "id": "cut-start",
+   "project": "cut-start",
+   "style": "pill",
+   "scope": null,
+   "wordsVisible": true,
+   "expected": {
+    "source": "transcript",
+    "keyIndex": 0,
+    "styleMaxLines": 2,
+    "drawsAtLastWord": false,
+    "holdGapSec": 0.6,
+    "words": [
+     {"id": "w3", "text": "first", "display": "first", "weak": false},
+     {"id": "w4", "text": "the", "display": "the", "weak": true},
+     {"id": "w5", "text": "beans", "display": "beans", "weak": false}
+    ],
+    "maxLines": {"homeTile": 2, "headerChip": 1, "sidebar": 2, "clipRow": 2},
+    "layout": {
+     "words": [
+      {"id": "w3", "text": "first", "start": 0.0, "end": 0.35, "emphasis": true},
+      {"id": "w4", "text": "the", "start": 0.4, "end": 0.75, "emphasis": false},
+      {"id": "w5", "text": "beans", "start": 0.8, "end": 1.15, "emphasis": false}
+     ],
+     "duration": 1.7000000000000002,
+     "time": 0.34299999999999997
+    },
+    "drops": [{"words": ["w3"], "keyIndex": 0, "time": 0.34299999999999997}]
+   }
+  },
+  {
+   "id": "clip-full-take",
+   "project": "cafe-clip",
+   "style": "neon",
+   "scope": null,
+   "wordsVisible": true,
+   "expected": {
+    "source": "transcript",
+    "keyIndex": 0,
+    "styleMaxLines": 2,
+    "drawsAtLastWord": false,
+    "holdGapSec": 0.5,
+    "words": [
+     {"id": "w1", "text": "Welcome", "display": "WELCOME", "weak": false},
+     {"id": "w2", "text": "back.", "display": "BACK", "weak": false}
+    ],
+    "maxLines": {"homeTile": 2, "headerChip": 1, "sidebar": 2, "clipRow": 2},
+    "layout": {
+     "words": [
+      {"id": "w1", "text": "Welcome", "start": 0.0, "end": 0.35, "emphasis": true},
+      {"id": "w2", "text": "back.", "start": 0.4, "end": 0.75, "emphasis": false}
+     ],
+     "duration": 1.3,
+     "time": 0.34299999999999997
+    },
+    "drops": [{"words": ["w1"], "keyIndex": 0, "time": 0.34299999999999997}]
+   }
+  },
+  {
+   "id": "clip-cut-start",
+   "project": "cafe-clip",
+   "style": "neon",
+   "scope": "clip-compare",
+   "wordsVisible": true,
+   "expected": {
+    "source": "transcript",
+    "keyIndex": 1,
+    "styleMaxLines": 2,
+    "drawsAtLastWord": false,
+    "holdGapSec": 0.5,
+    "words": [
+     {"id": "w4", "text": "we", "display": "WE", "weak": true},
+     {"id": "w5", "text": "compare", "display": "COMPARE", "weak": false},
+     {"id": "w6", "text": "two", "display": "TWO", "weak": false},
+     {"id": "w7", "text": "espresso", "display": "ESPRESSO", "weak": false}
+    ],
+    "maxLines": {"homeTile": 2, "headerChip": 1, "sidebar": 2, "clipRow": 2},
+    "layout": {
+     "words": [
+      {"id": "w4", "text": "we", "start": 0.0, "end": 0.35, "emphasis": false},
+      {"id": "w5", "text": "compare", "start": 0.4, "end": 0.75, "emphasis": true},
+      {"id": "w6", "text": "two", "start": 0.8, "end": 1.15, "emphasis": false},
+      {
+       "id": "w7",
+       "text": "espresso",
+       "start": 1.2000000000000002,
+       "end": 1.5500000000000003,
+       "emphasis": false
+      }
+     ],
+     "duration": 2.1,
+     "time": 0.743
+    },
+    "drops": [
+     {"words": ["w4", "w5", "w6"], "keyIndex": 1, "time": 0.743},
+     {"words": ["w4", "w5"], "keyIndex": 1, "time": 0.743},
+     {"words": ["w4"], "keyIndex": 0, "time": 0.34299999999999997}
+    ]
+   }
+  },
+  {
+   "id": "keep-punctuation",
+   "project": "cafe-keep",
+   "style": "active-pop",
+   "scope": null,
+   "wordsVisible": true,
+   "expected": {
+    "source": "transcript",
+    "keyIndex": 0,
+    "styleMaxLines": 2,
+    "drawsAtLastWord": false,
+    "holdGapSec": 0.5,
+    "words": [
+     {"id": "w1", "text": "Welcome", "display": "WELCOME", "weak": false},
+     {"id": "w2", "text": "back.", "display": "BACK.", "weak": false}
+    ],
+    "maxLines": {"homeTile": 2, "headerChip": 1, "sidebar": 2, "clipRow": 2},
+    "layout": {
+     "words": [
+      {"id": "w1", "text": "Welcome", "start": 0.0, "end": 0.35, "emphasis": true},
+      {"id": "w2", "text": "back.", "start": 0.4, "end": 0.75, "emphasis": false}
+     ],
+     "duration": 1.3,
+     "time": 0.34299999999999997
+    },
+    "drops": [{"words": ["w1"], "keyIndex": 0, "time": 0.34299999999999997}]
+   }
+  },
+  {
+   "id": "all-cut-clip",
+   "project": "all-cut-clip",
+   "style": "karaoke",
+   "scope": "clip-coffee",
+   "wordsVisible": true,
+   "expected": {
+    "source": "none",
+    "keyIndex": 0,
+    "styleMaxLines": 0,
+    "drawsAtLastWord": false,
+    "holdGapSec": 0.0,
+    "words": [],
+    "maxLines": {"homeTile": 0, "headerChip": 0, "sidebar": 0, "clipRow": 0},
+    "layout": {"words": [], "duration": 0.0, "time": 0.0},
+    "drops": []
+   }
+  },
+  {
+   "id": "all-cut-clip-full-take",
+   "project": "all-cut-clip",
+   "style": "karaoke",
+   "scope": null,
+   "wordsVisible": true,
+   "expected": {
+    "source": "transcript",
+    "keyIndex": 2,
+    "styleMaxLines": 2,
+    "drawsAtLastWord": false,
+    "holdGapSec": 0.4,
+    "words": [
+     {"id": "w3", "text": "Then", "display": "THEN", "weak": true},
+     {"id": "w4", "text": "we", "display": "WE", "weak": true},
+     {"id": "w5", "text": "talk", "display": "TALK", "weak": false}
+    ],
+    "maxLines": {"homeTile": 2, "headerChip": 1, "sidebar": 2, "clipRow": 2},
+    "layout": {
+     "words": [
+      {"id": "w3", "text": "Then", "start": 0.0, "end": 0.35, "emphasis": false},
+      {"id": "w4", "text": "we", "start": 0.4, "end": 0.75, "emphasis": false},
+      {"id": "w5", "text": "talk", "start": 0.8, "end": 1.15, "emphasis": true}
+     ],
+     "duration": 1.7000000000000002,
+     "time": 1.143
+    },
+    "drops": [{"words": ["w3"], "keyIndex": 0, "time": 0.34299999999999997}]
+   }
+  },
+  {
+   "id": "gap-breaks-page",
+   "project": "gap",
+   "style": "karaoke",
+   "scope": null,
+   "wordsVisible": true,
+   "expected": {
+    "source": "transcript",
+    "keyIndex": 0,
+    "styleMaxLines": 2,
+    "drawsAtLastWord": false,
+    "holdGapSec": 0.4,
+    "words": [
+     {"id": "w1", "text": "Coffee", "display": "COFFEE", "weak": false},
+     {"id": "w2", "text": "beans", "display": "BEANS", "weak": false}
+    ],
+    "maxLines": {"homeTile": 2, "headerChip": 1, "sidebar": 2, "clipRow": 2},
+    "layout": {
+     "words": [
+      {"id": "w1", "text": "Coffee", "start": 0.0, "end": 0.35, "emphasis": true},
+      {"id": "w2", "text": "beans", "start": 0.4, "end": 0.75, "emphasis": false}
+     ],
+     "duration": 1.3,
+     "time": 0.34299999999999997
+    },
+    "drops": [{"words": ["w1"], "keyIndex": 0, "time": 0.34299999999999997}]
+   }
+  },
+  {
+   "id": "cut-pause-joins-page",
+   "project": "gap-cut",
+   "style": "karaoke",
+   "scope": null,
+   "wordsVisible": true,
+   "expected": {
+    "source": "transcript",
+    "keyIndex": 0,
+    "styleMaxLines": 2,
+    "drawsAtLastWord": false,
+    "holdGapSec": 0.4,
+    "words": [
+     {"id": "w1", "text": "Coffee", "display": "COFFEE", "weak": false},
+     {"id": "w2", "text": "beans", "display": "BEANS", "weak": false},
+     {"id": "w3", "text": "matter", "display": "MATTER", "weak": false}
+    ],
+    "maxLines": {"homeTile": 2, "headerChip": 1, "sidebar": 2, "clipRow": 2},
+    "layout": {
+     "words": [
+      {"id": "w1", "text": "Coffee", "start": 0.0, "end": 0.35, "emphasis": true},
+      {"id": "w2", "text": "beans", "start": 0.4, "end": 0.75, "emphasis": false},
+      {"id": "w3", "text": "matter", "start": 0.8, "end": 1.15, "emphasis": false}
+     ],
+     "duration": 1.7000000000000002,
+     "time": 0.34299999999999997
+    },
+    "drops": [
+     {"words": ["w1", "w2"], "keyIndex": 0, "time": 0.34299999999999997},
+     {"words": ["w1"], "keyIndex": 0, "time": 0.34299999999999997}
+    ]
+   }
+  },
+  {
+   "id": "no-stopword-list",
+   "project": "german",
+   "style": "karaoke",
+   "scope": null,
+   "wordsVisible": true,
+   "expected": {
+    "source": "transcript",
+    "keyIndex": 0,
+    "styleMaxLines": 2,
+    "drawsAtLastWord": false,
+    "holdGapSec": 0.4,
+    "words": [
+     {"id": "w1", "text": "Um", "display": "UM", "weak": false},
+     {"id": "w2", "text": "zehn", "display": "ZEHN", "weak": false},
+     {"id": "w3", "text": "Uhr", "display": "UHR", "weak": false},
+     {"id": "w4", "text": "trinken", "display": "TRINKEN", "weak": false}
+    ],
+    "maxLines": {"homeTile": 2, "headerChip": 1, "sidebar": 2, "clipRow": 2},
+    "layout": {
+     "words": [
+      {"id": "w1", "text": "Um", "start": 0.0, "end": 0.35, "emphasis": true},
+      {"id": "w2", "text": "zehn", "start": 0.4, "end": 0.75, "emphasis": false},
+      {"id": "w3", "text": "Uhr", "start": 0.8, "end": 1.15, "emphasis": false},
+      {
+       "id": "w4",
+       "text": "trinken",
+       "start": 1.2000000000000002,
+       "end": 1.5500000000000003,
+       "emphasis": false
+      }
+     ],
+     "duration": 2.1,
+     "time": 0.34299999999999997
+    },
+    "drops": [
+     {"words": ["w1", "w2", "w3"], "keyIndex": 0, "time": 0.34299999999999997},
+     {"words": ["w1", "w2"], "keyIndex": 0, "time": 0.34299999999999997},
+     {"words": ["w1"], "keyIndex": 0, "time": 0.34299999999999997}
+    ]
+   }
+  },
+  {
+   "id": "uncovered-words",
+   "project": "uncovered",
+   "style": "emoji-accent",
+   "scope": null,
+   "wordsVisible": true,
+   "expected": {
+    "source": "transcript",
+    "keyIndex": 0,
+    "styleMaxLines": 2,
+    "drawsAtLastWord": false,
+    "holdGapSec": 0.5,
+    "words": [
+     {"id": "w3", "text": "Great", "display": "GREAT", "weak": false},
+     {"id": "w4", "text": "coffee", "display": "COFFEE", "weak": false},
+     {"id": "w5", "text": "today.", "display": "TODAY", "weak": false}
+    ],
+    "maxLines": {"homeTile": 2, "headerChip": 1, "sidebar": 2, "clipRow": 2},
+    "layout": {
+     "words": [
+      {"id": "w3", "text": "Great", "start": 0.0, "end": 0.35, "emphasis": true},
+      {"id": "w4", "text": "coffee", "start": 0.4, "end": 0.75, "emphasis": false},
+      {"id": "w5", "text": "today.", "start": 0.8, "end": 1.15, "emphasis": false}
+     ],
+     "duration": 1.7000000000000002,
+     "time": 0.34299999999999997
+    },
+    "drops": [
+     {"words": ["w3", "w4"], "keyIndex": 0, "time": 0.34299999999999997},
+     {"words": ["w3"], "keyIndex": 0, "time": 0.34299999999999997}
+    ]
+   }
+  },
+  {
+   "id": "empty-transcript",
+   "project": "empty-transcript",
+   "style": "karaoke",
+   "scope": null,
+   "wordsVisible": true,
+   "expected": {
+    "source": "none",
+    "keyIndex": 0,
+    "styleMaxLines": 0,
+    "drawsAtLastWord": false,
+    "holdGapSec": 0.0,
+    "words": [],
+    "maxLines": {"homeTile": 0, "headerChip": 0, "sidebar": 0, "clipRow": 0},
+    "layout": {"words": [], "duration": 0.0, "time": 0.0},
+    "drops": []
+   }
+  },
+  {
+   "id": "empty-transcript-words-hidden",
+   "project": "empty-transcript",
+   "style": "karaoke",
+   "scope": null,
+   "wordsVisible": false,
+   "expected": {
+    "source": "none",
+    "keyIndex": 0,
+    "styleMaxLines": 0,
+    "drawsAtLastWord": false,
+    "holdGapSec": 0.0,
+    "words": [],
+    "maxLines": {"homeTile": 0, "headerChip": 0, "sidebar": 0, "clipRow": 0},
+    "layout": {"words": [], "duration": 0.0, "time": 0.0},
+    "drops": []
+   }
+  },
+  {
+   "id": "never-transcribed",
+   "project": "never-transcribed",
+   "style": "karaoke",
+   "scope": null,
+   "wordsVisible": true,
+   "expected": {
+    "source": "none",
+    "keyIndex": 0,
+    "styleMaxLines": 0,
+    "drawsAtLastWord": false,
+    "holdGapSec": 0.0,
+    "words": [],
+    "maxLines": {"homeTile": 0, "headerChip": 0, "sidebar": 0, "clipRow": 0},
+    "layout": {"words": [], "duration": 0.0, "time": 0.0},
+    "drops": []
+   }
+  },
+  {
+   "id": "untitled-words-hidden",
+   "project": "untitled",
+   "style": "karaoke",
+   "scope": null,
+   "wordsVisible": false,
+   "expected": {
+    "source": "none",
+    "keyIndex": 0,
+    "styleMaxLines": 0,
+    "drawsAtLastWord": false,
+    "holdGapSec": 0.0,
+    "words": [],
+    "maxLines": {"homeTile": 0, "headerChip": 0, "sidebar": 0, "clipRow": 0},
+    "layout": {"words": [], "duration": 0.0, "time": 0.0},
+    "drops": []
+   }
+  },
+  {
+   "id": "as-said-override",
+   "project": "as-said",
+   "style": "karaoke",
+   "scope": null,
+   "wordsVisible": true,
+   "expected": {
+    "source": "transcript",
+    "keyIndex": 2,
+    "styleMaxLines": 2,
+    "drawsAtLastWord": false,
+    "holdGapSec": 0.4,
+    "words": [
+     {"id": "w1", "text": "Here's", "display": "Here's", "weak": true},
+     {"id": "w2", "text": "what", "display": "what", "weak": true},
+     {"id": "w3", "text": "3", "display": "3", "weak": false},
+     {"id": "w4", "text": "baristas", "display": "baristas", "weak": false}
+    ],
+    "maxLines": {"homeTile": 2, "headerChip": 1, "sidebar": 2, "clipRow": 2},
+    "layout": {
+     "words": [
+      {"id": "w1", "text": "Here's", "start": 0.0, "end": 0.35, "emphasis": false},
+      {"id": "w2", "text": "what", "start": 0.4, "end": 0.75, "emphasis": false},
+      {"id": "w3", "text": "3", "start": 0.8, "end": 1.15, "emphasis": true},
+      {
+       "id": "w4",
+       "text": "baristas",
+       "start": 1.2000000000000002,
+       "end": 1.5500000000000003,
+       "emphasis": false
+      }
+     ],
+     "duration": 2.1,
+     "time": 1.143
+    },
+    "drops": [
+     {"words": ["w1", "w2", "w3"], "keyIndex": 2, "time": 1.143},
+     {"words": ["w1"], "keyIndex": 0, "time": 0.34299999999999997}
+    ]
+   }
+  },
+  {
+   "id": "one-word-override",
+   "project": "one-word-override",
+   "style": "box-highlight",
+   "scope": null,
+   "wordsVisible": true,
+   "expected": {
+    "source": "transcript",
+    "keyIndex": 0,
+    "styleMaxLines": 1,
+    "drawsAtLastWord": false,
+    "holdGapSec": 0.5,
+    "words": [{"id": "w3", "text": "3", "display": "3", "weak": false}],
+    "maxLines": {"homeTile": 1, "headerChip": 1, "sidebar": 1, "clipRow": 1},
+    "layout": {
+     "words": [{"id": "w3", "text": "3", "start": 0.0, "end": 0.35, "emphasis": true}],
+     "duration": 0.9,
+     "time": 0.34299999999999997
+    },
+    "drops": []
+   }
+  },
+  {
+   "id": "line-override",
+   "project": "line-override",
+   "style": "pill",
+   "scope": null,
+   "wordsVisible": true,
+   "expected": {
+    "source": "transcript",
+    "keyIndex": 2,
+    "styleMaxLines": 1,
+    "drawsAtLastWord": false,
+    "holdGapSec": 0.6,
+    "words": [
+     {"id": "w1", "text": "Here's", "display": "Here's", "weak": true},
+     {"id": "w2", "text": "what", "display": "what", "weak": true},
+     {"id": "w3", "text": "3", "display": "3", "weak": false},
+     {"id": "w4", "text": "baristas", "display": "baristas", "weak": false}
+    ],
+    "maxLines": {"homeTile": 1, "headerChip": 1, "sidebar": 1, "clipRow": 1},
+    "layout": {
+     "words": [
+      {"id": "w1", "text": "Here's", "start": 0.0, "end": 0.35, "emphasis": false},
+      {"id": "w2", "text": "what", "start": 0.4, "end": 0.75, "emphasis": false},
+      {"id": "w3", "text": "3", "start": 0.8, "end": 1.15, "emphasis": true},
+      {
+       "id": "w4",
+       "text": "baristas",
+       "start": 1.2000000000000002,
+       "end": 1.5500000000000003,
+       "emphasis": false
+      }
+     ],
+     "duration": 2.1,
+     "time": 1.143
+    },
+    "drops": [
+     {"words": ["w1", "w2", "w3"], "keyIndex": 2, "time": 1.143},
+     {"words": ["w1"], "keyIndex": 0, "time": 0.34299999999999997}
+    ]
+   }
+  },
+  {
+   "id": "rejected-override",
+   "project": "rejected-override",
+   "style": "karaoke",
+   "scope": null,
+   "wordsVisible": true,
+   "expected": {
+    "source": "transcript",
+    "keyIndex": 2,
+    "styleMaxLines": 2,
+    "drawsAtLastWord": false,
+    "holdGapSec": 0.4,
+    "words": [
+     {"id": "w1", "text": "Here's", "display": "HERE'S", "weak": true},
+     {"id": "w2", "text": "what", "display": "WHAT", "weak": true},
+     {"id": "w3", "text": "3", "display": "3", "weak": false},
+     {"id": "w4", "text": "baristas", "display": "BARISTAS", "weak": false}
+    ],
+    "maxLines": {"homeTile": 2, "headerChip": 1, "sidebar": 2, "clipRow": 2},
+    "layout": {
+     "words": [
+      {"id": "w1", "text": "Here's", "start": 0.0, "end": 0.35, "emphasis": false},
+      {"id": "w2", "text": "what", "start": 0.4, "end": 0.75, "emphasis": false},
+      {"id": "w3", "text": "3", "start": 0.8, "end": 1.15, "emphasis": true},
+      {
+       "id": "w4",
+       "text": "baristas",
+       "start": 1.2000000000000002,
+       "end": 1.5500000000000003,
+       "emphasis": false
+      }
+     ],
+     "duration": 2.1,
+     "time": 1.143
+    },
+    "drops": [
+     {"words": ["w1", "w2", "w3"], "keyIndex": 2, "time": 1.143},
+     {"words": ["w1"], "keyIndex": 0, "time": 0.34299999999999997}
+    ]
+   }
+  },
+  {
+   "id": "style-active-pop",
+   "project": "style-matrix",
+   "style": "active-pop",
+   "scope": null,
+   "wordsVisible": true,
+   "expected": {
+    "source": "transcript",
+    "keyIndex": 2,
+    "styleMaxLines": 2,
+    "drawsAtLastWord": false,
+    "holdGapSec": 0.5,
+    "words": [
+     {"id": "w1", "text": "Here's", "display": "HERE'S", "weak": true},
+     {"id": "w2", "text": "what", "display": "WHAT", "weak": true},
+     {"id": "w3", "text": "3", "display": "3", "weak": false}
+    ],
+    "maxLines": {"homeTile": 2, "headerChip": 1, "sidebar": 2, "clipRow": 2},
+    "layout": {
+     "words": [
+      {"id": "w1", "text": "Here's", "start": 0.0, "end": 0.35, "emphasis": false},
+      {"id": "w2", "text": "what", "start": 0.4, "end": 0.75, "emphasis": false},
+      {"id": "w3", "text": "3", "start": 0.8, "end": 1.15, "emphasis": true}
+     ],
+     "duration": 1.7000000000000002,
+     "time": 1.143
+    },
+    "drops": [{"words": ["w1"], "keyIndex": 0, "time": 0.34299999999999997}]
+   }
+  },
+  {
+   "id": "style-bounce",
+   "project": "style-matrix",
+   "style": "bounce",
+   "scope": null,
+   "wordsVisible": true,
+   "expected": {
+    "source": "transcript",
+    "keyIndex": 2,
+    "styleMaxLines": 2,
+    "drawsAtLastWord": true,
+    "holdGapSec": 0.5,
+    "words": [
+     {"id": "w1", "text": "Here's", "display": "HERE'S", "weak": true},
+     {"id": "w2", "text": "what", "display": "WHAT", "weak": true},
+     {"id": "w3", "text": "3", "display": "3", "weak": false},
+     {"id": "w4", "text": "baristas", "display": "BARISTAS", "weak": false}
+    ],
+    "maxLines": {"homeTile": 2, "headerChip": 1, "sidebar": 2, "clipRow": 2},
+    "layout": {
+     "words": [
+      {"id": "w1", "text": "Here's", "start": 0.0, "end": 0.35, "emphasis": false},
+      {"id": "w2", "text": "what", "start": 0.4, "end": 0.75, "emphasis": false},
+      {"id": "w3", "text": "3", "start": 0.8, "end": 1.15, "emphasis": true},
+      {
+       "id": "w4",
+       "text": "baristas",
+       "start": 1.2000000000000002,
+       "end": 1.5500000000000003,
+       "emphasis": false
+      }
+     ],
+     "duration": 2.1,
+     "time": 1.5500000000000003
+    },
+    "drops": [
+     {"words": ["w1", "w2", "w3"], "keyIndex": 2, "time": 1.15},
+     {"words": ["w1"], "keyIndex": 0, "time": 0.35}
+    ]
+   }
+  },
+  {
+   "id": "style-box-highlight",
+   "project": "style-matrix",
+   "style": "box-highlight",
+   "scope": null,
+   "wordsVisible": true,
+   "expected": {
+    "source": "transcript",
+    "keyIndex": 2,
+    "styleMaxLines": 2,
+    "drawsAtLastWord": false,
+    "holdGapSec": 0.5,
+    "words": [
+     {"id": "w1", "text": "Here's", "display": "HERE'S", "weak": true},
+     {"id": "w2", "text": "what", "display": "WHAT", "weak": true},
+     {"id": "w3", "text": "3", "display": "3", "weak": false},
+     {"id": "w4", "text": "baristas", "display": "BARISTAS", "weak": false}
+    ],
+    "maxLines": {"homeTile": 2, "headerChip": 1, "sidebar": 2, "clipRow": 2},
+    "layout": {
+     "words": [
+      {"id": "w1", "text": "Here's", "start": 0.0, "end": 0.35, "emphasis": false},
+      {"id": "w2", "text": "what", "start": 0.4, "end": 0.75, "emphasis": false},
+      {"id": "w3", "text": "3", "start": 0.8, "end": 1.15, "emphasis": true},
+      {
+       "id": "w4",
+       "text": "baristas",
+       "start": 1.2000000000000002,
+       "end": 1.5500000000000003,
+       "emphasis": false
+      }
+     ],
+     "duration": 2.1,
+     "time": 1.143
+    },
+    "drops": [
+     {"words": ["w1", "w2", "w3"], "keyIndex": 2, "time": 1.143},
+     {"words": ["w1"], "keyIndex": 0, "time": 0.34299999999999997}
+    ]
+   }
+  },
+  {
+   "id": "style-clean-subtitle",
+   "project": "style-matrix",
+   "style": "clean-subtitle",
+   "scope": null,
+   "wordsVisible": true,
+   "expected": {
+    "source": "transcript",
+    "keyIndex": 2,
+    "styleMaxLines": 2,
+    "drawsAtLastWord": false,
+    "holdGapSec": 0.8,
+    "words": [
+     {"id": "w1", "text": "Here's", "display": "Here's", "weak": true},
+     {"id": "w2", "text": "what", "display": "what", "weak": true},
+     {"id": "w3", "text": "3", "display": "3", "weak": false},
+     {"id": "w4", "text": "baristas", "display": "baristas", "weak": false}
+    ],
+    "maxLines": {"homeTile": 2, "headerChip": 1, "sidebar": 2, "clipRow": 2},
+    "layout": {
+     "words": [
+      {"id": "w1", "text": "Here's", "start": 0.0, "end": 0.35, "emphasis": false},
+      {"id": "w2", "text": "what", "start": 0.4, "end": 0.75, "emphasis": false},
+      {"id": "w3", "text": "3", "start": 0.8, "end": 1.15, "emphasis": true},
+      {
+       "id": "w4",
+       "text": "baristas",
+       "start": 1.2000000000000002,
+       "end": 1.5500000000000003,
+       "emphasis": false
+      }
+     ],
+     "duration": 2.1,
+     "time": 1.143
+    },
+    "drops": [
+     {"words": ["w1", "w2", "w3"], "keyIndex": 2, "time": 1.143},
+     {"words": ["w1"], "keyIndex": 0, "time": 0.34299999999999997}
+    ]
+   }
+  },
+  {
+   "id": "style-editorial",
+   "project": "style-matrix",
+   "style": "editorial",
+   "scope": null,
+   "wordsVisible": true,
+   "expected": {
+    "source": "transcript",
+    "keyIndex": 2,
+    "styleMaxLines": 2,
+    "drawsAtLastWord": false,
+    "holdGapSec": 0.8,
+    "words": [
+     {"id": "w1", "text": "Here's", "display": "Here's", "weak": true},
+     {"id": "w2", "text": "what", "display": "what", "weak": true},
+     {"id": "w3", "text": "3", "display": "3", "weak": false},
+     {"id": "w4", "text": "baristas", "display": "baristas", "weak": false}
+    ],
+    "maxLines": {"homeTile": 2, "headerChip": 1, "sidebar": 2, "clipRow": 2},
+    "layout": {
+     "words": [
+      {"id": "w1", "text": "Here's", "start": 0.0, "end": 0.35, "emphasis": false},
+      {"id": "w2", "text": "what", "start": 0.4, "end": 0.75, "emphasis": false},
+      {"id": "w3", "text": "3", "start": 0.8, "end": 1.15, "emphasis": true},
+      {
+       "id": "w4",
+       "text": "baristas",
+       "start": 1.2000000000000002,
+       "end": 1.5500000000000003,
+       "emphasis": false
+      }
+     ],
+     "duration": 2.1,
+     "time": 1.143
+    },
+    "drops": [
+     {"words": ["w1", "w2", "w3"], "keyIndex": 2, "time": 1.143},
+     {"words": ["w1"], "keyIndex": 0, "time": 0.34299999999999997}
+    ]
+   }
+  },
+  {
+   "id": "style-emoji-accent",
+   "project": "style-matrix",
+   "style": "emoji-accent",
+   "scope": null,
+   "wordsVisible": true,
+   "expected": {
+    "source": "transcript",
+    "keyIndex": 2,
+    "styleMaxLines": 2,
+    "drawsAtLastWord": false,
+    "holdGapSec": 0.5,
+    "words": [
+     {"id": "w1", "text": "Here's", "display": "HERE'S", "weak": true},
+     {"id": "w2", "text": "what", "display": "WHAT", "weak": true},
+     {"id": "w3", "text": "3", "display": "3", "weak": false},
+     {"id": "w4", "text": "baristas", "display": "BARISTAS", "weak": false}
+    ],
+    "maxLines": {"homeTile": 2, "headerChip": 1, "sidebar": 2, "clipRow": 2},
+    "layout": {
+     "words": [
+      {"id": "w1", "text": "Here's", "start": 0.0, "end": 0.35, "emphasis": false},
+      {"id": "w2", "text": "what", "start": 0.4, "end": 0.75, "emphasis": false},
+      {"id": "w3", "text": "3", "start": 0.8, "end": 1.15, "emphasis": true},
+      {
+       "id": "w4",
+       "text": "baristas",
+       "start": 1.2000000000000002,
+       "end": 1.5500000000000003,
+       "emphasis": false
+      }
+     ],
+     "duration": 2.1,
+     "time": 1.143
+    },
+    "drops": [
+     {"words": ["w1", "w2", "w3"], "keyIndex": 2, "time": 1.143},
+     {"words": ["w1"], "keyIndex": 0, "time": 0.34299999999999997}
+    ]
+   }
+  },
+  {
+   "id": "style-gradient",
+   "project": "style-matrix",
+   "style": "gradient",
+   "scope": null,
+   "wordsVisible": true,
+   "expected": {
+    "source": "transcript",
+    "keyIndex": 2,
+    "styleMaxLines": 2,
+    "drawsAtLastWord": false,
+    "holdGapSec": 0.5,
+    "words": [
+     {"id": "w1", "text": "Here's", "display": "HERE'S", "weak": true},
+     {"id": "w2", "text": "what", "display": "WHAT", "weak": true},
+     {"id": "w3", "text": "3", "display": "3", "weak": false}
+    ],
+    "maxLines": {"homeTile": 2, "headerChip": 1, "sidebar": 2, "clipRow": 2},
+    "layout": {
+     "words": [
+      {"id": "w1", "text": "Here's", "start": 0.0, "end": 0.35, "emphasis": false},
+      {"id": "w2", "text": "what", "start": 0.4, "end": 0.75, "emphasis": false},
+      {"id": "w3", "text": "3", "start": 0.8, "end": 1.15, "emphasis": true}
+     ],
+     "duration": 1.7000000000000002,
+     "time": 1.143
+    },
+    "drops": [{"words": ["w1"], "keyIndex": 0, "time": 0.34299999999999997}]
+   }
+  },
+  {
+   "id": "style-karaoke",
+   "project": "style-matrix",
+   "style": "karaoke",
+   "scope": null,
+   "wordsVisible": true,
+   "expected": {
+    "source": "transcript",
+    "keyIndex": 2,
+    "styleMaxLines": 2,
+    "drawsAtLastWord": false,
+    "holdGapSec": 0.4,
+    "words": [
+     {"id": "w1", "text": "Here's", "display": "HERE'S", "weak": true},
+     {"id": "w2", "text": "what", "display": "WHAT", "weak": true},
+     {"id": "w3", "text": "3", "display": "3", "weak": false},
+     {"id": "w4", "text": "baristas", "display": "BARISTAS", "weak": false}
+    ],
+    "maxLines": {"homeTile": 2, "headerChip": 1, "sidebar": 2, "clipRow": 2},
+    "layout": {
+     "words": [
+      {"id": "w1", "text": "Here's", "start": 0.0, "end": 0.35, "emphasis": false},
+      {"id": "w2", "text": "what", "start": 0.4, "end": 0.75, "emphasis": false},
+      {"id": "w3", "text": "3", "start": 0.8, "end": 1.15, "emphasis": true},
+      {
+       "id": "w4",
+       "text": "baristas",
+       "start": 1.2000000000000002,
+       "end": 1.5500000000000003,
+       "emphasis": false
+      }
+     ],
+     "duration": 2.1,
+     "time": 1.143
+    },
+    "drops": [
+     {"words": ["w1", "w2", "w3"], "keyIndex": 2, "time": 1.143},
+     {"words": ["w1"], "keyIndex": 0, "time": 0.34299999999999997}
+    ]
+   }
+  },
+  {
+   "id": "style-lower-third",
+   "project": "style-matrix",
+   "style": "lower-third",
+   "scope": null,
+   "wordsVisible": true,
+   "expected": {
+    "source": "transcript",
+    "keyIndex": 2,
+    "styleMaxLines": 2,
+    "drawsAtLastWord": false,
+    "holdGapSec": 1.0,
+    "words": [
+     {"id": "w1", "text": "Here's", "display": "Here's", "weak": true},
+     {"id": "w2", "text": "what", "display": "what", "weak": true},
+     {"id": "w3", "text": "3", "display": "3", "weak": false},
+     {"id": "w4", "text": "baristas", "display": "baristas", "weak": false}
+    ],
+    "maxLines": {"homeTile": 2, "headerChip": 1, "sidebar": 2, "clipRow": 2},
+    "layout": {
+     "words": [
+      {"id": "w1", "text": "Here's", "start": 0.0, "end": 0.35, "emphasis": false},
+      {"id": "w2", "text": "what", "start": 0.4, "end": 0.75, "emphasis": false},
+      {"id": "w3", "text": "3", "start": 0.8, "end": 1.15, "emphasis": true},
+      {
+       "id": "w4",
+       "text": "baristas",
+       "start": 1.2000000000000002,
+       "end": 1.5500000000000003,
+       "emphasis": false
+      }
+     ],
+     "duration": 2.1,
+     "time": 1.143
+    },
+    "drops": [
+     {"words": ["w1", "w2", "w3"], "keyIndex": 2, "time": 1.143},
+     {"words": ["w1"], "keyIndex": 0, "time": 0.34299999999999997}
+    ]
+   }
+  },
+  {
+   "id": "style-neon",
+   "project": "style-matrix",
+   "style": "neon",
+   "scope": null,
+   "wordsVisible": true,
+   "expected": {
+    "source": "transcript",
+    "keyIndex": 2,
+    "styleMaxLines": 2,
+    "drawsAtLastWord": false,
+    "holdGapSec": 0.5,
+    "words": [
+     {"id": "w1", "text": "Here's", "display": "HERE'S", "weak": true},
+     {"id": "w2", "text": "what", "display": "WHAT", "weak": true},
+     {"id": "w3", "text": "3", "display": "3", "weak": false},
+     {"id": "w4", "text": "baristas", "display": "BARISTAS", "weak": false}
+    ],
+    "maxLines": {"homeTile": 2, "headerChip": 1, "sidebar": 2, "clipRow": 2},
+    "layout": {
+     "words": [
+      {"id": "w1", "text": "Here's", "start": 0.0, "end": 0.35, "emphasis": false},
+      {"id": "w2", "text": "what", "start": 0.4, "end": 0.75, "emphasis": false},
+      {"id": "w3", "text": "3", "start": 0.8, "end": 1.15, "emphasis": true},
+      {
+       "id": "w4",
+       "text": "baristas",
+       "start": 1.2000000000000002,
+       "end": 1.5500000000000003,
+       "emphasis": false
+      }
+     ],
+     "duration": 2.1,
+     "time": 1.143
+    },
+    "drops": [
+     {"words": ["w1", "w2", "w3"], "keyIndex": 2, "time": 1.143},
+     {"words": ["w1"], "keyIndex": 0, "time": 0.34299999999999997}
+    ]
+   }
+  },
+  {
+   "id": "style-one-word",
+   "project": "style-matrix",
+   "style": "one-word",
+   "scope": null,
+   "wordsVisible": true,
+   "expected": {
+    "source": "transcript",
+    "keyIndex": 0,
+    "styleMaxLines": 1,
+    "drawsAtLastWord": false,
+    "holdGapSec": 0.25,
+    "words": [{"id": "w3", "text": "3", "display": "3", "weak": false}],
+    "maxLines": {"homeTile": 1, "headerChip": 1, "sidebar": 1, "clipRow": 1},
+    "layout": {
+     "words": [{"id": "w3", "text": "3", "start": 0.0, "end": 0.35, "emphasis": true}],
+     "duration": 0.9,
+     "time": 0.34299999999999997
+    },
+    "drops": []
+   }
+  },
+  {
+   "id": "style-outline",
+   "project": "style-matrix",
+   "style": "outline",
+   "scope": null,
+   "wordsVisible": true,
+   "expected": {
+    "source": "transcript",
+    "keyIndex": 2,
+    "styleMaxLines": 2,
+    "drawsAtLastWord": false,
+    "holdGapSec": 0.5,
+    "words": [
+     {"id": "w1", "text": "Here's", "display": "HERE'S", "weak": true},
+     {"id": "w2", "text": "what", "display": "WHAT", "weak": true},
+     {"id": "w3", "text": "3", "display": "3", "weak": false}
+    ],
+    "maxLines": {"homeTile": 2, "headerChip": 1, "sidebar": 2, "clipRow": 2},
+    "layout": {
+     "words": [
+      {"id": "w1", "text": "Here's", "start": 0.0, "end": 0.35, "emphasis": false},
+      {"id": "w2", "text": "what", "start": 0.4, "end": 0.75, "emphasis": false},
+      {"id": "w3", "text": "3", "start": 0.8, "end": 1.15, "emphasis": true}
+     ],
+     "duration": 1.7000000000000002,
+     "time": 1.143
+    },
+    "drops": [{"words": ["w1"], "keyIndex": 0, "time": 0.34299999999999997}]
+   }
+  },
+  {
+   "id": "style-pill",
+   "project": "style-matrix",
+   "style": "pill",
+   "scope": null,
+   "wordsVisible": true,
+   "expected": {
+    "source": "transcript",
+    "keyIndex": 2,
+    "styleMaxLines": 2,
+    "drawsAtLastWord": false,
+    "holdGapSec": 0.6,
+    "words": [
+     {"id": "w1", "text": "Here's", "display": "Here's", "weak": true},
+     {"id": "w2", "text": "what", "display": "what", "weak": true},
+     {"id": "w3", "text": "3", "display": "3", "weak": false},
+     {"id": "w4", "text": "baristas", "display": "baristas", "weak": false}
+    ],
+    "maxLines": {"homeTile": 2, "headerChip": 1, "sidebar": 2, "clipRow": 2},
+    "layout": {
+     "words": [
+      {"id": "w1", "text": "Here's", "start": 0.0, "end": 0.35, "emphasis": false},
+      {"id": "w2", "text": "what", "start": 0.4, "end": 0.75, "emphasis": false},
+      {"id": "w3", "text": "3", "start": 0.8, "end": 1.15, "emphasis": true},
+      {
+       "id": "w4",
+       "text": "baristas",
+       "start": 1.2000000000000002,
+       "end": 1.5500000000000003,
+       "emphasis": false
+      }
+     ],
+     "duration": 2.1,
+     "time": 1.143
+    },
+    "drops": [
+     {"words": ["w1", "w2", "w3"], "keyIndex": 2, "time": 1.143},
+     {"words": ["w1"], "keyIndex": 0, "time": 0.34299999999999997}
+    ]
+   }
+  },
+  {
+   "id": "style-two-tone",
+   "project": "style-matrix",
+   "style": "two-tone",
+   "scope": null,
+   "wordsVisible": true,
+   "expected": {
+    "source": "transcript",
+    "keyIndex": 2,
+    "styleMaxLines": 2,
+    "drawsAtLastWord": false,
+    "holdGapSec": 0.5,
+    "words": [
+     {"id": "w1", "text": "Here's", "display": "HERE'S", "weak": true},
+     {"id": "w2", "text": "what", "display": "WHAT", "weak": true},
+     {"id": "w3", "text": "3", "display": "3", "weak": false},
+     {"id": "w4", "text": "baristas", "display": "BARISTAS", "weak": false}
+    ],
+    "maxLines": {"homeTile": 2, "headerChip": 1, "sidebar": 2, "clipRow": 2},
+    "layout": {
+     "words": [
+      {"id": "w1", "text": "Here's", "start": 0.0, "end": 0.35, "emphasis": false},
+      {"id": "w2", "text": "what", "start": 0.4, "end": 0.75, "emphasis": false},
+      {"id": "w3", "text": "3", "start": 0.8, "end": 1.15, "emphasis": true},
+      {
+       "id": "w4",
+       "text": "baristas",
+       "start": 1.2000000000000002,
+       "end": 1.5500000000000003,
+       "emphasis": false
+      }
+     ],
+     "duration": 2.1,
+     "time": 1.143
+    },
+    "drops": [
+     {"words": ["w1", "w2", "w3"], "keyIndex": 2, "time": 1.143},
+     {"words": ["w1"], "keyIndex": 0, "time": 0.34299999999999997}
+    ]
+   }
+  },
+  {
+   "id": "style-typewriter",
+   "project": "style-matrix",
+   "style": "typewriter",
+   "scope": null,
+   "wordsVisible": true,
+   "expected": {
+    "source": "transcript",
+    "keyIndex": 2,
+    "styleMaxLines": 2,
+    "drawsAtLastWord": true,
+    "holdGapSec": 0.8,
+    "words": [
+     {"id": "w1", "text": "Here's", "display": "Here's", "weak": true},
+     {"id": "w2", "text": "what", "display": "what", "weak": true},
+     {"id": "w3", "text": "3", "display": "3", "weak": false},
+     {"id": "w4", "text": "baristas", "display": "baristas", "weak": false}
+    ],
+    "maxLines": {"homeTile": 2, "headerChip": 1, "sidebar": 2, "clipRow": 2},
+    "layout": {
+     "words": [
+      {"id": "w1", "text": "Here's", "start": 0.0, "end": 0.35, "emphasis": false},
+      {"id": "w2", "text": "what", "start": 0.4, "end": 0.75, "emphasis": false},
+      {"id": "w3", "text": "3", "start": 0.8, "end": 1.15, "emphasis": true},
+      {
+       "id": "w4",
+       "text": "baristas",
+       "start": 1.2000000000000002,
+       "end": 1.5500000000000003,
+       "emphasis": false
+      }
+     ],
+     "duration": 2.1,
+     "time": 1.5500000000000003
+    },
+    "drops": [
+     {"words": ["w1", "w2", "w3"], "keyIndex": 2, "time": 1.15},
+     {"words": ["w1"], "keyIndex": 0, "time": 0.35}
+    ]
+   }
+  },
+  {
+   "id": "style-vhs",
+   "project": "style-matrix",
+   "style": "vhs",
+   "scope": null,
+   "wordsVisible": true,
+   "expected": {
+    "source": "transcript",
+    "keyIndex": 2,
+    "styleMaxLines": 2,
+    "drawsAtLastWord": false,
+    "holdGapSec": 0.5,
+    "words": [
+     {"id": "w1", "text": "Here's", "display": "HERE'S", "weak": true},
+     {"id": "w2", "text": "what", "display": "WHAT", "weak": true},
+     {"id": "w3", "text": "3", "display": "3", "weak": false},
+     {"id": "w4", "text": "baristas", "display": "BARISTAS", "weak": false}
+    ],
+    "maxLines": {"homeTile": 2, "headerChip": 1, "sidebar": 2, "clipRow": 2},
+    "layout": {
+     "words": [
+      {"id": "w1", "text": "Here's", "start": 0.0, "end": 0.35, "emphasis": false},
+      {"id": "w2", "text": "what", "start": 0.4, "end": 0.75, "emphasis": false},
+      {"id": "w3", "text": "3", "start": 0.8, "end": 1.15, "emphasis": true},
+      {
+       "id": "w4",
+       "text": "baristas",
+       "start": 1.2000000000000002,
+       "end": 1.5500000000000003,
+       "emphasis": false
+      }
+     ],
+     "duration": 2.1,
+     "time": 1.143
+    },
+    "drops": [
+     {"words": ["w1", "w2", "w3"], "keyIndex": 2, "time": 1.143},
+     {"words": ["w1"], "keyIndex": 0, "time": 0.34299999999999997}
+    ]
+   }
+  },
+  {
+   "id": "style-vox-bold",
+   "project": "style-matrix",
+   "style": "vox-bold",
+   "scope": null,
+   "wordsVisible": true,
+   "expected": {
+    "source": "transcript",
+    "keyIndex": 0,
+    "styleMaxLines": 1,
+    "drawsAtLastWord": false,
+    "holdGapSec": 0,
+    "words": [{"id": "w3", "text": "3", "display": "3", "weak": false}],
+    "maxLines": {"homeTile": 1, "headerChip": 1, "sidebar": 1, "clipRow": 1},
+    "layout": {
+     "words": [{"id": "w3", "text": "3", "start": 0.0, "end": 0.35, "emphasis": true}],
+     "duration": 0.9,
+     "time": 0.34299999999999997
+    },
+    "drops": []
+   }
+  },
+  {
+   "id": "style-vox-bold-plus",
+   "project": "style-matrix",
+   "style": "vox-bold-plus",
+   "scope": null,
+   "wordsVisible": true,
+   "expected": {
+    "source": "transcript",
+    "keyIndex": 0,
+    "styleMaxLines": 1,
+    "drawsAtLastWord": false,
+    "holdGapSec": 0.3,
+    "words": [{"id": "w3", "text": "3", "display": "3", "weak": false}],
+    "maxLines": {"homeTile": 1, "headerChip": 1, "sidebar": 1, "clipRow": 1},
+    "layout": {
+     "words": [{"id": "w3", "text": "3", "start": 0.0, "end": 0.35, "emphasis": true}],
+     "duration": 0.9,
+     "time": 0.34299999999999997
+    },
+    "drops": []
+   }
+  },
+  {
+   "id": "style-vox-highlight",
+   "project": "style-matrix",
+   "style": "vox-highlight",
+   "scope": null,
+   "wordsVisible": true,
+   "expected": {
+    "source": "transcript",
+    "keyIndex": 0,
+    "styleMaxLines": 1,
+    "drawsAtLastWord": false,
+    "holdGapSec": 0,
+    "words": [{"id": "w3", "text": "3", "display": "3", "weak": false}],
+    "maxLines": {"homeTile": 1, "headerChip": 1, "sidebar": 1, "clipRow": 1},
+    "layout": {
+     "words": [{"id": "w3", "text": "3", "start": 0.0, "end": 0.35, "emphasis": true}],
+     "duration": 0.9,
+     "time": 0.34299999999999997
+    },
+    "drops": []
+   }
+  }
+ ],
+ "standIns": [
+  {"status": "none", "hasFrame": false, "holding": false, "hasWords": false, "standIn": "black"},
+  {"status": "none", "hasFrame": false, "holding": false, "hasWords": true, "standIn": "card"},
+  {"status": "none", "hasFrame": false, "holding": true, "hasWords": false, "standIn": "black"},
+  {"status": "none", "hasFrame": false, "holding": true, "hasWords": true, "standIn": "black"},
+  {"status": "none", "hasFrame": true, "holding": false, "hasWords": false, "standIn": "frame"},
+  {"status": "none", "hasFrame": true, "holding": false, "hasWords": true, "standIn": "frame"},
+  {"status": "none", "hasFrame": true, "holding": true, "hasWords": false, "standIn": "frame"},
+  {"status": "none", "hasFrame": true, "holding": true, "hasWords": true, "standIn": "frame"},
+  {"status": "loading", "hasFrame": false, "holding": false, "hasWords": false, "standIn": "black"},
+  {"status": "loading", "hasFrame": false, "holding": false, "hasWords": true, "standIn": "card"},
+  {"status": "loading", "hasFrame": false, "holding": true, "hasWords": false, "standIn": "black"},
+  {"status": "loading", "hasFrame": false, "holding": true, "hasWords": true, "standIn": "black"},
+  {"status": "loading", "hasFrame": true, "holding": false, "hasWords": false, "standIn": "frame"},
+  {"status": "loading", "hasFrame": true, "holding": false, "hasWords": true, "standIn": "frame"},
+  {"status": "loading", "hasFrame": true, "holding": true, "hasWords": false, "standIn": "frame"},
+  {"status": "loading", "hasFrame": true, "holding": true, "hasWords": true, "standIn": "frame"},
+  {"status": "missing", "hasFrame": false, "holding": false, "hasWords": false, "standIn": "black"},
+  {"status": "missing", "hasFrame": false, "holding": false, "hasWords": true, "standIn": "card"},
+  {"status": "missing", "hasFrame": false, "holding": true, "hasWords": false, "standIn": "black"},
+  {"status": "missing", "hasFrame": false, "holding": true, "hasWords": true, "standIn": "card"},
+  {"status": "missing", "hasFrame": true, "holding": false, "hasWords": false, "standIn": "black"},
+  {"status": "missing", "hasFrame": true, "holding": false, "hasWords": true, "standIn": "card"},
+  {"status": "missing", "hasFrame": true, "holding": true, "hasWords": false, "standIn": "black"},
+  {"status": "missing", "hasFrame": true, "holding": true, "hasWords": true, "standIn": "card"},
+  {"status": "unreadable", "hasFrame": false, "holding": false, "hasWords": false, "standIn": "black"},
+  {"status": "unreadable", "hasFrame": false, "holding": false, "hasWords": true, "standIn": "card"},
+  {"status": "unreadable", "hasFrame": false, "holding": true, "hasWords": false, "standIn": "black"},
+  {"status": "unreadable", "hasFrame": false, "holding": true, "hasWords": true, "standIn": "card"},
+  {"status": "unreadable", "hasFrame": true, "holding": false, "hasWords": false, "standIn": "black"},
+  {"status": "unreadable", "hasFrame": true, "holding": false, "hasWords": true, "standIn": "card"},
+  {"status": "unreadable", "hasFrame": true, "holding": true, "hasWords": false, "standIn": "black"},
+  {"status": "unreadable", "hasFrame": true, "holding": true, "hasWords": true, "standIn": "card"},
+  {"status": "transcribing", "hasFrame": false, "holding": false, "hasWords": false, "standIn": "card"},
+  {"status": "transcribing", "hasFrame": false, "holding": false, "hasWords": true, "standIn": "card"},
+  {"status": "transcribing", "hasFrame": false, "holding": true, "hasWords": false, "standIn": "black"},
+  {"status": "transcribing", "hasFrame": false, "holding": true, "hasWords": true, "standIn": "black"},
+  {"status": "transcribing", "hasFrame": true, "holding": false, "hasWords": false, "standIn": "frame"},
+  {"status": "transcribing", "hasFrame": true, "holding": false, "hasWords": true, "standIn": "frame"},
+  {"status": "transcribing", "hasFrame": true, "holding": true, "hasWords": false, "standIn": "frame"},
+  {"status": "transcribing", "hasFrame": true, "holding": true, "hasWords": true, "standIn": "frame"},
+  {"status": "demo", "hasFrame": false, "holding": false, "hasWords": false, "standIn": "black"},
+  {"status": "demo", "hasFrame": false, "holding": false, "hasWords": true, "standIn": "card"},
+  {"status": "demo", "hasFrame": false, "holding": true, "hasWords": false, "standIn": "black"},
+  {"status": "demo", "hasFrame": false, "holding": true, "hasWords": true, "standIn": "card"},
+  {"status": "demo", "hasFrame": true, "holding": false, "hasWords": false, "standIn": "black"},
+  {"status": "demo", "hasFrame": true, "holding": false, "hasWords": true, "standIn": "card"},
+  {"status": "demo", "hasFrame": true, "holding": true, "hasWords": false, "standIn": "black"},
+  {"status": "demo", "hasFrame": true, "holding": true, "hasWords": true, "standIn": "card"},
+  {"status": "audioOnly", "hasFrame": false, "holding": false, "hasWords": false, "standIn": "black"},
+  {"status": "audioOnly", "hasFrame": false, "holding": false, "hasWords": true, "standIn": "card"},
+  {"status": "audioOnly", "hasFrame": false, "holding": true, "hasWords": false, "standIn": "black"},
+  {"status": "audioOnly", "hasFrame": false, "holding": true, "hasWords": true, "standIn": "card"},
+  {"status": "audioOnly", "hasFrame": true, "holding": false, "hasWords": false, "standIn": "black"},
+  {"status": "audioOnly", "hasFrame": true, "holding": false, "hasWords": true, "standIn": "card"},
+  {"status": "audioOnly", "hasFrame": true, "holding": true, "hasWords": false, "standIn": "black"},
+  {"status": "audioOnly", "hasFrame": true, "holding": true, "hasWords": true, "standIn": "card"}
+ ]
+}

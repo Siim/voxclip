@@ -1,7 +1,33 @@
 {
   "schema": "voxclip-redaction-fixture/1",
   "source": "doc/architecture.md section 11.2",
-  "description": "Redactor acceptance cases. Hand-written from the table in architecture section 11.2; change both together. For each case, build a Redactor with the case's home directory (empty string when absent) and the registered secrets (none here), call redact(input) once, and compare the result with output exactly. The secret-looking values are fake.",
+  "description": "Redactor acceptance cases and rules, hand-written from architecture section 11.2; change both together. rules lists pattern rules 2 to 6 in order with their replacement templates (NSRegularExpression and .NET syntax); both Cores must run exactly these patterns in this order, after the registered secrets and before the home directory. The order is normative: running the rules in another order can change the output. For each case, build a Redactor with the case's home directory (empty string when absent) and the registered secrets (none here), call redact(input) once, and compare the result with output exactly. A case's note, when present, documents a limit that the case pins. The secret-looking values are fake.",
+  "rules": [
+    {
+      "pattern": "([Aa][Uu][Tt][Hh][Oo][Rr][Ii][Zz][Aa][Tt][Ii][Oo][Nn])([\"']?(?>[\\t\\n\\x0B\\f\\r\\x85\\p{Z}]*)[:=](?>[\\t\\n\\x0B\\f\\r\\x85\\p{Z}]*)[\"']?)((?:(?!(?:[Aa][Uu][Tt][Hh][Oo][Rr][Ii][Zz][Aa][Tt][Ii][Oo][Nn]|[Xx]-[Aa][Pp][Ii]-[Kk][Ee][Yy]|[Xx][Ii]-[Aa][Pp][Ii]-[Kk][Ee][Yy]|[Xx]-[Gg][Oo][Oo][Gg]-[Aa][Pp][Ii]-[Kk][Ee][Yy]|[Aa][Pp][Ii][-_]?[Kk][Ee][Yy]|[Aa][Cc][Cc][Ee][Ss][Ss][-_]?[Tt][Oo][Kk][Ee][Nn]|[Rr][Ee][Ff][Rr][Ee][Ss][Hh][-_]?[Tt][Oo][Kk][Ee][Nn]|[Cc][Ll][Ii][Ee][Nn][Tt][-_]?[Ss][Ee][Cc][Rr][Ee][Tt]|[Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd]|[Ss][Ee][Cc][Rr][Ee][Tt]|[Tt][Oo][Kk][Ee][Nn])[\"']?[\\t\\n\\x0B\\f\\r\\x85\\p{Z}]*[:=])(?:[Bb][Ee][Aa][Rr][Ee][Rr]|[Bb][Aa][Ss\\u017F][Ii][Cc]|[Kk][Ee][Yy]|[Tt][Oo][Kk][Ee][Nn])(?>[\\t\\p{Zs}]+)){1,8})?(?!(?:[Aa][Uu][Tt][Hh][Oo][Rr][Ii][Zz][Aa][Tt][Ii][Oo][Nn]|[Xx]-[Aa][Pp][Ii]-[Kk][Ee][Yy]|[Xx][Ii]-[Aa][Pp][Ii]-[Kk][Ee][Yy]|[Xx]-[Gg][Oo][Oo][Gg]-[Aa][Pp][Ii]-[Kk][Ee][Yy]|[Aa][Pp][Ii][-_]?[Kk][Ee][Yy]|[Aa][Cc][Cc][Ee][Ss][Ss][-_]?[Tt][Oo][Kk][Ee][Nn]|[Rr][Ee][Ff][Rr][Ee][Ss][Hh][-_]?[Tt][Oo][Kk][Ee][Nn]|[Cc][Ll][Ii][Ee][Nn][Tt][-_]?[Ss][Ee][Cc][Rr][Ee][Tt]|[Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd]|[Ss][Ee][Cc][Rr][Ee][Tt]|[Tt][Oo][Kk][Ee][Nn])[\"']?[\\t\\n\\x0B\\f\\r\\x85\\p{Z}]*[:=])(?![?&](?:[Kk][Ee][Yy]|[Aa][Pp][Ii]_[Kk][Ee][Yy]|[Tt][Oo][Kk][Ee][Nn]|[Aa][Cc][Cc][Ee][Ss][Ss]_[Tt][Oo][Kk][Ee][Nn]|[Cc][Oo][Dd][Ee]|[Dd][Ee][Vv][Ii][Cc][Ee]_[Cc][Oo][Dd][Ee]|[Uu][Ss][Ee][Rr]_[Cc][Oo][Dd][Ee]|[Ss][Ii][Gg][Nn][Aa][Tt][Uu][Rr][Ee]|[Ss][Ii][Gg])=)(?![Bb][Ee][Aa][Rr][Ee][Rr][\\t\\p{Zs}]+(?!(?:[Aa][Uu][Tt][Hh][Oo][Rr][Ii][Zz][Aa][Tt][Ii][Oo][Nn]|[Xx]-[Aa][Pp][Ii]-[Kk][Ee][Yy]|[Xx][Ii]-[Aa][Pp][Ii]-[Kk][Ee][Yy]|[Xx]-[Gg][Oo][Oo][Gg]-[Aa][Pp][Ii]-[Kk][Ee][Yy]|[Aa][Pp][Ii][-_]?[Kk][Ee][Yy]|[Aa][Cc][Cc][Ee][Ss][Ss][-_]?[Tt][Oo][Kk][Ee][Nn]|[Rr][Ee][Ff][Rr][Ee][Ss][Hh][-_]?[Tt][Oo][Kk][Ee][Nn]|[Cc][Ll][Ii][Ee][Nn][Tt][-_]?[Ss][Ee][Cc][Rr][Ee][Tt]|[Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd]|[Ss][Ee][Cc][Rr][Ee][Tt]|[Tt][Oo][Kk][Ee][Nn])[\"']?[\\t\\n\\x0B\\f\\r\\x85\\p{Z}]*[:=]))(?:[^\\t\\n\\x0B\\f\\r\\x85\\p{Z}\"',&]+?(?=(?:(?:[Aa][Uu][Tt][Hh][Oo][Rr][Ii][Zz][Aa][Tt][Ii][Oo][Nn]|[Xx]-[Aa][Pp][Ii]-[Kk][Ee][Yy]|[Xx][Ii]-[Aa][Pp][Ii]-[Kk][Ee][Yy]|[Xx]-[Gg][Oo][Oo][Gg]-[Aa][Pp][Ii]-[Kk][Ee][Yy]|[Aa][Pp][Ii][-_]?[Kk][Ee][Yy]|[Aa][Cc][Cc][Ee][Ss][Ss][-_]?[Tt][Oo][Kk][Ee][Nn]|[Rr][Ee][Ff][Rr][Ee][Ss][Hh][-_]?[Tt][Oo][Kk][Ee][Nn]|[Cc][Ll][Ii][Ee][Nn][Tt][-_]?[Ss][Ee][Cc][Rr][Ee][Tt]|[Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd]|[Ss][Ee][Cc][Rr][Ee][Tt]|[Tt][Oo][Kk][Ee][Nn])[\"']?[\\t\\n\\x0B\\f\\r\\x85\\p{Z}]*[:=]|[?&](?:[Kk][Ee][Yy]|[Aa][Pp][Ii]_[Kk][Ee][Yy]|[Tt][Oo][Kk][Ee][Nn]|[Aa][Cc][Cc][Ee][Ss][Ss]_[Tt][Oo][Kk][Ee][Nn]|[Cc][Oo][Dd][Ee]|[Dd][Ee][Vv][Ii][Cc][Ee]_[Cc][Oo][Dd][Ee]|[Uu][Ss][Ee][Rr]_[Cc][Oo][Dd][Ee]|[Ss][Ii][Gg][Nn][Aa][Tt][Uu][Rr][Ee]|[Ss][Ii][Gg])=|[Bb][Ee][Aa][Rr][Ee][Rr][\\t\\n\\x0B\\f\\r\\x85\\p{Z}]))|[^\\t\\n\\x0B\\f\\r\\x85\\p{Z}\"',&=:]+=(?:\"(?![^\"\\r\\n]*?(?:(?:[Aa][Uu][Tt][Hh][Oo][Rr][Ii][Zz][Aa][Tt][Ii][Oo][Nn]|[Xx]-[Aa][Pp][Ii]-[Kk][Ee][Yy]|[Xx][Ii]-[Aa][Pp][Ii]-[Kk][Ee][Yy]|[Xx]-[Gg][Oo][Oo][Gg]-[Aa][Pp][Ii]-[Kk][Ee][Yy]|[Aa][Pp][Ii][-_]?[Kk][Ee][Yy]|[Aa][Cc][Cc][Ee][Ss][Ss][-_]?[Tt][Oo][Kk][Ee][Nn]|[Rr][Ee][Ff][Rr][Ee][Ss][Hh][-_]?[Tt][Oo][Kk][Ee][Nn]|[Cc][Ll][Ii][Ee][Nn][Tt][-_]?[Ss][Ee][Cc][Rr][Ee][Tt]|[Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd]|[Ss][Ee][Cc][Rr][Ee][Tt]|[Tt][Oo][Kk][Ee][Nn])[\"']?[\\t\\n\\x0B\\f\\r\\x85\\p{Z}]*[:=]|[?&](?:[Kk][Ee][Yy]|[Aa][Pp][Ii]_[Kk][Ee][Yy]|[Tt][Oo][Kk][Ee][Nn]|[Aa][Cc][Cc][Ee][Ss][Ss]_[Tt][Oo][Kk][Ee][Nn]|[Cc][Oo][Dd][Ee]|[Dd][Ee][Vv][Ii][Cc][Ee]_[Cc][Oo][Dd][Ee]|[Uu][Ss][Ee][Rr]_[Cc][Oo][Dd][Ee]|[Ss][Ii][Gg][Nn][Aa][Tt][Uu][Rr][Ee]|[Ss][Ii][Gg])=|[Bb][Ee][Aa][Rr][Ee][Rr][\\t\\n\\x0B\\f\\r\\x85\\p{Z}]))[^\"\\r\\n]*\"|'(?![^'\\r\\n]*?(?:(?:[Aa][Uu][Tt][Hh][Oo][Rr][Ii][Zz][Aa][Tt][Ii][Oo][Nn]|[Xx]-[Aa][Pp][Ii]-[Kk][Ee][Yy]|[Xx][Ii]-[Aa][Pp][Ii]-[Kk][Ee][Yy]|[Xx]-[Gg][Oo][Oo][Gg]-[Aa][Pp][Ii]-[Kk][Ee][Yy]|[Aa][Pp][Ii][-_]?[Kk][Ee][Yy]|[Aa][Cc][Cc][Ee][Ss][Ss][-_]?[Tt][Oo][Kk][Ee][Nn]|[Rr][Ee][Ff][Rr][Ee][Ss][Hh][-_]?[Tt][Oo][Kk][Ee][Nn]|[Cc][Ll][Ii][Ee][Nn][Tt][-_]?[Ss][Ee][Cc][Rr][Ee][Tt]|[Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd]|[Ss][Ee][Cc][Rr][Ee][Tt]|[Tt][Oo][Kk][Ee][Nn])[\"']?[\\t\\n\\x0B\\f\\r\\x85\\p{Z}]*[:=]|[?&](?:[Kk][Ee][Yy]|[Aa][Pp][Ii]_[Kk][Ee][Yy]|[Tt][Oo][Kk][Ee][Nn]|[Aa][Cc][Cc][Ee][Ss][Ss]_[Tt][Oo][Kk][Ee][Nn]|[Cc][Oo][Dd][Ee]|[Dd][Ee][Vv][Ii][Cc][Ee]_[Cc][Oo][Dd][Ee]|[Uu][Ss][Ee][Rr]_[Cc][Oo][Dd][Ee]|[Ss][Ii][Gg][Nn][Aa][Tt][Uu][Rr][Ee]|[Ss][Ii][Gg])=|[Bb][Ee][Aa][Rr][Ee][Rr][\\t\\n\\x0B\\f\\r\\x85\\p{Z}]))[^'\\r\\n]*'|[\"'])(?:[^\\t\\n\\x0B\\f\\r\\x85\\p{Z}\"',&]*?(?=(?:(?:[Aa][Uu][Tt][Hh][Oo][Rr][Ii][Zz][Aa][Tt][Ii][Oo][Nn]|[Xx]-[Aa][Pp][Ii]-[Kk][Ee][Yy]|[Xx][Ii]-[Aa][Pp][Ii]-[Kk][Ee][Yy]|[Xx]-[Gg][Oo][Oo][Gg]-[Aa][Pp][Ii]-[Kk][Ee][Yy]|[Aa][Pp][Ii][-_]?[Kk][Ee][Yy]|[Aa][Cc][Cc][Ee][Ss][Ss][-_]?[Tt][Oo][Kk][Ee][Nn]|[Rr][Ee][Ff][Rr][Ee][Ss][Hh][-_]?[Tt][Oo][Kk][Ee][Nn]|[Cc][Ll][Ii][Ee][Nn][Tt][-_]?[Ss][Ee][Cc][Rr][Ee][Tt]|[Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd]|[Ss][Ee][Cc][Rr][Ee][Tt]|[Tt][Oo][Kk][Ee][Nn])[\"']?[\\t\\n\\x0B\\f\\r\\x85\\p{Z}]*[:=]|[?&](?:[Kk][Ee][Yy]|[Aa][Pp][Ii]_[Kk][Ee][Yy]|[Tt][Oo][Kk][Ee][Nn]|[Aa][Cc][Cc][Ee][Ss][Ss]_[Tt][Oo][Kk][Ee][Nn]|[Cc][Oo][Dd][Ee]|[Dd][Ee][Vv][Ii][Cc][Ee]_[Cc][Oo][Dd][Ee]|[Uu][Ss][Ee][Rr]_[Cc][Oo][Dd][Ee]|[Ss][Ii][Gg][Nn][Aa][Tt][Uu][Rr][Ee]|[Ss][Ii][Gg])=|[Bb][Ee][Aa][Rr][Ee][Rr][\\t\\n\\x0B\\f\\r\\x85\\p{Z}]))|[^\\t\\n\\x0B\\f\\r\\x85\\p{Z}\"',&]*)|(?!(?:[Bb][Ee][Aa][Rr][Ee][Rr]|[Bb][Aa][Ss\\u017F][Ii][Cc])[\\t\\p{Zs}]*[\\n\\x0B\\f\\r\\x85\\p{Zl}\\p{Zp}])[^\\t\\n\\x0B\\f\\r\\x85\\p{Z}\"',&]+)",
+      "template": "$1$2$3[REDACTED]"
+    },
+    {
+      "pattern": "([Xx]-[Aa][Pp][Ii]-[Kk][Ee][Yy]|[Xx][Ii]-[Aa][Pp][Ii]-[Kk][Ee][Yy]|[Xx]-[Gg][Oo][Oo][Gg]-[Aa][Pp][Ii]-[Kk][Ee][Yy]|[Aa][Pp][Ii][-_]?[Kk][Ee][Yy]|[Aa][Cc][Cc][Ee][Ss][Ss][-_]?[Tt][Oo][Kk][Ee][Nn]|[Rr][Ee][Ff][Rr][Ee][Ss][Hh][-_]?[Tt][Oo][Kk][Ee][Nn]|[Cc][Ll][Ii][Ee][Nn][Tt][-_]?[Ss][Ee][Cc][Rr][Ee][Tt]|[Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd]|[Ss][Ee][Cc][Rr][Ee][Tt]|[Tt][Oo][Kk][Ee][Nn])([\"']?(?>[\\t\\n\\x0B\\f\\r\\x85\\p{Z}]*)[:=](?>[\\t\\n\\x0B\\f\\r\\x85\\p{Z}]*)[\"']?)((?:(?!(?:[Aa][Uu][Tt][Hh][Oo][Rr][Ii][Zz][Aa][Tt][Ii][Oo][Nn]|[Xx]-[Aa][Pp][Ii]-[Kk][Ee][Yy]|[Xx][Ii]-[Aa][Pp][Ii]-[Kk][Ee][Yy]|[Xx]-[Gg][Oo][Oo][Gg]-[Aa][Pp][Ii]-[Kk][Ee][Yy]|[Aa][Pp][Ii][-_]?[Kk][Ee][Yy]|[Aa][Cc][Cc][Ee][Ss][Ss][-_]?[Tt][Oo][Kk][Ee][Nn]|[Rr][Ee][Ff][Rr][Ee][Ss][Hh][-_]?[Tt][Oo][Kk][Ee][Nn]|[Cc][Ll][Ii][Ee][Nn][Tt][-_]?[Ss][Ee][Cc][Rr][Ee][Tt]|[Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd]|[Ss][Ee][Cc][Rr][Ee][Tt]|[Tt][Oo][Kk][Ee][Nn])[\"']?[\\t\\n\\x0B\\f\\r\\x85\\p{Z}]*[:=])(?:[Bb][Ee][Aa][Rr][Ee][Rr]|[Bb][Aa][Ss\\u017F][Ii][Cc]|[Kk][Ee][Yy]|[Tt][Oo][Kk][Ee][Nn])(?>[\\t\\p{Zs}]+)){1,8})?(?!(?:[Aa][Uu][Tt][Hh][Oo][Rr][Ii][Zz][Aa][Tt][Ii][Oo][Nn]|[Xx]-[Aa][Pp][Ii]-[Kk][Ee][Yy]|[Xx][Ii]-[Aa][Pp][Ii]-[Kk][Ee][Yy]|[Xx]-[Gg][Oo][Oo][Gg]-[Aa][Pp][Ii]-[Kk][Ee][Yy]|[Aa][Pp][Ii][-_]?[Kk][Ee][Yy]|[Aa][Cc][Cc][Ee][Ss][Ss][-_]?[Tt][Oo][Kk][Ee][Nn]|[Rr][Ee][Ff][Rr][Ee][Ss][Hh][-_]?[Tt][Oo][Kk][Ee][Nn]|[Cc][Ll][Ii][Ee][Nn][Tt][-_]?[Ss][Ee][Cc][Rr][Ee][Tt]|[Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd]|[Ss][Ee][Cc][Rr][Ee][Tt]|[Tt][Oo][Kk][Ee][Nn])[\"']?[\\t\\n\\x0B\\f\\r\\x85\\p{Z}]*[:=])(?![?&](?:[Kk][Ee][Yy]|[Aa][Pp][Ii]_[Kk][Ee][Yy]|[Tt][Oo][Kk][Ee][Nn]|[Aa][Cc][Cc][Ee][Ss][Ss]_[Tt][Oo][Kk][Ee][Nn]|[Cc][Oo][Dd][Ee]|[Dd][Ee][Vv][Ii][Cc][Ee]_[Cc][Oo][Dd][Ee]|[Uu][Ss][Ee][Rr]_[Cc][Oo][Dd][Ee]|[Ss][Ii][Gg][Nn][Aa][Tt][Uu][Rr][Ee]|[Ss][Ii][Gg])=)(?![Bb][Ee][Aa][Rr][Ee][Rr][\\t\\p{Zs}]+(?!(?:[Aa][Uu][Tt][Hh][Oo][Rr][Ii][Zz][Aa][Tt][Ii][Oo][Nn]|[Xx]-[Aa][Pp][Ii]-[Kk][Ee][Yy]|[Xx][Ii]-[Aa][Pp][Ii]-[Kk][Ee][Yy]|[Xx]-[Gg][Oo][Oo][Gg]-[Aa][Pp][Ii]-[Kk][Ee][Yy]|[Aa][Pp][Ii][-_]?[Kk][Ee][Yy]|[Aa][Cc][Cc][Ee][Ss][Ss][-_]?[Tt][Oo][Kk][Ee][Nn]|[Rr][Ee][Ff][Rr][Ee][Ss][Hh][-_]?[Tt][Oo][Kk][Ee][Nn]|[Cc][Ll][Ii][Ee][Nn][Tt][-_]?[Ss][Ee][Cc][Rr][Ee][Tt]|[Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd]|[Ss][Ee][Cc][Rr][Ee][Tt]|[Tt][Oo][Kk][Ee][Nn])[\"']?[\\t\\n\\x0B\\f\\r\\x85\\p{Z}]*[:=]))(?:[^\\t\\n\\x0B\\f\\r\\x85\\p{Z}\"',&]+?(?=(?:(?:[Aa][Uu][Tt][Hh][Oo][Rr][Ii][Zz][Aa][Tt][Ii][Oo][Nn]|[Xx]-[Aa][Pp][Ii]-[Kk][Ee][Yy]|[Xx][Ii]-[Aa][Pp][Ii]-[Kk][Ee][Yy]|[Xx]-[Gg][Oo][Oo][Gg]-[Aa][Pp][Ii]-[Kk][Ee][Yy]|[Aa][Pp][Ii][-_]?[Kk][Ee][Yy]|[Aa][Cc][Cc][Ee][Ss][Ss][-_]?[Tt][Oo][Kk][Ee][Nn]|[Rr][Ee][Ff][Rr][Ee][Ss][Hh][-_]?[Tt][Oo][Kk][Ee][Nn]|[Cc][Ll][Ii][Ee][Nn][Tt][-_]?[Ss][Ee][Cc][Rr][Ee][Tt]|[Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd]|[Ss][Ee][Cc][Rr][Ee][Tt]|[Tt][Oo][Kk][Ee][Nn])[\"']?[\\t\\n\\x0B\\f\\r\\x85\\p{Z}]*[:=]|[?&](?:[Kk][Ee][Yy]|[Aa][Pp][Ii]_[Kk][Ee][Yy]|[Tt][Oo][Kk][Ee][Nn]|[Aa][Cc][Cc][Ee][Ss][Ss]_[Tt][Oo][Kk][Ee][Nn]|[Cc][Oo][Dd][Ee]|[Dd][Ee][Vv][Ii][Cc][Ee]_[Cc][Oo][Dd][Ee]|[Uu][Ss][Ee][Rr]_[Cc][Oo][Dd][Ee]|[Ss][Ii][Gg][Nn][Aa][Tt][Uu][Rr][Ee]|[Ss][Ii][Gg])=|[Bb][Ee][Aa][Rr][Ee][Rr][\\t\\n\\x0B\\f\\r\\x85\\p{Z}]))|[^\\t\\n\\x0B\\f\\r\\x85\\p{Z}\"',&=:]+=(?:\"(?![^\"\\r\\n]*?(?:(?:[Aa][Uu][Tt][Hh][Oo][Rr][Ii][Zz][Aa][Tt][Ii][Oo][Nn]|[Xx]-[Aa][Pp][Ii]-[Kk][Ee][Yy]|[Xx][Ii]-[Aa][Pp][Ii]-[Kk][Ee][Yy]|[Xx]-[Gg][Oo][Oo][Gg]-[Aa][Pp][Ii]-[Kk][Ee][Yy]|[Aa][Pp][Ii][-_]?[Kk][Ee][Yy]|[Aa][Cc][Cc][Ee][Ss][Ss][-_]?[Tt][Oo][Kk][Ee][Nn]|[Rr][Ee][Ff][Rr][Ee][Ss][Hh][-_]?[Tt][Oo][Kk][Ee][Nn]|[Cc][Ll][Ii][Ee][Nn][Tt][-_]?[Ss][Ee][Cc][Rr][Ee][Tt]|[Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd]|[Ss][Ee][Cc][Rr][Ee][Tt]|[Tt][Oo][Kk][Ee][Nn])[\"']?[\\t\\n\\x0B\\f\\r\\x85\\p{Z}]*[:=]|[?&](?:[Kk][Ee][Yy]|[Aa][Pp][Ii]_[Kk][Ee][Yy]|[Tt][Oo][Kk][Ee][Nn]|[Aa][Cc][Cc][Ee][Ss][Ss]_[Tt][Oo][Kk][Ee][Nn]|[Cc][Oo][Dd][Ee]|[Dd][Ee][Vv][Ii][Cc][Ee]_[Cc][Oo][Dd][Ee]|[Uu][Ss][Ee][Rr]_[Cc][Oo][Dd][Ee]|[Ss][Ii][Gg][Nn][Aa][Tt][Uu][Rr][Ee]|[Ss][Ii][Gg])=|[Bb][Ee][Aa][Rr][Ee][Rr][\\t\\n\\x0B\\f\\r\\x85\\p{Z}]))[^\"\\r\\n]*\"|'(?![^'\\r\\n]*?(?:(?:[Aa][Uu][Tt][Hh][Oo][Rr][Ii][Zz][Aa][Tt][Ii][Oo][Nn]|[Xx]-[Aa][Pp][Ii]-[Kk][Ee][Yy]|[Xx][Ii]-[Aa][Pp][Ii]-[Kk][Ee][Yy]|[Xx]-[Gg][Oo][Oo][Gg]-[Aa][Pp][Ii]-[Kk][Ee][Yy]|[Aa][Pp][Ii][-_]?[Kk][Ee][Yy]|[Aa][Cc][Cc][Ee][Ss][Ss][-_]?[Tt][Oo][Kk][Ee][Nn]|[Rr][Ee][Ff][Rr][Ee][Ss][Hh][-_]?[Tt][Oo][Kk][Ee][Nn]|[Cc][Ll][Ii][Ee][Nn][Tt][-_]?[Ss][Ee][Cc][Rr][Ee][Tt]|[Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd]|[Ss][Ee][Cc][Rr][Ee][Tt]|[Tt][Oo][Kk][Ee][Nn])[\"']?[\\t\\n\\x0B\\f\\r\\x85\\p{Z}]*[:=]|[?&](?:[Kk][Ee][Yy]|[Aa][Pp][Ii]_[Kk][Ee][Yy]|[Tt][Oo][Kk][Ee][Nn]|[Aa][Cc][Cc][Ee][Ss][Ss]_[Tt][Oo][Kk][Ee][Nn]|[Cc][Oo][Dd][Ee]|[Dd][Ee][Vv][Ii][Cc][Ee]_[Cc][Oo][Dd][Ee]|[Uu][Ss][Ee][Rr]_[Cc][Oo][Dd][Ee]|[Ss][Ii][Gg][Nn][Aa][Tt][Uu][Rr][Ee]|[Ss][Ii][Gg])=|[Bb][Ee][Aa][Rr][Ee][Rr][\\t\\n\\x0B\\f\\r\\x85\\p{Z}]))[^'\\r\\n]*'|[\"'])(?:[^\\t\\n\\x0B\\f\\r\\x85\\p{Z}\"',&]*?(?=(?:(?:[Aa][Uu][Tt][Hh][Oo][Rr][Ii][Zz][Aa][Tt][Ii][Oo][Nn]|[Xx]-[Aa][Pp][Ii]-[Kk][Ee][Yy]|[Xx][Ii]-[Aa][Pp][Ii]-[Kk][Ee][Yy]|[Xx]-[Gg][Oo][Oo][Gg]-[Aa][Pp][Ii]-[Kk][Ee][Yy]|[Aa][Pp][Ii][-_]?[Kk][Ee][Yy]|[Aa][Cc][Cc][Ee][Ss][Ss][-_]?[Tt][Oo][Kk][Ee][Nn]|[Rr][Ee][Ff][Rr][Ee][Ss][Hh][-_]?[Tt][Oo][Kk][Ee][Nn]|[Cc][Ll][Ii][Ee][Nn][Tt][-_]?[Ss][Ee][Cc][Rr][Ee][Tt]|[Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd]|[Ss][Ee][Cc][Rr][Ee][Tt]|[Tt][Oo][Kk][Ee][Nn])[\"']?[\\t\\n\\x0B\\f\\r\\x85\\p{Z}]*[:=]|[?&](?:[Kk][Ee][Yy]|[Aa][Pp][Ii]_[Kk][Ee][Yy]|[Tt][Oo][Kk][Ee][Nn]|[Aa][Cc][Cc][Ee][Ss][Ss]_[Tt][Oo][Kk][Ee][Nn]|[Cc][Oo][Dd][Ee]|[Dd][Ee][Vv][Ii][Cc][Ee]_[Cc][Oo][Dd][Ee]|[Uu][Ss][Ee][Rr]_[Cc][Oo][Dd][Ee]|[Ss][Ii][Gg][Nn][Aa][Tt][Uu][Rr][Ee]|[Ss][Ii][Gg])=|[Bb][Ee][Aa][Rr][Ee][Rr][\\t\\n\\x0B\\f\\r\\x85\\p{Z}]))|[^\\t\\n\\x0B\\f\\r\\x85\\p{Z}\"',&]*)|(?!(?:[Bb][Ee][Aa][Rr][Ee][Rr]|[Bb][Aa][Ss\\u017F][Ii][Cc])[\\t\\p{Zs}]*[\\n\\x0B\\f\\r\\x85\\p{Zl}\\p{Zp}])[^\\t\\n\\x0B\\f\\r\\x85\\p{Z}\"',&]+)",
+      "template": "$1$2$3[REDACTED]"
+    },
+    {
+      "pattern": "([Aa][Uu][Tt][Hh][Oo][Rr][Ii][Zz][Aa][Tt][Ii][Oo][Nn][\"']?(?>[\\t\\n\\x0B\\f\\r\\x85\\p{Z}]*)[:=](?>[\\t\\n\\x0B\\f\\r\\x85\\p{Z}]*)[\"']?(?:[Bb][Ee][Aa][Rr][Ee][Rr]|[Bb][Aa][Ss\\u017F][Ii][Cc])[\\t\\n\\x0B\\f\\r\\x85\\p{Z}]+)(?!(?:(?:[Aa][Uu][Tt][Hh][Oo][Rr][Ii][Zz][Aa][Tt][Ii][Oo][Nn]|[Xx]-[Aa][Pp][Ii]-[Kk][Ee][Yy]|[Xx][Ii]-[Aa][Pp][Ii]-[Kk][Ee][Yy]|[Xx]-[Gg][Oo][Oo][Gg]-[Aa][Pp][Ii]-[Kk][Ee][Yy]|[Aa][Pp][Ii][-_]?[Kk][Ee][Yy]|[Aa][Cc][Cc][Ee][Ss][Ss][-_]?[Tt][Oo][Kk][Ee][Nn]|[Rr][Ee][Ff][Rr][Ee][Ss][Hh][-_]?[Tt][Oo][Kk][Ee][Nn]|[Cc][Ll][Ii][Ee][Nn][Tt][-_]?[Ss][Ee][Cc][Rr][Ee][Tt]|[Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd]|[Ss][Ee][Cc][Rr][Ee][Tt]|[Tt][Oo][Kk][Ee][Nn])[\"']?[\\t\\n\\x0B\\f\\r\\x85\\p{Z}]*[:=]|[?&](?:[Kk][Ee][Yy]|[Aa][Pp][Ii]_[Kk][Ee][Yy]|[Tt][Oo][Kk][Ee][Nn]|[Aa][Cc][Cc][Ee][Ss][Ss]_[Tt][Oo][Kk][Ee][Nn]|[Cc][Oo][Dd][Ee]|[Dd][Ee][Vv][Ii][Cc][Ee]_[Cc][Oo][Dd][Ee]|[Uu][Ss][Ee][Rr]_[Cc][Oo][Dd][Ee]|[Ss][Ii][Gg][Nn][Aa][Tt][Uu][Rr][Ee]|[Ss][Ii][Gg])=|[Bb][Ee][Aa][Rr][Ee][Rr][\\t\\n\\x0B\\f\\r\\x85\\p{Z}]))(?:[^\\t\\n\\x0B\\f\\r\\x85\\p{Z}\"',&]+?(?=(?:(?:[Aa][Uu][Tt][Hh][Oo][Rr][Ii][Zz][Aa][Tt][Ii][Oo][Nn]|[Xx]-[Aa][Pp][Ii]-[Kk][Ee][Yy]|[Xx][Ii]-[Aa][Pp][Ii]-[Kk][Ee][Yy]|[Xx]-[Gg][Oo][Oo][Gg]-[Aa][Pp][Ii]-[Kk][Ee][Yy]|[Aa][Pp][Ii][-_]?[Kk][Ee][Yy]|[Aa][Cc][Cc][Ee][Ss][Ss][-_]?[Tt][Oo][Kk][Ee][Nn]|[Rr][Ee][Ff][Rr][Ee][Ss][Hh][-_]?[Tt][Oo][Kk][Ee][Nn]|[Cc][Ll][Ii][Ee][Nn][Tt][-_]?[Ss][Ee][Cc][Rr][Ee][Tt]|[Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd]|[Ss][Ee][Cc][Rr][Ee][Tt]|[Tt][Oo][Kk][Ee][Nn])[\"']?[\\t\\n\\x0B\\f\\r\\x85\\p{Z}]*[:=]|[?&](?:[Kk][Ee][Yy]|[Aa][Pp][Ii]_[Kk][Ee][Yy]|[Tt][Oo][Kk][Ee][Nn]|[Aa][Cc][Cc][Ee][Ss][Ss]_[Tt][Oo][Kk][Ee][Nn]|[Cc][Oo][Dd][Ee]|[Dd][Ee][Vv][Ii][Cc][Ee]_[Cc][Oo][Dd][Ee]|[Uu][Ss][Ee][Rr]_[Cc][Oo][Dd][Ee]|[Ss][Ii][Gg][Nn][Aa][Tt][Uu][Rr][Ee]|[Ss][Ii][Gg])=|[Bb][Ee][Aa][Rr][Ee][Rr][\\t\\n\\x0B\\f\\r\\x85\\p{Z}]))|[^\\t\\n\\x0B\\f\\r\\x85\\p{Z}\"',&]+)|([Bb][Ee][Aa][Rr][Ee][Rr][\\t\\n\\x0B\\f\\r\\x85\\p{Z}]+)(?!(?:(?:[Aa][Uu][Tt][Hh][Oo][Rr][Ii][Zz][Aa][Tt][Ii][Oo][Nn]|[Xx]-[Aa][Pp][Ii]-[Kk][Ee][Yy]|[Xx][Ii]-[Aa][Pp][Ii]-[Kk][Ee][Yy]|[Xx]-[Gg][Oo][Oo][Gg]-[Aa][Pp][Ii]-[Kk][Ee][Yy]|[Aa][Pp][Ii][-_]?[Kk][Ee][Yy]|[Aa][Cc][Cc][Ee][Ss][Ss][-_]?[Tt][Oo][Kk][Ee][Nn]|[Rr][Ee][Ff][Rr][Ee][Ss][Hh][-_]?[Tt][Oo][Kk][Ee][Nn]|[Cc][Ll][Ii][Ee][Nn][Tt][-_]?[Ss][Ee][Cc][Rr][Ee][Tt]|[Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd]|[Ss][Ee][Cc][Rr][Ee][Tt]|[Tt][Oo][Kk][Ee][Nn])[\"']?[\\t\\n\\x0B\\f\\r\\x85\\p{Z}]*[:=]|[?&](?:[Kk][Ee][Yy]|[Aa][Pp][Ii]_[Kk][Ee][Yy]|[Tt][Oo][Kk][Ee][Nn]|[Aa][Cc][Cc][Ee][Ss][Ss]_[Tt][Oo][Kk][Ee][Nn]|[Cc][Oo][Dd][Ee]|[Dd][Ee][Vv][Ii][Cc][Ee]_[Cc][Oo][Dd][Ee]|[Uu][Ss][Ee][Rr]_[Cc][Oo][Dd][Ee]|[Ss][Ii][Gg][Nn][Aa][Tt][Uu][Rr][Ee]|[Ss][Ii][Gg])=|[Bb][Ee][Aa][Rr][Ee][Rr][\\t\\n\\x0B\\f\\r\\x85\\p{Z}]))(?:[A-Za-z0-9._~+/=\\u212A\\u017F-]+?(?=(?:(?:[Aa][Uu][Tt][Hh][Oo][Rr][Ii][Zz][Aa][Tt][Ii][Oo][Nn]|[Xx]-[Aa][Pp][Ii]-[Kk][Ee][Yy]|[Xx][Ii]-[Aa][Pp][Ii]-[Kk][Ee][Yy]|[Xx]-[Gg][Oo][Oo][Gg]-[Aa][Pp][Ii]-[Kk][Ee][Yy]|[Aa][Pp][Ii][-_]?[Kk][Ee][Yy]|[Aa][Cc][Cc][Ee][Ss][Ss][-_]?[Tt][Oo][Kk][Ee][Nn]|[Rr][Ee][Ff][Rr][Ee][Ss][Hh][-_]?[Tt][Oo][Kk][Ee][Nn]|[Cc][Ll][Ii][Ee][Nn][Tt][-_]?[Ss][Ee][Cc][Rr][Ee][Tt]|[Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd]|[Ss][Ee][Cc][Rr][Ee][Tt]|[Tt][Oo][Kk][Ee][Nn])[\"']?[\\t\\n\\x0B\\f\\r\\x85\\p{Z}]*[:=]|[?&](?:[Kk][Ee][Yy]|[Aa][Pp][Ii]_[Kk][Ee][Yy]|[Tt][Oo][Kk][Ee][Nn]|[Aa][Cc][Cc][Ee][Ss][Ss]_[Tt][Oo][Kk][Ee][Nn]|[Cc][Oo][Dd][Ee]|[Dd][Ee][Vv][Ii][Cc][Ee]_[Cc][Oo][Dd][Ee]|[Uu][Ss][Ee][Rr]_[Cc][Oo][Dd][Ee]|[Ss][Ii][Gg][Nn][Aa][Tt][Uu][Rr][Ee]|[Ss][Ii][Gg])=|[Bb][Ee][Aa][Rr][Ee][Rr][\\t\\n\\x0B\\f\\r\\x85\\p{Z}]))|[A-Za-z0-9._~+/=\\u212A\\u017F-]+)",
+      "template": "$1$2[REDACTED]"
+    },
+    {
+      "pattern": "([?&](?:[Kk][Ee][Yy]|[Aa][Pp][Ii]_[Kk][Ee][Yy]|[Tt][Oo][Kk][Ee][Nn]|[Aa][Cc][Cc][Ee][Ss][Ss]_[Tt][Oo][Kk][Ee][Nn]|[Cc][Oo][Dd][Ee]|[Dd][Ee][Vv][Ii][Cc][Ee]_[Cc][Oo][Dd][Ee]|[Uu][Ss][Ee][Rr]_[Cc][Oo][Dd][Ee]|[Ss][Ii][Gg][Nn][Aa][Tt][Uu][Rr][Ee]|[Ss][Ii][Gg])=)[^&\\t\\n\\x0B\\f\\r\\x85\\p{Z}]*",
+      "template": "$1[REDACTED]"
+    },
+    {
+      "pattern": "sk-ant-(?=[A-Za-z0-9_-]{16})[A-Za-z0-9_-]+|sk-(?:proj-)?(?=[A-Za-z0-9_-]{20})[A-Za-z0-9_-]+|xai-(?=[A-Za-z0-9]{20})[A-Za-z0-9]+|AIza[0-9A-Za-z_-]{35}|sk_(?=[0-9a-f]{32})[0-9a-f]+|gh[pousr]_(?=[A-Za-z0-9]{36})[A-Za-z0-9]+|(?<![A-Za-z0-9_-])eyJ(?>[A-Za-z0-9_-]{1,8192})\\.(?>[A-Za-z0-9_-]{1,8192})\\.(?>[A-Za-z0-9_-]{1,8192})",
+      "template": "[REDACTED]"
+    },
+    {
+      "pattern": "(?<![A-Za-z0-9_-])eyJ(?>[A-Za-z0-9_-]{1,8192})\\.(?>[A-Za-z0-9_-]{1,8192})\\.(?>[A-Za-z0-9_-]{1,8192})",
+      "template": "[REDACTED]"
+    }
+  ],
   "cases": [
     {
       "input": "x-api-key: sk-ant-api03-abcdefghijklmnopqrstuv",
@@ -43,6 +69,493 @@
     {
       "input": "status 401 from api.elevenlabs.io",
       "output": "status 401 from api.elevenlabs.io"
+    },
+    {
+      "input": "Authorization: Key 6f1c2d3e-4a5b-4c6d-8e7f-90a1b2c3d4e5:0f1e2d3c4b5a69788796a5b4c3d2e1f0",
+      "output": "Authorization: Key [REDACTED]"
+    },
+    {
+      "input": "{\"authorization\":\"Key 6f1c2d3e-4a5b-4c6d-8e7f-90a1b2c3d4e5:0f1e2d3c4b5a69788796a5b4c3d2e1f0\"}",
+      "output": "{\"authorization\":\"Key [REDACTED]\"}"
+    },
+    {
+      "input": "x-api-key: 3f9a1c0e-7b2d-4e8f-a6c5-1d2e3f4a5b6c",
+      "output": "x-api-key: [REDACTED]"
+    },
+    {
+      "input": "authorization=Key%206f1c2d3e-4a5b-4c6d-8e7f-90a1b2c3d4e5%3A0f1e2d3c4b5a69788796a5b4c3d2e1f0",
+      "output": "authorization=[REDACTED]"
+    },
+    {
+      "input": "Authorization: Key=6f1c2d3e-4a5b-4c6d-8e7f-90a1b2c3d4e5:0f1e2d3c4b5a69788796a5b4c3d2e1f0",
+      "output": "Authorization: [REDACTED]"
+    },
+    {
+      "input": "Authorization: Key:6f1c2d3e-4a5b-4c6d-8e7f-90a1b2c3d4e5:0f1e2d3c4b5a69788796a5b4c3d2e1f0",
+      "output": "Authorization: [REDACTED]"
+    },
+    {
+      "input": "Authorization: Key-6f1c2d3e-4a5b-4c6d-8e7f-90a1b2c3d4e5:0f1e2d3c4b5a69788796a5b4c3d2e1f0",
+      "output": "Authorization: [REDACTED]"
+    },
+    {
+      "input": "Authorization: Token 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b",
+      "output": "Authorization: Token [REDACTED]"
+    },
+    {
+      "input": "{\"authorization\":\"Token 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b\"}",
+      "output": "{\"authorization\":\"Token [REDACTED]\"}"
+    },
+    {
+      "input": "Authorization: Bearer%209f86d081884c7d659a2feaa0c55ad015a3bf4f1b",
+      "output": "Authorization: [REDACTED]"
+    },
+    {
+      "input": "x-api-key: Basic 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b",
+      "output": "x-api-key: Basic [REDACTED]"
+    },
+    {
+      "input": "{\"token\":\"Bearer 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b\"}",
+      "output": "{\"token\":\"Bearer [REDACTED]\"}"
+    },
+    {
+      "input": "token: Bearer%209f86d081884c7d659a2feaa0c55ad015a3bf4f1b",
+      "output": "token: [REDACTED]"
+    },
+    {
+      "input": "Authorization: Token\t9f86d081884c7d659a2feaa0c55ad015a3bf4f1b",
+      "output": "Authorization: Token\t[REDACTED]"
+    },
+    {
+      "input": "{\"credential\":\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJmaXh0dXJlIn0.ZmFrZS1zaWduYXR1cmU\"}",
+      "output": "{\"credential\":\"[REDACTED]\"}"
+    },
+    {
+      "input": "GET https://example.com/callback?state=af0ifjsldkj&assertion=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJmaXh0dXJlIn0.ZmFrZS1zaWduYXR1cmU",
+      "output": "GET https://example.com/callback?state=af0ifjsldkj&assertion=[REDACTED]"
+    },
+    {
+      "input": "config eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJmaXh0dXJlIn0 loaded",
+      "output": "config eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJmaXh0dXJlIn0 loaded"
+    },
+    {
+      "input": "Authorization: Token\u000bnext-line",
+      "output": "Authorization: [REDACTED]\u000bnext-line",
+      "note": "U+000B is a line break: the scheme word is the whole value"
+    },
+    {
+      "input": "Authorization: Key\r\nxi-api-key: 0123456789abcdef-notreal\r\n",
+      "output": "Authorization: [REDACTED]\r\nxi-api-key: [REDACTED]\r\n"
+    },
+    {
+      "input": "token: Bearer\npassword: hunter2-not-real",
+      "output": "token: Bearer\npassword: [REDACTED]"
+    },
+    {
+      "input": "token: Bearer\npassword: hunter2",
+      "output": "token: Bearer\npassword: [REDACTED]"
+    },
+    {
+      "input": "x-api-key: Token\r\nclient_secret: s3cr3tvalue",
+      "output": "x-api-key: [REDACTED]\r\nclient_secret: [REDACTED]"
+    },
+    {
+      "input": "Authorization: Bearer\r\nX-Api-Key: abcdef123456",
+      "output": "Authorization: Bearer\r\nX-Api-Key: [REDACTED]"
+    },
+    {
+      "input": "Authorization: Bearer \r\nX-Api-Key: 3f9a1c0e-7b2d-4e8f-a6c5-1d2e3f4a5b6c",
+      "output": "Authorization: Bearer \r\nX-Api-Key: [REDACTED]"
+    },
+    {
+      "input": "authorization: Basic\r\nxi-api-key: secretvalue",
+      "output": "authorization: Basic\r\nxi-api-key: [REDACTED]"
+    },
+    {
+      "input": "Authorization: Key \r\nmy_password: hunter2-not-real\r\n",
+      "output": "Authorization: [REDACTED] \r\nmy_password: [REDACTED]\r\n"
+    },
+    {
+      "input": "Authorization: Token token=\"abc123secret\", nonce=\"def\"",
+      "output": "Authorization: [REDACTED] token=\"[REDACTED]\", nonce=\"def\""
+    },
+    {
+      "input": "Authorization: Key token='abc123secret'",
+      "output": "Authorization: [REDACTED] token='[REDACTED]'"
+    },
+    {
+      "input": "Authorization: Bearer token=\"abc123secret\"",
+      "output": "Authorization: [REDACTED] token=\"[REDACTED]\""
+    },
+    {
+      "input": "x-api-key: Token token=\"abc123secret\"",
+      "output": "x-api-key: [REDACTED] token=\"[REDACTED]\""
+    },
+    {
+      "input": "token: Bearer secret=\"abc123secret\"",
+      "output": "token: [REDACTED] secret=\"[REDACTED]\""
+    },
+    {
+      "input": "token: Bearer password: hunter2",
+      "output": "token: [REDACTED] password: [REDACTED]"
+    },
+    {
+      "input": "authorization:\nx-api-key: abc123secret",
+      "output": "authorization:\nx-api-key: [REDACTED]"
+    },
+    {
+      "input": "x-api-key: Bearer%20password: hunter2-not-real",
+      "output": "x-api-key: [REDACTED]password: [REDACTED]"
+    },
+    {
+      "input": "password: token: hunter2-not-real",
+      "output": "password: token: [REDACTED]"
+    },
+    {
+      "input": "GET /cb?token=Bearer abc123secret",
+      "output": "GET /cb?token=[REDACTED] [REDACTED]"
+    },
+    {
+      "input": "GET /cb?access_token=Basic abc123secret&x=1",
+      "output": "GET /cb?access_token=[REDACTED] [REDACTED]&x=1"
+    },
+    {
+      "input": "GET https://h/p?token=Bearer S3CRETabc",
+      "output": "GET https://h/p?token=[REDACTED] [REDACTED]"
+    },
+    {
+      "input": "GET https://h/p?access_token=Key S3CRETabc",
+      "output": "GET https://h/p?access_token=[REDACTED] [REDACTED]"
+    },
+    {
+      "input": "GET https://h/p?a=1&token=Token S3CRETabc",
+      "output": "GET https://h/p?a=1&token=[REDACTED] [REDACTED]"
+    },
+    {
+      "input": "password: abc\u0085def",
+      "output": "password: [REDACTED]\u0085def",
+      "note": "U+0085 is White_Space, so it ends the value"
+    },
+    {
+      "input": "password=abc\u000bdefghij",
+      "output": "password=[REDACTED]\u000bdefghij",
+      "note": "U+000B is White_Space, so it ends the value"
+    },
+    {
+      "input": "jwt-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJmaXh0dXJlIn0.ZmFrZS1zaWduYXR1cmU",
+      "output": "jwt-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJmaXh0dXJlIn0.ZmFrZS1zaWduYXR1cmU",
+      "note": "a JWT starts only after a character that is not base64url, so a glued JWT is left"
+    },
+    {
+      "input": "abceyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJmaXh0dXJlIn0.ZmFrZS1zaWduYXR1cmU",
+      "output": "abceyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJmaXh0dXJlIn0.ZmFrZS1zaWduYXR1cmU",
+      "note": "a JWT starts only after a character that is not base64url, so a glued JWT is left"
+    },
+    {
+      "input": "GET https://example.com/cb?a=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJmaXh0dXJlIn0.ZmFrZS1zaWduYXR1cmU",
+      "output": "GET https://example.com/cb?a=[REDACTED]"
+    },
+    {
+      "input": "Authorization: Bearer%20eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJmaXh0dXJlIn0.ZmFrZS1zaWduYXR1cmU",
+      "output": "Authorization: [REDACTED]"
+    },
+    {
+      "input": "see Bearer%20eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJmaXh0dXJlIn0.ZmFrZS1zaWduYXR1cmU",
+      "output": "see Bearer%20eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJmaXh0dXJlIn0.ZmFrZS1zaWduYXR1cmU",
+      "note": "Bearer%20 glues the JWT to a base64url character, and Bearer needs White_Space"
+    },
+    {
+      "input": "pa\u00dfword: hunter2secret",
+      "output": "pa\u00dfword: hunter2secret",
+      "note": "ASCII-only case folding: \u00df is not ss"
+    },
+    {
+      "input": "pa\u1e9eword: hunter2secret",
+      "output": "pa\u1e9eword: hunter2secret",
+      "note": "ASCII-only case folding: \u1e9e is not SS"
+    },
+    {
+      "input": "pas\u017fword: hunter2secret",
+      "output": "pas\u017fword: hunter2secret",
+      "note": "ASCII-only case folding: \u017f is not s"
+    },
+    {
+      "input": "pa\u017f\u017fword: hunter2secret",
+      "output": "pa\u017f\u017fword: hunter2secret",
+      "note": "ASCII-only case folding: \u017f is not s"
+    },
+    {
+      "input": "\u017fecret: S3CRETVALUExyz789",
+      "output": "\u017fecret: S3CRETVALUExyz789",
+      "note": "ASCII-only case folding: \u017f is not s"
+    },
+    {
+      "input": "GET /p?\u017fig=abc123",
+      "output": "GET /p?\u017fig=abc123",
+      "note": "ASCII-only case folding: \u017f is not s"
+    },
+    {
+      "input": "acce\u00df_token=abc",
+      "output": "acce\u00df_token=[REDACTED]",
+      "note": "acce\u00df_ is not access_, but token= still matches"
+    },
+    {
+      "input": "Authorization: \u212aey 6f1c2d3e-4a5b-4c6d-8e7f-90a1b2c3d4e5:0f1e2d3c4b5a69788796a5b4c3d2e1f0",
+      "output": "Authorization: [REDACTED] 6f1c2d3e-4a5b-4c6d-8e7f-90a1b2c3d4e5:0f1e2d3c4b5a69788796a5b4c3d2e1f0",
+      "note": "ASCII-only case folding: the Kelvin sign is not K, so it is not the Key scheme"
+    },
+    {
+      "input": "to\u212aen: S3CRETVALUExyz789",
+      "output": "to\u212aen: S3CRETVALUExyz789",
+      "note": "ASCII-only case folding: the Kelvin sign is not K"
+    },
+    {
+      "input": "AUTHOR\u0130ZATION: abc123secret",
+      "output": "AUTHOR\u0130ZATION: abc123secret",
+      "note": "ASCII-only case folding: \u0130 is not I"
+    },
+    {
+      "input": "author\u0131zation: abc123secret",
+      "output": "author\u0131zation: abc123secret",
+      "note": "ASCII-only case folding: \u0131 is not i"
+    },
+    {
+      "input": "X-API-KEY: abc123secret",
+      "output": "X-API-KEY: [REDACTED]"
+    },
+    {
+      "input": "AUTHORIZATION: BEARER abc123secret",
+      "output": "AUTHORIZATION: BEARER [REDACTED]"
+    },
+    {
+      "input": "Authorization: Bearer\r\n 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b",
+      "output": "Authorization: Bearer\r\n [REDACTED]"
+    },
+    {
+      "input": "authorization: Basic\r\ndXNlcjpwYXNz",
+      "output": "authorization: Basic\r\n[REDACTED]"
+    },
+    {
+      "input": "token: Bearer\nabc123secret",
+      "output": "token: Bearer\n[REDACTED]"
+    },
+    {
+      "input": "token: Bearer\u2028abc123secret",
+      "output": "token: Bearer\u2028[REDACTED]"
+    },
+    {
+      "input": "Authorization: Bearer\r\nabc:def123secret",
+      "output": "Authorization: Bearer\r\n[REDACTED]",
+      "note": "an authorization value on the next line is a whole token, as on its own line"
+    },
+    {
+      "input": "Authorization: Bearer\r\nContent-Type: application/json",
+      "output": "Authorization: Bearer\r\n[REDACTED] application/json",
+      "note": "the next line's first token is the value unless it is a credential field's label"
+    },
+    {
+      "input": "x-api-key: Basic\r\nabc123secret",
+      "output": "x-api-key: Basic\r\nabc123secret",
+      "note": "only Bearer, or an authorization field's Bearer or Basic, continues on the next line"
+    },
+    {
+      "input": "Authorization: Key\r\nabc123secret",
+      "output": "Authorization: [REDACTED]\r\nabc123secret",
+      "note": "only Bearer, or an authorization field's Bearer or Basic, continues on the next line"
+    },
+    {
+      "input": "Authorization: Token token = \"abc123secret\"",
+      "output": "Authorization: [REDACTED] token = \"[REDACTED]\""
+    },
+    {
+      "input": "x-api-key: Token token= abc123secret",
+      "output": "x-api-key: [REDACTED] token= [REDACTED]"
+    },
+    {
+      "input": "authorization: Key token =abc123secret",
+      "output": "authorization: [REDACTED] token =[REDACTED]"
+    },
+    {
+      "input": "Authorization: Key password : hunter2-not-real",
+      "output": "Authorization: [REDACTED] password : [REDACTED]"
+    },
+    {
+      "input": "Authorization: Token token=\"abc123secret",
+      "output": "Authorization: [REDACTED] token=\"[REDACTED]"
+    },
+    {
+      "input": "x-api-key: Bearer password:\nhunter2-not-real",
+      "output": "x-api-key: [REDACTED] password:\n[REDACTED]"
+    },
+    {
+      "input": "token: Bearer password\": \"hunter2-not-real\"",
+      "output": "token: [REDACTED] password\": \"[REDACTED]\""
+    },
+    {
+      "input": "authorization: token: Bearer abc123secret",
+      "output": "authorization: token: Bearer [REDACTED]"
+    },
+    {
+      "input": "token: Bearer Bearer abc123secret",
+      "output": "token: Bearer Bearer [REDACTED]"
+    },
+    {
+      "input": "authorization: token: Token token=\"abc123secret\"",
+      "output": "authorization: token: [REDACTED] token=\"[REDACTED]\""
+    },
+    {
+      "input": "password: token: secret: hunter2-not-real",
+      "output": "password: token: secret: [REDACTED]"
+    },
+    {
+      "input": "x-api-key:\npassword: Bearer abc123secret",
+      "output": "x-api-key:\npassword: Bearer [REDACTED]"
+    },
+    {
+      "input": "x-api-key: a=\"x\u2028password: \"hunter2-not-real\"",
+      "output": "x-api-key: [REDACTED]\u2028password: \"[REDACTED]\"",
+      "note": "a quoted value never contains a label, even after U+2028"
+    },
+    {
+      "input": "token: a=\"x password: \"hunter2-not-real\"",
+      "output": "token: [REDACTED] password: \"[REDACTED]\""
+    },
+    {
+      "input": "token: nonce=\"\"abc123secret",
+      "output": "token: [REDACTED]"
+    },
+    {
+      "input": "authorization: Basic xbearer  abc123secret",
+      "output": "authorization: Basic [REDACTED]bearer  [REDACTED]"
+    },
+    {
+      "input": "token: a='x?code=''abc123secret",
+      "output": "token: [REDACTED]?code=[REDACTED]"
+    },
+    {
+      "input": "token: a=\"x\u000babc123secret\"",
+      "output": "token: [REDACTED]",
+      "note": "a closed quote holds any White_Space except CR and LF"
+    },
+    {
+      "input": "token: abc?code=xyz#abc123secret",
+      "output": "token: [REDACTED]?code=[REDACTED]"
+    },
+    {
+      "input": "password: abc?code=x#hunter2secret",
+      "output": "password: [REDACTED]?code=[REDACTED]"
+    },
+    {
+      "input": "{\"token\":\"https://cdn.example.com/a.mp3?sig=abc#abc123secret\"}",
+      "output": "{\"token\":\"[REDACTED]?sig=[REDACTED]",
+      "note": "a query value runs to the next & or White_Space, so it takes the closing quote too"
+    },
+    {
+      "input": "secret: \"abc?code=x#abc123secret\"",
+      "output": "secret: \"[REDACTED]?code=[REDACTED]",
+      "note": "a query value runs to the next & or White_Space, so it takes the closing quote too"
+    },
+    {
+      "input": "Authorization: Basic dXNlcj?sig=1#abc123secret",
+      "output": "Authorization: Basic [REDACTED]?sig=[REDACTED]"
+    },
+    {
+      "input": "Authorization: Bearer abc?code=x#abc123secret",
+      "output": "Authorization: Bearer [REDACTED]?code=[REDACTED]"
+    },
+    {
+      "input": "GET /p?token=x\"y#frag",
+      "output": "GET /p?token=[REDACTED]"
+    },
+    {
+      "input": "GET /p?api_key=abc,def#frag",
+      "output": "GET /p?api_key=[REDACTED]"
+    },
+    {
+      "input": "url=&token=X?code=Y#id=Z?id=eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.c2ln",
+      "output": "url=&token=[REDACTED]"
+    },
+    {
+      "input": "WSS://X.y/?token=a1Z6Z3R8?code=M49f#frag",
+      "output": "WSS://X.y/?token=[REDACTED]"
+    },
+    {
+      "input": "x-api-key: password =\"?code=a\"abc123secret\"",
+      "output": "x-api-key: password =\"?code=[REDACTED]"
+    },
+    {
+      "input": "x-api-key: token='?access_token=abc'abc123secret",
+      "output": "x-api-key: token='?access_token=[REDACTED]"
+    },
+    {
+      "input": "password: Key ?code=x\"abc123secret\"",
+      "output": "password: [REDACTED] ?code=[REDACTED]"
+    },
+    {
+      "input": "x-api-key: Token ?sig=a,abc123secret",
+      "output": "x-api-key: [REDACTED] ?sig=[REDACTED]"
+    },
+    {
+      "input": "token: password: ?code=x'abc123secret'",
+      "output": "token: password: ?code=[REDACTED]"
+    },
+    {
+      "input": "token:xapi_key: ?code=abc\"abc123secret",
+      "output": "token:[REDACTED]api_key: ?code=[REDACTED]"
+    },
+    {
+      "input": "x-api-key: Basic ?code=\\\"abc123secret\\\"",
+      "output": "x-api-key: [REDACTED] ?code=[REDACTED]"
+    },
+    {
+      "input": "Authorization: Bearer ?access_token=abc'abc123secret",
+      "output": "Authorization: Bearer ?access_token=[REDACTED]"
+    },
+    {
+      "input": "Authorization: Key Key Key Key Key Key Key Key Bearer abc123secret",
+      "output": "Authorization: Key Key Key Key Key Key Key [REDACTED] Bearer [REDACTED]"
+    },
+    {
+      "input": "x-api-key: Basic Basic Basic Basic Basic Basic Basic Basic Bearer abc123secret",
+      "output": "x-api-key: Basic Basic Basic Basic Basic Basic Basic [REDACTED] Bearer [REDACTED]"
+    },
+    {
+      "input": "token: Bearer Bearer Bearer Bearer Bearer Bearer Bearer Bearer Bearer abc123secret",
+      "output": "token: Bearer Bearer Bearer Bearer Bearer Bearer Bearer Bearer Bearer [REDACTED]"
+    },
+    {
+      "input": "Authorization: Token Basic Key Basic Basic Token Key Token Bearer abc123secret",
+      "output": "Authorization: Token Basic Key Basic Basic Token Key [REDACTED] Bearer [REDACTED]"
+    },
+    {
+      "input": "AIzaQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQeyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.c2ln",
+      "output": "[REDACTED][REDACTED]",
+      "note": "rule 6 replaces a JWT that rule 5 left because the key before it was base64url"
+    },
+    {
+      "input": "x \u0130AIzaQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQeyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.c2ln",
+      "output": "x \u0130[REDACTED][REDACTED]",
+      "note": "rule 6 replaces a JWT that rule 5 left because the key before it was base64url"
+    },
+    {
+      "input": "Bearer ab\u212acdabc123secret",
+      "output": "Bearer [REDACTED]",
+      "note": "a Bearer token may hold the Kelvin sign, as main's case-insensitive class matched"
+    },
+    {
+      "input": "Bearer abc\u017fdefabc123secret",
+      "output": "Bearer [REDACTED]",
+      "note": "a Bearer token may hold the long s, as main Mac's ICU class matched; main Windows' .NET class did not"
+    },
+    {
+      "input": "Authorization: Ba\u017fic dXNlcjpwYXNz",
+      "output": "Authorization: Ba\u017fic [REDACTED]",
+      "note": "Basic may be spelled with the long s, as main Mac's ICU matched it; main Windows' .NET did not"
+    },
+    {
+      "input": "Authorization: Ba\u017fic\r\ndXNlcjpwYXNz",
+      "output": "Authorization: Ba\u017fic\r\n[REDACTED]",
+      "note": "Basic may be spelled with the long s, as main Mac's ICU matched it; main Windows' .NET did not"
     }
   ]
 }

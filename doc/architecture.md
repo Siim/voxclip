@@ -578,7 +578,11 @@ Acceptance: average bitrate within ±15% of target on the on-demand `--motion-60
 Topic specs may add files inside a cache entry (for example the transcription spec's per-engine files); they must follow the atomic-write and eviction rules below.
 
 - Writes are atomic (temp file in the same directory, then rename).
-- Eviction: least recently used by `lastAccessAt`, cap 5 GB by default (Settings → General → "Cache size limit": 2 / 5 / 10 / 20 GB), run in the background 30 s after launch and after each import. Entries referenced by an open project are never evicted. "Clear cache" removes everything not in use.
+- Audio extraction writes into the source's own entry, never into `<data>/Cache/` itself: `CacheStore.extractAudio` (macOS) and `CacheIndex.ExtractAudioAsync` (Windows) choose the directory from the content key, and extraction records `meta.json` with the envelope, keeping `createdAt`. Timestamps are written as UTC ending in Z; readers accept any RFC 3339 offset, because Windows extractions before 2026-10-27 wrote `+00:00`. Builds before 2026-10-27 wrote `audio-16k.wav`, `envelope-10ms.f32` and `meta.json` at the cache root, where each transcription overwrote the last. They also left Apple speech's `apple-*.caf` copies and the `*.partial` temporaries of interrupted writes (`audio-16k-*`, `audio-16k.wav.*`, `envelope-*`, `meta.json.*`) there. Extraction and eviction delete these regular files at the root, never links, folders or anything inside an entry. Extraction refuses an entry that is a link or not a folder, so it never writes outside the cache.
+- Eviction: least recently used by `lastAccessAt`, cap 5 GB by default (Settings → General → "Cache size limit": 2 / 5 / 10 / 20 GB), run in the background 30 s after launch and after each import. Entries referenced by an open project are never evicted. Over the cap, eviction runs two passes, oldest entry first:
+  1. An entry loses what can be made again (`audio-16k.wav`, `thumbs/`, `faces/` and any other file) and keeps `envelope-10ms.f32`, `transcripts/` and `meta.json`, whose `bytes` is rewritten. An entry left with neither an envelope nor a raw transcript is removed whole. The audio goes first: the envelope is about 1.25% of its size and is what the audiogram and the timeline draw when the video is gone (design §5.4.6 and §5.4.10), and raw transcripts may be paid results (transcription spec 14.1).
+  2. Only if the cache is still over the cap are whole entries removed, envelopes and transcripts with them.
+- "Clear cache" runs the first pass with a cap of 0, so every entry not in use keeps its envelope and raw transcripts. "Clear everything" runs both passes and removes everything not in use.
 - Models are not cache: only the user removes them (Settings → Transcription).
 - A missing or corrupt cache entry is never an error: it is recomputed.
 
@@ -784,15 +788,50 @@ Logging must never crash or block startup: file sink failures are swallowed afte
 This is the only redactor definition: the AI spec, the transcription spec, Voice Lab and the LLM catalogue refer to it, and the replacement text is always `[REDACTED]`. Every message passes through `Redactor.redact(_:)` before it reaches any sink. In order:
 
 1. **Known secret values.** Every key or token loaded during the session (from the secret store, env vars or the device flow) is registered with the redactor; each occurrence is replaced with `[REDACTED]`. Values shorter than 8 characters are not registered.
-2. **Authorization headers** (case-insensitive): `(authorization)(["']?\s*[:=]\s*["']?)((?:Bearer|Basic|Key|Token)\s+)?([^\s"',&]+)` → `$1$2$3[REDACTED]`. The scheme word is kept and the credential after it is replaced, whatever the scheme.
-3. **Other header and field patterns** (case-insensitive): `(x-api-key|xi-api-key|x-goog-api-key|api[-_]?key|access[-_]?token|refresh[-_]?token|client[-_]?secret|password|secret|token)(["']?\s*[:=]\s*["']?)([^\s"',&]+)` → keep groups 1 and 2, replace group 3 with `[REDACTED]`. Then **bearer tokens** anywhere: `Bearer\s+[A-Za-z0-9._~+/=-]+` → `Bearer [REDACTED]`.
-4. **URL query values** for `key`, `api_key`, `token`, `access_token`, `code`, `device_code`, `user_code`, `signature`, `sig` → the value becomes `[REDACTED]`.
-5. **Key shapes:** `sk-ant-[A-Za-z0-9_-]{16,}`, `sk-(proj-)?[A-Za-z0-9_-]{20,}`, `xai-[A-Za-z0-9]{20,}`, `AIza[0-9A-Za-z_-]{35}`, `sk_[0-9a-f]{32,}` (ElevenLabs), `gh[pousr]_[A-Za-z0-9]{36,}`, JSON Web Tokens `eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+` → `[REDACTED]`.
-6. **Home directory:** the user's home path prefix → `~`.
+2. **Authorization headers:** `(authorization)(["']?(?>\s*)[:=](?>\s*)["']?)((?:(?!LABEL)(?:Bearer|Ba[s\u017F]ic|Key|Token)(?>[\t\p{Zs}]+)){1,8})?VALUE` → `$1$2$3[REDACTED]`. The field name, the separator, and up to eight scheme words with the horizontal whitespace after each are kept. The credential is replaced, whatever the scheme.
+   - A value never contains another credential label, so each label is redacted by its own match.
+     - `LABEL` is a field label: `(?:authorization|NAMES)["']?\s*[:=]`.
+     - `STOP` is any credential label: a `LABEL`, a query label `[?&](?:QUERY)=` with `QUERY` as in rule 4, or `Bearer\s`.
+     - `RUN(C, Q)` is `(?:C Q?(?=STOP)|C Q)`: characters of the class `C` up to the first `STOP`, or to the end of their run when no `STOP` follows.
+   - A scheme word is never a `LABEL`, because `token` is both a field name and the scheme word `Token`. When a `LABEL` follows the scheme words, the last scheme word is the value. So `token: Bearer password: …` becomes `token: [REDACTED] password: [REDACTED]`.
+   - At most eight scheme words are kept, because a longer repeat would need a group loop deep enough to overflow ICU's backtracking stack. A ninth one is the value, unless it is a `Bearer` word followed by a token that is not a `LABEL`. Then the field match backs off, and the bearer step replaces the part of that token in its class `[A-Za-z0-9._~+/=\u212A\u017F-]`. A token that starts with another character stays, as on main.
+   - The whitespace loops of the separator and after each scheme word are atomic, `(?>\s*)` and `(?>[\t\p{Zs}]+)`. Nothing after them starts with whitespace, so giving a character back never helps a match, and a long whitespace run that fails is not retried one character at a time.
+   - `VALUE` is `(?!LABEL)(?![?&](?:QUERY)=)(?!Bearer[\t\p{Zs}]+(?!LABEL))` and then the first of these that matches. So a value never starts with a field label or a query label, and a `Bearer` word followed by a token that is not a `LABEL` is never the value: the field match backs off, and the bearer step replaces the part of that token in its class `[A-Za-z0-9._~+/=\u212A\u017F-]`. A token that starts with another character stays, as on main.
+     - a token up to a glued `STOP`, `[^\s"',&]+?(?=STOP)`, such as `abc` in `x-api-key: abcpassword: …`;
+     - an auth-param, such as `nonce="…"` in `Authorization: Key nonce="…"`: `[^\s"',&=:]+=(?:"(?![^"\r\n]*?STOP)[^"\r\n]*"|'(?![^'\r\n]*?STOP)[^'\r\n]*'|["'])RUN([^\s"',&], *)`. That is a name without `:` or `=`, then `=` and a closed quote with no `STOP` in it, or a lone opening quote, and then the token glued after it up to a `STOP`;
+     - a token, `[^\s"',&]+`, unless it is a `Bearer` or `Basic` word that ends its line: `(?!(?:Bearer|Ba[s\u017F]ic)[\t\p{Zs}]*[\n\x0B\f\r\x85\p{Zl}\p{Zp}])`. The bearer step of rule 3 then replaces the next line's token after `Bearer`, or after an authorization field's `Basic`. Another field's `Basic` that ends its line, and the line after it, stay unchanged.
+   - No value crosses CR or LF. Only a closed quote holds other White_Space, and it may contain U+000B, U+000C, U+0085, U+2028 and U+2029.
+   - A quote with a `STOP` in it is not closed. The value is then the opening quote and the token glued to it, and the label inside gets its own match.
+
+   A value with no whitespace after the scheme word, such as `Key=…` or the URL-encoded `Bearer%20…`, is replaced whole, up to any label glued to it.
+3. **Other header and field patterns:**
+   - `(NAMES)(["']?(?>\s*)[:=](?>\s*)["']?)((?:(?!LABEL)(?:Bearer|Ba[s\u017F]ic|Key|Token)(?>[\t\p{Zs}]+)){1,8})?VALUE` → `$1$2$3[REDACTED]`, with `VALUE` as in rule 2 and `NAMES` = `x-api-key|xi-api-key|x-goog-api-key|api[-_]?key|access[-_]?token|refresh[-_]?token|client[-_]?secret|password|secret|token`. So `x-api-key: Basic …` keeps `Basic` and loses the secret.
+   - Then **bearer tokens:** `(authorization["']?(?>\s*)[:=](?>\s*)["']?(?:Bearer|Ba[s\u017F]ic)\s+)(?!STOP)RUN([^\s"',&], +)|(Bearer\s+)(?!STOP)RUN([A-Za-z0-9._~+/=\u212A\u017F-], +)` → `$1$2[REDACTED]`.
+     - This covers `Bearer` anywhere and an authorization field's `Bearer` or `Basic`.
+     - The whitespace after the word is kept as it was and may cross a line, so a value folded or wrapped onto the next line is replaced.
+     - A `STOP` right after the word, or inside the token, is left to its own match. So in `Bearer Bearer …`, the token after the second `Bearer` is replaced.
+     - The bearer token class also holds U+212A, which both main redactors' case-insensitive classes matched, and U+017F, which main Mac's ICU class matched (main Windows' .NET class did not). Field and query names stay ASCII-only. Of the scheme words, only the s of `Basic` also matches U+017F.
+4. **Query parameters:** `([?&](?:QUERY)=)[^&\s]*` → `$1[REDACTED]`, with `QUERY` = `key|api_key|token|access_token|code|device_code|user_code|signature|sig`. The value runs to the next `&` or White_Space, through `#`. So a URL fragment after a credential query value is replaced too, which main did not do.
+5. **Key shapes:** `sk-ant-(?=[A-Za-z0-9_-]{16})[A-Za-z0-9_-]+`, `sk-(?:proj-)?(?=[A-Za-z0-9_-]{20})[A-Za-z0-9_-]+`, `xai-(?=[A-Za-z0-9]{20})[A-Za-z0-9]+`, `AIza[0-9A-Za-z_-]{35}`, `sk_(?=[0-9a-f]{32})[0-9a-f]+` (ElevenLabs), `gh[pousr]_(?=[A-Za-z0-9]{36})[A-Za-z0-9]+`, and JSON Web Tokens `(?<![A-Za-z0-9_-])eyJ(?>[A-Za-z0-9_-]{1,8192})\.(?>[A-Za-z0-9_-]{1,8192})\.(?>[A-Za-z0-9_-]{1,8192})` → `[REDACTED]`.
+   - Each open-ended key shape is a bounded lookahead and then a `+` loop over one class. It matches the same text as the open counted loop it replaces, such as `sk-[A-Za-z0-9_-]{20,}`. On an open counted loop, ICU stops with an internal error once the loop's backtracking stack overflows: from about 125,000 to 500,000 characters, depending on the rest of the pattern (153,863 for main's rule 5).
+   - A JSON Web Token is `eyJ`, then three base64url segments separated by dots. A header longer than `eyJ` plus 8,192 characters, or a payload longer than 8,192 characters, is not matched. A longer signature is replaced up to its first 8,192 characters, and the rest of it stays in the output. A two-segment value such as `eyJ….eyJ…` is not redacted by this rule.
+   - A match starts only where the character before `eyJ` is not base64url, so each run of base64url characters is tried at most once and redaction stays linear in the input length. Each segment is atomic, so a failed attempt does not backtrack.
+   - A token glued to base64url characters, such as `jwt-eyJ…`, `abceyJ…` or `Bearer%20eyJ…`, is not redacted by this rule.
+6. **JSON Web Tokens, again:** the JWT pattern of rule 5 runs once more as its own rule → `[REDACTED]`. Within one pass, the lookbehind sees the original character before `eyJ`. So a JWT glued after an AIza key, whose class stops after 35 characters, is replaced only by this rule. An open-ended key shape takes the header of a JWT glued to it (sk_ takes its 'e'), and the rest of that JWT stays.
+7. **Home directory:** the user's home path prefix → `~`.
+
+In these patterns `\s` means Unicode White_Space. Code spells the class out as `[\t\n\x0B\f\r\x85\p{Z}]`, so both engines use the identical set. `[\t\p{Zs}]` is its horizontal part, and `[\n\x0B\f\r\x85\p{Zl}\p{Zp}]` the rest. Field names, scheme words and query names match ASCII letters in either case and no other letter, except that the s of `Basic` also matches U+017F (long s), as main Mac's ICU did. Code writes each ASCII letter as a class such as `[Aa]` and does not use `(?i)`, because ICU and .NET fold ß, ſ and the Kelvin sign differently. Both Cores run rules 2 to 6 with identical pattern text, which `shared/fixtures/redaction/cases.json` lists. The rules run in the listed order, and that order is normative: another order can give a different result. If a rule cannot run, redaction fails closed and returns `[REDACTED]` for the whole message. That happens on Windows when a rule exceeds its 1-second match timeout, and on Mac when ICU reports an internal error.
+
+**Known limits.** Main's redactors leave all of these too, unless noted:
+
+- Six shapes: the token after a URL-encoded colon (`authorization%3A…`), unless `Bearer` precedes it; a quoted string after a scheme word, or after the quote that closes a `":"` separator; a value inside JSON-escaped quotes (`\"`); the next line's token after a `":"` separator whose closing quote ends its line; the next line's token after a scheme word that ends its line, except `Bearer` and an authorization field's `Bearer` or `Basic`; and the part of a query value after a literal space.
+- Escaped JSON field names inside a JSON string, such as `{"arguments":"{\"api_key\":\"…\"}"}`, are not field labels.
+- Accepted narrowings: ASCII-only folding no longer matches `token:` spelled with the Kelvin sign (U+212A) for its k, which both main redactors matched, or `paßword:`, `paẞword:`, `pasſword:`, `paſſword:`, `ſecret:` and `?ſig=`, which only main Mac matched.
+- JWTs, which main never redacted: a JWT glued to base64url characters is left (rule 5), and so is the rest of a JWT whose header an open-ended key shape took (rule 6). One redaction replaces at most two units of a glued chain. In a chain of three, such as an AIza key, a JWT whose signature is exactly 8,192 characters long and a JWT glued right after that signature, both JWT rules check the third unit against the base64url character before it, so it stays in the output. A second redaction replaces it.
 
 Never logged at any level: transcript text, prompts, LLM responses, file contents, request or response bodies. Allowed: provider name, model id, endpoint host, HTTP status, byte counts, durations, word counts, error codes.
 
-Acceptance cases (both platforms, `Redactor` tests; the same rows are the shared fixture `shared/fixtures/redaction/cases.json`, and a change here changes both):
+Acceptance cases (both platforms, `Redactor` tests; the same rows are the shared fixture `shared/fixtures/redaction/cases.json`, and a change here changes both). In the rows, ⟨CR⟩, ⟨LF⟩, ⟨TAB⟩, ⟨VT⟩, ⟨NEL⟩ and ⟨LS⟩ each stand for one U+000D, U+000A, U+0009, U+000B, U+0085 or U+2028 character, and ⟨U+212A⟩ for the Kelvin sign. A note in parentheses after an output is the fixture case's note:
 
 | Input | Output |
 |---|---|
@@ -806,6 +845,120 @@ Acceptance cases (both platforms, `Redactor` tests; the same rows are the shared
 | `xi-api-key: sk_0123456789abcdef0123456789abcdef` | `xi-api-key: [REDACTED]` |
 | `transport error: https://generativelanguage.googleapis.com/v1beta/models?key=AIzaSyA1234567890abcdefghijklmnopqrstu` | `transport error: https://generativelanguage.googleapis.com/v1beta/models?key=[REDACTED]` |
 | `status 401 from api.elevenlabs.io` | unchanged |
+| `Authorization: Key 6f1c2d3e-4a5b-4c6d-8e7f-90a1b2c3d4e5:0f1e2d3c4b5a69788796a5b4c3d2e1f0` | `Authorization: Key [REDACTED]` |
+| `{"authorization":"Key 6f1c2d3e-4a5b-4c6d-8e7f-90a1b2c3d4e5:0f1e2d3c4b5a69788796a5b4c3d2e1f0"}` | `{"authorization":"Key [REDACTED]"}` |
+| `x-api-key: 3f9a1c0e-7b2d-4e8f-a6c5-1d2e3f4a5b6c` | `x-api-key: [REDACTED]` |
+| `authorization=Key%206f1c2d3e-4a5b-4c6d-8e7f-90a1b2c3d4e5%3A0f1e2d3c4b5a69788796a5b4c3d2e1f0` | `authorization=[REDACTED]` |
+| `Authorization: Key=6f1c2d3e-4a5b-4c6d-8e7f-90a1b2c3d4e5:0f1e2d3c4b5a69788796a5b4c3d2e1f0` | `Authorization: [REDACTED]` |
+| `Authorization: Key:6f1c2d3e-4a5b-4c6d-8e7f-90a1b2c3d4e5:0f1e2d3c4b5a69788796a5b4c3d2e1f0` | `Authorization: [REDACTED]` |
+| `Authorization: Key-6f1c2d3e-4a5b-4c6d-8e7f-90a1b2c3d4e5:0f1e2d3c4b5a69788796a5b4c3d2e1f0` | `Authorization: [REDACTED]` |
+| `Authorization: Token 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b` | `Authorization: Token [REDACTED]` |
+| `{"authorization":"Token 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b"}` | `{"authorization":"Token [REDACTED]"}` |
+| `Authorization: Bearer%209f86d081884c7d659a2feaa0c55ad015a3bf4f1b` | `Authorization: [REDACTED]` |
+| `x-api-key: Basic 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b` | `x-api-key: Basic [REDACTED]` |
+| `{"token":"Bearer 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b"}` | `{"token":"Bearer [REDACTED]"}` |
+| `token: Bearer%209f86d081884c7d659a2feaa0c55ad015a3bf4f1b` | `token: [REDACTED]` |
+| `Authorization: Token⟨TAB⟩9f86d081884c7d659a2feaa0c55ad015a3bf4f1b` | `Authorization: Token⟨TAB⟩[REDACTED]` |
+| `{"credential":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJmaXh0dXJlIn0.ZmFrZS1zaWduYXR1cmU"}` | `{"credential":"[REDACTED]"}` |
+| `GET https://example.com/callback?state=af0ifjsldkj&assertion=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJmaXh0dXJlIn0.ZmFrZS1zaWduYXR1cmU` | `GET https://example.com/callback?state=af0ifjsldkj&assertion=[REDACTED]` |
+| `config eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJmaXh0dXJlIn0 loaded` | unchanged |
+| `Authorization: Token⟨VT⟩next-line` | `Authorization: [REDACTED]⟨VT⟩next-line` (U+000B is a line break: the scheme word is the whole value) |
+| `Authorization: Key⟨CR⟩⟨LF⟩xi-api-key: 0123456789abcdef-notreal⟨CR⟩⟨LF⟩` | `Authorization: [REDACTED]⟨CR⟩⟨LF⟩xi-api-key: [REDACTED]⟨CR⟩⟨LF⟩` |
+| `token: Bearer⟨LF⟩password: hunter2-not-real` | `token: Bearer⟨LF⟩password: [REDACTED]` |
+| `token: Bearer⟨LF⟩password: hunter2` | `token: Bearer⟨LF⟩password: [REDACTED]` |
+| `x-api-key: Token⟨CR⟩⟨LF⟩client_secret: s3cr3tvalue` | `x-api-key: [REDACTED]⟨CR⟩⟨LF⟩client_secret: [REDACTED]` |
+| `Authorization: Bearer⟨CR⟩⟨LF⟩X-Api-Key: abcdef123456` | `Authorization: Bearer⟨CR⟩⟨LF⟩X-Api-Key: [REDACTED]` |
+| `Authorization: Bearer ⟨CR⟩⟨LF⟩X-Api-Key: 3f9a1c0e-7b2d-4e8f-a6c5-1d2e3f4a5b6c` | `Authorization: Bearer ⟨CR⟩⟨LF⟩X-Api-Key: [REDACTED]` |
+| `authorization: Basic⟨CR⟩⟨LF⟩xi-api-key: secretvalue` | `authorization: Basic⟨CR⟩⟨LF⟩xi-api-key: [REDACTED]` |
+| `Authorization: Key ⟨CR⟩⟨LF⟩my_password: hunter2-not-real⟨CR⟩⟨LF⟩` | `Authorization: [REDACTED] ⟨CR⟩⟨LF⟩my_password: [REDACTED]⟨CR⟩⟨LF⟩` |
+| `Authorization: Token token="abc123secret", nonce="def"` | `Authorization: [REDACTED] token="[REDACTED]", nonce="def"` |
+| `Authorization: Key token='abc123secret'` | `Authorization: [REDACTED] token='[REDACTED]'` |
+| `Authorization: Bearer token="abc123secret"` | `Authorization: [REDACTED] token="[REDACTED]"` |
+| `x-api-key: Token token="abc123secret"` | `x-api-key: [REDACTED] token="[REDACTED]"` |
+| `token: Bearer secret="abc123secret"` | `token: [REDACTED] secret="[REDACTED]"` |
+| `token: Bearer password: hunter2` | `token: [REDACTED] password: [REDACTED]` |
+| `authorization:⟨LF⟩x-api-key: abc123secret` | `authorization:⟨LF⟩x-api-key: [REDACTED]` |
+| `x-api-key: Bearer%20password: hunter2-not-real` | `x-api-key: [REDACTED]password: [REDACTED]` |
+| `password: token: hunter2-not-real` | `password: token: [REDACTED]` |
+| `GET /cb?token=Bearer abc123secret` | `GET /cb?token=[REDACTED] [REDACTED]` |
+| `GET /cb?access_token=Basic abc123secret&x=1` | `GET /cb?access_token=[REDACTED] [REDACTED]&x=1` |
+| `GET https://h/p?token=Bearer S3CRETabc` | `GET https://h/p?token=[REDACTED] [REDACTED]` |
+| `GET https://h/p?access_token=Key S3CRETabc` | `GET https://h/p?access_token=[REDACTED] [REDACTED]` |
+| `GET https://h/p?a=1&token=Token S3CRETabc` | `GET https://h/p?a=1&token=[REDACTED] [REDACTED]` |
+| `password: abc⟨NEL⟩def` | `password: [REDACTED]⟨NEL⟩def` (U+0085 is White_Space, so it ends the value) |
+| `password=abc⟨VT⟩defghij` | `password=[REDACTED]⟨VT⟩defghij` (U+000B is White_Space, so it ends the value) |
+| `jwt-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJmaXh0dXJlIn0.ZmFrZS1zaWduYXR1cmU` | unchanged (a JWT starts only after a character that is not base64url, so a glued JWT is left) |
+| `abceyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJmaXh0dXJlIn0.ZmFrZS1zaWduYXR1cmU` | unchanged (a JWT starts only after a character that is not base64url, so a glued JWT is left) |
+| `GET https://example.com/cb?a=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJmaXh0dXJlIn0.ZmFrZS1zaWduYXR1cmU` | `GET https://example.com/cb?a=[REDACTED]` |
+| `Authorization: Bearer%20eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJmaXh0dXJlIn0.ZmFrZS1zaWduYXR1cmU` | `Authorization: [REDACTED]` |
+| `see Bearer%20eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJmaXh0dXJlIn0.ZmFrZS1zaWduYXR1cmU` | unchanged (Bearer%20 glues the JWT to a base64url character, and Bearer needs White_Space) |
+| `paßword: hunter2secret` | unchanged (ASCII-only case folding: ß is not ss) |
+| `paẞword: hunter2secret` | unchanged (ASCII-only case folding: ẞ is not SS) |
+| `pasſword: hunter2secret` | unchanged (ASCII-only case folding: ſ is not s) |
+| `paſſword: hunter2secret` | unchanged (ASCII-only case folding: ſ is not s) |
+| `ſecret: S3CRETVALUExyz789` | unchanged (ASCII-only case folding: ſ is not s) |
+| `GET /p?ſig=abc123` | unchanged (ASCII-only case folding: ſ is not s) |
+| `acceß_token=abc` | `acceß_token=[REDACTED]` (acceß_ is not access_, but token= still matches) |
+| `Authorization: ⟨U+212A⟩ey 6f1c2d3e-4a5b-4c6d-8e7f-90a1b2c3d4e5:0f1e2d3c4b5a69788796a5b4c3d2e1f0` | `Authorization: [REDACTED] 6f1c2d3e-4a5b-4c6d-8e7f-90a1b2c3d4e5:0f1e2d3c4b5a69788796a5b4c3d2e1f0` (ASCII-only case folding: the Kelvin sign is not K, so it is not the Key scheme) |
+| `to⟨U+212A⟩en: S3CRETVALUExyz789` | unchanged (ASCII-only case folding: the Kelvin sign is not K) |
+| `AUTHORİZATION: abc123secret` | unchanged (ASCII-only case folding: İ is not I) |
+| `authorızation: abc123secret` | unchanged (ASCII-only case folding: ı is not i) |
+| `X-API-KEY: abc123secret` | `X-API-KEY: [REDACTED]` |
+| `AUTHORIZATION: BEARER abc123secret` | `AUTHORIZATION: BEARER [REDACTED]` |
+| `Authorization: Bearer⟨CR⟩⟨LF⟩ 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b` | `Authorization: Bearer⟨CR⟩⟨LF⟩ [REDACTED]` |
+| `authorization: Basic⟨CR⟩⟨LF⟩dXNlcjpwYXNz` | `authorization: Basic⟨CR⟩⟨LF⟩[REDACTED]` |
+| `token: Bearer⟨LF⟩abc123secret` | `token: Bearer⟨LF⟩[REDACTED]` |
+| `token: Bearer⟨LS⟩abc123secret` | `token: Bearer⟨LS⟩[REDACTED]` |
+| `Authorization: Bearer⟨CR⟩⟨LF⟩abc:def123secret` | `Authorization: Bearer⟨CR⟩⟨LF⟩[REDACTED]` (an authorization value on the next line is a whole token, as on its own line) |
+| `Authorization: Bearer⟨CR⟩⟨LF⟩Content-Type: application/json` | `Authorization: Bearer⟨CR⟩⟨LF⟩[REDACTED] application/json` (the next line's first token is the value unless it is a credential field's label) |
+| `x-api-key: Basic⟨CR⟩⟨LF⟩abc123secret` | unchanged (only Bearer, or an authorization field's Bearer or Basic, continues on the next line) |
+| `Authorization: Key⟨CR⟩⟨LF⟩abc123secret` | `Authorization: [REDACTED]⟨CR⟩⟨LF⟩abc123secret` (only Bearer, or an authorization field's Bearer or Basic, continues on the next line) |
+| `Authorization: Token token = "abc123secret"` | `Authorization: [REDACTED] token = "[REDACTED]"` |
+| `x-api-key: Token token= abc123secret` | `x-api-key: [REDACTED] token= [REDACTED]` |
+| `authorization: Key token =abc123secret` | `authorization: [REDACTED] token =[REDACTED]` |
+| `Authorization: Key password : hunter2-not-real` | `Authorization: [REDACTED] password : [REDACTED]` |
+| `Authorization: Token token="abc123secret` | `Authorization: [REDACTED] token="[REDACTED]` |
+| `x-api-key: Bearer password:⟨LF⟩hunter2-not-real` | `x-api-key: [REDACTED] password:⟨LF⟩[REDACTED]` |
+| `token: Bearer password": "hunter2-not-real"` | `token: [REDACTED] password": "[REDACTED]"` |
+| `authorization: token: Bearer abc123secret` | `authorization: token: Bearer [REDACTED]` |
+| `token: Bearer Bearer abc123secret` | `token: Bearer Bearer [REDACTED]` |
+| `authorization: token: Token token="abc123secret"` | `authorization: token: [REDACTED] token="[REDACTED]"` |
+| `password: token: secret: hunter2-not-real` | `password: token: secret: [REDACTED]` |
+| `x-api-key:⟨LF⟩password: Bearer abc123secret` | `x-api-key:⟨LF⟩password: Bearer [REDACTED]` |
+| `x-api-key: a="x⟨LS⟩password: "hunter2-not-real"` | `x-api-key: [REDACTED]⟨LS⟩password: "[REDACTED]"` (a quoted value never contains a label, even after U+2028) |
+| `token: a="x password: "hunter2-not-real"` | `token: [REDACTED] password: "[REDACTED]"` |
+| `token: nonce=""abc123secret` | `token: [REDACTED]` |
+| `authorization: Basic xbearer  abc123secret` | `authorization: Basic [REDACTED]bearer  [REDACTED]` |
+| `token: a='x?code=''abc123secret` | `token: [REDACTED]?code=[REDACTED]` |
+| `token: a="x⟨VT⟩abc123secret"` | `token: [REDACTED]` (a closed quote holds any White_Space except CR and LF) |
+| `token: abc?code=xyz#abc123secret` | `token: [REDACTED]?code=[REDACTED]` |
+| `password: abc?code=x#hunter2secret` | `password: [REDACTED]?code=[REDACTED]` |
+| `{"token":"https://cdn.example.com/a.mp3?sig=abc#abc123secret"}` | `{"token":"[REDACTED]?sig=[REDACTED]` (a query value runs to the next & or White_Space, so it takes the closing quote too) |
+| `secret: "abc?code=x#abc123secret"` | `secret: "[REDACTED]?code=[REDACTED]` (a query value runs to the next & or White_Space, so it takes the closing quote too) |
+| `Authorization: Basic dXNlcj?sig=1#abc123secret` | `Authorization: Basic [REDACTED]?sig=[REDACTED]` |
+| `Authorization: Bearer abc?code=x#abc123secret` | `Authorization: Bearer [REDACTED]?code=[REDACTED]` |
+| `GET /p?token=x"y#frag` | `GET /p?token=[REDACTED]` |
+| `GET /p?api_key=abc,def#frag` | `GET /p?api_key=[REDACTED]` |
+| `url=&token=X?code=Y#id=Z?id=eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.c2ln` | `url=&token=[REDACTED]` |
+| `WSS://X.y/?token=a1Z6Z3R8?code=M49f#frag` | `WSS://X.y/?token=[REDACTED]` |
+| `x-api-key: password ="?code=a"abc123secret"` | `x-api-key: password ="?code=[REDACTED]` |
+| `x-api-key: token='?access_token=abc'abc123secret` | `x-api-key: token='?access_token=[REDACTED]` |
+| `password: Key ?code=x"abc123secret"` | `password: [REDACTED] ?code=[REDACTED]` |
+| `x-api-key: Token ?sig=a,abc123secret` | `x-api-key: [REDACTED] ?sig=[REDACTED]` |
+| `token: password: ?code=x'abc123secret'` | `token: password: ?code=[REDACTED]` |
+| `token:xapi_key: ?code=abc"abc123secret` | `token:[REDACTED]api_key: ?code=[REDACTED]` |
+| `x-api-key: Basic ?code=\"abc123secret\"` | `x-api-key: [REDACTED] ?code=[REDACTED]` |
+| `Authorization: Bearer ?access_token=abc'abc123secret` | `Authorization: Bearer ?access_token=[REDACTED]` |
+| `Authorization: Key Key Key Key Key Key Key Key Bearer abc123secret` | `Authorization: Key Key Key Key Key Key Key [REDACTED] Bearer [REDACTED]` |
+| `x-api-key: Basic Basic Basic Basic Basic Basic Basic Basic Bearer abc123secret` | `x-api-key: Basic Basic Basic Basic Basic Basic Basic [REDACTED] Bearer [REDACTED]` |
+| `token: Bearer Bearer Bearer Bearer Bearer Bearer Bearer Bearer Bearer abc123secret` | `token: Bearer Bearer Bearer Bearer Bearer Bearer Bearer Bearer Bearer [REDACTED]` |
+| `Authorization: Token Basic Key Basic Basic Token Key Token Bearer abc123secret` | `Authorization: Token Basic Key Basic Basic Token Key [REDACTED] Bearer [REDACTED]` |
+| `AIzaQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQeyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.c2ln` | `[REDACTED][REDACTED]` (rule 6 replaces a JWT that rule 5 left because the key before it was base64url) |
+| `x İAIzaQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQeyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.c2ln` | `x İ[REDACTED][REDACTED]` (rule 6 replaces a JWT that rule 5 left because the key before it was base64url) |
+| `Bearer ab⟨U+212A⟩cdabc123secret` | `Bearer [REDACTED]` (a Bearer token may hold the Kelvin sign, as main's case-insensitive class matched) |
+| `Bearer abcſdefabc123secret` | `Bearer [REDACTED]` (a Bearer token may hold the long s, as main Mac's ICU class matched; main Windows' .NET class did not) |
+| `Authorization: Baſic dXNlcjpwYXNz` | `Authorization: Baſic [REDACTED]` (Basic may be spelled with the long s, as main Mac's ICU matched it; main Windows' .NET did not) |
+| `Authorization: Baſic⟨CR⟩⟨LF⟩dXNlcjpwYXNz` | `Authorization: Baſic⟨CR⟩⟨LF⟩[REDACTED]` (Basic may be spelled with the long s, as main Mac's ICU matched it; main Windows' .NET did not) |
 
 ### 11.3 No telemetry
 

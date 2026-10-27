@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml.Controls;
 using VoxClip.App.Services;
 using VoxClip.App.ViewModels;
 using VoxClip.Core.Domain.Transcript;
+using VoxClip.Core.Services.Project;
 
 namespace VoxClip.App.Controls;
 
@@ -120,7 +121,7 @@ internal sealed class TranscriptionDialog : ContentDialog
                 var source = model.Project.Media.Source;
                 var media = await App.Services.Probe.ProbeAsync(source.AbsolutePath, lifetime.Token);
                 Report(TranscriptionStep.Extracting, null);
-                var audio = await App.Services.Audio.ExtractAsync(new(media, source.ContentKey, App.Services.Data.Cache), null, lifetime.Token);
+                var audio = await new CacheIndex(App.Services.Data.Cache).ExtractAudioAsync(App.Services.Audio, media, source.ContentKey, null, lifetime.Token);
                 var requestedLanguage = language.Text.Trim().ToLowerInvariant();
                 var plan = new TranscriptionPlan(engine.SelectedIndex == 0 ? TranscriptEngine.Whispercpp : TranscriptEngine.Elevenlabs,
                     models.SelectedItem as string, requestedLanguage.Length == 0 || requestedLanguage == "auto" ? new LanguageChoice.Auto() : new LanguageChoice.Forced(requestedLanguage), new());

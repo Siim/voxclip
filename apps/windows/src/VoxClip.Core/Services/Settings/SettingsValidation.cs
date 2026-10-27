@@ -70,7 +70,7 @@ internal static class SettingsValidation
                 case "llm.baseUrl.ollama": case "llm.baseUrl.lmstudio": Pattern(value, "https?://[\\s\\S]*"); break;
                 case "llm.clips.lastPreset": Choice(value, "best", "hooks", "topics", "quotes", "custom"); break;
                 case "llm.tighten.strength": Choice(value, "light", "normal", "strong"); break;
-                case "general.showLowConfidence": case "general.openLastProject": case "onboarding.completed": case "transcription.cloudConsent.elevenlabs":
+                case "general.showLowConfidence": case "general.showPlaceholderWords": case "general.openLastProject": case "onboarding.completed": case "transcription.cloudConsent.elevenlabs":
                 case "export.srt": case "export.openFolderAfter": case "update.autoCheck": case "llm.clips.snapToLines": case "voiceLab.enabled": Boolean(value); break;
                 default:
                     if (Regex.IsMatch(pair.Key, "\\Allm\\.model\\.[a-z0-9]+(?:-[a-z0-9]+)*\\z", RegexOptions.CultureInvariant)) Text(value, 1, 128);

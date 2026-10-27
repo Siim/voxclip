@@ -151,9 +151,11 @@ Every listed declaration maps to its containing file and one owner. Nested union
 | `ShapingRequest`, `GlyphOffset`, `ShapedRun`, `IGlyphShaper`, `MeasuredCaptionWord`, `CaptionLine`, `CaptionWordRect`, `CaptionBoxLayout`, `CaptionEmphasisedWord`, `CaptionEmojiLayout`, `CaptionPage`, `CaptionTrack`, `CaptionLayoutRequest`, `PixelBuffer`, `CaptionRenderRequest`, `ICaptionRasterizer`, `CaptionEngine`, `CaptionMath` | `src/VoxClip.Core/Domain/Captions/CaptionContracts.cs` | win-captions |
 | `CaptionFontResource`, `CaptionResources`, `ICaptionResourceShaper` | `src/VoxClip.Core/Domain/Captions/CaptionData.cs` | win-captions |
 | `CaptionWordFrame`, `CaptionCursorFrame`, `CaptionFrame`, `CaptionEvaluator` | `src/VoxClip.Core/Domain/Captions/CaptionTimeline.cs` | win-captions |
+| `CaptionCardScope`, `CaptionCardSource`, `CaptionCardSurface`, `CaptionCardSurfaces`, `CaptionCardWord`, `CaptionCardText` | `src/VoxClip.Core/Domain/Captions/CaptionCard.cs` | win-captions |
+| `MediaTranscriptionStage`, `MediaStatus`, `MediaStatus.None`, `MediaStatus.Loading`, `MediaStatus.Missing`, `MediaStatus.Unreadable`, `MediaStatus.Transcribing`, `MediaStatus.Demo`, `MediaStatus.AudioOnly`, `MediaStandIn`, `MediaStandIn.Frame`, `MediaStandIn.Card`, `MediaStandIn.Black` | `src/VoxClip.Core/Domain/Captions/MediaStandIn.cs` | win-captions |
 | `CaptionFont`, `CaptionText`, `CaptionLayout`, `CaptionStylePosition`, `CaptionAspectOverride`, `CaptionAspects`, `CaptionStroke`, `CaptionShadow`, `CaptionBoxShape`, `CaptionBox`, `CaptionWordBox`, `CaptionWordState`, `CaptionWordStates`, `CaptionReveal`, `CaptionAnimationSpec`, `CaptionAnimation`, `CaptionEmphasis`, `CaptionEmoji`, `CaptionEffects`, `CaptionPreview`, `CaptionStyle`, `CaptionFontFeatures`, `CaptionRevealCursor`, `CaptionEffectsRgbSplit`, `CaptionEffectsJitter`, `CaptionFontSizeRefValue`, `CaptionTextTransformValue`, `CaptionTextPunctuationValue`, `CaptionLayoutBalanceValue`, `CaptionLayoutAlignValue`, `CaptionStylePositionAnchorXValue`, `CaptionStylePositionAnchorYValue`, `CaptionBoxScopeValue`, `CaptionRevealUnitValue`, `CaptionAnimationSpecTypeValue`, `CaptionAnimationSpecEasingValue`, `CaptionEmphasisSourceValue`, `CaptionEmojiSourceValue`, `CaptionPaint`, `SolidPaint`, `LinearPaint`, `GradientStop`, `GradientSpace` | `src/VoxClip.Core/Domain/Captions/CaptionStyle.cs` | win-captions |
 | `ClipPreset`, `AiClip`, `AiResult`, `RawClip`, `ClipPresetRules`, `ClipWord`, `TranscriptLine`, `ClipCandidate`, `FinalizeClipsRequest`, `FinalizeClipsResult`, `ClipValidation`, `TightenEdit`, `TightenResult` | `src/VoxClip.Core/Domain/Clips/ClipModels.cs` | win-ai |
-| `VoiceLabOperation`, `VoiceLabErrorKind`, `VoiceLabException`, `VoiceLabEstimate`, `VoiceLabPreparedAction`, `VoiceLabAuthorization`, `OwnVoicePolicy`, `VoiceLabModel`, `VoiceLabSubscription`, `VoiceLabVoice`, `VoiceLabVoiceKind`, `VoiceLabVoiceChoice`, `VoiceLabReceipt`, `VoiceLabCharacterTiming`, `VoiceLabAudioResult`, `VoiceLabCloneResult`, `VoiceRewriteScope`, `VoiceRewriteRequest`, `VoiceRewriteProposal` | `src/VoxClip.Core/Domain/VoiceLab/VoiceLabContracts.cs` | win-ai |
+| `VoiceLabOperation`, `VoiceLabErrorKind`, `VoiceLabException`, `VoiceLabEstimate`, `VoiceLabLanguageModeKind`, `VoiceLabLanguageMode`, `VoiceLabReview`, `VoiceLabPreparedAction`, `VoiceLabAuthorization`, `OwnVoicePolicy`, `VoiceLabModel`, `VoiceLabSubscription`, `VoiceLabVoice`, `VoiceLabVoiceKind`, `VoiceLabVoiceChoice`, `VoiceLabSpeechOptions`, `VoiceLabReceipt`, `VoiceLabCharacterTiming`, `VoiceLabAudioResult`, `VoiceLabCloneResult`, `VoiceLabCloneSampleRole`, `VoiceLabCloneSample`, `VoiceLabCloneRequest`, `VoiceRewriteScope`, `VoiceRewriteRequest`, `VoiceRewriteProposal` | `src/VoxClip.Core/Domain/VoiceLab/VoiceLabContracts.cs` | win-ai |
 | `VoiceLabAssetNaming`, `VoiceLabProject`, `VoiceLabProjectErrorCode`, `VoiceLabProjectException` | `src/VoxClip.Core/Domain/VoiceLab/VoiceLabProject.cs` | wave2-vl-project-v3 |
 | `Pause`, `ClipOrigin`, `ClipRange`, `EditState`, `EditSegmentKind`, `EditSegment`, `MediaInterval`, `Join`, `EditPlan`, `CaptionWord`, `EditOperation`, `EditOperation.Toggle`, `EditOperation.CutSelection`, `EditOperation.RestoreSelection`, `EditOperation.SetWordCuts`, `EditOperation.SetPauseCuts`, `EditOperation.Correct`, `EditOperation.CutFillers`, `EditOperation.TightenPauses`, `EditOperation.RestoreCuts`, `EditOperation.SetActiveClip`, `EditOperation.AddClip`, `EditOperation.AddAiClips`, `EditOperation.UpdateClip`, `EditOperation.RenameClip`, `EditOperation.SetClipSelected`, `EditOperation.RemoveClip`, `EditOperation.SetPauseKeep`, `EditOperation.SetPauseThreshold`, `EditSummary`, `EditingEngine`, `EditHistory` | `src/VoxClip.Core/Domain/Editing/EditingModels.cs` | win-editing |
 | `ExportAspect`, `ExportQuality`, `FrameRate`, `FrameRateJsonConverter`, `ExportPreset`, `ReframeSettings`, `ExportPresets` | `src/VoxClip.Core/Domain/Shared/ExportPreset.cs` | skeleton / lead |
@@ -217,6 +219,7 @@ Every listed declaration maps to its containing file and one owner. Nested union
 | `RoundFiveCopyTests` | `tests/VoxClip.Core.Tests/Tracks/win-ai/RoundFiveCopyTests.cs` | win-ai |
 | `RoundFiveDataIsolationTests`, `AiDataIsolationCollection`, `AiDataIsolation` | `tests/VoxClip.Core.Tests/Tracks/win-ai/RoundFiveDataIsolationTests.cs` | win-ai |
 | `CaptionsPlaceholderTests` | `tests/VoxClip.Core.Tests/Tracks/CaptionsPlaceholderTests.cs` | win-captions |
+| `CaptionCardTests` | `tests/VoxClip.Core.Tests/Tracks/win-captions/CaptionCardTests.cs` | win-captions |
 | `EditingPlaceholderTests` | `tests/VoxClip.Core.Tests/Tracks/EditingPlaceholderTests.cs` | win-editing |
 | `EditingFixtureTests` | `tests/VoxClip.Core.Tests/Tracks/win-editing/EditingFixtureTests.cs` | win-editing |
 | `AudioEnvelopeBuilderTests` | `tests/VoxClip.Core.Tests/Tracks/win-editing/AudioEnvelopeBuilderTests.cs` | win-editing |
@@ -227,6 +230,7 @@ Every listed declaration maps to its containing file and one owner. Nested union
 | `ProjectStoreTests` | `tests/VoxClip.Core.Tests/Tracks/win-editing/ProjectStoreTests.cs` | win-editing |
 | `SettingsStoreTests` | `tests/VoxClip.Core.Tests/Tracks/win-editing/SettingsStoreTests.cs` | win-editing |
 | `CacheIndexTests` | `tests/VoxClip.Core.Tests/Tracks/win-editing/CacheIndexTests.cs` | win-editing |
+| `CacheEnvelopeTests` | `tests/VoxClip.Core.Tests/Tracks/win-editing/CacheEnvelopeTests.cs` | win-editing |
 | `AtomicFileTests` | `tests/VoxClip.Core.Tests/Tracks/win-editing/AtomicFileTests.cs` | win-editing |
 | `ReviewParityTests` | `tests/VoxClip.Core.Tests/Tracks/win-editing/ReviewParityTests.cs` | win-editing |
 | `EditingEnvironmentCollection`, `EnvironmentLocationTests` | `tests/VoxClip.Core.Tests/Tracks/win-editing/EnvironmentLocationTests.cs` | win-editing |
@@ -236,6 +240,142 @@ Every listed declaration maps to its containing file and one owner. Nested union
 | `PosterFrameTests`, `NativePosterFrameTests` | `tests/VoxClip.Media.Tests/Thumbnails/PosterFrameTests.cs` | win-ui |
 
 ## Change ledger
+
+- **2026-10-27 — opus-media-standins — Per-source audio and envelope cache:** `CacheIndex` (win-editing) adds `EntryDirectory(string)`, `ExtractAudioAsync(IAudioExtractor, MediaInfo, string, IProgress<MediaProgress>?, CancellationToken)`, `RemoveLegacyRootFiles()` (regular root files matching the legacy names and shapes of architecture §8.2 only) and the overload `EvictAsync(long, IReadOnlySet<string>, bool keepEnvelopes, CancellationToken)`. The existing `EvictAsync` keeps its signature and now evicts in two passes (architecture §8.2): entries first shrink to their envelope, `transcripts/` and `meta.json` (one left with neither an envelope nor a raw transcript goes whole), then whole entries go. Stripping an entry without metadata restores its folder's modification time, so it never looks like a fresh extraction to the one-hour orphan rule and Clear everything still removes it. `ExtractAudioAsync` throws the `TouchAsync` `IOException` for an entry that is a link, a reparse point or a file. After the extractor returns, it rewrites `meta.json` under its gate in `CacheJsonContext` format: the existing `CreatedAt`, `LastAccessAt` now, the measured bytes and the envelope. `CacheJsonContext` reads timestamps with any offset (`CacheTimestampConverter`), because `FfmpegAudioExtractor` wrote `+00:00` before `AudioCacheJson` gained `UtcTimestampConverter`. `src/VoxClip.App/Controls/TranscriptionDialog.cs` and `src/VoxClip.Cli/CliOperations.cs` extract through `ExtractAudioAsync`, so `TranscriptionService.ReadEnvelopeAsync` now finds `Cache/<contentKey>/envelope-10ms.f32` and App transcripts come back refined. The App has no Clear cache or Clear everything control and calls no eviction yet. Tests: `CacheEnvelopeTests`.
+
+- **2026-10-27 — opus-media-standins — Caption card core (design §5.4):** `src/VoxClip.Core/Domain/Captions/CaptionCard.cs` adds public `CaptionCardScope`, `CaptionCardSource`, `CaptionCardSurface`, `CaptionCardSurfaces`, `CaptionCardWord` and `CaptionCardText` (win-captions). `CaptionCardText.Create(Project, CaptionCardScope, CaptionStyle, bool wordsVisible, CaptionResources)` is the pure design §5.4.2 rule set, mirrors the macOS `make` and passes the same 51 cases of `shared/fixtures/captions/cards.json`. It measures nothing: callers fit with `MaxLines(surface)` and `DroppingLastWord()` and draw `LayoutWords` with `LayoutHints` at `Time` through `SkiaCaptionRasterizer`. `Time` lies 0.35 × 0.98 into the key word, or in the last word for reveal styles, using `HoldGapSec` (design §5.4.2). Internal `CaptionLayoutBuilder.Cascade` and the selector overload of `CaptionLayoutBuilder.Group` are the §4.4 cascade and the §6.1 pager moved out unchanged. Settings defaults and validation gain `general.showPlaceholderWords` (Boolean, default true). `src/VoxClip.Core/Domain/Captions/MediaStandIn.cs` adds the implementation.md §2 state model: `MediaStatus`, `MediaTranscriptionStage` and `MediaStandIn`. `MediaStandIn.Resolve(MediaStatus, bool hasFrame, CaptionCardText, string styleId, bool holding = false)` is the design §5.4.1 precedence. Views overlay the status and never decide precedence themselves; the 56 `standIns` cases in `cards.json` are shared with macOS. Tests: `CaptionCardTests`. Round-2 verification on the tree merged with main `01e1b387`: the Release build (`--no-incremental`) had 0 warnings; Core passed 1,433 of 1,460 tests with 27 skipped; the dll with `-class` passed `CaptionCardTests`, `CacheEnvelopeTests`, `CacheIndexTests` and `CaptionDomainTests` (149 of 149); `NativeShapingLayoutAndTimelineMatchEveryFixture` passed 86 of 86.
+
+- **2026-10-26 — wave2-vl-request-bodies — Voice Lab request bodies:** the lead approved this in-place Core change on 2026-10-26 for voice-lab §6.5 and §6.7 (own-voice clone), §7.3 (voice changer), §8.5 (alternative TTS request) and §15 tests 12 and 14. The old `ElevenLabsVoiceLab` signatures are replaced, not overloaded; App, CLI and Media have no callers, and only Core tests changed. Old → new:
+  - `PrepareClone(string name, byte[] sample, string mimeType, OwnVoicePolicy policy, Guid requestId)` → `PrepareClone(VoiceLabCloneRequest request, OwnVoicePolicy policy, Guid requestId)`.
+  - `CreateOwnCloneAsync(string name, byte[] sample, string mimeType, OwnVoicePolicy policy, VoiceLabAuthorization authorization, CancellationToken ct, Guid requestId)` → `CreateOwnCloneAsync(VoiceLabCloneRequest request, OwnVoicePolicy policy, VoiceLabAuthorization authorization, CancellationToken ct, Guid requestId)`.
+  - `PrepareSynthesis(string text, string modelId, VoiceLabVoiceChoice voice, string language, Guid requestId)` → `PrepareSynthesis(string text, string modelId, VoiceLabVoiceChoice voice, string language, VoiceLabSpeechOptions options, Guid requestId)`.
+  - `SynthesizeAsync(string text, string modelId, VoiceLabVoiceChoice voice, string language, VoiceLabAuthorization authorization, CancellationToken ct, Guid requestId)` → `SynthesizeAsync(string text, string modelId, VoiceLabVoiceChoice voice, string language, VoiceLabSpeechOptions options, VoiceLabAuthorization authorization, CancellationToken ct, Guid requestId)`.
+  - `PrepareConversion(byte[] sourceWav, string modelId, VoiceLabVoiceChoice voice, string language, Guid requestId)` → `PrepareConversion(byte[] sourceWav, string modelId, VoiceLabVoiceChoice voice, string language, uint seed, bool cleanAudioOn, Guid requestId)`.
+  - `ConvertAsync(byte[] sourceWav, string modelId, VoiceLabVoiceChoice voice, string language, VoiceLabAuthorization authorization, CancellationToken ct, Guid requestId)` → `ConvertAsync(byte[] sourceWav, string modelId, VoiceLabVoiceChoice voice, string language, uint seed, bool cleanAudioOn, VoiceLabAuthorization authorization, CancellationToken ct, Guid requestId)`.
+  - New public types in `Domain/VoiceLab/VoiceLabContracts.cs`, added to the inventory: `VoiceLabSpeechOptions(uint Seed, string? PreviousText = null, string? NextText = null)`, `VoiceLabCloneSampleRole` (`ConsentStatement`, `Training`), `VoiceLabCloneSample(VoiceLabCloneSampleRole Role, byte[] Wav)` and `VoiceLabCloneRequest(string DisplayName, string Language, IReadOnlyList<VoiceLabCloneSample> Samples, DateTimeOffset CreatedAt, bool RemoveBackgroundNoise)`.
+  - Request bodies match the Mac Core and the generated `shared/fixtures/voice-lab/request-cases.json`, which holds:
+    - 21 request goldens;
+    - 18 quote mutations;
+    - 42 clone input rows;
+    - the 25 White_Space code points;
+    - a fixed multipart boundary.
+
+    Multipart bodies are compared byte for byte, and `contract.json` is unchanged. The quote binds every new field, each body is built before the quote is claimed, and there are no retries or new endpoints. The clone review keeps `MimeType` `audio/wav` and uses the consent sample hash as `ContentSha256`. `SafeId`, `LanguageCode`, the clone language pattern and `VoiceRewriteService.LanguageCode` use `\A…\z`. No persisted schema changes.
+  - Review round 2:
+    - **Redactor.** `Redactor` runs §11.2 rules 2 to 5 as one ordered pattern list with the same text as Mac Core, recorded in `shared/fixtures/redaction/cases.json` with 27 cases.
+      - Authorization and the other key fields keep an optional Bearer, Basic, Key or Token scheme and redact the credential.
+      - A value with no whitespace after the scheme is redacted whole.
+      - JSON Web Tokens are redacted.
+
+      The suite checks the rule list and runs every case with the rules forwards and reversed.
+    - **§8.5 context.** Context with no White_Space in its 300 kept scalars keeps the scalar cut. It then drops combining marks, ZWJ and variation selectors at the cut edge.
+    - **Multipart parts.** File parts now write Content-Disposition before Content-Type, as Mac Core does. The internal `ForTesting` factory gains an optional `boundary` so tests can compare whole bodies.
+    - **Inventory.** The inventory row for `VoiceLabContracts.cs` now also lists `VoiceLabLanguageModeKind`, `VoiceLabLanguageMode` and `VoiceLabReview`. Earlier work left them out; win-ai still owns them.
+  - Review round 3:
+    - **§8.5 cut position.** This replaces the round-2 cut-edge rule, as on Mac Core. After the word rule, the cut moves until it splits no cluster.
+      - Next text drops a partial cluster back to its base.
+      - Previous text drops orphaned marks and joiners.
+    - **Display names.** `ValidatedClone` refuses a trimmed name containing any `char.IsControl` character, which is General Category Cc, where it checked only CR and LF before. U+200B and other format characters stay.
+  - Verification on the Mac host after review round 3:
+    - The Release build of `VoxClip.CrossPlatform.slnf` had no warnings or errors. The Core tests passed **1,388 of 1,415**, with the 27 existing skips and no failures.
+    - Mac `swift test --filter VoxClipCoreTests` passed **424** tests.
+    - Both Cores fail on each of 10 deliberately altered fixtures. These cover the round-3 cut goldens, the control-character rows and the U+001F mutation's `error`.
+    - The WinUI RIDs were not built on this host.
+    - No provider call, real key, push or release was used.
+  - Review round 4:
+    - **Redaction rules.** These replace the round-2 description, with the same pattern text as Mac Core. `shared/fixtures/redaction/cases.json` records them with 78 cases, every reviewer input among them.
+      - Only horizontal whitespace may follow a scheme word, so a field's value never continues on the next line.
+      - The value is a quoted auth-param (`token="…"` or `token='…'`), a token that ends in another field's `name:` label taken with that label's value, or a bare token.
+      - A Bearer or Basic word that ends its line is not a value. The Bearer rule takes the next line's token for Bearer anywhere and for an authorization field's Bearer or Basic, unless that token is another credential field's label.
+      - A JWT match starts only after a character that is not base64url.
+      - Field names, scheme words and query names fold only ASCII letters, written as classes such as `[Aa]` with no `(?i)`.
+      - The rule order is normative, and the reverse-order run and the internal rule-list `Redact` overload are gone. The comments no longer claim that ICU's `\s` leaves out U+000B and U+0085.
+    - **Oracle corpus.** `RedactionOracleTests` embeds main's Windows redaction code and main's Mac patterns as test-only oracles. It runs them with the rules over the same 15,510 rows and 23,190 marked secrets as Mac Core. No secret that either oracle removed remains. The 3,644 that all three leave fall into the same six named shapes with pinned counts.
+    - **Dense JWT prefixes.** 1 MB of `eyJ` comes back unchanged, measured once against a 10 s bound. An unchanged result also shows that no rule hit its 1 s timeout.
+    - **§8.5 context.** Only a trimmed context longer than 300 scalars is adjusted. The golden `tts_v3_short_context_sent_as_trimmed` pins this.
+  - Verification on the Mac host after review round 4:
+    - The Release build of `VoxClip.CrossPlatform.slnf` had no warnings or errors. The Core tests passed **1,390 of 1,417**, with the 27 existing skips and no failures.
+    - Mac `swift test --filter VoxClipCoreTests` ran **426** tests. One test outside this track, `twiceInterruptedDownloadResumesFromActualPartialSize`, failed in the full runs on this loaded host and passed alone.
+    - Both Cores fail on each of 8 deliberately altered fixtures: five new redaction rows, the rule text, and each context field of the new golden.
+    - The 20-test `SharedContractTests` class, with the 1 MB `eyJ` test, took 1.4 s.
+    - The request generator writes byte-identical output on repeated runs.
+    - The WinUI RIDs were not built on this host.
+    - No provider call, real key, push or release was used.
+  - Review round 5:
+    - **Redaction rules.** These replace the round-4 description of the field value and of rule 5. Both Cores run the same five patterns, which `shared/fixtures/redaction/cases.json` records with 96 cases.
+      - A value never contains another credential label, so each label is redacted by its own match, as on main. The value never starts with a field label. Its token, the token glued after a quoted auth-param, an unterminated quote and the Bearer rule's token all stop before a field label, a query label or a Bearer word, and a quote that holds one is not closed.
+      - A label is never a scheme word. When a label follows the scheme words, the last scheme word is the value. At most eight scheme words are kept, so ICU's backtracking stack never overflows on a long run of them.
+      - A closed quote keeps `[^"\r\n]`, so no value crosses CR or LF. The auth-param name excludes `:`.
+      - Rule 5's open-ended key shapes are a bounded lookahead and a `+` loop over one class, such as `sk-ant-(?=[A-Za-z0-9_-]{16})[A-Za-z0-9_-]+`. They match the same text as the open counted loops, which ICU stopped on with an internal error over about 125,000 characters.
+      - Mac Core now fails closed on an ICU internal error, as this Core does on a regex timeout.
+      - Cases 37 to 45 now give main-like, fully redacted output, and 18 new cases pin the review's label forms and the ones the fuzz found.
+    - **ASCII-only folding (decision 6).** Besides the Kelvin sign, the rules no longer match six spellings that only main Mac redacted, because ICU folds ß to ss and ſ to s: `paßword:`, `paẞword:`, `pasſword:`, `paſſword:`, `ſecret:` and `?ſig=`, fixture cases 58 to 63. Main Windows never redacted them.
+    - **Oracle corpus.** A label section adds 29,696 rows, for 45,206 rows and 52,886 marked secrets. No secret that either oracle removes is left, and every output stays the same when redacted again. The test pins the SHA-256 of all outputs, which both Cores share. The percent-colon shape now holds 2,720 secrets.
+    - **Long inputs.** A 1,000,000-character run of each open-ended key prefix followed by a normal key redacts both keys. A test pins the JWT segment limit of 8,192 characters. Five 1 MB label runs stay under a 10 s bound and never fail closed.
+    - **Differential runs outside the suite**, through the real Redactor.swift and Redactor.cs, against main's code:
+      - 107,520 rows rebuilt from the review's shapes (42,375 round-4 regressions), 37,632 nested rows (9,804), and 200,000 fuzz rows with 433,732 secrets (8,833 regressions and 7,078 unstable rows) now give 0 regressions, identical output on both engines and stable output.
+      - On 45 adversarial inputs, each rule takes at most 0.485 s on ICU and 0.515 s on .NET at 1 MB, about ten times its 100 KB time. No ICU error or .NET timeout occurs.
+  - Verification on the Mac host after review round 5:
+    - The Release build of `VoxClip.CrossPlatform.slnf` had no warnings or errors. The Core tests passed **1,408 of 1,435**, with the 27 existing skips and no failures.
+    - Mac `swift test --filter VoxClipCoreTests` ran **447** tests in 30 suites, with no failures.
+    - Both Cores fail on each of 7 deliberately altered fixtures, and pass on the unaltered copy. Five put back an output that an earlier design gave, one restores the open scheme loop, and one restores rule 5's open counted loops. This Core's runs started the test assembly directly with `-class`, because `dotnet test --filter-class` matched no tests.
+    - Rebuilding the redaction fixture from both engines reproduces it byte for byte.
+    - The WinUI RIDs were not built on this host.
+    - No provider call, real key, push or release was used.
+  - Review round 6:
+    - **Redaction rules.** The reviewers' combined patch, on both Cores and in `shared/fixtures/redaction/cases.json`, which now lists six patterns and 122 cases:
+      - A value never starts with a query label, and a Bearer word before a token that is not a label is never the value. The field match then backs off and the Bearer rule redacts that token. This closes a leading `?code=` after a scheme word or a label chain, and a ninth scheme word that was `Bearer`.
+      - Rule 4's value runs through `#`, so the part of a field value after a glued query label and a fragment is no longer printed. A URL fragment after a credential query value is now replaced too.
+      - A sixth rule repeats the JWT shape, so a JWT glued after a key that rule 5 replaced, such as `AIza…eyJ…`, is replaced on the first pass.
+      - The Bearer token class also holds the Kelvin sign and the long s, which main's case-insensitive class matched. Field, scheme and query names stay ASCII-only.
+      - No earlier case output changed. 26 new cases pin the review's shapes.
+    - **Corrections to round 5.** A ninth scheme word that was `Bearer` was replaced, and the token after it leaked; round 5 wrongly said the Bearer rule still replaced it. Round 5's claim of no regression and stable output held only for its own corpora, which never placed `#` after a query label, a query label at the start of a value, a ninth `Bearer`, a JWT glued after AIza, or the Kelvin sign in a Bearer token.
+    - **Oracle corpus.** 30 more label forms give 60,566 rows and 68,246 marked secrets. No secret that either oracle removes is left, and no output changes when redacted again. The shared output digest is re-pinned. The percent-colon shape now holds 2,880 secrets: behind `%3A`, a key's class takes the header of a JWT glued to it, so no field or JWT rule holds the rest.
+    - **Grammar fuzz outside the suite.** A new recursive grammar generator, seed 60626, wrote 1,000,000 rows with 8,581,649 markers. Through the real Redactor.swift and Redactor.cs against main's code, it gives 0 regressions, identical output on both engines and 0 rows that change when redacted again. On the first 200,000 rows, the round-5 code regresses on 4,213 markers and gives 9,452 unstable rows, so the generator reaches the review's families. The round-5 corpora (107,520, 37,632 and 200,000 rows) still give 0 regressions and stable output.
+    - **Timing.** On 57 adversarial inputs, each rule takes at most 0.577 s on ICU and 0.641 s on .NET at 1 MiB, about ten times its 100 KB time, the sixth rule at most 0.02 s. No ICU error or .NET timeout occurs.
+    - **Long inputs.** The three 1 MB redaction tests moved to `RedactionLongInputTests`, in the non-parallel `redaction timing` collection, so the 1 s timeout per rule cannot fire under full-suite load. They also check that rule 6 replaces a JWT glued after a signature that filled its 8,192 characters.
+  - Verification on the Mac host after review round 6:
+    - The Release build of `VoxClip.CrossPlatform.slnf` had no warnings or errors. The Core tests, run as the test assembly, passed **1,408 of 1,435**, with the 27 existing skips and no failures.
+    - Mac `swift test --filter VoxClipCoreTests` ran **447** tests in 30 suites, with no failures.
+    - Both Cores fail on each of 4 altered fixtures and pass on the unaltered copy. The alterations are a new case's output, the value guard removed, rule 4 stopping at `#` again, and rule 6 dropped.
+    - Rebuilding the redaction fixture from both engines reproduces it byte for byte.
+    - The WinUI RIDs were not built on this host.
+    - No provider call, real key, push or release was used.
+  - Review round 7:
+    - **Redaction rules.** On both Cores and in `shared/fixtures/redaction/cases.json`, which keeps six patterns and now has 124 cases:
+      - The s of `Basic` is `[Ss\u017F]` in the field scheme words, in the value's Bearer-or-Basic line-end guard and in the Bearer rule's authorization branch. `Authorization: Baſic <token>` now replaces the token, as main Mac did; round 6 replaced `Baſic` and printed the token. `Key`, `Token` and `Bearer` stay ASCII-only. Two new cases pin the shape on one line and across CRLF.
+      - The whitespace loops of the separator and after each scheme word are atomic. Nothing after them starts with whitespace, so no output changes, and a long whitespace run that fails is no longer retried one character at a time.
+      - No earlier case output changed. Case 122's note now says that only main Mac's class matched the long s.
+    - **Corrections to round 6.**
+      - Only main Mac's ICU class matched the long s (U+017F) in a Bearer token; main Windows' .NET class did not. Both matched the Kelvin sign (U+212A). Round 6 credited both to main's case-insensitive class.
+      - After a ninth scheme word, the Bearer rule replaces only the part of the token in its class `[A-Za-z0-9._~+/=\u212A\u017F-]`. A token that starts with another character stays, as on main. Round 6 said the Bearer rule redacts that token.
+      - Rule 6 replaces a JWT glued after an AIza key, whose class stops after 35 characters. An open-ended key shape takes the header of a JWT glued to it (`sk_` takes its `e`), and the rest of that JWT stays, as on main. Round 6 said this held for any key that rule 5 replaced.
+      - Round 6 said field, scheme and query names stay ASCII-only. Main Mac matched `Baſic` as `Basic`, so for that scheme word the narrowing was the regression fixed above.
+    - **Correction to round 5.** ICU's internal error on an open counted loop comes once the loop's backtracking stack overflows: from about 125,000 to 500,000 characters, depending on the rest of the pattern (153,863 for main's rule 5).
+    - **Known limit.** One redaction replaces at most two units of a glued chain. In a chain of three, such as an AIza key, a JWT whose signature is exactly 8,192 characters long and a JWT right after it, the third stays until the output is redacted again. Main has no JWT rule.
+    - **Gate outside the suite**, through the real Redactor.swift and Redactor.cs against main's code. Each row also ran through the same rules without the atomic groups, and through the round-6 rules:
+      - Grammar fuzz: seed 60626 again (1,000,000 rows, 8,581,649 markers), and the new seed 70727 from a grammar that also spells Basic with the long s (1,000,000 rows, 8,580,156 markers). Both give 0 regressions, identical output on both engines and no row that changes when redacted again.
+      - A sweep of the review's family, 32,400 rows of header spellings, separators, Basic spellings, gaps and token shapes, gives 0 regressions. The round-6 rules regress on 11,340 of its secrets, and every row whose output changed from round 6 holds the long s.
+      - The atomic groups change no output on either engine in any corpus. The oracle corpus and the round-5 corpora give the same output as in round 6, so the oracle digest is unchanged.
+    - **Timing.** At 1 MiB, on 83 inputs (the 57 earlier adversarial inputs, 15 new ones for the review's whitespace runs and Basic with the long s, and the 11 long inputs of the tests), each rule takes at most 0.500 s on ICU and 0.479 s on .NET. Without the atomic groups, the same inputs took up to 2.397 s and 0.829 s. The review's whitespace runs now take at most 0.011 s on ICU and 0.022 s on .NET. Rule 6 takes at most 0.023 s. No ICU error or .NET timeout occurs.
+  - Verification on the Mac host after review round 7:
+    - The Release build of `VoxClip.CrossPlatform.slnf` had no warnings or errors. The Core tests, run as the test assembly, passed **1,408 of 1,435**, with the 27 existing skips and no failures.
+    - An earlier full run, made while the gate ran and the shared host's load average was near 70, failed 2 of the 3 1 MB redaction tests: a rule hit its 1 s timeout, so the message failed closed. Their slowest .NET rule takes at most 0.33 s on a quieter host. The class then passed alone, and the full run above passed.
+    - Mac `swift test --filter VoxClipCoreTests` ran **447** tests in 30 suites, with no failures.
+    - Rebuilding the redaction fixture from both engines reproduces it byte for byte. Its SHA-256 is `c48410d2ba9eea763d8224c1f10ffab3d09e2e67d6abb96b270faec62d68b9fc`.
+    - The WinUI RIDs were not built on this host.
+    - No provider call, real key, push or release was used.
+  - Doc applied at merge (round 8):
+    - Main `f3153d5` is merged into the track. The only conflict was the Windows declarations table: the `VoiceLabContracts.cs` row keeps this track's added types, and main's new `VoiceLabProject.cs` row follows it.
+    - `doc/spec/voice-lab.md` carries this track's text in §2.6, §6.1, §6.5 (b) and steps 2 and 3, §6.7, §7.3, §8.3 and §8.5. §6.1 is one Display name bullet that keeps main's project-v3 sentences and adds the control-character rule (§6.7).
+    - `doc/architecture.md` §11.2 lists rules 2 to 6 as both Cores run them, renumbers Home directory to 7, and adds the pattern notation and a Known limits paragraph. Its acceptance table now has all 124 rows of `shared/fixtures/redaction/cases.json`, row for row.
+    - Every § reference the new text adds resolves, and the new text adds no local path.
+    - The lead's `8b719cb8` lets the three 1 MB redaction tests accept the fail-closed `[REDACTED]` at 1 MB on a slow host, and requires exact output at 256 KB.
+  - Verification on the Mac host after the merge:
+    - The Release build of `VoxClip.CrossPlatform.slnf` had no warnings or errors. The Core tests, run as the test assembly, passed **1,423 of 1,450**, with the 27 existing skips and no failures.
+    - Mac `swift test --filter VoxClipCoreTests` ran **462** tests in 31 suites, with no failures.
+    - The WinUI RIDs were not built on this host.
+    - No provider call, real key, push or release was used.
 
 - **2026-10-26 — lead — paired Voice Lab Core integration:** reviewed Mac Core `aabf7f1` and Windows Core `458e5be` now share the exact rewrite prompt and version-1 behavior fixture, including all 31 conversion-input cases. This closes the earlier Core handoff; consent capture, calibrated speaker verification, generated-media planning/persistence, UI and lip sync remain required. No project schema or media path changes are included.
 

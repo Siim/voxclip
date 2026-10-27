@@ -108,6 +108,6 @@ public sealed class FfmpegAudioExtractor : IAudioExtractor
 
 internal sealed record AudioCacheMetadata(string Schema, string ContentKey, DateTimeOffset CreatedAt, DateTimeOffset LastAccessAt, long Bytes, EnvelopeMetadata Envelope);
 internal sealed record EnvelopeMetadata(int SampleRate, double FrameSeconds, int Count);
-[JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
+[JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase, Converters = new[] { typeof(UtcTimestampConverter) })]
 [JsonSerializable(typeof(AudioCacheMetadata))]
 internal partial class AudioCacheJson : JsonSerializerContext;
