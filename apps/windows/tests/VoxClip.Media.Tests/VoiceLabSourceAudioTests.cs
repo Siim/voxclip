@@ -1,6 +1,7 @@
 using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Security.Cryptography;
+using FFmpeg.AutoGen;
 using VoxClip.Core.Domain.Editing;
 using VoxClip.Media.Ffmpeg;
 using VoxClip.Media.VoiceLab;
@@ -54,13 +55,46 @@ public sealed class VoiceLabSourceAudioTests
 
     [Theory]
     [InlineData(1024.0, 1024)]
-    [InlineData(1024.75, 1024)]
-    [InlineData(1023.25, 1024)]
-    [InlineData(1025.0, 1025)]
-    [InlineData(1023.0, 1023)]
+    [InlineData(1071.9999999999998, 1024)]
+    [InlineData(976.0000000000001, 1024)]
     [InlineData(1072.0, 1072)]
-    public void TimestampContinuityAllowsOnlySubSampleQuantization(double exact, long first)
-        => Assert.Equal(first, VoiceLabSourceAudio.SourceFrame(exact, 1024));
+    [InlineData(976.0, 976)]
+    [InlineData(1048.0, 1024)]
+    [InlineData(1000.0, 1024)]
+    public void MillisecondTimestampContinuityIsStrictlyBoundedByOneTick(double exact, long first)
+        => Assert.Equal(first, VoiceLabSourceAudio.SourceFrame(exact, 1024, 48_000, 1, 1_000));
+
+    [Theory]
+    [InlineData(48_000, 90_000, 1024.75, 1024)]
+    [InlineData(48_000, 90_000, 1023.25, 1024)]
+    [InlineData(48_000, 90_000, 1025.0, 1025)]
+    [InlineData(48_000, 90_000, 1023.0, 1023)]
+    [InlineData(96_000, 90_000, 1025.0625, 1024)]
+    [InlineData(96_000, 90_000, 1022.9375, 1024)]
+    [InlineData(96_000, 90_000, 1025.125, 1025)]
+    [InlineData(96_000, 90_000, 1022.875, 1023)]
+    [InlineData(48_000, 48_000, 1024.0, 1024)]
+    [InlineData(48_000, 48_000, 1024.75, 1024)]
+    [InlineData(48_000, 48_000, 1023.25, 1024)]
+    [InlineData(48_000, 48_000, 1025.0, 1025)]
+    [InlineData(48_000, 48_000, 1023.0, 1023)]
+    [InlineData(48_000, 48_000, 1072.0, 1072)]
+    public void FineTimestampContinuityUsesTheUnroundedTickWithAOneSampleMinimum(int rate, int denominator, double exact, long first)
+        => Assert.Equal(first, VoiceLabSourceAudio.SourceFrame(exact, 1024, rate, 1, denominator));
+
+    [Fact]
+    public void RepeatedFortySampleGapsCannotAccumulatePastOneTick()
+    {
+        var first = VoiceLabSourceAudio.SourceFrame(0, null, 48_000, 1, 1_000);
+        Assert.Equal(0, first);
+        var previousEnd = first + 960;
+        first = VoiceLabSourceAudio.SourceFrame(1000, previousEnd, 48_000, 1, 1_000);
+        Assert.Equal(previousEnd, first);
+        previousEnd = first + 960;
+        first = VoiceLabSourceAudio.SourceFrame(2000, previousEnd, 48_000, 1, 1_000);
+        Assert.Equal(2000, first);
+        Assert.True(first > previousEnd);
+    }
 
     [Fact]
     public async Task ConversionRefusalsPrecedeOpeningTheSourceOrLoadingNativeCode()
@@ -313,32 +347,34 @@ public sealed class VoiceLabSourceAudioTests
     }
 
     [Fact, Trait("Category", "RequiresFFmpeg"), Trait("Category", "RequiresWindows")]
-    public async Task CommittedCoarseTimestampContainerRefusesAmbiguousCoverageWithoutChangingFixture()
+    public async Task CommittedCoarseTimestampContainerExtractsEverySampleAcrossPacketsWithoutChangingFixture()
     {
-        using var storage = new VoiceLabTestStorage();
         await NativeTest.RequireAsync(windows: true);
-        var path = Path.Combine(FixtureLoader.SharedRoot, "fixtures", "voice-lab", "voice-lab-7s.mkv");
-        NativeTest.Require(File.Exists(path), "The committed Voice Lab seven-second container is required.");
-        var hash = SHA256.HashData(File.ReadAllBytes(path));
-        const int start = 0, end = 1_024;
-        var wav = await VoiceLabSourceAudio.ConversionInputAsync(path, start, end, 48_000, Cancellation);
-        Header(wav, 48_000, end - start);
-        using var reference = new AudioDecoder(path);
-        var values = new float[end * reference.Channels]; reference.Read(values, end, Cancellation);
-        foreach (var index in new[] { start, start + 1, 511, end - 1 })
+        using (var storage = new VoiceLabTestStorage())
         {
-            double sum = 0;
-            for (var channel = 0; channel < reference.Channels; channel++) sum += values[index * reference.Channels + channel];
-            var actual = BinaryPrimitives.ReadInt16LittleEndian(wav.AsSpan(44 + (index - start) * 2));
-            Assert.InRange(Math.Abs(actual - Pcm((float)(sum / reference.Channels))), 0, 1);
+            var path = Path.Combine(FixtureLoader.SharedRoot, "fixtures", "voice-lab", "voice-lab-7s.mkv");
+            NativeTest.Require(File.Exists(path), "The committed Voice Lab seven-second container is required.");
+            var hash = SHA256.HashData(File.ReadAllBytes(path));
+            Assert.Equal("6be0c2e01c675805f2cb61b0e0a31ec1980be433a23daf8897ebb18443cbcf39", Convert.ToHexStringLower(hash));
+            const int start = 123, end = 96_517;
+            var wav = await VoiceLabSourceAudio.ConversionInputAsync(path, start, end, 48_000, Cancellation);
+            Header(wav, 48_000, end - start);
+            using var reference = new AudioDecoder(path);
+            var values = new float[end * reference.Channels];
+            Assert.Equal(end, reference.Read(values, end, Cancellation));
+            for (var index = start; index < end; index++)
+            {
+                double sum = 0;
+                for (var channel = 0; channel < reference.Channels; channel++) sum += values[index * reference.Channels + channel];
+                var actual = BinaryPrimitives.ReadInt16LittleEndian(wav.AsSpan(44 + (index - start) * 2));
+                Assert.Equal(Pcm((float)(sum / reference.Channels)), actual);
+            }
+            var extracted = VoiceLabAssetStore.Write(wav.AsSpan(44), 48_000, storage.ProjectId, "container", storage.PaidRoot, DateTimeOffset.UtcNow, Cancellation);
+            var decoded = VoiceLabSourceAudio.DecodeAsset(storage.AssetPath(extracted), 24_000, extracted.Sha256, Cancellation);
+            Assert.InRange(decoded.Length, (end - start) / 2 - 1, (end - start) / 2 + 1);
+            Assert.Equal(hash, SHA256.HashData(File.ReadAllBytes(path)));
         }
-        var extracted = VoiceLabAssetStore.Write(wav.AsSpan(44), 48_000, storage.ProjectId, "container", storage.PaidRoot, DateTimeOffset.UtcNow, Cancellation);
-        var decoded = VoiceLabSourceAudio.DecodeAsset(storage.AssetPath(extracted), 24_000, extracted.Sha256, Cancellation);
-        Assert.InRange(decoded.Length, (end - start) / 2 - 1, (end - start) / 2 + 1);
-        await RefusesAsync(VoiceLabSourceAudioErrorCode.RangeOutsideMedia,
-            () => VoiceLabSourceAudio.ConversionInputAsync(path, 48_123, 96_517, 48_000, Cancellation));
-        Assert.Equal(hash, SHA256.HashData(File.ReadAllBytes(path)));
-        VoiceLabTestStorage.NativePassed(nameof(CommittedCoarseTimestampContainerRefusesAmbiguousCoverageWithoutChangingFixture));
+        VoiceLabTestStorage.NativePassed(nameof(CommittedCoarseTimestampContainerExtractsEverySampleAcrossPacketsWithoutChangingFixture));
     }
 
     [Fact, Trait("Category", "RequiresFFmpeg"), Trait("Category", "RequiresWindows")]
@@ -347,7 +383,8 @@ public sealed class VoiceLabSourceAudioTests
         await NativeTest.RequireAsync(windows: true);
         using (var storage = new VoiceLabTestStorage())
         {
-            var path = await TimestampContainerAsync(storage, gap: false);
+            var path = await TimestampContainerAsync(storage, gapSamples: 0);
+            AssertContainerTimestamps(path, 1_000, 0);
             const int start = 123, end = 9_517;
             var wav = await VoiceLabSourceAudio.ConversionInputAsync(path, start, end, 48_000, Cancellation);
             Header(wav, 48_000, end - start);
@@ -359,22 +396,55 @@ public sealed class VoiceLabSourceAudioTests
     }
 
     [Fact, Trait("Category", "RequiresFFmpeg"), Trait("Category", "RequiresWindows")]
-    public async Task ContainerWithOneMillisecondTimestampGapIsRefused()
+    public async Task ContainerWithTwoMillisecondTimestampGapIsRefused()
     {
         await NativeTest.RequireAsync(windows: true);
         using (var storage = new VoiceLabTestStorage())
         {
-            var path = await TimestampContainerAsync(storage, gap: true);
+            var path = await TimestampContainerAsync(storage, gapSamples: 96);
+            AssertContainerTimestamps(path, 1_000, 96);
             await RefusesAsync(VoiceLabSourceAudioErrorCode.RangeOutsideMedia,
                 () => VoiceLabSourceAudio.ConversionInputAsync(path, 0, 9_600, 48_000, Cancellation));
         }
-        VoiceLabTestStorage.NativePassed(nameof(ContainerWithOneMillisecondTimestampGapIsRefused));
+        VoiceLabTestStorage.NativePassed(nameof(ContainerWithTwoMillisecondTimestampGapIsRefused));
     }
 
-    private static async Task<string> TimestampContainerAsync(VoiceLabTestStorage storage, bool gap)
+    [Fact, Trait("Category", "RequiresFFmpeg"), Trait("Category", "RequiresWindows")]
+    public async Task SampleAccurateMp4WithOneSampleTimestampGapIsRefused()
+    {
+        await NativeTest.RequireAsync(windows: true);
+        using (var storage = new VoiceLabTestStorage())
+        {
+            var path = await TimestampContainerAsync(storage, gapSamples: 1, sampleAccurate: true);
+            AssertContainerTimestamps(path, 48_000, 1);
+            await RefusesAsync(VoiceLabSourceAudioErrorCode.RangeOutsideMedia,
+                () => VoiceLabSourceAudio.ConversionInputAsync(path, 0, 9_600, 48_000, Cancellation));
+        }
+        VoiceLabTestStorage.NativePassed(nameof(SampleAccurateMp4WithOneSampleTimestampGapIsRefused));
+    }
+
+    private static unsafe void AssertContainerTimestamps(string path, int denominator, int gapSamples)
+    {
+        using var decoder = new DecodeSession(path, AVMediaType.AVMEDIA_TYPE_AUDIO);
+        Assert.Equal(48_000, decoder.Codec->sample_rate);
+        Assert.Equal(1, decoder.Stream->time_base.num);
+        Assert.Equal(denominator, decoder.Stream->time_base.den);
+        long decoded = 0;
+        while (decoder.Next(Cancellation))
+        {
+            var timestampSamples = decoder.Frame->best_effort_timestamp * 48_000;
+            Assert.Equal(0, timestampSamples % denominator);
+            Assert.Equal(decoded + (decoded >= 4_800 ? gapSamples : 0), timestampSamples / denominator);
+            Assert.Equal(960, decoder.Frame->nb_samples);
+            decoded += decoder.Frame->nb_samples;
+        }
+        Assert.Equal(9_600, decoded);
+    }
+
+    private static async Task<string> TimestampContainerAsync(VoiceLabTestStorage storage, int gapSamples, bool sampleAccurate = false)
     {
         var source = FloatWave(storage, 48_000, 9_600);
-        var path = Path.Combine(storage.Root, gap ? "gapped.mkv" : "continuous.mkv");
+        var path = Path.Combine(storage.Root, "timestamps-" + gapSamples + (sampleAccurate ? ".mp4" : ".mkv"));
         var tools = Environment.GetEnvironmentVariable("VOXCLIP_FFMPEG_DIR");
         NativeTest.Require(!string.IsNullOrEmpty(tools) && File.Exists(Path.Combine(tools, "ffmpeg.exe")),
             "The native timestamp tests need the pinned FFmpeg test-tools executable.");
@@ -383,8 +453,11 @@ public sealed class VoiceLabSourceAudioTests
             UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true
         };
         foreach (var argument in new[] { "-nostdin", "-hide_banner", "-v", "error", "-i", source, "-af",
-            gap ? "asetnsamples=n=960:p=0,asetpts='PTS+gte(N,4800)*48'" : "asetnsamples=n=960:p=0",
-            "-c:a", "pcm_f32le", "-f", "matroska", path }) start.ArgumentList.Add(argument);
+            "asetnsamples=n=960:p=0,asetpts='PTS+gte(N,4800)*" + gapSamples + "'",
+            "-c:a", "pcm_f32le" }) start.ArgumentList.Add(argument);
+        if (sampleAccurate)
+            foreach (var argument in new[] { "-movflags", "+frag_every_frame+empty_moov" }) start.ArgumentList.Add(argument);
+        foreach (var argument in new[] { "-f", sampleAccurate ? "mp4" : "matroska", path }) start.ArgumentList.Add(argument);
         using var process = Process.Start(start)!;
         var stdout = process.StandardOutput.ReadToEndAsync(Cancellation);
         var stderr = process.StandardError.ReadToEndAsync(Cancellation);
