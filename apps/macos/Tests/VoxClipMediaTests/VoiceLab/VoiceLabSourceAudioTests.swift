@@ -184,7 +184,8 @@ import VoxClipCore
     @Test(arguments: [48_000, 1_000])
     func timestampPlacementKeepsExactOneTickAndTwoTickGaps(timescale: Int) throws {
         let next: Int64 = 4_800
-        let tick: Int64 = Int64(48_000 / timescale)
+        let tickSamples: Int = 48_000 / timescale
+        let tick: Int64 = Int64(tickSamples)
         for ticks in 1...2 {
             let position: Int64 = next + tick * Int64(ticks)
             let timestamp = CMTime(value: position / tick, timescale: CMTimeScale(timescale))

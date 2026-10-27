@@ -296,7 +296,7 @@ public enum VoiceLabSourceAudio {
             let channels: Int = self.channels
             let bytes: Int = count * channels * MemoryLayout<Float>.size
             if values.count < count * channels { values = [Float](repeating: 0, count: count * channels) }
-            try sample.withUnsafeSampleBuffer { raw in
+            try sample.withUnsafeSampleBuffer { (raw: CMSampleBuffer) in
                 guard let description = CMSampleBufferGetFormatDescription(raw),
                       let basic = CMAudioFormatDescriptionGetStreamBasicDescription(description)?.pointee,
                       basic.mFormatID == kAudioFormatLinearPCM, basic.mFormatFlags & kAudioFormatFlagIsFloat != 0,
@@ -305,8 +305,8 @@ public enum VoiceLabSourceAudio {
                       let data = CMSampleBufferGetDataBuffer(raw), CMBlockBufferGetDataLength(data) == bytes else {
                     throw VoiceLabSourceAudioError.unsupportedFormat
                 }
-                let status = values.withUnsafeMutableBytes {
-                    CMBlockBufferCopyDataBytes(data, atOffset: 0, dataLength: bytes, destination: $0.baseAddress!)
+                let status: OSStatus = values.withUnsafeMutableBytes { (buffer: UnsafeMutableRawBufferPointer) -> OSStatus in
+                    CMBlockBufferCopyDataBytes(data, atOffset: 0, dataLength: bytes, destination: buffer.baseAddress!)
                 }
                 guard status == noErr else { throw VoiceLabSourceAudioError.unreadable }
             }
@@ -314,7 +314,7 @@ public enum VoiceLabSourceAudio {
             let writtenFrames: Int = Int(written)
             let offset: Int = 44 + 2 * writtenFrames
             let channelCount: Double = Double(channels)
-            try wav.withUnsafeMutableBytes { [values, channels] pcm in
+            try wav.withUnsafeMutableBytes { [values, channels] (pcm: UnsafeMutableRawBufferPointer) in
                 for index in 0..<take {
                     var sum: Double = 0.0
                     for channel in 0..<channels { sum += Double(values[(skip + index) * channels + channel]) }
@@ -351,7 +351,9 @@ public enum VoiceLabSourceAudio {
                 ? Double(presentationTime.value) * Double(rate) / Double(scale)
                 : Double(product.partialValue) / Double(scale)
             guard exact.isFinite, exact >= -0x1p62, exact < 0x1p62 else { throw VoiceLabSourceAudioError.unreadable }
-            first = Int64((exact + 0.5).rounded(.down))
+            let halfUpPosition: Double = exact + 0.5
+            let roundedPosition: Double = halfUpPosition.rounded(.down)
+            first = Int64(roundedPosition)
             if let previousEnd { distance = abs(exact - Double(previousEnd)) }
             else { distance = .infinity }
         }
