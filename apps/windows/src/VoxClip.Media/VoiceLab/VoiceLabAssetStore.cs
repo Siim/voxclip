@@ -16,6 +16,7 @@ public sealed class VoiceLabAssetStoreException(VoiceLabAssetStoreErrorCode code
 {
     public VoiceLabAssetStoreErrorCode Code { get; } = code;
     public string File { get; } = file;
+    public string? OrphanedTemporaryPath { get; internal set; }
     private static string Explain(VoiceLabAssetStoreErrorCode code) => code switch
     {
         VoiceLabAssetStoreErrorCode.AlreadyExists => "This generated Voice Lab audio is already saved. The paid file was not replaced.",
@@ -99,6 +100,7 @@ public static class VoiceLabAssetStore
         string? temporary = null;
         var temporaryCreated = false;
         var published = false;
+        Exception? primaryError = null;
         try
         {
             var root = OpenRoot(paidRoot, file);
@@ -158,15 +160,26 @@ public static class VoiceLabAssetStore
             return new(assetId, "audio", file, digest, frames / (double)sampleRate, sampleRate, createdAt);
         }
         catch (VoiceLabAssetException)
-        { throw Failure(published ? VoiceLabAssetStoreErrorCode.Altered : VoiceLabAssetStoreErrorCode.UnsafePath, file); }
+        {
+            primaryError = Failure(published ? VoiceLabAssetStoreErrorCode.Altered : VoiceLabAssetStoreErrorCode.UnsafePath, file);
+            throw primaryError;
+        }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
-        { throw Failure(published ? VoiceLabAssetStoreErrorCode.PublishedUnverified : VoiceLabAssetStoreErrorCode.Unwritable, file); }
+        {
+            primaryError = Failure(published ? VoiceLabAssetStoreErrorCode.PublishedUnverified : VoiceLabAssetStoreErrorCode.Unwritable, file);
+            throw primaryError;
+        }
+        catch (Exception error) { primaryError = error; throw; }
         finally
         {
             if (temporaryCreated && !published && temporary is not null)
             {
                 try { System.IO.File.Delete(temporary); }
-                catch (DirectoryNotFoundException) { }
+                catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+                {
+                    if (primaryError is VoiceLabAssetStoreException failure) failure.OrphanedTemporaryPath = temporary;
+                    if (primaryError is not null) primaryError.Data[nameof(VoiceLabAssetStoreException.OrphanedTemporaryPath)] = temporary;
+                }
             }
         }
     }

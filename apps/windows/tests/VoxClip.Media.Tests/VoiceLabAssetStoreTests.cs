@@ -285,6 +285,62 @@ public sealed class VoiceLabAssetStoreTests
         VoiceLabTestStorage.NativePassed(nameof(WindowsJunctionBelowTheCanonicalPaidRootIsRefused));
     }
 
+    [Theory, Trait("Category", "RequiresWindows")]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public void WindowsDeniedTemporaryDeletionPreservesPrimaryFailure(bool readOnly, bool cancelled)
+    {
+        NativeTest.Require(OperatingSystem.IsWindows(), "Windows file-system regressions require Windows.");
+        using (var storage = new VoiceLabTestStorage())
+        {
+            var paid = Write(storage, "paid");
+            var saved = File.ReadAllBytes(storage.AssetPath(paid));
+            var directory = Path.Combine(storage.PaidRoot, storage.ProjectId);
+            string? temporary = null;
+            FileStream? denied = null;
+            using var cancellation = new CancellationTokenSource();
+            void DenyDeletion()
+            {
+                temporary = Assert.Single(Directory.GetFiles(directory, "*.partial"));
+                if (readOnly) File.SetAttributes(temporary, FileAttributes.ReadOnly);
+                else denied = new FileStream(temporary, FileMode.Open, FileAccess.Read, FileShare.Read);
+                if (cancelled) cancellation.Cancel();
+                else throw new IOException("primary write failure");
+            }
+            void Publish() => VoiceLabAssetStore.Write([2, 0], 24_000, storage.ProjectId, "orphan", storage.PaidRoot,
+                CreatedAt, cancellation.Token, DenyDeletion, null);
+            try
+            {
+                if (cancelled)
+                {
+                    var failure = Assert.Throws<OperationCanceledException>(Publish);
+                    Assert.Equal(cancellation.Token, failure.CancellationToken);
+                    Assert.Equal(temporary, failure.Data[nameof(VoiceLabAssetStoreException.OrphanedTemporaryPath)]);
+                }
+                else
+                {
+                    var failure = Assert.Throws<VoiceLabAssetStoreException>(Publish);
+                    Assert.Equal(VoiceLabAssetStoreErrorCode.Unwritable, failure.Code);
+                    Assert.Equal(temporary, failure.OrphanedTemporaryPath);
+                    Assert.Equal(temporary, failure.Data[nameof(VoiceLabAssetStoreException.OrphanedTemporaryPath)]);
+                }
+                Assert.NotNull(temporary);
+                Assert.True(File.Exists(temporary));
+                Assert.False(File.Exists(Path.Combine(directory, "orphan.wav")));
+                Assert.Equal(saved, File.ReadAllBytes(storage.AssetPath(paid)));
+            }
+            finally
+            {
+                denied?.Dispose();
+                if (temporary is not null) { File.SetAttributes(temporary, FileAttributes.Normal); File.Delete(temporary); }
+            }
+            Assert.Empty(Directory.GetFiles(directory, "*.partial"));
+        }
+        VoiceLabTestStorage.NativePassed($"{nameof(WindowsDeniedTemporaryDeletionPreservesPrimaryFailure)}(readOnly: {readOnly}, cancelled: {cancelled})");
+    }
+
     [Fact]
     public async Task WrittenV3AssetPreparesAndOneChangedByteIsAltered()
     {
