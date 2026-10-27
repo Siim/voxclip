@@ -8,8 +8,21 @@ package final class ExportInterruptTiming: Sendable {
         case readersStopped, writerCancelStart, writerCancelEnd, partialDeleted, exportReturned
     }
 
-    package static let testOnly: ExportInterruptTiming? = ProcessInfo.processInfo.environment["VOXCLIP_TEST_INTERRUPT_TIMING"] == "1"
-        ? ExportInterruptTiming() : nil
+    private static let isEnabled = Atomic<Bool>(false)
+    private static let enabledTiming = Mutex<ExportInterruptTiming?>(nil)
+
+    package static var testOnly: ExportInterruptTiming? {
+        guard isEnabled.load(ordering: .acquiring) else { return nil }
+        return enabledTiming.withLock { $0 }
+    }
+
+    package static func enable() {
+        enabledTiming.withLock { timing in
+            if timing == nil { timing = ExportInterruptTiming() }
+        }
+        isEnabled.store(true, ordering: .releasing)
+    }
+
     private let state = Mutex<[Phase: UInt64]>([:])
 
     package func mark(_ phase: Phase) {

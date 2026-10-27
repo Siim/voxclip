@@ -7,8 +7,11 @@ import VideoToolbox
 
 /// Opt-in subprocess-test instrumentation; timestamps never appear in normal CLI output.
 final class CLIInterruptTiming: Sendable {
-    static let testOnly: CLIInterruptTiming? = ProcessInfo.processInfo.environment["VOXCLIP_TEST_INTERRUPT_TIMING"] == "1"
-        ? CLIInterruptTiming() : nil
+    static let testOnly: CLIInterruptTiming? = {
+        guard ProcessInfo.processInfo.environment["VOXCLIP_TEST_INTERRUPT_TIMING"] == "1" else { return nil }
+        ExportInterruptTiming.enable()
+        return CLIInterruptTiming()
+    }()
     func interrupt() {
         ExportInterruptTiming.testOnly?.mark(.handler)
     }
