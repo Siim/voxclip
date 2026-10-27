@@ -138,6 +138,12 @@ import VoxClipMedia
         }
         return display
     }
+    var timelineAccessibilityValue: String {
+        let current: Double = editedTimeline ? playhead : sourceTime
+        let total: Double = editedTimeline ? duration : sourceDuration
+        let cuts: Int = summary.cutWordCount + summary.cutPauseCount
+        return timelineValueText(time: current, total: total, cuts: cuts, edited: editedTimeline)
+    }
     private func timelineBand(start: Double, end: Double) -> TimelineBand {
         let lower = renderTimeline?.mapTime(start) ?? start
         let upper = renderTimeline?.mapTime(end) ?? end

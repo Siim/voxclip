@@ -1,5 +1,10 @@
 # macOS implementation contracts
 
+### 2026-10-28 — Round-3 A4: spoken timeline values
+
+- The Playhead slider now describes the active Source/Edited projection, source versus output duration and the exact §15 suffix. Whole-second formatting and ties-to-even rounding match Windows `TimelineLayout.ValueText`/`Spoken`, including minute boundaries.
+- `DebugTimeline` checks the exact two design examples, nine rounding/minute cases and the real AX slider value in both modes, appearances and compact/viewer states.
+
 ### 2026-10-28 — Round-3 A3: spoken word states
 
 - VoiceOver word descriptions now append cut, playing, AI modified in that fixed order (design §15). Windows already orders cut before AI but has no playing suffix, so the missing state is inserted between those existing states.

@@ -1,6 +1,21 @@
 import SwiftUI
 import VoxClipCore
 
+func timelineSpokenTime(_ time: Double) -> String {
+    let finite: Double = time.isFinite ? max(0, time) : 0
+    let rounded: Double = finite.rounded(.toNearestOrEven)
+    let seconds: Int = Int(min(rounded, Double(Int32.max)))
+    guard seconds >= 60 else { return "\(seconds) seconds" }
+    let minutes: Int = seconds / 60
+    let remainder: Int = seconds % 60
+    let tail: String = remainder < 10 ? "0\(remainder)" : String(remainder)
+    return "\(minutes) \(seconds < 120 ? "minute" : "minutes") \(tail)"
+}
+
+func timelineValueText(time: Double, total: Double, cuts: Int, edited: Bool) -> String {
+    "\(timelineSpokenTime(time)) of \(timelineSpokenTime(total))\(edited ? " after cuts" : " source"), \(cuts) cuts"
+}
+
 struct TimelineBlock: Sendable {
     let source: ClosedRange<Double>
     let edited: ClosedRange<Double>

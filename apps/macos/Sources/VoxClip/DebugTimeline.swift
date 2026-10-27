@@ -36,6 +36,12 @@ import VoxClipCore
         mark("refreshed")
         check("timeline clip numbers follow Core sidebar order and suggestions", model.timeline.clips.map(\.number) == model.sortedClips.compactMap { model.clipNumber($0.id) } && model.timeline.clips.contains { $0.state == .suggested })
         check("timeline defaults to Source", !model.editedTimeline)
+        let spokenCases: [(Double, String)] = [(0, "0 seconds"), (0.5, "0 seconds"), (1.5, "2 seconds"), (59.49, "59 seconds"), (59.5, "1 minute 00"), (60.5, "1 minute 00"), (65, "1 minute 05"), (119.5, "2 minutes 00"), (135, "2 minutes 15")]
+        for (time, expected) in spokenCases {
+            check("timeline spoken whole seconds match Windows rounding at \(time)", timelineSpokenTime(time) == expected)
+        }
+        check("Edited slider uses the exact spoken design value", timelineValueText(time: 42, total: 135, cuts: 12, edited: true) == "42 seconds of 2 minutes 15 after cuts, 12 cuts")
+        check("Source slider uses source duration and never says after cuts", timelineValueText(time: 42, total: 190, cuts: 12, edited: false) == "42 seconds of 3 minutes 10 source, 12 cuts")
         let revision = model.transcriptRevision
         model.selectedWordIDs = Set(model.words[3...6].map(\.id)); model.rewrite = 4...7
         check("timeline selection and Rewrite update without rebuilding the transcript", model.displayTimeline.selection?.source == model.words[3].start...model.words[6].end && model.displayTimeline.rewrite?.source == model.words[4].start...model.words[7].end && model.transcriptRevision == revision)
@@ -77,6 +83,10 @@ import VoxClipCore
                     _ = try capture(window.contentView!, name: suffix, directory: directory)
                     let elements = accessibility(window)
                     let sliders = elements.filter { attribute($0, kAXRoleAttribute) as? String == kAXSliderRole }
+                    let spokenValues: [String] = sliders.compactMap { (element: AXUIElement) -> String? in
+                        attribute(element, kAXValueDescriptionAttribute) as? String ?? attribute(element, kAXValueAttribute) as? String
+                    }
+                    check("\(suffix) exposes its active projection's spoken slider value", spokenValues.contains(model.timelineAccessibilityValue))
                     let labels = elements.compactMap { attribute($0, kAXDescriptionAttribute) as? String }
                     check("\(suffix) exposes one slider and separate trim handles", sliders.count == 1 && labels.contains("Clip 2 start") && labels.contains("Clip 2 end"))
                     let times = elements.filter { attribute($0, kAXIdentifierAttribute) as? String == "voxclip.compact.time" }

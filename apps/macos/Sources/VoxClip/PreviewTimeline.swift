@@ -355,7 +355,7 @@ func viewerStageSize(ratio: Double, innerWidth: CGFloat, columnHeight: CGFloat, 
         let value = Binding(get: { current.clamped(to: range) }, set: { model.seek(source: sourceTime($0)) })
         return Slider(value: value, in: range) { Text("Playhead") }
             .accessibilityIdentifier("voxclip.timeline.playhead")
-            .accessibilityValue("\(timecode(model.playhead)) of \(timecode(model.duration)) after cuts, \(model.summary.cutWordCount + model.summary.cutPauseCount) cuts")
+            .accessibilityValue(model.timelineAccessibilityValue)
             .accessibilityAdjustableAction { model.step($0 == .increment ? 1 : -1) }
     }
     private func seekBoundary(end: Bool) {
