@@ -130,9 +130,9 @@ public enum VoiceLabRenderValidation {
             guard fits(segment.replace.end - segment.replace.start) ||
                     (recipe.outDuration == Double(out) / rate && fits(Double(end - start) / rate))
             else { throw VoiceLabProjectError.invalidRange }
-            guard contentMatchesDuration(recipe.audio, outDuration: recipe.outDuration, assetSampleRate: asset.sampleRate)
-            else { throw VoiceLabProjectError.invalidSegment }
         }
+        guard contentMatchesDuration(recipe.audio, outDuration: recipe.outDuration, assetSampleRate: asset.sampleRate)
+        else { throw VoiceLabProjectError.invalidSegment }
         guard validID(recipe.cost.quoteId), recipe.cost.usd.map({ $0.isFinite && $0 >= 0 }) ?? true,
               recipe.provenance.region?.isEmpty == false,
               recipe.provenance.requestId.map(validID) == true,
