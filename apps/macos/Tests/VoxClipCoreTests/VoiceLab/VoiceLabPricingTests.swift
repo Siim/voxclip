@@ -294,23 +294,22 @@ struct VoiceLabPricingTests {
         let count = try #require(concurrent["recordsPerWriter"] as? Int)
         let estimates = try Self.rows("writers", in: concurrent).map(Self.spend)
         let writers = estimates.count
-        let arrived = Mutex(0)
-        let warnings = Mutex<[VoiceLabSpendWarning]>([])
+        let shared = ConcurrentRecorders()
         await withTaskGroup(of: Void.self) { group in
             for estimate in estimates {
                 // Separate ledger values open separate lock descriptors, as the App and the CLI would.
                 let ledger = VoiceLabSpendLedger(url: url, timeZone: Self.utc)
                 group.addTask {
                     // A barrier: no writer starts until every writer is running.
-                    arrived.withLock { $0 += 1 }
-                    while arrived.withLock({ $0 }) < writers { await Task.yield() }
+                    shared.arrived.withLock { $0 += 1 }
+                    while shared.arrived.withLock({ $0 }) < writers { await Task.yield() }
                     for _ in 0..<count {
-                        if let warning = await ledger.record(estimate, at: at) { warnings.withLock { $0.append(warning) } }
+                        if let warning = await ledger.record(estimate, at: at) { shared.warnings.withLock { $0.append(warning) } }
                     }
                 }
             }
         }
-        #expect(warnings.withLock { $0 }.isEmpty)
+        #expect(shared.warnings.withLock { $0 }.isEmpty)
         #expect(try Self.text(url) == concurrent["ledger"] as? String)
     }
 
@@ -641,4 +640,11 @@ struct VoiceLabPricingTests {
         try settings.setVoiceLabMonthlyCap(nil, for: "elevenlabs")
         #expect(settings.values.isEmpty)
     }
+}
+
+/// The concurrent recorders' barrier and warnings, shared by reference. Hosted Xcode 26 refuses to send a task-group
+/// closure that captures a local `Mutex`.
+private final class ConcurrentRecorders: Sendable {
+    let arrived = Mutex(0)
+    let warnings = Mutex<[VoiceLabSpendWarning]>([])
 }
