@@ -1,5 +1,6 @@
 #if DEBUG
 import AppKit
+import ApplicationServices
 import SwiftUI
 import Vision
 import VoxClipCore
@@ -111,6 +112,29 @@ import VoxClipCore
             }
             offWindow.close()
             model.setCaptionsEnabled(true)
+            let fineView = NSHostingView(rootView: CaptionsSection(model: model, fineTune: true).frame(width: 360, height: 530).background(DesignValues.color("bg.surface")))
+            fineView.frame = CGRect(x: 0, y: 0, width: 360, height: 530)
+            let fineWindow = NSWindow(contentRect: fineView.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+            fineWindow.isReleasedWhenClosed = false; fineWindow.contentView = fineView; fineWindow.appearance = NSAppearance(named: appearance)
+            fineWindow.setAccessibilityIdentifier("caption-fine-tune-\(name)")
+            fineWindow.setFrameOrigin(NSPoint(x: -10000, y: -10000))
+            fineWindow.orderBack(nil)
+            try await Task.sleep(for: .milliseconds(150))
+            fineView.layoutSubtreeIfNeeded()
+            if let bitmap = fineView.bitmapImageRepForCachingDisplay(in: fineView.bounds) {
+                fineView.cacheDisplay(in: fineView.bounds, to: bitmap)
+                check("\(name) Reset to Style is rendered with exact capitalization", try recognizedText(bitmap.cgImage).contains("Reset to Style"))
+                let application = AXUIElementCreateApplication(getpid())
+                let windows = accessibilityAttribute(application, kAXWindowsAttribute) as? [AXUIElement] ?? []
+                let nativeWindow = windows.first { (element: AXUIElement) -> Bool in
+                    accessibilityAttribute(element, kAXIdentifierAttribute) as? String == fineWindow.accessibilityIdentifier()
+                }
+                let labels = nativeWindow.map { (element: AXUIElement) -> [String] in accessibilityLabels(element) } ?? []
+                check("\(name) Reset to Style is the accessible action label", labels.contains("Reset to Style"))
+                try JSONEncoder().encode(labels).write(to: directory.appendingPathComponent("captions-fine-tune-\(name)-ax.json"))
+                if let data = bitmap.representation(using: .png, properties: [:]) { try data.write(to: directory.appendingPathComponent("captions-fine-tune-\(name).png")) }
+            }
+            fineWindow.close()
         }
         try JSONEncoder().encode(results).write(to: directory.appendingPathComponent("caption-results.json"), options: .atomic)
         return results
@@ -131,6 +155,20 @@ import VoxClipCore
         return (request.results ?? []).compactMap { (observation: VNRecognizedTextObservation) -> String? in
             observation.topCandidates(1).first?.string
         }.joined(separator: " ")
+    }
+    private static func accessibilityAttribute(_ element: AXUIElement, _ name: String) -> CFTypeRef? {
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, name as CFString, &value) == .success else { return nil }
+        return value
+    }
+    private static func accessibilityLabels(_ element: AXUIElement, depth: Int = 0) -> [String] {
+        guard depth < 32 else { return [] }
+        let labels: [String] = [kAXDescriptionAttribute, kAXTitleAttribute].compactMap { (name: String) -> String? in
+            accessibilityAttribute(element, name) as? String
+        }
+        let children = accessibilityAttribute(element, kAXChildrenAttribute) as? [AXUIElement] ?? []
+        let nextDepth: Int = depth + 1
+        return labels + children.flatMap { (child: AXUIElement) -> [String] in accessibilityLabels(child, depth: nextDepth) }
     }
     private static func glyphPixelHeight(_ bitmap: NSBitmapImageRep) -> Int {
         var longest = 0, run = 0

@@ -1,5 +1,10 @@
 # macOS implementation contracts
 
+### 2026-10-28 — Round-3 A9: Reset to Style copy
+
+- Fine tuning's visible and accessible reset action is exactly “Reset to Style” (design §6.1). The underlying reset operation is unchanged.
+- `DebugCaptionsSection` captures expanded fine tuning in light/dark, checks the rendered capitalization and traverses its native accessibility children for the exact action label.
+
 ### 2026-10-28 — Round-3 A8: Off in the live chip
 
 - Turning captions off paints the exact “Off” label inside the black 64×36 live chip (design §6.1), while the style summary separately says Off. It no longer leaves an unexplained blank stage.
