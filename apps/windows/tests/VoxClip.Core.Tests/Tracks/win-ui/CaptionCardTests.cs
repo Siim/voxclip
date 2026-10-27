@@ -145,14 +145,14 @@ public sealed class CaptionCardTests
     }
 
     /// <summary>At sidebar sizes a boxed key word takes its box colour as its text colour, as the style resolves it (Box
-    /// highlight's #7C3AED), with no plate behind it.</summary>
+    /// highlight's #7C3AED lightened to #B793F5), with no plate behind it.</summary>
     [Fact]
     public async Task SidebarCardsSetTheBoxedWordInItsBoxColour()
     {
         var card = Card(HomeViewModelTests.Fixture("interview-take.voxclip"), "box-highlight");
         var bitmap = await Cards.RenderAsync(card, CaptionCardSurface.Sidebar, 128, 72, TestContext.Current.CancellationToken);
         Assert.NotNull(bitmap);
-        var violet = Count(bitmap, (r, g, b) => Math.Abs(r - 0x7C) <= 14 && Math.Abs(g - 0x3A) <= 14 && Math.Abs(b - 0xED) <= 14);
+        var violet = Count(bitmap, (r, g, b) => Math.Abs(r - 0xB7) <= 14 && Math.Abs(g - 0x93) <= 14 && Math.Abs(b - 0xF5) <= 14);
         Assert.InRange(violet, 1, 128 * 72 / 4);
     }
 

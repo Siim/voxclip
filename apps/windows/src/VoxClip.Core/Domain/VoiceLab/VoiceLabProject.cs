@@ -70,7 +70,8 @@ public static class VoiceLabProject
     private const string Id = "[A-Za-z0-9][A-Za-z0-9._:-]{0,63}";
     /// <summary>The ElevenLabs client's path-safe ID rule, anchored so a trailing newline is refused.</summary>
     private const string ProviderVoiceId = "[A-Za-z0-9_-]{1,128}";
-    internal static bool Matches(string value, string pattern) => Regex.IsMatch(value, "\\A(?:" + pattern + ")\\z", RegexOptions.CultureInvariant);
+    internal static bool Matches(string value, string pattern) => Regex.IsMatch(value, "\\A(?:" + pattern + ")\\z",
+        RegexOptions.CultureInvariant | RegexOptions.NonBacktracking, Regex.InfiniteMatchTimeout);
     private static void Require(bool condition, VoiceLabProjectErrorCode code)
     {
         if (!condition) throw new VoiceLabProjectException(code);

@@ -23,6 +23,7 @@ Run every script with `-I` (isolated mode). The scripts put their own folder on 
 | `gen_fixtures.py` | Builds every case of `cases.json` (plus the style × aspect matrix) and writes `shared/fixtures/captions/` | `fonttools`, `uharfbuzz`, `regex`, `jsonschema` |
 | `gen_cards.py` | Builds the caption card cases of `card-cases.json` (doc/design.md section 5.4.2), validates each project against the project schema and writes `shared/fixtures/captions/cards.json`. The scope's caption copy comes from the editing fixture generator's reference planner, run through `card_plans.mjs`. Every card and fit drop is laid out with the reference engine and refused unless its drawn moment shows the key word | `regex`, `jsonschema`, `fonttools`, `uharfbuzz`, Node.js 22 |
 | `gen_gallery.py` | Builds the gallery tile cases of `gallery-cases.json` (spec 15.3) with the card rules of `captionref.card` and writes `shared/fixtures/captions/gallery-samples.json`. Caption copies come from `card_plans.mjs`, as for `gen_cards.py`. It takes only words the style's primary font covers whole, and checks that the page at the tile time contains the drawn word, including when the tile timing splits the sample. With `jsonschema` installed it also validates each project | Node.js 22 (standard library otherwise) |
+| `gen_card_colors.py` | Writes `shared/fixtures/captions/card-colors.json`, the design.md section 5.4.3 sidebar key-word colour vectors | none (standard library) |
 | `compare_overlays.py` | The image comparison of spec section 16.5, for two PNGs or two folders of goldens | `numpy` |
 | `parity.sh` | Renders every golden sample with the Swift and the C# CLI and compares them (spec 16.6) | Xcode, .NET 10 SDK, `numpy` |
 
@@ -35,10 +36,11 @@ $P -I tools/captions/build_casemap.py /tmp/voxclip-ucd/UnicodeData.txt
 $P -I tools/captions/gen_fixtures.py
 $P -I tools/captions/gen_cards.py                   # caption card fixtures
 python3 -I tools/captions/gen_gallery.py              # gallery tile samples; no venv needed
+python3 -I tools/captions/gen_card_colors.py          # sidebar key-word colour vectors
 git diff --stat shared/                               # review: a fixture diff is a behaviour change
 ```
 
-`gen_fixtures.py`, `gen_cards.py` and `gen_gallery.py` are deterministic: running any of them twice gives byte-identical files. `gen_fixtures.py` deletes and rewrites `shared/fixtures/captions/layout/`.
+`gen_fixtures.py`, `gen_cards.py`, `gen_gallery.py` and `gen_card_colors.py` are deterministic: running any of them twice gives byte-identical files. `gen_fixtures.py` deletes and rewrites `shared/fixtures/captions/layout/`.
 
 ## Package `captionref`
 

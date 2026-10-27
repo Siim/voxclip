@@ -2,6 +2,23 @@ import Foundation
 import Testing
 @testable import VoxClipCore
 
+@Test("Every sidebar colour vector")
+func captionCardColorVectors() throws {
+    struct Fixture: Decodable {
+        struct Case: Decodable { var id: String; var box: [UInt8]; var background: [UInt8]; var expected: [UInt8] }
+        var fixture: String
+        var cases: [Case]
+    }
+    let url = try CaptionCoreFixtures.shared().appendingPathComponent("fixtures/captions/card-colors.json")
+    let fixture = try JSONDecoder().decode(Fixture.self, from: Data(contentsOf: url))
+    #expect(fixture.fixture == "voxclip-caption-card-colors/1")
+    for item in fixture.cases {
+        let actual = CaptionCardColors.sidebarKeyText(box: (item.box[0], item.box[1], item.box[2]),
+                                                     background: (item.background[0], item.background[1], item.background[2]))
+        #expect([actual.r, actual.g, actual.b] == item.expected, "\(item.id)")
+    }
+}
+
 private struct CardFixture: Decodable {
     struct Surface: Decodable { var surface: String; var lines: Int; var plates: Bool }
     struct Word: Decodable { var id: String; var text: String; var display: String; var weak: Bool }

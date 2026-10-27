@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Json;
 using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Shared;
+using VoxClip.Core.Domain.VoiceLab;
 using ProjectModel = VoxClip.Core.Domain.Shared.Project;
 using TranscriptModel = VoxClip.Core.Domain.Transcript.Transcript;
 namespace VoxClip.Core.Services.Project;
@@ -48,7 +49,10 @@ public sealed class ProjectStore : IProjectStore
             if (resolved is not null) project = project with { Media = new(project.Media.Source with { AbsolutePath = resolved }) };
             return new(project, resolved, resolved is null, warnings);
         }
-        catch (Exception exception) when (exception is JsonException or IOException or UnauthorizedAccessException or InvalidOperationException or ArgumentException)
+        catch (OperationCanceledException) { throw; }
+        catch (VoxClipException) { throw; }
+        catch (VoiceLabProjectException) { throw; }
+        catch (Exception exception)
         {
             throw new VoxClipException(VoxClipErrorCode.ProjectUnreadable, "This project file can't be read. Your media and saved edits are unchanged.", exception);
         }

@@ -1,0 +1,203 @@
+{
+  "fixture": "voxclip-caption-card-colors/1",
+  "cases": [
+    {
+      "id": "paper-on-stage",
+      "box": [
+        243,
+        240,
+        231
+      ],
+      "background": [
+        0,
+        0,
+        0
+      ],
+      "expected": [
+        243,
+        240,
+        231
+      ]
+    },
+    {
+      "id": "box-highlight-on-stage",
+      "box": [
+        124,
+        58,
+        237
+      ],
+      "background": [
+        0,
+        0,
+        0
+      ],
+      "expected": [
+        183,
+        147,
+        245
+      ]
+    },
+    {
+      "id": "half-up-channels",
+      "box": [
+        5,
+        15,
+        25
+      ],
+      "background": [
+        0,
+        0,
+        0
+      ],
+      "expected": [
+        118,
+        123,
+        129
+      ]
+    },
+    {
+      "id": "black-on-stage",
+      "box": [
+        0,
+        0,
+        0
+      ],
+      "background": [
+        0,
+        0,
+        0
+      ],
+      "expected": [
+        115,
+        115,
+        115
+      ]
+    },
+    {
+      "id": "white-on-stage",
+      "box": [
+        255,
+        255,
+        255
+      ],
+      "background": [
+        0,
+        0,
+        0
+      ],
+      "expected": [
+        255,
+        255,
+        255
+      ]
+    },
+    {
+      "id": "black-on-white",
+      "box": [
+        0,
+        0,
+        0
+      ],
+      "background": [
+        255,
+        255,
+        255
+      ],
+      "expected": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "white-on-white-one-mix-only",
+      "box": [
+        255,
+        255,
+        255
+      ],
+      "background": [
+        255,
+        255,
+        255
+      ],
+      "expected": [
+        255,
+        255,
+        255
+      ]
+    },
+    {
+      "id": "just-below-minimum",
+      "box": [
+        116,
+        116,
+        116
+      ],
+      "background": [
+        0,
+        0,
+        0
+      ],
+      "expected": [
+        179,
+        179,
+        179
+      ]
+    },
+    {
+      "id": "just-above-minimum",
+      "box": [
+        117,
+        117,
+        117
+      ],
+      "background": [
+        0,
+        0,
+        0
+      ],
+      "expected": [
+        117,
+        117,
+        117
+      ]
+    },
+    {
+      "id": "gray-on-dark-preview",
+      "box": [
+        117,
+        117,
+        117
+      ],
+      "background": [
+        58,
+        60,
+        69
+      ],
+      "expected": [
+        179,
+        179,
+        179
+      ]
+    },
+    {
+      "id": "paper-on-dark-preview",
+      "box": [
+        243,
+        240,
+        231
+      ],
+      "background": [
+        58,
+        60,
+        69
+      ],
+      "expected": [
+        243,
+        240,
+        231
+      ]
+    }
+  ]
+}

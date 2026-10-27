@@ -1,5 +1,4 @@
 #pragma warning disable CS1591
-using System.Text.RegularExpressions;
 using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Shared;
 
@@ -8,7 +7,7 @@ namespace VoxClip.Core.Domain.VoiceLab;
 public static class VoiceLabRenderValidation
 {
     static void Require(bool condition, VoiceLabProjectErrorCode code) { if (!condition) throw new VoiceLabProjectException(code); }
-    static bool Id(string? value) => value is not null && Regex.IsMatch(value, "\\A[A-Za-z0-9][A-Za-z0-9._:-]{0,63}\\z", RegexOptions.CultureInvariant);
+    static bool Id(string? value) => value is not null && VoiceLabProject.Matches(value, "[A-Za-z0-9][A-Za-z0-9._:-]{0,63}");
     static long Samples(double seconds, double rate) => (long)EditingMath.Round(seconds * rate);
     public static void Validate(Project project)
     {
@@ -27,7 +26,7 @@ public static class VoiceLabRenderValidation
         Require(videoAssets!.Select(v => v.Id).Distinct(StringComparer.Ordinal).Count() == videoAssets!.Count, VoiceLabProjectErrorCode.InvalidAsset);
         foreach (var video in videoAssets!)
             Require(VoiceLabAssetNaming.SafeVideoFile(project.Id, video.Id) == video.File &&
-                Regex.IsMatch(video.Sha256, "\\A[0-9a-f]{64}\\z", RegexOptions.CultureInvariant) &&
+                VoiceLabProject.Matches(video.Sha256, "[0-9a-f]{64}") &&
                 double.IsFinite(video.DurationSeconds) && video.DurationSeconds > 0 && double.IsFinite(video.FrameRate) &&
                 video.FrameRate > 0 && video.DurationSeconds*video.FrameRate < long.MaxValue && video.Width > 0 && video.Height > 0, VoiceLabProjectErrorCode.InvalidAsset);
         var rate = (double)(project.Media.Source.Audio?.SampleRate ?? 48000);
@@ -186,7 +185,7 @@ public static class VoiceLabRenderValidation
         Require(recipe.Words is null || recipe.Words.Count > 0 && recipe.Words.All(word => !string.IsNullOrEmpty(word.Text) &&
             double.IsFinite(word.Start) && word.Start >= 0 && double.IsFinite(word.End) && word.End >= 0), VoiceLabProjectErrorCode.InvalidSegment);
         Require(recipe.Chunks is { Count: > 0 } && recipe.Chunks.All(chunk => chunk.SourceStartSample >= 0 && chunk.SourceEndSample >= 0 &&
-            Id(chunk.RequestId) && Id(chunk.AssetId) && chunk.AssetSha256 is not null && Regex.IsMatch(chunk.AssetSha256, "\\A[0-9a-f]{64}\\z", RegexOptions.CultureInvariant) &&
+            Id(chunk.RequestId) && Id(chunk.AssetId) && chunk.AssetSha256 is not null && VoiceLabProject.Matches(chunk.AssetSha256, "[0-9a-f]{64}") &&
             chunk.AssembledStartFrame >= 0 && chunk.AssembledEndFrame >= 0), VoiceLabProjectErrorCode.InvalidSegment);
         Require(new[] { recipe.Seams.In, recipe.Seams.Out }.All(seam => Enum.IsDefined(seam.Kind) && seam.FadeSamples >= 0 &&
             seam.SourceHandleSamples >= 0 && seam.AssetHandleFrames >= 0), VoiceLabProjectErrorCode.InvalidSegment);
@@ -196,7 +195,7 @@ public static class VoiceLabRenderValidation
             video.WindowStartSample is null or >= 0 && video.WindowEndSample is null or >= 0 && video.SyncMode is null or "remap", VoiceLabProjectErrorCode.InvalidSegment);
         Require(qa.TranscriptTokens is null or >= 0 && Unit(qa.TranscriptMatch) && double.IsFinite(qa.LufsJumpLu) && double.IsFinite(qa.PeakDbfs) &&
             Unit(qa.SpeakerScore) && Unit(qa.SpeakerThreshold) && qa.SpeakerModel is null or { Length: > 0 }, VoiceLabProjectErrorCode.InvalidSegment);
-        Require(provenance.Provider is not null && Regex.IsMatch(provenance.Provider, "\\A[a-z0-9-]+\\z", RegexOptions.CultureInvariant) &&
+        Require(provenance.Provider is not null && VoiceLabProject.Matches(provenance.Provider, "[a-z0-9-]+") &&
             !string.IsNullOrEmpty(provenance.Endpoint) && !string.IsNullOrEmpty(provenance.Model) && !string.IsNullOrEmpty(provenance.VoiceId) &&
             (provenance.ConsentRecordId is null || Id(provenance.ConsentRecordId)) && (provenance.RequestId is null || Id(provenance.RequestId)) &&
             provenance.Region is { Length: > 0 } && Id(recipe.Cost.QuoteId) && (recipe.Cost.Usd is not { } usd || double.IsFinite(usd) && usd >= 0) &&

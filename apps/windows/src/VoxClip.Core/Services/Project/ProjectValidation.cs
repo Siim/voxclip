@@ -212,7 +212,8 @@ internal static class ProjectValidation
         Require(length >= minimum && length <= maximum);
     }
     private static void String(JsonElement value, string pattern) { Require(value.ValueKind == JsonValueKind.String); Pattern(value.GetString()!, pattern); }
-    private static void Pattern(string value, string pattern) => Require(Regex.IsMatch(value, "\\A(?:" + pattern + ")\\z", RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1)));
+    private static void Pattern(string value, string pattern) => Require(Regex.IsMatch(value, "\\A(?:" + pattern + ")\\z",
+        RegexOptions.CultureInvariant | RegexOptions.NonBacktracking, Regex.InfiniteMatchTimeout));
     private static void Choice(JsonElement value, params string[] choices) => Require(value.ValueKind == JsonValueKind.String && choices.Contains(value.GetString(), StringComparer.Ordinal));
     private static void Number(JsonElement value, double minimum, double maximum = double.MaxValue, bool integer = false)
     {

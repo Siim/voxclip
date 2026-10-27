@@ -681,7 +681,7 @@ Each Core implements these rules once, as `CaptionCardText` (VoxClipCore and Vox
 - **Lines.** A card never takes more lines than the style's `layout.maxLines`, so a one-line style stays one line on every surface.
 - **Fitting.** Use the largest size that fits within the line limit. If nothing fits at the smallest size, drop the last word together with any weak words before it, keeping one word. Never use an ellipsis.
 - **Sidebar sizes are a downscaled card**, not a bar mark. At 1x they read as the texture of a title card in the project's colours, as a downscaled frame would. The title beside them carries the meaning.
-- **No plates at sidebar sizes.** At 18 px high, a boxed word reads as a tag control. The boxed key word takes the box colour as its text colour (Paper `#F3F0E7`, violet `#B79CFF`), and Pill text becomes white.
+- **No plates at sidebar sizes.** At 18 px high, a boxed word reads as a tag control. The boxed key word takes the box colour as its text colour if its WCAG 2.x contrast against the card backdrop colour (stage black, or the dark preview or plate colour at the centre of its vignette, §5.4.3 Backdrop) is at least 4.5:1; otherwise mix the box colour once 45% toward white in sRGB (`c′ = c + (255 − c) × 0.45` per channel, rounded half-up), so Paper `#F3F0E7` stays unchanged and Box highlight `#7C3AED` becomes `#B793F5`. The box colour's alpha is ignored: the key word is drawn opaque, because translucent text at this size is unreadable. Pill text becomes white.
 
 #### 5.4.4 States
 

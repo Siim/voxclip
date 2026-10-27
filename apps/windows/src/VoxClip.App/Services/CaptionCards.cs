@@ -93,7 +93,7 @@ internal sealed class CaptionCards(string sharedRoot)
             resources.Shaper, null, ct).ConfigureAwait(false)).Style;
         var backdrop = Backdrop(resolved, declared);
         var fit = Fit.For(surface, resolved, width, height, Math.Max(1, text.MaxLines(surface)));
-        var restyled = Restyle(resolved, fit, frame, backdrop is null);
+        var restyled = Restyle(resolved, fit, frame, backdrop);
         var plain = new ProjectCaptions(card.StyleId, default, null, new Dictionary<string, CaptionPosition>());
         var reference = resolved.Font.SizeRef switch { CaptionFontSizeRefValue.Height => height, CaptionFontSizeRefValue.Width => width, _ => Math.Min(width, height) };
         for (var attempt = text; ;)
@@ -158,12 +158,20 @@ internal sealed class CaptionCards(string sharedRoot)
 
     /// <summary>The card's copy of a resolved style: centred in its text box with no page breaks. Reveal and motion stay as
     /// the style has them, because the card is the style's own frame at Core's drawn moment. At sidebar sizes plates are not
-    /// drawn: a boxed word takes its box colour as its text colour and dark text meant for a light plate turns white
+    /// drawn: a boxed word takes Core's contrast-adjusted box colour and dark text meant for a light plate turns white
     /// (design §5.4.3). On stage black, near-black strokes and shadows are not drawn: they would only paint black on black.</summary>
-    private static CaptionStyle Restyle(CaptionStyle style, Fit fit, PixelSize frame, bool onBlack)
+    private static CaptionStyle Restyle(CaptionStyle style, Fit fit, PixelSize frame, SKColor? backdrop)
     {
+        var onBlack = backdrop is null;
+        var background = backdrop ?? SKColors.Black;
         var fill = !fit.Plates && style.Box is not null && style.Fill is SolidPaint solid && Luminance(solid.Color, style) < 0.05 ? new SolidPaint("#FFFFFF") : style.Fill;
-        static CaptionWordState? Unboxed(CaptionWordState? state) => state?.Box is { } box ? state with { Box = null, Fill = new SolidPaint(box.Color) } : state;
+        CaptionWordState? Unboxed(CaptionWordState? state)
+        {
+            if (state?.Box is not { } box) return state;
+            var (red, green, blue, _) = CaptionMath.ParseColor(box.Color, style);
+            var color = CaptionCardColors.SidebarKeyText((red, green, blue), (background.Red, background.Green, background.Blue));
+            return state with { Box = null, Fill = new SolidPaint($"#{color.R:X2}{color.G:X2}{color.B:X2}") };
+        }
         return style with
         {
             Aspects = null,

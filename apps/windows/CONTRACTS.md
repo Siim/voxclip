@@ -1,5 +1,40 @@
 # Windows fixed contracts
 
+### 2026-10-27 — Windows early Ctrl+C audit (sol-followups-2)
+
+- Lead's narrowed item 3 is audit-only: no Windows CLI product change, timing hook, new test or architecture wording change is needed. `Program.cs` cancels the workflow token on `Console.CancelKeyPress`; `CliApplication.Stub` checks it before the export command runs. `RunAsync` maps `OperationCanceledException` to exit 6 with an empty message. Human cancellation is silent; JSON retains its existing `cancelled` envelope.
+
+| Pre-export step | Token observation already present |
+| --- | --- |
+| Share-text preflight / runtime agreement | Synchronous launch checks; the command-entry `ThrowIfCancellationRequested` follows them, before source/output work. |
+| Project/source load | `OpenExportInputAsync` passes `ct` to `ProjectStore.LoadAsync`; atomic file I/O and source resolution observe it. Raw/model decoding is synchronous between those boundaries. |
+| Media probe | `ProbeInputAsync` passes `ct` to `FfmpegMediaProbe.ProbeAsync`; `MediaThread.Run` checks it before native work. An in-flight native call must return. |
+| Transcript read/decode | `ReadTranscriptAsync` passes `ct` to file I/O; JSON decode and word validation are synchronous, followed by token-aware caption/export preparation. |
+| Content key / transcription preparation | `ComputeContentKeyAsync` checks before work, during reads and after hashing; extraction, model lookup and transcription receive `ct`, and cancelled extraction cleans its temporary file. |
+| Edit application / output plan | Synchronous pure Core work; the next caption-build or exporter-entry boundary observes `ct`. |
+| Voice Lab preflight / capture | Synchronous Core validation and immutable capture; no scratch is created here. Media Voice Lab preparation receives `ct` after the export-entry guard. |
+| Captions | `CaptionEngine.BuildAsync` receives `ct`; style/resource setup before it is synchronous. |
+| Exporter setup / capacity validation | Synchronous snapshot, destinations, `Exporter.Validate` and capacity checks; `PrepareAsync` checks `ct` before creating partials or Voice Lab scratch. |
+| Audio / SRT sidecars | `WriteWaveAsync` and `WriteAsync` receive `ct`; created sidecar partials are owned and deleted in `ExportAsync`'s `finally`. |
+| Export / publication | The exporter guards entry before any partial; publication has an explicit cancellation checkpoint plus token-aware rollback. |
+
+- Existing real-command regression `CliOutputParityTests.CancelledExportJsonHasAnEmptyMessage` supplies a pre-cancelled token and requires exit 6 and an empty cancellation message before even opening its missing input. No export, partial or scratch work is reached. `CancellationBetweenPublicationRenamesRestoresAllDestinations` covers rollback after publication begins. No genuinely uncovered preparation step or product defect was found, so no redundant test was added and no tight timing assertion was introduced.
+- Merged `origin/main` at `afdd4aae` after the Mac flake-detime change landed as `ab6b0216`; both sides of each `CONTRACTS.md` conflict were retained. Architecture text is exactly the lead's merged wording.
+- Final merged-tree verification: both Windows Release builds succeeded with 0 warnings and 0 errors. The direct xUnit v3 Core runner reported 1,634 total, 1,606 passed and 28 explicit skips, including 89 project-pattern/error cases and all 11 new colour vectors. The selected CLI/caption/output/export Media suites reported 591 total, 477 passed and 114 prerequisite/opt-in skips. The win-ui project reported 245 total, 243 passed and 2 native-prerequisite skips. Mac `swift build` succeeded; Core reported 546 tests with 8 skip notices and no failures; CaptionParityTests passed all 4 tests, covering 86 layouts, 599 pages, 3,589 samples, 262 goldens and 38 gallery tiles. Both Cores continue to check all 51 existing card cases and 56 stand-in cases.
+- The requested Swift `--build-tests` slowcheck build succeeded. No changed expression was flagged. Five warnings point to files byte-identical to merged main: `CLIProcessRunnerTests.swift:131`, `ClipDomainTests.swift:60`, `CaptionFixtureSupport.swift:96`, `DebugTranscriptPerformance.swift:22` and `MediaPipelineTests.swift:89`. They remain baseline compiler hot spots; this track does not change unrelated tests or the frozen Mac App source. Existing test deprecation/unnecessary-`try` warnings are also unchanged.
+- `gen_card_colors.py` ran twice byte-identically (SHA-256 `9eb261301063c95cbed9a54a58477ef70bdb0207905f13dce7b44b960047fb2e`). Existing `cards.json` is byte-identical (SHA-256 `6cfc1121efae9cf5cae78f7ae0a17e35432acf31d18681ebbf4c73c55040103f`). Design generation checks and all 16 design tests passed, all 19 styles passed validation, project/schema and version checks passed, and the Voice Lab float-drift check found identical data. Builds ran one platform at a time under `nice`, with at least 116 GiB free. Live-provider and model-download tests stayed disabled.
+
+### 2026-10-27 — Project validation without regex timeouts (sol-followups-2)
+
+- Every regex on the load path now uses ordinal ASCII patterns with `CultureInvariant | NonBacktracking` and `Regex.InfiniteMatchTimeout`: raw `ProjectValidation.Pattern`, model `VoiceLabProject.Matches` (including paid-asset naming), and `VoiceLabRenderValidation`'s ID/hash/provider checks through that same matcher. Patterns and absolute anchors are unchanged. A busy machine cannot reject a valid project on a wall-clock deadline; the matcher is linear, not backtracking.
+- `ProjectStore.LoadAsync` preserves cancellation, `VoxClipException` (including `ProjectTooNew`) and `VoiceLabProjectException`; every other load failure maps to `ProjectUnreadable`, with the damaged file untouched (editing §10.4). `ProjectPatternTests` pins all raw pattern families, reserved paid-asset names, long valid unbounded strings, missing fields and cancellation. Existing shared v1/v2/v3 fixtures continue to cover both platforms.
+- Mac audit: `ProjectValidation.matches` and `VoiceLabProject.matches` use Foundation `.regularExpression` (`NSRegularExpression`) on the same ASCII patterns, without a configured deadline. `JSONProjectStore` already catches untyped failures as `projectUnreadable` while preserving typed project/Voice Lab errors. It has no matching timeout defect; no Mac Core load change is needed.
+
+### 2026-10-27 — Sidebar key-word contrast (sol-followups-2)
+
+- `CaptionCardColors.SidebarKeyText(box, background)` is Core's pure opaque sRGB tuple rule from design §5.4.3: keep a box colour at 4.5:1 contrast, otherwise mix once 45% toward white, rounded half-up. Luminance matches `tools/design/contrast.mjs`. `CaptionCards.Unboxed` passes the RGB of the box colour and drops its alpha, so the key word is drawn opaque (design §5.4.3; lead decision at merge). Shared `fixtures/captions/card-colors.json` is generated by `tools/captions/gen_card_colors.py` and fully checked on both Cores; existing `cards.json` stays byte-identical.
+- App `Services/CaptionCards.cs` passes `Backdrop`'s actual centre (or stage black) through `Restyle` to `Unboxed`, after style/override resolution. The radial vignette darkens that centre, never lightens it. State chips and row selection do not change it. Box highlight on `#000000` becomes `#B793F5`; Paper stays `#F3F0E7`. Other built-in sidebar colours and Pill's white text are unchanged. Home and header plates and export colours are unchanged.
+
 ### 2026-10-27 — Find-clips CLI JSON parity (sol-followups-1)
 
 - The lead-approved cross-platform follow-up removes the Windows-only `result`

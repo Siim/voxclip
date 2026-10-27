@@ -9,6 +9,23 @@ namespace VoxClip.Core.Tests.Tracks.WinCaptions;
 
 public sealed class CaptionCardTests
 {
+    [Fact]
+    public void EverySidebarColorVector()
+    {
+        using var fixture = FixtureLoader.ReadJson("fixtures/captions/card-colors.json");
+        Assert.Equal("voxclip-caption-card-colors/1", fixture.RootElement.GetProperty("fixture").GetString());
+        foreach (var item in fixture.RootElement.GetProperty("cases").EnumerateArray())
+        {
+            static (byte R, byte G, byte B) Color(JsonElement value)
+            {
+                var channels = value.EnumerateArray().Select(channel => channel.GetByte()).ToArray();
+                return (channels[0], channels[1], channels[2]);
+            }
+            var actual = CaptionCardColors.SidebarKeyText(Color(item.GetProperty("box")), Color(item.GetProperty("background")));
+            Assert.True(actual == Color(item.GetProperty("expected")), item.GetProperty("id").GetString());
+        }
+    }
+
     private static string Camel<T>(T value) where T : struct, Enum
     {
         var name = value.ToString();
