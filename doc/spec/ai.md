@@ -289,6 +289,7 @@ Both platforms read every LLM reply and every transport envelope with one strict
 - It nests at most 64 levels for a reply and 512 for an envelope. The outermost object or array is level 1, so `{"x":[]}` has two levels.
 - Every string escape is well formed, in key names too: an escaped high surrogate is followed by an escaped low surrogate, and a low surrogate never stands alone.
 - A number token is at most 1,024 bytes, including its sign, fraction and exponent. A longer token is invalid in both replies and transport envelopes, even for exact zero. Every number is a finite binary64. A number that rounds to zero does not fit either: its value is 0, yet a digit 1 to 9 appears before any `e` or `E`, as in `1e-400`. An exact zero with any exponent, such as `0e-400`, `0E1`, `0.00e-1` or `-0.0e5`, is zero.
+- Every integer field read by either CLI connector or its process runner uses a signed 64-bit range: an integral binary64 value in [-2^63, 2^63) counts, including negative values and integral floats such as `529.0`. A fractional or out-of-range value, or a field of another JSON type, is absent. This applies to error status, model-usage ranking, recorded usage and app-server response ids; the upper bound is exclusive even when a decimal token rounds to 2^63.
 - Keys compare as UTF-8 bytes after JSON string escapes are decoded. Within one object, two byte-different but canonically equivalent keys make the whole text invalid, on both platforms. For example, precomposed and decomposed `café`, or `K` and KELVIN SIGN U+212A, cannot both be keys in one object. This check is per object, not across sibling objects.
 - A byte-identical repeated key keeps its first value, including when its JSON escape spelling differs. The whole text is still checked, so an invalid later value of a repeated key makes the text invalid.
 
@@ -807,7 +808,7 @@ What the flags do:
 1. Timeout means `timeout`. stdout must be one transport envelope (§4.5): trimmed with jsTrim and parsed whole, at most 512 levels deep, with no code fence or balanced-object scan. Otherwise, or when it is empty, it is `cliFailed` with the first stderr line, redacted. No stderr-marker classification applies to malformed envelopes; the classification in step 4 applies only after a valid result envelope. Missing or wrongly typed `type` or `is_error` fields are malformed envelopes too.
 2. The object must have `type == "result"`.
 3. `is_error == false`: first the stop. `stop_reason` `max_tokens` is `truncated`, and `refusal` is `refused` with no category; any other value, or none, is a complete reply. Then use `structured_output` (an object) as `RawCompletion.object`. If it is absent, extract JSON from the `result` string (§4.5). Either way the reply holds at most 64 levels.
-4. `is_error == true`: `message = result`. Classify case-insensitively, first match wins:
+4. `is_error == true`: `message = result`. Classify case-insensitively: the first matching category in list order wins. Each category matches its markers OR its numeric status, not all statuses before all markers:
    - `authErrorMarkers`, or `api_error_status` 401 or 403, means `cliSignedOut`.
    - `limitMarkers`, or `api_error_status` 429, means `planLimit(message)`.
    - `overloadMarkers`, or `api_error_status` 529, means `overloaded`.
@@ -948,6 +949,8 @@ macOS GUI apps get a minimal `PATH`, so PATH alone is never enough.
 - If `cwd` is not empty after a run, log `warning cli-wrote-files` before deleting it.
 
 **I/O.** Write stdin as UTF-8 and close it. Read stdout and stderr concurrently to avoid a pipe deadlock, each capped at 16 MB. Both connectors select a failure's first stderr line using the LF-only, jsTrim and shared fallback rule in §6.8.
+
+**App-server response ids.** Both Cores and both process runners use the first response line carrying a request's id (§4.5); later lines with that same id are ignored, even if they have a better-formed result. For `model/list` (id 2), if that first response's `result` is not an object, or its `data` is not an array, the model list is unavailable and refresh falls back to the cached or curated list (§9). A later valid id-2 response cannot repair it; a later malformed response cannot replace a valid first result. The initialization response likewise decides only once before the remaining handshake messages are sent.
 
 **Timeout and cancel.**
 - macOS: start the child in its own process group (`posix_spawn` with `POSIX_SPAWN_SETPGROUP`). Send `SIGTERM` to the group, then `SIGKILL` after 3 s.

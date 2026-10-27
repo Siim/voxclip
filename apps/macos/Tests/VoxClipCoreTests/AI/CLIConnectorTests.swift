@@ -265,7 +265,7 @@ struct CLIConnectorTests {
     func sharedClaudeResultEnvelopes() async throws {
         let data = try Data(contentsOf: aiGoldenSharedRoot().appendingPathComponent("fixtures/llm/cli-replies.json"))
         let cases = try JSONDecoder().decode(JSONValue.self, from: data)[ai: "cases"].aiArray
-        #expect(cases.count == 69)
+        #expect(cases.count == 86)
         let catalog = try cliTestCatalog()
         for item in cases {
             let id = item[ai: "id"].aiString ?? "?"
@@ -290,6 +290,14 @@ struct CLIConnectorTests {
             var outcome = "reply"
             do {
                 let completion = try await connector.send(request, model: try #require(input[ai: "model"].aiString))
+                if case .object(let expectedUsage) = expected[ai: "usage"] {
+                    func count(_ key: String) -> Int? {
+                        guard case .number(let number) = expectedUsage[key] else { return nil }
+                        return Int(exactly: number)
+                    }
+                    #expect(completion.usage == LLMUsage(input: count("input"), output: count("output"),
+                        cacheRead: count("cacheRead"), cacheWrite: count("cacheWrite")), "\(id): usage")
+                }
                 let parsed = try CanonicalResponseParser.validate(completion, schema: request.schema)
                 #expect(parsed.object[ai: "rewrite"].aiString == expected[ai: "rewrite"].aiString, "\(id): rewrite")
                 #expect(completion.model == expected[ai: "model"].aiString, "\(id): answering model")

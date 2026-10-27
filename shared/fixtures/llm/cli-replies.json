@@ -839,6 +839,114 @@
       }
     },
     {
+      "id": "claude-auth-marker-overload-status",
+      "kind": "cli-reply",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §6.8",
+      "notes": "The first category in list order matching a marker or status wins.",
+      "input": {
+        "connector": "claude-code",
+        "model": "sonnet",
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "rewrite"
+          ],
+          "properties": {
+            "rewrite": {
+              "type": "string"
+            }
+          }
+        },
+        "stdout": "{\"type\":\"result\",\"is_error\":true,\"result\":\"Not logged in\",\"api_error_status\":529}"
+      },
+      "expected": {
+        "error": "cliSignedOut"
+      }
+    },
+    {
+      "id": "claude-auth-marker-overload-float-status",
+      "kind": "cli-reply",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §6.8",
+      "notes": "The first category in list order matching a marker or status wins.",
+      "input": {
+        "connector": "claude-code",
+        "model": "sonnet",
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "rewrite"
+          ],
+          "properties": {
+            "rewrite": {
+              "type": "string"
+            }
+          }
+        },
+        "stdout": "{\"type\":\"result\",\"is_error\":true,\"result\":\"Not logged in\",\"api_error_status\":529.0}"
+      },
+      "expected": {
+        "error": "cliSignedOut"
+      }
+    },
+    {
+      "id": "claude-limit-marker-auth-status",
+      "kind": "cli-reply",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §6.8",
+      "notes": "The first category in list order matching a marker or status wins.",
+      "input": {
+        "connector": "claude-code",
+        "model": "sonnet",
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "rewrite"
+          ],
+          "properties": {
+            "rewrite": {
+              "type": "string"
+            }
+          }
+        },
+        "stdout": "{\"type\":\"result\",\"is_error\":true,\"result\":\"Usage limit reached\",\"api_error_status\":401}"
+      },
+      "expected": {
+        "error": "cliSignedOut"
+      }
+    },
+    {
+      "id": "claude-overload-marker-limit-status",
+      "kind": "cli-reply",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §6.8",
+      "notes": "The first category in list order matching a marker or status wins.",
+      "input": {
+        "connector": "claude-code",
+        "model": "sonnet",
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "rewrite"
+          ],
+          "properties": {
+            "rewrite": {
+              "type": "string"
+            }
+          }
+        },
+        "stdout": "{\"type\":\"result\",\"is_error\":true,\"result\":\"Overloaded\",\"api_error_status\":429}"
+      },
+      "expected": {
+        "error": "planLimit"
+      }
+    },
+    {
       "id": "claude-model-usage-integral-float",
       "kind": "cli-reply",
       "origin": "voxclip",
@@ -864,6 +972,346 @@
       "expected": {
         "rewrite": "Fine.",
         "model": "claude-sonnet-5-5"
+      }
+    },
+    {
+      "id": "claude-integer-above-int32",
+      "kind": "cli-reply",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §4.5; §6.8",
+      "notes": "Ranking and every recorded usage count use integral binary64 values in the signed 64-bit range.",
+      "input": {
+        "connector": "claude-code",
+        "model": "sonnet",
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "rewrite"
+          ],
+          "properties": {
+            "rewrite": {
+              "type": "string"
+            }
+          }
+        },
+        "stdout": "{\"type\":\"result\",\"is_error\":false,\"structured_output\":{\"rewrite\":\"Fine.\"},\"modelUsage\":{\"claude-sonnet-5-5\":{\"outputTokens\":2147483648.0},\"claude-haiku-5-5\":{\"outputTokens\":5}},\"usage\":{\"input_tokens\":2147483648.0,\"output_tokens\":2147483648.0,\"cache_read_input_tokens\":2147483648.0,\"cache_creation_input_tokens\":2147483648.0}}"
+      },
+      "expected": {
+        "rewrite": "Fine.",
+        "model": "claude-sonnet-5-5",
+        "usage": {
+          "input": 2147483648,
+          "output": 2147483648,
+          "cacheRead": 2147483648,
+          "cacheWrite": 2147483648
+        }
+      }
+    },
+    {
+      "id": "claude-integer-binary64-exact",
+      "kind": "cli-reply",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §4.5; §6.8",
+      "notes": "Ranking and every recorded usage count use integral binary64 values in the signed 64-bit range.",
+      "input": {
+        "connector": "claude-code",
+        "model": "sonnet",
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "rewrite"
+          ],
+          "properties": {
+            "rewrite": {
+              "type": "string"
+            }
+          }
+        },
+        "stdout": "{\"type\":\"result\",\"is_error\":false,\"structured_output\":{\"rewrite\":\"Fine.\"},\"modelUsage\":{\"claude-sonnet-5-5\":{\"outputTokens\":9007199254740992.0},\"claude-haiku-5-5\":{\"outputTokens\":5}},\"usage\":{\"input_tokens\":9007199254740992.0,\"output_tokens\":9007199254740992.0,\"cache_read_input_tokens\":9007199254740992.0,\"cache_creation_input_tokens\":9007199254740992.0}}"
+      },
+      "expected": {
+        "rewrite": "Fine.",
+        "model": "claude-sonnet-5-5",
+        "usage": {
+          "input": 9007199254740992,
+          "output": 9007199254740992,
+          "cacheRead": 9007199254740992,
+          "cacheWrite": 9007199254740992
+        }
+      }
+    },
+    {
+      "id": "claude-integer-out-of-range",
+      "kind": "cli-reply",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §4.5; §6.8",
+      "notes": "Ranking and every recorded usage count use integral binary64 values in the signed 64-bit range.",
+      "input": {
+        "connector": "claude-code",
+        "model": "sonnet",
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "rewrite"
+          ],
+          "properties": {
+            "rewrite": {
+              "type": "string"
+            }
+          }
+        },
+        "stdout": "{\"type\":\"result\",\"is_error\":false,\"structured_output\":{\"rewrite\":\"Fine.\"},\"modelUsage\":{\"claude-sonnet-5-5\":{\"outputTokens\":9.3e18},\"claude-haiku-5-5\":{\"outputTokens\":5}},\"usage\":{\"input_tokens\":9.3e18,\"output_tokens\":9.3e18,\"cache_read_input_tokens\":9.3e18,\"cache_creation_input_tokens\":9.3e18}}"
+      },
+      "expected": {
+        "rewrite": "Fine.",
+        "model": "claude-haiku-5-5",
+        "usage": {
+          "input": null,
+          "output": null,
+          "cacheRead": null,
+          "cacheWrite": null
+        }
+      }
+    },
+    {
+      "id": "claude-integer-negative",
+      "kind": "cli-reply",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §4.5; §6.8",
+      "notes": "Ranking and every recorded usage count use integral binary64 values in the signed 64-bit range.",
+      "input": {
+        "connector": "claude-code",
+        "model": "sonnet",
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "rewrite"
+          ],
+          "properties": {
+            "rewrite": {
+              "type": "string"
+            }
+          }
+        },
+        "stdout": "{\"type\":\"result\",\"is_error\":false,\"structured_output\":{\"rewrite\":\"Fine.\"},\"modelUsage\":{\"claude-sonnet-5-5\":{\"outputTokens\":-1.0},\"claude-haiku-5-5\":{\"outputTokens\":5}},\"usage\":{\"input_tokens\":-1.0,\"output_tokens\":-1.0,\"cache_read_input_tokens\":-1.0,\"cache_creation_input_tokens\":-1.0}}"
+      },
+      "expected": {
+        "rewrite": "Fine.",
+        "model": "claude-haiku-5-5",
+        "usage": {
+          "input": -1,
+          "output": -1,
+          "cacheRead": -1,
+          "cacheWrite": -1
+        }
+      }
+    },
+    {
+      "id": "claude-integer-minimum",
+      "kind": "cli-reply",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §4.5; §6.8",
+      "notes": "Ranking and every recorded usage count use integral binary64 values in the signed 64-bit range.",
+      "input": {
+        "connector": "claude-code",
+        "model": "sonnet",
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "rewrite"
+          ],
+          "properties": {
+            "rewrite": {
+              "type": "string"
+            }
+          }
+        },
+        "stdout": "{\"type\":\"result\",\"is_error\":false,\"structured_output\":{\"rewrite\":\"Fine.\"},\"modelUsage\":{\"claude-sonnet-5-5\":{\"outputTokens\":-9223372036854775808.0},\"claude-haiku-5-5\":{\"outputTokens\":5}},\"usage\":{\"input_tokens\":-9223372036854775808.0,\"output_tokens\":-9223372036854775808.0,\"cache_read_input_tokens\":-9223372036854775808.0,\"cache_creation_input_tokens\":-9223372036854775808.0}}"
+      },
+      "expected": {
+        "rewrite": "Fine.",
+        "model": "claude-haiku-5-5",
+        "usage": {
+          "input": -9223372036854776000,
+          "output": -9223372036854776000,
+          "cacheRead": -9223372036854776000,
+          "cacheWrite": -9223372036854776000
+        }
+      }
+    },
+    {
+      "id": "claude-integer-below-minimum",
+      "kind": "cli-reply",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §4.5; §6.8",
+      "notes": "Ranking and every recorded usage count use integral binary64 values in the signed 64-bit range.",
+      "input": {
+        "connector": "claude-code",
+        "model": "sonnet",
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "rewrite"
+          ],
+          "properties": {
+            "rewrite": {
+              "type": "string"
+            }
+          }
+        },
+        "stdout": "{\"type\":\"result\",\"is_error\":false,\"structured_output\":{\"rewrite\":\"Fine.\"},\"modelUsage\":{\"claude-sonnet-5-5\":{\"outputTokens\":-9.3e18},\"claude-haiku-5-5\":{\"outputTokens\":5}},\"usage\":{\"input_tokens\":-9.3e18,\"output_tokens\":-9.3e18,\"cache_read_input_tokens\":-9.3e18,\"cache_creation_input_tokens\":-9.3e18}}"
+      },
+      "expected": {
+        "rewrite": "Fine.",
+        "model": "claude-haiku-5-5",
+        "usage": {
+          "input": null,
+          "output": null,
+          "cacheRead": null,
+          "cacheWrite": null
+        }
+      }
+    },
+    {
+      "id": "claude-integer-maximum-binary64",
+      "kind": "cli-reply",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §4.5; §6.8",
+      "notes": "Ranking and every recorded usage count use integral binary64 values in the signed 64-bit range.",
+      "input": {
+        "connector": "claude-code",
+        "model": "sonnet",
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "rewrite"
+          ],
+          "properties": {
+            "rewrite": {
+              "type": "string"
+            }
+          }
+        },
+        "stdout": "{\"type\":\"result\",\"is_error\":false,\"structured_output\":{\"rewrite\":\"Fine.\"},\"modelUsage\":{\"claude-sonnet-5-5\":{\"outputTokens\":9223372036854774784.0},\"claude-haiku-5-5\":{\"outputTokens\":5}},\"usage\":{\"input_tokens\":9223372036854774784.0,\"output_tokens\":9223372036854774784.0,\"cache_read_input_tokens\":9223372036854774784.0,\"cache_creation_input_tokens\":9223372036854774784.0}}"
+      },
+      "expected": {
+        "rewrite": "Fine.",
+        "model": "claude-sonnet-5-5",
+        "usage": {
+          "input": 9223372036854775000,
+          "output": 9223372036854775000,
+          "cacheRead": 9223372036854775000,
+          "cacheWrite": 9223372036854775000
+        }
+      }
+    },
+    {
+      "id": "claude-integer-rounded-upper-bound",
+      "kind": "cli-reply",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §4.5; §6.8",
+      "notes": "Ranking and every recorded usage count use integral binary64 values in the signed 64-bit range.",
+      "input": {
+        "connector": "claude-code",
+        "model": "sonnet",
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "rewrite"
+          ],
+          "properties": {
+            "rewrite": {
+              "type": "string"
+            }
+          }
+        },
+        "stdout": "{\"type\":\"result\",\"is_error\":false,\"structured_output\":{\"rewrite\":\"Fine.\"},\"modelUsage\":{\"claude-sonnet-5-5\":{\"outputTokens\":9223372036854775807},\"claude-haiku-5-5\":{\"outputTokens\":5}},\"usage\":{\"input_tokens\":9223372036854775807,\"output_tokens\":9223372036854775807,\"cache_read_input_tokens\":9223372036854775807,\"cache_creation_input_tokens\":9223372036854775807}}"
+      },
+      "expected": {
+        "rewrite": "Fine.",
+        "model": "claude-haiku-5-5",
+        "usage": {
+          "input": null,
+          "output": null,
+          "cacheRead": null,
+          "cacheWrite": null
+        }
+      }
+    },
+    {
+      "id": "codex-integer-usage-wide",
+      "kind": "cli-reply",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §4.5; §6.9",
+      "notes": "Codex recorded usage uses the same signed 64-bit range as Claude.",
+      "input": {
+        "connector": "codex",
+        "model": "default",
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "rewrite"
+          ],
+          "properties": {
+            "rewrite": {
+              "type": "string"
+            }
+          }
+        },
+        "stdout": "{\"type\":\"item.completed\",\"item\":{\"type\":\"agent_message\",\"text\":\"{\\\"rewrite\\\":\\\"Fine.\\\"}\"}}\n{\"type\":\"turn.completed\",\"usage\":{\"input_tokens\":9007199254740992.0,\"output_tokens\":9007199254740992.0,\"cached_input_tokens\":9007199254740992.0}}"
+      },
+      "expected": {
+        "rewrite": "Fine.",
+        "model": "default",
+        "usage": {
+          "input": 9007199254740992,
+          "output": 9007199254740992,
+          "cacheRead": 9007199254740992,
+          "cacheWrite": null
+        }
+      }
+    },
+    {
+      "id": "codex-integer-usage-out-of-range",
+      "kind": "cli-reply",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §4.5; §6.9",
+      "notes": "Codex recorded usage uses the same signed 64-bit range as Claude.",
+      "input": {
+        "connector": "codex",
+        "model": "default",
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "rewrite"
+          ],
+          "properties": {
+            "rewrite": {
+              "type": "string"
+            }
+          }
+        },
+        "stdout": "{\"type\":\"item.completed\",\"item\":{\"type\":\"agent_message\",\"text\":\"{\\\"rewrite\\\":\\\"Fine.\\\"}\"}}\n{\"type\":\"turn.completed\",\"usage\":{\"input_tokens\":9.3e18,\"output_tokens\":9.3e18,\"cached_input_tokens\":9.3e18}}"
+      },
+      "expected": {
+        "rewrite": "Fine.",
+        "model": "default",
+        "usage": {
+          "input": null,
+          "output": null,
+          "cacheRead": null,
+          "cacheWrite": null
+        }
       }
     },
     {
@@ -1021,7 +1469,71 @@
         "connector": "codex",
         "mode": "app-server",
         "model": "default",
-        "stdout": "{\"id\":2,\"result\":\"not an object\"}\n{\"id\":2,\"result\":{\"data\":[42,{\"id\":42},{\"id\":\"listed\",\"hidden\":\"false\",\"displayName\":42,\"supportedReasoningEfforts\":[42,{\"reasoningEffort\":42},{\"reasoningEffort\":\"medium\"}]}]}}"
+        "stdout": "{\"id\":2,\"result\":{\"data\":[42,{\"id\":42},{\"id\":\"listed\",\"hidden\":\"false\",\"displayName\":42,\"supportedReasoningEfforts\":[42,{\"reasoningEffort\":42},{\"reasoningEffort\":\"medium\"}]}]}}"
+      },
+      "expected": {
+        "models": [
+          "default",
+          "listed"
+        ]
+      }
+    },
+    {
+      "id": "codex-app-server-valid-then-malformed",
+      "kind": "cli-reply",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §4.5; §6.10",
+      "notes": "The first response with an integral request id decides; duplicates cannot replace or repair it.",
+      "input": {
+        "connector": "codex",
+        "mode": "app-server",
+        "model": "default",
+        "stdout": "{\"id\":2,\"result\":{\"data\":[{\"id\":\"listed\",\"supportedReasoningEfforts\":[{\"reasoningEffort\":\"medium\"}]}]}}\n{\"id\":2,\"result\":\"not an object\"}"
+      },
+      "expected": {
+        "models": [
+          "default",
+          "listed"
+        ]
+      }
+    },
+    {
+      "id": "codex-app-server-malformed-then-valid",
+      "kind": "cli-reply",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §4.5; §6.10",
+      "notes": "The first response with an integral request id decides; duplicates cannot replace or repair it.",
+      "input": {
+        "connector": "codex",
+        "mode": "app-server",
+        "model": "default",
+        "stdout": "{\"id\":2,\"result\":\"not an object\"}\n{\"id\":2,\"result\":{\"data\":[{\"id\":\"listed\",\"supportedReasoningEfforts\":[{\"reasoningEffort\":\"medium\"}]}]}}"
+      },
+      "expected": {
+        "models": [
+          "default",
+          "gpt-6.1-sol",
+          "gpt-6-astra",
+          "gpt-6-sol",
+          "gpt-6-luna",
+          "gpt-5.6-sol",
+          "gpt-5.6-terra",
+          "gpt-5.6-luna",
+          "gpt-5.5"
+        ]
+      }
+    },
+    {
+      "id": "codex-app-server-integral-float-id",
+      "kind": "cli-reply",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §4.5; §6.10",
+      "notes": "The first response with an integral request id decides; duplicates cannot replace or repair it.",
+      "input": {
+        "connector": "codex",
+        "mode": "app-server",
+        "model": "default",
+        "stdout": "{\"id\":2.5,\"result\":\"ignored\"}\n{\"id\":9.3e18,\"result\":\"ignored\"}\n{\"id\":2.0,\"result\":{\"data\":[{\"id\":\"listed\",\"supportedReasoningEfforts\":[{\"reasoningEffort\":\"medium\"}]}]}}\n{\"id\":2,\"result\":\"not an object\"}"
       },
       "expected": {
         "models": [

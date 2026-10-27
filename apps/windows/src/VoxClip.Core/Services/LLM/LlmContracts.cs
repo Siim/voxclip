@@ -73,7 +73,7 @@ public abstract record StopKind
     public sealed record Refused(string? Category) : StopKind;
 }
 /// <summary>Optional usage counts; AI §3.2.</summary>
-public sealed record LlmUsage(int? Input, int? Output, int? CacheRead, int? CacheWrite);
+public sealed record LlmUsage(long? Input, long? Output, long? CacheRead, long? CacheWrite);
 /// <summary>One model response, before canonical validation; AI §3.2.</summary>
 public sealed record RawCompletion(string? Text, JsonNode? Object, string Model, StopKind Stop, LlmUsage? Usage, string? RequestId);
 /// <summary>Validated canonical result; AI §3.2.</summary>

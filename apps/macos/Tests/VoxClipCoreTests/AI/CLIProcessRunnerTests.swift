@@ -207,6 +207,55 @@ struct CLIProcessRunnerTests {
         }
     }
 
+    @Test(arguments: [false, true], [false, true])
+    func appServerFirstResponseDecides(_ malformedFirst: Bool, _ floatingID: Bool) async throws {
+        let directory = try CLITestDirectory()
+        let initializationID = floatingID ? "1.0" : "1"
+        let modelID = floatingID ? "2.0" : "2"
+        let validResult = #"{"data":[]}"#
+        let malformedResult = #""not an object""#
+        let firstResult = malformedFirst ? malformedResult : validResult
+        let secondResult = malformedFirst ? validResult : malformedResult
+        let script = try cliNativeScript("""
+        IFS= read -r initialize
+        printf '%s\\n' '{"id":\(initializationID),"result":{}}'
+        IFS= read -r initialized
+        IFS= read -r models
+        printf '%s\\n' '{"id":\(modelID),"result":\(firstResult)}' '{"id":2,"result":\(secondResult)}'
+        /bin/sleep 60
+        """, in: directory.url)
+        var request = ProcessRequest(executable: script, arguments: [], workingDirectory: directory.url,
+            environment: [:], stdin: Data("initialize\ninitialized\nmodel/list\n".utf8), timeout: .seconds(15))
+        request.cliInitializationResponseID = 1
+        request.cliCompletionResponseID = 2
+        let started = ContinuousClock.now
+        let result = try await FoundationProcessRunner().run(request)
+        let responses = String(decoding: result.stdout, as: UTF8.self).components(separatedBy: "\n")
+            .compactMap { (line: String) -> JSONValue? in CanonicalResponseParser.envelope(line) }
+        let response = try #require(responses.first { (value: JSONValue) -> Bool in value[ai: "id"] == .number(2) })
+        let expected: JSONValue = malformedFirst ? .string("not an object") : .object(["data": .array([])])
+        #expect(response[ai: "result"] == expected)
+        #expect(ContinuousClock.now - started < .seconds(5))
+    }
+
+    @Test func appServerIgnoresDuplicateInitializationResponse() async throws {
+        let directory = try CLITestDirectory()
+        let script = try cliNativeScript("""
+        IFS= read -r initialize
+        printf '%s\\n' '{"id":1,"result":{}}' '{"id":1.0,"error":{"message":"ignored duplicate"}}'
+        IFS= read -r initialized
+        IFS= read -r models
+        printf '%s\\n' '{"id":2,"result":{"data":[]}}'
+        /bin/sleep 60
+        """, in: directory.url)
+        var request = ProcessRequest(executable: script, arguments: [], workingDirectory: directory.url,
+            environment: [:], stdin: Data("initialize\ninitialized\nmodel/list\n".utf8), timeout: .seconds(15))
+        request.cliInitializationResponseID = 1
+        request.cliCompletionResponseID = 2
+        let result = try await FoundationProcessRunner().run(request)
+        #expect(String(decoding: result.stdout, as: UTF8.self).contains(#""id":2"#))
+    }
+
     @Test func appServerResponseEndsLongRunningProcess() async throws {
         let directory = try CLITestDirectory()
         let script = try cliNativeScript("""
