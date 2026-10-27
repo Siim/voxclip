@@ -221,6 +221,70 @@ public sealed class VoiceLabAssetStoreTests
         Refuses(VoiceLabAssetStoreErrorCode.UnsafePath, () => VoiceLabAssetStore.Write([1, 0], 24_000, storage.ProjectId, "take", dangling, CreatedAt, TestContext.Current.CancellationToken));
     }
 
+    [Fact, Trait("Category", "RequiresWindows")]
+    public async Task WindowsDirectPaidRootJunctionPublishesUnderItsPinnedTarget()
+    {
+        NativeTest.Require(OperatingSystem.IsWindows(), "Windows file-system regressions require Windows.");
+        using (var storage = new VoiceLabTestStorage())
+        {
+            Directory.CreateDirectory(storage.PaidRoot);
+            var alias = Path.Combine(storage.Root, "alias");
+            await VoiceLabTestStorage.JunctionAsync(alias, storage.PaidRoot);
+            try
+            {
+                var asset = VoiceLabAssetStore.Write([1, 0], 24_000, storage.ProjectId, "take", alias, CreatedAt, TestContext.Current.CancellationToken);
+                Assert.Equal(new byte[] { 1, 0 }, File.ReadAllBytes(storage.AssetPath(asset))[44..]);
+                Assert.Equal(File.ReadAllBytes(storage.AssetPath(asset)), File.ReadAllBytes(Path.Combine(alias, asset.File)));
+            }
+            finally { Directory.Delete(alias); }
+        }
+        VoiceLabTestStorage.NativePassed(nameof(WindowsDirectPaidRootJunctionPublishesUnderItsPinnedTarget));
+    }
+
+    [Fact, Trait("Category", "RequiresWindows")]
+    public async Task WindowsAncestorJunctionResolvesBeforeCreatingThePaidRoot()
+    {
+        NativeTest.Require(OperatingSystem.IsWindows(), "Windows file-system regressions require Windows.");
+        using (var storage = new VoiceLabTestStorage())
+        {
+            var target = Directory.CreateDirectory(Path.Combine(storage.Root, "real-data")).FullName;
+            var alias = Path.Combine(storage.Root, "data-alias");
+            await VoiceLabTestStorage.JunctionAsync(alias, target);
+            try
+            {
+                var root = Path.Combine(alias, "VoiceLab");
+                var asset = VoiceLabAssetStore.Write([2, 0], 24_000, storage.ProjectId, "take", root, CreatedAt, TestContext.Current.CancellationToken);
+                var final = Path.Combine(target, "VoiceLab", asset.File);
+                Assert.Equal(new byte[] { 2, 0 }, File.ReadAllBytes(final)[44..]);
+                var second = VoiceLabAssetStore.Write([3, 0], 24_000, storage.ProjectId, "second", root, CreatedAt, TestContext.Current.CancellationToken);
+                Assert.Equal(new byte[] { 3, 0 }, File.ReadAllBytes(Path.Combine(target, "VoiceLab", second.File))[44..]);
+                Assert.Equal(2, Directory.GetFiles(Path.GetDirectoryName(final)!).Length);
+            }
+            finally { Directory.Delete(alias); }
+        }
+        VoiceLabTestStorage.NativePassed(nameof(WindowsAncestorJunctionResolvesBeforeCreatingThePaidRoot));
+    }
+
+    [Fact, Trait("Category", "RequiresWindows")]
+    public async Task WindowsJunctionBelowTheCanonicalPaidRootIsRefused()
+    {
+        NativeTest.Require(OperatingSystem.IsWindows(), "Windows file-system regressions require Windows.");
+        using (var storage = new VoiceLabTestStorage())
+        {
+            Directory.CreateDirectory(storage.PaidRoot);
+            var target = Directory.CreateDirectory(Path.Combine(storage.PaidRoot, "another-project")).FullName;
+            var junction = Path.Combine(storage.PaidRoot, storage.ProjectId);
+            await VoiceLabTestStorage.JunctionAsync(junction, target);
+            try
+            {
+                Refuses(VoiceLabAssetStoreErrorCode.UnsafePath, () => Write(storage));
+                Assert.Empty(Directory.GetFileSystemEntries(target));
+            }
+            finally { Directory.Delete(junction); }
+        }
+        VoiceLabTestStorage.NativePassed(nameof(WindowsJunctionBelowTheCanonicalPaidRootIsRefused));
+    }
+
     [Fact]
     public async Task WrittenV3AssetPreparesAndOneChangedByteIsAltered()
     {
@@ -271,6 +335,16 @@ internal sealed class VoiceLabTestStorage : IDisposable
         Directory.CreateDirectory(directory);
         lock (EvidenceLock)
             File.AppendAllText(Path.Combine(directory, "voice-lab-media-r2-tests.log"), "PASS " + name + Environment.NewLine);
+    }
+    internal static async Task JunctionAsync(string alias, string target)
+    {
+        using var process = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("cmd.exe",
+            $"/d /c mklink /J \"{alias}\" \"{target}\"") { UseShellExecute = false, CreateNoWindow = true })!;
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(20));
+        try { await process.WaitForExitAsync(timeout.Token); }
+        catch { if (!process.HasExited) { process.Kill(entireProcessTree: true); await process.WaitForExitAsync(CancellationToken.None); } throw; }
+        Assert.Equal(0, process.ExitCode);
     }
     public void Dispose()
     {

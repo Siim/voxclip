@@ -15,6 +15,25 @@ internal static class VoiceLabWindowsFiles
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true, ExactSpelling = true)]
     private static extern uint GetFinalPathNameByHandleW(SafeFileHandle handle, StringBuilder path, uint size, uint flags);
 
+    [StructLayout(LayoutKind.Sequential)]
+    private struct AttributeTagInformation
+    {
+        internal FileAttributes Attributes;
+        internal uint ReparseTag;
+    }
+
+    [DllImport("kernel32.dll", SetLastError = true, ExactSpelling = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetFileInformationByHandleEx(SafeFileHandle handle, int informationClass,
+        out AttributeTagInformation information, uint size);
+
+    internal static FileAttributes Attributes(SafeFileHandle handle)
+    {
+        if (!GetFileInformationByHandleEx(handle, 9, out var information, (uint)Marshal.SizeOf<AttributeTagInformation>()))
+            throw new IOException("Cannot inspect Voice Lab storage directory");
+        return information.Attributes;
+    }
+
     internal static string FinalPath(SafeFileHandle handle)
     {
         var text = new StringBuilder(32768);

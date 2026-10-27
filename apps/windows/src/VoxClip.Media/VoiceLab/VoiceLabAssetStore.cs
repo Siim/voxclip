@@ -102,10 +102,12 @@ public static class VoiceLabAssetStore
         try
         {
             var root = OpenRoot(paidRoot, file);
-            using var rootLease = HoldDirectory(root, file);
+            using var rootLease = HoldDirectory(root, file, followLinks: true);
+            if (rootLease is not null) root = VoiceLabWindowsFiles.FinalPath(rootLease);
             var directory = Path.Combine(root, projectId);
             RequireDirectory(directory, file, create: true);
             using var projectLease = HoldDirectory(directory, file);
+            if (projectLease is not null) VoiceLabAssets.RequireWithinRoot(root, directory, projectLease, file);
             var final = Path.Combine(directory, Path.GetFileName(file));
             if (EntryExists(final)) throw Failure(VoiceLabAssetStoreErrorCode.AlreadyExists, file);
             temporary = Path.Combine(directory, "." + Path.GetFileName(file) + "." + Guid.NewGuid().ToString("N") + ".partial");
@@ -175,6 +177,7 @@ public static class VoiceLabAssetStore
         if (EntryExists(root))
         {
             if (!Directory.Exists(root)) throw Failure(VoiceLabAssetStoreErrorCode.UnsafePath, file);
+            if (OperatingSystem.IsWindows()) return root;
             var info = new DirectoryInfo(root);
             if (info.LinkTarget is not null) root = info.ResolveLinkTarget(true)?.FullName ?? root;
             RequireDirectory(root, file, create: false);
@@ -207,13 +210,20 @@ public static class VoiceLabAssetStore
         catch (Exception error) when (error is FileNotFoundException or DirectoryNotFoundException) { return false; }
     }
 
-    private static SafeFileHandle? HoldDirectory(string path, string file)
+    private static SafeFileHandle? HoldDirectory(string path, string file, bool followLinks = false)
     {
         if (!OperatingSystem.IsWindows()) return null;
-        var handle = CreateFileW(path, 0x80000000, FileShare.Read | FileShare.Write, IntPtr.Zero, FileMode.Open, 0x02200000, IntPtr.Zero);
-        if (!handle.IsInvalid) return handle;
-        handle.Dispose();
-        throw Failure(VoiceLabAssetStoreErrorCode.Unwritable, file);
+        var handle = CreateFileW(path, 0x80000000, FileShare.Read | FileShare.Write, IntPtr.Zero, FileMode.Open,
+            followLinks ? 0x02000000u : 0x02200000u, IntPtr.Zero);
+        try
+        {
+            if (handle.IsInvalid) throw Failure(VoiceLabAssetStoreErrorCode.Unwritable, file);
+            var attributes = VoiceLabWindowsFiles.Attributes(handle);
+            if ((attributes & FileAttributes.Directory) == 0 || (attributes & FileAttributes.ReparsePoint) != 0)
+                throw Failure(VoiceLabAssetStoreErrorCode.UnsafePath, file);
+            return handle;
+        }
+        catch { handle.Dispose(); throw; }
     }
 
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true, ExactSpelling = true)]
