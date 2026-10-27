@@ -1,5 +1,17 @@
 # Windows fixed contracts
 
+### 2026-10-28 — sol-win-redesign 15a — Verification boundary
+
+- Sequential local acceptance: cross-platform Release, UI Release/Debug and App Release/Debug typechecks all build with zero warnings/errors. Direct Core: 2,057 passed, 28 explicit skips, 2,085 total. UI companion: 371 passed, three native prerequisites skipped, 374 total. Focused `RewritePanelTests` pass all 18 cases in both Release and Debug, including clearing a prior proposal error after a successful retry. Static XAML reports zero problems; generated design files are unchanged and all 16 design tests pass. Live-provider/model-download switches stay off; proposal tests use a recording fake connector only.
+- SSH at 192.168.64.3 answers but rejects the available key with Permission denied; this is not an unanswered VM. No lock is acquired and no native app is launched. Branch-only hosted CI is the fallback; its exact run ID and state belong in the handoff. Hosted builds do not close interactive visual, keyboard or Narrator gates.
+- Owed for 15a on x64 and ARM64: light/dark/compact panel mockup geometry, the passage fill/outline and timeline band, diff strikes/underlines/absorbed labels, resizing and scrolling, High Contrast Black/White, F6/Shift+F6 from descendants, opening focus, Close/Esc return focus, and actual spoken diff/control names. The earlier rounds' native owed list remains open. Step 15b is unimplemented; Release entries remain hidden/refused even with persisted Voice Lab enablement.
+- Core insertion placement currently refuses with `InsertionUnsupported`. Insert Words opens the internal panel and reports that refusal rather than fabricating a window or enabling a send. Lead-owned copy questions are the fallback source/placement/timing/connector messages in `RewriteSession`, plus its zero-cost fallback. No design.md edit or Swift change is made.
+
+### 2026-10-28 — sol-win-redesign 15a — Keyboard and focus
+
+- F6/Shift+F6 keeps the same right-column slot, targeting What should change? when Rewrite replaces Captions. Loaded focuses that field. Close Rewrite/Esc and successful local application return focus to the words; automatic invalidation does not steal sidebar focus. Every action and input has its design name; Escape is a separate accelerator hint. Leaving, media failure, editor changes and connector/settings replacement cancel stale panel work and clear the passage. The enablement dialog uses the existing inline-error/cancellation boundary. Motion is static, including when system animation effects are off.
+- `PanelUsesTheRightColumnFocusSlotAndExactControlNames` pins the control/focus integration and absence of 15b controls; `LeavingOrLosingTheSourceClosesAndClearsThePassage` covers model lifetime. Actual keyboard navigation, pixel geometry, High Contrast and spoken Narrator checks remain native gates.
+
 ### 2026-10-28 — sol-win-redesign 15a — Local edits
 
 - A review with only cut/text-only hunks offers Apply Cuts or Apply Correction. `RewriteSession.ApplyLocalChanges` builds only existing `SetWordCuts` and whole-item `CorrectedTexts`/`Correct` operations, calls `EditorViewModel.ApplyBatch` once, and closes at the accepted editor change. A voice hunk never offers a local apply or acceptance. Captured project identity, read-only/busy/leave checks refuse stale application.
@@ -16,12 +28,12 @@
 
 - `RewritePanel` replaces Captions in the flush right-column slot, with the passage header/Beta/Close Rewrite, What should change?, bordered Rewrite action, selected connector disclosure, plain New words, and the disclosure footer. No Voice, Takes, generation or acceptance control is introduced. The transcript and timeline use the existing passage-outline/band paths and never receive proposed words.
 - `RewriteSession` freezes the project, effective source words, scope and instruction. Preparation uses Core window placement, lendable silence and passage length budget, then `VoiceRewriteService.PrepareAsync`; it performs no connector discovery or send. A displayed exact quote and affirmative approval are required before Propose. Edits cancel stale requests; project edits close the session. Waveform retains its actual 10 ms envelope for Core planning, never synthesizing one from its 50 ms display buckets.
-- `PanelProposalIsInertUntilTheDisplayedEstimateIsApproved` and `ChangedInstructionInvalidatesTheDisplayedAuthorizationWithoutDiscovery` use a recording fake connector. No provider is contacted during verification. Proposed words are inert until explicit local edit application.
+- `PanelProposalIsInertUntilTheDisplayedEstimateIsApproved`, `ChangedInstructionInvalidatesTheDisplayedAuthorizationWithoutDiscovery` and `FailedProposalKeepsItsInlineErrorAndLateProposalCannotReplaceTyping` use a recording fake connector. `WaveformReusesNativeCacheAcrossInstancesWithoutDecodingAgain` also checks the retained native-rate envelope and refuses missing audio. No provider is contacted during verification. Proposed words are inert until explicit local edit application.
 
 ### 2026-10-28 — sol-win-redesign 15a — Gated entry points
 
 - `RewriteEntryPolicy.BuildEnabled` is true only under DEBUG. Release hides the overflow, selection and context entries and refuses Ctrl+R; enabling the persisted Voice Lab setting cannot bypass it. DEBUG selection/context/shortcut entries require editable selected words, and Insert Words requires a between-word context caret. Overflow while off shows the one-time §5 disclosure and saves enablement only after Turn on. The existing tree had the setting and gated placeholders but no Windows enablement sheet; this is its single implementation.
-- `EveryEntryRespectsTheReleaseGate` covers all five routes; `DisabledVoiceLabOnlyOffersTheOneTimeOverflowFlow` covers off, missing caret and the Release constant. Results are recorded after sequential verification.
+- `EveryEntryRespectsTheReleaseGate` covers all five routes; `DisabledVoiceLabOnlyOffersTheOneTimeOverflowFlow` covers off, missing caret, between-word kinds and the Release getter. Results are recorded in the verification boundary above.
 
 ### 2026-10-27 — sol-win-redesign round 5 — Portable acceptance
 

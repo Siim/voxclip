@@ -27,6 +27,43 @@ public sealed class RewritePanelTests
     private static AudioEnvelope Envelope() => new(48000, 0.01, Enumerable.Repeat(0.01f, 10000).ToArray());
 
     [Fact]
+    public void PanelUsesTheRightColumnFocusSlotAndExactControlNames()
+    {
+        var app = Path.Combine(Path.GetDirectoryName(Shared)!, "apps", "windows", "src", "VoxClip.App");
+        var panel = File.ReadAllText(Path.Combine(app, "Controls", "RewritePanel.cs"));
+        var column = File.ReadAllText(Path.Combine(app, "Controls", "RightColumn.cs"));
+        var page = File.ReadAllText(Path.Combine(app, "Pages", "EditorPage.xaml.cs"));
+        Assert.Contains("SetName(close, \"Close Rewrite\")", panel);
+        Assert.Contains("SetName(instruction, \"What should change?\")", panel);
+        Assert.Contains("SetName(words, \"New words\")", panel);
+        Assert.Contains("Loaded += (_, _) => instruction.Focus(FocusState.Programmatic)", panel);
+        Assert.Contains("VirtualKey.Escape", panel);
+        Assert.Contains("ReturnFocusOnClose = true", panel);
+        Assert.Contains("if (!session.ApplyLocalChanges()) ReturnFocusOnClose = false", panel);
+        Assert.Contains("rewrite?.FocusTarget ?? captions.FocusTarget", column);
+        Assert.Contains("EditorFocusRegion.Captions: if (rightContent", page);
+        Assert.Contains("panel.ReturnFocusOnClose", page);
+        Assert.Contains("FocusTranscript()", page);
+        Assert.DoesNotContain("Use Take", panel);
+        Assert.DoesNotContain("Generate takes", panel);
+    }
+
+    [Fact]
+    public void LeavingOrLosingTheSourceClosesAndClearsThePassage()
+    {
+        var leaving = Editor();
+        using var first = new RewriteSession(leaving, 10, 12, Envelope(), null);
+        leaving.BeginLeaving();
+        Assert.False(first.IsOpen);
+        Assert.Equal(-1, leaving.RewriteStart);
+        var missing = Editor();
+        using var second = new RewriteSession(missing, 10, 12, Envelope(), null);
+        missing.SetMediaUnavailable(true);
+        Assert.False(second.IsOpen);
+        Assert.Equal(-1, missing.RewriteEnd);
+    }
+
+    [Fact]
     public void ApplyCutsMatchesTheManualSavedProjectByteForByteAndUndoesOnce()
     {
         var edited = Editor();
@@ -119,7 +156,7 @@ public sealed class RewritePanelTests
         Assert.Null(unknown.Review!.Summary!.CostEstimate!.Usd);
         Assert.DoesNotContain("$", unknown.Review.Summary.Copy);
         Assert.Equal("This change is too close to the end of the take to blend in. Re-record this sentence instead.",
-            RewriteSession.Refusal(new VoiceLabGeometryException(VoiceLabGeometryErrorCode.SeamFadeOutsideTake, incoming: false)));
+            RewriteSession.Refusal(new VoiceLabGeometryException(VoiceLabGeometryErrorCode.SeamFadeOutsideTake) { TakeEdgeIsStart = false }));
     }
 
     [Fact]
@@ -164,7 +201,7 @@ public sealed class RewritePanelTests
         var editor = Editor();
         var fake = new RecordingConnector();
         using var session = new RewriteSession(editor, 10, 12, Envelope(), new(fake, "chosen", "Test connector", "apiKey", ""));
-        Assert.Equal(editor.SelectionText, "");
+        Assert.Equal("", editor.SelectionText);
         Assert.Equal("3 words at 0:11.0", session.Header);
         Assert.Equal("word10 word11 word12", session.NewWords);
         await session.SetInstructionAsync("Say it plainly");
@@ -203,16 +240,51 @@ public sealed class RewritePanelTests
         Assert.Equal("Runs on this PC. Nothing leaves it.", session.SendLine);
     }
 
+    [Fact]
+    public async Task FailedProposalKeepsItsInlineErrorAndLateProposalCannotReplaceTyping()
+    {
+        var failed = new RecordingConnector { Failure = new IOException("offline") };
+        using var failure = new RewriteSession(Editor(), 10, 12, Envelope(), new(failed, "chosen", "Test", "apiKey", ""));
+        await failure.SetInstructionAsync("First");
+        var quote = failure.Prepared!;
+        failure.MarkEstimateShown(quote);
+        Assert.False(await failure.ProposeAsync(quote, true));
+        Assert.NotEmpty(failure.Problem);
+        Assert.DoesNotContain("offline", failure.Problem);
+        failed.Failure = null;
+        var retry = failure.Prepared!;
+        failure.MarkEstimateShown(retry);
+        Assert.True(await failure.ProposeAsync(retry, true));
+        Assert.Empty(failure.Problem);
+        var late = new RecordingConnector { Pending = new(TaskCreationOptions.RunContinuationsAsynchronously) };
+        using var typing = new RewriteSession(Editor(), 10, 12, Envelope(), new(late, "chosen", "Test", "apiKey", ""));
+        await typing.SetInstructionAsync("Second");
+        var action = typing.Prepared!;
+        typing.MarkEstimateShown(action);
+        var pending = typing.ProposeAsync(action, true);
+        Assert.Contains("send", late.Calls);
+        typing.Edit("Keep my typing");
+        late.Pending.SetResult(new(null, new JsonObject { ["rewrite"] = "Late answer" }, "chosen", new StopKind.Complete(), null, "fake"));
+        Assert.False(await pending);
+        Assert.Equal("Keep my typing", typing.NewWords);
+    }
+
     private sealed class RecordingConnector : ILlmConnector
     {
         internal List<string> Calls { get; } = [];
+        internal Exception? Failure { get; set; }
+        internal TaskCompletionSource<RawCompletion>? Pending { get; init; }
         public ConnectorId Id => ConnectorId.OpenAI;
         public Task<ConnectorStatus> GetStatusAsync(CancellationToken ct) { Calls.Add("status"); return Task.FromResult<ConnectorStatus>(new ConnectorStatus.Ready()); }
         public Task<IReadOnlyList<LlmModel>> GetModelsAsync(bool refresh, CancellationToken ct)
         { Calls.Add("models"); return Task.FromResult<IReadOnlyList<LlmModel>>([new("chosen", "Chosen", null, 32768, ModelSource.Discovered)]); }
         public Task<int?> GetContextTokensAsync(string model, CancellationToken ct) { Calls.Add("context"); return Task.FromResult<int?>(32768); }
         public Task<RawCompletion> SendAsync(LlmRequest request, string model, CancellationToken ct)
-        { Calls.Add("send"); return Task.FromResult(new RawCompletion(null, new JsonObject { ["rewrite"] = "Better passage" }, model, new StopKind.Complete(), null, "fake")); }
+        {
+            Calls.Add("send");
+            if (Failure is not null) return Task.FromException<RawCompletion>(Failure);
+            return Pending?.Task ?? Task.FromResult(new RawCompletion(null, new JsonObject { ["rewrite"] = "Better passage" }, model, new StopKind.Complete(), null, "fake"));
+        }
     }
     [Theory]
     [InlineData(0)]
@@ -236,6 +308,9 @@ public sealed class RewritePanelTests
             Assert.Equal(entry == RewriteEntry.Overflow ? RewriteEntryAction.TurnOnVoiceLab : RewriteEntryAction.Unavailable,
                 RewriteEntryPolicy.Resolve(entry, false, true, true, true, true));
         Assert.Equal(RewriteEntryAction.Unavailable, RewriteEntryPolicy.Resolve(RewriteEntry.InsertWords, true, true, true, false, true));
+        Assert.True(RewriteEntryPolicy.BetweenWords([Word(0, "one"), Word(1, "two")], 0));
+        Assert.False(RewriteEntryPolicy.BetweenWords([Word(0, "one"), Word(1, "[event]", WordKind.Event)], 0));
+        Assert.False(RewriteEntryPolicy.BetweenWords([Word(0, "one")], 0));
 #if !DEBUG
         Assert.False(RewriteEntryPolicy.BuildEnabled);
 #endif

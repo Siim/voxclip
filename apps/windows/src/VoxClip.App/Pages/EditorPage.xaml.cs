@@ -29,6 +29,7 @@ public sealed partial class EditorPage : Page
     private CaptionsPanel? captions;
     private Controls.RightColumn? rightContent;
     private RewriteSession? rewrite;
+    private long rewriteOpenRevision;
     private MediaInfo? media;
     private EditorMediaState mediaState;
     private long standInGeneration;
@@ -114,6 +115,7 @@ public sealed partial class EditorPage : Page
         captions = new(ViewModel, () => MediaPath, lifetime.Token);
         rightContent = new(captions);
         CaptionsHost.Children.Add(rightContent);
+        SelectionChanged(this, EventArgs.Empty);
         await captions.InitializeAsync();
         InstallAccelerators();
         if (demo) media = MediaFromProject(project);
@@ -331,6 +333,8 @@ public sealed partial class EditorPage : Page
     private void EditorSettingsChanged(object? sender, EventArgs args)
     {
         if (disposed || ViewModel.IsLeaving) return;
+        rewriteOpenRevision++;
+        rewrite?.Dispose();
         Transcript.ApplySettings();
         SelectionChanged(this, EventArgs.Empty);
         captions?.RefreshSamples();
@@ -469,14 +473,17 @@ public sealed partial class EditorPage : Page
     private async void RewriteClicked(object sender, RoutedEventArgs args)
     {
         if (!RewriteEntryPolicy.BuildEnabled) return;
-        if (!App.Services.Get("voiceLab.enabled", false))
+        await RunAsync(async () =>
         {
-            var dialog = new ContentDialog { XamlRoot = XamlRoot, Title = "Turn on Voice Lab",
-                Content = Ui.Text(RewriteEntryPolicy.EnablementCopy), PrimaryButtonText = "Turn on", CloseButtonText = "Cancel" };
-            if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
-            await App.Services.SetAsync("voiceLab.enabled", true, lifetime.Token);
-        }
-        Transcript.RequestRewrite();
+            if (!App.Services.Get("voiceLab.enabled", false))
+            {
+                var dialog = new ContentDialog { XamlRoot = XamlRoot, Title = "Turn on Voice Lab",
+                    Content = Ui.Text(RewriteEntryPolicy.EnablementCopy), PrimaryButtonText = "Turn on", CloseButtonText = "Cancel" };
+                if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
+                await App.Services.SetAsync("voiceLab.enabled", true, lifetime.Token);
+            }
+            Transcript.RequestRewrite();
+        }, "Rewrite");
     }
     private async Task OpenRewriteAsync(bool insertion)
     {
@@ -484,18 +491,25 @@ public sealed partial class EditorPage : Page
             ViewModel.IsReadOnly || ViewModel.Busy || ViewModel.IsLeaving || rightContent is null ||
             (insertion ? Transcript.InsertionAfterIndex < 0 : !ViewModel.HasSelection)) return;
         rewrite?.Dispose();
+        var opening = ++rewriteOpenRevision;
+        ViewModel.CaptionDrag.Cancel();
         var project = ViewModel.Project;
         var first = ViewModel.SelectionStart; var last = ViewModel.SelectionEnd;
         var after = insertion ? Transcript.InsertionAfterIndex : (int?)null;
-        var envelope = media is not null ? await App.Services.Waveform.GetEnvelopeAsync(media, project.Media.Source.ContentKey, lifetime.Token) : null;
+        var envelope = !demo && media is not null ? await App.Services.Waveform.GetEnvelopeAsync(media, project.Media.Source.ContentKey, lifetime.Token) : null;
         var entry = (await ProviderCatalog.ReadAsync(lifetime.Token)).FirstOrDefault(item => item.WireId == App.Services.Get("llm.connector", ""));
         var connector = entry is null ? null : new RewriteConnector(App.Services.Connector(entry.Id),
             App.Services.Get("llm.model." + entry.WireId, entry.DefaultModel), entry.ShortName,
             entry.Cloud ? "apiKey" : entry.Cli ? "cli" : "local", entry.Id == VoxClip.Core.Services.LLM.ConnectorId.ClaudeCode ? "Claude plan" : "ChatGPT plan");
-        if (!ReferenceEquals(project, ViewModel.Project) || disposed || ViewModel.IsLeaving) return;
+        if (opening != rewriteOpenRevision || !ReferenceEquals(project, ViewModel.Project) || disposed || ViewModel.IsLeaving ||
+            ViewModel.IsReadOnly || ViewModel.Busy || !App.Services.Get("voiceLab.enabled", false)) return;
         rewrite = new(ViewModel, first, last, envelope, connector, after);
         var panel = new RewritePanel(rewrite);
-        panel.Closed += (_, _) => rightContent.CloseRewrite();
+        panel.Closed += (_, _) =>
+        {
+            rightContent.CloseRewrite();
+            if (panel.ReturnFocusOnClose && !disposed && !ViewModel.IsLeaving) FocusTranscript();
+        };
         ShowViewer(true);
         rightContent.ShowRewrite(panel);
         await rewrite.SetInstructionAsync("");
@@ -529,7 +543,7 @@ public sealed partial class EditorPage : Page
                 case EditorFocusRegion.CommandBar: yield return ([CommandRow], () => FocusManager.FindFirstFocusableElement(Commands) as Control ?? ExportButton); break;
                 case EditorFocusRegion.Transcript: yield return ([TranscriptPane], () => Transcript); break;
                 case EditorFocusRegion.Viewer: yield return ([ViewerSplitter, PreviewPane, FrameRow], () => PreviewPlay); break;
-                case EditorFocusRegion.Captions: if (captions is { } panel) yield return ([CaptionsHost], () => panel.FocusTarget); break;
+                case EditorFocusRegion.Captions: if (rightContent is { } column) yield return ([CaptionsHost], () => column.FocusTarget); break;
                 case EditorFocusRegion.Timeline: yield return ([Timeline], () => Timeline.FocusTarget); break;
             }
         }
@@ -870,6 +884,7 @@ public sealed partial class EditorPage : Page
         Transcript.Detach(); Timeline.Detach(); captions?.Detach();
         FindClips.Close();
         CaptionDrag.Cancel();
+        rewrite?.Dispose();
         App.Services.SettingsChanged -= EditorSettingsChanged;
         App.Services.ExportLedger.Changed -= LedgerChanged;
         await previewChanges.WaitAsync();

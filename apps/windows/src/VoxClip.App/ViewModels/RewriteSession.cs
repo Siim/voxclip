@@ -19,6 +19,8 @@ internal sealed class RewriteSession : IDisposable
     private bool estimateShown;
     private readonly VoiceLabPriceCatalog? prices;
     private readonly string? synthesisModel;
+    private string proposalProblem = "";
+    private string reviewProblem = "";
     internal EditorViewModel Editor { get; }
     internal Project Project { get; }
     internal IReadOnlyList<TimedWord> Transcript { get; }
@@ -31,7 +33,7 @@ internal sealed class RewriteSession : IDisposable
     internal bool IsProposing { get; private set; }
     internal string Instruction { get; private set; } = "";
     internal string NewWords { get; private set; }
-    internal string Problem { get; private set; } = "";
+    internal string Problem => proposalProblem.Length > 0 ? proposalProblem : reviewProblem;
     internal VoiceLabPreparedAction? Prepared { get; private set; }
     internal VoiceLabCostPresentationResult? Estimate { get; private set; }
     internal string ProposalButton => Estimate is null ? "Rewrite" : VoiceLabCostPresentation.ButtonTitle("Rewrite", null, Estimate);
@@ -69,10 +71,11 @@ internal sealed class RewriteSession : IDisposable
         Header = $"{Source.Count(word => word.Kind == WordKind.Word)} words at {EditorViewModel.Timecode(start)}";
         editor.SetRewriteRange(insertionAfter ?? first, insertionAfter is null ? last : insertionAfter.Value + 1);
         editor.Changed += EditorChanged;
+        editor.PropertyChanged += EditorPropertyChanged;
         RefreshReview();
     }
 
-    internal async Task SetInstructionAsync(string text)
+    internal async Task SetInstructionAsync(string text, bool retainFailure = false)
     {
         if (!IsOpen) return;
         InvalidateProposal();
@@ -80,7 +83,7 @@ internal sealed class RewriteSession : IDisposable
         Prepared = null;
         Estimate = null;
         estimateShown = false;
-        Problem = "";
+        if (!retainFailure) proposalProblem = "";
         var current = revision;
         try
         {
@@ -88,7 +91,7 @@ internal sealed class RewriteSession : IDisposable
             var words = Source.Where(word => word.Kind == WordKind.Word).ToArray();
             if (words.Length == 0 || Envelope is null)
             {
-                Problem = InsertionAfter is not null ? Refusal(new(VoiceLabGeometryErrorCode.InsertionUnsupported))
+                proposalProblem = InsertionAfter is not null ? Refusal(new VoiceLabGeometryException(VoiceLabGeometryErrorCode.InsertionUnsupported))
                     : "Find the original video before rewriting speech. Your edits are saved.";
                 return;
             }
@@ -107,7 +110,7 @@ internal sealed class RewriteSession : IDisposable
         catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
         catch (Exception exception) when (exception is not OutOfMemoryException)
         {
-            if (current == revision) Problem = Refusal(exception);
+            if (current == revision) proposalProblem = Refusal(exception);
         }
         finally { if (IsOpen && current == revision) Changed?.Invoke(this, EventArgs.Empty); }
     }
@@ -128,6 +131,7 @@ internal sealed class RewriteSession : IDisposable
         var cancellation = sending;
         IsProposing = true;
         estimateShown = false;
+        proposalProblem = "";
         Changed?.Invoke(this, EventArgs.Empty);
         try
         {
@@ -140,7 +144,7 @@ internal sealed class RewriteSession : IDisposable
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { return false; }
         catch (Exception exception) when (exception is not OutOfMemoryException)
         {
-            if (IsOpen && revision == current) Problem = Refusal(exception);
+            if (IsOpen && revision == current) proposalProblem = Refusal(exception);
             return false;
         }
         finally
@@ -152,7 +156,7 @@ internal sealed class RewriteSession : IDisposable
             {
                 Prepared = null;
                 Changed?.Invoke(this, EventArgs.Empty);
-                await SetInstructionAsync(Instruction);
+                await SetInstructionAsync(Instruction, retainFailure: true);
             }
         }
     }
@@ -168,11 +172,12 @@ internal sealed class RewriteSession : IDisposable
 
     private void RefreshReview()
     {
+        reviewProblem = "";
         try { Review = RewriteReview.Build(this, prices, synthesisModel); }
         catch (VoiceLabWordDiffException exception)
         {
             Review = null;
-            Problem = exception.Code == VoiceLabWordDiffErrorCode.TokenLimit ? VoiceLabPatchBudget.DisabledCopy : Refusal(exception);
+            reviewProblem = exception.Code == VoiceLabWordDiffErrorCode.TokenLimit ? VoiceLabPatchBudget.DisabledCopy : Refusal(exception);
         }
     }
 
@@ -192,10 +197,14 @@ internal sealed class RewriteSession : IDisposable
 
     private void InvalidateProposal() { revision++; sending?.Cancel(); }
     private void EditorChanged(object? sender, EventArgs args) => Dispose();
+    private void EditorPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs args)
+    {
+        if (Editor.IsLeaving || Editor.IsReadOnly) Dispose();
+    }
     internal static string Refusal(Exception exception) => exception switch
     {
-        VoiceLabGeometryException { Code: VoiceLabGeometryErrorCode.SeamFadeOutsideTake, Incoming: var incoming } =>
-            $"This change is too close to the {(incoming == false ? "end" : "start")} of the take to blend in. Re-record this sentence instead.",
+        VoiceLabGeometryException { Code: VoiceLabGeometryErrorCode.SeamFadeOutsideTake, TakeEdgeIsStart: bool start } =>
+            $"This change is too close to the {(start ? "start" : "end")} of the take to blend in. Re-record this sentence instead.",
         VoiceLabGeometryException { Code: VoiceLabGeometryErrorCode.InsertionUnsupported } =>
             "Inserting words is not available in this build. Your edits are saved.",
         VoiceLabGeometryException => "This change can't be placed in this take. Your video and edits are still here.",
@@ -211,6 +220,7 @@ internal sealed class RewriteSession : IDisposable
         lifetime.Cancel();
         lifetime.Dispose();
         Editor.Changed -= EditorChanged;
+        Editor.PropertyChanged -= EditorPropertyChanged;
         Editor.SetRewriteRange(-1, -1);
         Changed?.Invoke(this, EventArgs.Empty);
     }
