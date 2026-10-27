@@ -378,6 +378,110 @@ public sealed class VoiceLabSourceAudioTests
     }
 
     [Fact, Trait("Category", "RequiresFFmpeg"), Trait("Category", "RequiresWindows")]
+    public async Task CommittedCoarseTimestampNonzeroSeekMatchesEveryDecodeSessionSample()
+    {
+        await NativeTest.RequireAsync(windows: true);
+        using (var storage = new VoiceLabTestStorage())
+        {
+            var path = Path.Combine(FixtureLoader.SharedRoot, "fixtures", "voice-lab", "voice-lab-7s.mkv");
+            var hash = SHA256.HashData(File.ReadAllBytes(path));
+            Assert.Equal("6be0c2e01c675805f2cb61b0e0a31ec1980be433a23daf8897ebb18443cbcf39", Convert.ToHexStringLower(hash));
+            const int start = 96_000, end = 144_017;
+            var reference = TimestampAnchoredSamples(path, start, end);
+            var wav = await VoiceLabSourceAudio.ConversionInputAsync(path, start, end, 48_000, Cancellation);
+            Header(wav, 48_000, end - start);
+            for (var index = 0; index < reference.Samples.Length; index++)
+                Assert.Equal(reference.Samples[index], BinaryPrimitives.ReadInt16LittleEndian(wav.AsSpan(44 + index * 2)));
+            Assert.Equal(hash, SHA256.HashData(File.ReadAllBytes(path)));
+        }
+        VoiceLabTestStorage.NativePassed(nameof(CommittedCoarseTimestampNonzeroSeekMatchesEveryDecodeSessionSample));
+    }
+
+    [Fact, Trait("Category", "RequiresFFmpeg"), Trait("Category", "RequiresWindows")]
+    public async Task ExtractionAndDecodeSessionShareTheNonzeroSeekAnchor()
+    {
+        await NativeTest.RequireAsync(windows: true);
+        long offset;
+        double tick;
+        using (var storage = new VoiceLabTestStorage())
+        {
+            var path = Path.Combine(FixtureLoader.SharedRoot, "fixtures", "voice-lab", "voice-lab-7s.mkv");
+            var hash = SHA256.HashData(File.ReadAllBytes(path));
+            Assert.Equal("6be0c2e01c675805f2cb61b0e0a31ec1980be433a23daf8897ebb18443cbcf39", Convert.ToHexStringLower(hash));
+            const int start = 96_000, end = 98_123;
+            var reference = TimestampAnchoredSamples(path, start, end);
+            var anchor = Native.Round(reference.Precise);
+            Assert.Equal(anchor, VoiceLabSourceAudio.SourceFrame(reference.Precise, null, 48_000, 1, 1_000));
+            var sequentialAnchor = SequentialFrameForTimestamp(path, reference.Timestamp);
+            Assert.Equal(48_144, anchor);
+            Assert.Equal(48_128, sequentialAnchor);
+            offset = anchor - sequentialAnchor;
+            tick = reference.Tick;
+            Assert.Equal(16, offset);
+            Assert.Equal(48, tick);
+            Assert.True(Math.Abs(offset) < tick);
+            using var sequential = new AudioDecoder(path);
+            Assert.Equal(1, sequential.Channels);
+            var values = new float[end];
+            Assert.Equal(end, sequential.Read(values, end, Cancellation));
+            Assert.NotEqual(Pcm(values[start]), Pcm(values[start - (int)offset]));
+            var wav = await VoiceLabSourceAudio.ConversionInputAsync(path, start, end, 48_000, Cancellation);
+            Header(wav, 48_000, end - start);
+            for (var index = 0; index < end - start; index++)
+            {
+                var actual = BinaryPrimitives.ReadInt16LittleEndian(wav.AsSpan(44 + index * 2));
+                Assert.Equal(reference.Samples[index], actual);
+                Assert.Equal(Pcm(values[start + index - (int)offset]), actual);
+            }
+            Assert.Equal(hash, SHA256.HashData(File.ReadAllBytes(path)));
+        }
+        VoiceLabTestStorage.NativePassed($"{nameof(ExtractionAndDecodeSessionShareTheNonzeroSeekAnchor)} (offsetSamples={offset}, tickSamples={tick})");
+    }
+
+    private static unsafe (short[] Samples, long Timestamp, double Precise, double Tick) TimestampAnchoredSamples(string path, int start, int end)
+    {
+        using var decoder = new DecodeSession(path, AVMediaType.AVMEDIA_TYPE_AUDIO);
+        Assert.Equal(48_000, decoder.Codec->sample_rate);
+        Assert.Equal(1, decoder.Stream->time_base.num);
+        Assert.Equal(1_000, decoder.Stream->time_base.den);
+        Assert.Equal(0, decoder.Origin);
+        decoder.Seek(start / 48_000d - 0.5);
+        Assert.True(decoder.Next(Cancellation));
+        var timestamp = decoder.Frame->best_effort_timestamp;
+        Assert.NotEqual(ffmpeg.AV_NOPTS_VALUE, timestamp);
+        var precise = decoder.Timestamp * 48_000;
+        var tick = 48_000d * decoder.Stream->time_base.num / decoder.Stream->time_base.den;
+        var first = Native.Round(precise);
+        var samples = new short[end - start];
+        var copied = 0;
+        do
+        {
+            Assert.Equal((int)AVSampleFormat.AV_SAMPLE_FMT_S16, decoder.Frame->format);
+            Assert.Equal(1, decoder.Frame->ch_layout.nb_channels);
+            Assert.True(Math.Abs(decoder.Timestamp * 48_000 - first) < tick);
+            var values = (short*)decoder.Frame->extended_data[0];
+            for (var index = 0; index < decoder.Frame->nb_samples; index++)
+                if (first + index >= start && first + index < end)
+                    samples[copied++] = Pcm(values[index] / 32_768f);
+            first += decoder.Frame->nb_samples;
+        } while (first < end && decoder.Next(Cancellation));
+        Assert.Equal(samples.Length, copied);
+        return (samples, timestamp, precise, tick);
+    }
+
+    private static unsafe long SequentialFrameForTimestamp(string path, long timestamp)
+    {
+        using var decoder = new DecodeSession(path, AVMediaType.AVMEDIA_TYPE_AUDIO);
+        long samples = 0;
+        while (decoder.Next(Cancellation))
+        {
+            if (decoder.Frame->best_effort_timestamp == timestamp) return samples;
+            samples += decoder.Frame->nb_samples;
+        }
+        throw new InvalidOperationException("The seek anchor is absent from sequential fixture decoding.");
+    }
+
+    [Fact, Trait("Category", "RequiresFFmpeg"), Trait("Category", "RequiresWindows")]
     public async Task ContinuousContainerExtractsExactlyAcrossPacketBoundaries()
     {
         await NativeTest.RequireAsync(windows: true);
