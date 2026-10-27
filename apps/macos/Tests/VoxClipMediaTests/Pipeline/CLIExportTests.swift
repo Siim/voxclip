@@ -16,7 +16,7 @@ struct CLIResult: Sendable {
 }
 
 func runCLI(_ arguments: [String], directory: URL, interruptAfter: Double? = nil,
-                    interruptTimeout: Double? = nil, timeout: Double = 20) throws -> CLIResult {
+                    interruptTimeout: Double? = nil, timeout: Double = 20, sharedRoot: URL? = nil) throws -> CLIResult {
     var package = URL(fileURLWithPath: #filePath)
     for _ in 0..<4 { package.deleteLastPathComponent() }
     let stdoutURL = directory.appendingPathComponent("stdout-\(UUID().uuidString)")
@@ -37,7 +37,7 @@ func runCLI(_ arguments: [String], directory: URL, interruptAfter: Double? = nil
     environment["VOXCLIP_TEST_DOWNLOAD"] = "0"
     environment["VOXCLIP_NO_KEYCHAIN"] = "1"
     environment["VOXCLIP_DATA_DIR"] = directory.appendingPathComponent("data").path
-    environment["VOXCLIP_SHARED_DIR"] = try FixtureLoader.sharedRoot(environment: [:]).path
+    environment["VOXCLIP_SHARED_DIR"] = try (sharedRoot ?? FixtureLoader.sharedRoot(environment: [:])).path
     // Each subprocess owns its renderer scratch; concurrent Media tests must not
     // observe its temporary snapshots as their own allocations.
     let scratch = directory.appendingPathComponent("tmp", isDirectory: true)

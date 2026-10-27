@@ -114,6 +114,8 @@ extension ProviderChoice {
         self.modelDownloader = modelDownloader
         do { shared = try SharedResources.locate() }
         catch { shared = nil; startupError = .sharedResourcesMissing }
+        // Share-text rules load now, so an invalid shared/data/share-text.json fails at launch, not in the Export sheet.
+        if shared != nil { do { try SharePostText.preflight() } catch { startupError = .sharedResourcesMissing } }
         DesignValues.registerFonts()
         loadCatalogue()
     }

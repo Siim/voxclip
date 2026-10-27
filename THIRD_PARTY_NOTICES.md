@@ -452,9 +452,9 @@ The following licence applies to the Noto Emoji images and to swift-argument-par
 
 ### Unicode Character Database
 
-- Files: `shared/caption-styles/casemap.json`, derived from `UnicodeData.txt` 16.0.0 (simple case mappings) by `tools/captions/build_casemap.py`; shipped with both apps.
+- Files: `shared/caption-styles/casemap.json`, derived from `UnicodeData.txt` 16.0.0 (simple case mappings) by `tools/captions/build_casemap.py`; `shared/data/share-text.json`, whose emoji table is derived from `emoji-data.txt` 15.1.0 (Emoji_Presentation ranges) by `shared/fixtures/share/generate_share_cases.py`; both shipped with both apps.
 - Licence: Unicode License v3 (SPDX `Unicode-3.0`)
-- Source: https://www.unicode.org/Public/16.0.0/ucd/UnicodeData.txt
+- Sources: https://www.unicode.org/Public/16.0.0/ucd/UnicodeData.txt and https://www.unicode.org/Public/15.1.0/ucd/emoji/emoji-data.txt
 - Notice:
 
 ```text

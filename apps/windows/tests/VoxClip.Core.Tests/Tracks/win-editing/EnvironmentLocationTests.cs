@@ -72,6 +72,10 @@ public sealed class EnvironmentLocationTests
         {
             Directory.CreateDirectory(storage.PathFor("caption-styles"));
             Environment.SetEnvironmentVariable("VOXCLIP_SHARED_DIR", storage.Root);
+            // A root without the share-text rules fails at launch too (publishing §2.1).
+            Assert.Equal(VoxClipErrorCode.SharedResourcesMissing, Assert.Throws<VoxClipException>(() => SharedResources.ResolveRoot()).Code);
+            Directory.CreateDirectory(storage.PathFor("data"));
+            File.WriteAllText(storage.PathFor(Path.Combine("data", "share-text.json")), "{}");
             Assert.Equal(storage.Root, SharedResources.ResolveRoot());
             Environment.SetEnvironmentVariable("VOXCLIP_SHARED_DIR", storage.PathFor("missing"));
             var error = Assert.Throws<VoxClipException>(() => SharedResources.ResolveRoot());

@@ -121,6 +121,17 @@ try {
         Remove-Item -LiteralPath $matchExpected
         Assert-Throws { Assert-ReleaseFileMatches -Expected $matchExpected -Actual $matchActual } 'Release file differs from root source'
     }
+    Invoke-Test 'release runtime folders cover every shared folder the sources read' {
+        $repository = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))
+        $read = @(Get-ChildItem -LiteralPath (Join-Path $repository 'apps/windows/src') -Recurse -File -Filter '*.cs' |
+            Select-String -Pattern 'Path\.Combine\([^,()]*(?:\([^()]*\))?[^,()]*,\s*"([a-z-]+)"' -AllMatches -CaseSensitive |
+            ForEach-Object { $_.Matches } | ForEach-Object { $_.Groups[1].Value } |
+            Where-Object { Test-Path -LiteralPath (Join-Path (Join-Path $repository 'shared') $_) -PathType Container } |
+            Sort-Object -Unique)
+        foreach ($folder in @('caption-styles', 'catalog', 'data', 'fonts')) { if ($read -cnotcontains $folder) { throw "Source scan missed $folder." } }
+        $runtimeFolders = Get-ReleaseRuntimeFolders
+        foreach ($folder in $read) { if ($runtimeFolders -cnotcontains $folder) { throw "Release runtime folders omit $folder." } }
+    }
     Invoke-Test 'current full package requires one exact Full entry for the RID' {
         $current = [pscustomobject]@{ Type = 'Full'; RelativeFileName = 'VoxClip-0.1.0-win-x64-full.nupkg' }
         $delta = [pscustomobject]@{ Type = 'Delta'; RelativeFileName = 'VoxClip-0.1.0-win-x64-delta.nupkg' }

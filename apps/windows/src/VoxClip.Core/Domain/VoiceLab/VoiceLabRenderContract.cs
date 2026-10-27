@@ -187,7 +187,7 @@ public static class VoiceLabRenderContract
                 intervals = merged;
             }
         }
-        var et = project.Transcript?.Language?.StartsWith("et", StringComparison.OrdinalIgnoreCase) == true;
+        var et = string.Equals(project.Transcript?.Language?.Split('-')[0], "et", StringComparison.OrdinalIgnoreCase);
         var lines = new List<string>();
         if (kinds.Contains("tts")) lines.Add(et ? "Mõned sõnad selles videos on loetud minu enda hääle tehisintellekti-koopiaga." : "Some words in this video were re-voiced with an AI copy of my own voice.");
         if (kinds.Contains("voiceChanger"))

@@ -153,7 +153,7 @@ public enum VoiceLabRenderContract {
                 intervals = merged
             }
         }
-        let estonian = project.transcript?.language?.lowercased().hasPrefix("et") == true
+        let estonian = project.transcript?.language?.split(separator: "-", omittingEmptySubsequences: false).first?.lowercased() == "et"
         var lines: [String] = []
         if kinds.contains("tts") { lines.append(estonian ? "Mõned sõnad selles videos on loetud minu enda hääle tehisintellekti-koopiaga." : "Some words in this video were re-voiced with an AI copy of my own voice.") }
         if kinds.contains("voiceChanger") {

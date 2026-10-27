@@ -11,19 +11,20 @@ public static class SharedResources
         if (!string.IsNullOrWhiteSpace(configured)) return Require(configured);
         var start = executableDirectory ?? AppContext.BaseDirectory;
         var installed = Path.Combine(start, "shared");
-        if (Directory.Exists(Path.Combine(installed, "caption-styles"))) return Path.GetFullPath(installed);
+        if (Valid(installed)) return Path.GetFullPath(installed);
         for (var directory = new DirectoryInfo(start); directory is not null; directory = directory.Parent)
         {
             var candidate = Path.Combine(directory.FullName, "shared");
-            if (Directory.Exists(Path.Combine(directory.FullName, "apps")) && Directory.Exists(Path.Combine(candidate, "caption-styles"))) return candidate;
+            if (Directory.Exists(Path.Combine(directory.FullName, "apps")) && Valid(candidate)) return candidate;
         }
         throw new VoxClipException(VoxClipErrorCode.SharedResourcesMissing, "VoxClip is missing some of its files. Reinstall VoxClip.");
     }
     private static string Require(string root)
     {
-        if (!Directory.Exists(Path.Combine(root, "caption-styles"))) throw new VoxClipException(VoxClipErrorCode.SharedResourcesMissing, "VOXCLIP_SHARED_DIR does not contain caption-styles.");
+        if (!Valid(root)) throw new VoxClipException(VoxClipErrorCode.SharedResourcesMissing, "VOXCLIP_SHARED_DIR does not contain caption-styles and data/share-text.json.");
         return Path.GetFullPath(root);
     }
+    private static bool Valid(string root) => Directory.Exists(Path.Combine(root, "caption-styles")) && File.Exists(Path.Combine(root, "data", "share-text.json"));
 }
 /// <summary>Data paths, separate from the Velopack installation root; architecture §2.5.</summary>
 public sealed record DataLocations(string Root, string Settings, string Models, string Cache, string Autosave, string Secrets, string Logs)

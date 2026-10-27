@@ -81,6 +81,26 @@ public sealed class VoiceLabRenderContractTests
         Assert.Equal("The voice in this video was changed with AI.", stock.Disclosure.PostText);
     }
     [Fact]
+    public void DisclosureLineLanguageUsesThePrimarySubtag()
+    {
+        using var share = FixtureLoader.ReadJson(Path.Combine("fixtures", "share", "cases.json"));
+        var lines = share.RootElement.GetProperty("lines");
+        var languages = share.RootElement.GetProperty("languages").EnumerateArray().ToArray();
+        Assert.Equal(10, languages.Length);
+        foreach (var language in languages)
+        {
+            var code = language.GetProperty("code").GetString();
+            var key = language.GetProperty("estonian").GetBoolean() ? "et" : "en";
+            foreach (var (name, kinds) in new[] { ("passage-render-v3", "tts"), ("voice-changer-half-render-v3", "voiceChangerStock") })
+            {
+                var project = Fixture(name);
+                project = project with { Transcript = project.Transcript! with { Language = code } };
+                var line = VoiceLabRenderContract.Prepare(project, VoiceLabOutputScope.Full, VoiceLabLabelPosition.TopRight).Disclosure.PostText;
+                Assert.Equal(lines.GetProperty(kinds).GetProperty(key).GetString(), line);
+            }
+        }
+    }
+    [Fact]
     public void ChunksAndChangedDurationSourceCapability()
     {
         var good = Fixture("full-take-render-v3"); var segment = good.VoiceLab.Segments[0]; var first = segment.Candidates[0];

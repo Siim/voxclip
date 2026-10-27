@@ -11,6 +11,7 @@ import VoxClipCore
     @State private var draft = ShareCaptionDraft()
     @State private var copyRevision = 0
     @State private var copied = false
+    @State private var opening = false
     @FocusState private var captionFocused: Bool
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -32,12 +33,12 @@ import VoxClipCore
                     ForEach(model.exportClipIDs, id: \.self) { id in Text(model.project.edits.clips.first { $0.id == id }?.title ?? "Clip").tag(id) }
                 }.onAppear { let target = model.exportClipIDs.first ?? "full"; draft.load(target: target, model: model); shareTarget = target }
                 TextEditor(text: Binding(get: { draft.captionDraft }, set: { draft.edit($0); copied = false })).focused($captionFocused).frame(height: 90).border(Color.secondary.opacity(0.3))
-                HStack { Text("\(ShareText.weight(draft.captionDraft))/280 X").foregroundStyle(ShareText.weight(draft.captionDraft) > 280 ? DesignValues.color("status.warning") : Color.secondary); Text("\(draft.captionDraft.unicodeScalars.count)/3,000 LinkedIn").foregroundStyle(.secondary) }.font(.caption.monospacedDigit())
+                HStack { if let weight = ShareText.weight(draft.captionDraft) { Text("\(weight)/280 X").foregroundStyle(weight > 280 ? DesignValues.color("status.warning") : Color.secondary) }; Text("\(draft.captionDraft.unicodeScalars.count)/3,000 LinkedIn").foregroundStyle(.secondary) }.font(.caption.monospacedDigit())
                 HStack {
                     Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting(model.exports.map(\.outputURL)) }
                     Button(copied ? "Caption copied." : "Copy caption") { commitCaption(); copyText(draft.captionDraft); copied = true; copyRevision += 1 }
-                    Button("Open X") { openShare("x") }
-                    Button("Open LinkedIn") { openShare("linkedin") }
+                    Button("Open X") { openShare("x") }.disabled(opening)
+                    Button("Open LinkedIn") { openShare("linkedin") }.disabled(opening)
                 }
                 Text("VoxClip copies the caption and reveals the file. Add the video in the browser; nothing is posted automatically.").font(.caption).foregroundStyle(.secondary)
                 if let error = model.exportError { InlineNotice(text: error) }
@@ -78,12 +79,22 @@ import VoxClipCore
     private func commitCaption() { draft.commit(model: model) }
     private func binding<Value>(_ key: WritableKeyPath<ProjectExport, Value>) -> Binding<Value> { Binding(get: { model.project.export[keyPath: key] }, set: { value in var project = model.project; project.export[keyPath: key] = value; model.replace(project, name: "Change export options") }) }
     private func chooseFolder() { let panel = NSOpenPanel(); panel.canChooseFiles = false; panel.canChooseDirectories = true; panel.canCreateDirectories = true; panel.directoryURL = folder; if panel.runModal() == .OK, let url = panel.url { var project = model.project; project.export.folder = url.path; model.replace(project, name: "Change export folder") } }
+    /// Copies the caption and reveals the files at once; the composer text is cut off the main actor, and the browser opens
+    /// back on it. A second click while the first is still cutting does nothing.
     private func openShare(_ destination: String) {
+        guard !opening else { return }
         commitCaption()
         let caption = draft.captionDraft
         copyText(caption); NSWorkspace.shared.activateFileViewerSelecting(model.exports.map(\.outputURL))
-        guard let url = ShareText.url(destination, caption: caption), ["x.com", "www.linkedin.com"].contains(url.host ?? ""), url.scheme == "https" else { return }
-        NSWorkspace.shared.open(url)
+        opening = true
+        Task {
+            defer { opening = false }
+            do {
+                guard let url = try await Task.detached(priority: .userInitiated, operation: { try ShareText.url(destination, caption: caption) }).value,
+                      ["x.com", "www.linkedin.com"].contains(url.host ?? ""), url.scheme == "https" else { return }
+                NSWorkspace.shared.open(url)
+            } catch { model.exportError = UserMessages.message(error) }
+        }
     }
 }
 
@@ -91,18 +102,19 @@ import VoxClipCore
     private(set) var draftTarget: String?
     private(set) var captionDraft = ""
     private(set) var edited = false
+    /// The draft is capped at the 3,000 scalars of `share.captions` with `SharePostText.capCaption`, as the Windows field is,
+    /// so the field, Copy caption, both composers and the saved caption see the same text.
     mutating func load(target: String, model: EditorModel) {
-        draftTarget = target; captionDraft = model.shareCaption(target); edited = false
+        draftTarget = target; captionDraft = SharePostText.capCaption(model.shareCaption(target)); edited = false
     }
-    mutating func edit(_ value: String) { captionDraft = value; edited = true }
+    mutating func edit(_ value: String) { captionDraft = SharePostText.capCaption(value); edited = true }
     mutating func commit(model: EditorModel) {
         guard edited, let target = draftTarget, !model.exports.isEmpty else { return }
         edited = false
         guard target == "full" || model.project.edits.clips.contains(where: { $0.id == target }) else { return }
-        let value = String(String.UnicodeScalarView(captionDraft.unicodeScalars.prefix(3000)))
-        guard value != model.shareCaption(target) else { return }
+        guard captionDraft != model.shareCaption(target) else { return }
         var project = model.project
-        project.share.captions[target] = value
+        project.share.captions[target] = captionDraft
         model.replace(project, name: "Edit share caption")
     }
 }
@@ -129,23 +141,10 @@ enum ExportSelection {
 }
 
 enum ShareText {
-    static func weight(_ text: String) -> Int {
-        let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
-        let source = text as NSString
-        let matches = detector?.matches(in: text, range: NSRange(location: 0, length: source.length)).filter { ["http", "https"].contains($0.url?.scheme ?? "") } ?? []
-        var remainder = text
-        for match in matches.reversed() { if let range = Range(match.range, in: remainder) { remainder.removeSubrange(range) } }
-        return matches.count * 23 + remainder.reduce(0) { total, character in
-            if character.unicodeScalars.contains(where: { $0.properties.isEmojiPresentation || $0.value == 0xFE0F || $0.value == 0x20E3 }) { return total + 2 }
-            return total + character.unicodeScalars.reduce(0) { subtotal, scalar in let value = scalar.value; return subtotal + ((value <= 4351 || (8192...8205).contains(value) || (8208...8223).contains(value) || (8242...8247).contains(value)) ? 1 : 2) }
-        }
-    }
-    static func url(_ destination: String, caption: String) -> URL? {
-        var text = caption
-        if destination == "x", weight(text) > 280 {
-            var parts = text.split(whereSeparator: \.isWhitespace).map(String.init)
-            repeat { if !parts.isEmpty { parts.removeLast() }; text = parts.joined(separator: " ") + "…" } while weight(text) > 280 && !parts.isEmpty
-        }
+    /// nil only when shared/data/share-text.json failed the launch check, which Home already reports.
+    static func weight(_ text: String) -> Int? { try? SharePostText.xWeight(text) }
+    static func url(_ destination: String, caption: String) throws -> URL? {
+        let text = try destination == "x" ? SharePostText.composerText(caption, destination: .x, disclosureLine: nil) : caption
         let allowed = CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")
         guard let encoded = text.addingPercentEncoding(withAllowedCharacters: allowed) else { return nil }
         return URL(string: destination == "x" ? "https://x.com/intent/post?text=\(encoded)" : "https://www.linkedin.com/feed/?shareActive=true&text=\(encoded)")

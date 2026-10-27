@@ -131,6 +131,8 @@ enum CLIExecution {
 
     static func run(command: String, json: Bool, operation: () async throws -> JSONValue) async throws {
         do {
+            // The App's launch check before any work: the shared root and its share-text rules.
+            try SharePostText.preflight()
             let value = try await operation()
             if json { try printJSON(value) }
         } catch let error as ValidationError {

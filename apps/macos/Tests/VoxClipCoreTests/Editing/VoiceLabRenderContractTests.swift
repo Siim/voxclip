@@ -74,6 +74,24 @@ import Testing
         #expect(stock.disclosure.kinds == ["voiceChanger"])
         #expect(stock.disclosure.postText == "The voice in this video was changed with AI.")
     }
+    @Test func disclosureLineLanguageUsesThePrimarySubtag() throws {
+        struct Share: Decodable {
+            struct Language: Decodable { let code: String?; let estonian: Bool }
+            let lines: [String: [String: String]]
+            let languages: [Language]
+        }
+        let share = try JSONDecoder().decode(Share.self, from: FixtureLoader.data("fixtures/share/cases.json"))
+        #expect(share.languages.count == 10)
+        for language in share.languages {
+            for (name, kinds) in [("passage-render-v3", "tts"), ("voice-changer-half-render-v3", "voiceChangerStock")] {
+                var project = try fixture(name)
+                project.transcript?.language = language.code
+                let line = try VoiceLabRenderContract.prepare(project, scope: .full, labelPosition: .topRight).disclosure.postText
+                let expected = share.lines[kinds]?[language.estonian ? "et" : "en"]
+                #expect(line.map { Array($0.utf8) } == expected.map { Array($0.utf8) }, "\(name) \(language.code ?? "nil")")
+            }
+        }
+    }
     @Test func chunksAndChangedDurationSourceCapability() throws {
         let good = try fixture("full-take-render-v3")
         var bad = good

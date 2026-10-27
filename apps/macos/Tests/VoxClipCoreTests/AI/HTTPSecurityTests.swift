@@ -247,6 +247,8 @@ func aiSecurityCatalog(_ id: ConnectorID, changes: [String: JSONValue]) throws -
     try manager.createDirectory(at: root.appendingPathComponent("catalog"), withIntermediateDirectories: true)
     defer { try? manager.removeItem(at: root) }
     try manager.createDirectory(at: root.appendingPathComponent("caption-styles"), withIntermediateDirectories: true)
+    try manager.createDirectory(at: root.appendingPathComponent("data"), withIntermediateDirectories: true)
+    try Data().write(to: root.appendingPathComponent("data/share-text.json"))
     var document = try #require(HTTPFixtures.catalog().document.aiObject)
     document["connectors"] = .array(document["connectors"]!.aiArray.map { entry in
         guard entry[ai: "id"].aiString == id.rawValue, var fields = entry.aiObject else { return entry }

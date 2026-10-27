@@ -340,9 +340,14 @@ function Set-ReleasePrivateAcl {
     Set-Acl -LiteralPath $Path -AclObject $acl
 }
 
+function Get-ReleaseRuntimeFolders {
+    # The shared folders a release ships; test-release-tools.ps1 checks they cover every folder the sources read.
+    return @('caption-styles', 'catalog', 'data', 'design', 'fonts', 'prompts', 'schemas')
+}
+
 function Assert-ReleaseResources {
     param([string] $Repository, [string] $AppDirectory)
-    $runtimeFolders = @('caption-styles', 'catalog', 'design', 'fonts', 'prompts', 'schemas')
+    $runtimeFolders = Get-ReleaseRuntimeFolders
     $destination = Join-Path $AppDirectory 'shared'
     if (Test-Path $destination) { Remove-Item -LiteralPath $destination -Recurse -Force }
     New-Item -ItemType Directory -Path $destination | Out-Null
