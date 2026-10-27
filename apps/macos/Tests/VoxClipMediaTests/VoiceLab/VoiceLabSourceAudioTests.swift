@@ -124,7 +124,15 @@ import VoxClipCore
         let asset = AVURLAsset(url: source)
         let track = try #require(try await asset.loadTracks(withMediaType: .audio).first)
         let storedScale = try await track.load(.naturalTimeScale)
-        print("VOICE_LAB_WRITER inputTimescale=\(timescale) storedTimescale=\(storedScale)")
+        let reader = try AVAssetReader(asset: asset)
+        let output = AVAssetReaderTrackOutput(track: track, outputSettings: MediaSupport.pcm(rate: 48_000, channels: 2))
+        let provider = reader.outputProvider(for: output)
+        try #require(reader.startReading())
+        defer { reader.cancelReading() }
+        var buffers: Int = 0
+        while let _ = try await MediaSupport.nextSample(provider) { buffers += 1 }
+        #expect(buffers > 1)
+        print("VOICE_LAB_WRITER inputTimescale=\(timescale) storedTimescale=\(storedScale) decodedBuffers=\(buffers)")
     }
 
     @Test(arguments: [48_000, 1_000])

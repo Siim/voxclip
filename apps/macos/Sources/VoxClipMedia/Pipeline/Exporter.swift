@@ -245,6 +245,7 @@ public actor AVExporter: Exporter {
         var ownsProvenancePartial = false
         defer {
             try? FileManager.default.removeItem(at: partial)
+            ExportInterruptTiming.testOnly?.mark(.partialDeleted)
             if let srtPartial { try? FileManager.default.removeItem(at: srtPartial) }
             if ownsProvenancePartial, let provenancePartial { try? FileManager.default.removeItem(at: provenancePartial) }
         }

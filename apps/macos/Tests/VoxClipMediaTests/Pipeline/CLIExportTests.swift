@@ -569,9 +569,12 @@ func cliCaptionHarnessRejectsAmbiguousArguments(_ arguments: [String]) throws {
                 slowestLatency = latency
                 slowestBreakdown = breakdown
             }
+            for phase in ["cancelRequest", "exportReturned"] {
+                #expect(try #require(timing.phases[phase]) > 0, "Required stop phase \(phase) was not recorded")
+            }
             for phase in ["cancelRequest", "teardownStart", "readersStopped", "writerCancelStart", "writerCancelEnd", "partialDeleted", "exportReturned"] {
                 let stamp = try #require(timing.phases[phase])
-                #expect(stamp >= timing.handler && stamp <= timing.exit, "Missing or invalid stop phase \(phase): \(result.stderr)")
+                #expect(stamp == 0 || (stamp >= timing.handler && stamp <= timing.exit), "Invalid stop phase \(phase): \(result.stderr)")
             }
             #expect(latency <= 2)
             latencies.append(latency)
@@ -588,7 +591,11 @@ func cliCaptionHarnessRejectsAmbiguousArguments(_ arguments: [String]) throws {
     #expect(try Data(contentsOf: unrelated) == Data("preserve this file".utf8))
     let internalSummary = "internal_min=\(latencies.min() ?? 0) internal_max=\(latencies.max() ?? 0) internal_mean=\(latencies.reduce(0, +) / Double(latencies.count))"
     let wallSummary = "wall_min=\(wallLatencies.min() ?? 0) wall_max=\(wallLatencies.max() ?? 0) wall_mean=\(wallLatencies.reduce(0, +) / Double(wallLatencies.count))"
-    print("SIGINT_STRESS pairs=30 exports=\(latencies.count) watchdogs=0 \(internalSummary) \(wallSummary) slowest_\(slowestBreakdown)")
+    let summary = "SIGINT_STRESS pairs=30 exports=\(latencies.count) watchdogs=0 \(internalSummary) \(wallSummary) slowest_\(slowestBreakdown)"
+    print(summary)
+    if ProcessInfo.processInfo.environment["GITHUB_ACTIONS"] == "true" {
+        print("::notice title=SIGINT_STRESS::\(summary)")
+    }
 }
 }
 

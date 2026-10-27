@@ -26,8 +26,8 @@ final class CLIInterruptTiming: Sendable {
     }
 
     func exiting() {
-        let now = DispatchTime.now().uptimeNanoseconds
         guard let stamps = ExportInterruptTiming.testOnly?.stamps, stamps[.handler] != nil else { return }
+        let now: UInt64 = DispatchTime.now().uptimeNanoseconds
         let fields = ExportInterruptTiming.Phase.allCases.map { (phase: ExportInterruptTiming.Phase) -> String in
             "\(phase.rawValue)=\(stamps[phase] ?? 0)"
         }.joined(separator: " ")
