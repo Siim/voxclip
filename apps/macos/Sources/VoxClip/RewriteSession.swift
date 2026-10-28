@@ -217,6 +217,9 @@ struct RewriteConnector {
         isOpen = false; invalidate()
     }
     static func refusal(_ error: any Error) -> String {
+        if let geometry = error as? VoiceLabGeometryError, let isStart = geometry.takeEdgeIsStart {
+            return "This change is too close to the \(isStart ? "start" : "end") of the take to blend in. Re-record this sentence instead."
+        }
         switch error {
         case VoiceLabGeometryError.insertionUnsupported: return "Inserting words isn't available yet. Your edits are saved."
         case VoiceLabGeometryError.roomToneUnavailable: return "This take has no half-second pause to copy the room sound from. Clean audio removes background sound from the whole take, so new words can blend in."
