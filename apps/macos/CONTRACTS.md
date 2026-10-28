@@ -1,5 +1,10 @@
 # macOS implementation contracts
 
+### 2026-10-28 — sol-mac-redesign round 7 — N2 Find Clips entry
+
+- Find Clips routing was synchronous, but its no-connector branch opened the sidebar setup callout instead of the popover. Round-six consent/onboarding isolation stopped leaving a connector selected incidentally, exposing that mismatch in both native shortcut checks. Together with N1's initial capability fix, the shortcut and Clip menu now open the existing popover immediately; detection still happens only when it opens, before any request consent.
+- An unselected connector gets a Choose action in that same popover, never a Make Clip action. Missing-media, read-only and busy capability guards remain intact. Native keyboard/menu assertions are retained, and a new no-connector assertion checks immediate opening with an unchanged clip list.
+
 ### 2026-10-28 — sol-mac-redesign round 7 — N1 initial keyboard state
 
 - The capability guards added in `c57ad9a7` (round 4) exposed an uninitialized editor: `editingAvailable` stayed false until the asynchronous start/first refresh, so the Escape regression's new editor could not create or activate its clip. The key handler did not lose its Escape ordering. Initialize derived transcript/plan state synchronously at the end of `EditorModel.init`; this also closes the product's initial-input gap without bypassing missing-media, version or busy guards.

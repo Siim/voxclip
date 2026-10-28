@@ -1057,11 +1057,8 @@ extension EditorModel {
     static let noClipsMatched = "No clips matched. Try another style or describe what you want."
     /// The chosen clip-finding connector, nil when none is set up.
     var findConnector: ProviderChoice? { app.providers.first { $0.id == app.string("llm.connector") } }
-    /// Opens the Find Clips popover at its anchor, or the sidebar's setup callout when
-    /// no connector is chosen (design §6.2).
     func requestFindClips(from anchor: FindClipsAnchor) {
         guard capabilities.ai, !words.isEmpty else { return }
-        guard findConnector != nil else { showFindClips = false; onNeedsSidebar?(); showAISetup = true; return }
         showAISetup = false
         findClipsAnchor = anchor
         showFindClips = true

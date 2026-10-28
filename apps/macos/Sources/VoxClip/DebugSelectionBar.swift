@@ -58,6 +58,12 @@ import VoxClipCore
         if let find = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [.command, .shift], timestamp: 0, windowNumber: textWindow.windowNumber, context: nil, characters: "K", charactersIgnoringModifiers: "k", isARepeat: false, keyCode: 40) { text.keyDown(with: find) }
         results.append(.init(name: "transcript Shift-Command-K opens Find Clips rather than making a clip", passed: model.showFindClips && model.project.edits.clips == clipsBeforeFind))
         model.showFindClips = false
+        let previousConnector = app.string("llm.connector")
+        app.set("llm.connector", .string(""))
+        model.requestFindClips(from: .toolbar)
+        results.append(.init(name: "Find Clips opens immediately without a connector and preserves clips", passed: model.showFindClips && !model.showAISetup && model.project.edits.clips == clipsBeforeFind))
+        model.showFindClips = false
+        app.set("llm.connector", .string(previousConnector))
         model.findVisible = true; text.showSelectionBar()
         results.append(.init(name: "Find suppresses the selection bar", passed: !text.selectionBarVisible))
         model.findVisible = false

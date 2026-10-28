@@ -32,6 +32,12 @@ import VoxClipCore
                 .font(.callout)
                 .accessibilityElement(children: .combine)
                 .accessibilityIdentifier("clipConnectorStatus")
+            } else {
+                HStack {
+                    Text("Choose a connector in AI settings.")
+                    Spacer()
+                    Button("Choose…") { model.showFindClips = false; openVoxClipSettings(pane: "ai") }
+                }.font(.callout)
             }
             Picker("Preset", selection: $model.preset) {
                 Text("Best moments").tag(ClipPresetID.best); Text("Hooks").tag(ClipPresetID.hooks); Text("One per topic").tag(ClipPresetID.topics)

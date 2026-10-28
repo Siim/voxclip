@@ -522,10 +522,14 @@ import VoxClipCore
         for _ in 0..<40 where shell.windowWidth >= WorkspaceShell.sidebarCollapseWidth { try await Task.sleep(for: .milliseconds(25)) }
         app.settings.values["llm.connector"] = nil
         editor.requestFindClips(from: .toolbar)
-        try await Task.sleep(for: .milliseconds(400))
+        check("at 900 Find Clips opens its popover without expanding the collapsed sidebar",
+              shell.windowWidth < WorkspaceShell.sidebarCollapseWidth && editor.showFindClips && !editor.showAISetup && !shell.sidebarOverlay && shell.columnVisibility == .detailOnly)
+        editor.showFindClips = false
+        shell.revealSidebar()
+        try await Task.sleep(for: .milliseconds(250))
         let overlayList = tables(in: root).first { $0 !== list && !$0.isHiddenOrHasHiddenAncestor }
-        check("at 900 Find Clips shows the sidebar as the overlay, with its setup callout, while the column stays collapsed",
-              shell.windowWidth < WorkspaceShell.sidebarCollapseWidth && shell.sidebarOverlay && shell.columnVisibility == .detailOnly && editor.showAISetup && overlayList != nil)
+        check("at 900 explicitly showing the sidebar opens its overlay while the column stays collapsed",
+              shell.windowWidth < WorkspaceShell.sidebarCollapseWidth && shell.sidebarOverlay && shell.columnVisibility == .detailOnly && overlayList != nil)
         window.setContentSize(NSSize(width: 880, height: 800))
         try await Task.sleep(for: .milliseconds(250))
         check("a resize below 960 keeps the overlay", shell.sidebarOverlay && shell.columnVisibility == .detailOnly)
@@ -759,7 +763,7 @@ import VoxClipCore
     }
 
     /// Find Clips (step 6): a run lands as suggestions in one undo step, "nothing
-    /// matched" and "no connector" show in the sidebar, and the popover's layout.
+    /// matched" shows in the sidebar, and the popover includes connector setup.
     static func findClips(app: AppModel, fixture: Project, directory: URL) async throws -> [DebugUISuite.Result] {
         var results: [DebugUISuite.Result] = []
         func check(_ name: String, _ passed: Bool) { results.append(.init(name: name, passed: passed)) }
@@ -782,8 +786,11 @@ import VoxClipCore
         app.settings.values["llm.connector"] = nil
         shell.columnVisibility = .detailOnly
         model.requestFindClips(from: .toolbar)
-        check("with no connector, Find Clips shows the hidden sidebar and its setup callout instead of the popover", model.showAISetup && !model.showFindClips && shell.columnVisibility == .all)
-        try await capture(shell, "sidebar-no-connector")
+        check("with no connector, Find Clips immediately opens the popover and preserves the hidden sidebar", !model.showAISetup && model.showFindClips && model.findClipsAnchor == .toolbar && shell.columnVisibility == .detailOnly)
+        for (suffix, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
+            try await DebugUISuite.snapshot(FindClipsPopover(model: model).environment(app), name: "find-clips-no-connector-\(suffix)", size: NSSize(width: 380, height: 300), appearance: appearance, directory: directory, active: true)
+        }
+        model.showFindClips = false
 
         app.settings.values["llm.connector"] = .string("ollama")
         app.settings.values["llm.model.ollama"] = .string("fixture-local")
