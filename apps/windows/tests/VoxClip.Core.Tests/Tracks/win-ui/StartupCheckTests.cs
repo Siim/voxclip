@@ -8,6 +8,22 @@ namespace VoxClip.Ui.Tests;
 public sealed class StartupCheckTests
 {
     [Fact]
+    public void NativeProjectOpenFailuresRetainTheExceptionWithoutAReleaseField()
+    {
+        var root = new DirectoryInfo(AppContext.BaseDirectory);
+        while (root is not null && !Directory.Exists(Path.Combine(root.FullName, ".github"))) root = root.Parent;
+        Assert.NotNull(root);
+        var window = File.ReadAllText(Path.Combine(root.FullName, "apps/windows/src/VoxClip.App/MainWindow.xaml.cs"));
+        var probe = File.ReadAllText(Path.Combine(root.FullName, "apps/windows/src/VoxClip.App/Services/ShellNativeProbe.cs"));
+        var field = window.IndexOf("internal Exception? DebugOpenError", StringComparison.Ordinal);
+        Assert.True(field >= 0);
+        Assert.True(window.LastIndexOf("#if DEBUG", field, StringComparison.Ordinal) > window.LastIndexOf("#endif", field, StringComparison.Ordinal));
+        Assert.Contains("#if DEBUG\n        DebugOpenError = null;", window);
+        Assert.Contains("#if DEBUG\n            DebugOpenError = exception;", window);
+        Assert.Contains("window.DebugOpenError is { } openError", probe);
+    }
+
+    [Fact]
     public void NativeKeyboardWalkRecognizesTheObservedNamedApplicationBarPeer()
     {
         var root = new DirectoryInfo(AppContext.BaseDirectory);
