@@ -2460,3 +2460,8 @@ Historical inspector/View-menu layout below is also superseded by ADR-R29.
 - Pin `Sources/VoxClip/EditorView.swift` right-column content to the split item's actual geometry, without masking overflowing children. Start `ViewerSection.innerWidth` conservatively until the first geometry update, rather than imposing a 360-point initial minimum.
 - `Sources/VoxClip/DebugRightColumn.swift` hosts real Viewer and Captions content without a window and measures minimum/proposed sizes plus descendant bounds. Before the fix, `ac230e2f` requests 360 points at a 320-point proposal; the native frame picker extends to x=325. The remaining row adaptations are separate L2–L5 changes.
 
+### 2026-10-28 — sol-mac-layout — L2 Frame row
+
+- `Sources/VoxClip/PreviewTimeline.swift` tries the regular Frame row, then its small-control picker in the same 24-point row, then a leading 13-point Frame label above a full-width small-control picker. Every candidate retains all four complete options, selection weight and the Frame accessibility label.
+- The window-free layout matrix in `Sources/VoxClip/DebugRightColumn.swift` and native right-column bounds checks cover the narrow split widths; there is no label removal or clipping workaround.
+

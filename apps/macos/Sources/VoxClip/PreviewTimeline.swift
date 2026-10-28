@@ -56,14 +56,13 @@ func viewerStageSize(ratio: Double, innerWidth: CGFloat, columnHeight: CGFloat, 
             .accessibilityElement(children: .contain)
             .accessibilityLabel(stageLabel)
             viewerRow
-            HStack(spacing: 8) {
-                Text("Frame").font(.system(size: 13)).foregroundStyle(DesignValues.color("text.secondary")).fixedSize()
-                Picker("Frame", selection: Binding(get: { model.project.export.aspect }, set: { model.setAspect($0) })) {
-                    ForEach([AspectRatio.portrait, .square, .landscape, .source], id: \.self) { aspect in
-                        Text(aspect == .source ? "Original" : aspect.rawValue)
-                            .fontWeight(model.project.export.aspect == aspect ? .semibold : .regular).tag(aspect)
-                    }
-                }.labelsHidden().pickerStyle(.segmented).frame(height: 24)
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) { frameLabel; framePicker.controlSize(.regular) }.frame(height: 24)
+                HStack(spacing: 8) { frameLabel; framePicker.controlSize(.small) }.frame(height: 24)
+                VStack(alignment: .leading, spacing: 6) {
+                    frameLabel
+                    framePicker.controlSize(.small)
+                }
             }
         }
         .padding(VCTokens.spacingPanePaddingMacos)
@@ -75,6 +74,17 @@ func viewerStageSize(ratio: Double, innerWidth: CGFloat, columnHeight: CGFloat, 
         .tint(DesignValues.accentText)
         .focusable()
         .onKeyPress(characters: CharacterSet(charactersIn: " jklpico[]")) { key in model.transport(key.characters, shift: key.modifiers.contains(.shift)); return .handled }
+    }
+    private var frameLabel: some View {
+        Text("Frame").font(.system(size: 13)).foregroundStyle(DesignValues.color("text.secondary")).fixedSize()
+    }
+    private var framePicker: some View {
+        Picker("Frame", selection: Binding(get: { model.project.export.aspect }, set: { model.setAspect($0) })) {
+            ForEach([AspectRatio.portrait, .square, .landscape, .source], id: \.self) { aspect in
+                Text(aspect == .source ? "Original" : aspect.rawValue)
+                    .fontWeight(model.project.export.aspect == aspect ? .semibold : .regular).tag(aspect)
+            }
+        }.labelsHidden().pickerStyle(.segmented).frame(height: 24).accessibilityLabel("Frame")
     }
     private var stageLabel: String {
         let scope = model.activeClip.flatMap { model.clipNumber($0.id) }.map { "clip \($0)" } ?? "full take"
