@@ -159,6 +159,10 @@ public sealed partial class EditorPage
             focus, Diff = rewrite.Review?.AccessibleDescription, Absorbed = rewrite.Review?.Diff.Hunks.SelectMany(hunk => hunk.AbsorbedItemIds).ToArray() };
         await File.WriteAllTextAsync(Path.Combine(output, "rewrite-geometry.json"), JsonSerializer.Serialize(geometry, new JsonSerializerOptions { WriteIndented = true }));
         await NativeImageAsync(window, output, "rewrite-review");
+        var diffLine = NativeDescendants(panel).OfType<RewriteDiffLine>().Single();
+        diffLine.StartBringIntoView(new BringIntoViewOptions { AnimationDesired = false });
+        await Task.Delay(200);
+        await NativeImageAsync(window, output, "rewrite-diff-review");
         var instruction = NativeDescendants(panel).OfType<TextBox>().Single(element => AutomationProperties.GetName(element) == "What should change?");
         instruction.Focus(FocusState.Keyboard);
         NativeGateInput.Key(0x1b);

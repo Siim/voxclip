@@ -142,6 +142,7 @@ internal static class ShellNativeProbe
 
             // The sidebar's header rows host real controls (design §3.4, §13): each is enabled, named for Narrator and acts.
             var last = window.DebugEditor!;
+            last.ViewModel.SetMediaUnavailable(false);
             var words = last.ViewModel.Words;
             last.ViewModel.AddAiResult(new AiResult("probe-run", DateTimeOffset.UtcNow, "anthropic", "probe-model", ClipPreset.Best, null, "en", new string('0', 64),
                 [new AiClip("Probe idea one", "Probe reason", 8, words[2].Id, words[4].Id), new AiClip("Probe idea two", "Probe reason", 7, words[6].Id, words[8].Id)]));
