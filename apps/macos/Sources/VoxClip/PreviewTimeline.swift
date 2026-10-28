@@ -66,8 +66,8 @@ func viewerStageSize(ratio: Double, innerWidth: CGFloat, columnHeight: CGFloat, 
                 HStack(spacing: 8) { frameLabel; framePicker.controlSize(.small) }.frame(height: 24).columnLayoutEvidence("frame.small")
                 VStack(alignment: .leading, spacing: 6) {
                     frameLabel
-                    framePicker.controlSize(.small)
-                }.columnLayoutEvidence("frame.stacked")
+                    framePicker.controlSize(.small).frame(maxWidth: .infinity, alignment: .leading)
+                }.frame(maxWidth: .infinity, alignment: .leading).columnLayoutEvidence("frame.stacked")
             }
         }
         .padding(VCTokens.spacingPanePaddingMacos)

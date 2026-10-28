@@ -22,6 +22,7 @@ import VoxClipMedia
         let variant: String
         let width: CGFloat
         let height: CGFloat
+        let stage: CGRect
         let scrollFrames: [CGRect]
         let scrollClipping: [Bool]
         let scrolledViews: [String]
@@ -60,7 +61,7 @@ import VoxClipMedia
                 let scrolls = scrollViews(in: host)
                 let audit = viewAudit(host)
                 measurements.append(HeightMeasurement(window: window, variant: variant, width: width, height: height,
-                    scrollFrames: scrolls.map { $0.convert($0.bounds, to: host) },
+                    stage: markers(in: host)["viewer.stage"] ?? .zero, scrollFrames: scrolls.map { $0.convert($0.bounds, to: host) },
                     scrollClipping: scrolls.map { $0.clipsToBounds && $0.contentView.clipsToBounds },
                     scrolledViews: audit.scrolled, viewOverflow: audit.overflow))
             }
@@ -69,7 +70,18 @@ import VoxClipMedia
         return measurements.flatMap { measurement -> [DebugUISuite.Result] in
             let rewriting = measurement.variant.hasPrefix("rewrite")
             let viewport = measurement.scrollFrames.first ?? .zero
+            // The stage keeps its §5.1 frame size wherever 320 points remain for the panel below
+            // (every aspect at 1280×800 and 1440×900); on shorter columns only its height yields.
+            let stage = measurement.stage.size
+            let ratio: Double = stage.height > 0 ? Double(stage.width / stage.height) : 1
+            let inner: CGFloat = measurement.width - 32
+            let specified = viewerStageSize(ratio: ratio, innerWidth: inner, columnHeight: 10_000, rewriting: false)
+            let expected = viewerStageSize(ratio: ratio, innerWidth: inner, columnHeight: measurement.height, rewriting: false)
+            let fullSize = measurement.height >= 675
+            let stageMatches = abs(stage.width - expected.width) <= 0.5 && abs(stage.height - expected.height) <= 0.5
+                && (!fullSize || (abs(stage.width - specified.width) <= 0.5 && abs(stage.height - specified.height) <= 0.5))
             return [
+                .init(name: "right column height \(measurement.window) \(measurement.variant): stage \(stage) is \(fullSize ? "the specified frame" : "height-limited") \(expected)", passed: rewriting || (stage.height > 0 && stageMatches)),
                 .init(name: "right column height \(measurement.window) \(measurement.variant): visible descendants fit", passed: measurement.viewOverflow.isEmpty && viewport.height > 0 && measurement.scrollClipping.allSatisfy { $0 }),
                 .init(name: "right column height \(measurement.window) \(measurement.variant): gallery bottom \(viewport.maxY) <= \(measurement.height - 16)", passed: rewriting || viewport.maxY <= measurement.height - 15.5)
             ]
@@ -141,9 +153,11 @@ import VoxClipMedia
         ] }
         results.append(.init(name: "360-point short Captions summary uses one row", passed: measurements.first { $0.width == 360 && $0.variant == "source" }?.markers["captions.inline"] != nil))
         results.append(.init(name: "300-point AI/rate/hour case uses metadata fallback", passed: measurements.first { $0.width == 300 && $0.variant == "ai-rate-hours" }?.markers["transport.stacked"] != nil))
-        results.append(.init(name: "300-point Frame choices use a stacked full-width picker", passed: measurements.first { $0.width == 300 && $0.variant == "source" }?.markers["frame.stacked"] != nil))
+        let stacked = measurements.first { $0.width == 300 && $0.variant == "source" }?.markers["frame.stacked"]
+        results.append(.init(name: "300-point Frame choices use a stacked picker spanning the leading inner width (\(stacked.map { "\($0)" } ?? "none"))",
+            passed: stacked.map { abs($0.minX - 16) <= 0.5 && abs($0.width - 268) <= 0.5 } ?? false))
+        // Window-free only: the native divider drag runs in the UI self-test (DebugSidebar).
         results += try await measureHeights(app: app, directory: directory)
-        results += await DebugSidebar.dividerDrag(app: app)
         return results
     }
     private static func candidates(_ prefix: String, _ measurement: Measurement) -> Int {

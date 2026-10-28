@@ -72,13 +72,18 @@ import VoxClipCore
                         }
                         viewport = frame
                     } else if measured?.identifier == "voxclip.captions.gallery", viewport == nil {
+                        // The AX tree hides the gallery's scroll area: the native viewport stands in, held
+                        // to the same strict bounds, and the gallery content is classified against it.
                         viewport = scrollAreas.first
-                        if viewport == nil { failures.append("Gallery has no measurable native scroll viewport") }
+                        if let frame = viewport {
+                            if !column.insetBy(dx: -0.5, dy: -0.5).contains(frame) || !content.insetBy(dx: -0.5, dy: -0.5).contains(frame) {
+                                failures.append("Native gallery scroll viewport overflow: \(frame)")
+                            }
+                        } else { failures.append("Gallery has no measurable native scroll viewport") }
                     }
                     if let measured {
                         elements.append(measured)
-                        let replacementViewport = measured.identifier == "voxclip.captions.gallery" && inheritedViewport == nil
-                        check(measured, viewport: role == kAXScrollAreaRole || replacementViewport ? nil : viewport)
+                        check(measured, viewport: role == kAXScrollAreaRole ? nil : viewport)
                     } else {
                     let label = [kAXDescriptionAttribute, kAXTitleAttribute].compactMap { attribute(item, $0) as? String }.first { !$0.isEmpty } ?? ""
                     let identifier = attribute(item, kAXIdentifierAttribute) as? String ?? ""
