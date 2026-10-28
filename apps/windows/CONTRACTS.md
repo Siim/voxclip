@@ -1,5 +1,10 @@
 # Windows fixed contracts
 
+### 2026-10-28 — sol-win-redesign round 9 — Window-owned effects
+
+- MainWindow owns and disposes WindowEffects. ThemeSettings.CreateForWindowId(AppWindow.Id) supplies both HighContrast/scheme and Changed; UISettings supplies animation/transparency settings. Ui has no OS event subscriptions or static constructor. All three policy/brush accessors read one snapshot, and notifications dispatch to the window UI thread. Subscription/read/detach failures are logged without poisoning type initialization or discarding the last snapshot.
+- AccessibilityMonitorTests.WindowNotificationsDispatchAndDisposeWithoutStaticSubscriptions, SubscriptionAndReadFailuresKeepTheLastSnapshotAndOtherSubscriptions and ThemeSettingsAndEffectsAreOwnedByTheMainWindow pass 3/3. Debug App typecheck and Release UI build both report zero warnings/errors. Native startup and live contrast acceptance remain separate gates.
+
 ### 2026-10-28 — sol-followups-8 round 3: binary64 extraction parity
 
 - Final local audits pass the exact CI secret pattern, whitespace and round-three Windows-production scope checks. Both original Windows contract histories are retained. Owned Swift/.NET build trees and round-three scratch are removed, with no owned build/test process left running.

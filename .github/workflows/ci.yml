@@ -441,6 +441,29 @@ jobs:
         working-directory: apps/windows
         run: dotnet build src/VoxClip.App/VoxClip.App.csproj -c Release -r win-arm64 -p:Platform=ARM64 -m:1 -nodeReuse:false -p:UseSharedCompilation=false
 
+      - name: Launch the DEBUG Editor on the hosted desktop
+        if: ${{ !cancelled() && steps.detect.outputs.app == 'true' }}
+        timeout-minutes: 5
+        shell: pwsh
+        run: |
+          dotnet build apps/windows/src/VoxClip.App/VoxClip.App.csproj -c Debug -r win-x64 -p:Platform=x64 -m:1 -nodeReuse:false -p:UseSharedCompilation=false
+          if ($LASTEXITCODE -ne 0) { throw 'Debug App smoke build failed.' }
+          $evidence = Join-Path $env:RUNNER_TEMP 'voxclip-launch-smoke'
+          try {
+            & apps/windows/tests/VoxClip.Core.Tests/Tracks/win-ui/launch-smoke.ps1 -Root $PWD.Path -EvidenceDir $evidence -RuntimeIdentifier win-x64 -Hosted
+          } finally {
+            Get-ChildItem $evidence -Filter '*self-check.json' | ForEach-Object { Get-Content $_.FullName }
+          }
+
+      - name: Upload the Editor launch smoke evidence
+        if: ${{ always() && steps.detect.outputs.app == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-editor-launch-smoke
+          path: ${{ runner.temp }}/voxclip-launch-smoke
+          if-no-files-found: warn
+          retention-days: 14
+
       - name: Build CLI
         if: steps.detect.outputs.cli == 'true' && steps.detect.outputs.media_tests != 'true'
         shell: bash

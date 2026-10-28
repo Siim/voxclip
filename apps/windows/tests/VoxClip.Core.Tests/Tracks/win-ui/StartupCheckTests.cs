@@ -8,6 +8,27 @@ namespace VoxClip.Ui.Tests;
 public sealed class StartupCheckTests
 {
     [Fact]
+    public void LaunchSmokeRequiresFreshOwnedRenderedEditorAndVisibleTranscript()
+    {
+        var root = new DirectoryInfo(AppContext.BaseDirectory);
+        while (root is not null && !File.Exists(Path.Combine(root.FullName, ".github", "workflows", "ci.yml"))) root = root.Parent;
+        Assert.NotNull(root);
+        var script = File.ReadAllText(Path.Combine(root.FullName, "apps/windows/tests/VoxClip.Core.Tests/Tracks/win-ui/launch-smoke.ps1"));
+        Assert.Contains("stale reports are not accepted", script);
+        Assert.Contains("$check.status -ne 'ready'", script);
+        Assert.Contains("-not $check.rootLoaded -or -not $check.rendered", script);
+        Assert.Contains("$check.processId -ne $app.Id", script);
+        Assert.Contains("IsWindowVisible($windowHandle)", script);
+        Assert.Contains("$transcript.Current.IsOffscreen", script);
+        Assert.Contains("$observed.status = 'ok'", script);
+        Assert.Contains("$observed.status -ne 'ok'", script);
+        Assert.Contains("OpenInputDesktop", script);
+        Assert.Contains("New-ScheduledTaskAction", script);
+        Assert.DoesNotContain("schtasks", script);
+        Assert.All(script, character => Assert.InRange((int)character, 0, 127));
+    }
+
+    [Fact]
     public void EmptyTransparentAndUniformFramesFail()
     {
         Assert.False(StartupCheck.HasContent([]));
