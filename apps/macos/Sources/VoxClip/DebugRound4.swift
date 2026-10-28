@@ -15,13 +15,14 @@ import Darwin
             results += DebugCapabilities.run(app: app, fixture: fixture)
             results += try await DebugExport.run(app: app, fixture: fixture, directory: directory, captures: false)
             results += try await DebugRewrite.run(app: app, fixture: fixture, directory: directory)
+            results += try await DebugAccessibility.run(app: app, fixture: fixture, directory: directory)
             results += try await gallery(app: app, fixture: fixture, directory: directory)
             try captures(app: app, fixture: fixture, directory: directory)
         } catch {
             results.append(.init(name: "headless harness error: \(UserMessages.message(error))", passed: false))
         }
         try? ProjectJSON.encoder().encode(results).write(to: directory.appendingPathComponent("results.json"), options: .atomic)
-        print("Round-four non-window checks: \(results.filter(\.passed).count)/\(results.count). Native UI and save-boundary gates are separate.")
+        print("Mac redesign non-window checks: \(results.filter(\.passed).count)/\(results.count). Native UI and save-boundary gates are separate.")
         exit(results.allSatisfy(\.passed) ? 0 : 1)
     }
     private static func gallery(app: AppModel, fixture: Project, directory: URL) async throws -> [DebugUISuite.Result] {
@@ -110,7 +111,7 @@ import Darwin
             try bitmap(Label(disclosure, systemImage: "waveform").font(.caption).padding(16), name: "export-disclosure-\(name)", width: 500, height: 70, scheme: scheme, directory: directory)
         }
     }
-    private static func bitmap<Content: View>(_ content: Content, name: String, width: Double, height: Double, scheme: ColorScheme, directory: URL) throws {
+    static func bitmap<Content: View>(_ content: Content, name: String, width: Double, height: Double, scheme: ColorScheme, directory: URL) throws {
         let previousAppearance = NSApp.appearance
         NSApp.appearance = NSAppearance(named: scheme == .dark ? .darkAqua : .aqua)
         defer { NSApp.appearance = previousAppearance }

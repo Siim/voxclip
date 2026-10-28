@@ -227,6 +227,7 @@ struct SubtitleDetail: Equatable {
         ToolbarSpacer(.fixed)
         ToolbarItem {
             Button(shell.viewerVisible ? "Hide Viewer" : "Show Viewer", systemImage: "sidebar.trailing") { shell.toggleViewer() }
+                .accessibilityLabel((shell.viewerVisible ? EditorIconAction.hideViewer : .showViewer).name)
                 .help(shell.viewerVisible ? "Hide Viewer (⌥⌘I)" : "Show Viewer (⌥⌘I)")
         }
     }
@@ -508,10 +509,10 @@ struct SubtitleDetail: Equatable {
             if model.findVisible {
                 HStack {
                     TextField("Find in transcript", text: $model.query).focused($findFocused).onSubmit { model.findNext() }
-                    Button("Previous", systemImage: "chevron.up") { model.findNext(backward: true) }.labelStyle(.iconOnly)
-                    Button("Next", systemImage: "chevron.down") { model.findNext() }.labelStyle(.iconOnly)
+                    Button("Previous", systemImage: "chevron.up") { model.findNext(backward: true) }.labelStyle(.iconOnly).accessibilityLabel(EditorIconAction.previousMatch.name)
+                    Button("Next", systemImage: "chevron.down") { model.findNext() }.labelStyle(.iconOnly).accessibilityLabel(EditorIconAction.nextMatch.name)
                     Button("Cut all \(model.words.filter { model.text($0).localizedCaseInsensitiveContains(model.query) }.count)") { model.cutMatches() }.disabled(model.query.isEmpty)
-                    Button("Close find", systemImage: "xmark") { model.findVisible = false }.labelStyle(.iconOnly)
+                    Button("Close find", systemImage: "xmark") { model.findVisible = false }.labelStyle(.iconOnly).accessibilityLabel(EditorIconAction.closeFind.name)
                 }.padding(.horizontal, 20).padding(.vertical, 12)
                 .onAppear { findFocused = true }
             }
@@ -532,7 +533,7 @@ struct SubtitleDetail: Equatable {
                 ContentUnavailableView { Label("This video isn't transcribed yet.", systemImage: "text.alignleft") }
                     description: { Text("Your video is still here. Transcribe it to cut by words.") }
                     actions: { Button("Transcribe…") { model.showTranscribe = true }; Button("Models and keys…") { openVoxClipSettings() } }
-            } else { TranscriptTextView(model: model).accessibilityLabel("Transcript, edit by words") }
+            } else { TranscriptTextView(model: model).accessibilityLabel("Transcript, edit by words").focusSection() }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(DesignValues.color("bg.surface"))

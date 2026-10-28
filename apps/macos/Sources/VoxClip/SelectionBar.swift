@@ -18,10 +18,14 @@ func selectionBarFrame(lineRects: [CGRect], visibleRect: CGRect, barSize: CGSize
     let model: EditorModel
     var focusRequest = 0
     var forceOpaque = false
+    var policyOverride: EditorAccessibilityPolicy?
     let dismiss: () -> Void
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.colorSchemeContrast) private var contrast
     @FocusState private var focused: Bool
+    private var policy: EditorAccessibilityPolicy {
+        policyOverride ?? EditorAccessibilityPolicy(reduceMotion: false, reduceTransparency: reduceTransparency, increaseContrast: contrast == .increased)
+    }
     var body: some View {
         surface
             .fixedSize(horizontal: true, vertical: false)
@@ -52,7 +56,7 @@ func selectionBarFrame(lineRects: [CGRect], visibleRect: CGRect, barSize: CGSize
         .frame(height: 36)
     }
     @ViewBuilder private var surface: some View {
-        if forceOpaque || reduceTransparency || contrast == .increased {
+        if forceOpaque || policy.opaqueSelectionBar {
             controls.background(DesignValues.color("bg.elevated"), in: RoundedRectangle(cornerRadius: 10))
                 .overlay { RoundedRectangle(cornerRadius: 10).stroke(DesignValues.color("line.strong"), lineWidth: 1) }
         } else if #available(macOS 26, *) {
@@ -65,7 +69,7 @@ func selectionBarFrame(lineRects: [CGRect], visibleRect: CGRect, barSize: CGSize
         HStack(spacing: 6) {
             Text(title)
             Text(shortcut).font(DesignValues.mono(11)).foregroundStyle(DesignValues.color("text.secondary"))
-        }.padding(.horizontal, 8).frame(height: 26).contentShape(Rectangle())
+        }.padding(.horizontal, 8).frame(minWidth: EditorAccessibilityPolicy.minimumTarget, minHeight: 26).contentShape(Rectangle())
     }
     private var makeClipHelp: String {
         if let clip = model.sortedClips.first(where: { $0.startWordId == model.selectedIDs.first && $0.endWordId == model.selectedIDs.last }), let number = model.clipNumber(clip.id) {

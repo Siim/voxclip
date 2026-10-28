@@ -18,6 +18,7 @@ import VoxClipCore
     @Bindable var shell: WorkspaceShell
     var body: some View {
         SidebarList(shell: shell, overlay: true)
+            .modifier(EditorPaneFocus(model: shell.editor, pane: .sidebar))
             .frame(width: Double(VCTokens.sizeSidebarIdeal))
             .frame(maxHeight: .infinity)
             .background(DesignValues.color("bg.sunken"))
@@ -58,13 +59,14 @@ import VoxClipCore
     }
     private var list: some View {
         List(selection: Binding(get: { shell.selection }, set: { if let row = $0 { shell.choose(row) } })) {
-            Label("Home", systemImage: "house").modifier(SidebarRowForeground(emphasized: shell.selection == .home && listFocused)).tag(SidebarItem.home)
+            Label("Home", systemImage: "house").frame(minHeight: EditorAccessibilityPolicy.minimumTarget).modifier(SidebarRowForeground(emphasized: shell.selection == .home && listFocused)).tag(SidebarItem.home)
             if let document = shell.document, let editor = shell.editor {
                 ProjectSection(shell: shell, document: document, editor: editor, listFocused: listFocused)
             }
             if shell.showsHome { RecentSection(shell: shell, listFocused: listFocused) }
         }
         .listStyle(.sidebar)
+        .environment(\.defaultMinListRowHeight, EditorAccessibilityPolicy.minimumTarget)
         .focused($listFocused)
         .onChange(of: listFocused) { _, focused in if focused { shell.editor?.focusedPane = .sidebar } }
         .onGeometryChange(for: Double.self) { $0.size.width } action: { if !overlay { shell.sidebarWidth = $0 } }
@@ -151,7 +153,7 @@ import VoxClipCore
                     HStack(spacing: 6) {
                         Text(editor.progressFraction.map { "Transcribing · \(Int($0 * 100))%" } ?? "Transcribing").monospacedDigit()
                         Spacer(minLength: 4)
-                        Button("Cancel") { editor.workTask?.cancel(); editor.progress = nil }.buttonStyle(.borderless).font(.system(size: 11, weight: .medium))
+                        Button { editor.workTask?.cancel(); editor.progress = nil } label: { Text("Cancel").modifier(SidebarActionTarget()) }.buttonStyle(.borderless).font(.system(size: 11, weight: .medium))
                     }
                     .font(.system(size: 11)).foregroundStyle(SidebarStyle.meta(emphasized))
                 } else {
@@ -163,7 +165,7 @@ import VoxClipCore
                         HStack(spacing: 4) {
                             Text(exportStatus.label).font(.system(size: 11))
                             if exportStatus == .failed {
-                                Button("Retry") { editor.retryExport(target: .fullEdit) }.buttonStyle(.plain).font(.system(size: 11))
+                                Button { editor.retryExport(target: .fullEdit) } label: { Text("Retry").modifier(SidebarActionTarget()) }.buttonStyle(.plain).font(.system(size: 11))
                                     .disabled(!editor.canExport)
                             }
                         }.foregroundStyle(DesignValues.color("status.warning"))
@@ -225,18 +227,18 @@ import VoxClipCore
                         Button { editor.keep(clip.id) } label: { Image(systemName: "checkmark").font(.system(size: 11, weight: .semibold)) }
                             .buttonStyle(KeepButtonStyle(emphasized: emphasized)).help("Keep (Return)")
                             .disabled(!editor.capabilities.edit)
-                            .accessibilityLabel("Keep suggested clip \(number)")
+                            .accessibilityLabel(EditorIconAction.suggestion(keep: true, number: number))
                         Button { editor.dismiss(clip.id) } label: { Image(systemName: "xmark").font(.system(size: 11, weight: .semibold)).frame(width: 24, height: 24) }
                             .buttonStyle(.borderless).foregroundStyle(SidebarStyle.meta(emphasized)).help("Dismiss (⌫)")
                             .disabled(!editor.capabilities.edit)
-                            .accessibilityLabel("Dismiss suggested clip \(number)")
+                            .accessibilityLabel(EditorIconAction.suggestion(keep: false, number: number))
                     }
                 }
                 if exportStatus.secondLine {
                     HStack(spacing: 4) {
                         Text(exportStatus.label).font(.system(size: 11)).foregroundStyle(emphasized ? Color(nsColor: .alternateSelectedControlTextColor) : DesignValues.color("status.warning")).lineLimit(1)
                         if exportStatus == .failed {
-                            Button("Retry") { editor.retryExport(clip.id) }.font(.system(size: 11)).buttonStyle(.plain)
+                            Button { editor.retryExport(clip.id) } label: { Text("Retry").modifier(SidebarActionTarget()) }.font(.system(size: 11)).buttonStyle(.plain)
                                 .foregroundStyle(emphasized ? Color(nsColor: .alternateSelectedControlTextColor) : DesignValues.accentText)
                                 .disabled(!editor.canExport || !editor.mediaExportable)
                         }
@@ -342,7 +344,7 @@ private struct KeepButtonStyle: ButtonStyle {
             Text("Suggested").font(.system(size: 11, weight: .semibold))
             Spacer()
             if keepAll {
-                Button("Keep All") { editor.keepAll() }.buttonStyle(.borderless).font(.system(size: 11, weight: .medium))
+                Button { editor.keepAll() } label: { Text("Keep All").modifier(SidebarActionTarget()) }.buttonStyle(.borderless).font(.system(size: 11, weight: .medium))
                     .foregroundStyle(DesignValues.color("text.primary"))
             }
         }
@@ -374,7 +376,7 @@ private struct KeepButtonStyle: ButtonStyle {
                 ProgressView().controlSize(.small)
                 Text("Finding clips…").font(.system(size: 13))
                 Spacer(minLength: 4)
-                Button("Cancel") { editor.findTask?.cancel() }.buttonStyle(.borderless).font(.system(size: 13))
+                Button { editor.findTask?.cancel() } label: { Text("Cancel").modifier(SidebarActionTarget()) }.buttonStyle(.borderless).font(.system(size: 13))
             }
             Text("\(editor.findConnector?.label ?? "AI") · reading \(durationLabel(editor.editedDuration(nil))) of transcript")
                 .font(.system(size: 11)).foregroundStyle(DesignValues.color("text.secondary")).lineLimit(1)
@@ -390,7 +392,7 @@ private struct KeepButtonStyle: ButtonStyle {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(EditorModel.noClipsMatched).font(.system(size: 13)).fixedSize(horizontal: false, vertical: true)
-            Button("Find Clips…") { editor.requestFindClips(from: .sidebar) }.controlSize(.small)
+            Button { editor.requestFindClips(from: .sidebar) } label: { Text("Find Clips…").modifier(SidebarActionTarget()) }.controlSize(.small)
         }
         .padding(.vertical, 4)
     }
@@ -411,13 +413,13 @@ private struct KeepButtonStyle: ButtonStyle {
             if editor.showAISetup {
                 SidebarCallout {
                     Text("Choose how VoxClip finds clips: your API key, a model on this computer, or an installed CLI.")
-                    Button("Set Up AI…") { openVoxClipSettings(pane: "ai") }.controlSize(.small)
+                    Button { openVoxClipSettings(pane: "ai") } label: { Text("Set Up AI…").modifier(SidebarActionTarget()) }.controlSize(.small)
                     Text("You can also select words and press ⌘K to make a clip yourself.").font(.system(size: 11)).foregroundStyle(DesignValues.color("text.secondary"))
                 }
             } else if let error = editor.clipError, error != EditorModel.noClipsMatched, !editor.finding {
                 SidebarCallout {
                     Text(error)
-                    Button("Retry") { editor.findClips() }.controlSize(.small)
+                    Button { editor.findClips() } label: { Text("Retry").modifier(SidebarActionTarget()) }.controlSize(.small)
                 }
             }
         }
@@ -513,7 +515,7 @@ private struct KeepButtonStyle: ButtonStyle {
                         .font(.system(size: 11)).foregroundStyle(DesignValues.color("status.warning")).lineLimit(1)
                 }
             }
-            .frame(height: 22)
+            .frame(height: EditorAccessibilityPolicy.minimumTarget)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

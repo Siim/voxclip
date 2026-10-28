@@ -98,11 +98,11 @@ func viewerStageSize(ratio: Double, innerWidth: CGFloat, columnHeight: CGFloat, 
             .accessibilityValue("\(timecode(floor(model.playhead))) of \(timecode(model.duration))")
             Spacer(minLength: 4)
             Button { model.transport("j") } label: { transportSymbol("gobackward.3", fallback: "gobackward").frame(width: 28, height: 28) }
-                .help("Back 3 Seconds (J)").accessibilityLabel("Back 3 seconds")
+                .help("Back 3 Seconds (J)").accessibilityLabel(EditorIconAction.back.name)
             Button { model.transport(" ") } label: { Image(systemName: model.isPlaying ? "pause.fill" : "play.fill").frame(width: 34, height: 34) }
-                .background(DesignValues.color("bg.sunken"), in: Circle()).help("Play/Pause (Space)").accessibilityLabel(model.isPlaying ? "Pause" : "Play")
+                .background(DesignValues.color("bg.sunken"), in: Circle()).help("Play/Pause (Space)").accessibilityLabel((model.isPlaying ? EditorIconAction.pause : .play).name)
             Button { model.seek(source: min(model.sourceDuration, model.sourceTime + 3)) } label: { transportSymbol("goforward.3", fallback: "goforward").frame(width: 28, height: 28) }
-                .help("Forward 3 Seconds").accessibilityLabel("Forward 3 seconds")
+                .help("Forward 3 Seconds").accessibilityLabel(EditorIconAction.forward.name)
         }.buttonStyle(.plain).foregroundStyle(DesignValues.color("text.primary")).frame(height: 34)
     }
     @ViewBuilder private func transportSymbol(_ name: String, fallback: String) -> some View {
@@ -333,7 +333,7 @@ func viewerStageSize(ratio: Double, innerWidth: CGFloat, columnHeight: CGFloat, 
                 Image(systemName: model.isPlaying ? "pause.fill" : "play.fill").font(.system(size: 12, weight: .semibold)).frame(width: 28, height: 28)
             }
             .buttonStyle(.plain).background(DesignValues.color("bg.sunken"), in: Circle())
-            .accessibilityLabel(model.isPlaying ? "Pause" : "Play")
+            .accessibilityLabel((model.isPlaying ? EditorIconAction.pause : .play).name)
             (Text(timecode(model.playhead)) + Text(" / \(timecode(model.duration))").foregroundStyle(DesignValues.color("text.secondary")))
                 .font(DesignValues.mono(12)).monospacedDigit().fixedSize()
                 .accessibilityIdentifier("voxclip.compact.time")
@@ -353,7 +353,7 @@ func viewerStageSize(ratio: Double, innerWidth: CGFloat, columnHeight: CGFloat, 
             .onKeyPress(.end) { seekBoundary(end: true); return .handled }
             .onKeyPress(characters: CharacterSet(charactersIn: " jklpico[]")) { key in model.transport(key.characters); return .handled }
             .accessibilityRepresentation { slider(projection: projection, current: current) }
-            .animation(reduceMotion ? nil : .easeInOut(duration: 0.24), value: projection.zoom)
+            .animation(reduceMotion ? nil : .easeInOut(duration: EditorAccessibilityPolicy(reduceMotion: reduceMotion, reduceTransparency: false, increaseContrast: false).timelineZoomDuration), value: projection.zoom)
     }
     private func slider(projection: TimelineProjection, current: Double) -> some View {
         let range = projection.visible(edited: model.editedTimeline)

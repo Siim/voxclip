@@ -95,7 +95,7 @@ struct CaptionTileInput: Sendable, Equatable {
             let layout = try await pipeline.layout(words: words, language: input.language, style: galleryStyle,
                 position: input.position, frame: input.frame, duration: sample.duration)
             try Task.checkCancellation()
-            let raster = try await rasterizer.rasterize(layout, time: sample.time, previewWidth: 1280, reduceMotion: true)
+            let raster = try await rasterizer.rasterize(layout, time: sample.time, previewWidth: 1280, reduceMotion: EditorAccessibilityPolicy.staticCaptionTiles)
             try Task.checkCancellation()
             guard let provider = CGDataProvider(data: raster.rgba as CFData),
                   let overlay = CGImage(width: raster.width, height: raster.height, bitsPerComponent: 8, bitsPerPixel: 32,

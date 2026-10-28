@@ -49,6 +49,16 @@ import VoxClipCore
             if text.selectedRanges != ranges { text.selectedRanges = ranges }
         }
         coordinator.updating = false; text.updateCorrection(); text.refreshSelectionBar()
+        if coordinator.scopeScrollRevision != model.scopeScrollRevision {
+            coordinator.scopeScrollRevision = model.scopeScrollRevision
+            let id = model.activeClip?.startWordId ?? model.words.first?.id
+            if let id, let span = text.map.span(id: id) {
+                NSAnimationContext.runAnimationGroup { context in
+                    context.duration = EditorAccessibilityPolicy.system.transcriptScrollDuration
+                    text.scrollRangeToVisible(span.range)
+                }
+            }
+        }
     }
 
     @MainActor final class Coordinator: NSObject, NSTextViewDelegate, @preconcurrency NSTextLayoutManagerDelegate {
@@ -56,6 +66,7 @@ import VoxClipCore
         weak var text: TranscriptNSTextView?
         var signature = "", updating = false
         var hiddenCuts: Set<String> = []
+        var scopeScrollRevision = 0
         let renderer = TranscriptRenderer()
         init(model: EditorModel) { self.model = model }
         func textView(_ textView: NSTextView, willChangeSelectionFromCharacterRanges old: [NSValue], toCharacterRanges proposed: [NSValue]) -> [NSValue] {
@@ -372,9 +383,10 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
         host.frame = frame
         let wasHidden = host.isHidden
         host.isHidden = false
-        if wasHidden && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+        let fade = EditorAccessibilityPolicy.system.crossfadeDuration
+        if wasHidden && fade > 0 {
             host.alphaValue = 0
-            NSAnimationContext.runAnimationGroup { context in context.duration = 0.12; host.animator().alphaValue = 1 }
+            NSAnimationContext.runAnimationGroup { context in context.duration = fade; host.animator().alphaValue = 1 }
         } else { host.alphaValue = 1 }
     }
     @objc func accessibleMakeClip() -> Bool { guard model?.capabilities.edit == true, model?.selectedIDs.isEmpty == false else { return false }; model?.makeClip(); return true }

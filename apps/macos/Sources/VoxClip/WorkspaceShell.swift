@@ -633,8 +633,7 @@ enum SidebarItem: Hashable {
 @MainActor final class MainWindow: NSWindow {
     var closeProject: (() async -> Bool)?
     override func sendEvent(_ event: NSEvent) {
-        if event.type == .keyDown, event.keyCode == 97, attachedSheet == nil,
-           event.modifierFlags.intersection([.command, .option, .control]).isEmpty,
+        if event.type == .keyDown, EditorPane.isCycleKey(code: event.keyCode, modifiers: event.modifierFlags), attachedSheet == nil,
            let editor = AppModel.sharedModel.shell.editor, !AppModel.sharedModel.shell.showsHome {
             if let input = firstResponder as? any NSTextInputClient, input.hasMarkedText() { super.sendEvent(event); return }
             if !event.modifierFlags.contains(.shift), let text = firstResponder as? TranscriptNSTextView, text.selectionBarVisible {

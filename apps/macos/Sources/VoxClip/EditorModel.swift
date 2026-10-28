@@ -51,6 +51,7 @@ struct EditorRenderSnapshot {
     var rewrite: RewriteSession?
     var focusedPane = EditorPane.transcript
     var paneFocusRequest = 0
+    var scopeScrollRevision = 0
     var lastStyleId: String?
     @ObservationIgnored private var galleryKey = ""
     @ObservationIgnored private var galleryPages: [String: CaptionGalleryPages] = [:]
@@ -742,8 +743,12 @@ struct EditorRenderSnapshot {
         trimClip(clip, start: start, index: current + offset)
     }
     func activate(_ clip: ClipRange?, announcing message: String? = nil) {
+        let previous = project.edits.activeClipId
         apply(.setActiveClip(clipId: clip?.id), name: "Preview clip", announcing: message)
-        if project.edits.activeClipId == clip?.id { seekToActiveClip() }
+        if project.edits.activeClipId == clip?.id {
+            seekToActiveClip()
+            if previous != clip?.id { scopeScrollRevision += 1 }
+        }
     }
     /// Moves the playhead to the active clip's first word.
     private func seekToActiveClip() {
