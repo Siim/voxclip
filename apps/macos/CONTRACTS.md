@@ -1,5 +1,10 @@
 # macOS implementation contracts
 
+### 2026-10-28 — sol-mac-redesign round 7 — N1 initial keyboard state
+
+- The capability guards added in `c57ad9a7` (round 4) exposed an uninitialized editor: `editingAvailable` stayed false until the asynchronous start/first refresh, so the Escape regression's new editor could not create or activate its clip. The key handler did not lose its Escape ordering. Initialize derived transcript/plan state synchronously at the end of `EditorModel.init`; this also closes the product's initial-input gap without bypassing missing-media, version or busy guards.
+- The native selection-bar check now first asserts the fresh editor's edit capability. Its existing first Escape (dismiss bar, retain clip) and second Escape (Full Take) assertions are unchanged.
+
 ### 2026-10-28 — sol-mac-redesign round 6 — Checklist 18 harness
 
 - `sceneAudit` and `captureDemo` now share the twelve named redesign scenes in `DebugRedesignScenes`. Native PNG captures use the existing snapshot/capture helpers without cacheDisplay fallback; the old live-clips, live-clip-preview and live-finder-* outputs are removed. Full editor is 1440×900 dark; clip 2 is light/9:16. The blue 1280 scene requires a bundled app launched with the blue system accent and otherwise records an owed result, not a pass.

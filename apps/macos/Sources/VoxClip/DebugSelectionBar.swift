@@ -22,6 +22,7 @@ import VoxClipCore
         }
         let model = EditorModel(document: VoxClipDocument(project: fixture, demo: true), app: app, preview: DemoPreviewEngine())
         defer { model.close() }
+        results.append(.init(name: "new editor initializes transcript capabilities before keyboard input", passed: model.capabilities.edit))
         let coordinator = TranscriptTextView.Coordinator(model: model)
         let text = TranscriptNSTextView(usingTextLayoutManager: true)
         text.frame = CGRect(x: 0, y: 0, width: 720, height: 500)

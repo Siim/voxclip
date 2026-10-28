@@ -278,6 +278,7 @@ struct EditorRenderSnapshot {
             self.preview = native; nativePreview = native
         }
         textSize = app.number("general.transcriptTextSize", fallback: DesignValues.transcriptTextSize)
+        refresh()
     }
 
     var project: Project { document.project }
