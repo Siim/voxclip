@@ -213,6 +213,8 @@ try {
             [void](Find-Control $window 'Make clip')
             Save-Window 'editor-light' $window
             [VoxClipScreen]::DismissShell()
+            Start-Sleep -Milliseconds 200
+            $transcript.SetFocus()
             [VoxClipScreen]::MakeClipShortcut()
             $clip = Find-SelectedRow $window '^Clip \d+, '
             Save-Window 'editor-manual-clip' $window
