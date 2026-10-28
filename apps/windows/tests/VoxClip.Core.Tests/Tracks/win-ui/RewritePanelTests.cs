@@ -200,7 +200,8 @@ public sealed class RewritePanelTests
     {
         var editor = Editor();
         var fake = new RecordingConnector();
-        using var session = new RewriteSession(editor, 10, 12, Envelope(), new(fake, "chosen", "Test connector", "apiKey", ""));
+        using var session = new RewriteSession(editor, 10, 12, Envelope(), new(fake, "chosen", "Test connector", "apiKey", ""),
+            consent: _ => Task.FromResult(true));
         Assert.Equal("", editor.SelectionText);
         Assert.Equal("3 words at 0:11.0", session.Header);
         Assert.Equal("word10 word11 word12", session.NewWords);
@@ -244,7 +245,8 @@ public sealed class RewritePanelTests
     public async Task FailedProposalKeepsItsInlineErrorAndLateProposalCannotReplaceTyping()
     {
         var failed = new RecordingConnector { Failure = new IOException("offline") };
-        using var failure = new RewriteSession(Editor(), 10, 12, Envelope(), new(failed, "chosen", "Test", "apiKey", ""));
+        using var failure = new RewriteSession(Editor(), 10, 12, Envelope(), new(failed, "chosen", "Test", "apiKey", ""),
+            consent: _ => Task.FromResult(true));
         await failure.SetInstructionAsync("First");
         var quote = failure.Prepared!;
         failure.MarkEstimateShown(quote);
@@ -257,7 +259,8 @@ public sealed class RewritePanelTests
         Assert.True(await failure.ProposeAsync(retry, true));
         Assert.Empty(failure.Problem);
         var late = new RecordingConnector { Pending = new(TaskCreationOptions.RunContinuationsAsynchronously) };
-        using var typing = new RewriteSession(Editor(), 10, 12, Envelope(), new(late, "chosen", "Test", "apiKey", ""));
+        using var typing = new RewriteSession(Editor(), 10, 12, Envelope(), new(late, "chosen", "Test", "apiKey", ""),
+            consent: _ => Task.FromResult(true));
         await typing.SetInstructionAsync("Second");
         var action = typing.Prepared!;
         typing.MarkEstimateShown(action);
@@ -267,6 +270,91 @@ public sealed class RewritePanelTests
         late.Pending.SetResult(new(null, new JsonObject { ["rewrite"] = "Late answer" }, "chosen", new StopKind.Complete(), null, "fake"));
         Assert.False(await pending);
         Assert.Equal("Keep my typing", typing.NewWords);
+    }
+
+    [Fact]
+    public async Task PersistingConsentDoesNotCloseTheUnchangedSession()
+    {
+        var fake = new RecordingConnector();
+        RewriteSession? open = null;
+        using var session = new RewriteSession(Editor(), 10, 12, Envelope(), new(fake, "chosen", "Test", "apiKey", ""),
+            consent: _ => { open!.SettingsChanged(true); return Task.FromResult(true); }, connectorIsCurrent: () => true);
+        open = session;
+        await session.SetInstructionAsync("Plainly");
+        var quote = session.Prepared!;
+        session.MarkEstimateShown(quote);
+        Assert.True(await session.ProposeAsync(quote, true));
+        Assert.True(session.IsOpen);
+        Assert.Single(fake.Calls, call => call == "send");
+        session.SettingsChanged(false);
+        Assert.False(session.IsOpen);
+    }
+
+    [Theory]
+    [InlineData("apiKey", false)]
+    [InlineData("apiKey", true)]
+    [InlineData("cli", false)]
+    [InlineData("cli", true)]
+    public async Task ConsentPrecedesAllDiscoveryAndOnlyAnApprovedProposalSends(string group, bool granted)
+    {
+        var fake = new RecordingConnector();
+        var asked = 0;
+        using var session = new RewriteSession(Editor(), 10, 12, Envelope(), new(fake, "chosen", "Test", group, ""),
+            consent: _ => { Assert.Empty(fake.Calls); asked++; return Task.FromResult(granted); });
+        await session.SetInstructionAsync("Plainly");
+        var action = session.Prepared!;
+        session.MarkEstimateShown(action);
+        Assert.Equal(granted, await session.ProposeAsync(action, true));
+        Assert.Equal(1, asked);
+        Assert.Equal(granted ? 1 : 0, fake.Calls.Count(call => call == "send"));
+        if (!granted) Assert.Empty(fake.Calls);
+    }
+
+    [Theory]
+    [InlineData("instruction")]
+    [InlineData("words")]
+    [InlineData("passage")]
+    [InlineData("connector")]
+    [InlineData("close")]
+    public async Task ChangesDuringConsentNeverDiscoverOrSend(string change)
+    {
+        var fake = new RecordingConnector();
+        var consent = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var currentConnector = true;
+        var editor = Editor();
+        using var session = new RewriteSession(editor, 10, 12, Envelope(), new(fake, "chosen", "Test", "apiKey", ""),
+            consent: _ => consent.Task, connectorIsCurrent: () => currentConnector);
+        await session.SetInstructionAsync("Plainly");
+        var action = session.Prepared!;
+        session.MarkEstimateShown(action);
+        var proposing = session.ProposeAsync(action, true);
+        Assert.False(await session.ProposeAsync(action, true));
+        switch (change)
+        {
+            case "instruction": await session.SetInstructionAsync("Differently"); break;
+            case "words": session.Edit("My typing"); break;
+            case "passage": editor.Apply(new EditOperation.Correct("w10", "New passage")); break;
+            case "connector": currentConnector = false; break;
+            case "close": session.Dispose(); break;
+        }
+        consent.SetResult(true);
+        Assert.False(await proposing);
+        Assert.Empty(fake.Calls);
+    }
+
+    [Fact]
+    public async Task LocalConnectorNeverAsksForConsentAndCloudFailsClosedWithoutIt()
+    {
+        foreach (var group in new[] { "local", "apiKey" })
+        {
+            var fake = new RecordingConnector();
+            using var session = new RewriteSession(Editor(), 10, 12, Envelope(), new(fake, "chosen", "Test", group, ""));
+            await session.SetInstructionAsync("Plainly");
+            var action = session.Prepared!;
+            session.MarkEstimateShown(action);
+            Assert.Equal(group == "local", await session.ProposeAsync(action, true));
+            if (group != "local") Assert.Empty(fake.Calls);
+        }
     }
 
     private sealed class RecordingConnector : ILlmConnector

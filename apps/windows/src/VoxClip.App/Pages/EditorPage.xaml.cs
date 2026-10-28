@@ -334,7 +334,7 @@ public sealed partial class EditorPage : Page
     {
         if (disposed || ViewModel.IsLeaving) return;
         rewriteOpenRevision++;
-        rewrite?.Dispose();
+        rewrite?.SettingsChanged(App.Services.Get("voiceLab.enabled", false));
         Transcript.ApplySettings();
         SelectionChanged(this, EventArgs.Empty);
         captions?.RefreshSamples();
@@ -503,7 +503,10 @@ public sealed partial class EditorPage : Page
             entry.Cloud ? "apiKey" : entry.Cli ? "cli" : "local", entry.Id == VoxClip.Core.Services.LLM.ConnectorId.ClaudeCode ? "Claude plan" : "ChatGPT plan");
         if (opening != rewriteOpenRevision || !ReferenceEquals(project, ViewModel.Project) || disposed || ViewModel.IsLeaving ||
             ViewModel.IsReadOnly || ViewModel.Busy || !App.Services.Get("voiceLab.enabled", false)) return;
-        rewrite = new(ViewModel, first, last, envelope, connector, after);
+        rewrite = new(ViewModel, first, last, envelope, connector, after,
+            consent: token => entry is null ? Task.FromResult(false) : ProviderCatalog.ConsentAsync(entry, XamlRoot, token),
+            connectorIsCurrent: () => entry is not null && App.Services.Get("llm.connector", "") == entry.WireId &&
+                App.Services.Get("llm.model." + entry.WireId, entry.DefaultModel) == connector?.Model);
         var panel = new RewritePanel(rewrite);
         panel.Closed += (_, _) =>
         {

@@ -19,6 +19,8 @@ internal sealed class RewriteSession : IDisposable
     private bool estimateShown;
     private readonly VoiceLabPriceCatalog? prices;
     private readonly string? synthesisModel;
+    private readonly Func<CancellationToken, Task<bool>>? consent;
+    private readonly Func<bool> connectorIsCurrent;
     private string proposalProblem = "";
     private string reviewProblem = "";
     internal EditorViewModel Editor { get; }
@@ -55,7 +57,8 @@ internal sealed class RewriteSession : IDisposable
     internal event EventHandler? Changed;
 
     internal RewriteSession(EditorViewModel editor, int first, int last, AudioEnvelope? envelope, RewriteConnector? connector,
-        int? insertionAfter = null, VoiceLabPriceCatalog? prices = null, string? synthesisModel = null)
+        int? insertionAfter = null, VoiceLabPriceCatalog? prices = null, string? synthesisModel = null,
+        Func<CancellationToken, Task<bool>>? consent = null, Func<bool>? connectorIsCurrent = null)
     {
         Editor = editor;
         Project = editor.Project;
@@ -67,6 +70,8 @@ internal sealed class RewriteSession : IDisposable
         InsertionAfter = insertionAfter;
         this.prices = prices;
         this.synthesisModel = synthesisModel;
+        this.consent = consent;
+        this.connectorIsCurrent = connectorIsCurrent ?? (() => true);
         NewWords = string.Join(" ", Source.Where(word => word.Kind == WordKind.Word).Select(word => word.Text));
         var start = insertionAfter is { } after ? Transcript[after].End : Source.FirstOrDefault()?.Start ?? 0;
         Header = $"{Source.Count(word => word.Kind == WordKind.Word)} words at {EditorViewModel.Timecode(start)}";
@@ -136,6 +141,9 @@ internal sealed class RewriteSession : IDisposable
         Changed?.Invoke(this, EventArgs.Empty);
         try
         {
+            if (Connector.Group != "local" && (consent is null || !await consent(cancellation.Token))) return false;
+            if (!IsOpen || current != revision || cancellation.IsCancellationRequested || !connectorIsCurrent() ||
+                !ReferenceEquals(Project, Editor.Project) || !ReferenceEquals(Prepared, action) || !ReferenceEquals(request, input)) return false;
             var result = await service.ProposeAsync(input, Connector.Connector, Connector.Model, service.Approve(action, true), cancellation.Token);
             if (!IsOpen || revision != current) return false;
             NewWords = result.ProposedText;
@@ -197,6 +205,10 @@ internal sealed class RewriteSession : IDisposable
     }
 
     private void InvalidateProposal() { revision++; sending?.Cancel(); }
+    internal void SettingsChanged(bool voiceLabEnabled)
+    {
+        if (!voiceLabEnabled || !connectorIsCurrent()) Dispose();
+    }
     private void EditorChanged(object? sender, EventArgs args) => Dispose();
     private void EditorPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs args)
     {
