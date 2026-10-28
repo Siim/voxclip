@@ -473,7 +473,7 @@ struct SubtitleDetail: Equatable {
     @Bindable var model: EditorModel
     var body: some View {
         GeometryReader { geometry in
-            RightColumnContents(model: model, columnHeight: geometry.size.height)
+            RightColumnContents(model: model, columnHeight: geometry.size.height, columnWidth: geometry.size.width)
                 .frame(width: geometry.size.width, height: geometry.size.height, alignment: .topLeading)
                 .accessibilityElement(children: .contain)
                 .accessibilityIdentifier("voxclip.editor.right")
@@ -484,10 +484,11 @@ struct SubtitleDetail: Equatable {
 @MainActor struct RightColumnContents: View {
     @Bindable var model: EditorModel
     var columnHeight: CGFloat
+    var columnWidth: CGFloat
     var fineTune = false
     var body: some View {
         VStack(spacing: 0) {
-            ViewerSection(model: model, columnHeight: columnHeight)
+            ViewerSection(model: model, columnHeight: columnHeight, columnWidth: columnWidth)
                 .modifier(EditorPaneFocus(model: model, pane: .viewer))
             Divider()
             Group {

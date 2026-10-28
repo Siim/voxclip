@@ -572,11 +572,11 @@ import VoxClipCore
         defer { model.close() }
         let left = NSViewController()
         let right = NSHostingController(rootView: GeometryReader { geometry in
-            RightColumnContents(model: model, columnHeight: geometry.size.height).frame(width: geometry.size.width, height: geometry.size.height)
+            RightColumnContents(model: model, columnHeight: geometry.size.height, columnWidth: geometry.size.width).frame(width: geometry.size.width, height: geometry.size.height)
         })
         right.sizingOptions = []
-        left.view = NSView(frame: NSRect(x: 0, y: 0, width: 700, height: 400))
-        right.view.frame = NSRect(x: 0, y: 0, width: 400, height: 400)
+        left.view = NSView(frame: NSRect(x: 0, y: 0, width: 700, height: 675))
+        right.view.frame = NSRect(x: 0, y: 0, width: 400, height: 675)
         let leftItem = NSSplitViewItem(viewController: left), rightItem = NSSplitViewItem(viewController: right)
         leftItem.minimumThickness = VCTokens.sizeTranscriptMinWidth
         leftItem.holdingPriority = .defaultLow
@@ -586,10 +586,10 @@ import VoxClipCore
         rightItem.canCollapse = true
         controller.addSplitViewItem(leftItem)
         controller.addSplitViewItem(rightItem)
-        let window = NSWindow(contentRect: NSRect(x: -10000, y: -10000, width: 1101, height: 400), styleMask: [.titled, .resizable], backing: .buffered, defer: false)
+        let window = NSWindow(contentRect: NSRect(x: -10000, y: -10000, width: 1101, height: 675), styleMask: [.titled, .resizable], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         window.contentViewController = controller
-        window.setContentSize(NSSize(width: 1101, height: 400))
+        window.setContentSize(NSSize(width: 1101, height: 675))
         split.setPosition(700, ofDividerAt: 0)
         split.layoutSubtreeIfNeeded()
         split.onDividerDrag = { shell.rememberRightWidth($0) }
@@ -619,16 +619,30 @@ import VoxClipCore
             fallback.invalidate()
             let stored = app.settings.values["ui.rightColumnWidth"]
             check("a drag of the divider stores \(expected) points (\(start) → \(right.view.frame.width))", abs(right.view.frame.width - expected) < 1.5 && stored == .number(expected))
+            let stageSettled = await stageFits(right.view, width: expected)
+            check("the stage follows the dragged \(expected)-point column", stageSettled)
         }
         let expected: CGFloat = 560
         let stored = app.settings.values["ui.rightColumnWidth"]
         for width: CGFloat in [1201, 1001] {
-            window.setContentSize(NSSize(width: width, height: 400))
+            window.setContentSize(NSSize(width: width, height: 675))
             window.contentView?.layoutSubtreeIfNeeded()
             check("window resize to \(width) preserves the dragged right-column width", abs(right.view.frame.width - expected) < 1.5 && app.settings.values["ui.rightColumnWidth"] == stored)
+            let stageSettled = await stageFits(right.view, width: expected)
+            check("the stage follows the preserved width after resize to \(width)", stageSettled)
         }
         window.close()
         return results
+    }
+
+    private static func stageFits(_ view: NSView, width: CGFloat) async -> Bool {
+        let started = ProcessInfo.processInfo.systemUptime
+        repeat {
+            view.window?.contentView?.layoutSubtreeIfNeeded()
+            if let stage = DebugRightColumn.markers(in: view)["viewer.stage"], abs(stage.width - (width - 32)) <= 0.5 { return true }
+            await Task.yield()
+        } while ProcessInfo.processInfo.systemUptime - started < 2
+        return false
     }
 
     /// The toolbar and edit summary (step 8): the summary grammar and cut count for each

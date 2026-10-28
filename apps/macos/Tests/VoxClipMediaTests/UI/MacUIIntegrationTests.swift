@@ -10,7 +10,7 @@ import Darwin
         let directory = try UIProcessHarness.run(mode: "-layoutAudit", name: "layout")
         defer { UIProcessHarness.cleanTemporary(directory) }
         let report = try JSONDecoder().decode([UIProcessHarness.Result].self, from: Data(contentsOf: directory.appendingPathComponent("results.json")))
-        #expect(report.count >= 291)
+        #expect(report.count >= 312)
         for result in report { #expect(result.passed && result.skipped == nil, Comment(rawValue: result.name)) }
         struct Measurement: Decodable { let width: Double; let minimumWidth: Double; let proposedWidth: Double; let stageWidth: Double; let variant: String; let frameChoices: [String]; let viewOverflow: [String]; let accessibilityOverflow: [String] }
         let measurements = try JSONDecoder().decode([Measurement].self, from: Data(contentsOf: directory.appendingPathComponent("right-column-layout.json")))
@@ -41,6 +41,13 @@ import Darwin
             if !measurement.variant.hasPrefix("rewrite") {
                 #expect(viewport.maxY <= measurement.height - 15.5)
             }
+        }
+        struct ResizeMeasurement: Decodable { let width: Double; let stage: CGRect; let elapsed: Double; let settled: Bool; let viewOverflow: [String] }
+        let resizes = try JSONDecoder().decode([ResizeMeasurement].self, from: Data(contentsOf: directory.appendingPathComponent("right-column-resizes.json")))
+        #expect(resizes.map(\.width) == [320, 300, 560])
+        for resize in resizes {
+            #expect(resize.settled && resize.elapsed < 2 && resize.viewOverflow.isEmpty)
+            #expect(abs(resize.stage.width - (resize.width - 32)) <= 0.5 && abs(resize.stage.minX - 16) <= 0.5)
         }
     }
     @Test("Saved Voice Lab recipe uses native preview and App export", .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_UI_TESTS"] == "1")) func voiceRecipeWorkflow() async throws {
@@ -140,6 +147,19 @@ import Darwin
                 if name == "live-editor-560" { #expect(!bounds.collapsed && abs(bounds.column.width - 560) <= 1) }
                 if name == "live-editor-960" { #expect(!bounds.collapsed && abs(bounds.content.width - 960) <= 1 && abs(bounds.content.height - 600) <= 1) }
                 if !bounds.collapsed { #expect(bounds.elements.contains { $0.identifier == "voxclip.viewer.time" }) }
+            }
+        }
+        try verifyColumnSettlements(in: directory)
+    }
+    private func verifyColumnSettlements(in directory: URL) throws {
+        struct Settlement: Decodable { let elapsed: Double; let settled: Bool; let stage: CGRect; let root: CGRect; let column: CGRect }
+        for width: Double in [300, 560] {
+            for suffix in ["", "-resize-64", "-resize-0"] {
+                let name = "drag-\(Int(width))\(suffix)-settlement.json"
+                let result = try JSONDecoder().decode(Settlement.self, from: Data(contentsOf: directory.appendingPathComponent(name)))
+                #expect(result.settled && result.elapsed < 2, Comment(rawValue: name))
+                #expect(abs(result.column.width - width) <= 1 && abs(result.stage.width - (width - 32)) <= 0.5)
+                #expect(abs(result.root.minX - result.column.minX) <= 0.5 && abs(result.root.width - result.column.width) <= 0.5)
             }
         }
     }

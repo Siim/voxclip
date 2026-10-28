@@ -187,8 +187,7 @@ import VoxClipMedia
         NSApp.postEvent(dragged, atStart: false)
         NSApp.postEvent(up, atStart: false)
         split.mouseDown(with: down)
-        try await Task.sleep(for: .milliseconds(200))
-        window.contentView?.layoutSubtreeIfNeeded()
+        try await settleColumn(in: window, name: "drag-\(Int(width))", directory: directory)
         let delivered = ((split as? EditorSplit)?.dividerMouseDowns ?? 0) - mouseDowns
         struct DragEvidence: Encodable { let requested: CGFloat; let actual: CGFloat; let remembered: Double; let mouseDowns: Int }
         try JSONEncoder().encode(DragEvidence(requested: width, actual: split.arrangedSubviews[1].frame.width, remembered: shell.rightWidth, mouseDowns: delivered))
@@ -196,6 +195,38 @@ import VoxClipMedia
         guard delivered == 1, abs(split.arrangedSubviews[1].frame.width - width) <= 1, abs(shell.rightWidth - width) <= 1 else {
             throw VoxClipError.exportFailed("Divider drag requested \(width), laid out \(split.arrangedSubviews[1].frame.width), remembered \(shell.rightWidth), mouseDowns \(delivered).")
         }
+        let originalSize = window.contentView?.bounds.size ?? window.frame.size
+        for extra: CGFloat in [64, 0] {
+            window.setContentSize(NSSize(width: originalSize.width + extra, height: originalSize.height))
+            try await settleColumn(in: window, name: "drag-\(Int(width))-resize-\(Int(extra))", directory: directory)
+            guard abs(split.arrangedSubviews[1].frame.width - width) <= 1, abs(shell.rightWidth - width) <= 1 else {
+                throw VoxClipError.exportFailed("A window resize changed the dragged right-column width.")
+            }
+        }
+    }
+    private static func settleColumn(in window: NSWindow, name: String, directory: URL) async throws {
+        guard let right = DebugColumnBounds.split(in: window.contentView)?.arrangedSubviews.last else { throw CocoaError(.coderInvalidValue) }
+        let started = ProcessInfo.processInfo.systemUptime
+        var stage: CGRect?, root: CGRect?, column: CGRect?
+        var settled = false
+        repeat {
+            window.contentView?.layoutSubtreeIfNeeded()
+            stage = DebugRightColumn.markers(in: right)["viewer.stage"]
+            root = DebugColumnBounds.rightFrame(in: window)
+            column = DebugColumnBounds.columnFrame(in: window)
+            if let stage, let root, let column {
+                settled = abs(stage.width - (column.width - 32)) <= 0.5 && abs(root.minX - column.minX) <= 0.5 && abs(root.width - column.width) <= 0.5
+            }
+            if settled { break }
+            await Task.yield()
+        } while ProcessInfo.processInfo.systemUptime - started < 2
+        struct Settlement: Encodable {
+            let elapsed: Double; let settled: Bool; let stage: CGRect?; let root: CGRect?; let column: CGRect?; let liveResize: Bool
+        }
+        let elapsed = ProcessInfo.processInfo.systemUptime - started
+        try JSONEncoder().encode(Settlement(elapsed: elapsed, settled: settled, stage: stage, root: root, column: column, liveResize: right.inLiveResize))
+            .write(to: directory.appendingPathComponent("\(name)-settlement.json"), options: .atomic)
+        guard settled else { throw VoxClipError.exportFailed("The right-column layout did not settle after \(name) within two seconds.") }
     }
     private static func transcript(in view: NSView?) -> TranscriptNSTextView? {
         guard let view else { return nil }

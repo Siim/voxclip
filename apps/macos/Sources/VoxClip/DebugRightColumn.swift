@@ -28,6 +28,45 @@ import VoxClipMedia
         let scrolledViews: [String]
         let viewOverflow: [String]
     }
+    struct ResizeMeasurement: Encodable {
+        let width: CGFloat
+        let stage: CGRect
+        let elapsed: Double
+        let settled: Bool
+        let viewOverflow: [String]
+    }
+    private static func measureResizes(app: AppModel, fixture: Project, directory: URL) async throws -> [DebugUISuite.Result] {
+        let model = EditorModel(document: VoxClipDocument(project: fixture, demo: true), app: app, preview: DemoPreviewEngine())
+        defer { model.close() }
+        model.setAspect(.landscape)
+        let controller = NSHostingController(rootView: GeometryReader { geometry in
+            RightColumnContents(model: model, columnHeight: geometry.size.height, columnWidth: geometry.size.width)
+                .frame(width: geometry.size.width, height: geometry.size.height, alignment: .topLeading)
+        })
+        controller.sizingOptions = []
+        let host = controller.view
+        var measurements: [ResizeMeasurement] = []
+        for width: CGFloat in [320, 300, 560] {
+            host.frame = CGRect(x: 0, y: 0, width: width, height: 675)
+            let started = ProcessInfo.processInfo.systemUptime
+            var stage = CGRect.zero
+            var settled = false
+            repeat {
+                host.layoutSubtreeIfNeeded()
+                stage = markers(in: host)["viewer.stage"] ?? .zero
+                settled = abs(stage.width - (width - 32)) <= 0.5 && abs(stage.minX - 16) <= 0.5
+                if settled { break }
+                await Task.yield()
+            } while ProcessInfo.processInfo.systemUptime - started < 2
+            measurements.append(ResizeMeasurement(width: width, stage: stage, elapsed: ProcessInfo.processInfo.systemUptime - started,
+                settled: settled, viewOverflow: viewOverflow(host)))
+        }
+        try JSONEncoder().encode(measurements).write(to: directory.appendingPathComponent("right-column-resizes.json"), options: .atomic)
+        return measurements.flatMap { measurement in [
+            .init(name: "resized column \(measurement.width): stage follows without stale-width feedback", passed: measurement.settled),
+            .init(name: "resized column \(measurement.width): visible descendants fit", passed: measurement.viewOverflow.isEmpty)
+        ] }
+    }
     static func measureHeights(app: AppModel, directory: URL) async throws -> [DebugUISuite.Result] {
         guard let root = app.shared?.root else { throw VoxClipError.sharedResourcesMissing }
         let fixture = try DemoEditing.loadFixture(root.appendingPathComponent("fixtures/projects/five-questions.voxclip"))
@@ -51,7 +90,7 @@ import VoxClipMedia
                     model.rewrite = session; model.rewriteRange = 12...25
                     session.edit(variant == "rewrite-budget" ? Array(repeating: "replacement", count: 180).joined(separator: " ") : "A clearer way to explain what happened in this passage.")
                 }
-                let controller = NSHostingController(rootView: RightColumnContents(model: model, columnHeight: height, fineTune: variant == "fine-tune"))
+                let controller = NSHostingController(rootView: RightColumnContents(model: model, columnHeight: height, columnWidth: width, fineTune: variant == "fine-tune"))
                 controller.sizingOptions = []
                 let host = controller.view
                 host.frame = CGRect(x: 0, y: 0, width: width, height: height)
@@ -124,7 +163,7 @@ import VoxClipMedia
                 model.rewrite = session; model.rewriteRange = 12...25
                 session.edit(variant == "rewrite-budget" ? Array(repeating: "replacement", count: 180).joined(separator: " ") : "A clearer way to explain what happened in this passage.")
             }
-            let content = RightColumnContents(model: model, columnHeight: height, fineTune: variant == "fine-tune")
+            let content = RightColumnContents(model: model, columnHeight: height, columnWidth: width, fineTune: variant == "fine-tune")
             let controller = NSHostingController(rootView: content)
             controller.sizingOptions = []
             let host = controller.view
@@ -158,6 +197,7 @@ import VoxClipMedia
             passed: stacked.map { abs($0.minX - 16) <= 0.5 && abs($0.width - 268) <= 0.5 } ?? false))
         // Window-free only: the native divider drag runs in the UI self-test (DebugSidebar).
         results += try await measureHeights(app: app, directory: directory)
+        results += try await measureResizes(app: app, fixture: fixture, directory: directory)
         return results
     }
     private static func candidates(_ prefix: String, _ measurement: Measurement) -> Int {

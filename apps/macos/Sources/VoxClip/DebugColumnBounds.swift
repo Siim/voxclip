@@ -28,6 +28,18 @@ import VoxClipCore
         if let split = view as? NSSplitView, split.identifier?.rawValue == "voxclip.editor.split" { return split }
         return view.subviews.lazy.compactMap { split(in: $0) }.first
     }
+    static func columnFrame(in window: NSWindow) -> CGRect? {
+        guard let right = split(in: window.contentView)?.arrangedSubviews.last else { return nil }
+        return screenFrame(right, window: window)
+    }
+    static func rightFrame(in window: NSWindow) -> CGRect? {
+        guard let column = columnFrame(in: window) else { return nil }
+        let application = AXUIElementCreateApplication(getpid())
+        let windows = attribute(application, kAXWindowsAttribute) as? [AXUIElement] ?? []
+        return windows.flatMap { descendants($0, depth: 0) }.compactMap(element)
+            .filter { $0.identifier == "voxclip.editor.right" }
+            .min { abs($0.frame.minX - column.minX) + abs($0.frame.minY - column.minY) < abs($1.frame.minX - column.minX) + abs($1.frame.minY - column.minY) }?.frame
+    }
     static func assertBounds(window: NSWindow, name: String, directory: URL) throws {
         let editorWindow = window.sheetParent ?? window
         guard let contentView = editorWindow.contentView else { return }

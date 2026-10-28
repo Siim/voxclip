@@ -30,7 +30,7 @@ func viewerStageSize(ratio: Double, innerWidth: CGFloat, columnHeight: CGFloat, 
 @MainActor struct ViewerSection: View {
     @Bindable var model: EditorModel
     var columnHeight: CGFloat = 800
-    @State private var innerWidth: CGFloat = 1
+    var columnWidth: CGFloat
     var ratio: Double {
         switch model.project.export.aspect {
         case .source:
@@ -42,7 +42,7 @@ func viewerStageSize(ratio: Double, innerWidth: CGFloat, columnHeight: CGFloat, 
         }
     }
     var body: some View {
-        let size = viewerStageSize(ratio: ratio, innerWidth: innerWidth, columnHeight: columnHeight, rewriting: model.rewrite != nil)
+        let size = viewerStageSize(ratio: ratio, innerWidth: max(1, columnWidth - 32), columnHeight: columnHeight, rewriting: model.rewrite != nil)
         VStack(spacing: 10) {
             ZStack {
                 Rectangle().fill(DesignValues.color("stage"))
@@ -72,10 +72,6 @@ func viewerStageSize(ratio: Double, innerWidth: CGFloat, columnHeight: CGFloat, 
         }
         .padding(VCTokens.spacingPanePaddingMacos)
         .frame(maxWidth: .infinity)
-        .onGeometryChange(for: CGFloat.self) { (geometry: GeometryProxy) -> CGFloat in geometry.size.width } action: { (width: CGFloat) in
-            let padded: CGFloat = width - 32
-            innerWidth = max(1, padded)
-        }
         .tint(DesignValues.accentText)
         .focusable()
         .onKeyPress(characters: CharacterSet(charactersIn: " jklpico[]")) { key in model.transport(key.characters, shift: key.modifiers.contains(.shift)); return .handled }
