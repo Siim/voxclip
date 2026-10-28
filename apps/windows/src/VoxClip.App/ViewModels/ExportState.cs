@@ -20,36 +20,41 @@ internal static class ExportFingerprint
     internal static string TargetId(ExportTarget target) => target is ExportTarget.Clip clip ? clip.Id : "full";
     internal static string For(Project project, ExportTarget target)
     {
-        var state = EditingEngine.FromProject(project);
-        var words = state?.Transcript.Words ?? [];
-        var first = 0; var last = words.Count - 1;
-        if (target is ExportTarget.Clip selected)
-        {
-            var clip = project.Edits.Clips.First(clip => clip.Id == selected.Id);
-            first = words.ToList().FindIndex(word => word.Id == clip.StartWordId);
-            last = words.ToList().FindIndex(word => word.Id == clip.EndWordId);
-        }
-        var selectedWords = words.Skip(first).Take(Math.Max(0, last - first + 1)).ToArray();
-        var ids = selectedWords.Select(word => word.Id).ToHashSet(StringComparer.Ordinal);
-        var pauses = state?.Pauses.Where(pause => pause.AfterIndex >= first && pause.AfterIndex < last).ToArray() ?? [];
-        var pauseIds = pauses.Select(pause => pause.Id).ToHashSet(StringComparer.Ordinal);
-        var captions = project.Captions.Overrides.ValueKind == JsonValueKind.Undefined
-            ? project.Captions with { Overrides = JsonSerializer.SerializeToElement(new { }) } : project.Captions;
-        JsonElement? voice = null;
+        var state = ExportSelection.Scope(EditingEngine.FromProject(project), target);
+        var media = ExportRenderInput.Media(project);
+        var plan = ExportRenderInput.Plan(media, state);
+        var output = ExportRenderInput.Output(media, project.Export);
+        object? voice = null;
         if (project.SchemaVersion == 3)
         {
-            using var document = JsonDocument.Parse(ProjectSerialization.Serialize(project));
-            voice = document.RootElement.GetProperty("voiceLab").Clone();
+            var scope = target is ExportTarget.Clip clip ? VoxClip.Core.Domain.VoiceLab.VoiceLabOutputScope.Clip(clip.Id) : VoxClip.Core.Domain.VoiceLab.VoiceLabOutputScope.Full;
+            var prepared = VoxClip.Core.Domain.VoiceLab.VoiceLabRenderContract.Prepare(project, scope, VoxClip.Core.Domain.VoiceLab.VoiceLabLabelPosition.TopRight);
+            voice = new
+            {
+                prepared.OutputPlan, prepared.Disclosure,
+                Recipes = prepared.SelectedSegmentRecipes.Select(item => new
+                {
+                    item.Piece, item.Recipe.Audio, item.Recipe.RoomTone, item.Recipe.Seams,
+                    Video = new { item.Recipe.Video.Mode, item.Recipe.Video.SourceStartSample, item.Recipe.Video.SourceEndSample,
+                        item.Recipe.Video.OutputSamples, item.Recipe.Video.RetimeFactor, item.Recipe.Video.Zoom, item.Recipe.Video.FaceX, item.Recipe.Video.FaceY },
+                    Asset = project.VoiceLab.Assets!.Where(asset => asset.Id == item.Recipe.Audio.AssetId)
+                        .Select(asset => new { asset.Sha256, asset.SampleRate, asset.DurationSeconds }).Single()
+                }).ToArray()
+            };
         }
+        // With captions off the export builds no caption track, so caption-only inputs cannot change the render.
+        var captionsOn = project.Captions.StyleId != "off";
         var input = JsonSerializer.SerializeToElement(new
         {
-            project.Media.Source.ContentKey, project.Media.Source.Video, project.Media.Source.DurationSeconds,
-            Target = TargetId(target), Words = selectedWords, Language = state?.Transcript.Language,
-            project.Edits.PauseThresholdSeconds, project.Edits.PauseKeepSeconds,
-            CutWords = project.Edits.CutWordIds.Where(ids.Contains).Order(StringComparer.Ordinal).ToArray(),
-            CutPauses = project.Edits.CutPauseIds.Where(pauseIds.Contains).Order(StringComparer.Ordinal).ToArray(),
-            Corrections = project.Edits.Corrections.Where(pair => ids.Contains(pair.Key)).ToDictionary(),
-            Captions = captions, project.Export.Aspect, VoiceLab = voice
+            Version = 2, project.Media.Source.ContentKey,
+            Source = new { media.DurationSeconds, media.OrientedSize, media.Video?.RotationDegrees,
+                FrameRate = media.Video?.FrameRate, SampleRate = media.Audio?.SampleRate, Channels = media.Audio?.Channels },
+            Plan = plan, CaptionWords = state is null || !captionsOn ? null : EditingEngine.CaptionWords(state, plan),
+            Language = captionsOn ? state?.Transcript.Language : null,
+            Captions = captionsOn ? (object)new { project.Captions.StyleId,
+                Overrides = project.Captions.Overrides.ValueKind == JsonValueKind.Undefined ? JsonSerializer.SerializeToElement(new { }) : project.Captions.Overrides,
+                Position = VoxClip.Core.Domain.Captions.CaptionEngine.StoredPosition(project.Captions, output.Size) } : new { project.Captions.StyleId },
+            project.Export.Quality, Output = output, VoiceLab = voice
         });
         using var stream = new MemoryStream();
         using (var writer = new Utf8JsonWriter(stream)) WriteCanonical(writer, input);

@@ -5,16 +5,16 @@ using Microsoft.UI.Xaml.Automation.Provider;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using System.Globalization;
+using VoxClip.App.ViewModels;
 
 namespace VoxClip.App.Controls;
-
-internal readonly record struct TimelineRange(double Minimum, double Maximum, double Value, double SmallChange, string Text);
 
 internal sealed class TimelineRangeControl : ContentControl
 {
     internal Func<TimelineRange> Read { get; set; } = () => new(0, 1, 0, 1, "");
     internal Action<double>? Set { get; set; }
     private double reported = double.NaN;
+    private TimelineRange? previous;
     internal TimelineRangeControl(string name)
     {
         IsTabStop = true;
@@ -28,10 +28,20 @@ internal sealed class TimelineRangeControl : ContentControl
     internal void Refresh()
     {
         var range = Read();
-        AutomationProperties.SetHelpText(this, range.Text);
-        if (range.Value != reported && FrameworkElementAutomationPeer.FromElement(this) is { } peer)
-            peer.RaisePropertyChangedEvent(RangeValuePatternIdentifiers.ValueProperty, double.IsNaN(reported) ? range.Value : reported, range.Value);
+        if (previous == range) return;
+        if (previous?.Text != range.Text) AutomationProperties.SetHelpText(this, range.Text);
+        if (FrameworkElementAutomationPeer.FromElement(this) is { } peer)
+        {
+            if (range.Value != reported) peer.RaisePropertyChangedEvent(RangeValuePatternIdentifiers.ValueProperty, double.IsNaN(reported) ? range.Value : reported, range.Value);
+            if (previous is { } old)
+            {
+                if (old.Minimum != range.Minimum) peer.RaisePropertyChangedEvent(RangeValuePatternIdentifiers.MinimumProperty, old.Minimum, range.Minimum);
+                if (old.Maximum != range.Maximum) peer.RaisePropertyChangedEvent(RangeValuePatternIdentifiers.MaximumProperty, old.Maximum, range.Maximum);
+                if (old.SmallChange != range.SmallChange) peer.RaisePropertyChangedEvent(RangeValuePatternIdentifiers.SmallChangeProperty, old.SmallChange, range.SmallChange);
+            }
+        }
         reported = range.Value;
+        previous = range;
     }
     protected override AutomationPeer OnCreateAutomationPeer() => new RangePeer(this);
     private sealed class RangePeer(TimelineRangeControl owner) : FrameworkElementAutomationPeer(owner), IRangeValueProvider, IValueProvider

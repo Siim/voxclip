@@ -79,9 +79,15 @@ internal sealed class CaptionsPanel : UserControl
         body.RowDefinitions.Add(new() { Height = GridLength.Auto });
         body.RowDefinitions.Add(new() { Height = new(1, GridUnitType.Star) });
         ActualThemeChanged += (_, _) => { summary.Foreground = Ui.ThemeBrush(this, "VcTextSecondaryBrush"); RenderVisible(true); };
+        Loaded += (_, _) => Ui.EffectsChanged += EffectsChanged;
+        Unloaded += (_, _) => Ui.EffectsChanged -= EffectsChanged;
         model.Changed += ModelChanged;
         model.PropertyChanged += ModelPropertyChanged;
     }
+    private void EffectsChanged(object? sender, EventArgs args) => DispatcherQueue.TryEnqueue(() =>
+    {
+        summary.Foreground = Ui.ThemeBrush(this, "VcTextSecondaryBrush"); RenderVisible(true);
+    });
 
     internal async Task InitializeAsync()
     {
@@ -357,7 +363,7 @@ internal sealed class CaptionsPanel : UserControl
             {
                 var rgb = Convert.ToUInt32(color.Value[1..], 16);
                 var brush = new SolidColorBrush(Windows.UI.Color.FromArgb(byte.MaxValue, (byte)(rgb >> 16), (byte)(rgb >> 8), (byte)rgb));
-                var button = new Button { IsEnabled = !model.IsReadOnly, Width = 28, Height = 28, Padding = new Thickness(3), Content = new Border { Background = brush, Width = 18, Height = 18, CornerRadius = new(9) } };
+                var button = new Button { IsEnabled = !model.IsReadOnly, Width = 32, Height = 32, Padding = new Thickness(3), Content = new Border { Background = brush, Width = 18, Height = 18, CornerRadius = new(9) } };
                 AutomationProperties.SetName(button, color.Name); ToolTipService.SetToolTip(button, color.Name);
                 button.Click += (_, _) => Change("", ("accent", JsonValue.Create(color.Value)));
                 swatches.Children.Add(button);

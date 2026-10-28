@@ -115,7 +115,12 @@ internal sealed class TranscriptionDialog : ContentDialog
             running = true; model.Busy = true; App.Services.BusyOperations++; IsPrimaryButtonEnabled = false; progress.Visibility = Visibility.Visible;
             // Home tiles in any window show this run's stage and can cancel it, as "Not now" does (design §5.4.4 d).
             void Cancel() { if (running) lifetime.Cancel(); }
-            void Report(MediaTranscriptionStage step, double? fraction) { if (projectPath is not null && running) TranscriptionActivity.Report(projectPath, step, fraction, Cancel); }
+            var announcements = new TranscriptionAnnouncements();
+            void Report(MediaTranscriptionStage step, double? fraction)
+            {
+                if (projectPath is not null && running) TranscriptionActivity.Report(projectPath, step, fraction, Cancel);
+                if (announcements.Update(step, fraction, engine.SelectedIndex != 0) is { } text) Ui.Announce(notice, text, "transcription");
+            }
             Report(MediaTranscriptionStage.ReadingVideo, null);
             try
             {

@@ -1,5 +1,6 @@
 #if WIN_UI_TESTS
 using System.Text.Json;
+using VoxClip.App.Services;
 using VoxClip.App.ViewModels;
 using VoxClip.Core.Domain.Captions;
 using VoxClip.Core.Domain.Editing;
@@ -19,7 +20,7 @@ public sealed class NativeIntegratedFlowTests
     [Trait("Category", "RequiresWindows")]
     public async Task SyntheticImportEditCaptionExportSaveAndReopen()
     {
-        if (!OperatingSystem.IsWindows()) Assert.Skip("Native Windows media integration runs on the ARM64 VM.");
+        if (!OperatingSystem.IsWindows()) Assert.Skip("Native Windows media integration requires a Windows x64 or ARM64 host.");
         var root = Root();
         var source = Environment.GetEnvironmentVariable("VOXCLIP_UI_NATIVE_FIXTURE");
         if (string.IsNullOrWhiteSpace(source)) Assert.Skip("Set VOXCLIP_UI_NATIVE_FIXTURE to the committed synthetic bars video.");
@@ -63,13 +64,27 @@ public sealed class NativeIntegratedFlowTests
             Assert.Contains("w1", reopened.Project.Edits.CutWordIds);
             var restored = new EditorViewModel(reopened.Project);
             var style = CaptionStyleLibrary.Load(Path.Combine(root, "shared")).Styles.Single(item => item.Id == "vox-bold");
-            var full = await Export(restored, media, style, new ExportTarget.FullEdit(), "full", directory, root, ct);
-            var selected = await Export(restored, media, style, new ExportTarget.Clip(clip.Id), "clip", directory, root, ct);
+            var fullTarget = Assert.Single(ExportSelection.Targets(ExportScopeKind.FullVideo, clip.Id, [clip.Id]));
+            var selectedTarget = Assert.Single(ExportSelection.Targets(ExportScopeKind.ThisClip, clip.Id, [clip.Id]));
+            Assert.Equal(selectedTarget, Assert.Single(ExportSelection.Targets(ExportScopeKind.AllClips, clip.Id, [clip.Id])));
+            var full = await Export(restored, media, style, fullTarget, ExportAspect.Source, directory, root, ct);
+            var selected = await Export(restored, media, style, selectedTarget, ExportAspect.Portrait, directory, root, ct);
             Assert.True(full.Duration > selected.Duration);
             Assert.True(full.WordCount > selected.WordCount);
             Assert.Contains("second", await File.ReadAllTextAsync(full.Srt, ct));
             Assert.DoesNotContain("second", await File.ReadAllTextAsync(selected.Srt, ct));
             Assert.Equal(clip.Id, restored.State!.ActiveClipId);
+            var ledger = new ExportLedger(Path.Combine(directory, "exports.json"));
+            await ledger.RecordAsync(restored.Project, selectedTarget, selected.Video, ct);
+            restored.SetExportRecords(ledger.Records);
+            Assert.Equal(ClipExportState.Exported, restored.ExportStatus(clip.Id).State);
+            restored.Select(2); restored.CutSelection();
+            Assert.Equal(ClipExportState.ChangedSinceExport, restored.ExportStatus(clip.Id).State);
+            restored.Undo();
+            Assert.Equal(ClipExportState.Exported, restored.ExportStatus(clip.Id).State);
+            var persistedLedger = new ExportLedger(Path.Combine(directory, "exports.json"));
+            await persistedLedger.LoadAsync(ct);
+            Assert.Equal(selected.Video, Assert.Single(persistedLedger.Records).OutputPath);
             var evidence = Environment.GetEnvironmentVariable("VOXCLIP_UI_EVIDENCE_DIR");
             if (!string.IsNullOrWhiteSpace(evidence))
             {
@@ -77,8 +92,9 @@ public sealed class NativeIntegratedFlowTests
                 await File.WriteAllTextAsync(Path.Combine(evidence, "native-integrated-flow.json"), JsonSerializer.Serialize(new
                 {
                     source = Path.GetFileName(source), projectReopened = true, savedCutWords = reopened.Project.Edits.CutWordIds.Count,
-                    full = new { full.Duration, full.WordCount, bytes = new FileInfo(full.Video).Length, srtBytes = new FileInfo(full.Srt).Length },
-                    clip = new { selected.Duration, selected.WordCount, bytes = new FileInfo(selected.Video).Length, srtBytes = new FileInfo(selected.Srt).Length }
+                    routes = new[] { "Full video", "This clip", "All clips" }, ledgerReloaded = true, exportedEditedUndo = true,
+                    full = new { name = Path.GetFileName(full.Video), aspect = "Original", full.Duration, full.WordCount, bytes = new FileInfo(full.Video).Length, srtBytes = new FileInfo(full.Srt).Length },
+                    clip = new { name = Path.GetFileName(selected.Video), aspect = "9:16", selected.Duration, selected.WordCount, bytes = new FileInfo(selected.Video).Length, srtBytes = new FileInfo(selected.Srt).Length }
                 }), ct);
             }
         }
@@ -89,25 +105,29 @@ public sealed class NativeIntegratedFlowTests
         new(id, text, WordKind.Word, start, end, start, end, null, null, TimingSource.Native);
 
     private static async Task<(string Video, string Srt, double Duration, int WordCount)> Export(EditorViewModel model, MediaInfo media,
-        CaptionStyle style, ExportTarget target, string name, string directory, string root, CancellationToken ct)
+        CaptionStyle style, ExportTarget target, ExportAspect aspect, string directory, string root, CancellationToken ct)
     {
+        model.SetExport(model.Project.Export with { Aspect = aspect });
         var state = ExportSelection.Scope(model.State, target)!;
         var rate = media.Audio?.SampleRate ?? 48_000;
         var plan = EditingEngine.BuildEditPlan(EditingEngine.BuildSegments(state, media.DurationSeconds), media.DurationSeconds, rate, state.PauseKeepSeconds);
         var words = EditingEngine.CaptionWords(state, plan);
-        var size = ExportPresets.OutputSize(media.OrientedSize, ExportAspect.Source);
+        var size = ExportPresets.OutputSize(media.OrientedSize, aspect);
         var track = await CaptionEngine.BuildAsync(new(style, model.Project.Captions, size, words, "en", plan.Duration),
             new HarfBuzzGlyphShaper(Path.Combine(root, "shared")), null, ct);
         var fps = ExportPresets.OutputFrameRate(media.Video!.FrameRate);
         var snapshot = new ComposeSnapshot(media, plan, track,
-            new(size, fps, ExportPresets.VideoBitrate(size, ExportAspect.Source, ExportQuality.Standard, fps)));
-        var video = Path.Combine(directory, name + ".mp4");
-        var srt = Path.Combine(directory, name + ".srt");
-        var result = await new Exporter().ExportAsync(new(snapshot, target, ExportAspect.Source, ExportQuality.Standard, video, srt), null, ct);
+            new(size, fps, ExportPresets.VideoBitrate(size, aspect, ExportQuality.Standard, fps)));
+        var clipTitle = target is ExportTarget.Clip clip ? model.Clips.Single(item => item.Id == clip.Id).Title : null;
+        var (video, sidecar) = ExportSelection.Paths(model.Title, clipTitle, aspect, true, directory, "{project}-{clip}-{aspect}");
+        var srt = Assert.IsType<string>(sidecar);
+        var result = await new Exporter().ExportAsync(new(snapshot, target, aspect, ExportQuality.Standard, video, srt), null, ct);
         Assert.True(File.Exists(video)); Assert.True(File.Exists(srt));
         Assert.True(result.Frames > 0);
         var probed = await new FfmpegMediaProbe().ProbeAsync(video, ct);
         Assert.NotNull(probed.Video);
+        Assert.Equal(size.Width, probed.Video.Width);
+        Assert.Equal(size.Height, probed.Video.Height);
         return (video, srt, result.DurationSeconds, words.Count);
     }
 

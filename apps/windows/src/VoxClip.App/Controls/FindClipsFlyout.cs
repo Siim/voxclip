@@ -17,7 +17,6 @@ namespace VoxClip.App.Controls;
 /// one undo step. Without a transcript Find clips is disabled (design §7.1).</summary>
 internal sealed class FindClipsFlyout
 {
-    private const string NoResults = "No clips matched. Try another style or describe what you want.";
     private readonly EditorViewModel model;
     private readonly CancellationToken ct;
     private readonly Flyout flyout = new() { Placement = FlyoutPlacementMode.BottomEdgeAlignedLeft };
@@ -60,8 +59,8 @@ internal sealed class FindClipsFlyout
         body.Width = 340;
         foreach (var child in new UIElement[] { title, line, preset, instructions, footnote, problem, find }) body.Children.Add(child);
         flyout.Content = body;
-        flyout.Opened += (_, _) => instructions.Focus(FocusState.Programmatic);
-        flyout.Closed += (_, _) => anchor?.Focus(FocusState.Programmatic);
+        flyout.Opened += (_, _) => { Ui.EffectsChanged += EffectsChanged; instructions.Focus(FocusState.Programmatic); };
+        flyout.Closed += (_, _) => { Ui.EffectsChanged -= EffectsChanged; anchor?.Focus(FocusState.Programmatic); };
     }
 
     /// <summary>The connector line while a search runs: "{connector} · reading {m:ss} of transcript"; null otherwise.</summary>
@@ -93,6 +92,7 @@ internal sealed class FindClipsFlyout
         connector.Text = $"{chosen.ShortName} · checking…";
         footnote.Text = chosen.Group == "local" ? "Runs on this PC. Nothing leaves it." : "Sends transcript text with word numbers. No audio or video.";
         problem.Visibility = Visibility.Collapsed;
+        Ui.ApplyFlyoutEffects(flyout, target);
         flyout.ShowAt(target);
         try { connector.Text = $"{chosen.ShortName} · {ProviderCatalog.ShortStatus(await App.Services.Connector(chosen.Id).GetStatusAsync(ct))}"; }
         catch (OperationCanceledException) { }
@@ -102,6 +102,8 @@ internal sealed class FindClipsFlyout
     /// <summary>Run the last search again from the callout's Retry.</summary>
     internal Task RetryAsync() => FindAsync();
     internal void Cancel() => search?.Cancel();
+    internal void Close() { Ui.EffectsChanged -= EffectsChanged; flyout.Hide(); Cancel(); }
+    private void EffectsChanged(object? sender, EventArgs args) => anchor?.DispatcherQueue.TryEnqueue(() => { if (anchor is not null) Ui.ApplyFlyoutEffects(flyout, anchor); });
     internal void Dismiss() => Set(null);
 #if DEBUG
     /// <summary>The shell probe shows the "Finding clips…" row without a connector.</summary>
@@ -187,8 +189,8 @@ internal sealed class FindClipsFlyout
             if (model.IsLeaving) return;
             var added = model.AddAiResult(result);
             // None found reads the prompt file's message (design §13), under Suggested.
-            if (result.Clips.Count == 0) NoneFound = await ProviderCatalog.ClipMessageAsync("noResults", ct) ?? NoResults;
-            Announcement?.Invoke(this, result.Clips.Count == 0 ? NoneFound! : result.Clips.Count == 1 ? "Found 1 clip" : $"Found {result.Clips.Count} clips");
+            if (result.Clips.Count == 0) NoneFound = await ProviderCatalog.ClipMessageAsync("noResults", ct) ?? ClipAnnouncements.NoResults;
+            Announcement?.Invoke(this, ClipAnnouncements.Found(result.Clips.Count, NoneFound));
             if (added.Count > 0) Found?.Invoke(this, added[0]);
         }
         catch (OperationCanceledException) { }

@@ -25,7 +25,7 @@ import VoxClipCore
 
     /// One interleaved LPCM sample buffer, built from values alone so it can be sent to the writer.
     private static func block(_ bytes: Data, start: Int, frames: Int, rate: Int, channels: Int,
-                              float: Bool) throws -> CMReadySampleBuffer<CMSampleBuffer.DynamicContent> {
+                              float: Bool, presentationTime: CMTime? = nil) throws -> CMReadySampleBuffer<CMSampleBuffer.DynamicContent> {
         var block: CMBlockBuffer?
         guard CMBlockBufferCreateWithMemoryBlock(allocator: kCFAllocatorDefault, memoryBlock: nil, blockLength: bytes.count,
                                                  blockAllocator: kCFAllocatorDefault, customBlockSource: nil, offsetToData: 0,
@@ -36,7 +36,7 @@ import VoxClipCore
             throw CocoaError(.fileWriteUnknown)
         }
         let timing = CMSampleTimingInfo(duration: CMTime(value: 1, timescale: CMTimeScale(rate)),
-                                        presentationTimeStamp: CMTime(value: Int64(start), timescale: CMTimeScale(rate)),
+                                        presentationTimeStamp: presentationTime ?? CMTime(value: Int64(start), timescale: CMTimeScale(rate)),
                                         decodeTimeStamp: .invalid)
         return CMReadySampleBuffer(unsafeBuffer: try CMSampleBuffer(dataBuffer: block,
             formatDescription: format(rate: rate, channels: channels, float: float).formatDescription,
@@ -45,6 +45,7 @@ import VoxClipCore
 
     /// LPCM-in-MOV written by AVAssetWriter in passthrough, so every decoded sample is exact.
     private func movie(_ url: URL, rate: Int, channels: Int, frames: Int, float: Bool,
+                       bufferFrames: Int = 4_800, timescale: CMTimeScale? = nil, gapSamples: Int = 0,
                        value: (_ frame: Int, _ channel: Int) -> Double) async throws {
         let writer = try AVAssetWriter(outputURL: url, fileType: .mov)
         let input = AVAssetWriterInput(mediaType: .audio, outputSettings: nil,
@@ -56,7 +57,7 @@ import VoxClipCore
         let width = float ? 4 : 2
         var start = 0
         while start < frames {
-            let count = min(4_800, frames - start)
+            let count = min(bufferFrames, frames - start)
             var bytes = Data(count: count * channels * width)
             bytes.withUnsafeMutableBytes { raw in
                 for frame in 0..<count {
@@ -67,7 +68,13 @@ import VoxClipCore
                     }
                 }
             }
-            try await receiver.append(Self.block(bytes, start: start, frames: count, rate: rate, channels: channels, float: float))
+            let timestampSample: Int = start + (start >= bufferFrames ? gapSamples : 0)
+            let timestamp: CMTime = CMTime(value: Int64(timestampSample), timescale: CMTimeScale(rate))
+            let presentation: CMTime = timescale.map { (scale: CMTimeScale) -> CMTime in
+                CMTimeConvertScale(timestamp, timescale: scale, method: .roundHalfAwayFromZero)
+            } ?? timestamp
+            try await receiver.append(Self.block(bytes, start: start, frames: count, rate: rate, channels: channels,
+                                                  float: float, presentationTime: presentation))
             start += count
         }
         receiver.finish()
@@ -98,8 +105,251 @@ import VoxClipCore
         }
     }
 
+    static func floatBuffer(_ content: [Float], rate: Int = 48_000, channels: Int = 1,
+                            time: CMTime) throws -> CMReadySampleBuffer<CMSampleBuffer.DynamicContent> {
+        let bytes: Data = content.withUnsafeBytes { Data($0) }
+        let frames: Int = content.count / channels
+        return try block(bytes, start: 0, frames: frames, rate: rate, channels: channels, float: true,
+                         presentationTime: time)
+    }
+
     private func expectedMean(_ index: Int) -> Int16 {
         VoiceLabAssetStore.pcm16(Float((Double(Self.left(index)) + Double(Self.right(index))) / 2))
+    }
+
+    @Test(arguments: [48_000, 1_000])
+    func continuousWriterBuffersPreserveEverySample(timescale: Int) async throws {
+        let folder = try directory()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let source = folder.appendingPathComponent("continuous.mov")
+        try await movie(source, rate: 48_000, channels: 2, frames: 24_000, float: true,
+                        timescale: CMTimeScale(timescale)) { (frame: Int, channel: Int) -> Double in
+            Double(channel == 0 ? Self.left(frame) : Self.right(frame))
+        }
+        let wav = try await VoiceLabSourceAudio.conversionInput(source: source, startSample: 0, endSample: 24_000,
+                                                               sourceSampleRate: 48_000)
+        #expect(samples(wav) == (0..<24_000).map(expectedMean))
+        let asset = AVURLAsset(url: source)
+        let track = try #require(try await asset.loadTracks(withMediaType: .audio).first)
+        let storedScale = try await track.load(.naturalTimeScale)
+        let reader = try AVAssetReader(asset: asset)
+        let output = AVAssetReaderTrackOutput(track: track, outputSettings: MediaSupport.pcm(rate: 48_000, channels: 2))
+        let provider = reader.outputProvider(for: output)
+        try #require(reader.startReading())
+        defer { reader.cancelReading() }
+        var buffers: Int = 0
+        while let _ = try await MediaSupport.nextSample(provider) { buffers += 1 }
+        #expect(buffers > 1)
+        print("VOICE_LAB_WRITER inputTimescale=\(timescale) storedTimescale=\(storedScale) decodedBuffers=\(buffers)")
+    }
+
+    @Test(arguments: [48_000, 1_000])
+    func writerNormalizesLPCMTimestampGaps(timescale: Int) async throws {
+        let folder = try directory()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let source = folder.appendingPathComponent("gap.mov")
+        let gap: Int = timescale == 48_000 ? 1 : 96
+        try await movie(source, rate: 48_000, channels: 1, frames: 24_000, float: true,
+                        timescale: CMTimeScale(timescale), gapSamples: gap) { (frame: Int, _: Int) -> Double in
+            Double(Self.left(frame))
+        }
+        let wav = try await VoiceLabSourceAudio.conversionInput(source: source, startSample: 0, endSample: 24_000,
+                                                               sourceSampleRate: 48_000)
+        let expected: [Int16] = (0..<24_000).map { (frame: Int) -> Int16 in VoiceLabAssetStore.pcm16(Self.left(frame)) }
+        #expect(samples(wav) == expected)
+    }
+
+    @Test func timestampPlacementUsesStrictStreamTickAndDecodedEnd() throws {
+        let rate: Int = 48_000
+        let next: Int64 = 4_800
+        let early = CMTime(value: 23_997, timescale: 240_000)
+        #expect(try VoiceLabSourceAudio.bufferFirstSample(presentationTime: early, rate: rate, previousEnd: next) == next)
+        #expect(try VoiceLabSourceAudio.bufferFirstSample(presentationTime: CMTime(value: next - 1, timescale: 48_000),
+                                                        rate: rate, previousEnd: next) == next - 1)
+        #expect(try VoiceLabSourceAudio.bufferFirstSample(presentationTime: CMTime(value: 99, timescale: 1_000),
+                                                        rate: rate, previousEnd: next) == 4_752)
+        var decodedEnd: Int64 = 0
+        let buffers: Range<Int64> = 0..<10
+        for buffer in buffers {
+            let start: Int64 = buffer * 4_807
+            let timestamp: CMTime = CMTimeConvertScale(CMTime(value: start, timescale: 48_000),
+                                                      timescale: 1_000, method: .roundHalfAwayFromZero)
+            let placed = try VoiceLabSourceAudio.bufferFirstSample(presentationTime: timestamp, rate: rate, previousEnd: decodedEnd)
+            #expect(placed == start)
+            decodedEnd = placed + 4_807
+        }
+        #expect(decodedEnd == 48_070)
+    }
+
+    @Test(arguments: [48_000, 1_000])
+    func timestampPlacementKeepsExactOneTickAndTwoTickGaps(timescale: Int) throws {
+        let next: Int64 = 4_800
+        let tickSamples: Int = 48_000 / timescale
+        let tick: Int64 = Int64(tickSamples)
+        for ticks in 1...2 {
+            let position: Int64 = next + tick * Int64(ticks)
+            let timestamp = CMTime(value: position / tick, timescale: CMTimeScale(timescale))
+            let bytes = Data(count: 4_800 * 4)
+            let buffer = try Self.block(bytes, start: 4_800, frames: 4_800, rate: 48_000, channels: 1,
+                                        float: true, presentationTime: timestamp)
+            let first = try VoiceLabSourceAudio.bufferFirstSample(presentationTime: buffer.presentationTimeStamp,
+                                                                rate: 48_000, previousEnd: next)
+            #expect(first == position)
+            #expect(first > next)
+        }
+    }
+
+    @Test(arguments: [100, 101, 102])
+    func timestampHalfSampleTiesUseTheDecodeSessionBinary64Order(value: Int64) throws {
+        let timestamp = CMTime(value: value, timescale: 96_000)
+        let expected: Int64 = value == 102 ? 51 : 50
+        let first = try VoiceLabSourceAudio.bufferFirstSample(presentationTime: timestamp, rate: 48_000,
+                                                            previousEnd: nil, origin: 0.0)
+        #expect(first == expected)
+    }
+
+    @Test func timestampPlacementSubtractsTheSuppliedOriginBeforeScaling() throws {
+        let timestamp = CMTime(value: 134_501, timescale: 96_000)
+        let first = try VoiceLabSourceAudio.bufferFirstSample(presentationTime: timestamp, rate: 48_000,
+                                                            previousEnd: nil, origin: 1.4)
+        #expect(first == 51)
+    }
+
+    @Test func firstFrameUsesItsOwnHalfUpAnchorAndNegativeOverlap() throws {
+        let early = CMTime(value: 23_997, timescale: 240_000)
+        #expect(try VoiceLabSourceAudio.bufferFirstSample(presentationTime: early, rate: 48_000, previousEnd: nil) == 4_799)
+        #expect(try VoiceLabSourceAudio.bufferFirstSample(presentationTime: early, rate: 48_000, previousEnd: 4_800) == 4_800)
+        let negative = CMTime(value: -3, timescale: 240_000)
+        #expect(try VoiceLabSourceAudio.bufferFirstSample(presentationTime: negative, rate: 48_000, previousEnd: nil) == -1)
+        #expect(try VoiceLabSourceAudio.bufferFirstSample(presentationTime: negative, rate: 48_000, previousEnd: 0) == 0)
+    }
+
+    @Test func missingTimestampRequiresAnAnchorThenContinuesSequentially() throws {
+        #expect(throws: VoiceLabSourceAudioError.unreadable) {
+            try VoiceLabSourceAudio.bufferFirstSample(presentationTime: .invalid, rate: 48_000, previousEnd: nil)
+        }
+        #expect(try VoiceLabSourceAudio.bufferFirstSample(presentationTime: .invalid, rate: 48_000, previousEnd: 1_920) == 1_920)
+    }
+
+    @Test func nonfinitePresentationTimeIsNotAMissingTimestamp() throws {
+        for time in [CMTime.positiveInfinity, CMTime.negativeInfinity, CMTime.indefinite] {
+            #expect(throws: VoiceLabSourceAudioError.unreadable) {
+                try VoiceLabSourceAudio.bufferFirstSample(presentationTime: time, rate: 48_000, previousEnd: 1_920)
+            }
+        }
+    }
+
+    @Test(arguments: [0, 4_800]) func bufferPointSixSamplesEarlyLosesNoDecodedSample(start: Int) throws {
+        let first: [Float] = (0..<4_800).map { (frame: Int) -> Float in Self.left(frame) }
+        let second: [Float] = (4_800..<9_600).map { (frame: Int) -> Float in Self.left(frame) }
+        let frames: Int = 9_600 - start
+        var accumulator = VoiceLabSourceAudio.ConversionAccumulator(rate: 48_000, channels: 1, startSample: Int64(start),
+                                                                   endSample: 9_600, frames: frames)
+        try accumulator.append(Self.floatBuffer(first, time: .zero))
+        try accumulator.append(Self.floatBuffer(second, time: CMTime(value: 23_997, timescale: 240_000)))
+        let expected: [Int16] = (start..<9_600).map { (frame: Int) -> Int16 in VoiceLabAssetStore.pcm16(Self.left(frame)) }
+        #expect(accumulator.isComplete)
+        #expect(accumulator.next == 9_600)
+        #expect(samples(accumulator.wav) == expected)
+        #expect(accumulator.wav.prefix(44) == VoiceLabAssetStore.wavHeader(frames: frames, sampleRate: 48_000))
+    }
+
+    @Test(arguments: [0, 4_800]) func accumulatorFirstFrameUsesItsOwnAnchorAndSkipsOverlap(start: Int) throws {
+        let content: [Float] = (0..<1_024).map { (frame: Int) -> Float in Self.left(frame) }
+        let begin: Int64 = Int64(start)
+        let end: Int64 = begin + 960
+        let timestampValue: Int64 = begin * 5 - 3
+        var accumulator = VoiceLabSourceAudio.ConversionAccumulator(rate: 48_000, channels: 1, startSample: begin,
+                                                                   endSample: end, frames: 960)
+        try accumulator.append(Self.floatBuffer(content, time: CMTime(value: timestampValue, timescale: 240_000)))
+        let expected: [Int16] = (1...960).map { (frame: Int) -> Int16 in VoiceLabAssetStore.pcm16(content[frame]) }
+        #expect(accumulator.isComplete)
+        #expect(samples(accumulator.wav) == expected)
+    }
+
+    @Test func accumulatorMissingTimeNeedsAnAnchorThenWritesSequentialPCM() throws {
+        let first: [Float] = (0..<960).map { (frame: Int) -> Float in Self.left(frame) }
+        let second: [Float] = (960..<1_920).map { (frame: Int) -> Float in Self.left(frame) }
+        var accumulator = VoiceLabSourceAudio.ConversionAccumulator(rate: 48_000, channels: 1, startSample: 0,
+                                                                   endSample: 1_920, frames: 1_920)
+        let missing = try Self.floatBuffer(first, time: .invalid)
+        #expect(throws: VoiceLabSourceAudioError.unreadable) { try accumulator.append(missing) }
+        #expect(accumulator.next == 0)
+        try accumulator.append(Self.floatBuffer(first, time: .zero))
+        try accumulator.append(Self.floatBuffer(second, time: .invalid))
+        let expected: [Int16] = (first + second).map { (sample: Float) -> Int16 in VoiceLabAssetStore.pcm16(sample) }
+        #expect(accumulator.isComplete)
+        #expect(samples(accumulator.wav) == expected)
+    }
+
+    @Test func accumulatorSkippedPrerollStillAnchorsMissingTime() throws {
+        let preroll: [Float] = (0..<4_800).map { (frame: Int) -> Float in Self.left(frame) }
+        let content: [Float] = (4_800..<5_760).map { (frame: Int) -> Float in Self.left(frame) }
+        var accumulator = VoiceLabSourceAudio.ConversionAccumulator(rate: 48_000, channels: 1, startSample: 4_800,
+                                                                   endSample: 5_760, frames: 960)
+        try accumulator.append(Self.floatBuffer(preroll, time: .zero))
+        #expect(accumulator.next == 4_800)
+        try accumulator.append(Self.floatBuffer(content, time: .invalid))
+        let expected: [Int16] = content.map { (sample: Float) -> Int16 in VoiceLabAssetStore.pcm16(sample) }
+        #expect(accumulator.isComplete)
+        #expect(samples(accumulator.wav) == expected)
+    }
+
+    @Test(arguments: [48_000, 1_000]) func accumulatorRefusesExactOneTickAndTwoTickGaps(timescale: Int) throws {
+        let content: [Float] = (0..<4_800).map { (frame: Int) -> Float in Self.left(frame) }
+        let tick: Int = 48_000 / timescale
+        for ticks in 1...2 {
+            var accumulator = VoiceLabSourceAudio.ConversionAccumulator(rate: 48_000, channels: 1, startSample: 0,
+                                                                       endSample: 9_600, frames: 9_600)
+            try accumulator.append(Self.floatBuffer(content, time: .zero))
+            let first: Int = 4_800 / tick + ticks
+            let timestamp: CMTime = CMTime(value: Int64(first), timescale: CMTimeScale(timescale))
+            let gap = try Self.floatBuffer(content, time: timestamp)
+            #expect(throws: VoiceLabSourceAudioError.rangeOutsideMedia) { try accumulator.append(gap) }
+            #expect(accumulator.next == 4_800)
+        }
+    }
+
+    @Test(arguments: [48_000, 1_000]) func accumulatorSkipsExactTickOverlapInPCM(timescale: Int) throws {
+        let tick: Int = 48_000 / timescale
+        let count: Int = 4_800 + tick
+        let first: [Float] = (0..<4_800).map { (frame: Int) -> Float in Self.left(frame) }
+        let second: [Float] = (0..<count).map { (frame: Int) -> Float in Self.right(frame) }
+        var accumulator = VoiceLabSourceAudio.ConversionAccumulator(rate: 48_000, channels: 1, startSample: 0,
+                                                                   endSample: 9_600, frames: 9_600)
+        try accumulator.append(Self.floatBuffer(first, time: .zero))
+        let position: Int = 4_800 / tick - 1
+        let timestamp: CMTime = CMTime(value: Int64(position), timescale: CMTimeScale(timescale))
+        try accumulator.append(Self.floatBuffer(second, time: timestamp))
+        let expectedFloats: [Float] = first + second.dropFirst(tick)
+        let expected: [Int16] = expectedFloats.map { (sample: Float) -> Int16 in VoiceLabAssetStore.pcm16(sample) }
+        #expect(accumulator.isComplete)
+        #expect(samples(accumulator.wav) == expected)
+    }
+
+    @Test func accumulatorRepeatedFortySampleGapsCannotAccumulate() throws {
+        let first: [Float] = (0..<920).map { (frame: Int) -> Float in Self.left(frame) }
+        let second: [Float] = (920..<1_840).map { (frame: Int) -> Float in Self.left(frame) }
+        var accumulator = VoiceLabSourceAudio.ConversionAccumulator(rate: 48_000, channels: 1, startSample: 0,
+                                                                   endSample: 2_760, frames: 2_760)
+        try accumulator.append(Self.floatBuffer(first, time: .zero))
+        try accumulator.append(Self.floatBuffer(second, time: CMTime(value: 20, timescale: 1_000)))
+        #expect(accumulator.next == 1_840)
+        let gap = try Self.floatBuffer(second, time: CMTime(value: 40, timescale: 1_000))
+        #expect(throws: VoiceLabSourceAudioError.rangeOutsideMedia) { try accumulator.append(gap) }
+        let expected: [Int16] = (first + second).map { (sample: Float) -> Int16 in VoiceLabAssetStore.pcm16(sample) }
+        #expect(Array(samples(accumulator.wav).prefix(1_840)) == expected)
+    }
+
+    @Test func accumulatorReadsStereoPCMAndWritesEqualWeightMono() throws {
+        var content: [Float] = []
+        for frame in 0..<960 { content.append(Self.left(frame)); content.append(Self.right(frame)) }
+        var accumulator = VoiceLabSourceAudio.ConversionAccumulator(rate: 48_000, channels: 2, startSample: 0,
+                                                                   endSample: 960, frames: 960)
+        try accumulator.append(Self.floatBuffer(content, channels: 2, time: .zero))
+        let expected: [Int16] = (0..<960).map { (frame: Int) -> Int16 in expectedMean(frame) }
+        #expect(accumulator.isComplete)
+        #expect(samples(accumulator.wav) == expected)
     }
 
     @Test func stereoChunkIsTheChannelMeanOnTheSourceGridWithHalfOpenBounds() async throws {

@@ -1,0 +1,1011 @@
+{
+  "schema": "voxclip-voice-lab-continuity/1",
+  "caseCount": 60,
+  "cases": [
+    {
+      "name": "first-4799-point-four-at-4800",
+      "rate": 48000,
+      "timestamp": {
+        "value": 23997,
+        "numerator": 1,
+        "denominator": 240000
+      },
+      "origin": 0.0,
+      "previousEnd": null,
+      "nextSample": 4800,
+      "sampleCount": 960,
+      "expected": {
+        "firstSample": 4799,
+        "skipCount": 1
+      }
+    },
+    {
+      "name": "anchored-4799-point-four-at-4800",
+      "rate": 48000,
+      "timestamp": {
+        "value": 23997,
+        "numerator": 1,
+        "denominator": 240000
+      },
+      "origin": 0.0,
+      "previousEnd": 4800,
+      "nextSample": 4800,
+      "sampleCount": 960,
+      "expected": {
+        "firstSample": 4800,
+        "skipCount": 0
+      }
+    },
+    {
+      "name": "first-minus-point-six",
+      "rate": 48000,
+      "timestamp": {
+        "value": -3,
+        "numerator": 1,
+        "denominator": 240000
+      },
+      "origin": 0.0,
+      "previousEnd": null,
+      "nextSample": 0,
+      "sampleCount": 960,
+      "expected": {
+        "firstSample": -1,
+        "skipCount": 1
+      }
+    },
+    {
+      "name": "anchored-minus-point-six",
+      "rate": 48000,
+      "timestamp": {
+        "value": -3,
+        "numerator": 1,
+        "denominator": 240000
+      },
+      "origin": 0.0,
+      "previousEnd": 0,
+      "nextSample": 0,
+      "sampleCount": 960,
+      "expected": {
+        "firstSample": 0,
+        "skipCount": 0
+      }
+    },
+    {
+      "name": "first-negative-half-up-tie",
+      "rate": 48000,
+      "timestamp": {
+        "value": -1,
+        "numerator": 1,
+        "denominator": 96000
+      },
+      "origin": 0.0,
+      "previousEnd": null,
+      "nextSample": 0,
+      "sampleCount": 960,
+      "expected": {
+        "firstSample": 0,
+        "skipCount": 0
+      }
+    },
+    {
+      "name": "negative-whole-frame-overlap",
+      "rate": 48000,
+      "timestamp": {
+        "value": -2000,
+        "numerator": 1,
+        "denominator": 48000
+      },
+      "origin": 0.0,
+      "previousEnd": null,
+      "nextSample": 0,
+      "sampleCount": 960,
+      "expected": {
+        "firstSample": -2000,
+        "skipCount": 960
+      }
+    },
+    {
+      "name": "missing-before-anchor",
+      "rate": 48000,
+      "timestamp": null,
+      "origin": 0.0,
+      "previousEnd": null,
+      "nextSample": 0,
+      "sampleCount": 960,
+      "expected": {
+        "error": "unreadable"
+      }
+    },
+    {
+      "name": "missing-after-anchor",
+      "rate": 48000,
+      "timestamp": null,
+      "origin": 0.0,
+      "previousEnd": 1920,
+      "nextSample": 1920,
+      "sampleCount": 960,
+      "expected": {
+        "firstSample": 1920,
+        "skipCount": 0
+      }
+    },
+    {
+      "name": "missing-after-negative-anchor",
+      "rate": 48000,
+      "timestamp": null,
+      "origin": 0.0,
+      "previousEnd": -16,
+      "nextSample": 0,
+      "sampleCount": 960,
+      "expected": {
+        "firstSample": -16,
+        "skipCount": 16
+      }
+    },
+    {
+      "name": "first-late-is-a-gap-not-a-snap",
+      "rate": 48000,
+      "timestamp": {
+        "value": 24003,
+        "numerator": 1,
+        "denominator": 240000
+      },
+      "origin": 0.0,
+      "previousEnd": null,
+      "nextSample": 4800,
+      "sampleCount": 960,
+      "expected": {
+        "firstSample": 4801,
+        "error": "rangeOutsideMedia"
+      }
+    },
+    {
+      "name": "anchored-late-fraction-snaps",
+      "rate": 48000,
+      "timestamp": {
+        "value": 24003,
+        "numerator": 1,
+        "denominator": 240000
+      },
+      "origin": 0.0,
+      "previousEnd": 4800,
+      "nextSample": 4800,
+      "sampleCount": 960,
+      "expected": {
+        "firstSample": 4800,
+        "skipCount": 0
+      }
+    },
+    {
+      "name": "millisecond-early-inside",
+      "rate": 48000,
+      "timestamp": {
+        "value": 99,
+        "numerator": 1,
+        "denominator": 1000
+      },
+      "origin": 0.0,
+      "previousEnd": 4799,
+      "nextSample": 4799,
+      "sampleCount": 960,
+      "expected": {
+        "firstSample": 4799,
+        "skipCount": 0
+      }
+    },
+    {
+      "name": "millisecond-early-boundary",
+      "rate": 48000,
+      "timestamp": {
+        "value": 99,
+        "numerator": 1,
+        "denominator": 1000
+      },
+      "origin": 0.0,
+      "previousEnd": 4800,
+      "nextSample": 4800,
+      "sampleCount": 960,
+      "expected": {
+        "firstSample": 4752,
+        "skipCount": 48
+      }
+    },
+    {
+      "name": "millisecond-early-outside",
+      "rate": 48000,
+      "timestamp": {
+        "value": 99,
+        "numerator": 1,
+        "denominator": 1000
+      },
+      "origin": 0.0,
+      "previousEnd": 4801,
+      "nextSample": 4801,
+      "sampleCount": 960,
+      "expected": {
+        "firstSample": 4752,
+        "skipCount": 49
+      }
+    },
+    {
+      "name": "ninetiethousand-48k-early-0-ticks",
+      "rate": 48000,
+      "timestamp": {
+        "value": 0,
+        "numerator": 1,
+        "denominator": 90000
+      },
+      "origin": 0.0,
+      "previousEnd": 0,
+      "nextSample": 0,
+      "sampleCount": 960,
+      "expected": {
+        "firstSample": 0,
+        "skipCount": 0
+      }
+    },
+    {
+      "name": "ninetiethousand-48k-early-1-ticks",
+      "rate": 48000,
+      "timestamp": {
+        "value": -1,
+        "numerator": 1,
+        "denominator": 90000
+      },
+      "origin": 0.0,
+      "previousEnd": 0,
+      "nextSample": 0,
+      "sampleCount": 960,
+      "expected": {
+        "firstSample": 0,
+        "skipCount": 0
+      }
+    },
+    {
+      "name": "ninetiethousand-48k-early-2-ticks",
+      "rate": 48000,
+      "timestamp": {
+        "value": -2,
+        "numerator": 1,
+        "denominator": 90000
+      },
+      "origin": 0.0,
+      "previousEnd": 0,
+      "nextSample": 0,
+      "sampleCount": 960,
+      "expected": {
+        "firstSample": -1,
+        "skipCount": 1
+      }
+    },
+    {
+      "name": "ninetiethousand-96k-early-1-ticks",
+      "rate": 96000,
+      "timestamp": {
+        "value": -1,
+        "numerator": 1,
+        "denominator": 90000
+      },
+      "origin": 0.0,
+      "previousEnd": 0,
+      "nextSample": 0,
+      "sampleCount": 960,
+      "expected": {
+        "firstSample": -1,
+        "skipCount": 1
+      }
+    },
+    {
+      "name": "ninetiethousand-96k-early-2-ticks",
+      "rate": 96000,
+      "timestamp": {
+        "value": -2,
+        "numerator": 1,
+        "denominator": 90000
+      },
+      "origin": 0.0,
+      "previousEnd": 0,
+      "nextSample": 0,
+      "sampleCount": 960,
+      "expected": {
+        "firstSample": -2,
+        "skipCount": 2
+      }
+    },
+    {
+      "name": "sample-rate-early-0-samples",
+      "rate": 48000,
+      "timestamp": {
+        "value": 4800,
+        "numerator": 1,
+        "denominator": 48000
+      },
+      "origin": 0.0,
+      "previousEnd": 4800,
+      "nextSample": 4800,
+      "sampleCount": 960,
+      "expected": {
+        "firstSample": 4800,
+        "skipCount": 0
+      }
+    },
+    {
+      "name": "sample-rate-early-1-samples",
+      "rate": 48000,
+      "timestamp": {
+        "value": 4799,
+        "numerator": 1,
+        "denominator": 48000
+      },
+      "origin": 0.0,
+      "previousEnd": 4800,
+      "nextSample": 4800,
+      "sampleCount": 960,
+      "expected": {
+        "firstSample": 4799,
+        "skipCount": 1
+      }
+    },
+    {
+      "name": "sample-rate-early-2-samples",
+      "rate": 48000,
+      "timestamp": {
+        "value": 4798,
+        "numerator": 1,
+        "denominator": 48000
+      },
+      "origin": 0.0,
+      "previousEnd": 4800,
+      "nextSample": 4800,
+      "sampleCount": 960,
+      "expected": {
+        "firstSample": 4798,
+        "skipCount": 2
+      }
+    },
+    {
+      "name": "millisecond-late-inside",
+      "rate": 48000,
+      "timestamp": {
+        "value": 101,
+        "numerator": 1,
+        "denominator": 1000
+      },
+      "origin": 0.0,
+      "previousEnd": 4801,
+      "nextSample": 4801,
+      "sampleCount": 960,
+      "expected": {
+        "firstSample": 4801,
+        "skipCount": 0
+      }
+    },
+    {
+      "name": "millisecond-late-boundary",
+      "rate": 48000,
+      "timestamp": {
+        "value": 101,
+        "numerator": 1,
+        "denominator": 1000
+      },
+      "origin": 0.0,
+      "previousEnd": 4800,
+      "nextSample": 4800,
+      "sampleCount": 960,
+      "expected": {
+        "firstSample": 4848,
+        "error": "rangeOutsideMedia"
+      }
+    },
+    {
+      "name": "millisecond-late-outside",
+      "rate": 48000,
+      "timestamp": {
+        "value": 101,
+        "numerator": 1,
+        "denominator": 1000
+      },
+      "origin": 0.0,
+      "previousEnd": 4799,
+      "nextSample": 4799,
+      "sampleCount": 960,
+      "expected": {
+        "firstSample": 4848,
+        "error": "rangeOutsideMedia"
+      }
+    },
+    {
+      "name": "ninetiethousand-48k-late-0-ticks",
+      "rate": 48000,
+      "timestamp": {
+        "value": 0,
+        "numerator": 1,
+        "denominator": 90000
+      },
+      "origin": 0.0,
+      "previousEnd": 0,
+      "nextSample": 0,
+      "sampleCount": 960,
+      "expected": {
+        "firstSample": 0,
+        "skipCount": 0
+      }
+    },
+    {
+      "name": "ninetiethousand-48k-late-1-ticks",
+      "rate": 48000,
+      "timestamp": {
+        "value": 1,
+        "numerator": 1,
+        "denominator": 90000
+      },
+      "origin": 0.0,
+      "previousEnd": 0,
+      "nextSample": 0,
+      "sampleCount": 960,
+      "expected": {
+        "firstSample": 0,
+        "skipCount": 0
+      }
+    },
+    {
+      "name": "ninetiethousand-48k-late-2-ticks",
+      "rate": 48000,
+      "timestamp": {
+        "value": 2,
+        "numerator": 1,
+        "denominator": 90000
+      },
+      "origin": 0.0,
+      "previousEnd": 0,
+      "nextSample": 0,
+      "sampleCount": 960,
+      "expected": {
+        "firstSample": 1,
+        "error": "rangeOutsideMedia"
+      }
+    },
+    {
+      "name": "ninetiethousand-96k-late-1-ticks",
+      "rate": 96000,
+      "timestamp": {
+        "value": 1,
+        "numerator": 1,
+        "denominator": 90000
+      },
+      "origin": 0.0,
+      "previousEnd": 0,
+      "nextSample": 0,
+      "sampleCount": 960,
+      "expected": {
+        "firstSample": 1,
+        "error": "rangeOutsideMedia"
+      }
+    },
+    {
+      "name": "ninetiethousand-96k-late-2-ticks",
+      "rate": 96000,
+      "timestamp": {
+        "value": 2,
+        "numerator": 1,
+        "denominator": 90000
+      },
+      "origin": 0.0,
+      "previousEnd": 0,
+      "nextSample": 0,
+      "sampleCount": 960,
+      "expected": {
+        "firstSample": 2,
+        "error": "rangeOutsideMedia"
+      }
+    },
+    {
+      "name": "sample-rate-late-0-samples",
+      "rate": 48000,
+      "timestamp": {
+        "value": 4800,
+        "numerator": 1,
+        "denominator": 48000
+      },
+      "origin": 0.0,
+      "previousEnd": 4800,
+      "nextSample": 4800,
+      "sampleCount": 960,
+      "expected": {
+        "firstSample": 4800,
+        "skipCount": 0
+      }
+    },
+    {
+      "name": "sample-rate-late-1-samples",
+      "rate": 48000,
+      "timestamp": {
+        "value": 4801,
+        "numerator": 1,
+        "denominator": 48000
+      },
+      "origin": 0.0,
+      "previousEnd": 4800,
+      "nextSample": 4800,
+      "sampleCount": 960,
+      "expected": {
+        "firstSample": 4801,
+        "error": "rangeOutsideMedia"
+      }
+    },
+    {
+      "name": "sample-rate-late-2-samples",
+      "rate": 48000,
+      "timestamp": {
+        "value": 4802,
+        "numerator": 1,
+        "denominator": 48000
+      },
+      "origin": 0.0,
+      "previousEnd": 4800,
+      "nextSample": 4800,
+      "sampleCount": 960,
+      "expected": {
+        "firstSample": 4802,
+        "error": "rangeOutsideMedia"
+      }
+    },
+    {
+      "name": "forty-sample-gaps-anchor",
+      "rate": 48000,
+      "timestamp": {
+        "value": 0,
+        "numerator": 1,
+        "denominator": 1000
+      },
+      "origin": 0.0,
+      "previousEnd": null,
+      "nextSample": 0,
+      "sampleCount": 920,
+      "expected": {
+        "firstSample": 0,
+        "skipCount": 0
+      }
+    },
+    {
+      "name": "forty-sample-gaps-first-tolerated",
+      "rate": 48000,
+      "timestamp": {
+        "value": 20,
+        "numerator": 1,
+        "denominator": 1000
+      },
+      "origin": 0.0,
+      "previousEnd": 920,
+      "nextSample": 920,
+      "sampleCount": 920,
+      "expected": {
+        "firstSample": 920,
+        "skipCount": 0
+      }
+    },
+    {
+      "name": "forty-sample-gaps-second-refused",
+      "rate": 48000,
+      "timestamp": {
+        "value": 40,
+        "numerator": 1,
+        "denominator": 1000
+      },
+      "origin": 0.0,
+      "previousEnd": 1840,
+      "nextSample": 1840,
+      "sampleCount": 920,
+      "expected": {
+        "firstSample": 1920,
+        "error": "rangeOutsideMedia"
+      }
+    },
+    {
+      "name": "first-overflowing-position",
+      "rate": 48000,
+      "timestamp": {
+        "value": 9223372036854775807,
+        "numerator": 1,
+        "denominator": 1
+      },
+      "origin": 0.0,
+      "previousEnd": null,
+      "nextSample": 0,
+      "sampleCount": 960,
+      "expected": {
+        "error": "unreadable"
+      }
+    },
+    {
+      "name": "first-negative-overflowing-position",
+      "rate": 48000,
+      "timestamp": {
+        "value": -9223372036854775807,
+        "numerator": 1,
+        "denominator": 1
+      },
+      "origin": 0.0,
+      "previousEnd": null,
+      "nextSample": 0,
+      "sampleCount": 960,
+      "expected": {
+        "error": "unreadable"
+      }
+    },
+    {
+      "name": "binary64-half-sample-neighbor-100",
+      "rate": 48000,
+      "timestamp": {
+        "value": 100,
+        "numerator": 1,
+        "denominator": 96000
+      },
+      "origin": 0.0,
+      "previousEnd": null,
+      "nextSample": 50,
+      "sampleCount": 960,
+      "expected": {
+        "firstSample": 50,
+        "skipCount": 0
+      }
+    },
+    {
+      "name": "binary64-half-sample-neighbor-101",
+      "rate": 48000,
+      "timestamp": {
+        "value": 101,
+        "numerator": 1,
+        "denominator": 96000
+      },
+      "origin": 0.0,
+      "previousEnd": null,
+      "nextSample": 50,
+      "sampleCount": 960,
+      "expected": {
+        "firstSample": 50,
+        "skipCount": 0
+      }
+    },
+    {
+      "name": "binary64-half-sample-neighbor-102",
+      "rate": 48000,
+      "timestamp": {
+        "value": 102,
+        "numerator": 1,
+        "denominator": 96000
+      },
+      "origin": 0.0,
+      "previousEnd": null,
+      "nextSample": 51,
+      "sampleCount": 960,
+      "expected": {
+        "firstSample": 51,
+        "skipCount": 0
+      }
+    },
+    {
+      "name": "binary64-half-sample-101-skips-at-51",
+      "rate": 48000,
+      "timestamp": {
+        "value": 101,
+        "numerator": 1,
+        "denominator": 96000
+      },
+      "origin": 0.0,
+      "previousEnd": null,
+      "nextSample": 51,
+      "sampleCount": 960,
+      "expected": {
+        "firstSample": 50,
+        "skipCount": 1
+      }
+    },
+    {
+      "name": "binary64-half-sample-101-continues-at-51",
+      "rate": 48000,
+      "timestamp": {
+        "value": 101,
+        "numerator": 1,
+        "denominator": 96000
+      },
+      "origin": 0.0,
+      "previousEnd": 51,
+      "nextSample": 51,
+      "sampleCount": 960,
+      "expected": {
+        "firstSample": 51,
+        "skipCount": 0
+      }
+    },
+    {
+      "name": "exact-binary64-half-sample-1",
+      "rate": 48000,
+      "timestamp": {
+        "value": 1,
+        "numerator": 1,
+        "denominator": 96000
+      },
+      "origin": 0.0,
+      "previousEnd": null,
+      "nextSample": 1,
+      "sampleCount": 960,
+      "expected": {
+        "firstSample": 1,
+        "skipCount": 0
+      }
+    },
+    {
+      "name": "exact-binary64-half-sample-3",
+      "rate": 48000,
+      "timestamp": {
+        "value": 3,
+        "numerator": 1,
+        "denominator": 96000
+      },
+      "origin": 0.0,
+      "previousEnd": null,
+      "nextSample": 2,
+      "sampleCount": 960,
+      "expected": {
+        "firstSample": 2,
+        "skipCount": 0
+      }
+    },
+    {
+      "name": "exact-binary64-half-sample-5",
+      "rate": 48000,
+      "timestamp": {
+        "value": 5,
+        "numerator": 1,
+        "denominator": 96000
+      },
+      "origin": 0.0,
+      "previousEnd": null,
+      "nextSample": 3,
+      "sampleCount": 960,
+      "expected": {
+        "firstSample": 3,
+        "skipCount": 0
+      }
+    },
+    {
+      "name": "exact-binary64-half-sample-first-is-a-gap",
+      "rate": 48000,
+      "timestamp": {
+        "value": 1,
+        "numerator": 1,
+        "denominator": 96000
+      },
+      "origin": 0.0,
+      "previousEnd": null,
+      "nextSample": 0,
+      "sampleCount": 960,
+      "expected": {
+        "firstSample": 1,
+        "error": "rangeOutsideMedia"
+      }
+    },
+    {
+      "name": "negative-binary64-half-sample--3",
+      "rate": 48000,
+      "timestamp": {
+        "value": -3,
+        "numerator": 1,
+        "denominator": 96000
+      },
+      "origin": 0.0,
+      "previousEnd": null,
+      "nextSample": 0,
+      "sampleCount": 960,
+      "expected": {
+        "firstSample": -1,
+        "skipCount": 1
+      }
+    },
+    {
+      "name": "negative-binary64-half-sample--5",
+      "rate": 48000,
+      "timestamp": {
+        "value": -5,
+        "numerator": 1,
+        "denominator": 96000
+      },
+      "origin": 0.0,
+      "previousEnd": null,
+      "nextSample": 0,
+      "sampleCount": 960,
+      "expected": {
+        "firstSample": -2,
+        "skipCount": 2
+      }
+    },
+    {
+      "name": "negative-binary64-half-sample--101",
+      "rate": 48000,
+      "timestamp": {
+        "value": -101,
+        "numerator": 1,
+        "denominator": 96000
+      },
+      "origin": 0.0,
+      "previousEnd": null,
+      "nextSample": 0,
+      "sampleCount": 960,
+      "expected": {
+        "firstSample": -50,
+        "skipCount": 50
+      }
+    },
+    {
+      "name": "millisecond-2k-half-sample-0",
+      "rate": 2000,
+      "timestamp": {
+        "value": 0,
+        "numerator": 1,
+        "denominator": 1000
+      },
+      "origin": 0.00025,
+      "previousEnd": null,
+      "nextSample": 0,
+      "sampleCount": 960,
+      "expected": {
+        "firstSample": 0,
+        "skipCount": 0
+      }
+    },
+    {
+      "name": "millisecond-2k-half-sample-1",
+      "rate": 2000,
+      "timestamp": {
+        "value": 1,
+        "numerator": 1,
+        "denominator": 1000
+      },
+      "origin": 0.00025,
+      "previousEnd": null,
+      "nextSample": 2,
+      "sampleCount": 960,
+      "expected": {
+        "firstSample": 2,
+        "skipCount": 0
+      }
+    },
+    {
+      "name": "millisecond-2k-half-sample-2",
+      "rate": 2000,
+      "timestamp": {
+        "value": 2,
+        "numerator": 1,
+        "denominator": 1000
+      },
+      "origin": 0.00025,
+      "previousEnd": null,
+      "nextSample": 4,
+      "sampleCount": 960,
+      "expected": {
+        "firstSample": 4,
+        "skipCount": 0
+      }
+    },
+    {
+      "name": "origin-one-point-four-half-sample",
+      "rate": 48000,
+      "timestamp": {
+        "value": 134501,
+        "numerator": 1,
+        "denominator": 96000
+      },
+      "origin": 1.4,
+      "previousEnd": null,
+      "nextSample": 51,
+      "sampleCount": 960,
+      "expected": {
+        "firstSample": 51,
+        "skipCount": 0
+      }
+    },
+    {
+      "name": "origin-one-point-four-zero",
+      "rate": 2000,
+      "timestamp": {
+        "value": 1400,
+        "numerator": 1,
+        "denominator": 1000
+      },
+      "origin": 1.4,
+      "previousEnd": null,
+      "nextSample": 0,
+      "sampleCount": 960,
+      "expected": {
+        "firstSample": 0,
+        "skipCount": 0
+      }
+    },
+    {
+      "name": "origin-one-point-four-negative-overlap",
+      "rate": 2000,
+      "timestamp": {
+        "value": 1399,
+        "numerator": 1,
+        "denominator": 1000
+      },
+      "origin": 1.4,
+      "previousEnd": null,
+      "nextSample": 0,
+      "sampleCount": 960,
+      "expected": {
+        "firstSample": -2,
+        "skipCount": 2
+      }
+    },
+    {
+      "name": "exact-binary64-one-sample-early",
+      "rate": 48000,
+      "timestamp": {
+        "value": -2,
+        "numerator": 1,
+        "denominator": 96000
+      },
+      "origin": 0.0,
+      "previousEnd": 0,
+      "nextSample": 0,
+      "sampleCount": 960,
+      "expected": {
+        "firstSample": -1,
+        "skipCount": 1
+      }
+    },
+    {
+      "name": "exact-binary64-one-tick-early",
+      "rate": 2000,
+      "timestamp": {
+        "value": -1,
+        "numerator": 1,
+        "denominator": 1000
+      },
+      "origin": 0.0,
+      "previousEnd": 0,
+      "nextSample": 0,
+      "sampleCount": 960,
+      "expected": {
+        "firstSample": -2,
+        "skipCount": 2
+      }
+    },
+    {
+      "name": "exact-binary64-one-sample-late",
+      "rate": 48000,
+      "timestamp": {
+        "value": 2,
+        "numerator": 1,
+        "denominator": 96000
+      },
+      "origin": 0.0,
+      "previousEnd": 0,
+      "nextSample": 0,
+      "sampleCount": 960,
+      "expected": {
+        "firstSample": 1,
+        "error": "rangeOutsideMedia"
+      }
+    },
+    {
+      "name": "exact-binary64-one-tick-late",
+      "rate": 2000,
+      "timestamp": {
+        "value": 1,
+        "numerator": 1,
+        "denominator": 1000
+      },
+      "origin": 0.0,
+      "previousEnd": 0,
+      "nextSample": 0,
+      "sampleCount": 960,
+      "expected": {
+        "firstSample": 2,
+        "error": "rangeOutsideMedia"
+      }
+    }
+  ]
+}

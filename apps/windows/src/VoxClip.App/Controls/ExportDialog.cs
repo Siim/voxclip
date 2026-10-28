@@ -15,7 +15,7 @@ internal sealed class ExportDialog : ContentDialog
     private readonly MainWindow owner;
     private readonly EditorViewModel model;
     private readonly bool demo;
-    private readonly Func<CancellationToken, EditState?, Task<ComposeSnapshot>> snapshot;
+    private readonly Func<Project, EditState?, CancellationToken, Task<ComposeSnapshot>> snapshot;
     private readonly RadioButtons aspect;
     private readonly RadioButtons quality;
     private readonly RadioButtons target;
@@ -26,7 +26,6 @@ internal sealed class ExportDialog : ContentDialog
     private readonly ProgressBar progress = new() { Visibility = Visibility.Collapsed, Width = 360 };
     private readonly StackPanel form = Ui.Stack(16);
     private readonly TextBlock disclosure = Ui.Text("This video contains AI-modified speech. It will show AI MODIFIED.", "HelperText");
-    private readonly List<ExportScopeKind> scopeKinds = [];
     private readonly TextBox caption = new() { Header = "Share caption", AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MinHeight = 90 };
     private readonly StackPanel share = Ui.Stack();
     private readonly StackPanel exportedFiles = Ui.Stack(4);
@@ -40,7 +39,7 @@ internal sealed class ExportDialog : ContentDialog
     private bool closed;
     private string? exported;
 
-    internal ExportDialog(MainWindow owner, EditorViewModel model, bool demo, Func<CancellationToken, EditState?, Task<ComposeSnapshot>> snapshot, string? clipId = null)
+    internal ExportDialog(MainWindow owner, EditorViewModel model, bool demo, Func<Project, EditState?, CancellationToken, Task<ComposeSnapshot>> snapshot, string? clipId = null)
     {
         this.owner = owner; this.model = model; this.demo = demo; this.snapshot = snapshot;
         var selected = clipId ?? model.State?.ActiveClipId;
@@ -54,14 +53,11 @@ internal sealed class ExportDialog : ContentDialog
         if (onlyClip is not null)
         {
             var clip = model.KeptClips.Single(clip => clip.Id == onlyClip);
-            scopeKinds.Add(ExportScopeKind.ThisClip);
             target.Items.Add(new RadioButton { Content = $"This clip\nClip {clip.Number} · {clip.Title} · {clip.Duration}" });
         }
-        scopeKinds.Add(ExportScopeKind.AllClips);
         target.Items.Add(new RadioButton { Content = $"All {model.KeptClips.Count} clips", IsEnabled = model.KeptClips.Count > 0 });
-        scopeKinds.Add(ExportScopeKind.FullVideo);
         target.Items.Add(new RadioButton { Content = $"Full video · {EditorViewModel.Duration(model.FullTakeDuration)}" });
-        target.SelectedIndex = onlyClip is null ? scopeKinds.IndexOf(ExportScopeKind.FullVideo) : 0;
+        target.SelectedIndex = onlyClip is null ? 1 : 0;
         srt.IsChecked = model.Project.Export.Srt;
         folder.Text = model.Project.Export.Folder ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyVideos), "VoxClip");
         styles = Ui.Choice("Captions", []);
@@ -115,7 +111,7 @@ internal sealed class ExportDialog : ContentDialog
         Closed += (_, _) => { closed = true; if (!running) lifetime.Dispose(); };
         if (demo) { IsPrimaryButtonEnabled = false; Ui.Show(notice, "Demo fixtures use a synthetic preview and cannot be exported. Open a real project to export."); }
     }
-    private IReadOnlyList<ExportTarget> Targets() => ExportSelection.Targets(scopeKinds[target.SelectedIndex], onlyClip, model.KeptClips.Select(clip => clip.Id).ToArray());
+    private IReadOnlyList<ExportTarget> Targets() => ExportDialogRouting.SelectedTargets(model, onlyClip, target.SelectedIndex);
     private void UpdateDisclosure()
     {
         var contains = false;
@@ -154,17 +150,19 @@ internal sealed class ExportDialog : ContentDialog
         {
             if (model.IsLeaving) return;
             if (!Path.IsPathFullyQualified(folder.Text)) { Ui.Show(notice, "Choose an absolute destination folder.", InfoBarSeverity.Warning); return; }
-            var jobs = Targets();
+            var route = new ExportDialogRouting(model, onlyClip, target.SelectedIndex, aspect.SelectedIndex, quality.SelectedIndex,
+                srt.IsChecked == true, folder.Text, App.Services.Get("export.fileNamePattern", "{project}-{clip}-{aspect}"));
+            var jobs = route.Targets;
             if (jobs.Count == 0) { Ui.Show(notice, "Choose clips to export."); return; }
             if (jobs.Select(job => model.ExportBlocked(demo, false, job is ExportTarget.Clip clip ? clip.Id : null)).FirstOrDefault(reason => reason is not null) is { } blocked) { Ui.Show(notice, blocked); return; }
-            var selectedAspect = EditorLayout.Frames[aspect.SelectedIndex];
-            model.SetExport(new(selectedAspect, (ExportQuality)quality.SelectedIndex, srt.IsChecked == true, folder.Text));
+            model.SetExport(route.Project.Export);
             running = true; model.Busy = true; App.Services.BusyOperations++; IsPrimaryButtonEnabled = false; progress.Visibility = Visibility.Visible;
+            PrimaryButtonText = "Export";
             form.Visibility = Visibility.Collapsed;
             ExportTarget? currentTarget = null;
             try
             {
-                Directory.CreateDirectory(folder.Text);
+                Directory.CreateDirectory(route.Project.Export.Folder!);
                 var jobNumber = 0;
                 foreach (var exportTarget in jobs)
                 {
@@ -173,14 +171,10 @@ internal sealed class ExportDialog : ContentDialog
                     currentTarget = exportTarget;
                     var clip = exportTarget is ExportTarget.Clip clipTarget ? model.Clips.Single(clip => clip.Id == clipTarget.Id) : null;
                     model.SetExportActivity(exportTarget, ClipExportState.Exporting, 0);
-                    var state = ExportSelection.Scope(model.State, exportTarget);
-                    var exportedProject = model.Project;
-                    var compose = await snapshot(lifetime.Token, state);
-                    var pattern = App.Services.Get("export.fileNamePattern", "{project}-{clip}-{aspect}");
-                    var paths = ExportSelection.Paths(model.Title, clip?.Title, selectedAspect, srt.IsChecked == true, folder.Text, pattern);
-                    var output = paths.Mp4;
-                    var result = await App.Services.Exporter.ExportAsync(new(compose, exportTarget,
-                        selectedAspect, (ExportQuality)quality.SelectedIndex, output, paths.Srt),
+                    var state = route.State(exportTarget);
+                    var exportedProject = route.Project;
+                    var job = await route.JobAsync(exportTarget, snapshot, lifetime.Token);
+                    var result = await App.Services.Exporter.ExportAsync(job,
                         new Progress<ExportProgress>(value => { if (!running || !ReferenceEquals(currentTarget, exportTarget)) return; progress.IsIndeterminate = value.Fraction is null; progress.Value = (value.Fraction ?? 0) * 100; model.SetExportActivity(exportTarget, ClipExportState.Exporting, value.Fraction); Ui.Show(notice, ExportProgressText.Format(currentJob, jobs.Count, value.Fraction, clock.Elapsed.TotalSeconds)); }), lifetime.Token);
                     await App.Services.ExportLedger.RecordAsync(exportedProject, exportTarget, result.Output, lifetime.Token);
                     model.SetExportRecords(App.Services.ExportLedger.Records);
@@ -211,7 +205,12 @@ internal sealed class ExportDialog : ContentDialog
                 if (App.Services.Get("export.openFolderAfter", false) && exported is not null) ShareHelpers.Reveal(exported);
             }
             catch (OperationCanceledException) { if (currentTarget is not null) model.SetExportActivity(currentTarget, ClipExportState.None); throw; }
-            catch { if (currentTarget is not null) model.SetExportActivity(currentTarget, ClipExportState.Failed); throw; }
+            catch (Exception exception)
+            {
+                if (currentTarget is not null) model.SetExportActivity(currentTarget, ClipExportState.Failed);
+                Ui.Show(notice, UiError.ExportMessage(exception, folder.Text), InfoBarSeverity.Error);
+                PrimaryButtonText = "Try again";
+            }
             finally
             {
                 running = false; model.Busy = false; App.Services.BusyOperations--; IsPrimaryButtonEnabled = !lifetime.IsCancellationRequested; progress.Visibility = Visibility.Collapsed;
