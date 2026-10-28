@@ -67,6 +67,7 @@ public sealed class VoiceLabWindowTests
         Assert.True(Code(failure.Code) == error.GetString(), $"{name}: {failure.Code}");
         Assert.True(failure.WordId == (expected.TryGetProperty("wordId", out var id) ? id.GetString() : null), name);
         Assert.True(failure.Incoming == (expected.TryGetProperty("incoming", out var incoming) ? (bool?)incoming.GetBoolean() : null), name);
+        Assert.True(failure.TakeEdgeIsStart == (expected.TryGetProperty("takeEdgeIsStart", out var edge) ? (bool?)edge.GetBoolean() : null), name);
         Assert.True(failure.Needed == (expected.TryGetProperty("needed", out var needed) ? (long?)needed.GetInt64() : null), name);
         Assert.True(failure.Available == (expected.TryGetProperty("available", out var available) ? (long?)available.GetInt64() : null), name);
         Assert.True(failure.SegmentId == (expected.TryGetProperty("segmentId", out var segment) ? segment.GetString() : null), name);
@@ -102,6 +103,21 @@ public sealed class VoiceLabWindowTests
         Assert.Equal(VoiceLabPatchConstants.VOICED_FRAME_LEVEL, Number(constants, "VOICED_FRAME_LEVEL"));
         Assert.Equal(VoiceLabPatchConstants.ROOM_TONE_MIN_RUN, Number(constants, "ROOM_TONE_MIN_RUN"));
         Assert.Equal(VoiceLabPatchConstants.RMS_FRAME, Number(constants, "RMS_FRAME"));
+    }
+
+    [Theory]
+    [InlineData("hard-fade-outside-take-start", true)]
+    [InlineData("hard-fade-outside-take-end", false)]
+    public void TakeEdgeRefusalNamesTheEdgeWithoutChangingTheSharedError(string name, bool start)
+    {
+        var test = Cases("window").Single(test => Text(test, "name") == name);
+        var input = test.GetProperty("input");
+        var failure = Assert.Throws<VoiceLabGeometryException>(() => VoiceLabWindowPlanner.Place(Take(input, test.GetProperty("roomTone")),
+            Scope(input), Envelope(input.GetProperty("envelope")), Text(input, "firstWordId"), Text(input, "lastWordId")));
+        Assert.Equal(VoiceLabGeometryErrorCode.SeamFadeOutsideTake, failure.Code);
+        Assert.Equal(start, failure.TakeEdgeIsStart);
+        Assert.Equal(start, test.GetProperty("expected").GetProperty("takeEdgeIsStart").GetBoolean());
+        Assert.Null(failure.Incoming);
     }
 
     /// <summary>Replays window-shaped cases through Place. Every accepted window must validate and prepare in the case's scope,

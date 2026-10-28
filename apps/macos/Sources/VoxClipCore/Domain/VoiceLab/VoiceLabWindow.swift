@@ -35,7 +35,7 @@ public enum VoiceLabGeometryError: Error, Equatable, Sendable {
     case reversedWords
     case insertionUnsupported
     case windowCrossesWord(String)
-    case seamFadeOutsideTake
+    case seamFadeOutsideTake(isStart: Bool)
     case seamFadeCrossesCut(incoming: Bool, needed: Int64, available: Int64)
     case windowTooShort(needed: Int64, available: Int64)
     /// The window would overlap the enabled replacement with this segment ID.
@@ -51,6 +51,10 @@ public enum VoiceLabGeometryError: Error, Equatable, Sendable {
     /// A fit plan would edit voiced audio or lose count of its frames. The planner checks every plan before it returns
     /// it (§8.9.2), so this is a planner fault, never a property of the take.
     case fitTouchesVoice
+
+    public var takeEdgeIsStart: Bool? {
+        if case .seamFadeOutsideTake(let isStart) = self { isStart } else { nil }
+    }
 }
 
 /// One window edge. `time` and `sample` agree under jsRound; `none` is a real take edge with no fade.
@@ -449,8 +453,13 @@ public enum VoiceLabWindowPlanner {
             throw VoiceLabGeometryError.windowCrossesWord(words[lost].id)
         }
         // A hard fade crossing a take edge has a kept item between the passage and that edge.
-        if leftSeam.kind == .hard && leftSeam.sample - hardFade / 2 < 0 || rightSeam.kind == .hard && rightSeam.sample + hardFade - hardFade / 2 > total {
-            throw VoiceLabGeometryError.seamFadeOutsideTake
+        let leftFadeStart: Int64 = leftSeam.sample - hardFade / 2
+        let rightFadeEnd: Int64 = rightSeam.sample + hardFade - hardFade / 2
+        if leftSeam.kind == .hard && leftFadeStart < 0 {
+            throw VoiceLabGeometryError.seamFadeOutsideTake(isStart: true)
+        }
+        if rightSeam.kind == .hard && rightFadeEnd > total {
+            throw VoiceLabGeometryError.seamFadeOutsideTake(isStart: false)
         }
 
         // §10.5 on the pieces the output plan builds with the window as one more replacement: a seam with a fade needs the

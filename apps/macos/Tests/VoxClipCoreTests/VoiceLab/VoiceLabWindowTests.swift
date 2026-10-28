@@ -55,7 +55,7 @@ struct VoiceLabWindowTests {
         case .reversedWords: ["error": "reversedWords"]
         case .insertionUnsupported: ["error": "insertionUnsupported"]
         case .windowCrossesWord(let id): ["error": "windowCrossesWord", "wordId": id]
-        case .seamFadeOutsideTake: ["error": "seamFadeOutsideTake"]
+        case .seamFadeOutsideTake(let isStart): ["error": "seamFadeOutsideTake", "takeEdgeIsStart": isStart]
         case let .seamFadeCrossesCut(incoming, needed, available):
             ["error": "seamFadeCrossesCut", "incoming": incoming, "needed": needed, "available": available]
         case let .windowTooShort(needed, available): ["error": "windowTooShort", "needed": needed, "available": available]
@@ -77,6 +77,7 @@ struct VoiceLabWindowTests {
         if let id = value["wordId"].vectorString { error["wordId"] = id }
         if let id = value["segmentId"].vectorString { error["segmentId"] = id }
         if let incoming = value["incoming"].vectorBool { error["incoming"] = incoming }
+        if let isStart = value["takeEdgeIsStart"].vectorBool { error["takeEdgeIsStart"] = isStart }
         if !value["needed"].isVectorNull { error["needed"] = value["needed"].vectorInteger }
         if !value["available"].isVectorNull { error["available"] = value["available"].vectorInteger }
         return error
@@ -222,6 +223,22 @@ struct VoiceLabWindowTests {
     @Test func windowVectors() throws {
         let (accepted, passages, rendered) = try replayWindows(try cases("window"))
         #expect(passages > 0 && passages < accepted && rendered == accepted)
+    }
+
+    @Test(arguments: ["hard-fade-outside-take-start", "hard-fade-outside-take-end"])
+    func takeEdgeRefusalNamesTheSharedEdge(_ name: String) throws {
+        let test = try #require(cases("window").first { $0["name"].vectorString == name })
+        let input = test["input"]
+        let project = try take(input, tone: test["roomTone"])
+        do {
+            _ = try VoiceLabWindowPlanner.place(project: project, scope: scope(input), envelope: envelope(input["envelope"]),
+                                               firstWordId: input["firstWordId"].vectorString ?? "", lastWordId: input["lastWordId"].vectorString ?? "")
+            Issue.record("Expected a take-edge refusal")
+        } catch let failure as VoiceLabGeometryError {
+            #expect(failure.takeEdgeIsStart == test["expected"]["takeEdgeIsStart"].vectorBool)
+            #expect(failure.takeEdgeIsStart == (name == "hard-fade-outside-take-start"))
+        }
+        #expect(VoiceLabGeometryError.insertionUnsupported.takeEdgeIsStart == nil)
     }
 
     /// The committed sample of the property fuzz: every case replays, and every accepted window validates and prepares.

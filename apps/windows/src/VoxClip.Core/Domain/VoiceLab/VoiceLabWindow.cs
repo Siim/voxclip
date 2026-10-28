@@ -55,6 +55,7 @@ public sealed class VoiceLabGeometryException(VoiceLabGeometryErrorCode code, st
     public long? Needed { get; } = needed;
     public long? Available { get; } = available;
     public string? SegmentId { get; } = segmentId;
+    public bool? TakeEdgeIsStart { get; init; }
 }
 
 /// <summary>One window edge. Time and sample agree under jsRound; None is a real take edge with no fade.</summary>
@@ -422,9 +423,9 @@ public static class VoiceLabWindowPlanner
             if ((index < firstIndex || index > lastIndex) && words[index].Kind == WordKind.Word && keptItem[index])
                 throw VoiceLabGeometry.Error(VoiceLabGeometryErrorCode.WindowCrossesWord, words[index].Id);
         // A hard fade crossing a take edge has a kept item between the passage and that edge.
-        if (leftSeam.Kind == VoiceLabSeamKind.Hard && leftSeam.Sample - hardFade / 2 < 0 ||
-            rightSeam.Kind == VoiceLabSeamKind.Hard && rightSeam.Sample + hardFade - hardFade / 2 > total)
-            throw VoiceLabGeometry.Error(VoiceLabGeometryErrorCode.SeamFadeOutsideTake);
+        var beforeTake = leftSeam.Kind == VoiceLabSeamKind.Hard && leftSeam.Sample - hardFade / 2 < 0;
+        if (beforeTake || rightSeam.Kind == VoiceLabSeamKind.Hard && rightSeam.Sample + hardFade - hardFade / 2 > total)
+            throw new VoiceLabGeometryException(VoiceLabGeometryErrorCode.SeamFadeOutsideTake) { TakeEdgeIsStart = beforeTake };
 
         // §10.5 on the pieces the output plan builds with the window as one more replacement: a seam with a fade needs the
         // fade's outer half in the kept source right beside it, and two replacements beside one kept piece need room for both
