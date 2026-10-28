@@ -64,6 +64,16 @@ import Darwin
         let report = try JSONDecoder().decode([UIProcessHarness.Result].self, from: Data(contentsOf: directory.appendingPathComponent("scene-results.json")))
         #expect(report.count >= 46)
         for result in report { #expect(result.passed || result.skipped != nil, Comment(rawValue: result.name)) }
+        if ProcessInfo.processInfo.environment["VOXCLIP_UI_REDUCED_EFFECTS"] == "1" {
+            struct Effects: Decodable {
+                let reduceMotion: Bool; let reduceTransparency: Bool
+                let differingPixels: Int; let opaqueBackgroundPixels: Int; let frameIntervalSeconds: Double
+            }
+            let effects = try JSONDecoder().decode(Effects.self, from: Data(contentsOf: directory.appendingPathComponent("reduced-effects.json")))
+            #expect(effects.reduceMotion && effects.reduceTransparency)
+            #expect(effects.differingPixels == 0 && effects.opaqueBackgroundPixels >= 10)
+            #expect(effects.frameIntervalSeconds >= 0.2)
+        }
         try verifyRedesignScenes(in: directory)
         print("mac-ui native scene screenshots: \(directory.path)")
     }
@@ -192,6 +202,7 @@ private enum UIProcessHarness {
         let process = Process()
         process.executableURL = executable
         process.arguments = ["-ApplePersistenceIgnoreState", "YES", "-NSQuitAlwaysKeepsWindows", "NO", mode, directory.path]
+        if mode == "-sceneAudit", environment["VOXCLIP_UI_REDUCED_EFFECTS"] == "1" { process.arguments! += ["-reducedEffects"] }
         if mode == "-demoCapture" { process.arguments! += ["-demoProject", shared.appendingPathComponent("fixtures/projects/interview-take.voxclip").path] }
         var childEnvironment = environment.filter { !$0.key.hasSuffix("_API_KEY") && !$0.key.hasSuffix("_TOKEN") }
         childEnvironment["VOXCLIP_SHARED_DIR"] = shared.path

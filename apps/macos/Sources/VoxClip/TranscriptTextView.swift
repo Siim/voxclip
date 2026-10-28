@@ -367,6 +367,9 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
         }
         return rects
     }
+    #if DEBUG
+    var selectionBarAuditView: NSView? { selectionBarVisible ? selectionBar : nil }
+    #endif
     func showSelectionBar(focus: Bool = false) {
         guard let model, !selecting, !liveScrolling, model.correctionID == nil, !model.findVisible else { return }
         if focus { barFocusRequest += 1; selectionDismissed = false }

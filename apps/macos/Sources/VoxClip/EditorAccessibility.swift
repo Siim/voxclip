@@ -11,7 +11,18 @@ struct EditorAccessibilityPolicy: Equatable {
     var timelineZoomDuration: Double { reduceMotion ? 0 : 0.24 }
     var crossfadeDuration: Double { reduceMotion ? 0 : 0.12 }
     static let staticCaptionTiles = true
+    #if DEBUG
+    static var reducedEffectsAudit: Bool {
+        let arguments = ProcessInfo.processInfo.arguments
+        return arguments.contains("-sceneAudit") && arguments.contains("-reducedEffects")
+    }
+    #endif
     @MainActor static var system: Self {
+        #if DEBUG
+        if reducedEffectsAudit {
+            return Self(reduceMotion: true, reduceTransparency: true, increaseContrast: false)
+        }
+        #endif
         let workspace = NSWorkspace.shared
         return Self(reduceMotion: workspace.accessibilityDisplayShouldReduceMotion,
             reduceTransparency: workspace.accessibilityDisplayShouldReduceTransparency,

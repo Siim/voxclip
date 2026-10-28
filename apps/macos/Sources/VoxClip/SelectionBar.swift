@@ -24,7 +24,10 @@ func selectionBarFrame(lineRects: [CGRect], visibleRect: CGRect, barSize: CGSize
     @Environment(\.colorSchemeContrast) private var contrast
     @FocusState private var focused: Bool
     private var policy: EditorAccessibilityPolicy {
-        policyOverride ?? EditorAccessibilityPolicy(reduceMotion: false, reduceTransparency: reduceTransparency, increaseContrast: contrast == .increased)
+        let system = EditorAccessibilityPolicy.system
+        return policyOverride ?? EditorAccessibilityPolicy(reduceMotion: system.reduceMotion,
+            reduceTransparency: reduceTransparency || system.reduceTransparency,
+            increaseContrast: contrast == .increased || system.increaseContrast)
     }
     var body: some View {
         surface

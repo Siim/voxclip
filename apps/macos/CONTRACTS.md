@@ -1,5 +1,10 @@
 # macOS implementation contracts
 
+### 2026-10-28 — sol-mac-redesign round 7 — N5 reduced-effects audit
+
+- DEBUG `-sceneAudit <evidence> -reducedEffects` forces Reduce Motion and Reduce Transparency through `EditorAccessibilityPolicy` only; no defaults or system settings change. SelectionBar combines that policy with SwiftUI accessibility values. The override is unavailable in release builds and outside the scene audit.
+- Run `MacUIIntegrationTests/documentScene` with `VOXCLIP_UI_REDUCED_EFFECTS=1` to capture the twelve scenes, including `live-editor-full` and `live-selection-bar`, with the override. The selection change shows the real AppKit-hosted bar without a focus animation; two native window screenshots crop its actual bounds, separated by at least 200 ms. The audit requires zero differing RGBA pixels, alpha 1, and at least ten actual background pixels matching the elevated opaque token. Crops and `reduced-effects.json` retain the measurements, not a simulated renderer. Real system toggles remain a manual pre-release check.
+
 ### 2026-10-28 — sol-mac-redesign round 7 — N3 scene export presentation
 
 - The abort was not a non-finite Double or JSON encoding: the demo editor correctly rejects `presentExport` because demo media cannot be exported. The scene then threw `CocoaError.coderInvalidValue` for the missing sheet; that error has the same misleading localized format message. Stage the export-sheet presentation explicitly in the DEBUG fixture, retaining the product's demo-export refusal. No encoder filtering or production capability bypass is added.

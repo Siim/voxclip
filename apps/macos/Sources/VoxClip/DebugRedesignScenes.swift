@@ -68,8 +68,11 @@ import VoxClipMedia
             editor.window = window
             guard let text = transcript(in: window.contentView) else { throw CocoaError(.coderInvalidValue) }
             text.selectedRanges = selected.compactMap { word in text.map.span(id: word.id).map { NSValue(range: $0.range) } }
-            text.showSelectionBar(focus: true)
+            text.showSelectionBar(focus: !EditorAccessibilityPolicy.reducedEffectsAudit)
             guard text.selectionBarVisible else { throw CocoaError(.coderInvalidValue) }
+            if EditorAccessibilityPolicy.reducedEffectsAudit {
+                try await reducedEffects(window: window, text: text, directory: directory)
+            }
             return nil
         }
         editor.selectedWordIDs = []
@@ -105,6 +108,99 @@ import VoxClipMedia
         guard let view else { return nil }
         if let text = view as? TranscriptNSTextView { return text }
         return view.subviews.lazy.compactMap { transcript(in: $0) }.first
+    }
+    private struct ReducedEffectsResult: Encodable {
+        let reduceMotion: Bool
+        let reduceTransparency: Bool
+        let opaqueBackgroundPixels: Int
+        let differingPixels: Int
+        let frameIntervalSeconds: Double
+        let width: Int
+        let height: Int
+        let appearance: String
+        let expectedBackgroundRGB: [Double]
+        let sampledBackgroundRGB: [Double]
+        let immediateAlpha: Double
+    }
+    private static func reducedEffects(window: NSWindow, text: TranscriptNSTextView, directory: URL) async throws {
+        guard let bar = text.selectionBarAuditView else { throw CocoaError(.coderInvalidValue) }
+        let immediateAlpha: Double = bar.alphaValue
+        guard immediateAlpha == 1, EditorAccessibilityPolicy.system.crossfadeDuration == 0 else {
+            throw VoxClipError.exportFailed("Reduced-effects bar animated immediately after selection.")
+        }
+        await Task.yield()
+        window.contentView?.layoutSubtreeIfNeeded()
+        window.displayIfNeeded()
+        let barRect = bar.convert(bar.bounds, to: nil)
+        let first = try nativeBar(window: window, rect: barRect, name: "reduced-effects-before", directory: directory)
+        let firstTime = Date()
+        try await Task.sleep(for: .milliseconds(200))
+        let second = try nativeBar(window: window, rect: barRect, name: "reduced-effects-after", directory: directory)
+        let interval = Date().timeIntervalSince(firstTime)
+        let firstPixels = try pixels(first), secondPixels = try pixels(second)
+        guard first.width == second.width, first.height == second.height else { throw CocoaError(.coderInvalidValue) }
+        var differing = 0
+        for offset in stride(from: 0, to: firstPixels.count, by: 4) {
+            if firstPixels[offset..<offset + 4] != secondPixels[offset..<offset + 4] { differing += 1 }
+        }
+        let scale: CGFloat = CGFloat(second.height) / bar.bounds.height
+        let backgroundInset: CGFloat = 4
+        let scaledRow: CGFloat = backgroundInset * scale
+        let sampleRow = Int(scaledRow)
+        var opaque = 0
+        var sampledRGB: [Double] = []
+        let mode = bar.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? "dark" : "light"
+        guard let colors = DesignValues.value("color.bg.elevated") as? [String: String], let hex = colors[mode],
+              let expected = DesignValues.parse(hex).usingColorSpace(.sRGB) else { throw CocoaError(.coderInvalidValue) }
+        let expectedRGB: [Double] = [expected.redComponent, expected.greenComponent, expected.blueComponent]
+        let byteMaximum: Double = 255
+        for column in (second.width / 3)..<(second.width * 2 / 3) {
+            let offset = (sampleRow * second.width + column) * 4
+            let rawChannels: [Double] = secondPixels[offset..<offset + 3].map { Double($0) }
+            let actual: [Double] = rawChannels.map { $0 / byteMaximum }
+            if sampledRGB.isEmpty { sampledRGB = actual }
+            let error = max(abs(actual[0] - expected.redComponent),
+                max(abs(actual[1] - expected.greenComponent), abs(actual[2] - expected.blueComponent)))
+            if error <= 0.025 { opaque += 1 }
+        }
+        let policy = EditorAccessibilityPolicy.system
+        let result = ReducedEffectsResult(reduceMotion: policy.reduceMotion, reduceTransparency: policy.reduceTransparency,
+            opaqueBackgroundPixels: opaque, differingPixels: differing, frameIntervalSeconds: interval,
+            width: first.width, height: first.height, appearance: bar.effectiveAppearance.name.rawValue,
+            expectedBackgroundRGB: expectedRGB, sampledBackgroundRGB: sampledRGB, immediateAlpha: immediateAlpha)
+        try ProjectJSON.encoder().encode(result).write(to: directory.appendingPathComponent("reduced-effects.json"), options: .atomic)
+        guard policy.reduceMotion, policy.reduceTransparency, bar.alphaValue == 1, opaque >= 10, differing == 0 else {
+            throw VoxClipError.exportFailed("Reduced-effects native pixels failed; see reduced-effects.json.")
+        }
+    }
+    private static func nativeBar(window: NSWindow, rect: CGRect, name: String, directory: URL) throws -> CGImage {
+        let url = directory.appendingPathComponent(name).appendingPathExtension("png")
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+        process.arguments = ["-x", "-o", "-l", String(window.windowNumber), url.path]
+        try process.run(); process.waitUntilExit()
+        guard process.terminationStatus == 0,
+              let image = NSBitmapImageRep(data: try Data(contentsOf: url))?.cgImage else { throw CocoaError(.fileReadCorruptFile) }
+        let scale = CGFloat(image.width) / window.frame.width
+        let top = window.frame.height - rect.maxY
+        let crop = CGRect(x: rect.minX * scale, y: top * scale, width: rect.width * scale, height: rect.height * scale).integral
+        guard let cropped = image.cropping(to: crop),
+              let png = NSBitmapImageRep(cgImage: cropped).representation(using: .png, properties: [:]) else { throw CocoaError(.fileReadCorruptFile) }
+        try png.write(to: url, options: .atomic)
+        return cropped
+    }
+    private static func pixels(_ image: CGImage) throws -> [UInt8] {
+        let rowBytes = image.width * 4
+        var bytes = [UInt8](repeating: 0, count: rowBytes * image.height)
+        let rendered = bytes.withUnsafeMutableBytes { buffer -> Bool in
+            guard let context = CGContext(data: buffer.baseAddress, width: image.width, height: image.height,
+                bitsPerComponent: 8, bytesPerRow: rowBytes, space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return false }
+            context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+            return true
+        }
+        guard rendered else { throw CocoaError(.fileReadCorruptFile) }
+        return bytes
     }
 }
 #endif
