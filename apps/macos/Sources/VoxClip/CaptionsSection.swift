@@ -54,12 +54,11 @@ enum CaptionStyleGroup: String, CaseIterable {
         .tint(Color(nsColor: DesignValues.accentFill))
     }
     private var sectionHeader: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            if width < 440 {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 8) { heading; liveChip; styleSummary.fixedSize(horizontal: true, vertical: false); Spacer(minLength: 0); captionsSwitch }
+            VStack(alignment: .leading, spacing: 8) {
                 HStack { heading; Spacer(); captionsSwitch }
                 HStack(spacing: 8) { liveChip; styleSummary; Spacer(minLength: 0) }
-            } else {
-                HStack(spacing: 8) { heading; liveChip; styleSummary; Spacer(minLength: 0); captionsSwitch }
             }
         }
     }
