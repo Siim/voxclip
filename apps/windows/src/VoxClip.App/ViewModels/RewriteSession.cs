@@ -14,6 +14,8 @@ internal sealed class RewriteSession : IDisposable
     private readonly VoiceRewriteService service = new(new LlmCatalog());
     private readonly CancellationTokenSource lifetime = new();
     private CancellationTokenSource? sending;
+    private IDisposable? proposalLease;
+    private bool dispatched;
     private VoiceRewriteRequest? request;
     private int revision;
     private bool estimateShown;
@@ -133,6 +135,8 @@ internal sealed class RewriteSession : IDisposable
         if (!CanPropose || !affirmative || !ReferenceEquals(Prepared, action) || request is null || Connector is null) return false;
         using var run = Editor.LlmRuns.TryAcquire();
         if (run is null) return false;
+        proposalLease = run;
+        dispatched = false;
         var current = revision;
         var input = request;
         sending = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
@@ -143,9 +147,10 @@ internal sealed class RewriteSession : IDisposable
         Changed?.Invoke(this, EventArgs.Empty);
         try
         {
-            if (Connector.Group != "local" && (consent is null || !await consent(cancellation.Token))) return false;
+            if (Connector.Group != "local" && (consent is null || !await consent(cancellation.Token).WaitAsync(cancellation.Token))) return false;
             if (!IsOpen || current != revision || cancellation.IsCancellationRequested || !connectorIsCurrent() ||
                 !ReferenceEquals(Project, Editor.Project) || !ReferenceEquals(Prepared, action) || !ReferenceEquals(request, input)) return false;
+            dispatched = true;
             var result = await service.ProposeAsync(input, Connector.Connector, Connector.Model, service.Approve(action, true), cancellation.Token);
             if (!IsOpen || revision != current) return false;
             NewWords = result.ProposedText;
@@ -160,6 +165,7 @@ internal sealed class RewriteSession : IDisposable
         }
         finally
         {
+            Interlocked.Exchange(ref proposalLease, null)?.Dispose();
             if (ReferenceEquals(sending, cancellation)) sending = null;
             cancellation.Dispose();
             IsProposing = false;
@@ -234,6 +240,7 @@ internal sealed class RewriteSession : IDisposable
         IsOpen = false;
         InvalidateProposal();
         lifetime.Cancel();
+        if (!dispatched) Interlocked.Exchange(ref proposalLease, null)?.Dispose();
         lifetime.Dispose();
         Editor.Changed -= EditorChanged;
         Editor.PropertyChanged -= EditorPropertyChanged;

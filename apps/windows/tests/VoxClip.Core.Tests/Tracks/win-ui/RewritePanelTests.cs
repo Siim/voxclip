@@ -398,6 +398,50 @@ public sealed class RewritePanelTests
         Assert.True(find.IndexOf("model.LlmRuns.TryAcquire()", StringComparison.Ordinal) < find.IndexOf("await ChosenAsync()", find.IndexOf("private async Task FindAsync()", StringComparison.Ordinal), StringComparison.Ordinal));
     }
 
+    [Fact]
+    public async Task ClosingPendingConsentReleasesTheLeaseWithoutCompletingTheDialog()
+    {
+        var editor = Editor();
+        var fake = new RecordingConnector();
+        var dialog = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var session = new RewriteSession(editor, 10, 12, Envelope(), new(fake, "chosen", "Test", "cli", ""), consent: _ => dialog.Task);
+        await session.SetInstructionAsync("Plainly");
+        var action = session.Prepared!;
+        session.MarkEstimateShown(action);
+        var proposing = session.ProposeAsync(action, true);
+        Assert.True(editor.Busy);
+        session.Dispose();
+        Assert.False(editor.Busy);
+        using var next = editor.LlmRuns.TryAcquire();
+        Assert.NotNull(next);
+        Assert.False(await proposing.WaitAsync(TimeSpan.FromSeconds(2), TestContext.Current.CancellationToken));
+        Assert.False(dialog.Task.IsCompleted);
+        Assert.Empty(fake.Calls);
+        Assert.True(editor.Busy);
+    }
+
+    [Fact]
+    public async Task ClosingAfterDispatchHoldsTheLeaseUntilTheRequestActuallyStops()
+    {
+        var editor = Editor();
+        var fake = new RecordingConnector { Pending = new(TaskCreationOptions.RunContinuationsAsynchronously), IgnoreCancellation = true };
+        using var session = new RewriteSession(editor, 10, 12, Envelope(), new(fake, "chosen", "Test", "local", ""));
+        await session.SetInstructionAsync("Plainly");
+        var action = session.Prepared!;
+        session.MarkEstimateShown(action);
+        var proposing = session.ProposeAsync(action, true);
+        Assert.Contains("send", fake.Calls);
+        session.Dispose();
+        Assert.True(editor.Busy);
+        Assert.Null(editor.LlmRuns.TryAcquire());
+        Assert.False(proposing.IsCompleted);
+        fake.Pending.SetResult(new(null, new JsonObject { ["rewrite"] = "Late answer" }, "chosen", new StopKind.Complete(), null, "fake"));
+        Assert.False(await proposing);
+        Assert.False(editor.Busy);
+        using var next = editor.LlmRuns.TryAcquire();
+        Assert.NotNull(next);
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -490,6 +534,7 @@ public sealed class RewritePanelTests
         internal List<string> Calls { get; } = [];
         internal Exception? Failure { get; set; }
         internal TaskCompletionSource<RawCompletion>? Pending { get; init; }
+        internal bool IgnoreCancellation { get; init; }
         public ConnectorId Id => ConnectorId.OpenAI;
         public Task<ConnectorStatus> GetStatusAsync(CancellationToken ct) { Calls.Add("status"); return Task.FromResult<ConnectorStatus>(new ConnectorStatus.Ready()); }
         public Task<IReadOnlyList<LlmModel>> GetModelsAsync(bool refresh, CancellationToken ct)
@@ -499,7 +544,7 @@ public sealed class RewritePanelTests
         {
             Calls.Add("send");
             if (Failure is not null) return Task.FromException<RawCompletion>(Failure);
-            return Pending?.Task.WaitAsync(ct) ?? Task.FromResult(new RawCompletion(null, new JsonObject { ["rewrite"] = "Better passage" }, model, new StopKind.Complete(), null, "fake"));
+            return (IgnoreCancellation ? Pending?.Task : Pending?.Task.WaitAsync(ct)) ?? Task.FromResult(new RawCompletion(null, new JsonObject { ["rewrite"] = "Better passage" }, model, new StopKind.Complete(), null, "fake"));
         }
     }
     [Theory]

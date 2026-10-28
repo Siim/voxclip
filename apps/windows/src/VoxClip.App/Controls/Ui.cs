@@ -99,9 +99,12 @@ internal static class Ui
     {
         notice.Message = message; notice.Severity = severity; notice.IsOpen = true;
     }
-    internal static async Task<bool> ConfirmAsync(XamlRoot root, string title, string text, string action)
+    internal static async Task<bool> ConfirmAsync(XamlRoot root, string title, string text, string action, CancellationToken ct = default)
     {
+        ct.ThrowIfCancellationRequested();
         var dialog = new ContentDialog { XamlRoot = root, Title = title, Content = Text(text), PrimaryButtonText = action, CloseButtonText = "Cancel", DefaultButton = ContentDialogButton.Close };
-        return await dialog.ShowAsync() == ContentDialogResult.Primary;
+        var showing = dialog.ShowAsync();
+        using var cancellation = ct.Register(() => dialog.DispatcherQueue.TryEnqueue(() => dialog.Hide()));
+        return await showing.AsTask().WaitAsync(ct) == ContentDialogResult.Primary;
     }
 }
