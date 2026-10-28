@@ -1,5 +1,16 @@
 # Windows fixed contracts
 
+### 2026-10-28 — lead — Take-edge refusal detail on main
+
+- Brought to main ahead of the rest of track/sol-win-redesign, which still carries unreviewed work: the Windows Core `TakeEdgeIsStart` part of a6538ee0 (VoiceLabWindow.cs and VoiceLabWindowTests.cs only) and 10e24dba, both reviewed with Windows 15a and round 7. Mac Rewrite (checklist 16a) needs the edge for its start and end refusal copy.
+- `window-cases.json`: 606 vectors, schema `voxclip-voice-lab-window-cases/4`, sha256 `61745ded21e98b9304a4c557329199b1e6f120c9ebd0e5840dae4fc2928ea6ba`. Every take-edge refusal records `takeEdgeIsStart`; no geometry changed. History: `21687da68e24e563263c3a9370776a3aed10e2e484ff430f19e37db011178631` in the round-4 entries below.
+
+### 2026-10-28 — sol-win-redesign round 7 — Shared take-edge detail
+
+- Mac Core seamFadeOutsideTake now carries isStart and exposes takeEdgeIsStart, matching Windows TakeEdgeIsStart at the same two guards. Other error identities, placement and callers' bare case matches stay unchanged. Only VoiceLabWindow.swift and its Core test file change on Mac; no Mac App change.
+- Regenerated window-cases.json through generate_window.py. Every recorded take-edge refusal now names its edge (including both named start/end cases and the sampled fuzz refusals), without changing any geometry. Both suites check the additive detail. Tests: Windows TakeEdgeRefusalNamesTheEdgeWithoutChangingTheSharedError and the full window vectors; Mac takeEdgeRefusalNamesTheSharedEdge plus windowVectors/propertyCases/multiSegmentCases.
+- Cross-platform Release build: zero warnings/errors; Windows Core: 2,085 total, 2,057 passed, 28 skipped. Mac Core: 597 tests in 47 suites passed, with existing explicit prerequisite/opt-in skips. The fresh --build-tests build with the 300 ms slow-expression diagnostic passes; no slow-expression warning or changed-file warning is reported (unchanged deprecation/unnecessary-try warnings remain elsewhere).
+
 - Shared render fingerprint inputs per target/aspect: source content key, duration, oriented size, rotation, frame rate, sample rate/channels; scoped edit plan; quality and resolved output encoding; effective caption style, and only when On, scoped caption words, language, overrides and aspect position; Voice Lab output plan/disclosure and selected audio/room-tone/seams/render-video/asset SHA256, rate and duration. Exclude SRT sidecar intent, UI/clip titles, share copy, folder, confidence, speakers, timestamps and recipe provenance.
 
 ### 2026-10-28 — sol-win-redesign round 9 — Window-owned effects

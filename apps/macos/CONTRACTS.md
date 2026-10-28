@@ -1,5 +1,11 @@
 # macOS implementation contracts
 
+### 2026-10-28 — lead — Take-edge refusal detail on main
+
+- Brought to main ahead of the rest of track/sol-win-redesign, which still carries unreviewed work: the Windows Core `TakeEdgeIsStart` part of a6538ee0 (VoiceLabWindow.cs and VoiceLabWindowTests.cs only) and 10e24dba, both reviewed with Windows 15a and round 7. Mac Rewrite (checklist 16a) needs the edge for its start and end refusal copy.
+- `window-cases.json`: 606 vectors, schema `voxclip-voice-lab-window-cases/4`, sha256 `61745ded21e98b9304a4c557329199b1e6f120c9ebd0e5840dae4fc2928ea6ba`. Every take-edge refusal records `takeEdgeIsStart`; no geometry changed. History: `21687da68e24e563263c3a9370776a3aed10e2e484ff430f19e37db011178631` in the round-4 entries below.
+- Mac Core `VoiceLabGeometryError.seamFadeOutsideTake(isStart:)` and `takeEdgeIsStart` match Windows `TakeEdgeIsStart` at the same two planner guards. Bare `case .seamFadeOutsideTake` matches still compile; equality against the payload-free case does not.
+
 ### 2026-10-28 — sol-mac-redesign round 4: capabilities and Rewrite review
 
 - Full Take uses the same target/aspect export ledger status as clip rows: percentage, Exported, Edited since export, failure and Retry. The export sheet uses “This video contains AI-modified speech. It will show AI MODIFIED.” only for disclosure-required targets. Its choices carry clip number/title/duration, kept count and full-video duration. Native menu equivalents include I/O, brackets and playback keys, retaining text-entry and IME guards.

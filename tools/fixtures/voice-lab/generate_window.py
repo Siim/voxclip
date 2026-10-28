@@ -468,9 +468,9 @@ def place(project, clip_id, envelope, first_id, last_id):
         if not first <= index <= last and items[index]['kind'] == 'word' and kept_item[index]:
             raise GeometryError('windowCrossesWord', wordId=ids[index])
     if left['kind'] == 'hard' and left['sample'] - hard_fade // 2 < 0:
-        raise GeometryError('seamFadeOutsideTake')
+        raise GeometryError('seamFadeOutsideTake', takeEdgeIsStart=True)
     if right['kind'] == 'hard' and right['sample'] + hard_fade - hard_fade // 2 > total:
-        raise GeometryError('seamFadeOutsideTake')
+        raise GeometryError('seamFadeOutsideTake', takeEdgeIsStart=False)
 
     # Section 10.5 on the pieces the output plan builds with the window as one more replacement: a seam with a fade needs
     # the fade's outer half in the kept source right beside it, and two replacements beside one kept piece need room for
@@ -1359,8 +1359,8 @@ assert samples(0.003, 48000) - samples(HARD_SEAM_FADE, 48000) // 2 < 0 < samples
 assert samples(0.9975, 48000) + samples(HARD_SEAM_FADE, 48000) // 2 > 48000
 assert by_name(window, 'hard-fade-extends-to-take-start')['leftSeam'] == {'kind': 'none', 'time': 0.0, 'sample': 0, 'fadeSamples': 0}
 assert by_name(window, 'hard-fade-extends-to-take-end')['rightSeam'] == {'kind': 'none', 'time': 1.0, 'sample': 48000, 'fadeSamples': 0}
-assert by_name(window, 'hard-fade-outside-take-start') == {'error': 'seamFadeOutsideTake'}
-assert by_name(window, 'hard-fade-outside-take-end') == {'error': 'seamFadeOutsideTake'}
+assert by_name(window, 'hard-fade-outside-take-start') == {'error': 'seamFadeOutsideTake', 'takeEdgeIsStart': True}
+assert by_name(window, 'hard-fade-outside-take-end') == {'error': 'seamFadeOutsideTake', 'takeEdgeIsStart': False}
 assert by_name(window, 'envelope-rate-mismatch')['error'] == 'invalidInput'
 assert by_name(window, 'window-exactly-holds-both-fades')['endSample'] - by_name(window, 'window-exactly-holds-both-fades')['startSample'] == 576
 assert by_name(window, 'window-too-short') == {'error': 'windowTooShort', 'needed': 576, 'available': 528}
@@ -1436,7 +1436,7 @@ for name, seam, edge in (('gap-fade-forward-half-fits-22050', 140, 221), ('gap-f
     assert samples(by_name_input(window, name)[2]['start'] - 0.1, 22050) == 140 * 221 + 111 + edge
     assert by_name(window, name)['rightSeam']['sample'] == seam * 221 + 111, name
 assert by_name(window, 'hard-fade-ends-at-take-end-44100')['rightSeam']['sample'] == 44100 - 265
-assert by_name(window, 'hard-fade-one-sample-past-take-end-44100') == {'error': 'seamFadeOutsideTake'}
+assert by_name(window, 'hard-fade-one-sample-past-take-end-44100') == {'error': 'seamFadeOutsideTake', 'takeEdgeIsStart': False}
 assert by_name(window, 'window-too-short-hard-in-gap-out-44100') == {'error': 'windowTooShort', 'needed': 706, 'available': 705}
 assert by_name(window, 'window-holds-gap-in-hard-out-44100')['startSample'] == 44321
 assert by_name(window, 'window-holds-gap-in-hard-out-44100')['endSample'] == 44321 + 705
