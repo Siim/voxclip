@@ -22,8 +22,15 @@ enum CaptionStyleGroup: String, CaseIterable {
     }
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-                sectionHeader
-                if fineTune {
+            sectionHeader
+            gallery
+        }
+        .padding(16)
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
+        .tint(Color(nsColor: DesignValues.accentFill))
+    }
+    @ViewBuilder private var fineTuneControls: some View {
+        if fineTune {
                     VStack(alignment: .leading, spacing: 12) {
                         CaptionControlRow("Size") {
                             Picker("Size", selection: Binding(get: { if case .number(let scale) = value("font", "sizeScale") { return scale }; return 1 }, set: { scale in mutate { CaptionFineTuning.size(&$0, scale: scale) } })) { Text("S").tag(0.8); Text("M").tag(1.0); Text("L").tag(1.2); Text("XL").tag(1.45) }.pickerStyle(.segmented).labelsHidden()
@@ -54,12 +61,6 @@ enum CaptionStyleGroup: String, CaseIterable {
                         Button { mutate { CaptionFineTuning.reset(&$0) } } label: { Text("Reset to Style").underline() }.buttonStyle(.plain).foregroundStyle(DesignValues.accentText).accessibilityLabel("Reset to Style")
                     }
                 }
-            if let error = model.captionError { InlineNotice(text: error).fixedSize(horizontal: false, vertical: true) }
-            gallery
-        }
-        .padding(16)
-        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
-        .tint(Color(nsColor: DesignValues.accentFill))
     }
     private var sectionHeader: some View {
         ViewThatFits(in: .horizontal) {
@@ -106,6 +107,9 @@ enum CaptionStyleGroup: String, CaseIterable {
     private var gallery: some View {
         ScrollViewReader { reader in
             ScrollView {
+              VStack(alignment: .leading, spacing: 12) {
+                fineTuneControls
+                if let error = model.captionError { InlineNotice(text: error).fixedSize(horizontal: false, vertical: true) }
                 LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)], alignment: .leading, spacing: 10) {
                     ForEach(CaptionStyleGroup.allCases, id: \.self) { group in
                         let styles = model.app.styles.filter { CaptionStyleGroup.group(for: $0) == group }.sorted { $0.order < $1.order }
@@ -115,15 +119,14 @@ enum CaptionStyleGroup: String, CaseIterable {
                             }
                         }
                     }
-                }.padding(.vertical, 3)
-                if model.app.styles.isEmpty { Text("Caption styles are unavailable. Reinstall VoxClip.").foregroundStyle(.secondary) }
-            }
-            .scrollClipDisabled()
-            .accessibilityRepresentation {
+                }.padding(.vertical, 3).accessibilityRepresentation {
                 Picker("Caption style", selection: Binding(get: { model.project.captions.styleId }, set: { model.setStyle($0) })) {
                     ForEach(model.app.styles.sorted { $0.order < $1.order }, id: \.id) { Text("\($0.name): \($0.description)").tag($0.id) }
                 }.pickerStyle(.radioGroup)
                 .accessibilityIdentifier("voxclip.captions.gallery")
+                }
+                if model.app.styles.isEmpty { Text("Caption styles are unavailable. Reinstall VoxClip.").foregroundStyle(.secondary) }
+              }
             }
             .onChange(of: model.activeClip?.id) { _, _ in reader.scrollTo(model.project.captions.styleId, anchor: .top) }
             .overlay(alignment: .bottom) {

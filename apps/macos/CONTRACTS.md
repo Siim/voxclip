@@ -2,6 +2,8 @@
 
 ### 2026-10-28 — sol-mac-layout — right-column width and adaptive rows
 
+- Round 2 N2: `apps/macos/Sources/VoxClip/CaptionsSection.swift` keeps the real ScrollView as the accessibility viewport and applies the radio-picker representation only to its gallery content. The old replacement exposed the picker’s intrinsic 376.5-point height as the whole scroll area, while `.scrollClipDisabled()` let real tile drawing escape the smaller viewport. Default scroll clipping is restored; fine-tune controls and caption errors scroll with the grid beneath the fixed header. `apps/macos/Sources/VoxClip/PreviewTimeline.swift` reserves 320 points for viewer chrome and the Captions panel before sizing the stage, retaining the existing 320-point portrait/square and 124-point compact Rewrite caps. Short windows no longer force a zero-height gallery or move the stage above the column.
+
 - Round 2 N1: `apps/macos/Sources/VoxClip/CaptionsSection.swift` removes the non-container section identifier and confines DisclosureGroup semantics to the summary control. The heading stays static text and the Captions switch keeps its native role. `apps/macos/Sources/VoxClip/DebugColumnBounds.swift` requires those three roles and exactly one disclosure control in native evidence.
 
 - L1: `apps/macos/Sources/VoxClip/EditorView.swift` pins the real `RightColumnContents` to the split item's exact width, without masking overflowing children. `ViewerSection.innerWidth` starts conservatively until its geometry arrives. The unfixed `ac230e2f` minimum/proposed width is 360 at a 320-point proposal; fixed content requests 320 and its landscape stage is 288. At 300, 360 and 560, stages are at most 268, 328 and 528 respectively.

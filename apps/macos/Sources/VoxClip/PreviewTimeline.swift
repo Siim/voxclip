@@ -19,7 +19,10 @@ import VoxClipMedia
 func viewerStageSize(ratio: Double, innerWidth: CGFloat, columnHeight: CGFloat, rewriting: Bool) -> CGSize {
     let aspect = max(0.01, ratio)
     let width = max(1, innerWidth)
-    let cap: CGFloat = rewriting && columnHeight < 760 ? 124 : aspect <= 1 ? 320 : .greatestFiniteMagnitude
+    let panelReserve: CGFloat = 320
+    let availableStageHeight = max(1, columnHeight - panelReserve)
+    let aspectCap: CGFloat = rewriting && columnHeight < 760 ? 124 : aspect <= 1 ? 320 : .greatestFiniteMagnitude
+    let cap = min(aspectCap, availableStageHeight)
     let height = min(width / aspect, cap)
     return CGSize(width: min(width, height * aspect), height: height)
 }
