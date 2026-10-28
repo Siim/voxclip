@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
+using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Documents;
 using Microsoft.UI.Xaml.Input;
@@ -135,6 +136,21 @@ public sealed class TimelineView : UserControl
     internal int DebugBuildVersion => scene.BuildVersion;
     internal int DebugDrawingElementCount => 1 + canvas.Children.Count + geometryBand.Children.Count + TimelineRetainedPool<object>.Badges * 2;
     internal void DebugMoveViewport(TimelineWindow window) { view = window; UpdateViewport(); }
+    internal void DebugFrame(TimelineWindow window, double pointer, double source, bool trim)
+    {
+        view = window;
+        trimming = trim;
+        trimId = viewport.ActiveClip?.Id;
+        trimStart = true;
+        UpdateViewport(pointer, source);
+        trimming = false;
+    }
+    internal void DebugCreateRangePeers()
+    {
+        _ = FrameworkElementAutomationPeer.CreatePeerForElement(slider);
+        _ = FrameworkElementAutomationPeer.CreatePeerForElement(startHandle);
+        _ = FrameworkElementAutomationPeer.CreatePeerForElement(endHandle);
+    }
 #endif
     internal void SetTransport(string elapsedTime, string length, bool playing)
     {

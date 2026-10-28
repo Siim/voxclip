@@ -45,7 +45,8 @@ internal static class TimelineNativeProbe
             Require(generation == timeline.DebugBuildVersion && nodes.SequenceEqual(timeline.DebugDrawingNodes), "zoom/drag viewport update recreated drawing elements");
             checks.Add("retained timeline viewport updates preserve drawing elements and scene generation");
             var bitmap = new RenderTargetBitmap();
-            await bitmap.RenderAsync(pattern, 128, 96);
+            Phase("pattern raster");
+            await bitmap.RenderAsync(pattern, 128, 96).AsTask().WaitAsync(TimeSpan.FromSeconds(10));
             var pixels = (await bitmap.GetPixelsAsync()).ToArray();
             Require(bitmap.PixelWidth == 128 && bitmap.PixelHeight == 96, "timeline raster dimensions changed");
             Require(Difference(pixels, 15, 6) <= 2 && Difference(pixels, 15, 9) > 10, "word hatch is not periodic every six pixels");
@@ -83,6 +84,8 @@ internal static class TimelineNativeProbe
             Edits = project.Edits with { Clips = [], ActiveClipId = null, CutWordIds = [], CutPauseIds = [], Corrections = new Dictionary<string, string>() }
         });
         var longTimeline = new TimelineView { Width = 700, HorizontalAlignment = HorizontalAlignment.Left };
+        Phase("long timeline");
+        longModel.Select(3000); longModel.Select(3050, true); longModel.MakeClip();
         host.Children.Add(longTimeline); longTimeline.Attach(longModel); host.UpdateLayout();
         try
         {
@@ -96,8 +99,45 @@ internal static class TimelineNativeProbe
                 Require(version == longTimeline.DebugBuildVersion && nodes.SequenceEqual(longTimeline.DebugDrawingNodes), "9,000-word zoom/drag update recreated elements");
             }
             checks.Add("9,000-word native timeline: <=256 custom elements with/without RMS and stable zoom/drag identities");
+            longTimeline.DebugCreateRangePeers();
+            for (var index = 0; index < 256; index++)
+                longTimeline.DebugFrame(new(index % 900, 1800 + index % 900), index % 700, 1200 + index * 0.02, index % 2 == 0);
+            var allocated = GC.GetAllocatedBytesForCurrentThread();
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            for (var index = 0; index < 4096; index++)
+                longTimeline.DebugFrame(new(index % 900, 1800 + index % 900), index % 700, 1200 + index * 0.02, index % 2 == 0);
+            clock.Stop();
+            var bytes = GC.GetAllocatedBytesForCurrentThread() - allocated;
+            checks.Add($"9,000-word full-control native timeline: {bytes / 4096.0:0.00} managed bytes/frame, {clock.Elapsed.TotalMilliseconds / 4096:0.000} ms/frame over 4,096 changing viewport/playhead/trim ticks, with all three native UIA peers and their value boxing");
         }
         finally { longTimeline.Detach(); host.Children.Remove(longTimeline); }
+        var longTranscript = new TranscriptView { Width = 780, Height = 400, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top };
+        Phase("long transcript attach");
+        host.Children.Add(longTranscript); longTranscript.Attach(longModel); host.UpdateLayout();
+        try
+        {
+            var timings = new List<double>();
+            var maximumParagraphs = 0;
+            for (var index = 0; index < 24; index++)
+            {
+                var clock = System.Diagnostics.Stopwatch.StartNew();
+                longTranscript.DebugScroll((index * 17 % 24) / 23.0);
+                if (index % 8 == 0) longTranscript.Zoom(index % 16 == 0 ? 1 : -1);
+                clock.Stop();
+                if (index >= 4) timings.Add(clock.Elapsed.TotalMilliseconds);
+                maximumParagraphs = Math.Max(maximumParagraphs, longTranscript.DebugRealizedParagraphs);
+                await Task.Delay(16);
+            }
+            timings.Sort();
+            Require(maximumParagraphs < longModel.Paragraphs.Count, "hour-long transcript realized every paragraph");
+            checks.Add($"9,000-word/hour-long native scroll and zoom UI-thread ChangeView/UpdateLayout: p50 {timings[timings.Count / 2]:0.00} ms, p95 {timings[(int)(timings.Count * 0.95)]:0.00} ms; at most {maximumParagraphs}/{longModel.Paragraphs.Count} paragraphs realized, 24 input ticks 16 ms apart (Debug diagnostic, not compositor frame time)");
+        }
+        finally { longTranscript.Detach(); host.Children.Remove(longTranscript); }
+    }
+    private static void Phase(string text)
+    {
+        if (Environment.GetEnvironmentVariable("VOXCLIP_UI_EVIDENCE_DIR") is { Length: > 0 } output)
+            File.AppendAllText(Path.Combine(output, "timeline-phases.txt"), text + Environment.NewLine);
     }
     private static double Difference(byte[] pixels, int row, int period)
     {

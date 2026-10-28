@@ -22,6 +22,18 @@ internal static class ShellNativeProbe
     {
         Directory.CreateDirectory(output);
         var checks = new List<string>();
+        var failures = new List<string>();
+        async Task Gate(string name, Func<Task> run)
+        {
+            await File.AppendAllTextAsync(Path.Combine(output, "native-phases.txt"), "begin " + name + Environment.NewLine);
+            try { await run(); }
+            catch (Exception exception)
+            {
+                failures.Add(name + ": " + exception); checks.Add("FAILED native gate: " + name);
+                await File.WriteAllTextAsync(Path.Combine(output, name + "-error.txt"), exception.ToString());
+            }
+            await File.AppendAllTextAsync(Path.Combine(output, "native-phases.txt"), "end " + name + Environment.NewLine);
+        }
         var report = Path.Combine(output, "shell-native-result.json");
         try
         {
@@ -45,8 +57,13 @@ internal static class ShellNativeProbe
             Require(editor!.ViewModel.IsReadOnly && !editor.ViewModel.CanExport, "missing fixture media was not read-only");
             checks.Add("missing media is read-only; remaining navigation checks use a synthetic resolved-media state");
             editor.ViewModel.SetMediaUnavailable(false);
-            await TimelineNativeProbe.RunAsync(window, editor.ViewModel.Project, checks);
-            await TranscriptNativeProbe.RunAsync(window, editor.ViewModel.Project, checks);
+            await Gate("timeline", () => TimelineNativeProbe.RunAsync(window, editor.ViewModel.Project, checks));
+            await Gate("transcript", () => TranscriptNativeProbe.RunAsync(window, editor.ViewModel.Project, checks));
+            await Gate("layout", () => editor.DebugLayoutGateAsync(window, output, checks));
+            await Gate("caption", () => editor.DebugCaptionGateAsync(window, output, checks));
+            editor = window.DebugEditor!;
+            await Gate("rewrite", () => editor.DebugRewriteGateAsync(window, output, checks));
+            await Gate("busy-consent", () => editor.DebugBusyGateAsync(window, output, checks));
             editor!.ViewModel.Select(0); editor.ViewModel.Select(1, true);
             Require(editor.ViewModel.MakeClip() is not null, "manual clip was refused");
             await Task.Delay(1200); // let the 500 ms autosave settle before injecting failures
@@ -108,10 +125,11 @@ internal static class ShellNativeProbe
 
             var replaced = window.DebugEditor!;
             replaced.ViewModel.SetMediaUnavailable(false);
-            replaced.ViewModel.Select(2); replaced.ViewModel.Correct("probe-drop");
-            await Task.Delay(1200);
             await using (new FileStream(second, FileMode.Open, FileAccess.Read, FileShare.None))
+            {
+                replaced.ViewModel.Select(2); replaced.ViewModel.Correct("probe-drop");
                 await window.OpenDroppedAsync(third);
+            }
             Require(ReferenceEquals(window.DebugEditor, replaced) && window.ProjectPath == second, "a failed save let the drop replace the project");
             await window.OpenDroppedAsync(Path.Combine(output, "clip.avi"));
             Require(window.DebugNotice.StartsWith("VoxClip can't open AVI files on PC yet.", StringComparison.Ordinal) && ReferenceEquals(window.DebugEditor, replaced),
@@ -127,6 +145,7 @@ internal static class ShellNativeProbe
             var words = last.ViewModel.Words;
             last.ViewModel.AddAiResult(new AiResult("probe-run", DateTimeOffset.UtcNow, "anthropic", "probe-model", ClipPreset.Best, null, "en", new string('0', 64),
                 [new AiClip("Probe idea one", "Probe reason", 8, words[2].Id, words[4].Id), new AiClip("Probe idea two", "Probe reason", 7, words[6].Id, words[8].Id)]));
+            await Until(() => window.Shell.Rows.Any(row => row.Kind == SidebarKind.SuggestedHeader), "the sidebar did not realize suggestions");
             var header = window.Shell.Rows.Single(row => row.Kind == SidebarKind.SuggestedHeader);
             Require(header.Title == "Suggested (2)" && header.ShowsKeepAll, "two suggestions did not show Suggested (2) with Keep all");
             Invoke(await ControlIn<HyperlinkButton>(window, header, "Keep all suggested clips"));
@@ -154,6 +173,7 @@ internal static class ShellNativeProbe
             Require(other.CurrentScreen == "home" && other.DebugEditor is null && other.DebugSelectedRow?.Kind == SidebarKind.Home, "Ctrl+N did not open a window on Home");
             other.Close();
             checks.Add("a new window opens on Home");
+            Require(failures.Count == 0, string.Join("\n\n", failures));
             await File.WriteAllTextAsync(report, JsonSerializer.Serialize(new { status = "passed", checks }, new JsonSerializerOptions { WriteIndented = true }));
         }
         catch (Exception exception)
