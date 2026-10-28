@@ -51,27 +51,72 @@ struct ExportRecord: Codable, Equatable {
         let outputStart: Int64
         let outputEnd: Int64
         let audio: VoiceLabAudio?
-        let assetHash: String?
+        let segmentID: String?
+        let assetID: String?
+        init(_ piece: VoiceLabOutputPiece) {
+            kind = piece.kind; sourceStart = piece.sourceStartSample; sourceEnd = piece.sourceEndSample
+            outputStart = piece.outputStartSample; outputEnd = piece.outputEndSample; audio = piece.audio
+            segmentID = piece.segmentId; assetID = piece.assetId
+        }
     }
     private struct VoiceRecipe: Encodable {
+        let piece: VoicePiece
         let audio: VoiceLabAudio
-        let chunks: [VoiceLabChunk]
         let roomTone: VoiceLabRoomTone?
         let seams: VoiceLabSeams
-        let video: VoiceLabVideoRecipe
-        let seed: UInt32
+        let video: RenderVideo
+        let asset: RenderAsset?
+    }
+    private struct RenderVideo: Encodable {
+        let mode: VoiceLabVideoMode
+        let sourceStartSample: Int64
+        let sourceEndSample: Int64
+        let outputSamples: Int64
+        let retimeFactor: Double?
+        let zoom: Double?
+        let faceX: Double?
+        let faceY: Double?
+    }
+    private struct RenderAsset: Encodable {
+        let sha256: String
+        let sampleRate: Int
+        let durationSeconds: Double
+    }
+    private struct Source: Encodable {
+        let duration: Double
+        let orientedSize: PixelSize
+        let rotationDegrees: Int?
+        let frameRate: Double?
+        let sampleRate: Int?
+        let channels: Int?
+    }
+    private struct Captions: Encodable {
+        let styleId: String
+        let overrides: [String: JSONValue]?
+        let position: CaptionPosition?
+    }
+    private struct VoicePlan: Encodable {
+        let sampleRate: Double
+        let totalSourceSamples: Int64
+        let pieces: [VoicePiece]
+        let captions: [CaptionWord]?
+        let scope: String
+    }
+    private struct VoiceInput: Encodable {
+        let outputPlan: VoicePlan
+        let disclosure: JSONValue
+        let recipes: [VoiceRecipe]
     }
     private struct Input: Encodable {
+        let version = 2
         let contentKey: String
+        let source: Source
         let plan: EditPlan
-        let words: [CaptionWord]
+        let words: [CaptionWord]?
         let language: String?
-        let captions: CaptionSettings
-        let aspect: AspectRatio
+        let captions: Captions
         let output: OutputSpec
-        let srt: Bool
-        let pieces: [VoicePiece]
-        let recipes: [VoiceRecipe]
+        let voiceLab: VoiceInput?
     }
 
     static func output(_ project: Project) -> OutputSpec {
@@ -107,25 +152,39 @@ struct ExportRecord: Codable, Equatable {
         let output = output(project)
         let preset = CaptionStyleResolver.preset(width: output.size.width, height: output.size.height)
         let position = preset.flatMap { project.captions.positionByAspect[$0] } ?? project.captions.position
-        let captions = CaptionSettings(styleId: project.captions.styleId, overrides: project.captions.overrides, position: position)
+        let captionsOn = project.captions.styleId != "off"
+        let captions = Captions(styleId: project.captions.styleId, overrides: captionsOn ? project.captions.overrides : nil, position: captionsOn ? position : nil)
         var words = captionCopy(segments, plan: plan)
-        var pieces: [VoicePiece] = []
-        var recipes: [VoiceRecipe] = []
+        var voice: VoiceInput?
         if project.schemaVersion >= 3 {
             let prepared = try VoiceLabRenderContract.prepare(project, scope: clip.map { .clip($0.id) } ?? .full, labelPosition: .topRight)
             words = prepared.outputPlan.captions
-            pieces = prepared.outputPlan.pieces.map { (piece: VoiceLabOutputPiece) -> VoicePiece in
-                let asset = project.voiceLab.assets?.first { $0.id == piece.assetId }
-                return VoicePiece(kind: piece.kind, sourceStart: piece.sourceStartSample, sourceEnd: piece.sourceEndSample,
-                                  outputStart: piece.outputStartSample, outputEnd: piece.outputEndSample, audio: piece.audio, assetHash: asset?.sha256)
-            }
-            recipes = prepared.selectedSegmentRecipes.map { (selected: VoiceLabSelectedRecipe) -> VoiceRecipe in
+            let pieces = prepared.outputPlan.pieces.map(VoicePiece.init)
+            let recipes = prepared.selectedSegmentRecipes.map { (selected: VoiceLabSelectedRecipe) -> VoiceRecipe in
                 let recipe = selected.recipe
-                return VoiceRecipe(audio: recipe.audio, chunks: recipe.chunks, roomTone: recipe.roomTone, seams: recipe.seams, video: recipe.video, seed: recipe.seed)
+                let video = recipe.video
+                let renderVideo = RenderVideo(mode: video.mode, sourceStartSample: video.sourceStartSample, sourceEndSample: video.sourceEndSample,
+                    outputSamples: video.outputSamples, retimeFactor: video.retimeFactor, zoom: video.zoom, faceX: video.faceX, faceY: video.faceY)
+                let asset = project.voiceLab.assets?.first { $0.id == recipe.audio.assetId }
+                let renderAsset = asset.map { RenderAsset(sha256: $0.sha256, sampleRate: $0.sampleRate, durationSeconds: $0.durationSeconds) }
+                return VoiceRecipe(piece: VoicePiece(selected.piece), audio: recipe.audio, roomTone: recipe.roomTone, seams: recipe.seams, video: renderVideo, asset: renderAsset)
             }
+            let result = prepared.outputPlan
+            let voicePlan = VoicePlan(sampleRate: result.sampleRate, totalSourceSamples: result.totalSourceSamples,
+                pieces: pieces, captions: captionsOn ? result.captions : nil, scope: clip?.id ?? "full")
+            let label = prepared.disclosure
+            let intervals: [JSONValue] = label.intervals.map { .object(["start": .number($0.start), "end": .number($0.end)]) }
+            let disclosure: JSONValue = .object(["required": .bool(label.required), "kinds": .array(label.kinds.map(JSONValue.string)),
+                "outputAISeconds": .number(label.outputAISeconds), "persistent": .bool(label.persistent), "intervals": .array(intervals),
+                "fadeSeconds": .number(label.fadeSeconds), "position": .string(label.position.rawValue), "postText": label.postText.map(JSONValue.string) ?? .null])
+            voice = VoiceInput(outputPlan: voicePlan, disclosure: disclosure, recipes: recipes)
         }
-        let input = Input(contentKey: project.media.source.contentKey, plan: plan, words: words, language: project.transcript?.language,
-                          captions: captions, aspect: project.export.aspect, output: output, srt: project.export.srt, pieces: pieces, recipes: recipes)
+        let media = project.media.source
+        let oriented = media.video.map(OutputSizing.orientedSize) ?? PixelSize(width: 1920, height: 1080)
+        let source = Source(duration: duration, orientedSize: oriented, rotationDegrees: media.video?.rotationDegrees,
+            frameRate: media.video?.frameRate, sampleRate: media.audio?.sampleRate, channels: media.audio?.channels)
+        let input = Input(contentKey: media.contentKey, source: source, plan: plan, words: captionsOn ? words : nil,
+            language: captionsOn ? project.transcript?.language : nil, captions: captions, output: output, voiceLab: voice)
         let encoder = ProjectJSON.encoder()
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
         let data = try encoder.encode(input)

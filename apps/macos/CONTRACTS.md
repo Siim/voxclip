@@ -1,5 +1,9 @@
 # macOS implementation contracts
 
+### 2026-10-28 — sol-mac-redesign round 4 A1: render fingerprint parity
+
+- Shared render fingerprint inputs per target/aspect: source content key, duration, oriented size, rotation, frame rate, sample rate/channels; scoped edit plan; quality and resolved output encoding; effective caption style, and only when On, scoped caption words, language, overrides and aspect position; Voice Lab output plan/disclosure and selected audio/room-tone/seams/render-video/asset SHA256, rate and duration. Exclude SRT sidecar intent, UI/clip titles, share copy, folder, confidence, speakers, timestamps and recipe provenance.
+
 ### 2026-10-28 — sol-followups-8 round 3: binary64 extraction anchors
 
 - Final local audits pass the exact CI secret pattern, whitespace and round-three production-scope checks; Windows production and macOS App/UI files remain unchanged from the main-merge baseline. All nonempty entries from both original Windows contract histories are retained. Owned Swift/.NET build trees and `/tmp/voxclip-sol-followups-8-r3` are removed, with no owned build/test process left running.

@@ -144,7 +144,25 @@ actor RegressionExporter: Exporter {
         try compare("fingerprint excludes corrections outside the clip", changed: false) {
             if let last = $0.transcript?.words.last { $0.edits.corrections[last.id] = "Outside" }
         }
-        try compare("fingerprint includes SRT encoding intent", changed: true) { $0.export.srt.toggle() }
+        try compare("fingerprint excludes SRT sidecar intent", changed: false) { $0.export.srt.toggle() }
+        for enabled in [false, true] {
+            var snapshot = project
+            snapshot.captions.styleId = enabled ? "vox-highlight" : "off"
+            let original = try ExportFingerprint.value(snapshot, target: target)
+            let changes: [(String, (inout Project) -> Void)] = [
+                ("position", { $0.captions.positionByAspect["16:9"] = CaptionPosition(x: 0.4, y: 0.3) }),
+                ("override", { $0.captions.overrides = .object(["fontSize": .number(72)]) }),
+                ("correction", { $0.edits.corrections[$0.transcript!.words[0].id] = "Changed" }),
+                ("text", { $0.transcript?.words[0].text = "Changed" }),
+                ("language", { $0.transcript?.language = "et" })
+            ]
+            for (name, change) in changes {
+                var edited = snapshot
+                change(&edited)
+                let changed = try ExportFingerprint.value(edited, target: target) != original
+                results.append(.init(name: "captions \(enabled ? "On" : "Off") fingerprint \(name)", passed: changed == enabled))
+            }
+        }
         var otherAspect = project
         otherAspect.export.aspect = .portrait
         let ledger = ExportLedger(file: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).appendingPathExtension("json"))
