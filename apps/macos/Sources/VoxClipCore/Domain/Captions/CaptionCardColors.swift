@@ -39,7 +39,12 @@ enum CaptionContrast {
         func rgb(_ value: String) -> (r: UInt8, g: UInt8, b: UInt8) {
             let resolved = value.hasPrefix("$accent") ? accent! : value
             let channels = UInt32(resolved.dropFirst().prefix(6), radix: 16)!
-            return (UInt8((channels >> 16) & 255), UInt8((channels >> 8) & 255), UInt8(channels & 255))
+            let redShift: UInt32 = channels >> 16
+            let greenShift: UInt32 = channels >> 8
+            let red: UInt32 = redShift & 255
+            let green: UInt32 = greenShift & 255
+            let blue: UInt32 = channels & 255
+            return (UInt8(red), UInt8(green), UInt8(blue))
         }
         let background = rgb(box)
         if ratio(rgb(text), background) >= 4.5 { return paint }

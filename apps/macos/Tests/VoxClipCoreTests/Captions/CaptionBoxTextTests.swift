@@ -25,7 +25,14 @@ func captionBoxTextColorVectors() throws {
         }
         let hex = String(value.dropFirst())
         let channels = try #require(UInt32(hex.count == 6 ? hex + "FF" : hex, radix: 16))
-        return [UInt8((channels >> 24) & 255), UInt8((channels >> 16) & 255), UInt8((channels >> 8) & 255), UInt8(channels & 255)]
+        let redShift: UInt32 = channels >> 24
+        let greenShift: UInt32 = channels >> 16
+        let blueShift: UInt32 = channels >> 8
+        let red: UInt32 = redShift & 255
+        let green: UInt32 = greenShift & 255
+        let blue: UInt32 = blueShift & 255
+        let alpha: UInt32 = channels & 255
+        return [UInt8(red), UInt8(green), UInt8(blue), UInt8(alpha)]
     }
     for item in fixture.cases {
         let style = try JSONDecoder().decode(CaptionStyle.self, from: Data(contentsOf: shared.appendingPathComponent("caption-styles/styles/\(item.style).json")))
