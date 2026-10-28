@@ -85,6 +85,10 @@ internal sealed class CaptionsPanel : UserControl
         this.mediaPath = mediaPath;
         this.ct = ct;
         IsTabStop = false;
+        AutomationProperties.SetAutomationId(enabled, "Captions.Toggle");
+        AutomationProperties.SetAutomationId(styleName, "Captions.StyleName");
+        AutomationProperties.SetAutomationId(summary, "Captions.Summary");
+        AutomationProperties.SetAutomationId(gallery, "Captions.Gallery");
         gallery.UseSystemFocusVisuals = true;
         Content = body;
         body.RowDefinitions.Add(new() { Height = GridLength.Auto });
@@ -224,6 +228,7 @@ internal sealed class CaptionsPanel : UserControl
             if (args.Item is not Tile tile) return;
             if (args.InRecycleQueue) { visible.Remove(tile); tile.Request.Dispose(); return; }
             visible.Add(tile);
+            AutomationProperties.SetAutomationId(args.ItemContainer, "CaptionStyle." + tile.Style.Id);
             AutomationProperties.SetName(args.ItemContainer, tile.Description);
             SizeTile(args.ItemContainer);
             _ = RenderTileAsync(tile, true);
@@ -352,6 +357,7 @@ internal sealed class CaptionsPanel : UserControl
             foreach (var choice in choices) segment.Items.Add(new CommunityToolkit.WinUI.Controls.SegmentedItem { Content = choice, MinWidth = 0, Padding = new(8, 4, 8, 4) });
             segment.SelectedIndex = selected;
             AutomationProperties.SetName(segment, label);
+            AutomationProperties.SetAutomationId(segment, "FineTune." + label);
             segment.SelectionChanged += (_, _) => { if (!syncing && segment.SelectedIndex >= 0) choose(segment.SelectedIndex); };
             section.Children.Add(segment); controls.Children.Add(section);
         }
@@ -366,6 +372,7 @@ internal sealed class CaptionsPanel : UserControl
             index => Change("layout", ("maxWords", index == 1 ? null : JsonValue.Create(index == 0 ? 1 : 16)), ("maxLines", index == 1 ? null : JsonValue.Create(1))));
         var punctuation = new ToggleSwitch { Header = "Keep punctuation", IsEnabled = style.Text.UserOverridable && !model.IsReadOnly,
             IsOn = patch["text"]?["punctuation"]?.GetValue<string>() is { } keep ? keep == "keep" : style.Text.Punctuation == CaptionTextPunctuationValue.Keep };
+        AutomationProperties.SetAutomationId(punctuation, "FineTune.Punctuation");
         punctuation.Toggled += (_, _) => { if (!syncing) Change("text", ("punctuation", JsonValue.Create(punctuation.IsOn ? "keep" : "strip-keep-numeric"))); };
         controls.Children.Add(punctuation);
         if (style.Accent is not null)
@@ -381,6 +388,7 @@ internal sealed class CaptionsPanel : UserControl
                 var brush = new SolidColorBrush(Windows.UI.Color.FromArgb(byte.MaxValue, (byte)(rgb >> 16), (byte)(rgb >> 8), (byte)rgb));
                 var button = new Button { IsEnabled = !model.IsReadOnly, Width = 32, Height = 32, Padding = new Thickness(3), Content = new Border { Background = brush, Width = 18, Height = 18, CornerRadius = new(9) } };
                 AutomationProperties.SetName(button, color.Name); ToolTipService.SetToolTip(button, color.Name);
+                AutomationProperties.SetAutomationId(button, "FineTune.Colour." + color.Name);
                 button.Click += (_, _) => Change("", ("accent", JsonValue.Create(color.Value)));
                 (firstColors.Children.Count < 3 ? firstColors : lastColors).Children.Add(button);
             }
@@ -390,6 +398,7 @@ internal sealed class CaptionsPanel : UserControl
         Options("Position", ["Top", "Middle", "Bottom"], position is { Y: < 0.35 } ? 0 : position is { Y: < 0.65 } ? 1 : 2, model.MoveCaptionPosition, style.Position.UserDraggable);
         controls.Children.Add(Ui.Text("Drag captions on the video to move them.", "HelperText"));
         var reset = new HyperlinkButton { IsEnabled = !model.IsReadOnly, Content = "Reset to Style", HorizontalAlignment = HorizontalAlignment.Left, Padding = new Thickness(0) };
+        AutomationProperties.SetAutomationId(reset, "FineTune.Reset");
         reset.Click += (_, _) => { model.SetCaptions(CaptionFineTune.Reset(model.Project.Captions)); BuildFineTune(style); };
         controls.Children.Add(reset);
         ToolTipService.SetToolTip(fineTune, $"Size {scale:0.##}× · {CaptionFineTune.Summary(style, project)} · Position {(position is { } stored ? $"{stored.X:0.##}, {stored.Y:0.##}" : "Bottom")}");
@@ -399,6 +408,36 @@ internal sealed class CaptionsPanel : UserControl
     internal void RefreshSamples() => samples?.Refresh();
 
 #if DEBUG
+    internal IReadOnlyList<string> DebugFitGalleryIds()
+    {
+        var choices = new List<string>();
+        if (gallery.ItemsPanelRoot is not ItemsWrapGrid panel || panel.FirstVisibleIndex < 0) return choices;
+        for (var index = panel.FirstVisibleIndex; index <= panel.LastVisibleIndex; index++)
+        {
+            if (index >= gallery.Items.Count || gallery.Items[index] is not Tile tile) return [];
+            choices.Add("CaptionStyle." + tile.Style.Id);
+        }
+        return choices;
+    }
+
+    internal void DebugFitRealizeGallery()
+    {
+        if (DebugFitGalleryIds().Count == 0 && tiles.Values.FirstOrDefault() is { } first)
+        {
+            gallery.ScrollIntoView(first, ScrollIntoViewAlignment.Leading);
+            gallery.UpdateLayout();
+        }
+    }
+
+    internal bool DebugFitRealizeChoice(string id)
+    {
+        var tile = tiles.Values.FirstOrDefault(item => "CaptionStyle." + item.Style.Id == id);
+        if (tile is null) return false;
+        gallery.ScrollIntoView(tile, ScrollIntoViewAlignment.Leading);
+        gallery.UpdateLayout();
+        return true;
+    }
+
     internal async Task DebugFitStatesAsync(Func<string, Task> inspect)
     {
         var original = model.Project.Captions;
@@ -407,6 +446,7 @@ internal sealed class CaptionsPanel : UserControl
         try
         {
             await inspect("captions");
+            model.SetCaptionStyle("vox-highlight");
             fineTune.IsExpanded = true;
             await inspect("fine-tune");
             fineTune.IsExpanded = false;

@@ -54,7 +54,8 @@ public sealed partial class EditorPage
                     try
                     {
                         TransportElapsed.Text = "9:59:59.9"; TransportTotal.Text = " / 9:59:59.9"; AiModified.Visibility = Visibility.Visible;
-                        await captions!.DebugFitStatesAsync(name => DebugRightColumnBoundsAsync(window, output, label + "-" + name));
+                        await captions!.DebugFitStatesAsync(name => DebugRightColumnBoundsAsync(window, output, label + "-" + name,
+                            name == "fine-tune" ? ColumnFitState.FineTune : ColumnFitState.Captions));
                         foreach (var unavailable in new[] { EditorMediaState.Missing, EditorMediaState.Corrupt })
                         {
                             mediaState = unavailable; SizeStage();
@@ -181,7 +182,7 @@ public sealed partial class EditorPage
                 foreach (var width in new[] { 300, 348, 388, 560 })
                 {
                     RightColumn.Width = new(width);
-                    await DebugRightColumnBoundsAsync(window, output, "rewrite-" + width);
+                    await DebugRightColumnBoundsAsync(window, output, "rewrite-" + width, ColumnFitState.Rewrite);
                 }
         }
         finally { RightColumn.Width = rightWidth; }

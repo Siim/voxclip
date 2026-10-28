@@ -30,9 +30,15 @@ public sealed class EditorLayoutTests
         Assert.Contains("(1440, 900, 560", page);
         Assert.Contains("(760, 600, 300", page);
         Assert.Contains("9:59:59.9", page);
-        Assert.Contains("Fits(column) && Fits(client)", probe);
+        Assert.Contains("ColumnBoundsGate.Assess", probe);
+        Assert.Contains("ColumnBoundsGate.RequiredFailures", probe);
+        Assert.Contains("RequiredPeers = coverage", probe);
+        Assert.Contains("UnmeasurablePeers = unmeasurable", probe);
+        Assert.Contains("IScrollItemProvider", probe);
+        Assert.Contains("ColumnFitState.Rewrite", page);
+        Assert.Contains("ColumnFitState.FineTune", page);
         Assert.Contains("peer.GetChildren()", probe);
-        Assert.Contains("!text.IsTextTrimmed", probe);
+        Assert.Contains("if (text.IsTextTrimmed) failures.Add", probe);
         Assert.Contains("-right-column.png", probe);
     }
 

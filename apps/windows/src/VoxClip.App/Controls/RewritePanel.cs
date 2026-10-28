@@ -28,6 +28,10 @@ internal sealed class RewritePanel : Grid
     internal RewritePanel(RewriteSession session)
     {
         this.session = session;
+        AutomationProperties.SetAutomationId(instruction, "Rewrite.Instruction");
+        AutomationProperties.SetAutomationId(words, "Rewrite.Words");
+        AutomationProperties.SetAutomationId(propose, "Rewrite.Propose");
+        AutomationProperties.SetAutomationId(apply, "Rewrite.Apply");
         AutomationProperties.SetName(this, "Rewrite");
         RowDefinitions.Add(new() { Height = new(1, GridUnitType.Star) });
         RowDefinitions.Add(new() { Height = GridLength.Auto });
@@ -47,6 +51,7 @@ internal sealed class RewritePanel : Grid
                 Background = Ui.ThemeBrush(this, "VcTextPrimaryBrush") });
         heading.Children.Add(waveform);
         var title = Ui.Text("Rewrite", "BodyStrongTextBlockStyle");
+        AutomationProperties.SetAutomationId(title, "Rewrite.Header");
         title.FontSize = 13;
         heading.Children.Add(title);
         header.Children.Add(heading);
@@ -57,6 +62,7 @@ internal sealed class RewritePanel : Grid
         selection.MinWidth = 0;
         var close = new Button { Content = new FontIcon { Glyph = "\uE711", FontSize = 12 }, Width = 32, Height = 32, Padding = new(0) };
         SetName(close, "Close Rewrite");
+        AutomationProperties.SetAutomationId(close, "Rewrite.Close");
         ToolTipService.SetToolTip(close, "Close Rewrite (Esc)");
         AutomationProperties.SetAcceleratorKey(close, "Esc");
         close.Click += (_, _) => Close();
@@ -78,7 +84,12 @@ internal sealed class RewritePanel : Grid
         };
         body.Children.Add(instruction); body.Children.Add(busy); body.Children.Add(propose);
         body.Children.Add(Small(session.SendLine)); body.Children.Add(estimate);
-        if (session.Connector is null) body.Children.Add(Ui.Button("Open Settings", () => App.OpenSettings("Providers & Keys")));
+        if (session.Connector is null)
+        {
+            var settings = Ui.Button("Open Settings", () => App.OpenSettings("Providers & Keys"));
+            AutomationProperties.SetAutomationId(settings, "Rewrite.Settings");
+            body.Children.Add(settings);
+        }
         var newHeader = new Grid();
         newHeader.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
         newHeader.ColumnDefinitions.Add(new() { Width = new(1, GridUnitType.Star) });
@@ -118,6 +129,10 @@ internal sealed class RewritePanel : Grid
     }
 
     private static void SetName(DependencyObject target, string name) => AutomationProperties.SetName(target, name);
+#if DEBUG
+    internal bool DebugFitRequiresApply => session.LocalAction is not null;
+    internal bool DebugFitRequiresSettings => session.Connector is null;
+#endif
     private TextBlock Small(string text)
     {
         var label = Ui.Text(text); label.FontSize = 11; label.Foreground = Ui.ThemeBrush(this, "VcTextSecondaryBrush"); return label;
