@@ -1,5 +1,11 @@
 # macOS implementation contracts
 
+### 2026-10-28 — sol-mac-redesign round 7 — N4 Accessibility trust
+
+- Scene readiness checks record `AXIsProcessTrusted` and the actual own-window AX access error. Only an untrusted client with `AXError.apiDisabled` gets a permission skip, never a success; a failed assertion with working AX access now fails rather than being hidden by the trust flag. Each run writes `accessibility-trust.json` with the exact executable, bundle identifier, PID, trust result and access result, and names that executable in every permission skip so the lead can request the correct grant.
+- The menu phase now explicitly activates and captures the real main window after the popover phase has closed, before dispatching Transcribe Again. A deferred SwiftUI popover dismissal or an unactivated command-line launch must not be mistaken for a locked console. The warning and cancel assertions remain unchanged.
+- Round-three `ui-9/results.json` contains no Find Clips readiness/trust checks; its in-process accessibility assertions do not establish a reusable trusted launch context. The existing `dist/VoxClip.app` is an older ad-hoc-signed binary, not verification of this revision. Do not execute it as new evidence or change the user's Accessibility settings. Native results below must distinguish the nine potential trust skips from passed assertions.
+
 ### 2026-10-28 — sol-mac-redesign round 7 — N5 reduced-effects audit
 
 - DEBUG `-sceneAudit <evidence> -reducedEffects` forces Reduce Motion and Reduce Transparency through `EditorAccessibilityPolicy` only; no defaults or system settings change. SelectionBar combines that policy with SwiftUI accessibility values. The override is unavailable in release builds and outside the scene audit.

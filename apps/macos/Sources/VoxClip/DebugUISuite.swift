@@ -499,7 +499,7 @@ import ApplicationServices
             check("a transcript enables Find Clips and editing", !editor.words.isEmpty && editor.editingAvailable)
             try await waitUntil { window.firstResponder is TranscriptNSTextView }
             check("the transcript takes keyboard focus when it arrives after an untranscribed import (first responder \(window.firstResponder.map { String(describing: type(of: $0)) } ?? "none"))", window.firstResponder is TranscriptNSTextView)
-            results += await findClipsReadiness(app: app, editor: editor, window: window)
+            results += await findClipsReadiness(app: app, editor: editor, window: window, directory: destination)
             let ids = editor.words.prefix(3).map(\.id)
             editor.selectedWordIDs = Set(ids)
             editor.makeClip()
@@ -508,6 +508,7 @@ import ApplicationServices
             shell.selection = .fullTake
             editor.apply(.cutSelection(ids: [ids[0]]), name: "Cut word")
             editor.apply(.correct(id: ids[1], text: "corrected"), name: "Correct word")
+            try await capture(window: window, name: "scene-menu-ready", directory: destination)
             let transcribeItem = NSApp.mainMenu?.item(withTitle: "Edit")?.submenu?.item(withTitle: "Transcribe Again…")
             let dispatched = transcribeItem.flatMap { item in item.action.map { NSApp.sendAction($0, to: item.target, from: item) } } ?? false
             try await waitUntil { window.attachedSheet != nil }
@@ -655,11 +656,19 @@ import ApplicationServices
     /// checked it: a missing key, saving and forgetting it, a stopped local service, a
     /// changed server URL and a late status from the previous connector. The popover's
     /// accessibility needs this process to be a trusted accessibility client.
-    private static func findClipsReadiness(app: AppModel, editor: EditorModel, window: NSWindow) async -> [Result] {
+    private static func findClipsReadiness(app: AppModel, editor: EditorModel, window: NSWindow, directory: URL) async -> [Result] {
         var results: [Result] = []
         let trusted = AXIsProcessTrusted()
+        var accessibilityWindows: CFTypeRef?
+        let accessError = AXUIElementCopyAttributeValue(AXUIElementCreateApplication(getpid()), kAXWindowsAttribute as CFString, &accessibilityWindows)
+        let permissionDenied = !trusted && accessError == .apiDisabled
+        let executable = Bundle.main.executableURL?.path ?? ProcessInfo.processInfo.arguments[0]
+        let trust: [String: String] = ["executable": executable, "bundleIdentifier": Bundle.main.bundleIdentifier ?? "unbundled",
+            "trusted": String(trusted), "ownWindowsAXError": String(accessError.rawValue),
+            "processIdentifier": String(ProcessInfo.processInfo.processIdentifier)]
+        try? ProjectJSON.encoder().encode(trust).write(to: directory.appendingPathComponent("accessibility-trust.json"), options: .atomic)
         func check(_ name: String, _ passed: Bool) {
-            results.append(Result(name: name, passed: passed, skipped: !passed && !trusted ? "this process is not a trusted accessibility client" : nil))
+            results.append(Result(name: name, passed: passed, skipped: !passed && permissionDenied ? "Accessibility permission required for \(executable) (\(Bundle.main.bundleIdentifier ?? "unbundled")); this process is not a trusted accessibility client (AX API disabled)" : nil))
         }
         let keys = InspectorTestKeys()
         let keyConnector = InspectorKeyConnector(keys: keys)
