@@ -27,6 +27,7 @@ internal sealed class FindClipsFlyout
     private readonly TextBlock footnote = Ui.Text("", "HelperText");
     private readonly TextBlock problem = Ui.Text("", "HelperText");
     private readonly Button find = new() { Content = "Find clips", HorizontalAlignment = HorizontalAlignment.Right };
+    private readonly ProgressRing busy = new() { Width = 16, Height = 16, Visibility = Visibility.Collapsed };
     private ProviderEntry? entry;
     private CancellationTokenSource? search;
     /// <summary>A Find is past its first check: set before the awaited preflight, so a second click or Enter can't start
@@ -37,6 +38,7 @@ internal sealed class FindClipsFlyout
     internal FindClipsFlyout(EditorViewModel model, CancellationToken ct)
     {
         this.model = model; this.ct = ct;
+        model.PropertyChanged += BusyChanged;
         find.Style = (Style)Application.Current.Resources["AccentButtonStyle"];
         var title = Ui.Text("Find clips in this take", "BodyStrongTextBlockStyle");
         var line = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
@@ -57,7 +59,7 @@ internal sealed class FindClipsFlyout
         find.Click += (_, _) => _ = FindAsync();
         var body = Ui.Stack(12);
         body.Width = 340;
-        foreach (var child in new UIElement[] { title, line, preset, instructions, footnote, problem, find }) body.Children.Add(child);
+        foreach (var child in new UIElement[] { title, line, preset, instructions, footnote, problem, busy, find }) body.Children.Add(child);
         flyout.Content = body;
         flyout.Opened += (_, _) => { Ui.EffectsChanged += EffectsChanged; instructions.Focus(FocusState.Programmatic); };
         flyout.Closed += (_, _) => { Ui.EffectsChanged -= EffectsChanged; anchor?.Focus(FocusState.Programmatic); };
@@ -102,7 +104,13 @@ internal sealed class FindClipsFlyout
     /// <summary>Run the last search again from the callout's Retry.</summary>
     internal Task RetryAsync() => FindAsync();
     internal void Cancel() => search?.Cancel();
-    internal void Close() { Ui.EffectsChanged -= EffectsChanged; flyout.Hide(); Cancel(); }
+    internal void Close() { model.PropertyChanged -= BusyChanged; Ui.EffectsChanged -= EffectsChanged; flyout.Hide(); Cancel(); }
+    private void BusyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs args)
+    {
+        find.IsEnabled = !model.Busy && !model.IsLeaving;
+        busy.IsActive = model.LlmRuns.IsBusy;
+        busy.Visibility = busy.IsActive ? Visibility.Visible : Visibility.Collapsed;
+    }
     private void EffectsChanged(object? sender, EventArgs args) => anchor?.DispatcherQueue.TryEnqueue(() => { if (anchor is not null) Ui.ApplyFlyoutEffects(flyout, anchor); });
     internal void Dismiss() => Set(null);
 #if DEBUG
@@ -119,6 +127,8 @@ internal sealed class FindClipsFlyout
             instructions.Focus(FocusState.Programmatic);
             return;
         }
+        using var run = model.LlmRuns.TryAcquire();
+        if (run is null) return;
         starting = true;
         try
         {
@@ -176,7 +186,7 @@ internal sealed class FindClipsFlyout
         if (model.State is not { } state) return;
         search?.Dispose();
         search = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        model.Busy = true; App.Services.BusyOperations++;
+        App.Services.BusyOperations++;
         Running = $"{chosen.ShortName} · reading {EditorViewModel.Duration(model.Project.Media.Source.DurationSeconds)} of transcript";
         NoneFound = null;
         Set(null);
@@ -197,7 +207,7 @@ internal sealed class FindClipsFlyout
         catch (Exception exception) when (exception is not OutOfMemoryException) { Fail(exception); }
         finally
         {
-            model.Busy = false; App.Services.BusyOperations--;
+            App.Services.BusyOperations--;
             Running = null;
             Changed?.Invoke(this, EventArgs.Empty);
         }

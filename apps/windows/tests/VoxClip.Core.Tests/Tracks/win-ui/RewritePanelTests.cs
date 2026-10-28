@@ -357,6 +357,97 @@ public sealed class RewritePanelTests
         }
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task FindClipsAndRewriteShareOneRunInEitherStartOrder(bool rewriteFirst)
+    {
+        var editor = Editor();
+        var fake = new RecordingConnector { Pending = new(TaskCreationOptions.RunContinuationsAsynchronously) };
+        using var session = new RewriteSession(editor, 10, 12, Envelope(), new(fake, "chosen", "Test", "local", ""));
+        await session.SetInstructionAsync("Plainly");
+        var action = session.Prepared!;
+        session.MarkEstimateShown(action);
+        if (rewriteFirst)
+        {
+            var pending = session.ProposeAsync(action, true);
+            Assert.True(editor.Busy);
+            Assert.Null(editor.LlmRuns.TryAcquire());
+            Assert.False(session.CanPropose);
+            session.Dispose();
+            Assert.False(await pending);
+        }
+        else
+        {
+            using (var findRun = editor.LlmRuns.TryAcquire())
+            {
+                Assert.NotNull(findRun);
+                Assert.True(editor.Busy);
+                Assert.False(session.CanPropose);
+                Assert.False(await session.ProposeAsync(action, true));
+                Assert.Empty(fake.Calls);
+            }
+            Assert.True(session.CanPropose);
+        }
+        Assert.False(editor.Busy);
+        using var next = editor.LlmRuns.TryAcquire();
+        Assert.NotNull(next);
+        var source = Path.Combine(Path.GetDirectoryName(Shared)!, "apps", "windows", "src", "VoxClip.App", "Controls", "FindClipsFlyout.cs");
+        var find = File.ReadAllText(source);
+        Assert.Contains("using var run = model.LlmRuns.TryAcquire()", find);
+        Assert.True(find.IndexOf("model.LlmRuns.TryAcquire()", StringComparison.Ordinal) < find.IndexOf("await ChosenAsync()", find.IndexOf("private async Task FindAsync()", StringComparison.Ordinal), StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ProposalSuccessAndFailureBothReleaseTheProjectRun(bool fail)
+    {
+        var editor = Editor();
+        var fake = new RecordingConnector { Failure = fail ? new IOException("offline") : null };
+        using var session = new RewriteSession(editor, 10, 12, Envelope(), new(fake, "chosen", "Test", "local", ""));
+        await session.SetInstructionAsync("Plainly");
+        var action = session.Prepared!;
+        session.MarkEstimateShown(action);
+        Assert.Equal(!fail, await session.ProposeAsync(action, true));
+        Assert.False(editor.Busy);
+        using var next = editor.LlmRuns.TryAcquire();
+        Assert.NotNull(next);
+    }
+
+    [Fact]
+    public async Task ProjectRunIsAtomicAndAConcurrentFindCancellationReleasesIt()
+    {
+        var runs = new ProjectLlmRuns();
+        using var ready = new CountdownEvent(8);
+        using var release = new ManualResetEventSlim();
+        var winners = 0;
+        var tasks = Enumerable.Range(0, 8).Select(_ => Task.Run(() =>
+        {
+            using var run = runs.TryAcquire();
+            if (run is not null) Interlocked.Increment(ref winners);
+            ready.Signal();
+            release.Wait(TestContext.Current.CancellationToken);
+        }, TestContext.Current.CancellationToken)).ToArray();
+        try { Assert.True(ready.Wait(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken)); Assert.Equal(1, winners); }
+        finally { release.Set(); await Task.WhenAll(tasks); }
+        Assert.False(runs.IsBusy);
+        using var cancellation = new CancellationTokenSource();
+        async Task FindAsync()
+        {
+            using var run = runs.TryAcquire();
+            Assert.NotNull(run);
+            await Task.Delay(Timeout.Infinite, cancellation.Token);
+        }
+        var find = FindAsync();
+        Assert.Null(runs.TryAcquire());
+        cancellation.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => find);
+        Assert.False(runs.IsBusy);
+        using var resumed = runs.TryAcquire();
+        Assert.NotNull(resumed);
+    }
+
     private sealed class RecordingConnector : ILlmConnector
     {
         internal List<string> Calls { get; } = [];
@@ -371,7 +462,7 @@ public sealed class RewritePanelTests
         {
             Calls.Add("send");
             if (Failure is not null) return Task.FromException<RawCompletion>(Failure);
-            return Pending?.Task ?? Task.FromResult(new RawCompletion(null, new JsonObject { ["rewrite"] = "Better passage" }, model, new StopKind.Complete(), null, "fake"));
+            return Pending?.Task.WaitAsync(ct) ?? Task.FromResult(new RawCompletion(null, new JsonObject { ["rewrite"] = "Better passage" }, model, new StopKind.Complete(), null, "fake"));
         }
     }
     [Theory]

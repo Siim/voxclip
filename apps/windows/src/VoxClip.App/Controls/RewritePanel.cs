@@ -14,6 +14,7 @@ internal sealed class RewritePanel : Grid
     private readonly TextBox instruction = new() { Header = "What should change?", AcceptsReturn = false, MaxLength = 1000 };
     private readonly TextBox words = new() { AcceptsReturn = false, TextWrapping = TextWrapping.Wrap };
     private readonly Button propose = new() { Content = "Rewrite", HorizontalAlignment = HorizontalAlignment.Right };
+    private readonly ProgressRing busy = new() { Width = 16, Height = 16, Visibility = Visibility.Collapsed };
     private readonly TextBlock estimate = Ui.Text("");
     private readonly TextBlock problem = Ui.Text("");
     private readonly StackPanel review = Ui.Stack(6);
@@ -70,9 +71,11 @@ internal sealed class RewritePanel : Grid
             if (session.Estimate is { Kind: VoiceLabCostPresentationKind.Confirm } confirmation)
                 approved = await new ContentDialog { XamlRoot = XamlRoot, Title = "Rewrite", Content = Ui.Text(confirmation.Text),
                     PrimaryButtonText = "Continue", CloseButtonText = "Cancel" }.ShowAsync() == ContentDialogResult.Primary;
-            await session.ProposeAsync(action, approved);
+            App.Services.BusyOperations++;
+            try { await session.ProposeAsync(action, approved); }
+            finally { App.Services.BusyOperations--; }
         };
-        body.Children.Add(instruction); body.Children.Add(propose);
+        body.Children.Add(instruction); body.Children.Add(busy); body.Children.Add(propose);
         body.Children.Add(Small(session.SendLine)); body.Children.Add(estimate);
         if (session.Connector is null) body.Children.Add(Ui.Button("Open Settings", () => App.OpenSettings("Providers & Keys")));
         var newHeader = new Grid();
@@ -131,6 +134,8 @@ internal sealed class RewritePanel : Grid
         propose.Content = session.ProposalButton;
         SetName(propose, session.ProposalButton);
         propose.IsEnabled = session.CanPropose;
+        busy.IsActive = session.Editor.LlmRuns.IsBusy;
+        busy.Visibility = busy.IsActive ? Visibility.Visible : Visibility.Collapsed;
         apply.Content = session.LocalAction ?? "";
         apply.Visibility = session.LocalAction is null ? Visibility.Collapsed : Visibility.Visible;
         SetName(apply, session.LocalAction ?? "Apply changes");

@@ -109,6 +109,7 @@ public sealed class EditorViewModel : ObservableObject
         this.reduce = reduce ?? EditingEngine.Reduce;
         this.summarize = summarize ?? EditingEngine.Summarize;
         this.now = now ?? (() => DateTimeOffset.UtcNow);
+        LlmRuns.Changed += (_, _) => { OnPropertyChanged(nameof(Busy)); OnPropertyChanged(nameof(CanExport)); };
         InitializeState();
         Refresh();
     }
@@ -120,6 +121,7 @@ public sealed class EditorViewModel : ObservableObject
 
     public Project Project => project;
     internal CaptionDragSession CaptionDrag { get; } = new();
+    internal ProjectLlmRuns LlmRuns { get; } = new();
     public bool IsLeaving => isLeaving;
     internal void BeginLeaving()
     {
@@ -159,7 +161,7 @@ public sealed class EditorViewModel : ObservableObject
     /// <summary>Edited length of the whole take, whatever clip is active; the Full take row's duration.</summary>
     public double FullTakeDuration { get; private set; }
     public string Notice { get => notice; set => SetProperty(ref notice, value); }
-    public bool Busy { get => busy; set { if (SetProperty(ref busy, value)) OnPropertyChanged(nameof(CanExport)); } }
+    public bool Busy { get => busy || LlmRuns.IsBusy; set { if (SetProperty(ref busy, value)) OnPropertyChanged(nameof(CanExport)); } }
     public bool HasTranscript => state is not null;
     public bool CanExport => !Busy && !isLeaving && !IsReadOnly && Summary.CanExport;
     /// <summary>Why Export can't run for <paramref name="clipId"/>'s scope (null is Full take), or null when it can. The Export

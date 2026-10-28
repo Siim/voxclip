@@ -41,7 +41,7 @@ internal sealed class RewriteSession : IDisposable
     internal string ProposalButton => Estimate is null || Connector?.Group == "cli" ? "Rewrite" :
         Connector?.Group == "local" ? "Rewrite · No charge" : VoiceLabCostPresentation.ButtonTitle("Rewrite", null, Estimate);
     internal string EstimateCopy => Estimate?.Text is { Length: > 0 } text ? text : Prepared is null ? "" : "No charge.";
-    internal bool CanPropose => IsOpen && !IsProposing && estimateShown && Prepared is not null;
+    internal bool CanPropose => IsOpen && !IsProposing && !Editor.Busy && !Editor.IsLeaving && !Editor.IsReadOnly && estimateShown && Prepared is not null;
     internal string Header { get; }
     internal RewriteReview? Review { get; private set; }
     internal string? LocalAction => Review is { Diff.Hunks.Count: > 0 } review &&
@@ -131,6 +131,8 @@ internal sealed class RewriteSession : IDisposable
     internal async Task<bool> ProposeAsync(VoiceLabPreparedAction action, bool affirmative)
     {
         if (!CanPropose || !affirmative || !ReferenceEquals(Prepared, action) || request is null || Connector is null) return false;
+        using var run = Editor.LlmRuns.TryAcquire();
+        if (run is null) return false;
         var current = revision;
         var input = request;
         sending = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
@@ -213,6 +215,7 @@ internal sealed class RewriteSession : IDisposable
     private void EditorPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs args)
     {
         if (Editor.IsLeaving || Editor.IsReadOnly) Dispose();
+        else if (args.PropertyName == nameof(EditorViewModel.Busy)) Changed?.Invoke(this, EventArgs.Empty);
     }
     internal static string Refusal(Exception exception) => exception switch
     {
