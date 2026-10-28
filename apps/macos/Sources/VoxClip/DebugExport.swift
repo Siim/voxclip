@@ -6,12 +6,17 @@ import VoxClipMedia
 actor RegressionExporter: Exporter {
     let failure: VoxClipError?
     var hold = false
+    var pauseFirst = false
+    private var resumeFirst: CheckedContinuation<Void, Never>?
     private(set) var jobs: [ExportJob] = []
     init(failure: VoxClipError? = nil) { self.failure = failure }
     func setHold(_ value: Bool) { hold = value }
+    func pauseFirstTarget() { pauseFirst = true }
+    func releaseFirstTarget() { resumeFirst?.resume(); resumeFirst = nil }
     func export(_ job: ExportJob, progress: @escaping @Sendable (ExportProgress) -> Void) async throws -> ExportResult {
         jobs.append(job)
         progress(ExportProgress(phase: .encoding, fraction: 0.25))
+        if pauseFirst && jobs.count == 1 { await withCheckedContinuation { resumeFirst = $0 } }
         if hold { try await Task.sleep(for: .seconds(60)) }
         if let failure { throw failure }
         return ExportResult(outputURL: job.outputURL, srtURL: job.srtURL, durationSeconds: job.render.plan.duration, width: job.render.output.size.width, height: job.render.output.size.height, fps: job.render.output.fps, frames: 1, audioSampleRate: 48_000, audioSamples: 1, videoCodec: "h264", encoder: "fixture", elapsedSeconds: 0)
@@ -140,6 +145,57 @@ actor RegressionExporter: Exporter {
             results.append(.init(name: failure == .cancelled ? "VoxClip export cancellation is silent" : "real export failures retain an inline error", passed: failure == .cancelled ? failed.exportError == nil : failed.exportError?.isEmpty == false))
             failed.close()
         }
+        results += try await batchSnapshot(app: app, project: project, directory: directory)
+        return results
+    }
+    private static func batchSnapshot(app: AppModel, project: Project, directory: URL) async throws -> [DebugUISuite.Result] {
+        var initial = project
+        let words = initial.transcript!.words
+        initial.edits.clips = [
+            ClipRange(id: "batch-first", startWordId: words[0].id, endWordId: words[2].id, title: "First", origin: .manual),
+            ClipRange(id: "batch-second", startWordId: words[1].id, endWordId: words[3].id, title: "Second", origin: .manual)
+        ]
+        let exporter = RegressionExporter()
+        await exporter.pauseFirstTarget()
+        let editor = EditorModel(document: VoxClipDocument(project: initial), app: app, preview: DemoPreviewEngine(), exporter: exporter)
+        defer { editor.close() }
+        editor.mediaResolved = true; editor.refresh()
+        let targets = editor.exportTargets(.allClips)
+        let snapshot = editor.renderSnapshot()
+        var expected: [RenderRequest] = []
+        for target in targets { expected.append(try await editor.renderRequest(target: target, snapshot: snapshot)) }
+        editor.beginExport(targets: targets, folder: directory)
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: .seconds(5))
+        while await exporter.jobs.isEmpty && clock.now < deadline { await Task.yield() }
+        var changed = editor.project
+        changed.edits.corrections[words[1].id] = "Changed during export"
+        changed.edits.cutWordIds.append(words[2].id)
+        changed.edits.clips.removeLast()
+        changed.export.aspect = .portrait; changed.export.quality = .high; changed.export.srt = false
+        changed.captions.styleId = "off"
+        editor.replace(changed, name: "Edit during batch")
+        await exporter.releaseFirstTarget()
+        await editor.exportTask?.value
+        let jobs = await exporter.jobs
+        var results: [DebugUISuite.Result] = [
+            .init(name: "batch exports removed later target without error", passed: jobs.count == 2 && editor.exports.count == 2 && editor.exportError == nil)
+        ]
+        for (index, job) in jobs.enumerated() {
+            let target = targets[index]
+            let fingerprint = try ExportFingerprint.value(initial, target: target)
+            let record = app.exportLedger.entry(projectID: initial.id, targetID: ExportLedger.targetID(target), aspect: initial.export.aspect)
+            let output = editor.exports[index]
+            results.append(.init(name: "batch target \(index) uses start render, settings, output and fingerprint", passed:
+                job.render == expected[index] && job.aspect == initial.export.aspect && job.quality == initial.export.quality && job.writeSRT == initial.export.srt &&
+                job.srtURL != nil && record?.planFingerprint == fingerprint && output.durationSeconds == expected[index].plan.duration &&
+                output.width == expected[index].output.size.width && output.height == expected[index].output.size.height &&
+                job.render.captionLayout.map(CaptionSubtitles.srt) == expected[index].captionLayout.map(CaptionSubtitles.srt)))
+        }
+        var refresh = editor.project
+        refresh.export.aspect = initial.export.aspect
+        editor.replace(refresh, name: "View original export aspect")
+        results.append(.init(name: "batch ledger marks intervening edits on refresh", passed: editor.exportRowStatus("batch-first") == .changed))
         return results
     }
     private static func fingerprints(project: Project, target: ExportTarget) throws -> [DebugUISuite.Result] {

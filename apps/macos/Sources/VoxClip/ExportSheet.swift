@@ -167,9 +167,13 @@ extension EditorModel {
     }
     func beginExport(targets: [ExportTarget], folder: URL) {
         guard !targets.isEmpty, canExport, mediaExportable else { return }
+        let renderSnapshot = renderSnapshot()
+        let snapshot = renderSnapshot.project
+        let pattern = app.string("export.fileNamePattern", fallback: "{project}-{clip}-{aspect}")
+        let openFolderAfter = app.bool("export.openFolderAfter", fallback: false)
         exportError = nil; exports = []; exporting = true; exportStartedAt = Date(); exportIndex = 1
         exportClipIDs = targets.compactMap { if case .clip(let id) = $0 { id } else { nil } }
-        activeExportKey = targets.first.map { ExportLedger.key($0, aspect: project.export.aspect) }
+        activeExportKey = targets.first.map { ExportLedger.key($0, aspect: snapshot.export.aspect) }
         exportTask = Task { [weak self] in
             guard let self else { return }
             defer { exporting = false; exportProgress = nil; activeExportKey = nil }
@@ -179,17 +183,15 @@ extension EditorModel {
                 try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
                 for (position, target) in targets.enumerated() {
                     try Task.checkCancellation(); exportIndex = position + 1
-                    let snapshot = project
                     let key = ExportLedger.key(target, aspect: snapshot.export.aspect)
                     activeExportKey = key
                     failedExports[key] = nil
                     exportProgress = nil
-                    let render = try await renderRequest(target: target)
+                    let render = try await renderRequest(target: target, snapshot: renderSnapshot)
                     let fingerprint = try ExportFingerprint.value(snapshot, target: target)
                     let name: String
                     switch target { case .fullEdit: name = "full"; case .clip(let id): name = snapshot.edits.clips.first { $0.id == id }?.title ?? "clip" }
                     let aspect = snapshot.export.aspect.rawValue.replacingOccurrences(of: ":", with: "x")
-                    let pattern = app.string("export.fileNamePattern", fallback: "{project}-{clip}-{aspect}")
                     let base = ExportSelection.baseName(pattern.replacingOccurrences(of: "{project}", with: snapshot.title ?? "Untitled").replacingOccurrences(of: "{clip}", with: name).replacingOccurrences(of: "{aspect}", with: aspect).replacingOccurrences(of: ".mp4", with: ""))
                     let url = ExportSelection.destination(base: base, folder: folder, writeSRT: snapshot.export.srt)
                     guard url.deletingLastPathComponent().standardizedFileURL.path == folder.standardizedFileURL.path else { throw VoxClipError.exportFailed("invalid destination") }
@@ -204,7 +206,7 @@ extension EditorModel {
                     activeExportKey = nil
                 }
                 await app.log.write(LogEntry(level: .info, category: "export", message: "success targets=\(exports.count)"))
-                if app.bool("export.openFolderAfter", fallback: false) { NSWorkspace.shared.activateFileViewerSelecting(exports.map(\.outputURL)) }
+                if openFolderAfter { NSWorkspace.shared.activateFileViewerSelecting(exports.map(\.outputURL)) }
             } catch is CancellationError {
                 if let key = activeExportKey { failedExports[key] = folder }
                 await app.log.write(LogEntry(level: .info, category: "export", message: "cancelled"))

@@ -4,6 +4,12 @@ import AVFoundation
 import VoxClipCore
 import VoxClipMedia
 
+struct EditorRenderSnapshot {
+    let project: Project
+    let state: EditState?
+    let plan: EditPlan?
+}
+
 @MainActor @Observable public final class EditorModel {
     let document: VoxClipDocument
     let app: AppModel
@@ -941,9 +947,13 @@ import VoxClipMedia
         #endif
         NSAccessibility.post(element: NSApp as Any, notification: .announcementRequested, userInfo: [.announcement: message, .priority: NSAccessibilityPriorityLevel.medium.rawValue])
     }
-    func renderRequest(target: ExportTarget? = nil) async throws -> RenderRequest {
-        let project = project
-        let state = editState()
+    func renderSnapshot() -> EditorRenderSnapshot {
+        EditorRenderSnapshot(project: project, state: editState(), plan: plan)
+    }
+    func renderRequest(target: ExportTarget? = nil, snapshot: EditorRenderSnapshot? = nil) async throws -> RenderRequest {
+        let snapshot = snapshot ?? renderSnapshot()
+        let project = snapshot.project
+        let state = snapshot.state
         let clip: ClipRange?
         switch target {
         case nil: clip = state?.activeClip
@@ -959,13 +969,13 @@ import VoxClipMedia
             paidRoot: app.locations.root.appendingPathComponent("VoiceLab", isDirectory: true))
         if clip != nil && state == nil { throw VoxClipError.exportFailed("Clip transcript is unavailable") }
         let segments = try state.map { try buildSegments($0, activeClip: clip) }
-        var plan = plan
+        var plan = snapshot.plan
         if target != nil || voiceLab != nil, let state, let segments {
-            plan = try buildEditPlan(segments, duration: sourceDuration, sampleRate: Double(project.media.source.audio?.sampleRate ?? 48_000), pauseKeepSeconds: state.pauseKeepSeconds)
+            plan = try buildEditPlan(segments, duration: project.media.source.durationSeconds, sampleRate: Double(project.media.source.audio?.sampleRate ?? 48_000), pauseKeepSeconds: state.pauseKeepSeconds)
         }
         guard let plan else { throw VoxClipError.exportFailed("Could not build the edit plan") }
         guard (voiceLab?.prepared.outputPlan.outputSamples ?? plan.outputSamples) > 0 else { throw VoxClipError.everythingCut }
-        let output = outputSpec()
+        let output = ExportFingerprint.output(project)
         let layout = try await buildCaptions(segments: segments, plan: plan, output: output, forPreview: target == nil,
                                             project: project, voiceLab: voiceLab?.prepared.outputPlan)
         try Task.checkCancellation()
