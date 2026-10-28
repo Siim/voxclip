@@ -10,6 +10,27 @@ namespace VoxClip.Ui.Tests;
 public sealed class StartupCheckTests
 {
     [Fact]
+    public void RouteRepetitionsUseFreshProcessesAndAllFourRealRoutes()
+    {
+        var root = Path.GetDirectoryName(Environment.GetEnvironmentVariable("VOXCLIP_SHARED_DIR"))!;
+        var source = File.ReadAllText(Path.Combine(root, "apps/windows/src/VoxClip.App/Services/ShellRouteProbe.cs"));
+        var script = File.ReadAllText(Path.Combine(root, "apps/windows/tests/VoxClip.Core.Tests/Tracks/win-ui/run-route-repetitions.ps1"));
+        Assert.Contains("window.OpenPathAsync(first, ShellPath.Launch)", source);
+        Assert.Contains("window.DebugInvokeAsync(recent)", source);
+        Assert.Contains("window.OpenDroppedAsync(dropped)", source);
+        Assert.Contains("prior.DebugCaptionGateAsync", source);
+        Assert.Contains("StartupCheck.HasContent(pixels)", source);
+        Assert.Contains("$iteration -le 5", script);
+        Assert.Contains("iteration-$iteration", script);
+        Assert.Contains("$env:VOXCLIP_DATA_DIR = $data", script);
+        Assert.Contains("$_.ProcessId -eq $app.Id", script);
+        Assert.Contains("'first-open','recent','drop','caption-file-replacement'", script);
+        Assert.Contains("$observed.SourceSha -ne $SourceSha", script);
+        Assert.Contains("Assert-Lease", script);
+        Assert.All(script, character => Assert.InRange((int)character, 0, 127));
+    }
+
+    [Fact]
     public void RewriteProbeRestoresItsStateEvenWhenReadinessFails()
     {
         var root = Path.GetDirectoryName(Environment.GetEnvironmentVariable("VOXCLIP_SHARED_DIR"))!;

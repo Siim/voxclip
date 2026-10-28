@@ -60,6 +60,13 @@ public partial class App : Application
                 }
             });
 #if DEBUG
+            var routeProbeIndex = Array.IndexOf(Program.Arguments, "--shell-route-probe");
+            if (routeProbeIndex >= 0 && routeProbeIndex + 1 < Program.Arguments.Length)
+            {
+                await ShellRouteProbe.RunAsync(window, Program.Arguments[routeProbeIndex + 1]);
+                Exit();
+                return;
+            }
             var restartProbeIndex = Array.IndexOf(Program.Arguments, "--restart-probe");
             if (restartProbeIndex >= 0 && restartProbeIndex + 1 < Program.Arguments.Length)
             {
