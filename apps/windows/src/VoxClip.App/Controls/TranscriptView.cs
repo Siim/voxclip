@@ -20,6 +20,9 @@ public sealed class TranscriptView : UserControl
     private int pendingReveal = -1;
     private readonly SelectionFlyout selectionFlyout;
     private readonly Dictionary<Grid, ParagraphVisual> realized = [];
+    internal ScrollViewer FrameProbeScrollHost => scroll;
+    internal int FrameProbeRealizedParagraphs => realized.Count;
+    internal Action<double>? FrameProbePrepared { get; set; }
     private EditorViewModel? model;
     private bool dragging;
     private bool showCuts = true;
@@ -259,6 +262,7 @@ public sealed class TranscriptView : UserControl
     private void Prepared(ItemsRepeater sender, ItemsRepeaterElementPreparedEventArgs args)
     {
         if (model is null || args.Element is not Grid grid || args.Index >= model.Paragraphs.Count) return;
+        var started = FrameProbePrepared is null ? 0 : System.Diagnostics.Stopwatch.GetTimestamp();
         var item = model.Paragraphs[args.Index];
         var gutter = (TextBlock)grid.Children[0];
         gutter.Text = item.Timecode + (item.Speaker is null ? "" : "\n" + item.Speaker);
@@ -337,6 +341,7 @@ public sealed class TranscriptView : UserControl
         rich.DoubleTapped -= DoubleTappedWord; rich.DoubleTapped += DoubleTappedWord;
         rich.RightTapped -= WordContextRequested; rich.RightTapped += WordContextRequested;
         RefreshVisuals();
+        if (FrameProbePrepared is { } report) report(System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds);
     }
 
     private FrameworkElement ClipBadge(ClipRow clip)

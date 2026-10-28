@@ -10,6 +10,44 @@ namespace VoxClip.Ui.Tests;
 public sealed class StartupCheckTests
 {
     [Fact]
+    public void FrameSummaryUsesRenderingIntervalsAndTheSixtyHertzDropBudget()
+    {
+        var summary = FrameTimeSummary.From([10, 16.7, 20, 33, 34, 50]);
+        Assert.Equal(6, summary.Frames);
+        Assert.Equal(20, summary.P50Milliseconds);
+        Assert.Equal(50, summary.P95Milliseconds);
+        Assert.Equal(50, summary.MaxMilliseconds);
+        Assert.Equal(4.0 / 6, summary.ShareOver16Point7);
+        Assert.Equal(2.0 / 6, summary.ShareOver33);
+        Assert.Equal(4, summary.EstimatedDroppedFrames);
+        Assert.Throws<ArgumentException>(() => FrameTimeSummary.From([]));
+        Assert.Throws<ArgumentOutOfRangeException>(() => FrameTimeSummary.From([double.NaN]));
+        Assert.Throws<ArgumentOutOfRangeException>(() => FrameTimeSummary.From([0]));
+    }
+
+    [Fact]
+    public void ScrollFrameProbeRunsOutsideDebugAndUsesRenderingNotUpdateLayoutTiming()
+    {
+        var root = Path.GetDirectoryName(Environment.GetEnvironmentVariable("VOXCLIP_SHARED_DIR"))!;
+        var app = File.ReadAllText(Path.Combine(root, "apps/windows/src/VoxClip.App/App.xaml.cs"));
+        var route = app.IndexOf("--transcript-frame-probe", StringComparison.Ordinal);
+        Assert.True(route >= 0);
+        Assert.True(app.LastIndexOf("#if DEBUG", route, StringComparison.Ordinal) < app.LastIndexOf("#endif", route, StringComparison.Ordinal));
+        var probe = File.ReadAllText(Path.Combine(root, "apps/windows/src/VoxClip.App/Services/TranscriptFrameProbe.cs"));
+        Assert.Contains("CompositionTarget.Rendering += Rendering", probe);
+        Assert.Contains("CompositionTarget.Rendering -= Rendering", probe);
+        Assert.Contains("((RenderingEventArgs)args).RenderingTime", probe);
+        Assert.Contains("scroll.ChangeView", probe);
+        Assert.Contains("Enumerable.Range(0, 9000)", probe);
+        Assert.Contains("intervals.Count >= 120", probe);
+        Assert.Contains("summary.P95Milliseconds <= 20", probe);
+        Assert.DoesNotContain("Task.Delay(16)", probe);
+        var script = File.ReadAllText(Path.Combine(root, "apps/windows/tests/VoxClip.Core.Tests/Tracks/win-ui/run-transcript-frames.ps1"));
+        Assert.Contains("\\Release\\", script);
+        Assert.All(script, character => Assert.InRange((int)character, 0, 127));
+    }
+
+    [Fact]
     public void HostedDemoAndOrdinarySmokeCannotSucceedWithoutRenderedReports()
     {
         var root = new DirectoryInfo(AppContext.BaseDirectory);

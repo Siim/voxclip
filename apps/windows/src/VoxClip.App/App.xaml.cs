@@ -40,6 +40,13 @@ public partial class App : Application
         window = NewWindow();
         termsHost?.Close();
         termsHost = null;
+        var frameProbeIndex = Array.IndexOf(Program.Arguments, "--transcript-frame-probe");
+        if (frameProbeIndex >= 0 && frameProbeIndex + 1 < Program.Arguments.Length)
+        {
+            await TranscriptFrameProbe.RunAsync(window, Program.Arguments[frameProbeIndex + 1]);
+            Exit();
+            return;
+        }
         if (Program.Instance is { } instance)
             instance.Activated += (_, activation) => window.DispatcherQueue.TryEnqueue(async () =>
             {
