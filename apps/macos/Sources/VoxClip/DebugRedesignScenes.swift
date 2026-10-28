@@ -79,9 +79,12 @@ import VoxClipMedia
         try await scene("live-finding")
         editor.finding = false; shell.selection = .clip(second.id)
         try await scene("live-export-clip", appearance: .aqua) { window in
-            editor.window = window; editor.presentExport(clipIDs: [second.id])
+            editor.window = window
+            guard !editor.mediaExportable else { throw CocoaError(.coderInvalidValue) }
+            editor.exportClipIDs = [second.id]
+            editor.showExport = true
             await DebugConnectorRequests.wait { window.attachedSheet != nil }
-            guard let sheet = window.attachedSheet else { throw CocoaError(.coderInvalidValue) }
+            guard let sheet = window.attachedSheet else { throw VoxClipError.exportFailed("The staged export sheet did not appear.") }
             return sheet
         }
         editor.showExport = false

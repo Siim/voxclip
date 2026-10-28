@@ -1075,6 +1075,10 @@ import ApplicationServices
             try await Task.sleep(for: .milliseconds(200))
             let target = try await beforeCapture?(window) ?? window
             defer { window.close() }
+            if name == "live-editor-full" {
+                guard let layout = editorLayout(in: hosting), layout.transcriptWidth >= 439, layout.previewWidth >= 299 else { throw CocoaError(.coderInvalidValue) }
+                try JSONEncoder().encode(layout).write(to: directory.appendingPathComponent("editor-layout.json"), options: .atomic)
+            }
             try await capture(window: target, name: name, directory: directory)
             return
         }

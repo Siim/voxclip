@@ -1,5 +1,10 @@
 # macOS implementation contracts
 
+### 2026-10-28 — sol-mac-redesign round 7 — N3 scene export presentation
+
+- The abort was not a non-finite Double or JSON encoding: the demo editor correctly rejects `presentExport` because demo media cannot be exported. The scene then threw `CocoaError.coderInvalidValue` for the missing sheet; that error has the same misleading localized format message. Stage the export-sheet presentation explicitly in the DEBUG fixture, retaining the product's demo-export refusal. No encoder filtering or production capability bypass is added.
+- Both native integration gates now validate the same twelve-scene manifest, with only the explicitly owed bundled-blue scene allowed to lack a PNG. Demo-window verification uses the actual full-editor split geometry instead of obsolete demo/settings captures. The native snapshot writes that geometry before capture; all remaining scene and pixel-size assertions stay mandatory.
+
 ### 2026-10-28 — sol-mac-redesign round 7 — N2 Find Clips entry
 
 - Find Clips routing was synchronous, but its no-connector branch opened the sidebar setup callout instead of the popover. Round-six consent/onboarding isolation stopped leaving a connector selected incidentally, exposing that mismatch in both native shortcut checks. Together with N1's initial capability fix, the shortcut and Clip menu now open the existing popover immediately; detection still happens only when it opens, before any request consent.
