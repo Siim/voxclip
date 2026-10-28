@@ -62,7 +62,8 @@ internal sealed class TranscriptOverlay : IDisposable
         bounds.BeginDraw();
         behind.Shapes.Clear();
         above.Shapes.Clear();
-        behind.Size = above.Size = new((float)width, (float)height);
+        behind.Size = above.Size = new((float)width + 4, (float)height + 8);
+        behind.Offset = above.Offset = new(-2, -4, 0);
     }
 
     internal void Word(Run run, bool cut, bool filler, bool lowConfidence, bool corrected, bool ai, bool playing, bool rewrite)
@@ -117,7 +118,7 @@ internal sealed class TranscriptOverlay : IDisposable
     {
         if (rect.Width <= 0 || rect.Height <= 0 || !double.IsFinite(rect.X + rect.Y + rect.Width + rect.Height)) return;
         var geometry = compositor.CreateRoundedRectangleGeometry();
-        geometry.Offset = new((float)rect.X, (float)rect.Y);
+        geometry.Offset = new((float)rect.X + 2, (float)rect.Y + 4);
         geometry.Size = new((float)rect.Width, (float)rect.Height);
         geometry.CornerRadius = new((float)radius);
         var shape = compositor.CreateSpriteShape(geometry);
