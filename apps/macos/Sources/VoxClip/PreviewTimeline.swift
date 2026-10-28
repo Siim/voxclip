@@ -51,18 +51,20 @@ func viewerStageSize(ratio: Double, innerWidth: CGFloat, columnHeight: CGFloat, 
                 }
             }
             .frame(width: size.width, height: size.height)
+            .columnLayoutEvidence("viewer.stage")
             .clipShape(.rect(cornerRadius: 10))
             .frame(maxWidth: .infinity)
             .accessibilityElement(children: .contain)
             .accessibilityLabel(stageLabel)
+            .accessibilityIdentifier("voxclip.viewer.stage")
             viewerRow
             ViewThatFits(in: .horizontal) {
-                HStack(spacing: 8) { frameLabel; framePicker.controlSize(.regular) }.frame(height: 24)
-                HStack(spacing: 8) { frameLabel; framePicker.controlSize(.small) }.frame(height: 24)
+                HStack(spacing: 8) { frameLabel; framePicker.controlSize(.regular) }.frame(height: 24).columnLayoutEvidence("frame.regular")
+                HStack(spacing: 8) { frameLabel; framePicker.controlSize(.small) }.frame(height: 24).columnLayoutEvidence("frame.small")
                 VStack(alignment: .leading, spacing: 6) {
                     frameLabel
                     framePicker.controlSize(.small)
-                }
+                }.columnLayoutEvidence("frame.stacked")
             }
         }
         .padding(VCTokens.spacingPanePaddingMacos)
@@ -95,11 +97,13 @@ func viewerStageSize(ratio: Double, innerWidth: CGFloat, columnHeight: CGFloat, 
         ViewThatFits(in: .horizontal) {
             HStack(spacing: 4) {
                 aiTag
-                playbackTime
-                if model.playbackRate != 1 { Text(" · \(model.playbackRate.formatted())×").font(DesignValues.mono(12)).foregroundStyle(DesignValues.color("text.secondary")).fixedSize() }
+                HStack(spacing: 0) {
+                    playbackTime
+                    if model.playbackRate != 1 { Text(" · \(model.playbackRate.formatted())×").font(DesignValues.mono(12)).foregroundStyle(DesignValues.color("text.secondary")).fixedSize() }
+                }
                 Spacer(minLength: 4)
                 transportButtons
-            }.frame(height: 34)
+            }.frame(height: 34).columnLayoutEvidence("transport.inline")
             VStack(alignment: .leading, spacing: 6) {
                 if hasAI || model.playbackRate != 1 {
                     HStack(spacing: 8) {
@@ -108,7 +112,7 @@ func viewerStageSize(ratio: Double, innerWidth: CGFloat, columnHeight: CGFloat, 
                     }
                 }
                 HStack(spacing: 4) { playbackTime; Spacer(minLength: 4); transportButtons }.frame(height: 34)
-            }
+            }.columnLayoutEvidence("transport.stacked")
         }.buttonStyle(.plain).foregroundStyle(DesignValues.color("text.primary"))
     }
     private var hasAI: Bool { model.voiceLabPlan?.pieces.contains { $0.kind == .synth } == true }

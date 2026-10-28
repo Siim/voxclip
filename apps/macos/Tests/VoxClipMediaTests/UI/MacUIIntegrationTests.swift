@@ -6,6 +6,22 @@ import XCTest
 import Darwin
 
 @Suite("mac-ui", .serialized) struct MacUIIntegrationTests {
+    @Test("Right-column content fits without opening a window") func rightColumnLayout() throws {
+        let directory = try UIProcessHarness.run(mode: "-layoutAudit", name: "layout")
+        defer { UIProcessHarness.cleanTemporary(directory) }
+        let report = try JSONDecoder().decode([UIProcessHarness.Result].self, from: Data(contentsOf: directory.appendingPathComponent("results.json")))
+        #expect(report.count >= 183)
+        for result in report { #expect(result.passed && result.skipped == nil, Comment(rawValue: result.name)) }
+        struct Measurement: Decodable { let width: Double; let minimumWidth: Double; let proposedWidth: Double; let stageWidth: Double; let variant: String; let viewOverflow: [String]; let accessibilityOverflow: [String] }
+        let measurements = try JSONDecoder().decode([Measurement].self, from: Data(contentsOf: directory.appendingPathComponent("right-column-layout.json")))
+        #expect(measurements.count == 60)
+        #expect(Set(measurements.map(\.width)) == [300, 320, 340, 360, 440, 560])
+        for measurement in measurements {
+            #expect(measurement.minimumWidth <= measurement.width + 0.5 && measurement.proposedWidth <= measurement.width + 0.5)
+            #expect(measurement.stageWidth > 0 && measurement.stageWidth <= measurement.width - 31.5)
+            #expect(measurement.viewOverflow.isEmpty && measurement.accessibilityOverflow.isEmpty)
+        }
+    }
     @Test("Saved Voice Lab recipe uses native preview and App export", .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_UI_TESTS"] == "1")) func voiceRecipeWorkflow() async throws {
         let directory = ProcessInfo.processInfo.environment["VOXCLIP_UI_EVIDENCE_DIR"].map { URL(fileURLWithPath: $0).appendingPathComponent("voice") } ?? FileManager.default.temporaryDirectory.appendingPathComponent("voxclip-voice-app-\(UUID().uuidString)")
         defer { UIProcessHarness.cleanTemporary(directory) }
@@ -79,7 +95,7 @@ import Darwin
     }
     private func verifyRedesignScenes(in directory: URL) throws {
         let report = try JSONDecoder().decode([UIProcessHarness.Result].self, from: Data(contentsOf: directory.appendingPathComponent("redesign-scenes.json")))
-        let names = ["live-home", "live-home-empty", "live-dragover", "live-editor-full", "live-editor-clip", "live-editor-1280-blue", "live-compact", "live-selection-bar", "live-suggested", "live-finding", "live-export-clip", "live-rewrite"]
+        let names = ["live-home", "live-home-empty", "live-dragover", "live-editor-full", "live-editor-clip", "live-editor-1280", "live-editor-1280-blue", "live-editor-1180", "live-editor-300", "live-editor-560", "live-editor-960", "live-compact", "live-selection-bar", "live-suggested", "live-finding", "live-export-clip", "live-rewrite"]
         #expect(report.count == names.count)
         for name in names {
             let result = try #require(report.first { $0.name == "native scene \(name)" })
@@ -90,6 +106,20 @@ import Darwin
             #expect(result.passed && result.skipped == nil, Comment(rawValue: name))
             let image = try #require(NSBitmapImageRep(data: Data(contentsOf: directory.appendingPathComponent(name).appendingPathExtension("png"))))
             #expect(image.pixelsWide >= 600 && image.pixelsHigh >= 400)
+            if name != "live-home" && name != "live-home-empty" && name != "live-dragover" {
+                struct Bounds: Decodable { let collapsed: Bool; let column: CGRect; let content: CGRect; let failures: [String]; let elements: [Element] }
+                struct Element: Decodable { let identifier: String; let frame: CGRect }
+                let bounds = try JSONDecoder().decode(Bounds.self, from: Data(contentsOf: directory.appendingPathComponent("\(name)-bounds.json")))
+                #expect(bounds.failures.isEmpty, Comment(rawValue: name))
+                #expect(bounds.collapsed == (name == "live-compact"), Comment(rawValue: name))
+                if name == "live-editor-full" { #expect(abs(bounds.content.width - 1440) <= 1 && abs(bounds.content.height - 900) <= 1 && abs(bounds.column.width - 360) <= 1) }
+                if name == "live-editor-1180" { #expect(abs(bounds.content.width - 1180) <= 1 && abs(bounds.content.height - 800) <= 1 && abs(bounds.column.width - 300) <= 1) }
+                if name == "live-editor-1280" { #expect(!bounds.collapsed && abs(bounds.column.width - 320) <= 1) }
+                if name == "live-editor-300" { #expect(!bounds.collapsed && abs(bounds.column.width - 300) <= 1) }
+                if name == "live-editor-560" { #expect(!bounds.collapsed && abs(bounds.column.width - 560) <= 1) }
+                if name == "live-editor-960" { #expect(!bounds.collapsed && abs(bounds.content.width - 960) <= 1 && abs(bounds.content.height - 600) <= 1) }
+                if !bounds.collapsed { #expect(bounds.elements.contains { $0.identifier == "voxclip.viewer.time" }) }
+            }
         }
     }
     @Test("Native Save As boundary preserves portable media and edits", .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_UI_TESTS"] == "1")) func saveBoundary() throws {

@@ -24,9 +24,15 @@ enum CaptionStyleGroup: String, CaseIterable {
         VStack(alignment: .leading, spacing: 12) {
                 DisclosureGroup(isExpanded: $fineTune) {
                     VStack(alignment: .leading, spacing: 12) {
-                        Picker("Size", selection: Binding(get: { if case .number(let scale) = value("font", "sizeScale") { return scale }; return 1 }, set: { scale in mutate { CaptionFineTuning.size(&$0, scale: scale) } })) { Text("S").tag(0.8); Text("M").tag(1.0); Text("L").tag(1.2); Text("XL").tag(1.45) }.pickerStyle(.segmented)
-                        Picker("Case", selection: overrideString("text", "transform", fallback: style?.text.transform.rawValue ?? "none")) { Text("As said").tag("none"); Text("ALL CAPS").tag("uppercase") }.pickerStyle(.segmented).disabled(style?.text.userOverridable == false)
-                        Picker("Words on screen", selection: Binding(get: { if case .number(let count) = value("layout", "maxWords") { return Int(count) }; return 0 }, set: { count in mutate { CaptionFineTuning.words(&$0, count: count) } })) { Text("1").tag(1); Text("Phrase").tag(0); Text("Line").tag(16) }.pickerStyle(.segmented)
+                        CaptionControlRow("Size") {
+                            Picker("Size", selection: Binding(get: { if case .number(let scale) = value("font", "sizeScale") { return scale }; return 1 }, set: { scale in mutate { CaptionFineTuning.size(&$0, scale: scale) } })) { Text("S").tag(0.8); Text("M").tag(1.0); Text("L").tag(1.2); Text("XL").tag(1.45) }.pickerStyle(.segmented).labelsHidden()
+                        }
+                        CaptionControlRow("Case") {
+                            Picker("Case", selection: overrideString("text", "transform", fallback: style?.text.transform.rawValue ?? "none")) { Text("As said").tag("none"); Text("ALL CAPS").tag("uppercase") }.pickerStyle(.segmented).labelsHidden().disabled(style?.text.userOverridable == false)
+                        }
+                        CaptionControlRow("Words on screen") {
+                            Picker("Words on screen", selection: Binding(get: { if case .number(let count) = value("layout", "maxWords") { return Int(count) }; return 0 }, set: { count in mutate { CaptionFineTuning.words(&$0, count: count) } })) { Text("1").tag(1); Text("Phrase").tag(0); Text("Line").tag(16) }.pickerStyle(.segmented).labelsHidden()
+                        }
                         Toggle("Keep punctuation", isOn: Binding(get: { value("text", "punctuation") == .string("keep") || (value("text", "punctuation") == nil && style?.text.punctuation == .keep) }, set: { setOverride("text", "punctuation", .string($0 ? "keep" : "strip-keep-numeric")) })).disabled(style?.text.userOverridable == false)
                         if style?.accent != nil {
                             HStack {
@@ -40,32 +46,35 @@ enum CaptionStyleGroup: String, CaseIterable {
                                 }
                             }
                         }
-                        Picker("Position", selection: Binding(get: { storedPosition?.y ?? 0.8 }, set: { y in mutate { CaptionFineTuning.position(&$0, aspect: model.captionPreset, point: y == 0.8 ? nil : CaptionPosition(x: 0.5, y: y)) } })) { Text("Top").tag(0.2); Text("Middle").tag(0.5); Text("Bottom").tag(0.8) }.pickerStyle(.segmented).disabled(style?.position.userDraggable == false)
-                        Text("Drag captions on the video to move them.").font(.caption).foregroundStyle(.secondary)
+                        CaptionControlRow("Position") {
+                            Picker("Position", selection: Binding(get: { storedPosition?.y ?? 0.8 }, set: { y in mutate { CaptionFineTuning.position(&$0, aspect: model.captionPreset, point: y == 0.8 ? nil : CaptionPosition(x: 0.5, y: y)) } })) { Text("Top").tag(0.2); Text("Middle").tag(0.5); Text("Bottom").tag(0.8) }.pickerStyle(.segmented).labelsHidden().disabled(style?.position.userDraggable == false)
+                        }
+                        Text("Drag captions on the video to move them.").font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                         Button { mutate { CaptionFineTuning.reset(&$0) } } label: { Text("Reset to Style").underline() }.buttonStyle(.plain).foregroundStyle(DesignValues.accentText).accessibilityLabel("Reset to Style")
                     }.padding(.top, 12)
                 } label: { sectionHeader }
                 .disclosureGroupStyle(CaptionDisclosureStyle())
-            if let error = model.captionError { InlineNotice(text: error) }
+            if let error = model.captionError { InlineNotice(text: error).fixedSize(horizontal: false, vertical: true) }
             gallery
         }
         .padding(16)
+        .accessibilityIdentifier("voxclip.captions")
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
         .tint(Color(nsColor: DesignValues.accentFill))
     }
     private var sectionHeader: some View {
         ViewThatFits(in: .horizontal) {
-            HStack(spacing: 8) { heading; liveChip; styleSummary.fixedSize(horizontal: true, vertical: false); Spacer(minLength: 0); captionsSwitch }
+            HStack(spacing: 8) { heading; liveChip; styleSummary.fixedSize(horizontal: true, vertical: false); Spacer(minLength: 0); captionsSwitch }.columnLayoutEvidence("captions.inline")
             VStack(alignment: .leading, spacing: 8) {
                 HStack { heading; Spacer(); captionsSwitch }
                 HStack(spacing: 8) { liveChip; styleSummary; Spacer(minLength: 0) }
-            }
+            }.columnLayoutEvidence("captions.stacked")
         }
     }
     private var heading: some View { Text("Captions").font(.system(size: 13, weight: .semibold)) }
     private var captionsSwitch: some View {
         Toggle("Captions", isOn: Binding(get: { model.project.captions.styleId != "off" }, set: { model.setCaptionsEnabled($0) }))
-            .labelsHidden().toggleStyle(.switch).controlSize(.small).fixedSize()
+            .labelsHidden().toggleStyle(.switch).controlSize(.small).fixedSize().accessibilityIdentifier("voxclip.captions.switch")
     }
     private var liveChip: some View {
         Group {
@@ -88,7 +97,7 @@ enum CaptionStyleGroup: String, CaseIterable {
                 HStack(spacing: 3) { Image(systemName: fineTune ? "chevron.down" : "chevron.right"); Text(model.captionSummary) }
                     .font(.system(size: 11)).foregroundStyle(DesignValues.color("text.secondary")).lineLimit(1)
             }.buttonStyle(.plain).accessibilityLabel("Fine tune captions, \(model.captionSummary)").accessibilityValue(fineTune ? "Expanded" : "Collapsed")
-        }
+        }.accessibilityElement(children: .contain).accessibilityIdentifier("voxclip.captions.summary")
     }
     private func chipInput(_ style: CaptionStyle) -> CaptionTileInput {
         var input = model.captionTileInput(style)
@@ -115,6 +124,7 @@ enum CaptionStyleGroup: String, CaseIterable {
                 Picker("Caption style", selection: Binding(get: { model.project.captions.styleId }, set: { model.setStyle($0) })) {
                     ForEach(model.app.styles.sorted { $0.order < $1.order }, id: \.id) { Text("\($0.name): \($0.description)").tag($0.id) }
                 }.pickerStyle(.radioGroup)
+                .accessibilityIdentifier("voxclip.captions.gallery")
             }
             .onChange(of: model.activeClip?.id) { _, _ in reader.scrollTo(model.project.captions.styleId, anchor: .top) }
             .overlay(alignment: .bottom) {
@@ -148,6 +158,18 @@ enum CaptionStyleGroup: String, CaseIterable {
     }
     private func overrideNumber(_ group: String, _ key: String, fallback: Double) -> Binding<Double> { Binding(get: { if case .number(let number) = value(group, key) { return number }; return fallback }, set: { setOverride(group, key, .number($0)) }) }
     private func overrideString(_ group: String, _ key: String, fallback: String) -> Binding<String> { Binding(get: { if case .string(let string) = value(group, key) { return string }; return fallback }, set: { setOverride(group, key, .string($0)) }) }
+}
+
+@MainActor private struct CaptionControlRow<Content: View>: View {
+    let title: String
+    @ViewBuilder var content: Content
+    init(_ title: String, @ViewBuilder content: () -> Content) { self.title = title; self.content = content() }
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 8) { Text(title).fixedSize(); content }.columnLayoutEvidence("fineTune.\(title).inline")
+            VStack(alignment: .leading, spacing: 6) { Text(title); content }.columnLayoutEvidence("fineTune.\(title).stacked")
+        }
+    }
 }
 
 private struct CaptionDisclosureStyle: DisclosureGroupStyle {

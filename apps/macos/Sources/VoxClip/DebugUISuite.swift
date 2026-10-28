@@ -830,6 +830,7 @@ import ApplicationServices
             try? Data(detail.utf8).write(to: directory.appendingPathComponent("activation.txt"))
             throw CocoaError(.userCancelled)
         }
+        try DebugColumnBounds.assertBounds(window: window, name: name, directory: directory)
         for attempt in 0..<3 {
             let process = Process()
             process.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
@@ -1079,6 +1080,7 @@ import ApplicationServices
             view.subviews.forEach(prepare)
         }
         prepare(hosting)
+        if !native { try DebugColumnBounds.assertBounds(window: window, name: name, directory: directory) }
         if native {
             guard !sessionLocked else { window.close(); throw CocoaError(.userCancelled) }
             window.center(); window.makeKeyAndOrderFront(nil)

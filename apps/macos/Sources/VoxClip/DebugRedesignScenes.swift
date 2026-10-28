@@ -6,12 +6,12 @@ import VoxClipMedia
 
 @MainActor enum DebugRedesignScenes {
     static let names = ["live-home", "live-home-empty", "live-dragover", "live-editor-full", "live-editor-clip",
-                        "live-editor-1280-blue", "live-compact", "live-selection-bar", "live-suggested", "live-finding",
+                        "live-editor-1280", "live-editor-1280-blue", "live-editor-1180", "live-editor-300", "live-editor-560", "live-editor-960", "live-compact", "live-selection-bar", "live-suggested", "live-finding",
                         "live-export-clip", "live-rewrite"]
     static func checks(app: AppModel) throws -> [DebugUISuite.Result] {
         guard let root = app.shared?.root else { throw VoxClipError.sharedResourcesMissing }
         let project = try DemoEditing.loadFixture(root.appendingPathComponent("fixtures/projects/five-questions.voxclip"))
-        let expected: Set<String> = ["live-home", "live-home-empty", "live-dragover", "live-editor-full", "live-editor-clip", "live-editor-1280-blue", "live-compact", "live-selection-bar", "live-suggested", "live-finding", "live-export-clip", "live-rewrite"]
+        let expected: Set<String> = ["live-home", "live-home-empty", "live-dragover", "live-editor-full", "live-editor-clip", "live-editor-1280", "live-editor-1280-blue", "live-editor-1180", "live-editor-300", "live-editor-560", "live-editor-960", "live-compact", "live-selection-bar", "live-suggested", "live-finding", "live-export-clip", "live-rewrite"]
         return [
             .init(name: "step 18 scene set contains every required name once", passed: Set(names) == expected && names.count == expected.count),
             .init(name: "Five questions has four kept clips and one suggestion", passed: project.edits.clips.filter(\.selected).count == 4 && project.edits.clips.filter { !$0.selected && $0.origin == .ai }.count == 1),
@@ -29,12 +29,14 @@ import VoxClipMedia
         app.connectorOverride = { _ in fake }
         app.set("llm.connector", .string("ollama")); app.set("llm.model.ollama", .string("fixture-local"))
         app.set("voiceLab.enabled", .bool(true))
+        app.settings.values.removeValue(forKey: "ui.rightColumnWidth")
         app.recent = [url]; app.recentProjects.refresh([url])
         let shell = WorkspaceShell(app: app)
         var results: [DebugUISuite.Result] = []
         func scene(_ name: String, size: NSSize = NSSize(width: 1440, height: 900), appearance: NSAppearance.Name = .darkAqua,
                    prepare: (@MainActor (NSWindow) async throws -> NSWindow?)? = nil) async throws {
             guard !DebugUISuite.sessionLocked else { throw CocoaError(.userCancelled) }
+            shell.windowWidth = size.width
             try await DebugUISuite.snapshot(WorkspaceView(shell: shell).environment(app), name: name, size: size,
                 appearance: appearance, directory: directory, active: true, mainWindow: true, native: true, beforeCapture: prepare)
             results.append(.init(name: "native scene \(name)", passed: true))
@@ -55,6 +57,33 @@ import VoxClipMedia
         shell.selection = .clip(second.id); editor.setAspect(.portrait)
         try await scene("live-editor-clip", appearance: .aqua)
         shell.selection = .fullTake; editor.setAspect(.landscape)
+        try await scene("live-editor-1280", size: NSSize(width: 1280, height: 800)) { window in
+            guard let right = DebugColumnBounds.split(in: window.contentView)?.arrangedSubviews.last, abs(right.frame.width - 320) <= 1 else {
+                throw VoxClipError.exportFailed("The 1280 scene must have a 320-point right column.")
+            }
+            return nil
+        }
+        try await scene("live-editor-1180", size: NSSize(width: 1180, height: 800))
+        try await scene("live-editor-300", size: NSSize(width: 1280, height: 800)) { window in
+            try await dragColumn(in: window, to: 300, shell: shell)
+            return nil
+        }
+        app.settings.values.removeValue(forKey: "ui.rightColumnWidth")
+        try await scene("live-editor-560") { window in
+            try await dragColumn(in: window, to: 560, shell: shell)
+            return nil
+        }
+        app.settings.values.removeValue(forKey: "ui.rightColumnWidth")
+        try await scene("live-editor-960", size: NSSize(width: 960, height: 600)) { window in
+            if !shell.viewerVisible { shell.toggleViewer() }
+            await DebugConnectorRequests.wait {
+                guard let split = DebugColumnBounds.split(in: window.contentView), let right = split.arrangedSubviews.last else { return false }
+                return !split.isSubviewCollapsed(right)
+            }
+            guard shell.viewerVisible, shell.columnVisibility == .detailOnly else { throw VoxClipError.exportFailed("Show Viewer at 960 must hide the sidebar.") }
+            return nil
+        }
+        shell.windowWidth = 1440
         if Bundle.main.bundleURL.pathExtension == "app" && UserDefaults.standard.integer(forKey: "AppleAccentColor") == 4 {
             try await scene("live-editor-1280-blue", size: NSSize(width: 1280, height: 800), appearance: .aqua)
         } else {
@@ -103,6 +132,29 @@ import VoxClipMedia
         editor.closeRewrite(returnFocus: false)
         try ProjectJSON.encoder().encode(results).write(to: directory.appendingPathComponent("redesign-scenes.json"), options: .atomic)
         return results
+    }
+    private static func dragColumn(in window: NSWindow, to width: CGFloat, shell: WorkspaceShell) async throws {
+        guard let split = DebugColumnBounds.split(in: window.contentView), split.arrangedSubviews.count == 2 else { throw CocoaError(.coderInvalidValue) }
+        let dividerX = split.arrangedSubviews[0].frame.maxX + split.dividerThickness / 2
+        let targetX = split.bounds.width - width - split.dividerThickness / 2
+        let start = split.convert(NSPoint(x: dividerX, y: split.bounds.midY), to: nil)
+        let end = split.convert(NSPoint(x: targetX, y: split.bounds.midY), to: nil)
+        func event(_ type: NSEvent.EventType, point: NSPoint, sequence: Int) throws -> NSEvent {
+            guard let value = NSEvent.mouseEvent(with: type, location: point, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                windowNumber: window.windowNumber, context: nil, eventNumber: sequence, clickCount: 1, pressure: type == .leftMouseUp ? 0 : 1) else { throw CocoaError(.coderInvalidValue) }
+            return value
+        }
+        let down = try event(.leftMouseDown, point: start, sequence: 1)
+        let dragged = try event(.leftMouseDragged, point: end, sequence: 2)
+        let up = try event(.leftMouseUp, point: end, sequence: 3)
+        NSApp.postEvent(dragged, atStart: false)
+        NSApp.postEvent(up, atStart: false)
+        split.mouseDown(with: down)
+        try await Task.sleep(for: .milliseconds(200))
+        window.contentView?.layoutSubtreeIfNeeded()
+        guard abs(split.arrangedSubviews[1].frame.width - width) <= 1, abs(shell.rightWidth - width) <= 1 else {
+            throw VoxClipError.exportFailed("Divider drag requested \(width), laid out \(split.arrangedSubviews[1].frame.width), remembered \(shell.rightWidth).")
+        }
     }
     private static func transcript(in view: NSView?) -> TranscriptNSTextView? {
         guard let view else { return nil }

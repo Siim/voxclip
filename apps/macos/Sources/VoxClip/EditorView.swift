@@ -466,16 +466,28 @@ struct SubtitleDetail: Equatable {
     @Bindable var model: EditorModel
     var body: some View {
         GeometryReader { geometry in
-          VStack(spacing: 0) {
-            ViewerSection(model: model, columnHeight: geometry.size.height)
+            RightColumnContents(model: model, columnHeight: geometry.size.height)
+                .frame(width: geometry.size.width, height: geometry.size.height, alignment: .topLeading)
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("voxclip.editor.right")
+        }
+    }
+}
+
+@MainActor struct RightColumnContents: View {
+    @Bindable var model: EditorModel
+    var columnHeight: CGFloat
+    var fineTune = false
+    var body: some View {
+        VStack(spacing: 0) {
+            ViewerSection(model: model, columnHeight: columnHeight)
                 .modifier(EditorPaneFocus(model: model, pane: .viewer))
             Divider()
             Group {
                 if let rewrite = model.rewrite { RewritePanel(session: rewrite) }
-                else { CaptionsSection(model: model).modifier(EditorPaneFocus(model: model, pane: .panel)) }
+                else { CaptionsSection(model: model, fineTune: fineTune).modifier(EditorPaneFocus(model: model, pane: .panel)) }
             }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .controlSize(.small)
-          }.frame(width: geometry.size.width, height: geometry.size.height, alignment: .topLeading)
         }
     }
 }
