@@ -222,7 +222,10 @@ extension EditorModel {
     }
 
     func exportRowStatus(_ id: String) -> ClipExportStatus {
-        let target = ExportTarget.clip(id)
+        exportRowStatus(target: .clip(id))
+    }
+
+    func exportRowStatus(target: ExportTarget) -> ClipExportStatus {
         let aspect = project.export.aspect
         let key = ExportLedger.key(target, aspect: aspect)
         if exporting, activeExportKey == key {
@@ -231,12 +234,15 @@ extension EditorModel {
             return .exporting(percent)
         }
         if failedExports[key] != nil { return .failed }
-        guard let entry = app.exportLedger.entry(projectID: project.id, targetID: id, aspect: aspect) else { return .none }
+        guard let entry = app.exportLedger.entry(projectID: project.id, targetID: ExportLedger.targetID(target), aspect: aspect) else { return .none }
         return entry.planFingerprint == (try? ExportFingerprint.value(project, target: target)) ? .exported : .changed
     }
 
     func retryExport(_ id: String) {
-        let target = ExportTarget.clip(id)
+        retryExport(target: .clip(id))
+    }
+
+    func retryExport(target: ExportTarget) {
         guard let folder = failedExports[ExportLedger.key(target, aspect: project.export.aspect)], mediaExportable else { return }
         beginExport(targets: [target], folder: folder)
     }

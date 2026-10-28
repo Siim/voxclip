@@ -133,7 +133,7 @@ import VoxClipCore
 
 /// Full Take: an empty badge column, the take's 36×20 thumbnail, "Full Take" and its
 /// edited length, or the transcription status with Cancel.
-@MainActor private struct FullTakeRow: View {
+@MainActor struct FullTakeRow: View {
     let editor: EditorModel
     var selectedFocused = false
     @Environment(\.controlActiveState) private var activeState
@@ -153,16 +153,29 @@ import VoxClipCore
                     }
                     .font(.system(size: 11)).foregroundStyle(SidebarStyle.meta(emphasized))
                 } else {
-                    Text(SidebarStyle.fullTakeMeta(editor)).font(editor.transcribed ? DesignValues.mono(11) : .system(size: 11)).foregroundStyle(SidebarStyle.meta(emphasized))
+                    HStack(spacing: 4) {
+                        Text(SidebarStyle.fullTakeMeta(editor)).font(editor.transcribed ? DesignValues.mono(11) : .system(size: 11))
+                        if !exportStatus.secondLine && exportStatus != .none { Text(exportStatus.label).font(.system(size: 11)) }
+                    }.foregroundStyle(SidebarStyle.meta(emphasized))
+                    if exportStatus.secondLine {
+                        HStack(spacing: 4) {
+                            Text(exportStatus.label).font(.system(size: 11))
+                            if exportStatus == .failed {
+                                Button("Retry") { editor.retryExport(target: .fullEdit) }.buttonStyle(.plain).font(.system(size: 11))
+                                    .disabled(!editor.canExport)
+                            }
+                        }.foregroundStyle(DesignValues.color("status.warning"))
+                    }
                 }
             }
             Spacer(minLength: 0)
         }
-        .frame(height: 50)
+        .frame(height: exportStatus.secondLine ? 66 : 50)
         .modifier(SidebarRowForeground(emphasized: emphasized))
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(!editor.transcribed && editor.progress == nil ? "Full take, not transcribed" : "Full take, \(SidebarStyle.spokenDuration(editor.editedDuration(nil))) after cuts")
+        .accessibilityLabel((!editor.transcribed && editor.progress == nil ? "Full take, not transcribed" : "Full take, \(SidebarStyle.spokenDuration(editor.editedDuration(nil))) after cuts") + (exportStatus == .none ? "" : ", \(exportStatus.label)"))
     }
+    private var exportStatus: ClipExportStatus { editor.exportRowStatus(target: .fullEdit) }
 }
 
 /// A kept clip or a suggestion: badge, 26×46 thumbnail, title and meta. Suggestions

@@ -19,7 +19,8 @@ actor RegressionExporter: Exporter {
 }
 
 @MainActor enum DebugExport {
-    static func run(app: AppModel, fixture: Project, directory: URL) async throws -> [DebugUISuite.Result] {
+    static func run(app: AppModel, fixture: Project, directory: URL, captures: Bool = true) async throws -> [DebugUISuite.Result] {
+        let appearances: [(String, NSAppearance.Name)] = captures ? [("light", .aqua), ("dark", .darkAqua)] : []
         var project = fixture
         project.captions.styleId = "vox-highlight"
         project.export.aspect = .landscape
@@ -39,7 +40,7 @@ actor RegressionExporter: Exporter {
         var draft = ShareCaptionDraft()
         draft.load(target: clip.id, model: model)
         draft.commit(model: model)
-        try await DebugUISuite.snapshot(ExportSheet(model: model).environment(app), name: "export-clip-result", size: NSSize(width: 668, height: 650), appearance: .aqua, directory: directory)
+        if captures { try await DebugUISuite.snapshot(ExportSheet(model: model).environment(app), name: "export-clip-result", size: NSSize(width: 668, height: 650), appearance: .aqua, directory: directory) }
         let unchanged = model.project.share.captions == project.share.captions && !undo.canUndo && model.exports.count == 1
         draft.edit("Edited clip caption")
         undo.beginUndoGrouping(); draft.commit(model: model); undo.endUndoGrouping()
@@ -50,6 +51,9 @@ actor RegressionExporter: Exporter {
             .init(name: "caption edits commit only to their draft target", passed: scoped && model.project.share.captions == project.share.captions)
         ]
         func check(_ name: String, _ passed: Bool) { results.append(.init(name: name, passed: passed)) }
+        check("This clip scope carries number, title and duration", model.exportScopeLabel(.thisClip, requestedIDs: [clip.id]) == "This clip\nClip 1 · Export fixture · \(timecode(model.editedDuration(clip)))")
+        check("All clips scope carries kept count", model.exportScopeLabel(.allClips) == "All 1 clips")
+        check("Full video scope carries duration", model.exportScopeLabel(.fullVideo) == "Full video · \(timecode(model.editedDuration(nil)))")
         check("successful clip export records Exported", model.exportRowStatus(clip.id) == .exported)
         let reloaded = ExportLedger(file: app.exportLedger.file)
         check("successful export ledger survives reload with its output path", reloaded.entry(projectID: project.id, targetID: clip.id, aspect: project.export.aspect)?.outputPath == model.exports.first?.outputURL.path)
@@ -63,12 +67,27 @@ actor RegressionExporter: Exporter {
         let actualSRT = job?.render.captionLayout.map(CaptionSubtitles.srt)
         check("ledger integration preserves the fixture SRT bytes", expectedSRT?.isEmpty == false && actualSRT == expectedSRT)
         results += try fingerprints(project: project, target: .clip(clip.id))
+        model.beginExport(targets: [.fullEdit], folder: directory)
+        await model.exportTask?.value
+        check("Full Take records successful full-video exports", model.exportRowStatus(target: .fullEdit) == .exported)
+        for (name, appearance) in appearances {
+            try await DebugUISuite.snapshot(FullTakeRow(editor: model), name: "full-take-exported-\(name)", size: NSSize(width: 300, height: 70), appearance: appearance, directory: directory)
+        }
+        model.exporting = true
+        model.activeExportKey = ExportLedger.key(.fullEdit, aspect: model.project.export.aspect)
+        model.exportProgress = ExportProgress(phase: .encoding, fraction: 0.25)
+        check("Full Take shows active full-video progress", model.exportRowStatus(target: .fullEdit) == .exporting(25))
+        model.exporting = false
+        model.failedExports[model.activeExportKey!] = directory
+        check("Full Take shows failure with Retry", model.exportRowStatus(target: .fullEdit) == .failed)
+        model.failedExports = [:]
         undo.beginUndoGrouping()
         model.apply(.cutSelection(ids: [words[1].id]), name: "Cut word")
         undo.endUndoGrouping()
         check("cutting a clip word marks Edited since export", model.exportRowStatus(clip.id) == .changed)
+        check("cutting a word marks Full Take Edited since export", model.exportRowStatus(target: .fullEdit) == .changed)
         let shell = WorkspaceShell(app: app)
-        for (name, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
+        for (name, appearance) in appearances {
             try await DebugUISuite.snapshot(ClipRow(shell: shell, editor: model, clip: clip, suggested: false).padding(.vertical, 4), name: "export-edited-row-\(name)", size: NSSize(width: 270, height: 74), appearance: appearance, directory: directory)
         }
         undo.undo()
@@ -80,7 +99,7 @@ actor RegressionExporter: Exporter {
         withSuggestion.edits.clips.append(ClipRange(id: "not-kept", startWordId: words[0].id, endWordId: words[1].id, origin: .ai, selected: false))
         undo.beginUndoGrouping(); model.replace(withSuggestion, name: "Suggestion fixture"); undo.endUndoGrouping()
         check("All clips includes manual kept clips but excludes suggestions", model.exportTargets(.allClips) == [.clip(clip.id)] && model.exportTargets(.fullVideo) == [.fullEdit])
-        for (name, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
+        for (name, appearance) in appearances {
             try await DebugUISuite.snapshot(ExportSheet(model: model).environment(app), name: "export-scope-\(name)", size: NSSize(width: 668, height: 650), appearance: appearance, directory: directory)
         }
         await exporter.setHold(true)
@@ -88,21 +107,22 @@ actor RegressionExporter: Exporter {
         while await exporter.jobs.count < 2 { await Task.yield() }
         try await Task.sleep(for: .milliseconds(20))
         check("active export drives the row's percentage", model.exportRowStatus(clip.id) == .exporting(25))
-        for (name, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
+        for (name, appearance) in appearances {
             try await DebugUISuite.snapshot(ClipRow(shell: shell, editor: model, clip: clip, suggested: false).padding(.vertical, 4), name: "export-progress-row-\(name)", size: NSSize(width: 270, height: 58), appearance: appearance, directory: directory)
         }
         model.exportTask?.cancel()
         await model.exportTask?.value
         check("cancelling a running export marks the row failed with Retry", model.exportRowStatus(clip.id) == .failed)
-        for (name, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
+        for (name, appearance) in appearances {
             try await DebugUISuite.snapshot(ClipRow(shell: shell, editor: model, clip: clip, suggested: false).padding(.vertical, 4), name: "export-failed-row-\(name)", size: NSSize(width: 270, height: 74), appearance: appearance, directory: directory)
         }
         await exporter.setHold(false)
+        let jobsBeforeRetry = await exporter.jobs.count
         model.retryExport(clip.id)
         await model.exportTask?.value
         let retryCount = await exporter.jobs.count
-        check("Retry runs just the failed clip and restores Exported", retryCount == 3 && model.exportRowStatus(clip.id) == .exported)
-        for (name, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
+        check("Retry runs just the failed clip and restores Exported", retryCount == jobsBeforeRetry + 1 && model.exportRowStatus(clip.id) == .exported)
+        for (name, appearance) in appearances {
             try await DebugUISuite.snapshot(ClipRow(shell: shell, editor: model, clip: clip, suggested: false).padding(.vertical, 4), name: "export-success-row-\(name)", size: NSSize(width: 270, height: 58), appearance: appearance, directory: directory)
         }
         let sidecar = directory.appendingPathComponent("occupied.srt")
@@ -151,7 +171,7 @@ actor RegressionExporter: Exporter {
             let original = try ExportFingerprint.value(snapshot, target: target)
             let changes: [(String, (inout Project) -> Void)] = [
                 ("position", { $0.captions.positionByAspect["16:9"] = CaptionPosition(x: 0.4, y: 0.3) }),
-                ("override", { $0.captions.overrides = .object(["fontSize": .number(72)]) }),
+                ("override", { $0.captions.overrides = ["fontSize": .number(72)] }),
                 ("correction", { $0.edits.corrections[$0.transcript!.words[0].id] = "Changed" }),
                 ("text", { $0.transcript?.words[0].text = "Changed" }),
                 ("language", { $0.transcript?.language = "et" })
