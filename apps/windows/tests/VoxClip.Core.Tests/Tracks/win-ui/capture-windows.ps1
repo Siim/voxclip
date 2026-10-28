@@ -221,8 +221,8 @@ try {
             $checks.Add('Keyboard-selected transcript words made a clip whose pane row is selected, so it is the preview range')
             Use-Control (Find-Control $window 'Play')
             Start-Sleep -Seconds 4
-            $clock = [System.Windows.Automation.AutomationElement]::FromHandle($window).FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition) | Where-Object { $_.Current.Name -match '^Clip ([0-9:.]+) / ([0-9:.]+)$' } | Select-Object -First 1
-            if (-not $clock -or $clock.Current.Name -notmatch '^Clip ([0-9:.]+) / \1$') { throw 'Clip preview did not stop at its scoped duration.' }
+            $clock = [System.Windows.Automation.AutomationElement]::FromHandle($window).FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition) | Where-Object { $_.Current.Name -match '^([0-9:.]+) / ([0-9:.]+)$' } | Select-Object -First 1
+            if (-not $clock -or $clock.Current.Name -notmatch '^([0-9:.]+) / \1$') { throw 'Clip preview did not stop at its scoped duration.' }
             Save-Window 'editor-preview-end' $window
             $checks.Add('Clip preview stops at its local duration')
             $clip.SetFocus()

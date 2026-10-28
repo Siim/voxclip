@@ -8,6 +8,17 @@ namespace VoxClip.Ui.Tests;
 public sealed class StartupCheckTests
 {
     [Fact]
+    public void ScreenshotExerciseChecksTheUnprefixedScopeClockForExactEndTime()
+    {
+        var root = new DirectoryInfo(AppContext.BaseDirectory);
+        while (root is not null && !Directory.Exists(Path.Combine(root.FullName, ".github"))) root = root.Parent;
+        Assert.NotNull(root);
+        var script = File.ReadAllText(Path.Combine(root.FullName, "apps/windows/tests/VoxClip.Core.Tests/Tracks/win-ui/capture-windows.ps1"));
+        Assert.Contains("'^([0-9:.]+) / \\1$'", script);
+        Assert.DoesNotContain("'^Clip ([0-9:.]+)", script);
+    }
+
+    [Fact]
     public void CalloutTipMeasuresTheNewSidebarRowBeforeResolvingItsContainer()
     {
         var root = new DirectoryInfo(AppContext.BaseDirectory);
