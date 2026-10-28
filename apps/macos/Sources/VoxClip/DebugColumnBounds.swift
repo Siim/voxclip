@@ -16,6 +16,8 @@ import VoxClipCore
         let content: CGRect
         let collapsed: Bool
         let elements: [Element]
+        let scrollAreas: [CGRect]
+        let scrolled: [Element]
         /// Right-column descendants without a position or size, as "role label identifier".
         let unmeasured: [String]
         let failures: [String]
@@ -33,7 +35,7 @@ import VoxClipCore
         guard let split = split(in: contentView), let right = split.arrangedSubviews.last else {
             // Home and other non-editor captures have no split. An editor without one would skip every check.
             let failures = containsTranscript(contentView) ? ["The editor is showing but its split view is missing"] : []
-            let evidence = Evidence(editor: false, column: .zero, content: content, collapsed: false, elements: [], unmeasured: [], failures: failures, markers: [:])
+            let evidence = Evidence(editor: false, column: .zero, content: content, collapsed: false, elements: [], scrollAreas: [], scrolled: [], unmeasured: [], failures: failures, markers: [:])
             try JSONEncoder().encode(evidence).write(to: directory.appendingPathComponent("\(name)-bounds.json"), options: .atomic)
             guard failures.isEmpty else { throw VoxClipError.exportFailed("Right-column bounds failed in \(name): \(failures.joined(separator: "; "))") }
             return
@@ -43,6 +45,12 @@ import VoxClipCore
         var failures: [String] = []
         var elements: [Element] = []
         var unmeasured: [String] = []
+        var scrolled: [Element] = []
+        let scrollAreas = collapsed ? [] : DebugRightColumn.scrollViews(in: right).map { screenFrame($0, window: editorWindow) }
+        for viewport in scrollAreas {
+            if !column.insetBy(dx: -0.5, dy: -0.5).contains(viewport) { failures.append("Scroll viewport leaves column: \(viewport)") }
+            if !content.insetBy(dx: -0.5, dy: -0.5).contains(viewport) { failures.append("Scroll viewport leaves window: \(viewport)") }
+        }
         if !collapsed {
             let application = AXUIElementCreateApplication(getpid())
             let windows = attribute(application, kAXWindowsAttribute) as? [AXUIElement] ?? []
@@ -52,22 +60,52 @@ import VoxClipCore
                 guard (attribute($0, kAXIdentifierAttribute) as? String) == "voxclip.editor.right", let frame = element($0)?.frame else { return false }
                 return abs(frame.minX - column.minX) <= 0.5 && abs(frame.width - column.width) <= 0.5
             }) {
-                for item in descendants(root, depth: 0) {
-                    if let measured = element(item) { elements.append(measured); continue }
+                var seen: Set<AXUIElement> = []
+                func visit(_ item: AXUIElement, viewport inheritedViewport: CGRect?, depth: Int) {
+                    guard depth < 48, seen.insert(item).inserted else { return }
                     let role = attribute(item, kAXRoleAttribute) as? String ?? ""
+                    let measured = element(item)
+                    var viewport = inheritedViewport
+                    if role == kAXScrollAreaRole, let frame = measured?.frame {
+                        if !column.insetBy(dx: -0.5, dy: -0.5).contains(frame) || !content.insetBy(dx: -0.5, dy: -0.5).contains(frame) {
+                            failures.append("Accessibility scroll viewport overflow: \(frame)")
+                        }
+                        viewport = frame
+                    } else if measured?.identifier == "voxclip.captions.gallery", viewport == nil {
+                        viewport = scrollAreas.first
+                        if viewport == nil { failures.append("Gallery has no measurable native scroll viewport") }
+                    }
+                    if let measured {
+                        elements.append(measured)
+                        let replacementViewport = measured.identifier == "voxclip.captions.gallery" && inheritedViewport == nil
+                        check(measured, viewport: role == kAXScrollAreaRole || replacementViewport ? nil : viewport)
+                    } else {
                     let label = [kAXDescriptionAttribute, kAXTitleAttribute].compactMap { attribute(item, $0) as? String }.first { !$0.isEmpty } ?? ""
                     let identifier = attribute(item, kAXIdentifierAttribute) as? String ?? ""
                     unmeasured.append("\(role) \(label) \(identifier)")
                     // A named control without a frame can't be bounds-checked, so it fails rather than being dropped.
-                    if [kAXButtonRole, kAXRadioButtonRole, kAXCheckBoxRole].contains(role), !(label + identifier).isEmpty {
+                    if [kAXButtonRole, kAXRadioButtonRole, kAXCheckBoxRole, kAXDisclosureTriangleRole, "AXSwitch"].contains(role), !(label + identifier).isEmpty {
                         failures.append("Unmeasurable control: \(role) \(label) \(identifier)")
                     }
+                    }
+                    let children = attribute(item, kAXChildrenAttribute) as? [AXUIElement] ?? []
+                    for child in children { visit(child, viewport: viewport, depth: depth + 1) }
                 }
+                func check(_ item: Element, viewport: CGRect?) {
+                    let frame = item.frame
+                    guard frame.width > 0 && frame.height > 0 else { return }
+                    if let viewport {
+                        for (name, bounds) in [("Column", column), ("Window", content)] {
+                            if frame.minX < bounds.minX - 0.5 || frame.maxX > bounds.maxX + 0.5 { failures.append("\(name) horizontal overflow: \(item.label) \(item.identifier) \(frame)") }
+                        }
+                        if frame.minY < viewport.minY - 0.5 || frame.maxY > viewport.maxY + 0.5 { scrolled.append(item) }
+                    } else {
+                        if !column.insetBy(dx: -0.5, dy: -0.5).contains(frame) { failures.append("Column overflow: \(item.label) \(item.identifier) \(frame)") }
+                        if !content.insetBy(dx: -0.5, dy: -0.5).contains(frame) { failures.append("Window overflow: \(item.label) \(item.identifier) \(frame)") }
+                    }
+                }
+                visit(root, viewport: nil, depth: 0)
             } else { failures.append("Right-column accessibility root is missing") }
-            for item in elements where item.frame.width > 0 && item.frame.height > 0 {
-                if !column.insetBy(dx: -0.5, dy: -0.5).contains(item.frame) { failures.append("Column overflow: \(item.label) \(item.identifier) \(item.frame)") }
-                if !content.insetBy(dx: -0.5, dy: -0.5).contains(item.frame) { failures.append("Window overflow: \(item.label) \(item.identifier) \(item.frame)") }
-            }
             let identifiers = Set(elements.map(\.identifier))
             let labels = Set(elements.map(\.label))
             for required in ["voxclip.viewer.stage", "voxclip.viewer.time"] where !identifiers.contains(required) { failures.append("Missing \(required)") }
@@ -90,7 +128,7 @@ import VoxClipCore
                 if elements.filter({ $0.role == kAXDisclosureTriangleRole }).count != 1 { failures.append("Captions must have exactly one disclosure control") }
             }
         }
-        let evidence = Evidence(editor: true, column: column, content: content, collapsed: collapsed, elements: elements,
+        let evidence = Evidence(editor: true, column: column, content: content, collapsed: collapsed, elements: elements, scrollAreas: scrollAreas, scrolled: scrolled,
             unmeasured: unmeasured, failures: failures, markers: DebugRightColumn.markers(in: right))
         try JSONEncoder().encode(evidence).write(to: directory.appendingPathComponent("\(name)-bounds.json"), options: .atomic)
         guard failures.isEmpty else { throw VoxClipError.exportFailed("Right-column bounds failed in \(name): \(failures.joined(separator: "; "))") }
