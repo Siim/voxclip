@@ -90,6 +90,7 @@ struct RewriteConnector {
     private(set) var instruction = ""
     private(set) var newWords: String
     private(set) var problem = ""
+    private(set) var readiness: ConnectorStatus?
     private(set) var review: RewriteReview?
     private(set) var quote: VoiceRewriteQuote?
     private(set) var estimate: VoiceLabCostPresentation.Kind?
@@ -154,6 +155,12 @@ struct RewriteConnector {
     private func schedulePreparation() {
         let currentRevision = revision
         preparing = Task { [weak self] in await self?.prepare(revision: currentRevision) }
+    }
+    func detectConnector() async {
+        guard current, let connector else { return }
+        let result = await connector.connector.status()
+        guard !Task.isCancelled, current else { return }
+        readiness = result
     }
     func prepare(revision expected: Int? = nil) async {
         let expected = expected ?? revision

@@ -6,7 +6,7 @@ import VoxClipCore
 @MainActor struct HomeView: View {
     let shell: WorkspaceShell
     @State private var sortByName = false
-    @State private var readiness: ConnectorStatus?
+    private var readiness: ConnectorStatus? { app.detectedConnectorStatus[app.string("llm.connector")] }
     private var app: AppModel { shell.app }
     private static let types = "MOV, MP4, M4V"
     private static let dashedStroke = StrokeStyle(lineWidth: 1.5, dash: [6, 4])
@@ -34,14 +34,6 @@ import VoxClipCore
         .task(id: app.recent) { app.recentProjects.refresh(app.recent) }
         .onChange(of: app.bool("general.showPlaceholderWords", fallback: true)) { app.recentProjects.refresh(app.recent) }
         .onChange(of: app.string("captions.defaultStyleId", fallback: "vox-highlight")) { app.recentProjects.refresh(app.recent) }
-        .task(id: "\(app.string("llm.connector")):\(app.connectorReadinessRevision)") {
-            readiness = nil
-            let id = app.string("llm.connector")
-            guard !id.isEmpty, !AppModel.isTestSession || app.connectorOverride != nil else { return }
-            let status = await app.connector(id).status()
-            guard !Task.isCancelled, id == app.string("llm.connector") else { return }
-            readiness = status
-        }
     }
 
     @ViewBuilder private var notices: some View {

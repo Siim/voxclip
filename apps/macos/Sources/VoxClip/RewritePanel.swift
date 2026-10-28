@@ -16,7 +16,7 @@ import VoxClipCore
         .focusSection()
         .onExitCommand { session.editor.closeRewrite() }
         .onDisappear { approvalTask?.cancel() }
-        .task { instructionFocused = true; await session.prepare() }
+        .task { instructionFocused = true; await session.detectConnector(); await session.prepare() }
         .task(id: session.quote?.id) { if let id = session.quote?.id { session.markEstimateShown(id) } }
         .onChange(of: session.editor.paneFocusRequest) { _, _ in
             if session.editor.focusedPane == .panel { instructionFocused = true }
@@ -116,6 +116,14 @@ import VoxClipCore
                 .accessibilityLabel(session.proposalButton)
             if session.isProposing { ProgressView().controlSize(.small).accessibilityLabel("Rewriting") }
             Text(session.sendLine).font(.system(size: 11)).foregroundStyle(.secondary)
+            if session.connector != nil {
+                HStack {
+                    Text(FindClipsPopover.statusText(session.readiness)).font(.system(size: 11))
+                    if session.readiness != nil && session.readiness != .ready {
+                        Button("Retry") { Task { await session.detectConnector(); await session.prepare() } }
+                    }
+                }
+            }
             if session.connector == nil { Button("Open Settings") { openVoxClipSettings(pane: "ai") } }
             if !session.estimateCopy.isEmpty { Text(session.estimateCopy).font(.system(size: 11)).foregroundStyle(.secondary) }
         }.frame(maxWidth: .infinity, alignment: .leading)

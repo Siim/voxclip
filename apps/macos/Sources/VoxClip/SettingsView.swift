@@ -241,11 +241,7 @@ extension AppModel {
             let candidates = chosen.isEmpty ? paths : [chosen]
             guard let path = candidates.map({ NSString(string: $0).expandingTildeInPath }).first(where: { FileManager.default.isExecutableFile(atPath: $0) }) else { status = "Not found"; return }
             status = "Found \(cli.executable) at \(path.replacingOccurrences(of: FileManager.default.homeDirectoryForCurrentUser.path, with: "~")) · Sign-in status unavailable"
-            let connector = app.connector(provider.id)
-            let connectorStatus = await connector.status()
-            if let stub = connector as? StubLLMConnector, let method = await stub.knownCLIAuthMethod() {
-                app.knownCLIAuthMethods[provider.id + ":" + chosen] = method
-            }
+            let connectorStatus = await app.connectorStatus(provider)
             if connectorStatus == .ready { status += " · Ready" }
         } catch { status = await app.safeError(error) }
     }

@@ -110,25 +110,26 @@ actor RewriteFixtureConnector: LLMConnector {
             _ = await app.connectorStatus(provider)
             _ = await app.connectorStatus(provider)
             let ungranted = await fake.counts()
-            check("\(provider.id) Find Clips opening and Retry perform zero pre-consent probes", ungranted.discoveries == 0)
+            check("\(provider.id) Find Clips opening and Retry detect before consent without requests", ungranted.discoveries == 2 && ungranted.sends == 0)
             app.set("llm.cloudConsent.\(provider.id)", .bool(true))
             let ready = await app.connectorStatus(provider)
             let grantedStatuses = await fake.statuses
-            check("\(provider.id) granted Find Clips probes once", ready == .ready && grantedStatuses == 1)
+            check("\(provider.id) granted Find Clips still detects readiness", ready == .ready && grantedStatuses == 3)
 
             let rewriteFake = RewriteFixtureConnector(id: ConnectorID(rawValue: provider.id)!)
             app.set("llm.cloudConsent.\(provider.id)", .bool(false))
-            let (editor, session) = make(rewriteFake, group: "cli", consent: { app.connectorProbeAllowed(provider) })
+            let (editor, session) = make(rewriteFake, group: "cli", consent: { app.bool("llm.cloudConsent.\(provider.id)") })
             defer { editor.close() }
+            await session.detectConnector(); await session.detectConnector()
             await session.prepare(); await session.prepare()
             let prepared = await rewriteFake.counts()
-            check("\(provider.id) Rewrite opening and estimate Retry perform zero probes", prepared.discoveries == 0)
+            check("\(provider.id) Rewrite opening and Retry detect without sending", prepared.discoveries == 2 && prepared.sends == 0)
             if let quote = session.quote {
                 session.markEstimateShown(quote.id)
                 _ = await session.propose(quote, affirmative: true)
             }
             let denied = await rewriteFake.counts()
-            check("\(provider.id) ungranted Rewrite never probes or sends", denied.discoveries == 0 && denied.sends == 0)
+            check("\(provider.id) declined Rewrite sends nothing after detection", denied.discoveries == 2 && denied.sends == 0)
             app.set("llm.cloudConsent.\(provider.id)", .bool(true))
             await session.prepare()
             if let quote = session.quote {
@@ -136,7 +137,7 @@ actor RewriteFixtureConnector: LLMConnector {
                 _ = await session.propose(quote, affirmative: true)
             }
             let rewriteStatuses = await rewriteFake.statuses
-            check("\(provider.id) granted Rewrite probes once", rewriteStatuses == 1)
+            check("\(provider.id) granted Rewrite request follows explicit detection", rewriteStatuses == 3)
         }
         for entry in [RewriteEntry.selection, .context, .menu, .shortcut, .insertWords] {
             check("release hides Rewrite entry \(entry)", RewriteEntryPolicy.resolve(entry, enabled: true, editable: true, selection: true, internalBuild: false) == .unavailable)

@@ -1,5 +1,11 @@
 # macOS implementation contracts
 
+### 2026-10-28 — sol-mac-redesign round 6 — Explicit connector detection
+
+- ai.md §4.8 on main `c8d5c10d` supersedes round 5's no-pre-consent-probe rule. Detection is allowed when Settings, Find Clips or Rewrite opens, and on Detect, Choose or Retry; requests still require consent. Model refresh remains an explicit Settings action without a sheet.
+- Find Clips restores opening/Retry status checks. Rewrite opens with detection and exposes Retry separately from local estimate preparation; typing and quote refresh do not probe. Settings keeps its explicit detection paths. The fake opening/Retry regressions assert detection occurs without sending requests.
+- Audited production status/models call sites, AppModel startup/readiness invalidation, sleeps and timers. Removed Home's appearance/readiness-revision status task: Home now reads previously detected status only. Startup/readiness invalidation has no connector call; its delayed task checks application updates, not connectors. Playback/waveform/debounce tasks are unrelated. No connector refresh timer remains.
+
 ### 2026-10-28 — sol-followups-9 round 2 — Final caption box paints
 
 - Supersedes round 1's style-level adjustment above. Captions §2.3 now runs once in the Core timeline after §10.2 precedence, including palette and emphasis paints. Swift chooses in `CaptionTimeline.fill`; C# in `CaptionTimeline.Paint`. Style resolution preserves the original paints. Preview, gallery, sidebar cards, export and CLI all reach the timeline; the sidebar's pre-layout plate removal is unchanged, and no surface bypass or renderer special case was found.

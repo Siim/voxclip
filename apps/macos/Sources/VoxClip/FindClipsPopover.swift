@@ -22,9 +22,12 @@ import VoxClipCore
                     Text("Connector").foregroundStyle(DesignValues.color("text.secondary"))
                     Text("\(connector.label) ·")
                     Text("●").foregroundStyle(DesignValues.color(status == .ready ? "status.success" : "status.warning")).accessibilityHidden(true)
-                    Text(model.app.connectorProbeAllowed(connector) ? Self.statusText(status) : "Not checked")
+                    Text(Self.statusText(status))
                     Spacer(minLength: 8)
                     Button("Change…") { model.showFindClips = false; openVoxClipSettings(pane: "ai") }.buttonStyle(.borderless).foregroundStyle(DesignValues.accentText)
+                    if status != nil && status != .ready {
+                        Button("Retry") { Task { status = await model.app.connectorStatus(connector) } }
+                    }
                 }
                 .font(.callout)
                 .accessibilityElement(children: .combine)
