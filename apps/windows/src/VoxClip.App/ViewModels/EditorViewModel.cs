@@ -109,7 +109,7 @@ public sealed class EditorViewModel : ObservableObject
         this.reduce = reduce ?? EditingEngine.Reduce;
         this.summarize = summarize ?? EditingEngine.Summarize;
         this.now = now ?? (() => DateTimeOffset.UtcNow);
-        LlmRuns.Changed += (_, _) => { OnPropertyChanged(nameof(Busy)); OnPropertyChanged(nameof(CanExport)); };
+        LlmRuns.Changed += (_, _) => { OnPropertyChanged(nameof(Busy)); OnPropertyChanged(nameof(CanFindClips)); OnPropertyChanged(nameof(CanExport)); };
         InitializeState();
         Refresh();
     }
@@ -127,12 +127,14 @@ public sealed class EditorViewModel : ObservableObject
     {
         CaptionDrag.Cancel();
         isLeaving = true;
+        OnPropertyChanged(nameof(CanFindClips));
         Notice = "Saving this project before leaving. Editing is paused.";
         OnPropertyChanged(nameof(CanExport));
     }
     internal void ResumeEditing()
     {
         isLeaving = false;
+        OnPropertyChanged(nameof(CanFindClips));
         OnPropertyChanged(nameof(CanExport));
     }
     internal Project ScopedProject(EditState? renderState)
@@ -161,7 +163,8 @@ public sealed class EditorViewModel : ObservableObject
     /// <summary>Edited length of the whole take, whatever clip is active; the Full take row's duration.</summary>
     public double FullTakeDuration { get; private set; }
     public string Notice { get => notice; set => SetProperty(ref notice, value); }
-    public bool Busy { get => busy || LlmRuns.IsBusy; set { if (SetProperty(ref busy, value)) OnPropertyChanged(nameof(CanExport)); } }
+    public bool Busy { get => busy || LlmRuns.IsBusy; set { if (SetProperty(ref busy, value)) { OnPropertyChanged(nameof(CanFindClips)); OnPropertyChanged(nameof(CanExport)); } } }
+    public bool CanFindClips => HasTranscript && !Busy && !IsLeaving;
     public bool HasTranscript => state is not null;
     public bool CanExport => !Busy && !isLeaving && !IsReadOnly && Summary.CanExport;
     /// <summary>Why Export can't run for <paramref name="clipId"/>'s scope (null is Full take), or null when it can. The Export
@@ -575,7 +578,7 @@ public sealed class EditorViewModel : ObservableObject
         }
         else { FullTakeDuration = project.Media.Source.DurationSeconds; SummaryLine = ""; SummaryTooltip = ""; }
         RefreshExportRows();
-        foreach (var name in new[] { nameof(Project), nameof(State), nameof(Summary), nameof(SummaryLine), nameof(SummaryTooltip), nameof(KeptClips), nameof(SuggestedClips), nameof(FillerLabel), nameof(CanExport), nameof(CanUndo), nameof(CanRedo), nameof(HasTranscript), nameof(FullTakeDuration) }) OnPropertyChanged(name);
+        foreach (var name in new[] { nameof(Project), nameof(State), nameof(Summary), nameof(SummaryLine), nameof(SummaryTooltip), nameof(KeptClips), nameof(SuggestedClips), nameof(FillerLabel), nameof(CanExport), nameof(CanFindClips), nameof(CanUndo), nameof(CanRedo), nameof(HasTranscript), nameof(FullTakeDuration) }) OnPropertyChanged(name);
         Changed?.Invoke(this, EventArgs.Empty);
     }
 }

@@ -372,6 +372,7 @@ public sealed class RewritePanelTests
         {
             var pending = session.ProposeAsync(action, true);
             Assert.True(editor.Busy);
+            AssertFindEntries(editor, false, true);
             Assert.Null(editor.LlmRuns.TryAcquire());
             Assert.False(session.CanPropose);
             session.Dispose();
@@ -383,6 +384,7 @@ public sealed class RewritePanelTests
             {
                 Assert.NotNull(findRun);
                 Assert.True(editor.Busy);
+                AssertFindEntries(editor, false, true);
                 Assert.False(session.CanPropose);
                 Assert.False(await session.ProposeAsync(action, true));
                 Assert.Empty(fake.Calls);
@@ -390,12 +392,31 @@ public sealed class RewritePanelTests
             Assert.True(session.CanPropose);
         }
         Assert.False(editor.Busy);
+        AssertFindEntries(editor, true, false);
         using var next = editor.LlmRuns.TryAcquire();
         Assert.NotNull(next);
         var source = Path.Combine(Path.GetDirectoryName(Shared)!, "apps", "windows", "src", "VoxClip.App", "Controls", "FindClipsFlyout.cs");
         var find = File.ReadAllText(source);
         Assert.Contains("using var run = model.LlmRuns.TryAcquire()", find);
         Assert.True(find.IndexOf("model.LlmRuns.TryAcquire()", StringComparison.Ordinal) < find.IndexOf("await ChosenAsync()", find.IndexOf("private async Task FindAsync()", StringComparison.Ordinal), StringComparison.Ordinal));
+    }
+
+    private static void AssertFindEntries(EditorViewModel editor, bool enabled, bool busy)
+    {
+        Assert.Equal(enabled, editor.CanFindClips);
+        var shell = new ShellViewModel { NoneFound = "No clips found.", Callout = new("Try again", "", "Retry") };
+        shell.Update(editor, false, [], null);
+        var action = shell.Rows.Single(row => row.Key == "action:find");
+        Assert.Equal(enabled, action.IsEnabled);
+        Assert.Equal(busy, action.IsLlmBusy);
+        Assert.Equal(enabled, shell.Rows.Single(row => row.Kind == SidebarKind.NoneFound).Edits);
+        Assert.Equal(enabled, shell.Rows.Single(row => row.Kind == SidebarKind.Callout).IsEnabled);
+        var app = Path.Combine(Path.GetDirectoryName(Shared)!, "apps/windows/src/VoxClip.App");
+        var page = File.ReadAllText(Path.Combine(app, "Pages/EditorPage.xaml.cs"));
+        Assert.Contains("FindClipsCommand.IsEnabled = ViewModel.CanFindClips", page);
+        Assert.Contains("FindClipsBusy.IsActive = ViewModel.LlmRuns.IsBusy", page);
+        Assert.Contains("!ViewModel.Busy && !ViewModel.IsLeaving", page);
+        Assert.Contains("IsActive=\"{x:Bind IsLlmBusy, Mode=OneWay}\"", File.ReadAllText(Path.Combine(app, "MainWindow.xaml")));
     }
 
     [Fact]

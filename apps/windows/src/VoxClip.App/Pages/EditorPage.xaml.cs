@@ -107,7 +107,11 @@ public sealed partial class EditorPage : Page
         Transcript.PreviewCutRequested += (_, _) => _ = RunAsync(PreviewCutAsync, "Preview");
         Timeline.SeekRequested += (_, time) => _ = RunAsync(() => SeekSourceAsync(time), "Preview");
         Timeline.PlayRequested += (_, _) => _ = RunAsync(TogglePlaybackAsync, "Preview");
-        ViewModel.PropertyChanged += (_, args) => { if (args.PropertyName == nameof(EditorViewModel.CanExport)) UpdateExport(); };
+        ViewModel.PropertyChanged += (_, args) =>
+        {
+            if (args.PropertyName == nameof(EditorViewModel.CanExport)) UpdateExport();
+            if (args.PropertyName is nameof(EditorViewModel.Busy) or nameof(EditorViewModel.CanFindClips)) UpdateFindClips();
+        };
         Untranscribed.Visibility = ViewModel.HasTranscript ? Visibility.Collapsed : Visibility.Visible;
         UpdateFindClips();
         Bindings.Update();
@@ -277,9 +281,13 @@ public sealed partial class EditorPage : Page
     {
         MakeClipCommand.IsEnabled = ViewModel.HasSelection;
         PreviewCutCommand.IsEnabled = ViewModel.CanPreviewCut;
-        RewriteCommand.Visibility = RewriteEntryPolicy.BuildEnabled ? Visibility.Visible : Visibility.Collapsed;
-        RewriteCommand.IsEnabled = !App.Services.Get("voiceLab.enabled", false) || Transcript.CanRewrite;
+        UpdateRewriteCommand();
         if (ready && ViewModel.IsReadOnly) pendingStandIn = RenderUnavailableCaptionsAsync();
+    }
+    private void UpdateRewriteCommand()
+    {
+        RewriteCommand.Visibility = RewriteEntryPolicy.BuildEnabled ? Visibility.Visible : Visibility.Collapsed;
+        RewriteCommand.IsEnabled = !ViewModel.Busy && !ViewModel.IsLeaving && (!App.Services.Get("voiceLab.enabled", false) || Transcript.CanRewrite);
     }
     private async Task RenderUnavailableCaptionsAsync()
     {
@@ -557,7 +565,10 @@ public sealed partial class EditorPage : Page
     /// <summary>Find clips needs a transcript; the pane actions carry the same reason (design §7.1).</summary>
     private void UpdateFindClips()
     {
-        FindClipsCommand.IsEnabled = ViewModel.HasTranscript;
+        FindClipsCommand.IsEnabled = ViewModel.CanFindClips;
+        FindClipsBusy.IsActive = ViewModel.LlmRuns.IsBusy;
+        FindClipsBusyHost.Visibility = ViewModel.LlmRuns.IsBusy ? Visibility.Visible : Visibility.Collapsed;
+        UpdateRewriteCommand();
         ToolTipService.SetToolTip(FindClipsCommand, ViewModel.HasTranscript ? "Find clips (Ctrl+Shift+K)" : ShellViewModel.TranscribeFirst);
     }
     /// <summary>Home pauses playback and keeps this page alive; design §2.</summary>

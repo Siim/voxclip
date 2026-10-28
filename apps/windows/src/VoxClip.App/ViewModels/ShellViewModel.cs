@@ -21,6 +21,7 @@ public sealed class SidebarRow(SidebarKind kind, string key) : ObservableObject
     private string toolTip = "";
     private bool isActive;
     private bool isEnabled = true;
+    private bool isLlmBusy;
     private bool edits = true;
     private MediaTile? media;
     private bool showsKeepAll;
@@ -73,6 +74,7 @@ public sealed class SidebarRow(SidebarKind kind, string key) : ObservableObject
     public bool IsActive { get => isActive; set { if (SetProperty(ref isActive, value)) OnPropertyChanged(nameof(IsNeutral)); } }
     public bool IsNeutral => !isActive;
     public bool IsEnabled { get => isEnabled; set => SetProperty(ref isEnabled, value); }
+    public bool IsLlmBusy { get => isLlmBusy; set => SetProperty(ref isLlmBusy, value); }
     /// <summary>Whether the row's commands act on the open project: Keep, Dismiss, Rename, Remove, Export clip…, Keep all and
     /// Find clips…. False while Home shows, where the project's rows only navigate, because the editor they would act on
     /// is hidden (design §2). The window disables the commands and ignores any key that still reaches them.</summary>
@@ -200,7 +202,7 @@ public sealed class ShellViewModel
                 var none = Row(SidebarKind.NoneFound, "nonefound");
                 none.Title = message;
                 none.AccessibleName = message;
-                none.Edits = !showingHome;
+                none.Edits = !showingHome && editor.CanFindClips;
                 next.Add(none);
             }
             if (!showingHome)
@@ -218,7 +220,8 @@ public sealed class ShellViewModel
                 find.Detail = "Ctrl+Shift+K";
                 find.ToolTip = editor.HasTranscript ? "Find clips with AI (Ctrl+Shift+K)" : TranscribeFirst;
                 find.AccessibleName = "Find clips with AI";
-                find.IsEnabled = editor.HasTranscript && !editor.Busy && !editor.IsLeaving;
+                find.IsEnabled = editor.CanFindClips;
+                find.IsLlmBusy = editor.LlmRuns.IsBusy;
                 next.Add(find);
                 if (Callout is { } callout)
                 {
@@ -227,6 +230,7 @@ public sealed class ShellViewModel
                     row.Detail = callout.Message;
                     row.Action = callout.Action;
                     row.AccessibleName = $"{callout.Title} {callout.Message}".Trim();
+                    row.IsEnabled = callout.Action != "Retry" || editor.CanFindClips;
                     next.Add(row);
                 }
             }

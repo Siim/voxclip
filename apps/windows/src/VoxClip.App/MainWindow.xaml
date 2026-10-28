@@ -186,7 +186,7 @@
             <DataTemplate x:Key="CalloutRow" x:DataType="vm:SidebarRow">
                 <NavigationViewItemHeader Style="{StaticResource SidebarHeaderStyle}" AutomationProperties.Name="{x:Bind AccessibleName, Mode=OneWay}">
                     <InfoBar IsOpen="True" Severity="Informational" Title="{x:Bind Title, Mode=OneWay}" Message="{x:Bind Detail, Mode=OneWay}" CloseButtonClick="CalloutClosed">
-                        <InfoBar.ActionButton><Button Content="{x:Bind Action, Mode=OneWay}" Click="CalloutActionClicked" Visibility="{x:Bind HasAction, Mode=OneWay}"/></InfoBar.ActionButton>
+                        <InfoBar.ActionButton><Button Content="{x:Bind Action, Mode=OneWay}" Click="CalloutActionClicked" IsEnabled="{x:Bind IsEnabled, Mode=OneWay}" Visibility="{x:Bind HasAction, Mode=OneWay}"/></InfoBar.ActionButton>
                     </InfoBar>
                 </NavigationViewItemHeader>
             </DataTemplate>
@@ -194,10 +194,11 @@
             <DataTemplate x:Key="ActionRow" x:DataType="vm:SidebarRow">
                 <NavigationViewItem SelectsOnInvoked="False" IsEnabled="{x:Bind IsEnabled, Mode=OneWay}" AutomationProperties.Name="{x:Bind AccessibleName, Mode=OneWay}" AutomationProperties.AcceleratorKey="{x:Bind Detail, Mode=OneWay}"
                     AutomationProperties.HelpText="{x:Bind ToolTip, Mode=OneWay}" ToolTipService.ToolTip="{x:Bind ToolTip, Mode=OneWay}">
-                    <Grid ColumnSpacing="8">
-                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                        <TextBlock Text="{x:Bind Title, Mode=OneWay}" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"/>
-                        <TextBlock Grid.Column="1" Text="{x:Bind Detail, Mode=OneWay}" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center"/>
+                    <Grid>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                        <ProgressRing Width="16" Height="16" Margin="0,0,8,0" Foreground="{ThemeResource VcAccentTextBrush}" IsActive="{x:Bind IsLlmBusy, Mode=OneWay}" Visibility="{x:Bind IsLlmBusy, Mode=OneWay}" AutomationProperties.Name="Finish the current task first."/>
+                        <TextBlock Grid.Column="1" Margin="0,0,8,0" Text="{x:Bind Title, Mode=OneWay}" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"/>
+                        <TextBlock Grid.Column="2" Text="{x:Bind Detail, Mode=OneWay}" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center"/>
                     </Grid>
                     <NavigationViewItem.Icon><FontIcon Glyph="{x:Bind controls:SidebarItems.ActionGlyph(Key)}"/></NavigationViewItem.Icon>
                 </NavigationViewItem>

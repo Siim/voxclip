@@ -51,6 +51,9 @@
                 <AppBarButton x:Name="FindClipsCommand" Label="Find clips" Click="FindClipsClicked" ToolTipService.ToolTip="Find clips (Ctrl+Shift+K)" DynamicOverflowOrder="4">
                     <AppBarButton.Icon><FontIcon Glyph="&#xE721;"/></AppBarButton.Icon>
                 </AppBarButton>
+                <AppBarElementContainer x:Name="FindClipsBusyHost" Visibility="Collapsed">
+                    <ProgressRing x:Name="FindClipsBusy" Width="16" Height="16" Margin="4,0" IsActive="False" Foreground="{ThemeResource VcAccentTextBrush}" AutomationProperties.Name="Finish the current task first."/>
+                </AppBarElementContainer>
                 <AppBarToggleButton x:Name="Viewer" Icon="OpenPane" Label="Viewer" IsChecked="True" Click="ViewerClicked" ToolTipService.ToolTip="Show or hide the viewer (Ctrl+Shift+I)" DynamicOverflowOrder="5"/>
                 <CommandBar.SecondaryCommands>
                     <AppBarButton x:Name="MakeClipCommand" Label="Make clip" KeyboardAcceleratorTextOverride="Ctrl+K" IsEnabled="False" Click="MakeClipClicked"/>
