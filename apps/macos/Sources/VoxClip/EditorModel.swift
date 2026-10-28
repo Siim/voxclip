@@ -105,7 +105,7 @@ struct EditorRenderSnapshot {
         guard capabilities.edit, project == snapshot, rewriteConnectorSignature == signature else { return false }
         if provider.privacy != "thirdPartyCloud" || app.bool("llm.cloudConsent.\(provider.id)") { return true }
         guard let window else { return false }
-        let copy = provider.cliConsentCopy ?? "Rewrite sends these \(rewrite?.source.filter { $0.kind == .word }.count ?? 0) words (no audio or video) to \(provider.label) using your API key."
+        let copy = app.consentCopy(provider, action: .rewrite, wordCount: rewrite?.source.filter { $0.kind == .word }.count ?? 0)
         let approved = await RewriteApprovalSheet(title: "Rewrite", copy: copy, parent: window).confirm()
         guard approved, !Task.isCancelled, capabilities.edit, project == snapshot,
               rewriteConnectorSignature == signature, rewrite?.isOpen == true else { return false }
@@ -1116,8 +1116,7 @@ extension EditorModel {
         }
         if provider.privacy == "thirdPartyCloud" && !app.bool("llm.cloudConsent.\(provider.id)") {
             let alert = NSAlert(); alert.messageText = "Find clips"
-            if let copy = provider.cliConsentCopy { alert.informativeText = copy }
-            else { alert.informativeText = "Find clips sends this project's transcript (\(words.count) words, no audio or video) to \(provider.label) using your API key." }
+            alert.informativeText = app.consentCopy(provider, action: .findClips, wordCount: words.count)
             alert.addButton(withTitle: "Continue"); alert.addButton(withTitle: "Cancel")
             guard alert.runModal() == .alertFirstButtonReturn else { return }
             app.set("llm.cloudConsent.\(provider.id)", .bool(true))

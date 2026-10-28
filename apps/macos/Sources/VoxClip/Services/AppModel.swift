@@ -27,11 +27,25 @@ protocol ProviderKeyStore: Sendable {
     func save(_ value: String, for provider: String) async throws
 }
 extension SecretStore: ProviderKeyStore {}
+enum ConnectorConsentAction { case findClips, rewrite }
 extension ProviderChoice {
     var cliConsentCopy: String? {
-        if id == "claude-code" { return "VoxClip will run your installed Claude Code with your own sign-in. The transcript is sent to Anthropic and counts toward your Claude plan's usage." }
-        if id == "codex" { return "VoxClip will run your installed Codex with your own sign-in. The transcript is sent to OpenAI and counts toward your ChatGPT plan's usage." }
-        return nil
+        group == "cli" ? consentCopy(action: .findClips, wordCount: 0) : nil
+    }
+    func consentCopy(action: ConnectorConsentAction, wordCount: Int, authMethod: String? = nil) -> String {
+        if id == "claude-code" || id == "codex" {
+            let name = id == "claude-code" ? "Claude Code" : "Codex"
+            let vendor = id == "claude-code" ? "Anthropic" : "OpenAI"
+            let plan = id == "claude-code" ? "Claude" : "ChatGPT"
+            let subject = action == .rewrite ? "These words are sent" : "The transcript is sent"
+            let key = authMethod?.lowercased().replacingOccurrences(of: "-", with: "_")
+            let billing: String
+            if key == "api_key" || key == "apikey" { billing = "and billed to the API key \(name) is signed in with." }
+            else { billing = "and \(action == .rewrite ? "count" : "counts") toward your \(plan) plan's usage." }
+            return "VoxClip will run your installed \(name) with your own sign-in. \(subject) to \(vendor) \(billing)"
+        }
+        if action == .rewrite { return "Rewrite sends these \(wordCount) words (no audio or video) to \(label) using your API key." }
+        return "Find clips sends this project's transcript (\(wordCount) words, no audio or video) to \(label) using your API key."
     }
 }
 
@@ -110,6 +124,10 @@ extension ProviderChoice {
     private(set) var pauseBreathRevision = 0
     private(set) var connectorReadinessRevision = 0
     var providerStatus: [String: String] = [:]
+    var knownCLIAuthMethods: [String: String] = [:]
+    func consentCopy(_ provider: ProviderChoice, action: ConnectorConsentAction, wordCount: Int) -> String {
+        provider.consentCopy(action: action, wordCount: wordCount, authMethod: knownCLIAuthMethods[provider.id + ":" + string("llm.cliPath.\(provider.id)")])
+    }
     var openProjectKeys: [String: String] = [:]
     let log: RedactingLogger
     let secrets: SecretStore

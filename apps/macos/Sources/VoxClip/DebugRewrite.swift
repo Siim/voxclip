@@ -39,6 +39,26 @@ actor RewriteFixtureConnector: LLMConnector {
     static func run(app: AppModel, fixture: Project, directory: URL) async throws -> [DebugUISuite.Result] {
         var results: [DebugUISuite.Result] = []
         func check(_ name: String, _ passed: Bool) { results.append(.init(name: name, passed: passed)) }
+        for action in [ConnectorConsentAction.findClips, .rewrite] {
+            for provider in app.providers.filter({ ["anthropic", "claude-code", "codex"].contains($0.id) }) {
+                for method in ["plan", "api_key"] {
+                    let actual = provider.consentCopy(action: action, wordCount: 7, authMethod: method)
+                    let expected: String
+                    if provider.group == "apiKey" {
+                        expected = action == .rewrite ? "Rewrite sends these 7 words (no audio or video) to \(provider.label) using your API key." : "Find clips sends this project's transcript (7 words, no audio or video) to \(provider.label) using your API key."
+                    } else {
+                        let name = provider.id == "claude-code" ? "Claude Code" : "Codex"
+                        let vendor = provider.id == "claude-code" ? "Anthropic" : "OpenAI"
+                        let plan = provider.id == "claude-code" ? "Claude" : "ChatGPT"
+                        let first = "VoxClip will run your installed \(name) with your own sign-in. "
+                        let second = action == .rewrite ? "These words are sent to \(vendor) " : "The transcript is sent to \(vendor) "
+                        let billing = method == "api_key" ? "and billed to the API key \(name) is signed in with." : "and \(action == .rewrite ? "count" : "counts") toward your \(plan) plan's usage."
+                        expected = first + second + billing
+                    }
+                    check("\(provider.id) \(action) \(method) exact action-specific consent", actual == expected)
+                }
+            }
+        }
         let previousVoiceLab = app.bool("voiceLab.enabled")
         defer { app.set("voiceLab.enabled", .bool(previousVoiceLab)) }
         app.set("voiceLab.enabled", .bool(true))
