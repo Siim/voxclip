@@ -47,9 +47,7 @@ try {
     if ($desktop -eq [IntPtr]::Zero -or -not [Environment]::UserInteractive) {
         $observed.status = 'not runnable'
         $observed.reason = 'This process has no interactive input desktop. The owned VM pre-merge launch gate is required.'
-        if (-not $Hosted) { throw $observed.reason }
-        Write-Warning $observed.reason
-        return
+        throw $observed.reason
     }
     $env:VOXCLIP_DATA_DIR = Join-Path $evidence 'data'
     $env:VOXCLIP_SHARED_DIR = Join-Path $root 'shared'

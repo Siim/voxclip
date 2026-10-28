@@ -452,8 +452,12 @@ jobs:
           try {
             & apps/windows/tests/VoxClip.Core.Tests/Tracks/win-ui/launch-smoke.ps1 -Root $PWD.Path -EvidenceDir $evidence -RuntimeIdentifier win-x64 -Hosted
             & apps/windows/tests/VoxClip.Core.Tests/Tracks/win-ui/launch-smoke.ps1 -Root $PWD.Path -EvidenceDir (Join-Path $evidence 'ordinary') -RuntimeIdentifier win-x64 -Hosted -OrdinaryOpen
+            foreach ($report in @((Join-Path $evidence 'observed-self-check.json'), (Join-Path $evidence 'ordinary/observed-self-check.json'))) {
+              $observed = Get-Content -LiteralPath $report -Raw | ConvertFrom-Json
+              if ($observed.status -ne 'ok' -or -not $observed.rootLoaded -or -not $observed.rendered) { throw "Editor launch smoke did not pass: $report" }
+            }
           } finally {
-            Get-ChildItem $evidence -Filter '*self-check.json' | ForEach-Object { Get-Content $_.FullName }
+            Get-ChildItem $evidence -Recurse -Filter '*self-check.json' | ForEach-Object { Get-Content $_.FullName }
           }
 
       - name: Upload the Editor launch smoke evidence
