@@ -67,6 +67,7 @@ public sealed class VoiceLabWindowTests
         Assert.True(Code(failure.Code) == error.GetString(), $"{name}: {failure.Code}");
         Assert.True(failure.WordId == (expected.TryGetProperty("wordId", out var id) ? id.GetString() : null), name);
         Assert.True(failure.Incoming == (expected.TryGetProperty("incoming", out var incoming) ? (bool?)incoming.GetBoolean() : null), name);
+        Assert.True(failure.TakeEdgeIsStart == (expected.TryGetProperty("takeEdgeIsStart", out var edge) ? (bool?)edge.GetBoolean() : null), name);
         Assert.True(failure.Needed == (expected.TryGetProperty("needed", out var needed) ? (long?)needed.GetInt64() : null), name);
         Assert.True(failure.Available == (expected.TryGetProperty("available", out var available) ? (long?)available.GetInt64() : null), name);
         Assert.True(failure.SegmentId == (expected.TryGetProperty("segmentId", out var segment) ? segment.GetString() : null), name);
@@ -115,6 +116,7 @@ public sealed class VoiceLabWindowTests
             Scope(input), Envelope(input.GetProperty("envelope")), Text(input, "firstWordId"), Text(input, "lastWordId")));
         Assert.Equal(VoiceLabGeometryErrorCode.SeamFadeOutsideTake, failure.Code);
         Assert.Equal(start, failure.TakeEdgeIsStart);
+        Assert.Equal(start, test.GetProperty("expected").GetProperty("takeEdgeIsStart").GetBoolean());
         Assert.Null(failure.Incoming);
     }
 
