@@ -43,6 +43,17 @@ internal static class TranscriptNativeProbe
             var bitmap = new RenderTargetBitmap();
             await bitmap.RenderAsync(transcript, 1560, 600);
             var pixels = (await bitmap.GetPixelsAsync()).ToArray();
+            if (Environment.GetEnvironmentVariable("VOXCLIP_UI_EVIDENCE_DIR") is { Length: > 0 } evidence)
+            {
+                Directory.CreateDirectory(evidence);
+                await File.WriteAllTextAsync(Path.Combine(evidence, "transcript-geometry.json"),
+                    System.Text.Json.JsonSerializer.Serialize(transcript.DebugGeometry, new System.Text.Json.JsonSerializerOptions { WriteIndented = true, IncludeFields = true }));
+                using var stream = File.Create(Path.Combine(evidence, "transcript-raster.png"));
+                var encoder = await Windows.Graphics.Imaging.BitmapEncoder.CreateAsync(Windows.Graphics.Imaging.BitmapEncoder.PngEncoderId, stream.AsRandomAccessStream());
+                encoder.SetPixelData(Windows.Graphics.Imaging.BitmapPixelFormat.Bgra8, Windows.Graphics.Imaging.BitmapAlphaMode.Premultiplied,
+                    (uint)bitmap.PixelWidth, (uint)bitmap.PixelHeight, 96, 96, pixels);
+                await encoder.FlushAsync();
+            }
             var selectionColor = ((SolidColorBrush)Ui.ThemeBrush(transcript, "VcSelectionTranscriptBrush")).Color;
             var playingColor = ((SolidColorBrush)Ui.ThemeBrush(transcript, "VcWordPlayingBackgroundBrush")).Color;
             Require(selectionColor != playingColor, "normal-theme selection and playing fill tokens are equal");

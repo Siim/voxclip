@@ -27,13 +27,14 @@ internal sealed class RewriteDiffLine : Grid
             paragraph.Inlines.Add(run); runs.Add((run, item.Kind));
         }
         text.Blocks.Add(paragraph);
-        text.SizeChanged += (_, _) => Draw();
+        text.SizeChanged += (_, _) => { overlay.Invalidate(); Draw(); };
+        text.LayoutUpdated += (_, _) => overlay.DrawAfterLayout(Draw);
         ActualThemeChanged += (_, _) => Draw();
         Unloaded += (_, _) => overlay.Dispose();
     }
     private void Draw()
     {
-        overlay.Invalidate();
+        foreach (var item in runs) overlay.Measure(item.Run);
         overlay.Clear(text.ActualWidth, text.ActualHeight);
         foreach (var item in runs)
         {

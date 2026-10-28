@@ -414,6 +414,30 @@ public sealed class ViewModelTests
     }
 
     [Fact]
+    public void EmptyPrelayoutBoundsAreRetriedAndValidGeometryIsRetained()
+    {
+        var cache = new TranscriptGeometryCache<string, int>();
+        var calls = 0;
+        IReadOnlyList<int> Measure(string inline) => ++calls == 1 ? [] : [12, 34];
+        cache.BeginDraw();
+        Assert.Empty(cache.Get("word", true, Measure));
+        Assert.True(cache.NeedsLayout);
+        cache.BeginDraw();
+        Assert.Equal([12, 34], cache.Get("word", true, Measure));
+        Assert.False(cache.NeedsLayout);
+        Assert.Equal([12, 34], cache.Get("word", true, Measure));
+        Assert.Equal(2, calls);
+        cache.Invalidate();
+        Assert.True(cache.NeedsLayout);
+        cache.BeginDraw();
+        cache.Get("word", true, Measure);
+        Assert.Equal(3, calls);
+        cache.BeginDraw();
+        Assert.Empty(cache.Get("hidden", false, _ => []));
+        Assert.False(cache.NeedsLayout);
+    }
+
+    [Fact]
     public void HighlightOffsetsFollowRenderedUtf16TextIncludingPausesAndCollapsedCuts()
     {
         var words = new[] { "Tere! ", "asukoht ", "⋯ 2 cut ", "", "👩🏽‍💻 " };

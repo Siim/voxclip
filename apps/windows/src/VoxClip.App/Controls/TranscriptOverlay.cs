@@ -14,13 +14,37 @@ internal sealed class TranscriptOverlay : IDisposable
     private readonly Compositor compositor;
     private readonly ShapeVisual behind;
     private readonly ShapeVisual above;
-    private readonly Dictionary<Inline, IReadOnlyList<Rect>> bounds = [];
-    internal void Invalidate() => bounds.Clear();
+    private EventHandler<object>? pendingDraw;
+    private readonly VoxClip.App.ViewModels.TranscriptGeometryCache<Inline, Rect> bounds = new();
+    internal bool NeedsLayout => bounds.NeedsLayout;
+    internal void Invalidate() => bounds.Invalidate();
+    internal void DrawAfterLayout(Action draw)
+    {
+        if (!NeedsLayout || pendingDraw is not null) return;
+        pendingDraw = (_, _) =>
+        {
+            CompositionTarget.Rendering -= pendingDraw;
+            pendingDraw = null;
+            owner.DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+            {
+                if (!owner.IsLoaded) return;
+                draw();
+                DrawAfterLayout(draw);
+            });
+        };
+        CompositionTarget.Rendering += pendingDraw;
+    }
+#if DEBUG
+    internal IReadOnlyList<Rect> DebugCached(Inline inline) => Cached(inline);
+    internal object DebugDiagnostics => new { owner.ActualWidth, owner.ActualHeight, Scale = owner.XamlRoot?.RasterizationScale,
+        BehindSize = behind.Size, AboveSize = above.Size, BehindShapes = behind.Shapes.Count, AboveShapes = above.Shapes.Count,
+        BehindViewBox = behind.ViewBox?.Size, AboveViewBox = above.ViewBox?.Size, above.IsVisible, above.Opacity, NeedsLayout };
+#endif
     private IReadOnlyList<Rect> Cached(Inline inline)
     {
-        if (!bounds.TryGetValue(inline, out var value)) bounds[inline] = value = Bounds(inline);
-        return value;
+        return bounds.Get(inline, inline is not Run { Text.Length: 0 }, Bounds);
     }
+    internal void Measure(Inline inline) => _ = Cached(inline);
 
     internal TranscriptOverlay(FrameworkElement owner, FrameworkElement background, FrameworkElement foreground)
     {
@@ -34,6 +58,7 @@ internal sealed class TranscriptOverlay : IDisposable
 
     internal void Clear(double width, double height)
     {
+        bounds.BeginDraw();
         behind.Shapes.Clear();
         above.Shapes.Clear();
         behind.Size = above.Size = new((float)width, (float)height);
@@ -115,6 +140,7 @@ internal sealed class TranscriptOverlay : IDisposable
             var rect = pointer.GetCharacterRect(LogicalDirection.Forward);
             var next = pointer.GetPositionAtOffset(1, LogicalDirection.Forward)?.GetCharacterRect(LogicalDirection.Forward);
             if (rect.Width < 0.1 && next is { } end && Math.Abs(rect.Y - end.Y) < 1) rect.Width = Math.Abs(end.X - rect.X);
+            if (!double.IsFinite(rect.X + rect.Y + rect.Width + rect.Height)) return [];
             if (rect.Width <= 0 || rect.Height <= 0) continue;
             if (result.Count > 0 && Math.Abs(result[^1].Y - rect.Y) < 1)
             {
@@ -129,6 +155,8 @@ internal sealed class TranscriptOverlay : IDisposable
 
     public void Dispose()
     {
+        CompositionTarget.Rendering -= pendingDraw;
+        pendingDraw = null;
         behind.Dispose();
         above.Dispose();
     }

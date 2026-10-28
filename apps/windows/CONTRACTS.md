@@ -1,5 +1,10 @@
 # Windows fixed contracts
 
+### 2026-10-28 — sol-win-redesign round 10 — Transcript geometry lifecycle
+
+- Measure paragraph geometry before changing Run foregrounds or clearing TextHighlighters: either mutation invalidates native text layout. The old ordering cached empty pre-layout rectangles, so the attached, correctly sized Composition layers contained only a gutter rule, not strikes or playing fills. Empty/non-finite measurements are retried after layout; usable rectangles are retained until text, size or zoom invalidates them. Rewrite's diff uses the same lifecycle. No text-control replacement or rendering dependency is introduced.
+- ARM64 diagnostics at native scale 1 show the original strike assertion progressing from failure (zero behind shapes, one above shape) to success (one behind, 17 above) after measuring before the style mutation. Subsequent glyph/alignment gates are tracked separately; this is not full native acceptance. Evidence: /tmp/voxclip-win-native-r10/evidence/win-arm64/before and before-style. Portable EmptyPrelayoutBoundsAreRetriedAndValidGeometryIsRetained covers cache retry, retention, invalidation and intentionally hidden runs.
+
 ### 2026-10-28 — sol-win-redesign round 9 — Native failure boundary
 
 - Main was merged first at 44da852c, retaining all Windows contract entries. B1 uses window-owned ThemeSettings and effects subscriptions (9654305f); B2 adds the hosted Editor self-check (597ce9a5); the screenshot registration and native disk-floor decisions are separate commits (28a7d4d0 and ef26d0f7). No production rendering change or round-7 review fix is hidden in this verification entry.

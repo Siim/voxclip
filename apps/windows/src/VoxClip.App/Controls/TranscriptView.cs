@@ -55,6 +55,10 @@ public sealed class TranscriptView : UserControl
         else if (RewriteRequested is null) { model.Notice = "Rewrite is not available in this build."; Announce(model.Notice); }
     }
 #if DEBUG
+    internal object DebugGeometry => realized.Values.Select(visual => new { Overlay = visual.Overlay.DebugDiagnostics,
+        Words = visual.Runs.Select(word => new { word.Index, word.Run.Text, Start = word.Run.ContentStart.Offset,
+            End = word.Run.ContentEnd.Offset, Highlight = visual.HighlightStarts[visual.Runs.IndexOf(word)],
+            Bounds = TranscriptOverlay.Bounds(word.Run), Cached = visual.Overlay.DebugCached(word.Run) }) });
     internal Windows.Foundation.Rect? DebugWordBounds(int index)
     {
         foreach (var visual in realized.Values)
@@ -299,6 +303,8 @@ public sealed class TranscriptView : UserControl
         realized[grid] = new(rich, runs, pauses, overlay);
         rich.SizeChanged -= ParagraphSizeChanged;
         rich.SizeChanged += ParagraphSizeChanged;
+        rich.LayoutUpdated -= ParagraphLayoutUpdated;
+        rich.LayoutUpdated += ParagraphLayoutUpdated;
         rich.PointerPressed -= Pressed; rich.PointerPressed += Pressed;
         rich.PointerMoved -= Moved; rich.PointerMoved += Moved;
         rich.PointerReleased -= Released; rich.PointerReleased += Released;
@@ -331,12 +337,19 @@ public sealed class TranscriptView : UserControl
         RefreshVisuals();
     }
 
+    private void ParagraphLayoutUpdated(object? sender, object args)
+    {
+        foreach (var visual in realized.Values) visual.Overlay.DrawAfterLayout(RefreshVisuals);
+    }
+
     public void RefreshVisuals()
     {
         if (model?.State is not { } state) return;
         var lowConfidence = App.Services.Get("general.showLowConfidence", false);
         foreach (var visual in realized.Values)
         {
+            foreach (var word in visual.Runs) visual.Overlay.Measure(word.Run);
+            foreach (var pause in visual.Pauses) visual.Overlay.Measure(pause.Inline);
             visual.Text.TextHighlighters.Clear();
             visual.Overlay.Clear(visual.Text.ActualWidth, visual.Text.ActualHeight);
             var textChanged = visual.HighlightStarts.Length != visual.Runs.Count;
