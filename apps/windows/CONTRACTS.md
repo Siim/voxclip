@@ -1,5 +1,9 @@
 # Windows fixed contracts
 
+### 2026-10-28 — sol-win-redesign round 9 — Screenshot task arguments
+
+- run-screenshots.ps1 registers separate ScheduledTaskAction executable/arguments with an Interactive principal, avoiding schtasks.exe's 261-character /TR ceiling. Each invocation owns GUID-suffixed task names, and success/failure cleanup targets only those names. Existing capture/self-check and duplicate-image gates remain unchanged. ScreenshotTasksKeepArgumentsSeparateAndOwnTheirNames pins the registration, cleanup and ASCII contract; native registration is a separate VM gate.
+
 ### 2026-10-28 — sol-win-redesign round 9 — Window-owned effects
 
 - MainWindow owns and disposes WindowEffects. ThemeSettings.CreateForWindowId(AppWindow.Id) supplies both HighContrast/scheme and Changed; UISettings supplies animation/transparency settings. Ui has no OS event subscriptions or static constructor. All three policy/brush accessors read one snapshot, and notifications dispatch to the window UI thread. Subscription/read/detach failures are logged without poisoning type initialization or discarding the last snapshot.

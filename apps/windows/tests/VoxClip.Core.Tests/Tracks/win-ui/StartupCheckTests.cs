@@ -8,6 +8,22 @@ namespace VoxClip.Ui.Tests;
 public sealed class StartupCheckTests
 {
     [Fact]
+    public void ScreenshotTasksKeepArgumentsSeparateAndOwnTheirNames()
+    {
+        var root = new DirectoryInfo(AppContext.BaseDirectory);
+        while (root is not null && !Directory.Exists(Path.Combine(root.FullName, ".github"))) root = root.Parent;
+        Assert.NotNull(root);
+        var script = File.ReadAllText(Path.Combine(root.FullName, "apps/windows/tests/VoxClip.Core.Tests/Tracks/win-ui/run-screenshots.ps1"));
+        Assert.DoesNotContain("schtasks", script);
+        Assert.Contains("New-ScheduledTaskAction -Execute 'powershell.exe' -Argument", script);
+        Assert.Contains("-LogonType Interactive", script);
+        Assert.Contains("$appTask = 'VoxClipUiWinUi-' + $taskToken", script);
+        Assert.Contains("Unregister-ScheduledTask -TaskName $appTask", script);
+        Assert.Contains("Unregister-ScheduledTask -TaskName $shotTask", script);
+        Assert.All(script, character => Assert.InRange((int)character, 0, 127));
+    }
+
+    [Fact]
     public void LaunchSmokeRequiresFreshOwnedRenderedEditorAndVisibleTranscript()
     {
         var root = new DirectoryInfo(AppContext.BaseDirectory);
