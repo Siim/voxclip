@@ -109,7 +109,8 @@ actor ConsentFixtureConnector: LLMConnector {
         project.id = UUID().uuidString.lowercased()
         project.edits = ProjectEdits()
         project.transcript?.words = (0..<80).map { index in
-            let start: Double = Double(index) + 1
+            let position: Double = Double(index)
+            let start: Double = position + 1
             let end: Double = start + 0.4
             return TimedWord(id: "consent-\(index)", text: "word\(index)", start: start, end: end)
         }

@@ -13,6 +13,9 @@ import VoxClipCore
 }
 
 @MainActor final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSMenuDelegate {
+    /// The opt-in tour's Help item. DebugMenus checks it by this name, so the checklist's
+    /// obsolete-workspace search finds only the item itself.
+    nonisolated static let tourTitle = "Welcome Tour"
     private let model = AppModel.sharedModel
     private var bufferedURLs: [URL] = []
     private var settingsWindow: NSWindow?
@@ -451,7 +454,7 @@ import VoxClipCore
         NSApp.windowsMenu = window
         let help = menu("Help")
         command(help, "Keyboard Shortcuts", 35, "/")
-        command(help, "Welcome Tour", 36)
+        command(help, Self.tourTitle, 36)
         add(help, "What Leaves This Mac", #selector(privacy(_:)), target: self)
         add(help, "Reveal Logs", #selector(revealLogs(_:)), target: self)
         add(help, "Copy Diagnostics", #selector(copyDiagnostics(_:)), target: self)
