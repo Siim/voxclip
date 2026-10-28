@@ -152,6 +152,21 @@ public sealed partial class VoiceLabAudioMixerTests
     /// <summary>One 30 fps preview frame: the tolerance for clock hand-overs.</summary>
     private const double Frame = 1 / 30d;
 
+    /// <summary>Wait until the owner thread publishes a playing playhead past <paramref name="edited"/>. Position is a sample the
+    /// owner publishes once per tick, so a fixed sleep races that tick whenever the runner stalls the owner thread. The deadline
+    /// only bounds a clock that never advances, and a preview that stopped playing returns at once.</summary>
+    private static async Task<PreviewPosition> PlayingPastAsync(IPreviewEngine preview, double edited, CancellationToken ct)
+    {
+        var waited = System.Diagnostics.Stopwatch.StartNew();
+        var position = preview.Position;
+        while (position.IsPlaying && position.EditedTime <= edited && waited.Elapsed < TimeSpan.FromSeconds(5))
+        {
+            await Task.Delay(5, ct);
+            position = preview.Position;
+        }
+        return position;
+    }
+
     private const int NotFound = unchecked((int)0x80070490), Invalidated = unchecked((int)0x88890004), InUse = unchecked((int)0x8889000A);
 
     // Device errors that still fail preview: the endpoint refused the stream format, or the render buffer broke.
@@ -1054,8 +1069,8 @@ public sealed partial class VoiceLabAudioMixerTests
                 Assert.Equal([PreviewAudioStatus.NoOutputDevice], statuses);
                 Assert.True(preview.Position.IsPlaying);
                 Assert.Contains(Directory.GetDirectories(Path.GetTempPath(), "voxclip-voice-*"), path => !scratchBefore.Contains(path));
-                await Task.Delay(350, ct);
-                Assert.True(preview.Position.EditedTime > 2.85, $"The muted clock did not advance: {preview.Position.EditedTime}");
+                var advanced = await PlayingPastAsync(preview, 2.85, ct);
+                Assert.True(advanced.IsPlaying && advanced.EditedTime > 2.85, $"The muted clock did not advance: {advanced}");
                 await preview.PauseAsync(ct);
                 var paused = preview.Position.EditedTime;
                 await Task.Delay(100, ct);
@@ -1064,8 +1079,8 @@ public sealed partial class VoiceLabAudioMixerTests
                 await preview.SeekAsync(3.6, true, ct);
                 Assert.InRange(preview.Position.EditedTime, 3.59, 3.61);
                 await preview.PlayAsync(ct);
-                await Task.Delay(200, ct);
-                Assert.True(preview.Position.EditedTime > 3.7, $"The muted clock did not advance after the seek: {preview.Position.EditedTime}");
+                advanced = await PlayingPastAsync(preview, 3.7, ct);
+                Assert.True(advanced.IsPlaying && advanced.EditedTime > 3.7, $"The muted clock did not advance after the seek: {advanced}");
             }
             Assert.Equal(2, attempts); // every Play retries the device
             Assert.Equal([PreviewAudioStatus.NoOutputDevice], statuses); // an unchanged status is reported once
@@ -1096,12 +1111,12 @@ public sealed partial class VoiceLabAudioMixerTests
                 await preview.SeekAsync(1, true, ct);
                 await preview.PlayAsync(ct);
                 Assert.Equal([PreviewAudioStatus.OutputInUse], statuses);
-                await Task.Delay(200, ct);
-                Assert.True(preview.Position.EditedTime > 1.1, $"The muted clock did not advance: {preview.Position.EditedTime}");
+                var advanced = await PlayingPastAsync(preview, 1.1, ct);
+                Assert.True(advanced.IsPlaying && advanced.EditedTime > 1.1, $"The muted clock did not advance: {advanced}");
                 await preview.SeekAsync(3.6, true, ct); // resumes and retries the device
                 Assert.True(preview.Position.IsPlaying);
-                await Task.Delay(200, ct);
-                Assert.True(preview.Position.EditedTime > 3.7, $"The muted clock did not advance after the seek: {preview.Position.EditedTime}");
+                advanced = await PlayingPastAsync(preview, 3.7, ct);
+                Assert.True(advanced.IsPlaying && advanced.EditedTime > 3.7, $"The muted clock did not advance after the seek: {advanced}");
                 var before = preview.Position.EditedTime;
                 await preview.UpdateSnapshotAsync(snapshot, ct); // resumes and retries the device
                 Assert.True(preview.Position.IsPlaying);

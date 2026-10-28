@@ -679,9 +679,9 @@ public sealed partial class VoiceLabAudioMixerTests
                 await preview.LoadAsync(snapshot, null, ct);
                 await preview.SeekAsync(2.7, true, ct);
                 await preview.PlayAsync(ct);
-                await Task.Delay(350, ct);
-                Assert.True(preview.Position.EditedTime > 2.74,
-                    $"WASAPI callback did not advance the production clock: {preview.Position.EditedTime}");
+                var advanced = await PlayingPastAsync(preview, 2.74, ct);
+                Assert.True(advanced.IsPlaying && advanced.EditedTime > 2.74,
+                    $"WASAPI callback did not advance the production clock: {advanced}");
                 await preview.PauseAsync(ct);
                 var paused = preview.Position.EditedTime;
                 await Task.Delay(100, ct);
@@ -689,8 +689,8 @@ public sealed partial class VoiceLabAudioMixerTests
                 await preview.SeekAsync(3.6, true, ct);
                 Assert.InRange(preview.Position.EditedTime, 3.59, 3.61);
                 await preview.PlayAsync(ct);
-                await Task.Delay(200, ct);
-                Assert.True(preview.Position.EditedTime > 3.63);
+                advanced = await PlayingPastAsync(preview, 3.63, ct);
+                Assert.True(advanced.IsPlaying && advanced.EditedTime > 3.63, $"WASAPI callback did not advance after the seek: {advanced}");
                 Assert.False(muted, "The device clock must drive this run; the muted fallback took over.");
                 await preview.LoadAsync(snapshot, null, ct); // replacement closes the former reader and audio owner
             }
@@ -724,8 +724,8 @@ public sealed partial class VoiceLabAudioMixerTests
                 await preview.LoadAsync(snapshot, null, ct);
                 await preview.SeekAsync(2.7, true, ct);
                 await preview.PlayAsync(ct);
-                await Task.Delay(250, ct);
-                Assert.True(preview.Position.EditedTime > 2.8, $"The device clock did not advance: {preview.Position.EditedTime}");
+                var advanced = await PlayingPastAsync(preview, 2.8, ct);
+                Assert.True(advanced.IsPlaying && advanced.EditedTime > 2.8, $"The device clock did not advance: {advanced}");
                 outputs[0].Fail(CoreAudio(loss));
                 var lost = 2.7 + outputs[0].FramesPlayed / 48_000d;
                 await outputs[1].Started.WaitAsync(TimeSpan.FromSeconds(5), ct);
@@ -774,8 +774,8 @@ public sealed partial class VoiceLabAudioMixerTests
                 await preview.LoadAsync(snapshot, null, ct);
                 await preview.SeekAsync(2.7, true, ct);
                 await preview.PlayAsync(ct);
-                await Task.Delay(250, ct);
-                Assert.True(preview.Position.EditedTime > 2.8, $"The device clock did not advance: {preview.Position.EditedTime}");
+                var advanced = await PlayingPastAsync(preview, 2.8, ct);
+                Assert.True(advanced.IsPlaying && advanced.EditedTime > 2.8, $"The device clock did not advance: {advanced}");
                 outputs[0].Fail(CoreAudio(loss));
                 var lost = 2.7 + outputs[0].FramesPlayed / 48_000d;
                 var status = await reported.Task.WaitAsync(TimeSpan.FromSeconds(5), ct);
@@ -795,8 +795,8 @@ public sealed partial class VoiceLabAudioMixerTests
                 Assert.InRange(preview.Position.EditedTime, 3.59, 3.61);
                 await preview.PlayAsync(ct); // the device is back, so this Play reopens it
                 Assert.Equal([expected, PreviewAudioStatus.Available], statuses);
-                await Task.Delay(200, ct);
-                Assert.True(preview.Position.EditedTime > 3.7, $"The reopened device clock did not advance: {preview.Position.EditedTime}");
+                advanced = await PlayingPastAsync(preview, 3.7, ct);
+                Assert.True(advanced.IsPlaying && advanced.EditedTime > 3.7, $"The reopened device clock did not advance: {advanced}");
                 Assert.True(outputs[1].FramesPlayed > 0);
             }
             Assert.Empty(opens);
@@ -838,8 +838,8 @@ public sealed partial class VoiceLabAudioMixerTests
                 Assert.Equal(UnsupportedFormat, start.HResult);
                 Assert.False(preview.Position.IsPlaying);
                 await preview.PlayAsync(ct); // the next start tries the device again
-                await Task.Delay(250, ct);
-                Assert.True(preview.Position.EditedTime > 2.8, $"The device clock did not advance: {preview.Position.EditedTime}");
+                var advanced = await PlayingPastAsync(preview, 2.8, ct);
+                Assert.True(advanced.IsPlaying && advanced.EditedTime > 2.8, $"The device clock did not advance: {advanced}");
                 outputs[0].Fail(CoreAudio(duringReopen ? Invalidated : BufferError));
                 var lost = 2.7 + outputs[0].FramesPlayed / 48_000d;
                 var fault = await faulted.Task.WaitAsync(TimeSpan.FromSeconds(5), ct);
