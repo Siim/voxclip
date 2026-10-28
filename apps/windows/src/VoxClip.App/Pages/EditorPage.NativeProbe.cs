@@ -106,7 +106,7 @@ public sealed partial class EditorPage
             await Begin();
             await window.OpenPathAsync(reloadPath, ShellPath.Launch);
             NativeRequire(!CaptionDrag.IsDragging && window.DebugEditor is { } replacement && !ReferenceEquals(replacement, this),
-                "Actual project-file reload retained the old editor or its pointer drag.");
+                "Actual project-file reload retained the old editor or its pointer drag. " + window.DebugOpenError);
             var loaded = window.DebugEditor!.ViewModel.Project.Captions;
             await Release();
             NativeRequire(window.DebugEditor.ViewModel.Project.Captions == loaded, "A stale native release changed the reloaded project's captions.");

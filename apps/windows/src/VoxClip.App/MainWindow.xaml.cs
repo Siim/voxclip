@@ -46,6 +46,7 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
     internal Task DebugRequestCloseAsync() => RequestCloseAsync(ShellPath.CloseWindow);
     internal FrameworkElement? DebugContainer(SidebarRow row) => Nav.ContainerFromMenuItem(row) as FrameworkElement;
     internal bool DebugCalloutTipOpen => CalloutTip.IsOpen;
+    internal Exception? DebugOpenError { get; private set; }
 #endif
     private Button? updateRestart;
     /// <summary>Construct the shell on the DispatcherQueue thread; architecture §7.2.</summary>
@@ -232,6 +233,9 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
     /// open project is saved through the leave boundary first. <paramref name="via"/> names the path for ShellNavigation.</summary>
     internal async Task OpenPathAsync(string path, ShellPath via, bool demo = false)
     {
+#if DEBUG
+        DebugOpenError = null;
+#endif
         if (App.Restart.IsPreparing) return;
         var fullPath = Path.GetFullPath(path);
         var newImport = !Path.GetExtension(fullPath).Equals(".voxclip", StringComparison.OrdinalIgnoreCase);
@@ -309,6 +313,9 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
         }
         catch (Exception exception)
         {
+#if DEBUG
+            DebugOpenError = exception;
+#endif
             if (!installed)
             {
                 try

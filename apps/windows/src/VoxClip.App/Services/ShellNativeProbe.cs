@@ -117,7 +117,7 @@ internal static class ShellNativeProbe
 
             window.DebugSelect(window.Shell.Home);
             await window.DebugInvokeAsync(recent!);
-            Require(window.ProjectPath == second && window.DebugEditor is { } secondEditor && !ReferenceEquals(secondEditor, editor), "Recent did not open the second project");
+            Require(window.ProjectPath == second && window.DebugEditor is { } secondEditor && !ReferenceEquals(secondEditor, editor), "Recent did not open the second project. " + window.DebugOpenError);
             Require(window.DebugSelectedRow?.Kind == SidebarKind.FullTake && window.CurrentScreen == "editor", "Recent did not show the editor with Full take");
             var saved = ProjectSerialization.Deserialize(await File.ReadAllTextAsync(first));
             Require(saved.Edits.Clips.Count == 1, "the first project was not saved before Recent replaced it");
@@ -179,7 +179,7 @@ internal static class ShellNativeProbe
         }
         catch (Exception exception)
         {
-            await File.WriteAllTextAsync(report, JsonSerializer.Serialize(new { status = "failed", checks, error = exception.ToString() },
+            await File.WriteAllTextAsync(report, JsonSerializer.Serialize(new { status = "failed", checks, error = exception + (window.DebugOpenError is { } openError ? "\nProject open: " + openError : "") },
                 new JsonSerializerOptions { WriteIndented = true }));
             throw;
         }
