@@ -183,7 +183,7 @@ import VoxClipCore
         case 36: MainWindowController.shared.show(); model.showTour = true; return
         default: break
         }
-        guard let editor else { return }
+        guard let editor, validateMenuItem(item) else { return }
         switch item.tag {
         case 1: editor.cutSelection()
         case 2: editor.cutSelection(restore: true)
@@ -283,19 +283,21 @@ import VoxClipCore
             }
             guard let editor else { return false }
             switch item.tag {
-            case 1, 3, 29, 38, 39: return editor.editingAvailable && !editor.selectedIDs.isEmpty
+            case 1, 3, 29: return editor.capabilities.edit && !editor.selectedIDs.isEmpty
+            case 38, 39: return editor.capabilities.ai && !editor.selectedIDs.isEmpty
             case 48: return !editor.selectedIDs.isEmpty
-            case 2: return editor.editingAvailable && (!editor.selectedWordIDs.isDisjoint(with: editor.cutWordIDs) || !editor.selectedPauseIDs.isDisjoint(with: editor.cutPauseIDs))
-            case 40, 41: return selectedClipID.map(editor.isSuggestion) == true
-            case 42: return !editor.suggestedClips.isEmpty
-            case 43, 44: return selectedClipID.map { !editor.isSuggestion($0) } == true && editor.editingAvailable
+            case 2: return editor.capabilities.edit && (!editor.selectedWordIDs.isDisjoint(with: editor.cutWordIDs) || !editor.selectedPauseIDs.isDisjoint(with: editor.cutPauseIDs))
+            case 40, 41: return editor.capabilities.edit && selectedClipID.map(editor.isSuggestion) == true
+            case 42: return editor.capabilities.edit && !editor.suggestedClips.isEmpty
+            case 43, 44: return selectedClipID.map { !editor.isSuggestion($0) } == true && editor.capabilities.edit
             case 45: return selectedClipID.map { !editor.isSuggestion($0) } == true && editor.canExport && editor.mediaExportable
             case 46: return editor.mediaResolved && NSApp.keyWindow?.firstResponder is TranscriptNSTextView
             case 47: return editor.mediaResolved
-            case 7: return editor.summary.canCutFillers
-            case 8: return editor.summary.canTighten
-            case 9: return editor.summary.hasEdits
-            case 34: return !editor.words.isEmpty
+            case 7: return editor.capabilities.edit && editor.summary.canCutFillers
+            case 8: return editor.capabilities.edit && editor.summary.canTighten
+            case 9: return editor.capabilities.edit && editor.summary.hasEdits
+            case 30, 31: return editor.capabilities.edit && editor.activeClip != nil
+            case 34: return editor.capabilities.ai && !editor.words.isEmpty
             case 10: item.title = editor.showCuts ? "Hide Cut Words" : "Show Cut Words"
             case 11: item.title = editor.showPauses ? "Hide Pauses" : "Show Pauses"
             case 12: item.title = model.shell.viewerVisible ? "Hide Viewer" : "Show Viewer"

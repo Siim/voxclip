@@ -171,6 +171,7 @@ enum SidebarItem: Hashable {
     // MARK: Renaming a clip
 
     func beginRename(_ id: String) {
+        guard editor?.capabilities.edit == true else { return }
         let clips: [ClipRange] = editor?.project.edits.clips ?? []
         guard let clip = clips.first(where: { (candidate: ClipRange) -> Bool in candidate.id == id }) else { return }
         renameDraft = clip.title ?? ""

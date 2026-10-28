@@ -36,6 +36,13 @@ extension ProviderChoice {
 }
 
 @MainActor @Observable public final class AppModel {
+    @ObservationIgnored private var llmLeases: [String: ProjectLlmRuns] = [:]
+    func projectLlmRuns(_ id: String) -> ProjectLlmRuns {
+        if let runs = llmLeases[id] { return runs }
+        let runs = ProjectLlmRuns()
+        llmLeases[id] = runs
+        return runs
+    }
     static let sharedModel = AppModel()
     nonisolated static let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.0.0"
     static let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "0"

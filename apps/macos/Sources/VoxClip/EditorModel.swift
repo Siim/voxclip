@@ -49,7 +49,7 @@ import VoxClipMedia
     var rewriteInsertionAfterID: String?
     private var pendingInsertion = false
     func beginRewrite(inserting: Bool = false) {
-        guard let first = selectedIDs.first, let last = selectedIDs.last,
+        guard capabilities.ai, let first = selectedIDs.first, let last = selectedIDs.last,
               let lower = index(first), let upper = index(last) else { return }
         pendingInsertion = inserting
         guard app.bool("voiceLab.enabled") else { showVoiceLabOptIn = true; return }
@@ -79,6 +79,7 @@ import VoxClipMedia
     var failedExports: [String: URL] = [:]
     var exporting = false
     func presentExport(clipIDs: [String]? = nil) {
+        guard capabilities.writable, mediaExportable else { return }
         if !exporting { exports = []; exportError = nil; exportClipIDs = clipIDs ?? activeClip.map { [$0.id] } ?? [] }
         showExport = true
     }
@@ -95,7 +96,7 @@ import VoxClipMedia
     /// The video is there but can't be read (design §5.4.4 f, corrupt file).
     var mediaUnreadable = false
     var canMoveCaptions: Bool {
-        !document.demo && !document.isVersion && !isLeaving && !mediaUnreadable && (previewError == nil || !mediaResolved)
+        !document.demo && capabilities.captionPosition && !mediaUnreadable && (previewError == nil || !mediaResolved)
     }
     /// The open project's media state for its stand-ins and Export (design §5.4.4).
     var mediaStatus: MediaStatus {
@@ -284,7 +285,7 @@ import VoxClipMedia
         if let clip = activeClip, isSuggestion(clip.id) { return "Keep this clip to export it." }
         return canExport || exporting ? nil : "Keep at least one word before exporting."
     }
-    var canExport: Bool { mediaResolved && !exporting && (voiceLabPlan.map { $0.outputSamples > 0 } ?? (words.isEmpty ? sourceDuration > 0 : editingAvailable && summary.canExport)) }
+    var canExport: Bool { capabilities.export && !document.demo && (voiceLabPlan.map { $0.outputSamples > 0 } ?? (words.isEmpty ? sourceDuration > 0 : editingAvailable && summary.canExport)) }
     var playingWordID: String? {
         let transcript = words
         var lower = 0, upper = transcript.count
@@ -466,7 +467,7 @@ import VoxClipMedia
     }
     func replace(_ newProject: Project, name: String) {
         // A Versions-browser version is read-only.
-        guard !isLeaving, !document.isVersion, mediaResolved || name == "Locate media" || onlyCaptionPositionChanged(newProject) else { return }
+        guard capabilities.writable, capabilities.media || name == "Locate media" || onlyCaptionPositionChanged(newProject) else { return }
         // The title follows the document's name, not the edit history (design §2), so
         // undoing an edit made before a Save As or Rename keeps the new title.
         var newProject = newProject
@@ -557,7 +558,7 @@ import VoxClipMedia
         }
     }
     func apply(_ command: EditCommand, name: String, base: Project? = nil, announcing message: String? = nil) {
-        guard mediaResolved, !isLeaving else { return }
+        guard capabilities.edit else { return }
         guard let state = editState() else { return }
         preview.pause(); isPlaying = false
         var next = base ?? project
@@ -574,7 +575,7 @@ import VoxClipMedia
     }
     /// Applies several commands as one undo step. Returns false when nothing changed.
     @discardableResult func apply(_ commands: [EditCommand], name: String) -> Bool {
-        guard mediaResolved, !isLeaving, let state = editState() else { return false }
+        guard capabilities.edit, let state = editState() else { return false }
         preview.pause(); isPlaying = false
         if history?.state != state { history = EditHistory(state: state) }
         var next = project
@@ -778,7 +779,7 @@ import VoxClipMedia
         return words[lower...upper].first { $0.kind == .word && !cut.contains($0.id) }?.start
     }
     func beginCorrection() {
-        guard let id = selectedIDs.first, let word = words.first(where: { $0.id == id }) else { return }
+        guard capabilities.edit, let id = selectedIDs.first, let word = words.first(where: { $0.id == id }) else { return }
         correctionID = id; correctionText = text(word)
     }
     func saveCorrection(advance: Bool = false) {
@@ -982,7 +983,7 @@ extension EditorModel {
     /// Opens the Find Clips popover at its anchor, or the sidebar's setup callout when
     /// no connector is chosen (design §6.2).
     func requestFindClips(from anchor: FindClipsAnchor) {
-        guard !words.isEmpty else { return }
+        guard capabilities.ai, !words.isEmpty else { return }
         guard findConnector != nil else { showFindClips = false; onNeedsSidebar?(); showAISetup = true; return }
         showAISetup = false
         findClipsAnchor = anchor
@@ -990,18 +991,23 @@ extension EditorModel {
     }
     /// Asks the chosen connector for clips. They arrive as suggestions in one undo step.
     func findClips() {
-        guard let shared = app.shared, let transcript = project.transcript, let provider = app.providers.first(where: { $0.id == app.string("llm.connector") }) else { return }
+        guard capabilities.ai, let shared = app.shared, let transcript = project.transcript, let provider = app.providers.first(where: { $0.id == app.string("llm.connector") }) else { return }
         let corrections = project.edits.corrections
         let cuts = Set(project.edits.cutWordIds)
         let selectedModel = app.string("llm.model.\(provider.id)", fallback: provider.defaultModel ?? "")
         let selectedPreset = preset
         let instructions = instruction
+        let snapshot = project
         let run = {
+            guard self.capabilities.ai, self.project == snapshot, self.app.string("llm.connector") == provider.id,
+                  self.app.string("llm.model.\(provider.id)", fallback: provider.defaultModel ?? "") == selectedModel,
+                  let lease = self.llmRuns.acquire() else { return }
+            let runs = self.llmRuns
             self.findTask?.cancel(); self.finding = true; self.clipError = nil; self.fallbackNote = nil; self.showAISetup = false
             self.onNeedsSidebar?()
             self.announce("Finding clips")
             self.findTask = Task { [self] in
-                defer { self.finding = false }
+                defer { self.finding = false; runs.release(lease) }
                 do {
                     let catalog = LLMCatalog(document: try JSONDecoder().decode(JSONValue.self, from: Data(contentsOf: shared.root.appendingPathComponent("catalog/llm-providers.json"))))
                     let finder = ClipFinder(runner: LLMRunner(keys: app.secrets, catalog: catalog, log: app.log), shared: shared)
@@ -1016,7 +1022,7 @@ extension EditorModel {
                     next.ai.results.append(result)
                     let ranges = result.clips.enumerated().map { position, clip in ClipRange(id: UUID().uuidString.lowercased(), startWordId: clip.startWordId, endWordId: clip.endWordId, title: clip.title, origin: .ai, aiResultId: result.id, aiClipIndex: position) }
                     // One undo step: the result arrives as suggestions, not kept clips.
-                    guard mediaResolved, !isLeaving, let state = editState() else { return }
+                    guard capabilities.edit, let state = editState() else { return }
                     if history?.state != state { history = EditHistory(state: state) }
                     let before = Set(state.clips.map(\.id))
                     history?.apply(.addAIClips(resultId: result.id, clips: ranges), aiResults: next.ai.results)

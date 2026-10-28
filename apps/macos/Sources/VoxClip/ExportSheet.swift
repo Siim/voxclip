@@ -166,7 +166,7 @@ extension EditorModel {
         return [clip?.title, first].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: "\n\n")
     }
     func beginExport(targets: [ExportTarget], folder: URL) {
-        guard !targets.isEmpty, !exporting, mediaExportable else { return }
+        guard !targets.isEmpty, canExport, mediaExportable else { return }
         exportError = nil; exports = []; exporting = true; exportStartedAt = Date(); exportIndex = 1
         exportClipIDs = targets.compactMap { if case .clip(let id) = $0 { id } else { nil } }
         activeExportKey = targets.first.map { ExportLedger.key($0, aspect: project.export.aspect) }

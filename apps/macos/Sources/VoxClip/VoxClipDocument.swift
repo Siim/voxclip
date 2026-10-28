@@ -185,6 +185,16 @@ extension UTType {
         #endif
         return isInViewingMode
     }
+    override public func rename(_ sender: Any?) {
+        guard !isVersion, AppModel.sharedModel?.shell.editor?.isLeaving != true else { return }
+        super.rename(sender)
+    }
+    override public func validateUserInterfaceItem(_ item: any NSValidatedUserInterfaceItem) -> Bool {
+        if item.action == #selector(NSDocument.rename(_:)) {
+            return !isVersion && (AppModel.sharedModel.shell.document !== self || AppModel.sharedModel.shell.editor?.capabilities.rename == true)
+        }
+        return super.validateUserInterfaceItem(item)
+    }
     #if DEBUG
     /// Treats this document as a Versions-browser version (harness checks).
     var versionForTesting = false
