@@ -2,6 +2,20 @@ import Foundation
 import Testing
 @testable import VoxClipCore
 
+private actor SettingsDebounceClock {
+    private(set) var scheduled = 0
+    private(set) var finished: Set<Int> = []
+    private var waiters: [Int: CheckedContinuation<Void, Never>] = [:]
+    func sleep() async throws {
+        let index = scheduled
+        scheduled += 1
+        defer { finished.insert(index) }
+        await withCheckedContinuation { waiters[index] = $0 }
+        try Task.checkCancellation()
+    }
+    func advance(_ index: Int) { waiters.removeValue(forKey: index)?.resume() }
+}
+
 @Suite struct EditingPersistence {
     struct WriterVersionCase: Decodable, Sendable {
         let runtime: String?
@@ -210,7 +224,17 @@ import Testing
         let directory = try temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
         let locations = DataLocations(environment: ["VOXCLIP_DATA_DIR": directory.path])
-        let store = JSONSettingsStore(locations: locations)
+        let timer = SettingsDebounceClock()
+        let store = JSONSettingsStore(locations: locations, debounceSleep: { try await timer.sleep() })
+        func poll(_ condition: () async -> Bool) async throws -> Bool {
+            let clock = ContinuousClock()
+            let deadline = clock.now.advanced(by: .seconds(10))
+            while !(await condition()) {
+                if clock.now >= deadline { return false }
+                try await Task.sleep(for: .milliseconds(10))
+            }
+            return true
+        }
         var settings = try await store.load()
         #expect(settings["editing.pauseBreath"] == .string("natural"))
         settings.values["future.setting"] = .object(["keep": .bool(true)])
@@ -218,18 +242,23 @@ import Testing
         settings.setModelID("gpt", for: "openai")
         try await store.save(settings)
         #expect(!FileManager.default.fileExists(atPath: locations.settings.path))
-        try await Task.sleep(for: .milliseconds(280))
+        #expect(try await poll { await timer.scheduled == 1 })
         settings.values["general.appearance"] = .string("dark")
         try await store.save(settings)
-        try await Task.sleep(for: .milliseconds(280))
+        #expect(try await poll { await timer.scheduled == 2 })
+        await timer.advance(0)
+        #expect(try await poll { await timer.finished.contains(0) })
         #expect(!FileManager.default.fileExists(atPath: locations.settings.path))
-        try await Task.sleep(for: .milliseconds(350))
+        await timer.advance(1)
+        #expect(try await poll { FileManager.default.fileExists(atPath: locations.settings.path) })
         #expect(FileManager.default.fileExists(atPath: locations.settings.path))
         let disk = try JSONDecoder().decode(SettingsDocument.self, from: Data(contentsOf: locations.settings))
         #expect(disk.modelID(for: "anthropic") == "claude" && disk.modelID(for: "openai") == "gpt")
         #expect(disk["general.appearance"] == .string("dark"))
         try await store.save(SettingsDocument(values: ["cache.limitGB": .number(10)]))
+        #expect(try await poll { await timer.scheduled == 3 })
         try await store.flush()
+        await timer.advance(2)
         let loaded = try await JSONSettingsStore(locations: locations).load()
         #expect(loaded.values["future.setting"] == disk.values["future.setting"])
         #expect(loaded["cache.limitGB"] == .number(10))
