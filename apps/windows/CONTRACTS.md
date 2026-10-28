@@ -1,5 +1,10 @@
 # Windows fixed contracts
 
+### 2026-10-28 — sol-win-redesign round 9 — Window-owned effects
+
+- MainWindow owns and disposes WindowEffects. ThemeSettings.CreateForWindowId(AppWindow.Id) supplies both HighContrast/scheme and Changed; UISettings supplies animation/transparency settings. Ui has no OS event subscriptions or static constructor. All three policy/brush accessors read one snapshot, and notifications dispatch to the window UI thread. Subscription/read/detach failures are logged without poisoning type initialization or discarding the last snapshot.
+- AccessibilityMonitorTests.WindowNotificationsDispatchAndDisposeWithoutStaticSubscriptions, SubscriptionAndReadFailuresKeepTheLastSnapshotAndOtherSubscriptions and ThemeSettingsAndEffectsAreOwnedByTheMainWindow pass 3/3. Debug App typecheck and Release UI build both report zero warnings/errors. Native startup and live contrast acceptance remain separate gates.
+
 ### 2026-10-28 — sol-win-redesign round 8 — Native startup blocker
 
 - Tested pristine head 280f8ce90bd18707381d6330d92127157a27e047 on Windows ARM64, .NET SDK 10.0.402. Sequential Debug App builds for win-arm64/ARM64 and win-x64/x64 pass with zero warnings/errors, -m:1, shared compilation and build servers off. The x64 apphost and loaded coreclr are PE machine 0x8664; ARM64 is 0xAA64. Both run in the logged-in siim desktop session 1 through an owned interactive scheduled task, not SSH session 0.

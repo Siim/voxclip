@@ -23,6 +23,7 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
     internal ShellViewModel Shell { get; } = new();
     private readonly HomePage home = new();
     private readonly CancellationTokenSource lifetime = new();
+    private readonly WindowEffects effects;
     private readonly SemaphoreSlim navigation = new(1, 1);
     private bool closingApproved;
     private bool closingInProgress;
@@ -53,6 +54,7 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
         InitializeComponent();
         if (Content is not FrameworkElement || Root is null || ContentFrame is null || AppTitleBar is null)
             throw new InvalidOperationException("MainWindow XAML root did not load. Check the app PRI and compiled XAML.");
+        effects = new WindowEffects(AppWindow.Id, DispatcherQueue);
         Title = "VoxClip";
         SystemBackdrop = new MicaBackdrop();
         ExtendsContentIntoTitleBar = true;
@@ -796,6 +798,7 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
     }
     private async void WindowClosed(object sender, WindowEventArgs args)
     {
+        effects.Dispose();
         await lifetime.CancelAsync();
         takeRefresh.Stop();
         takeLoads.Cancel();
