@@ -10,7 +10,7 @@ import Darwin
         let directory = try UIProcessHarness.run(mode: "-layoutAudit", name: "layout")
         defer { UIProcessHarness.cleanTemporary(directory) }
         let report = try JSONDecoder().decode([UIProcessHarness.Result].self, from: Data(contentsOf: directory.appendingPathComponent("results.json")))
-        #expect(report.count >= 183)
+        #expect(report.count >= 291)
         for result in report { #expect(result.passed && result.skipped == nil, Comment(rawValue: result.name)) }
         struct Measurement: Decodable { let width: Double; let minimumWidth: Double; let proposedWidth: Double; let stageWidth: Double; let variant: String; let frameChoices: [String]; let viewOverflow: [String]; let accessibilityOverflow: [String] }
         let measurements = try JSONDecoder().decode([Measurement].self, from: Data(contentsOf: directory.appendingPathComponent("right-column-layout.json")))
@@ -21,6 +21,26 @@ import Darwin
             #expect(measurement.stageWidth > 0 && measurement.stageWidth <= measurement.width - 31.5)
             #expect(measurement.viewOverflow.isEmpty && measurement.accessibilityOverflow.isEmpty)
             #expect(measurement.frameChoices == ["9:16", "1:1", "16:9", "Original"], Comment(rawValue: "\(measurement.variant) at \(measurement.width)"))
+        }
+        struct HeightMeasurement: Decodable {
+            let width: Double
+            let height: Double
+            let variant: String
+            let scrollFrames: [CGRect]
+            let scrollClipping: [Bool]
+            let viewOverflow: [String]
+        }
+        let heights = try JSONDecoder().decode([HeightMeasurement].self, from: Data(contentsOf: directory.appendingPathComponent("right-column-heights.json")))
+        #expect(heights.count == 21)
+        #expect(Set(heights.map(\.height)) == [475, 575, 675, 775])
+        for measurement in heights {
+            let viewport = try #require(measurement.scrollFrames.first)
+            #expect(viewport.height > 0)
+            #expect(measurement.scrollClipping.allSatisfy { $0 })
+            #expect(measurement.viewOverflow.isEmpty, Comment(rawValue: "\(measurement.variant) at \(measurement.width)x\(measurement.height)"))
+            if !measurement.variant.hasPrefix("rewrite") {
+                #expect(viewport.maxY <= measurement.height - 15.5)
+            }
         }
     }
     @Test("Saved Voice Lab recipe uses native preview and App export", .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_UI_TESTS"] == "1")) func voiceRecipeWorkflow() async throws {

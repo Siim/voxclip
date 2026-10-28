@@ -1,5 +1,6 @@
 #if DEBUG
 import AppKit
+import ApplicationServices
 import SwiftUI
 import VoxClipCore
 import VoxClipMedia
@@ -61,16 +62,17 @@ import VoxClipMedia
             guard let right = DebugColumnBounds.split(in: window.contentView)?.arrangedSubviews.last, abs(right.frame.width - 320) <= 1 else {
                 throw VoxClipError.exportFailed("The 1280 scene must have a 320-point right column.")
             }
+            try await auditGalleryScroll(in: right, window: window, app: app, directory: directory)
             return nil
         }
         try await scene("live-editor-1180", size: NSSize(width: 1180, height: 800))
         try await scene("live-editor-300", size: NSSize(width: 1280, height: 800)) { window in
-            try await dragColumn(in: window, to: 300, shell: shell)
+            try await dragColumn(in: window, to: 300, shell: shell, directory: directory)
             return nil
         }
         app.settings.values.removeValue(forKey: "ui.rightColumnWidth")
         try await scene("live-editor-560") { window in
-            try await dragColumn(in: window, to: 560, shell: shell)
+            try await dragColumn(in: window, to: 560, shell: shell, directory: directory)
             return nil
         }
         app.settings.values.removeValue(forKey: "ui.rightColumnWidth")
@@ -133,27 +135,66 @@ import VoxClipMedia
         try ProjectJSON.encoder().encode(results).write(to: directory.appendingPathComponent("redesign-scenes.json"), options: .atomic)
         return results
     }
-    private static func dragColumn(in window: NSWindow, to width: CGFloat, shell: WorkspaceShell) async throws {
+    private static func auditGalleryScroll(in right: NSView, window: NSWindow, app: AppModel, directory: URL) async throws {
+        guard let scroll = DebugRightColumn.scrollViews(in: right).first, let document = scroll.documentView,
+              let last = CaptionStyleGroup.allCases.flatMap({ group in
+                  app.styles.filter { CaptionStyleGroup.group(for: $0) == group }.sorted { $0.order < $1.order }
+              }).last else { throw CocoaError(.coderInvalidValue) }
+        let original = scroll.contentView.bounds.origin
+        defer { scroll.contentView.scroll(to: original); scroll.reflectScrolledClipView(scroll.contentView) }
+        var lastFrame: CGRect?
+        for _ in 0..<4 {
+            let maximum = max(0, document.bounds.height - scroll.contentView.bounds.height)
+            scroll.contentView.scroll(to: NSPoint(x: 0, y: document.isFlipped ? maximum : 0))
+            scroll.reflectScrolledClipView(scroll.contentView)
+            try await Task.sleep(for: .milliseconds(150))
+            right.layoutSubtreeIfNeeded()
+            lastFrame = DebugRightColumn.markers(in: right)["caption.name.\(last.id)"]
+            let viewport = scroll.convert(scroll.bounds, to: right)
+            if let lastFrame, viewport.insetBy(dx: -0.5, dy: -0.5).contains(lastFrame) { break }
+        }
+        let viewport = scroll.convert(scroll.bounds, to: right)
+        struct ScrollEvidence: Encodable { let style: String; let viewport: CGRect; let lastName: CGRect? }
+        try JSONEncoder().encode(ScrollEvidence(style: last.id, viewport: viewport, lastName: lastFrame))
+            .write(to: directory.appendingPathComponent("gallery-scroll.json"), options: .atomic)
+        let clearsFade = lastFrame.map { right.isFlipped ? $0.maxY <= viewport.maxY - 23.5 : $0.minY >= viewport.minY + 23.5 } ?? false
+        guard let lastFrame, viewport.insetBy(dx: -0.5, dy: -0.5).contains(lastFrame), clearsFade else {
+            throw VoxClipError.exportFailed("The final caption style must scroll fully into view above the gallery fade.")
+        }
+        try DebugColumnBounds.assertBounds(window: window, name: "live-editor-1280-scrolled", directory: directory)
+        let bounds = try JSONDecoder().decode(DebugColumnBounds.Evidence.self,
+            from: Data(contentsOf: directory.appendingPathComponent("live-editor-1280-scrolled-bounds.json")))
+        let labels = Set(bounds.elements.filter { $0.role == kAXRadioButtonRole }.map(\.label))
+        guard app.styles.allSatisfy({ labels.contains("\($0.name): \($0.description)") }) else {
+            throw VoxClipError.exportFailed("Every caption style must remain available to accessibility while scrolled.")
+        }
+    }
+    private static func dragColumn(in window: NSWindow, to width: CGFloat, shell: WorkspaceShell, directory: URL) async throws {
         guard let split = DebugColumnBounds.split(in: window.contentView), split.arrangedSubviews.count == 2 else { throw CocoaError(.coderInvalidValue) }
         let dividerX = split.arrangedSubviews[0].frame.maxX + split.dividerThickness / 2
         let targetX = split.bounds.width - width - split.dividerThickness / 2
         let start = split.convert(NSPoint(x: dividerX, y: split.bounds.midY), to: nil)
         let end = split.convert(NSPoint(x: targetX, y: split.bounds.midY), to: nil)
-        func event(_ type: NSEvent.EventType, point: NSPoint, sequence: Int) throws -> NSEvent {
+        func event(_ type: NSEvent.EventType, point: NSPoint) throws -> NSEvent {
             guard let value = NSEvent.mouseEvent(with: type, location: point, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
-                windowNumber: window.windowNumber, context: nil, eventNumber: sequence, clickCount: 1, pressure: type == .leftMouseUp ? 0 : 1) else { throw CocoaError(.coderInvalidValue) }
+                windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: type == .leftMouseUp ? 0 : 1) else { throw CocoaError(.coderInvalidValue) }
             return value
         }
-        let down = try event(.leftMouseDown, point: start, sequence: 1)
-        let dragged = try event(.leftMouseDragged, point: end, sequence: 2)
-        let up = try event(.leftMouseUp, point: end, sequence: 3)
+        let down = try event(.leftMouseDown, point: start)
+        let dragged = try event(.leftMouseDragged, point: end)
+        let up = try event(.leftMouseUp, point: end)
+        let mouseDowns = (split as? EditorSplit)?.dividerMouseDowns ?? 0
         NSApp.postEvent(dragged, atStart: false)
         NSApp.postEvent(up, atStart: false)
         split.mouseDown(with: down)
         try await Task.sleep(for: .milliseconds(200))
         window.contentView?.layoutSubtreeIfNeeded()
-        guard abs(split.arrangedSubviews[1].frame.width - width) <= 1, abs(shell.rightWidth - width) <= 1 else {
-            throw VoxClipError.exportFailed("Divider drag requested \(width), laid out \(split.arrangedSubviews[1].frame.width), remembered \(shell.rightWidth).")
+        let delivered = ((split as? EditorSplit)?.dividerMouseDowns ?? 0) - mouseDowns
+        struct DragEvidence: Encodable { let requested: CGFloat; let actual: CGFloat; let remembered: Double; let mouseDowns: Int }
+        try JSONEncoder().encode(DragEvidence(requested: width, actual: split.arrangedSubviews[1].frame.width, remembered: shell.rightWidth, mouseDowns: delivered))
+            .write(to: directory.appendingPathComponent("divider-drag-\(Int(width)).json"), options: .atomic)
+        guard delivered == 1, abs(split.arrangedSubviews[1].frame.width - width) <= 1, abs(shell.rightWidth - width) <= 1 else {
+            throw VoxClipError.exportFailed("Divider drag requested \(width), laid out \(split.arrangedSubviews[1].frame.width), remembered \(shell.rightWidth), mouseDowns \(delivered).")
         }
     }
     private static func transcript(in view: NSView?) -> TranscriptNSTextView? {

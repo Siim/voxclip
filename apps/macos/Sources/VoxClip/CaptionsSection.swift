@@ -126,7 +126,7 @@ enum CaptionStyleGroup: String, CaseIterable {
                 .accessibilityIdentifier("voxclip.captions.gallery")
                 }
                 if model.app.styles.isEmpty { Text("Caption styles are unavailable. Reinstall VoxClip.").foregroundStyle(.secondary) }
-              }
+              }.padding(.bottom, 24)
             }
             .onChange(of: model.activeClip?.id) { _, _ in reader.scrollTo(model.project.captions.styleId, anchor: .top) }
             .overlay(alignment: .bottom) {
@@ -148,7 +148,7 @@ enum CaptionStyleGroup: String, CaseIterable {
                         .aspectRatio(1 / 0.45, contentMode: .fit).clipShape(.rect(cornerRadius: 10))
                     if selected { Image(systemName: "checkmark").font(.system(size: 9, weight: .bold)).foregroundStyle(.white).frame(width: 18, height: 18).background(.black.opacity(0.62), in: Circle()).padding(5) }
                 }.overlay { if selected { RoundedRectangle(cornerRadius: 12).stroke(DesignValues.accentText, lineWidth: 2).padding(-2) } }
-                Text(style.name + (selected && model.captionsEdited ? " · Edited" : "")).font(.system(size: 11, weight: selected ? .semibold : .regular)).foregroundStyle(DesignValues.color("text.primary")).lineLimit(1)
+                Text(style.name + (selected && model.captionsEdited ? " · Edited" : "")).font(.system(size: 11, weight: selected ? .semibold : .regular)).foregroundStyle(DesignValues.color("text.primary")).lineLimit(1).columnLayoutEvidence("caption.name.\(id)")
             }.contentShape(Rectangle())
         }.buttonStyle(.plain).accessibilityLabel("\(style.name): \(style.description)").accessibilityAddTraits(selected ? .isSelected : [])
     }

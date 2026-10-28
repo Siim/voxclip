@@ -17,7 +17,69 @@ import VoxClipMedia
         let viewOverflow: [String]
         let accessibilityOverflow: [String]
     }
+    struct HeightMeasurement: Encodable {
+        let window: String
+        let variant: String
+        let width: CGFloat
+        let height: CGFloat
+        let scrollFrames: [CGRect]
+        let scrollClipping: [Bool]
+        let scrolledViews: [String]
+        let viewOverflow: [String]
+    }
+    static func measureHeights(app: AppModel, directory: URL) async throws -> [DebugUISuite.Result] {
+        guard let root = app.shared?.root else { throw VoxClipError.sharedResourcesMissing }
+        let fixture = try DemoEditing.loadFixture(root.appendingPathComponent("fixtures/projects/five-questions.voxclip"))
+        var measurements: [HeightMeasurement] = []
+        let sizes: [(String, CGFloat, CGFloat)] = [("1440x900", 360, 775), ("1280x800", 320, 675),
+            ("1280x700", 320, 575), ("960x600", 300, 475)]
+        for (window, width, height) in sizes {
+            let extra = width == 320 && height == 675 ? ["rewrite", "rewrite-budget", "fine-tune", "caption-error", "captions-off"] : []
+            for variant in ["source", "9:16", "1:1", "16:9"] + extra {
+                let model = EditorModel(document: VoxClipDocument(project: fixture, demo: true), app: app, preview: DemoPreviewEngine())
+                defer { model.close() }
+                model.setAspect(AspectRatio(rawValue: variant) ?? .source)
+                model.setStyle("vox-highlight")
+                if variant == "captions-off" { model.setCaptionsEnabled(false) }
+                if variant == "caption-error" { model.captionError = "Captions couldn't be drawn. Your media and edits are safe. Choose another style or try again." }
+                if variant.hasPrefix("rewrite") {
+                    model.mediaResolved = true
+                    let envelope = AudioEnvelope(sampleRate: 48_000, levels: Array(repeating: 0.01, count: 10_000))
+                    let connector = RewriteConnector(connector: RewriteFixtureConnector(), model: "fixture-local", name: "Fixture", group: "local", plan: "")
+                    let session = RewriteSession(editor: model, range: 12...25, envelope: envelope, connector: connector)
+                    model.rewrite = session; model.rewriteRange = 12...25
+                    session.edit(variant == "rewrite-budget" ? Array(repeating: "replacement", count: 180).joined(separator: " ") : "A clearer way to explain what happened in this passage.")
+                }
+                let controller = NSHostingController(rootView: RightColumnContents(model: model, columnHeight: height, fineTune: variant == "fine-tune"))
+                controller.sizingOptions = []
+                let host = controller.view
+                host.frame = CGRect(x: 0, y: 0, width: width, height: height)
+                host.layoutSubtreeIfNeeded()
+                try await Task.sleep(for: .milliseconds(100))
+                host.layoutSubtreeIfNeeded()
+                let scrolls = scrollViews(in: host)
+                let audit = viewAudit(host)
+                measurements.append(HeightMeasurement(window: window, variant: variant, width: width, height: height,
+                    scrollFrames: scrolls.map { $0.convert($0.bounds, to: host) },
+                    scrollClipping: scrolls.map { $0.clipsToBounds && $0.contentView.clipsToBounds },
+                    scrolledViews: audit.scrolled, viewOverflow: audit.overflow))
+            }
+        }
+        try JSONEncoder().encode(measurements).write(to: directory.appendingPathComponent("right-column-heights.json"), options: .atomic)
+        return measurements.flatMap { measurement -> [DebugUISuite.Result] in
+            let rewriting = measurement.variant.hasPrefix("rewrite")
+            let viewport = measurement.scrollFrames.first ?? .zero
+            return [
+                .init(name: "right column height \(measurement.window) \(measurement.variant): visible descendants fit", passed: measurement.viewOverflow.isEmpty && viewport.height > 0 && measurement.scrollClipping.allSatisfy { $0 }),
+                .init(name: "right column height \(measurement.window) \(measurement.variant): gallery bottom \(viewport.maxY) <= \(measurement.height - 16)", passed: rewriting || viewport.maxY <= measurement.height - 15.5)
+            ]
+        }
+    }
+    static func scrollViews(in host: NSView) -> [NSScrollView] {
+        (host as? NSScrollView).map { [$0] } ?? host.subviews.flatMap { scrollViews(in: $0) }
+    }
     static func run(app: AppModel, directory: URL) async throws -> [DebugUISuite.Result] {
+        if CommandLine.arguments.contains("-heightsOnly") { return try await measureHeights(app: app, directory: directory) }
         guard let root = app.shared?.root else { throw VoxClipError.sharedResourcesMissing }
         let fixture = try DemoEditing.loadFixture(root.appendingPathComponent("fixtures/projects/five-questions.voxclip"))
         let previousSettings = app.settings
@@ -80,6 +142,8 @@ import VoxClipMedia
         results.append(.init(name: "360-point short Captions summary uses one row", passed: measurements.first { $0.width == 360 && $0.variant == "source" }?.markers["captions.inline"] != nil))
         results.append(.init(name: "300-point AI/rate/hour case uses metadata fallback", passed: measurements.first { $0.width == 300 && $0.variant == "ai-rate-hours" }?.markers["transport.stacked"] != nil))
         results.append(.init(name: "300-point Frame choices use a stacked full-width picker", passed: measurements.first { $0.width == 300 && $0.variant == "source" }?.markers["frame.stacked"] != nil))
+        results += try await measureHeights(app: app, directory: directory)
+        results += await DebugSidebar.dividerDrag(app: app)
         return results
     }
     private static func candidates(_ prefix: String, _ measurement: Measurement) -> Int {
@@ -100,17 +164,28 @@ import VoxClipMedia
         return found
     }
     static func viewOverflow(_ host: NSView) -> [String] {
+        viewAudit(host).overflow
+    }
+    static func viewAudit(_ host: NSView) -> (overflow: [String], scrolled: [String]) {
         var failures: [String] = []
+        var scrolled: [String] = []
         func visit(_ view: NSView) {
             guard !view.isHidden else { return }
             let rect = view.convert(view.bounds, to: host)
-            if rect.width > 0, !host.bounds.insetBy(dx: -0.5, dy: -0.5).contains(rect) {
-                failures.append("\(type(of: view)): \(rect)")
+            if rect.width > 0 {
+                var visible = rect
+                if let scroll = view.enclosingScrollView, scroll.clipsToBounds, scroll.contentView.clipsToBounds {
+                    let viewport = scroll.convert(scroll.bounds, to: host)
+                    if rect.minY < viewport.minY - 0.5 || rect.maxY > viewport.maxY + 0.5 { scrolled.append("\(type(of: view)): \(rect)") }
+                    visible = rect.intersection(viewport)
+                    if rect.minX < host.bounds.minX - 0.5 || rect.maxX > host.bounds.maxX + 0.5 { failures.append("Horizontal scroll content overflow: \(type(of: view)): \(rect)") }
+                }
+                if !visible.isNull && !host.bounds.insetBy(dx: -0.5, dy: -0.5).contains(visible) { failures.append("\(type(of: view)): \(rect)") }
             }
             view.subviews.forEach(visit)
         }
         host.subviews.forEach(visit)
-        return failures
+        return (failures, scrolled)
     }
     static func accessibilityOverflow(_ host: NSView) -> [String] {
         var failures: [String] = []

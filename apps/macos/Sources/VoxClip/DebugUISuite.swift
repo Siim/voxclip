@@ -1051,9 +1051,16 @@ import ApplicationServices
         controller.sizingOptions = []
         let hosting = controller.view
         hosting.frame = NSRect(origin: .zero, size: size)
-        let window = OffscreenSnapshotWindow(contentRect: NSRect(origin: NSPoint(x: -10000, y: -10000), size: size), styleMask: mainWindow ? [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView] : [.titled, .closable, .resizable], backing: .buffered, defer: false)
+        let contentRect = NSRect(origin: NSPoint(x: -10000, y: -10000), size: size)
+        let styleMask: NSWindow.StyleMask = mainWindow ? [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView] : [.titled, .closable, .resizable]
+        let window: NSWindow
+        if native { window = NSWindow(contentRect: contentRect, styleMask: styleMask, backing: .buffered, defer: false) }
+        else {
+            let offscreen = OffscreenSnapshotWindow(contentRect: contentRect, styleMask: styleMask, backing: .buffered, defer: false)
+            offscreen.rendersActive = active
+            window = offscreen
+        }
         if mainWindow { window.toolbarStyle = .unified }
-        window.rendersActive = active
         window.isReleasedWhenClosed = false
         window.appearance = NSAppearance(named: appearance)
         if name.contains("settings") { window.toolbarStyle = .expanded }
