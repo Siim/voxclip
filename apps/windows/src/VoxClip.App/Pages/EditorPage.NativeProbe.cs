@@ -131,6 +131,7 @@ public sealed partial class EditorPage
         ViewModel.SetTranscript(originalTranscript with { Words = diffWords });
         await App.Services.SetAsync("voiceLab.enabled", true, CancellationToken.None);
         ViewModel.Select(3); ViewModel.Select(7, true);
+        await Task.Delay(250);
         await OpenRewriteAsync(false);
         await Task.Delay(150);
         NativeRequire(rewrite is { IsOpen: true }, $"Actual Rewrite route did not open: readonly={ViewModel.IsReadOnly}, busy={ViewModel.Busy}, leaving={ViewModel.IsLeaving}, selection={ViewModel.HasSelection}, column={rightContent is not null}, disposed={disposed}.");

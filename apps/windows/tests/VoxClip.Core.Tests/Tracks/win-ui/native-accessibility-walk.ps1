@@ -260,6 +260,7 @@ try{
   $e=[System.Windows.Automation.AutomationElement]::FocusedElement
   $walk+=,@($e.Current.Name,$e.Current.ControlType.ProgrammaticName,(InCommandBar $e))
   $bounds=$e.Current.BoundingRectangle
+  [IO.File]::WriteAllText((Join-Path $shots 'f6-attempts.json'),(ConvertTo-Json -Depth 6 -InputObject @{walk=$walk;last=@{name=$e.Current.Name;offscreen=$e.Current.IsOffscreen;bounds=@{x=$bounds.X;y=$bounds.Y;width=$bounds.Width;height=$bounds.Height}}}))
   if($bounds.IsEmpty -or $e.Current.IsOffscreen){throw 'F6 focused an empty or offscreen element'}
   $name='focus-region-'+($i+1)
   Capture $w $name
