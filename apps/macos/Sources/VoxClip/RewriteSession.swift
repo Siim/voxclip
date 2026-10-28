@@ -123,6 +123,9 @@ struct RewriteConnector {
         invalidate()
         instruction = text
         problem = ""
+        schedulePreparation()
+    }
+    private func schedulePreparation() {
         let currentRevision = revision
         preparing = Task { [weak self] in await self?.prepare(revision: currentRevision) }
     }
@@ -184,7 +187,8 @@ struct RewriteConnector {
     }
     func edit(_ text: String) {
         guard isOpen else { return }
-        invalidate(); newWords = text; refreshReview()
+        invalidate(); newWords = text; problem = ""; refreshReview()
+        schedulePreparation()
     }
     private func invalidate() {
         revision += 1; preparing?.cancel(); sending?.cancel()

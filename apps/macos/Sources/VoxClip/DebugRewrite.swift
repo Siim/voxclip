@@ -252,6 +252,26 @@ actor RewriteFixtureConnector: LLMConnector {
             } else { check("consent race prepares quote", false) }
         }
         do {
+            let fake = RewriteFixtureConnector()
+            let (editor, session) = make(fake)
+            defer { editor.close() }
+            await session.prepare()
+            let previous = session.quote?.id
+            session.edit("A new draft")
+            check("New words edit immediately invalidates the displayed estimate", session.quote == nil && !session.canPropose)
+            let clock = ContinuousClock()
+            let deadline = clock.now.advanced(by: .seconds(5))
+            while session.quote == nil && clock.now < deadline { await Task.yield() }
+            check("New words edit offers a fresh estimate and leaves lease free", session.quote != nil && session.quote?.id != previous && !editor.llmRuns.isBusy)
+            if let fresh = session.quote {
+                let unshown = await session.propose(fresh, affirmative: true)
+                session.markEstimateShown(fresh.id)
+                let denied = await session.propose(fresh, affirmative: false)
+                let counts = await fake.counts()
+                check("new estimate requires display and affirmative approval before send", !unshown && !denied && session.canPropose && counts.sends == 0)
+            }
+        }
+        do {
             let fake = RewriteFixtureConnector(hold: true)
             let (editor, session) = make(fake)
             defer { editor.close() }
@@ -274,6 +294,14 @@ actor RewriteFixtureConnector: LLMConnector {
                     await fake.release()
                     _ = await task.value
                     check("late proposal cannot overwrite typing and cancellation releases lease", session.newWords == "Typing wins" && !editor.llmRuns.isBusy)
+                    let clock = ContinuousClock()
+                    let deadline = clock.now.advanced(by: .seconds(5))
+                    while session.quote == nil && clock.now < deadline { await Task.yield() }
+                    check("typing during pending proposal re-offers an unshown estimate", session.quote != nil && session.quote?.id != fresh.id && !session.canPropose && !editor.llmRuns.isBusy)
+                    if let replacement = session.quote {
+                        session.markEstimateShown(replacement.id)
+                        check("showing the replacement estimate enables Rewrite", session.canPropose)
+                    }
                 }
             }
         }
