@@ -13,7 +13,17 @@ import VoxClipCore
             ("File", "New Project from Video…", "n", .command), ("File", "Close Project", "w", .command),
             ("View", "Home", "1", .command), ("View", "Full Take", "2", .command),
             ("Clip", "Find Clips…", "k", [.command, .shift]), ("Edit", "Rewrite…", "r", [.command, .shift]),
-            ("View", "Hide Viewer", "i", [.command, .option]), ("View", "Hide Sidebar", "s", [.command, .control])
+            ("View", "Hide Viewer", "i", [.command, .option]), ("View", "Hide Sidebar", "s", [.command, .control]),
+            ("Clip", "Set Start", "i", []), ("Clip", "Set End", "o", []),
+            ("Clip", "Previous Clip", "[", []), ("Clip", "Next Clip", "]", []),
+            ("Playback", "Play/Pause", " ", []), ("Playback", "Play from Selection", " ", .shift),
+            ("Playback", "Preview Cut", "p", []), ("Playback", "Shuttle Back", "j", []),
+            ("Playback", "Stop", "k", []), ("Playback", "Shuttle Forward", "l", []),
+            ("Playback", "Back 3 Seconds", "j", []),
+            ("Playback", "Go to Start", String(UnicodeScalar(NSUpArrowFunctionKey)!), .command),
+            ("Playback", "Go to End", String(UnicodeScalar(NSDownArrowFunctionKey)!), .command),
+            ("Edit", "Cut Selection", String(UnicodeScalar(NSDeleteCharacter)!), []),
+            ("Edit", "Restore Selection", String(UnicodeScalar(NSDeleteCharacter)!), .shift), ("Edit", "Correct Word", "c", [])
         ]
         for (menu, title, key, modifiers) in bindings {
             check("native menu shortcut: \(title)", item(menu, title).map { $0.keyEquivalent == key && $0.keyEquivalentModifierMask == modifiers } == true)

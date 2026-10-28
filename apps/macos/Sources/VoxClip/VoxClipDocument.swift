@@ -186,7 +186,7 @@ extension UTType {
         return isInViewingMode
     }
     override public func rename(_ sender: Any?) {
-        guard !isVersion, AppModel.sharedModel?.shell.editor?.isLeaving != true else { return }
+        guard !isVersion, AppModel.sharedModel.shell.editor?.isLeaving != true else { return }
         super.rename(sender)
     }
     override public func validateUserInterfaceItem(_ item: any NSValidatedUserInterfaceItem) -> Bool {

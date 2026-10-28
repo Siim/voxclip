@@ -282,6 +282,14 @@ import VoxClipCore
             default: break
             }
             guard let editor else { return false }
+            if [1, 2, 3, 21, 22, 23, 24, 25, 26, 30, 31, 32, 33, 46].contains(item.tag) {
+                guard editor.correctionID == nil else { return false }
+                let responder = NSApp.keyWindow?.firstResponder
+                if let input = responder as? any NSTextInputClient, input.hasMarkedText() { return false }
+                if responder is NSTextView && !(responder is TranscriptNSTextView) { return false }
+                if responder is NSTextField { return false }
+                if responder is NSTableView && ![32, 33].contains(item.tag) { return false }
+            }
             switch item.tag {
             case 1, 3, 29: return editor.capabilities.edit && !editor.selectedIDs.isEmpty
             case 38, 39: return editor.capabilities.ai && !editor.selectedIDs.isEmpty
@@ -370,9 +378,9 @@ import VoxClipCore
         add(edit, "Paste", #selector(NSText.paste(_:)), "v")
         add(edit, "Select All", #selector(NSText.selectAll(_:)), "a")
         edit.addItem(.separator())
-        command(edit, "Cut Selection", 1)
-        command(edit, "Restore Selection", 2)
-        command(edit, "Correct Word", 3)
+        command(edit, "Cut Selection", 1, String(UnicodeScalar(NSDeleteCharacter)!), [])
+        command(edit, "Restore Selection", 2, String(UnicodeScalar(NSDeleteCharacter)!), [.shift])
+        command(edit, "Correct Word", 3, "c", [])
         command(edit, "Rewrite…", 38, "r", [.command, .shift])
         command(edit, "Insert Words…", 39)
         command(edit, "Copy Text", 48)
@@ -396,7 +404,14 @@ import VoxClipCore
         command(view, "Actual Size", 20, "0")
         add(view, "Enter Full Screen", #selector(NSWindow.toggleFullScreen(_:)), "f", [.command, .control])
         let playback = menu("Playback")
-        for (name, tag) in [("Play/Pause",21),("Play from Selection",22),("Preview Cut",23),("Shuttle Back",24),("Stop",25),("Shuttle Forward",26),("Go to Start",27),("Go to End",28)] { command(playback, name, tag) }
+        command(playback, "Play/Pause", 21, " ", [])
+        command(playback, "Play from Selection", 22, " ", [.shift])
+        command(playback, "Preview Cut", 23, "p", [])
+        command(playback, "Shuttle Back", 24, "j", [])
+        command(playback, "Stop", 25, "k", [])
+        command(playback, "Shuttle Forward", 26, "l", [])
+        command(playback, "Go to Start", 27, String(UnicodeScalar(NSUpArrowFunctionKey)!), [.command])
+        command(playback, "Go to End", 28, String(UnicodeScalar(NSDownArrowFunctionKey)!), [.command])
         command(playback, "Back 3 Seconds", 46, "j", [])
         command(playback, "Forward 3 Seconds", 47)
         let clip = menu("Clip")
@@ -407,10 +422,10 @@ import VoxClipCore
         command(clip, "Keep All Suggestions", 42)
         command(clip, "Rename Clip…", 43)
         command(clip, "Remove Clip", 44)
-        command(clip, "Set Start", 30)
-        command(clip, "Set End", 31)
-        command(clip, "Previous Clip", 32)
-        command(clip, "Next Clip", 33)
+        command(clip, "Set Start", 30, "i", [])
+        command(clip, "Set End", 31, "o", [])
+        command(clip, "Previous Clip", 32, "[", [])
+        command(clip, "Next Clip", 33, "]", [])
         command(clip, "Export Clip…", 45)
         let window = menu("Window")
         add(window, "Minimize", #selector(NSWindow.performMiniaturize(_:)), "m")
