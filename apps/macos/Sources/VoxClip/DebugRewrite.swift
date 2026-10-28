@@ -36,6 +36,17 @@ actor RewriteFixtureConnector: LLMConnector {
     var beforeDiscovery = false
 }
 
+@MainActor private final class HeldRewriteConsent {
+    var started = false
+    var completed = false
+    private var continuation: CheckedContinuation<Bool, Never>?
+    func confirm() async -> Bool {
+        started = true
+        return await withCheckedContinuation { continuation = $0 }
+    }
+    func release() { completed = true; continuation?.resume(returning: true); continuation = nil }
+}
+
 @MainActor enum DebugRewrite {
     static func run(app: AppModel, fixture: Project, directory: URL) async throws -> [DebugUISuite.Result] {
         var results: [DebugUISuite.Result] = []
@@ -285,6 +296,49 @@ actor RewriteFixtureConnector: LLMConnector {
                 if group == "local" { check("local exact no-charge title", session.proposalButton == "Rewrite · No charge") }
                 if group == "cli" { check("CLI has no header amount and names plan", session.proposalButton == "Rewrite" && session.sendLine.contains("ChatGPT plan")) }
             }
+        }
+        for boundary in ["panel", "editor", "leave"] {
+            let fake = RewriteFixtureConnector()
+            let held = HeldRewriteConsent()
+            let (editor, session) = make(fake, group: "cli", consent: { await held.confirm() })
+            defer { editor.close() }
+            await session.prepare()
+            if let quote = session.quote {
+                session.markEstimateShown(quote.id)
+                let task = Task { await session.propose(quote, affirmative: true) }
+                let clock = ContinuousClock()
+                let deadline = clock.now.advanced(by: .seconds(5))
+                while !held.started && clock.now < deadline { await Task.yield() }
+                switch boundary {
+                case "panel": editor.closeRewrite(returnFocus: false)
+                case "editor": editor.close()
+                default: editor.isLeaving = true
+                }
+                while editor.llmRuns.isBusy && clock.now < deadline { await Task.yield() }
+                let counts = await fake.counts()
+                check("\(boundary) close releases lease without completing held consent", held.started && !held.completed && !editor.llmRuns.isBusy && counts.discoveries == 0 && counts.sends == 0)
+                held.release()
+                _ = await task.value
+            } else { check("held consent quote exists", false) }
+        }
+        do {
+            let fake = RewriteFixtureConnector(hold: true)
+            let (editor, session) = make(fake)
+            defer { editor.close() }
+            await session.prepare()
+            if let quote = session.quote {
+                session.markEstimateShown(quote.id)
+                let task = Task { await session.propose(quote, affirmative: true) }
+                let clock = ContinuousClock()
+                let deadline = clock.now.advanced(by: .seconds(5))
+                while await fake.sends == 0 && clock.now < deadline { await Task.yield() }
+                editor.closeRewrite(returnFocus: false)
+                for _ in 0..<20 { await Task.yield() }
+                check("close after dispatch retains lease until fake request stops", editor.llmRuns.isBusy)
+                await fake.release()
+                _ = await task.value
+                check("stopped dispatched request releases lease without late edits", !editor.llmRuns.isBusy && session.newWords == session.source.map(\.text).joined(separator: " "))
+            } else { check("dispatched close quote exists", false) }
         }
         for change in ["instruction", "project", "connector", "close", "leave"] {
             let fake = RewriteFixtureConnector()

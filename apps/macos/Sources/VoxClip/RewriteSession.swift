@@ -27,6 +27,32 @@ struct RewriteConnector {
     let plan: String
 }
 
+@MainActor private final class RewriteConsentWait {
+    private var continuation: CheckedContinuation<Bool, Never>?
+    private var operation: Task<Void, Never>?
+    func confirm(_ consent: @escaping @MainActor () async -> Bool) async -> Bool {
+        await withTaskCancellationHandler {
+            guard !Task.isCancelled else { return false }
+            return await withCheckedContinuation { continuation in
+                self.continuation = continuation
+                operation = Task { [weak self] in
+                    let approved = await consent()
+                    self?.finish(approved)
+                }
+            }
+        } onCancel: {
+            Task { @MainActor [self] in
+                operation?.cancel(); operation = nil; finish(false)
+            }
+        }
+    }
+    private func finish(_ approved: Bool) {
+        let pending = continuation
+        continuation = nil; operation = nil
+        pending?.resume(returning: approved)
+    }
+}
+
 @MainActor final class RewriteApprovalSheet {
     private let alert = NSAlert()
     private let parent: NSWindow
@@ -163,7 +189,7 @@ struct RewriteConnector {
         let task = Task { [self] () -> Bool in
             defer { runs.release(lease); isProposing = false }
             do {
-                if connector.group != "local", !(await consent()) { return false }
+                if connector.group != "local", !(await RewriteConsentWait().confirm(consent)) { return false }
                 guard !Task.isCancelled, current, revision == expected, quote == approvedQuote, request?.id == input.id else { return false }
                 let result = try await service.propose(input, connector: connector.connector, model: connector.model,
                     authorization: VoiceRewriteAuthorization(quote: approvedQuote, approved: true))
