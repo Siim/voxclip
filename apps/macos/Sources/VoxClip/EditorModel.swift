@@ -104,14 +104,16 @@ struct EditorRenderSnapshot {
     }
     private func rewriteConsent(provider: ProviderChoice, signature: [String], snapshot: Project) async -> Bool {
         guard capabilities.edit, project == snapshot, rewriteConnectorSignature == signature else { return false }
-        if provider.privacy != "thirdPartyCloud" || app.bool("llm.cloudConsent.\(provider.id)") { return true }
-        guard let window else { return false }
-        let copy = app.consentCopy(provider, action: .rewrite, wordCount: rewrite?.source.filter { $0.kind == .word }.count ?? 0)
-        let approved = await RewriteApprovalSheet(title: "Rewrite", copy: copy, parent: window).confirm()
-        guard approved, !Task.isCancelled, capabilities.edit, project == snapshot,
-              rewriteConnectorSignature == signature, rewrite?.isOpen == true else { return false }
-        app.set("llm.cloudConsent.\(provider.id)", .bool(true))
-        return true
+        guard let connector = rewrite?.connector?.connector else { return false }
+        do {
+            return try await app.authorizeConnectorRequest(provider, connector: connector, action: .rewrite,
+                wordCount: rewrite?.source.filter { $0.kind == .word }.count ?? 0, parent: window) { [self] in
+                    capabilities.edit && project == snapshot && rewriteConnectorSignature == signature && rewrite?.isOpen == true
+                }
+        } catch is CancellationError { return false } catch {
+            rewrite?.setReadinessProblem(await app.safeError(error, context: "ai:Rewrite"))
+            return false
+        }
     }
     func enableVoiceLab() {
         app.set("voiceLab.enabled", .bool(true))
@@ -1073,7 +1075,7 @@ extension EditorModel {
         let selectedPreset = preset
         let instructions = instruction
         let snapshot = project
-        let run = {
+        do {
             guard self.capabilities.ai, self.project == snapshot, self.app.string("llm.connector") == provider.id,
                   self.app.string("llm.model.\(provider.id)", fallback: provider.defaultModel ?? "") == selectedModel,
                   self.rewriteConnectorSignature == selectedSignature,
@@ -1086,6 +1088,10 @@ extension EditorModel {
             self.findTask = Task { [self] in
                 defer { self.finding = false; runs.release(lease) }
                 do {
+                    guard try await app.authorizeConnectorRequest(provider, connector: connector, action: .findClips,
+                        wordCount: transcript.words.filter { $0.kind == .word }.count, parent: window, isCurrent: { [self] in
+                            !isLeaving && project == snapshot && rewriteConnectorSignature == selectedSignature
+                        }) else { return }
                     let catalog = LLMCatalog(document: try JSONDecoder().decode(JSONValue.self, from: Data(contentsOf: shared.root.appendingPathComponent("catalog/llm-providers.json"))))
                     let finder = ClipFinder(runner: LLMRunner(keys: app.secrets, catalog: catalog, log: app.log), shared: shared)
                     let presets = try await finder.presets()
@@ -1119,13 +1125,5 @@ extension EditorModel {
                 }
             }
         }
-        if provider.privacy == "thirdPartyCloud" && !app.bool("llm.cloudConsent.\(provider.id)") {
-            let alert = NSAlert(); alert.messageText = "Find clips"
-            alert.informativeText = app.consentCopy(provider, action: .findClips, wordCount: words.count)
-            alert.addButton(withTitle: "Continue"); alert.addButton(withTitle: "Cancel")
-            guard alert.runModal() == .alertFirstButtonReturn else { return }
-            app.set("llm.cloudConsent.\(provider.id)", .bool(true))
-        }
-        run()
     }
 }

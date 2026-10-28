@@ -1,5 +1,11 @@
 # macOS implementation contracts
 
+### 2026-10-28 — sol-mac-redesign round 6 — Consent before requests
+
+- Find Clips, Rewrite and Settings Test share `authorizeConnectorRequest`: detect first, require Ready, then ask the action-specific §4.8 sheet on an ungranted third-party connector. Cancel sends nothing. Consent is connector-wide; granted connectors still detect but do not show another sheet. Settings Test uses the exact new Test sentences and clears its in-progress state on every exit.
+- Find Clips consent is now an async cancellable sheet within its project lease; cancellation/close unwinds it. Rewrite retains the same cancellable consent wait and dispatched-work lease boundary. The production AI-tighten surface is not wired (only the Core feature enum/error copy exists), so there is no additional request path to gate.
+- `DebugConnectorRequests.run` drives the real Find Clips, Rewrite and Settings Test entries with fake cloud/CLI connectors, checking detection before the sheet, zero requests before approval, Cancel, granted sends and released run state. Native sheet captures remain a separate console-gated acceptance step.
+
 ### 2026-10-28 — sol-mac-redesign round 6 — Explicit connector detection
 
 - ai.md §4.8 on main `c8d5c10d` supersedes round 5's no-pre-consent-probe rule. Detection is allowed when Settings, Find Clips or Rewrite opens, and on Detect, Choose or Retry; requests still require consent. Model refresh remains an explicit Settings action without a sheet.

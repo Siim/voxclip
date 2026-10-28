@@ -27,7 +27,7 @@ protocol ProviderKeyStore: Sendable {
     func save(_ value: String, for provider: String) async throws
 }
 extension SecretStore: ProviderKeyStore {}
-enum ConnectorConsentAction { case findClips, rewrite }
+enum ConnectorConsentAction { case findClips, rewrite, test }
 extension ProviderChoice {
     var cliConsentCopy: String? {
         group == "cli" ? consentCopy(action: .findClips, wordCount: 0) : nil
@@ -37,7 +37,7 @@ extension ProviderChoice {
             let name = id == "claude-code" ? "Claude Code" : "Codex"
             let vendor = id == "claude-code" ? "Anthropic" : "OpenAI"
             let plan = id == "claude-code" ? "Claude" : "ChatGPT"
-            let subject = action == .rewrite ? "These words are sent" : "The transcript is sent"
+            let subject = action == .rewrite ? "These words are sent" : action == .test ? "A short test request is sent" : "The transcript is sent"
             let key = authMethod?.lowercased().replacingOccurrences(of: "-", with: "_")
             let billing: String
             if key == "api_key" || key == "apikey" { billing = "and billed to the API key \(name) is signed in with." }
@@ -45,6 +45,7 @@ extension ProviderChoice {
             return "VoxClip will run your installed \(name) with your own sign-in. \(subject) to \(vendor) \(billing)"
         }
         if action == .rewrite { return "Rewrite sends these \(wordCount) words (no audio or video) to \(label) using your API key." }
+        if action == .test { return "Test sends a short test request to \(label) using your API key. Nothing from your projects is sent." }
         return "Find clips sends this project's transcript (\(wordCount) words, no audio or video) to \(label) using your API key."
     }
 }
@@ -129,10 +130,10 @@ extension ProviderChoice {
     func consentCopy(_ provider: ProviderChoice, action: ConnectorConsentAction, wordCount: Int) -> String {
         provider.consentCopy(action: action, wordCount: wordCount, authMethod: knownCLIAuthMethods[provider.id + ":" + string("llm.cliPath.\(provider.id)")])
     }
-    func connectorStatus(_ provider: ProviderChoice) async -> ConnectorStatus? {
+    func connectorStatus(_ provider: ProviderChoice, using supplied: (any LLMConnector)? = nil) async -> ConnectorStatus? {
         guard !Self.isTestSession || connectorOverride != nil else { return nil }
         let path = string("llm.cliPath.\(provider.id)")
-        let connector = connector(provider.id)
+        let connector = supplied ?? connector(provider.id)
         let result = await connector.status()
         if let stub = connector as? StubLLMConnector, let method = await stub.knownCLIAuthMethod() {
             knownCLIAuthMethods[provider.id + ":" + path] = method
@@ -161,6 +162,8 @@ extension ProviderChoice {
     @ObservationIgnored private var library: ModelLibrary?
     @ObservationIgnored private let modelDownloader: (any ModelDownloader)?
     @ObservationIgnored var connectorOverride: ((String) -> any LLMConnector)?
+    @ObservationIgnored var connectorConsentOverride: (@MainActor (ProviderChoice, ConnectorConsentAction, String) async -> Bool)?
+    var testingProviders: Set<String> = []
     @ObservationIgnored var providerKeyStoreOverride: (any ProviderKeyStore)?
     var providerKeyStore: any ProviderKeyStore { providerKeyStoreOverride ?? secrets }
     @ObservationIgnored lazy var captions = CaptionHandoff(shared: shared)

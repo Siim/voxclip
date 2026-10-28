@@ -114,7 +114,7 @@ import VoxClipCore
         case .needsKey:
             return ("Add your \(provider.label) key to use Find Clips with AI. You can still make clips by hand.", "Set Up AI…", { openVoxClipSettings(pane: "ai") })
         case .notRunning:
-            return ("\(provider.label) isn't running, so Find Clips with AI can't run.", "Check Again", { app.refreshConnectorReadiness() })
+            return ("\(provider.label) isn't running, so Find Clips with AI can't run.", "Set Up AI…", { openVoxClipSettings(pane: "ai") })
         default:
             return nil
         }

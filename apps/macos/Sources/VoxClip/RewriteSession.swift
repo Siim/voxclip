@@ -27,7 +27,7 @@ struct RewriteConnector {
     let plan: String
 }
 
-@MainActor private final class RewriteConsentWait {
+@MainActor final class ConnectorConsentWait {
     private var continuation: CheckedContinuation<Bool, Never>?
     private var operation: Task<Void, Never>?
     func confirm(_ consent: @escaping @MainActor () async -> Bool) async -> Bool {
@@ -162,6 +162,7 @@ struct RewriteConnector {
         guard !Task.isCancelled, current else { return }
         readiness = result
     }
+    func setReadinessProblem(_ text: String) { problem = text }
     func prepare(revision expected: Int? = nil) async {
         let expected = expected ?? revision
         guard current, let connector, let service else { return }
@@ -196,7 +197,7 @@ struct RewriteConnector {
         let task = Task { [self] () -> Bool in
             defer { runs.release(lease); isProposing = false }
             do {
-                if connector.group != "local", !(await RewriteConsentWait().confirm(consent)) { return false }
+                if connector.group != "local", !(await ConnectorConsentWait().confirm(consent)) { return false }
                 guard !Task.isCancelled, current, revision == expected, quote == approvedQuote, request?.id == input.id else { return false }
                 let result = try await service.propose(input, connector: connector.connector, model: connector.model,
                     authorization: VoiceRewriteAuthorization(quote: approvedQuote, approved: true))
