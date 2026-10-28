@@ -6,7 +6,6 @@ import VoxClipCore
     @Environment(\.dismiss) private var dismiss
     @State private var step = 0
     @State private var connector = ""
-    @State private var consent = false
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             HStack { Text("Step \(step + 1) of 3").foregroundStyle(.secondary); Spacer(); Button("Skip") { finish() } }
@@ -27,7 +26,6 @@ import VoxClipCore
                 }
                 if let choice = app.providers.first(where: { $0.id == connector }) {
                     if choice.group == "apiKey" { ProviderKeyRow(provider: choice.id, label: choice.label, app: app) }
-                    if let copy = choice.cliConsentCopy { Text(copy); Toggle("I understand and want to use this connector", isOn: $consent) }
                     Button("Configure and test this connector…") { openVoxClipSettings() }
                 }
                 Text("Sends transcript text only. No audio or video.").foregroundStyle(.secondary)
@@ -51,8 +49,8 @@ import VoxClipCore
                 if step == 1 {
                     Button("Not now") { step = 2 }.keyboardShortcut(.defaultAction)
                     Button("Continue") {
-                        if app.selectOnboardingConnector(connector, consent: consent) { step = 2 }
-                    }.disabled(connector.isEmpty || (app.providers.first { $0.id == connector }?.cliConsentCopy != nil && !consent))
+                        if app.selectOnboardingConnector(connector) { step = 2 }
+                    }.disabled(connector.isEmpty)
                 } else if step == 2 {
                     Button("Open a video…") { finish(); chooseFile(app: app) }
                     Button("Done") { finish() }.keyboardShortcut(.defaultAction)
@@ -60,7 +58,6 @@ import VoxClipCore
                 else { Button("Continue") { step += 1 }.keyboardShortcut(.defaultAction) }
             }
         }.padding(28).frame(width: 560, height: 480).background(DesignValues.color("bg.window"))
-        .onChange(of: connector) { _, _ in consent = false }
     }
     private func finish() { app.set("onboarding.completed", .bool(true)); dismiss() }
 }

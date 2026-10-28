@@ -29,8 +29,12 @@ protocol ProviderKeyStore: Sendable {
 extension SecretStore: ProviderKeyStore {}
 enum ConnectorConsentAction { case findClips, rewrite, test }
 extension ProviderChoice {
-    var cliConsentCopy: String? {
-        group == "cli" ? consentCopy(action: .findClips, wordCount: 0) : nil
+    func detectedBillingMethod(_ raw: String?) -> String? {
+        guard let raw else { return nil }
+        let method = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased().replacingOccurrences(of: "-", with: "_").replacingOccurrences(of: ".", with: "_")
+        if ["api_key", "apikey"].contains(method) { return "api_key" }
+        let plans = id == "claude-code" ? ["plan", "claude_ai", "claudeai", "oauth", "oauth_token"] : ["plan", "chatgpt"]
+        return plans.contains(method) ? "plan" : nil
     }
     func consentCopy(action: ConnectorConsentAction, wordCount: Int, authMethod: String? = nil) -> String {
         if id == "claude-code" || id == "codex" {
@@ -38,9 +42,9 @@ extension ProviderChoice {
             let vendor = id == "claude-code" ? "Anthropic" : "OpenAI"
             let plan = id == "claude-code" ? "Claude" : "ChatGPT"
             let subject = action == .rewrite ? "These words are sent" : action == .test ? "A short test request is sent" : "The transcript is sent"
-            let key = authMethod?.lowercased().replacingOccurrences(of: "-", with: "_")
+            guard let key = detectedBillingMethod(authMethod) else { return "" }
             let billing: String
-            if key == "api_key" || key == "apikey" { billing = "and billed to the API key \(name) is signed in with." }
+            if key == "api_key" { billing = "and billed to the API key \(name) is signed in with." }
             else { billing = "and \(action == .rewrite ? "count" : "counts") toward your \(plan) plan's usage." }
             return "VoxClip will run your installed \(name) with your own sign-in. \(subject) to \(vendor) \(billing)"
         }
@@ -131,12 +135,15 @@ extension ProviderChoice {
         provider.consentCopy(action: action, wordCount: wordCount, authMethod: knownCLIAuthMethods[provider.id + ":" + string("llm.cliPath.\(provider.id)")])
     }
     func connectorStatus(_ provider: ProviderChoice, using supplied: (any LLMConnector)? = nil) async -> ConnectorStatus? {
-        guard !Self.isTestSession || connectorOverride != nil else { return nil }
+        guard supplied != nil || !Self.isTestSession || connectorOverride != nil else { return nil }
         let path = string("llm.cliPath.\(provider.id)")
         let connector = supplied ?? connector(provider.id)
-        let result = await connector.status()
-        if let stub = connector as? StubLLMConnector, let method = await stub.knownCLIAuthMethod() {
-            knownCLIAuthMethods[provider.id + ":" + path] = method
+        var result = await connector.status()
+        if provider.group == "cli" {
+            let method = await connector.knownCLIAuthMethod()
+            guard !Task.isCancelled, path == string("llm.cliPath.\(provider.id)") else { return nil }
+            knownCLIAuthMethods[provider.id + ":" + path] = result == .ready ? provider.detectedBillingMethod(method) : nil
+            if result == .ready && knownCLIAuthMethods[provider.id + ":" + path] == nil { result = .cliSignedOut }
         }
         detectedConnectorStatus[provider.id] = result
         return result
@@ -241,10 +248,9 @@ extension ProviderChoice {
         if case .string(let value) = settings.values[key] { return value }
         return fallback
     }
-    @discardableResult func selectOnboardingConnector(_ id: String, consent: Bool) -> Bool {
-        guard let provider = providers.first(where: { $0.id == id }), provider.cliConsentCopy == nil || consent else { return false }
+    @discardableResult func selectOnboardingConnector(_ id: String) -> Bool {
+        guard providers.contains(where: { $0.id == id }) else { return false }
         set("llm.connector", .string(id))
-        if provider.cliConsentCopy != nil, consent { set("llm.cloudConsent.\(id)", .bool(true)) }
         return true
     }
     func bool(_ key: String, fallback: Bool = false) -> Bool {

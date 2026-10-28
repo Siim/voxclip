@@ -158,7 +158,10 @@ struct RewriteConnector {
     }
     func detectConnector() async {
         guard current, let connector else { return }
-        let result = await connector.connector.status()
+        let result: ConnectorStatus?
+        if let provider = editor.app.providers.first(where: { $0.id == connector.connector.id.rawValue }) {
+            result = await editor.app.connectorStatus(provider, using: connector.connector)
+        } else { result = await connector.connector.status() }
         guard !Task.isCancelled, current else { return }
         readiness = result
     }

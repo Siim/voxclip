@@ -7,11 +7,15 @@ import VoxClipMedia
 actor ConsentFixtureConnector: LLMConnector {
     nonisolated let id: ConnectorID
     let readiness: ConnectorStatus
+    let authMethod: String?
     private(set) var statuses = 0
     private(set) var sends = 0
-    init(id: ConnectorID, readiness: ConnectorStatus = .ready) { self.id = id; self.readiness = readiness }
+    init(id: ConnectorID, readiness: ConnectorStatus = .ready, authMethod: String? = "api_key") {
+        self.id = id; self.readiness = readiness; self.authMethod = authMethod
+    }
     func status() -> ConnectorStatus { statuses += 1; return readiness }
-    func models(refresh: Bool) -> [LLMModel] { [] }
+    func knownCLIAuthMethod() async -> String? { authMethod }
+    func models(refresh: Bool) -> [LLMModel] { [LLMModel(id: "fixture-local", name: "Fixture", contextTokens: 128_000, source: .curated)] }
     func contextTokens(model: String) -> Int? { 128_000 }
     func send(_ request: LLMRequest, model: String) -> RawCompletion {
         sends += 1
@@ -31,12 +35,14 @@ actor ConsentFixtureConnector: LLMConnector {
         var results: [DebugUISuite.Result] = []
         func check(_ name: String, _ passed: Bool) { results.append(.init(name: name, passed: passed)) }
         for id in ["anthropic", "claude-code", "codex"] {
+            let methods: [String?] = id == "anthropic" ? ["api_key"] : ["api_key", id == "codex" ? "chatgpt" : "claude.ai", nil, "unrecognized"]
+            for method in methods {
             for action in [ConnectorConsentAction.findClips, .rewrite, .test] {
                 for choice in ["cancel", "continue", "granted"] {
                     let app = AppModel(settingsStore: RegressionSettingsStore())
                     await app.start()
                     guard let provider = app.providers.first(where: { $0.id == id }) else { throw CocoaError(.coderInvalidValue) }
-                    let fake = ConsentFixtureConnector(id: ConnectorID(rawValue: id)!)
+                    let fake = ConsentFixtureConnector(id: ConnectorID(rawValue: id)!, authMethod: method)
                     app.connectorOverride = { _ in fake }
                     app.set("llm.connector", .string(id))
                     app.set("llm.model.\(id)", .string("fixture-local"))
@@ -67,14 +73,33 @@ actor ConsentFixtureConnector: LLMConnector {
                         _ = await testProvider(provider, app: app)
                     }
                     let sends = await fake.sends
-                    let expected = choice == "cancel" ? 0 : 1
-                    let prefix = "\(id) \(action) \(choice)"
-                    check("\(prefix) detects before sheet and sends only after consent", observation.detectedBeforeSheet && observation.zeroRequestsBeforeSheet && sends == expected && observation.copies.count == (choice == "granted" ? 0 : 1))
+                    let known = method != nil && method != "unrecognized"
+                    let expected = choice == "cancel" || !known ? 0 : 1
+                    let prefix = "\(id) \(action) \(method ?? "unknown") \(choice)"
+                    check("\(prefix) detects before sheet and sends only after consent", observation.detectedBeforeSheet && observation.zeroRequestsBeforeSheet && sends == expected && observation.copies.count == (choice == "granted" || !known ? 0 : 1))
                     check("\(prefix) leaves no run or lease held", !editor.finding && !editor.llmRuns.isBusy && app.testingProviders.isEmpty)
-                    if action == .test && choice != "granted" {
-                        check("\(prefix) uses exact Test consent copy", observation.copies == [provider.consentCopy(action: .test, wordCount: 0)])
+                    if !known {
+                        check("\(prefix) unknown method never defaults to plan wording", provider.consentCopy(action: action, wordCount: 3, authMethod: method).isEmpty && observation.copies.isEmpty && app.detectedConnectorStatus[id] == .cliSignedOut)
+                    } else if choice != "granted" {
+                        let copy = observation.copies.first ?? ""
+                        let billing = provider.group != "cli" || (method == "api_key" ? copy.contains("billed to the API key") && !copy.contains("plan's usage") : copy.contains("plan's usage") && !copy.contains("billed to the API key"))
+                        check("\(prefix) fresh process uses detected billing sentence on first use", billing && !copy.isEmpty)
+                        if action == .test {
+                            let vendor = id == "claude-code" ? "Anthropic" : "OpenAI"
+                            let name = id == "claude-code" ? "Claude Code" : "Codex"
+                            let plan = id == "claude-code" ? "Claude" : "ChatGPT"
+                            let ending = method == "api_key" ? "billed to the API key \(name) is signed in with." : "counts toward your \(plan) plan's usage."
+                            let expectedCopy = provider.group == "cli" ? "VoxClip will run your installed \(name) with your own sign-in. A short test request is sent to \(vendor) and \(ending)" : "Test sends a short test request to \(provider.label) using your API key. Nothing from your projects is sent."
+                            check("\(prefix) uses exact Test consent copy", copy == expectedCopy)
+                        }
+                        if choice == "continue" {
+                            for (appearance, scheme) in [("light", ColorScheme.light), ("dark", .dark)] {
+                                try DebugRound4.bitmap(Text(copy).font(.system(size: 13)).padding(16), name: "r6-consent-copy-only-\(id)-\(action)-\(method ?? "unknown")-\(appearance)", width: 440, height: 150, scheme: scheme, directory: directory)
+                            }
+                        }
                     }
                 }
+            }
             }
         }
         return results

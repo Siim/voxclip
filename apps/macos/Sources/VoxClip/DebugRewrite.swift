@@ -14,6 +14,7 @@ actor RewriteFixtureConnector: LLMConnector {
     private var continuation: CheckedContinuation<Void, Never>?
     init(id: ConnectorID = .ollama, failure: Bool = false, hold: Bool = false) { self.id = id; self.failure = failure; self.hold = hold }
     func status() -> ConnectorStatus { discoveries += 1; statuses += 1; return .ready }
+    func knownCLIAuthMethod() async -> String? { "plan" }
     func models(refresh: Bool) -> [LLMModel] {
         discoveries += 1
         return [LLMModel(id: "fixture-local", name: "Fixture", contextTokens: 128_000, source: .curated)]

@@ -1,5 +1,11 @@
 # macOS implementation contracts
 
+### 2026-10-28 — sol-mac-redesign round 6 — Detected CLI billing
+
+- A CLI request requires a Ready detection with a recognized sign-in method, including already-granted connectors. Unknown/missing methods show the existing signed-out status/error, with no sheet and no request. Copy formatting returns no sentence for unknown methods; it never treats nil as a plan. Failed detection clears previously remembered billing. Codex recognizes API key or ChatGPT explicitly instead of assuming every other output means ChatGPT.
+- The connector protocol exposes already-observed auth metadata without running discovery. Settings, Find Clips and Rewrite read it from the same detected connector instance. The fake real-entry matrix starts a fresh AppModel for both CLIs, both billing methods, all three actions and Cancel/Continue/granted; missing and unrecognized methods fail closed. `detectedCodexBillingMethodNeverDefaultsToPlan` covers recorded native-process outputs without executing a CLI.
+- Onboarding selects a connector but no longer pre-grants a CLI request or displays unknown billing: first-use consent waits for an actual ready request. This replaces the older onboarding checkbox contract below; API-key selection likewise never grants request consent.
+
 ### 2026-10-28 — sol-mac-redesign round 6 — Consent before requests
 
 - Find Clips, Rewrite and Settings Test share `authorizeConnectorRequest`: detect first, require Ready, then ask the action-specific §4.8 sheet on an ungranted third-party connector. Cancel sends nothing. Consent is connector-wide; granted connectors still detect but do not show another sheet. Settings Test uses the exact new Test sentences and clears its in-progress state on every exit.

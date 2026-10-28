@@ -69,11 +69,10 @@ actor RegressionSettingsStore: SettingsStore {
         check("export copy never doubles reassurance", UserMessages.message(VoxClipError.exportFailed("encoder stopped. Your edits are saved."), context: "export") == "Export stopped: encoder stopped. Your edits are saved.")
         check("cancellation is silent", UserMessages.message(VoxClipError.cancelled).isEmpty && UserMessages.message(LLMError.cancelled, context: "ai:OpenAI").isEmpty)
         let consentApp = AppModel(settingsStore: RegressionSettingsStore())
-        consentApp.selectOnboardingConnector("openai", consent: true)
+        consentApp.selectOnboardingConnector("openai")
         check("onboarding never pre-consents API transcript uploads", !consentApp.bool("llm.cloudConsent.openai"))
-        let rejected = !consentApp.selectOnboardingConnector("claude-code", consent: false)
-        let accepted = consentApp.selectOnboardingConnector("claude-code", consent: true)
-        check("onboarding CLI consent uses the first-use copy", rejected && accepted && consentApp.bool("llm.cloudConsent.claude-code") && consentApp.providers.first(where: { $0.id == "claude-code" })?.cliConsentCopy?.hasPrefix("VoxClip will run your installed Claude Code") == true)
+        let accepted = consentApp.selectOnboardingConnector("claude-code")
+        check("onboarding selection never grants undetected CLI consent", accepted && !consentApp.bool("llm.cloudConsent.claude-code"))
         for provider in app.providers.filter({ ["claude-code", "codex"].contains($0.id) }) {
             let cli = provider.id == "claude-code" ? "Claude Code" : "Codex"
             let context = "ai:\(provider.label)"

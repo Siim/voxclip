@@ -61,6 +61,7 @@ public actor CLIConnector: LLMConnector {
         }
         catch { return await unavailableStatus(probeFailure) }
     }
+    public func knownCLIAuthMethod() async -> String? { lastAuthMethod }
 
     private func unavailableStatus(_ failure: LLMError) async -> ConnectorStatus {
         .unavailable(reason: await failureMessage(failure, includeEditsSaved: false))
@@ -296,7 +297,9 @@ public actor CLIConnector: LLMConnector {
             return status?["authMethod"]?.cliString
         }
         guard result.exitCode == 0 else { throw probeFailure }
-        return text.localizedCaseInsensitiveContains(auth["apiKeyText"]?.cliString ?? "API key") ? "api_key" : "chatgpt"
+        if text.localizedCaseInsensitiveContains(auth["apiKeyText"]?.cliString ?? "API key") { return "api_key" }
+        if text.localizedCaseInsensitiveContains("ChatGPT") { return "chatgpt" }
+        return nil
     }
 
     private func probe(_ executable: URL, arguments: [String]) async throws -> ProcessResult {

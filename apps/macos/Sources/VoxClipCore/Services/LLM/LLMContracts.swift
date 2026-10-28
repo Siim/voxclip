@@ -160,9 +160,13 @@ public struct LLMModel: Codable, Sendable, Hashable {
 public protocol LLMConnector: Sendable {
     var id: ConnectorID { get }
     func status() async -> ConnectorStatus
+    func knownCLIAuthMethod() async -> String?
     func models(refresh: Bool) async throws -> [LLMModel]
     func contextTokens(model: String) async -> Int?
     func send(_ request: LLMRequest, model: String) async throws -> RawCompletion
+}
+extension LLMConnector {
+    public func knownCLIAuthMethod() async -> String? { nil }
 }
 /// Dependency-injected secrets; architecture §2.1, §9.4 and AI §8.1. No persistence requirement.
 public protocol KeyProvider: Sendable { func key(for provider: String) async throws -> String? }
