@@ -34,12 +34,7 @@ import VoxClipCore
             TextField("What should change?", text: Binding(get: { session.instruction }, set: { session.setInstruction($0) }), axis: .vertical)
                 .lineLimit(2...4).textFieldStyle(.roundedBorder).focused($instructionFocused)
                 .accessibilityLabel("What should change?")
-            Button(session.proposalButton) { approveAndPropose() }.disabled(!session.canPropose)
-                .accessibilityLabel(session.proposalButton)
-            if session.isProposing { ProgressView().controlSize(.small).accessibilityLabel("Rewriting") }
-            Text(session.sendLine).font(.system(size: 11)).foregroundStyle(.secondary)
-            if session.connector == nil { Button("Open Settings") { openVoxClipSettings(pane: "ai") } }
-            if !session.estimateCopy.isEmpty { Text(session.estimateCopy).font(.system(size: 11)).foregroundStyle(.secondary) }
+            RewriteProposalControls(session: session, propose: approveAndPropose)
             Divider()
             HStack(alignment: .firstTextBaseline) {
                 Text("New words").font(.system(size: 12, weight: .semibold))
@@ -109,5 +104,20 @@ import VoxClipCore
             }
             await session.propose(quote, affirmative: approved)
         }
+    }
+}
+
+@MainActor struct RewriteProposalControls: View {
+    let session: RewriteSession
+    let propose: () -> Void
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Button(session.proposalButton, action: propose).disabled(!session.canPropose)
+                .accessibilityLabel(session.proposalButton)
+            if session.isProposing { ProgressView().controlSize(.small).accessibilityLabel("Rewriting") }
+            Text(session.sendLine).font(.system(size: 11)).foregroundStyle(.secondary)
+            if session.connector == nil { Button("Open Settings") { openVoxClipSettings(pane: "ai") } }
+            if !session.estimateCopy.isEmpty { Text(session.estimateCopy).font(.system(size: 11)).foregroundStyle(.secondary) }
+        }.frame(maxWidth: .infinity, alignment: .leading)
     }
 }

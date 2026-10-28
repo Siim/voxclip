@@ -8,6 +8,9 @@ enum EditorPane: CaseIterable {
     static func isCycleKey(code: UInt16, modifiers: NSEvent.ModifierFlags) -> Bool {
         code == 97 && modifiers.intersection([.command, .option]).isEmpty
     }
+    static func entersSelectionBar(code: UInt16, modifiers: NSEvent.ModifierFlags) -> Bool {
+        code == 48 && modifiers.intersection([.shift, .command, .option, .control]).isEmpty
+    }
 }
 
 @MainActor struct EditorPaneFocus: ViewModifier {

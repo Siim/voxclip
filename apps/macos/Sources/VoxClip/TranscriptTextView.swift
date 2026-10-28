@@ -449,7 +449,7 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
         guard let model, !hasMarkedText(), correction == nil else { super.keyDown(with: event); return }
         if event.keyCode == 53, selectionBarVisible { hideSelectionBar(dismissed: true); return }
         if event.keyCode == 53 { model.activate(nil); return }
-        if event.keyCode == 48 || event.keyCode == 97 && event.modifierFlags.contains(.control) {
+        if EditorPane.entersSelectionBar(code: event.keyCode, modifiers: event.modifierFlags) {
             if !model.selectedIDs.isEmpty { showSelectionBar(focus: true); return }
         }
         let shift = event.modifierFlags.contains(.shift)

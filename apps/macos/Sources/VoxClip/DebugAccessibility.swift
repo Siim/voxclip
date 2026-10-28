@@ -16,6 +16,7 @@ import VoxClipMedia
         }
         check("F6 and Control-F6 use the same pane route", EditorPane.isCycleKey(code: 97, modifiers: []) && EditorPane.isCycleKey(code: 97, modifiers: .control) && EditorPane.isCycleKey(code: 97, modifiers: [.control, .shift]))
         check("pane route does not steal unrelated shortcuts", !EditorPane.isCycleKey(code: 48, modifiers: []) && !EditorPane.isCycleKey(code: 97, modifiers: .command) && !EditorPane.isCycleKey(code: 97, modifiers: .option))
+        check("only forward Tab enters selection bar without trapping Shift-Tab", EditorPane.entersSelectionBar(code: 48, modifiers: []) && !EditorPane.entersSelectionBar(code: 48, modifiers: .shift) && !EditorPane.entersSelectionBar(code: 48, modifiers: .control) && !EditorPane.entersSelectionBar(code: 97, modifiers: .control))
         let visible: [EditorPane] = [.sidebar, .toolbar, .transcript, .viewer, .panel, .timeline]
         let hidden: [EditorPane] = [.sidebar, .toolbar, .transcript, .timeline]
         check("visible pane order matches design C15", EditorPane.order(viewerVisible: true) == visible)
@@ -117,25 +118,34 @@ import VoxClipMedia
         let fake = RewriteFixtureConnector()
         let connector = RewriteConnector(connector: fake, model: "fixture-local", name: "Fixture", group: "local", plan: "")
         let envelope = AudioEnvelope(sampleRate: 48_000, levels: Array(repeating: 0.01, count: 100_000))
-        let session = RewriteSession(editor: editor, range: 3...9, envelope: envelope, connector: connector)
-        defer { session.close() }
+        var captureProject = editor.project
+        captureProject.edits = ProjectEdits()
+        let captureEditor = EditorModel(document: VoxClipDocument(project: captureProject), app: app, preview: DemoPreviewEngine())
+        captureEditor.mediaResolved = true; captureEditor.refresh()
+        let session = RewriteSession(editor: captureEditor, range: 3...9, envelope: envelope, connector: connector)
+        defer { session.close(); captureEditor.close() }
         session.setInstruction("Make this clearer")
         session.edit("Here is my new draft")
         let clock = ContinuousClock()
         let deadline = clock.now.advanced(by: .seconds(5))
         while session.quote == nil && clock.now < deadline { await Task.yield() }
         if let quote = session.quote { session.markEstimateShown(quote.id) }
+        guard session.canPropose else { throw CocoaError(.coderInvalidValue) }
         for (name, scheme) in [("light", ColorScheme.light), ("dark", .dark)] {
             let panel = RewritePanel(session: session)
             let panelContents = VStack(spacing: 0) { panel.contents; Divider(); panel.footer }
-            try DebugRound4.bitmap(panelContents, name: "rewrite-refreshed-estimate-components-\(name)", width: 360, height: 680, scheme: scheme, directory: directory)
+            try DebugRound4.bitmap(panelContents, name: "rewrite-partial-native-fields-unsupported-\(name)", width: 360, height: 680, scheme: scheme, directory: directory)
+            let controls = RewriteProposalControls(session: session, propose: {}).padding(16)
+            try DebugRound4.bitmap(controls, name: "rewrite-refreshed-estimate-controls-\(name)", width: 360, height: 150, scheme: scheme, directory: directory)
             app.settings.values["llm.connector"] = .string("codex")
             app.settings.values["llm.cloudConsent.codex"] = .bool(false)
             try DebugRound4.bitmap(FindClipsPopover(model: editor), name: "find-clips-unprobed-component-\(name)", width: 380, height: 330, scheme: scheme, directory: directory)
             for provider in app.providers.filter({ ["anthropic", "claude-code", "codex"].contains($0.id) }) {
                 for action in [ConnectorConsentAction.findClips, .rewrite] {
-                    let text = Text(provider.consentCopy(action: action, wordCount: 7)).font(.system(size: 13)).padding(16)
-                    try DebugRound4.bitmap(text, name: "consent-copy-only-\(provider.id)-\(action)-\(name)", width: 420, height: 130, scheme: scheme, directory: directory)
+                    for method in provider.group == "cli" ? ["plan", "api_key"] : ["api_key"] {
+                        let text = Text(provider.consentCopy(action: action, wordCount: 7, authMethod: method)).font(.system(size: 13)).padding(16)
+                        try DebugRound4.bitmap(text, name: "consent-copy-only-\(provider.id)-\(action)-\(method)-\(name)", width: 420, height: 130, scheme: scheme, directory: directory)
+                    }
                 }
             }
             for contrast in [false, true] {

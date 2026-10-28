@@ -44,6 +44,10 @@ import VoxClipCore
         text.selectedRanges = words.compactMap { text.map.span(id: $0.id).map { NSValue(range: $0.range) } }
         if let tab = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: textWindow.windowNumber, context: nil, characters: "\t", charactersIgnoringModifiers: "\t", isARepeat: false, keyCode: 48) { text.keyDown(with: tab) }
         results.append(.init(name: "keyboard Tab reveals the selection bar without a pointer", passed: text.selectionBarVisible))
+        text.hideSelectionBar(dismissed: true)
+        if let tab = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: .shift, timestamp: 0, windowNumber: textWindow.windowNumber, context: nil, characters: "\t", charactersIgnoringModifiers: "\t", isARepeat: false, keyCode: 48) { text.keyDown(with: tab) }
+        results.append(.init(name: "Shift-Tab never re-enters the selection bar", passed: !text.selectionBarVisible))
+        text.showSelectionBar(focus: true)
         if let escape = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: textWindow.windowNumber, context: nil, characters: "", charactersIgnoringModifiers: "", isARepeat: false, keyCode: 53) { text.keyDown(with: escape) }
         results.append(.init(name: "keyboard Escape dismisses the bar before leaving the clip", passed: !text.selectionBarVisible && model.activeClip?.id == escapeClip.id))
         if let escape = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: textWindow.windowNumber, context: nil, characters: "", charactersIgnoringModifiers: "", isARepeat: false, keyCode: 53) { text.keyDown(with: escape) }
