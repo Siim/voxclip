@@ -148,8 +148,7 @@ def resolve(style, captions, width, height):
     st["_sizeScale"] = st["font"]["sizeScale"]
     st["_aspect"] = cls
     st["_preset"] = preset
-    from .contrast import resolve as resolve_contrast
-    return resolve_contrast(st)
+    return st
 
 
 def color(style, value):

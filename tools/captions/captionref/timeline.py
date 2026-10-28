@@ -160,13 +160,17 @@ def evaluate(track, t, fontdb, reduced=False):
         if reveal in ("word", "char") and state == "future":
             visible = False
         entry = {"word": i, "state": state, "visible": visible, "opacity": opacity, "scale": scale, "dy": dy}
-        src, col = resolve_fill(st, state, p["emph"].get(i), i in p["emph"])
+        src, col, replaced = resolve_fill(st, state, p["emph"].get(i), i in p["emph"])
         entry["fill"] = col
         entry["fillSource"] = src
+        if replaced:
+            entry["boxContrast"] = True
         if reveal == "wipe" and state == "active":
             entry["wipe"] = progress(t, w["start"], max(0.001, w["end"] - w["start"]))
-            fsrc, fcol = resolve_fill(st, "future", p["emph"].get(i), i in p["emph"])
+            fsrc, fcol, freplaced = resolve_fill(st, "future", p["emph"].get(i), i in p["emph"], state)
             entry["wipeFrom"] = fcol
+            if freplaced:
+                entry["wipeFromBoxContrast"] = True
         if reveal == "char":
             if state == "past":
                 entry["visibleClusters"] = w["m"]["clusters"]

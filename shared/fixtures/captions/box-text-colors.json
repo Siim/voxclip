@@ -1,30 +1,33 @@
 {
-  "fixture": "voxclip-caption-box-text-colors/1",
+  "fixture": "voxclip-caption-box-text-colors/2",
   "cases": [
     {
       "id": "box-highlight-default",
       "style": "box-highlight",
       "overrides": {},
       "state": "active",
+      "boxState": "active",
+      "emphasised": false,
+      "palette": null,
       "box": [
         124,
         58,
         237,
         255
       ],
-      "text": [
-        255,
-        255,
-        255,
-        255
+      "paint": {
+        "type": "solid",
+        "color": "#FFFFFFFF"
+      },
+      "contrasts": [
+        5.698586217871195
       ],
-      "contrast": 5.698586217871195,
-      "expected": [
-        255,
-        255,
-        255,
-        255
-      ]
+      "expected": {
+        "type": "solid",
+        "color": "#FFFFFFFF"
+      },
+      "source": "base",
+      "replaced": false
     },
     {
       "id": "box-highlight-yellow",
@@ -33,25 +36,28 @@
         "accent": "#FFE14D"
       },
       "state": "active",
+      "boxState": "active",
+      "emphasised": false,
+      "palette": null,
       "box": [
         255,
         225,
         77,
         255
       ],
-      "text": [
-        255,
-        255,
-        255,
-        255
+      "paint": {
+        "type": "solid",
+        "color": "#FFFFFFFF"
+      },
+      "contrasts": [
+        1.3019824344167779
       ],
-      "contrast": 1.3019824344167779,
-      "expected": [
-        0,
-        0,
-        0,
-        255
-      ]
+      "expected": {
+        "type": "solid",
+        "color": "#000000FF"
+      },
+      "source": "base",
+      "replaced": true
     },
     {
       "id": "box-highlight-green",
@@ -60,25 +66,28 @@
         "accent": "#4BE38A"
       },
       "state": "active",
+      "boxState": "active",
+      "emphasised": false,
+      "palette": null,
       "box": [
         75,
         227,
         138,
         255
       ],
-      "text": [
-        255,
-        255,
-        255,
-        255
+      "paint": {
+        "type": "solid",
+        "color": "#FFFFFFFF"
+      },
+      "contrasts": [
+        1.659580421413997
       ],
-      "contrast": 1.659580421413997,
-      "expected": [
-        0,
-        0,
-        0,
-        255
-      ]
+      "expected": {
+        "type": "solid",
+        "color": "#000000FF"
+      },
+      "source": "base",
+      "replaced": true
     },
     {
       "id": "box-highlight-cyan",
@@ -87,25 +96,28 @@
         "accent": "#5CE1FF"
       },
       "state": "active",
+      "boxState": "active",
+      "emphasised": false,
+      "palette": null,
       "box": [
         92,
         225,
         255,
         255
       ],
-      "text": [
-        255,
-        255,
-        255,
-        255
+      "paint": {
+        "type": "solid",
+        "color": "#FFFFFFFF"
+      },
+      "contrasts": [
+        1.536306465981171
       ],
-      "contrast": 1.536306465981171,
-      "expected": [
-        0,
-        0,
-        0,
-        255
-      ]
+      "expected": {
+        "type": "solid",
+        "color": "#000000FF"
+      },
+      "source": "base",
+      "replaced": true
     },
     {
       "id": "box-highlight-pink",
@@ -114,25 +126,28 @@
         "accent": "#FF6FAE"
       },
       "state": "active",
+      "boxState": "active",
+      "emphasised": false,
+      "palette": null,
       "box": [
         255,
         111,
         174,
         255
       ],
-      "text": [
-        255,
-        255,
-        255,
-        255
+      "paint": {
+        "type": "solid",
+        "color": "#FFFFFFFF"
+      },
+      "contrasts": [
+        2.580811887234227
       ],
-      "contrast": 2.580811887234227,
-      "expected": [
-        0,
-        0,
-        0,
-        255
-      ]
+      "expected": {
+        "type": "solid",
+        "color": "#000000FF"
+      },
+      "source": "base",
+      "replaced": true
     },
     {
       "id": "box-highlight-paper",
@@ -141,25 +156,28 @@
         "accent": "#F3F0E7"
       },
       "state": "active",
+      "boxState": "active",
+      "emphasised": false,
+      "palette": null,
       "box": [
         243,
         240,
         231,
         255
       ],
-      "text": [
-        255,
-        255,
-        255,
-        255
+      "paint": {
+        "type": "solid",
+        "color": "#FFFFFFFF"
+      },
+      "contrasts": [
+        1.1395159940719015
       ],
-      "contrast": 1.1395159940719015,
-      "expected": [
-        0,
-        0,
-        0,
-        255
-      ]
+      "expected": {
+        "type": "solid",
+        "color": "#000000FF"
+      },
+      "source": "base",
+      "replaced": true
     },
     {
       "id": "box-highlight-white",
@@ -168,50 +186,56 @@
         "accent": "#FFFFFF"
       },
       "state": "active",
+      "boxState": "active",
+      "emphasised": false,
+      "palette": null,
       "box": [
         255,
         255,
         255,
         255
       ],
-      "text": [
-        255,
-        255,
-        255,
-        255
+      "paint": {
+        "type": "solid",
+        "color": "#FFFFFFFF"
+      },
+      "contrasts": [
+        1.0
       ],
-      "contrast": 1.0,
-      "expected": [
-        0,
-        0,
-        0,
-        255
-      ]
+      "expected": {
+        "type": "solid",
+        "color": "#000000FF"
+      },
+      "source": "base",
+      "replaced": true
     },
     {
       "id": "clean-subtitle-default",
       "style": "clean-subtitle",
       "overrides": {},
       "state": "active",
+      "boxState": "active",
+      "emphasised": false,
+      "palette": null,
       "box": [
         0,
         0,
         0,
         179
       ],
-      "text": [
-        255,
-        255,
-        255,
-        255
+      "paint": {
+        "type": "solid",
+        "color": "#FFFFFFFF"
+      },
+      "contrasts": [
+        21.0
       ],
-      "contrast": 21.0,
-      "expected": [
-        255,
-        255,
-        255,
-        255
-      ]
+      "expected": {
+        "type": "solid",
+        "color": "#FFFFFFFF"
+      },
+      "source": "base",
+      "replaced": false
     },
     {
       "id": "clean-subtitle-yellow",
@@ -220,25 +244,28 @@
         "accent": "#FFE14D"
       },
       "state": "active",
+      "boxState": "active",
+      "emphasised": false,
+      "palette": null,
       "box": [
         0,
         0,
         0,
         179
       ],
-      "text": [
-        255,
-        255,
-        255,
-        255
+      "paint": {
+        "type": "solid",
+        "color": "#FFFFFFFF"
+      },
+      "contrasts": [
+        21.0
       ],
-      "contrast": 21.0,
-      "expected": [
-        255,
-        255,
-        255,
-        255
-      ]
+      "expected": {
+        "type": "solid",
+        "color": "#FFFFFFFF"
+      },
+      "source": "base",
+      "replaced": false
     },
     {
       "id": "clean-subtitle-green",
@@ -247,25 +274,28 @@
         "accent": "#4BE38A"
       },
       "state": "active",
+      "boxState": "active",
+      "emphasised": false,
+      "palette": null,
       "box": [
         0,
         0,
         0,
         179
       ],
-      "text": [
-        255,
-        255,
-        255,
-        255
+      "paint": {
+        "type": "solid",
+        "color": "#FFFFFFFF"
+      },
+      "contrasts": [
+        21.0
       ],
-      "contrast": 21.0,
-      "expected": [
-        255,
-        255,
-        255,
-        255
-      ]
+      "expected": {
+        "type": "solid",
+        "color": "#FFFFFFFF"
+      },
+      "source": "base",
+      "replaced": false
     },
     {
       "id": "clean-subtitle-cyan",
@@ -274,25 +304,28 @@
         "accent": "#5CE1FF"
       },
       "state": "active",
+      "boxState": "active",
+      "emphasised": false,
+      "palette": null,
       "box": [
         0,
         0,
         0,
         179
       ],
-      "text": [
-        255,
-        255,
-        255,
-        255
+      "paint": {
+        "type": "solid",
+        "color": "#FFFFFFFF"
+      },
+      "contrasts": [
+        21.0
       ],
-      "contrast": 21.0,
-      "expected": [
-        255,
-        255,
-        255,
-        255
-      ]
+      "expected": {
+        "type": "solid",
+        "color": "#FFFFFFFF"
+      },
+      "source": "base",
+      "replaced": false
     },
     {
       "id": "clean-subtitle-pink",
@@ -301,25 +334,28 @@
         "accent": "#FF6FAE"
       },
       "state": "active",
+      "boxState": "active",
+      "emphasised": false,
+      "palette": null,
       "box": [
         0,
         0,
         0,
         179
       ],
-      "text": [
-        255,
-        255,
-        255,
-        255
+      "paint": {
+        "type": "solid",
+        "color": "#FFFFFFFF"
+      },
+      "contrasts": [
+        21.0
       ],
-      "contrast": 21.0,
-      "expected": [
-        255,
-        255,
-        255,
-        255
-      ]
+      "expected": {
+        "type": "solid",
+        "color": "#FFFFFFFF"
+      },
+      "source": "base",
+      "replaced": false
     },
     {
       "id": "clean-subtitle-paper",
@@ -328,25 +364,28 @@
         "accent": "#F3F0E7"
       },
       "state": "active",
+      "boxState": "active",
+      "emphasised": false,
+      "palette": null,
       "box": [
         0,
         0,
         0,
         179
       ],
-      "text": [
-        255,
-        255,
-        255,
-        255
+      "paint": {
+        "type": "solid",
+        "color": "#FFFFFFFF"
+      },
+      "contrasts": [
+        21.0
       ],
-      "contrast": 21.0,
-      "expected": [
-        255,
-        255,
-        255,
-        255
-      ]
+      "expected": {
+        "type": "solid",
+        "color": "#FFFFFFFF"
+      },
+      "source": "base",
+      "replaced": false
     },
     {
       "id": "clean-subtitle-white",
@@ -355,50 +394,56 @@
         "accent": "#FFFFFF"
       },
       "state": "active",
+      "boxState": "active",
+      "emphasised": false,
+      "palette": null,
       "box": [
         0,
         0,
         0,
         179
       ],
-      "text": [
-        255,
-        255,
-        255,
-        255
+      "paint": {
+        "type": "solid",
+        "color": "#FFFFFFFF"
+      },
+      "contrasts": [
+        21.0
       ],
-      "contrast": 21.0,
-      "expected": [
-        255,
-        255,
-        255,
-        255
-      ]
+      "expected": {
+        "type": "solid",
+        "color": "#FFFFFFFF"
+      },
+      "source": "base",
+      "replaced": false
     },
     {
       "id": "lower-third-default",
       "style": "lower-third",
       "overrides": {},
       "state": "active",
+      "boxState": "active",
+      "emphasised": false,
+      "palette": null,
       "box": [
         0,
         0,
         0,
         140
       ],
-      "text": [
-        255,
-        255,
-        255,
-        242
+      "paint": {
+        "type": "solid",
+        "color": "#FFFFFFF2"
+      },
+      "contrasts": [
+        21.0
       ],
-      "contrast": 21.0,
-      "expected": [
-        255,
-        255,
-        255,
-        242
-      ]
+      "expected": {
+        "type": "solid",
+        "color": "#FFFFFFF2"
+      },
+      "source": "base",
+      "replaced": false
     },
     {
       "id": "lower-third-yellow",
@@ -407,25 +452,28 @@
         "accent": "#FFE14D"
       },
       "state": "active",
+      "boxState": "active",
+      "emphasised": false,
+      "palette": null,
       "box": [
         0,
         0,
         0,
         140
       ],
-      "text": [
-        255,
-        255,
-        255,
-        242
+      "paint": {
+        "type": "solid",
+        "color": "#FFFFFFF2"
+      },
+      "contrasts": [
+        21.0
       ],
-      "contrast": 21.0,
-      "expected": [
-        255,
-        255,
-        255,
-        242
-      ]
+      "expected": {
+        "type": "solid",
+        "color": "#FFFFFFF2"
+      },
+      "source": "base",
+      "replaced": false
     },
     {
       "id": "lower-third-green",
@@ -434,25 +482,28 @@
         "accent": "#4BE38A"
       },
       "state": "active",
+      "boxState": "active",
+      "emphasised": false,
+      "palette": null,
       "box": [
         0,
         0,
         0,
         140
       ],
-      "text": [
-        255,
-        255,
-        255,
-        242
+      "paint": {
+        "type": "solid",
+        "color": "#FFFFFFF2"
+      },
+      "contrasts": [
+        21.0
       ],
-      "contrast": 21.0,
-      "expected": [
-        255,
-        255,
-        255,
-        242
-      ]
+      "expected": {
+        "type": "solid",
+        "color": "#FFFFFFF2"
+      },
+      "source": "base",
+      "replaced": false
     },
     {
       "id": "lower-third-cyan",
@@ -461,25 +512,28 @@
         "accent": "#5CE1FF"
       },
       "state": "active",
+      "boxState": "active",
+      "emphasised": false,
+      "palette": null,
       "box": [
         0,
         0,
         0,
         140
       ],
-      "text": [
-        255,
-        255,
-        255,
-        242
+      "paint": {
+        "type": "solid",
+        "color": "#FFFFFFF2"
+      },
+      "contrasts": [
+        21.0
       ],
-      "contrast": 21.0,
-      "expected": [
-        255,
-        255,
-        255,
-        242
-      ]
+      "expected": {
+        "type": "solid",
+        "color": "#FFFFFFF2"
+      },
+      "source": "base",
+      "replaced": false
     },
     {
       "id": "lower-third-pink",
@@ -488,25 +542,28 @@
         "accent": "#FF6FAE"
       },
       "state": "active",
+      "boxState": "active",
+      "emphasised": false,
+      "palette": null,
       "box": [
         0,
         0,
         0,
         140
       ],
-      "text": [
-        255,
-        255,
-        255,
-        242
+      "paint": {
+        "type": "solid",
+        "color": "#FFFFFFF2"
+      },
+      "contrasts": [
+        21.0
       ],
-      "contrast": 21.0,
-      "expected": [
-        255,
-        255,
-        255,
-        242
-      ]
+      "expected": {
+        "type": "solid",
+        "color": "#FFFFFFF2"
+      },
+      "source": "base",
+      "replaced": false
     },
     {
       "id": "lower-third-paper",
@@ -515,25 +572,28 @@
         "accent": "#F3F0E7"
       },
       "state": "active",
+      "boxState": "active",
+      "emphasised": false,
+      "palette": null,
       "box": [
         0,
         0,
         0,
         140
       ],
-      "text": [
-        255,
-        255,
-        255,
-        242
+      "paint": {
+        "type": "solid",
+        "color": "#FFFFFFF2"
+      },
+      "contrasts": [
+        21.0
       ],
-      "contrast": 21.0,
-      "expected": [
-        255,
-        255,
-        255,
-        242
-      ]
+      "expected": {
+        "type": "solid",
+        "color": "#FFFFFFF2"
+      },
+      "source": "base",
+      "replaced": false
     },
     {
       "id": "lower-third-white",
@@ -542,50 +602,56 @@
         "accent": "#FFFFFF"
       },
       "state": "active",
+      "boxState": "active",
+      "emphasised": false,
+      "palette": null,
       "box": [
         0,
         0,
         0,
         140
       ],
-      "text": [
-        255,
-        255,
-        255,
-        242
+      "paint": {
+        "type": "solid",
+        "color": "#FFFFFFF2"
+      },
+      "contrasts": [
+        21.0
       ],
-      "contrast": 21.0,
-      "expected": [
-        255,
-        255,
-        255,
-        242
-      ]
+      "expected": {
+        "type": "solid",
+        "color": "#FFFFFFF2"
+      },
+      "source": "base",
+      "replaced": false
     },
     {
       "id": "pill-default",
       "style": "pill",
       "overrides": {},
       "state": "active",
+      "boxState": "active",
+      "emphasised": false,
+      "palette": null,
       "box": [
         255,
         255,
         255,
         242
       ],
-      "text": [
-        17,
-        17,
-        17,
-        255
+      "paint": {
+        "type": "solid",
+        "color": "#111111FF"
+      },
+      "contrasts": [
+        18.883060964594996
       ],
-      "contrast": 18.883060964594996,
-      "expected": [
-        17,
-        17,
-        17,
-        255
-      ]
+      "expected": {
+        "type": "solid",
+        "color": "#111111FF"
+      },
+      "source": "base",
+      "replaced": false
     },
     {
       "id": "pill-yellow",
@@ -594,25 +660,28 @@
         "accent": "#FFE14D"
       },
       "state": "active",
+      "boxState": "active",
+      "emphasised": false,
+      "palette": null,
       "box": [
         255,
         255,
         255,
         242
       ],
-      "text": [
-        17,
-        17,
-        17,
-        255
+      "paint": {
+        "type": "solid",
+        "color": "#111111FF"
+      },
+      "contrasts": [
+        18.883060964594996
       ],
-      "contrast": 18.883060964594996,
-      "expected": [
-        17,
-        17,
-        17,
-        255
-      ]
+      "expected": {
+        "type": "solid",
+        "color": "#111111FF"
+      },
+      "source": "base",
+      "replaced": false
     },
     {
       "id": "pill-green",
@@ -621,25 +690,28 @@
         "accent": "#4BE38A"
       },
       "state": "active",
+      "boxState": "active",
+      "emphasised": false,
+      "palette": null,
       "box": [
         255,
         255,
         255,
         242
       ],
-      "text": [
-        17,
-        17,
-        17,
-        255
+      "paint": {
+        "type": "solid",
+        "color": "#111111FF"
+      },
+      "contrasts": [
+        18.883060964594996
       ],
-      "contrast": 18.883060964594996,
-      "expected": [
-        17,
-        17,
-        17,
-        255
-      ]
+      "expected": {
+        "type": "solid",
+        "color": "#111111FF"
+      },
+      "source": "base",
+      "replaced": false
     },
     {
       "id": "pill-cyan",
@@ -648,25 +720,28 @@
         "accent": "#5CE1FF"
       },
       "state": "active",
+      "boxState": "active",
+      "emphasised": false,
+      "palette": null,
       "box": [
         255,
         255,
         255,
         242
       ],
-      "text": [
-        17,
-        17,
-        17,
-        255
+      "paint": {
+        "type": "solid",
+        "color": "#111111FF"
+      },
+      "contrasts": [
+        18.883060964594996
       ],
-      "contrast": 18.883060964594996,
-      "expected": [
-        17,
-        17,
-        17,
-        255
-      ]
+      "expected": {
+        "type": "solid",
+        "color": "#111111FF"
+      },
+      "source": "base",
+      "replaced": false
     },
     {
       "id": "pill-pink",
@@ -675,25 +750,28 @@
         "accent": "#FF6FAE"
       },
       "state": "active",
+      "boxState": "active",
+      "emphasised": false,
+      "palette": null,
       "box": [
         255,
         255,
         255,
         242
       ],
-      "text": [
-        17,
-        17,
-        17,
-        255
+      "paint": {
+        "type": "solid",
+        "color": "#111111FF"
+      },
+      "contrasts": [
+        18.883060964594996
       ],
-      "contrast": 18.883060964594996,
-      "expected": [
-        17,
-        17,
-        17,
-        255
-      ]
+      "expected": {
+        "type": "solid",
+        "color": "#111111FF"
+      },
+      "source": "base",
+      "replaced": false
     },
     {
       "id": "pill-paper",
@@ -702,25 +780,28 @@
         "accent": "#F3F0E7"
       },
       "state": "active",
+      "boxState": "active",
+      "emphasised": false,
+      "palette": null,
       "box": [
         255,
         255,
         255,
         242
       ],
-      "text": [
-        17,
-        17,
-        17,
-        255
+      "paint": {
+        "type": "solid",
+        "color": "#111111FF"
+      },
+      "contrasts": [
+        18.883060964594996
       ],
-      "contrast": 18.883060964594996,
-      "expected": [
-        17,
-        17,
-        17,
-        255
-      ]
+      "expected": {
+        "type": "solid",
+        "color": "#111111FF"
+      },
+      "source": "base",
+      "replaced": false
     },
     {
       "id": "pill-white",
@@ -729,50 +810,56 @@
         "accent": "#FFFFFF"
       },
       "state": "active",
+      "boxState": "active",
+      "emphasised": false,
+      "palette": null,
       "box": [
         255,
         255,
         255,
         242
       ],
-      "text": [
-        17,
-        17,
-        17,
-        255
+      "paint": {
+        "type": "solid",
+        "color": "#111111FF"
+      },
+      "contrasts": [
+        18.883060964594996
       ],
-      "contrast": 18.883060964594996,
-      "expected": [
-        17,
-        17,
-        17,
-        255
-      ]
+      "expected": {
+        "type": "solid",
+        "color": "#111111FF"
+      },
+      "source": "base",
+      "replaced": false
     },
     {
       "id": "typewriter-default",
       "style": "typewriter",
       "overrides": {},
       "state": "active",
+      "boxState": "active",
+      "emphasised": false,
+      "palette": null,
       "box": [
         0,
         0,
         0,
         204
       ],
-      "text": [
-        255,
-        255,
-        255,
-        255
+      "paint": {
+        "type": "solid",
+        "color": "#FFFFFFFF"
+      },
+      "contrasts": [
+        21.0
       ],
-      "contrast": 21.0,
-      "expected": [
-        255,
-        255,
-        255,
-        255
-      ]
+      "expected": {
+        "type": "solid",
+        "color": "#FFFFFFFF"
+      },
+      "source": "base",
+      "replaced": false
     },
     {
       "id": "typewriter-yellow",
@@ -781,25 +868,28 @@
         "accent": "#FFE14D"
       },
       "state": "active",
+      "boxState": "active",
+      "emphasised": false,
+      "palette": null,
       "box": [
         0,
         0,
         0,
         204
       ],
-      "text": [
-        255,
-        255,
-        255,
-        255
+      "paint": {
+        "type": "solid",
+        "color": "#FFFFFFFF"
+      },
+      "contrasts": [
+        21.0
       ],
-      "contrast": 21.0,
-      "expected": [
-        255,
-        255,
-        255,
-        255
-      ]
+      "expected": {
+        "type": "solid",
+        "color": "#FFFFFFFF"
+      },
+      "source": "base",
+      "replaced": false
     },
     {
       "id": "typewriter-green",
@@ -808,25 +898,28 @@
         "accent": "#4BE38A"
       },
       "state": "active",
+      "boxState": "active",
+      "emphasised": false,
+      "palette": null,
       "box": [
         0,
         0,
         0,
         204
       ],
-      "text": [
-        255,
-        255,
-        255,
-        255
+      "paint": {
+        "type": "solid",
+        "color": "#FFFFFFFF"
+      },
+      "contrasts": [
+        21.0
       ],
-      "contrast": 21.0,
-      "expected": [
-        255,
-        255,
-        255,
-        255
-      ]
+      "expected": {
+        "type": "solid",
+        "color": "#FFFFFFFF"
+      },
+      "source": "base",
+      "replaced": false
     },
     {
       "id": "typewriter-cyan",
@@ -835,25 +928,28 @@
         "accent": "#5CE1FF"
       },
       "state": "active",
+      "boxState": "active",
+      "emphasised": false,
+      "palette": null,
       "box": [
         0,
         0,
         0,
         204
       ],
-      "text": [
-        255,
-        255,
-        255,
-        255
+      "paint": {
+        "type": "solid",
+        "color": "#FFFFFFFF"
+      },
+      "contrasts": [
+        21.0
       ],
-      "contrast": 21.0,
-      "expected": [
-        255,
-        255,
-        255,
-        255
-      ]
+      "expected": {
+        "type": "solid",
+        "color": "#FFFFFFFF"
+      },
+      "source": "base",
+      "replaced": false
     },
     {
       "id": "typewriter-pink",
@@ -862,25 +958,28 @@
         "accent": "#FF6FAE"
       },
       "state": "active",
+      "boxState": "active",
+      "emphasised": false,
+      "palette": null,
       "box": [
         0,
         0,
         0,
         204
       ],
-      "text": [
-        255,
-        255,
-        255,
-        255
+      "paint": {
+        "type": "solid",
+        "color": "#FFFFFFFF"
+      },
+      "contrasts": [
+        21.0
       ],
-      "contrast": 21.0,
-      "expected": [
-        255,
-        255,
-        255,
-        255
-      ]
+      "expected": {
+        "type": "solid",
+        "color": "#FFFFFFFF"
+      },
+      "source": "base",
+      "replaced": false
     },
     {
       "id": "typewriter-paper",
@@ -889,25 +988,28 @@
         "accent": "#F3F0E7"
       },
       "state": "active",
+      "boxState": "active",
+      "emphasised": false,
+      "palette": null,
       "box": [
         0,
         0,
         0,
         204
       ],
-      "text": [
-        255,
-        255,
-        255,
-        255
+      "paint": {
+        "type": "solid",
+        "color": "#FFFFFFFF"
+      },
+      "contrasts": [
+        21.0
       ],
-      "contrast": 21.0,
-      "expected": [
-        255,
-        255,
-        255,
-        255
-      ]
+      "expected": {
+        "type": "solid",
+        "color": "#FFFFFFFF"
+      },
+      "source": "base",
+      "replaced": false
     },
     {
       "id": "typewriter-white",
@@ -916,50 +1018,56 @@
         "accent": "#FFFFFF"
       },
       "state": "active",
+      "boxState": "active",
+      "emphasised": false,
+      "palette": null,
       "box": [
         0,
         0,
         0,
         204
       ],
-      "text": [
-        255,
-        255,
-        255,
-        255
+      "paint": {
+        "type": "solid",
+        "color": "#FFFFFFFF"
+      },
+      "contrasts": [
+        21.0
       ],
-      "contrast": 21.0,
-      "expected": [
-        255,
-        255,
-        255,
-        255
-      ]
+      "expected": {
+        "type": "solid",
+        "color": "#FFFFFFFF"
+      },
+      "source": "base",
+      "replaced": false
     },
     {
       "id": "vox-highlight-default",
       "style": "vox-highlight",
       "overrides": {},
       "state": "active",
+      "boxState": "active",
+      "emphasised": false,
+      "palette": null,
       "box": [
         0,
         0,
         0,
         179
       ],
-      "text": [
-        255,
-        255,
-        255,
-        255
+      "paint": {
+        "type": "solid",
+        "color": "#FFFFFFFF"
+      },
+      "contrasts": [
+        21.0
       ],
-      "contrast": 21.0,
-      "expected": [
-        255,
-        255,
-        255,
-        255
-      ]
+      "expected": {
+        "type": "solid",
+        "color": "#FFFFFFFF"
+      },
+      "source": "base",
+      "replaced": false
     },
     {
       "id": "vox-highlight-yellow",
@@ -968,25 +1076,28 @@
         "accent": "#FFE14D"
       },
       "state": "active",
+      "boxState": "active",
+      "emphasised": false,
+      "palette": null,
       "box": [
         0,
         0,
         0,
         179
       ],
-      "text": [
-        255,
-        255,
-        255,
-        255
+      "paint": {
+        "type": "solid",
+        "color": "#FFFFFFFF"
+      },
+      "contrasts": [
+        21.0
       ],
-      "contrast": 21.0,
-      "expected": [
-        255,
-        255,
-        255,
-        255
-      ]
+      "expected": {
+        "type": "solid",
+        "color": "#FFFFFFFF"
+      },
+      "source": "base",
+      "replaced": false
     },
     {
       "id": "vox-highlight-green",
@@ -995,25 +1106,28 @@
         "accent": "#4BE38A"
       },
       "state": "active",
+      "boxState": "active",
+      "emphasised": false,
+      "palette": null,
       "box": [
         0,
         0,
         0,
         179
       ],
-      "text": [
-        255,
-        255,
-        255,
-        255
+      "paint": {
+        "type": "solid",
+        "color": "#FFFFFFFF"
+      },
+      "contrasts": [
+        21.0
       ],
-      "contrast": 21.0,
-      "expected": [
-        255,
-        255,
-        255,
-        255
-      ]
+      "expected": {
+        "type": "solid",
+        "color": "#FFFFFFFF"
+      },
+      "source": "base",
+      "replaced": false
     },
     {
       "id": "vox-highlight-cyan",
@@ -1022,25 +1136,28 @@
         "accent": "#5CE1FF"
       },
       "state": "active",
+      "boxState": "active",
+      "emphasised": false,
+      "palette": null,
       "box": [
         0,
         0,
         0,
         179
       ],
-      "text": [
-        255,
-        255,
-        255,
-        255
+      "paint": {
+        "type": "solid",
+        "color": "#FFFFFFFF"
+      },
+      "contrasts": [
+        21.0
       ],
-      "contrast": 21.0,
-      "expected": [
-        255,
-        255,
-        255,
-        255
-      ]
+      "expected": {
+        "type": "solid",
+        "color": "#FFFFFFFF"
+      },
+      "source": "base",
+      "replaced": false
     },
     {
       "id": "vox-highlight-pink",
@@ -1049,25 +1166,28 @@
         "accent": "#FF6FAE"
       },
       "state": "active",
+      "boxState": "active",
+      "emphasised": false,
+      "palette": null,
       "box": [
         0,
         0,
         0,
         179
       ],
-      "text": [
-        255,
-        255,
-        255,
-        255
+      "paint": {
+        "type": "solid",
+        "color": "#FFFFFFFF"
+      },
+      "contrasts": [
+        21.0
       ],
-      "contrast": 21.0,
-      "expected": [
-        255,
-        255,
-        255,
-        255
-      ]
+      "expected": {
+        "type": "solid",
+        "color": "#FFFFFFFF"
+      },
+      "source": "base",
+      "replaced": false
     },
     {
       "id": "vox-highlight-paper",
@@ -1076,25 +1196,28 @@
         "accent": "#F3F0E7"
       },
       "state": "active",
+      "boxState": "active",
+      "emphasised": false,
+      "palette": null,
       "box": [
         0,
         0,
         0,
         179
       ],
-      "text": [
-        255,
-        255,
-        255,
-        255
+      "paint": {
+        "type": "solid",
+        "color": "#FFFFFFFF"
+      },
+      "contrasts": [
+        21.0
       ],
-      "contrast": 21.0,
-      "expected": [
-        255,
-        255,
-        255,
-        255
-      ]
+      "expected": {
+        "type": "solid",
+        "color": "#FFFFFFFF"
+      },
+      "source": "base",
+      "replaced": false
     },
     {
       "id": "vox-highlight-white",
@@ -1103,25 +1226,28 @@
         "accent": "#FFFFFF"
       },
       "state": "active",
+      "boxState": "active",
+      "emphasised": false,
+      "palette": null,
       "box": [
         0,
         0,
         0,
         179
       ],
-      "text": [
-        255,
-        255,
-        255,
-        255
+      "paint": {
+        "type": "solid",
+        "color": "#FFFFFFFF"
+      },
+      "contrasts": [
+        21.0
       ],
-      "contrast": 21.0,
-      "expected": [
-        255,
-        255,
-        255,
-        255
-      ]
+      "expected": {
+        "type": "solid",
+        "color": "#FFFFFFFF"
+      },
+      "source": "base",
+      "replaced": false
     },
     {
       "id": "keep-tinted",
@@ -1140,25 +1266,28 @@
         }
       },
       "state": "active",
+      "boxState": "active",
+      "emphasised": false,
+      "palette": null,
       "box": [
         243,
         240,
         231,
         255
       ],
-      "text": [
-        124,
-        58,
-        237,
-        255
+      "paint": {
+        "type": "solid",
+        "color": "#7C3AEDFF"
+      },
+      "contrasts": [
+        5.000883048168627
       ],
-      "contrast": 5.000883048168627,
-      "expected": [
-        124,
-        58,
-        237,
-        255
-      ]
+      "expected": {
+        "type": "solid",
+        "color": "#7C3AEDFF"
+      },
+      "source": "active",
+      "replaced": false
     },
     {
       "id": "keep-alpha",
@@ -1177,25 +1306,28 @@
         }
       },
       "state": "active",
+      "boxState": "active",
+      "emphasised": false,
+      "palette": null,
       "box": [
         255,
         255,
         255,
         128
       ],
-      "text": [
-        17,
-        17,
-        17,
-        128
+      "paint": {
+        "type": "solid",
+        "color": "#11111180"
+      },
+      "contrasts": [
+        18.883060964594996
       ],
-      "contrast": 18.883060964594996,
-      "expected": [
-        17,
-        17,
-        17,
-        128
-      ]
+      "expected": {
+        "type": "solid",
+        "color": "#11111180"
+      },
+      "source": "active",
+      "replaced": false
     },
     {
       "id": "black-below-minimum",
@@ -1214,25 +1346,28 @@
         }
       },
       "state": "active",
+      "boxState": "active",
+      "emphasised": false,
+      "palette": null,
       "box": [
         116,
         116,
         116,
         255
       ],
-      "text": [
-        0,
-        0,
-        0,
-        255
+      "paint": {
+        "type": "solid",
+        "color": "#000000FF"
+      },
+      "contrasts": [
+        4.492948073111701
       ],
-      "contrast": 4.492948073111701,
-      "expected": [
-        255,
-        255,
-        255,
-        255
-      ]
+      "expected": {
+        "type": "solid",
+        "color": "#FFFFFFFF"
+      },
+      "source": "active",
+      "replaced": true
     },
     {
       "id": "black-above-minimum",
@@ -1251,25 +1386,28 @@
         }
       },
       "state": "active",
+      "boxState": "active",
+      "emphasised": false,
+      "palette": null,
       "box": [
         117,
         117,
         117,
         255
       ],
-      "text": [
-        0,
-        0,
-        0,
-        255
+      "paint": {
+        "type": "solid",
+        "color": "#000000FF"
+      },
+      "contrasts": [
+        4.557768319672582
       ],
-      "contrast": 4.557768319672582,
-      "expected": [
-        0,
-        0,
-        0,
-        255
-      ]
+      "expected": {
+        "type": "solid",
+        "color": "#000000FF"
+      },
+      "source": "active",
+      "replaced": false
     },
     {
       "id": "white-below-minimum",
@@ -1288,25 +1426,28 @@
         }
       },
       "state": "active",
+      "boxState": "active",
+      "emphasised": false,
+      "palette": null,
       "box": [
         119,
         119,
         119,
         255
       ],
-      "text": [
-        255,
-        255,
-        255,
-        255
+      "paint": {
+        "type": "solid",
+        "color": "#FFFFFFFF"
+      },
+      "contrasts": [
+        4.478089453577215
       ],
-      "contrast": 4.478089453577215,
-      "expected": [
-        0,
-        0,
-        0,
-        255
-      ]
+      "expected": {
+        "type": "solid",
+        "color": "#000000FF"
+      },
+      "source": "active",
+      "replaced": true
     },
     {
       "id": "white-above-minimum",
@@ -1325,25 +1466,28 @@
         }
       },
       "state": "active",
+      "boxState": "active",
+      "emphasised": false,
+      "palette": null,
       "box": [
         118,
         118,
         118,
         255
       ],
-      "text": [
-        255,
-        255,
-        255,
-        255
+      "paint": {
+        "type": "solid",
+        "color": "#FFFFFFFF"
+      },
+      "contrasts": [
+        4.542224959605253
       ],
-      "contrast": 4.542224959605253,
-      "expected": [
-        255,
-        255,
-        255,
-        255
-      ]
+      "expected": {
+        "type": "solid",
+        "color": "#FFFFFFFF"
+      },
+      "source": "active",
+      "replaced": false
     },
     {
       "id": "prefer-white",
@@ -1362,25 +1506,28 @@
         }
       },
       "state": "active",
+      "boxState": "active",
+      "emphasised": false,
+      "palette": null,
       "box": [
         0,
         0,
         0,
         255
       ],
-      "text": [
-        34,
-        34,
-        34,
-        255
+      "paint": {
+        "type": "solid",
+        "color": "#222222FF"
+      },
+      "contrasts": [
+        1.3199258673101926
       ],
-      "contrast": 1.3199258673101926,
-      "expected": [
-        255,
-        255,
-        255,
-        255
-      ]
+      "expected": {
+        "type": "solid",
+        "color": "#FFFFFFFF"
+      },
+      "source": "active",
+      "replaced": true
     },
     {
       "id": "prefer-black",
@@ -1399,25 +1546,28 @@
         }
       },
       "state": "active",
+      "boxState": "active",
+      "emphasised": false,
+      "palette": null,
       "box": [
         255,
         255,
         255,
         255
       ],
-      "text": [
-        255,
-        255,
-        255,
-        255
+      "paint": {
+        "type": "solid",
+        "color": "#FFFFFFFF"
+      },
+      "contrasts": [
+        1.0
       ],
-      "contrast": 1.0,
-      "expected": [
-        0,
-        0,
-        0,
-        255
-      ]
+      "expected": {
+        "type": "solid",
+        "color": "#000000FF"
+      },
+      "source": "active",
+      "replaced": true
     },
     {
       "id": "patched-base-box",
@@ -1428,25 +1578,28 @@
         }
       },
       "state": "active",
+      "boxState": "active",
+      "emphasised": false,
+      "palette": null,
       "box": [
         17,
         17,
         17,
         255
       ],
-      "text": [
-        17,
-        17,
-        17,
-        255
+      "paint": {
+        "type": "solid",
+        "color": "#111111FF"
+      },
+      "contrasts": [
+        1.0
       ],
-      "contrast": 1.0,
-      "expected": [
-        255,
-        255,
-        255,
-        255
-      ]
+      "expected": {
+        "type": "solid",
+        "color": "#FFFFFFFF"
+      },
+      "source": "base",
+      "replaced": true
     },
     {
       "id": "patched-past-fill",
@@ -1462,25 +1615,28 @@
         }
       },
       "state": "past",
+      "boxState": "past",
+      "emphasised": false,
+      "palette": null,
       "box": [
         255,
         255,
         255,
         242
       ],
-      "text": [
-        255,
-        255,
-        255,
-        255
+      "paint": {
+        "type": "solid",
+        "color": "#FFFFFFFF"
+      },
+      "contrasts": [
+        1.0
       ],
-      "contrast": 1.0,
-      "expected": [
-        0,
-        0,
-        0,
-        255
-      ]
+      "expected": {
+        "type": "solid",
+        "color": "#000000FF"
+      },
+      "source": "past",
+      "replaced": true
     },
     {
       "id": "patched-future-fill",
@@ -1496,25 +1652,28 @@
         }
       },
       "state": "future",
+      "boxState": "future",
+      "emphasised": false,
+      "palette": null,
       "box": [
         255,
         255,
         255,
         242
       ],
-      "text": [
-        255,
-        255,
-        255,
-        255
+      "paint": {
+        "type": "solid",
+        "color": "#FFFFFFFF"
+      },
+      "contrasts": [
+        1.0
       ],
-      "contrast": 1.0,
-      "expected": [
-        0,
-        0,
-        0,
-        255
-      ]
+      "expected": {
+        "type": "solid",
+        "color": "#000000FF"
+      },
+      "source": "future",
+      "replaced": true
     },
     {
       "id": "active-box-over-page-box",
@@ -1527,25 +1686,1070 @@
         "accent": "#FFFFFF"
       },
       "state": "active",
+      "boxState": "active",
+      "emphasised": false,
+      "palette": null,
       "box": [
         255,
         255,
         255,
         255
       ],
-      "text": [
+      "paint": {
+        "type": "solid",
+        "color": "#FFFFFFFF"
+      },
+      "contrasts": [
+        1.0
+      ],
+      "expected": {
+        "type": "solid",
+        "color": "#000000FF"
+      },
+      "source": "base",
+      "replaced": true
+    },
+    {
+      "id": "emphasis-fill-word",
+      "style": "box-highlight",
+      "overrides": {
+        "accent": "#FFFFFF",
+        "emphasis": {
+          "source": "manual",
+          "fill": {
+            "type": "solid",
+            "color": "#FFFFFF"
+          }
+        }
+      },
+      "state": "active",
+      "boxState": "active",
+      "emphasised": true,
+      "palette": null,
+      "box": [
         255,
         255,
         255,
         255
       ],
-      "contrast": 1.0,
-      "expected": [
-        0,
-        0,
-        0,
+      "paint": {
+        "type": "solid",
+        "color": "#FFFFFFFF"
+      },
+      "contrasts": [
+        1.0
+      ],
+      "expected": {
+        "type": "solid",
+        "color": "#000000FF"
+      },
+      "source": "emphasis",
+      "replaced": true
+    },
+    {
+      "id": "palette-word",
+      "style": "box-highlight",
+      "overrides": {
+        "accent": "#FFFFFF",
+        "emphasis": {
+          "source": "manual",
+          "fill": {
+            "type": "solid",
+            "color": "#111111"
+          },
+          "palette": [
+            "#FFFFFF"
+          ]
+        }
+      },
+      "state": "active",
+      "boxState": "active",
+      "emphasised": true,
+      "palette": "#FFFFFF",
+      "box": [
+        255,
+        255,
+        255,
         255
-      ]
+      ],
+      "paint": {
+        "type": "solid",
+        "color": "#FFFFFFFF"
+      },
+      "contrasts": [
+        1.0
+      ],
+      "expected": {
+        "type": "solid",
+        "color": "#000000FF"
+      },
+      "source": "emphasis",
+      "replaced": true
+    },
+    {
+      "id": "wipe-first-pass-word",
+      "style": "box-highlight",
+      "overrides": {
+        "accent": "#FFFFFF",
+        "reveal": {
+          "unit": "wipe"
+        }
+      },
+      "state": "future",
+      "boxState": "active",
+      "emphasised": false,
+      "palette": null,
+      "box": [
+        255,
+        255,
+        255,
+        255
+      ],
+      "paint": {
+        "type": "solid",
+        "color": "#FFFFFFFF"
+      },
+      "contrasts": [
+        1.0
+      ],
+      "expected": {
+        "type": "solid",
+        "color": "#000000FF"
+      },
+      "source": "base",
+      "replaced": true
+    },
+    {
+      "id": "gradient-kept-word",
+      "style": "box-highlight",
+      "overrides": {
+        "accent": "#FFFFFF",
+        "fill": {
+          "type": "linear",
+          "color": null,
+          "angleDeg": 25,
+          "space": "word",
+          "stops": [
+            {
+              "offset": 0,
+              "color": "#000000"
+            },
+            {
+              "offset": 1,
+              "color": "#333333"
+            }
+          ]
+        }
+      },
+      "state": "active",
+      "boxState": "active",
+      "emphasised": false,
+      "palette": null,
+      "box": [
+        255,
+        255,
+        255,
+        255
+      ],
+      "paint": {
+        "type": "linear",
+        "angleDeg": 25,
+        "space": "word",
+        "stops": [
+          {
+            "offset": 0,
+            "color": "#000000FF"
+          },
+          {
+            "offset": 1,
+            "color": "#333333FF"
+          }
+        ]
+      },
+      "contrasts": [
+        21.0,
+        12.63465434445799
+      ],
+      "expected": {
+        "type": "linear",
+        "angleDeg": 25,
+        "space": "word",
+        "stops": [
+          {
+            "offset": 0,
+            "color": "#000000FF"
+          },
+          {
+            "offset": 1,
+            "color": "#333333FF"
+          }
+        ]
+      },
+      "source": "base",
+      "replaced": false
+    },
+    {
+      "id": "gradient-replaced-word",
+      "style": "box-highlight",
+      "overrides": {
+        "accent": "#FFFFFF",
+        "fill": {
+          "type": "linear",
+          "color": null,
+          "angleDeg": 25,
+          "space": "word",
+          "stops": [
+            {
+              "offset": 0,
+              "color": "#000000"
+            },
+            {
+              "offset": 1,
+              "color": "#FFFFFF"
+            }
+          ]
+        }
+      },
+      "state": "active",
+      "boxState": "active",
+      "emphasised": false,
+      "palette": null,
+      "box": [
+        255,
+        255,
+        255,
+        255
+      ],
+      "paint": {
+        "type": "linear",
+        "angleDeg": 25,
+        "space": "word",
+        "stops": [
+          {
+            "offset": 0,
+            "color": "#000000FF"
+          },
+          {
+            "offset": 1,
+            "color": "#FFFFFFFF"
+          }
+        ]
+      },
+      "contrasts": [
+        21.0,
+        1.0
+      ],
+      "expected": {
+        "type": "solid",
+        "color": "#000000FF"
+      },
+      "source": "base",
+      "replaced": true
+    },
+    {
+      "id": "emphasis-fill-line",
+      "style": "box-highlight",
+      "overrides": {
+        "accent": "#FFFFFF",
+        "words": {
+          "active": {
+            "box": null
+          }
+        },
+        "box": {
+          "scope": "line",
+          "color": "#FFFFFF"
+        },
+        "emphasis": {
+          "source": "manual",
+          "fill": {
+            "type": "solid",
+            "color": "#FFFFFF"
+          }
+        }
+      },
+      "state": "active",
+      "boxState": "active",
+      "emphasised": true,
+      "palette": null,
+      "box": [
+        255,
+        255,
+        255,
+        255
+      ],
+      "paint": {
+        "type": "solid",
+        "color": "#FFFFFFFF"
+      },
+      "contrasts": [
+        1.0
+      ],
+      "expected": {
+        "type": "solid",
+        "color": "#000000FF"
+      },
+      "source": "emphasis",
+      "replaced": true
+    },
+    {
+      "id": "palette-line",
+      "style": "box-highlight",
+      "overrides": {
+        "accent": "#FFFFFF",
+        "words": {
+          "active": {
+            "box": null
+          }
+        },
+        "box": {
+          "scope": "line",
+          "color": "#FFFFFF"
+        },
+        "emphasis": {
+          "source": "manual",
+          "fill": {
+            "type": "solid",
+            "color": "#111111"
+          },
+          "palette": [
+            "#FFFFFF"
+          ]
+        }
+      },
+      "state": "active",
+      "boxState": "active",
+      "emphasised": true,
+      "palette": "#FFFFFF",
+      "box": [
+        255,
+        255,
+        255,
+        255
+      ],
+      "paint": {
+        "type": "solid",
+        "color": "#FFFFFFFF"
+      },
+      "contrasts": [
+        1.0
+      ],
+      "expected": {
+        "type": "solid",
+        "color": "#000000FF"
+      },
+      "source": "emphasis",
+      "replaced": true
+    },
+    {
+      "id": "wipe-first-pass-line",
+      "style": "box-highlight",
+      "overrides": {
+        "accent": "#FFFFFF",
+        "words": {
+          "active": {
+            "box": null
+          }
+        },
+        "box": {
+          "scope": "line",
+          "color": "#FFFFFF"
+        },
+        "reveal": {
+          "unit": "wipe"
+        }
+      },
+      "state": "future",
+      "boxState": "active",
+      "emphasised": false,
+      "palette": null,
+      "box": [
+        255,
+        255,
+        255,
+        255
+      ],
+      "paint": {
+        "type": "solid",
+        "color": "#FFFFFFFF"
+      },
+      "contrasts": [
+        1.0
+      ],
+      "expected": {
+        "type": "solid",
+        "color": "#000000FF"
+      },
+      "source": "base",
+      "replaced": true
+    },
+    {
+      "id": "gradient-kept-line",
+      "style": "box-highlight",
+      "overrides": {
+        "accent": "#FFFFFF",
+        "words": {
+          "active": {
+            "box": null
+          }
+        },
+        "box": {
+          "scope": "line",
+          "color": "#FFFFFF"
+        },
+        "fill": {
+          "type": "linear",
+          "color": null,
+          "angleDeg": 25,
+          "space": "word",
+          "stops": [
+            {
+              "offset": 0,
+              "color": "#000000"
+            },
+            {
+              "offset": 1,
+              "color": "#333333"
+            }
+          ]
+        }
+      },
+      "state": "active",
+      "boxState": "active",
+      "emphasised": false,
+      "palette": null,
+      "box": [
+        255,
+        255,
+        255,
+        255
+      ],
+      "paint": {
+        "type": "linear",
+        "angleDeg": 25,
+        "space": "word",
+        "stops": [
+          {
+            "offset": 0,
+            "color": "#000000FF"
+          },
+          {
+            "offset": 1,
+            "color": "#333333FF"
+          }
+        ]
+      },
+      "contrasts": [
+        21.0,
+        12.63465434445799
+      ],
+      "expected": {
+        "type": "linear",
+        "angleDeg": 25,
+        "space": "word",
+        "stops": [
+          {
+            "offset": 0,
+            "color": "#000000FF"
+          },
+          {
+            "offset": 1,
+            "color": "#333333FF"
+          }
+        ]
+      },
+      "source": "base",
+      "replaced": false
+    },
+    {
+      "id": "gradient-replaced-line",
+      "style": "box-highlight",
+      "overrides": {
+        "accent": "#FFFFFF",
+        "words": {
+          "active": {
+            "box": null
+          }
+        },
+        "box": {
+          "scope": "line",
+          "color": "#FFFFFF"
+        },
+        "fill": {
+          "type": "linear",
+          "color": null,
+          "angleDeg": 25,
+          "space": "word",
+          "stops": [
+            {
+              "offset": 0,
+              "color": "#000000"
+            },
+            {
+              "offset": 1,
+              "color": "#FFFFFF"
+            }
+          ]
+        }
+      },
+      "state": "active",
+      "boxState": "active",
+      "emphasised": false,
+      "palette": null,
+      "box": [
+        255,
+        255,
+        255,
+        255
+      ],
+      "paint": {
+        "type": "linear",
+        "angleDeg": 25,
+        "space": "word",
+        "stops": [
+          {
+            "offset": 0,
+            "color": "#000000FF"
+          },
+          {
+            "offset": 1,
+            "color": "#FFFFFFFF"
+          }
+        ]
+      },
+      "contrasts": [
+        21.0,
+        1.0
+      ],
+      "expected": {
+        "type": "solid",
+        "color": "#000000FF"
+      },
+      "source": "base",
+      "replaced": true
+    },
+    {
+      "id": "emphasis-fill-page",
+      "style": "box-highlight",
+      "overrides": {
+        "accent": "#FFFFFF",
+        "words": {
+          "active": {
+            "box": null
+          }
+        },
+        "box": {
+          "scope": "page",
+          "color": "#FFFFFF"
+        },
+        "emphasis": {
+          "source": "manual",
+          "fill": {
+            "type": "solid",
+            "color": "#FFFFFF"
+          }
+        }
+      },
+      "state": "active",
+      "boxState": "active",
+      "emphasised": true,
+      "palette": null,
+      "box": [
+        255,
+        255,
+        255,
+        255
+      ],
+      "paint": {
+        "type": "solid",
+        "color": "#FFFFFFFF"
+      },
+      "contrasts": [
+        1.0
+      ],
+      "expected": {
+        "type": "solid",
+        "color": "#000000FF"
+      },
+      "source": "emphasis",
+      "replaced": true
+    },
+    {
+      "id": "palette-page",
+      "style": "box-highlight",
+      "overrides": {
+        "accent": "#FFFFFF",
+        "words": {
+          "active": {
+            "box": null
+          }
+        },
+        "box": {
+          "scope": "page",
+          "color": "#FFFFFF"
+        },
+        "emphasis": {
+          "source": "manual",
+          "fill": {
+            "type": "solid",
+            "color": "#111111"
+          },
+          "palette": [
+            "#FFFFFF"
+          ]
+        }
+      },
+      "state": "active",
+      "boxState": "active",
+      "emphasised": true,
+      "palette": "#FFFFFF",
+      "box": [
+        255,
+        255,
+        255,
+        255
+      ],
+      "paint": {
+        "type": "solid",
+        "color": "#FFFFFFFF"
+      },
+      "contrasts": [
+        1.0
+      ],
+      "expected": {
+        "type": "solid",
+        "color": "#000000FF"
+      },
+      "source": "emphasis",
+      "replaced": true
+    },
+    {
+      "id": "wipe-first-pass-page",
+      "style": "box-highlight",
+      "overrides": {
+        "accent": "#FFFFFF",
+        "words": {
+          "active": {
+            "box": null
+          }
+        },
+        "box": {
+          "scope": "page",
+          "color": "#FFFFFF"
+        },
+        "reveal": {
+          "unit": "wipe"
+        }
+      },
+      "state": "future",
+      "boxState": "active",
+      "emphasised": false,
+      "palette": null,
+      "box": [
+        255,
+        255,
+        255,
+        255
+      ],
+      "paint": {
+        "type": "solid",
+        "color": "#FFFFFFFF"
+      },
+      "contrasts": [
+        1.0
+      ],
+      "expected": {
+        "type": "solid",
+        "color": "#000000FF"
+      },
+      "source": "base",
+      "replaced": true
+    },
+    {
+      "id": "gradient-kept-page",
+      "style": "box-highlight",
+      "overrides": {
+        "accent": "#FFFFFF",
+        "words": {
+          "active": {
+            "box": null
+          }
+        },
+        "box": {
+          "scope": "page",
+          "color": "#FFFFFF"
+        },
+        "fill": {
+          "type": "linear",
+          "color": null,
+          "angleDeg": 25,
+          "space": "word",
+          "stops": [
+            {
+              "offset": 0,
+              "color": "#000000"
+            },
+            {
+              "offset": 1,
+              "color": "#333333"
+            }
+          ]
+        }
+      },
+      "state": "active",
+      "boxState": "active",
+      "emphasised": false,
+      "palette": null,
+      "box": [
+        255,
+        255,
+        255,
+        255
+      ],
+      "paint": {
+        "type": "linear",
+        "angleDeg": 25,
+        "space": "word",
+        "stops": [
+          {
+            "offset": 0,
+            "color": "#000000FF"
+          },
+          {
+            "offset": 1,
+            "color": "#333333FF"
+          }
+        ]
+      },
+      "contrasts": [
+        21.0,
+        12.63465434445799
+      ],
+      "expected": {
+        "type": "linear",
+        "angleDeg": 25,
+        "space": "word",
+        "stops": [
+          {
+            "offset": 0,
+            "color": "#000000FF"
+          },
+          {
+            "offset": 1,
+            "color": "#333333FF"
+          }
+        ]
+      },
+      "source": "base",
+      "replaced": false
+    },
+    {
+      "id": "gradient-replaced-page",
+      "style": "box-highlight",
+      "overrides": {
+        "accent": "#FFFFFF",
+        "words": {
+          "active": {
+            "box": null
+          }
+        },
+        "box": {
+          "scope": "page",
+          "color": "#FFFFFF"
+        },
+        "fill": {
+          "type": "linear",
+          "color": null,
+          "angleDeg": 25,
+          "space": "word",
+          "stops": [
+            {
+              "offset": 0,
+              "color": "#000000"
+            },
+            {
+              "offset": 1,
+              "color": "#FFFFFF"
+            }
+          ]
+        }
+      },
+      "state": "active",
+      "boxState": "active",
+      "emphasised": false,
+      "palette": null,
+      "box": [
+        255,
+        255,
+        255,
+        255
+      ],
+      "paint": {
+        "type": "linear",
+        "angleDeg": 25,
+        "space": "word",
+        "stops": [
+          {
+            "offset": 0,
+            "color": "#000000FF"
+          },
+          {
+            "offset": 1,
+            "color": "#FFFFFFFF"
+          }
+        ]
+      },
+      "contrasts": [
+        21.0,
+        1.0
+      ],
+      "expected": {
+        "type": "solid",
+        "color": "#000000FF"
+      },
+      "source": "base",
+      "replaced": true
+    },
+    {
+      "id": "emphasis-fill-unboxed",
+      "style": "box-highlight",
+      "overrides": {
+        "accent": "#FFFFFF",
+        "words": {
+          "active": {
+            "box": null
+          }
+        },
+        "box": null,
+        "emphasis": {
+          "source": "manual",
+          "fill": {
+            "type": "solid",
+            "color": "#FFFFFF"
+          }
+        }
+      },
+      "state": "active",
+      "boxState": "active",
+      "emphasised": true,
+      "palette": null,
+      "box": null,
+      "paint": {
+        "type": "solid",
+        "color": "#FFFFFFFF"
+      },
+      "contrasts": [],
+      "expected": {
+        "type": "solid",
+        "color": "#FFFFFFFF"
+      },
+      "source": "emphasis",
+      "replaced": false
+    },
+    {
+      "id": "palette-unboxed",
+      "style": "box-highlight",
+      "overrides": {
+        "accent": "#FFFFFF",
+        "words": {
+          "active": {
+            "box": null
+          }
+        },
+        "box": null,
+        "emphasis": {
+          "source": "manual",
+          "fill": {
+            "type": "solid",
+            "color": "#111111"
+          },
+          "palette": [
+            "#FFFFFF"
+          ]
+        }
+      },
+      "state": "active",
+      "boxState": "active",
+      "emphasised": true,
+      "palette": "#FFFFFF",
+      "box": null,
+      "paint": {
+        "type": "solid",
+        "color": "#FFFFFFFF"
+      },
+      "contrasts": [],
+      "expected": {
+        "type": "solid",
+        "color": "#FFFFFFFF"
+      },
+      "source": "emphasis",
+      "replaced": false
+    },
+    {
+      "id": "wipe-first-pass-unboxed",
+      "style": "box-highlight",
+      "overrides": {
+        "accent": "#FFFFFF",
+        "words": {
+          "active": {
+            "box": null
+          }
+        },
+        "box": null,
+        "reveal": {
+          "unit": "wipe"
+        }
+      },
+      "state": "future",
+      "boxState": "active",
+      "emphasised": false,
+      "palette": null,
+      "box": null,
+      "paint": {
+        "type": "solid",
+        "color": "#FFFFFFFF"
+      },
+      "contrasts": [],
+      "expected": {
+        "type": "solid",
+        "color": "#FFFFFFFF"
+      },
+      "source": "base",
+      "replaced": false
+    },
+    {
+      "id": "gradient-kept-unboxed",
+      "style": "box-highlight",
+      "overrides": {
+        "accent": "#FFFFFF",
+        "words": {
+          "active": {
+            "box": null
+          }
+        },
+        "box": null,
+        "fill": {
+          "type": "linear",
+          "color": null,
+          "angleDeg": 25,
+          "space": "word",
+          "stops": [
+            {
+              "offset": 0,
+              "color": "#000000"
+            },
+            {
+              "offset": 1,
+              "color": "#333333"
+            }
+          ]
+        }
+      },
+      "state": "active",
+      "boxState": "active",
+      "emphasised": false,
+      "palette": null,
+      "box": null,
+      "paint": {
+        "type": "linear",
+        "angleDeg": 25,
+        "space": "word",
+        "stops": [
+          {
+            "offset": 0,
+            "color": "#000000FF"
+          },
+          {
+            "offset": 1,
+            "color": "#333333FF"
+          }
+        ]
+      },
+      "contrasts": [],
+      "expected": {
+        "type": "linear",
+        "angleDeg": 25,
+        "space": "word",
+        "stops": [
+          {
+            "offset": 0,
+            "color": "#000000FF"
+          },
+          {
+            "offset": 1,
+            "color": "#333333FF"
+          }
+        ]
+      },
+      "source": "base",
+      "replaced": false
+    },
+    {
+      "id": "gradient-replaced-unboxed",
+      "style": "box-highlight",
+      "overrides": {
+        "accent": "#FFFFFF",
+        "words": {
+          "active": {
+            "box": null
+          }
+        },
+        "box": null,
+        "fill": {
+          "type": "linear",
+          "color": null,
+          "angleDeg": 25,
+          "space": "word",
+          "stops": [
+            {
+              "offset": 0,
+              "color": "#000000"
+            },
+            {
+              "offset": 1,
+              "color": "#FFFFFF"
+            }
+          ]
+        }
+      },
+      "state": "active",
+      "boxState": "active",
+      "emphasised": false,
+      "palette": null,
+      "box": null,
+      "paint": {
+        "type": "linear",
+        "angleDeg": 25,
+        "space": "word",
+        "stops": [
+          {
+            "offset": 0,
+            "color": "#000000FF"
+          },
+          {
+            "offset": 1,
+            "color": "#FFFFFFFF"
+          }
+        ]
+      },
+      "contrasts": [],
+      "expected": {
+        "type": "linear",
+        "angleDeg": 25,
+        "space": "word",
+        "stops": [
+          {
+            "offset": 0,
+            "color": "#000000FF"
+          },
+          {
+            "offset": 1,
+            "color": "#FFFFFFFF"
+          }
+        ]
+      },
+      "source": "base",
+      "replaced": false
     }
   ]
 }

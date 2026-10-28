@@ -30,28 +30,16 @@ internal static class CaptionContrast
 
     internal static CaptionPaint Text(CaptionPaint paint, string box, CaptionStyle style)
     {
-        if (paint is not SolidPaint text) return paint;
         static (byte R, byte G, byte B) Rgb(CaptionColor color) => (color.R, color.G, color.B);
         var background = Rgb(CaptionColor.Parse(box, style));
-        if (Ratio(Rgb(CaptionColor.Parse(text.Color, style)), background) >= 4.5) return paint;
-        return new SolidPaint(Ratio((0, 0, 0), background) >= Ratio((255, 255, 255), background) ? "#000000" : "#FFFFFF");
-    }
-
-    internal static CaptionStyle Resolve(CaptionStyle original)
-    {
-        CaptionPaint Adjusted(CaptionPaint paint, string? box) => box is null ? paint : Text(paint, box, original);
-        var fill = Adjusted(original.Fill, original.Box?.Color);
-        CaptionWordState? State(CaptionWordState? appearance)
+        bool Readable(string color) => Ratio(Rgb(CaptionColor.Parse(color, style)), background) >= 4.5;
+        var readable = paint switch
         {
-            if (appearance is null) return null;
-            var paint = appearance.Fill ?? original.Fill;
-            var resolved = Adjusted(paint, appearance.Box?.Color ?? original.Box?.Color);
-            return appearance.Fill is not null || resolved != fill ? appearance with { Fill = resolved } : appearance;
-        }
-        return original with
-        {
-            Fill = fill,
-            Words = original.Words is { } words ? words with { Past = State(words.Past), Active = State(words.Active), Future = State(words.Future) } : null
+            SolidPaint solid => Readable(solid.Color),
+            LinearPaint linear => linear.Stops.All(stop => Readable(stop.Color)),
+            _ => throw new InvalidDataException("Unknown caption paint.")
         };
+        if (readable) return paint;
+        return new SolidPaint(Ratio((0, 0, 0), background) >= Ratio((255, 255, 255), background) ? "#000000" : "#FFFFFF");
     }
 }

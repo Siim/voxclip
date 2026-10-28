@@ -35,7 +35,6 @@ enum CaptionContrast {
     }
 
     static func text(_ paint: CaptionPaint, box: String, accent: String?) -> CaptionPaint {
-        guard case .solid(let text) = paint else { return paint }
         func rgb(_ value: String) -> (r: UInt8, g: UInt8, b: UInt8) {
             let resolved = value.hasPrefix("$accent") ? accent! : value
             let channels = UInt32(resolved.dropFirst().prefix(6), radix: 16)!
@@ -47,30 +46,15 @@ enum CaptionContrast {
             return (UInt8(red), UInt8(green), UInt8(blue))
         }
         let background = rgb(box)
-        if ratio(rgb(text), background) >= 4.5 { return paint }
+        let readable: Bool
+        switch paint {
+        case .solid(let color): readable = ratio(rgb(color), background) >= 4.5
+        case .linear(_, _, let stops): readable = stops.allSatisfy { ratio(rgb($0.color), background) >= 4.5 }
+        }
+        if readable { return paint }
         let black: (r: UInt8, g: UInt8, b: UInt8) = (0, 0, 0)
         let white: (r: UInt8, g: UInt8, b: UInt8) = (255, 255, 255)
         return .solid(color: ratio(black, background) >= ratio(white, background) ? "#000000" : "#FFFFFF")
     }
 
-    static func resolve(_ original: CaptionStyle) -> CaptionStyle {
-        var style = original
-        func adjusted(_ paint: CaptionPaint, box: String?) -> CaptionPaint {
-            guard let box else { return paint }
-            return text(paint, box: box, accent: original.accent)
-        }
-        let fill = adjusted(original.fill, box: original.box?.color)
-        style.fill = fill
-        func state(_ appearance: CaptionWordState?) -> CaptionWordState? {
-            guard var appearance else { return nil }
-            let paint = appearance.fill ?? original.fill
-            let resolved = adjusted(paint, box: appearance.box?.color ?? original.box?.color)
-            if appearance.fill != nil || resolved != fill { appearance.fill = resolved }
-            return appearance
-        }
-        style.words?.past = state(original.words?.past)
-        style.words?.active = state(original.words?.active)
-        style.words?.future = state(original.words?.future)
-        return style
-    }
 }

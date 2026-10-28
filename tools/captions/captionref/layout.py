@@ -5,6 +5,7 @@ import math
 import os
 
 from . import text as tx
+from .contrast import text as box_text
 from .style import color, resolve
 from .util import STYLES, clamp, load_json, round_half_up
 
@@ -390,8 +391,8 @@ def place(st, p, words, idxs, units, lines, gap, fp64, width, height, safe, ref)
             "anchorPoint": (ax, ay), "clampShift": (dx, dy)}
 
 
-def resolve_fill(st, state, emphasised_color, is_emph):
-    """Spec 10.3 precedence: emphasis > word state > base fill. Returns a description string."""
+def resolve_paint(st, state, emphasised_color, is_emph, box_state=None):
+    """Spec 10.2 precedence followed by 2.3 contrast against the drawn word's box."""
     paint = st["fill"]
     src = "base"
     sp = st["words"].get(state, {}).get("fill")
@@ -403,7 +404,12 @@ def resolve_fill(st, state, emphasised_color, is_emph):
             paint, src = {"type": "solid", "color": emphasised_color}, "emphasis"
         elif "fill" in e:
             paint, src = e["fill"], "emphasis"
-    if paint["type"] == "solid":
-        r, g, b, a = color(st, paint["color"])
-        return src, "#%02X%02X%02X%02X" % (r, g, b, a)
-    return src, "linear"
+    box = st["words"].get(box_state or state, {}).get("box", st.get("box"))
+    chosen = box_text(paint, box["color"], st) if box else paint
+    return src, paint, chosen, box
+
+
+def resolve_fill(st, state, emphasised_color, is_emph, box_state=None):
+    src, original, paint, box = resolve_paint(st, state, emphasised_color, is_emph, box_state)
+    value = "#%02X%02X%02X%02X" % color(st, paint["color"]) if paint["type"] == "solid" else "linear"
+    return src, value, paint != original

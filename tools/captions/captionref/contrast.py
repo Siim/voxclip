@@ -19,24 +19,9 @@ def ratio(foreground, background):
 
 
 def text(paint, box, style):
-    if paint["type"] != "solid":
-        return paint
     background = color(style, box)
-    if ratio(color(style, paint["color"]), background) >= 4.5:
+    tokens = [paint["color"]] if paint["type"] == "solid" else [stop["color"] for stop in paint["stops"]]
+    if all(ratio(color(style, token), background) >= 4.5 for token in tokens):
         return paint
     chosen = "#000000" if ratio((0, 0, 0), background) >= ratio((255, 255, 255), background) else "#FFFFFF"
     return {"type": "solid", "color": chosen}
-
-
-def resolve(style):
-    original = style["fill"]
-    box = style.get("box", {}).get("color")
-    if box:
-        style["fill"] = text(original, box, style)
-    for appearance in style.get("words", {}).values():
-        background = appearance.get("box", {}).get("color", box)
-        paint = appearance.get("fill", original)
-        resolved = text(paint, background, style) if background else paint
-        if "fill" in appearance or resolved != style["fill"]:
-            appearance["fill"] = resolved
-    return style

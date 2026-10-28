@@ -219,7 +219,8 @@
       "scale": 1.0,
       "dy": 0.0,
       "fill": "#000000FF",
-      "fillSource": "active"
+      "fillSource": "base",
+      "boxContrast": true
      },
      {
       "word": 1,
@@ -273,7 +274,8 @@
       "scale": 1.06,
       "dy": 0.0,
       "fill": "#000000FF",
-      "fillSource": "active"
+      "fillSource": "base",
+      "boxContrast": true
      },
      {
       "word": 1,
@@ -346,7 +348,8 @@
       "scale": 1.06,
       "dy": 0.0,
       "fill": "#000000FF",
-      "fillSource": "active"
+      "fillSource": "base",
+      "boxContrast": true
      },
      {
       "word": 3,
@@ -410,7 +413,8 @@
       "scale": 1.06,
       "dy": 0.0,
       "fill": "#000000FF",
-      "fillSource": "active"
+      "fillSource": "base",
+      "boxContrast": true
      }
     ],
     "cursor": null,
@@ -464,7 +468,8 @@
       "scale": 1.06,
       "dy": 0.0,
       "fill": "#000000FF",
-      "fillSource": "active"
+      "fillSource": "base",
+      "boxContrast": true
      }
     ],
     "cursor": null
@@ -517,7 +522,8 @@
       "scale": 1.06,
       "dy": 0.0,
       "fill": "#000000FF",
-      "fillSource": "active"
+      "fillSource": "base",
+      "boxContrast": true
      }
     ],
     "cursor": null

@@ -419,6 +419,41 @@
    "samples": 7
   },
   {
+   "file": "layout/box-final-emphasis-fill.json",
+   "style": "box-highlight",
+   "frame": [1080, 1920],
+   "pages": 1,
+   "samples": 6
+  },
+  {
+   "file": "layout/box-final-palette.json",
+   "style": "box-highlight",
+   "frame": [1080, 1920],
+   "pages": 1,
+   "samples": 6
+  },
+  {
+   "file": "layout/box-final-wipe.json",
+   "style": "box-highlight",
+   "frame": [1080, 1920],
+   "pages": 1,
+   "samples": 6
+  },
+  {
+   "file": "layout/box-final-gradient-kept.json",
+   "style": "box-highlight",
+   "frame": [1080, 1920],
+   "pages": 1,
+   "samples": 6
+  },
+  {
+   "file": "layout/box-final-gradient-replaced.json",
+   "style": "box-highlight",
+   "frame": [1080, 1920],
+   "pages": 1,
+   "samples": 6
+  },
+  {
    "file": "layout/active-pop-square-en.json",
    "style": "active-pop",
    "frame": [1080, 1080],

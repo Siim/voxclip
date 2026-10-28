@@ -79,6 +79,9 @@ def sample_out(ev):
     for w in ev["words"]:
         e = {"word": w["word"], "state": w["state"], "visible": w["visible"], "opacity": r6(w["opacity"]),
              "scale": r6(w["scale"]), "dy": r3(w["dy"]), "fill": w["fill"], "fillSource": w["fillSource"]}
+        for flag in ("boxContrast", "wipeFromBoxContrast"):
+            if w.get(flag):
+                e[flag] = True
         if "wipe" in w:
             e["wipe"] = r6(w["wipe"])
             e["wipeFrom"] = w["wipeFrom"]
@@ -318,6 +321,25 @@ def main():
         for aspect, frame in (("portrait", [1080, 1920]), ("landscape", [1920, 1080])):
             cases.append({"id": "box-highlight-" + name + "-" + aspect, "style": "box-highlight",
                           "frame": frame, "words": "box-swatches", "overrides": {"accent": accent}})
+    cases_doc["wordSets"]["box-final-paints"] = {
+        "language": "en", "duration": 0.4 * len(texts) + 0.5,
+        "words": [[word, round(0.4 * index, 6), round(0.4 * index + 0.35, 6), {"emphasis": index == 0}]
+                  for index, word in enumerate(texts)]}
+    dark_gradient = {"type": "linear", "color": None, "angleDeg": 0, "space": "word",
+                     "stops": [{"offset": 0, "color": "#000000"}, {"offset": 1, "color": "#333333"}]}
+    light_gradient = {"type": "linear", "color": None, "angleDeg": 0, "space": "word",
+                      "stops": [{"offset": 0, "color": "#000000"}, {"offset": 1, "color": "#FFFFFF"}]}
+    probes = {
+        "emphasis-fill": {"emphasis": {"source": "manual", "fill": {"type": "solid", "color": "#FFFFFF"}}},
+        "palette": {"emphasis": {"source": "manual", "fill": {"type": "solid", "color": "#111111"}, "palette": ["#FFFFFF"]}},
+        "wipe": {"reveal": {"unit": "wipe"}, "words": {"active": {"fill": {"type": "solid", "color": "#7C3AED"}}}},
+        "gradient-kept": {"fill": dark_gradient},
+        "gradient-replaced": {"fill": light_gradient},
+    }
+    for name, patch in probes.items():
+        cases.append({"id": "box-final-" + name, "style": "box-highlight", "frame": [1080, 1920],
+                      "words": "box-final-paints", "overrides": {"accent": "#FFFFFF", **patch},
+                      "frameSamples": {"fpsNum": 30, "fpsDen": 1, "first": 3, "count": 6}})
     explicit = {c["id"] for c in cases}
     matrix = cases_doc.get("matrix")
     if matrix:
