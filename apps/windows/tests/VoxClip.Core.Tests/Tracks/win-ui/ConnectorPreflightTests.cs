@@ -100,13 +100,26 @@ public sealed class ConnectorPreflightTests
         var rewrite = File.ReadAllText(Path.Combine(root, "Pages/EditorPage.xaml.cs"));
         Assert.Contains("ConnectorConsentAction.Rewrite", rewrite);
         Assert.Contains("if (entry is not null) await ProviderCatalog.ProbeAsync", rewrite);
+        Assert.Contains("selectedConnector!, await ProviderCatalog.ProbeAsync(entry, selectedConnector!, token), token)", rewrite);
         var settings = File.ReadAllText(Path.Combine(root, "SettingsWindow.xaml.cs"));
         Assert.Contains("ConnectorConsentAction.Test", settings);
+        Assert.Contains("var connectorStatus = await ProviderCatalog.ProbeAsync(entry, selectedConnector, lifetime.Token)", settings);
+        Assert.Contains("var status = await ProviderCatalog.ProbeAsync(chosen, selectedConnector, ct)", find);
         var home = File.ReadAllText(Path.Combine(root, "Pages/HomePage.xaml.cs"));
         Assert.DoesNotContain("GetStatusAsync", home);
         Assert.Contains("detect ? await ProviderCatalog.ProbeAsync", home);
         Assert.Contains("ProviderCatalog.LastStatus(entry)", home);
-        Assert.DoesNotContain("Timer", File.ReadAllText(Path.Combine(root, "Services/ProviderCatalog.cs")));
+        var catalog = File.ReadAllText(Path.Combine(root, "Services/ProviderCatalog.cs"));
+        Assert.DoesNotContain("Timer", catalog);
+        Assert.DoesNotContain("Task.Run", catalog);
+        Assert.DoesNotContain("Task.Delay", catalog);
+        Assert.Equal(1, home.Split("RefreshAiAsync(true)").Length - 1);
+        Assert.Contains("if (callout?.Action == \"Check again\") await RefreshAiAsync(true)", home);
+        var callers = Directory.EnumerateFiles(root, "*.cs", SearchOption.AllDirectories)
+            .Where(path => !path.Contains(Path.DirectorySeparatorChar + "obj" + Path.DirectorySeparatorChar, StringComparison.Ordinal))
+            .Where(path => File.ReadAllText(path).Contains("ProviderCatalog.ProbeAsync", StringComparison.Ordinal))
+            .Select(path => Path.GetRelativePath(root, path).Replace('\\', '/')).Order().ToArray();
+        Assert.Equal(new[] { "Controls/FindClipsFlyout.cs", "Pages/EditorPage.xaml.cs", "Pages/HomePage.xaml.cs", "SettingsWindow.xaml.cs" }, callers);
     }
 }
 #endif
