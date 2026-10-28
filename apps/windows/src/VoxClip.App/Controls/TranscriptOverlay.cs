@@ -15,12 +15,14 @@ internal sealed class TranscriptOverlay : IDisposable
     private readonly ShapeVisual behind;
     private readonly ShapeVisual above;
     private EventHandler<object>? pendingDraw;
+    private bool retriedLayout;
     private readonly VoxClip.App.ViewModels.TranscriptGeometryCache<Inline, Rect> bounds = new();
     internal bool NeedsLayout => bounds.NeedsLayout;
-    internal void Invalidate() => bounds.Invalidate();
+    internal void Invalidate() { bounds.Invalidate(); retriedLayout = false; }
     internal void DrawAfterLayout(Action draw)
     {
-        if (!NeedsLayout || pendingDraw is not null) return;
+        if (!NeedsLayout || pendingDraw is not null || retriedLayout) return;
+        retriedLayout = true;
         pendingDraw = (_, _) =>
         {
             CompositionTarget.Rendering -= pendingDraw;
@@ -29,7 +31,6 @@ internal sealed class TranscriptOverlay : IDisposable
             {
                 if (!owner.IsLoaded) return;
                 draw();
-                DrawAfterLayout(draw);
             });
         };
         CompositionTarget.Rendering += pendingDraw;
