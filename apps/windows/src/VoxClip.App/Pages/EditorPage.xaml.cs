@@ -819,7 +819,8 @@ public sealed partial class EditorPage : Page
         PreviewStateGlyphHost.Visibility = mediaState is EditorMediaState.Missing or EditorMediaState.Corrupt ? Visibility.Visible : Visibility.Collapsed;
         PreviewMissingStrike.Visibility = mediaState == EditorMediaState.Missing ? Visibility.Visible : Visibility.Collapsed;
         PreviewStandIn.Visibility = mediaState is EditorMediaState.Missing or EditorMediaState.Corrupt ? Visibility.Visible : Visibility.Collapsed;
-        foreach (var button in ((Grid)PreviewPlay.Parent).Children.OfType<Button>()) button.IsEnabled = !ViewModel.IsReadOnly;
+        if (PreviewPlay.Parent is Grid playback)
+            foreach (var button in playback.Children.OfType<Button>()) button.IsEnabled = !ViewModel.IsReadOnly;
         PositionStageMessage();
     }
     private void PositionStageMessage()
