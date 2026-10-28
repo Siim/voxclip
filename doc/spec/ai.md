@@ -330,6 +330,11 @@ Before the first request of a connector whose `privacy` is `thirdPartyCloud`, sh
 - Claude Code: "VoxClip will run your installed Claude Code with your own sign-in. The transcript is sent to Anthropic and counts toward your Claude plan's usage." When `claude auth status --json` reports an `authMethod` that is an API key, the second sentence reads "The transcript is sent to Anthropic and billed to the API key Claude Code is signed in with."
 - Codex: "VoxClip will run your installed Codex with your own sign-in. The transcript is sent to OpenAI and counts toward your ChatGPT plan's usage." When `codex login status` says "Logged in using an API key", the second sentence reads "The transcript is sent to OpenAI and billed to the API key Codex is signed in with."
 
+The sheet words the action that triggers it; one answer covers every action of that connector. The sentences above are for Find clips. When Rewrite (voice-lab.md) triggers the sheet:
+
+- API keys: "Rewrite sends these {n} words (no audio or video) to {label} using your API key." {n} counts the passage's words.
+- Claude Code and Codex: the first sentence is unchanged, and the second names the words instead of the transcript: "These words are sent to Anthropic and count toward your Claude plan's usage." or "These words are sent to Anthropic and billed to the API key Claude Code is signed in with." For Codex: "These words are sent to OpenAI and count toward your ChatGPT plan's usage." or "These words are sent to OpenAI and billed to the API key Codex is signed in with."
+
 Local and on-device connectors need no consent sheet.
 
 ### 4.9 Logging and redaction
