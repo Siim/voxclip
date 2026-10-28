@@ -1,5 +1,9 @@
 # Windows fixed contracts
 
+### 2026-10-28 — sol-win-redesign round 11 — Consent migration decision
+
+- Legacy onboarding grants in `llm.cloudConsent.*` are not migrated: VoxClip has no release or tag, so the former onboarding checkbox only wrote these grants in development builds (lead decision C4).
+
 ### 2026-10-28 — sol-win-redesign round 10 — Native results and revised consent
 
 - R1: transcript bounds are measured before changing Run foregrounds or TextHighlighters. The former order invalidated native layout and retained empty rectangles, leaving cut words dimmed but without their strike. Empty/non-finite bounds are not retained; layout retries are bounded. Composition surfaces include the existing 2 epx horizontal and 4 epx vertical overscan so edge decorations are not clipped. Both `um,` and `uh` now pass the unchanged 1.5 epx cut.stroke raster assertion in light and dark on ARM64 and x64-emulated.
