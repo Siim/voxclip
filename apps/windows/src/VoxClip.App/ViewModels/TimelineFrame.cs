@@ -75,8 +75,13 @@ internal sealed class TimelineFrame
         }
         Start = viewport.Trim(true, First, Last);
         End = viewport.Trim(false, First, Last);
+        ComputePlayhead(viewport, plan, view, width, source, edited);
+    }
+
+    internal void ComputePlayhead(TimelineViewportState viewport, EditPlan plan, TimelineWindow view, double width, double source, bool edited)
+    {
         Playhead = viewport.Playhead(plan, view, source, edited);
-        var playhead = view.X(Display(source), width);
+        var playhead = view.X(edited ? plan.MapTime(source) : source, width);
         PlayheadLeft = Math.Clamp(playhead - 1, 0, Math.Max(0, width - 2));
         HeadLeft = Math.Clamp(playhead - 6, 0, Math.Max(0, width - 12));
     }

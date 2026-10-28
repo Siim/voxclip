@@ -11,6 +11,24 @@ namespace VoxClip.Ui.Tests;
 public sealed class RoundFourTests(ITestOutputHelper output)
 {
     [Fact]
+    public void NativeAllocationGateMeasuresPositionAndGuardsAllPropertyEvents()
+    {
+        var root = Path.GetDirectoryName(Environment.GetEnvironmentVariable("VOXCLIP_SHARED_DIR"))!;
+        var control = File.ReadAllText(Path.Combine(root, "apps/windows/src/VoxClip.App/Controls/TimelineRangeControl.cs"));
+        Assert.Contains("AutomationPeer.ListenerExists(AutomationEvents.PropertyChanged) && FrameworkElementAutomationPeer.FromElement(this)", control);
+        Assert.DoesNotContain("AutomationProperties.SetHelpText", control);
+        Assert.Contains("GetHelpTextCore() => owner.Read().Text", control);
+        var timeline = File.ReadAllText(Path.Combine(root, "apps/windows/src/VoxClip.App/Controls/TimelineView.cs"));
+        var position = timeline[timeline.IndexOf("public void Position", StringComparison.Ordinal)..timeline.IndexOf("private TimelineRange ReadPlayhead", StringComparison.Ordinal)];
+        Assert.Contains("ComputePlayhead", position);
+        Assert.DoesNotContain("UpdateViewport", position);
+        var probe = File.ReadAllText(Path.Combine(root, "apps/windows/src/VoxClip.App/Services/TimelineNativeProbe.cs"));
+        Assert.Contains("longTimeline.Position(1200 + index * 0.02)", probe);
+        Assert.Contains("playheadBytes == 0", probe);
+        Assert.Contains("No actual property-changed listener attached", probe);
+    }
+
+    [Fact]
     public void NativeCaptureScriptsCoverCurrentRoutesAndKeepVisualGatesExplicit()
     {
         var shared = Environment.GetEnvironmentVariable("VOXCLIP_SHARED_DIR");

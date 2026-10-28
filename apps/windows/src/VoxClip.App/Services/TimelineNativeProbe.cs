@@ -100,15 +100,40 @@ internal static class TimelineNativeProbe
             }
             checks.Add("9,000-word native timeline: <=256 custom elements with/without RMS and stable zoom/drag identities");
             longTimeline.DebugCreateRangePeers();
+            if (Environment.GetEnvironmentVariable("VOXCLIP_TIMELINE_LISTENER_PROBE") == "1")
+            {
+                var evidence = Environment.GetEnvironmentVariable("VOXCLIP_UI_EVIDENCE_DIR") ?? throw new InvalidOperationException("Missing listener probe evidence directory.");
+                await File.WriteAllTextAsync(Path.Combine(evidence, "timeline-listener-ready.txt"), Environment.ProcessId.ToString());
+                var deadline = DateTime.UtcNow.AddSeconds(30);
+                while (!AutomationPeer.ListenerExists(AutomationEvents.PropertyChanged) && DateTime.UtcNow < deadline) await Task.Delay(50);
+                Require(AutomationPeer.ListenerExists(AutomationEvents.PropertyChanged), "No actual property-changed listener attached within 30 seconds");
+            }
+            var listener = AutomationPeer.ListenerExists(AutomationEvents.PropertyChanged);
             for (var index = 0; index < 256; index++)
                 longTimeline.DebugFrame(new(index % 900, 1800 + index % 900), index % 700, 1200 + index * 0.02, index % 2 == 0);
             var allocated = GC.GetAllocatedBytesForCurrentThread();
-            var clock = System.Diagnostics.Stopwatch.StartNew();
+            var started = System.Diagnostics.Stopwatch.GetTimestamp();
             for (var index = 0; index < 4096; index++)
                 longTimeline.DebugFrame(new(index % 900, 1800 + index % 900), index % 700, 1200 + index * 0.02, index % 2 == 0);
-            clock.Stop();
             var bytes = GC.GetAllocatedBytesForCurrentThread() - allocated;
-            checks.Add($"9,000-word full-control native timeline: {bytes / 4096.0:0.00} managed bytes/frame, {clock.Elapsed.TotalMilliseconds / 4096:0.000} ms/frame over 4,096 changing viewport/playhead/trim ticks, with all three native UIA peers and their value boxing");
+            var milliseconds = System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+            checks.Add($"9,000-word full-control native timeline: {bytes / 4096.0:0.00} managed bytes/frame, {milliseconds / 4096:0.000} ms/frame over 4,096 changing viewport/playhead/trim ticks; property listener={listener}");
+            for (var index = 0; index < 256; index++) longTimeline.Position(1200 + index * 0.02);
+            allocated = GC.GetAllocatedBytesForCurrentThread();
+            started = System.Diagnostics.Stopwatch.GetTimestamp();
+            for (var index = 0; index < 4096; index++) longTimeline.Position(1200 + index * 0.02);
+            var playheadBytes = GC.GetAllocatedBytesForCurrentThread() - allocated;
+            var playheadMilliseconds = System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+            Require(listener == AutomationPeer.ListenerExists(AutomationEvents.PropertyChanged), "UIA listener state changed during allocation sampling");
+            checks.Add($"9,000-word actual TimelineView.Position: {playheadBytes / 4096.0:0.00} managed bytes/frame, {playheadMilliseconds / 4096:0.000} ms/frame; property listener={listener}");
+            if (Environment.GetEnvironmentVariable("VOXCLIP_UI_EVIDENCE_DIR") is { Length: > 0 } allocationEvidence)
+                await File.WriteAllTextAsync(Path.Combine(allocationEvidence, "timeline-allocations.json"), System.Text.Json.JsonSerializer.Serialize(new
+                {
+                    Runtime = System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture.ToString(), PropertyListener = listener,
+                    Frames = 4096, FullControlBytesPerFrame = bytes / 4096.0, PlayheadBytesPerFrame = playheadBytes / 4096.0,
+                    FullControlMillisecondsPerFrame = milliseconds / 4096, PlayheadMillisecondsPerFrame = playheadMilliseconds / 4096
+                }, new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
+            if (!listener) Require(playheadBytes == 0, "Playhead-only native control path allocated without a property listener");
         }
         finally { longTimeline.Detach(); host.Children.Remove(longTimeline); }
         var longTranscript = new TranscriptView { Width = 780, Height = 400, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top };
