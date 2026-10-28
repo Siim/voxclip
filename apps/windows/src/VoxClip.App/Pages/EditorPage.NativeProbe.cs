@@ -147,32 +147,42 @@ public sealed partial class EditorPage
 
     internal async Task DebugRewriteGateAsync(MainWindow window, string output, List<string> checks)
     {
-        ViewModel.SetMediaUnavailable(false);
         var originalTranscript = ViewModel.Project.Transcript!;
-        var diffWords = originalTranscript.Words.ToArray();
-        diffWords[4] = diffWords[4] with { Text = "[laughter]", Kind = VoxClip.Core.Domain.Shared.WordKind.Event };
-        diffWords[5] = diffWords[5] with { Text = "[unlabeled speech]", Kind = VoxClip.Core.Domain.Shared.WordKind.UnlabeledSpeech };
-        ViewModel.SetTranscript(originalTranscript with { Words = diffWords });
-        await App.Services.SetAsync("voiceLab.enabled", true, CancellationToken.None);
-        ViewModel.Select(3); ViewModel.Select(7, true);
-        await Task.Delay(250);
-        await OpenRewriteAsync(false);
-        await Task.Delay(150);
-        NativeRequire(rewrite is { IsOpen: true }, $"Actual Rewrite route did not open: readonly={ViewModel.IsReadOnly}, busy={ViewModel.Busy}, leaving={ViewModel.IsLeaving}, selection={ViewModel.HasSelection}, column={rightContent is not null}, disposed={disposed}.");
-        var panel = NativeDescendants(this).OfType<RewritePanel>().Single();
-        NativeRequire(Math.Abs(panel.ActualWidth - CaptionsHost.ActualWidth) <= 4, "Rewrite is not the right-column width within 4 epx.");
-        NativeRequire(FocusManager.GetFocusedElement(XamlRoot) is FrameworkElement focused && AutomationProperties.GetName(focused) == "What should change?",
-            "Opening Rewrite did not focus its instruction field.");
-        rewrite!.Edit("Sunday");
-        await Task.Delay(150);
-        var rightWidth = RightColumn.Width;
+        var originalReadOnly = ViewModel.IsReadOnly;
+        var enabled = App.Services.Get("voiceLab.enabled", false);
+        var first = ViewModel.SelectionStart; var last = ViewModel.SelectionEnd;
         try
         {
-            foreach (var width in new[] { 300, 348, 388, 560 })
+            ViewModel.SetMediaUnavailable(false);
+            var diffWords = originalTranscript.Words.ToArray();
+            diffWords[4] = diffWords[4] with { Text = "[laughter]", Kind = VoxClip.Core.Domain.Shared.WordKind.Event };
+            diffWords[5] = diffWords[5] with { Text = "[unlabeled speech]", Kind = VoxClip.Core.Domain.Shared.WordKind.UnlabeledSpeech };
+            ViewModel.SetTranscript(originalTranscript with { Words = diffWords });
+            await App.Services.SetAsync("voiceLab.enabled", true, CancellationToken.None);
+            ViewModel.Select(3); ViewModel.Select(7, true);
+            FocusTranscript();
+            await NativeWaitAsync(() => Transcript.IsLoaded && Transcript.ActualWidth > 0 && Transcript.CanRewrite &&
+                ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), Transcript), "The selected transcript did not become realized and focused.");
+            await OpenRewriteAsync(false);
+            await NativeWaitAsync(() => rewrite is { IsOpen: true } && NativeDescendants(this).OfType<RewritePanel>().Any(candidate =>
+                candidate.IsLoaded && candidate.ActualWidth > 0 && ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), candidate.FocusTarget)),
+                "Actual Rewrite did not become realized and focus its instruction field.");
+            NativeRequire(rewrite is { IsOpen: true }, $"Actual Rewrite route did not open: readonly={ViewModel.IsReadOnly}, busy={ViewModel.Busy}, leaving={ViewModel.IsLeaving}, selection={ViewModel.HasSelection}, column={rightContent is not null}, disposed={disposed}.");
+            var panel = NativeDescendants(this).OfType<RewritePanel>().Single();
+            NativeRequire(Math.Abs(panel.ActualWidth - CaptionsHost.ActualWidth) <= 4, "Rewrite is not the right-column width within 4 epx.");
+            NativeRequire(FocusManager.GetFocusedElement(XamlRoot) is FrameworkElement focused && AutomationProperties.GetName(focused) == "What should change?",
+                "Opening Rewrite did not focus its instruction field.");
+            rewrite!.Edit("Sunday");
+            await NativeWaitAsync(() => rewrite is { NewWords: "Sunday", Review: not null } && panel.IsLoaded && panel.ActualHeight > 0,
+                "The edited Rewrite review was not ready.");
+            var rightWidth = RightColumn.Width;
+            try
             {
-                RightColumn.Width = new(width);
-                await DebugRightColumnBoundsAsync(window, output, "rewrite-" + width);
-            }
+                foreach (var width in new[] { 300, 348, 388, 560 })
+                {
+                    RightColumn.Width = new(width);
+                    await DebugRightColumnBoundsAsync(window, output, "rewrite-" + width);
+                }
         }
         finally { RightColumn.Width = rightWidth; }
         NativeRequire(rewrite.Review!.Diff.Hunks.SelectMany(hunk => hunk.AbsorbedItemIds).Count() == 2 &&
@@ -201,10 +211,28 @@ public sealed partial class EditorPage
         var instruction = NativeDescendants(panel).OfType<TextBox>().Single(element => AutomationProperties.GetName(element) == "What should change?");
         instruction.Focus(FocusState.Keyboard);
         NativeGateInput.Key(0x1b);
-        await Task.Delay(100);
+        await NativeWaitAsync(() => rewrite is not { IsOpen: true } && ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), Transcript),
+            "Escape did not close Rewrite and restore transcript focus.");
         NativeRequire(rewrite is not { IsOpen: true } && ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), Transcript), "Escape did not close Rewrite and restore transcript focus.");
-        ViewModel.SetTranscript(originalTranscript);
         checks.Add("native DEBUG Rewrite through actual opening route: instruction focus, right-column width within 4 epx, Core diff/absorbed metadata, F6 inclusion, Escape-to-transcript; no connector or generation");
+        }
+        finally
+        {
+            rewrite?.Dispose(); rightContent?.CloseRewrite();
+            ViewModel.SetTranscript(originalTranscript);
+            ViewModel.SetMediaUnavailable(originalReadOnly);
+            if (first >= 0) { ViewModel.Select(first); if (last >= first) ViewModel.Select(last, true); }
+            await App.Services.SetAsync("voiceLab.enabled", enabled, CancellationToken.None);
+        }
+    }
+    private static async Task NativeWaitAsync(Func<bool> ready, string failure)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (!ready())
+        {
+            NativeRequire(DateTime.UtcNow < deadline, failure);
+            await Task.Delay(25);
+        }
     }
     internal async Task DebugBusyGateAsync(MainWindow window, string output, List<string> checks)
     {

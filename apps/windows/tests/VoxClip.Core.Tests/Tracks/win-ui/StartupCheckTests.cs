@@ -10,6 +10,22 @@ namespace VoxClip.Ui.Tests;
 public sealed class StartupCheckTests
 {
     [Fact]
+    public void RewriteProbeRestoresItsStateEvenWhenReadinessFails()
+    {
+        var root = Path.GetDirectoryName(Environment.GetEnvironmentVariable("VOXCLIP_SHARED_DIR"))!;
+        var source = File.ReadAllText(Path.Combine(root, "apps/windows/src/VoxClip.App/Pages/EditorPage.NativeProbe.cs"));
+        var gate = source[source.IndexOf("internal async Task DebugRewriteGateAsync", StringComparison.Ordinal)..source.IndexOf("internal async Task DebugBusyGateAsync", StringComparison.Ordinal)];
+        var cleanup = gate[gate.LastIndexOf("finally", StringComparison.Ordinal)..];
+        Assert.Contains("rewrite?.Dispose(); rightContent?.CloseRewrite();", cleanup);
+        Assert.Contains("ViewModel.SetTranscript(originalTranscript)", cleanup);
+        Assert.Contains("ViewModel.SetMediaUnavailable(originalReadOnly)", cleanup);
+        Assert.Contains("candidate.IsLoaded && candidate.ActualWidth > 0", gate);
+        Assert.Contains("candidate.FocusTarget", gate);
+        Assert.DoesNotContain("Task.Delay(250)", gate);
+        Assert.DoesNotContain("Task.Delay(150)", gate);
+    }
+
+    [Fact]
     public void ScreenshotDriverReresolvesOnlyTransientPeersWithoutDroppingAssertions()
     {
         var root = Path.GetDirectoryName(Environment.GetEnvironmentVariable("VOXCLIP_SHARED_DIR"))!;
