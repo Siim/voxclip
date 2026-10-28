@@ -77,6 +77,17 @@ import VoxClipCore
             if !identifiers.contains("voxclip.rewrite") {
                 for required in ["voxclip.captions.switch", "voxclip.captions.summary", "voxclip.captions.gallery"] where !identifiers.contains(required) { failures.append("Missing \(required)") }
                 if !elements.contains(where: { $0.role == kAXRadioButtonRole && $0.label.contains(": ") }) { failures.append("Missing caption gallery choices") }
+                for (identifier, roles) in [
+                    ("voxclip.captions.heading", [kAXStaticTextRole]),
+                    ("voxclip.captions.switch", [kAXCheckBoxRole, "AXSwitch"]),
+                    ("voxclip.captions.disclosure", [kAXDisclosureTriangleRole])
+                ] {
+                    let matches = elements.filter { $0.identifier == identifier }
+                    if matches.count != 1 || !matches.allSatisfy({ roles.contains($0.role) }) {
+                        failures.append("Incorrect Captions role for \(identifier): \(matches.map(\.role))")
+                    }
+                }
+                if elements.filter({ $0.role == kAXDisclosureTriangleRole }).count != 1 { failures.append("Captions must have exactly one disclosure control") }
             }
         }
         let evidence = Evidence(editor: true, column: column, content: content, collapsed: collapsed, elements: elements,

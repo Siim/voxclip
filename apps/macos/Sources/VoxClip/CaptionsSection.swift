@@ -22,7 +22,8 @@ enum CaptionStyleGroup: String, CaseIterable {
     }
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-                DisclosureGroup(isExpanded: $fineTune) {
+                sectionHeader
+                if fineTune {
                     VStack(alignment: .leading, spacing: 12) {
                         CaptionControlRow("Size") {
                             Picker("Size", selection: Binding(get: { if case .number(let scale) = value("font", "sizeScale") { return scale }; return 1 }, set: { scale in mutate { CaptionFineTuning.size(&$0, scale: scale) } })) { Text("S").tag(0.8); Text("M").tag(1.0); Text("L").tag(1.2); Text("XL").tag(1.45) }.pickerStyle(.segmented).labelsHidden()
@@ -51,14 +52,12 @@ enum CaptionStyleGroup: String, CaseIterable {
                         }
                         Text("Drag captions on the video to move them.").font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                         Button { mutate { CaptionFineTuning.reset(&$0) } } label: { Text("Reset to Style").underline() }.buttonStyle(.plain).foregroundStyle(DesignValues.accentText).accessibilityLabel("Reset to Style")
-                    }.padding(.top, 12)
-                } label: { sectionHeader }
-                .disclosureGroupStyle(CaptionDisclosureStyle())
+                    }
+                }
             if let error = model.captionError { InlineNotice(text: error).fixedSize(horizontal: false, vertical: true) }
             gallery
         }
         .padding(16)
-        .accessibilityIdentifier("voxclip.captions")
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
         .tint(Color(nsColor: DesignValues.accentFill))
     }
@@ -71,7 +70,7 @@ enum CaptionStyleGroup: String, CaseIterable {
             }.columnLayoutEvidence("captions.stacked")
         }
     }
-    private var heading: some View { Text("Captions").font(.system(size: 13, weight: .semibold)) }
+    private var heading: some View { Text("Captions").font(.system(size: 13, weight: .semibold)).accessibilityIdentifier("voxclip.captions.heading") }
     private var captionsSwitch: some View {
         Toggle("Captions", isOn: Binding(get: { model.project.captions.styleId != "off" }, set: { model.setCaptionsEnabled($0) }))
             .labelsHidden().toggleStyle(.switch).controlSize(.small).fixedSize().accessibilityIdentifier("voxclip.captions.switch")
@@ -93,10 +92,10 @@ enum CaptionStyleGroup: String, CaseIterable {
                 Text(style?.name ?? "Off").font(.system(size: 13, weight: .semibold))
                 if model.captionsEdited { Text("Edited").font(.system(size: 11)).foregroundStyle(DesignValues.color("text.secondary")) }
             }.lineLimit(1)
-            Button { fineTune.toggle() } label: {
+            DisclosureGroup(isExpanded: $fineTune) { EmptyView() } label: {
                 HStack(spacing: 3) { Image(systemName: fineTune ? "chevron.down" : "chevron.right"); Text(model.captionSummary) }
                     .font(.system(size: 11)).foregroundStyle(DesignValues.color("text.secondary")).lineLimit(1)
-            }.buttonStyle(.plain).accessibilityLabel("Fine tune captions, \(model.captionSummary)").accessibilityValue(fineTune ? "Expanded" : "Collapsed")
+            }.disclosureGroupStyle(CaptionDisclosureStyle()).accessibilityLabel("Fine tune captions, \(model.captionSummary)").accessibilityValue(fineTune ? "Expanded" : "Collapsed").accessibilityIdentifier("voxclip.captions.disclosure")
         }.accessibilityElement(children: .contain).accessibilityIdentifier("voxclip.captions.summary")
     }
     private func chipInput(_ style: CaptionStyle) -> CaptionTileInput {
@@ -174,7 +173,7 @@ enum CaptionStyleGroup: String, CaseIterable {
 
 private struct CaptionDisclosureStyle: DisclosureGroupStyle {
     func makeBody(configuration: Configuration) -> some View {
-        VStack(alignment: .leading, spacing: 0) { configuration.label; if configuration.isExpanded { configuration.content } }
+        Button { configuration.isExpanded.toggle() } label: { configuration.label }.buttonStyle(.plain)
     }
 }
 
