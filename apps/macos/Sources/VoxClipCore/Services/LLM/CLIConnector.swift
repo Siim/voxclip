@@ -25,6 +25,7 @@ public actor CLIConnector: LLMConnector {
     private var occupied = false
     private var authenticatedPreflight: (fingerprint: CLIFingerprint, at: ContinuousClock.Instant)?
     public internal(set) var refreshWarning: String?
+    public private(set) var lastAuthMethod: String?
 
     private var probeFailure: LLMError {
         .cliFailed("The CLI could not be started or its output could not be read.")
@@ -81,6 +82,7 @@ public actor CLIConnector: LLMConnector {
         let configuration = try configuration()
         let detected = try await detect(configuration, refresh: refresh)
         let method = try await authenticate(detected, configuration: configuration)
+        lastAuthMethod = method
         authenticatedPreflight = (detected.fingerprint, .now)
         return Detection(executable: detected.fingerprint.url, version: detected.version,
                          supportedFlags: detected.flags, features: detected.features, authMethod: method)

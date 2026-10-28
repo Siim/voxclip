@@ -307,6 +307,10 @@ public actor StubLLMConnector: LLMConnector {
         do { return await (try resolve()).status() }
         catch { return .unavailable(reason: "VoxClip is missing its AI configuration. Reinstall VoxClip.") }
     }
+    public func knownCLIAuthMethod() async -> String? {
+        guard let cli = implementation as? CLIConnector else { return nil }
+        return await cli.lastAuthMethod
+    }
     public func models(refresh: Bool) async throws -> [LLMModel] { try await resolve().models(refresh: refresh) }
     public func contextTokens(model: String) async -> Int? {
         guard let connector = try? resolve() else { return nil }

@@ -22,7 +22,7 @@ import VoxClipCore
                     Text("Connector").foregroundStyle(DesignValues.color("text.secondary"))
                     Text("\(connector.label) ·")
                     Text("●").foregroundStyle(DesignValues.color(status == .ready ? "status.success" : "status.warning")).accessibilityHidden(true)
-                    Text(Self.statusText(status))
+                    Text(model.app.connectorProbeAllowed(connector) ? Self.statusText(status) : "Not checked")
                     Spacer(minLength: 8)
                     Button("Change…") { model.showFindClips = false; openVoxClipSettings(pane: "ai") }.buttonStyle(.borderless).foregroundStyle(DesignValues.accentText)
                 }
@@ -50,8 +50,8 @@ import VoxClipCore
         .task(id: "\(model.app.string("llm.connector")):\(model.app.connectorReadinessRevision)") {
             status = nil
             let id = model.app.string("llm.connector"), revision = model.app.connectorReadinessRevision
-            guard !id.isEmpty, !AppModel.isTestSession || model.app.connectorOverride != nil else { return }
-            let found = await model.app.connector(id).status()
+            guard let provider = model.findConnector else { return }
+            let found = await model.app.connectorStatus(provider)
             guard !Task.isCancelled, revision == model.app.connectorReadinessRevision, id == model.app.string("llm.connector") else { return }
             status = found
         }

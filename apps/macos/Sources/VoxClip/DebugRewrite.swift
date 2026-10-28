@@ -7,12 +7,13 @@ import VoxClipMedia
 actor RewriteFixtureConnector: LLMConnector {
     nonisolated let id: ConnectorID
     private(set) var discoveries = 0
+    private(set) var statuses = 0
     private(set) var sends = 0
     let failure: Bool
     let hold: Bool
     private var continuation: CheckedContinuation<Void, Never>?
     init(id: ConnectorID = .ollama, failure: Bool = false, hold: Bool = false) { self.id = id; self.failure = failure; self.hold = hold }
-    func status() -> ConnectorStatus { discoveries += 1; return .ready }
+    func status() -> ConnectorStatus { discoveries += 1; statuses += 1; return .ready }
     func models(refresh: Bool) -> [LLMModel] {
         discoveries += 1
         return [LLMModel(id: "fixture-local", name: "Fixture", contextTokens: 128_000, source: .curated)]
@@ -87,6 +88,44 @@ actor RewriteFixtureConnector: LLMConnector {
                 prices: prices, synthesisModel: synthesisModel, consent: consent, connectorIsCurrent: current)
             editor.rewrite = session; editor.rewriteRange = range
             return (editor, session)
+        }
+        for provider in app.providers.filter({ $0.group == "cli" }) {
+            let previousOverride = app.connectorOverride
+            let previousConsent = app.bool("llm.cloudConsent.\(provider.id)")
+            defer { app.connectorOverride = previousOverride; app.set("llm.cloudConsent.\(provider.id)", .bool(previousConsent)) }
+            let fake = RewriteFixtureConnector(id: ConnectorID(rawValue: provider.id)!)
+            app.connectorOverride = { _ in fake }
+            app.set("llm.cloudConsent.\(provider.id)", .bool(false))
+            _ = await app.connectorStatus(provider)
+            _ = await app.connectorStatus(provider)
+            let ungranted = await fake.counts()
+            check("\(provider.id) Find Clips opening and Retry perform zero pre-consent probes", ungranted.discoveries == 0)
+            app.set("llm.cloudConsent.\(provider.id)", .bool(true))
+            let ready = await app.connectorStatus(provider)
+            let grantedStatuses = await fake.statuses
+            check("\(provider.id) granted Find Clips probes once", ready == .ready && grantedStatuses == 1)
+
+            let rewriteFake = RewriteFixtureConnector(id: ConnectorID(rawValue: provider.id)!)
+            app.set("llm.cloudConsent.\(provider.id)", .bool(false))
+            let (editor, session) = make(rewriteFake, group: "cli", consent: { app.connectorProbeAllowed(provider) })
+            defer { editor.close() }
+            await session.prepare(); await session.prepare()
+            let prepared = await rewriteFake.counts()
+            check("\(provider.id) Rewrite opening and estimate Retry perform zero probes", prepared.discoveries == 0)
+            if let quote = session.quote {
+                session.markEstimateShown(quote.id)
+                _ = await session.propose(quote, affirmative: true)
+            }
+            let denied = await rewriteFake.counts()
+            check("\(provider.id) ungranted Rewrite never probes or sends", denied.discoveries == 0 && denied.sends == 0)
+            app.set("llm.cloudConsent.\(provider.id)", .bool(true))
+            await session.prepare()
+            if let quote = session.quote {
+                session.markEstimateShown(quote.id)
+                _ = await session.propose(quote, affirmative: true)
+            }
+            let rewriteStatuses = await rewriteFake.statuses
+            check("\(provider.id) granted Rewrite probes once", rewriteStatuses == 1)
         }
         for entry in [RewriteEntry.selection, .context, .menu, .shortcut, .insertWords] {
             check("release hides Rewrite entry \(entry)", RewriteEntryPolicy.resolve(entry, enabled: true, editable: true, selection: true, internalBuild: false) == .unavailable)

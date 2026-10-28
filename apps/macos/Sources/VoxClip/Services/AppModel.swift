@@ -128,6 +128,19 @@ extension ProviderChoice {
     func consentCopy(_ provider: ProviderChoice, action: ConnectorConsentAction, wordCount: Int) -> String {
         provider.consentCopy(action: action, wordCount: wordCount, authMethod: knownCLIAuthMethods[provider.id + ":" + string("llm.cliPath.\(provider.id)")])
     }
+    func connectorProbeAllowed(_ provider: ProviderChoice) -> Bool {
+        provider.privacy != "thirdPartyCloud" || bool("llm.cloudConsent.\(provider.id)")
+    }
+    func connectorStatus(_ provider: ProviderChoice) async -> ConnectorStatus? {
+        guard connectorProbeAllowed(provider), !Self.isTestSession || connectorOverride != nil else { return nil }
+        let path = string("llm.cliPath.\(provider.id)")
+        let connector = connector(provider.id)
+        let result = await connector.status()
+        if let stub = connector as? StubLLMConnector, let method = await stub.knownCLIAuthMethod() {
+            knownCLIAuthMethods[provider.id + ":" + path] = method
+        }
+        return result
+    }
     var openProjectKeys: [String: String] = [:]
     let log: RedactingLogger
     let secrets: SecretStore
