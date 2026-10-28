@@ -638,7 +638,7 @@ The parts are framed as in §6.7.
 
 ### 8.1 Entry points
 
-All three open the Rewrite panel (`doc/design.md` §6.3).
+All three open the Rewrite panel (`doc/design.md` §6.3). Until the generation stage lands (implementation checklist 16b), the panel is review-only and reachable only in DEBUG builds on both platforms: it shows the diff, budgets and fit meters, and applies cut-only and text-only changes as one undo step. Consent, the shared run lease and request rules follow `ai.md` §4.7–§4.8.
 
 1. **Select words, then "Rewrite…".** The user types the new words. An empty field means "delete": that becomes a cut, and no AI is involved.
 2. **Caret between two words, then "Insert Words…".** This is an insertion.

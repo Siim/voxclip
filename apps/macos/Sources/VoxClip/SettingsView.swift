@@ -241,7 +241,7 @@ extension AppModel {
             let candidates = chosen.isEmpty ? paths : [chosen]
             guard let path = candidates.map({ NSString(string: $0).expandingTildeInPath }).first(where: { FileManager.default.isExecutableFile(atPath: $0) }) else { status = "Not found"; return }
             status = "Found \(cli.executable) at \(path.replacingOccurrences(of: FileManager.default.homeDirectoryForCurrentUser.path, with: "~")) · Sign-in status unavailable"
-            let connectorStatus = await app.connector(provider.id).status()
+            let connectorStatus = await app.connectorStatus(provider)
             if connectorStatus == .ready { status += " · Ready" }
         } catch { status = await app.safeError(error) }
     }
@@ -249,19 +249,23 @@ extension AppModel {
 
 @MainActor func testProvider(_ provider: ProviderChoice, app: AppModel) async -> String {
     guard let shared = app.shared else { return "Failed: VoxClip is missing some of its files. Reinstall VoxClip." }
+    guard app.testingProviders.insert(provider.id).inserted else { return "" }
+    defer { app.testingProviders.remove(provider.id) }
     do {
+        let connector = app.connector(provider.id)
+        guard try await app.authorizeConnectorRequest(provider, connector: connector, action: .test) else { return "" }
         let data = try Data(contentsOf: shared.root.appendingPathComponent("catalog/llm-providers.json"))
         let catalog = LLMCatalog(document: try JSONDecoder().decode(JSONValue.self, from: data))
         struct Test: Decodable { let system: String; let instruction: String; let schemaName: String; let schema: JSONValue; let maxOutputTokens: Int }
         struct Catalogue: Decodable { let testRequest: Test }
         let test = try JSONDecoder().decode(Catalogue.self, from: data).testRequest
         let start = ContinuousClock.now
-        let answer = try await LLMRunner(keys: app.secrets, catalog: catalog, log: app.log).run(LLMRequest(feature: .test, system: test.system, instruction: test.instruction, schemaName: test.schemaName, schema: test.schema, maxOutputTokens: test.maxOutputTokens, effort: .low, timeout: .seconds(provider.group == "cli" ? 120 : 30), tag: "connection-test"), on: app.connector(provider.id), model: app.string("llm.model.\(provider.id)", fallback: provider.defaultModel ?? ""))
+        let answer = try await LLMRunner(keys: app.secrets, catalog: catalog, log: app.log).run(LLMRequest(feature: .test, system: test.system, instruction: test.instruction, schemaName: test.schemaName, schema: test.schema, maxOutputTokens: test.maxOutputTokens, effort: .low, timeout: .seconds(provider.group == "cli" ? 120 : 30), tag: "connection-test"), on: connector, model: app.string("llm.model.\(provider.id)", fallback: provider.defaultModel ?? ""))
         guard case .object(let object) = answer.object, object["ok"] == .bool(true), case .string(let echo) = object["echo"], echo.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "voxclip" else { return "The model answered, but not as expected. It may not follow instructions well." }
         if answer.usedFallback { return "Works · answered by \(answer.model)" }
         let seconds = Double(start.duration(to: .now).components.attoseconds) / 1e18 + Double(start.duration(to: .now).components.seconds)
         return "Works · \(answer.model) · \(String(format: "%.1f", seconds)) s"
-    } catch { return "Failed: " + (await app.safeError(error, context: "ai-test:\(provider.label)")) }
+    } catch is CancellationError { return "" } catch { return "Failed: " + (await app.safeError(error, context: "ai-test:\(provider.label)")) }
 }
 
 @MainActor func testSpeechKey(app: AppModel) async -> String {
@@ -309,7 +313,7 @@ extension AppModel {
                 Text("A fast way to cut, because we already know where every word sits.").foregroundStyle(.secondary)
                 Button("Check for updates") { Task { await app.checkUpdates(manual: true) } }
                 if let notice = app.notice { Text(notice).font(.caption) }
-                Link("GitHub", destination: URL(string: "https://github.com/Siim/voxclip")!).tint(DesignValues.accentText)
+                Link(destination: URL(string: "https://github.com/Siim/voxclip")!) { Text("GitHub").underline() }.buttonStyle(.plain).foregroundStyle(DesignValues.accentText)
                 Button("Licences…") { showLicences = true }
                 Button("What leaves this device") { showPrivacy = true }
                 Button("Reset onboarding") { app.showTour = true; app.set("onboarding.completed", .bool(false)) }

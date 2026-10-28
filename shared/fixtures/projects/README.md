@@ -15,6 +15,8 @@ Validate them with `python3 tools/schemas/validate.py` (CI runs it). After any c
 
 ## Relink decisions
 
+`five-questions.voxclip` is the generated redesign fixture: four kept clips, one AI suggestion, eight word cuts and four fillers. Media metadata is fictional; scene audits use the demo preview. Regenerate with `python3 tools/fixtures/projects/generate_five_questions.py`, then regenerate its expected editing plan with the editing generator above. Both outputs must be byte-identical on a second run.
+
 Regenerate `relink-cases.json` with `python3 tools/fixtures/projects/generate_relink.py`; run it twice and compare SHA-256. Expected decisions are derived the way both Cores compute them: `seconds × 1000` in binary64, then jsRound (floor, plus one at a remainder of 0.5 or more), independently of both native implementations. Review regenerated changes as behavior changes; do not hand-edit expectations.
 
 Both Core suites replay all 12 cases: the original seven identity/confirmation/boundary cases plus 10.00 against 10.05 and 9.95 (accepted), 10.051 and 9.949 (refused), and `binary64-half-millisecond`: 0.551 against 0.5005 is refused, because 0.5005 × 1000 is just below 500.5 in binary64 and rounds to 500 (an exact decimal oracle would accept it). The legacy `outside` case (0.25 against 0.3001) is now accepted: both durations round onto grid values 250 and 300, whose difference is exactly 50. This intentional boundary-only Mac behavior change replaces its old floating-subtraction comparison.

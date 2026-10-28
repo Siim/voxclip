@@ -5,7 +5,7 @@ import VoxClipCore
 @MainActor struct ExportSheet: View {
     @Bindable var model: EditorModel
     @Environment(\.dismiss) private var dismiss
-    @State private var clips = false
+    @State private var scope = ExportScope.fullVideo
     @State private var requestedIDs: [String] = []
     @State private var shareTarget = "full"
     @State private var draft = ShareCaptionDraft()
@@ -45,17 +45,18 @@ import VoxClipCore
                 HStack { Spacer(); Button("Done") { dismiss() }.keyboardShortcut(.defaultAction) }
             } else {
                 Form {
-                    if let id = requestedIDs.first {
-                        LabeledContent("What", value: requestedIDs.count == 1 ? "This clip · \(model.project.edits.clips.first { $0.id == id }?.title ?? "Clip")" : "\(requestedIDs.count) clips")
-                    } else {
-                        Picker("What", selection: $clips) { Text("Full video (with edits)").tag(false); Text("Selected clips (\(model.sortedClips.filter(\.selected).count))").tag(true) }.pickerStyle(.radioGroup)
-                    }
-                    Picker("Aspect", selection: binding(\.aspect)) { Text("Source").tag(AspectRatio.source); Text("16:9").tag(AspectRatio.landscape); Text("9:16").tag(AspectRatio.portrait); Text("1:1").tag(AspectRatio.square) }.pickerStyle(.segmented)
+                    Picker("What", selection: $scope) {
+                        if !model.exportTargets(.thisClip, requestedIDs: requestedIDs).isEmpty { Text(model.exportScopeLabel(.thisClip, requestedIDs: requestedIDs)).tag(ExportScope.thisClip) }
+                        Text(model.exportScopeLabel(.allClips)).tag(ExportScope.allClips).disabled(model.keptClips.isEmpty)
+                        Text(model.exportScopeLabel(.fullVideo)).tag(ExportScope.fullVideo)
+                    }.pickerStyle(.radioGroup)
+                    Picker("Aspect", selection: binding(\.aspect)) { Text("9:16").tag(AspectRatio.portrait); Text("1:1").tag(AspectRatio.square); Text("16:9").tag(AspectRatio.landscape); Text("Original").tag(AspectRatio.source) }.pickerStyle(.segmented)
                     Picker("Captions", selection: Binding(get: { model.project.captions.styleId }, set: { model.setStyle($0) })) { Text("Off").tag("off"); ForEach(model.app.styles, id: \.id) { Text($0.name).tag($0.id) } }
                     Toggle("Also save .srt", isOn: binding(\.srt))
                     Picker("Quality", selection: binding(\.quality)) { Text("Standard").tag(ExportQuality.standard); Text("High").tag(ExportQuality.high) }.pickerStyle(.segmented)
                     LabeledContent("Save to") { Text(folder.path.replacingOccurrences(of: FileManager.default.homeDirectoryForCurrentUser.path, with: "~")).lineLimit(1).truncationMode(.middle); Button("Choose…") { chooseFolder() } }
                 }.formStyle(.grouped).scrollContentBackground(.hidden).frame(minHeight: 300)
+                if let disclosure = model.exportDisclosure(targets) { Label(disclosure, systemImage: "waveform").font(.caption) }
                 if let note = model.captionError { InlineNotice(text: note) }
                 if let error = model.exportError { InlineNotice(text: error) }
                 HStack { Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction); Spacer(); Button(model.exportError == nil ? "Export" : "Try again") { model.beginExport(targets: targets, folder: folder) }.keyboardShortcut(.defaultAction).disabled(!model.canExport || targets.isEmpty) }
@@ -64,7 +65,7 @@ import VoxClipCore
         .background(DesignValues.color("bg.window"))
         .onAppear {
             requestedIDs = model.exportClipIDs
-            clips = !requestedIDs.isEmpty
+            scope = model.exportTargets(.thisClip, requestedIDs: requestedIDs).isEmpty ? .fullVideo : .thisClip
         }
         .onChange(of: shareTarget) { _, target in commitCaption(); draft.load(target: target, model: model); copied = false }
         .onChange(of: captionFocused) { _, focused in if !focused { commitCaption() } }
@@ -74,7 +75,7 @@ import VoxClipCore
             do { try await Task.sleep(for: .seconds(2)); copied = false } catch {}
         }
     }
-    private var targets: [ExportTarget] { ExportSelection.targets(requestedIDs: requestedIDs, selectedClips: clips ? model.sortedClips.filter(\.selected).map(\.id) : nil) }
+    private var targets: [ExportTarget] { model.exportTargets(scope, requestedIDs: requestedIDs) }
     private var folder: URL { ExportSelection.folder(model.project.export.folder ?? model.app.string("export.folder", fallback: "~/Movies/VoxClip")) }
     private func commitCaption() { draft.commit(model: model) }
     private func binding<Value>(_ key: WritableKeyPath<ProjectExport, Value>) -> Binding<Value> { Binding(get: { model.project.export[keyPath: key] }, set: { value in var project = model.project; project.export[keyPath: key] = value; model.replace(project, name: "Change export options") }) }
@@ -165,38 +166,57 @@ extension EditorModel {
         return [clip?.title, first].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: "\n\n")
     }
     func beginExport(targets: [ExportTarget], folder: URL) {
-        guard !targets.isEmpty, !exporting else { return }
+        guard !targets.isEmpty, canExport, mediaExportable else { return }
+        let renderSnapshot = renderSnapshot()
+        let snapshot = renderSnapshot.project
+        let pattern = app.string("export.fileNamePattern", fallback: "{project}-{clip}-{aspect}")
+        let openFolderAfter = app.bool("export.openFolderAfter", fallback: false)
         exportError = nil; exports = []; exporting = true; exportStartedAt = Date(); exportIndex = 1
         exportClipIDs = targets.compactMap { if case .clip(let id) = $0 { id } else { nil } }
+        activeExportKey = targets.first.map { ExportLedger.key($0, aspect: snapshot.export.aspect) }
         exportTask = Task { [weak self] in
             guard let self else { return }
-            defer { exporting = false; exportProgress = nil }
+            defer { exporting = false; exportProgress = nil; activeExportKey = nil }
             await app.log.write(LogEntry(level: .info, category: "export", message: "start targets=\(targets.count)"))
             do {
                 if document.demo { throw VoxClipError.notImplemented("synthetic-preview-only") }
                 try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
                 for (position, target) in targets.enumerated() {
                     try Task.checkCancellation(); exportIndex = position + 1
-                    let render = try await renderRequest(target: target)
+                    let key = ExportLedger.key(target, aspect: snapshot.export.aspect)
+                    activeExportKey = key
+                    failedExports[key] = nil
+                    exportProgress = nil
+                    let render = try await renderRequest(target: target, snapshot: renderSnapshot)
+                    let fingerprint = try ExportFingerprint.value(snapshot, target: target)
                     let name: String
-                    switch target { case .fullEdit: name = "full"; case .clip(let id): name = project.edits.clips.first { $0.id == id }?.title ?? "clip" }
-                    let aspect = project.export.aspect.rawValue.replacingOccurrences(of: ":", with: "x")
-                    let pattern = app.string("export.fileNamePattern", fallback: "{project}-{clip}-{aspect}")
-                    let base = ExportSelection.baseName(pattern.replacingOccurrences(of: "{project}", with: project.title ?? "Untitled").replacingOccurrences(of: "{clip}", with: name).replacingOccurrences(of: "{aspect}", with: aspect).replacingOccurrences(of: ".mp4", with: ""))
-                    let url = ExportSelection.destination(base: base, folder: folder, writeSRT: project.export.srt)
+                    switch target { case .fullEdit: name = "full"; case .clip(let id): name = snapshot.edits.clips.first { $0.id == id }?.title ?? "clip" }
+                    let aspect = snapshot.export.aspect.rawValue.replacingOccurrences(of: ":", with: "x")
+                    let base = ExportSelection.baseName(pattern.replacingOccurrences(of: "{project}", with: snapshot.title ?? "Untitled").replacingOccurrences(of: "{clip}", with: name).replacingOccurrences(of: "{aspect}", with: aspect).replacingOccurrences(of: ".mp4", with: ""))
+                    let url = ExportSelection.destination(base: base, folder: folder, writeSRT: snapshot.export.srt)
                     guard url.deletingLastPathComponent().standardizedFileURL.path == folder.standardizedFileURL.path else { throw VoxClipError.exportFailed("invalid destination") }
-                    let srt = project.export.srt ? url.deletingPathExtension().appendingPathExtension("srt") : nil
-                    let job = ExportJob(target: target, render: render, aspect: project.export.aspect, quality: project.export.quality, outputURL: url, writeSRT: project.export.srt, srtURL: srt)
-                    let result = try await exporter.export(job) { [weak self] value in Task { @MainActor in self?.exportProgress = value } }
+                    let srt = snapshot.export.srt ? url.deletingPathExtension().appendingPathExtension("srt") : nil
+                    let job = ExportJob(target: target, render: render, aspect: snapshot.export.aspect, quality: snapshot.export.quality, outputURL: url, writeSRT: snapshot.export.srt, srtURL: srt)
+                    let result = try await exporter.export(job) { [weak self] value in Task { @MainActor in
+                        if self?.activeExportKey == key { self?.exportProgress = value }
+                    } }
                     exports.append(result)
+                    try app.exportLedger.record(ExportRecord(projectID: snapshot.id, targetID: ExportLedger.targetID(target), exportedAt: Date(),
+                        planFingerprint: fingerprint, styleId: snapshot.captions.styleId, aspect: snapshot.export.aspect, outputPath: result.outputURL.path))
+                    activeExportKey = nil
                 }
                 await app.log.write(LogEntry(level: .info, category: "export", message: "success targets=\(exports.count)"))
-                if app.bool("export.openFolderAfter", fallback: false) { NSWorkspace.shared.activateFileViewerSelecting(exports.map(\.outputURL)) }
+                if openFolderAfter { NSWorkspace.shared.activateFileViewerSelecting(exports.map(\.outputURL)) }
             } catch is CancellationError {
+                if let key = activeExportKey { failedExports[key] = folder }
                 await app.log.write(LogEntry(level: .info, category: "export", message: "cancelled"))
             } catch VoxClipError.cancelled {
+                if let key = activeExportKey { failedExports[key] = folder }
                 await app.log.write(LogEntry(level: .info, category: "export", message: "cancelled"))
-            } catch { exportError = await app.safeError(error, context: "export") }
+            } catch {
+                if let key = activeExportKey { failedExports[key] = folder }
+                exportError = await app.safeError(error, context: "export")
+            }
         }
     }
     func exportStatus(at now: Date) -> String {

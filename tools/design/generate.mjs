@@ -115,7 +115,9 @@ export function buildOutputs(source) {
     const labels = token.$type === 'dimension' ? ['width', 'height'] : ['x1', 'y1', 'x2', 'y2'];
     const values = flatten(token.$value, token.path, labels);
     constants.push(...values);
-    for (const item of values) swiftValues.push(`    static let ${swiftName(item.path)}: ${typeof item.value === 'number' ? 'CGFloat' : 'String'} = ${typeof item.value === 'number' ? item.value : quote(item.value)}`);
+    if (!token.$description?.startsWith('deprecated by ADR-R29')) {
+      for (const item of values) swiftValues.push(`    static let ${swiftName(item.path)}: ${typeof item.value === 'number' ? 'CGFloat' : 'String'} = ${typeof item.value === 'number' ? item.value : quote(item.value)}`);
+    }
     // $value is the macOS value; a `windows` extension replaces it in Tokens.xaml only.
     const windows = extensions(token).windows;
     for (const item of windows === undefined ? values : flatten(windows, token.path, labels)) {

@@ -71,6 +71,9 @@ enum SidebarItem: Hashable {
     @ObservationIgnored private var closeReply: CloseReply?
     @ObservationIgnored private var leaving = false
     @ObservationIgnored private var settingColumns = false
+    private(set) var pendingRecovery: VoxClipDocument?
+    @ObservationIgnored private var additionalRecoveries: [VoxClipDocument] = []
+    @ObservationIgnored private var retryingRecovery = false
     /// Bumped when the open project's title follows its file's new name.
     private var titleRevision = 0
     #if DEBUG
@@ -125,7 +128,7 @@ enum SidebarItem: Hashable {
             guard let next = reopened as? VoxClipDocument else { return false }
             if next.autosavedContentsFileURL == nil { next.autosavedContentsFileURL = url }
             if closesRecoveredCopy(next) { return true }
-            guard await replaceProject(with: next) else { next.close(); return false }
+            guard await replaceProject(with: next) else { retainRecovery(next); return false }
             // Like an import, the recovered project asks to be kept or deleted when it closes.
             if !next.isDocumentEdited { next.markEdited() }
             return true
@@ -149,9 +152,26 @@ enum SidebarItem: Hashable {
         return document.autosavedContentsFileURL?.standardizedFileURL == url.standardizedFileURL
     }
 
+    func retainRecovery(_ recovered: VoxClipDocument) {
+        guard recovered.fileURL == nil, recovered.autosavedContentsFileURL != nil else { recovered.close(); return }
+        guard recovered !== pendingRecovery, !additionalRecoveries.contains(where: { $0 === recovered }) else { return }
+        if pendingRecovery == nil { pendingRecovery = recovered }
+        else { additionalRecoveries.append(recovered) }
+    }
+
+    func resumePendingRecovery() async {
+        guard !isImporting, !leaving, !retryingRecovery, let recovered = pendingRecovery else { return }
+        retryingRecovery = true
+        defer { retryingRecovery = false }
+        guard await replaceProject(with: recovered) else { return }
+        if !recovered.isDocumentEdited { recovered.markEdited() }
+        pendingRecovery = additionalRecoveries.isEmpty ? nil : additionalRecoveries.removeFirst()
+    }
+
     // MARK: Renaming a clip
 
     func beginRename(_ id: String) {
+        guard editor?.capabilities.edit == true else { return }
         let clips: [ClipRange] = editor?.project.edits.clips ?? []
         guard let clip = clips.first(where: { (candidate: ClipRange) -> Bool in candidate.id == id }) else { return }
         renameDraft = clip.title ?? ""
@@ -191,6 +211,7 @@ enum SidebarItem: Hashable {
         }
         importTask = task
         await task.value
+        await resumePendingRecovery()
     }
     func cancelImport() { importTask?.cancel() }
 
@@ -307,7 +328,11 @@ enum SidebarItem: Hashable {
         viewerHiddenByWidth = false
         if viewerVisible {
             viewerVisible = false
-            if sidebarHiddenForViewer { sidebarHiddenForViewer = false; setColumns(.all) }
+            if sidebarHiddenForViewer {
+                sidebarHiddenForViewer = false
+                if windowWidth < Self.sidebarCollapseWidth { sidebarHiddenByWidth = true }
+                else { setColumns(.all) }
+            }
         } else {
             viewerVisible = true
             if columnVisibility != .detailOnly, paneWidth(viewer: true, sidebar: true) < Self.minimumTranscriptPane {
@@ -322,6 +347,7 @@ enum SidebarItem: Hashable {
         // Below 960 the sidebar collapses so the transcript's minimum fits (design §3.7).
         // An overlay shown on request stays until Escape or a row choice.
         if windowWidth < Self.sidebarCollapseWidth {
+            if sidebarHiddenForViewer { sidebarHiddenByWidth = true }
             if columnVisibility != .detailOnly { setColumns(.detailOnly); sidebarHiddenByWidth = true }
         } else {
             sidebarOverlay = false
@@ -353,9 +379,13 @@ enum SidebarItem: Hashable {
         // A clip title still being typed is kept before edits freeze.
         endRename()
         leaving = true
-        defer { leaving = false }
+        defer {
+            leaving = false
+            if !retryingRecovery, pendingRecovery != nil { Task { await self.resumePendingRecovery() } }
+        }
         editor.isLeaving = true
         editor.preview.pause(); editor.isPlaying = false
+        await document.pendingTitleWrite?.value
         var closes = await canClose(document)
         #if DEBUG
         if injectSaveFailure { injectSaveFailure = false; closes = false }
@@ -440,7 +470,11 @@ enum SidebarItem: Hashable {
     func holdImportForTesting() -> () -> Void {
         let task = Task<Void, Never> { while !Task.isCancelled { try? await Task.sleep(for: .milliseconds(20)) } }
         importTask = task
-        return { [weak self] in task.cancel(); self?.importTask = nil }
+        return { [weak self] in
+            task.cancel()
+            self?.importTask = nil
+            Task { await self?.resumePendingRecovery() }
+        }
     }
     /// Offscreen captures and harness checks: attaches a project to a shell that has
     /// no window and waits for its editor to start.
@@ -598,6 +632,19 @@ enum SidebarItem: Hashable {
 /// AppKit never closes the shared window together with a project.
 @MainActor final class MainWindow: NSWindow {
     var closeProject: (() async -> Bool)?
+    override func sendEvent(_ event: NSEvent) {
+        if event.type == .keyDown, EditorPane.isCycleKey(code: event.keyCode, modifiers: event.modifierFlags), attachedSheet == nil,
+           let editor = AppModel.sharedModel.shell.editor, !AppModel.sharedModel.shell.showsHome {
+            if let input = firstResponder as? any NSTextInputClient, input.hasMarkedText() { super.sendEvent(event); return }
+            if !event.modifierFlags.contains(.shift), let text = firstResponder as? TranscriptNSTextView, text.selectionBarVisible {
+                text.showSelectionBar(focus: true)
+                return
+            }
+            editor.movePaneFocus(backward: event.modifierFlags.contains(.shift))
+            return
+        }
+        super.sendEvent(event)
+    }
     override func performClose(_ sender: Any?) {
         guard let closeProject, (windowController?.document as? VoxClipDocument) != nil else { super.performClose(sender); return }
         Task { @MainActor in if await closeProject() { closeNow() } }

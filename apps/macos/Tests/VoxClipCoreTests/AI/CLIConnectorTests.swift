@@ -4,6 +4,18 @@ import Testing
 
 @Suite("CLI connector safety and recorded outputs")
 struct CLIConnectorTests {
+    @Test(arguments: ["Logged in using an API key", "Logged in using ChatGPT", "Logged in with an unknown method"])
+    func detectedCodexBillingMethodNeverDefaultsToPlan(_ text: String) async throws {
+        let catalog = try cliTestCatalog()
+        let process = CLIFakeRunner(id: .codex, catalog: catalog)
+        await process.setProbeResult(["login", "status"], cliTestResult(text))
+        let connector = cliTestConnector(.codex, runner: process, catalog: catalog)
+        #expect(await connector.knownCLIAuthMethod() == nil)
+        #expect(await connector.status() == .ready)
+        let expected: String? = text.contains("API key") ? "api_key" : text.contains("ChatGPT") ? "chatgpt" : nil
+        #expect(await connector.knownCLIAuthMethod() == expected)
+    }
+
     @Test(arguments: [ConnectorID.claudeCode, .codex])
     func cancellationDuringPreflightIsCancelledNotProviderFailure(_ id: ConnectorID) async throws {
         let catalog = try cliTestCatalog()

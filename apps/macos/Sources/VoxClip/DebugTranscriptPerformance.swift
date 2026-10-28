@@ -18,8 +18,13 @@ import VoxClipCore
         let activity = ProcessInfo.processInfo.beginActivity(options: [.userInitiatedAllowingIdleSystemSleep, .latencyCritical], reason: "Measure interactive edits while the app stays offscreen")
         defer { ProcessInfo.processInfo.endActivity(activity) }
         var project = fixture
-        let words = (0..<10_000).map { index in
-            TimedWord(id: "benchmark-\(index)", text: index % 20 == 19 ? "word." : "word", start: Double(index) * 0.4, end: Double(index) * 0.4 + 0.3, speaker: "speaker-\(index / 20 % 2)")
+        let words: [TimedWord] = (0..<10_000).map { (index: Int) -> TimedWord in
+            let text: String = index % 20 == 19 ? "word." : "word"
+            let position: Double = Double(index)
+            let start: Double = position * 0.4
+            let end: Double = start + 0.3
+            let speaker: Int = index / 20 % 2
+            return TimedWord(id: "benchmark-\(index)", text: text, start: start, end: end, speaker: "speaker-\(speaker)")
         }
         project.transcript?.words = words
         project.transcript?.durationSeconds = 4000

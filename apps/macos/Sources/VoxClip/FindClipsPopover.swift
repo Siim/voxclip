@@ -25,10 +25,19 @@ import VoxClipCore
                     Text(Self.statusText(status))
                     Spacer(minLength: 8)
                     Button("Change…") { model.showFindClips = false; openVoxClipSettings(pane: "ai") }.buttonStyle(.borderless).foregroundStyle(DesignValues.accentText)
+                    if status != nil && status != .ready {
+                        Button("Retry") { Task { status = await model.app.connectorStatus(connector) } }
+                    }
                 }
                 .font(.callout)
                 .accessibilityElement(children: .combine)
                 .accessibilityIdentifier("clipConnectorStatus")
+            } else {
+                HStack {
+                    Text("Choose a connector in AI settings.")
+                    Spacer()
+                    Button("Choose…") { model.showFindClips = false; openVoxClipSettings(pane: "ai") }
+                }.font(.callout)
             }
             Picker("Preset", selection: $model.preset) {
                 Text("Best moments").tag(ClipPresetID.best); Text("Hooks").tag(ClipPresetID.hooks); Text("One per topic").tag(ClipPresetID.topics)
@@ -50,8 +59,8 @@ import VoxClipCore
         .task(id: "\(model.app.string("llm.connector")):\(model.app.connectorReadinessRevision)") {
             status = nil
             let id = model.app.string("llm.connector"), revision = model.app.connectorReadinessRevision
-            guard !id.isEmpty, !AppModel.isTestSession || model.app.connectorOverride != nil else { return }
-            let found = await model.app.connector(id).status()
+            guard let provider = model.findConnector else { return }
+            let found = await model.app.connectorStatus(provider)
             guard !Task.isCancelled, revision == model.app.connectorReadinessRevision, id == model.app.string("llm.connector") else { return }
             status = found
         }

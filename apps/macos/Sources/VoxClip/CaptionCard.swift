@@ -60,7 +60,7 @@ enum CaptionCardLook {
 
     /// Sets a resolved style in the card's text box. `lines` is the card's limit on the
     /// surface; the synthetic word clock must never break the page.
-    static func adapt(_ style: inout CaptionStyle, fit: CardFit, lines: Int, stageBlack: Bool) {
+    static func adapt(_ style: inout CaptionStyle, fit: CardFit, lines: Int, backdrop: String) {
         let centreX = (fit.boxX + fit.boxWidth / 2) / Double(fit.width), centreY = (fit.boxY + fit.boxHeight / 2) / Double(fit.height)
         style.position.x = centreX
         style.position.y = centreY
@@ -75,7 +75,7 @@ enum CaptionCardLook {
         style.layout.breakOnGapSec = nil
         style.layout.maxPageSec = nil
         let accent = style.accent
-        if stageBlack {
+        if backdrop == "#000000" {
             if let stroke = style.stroke, nearBlack(resolved(stroke.color, accent)) { style.stroke = nil }
             style.shadows.removeAll { nearBlack(resolved($0.color, accent)) }
         }
@@ -84,7 +84,10 @@ enum CaptionCardLook {
         // colour instead (design §5.4.3), and dark text that sat on a plate turns white.
         if let box = style.words?.active?.box {
             style.words?.active?.box = nil
-            style.words?.active?.fill = .solid(color: resolved(box.color, accent))
+            let foreground = opaqueRGB(resolved(box.color, accent))
+            let background = opaqueRGB(backdrop)
+            let color = CaptionCardColors.sidebarKeyText(box: foreground, background: background)
+            style.words?.active?.fill = .solid(color: String(format: "#%02X%02X%02X", color.r, color.g, color.b))
         }
         if style.box != nil {
             style.box = nil
@@ -130,6 +133,11 @@ enum CaptionCardLook {
     }
 
     private static func resolved(_ color: String, _ accent: String?) -> String { color == "$accent" ? accent ?? "#FFFFFF" : color }
+    private static func opaqueRGB(_ color: String) -> (r: UInt8, g: UInt8, b: UInt8) {
+        let raw = color.hasPrefix("#") ? String(color.dropFirst()) : color
+        let number = UInt32(raw.prefix(6), radix: 16) ?? 0
+        return (UInt8(number >> 16 & 255), UInt8(number >> 8 & 255), UInt8(number & 255))
+    }
     private static func nearBlack(_ color: String) -> Bool { luminance(color).map { $0 < 0.012 } ?? false }
     private static func components(_ hex: String) -> (Double, Double, Double)? {
         let raw = hex.hasPrefix("#") ? String(hex.dropFirst()) : hex

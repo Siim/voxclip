@@ -130,7 +130,7 @@ extension MediaTranscriptionStage {
 /// A media chip (§5.4.8): 20 high, SF 11/14 semibold, numbers in SF Mono; icon-only
 /// chips are 22×22 with a 14 px glyph. Opaque under Reduce Transparency or Increase
 /// Contrast, with a white edge under Increase Contrast.
-private struct MediaChip: View {
+struct MediaChip: View {
     var text: String?
     var number: String?
     var icon: String?

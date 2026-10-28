@@ -8,6 +8,13 @@ import { buildOutputs, rgbaToArgb } from './generate.mjs';
 
 const source = JSON.parse(await readFile(new URL('../../shared/design/tokens.json', import.meta.url), 'utf8'));
 
+test('Mac generation omits ADR-R29 deprecated layout symbols without changing Windows', () => {
+  const output = buildOutputs(source);
+  assert.ok(!output.swift.includes('WelcomeWindow'));
+  assert.ok(!output.swift.includes('TransportPill'));
+  assert.ok(output.xaml.includes('WelcomeWindow'));
+});
+
 test('generation is byte deterministic and names every colour in all themes', () => {
   const first = buildOutputs(source);
   assert.deepEqual(first, buildOutputs(structuredClone(source)));

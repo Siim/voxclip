@@ -25,6 +25,7 @@ public actor CLIConnector: LLMConnector {
     private var occupied = false
     private var authenticatedPreflight: (fingerprint: CLIFingerprint, at: ContinuousClock.Instant)?
     public internal(set) var refreshWarning: String?
+    public private(set) var lastAuthMethod: String?
 
     private var probeFailure: LLMError {
         .cliFailed("The CLI could not be started or its output could not be read.")
@@ -60,6 +61,7 @@ public actor CLIConnector: LLMConnector {
         }
         catch { return await unavailableStatus(probeFailure) }
     }
+    public func knownCLIAuthMethod() async -> String? { lastAuthMethod }
 
     private func unavailableStatus(_ failure: LLMError) async -> ConnectorStatus {
         .unavailable(reason: await failureMessage(failure, includeEditsSaved: false))
@@ -81,6 +83,7 @@ public actor CLIConnector: LLMConnector {
         let configuration = try configuration()
         let detected = try await detect(configuration, refresh: refresh)
         let method = try await authenticate(detected, configuration: configuration)
+        lastAuthMethod = method
         authenticatedPreflight = (detected.fingerprint, .now)
         return Detection(executable: detected.fingerprint.url, version: detected.version,
                          supportedFlags: detected.flags, features: detected.features, authMethod: method)
@@ -294,7 +297,9 @@ public actor CLIConnector: LLMConnector {
             return status?["authMethod"]?.cliString
         }
         guard result.exitCode == 0 else { throw probeFailure }
-        return text.localizedCaseInsensitiveContains(auth["apiKeyText"]?.cliString ?? "API key") ? "api_key" : "chatgpt"
+        if text.localizedCaseInsensitiveContains(auth["apiKeyText"]?.cliString ?? "API key") { return "api_key" }
+        if text.localizedCaseInsensitiveContains("ChatGPT") { return "chatgpt" }
+        return nil
     }
 
     private func probe(_ executable: URL, arguments: [String]) async throws -> ProcessResult {

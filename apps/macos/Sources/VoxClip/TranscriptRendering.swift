@@ -10,11 +10,26 @@ extension NSAttributedString.Key {
     static let vcUnderlineColor = Self("voxclip.underlineColor")
 }
 
+enum TranscriptSpanKind: Equatable {
+    case text
+    case badge(number: Int, clipID: String, suggested: Bool)
+    case bracket(clipID: String, suggested: Bool)
+    case ai
+}
+
 struct TranscriptSpan: Equatable {
     let id: String
     let range: NSRange
     let pause: Bool
     var ids: [String] = []
+    var kind: TranscriptSpanKind = .text
+    var selectable: Bool { kind == .text }
+}
+
+struct TranscriptClipMark {
+    let range: NSRange
+    let id: String
+    let suggested: Bool
 }
 
 struct TranscriptRangeMap {
@@ -40,7 +55,22 @@ struct TranscriptRangeMap {
     }
     func span(at offset: Int) -> TranscriptSpan? {
         let position = lowerBound(offset)
-        return position < spans.count ? spans[position] : spans.last
+        if let next = spans.dropFirst(position).first(where: \.selectable) { return next }
+        return spans.prefix(position).last(where: \.selectable)
+    }
+    func selectionRanges(in range: NSRange) -> [NSRange] {
+        var selected = intersecting(range).filter(\.selectable)
+        if selected.isEmpty, range.length == 0, let nearest = span(at: range.location) { selected = [nearest] }
+        guard let first = selected.first, let last = selected.last else { return [] }
+        let extent = NSRange(location: first.range.location, length: NSMaxRange(last.range) - first.range.location)
+        var start = extent.location
+        var result: [NSRange] = []
+        for span in intersecting(extent) where !span.selectable {
+            if span.range.location > start { result.append(NSRange(location: start, length: span.range.location - start)) }
+            start = NSMaxRange(span.range)
+        }
+        if start < NSMaxRange(extent) { result.append(NSRange(location: start, length: NSMaxRange(extent) - start)) }
+        return result
     }
     func intersecting(_ range: NSRange) -> ArraySlice<TranscriptSpan> {
         let lower = lowerBound(range.location)
@@ -59,6 +89,8 @@ struct TranscriptAppearance: Equatable {
     var query = ""
     var scope: ClosedRange<Int>?
     var lowConfidence = false
+    var activeClipID: String?
+    var rewrite: ClosedRange<Int>?
 }
 
 @MainActor final class TranscriptRenderer {
@@ -70,6 +102,8 @@ struct TranscriptAppearance: Equatable {
     private var positions: [String: Int] = [:]
     private var corrected: Set<String> = []
     private var displayedText: [String: String] = [:]
+    private(set) var clipMarks: [TranscriptClipMark] = []
+    private(set) var aiWordIDs: Set<String> = []
     private(set) var storageRevision = 0
     private(set) var attributeUpdates = 0
 
@@ -82,9 +116,32 @@ struct TranscriptAppearance: Equatable {
         paragraph.paragraphSpacing = DesignValues.transcriptParagraphGap
         paragraph.baseWritingDirection = .natural
         let body: [NSAttributedString.Key: Any] = [.font: DesignValues.transcriptFont(size: model.textSize), .foregroundColor: DesignValues.nsColor("text.primary"), .paragraphStyle: paragraph]
-        let mono: [NSAttributedString.Key: Any] = [.font: DesignValues.monoFont(11), .foregroundColor: DesignValues.nsColor("text.muted"), .paragraphStyle: paragraph]
+        let mono: [NSAttributedString.Key: Any] = [.font: DesignValues.monoFont(13), .foregroundColor: DesignValues.nsColor("text.muted"), .paragraphStyle: paragraph]
         var spans: [TranscriptSpan] = []
         let transcript = model.words
+        let clips = model.sortedClips
+        let starts = Dictionary(grouping: clips, by: \.startWordId)
+        let ends = Dictionary(grouping: clips, by: \.endWordId)
+        let synthPieces = model.voiceLabPlan?.pieces.filter { $0.kind == .synth } ?? []
+        let sampleRate = model.voiceLabPlan?.sampleRate ?? 48_000
+        aiWordIDs = Set(transcript.filter { word in
+            synthPieces.contains { piece in
+                word.start >= Double(piece.sourceStartSample) / sampleRate && word.end <= Double(piece.sourceEndSample) / sampleRate
+            }
+        }.map(\.id))
+        func marker(_ id: String, kind: TranscriptSpanKind, width: CGFloat, glyph: String = " ") {
+            var attributes = body
+            let glyphWidth = (glyph as NSString).size(withAttributes: [.font: DesignValues.transcriptFont(size: model.textSize)]).width
+            attributes[.kern] = max(0, width - glyphWidth)
+            attributes[.foregroundColor] = NSColor.clear
+            spans.append(TranscriptSpan(id: id, range: NSRange(location: value.length, length: glyph.utf16.count), pause: false, kind: kind))
+            value.append(NSAttributedString(string: glyph, attributes: attributes))
+        }
+        func endMarkers(_ wordID: String) {
+            for clip in ends[wordID] ?? [] {
+                marker("clip-end:\(clip.id)", kind: .bracket(clipID: clip.id, suggested: clip.origin == .ai && !clip.selected), width: 10, glyph: "]")
+            }
+        }
         var position = 0
         words = [:]; positions = [:]; displayedText = [:]
         corrected = Set(model.project.edits.corrections.keys)
@@ -92,12 +149,21 @@ struct TranscriptAppearance: Equatable {
             let word = transcript[position]
             let newParagraph = position == 0 || word.speaker != transcript[position - 1].speaker || (word.start - transcript[position - 1].end >= 1.5 && ".?!…".contains(transcript[position - 1].text.last ?? " "))
             if newParagraph && value.length > 0 { value.append(NSAttributedString(string: "\n")) }
+            let paragraphStart = value.length
+            for clip in starts[word.id] ?? [] {
+                let number = model.clipNumber(clip.id) ?? 1
+                marker("clip-start:\(clip.id)", kind: .badge(number: number, clipID: clip.id, suggested: clip.origin == .ai && !clip.selected), width: 22)
+            }
+            if aiWordIDs.contains(word.id), position == 0 || !aiWordIDs.contains(transcript[position - 1].id) {
+                marker("ai:\(word.id)", kind: .ai, width: 27)
+            }
             if !model.showCuts && model.cutWordIDs.contains(word.id) {
                 var end = position + 1
-                while end < transcript.count && model.cutWordIDs.contains(transcript[end].id) { end += 1 }
+                while end < transcript.count && model.cutWordIDs.contains(transcript[end].id) && starts[transcript[end].id] == nil && ends[transcript[end - 1].id] == nil { end += 1 }
                 let token = "⋯ \(end - position) cut"
                 spans.append(TranscriptSpan(id: word.id, range: NSRange(location: value.length, length: token.utf16.count), pause: false, ids: transcript[position..<end].map(\.id)))
                 value.append(NSAttributedString(string: token + " ", attributes: mono))
+                endMarkers(transcript[end - 1].id)
                 position = end
                 continue
             }
@@ -109,9 +175,10 @@ struct TranscriptAppearance: Equatable {
             if corrected.contains(word.id) { value.addAttribute(.toolTip, value: "Heard as: \(word.text)", range: range) }
             else if model.fillerIDs.contains(word.id) { value.addAttribute(.toolTip, value: "Filler · Delete to cut", range: range) }
             if newParagraph {
-                value.addAttribute(.vcTimecode, value: NSAttributedString(string: timecode(word.start), attributes: [.font: DesignValues.monoFont(10), .foregroundColor: DesignValues.nsColor("text.tertiary")]), range: NSRange(location: range.location, length: min(1, range.length)))
+                value.addAttribute(.vcTimecode, value: NSAttributedString(string: timecode(word.start), attributes: [.font: DesignValues.monoFont(11), .foregroundColor: DesignValues.nsColor("text.tertiary")]), range: NSRange(location: paragraphStart, length: 1))
             }
             spans.append(TranscriptSpan(id: word.id, range: range, pause: false))
+            endMarkers(word.id)
             if model.showPauses, let pause = model.pauseByAfterIndex[position] {
                 let duration = toFixed1(pause.duration)
                 let token = "‖\u{00A0}\(duration)s"
@@ -130,6 +197,10 @@ struct TranscriptAppearance: Equatable {
             Self.replaceChangedParagraphs(storage, with: value)
         }
         text.map = TranscriptRangeMap(spans: spans)
+        clipMarks = clips.compactMap { clip in
+            guard let first = text.map.span(id: clip.startWordId), let last = text.map.span(id: clip.endWordId) else { return nil }
+            return TranscriptClipMark(range: NSRange(location: first.range.location, length: NSMaxRange(last.range) - first.range.location), id: clip.id, suggested: clip.origin == .ai && !clip.selected)
+        }
         ranges = [:]; attributes = [:]; appearance = nil
         if let manager = text.textLayoutManager { manager.invalidateRenderingAttributes(for: manager.documentRange) }
         storageRevision += 1
@@ -152,7 +223,7 @@ struct TranscriptAppearance: Equatable {
         let previous = appearance
         appearance = state
         let changed: Set<String>
-        if let previous, previous.scope == state.scope, previous.query == state.query, previous.lowConfidence == state.lowConfidence {
+        if let previous, previous.scope == state.scope, previous.query == state.query, previous.lowConfidence == state.lowConfidence, previous.activeClipID == state.activeClipID, previous.rewrite == state.rewrite {
             var ids = previous.cutWords.symmetricDifference(state.cutWords)
             ids.formUnion(previous.cutPauses.symmetricDifference(state.cutPauses))
             ids.formUnion(previous.fillers.symmetricDifference(state.fillers))
@@ -171,17 +242,18 @@ struct TranscriptAppearance: Equatable {
     }
 
     private func style(_ span: TranscriptSpan, state: TranscriptAppearance) -> [NSAttributedString.Key: Any] {
+        if !span.selectable { return [.foregroundColor: NSColor.clear] }
         let cut = span.pause ? state.cutPauses.contains(span.id) : state.cutWords.contains(span.id)
         var result: [NSAttributedString.Key: Any] = [.foregroundColor: DesignValues.nsColor(cut ? "word.cut" : "text.primary"), .vcStrike: cut]
         if !span.ids.isEmpty || span.pause {
             // Pause tokens and collapsed "⋯ N cut" runs are text.muted on pause.background, cut or
             // not; a cut pause keeps its cut.stroke strike.
             result[.foregroundColor] = DesignValues.nsColor("text.muted")
-            result[.vcRounded] = DesignValues.nsColor("pause.background"); result[.vcRadius] = 6.0
+            if cut || !span.ids.isEmpty { result[.vcRounded] = DesignValues.nsColor("pause.background"); result[.vcRadius] = 6.0 }
             if !span.ids.isEmpty { result[.vcStrike] = false }
             return result
         }
-        if let scope = state.scope, let position = positions[span.id], !scope.contains(position) { result[.foregroundColor] = DesignValues.nsColor("text.primary").withAlphaComponent(0.35) }
+        if let scope = state.scope, let position = positions[span.id], !scope.contains(position) { result[.foregroundColor] = DesignValues.nsColor("text.secondary") }
         if cut { result[.foregroundColor] = DesignValues.nsColor("word.cut") }
         if state.fillers.contains(span.id) && !cut {
             result[.vcUnderline] = 1
@@ -191,11 +263,20 @@ struct TranscriptAppearance: Equatable {
             result[.vcUnderlineColor] = DesignValues.nsColor("word.lowConfidence")
         }
         if !state.query.isEmpty, displayedText[span.id]?.localizedCaseInsensitiveContains(state.query) == true { result[.backgroundColor] = DesignValues.nsColor("pause.background") }
+        if aiWordIDs.contains(span.id) {
+            result[.vcUnderline] = 3
+            result[.vcUnderlineColor] = NSColor(DesignValues.accentText)
+        }
         if state.playing == span.id {
             result[.vcRounded] = DesignValues.nsColor("word.playingBackground"); result[.vcRadius] = 4.0
             result[.foregroundColor] = DesignValues.nsColor("word.playingForeground")
         }
         return result
+    }
+
+    func isRewriting(_ id: String) -> Bool {
+        guard let range = appearance?.rewrite, let position = positions[id] else { return false }
+        return range.contains(position)
     }
 
     private func apply(_ span: TranscriptSpan) {

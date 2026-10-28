@@ -4,6 +4,12 @@ import AVFoundation
 import VoxClipCore
 import VoxClipMedia
 
+struct EditorRenderSnapshot {
+    let project: Project
+    let state: EditState?
+    let plan: EditPlan?
+}
+
 @MainActor @Observable public final class EditorModel {
     let document: VoxClipDocument
     let app: AppModel
@@ -11,8 +17,8 @@ import VoxClipMedia
     var findClipsAnchor = FindClipsAnchor.toolbar
     /// The sidebar's "Choose how VoxClip finds clips…" callout (no connector chosen).
     var showAISetup = false
-    var selectedWordIDs: Set<String> = []
-    var selectedPauseIDs: Set<String> = []
+    var selectedWordIDs: Set<String> = [] { didSet { if selectedWordIDs != oldValue { rewriteOpenTask?.cancel() } } }
+    var selectedPauseIDs: Set<String> = [] { didSet { if selectedPauseIDs != oldValue { rewriteOpenTask?.cancel() } } }
     var previewStop: Double?
     var playhead: Double = 0
     var sourceTime: Double = 0
@@ -41,6 +47,80 @@ import VoxClipMedia
     var showTranscribe = false
     var correctionID: String?
     var correctionText = ""
+    var rewriteRange: ClosedRange<Int>?
+    var rewrite: RewriteSession?
+    var focusedPane = EditorPane.transcript
+    var paneFocusRequest = 0
+    var scopeScrollRevision = 0
+    var lastStyleId: String?
+    @ObservationIgnored private var galleryKey = ""
+    @ObservationIgnored private var galleryPages: [String: CaptionGalleryPages] = [:]
+    var showVoiceLabOptIn = false
+    var rewriteInsertionAfterID: String?
+    @ObservationIgnored var rewriteOpenTask: Task<Void, Never>?
+    private var pendingRewriteSelection: Set<String> = []
+    func beginRewrite(inserting: Bool = false, entry: RewriteEntry = .selection) {
+        let action = RewriteEntryPolicy.resolve(inserting ? .insertWords : entry, enabled: app.bool("voiceLab.enabled"),
+            editable: capabilities.ai, selection: !selectedIDs.isEmpty)
+        if action == .turnOnVoiceLab { pendingRewriteSelection = selectedWordIDs; showVoiceLabOptIn = true; return }
+        guard action == .openPassage, let first = selectedIDs.first, let last = selectedIDs.last,
+              let lower = index(first), let upper = index(last) else { return }
+        closeRewrite(returnFocus: false)
+        let snapshot = project
+        let selection = selectedWordIDs
+        let pauses = selectedPauseIDs
+        let caret = sourceTime
+        let signature = rewriteConnectorSignature
+        rewriteOpenTask = Task { [weak self] in
+            guard let self else { return }
+            if waveform == nil { await loadWaveform() }
+            guard !Task.isCancelled, capabilities.ai, app.bool("voiceLab.enabled"), project == snapshot,
+                  selectedWordIDs == selection, selectedPauseIDs == pauses, sourceTime == caret,
+                  rewriteConnectorSignature == signature else { return }
+            let provider = app.providers.first { $0.id == app.string("llm.connector") }
+            let connector: RewriteConnector? = provider.map { (provider: ProviderChoice) -> RewriteConnector in
+                RewriteConnector(connector: app.connector(provider.id), model: app.string("llm.model.\(provider.id)", fallback: provider.defaultModel ?? ""),
+                    name: provider.label, group: provider.group, plan: provider.id == "codex" ? "ChatGPT plan" : "Claude plan")
+            }
+            let envelope = waveform.map { AudioEnvelope(sampleRate: Double(project.media.source.audio?.sampleRate ?? 48_000), levels: $0.fine) }
+            rewriteRange = lower...upper
+            rewrite = RewriteSession(editor: self, range: lower...upper, envelope: envelope, connector: connector,
+                consent: { [weak self] in
+                    guard let self, let provider else { return false }
+                    return await self.rewriteConsent(provider: provider, signature: signature, snapshot: snapshot)
+                }, connectorIsCurrent: { [weak self] in self?.rewriteConnectorSignature == signature })
+            if app.shell.editor === self, !app.shell.viewerVisible { app.shell.toggleViewer() }
+            transcriptRevision += 1
+        }
+    }
+    var rewriteConnectorSignature: [String] {
+        let id = app.string("llm.connector")
+        return [id, app.string("llm.model.\(id)"), app.string("llm.baseUrl.\(id)"), app.string("llm.cliPath.\(id)")]
+    }
+    func closeRewrite(returnFocus: Bool = true) {
+        rewriteOpenTask?.cancel(); rewrite?.close(); rewrite = nil; rewriteRange = nil
+        transcriptRevision += 1
+        if returnFocus { _ = focusTranscript(in: window) }
+    }
+    private func rewriteConsent(provider: ProviderChoice, signature: [String], snapshot: Project) async -> Bool {
+        guard capabilities.edit, project == snapshot, rewriteConnectorSignature == signature else { return false }
+        guard let connector = rewrite?.connector?.connector else { return false }
+        do {
+            return try await app.authorizeConnectorRequest(provider, connector: connector, action: .rewrite,
+                wordCount: rewrite?.source.filter { $0.kind == .word }.count ?? 0, parent: window) { [self] in
+                    capabilities.edit && project == snapshot && rewriteConnectorSignature == signature && rewrite?.isOpen == true
+                }
+        } catch is CancellationError { return false } catch {
+            rewrite?.setReadinessProblem(await app.safeError(error, context: "ai:Rewrite"))
+            return false
+        }
+    }
+    func enableVoiceLab() {
+        app.set("voiceLab.enabled", .bool(true))
+        showVoiceLabOptIn = false
+        guard selectedWordIDs == pendingRewriteSelection else { return }
+        beginRewrite(entry: .menu)
+    }
     var preset = ClipPresetID.best
     var instruction = ""
     var clipError: String?
@@ -55,15 +135,18 @@ import VoxClipMedia
     var exports: [ExportResult] = []
     var exportError: String?
     var exportClipIDs: [String] = []
+    var activeExportKey: String?
+    var failedExports: [String: URL] = [:]
     var exporting = false
     func presentExport(clipIDs: [String]? = nil) {
+        guard capabilities.writable, mediaExportable else { return }
         if !exporting { exports = []; exportError = nil; exportClipIDs = clipIDs ?? activeClip.map { [$0.id] } ?? [] }
         showExport = true
     }
     var exportIndex = 0
     var exportStartedAt: Date?
     var sourceURL: URL { URL(fileURLWithPath: project.media.source.absolutePath) }
-    var mediaResolved = false { didSet { document.setMediaResolved(mediaResolved) } }
+    var mediaResolved = false { didSet { document.setMediaResolved(mediaResolved); if !mediaResolved { closeRewrite(returnFocus: false) } } }
     /// The project has a transcript. Unlike `project`, views observe it, so a transcript
     /// that arrives or is undone redraws the transcript column.
     private(set) var transcribed = false
@@ -71,7 +154,10 @@ import VoxClipMedia
     /// show from `project`, which they can't observe, read it (the toolbar's Export).
     private(set) var projectRevision = 0
     /// The video is there but can't be read (design §5.4.4 f, corrupt file).
-    var mediaUnreadable = false
+    var mediaUnreadable = false { didSet { if mediaUnreadable { closeRewrite(returnFocus: false) } } }
+    var canMoveCaptions: Bool {
+        !document.demo && capabilities.captionPosition && !mediaUnreadable && (previewError == nil || !mediaResolved)
+    }
     /// The open project's media state for its stand-ins and Export (design §5.4.4).
     var mediaStatus: MediaStatus {
         if let transcriptionStatus { return transcriptionStatus }
@@ -99,6 +185,44 @@ import VoxClipMedia
     var scopeBounds: ClosedRange<Int>?
     var editingAvailable = false
     var timeline = TimelineProjection()
+    var waveform: WaveformData?
+    var waveformRevision = 0
+    var waveformKey: WaveformCache.Key? {
+        guard !document.demo, mediaResolved, !mediaUnreadable, project.media.source.audio != nil else { return nil }
+        return WaveformCache.Key(contentKey: project.media.source.contentKey, source: sourceURL, cache: app.locations.cache)
+    }
+    func loadWaveform() async {
+        let key = waveformKey
+        let value = if let key { await WaveformCache.shared.load(key) } else { nil as WaveformData? }
+        guard !Task.isCancelled, key == waveformKey else { return }
+        waveform = value; waveformRevision += 1
+        timeline = TimelineProjection(model: self)
+    }
+    var displayTimeline: TimelineProjection {
+        var display = timeline
+        let indices = selectedWordIDs.compactMap { wordIndex[$0] }
+        var starts = indices.map { words[$0].start }
+        var ends = indices.map { words[$0].end }
+        for id in selectedPauseIDs {
+            if let pause = pauseIndex[id] { starts.append(pause.start); ends.append(pause.end) }
+        }
+        if let start = starts.min(), let end = ends.max() { display.selection = timelineBand(start: start, end: end) }
+        if let rewrite = rewriteRange, words.indices.contains(rewrite.lowerBound), words.indices.contains(rewrite.upperBound) {
+            display.rewrite = timelineBand(start: words[rewrite.lowerBound].start, end: words[rewrite.upperBound].end)
+        }
+        return display
+    }
+    var timelineAccessibilityValue: String {
+        let current: Double = editedTimeline ? playhead : sourceTime
+        let total: Double = editedTimeline ? duration : sourceDuration
+        let cuts: Int = summary.cutWordCount + summary.cutPauseCount
+        return timelineValueText(time: current, total: total, cuts: cuts, edited: editedTimeline)
+    }
+    private func timelineBand(start: Double, end: Double) -> TimelineBand {
+        let lower = renderTimeline?.mapTime(start) ?? start
+        let upper = renderTimeline?.mapTime(end) ?? end
+        return TimelineBand(source: start...max(start, end), edited: lower...max(lower, upper))
+    }
     @ObservationIgnored private var renderedTranscript: Transcript?
     @ObservationIgnored private var renderedEdits: ProjectEdits?
     @ObservationIgnored private var renderedMedia: ProjectMedia?
@@ -125,7 +249,7 @@ import VoxClipMedia
     @ObservationIgnored private var initialised = false
     /// Set by the shell's leave boundary: edits freeze, and late results cannot
     /// change a project that is leaving.
-    @ObservationIgnored var isLeaving = false
+    var isLeaving = false { didSet { if isLeaving { closeRewrite(returnFocus: false) } } }
     /// Called when a refresh finds a different active clip, for example after Undo.
     @ObservationIgnored var onActiveClipChange: ((String?) -> Void)?
     /// A new editor puts keyboard focus in its transcript once it shows.
@@ -133,6 +257,7 @@ import VoxClipMedia
     /// Shows the sidebar for the Find Clips setup callout and a run's progress (design §6.2).
     @ObservationIgnored var onNeedsSidebar: (() -> Void)?
     #if DEBUG
+    @ObservationIgnored var editTimestampForTests: Date?
     /// The last VoiceOver announcement, for harness checks.
     @ObservationIgnored var lastAnnouncement: String?
     /// Every VoiceOver announcement, for "announced once" checks.
@@ -153,6 +278,7 @@ import VoxClipMedia
             self.preview = native; nativePreview = native
         }
         textSize = app.number("general.transcriptTextSize", fallback: DesignValues.transcriptTextSize)
+        refresh()
     }
 
     var project: Project { document.project }
@@ -221,7 +347,7 @@ import VoxClipMedia
         if let clip = activeClip, isSuggestion(clip.id) { return "Keep this clip to export it." }
         return canExport || exporting ? nil : "Keep at least one word before exporting."
     }
-    var canExport: Bool { mediaResolved && !exporting && (voiceLabPlan.map { $0.outputSamples > 0 } ?? (words.isEmpty ? sourceDuration > 0 : editingAvailable && summary.canExport)) }
+    var canExport: Bool { capabilities.export && !document.demo && (voiceLabPlan.map { $0.outputSamples > 0 } ?? (words.isEmpty ? sourceDuration > 0 : editingAvailable && summary.canExport)) }
     var playingWordID: String? {
         let transcript = words
         var lower = 0, upper = transcript.count
@@ -272,11 +398,13 @@ import VoxClipMedia
         if mediaResolved { await updatePreview(load: true) }
     }
     func close() {
+        closeRewrite(returnFocus: false)
         previewRevision &+= 1
         workTask?.cancel(); exportTask?.cancel(); findTask?.cancel(); eventTask?.cancel(); updateTask?.cancel(); preview.close()
         app.openProjectKeys[project.id] = nil
     }
     func reloadFromDocument(previousProjectID: String) {
+        closeRewrite(returnFocus: false)
         app.openProjectKeys[previousProjectID] = nil
         workTask?.cancel(); exportTask?.cancel(); findTask?.cancel(); updateTask?.cancel()
         preview.pause(); isPlaying = false; previewStop = nil
@@ -312,6 +440,9 @@ import VoxClipMedia
         projectRevision += 1
         scopeDurations.removeAll(keepingCapacity: true)
         scopeCards.removeAll(keepingCapacity: true)
+        if transcriptChanged || renderedEdits?.clips != edits.clips || renderedVoiceLab != project.voiceLab {
+            transcriptLayoutRevision += 1
+        }
         if transcriptChanged || renderedEdits?.corrections != edits.corrections {
             transcriptLayoutRevision += 1
             fillerCandidateIDs = Set(words.filter { word in
@@ -400,12 +531,13 @@ import VoxClipMedia
     }
     func replace(_ newProject: Project, name: String) {
         // A Versions-browser version is read-only.
-        guard !isLeaving, !document.isVersion, mediaResolved || name == "Locate media" else { return }
+        guard capabilities.writable, capabilities.media || name == "Locate media" || onlyCaptionPositionChanged(newProject) else { return }
         // The title follows the document's name, not the edit history (design §2), so
         // undoing an edit made before a Save As or Rename keeps the new title.
         var newProject = newProject
         newProject.title = project.title
         guard newProject != project else { return }
+        closeRewrite(returnFocus: false)
         preview.pause(); isPlaying = false
         let previous = project
         let mediaChanged = previous.media.source != newProject.media.source
@@ -415,7 +547,11 @@ import VoxClipMedia
         undoSteps += 1
         #endif
         var changed = newProject
+        #if DEBUG
+        changed.modifiedAt = editTimestampForTests ?? Date()
+        #else
         changed.modifiedAt = Date()
+        #endif
         document.replaceProject(changed)
         recordDocumentChange()
         error = nil
@@ -435,6 +571,14 @@ import VoxClipMedia
     }
     private func recordDocumentChange() {
         document.updateChangeCount(undoManager?.isUndoing == true ? .changeUndone : undoManager?.isRedoing == true ? .changeRedone : .changeDone)
+    }
+    private func onlyCaptionPositionChanged(_ candidate: Project) -> Bool {
+        var positionEdit = project
+        positionEdit.captions.position = candidate.captions.position
+        positionEdit.captions.positionByAspect = candidate.captions.positionByAspect
+        positionEdit.modifiedAt = candidate.modifiedAt
+        positionEdit.title = candidate.title
+        return positionEdit == candidate
     }
     func resolveMediaIdentity() async throws -> URL {
         let reference = project.media.source
@@ -483,7 +627,7 @@ import VoxClipMedia
         }
     }
     func apply(_ command: EditCommand, name: String, base: Project? = nil, announcing message: String? = nil) {
-        guard mediaResolved, !isLeaving else { return }
+        guard capabilities.edit else { return }
         guard let state = editState() else { return }
         preview.pause(); isPlaying = false
         var next = base ?? project
@@ -500,7 +644,7 @@ import VoxClipMedia
     }
     /// Applies several commands as one undo step. Returns false when nothing changed.
     @discardableResult func apply(_ commands: [EditCommand], name: String) -> Bool {
-        guard mediaResolved, !isLeaving, let state = editState() else { return false }
+        guard capabilities.edit, let state = editState() else { return false }
         preview.pause(); isPlaying = false
         if history?.state != state { history = EditHistory(state: state) }
         var next = project
@@ -525,10 +669,17 @@ import VoxClipMedia
         return fallback
     }
     func cutSelection(restore: Bool = false) {
-        let ids = selectedIDs + selectedPauseIDs.sorted()
+        let selected = selectedIDs + selectedPauseIDs.sorted()
+        let ids = restore ? selected : selected.filter { (id: String) -> Bool in
+            !cutWordIDs.contains(id) && !cutPauseIDs.contains(id)
+        }
         guard !ids.isEmpty else { return }
-        let restore = restore || ids.allSatisfy { project.edits.cutWordIds.contains($0) || project.edits.cutPauseIds.contains($0) }
         apply(restore ? .restoreSelection(ids: ids) : .cutSelection(ids: ids), name: restore ? "Restore selection" : "Cut selection")
+    }
+    func toggleSelectionCut() {
+        let ids = selectedIDs + selectedPauseIDs.sorted()
+        let restore: Bool = !ids.isEmpty && ids.allSatisfy { (id: String) -> Bool in cutWordIDs.contains(id) || cutPauseIDs.contains(id) }
+        cutSelection(restore: restore)
     }
     /// Make Clip (⌘K, design §3.4): one undo step adds the clip and selects its row. A
     /// selection an existing clip already covers selects that clip instead.
@@ -539,8 +690,8 @@ import VoxClipMedia
             if activeClip?.id == existing.id { announce(message) } else { activate(existing, announcing: message) }
             return
         }
-        let title = words.filter { selectedWordIDs.contains($0.id) }.prefix(7).map { text($0) }.joined(separator: " ")
-        let clip = ClipRange(id: UUID().uuidString.lowercased(), startWordId: start, endWordId: end, title: Self.clipTitle(title))
+        let title = EditingAlgorithms.clipTitle(words.lazy.filter { self.selectedWordIDs.contains($0.id) }.map { self.text($0) })
+        let clip = ClipRange(id: UUID().uuidString.lowercased(), startWordId: start, endWordId: end, title: title)
         guard apply([.addClip(clip), .setActiveClip(clipId: clip.id)], name: "Make clip from selection") else { return }
         announce(clipNumber(clip.id).map { "Clip \($0) made." } ?? "Clip made.")
     }
@@ -553,9 +704,54 @@ import VoxClipMedia
         guard start ? caret <= upper : caret >= lower else { return }
         apply(.updateClip(id: clip.id, startIndex: start ? caret : lower, endIndex: start ? upper : caret), name: "Set clip edge")
     }
+    func timelineSourceTime(_ time: Double) -> Double {
+        guard editedTimeline else { return time }
+        if time <= 0 { return scopeBounds.map { words[$0.lowerBound].start } ?? 0 }
+        if time >= duration { return scopeBounds.map { words[$0.upperBound].end } ?? sourceDuration }
+        let mapped: Double = renderTimeline?.sourceTime(time) ?? time
+        guard let scope = scopeBounds else { return mapped }
+        return mapped.clamped(to: words[scope.lowerBound].start...words[scope.upperBound].end)
+    }
+    func timelineTrimIndex(_ clip: ClipRange, start: Bool, fraction: Double) -> Int? {
+        let time: Double = timeline.time(fraction, edited: editedTimeline)
+        let source: Double = timelineSourceTime(time)
+        guard let candidate = trimIndex(start: start, source: source),
+              let lower = index(clip.startWordId), let upper = index(clip.endWordId) else { return nil }
+        return start ? candidate.clamped(to: 0...upper) : candidate.clamped(to: lower...(words.count - 1))
+    }
+    func trimIndex(start: Bool, source: Double) -> Int? {
+        guard !words.isEmpty else { return nil }
+        var lower = 0
+        var upper = words.count
+        while lower < upper {
+            let middle = (lower + upper) / 2
+            let boundary = start ? words[middle].start : words[middle].end
+            if boundary < source { lower = middle + 1 } else { upper = middle }
+        }
+        if lower == 0 { return 0 }
+        if lower == words.count { return words.count - 1 }
+        let previous = start ? words[lower - 1].start : words[lower - 1].end
+        let next = start ? words[lower].start : words[lower].end
+        return source - previous <= next - source ? lower - 1 : lower
+    }
+    func trimClip(_ clip: ClipRange, start: Bool, index: Int) {
+        guard let lower = self.index(clip.startWordId), let upper = self.index(clip.endWordId) else { return }
+        let nextStart = start ? index.clamped(to: 0...upper) : lower
+        let nextEnd = start ? upper : index.clamped(to: lower...(words.count - 1))
+        guard nextStart != lower || nextEnd != upper else { return }
+        apply(.updateClip(id: clip.id, startIndex: nextStart, endIndex: nextEnd), name: "Trim clip")
+    }
+    func adjustTrim(start: Bool, offset: Int) {
+        guard let clip = activeClip, let current = index(start ? clip.startWordId : clip.endWordId) else { return }
+        trimClip(clip, start: start, index: current + offset)
+    }
     func activate(_ clip: ClipRange?, announcing message: String? = nil) {
+        let previous = project.edits.activeClipId
         apply(.setActiveClip(clipId: clip?.id), name: "Preview clip", announcing: message)
-        if project.edits.activeClipId == clip?.id { seekToActiveClip() }
+        if project.edits.activeClipId == clip?.id {
+            seekToActiveClip()
+            if previous != clip?.id { scopeScrollRevision += 1 }
+        }
     }
     /// Moves the playhead to the active clip's first word.
     private func seekToActiveClip() {
@@ -624,8 +820,7 @@ import VoxClipMedia
         return true
     }
     func renameClip(_ id: String, to title: String) {
-        let title = Self.clipTitle(title)
-        apply(.renameClip(id: id, title: title.isEmpty ? nil : title), name: "Rename clip")
+        apply(.renameClip(id: id, title: EditingAlgorithms.clipTitle([title])), name: "Rename clip")
     }
     /// The edited length of a clip, or of the full take for nil (design §3.4 meta line).
     func editedDuration(_ clip: ClipRange?) -> Double {
@@ -639,6 +834,7 @@ import VoxClipMedia
     }
     /// The caption card's words for a scope (design §5.4.2), from VoxClipCore.
     func cardText(_ scope: CaptionCardScope, wordsVisible: Bool) -> CaptionCardText {
+        _ = transcriptRevision
         guard let style = app.cardStyle(for: project), let resources = app.captionResources else { return .none }
         let key: String
         switch scope { case .fullTake: key = "full"; case .clip(let id): key = id }
@@ -656,7 +852,7 @@ import VoxClipMedia
         return words[lower...upper].first { $0.kind == .word && !cut.contains($0.id) }?.start
     }
     func beginCorrection() {
-        guard let id = selectedIDs.first, let word = words.first(where: { $0.id == id }) else { return }
+        guard capabilities.edit, let id = selectedIDs.first, let word = words.first(where: { $0.id == id }) else { return }
         correctionID = id; correctionText = text(word)
     }
     func saveCorrection(advance: Bool = false) {
@@ -716,7 +912,32 @@ import VoxClipMedia
         select(matches[(current + (backward ? -1 : 1) + matches.count) % matches.count].id)
     }
     func cutMatches() { let ids = words.filter { text($0).localizedCaseInsensitiveContains(query) }.map(\.id); apply(.cutSelection(ids: ids), name: "Cut all matches") }
-    func setStyle(_ id: String) { var next = project; next.captions.styleId = id; replace(next, name: "Change caption style") }
+    func setStyle(_ id: String) {
+        if id == "off", project.captions.styleId != "off" { lastStyleId = project.captions.styleId }
+        else if id != "off" { lastStyleId = id }
+        var next = project; next.captions.styleId = id; replace(next, name: "Change caption style")
+    }
+    func setCaptionsEnabled(_ enabled: Bool) {
+        guard enabled else { setStyle("off"); return }
+        let previous = lastStyleId ?? app.string("captions.defaultStyleId")
+        setStyle(app.styles.contains { $0.id == previous } ? previous : app.styles.first?.id ?? "off")
+    }
+    var captionsEdited: Bool {
+        !project.captions.overrides.isEmpty || project.captions.positionByAspect[captionPreset.rawValue] != nil || project.captions.position != nil
+    }
+    var captionSummary: String {
+        guard let library = app.styles.first(where: { $0.id == project.captions.styleId }) else { return "Off" }
+        let resolved = (try? library.resolved(overrides: project.captions.overrides, frame: outputSpec().size)) ?? library
+        var parts: [String] = []
+        if let accent = resolved.accent {
+            let names = ["#FFE14D": "Yellow", "#4BE38A": "Green", "#5CE1FF": "Cyan", "#FF6FAE": "Pink", "#F3F0E7": "Paper", "#FFFFFF": "White"]
+            parts.append(names[accent.uppercased()] ?? "Colour")
+        }
+        parts.append(resolved.text.transform == .uppercase ? "ALL CAPS" : "As said")
+        let count = resolved.layout.maxWords
+        parts.append(count >= 16 ? "Line" : count == 1 ? "1 word" : "\(count) words")
+        return parts.joined(separator: " · ")
+    }
     func setAspect(_ aspect: AspectRatio) { var next = project; next.export.aspect = aspect; replace(next, name: "Change aspect") }
     var captionPreset: AspectRatio {
         let size = outputSpec().size
@@ -734,12 +955,13 @@ import VoxClipMedia
         #endif
         NSAccessibility.post(element: NSApp as Any, notification: .announcementRequested, userInfo: [.announcement: message, .priority: NSAccessibilityPriorityLevel.medium.rawValue])
     }
-    static func clipTitle(_ title: String) -> String {
-        String(String.UnicodeScalarView(title.trimmingCharacters(in: .whitespacesAndNewlines).unicodeScalars.prefix(EditingLimits.maxClipTitleScalars)))
+    func renderSnapshot() -> EditorRenderSnapshot {
+        EditorRenderSnapshot(project: project, state: editState(), plan: plan)
     }
-    func renderRequest(target: ExportTarget? = nil) async throws -> RenderRequest {
-        let project = project
-        let state = editState()
+    func renderRequest(target: ExportTarget? = nil, snapshot: EditorRenderSnapshot? = nil) async throws -> RenderRequest {
+        let snapshot = snapshot ?? renderSnapshot()
+        let project = snapshot.project
+        let state = snapshot.state
         let clip: ClipRange?
         switch target {
         case nil: clip = state?.activeClip
@@ -755,13 +977,13 @@ import VoxClipMedia
             paidRoot: app.locations.root.appendingPathComponent("VoiceLab", isDirectory: true))
         if clip != nil && state == nil { throw VoxClipError.exportFailed("Clip transcript is unavailable") }
         let segments = try state.map { try buildSegments($0, activeClip: clip) }
-        var plan = plan
+        var plan = snapshot.plan
         if target != nil || voiceLab != nil, let state, let segments {
-            plan = try buildEditPlan(segments, duration: sourceDuration, sampleRate: Double(project.media.source.audio?.sampleRate ?? 48_000), pauseKeepSeconds: state.pauseKeepSeconds)
+            plan = try buildEditPlan(segments, duration: project.media.source.durationSeconds, sampleRate: Double(project.media.source.audio?.sampleRate ?? 48_000), pauseKeepSeconds: state.pauseKeepSeconds)
         }
         guard let plan else { throw VoxClipError.exportFailed("Could not build the edit plan") }
         guard (voiceLab?.prepared.outputPlan.outputSamples ?? plan.outputSamples) > 0 else { throw VoxClipError.everythingCut }
-        let output = outputSpec()
+        let output = ExportFingerprint.output(project)
         let layout = try await buildCaptions(segments: segments, plan: plan, output: output, forPreview: target == nil,
                                             project: project, voiceLab: voiceLab?.prepared.outputPlan)
         try Task.checkCancellation()
@@ -784,19 +1006,29 @@ import VoxClipMedia
         }
     }
     func captionTileInput(_ style: CaptionStyle) -> CaptionTileInput {
-        let position = word(at: sourceTime).flatMap { index($0.id) } ?? 0
-        let sample = words.dropFirst(position).filter { !cutWordIDs.contains($0.id) }.prefix(6).map(text)
-        let placement = style.position.userDraggable ? project.captions.positionByAspect[captionPreset.rawValue] ?? project.captions.position : nil
-        return CaptionTileInput(state: editState(), plan: plan, style: style, sampleWords: sample, language: project.transcript?.language, frame: outputSpec().size, overrides: project.captions.overrides, position: placement, sourceURL: sourceURL, sourceTime: sourceTime)
+        let visible = app.bool("general.showPlaceholderWords", fallback: true)
+        let key = "\(projectRevision):\(activeClip?.id ?? "full"):\(visible)"
+        if galleryKey != key { galleryKey = key; galleryPages = [:] }
+        let scope: CaptionCardScope = activeClip.map { .clip($0.id) } ?? .fullTake
+        if galleryPages[style.id] == nil, let resources = app.captionResources {
+            galleryPages[style.id] = CaptionGalleryPages(project: project, scope: scope, style: style, wordsVisible: visible, resources: resources)
+        }
+        let sample = transcriptionStatus != nil ? CaptionGallerySample.preview(style) : galleryPages[style.id]?.sample(at: playhead) ?? CaptionGallerySample.preview(style)
+        let selected = style.id == project.captions.styleId
+        let overrides = selected ? project.captions.overrides : [:]
+        let placement = selected && style.position.userDraggable ? project.captions.positionByAspect[captionPreset.rawValue] ?? project.captions.position : nil
+        let resolved = (try? style.resolved(overrides: overrides, frame: outputSpec().size)) ?? style
+        let lower = activeClip.flatMap { clip in index(clip.startWordId).map { words[$0].start } } ?? 0
+        let upper = activeClip.flatMap { clip in index(clip.endWordId).map { words[$0].end } } ?? sourceDuration
+        let time = (floor(sourceTime * 4) / 4).clamped(to: lower...max(lower, upper))
+        let frameAvailable = !document.demo && mediaResolved && !mediaUnreadable && project.media.source.video != nil
+        let loading = mediaStatus == .loading || (transcriptionStatus != nil && !frameAvailable)
+        return CaptionTileInput(state: nil, plan: nil, style: style, sampleWords: sample.words.map(\.text), language: sample.source == .preview ? "en" : project.transcript?.language, frame: outputSpec().size, overrides: overrides, position: placement, sourceURL: sourceURL, sourceTime: time,
+                                sample: sample, backdrop: CaptionCardLook.backdrop(resolved, previewBackground: app.previewBackgrounds[style.id]), frameAvailable: frameAvailable, loading: loading,
+                                contentKey: project.media.source.contentKey)
     }
     func outputSpec() -> OutputSpec {
-        let video = project.media.source.video
-        let oriented = video.map(OutputSizing.orientedSize) ?? PixelSize(width: 1920, height: 1080)
-        let size = (try? OutputSizing.outputSize(source: oriented, aspect: project.export.aspect)) ?? PixelSize(width: 1920, height: 1080)
-        let fps = (try? OutputSizing.outputFrameRate(nominal: video?.frameRate ?? 30)) ?? 30
-        return OutputSpec(size: size, fps: fps,
-            videoBitrate: OutputSizing.videoBitrate(size: size, aspect: project.export.aspect, quality: project.export.quality, fps: fps),
-            quality: project.export.quality)
+        ExportFingerprint.output(project)
     }
     func updatePreview(load: Bool) async {
         guard mediaResolved else { return }
@@ -825,35 +1057,44 @@ extension EditorModel {
     static let noClipsMatched = "No clips matched. Try another style or describe what you want."
     /// The chosen clip-finding connector, nil when none is set up.
     var findConnector: ProviderChoice? { app.providers.first { $0.id == app.string("llm.connector") } }
-    /// Opens the Find Clips popover at its anchor, or the sidebar's setup callout when
-    /// no connector is chosen (design §6.2).
     func requestFindClips(from anchor: FindClipsAnchor) {
-        guard !words.isEmpty else { return }
-        guard findConnector != nil else { showFindClips = false; onNeedsSidebar?(); showAISetup = true; return }
+        guard capabilities.ai, !words.isEmpty else { return }
         showAISetup = false
         findClipsAnchor = anchor
         showFindClips = true
     }
     /// Asks the chosen connector for clips. They arrive as suggestions in one undo step.
     func findClips() {
-        guard let shared = app.shared, let transcript = project.transcript, let provider = app.providers.first(where: { $0.id == app.string("llm.connector") }) else { return }
+        guard capabilities.ai, let shared = app.shared, let transcript = project.transcript, let provider = app.providers.first(where: { $0.id == app.string("llm.connector") }) else { return }
         let corrections = project.edits.corrections
         let cuts = Set(project.edits.cutWordIds)
         let selectedModel = app.string("llm.model.\(provider.id)", fallback: provider.defaultModel ?? "")
+        let selectedSignature = rewriteConnectorSignature
         let selectedPreset = preset
         let instructions = instruction
-        let run = {
+        let snapshot = project
+        do {
+            guard self.capabilities.ai, self.project == snapshot, self.app.string("llm.connector") == provider.id,
+                  self.app.string("llm.model.\(provider.id)", fallback: provider.defaultModel ?? "") == selectedModel,
+                  self.rewriteConnectorSignature == selectedSignature,
+                  let lease = self.llmRuns.acquire() else { return }
+            let runs = self.llmRuns
+            let connector = self.app.connector(provider.id)
             self.findTask?.cancel(); self.finding = true; self.clipError = nil; self.fallbackNote = nil; self.showAISetup = false
             self.onNeedsSidebar?()
             self.announce("Finding clips")
             self.findTask = Task { [self] in
-                defer { self.finding = false }
+                defer { self.finding = false; runs.release(lease) }
                 do {
+                    guard try await app.authorizeConnectorRequest(provider, connector: connector, action: .findClips,
+                        wordCount: transcript.words.filter { $0.kind == .word }.count, parent: window, isCurrent: { [self] in
+                            !isLeaving && project == snapshot && rewriteConnectorSignature == selectedSignature
+                        }) else { return }
                     let catalog = LLMCatalog(document: try JSONDecoder().decode(JSONValue.self, from: Data(contentsOf: shared.root.appendingPathComponent("catalog/llm-providers.json"))))
                     let finder = ClipFinder(runner: LLMRunner(keys: app.secrets, catalog: catalog, log: app.log), shared: shared)
                     let presets = try await finder.presets()
                     guard let preset = presets.first(where: { $0.id == selectedPreset }) else { throw ClipFinderGateError.needInstructions(message: "Choose a clip preset.") }
-                    let result = try await finder.find(ClipFinderRequest(transcript: transcript, corrections: corrections, cutWordIds: cuts, preset: preset, instruction: instructions, snap: app.bool("llm.clips.snapToLines", fallback: true)), connector: app.connector(provider.id), model: selectedModel)
+                    let result = try await finder.find(ClipFinderRequest(transcript: transcript, corrections: corrections, cutWordIds: cuts, preset: preset, instruction: instructions, snap: app.bool("llm.clips.snapToLines", fallback: true)), connector: connector, model: selectedModel)
                     try Task.checkCancellation()
                     let usedFallback = await finder.lastUsedFallback == true && result.model != selectedModel
                     guard project.transcript == transcript else { return }
@@ -862,7 +1103,7 @@ extension EditorModel {
                     next.ai.results.append(result)
                     let ranges = result.clips.enumerated().map { position, clip in ClipRange(id: UUID().uuidString.lowercased(), startWordId: clip.startWordId, endWordId: clip.endWordId, title: clip.title, origin: .ai, aiResultId: result.id, aiClipIndex: position) }
                     // One undo step: the result arrives as suggestions, not kept clips.
-                    guard mediaResolved, !isLeaving, let state = editState() else { return }
+                    guard capabilities.edit, let state = editState() else { return }
                     if history?.state != state { history = EditHistory(state: state) }
                     let before = Set(state.clips.map(\.id))
                     history?.apply(.addAIClips(resultId: result.id, clips: ranges), aiResults: next.ai.results)
@@ -882,14 +1123,5 @@ extension EditorModel {
                 }
             }
         }
-        if provider.privacy == "thirdPartyCloud" && !app.bool("llm.cloudConsent.\(provider.id)") {
-            let alert = NSAlert(); alert.messageText = "Find clips"
-            if let copy = provider.cliConsentCopy { alert.informativeText = copy }
-            else { alert.informativeText = "Find clips sends this project's transcript (\(words.count) words, no audio or video) to \(provider.label) using your API key." }
-            alert.addButton(withTitle: "Continue"); alert.addButton(withTitle: "Cancel")
-            guard alert.runModal() == .alertFirstButtonReturn else { return }
-            app.set("llm.cloudConsent.\(provider.id)", .bool(true))
-        }
-        run()
     }
 }
