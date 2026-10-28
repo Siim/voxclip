@@ -60,7 +60,7 @@ actor RegressionSettingsStore: SettingsStore {
         router.installMovieOpener { movies.append($0) }
         check("cold movie opens drain after action registration", movies == [movie])
         router.receive([movie, project])
-        check("running opens do not require Welcome", movies.count == 2 && projects.count == 2)
+        check("running opens do not require a Home window", movies.count == 2 && projects.count == 2)
         let configuration = KeyedNetwork.configuration()
         check("keyed requests never persist cache cookies or credentials", configuration.urlCache == nil && configuration.httpCookieStorage == nil && configuration.urlCredentialStorage == nil && !configuration.httpShouldSetCookies)
         check("version comes from the embedded plist", AppModel.version == Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String)

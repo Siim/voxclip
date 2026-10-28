@@ -50,6 +50,15 @@ private actor SettingsDebounceClock {
     func project(_ name: String = "interview-take") throws -> Project {
         try JSONProjectStore.decode(FixtureLoader.data("fixtures/projects/\(name).voxclip"))
     }
+    @Test func fiveQuestionsRedesignFixture() throws {
+        let fixture = try project("five-questions")
+        #expect(fixture.title == "Five questions")
+        #expect(fixture.edits.clips.filter(\.selected).count == 4)
+        #expect(fixture.edits.clips.filter { !$0.selected && $0.origin == .ai }.count == 1)
+        #expect(fixture.edits.cutWordIds.count == 8)
+        #expect(try fixture.transcript?.words.filter { try isFillerText($0.text) }.count == 4)
+        #expect(try JSONProjectStore.decode(JSONProjectStore.encode(fixture)) == fixture)
+    }
 
     @Test(arguments: projectFixtureNames) func roundTrip(_ name: String) async throws {
         let original = try project(name)

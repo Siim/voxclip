@@ -55,7 +55,7 @@ import VoxClipCore
         }
         check("menus retain document Duplicate and hide unsupported insertion", item("File", "Duplicate") != nil && item("Edit", "Insert Words…") == nil)
         check("menus expose three-second playback actions", item("Playback", "Back 3 Seconds")?.keyEquivalent == "j" && item("Playback", "Forward 3 Seconds") != nil)
-        check("Help uses Welcome Tour and removes obsolete workspaces", item("Help", "Welcome Tour") != nil && item("Help", "Workspace Tour") == nil && item("View", "Transcript") == nil && item("View", "Clips") == nil && item("View", "Show Caption Inspector") == nil)
+        check("Help keeps the tour and removes obsolete workspaces", item("Help", "Welcome Tour") != nil && item("Help", "Workspace Tour") == nil && item("View", "Transcript") == nil && item("View", "Clips") == nil && item("View", "Show Caption Inspector") == nil)
         let previousDocument = app.shell.document
         let previousSelection = app.shell.selection
         let previousVoiceLab = app.bool("voiceLab.enabled")
