@@ -104,7 +104,10 @@ internal static class Ui
         ct.ThrowIfCancellationRequested();
         var dialog = new ContentDialog { XamlRoot = root, Title = title, Content = Text(text), PrimaryButtonText = action, CloseButtonText = "Cancel", DefaultButton = ContentDialogButton.Close };
         var showing = dialog.ShowAsync();
-        using var cancellation = ct.Register(() => dialog.DispatcherQueue.TryEnqueue(() => dialog.Hide()));
-        return await showing.AsTask().WaitAsync(ct) == ContentDialogResult.Primary;
+        try { return await showing.AsTask().WaitAsync(ct) == ContentDialogResult.Primary; }
+        finally
+        {
+            if (ct.IsCancellationRequested) dialog.Hide();
+        }
     }
 }
