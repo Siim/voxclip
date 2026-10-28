@@ -971,6 +971,16 @@ Let `D = duration(trimmed TTS)` (§8.7 step 1). At a take edge (seam kind `none`
 
 Shared `length-budget-cases.json`, written by `tools/fixtures/voice-lab/generate_length_budget.py`, pins every pair of gap/hard/none seams, take-edge pads, transcript and stored-candidate rates, full-take scope, floor/ceil values within 1e-9 of an integer, and both meter verdicts immediately inside and outside the inclusive bounds. Both Core suites replay every case.
 
+##### macOS passage-review stage
+
+The macOS passage Rewrite panel is a DEBUG-only review surface until checklist 16b. `RewriteEntryPolicy.buildEnabled` is false in Release. With Voice Lab enabled, the selection bar, transcript context menu and Shift-Command-R open it in the Captions column; with Voice Lab disabled only Edit > Rewrite offers the existing one-time opt-in. Insert Words remains unavailable. F6 includes the panel; opening focuses “What should change?” and Escape closes it and returns to the words.
+
+The panel snapshots whole-item corrected transcript text and uses Core's word diff, whole-transcript patch budget, placed windows, lendable silence, length budget, fit meters and complete-patch summary. It has no generation, Takes or voice picker. Cut-only and text-only reviews use existing edit commands as one undo group, without adding AI metadata. A voice change cannot be accepted locally.
+
+Preparing an estimate performs no connector discovery. Proposing requires a displayed, explicitly approved quote for the current passage and instruction, first-use consent for the selected cloud connector before discovery, and an atomic project run lease shared with Find Clips. Local connectors skip cloud consent. Changing instructions, text, project or connector invalidates authorization; stale proposals cannot replace typing. Closing, leaving or losing media cancels the request and dismisses its approval sheet. Settings consent writes alone do not invalidate a session. The send line and §13 fallback rows remain the design's exact copy; no unknown or unavailable synthesis price is invented.
+
+`-round4SelfTest <directory>` runs DEBUG model/export/gallery regressions without opening a native window. It is not the UI self-test, native accessibility, keyboard or save-boundary audit. Those gates and native light/dark captures require an unlocked, idle console.
+
 #### 8.9.2 Fit planner
 
 `VoiceLabFitPlanner` in each Core (`Domain/VoiceLab/`) is free, pure and deterministic, and gives the same result on both platforms. Its shared vectors are `shared/fixtures/voice-lab/fit-cases.json`, written by `tools/fixtures/voice-lab/generate.py` through its standard-library reference planner `tools/fixtures/voice-lab/generate_fit.py`.

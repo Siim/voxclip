@@ -39,12 +39,13 @@ func selectionBarFrame(lineRects: [CGRect], visibleRect: CGRect, barSize: CGSize
             Button { model.cutSelection(); dismiss() } label: { label("Cut", "⌫") }
             Button { model.cutSelection(restore: true); dismiss() } label: { label("Restore", "⇧⌫") }
                 .disabled(model.selectedWordIDs.isDisjoint(with: model.cutWordIDs) && model.selectedPauseIDs.isDisjoint(with: model.cutPauseIDs))
-            if model.app.bool("voiceLab.enabled") {
+            if RewriteEntryPolicy.buildEnabled && model.app.bool("voiceLab.enabled") {
                 Divider().frame(height: 18)
-                Button { model.beginRewrite(); dismiss() } label: { label("Rewrite…", "⇧⌘R") }
+                Button { model.beginRewrite(); dismiss() } label: { label("Rewrite…", "⇧⌘R") }.disabled(!model.capabilities.ai)
             }
         }
         .buttonStyle(.plain)
+        .disabled(!model.capabilities.edit)
         .font(.system(size: 13))
         .foregroundStyle(DesignValues.color("text.primary"))
         .padding(.horizontal, 6)

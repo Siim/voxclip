@@ -7,6 +7,7 @@ import VoxClipCore
     var body: some View {
         // On the column's root view, or NavigationSplitView ignores it.
         SidebarList(shell: shell)
+            .modifier(EditorPaneFocus(model: shell.editor, pane: .sidebar))
             .navigationSplitViewColumnWidth(min: VCTokens.sizeSidebarMin, ideal: VCTokens.sizeSidebarIdeal, max: VCTokens.sizeSidebarMax)
     }
 }
@@ -222,9 +223,11 @@ import VoxClipCore
                     if suggested {
                         Button { editor.keep(clip.id) } label: { Image(systemName: "checkmark").font(.system(size: 11, weight: .semibold)) }
                             .buttonStyle(KeepButtonStyle(emphasized: emphasized)).help("Keep (Return)")
+                            .disabled(!editor.capabilities.edit)
                             .accessibilityLabel("Keep suggested clip \(number)")
                         Button { editor.dismiss(clip.id) } label: { Image(systemName: "xmark").font(.system(size: 11, weight: .semibold)).frame(width: 24, height: 24) }
                             .buttonStyle(.borderless).foregroundStyle(SidebarStyle.meta(emphasized)).help("Dismiss (⌫)")
+                            .disabled(!editor.capabilities.edit)
                             .accessibilityLabel("Dismiss suggested clip \(number)")
                     }
                 }
@@ -234,7 +237,7 @@ import VoxClipCore
                         if exportStatus == .failed {
                             Button("Retry") { editor.retryExport(clip.id) }.font(.system(size: 11)).buttonStyle(.plain)
                                 .foregroundStyle(emphasized ? Color(nsColor: .alternateSelectedControlTextColor) : DesignValues.accentText)
-                                .disabled(!editor.mediaExportable || editor.exporting)
+                                .disabled(!editor.canExport || !editor.mediaExportable)
                         }
                     }
                 }
@@ -250,14 +253,14 @@ import VoxClipCore
         .help(suggested ? reason : "")
         .contextMenu {
             if suggested {
-                Button("Keep Clip") { editor.keep(clip.id) }
-                Button("Dismiss") { editor.dismiss(clip.id) }
+                Button("Keep Clip") { editor.keep(clip.id) }.disabled(!editor.capabilities.edit)
+                Button("Dismiss") { editor.dismiss(clip.id) }.disabled(!editor.capabilities.edit)
             } else {
-                Button("Export Clip…") { editor.presentExport(clipIDs: [clip.id]) }.disabled(!editor.mediaExportable)
-                Button("Rename…") { shell.beginRename(clip.id) }
+                Button("Export Clip…") { editor.presentExport(clipIDs: [clip.id]) }.disabled(!editor.canExport || !editor.mediaExportable)
+                Button("Rename…") { shell.beginRename(clip.id) }.disabled(!editor.capabilities.edit)
                 Button("Copy Text") { copyText(clipText) }
                 Divider()
-                Button("Remove Clip") { editor.removeClip(clip.id) }
+                Button("Remove Clip") { editor.removeClip(clip.id) }.disabled(!editor.capabilities.edit)
             }
         }
         .accessibilityElement(children: .combine)
@@ -265,11 +268,11 @@ import VoxClipCore
         .accessibilityHint(suggested ? reason : exportStatus.label)
         .accessibilityActions {
             if suggested {
-                Button("Keep") { editor.keep(clip.id) }
-                Button("Dismiss") { editor.dismiss(clip.id) }
+                Button("Keep") { editor.keep(clip.id) }.disabled(!editor.capabilities.edit)
+                Button("Dismiss") { editor.dismiss(clip.id) }.disabled(!editor.capabilities.edit)
             } else {
-                Button("Rename") { shell.beginRename(clip.id) }
-                Button("Remove") { editor.removeClip(clip.id) }
+                Button("Rename") { shell.beginRename(clip.id) }.disabled(!editor.capabilities.edit)
+                Button("Remove") { editor.removeClip(clip.id) }.disabled(!editor.capabilities.edit)
             }
         }
     }

@@ -157,6 +157,7 @@ struct SubtitleDetail: Equatable {
             EditorSplitView(model: model, shell: shell, viewerVisible: shell.viewerVisible)
             Divider()
             TimelineStrip(model: model, compactTransport: !shell.viewerVisible).frame(height: VCTokens.sizeTimelineHeight)
+                .modifier(EditorPaneFocus(model: model, pane: .timeline))
         }
         .background(TranscriptFocusOnShow(model: model))
     }
@@ -202,20 +203,21 @@ struct SubtitleDetail: Equatable {
         ToolbarItemGroup {
             EditCommandButton(title: "Cut Fillers", symbol: "scissors", shortcut: "⌥⌘U", count: model.summary.fillerCount, compact: compact) {
                 model.apply(.cutFillers, name: "Cut fillers")
-            }.disabled(!model.summary.canCutFillers)
+            }.disabled(!model.capabilities.edit || !model.summary.canCutFillers)
+                .modifier(EditorPaneFocus(model: model, pane: .toolbar))
             EditCommandButton(title: "Tighten Pauses", symbol: "arrow.right.and.line.vertical.and.arrow.left", shortcut: "⌥⌘P", compact: compact) {
                 model.apply(.tightenPauses, name: "Tighten pauses")
-            }.disabled(!model.summary.canTighten)
+            }.disabled(!model.capabilities.edit || !model.summary.canTighten)
             EditCommandButton(title: "Restore Cuts", symbol: "arrow.uturn.backward", shortcut: "⌥⌘R", compact: compact) {
                 model.apply(.restoreCuts, name: "Restore cuts")
-            }.disabled(!model.summary.hasEdits)
+            }.disabled(!model.capabilities.edit || !model.summary.hasEdits)
         }
         ToolbarSpacer(.fixed)
         ToolbarItem {
             Button("Find Clips", systemImage: "sparkles") { model.requestFindClips(from: .toolbar) }
                 .labelStyle(.titleAndIcon)
                 .help("Find Clips (⇧⌘K)")
-                .disabled(model.words.isEmpty || model.finding)
+                .disabled(model.words.isEmpty || !model.capabilities.ai)
                 .popover(isPresented: Binding(get: { model.showFindClips && model.findClipsAnchor == .toolbar }, set: { if !$0 { model.showFindClips = false } }), arrowEdge: .bottom) {
                     FindClipsPopover(model: model)
                 }
@@ -465,8 +467,12 @@ struct SubtitleDetail: Equatable {
         GeometryReader { geometry in
           VStack(spacing: 0) {
             ViewerSection(model: model, columnHeight: geometry.size.height)
+                .modifier(EditorPaneFocus(model: model, pane: .viewer))
             Divider()
-            CaptionsSection(model: model).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            Group {
+                if let rewrite = model.rewrite { RewritePanel(session: rewrite) }
+                else { CaptionsSection(model: model).modifier(EditorPaneFocus(model: model, pane: .panel)) }
+            }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .controlSize(.small)
           }
         }

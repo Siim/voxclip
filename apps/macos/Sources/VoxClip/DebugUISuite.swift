@@ -897,6 +897,8 @@ import ApplicationServices
             results += try DebugProbes.colorReadbackChecks(directory: destination)
             results += try await DebugPersistence.run(app: app, fixture: project, directory: destination)
             results += try await DebugExport.run(app: app, fixture: project, directory: destination)
+            results += DebugCapabilities.run(app: app, fixture: project)
+            results += try await DebugRewrite.run(app: app, fixture: project, directory: destination)
             results += try await DebugMenus.run(app: app, fixture: project, directory: destination)
             try JSONEncoder().encode(results).write(to: destination.appendingPathComponent("results-progress.json"), options: .atomic)
             results += try await DebugRegressions.editor(app: app, project: project)

@@ -33,6 +33,7 @@ import VoxClipCore
     }
     func updateNSView(_ scroll: NSScrollView, context: Context) {
         guard let text = scroll.documentView as? TranscriptNSTextView else { return }
+        text.configureAccessibilityActions()
         let coordinator = context.coordinator
         let signature = "\(model.transcriptLayoutRevision):\(model.showCuts):\(model.showPauses):\(model.textSize):\(model.project.edits.pauseThresholdSeconds)"
         coordinator.updating = true
@@ -41,7 +42,7 @@ import VoxClipCore
             coordinator.hiddenCuts = model.cutWordIDs
             coordinator.renderer.rebuild(model: model)
         }
-        coordinator.renderer.update(TranscriptAppearance(cutWords: model.cutWordIDs, cutPauses: model.cutPauseIDs, fillers: model.fillerIDs, playing: model.playingWordID, query: model.query, scope: model.scopeBounds, lowConfidence: model.app.bool("general.showLowConfidence"), activeClipID: model.activeClip?.id, rewrite: model.rewrite))
+        coordinator.renderer.update(TranscriptAppearance(cutWords: model.cutWordIDs, cutPauses: model.cutPauseIDs, fillers: model.fillerIDs, playing: model.playingWordID, query: model.query, scope: model.scopeBounds, lowConfidence: model.app.bool("general.showLowConfidence"), activeClipID: model.activeClip?.id, rewrite: model.rewriteRange))
         let selected = (model.selectedWordIDs.union(model.selectedPauseIDs)).compactMap { text.map.span(id: $0) }.sorted { $0.range.location < $1.range.location }
         if let first = selected.first, let last = selected.last {
             let range = NSRange(location: first.range.location, length: NSMaxRange(last.range) - first.range.location)
@@ -300,8 +301,11 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
         super.viewWillMove(toSuperview: newSuperview)
     }
     func configureAccessibilityActions() {
-        var actions = [NSAccessibilityCustomAction(name: "Make Clip", target: self, selector: #selector(accessibleMakeClip)), NSAccessibilityCustomAction(name: "Cut selected words", target: self, selector: #selector(accessibleCut)), NSAccessibilityCustomAction(name: "Restore selection", target: self, selector: #selector(accessibleRestore)), NSAccessibilityCustomAction(name: "Correct spelling", target: self, selector: #selector(accessibleCorrect)), NSAccessibilityCustomAction(name: "Play from here", target: self, selector: #selector(accessiblePlay))]
-        if model?.app.bool("voiceLab.enabled") == true { actions.append(NSAccessibilityCustomAction(name: "Rewrite", target: self, selector: #selector(accessibleRewrite))) }
+        var actions = [NSAccessibilityCustomAction(name: "Play from here", target: self, selector: #selector(accessiblePlay))]
+        if model?.capabilities.edit == true {
+            actions += [NSAccessibilityCustomAction(name: "Make Clip", target: self, selector: #selector(accessibleMakeClip)), NSAccessibilityCustomAction(name: "Cut selected words", target: self, selector: #selector(accessibleCut)), NSAccessibilityCustomAction(name: "Restore selection", target: self, selector: #selector(accessibleRestore)), NSAccessibilityCustomAction(name: "Correct spelling", target: self, selector: #selector(accessibleCorrect))]
+        }
+        if RewriteEntryPolicy.buildEnabled && model?.capabilities.ai == true && model?.app.bool("voiceLab.enabled") == true { actions.append(NSAccessibilityCustomAction(name: "Rewrite", target: self, selector: #selector(accessibleRewrite))) }
         setAccessibilityCustomActions(actions)
     }
     func observeSelectionScrolling(_ scroll: NSScrollView) {
@@ -374,11 +378,11 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
             NSAnimationContext.runAnimationGroup { context in context.duration = 0.12; host.animator().alphaValue = 1 }
         } else { host.alphaValue = 1 }
     }
-    @objc func accessibleMakeClip() -> Bool { guard model?.selectedIDs.isEmpty == false else { return false }; model?.makeClip(); return true }
-    @objc func accessibleRewrite() -> Bool { guard model?.app.bool("voiceLab.enabled") == true, model?.selectedIDs.isEmpty == false else { return false }; model?.beginRewrite(); return true }
-    @objc func accessibleCut() -> Bool { guard let model, !model.selectedIDs.isEmpty || !model.selectedPauseIDs.isEmpty else { return false }; model.cutSelection(); return true }
-    @objc func accessibleRestore() -> Bool { guard let model else { return false }; model.cutSelection(restore: true); return true }
-    @objc func accessibleCorrect() -> Bool { guard let model, !model.selectedIDs.isEmpty else { return false }; model.beginCorrection(); updateCorrection(); return true }
+    @objc func accessibleMakeClip() -> Bool { guard model?.capabilities.edit == true, model?.selectedIDs.isEmpty == false else { return false }; model?.makeClip(); return true }
+    @objc func accessibleRewrite() -> Bool { guard RewriteEntryPolicy.buildEnabled && model?.capabilities.ai == true && model?.app.bool("voiceLab.enabled") == true, model?.selectedIDs.isEmpty == false else { return false }; model?.beginRewrite(entry: .context); return true }
+    @objc func accessibleCut() -> Bool { guard let model, model.capabilities.edit, !model.selectedIDs.isEmpty || !model.selectedPauseIDs.isEmpty else { return false }; model.cutSelection(); return true }
+    @objc func accessibleRestore() -> Bool { guard let model, model.capabilities.edit else { return false }; model.cutSelection(restore: true); return true }
+    @objc func accessibleCorrect() -> Bool { guard let model, model.capabilities.edit, !model.selectedIDs.isEmpty else { return false }; model.beginCorrection(); updateCorrection(); return true }
     @objc func accessiblePlay() -> Bool { guard let model else { return false }; model.transport(" ", shift: true); return true }
     func rotor(_ rotor: NSAccessibilityCustomRotor, resultFor parameters: NSAccessibilityCustomRotor.SearchParameters) -> NSAccessibilityCustomRotor.ItemResult? {
         guard let model else { return nil }
@@ -429,6 +433,8 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
         return value
     }
     override func keyDown(with event: NSEvent) {
+        model?.focusedPane = .transcript
+        if event.keyCode == 53, model?.rewrite != nil { model?.closeRewrite(); return }
         guard let model, !hasMarkedText(), correction == nil else { super.keyDown(with: event); return }
         if event.keyCode == 53, selectionBarVisible { hideSelectionBar(dismissed: true); return }
         if event.keyCode == 53 { model.activate(nil); return }
@@ -441,7 +447,7 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
                 if shift { model.requestFindClips(from: .toolbar) } else { model.makeClip() }
                 return
             }
-            if shift, event.charactersIgnoringModifiers?.lowercased() == "r" { model.beginRewrite(); return }
+            if shift, event.charactersIgnoringModifiers?.lowercased() == "r" { model.beginRewrite(entry: .shortcut); return }
             if event.keyCode == 126, let first = model.words.first { model.select(first.id); return }
             if event.keyCode == 125, let last = model.words.last { model.select(last.id); return }
             super.keyDown(with: event); return
@@ -473,8 +479,18 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
     override func menu(for event: NSEvent) -> NSMenu? {
         let menu = NSMenu()
         for (title, action) in [("Cut", #selector(cutWords)), ("Restore", #selector(restoreWords)), ("Correct spelling…", #selector(correctWord)), ("Play from here", #selector(playHere)), ("Preview this cut", #selector(previewCut)), ("Make clip from selection", #selector(makeClip)), ("Copy text", #selector(copy(_:)))] { let item = NSMenuItem(title: title, action: action, keyEquivalent: ""); item.target = self; menu.addItem(item) }
-        if model?.app.bool("voiceLab.enabled") == true { let item = NSMenuItem(title: "Rewrite…", action: #selector(rewriteWords), keyEquivalent: ""); item.target = self; menu.addItem(item) }
+        if RewriteEntryPolicy.buildEnabled && model?.app.bool("voiceLab.enabled") == true { let item = NSMenuItem(title: "Rewrite…", action: #selector(rewriteWords), keyEquivalent: "r"); item.keyEquivalentModifierMask = [.command, .shift]; item.target = self; menu.addItem(item) }
         return menu
+    }
+    override func validateUserInterfaceItem(_ item: any NSValidatedUserInterfaceItem) -> Bool {
+        if item.action == #selector(rewriteWords) { return model?.capabilities.ai == true && model?.selectedIDs.isEmpty == false }
+        if [#selector(cutWords), #selector(restoreWords)].contains(item.action) {
+            return model?.capabilities.edit == true && (model?.selectedIDs.isEmpty == false || model?.selectedPauseIDs.isEmpty == false)
+        }
+        if [#selector(correctWord), #selector(makeClip)].contains(item.action) {
+            return model?.capabilities.edit == true && model?.selectedIDs.isEmpty == false
+        }
+        return super.validateUserInterfaceItem(item)
     }
     @objc private func cutWords() { model?.cutSelection() }
     @objc private func restoreWords() { model?.cutSelection(restore: true) }
@@ -482,7 +498,7 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
     @objc private func playHere() { model?.transport(" ", shift: true) }
     @objc private func previewCut() { model?.transport("p") }
     @objc private func makeClip() { model?.makeClip() }
-    @objc private func rewriteWords() { model?.beginRewrite() }
+    @objc private func rewriteWords() { model?.beginRewrite(entry: .context) }
     func updateCorrection() {
         guard let model, let id = model.correctionID, let span = map.span(id: id) else { correction?.removeFromSuperview(); correction = nil; return }
         guard correction == nil, let window else { return }

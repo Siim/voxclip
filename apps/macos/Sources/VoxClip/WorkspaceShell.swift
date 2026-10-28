@@ -632,6 +632,20 @@ enum SidebarItem: Hashable {
 /// AppKit never closes the shared window together with a project.
 @MainActor final class MainWindow: NSWindow {
     var closeProject: (() async -> Bool)?
+    override func sendEvent(_ event: NSEvent) {
+        if event.type == .keyDown, event.keyCode == 97, attachedSheet == nil,
+           event.modifierFlags.intersection([.command, .option, .control]).isEmpty,
+           let editor = AppModel.sharedModel.shell.editor, !AppModel.sharedModel.shell.showsHome {
+            if let input = firstResponder as? any NSTextInputClient, input.hasMarkedText() { super.sendEvent(event); return }
+            if !event.modifierFlags.contains(.shift), let text = firstResponder as? TranscriptNSTextView, text.selectionBarVisible {
+                text.showSelectionBar(focus: true)
+                return
+            }
+            editor.movePaneFocus(backward: event.modifierFlags.contains(.shift))
+            return
+        }
+        super.sendEvent(event)
+    }
     override func performClose(_ sender: Any?) {
         guard let closeProject, (windowController?.document as? VoxClipDocument) != nil else { super.performClose(sender); return }
         Task { @MainActor in if await closeProject() { closeNow() } }

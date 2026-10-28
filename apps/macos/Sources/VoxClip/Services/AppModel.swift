@@ -198,7 +198,7 @@ extension ProviderChoice {
     }
     static var isTestSession: Bool {
         #if DEBUG
-        CommandLine.arguments.contains("-timelineAudit") || CommandLine.arguments.contains("-demoCapture") || CommandLine.arguments.contains("-uiSelfTest") || CommandLine.arguments.contains("-uiPerformanceTest") || CommandLine.arguments.contains("-sceneAudit") || CommandLine.arguments.contains("-saveBoundaryAudit") || CommandLine.arguments.contains("-settingsAudit") || CommandLine.arguments.contains("-voiceRecipeAudit")
+        CommandLine.arguments.contains("-round4SelfTest") || CommandLine.arguments.contains("-timelineAudit") || CommandLine.arguments.contains("-demoCapture") || CommandLine.arguments.contains("-uiSelfTest") || CommandLine.arguments.contains("-uiPerformanceTest") || CommandLine.arguments.contains("-sceneAudit") || CommandLine.arguments.contains("-saveBoundaryAudit") || CommandLine.arguments.contains("-settingsAudit") || CommandLine.arguments.contains("-voiceRecipeAudit")
         #else
         false
         #endif
@@ -233,6 +233,9 @@ extension ProviderChoice {
         if key == "editing.pauseBreath", settingsLoaded, settings.values[key] != value { pauseBreathRevision += 1 }
         if key == "llm.connector" || key.hasPrefix("llm.baseUrl.") || key.hasPrefix("llm.cliPath.") { refreshConnectorReadiness() }
         settings.values[key] = value
+        if key == "voiceLab.enabled" || key == "llm.connector" || key.hasPrefix("llm.model.") || key.hasPrefix("llm.baseUrl.") || key.hasPrefix("llm.cliPath.") {
+            shell.editor?.closeRewrite(returnFocus: false)
+        }
         guard settingsLoaded else { if loadingSettings { pendingSettings[key] = value }; return true }
         scheduleSettingsSave()
         return true

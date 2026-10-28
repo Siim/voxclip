@@ -31,7 +31,7 @@ import VoxClipCore
         for title in ["Keep Suggestion", "Dismiss Suggestion", "Keep All Suggestions", "Rename Clip…", "Remove Clip", "Export Clip…"] {
             check("native Clip menu includes \(title)", item("Clip", title) != nil)
         }
-        check("menus retain document Duplicate and Insert Words", item("File", "Duplicate") != nil && item("Edit", "Insert Words…") != nil)
+        check("menus retain document Duplicate and hide unsupported insertion", item("File", "Duplicate") != nil && item("Edit", "Insert Words…") == nil)
         check("menus expose three-second playback actions", item("Playback", "Back 3 Seconds")?.keyEquivalent == "j" && item("Playback", "Forward 3 Seconds") != nil)
         check("Help uses Welcome Tour and removes obsolete workspaces", item("Help", "Welcome Tour") != nil && item("Help", "Workspace Tour") == nil && item("View", "Transcript") == nil && item("View", "Clips") == nil && item("View", "Show Caption Inspector") == nil)
         let previousDocument = app.shell.document
@@ -84,9 +84,10 @@ import VoxClipCore
         editor.showVoiceLabOptIn = false
         app.set("voiceLab.enabled", .bool(true))
         invoke("Edit", "Rewrite…")
-        check("Shift-Command-R records the selection without starting a panel or provider", editor.rewrite == 0...0)
-        invoke("Edit", "Insert Words…")
-        check("Insert Words records its caret anchor without synthesising audio", editor.rewriteInsertionAfterID == first.id && editor.rewrite == nil)
+        await editor.rewriteOpenTask?.value
+        check("Shift-Command-R opens the selected passage", editor.rewriteRange == 0...0 && editor.rewrite != nil)
+        check("Insert Words stays hidden until Core can place insertions", item("Edit", "Insert Words…") == nil)
+        editor.closeRewrite(returnFocus: false)
         app.shell.selection = .clip(suggestion.id)
         check("suggestion menu validation enables Keep and disables Rename", item("Clip", "Keep Suggestion").map(delegate.validateMenuItem) == true && item("Clip", "Rename Clip…").map(delegate.validateMenuItem) == false)
         app.shell.selection = .clip(kept.id)

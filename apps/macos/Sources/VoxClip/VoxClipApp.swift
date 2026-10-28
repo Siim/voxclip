@@ -33,6 +33,13 @@ import VoxClipCore
         bufferedURLs.removeAll()
     }
     func applicationDidFinishLaunching(_ notification: Notification) {
+        #if DEBUG
+        if let index = CommandLine.arguments.firstIndex(of: "-round4SelfTest"), index + 1 < CommandLine.arguments.count {
+            let directory = URL(fileURLWithPath: CommandLine.arguments[index + 1])
+            Task { await model.start(); await DebugRound4.run(app: model, directory: directory) }
+            return
+        }
+        #endif
         model.launch()
         // One app-owned main window, opening on Home (ADR-R29). Projects and movies
         // opened at launch attach to it through the file router.
@@ -185,7 +192,9 @@ import VoxClipCore
         }
         guard let editor, validateMenuItem(item) else { return }
         switch item.tag {
-        case 1: editor.cutSelection()
+        case 1:
+            if NSApp.currentEvent?.type == .keyDown { editor.toggleSelectionCut() }
+            else { editor.cutSelection() }
         case 2: editor.cutSelection(restore: true)
         case 3: editor.beginCorrection()
         case 4: editor.findVisible = true
@@ -216,7 +225,7 @@ import VoxClipCore
         case 33: editor.moveClip(1)
         case 34: editor.requestFindClips(from: .toolbar)
         case 37: confirmRetranscription()
-        case 38: editor.beginRewrite()
+        case 38: editor.beginRewrite(entry: .menu)
         case 39: editor.beginRewrite(inserting: true)
         case 40: if let id = selectedClipID { editor.keep(id) }
         case 41: if let id = selectedClipID { editor.dismiss(id) }
@@ -282,7 +291,8 @@ import VoxClipCore
             default: break
             }
             guard let editor else { return false }
-            if [1, 2, 3, 21, 22, 23, 24, 25, 26, 30, 31, 32, 33, 46].contains(item.tag) {
+            if editor.mutationEnabled(item.tag) == false { return false }
+            if [1, 2, 3, 21, 22, 23, 24, 25, 26, 29, 30, 31, 32, 33, 38, 46].contains(item.tag) {
                 guard editor.correctionID == nil else { return false }
                 let responder = NSApp.keyWindow?.firstResponder
                 if let input = responder as? any NSTextInputClient, input.hasMarkedText() { return false }
@@ -292,7 +302,8 @@ import VoxClipCore
             }
             switch item.tag {
             case 1, 3, 29: return editor.capabilities.edit && !editor.selectedIDs.isEmpty
-            case 38, 39: return editor.capabilities.ai && !editor.selectedIDs.isEmpty
+            case 38: return RewriteEntryPolicy.resolve(.menu, enabled: model.bool("voiceLab.enabled"), editable: editor.capabilities.ai, selection: !editor.selectedIDs.isEmpty) != .unavailable
+            case 39: return false
             case 48: return !editor.selectedIDs.isEmpty
             case 2: return editor.capabilities.edit && (!editor.selectedWordIDs.isDisjoint(with: editor.cutWordIDs) || !editor.selectedPauseIDs.isDisjoint(with: editor.cutPauseIDs))
             case 40, 41: return editor.capabilities.edit && selectedClipID.map(editor.isSuggestion) == true
@@ -381,8 +392,7 @@ import VoxClipCore
         command(edit, "Cut Selection", 1, String(UnicodeScalar(NSDeleteCharacter)!), [])
         command(edit, "Restore Selection", 2, String(UnicodeScalar(NSDeleteCharacter)!), [.shift])
         command(edit, "Correct Word", 3, "c", [])
-        command(edit, "Rewrite…", 38, "r", [.command, .shift])
-        command(edit, "Insert Words…", 39)
+        if RewriteEntryPolicy.buildEnabled { command(edit, "Rewrite…", 38, "r", [.command, .shift]) }
         command(edit, "Copy Text", 48)
         command(edit, "Find…", 4, "f")
         command(edit, "Find Next", 5, "g")

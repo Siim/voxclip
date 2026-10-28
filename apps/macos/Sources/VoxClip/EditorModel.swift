@@ -11,8 +11,8 @@ import VoxClipMedia
     var findClipsAnchor = FindClipsAnchor.toolbar
     /// The sidebar's "Choose how VoxClip finds clips…" callout (no connector chosen).
     var showAISetup = false
-    var selectedWordIDs: Set<String> = []
-    var selectedPauseIDs: Set<String> = []
+    var selectedWordIDs: Set<String> = [] { didSet { if selectedWordIDs != oldValue { rewriteOpenTask?.cancel() } } }
+    var selectedPauseIDs: Set<String> = [] { didSet { if selectedPauseIDs != oldValue { rewriteOpenTask?.cancel() } } }
     var previewStop: Double?
     var playhead: Double = 0
     var sourceTime: Double = 0
@@ -41,25 +41,76 @@ import VoxClipMedia
     var showTranscribe = false
     var correctionID: String?
     var correctionText = ""
-    var rewrite: ClosedRange<Int>?
+    var rewriteRange: ClosedRange<Int>?
+    var rewrite: RewriteSession?
+    var focusedPane = EditorPane.transcript
+    var paneFocusRequest = 0
     var lastStyleId: String?
     @ObservationIgnored private var galleryKey = ""
     @ObservationIgnored private var galleryPages: [String: CaptionGalleryPages] = [:]
     var showVoiceLabOptIn = false
     var rewriteInsertionAfterID: String?
-    private var pendingInsertion = false
-    func beginRewrite(inserting: Bool = false) {
-        guard capabilities.ai, let first = selectedIDs.first, let last = selectedIDs.last,
+    @ObservationIgnored var rewriteOpenTask: Task<Void, Never>?
+    private var pendingRewriteSelection: Set<String> = []
+    func beginRewrite(inserting: Bool = false, entry: RewriteEntry = .selection) {
+        let action = RewriteEntryPolicy.resolve(inserting ? .insertWords : entry, enabled: app.bool("voiceLab.enabled"),
+            editable: capabilities.ai, selection: !selectedIDs.isEmpty)
+        if action == .turnOnVoiceLab { pendingRewriteSelection = selectedWordIDs; showVoiceLabOptIn = true; return }
+        guard action == .openPassage, let first = selectedIDs.first, let last = selectedIDs.last,
               let lower = index(first), let upper = index(last) else { return }
-        pendingInsertion = inserting
-        guard app.bool("voiceLab.enabled") else { showVoiceLabOptIn = true; return }
-        rewriteInsertionAfterID = inserting ? last : nil
-        rewrite = inserting ? nil : lower...upper
+        closeRewrite(returnFocus: false)
+        let snapshot = project
+        let selection = selectedWordIDs
+        let pauses = selectedPauseIDs
+        let caret = sourceTime
+        let signature = rewriteConnectorSignature
+        rewriteOpenTask = Task { [weak self] in
+            guard let self else { return }
+            if waveform == nil { await loadWaveform() }
+            guard !Task.isCancelled, capabilities.ai, app.bool("voiceLab.enabled"), project == snapshot,
+                  selectedWordIDs == selection, selectedPauseIDs == pauses, sourceTime == caret,
+                  rewriteConnectorSignature == signature else { return }
+            let provider = app.providers.first { $0.id == app.string("llm.connector") }
+            let connector: RewriteConnector? = provider.map { (provider: ProviderChoice) -> RewriteConnector in
+                RewriteConnector(connector: app.connector(provider.id), model: app.string("llm.model.\(provider.id)", fallback: provider.defaultModel ?? ""),
+                    name: provider.label, group: provider.group, plan: provider.id == "codex" ? "ChatGPT plan" : "Claude plan")
+            }
+            let envelope = waveform.map { AudioEnvelope(sampleRate: Double(project.media.source.audio?.sampleRate ?? 48_000), levels: $0.fine) }
+            rewriteRange = lower...upper
+            rewrite = RewriteSession(editor: self, range: lower...upper, envelope: envelope, connector: connector,
+                consent: { [weak self] in
+                    guard let self, let provider else { return false }
+                    return await self.rewriteConsent(provider: provider, signature: signature, snapshot: snapshot)
+                }, connectorIsCurrent: { [weak self] in self?.rewriteConnectorSignature == signature })
+            if app.shell.editor === self, !app.shell.viewerVisible { app.shell.toggleViewer() }
+            transcriptRevision += 1
+        }
+    }
+    var rewriteConnectorSignature: [String] {
+        let id = app.string("llm.connector")
+        return [id, app.string("llm.model.\(id)"), app.string("llm.baseUrl.\(id)"), app.string("llm.cliPath.\(id)")]
+    }
+    func closeRewrite(returnFocus: Bool = true) {
+        rewriteOpenTask?.cancel(); rewrite?.close(); rewrite = nil; rewriteRange = nil
+        transcriptRevision += 1
+        if returnFocus { _ = focusTranscript(in: window) }
+    }
+    private func rewriteConsent(provider: ProviderChoice, signature: [String], snapshot: Project) async -> Bool {
+        guard capabilities.edit, project == snapshot, rewriteConnectorSignature == signature else { return false }
+        if provider.privacy != "thirdPartyCloud" || app.bool("llm.cloudConsent.\(provider.id)") { return true }
+        guard let window else { return false }
+        let copy = provider.cliConsentCopy ?? "Rewrite sends these \(rewrite?.source.filter { $0.kind == .word }.count ?? 0) words (no audio or video) to \(provider.label) using your API key."
+        let approved = await RewriteApprovalSheet(title: "Rewrite", copy: copy, parent: window).confirm()
+        guard approved, !Task.isCancelled, capabilities.edit, project == snapshot,
+              rewriteConnectorSignature == signature, rewrite?.isOpen == true else { return false }
+        app.set("llm.cloudConsent.\(provider.id)", .bool(true))
+        return true
     }
     func enableVoiceLab() {
         app.set("voiceLab.enabled", .bool(true))
         showVoiceLabOptIn = false
-        beginRewrite(inserting: pendingInsertion)
+        guard selectedWordIDs == pendingRewriteSelection else { return }
+        beginRewrite(entry: .menu)
     }
     var preset = ClipPresetID.best
     var instruction = ""
@@ -86,7 +137,7 @@ import VoxClipMedia
     var exportIndex = 0
     var exportStartedAt: Date?
     var sourceURL: URL { URL(fileURLWithPath: project.media.source.absolutePath) }
-    var mediaResolved = false { didSet { document.setMediaResolved(mediaResolved) } }
+    var mediaResolved = false { didSet { document.setMediaResolved(mediaResolved); if !mediaResolved { closeRewrite(returnFocus: false) } } }
     /// The project has a transcript. Unlike `project`, views observe it, so a transcript
     /// that arrives or is undone redraws the transcript column.
     private(set) var transcribed = false
@@ -94,7 +145,7 @@ import VoxClipMedia
     /// show from `project`, which they can't observe, read it (the toolbar's Export).
     private(set) var projectRevision = 0
     /// The video is there but can't be read (design §5.4.4 f, corrupt file).
-    var mediaUnreadable = false
+    var mediaUnreadable = false { didSet { if mediaUnreadable { closeRewrite(returnFocus: false) } } }
     var canMoveCaptions: Bool {
         !document.demo && capabilities.captionPosition && !mediaUnreadable && (previewError == nil || !mediaResolved)
     }
@@ -147,7 +198,7 @@ import VoxClipMedia
             if let pause = pauseIndex[id] { starts.append(pause.start); ends.append(pause.end) }
         }
         if let start = starts.min(), let end = ends.max() { display.selection = timelineBand(start: start, end: end) }
-        if let rewrite, words.indices.contains(rewrite.lowerBound), words.indices.contains(rewrite.upperBound) {
+        if let rewrite = rewriteRange, words.indices.contains(rewrite.lowerBound), words.indices.contains(rewrite.upperBound) {
             display.rewrite = timelineBand(start: words[rewrite.lowerBound].start, end: words[rewrite.upperBound].end)
         }
         return display
@@ -189,7 +240,7 @@ import VoxClipMedia
     @ObservationIgnored private var initialised = false
     /// Set by the shell's leave boundary: edits freeze, and late results cannot
     /// change a project that is leaving.
-    @ObservationIgnored var isLeaving = false
+    var isLeaving = false { didSet { if isLeaving { closeRewrite(returnFocus: false) } } }
     /// Called when a refresh finds a different active clip, for example after Undo.
     @ObservationIgnored var onActiveClipChange: ((String?) -> Void)?
     /// A new editor puts keyboard focus in its transcript once it shows.
@@ -197,6 +248,7 @@ import VoxClipMedia
     /// Shows the sidebar for the Find Clips setup callout and a run's progress (design §6.2).
     @ObservationIgnored var onNeedsSidebar: (() -> Void)?
     #if DEBUG
+    @ObservationIgnored var editTimestampForTests: Date?
     /// The last VoiceOver announcement, for harness checks.
     @ObservationIgnored var lastAnnouncement: String?
     /// Every VoiceOver announcement, for "announced once" checks.
@@ -336,11 +388,13 @@ import VoxClipMedia
         if mediaResolved { await updatePreview(load: true) }
     }
     func close() {
+        closeRewrite(returnFocus: false)
         previewRevision &+= 1
         workTask?.cancel(); exportTask?.cancel(); findTask?.cancel(); eventTask?.cancel(); updateTask?.cancel(); preview.close()
         app.openProjectKeys[project.id] = nil
     }
     func reloadFromDocument(previousProjectID: String) {
+        closeRewrite(returnFocus: false)
         app.openProjectKeys[previousProjectID] = nil
         workTask?.cancel(); exportTask?.cancel(); findTask?.cancel(); updateTask?.cancel()
         preview.pause(); isPlaying = false; previewStop = nil
@@ -473,6 +527,7 @@ import VoxClipMedia
         var newProject = newProject
         newProject.title = project.title
         guard newProject != project else { return }
+        closeRewrite(returnFocus: false)
         preview.pause(); isPlaying = false
         let previous = project
         let mediaChanged = previous.media.source != newProject.media.source
@@ -482,7 +537,11 @@ import VoxClipMedia
         undoSteps += 1
         #endif
         var changed = newProject
+        #if DEBUG
+        changed.modifiedAt = editTimestampForTests ?? Date()
+        #else
         changed.modifiedAt = Date()
+        #endif
         document.replaceProject(changed)
         recordDocumentChange()
         error = nil

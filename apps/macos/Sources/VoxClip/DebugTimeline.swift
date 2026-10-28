@@ -43,9 +43,9 @@ import VoxClipCore
         check("Edited slider uses the exact spoken design value", timelineValueText(time: 42, total: 135, cuts: 12, edited: true) == "42 seconds of 2 minutes 15 after cuts, 12 cuts")
         check("Source slider uses source duration and never says after cuts", timelineValueText(time: 42, total: 190, cuts: 12, edited: false) == "42 seconds of 3 minutes 10 source, 12 cuts")
         let revision = model.transcriptRevision
-        model.selectedWordIDs = Set(model.words[3...6].map(\.id)); model.rewrite = 4...7
+        model.selectedWordIDs = Set(model.words[3...6].map(\.id)); model.rewriteRange = 4...7
         check("timeline selection and Rewrite update without rebuilding the transcript", model.displayTimeline.selection?.source == model.words[3].start...model.words[6].end && model.displayTimeline.rewrite?.source == model.words[4].start...model.words[7].end && model.transcriptRevision == revision)
-        model.selectedWordIDs = []; model.rewrite = nil
+        model.selectedWordIDs = []; model.rewriteRange = nil
         guard model.keptClips.count >= 2 else { throw CocoaError(.coderInvalidValue) }
         let clip = model.keptClips[1]
         model.activate(clip)
@@ -99,11 +99,11 @@ import VoxClipCore
                 let rewriteStart = min(bounds.upperBound, bounds.lowerBound + 4)
                 let rewriteEnd = min(bounds.upperBound, bounds.lowerBound + 9)
                 model.selectedWordIDs = Set(model.words[bounds.lowerBound...selectionEnd].map(\.id))
-                model.rewrite = rewriteStart...rewriteEnd
+                model.rewriteRange = rewriteStart...rewriteEnd
                 let highlighted = makeWindow(TimelineTrack(projection: model.displayTimeline, edited: model.editedTimeline), width: 600, appearance: appearance)
                 _ = try capture(highlighted.contentView!, name: "timeline-selection-rewrite-\(name)", directory: directory)
                 highlighted.close()
-                model.selectedWordIDs = []; model.rewrite = nil
+                model.selectedWordIDs = []; model.rewriteRange = nil
             }
             var hatch = TimelineProjection()
             hatch.blocks = [TimelineBlock(source: 0.05...0.45, edited: 0...0, cut: true, pause: false, filler: false, inScope: true),
