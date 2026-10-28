@@ -35,7 +35,9 @@ extension UTType {
     private let projectUndoManager = UndoManager()
     private let pendingWrite = Mutex<WriteSnapshot?>(nil)
     private let nameChange = Mutex<NameChange?>(nil)
+    @MainActor private(set) var pendingTitleWrite: Task<Void, Never>?
     #if DEBUG
+    @MainActor var injectTitleWriteFailure = false
     final class WriteBarrier: @unchecked Sendable {
         let arrived = DispatchSemaphore(value: 0)
         let release = DispatchSemaphore(value: 0)
@@ -173,7 +175,7 @@ extension UTType {
             return
         }
         if shell.closesRecoveredCopy(self) { return }
-        Task { @MainActor in if !(await shell.replaceProject(with: self)) { self.close() } }
+        Task { @MainActor in if !(await shell.replaceProject(with: self)) { shell.retainRecovery(self) } }
     }
     /// A version shown by the Versions browser. It is read-only and never replaces the
     /// open project.
@@ -182,6 +184,16 @@ extension UTType {
         if versionForTesting { return true }
         #endif
         return isInViewingMode
+    }
+    override public func rename(_ sender: Any?) {
+        guard !isVersion, AppModel.sharedModel.shell.editor?.isLeaving != true else { return }
+        super.rename(sender)
+    }
+    override public func validateUserInterfaceItem(_ item: any NSValidatedUserInterfaceItem) -> Bool {
+        if item.action == #selector(NSDocument.rename(_:)) {
+            return !isVersion && (AppModel.sharedModel.shell.document !== self || AppModel.sharedModel.shell.editor?.capabilities.rename == true)
+        }
+        return super.validateUserInterfaceItem(item)
     }
     #if DEBUG
     /// Treats this document as a Versions-browser version (harness checks).
@@ -322,11 +334,22 @@ extension UTType {
                 // The move calls back while it still holds the document's file access, and
                 // a save started inside it would keep writing after the access ends. The
                 // in-place write starts once the move has let go, and takes its own.
-                Task { @MainActor in
-                    self.save(to: url, ofType: self.fileType ?? UTType.voxclipProject.identifier, for: .autosaveInPlaceOperation) { _ in
-                        self.titleDidFollowName()
-                        completionHandler?(nil)
+                self.pendingTitleWrite = Task { @MainActor in
+                    let error: Error?
+                    #if DEBUG
+                    if self.injectTitleWriteFailure {
+                        self.injectTitleWriteFailure = false
+                        error = CocoaError(.fileWriteUnknown)
+                    } else {
+                        error = await self.writeFollowedTitle(to: url)
                     }
+                    #else
+                    error = await self.writeFollowedTitle(to: url)
+                    #endif
+                    if error != nil { self.updateChangeCount(.changeDone) }
+                    self.titleDidFollowName()
+                    self.pendingTitleWrite = nil
+                    completionHandler?(error)
                 }
             }
             return
@@ -399,6 +422,14 @@ extension UTType {
             AppModel.sharedModel.moveRecent(from: original, to: url)
             if retitled { self.titleDidFollowName() }
             completionHandler?(nil)
+        }
+    }
+
+    @MainActor private func writeFollowedTitle(to url: URL) async -> Error? {
+        await withCheckedContinuation { continuation in
+            save(to: url, ofType: fileType ?? UTType.voxclipProject.identifier, for: .autosaveInPlaceOperation) { error in
+                continuation.resume(returning: error)
+            }
         }
     }
 

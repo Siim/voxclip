@@ -489,7 +489,7 @@ await fades({ id: 'fades/one-sample-zero-fade', duration: 0.003, sampleRate: 100
 }
 
 // ---------- example projects (shared/fixtures/projects) ----------
-for (const name of ['interview-take', 'clip-from-long-take']) {
+for (const name of ['interview-take', 'clip-from-long-take', 'five-questions']) {
   const rel = `shared/fixtures/projects/${name}.voxclip`
   const project = JSON.parse(readFileSync(new URL(rel, ROOT), 'utf8'))
   add({ id: `projects/${name}`, kind: 'project-plan', origin: 'voxclip', source: rel,

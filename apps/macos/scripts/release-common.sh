@@ -92,10 +92,11 @@ copy_shared_resources() {
 
 compile_asset_catalog() {
     local accent partial="$WORK_DIR/asset-catalog-info.plist" log="$WORK_DIR/actool.log"
+    local transport="${TRANSPORT_ASSET_CATALOG:-Resources/Transport.xcassets}"
     accent=$(/usr/libexec/PlistBuddy -c 'Print :NSAccentColorName' "$INFO_PLIST" 2>/dev/null) \
         || die "Info.plist has no NSAccentColorName."
     # actool only warns about a missing accent colour, so require it in the partial plist.
-    if ! xcrun actool "$ASSET_CATALOG" --compile "$APP_BUNDLE/Contents/Resources" --platform macosx \
+    if ! xcrun actool "$ASSET_CATALOG" "$transport" --compile "$APP_BUNDLE/Contents/Resources" --platform macosx \
         --minimum-deployment-target "$MIN_MACOS" --accent-color "$accent" --output-partial-info-plist "$partial" \
         --output-format human-readable-text --errors --warnings > "$log" 2>&1; then
         cat "$log" >&2

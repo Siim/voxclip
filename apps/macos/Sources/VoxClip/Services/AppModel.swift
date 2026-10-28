@@ -27,15 +27,41 @@ protocol ProviderKeyStore: Sendable {
     func save(_ value: String, for provider: String) async throws
 }
 extension SecretStore: ProviderKeyStore {}
+enum ConnectorConsentAction { case findClips, rewrite, test }
 extension ProviderChoice {
-    var cliConsentCopy: String? {
-        if id == "claude-code" { return "VoxClip will run your installed Claude Code with your own sign-in. The transcript is sent to Anthropic and counts toward your Claude plan's usage." }
-        if id == "codex" { return "VoxClip will run your installed Codex with your own sign-in. The transcript is sent to OpenAI and counts toward your ChatGPT plan's usage." }
-        return nil
+    func detectedBillingMethod(_ raw: String?) -> String? {
+        guard let raw else { return nil }
+        let method = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased().replacingOccurrences(of: "-", with: "_").replacingOccurrences(of: ".", with: "_")
+        if ["api_key", "apikey"].contains(method) { return "api_key" }
+        let plans = id == "claude-code" ? ["plan", "claude_ai", "claudeai", "oauth", "oauth_token"] : ["plan", "chatgpt"]
+        return plans.contains(method) ? "plan" : nil
+    }
+    func consentCopy(action: ConnectorConsentAction, wordCount: Int, authMethod: String? = nil) -> String {
+        if id == "claude-code" || id == "codex" {
+            let name = id == "claude-code" ? "Claude Code" : "Codex"
+            let vendor = id == "claude-code" ? "Anthropic" : "OpenAI"
+            let plan = id == "claude-code" ? "Claude" : "ChatGPT"
+            let subject = action == .rewrite ? "These words are sent" : action == .test ? "A short test request is sent" : "The transcript is sent"
+            guard let key = detectedBillingMethod(authMethod) else { return "" }
+            let billing: String
+            if key == "api_key" { billing = "and billed to the API key \(name) is signed in with." }
+            else { billing = "and \(action == .rewrite ? "count" : "counts") toward your \(plan) plan's usage." }
+            return "VoxClip will run your installed \(name) with your own sign-in. \(subject) to \(vendor) \(billing)"
+        }
+        if action == .rewrite { return "Rewrite sends these \(wordCount) words (no audio or video) to \(label) using your API key." }
+        if action == .test { return "Test sends a short test request to \(label) using your API key. Nothing from your projects is sent." }
+        return "Find clips sends this project's transcript (\(wordCount) words, no audio or video) to \(label) using your API key."
     }
 }
 
 @MainActor @Observable public final class AppModel {
+    @ObservationIgnored private var llmLeases: [String: ProjectLlmRuns] = [:]
+    func projectLlmRuns(_ id: String) -> ProjectLlmRuns {
+        if let runs = llmLeases[id] { return runs }
+        let runs = ProjectLlmRuns()
+        llmLeases[id] = runs
+        return runs
+    }
     static let sharedModel = AppModel()
     nonisolated static let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.0.0"
     static let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "0"
@@ -103,6 +129,25 @@ extension ProviderChoice {
     private(set) var pauseBreathRevision = 0
     private(set) var connectorReadinessRevision = 0
     var providerStatus: [String: String] = [:]
+    var knownCLIAuthMethods: [String: String] = [:]
+    var detectedConnectorStatus: [String: ConnectorStatus] = [:]
+    func consentCopy(_ provider: ProviderChoice, action: ConnectorConsentAction, wordCount: Int) -> String {
+        provider.consentCopy(action: action, wordCount: wordCount, authMethod: knownCLIAuthMethods[provider.id + ":" + string("llm.cliPath.\(provider.id)")])
+    }
+    func connectorStatus(_ provider: ProviderChoice, using supplied: (any LLMConnector)? = nil) async -> ConnectorStatus? {
+        guard supplied != nil || !Self.isTestSession || connectorOverride != nil else { return nil }
+        let path = string("llm.cliPath.\(provider.id)")
+        let connector = supplied ?? connector(provider.id)
+        var result = await connector.status()
+        if provider.group == "cli" {
+            let method = await connector.knownCLIAuthMethod()
+            guard !Task.isCancelled, path == string("llm.cliPath.\(provider.id)") else { return nil }
+            knownCLIAuthMethods[provider.id + ":" + path] = result == .ready ? provider.detectedBillingMethod(method) : nil
+            if result == .ready && knownCLIAuthMethods[provider.id + ":" + path] == nil { result = .cliSignedOut }
+        }
+        detectedConnectorStatus[provider.id] = result
+        return result
+    }
     var openProjectKeys: [String: String] = [:]
     let log: RedactingLogger
     let secrets: SecretStore
@@ -124,9 +169,12 @@ extension ProviderChoice {
     @ObservationIgnored private var library: ModelLibrary?
     @ObservationIgnored private let modelDownloader: (any ModelDownloader)?
     @ObservationIgnored var connectorOverride: ((String) -> any LLMConnector)?
+    @ObservationIgnored var connectorConsentOverride: (@MainActor (ProviderChoice, ConnectorConsentAction, String) async -> Bool)?
+    var testingProviders: Set<String> = []
     @ObservationIgnored var providerKeyStoreOverride: (any ProviderKeyStore)?
     var providerKeyStore: any ProviderKeyStore { providerKeyStoreOverride ?? secrets }
     @ObservationIgnored lazy var captions = CaptionHandoff(shared: shared)
+    @ObservationIgnored lazy var exportLedger = ExportLedger(file: locations.root.appendingPathComponent("exports.json"))
 
     public init(settingsStore: (any SettingsStore)? = nil, updates: any UpdateChecking = UpdateChecker(), modelDownloader: (any ModelDownloader)? = nil) {
         let directory = DataLocations().logs
@@ -190,7 +238,7 @@ extension ProviderChoice {
     }
     static var isTestSession: Bool {
         #if DEBUG
-        CommandLine.arguments.contains("-demoCapture") || CommandLine.arguments.contains("-uiSelfTest") || CommandLine.arguments.contains("-uiPerformanceTest") || CommandLine.arguments.contains("-sceneAudit") || CommandLine.arguments.contains("-saveBoundaryAudit") || CommandLine.arguments.contains("-settingsAudit") || CommandLine.arguments.contains("-voiceRecipeAudit")
+        CommandLine.arguments.contains("-round6SelfTest") || CommandLine.arguments.contains("-round5SelfTest") || CommandLine.arguments.contains("-round4SelfTest") || CommandLine.arguments.contains("-timelineAudit") || CommandLine.arguments.contains("-demoCapture") || CommandLine.arguments.contains("-uiSelfTest") || CommandLine.arguments.contains("-uiPerformanceTest") || CommandLine.arguments.contains("-sceneAudit") || CommandLine.arguments.contains("-saveBoundaryAudit") || CommandLine.arguments.contains("-settingsAudit") || CommandLine.arguments.contains("-voiceRecipeAudit")
         #else
         false
         #endif
@@ -200,10 +248,9 @@ extension ProviderChoice {
         if case .string(let value) = settings.values[key] { return value }
         return fallback
     }
-    @discardableResult func selectOnboardingConnector(_ id: String, consent: Bool) -> Bool {
-        guard let provider = providers.first(where: { $0.id == id }), provider.cliConsentCopy == nil || consent else { return false }
+    @discardableResult func selectOnboardingConnector(_ id: String) -> Bool {
+        guard providers.contains(where: { $0.id == id }) else { return false }
         set("llm.connector", .string(id))
-        if provider.cliConsentCopy != nil, consent { set("llm.cloudConsent.\(id)", .bool(true)) }
         return true
     }
     func bool(_ key: String, fallback: Bool = false) -> Bool {
@@ -225,6 +272,9 @@ extension ProviderChoice {
         if key == "editing.pauseBreath", settingsLoaded, settings.values[key] != value { pauseBreathRevision += 1 }
         if key == "llm.connector" || key.hasPrefix("llm.baseUrl.") || key.hasPrefix("llm.cliPath.") { refreshConnectorReadiness() }
         settings.values[key] = value
+        if key == "voiceLab.enabled" || key == "llm.connector" || key.hasPrefix("llm.model.") || key.hasPrefix("llm.baseUrl.") || key.hasPrefix("llm.cliPath.") {
+            shell.editor?.closeRewrite(returnFocus: false)
+        }
         guard settingsLoaded else { if loadingSettings { pendingSettings[key] = value }; return true }
         scheduleSettingsSave()
         return true

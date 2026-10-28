@@ -35,7 +35,8 @@ import AppKit
         }
         var count = 0, area = 0, contrast = 0.0, bezel = ""
         button.effectiveAppearance.performAsCurrentDrawingAppearance {
-            guard let label = DesignValues.nsColor(active ? "accent.on" : "text.primary").usingColorSpace(.sRGB) else { return }
+            let expectedLabel = active ? ExportToolbarButton.colors(for: button.effectiveAppearance).label : DesignValues.nsColor("text.primary")
+            guard let label = expectedLabel.usingColorSpace(.sRGB) else { return }
             let expected = [label.redComponent, label.greenComponent, label.blueComponent]
             for row in 0..<bitmap.pixelsHigh {
                 for column in 0..<bitmap.pixelsWide where inside(column, row) {

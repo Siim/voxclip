@@ -66,6 +66,9 @@ public sealed class StartupCheckTests
         Assert.Contains("ordinary/observed-self-check.json", workflow);
         Assert.Contains("$observed.status -ne 'ok' -or -not $observed.rootLoaded -or -not $observed.rendered", workflow);
         Assert.Contains("throw \"Editor launch smoke did not pass", workflow);
+        // A report claiming ok with fewer than five rendered ordinary opens still fails the step.
+        Assert.Contains("$_.status -eq 'ok' -and $_.rootLoaded -and $_.rendered -and $_.transcriptVisible", workflow);
+        Assert.Contains("$ordinary.mode -ne 'ordinary-open' -or $passed.Count -lt 5", workflow);
     }
 
     [Theory]

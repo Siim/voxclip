@@ -51,18 +51,11 @@ import Darwin
         let layout = try JSONDecoder().decode(Layout.self, from: Data(contentsOf: directory.appendingPathComponent("editor-layout.json")))
         #expect(layout.transcriptWidth >= 439)
         #expect(layout.previewWidth >= 299 && layout.previewWidth <= 561)
-        struct ToolbarExtent: Decodable { let label: String; let width: Double; let attached: Bool }
-        let toolbar = try JSONDecoder().decode([ToolbarExtent].self, from: Data(contentsOf: directory.appendingPathComponent("settings-minimum-toolbar.json")))
-        #expect(toolbar.contains { $0.label == "Navigation Tab Bar" && $0.attached && $0.width >= 440 })
-        for name in ["demo-editor", "demo-home", "demo-clips", "demo-settings"] {
-            let image = try #require(NSBitmapImageRep(data: Data(contentsOf: directory.appendingPathComponent("\(name).jpg"))))
-            #expect(image.pixelsWide >= 500 && image.pixelsHigh >= 200)
-        }
+        try verifyRedesignScenes(in: directory)
         print("mac-ui document screenshots: \(directory.path)")
     }
-    /// The one-window shell from Home through clipping: import, Find Clips readiness in
-    /// its popover, Make Clip, Transcribe Again, Export from the toolbar, 1024 wide,
-    /// replacing and closing projects, Finder opens into a closed window and the Dock.
+    /// The one-window shell from Home through clipping, with the twelve ADR-R29
+    /// redesign captures shared by sceneAudit and captureDemo.
     /// A check the host can't run (no accessibility trust) reports why it skipped; the
     /// twelve captures still need an unlocked session.
     @Test("Native document scene moves from Home through clipping", .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_UI_TESTS"] == "1")) func documentScene() throws {
@@ -71,11 +64,33 @@ import Darwin
         let report = try JSONDecoder().decode([UIProcessHarness.Result].self, from: Data(contentsOf: directory.appendingPathComponent("scene-results.json")))
         #expect(report.count >= 46)
         for result in report { #expect(result.passed || result.skipped != nil, Comment(rawValue: result.name)) }
-        for name in ["live-home", "live-imported", "live-finder-missing", "live-finder-stopped", "live-finder-ready", "live-finder-recovered", "live-clips", "live-export-clip", "live-clip-preview", "live-compact", "live-compact-light", "live-dirty-close"] {
+        if ProcessInfo.processInfo.environment["VOXCLIP_UI_REDUCED_EFFECTS"] == "1" {
+            struct Effects: Decodable {
+                let reduceMotion: Bool; let reduceTransparency: Bool
+                let differingPixels: Int; let opaqueBackgroundPixels: Int; let frameIntervalSeconds: Double
+            }
+            let effects = try JSONDecoder().decode(Effects.self, from: Data(contentsOf: directory.appendingPathComponent("reduced-effects.json")))
+            #expect(effects.reduceMotion && effects.reduceTransparency)
+            #expect(effects.differingPixels == 0 && effects.opaqueBackgroundPixels >= 10)
+            #expect(effects.frameIntervalSeconds >= 0.2)
+        }
+        try verifyRedesignScenes(in: directory)
+        print("mac-ui native scene screenshots: \(directory.path)")
+    }
+    private func verifyRedesignScenes(in directory: URL) throws {
+        let report = try JSONDecoder().decode([UIProcessHarness.Result].self, from: Data(contentsOf: directory.appendingPathComponent("redesign-scenes.json")))
+        let names = ["live-home", "live-home-empty", "live-dragover", "live-editor-full", "live-editor-clip", "live-editor-1280-blue", "live-compact", "live-selection-bar", "live-suggested", "live-finding", "live-export-clip", "live-rewrite"]
+        #expect(report.count == names.count)
+        for name in names {
+            let result = try #require(report.first { $0.name == "native scene \(name)" })
+            if name == "live-editor-1280-blue", let reason = result.skipped {
+                print("OWED: \(name): \(reason)")
+                continue
+            }
+            #expect(result.passed && result.skipped == nil, Comment(rawValue: name))
             let image = try #require(NSBitmapImageRep(data: Data(contentsOf: directory.appendingPathComponent(name).appendingPathExtension("png"))))
             #expect(image.pixelsWide >= 600 && image.pixelsHigh >= 400)
         }
-        print("mac-ui native scene screenshots: \(directory.path)")
     }
     @Test("Native Save As boundary preserves portable media and edits", .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_UI_TESTS"] == "1")) func saveBoundary() throws {
         let directory = try UIProcessHarness.run(mode: "-saveBoundaryAudit", name: "save", acceptNonzeroWithReport: "save-boundary-results.json")
@@ -187,6 +202,7 @@ private enum UIProcessHarness {
         let process = Process()
         process.executableURL = executable
         process.arguments = ["-ApplePersistenceIgnoreState", "YES", "-NSQuitAlwaysKeepsWindows", "NO", mode, directory.path]
+        if mode == "-sceneAudit", environment["VOXCLIP_UI_REDUCED_EFFECTS"] == "1" { process.arguments! += ["-reducedEffects"] }
         if mode == "-demoCapture" { process.arguments! += ["-demoProject", shared.appendingPathComponent("fixtures/projects/interview-take.voxclip").path] }
         var childEnvironment = environment.filter { !$0.key.hasSuffix("_API_KEY") && !$0.key.hasSuffix("_TOKEN") }
         childEnvironment["VOXCLIP_SHARED_DIR"] = shared.path

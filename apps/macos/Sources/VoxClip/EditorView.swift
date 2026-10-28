@@ -1,6 +1,21 @@
 import SwiftUI
 import VoxClipCore
 
+@MainActor struct VoiceLabOptInView: View {
+    @Bindable var editor: EditorModel
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Turn on Voice Lab").font(.title2)
+            Text("Voice Lab can clone your own voice, change your voice and re-voice a few words. Everything it makes is labelled 'AI MODIFIED' in exports, as EU law requires. It uses your ElevenLabs key and, for lip sync, your fal.ai or sync.so key.")
+            HStack {
+                Button("Cancel") { editor.showVoiceLabOptIn = false }.keyboardShortcut(.cancelAction)
+                Spacer()
+                Button("Turn on") { editor.enableVoiceLab() }.keyboardShortcut(.defaultAction)
+            }
+        }.padding(24).frame(width: 460)
+    }
+}
+
 /// The main window's content (ADR-R29): the sidebar, then Home or the open
 /// project's editor. The shell owns the editor; this view only presents it.
 @MainActor struct WorkspaceView: View {
@@ -46,6 +61,9 @@ import VoxClipCore
         content
             .sheet(isPresented: editorFlag(\.showExport)) { if let editor = shell.editor { ExportSheet(model: editor) } }
             .sheet(isPresented: editorFlag(\.showTranscribe)) { if let editor = shell.editor { TranscriptionSheet(model: editor) } }
+            .sheet(isPresented: editorFlag(\.showVoiceLabOptIn)) {
+                if let editor = shell.editor { VoiceLabOptInView(editor: editor) }
+            }
             .sheet(isPresented: $shell.showShortcuts) { ShortcutsView() }
             .sheet(isPresented: Binding(get: { shell.app.showTour }, set: { shell.app.showTour = $0 })) { OnboardingView() }
     }
@@ -139,6 +157,7 @@ struct SubtitleDetail: Equatable {
             EditorSplitView(model: model, shell: shell, viewerVisible: shell.viewerVisible)
             Divider()
             TimelineStrip(model: model, compactTransport: !shell.viewerVisible).frame(height: VCTokens.sizeTimelineHeight)
+                .modifier(EditorPaneFocus(model: model, pane: .timeline))
         }
         .background(TranscriptFocusOnShow(model: model))
     }
@@ -184,20 +203,21 @@ struct SubtitleDetail: Equatable {
         ToolbarItemGroup {
             EditCommandButton(title: "Cut Fillers", symbol: "scissors", shortcut: "⌥⌘U", count: model.summary.fillerCount, compact: compact) {
                 model.apply(.cutFillers, name: "Cut fillers")
-            }.disabled(!model.summary.canCutFillers)
+            }.disabled(!model.capabilities.edit || !model.summary.canCutFillers)
+                .modifier(EditorPaneFocus(model: model, pane: .toolbar))
             EditCommandButton(title: "Tighten Pauses", symbol: "arrow.right.and.line.vertical.and.arrow.left", shortcut: "⌥⌘P", compact: compact) {
                 model.apply(.tightenPauses, name: "Tighten pauses")
-            }.disabled(!model.summary.canTighten)
+            }.disabled(!model.capabilities.edit || !model.summary.canTighten)
             EditCommandButton(title: "Restore Cuts", symbol: "arrow.uturn.backward", shortcut: "⌥⌘R", compact: compact) {
                 model.apply(.restoreCuts, name: "Restore cuts")
-            }.disabled(!model.summary.hasEdits)
+            }.disabled(!model.capabilities.edit || !model.summary.hasEdits)
         }
         ToolbarSpacer(.fixed)
         ToolbarItem {
             Button("Find Clips", systemImage: "sparkles") { model.requestFindClips(from: .toolbar) }
                 .labelStyle(.titleAndIcon)
                 .help("Find Clips (⇧⌘K)")
-                .disabled(model.words.isEmpty || model.finding)
+                .disabled(model.words.isEmpty || !model.capabilities.ai)
                 .popover(isPresented: Binding(get: { model.showFindClips && model.findClipsAnchor == .toolbar }, set: { if !$0 { model.showFindClips = false } }), arrowEdge: .bottom) {
                     FindClipsPopover(model: model)
                 }
@@ -207,6 +227,7 @@ struct SubtitleDetail: Equatable {
         ToolbarSpacer(.fixed)
         ToolbarItem {
             Button(shell.viewerVisible ? "Hide Viewer" : "Show Viewer", systemImage: "sidebar.trailing") { shell.toggleViewer() }
+                .accessibilityLabel((shell.viewerVisible ? EditorIconAction.hideViewer : .showViewer).name)
                 .help(shell.viewerVisible ? "Hide Viewer (⌥⌘I)" : "Show Viewer (⌥⌘I)")
         }
     }
@@ -273,7 +294,7 @@ struct SubtitleDetail: Equatable {
 /// labels measured 1.23:1 and 4.37:1; the on-screen check in key and inactive windows
 /// could not run in round 1. The button is borderless on the toolbar's own glass platter,
 /// so no glass bezel covers the painted fill, and there is no glass on glass. The fill
-/// is accent.default while the accent is Petrol and the system accent otherwise (C14).
+/// and label use the appearance-specific Ink pair (ADR-R31).
 /// DebugToolbarPixels holds the label to 4.5:1 in key and inactive windows.
 @MainActor struct EditorExportControl: NSViewRepresentable {
     @Environment(\.isEnabled) private var isEnabled
@@ -312,6 +333,11 @@ struct SubtitleDetail: Equatable {
 }
 
 @MainActor final class ExportToolbarButton: NSButton {
+    static func colors(for appearance: NSAppearance) -> (fill: NSColor, label: NSColor) {
+        let dark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        return (DesignValues.nsColor(dark ? "accent.text" : "accent.default"),
+                DesignValues.nsColor(dark ? "word.playingForeground" : "accent.on"))
+    }
     #if DEBUG
     static var offscreenActive: Bool?
     #endif
@@ -338,11 +364,12 @@ struct SubtitleDetail: Equatable {
         if AppModel.isTestSession, let override = Self.offscreenActive { active = override }
         #endif
         let tinted = isEnabled && window?.isKeyWindow == true && active
+        let palette = Self.colors(for: effectiveAppearance)
         if tinted {
-            DesignValues.accentFill.setFill()
+            palette.fill.setFill()
             NSBezierPath(roundedRect: bounds, xRadius: bounds.height / 2, yRadius: bounds.height / 2).fill()
         }
-        let color = isEnabled ? DesignValues.nsColor(tinted ? "accent.on" : "text.primary") : NSColor.disabledControlTextColor
+        let color = isEnabled ? (tinted ? palette.label : DesignValues.nsColor("text.primary")) : NSColor.disabledControlTextColor
         let title = NSAttributedString(string: exportTitle, attributes: [.foregroundColor: color, .font: font ?? NSFont.systemFont(ofSize: NSFont.systemFontSize)])
         if !attributedTitle.isEqual(to: title) { attributedTitle = title }
         super.draw(dirtyRect)
@@ -438,18 +465,17 @@ struct SubtitleDetail: Equatable {
 @MainActor private struct RightColumn: View {
     @Bindable var model: EditorModel
     var body: some View {
-        VStack(spacing: 0) {
-            PreviewColumn(model: model)
+        GeometryReader { geometry in
+          VStack(spacing: 0) {
+            ViewerSection(model: model, columnHeight: geometry.size.height)
+                .modifier(EditorPaneFocus(model: model, pane: .viewer))
             Divider()
-            ScrollView {
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Captions").font(.headline)
-                    CaptionsInspector(model: model)
-                }
-                .padding(VCTokens.spacingPanePaddingMacos)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
+            Group {
+                if let rewrite = model.rewrite { RewritePanel(session: rewrite) }
+                else { CaptionsSection(model: model).modifier(EditorPaneFocus(model: model, pane: .panel)) }
+            }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .controlSize(.small)
+          }
         }
     }
 }
@@ -483,15 +509,19 @@ struct SubtitleDetail: Equatable {
             if model.findVisible {
                 HStack {
                     TextField("Find in transcript", text: $model.query).focused($findFocused).onSubmit { model.findNext() }
-                    Button("Previous", systemImage: "chevron.up") { model.findNext(backward: true) }.labelStyle(.iconOnly)
-                    Button("Next", systemImage: "chevron.down") { model.findNext() }.labelStyle(.iconOnly)
+                    Button("Previous", systemImage: "chevron.up") { model.findNext(backward: true) }.labelStyle(.iconOnly).accessibilityLabel(EditorIconAction.previousMatch.name)
+                    Button("Next", systemImage: "chevron.down") { model.findNext() }.labelStyle(.iconOnly).accessibilityLabel(EditorIconAction.nextMatch.name)
                     Button("Cut all \(model.words.filter { model.text($0).localizedCaseInsensitiveContains(model.query) }.count)") { model.cutMatches() }.disabled(model.query.isEmpty)
-                    Button("Close find", systemImage: "xmark") { model.findVisible = false }.labelStyle(.iconOnly)
+                    Button("Close find", systemImage: "xmark") { model.findVisible = false }.labelStyle(.iconOnly).accessibilityLabel(EditorIconAction.closeFind.name)
                 }.padding(.horizontal, 20).padding(.vertical, 12)
                 .onAppear { findFocused = true }
             }
             if let notice = shell.notice { InlineNotice(text: notice) }
             if let error = model.error, !error.isEmpty { InlineNotice(text: error) }
+            if let error = model.previewError, !error.isEmpty { InlineNotice(text: error) }
+            if !model.document.demo, !model.mediaResolved {
+                Button("Locate…") { model.locateMedia() }
+            }
             if let progress = model.progress {
                 VStack(alignment: .leading, spacing: 14) {
                     ForEach(0..<6) { line in RoundedRectangle(cornerRadius: 4).fill(DesignValues.color("bg.muted")).frame(width: line.isMultiple(of: 2) ? 300 : 240, height: 12) }
@@ -503,7 +533,7 @@ struct SubtitleDetail: Equatable {
                 ContentUnavailableView { Label("This video isn't transcribed yet.", systemImage: "text.alignleft") }
                     description: { Text("Your video is still here. Transcribe it to cut by words.") }
                     actions: { Button("Transcribe…") { model.showTranscribe = true }; Button("Models and keys…") { openVoxClipSettings() } }
-            } else { TranscriptTextView(model: model).accessibilityLabel("Transcript, edit by words") }
+            } else { TranscriptTextView(model: model).accessibilityLabel("Transcript, edit by words").focusSection() }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(DesignValues.color("bg.surface"))

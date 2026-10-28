@@ -456,6 +456,9 @@ jobs:
               $observed = Get-Content -LiteralPath $report -Raw | ConvertFrom-Json
               if ($observed.status -ne 'ok' -or -not $observed.rootLoaded -or -not $observed.rendered) { throw "Editor launch smoke did not pass: $report" }
             }
+            $ordinary = Get-Content -LiteralPath (Join-Path $evidence 'ordinary/observed-self-check.json') -Raw | ConvertFrom-Json
+            $passed = @($ordinary.opens | Where-Object { $_.status -eq 'ok' -and $_.rootLoaded -and $_.rendered -and $_.transcriptVisible })
+            if ($ordinary.mode -ne 'ordinary-open' -or $passed.Count -lt 5) { throw "Ordinary-open smoke recorded $($passed.Count) of 5 rendered opens." }
           } finally {
             Get-ChildItem $evidence -Recurse -Filter '*self-check.json' | ForEach-Object { Get-Content $_.FullName }
           }

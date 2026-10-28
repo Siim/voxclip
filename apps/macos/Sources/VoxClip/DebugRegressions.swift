@@ -60,7 +60,7 @@ actor RegressionSettingsStore: SettingsStore {
         router.installMovieOpener { movies.append($0) }
         check("cold movie opens drain after action registration", movies == [movie])
         router.receive([movie, project])
-        check("running opens do not require Welcome", movies.count == 2 && projects.count == 2)
+        check("running opens do not require a Home window", movies.count == 2 && projects.count == 2)
         let configuration = KeyedNetwork.configuration()
         check("keyed requests never persist cache cookies or credentials", configuration.urlCache == nil && configuration.httpCookieStorage == nil && configuration.urlCredentialStorage == nil && !configuration.httpShouldSetCookies)
         check("version comes from the embedded plist", AppModel.version == Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String)
@@ -69,11 +69,10 @@ actor RegressionSettingsStore: SettingsStore {
         check("export copy never doubles reassurance", UserMessages.message(VoxClipError.exportFailed("encoder stopped. Your edits are saved."), context: "export") == "Export stopped: encoder stopped. Your edits are saved.")
         check("cancellation is silent", UserMessages.message(VoxClipError.cancelled).isEmpty && UserMessages.message(LLMError.cancelled, context: "ai:OpenAI").isEmpty)
         let consentApp = AppModel(settingsStore: RegressionSettingsStore())
-        consentApp.selectOnboardingConnector("openai", consent: true)
+        consentApp.selectOnboardingConnector("openai")
         check("onboarding never pre-consents API transcript uploads", !consentApp.bool("llm.cloudConsent.openai"))
-        let rejected = !consentApp.selectOnboardingConnector("claude-code", consent: false)
-        let accepted = consentApp.selectOnboardingConnector("claude-code", consent: true)
-        check("onboarding CLI consent uses the first-use copy", rejected && accepted && consentApp.bool("llm.cloudConsent.claude-code") && consentApp.providers.first(where: { $0.id == "claude-code" })?.cliConsentCopy?.hasPrefix("VoxClip will run your installed Claude Code") == true)
+        let accepted = consentApp.selectOnboardingConnector("claude-code")
+        check("onboarding selection never grants undetected CLI consent", accepted && !consentApp.bool("llm.cloudConsent.claude-code"))
         for provider in app.providers.filter({ ["claude-code", "codex"].contains($0.id) }) {
             let cli = provider.id == "claude-code" ? "Claude Code" : "Codex"
             let context = "ai:\(provider.label)"
@@ -277,7 +276,7 @@ actor RegressionSettingsStore: SettingsStore {
             captionProject.captions.styleId = style.id
             model.document.replaceProject(captionProject)
             let tile = model.captionTileInput(style)
-            check("caption tile handoff retains state frame language and overrides", tile.state == model.editState() && tile.frame == model.outputSpec().size && tile.language == model.project.transcript?.language && tile.overrides == model.project.captions.overrides)
+            check("caption tile handoff retains Core sample, frame, language and overrides", tile.sample != nil && tile.sampleWords == tile.sample?.words.map(\.text) && tile.frame == model.outputSpec().size && tile.language == model.project.transcript?.language && tile.overrides == model.project.captions.overrides)
             let layout = try await model.buildCaptions(segments: try model.editState().map { try buildSegments($0, activeClip: $0.activeClip) }, plan: uncut, output: model.outputSpec(), forPreview: false, project: model.project, voiceLab: nil)
             check("captioned exports use prepared layout", layout != nil)
         }

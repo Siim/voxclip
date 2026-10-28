@@ -20,10 +20,17 @@ struct CaptionTileInput: Sendable, Equatable {
     let sampleWords: [String]
     let language: String?
     let frame: PixelSize
-    let overrides: [String: JSONValue]
+    var overrides: [String: JSONValue]
     let position: CaptionPosition?
     let sourceURL: URL
     let sourceTime: Double
+    var sample: CaptionGallerySample? = nil
+    var band: Double = 0.22
+    var backdrop: String? = nil
+    var frameAvailable = true
+    var loading = false
+    var contentKey = ""
+    var tileSize = PixelSize(width: 320, height: 144)
 }
 
 @MainActor final class CaptionHandoff {
@@ -74,39 +81,144 @@ struct CaptionTileInput: Sendable, Equatable {
     }
 
     func tile(_ input: CaptionTileInput) async -> NSImage? {
+        let still = await tileFrame(input)
+        guard !Task.isCancelled else { return nil }
+        if input.loading { return tileBackdrop(input, still: nil) }
         do {
             let (pipeline, rasterizer) = try services()
             let resolution = await pipeline.resolve(input.style, overrides: input.overrides, frame: input.frame)
-            let sample = input.sampleWords.isEmpty ? ["Your", "story"] : input.sampleWords
-            guard !sample.isEmpty else { return nil }
-            let words = sample.enumerated().map { index, text in
-                CaptionWord(id: "tile-\(index)", text: text, start: Double(index) * 0.4, end: Double(index) * 0.4 + 0.35)
+            var galleryStyle = resolution.style
+            galleryStyle.layout.maxLines = max(2, galleryStyle.layout.maxLines)
+            galleryStyle.layout.maxLineWidthW = min(galleryStyle.layout.maxLineWidthW, 0.24)
+            let sample = input.sample ?? CaptionGallerySample.preview(input.style)
+            let all = sample.words.map { CaptionWord(id: $0.id, text: $0.text, start: $0.start, end: $0.end) }
+            let spoken: Int = all.lastIndex { (word: CaptionWord) -> Bool in word.start <= sample.time } ?? 0
+            // Show whole words at a legible size: when the phrase can't fit the tile at the
+            // cap-height floor, drop the word farthest from the spoken one and lay out again.
+            var lower: Int = 0
+            var upper: Int = all.count
+            while true {
+                let words = Array(all[lower..<upper])
+                let layout = try await pipeline.layout(words: words, language: input.language, style: galleryStyle,
+                    position: input.position, frame: input.frame, duration: sample.duration)
+                try Task.checkCancellation()
+                let raster = try await rasterizer.rasterize(layout, time: sample.time, previewWidth: 1280, reduceMotion: EditorAccessibilityPolicy.staticCaptionTiles)
+                try Task.checkCancellation()
+                guard let provider = CGDataProvider(data: raster.rgba as CFData),
+                      let overlay = CGImage(width: raster.width, height: raster.height, bitsPerComponent: 8, bitsPerPixel: 32,
+                        bytesPerRow: raster.bytesPerRow, space: CGColorSpaceCreateDeviceRGB(),
+                        bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.last.rawValue), provider: provider,
+                        decode: nil, shouldInterpolate: false, intent: .defaultIntent) else { return tileBackdrop(input, still: still) }
+                let page = layout.page(at: sample.time)
+                let rasterScale: Double = Double(raster.width) / Double(input.frame.width)
+                let capRatio: Double = Double(layout.font.capHeight) / Double(layout.unitsPerEm)
+                let capHeight: Double = (page?.fontPx ?? 1) * capRatio * rasterScale
+                let fit = Self.captionCrop(raster, target: input.tileSize, capHeight: capHeight)
+                let remaining: Int = upper - lower
+                if fit?.legible != false || remaining <= 1 {
+                    return tileBackdrop(input, still: still, overlay: overlay, position: resolution.style.position.y, crop: fit?.rect)
+                }
+                let after: Int = upper - 1 - spoken
+                let before: Int = spoken - lower
+                if after >= before { upper -= 1 } else { lower += 1 }
             }
-            let layout = try await pipeline.layout(words: words, language: input.language, style: resolution.style,
-                position: input.position, frame: input.frame, duration: Double(words.count) * 0.4 + 0.5)
-            let raster = try await rasterizer.rasterize(layout, time: 0.2, previewWidth: 320, reduceMotion: true)
-            guard let provider = CGDataProvider(data: raster.rgba as CFData),
-                  let overlay = CGImage(width: raster.width, height: raster.height, bitsPerComponent: 8, bitsPerPixel: 32,
-                    bytesPerRow: raster.bytesPerRow, space: CGColorSpaceCreateDeviceRGB(),
-                    bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.last.rawValue), provider: provider,
-                    decode: nil, shouldInterpolate: false, intent: .defaultIntent) else { return nil }
-            let generator = AVAssetImageGenerator(asset: AVURLAsset(url: input.sourceURL))
-            generator.appliesPreferredTrackTransform = true
-            generator.maximumSize = CGSize(width: 320, height: 320)
-            let still = try? await generator.image(at: CMTime(seconds: input.sourceTime, preferredTimescale: 600)).image
-            let size = CGSize(width: raster.width, height: raster.height)
-            let image = NSImage(size: size)
-            image.lockFocus()
-            if let still {
-                NSImage(cgImage: still, size: size).draw(in: CGRect(origin: .zero, size: size))
-                DesignValues.nsColor("stage").withAlphaComponent(0.15).setFill()
-                CGRect(origin: .zero, size: size).fill()
+        } catch is CancellationError { return nil }
+        catch { return tileBackdrop(input, still: still) }
+    }
+
+    private func tileFrame(_ input: CaptionTileInput) async -> CGImage? {
+        guard input.frameAvailable, !input.loading, !Task.isCancelled else { return nil }
+        return await CaptionFrameCache.shared.frame(input)
+    }
+
+    func stage(_ layout: CaptionLayoutResult, time: Double) async -> NSImage? {
+        guard let (_, rasterizer) = try? services(),
+              let raster = try? await rasterizer.rasterize(layout, time: time, previewWidth: 640, reduceMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion),
+              !Task.isCancelled, let provider = CGDataProvider(data: raster.rgba as CFData),
+              let image = CGImage(width: raster.width, height: raster.height, bitsPerComponent: 8, bitsPerPixel: 32,
+                                  bytesPerRow: raster.bytesPerRow, space: CGColorSpaceCreateDeviceRGB(),
+                                  bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.last.rawValue), provider: provider,
+                                  decode: nil, shouldInterpolate: true, intent: .defaultIntent) else { return nil }
+        return NSImage(cgImage: image, size: CGSize(width: raster.width, height: raster.height))
+    }
+
+    /// The crop that shows every inked word. `legible` is false when that needs a crop wider
+    /// than the cap-height floor allows, so the caller should show fewer words instead.
+    static func captionCrop(_ raster: CaptionRaster, target: PixelSize, capHeight: Double) -> (rect: CGRect, legible: Bool)? {
+        var left = raster.width, top = raster.height, right = 0, bottom = 0
+        raster.rgba.withUnsafeBytes { (bytes: UnsafeRawBufferPointer) in
+            for row in 0..<raster.height {
+                for column in 0..<raster.width {
+                    let offset: Int = row * raster.bytesPerRow + column * 4 + 3
+                    guard bytes[offset] >= 96 else { continue }
+                    left = min(left, column); right = max(right, column + 1)
+                    top = min(top, row); bottom = max(bottom, row + 1)
+                }
             }
-            else { DesignValues.nsColor("stage").setFill(); CGRect(origin: .zero, size: size).fill() }
-            NSImage(cgImage: overlay, size: size).draw(in: CGRect(origin: .zero, size: size))
-            image.unlockFocus()
-            return image
-        } catch { return nil }
+        }
+        guard right > left, bottom > top else { return nil }
+        let block = CGRect(x: left, y: top, width: right - left, height: bottom - top)
+        let padding: Double = max(2, capHeight * 0.25)
+        let targetWidth: Double = Double(target.width)
+        let targetHeight: Double = Double(target.height)
+        let aspect: Double = targetWidth / targetHeight
+        let minimumScale: Double = capHeight / 36
+        let minimumWidth: Double = targetWidth * minimumScale
+        let maximumScale: Double = capHeight / 24
+        let maximumWidth: Double = targetWidth * maximumScale
+        let contextWidth: Double = max(block.width + padding * 2, (block.height + padding * 2) * aspect)
+        let cropWidth: Double = max(contextWidth, minimumWidth)
+        let cropHeight: Double = cropWidth / aspect
+        let halfWidth: Double = cropWidth / 2
+        let centre: Double = block.midX
+        let rect = CGRect(x: centre - halfWidth, y: block.midY - cropHeight / 2,
+                          width: cropWidth, height: cropHeight).integral
+        return (rect, contextWidth <= maximumWidth)
+    }
+
+    func tileBackdrop(_ input: CaptionTileInput, still: CGImage?, overlay: CGImage? = nil, position: Double? = nil, crop: CGRect? = nil) -> NSImage? {
+        let width: Int = overlay?.width ?? 640
+        let frameHeight: Double = Double(input.frame.height)
+        let frameWidth: Double = Double(max(1, input.frame.width))
+        let ratio: Double = frameHeight / frameWidth
+        let scaledHeight: Double = Double(width) * ratio
+        let height: Int = max(1, Int(scaledHeight.rounded()))
+        guard let context = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
+                                      space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
+        let bounds = CGRect(x: 0, y: 0, width: width, height: height)
+        context.setFillColor(DesignValues.parse(input.loading ? "#000000" : input.backdrop ?? "#000000").cgColor)
+        context.fill(bounds)
+        if let still, !input.loading {
+            let scale = max(bounds.width / Double(still.width), bounds.height / Double(still.height))
+            let scaled = CGSize(width: Double(still.width) * scale, height: Double(still.height) * scale)
+            context.draw(still, in: CGRect(x: (bounds.width - scaled.width) / 2, y: (bounds.height - scaled.height) / 2, width: scaled.width, height: scaled.height))
+            context.setFillColor(NSColor.black.withAlphaComponent(0.35).cgColor); context.fill(bounds)
+        }
+        let resolved = (try? input.style.resolved(overrides: input.overrides, frame: input.frame)) ?? input.style
+        let centre = input.position?.y ?? position ?? resolved.position.y
+        let canvasHeight: Double = Double(height)
+        let requestedBand: Double = canvasHeight * input.band
+        let bandHeight: Double = min(canvasHeight, max(1, requestedBand))
+        let captionCentre: Double = centre * canvasHeight
+        let halfBand: Double = bandHeight / 2
+        let maximumTop: Double = max(0, canvasHeight - bandHeight)
+        let top: Double = (captionCentre - halfBand).clamped(to: 0...maximumTop)
+        let band = CGRect(x: 0, y: top.rounded(.down), width: Double(width), height: bandHeight.rounded(.up))
+        guard let background = context.makeImage(),
+              let tile = CGContext(data: nil, width: input.tileSize.width, height: input.tileSize.height, bitsPerComponent: 8, bytesPerRow: 0,
+                                   space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
+        let target = CGRect(x: 0, y: 0, width: input.tileSize.width, height: input.tileSize.height)
+        let region: CGRect = crop ?? band
+        let scale: Double = max(target.width / region.width, target.height / region.height)
+        let drawn = CGRect(x: -region.minX * scale, y: (region.maxY - bounds.height) * scale,
+                           width: bounds.width * scale, height: bounds.height * scale)
+        tile.setFillColor(DesignValues.parse(input.loading ? "#000000" : input.backdrop ?? "#000000").cgColor)
+        tile.fill(target)
+        tile.interpolationQuality = .high
+        tile.draw(background, in: drawn)
+        if let overlay { tile.draw(overlay, in: drawn) }
+        guard let image = tile.makeImage() else { return nil }
+        return NSImage(cgImage: image, size: target.size)
     }
 
     /// A caption card (design §5.4.3): VoxClipCore's card words set by the export
@@ -144,7 +256,7 @@ struct CaptionTileInput: Sendable, Equatable {
             return await Task.detached(priority: .utility) { CaptionCardLook.compose(nil, backdrop: backdrop, width: fit.width, height: fit.height) }.value
         }
         let lines = input.text.maxLines(on: fit.surface)
-        CaptionCardLook.adapt(&style, fit: fit, lines: lines, stageBlack: backdrop == nil)
+        CaptionCardLook.adapt(&style, fit: fit, lines: lines, backdrop: backdrop ?? "#000000")
         var next: CaptionCardText? = input.text
         while let card = next {
             // The card's own clock and emphasis; the adapted style is already resolved,

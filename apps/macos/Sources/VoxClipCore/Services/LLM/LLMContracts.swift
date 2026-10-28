@@ -160,9 +160,13 @@ public struct LLMModel: Codable, Sendable, Hashable {
 public protocol LLMConnector: Sendable {
     var id: ConnectorID { get }
     func status() async -> ConnectorStatus
+    func knownCLIAuthMethod() async -> String?
     func models(refresh: Bool) async throws -> [LLMModel]
     func contextTokens(model: String) async -> Int?
     func send(_ request: LLMRequest, model: String) async throws -> RawCompletion
+}
+extension LLMConnector {
+    public func knownCLIAuthMethod() async -> String? { nil }
 }
 /// Dependency-injected secrets; architecture §2.1, §9.4 and AI §8.1. No persistence requirement.
 public protocol KeyProvider: Sendable { func key(for provider: String) async throws -> String? }
@@ -306,6 +310,10 @@ public actor StubLLMConnector: LLMConnector {
     public func status() async -> ConnectorStatus {
         do { return await (try resolve()).status() }
         catch { return .unavailable(reason: "VoxClip is missing its AI configuration. Reinstall VoxClip.") }
+    }
+    public func knownCLIAuthMethod() async -> String? {
+        guard let cli = implementation as? CLIConnector else { return nil }
+        return await cli.lastAuthMethod
     }
     public func models(refresh: Bool) async throws -> [LLMModel] { try await resolve().models(refresh: refresh) }
     public func contextTokens(model: String) async -> Int? {

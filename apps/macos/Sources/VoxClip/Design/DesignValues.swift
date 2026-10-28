@@ -37,7 +37,7 @@ import VoxClipCore
 
     private static let accentAsset = NSColor(named: "AccentColor")
 
-    /// True while the accent is VoxClip's own Petrol: the AccentColor asset under the
+    /// True while the accent is VoxClip's own Ink: the AccentColor asset under the
     /// Multicolor system accent, or a DEBUG build run without the asset. False when the
     /// user picked a system accent colour, which every accent mark then follows (C14).
     static func ownsAccent(_ appearance: NSAppearance) -> Bool { ownsAccent(appearance, asset: accentAsset) }
@@ -52,21 +52,20 @@ import VoxClipCore
         }
         var own = false
         appearance.performAsCurrentDrawingAppearance {
-            guard let accent = NSColor.controlAccentColor.usingColorSpace(.sRGB), let petrol = asset.usingColorSpace(.sRGB) else { return }
-            own = abs(accent.redComponent - petrol.redComponent) < 0.01 && abs(accent.greenComponent - petrol.greenComponent) < 0.01 && abs(accent.blueComponent - petrol.blueComponent) < 0.01
+            guard let accent = NSColor.controlAccentColor.usingColorSpace(.sRGB), let ink = asset.usingColorSpace(.sRGB) else { return }
+            own = abs(accent.redComponent - ink.redComponent) < 0.01 && abs(accent.greenComponent - ink.greenComponent) < 0.01 && abs(accent.blueComponent - ink.blueComponent) < 0.01
         }
         return own
     }
 
-    /// The accent fill: accent.default while the accent is Petrol, else the system
-    /// accent. The playing word, the clip band and the Export capsule use it.
+    /// The accent fill: accent.default while the accent is Ink, else the system accent.
     static let accentFill: NSColor = {
-        let petrol = nsColor("accent.default"), asset = accentAsset
-        return NSColor(name: NSColor.Name("voxclip.accentFill")) { appearance in ownsAccent(appearance, asset: asset) ? petrol : .controlAccentColor }
+        let ink = nsColor("accent.default"), asset = accentAsset
+        return NSColor(name: NSColor.Name("voxclip.accentFill")) { appearance in ownsAccent(appearance, asset: asset) ? ink : .controlAccentColor }
     }()
 
-    /// Accent marks and links: the accent.text token while the accent is Petrol (it lifts
-    /// Petrol to #63BDB6 on dark surfaces); otherwise the system accent mixed toward
+    /// Accent marks and links: the accent.text token while the accent is Ink (paper
+    /// #ECEAE4 on dark surfaces); otherwise the system accent mixed toward
     /// text.primary in 5% steps until it reads at 4.5:1 on bg.surface.
     static let accentText: Color = {
         let token = nsColor("accent.text"), text = nsColor("text.primary"), surface = nsColor("bg.surface"), asset = accentAsset
@@ -75,7 +74,7 @@ import VoxClipCore
         })
     }()
 
-    /// A soft accent fill: the accent.soft token while the accent is Petrol, otherwise
+    /// A soft accent fill: the accent.soft token while the accent is Ink, otherwise
     /// the system accent at 14% over bg.surface.
     static let accentSoft: Color = {
         let token = nsColor("accent.soft"), surface = nsColor("bg.surface"), asset = accentAsset

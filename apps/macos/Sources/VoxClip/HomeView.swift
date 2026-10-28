@@ -6,7 +6,7 @@ import VoxClipCore
 @MainActor struct HomeView: View {
     let shell: WorkspaceShell
     @State private var sortByName = false
-    @State private var readiness: ConnectorStatus?
+    private var readiness: ConnectorStatus? { app.detectedConnectorStatus[app.string("llm.connector")] }
     private var app: AppModel { shell.app }
     private static let types = "MOV, MP4, M4V"
     private static let dashedStroke = StrokeStyle(lineWidth: 1.5, dash: [6, 4])
@@ -34,14 +34,6 @@ import VoxClipCore
         .task(id: app.recent) { app.recentProjects.refresh(app.recent) }
         .onChange(of: app.bool("general.showPlaceholderWords", fallback: true)) { app.recentProjects.refresh(app.recent) }
         .onChange(of: app.string("captions.defaultStyleId", fallback: "vox-highlight")) { app.recentProjects.refresh(app.recent) }
-        .task(id: "\(app.string("llm.connector")):\(app.connectorReadinessRevision)") {
-            readiness = nil
-            let id = app.string("llm.connector")
-            guard !id.isEmpty, !AppModel.isTestSession || app.connectorOverride != nil else { return }
-            let status = await app.connector(id).status()
-            guard !Task.isCancelled, id == app.string("llm.connector") else { return }
-            readiness = status
-        }
     }
 
     @ViewBuilder private var notices: some View {
@@ -122,7 +114,7 @@ import VoxClipCore
         case .needsKey:
             return ("Add your \(provider.label) key to use Find Clips with AI. You can still make clips by hand.", "Set Up AI…", { openVoxClipSettings(pane: "ai") })
         case .notRunning:
-            return ("\(provider.label) isn't running, so Find Clips with AI can't run.", "Check Again", { app.refreshConnectorReadiness() })
+            return ("\(provider.label) isn't running, so Find Clips with AI can't run.", "Set Up AI…", { openVoxClipSettings(pane: "ai") })
         default:
             return nil
         }
@@ -269,7 +261,7 @@ import VoxClipCore
 
 @MainActor struct ShortcutsView: View {
     /// The current bindings: "keys|what they do".
-    static let lines = ["Space|Play / pause", "J / K / L|Back / stop / forward", "Delete / ⇧Delete|Cut / restore selection", "Return / C|Correct spelling", "⌘Z / ⇧⌘Z|Undo / redo", "← / →|Previous / next word", "⌥← / ⌥→|Previous / next sentence", "⇧← / ⇧→|Extend selection", "⌘K|Make clip from selection", "I / O|Set clip start / end", "[ / ]|Previous / next clip", "P|Preview this cut", "⌥⌘U / ⌥⌘P / ⌥⌘R|Cut fillers / tighten / restore", "⌘F / ⌘G / ⇧⌘G|Find / next / previous", "⌘1 / ⌘2|Home / Full Take", "⇧⌘K|Find clips", "⌥⌘I|Show / hide viewer", "⌃⌘S|Show / hide sidebar", "⌘+ / ⌘− / ⌘0|Text size", "⌘E / ⌘O / ⌘,|Export / open / settings"]
+    static let lines = ["Space|Play / pause", "J / K / L|Back / stop / forward", "Delete / ⇧Delete|Cut / restore selection", "Return / C|Correct spelling", "⌘Z / ⇧⌘Z|Undo / redo", "← / →|Previous / next word", "⌥← / ⌥→|Previous / next sentence", "⇧← / ⇧→|Extend selection", "⌘K|Make clip from selection", "I / O|Set clip start / end", "[ / ]|Previous / next clip", "P|Preview this cut", "⌥⌘U / ⌥⌘P / ⌥⌘R|Cut fillers / tighten / restore", "⌘F / ⌘G / ⇧⌘G|Find / next / previous", "⌘1 / ⌘2|Home / Full Take", "⇧⌘K|Find clips", "⇧⌘R|Rewrite", "Escape|Dismiss selection bar, then Full Take", "⌥⌘I|Show / hide viewer", "⌃⌘S|Show / hide sidebar", "⌘+ / ⌘− / ⌘0|Text size", "⌘E / ⌘O / ⌘,|Export / open / settings"]
     @Environment(\.dismiss) private var dismiss
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {

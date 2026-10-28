@@ -45,7 +45,7 @@ actor RegressionLogger: Logger {
             model.apply(.addAIClips(resultId: "missing-run", clips: [duplicate]), name: "Invalid AI reference")
             check("AI commands validate result references", model.project == before)
         } else { check("duplicate AI runs persist with feedback", false) }
-        check("clip titles respect Unicode scalar limits", EditorModel.clipTitle(String(repeating: "👩🏽‍💻", count: 120)).unicodeScalars.count == EditingLimits.maxClipTitleScalars)
+        check("clip titles respect Unicode scalar limits", EditingAlgorithms.clipTitle([String(repeating: "👩🏽‍💻", count: 120)])?.unicodeScalars.count == EditingLimits.maxClipTitleScalars)
         var invalid = model.project
         invalid.edits.clips.append(ClipRange(id: "reversed", startWordId: model.words.last!.id, endWordId: model.words.first!.id, title: "Invalid range"))
         document.replaceProject(invalid); model.refresh()

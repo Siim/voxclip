@@ -402,6 +402,22 @@ import ApplicationServices
             try await move(native, to: chain.appendingPathComponent("C.voxclip"))
             check("a title that isn't a default stays through Rename", model.project.title == "Interview final" && window.title == "Interview final")
 
+            var following = model.project
+            following.title = "C"
+            let titleDocument = model.document
+            titleDocument.replaceProject(following)
+            let chainC = chain.appendingPathComponent("C.voxclip")
+            try await save(native, to: chainC)
+            titleDocument.injectTitleWriteFailure = true
+            let chainD = chain.appendingPathComponent("D.voxclip")
+            var failedTitleWrite = false
+            do { try await move(native, to: chainD) } catch { failedTitleWrite = true }
+            await titleDocument.pendingTitleWrite?.value
+            check("a failed deferred Rename title write marks the title edited for retry", failedTitleWrite && titleDocument.isDocumentEdited && titleDocument.project.title == "D")
+            let closedAfterTitleRetry = await app.shell.closeProject()
+            let titleAfterRetry = try VoxClipDocument(data: Data(contentsOf: chainD)).project.title
+            check("the leave boundary retries a failed Rename title write before closing", closedAfterTitleRetry && titleAfterRetry == "D")
+
         } catch {
             results.append(Result(name: "save boundary audit: \(error.localizedDescription)", passed: false))
         }
@@ -438,7 +454,7 @@ import ApplicationServices
             check("fresh launch shows one window on Home", titledWindows().count == 1 && shell.isHome && shell.showsHome)
             check("fresh launch titles the window VoxClip", window.title == "VoxClip")
             check("fresh launch opens no document", documents.documents.isEmpty)
-            check("no separate Welcome window", !NSApp.windows.contains { $0.title.contains("Welcome to VoxClip") })
+            check("Home uses the main window", shell.windowController?.window === window)
             check("Home is not an edited document", !window.isDocumentEdited)
             let menu = NSApp.mainMenu
             check("File menu offers New Project from Video and Close Project", menu?.item(withTitle: "File")?.submenu?.item(withTitle: "New Project from Video…")?.keyEquivalent == "n" && menu?.item(withTitle: "File")?.submenu?.items.contains { $0.keyEquivalent == "w" && $0.title.hasPrefix("Close") } == true)
@@ -457,7 +473,6 @@ import ApplicationServices
             check("delayed saved connector invalidates readiness", wasDelayed && delayedApp.string("llm.connector") == "openai" && delayedApp.connectorReadinessRevision > initialReadinessRevision)
             window.setContentSize(NSSize(width: 1280, height: 800))
             try await Task.sleep(for: .milliseconds(250))
-            await snapshotWindow(window, "live-home")
 
             let source = destination.appendingPathComponent("fillers-chirp.mp4")
             try FileManager.default.copyItem(at: root.appendingPathComponent("fixtures/media/fillers-chirp.mp4"), to: source)
@@ -472,7 +487,6 @@ import ApplicationServices
             let subtitle = subtitleField(in: window)
             check("VoiceOver reads the edit summary's detail after the subtitle (\(editor.summaryDetail); window subtitle \"\(window.subtitle)\", field \(subtitle == nil ? "not found" : "help \(subtitle?.accessibilityHelp() ?? "none")"))",
                   subtitle?.accessibilityHelp() == editor.summaryDetail)
-            await snapshotWindow(window, "live-imported")
 
             // The editor's flows in the new layout: Find Clips readiness in its popover,
             // Make Clip, Transcribe Again's warning, Export from the toolbar and 1024 wide.
@@ -485,16 +499,16 @@ import ApplicationServices
             check("a transcript enables Find Clips and editing", !editor.words.isEmpty && editor.editingAvailable)
             try await waitUntil { window.firstResponder is TranscriptNSTextView }
             check("the transcript takes keyboard focus when it arrives after an untranscribed import (first responder \(window.firstResponder.map { String(describing: type(of: $0)) } ?? "none"))", window.firstResponder is TranscriptNSTextView)
-            results += await findClipsReadiness(app: app, editor: editor, window: window, snapshot: snapshotWindow)
+            results += await findClipsReadiness(app: app, editor: editor, window: window, directory: destination)
             let ids = editor.words.prefix(3).map(\.id)
             editor.selectedWordIDs = Set(ids)
             editor.makeClip()
             let made = editor.sortedClips.first
             check("Make Clip selects the new clip's row and registers one undo step", made != nil && shell.selection == made.map { SidebarItem.clip($0.id) } && editor.undoManager?.undoActionName == "Make clip from selection")
-            await snapshotWindow(window, "live-clips")
             shell.selection = .fullTake
             editor.apply(.cutSelection(ids: [ids[0]]), name: "Cut word")
             editor.apply(.correct(id: ids[1], text: "corrected"), name: "Correct word")
+            try await capture(window: window, name: "scene-menu-ready", directory: destination)
             let transcribeItem = NSApp.mainMenu?.item(withTitle: "Edit")?.submenu?.item(withTitle: "Transcribe Again…")
             let dispatched = transcribeItem.flatMap { item in item.action.map { NSApp.sendAction($0, to: item.target, from: item) } } ?? false
             try await waitUntil { window.attachedSheet != nil }
@@ -530,23 +544,19 @@ import ApplicationServices
                 try await waitUntil { window.attachedSheet != nil }
                 toolbarCheck("Export from the toolbar opens Export for the selected clip", editor.showExport && editor.activeClip?.id == clip.id && editor.exportClipIDs == [clip.id])
                 if let sheet = window.attachedSheet {
-                    await snapshotWindow(sheet, "live-export-clip")
                     check("clip export opens an attached sheet", sheet.isVisible)
                 } else { toolbarCheck("clip export opens an attached sheet", false) }
                 editor.showExport = false
                 try await waitUntil { window.attachedSheet == nil }
                 check("the export sheet closes before the editor changes", window.attachedSheet == nil && !editor.showExport)
-                await snapshotWindow(window, "live-clip-preview")
                 shell.selection = .fullTake
             }
             let appearance = app.string("general.appearance", fallback: "system")
             window.setContentSize(NSSize(width: 1024, height: 700))
             try await waitUntil { abs(shell.windowWidth - 1024) < 1 && !shell.viewerVisible }
             check("1024 wide collapses the viewer and keeps the sidebar", abs(shell.windowWidth - 1024) < 1 && !shell.viewerVisible && shell.columnVisibility == .all)
-            await snapshotWindow(window, "live-compact")
             app.set("general.appearance", .string("light"))
             try await Task.sleep(for: .milliseconds(250))
-            await snapshotWindow(window, "live-compact-light")
             app.set("general.appearance", .string(appearance))
             window.setContentSize(NSSize(width: 1280, height: 800))
             try await waitUntil { abs(shell.windowWidth - 1280) < 1 }
@@ -624,6 +634,7 @@ import ApplicationServices
             let closedOnDisk = try JSONProjectStore.decode(Data(contentsOf: otherURL))
             check("the close button saves the project and closes the window", shell.isHome && !window.isVisible && documents.documents.isEmpty && closedOnDisk.captions.styleId == "off")
             MainWindowController.shared.show()
+            results += try await DebugRedesignScenes.capture(app: app, directory: destination)
         } catch {
             results.append(Result(name: "scene audit: \(error.localizedDescription)", passed: false))
         }
@@ -645,11 +656,19 @@ import ApplicationServices
     /// checked it: a missing key, saving and forgetting it, a stopped local service, a
     /// changed server URL and a late status from the previous connector. The popover's
     /// accessibility needs this process to be a trusted accessibility client.
-    private static func findClipsReadiness(app: AppModel, editor: EditorModel, window: NSWindow, snapshot: (NSWindow, String) async -> Void) async -> [Result] {
+    private static func findClipsReadiness(app: AppModel, editor: EditorModel, window: NSWindow, directory: URL) async -> [Result] {
         var results: [Result] = []
         let trusted = AXIsProcessTrusted()
+        var accessibilityWindows: CFTypeRef?
+        let accessError = AXUIElementCopyAttributeValue(AXUIElementCreateApplication(getpid()), kAXWindowsAttribute as CFString, &accessibilityWindows)
+        let permissionDenied = !trusted && accessError == .apiDisabled
+        let executable = Bundle.main.executableURL?.path ?? ProcessInfo.processInfo.arguments[0]
+        let trust: [String: String] = ["executable": executable, "bundleIdentifier": Bundle.main.bundleIdentifier ?? "unbundled",
+            "trusted": String(trusted), "ownWindowsAXError": String(accessError.rawValue),
+            "processIdentifier": String(ProcessInfo.processInfo.processIdentifier)]
+        try? ProjectJSON.encoder().encode(trust).write(to: directory.appendingPathComponent("accessibility-trust.json"), options: .atomic)
         func check(_ name: String, _ passed: Bool) {
-            results.append(Result(name: name, passed: passed, skipped: !passed && !trusted ? "this process is not a trusted accessibility client" : nil))
+            results.append(Result(name: name, passed: passed, skipped: !passed && permissionDenied ? "Accessibility permission required for \(executable) (\(Bundle.main.bundleIdentifier ?? "unbundled")); this process is not a trusted accessibility client (AX API disabled)" : nil))
         }
         let keys = InspectorTestKeys()
         let keyConnector = InspectorKeyConnector(keys: keys)
@@ -673,7 +692,6 @@ import ApplicationServices
         editor.requestFindClips(from: .toolbar)
         check("Find Clips shows a missing key in its popover", await hasInspectorStatus("Key missing", in: window))
         check("Find Clips stays actionable with a missing key", inspectorElement("findClipsAction", in: window)?.enabled == true)
-        await snapshot(window, "live-finder-missing")
         do {
             try await app.saveProviderKey("offline-test-key", for: "openai")
             check("saving a key refreshes the popover's readiness without reselecting", await hasInspectorStatus("Ready", in: window))
@@ -683,14 +701,12 @@ import ApplicationServices
         app.set("llm.connector", .string("ollama"))
         check("a stopped local service shows in the popover", await hasInspectorStatus("Not running", in: window))
         check("a stopped local service keeps Find Clips actionable", inspectorElement("findClipsAction", in: window)?.enabled == true)
-        await snapshot(window, "live-finder-stopped")
         await localConnector.setStatus(.unavailable(reason: "Local service unavailable."))
         app.set("llm.baseUrl.ollama", .string("http://127.0.0.1:11435"))
         check("changing the server URL refreshes the popover's status", await hasInspectorStatus("Unavailable", in: window))
         await localConnector.setStatus(.ready)
         app.refreshConnectorReadiness()
         check("a recovered service reads Ready", await hasInspectorStatus("Ready", in: window))
-        await snapshot(window, "live-finder-ready")
         await localConnector.delayNextStatus()
         app.refreshConnectorReadiness()
         for _ in 0..<20 {
@@ -703,7 +719,6 @@ import ApplicationServices
         await localConnector.finishDelayedStatus(.needsKey)
         try? await Task.sleep(for: .milliseconds(100))
         check("a late status from the previous connector cannot replace the current one", previousPending && otherReady && inspectorElement("clipConnectorStatus", in: window)?.label?.contains("Ready") == true)
-        await snapshot(window, "live-finder-recovered")
         app.settings.values["llm.baseUrl.ollama"] = nil
         return results
     }
@@ -828,16 +843,7 @@ import ApplicationServices
     static func captureDemo(app: AppModel, destination: URL) async {
         do {
             try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
-            guard let index = CommandLine.arguments.firstIndex(of: "-demoProject"), index + 1 < CommandLine.arguments.count else { throw CocoaError(.coderInvalidValue) }
-            let project = try DemoEditing.loadFixture(URL(fileURLWithPath: CommandLine.arguments[index + 1]))
-            let shell = WorkspaceShell(app: app)
-            await shell.attachForTesting(VoxClipDocument(project: project, demo: true))
-            try await snapshot(WorkspaceView(shell: shell).environment(app), name: "demo-editor", size: NSSize(width: 1440, height: 820), appearance: .aqua, directory: destination, mainWindow: true)
-            if let clip = project.edits.clips.first { shell.selection = .clip(clip.id) }
-            try await snapshot(WorkspaceView(shell: shell).environment(app), name: "demo-clips", size: NSSize(width: 1100, height: 720), appearance: .aqua, directory: destination, mainWindow: true)
-            try await snapshot(WorkspaceView(shell: WorkspaceShell(app: app)).environment(app), name: "demo-home", size: NSSize(width: 1100, height: 720), appearance: .aqua, directory: destination, mainWindow: true)
-            try await snapshot(SettingsView().environment(app), name: "demo-settings", size: NSSize(width: 900, height: 560), appearance: .aqua, directory: destination)
-            try await snapshot(SettingsView().environment(app), name: "settings-minimum", size: NSSize(width: 600, height: 480), appearance: .aqua, directory: destination)
+            _ = try await DebugRedesignScenes.capture(app: app, directory: destination)
         } catch {
             try? Data("Demo capture failed".utf8).write(to: destination.appendingPathComponent("failure.txt"))
         }
@@ -873,8 +879,21 @@ import ApplicationServices
             let fixture = root.appendingPathComponent("fixtures/projects/interview-take.voxclip")
             let project = try DemoEditing.loadFixture(fixture)
             results += try DebugTranscriptPixels.run(app: app, fixture: project, directory: destination)
+            results += try await DebugSelectionBar.run(app: app, fixture: project, directory: destination)
+            results += try await DebugViewer.run(app: app, fixture: project, directory: destination)
+            results += try await DebugCaptionsSection.run(app: app, fixture: project, directory: destination)
+            results += try await DebugTimeline.run(app: app, fixture: project, directory: destination)
+            try JSONEncoder().encode(results).write(to: destination.appendingPathComponent("results-progress.json"), options: .atomic)
+            results += try DebugProbes.colorReadbackChecks(directory: destination)
             results += try await DebugPersistence.run(app: app, fixture: project, directory: destination)
             results += try await DebugExport.run(app: app, fixture: project, directory: destination)
+            results += DebugCapabilities.run(app: app, fixture: project)
+            results += try await DebugRewrite.run(app: app, fixture: project, directory: destination)
+            results += try await DebugConnectorRequests.run(fixture: project, directory: destination)
+            results += try DebugRedesignScenes.checks(app: app)
+            results += try await DebugAccessibility.run(app: app, fixture: project, directory: destination)
+            results += try await DebugMenus.run(app: app, fixture: project, directory: destination)
+            try JSONEncoder().encode(results).write(to: destination.appendingPathComponent("results-progress.json"), options: .atomic)
             results += try await DebugRegressions.editor(app: app, project: project)
             results += try await DebugIntegratedFlow.run(app: app, directory: destination)
             let document = VoxClipDocument(project: project, demo: false)
@@ -906,11 +925,13 @@ import ApplicationServices
             } else { check("pause-only selection cuts", false) }
             if let pause = model.pauses.first(where: { model.cutPauseIDs.contains($0.id) }) {
                 model.selectedWordIDs = []; model.selectedPauseIDs = [pause.id]
-                undo.beginUndoGrouping(); model.cutSelection(); undo.endUndoGrouping()
-                check("cutting an already-cut pause restores it", !model.project.edits.cutPauseIds.contains(pause.id))
+                model.cutSelection()
+                check("named Cut does not restore an already-cut pause", model.project.edits.cutPauseIds.contains(pause.id))
+                undo.beginUndoGrouping(); model.toggleSelectionCut(); undo.endUndoGrouping()
+                check("Delete toggles an already-cut pause back to restored", !model.project.edits.cutPauseIds.contains(pause.id))
                 undo.undo()
                 model.selectedPauseIDs = []
-            } else { check("cutting an already-cut pause restores it", false) }
+            } else { check("Delete toggles an already-cut pause back to restored", false) }
             var tuning = CaptionSettings(styleId: "vox-highlight")
             CaptionFineTuning.size(&tuning, scale: 1.45)
             check("XL stores normative scale", CaptionFineTuning.value(tuning, group: "font", key: "sizeScale") == .number(1.45))
@@ -1018,7 +1039,8 @@ import ApplicationServices
     }
     /// Draws `content` in an offscreen window. `mainWindow` matches the app's main
     /// window: full-size content under a unified toolbar, as WorkspaceView expects.
-    static func snapshot<Content: View>(_ content: Content, name: String, size: NSSize, appearance: NSAppearance.Name, directory: URL, active: Bool = false, mainWindow: Bool = false) async throws {
+    static func snapshot<Content: View>(_ content: Content, name: String, size: NSSize, appearance: NSAppearance.Name, directory: URL, active: Bool = false, mainWindow: Bool = false,
+                                      native: Bool = false, beforeCapture: (@MainActor (NSWindow) async throws -> NSWindow?)? = nil) async throws {
         ExportToolbarButton.offscreenActive = active
         defer { ExportToolbarButton.offscreenActive = nil }
         let controller = NSHostingController(rootView: content.background(DesignValues.color("bg.window")).sceneAccent().preferredColorScheme(appearance == .darkAqua ? .dark : .light).environment(\.controlActiveState, active ? .key : .inactive))
@@ -1056,6 +1078,19 @@ import ApplicationServices
             view.subviews.forEach(prepare)
         }
         prepare(hosting)
+        if native {
+            guard !sessionLocked else { window.close(); throw CocoaError(.userCancelled) }
+            window.center(); window.makeKeyAndOrderFront(nil)
+            try await Task.sleep(for: .milliseconds(200))
+            let target = try await beforeCapture?(window) ?? window
+            defer { window.close() }
+            if name == "live-editor-full" {
+                guard let layout = editorLayout(in: hosting), layout.transcriptWidth >= 439, layout.previewWidth >= 299 else { throw CocoaError(.coderInvalidValue) }
+                try JSONEncoder().encode(layout).write(to: directory.appendingPathComponent("editor-layout.json"), options: .atomic)
+            }
+            try await capture(window: target, name: name, directory: directory)
+            return
+        }
         if name == "settings-minimum" {
             let toolbar = window.toolbar?.visibleItems?.compactMap { item -> ToolbarExtent? in
                 guard let view = item.view else { return nil }
