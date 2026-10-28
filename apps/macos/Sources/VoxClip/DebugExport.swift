@@ -145,6 +145,8 @@ actor RegressionExporter: Exporter {
     private static func fingerprints(project: Project, target: ExportTarget) throws -> [DebugUISuite.Result] {
         let baseline = try ExportFingerprint.value(project, target: target)
         var results: [DebugUISuite.Result] = []
+        results.append(.init(name: "required target uses exact export-sheet disclosure", passed: EditorModel.exportSheetDisclosure(required: true) == "This video contains AI-modified speech. It will show AI MODIFIED."))
+        results.append(.init(name: "unmodified target omits export-sheet disclosure", passed: EditorModel.exportSheetDisclosure(required: false) == nil))
         func compare(_ name: String, changed: Bool, edit: (inout Project) -> Void) throws {
             var next = project
             edit(&next)

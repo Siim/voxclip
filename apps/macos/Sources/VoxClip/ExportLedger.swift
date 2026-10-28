@@ -253,9 +253,12 @@ extension EditorModel {
             switch target { case .fullEdit: scope = .full; case .clip(let id): scope = .clip(id) }
             let root = app.locations.root.appendingPathComponent("VoiceLab", isDirectory: true)
             if let input = try? VoiceLabRenderPreflight.prepare(project: project, scope: scope, paidRoot: root), input.prepared.disclosure.required {
-                return input.prepared.disclosure.postText ?? "Contains AI-modified speech."
+                return Self.exportSheetDisclosure(required: true)
             }
         }
         return nil
+    }
+    static func exportSheetDisclosure(required: Bool) -> String? {
+        required ? "This video contains AI-modified speech. It will show AI MODIFIED." : nil
     }
 }
