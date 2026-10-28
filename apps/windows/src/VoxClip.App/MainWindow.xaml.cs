@@ -569,6 +569,7 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
         if (!Nav.IsPaneOpen) Nav.IsPaneOpen = true;
         DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
         {
+            Nav.UpdateLayout();
             if (Shell.Rows.FirstOrDefault(row => row.Kind == SidebarKind.Callout) is not { } row || Nav.ContainerFromMenuItem(row) is not FrameworkElement container) return;
             container.StartBringIntoView();
             if (fromPane) return;

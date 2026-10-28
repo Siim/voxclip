@@ -8,6 +8,18 @@ namespace VoxClip.Ui.Tests;
 public sealed class StartupCheckTests
 {
     [Fact]
+    public void CalloutTipMeasuresTheNewSidebarRowBeforeResolvingItsContainer()
+    {
+        var root = new DirectoryInfo(AppContext.BaseDirectory);
+        while (root is not null && !Directory.Exists(Path.Combine(root.FullName, ".github"))) root = root.Parent;
+        Assert.NotNull(root);
+        var window = File.ReadAllText(Path.Combine(root.FullName, "apps/windows/src/VoxClip.App/MainWindow.xaml.cs"));
+        var callout = window[window.IndexOf("private void CalloutShown", StringComparison.Ordinal)..];
+        Assert.True(callout.IndexOf("Nav.UpdateLayout();", StringComparison.Ordinal) < callout.IndexOf("Nav.ContainerFromMenuItem(row)", StringComparison.Ordinal));
+        Assert.Contains("CalloutTip.IsOpen = true;", callout);
+    }
+
+    [Fact]
     public void NativeBuildSpaceUsesTheDocumentedVmFloor()
     {
         var root = new DirectoryInfo(AppContext.BaseDirectory);
