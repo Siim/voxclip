@@ -8,69 +8,105 @@ namespace VoxClip.Core.Tests.Tracks.WinUi;
 public sealed class ConnectorPreflightTests
 {
     [Theory]
-    [InlineData(ConnectorId.Codex)]
-    [InlineData(ConnectorId.OpenAI)]
-    public async Task OpeningAnUngrantedConnectorNeverProbesButAGrantedOneProbesOnce(ConnectorId id)
+    [InlineData("FindClips", false)]
+    [InlineData("FindClips", true)]
+    [InlineData("Rewrite", false)]
+    [InlineData("Rewrite", true)]
+    [InlineData("Test", false)]
+    [InlineData("Test", true)]
+    public async Task EveryActionDetectsBeforeConsentButNeverSendsUntilContinue(string action, bool grant)
     {
-        var fake = new StatusConnector(id);
+        Assert.True(Enum.TryParse<ConnectorConsentAction>(action, out _));
+        var statusCalls = 0; var requests = 0;
+        Task<ConnectorStatus> Detect(CancellationToken token) { token.ThrowIfCancellationRequested(); statusCalls++; return Task.FromResult<ConnectorStatus>(new ConnectorStatus.Ready()); }
         var ct = TestContext.Current.CancellationToken;
-        Assert.Null(await ConnectorPreflight.ProbeAsync(false, null, fake.GetStatusAsync, ct));
-        Assert.Equal(0, fake.StatusCalls);
-        Assert.IsType<ConnectorStatus.Ready>(await ConnectorPreflight.ProbeAsync(true, null, fake.GetStatusAsync, ct));
-        Assert.Equal(1, fake.StatusCalls);
-    }
-
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task RunAndRetryProbeOnlyAfterConsentCompletes(bool grant)
-    {
-        var fake = new StatusConnector(ConnectorId.Codex);
+        await ConnectorPreflight.ProbeAsync(Detect, ct);
+        var status = await ConnectorPreflight.ProbeAsync(Detect, ct);
+        Assert.Equal(2, statusCalls);
         var dialog = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var pending = ConnectorPreflight.ProbeAsync(false, _ => dialog.Task, fake.GetStatusAsync, TestContext.Current.CancellationToken);
-        Assert.Equal(0, fake.StatusCalls);
+        var pending = ConnectorPreflight.AuthorizeAsync(status, false, _ => dialog.Task, ct);
+        Assert.Equal(0, requests);
         dialog.SetResult(grant);
-        Assert.Equal(grant, await pending is ConnectorStatus.Ready);
-        Assert.Equal(grant ? 1 : 0, fake.StatusCalls);
+        if (await pending) requests++;
+        Assert.Equal(grant ? 1 : 0, requests);
     }
 
     [Fact]
-    public async Task LocalPreflightKeepsItsUnpromptedStatusAndCancelledConsentNeverProbes()
+    public async Task NotReadyNeverPromptsAndCancelledConsentNeverAuthorizes()
     {
-        var fake = new StatusConnector(ConnectorId.Ollama);
         var ct = TestContext.Current.CancellationToken;
-        Assert.IsType<ConnectorStatus.Ready>(await ConnectorPreflight.ProbeAsync(true,
-            _ => throw new InvalidOperationException("Local must not prompt"), fake.GetStatusAsync, ct));
-        Assert.Equal(1, fake.StatusCalls);
+        Assert.False(await ConnectorPreflight.AuthorizeAsync(new ConnectorStatus.CliSignedOut(), false,
+            _ => throw new InvalidOperationException("An unready connector must not prompt"), ct));
         using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(ct);
         var dialog = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var pending = ConnectorPreflight.ProbeAsync(false, _ => dialog.Task, fake.GetStatusAsync, cancellation.Token);
+        var pending = ConnectorPreflight.AuthorizeAsync(new ConnectorStatus.Ready(), false, _ => dialog.Task, cancellation.Token);
         cancellation.Cancel();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => pending);
         Assert.False(dialog.Task.IsCompleted);
-        Assert.Equal(1, fake.StatusCalls);
+        Assert.True(await ConnectorPreflight.AuthorizeAsync(new ConnectorStatus.Ready(), true,
+            _ => throw new InvalidOperationException("A recorded answer must not prompt again"), ct));
+    }
+
+    public static IEnumerable<object[]> Sentences()
+    {
+        foreach (var provider in new[] { (ConnectorId.OpenAI, "OpenAI"), (ConnectorId.Anthropic, "Anthropic"), (ConnectorId.Xai, "xAI"), (ConnectorId.Gemini, "Gemini") })
+        {
+            yield return new object[] { "FindClips", provider.Item1, provider.Item2, "", false, $"Find clips sends this project's transcript (17 words, no audio or video) to {provider.Item2} using your API key." };
+            yield return new object[] { "Rewrite", provider.Item1, provider.Item2, "", false, $"Rewrite sends these 17 words (no audio or video) to {provider.Item2} using your API key." };
+            yield return new object[] { "Test", provider.Item1, provider.Item2, "", false, $"Test sends a short test request to {provider.Item2} using your API key. Nothing from your projects is sent." };
+        }
+        yield return new object[] { "FindClips", ConnectorId.ClaudeCode, "Claude Code", "oauth", false, "VoxClip will run your installed Claude Code with your own sign-in. The transcript is sent to Anthropic and counts toward your Claude plan's usage." };
+        yield return new object[] { "Rewrite", ConnectorId.ClaudeCode, "Claude Code", "oauth", false, "VoxClip will run your installed Claude Code with your own sign-in. These words are sent to Anthropic and count toward your Claude plan's usage." };
+        yield return new object[] { "Test", ConnectorId.ClaudeCode, "Claude Code", "oauth", false, "VoxClip will run your installed Claude Code with your own sign-in. A short test request is sent to Anthropic and counts toward your Claude plan's usage." };
+        yield return new object[] { "FindClips", ConnectorId.ClaudeCode, "Claude Code", "api_key", true, "VoxClip will run your installed Claude Code with your own sign-in. The transcript is sent to Anthropic and billed to the API key Claude Code is signed in with." };
+        yield return new object[] { "Rewrite", ConnectorId.ClaudeCode, "Claude Code", "api_key", true, "VoxClip will run your installed Claude Code with your own sign-in. These words are sent to Anthropic and billed to the API key Claude Code is signed in with." };
+        yield return new object[] { "Test", ConnectorId.ClaudeCode, "Claude Code", "api_key", true, "VoxClip will run your installed Claude Code with your own sign-in. A short test request is sent to Anthropic and billed to the API key Claude Code is signed in with." };
+        yield return new object[] { "FindClips", ConnectorId.Codex, "Codex", "chatgpt", false, "VoxClip will run your installed Codex with your own sign-in. The transcript is sent to OpenAI and counts toward your ChatGPT plan's usage." };
+        yield return new object[] { "Rewrite", ConnectorId.Codex, "Codex", "chatgpt", false, "VoxClip will run your installed Codex with your own sign-in. These words are sent to OpenAI and count toward your ChatGPT plan's usage." };
+        yield return new object[] { "Test", ConnectorId.Codex, "Codex", "chatgpt", false, "VoxClip will run your installed Codex with your own sign-in. A short test request is sent to OpenAI and counts toward your ChatGPT plan's usage." };
+        yield return new object[] { "FindClips", ConnectorId.Codex, "Codex", "apiKey", true, "VoxClip will run your installed Codex with your own sign-in. The transcript is sent to OpenAI and billed to the API key Codex is signed in with." };
+        yield return new object[] { "Rewrite", ConnectorId.Codex, "Codex", "apiKey", true, "VoxClip will run your installed Codex with your own sign-in. These words are sent to OpenAI and billed to the API key Codex is signed in with." };
+        yield return new object[] { "Test", ConnectorId.Codex, "Codex", "apiKey", true, "VoxClip will run your installed Codex with your own sign-in. A short test request is sent to OpenAI and billed to the API key Codex is signed in with." };
+    }
+
+    [Theory]
+    [MemberData(nameof(Sentences))]
+    public void EveryActionAndBillingMethodUsesTheSpecSentence(string action, ConnectorId id, string label, string method, bool key, string expected)
+    {
+        var detection = method.Length == 0 ? null : new CliDetectionInfo("fake", "1.0", method, key);
+        Assert.Equal(expected, ConnectorConsent.Text(Enum.Parse<ConnectorConsentAction>(action), id, label, 17, detection));
+    }
+
+    [Theory]
+    [InlineData(ConnectorId.ClaudeCode)]
+    [InlineData(ConnectorId.Codex)]
+    public void UnknownCliSignInCannotProduceAnyConsentSheet(ConnectorId id)
+    {
+        foreach (var action in Enum.GetValues<ConnectorConsentAction>())
+        {
+            Assert.Null(ConnectorConsent.Text(action, id, "CLI", 17, null));
+            Assert.Null(ConnectorConsent.Text(action, id, "CLI", 17, new("fake", "1", "unknown", false)));
+        }
     }
 
     [Fact]
-    public void FindOpeningAndRetryUseTheConsentGuardAndSettingsKeepsItsOwnPrompt()
+    public void OpeningRetryAndAllThreeRequestsUseExplicitDetectionAndConsentRoutes()
     {
-        var root = Path.GetDirectoryName(Environment.GetEnvironmentVariable("VOXCLIP_SHARED_DIR"))!;
-        var find = File.ReadAllText(Path.Combine(root, "apps/windows/src/VoxClip.App/Controls/FindClipsFlyout.cs"));
-        Assert.Equal(2, find.Split("ConnectorPreflight.ProbeAsync").Length - 1);
+        var root = Path.Combine(Path.GetDirectoryName(Environment.GetEnvironmentVariable("VOXCLIP_SHARED_DIR"))!, "apps/windows/src/VoxClip.App");
+        var find = File.ReadAllText(Path.Combine(root, "Controls/FindClipsFlyout.cs"));
+        Assert.Equal(2, find.Split("ProviderCatalog.ProbeAsync").Length - 1);
         Assert.Contains("internal Task RetryAsync() => FindAsync()", find);
-        Assert.Contains("await FindWithAsync(chosen)", find);
-        var settings = File.ReadAllText(Path.Combine(root, "apps/windows/src/VoxClip.App/SettingsWindow.xaml.cs"));
-        Assert.Contains("ProviderCatalog.ConsentAsync", settings);
-    }
-
-    private sealed class StatusConnector(ConnectorId id) : ILlmConnector
-    {
-        public ConnectorId Id => id;
-        internal int StatusCalls { get; private set; }
-        public Task<ConnectorStatus> GetStatusAsync(CancellationToken ct) { StatusCalls++; return Task.FromResult<ConnectorStatus>(new ConnectorStatus.Ready()); }
-        public Task<IReadOnlyList<LlmModel>> GetModelsAsync(bool refresh, CancellationToken ct) => throw new InvalidOperationException();
-        public Task<int?> GetContextTokensAsync(string model, CancellationToken ct) => throw new InvalidOperationException();
-        public Task<RawCompletion> SendAsync(LlmRequest request, string model, CancellationToken ct) => throw new InvalidOperationException();
+        Assert.Contains("ConnectorConsentAction.FindClips", find);
+        var rewrite = File.ReadAllText(Path.Combine(root, "Pages/EditorPage.xaml.cs"));
+        Assert.Contains("ConnectorConsentAction.Rewrite", rewrite);
+        Assert.Contains("if (entry is not null) await ProviderCatalog.ProbeAsync", rewrite);
+        var settings = File.ReadAllText(Path.Combine(root, "SettingsWindow.xaml.cs"));
+        Assert.Contains("ConnectorConsentAction.Test", settings);
+        var home = File.ReadAllText(Path.Combine(root, "Pages/HomePage.xaml.cs"));
+        Assert.DoesNotContain("GetStatusAsync", home);
+        Assert.Contains("detect ? await ProviderCatalog.ProbeAsync", home);
+        Assert.Contains("ProviderCatalog.LastStatus(entry)", home);
+        Assert.DoesNotContain("Timer", File.ReadAllText(Path.Combine(root, "Services/ProviderCatalog.cs")));
     }
 }
 #endif

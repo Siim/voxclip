@@ -91,16 +91,15 @@ internal sealed class FindClipsFlyout
             return;
         }
         Set(null);
-        connector.Text = ProviderCatalog.HasConsent(chosen) ? $"{chosen.ShortName} · checking…" : chosen.ShortName;
+        connector.Text = $"{chosen.ShortName} · checking…";
         footnote.Text = chosen.Group == "local" ? "Runs on this PC. Nothing leaves it." : "Sends transcript text with word numbers. No audio or video.";
         problem.Visibility = Visibility.Collapsed;
         Ui.ApplyFlyoutEffects(flyout, target);
         flyout.ShowAt(target);
         try
         {
-            var status = await ConnectorPreflight.ProbeAsync(ProviderCatalog.HasConsent(chosen), null,
-                token => App.Services.Connector(chosen.Id).GetStatusAsync(token), ct);
-            if (status is not null) connector.Text = $"{chosen.ShortName} · {ProviderCatalog.ShortStatus(status)}";
+            var status = await ProviderCatalog.ProbeAsync(chosen, App.Services.Connector(chosen.Id), ct);
+            connector.Text = $"{chosen.ShortName} · {ProviderCatalog.ShortStatus(status)}";
         }
         catch (OperationCanceledException) { }
         catch (Exception exception) when (exception is not OutOfMemoryException) { connector.Text = $"{chosen.ShortName} · {ProviderCatalog.ShortStatus(new ConnectorStatus.Unavailable(exception.GetType().Name))}"; }
@@ -170,10 +169,8 @@ internal sealed class FindClipsFlyout
         try
         {
             // The connector's preflight (AI spec §4): a connector that isn't ready explains itself under the actions.
-            var status = await ConnectorPreflight.ProbeAsync(ProviderCatalog.HasConsent(chosen),
-                token => ProviderCatalog.ConsentAsync(chosen, anchor?.XamlRoot ?? flyout.XamlRoot, token),
-                token => App.Services.Connector(chosen.Id).GetStatusAsync(token), ct);
-            if (status is null) return;
+            var selectedConnector = App.Services.Connector(chosen.Id);
+            var status = await ProviderCatalog.ProbeAsync(chosen, selectedConnector, ct);
             if (model.IsLeaving) return;
             if (status is not ConnectorStatus.Ready)
             {
@@ -181,6 +178,8 @@ internal sealed class FindClipsFlyout
                 Show(ClipCallouts.NotReady(chosen.Id, chosen.Label, status, CliHint(chosen, "installHint"), CliHint(chosen, "signInHint")));
                 return;
             }
+            if (!await ProviderCatalog.ConsentAsync(chosen, anchor?.XamlRoot ?? flyout.XamlRoot, ConnectorConsentAction.FindClips,
+                model.Words.Count(word => word.Kind == VoxClip.Core.Domain.Shared.WordKind.Word), selectedConnector, status, ct)) return;
         }
         catch (OperationCanceledException) { return; }
         catch (Exception exception) when (exception is not OutOfMemoryException)

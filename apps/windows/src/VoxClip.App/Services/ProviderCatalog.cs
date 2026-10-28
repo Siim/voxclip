@@ -77,10 +77,23 @@ internal static class ProviderCatalog
 
     internal static bool HasConsent(ProviderEntry entry) => !entry.Cloud && !entry.Cli || App.Services.Get("llm.cloudConsent." + entry.WireId, false);
 
-    internal static async Task<bool> ConsentAsync(ProviderEntry entry, Microsoft.UI.Xaml.XamlRoot root, CancellationToken ct)
+    private static readonly Dictionary<string, ConnectorStatus> lastStatus = new(StringComparer.Ordinal);
+    internal static ConnectorStatus? LastStatus(ProviderEntry entry) => lastStatus.GetValueOrDefault(entry.WireId);
+    internal static async Task<ConnectorStatus> ProbeAsync(ProviderEntry entry, LlmConnector connector, CancellationToken ct)
     {
-        if (HasConsent(entry)) return true;
-        if (!await Controls.Ui.ConfirmAsync(root, "Use this connector?", entry.DataFlow + " Your media and edits stay here. You can change providers in Settings.", "Continue", ct)) return false;
+        var status = await ConnectorPreflight.ProbeAsync(connector.GetStatusAsync, ct);
+        lastStatus[entry.WireId] = status;
+        return status;
+    }
+    internal static async Task<bool> ConsentAsync(ProviderEntry entry, Microsoft.UI.Xaml.XamlRoot root,
+        ConnectorConsentAction action, int words, LlmConnector connector, ConnectorStatus status, CancellationToken ct)
+    {
+        if (status is not ConnectorStatus.Ready) throw new InvalidOperationException(Status(status));
+        if (!entry.Cloud && !entry.Cli) return true;
+        var text = ConnectorConsent.Text(action, entry.Id, entry.Label, words, connector.CliDetection)
+            ?? throw new InvalidOperationException("Check the connector's sign-in method before sending a request.");
+        if (!await ConnectorPreflight.AuthorizeAsync(status, HasConsent(entry),
+            token => Controls.Ui.ConfirmAsync(root, action == ConnectorConsentAction.Test ? "Test this connector?" : action == ConnectorConsentAction.Rewrite ? "Rewrite with this connector?" : "Find clips with this connector?", text, "Continue", token), ct)) return false;
         await App.Services.SetAsync("llm.cloudConsent." + entry.WireId, true, ct);
         return true;
     }

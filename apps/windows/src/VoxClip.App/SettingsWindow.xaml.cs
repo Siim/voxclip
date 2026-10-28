@@ -7,6 +7,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using VoxClip.App.Controls;
 using VoxClip.App.Services;
+using VoxClip.App.ViewModels;
 using VoxClip.Core.Services.LLM;
 using VoxClip.Core.Services.Models;
 
@@ -231,13 +232,15 @@ public sealed partial class SettingsWindow : Window
         }
         if (entry is not null)
         {
-            panel.Children.Add(Ui.Button("Check status", () => _ = Ui.RunAsync(notice, async () => status.Text = ProviderCatalog.Status(await App.Services.Connector(entry.Id).GetStatusAsync(lifetime.Token)), "Connector status")));
+            status.Text = ProviderCatalog.Status(await ProviderCatalog.ProbeAsync(entry, App.Services.Connector(entry.Id), lifetime.Token));
+            panel.Children.Add(Ui.Button("Check status", () => _ = Ui.RunAsync(notice, async () => status.Text = ProviderCatalog.Status(await ProviderCatalog.ProbeAsync(entry, App.Services.Connector(entry.Id), lifetime.Token)), "Connector status")));
             panel.Children.Add(Ui.Button("Test", () => RunSensitive(async () =>
             {
-                var connectorStatus = await App.Services.Connector(entry.Id).GetStatusAsync(lifetime.Token);
+                var selectedConnector = App.Services.Connector(entry.Id);
+                var connectorStatus = await ProviderCatalog.ProbeAsync(entry, selectedConnector, lifetime.Token);
                 status.Text = ProviderCatalog.Status(connectorStatus);
                 if (connectorStatus is not ConnectorStatus.Ready) return;
-                if (!await ProviderCatalog.ConsentAsync(entry, Root.XamlRoot, lifetime.Token)) return;
+                if (!await ProviderCatalog.ConsentAsync(entry, Root.XamlRoot, ConnectorConsentAction.Test, 0, selectedConnector, connectorStatus, lifetime.Token)) return;
                 await ProviderCatalog.TestAsync(entry, model.Text.Trim(), lifetime.Token); status.Text = "Works.";
             }, "Connection test")));
         }

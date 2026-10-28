@@ -115,13 +115,11 @@ internal sealed class OnboardingDialog : ContentDialog
                 if (entry.Cloud || entry.Cli) body.Children.Add(consent);
                 body.Children.Add(Ui.Button("Check status", () => _ = Ui.RunAsync(notice, async () =>
                     Ui.Show(notice, ProviderCatalog.Status(await App.Services.Connector(entry.Id).GetStatusAsync(lifetime.Token))), "Connector status")));
-                body.Children.Add(Ui.Button("Test connector", () => _ = Ui.RunAsync(notice, async () =>
+                body.Children.Add(Ui.Button("Test connector in Settings…", () =>
                 {
-                    if ((entry.Cloud || entry.Cli) && consent.IsChecked != true)
-                    { Ui.Show(notice, "Confirm the connector's data flow before testing.", InfoBarSeverity.Warning); return; }
-                    await ProviderCatalog.TestAsync(entry, App.Services.Get("llm.model." + entry.WireId, entry.DefaultModel), lifetime.Token);
-                    Ui.Show(notice, "Works.", InfoBarSeverity.Success);
-                }, "Connection test")));
+                    Hide();
+                    App.OpenSettings("Providers & Keys");
+                }));
             }
             else body.Children.Add(Ui.Text("Sends transcript text only when you choose an external connector. No audio or video. You can always make clips yourself: select words, press Ctrl+K.", "HelperText"));
         }
@@ -187,7 +185,6 @@ internal sealed class OnboardingDialog : ContentDialog
                 if ((entry.Cloud || entry.Cli) && consent.IsChecked != true)
                 { Ui.Show(notice, "Confirm the connector's data flow before continuing.", InfoBarSeverity.Warning); consent.Focus(FocusState.Programmatic); return; }
                 await App.Services.SetAsync("llm.connector", entry.WireId, lifetime.Token);
-                if (entry.Cloud || entry.Cli) await App.Services.SetAsync("llm.cloudConsent." + entry.WireId, true, lifetime.Token);
             }
             else if (step == 1) return;
             if (step == 2) { await CompleteAsync(); Hide(); }

@@ -506,13 +506,17 @@ public sealed partial class EditorPage : Page
         var passage = new RewriteOpening(ViewModel, after);
         var envelope = !demo && media is not null ? await App.Services.Waveform.GetEnvelopeAsync(media, project.Media.Source.ContentKey, lifetime.Token) : null;
         var entry = (await ProviderCatalog.ReadAsync(lifetime.Token)).FirstOrDefault(item => item.WireId == App.Services.Get("llm.connector", ""));
-        var connector = entry is null ? null : new RewriteConnector(App.Services.Connector(entry.Id),
+        var selectedConnector = entry is null ? null : App.Services.Connector(entry.Id);
+        if (entry is not null) await ProviderCatalog.ProbeAsync(entry, selectedConnector!, lifetime.Token);
+        var connector = entry is null ? null : new RewriteConnector(selectedConnector!,
             App.Services.Get("llm.model." + entry.WireId, entry.DefaultModel), entry.ShortName,
             entry.Cloud ? "apiKey" : entry.Cli ? "cli" : "local", entry.Id == VoxClip.Core.Services.LLM.ConnectorId.ClaudeCode ? "Claude plan" : "ChatGPT plan");
         if (opening != rewriteOpenRevision || !passage.IsCurrent || disposed || ViewModel.IsLeaving ||
             ViewModel.IsReadOnly || ViewModel.Busy || !App.Services.Get("voiceLab.enabled", false)) return;
         rewrite = new(ViewModel, passage.First, passage.Last, envelope, connector, passage.InsertionAfter,
-            consent: token => entry is null ? Task.FromResult(false) : ProviderCatalog.ConsentAsync(entry, XamlRoot, token),
+            consent: async token => entry is not null && await ProviderCatalog.ConsentAsync(entry, XamlRoot, ConnectorConsentAction.Rewrite,
+                ViewModel.Words.Skip(passage.First).Take(passage.Last - passage.First + 1).Count(word => word.Kind == WordKind.Word),
+                selectedConnector!, await ProviderCatalog.ProbeAsync(entry, selectedConnector!, token), token),
             connectorIsCurrent: () => entry is not null && App.Services.Get("llm.connector", "") == entry.WireId &&
                 App.Services.Get("llm.model." + entry.WireId, entry.DefaultModel) == connector?.Model);
         var panel = new RewritePanel(rewrite);
