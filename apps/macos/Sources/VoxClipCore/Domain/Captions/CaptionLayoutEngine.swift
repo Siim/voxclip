@@ -136,7 +136,7 @@ public enum CaptionStyleResolver {
             let style = try patched(original, input: input)
             try style.validateSemantics()
             if let resources { try resources.validate(style: style) }
-            return style
+            return CaptionContrast.resolve(style)
         }
         do {
             return try .init(style: checked(input), rejectedOverrides: false)
@@ -199,7 +199,7 @@ extension CaptionStyle {
             language: "und", duration: 0, captions: .init(overrides: overrides), words: [])
         let style = try CaptionStyleResolver.patched(self, input: input)
         try style.validateSemantics()
-        return style
+        return CaptionContrast.resolve(style)
     }
 }
 

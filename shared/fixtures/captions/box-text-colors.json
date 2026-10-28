@@ -1,0 +1,1551 @@
+{
+  "fixture": "voxclip-caption-box-text-colors/1",
+  "cases": [
+    {
+      "id": "box-highlight-default",
+      "style": "box-highlight",
+      "overrides": {},
+      "state": "active",
+      "box": [
+        124,
+        58,
+        237,
+        255
+      ],
+      "text": [
+        255,
+        255,
+        255,
+        255
+      ],
+      "contrast": 5.698586217871195,
+      "expected": [
+        255,
+        255,
+        255,
+        255
+      ]
+    },
+    {
+      "id": "box-highlight-yellow",
+      "style": "box-highlight",
+      "overrides": {
+        "accent": "#FFE14D"
+      },
+      "state": "active",
+      "box": [
+        255,
+        225,
+        77,
+        255
+      ],
+      "text": [
+        255,
+        255,
+        255,
+        255
+      ],
+      "contrast": 1.3019824344167779,
+      "expected": [
+        0,
+        0,
+        0,
+        255
+      ]
+    },
+    {
+      "id": "box-highlight-green",
+      "style": "box-highlight",
+      "overrides": {
+        "accent": "#4BE38A"
+      },
+      "state": "active",
+      "box": [
+        75,
+        227,
+        138,
+        255
+      ],
+      "text": [
+        255,
+        255,
+        255,
+        255
+      ],
+      "contrast": 1.659580421413997,
+      "expected": [
+        0,
+        0,
+        0,
+        255
+      ]
+    },
+    {
+      "id": "box-highlight-cyan",
+      "style": "box-highlight",
+      "overrides": {
+        "accent": "#5CE1FF"
+      },
+      "state": "active",
+      "box": [
+        92,
+        225,
+        255,
+        255
+      ],
+      "text": [
+        255,
+        255,
+        255,
+        255
+      ],
+      "contrast": 1.536306465981171,
+      "expected": [
+        0,
+        0,
+        0,
+        255
+      ]
+    },
+    {
+      "id": "box-highlight-pink",
+      "style": "box-highlight",
+      "overrides": {
+        "accent": "#FF6FAE"
+      },
+      "state": "active",
+      "box": [
+        255,
+        111,
+        174,
+        255
+      ],
+      "text": [
+        255,
+        255,
+        255,
+        255
+      ],
+      "contrast": 2.580811887234227,
+      "expected": [
+        0,
+        0,
+        0,
+        255
+      ]
+    },
+    {
+      "id": "box-highlight-paper",
+      "style": "box-highlight",
+      "overrides": {
+        "accent": "#F3F0E7"
+      },
+      "state": "active",
+      "box": [
+        243,
+        240,
+        231,
+        255
+      ],
+      "text": [
+        255,
+        255,
+        255,
+        255
+      ],
+      "contrast": 1.1395159940719015,
+      "expected": [
+        0,
+        0,
+        0,
+        255
+      ]
+    },
+    {
+      "id": "box-highlight-white",
+      "style": "box-highlight",
+      "overrides": {
+        "accent": "#FFFFFF"
+      },
+      "state": "active",
+      "box": [
+        255,
+        255,
+        255,
+        255
+      ],
+      "text": [
+        255,
+        255,
+        255,
+        255
+      ],
+      "contrast": 1.0,
+      "expected": [
+        0,
+        0,
+        0,
+        255
+      ]
+    },
+    {
+      "id": "clean-subtitle-default",
+      "style": "clean-subtitle",
+      "overrides": {},
+      "state": "active",
+      "box": [
+        0,
+        0,
+        0,
+        179
+      ],
+      "text": [
+        255,
+        255,
+        255,
+        255
+      ],
+      "contrast": 21.0,
+      "expected": [
+        255,
+        255,
+        255,
+        255
+      ]
+    },
+    {
+      "id": "clean-subtitle-yellow",
+      "style": "clean-subtitle",
+      "overrides": {
+        "accent": "#FFE14D"
+      },
+      "state": "active",
+      "box": [
+        0,
+        0,
+        0,
+        179
+      ],
+      "text": [
+        255,
+        255,
+        255,
+        255
+      ],
+      "contrast": 21.0,
+      "expected": [
+        255,
+        255,
+        255,
+        255
+      ]
+    },
+    {
+      "id": "clean-subtitle-green",
+      "style": "clean-subtitle",
+      "overrides": {
+        "accent": "#4BE38A"
+      },
+      "state": "active",
+      "box": [
+        0,
+        0,
+        0,
+        179
+      ],
+      "text": [
+        255,
+        255,
+        255,
+        255
+      ],
+      "contrast": 21.0,
+      "expected": [
+        255,
+        255,
+        255,
+        255
+      ]
+    },
+    {
+      "id": "clean-subtitle-cyan",
+      "style": "clean-subtitle",
+      "overrides": {
+        "accent": "#5CE1FF"
+      },
+      "state": "active",
+      "box": [
+        0,
+        0,
+        0,
+        179
+      ],
+      "text": [
+        255,
+        255,
+        255,
+        255
+      ],
+      "contrast": 21.0,
+      "expected": [
+        255,
+        255,
+        255,
+        255
+      ]
+    },
+    {
+      "id": "clean-subtitle-pink",
+      "style": "clean-subtitle",
+      "overrides": {
+        "accent": "#FF6FAE"
+      },
+      "state": "active",
+      "box": [
+        0,
+        0,
+        0,
+        179
+      ],
+      "text": [
+        255,
+        255,
+        255,
+        255
+      ],
+      "contrast": 21.0,
+      "expected": [
+        255,
+        255,
+        255,
+        255
+      ]
+    },
+    {
+      "id": "clean-subtitle-paper",
+      "style": "clean-subtitle",
+      "overrides": {
+        "accent": "#F3F0E7"
+      },
+      "state": "active",
+      "box": [
+        0,
+        0,
+        0,
+        179
+      ],
+      "text": [
+        255,
+        255,
+        255,
+        255
+      ],
+      "contrast": 21.0,
+      "expected": [
+        255,
+        255,
+        255,
+        255
+      ]
+    },
+    {
+      "id": "clean-subtitle-white",
+      "style": "clean-subtitle",
+      "overrides": {
+        "accent": "#FFFFFF"
+      },
+      "state": "active",
+      "box": [
+        0,
+        0,
+        0,
+        179
+      ],
+      "text": [
+        255,
+        255,
+        255,
+        255
+      ],
+      "contrast": 21.0,
+      "expected": [
+        255,
+        255,
+        255,
+        255
+      ]
+    },
+    {
+      "id": "lower-third-default",
+      "style": "lower-third",
+      "overrides": {},
+      "state": "active",
+      "box": [
+        0,
+        0,
+        0,
+        140
+      ],
+      "text": [
+        255,
+        255,
+        255,
+        242
+      ],
+      "contrast": 21.0,
+      "expected": [
+        255,
+        255,
+        255,
+        242
+      ]
+    },
+    {
+      "id": "lower-third-yellow",
+      "style": "lower-third",
+      "overrides": {
+        "accent": "#FFE14D"
+      },
+      "state": "active",
+      "box": [
+        0,
+        0,
+        0,
+        140
+      ],
+      "text": [
+        255,
+        255,
+        255,
+        242
+      ],
+      "contrast": 21.0,
+      "expected": [
+        255,
+        255,
+        255,
+        242
+      ]
+    },
+    {
+      "id": "lower-third-green",
+      "style": "lower-third",
+      "overrides": {
+        "accent": "#4BE38A"
+      },
+      "state": "active",
+      "box": [
+        0,
+        0,
+        0,
+        140
+      ],
+      "text": [
+        255,
+        255,
+        255,
+        242
+      ],
+      "contrast": 21.0,
+      "expected": [
+        255,
+        255,
+        255,
+        242
+      ]
+    },
+    {
+      "id": "lower-third-cyan",
+      "style": "lower-third",
+      "overrides": {
+        "accent": "#5CE1FF"
+      },
+      "state": "active",
+      "box": [
+        0,
+        0,
+        0,
+        140
+      ],
+      "text": [
+        255,
+        255,
+        255,
+        242
+      ],
+      "contrast": 21.0,
+      "expected": [
+        255,
+        255,
+        255,
+        242
+      ]
+    },
+    {
+      "id": "lower-third-pink",
+      "style": "lower-third",
+      "overrides": {
+        "accent": "#FF6FAE"
+      },
+      "state": "active",
+      "box": [
+        0,
+        0,
+        0,
+        140
+      ],
+      "text": [
+        255,
+        255,
+        255,
+        242
+      ],
+      "contrast": 21.0,
+      "expected": [
+        255,
+        255,
+        255,
+        242
+      ]
+    },
+    {
+      "id": "lower-third-paper",
+      "style": "lower-third",
+      "overrides": {
+        "accent": "#F3F0E7"
+      },
+      "state": "active",
+      "box": [
+        0,
+        0,
+        0,
+        140
+      ],
+      "text": [
+        255,
+        255,
+        255,
+        242
+      ],
+      "contrast": 21.0,
+      "expected": [
+        255,
+        255,
+        255,
+        242
+      ]
+    },
+    {
+      "id": "lower-third-white",
+      "style": "lower-third",
+      "overrides": {
+        "accent": "#FFFFFF"
+      },
+      "state": "active",
+      "box": [
+        0,
+        0,
+        0,
+        140
+      ],
+      "text": [
+        255,
+        255,
+        255,
+        242
+      ],
+      "contrast": 21.0,
+      "expected": [
+        255,
+        255,
+        255,
+        242
+      ]
+    },
+    {
+      "id": "pill-default",
+      "style": "pill",
+      "overrides": {},
+      "state": "active",
+      "box": [
+        255,
+        255,
+        255,
+        242
+      ],
+      "text": [
+        17,
+        17,
+        17,
+        255
+      ],
+      "contrast": 18.883060964594996,
+      "expected": [
+        17,
+        17,
+        17,
+        255
+      ]
+    },
+    {
+      "id": "pill-yellow",
+      "style": "pill",
+      "overrides": {
+        "accent": "#FFE14D"
+      },
+      "state": "active",
+      "box": [
+        255,
+        255,
+        255,
+        242
+      ],
+      "text": [
+        17,
+        17,
+        17,
+        255
+      ],
+      "contrast": 18.883060964594996,
+      "expected": [
+        17,
+        17,
+        17,
+        255
+      ]
+    },
+    {
+      "id": "pill-green",
+      "style": "pill",
+      "overrides": {
+        "accent": "#4BE38A"
+      },
+      "state": "active",
+      "box": [
+        255,
+        255,
+        255,
+        242
+      ],
+      "text": [
+        17,
+        17,
+        17,
+        255
+      ],
+      "contrast": 18.883060964594996,
+      "expected": [
+        17,
+        17,
+        17,
+        255
+      ]
+    },
+    {
+      "id": "pill-cyan",
+      "style": "pill",
+      "overrides": {
+        "accent": "#5CE1FF"
+      },
+      "state": "active",
+      "box": [
+        255,
+        255,
+        255,
+        242
+      ],
+      "text": [
+        17,
+        17,
+        17,
+        255
+      ],
+      "contrast": 18.883060964594996,
+      "expected": [
+        17,
+        17,
+        17,
+        255
+      ]
+    },
+    {
+      "id": "pill-pink",
+      "style": "pill",
+      "overrides": {
+        "accent": "#FF6FAE"
+      },
+      "state": "active",
+      "box": [
+        255,
+        255,
+        255,
+        242
+      ],
+      "text": [
+        17,
+        17,
+        17,
+        255
+      ],
+      "contrast": 18.883060964594996,
+      "expected": [
+        17,
+        17,
+        17,
+        255
+      ]
+    },
+    {
+      "id": "pill-paper",
+      "style": "pill",
+      "overrides": {
+        "accent": "#F3F0E7"
+      },
+      "state": "active",
+      "box": [
+        255,
+        255,
+        255,
+        242
+      ],
+      "text": [
+        17,
+        17,
+        17,
+        255
+      ],
+      "contrast": 18.883060964594996,
+      "expected": [
+        17,
+        17,
+        17,
+        255
+      ]
+    },
+    {
+      "id": "pill-white",
+      "style": "pill",
+      "overrides": {
+        "accent": "#FFFFFF"
+      },
+      "state": "active",
+      "box": [
+        255,
+        255,
+        255,
+        242
+      ],
+      "text": [
+        17,
+        17,
+        17,
+        255
+      ],
+      "contrast": 18.883060964594996,
+      "expected": [
+        17,
+        17,
+        17,
+        255
+      ]
+    },
+    {
+      "id": "typewriter-default",
+      "style": "typewriter",
+      "overrides": {},
+      "state": "active",
+      "box": [
+        0,
+        0,
+        0,
+        204
+      ],
+      "text": [
+        255,
+        255,
+        255,
+        255
+      ],
+      "contrast": 21.0,
+      "expected": [
+        255,
+        255,
+        255,
+        255
+      ]
+    },
+    {
+      "id": "typewriter-yellow",
+      "style": "typewriter",
+      "overrides": {
+        "accent": "#FFE14D"
+      },
+      "state": "active",
+      "box": [
+        0,
+        0,
+        0,
+        204
+      ],
+      "text": [
+        255,
+        255,
+        255,
+        255
+      ],
+      "contrast": 21.0,
+      "expected": [
+        255,
+        255,
+        255,
+        255
+      ]
+    },
+    {
+      "id": "typewriter-green",
+      "style": "typewriter",
+      "overrides": {
+        "accent": "#4BE38A"
+      },
+      "state": "active",
+      "box": [
+        0,
+        0,
+        0,
+        204
+      ],
+      "text": [
+        255,
+        255,
+        255,
+        255
+      ],
+      "contrast": 21.0,
+      "expected": [
+        255,
+        255,
+        255,
+        255
+      ]
+    },
+    {
+      "id": "typewriter-cyan",
+      "style": "typewriter",
+      "overrides": {
+        "accent": "#5CE1FF"
+      },
+      "state": "active",
+      "box": [
+        0,
+        0,
+        0,
+        204
+      ],
+      "text": [
+        255,
+        255,
+        255,
+        255
+      ],
+      "contrast": 21.0,
+      "expected": [
+        255,
+        255,
+        255,
+        255
+      ]
+    },
+    {
+      "id": "typewriter-pink",
+      "style": "typewriter",
+      "overrides": {
+        "accent": "#FF6FAE"
+      },
+      "state": "active",
+      "box": [
+        0,
+        0,
+        0,
+        204
+      ],
+      "text": [
+        255,
+        255,
+        255,
+        255
+      ],
+      "contrast": 21.0,
+      "expected": [
+        255,
+        255,
+        255,
+        255
+      ]
+    },
+    {
+      "id": "typewriter-paper",
+      "style": "typewriter",
+      "overrides": {
+        "accent": "#F3F0E7"
+      },
+      "state": "active",
+      "box": [
+        0,
+        0,
+        0,
+        204
+      ],
+      "text": [
+        255,
+        255,
+        255,
+        255
+      ],
+      "contrast": 21.0,
+      "expected": [
+        255,
+        255,
+        255,
+        255
+      ]
+    },
+    {
+      "id": "typewriter-white",
+      "style": "typewriter",
+      "overrides": {
+        "accent": "#FFFFFF"
+      },
+      "state": "active",
+      "box": [
+        0,
+        0,
+        0,
+        204
+      ],
+      "text": [
+        255,
+        255,
+        255,
+        255
+      ],
+      "contrast": 21.0,
+      "expected": [
+        255,
+        255,
+        255,
+        255
+      ]
+    },
+    {
+      "id": "vox-highlight-default",
+      "style": "vox-highlight",
+      "overrides": {},
+      "state": "active",
+      "box": [
+        0,
+        0,
+        0,
+        179
+      ],
+      "text": [
+        255,
+        255,
+        255,
+        255
+      ],
+      "contrast": 21.0,
+      "expected": [
+        255,
+        255,
+        255,
+        255
+      ]
+    },
+    {
+      "id": "vox-highlight-yellow",
+      "style": "vox-highlight",
+      "overrides": {
+        "accent": "#FFE14D"
+      },
+      "state": "active",
+      "box": [
+        0,
+        0,
+        0,
+        179
+      ],
+      "text": [
+        255,
+        255,
+        255,
+        255
+      ],
+      "contrast": 21.0,
+      "expected": [
+        255,
+        255,
+        255,
+        255
+      ]
+    },
+    {
+      "id": "vox-highlight-green",
+      "style": "vox-highlight",
+      "overrides": {
+        "accent": "#4BE38A"
+      },
+      "state": "active",
+      "box": [
+        0,
+        0,
+        0,
+        179
+      ],
+      "text": [
+        255,
+        255,
+        255,
+        255
+      ],
+      "contrast": 21.0,
+      "expected": [
+        255,
+        255,
+        255,
+        255
+      ]
+    },
+    {
+      "id": "vox-highlight-cyan",
+      "style": "vox-highlight",
+      "overrides": {
+        "accent": "#5CE1FF"
+      },
+      "state": "active",
+      "box": [
+        0,
+        0,
+        0,
+        179
+      ],
+      "text": [
+        255,
+        255,
+        255,
+        255
+      ],
+      "contrast": 21.0,
+      "expected": [
+        255,
+        255,
+        255,
+        255
+      ]
+    },
+    {
+      "id": "vox-highlight-pink",
+      "style": "vox-highlight",
+      "overrides": {
+        "accent": "#FF6FAE"
+      },
+      "state": "active",
+      "box": [
+        0,
+        0,
+        0,
+        179
+      ],
+      "text": [
+        255,
+        255,
+        255,
+        255
+      ],
+      "contrast": 21.0,
+      "expected": [
+        255,
+        255,
+        255,
+        255
+      ]
+    },
+    {
+      "id": "vox-highlight-paper",
+      "style": "vox-highlight",
+      "overrides": {
+        "accent": "#F3F0E7"
+      },
+      "state": "active",
+      "box": [
+        0,
+        0,
+        0,
+        179
+      ],
+      "text": [
+        255,
+        255,
+        255,
+        255
+      ],
+      "contrast": 21.0,
+      "expected": [
+        255,
+        255,
+        255,
+        255
+      ]
+    },
+    {
+      "id": "vox-highlight-white",
+      "style": "vox-highlight",
+      "overrides": {
+        "accent": "#FFFFFF"
+      },
+      "state": "active",
+      "box": [
+        0,
+        0,
+        0,
+        179
+      ],
+      "text": [
+        255,
+        255,
+        255,
+        255
+      ],
+      "contrast": 21.0,
+      "expected": [
+        255,
+        255,
+        255,
+        255
+      ]
+    },
+    {
+      "id": "keep-tinted",
+      "style": "box-highlight",
+      "overrides": {
+        "words": {
+          "active": {
+            "fill": {
+              "type": "solid",
+              "color": "#7C3AED"
+            },
+            "box": {
+              "color": "#F3F0E7"
+            }
+          }
+        }
+      },
+      "state": "active",
+      "box": [
+        243,
+        240,
+        231,
+        255
+      ],
+      "text": [
+        124,
+        58,
+        237,
+        255
+      ],
+      "contrast": 5.000883048168627,
+      "expected": [
+        124,
+        58,
+        237,
+        255
+      ]
+    },
+    {
+      "id": "keep-alpha",
+      "style": "box-highlight",
+      "overrides": {
+        "words": {
+          "active": {
+            "fill": {
+              "type": "solid",
+              "color": "#11111180"
+            },
+            "box": {
+              "color": "#FFFFFF80"
+            }
+          }
+        }
+      },
+      "state": "active",
+      "box": [
+        255,
+        255,
+        255,
+        128
+      ],
+      "text": [
+        17,
+        17,
+        17,
+        128
+      ],
+      "contrast": 18.883060964594996,
+      "expected": [
+        17,
+        17,
+        17,
+        128
+      ]
+    },
+    {
+      "id": "black-below-minimum",
+      "style": "box-highlight",
+      "overrides": {
+        "words": {
+          "active": {
+            "fill": {
+              "type": "solid",
+              "color": "#000000"
+            },
+            "box": {
+              "color": "#747474"
+            }
+          }
+        }
+      },
+      "state": "active",
+      "box": [
+        116,
+        116,
+        116,
+        255
+      ],
+      "text": [
+        0,
+        0,
+        0,
+        255
+      ],
+      "contrast": 4.492948073111701,
+      "expected": [
+        255,
+        255,
+        255,
+        255
+      ]
+    },
+    {
+      "id": "black-above-minimum",
+      "style": "box-highlight",
+      "overrides": {
+        "words": {
+          "active": {
+            "fill": {
+              "type": "solid",
+              "color": "#000000"
+            },
+            "box": {
+              "color": "#757575"
+            }
+          }
+        }
+      },
+      "state": "active",
+      "box": [
+        117,
+        117,
+        117,
+        255
+      ],
+      "text": [
+        0,
+        0,
+        0,
+        255
+      ],
+      "contrast": 4.557768319672582,
+      "expected": [
+        0,
+        0,
+        0,
+        255
+      ]
+    },
+    {
+      "id": "white-below-minimum",
+      "style": "box-highlight",
+      "overrides": {
+        "words": {
+          "active": {
+            "fill": {
+              "type": "solid",
+              "color": "#FFFFFF"
+            },
+            "box": {
+              "color": "#777777"
+            }
+          }
+        }
+      },
+      "state": "active",
+      "box": [
+        119,
+        119,
+        119,
+        255
+      ],
+      "text": [
+        255,
+        255,
+        255,
+        255
+      ],
+      "contrast": 4.478089453577215,
+      "expected": [
+        0,
+        0,
+        0,
+        255
+      ]
+    },
+    {
+      "id": "white-above-minimum",
+      "style": "box-highlight",
+      "overrides": {
+        "words": {
+          "active": {
+            "fill": {
+              "type": "solid",
+              "color": "#FFFFFF"
+            },
+            "box": {
+              "color": "#767676"
+            }
+          }
+        }
+      },
+      "state": "active",
+      "box": [
+        118,
+        118,
+        118,
+        255
+      ],
+      "text": [
+        255,
+        255,
+        255,
+        255
+      ],
+      "contrast": 4.542224959605253,
+      "expected": [
+        255,
+        255,
+        255,
+        255
+      ]
+    },
+    {
+      "id": "prefer-white",
+      "style": "box-highlight",
+      "overrides": {
+        "words": {
+          "active": {
+            "fill": {
+              "type": "solid",
+              "color": "#222222"
+            },
+            "box": {
+              "color": "#000000"
+            }
+          }
+        }
+      },
+      "state": "active",
+      "box": [
+        0,
+        0,
+        0,
+        255
+      ],
+      "text": [
+        34,
+        34,
+        34,
+        255
+      ],
+      "contrast": 1.3199258673101926,
+      "expected": [
+        255,
+        255,
+        255,
+        255
+      ]
+    },
+    {
+      "id": "prefer-black",
+      "style": "box-highlight",
+      "overrides": {
+        "words": {
+          "active": {
+            "fill": {
+              "type": "solid",
+              "color": "#FFFFFF"
+            },
+            "box": {
+              "color": "#FFFFFF"
+            }
+          }
+        }
+      },
+      "state": "active",
+      "box": [
+        255,
+        255,
+        255,
+        255
+      ],
+      "text": [
+        255,
+        255,
+        255,
+        255
+      ],
+      "contrast": 1.0,
+      "expected": [
+        0,
+        0,
+        0,
+        255
+      ]
+    },
+    {
+      "id": "patched-base-box",
+      "style": "pill",
+      "overrides": {
+        "box": {
+          "color": "#111111"
+        }
+      },
+      "state": "active",
+      "box": [
+        17,
+        17,
+        17,
+        255
+      ],
+      "text": [
+        17,
+        17,
+        17,
+        255
+      ],
+      "contrast": 1.0,
+      "expected": [
+        255,
+        255,
+        255,
+        255
+      ]
+    },
+    {
+      "id": "patched-past-fill",
+      "style": "pill",
+      "overrides": {
+        "words": {
+          "past": {
+            "fill": {
+              "type": "solid",
+              "color": "#FFFFFF"
+            }
+          }
+        }
+      },
+      "state": "past",
+      "box": [
+        255,
+        255,
+        255,
+        242
+      ],
+      "text": [
+        255,
+        255,
+        255,
+        255
+      ],
+      "contrast": 1.0,
+      "expected": [
+        0,
+        0,
+        0,
+        255
+      ]
+    },
+    {
+      "id": "patched-future-fill",
+      "style": "pill",
+      "overrides": {
+        "words": {
+          "future": {
+            "fill": {
+              "type": "solid",
+              "color": "#FFFFFF"
+            }
+          }
+        }
+      },
+      "state": "future",
+      "box": [
+        255,
+        255,
+        255,
+        242
+      ],
+      "text": [
+        255,
+        255,
+        255,
+        255
+      ],
+      "contrast": 1.0,
+      "expected": [
+        0,
+        0,
+        0,
+        255
+      ]
+    },
+    {
+      "id": "active-box-over-page-box",
+      "style": "box-highlight",
+      "overrides": {
+        "box": {
+          "scope": "page",
+          "color": "#000000"
+        },
+        "accent": "#FFFFFF"
+      },
+      "state": "active",
+      "box": [
+        255,
+        255,
+        255,
+        255
+      ],
+      "text": [
+        255,
+        255,
+        255,
+        255
+      ],
+      "contrast": 1.0,
+      "expected": [
+        0,
+        0,
+        0,
+        255
+      ]
+    }
+  ]
+}

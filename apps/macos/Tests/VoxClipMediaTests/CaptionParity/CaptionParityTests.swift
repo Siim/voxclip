@@ -155,7 +155,7 @@ struct CaptionParityTests {
             if let tileIndex { try stored?.compare(actual, image: tileIndex[position], folder: "tiles") }
         }
         print("Caption cache parity: \(count) samples + \(tileImages.count) tiles; tile states checked")
-        #expect(count == 262)
+        #expect(count == 292)
         #expect(tileImages.count == 38)
         if let output {
             print("Caption goldens generated at \(output.path); stored comparison skipped for generation (stored root: \(goldenRoot.path))")

@@ -21,6 +21,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from captionref import mathref  # noqa: E402
 from captionref import text as tx  # noqa: E402
+from captionref.contrast import SWATCHES  # noqa: E402
 from captionref.fontdb import FontDB  # noqa: E402
 from captionref.layout import SAFE_INSETS, Lexicon, build_track  # noqa: E402
 from captionref.style import load_style, with_defaults  # noqa: E402
@@ -307,6 +308,16 @@ def main():
     ids = set()
     all_styles = {f[:-5] for f in os.listdir(os.path.join(STYLES, "styles")) if f.endswith(".json")}
     cases = list(cases_doc["cases"])
+    preview = load_style("box-highlight")["preview"]
+    texts = preview["text"].split()
+    cases_doc["wordSets"]["box-swatches"] = {
+        "language": "en", "duration": 0.4 * len(texts) + 0.5,
+        "words": [[word, round(0.4 * index, 6), round(0.4 * index + 0.35, 6)]
+                  for index, word in enumerate(texts)]}
+    for name, accent in SWATCHES.items():
+        for aspect, frame in (("portrait", [1080, 1920]), ("landscape", [1920, 1080])):
+            cases.append({"id": "box-highlight-" + name + "-" + aspect, "style": "box-highlight",
+                          "frame": frame, "words": "box-swatches", "overrides": {"accent": accent}})
     explicit = {c["id"] for c in cases}
     matrix = cases_doc.get("matrix")
     if matrix:

@@ -70,7 +70,7 @@ internal static class CaptionStyleResolver
         Semantic(style, data);
         var position = CaptionEngine.StoredPosition(request.Captions, request.Frame);
         if (position is { } stored && style.Position.UserDraggable) style = style with { Position = style.Position with { X = stored.X, Y = stored.Y } };
-        return style;
+        return CaptionContrast.Resolve(style);
     }
 
     private static JsonNode? Merge(JsonNode? target, JsonNode? patch)

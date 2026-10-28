@@ -24,6 +24,8 @@ Run every script with `-I` (isolated mode). The scripts put their own folder on 
 | `gen_cards.py` | Builds the caption card cases of `card-cases.json` (doc/design.md section 5.4.2), validates each project against the project schema and writes `shared/fixtures/captions/cards.json`. The scope's caption copy comes from the editing fixture generator's reference planner, run through `card_plans.mjs`. Every card and fit drop is laid out with the reference engine and refused unless its drawn moment shows the key word | `regex`, `jsonschema`, `fonttools`, `uharfbuzz`, Node.js 22 |
 | `gen_gallery.py` | Builds the gallery tile cases of `gallery-cases.json` (spec 15.3) with the card rules of `captionref.card` and writes `shared/fixtures/captions/gallery-samples.json`. Caption copies come from `card_plans.mjs`, as for `gen_cards.py`. It takes only words the style's primary font covers whole, and checks that the page at the tile time contains the drawn word, including when the tile timing splits the sample. With `jsonschema` installed it also validates each project | Node.js 22 (standard library otherwise) |
 | `gen_card_colors.py` | Writes `shared/fixtures/captions/card-colors.json`, the design.md section 5.4.3 sidebar key-word colour vectors | none (standard library) |
+| `gen_box_text_colors.py` | Writes `box-text-colors.json`: six boxed styles × six swatches plus defaults and text/box override boundaries (spec 2.3) | none (standard library) |
+| `check_drift.py` | Checks regenerated caption JSON against HEAD; only `box-text-colors.json` permits the existing Voice Lab comparator's libm tolerance (relative 1e-10, absolute 1e-12), restoring committed bytes after a tolerant match | none (standard library) |
 | `compare_overlays.py` | The image comparison of spec section 16.5, for two PNGs or two folders of goldens | `numpy` |
 | `parity.sh` | Renders every golden sample with the Swift and the C# CLI and compares them (spec 16.6) | Xcode, .NET 10 SDK, `numpy` |
 
@@ -37,10 +39,12 @@ $P -I tools/captions/gen_fixtures.py
 $P -I tools/captions/gen_cards.py                   # caption card fixtures
 python3 -I tools/captions/gen_gallery.py              # gallery tile samples; no venv needed
 python3 -I tools/captions/gen_card_colors.py          # sidebar key-word colour vectors
+python3 -I tools/captions/gen_box_text_colors.py      # text on a caption box
+python3 -I tools/captions/check_drift.py              # after committing intentional fixture changes
 git diff --stat shared/                               # review: a fixture diff is a behaviour change
 ```
 
-`gen_fixtures.py`, `gen_cards.py`, `gen_gallery.py` and `gen_card_colors.py` are deterministic: running any of them twice gives byte-identical files. `gen_fixtures.py` deletes and rewrites `shared/fixtures/captions/layout/`.
+`gen_fixtures.py`, `gen_cards.py`, `gen_gallery.py`, `gen_card_colors.py` and `gen_box_text_colors.py` are deterministic: running any of them twice gives byte-identical files. `gen_fixtures.py` deletes and rewrites `shared/fixtures/captions/layout/`. It also builds Box highlight's preview words in portrait and landscape for every swatch; those 12 cases exercise gallery samples through the ordinary layout/parity path without changing the 38 default gallery tiles.
 
 ## Package `captionref`
 
@@ -48,6 +52,7 @@ git diff --stat shared/                               # review: a fixture diff i
 |---|---|
 | `util.py` | 1.3 rounding, JSON output |
 | `style.py` | 2.2 defaults, 2.4 resolution (aspect overrides, RFC 7396 patch, positions), 2.3 colours, 5.1 aspect class |
+| `contrast.py` | 2.3 WCAG box text contrast and the six accent swatches |
 | `text.py` | 3 normalisation, case map, punctuation, sentence and clause ends, matching keys, grapheme clusters (only these need `regex`) |
 | `fontdb.py` | 4.1 manifest, 4.3 HarfBuzz shaping at `unitsPerEm` scale, 4.4 nearest-weight fallback |
 | `layout.py` | 4.4 to 4.6 measurement, 5 frame, 6 paging and line breaking, 7 placement, 8.1 page timing, 9 emphasis and emoji selection, 10.2 fill precedence |
@@ -60,11 +65,16 @@ It does not rasterise. Pixel goldens come from the macOS renderer (`voxclip-cli 
 
 ## Reviewing macOS golden output
 
-Until the CLI command is wired, the test hook uses the same `CaptionRenderHarness`:
+Regenerate through the CLI's shared `CaptionRenderHarness` (spec 16.7):
 
 ```sh
 cd apps/macos
-VOXCLIP_SHARED_DIR="$PWD/../../shared" VOXCLIP_GOLDEN_OUT=/tmp/voxclip-reviewed-goldens swift test --filter goldenRenders
+nice swift build --jobs 4 --product voxclip-cli
+export VOXCLIP_SHARED_DIR="$PWD/../../shared"
+for fixture in ../../shared/fixtures/captions/layout/*.json; do
+  nice swift run --skip-build --jobs 4 voxclip-cli render-caption --case "$fixture" --out /tmp/voxclip-reviewed-goldens
+done
+nice swift run --skip-build --jobs 4 voxclip-cli render-caption --tiles ../../shared/fixtures/captions/preview-tiles.json --out /tmp/voxclip-reviewed-goldens
 ```
 
 Use a fresh output directory outside `shared/`. Generation refuses the configured shared directory and its descendants, the committed golden root, and symlink aliases into either. Generation does not compare against stored goldens; normal tests always check cache parity and tile states, and require the stored root for pixel comparisons. `VOXCLIP_SKIP_CAPTION_GOLDENS` does not disable these checks.
@@ -77,7 +87,7 @@ cp -R /tmp/voxclip-reviewed-goldens/. ../../shared/fixtures/captions/golden/
 git diff --stat -- ../../shared/fixtures/captions/golden
 ```
 
-The lead will rerender through `voxclip-cli render-caption` when mac-media lands that command and verify byte-identical output before accepting that handoff.
+The test hook `VOXCLIP_GOLDEN_OUT=/tmp/voxclip-reviewed-goldens swift test --filter goldenRenders` uses the same harness. Normal tests compare stored references; generation never silently replaces them.
 
 ## Adding a style
 

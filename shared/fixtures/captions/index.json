@@ -335,6 +335,90 @@
    "samples": 34
   },
   {
+   "file": "layout/box-highlight-yellow-portrait.json",
+   "style": "box-highlight",
+   "frame": [1080, 1920],
+   "pages": 1,
+   "samples": 7
+  },
+  {
+   "file": "layout/box-highlight-yellow-landscape.json",
+   "style": "box-highlight",
+   "frame": [1920, 1080],
+   "pages": 1,
+   "samples": 7
+  },
+  {
+   "file": "layout/box-highlight-green-portrait.json",
+   "style": "box-highlight",
+   "frame": [1080, 1920],
+   "pages": 1,
+   "samples": 7
+  },
+  {
+   "file": "layout/box-highlight-green-landscape.json",
+   "style": "box-highlight",
+   "frame": [1920, 1080],
+   "pages": 1,
+   "samples": 7
+  },
+  {
+   "file": "layout/box-highlight-cyan-portrait.json",
+   "style": "box-highlight",
+   "frame": [1080, 1920],
+   "pages": 1,
+   "samples": 7
+  },
+  {
+   "file": "layout/box-highlight-cyan-landscape.json",
+   "style": "box-highlight",
+   "frame": [1920, 1080],
+   "pages": 1,
+   "samples": 7
+  },
+  {
+   "file": "layout/box-highlight-pink-portrait.json",
+   "style": "box-highlight",
+   "frame": [1080, 1920],
+   "pages": 1,
+   "samples": 7
+  },
+  {
+   "file": "layout/box-highlight-pink-landscape.json",
+   "style": "box-highlight",
+   "frame": [1920, 1080],
+   "pages": 1,
+   "samples": 7
+  },
+  {
+   "file": "layout/box-highlight-paper-portrait.json",
+   "style": "box-highlight",
+   "frame": [1080, 1920],
+   "pages": 1,
+   "samples": 7
+  },
+  {
+   "file": "layout/box-highlight-paper-landscape.json",
+   "style": "box-highlight",
+   "frame": [1920, 1080],
+   "pages": 1,
+   "samples": 7
+  },
+  {
+   "file": "layout/box-highlight-white-portrait.json",
+   "style": "box-highlight",
+   "frame": [1080, 1920],
+   "pages": 1,
+   "samples": 7
+  },
+  {
+   "file": "layout/box-highlight-white-landscape.json",
+   "style": "box-highlight",
+   "frame": [1920, 1080],
+   "pages": 1,
+   "samples": 7
+  },
+  {
    "file": "layout/active-pop-square-en.json",
    "style": "active-pop",
    "frame": [1080, 1080],
