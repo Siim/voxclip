@@ -75,9 +75,11 @@ internal static class ProviderCatalog
         if (!result.Passed) throw new InvalidDataException("The connector did not return the expected test response.");
     }
 
+    internal static bool HasConsent(ProviderEntry entry) => !entry.Cloud && !entry.Cli || App.Services.Get("llm.cloudConsent." + entry.WireId, false);
+
     internal static async Task<bool> ConsentAsync(ProviderEntry entry, Microsoft.UI.Xaml.XamlRoot root, CancellationToken ct)
     {
-        if (!entry.Cloud && !entry.Cli || App.Services.Get("llm.cloudConsent." + entry.WireId, false)) return true;
+        if (HasConsent(entry)) return true;
         if (!await Controls.Ui.ConfirmAsync(root, "Use this connector?", entry.DataFlow + " Your media and edits stay here. You can change providers in Settings.", "Continue", ct)) return false;
         await App.Services.SetAsync("llm.cloudConsent." + entry.WireId, true, ct);
         return true;

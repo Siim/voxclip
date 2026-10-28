@@ -91,12 +91,17 @@ internal sealed class FindClipsFlyout
             return;
         }
         Set(null);
-        connector.Text = $"{chosen.ShortName} · checking…";
+        connector.Text = ProviderCatalog.HasConsent(chosen) ? $"{chosen.ShortName} · checking…" : chosen.ShortName;
         footnote.Text = chosen.Group == "local" ? "Runs on this PC. Nothing leaves it." : "Sends transcript text with word numbers. No audio or video.";
         problem.Visibility = Visibility.Collapsed;
         Ui.ApplyFlyoutEffects(flyout, target);
         flyout.ShowAt(target);
-        try { connector.Text = $"{chosen.ShortName} · {ProviderCatalog.ShortStatus(await App.Services.Connector(chosen.Id).GetStatusAsync(ct))}"; }
+        try
+        {
+            var status = await ConnectorPreflight.ProbeAsync(ProviderCatalog.HasConsent(chosen), null,
+                token => App.Services.Connector(chosen.Id).GetStatusAsync(token), ct);
+            if (status is not null) connector.Text = $"{chosen.ShortName} · {ProviderCatalog.ShortStatus(status)}";
+        }
         catch (OperationCanceledException) { }
         catch (Exception exception) when (exception is not OutOfMemoryException) { connector.Text = $"{chosen.ShortName} · {ProviderCatalog.ShortStatus(new ConnectorStatus.Unavailable(exception.GetType().Name))}"; }
     }
@@ -165,7 +170,10 @@ internal sealed class FindClipsFlyout
         try
         {
             // The connector's preflight (AI spec §4): a connector that isn't ready explains itself under the actions.
-            var status = await App.Services.Connector(chosen.Id).GetStatusAsync(ct);
+            var status = await ConnectorPreflight.ProbeAsync(ProviderCatalog.HasConsent(chosen),
+                token => ProviderCatalog.ConsentAsync(chosen, anchor?.XamlRoot ?? flyout.XamlRoot, token),
+                token => App.Services.Connector(chosen.Id).GetStatusAsync(token), ct);
+            if (status is null) return;
             if (model.IsLeaving) return;
             if (status is not ConnectorStatus.Ready)
             {
@@ -173,7 +181,6 @@ internal sealed class FindClipsFlyout
                 Show(ClipCallouts.NotReady(chosen.Id, chosen.Label, status, CliHint(chosen, "installHint"), CliHint(chosen, "signInHint")));
                 return;
             }
-            if (!await ProviderCatalog.ConsentAsync(chosen, anchor?.XamlRoot ?? flyout.XamlRoot, ct) || model.IsLeaving) return;
         }
         catch (OperationCanceledException) { return; }
         catch (Exception exception) when (exception is not OutOfMemoryException)
