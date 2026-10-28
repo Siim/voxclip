@@ -292,6 +292,10 @@ import VoxClipCore
             }
             guard let editor else { return false }
             if editor.mutationEnabled(item.tag) == false { return false }
+            if NSApp.currentEvent?.type == .keyDown, [40, 41, 43, 44].contains(item.tag) {
+                guard editor.focusedPane == .sidebar, model.shell.renaming == nil else { return false }
+                if let input = NSApp.keyWindow?.firstResponder as? any NSTextInputClient, input.hasMarkedText() { return false }
+            }
             if [1, 2, 3, 21, 22, 23, 24, 25, 26, 29, 30, 31, 32, 33, 38, 46].contains(item.tag) {
                 guard editor.correctionID == nil else { return false }
                 let responder = NSApp.keyWindow?.firstResponder
@@ -427,11 +431,11 @@ import VoxClipCore
         let clip = menu("Clip")
         command(clip, "Make Clip from Selection", 29, "k")
         command(clip, "Find Clips…", 34, "k", [.command, .shift])
-        command(clip, "Keep Suggestion", 40)
-        command(clip, "Dismiss Suggestion", 41)
+        command(clip, "Keep Suggestion", 40, String(UnicodeScalar(NSCarriageReturnCharacter)!), [])
+        command(clip, "Dismiss Suggestion", 41, String(UnicodeScalar(NSDeleteCharacter)!), [])
         command(clip, "Keep All Suggestions", 42)
-        command(clip, "Rename Clip…", 43)
-        command(clip, "Remove Clip", 44)
+        command(clip, "Rename Clip…", 43, String(UnicodeScalar(NSCarriageReturnCharacter)!), [])
+        command(clip, "Remove Clip", 44, String(UnicodeScalar(NSDeleteCharacter)!), [])
         command(clip, "Set Start", 30, "i", [])
         command(clip, "Set End", 31, "o", [])
         command(clip, "Previous Clip", 32, "[", [])

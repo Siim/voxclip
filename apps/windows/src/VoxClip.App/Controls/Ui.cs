@@ -9,22 +9,22 @@ namespace VoxClip.App.Controls;
 
 internal static class Ui
 {
-    private static readonly Windows.UI.ViewManagement.AccessibilitySettings Accessibility = new();
-    private static readonly Windows.UI.ViewManagement.UISettings Effects = new();
-    internal static bool HighContrast => Accessibility.HighContrast;
+    private static AccessibilitySnapshot snapshot = AccessibilitySnapshot.Default;
+    internal static bool HighContrast => snapshot.Effects.HighContrast;
+    internal static string HighContrastScheme => snapshot.Scheme;
     /// <summary>Windows "Animation effects": off means Reduce Motion (design §5.4.9).</summary>
-    internal static bool AnimationsEnabled => Effects.AnimationsEnabled;
+    internal static bool AnimationsEnabled => snapshot.Effects.Animations;
     /// <summary>Windows "Transparency effects": off selects the opaque media chips (design §5.4.9).</summary>
-    internal static bool TransparencyEnabled => Effects.AdvancedEffectsEnabled;
-    internal static AccessibilityEffects EffectPolicy => new(AnimationsEnabled, TransparencyEnabled, HighContrast);
-    /// <summary>Animation or transparency effects were turned on or off. Raised on a background thread.</summary>
+    internal static bool TransparencyEnabled => snapshot.Effects.AdvancedEffects;
+    internal static AccessibilityEffects EffectPolicy => snapshot.Effects;
+    /// <summary>Window-owned system settings changed. Raised on the UI thread.</summary>
     internal static event EventHandler? EffectsChanged;
 
-    static Ui()
+    internal static void SetEffects(AccessibilitySnapshot value)
     {
-        Effects.AdvancedEffectsEnabledChanged += (_, _) => EffectsChanged?.Invoke(null, EventArgs.Empty);
-        Effects.AnimationsEnabledChanged += (_, _) => EffectsChanged?.Invoke(null, EventArgs.Empty);
-        Accessibility.HighContrastChanged += (_, _) => EffectsChanged?.Invoke(null, EventArgs.Empty);
+        if (snapshot == value) return;
+        snapshot = value;
+        EffectsChanged?.Invoke(null, EventArgs.Empty);
     }
     internal static void Announce(FrameworkElement owner, string text, string activity)
     {
@@ -44,7 +44,7 @@ internal static class Ui
     }
     internal static Brush ThemeBrush(FrameworkElement owner, string key)
     {
-        var themeKey = Accessibility.HighContrast ? "HighContrast" : owner.ActualTheme == ElementTheme.Light ? "Light" : "Default";
+        var themeKey = HighContrast ? "HighContrast" : owner.ActualTheme == ElementTheme.Light ? "Light" : "Default";
         foreach (var dictionary in Application.Current.Resources.MergedDictionaries.Reverse())
             if (dictionary.ThemeDictionaries.TryGetValue(themeKey, out var resource) && resource is ResourceDictionary theme && theme.TryGetValue(key, out var value) && value is Brush brush) return brush;
         return (Brush)Application.Current.Resources[key];

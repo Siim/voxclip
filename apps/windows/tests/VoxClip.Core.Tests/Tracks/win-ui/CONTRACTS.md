@@ -1,5 +1,10 @@
 # win-ui contract notes
 
+## Round 9 — real Editor launch pre-merge gate (2026-10-28)
+
+- CI tries the Debug Editor in the hosted process's input desktop. launch-smoke.ps1 refuses stale output and requires the owned process's existing ready self-check, rootLoaded/rendered, visible native window and visible Transcript UIA node. Only then does observed-self-check.json report status ok. Failed or absent application checks fail the job; portable StartupCheckTests also cover blank/uniform images and pin the smoke's negative checks.
+- If the hosted evidence reports no interactive input desktop, that is not a launch pass. Before merge, with an owned vm.lock and a serial Debug App build for each RID, run `powershell -NoProfile -ExecutionPolicy Bypass -File apps\windows\tests\VoxClip.Core.Tests\Tracks\win-ui\launch-smoke.ps1 -Root C:\voxclip-build\sol-win-r9 -EvidenceDir C:\voxclip-build\sol-win-r9\smoke-win-arm64 -RuntimeIdentifier win-arm64 -Schedule` (then win-x64 with its own fresh evidence directory). The helper registers a unique interactive scheduled task for the logged-in owner and removes only that task. A non-ok scheduled result fails. Keep both reports as mandatory manual pre-merge evidence; hosted build success is never a substitute.
+
 ## Round 5 — synchronous history, canonical exports and exact copy (2026-10-27)
 
 - Merged origin/main (`5d6a295a5b0c4a9c63701a3f72255cd487d1dcc6`) first and preserved both Windows contract histories. The merge's second parent, not a later moving remote-tracking ref, identifies the integrated source. Step 15 remains unstarted; scheduling that work is lead-owned.

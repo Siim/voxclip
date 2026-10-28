@@ -33,7 +33,6 @@ import VoxClipCore
     }
     func updateNSView(_ scroll: NSScrollView, context: Context) {
         guard let text = scroll.documentView as? TranscriptNSTextView else { return }
-        text.configureAccessibilityActions()
         let coordinator = context.coordinator
         let signature = "\(model.transcriptLayoutRevision):\(model.showCuts):\(model.showPauses):\(model.textSize):\(model.project.edits.pauseThresholdSeconds)"
         coordinator.updating = true
@@ -285,7 +284,7 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
     var selectionBarVisible: Bool { selectionBar?.isHidden == false }
     func refreshSelectionBar() {
         guard let model else { return }
-        let signature = "\(model.selectedWordIDs.sorted()):\(model.selectedPauseIDs.sorted()):\(model.findVisible):\(model.correctionID ?? ""):\(model.cutWordIDs):\(model.cutPauseIDs)"
+        let signature = "\(model.selectedWordIDs.sorted()):\(model.selectedPauseIDs.sorted()):\(model.findVisible):\(model.correctionID ?? ""):\(model.cutWordIDs):\(model.cutPauseIDs):\(model.capabilities):\(model.app.bool("voiceLab.enabled"))"
         guard signature != barSignature else { return }
         barSignature = signature
         configureAccessibilityActions()

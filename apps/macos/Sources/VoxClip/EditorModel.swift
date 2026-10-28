@@ -1054,14 +1054,17 @@ extension EditorModel {
         let corrections = project.edits.corrections
         let cuts = Set(project.edits.cutWordIds)
         let selectedModel = app.string("llm.model.\(provider.id)", fallback: provider.defaultModel ?? "")
+        let selectedSignature = rewriteConnectorSignature
         let selectedPreset = preset
         let instructions = instruction
         let snapshot = project
         let run = {
             guard self.capabilities.ai, self.project == snapshot, self.app.string("llm.connector") == provider.id,
                   self.app.string("llm.model.\(provider.id)", fallback: provider.defaultModel ?? "") == selectedModel,
+                  self.rewriteConnectorSignature == selectedSignature,
                   let lease = self.llmRuns.acquire() else { return }
             let runs = self.llmRuns
+            let connector = self.app.connector(provider.id)
             self.findTask?.cancel(); self.finding = true; self.clipError = nil; self.fallbackNote = nil; self.showAISetup = false
             self.onNeedsSidebar?()
             self.announce("Finding clips")
@@ -1072,7 +1075,7 @@ extension EditorModel {
                     let finder = ClipFinder(runner: LLMRunner(keys: app.secrets, catalog: catalog, log: app.log), shared: shared)
                     let presets = try await finder.presets()
                     guard let preset = presets.first(where: { $0.id == selectedPreset }) else { throw ClipFinderGateError.needInstructions(message: "Choose a clip preset.") }
-                    let result = try await finder.find(ClipFinderRequest(transcript: transcript, corrections: corrections, cutWordIds: cuts, preset: preset, instruction: instructions, snap: app.bool("llm.clips.snapToLines", fallback: true)), connector: app.connector(provider.id), model: selectedModel)
+                    let result = try await finder.find(ClipFinderRequest(transcript: transcript, corrections: corrections, cutWordIds: cuts, preset: preset, instruction: instructions, snap: app.bool("llm.clips.snapToLines", fallback: true)), connector: connector, model: selectedModel)
                     try Task.checkCancellation()
                     let usedFallback = await finder.lastUsedFallback == true && result.model != selectedModel
                     guard project.transcript == transcript else { return }

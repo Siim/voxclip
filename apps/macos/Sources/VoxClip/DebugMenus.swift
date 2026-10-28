@@ -7,10 +7,14 @@ import VoxClipCore
     static func run(app: AppModel, fixture: Project, directory: URL) async throws -> [DebugUISuite.Result] {
         var results: [DebugUISuite.Result] = []
         func check(_ name: String, _ passed: Bool) { results.append(.init(name: name, passed: passed)) }
-        func item(_ menu: String, _ title: String) -> NSMenuItem? { NSApp.mainMenu?.item(withTitle: menu)?.submenu?.item(withTitle: title) }
+        func item(_ menu: String, _ title: String) -> NSMenuItem? {
+            let items = NSApp.mainMenu?.item(withTitle: menu)?.submenu
+            return items?.item(withTitle: title) ?? (title == "Hide Cut Words" ? items?.item(withTitle: "Show Cut Words") : nil)
+        }
         guard let delegate = NSApp.delegate as? AppDelegate else { throw CocoaError(.coderInvalidValue) }
         let bindings: [(String, String, String, NSEvent.ModifierFlags)] = [
             ("File", "New Project from Video…", "n", .command), ("File", "Close Project", "w", .command),
+            ("File", "Open…", "o", .command), ("File", "Export…", "e", .command),
             ("View", "Home", "1", .command), ("View", "Full Take", "2", .command),
             ("Clip", "Find Clips…", "k", [.command, .shift]), ("Edit", "Rewrite…", "r", [.command, .shift]),
             ("View", "Hide Viewer", "i", [.command, .option]), ("View", "Hide Sidebar", "s", [.command, .control]),
@@ -23,10 +27,28 @@ import VoxClipCore
             ("Playback", "Go to Start", String(UnicodeScalar(NSUpArrowFunctionKey)!), .command),
             ("Playback", "Go to End", String(UnicodeScalar(NSDownArrowFunctionKey)!), .command),
             ("Edit", "Cut Selection", String(UnicodeScalar(NSDeleteCharacter)!), []),
-            ("Edit", "Restore Selection", String(UnicodeScalar(NSDeleteCharacter)!), .shift), ("Edit", "Correct Word", "c", [])
+            ("Edit", "Restore Selection", String(UnicodeScalar(NSDeleteCharacter)!), .shift), ("Edit", "Correct Word", "c", []),
+            ("Edit", "Cut Fillers", "u", [.command, .option]), ("Edit", "Tighten Pauses", "p", [.command, .option]),
+            ("Edit", "Restore All Cuts", "r", [.command, .option]), ("View", "Hide Cut Words", "h", [.command, .shift]),
+            ("Edit", "Find…", "f", .command), ("Edit", "Find Next", "g", .command), ("Edit", "Find Previous", "g", [.command, .shift]),
+            ("Clip", "Make Clip from Selection", "k", .command),
+            ("Clip", "Keep Suggestion", String(UnicodeScalar(NSCarriageReturnCharacter)!), []),
+            ("Clip", "Dismiss Suggestion", String(UnicodeScalar(NSDeleteCharacter)!), []),
+            ("Clip", "Rename Clip…", String(UnicodeScalar(NSCarriageReturnCharacter)!), []),
+            ("Clip", "Remove Clip", String(UnicodeScalar(NSDeleteCharacter)!), []),
+            ("View", "Bigger Text", "+", .command), ("View", "Smaller Text", "-", .command), ("View", "Actual Size", "0", .command),
+            ("VoxClip", "Settings…", ",", .command)
         ]
         for (menu, title, key, modifiers) in bindings {
             check("native menu shortcut: \(title)", item(menu, title).map { $0.keyEquivalent == key && $0.keyEquivalentModifierMask == modifiers } == true)
+        }
+        let standard: [(Selector, String, NSEvent.ModifierFlags)] = [
+            (Selector(("undo:")), "z", .command), (Selector(("redo:")), "z", [.command, .shift]),
+            (#selector(NSText.copy(_:)), "c", .command), (#selector(NSText.selectAll(_:)), "a", .command)
+        ]
+        let menuItems: [NSMenuItem] = NSApp.mainMenu?.items.flatMap { (parent: NSMenuItem) -> [NSMenuItem] in parent.submenu?.items ?? [] } ?? []
+        for (action, key, modifiers) in standard {
+            check("native standard shortcut: \(action)", menuItems.contains { $0.action == action && $0.keyEquivalent == key && $0.keyEquivalentModifierMask == modifiers })
         }
         for title in ["Keep Suggestion", "Dismiss Suggestion", "Keep All Suggestions", "Rename Clip…", "Remove Clip", "Export Clip…"] {
             check("native Clip menu includes \(title)", item("Clip", title) != nil)

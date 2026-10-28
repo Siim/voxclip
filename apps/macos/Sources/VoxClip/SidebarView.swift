@@ -66,6 +66,7 @@ import VoxClipCore
         }
         .listStyle(.sidebar)
         .focused($listFocused)
+        .onChange(of: listFocused) { _, focused in if focused { shell.editor?.focusedPane = .sidebar } }
         .onGeometryChange(for: Double.self) { $0.size.width } action: { if !overlay { shell.sidebarWidth = $0 } }
     }
     /// Return, Escape, the arrow keys and Delete (design §6.2 and §3.7).
