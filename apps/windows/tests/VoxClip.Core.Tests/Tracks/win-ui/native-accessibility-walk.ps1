@@ -181,7 +181,8 @@ try{
  $result.editorScreenshotCaptured=$true
  # Pane rows carry the design section 3.4 names; Full take is selected after opening.
  $full=FindPrefix $w 'Full take, '
- if(-not (IsSelected $full) -or -not $full.Current.Name.EndsWith(' after cuts')){throw "Full take row is not selected or misnamed: $($full.Current.Name)"}
+ $fullSuffix=if($NormalProject){' after cuts'}else{' after cuts, demo project, no video'}
+ if(-not (IsSelected $full) -or -not $full.Current.Name.EndsWith($fullSuffix)){throw "Full take row is not selected or misnamed: $($full.Current.Name)"}
  [void](FindName $w 'Home')
  if((FindName $w 'New clip from selection').Current.IsEnabled){throw 'New clip from selection is enabled without selected words'}
  [void](FindName $w 'Find clips with AI')
