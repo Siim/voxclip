@@ -46,9 +46,9 @@ import VoxClipCore
             } else {
                 Form {
                     Picker("What", selection: $scope) {
-                        if !model.exportTargets(.thisClip, requestedIDs: requestedIDs).isEmpty { Text("This clip").tag(ExportScope.thisClip) }
-                        Text("All clips").tag(ExportScope.allClips).disabled(model.keptClips.isEmpty)
-                        Text("Full video").tag(ExportScope.fullVideo)
+                        if !model.exportTargets(.thisClip, requestedIDs: requestedIDs).isEmpty { Text(model.exportScopeLabel(.thisClip, requestedIDs: requestedIDs)).tag(ExportScope.thisClip) }
+                        Text(model.exportScopeLabel(.allClips)).tag(ExportScope.allClips).disabled(model.keptClips.isEmpty)
+                        Text(model.exportScopeLabel(.fullVideo)).tag(ExportScope.fullVideo)
                     }.pickerStyle(.radioGroup)
                     Picker("Aspect", selection: binding(\.aspect)) { Text("9:16").tag(AspectRatio.portrait); Text("1:1").tag(AspectRatio.square); Text("16:9").tag(AspectRatio.landscape); Text("Original").tag(AspectRatio.source) }.pickerStyle(.segmented)
                     Picker("Captions", selection: Binding(get: { model.project.captions.styleId }, set: { model.setStyle($0) })) { Text("Off").tag("off"); ForEach(model.app.styles, id: \.id) { Text($0.name).tag($0.id) } }

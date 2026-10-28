@@ -211,6 +211,16 @@ enum ExportScope: Hashable {
 }
 
 extension EditorModel {
+    func exportScopeLabel(_ scope: ExportScope, requestedIDs: [String] = []) -> String {
+        switch scope {
+        case .thisClip:
+            let target = requestedIDs.first ?? activeClip?.id
+            guard let clip = keptClips.first(where: { $0.id == target }) else { return "This clip" }
+            return "This clip\nClip \(clipNumber(clip.id) ?? 1) · \(clip.title ?? "Untitled clip") · \(timecode(editedDuration(clip)))"
+        case .allClips: return "All \(keptClips.count) clips"
+        case .fullVideo: return "Full video · \(timecode(editedDuration(nil)))"
+        }
+    }
     func exportTargets(_ scope: ExportScope, requestedIDs: [String] = []) -> [ExportTarget] {
         switch scope {
         case .thisClip:

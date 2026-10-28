@@ -34,6 +34,9 @@ actor RegressionExporter: Exporter {
         model.mediaResolved = true; model.refresh()
         let undo = UndoManager(); undo.groupsByEvent = false; model.undoManager = undo
         guard let clip = project.edits.clips.first else { throw CocoaError(.coderInvalidValue) }
+        check("This clip scope carries number, title and duration", model.exportScopeLabel(.thisClip, requestedIDs: [clip.id]) == "This clip\nClip 1 · Export fixture · \(timecode(model.editedDuration(clip)))")
+        check("All clips scope carries kept count", model.exportScopeLabel(.allClips) == "All 1 clips")
+        check("Full video scope carries duration", model.exportScopeLabel(.fullVideo) == "Full video · \(timecode(model.editedDuration(nil)))")
         let expectedRequest = try await model.renderRequest(target: .clip(clip.id))
         model.beginExport(targets: [.clip(clip.id)], folder: directory)
         await model.exportTask?.value
