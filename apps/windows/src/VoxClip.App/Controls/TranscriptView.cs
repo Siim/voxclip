@@ -513,7 +513,8 @@ public sealed class TranscriptView : UserControl
         if (RewriteEntryPolicy.BuildEnabled && App.Services.Get("voiceLab.enabled", false))
         {
             Add("Rewrite…", RequestRewrite, CanRewrite, "Ctrl+R");
-            if (InsertionAfterIndex >= 0)
+            if (RewriteEntryPolicy.Resolve(RewriteEntry.InsertWords, true, model is { IsReadOnly: false, Busy: false, IsLeaving: false },
+                false, InsertionAfterIndex >= 0, RewriteEntryPolicy.BuildEnabled) == RewriteEntryAction.OpenInsertion)
                 Add("Insert Words…", () => InsertWordsRequested?.Invoke(this, EventArgs.Empty), InsertWordsRequested is not null &&
                     RewriteEntryPolicy.Resolve(RewriteEntry.InsertWords, true, model is { IsReadOnly: false, Busy: false, IsLeaving: false },
                         false, true, RewriteEntryPolicy.BuildEnabled) == RewriteEntryAction.OpenInsertion);

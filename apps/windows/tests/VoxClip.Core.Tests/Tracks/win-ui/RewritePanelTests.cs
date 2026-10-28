@@ -296,7 +296,7 @@ public sealed class RewritePanelTests
     {
         var entry = (RewriteEntry)entryIndex;
         Assert.Equal(RewriteEntryAction.Unavailable, RewriteEntryPolicy.Resolve(entry, true, true, true, true, false));
-        Assert.Equal(entry == RewriteEntry.InsertWords ? RewriteEntryAction.OpenInsertion : RewriteEntryAction.OpenPassage,
+        Assert.Equal(entry == RewriteEntry.InsertWords ? RewriteEntryAction.Unavailable : RewriteEntryAction.OpenPassage,
             RewriteEntryPolicy.Resolve(entry, true, true, true, true, true));
         Assert.Equal(RewriteEntryAction.Unavailable, RewriteEntryPolicy.Resolve(entry, true, false, true, true, true));
     }
@@ -314,6 +314,26 @@ public sealed class RewritePanelTests
 #if !DEBUG
         Assert.False(RewriteEntryPolicy.BuildEnabled);
 #endif
+    }
+
+    [Fact]
+    public async Task ApprovedFallbackCopyAndConnectorTitlesMatchDesign()
+    {
+        using var missing = new RewriteSession(Editor(), 10, 12, null, null);
+        Assert.Equal("Choose a connector in Settings → AI.", missing.SendLine);
+        Assert.Equal("This change can't be placed in this take. Your edits are saved.",
+            RewriteSession.Refusal(new VoiceLabGeometryException(VoiceLabGeometryErrorCode.InvalidInput)));
+        Assert.Equal("Inserting words isn't available yet. Your edits are saved.",
+            RewriteSession.Refusal(new VoiceLabGeometryException(VoiceLabGeometryErrorCode.InsertionUnsupported)));
+        foreach (var group in new[] { "local", "cli" })
+        {
+            using var session = new RewriteSession(Editor(), 10, 12, Envelope(), new(new RecordingConnector(), "chosen", "Test", group, "ChatGPT plan"));
+            await session.SetInstructionAsync("Plainly");
+            Assert.Equal(group == "local" ? "Rewrite · No charge" : "Rewrite", session.ProposalButton);
+        }
+        using var video = new RewriteSession(Editor(), 10, 12, null, new(new RecordingConnector(), "chosen", "Test", "local", ""));
+        await video.SetInstructionAsync("Plainly");
+        Assert.Equal("Find the original video before rewriting speech. Your edits are saved.", video.Problem);
     }
 }
 #endif

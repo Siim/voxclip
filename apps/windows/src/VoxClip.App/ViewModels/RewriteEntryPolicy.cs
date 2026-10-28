@@ -19,11 +19,9 @@ internal static class RewriteEntryPolicy
     internal static RewriteEntryAction Resolve(RewriteEntry entry, bool voiceLab, bool editable, bool selection,
         bool caretBetweenWords, bool internalBuild)
     {
-        if (!internalBuild) return RewriteEntryAction.Unavailable;
+        if (!internalBuild || entry == RewriteEntry.InsertWords) return RewriteEntryAction.Unavailable;
         if (!voiceLab) return entry == RewriteEntry.Overflow ? RewriteEntryAction.TurnOnVoiceLab : RewriteEntryAction.Unavailable;
         if (!editable) return RewriteEntryAction.Unavailable;
-        if (entry == RewriteEntry.InsertWords)
-            return caretBetweenWords ? RewriteEntryAction.OpenInsertion : RewriteEntryAction.Unavailable;
         return selection ? RewriteEntryAction.OpenPassage : RewriteEntryAction.Unavailable;
     }
 }

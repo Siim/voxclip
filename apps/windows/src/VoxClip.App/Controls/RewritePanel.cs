@@ -74,6 +74,7 @@ internal sealed class RewritePanel : Grid
         };
         body.Children.Add(instruction); body.Children.Add(propose);
         body.Children.Add(Small(session.SendLine)); body.Children.Add(estimate);
+        if (session.Connector is null) body.Children.Add(Ui.Button("Open Settings", () => App.OpenSettings("Providers & Keys")));
         var newHeader = new Grid();
         newHeader.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
         newHeader.ColumnDefinitions.Add(new() { Width = new(1, GridUnitType.Star) });

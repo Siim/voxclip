@@ -36,7 +36,8 @@ internal sealed class RewriteSession : IDisposable
     internal string Problem => proposalProblem.Length > 0 ? proposalProblem : reviewProblem;
     internal VoiceLabPreparedAction? Prepared { get; private set; }
     internal VoiceLabCostPresentationResult? Estimate { get; private set; }
-    internal string ProposalButton => Estimate is null ? "Rewrite" : VoiceLabCostPresentation.ButtonTitle("Rewrite", null, Estimate);
+    internal string ProposalButton => Estimate is null || Connector?.Group == "cli" ? "Rewrite" :
+        Connector?.Group == "local" ? "Rewrite · No charge" : VoiceLabCostPresentation.ButtonTitle("Rewrite", null, Estimate);
     internal string EstimateCopy => Estimate?.Text is { Length: > 0 } text ? text : Prepared is null ? "" : "No charge.";
     internal bool CanPropose => IsOpen && !IsProposing && estimateShown && Prepared is not null;
     internal string Header { get; }
@@ -49,7 +50,7 @@ internal sealed class RewriteSession : IDisposable
         "apiKey" => $"Sends these {Source.Count(word => word.Kind == WordKind.Word)} words to {Connector.Name} with your key.",
         "cli" => $"Sends these {Source.Count(word => word.Kind == WordKind.Word)} words to {Connector.Name} with your sign-in. Counts toward your {Connector.Plan}.",
         "local" => "Runs on this PC. Nothing leaves it.",
-        _ => "Choose a connector in Settings → Providers & Keys."
+        _ => "Choose a connector in Settings → AI."
     };
     internal event EventHandler? Changed;
 
@@ -206,8 +207,8 @@ internal sealed class RewriteSession : IDisposable
         VoiceLabGeometryException { Code: VoiceLabGeometryErrorCode.SeamFadeOutsideTake, TakeEdgeIsStart: bool start } =>
             $"This change is too close to the {(start ? "start" : "end")} of the take to blend in. Re-record this sentence instead.",
         VoiceLabGeometryException { Code: VoiceLabGeometryErrorCode.InsertionUnsupported } =>
-            "Inserting words is not available in this build. Your edits are saved.",
-        VoiceLabGeometryException => "This change can't be placed in this take. Your video and edits are still here.",
+            "Inserting words isn't available yet. Your edits are saved.",
+        VoiceLabGeometryException => "This change can't be placed in this take. Your edits are saved.",
         VoiceLabLengthBudgetException => "There isn't enough timed speech to estimate this change. Your edits are saved.",
         _ => UiError.Message(exception, "Rewrite")
     };

@@ -1474,6 +1474,12 @@ Voice: short, factual, calm, always reassuring about the media. No exclamation m
 | Rewrite: no room tone | Rewrite panel | "This take has no half-second pause to copy the room sound from. Clean audio removes background sound from the whole take, so new words can blend in." [Clean Audio…]; Generate is disabled |
 | Rewrite: too close to the take edge | Rewrite panel | "This change is too close to the {start/end} of the take to blend in. Re-record this sentence instead." Generate is disabled |
 | Rewrite: disclosure | Rewrite footer | "Exports show AI MODIFIED on the video and in the post." |
+| Rewrite: video missing | Rewrite panel | "Find the original video before rewriting speech. Your edits are saved." [Locate…] |
+| Rewrite: can't place | Rewrite panel, under the hunk | "This change can't be placed in this take. Your edits are saved." Generate is disabled for that hunk |
+| Rewrite: no speech rate | Rewrite panel, New words | "There isn't enough timed speech to estimate this change. Your edits are saved." The fit meter and the header amount are hidden |
+| Rewrite: no connector | Rewrite panel, under What should change? | "Choose a connector in Settings → AI." [Open Settings]; the Rewrite button is disabled |
+| Rewrite: local connector cost | the Rewrite button | **Rewrite · No charge** with a local connector. An installed CLI shows **Rewrite** with no amount, and its send line names the plan |
+| Rewrite: insertion not available | Rewrite panel | Insert Words… stays hidden while Core cannot place an insertion. Development builds that open it show "Inserting words isn't available yet. Your edits are saved." |
 | Voice Lab off, Rewrite chosen | sheet | voice-lab.md §5 one-time sheet |
 
 ---
