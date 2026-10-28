@@ -494,16 +494,16 @@ public sealed partial class EditorPage : Page
         var opening = ++rewriteOpenRevision;
         ViewModel.CaptionDrag.Cancel();
         var project = ViewModel.Project;
-        var first = ViewModel.SelectionStart; var last = ViewModel.SelectionEnd;
         var after = insertion ? Transcript.InsertionAfterIndex : (int?)null;
+        var passage = new RewriteOpening(ViewModel, after);
         var envelope = !demo && media is not null ? await App.Services.Waveform.GetEnvelopeAsync(media, project.Media.Source.ContentKey, lifetime.Token) : null;
         var entry = (await ProviderCatalog.ReadAsync(lifetime.Token)).FirstOrDefault(item => item.WireId == App.Services.Get("llm.connector", ""));
         var connector = entry is null ? null : new RewriteConnector(App.Services.Connector(entry.Id),
             App.Services.Get("llm.model." + entry.WireId, entry.DefaultModel), entry.ShortName,
             entry.Cloud ? "apiKey" : entry.Cli ? "cli" : "local", entry.Id == VoxClip.Core.Services.LLM.ConnectorId.ClaudeCode ? "Claude plan" : "ChatGPT plan");
-        if (opening != rewriteOpenRevision || !ReferenceEquals(project, ViewModel.Project) || disposed || ViewModel.IsLeaving ||
+        if (opening != rewriteOpenRevision || !passage.IsCurrent || disposed || ViewModel.IsLeaving ||
             ViewModel.IsReadOnly || ViewModel.Busy || !App.Services.Get("voiceLab.enabled", false)) return;
-        rewrite = new(ViewModel, first, last, envelope, connector, after,
+        rewrite = new(ViewModel, passage.First, passage.Last, envelope, connector, passage.InsertionAfter,
             consent: token => entry is null ? Task.FromResult(false) : ProviderCatalog.ConsentAsync(entry, XamlRoot, token),
             connectorIsCurrent: () => entry is not null && App.Services.Get("llm.connector", "") == entry.WireId &&
                 App.Services.Get("llm.model." + entry.WireId, entry.DefaultModel) == connector?.Model);

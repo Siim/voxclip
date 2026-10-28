@@ -199,6 +199,8 @@ public sealed class EditorViewModel : ObservableObject
     public event EventHandler? Changed;
     public event EventHandler? SaveRequested;
     public event EventHandler? SelectionChanged;
+    internal long RewriteSelectionRevision { get; private set; }
+    internal void RewriteCaretChanged() => RewriteSelectionRevision++;
     public event EventHandler<string>? Announcement;
 
     public void Select(int index, bool extend = false)
@@ -207,6 +209,7 @@ public sealed class EditorViewModel : ObservableObject
         index = Math.Clamp(index, 0, Words.Count - 1);
         if (!extend || selectionAnchor < 0) selectionAnchor = index;
         selectionEnd = index;
+        RewriteSelectionRevision++;
         SourceTime = Words[index].Start;
         OnPropertyChanged(nameof(HasSelection));
         OnPropertyChanged(nameof(SelectionText));

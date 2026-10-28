@@ -1296,3 +1296,8 @@ The combined-main Release companion build passed with zero warnings/errors and 5
 - Regenerated window-cases.json through generate_window.py. Every recorded take-edge refusal now names its edge (including both named start/end cases and the sampled fuzz refusals), without changing any geometry. Both suites check the additive detail. Tests: Windows TakeEdgeRefusalNamesTheEdgeWithoutChangingTheSharedError and the full window vectors; Mac takeEdgeRefusalNamesTheSharedEdge plus windowVectors/propertyCases/multiSegmentCases.
 - Cross-platform Release build: zero warnings/errors; Windows Core: 2,085 total, 2,057 passed, 28 skipped. Mac Core: 597 tests in 47 suites passed, with existing explicit prerequisite/opt-in skips. The fresh --build-tests build with the 300 ms slow-expression diagnostic passes; no slow-expression warning or changed-file warning is reported (unchanged deprecation/unnecessary-try warnings remain elsewhere).
 
+### 2026-10-28 — sol-win-redesign round 7 — Pending passage identity
+
+- RewriteOpening captures project, selection revision, selected bounds and insertion anchor before loading the waveform/catalog. Transcript selection and insertion-caret changes increment the revision, including an away-and-back selection; the final opening guard refuses stale passages. Setting Rewrite's own outline does not change this revision.
+- DelayedOpeningNeverUsesAnOldSelectionOrCaret covers six delayed openings: selection, away/back, caret, project replacement, unchanged selection and outline-only updates. Final portable UI suite passes 394/397 with three explicit native/FFmpeg prerequisite skips; no native interaction is claimed.
+

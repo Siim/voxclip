@@ -448,6 +448,43 @@ public sealed class RewritePanelTests
         Assert.NotNull(resumed);
     }
 
+    [Theory]
+    [InlineData("selection", false)]
+    [InlineData("selection-away-and-back", false)]
+    [InlineData("caret", false)]
+    [InlineData("project", false)]
+    [InlineData("outline", true)]
+    [InlineData("unchanged", true)]
+    public async Task DelayedOpeningNeverUsesAnOldSelectionOrCaret(string change, bool opens)
+    {
+        var editor = Editor();
+        editor.Select(10); editor.Select(12, true);
+        var opening = new RewriteOpening(editor, null);
+        var loading = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        async Task<RewriteSession?> OpenAsync()
+        {
+            await loading.Task;
+            return opening.IsCurrent ? new RewriteSession(editor, opening.First, opening.Last, Envelope(), null, opening.InsertionAfter) : null;
+        }
+        var pending = OpenAsync();
+        switch (change)
+        {
+            case "selection": editor.Select(20); break;
+            case "selection-away-and-back": editor.Select(20); editor.Select(10); editor.Select(12, true); break;
+            case "caret": editor.RewriteCaretChanged(); break;
+            case "project": editor.Apply(new EditOperation.Correct("w10", "changed")); break;
+            case "outline": editor.SetRewriteRange(1, 2); break;
+        }
+        loading.SetResult();
+        using var session = await pending;
+        Assert.Equal(opens, session is not null);
+        if (opens) Assert.Equal("word10 word11 word12", session!.NewWords);
+        else Assert.Equal(-1, editor.RewriteStart);
+        var app = Path.Combine(Path.GetDirectoryName(Shared)!, "apps", "windows", "src", "VoxClip.App");
+        Assert.Contains("!passage.IsCurrent", File.ReadAllText(Path.Combine(app, "Pages", "EditorPage.xaml.cs")));
+        Assert.Contains("model?.RewriteCaretChanged()", File.ReadAllText(Path.Combine(app, "Controls", "TranscriptView.cs")));
+    }
+
     private sealed class RecordingConnector : ILlmConnector
     {
         internal List<string> Calls { get; } = [];

@@ -37,7 +37,17 @@ public sealed class TranscriptView : UserControl
     internal bool CanRewrite => RewriteRequested is not null && RewriteEntryPolicy.Resolve(RewriteEntry.Selection,
         App.Services.Get("voiceLab.enabled", false), model is { IsReadOnly: false, Busy: false, IsLeaving: false },
         model?.HasSelection == true, false, RewriteEntryPolicy.BuildEnabled) == RewriteEntryAction.OpenPassage;
-    internal int InsertionAfterIndex { get; private set; } = -1;
+    private int insertionAfterIndex = -1;
+    internal int InsertionAfterIndex
+    {
+        get => insertionAfterIndex;
+        private set
+        {
+            if (insertionAfterIndex == value) return;
+            insertionAfterIndex = value;
+            model?.RewriteCaretChanged();
+        }
+    }
     internal void RequestRewrite()
     {
         if (!RewriteEntryPolicy.BuildEnabled || !App.Services.Get("voiceLab.enabled", false) || model is null) return;
