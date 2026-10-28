@@ -17,9 +17,8 @@ New-Item -ItemType Directory -Force $evidence | Out-Null
 Push-Location $Root
 $probeData = Join-Path $Root ('shell-probe-data-' + [Guid]::NewGuid().ToString('N'))
 $probeApp = $null
-function Assert-BuildSpace {
-    $drive = Get-PSDrive -Name ([IO.Path]::GetPathRoot($Root).TrimEnd('\').TrimEnd(':'))
-    if ($drive.Free -lt 15GB) { throw 'Native builds require at least 15 GiB free.' }
+function Assert-BuildSpace([long]$FreeBytes = (Get-PSDrive -Name ([IO.Path]::GetPathRoot($Root).TrimEnd('\').TrimEnd(':'))).Free) {
+    if ($FreeBytes -lt 6GB) { throw 'Native builds require at least 6 GiB free; keep owned scratch below 2 GiB.' }
 }
 try {
     Assert-BuildSpace

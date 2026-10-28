@@ -1,5 +1,9 @@
 # Windows fixed contracts
 
+### 2026-10-28 — sol-win-redesign round 9 — Native disk policy
+
+- run-native-flow.ps1 uses the documented six-GiB VM free-space floor, not the Mac FFmpeg cross-build's fifteen-GiB prerequisite. It retains serial builds and states the two-GiB owned-scratch budget. Assert-BuildSpace accepts an explicit byte count for below/exact/above-boundary tests without starting media or builds; NativeBuildSpaceUsesTheDocumentedVmFloor pins the portable script contract. Free space and owned scratch must still be measured during each native run.
+
 ### 2026-10-28 — sol-win-redesign round 9 — Screenshot task arguments
 
 - run-screenshots.ps1 registers separate ScheduledTaskAction executable/arguments with an Interactive principal, avoiding schtasks.exe's 261-character /TR ceiling. Each invocation owns GUID-suffixed task names, and success/failure cleanup targets only those names. Existing capture/self-check and duplicate-image gates remain unchanged. ScreenshotTasksKeepArgumentsSeparateAndOwnTheirNames pins the registration, cleanup and ASCII contract; native registration is a separate VM gate.
