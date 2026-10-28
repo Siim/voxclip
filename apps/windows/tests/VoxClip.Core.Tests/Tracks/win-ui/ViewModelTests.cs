@@ -452,14 +452,13 @@ public sealed class ViewModelTests
     }
 
     [Fact]
-    public void HighlightOffsetsIncludeBadgesAiChipsEndMarkersAndCutPauses()
+    public void HighlightOffsetsIgnoreEmbeddedBadgesAndChipsButIncludeTextMarkers()
     {
         string[] words = ["Tere! ", "👩🏽‍💻 ", "é ", "שלום "];
         string?[] pauses = [null, " ‖ pause 1.2s ", null, null];
-        int[] before = [1, 2, 0, 0];
-        int[] after = [0, 1, 1, 1];
-        var starts = TranscriptTextRanges.Starts(words, pauses, before, after);
-        var rendered = string.Concat(words.Select((word, index) => new string('◆', before[index]) + word + pauses[index] + new string('◆', after[index])));
+        int[] after = [0, 1, 1, 0];
+        var starts = TranscriptTextRanges.Starts(words, pauses, after);
+        var rendered = string.Concat(words.Select((word, index) => word + pauses[index] + new string(']', after[index])));
         for (var index = 0; index < words.Length; index++)
             Assert.Equal(words[index], rendered.Substring(starts[index], words[index].Length));
         Assert.Throws<ArgumentException>(() => TranscriptTextRanges.Starts(words, pauses, [1]));

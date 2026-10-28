@@ -17,16 +17,27 @@ internal static class TranscriptNativeProbe
     internal static async Task RunAsync(MainWindow window, Project project, List<string> checks)
     {
         if (Ui.HighContrast) { checks.Add("transcript pixel gate requires a normal theme; contrast-mode tokens intentionally share selection/playing fills"); return; }
+        var failures = new List<Exception>();
+        foreach (var theme in new[] { ElementTheme.Dark, ElementTheme.Light })
+            try { await RunThemeAsync(window, project, checks, theme); }
+            catch (Exception exception) { failures.Add(new InvalidOperationException(theme + " transcript", exception)); }
+        if (failures.Count > 0) throw new AggregateException(failures);
+    }
+    private static async Task RunThemeAsync(MainWindow window, Project project, List<string> checks, ElementTheme theme)
+    {
         var host = (Panel)window.Content;
         var transcript = new TranscriptView { Width = 780, Height = 300, HorizontalAlignment = HorizontalAlignment.Left,
-            VerticalAlignment = VerticalAlignment.Top, RequestedTheme = ElementTheme.Dark };
+            VerticalAlignment = VerticalAlignment.Top, RequestedTheme = theme };
+        var rasterRoot = new Grid { Width = 1560, Height = 600, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top };
+        transcript.RenderTransform = new ScaleTransform { ScaleX = 2, ScaleY = 2 };
+        rasterRoot.Children.Add(transcript);
         var model = new EditorViewModel(project with { Edits = project.Edits with { Clips = [], ActiveClipId = null, CutWordIds = [], CutPauseIds = [] } });
         model.Select(1); model.Select(5, true);
         Require(model.MakeClip() is not null, "transcript pixel fixture did not make a clip");
-        model.Apply(new EditOperation.CutSelection([model.Words[2].Id]));
+        model.Apply(new EditOperation.CutSelection([model.Words[1].Id, model.Words[2].Id, model.Words[5].Id]));
         model.Select(3); model.SourceTime = model.Words[4].Start;
         transcript.Attach(model);
-        host.Children.Add(transcript);
+        host.Children.Add(rasterRoot);
         try
         {
             transcript.Background = Ui.ThemeBrush(transcript, "VcBgSurfaceBrush");
@@ -41,14 +52,14 @@ internal static class TranscriptNativeProbe
             var selected = Bounds(transcript, 3);
             var playing = Bounds(transcript, 4);
             var bitmap = new RenderTargetBitmap();
-            await bitmap.RenderAsync(transcript, 1560, 600);
+            await bitmap.RenderAsync(rasterRoot);
             var pixels = (await bitmap.GetPixelsAsync()).ToArray();
             if (Environment.GetEnvironmentVariable("VOXCLIP_UI_EVIDENCE_DIR") is { Length: > 0 } evidence)
             {
                 Directory.CreateDirectory(evidence);
-                await File.WriteAllTextAsync(Path.Combine(evidence, "transcript-geometry.json"),
+                await File.WriteAllTextAsync(Path.Combine(evidence, $"transcript-{theme}-geometry.json"),
                     System.Text.Json.JsonSerializer.Serialize(transcript.DebugGeometry, new System.Text.Json.JsonSerializerOptions { WriteIndented = true, IncludeFields = true }));
-                using var stream = File.Create(Path.Combine(evidence, "transcript-raster.png"));
+                using var stream = File.Create(Path.Combine(evidence, $"transcript-{theme}-raster.png"));
                 var encoder = await Windows.Graphics.Imaging.BitmapEncoder.CreateAsync(Windows.Graphics.Imaging.BitmapEncoder.PngEncoderId, stream.AsRandomAccessStream());
                 encoder.SetPixelData(Windows.Graphics.Imaging.BitmapPixelFormat.Bgra8, Windows.Graphics.Imaging.BitmapAlphaMode.Premultiplied,
                     (uint)bitmap.PixelWidth, (uint)bitmap.PixelHeight, 96, 96, pixels);
@@ -63,9 +74,16 @@ internal static class TranscriptNativeProbe
                 "out-of-scope glyph pixels do not match text.secondary");
             Require(Contains(pixels, bitmap.PixelWidth, bitmap.PixelHeight, selected, selectionColor), "selection fill pixels do not match selection.transcript");
             Require(Contains(pixels, bitmap.PixelWidth, bitmap.PixelHeight, playing, playingColor), "playing fill pixels do not match word.playing.background");
-            checks.Add("realized transcript raster: cut strike, out-of-scope glyph, distinct selection/playing fills and badge-aware highlight offsets");
+            foreach (var filler in new[] { 1, 5 })
+            {
+                var area = Bounds(transcript, filler);
+                Require(Contains(pixels, bitmap.PixelWidth, bitmap.PixelHeight, new(area.X, area.Y + area.Height * 0.52 - 1, area.Width, 3),
+                    ((SolidColorBrush)Ui.ThemeBrush(transcript, "VcCutStrokeBrush")).Color), $"{model.Words[filler].Text} has no cut.stroke strike");
+            }
+            checks.Add($"{theme} realized transcript raster: cut strike including um, and uh, out-of-scope glyph, distinct selection/playing fills and badge-aware highlight offsets");
+            await TranscriptAlignmentProbe.RunAsync(transcript, rasterRoot, model, checks);
         }
-        finally { transcript.Detach(); host.Children.Remove(transcript); }
+        finally { transcript.Detach(); host.Children.Remove(rasterRoot); }
     }
     private static Rect Bounds(TranscriptView transcript, int index) => transcript.DebugWordBounds(index)
         ?? throw new InvalidOperationException("Native transcript word was not realized.");

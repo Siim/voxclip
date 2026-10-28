@@ -36,6 +36,7 @@ internal sealed class TranscriptOverlay : IDisposable
         CompositionTarget.Rendering += pendingDraw;
     }
 #if DEBUG
+    internal void DebugClearAbove() => above.Shapes.Clear();
     internal IReadOnlyList<Rect> DebugCached(Inline inline) => Cached(inline);
     internal object DebugDiagnostics => new { owner.ActualWidth, owner.ActualHeight, Scale = owner.XamlRoot?.RasterizationScale,
         BehindSize = behind.Size, AboveSize = above.Size, BehindShapes = behind.Shapes.Count, AboveShapes = above.Shapes.Count,
@@ -66,12 +67,14 @@ internal sealed class TranscriptOverlay : IDisposable
         behind.Offset = above.Offset = new(-2, -4, 0);
     }
 
-    internal void Word(Run run, bool cut, bool filler, bool lowConfidence, bool corrected, bool ai, bool playing, bool rewrite)
+    internal void Word(Run run, bool cut, bool filler, bool lowConfidence, bool corrected, bool ai, bool selected, bool playing, bool rewrite)
     {
+        if (!cut && !filler && !lowConfidence && !corrected && !ai && !selected && !playing && !rewrite) return;
         var firstRectangle = true;
         foreach (var rect in Cached(run))
         {
             if (rewrite) Rectangle(behind, new(rect.X - 2, rect.Y, rect.Width + 4, rect.Height), "VcAccentSoftBrush", 4, "VcAccentTextBrush", 1);
+            if (selected && !playing && !rewrite) Rectangle(behind, rect, "VcSelectionTranscriptBrush");
             if (playing) Rectangle(behind, new(rect.X - 2, rect.Y, rect.Width + 4, rect.Height), "VcWordPlayingBackgroundBrush", 4);
             if (cut) Rectangle(above, new(rect.X, rect.Y + rect.Height * 0.52, rect.Width, 1.5), "VcCutStrokeBrush");
             if (filler) Pattern(rect.X, rect.Y + rect.Height - 2, rect.Width, "VcWordFillerBrush", 2, 4);

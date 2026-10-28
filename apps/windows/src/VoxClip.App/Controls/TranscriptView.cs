@@ -27,7 +27,7 @@ public sealed class TranscriptView : UserControl
     private double fontSize = DefaultFontSize;
     private string structure = "";
     private readonly Popup correction = new() { IsLightDismissEnabled = true };
-    private sealed record WordRun(int Index, Run Run, int Before, int After);
+    private sealed record WordRun(int Index, Run Run, int After);
     private sealed record PauseRun(Pause Pause, Inline Inline, Run? Run);
     private sealed record ParagraphVisual(RichTextBlock Text, List<WordRun> Runs, List<PauseRun> Pauses, TranscriptOverlay Overlay)
     {
@@ -55,6 +55,13 @@ public sealed class TranscriptView : UserControl
         else if (RewriteRequested is null) { model.Notice = "Rewrite is not available in this build."; Announce(model.Notice); }
     }
 #if DEBUG
+    private bool debugGlyphOnly;
+    internal int DebugRealizedParagraphs => realized.Count;
+    internal void DebugScroll(double fraction)
+    {
+        scroll.ChangeView(null, scroll.ScrollableHeight * fraction, null, true);
+        UpdateLayout();
+    }
     internal object DebugGeometry => realized.Values.Select(visual => new { Overlay = visual.Overlay.DebugDiagnostics,
         Words = visual.Runs.Select(word => new { word.Index, word.Run.Text, Start = word.Run.ContentStart.Offset,
             End = word.Run.ContentEnd.Offset, Highlight = visual.HighlightStarts[visual.Runs.IndexOf(word)],
@@ -65,6 +72,28 @@ public sealed class TranscriptView : UserControl
             if (visual.Runs.FirstOrDefault(run => run.Index == index) is { } word && TranscriptOverlay.Bounds(word.Run).FirstOrDefault() is { Width: > 0 } bounds)
                 return visual.Text.TransformToVisual(this).TransformBounds(bounds);
         return null;
+    }
+    internal void DebugGlyphOnly(int index)
+    {
+        debugGlyphOnly = true;
+        foreach (var visual in realized.Values)
+        {
+            visual.Text.TextHighlighters.Clear();
+            visual.Overlay.Clear(visual.Text.ActualWidth, visual.Text.ActualHeight);
+            foreach (var word in visual.Runs)
+                word.Run.Foreground = new SolidColorBrush(word.Index == index ? Windows.UI.Color.FromArgb(255, 0, 255, 0) : Windows.UI.Color.FromArgb(0, 0, 0, 0));
+        }
+    }
+    internal void DebugEndGlyph() { debugGlyphOnly = false; RefreshVisuals(); }
+    internal void DebugHideGlyphs()
+    {
+        debugGlyphOnly = true;
+        foreach (var visual in realized.Values)
+        {
+            visual.Overlay.DebugClearAbove();
+            foreach (var word in visual.Runs)
+                word.Run.Foreground = new SolidColorBrush(Windows.UI.Color.FromArgb(0, 0, 0, 0));
+        }
     }
 #endif
     public event EventHandler? SeekRequested;
@@ -126,7 +155,8 @@ public sealed class TranscriptView : UserControl
         model.Changed += ModelChanged;
         model.SelectionChanged += ModelChanged;
         model.Announcement += Announce;
-        repeater.ItemsSource = model.Paragraphs;
+        structure = "";
+        ModelChanged(this, EventArgs.Empty);
     }
     public void Detach()
     {
@@ -252,12 +282,10 @@ public sealed class TranscriptView : UserControl
         var pauses = new List<PauseRun>();
         for (var index = item.StartIndex; index < item.StartIndex + item.Count; index++)
         {
-            var before = 0;
             var after = 0;
             foreach (var clip in model.Clips.Where(clip => model.Index(clip.Clip.StartWordId) == index))
             {
                 paragraph.Inlines.Add(new InlineUIContainer { Child = ClipBadge(clip) });
-                before++;
             }
             if (model.IsAiWord(index) && (index == 0 || !model.IsAiWord(index - 1)))
             {
@@ -265,7 +293,6 @@ public sealed class TranscriptView : UserControl
                     Child = new TextBlock { Text = "AI", FontSize = 11, Foreground = Brush("VcAccentTextBrush"), FontFamily = (FontFamily)Application.Current.Resources["VcMonoFontFamily"] } };
                 AutomationProperties.SetName(chip, "AI modified");
                 paragraph.Inlines.Add(new InlineUIContainer { Child = chip });
-                before++;
             }
             var word = model.Words[index];
             var run = new Run { Text = model.DisplayText(word) + " " };
@@ -287,7 +314,6 @@ public sealed class TranscriptView : UserControl
                     var inline = new InlineUIContainer { Child = chip };
                     paragraph.Inlines.Add(inline);
                     pauses.Add(new(pause, inline, null));
-                    after++;
                 }
                 else
                 {
@@ -296,7 +322,7 @@ public sealed class TranscriptView : UserControl
                     pauses.Add(new(pause, pauseRun, pauseRun));
                 }
             }
-            runs.Add(new(index, run, before, after));
+            runs.Add(new(index, run, after));
         }
         rich.Blocks.Add(paragraph);
         var overlay = new TranscriptOverlay(rich, (FrameworkElement)page.Children[0], (FrameworkElement)page.Children[2]);
@@ -344,11 +370,23 @@ public sealed class TranscriptView : UserControl
 
     public void RefreshVisuals()
     {
+#if DEBUG
+        if (debugGlyphOnly) return;
+#endif
         if (model?.State is not { } state) return;
+        scroll.Background = Brush("VcBgSurfaceBrush");
         var lowConfidence = App.Services.Get("general.showLowConfidence", false);
         foreach (var visual in realized.Values)
         {
-            foreach (var word in visual.Runs) visual.Overlay.Measure(word.Run);
+            foreach (var run in visual.Runs)
+            {
+                var word = model.Words[run.Index];
+                if (showCuts && state.CutWordIds.Contains(word.Id) || EditingAlgorithms.IsFillerText(model.DisplayText(word)) ||
+                    lowConfidence && word.Conf is < 0.6 || state.Corrections.ContainsKey(word.Id) || model.IsAiWord(run.Index) ||
+                    model.SourceTime >= word.Start && model.SourceTime < word.End || run.Index >= model.RewriteStart && run.Index <= model.RewriteEnd ||
+                    model.HasSelection && run.Index >= model.SelectionStart && run.Index <= model.SelectionEnd)
+                    visual.Overlay.Measure(run.Run);
+            }
             foreach (var pause in visual.Pauses) visual.Overlay.Measure(pause.Inline);
             visual.Text.TextHighlighters.Clear();
             visual.Overlay.Clear(visual.Text.ActualWidth, visual.Text.ActualHeight);
@@ -369,7 +407,9 @@ public sealed class TranscriptView : UserControl
                 run.Run.TextDecorations = TextDecorations.None;
                 var outside = state.ActiveClipId is { } id && state.Clips.FirstOrDefault(clip => clip.Id == id) is { } active &&
                     (run.Index < model.Index(active.StartWordId) || run.Index > model.Index(active.EndWordId));
-                run.Run.Foreground = Brush(TranscriptWordDecoration.For(cut, outside, false, false, false, word.Text).Foreground);
+                var foreground = Brush(TranscriptWordDecoration.For(cut, outside, false, false, false, word.Text).Foreground);
+                if (run.Run.Foreground is not SolidColorBrush current || foreground is not SolidColorBrush next || current.Color != next.Color)
+                    run.Run.Foreground = foreground;
             }
             if (textChanged)
             {
@@ -378,7 +418,7 @@ public sealed class TranscriptView : UserControl
                 visual.HighlightStarts = TranscriptTextRanges.Starts(
                     visual.Runs.Select(run => run.Run.Text).ToArray(),
                     visual.Runs.Select(run => pauseAfter.GetValueOrDefault(run.Index)).ToArray(),
-                    visual.Runs.Select(run => run.Before).ToArray(), visual.Runs.Select(run => run.After).ToArray());
+                    visual.Runs.Select(run => run.After).ToArray());
                 DispatcherQueue.TryEnqueue(RefreshVisuals);
             }
             for (var index = 0; index < visual.Runs.Count; index++)
@@ -393,13 +433,13 @@ public sealed class TranscriptView : UserControl
                 var decoration = TranscriptWordDecoration.For(state.CutWordIds.Contains(word.Id), false, EditingAlgorithms.IsFillerText(model.DisplayText(word)),
                     lowConfidence && word.Conf is < 0.6, state.Corrections.ContainsKey(word.Id), word.Text);
                 visual.Overlay.Word(run.Run, state.CutWordIds.Contains(word.Id) && showCuts, decoration.Filler, decoration.LowConfidence,
-                    decoration.Corrected, model.IsAiWord(run.Index), playing, rewriting);
+                    decoration.Corrected, model.IsAiWord(run.Index), selected, playing, rewriting);
                 if (length == 0 || TranscriptWordHighlight.For(selected && !rewriting, playing, Ui.HighContrast) is not { } highlight) continue;
                 // Selected words draw in text.primary on the selection fill, which also overrides the cut and filler colours
                 // (they fail contrast on it); High Contrast maps the fill to Highlight, so the text takes HighlightText.
                 var highlighter = new TextHighlighter
                 {
-                    Background = playing ? Transparent(highlight.BackgroundBrush) : Brush(highlight.BackgroundBrush),
+                    Background = Transparent(highlight.BackgroundBrush),
                     Foreground = highlight.ForegroundBrush == "SystemColorHighlightTextColor"
                         ? new SolidColorBrush((Windows.UI.Color)Application.Current.Resources[highlight.ForegroundBrush]) : Brush(highlight.ForegroundBrush)
                 };
