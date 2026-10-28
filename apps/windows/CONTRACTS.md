@@ -1,5 +1,9 @@
 # Windows fixed contracts
 
+### 2026-10-28 — sol-win-redesign round 10 — Shared window fixture record
+
+- Current `shared/fixtures/voice-lab/window-cases.json`: 606 vectors across its ten case arrays; SHA-256 `61745ded21e98b9304a4c557329199b1e6f120c9ebd0e5840dae4fc2928ea6ba`. Count and digest are read from the committed shared fixture, not regenerated in this round. Earlier fixture counts and digests below remain historical records.
+
 ### 2026-10-28 — sol-win-redesign round 10 — Transcript geometry lifecycle
 
 - Measure paragraph geometry before changing Run foregrounds or clearing TextHighlighters: either mutation invalidates native text layout. The old ordering cached empty pre-layout rectangles, so the attached, correctly sized Composition layers contained only a gutter rule, not strikes or playing fills. Empty/non-finite measurements are retried after layout; usable rectangles are retained until text, size or zoom invalidates them. Rewrite's diff uses the same lifecycle. No text-control replacement or rendering dependency is introduced.

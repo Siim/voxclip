@@ -1,5 +1,7 @@
 # macOS implementation contracts
 
+- **2026-10-28 — sol-win-redesign round 10 fixture record:** current `shared/fixtures/voice-lab/window-cases.json` contains 606 vectors across ten case arrays; SHA-256 `61745ded21e98b9304a4c557329199b1e6f120c9ebd0e5840dae4fc2928ea6ba`. Verified from the committed file without regeneration; earlier fixture values remain historical records.
+
 ### 2026-10-28 — sol-followups-8 round 3: binary64 extraction anchors
 
 - Final local audits pass the exact CI secret pattern, whitespace and round-three production-scope checks; Windows production and macOS App/UI files remain unchanged from the main-merge baseline. All nonempty entries from both original Windows contract histories are retained. Owned Swift/.NET build trees and `/tmp/voxclip-sol-followups-8-r3` are removed, with no owned build/test process left running.
