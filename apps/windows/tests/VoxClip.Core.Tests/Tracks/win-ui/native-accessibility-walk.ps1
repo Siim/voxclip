@@ -270,7 +270,7 @@ try{
   runtime=$RuntimeIdentifier;regions=$focusEvidence;acceptance='UIA order alone does not prove Fluent two-ring focus, absence of a black rectangle, or spoken Narrator output'
  }))
  [IO.File]::WriteAllText((Join-Path $shots 'f6-order.txt'),(($walk | ForEach-Object { $_ -join ' | ' }) -join "`n"))
- if($walk[0][0] -notin @('Play','Pause') -or $walk[1][1] -notin @('ControlType.List','ControlType.ListItem') -or -not $walk[2][0].StartsWith('Playhead') -or -not $walk[3][0].StartsWith('Full take, ') -or -not $walk[4][2] -or $walk[5][0] -ne $transcriptName){throw 'F6 did not walk the viewer, Captions, timeline, sidebar, command row and transcript in order'}
+ if($walk[0][0] -notin @('Play','Pause') -or ($walk[1][1] -notin @('ControlType.List','ControlType.ListItem') -and $walk[1][0] -ne 'Show captions') -or -not $walk[2][0].StartsWith('Playhead') -or -not $walk[3][0].StartsWith('Full take, ') -or -not $walk[4][2] -or $walk[5][0] -ne $transcriptName){throw 'F6 did not walk the viewer, Captions, timeline, sidebar, command row and transcript in order'}
  [R1Native]::Chord(0x10,0x75);Start-Sleep -Milliseconds 300
  if(-not (InCommandBar ([System.Windows.Automation.AutomationElement]::FocusedElement))){throw 'Shift+F6 from the transcript did not return to the command row'}
  $result.f6Order=$true

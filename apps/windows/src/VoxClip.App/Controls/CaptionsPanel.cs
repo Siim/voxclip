@@ -57,9 +57,10 @@ internal sealed class CaptionsPanel : UserControl
             {
                 gallery.ScrollIntoView(selected, ScrollIntoViewAlignment.Leading);
                 gallery.UpdateLayout();
-                if (gallery.ContainerFromItem(selected) is Control target) return target;
+                if (gallery.ContainerFromItem(selected) is Control target &&
+                    !Microsoft.UI.Xaml.Automation.Peers.FrameworkElementAutomationPeer.CreatePeerForElement(target).IsOffscreen()) return target;
             }
-            return Microsoft.UI.Xaml.Input.FocusManager.FindFirstFocusableElement(fineTune) as Control ?? fineTune;
+            return enabled;
         }
     }
     private sealed class Tile(CaptionStyle style) : INotifyPropertyChanged
