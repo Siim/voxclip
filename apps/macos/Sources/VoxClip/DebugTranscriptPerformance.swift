@@ -20,7 +20,8 @@ import VoxClipCore
         var project = fixture
         let words: [TimedWord] = (0..<10_000).map { (index: Int) -> TimedWord in
             let text: String = index % 20 == 19 ? "word." : "word"
-            let start: Double = Double(index) * 0.4
+            let position: Double = Double(index)
+            let start: Double = position * 0.4
             let end: Double = start + 0.3
             let speaker: Int = index / 20 % 2
             return TimedWord(id: "benchmark-\(index)", text: text, start: start, end: end, speaker: "speaker-\(speaker)")

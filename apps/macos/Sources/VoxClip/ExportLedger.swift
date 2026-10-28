@@ -240,7 +240,9 @@ extension EditorModel {
         let key = ExportLedger.key(target, aspect: aspect)
         if exporting, activeExportKey == key {
             let fraction: Double = (exportProgress?.fraction ?? 0).clamped(to: 0...1)
-            let percent: Int = Int((fraction * 100).rounded())
+            let scaled: Double = fraction * 100
+            let rounded: Double = scaled.rounded()
+            let percent: Int = Int(rounded)
             return .exporting(percent)
         }
         if failedExports[key] != nil { return .failed }

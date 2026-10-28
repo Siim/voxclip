@@ -149,8 +149,11 @@ struct CaptionTileInput: Sendable, Equatable {
         guard right > left, bottom > top else { return nil }
         let block = CGRect(x: left, y: top, width: right - left, height: bottom - top)
         let padding: Double = max(2, capHeight * 0.25)
-        let aspect: Double = Double(target.width) / Double(target.height)
-        let minimumWidth: Double = Double(target.width) * capHeight / 36
+        let targetWidth: Double = Double(target.width)
+        let targetHeight: Double = Double(target.height)
+        let aspect: Double = targetWidth / targetHeight
+        let minimumScale: Double = capHeight / 36
+        let minimumWidth: Double = targetWidth * minimumScale
         let contextWidth: Double = max(block.width + padding * 2, (block.height + padding * 2) * aspect)
         let cropWidth: Double = max(contextWidth, minimumWidth)
         let cropHeight: Double = cropWidth / aspect
