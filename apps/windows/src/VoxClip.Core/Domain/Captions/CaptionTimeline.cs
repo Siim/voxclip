@@ -24,7 +24,13 @@ internal readonly record struct CaptionTransform(double Scale, double Alpha, dou
 
 /// <summary>Evaluated appearance of one word at an edited timeline time.</summary>
 public readonly record struct CaptionWordFrame(int Word, string State, bool Visible, double Opacity, double Scale, double Dy,
-    CaptionPaint Fill, string FillSource, double? Wipe, CaptionPaint? WipeFrom, int? VisibleClusters, CaptionWordState? Appearance);
+    CaptionPaint Fill, string FillSource, double? Wipe, CaptionPaint? WipeFrom, int? VisibleClusters, CaptionWordState? Appearance)
+{
+    /// <summary>Whether box contrast replaced the final precedence-selected fill.</summary>
+    public bool BoxContrast { get; init; }
+    /// <summary>Whether box contrast replaced the wipe's first-pass paint.</summary>
+    public bool WipeFromBoxContrast { get; init; }
+}
 /// <summary>Evaluated typewriter cursor geometry.</summary>
 public readonly record struct CaptionCursorFrame(bool Visible, int Word, double X, double Y, double W, double H);
 /// <summary>Evaluated page, word and cursor state for one frame.</summary>
@@ -119,14 +125,16 @@ internal static class CaptionTimeline
         _ => "easeOutCubic"
     };
 
-    internal static (CaptionPaint Paint, string Source) Paint(CaptionStyle style, string state, CaptionEmphasisedWord? emphasised)
+    internal static (CaptionPaint Paint, string Source, bool BoxContrast) Paint(CaptionStyle style, string state, CaptionEmphasisedWord? emphasised, string? boxState = null)
     {
         var appearance = State(style, state);
         var paint = appearance?.Fill ?? style.Fill;
         var source = appearance?.Fill is null ? "base" : state;
-        if (emphasised?.PalettePaint is { } color) return (color, "emphasis");
-        if (emphasised is not null && style.Emphasis?.Fill is { } emphasisPaint) return (emphasisPaint, "emphasis");
-        return (paint, source);
+        if (emphasised?.PalettePaint is { } color) { paint = color; source = "emphasis"; }
+        else if (emphasised is not null && style.Emphasis?.Fill is { } emphasisPaint) { paint = emphasisPaint; source = "emphasis"; }
+        var box = State(style, boxState ?? state)?.Box?.Color ?? style.Box?.Color;
+        var resolved = box is null ? paint : CaptionContrast.Text(paint, box, style);
+        return (resolved, source, resolved != paint);
     }
 
     internal static CaptionWordState? State(CaptionStyle style, string state) => state switch { "past" => style.Words?.Past, "active" => style.Words?.Active, _ => style.Words?.Future };
@@ -214,8 +222,10 @@ internal static class CaptionTimeline
                     }
                 }
             }
+            var underlay = wipe is null ? default : Paint(style, "future", emphasised, state);
             frames[local] = new(index, state, visible, (appearance?.Opacity ?? 1) * wordIn.Alpha * activeIn.Alpha, activeIn.Scale * wordIn.Scale,
-                wordIn.Dy + activeIn.Dy, paint.Paint, paint.Source, wipe, wipe is null ? null : Paint(style, "future", emphasised).Paint, clusters, appearance);
+                wordIn.Dy + activeIn.Dy, paint.Paint, paint.Source, wipe, underlay.Paint, clusters, appearance)
+                { BoxContrast = paint.BoxContrast, WipeFromBoxContrast = underlay.BoxContrast };
         }
         var activeWord = track.Words[active];
         var progress = Progress(time, activeWord.Start, Math.Max(0.001, activeWord.End - activeWord.Start));

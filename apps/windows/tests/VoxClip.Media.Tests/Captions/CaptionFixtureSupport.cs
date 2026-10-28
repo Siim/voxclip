@@ -84,6 +84,8 @@ internal static class CaptionFixtureSupport
                 ["word"] = word.Word, ["state"] = word.State, ["visible"] = word.Visible, ["opacity"] = word.Opacity,
                 ["scale"] = word.Scale, ["dy"] = word.Dy, ["fill"] = Paint(word.Fill), ["fillSource"] = word.FillSource
             };
+            if (word.BoxContrast) result["boxContrast"] = true;
+            if (word.WipeFromBoxContrast) result["wipeFromBoxContrast"] = true;
             if (word.Wipe is not null) { result["wipe"] = word.Wipe; result["wipeFrom"] = Paint(word.WipeFrom!); }
             if (word.VisibleClusters is not null) result["visibleClusters"] = word.VisibleClusters;
             return result;
