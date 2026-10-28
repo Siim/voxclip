@@ -60,9 +60,8 @@ import Darwin
         }
         print("mac-ui document screenshots: \(directory.path)")
     }
-    /// The one-window shell from Home through clipping: import, Find Clips readiness in
-    /// its popover, Make Clip, Transcribe Again, Export from the toolbar, 1024 wide,
-    /// replacing and closing projects, Finder opens into a closed window and the Dock.
+    /// The one-window shell from Home through clipping, with the twelve ADR-R29
+    /// redesign captures shared by sceneAudit and captureDemo.
     /// A check the host can't run (no accessibility trust) reports why it skipped; the
     /// twelve captures still need an unlocked session.
     @Test("Native document scene moves from Home through clipping", .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_UI_TESTS"] == "1")) func documentScene() throws {
@@ -71,7 +70,7 @@ import Darwin
         let report = try JSONDecoder().decode([UIProcessHarness.Result].self, from: Data(contentsOf: directory.appendingPathComponent("scene-results.json")))
         #expect(report.count >= 46)
         for result in report { #expect(result.passed || result.skipped != nil, Comment(rawValue: result.name)) }
-        for name in ["live-home", "live-imported", "live-finder-missing", "live-finder-stopped", "live-finder-ready", "live-finder-recovered", "live-clips", "live-export-clip", "live-clip-preview", "live-compact", "live-compact-light", "live-dirty-close"] {
+        for name in ["live-home", "live-home-empty", "live-dragover", "live-editor-full", "live-editor-clip", "live-editor-1280-blue", "live-compact", "live-selection-bar", "live-suggested", "live-finding", "live-export-clip", "live-rewrite"] {
             let image = try #require(NSBitmapImageRep(data: Data(contentsOf: directory.appendingPathComponent(name).appendingPathExtension("png"))))
             #expect(image.pixelsWide >= 600 && image.pixelsHigh >= 400)
         }

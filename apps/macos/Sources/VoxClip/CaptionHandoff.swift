@@ -91,29 +91,37 @@ struct CaptionTileInput: Sendable, Equatable {
             galleryStyle.layout.maxLines = max(2, galleryStyle.layout.maxLines)
             galleryStyle.layout.maxLineWidthW = min(galleryStyle.layout.maxLineWidthW, 0.24)
             let sample = input.sample ?? CaptionGallerySample.preview(input.style)
-            let words = sample.words.map { CaptionWord(id: $0.id, text: $0.text, start: $0.start, end: $0.end) }
-            let layout = try await pipeline.layout(words: words, language: input.language, style: galleryStyle,
-                position: input.position, frame: input.frame, duration: sample.duration)
-            try Task.checkCancellation()
-            let raster = try await rasterizer.rasterize(layout, time: sample.time, previewWidth: 1280, reduceMotion: EditorAccessibilityPolicy.staticCaptionTiles)
-            try Task.checkCancellation()
-            guard let provider = CGDataProvider(data: raster.rgba as CFData),
-                  let overlay = CGImage(width: raster.width, height: raster.height, bitsPerComponent: 8, bitsPerPixel: 32,
-                    bytesPerRow: raster.bytesPerRow, space: CGColorSpaceCreateDeviceRGB(),
-                    bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.last.rawValue), provider: provider,
-                    decode: nil, shouldInterpolate: false, intent: .defaultIntent) else { return tileBackdrop(input, still: still) }
-            let page = layout.page(at: sample.time)
-            let rasterScale: Double = Double(raster.width) / Double(input.frame.width)
-            let capRatio: Double = Double(layout.font.capHeight) / Double(layout.unitsPerEm)
-            let capHeight: Double = (page?.fontPx ?? 1) * capRatio * rasterScale
-            let activeIndex = page?.words.lastIndex { (word: CaptionWord) -> Bool in word.start <= sample.time }
-            let activeRect = activeIndex.flatMap { (index: Int) -> CaptionRect? in
-                guard let page, page.wordRects.indices.contains(index) else { return nil }
-                return page.wordRects[index]
+            let all = sample.words.map { CaptionWord(id: $0.id, text: $0.text, start: $0.start, end: $0.end) }
+            let spoken: Int = all.lastIndex { (word: CaptionWord) -> Bool in word.start <= sample.time } ?? 0
+            // Show whole words at a legible size: when the phrase can't fit the tile at the
+            // cap-height floor, drop the word farthest from the spoken one and lay out again.
+            var lower: Int = 0
+            var upper: Int = all.count
+            while true {
+                let words = Array(all[lower..<upper])
+                let layout = try await pipeline.layout(words: words, language: input.language, style: galleryStyle,
+                    position: input.position, frame: input.frame, duration: sample.duration)
+                try Task.checkCancellation()
+                let raster = try await rasterizer.rasterize(layout, time: sample.time, previewWidth: 1280, reduceMotion: EditorAccessibilityPolicy.staticCaptionTiles)
+                try Task.checkCancellation()
+                guard let provider = CGDataProvider(data: raster.rgba as CFData),
+                      let overlay = CGImage(width: raster.width, height: raster.height, bitsPerComponent: 8, bitsPerPixel: 32,
+                        bytesPerRow: raster.bytesPerRow, space: CGColorSpaceCreateDeviceRGB(),
+                        bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.last.rawValue), provider: provider,
+                        decode: nil, shouldInterpolate: false, intent: .defaultIntent) else { return tileBackdrop(input, still: still) }
+                let page = layout.page(at: sample.time)
+                let rasterScale: Double = Double(raster.width) / Double(input.frame.width)
+                let capRatio: Double = Double(layout.font.capHeight) / Double(layout.unitsPerEm)
+                let capHeight: Double = (page?.fontPx ?? 1) * capRatio * rasterScale
+                let fit = Self.captionCrop(raster, target: input.tileSize, capHeight: capHeight)
+                let remaining: Int = upper - lower
+                if fit?.legible != false || remaining <= 1 {
+                    return tileBackdrop(input, still: still, overlay: overlay, position: resolution.style.position.y, crop: fit?.rect)
+                }
+                let after: Int = upper - 1 - spoken
+                let before: Int = spoken - lower
+                if after >= before { upper -= 1 } else { lower += 1 }
             }
-            let focus: Double? = activeRect.map { (rect: CaptionRect) -> Double in (rect.x + rect.width / 2) * rasterScale }
-            let crop = Self.captionCrop(raster, target: input.tileSize, capHeight: capHeight, focus: focus)
-            return tileBackdrop(input, still: still, overlay: overlay, position: resolution.style.position.y, crop: crop)
         } catch is CancellationError { return nil }
         catch { return tileBackdrop(input, still: still) }
     }
@@ -134,7 +142,9 @@ struct CaptionTileInput: Sendable, Equatable {
         return NSImage(cgImage: image, size: CGSize(width: raster.width, height: raster.height))
     }
 
-    static func captionCrop(_ raster: CaptionRaster, target: PixelSize, capHeight: Double, focus: Double?) -> CGRect? {
+    /// The crop that shows every inked word. `legible` is false when that needs a crop wider
+    /// than the cap-height floor allows, so the caller should show fewer words instead.
+    static func captionCrop(_ raster: CaptionRaster, target: PixelSize, capHeight: Double) -> (rect: CGRect, legible: Bool)? {
         var left = raster.width, top = raster.height, right = 0, bottom = 0
         raster.rgba.withUnsafeBytes { (bytes: UnsafeRawBufferPointer) in
             for row in 0..<raster.height {
@@ -154,13 +164,16 @@ struct CaptionTileInput: Sendable, Equatable {
         let aspect: Double = targetWidth / targetHeight
         let minimumScale: Double = capHeight / 36
         let minimumWidth: Double = targetWidth * minimumScale
+        let maximumScale: Double = capHeight / 24
+        let maximumWidth: Double = targetWidth * maximumScale
         let contextWidth: Double = max(block.width + padding * 2, (block.height + padding * 2) * aspect)
         let cropWidth: Double = max(contextWidth, minimumWidth)
         let cropHeight: Double = cropWidth / aspect
         let halfWidth: Double = cropWidth / 2
         let centre: Double = block.midX
-        return CGRect(x: centre - halfWidth, y: block.midY - cropHeight / 2,
-                      width: cropWidth, height: cropHeight).integral
+        let rect = CGRect(x: centre - halfWidth, y: block.midY - cropHeight / 2,
+                          width: cropWidth, height: cropHeight).integral
+        return (rect, contextWidth <= maximumWidth)
     }
 
     func tileBackdrop(_ input: CaptionTileInput, still: CGImage?, overlay: CGImage? = nil, position: Double? = nil, crop: CGRect? = nil) -> NSImage? {
