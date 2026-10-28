@@ -425,9 +425,13 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
     private void SyncSelection()
     {
         var target = ShowingHome ? Shell.Home : Shell.ScopeRow(editor!.ViewModel.State?.ActiveClipId);
-        if (target is null || ReferenceEquals(Nav.SelectedItem, target)) return;
+        if (target is null) return;
         syncingSelection = true;
-        try { Nav.SelectedItem = target; }
+        try
+        {
+            Nav.SelectedItem = target;
+            if (Nav.ContainerFromMenuItem(target) is NavigationViewItem item) item.IsSelected = true;
+        }
         finally { syncingSelection = false; }
     }
     private void Watch(EditorPage? previous, EditorPage next)
@@ -535,6 +539,7 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
     private void ScopeRowKeys(object sender, RoutedEventArgs args)
     {
         if (sender is UIElement row) foreach (var accelerator in row.KeyboardAccelerators) accelerator.ScopeOwner = row;
+        DispatcherQueue.TryEnqueue(SyncSelection);
     }
     private void KeepClicked(object sender, RoutedEventArgs args) { if (sender is FrameworkElement { Tag: string id }) ClipCommand(id, model => model.Keep(id)); }
     private void DismissClicked(object sender, RoutedEventArgs args) { if (sender is FrameworkElement { Tag: string id }) ClipCommand(id, model => model.Dismiss(id)); }
