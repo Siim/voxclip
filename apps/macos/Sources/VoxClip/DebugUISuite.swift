@@ -878,6 +878,7 @@ import ApplicationServices
             guard let root = app.shared?.root else { throw VoxClipError.sharedResourcesMissing }
             let fixture = root.appendingPathComponent("fixtures/projects/interview-take.voxclip")
             let project = try DemoEditing.loadFixture(fixture)
+            results += try await DebugRightColumn.run(app: app, directory: destination)
             results += try DebugTranscriptPixels.run(app: app, fixture: project, directory: destination)
             results += try await DebugSelectionBar.run(app: app, fixture: project, directory: destination)
             results += try await DebugViewer.run(app: app, fixture: project, directory: destination)

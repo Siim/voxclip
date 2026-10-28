@@ -2455,3 +2455,8 @@ Historical inspector/View-menu layout below is also superseded by ADR-R29.
   - root creation that never creates the data folder or a dangling link's target.
 - A source-audio decode test swaps the path for a link to a decoy and for a FIFO after the check, grows and truncates the checked file, and passes a wrong hash. It fails, without hanging, when decoding reopens the path. Since main `01e1b38`, `prepareConversion` takes `seed` and `cleanAudioOn`, and the tests pass `seed: 7, cleanAudioOn: false`.
 - Verified on the tree merged with main `0f7442b`, at `20e5266`, with `VOXCLIP_SHARED_DIR`, `VOXCLIP_MEDIA_FFPROBE`, live tests and downloads off, and a temporary `VOXCLIP_DATA_DIR`. `swift build` passed. `swift test --filter VoxClipCoreTests` passed 471 tests in 32 suites. `swift test --filter "VoxClipMediaTests\.(VoiceLab|DiskCapacityTests)"` passed all 56 tests in the six suites under `Tests/VoxClipMediaTests/VoiceLab`. None of the files this entry changes has a warning. The only warnings on the merged tree are in main's `CaptionSchemaTests.swift` and `FoundationModelsConnectorTests.swift`.
+### 2026-10-28 — sol-mac-layout — L1 split-width contract
+
+- Pin `Sources/VoxClip/EditorView.swift` right-column content to the split item's actual geometry, without masking overflowing children. Start `ViewerSection.innerWidth` conservatively until the first geometry update, rather than imposing a 360-point initial minimum.
+- `Sources/VoxClip/DebugRightColumn.swift` hosts real Viewer and Captions content without a window and measures minimum/proposed sizes plus descendant bounds. Before the fix, `ac230e2f` requests 360 points at a 320-point proposal; the native frame picker extends to x=325. The remaining row adaptations are separate L2–L5 changes.
+

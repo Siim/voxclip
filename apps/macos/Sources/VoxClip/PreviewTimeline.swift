@@ -27,7 +27,7 @@ func viewerStageSize(ratio: Double, innerWidth: CGFloat, columnHeight: CGFloat, 
 @MainActor struct ViewerSection: View {
     @Bindable var model: EditorModel
     var columnHeight: CGFloat = 800
-    @State private var innerWidth: CGFloat = 328
+    @State private var innerWidth: CGFloat = 1
     var ratio: Double {
         switch model.project.export.aspect {
         case .source:

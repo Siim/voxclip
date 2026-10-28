@@ -475,7 +475,7 @@ struct SubtitleDetail: Equatable {
                 else { CaptionsSection(model: model).modifier(EditorPaneFocus(model: model, pane: .panel)) }
             }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .controlSize(.small)
-          }
+          }.frame(width: geometry.size.width, height: geometry.size.height, alignment: .topLeading)
         }
     }
 }
