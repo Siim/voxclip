@@ -451,6 +451,7 @@ jobs:
           $evidence = Join-Path $env:RUNNER_TEMP 'voxclip-launch-smoke'
           try {
             & apps/windows/tests/VoxClip.Core.Tests/Tracks/win-ui/launch-smoke.ps1 -Root $PWD.Path -EvidenceDir $evidence -RuntimeIdentifier win-x64 -Hosted
+            & apps/windows/tests/VoxClip.Core.Tests/Tracks/win-ui/launch-smoke.ps1 -Root $PWD.Path -EvidenceDir (Join-Path $evidence 'ordinary') -RuntimeIdentifier win-x64 -Hosted -OrdinaryOpen
           } finally {
             Get-ChildItem $evidence -Filter '*self-check.json' | ForEach-Object { Get-Content $_.FullName }
           }

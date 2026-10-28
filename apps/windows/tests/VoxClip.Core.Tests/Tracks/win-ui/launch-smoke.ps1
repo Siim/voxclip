@@ -1,5 +1,5 @@
 param([Parameter(Mandatory=$true)][string]$Root, [Parameter(Mandatory=$true)][string]$EvidenceDir,
-    [ValidateSet('win-x64','win-arm64')][string]$RuntimeIdentifier='win-x64', [switch]$Schedule, [switch]$Hosted)
+    [ValidateSet('win-x64','win-arm64')][string]$RuntimeIdentifier='win-x64', [switch]$Schedule, [switch]$Hosted, [switch]$OrdinaryOpen)
 $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path -LiteralPath $Root).Path
 New-Item -ItemType Directory -Force $EvidenceDir | Out-Null
@@ -8,12 +8,13 @@ $report = Join-Path $evidence 'observed-self-check.json'
 if (Test-Path -LiteralPath $report) { throw 'Use a fresh smoke evidence directory; stale reports are not accepted.' }
 if ($Schedule) {
     $task = 'VoxClipLaunchSmoke-' + [Guid]::NewGuid().ToString('N')
-    $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$PSCommandPath`" -Root `"$root`" -EvidenceDir `"$evidence`" -RuntimeIdentifier $RuntimeIdentifier"
+    $ordinaryArgument = if ($OrdinaryOpen) { ' -OrdinaryOpen' } else { '' }
+    $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$PSCommandPath`" -Root `"$root`" -EvidenceDir `"$evidence`" -RuntimeIdentifier $RuntimeIdentifier$ordinaryArgument"
     $principal = New-ScheduledTaskPrincipal -UserId ([Security.Principal.WindowsIdentity]::GetCurrent().Name) -LogonType Interactive
     try {
         Register-ScheduledTask -TaskName $task -Action $action -Principal $principal | Out-Null
         Start-ScheduledTask -TaskName $task
-        $deadline = [DateTime]::UtcNow.AddSeconds(30)
+        $deadline = [DateTime]::UtcNow.AddSeconds($(if ($OrdinaryOpen) { 100 } else { 30 }))
         while (-not (Test-Path -LiteralPath $report) -and [DateTime]::UtcNow -lt $deadline) { Start-Sleep -Milliseconds 250 }
         if (-not (Test-Path -LiteralPath $report)) { throw 'The interactive smoke wrote no report within 30 seconds.' }
         $observed = Get-Content -LiteralPath $report -Raw | ConvertFrom-Json
@@ -41,6 +42,7 @@ $desktopError = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
 $observed = [ordered]@{ status='failed'; runtime=$RuntimeIdentifier; rootLoaded=$false; rendered=$false;
     sessionId=(Get-Process -Id $PID).SessionId; userInteractive=[Environment]::UserInteractive; inputDesktop=($desktop -ne [IntPtr]::Zero); desktopError=$desktopError }
 $app = $null
+$opens = @()
 try {
     if ($desktop -eq [IntPtr]::Zero -or -not [Environment]::UserInteractive) {
         $observed.status = 'not runnable'
@@ -55,9 +57,19 @@ try {
     $env:VOXCLIP_TEST_DOWNLOAD = '0'
     $platform = if ($RuntimeIdentifier -eq 'win-arm64') { 'ARM64' } else { 'x64' }
     $exe = Join-Path $root "apps\windows\src\VoxClip.App\bin\$platform\Debug\net10.0-windows10.0.26100.0\$RuntimeIdentifier\VoxClip.exe"
-    $raw = Join-Path $evidence 'app-self-check.json'
     $fixture = Join-Path $root 'shared\fixtures\projects\interview-take.voxclip'
-    $app = Start-Process -FilePath $exe -ArgumentList "--demo-project `"$fixture`" --self-check `"$raw`"" -PassThru
+    $count = if ($OrdinaryOpen) { 5 } else { 1 }
+    for ($attempt = 1; $attempt -le $count; $attempt++) {
+    $check = $null
+    $raw = Join-Path $evidence "app-$attempt-self-check.json"
+    if ($OrdinaryOpen) {
+        $temporary = Join-Path $evidence "ordinary-$attempt"
+        New-Item -ItemType Directory -Path $temporary | Out-Null
+        $project = Join-Path $temporary 'interview-take.voxclip'
+        Copy-Item -LiteralPath $fixture -Destination $project
+        $arguments = "`"$project`" --self-check `"$raw`""
+    } else { $arguments = "--demo-project `"$fixture`" --self-check `"$raw`"" }
+    $app = Start-Process -FilePath $exe -ArgumentList $arguments -PassThru
     $deadline = [DateTime]::UtcNow.AddSeconds(15)
     $accepted = $false
     while ([DateTime]::UtcNow -lt $deadline) {
@@ -85,7 +97,13 @@ try {
     $condition = New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::NameProperty, 'Transcript. Select words to cut. Enter corrects spelling. Control K makes a clip.')
     $transcript = $window.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $condition)
     if (-not $transcript -or $transcript.Current.IsOffscreen) { throw 'The visible Editor transcript is absent from UIA.' }
+    $opens += [ordered]@{ attempt=$attempt; processId=$app.Id; status='ok'; rootLoaded=$check.rootLoaded; rendered=$check.rendered; transcriptVisible=$true }
+    Stop-Process -Id $app.Id -Force
+    if (-not $app.WaitForExit(5000)) { throw 'The owned smoke process did not stop.' }
+    }
     $observed.status = 'ok'
+    $observed.mode = if ($OrdinaryOpen) { 'ordinary-open' } else { 'demo' }
+    $observed.opens = $opens
     $observed.applicationStatus = $check.status
     $observed.rootLoaded = $check.rootLoaded
     $observed.rendered = $check.rendered
@@ -97,5 +115,6 @@ try {
 } finally {
     if ($app -and -not $app.HasExited) { Stop-Process -Id $app.Id -Force; [void]$app.WaitForExit(5000) }
     if ($desktop -ne [IntPtr]::Zero) { [void][SmokeDesktop]::CloseDesktop($desktop) }
-    $observed | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $report
+    $observed.opens = $opens
+    $observed | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $report
 }

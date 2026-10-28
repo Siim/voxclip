@@ -1,12 +1,50 @@
 #if WIN_UI_TESTS
 using System.Text.Json;
 using VoxClip.App.Services;
+using VoxClip.App.ViewModels;
+using VoxClip.Core.Domain.Shared;
 using Xunit;
 
 namespace VoxClip.Ui.Tests;
 
 public sealed class StartupCheckTests
 {
+    [Theory]
+    [InlineData(ExportAspect.Landscape)]
+    [InlineData(ExportAspect.Portrait)]
+    [InlineData(ExportAspect.Square)]
+    [InlineData(ExportAspect.Source)]
+    public async Task InitialAspectWaitsForTheSelectorsLoadedBoundary(ExportAspect aspect)
+    {
+        var loaded = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var selected = -1;
+        var ready = false;
+        var initial = EditorInitialSelection.ApplyAsync(aspect, loaded.Task, index =>
+        {
+            Assert.False(ready);
+            Assert.True(loaded.Task.IsCompletedSuccessfully);
+            selected = index;
+        }, CancellationToken.None);
+        Assert.Equal(-1, selected);
+        Assert.False(initial.IsCompleted);
+        loaded.SetResult();
+        await initial;
+        ready = true;
+        Assert.Equal(aspect, EditorLayout.Frames[selected]);
+    }
+
+    [Fact]
+    public async Task CancelledOpenNeverAppliesItsInitialSelection()
+    {
+        var loaded = new TaskCompletionSource();
+        using var cancellation = new CancellationTokenSource();
+        var initial = EditorInitialSelection.ApplyAsync(ExportAspect.Portrait, loaded.Task,
+            _ => Assert.Fail("A cancelled page must not select an aspect."), cancellation.Token);
+        cancellation.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => initial);
+        loaded.SetResult();
+    }
+
     [Fact]
     public void NativeProjectOpenFailuresRetainTheExceptionWithoutAReleaseField()
     {

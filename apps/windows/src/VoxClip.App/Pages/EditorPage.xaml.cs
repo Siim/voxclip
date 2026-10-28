@@ -36,6 +36,7 @@ public sealed partial class EditorPage : Page
     private Task pendingStandIn = Task.CompletedTask;
     private bool demo;
     private bool ready;
+    private readonly TaskCompletionSource aspectLoaded = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private bool disposed;
     /// <summary>The viewer collapsed because the transcript would drop below its minimum; it returns when there is room.</summary>
     private bool viewerSqueezed;
@@ -58,10 +59,16 @@ public sealed partial class EditorPage : Page
     public EditorPage()
     {
         InitializeComponent();
+        Aspect.Loaded += AspectLoaded;
         SearchText.GotFocus += (_, _) => Transcript.HideSelectionFlyout();
         PreviewStandIn.SizeChanged += (_, _) => PositionStageMessage();
     }
     public static bool HasText(string? text) => !string.IsNullOrEmpty(text);
+    private void AspectLoaded(object sender, RoutedEventArgs args)
+    {
+        Aspect.Loaded -= AspectLoaded;
+        aspectLoaded.TrySetResult();
+    }
     /// <summary>The take's resolved video, or null when it can't be found or the project is a demo fixture.</summary>
     internal string? MediaPath { get; private set; }
     internal bool IsDemo => demo;
@@ -115,7 +122,7 @@ public sealed partial class EditorPage : Page
         Untranscribed.Visibility = ViewModel.HasTranscript ? Visibility.Collapsed : Visibility.Visible;
         UpdateFindClips();
         Bindings.Update();
-        Aspect.SelectedIndex = EditorLayout.Frames.ToList().IndexOf(project.Export.Aspect);
+        await EditorInitialSelection.ApplyAsync(project.Export.Aspect, aspectLoaded.Task, index => Aspect.SelectedIndex = index, ct);
         captions = new(ViewModel, () => MediaPath, lifetime.Token);
         rightContent = new(captions);
         CaptionsHost.Children.Add(rightContent);
