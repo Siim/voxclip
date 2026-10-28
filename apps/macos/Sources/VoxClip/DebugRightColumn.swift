@@ -12,6 +12,7 @@ import VoxClipMedia
         let proposedWidth: CGFloat
         let stageWidth: CGFloat
         let markers: [String: CGRect]
+        let frameChoices: [String]
         let accessibilityElements: Int
         let viewOverflow: [String]
         let accessibilityOverflow: [String]
@@ -62,7 +63,7 @@ import VoxClipMedia
             let markers = markers(in: host)
             measurements.append(Measurement(variant: variant, width: width, minimumWidth: minimum.width,
                 proposedWidth: proposed.width, stageWidth: markers["viewer.stage"]?.width ?? 0, markers: markers,
-                accessibilityElements: accessibilityElements(host).filter { $0.isAccessibilityElement() }.count,
+                frameChoices: frameChoices(host), accessibilityElements: accessibilityElements(host).filter { $0.isAccessibilityElement() }.count,
                 viewOverflow: viewOverflow(host), accessibilityOverflow: accessibilityOverflow(host)))
           }
         }
@@ -71,12 +72,32 @@ import VoxClipMedia
         var results: [DebugUISuite.Result] = measurements.flatMap { measurement in [
             .init(name: "right column \(measurement.variant) at \(measurement.width): minimum \(measurement.minimumWidth), proposed \(measurement.proposedWidth)", passed: measurement.minimumWidth <= measurement.width + 0.5 && measurement.proposedWidth <= measurement.width + 0.5),
             .init(name: "right column \(measurement.variant) at \(measurement.width): descendants fit", passed: measurement.viewOverflow.isEmpty && measurement.accessibilityOverflow.isEmpty),
-            .init(name: "right column \(measurement.variant) at \(measurement.width): stage \(measurement.stageWidth) fits inner width", passed: measurement.stageWidth > 0 && measurement.stageWidth <= measurement.width - 32 + 0.5)
+            .init(name: "right column \(measurement.variant) at \(measurement.width): stage \(measurement.stageWidth) fits inner width", passed: measurement.stageWidth > 0 && measurement.stageWidth <= measurement.width - 32 + 0.5),
+            // Offscreen hosts don't vend SwiftUI's virtual accessibility elements, so the descendant check
+            // must be shown to have measured the real rows: the Frame control and one candidate per row.
+            .init(name: "right column \(measurement.variant) at \(measurement.width): measured Frame choices \(measurement.frameChoices) and one candidate per row", passed: measurement.frameChoices == ["9:16", "1:1", "16:9", "Original"] && candidates("frame.", measurement) == 1 && candidates("transport.", measurement) == 1 && candidates("captions.", measurement) == (measurement.variant.hasPrefix("rewrite") ? 0 : 1))
         ] }
         results.append(.init(name: "360-point short Captions summary uses one row", passed: measurements.first { $0.width == 360 && $0.variant == "source" }?.markers["captions.inline"] != nil))
         results.append(.init(name: "300-point AI/rate/hour case uses metadata fallback", passed: measurements.first { $0.width == 300 && $0.variant == "ai-rate-hours" }?.markers["transport.stacked"] != nil))
         results.append(.init(name: "300-point Frame choices use a stacked full-width picker", passed: measurements.first { $0.width == 300 && $0.variant == "source" }?.markers["frame.stacked"] != nil))
         return results
+    }
+    private static func candidates(_ prefix: String, _ measurement: Measurement) -> Int {
+        measurement.markers.keys.filter { $0.hasPrefix(prefix) }.count
+    }
+    /// The labels of the visible four-segment Frame control, or none if it wasn't laid out.
+    static func frameChoices(_ host: NSView) -> [String] {
+        var found: [String] = []
+        func visit(_ view: NSView) {
+            guard found.isEmpty, !view.isHidden else { return }
+            if let control = view as? NSSegmentedControl, control.segmentCount == 4, view.convert(view.bounds, to: host).width > 0 {
+                let labels = (0..<control.segmentCount).map { control.label(forSegment: $0) ?? "" }
+                if labels == ["9:16", "1:1", "16:9", "Original"] { found = labels; return }
+            }
+            view.subviews.forEach(visit)
+        }
+        visit(host)
+        return found
     }
     static func viewOverflow(_ host: NSView) -> [String] {
         var failures: [String] = []

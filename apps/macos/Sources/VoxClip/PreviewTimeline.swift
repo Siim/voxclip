@@ -99,7 +99,7 @@ func viewerStageSize(ratio: Double, innerWidth: CGFloat, columnHeight: CGFloat, 
                 aiTag
                 HStack(spacing: 0) {
                     playbackTime
-                    if model.playbackRate != 1 { Text(" · \(model.playbackRate.formatted())×").font(DesignValues.mono(12)).foregroundStyle(DesignValues.color("text.secondary")).fixedSize() }
+                    if model.playbackRate != 1 { Text(" · \(model.playbackRate.formatted())×").font(DesignValues.mono(12)).foregroundStyle(DesignValues.color("text.secondary")).fixedSize().accessibilityHidden(true) }
                 }
                 Spacer(minLength: 4)
                 transportButtons
@@ -108,7 +108,7 @@ func viewerStageSize(ratio: Double, innerWidth: CGFloat, columnHeight: CGFloat, 
                 if hasAI || model.playbackRate != 1 {
                     HStack(spacing: 8) {
                         aiTag
-                        if model.playbackRate != 1 { Text("\(model.playbackRate.formatted())×").font(.system(size: 11)).foregroundStyle(DesignValues.color("text.secondary")).fixedSize() }
+                        if model.playbackRate != 1 { Text("\(model.playbackRate.formatted())×").font(.system(size: 11)).foregroundStyle(DesignValues.color("text.secondary")).fixedSize().accessibilityHidden(true) }
                     }
                 }
                 HStack(spacing: 4) { playbackTime; Spacer(minLength: 4); transportButtons }.frame(height: 34)

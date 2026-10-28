@@ -11,10 +11,13 @@ import VoxClipCore
         let frame: CGRect
     }
     struct Evidence: Codable {
+        let editor: Bool
         let column: CGRect
         let content: CGRect
         let collapsed: Bool
         let elements: [Element]
+        /// Right-column descendants without a position or size, as "role label identifier".
+        let unmeasured: [String]
         let failures: [String]
         let markers: [String: CGRect]
     }
@@ -25,13 +28,21 @@ import VoxClipCore
     }
     static func assertBounds(window: NSWindow, name: String, directory: URL) throws {
         let editorWindow = window.sheetParent ?? window
-        guard let split = split(in: editorWindow.contentView), let right = split.arrangedSubviews.last,
-              let contentView = editorWindow.contentView else { return }
-        let column = screenFrame(right, window: editorWindow)
+        guard let contentView = editorWindow.contentView else { return }
         let content = screenFrame(contentView, window: editorWindow)
+        guard let split = split(in: contentView), let right = split.arrangedSubviews.last else {
+            // Home and other non-editor captures have no split. An editor without one would skip every check.
+            let failures = containsTranscript(contentView) ? ["The editor is showing but its split view is missing"] : []
+            let evidence = Evidence(editor: false, column: .zero, content: content, collapsed: false, elements: [], unmeasured: [], failures: failures, markers: [:])
+            try JSONEncoder().encode(evidence).write(to: directory.appendingPathComponent("\(name)-bounds.json"), options: .atomic)
+            guard failures.isEmpty else { throw VoxClipError.exportFailed("Right-column bounds failed in \(name): \(failures.joined(separator: "; "))") }
+            return
+        }
+        let column = screenFrame(right, window: editorWindow)
         let collapsed = split.isSubviewCollapsed(right)
         var failures: [String] = []
         var elements: [Element] = []
+        var unmeasured: [String] = []
         if !collapsed {
             let application = AXUIElementCreateApplication(getpid())
             let windows = attribute(application, kAXWindowsAttribute) as? [AXUIElement] ?? []
@@ -41,7 +52,17 @@ import VoxClipCore
                 guard (attribute($0, kAXIdentifierAttribute) as? String) == "voxclip.editor.right", let frame = element($0)?.frame else { return false }
                 return abs(frame.minX - column.minX) <= 0.5 && abs(frame.width - column.width) <= 0.5
             }) {
-                elements = descendants(root, depth: 0).compactMap(element)
+                for item in descendants(root, depth: 0) {
+                    if let measured = element(item) { elements.append(measured); continue }
+                    let role = attribute(item, kAXRoleAttribute) as? String ?? ""
+                    let label = [kAXDescriptionAttribute, kAXTitleAttribute].compactMap { attribute(item, $0) as? String }.first { !$0.isEmpty } ?? ""
+                    let identifier = attribute(item, kAXIdentifierAttribute) as? String ?? ""
+                    unmeasured.append("\(role) \(label) \(identifier)")
+                    // A named control without a frame can't be bounds-checked, so it fails rather than being dropped.
+                    if [kAXButtonRole, kAXRadioButtonRole, kAXCheckBoxRole].contains(role), !(label + identifier).isEmpty {
+                        failures.append("Unmeasurable control: \(role) \(label) \(identifier)")
+                    }
+                }
             } else { failures.append("Right-column accessibility root is missing") }
             for item in elements where item.frame.width > 0 && item.frame.height > 0 {
                 if !column.insetBy(dx: -0.5, dy: -0.5).contains(item.frame) { failures.append("Column overflow: \(item.label) \(item.identifier) \(item.frame)") }
@@ -58,10 +79,13 @@ import VoxClipCore
                 if !elements.contains(where: { $0.role == kAXRadioButtonRole && $0.label.contains(": ") }) { failures.append("Missing caption gallery choices") }
             }
         }
-        let evidence = Evidence(column: column, content: content, collapsed: collapsed, elements: elements,
-            failures: failures, markers: DebugRightColumn.markers(in: right))
+        let evidence = Evidence(editor: true, column: column, content: content, collapsed: collapsed, elements: elements,
+            unmeasured: unmeasured, failures: failures, markers: DebugRightColumn.markers(in: right))
         try JSONEncoder().encode(evidence).write(to: directory.appendingPathComponent("\(name)-bounds.json"), options: .atomic)
         guard failures.isEmpty else { throw VoxClipError.exportFailed("Right-column bounds failed in \(name): \(failures.joined(separator: "; "))") }
+    }
+    private static func containsTranscript(_ view: NSView) -> Bool {
+        view is TranscriptNSTextView || view.subviews.contains { containsTranscript($0) }
     }
     private static func screenFrame(_ view: NSView, window: NSWindow) -> CGRect {
         let rect = window.convertToScreen(view.convert(view.bounds, to: nil))

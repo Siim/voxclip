@@ -12,7 +12,7 @@ import Darwin
         let report = try JSONDecoder().decode([UIProcessHarness.Result].self, from: Data(contentsOf: directory.appendingPathComponent("results.json")))
         #expect(report.count >= 183)
         for result in report { #expect(result.passed && result.skipped == nil, Comment(rawValue: result.name)) }
-        struct Measurement: Decodable { let width: Double; let minimumWidth: Double; let proposedWidth: Double; let stageWidth: Double; let variant: String; let viewOverflow: [String]; let accessibilityOverflow: [String] }
+        struct Measurement: Decodable { let width: Double; let minimumWidth: Double; let proposedWidth: Double; let stageWidth: Double; let variant: String; let frameChoices: [String]; let viewOverflow: [String]; let accessibilityOverflow: [String] }
         let measurements = try JSONDecoder().decode([Measurement].self, from: Data(contentsOf: directory.appendingPathComponent("right-column-layout.json")))
         #expect(measurements.count == 60)
         #expect(Set(measurements.map(\.width)) == [300, 320, 340, 360, 440, 560])
@@ -20,6 +20,7 @@ import Darwin
             #expect(measurement.minimumWidth <= measurement.width + 0.5 && measurement.proposedWidth <= measurement.width + 0.5)
             #expect(measurement.stageWidth > 0 && measurement.stageWidth <= measurement.width - 31.5)
             #expect(measurement.viewOverflow.isEmpty && measurement.accessibilityOverflow.isEmpty)
+            #expect(measurement.frameChoices == ["9:16", "1:1", "16:9", "Original"], Comment(rawValue: "\(measurement.variant) at \(measurement.width)"))
         }
     }
     @Test("Saved Voice Lab recipe uses native preview and App export", .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_UI_TESTS"] == "1")) func voiceRecipeWorkflow() async throws {
@@ -107,10 +108,10 @@ import Darwin
             let image = try #require(NSBitmapImageRep(data: Data(contentsOf: directory.appendingPathComponent(name).appendingPathExtension("png"))))
             #expect(image.pixelsWide >= 600 && image.pixelsHigh >= 400)
             if name != "live-home" && name != "live-home-empty" && name != "live-dragover" {
-                struct Bounds: Decodable { let collapsed: Bool; let column: CGRect; let content: CGRect; let failures: [String]; let elements: [Element] }
+                struct Bounds: Decodable { let editor: Bool; let collapsed: Bool; let column: CGRect; let content: CGRect; let failures: [String]; let elements: [Element] }
                 struct Element: Decodable { let identifier: String; let frame: CGRect }
                 let bounds = try JSONDecoder().decode(Bounds.self, from: Data(contentsOf: directory.appendingPathComponent("\(name)-bounds.json")))
-                #expect(bounds.failures.isEmpty, Comment(rawValue: name))
+                #expect(bounds.editor && bounds.failures.isEmpty, Comment(rawValue: name))
                 #expect(bounds.collapsed == (name == "live-compact"), Comment(rawValue: name))
                 if name == "live-editor-full" { #expect(abs(bounds.content.width - 1440) <= 1 && abs(bounds.content.height - 900) <= 1 && abs(bounds.column.width - 360) <= 1) }
                 if name == "live-editor-1180" { #expect(abs(bounds.content.width - 1180) <= 1 && abs(bounds.content.height - 800) <= 1 && abs(bounds.column.width - 300) <= 1) }
