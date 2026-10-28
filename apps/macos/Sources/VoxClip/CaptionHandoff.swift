@@ -87,9 +87,12 @@ struct CaptionTileInput: Sendable, Equatable {
         do {
             let (pipeline, rasterizer) = try services()
             let resolution = await pipeline.resolve(input.style, overrides: input.overrides, frame: input.frame)
+            var galleryStyle = resolution.style
+            galleryStyle.layout.maxLines = max(2, galleryStyle.layout.maxLines)
+            galleryStyle.layout.maxLineWidthW = min(galleryStyle.layout.maxLineWidthW, 0.24)
             let sample = input.sample ?? CaptionGallerySample.preview(input.style)
             let words = sample.words.map { CaptionWord(id: $0.id, text: $0.text, start: $0.start, end: $0.end) }
-            let layout = try await pipeline.layout(words: words, language: input.language, style: resolution.style,
+            let layout = try await pipeline.layout(words: words, language: input.language, style: galleryStyle,
                 position: input.position, frame: input.frame, duration: sample.duration)
             try Task.checkCancellation()
             let raster = try await rasterizer.rasterize(layout, time: sample.time, previewWidth: 1280, reduceMotion: true)
@@ -145,18 +148,14 @@ struct CaptionTileInput: Sendable, Equatable {
         }
         guard right > left, bottom > top else { return nil }
         let block = CGRect(x: left, y: top, width: right - left, height: bottom - top)
-        let padding: Double = max(4, capHeight * 0.75)
+        let padding: Double = max(2, capHeight * 0.25)
         let aspect: Double = Double(target.width) / Double(target.height)
         let minimumWidth: Double = Double(target.width) * capHeight / 36
-        let maximumWidth: Double = Double(target.width) * capHeight / 24
         let contextWidth: Double = max(block.width + padding * 2, (block.height + padding * 2) * aspect)
-        let cropWidth: Double = min(max(contextWidth, minimumWidth), maximumWidth)
+        let cropWidth: Double = max(contextWidth, minimumWidth)
         let cropHeight: Double = cropWidth / aspect
         let halfWidth: Double = cropWidth / 2
-        let leftCentre: Double = block.minX - padding + halfWidth
-        let rightCentre: Double = max(leftCentre, block.maxX + padding - halfWidth)
-        let focusedCentre: Double = (focus ?? block.midX).clamped(to: leftCentre...rightCentre)
-        let centre: Double = contextWidth <= cropWidth ? block.midX : focusedCentre
+        let centre: Double = block.midX
         return CGRect(x: centre - halfWidth, y: block.midY - cropHeight / 2,
                       width: cropWidth, height: cropHeight).integral
     }

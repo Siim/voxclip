@@ -68,6 +68,7 @@ import VoxClipCore
                 }
                 let height = glyphPixelHeight(bitmap)
                 check("\(name) \(captionStyle.id) gallery text is at least 8 px at 1x (\(height))", height >= 8)
+                check("\(name) \(captionStyle.id) gallery has no clipped edge glyph", !edgeHasGlyph(bitmap))
                 if let data = bitmap.representation(using: .png, properties: [:]) {
                     try data.write(to: directory.appendingPathComponent("tile-\(captionStyle.id)-\(name)-1x.png"))
                 }
@@ -78,6 +79,7 @@ import VoxClipCore
                    let bitmap = tileBitmap(source, width: 64, height: 36) {
                     let height = glyphPixelHeight(bitmap)
                     check("\(name) \(captionStyle.id) live chip text is at least 8 px at 1x (\(height))", height >= 8)
+                    check("\(name) \(captionStyle.id) live chip has no clipped edge glyph", !edgeHasGlyph(bitmap))
                     if let data = bitmap.representation(using: .png, properties: [:]) {
                         try data.write(to: directory.appendingPathComponent("chip-\(captionStyle.id)-\(name)-1x.png"))
                     }
@@ -139,7 +141,7 @@ import VoxClipCore
         try JSONEncoder().encode(results).write(to: directory.appendingPathComponent("caption-results.json"), options: .atomic)
         return results
     }
-    private static func tileBitmap(_ image: CGImage, width: Int, height: Int) -> NSBitmapImageRep? {
+    static func tileBitmap(_ image: CGImage, width: Int, height: Int) -> NSBitmapImageRep? {
         guard let context = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
                                       space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
         context.interpolationQuality = .high
@@ -170,7 +172,26 @@ import VoxClipCore
         let nextDepth: Int = depth + 1
         return labels + children.flatMap { (child: AXUIElement) -> [String] in accessibilityLabels(child, depth: nextDepth) }
     }
-    private static func glyphPixelHeight(_ bitmap: NSBitmapImageRep) -> Int {
+    static func edgeHasGlyph(_ bitmap: NSBitmapImageRep) -> Bool {
+        func hasGlyph(column: Int, row: Int) -> Bool {
+            guard let pixel = bitmap.colorAt(x: column, y: row)?.usingColorSpace(.sRGB) else { return false }
+            let maximum: CGFloat = max(pixel.redComponent, pixel.greenComponent, pixel.blueComponent)
+            let minimum: CGFloat = min(pixel.redComponent, pixel.greenComponent, pixel.blueComponent)
+            return maximum - minimum > 0.15 || maximum > 0.8
+        }
+        for column in [0, 1, bitmap.pixelsWide - 2, bitmap.pixelsWide - 1] {
+            for row in 1..<(bitmap.pixelsHigh - 1) {
+                if hasGlyph(column: column, row: row) { return true }
+            }
+        }
+        for row in [0, 1, bitmap.pixelsHigh - 2, bitmap.pixelsHigh - 1] {
+            for column in 1..<(bitmap.pixelsWide - 1) {
+                if hasGlyph(column: column, row: row) { return true }
+            }
+        }
+        return false
+    }
+    static func glyphPixelHeight(_ bitmap: NSBitmapImageRep) -> Int {
         var longest = 0, run = 0
         for row in 1..<(bitmap.pixelsHigh - 1) {
             var transitions = 0
