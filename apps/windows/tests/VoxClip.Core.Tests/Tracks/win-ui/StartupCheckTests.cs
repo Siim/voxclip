@@ -1,12 +1,74 @@
 #if WIN_UI_TESTS
 using System.Text.Json;
 using VoxClip.App.Services;
+using VoxClip.App.ViewModels;
+using VoxClip.Core.Domain.Shared;
 using Xunit;
 
 namespace VoxClip.Ui.Tests;
 
 public sealed class StartupCheckTests
 {
+    [Fact]
+    public void HostedDemoAndOrdinarySmokeCannotSucceedWithoutRenderedReports()
+    {
+        var root = new DirectoryInfo(AppContext.BaseDirectory);
+        while (root is not null && !Directory.Exists(Path.Combine(root.FullName, ".github"))) root = root.Parent;
+        Assert.NotNull(root);
+        var script = File.ReadAllText(Path.Combine(root.FullName, "apps/windows/tests/VoxClip.Core.Tests/Tracks/win-ui/launch-smoke.ps1"));
+        var workflow = File.ReadAllText(Path.Combine(root.FullName, ".github/workflows/ci.yml"));
+        var noDesktop = script[script.IndexOf("if ($desktop -eq", StringComparison.Ordinal)..script.IndexOf("$env:VOXCLIP_DATA_DIR", StringComparison.Ordinal)];
+        Assert.Contains("throw $observed.reason", noDesktop);
+        Assert.DoesNotContain("return", noDesktop);
+        Assert.DoesNotContain("if (-not $Hosted)", script);
+        Assert.Contains("$count = if ($OrdinaryOpen) { 5 } else { 1 }", script);
+        Assert.Contains("Copy-Item -LiteralPath $fixture -Destination $project", script);
+        Assert.Contains("$arguments = \"`\"$project`\" --self-check", script);
+        Assert.Contains("$check.processId -ne $app.Id", script);
+        Assert.Contains("ordinary/observed-self-check.json", workflow);
+        Assert.Contains("$observed.status -ne 'ok' -or -not $observed.rootLoaded -or -not $observed.rendered", workflow);
+        Assert.Contains("throw \"Editor launch smoke did not pass", workflow);
+        // A report claiming ok with fewer than five rendered ordinary opens still fails the step.
+        Assert.Contains("$_.status -eq 'ok' -and $_.rootLoaded -and $_.rendered -and $_.transcriptVisible", workflow);
+        Assert.Contains("$ordinary.mode -ne 'ordinary-open' -or $passed.Count -lt 5", workflow);
+    }
+
+    [Theory]
+    [InlineData(ExportAspect.Landscape)]
+    [InlineData(ExportAspect.Portrait)]
+    [InlineData(ExportAspect.Square)]
+    [InlineData(ExportAspect.Source)]
+    public async Task InitialAspectWaitsForTheSelectorsLoadedBoundary(ExportAspect aspect)
+    {
+        var loaded = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var selected = -1;
+        var ready = false;
+        var initial = EditorInitialSelection.ApplyAsync(aspect, loaded.Task, index =>
+        {
+            Assert.False(ready);
+            Assert.True(loaded.Task.IsCompletedSuccessfully);
+            selected = index;
+        }, CancellationToken.None);
+        Assert.Equal(-1, selected);
+        Assert.False(initial.IsCompleted);
+        loaded.SetResult();
+        await initial;
+        ready = true;
+        Assert.Equal(aspect, EditorLayout.Frames[selected]);
+    }
+
+    [Fact]
+    public async Task CancelledOpenNeverAppliesItsInitialSelection()
+    {
+        var loaded = new TaskCompletionSource();
+        using var cancellation = new CancellationTokenSource();
+        var initial = EditorInitialSelection.ApplyAsync(ExportAspect.Portrait, loaded.Task,
+            _ => Assert.Fail("A cancelled page must not select an aspect."), cancellation.Token);
+        cancellation.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => initial);
+        loaded.SetResult();
+    }
+
     [Fact]
     public void LaunchSmokeRequiresFreshOwnedRenderedEditorAndVisibleTranscript()
     {
