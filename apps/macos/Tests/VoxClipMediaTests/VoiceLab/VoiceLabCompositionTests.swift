@@ -6,6 +6,7 @@ import Testing
 import VoxClipCore
 @testable import VoxClipMedia
 
+extension HeavyMediaTests {
 @Suite("voice-lab-native-composition", .serialized)
 struct VoiceLabCompositionTests {
     private func source(in root: URL) async throws -> URL {
@@ -1011,4 +1012,5 @@ struct VoiceLabCompositionTests {
             #expect(try AVAudioFile(forReading: taggedWAV).length == plan.outputSamples)
         }
     }
+}
 }

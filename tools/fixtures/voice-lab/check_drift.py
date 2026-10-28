@@ -1,18 +1,19 @@
 #!/usr/bin/env python3
-"""Compare regenerated Voice Lab fixtures that hold computed floats with the committed files.
+"""Compare regenerated Voice Lab fixtures with exact or explicitly tolerant expectations.
 
 The audio-math generator calls libm (log10, tan, pow) and NumPy reductions whose last bits differ between
 platforms: a hosted Ubuntu runner and an Apple silicon Mac disagree by 1 ULP on some coefficients and by up to
 ~1e-13 on accumulated loudness values. Such a file passes when its structure, strings, booleans and integers are
 identical and every float agrees within REL_TOL / ABS_TOL; the committed bytes are then restored so the
-byte-exact `git diff --exit-code` that follows checks only the other generators. Run from the repository root,
-after the generators."""
+byte-exact `git diff --exit-code` that follows checks only the other generators. Continuity vectors have an
+explicit byte-exact expectation, never float tolerance. Run from the repository root, after the generators."""
 import json
 import math
 import subprocess
 import sys
 
 TOLERANT = ['shared/fixtures/voice-lab/audio-math-cases.json']
+EXACT = ['shared/fixtures/voice-lab/continuity-cases.json']
 REL_TOL = 1e-10
 ABS_TOL = 1e-12
 
@@ -37,6 +38,15 @@ def differences(committed, regenerated, where='$'):
 
 def main():
     failed = False
+    for path in EXACT:
+        committed_bytes = subprocess.run(['git', 'show', f'HEAD:{path}'], check=True, capture_output=True).stdout
+        with open(path, 'rb') as file:
+            regenerated_bytes = file.read()
+        if committed_bytes != regenerated_bytes:
+            failed = True
+            print(f'::error::{path} must match byte for byte')
+        else:
+            print(f'{path}: identical')
     for path in TOLERANT:
         committed_bytes = subprocess.run(['git', 'show', f'HEAD:{path}'], check=True, capture_output=True).stdout
         with open(path, 'rb') as file:
