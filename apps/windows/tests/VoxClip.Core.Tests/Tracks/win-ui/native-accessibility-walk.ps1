@@ -143,7 +143,7 @@ function FindId([IntPtr]$w,[string]$id) {
 }
 function IsSelected($x){$p=$null;if($x.TryGetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern,[ref]$p)){return $p.Current.IsSelected};return $false}
 function Focused{[System.Windows.Automation.AutomationElement]::FocusedElement.Current.Name}
-function InCommandBar($e){$walker=[System.Windows.Automation.TreeWalker]::RawViewWalker;for($p=$e;$p -ne $null;$p=$walker.GetParent($p)){if($p.Current.ClassName -eq 'CommandBar'){return $true}};return $false}
+function InCommandBar($e){$walker=[System.Windows.Automation.TreeWalker]::RawViewWalker;$found=$false;$chain=@();for($p=$e;$p -ne $null;$p=$walker.GetParent($p)){$chain+="$($p.Current.Name) | $($p.Current.ClassName) | $($p.Current.AutomationId)";if($p.Current.ClassName -eq 'CommandBar'){$found=$true}};[IO.File]::AppendAllText((Join-Path $shots 'f6-ancestors.txt'),(($chain -join "`n")+"`n---`n"));return $found}
 function Choose($x){$x.SetFocus();Start-Sleep -Milliseconds 150;[R1Native]::Key(0x0D);Start-Sleep -Milliseconds 600}
 $transcriptName='Transcript. Select words to cut. Enter corrects spelling. Control K makes a clip.'
 try{
