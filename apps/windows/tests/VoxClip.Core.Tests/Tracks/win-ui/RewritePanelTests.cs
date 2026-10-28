@@ -27,6 +27,14 @@ public sealed class RewritePanelTests
     private static AudioEnvelope Envelope() => new(48000, 0.01, Enumerable.Repeat(0.01f, 10000).ToArray());
 
     [Fact]
+    public void CaptionRegionDoesNotFocusTheZeroHeightGallery()
+    {
+        var panel = File.ReadAllText(Path.Combine(Path.GetDirectoryName(Shared)!, "apps", "windows", "src", "VoxClip.App", "Controls", "CaptionsPanel.cs"));
+        Assert.Contains("gallery.IsEnabled && gallery.ActualHeight > 0 ? gallery", panel);
+        Assert.Contains("FocusManager.FindFirstFocusableElement(fineTune)", panel);
+    }
+
+    [Fact]
     public void PanelUsesTheRightColumnFocusSlotAndExactControlNames()
     {
         var app = Path.Combine(Path.GetDirectoryName(Shared)!, "apps", "windows", "src", "VoxClip.App");

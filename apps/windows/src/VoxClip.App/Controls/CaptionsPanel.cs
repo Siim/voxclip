@@ -49,7 +49,7 @@ internal sealed class CaptionsPanel : UserControl
     private bool syncing;
     private double playhead;
     internal IReadOnlyList<CaptionStyle> Styles { get; private set; } = [];
-    internal Control FocusTarget => gallery.IsEnabled ? gallery : Microsoft.UI.Xaml.Input.FocusManager.FindFirstFocusableElement(fineTune) as Control ?? fineTune;
+    internal Control FocusTarget => gallery.IsEnabled && gallery.ActualHeight > 0 ? gallery : Microsoft.UI.Xaml.Input.FocusManager.FindFirstFocusableElement(fineTune) as Control ?? fineTune;
     private sealed class Tile(CaptionStyle style) : INotifyPropertyChanged
     {
         internal CaptionStyle Style { get; } = style;
