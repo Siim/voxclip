@@ -2465,3 +2465,8 @@ Historical inspector/View-menu layout below is also superseded by ADR-R29.
 - `Sources/VoxClip/PreviewTimeline.swift` tries the regular Frame row, then its small-control picker in the same 24-point row, then a leading 13-point Frame label above a full-width small-control picker. Every candidate retains all four complete options, selection weight and the Frame accessibility label.
 - The window-free layout matrix in `Sources/VoxClip/DebugRightColumn.swift` and native right-column bounds checks cover the narrow split widths; there is no label removal or clipping workaround.
 
+### 2026-10-28 — sol-mac-layout — L3 viewer transport
+
+- `Sources/VoxClip/PreviewTimeline.swift` first offers the original 34-point time/transport row. If its ideal width does not fit, the AI modified tag and non-unit rate move to an 11-point caption line above it, in that order. The rate has no leading separator on its own line.
+- Playback time stays unscaled and untruncated with its existing accessibility label, identifier and value. Back/forward remain 28-point targets and Play/Pause stays 34 points. The layout matrix exercises combined AI, 1.5× and hour-long times at every supported test width.
+

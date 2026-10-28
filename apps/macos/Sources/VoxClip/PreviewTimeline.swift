@@ -92,28 +92,51 @@ func viewerStageSize(ratio: Double, innerWidth: CGFloat, columnHeight: CGFloat, 
         return "Video preview, \(scope)\(ai)\(model.mediaStatus.spokenState.map { ", " + $0 } ?? "")"
     }
     private var viewerRow: some View {
-        HStack(spacing: 4) {
-            if model.voiceLabPlan?.pieces.contains(where: { $0.kind == .synth }) == true {
-                Text("AI modified").font(.system(size: 11)).padding(.horizontal, 4).padding(.vertical, 2)
-                    .overlay { RoundedRectangle(cornerRadius: 4).stroke(DesignValues.accentText, lineWidth: 1) }
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 4) {
+                aiTag
+                playbackTime
+                if model.playbackRate != 1 { Text(" · \(model.playbackRate.formatted())×").font(DesignValues.mono(12)).foregroundStyle(DesignValues.color("text.secondary")).fixedSize() }
+                Spacer(minLength: 4)
+                transportButtons
+            }.frame(height: 34)
+            VStack(alignment: .leading, spacing: 6) {
+                if hasAI || model.playbackRate != 1 {
+                    HStack(spacing: 8) {
+                        aiTag
+                        if model.playbackRate != 1 { Text("\(model.playbackRate.formatted())×").font(.system(size: 11)).foregroundStyle(DesignValues.color("text.secondary")).fixedSize() }
+                    }
+                }
+                HStack(spacing: 4) { playbackTime; Spacer(minLength: 4); transportButtons }.frame(height: 34)
             }
-            HStack(spacing: 0) {
-                Text(timecode(model.playhead))
-                Text(" / \(timecode(model.duration))").foregroundStyle(DesignValues.color("text.secondary"))
-                if model.playbackRate != 1 { Text(" · \(model.playbackRate.formatted())×").foregroundStyle(DesignValues.color("text.secondary")) }
-            }
-            .font(DesignValues.mono(12)).monospacedDigit().fixedSize()
-            .accessibilityElement(children: .ignore).accessibilityLabel("Playback time")
-            .accessibilityIdentifier("voxclip.viewer.time")
-            .accessibilityValue("\(timecode(floor(model.playhead))) of \(timecode(model.duration))")
-            Spacer(minLength: 4)
+        }.buttonStyle(.plain).foregroundStyle(DesignValues.color("text.primary"))
+    }
+    private var hasAI: Bool { model.voiceLabPlan?.pieces.contains { $0.kind == .synth } == true }
+    @ViewBuilder private var aiTag: some View {
+        if hasAI {
+            Text("AI modified").font(.system(size: 11)).fixedSize().padding(.horizontal, 4).padding(.vertical, 2)
+                .overlay { RoundedRectangle(cornerRadius: 4).stroke(DesignValues.accentText, lineWidth: 1) }
+        }
+    }
+    private var playbackTime: some View {
+        HStack(spacing: 0) {
+            Text(timecode(model.playhead))
+            Text(" / \(timecode(model.duration))").foregroundStyle(DesignValues.color("text.secondary"))
+        }
+        .font(DesignValues.mono(12)).monospacedDigit().fixedSize()
+        .accessibilityElement(children: .ignore).accessibilityLabel("Playback time")
+        .accessibilityIdentifier("voxclip.viewer.time")
+        .accessibilityValue("\(timecode(floor(model.playhead))) of \(timecode(model.duration))")
+    }
+    private var transportButtons: some View {
+        Group {
             Button { model.transport("j") } label: { transportSymbol("gobackward.3", fallback: "gobackward").frame(width: 28, height: 28) }
                 .help("Back 3 Seconds (J)").accessibilityLabel(EditorIconAction.back.name)
             Button { model.transport(" ") } label: { Image(systemName: model.isPlaying ? "pause.fill" : "play.fill").frame(width: 34, height: 34) }
                 .background(DesignValues.color("bg.sunken"), in: Circle()).help("Play/Pause (Space)").accessibilityLabel((model.isPlaying ? EditorIconAction.pause : .play).name)
             Button { model.seek(source: min(model.sourceDuration, model.sourceTime + 3)) } label: { transportSymbol("goforward.3", fallback: "goforward").frame(width: 28, height: 28) }
                 .help("Forward 3 Seconds").accessibilityLabel(EditorIconAction.forward.name)
-        }.buttonStyle(.plain).foregroundStyle(DesignValues.color("text.primary")).frame(height: 34)
+        }
     }
     @ViewBuilder private func transportSymbol(_ name: String, fallback: String) -> some View {
         if NSImage(named: name) != nil { Image(name).renderingMode(.template) }
