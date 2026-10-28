@@ -8,6 +8,18 @@ namespace VoxClip.Ui.Tests;
 public sealed class StartupCheckTests
 {
     [Fact]
+    public void NativeKeyboardWalkRecognizesTheObservedNamedApplicationBarPeer()
+    {
+        var root = new DirectoryInfo(AppContext.BaseDirectory);
+        while (root is not null && !Directory.Exists(Path.Combine(root.FullName, ".github"))) root = root.Parent;
+        Assert.NotNull(root);
+        var script = File.ReadAllText(Path.Combine(root.FullName, "apps/windows/tests/VoxClip.Core.Tests/Tracks/win-ui/native-accessibility-walk.ps1"));
+        Assert.Contains("ClassName -eq 'ApplicationBar' -and $p.Current.AutomationId -eq 'Commands'", script);
+        Assert.Contains("$e.Current.IsOffscreen", script);
+        Assert.Contains("$bounds.IsEmpty", script);
+    }
+
+    [Fact]
     public void ScreenshotExerciseChecksTheUnprefixedScopeClockForExactEndTime()
     {
         var root = new DirectoryInfo(AppContext.BaseDirectory);
