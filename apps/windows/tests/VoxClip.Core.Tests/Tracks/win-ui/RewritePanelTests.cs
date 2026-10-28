@@ -30,7 +30,9 @@ public sealed class RewritePanelTests
     public void CaptionRegionDoesNotFocusTheZeroHeightGallery()
     {
         var panel = File.ReadAllText(Path.Combine(Path.GetDirectoryName(Shared)!, "apps", "windows", "src", "VoxClip.App", "Controls", "CaptionsPanel.cs"));
-        Assert.Contains("gallery.IsEnabled && gallery.ActualHeight > 0 ? gallery", panel);
+        Assert.Contains("gallery.IsEnabled && gallery.ActualHeight > 0", panel);
+        Assert.Contains("gallery.ScrollIntoView(selected, ScrollIntoViewAlignment.Leading);", panel);
+        Assert.Contains("gallery.ContainerFromItem(selected) is Control target", panel);
         Assert.Contains("FocusManager.FindFirstFocusableElement(fineTune)", panel);
     }
 
