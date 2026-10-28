@@ -44,6 +44,7 @@ public actor JSONSettingsStore: SettingsStore {
     private var pending: SettingsDocument?
     private var task: Task<Void, Never>?
     private var revision: UInt64 = 0
+    private var debounceSleep: @Sendable () async throws -> Void = { try await Task.sleep(for: .milliseconds(500)) }
     public private(set) var lastWriteError: String?
     public private(set) var lastLoadError: VoxClipError?
 
@@ -58,6 +59,11 @@ public actor JSONSettingsStore: SettingsStore {
     public init(locations: DataLocations) {
         url = locations.settings
         logger = RedactingLogger(homeDirectory: NSHomeDirectory())
+    }
+    init(locations: DataLocations, debounceSleep: @escaping @Sendable () async throws -> Void) {
+        url = locations.settings
+        logger = RedactingLogger(homeDirectory: NSHomeDirectory())
+        self.debounceSleep = debounceSleep
     }
     public init(locations: DataLocations, logger: any Logger) {
         url = locations.settings
@@ -132,8 +138,9 @@ public actor JSONSettingsStore: SettingsStore {
         task?.cancel()
         revision &+= 1
         let scheduledRevision = revision
+        let sleep = debounceSleep
         task = Task { [weak self] in
-            do { try await Task.sleep(for: .milliseconds(500)) } catch { return }
+            do { try await sleep() } catch { return }
             guard !Task.isCancelled else { return }
             await self?.scheduledFlush(scheduledRevision)
         }
