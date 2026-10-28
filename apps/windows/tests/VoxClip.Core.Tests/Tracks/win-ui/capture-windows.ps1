@@ -112,15 +112,37 @@ function Save-Window([string]$Name, [IntPtr]$Window) {
         $bitmap.Save((Join-Path $shots "$Name-window.jpg"), [System.Drawing.Imaging.ImageFormat]::Jpeg)
     } finally { $graphics.Dispose(); $bitmap.Dispose() }
 }
-function Find-Control([IntPtr]$Window, [string]$Name) {
-    $condition = New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::NameProperty, $Name)
+$script:ControlLocators = @{}
+function Test-TransientPeerFailure($Failure) {
+    $exception = $Failure.Exception
+    while ($exception) {
+        if ($exception -is [System.Windows.Automation.ElementNotAvailableException]) { return $true }
+        if ($exception -is [System.Runtime.InteropServices.COMException] -and
+            $exception.HResult -in @(-2147220991, -2147418111, -2147417848, -2147467259)) { return $true }
+        $exception = $exception.InnerException
+    }
+    return $false
+}
+function Find-Visible([IntPtr]$Window, [string]$Name, [bool]$Prefix) {
     for ($attempt = 0; $attempt -lt 40; $attempt++) {
-        $element = [System.Windows.Automation.AutomationElement]::FromHandle($Window).FindFirst([System.Windows.Automation.TreeScope]::Descendants, $condition)
-        if ($null -ne $element -and -not $element.Current.IsOffscreen) { return $element }
+        try {
+            $items = [System.Windows.Automation.AutomationElement]::FromHandle($Window).FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition)
+            foreach ($element in $items) {
+                $matches = if ($Prefix) { $element.Current.Name.StartsWith($Name) } else { $element.Current.Name -eq $Name }
+                if (-not $matches) { continue }
+                if (-not $element.Current.IsOffscreen -and $element.Current.BoundingRectangle.Width -gt 0 -and $element.Current.BoundingRectangle.Height -gt 0) {
+                    $script:ControlLocators[$element] = @{ Window=$Window; Name=$Name; Prefix=$Prefix }
+                    return $element
+                }
+                $scroll = $null
+                if ($element.TryGetCurrentPattern([System.Windows.Automation.ScrollItemPattern]::Pattern, [ref]$scroll)) { $scroll.ScrollIntoView() }
+            }
+        } catch { if (-not (Test-TransientPeerFailure $_)) { throw } }
         Start-Sleep -Milliseconds 250
     }
     throw "The expected accessible control '$Name' did not appear."
 }
+function Find-Control([IntPtr]$Window, [string]$Name) { return Find-Visible $Window $Name $false }
 function Find-SelectedRow([IntPtr]$Window, [string]$Pattern) {
     for ($attempt = 0; $attempt -lt 40; $attempt++) {
         $rows = [System.Windows.Automation.AutomationElement]::FromHandle($Window).FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition) | Where-Object { $_.Current.Name -match $Pattern }
@@ -133,17 +155,30 @@ function Find-SelectedRow([IntPtr]$Window, [string]$Pattern) {
     throw "No selected row matching '$Pattern' appeared."
 }
 function Find-Prefix([IntPtr]$Window, [string]$Prefix) {
-    $items = [System.Windows.Automation.AutomationElement]::FromHandle($Window).FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition)
-    $item = $items | Where-Object { -not $_.Current.IsOffscreen -and $_.Current.Name.StartsWith($Prefix) } | Select-Object -First 1
-    if (-not $item) { throw "Missing visible accessible name starting with '$Prefix'." }
-    return $item
+    return Find-Visible $Window $Prefix $true
 }
 function Use-Control($Control) {
-    $pattern = $null
-    if ($Control.TryGetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern, [ref]$pattern)) { $pattern.Select() }
-    elseif ($Control.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern, [ref]$pattern)) { $pattern.Invoke() }
-    elseif ($Control.TryGetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern, [ref]$pattern)) { $pattern.Toggle() }
-    else { throw "The control '$($Control.Current.Name)' has no selection or invoke pattern." }
+    $locator = $script:ControlLocators[$Control]
+    if (-not $locator) { throw 'Use-Control requires a scoped re-resolvable locator.' }
+    $toggleTarget = $null
+    for ($attempt = 0; $attempt -lt 4; $attempt++) {
+        try {
+            $Control = Find-Visible $locator.Window $locator.Name $locator.Prefix
+            if (-not $Control.Current.IsEnabled) { throw "The control '$($locator.Name)' is disabled." }
+            $pattern = $null
+            if ($Control.TryGetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern, [ref]$pattern)) {
+                if (-not $pattern.Current.IsSelected) { $pattern.Select() }
+            } elseif ($Control.TryGetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern, [ref]$pattern)) {
+                if ($null -eq $toggleTarget) { $toggleTarget = if ($pattern.Current.ToggleState -eq [System.Windows.Automation.ToggleState]::On) { [System.Windows.Automation.ToggleState]::Off } else { [System.Windows.Automation.ToggleState]::On } }
+                if ($pattern.Current.ToggleState -ne $toggleTarget) { $pattern.Toggle() }
+            } elseif ($Control.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern, [ref]$pattern)) { $pattern.Invoke() }
+            else { throw "The control '$($Control.Current.Name)' has no selection or invoke pattern." }
+            break
+        } catch {
+            if ($attempt -eq 3 -or -not (Test-TransientPeerFailure $_)) { throw }
+            Start-Sleep -Milliseconds 250
+        }
+    }
     Start-Sleep -Milliseconds 500
 }
 try {

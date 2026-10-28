@@ -10,6 +10,20 @@ namespace VoxClip.Ui.Tests;
 public sealed class StartupCheckTests
 {
     [Fact]
+    public void ScreenshotDriverReresolvesOnlyTransientPeersWithoutDroppingAssertions()
+    {
+        var root = Path.GetDirectoryName(Environment.GetEnvironmentVariable("VOXCLIP_SHARED_DIR"))!;
+        var script = File.ReadAllText(Path.Combine(root, "apps/windows/tests/VoxClip.Core.Tests/Tracks/win-ui/capture-windows.ps1"));
+        Assert.Contains("$attempt -lt 40", script);
+        Assert.Contains("$attempt -lt 4", script);
+        Assert.Contains("Find-Visible $locator.Window $locator.Name $locator.Prefix", script);
+        Assert.Contains("-not (Test-TransientPeerFailure $_)", script);
+        Assert.Contains("$pattern.Current.ToggleState -ne $toggleTarget", script);
+        Assert.Contains("$scroll.ScrollIntoView()", script);
+        Assert.All(script, character => Assert.InRange((int)character, 0, 127));
+    }
+
+    [Fact]
     public void FrameSummaryUsesRenderingIntervalsAndTheSixtyHertzDropBudget()
     {
         var summary = FrameTimeSummary.From([10, 16.7, 20, 33, 34, 50]);
