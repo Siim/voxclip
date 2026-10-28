@@ -24,27 +24,51 @@ public sealed partial class EditorPage
         var observations = new List<object>();
         try
         {
-            foreach (var item in new[] { (1440, ElementTheme.Light), (1440, ElementTheme.Dark), (1280, ElementTheme.Light), (1000, ElementTheme.Light) })
+            foreach (var item in new[] { (1440, 900, 388, ElementTheme.Light), (1440, 900, 388, ElementTheme.Dark),
+                (1280, 800, 348, ElementTheme.Light), (1440, 900, 300, ElementTheme.Light),
+                (1440, 900, 560, ElementTheme.Light), (760, 600, 300, ElementTheme.Light), (1000, 800, 0, ElementTheme.Light) })
             {
-                root.RequestedTheme = item.Item2;
-                window.AppWindow.Resize(new(item.Item1, 900));
+                root.RequestedTheme = item.Item4;
+                var scale = XamlRoot.RasterizationScale;
+                window.AppWindow.Resize(new((int)(item.Item1 * scale), (int)(item.Item2 * scale)));
                 await Task.Delay(200);
+                viewerForced = item.Item1 == 760;
+                ShowViewer(item.Item3 > 0);
+                if (item.Item3 is 300 or 560) RightColumn.Width = new(item.Item3);
+                await Task.Delay(100);
                 UpdateLayout();
                 NativeRequire(Math.Abs(CommandRow.ActualHeight - 56) <= 4 && Math.Abs(Timeline.ActualHeight - 72) <= 4,
                     "Native command row/timeline differ from the mockups by more than 4 epx.");
-                var expectedRight = EditorLayout.RightColumnWidth(item.Item1, Token("VcSizeRightColumnMin"), Token("VcSizeRightColumnMax"));
-                if (item.Item1 >= 1280)
+                var expectedRight = item.Item3;
+                if (expectedRight > 0)
                     NativeRequire(RightPane.Visibility == Visibility.Visible && Math.Abs(RightColumn.ActualWidth - expectedRight) <= 4,
                         "Native right column differs from the mockup by more than 4 epx.");
                 else NativeRequire(RightPane.Visibility == Visibility.Collapsed, "Compact mockup did not collapse the viewer first.");
-                observations.Add(new { Width = item.Item1, Theme = item.Item2.ToString(), Command = CommandRow.ActualHeight,
+                observations.Add(new { Width = item.Item1, Theme = item.Item4.ToString(), Command = CommandRow.ActualHeight,
                     Timeline = Timeline.ActualHeight, Right = RightColumn.ActualWidth, expectedRight, RightVisible = RightPane.Visibility.ToString() });
-                await NativeImageAsync(window, output, $"layout-{item.Item1}-{item.Item2}");
+                var label = $"layout-{item.Item1}-{item.Item3}-{item.Item4}";
+                if (expectedRight > 0)
+                {
+                    var elapsed = TransportElapsed.Text; var total = TransportTotal.Text; var ai = AiModified.Visibility;
+                    var state = mediaState;
+                    try
+                    {
+                        TransportElapsed.Text = "9:59:59.9"; TransportTotal.Text = " / 9:59:59.9"; AiModified.Visibility = Visibility.Visible;
+                        await captions!.DebugFitStatesAsync(name => DebugRightColumnBoundsAsync(window, output, label + "-" + name));
+                        foreach (var unavailable in new[] { EditorMediaState.Missing, EditorMediaState.Corrupt })
+                        {
+                            mediaState = unavailable; SizeStage();
+                            await DebugRightColumnBoundsAsync(window, output, label + "-" + unavailable);
+                        }
+                    }
+                    finally { TransportElapsed.Text = elapsed; TransportTotal.Text = total; AiModified.Visibility = ai; mediaState = state; SizeStage(); }
+                }
+                await NativeImageAsync(window, output, label);
             }
             await File.WriteAllTextAsync(Path.Combine(output, "layout-geometry.json"), JsonSerializer.Serialize(observations, new JsonSerializerOptions { WriteIndented = true }));
             checks.Add("light/dark/1280/compact native geometry: command row, timeline and right column within 4 epx of mockup; compact viewer collapses first");
         }
-        finally { root.RequestedTheme = theme; window.AppWindow.Resize(initial); await Task.Delay(100); }
+        finally { root.RequestedTheme = theme; window.AppWindow.Resize(initial); await Task.Delay(100); viewerForced = false; ShowViewer(true); }
     }
     internal async Task DebugCaptionGateAsync(MainWindow window, string output, List<string> checks)
     {
@@ -141,6 +165,16 @@ public sealed partial class EditorPage
             "Opening Rewrite did not focus its instruction field.");
         rewrite!.Edit("Sunday");
         await Task.Delay(150);
+        var rightWidth = RightColumn.Width;
+        try
+        {
+            foreach (var width in new[] { 300, 348, 388, 560 })
+            {
+                RightColumn.Width = new(width);
+                await DebugRightColumnBoundsAsync(window, output, "rewrite-" + width);
+            }
+        }
+        finally { RightColumn.Width = rightWidth; }
         NativeRequire(rewrite.Review!.Diff.Hunks.SelectMany(hunk => hunk.AbsorbedItemIds).Count() == 2 &&
             rewrite.Review.Runs.Any(run => run.Text == "[laughter]" && run.Kind == RewriteDiffKind.Removed) &&
             rewrite.Review.Runs.Any(run => run.Text == "[unlabeled speech]" && run.Kind == RewriteDiffKind.Removed),

@@ -54,6 +54,7 @@ internal sealed class RewritePanel : Grid
             CornerRadius = new(4), Padding = new(4, 0, 4, 0), Child = Small("Beta") };
         Grid.SetColumn(beta, 1); header.Children.Add(beta);
         var selection = Small(session.Header); Grid.SetColumn(selection, 2); header.Children.Add(selection);
+        selection.MinWidth = 0;
         var close = new Button { Content = new FontIcon { Glyph = "\uE711", FontSize = 12 }, Width = 32, Height = 32, Padding = new(0) };
         SetName(close, "Close Rewrite");
         ToolTipService.SetToolTip(close, "Close Rewrite (Esc)");

@@ -8,6 +8,34 @@ namespace VoxClip.Ui.Tests;
 /// <summary>The editor layout rules of implementation step 7: delta §3.3, §3.5, §3.7 and §5.1.</summary>
 public sealed class EditorLayoutTests
 {
+    [Theory]
+    [InlineData(268, 40, 216, 12, false)]
+    [InlineData(267.9, 40, 216, 12, true)]
+    [InlineData(356, 40, 320, 12, true)]
+    [InlineData(356, 40, 280, 12, false)]
+    [InlineData(268, 76, 252, 4, true)]
+    [InlineData(528, 76, 252, 4, false)]
+    [InlineData(268, 0, 252, 4, false)]
+    public void RowFallbackUsesMeasuredContentNotAWindowBreakpoint(double available, double leading, double trailing, double gap, bool stacked) =>
+        Assert.Equal(stacked, EditorLayout.StackMeasuredRow(available, leading, trailing, gap));
+
+    [Fact]
+    public void FitProbeRetainsBothBoundsAndAllRequiredWidthsAndStates()
+    {
+        var root = Path.GetDirectoryName(Environment.GetEnvironmentVariable("VOXCLIP_SHARED_DIR"))!;
+        var page = File.ReadAllText(Path.Combine(root, "apps/windows/src/VoxClip.App/Pages/EditorPage.NativeProbe.cs"));
+        var probe = File.ReadAllText(Path.Combine(root, "apps/windows/src/VoxClip.App/Pages/EditorPage.FitProbe.cs"));
+        Assert.Contains("(1280, 800, 348", page);
+        Assert.Contains("(1440, 900, 300", page);
+        Assert.Contains("(1440, 900, 560", page);
+        Assert.Contains("(760, 600, 300", page);
+        Assert.Contains("9:59:59.9", page);
+        Assert.Contains("Fits(column) && Fits(client)", probe);
+        Assert.Contains("peer.GetChildren()", probe);
+        Assert.Contains("!text.IsTextTrimmed", probe);
+        Assert.Contains("-right-column.png", probe);
+    }
+
     // Tokens.xaml: VcSizeRightColumnMin, VcSizeRightColumnMax; Workspace.xaml: VcLayoutTranscriptMinWidth; the splitter is 12.
     private const double Min = 300, Max = 560, TranscriptMin = 588, Splitter = 12, Pane = 264;
 

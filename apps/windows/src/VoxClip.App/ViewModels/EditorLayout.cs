@@ -6,6 +6,9 @@ namespace VoxClip.App.ViewModels;
 /// Sizes come in from the page's tokens.</summary>
 public static class EditorLayout
 {
+    public static bool StackMeasuredRow(double availableWidth, double leadingWidth, double trailingWidth, double gap) =>
+        leadingWidth > 0 && leadingWidth + trailingWidth + gap > availableWidth;
+
     /// <summary>The Frame row's order, 9:16 · 1:1 · 16:9 · Original; export.aspect keeps its persisted values.</summary>
     public static IReadOnlyList<ExportAspect> Frames { get; } = [ExportAspect.Portrait, ExportAspect.Square, ExportAspect.Landscape, ExportAspect.Source];
 

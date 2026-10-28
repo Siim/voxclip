@@ -62,6 +62,8 @@ public sealed partial class EditorPage : Page
         Aspect.Loaded += AspectLoaded;
         SearchText.GotFocus += (_, _) => Transcript.HideSelectionFlyout();
         PreviewStandIn.SizeChanged += (_, _) => PositionStageMessage();
+        FrameRow.SizeChanged += (_, _) => { if (ready) SizeStage(); };
+        TransportRow.SizeChanged += (_, _) => { if (ready) SizeStage(); };
     }
     public static bool HasText(string? text) => !string.IsNullOrEmpty(text);
     private void AspectLoaded(object sender, RoutedEventArgs args)
@@ -832,6 +834,12 @@ public sealed partial class EditorPage : Page
     {
         var oriented = media?.OrientedSize ?? MediaFromProject(ViewModel.Project).OrientedSize;
         (PreviewStage.Width, PreviewStage.Height) = EditorLayout.Stage(RightPane.ActualWidth - RightPane.BorderThickness.Left - 32, ViewModel.Project.Export.Aspect, oriented);
+        var maximum = Math.Max(80, RightPane.ActualHeight - FrameRow.ActualHeight - TransportRow.ActualHeight - 68 - 160);
+        if (PreviewStage.Height > maximum)
+        {
+            PreviewStage.Width *= maximum / PreviewStage.Height;
+            PreviewStage.Height = maximum;
+        }
         var clip = ViewModel.Clips.FirstOrDefault(clip => clip.Id == ViewModel.State?.ActiveClipId);
         var name = EditorMediaPresentation.Accessible(mediaState, clip?.Number, ScopeHasAiSpeech());
         AutomationProperties.SetName(PreviewStage, name); AutomationProperties.SetName(PreviewImage, name);

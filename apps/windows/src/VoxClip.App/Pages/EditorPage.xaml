@@ -121,10 +121,11 @@
                 </toolkit:GridSplitter.Resources>
             </toolkit:GridSplitter>
             <!-- Right column (delta §3.6): the viewer, a hairline, then Captions filling the rest. -->
-            <Grid x:Name="RightPane" Grid.Column="2" BorderBrush="{ThemeResource VcLineDefaultBrush}" BorderThickness="1,0,0,0" SizeChanged="RightPaneSizeChanged">
+            <Grid x:Name="RightPane" Grid.Column="2" SizeChanged="RightPaneSizeChanged">
                 <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+                <Border Grid.RowSpan="3" BorderBrush="{ThemeResource VcLineDefaultBrush}" BorderThickness="1,0,0,0" IsHitTestVisible="False"/>
                 <Grid x:Name="PreviewPane" Padding="16,16,16,0" RowSpacing="8">
-                    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="40"/></Grid.RowDefinitions>
+                    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
                     <Border x:Name="PreviewStage" Background="{ThemeResource VcStageBrush}" RequestedTheme="Dark" CornerRadius="{StaticResource VcRadiusPaneCornerRadius}" Height="200" HorizontalAlignment="Center">
                         <Grid>
                             <Image x:Name="PreviewImage" Stretch="Uniform" AutomationProperties.Name="Video preview, full take"/>
@@ -140,26 +141,27 @@
                         </Grid>
                     </Border>
                     <!-- Viewer bar (delta §5.1): Back 3 seconds, Play, Forward 3 seconds, then the time. -->
-                    <Grid Grid.Row="1" ColumnSpacing="4">
-                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                        <Button Width="32" Height="32" Padding="0" VerticalAlignment="Center" Style="{ThemeResource SubtleButtonStyle}" Click="BackClicked" AutomationProperties.Name="Back 3 seconds (J)" ToolTipService.ToolTip="Back 3 seconds (J)"><SymbolIcon Symbol="Previous"/></Button>
-                        <Button x:Name="PreviewPlay" Grid.Column="1" Width="40" Height="40" Padding="0" CornerRadius="20" Click="PlayClicked" AutomationProperties.Name="Play" AutomationProperties.AcceleratorKey="Space" ToolTipService.ToolTip="Play (Space)"><SymbolIcon x:Name="PlayGlyph" Symbol="Play"/></Button>
-                        <Button Grid.Column="2" Width="32" Height="32" Padding="0" VerticalAlignment="Center" Style="{ThemeResource SubtleButtonStyle}" Click="ForwardClicked" AutomationProperties.Name="Forward 3 seconds" ToolTipService.ToolTip="Forward 3 seconds"><SymbolIcon Symbol="Next"/></Button>
-                        <Border x:Name="AiModified" Grid.Column="3" CornerRadius="4" BorderBrush="{ThemeResource VcAccentTextBrush}" BorderThickness="1" Padding="4,1" VerticalAlignment="Center" Visibility="Collapsed"><TextBlock Text="AI modified" FontSize="12" Foreground="{ThemeResource VcAccentTextBrush}"/></Border>
-                        <TextBlock x:Name="TransportTime" Grid.Column="4" HorizontalAlignment="Right" VerticalAlignment="Center" FontFamily="{StaticResource VcMonoFontFamily}" FontSize="13" Foreground="{ThemeResource VcTextPrimaryBrush}"><Run x:Name="TransportElapsed" Text="0:00.0"/><Run x:Name="TransportTotal" Foreground="{ThemeResource VcTextSecondaryBrush}"/></TextBlock>
-                    </Grid>
+                    <controls:MeasuredRow x:Name="TransportRow" Grid.Row="1" Gap="4">
+                        <Border x:Name="AiModified" CornerRadius="4" BorderBrush="{ThemeResource VcAccentTextBrush}" BorderThickness="1" Padding="4,1" HorizontalAlignment="Left" VerticalAlignment="Center" Visibility="Collapsed"><TextBlock Text="AI modified" FontSize="12" Foreground="{ThemeResource VcAccentTextBrush}"/></Border>
+                        <Grid ColumnSpacing="4">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                            <Button Width="28" MinWidth="0" Height="32" Padding="0" VerticalAlignment="Center" Style="{ThemeResource SubtleButtonStyle}" Click="BackClicked" AutomationProperties.Name="Back 3 seconds (J)" ToolTipService.ToolTip="Back 3 seconds (J)"><SymbolIcon Symbol="Previous"/></Button>
+                            <Button x:Name="PreviewPlay" Grid.Column="1" Width="36" MinWidth="0" Height="40" Padding="0" CornerRadius="20" Click="PlayClicked" AutomationProperties.Name="Play" AutomationProperties.AcceleratorKey="Space" ToolTipService.ToolTip="Play (Space)"><SymbolIcon x:Name="PlayGlyph" Symbol="Play"/></Button>
+                            <Button Grid.Column="2" Width="28" MinWidth="0" Height="32" Padding="0" VerticalAlignment="Center" Style="{ThemeResource SubtleButtonStyle}" Click="ForwardClicked" AutomationProperties.Name="Forward 3 seconds" ToolTipService.ToolTip="Forward 3 seconds"><SymbolIcon Symbol="Next"/></Button>
+                            <TextBlock x:Name="TransportTime" Grid.Column="3" HorizontalAlignment="Right" VerticalAlignment="Center" FontFamily="{StaticResource VcMonoFontFamily}" FontSize="13" Foreground="{ThemeResource VcTextPrimaryBrush}"><Run x:Name="TransportElapsed" Text="0:00.0"/><Run x:Name="TransportTotal" Foreground="{ThemeResource VcTextSecondaryBrush}"/></TextBlock>
+                        </Grid>
+                    </controls:MeasuredRow>
                 </Grid>
                 <!-- Frame row (delta §5.1): 9:16 · 1:1 · 16:9 · Original, written to export.aspect. -->
-                <Grid x:Name="FrameRow" Grid.Row="1" Height="32" Margin="16,8,16,12" ColumnSpacing="12">
-                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                <controls:MeasuredRow x:Name="FrameRow" Grid.Row="1" Margin="16,8,16,12">
                     <TextBlock Text="Frame" VerticalAlignment="Center" FontSize="14" Foreground="{ThemeResource VcTextSecondaryBrush}"/>
-                    <toolkit:Segmented x:Name="Aspect" Grid.Column="1" HorizontalAlignment="Stretch" SelectionChanged="AspectChanged" AutomationProperties.Name="Frame">
-                        <toolkit:SegmentedItem Content="9:16"/>
-                        <toolkit:SegmentedItem Content="1:1"/>
-                        <toolkit:SegmentedItem Content="16:9"/>
-                        <toolkit:SegmentedItem Content="Original"/>
+                    <toolkit:Segmented x:Name="Aspect" HorizontalAlignment="Stretch" SelectionChanged="AspectChanged" AutomationProperties.Name="Frame">
+                        <toolkit:SegmentedItem Content="9:16" MinWidth="0" Padding="8,4"/>
+                        <toolkit:SegmentedItem Content="1:1" MinWidth="0" Padding="8,4"/>
+                        <toolkit:SegmentedItem Content="16:9" MinWidth="0" Padding="8,4"/>
+                        <toolkit:SegmentedItem Content="Original" MinWidth="0" Padding="8,4"/>
                     </toolkit:Segmented>
-                </Grid>
+                </controls:MeasuredRow>
                 <Grid x:Name="CaptionsHost" Grid.Row="2" BorderBrush="{ThemeResource VcLineDefaultBrush}" BorderThickness="0,1,0,0"/>
             </Grid>
         </Grid>

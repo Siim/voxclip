@@ -33,8 +33,8 @@ internal sealed class CaptionsPanel : UserControl
     private readonly GridView gallery = new() { SelectionMode = ListViewSelectionMode.Single, IsItemClickEnabled = false };
     private readonly ToggleSwitch enabled = new() { OnContent = "", OffContent = "", HorizontalAlignment = HorizontalAlignment.Right };
     private readonly Expander fineTune = new() { HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch };
-    private readonly TextBlock styleName = new();
-    private readonly TextBlock summary = new() { FontSize = 12 };
+    private readonly TextBlock styleName = new() { TextWrapping = TextWrapping.Wrap };
+    private readonly TextBlock summary = new() { FontSize = 12, TextWrapping = TextWrapping.Wrap };
     private readonly Image chip = new() { Width = 64, Height = 36, Stretch = Stretch.Fill };
     private readonly TextBlock off = new() { Text = "Off", HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
     private string fineTuneKey = "";
@@ -173,8 +173,10 @@ internal sealed class CaptionsPanel : UserControl
         body.Children.Clear();
         body.Children.Add(notice);
         var header = new Grid { Height = 36 };
+        header.ColumnDefinitions.Add(new() { Width = new(1, GridUnitType.Star) });
+        header.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
         header.Children.Add(new TextBlock { Text = "Captions", VerticalAlignment = VerticalAlignment.Center, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
-        header.Children.Add(enabled);
+        Grid.SetColumn(enabled, 1); header.Children.Add(enabled);
         AutomationProperties.SetName(enabled, "Show captions");
         enabled.Toggled += (_, _) =>
         {
@@ -186,13 +188,11 @@ internal sealed class CaptionsPanel : UserControl
         var styleRow = new Grid { ColumnSpacing = 8 };
         styleRow.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
         styleRow.ColumnDefinitions.Add(new());
-        styleRow.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
         var chipContent = new Grid(); chipContent.Children.Add(chip); chipContent.Children.Add(off);
         styleRow.Children.Add(new Border { CornerRadius = new(6), Background = Ui.ThemeBrush(this, "VcBgMutedBrush"), Child = chipContent });
         var labels = Ui.Stack(2); labels.Children.Add(styleName); labels.Children.Add(summary);
+        labels.Children.Add(new TextBlock { Text = "Fine tune", FontSize = 12, TextWrapping = TextWrapping.Wrap });
         Grid.SetColumn(labels, 1); styleRow.Children.Add(labels);
-        var disclosure = new TextBlock { Text = "Fine tune", FontSize = 12, VerticalAlignment = VerticalAlignment.Center };
-        Grid.SetColumn(disclosure, 2); styleRow.Children.Add(disclosure);
         fineTune.Header = styleRow;
         Grid.SetRow(fineTune, 2); body.Children.Add(fineTune);
         gallery.ItemsPanel = (ItemsPanelTemplate)XamlReader.Load("<ItemsPanelTemplate xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation'><ItemsWrapGrid Orientation='Horizontal' MaximumRowsOrColumns='2'/></ItemsPanelTemplate>");
@@ -349,7 +349,7 @@ internal sealed class CaptionsPanel : UserControl
         {
             var section = Ui.Stack(4); section.Children.Add(Ui.Text(label));
             var segment = new CommunityToolkit.WinUI.Controls.Segmented { SelectedIndex = selected, IsEnabled = available && (!model.IsReadOnly || label == "Position"), HorizontalAlignment = HorizontalAlignment.Stretch };
-            foreach (var choice in choices) segment.Items.Add(new CommunityToolkit.WinUI.Controls.SegmentedItem { Content = choice });
+            foreach (var choice in choices) segment.Items.Add(new CommunityToolkit.WinUI.Controls.SegmentedItem { Content = choice, MinWidth = 0, Padding = new(8, 4, 8, 4) });
             segment.SelectedIndex = selected;
             AutomationProperties.SetName(segment, label);
             segment.SelectionChanged += (_, _) => { if (!syncing && segment.SelectedIndex >= 0) choose(segment.SelectedIndex); };
@@ -371,7 +371,10 @@ internal sealed class CaptionsPanel : UserControl
         if (style.Accent is not null)
         {
             controls.Children.Add(Ui.Text("Colour"));
-            var swatches = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
+            var swatches = new MeasuredRow { Gap = 6 };
+            var firstColors = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
+            var lastColors = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
+            swatches.Children.Add(firstColors); swatches.Children.Add(lastColors);
             foreach (var color in CaptionFineTune.Colors)
             {
                 var rgb = Convert.ToUInt32(color.Value[1..], 16);
@@ -379,7 +382,7 @@ internal sealed class CaptionsPanel : UserControl
                 var button = new Button { IsEnabled = !model.IsReadOnly, Width = 32, Height = 32, Padding = new Thickness(3), Content = new Border { Background = brush, Width = 18, Height = 18, CornerRadius = new(9) } };
                 AutomationProperties.SetName(button, color.Name); ToolTipService.SetToolTip(button, color.Name);
                 button.Click += (_, _) => Change("", ("accent", JsonValue.Create(color.Value)));
-                swatches.Children.Add(button);
+                (firstColors.Children.Count < 3 ? firstColors : lastColors).Children.Add(button);
             }
             controls.Children.Add(swatches);
         }
@@ -394,6 +397,32 @@ internal sealed class CaptionsPanel : UserControl
     }
 
     internal void RefreshSamples() => samples?.Refresh();
+
+#if DEBUG
+    internal async Task DebugFitStatesAsync(Func<string, Task> inspect)
+    {
+        var original = model.Project.Captions;
+        var expanded = fineTune.IsExpanded;
+        var message = notice.Message;
+        try
+        {
+            await inspect("captions");
+            fineTune.IsExpanded = true;
+            await inspect("fine-tune");
+            fineTune.IsExpanded = false;
+            model.SetCaptionStyle("off");
+            await inspect("captions-off");
+            notice.Message = "Couldn't load caption styles. Try again.";
+            notice.IsOpen = true;
+            await inspect("caption-error");
+        }
+        finally
+        {
+            notice.IsOpen = false; notice.Message = message;
+            model.SetCaptions(original); fineTune.IsExpanded = expanded;
+        }
+    }
+#endif
 
     internal void Detach()
     {

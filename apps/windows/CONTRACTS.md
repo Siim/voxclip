@@ -1,5 +1,7 @@
 # Windows fixed contracts
 
+- **2026-10-28 - sol-win-redesign r12 D1:** Right-column content uses its actual 300-560 epx width, with 16 epx side padding. Frame measures the label and the four complete segments: it is inline iff their natural widths plus 12 epx fit; otherwise Frame sits above the full-width selector with a 12 epx gap. Transport uses the same measurement with a 4 epx gap, moving AI modified above the unchanged controls/time when needed; Windows shows no playback-rate control. Long timecodes are not truncated. Caption summary text wraps beside its chip, with Fine tune below the summary; the stage yields height on the smallest viewer-visible window. Native UIA bounds, untrimmed Frame labels, narrow states and cropped captures are prepared but remain owed until the same VM returns.
+
 ### 2026-10-28 — sol-win-redesign round 11 — Consent migration decision
 
 - Legacy onboarding grants in `llm.cloudConsent.*` are not migrated: VoxClip has no release or tag, so the former onboarding checkbox only wrote these grants in development builds (lead decision C4).
