@@ -330,6 +330,18 @@ Before the first request of a connector whose `privacy` is `thirdPartyCloud`, sh
 - Claude Code: "VoxClip will run your installed Claude Code with your own sign-in. The transcript is sent to Anthropic and counts toward your Claude plan's usage." When `claude auth status --json` reports an `authMethod` that is an API key, the second sentence reads "The transcript is sent to Anthropic and billed to the API key Claude Code is signed in with."
 - Codex: "VoxClip will run your installed Codex with your own sign-in. The transcript is sent to OpenAI and counts toward your ChatGPT plan's usage." When `codex login status` says "Logged in using an API key", the second sentence reads "The transcript is sent to OpenAI and billed to the API key Codex is signed in with."
 
+The sheet words the action that triggers it; one answer covers every action of that connector. The sentences above are for Find clips. When Rewrite (voice-lab.md) triggers the sheet:
+
+- API keys: "Rewrite sends these {n} words (no audio or video) to {label} using your API key." {n} counts the passage's words.
+- Claude Code and Codex: the first sentence is unchanged, and the second names the words instead of the transcript: "These words are sent to Anthropic and count toward your Claude plan's usage." or "These words are sent to Anthropic and billed to the API key Claude Code is signed in with." For Codex: "These words are sent to OpenAI and count toward your ChatGPT plan's usage." or "These words are sent to OpenAI and billed to the API key Codex is signed in with."
+
+When Settings → **Test** triggers the sheet:
+
+- API keys: "Test sends a short test request to {label} using your API key. Nothing from your projects is sent."
+- Claude Code and Codex: the first sentence is unchanged, and the second reads "A short test request is sent to Anthropic and counts toward your Claude plan's usage." or "A short test request is sent to Anthropic and billed to the API key Claude Code is signed in with." For Codex: "A short test request is sent to OpenAI and counts toward your ChatGPT plan's usage." or "A short test request is sent to OpenAI and billed to the API key Codex is signed in with."
+
+**What the sheet guards.** Consent comes before every request, meaning every prompt sent through the connector: Find clips, Rewrite, AI tighten and Settings → Test. Cancel sends nothing and leaves no run in progress. Detection is not a request. The catalog `cli.detect` commands (version, help, features and sign-in status; §6.8–§6.10) and an API-key connector's key check may run before consent, but only when the user opens Settings, Find clips or Rewrite, or presses Detect or Retry; never in the background. A model-list refresh is an explicit Settings action that sends nothing from a project, so it needs no sheet either. The sheet is shown only after detection reports the connector ready, so a CLI sheet always words its billing sentence from the detected sign-in method. Without a known method there is no sheet and no send.
+
 Local and on-device connectors need no consent sheet.
 
 ### 4.9 Logging and redaction
@@ -986,7 +998,7 @@ These rules are normative. A change that breaks one must not ship.
    - It never runs `claude setup-token` or `codex login --with-access-token`.
    - Sign-in state is learned only from `claude auth status --json` (`loggedIn` and `authMethod` only) and `codex login status` (exit code, and whether its text says "API key").
 4. **No reselling or intermediation.** Usage is billed to the user under their own agreement with Anthropic or OpenAI. VoxClip is free, never charges for CLI usage, never proxies CLI traffic through any server, and never shares or pools sign-ins.
-5. **Ordinary individual use.** CLI calls happen only for actions the user starts: Find clips, AI tighten, Test. There are no background, scheduled or batch calls, windows run one at a time, and one CLI run is active at a time.
+5. **Ordinary individual use.** CLI calls happen only for actions the user starts: Find clips, AI tighten, Rewrite and Test, plus the detection commands when the user opens Settings, Find clips or Rewrite, or presses Detect or Retry (§4.8). There are no background, scheduled or batch calls, windows run one at a time, and one CLI run is active at a time.
 6. **Plain-text names only, no logos.**
    - The picker labels are plain text: "Claude Code (installed CLI)" and "Codex (installed CLI)". These say accurately that VoxClip runs those tools.
    - No Anthropic, Claude, Claude Code, OpenAI, ChatGPT or Codex logos or icons appear anywhere in VoxClip, its website or its release assets.

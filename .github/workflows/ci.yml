@@ -644,6 +644,20 @@ jobs:
           fi
           exit "$status"
 
+      - name: Regenerate caption fixtures and check for drift
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: |
+          python tools/captions/gen_fixtures.py
+          python tools/captions/gen_cards.py
+          python tools/captions/gen_gallery.py
+          python tools/captions/gen_card_colors.py
+          python tools/captions/gen_box_text_colors.py
+          python tools/captions/check_drift.py
+          git diff --exit-code
+          untracked=$(git status --porcelain --untracked-files=all)
+          if [ -n "$untracked" ]; then echo "::error::Uncommitted caption generator output:"; echo "$untracked"; exit 1; fi
+
       - name: Caption styles are valid (schema and semantic rules)
         if: ${{ !cancelled() && steps.detect.outputs.styles == 'true' }}
         run: python tools/captions/check_styles.py

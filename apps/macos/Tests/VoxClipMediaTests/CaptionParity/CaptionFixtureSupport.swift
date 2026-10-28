@@ -51,6 +51,8 @@ enum CaptionMediaFixtures {
         for word in sample.words {
             var output: [String: Any] = ["word": word.word, "state": word.state, "visible": word.visible, "opacity": word.opacity, "scale": word.scale, "dy": word.dy,
                 "fill": try paint(word.fill, style: track.style), "fillSource": word.fillSource]
+            if word.boxContrast { output["boxContrast"] = true }
+            if word.wipeFromBoxContrast { output["wipeFromBoxContrast"] = true }
             if let wipe = word.wipe { output["wipe"] = wipe; output["wipeFrom"] = try paint(word.wipeFrom!, style: track.style) }
             if let visible = word.visibleClusters { output["visibleClusters"] = visible }
             words.append(output)

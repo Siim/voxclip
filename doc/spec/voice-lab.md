@@ -14,7 +14,7 @@ Related documents:
 |---|---|
 | Edit plan, segment kinds, project file, undo | `doc/spec/editing.md`, `shared/schemas/project.schema.json` |
 | Data directories, secrets, logging, error codes | `doc/architecture.md` |
-| AI tab rows, Settings → Voice Lab, copy style | `doc/design.md` |
+| Voice Lab entry points and right-column panels (§6.3–§6.4), Settings → Voice Lab, copy style | `doc/design.md` |
 | Share helpers, VoxConvo publish, caption text | `doc/publishing.md` |
 | Caption rendering (the disclosure label is drawn by the same compositor) | the captions spec |
 
@@ -274,8 +274,8 @@ Initial values:
 
 ### 4.1 Behaviour
 
-- **Where.** A row in the AI tab named **Clean audio** (`doc/design.md` §6.3). It has:
-  - the button "Clean audio · ≈ $X";
+- **Where.** Edit > **Clean Audio…** (and ⋯ > Clean Audio… on Windows) opens a right-column panel shaped like Rewrite (`doc/design.md` §6.4). It has:
+  - the button "Clean Audio · ≈ $X";
   - the line "Uses your ElevenLabs credits. Sends the audio track only.";
   - after a run, a **Mix** slider from 0 to 100% (default 100%), an **A/B** toggle (hold to hear the original), and **Remove**.
 - **Effect.** Clean audio replaces the audio track. The cuts, timeline, transcript and captions do not change, and no re-transcription happens.
@@ -392,7 +392,7 @@ A local, offline alternative (DeepFilterNet or similar) is out of scope until it
 - Settings → Voice Lab → **Show Voice Lab (beta)**. It is off by default. Turning it on shows a one-time sheet:
   - "Voice Lab can clone your own voice, change your voice and re-voice a few words. Everything it makes is labelled 'AI MODIFIED' in exports, as EU law requires. It uses your ElevenLabs key and, for lip sync, your fal.ai or sync.so key."
   - Buttons [Turn on] and [Cancel].
-- With Voice Lab on, the AI tab shows **My voice**, **Voice changer**, **Re-voice a phrase** and **Lip sync** (`doc/design.md` §6.3). Each row shows its cost line, what it sends, and the label that export will add.
+- With Voice Lab on, **Rewrite…** appears on transcript selections, **Change Voice…** is in the Edit menu, **My voice** is in Settings → Voice Lab, and **Lip sync** is offered inside Rewrite when the length changes (`doc/design.md` §6.3–§6.4). Each panel shows its cost, what it sends, and the label that export will add.
 - Settings → Voice Lab also shows:
   - the ElevenLabs, fal.ai and sync.so key rows (§2);
   - **My voices**: the consent records, with their voice name, creation date, ElevenLabs voice id, and [Delete voice];
@@ -638,9 +638,11 @@ The parts are framed as in §6.7.
 
 ### 8.1 Entry points
 
-1. **Select words, then "Re-voice…".** The user types the new words. An empty field means "delete": that becomes a cut, and no AI is involved.
-2. **Caret between two words, then "Insert words…".** This is an insertion.
-3. **"Fix with AI…"** The user's LLM (`doc/spec/ai.md` connectors) proposes line edits for an instruction, for example "I said 2024; it's 2025".
+All three open the Rewrite panel (`doc/design.md` §6.3).
+
+1. **Select words, then "Rewrite…".** The user types the new words. An empty field means "delete": that becomes a cut, and no AI is involved.
+2. **Caret between two words, then "Insert Words…".** This is an insertion.
+3. **"Rewrite…" with an instruction** in the panel's "What should change?" field (internally "Fix with AI"). The user's LLM (`doc/spec/ai.md` connectors) proposes line edits for the instruction, for example "I said 2024; it's 2025".
 
    Fix with AI has its own prompt file, `shared/prompts/patch-rewrite.json` (`promptVersion` 1), and its own schema name, `patch_edits`. It never reuses `tighten_edits` (`ai.md` §12.8). Its schema:
 
@@ -736,7 +738,7 @@ For each edited line, or each selected range plus its new text:
    - **textOnly**: the whole region's normalised token arrays are equal but the surface differs (case or punctuation). Its `correctedTexts` supplies one full corrected text per source word item in source-ID order, joining that item's new surface tokens positionally with single spaces. It becomes `edits.corrections`. No AI.
    - **voice**: anything else. It needs TTS; a partial deletion such as a timed item `hello world` becoming `hello` re-voices the whole item with its kept words.
 6. **Merge voice hunks** separated only by `equal` operations when there are at most 2 equal source `word` items (not tokens), **or** at most 0.35 s of source time between the hunks. The time is the later hunk's first source word start minus the earlier hunk's last source word end, not the duration of the intervening equal words. An insert-only hunk uses its anchor: the next source token's start, or the final source token's end for an end insertion, or 0 for an empty source. Use binary64 subtraction and an inclusive `<= 0.35` comparison, without an epsilon. Merge transitively in source order. A cut between voice hunks prevents merging. The intervening equal words become bridge words and are re-voiced: their new-side surface tokens join the patch text in order, and their IDs join both the hunk's covered source IDs and its distinct bridge IDs. A text-only correction among these equal words is absorbed, with its new surface retained, not returned as a second overlapping hunk. Never merge across an `event` or `unlabeledSpeech` item between the hunks, regardless of word count or time; insert-only hunks use their anchor position in source order. A single user-edit voice hunk whose own source words straddle non-word items keeps its shape and reports their IDs, strictly between its first and last source word, in `absorbedItemIds`. Accepting it replaces those items with the new voice (§8.4 step 4); the App shows each absorbed item as removed in the read-only diff line. Cuts and textOnly corrections affect only their word IDs and never non-word items.
-7. **Display.** The transcript shows the diff inline: cut words struck in red, new words in green, re-voiced bridge words in amber. Each hunk has [Accept], [Reject] and [Edit text]. Voice hunks are disabled until an active "My voice" exists, with the action "Create your voice (2 min)".
+7. **Display.** The Rewrite panel shows the diff under New words (`doc/design.md` §6.3): removed words struck in `cut.stroke`, new words in `accent.text` with a solid underline, re-voiced bridge words with a dashed `accent.text` underline, and absorbed events or unlabeled speech (`absorbedItemIds`) as struck labels. The transcript outlines the passage and leaves its words unchanged. Take selection and **Use Take** replace per-hunk Accept and Reject; the New words field is where text is edited. A cut-only or text-only diff turns the button into **Apply Cuts** or **Apply Correction**: one undo step, no AI. Voice hunks need an active My voice; without one, the Voice row reads "No voice yet" with **Create Your Voice… (2 min)**.
 8. **Header.** A live summary: "3 cuts · 2 re-voiced phrases (4.1 s of AI voice) · ≈ $0.02". `VoiceLabDiffSummary` returns the distinct cut word count, merged voice-hunk count, sum of the per-hunk duration estimates and TTS cost estimate, plus this copy (singular `cut` and `re-voiced phrase` for 1). The estimate is summed once per hunk, not once per candidate. Inject `VoiceLabPricing`'s catalog, selected model, candidate count and optional credit multiplier; price the total Unicode scalars of each complete patch text, including spaces, punctuation and bridges, with no separator charged between separate hunks. This is billing length, not `VoiceLabTextLength`. The cost uses the existing pricing and presentation rules (§3.2); omit the amount when the catalog is absent or its price is unknown, and return nil cost when there are no voice hunks. Nothing is sent. Each voice hunk also shows the fit meter (§8.9.1). Supply an optional complete patch text for each voice hunk in order: left window bridge + new words + right window bridge (§8.4 step 4). Price only when every hunk has complete text. Any missing text (including no placed window or a refused window) returns nil cost and omits the amount suffix; never fall back to hunk tokens. A supplied text count different from the voice-hunk count is typed `invalidInput`.
 
 **Patch budget.** Re-voicing is for small fixes. Count the new-side tokens of **every voice hunk after merging, including the bridge words**, because all of them will be spoken by the AI voice. Let `wordItems` be the number of items of kind `word` in the whole transcript, not the selection; events and unlabeled speech never enlarge that denominator. Disable voice hunks exactly when `count × 100 > 15 × wordItems` or `count > 60`, using integer arithmetic. Both boundaries are inclusive for acceptance: exactly 15% and exactly 60 tokens pass. `VoiceLabPatchBudget` returns the typed flag `allowed` or `reRecordInstead`, counts and optional copy. The disabled copy is "That's a lot to re-voice. Re-record these sentences instead." Cuts and text-only corrections remain available.

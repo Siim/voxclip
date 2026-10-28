@@ -424,7 +424,7 @@ struct VoiceLabPricingTests {
         defer { try? FileManager.default.removeItem(at: root) }
         let ledger = VoiceLabSpendLedger(locations: DataLocations(environment: ["VOXCLIP_DATA_DIR": root.path]), timeZone: Self.utc)
         let audio = Data(repeating: 0, count: 4_800), speech = Self.speech(audio)
-        let status = Mutex(200), sends = Mutex(0), slow = Mutex(false), entered = Mutex(false)
+        let status = Mutex(200), sends = Mutex(0), slow = Mutex(false), entered = Mutex(false), released = Mutex(false)
         let lab = try await Self.discoveredLab(spend: ledger) { request in
             sends.withLock { $0 += 1 }
             let code = status.withLock { $0 }
@@ -434,7 +434,9 @@ struct VoiceLabPricingTests {
             case "/v1/text-to-speech/stock123/with-timestamps":
                 if slow.withLock({ $0 }) {
                     entered.withLock { $0 = true }
-                    Thread.sleep(forTimeInterval: 1.5)
+                    // Hold the reply until the test has cancelled, so a slow runner cannot deliver the status line first.
+                    let deadline = Date().addingTimeInterval(10)
+                    while !released.withLock({ $0 }), Date() < deadline { Thread.sleep(forTimeInterval: 0.01) }
                 }
                 return (code, [:], code == 200 ? speech : Data(#"{"detail":"busy"}"#.utf8))
             case "/v1/voice-changer/stock123": return (code, ["Content-Type": "audio/pcm"], code == 200 ? audio : Data("busy".utf8))
@@ -505,6 +507,7 @@ struct VoiceLabPricingTests {
         while !entered.withLock({ $0 }), ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(10)) }
         late.cancel()
         await #expect(throws: VoiceLabError.cancelled) { try await late.value }
+        released.withLock { $0 = true }
         #expect(sends.withLock { $0 } == sent + 7)
         let after = await ledger.read()
         #expect(after == recorded)

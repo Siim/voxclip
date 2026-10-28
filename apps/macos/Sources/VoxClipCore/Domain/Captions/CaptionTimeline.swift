@@ -15,6 +15,8 @@ public struct CaptionWordAppearance: Sendable, Equatable {
     public var dy: Double
     public var fill: CaptionPaint
     public var fillSource: String
+    public var boxContrast: Bool = false
+    public var wipeFromBoxContrast: Bool = false
     public var wipe: Double?
     public var wipeFrom: CaptionPaint?
     public var visibleClusters: Int?
@@ -96,11 +98,17 @@ public enum CaptionTimeline {
             let stateScale = appearance?.scale ?? 1
             let entrance = state == "future" ? CaptionMotion() : self.entrance(style.animation?.wordIn, time: time, start: input.start, fontPx: page.fontPx, reduceMotion: reduceMotion)
             let activeMotion = state == "active" ? self.entrance(style.animation?.activeIn, time: time, start: input.start, fontPx: page.fontPx, target: stateScale, reduceMotion: reduceMotion) : CaptionMotion(scale: stateScale)
-            let fill = fill(style: style, layout: layout, word: index, state: state)
+            let palette = layout.emphasised[index]
+            let fill = fill(style: style, state: state, emphasised: palette != nil, palette: palette ?? nil)
             var output = CaptionWordAppearance(word: index, state: state, visible: !([.word, .char].contains(reveal.unit) && state == "future"),
                 opacity: (appearance?.opacity ?? 1) * entrance.alpha * activeMotion.alpha, scale: activeMotion.scale * entrance.scale,
-                dy: entrance.dy + activeMotion.dy, fill: fill.0, fillSource: fill.1)
-            if reveal.unit == .wipe, state == "active" { output.wipe = result.progress; output.wipeFrom = self.fill(style: style, layout: layout, word: index, state: "future").0 }
+                dy: entrance.dy + activeMotion.dy, fill: fill.0, fillSource: fill.1, boxContrast: fill.2)
+            if reveal.unit == .wipe, state == "active" {
+                let underlay = self.fill(style: style, state: "future", emphasised: palette != nil, palette: palette ?? nil, boxState: state)
+                output.wipe = result.progress
+                output.wipeFrom = underlay.0
+                output.wipeFromBoxContrast = underlay.2
+            }
             if reveal.unit == .char {
                 let count = measured.shaped.clusters
                 let duration = min(input.end - input.start, Double(count) / reveal.maxCharsPerSec)
@@ -133,13 +141,15 @@ public enum CaptionTimeline {
         state == "active" ? style.words?.active : state == "past" ? style.words?.past : style.words?.future
     }
 
-    static func fill(style: CaptionStyle, layout: CaptionPageLayout, word: Int, state: String) -> (CaptionPaint, String) {
+    static func fill(style: CaptionStyle, state: String, emphasised: Bool, palette: String?, boxState: String? = nil) -> (CaptionPaint, String, Bool) {
         var paint = style.fill, source = "base"
         if let statePaint = wordState(style, state)?.fill { paint = statePaint; source = state }
-        if let palette = layout.emphasised[word] {
+        if emphasised {
             if let palette { paint = .solid(color: palette); source = "emphasis" }
             else if let emphasisPaint = style.emphasis?.fill { paint = emphasisPaint; source = "emphasis" }
         }
-        return (paint, source)
+        guard let box = wordState(style, boxState ?? state)?.box?.color ?? style.box?.color else { return (paint, source, false) }
+        let resolved = CaptionContrast.text(paint, box: box, accent: style.accent)
+        return (resolved, source, resolved != paint)
     }
 }
