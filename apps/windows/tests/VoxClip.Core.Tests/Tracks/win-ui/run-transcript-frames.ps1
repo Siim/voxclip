@@ -5,6 +5,8 @@ $root = (Resolve-Path -LiteralPath $Root).Path
 New-Item -ItemType Directory -Path $EvidenceDir | Out-Null
 $evidence = (Resolve-Path -LiteralPath $EvidenceDir).Path
 $result = Join-Path $evidence 'transcript-frame-time.json'
+$ready = Join-Path $evidence 'transcript-frame-ready.txt'
+$start = Join-Path $evidence 'transcript-frame-start.txt'
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
 $env:VOXCLIP_DATA_DIR = Join-Path $evidence 'data'
 $env:VOXCLIP_SHARED_DIR = Join-Path $root 'shared'
@@ -17,7 +19,7 @@ try {
     if (-not [Environment]::UserInteractive) { throw 'Run the Release probe on the owned interactive desktop.' }
     $app = Start-Process -FilePath $exe -ArgumentList "--transcript-frame-probe `"$evidence`"" -PassThru
     $deadline = [DateTime]::UtcNow.AddSeconds(60)
-    while (-not (Test-Path -LiteralPath $result) -and [DateTime]::UtcNow -lt $deadline) {
+    while (-not (Test-Path -LiteralPath $ready) -and [DateTime]::UtcNow -lt $deadline) {
         if ($app.HasExited) { throw 'The Release probe exited before reporting frame time.' }
         $app.Refresh()
         if ($app.MainWindowHandle -ne [IntPtr]::Zero) {
@@ -26,6 +28,14 @@ try {
             $accept = $window.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $condition)
             if ($accept) { $accept.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke() }
         }
+        Start-Sleep -Milliseconds 100
+    }
+    if (-not (Test-Path -LiteralPath $ready)) { throw 'The main window did not become ready before sampling.' }
+    $window = $null; $accept = $null; $condition = $null
+    [IO.File]::WriteAllText($start, [DateTime]::UtcNow.ToString('O'))
+    while (-not (Test-Path -LiteralPath $result) -and [DateTime]::UtcNow -lt $deadline) {
+        $app.Refresh()
+        if ($app.HasExited) { throw 'The Release probe exited before reporting frame time.' }
         Start-Sleep -Milliseconds 100
     }
     if (-not (Test-Path -LiteralPath $result)) { throw 'No Release frame-time report within 60 seconds.' }

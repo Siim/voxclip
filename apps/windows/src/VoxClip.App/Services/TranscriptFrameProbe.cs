@@ -69,6 +69,10 @@ internal static class TranscriptFrameProbe
             host.Children.Add(transcript);
             transcript.Attach(model);
             host.UpdateLayout();
+            await File.WriteAllTextAsync(Path.Combine(output, "transcript-frame-ready.txt"), "ready");
+            using (var startTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(30)))
+                while (!File.Exists(Path.Combine(output, "transcript-frame-start.txt")))
+                    await Task.Delay(50, startTimeout.Token);
             started = Stopwatch.GetTimestamp();
             CompositionTarget.Rendering += Rendering;
             try { await completed.Task.WaitAsync(TimeSpan.FromSeconds(45)); }

@@ -44,6 +44,12 @@ public sealed class StartupCheckTests
         Assert.DoesNotContain("Task.Delay(16)", probe);
         var script = File.ReadAllText(Path.Combine(root, "apps/windows/tests/VoxClip.Core.Tests/Tracks/win-ui/run-transcript-frames.ps1"));
         Assert.Contains("\\Release\\", script);
+        var sampling = script[(script.IndexOf("[IO.File]::WriteAllText($start", StringComparison.Ordinal))..];
+        Assert.DoesNotContain("FindFirst", sampling);
+        Assert.DoesNotContain("FromHandle", sampling);
+        Assert.Contains("transcript-frame-ready.txt", probe);
+        Assert.Contains("transcript-frame-start.txt", probe);
+        Assert.True(probe.IndexOf("transcript-frame-start.txt", StringComparison.Ordinal) < probe.IndexOf("CompositionTarget.Rendering +=", StringComparison.Ordinal));
         Assert.All(script, character => Assert.InRange((int)character, 0, 127));
     }
 
