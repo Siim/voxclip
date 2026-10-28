@@ -112,9 +112,11 @@ public actor AVExporter: Exporter {
             return try await withTaskCancellationHandler {
                 try await perform(job, additionalOutputs: additionalOutputs, progress: progress)
             } onCancel: {
+                ExportInterruptTiming.testOnly?.mark(.cancelRequest)
                 Task { await self.cancelActive(id) }
             }
         } catch {
+            ExportInterruptTiming.testOnly?.mark(.exportReturned)
             if let failure = error as? VoxClipError, failure.requiresExportRecovery { throw failure }
             if error is VoiceLabRenderCapabilityError { throw error }
             if error is CancellationError || Task.isCancelled { throw CancellationError() }
@@ -125,6 +127,7 @@ public actor AVExporter: Exporter {
     private func cancelActive(_ id: UUID) {
         guard activeID == id else { return }
         activePumps?.stop()
+        ExportInterruptTiming.testOnly?.mark(.pumpsStopped)
     }
 
     private struct TransactionPreflight {
@@ -242,6 +245,7 @@ public actor AVExporter: Exporter {
         var ownsProvenancePartial = false
         defer {
             try? FileManager.default.removeItem(at: partial)
+            ExportInterruptTiming.testOnly?.mark(.partialDeleted)
             if let srtPartial { try? FileManager.default.removeItem(at: srtPartial) }
             if ownsProvenancePartial, let provenancePartial { try? FileManager.default.removeItem(at: provenancePartial) }
         }
@@ -385,14 +389,19 @@ public actor AVExporter: Exporter {
                                 videoCodec: "h264", encoder: "h264_videotoolbox",
                                 elapsedSeconds: Double(elapsed.seconds) + Double(elapsed.attoseconds) / 1e18)
         } catch {
+            ExportInterruptTiming.testOnly?.mark(.teardownStart)
             pumps.stop(error)
             videoSamples.cancelAfterJoining()
             audioSamples?.cancelAfterJoining()
+            ExportInterruptTiming.testOnly?.mark(.readersStopped)
             if writer.status == .writing {
                 pumps.writerWillCancel()
+                ExportInterruptTiming.testOnly?.mark(.writerCancelStart)
                 writer.cancelWriting()
+                ExportInterruptTiming.testOnly?.mark(.writerCancelEnd)
             }
             try? FileManager.default.removeItem(at: partial)
+            ExportInterruptTiming.testOnly?.mark(.partialDeleted)
             if let failure = error as? VoxClipError, failure.requiresExportRecovery { throw failure }
             if error is CancellationError || Task.isCancelled { throw CancellationError() }
             throw ExportSafety.failure(error, destination: destination)

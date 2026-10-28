@@ -239,52 +239,14 @@ public enum VoiceLabSourceAudio {
         output.alwaysCopiesSampleData = false
         let provider = reader.outputProvider(for: output)
         guard reader.startReading() else { throw VoiceLabSourceAudioError.unreadable }
-        var wav = VoiceLabAssetStore.wavHeader(frames: frames, sampleRate: rate)
-        wav.append(Data(count: 2 * frames))
-        var values: [Float] = []
-        var next = startSample
+        var accumulator = ConversionAccumulator(rate: rate, channels: channels, startSample: startSample,
+                                              endSample: endSample, frames: frames, origin: 0.0)
         do {
-            while next < endSample, let sample = try await MediaSupport.nextSample(provider) {
+            while !accumulator.isComplete, let sample = try await MediaSupport.nextSample(provider) {
                 try Task.checkCancellation()
-                let count = Int(sample.sampleCount)
-                guard count > 0 else { continue }
-                let exact = sample.presentationTimeStamp.seconds * Double(rate)
-                guard exact.isFinite, exact >= 0, exact < 0x1p62 else { throw VoiceLabSourceAudioError.unreadable }
-                let first = Int64((exact + 0.5).rounded(.down))
-                // Decoder pre-roll may begin before the range; a gap or a late start leaves range samples missing.
-                guard first <= next else { throw VoiceLabSourceAudioError.rangeOutsideMedia }
-                guard first + Int64(count) > next else { continue }
-                let skip = Int(next - first)
-                let take = min(count - skip, Int(endSample - next))
-                let bytes = count * channels * MemoryLayout<Float>.size
-                if values.count < count * channels { values = [Float](repeating: 0, count: count * channels) }
-                try sample.withUnsafeSampleBuffer { raw in
-                    guard let description = CMSampleBufferGetFormatDescription(raw),
-                          let basic = CMAudioFormatDescriptionGetStreamBasicDescription(description)?.pointee,
-                          basic.mFormatID == kAudioFormatLinearPCM, basic.mFormatFlags & kAudioFormatFlagIsFloat != 0,
-                          basic.mFormatFlags & kAudioFormatFlagIsNonInterleaved == 0, basic.mBitsPerChannel == 32,
-                          basic.mSampleRate == Double(rate), Int(basic.mChannelsPerFrame) == channels,
-                          let data = CMSampleBufferGetDataBuffer(raw), CMBlockBufferGetDataLength(data) == bytes else {
-                        throw VoiceLabSourceAudioError.unsupportedFormat
-                    }
-                    let status = values.withUnsafeMutableBytes {
-                        CMBlockBufferCopyDataBytes(data, atOffset: 0, dataLength: bytes, destination: $0.baseAddress!)
-                    }
-                    guard status == noErr else { throw VoiceLabSourceAudioError.unreadable }
-                }
-                let offset = 44 + 2 * Int(next - startSample)
-                try wav.withUnsafeMutableBytes { pcm in
-                    for index in 0..<take {
-                        var sum = 0.0
-                        for channel in 0..<channels { sum += Double(values[(skip + index) * channels + channel]) }
-                        let mono = Float(sum / Double(channels))
-                        guard mono.isFinite else { throw VoiceLabSourceAudioError.invalidAudio }
-                        pcm.storeBytes(of: VoiceLabAssetStore.pcm16(mono).littleEndian, toByteOffset: offset + 2 * index, as: Int16.self)
-                    }
-                }
-                next += Int64(take)
+                try accumulator.append(sample)
             }
-            guard next == endSample else {
+            guard accumulator.isComplete else {
                 throw reader.status == .failed ? VoiceLabSourceAudioError.unreadable : VoiceLabSourceAudioError.rangeOutsideMedia
             }
         } catch {
@@ -292,7 +254,107 @@ public enum VoiceLabSourceAudio {
             throw error
         }
         if reader.status == .reading { reader.cancelReading() }
-        return wav
+        return accumulator.wav
+    }
+
+    struct ConversionAccumulator {
+        private let rate: Int
+        private let channels: Int
+        private let startSample: Int64
+        private let endSample: Int64
+        private let origin: Double
+        private var previousEnd: Int64?
+        private var values: [Float] = []
+        private(set) var next: Int64
+        private(set) var wav: Data
+        var isComplete: Bool { next == endSample }
+
+        init(rate: Int, channels: Int, startSample: Int64, endSample: Int64, frames: Int, origin: Double = 0.0) {
+            self.rate = rate
+            self.channels = channels
+            self.startSample = startSample
+            self.endSample = endSample
+            self.origin = origin
+            next = startSample
+            wav = VoiceLabAssetStore.wavHeader(frames: frames, sampleRate: rate)
+            wav.append(Data(count: 2 * frames))
+        }
+
+        mutating func append(_ sample: CMReadySampleBuffer<CMSampleBuffer.DynamicContent>) throws {
+            guard !isComplete else { return }
+            let count: Int = Int(sample.sampleCount)
+            guard count > 0 else { return }
+            let first = try VoiceLabSourceAudio.bufferFirstSample(presentationTime: sample.presentationTimeStamp,
+                                                                 rate: rate, previousEnd: previousEnd, origin: origin)
+            let decodedEnd: Int64 = first + Int64(count)
+            previousEnd = decodedEnd
+            guard first <= next else { throw VoiceLabSourceAudioError.rangeOutsideMedia }
+            guard decodedEnd > next else { return }
+            let overlap: Int64 = next - first
+            let remaining: Int64 = endSample - next
+            let skip: Int = Int(overlap)
+            let take: Int = min(count - skip, Int(remaining))
+            let rate: Int = self.rate
+            let channels: Int = self.channels
+            let bytes: Int = count * channels * MemoryLayout<Float>.size
+            if values.count < count * channels { values = [Float](repeating: 0, count: count * channels) }
+            try sample.withUnsafeSampleBuffer { (raw: CMSampleBuffer) in
+                guard let description = CMSampleBufferGetFormatDescription(raw),
+                      let basic = CMAudioFormatDescriptionGetStreamBasicDescription(description)?.pointee,
+                      basic.mFormatID == kAudioFormatLinearPCM, basic.mFormatFlags & kAudioFormatFlagIsFloat != 0,
+                      basic.mFormatFlags & kAudioFormatFlagIsNonInterleaved == 0, basic.mBitsPerChannel == 32,
+                      basic.mSampleRate == Double(rate), Int(basic.mChannelsPerFrame) == channels,
+                      let data = CMSampleBufferGetDataBuffer(raw), CMBlockBufferGetDataLength(data) == bytes else {
+                    throw VoiceLabSourceAudioError.unsupportedFormat
+                }
+                let status: OSStatus = values.withUnsafeMutableBytes { (buffer: UnsafeMutableRawBufferPointer) -> OSStatus in
+                    CMBlockBufferCopyDataBytes(data, atOffset: 0, dataLength: bytes, destination: buffer.baseAddress!)
+                }
+                guard status == noErr else { throw VoiceLabSourceAudioError.unreadable }
+            }
+            let written: Int64 = next - startSample
+            let writtenFrames: Int = Int(written)
+            let offset: Int = 44 + 2 * writtenFrames
+            let channelCount: Double = Double(channels)
+            try wav.withUnsafeMutableBytes { [values, channels] (pcm: UnsafeMutableRawBufferPointer) in
+                for index in 0..<take {
+                    var sum: Double = 0.0
+                    for channel in 0..<channels { sum += Double(values[(skip + index) * channels + channel]) }
+                    let mean: Double = sum / channelCount
+                    let mono: Float = Float(mean)
+                    guard mono.isFinite else { throw VoiceLabSourceAudioError.invalidAudio }
+                    pcm.storeBytes(of: VoiceLabAssetStore.pcm16(mono).littleEndian, toByteOffset: offset + 2 * index, as: Int16.self)
+                }
+            }
+            next += Int64(take)
+        }
+    }
+
+    static func bufferFirstSample(presentationTime: CMTime, rate: Int, previousEnd: Int64?, origin: Double = 0.0) throws -> Int64 {
+        guard presentationTime.isValid else {
+            if let previousEnd { return previousEnd }
+            throw VoiceLabSourceAudioError.unreadable
+        }
+        guard presentationTime.isNumeric, presentationTime.timescale > 0 else { throw VoiceLabSourceAudioError.unreadable }
+        let scale: Double = Double(presentationTime.timescale)
+        let timeBase: Double = 1.0 / scale
+        let seconds: Double = Double(presentationTime.value) * timeBase
+        let relativeSeconds: Double = seconds - origin
+        let sampleRate: Double = Double(rate)
+        let position: Double = relativeSeconds * sampleRate
+        guard position.isFinite, position >= -0x1p62, position < 0x1p62 else { throw VoiceLabSourceAudioError.unreadable }
+        let tickNumerator: Double = sampleRate * 1.0
+        let tickSamples: Double = tickNumerator / scale
+        let tolerance: Double = max(1.0, tickSamples)
+        if let previousEnd {
+            let previousPosition: Double = Double(previousEnd)
+            let difference: Double = position - previousPosition
+            let distance: Double = abs(difference)
+            if distance < tolerance { return previousEnd }
+        }
+        let halfUpPosition: Double = position + 0.5
+        let roundedPosition: Double = floor(halfUpPosition)
+        return Int64(roundedPosition)
     }
 }
 

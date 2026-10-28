@@ -113,6 +113,8 @@ final class ExportSampleReader: @unchecked Sendable {
 
     private func cancelReader() {
         pumps.readerWillCancel(pump)
+        ExportInterruptTiming.testOnly?.mark(pump == 0 ? .videoReaderCancelStart : .audioReaderCancelStart)
         reader.cancelReading()
+        ExportInterruptTiming.testOnly?.mark(pump == 0 ? .videoReaderCancelEnd : .audioReaderCancelEnd)
     }
 }
