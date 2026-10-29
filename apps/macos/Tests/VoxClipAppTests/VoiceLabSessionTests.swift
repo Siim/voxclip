@@ -80,9 +80,10 @@ import Testing
         var statement = try #require(json["statement"] as? [String: Any]); statement["audioSha256"] = VoiceLabFingerprint.bytes(wav); json["statement"] = statement
         let record = try JSONDecoder().decode(VoiceConsentRecord.self, from: JSONSerialization.data(withJSONObject: json))
         try await store.saveStatement(wav, recordID: record.id)
-        let operation = try await store.beginCreation(record: record.assigningVoice("pending", requiresVerification: true), requestID: UUID(), region: .default, at: Date())
+        let operation = try await store.beginClaimedCreation(record: record.assigningVoice("pending", requiresVerification: true), requestID: UUID(), region: .default, at: Date())
         _ = try await store.transition(operation.id, to: .dispatched, at: Date())
         _ = try await store.transition(operation.id, to: .created, at: Date(), remoteVoiceID: record.voiceId, requiresVerification: false)
+        await store.releaseOperation(operation.id)
         await #expect(throws: (any Error).self) { try await reconciler.reconcile(force: true) }
         session.unsavedRecord = record; session.showEnrollment = true
         await session.cancelEnrollment()

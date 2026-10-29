@@ -127,16 +127,29 @@ public actor VoiceEnrollment {
                                         statement: .init(language: statement.language, text: statement.text, nonce: statement.nonce, audioFile: "statement.wav", audioSha256: draft.verified.hash, stt: draft.verified.match),
                                         attestations: draft.verified.attestations, samples: draft.samples,
                                         speaker: .init(model: embedder.modelID, threshold: threshold, embedding: VoiceConsentRecord.encodeEmbedding(draft.embedding)), app: .init(version: appVersion, platform: "macos"))
-        let operation = try await store.beginCreation(record: template, requestID: quote.requestID, region: client.region, at: Date())
-        guard await store.claimOperation(operation.id) else { throw VoiceConsentError.creationPending }
+        let operation = try await store.beginClaimedCreation(record: template, requestID: quote.requestID, region: client.region, at: Date())
+        let record: VoiceConsentRecord
+        do {
+            record = try await createClaimed(draft, template: template, operation: operation, quote: quote)
+        } catch {
+            await store.releaseOperation(operation.id)
+            if let current = try? await store.operation(operation.id), [.intent, .withdrawing].contains(current.state) {
+                try await reconciler.reconcile(operationID: operation.id, force: true)
+            }
+            throw error
+        }
+        await store.releaseOperation(operation.id)
+        do { try await reconciler.reconcile(operationID: operation.id, force: true) }
+        catch { throw VoiceConsentSaveError(record: record) }
+        return record
+    }
+    private func createClaimed(_ draft: Pending, template: VoiceConsentRecord, operation: VoiceOperation, quote: VoiceLabQuote) async throws -> VoiceConsentRecord {
         let result: VoiceLabCloneResult
         do {
             result = try await client.createOwnClone(draft.request, policy: draft.policy, requestID: quote.requestID, authorization: .init(quote: quote, approved: true))
         } catch {
-            await store.releaseOperation(operation.id)
             try await store.discardStatement(recordID: template.id)
             if let current = try? await store.operation(operation.id), current.state == .intent {
-                try await reconciler.reconcile(operationID: operation.id, force: true)
                 throw error
             }
             try await store.scheduleRetry(operation.id, at: Date())
@@ -146,10 +159,7 @@ public actor VoiceEnrollment {
         verified.removeValue(forKey: record.id)
         do {
             _ = try await store.transition(operation.id, to: .created, at: Date(), remoteVoiceID: result.voiceID, requiresVerification: result.requiresVerification)
-            await store.releaseOperation(operation.id)
-            try await reconciler.reconcile(operationID: operation.id, force: true)
         } catch {
-            await store.releaseOperation(operation.id)
             throw VoiceConsentSaveError(record: record)
         }
         return record

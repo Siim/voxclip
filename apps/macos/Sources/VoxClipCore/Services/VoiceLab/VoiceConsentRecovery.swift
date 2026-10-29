@@ -100,14 +100,16 @@ extension VoiceConsentStore {
         let encoder = JSONEncoder(); encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         try writePrivate(encoder.encode(value), to: operationFile(value.id, create: true))
     }
-    package func beginCreation(record: VoiceConsentRecord, requestID: UUID, region: ElevenLabsRegion, at date: Date) throws -> VoiceOperation {
+    package func beginClaimedCreation(record: VoiceConsentRecord, requestID: UUID, region: ElevenLabsRegion, at date: Date) throws -> VoiceOperation {
         try migrateLegacyOperations()
-        guard !(try operations()).contains(where: { $0.blocksCreation(at: date) || (!$0.finished && $0.recordID == record.id) }) else { throw VoiceConsentError.creationPending }
+        guard !claimedOperations.contains(requestID),
+              !(try operations()).contains(where: { $0.id == requestID || $0.blocksCreation(at: date) || (!$0.finished && $0.recordID == record.id) }) else { throw VoiceConsentError.creationPending }
         try checkpoint(.saveDraft)
         try save(record)
         var value = VoiceOperation(id: requestID, kind: .create, recordID: record.id, region: region, at: date)
         value.audit = try VoiceConsentAudit(record: record)
         try writeOperation(value, checkpoint: .creationIntent)
+        claimedOperations.insert(value.id)
         return value
     }
     package func transition(_ id: UUID, to state: VoiceOperation.State, at date: Date, remoteVoiceID: String? = nil, requiresVerification: Bool? = nil) throws -> VoiceOperation {
