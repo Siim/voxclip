@@ -49,6 +49,8 @@ public sealed class NativeHarnessContractTests
         Assert.Contains("DebugFitAllGalleryIds()", probe);
         Assert.Contains("DebugFitRealizeChoice(id)", probe);
         Assert.Contains("containerBounds.Contains(measurement.Bounds)", probe);
+        Assert.Contains("ReferenceEquals(ScrollOwner(clipped.Container), ScrollOwner(owner))", probe);
+        Assert.Contains("ClippingAncestor = clippingAncestor", probe);
         Assert.Contains("required.Contains(parked.Id)", probe);
         Assert.Contains("ScrollProofs = scrollProofs", probe);
         Assert.Contains("scroll.Viewport.Contains(after.Bounds)", probe);

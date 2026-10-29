@@ -157,6 +157,18 @@ public sealed partial class EditorPage
                 var virtualized = captionPanel?.DebugFitGalleryIdentity(owner);
                 var virtualizedId = virtualized?.Id;
                 var containerBounds = virtualized is { } identity ? ElementBounds(identity.Container) : default;
+                ColumnRect? clippingAncestor = null;
+                if (!decision.Accepted && measurement.Offscreen && virtualized is { } clipped && required.Contains(clipped.Id) &&
+                    containerBounds.Contains(measurement.Bounds) && ReferenceEquals(ScrollOwner(clipped.Container), ScrollOwner(owner)) &&
+                    FrameworkElementAutomationPeer.CreatePeerForElement(clipped.Container)?.IsOffscreen() == true)
+                {
+                    var ancestorDecision = ColumnBoundsGate.Assess(measurement with { Bounds = containerBounds }, Rectangle(column), Rectangle(client));
+                    if (ancestorDecision.Accepted)
+                    {
+                        clippingAncestor = containerBounds;
+                        decision = new(true, "scrolled with owning item/header; explicit required realization follows");
+                    }
+                }
                 if (measurement.Offscreen && virtualized is { } parked && required.Contains(parked.Id) && containerBounds.Contains(measurement.Bounds) &&
                     FrameworkElementAutomationPeer.CreatePeerForElement(parked.Container)?.IsOffscreen() == true &&
                     measurement.Scroll is { } region && (containerBounds.Bottom < region.Viewport.Y - region.VerticalOffset - 1 ||
@@ -176,7 +188,8 @@ public sealed partial class EditorPage
                                 scroll.VerticalOffset, scroll.ExtentWidth, scroll.ExtentHeight, scroll.ScrollableHeight } : null });
                 if (sample == "initial" || !decision.Accepted)
                     observations.Add(new { Sample = sample, Peer = measurement, decision.Accepted, decision.Classification,
-                        Control = peer.IsControlElement(), Content = peer.IsContentElement(), LayoutBounds = ElementBounds(owner), VirtualizedId = virtualizedId, Ancestors = ancestors });
+                        Control = peer.IsControlElement(), Content = peer.IsContentElement(), LayoutBounds = ElementBounds(owner),
+                        ClippingAncestor = clippingAncestor, VirtualizedId = virtualizedId, Ancestors = ancestors });
                 if (!measurement.Bounds.Measurable)
                 {
                     if (sample == "initial") unmeasurable.Add(new { Sample = sample, measurement.Id, measurement.Name, measurement.Role, measurement.Bounds });
