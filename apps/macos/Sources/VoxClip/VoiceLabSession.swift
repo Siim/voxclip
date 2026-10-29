@@ -16,6 +16,8 @@ import VoxClipMedia
     static let noticeCopy = "Your voice clone is created in your ElevenLabs account and stays there. ElevenLabs' terms let it use uploaded content, including your voice, to improve its services; you can opt out of training in your ElevenLabs account, but the opt-out is not retroactive. You can delete the voice at any time from VoxClip or ElevenLabs. ElevenLabs' Prohibited Use Policy applies, including its rules on political content."
     var confirmation: Request?
     var records: [VoiceConsentRecord] = []
+    var deleting: Set<String> = []
+    var visibleRecords: [VoiceConsentRecord] { records.filter { $0.status != .deleted || deleting.contains($0.id) } }
     var subscription: VoiceLabSubscription?
     var message: String?
     var busy = false
@@ -55,12 +57,24 @@ import VoxClipMedia
         if app.speakerModelLibrary.installed { return "Own-voice checks run on this Mac. Estonian is not available yet." }
         return "Download the own-voice check model in Settings → Voice Lab before creating a voice. No audio is sent for this check."
     }
-    func load() async {
-        do { records = try await store.records() } catch { message = "The local voice records could not be read. No audio was sent." }
+    func load(recover: Bool = true) async {
+        do {
+            if recover {
+                let regions = Set(try await store.pendingDeletions().map(\.region))
+                for region in regions {
+                    let client = ElevenLabsVoiceLab(keys: app.secrets, region: region, logger: app.log)
+                    do { try await VoiceEnrollment.resumeDeletions(store: store, client: client) }
+                    catch { message = "Couldn't finish deleting a voice. Retry deletion below. No audio was sent." }
+                }
+            }
+            deleting = Set(try await store.pendingDeletions().map { $0.record.id })
+            records = try await store.records()
+        } catch { message = "The local voice records could not be read. No audio was sent." }
     }
     func reconcileStartup() async {
         do { try await store.reconcileAbandonedEnrollments() }
         catch { message = "An abandoned voice recording could not be removed. Open Voice Lab and retry cleanup." }
+        await load()
     }
     private func services() throws -> (ElevenLabsVoiceLab, VoiceEnrollment) {
         let selected = ElevenLabsRegion(rawValue: app.string("transcription.elevenlabs.region", fallback: "default")) ?? .default
@@ -124,6 +138,7 @@ import VoxClipMedia
                 return
             }
             message = await errorMessage(error)
+            if case .delete = action { await load(recover: false) }
             if action == .verify {
                 verified = false; statementWAV = nil; recorder.discard()
                 try? await enrollment?.cancel(recordID: recordID)

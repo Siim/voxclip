@@ -59,13 +59,14 @@ import VoxClipCore
         Section("My voices") {
             if session.subscription?.isNonCommercial == true { Text("Free ElevenLabs plans allow non-commercial use only.").foregroundStyle(.secondary) }
             if let message = session.planMessage { Text(message).font(.caption) }
-            if session.records.filter({ $0.status != .deleted }).isEmpty { Text("No voice yet").foregroundStyle(.secondary) }
-            ForEach(session.records.filter { $0.status != .deleted }) { record in
+            if session.visibleRecords.isEmpty { Text("No voice yet").foregroundStyle(.secondary) }
+            ForEach(session.visibleRecords) { record in
                 VStack(alignment: .leading, spacing: 5) {
                     Text(record.voiceName).fontWeight(.medium)
                     Text("Created \(record.createdAt) · \(record.voiceId)").font(.caption).textSelection(.enabled)
                     if record.status == .verificationRequired { Text("ElevenLabs needs to verify this voice before it can be used. Finish verification on elevenlabs.io, then come back.").font(.caption) }
-                    Button("Delete voice", role: .destructive) { session.request(.delete(record.id)) }.disabled(session.busy)
+                    if session.deleting.contains(record.id) { Text(session.busy ? "Deleting…" : "Couldn't finish deleting").font(.caption) }
+                    Button(session.deleting.contains(record.id) ? "Retry deletion…" : "Delete voice", role: .destructive) { session.request(.delete(record.id)) }.disabled(session.busy)
                 }
             }
             if session.unsavedRecord != nil {

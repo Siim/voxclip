@@ -2,6 +2,7 @@
 
 ### 2026-10-29 — sol-mac-voicelab — W1 review recovery and consent guards
 
+- F2: deletion records its region-bound intent before the remote request, checkpoints remote completion, removes the statement before tombstoning, and clears the intent last. Startup and Settings resume only these already-approved deletions; remote 404 is idempotent success. Pending and legacy incomplete tombstones remain visible with Retry, and cannot authorize generation. Offline regressions restart across every local boundary and remote failure, preserving the audit hashes.
 - F1: cancellation abandons the statement through the store even before provider services exist. Startup removes abandoned enrollment directories and interrupted transcription cache recordings, preserving durable records, pending-creation journals and current in-process enrollments. Core regression coverage exercises recorded/verified/training/quoted cancellation, stale crash files and durable/live recording preservation. Native windows and microphone checks remain owed; the lead resolves the separate layout-branch CONTRACTS conflict at integration.
 
 ### 2026-10-29 — sol-mac-voicelab — W2 calibrated local speaker check

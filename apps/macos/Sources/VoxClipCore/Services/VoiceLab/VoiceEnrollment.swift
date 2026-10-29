@@ -126,13 +126,28 @@ public actor VoiceEnrollment {
         guard enabled, approved else { throw VoiceLabError.consentRequired }
         guard !busy else { throw VoiceLabError.invalidInput }
         busy = true; defer { busy = false }
-        let record = try await store.load(recordID)
-        if record.status == .deleted { try await store.discardStatement(recordID: recordID); return }
+        let intent = try await store.beginDeletion(recordID, region: client.region, at: now)
+        try await Self.resumeDeletion(intent, store: store, client: client)
+    }
+    public static func resumeDeletions(store: VoiceConsentStore, client: ElevenLabsVoiceLab) async throws {
+        var failure: (any Error)?
+        for intent in try await store.pendingDeletions() where intent.region == client.region {
+            do { try await resumeDeletion(intent, store: store, client: client) }
+            catch { failure = error }
+        }
+        if let failure { throw failure }
+    }
+    private static func resumeDeletion(_ intent: VoiceDeletionIntent, store: VoiceConsentStore, client: ElevenLabsVoiceLab) async throws {
+        var intent = intent
+        if !intent.remoteDeleted {
+            let record = intent.record
         let requestID = UUID()
         let quote = try await client.prepareConsentDeletion(record, requestID: requestID)
         let policy = OwnVoicePolicy(recordID: record.id, cloneVoiceID: record.voiceId, recordActive: true, providerConsentGranted: true, statementVerified: true, speakerMatched: true)
         _ = try await client.deleteOwnClone(voiceID: record.voiceId, policy: policy, requestID: requestID, authorization: .init(quote: quote, approved: true))
-        try await store.markDeleted(recordID, at: now)
+            intent = try await store.recordRemoteDeletion(intent)
+        }
+        try await store.finishDeletion(intent)
     }
     public func cancel(recordID: String) async throws {
         guard !busy else { throw VoiceLabError.invalidInput }

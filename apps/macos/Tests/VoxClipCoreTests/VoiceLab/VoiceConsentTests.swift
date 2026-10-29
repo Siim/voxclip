@@ -291,6 +291,30 @@ struct VoiceConsentTests {
         #expect(!FileManager.default.fileExists(atPath: store.root.appendingPathComponent(id + "/statement.wav").path))
         #expect(calls.value.withLock { $0 } == ["GET /v1/user/subscription", "POST /v1/voices/add", "DELETE /v1/voices/fixtureOwnVoice"])
     }
+    @Test(arguments: VoiceConsentCheckpoint.allCases) func deletionResumesEveryDurableBoundary(step: VoiceConsentCheckpoint) async throws {
+        let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let store = VoiceConsentStore(locations: SpeechTestFiles.locations(root), fault: { checkpoint in
+            if checkpoint == step { throw CocoaError(.fileWriteUnknown) }
+        })
+        let record = try fixtureRecord(wav: wav); let calls = ConsentRequestLog()
+        try await store.saveStatement(wav, recordID: record.id); try await store.save(record)
+        let service = enroll(store: store, client: client(calls), check: .init(), raw: try await raw())
+        await #expect(throws: (any Error).self) { try await service.delete(recordID: record.id, approved: true, enabled: true, now: now) }
+        #expect(try await store.records().count == 1)
+        if step != .deletionIntent { #expect(try await store.activeVoices().isEmpty) }
+        let restarted = storage(root)
+        let retry = client(calls, deletionStatus: 404)
+        if step == .deletionIntent {
+            _ = try await restarted.beginDeletion(record.id, region: .default, at: now)
+        }
+        try await VoiceEnrollment.resumeDeletions(store: restarted, client: retry)
+        let deleted = try await restarted.load(record.id)
+        #expect(deleted.status == .deleted)
+        #expect(deleted.samples == record.samples && deleted.statement.audioSha256 == record.statement.audioSha256)
+        #expect(try await restarted.pendingDeletions().isEmpty)
+        #expect(!FileManager.default.fileExists(atPath: restarted.root.appendingPathComponent("\(record.id)/statement.wav").path))
+        try await VoiceEnrollment.resumeDeletions(store: restarted, client: retry)
+    }
     @Test(arguments: [404, 500]) func deletionHandlesMissingAndFailure(status: Int) async throws {
         let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
         let store = storage(root); let record = try fixtureRecord(wav: wav); let calls = ConsentRequestLog()
@@ -303,6 +327,9 @@ struct VoiceConsentTests {
             await #expect(throws: VoiceLabError.providerFailure(500)) { try await service.delete(recordID: record.id, approved: true, enabled: true) }
             #expect(try await store.load(record.id).status == .active)
             #expect(try await store.statement(recordID: record.id) == wav)
+            #expect(try await store.activeVoices().isEmpty)
+            try await VoiceEnrollment.resumeDeletions(store: storage(root), client: client(calls, deletionStatus: 404))
+            #expect(try await store.load(record.id).status == .deleted)
         }
     }
     @Test func paidCreateSaveFailureRetriesLocallyWithoutAnotherClone() async throws {

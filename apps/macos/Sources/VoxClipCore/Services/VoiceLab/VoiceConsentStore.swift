@@ -4,6 +4,19 @@ public actor VoiceConsentStore {
     public nonisolated let root: URL
     private let temporaryRecordings: URL
     private var liveEnrollments: Set<String> = []
+    #if DEBUG
+    var fault: (@Sendable (VoiceConsentCheckpoint) throws -> Void)?
+    init(locations: DataLocations, fault: @escaping @Sendable (VoiceConsentCheckpoint) throws -> Void) {
+        root = locations.root.appendingPathComponent("VoiceLab/consent", isDirectory: true)
+        temporaryRecordings = locations.cache.appendingPathComponent("voice-consent", isDirectory: true)
+        self.fault = fault
+    }
+    #endif
+    func checkpoint(_ step: VoiceConsentCheckpoint) throws {
+        #if DEBUG
+        try fault?(step)
+        #endif
+    }
     public init(locations: DataLocations) {
         root = locations.root.appendingPathComponent("VoiceLab/consent", isDirectory: true)
         temporaryRecordings = locations.cache.appendingPathComponent("voice-consent", isDirectory: true)
@@ -28,7 +41,7 @@ public actor VoiceConsentStore {
         try discardStatement(recordID: recordID)
         liveEnrollments.remove(recordID)
     }
-    private func directory(_ id: String, create: Bool = false) throws -> URL {
+    func directory(_ id: String, create: Bool = false) throws -> URL {
         guard UUID(uuidString: id) != nil else { throw VoiceConsentError.invalidRecord }
         let directory = root.appendingPathComponent(id, isDirectory: true)
         let manager = FileManager.default
@@ -38,7 +51,7 @@ public actor VoiceConsentStore {
         if create { try manager.createDirectory(at: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700]) }
         return directory
     }
-    private func file(_ name: String, in directory: URL) throws -> URL {
+    func file(_ name: String, in directory: URL) throws -> URL {
         let url = directory.appendingPathComponent(name)
         if let attributes = try? FileManager.default.attributesOfItem(atPath: url.path), attributes[.type] as? FileAttributeType != .typeRegular { throw VoiceConsentError.invalidRecord }
         return url
@@ -78,7 +91,7 @@ public actor VoiceConsentStore {
         let record = try JSONDecoder().decode(VoiceConsentRecord.self, from: Data(contentsOf: url))
         try record.validate()
         guard record.id == id else { throw VoiceConsentError.invalidRecord }
-        if record.status != .deleted {
+        if record.status != .deleted && !hasDeletion(id) {
             guard VoiceLabFingerprint.bytes(try statement(recordID: id)) == record.statement.audioSha256 else { throw VoiceConsentError.invalidRecord }
         }
         return record
@@ -89,7 +102,7 @@ public actor VoiceConsentStore {
         return try directories.filter { UUID(uuidString: $0.lastPathComponent) != nil && FileManager.default.fileExists(atPath: $0.appendingPathComponent("record.json").path) }
             .map { try load($0.lastPathComponent) }.sorted { $0.createdAt > $1.createdAt }
     }
-    public func activeVoices() throws -> [VoiceConsentRecord] { try records().filter { $0.status == .active } }
+    public func activeVoices() throws -> [VoiceConsentRecord] { try records().filter { $0.status == .active && !hasDeletion($0.id) } }
     public func refreshVerification(_ voices: [VoiceLabVoice]) throws {
         for var record in try records() where record.status == .verificationRequired {
             if voices.contains(where: { $0.id == record.voiceId && $0.isOwner && $0.category == "cloned" && $0.isVerified }) {
@@ -99,14 +112,13 @@ public actor VoiceConsentStore {
         }
     }
     public func markDeleted(_ id: String, at date: Date) throws {
-        var record = try load(id)
-        record.status = .deleted; record.deletedAt = VoiceConsentRecord.timestamp(date)
-        try save(record)
-        try discardStatement(recordID: id)
+        let intent = try beginDeletion(id, region: .default, at: date)
+        try finishDeletion(recordRemoteDeletion(intent))
     }
     public func discardStatement(recordID: String) throws {
         let directory = try directory(recordID)
         let url = try file("statement.wav", in: directory)
+        try checkpoint(.removeStatement)
         if FileManager.default.fileExists(atPath: url.path) { try FileManager.default.removeItem(at: url) }
     }
 }
