@@ -156,7 +156,7 @@ import VoxClipCore
         let previous = model.project.captions
         undo.removeAllActions()
         for (name, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
-            let host = NSHostingView(rootView: ViewerSection(model: model).frame(width: 360, height: 340).background(DesignValues.color("bg.surface")))
+            let host = NSHostingView(rootView: ViewerSection(model: model, columnWidth: 360).frame(width: 360, height: 340).background(DesignValues.color("bg.surface")))
             host.frame = CGRect(x: 0, y: 0, width: 360, height: 340)
             let window = NSWindow(contentRect: host.frame, styleMask: [.borderless], backing: .buffered, defer: false)
             window.isReleasedWhenClosed = false; window.contentView = host; window.appearance = NSAppearance(named: appearance)
@@ -289,7 +289,7 @@ import VoxClipCore
             try await Task.sleep(for: .milliseconds(80))
             _ = try capture(timeline.contentView!, name: "timeline-waveform-\(name)", directory: directory)
             timeline.close()
-            let host = NSHostingView(rootView: ViewerSection(model: model).frame(width: 360, height: 430).background(DesignValues.color("bg.surface")))
+            let host = NSHostingView(rootView: ViewerSection(model: model, columnWidth: 360).frame(width: 360, height: 430).background(DesignValues.color("bg.surface")))
             host.frame = CGRect(x: 0, y: 0, width: 360, height: 430)
             let window = NSWindow(contentRect: host.frame, styleMask: [.borderless], backing: .buffered, defer: false)
             window.isReleasedWhenClosed = false; window.contentView = host; window.appearance = NSAppearance(named: appearance)

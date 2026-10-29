@@ -238,7 +238,8 @@ extension ProviderChoice {
     }
     static var isTestSession: Bool {
         #if DEBUG
-        CommandLine.arguments.contains("-round6SelfTest") || CommandLine.arguments.contains("-round5SelfTest") || CommandLine.arguments.contains("-round4SelfTest") || CommandLine.arguments.contains("-timelineAudit") || CommandLine.arguments.contains("-demoCapture") || CommandLine.arguments.contains("-uiSelfTest") || CommandLine.arguments.contains("-uiPerformanceTest") || CommandLine.arguments.contains("-sceneAudit") || CommandLine.arguments.contains("-saveBoundaryAudit") || CommandLine.arguments.contains("-settingsAudit") || CommandLine.arguments.contains("-voiceRecipeAudit")
+        if CommandLine.arguments.contains("-captionGalleryAudit") { return true }
+        return CommandLine.arguments.contains("-layoutAudit") || CommandLine.arguments.contains("-round6SelfTest") || CommandLine.arguments.contains("-round5SelfTest") || CommandLine.arguments.contains("-round4SelfTest") || CommandLine.arguments.contains("-timelineAudit") || CommandLine.arguments.contains("-demoCapture") || CommandLine.arguments.contains("-uiSelfTest") || CommandLine.arguments.contains("-uiPerformanceTest") || CommandLine.arguments.contains("-sceneAudit") || CommandLine.arguments.contains("-saveBoundaryAudit") || CommandLine.arguments.contains("-settingsAudit") || CommandLine.arguments.contains("-voiceRecipeAudit")
         #else
         false
         #endif

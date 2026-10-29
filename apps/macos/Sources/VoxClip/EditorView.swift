@@ -405,7 +405,7 @@ struct SubtitleDetail: Equatable {
         let rightItem = NSSplitViewItem(viewController: right)
         rightItem.minimumThickness = VCTokens.sizeRightColumnMin
         rightItem.maximumThickness = VCTokens.sizeRightColumnMax
-        rightItem.holdingPriority = .defaultHigh
+        rightItem.holdingPriority = EditorSplit.rightHoldingPriority
         rightItem.canCollapse = true
         rightItem.isCollapsed = !viewerVisible
         controller.addSplitViewItem(transcriptItem)
@@ -451,8 +451,15 @@ struct SubtitleDetail: Equatable {
 /// toggles, window resizes and the sidebar's divider resize the panes without a
 /// mouseDown here, so they never store a width.
 @MainActor final class EditorSplit: NSSplitView {
+    static let rightHoldingPriority = NSLayoutConstraint.Priority(rawValue: NSLayoutConstraint.Priority.defaultLow.rawValue + 1)
     var onDividerDrag: ((Double) -> Void)?
+    #if DEBUG
+    var dividerMouseDowns = 0
+    #endif
     override func mouseDown(with event: NSEvent) {
+        #if DEBUG
+        dividerMouseDowns += 1
+        #endif
         let before = arrangedSubviews.last?.frame.width
         super.mouseDown(with: event)
         guard let right = arrangedSubviews.last, !isSubviewCollapsed(right), abs(right.frame.width - (before ?? 0)) > 0.5 else { return }
@@ -466,16 +473,29 @@ struct SubtitleDetail: Equatable {
     @Bindable var model: EditorModel
     var body: some View {
         GeometryReader { geometry in
-          VStack(spacing: 0) {
-            ViewerSection(model: model, columnHeight: geometry.size.height)
+            RightColumnContents(model: model, columnHeight: geometry.size.height, columnWidth: geometry.size.width)
+                .frame(width: geometry.size.width, height: geometry.size.height, alignment: .topLeading)
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("voxclip.editor.right")
+        }
+    }
+}
+
+@MainActor struct RightColumnContents: View {
+    @Bindable var model: EditorModel
+    var columnHeight: CGFloat
+    var columnWidth: CGFloat
+    var fineTune = false
+    var body: some View {
+        VStack(spacing: 0) {
+            ViewerSection(model: model, columnHeight: columnHeight, columnWidth: columnWidth)
                 .modifier(EditorPaneFocus(model: model, pane: .viewer))
             Divider()
             Group {
                 if let rewrite = model.rewrite { RewritePanel(session: rewrite) }
-                else { CaptionsSection(model: model).modifier(EditorPaneFocus(model: model, pane: .panel)) }
+                else { CaptionsSection(model: model, fineTune: fineTune).modifier(EditorPaneFocus(model: model, pane: .panel)) }
             }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .controlSize(.small)
-          }
         }
     }
 }

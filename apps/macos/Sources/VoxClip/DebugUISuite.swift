@@ -830,6 +830,7 @@ import ApplicationServices
             try? Data(detail.utf8).write(to: directory.appendingPathComponent("activation.txt"))
             throw CocoaError(.userCancelled)
         }
+        try DebugColumnBounds.assertBounds(window: window, name: name, directory: directory)
         for attempt in 0..<3 {
             let process = Process()
             process.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
@@ -878,6 +879,7 @@ import ApplicationServices
             guard let root = app.shared?.root else { throw VoxClipError.sharedResourcesMissing }
             let fixture = root.appendingPathComponent("fixtures/projects/interview-take.voxclip")
             let project = try DemoEditing.loadFixture(fixture)
+            results += try await DebugRightColumn.run(app: app, directory: destination)
             results += try DebugTranscriptPixels.run(app: app, fixture: project, directory: destination)
             results += try await DebugSelectionBar.run(app: app, fixture: project, directory: destination)
             results += try await DebugViewer.run(app: app, fixture: project, directory: destination)
@@ -1049,9 +1051,16 @@ import ApplicationServices
         controller.sizingOptions = []
         let hosting = controller.view
         hosting.frame = NSRect(origin: .zero, size: size)
-        let window = OffscreenSnapshotWindow(contentRect: NSRect(origin: NSPoint(x: -10000, y: -10000), size: size), styleMask: mainWindow ? [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView] : [.titled, .closable, .resizable], backing: .buffered, defer: false)
+        let contentRect = NSRect(origin: NSPoint(x: -10000, y: -10000), size: size)
+        let styleMask: NSWindow.StyleMask = mainWindow ? [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView] : [.titled, .closable, .resizable]
+        let window: NSWindow
+        if native { window = NSWindow(contentRect: contentRect, styleMask: styleMask, backing: .buffered, defer: false) }
+        else {
+            let offscreen = OffscreenSnapshotWindow(contentRect: contentRect, styleMask: styleMask, backing: .buffered, defer: false)
+            offscreen.rendersActive = active
+            window = offscreen
+        }
         if mainWindow { window.toolbarStyle = .unified }
-        window.rendersActive = active
         window.isReleasedWhenClosed = false
         window.appearance = NSAppearance(named: appearance)
         if name.contains("settings") { window.toolbarStyle = .expanded }
@@ -1078,6 +1087,7 @@ import ApplicationServices
             view.subviews.forEach(prepare)
         }
         prepare(hosting)
+        if !native { try DebugColumnBounds.assertBounds(window: window, name: name, directory: directory) }
         if native {
             guard !sessionLocked else { window.close(); throw CocoaError(.userCancelled) }
             window.center(); window.makeKeyAndOrderFront(nil)

@@ -13,6 +13,7 @@ import VoxClipCore
             footer
         }
         .background(DesignValues.color("bg.surface"))
+        .accessibilityElement(children: .contain).accessibilityIdentifier("voxclip.rewrite")
         .focusSection()
         .onExitCommand { session.editor.closeRewrite() }
         .onDisappear { approvalTask?.cancel() }
@@ -36,24 +37,23 @@ import VoxClipCore
                 .accessibilityLabel("What should change?")
             RewriteProposalControls(session: session, propose: approveAndPropose)
             Divider()
-            HStack(alignment: .firstTextBaseline) {
-                Text("New words").font(.system(size: 12, weight: .semibold))
-                Spacer(minLength: 4)
-                Text(session.review?.changeSummary ?? "").font(.system(size: 11)).foregroundStyle(.secondary)
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .firstTextBaseline) { newWordsLabel; Spacer(minLength: 4); changeSummary.fixedSize() }
+                VStack(alignment: .leading, spacing: 4) { newWordsLabel; changeSummary }
             }
             TextField("New words", text: Binding(get: { session.newWords }, set: { session.edit($0) }), axis: .vertical)
                 .lineLimit(3...8).textFieldStyle(.roundedBorder).focused($wordsFocused).accessibilityLabel("New words")
             if let review = session.review {
-                diffLine(review).font(.system(size: 12)).textSelection(.enabled)
+                diffLine(review).font(.system(size: 12)).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
                     .accessibilityLabel(review.accessibleDescription)
                 ForEach(review.voiceHunks.indices, id: \.self) { index in
                     if let meter = review.voiceHunks[index].meter {
-                        Text(meter.copy).font(.system(size: 11)).foregroundStyle(.secondary)
+                        Text(meter.copy).font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     } else if let refusal = review.voiceHunks[index].refusal {
                         Text(refusal).font(.system(size: 11)).foregroundStyle(DesignValues.color("status.warning"))
                     }
                 }
-                if let copy = review.budget.copy { Text(copy).font(.system(size: 12)).foregroundStyle(DesignValues.color("status.warning")) }
+                if let copy = review.budget.copy { Text(copy).font(.system(size: 12)).foregroundStyle(DesignValues.color("status.warning")).fixedSize(horizontal: false, vertical: true) }
                 if let summary = review.summary, !review.voiceHunks.isEmpty { Text(summary.copy).font(.system(size: 11)).foregroundStyle(.secondary) }
             }
             if !session.problem.isEmpty { InlineNotice(text: session.problem) }
@@ -70,15 +70,27 @@ import VoxClipCore
         }.padding(16).frame(maxWidth: .infinity, alignment: .leading)
     }
     private var header: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 6) { headerTitle; Spacer(minLength: 4); scope.fixedSize(); closeButton }
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 6) { headerTitle; Spacer(minLength: 4); closeButton }
+                scope
+            }
+        }
+    }
+    private var newWordsLabel: some View { Text("New words").font(.system(size: 12, weight: .semibold)).fixedSize() }
+    private var changeSummary: some View { Text(session.review?.changeSummary ?? "").font(.system(size: 11)).foregroundStyle(.secondary) }
+    private var scope: some View { Text(session.header).font(DesignValues.mono(11)).foregroundStyle(.secondary) }
+    private var closeButton: some View {
+        Button { session.editor.closeRewrite() } label: { Image(systemName: "xmark") }
+            .buttonStyle(.plain).accessibilityLabel(EditorIconAction.closeRewrite.name).help("Close Rewrite (Esc)")
+    }
+    private var headerTitle: some View {
         HStack(spacing: 6) {
             Image(systemName: "waveform")
             Text("Rewrite").font(.system(size: 13, weight: .semibold))
-            Text("Beta").font(.system(size: 10)).padding(.horizontal, 4).overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(.secondary.opacity(0.5)))
-            Spacer(minLength: 4)
-            Text(session.header).font(DesignValues.mono(10)).foregroundStyle(.secondary)
-            Button { session.editor.closeRewrite() } label: { Image(systemName: "xmark") }
-                .buttonStyle(.plain).accessibilityLabel(EditorIconAction.closeRewrite.name).help("Close Rewrite (Esc)")
-        }
+            Text("Beta").font(.system(size: 11)).padding(.horizontal, 4).overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(.secondary.opacity(0.5)))
+        }.fixedSize()
     }
     private func diffLine(_ review: RewriteReview) -> Text {
         var result = AttributedString()
