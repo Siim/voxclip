@@ -6,6 +6,20 @@ namespace VoxClip.Ui.Tests;
 public sealed class NativeHarnessContractTests
 {
     [Fact]
+    public void DecorativeChecksAreRawAndScrollbarsMeasureTheirOwnedViewport()
+    {
+        var root = Path.GetDirectoryName(Environment.GetEnvironmentVariable("VOXCLIP_SHARED_DIR"))!;
+        var captions = File.ReadAllText(Path.Combine(root, "apps/windows/src/VoxClip.App/Controls/CaptionsPanel.cs"));
+        Assert.Contains("Text='&#xE73E;'", captions);
+        Assert.Contains("AutomationProperties.AccessibilityView='Raw'", captions);
+        var probe = File.ReadAllText(Path.Combine(root, "apps/windows/src/VoxClip.App/Pages/EditorPage.FitProbe.cs"));
+        Assert.Contains("GetAccessibilityView(owner) != AccessibilityView.Raw", probe);
+        Assert.Contains("peer.IsControlElement() || peer.IsContentElement()", probe);
+        Assert.Contains("owner is ScrollBar && ScrollOwner(owner) is { } scrollOwner", probe);
+        Assert.Contains("owner = scrollOwner", probe);
+    }
+
+    [Fact]
     public void ClipExportHasAStableAccessibleTarget()
     {
         var root = Path.GetDirectoryName(Environment.GetEnvironmentVariable("VOXCLIP_SHARED_DIR"))!;

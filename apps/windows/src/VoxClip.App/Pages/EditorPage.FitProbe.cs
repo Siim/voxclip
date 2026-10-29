@@ -4,6 +4,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Automation.Provider;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
@@ -82,7 +83,8 @@ public sealed partial class EditorPage
                 if (peer is FrameworkElementAutomationPeer { Owner: FrameworkElement nativeOwner }) owner = nativeOwner;
                 if (!Presented(owner)) return;
                 if (!identities.Add(((WinRT.IWinRTObject)peer).NativeObject.ThisPtr)) return;
-                if (!peers.TryAdd(peer, owner)) return;
+                if (AutomationProperties.GetAccessibilityView(owner) != AccessibilityView.Raw && (peer.IsControlElement() || peer.IsContentElement()))
+                    peers.Add(peer, owner);
                 try
                 {
                     if (peer.GetChildren() is { } children) foreach (var child in children) Collect(child, owner);
@@ -122,6 +124,12 @@ public sealed partial class EditorPage
             {
                 id = peer.GetAutomationId(); name = peer.GetName();
                 role = peer.GetAutomationControlType() + "/" + peer.GetClassName();
+                if (owner is ScrollBar && ScrollOwner(owner) is { } scrollOwner)
+                {
+                    owner = scrollOwner;
+                    peer = FrameworkElementAutomationPeer.CreatePeerForElement(owner) ?? throw new InvalidOperationException("No owning viewport peer.");
+                    role += " (owning viewport)";
+                }
                 ColumnScrollRegion? region = null;
                 if (ScrollOwner(owner) is { } viewer)
                     region = new(AutomationProperties.GetAutomationId(viewer), ElementBounds(viewer), viewer.VerticalOffset * scale, viewer.ExtentHeight * scale,
