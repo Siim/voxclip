@@ -285,13 +285,14 @@ public sealed class StartupCheckTests
     }
 
     [Fact]
-    public void NativeBuildSpaceUsesTheDocumentedVmFloor()
+    public void NativeBuildSpaceUsesTheDocumentedVmFloorAndRunReserve()
     {
         var root = new DirectoryInfo(AppContext.BaseDirectory);
         while (root is not null && !Directory.Exists(Path.Combine(root.FullName, ".github"))) root = root.Parent;
         Assert.NotNull(root);
         var script = File.ReadAllText(Path.Combine(root.FullName, "apps/windows/tests/VoxClip.Core.Tests/Tracks/win-ui/run-native-flow.ps1"));
-        Assert.Contains("if ($FreeBytes -lt 6GB)", script);
+        Assert.Contains("if ($FreeBytes -lt (6GB + 1536MB))", script);
+        Assert.Contains("1.5 GiB headroom above the 6 GiB floor", script);
         Assert.Contains("keep owned scratch below 2 GiB", script);
         Assert.DoesNotContain("15GB", script);
         Assert.All(script, character => Assert.InRange((int)character, 0, 127));
