@@ -30,6 +30,7 @@ private extension VerticalAlignment {
     @State private var galleryTiles: [String: CGRect] = [:]
     @State private var galleryHeaders: [CaptionStyleGroup: CGRect] = [:]
     @State private var galleryRecheck = 0
+    @State private var galleryPosition = ScrollPosition()
     #if DEBUG
     @State private var galleryID = UUID().uuidString
     #endif
@@ -162,6 +163,7 @@ private extension VerticalAlignment {
     }
     private func galleryScroll(reader: ScrollViewProxy) -> some View {
         ScrollView { galleryContents }
+            .scrollPosition($galleryPosition)
             .onScrollGeometryChange(for: CaptionGalleryViewport.self) { geometry in
                 CaptionGalleryViewport(visible: geometry.visibleRect, size: geometry.containerSize)
             } action: { _, viewport in galleryViewport = viewport }
@@ -240,7 +242,16 @@ private extension VerticalAlignment {
             if complete { galleryReveal.complete(); return }
         }
         let geometry = [galleryViewport.visible.minY, galleryViewport.size.height, galleryTile?.frame.minY ?? -1, galleryLayout.header?.minY ?? -1]
-        if galleryReveal.shouldScroll(to: target, anchor: .top, geometry: geometry) { reader.scrollTo(target, anchor: .top) }
+        if galleryReveal.shouldScroll(to: target, anchor: .top, geometry: geometry) {
+            // A lazy grid scrolls to a row it hasn't laid out by estimate, and repeats the same wrong
+            // estimate. The measured content frame is exact, so scroll to it whenever it is known.
+            let measured: CGFloat? = switch target {
+            case .header: galleryLayout.header?.minY
+            case .tile(let id): galleryTile.flatMap { $0.styleID == id ? $0.frame.minY : nil }
+            case .end: nil
+            }
+            if let measured { galleryPosition.scrollTo(y: max(0, measured)) } else { reader.scrollTo(target, anchor: .top) }
+        }
         // A scroll that lands where the view already is changes no geometry, so nothing would
         // re-check the reveal and it would stay pending. Check again next turn, a bounded number of times.
         if galleryReveal.takeRecheck() { DispatchQueue.main.async { galleryRecheck &+= 1 } }
