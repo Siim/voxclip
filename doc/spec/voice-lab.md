@@ -401,6 +401,10 @@ A local, offline alternative (DeepFilterNet or similar) is out of scope until it
   - storage.
 - None of these features may block the core loop: import, cut, captions, clips, export.
 
+Settings persist the switch as `voiceLab.enabled` (default false), the acknowledged one-time notice as `voiceLab.betaNoticeAccepted` (default false), the label position as `voiceLab.labelPosition` (`top-right` by default; `top-left`, `bottom-right`, `bottom-left` are the other values), and the Clean-audio-only C2PA preference as `voiceLab.c2pa` (default true). Keys and consent records are not settings values. Per-provider caps retain the keys and decimal-string format in §3.1.
+
+The staged macOS W1 implementation exposes this pane with the switch off only in DEBUG builds. A Release build with the switch off has no Voice Lab tab. W6 must resolve the shipping opt-in entry before 0.1.0; this staging constraint does not defer Rewrite generation from that release. Rewrite itself remains DEBUG-only until W6 completes its generation acceptance gates.
+
 ---
 
 ## 6. My voice: consent-guarded own-voice clone (ElevenLabs IVC)
