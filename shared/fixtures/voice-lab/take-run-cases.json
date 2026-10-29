@@ -1,0 +1,20 @@
+{
+  "schema": "voxclip-take-run-cases/1",
+  "ranking": [
+    {"id":"exact-best","window":4,"residual":0,"match":1,"flatness":1,"score":1},
+    {"id":"exact-less-flat","window":4,"residual":0,"match":0.9,"flatness":0.5,"score":0.92},
+    {"id":"long-half-cost","window":4,"residual":0.5,"match":0.9,"flatness":0.8,"score":0.65},
+    {"id":"short-quarter-cost","window":4,"residual":-0.25,"match":1,"flatness":1,"score":0.85},
+    {"id":"saturated-fit-cost","window":4,"residual":2,"match":1,"flatness":1,"score":0.4}
+  ],
+  "qa": [
+    {"id":"short-exact","expected":"Hello, world!","recognized":["hello","world"],"amplitude":0.1,"speaker":0.8,"failures":[]},
+    {"id":"short-mismatch","expected":"hello world","recognized":["hello"],"amplitude":0.1,"speaker":0.8,"failures":["transcript"]},
+    {"id":"long-lcs-pass","expected":"one two three four five six","recognized":["one","two","three","four","five"],"amplitude":0.1,"speaker":0.8,"failures":[]},
+    {"id":"long-lcs-fail","expected":"one two three four five six","recognized":["one","two","three","four"],"amplitude":0.1,"speaker":0.8,"failures":["transcript"]},
+    {"id":"speaker-below-catalogue-tau","expected":"hello","recognized":["hello"],"amplitude":0.1,"speaker":0.44,"failures":["speaker"]},
+    {"id":"clipping","expected":"hello","recognized":["hello"],"amplitude":1.01,"speaker":0.8,"failures":["clipping"]},
+    {"id":"loudness-jump","expected":"hello","recognized":["hello"],"amplitude":0.1,"afterAmplitude":0.001,"speaker":0.8,"failures":["loudness"]}
+  ],
+  "run": {"candidates":3,"approvalSeconds":300,"qaMaximumSeconds":290,"seeds":[4294967295,0,1],"earlyStopSentTakes":1,"earlyStopUnsentTakes":2}
+}

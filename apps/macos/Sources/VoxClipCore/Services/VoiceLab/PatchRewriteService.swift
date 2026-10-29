@@ -7,6 +7,11 @@ public actor PatchRewriteService {
     private var active = false
     private var prepared: [UUID: PatchRewriteQuote] = [:]
     private var preparedOrder: [UUID] = []
+    private var preparedAt: [UUID: Date] = [:]
+    private var now: @Sendable () -> Date = { Date() }
+    #if DEBUG
+    @_spi(Testing) public func useClock(_ clock: @escaping @Sendable () -> Date) { now = clock }
+    #endif
     public init(shared: SharedResources) { self.shared = shared }
 
     /// `est()` of the whole rendered request, in tokens, with no known price (voice-lab §8.1). It checks the request first.
@@ -24,6 +29,8 @@ public actor PatchRewriteService {
                                       fingerprint: try fingerprint(input, connector: connector, model: model, prompt: rendered.promptSHA256))
         if preparedOrder.count == 32 { prepared.removeValue(forKey: preparedOrder.removeFirst()) }
         prepared[value.id] = value
+        preparedAt = preparedAt.filter { prepared[$0.key] != nil }
+        preparedAt[value.id] = now()
         preparedOrder.append(value.id)
         return value
     }
@@ -118,7 +125,7 @@ public actor PatchRewriteService {
         let quote = authorization.quote
         guard authorization.approved, quote.requestID == input.id, quote.connector == connector.id, quote.model == model,
               quote.fingerprint == (try fingerprint(input, connector: connector.id, model: model, prompt: rendered.promptSHA256)),
-              prepared[quote.id] == quote else { throw VoiceLabError.consentRequired }
+              prepared[quote.id] == quote, let date = preparedAt[quote.id], now() < date.addingTimeInterval(300) else { throw VoiceLabError.consentRequired }
         let document = rendered.document
         let catalog = try LLMCatalog(shared: shared)
         guard case .ready = await connector.status() else { throw LLMError.unavailable(reason: "The selected connector is not ready.") }
@@ -139,6 +146,7 @@ public actor PatchRewriteService {
                                  language: input.language, tag: "patch-rewrite")
         try Task.checkCancellation()
         guard prepared.removeValue(forKey: quote.id) != nil else { throw VoiceLabError.consentRequired }
+        preparedAt.removeValue(forKey: quote.id)
         preparedOrder.removeAll { $0 == quote.id }
         let completion: RawCompletion
         do { completion = try await connector.send(request, model: model) }

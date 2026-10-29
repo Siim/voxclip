@@ -16,7 +16,7 @@ package enum VoiceLabFingerprint {
 }
 
 /// Values passed between the Voice Lab UI, Core services and future media integration.
-public enum VoiceLabOperation: String, Sendable, Codable { case createClone, deleteClone, textToSpeech, voiceChange }
+public enum VoiceLabOperation: String, Sendable, Codable { case createClone, deleteClone, textToSpeech, voiceChange, speechToText }
 public enum VoiceLabLanguageMode: Sendable, Equatable {
     case explicit(String)
     case autoDetected(expected: String)
@@ -38,12 +38,16 @@ public struct VoiceLabQuote: Sendable, Equatable {
     public let region: ElevenLabsRegion
     public let endpoint: String
     public let languageMode: VoiceLabLanguageMode?
+    public let preparedAt: Date
+    public let modelID: String?
     package let fingerprint: String
     package let guardAudioHash: String?
     package init(id: UUID, operation: VoiceLabOperation, requestID: UUID, estimate: CostEstimate, region: ElevenLabsRegion,
-         endpoint: String, languageMode: VoiceLabLanguageMode?, fingerprint: String, guardAudioHash: String? = nil) {
+         endpoint: String, languageMode: VoiceLabLanguageMode?, fingerprint: String, guardAudioHash: String? = nil,
+         preparedAt: Date = Date(), modelID: String? = nil) {
         self.id = id; self.operation = operation; self.requestID = requestID; self.estimate = estimate; self.region = region
         self.endpoint = endpoint; self.languageMode = languageMode; self.fingerprint = fingerprint; self.guardAudioHash = guardAudioHash
+        self.preparedAt = preparedAt; self.modelID = modelID
     }
 }
 
