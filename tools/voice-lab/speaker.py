@@ -8,7 +8,7 @@ import sys
 import wave
 
 import numpy as np
-from calibration import choose_threshold, rates, conditions_pass, FAR_LIMIT, OWN_LIMIT, MARGIN_FLOOR
+from calibration import choose_threshold, candidate_threshold, calibration_percentile, rates, conditions_pass, FAR_LIMIT, OWN_LIMIT, MARGIN_FLOOR, PERCENTILE, PERCENTILE_METHOD, ROUNDING_INCREMENT, MARGIN_POLICY
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 CATALOG = ROOT / "shared/catalog/voice-lab-models.json"
@@ -136,7 +136,7 @@ def calibrate(args):
     impostor = [pair[3] for pair in fitting if not pair[2]]
     own = [pair[3] for pair in fitting if pair[2]]
     chosen, curve = choose_threshold(impostor, own)
-    candidate = max(0, max(impostor) + MARGIN_FLOOR)
+    candidate = candidate_threshold(impostor)
     conditions = []
     for corpus in corpora:
         for rate in [48_000, 44_100]:
@@ -151,7 +151,7 @@ def calibrate(args):
     all_impostor = [pair[3] for pair in pairs if not pair[2]]
     all_own = [pair[3] for pair in pairs if pair[2]]
     all_far, all_passed = rates(all_impostor, all_own, candidate)
-    margin = {"policy": "clean-max-plus-margin-production-v1", "rule": "maximum clean-calibration impostor score + max(0.002, measured cross-runtime drift); no nextafter boundary. Freeze before disjoint validation. Publish only if every corpus/rate has FAR <= 0.005 and same-speaker pass >= 0.95.", "absoluteFloor": MARGIN_FLOOR, "crossRuntimeDrift": 0.0, "driftBasis": "Not applicable: all embeddings and cosine scores use the production Swift helper and official ONNX Runtime 1.19.2 CPU; no Python scoring path. The 0.002 floor remains in force.", "maximumCalibrationImpostorScore": max(impostor), "candidateThreshold": candidate, "farLimit": FAR_LIMIT, "sameSpeakerMinimum": OWN_LIMIT}
+    margin = {"policy": MARGIN_POLICY, "rule": "99.9th percentile of pooled dev-clean and test-clean impostor scores at both rates (linear interpolation at (n-1)*0.999) + max(0.002, measured cross-runtime drift), rounded up to 0.01 using decimal ceiling. Freeze before disjoint validation. Publish only if every corpus/rate has FAR <= 0.005 and same-speaker pass >= 0.95.", "percentileProbability": PERCENTILE, "percentileMethod": PERCENTILE_METHOD, "percentileCalibrationImpostorScore": calibration_percentile(impostor), "roundingIncrement": ROUNDING_INCREMENT, "absoluteFloor": MARGIN_FLOOR, "crossRuntimeDrift": 0.0, "driftBasis": "Not applicable: all embeddings and cosine scores use the production Swift helper and official ONNX Runtime 1.19.2 CPU; no Python scoring path. The 0.002 floor remains in force.", "maximumCalibrationImpostorScore": max(impostor), "candidateThreshold": candidate, "farLimit": FAR_LIMIT, "sameSpeakerMinimum": OWN_LIMIT}
     report = {
         "schema": "voxclip-speaker-calibration/2", "date": args.date, "model": entry["id"],
         "modelSha256": digest(args.model), "vadSha256": digest(args.vad), "preprocessing": VERSION,

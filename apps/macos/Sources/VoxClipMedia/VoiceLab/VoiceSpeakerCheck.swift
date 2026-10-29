@@ -3,25 +3,26 @@ import VoxClipCore
 
 public final class VoiceSpeakerCheck: Sendable {
     private let production: ONNXSpeakerEmbedder?
+    private let calibratedLanguage: String?
     public let threshold: Double?
     #if DEBUG
     private let testing: (any SpeakerEmbedder)?
     #endif
     public init() {
-        production = nil; threshold = nil
+        production = nil; threshold = nil; calibratedLanguage = nil
         #if DEBUG
         testing = nil
         #endif
     }
-    init(verifiedEmbedder: ONNXSpeakerEmbedder, calibratedThreshold: Double) {
-        production = verifiedEmbedder; threshold = calibratedThreshold
+    init(verifiedEmbedder: ONNXSpeakerEmbedder, calibratedThreshold: Double, language: String) {
+        production = verifiedEmbedder; threshold = calibratedThreshold; calibratedLanguage = language
         #if DEBUG
         testing = nil
         #endif
     }
     #if DEBUG
-    @_spi(Testing) public init(embedder: (any SpeakerEmbedder)?, calibratedThreshold: Double? = nil) {
-        production = nil; testing = embedder; threshold = calibratedThreshold
+    @_spi(Testing) public init(embedder: (any SpeakerEmbedder)?, calibratedThreshold: Double? = nil, language: String? = nil) {
+        production = nil; testing = embedder; threshold = calibratedThreshold; calibratedLanguage = language
     }
     #endif
     public var embedder: (any SpeakerEmbedder)? {
@@ -32,6 +33,7 @@ public final class VoiceSpeakerCheck: Sendable {
         #endif
     }
     public var available: Bool { embedder != nil && threshold.map { $0.isFinite && (0...1).contains($0) } == true }
+    func supports(language: String) -> Bool { available && (calibratedLanguage == nil || calibratedLanguage == language) }
     public func embedding(_ pcm16k: [Float]) async throws -> [Float] {
         guard available, let embedder else { throw VoiceConsentError.speakerUnavailable }
         return try await SpeakerAudio.embedding(pcm16k, using: embedder)
@@ -49,7 +51,7 @@ public actor VoiceUseGuard {
         guard !contentKey.isEmpty else { throw VoiceLabError.invalidInput }
         let record = try await store.load(recordID)
         try await store.validateUse(record)
-        guard check.available, check.embedder?.modelID == record.speaker.model, check.threshold == record.speaker.threshold,
+        guard check.supports(language: record.statement.language), check.embedder?.modelID == record.speaker.model, check.threshold == record.speaker.threshold,
               let owner = VoiceConsentRecord.decodeEmbedding(record.speaker.embedding) else { throw VoiceConsentError.speakerUnavailable }
         let audioHash = speech16k.withUnsafeBytes { VoiceLabFingerprint.bytes(Data($0)) }
         let key = VoiceLabFingerprint.fields([contentKey, audioHash, String(voiceChanger), recordID, record.speaker.embedding, record.statement.audioSha256])

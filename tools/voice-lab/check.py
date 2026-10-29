@@ -3,7 +3,7 @@ import json
 import math
 import pathlib
 import wave
-from calibration import choose_threshold, conditions_pass, rates, MARGIN_FLOOR
+from calibration import choose_threshold, candidate_threshold, calibration_percentile, conditions_pass, rates, MARGIN_FLOOR, PERCENTILE, PERCENTILE_METHOD, ROUNDING_INCREMENT, MARGIN_POLICY
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 FIXTURES = ROOT / "shared/fixtures/voice-lab/speaker"
@@ -20,6 +20,9 @@ def check():
         assert document["vadSha256"] == files["vad"]["sha256"]
         assert document["preprocessing"] == catalog["preprocessing"]
     assert report["threshold"] == catalog["threshold"]
+    assert catalog["calibration"]["date"] == report["date"]
+    assert catalog["calibration"]["preprocessing"] == report["preprocessing"]
+    assert [item["language"] for item in catalog["calibration"]["languages"]] == ["en"]
     for clip in vectors["clips"]:
         path = FIXTURES / (clip["id"] + ".wav")
         assert hashlib.sha256(path.read_bytes()).hexdigest() == clip["sha256"]
@@ -71,8 +74,13 @@ def check():
     same = [pair[3] for pair in fitting if pair[2]]
     chosen, curve = choose_threshold(different, same, margin["crossRuntimeDrift"])
     assert margin["maximumCalibrationImpostorScore"] == max(different)
+    assert margin["policy"] == MARGIN_POLICY
+    assert margin["percentileProbability"] == PERCENTILE
+    assert margin["percentileMethod"] == PERCENTILE_METHOD
+    assert margin["percentileCalibrationImpostorScore"] == calibration_percentile(different)
+    assert margin["roundingIncrement"] == ROUNDING_INCREMENT
     assert margin["absoluteFloor"] == MARGIN_FLOOR
-    assert threshold == max(0, max(different) + max(MARGIN_FLOOR, margin["crossRuntimeDrift"]))
+    assert threshold == candidate_threshold(different, margin["crossRuntimeDrift"])
     assert report["curve"] == curve
     assert report["validationCurve"] == [[point[0], *rates(impostor, own, point[0])] for point in curve]
     far, rate = rates(impostor, own, threshold)

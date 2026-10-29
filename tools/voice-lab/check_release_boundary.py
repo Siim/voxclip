@@ -30,8 +30,8 @@ struct Fake: SpeakerEmbedder {
 """
     probes = {
         "debug-injection": "let check = VoiceSpeakerCheck(embedder: Fake(), calibratedThreshold: 0)",
-        "package-injection": "let check = VoiceSpeakerCheck(verifiedEmbedder: Fake(), calibratedThreshold: 0)",
-        "arbitrary-threshold": "func bypass(_ model: ONNXSpeakerEmbedder) { _ = VoiceSpeakerCheck(verifiedEmbedder: model, calibratedThreshold: 0) }",
+        "package-injection": 'let check = VoiceSpeakerCheck(verifiedEmbedder: Fake(), calibratedThreshold: 0, language: "en")',
+        "arbitrary-threshold": 'func bypass(_ model: ONNXSpeakerEmbedder) { _ = VoiceSpeakerCheck(verifiedEmbedder: model, calibratedThreshold: 0, language: "en") }',
         "capability-construction": "func bypass(_ quote: VoiceLabQuote) { _ = VoiceOperationCapability(quote: quote, validate: {}) }",
         "policy-capability": "func bypass(_ policy: OwnVoicePolicy, _ quote: VoiceLabQuote) { _ = policy.authorized(for: quote, validate: {}) }",
     }

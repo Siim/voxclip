@@ -71,6 +71,7 @@ public actor VoiceEnrollment {
         guard !busy else { throw VoiceLabError.invalidInput }
         guard speaker.available, let threshold = speaker.threshold else { throw VoiceConsentError.speakerUnavailable }
         guard let verification = verified[recordID] else { throw VoiceLabError.consentRequired }
+        guard speaker.supports(language: verification.statement.language) else { throw VoiceConsentError.speakerUnavailable }
         guard samples.count <= 24, !samples.isEmpty,
               samples.allSatisfy({ $0.seconds.isFinite && (5...30).contains($0.seconds) && ["readAloud", "project"].contains($0.source) && $0.snrDb.isFinite }),
               (60...120).contains(samples.reduce(0) { $0 + $1.seconds }) else { throw VoiceLabError.invalidInput }
@@ -115,6 +116,7 @@ public actor VoiceEnrollment {
         guard enabled, approved else { throw VoiceLabError.consentRequired }
         guard speaker.available, let threshold = speaker.threshold, let embedder = speaker.embedder else { throw VoiceConsentError.speakerUnavailable }
         guard !busy, let draft = pending.removeValue(forKey: quote.id) else { throw VoiceLabError.invalidInput }
+        guard speaker.supports(language: draft.verified.statement.language) else { throw VoiceConsentError.speakerUnavailable }
         busy = true; defer { busy = false }
         try await embedder.validateAvailability()
         guard VoiceLabFingerprint.bytes(try await store.statement(recordID: draft.policy.recordID)) == draft.verified.hash else { throw VoiceConsentError.invalidRecord }

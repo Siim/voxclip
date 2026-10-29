@@ -1,9 +1,28 @@
 import math
 import bisect
+from decimal import Decimal, ROUND_CEILING
 
 FAR_LIMIT = 0.005
 OWN_LIMIT = 0.95
 MARGIN_FLOOR = 0.002
+PERCENTILE = 0.999
+PERCENTILE_METHOD = "linear-(n-1)"
+ROUNDING_INCREMENT = 0.01
+MARGIN_POLICY = "clean-p999-plus-margin-ceil-cent-production-v1"
+
+
+def calibration_percentile(impostor):
+    ordered = sorted(impostor)
+    position = (len(ordered) - 1) * PERCENTILE
+    lower = math.floor(position)
+    upper = math.ceil(position)
+    return ordered[lower] + (ordered[upper] - ordered[lower]) * (position - lower)
+
+
+def candidate_threshold(impostor, runtime_drift=0):
+    value = Decimal(str(calibration_percentile(impostor))) + Decimal(str(max(MARGIN_FLOOR, runtime_drift)))
+    increment = Decimal(str(ROUNDING_INCREMENT))
+    return max(0.0, float((value / increment).to_integral_value(rounding=ROUND_CEILING) * increment))
 
 
 def conditions_pass(conditions):
@@ -26,8 +45,7 @@ def choose_threshold(impostor, own, runtime_drift=0):
         raise ValueError("Invalid cosine score")
     if not math.isfinite(runtime_drift) or runtime_drift < 0:
         raise ValueError("Invalid runtime drift")
-    margin = max(MARGIN_FLOOR, runtime_drift)
-    threshold = max(0, max(impostor) + margin)
+    threshold = candidate_threshold(impostor, runtime_drift)
     candidates = sorted({0.0, 1.0, threshold, *[index / 1000 for index in range(1001)]})
     curve = [[candidate, *rates(impostor, own, candidate)] for candidate in candidates]
     point = [threshold, *rates(impostor, own, threshold)]

@@ -11,14 +11,18 @@ Source and attribution: LibriSpeech (c) 2014 Vassil Panayotov, CC BY 4.0, `https
 
 `calibration-en.json` records 438 distinct six-second source utterances from 146 speakers, each rendered at 48 kHz and 44.1 kHz (876 renders). Dev-clean and test-clean supply 80 calibration speakers / 240 independent source utterances. Dev-other and test-other supply 66 additional, speaker-disjoint validation speakers / 198 source utterances. Speakers never cross corpus splits. Pairs and sample-rate versions are correlated, **not independent trials**. No pair compares rate versions of the same source utterance. No consent or provider account is represented by these corpus clips.
 
-| Corpus | Role | Speakers | Source clips | Impostor / same pairs per rate | FAR | Same-speaker pass |
-|---|---|---:|---:|---:|---:|---:|
-| dev-clean | calibration | 40 | 120 | 7,020 / 120 | 0% | 118/120 (98.3333%) |
-| test-clean | calibration | 40 | 120 | 7,020 / 120 | 0% | 118/120 (98.3333%) |
-| dev-other | disjoint validation | 33 | 99 | 4,752 / 99 | 0% | 99/99 (100%) |
-| test-other | disjoint validation | 33 | 99 | 4,752 / 99 | 0% | 93/99 (93.9394%) |
+| Corpus | Input rate | Speakers | Source clips | False accepts / impostor pairs | FAR | Same-speaker passes / pairs |
+|---|---:|---:|---:|---:|---:|---:|
+| dev-clean | 48,000 Hz | 40 | 120 | 5 / 7,020 | 0.071225% | 120 / 120 (100%) |
+| dev-clean | 44,100 Hz | 40 | 120 | 5 / 7,020 | 0.071225% | 120 / 120 (100%) |
+| test-clean | 48,000 Hz | 40 | 120 | 8 / 7,020 | 0.113960% | 120 / 120 (100%) |
+| test-clean | 44,100 Hz | 40 | 120 | 8 / 7,020 | 0.113960% | 120 / 120 (100%) |
+| dev-other | 48,000 Hz | 33 | 99 | 0 / 4,752 | 0% | 99 / 99 (100%) |
+| dev-other | 44,100 Hz | 33 | 99 | 0 / 4,752 | 0% | 99 / 99 (100%) |
+| test-other | 48,000 Hz | 33 | 99 | 2 / 4,752 | 0.042088% | 98 / 99 (98.989899%) |
+| test-other | 44,100 Hz | 33 | 99 | 2 / 4,752 | 0.042088% | 98 / 99 (98.989899%) |
 
-These results apply at both rates. Across all conditions there are 47,088 impostor and 876 same-speaker pairs. The frozen candidate is 0.5500655012824021: the maximum clean impostor score 0.5480655012824021 plus a 0.002 absolute margin. All scores use the production Swift pipeline, so there is no separate Python runtime drift to measure. The fixed margin still applies. Pooled FAR is zero and same-speaker pass is 856/876 (97.7169%), but test-other fails the predeclared 95% per-condition gate. **No threshold is published; cloning stays unavailable.** It is not lowered after seeing the disjoint validation results.
+Across all conditions there are 47,088 impostor and 876 same-speaker pairs. The 2026-10-29 end-to-end production rerun publishes **tau = 0.45**: the 99.9th percentile of pooled clean impostors at both rates (0.44653703263815736, linear interpolation at `(n-1)*0.999`) plus `max(0.002, measured cross-runtime drift)`, rounded up to 0.01 with decimal ceiling. This replaces the earlier maximum-impostor rule. All scores use the production Swift pipeline, so there is no separate Python runtime drift to measure (recorded as 0); the fixed margin still applies. Freeze before disjoint validation, without lowering to pass a harder condition. Every corpus/rate meets the predeclared FAR ≤ 0.5% and same-speaker pass ≥ 95% gates. Pooled results are 30/47,088 false accepts (0.063710%) and 874/876 same-speaker passes (99.771689%). Only English with installed, hash-verified assets becomes available; Estonian remains unavailable.
 
 The report includes the 0.001-grid clean and overall score curves plus the exact candidate, margin rule, all condition counts/results, selection policy, CLI/model/VAD/input hashes and decoder version. `calibration-pairs.json` stores all 47,964 complete within-condition pairs as `[leftID, rightID, sameSpeaker, productionScore, corpusRate]`; rate-suffixed IDs identify the rendered inputs. Every pair uses distinct source utterances. These are read-speech calibration/validation data, not held-out field accuracy, anti-spoof guarantees or microphone acceptance.
 

@@ -31,21 +31,25 @@
       "license": "CC-BY-4.0 (weights); MIT (Silero VAD)",
       "licenseUrl": "https://github.com/wenet-e2e/wespeaker/blob/master/docs/pretrained.md#model-license",
       "attribution": "WeSpeaker ResNet34-LM, trained on VoxCeleb2 Dev by the WeSpeaker project (CC BY 4.0). Wang et al., WeSpeaker: A research and production oriented speaker embedding learning toolkit, ICASSP 2023. Silero VAD v6.2.0 by the Silero Team; GGML conversion by ggml-org (MIT). No weight modifications.",
-      "threshold": null,
+      "threshold": 0.45,
       "calibration": {
         "date": "2026-10-29",
         "preprocessing": "sinc32-blackman94-silero-6.2.0-kaldi80-v2",
         "modelSha256": "7bb2f06e9df17cdf1ef14ee8a15ab08ed28e8d0ef5054ee135741560df2ec068",
         "vadSha256": "2aa269b785eeb53a82983a20501ddf7c1d9c48e33ab63a41391ac6c9f7fb6987",
-        "outcome": "withheld",
+        "outcome": "passed",
         "margin": {
-          "policy": "clean-max-plus-margin-production-v1",
-          "rule": "maximum clean-calibration impostor score + max(0.002, measured cross-runtime drift); no nextafter boundary. Freeze before disjoint validation. Publish only if every corpus/rate has FAR <= 0.005 and same-speaker pass >= 0.95.",
+          "policy": "clean-p999-plus-margin-ceil-cent-production-v1",
+          "rule": "99.9th percentile of pooled dev-clean and test-clean impostor scores at both rates (linear interpolation at (n-1)*0.999) + max(0.002, measured cross-runtime drift), rounded up to 0.01 using decimal ceiling. Freeze before disjoint validation. Publish only if every corpus/rate has FAR <= 0.005 and same-speaker pass >= 0.95.",
+          "percentileProbability": 0.999,
+          "percentileMethod": "linear-(n-1)",
+          "percentileCalibrationImpostorScore": 0.44653703263815736,
+          "roundingIncrement": 0.01,
           "absoluteFloor": 0.002,
           "crossRuntimeDrift": 0.0,
           "driftBasis": "Not applicable: all embeddings and cosine scores use the production Swift helper and official ONNX Runtime 1.19.2 CPU; no Python scoring path. The 0.002 floor remains in force.",
           "maximumCalibrationImpostorScore": 0.5480655012824021,
-          "candidateThreshold": 0.5500655012824021,
+          "candidateThreshold": 0.45,
           "farLimit": 0.005,
           "sameSpeakerMinimum": 0.95
         },
@@ -59,8 +63,8 @@
             "audioRenders": 876,
             "impostorPairs": 47088,
             "sameSpeakerPairs": 876,
-            "falseAcceptRate": 0.0,
-            "sameSpeakerPassRate": 0.9771689497716894,
+            "falseAcceptRate": 0.0006371049949031601,
+            "sameSpeakerPassRate": 0.997716894977169,
             "conditions": [
               {
                 "corpus": "dev-clean",
@@ -70,10 +74,10 @@
                 "independentClips": 120,
                 "impostorPairs": 7020,
                 "sameSpeakerPairs": 120,
-                "falseAccepts": 0,
-                "sameSpeakerPasses": 118,
-                "falseAcceptRate": 0.0,
-                "sameSpeakerPassRate": 0.9833333333333333,
+                "falseAccepts": 5,
+                "sameSpeakerPasses": 120,
+                "falseAcceptRate": 0.0007122507122507123,
+                "sameSpeakerPassRate": 1.0,
                 "maximumImpostorScore": 0.5478437459602904
               },
               {
@@ -84,10 +88,10 @@
                 "independentClips": 120,
                 "impostorPairs": 7020,
                 "sameSpeakerPairs": 120,
-                "falseAccepts": 0,
-                "sameSpeakerPasses": 118,
-                "falseAcceptRate": 0.0,
-                "sameSpeakerPassRate": 0.9833333333333333,
+                "falseAccepts": 5,
+                "sameSpeakerPasses": 120,
+                "falseAcceptRate": 0.0007122507122507123,
+                "sameSpeakerPassRate": 1.0,
                 "maximumImpostorScore": 0.5480655012824021
               },
               {
@@ -98,10 +102,10 @@
                 "independentClips": 120,
                 "impostorPairs": 7020,
                 "sameSpeakerPairs": 120,
-                "falseAccepts": 0,
-                "sameSpeakerPasses": 118,
-                "falseAcceptRate": 0.0,
-                "sameSpeakerPassRate": 0.9833333333333333,
+                "falseAccepts": 8,
+                "sameSpeakerPasses": 120,
+                "falseAcceptRate": 0.0011396011396011395,
+                "sameSpeakerPassRate": 1.0,
                 "maximumImpostorScore": 0.5186780540476644
               },
               {
@@ -112,10 +116,10 @@
                 "independentClips": 120,
                 "impostorPairs": 7020,
                 "sameSpeakerPairs": 120,
-                "falseAccepts": 0,
-                "sameSpeakerPasses": 118,
-                "falseAcceptRate": 0.0,
-                "sameSpeakerPassRate": 0.9833333333333333,
+                "falseAccepts": 8,
+                "sameSpeakerPasses": 120,
+                "falseAcceptRate": 0.0011396011396011395,
+                "sameSpeakerPassRate": 1.0,
                 "maximumImpostorScore": 0.5177630234593975
               },
               {
@@ -154,10 +158,10 @@
                 "independentClips": 99,
                 "impostorPairs": 4752,
                 "sameSpeakerPairs": 99,
-                "falseAccepts": 0,
-                "sameSpeakerPasses": 93,
-                "falseAcceptRate": 0.0,
-                "sameSpeakerPassRate": 0.9393939393939394,
+                "falseAccepts": 2,
+                "sameSpeakerPasses": 98,
+                "falseAcceptRate": 0.00042087542087542086,
+                "sameSpeakerPassRate": 0.98989898989899,
                 "maximumImpostorScore": 0.5052433144406846
               },
               {
@@ -168,10 +172,10 @@
                 "independentClips": 99,
                 "impostorPairs": 4752,
                 "sameSpeakerPairs": 99,
-                "falseAccepts": 0,
-                "sameSpeakerPasses": 93,
-                "falseAcceptRate": 0.0,
-                "sameSpeakerPassRate": 0.9393939393939394,
+                "falseAccepts": 2,
+                "sameSpeakerPasses": 98,
+                "falseAcceptRate": 0.00042087542087542086,
+                "sameSpeakerPassRate": 0.98989898989899,
                 "maximumImpostorScore": 0.4975725062146207
               }
             ]

@@ -1,6 +1,6 @@
 import math
 import unittest
-from calibration import choose_threshold, conditions_pass, MARGIN_FLOOR
+from calibration import choose_threshold, conditions_pass, calibration_percentile
 from check import check
 
 
@@ -18,7 +18,7 @@ class SpeakerCalibrationTests(unittest.TestCase):
     def test_ties_are_not_false_passes(self):
         chosen, curve = choose_threshold([0.8] * 200, [0.9] * 50)
         self.assertGreater(chosen[0], 0.8)
-        self.assertEqual(chosen[0], 0.8 + MARGIN_FLOOR)
+        self.assertEqual(chosen[0], 0.81)
         self.assertEqual(chosen[1:], [0, 1])
         self.assertTrue(curve)
 
@@ -28,14 +28,32 @@ class SpeakerCalibrationTests(unittest.TestCase):
         self.assertTrue(curve)
 
     def test_accepts_boundary_rates(self):
-        chosen, _ = choose_threshold([0.2] * 198 + [0.8] * 2, [0.9] * 48 + [0.1] * 2)
-        self.assertLessEqual(chosen[1], 0.005)
-        self.assertGreaterEqual(chosen[2], 0.95)
+        chosen, _ = choose_threshold([0.2] * 199 + [0.8], [0.9] * 95 + [0.1] * 5)
+        self.assertEqual(chosen[1:], [0.005, 0.95])
 
-    def test_measured_drift_is_added_above_the_maximum_impostor(self):
+    def test_measured_drift_is_added_above_the_percentile(self):
         chosen, _ = choose_threshold([0.8] * 200, [0.9] * 50, runtime_drift=0.02)
-        self.assertEqual(chosen[0], 0.8 + 0.02)
+        self.assertEqual(chosen[0], 0.82)
         self.assertEqual(chosen[1], 0)
+
+    def test_percentile_is_linear_and_not_the_maximum(self):
+        impostor = [0.2] * 999 + [0.8]
+        self.assertAlmostEqual(calibration_percentile(impostor), 0.2006)
+        chosen, _ = choose_threshold(impostor, [0.9] * 50)
+        self.assertEqual(chosen, [0.21, 0.001, 1])
+
+    def test_rounds_up_without_advancing_an_exact_decimal_boundary(self):
+        for score, drift, expected in [(0.438, 0, 0.44), (0.4380000001, 0, 0.45),
+                                       (0.438, 0.001, 0.44), (0.438, 0.012, 0.45)]:
+            chosen, _ = choose_threshold([score] * 200, [0.9] * 50, drift)
+            self.assertEqual(chosen[0], expected)
+
+    def test_disjoint_failure_does_not_refit_the_clean_candidate(self):
+        chosen, _ = choose_threshold([0.438] * 200, [0.9] * 50)
+        condition = {"impostorPairs": 200, "sameSpeakerPairs": 50,
+                     "falseAcceptRate": 0, "sameSpeakerPassRate": 0.94}
+        self.assertFalse(conditions_pass([condition]))
+        self.assertEqual(chosen[0], 0.44)
 
     def test_rejects_invalid_drift_and_overflow_threshold(self):
         for drift in [-1, math.nan, math.inf]:

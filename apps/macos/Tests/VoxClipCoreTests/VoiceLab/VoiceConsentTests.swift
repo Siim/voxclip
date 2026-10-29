@@ -189,6 +189,19 @@ struct VoiceConsentTests {
         await #expect(throws: VoiceConsentError.speakerUnavailable) { try await service.prepare(recordID: id, displayName: "Example", samples: training(), enabled: true) }
         #expect(calls.value.withLock { $0.isEmpty })
     }
+    @Test func calibrationLanguageCannotBeReusedForAnotherLanguage() async throws {
+        let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let calls = ConsentRequestLog(); let store = storage(root)
+        let check = VoiceSpeakerCheck(embedder: Embedder(output: [1, 0]), calibratedThreshold: 0.8, language: "et")
+        let service = enroll(store: store, client: client(calls), check: check, raw: try await raw())
+        let record = try fixtureRecord(wav: wav)
+        try await service.verify(recordID: record.id, statement: statement(), wav: wav, attestations: attestations, approved: true, enabled: true)
+        await #expect(throws: VoiceConsentError.speakerUnavailable) { try await service.prepare(recordID: record.id, displayName: "Example", samples: training(), enabled: true) }
+        try await store.save(record)
+        let use = VoiceUseGuard(store: store, check: check)
+        await #expect(throws: VoiceConsentError.speakerUnavailable) { try await use.authorize(contentKey: "content", recordID: record.id, speech16k: [Float](repeating: 0.1, count: 160_000), approved: true) }
+        #expect(calls.value.withLock { $0.isEmpty })
+    }
     @Test func mismatchedSpeakerNeverUploadsSamples() async throws {
         let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
         let calls = ConsentRequestLog(); let store = storage(root); let client = client(calls)

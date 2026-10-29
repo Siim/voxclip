@@ -26,10 +26,23 @@ public struct SpeakerModel: Codable, Sendable {
             public let policy: String
             public let absoluteFloor: Double
             public let crossRuntimeDrift: Double
+            public let percentileProbability: Double
+            public let percentileMethod: String
+            public let percentileCalibrationImpostorScore: Double
+            public let roundingIncrement: Double
             public let maximumCalibrationImpostorScore: Double
             public let candidateThreshold: Double
             public let farLimit: Double
             public let sameSpeakerMinimum: Double
+            fileprivate var roundedThreshold: Double? {
+                guard percentileCalibrationImpostorScore.isFinite, absoluteFloor.isFinite, crossRuntimeDrift.isFinite,
+                      let percentile = Decimal(string: String(percentileCalibrationImpostorScore)),
+                      let margin = Decimal(string: String(max(absoluteFloor, crossRuntimeDrift))) else { return nil }
+                var value = max(0, percentile + margin)
+                var rounded = Decimal()
+                NSDecimalRound(&rounded, &value, 2, .up)
+                return Double(NSDecimalNumber(decimal: rounded).stringValue)
+            }
         }
         public struct Language: Codable, Sendable {
             public let language: String
@@ -57,17 +70,21 @@ public struct SpeakerModel: Codable, Sendable {
         }
     }
     public func calibratedThreshold(language: String = "en") -> Double? {
-        guard let threshold, threshold.isFinite, (0...1).contains(threshold),
+        guard language == "en", let threshold, threshold.isFinite, (0...1).contains(threshold),
               preprocessing == SpeakerAudio.version, let calibration, calibration.preprocessing == preprocessing,
               calibration.modelSha256 == files.first(where: { $0.role == "speaker" })?.sha256,
               calibration.vadSha256 == files.first(where: { $0.role == "vad" })?.sha256,
               calibration.outcome == "passed", let margin = calibration.margin,
-              margin.policy == "clean-max-plus-margin-production-v1",
+              margin.policy == "clean-p999-plus-margin-ceil-cent-production-v1",
+              margin.percentileProbability == 0.999, margin.percentileMethod == "linear-(n-1)",
+              margin.roundingIncrement == 0.01,
               margin.absoluteFloor.isFinite, margin.absoluteFloor >= 0.002,
               margin.crossRuntimeDrift.isFinite, margin.crossRuntimeDrift >= 0,
-              margin.maximumCalibrationImpostorScore.isFinite,
+              margin.maximumCalibrationImpostorScore.isFinite, (-1...1).contains(margin.maximumCalibrationImpostorScore),
+              margin.percentileCalibrationImpostorScore.isFinite,
+              (-1...margin.maximumCalibrationImpostorScore).contains(margin.percentileCalibrationImpostorScore),
               threshold == margin.candidateThreshold,
-              threshold >= margin.maximumCalibrationImpostorScore + max(margin.absoluteFloor, margin.crossRuntimeDrift),
+              threshold == margin.roundedThreshold,
               margin.farLimit.isFinite, (0...0.005).contains(margin.farLimit),
               margin.sameSpeakerMinimum.isFinite, (0.95...1).contains(margin.sameSpeakerMinimum),
               let result = calibration.languages.first(where: { $0.language == language }),

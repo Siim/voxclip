@@ -12,10 +12,11 @@ struct SpeakerModelTests {
         let model = try SpeakerModelCatalog(shared: shared).entry
         let directory = URL(fileURLWithPath: try #require(Self.modelDirectory))
         let embedder = try ONNXSpeakerEmbedder(model: model, directory: directory)
-        if model.calibratedThreshold() == nil {
-            do { _ = try await embedder.speakerCheck(); Issue.record("An uncalibrated model issued a speaker check") }
-            catch { #expect(error as? VoiceConsentError == .speakerUnavailable) }
-        }
+        let check = try await embedder.speakerCheck(language: "en")
+        #expect(check.threshold == 0.45)
+        #expect(check.supports(language: "en"))
+        #expect(!check.supports(language: "et"))
+        await #expect(throws: VoiceConsentError.speakerUnavailable) { try await embedder.speakerCheck(language: "et") }
         struct Vectors: Decodable {
             struct Clip: Decodable { let id: String; let sha256: String; let ranges: [[Int]]; let embedding: [Float] }
             let clips: [Clip]
@@ -54,8 +55,8 @@ struct SpeakerModelTests {
         var object = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(trusted)) as? [String: Any])
         var calibration = try #require(object["calibration"] as? [String: Any])
         var margin = try #require(calibration["margin"] as? [String: Any])
-        let maximum = try #require(margin["maximumCalibrationImpostorScore"] as? Double)
-        object["threshold"] = maximum + 0.002; margin["candidateThreshold"] = maximum + 0.002
+        margin["percentileCalibrationImpostorScore"] = 0.45
+        object["threshold"] = 0.46; margin["candidateThreshold"] = 0.46
         calibration["outcome"] = "passed"; calibration["margin"] = margin
         var languages = try #require(calibration["languages"] as? [[String: Any]])
         languages[0]["falseAcceptRate"] = 0.0; languages[0]["sameSpeakerPassRate"] = 1.0
@@ -63,10 +64,10 @@ struct SpeakerModelTests {
         for index in conditions.indices { conditions[index]["falseAcceptRate"] = 0.0; conditions[index]["sameSpeakerPassRate"] = 1.0 }
         languages[0]["conditions"] = conditions; calibration["languages"] = languages; object["calibration"] = calibration
         let supplied = try JSONDecoder().decode(SpeakerModel.self, from: JSONSerialization.data(withJSONObject: object))
-        #expect(supplied.calibratedThreshold() != nil)
+        #expect(supplied.calibratedThreshold() == 0.46)
         let directory = URL(fileURLWithPath: try #require(Self.modelDirectory))
         let runtime = try ONNXSpeakerEmbedder(model: supplied, directory: directory)
-        if let expected = trusted.calibratedThreshold() { #expect(try await runtime.speakerCheck().threshold == expected) }
-        else { await #expect(throws: VoiceConsentError.speakerUnavailable) { try await runtime.speakerCheck() } }
+        #expect(trusted.calibratedThreshold() == 0.45)
+        #expect(try await runtime.speakerCheck().threshold == 0.45)
     }
 }

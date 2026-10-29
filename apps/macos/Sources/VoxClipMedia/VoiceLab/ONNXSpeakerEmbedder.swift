@@ -31,7 +31,7 @@ public actor ONNXSpeakerEmbedder: SpeakerEmbedder {
               trusted.files.map(\.sha256) == model.files.map(\.sha256),
               let threshold = trusted.calibratedThreshold(language: language) else { throw VoiceConsentError.speakerUnavailable }
         _ = try model.verifiedFiles(at: directory)
-        return VoiceSpeakerCheck(verifiedEmbedder: self, calibratedThreshold: threshold)
+        return VoiceSpeakerCheck(verifiedEmbedder: self, calibratedThreshold: threshold, language: language)
     }
     public func embed(_ pcm16k: [Float]) async throws -> [Float] {
         guard pcm16k.count <= 240 * 16_000 else { throw VoiceConsentError.speakerMismatch }
