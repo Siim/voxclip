@@ -1063,6 +1063,8 @@ The model is stored **per connector**, so switching connector never keeps anothe
 
 A non-loopback base URL for Ollama or LM Studio is allowed. The Settings row then shows "Transcripts are sent to {host}". The URL must be `http` or `https`.
 
+On macOS, non-loopback Ollama and LM Studio servers require the same first-use request consent as cloud connectors. The consent and Find clips footnote name the receiving host, not an API key. Changing the host clears that connector's consent; changing only its port or path does not. Loopback means `localhost`, `127.0.0.0/8`, or `::1`. An unreadable host never qualifies as loopback.
+
 ---
 
 ## 9. Model lists

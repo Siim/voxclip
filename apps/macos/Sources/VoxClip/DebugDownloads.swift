@@ -26,6 +26,23 @@ actor RegressionModelDownloader: ModelDownloader {
     func release() { waiting?.resume(); waiting = nil }
 }
 
+actor RegressionAppleSpeech: Transcriber {
+    nonisolated let engine = TranscriptEngine.appleSpeech
+    private var installed: Set<String> = []
+    private(set) var prepared: [String] = []
+    nonisolated func capabilities(model: String?) -> TranscriberCapabilities { TranscriberCapabilities(timing: .runGrouped, verbatim: false, autoLanguage: false, onDevice: true) }
+    func supports(_ language: LanguageChoice, model: String?) -> Bool { language != .forced("et") }
+    func readiness(for plan: TranscriptionPlan) -> Readiness {
+        guard case .forced(let code) = plan.language, code != "et" else { return .unsupportedLanguage("et") }
+        return installed.contains(code) ? .ready : .needsSystemAssets(locale: code + "-US")
+    }
+    func prepare(for plan: TranscriptionPlan, progress: @escaping @Sendable (Double) -> Void) {
+        guard case .forced(let code) = plan.language else { return }
+        prepared.append(code); progress(0.5); installed.insert(code); progress(1)
+    }
+    func transcribe(_ request: TranscriptionRequest, progress: @escaping @Sendable (TranscriptionProgress) -> Void) throws -> RawTranscript { throw VoxClipError.cancelled }
+}
+
 @MainActor enum DebugDownloads {
     static func run(app: AppModel, directory: URL) async throws -> [DebugUISuite.Result] {
         let descriptor = try await app.modelLibrary.localModel(language: "et")
@@ -60,6 +77,21 @@ actor RegressionModelDownloader: ModelDownloader {
         await store.release(); await library.task?.value
         results.append(.init(name: "closing Local Models preserves the AppModel download task", passed: survived && library.installed?.contains(descriptor.id) == true))
         library.confirmation.onRequest = nil
+        let speech = RegressionAppleSpeech()
+        let speechOwner = AppModel(settingsStore: RegressionSettingsStore())
+        let assets = speechOwner.appleSpeechAssets
+        assets.engine = speech
+        await assets.check("auto"); let chooses = assets.state == .chooseLanguage
+        await assets.check("et"); let unsupported = assets.state == .unsupported
+        await assets.check("en")
+        let english = Locale.current.localizedString(forLanguageCode: "en") ?? "en"
+        let offered = assets.state == .needsDownload && assets.statusText == "Apple's \(english) speech model isn't on this Mac yet."
+        assets.download()
+        let downloading = assets.state == .downloading && assets.statusText == "Downloading Apple's \(english) speech model…"
+        await assets.task?.value
+        let prepared = await speech.prepared
+        results.append(.init(name: "Settings downloads Apple's speech model through the engine's asset flow", passed: chooses && unsupported && offered && downloading
+            && assets.state == .installed && prepared == ["en"] && assets.error == nil && speechOwner.appleSpeechAssets === assets))
         return results
     }
 }

@@ -66,6 +66,7 @@ extension AppModel {
                 Picker("Region", selection: app.stringBinding("transcription.elevenlabs.region", fallback: "default")) { Text("Default").tag("default"); Text("EU residency").tag("eu"); Text("US").tag("us"); Text("India").tag("in"); Text("Singapore").tag("sg") }
             }
             LocalModelRows(app: app)
+            AppleSpeechAssetRows(app: app)
             Section {
                 Text("Models download on first use and never ship inside the app. Each runs entirely on this Mac.")
                 Text(app.locations.models.path.replacingOccurrences(of: FileManager.default.homeDirectoryForCurrentUser.path, with: "~")).font(.caption).textSelection(.enabled)
@@ -145,8 +146,7 @@ extension AppModel {
         }.formStyle(.grouped)
     }
     private func localPrivacy(_ provider: ProviderChoice) -> String {
-        let base = app.string("llm.baseUrl.\(provider.id)", fallback: provider.baseUrl ?? "")
-        if let url = URL(string: base), let host = url.host, !["localhost", "127.0.0.1", "::1"].contains(host) { return "Transcripts are sent to \(host)." }
+        if let host = app.localServerHost(provider) { return "Transcripts are sent to \(host)." }
         return "Runs on this Mac. Nothing leaves it."
     }
 }

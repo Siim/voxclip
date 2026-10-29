@@ -776,7 +776,7 @@ fi
         self.assertTrue((app / "Contents/Resources/Assets.car").is_file())
         catalog = subprocess.run(["/usr/bin/xcrun", "assetutil", "--info", str(app / "Contents/Resources/Assets.car")], text=True, capture_output=True, check=True)
         names = {entry.get("Name") for entry in json.loads(catalog.stdout)}
-        self.assertTrue({"gobackward.3", "goforward.3"}.issubset(names), names)
+        self.assertFalse({"gobackward.3", "goforward.3"} & names, names)
         info = plistlib.loads((PACKAGE / "Sources/VoxClip/Info.plist").read_bytes())
         self.assertEqual(info["NSAccentColorName"], "AccentColor")
         missing = self.root / "Info.plist"
@@ -786,6 +786,12 @@ fi
         del info["NSAccentColorName"]
         missing.write_bytes(plistlib.dumps(info))
         self.assert_failed(self.run_function("compile_asset_catalog"), "Info.plist has no NSAccentColorName")
+
+    def test_asset_catalog_sources_hold_no_custom_symbols(self):
+        tracked = subprocess.run(["git", "-C", str(PACKAGE), "ls-files", "-z", "--", "Resources", "Sources"],
+                                 capture_output=True, check=True).stdout.decode().split("\0")
+        exported = [path for path in tracked if (".symbolset/" in path or path.endswith(".svg")) and (PACKAGE / path).is_file()]
+        self.assertEqual(exported, [])
 
     def test_framework_notice_gate_requires_known_copyright(self):
         app = self.root / "VoxClip.app"

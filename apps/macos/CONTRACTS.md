@@ -1,5 +1,13 @@
 # macOS implementation contracts
 
+### 2026-10-30 — sol-mac-polish — release gaps
+
+- Transport buttons use system arrows with a runtime 3 overlay; no Apple-derived symbol artwork is bundled or retained in the source tree. Asset-catalog release tests reject custom symbol files and the old compiled glyphs.
+- Shortcuts derive Rewrite visibility from the current entry policy. Release continues to omit it pending the beta-opt-in track; this is not a decision to exclude generation from 0.1.0.
+- Non-loopback Ollama and LM Studio hosts require first-request consent, name the destination in Settings and Find clips, revoke consent on host changes, and revalidate the host after asynchronous approval. Core address fixtures cover loopback, remote and malformed hosts; headless connector checks exercise sends and cancellation without real requests.
+- Settings → Transcription owns Apple Speech asset rows through AppModel, uses the Transcriber readiness/prepare path, shows progress/cancel/retry, and survives Settings closure. The transcription sheet links to the correct pane. Headless checks use a fake speech engine; actual Apple downloads and native Settings/VoiceOver are lead-owned checks.
+- The RewriteSession privacy-copy hunk is deliberately left to track/sol-mac-voicelab; it must consume AppModel.localServerHost rather than claiming a remote server runs on this Mac.
+
 ### 2026-10-29 — lead — Mac right-column layout merged
 
 - Squash-merged track/sol-mac-layout at f694d802 (Sol rounds 1–4 plus lead fixes; entry below). It fixes the user-reported right-column overflow: content fits the column at exactly its width from 300 to 560 points, with ViewThatFits fallbacks for the Frame row, viewer bar, Captions header, Fine Tune rows and the Rewrite header, and the gallery scrolls inside its own viewport.

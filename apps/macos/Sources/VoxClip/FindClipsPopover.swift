@@ -47,7 +47,7 @@ import VoxClipCore
                 .textFieldStyle(.roundedBorder).lineLimit(2...4)
                 .onSubmit(run)
                 .onChange(of: model.instruction) { _, value in if value.count > 500 { model.instruction = String(value.prefix(500)) } }
-            Text(connector?.group == "local" ? "Runs on this Mac. Nothing leaves it." : "Sends transcript text with word numbers. No audio or video.")
+            Text(Self.footnote(connector, serverHost: connector.flatMap { model.app.localServerHost($0) }))
                 .font(.caption).foregroundStyle(DesignValues.color("text.secondary"))
             HStack {
                 Spacer()
@@ -85,5 +85,10 @@ import VoxClipCore
         case .unavailable: "Unavailable"
         case nil: "Checking…"
         }
+    }
+
+    static func footnote(_ connector: ProviderChoice?, serverHost: String?) -> String {
+        if let serverHost { return "Sends transcript text with word numbers to \(serverHost). No audio or video." }
+        return connector?.group == "local" ? "Runs on this Mac. Nothing leaves it." : "Sends transcript text with word numbers. No audio or video."
     }
 }

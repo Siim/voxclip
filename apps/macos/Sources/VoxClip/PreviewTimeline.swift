@@ -133,17 +133,16 @@ func viewerStageSize(ratio: Double, innerWidth: CGFloat, columnHeight: CGFloat, 
     }
     private var transportButtons: some View {
         Group {
-            Button { model.transport("j") } label: { transportSymbol("gobackward.3", fallback: "gobackward").frame(width: 28, height: 28) }
+            Button { model.transport("j") } label: { transportSymbol("gobackward").frame(width: 28, height: 28) }
                 .help("Back 3 Seconds (J)").accessibilityLabel(EditorIconAction.back.name)
             Button { model.transport(" ") } label: { Image(systemName: model.isPlaying ? "pause.fill" : "play.fill").frame(width: 34, height: 34) }
                 .background(DesignValues.color("bg.sunken"), in: Circle()).help("Play/Pause (Space)").accessibilityLabel((model.isPlaying ? EditorIconAction.pause : .play).name)
-            Button { model.seek(source: min(model.sourceDuration, model.sourceTime + 3)) } label: { transportSymbol("goforward.3", fallback: "goforward").frame(width: 28, height: 28) }
+            Button { model.seek(source: min(model.sourceDuration, model.sourceTime + 3)) } label: { transportSymbol("goforward").frame(width: 28, height: 28) }
                 .help("Forward 3 Seconds").accessibilityLabel(EditorIconAction.forward.name)
         }
     }
-    @ViewBuilder private func transportSymbol(_ name: String, fallback: String) -> some View {
-        if NSImage(named: name) != nil { Image(name).renderingMode(.template) }
-        else { Image(systemName: fallback).overlay { Text("3").font(.system(size: 7, weight: .semibold)).offset(y: 1) } }
+    private func transportSymbol(_ name: String) -> some View {
+        Image(systemName: name).overlay { Text("3").font(.system(size: 7, weight: .semibold)).offset(y: 1) }
     }
 }
 

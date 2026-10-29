@@ -36,7 +36,7 @@ import VoxClipMedia
             }.formStyle(.grouped).scrollContentBackground(.hidden).disabled(running)
             if running { ProgressView(model.progress ?? "Reading video…", value: progress?.fraction) }
             if let error { InlineNotice(text: error) }
-            HStack { Button("Models and keys…") { openVoxClipSettings() }; Spacer(); Button(running ? "Cancel" : "Not now") { model.workTask?.cancel(); dismiss() }.keyboardShortcut(.cancelAction); Button(error == nil ? "Transcribe" : "Retry") { if engine == "elevenlabs" && !model.app.bool("transcription.cloudConsent.elevenlabs") { showCloudConsent = true } else { transcribe() } }.keyboardShortcut(.defaultAction).disabled(running) }
+            HStack { Button("Models and keys…") { openVoxClipSettings(pane: "transcription") }; Spacer(); Button(running ? "Cancel" : "Not now") { model.workTask?.cancel(); dismiss() }.keyboardShortcut(.cancelAction); Button(error == nil ? "Transcribe" : "Retry") { if engine == "elevenlabs" && !model.app.bool("transcription.cloudConsent.elevenlabs") { showCloudConsent = true } else { transcribe() } }.keyboardShortcut(.defaultAction).disabled(running) }
         }.padding(24).frame(width: 560)
         .sheet(isPresented: $showCloudConsent) {
             VStack(alignment: .leading, spacing: 16) {
@@ -69,7 +69,9 @@ import VoxClipMedia
                 case .ready: break
                 case .needsKey(let provider): error = "Add your \(provider == "elevenlabs" ? "ElevenLabs" : provider) key in Settings to use it."; return
                 case .needsModels(_, let bytes): error = "Download the \(local?.displayName ?? "transcription") model (\(ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file))) to transcribe on this Mac."; return
-                case .needsSystemAssets: error = "Apple speech assets need to download before transcription. Use Settings to prepare the selected language."; return
+                case .needsSystemAssets:
+                    await model.app.appleSpeechAssets.check(language)
+                    error = "Download Apple's \(Locale.current.localizedString(forLanguageCode: language) ?? language) speech model in Settings → Transcription first. Choose Models and keys… to open it."; return
                 case .unsupportedLanguage:
                     let label = engine == "apple" ? "Apple Speech" : engine == "elevenlabs" ? "ElevenLabs Scribe" : "Whisper"
                     error = "\(label) can't transcribe \(Locale.current.localizedString(forLanguageCode: language) ?? language)."; return

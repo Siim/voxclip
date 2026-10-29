@@ -959,6 +959,7 @@ case .supported, .downloading:
   | anything else | `speechAssetsUnavailable` |
 
 - While downloading, the UI shows "Downloading Apple's {Language} speech model…" with the fraction. macOS hosts the files, and VoxClip shows no size it does not know.
+- Settings → Transcription lists the selected language's Apple speech model, with Download, progress and Cancel, Retry after failure, or Installed. Auto asks the user to choose a language. A missing-assets message in the transcription sheet opens that pane through Models and keys…. Downloads are app-owned and continue after Settings closes; cancellation is silent. A language chosen during a download is checked after that download finishes.
 
 ### 10.4 Analysis
 
