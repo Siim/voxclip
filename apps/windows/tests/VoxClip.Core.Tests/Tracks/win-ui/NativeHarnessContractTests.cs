@@ -6,6 +6,15 @@ namespace VoxClip.Ui.Tests;
 public sealed class NativeHarnessContractTests
 {
     [Fact]
+    public void RecentWalkUsesTheStoredProjectTitle()
+    {
+        var root = Path.GetDirectoryName(Environment.GetEnvironmentVariable("VOXCLIP_SHARED_DIR"))!;
+        var walk = File.ReadAllText(Path.Combine(root, "apps/windows/tests/VoxClip.Core.Tests/Tracks/win-ui/native-accessibility-walk.ps1"));
+        Assert.Contains("(ReadCheck $NormalProject).title", walk);
+        Assert.Contains("Current.Name -eq $projectName", walk);
+    }
+
+    [Fact]
     public void ScreenshotExerciseChecksTheSpecifiedSwitchAndGroupedGallery()
     {
         var root = Path.GetDirectoryName(Environment.GetEnvironmentVariable("VOXCLIP_SHARED_DIR"))!;

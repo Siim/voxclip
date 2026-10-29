@@ -328,7 +328,8 @@ try{
   [void](FindName $w 'Import video, Ctrl+O')
   if($app.HasExited -or $app.MainWindowHandle -ne $w){throw 'Home navigation changed the owned HWND'}
   Dump $w 'home-recent';Capture $w 'home-recent'
-  $projectName=[IO.Path]::GetFileNameWithoutExtension($NormalProject)
+  $projectName=[string](ReadCheck $NormalProject).title
+  if([string]::IsNullOrWhiteSpace($projectName)){$projectName=[IO.Path]::GetFileNameWithoutExtension($NormalProject)}else{$projectName=$projectName.Trim()}
   $items=[System.Windows.Automation.AutomationElement]::FromHandle($w).FindAll([System.Windows.Automation.TreeScope]::Descendants,[System.Windows.Automation.Condition]::TrueCondition)
   $recent=$items | Where-Object {$_.Current.ControlType -eq [System.Windows.Automation.ControlType]::ListItem -and $_.Current.Name -eq $projectName} | Select-Object -First 1
   if(-not $recent){throw 'The open project was absent from the Home recent list'}
