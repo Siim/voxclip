@@ -28,7 +28,25 @@ internal static class Ui
     {
         if (snapshot == value) return;
         snapshot = value;
+        TraceEffects("settings");
         EffectsChanged?.Invoke(null, EventArgs.Empty);
+    }
+    [System.Diagnostics.Conditional("DEBUG")]
+    internal static void TraceEffects(string phase, FrameworkElement? owner = null)
+    {
+#if DEBUG
+        string? Color(string key) => owner is not null && ThemeBrush(owner, key) is SolidColorBrush brush
+            ? $"{brush.Color.R},{brush.Color.G},{brush.Color.B}" : null;
+        var directory = Core.Services.Project.DataLocations.Resolve().Logs;
+        Directory.CreateDirectory(directory);
+        var entry = System.Text.Json.JsonSerializer.Serialize(new
+        {
+            At = DateTimeOffset.UtcNow, Phase = phase, HighContrast, Scheme = HighContrastScheme,
+            ProcessId = Environment.ProcessId, Selected = Color("VcSelectionTranscriptBrush"),
+            Playing = Color("VcWordPlayingBackgroundBrush"), PlayingText = Color("VcWordPlayingForegroundBrush")
+        });
+        File.AppendAllText(Path.Combine(directory, "accessibility-effects.jsonl"), entry + "\n");
+#endif
     }
     internal static void Announce(FrameworkElement owner, string text, string activity)
     {

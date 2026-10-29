@@ -41,6 +41,8 @@
     <Compile Include="TimelineTests.cs" />
     <Compile Include="UpdateRestartTests.cs" />
     <Compile Include="StartupCheckTests.cs" />
+    <Compile Include="NativeHarnessContractTests.cs" />
+    <Compile Include="HighContrastTraceTests.cs" />
     <Compile Include="RedirectedLaunchSelectionTests.cs" />
     <Compile Include="NativeIntegratedFlowTests.cs" />
     <Compile Include="KeyboardSelectionTests.cs" />

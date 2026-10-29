@@ -146,7 +146,12 @@ public sealed class TranscriptView : UserControl
         rendered = (_, _) =>
         {
             CompositionTarget.Rendering -= rendered;
-            DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () => { if (IsLoaded) RefreshVisuals(); });
+            DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+            {
+                if (!IsLoaded) return;
+                RefreshVisuals();
+                Ui.TraceEffects("transcript-post-render", this);
+            });
         };
         CompositionTarget.Rendering += rendered;
     }
