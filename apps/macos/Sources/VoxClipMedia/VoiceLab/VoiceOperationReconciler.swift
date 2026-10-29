@@ -83,16 +83,7 @@ public actor VoiceOperationReconciler {
         if !force, let next = value.nextAttemptAt, now() < next { return nil }
         let client = clients(value.region)
         guard client.region == value.region else { throw VoiceConsentError.invalidRecord }
-        let voices: [VoiceLabVoice]
-        do { voices = try await client.listOwnClones().filter { $0.consentRecordID == value.providerNonce } }
-        catch {
-            if now().timeIntervalSince(value.startedAt) >= 24 * 60 * 60 {
-                try await store.tombstone(value)
-                _ = try await store.transition(value.id, to: .abandoned, at: now())
-                return nil
-            }
-            throw error
-        }
+        let voices = try await client.listOwnClones().filter { $0.consentRecordID == value.providerNonce }
         guard voices.count <= 1 else { throw VoiceConsentError.invalidRecord }
         if let voice = voices.first { return voice }
         if now().timeIntervalSince(value.startedAt) >= 24 * 60 * 60 {

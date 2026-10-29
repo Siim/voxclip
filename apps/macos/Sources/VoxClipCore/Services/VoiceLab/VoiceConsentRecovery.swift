@@ -28,8 +28,14 @@ public struct VoiceOperation: Codable, Sendable, Identifiable, Equatable {
     public var nextAttemptAt: Date?
     public var failed: Bool
     public var finished: Bool { [.saved, .withdrawn, .tombstoned, .abandoned].contains(state) }
-    public var blocksCreation: Bool { kind == .create && [.dispatched, .created].contains(state) }
+    public var blocksCreation: Bool { blocksCreation(at: Date()) }
+    public func blocksCreation(at date: Date) -> Bool {
+        kind == .create && [.dispatched, .created].contains(state) && date < startedAt.addingTimeInterval(24 * 60 * 60)
+    }
     public var displayState: String {
+        if kind == .create, wasDispatched, remoteVoiceID == nil, !finished {
+            return "Checking your ElevenLabs account for an unfinished voice…"
+        }
         if failed { return "Couldn't finish — Retry" }
         return kind == .delete || state == .withdrawing ? "Removing…" : "Finishing…"
     }
@@ -93,7 +99,7 @@ extension VoiceConsentStore {
     }
     package func beginCreation(record: VoiceConsentRecord, requestID: UUID, region: ElevenLabsRegion, at date: Date) throws -> VoiceOperation {
         try migrateLegacyOperations()
-        guard !(try operations()).contains(where: { $0.blocksCreation || (!$0.finished && $0.recordID == record.id) }) else { throw VoiceConsentError.creationPending }
+        guard !(try operations()).contains(where: { $0.blocksCreation(at: date) || (!$0.finished && $0.recordID == record.id) }) else { throw VoiceConsentError.creationPending }
         try checkpoint(.saveDraft)
         try save(record)
         let value = VoiceOperation(id: requestID, kind: .create, recordID: record.id, region: region, at: date)
@@ -135,7 +141,8 @@ extension VoiceConsentStore {
         value.attempts += 1; value.failed = true; value.updatedAt = max(date, value.updatedAt)
         let delay = min(3_600.0, 30 * pow(2, Double(min(value.attempts - 1, 7))))
         value.nextAttemptAt = date.addingTimeInterval(delay)
-        if value.kind == .create, [.dispatched, .withdrawing].contains(value.state), value.remoteVoiceID == nil {
+        if value.kind == .create, [.dispatched, .withdrawing].contains(value.state), value.remoteVoiceID == nil,
+           date < value.startedAt.addingTimeInterval(24 * 60 * 60) {
             value.nextAttemptAt = min(value.nextAttemptAt!, value.startedAt.addingTimeInterval(24 * 60 * 60))
         }
         try writeOperation(value, checkpoint: .retryScheduled)

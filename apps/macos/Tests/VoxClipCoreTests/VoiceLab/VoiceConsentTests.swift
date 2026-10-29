@@ -654,7 +654,7 @@ extension VoiceConsentTests {
         let remote = OperationRemote(); let clock = OperationClock(now)
         let reconciler = VoiceOperationReconciler(store: store, client: operationClient(remote, nonce: record.id), now: { clock.now() })
         try await reconciler.reconcile()
-        #expect(try await store.operation(value.id).blocksCreation)
+        #expect(try await store.operation(value.id).blocksCreation(at: clock.now()))
         #expect(!FileManager.default.fileExists(atPath: store.root.appendingPathComponent("\(record.id)/statement.wav").path))
         clock.advance(10); try await reconciler.reconcile()
         #expect(remote.value.withLock { $0.lists } == 1)
@@ -664,7 +664,7 @@ extension VoiceConsentTests {
         #expect(try await store.records().isEmpty)
         #expect(remote.value.withLock { $0.lists == 2 && $0.deletes == 1 && $0.posts == 0 && !$0.present })
     }
-    @Test(arguments: [false, true]) func abandonmentIsBoundedEvenWhenListingFails(listFailure: Bool) async throws {
+    @Test(arguments: [false, true]) func cleanupRequiresSuccessfulListingAfterBlockingDeadline(listFailure: Bool) async throws {
         let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
         let store = storage(root); let record = try fixtureRecord(wav: wav)
         let value = try await seedOperation(store, record: record)
@@ -672,12 +672,29 @@ extension VoiceConsentTests {
         let remote = OperationRemote(); remote.value.withLock { $0.listFailure = listFailure }
         let clock = OperationClock(now.addingTimeInterval(24 * 60 * 60 + 1))
         let reconciler = VoiceOperationReconciler(store: store, client: operationClient(remote, nonce: record.id), now: { clock.now() })
-        try await reconciler.reconcile()
-        let abandoned = try await store.operation(value.id)
-        #expect(abandoned.state == .abandoned && !abandoned.blocksCreation && abandoned.finished)
+        if listFailure {
+            await #expect(throws: (any Error).self) { try await reconciler.reconcile() }
+        } else { try await reconciler.reconcile() }
+        let pending = try await store.operation(value.id)
+        #expect(!pending.blocksCreation(at: clock.now()))
+        #expect(pending.finished == !listFailure)
         #expect(!FileManager.default.fileExists(atPath: store.root.appendingPathComponent("\(record.id)/statement.wav").path))
+        if listFailure {
+            #expect(pending.state == .dispatched && pending.failed && pending.attempts == 1)
+            #expect(pending.nextAttemptAt == clock.now().addingTimeInterval(30))
+            #expect(pending.displayState == "Checking your ElevenLabs account for an unfinished voice…")
+            let restarted = storage(root)
+            try await VoiceOperationReconciler(store: restarted, client: operationClient(remote, nonce: record.id), now: { clock.now() }).reconcile()
+            #expect(remote.value.withLock { $0.lists } == 1)
+            remote.value.withLock { $0.listFailure = false; $0.present = true }
+            clock.advance(31)
+        }
         try await reconciler.reconcile(force: true)
-        #expect(remote.value.withLock { $0.lists } == 1)
+        #expect(remote.value.withLock { $0.lists } == (listFailure ? 2 : 1))
+        if listFailure {
+            #expect(try await store.operations().isEmpty)
+            #expect(remote.value.withLock { $0.deletes == 1 && !$0.present })
+        } else { #expect(try await store.operation(value.id).state == .abandoned) }
     }
     @Test func deletionJournalDoesNotDependOnARecordAndTreats404AsSuccess() async throws {
         let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
@@ -697,9 +714,9 @@ extension VoiceConsentTests {
         var value = try await seedOperation(store, record: record)
         #expect(!value.blocksCreation)
         value = try await store.transition(value.id, to: .dispatched, at: now)
-        #expect(value.blocksCreation)
+        #expect(value.blocksCreation(at: now))
         value = try await store.transition(value.id, to: .created, at: now, remoteVoiceID: record.voiceId, requiresVerification: false)
-        #expect(value.blocksCreation)
+        #expect(value.blocksCreation(at: now))
         value = try await store.transition(value.id, to: .withdrawing, at: now)
         #expect(!value.blocksCreation)
         await #expect(throws: VoiceConsentError.invalidRecord) { _ = try await store.transition(value.id, to: .dispatched, at: now) }
