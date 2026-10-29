@@ -590,6 +590,10 @@ public actor ElevenLabsVoiceLab {
                     }
                 }
             } onCancel: { transport.cancel() }
+            guard relay.completed(bytes: bytes.count) else {
+                try Task.checkCancellation()
+                throw VoiceLabError.malformedResponse
+            }
             guard let http = response else { throw VoiceLabError.malformedResponse }
             afterLastByte?()
             if method == "DELETE", url.path.hasPrefix("/v1/voices/"), http.statusCode == 404 {
@@ -602,6 +606,9 @@ public actor ElevenLabsVoiceLab {
             }
             return Reply(bytes: bytes, response: http, spendWarning: await recording?.value)
         } catch {
+            if recording == nil, let billing, let response = relay.receivedResponse, (200..<300).contains(response.statusCode) {
+                recording = record(billing, at: start)
+            }
             // An accepted action is counted before its error reaches the caller.
             _ = await recording?.value
             if error is CancellationError { throw VoiceLabError.cancelled }

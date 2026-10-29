@@ -30,7 +30,7 @@ package final class VoiceDispatchGate: Sendable {
         }
     }
     package func finish(recordID: String, requestID: UUID) {
-        state.withLock { $0.active[recordID]?.remove(requestID) }
+        _ = state.withLock { $0.active[recordID]?.remove(requestID) }
     }
 }
 
