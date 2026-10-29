@@ -3,6 +3,7 @@ import Testing
 import VoxClipCore
 @testable import VoxClipMedia
 
+extension HeavyMediaTests {
 @Suite("Own-voice training audio", .timeLimit(.minutes(2)))
 struct VoiceTrainingTests {
     private func speech(seconds: Int, amplitude: Double = 0.2) -> [Float] {
@@ -52,4 +53,5 @@ struct VoiceTrainingTests {
         #expect(VoiceTrainingAudio.speech16k([0.1, 0.2, 0.3]).count == 1)
         #expect(VoiceTrainingAudio.speech16k([]).isEmpty)
     }
+}
 }

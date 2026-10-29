@@ -3,6 +3,7 @@ import Testing
 import VoxClipCore
 @testable import VoxClipMedia
 
+extension HeavyMediaTests {
 @Suite("Real CPU speaker parity", .serialized)
 struct SpeakerModelTests {
     static var modelDirectory: String? { ProcessInfo.processInfo.environment["VOXCLIP_SPEAKER_MODEL_DIR"] }
@@ -74,4 +75,5 @@ struct SpeakerModelTests {
         }
         #expect(!VoiceSpeakerCheck.unavailable.available)
     }
+}
 }
