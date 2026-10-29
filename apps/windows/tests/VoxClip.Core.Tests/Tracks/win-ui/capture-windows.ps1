@@ -271,12 +271,21 @@ try {
             Save-Window 'export-this-clip' $window
             $checks.Add('The clip row menu opens This clip; All clips and Full video remain explicit choices')
             Use-Control (Find-Control $window 'Cancel')
-            $off = Find-Control $window 'Off, just the video'
-            if ($off.Current.ControlType -ne [System.Windows.Automation.ControlType]::RadioButton) { throw 'Caption styles do not expose radio-button semantics.' }
+            $captions = Find-Control $window 'Show captions'
+            $captionToggle = $captions.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern)
+            if ($captionToggle.Current.ToggleState -ne [System.Windows.Automation.ToggleState]::On) { throw 'The fixture captions are not on.' }
             $selected = Find-Prefix $window 'Bold: '
+            if ($selected.Current.ControlType -ne [System.Windows.Automation.ControlType]::ListItem) { throw 'Caption styles do not expose GridView item semantics.' }
             if (-not $selected.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Current.IsSelected) { throw 'The fixture caption style is not selected in the gallery.' }
+            $captionToggle.Toggle()
+            Start-Sleep -Milliseconds 250
+            if ($captionToggle.Current.ToggleState -ne [System.Windows.Automation.ToggleState]::Off) { throw 'Show captions did not turn captions off.' }
+            [void](Find-Control $window 'Caption style')
+            $captionToggle.Toggle()
+            Start-Sleep -Milliseconds 250
+            if ($captionToggle.Current.ToggleState -ne [System.Windows.Automation.ToggleState]::On -or -not $selected.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Current.IsSelected) { throw 'Show captions did not restore the selected style.' }
             Save-Window 'editor-captions' $window
-            $checks.Add('Caption styles expose named radio buttons and the fixture selection')
+            $checks.Add('Show captions toggles off and restores the selected GridView style; the gallery stays visible')
             Use-Control (Find-Control $window ('Export clip' + [char]0x2026))
             [void](Find-Control $window 'Cancel')
             Save-Window 'export' $window
@@ -288,7 +297,8 @@ try {
             [void](Find-Control $window 'Play')
             Save-Window 'editor-compact-resize-probe' $window
             Use-Control (Find-Control $window 'Viewer')
-            [void](Find-Control $window 'Off, just the video')
+            [void](Find-Control $window 'Show captions')
+            [void](Find-Control $window 'Caption style')
             Save-Window 'editor-compact-viewer' $window
             $checks.Add('The compact editor collapses the viewer to a timeline transport, and Viewer brings captions back')
         }

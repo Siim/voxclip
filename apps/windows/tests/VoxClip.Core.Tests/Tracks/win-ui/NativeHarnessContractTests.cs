@@ -6,6 +6,18 @@ namespace VoxClip.Ui.Tests;
 public sealed class NativeHarnessContractTests
 {
     [Fact]
+    public void ScreenshotExerciseChecksTheSpecifiedSwitchAndGroupedGallery()
+    {
+        var root = Path.GetDirectoryName(Environment.GetEnvironmentVariable("VOXCLIP_SHARED_DIR"))!;
+        var capture = File.ReadAllText(Path.Combine(root, "apps/windows/tests/VoxClip.Core.Tests/Tracks/win-ui/capture-windows.ps1"));
+        Assert.DoesNotContain("Off, just the video", capture);
+        Assert.Contains("Find-Control $window 'Show captions'", capture);
+        Assert.Contains("SelectionItemPattern", capture);
+        Assert.Contains("ToggleState]::Off", capture);
+        Assert.Contains("Show captions did not restore the selected style", capture);
+    }
+
+    [Fact]
     public void DecorativeChecksAreRawAndScrollbarsMeasureTheirOwnedViewport()
     {
         var root = Path.GetDirectoryName(Environment.GetEnvironmentVariable("VOXCLIP_SHARED_DIR"))!;
