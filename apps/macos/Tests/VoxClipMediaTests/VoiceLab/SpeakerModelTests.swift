@@ -12,7 +12,7 @@ struct SpeakerModelTests {
         let model = try SpeakerModelCatalog(shared: shared).entry
         let directory = URL(fileURLWithPath: try #require(Self.modelDirectory))
         let embedder = try ONNXSpeakerEmbedder(model: model, directory: directory)
-        let check = VoiceSpeakerCheck(embedder: embedder, calibratedThreshold: model.calibratedThreshold())
+        let check = try await embedder.speakerCheck()
         struct Vectors: Decodable {
             struct Clip: Decodable { let id: String; let sha256: String; let ranges: [[Int]]; let embedding: [Float] }
             let clips: [Clip]

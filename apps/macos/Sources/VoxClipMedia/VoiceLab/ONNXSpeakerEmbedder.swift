@@ -25,6 +25,11 @@ public actor ONNXSpeakerEmbedder: SpeakerEmbedder {
         try SpeakerAudio.select(pcm16k, ranges: SpeakerVAD.ranges(pcm16k, model: vad))
     }
     public func validateAvailability() async throws { _ = try model.verifiedFiles(at: directory) }
+    public func speakerCheck(language: String = "en") throws -> VoiceSpeakerCheck {
+        guard let threshold = model.calibratedThreshold(language: language) else { throw VoiceConsentError.speakerUnavailable }
+        _ = try model.verifiedFiles(at: directory)
+        return VoiceSpeakerCheck(verifiedEmbedder: self, calibratedThreshold: threshold)
+    }
     public func embed(_ pcm16k: [Float]) async throws -> [Float] {
         guard pcm16k.count <= 240 * 16_000 else { throw VoiceConsentError.speakerMismatch }
         var mean = [Float](repeating: 0, count: dimension)

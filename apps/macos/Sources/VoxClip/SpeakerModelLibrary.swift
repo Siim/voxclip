@@ -58,13 +58,13 @@ import VoxClipMedia
     func check(language: String = "en") async throws -> VoiceSpeakerCheck {
         guard let shared = app.shared else { return VoiceSpeakerCheck() }
         let model = try SpeakerModelCatalog(shared: shared).entry
-        guard let threshold = model.calibratedThreshold(language: language) else { return VoiceSpeakerCheck() }
+        guard model.calibratedThreshold(language: language) != nil else { return VoiceSpeakerCheck() }
         let directory = model.directory(app.locations)
         do {
             _ = try await Task.detached(priority: .utility) { try model.verifiedFiles(at: directory) }.value
             if embedder == nil { embedder = try await Task.detached(priority: .utility) { try ONNXSpeakerEmbedder(model: model, directory: directory) }.value }
             installed = true
-            return VoiceSpeakerCheck(embedder: embedder, calibratedThreshold: threshold)
+            return try await embedder?.speakerCheck(language: language) ?? VoiceSpeakerCheck()
         } catch { embedder = nil; installed = false; return VoiceSpeakerCheck() }
     }
     func useGuard(store: VoiceConsentStore, recordID: String) async throws -> VoiceUseGuard {

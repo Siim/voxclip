@@ -42,6 +42,12 @@ public struct VoiceLabQuote: Sendable, Equatable {
     public let endpoint: String
     public let languageMode: VoiceLabLanguageMode?
     let fingerprint: String
+    let guardAudioHash: String?
+    init(id: UUID, operation: VoiceLabOperation, requestID: UUID, estimate: CostEstimate, region: ElevenLabsRegion,
+         endpoint: String, languageMode: VoiceLabLanguageMode?, fingerprint: String, guardAudioHash: String? = nil) {
+        self.id = id; self.operation = operation; self.requestID = requestID; self.estimate = estimate; self.region = region
+        self.endpoint = endpoint; self.languageMode = languageMode; self.fingerprint = fingerprint; self.guardAudioHash = guardAudioHash
+    }
 }
 
 /// An affirmative answer to a service-issued quote for one concrete request.
@@ -56,8 +62,8 @@ public struct VoiceLabAuthorization: Sendable, Equatable {
     }
 }
 
-/// Produced by the future consent recorder and speaker matcher. No bypass field exists.
 public struct OwnVoicePolicy: Sendable, Equatable {
+    let capability: VoiceOperationCapability?
     public let recordID: String
     /// Nil only while creating a new clone. At use or deletion it must match the selected clone.
     public let cloneVoiceID: String?
@@ -70,6 +76,14 @@ public struct OwnVoicePolicy: Sendable, Equatable {
                 providerConsentGranted: Bool, statementVerified: Bool, speakerMatched: Bool) {
         self.recordID = recordID; self.cloneVoiceID = cloneVoiceID; self.recordActive = recordActive; self.providerConsentGranted = providerConsentGranted
         self.statementVerified = statementVerified; self.speakerMatched = speakerMatched
+        capability = nil
+    }
+    private init(recordID: String, cloneVoiceID: String?, capability: VoiceOperationCapability) {
+        self.recordID = recordID; self.cloneVoiceID = cloneVoiceID; self.capability = capability
+        recordActive = true; providerConsentGranted = true; statementVerified = true; speakerMatched = true
+    }
+    func authorized(for quote: VoiceLabQuote, validate: @escaping @Sendable () async throws -> Void) -> Self {
+        Self(recordID: recordID, cloneVoiceID: cloneVoiceID, capability: VoiceOperationCapability(quote: quote, validate: validate))
     }
     public func validate() throws {
         guard !recordID.isEmpty, recordActive, providerConsentGranted, statementVerified else { throw VoiceLabError.consentRequired }

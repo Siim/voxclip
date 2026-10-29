@@ -38,7 +38,7 @@ public actor VoiceEnrollment {
         let samples: [VoiceConsentRecord.Sample]
         let embedding: [Float]
     }
-    public init(store: VoiceConsentStore, client: ElevenLabsVoiceLab, speaker: VoiceSpeakerCheck = VoiceSpeakerCheck(), transcribe: @escaping Transcribe) {
+    package init(store: VoiceConsentStore, client: ElevenLabsVoiceLab, speaker: VoiceSpeakerCheck = VoiceSpeakerCheck(), transcribe: @escaping Transcribe) {
         self.store = store; self.client = client; self.speaker = speaker; self.transcribe = transcribe
     }
     public var speakerAvailable: Bool { speaker.available }
@@ -98,8 +98,13 @@ public actor VoiceEnrollment {
                                           createdAt: now, removeBackgroundNoise: accepted.contains { $0.snrDb < 20 }, recoveryNonce: recordID)
         let policy = OwnVoicePolicy(recordID: recordID, recordActive: true, providerConsentGranted: true, statementVerified: true, speakerMatched: true)
         let quote = try await client.prepareClone(request, policy: policy, requestID: UUID())
+        let store = store; let embedder = speaker.embedder; let statementHash = verification.hash
+        let authorization = policy.authorized(for: quote) {
+            try await embedder?.validateAvailability()
+            try await store.validateCreation(recordID: recordID, requestID: quote.requestID, statementHash: statementHash)
+        }
         pending.removeAll()
-        pending[quote.id] = Pending(request: request, policy: policy, verified: verification, samples: hashes, embedding: owner)
+        pending[quote.id] = Pending(request: request, policy: authorization, verified: verification, samples: hashes, embedding: owner)
         return quote
     }
     public func create(quote: VoiceLabQuote, approved: Bool, enabled: Bool, appVersion: String) async throws -> VoiceConsentRecord {

@@ -35,7 +35,7 @@ struct VoiceConsentTests {
         let adapter = ElevenLabsTranscriber(keys: SpeechTestKeys(value: nil), session: URLSession(configuration: SpeechStubHTTP.configuration(for: base)), catalog: try SpeechTestFiles.catalog())
         return try await adapter.mapResponse(FixtureLoader.data("fixtures/voice-lab/consent-scribe.json"), diarize: false)
     }
-    private func client(_ calls: ConsentRequestLog, deletionStatus: Int = 200, verificationRequired: Bool = false) -> ElevenLabsVoiceLab {
+    private func client(_ calls: ConsentRequestLog, deletionStatus: Int = 200, verificationRequired: Bool = false, enforceCapabilities: Bool = true) -> ElevenLabsVoiceLab {
         let base = SpeechStubHTTP.register { request in
             let path = request.url?.path ?? ""
             calls.value.withLock { $0.append((request.httpMethod ?? "") + " " + path) }
@@ -54,7 +54,7 @@ struct VoiceConsentTests {
             default: Issue.record("Unexpected request"); return (500, [:], Data())
             }
         }
-        return ElevenLabsVoiceLab(keys: SpeechTestKeys(value: "synthetic-consent-key"), session: URLSession(configuration: SpeechStubHTTP.configuration(for: base)), prices: VoiceLabPricingTests.catalogIfPresent)
+        return ElevenLabsVoiceLab(keys: SpeechTestKeys(value: "synthetic-consent-key"), session: URLSession(configuration: SpeechStubHTTP.configuration(for: base)), prices: VoiceLabPricingTests.catalogIfPresent, enforceCapabilities: enforceCapabilities)
     }
     private func storage(_ root: URL) -> VoiceConsentStore { VoiceConsentStore(locations: SpeechTestFiles.locations(root)) }
     private func enroll(store: VoiceConsentStore, client: ElevenLabsVoiceLab, check: VoiceSpeakerCheck, raw: RawTranscript, calls: ConsentTranscriptionCount = ConsentTranscriptionCount()) -> VoiceEnrollment {
@@ -378,7 +378,7 @@ struct VoiceConsentTests {
             default: Issue.record("Unexpected recovery request"); return (500, [:], Data())
             }
         }
-        let client = ElevenLabsVoiceLab(keys: SpeechTestKeys(value: "synthetic-recovery-key"), session: URLSession(configuration: SpeechStubHTTP.configuration(for: base)), prices: VoiceLabPricingTests.catalogIfPresent)
+        let client = ElevenLabsVoiceLab(keys: SpeechTestKeys(value: "synthetic-recovery-key"), session: URLSession(configuration: SpeechStubHTTP.configuration(for: base)), prices: VoiceLabPricingTests.catalogIfPresent, enforceCapabilities: true)
         let store = VoiceConsentStore(locations: SpeechTestFiles.locations(root), fault: { step in
             if (mode == "local-save" && step == .saveCreation) || (mode == "crash" && step == .creationResult) { throw CocoaError(.fileWriteUnknown) }
         })
@@ -401,6 +401,65 @@ struct VoiceConsentTests {
         #expect(try await restarted.pendingCreations().isEmpty)
         try await VoiceEnrollment.reconcileCreations(store: restarted, client: client)
         #expect(calls.value.withLock { $0.filter { $0.hasPrefix("POST") }.count } == 1)
+    }
+    @Test func legacyClonePolicyCannotDispatch() async throws {
+        let calls = ConsentRequestLog(); let client = client(calls)
+        _ = try await client.plan()
+        let policy = OwnVoicePolicy(recordID: UUID().uuidString, recordActive: true, providerConsentGranted: true, statementVerified: true, speakerMatched: true)
+        let request = VoiceLabCloneRequest(displayName: "Example", language: "en", samples: [.init(role: .consentStatement, wav: wav), .init(role: .training, wav: wav)], createdAt: now, removeBackgroundNoise: false)
+        let quote = try await client.prepareClone(request, policy: policy, requestID: UUID())
+        await #expect(throws: VoiceLabError.consentRequired) {
+            try await client.createOwnClone(request, policy: policy, requestID: quote.requestID, authorization: .init(quote: quote, approved: true))
+        }
+        #expect(calls.value.withLock { $0.filter { $0.hasPrefix("POST") }.isEmpty })
+    }
+    @Test(arguments: ["forged", "stale", "changed", "model-removed", "deleting", "valid-replay", "conversion-input"]) func dispatchRequiresCurrentOperationCapability(mode: String) async throws {
+        let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let store = storage(root); let record = try fixtureRecord(wav: wav); let calls = ConsentRequestLog()
+        try await store.saveStatement(wav, recordID: record.id); try await store.save(record)
+        let base = SpeechStubHTTP.register { request in
+            let path = request.url?.path ?? ""
+            calls.value.withLock { $0.append((request.httpMethod ?? "") + " " + path) }
+            switch path {
+            case "/v1/models": return (200, [:], Data(#"[{"model_id":"speaker_tts","can_do_text_to_speech":true,"can_do_voice_conversion":true,"languages":[{"language_id":"en"}]}]"#.utf8))
+            case "/v2/voices": return (200, [:], Data(#"{"voices":[{"voice_id":"fixtureOwnVoice","name":"Example","category":"cloned","is_owner":true,"voice_verification":{"is_verified":true}}],"has_more":false}"#.utf8))
+            case "/v1/text-to-speech/fixtureOwnVoice/with-timestamps":
+                let pcm = Data(repeating: 0, count: 4_800).base64EncodedString()
+                return (200, [:], Data("{\"audio_base64\":\"\(pcm)\",\"alignment\":{\"characters\":[\"H\",\"i\"],\"character_start_times_seconds\":[0,0.02],\"character_end_times_seconds\":[0.02,0.04]}}".utf8))
+            default: Issue.record("Unexpected capability request"); return (500, [:], Data())
+            }
+        }
+        let client = ElevenLabsVoiceLab(keys: SpeechTestKeys(value: "synthetic-capability-key"), session: URLSession(configuration: SpeechStubHTTP.configuration(for: base)), prices: VoiceLabPricingTests.catalogIfPresent, enforceCapabilities: true)
+        _ = try await client.models(); _ = try await client.voices()
+        let initial = OwnVoicePolicy(recordID: record.id, cloneVoiceID: record.voiceId, recordActive: true, providerConsentGranted: true, statementVerified: true, speakerMatched: true)
+        let options = VoiceLabSpeechOptions(seed: 7)
+        let voice = VoiceLabVoiceChoice.own(voiceID: record.voiceId, policy: initial)
+        let quote = try await client.prepareSynthesis(text: "Hi", modelID: "speaker_tts", voice: voice, language: "en", options: options, requestID: UUID())
+        let present = SpeakerAvailability()
+        let guardService = VoiceUseGuard(store: store, check: .init(embedder: SignEmbedding(present: present), calibratedThreshold: 0.8))
+        if mode == "conversion-input" {
+            let conversion = try await client.prepareConversion(audio: wav, modelID: "speaker_tts", voice: voice, language: "en", seed: 7, cleanAudioOn: false, requestID: UUID())
+            let changed = VoiceLabRequestFixtures.wav(rate: 16_000, frames: 80_000, fill: 8_000)
+            await #expect(throws: VoiceLabError.consentRequired) { try await guardService.authorizeConversion(quote: conversion, contentKey: "source", recordID: record.id, audio: changed, approved: true) }
+            return
+        }
+        let policy = mode == "forged" ? initial : try await guardService.authorize(quote: quote, contentKey: "source", recordID: record.id, speech16k: [Float](repeating: 0.1, count: 160_000), approved: true)
+        let authorizedVoice = VoiceLabVoiceChoice.own(voiceID: record.voiceId, policy: policy)
+        if mode == "stale" { try await store.markDeleted(record.id, at: now) }
+        if mode == "deleting" { _ = try await store.beginDeletion(record.id, region: .default, at: now) }
+        if mode == "model-removed" { present.value.withLock { $0 = false } }
+        let dispatchQuote = mode == "changed" ? try await client.prepareSynthesis(text: "Hi", modelID: "speaker_tts", voice: voice, language: "en", options: options, requestID: UUID()) : quote
+        let dispatch: @Sendable () async throws -> Void = {
+            _ = try await client.synthesize(text: "Hi", modelID: "speaker_tts", voice: authorizedVoice, language: "en", options: options, requestID: dispatchQuote.requestID, authorization: .init(quote: dispatchQuote, approved: true))
+        }
+        if mode == "valid-replay" {
+            try await dispatch()
+            await #expect(throws: (any Error).self) { try await dispatch() }
+            #expect(calls.value.withLock { $0.filter { $0.hasPrefix("POST") }.count } == 1)
+        } else {
+            await #expect(throws: (any Error).self) { try await dispatch() }
+            #expect(calls.value.withLock { $0.filter { $0.hasPrefix("POST") }.isEmpty })
+        }
     }
     @Test func useTimeGuardAndDeletedCache() async throws {
         let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
