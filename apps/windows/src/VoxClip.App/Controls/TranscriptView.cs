@@ -127,10 +127,20 @@ public sealed class TranscriptView : UserControl
         KeyDown += SelectionKeyDown;
         KeyUp += (_, args) => { if (args.Key is Windows.System.VirtualKey.Left or Windows.System.VirtualKey.Right or Windows.System.VirtualKey.Home or Windows.System.VirtualKey.End) ScheduleFlyout(); };
         ActualThemeChanged += (_, _) => RefreshVisuals();
-        Loaded += (_, _) => { Ui.EffectsChanged += EffectsChanged; if (pendingReveal >= 0) RevealWord(pendingReveal); };
+        Loaded += (_, _) => { Ui.EffectsChanged += EffectsChanged; RefreshVisuals(); if (pendingReveal >= 0) RevealWord(pendingReveal); };
         Unloaded += (_, _) => { Ui.EffectsChanged -= EffectsChanged; correction.IsOpen = false; selectionFlyout.Hide(); };
     }
-    private void EffectsChanged(object? sender, EventArgs args) => DispatcherQueue.TryEnqueue(RefreshVisuals);
+    private void EffectsChanged(object? sender, EventArgs args)
+    {
+        DispatcherQueue.TryEnqueue(RefreshVisuals);
+        EventHandler<object>? rendered = null;
+        rendered = (_, _) =>
+        {
+            CompositionTarget.Rendering -= rendered;
+            DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () => { if (IsLoaded) RefreshVisuals(); });
+        };
+        CompositionTarget.Rendering += rendered;
+    }
     internal void RevealWord(int wordIndex)
     {
         pendingReveal = wordIndex;
@@ -272,6 +282,7 @@ public sealed class TranscriptView : UserControl
         if (realized.Remove(grid, out var previous)) previous.Overlay.Dispose();
         var page = (Grid)grid.Children[1];
         var rich = (RichTextBlock)page.Children[1];
+        rich.HighContrastAdjustment = ElementHighContrastAdjustment.None;
         rich.FontFamily = (FontFamily)Application.Current.Resources["ContentControlThemeFontFamily"];
         rich.FontSize = fontSize;
         rich.LineHeight = LineHeight(fontSize);

@@ -1,5 +1,10 @@
 # Windows fixed contracts
 
+### 2026-10-29 - sol-win-redesign r14 A3 - High Contrast transcript and stage
+
+- Transcript RichTextBlocks disable the automatic contrast backplate; the existing system-colour runs and Composition fills remain visible. Selection uses Highlight/HighlightText; playing uses WindowText/Window, as design sections 4.1 and 5.4.9 require. Loaded and the next render after an effects change refresh the copied overlay brushes.
+- Stage messages gain a Window plate and WindowText edge only in High Contrast. The native transcript pixel gate now checks live system fills and glyph colours instead of skipping contrast mode; normal-theme alignment assertions are unchanged. Live desktop verification remains a separate gate.
+
 ### 2026-10-29 - sol-win-redesign r14 A1 - Model download confirmation
 
 - `ModelDownloadCopy` supplies the catalogue publisher, attribution, source-page link, dependency-inclusive size and progress for Windows and CLI downloads. Settings confirms with a ContentDialog; the tour's checked licence confirms only the exact model and terms displayed. `models install <id>` is command consent and prints those terms to stderr unless `--quiet`.

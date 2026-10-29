@@ -128,14 +128,38 @@
                     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
                     <Border x:Name="PreviewStage" Background="{ThemeResource VcStageBrush}" RequestedTheme="Dark" CornerRadius="{StaticResource VcRadiusPaneCornerRadius}" Height="200" HorizontalAlignment="Center">
                         <Grid>
+                            <Grid.Resources>
+                                <ResourceDictionary>
+                                    <ResourceDictionary.ThemeDictionaries>
+                                        <ResourceDictionary x:Key="Default">
+                                            <SolidColorBrush x:Key="StageMessagePlateBrush" Color="Transparent"/>
+                                            <SolidColorBrush x:Key="StageMessageEdgeBrush" Color="Transparent"/>
+                                            <Thickness x:Key="StageMessageEdgeThickness">0</Thickness>
+                                            <Thickness x:Key="StageMessagePadding">0</Thickness>
+                                            <CornerRadius x:Key="StageMessageCornerRadius">0</CornerRadius>
+                                            <x:Double x:Key="StageMessageFileOpacity">0.66</x:Double>
+                                        </ResourceDictionary>
+                                        <ResourceDictionary x:Key="HighContrast">
+                                            <SolidColorBrush x:Key="StageMessagePlateBrush" Color="{ThemeResource SystemColorWindowColor}"/>
+                                            <SolidColorBrush x:Key="StageMessageEdgeBrush" Color="{ThemeResource SystemColorWindowTextColor}"/>
+                                            <Thickness x:Key="StageMessageEdgeThickness">1</Thickness>
+                                            <Thickness x:Key="StageMessagePadding">12,8</Thickness>
+                                            <CornerRadius x:Key="StageMessageCornerRadius">4</CornerRadius>
+                                            <x:Double x:Key="StageMessageFileOpacity">1</x:Double>
+                                        </ResourceDictionary>
+                                    </ResourceDictionary.ThemeDictionaries>
+                                </ResourceDictionary>
+                            </Grid.Resources>
                             <Image x:Name="PreviewImage" Stretch="Uniform" AutomationProperties.AutomationId="PreviewStage" AutomationProperties.Name="Video preview, full take"/>
-                            <StackPanel x:Name="PreviewStandIn" Margin="20" Spacing="8" VerticalAlignment="Top" HorizontalAlignment="Center" IsHitTestVisible="False">
+                            <StackPanel x:Name="PreviewStandIn" Margin="20" Spacing="8" VerticalAlignment="Top" HorizontalAlignment="Center" IsHitTestVisible="False"
+                                Background="{ThemeResource StageMessagePlateBrush}" BorderBrush="{ThemeResource StageMessageEdgeBrush}" BorderThickness="{ThemeResource StageMessageEdgeThickness}"
+                                Padding="{ThemeResource StageMessagePadding}" CornerRadius="{ThemeResource StageMessageCornerRadius}">
                                 <Grid x:Name="PreviewStateGlyphHost" Width="20" Height="20" HorizontalAlignment="Center">
                                     <FontIcon x:Name="PreviewStateGlyph" FontSize="20" Foreground="{ThemeResource VcChipWarningGlyphBrush}"/>
                                     <Line x:Name="PreviewMissingStrike" X1="1.5" Y1="1.5" X2="18.5" Y2="18.5" StrokeThickness="1.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Stroke="{ThemeResource VcChipWarningGlyphBrush}"/>
                                 </Grid>
                                 <TextBlock x:Name="PreviewEmpty" FontSize="14" LineHeight="20" FontWeight="SemiBold" TextWrapping="Wrap" TextAlignment="Center" Foreground="{ThemeResource VcChipMediaForegroundBrush}"/>
-                                <TextBlock x:Name="PreviewFile" TextWrapping="Wrap" TextAlignment="Center" FontFamily="{StaticResource VcMonoFontFamily}" FontSize="12" Opacity="0.66" Foreground="{ThemeResource VcChipMediaForegroundBrush}"/>
+                                <TextBlock x:Name="PreviewFile" TextWrapping="Wrap" TextAlignment="Center" FontFamily="{StaticResource VcMonoFontFamily}" FontSize="12" Opacity="{ThemeResource StageMessageFileOpacity}" Foreground="{ThemeResource VcChipMediaForegroundBrush}"/>
                             </StackPanel>
                             <controls:CaptionPositionOverlay x:Name="CaptionDrag"/>
                         </Grid>

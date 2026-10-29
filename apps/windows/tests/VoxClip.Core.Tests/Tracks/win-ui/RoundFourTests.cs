@@ -94,7 +94,8 @@ public sealed class RoundFourTests(ITestOutputHelper output)
         XNamespace xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
         var tokens = XDocument.Load(Path.Combine(app, "Themes", "Tokens.xaml"));
         var contrast = tokens.Descendants().Single(element => (string?)element.Attribute(xaml + "Key") == "HighContrast");
-        foreach (var (key, color) in new[] { ("VcCutStrokeBrush", "SystemColorGrayTextColor"), ("VcWordCutBrush", "SystemColorGrayTextColor"), ("VcSelectionTranscriptBrush", "SystemColorHighlightColor"), ("VcClipBadgeBackgroundBrush", "SystemColorWindowColor"), ("VcTextSecondaryBrush", "SystemColorWindowTextColor") })
+        foreach (var (key, color) in new[] { ("VcCutStrokeBrush", "SystemColorGrayTextColor"), ("VcWordCutBrush", "SystemColorGrayTextColor"), ("VcSelectionTranscriptBrush", "SystemColorHighlightColor"),
+            ("VcWordPlayingBackgroundBrush", "SystemColorWindowTextColor"), ("VcWordPlayingForegroundBrush", "SystemColorWindowColor"), ("VcClipBadgeBackgroundBrush", "SystemColorWindowColor"), ("VcTextSecondaryBrush", "SystemColorWindowTextColor") })
             Assert.Equal("{ThemeResource " + color + "}", contrast.Elements().Single(element => (string?)element.Attribute(xaml + "Key") == key).Attribute("Color")!.Value);
         foreach (var file in new[] { "MainWindow.xaml", "Pages/EditorPage.xaml" })
         foreach (var element in XDocument.Load(Path.Combine(app, file)).Descendants().Where(element => element.Name.LocalName is "Button" or "ToggleButton" or "AppBarButton" or "AppBarToggleButton"))
