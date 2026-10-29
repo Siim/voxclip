@@ -75,11 +75,11 @@ import VoxClipCore
         guard selectionId != id else { return }
         stop(); scratch = nil; takeId = nil; selectionId = id
     }
-    public func reject(_ id: UUID) {
+    public func reject(_ id: UUID) async {
         guard takeId == id else { return }
-        stop(); scratch?.invalidate(); scratch = nil; takeId = nil
+        stop(); await scratch?.invalidate(); scratch = nil; takeId = nil
     }
-    public func endSession() {
-        stop(); scratch?.invalidate(); scratch = nil; takeId = nil; selectionId = nil
+    public func endSession() async {
+        stop(); await scratch?.invalidate(); scratch = nil; takeId = nil; selectionId = nil
     }
 }

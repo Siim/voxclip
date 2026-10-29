@@ -17,14 +17,36 @@ public final class VoiceLabTakeScratch: Sendable {
     public let fitted: VoiceLabFittedAudio
     public let audio: VoiceLabTakeAudio
     private let directory: URL
-    private let valid = Mutex(true)
-    public var isValid: Bool { valid.withLock { $0 } }
-    public func invalidate() {
-        valid.withLock { valid in
-            guard valid else { return }
-            valid = false
-            try? FileManager.default.removeItem(at: directory)
+    private struct State {
+        var valid = true
+        var consumers: [UUID: @Sendable () async -> Void] = [:]
+        var cleanup: Task<Void, Never>?
+    }
+    private let state = Mutex(State())
+    public var isValid: Bool { state.withLock { $0.valid } }
+    func attach(_ stop: @escaping @Sendable () async -> Void) throws -> UUID {
+        try state.withLock { state in
+            guard state.valid else { throw VoiceLabError.invalidAudio }
+            let id = UUID(); state.consumers[id] = stop; return id
         }
+    }
+    func detach(_ id: UUID) { _ = state.withLock { $0.consumers.removeValue(forKey: id) } }
+    public func invalidate() async {
+        let directory = directory, snapshot = fitted.snapshot
+        let cleanup = state.withLock { state in
+            if let cleanup = state.cleanup { return cleanup }
+            state.valid = false
+            let consumers = Array(state.consumers.values)
+            state.consumers.removeAll()
+            let cleanup = Task.detached(priority: .utility) {
+                for stop in consumers { await stop() }
+                snapshot.invalidate()
+                try? FileManager.default.removeItem(at: directory)
+            }
+            state.cleanup = cleanup
+            return cleanup
+        }
+        await cleanup.value
     }
     init(directory: URL, fitted: VoiceLabFittedAudio, audio: VoiceLabTakeAudio) {
         self.directory = directory; self.fitted = fitted; self.audio = audio

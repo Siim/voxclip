@@ -2,6 +2,7 @@ import AVFoundation
 import CryptoKit
 import Darwin
 import Foundation
+import Synchronization
 import VoxClipCore
 
 /// Errors from the paid-asset boundary. No case permits a source-audio fallback.
@@ -40,6 +41,15 @@ public final class PreparedVoiceLabAsset: @unchecked Sendable {
     public let stretch: Double
     public let gainDb: Double
     private let scratch: URL
+    private let valid = Mutex(true)
+    public var isValid: Bool { valid.withLock { $0 } }
+    public func invalidate() {
+        valid.withLock { valid in
+            guard valid else { return }
+            valid = false
+            try? FileManager.default.removeItem(at: scratch)
+        }
+    }
 
     fileprivate init(segmentId: String, assetId: String, sha256: String, url: URL, sampleRate: Int, channels: Int, frameCount: Int64,
                      trimStartFrame: Int64, trimEndFrame: Int64, stretch: Double, gainDb: Double, scratch: URL) {
@@ -47,7 +57,7 @@ public final class PreparedVoiceLabAsset: @unchecked Sendable {
         self.frameCount = frameCount; self.trimStartFrame = trimStartFrame; self.trimEndFrame = trimEndFrame
         self.stretch = stretch; self.gainDb = gainDb; self.scratch = scratch
     }
-    deinit { try? FileManager.default.removeItem(at: scratch) }
+    deinit { invalidate() }
 }
 
 public enum VoiceLabAssets {

@@ -44,7 +44,7 @@ public actor VoiceLabTakeRun {
     }
     public func scratch(for takeId: UUID) -> VoiceLabTakeScratch? { scratches[takeId] }
     public func paidAsset(for takeId: UUID) -> VoiceLabAsset? { paidAssets[takeId] }
-    public func reject(_ takeId: UUID) { scratches.removeValue(forKey: takeId)?.invalidate() }
+    public func reject(_ takeId: UUID) async { await scratches.removeValue(forKey: takeId)?.invalidate() }
     public func discover(language: String) async throws -> (models: [VoiceLabModel], voices: [VoiceConsentRecord]) {
         guard await inputsAreCurrent() else { throw VoiceLabError.consentRequired }
         let models = try await client.models().filter { $0.supportsTimestampedTTS && $0.languages.contains(language) }
@@ -135,8 +135,9 @@ public actor VoiceLabTakeRun {
     public func cancel() async {
         stop = .cancelled; revision += 1; task?.cancel()
         dispatchRevision.withLock { $0 = revision }
-        for scratch in scratches.values { scratch.invalidate() }
+        let retired = Array(scratches.values)
         scratches.removeAll()
+        for scratch in retired { await scratch.invalidate() }
         if let pending {
             self.pending = nil
             await client.discardRun(pending.quote.id, quotes: pending.quote.takes.flatMap { [$0.synthesis, $0.qa] })

@@ -1,5 +1,6 @@
 import CryptoKit
 import Foundation
+import Synchronization
 import Testing
 import VoxClipCore
 @testable import VoxClipMedia
@@ -145,7 +146,7 @@ extension HeavyMediaTests {
         #expect(digest == vector.expected.fittedSHA256)
     }
     #if DEBUG
-    @MainActor @Test func auditionCancelsOnTakeSelectionRejectionAndSessionEnd() throws {
+    @MainActor @Test func auditionCancelsOnTakeSelectionRejectionAndSessionEnd() async throws {
         let vector = try #require(FittedAssetVector.load().first)
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false)
@@ -170,7 +171,7 @@ extension HeavyMediaTests {
         player.takeChanged(to: UUID())
         #expect(!player.isPlaying && !player.completed)
         try player.play(scratch, takeId: take, selectionId: "second")
-        player.reject(take)
+        await player.reject(take)
         #expect(!player.isPlaying && !scratch.isValid && !FileManager.default.fileExists(atPath: scratch.mixedAudioURL.path))
         #expect(throws: VoiceLabError.invalidAudio) { try player.play(scratch, takeId: take, selectionId: "second") }
         let paid = root.appendingPathComponent(scratch.fitted.paidAsset.file)
@@ -180,8 +181,28 @@ extension HeavyMediaTests {
         let second = try vector.scratch(root: secondRoot)
         let ending = VoiceLabAudition { _, finished in AuditionTestBackend(finished: finished) }
         try ending.play(second, takeId: UUID(), selectionId: "last")
-        ending.endSession()
+        await ending.endSession()
         #expect(!second.isValid && !FileManager.default.fileExists(atPath: second.fittedAudioURL.path))
+    }
+    @Test func invalidationStopsConsumersBeforeRemovingBothPrivateDirectories() async throws {
+        let vector = try #require(FittedAssetVector.load().first)
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let scratch = try vector.scratch(root: root)
+        let stopped = Mutex(false)
+        _ = try scratch.attach {
+            #expect(FileManager.default.fileExists(atPath: scratch.mixedAudioURL.path))
+            #expect(FileManager.default.fileExists(atPath: scratch.fitted.snapshot.url.path))
+            stopped.withLock { $0 = true }
+        }
+        await scratch.invalidate()
+        await scratch.invalidate()
+        #expect(stopped.withLock { $0 })
+        #expect(!scratch.isValid && !scratch.fitted.snapshot.isValid)
+        #expect(!FileManager.default.fileExists(atPath: scratch.mixedAudioURL.deletingLastPathComponent().path))
+        #expect(!FileManager.default.fileExists(atPath: scratch.fitted.snapshot.url.deletingLastPathComponent().path))
+        #expect(FileManager.default.fileExists(atPath: root.appendingPathComponent(scratch.fitted.paidAsset.file).path))
     }
     #endif
     @Test func sharedTest19HashesAndUneditedFrames() throws {
