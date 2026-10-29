@@ -6,6 +6,16 @@ namespace VoxClip.Ui.Tests;
 public sealed class NativeHarnessContractTests
 {
     [Fact]
+    public void SmokeRetriesForegroundAcquisitionWithoutRelaxingOwnership()
+    {
+        var root = Path.GetDirectoryName(Environment.GetEnvironmentVariable("VOXCLIP_SHARED_DIR"))!;
+        var smoke = File.ReadAllText(Path.Combine(root, "apps/windows/tests/VoxClip.Core.Tests/Tracks/win-ui/launch-smoke.ps1"));
+        Assert.Contains("[SmokeDesktop]::UnlockForeground()", smoke);
+        Assert.Contains("if ([SmokeDesktop]::GetForegroundWindow() -ne $windowHandle) { throw", smoke);
+        Assert.Contains("if ($foregroundProcess -ne $app.Id) { throw", smoke);
+    }
+
+    [Fact]
     public void TimelinePreservesTokenOpacityAndExactHatchPixelAssertionsInHighContrast()
     {
         var root = Path.GetDirectoryName(Environment.GetEnvironmentVariable("VOXCLIP_SHARED_DIR"))!;
