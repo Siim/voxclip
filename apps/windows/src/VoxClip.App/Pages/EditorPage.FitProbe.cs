@@ -19,8 +19,7 @@ public sealed partial class EditorPage
 {
     private async Task DebugRightColumnBoundsAsync(MainWindow window, string output, string label, ColumnFitState state = ColumnFitState.Captions)
     {
-        await Task.Delay(120);
-        UpdateLayout();
+        await DebugSettleColumnAsync();
         NativeRequire(Math.Abs(RightPane.ActualWidth - RightColumn.ActualWidth) < 0.1, "Right content did not lay out at the column width.");
         var root = (FrameworkElement)window.Content;
         var origin = new NativeGateInput.NativePoint();
@@ -58,7 +57,7 @@ public sealed partial class EditorPage
         var captionPanel = NativeDescendants(RightPane).OfType<CaptionsPanel>().SingleOrDefault();
         var rewritePanel = NativeDescendants(RightPane).OfType<RewritePanel>().SingleOrDefault();
         captionPanel?.DebugFitRealizeGallery();
-        var required = ColumnBoundsGate.RequiredIds(state, captionPanel?.DebugFitGalleryIds() ?? [],
+        var required = ColumnBoundsGate.RequiredIds(state, captionPanel?.DebugFitAllGalleryIds() ?? [],
             rewritePanel?.DebugFitRequiresApply == true, rewritePanel?.DebugFitRequiresSettings == true, captionPanel?.DebugFitRequiresAccent == true);
         var scrollOffsets = NativeDescendants(RightPane).OfType<ScrollViewer>()
             .Select(viewer => (Viewer: viewer, Offset: viewer.VerticalOffset)).ToArray();
@@ -66,6 +65,8 @@ public sealed partial class EditorPage
         var coverage = new List<object>();
         var unmeasurable = new List<object>();
         var failures = new List<string>();
+        var scrollProofs = new List<object>();
+        var deferredRealizations = new HashSet<string>();
         void EnumerationFailed(FrameworkElement owner, string sample, Exception exception)
         {
             var id = AutomationProperties.GetAutomationId(owner);
@@ -153,14 +154,33 @@ public sealed partial class EditorPage
             {
                 var measurement = ReadPeer(peer, owner, sample);
                 var decision = ColumnBoundsGate.Assess(measurement, Rectangle(column), Rectangle(client));
+                var virtualized = captionPanel?.DebugFitGalleryIdentity(owner);
+                var virtualizedId = virtualized?.Id;
+                var containerBounds = virtualized is { } identity ? ElementBounds(identity.Container) : default;
+                if (measurement.Offscreen && virtualized is { } parked && required.Contains(parked.Id) && containerBounds.Contains(measurement.Bounds) &&
+                    FrameworkElementAutomationPeer.CreatePeerForElement(parked.Container)?.IsOffscreen() == true &&
+                    measurement.Scroll is { } region && (containerBounds.Bottom < region.Viewport.Y - region.VerticalOffset - 1 ||
+                    containerBounds.Y > region.Viewport.Y - region.VerticalOffset + region.ExtentHeight + 1))
+                {
+                    deferredRealizations.Add(parked.Id);
+                    decision = new(true, "virtualized cache; explicit required realization follows");
+                }
                 var ancestors = new List<object>();
                 if (!decision.Accepted)
                     for (DependencyObject? ancestor = owner; ancestor is not null; ancestor = VisualTreeHelper.GetParent(ancestor))
-                        if (ancestor is FrameworkElement element) ancestors.Add(new { Type = element.GetType().Name, element.Visibility, element.Opacity });
-                observations.Add(new { Sample = sample, Peer = measurement, decision.Accepted, decision.Classification,
-                    Control = peer.IsControlElement(), Content = peer.IsContentElement(), Ancestors = ancestors });
+                        if (ancestor is FrameworkElement element) ancestors.Add(new { Type = element.GetType().Name,
+                            Id = AutomationProperties.GetAutomationId(element), element.Visibility, element.Opacity,
+                            Bounds = ElementBounds(element), Clip = element.Clip is RectangleGeometry clip ? (ColumnRect?)Rectangle(clip.Rect) : null,
+                            Offscreen = FrameworkElementAutomationPeer.CreatePeerForElement(element)?.IsOffscreen(),
+                            Scroll = element is ScrollViewer scroll ? new { scroll.ViewportWidth, scroll.ViewportHeight, scroll.HorizontalOffset,
+                                scroll.VerticalOffset, scroll.ExtentWidth, scroll.ExtentHeight, scroll.ScrollableHeight } : null });
+                if (sample == "initial" || !decision.Accepted)
+                    observations.Add(new { Sample = sample, Peer = measurement, decision.Accepted, decision.Classification,
+                        Control = peer.IsControlElement(), Content = peer.IsContentElement(), LayoutBounds = ElementBounds(owner), VirtualizedId = virtualizedId, Ancestors = ancestors });
                 if (!measurement.Bounds.Measurable)
-                    unmeasurable.Add(new { Sample = sample, measurement.Id, measurement.Name, measurement.Role, measurement.Bounds });
+                {
+                    if (sample == "initial") unmeasurable.Add(new { Sample = sample, measurement.Id, measurement.Name, measurement.Role, measurement.Bounds });
+                }
                 else if (!decision.Accepted) failures.Add(sample + ": " + measurement.Role + " " + measurement.Name + " " + measurement.Id + ": " + decision.Classification + " " + measurement.Bounds);
             }
             return peers;
@@ -189,6 +209,11 @@ public sealed partial class EditorPage
             var peers = Observe("initial");
             foreach (var id in required)
             {
+                if (captionPanel?.DebugFitRealizeChoice(id) == true)
+                {
+                    await DebugSettleColumnAsync();
+                    peers = Observe("realize-" + id);
+                }
                 var matches = peers.Where(entry => ReadPeer(entry.Key, entry.Value, id).Id == id).ToArray();
                 if (matches.Length == 0 && captionPanel?.DebugFitRealizeChoice(id) == true)
                 {
@@ -206,10 +231,15 @@ public sealed partial class EditorPage
                         if (peer.GetPattern(PatternInterface.VirtualizedItem) is IVirtualizedItemProvider unrealized) unrealized.Realize();
                         if (ScrollOwner(owner) is not null)
                         {
+                            var before = ReadPeer(peer, owner, "ownership-before");
                             if (peer.GetPattern(PatternInterface.ScrollItem) is IScrollItemProvider scrollItem) scrollItem.ScrollIntoView();
                             else owner.StartBringIntoView(new BringIntoViewOptions { AnimationDesired = false });
-                            await Task.Delay(120);
-                            UpdateLayout();
+                            await DebugSettleColumnAsync();
+                            var after = ReadPeer(peer, owner, "ownership-after");
+                            var proven = after.Scroll is { } scroll && scroll.Viewport.Contains(after.Bounds) &&
+                                ColumnBoundsGate.Assess(after, Rectangle(column), Rectangle(client), required: true).Accepted;
+                            scrollProofs.Add(new { Target = id, Before = before, After = after, Proven = proven });
+                            if (!proven) failures.Add("scroll ownership not proven: " + id);
                             peers = Observe("scroll-to-" + id);
                         }
                     }
@@ -237,7 +267,8 @@ public sealed partial class EditorPage
         await File.WriteAllTextAsync(Path.Combine(output, label + "-bounds.json"), JsonSerializer.Serialize(new
         {
             Column = column, Client = client, FrameStacked = FrameRow.Stacked, TransportStacked = TransportRow.Stacked, Transport = transport,
-            State = state.ToString(), RequiredPeers = coverage, UnmeasurablePeers = unmeasurable, Elements = observations, Failures = failures
+            State = state.ToString(), RequiredPeers = coverage, UnmeasurablePeers = unmeasurable, Elements = observations,
+            DeferredRealizations = deferredRealizations, ScrollProofs = scrollProofs, Failures = failures
         }, new JsonSerializerOptions { WriteIndented = true }));
         var bitmap = new RenderTargetBitmap();
         await bitmap.RenderAsync(RightPane);
@@ -247,6 +278,26 @@ public sealed partial class EditorPage
             (uint)bitmap.PixelWidth, (uint)bitmap.PixelHeight, 96, 96, (await bitmap.GetPixelsAsync()).ToArray());
         await encoder.FlushAsync();
         NativeRequire(failures.Count == 0, label + " overflowed: " + string.Join("; ", failures));
+    }
+
+    private async Task DebugSettleColumnAsync()
+    {
+        ColumnRect[]? previous = null;
+        var stable = 0;
+        for (var attempt = 0; attempt < 60; attempt++)
+        {
+            await Task.Delay(50);
+            UpdateLayout();
+            var current = NativeDescendants(RightPane).OfType<FrameworkElement>().Select(element =>
+            {
+                var position = element.TransformToVisual(RightPane).TransformPoint(default);
+                return new ColumnRect(position.X, position.Y, element.ActualWidth, element.ActualHeight);
+            }).ToArray();
+            stable = previous is not null && current.SequenceEqual(previous) ? stable + 1 : 0;
+            if (stable >= 3) return;
+            previous = current;
+        }
+        throw new InvalidOperationException("Right-column layout did not settle within three seconds.");
     }
 }
 #endif
