@@ -1116,6 +1116,8 @@ Scribe QA is separately priced as `speechToText`/`scribe_v2`, but its bounded qu
 
 The W3 input holds decoded source audio on the source sample grid, an already-placed window and complete patch text including bridge words. W4 owns bounded media extraction and scratch sizing; W3 bounds each paid candidate and its QA buffer as above. Source level and room tone are checked before any paid request. The existing W2 calibration requires at least three seconds of voiced speech for an embedding; shorter generated takes remain failed, unselectable speaker-QA rows and do not buy Scribe QA. W3 does not pad or repeat short speech, borrow the owner's source speech into the candidate embedding, or invent a short-duration threshold. A calibrated short-take policy remains an open release item, particularly for one-to-three-word patches.
 
+For the W3 transcript comparison, assign a Scribe word to the fitted patch when the midpoint of its recognised interval lies in the half-open fitted patch interval. The extra source context remains in the acoustical checks and upload but does not enter the intended-text token comparison.
+
 1. **Re-transcribe** the final patched window, `[seamIn − 0.5 s, seamOut + 0.5 s]` of the mixed audio with the silence fit applied (§8.9), with Scribe v2 and `language_code`. Compare the normalised recognised tokens inside the window with the intended text, bridge words included:
    - for 5 tokens or fewer, require exact equality;
    - otherwise require an LCS ratio of at least 0.9 (`2 × LCS / (expected + recognised)`).
