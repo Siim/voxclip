@@ -180,6 +180,11 @@ import VoxClipMedia
         await finishRecording()
     }
     func finishRecording() async {
+        if let failure = recorder.failure {
+            message = failure.localizedDescription; recorder.discard(); trainingReady = false
+            if !recordingTraining { statementWAV = nil; try? await store.abandonEnrollment(recordID: recordID) }
+            return
+        }
         guard enabled, !busy, !recorder.recording, !recorder.samples.isEmpty else { return }
         busy = true; defer { busy = false }
         let samples = recorder.samples
