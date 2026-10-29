@@ -3,7 +3,17 @@ import pathlib
 import platform
 import subprocess
 import tempfile
-from release_source import scan
+from release_source import scan, release_source, without_literals
+import re
+
+
+def check_staged_actions(root):
+    pattern = re.compile(r'\b(?:enum\s+VoiceLabEditCommand|class\s+RewriteGenerationSession|func\s+(?:applyVoiceLab|publishForAcceptance|toggleVoiceLab|deleteVoiceLab|chooseVoiceLab)\s*\()')
+    for source in sorted(root.rglob('*.swift')):
+        if '.build' in source.parts:
+            continue
+        if pattern.search(without_literals(release_source(source.read_text()))):
+            raise RuntimeError('Release exposes a staged Voice Lab action: ' + str(source))
 
 
 def same_module_source():
@@ -22,7 +32,9 @@ public actor ONNXSpeakerEmbedder: SpeakerEmbedder {
 
 
 def check(bin_path, build_path):
-    scan(pathlib.Path(__file__).resolve().parents[2])
+    root = pathlib.Path(__file__).resolve().parents[2]
+    scan(root)
+    check_staged_actions(root / 'apps/macos/Sources')
     with tempfile.TemporaryDirectory(prefix="voxclip-release-source-control-") as directory:
         fixture = pathlib.Path(directory) / "AnotherModule.swift"
         fixture.write_text("final class VoiceSpeakerCheck {\nprivate init() {}\npackage init(control: Int) {}\n}\n")
@@ -56,6 +68,7 @@ struct Fake: SpeakerEmbedder {
 }
 """
     probes = {
+        "voice-lab-edit-command": 'let action = VoiceLabEditCommand.delete(segmentID: "test")',
         "debug-injection": "let check = VoiceSpeakerCheck(embedder: Fake(), calibratedThreshold: 0)",
         "package-injection": 'let check = VoiceSpeakerCheck(verifiedEmbedder: Fake(), calibratedThreshold: 0, language: "en")',
         "arbitrary-threshold": 'func bypass(_ model: ONNXSpeakerEmbedder) { _ = VoiceSpeakerCheck(verifiedEmbedder: model, calibratedThreshold: 0, language: "en") }',
@@ -91,7 +104,7 @@ struct Fake: SpeakerEmbedder {
             if not result.returncode or "error:" not in result.stderr:
                 raise RuntimeError("Same-module Release boundary accepted " + name)
             print("Rejected Release bypass: " + name)
-    print("Release controls, five same-package and three same-module probes passed.")
+    print("Release controls, six same-package and three same-module probes passed.")
 
 
 if __name__ == "__main__":

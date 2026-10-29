@@ -426,24 +426,23 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
     override func accessibilityString(for range: NSRange) -> String? {
         map.intersecting(range).filter(\.selectable).map(spoken).joined(separator: " ")
     }
-    private func spoken(_ span: TranscriptSpan) -> String {
+    func spoken(_ span: TranscriptSpan) -> String {
         guard let model else { return (string as NSString).substring(with: span.range) }
         if span.pause, let pause = model.pauseIndex[span.id] {
             let suffix = model.cutPauseIDs.contains(span.id) ? ", cut" : ""
             return "pause \(toFixed1(pause.duration)) seconds\(suffix)"
         }
         var value = (string as NSString).substring(with: span.range)
-        if model.cutWordIDs.contains(span.id) { value += ", cut" }
-        if model.playingWordID == span.id { value += ", playing" }
-        if let position = model.index(span.id), let plan = model.voiceLabPlan {
+        let modified: Bool
+        if let position = model.index(span.id) {
             let word = model.words[position]
-            let modified: Bool = plan.pieces.contains { (piece: VoiceLabOutputPiece) -> Bool in
-                let start: Double = Double(piece.sourceStartSample) / plan.sampleRate
-                let end: Double = Double(piece.sourceEndSample) / plan.sampleRate
-                return piece.kind == .synth && word.start >= start && word.end <= end
+            modified = model.project.voiceLab.segments.contains { segment in
+                segment.enabled && word.start >= segment.replace.start && word.end <= segment.replace.end
             }
-            if modified { value += ", AI modified" }
-        }
+        } else { modified = false }
+        if !modified && model.cutWordIDs.contains(span.id) { value += ", cut" }
+        if model.playingWordID.map({ span.id == $0 || span.ids.contains($0) }) == true { value += ", playing" }
+        if modified { value += ", AI modified" }
         return value
     }
     override func keyDown(with event: NSEvent) {
@@ -494,9 +493,30 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
         let menu = NSMenu()
         for (title, action) in [("Cut", #selector(cutWords)), ("Restore", #selector(restoreWords)), ("Correct spelling…", #selector(correctWord)), ("Play from here", #selector(playHere)), ("Preview this cut", #selector(previewCut)), ("Make clip from selection", #selector(makeClip)), ("Copy text", #selector(copy(_:)))] { let item = NSMenuItem(title: title, action: action, keyEquivalent: ""); item.target = self; menu.addItem(item) }
         if RewriteEntryPolicy.buildEnabled && model?.app.bool("voiceLab.enabled") == true { let item = NSMenuItem(title: "Rewrite…", action: #selector(rewriteWords), keyEquivalent: "r"); item.keyEquivalentModifierMask = [.command, .shift]; item.target = self; menu.addItem(item) }
+        #if DEBUG
+        if let model, let segment = voiceLabSegment {
+            let enabled = model.capabilities.edit && !model.capabilities.exporting && !model.capabilities.aiBusy
+            menu.addItem(.separator())
+            for (title, selector) in [(segment.enabled ? "Turn off" : "Turn on", #selector(toggleVoiceLab)), ("Delete AI passage", #selector(deleteVoiceLab))] {
+                let item = NSMenuItem(title: title, action: selector, keyEquivalent: "")
+                item.target = self; item.isEnabled = enabled; menu.addItem(item)
+            }
+            for index in segment.candidates.indices where segment.candidates[index].rejected == nil {
+                let item = NSMenuItem(title: "Choose take \(index + 1)", action: #selector(chooseVoiceLab(_:)), keyEquivalent: "")
+                item.tag = index; item.target = self; item.isEnabled = enabled
+                item.state = index == segment.selectedCandidateIndex ? .on : .off
+                menu.addItem(item)
+            }
+        }
+        #endif
         return menu
     }
     override func validateUserInterfaceItem(_ item: any NSValidatedUserInterfaceItem) -> Bool {
+        #if DEBUG
+        if [#selector(toggleVoiceLab), #selector(deleteVoiceLab), #selector(chooseVoiceLab(_:))].contains(item.action) {
+            return voiceLabSegment != nil && model?.capabilities.edit == true && model?.capabilities.exporting == false && model?.capabilities.aiBusy == false
+        }
+        #endif
         if item.action == #selector(rewriteWords) { return model?.capabilities.ai == true && model?.selectedIDs.isEmpty == false }
         if [#selector(cutWords), #selector(restoreWords)].contains(item.action) {
             return model?.capabilities.edit == true && (model?.selectedIDs.isEmpty == false || model?.selectedPauseIDs.isEmpty == false)
@@ -513,6 +533,29 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
     @objc private func previewCut() { model?.transport("p") }
     @objc private func makeClip() { model?.makeClip() }
     @objc private func rewriteWords() { model?.beginRewrite(entry: .context) }
+    #if DEBUG
+    private var voiceLabSegment: VoiceLabSegment? {
+        guard let model else { return nil }
+        return model.project.voiceLab.segments.first { segment in
+            model.selectedWordIDs.contains { id in
+                guard let position = model.index(id) else { return false }
+                return model.words[position].start >= segment.replace.start && model.words[position].end <= segment.replace.end
+            }
+        }
+    }
+    @objc private func toggleVoiceLab() {
+        guard let segment = voiceLabSegment else { return }
+        try? model?.applyVoiceLab(.setEnabled(segmentID: segment.id, enabled: !segment.enabled))
+    }
+    @objc private func deleteVoiceLab() {
+        guard let segment = voiceLabSegment else { return }
+        try? model?.applyVoiceLab(.delete(segmentID: segment.id))
+    }
+    @objc private func chooseVoiceLab(_ sender: NSMenuItem) {
+        guard let segment = voiceLabSegment else { return }
+        try? model?.applyVoiceLab(.chooseCandidate(segmentID: segment.id, index: sender.tag))
+    }
+    #endif
     func updateCorrection() {
         guard let model, let id = model.correctionID, let span = map.span(id: id) else { correction?.removeFromSuperview(); correction = nil; return }
         guard correction == nil, let window else { return }

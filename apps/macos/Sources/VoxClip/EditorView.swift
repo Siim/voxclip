@@ -283,7 +283,9 @@ struct SubtitleDetail: Equatable {
         // Its title and reasons come from the project, which views can't observe.
         let _ = model.projectRevision
         let reason = model.exportUnavailable
-        EditorExportControl(title: model.exportTitle, help: reason ?? "\(model.exportTitle) (⌘E)", reason: reason) { model.presentExport() }
+        EditorExportControl(title: model.exportTitle, accessibleName: model.exportAccessibleName(model.exportTitle,
+            targets: model.activeClip.map { [.clip($0.id)] } ?? [.fullEdit]),
+            help: reason ?? "\(model.exportTitle) (⌘E)", reason: reason) { model.presentExport() }
             .disabled(reason != nil || !model.canExport)
     }
 }
@@ -299,11 +301,12 @@ struct SubtitleDetail: Equatable {
 @MainActor struct EditorExportControl: NSViewRepresentable {
     @Environment(\.isEnabled) private var isEnabled
     let title: String
+    let accessibleName: String
     var help = ""
     var reason: String?
     let action: () -> Void
-    init(title: String = "Export Video…", help: String = "", reason: String? = nil, action: @escaping () -> Void) {
-        self.title = title; self.help = help; self.reason = reason; self.action = action
+    init(title: String = "Export Video…", accessibleName: String? = nil, help: String = "", reason: String? = nil, action: @escaping () -> Void) {
+        self.title = title; self.accessibleName = accessibleName ?? title; self.help = help; self.reason = reason; self.action = action
     }
     func makeNSView(context: Context) -> ExportToolbarButton {
         let button = ExportToolbarButton(title: title, target: nil, action: nil)
@@ -315,9 +318,8 @@ struct SubtitleDetail: Equatable {
     }
     func updateNSView(_ button: ExportToolbarButton, context: Context) {
         button.isEnabled = isEnabled
-        // The title is also the button's accessible name, so it follows the scope.
         button.title = title
-        button.setAccessibilityLabel(title)
+        button.setAccessibilityLabel(accessibleName)
         button.exportTitle = title
         button.handler = action
         button.toolTip = help.isEmpty ? nil : help

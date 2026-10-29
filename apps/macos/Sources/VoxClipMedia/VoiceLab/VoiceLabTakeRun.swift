@@ -44,6 +44,22 @@ public actor VoiceLabTakeRun {
     }
     public func scratch(for takeId: UUID) -> VoiceLabTakeScratch? { scratches[takeId] }
     public func paidAsset(for takeId: UUID) -> VoiceLabAsset? { paidAssets[takeId] }
+    #if DEBUG
+    public func publishForAcceptance(_ row: VoiceLabTakeRow, input: VoiceLabTakeInput, at date: Date) async throws -> (VoiceLabPublishedTake, VoiceConsentRecord) {
+        let version = revision
+        guard row.selectable, let scratch = scratches[row.id], scratch.isValid,
+              await inputsAreCurrent(), version == revision else { throw VoiceLabError.consentRequired }
+        let record = try await store.load(input.recordID)
+        try await store.validateUse(record)
+        guard version == revision, scratch.isValid, await inputsAreCurrent(), version == revision,
+              let receipt = row.receipt, receipt.voiceID == record.voiceId else { throw VoiceLabError.consentRequired }
+        let publication = try scratch.fitted.publish(projectId: storage.projectId,
+            assetId: UUID().uuidString.lowercased(), paidRoot: storage.paidRoot, createdAt: date,
+            requestId: receipt.requestID.uuidString, seed: row.seed, gainDb: scratch.audio.gainDb)
+        return (VoiceLabPublishedTake(assets: publication.assets, audio: publication.audio, outDuration: publication.outDuration,
+            words: publication.words, chunks: publication.chunks), record)
+    }
+    #endif
     public func reject(_ takeId: UUID) async { await scratches.removeValue(forKey: takeId)?.invalidate() }
     public func discover(language: String) async throws -> (models: [VoiceLabModel], voices: [VoiceConsentRecord]) {
         guard await inputsAreCurrent() else { throw VoiceLabError.consentRequired }

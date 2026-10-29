@@ -26,10 +26,48 @@ import VoxClipMedia
     @ObservationIgnored private var sending: Task<Void, Never>?
     @ObservationIgnored private var cleanup: Task<Void, Never>?
     @ObservationIgnored private var revision = 0
+    @ObservationIgnored private var accepting = false
+    @ObservationIgnored var publishForTests: (@MainActor (VoiceLabTakeRow, VoiceLabTakeInput, Date) async throws -> (VoiceLabPublishedTake, VoiceConsentRecord))?
     init(run: VoiceLabTakeRun, inputsAreCurrent: @escaping @MainActor () -> Bool = { true }) {
         self.run = run; self.inputsAreCurrent = inputsAreCurrent
     }
-    var readyToAccept: Bool { inputsAreCurrent() && phase == .readyToAccept && selected?.selectable == true }
+    var readyToAccept: Bool { !accepting && inputsAreCurrent() && phase == .readyToAccept && selected?.selectable == true }
+    var acceptTitle: String { selected.map { "Use Take \($0.index + 1)" } ?? "Use Take 1" }
+    @discardableResult func accept(into editor: EditorModel, at date: Date = Date()) async -> Bool {
+        guard !Task.isCancelled, readyToAccept, let input, let selected else { return false }
+        let version = revision, project = editor.project
+        accepting = true
+        defer { accepting = false }
+        do {
+            var candidates: [VoiceLabCandidate] = [], assets: [VoiceLabAsset] = []
+            var voice: VoiceLabVoiceReference?
+            var selectedIndex: Int?
+            for row in rows where row.selectable && (row.fits || row.id == selected.id) &&
+                row.audio?.fit.plan.windowStart == selected.audio?.fit.plan.windowStart &&
+                row.audio?.fit.plan.windowEnd == selected.audio?.fit.plan.windowEnd {
+                let published: VoiceLabPublishedTake, record: VoiceConsentRecord
+                if let publishForTests { (published, record) = try await publishForTests(row, input, date) }
+                else { (published, record) = try await run.publishForAcceptance(row, input: input, at: date) }
+                try Task.checkCancellation()
+                guard version == revision, inputsAreCurrent(), editor.project == project else { return false }
+                let candidate = try VoiceLabRecipeBuilder.candidate(row: row, input: input, published: published,
+                    record: record, createdAt: date, videoChoice: row.id == selected.id ? videoChoice : nil)
+                if row.id == selected.id { selectedIndex = candidates.count }
+                candidates.append(candidate)
+                for asset in published.assets where !assets.contains(where: { $0.id == asset.id }) { assets.append(asset) }
+                voice = VoiceLabVoiceReference(id: record.id, provider: record.provider, voiceId: record.voiceId,
+                    consentRecordId: record.id, displayName: record.voiceName, status: .active)
+            }
+            guard version == revision, inputsAreCurrent(), editor.project == project, let voice, let selectedIndex,
+                  let plan = selected.audio?.fit.plan else { return false }
+            let segment = try VoiceLabRecipeBuilder.segment(id: UUID().uuidString.lowercased(), candidates: candidates,
+                selected: selectedIndex, input: input, plan: plan)
+            try editor.applyVoiceLab(.accept(segment, assets: assets, voice: voice))
+            return true
+        } catch is CancellationError {
+        } catch { if version == revision { problem = RewriteSession.refusal(error) } }
+        return false
+    }
     var selected: VoiceLabTakeRow? { rows.first { $0.id == selectedID } }
     var canGenerate: Bool { inputsAreCurrent() && selectedVoiceID != nil && selectedModelID != nil && phase != .generating && phase != .preparing }
     var inputsMatchCurrentSelection: Bool { input?.recordID == selectedVoiceID && input?.modelID == selectedModelID }
@@ -90,7 +128,8 @@ import VoxClipMedia
         guard revision == version else { return }
         self.rows = rows
     }
-    func review(_ result: VoiceLabTakeRunResult) {
+    func review(_ result: VoiceLabTakeRunResult, input: VoiceLabTakeInput? = nil) {
+        if let input { self.input = input }
         rows = result.rows; bestID = result.best?.id; selectedID = nil; videoChoice = nil
         guard result.end == .completed || result.end == .earlyStop else {
             phase = result.end == .cancelled || result.end == .invalidated ? .cancelled : .failed
@@ -101,14 +140,14 @@ import VoxClipMedia
         else { phase = .lengthChanged }
     }
     @discardableResult func select(_ id: UUID) -> Bool {
-        guard [.lengthChanged, .readyToAccept, .nonePassed].contains(phase),
+        guard !accepting, [.lengthChanged, .readyToAccept, .nonePassed].contains(phase),
               let row = rows.first(where: { $0.id == id }), row.selectable else { return false }
         selectedID = id; videoChoice = nil
         phase = row.fits ? .readyToAccept : .lengthChanged
         return true
     }
     @discardableResult func chooseVideo(_ choice: VoiceLabVideoMode) -> Bool {
-        guard phase == .lengthChanged, selected?.selectable == true, choice == .retimed || choice == .lipsync else { return false }
+        guard !accepting, phase == .lengthChanged, selected?.selectable == true, choice == .retimed || choice == .lipsync else { return false }
         videoChoice = choice; phase = .readyToAccept
         return true
     }

@@ -1,5 +1,41 @@
 import Foundation
 
+#if DEBUG
+public enum VoiceLabEditCommand: Sendable {
+    case accept(VoiceLabSegment, assets: [VoiceLabAsset], voice: VoiceLabVoiceReference)
+    case setEnabled(segmentID: String, enabled: Bool)
+    case delete(segmentID: String)
+    case chooseCandidate(segmentID: String, index: Int)
+
+    public var actionName: String {
+        switch self {
+        case .accept: "Accept Voice Lab take"
+        case .setEnabled(_, true): "Turn on Voice Lab"
+        case .setEnabled(_, false): "Turn off Voice Lab"
+        case .delete: "Delete Voice Lab segment"
+        case .chooseCandidate: "Choose Voice Lab take"
+        }
+    }
+    public func applying(to project: Project) throws -> Project {
+        switch self {
+        case .accept(let segment, let assets, let voice):
+            var result = try VoiceLabProject.upgradeToV3(project)
+            if let existing = result.voiceLab.voices?.first(where: { $0.id == voice.id }) {
+                guard existing == voice else { throw VoiceLabProjectError.consentUnverified }
+            } else { result = try VoiceLabProject.addVoiceReference(voice, to: result) }
+            let existing = result.voiceLab.assets ?? []
+            for asset in assets {
+                if let previous = existing.first(where: { $0.id == asset.id }), previous != asset { throw VoiceLabProjectError.invalidAsset }
+            }
+            return try VoiceLabProject.accept(segment, assets: assets.filter { asset in !existing.contains(where: { $0.id == asset.id }) }, into: result)
+        case .setEnabled(let id, let enabled): return try VoiceLabProject.setEnabled(enabled, id: id, in: project)
+        case .delete(let id): return try VoiceLabProject.delete(id: id, in: project)
+        case .chooseCandidate(let id, let index): return try VoiceLabProject.selectCandidate(index, id: id, in: project)
+        }
+    }
+}
+#endif
+
 public enum EditingLimits {
     public static let maxCorrectionScalars = 200
     public static let maxClipTitleScalars = 120
