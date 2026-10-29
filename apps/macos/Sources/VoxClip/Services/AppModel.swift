@@ -124,6 +124,7 @@ extension ProviderChoice {
     /// The Settings tab to show; Set Up AI… and Change… open "ai".
     var settingsPane = "general"
     @ObservationIgnored lazy var voiceLabSession = VoiceLabSession(app: self)
+    @ObservationIgnored lazy var speakerModelLibrary = SpeakerModelLibrary(app: self)
     var activeEditor: EditorModel? { shell.editor }
     private(set) var settingsLoaded = false
     private(set) var loadingSettings = true

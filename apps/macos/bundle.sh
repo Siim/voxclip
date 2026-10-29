@@ -26,7 +26,7 @@ MODE=debug
 NO_UPLOAD=false
 ALLOW_DIRTY=false
 DRY_RUN=false
-SHARED_DIRS=(caption-styles catalog data design fonts prompts schemas)
+SHARED_DIRS=(caption-styles catalog data design fonts prompts schemas voice-lab)
 
 source "$PWD/scripts/release-common.sh"
 

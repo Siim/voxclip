@@ -28,7 +28,7 @@ import VoxClipCore
         let scalarLimit = !session.canRecord
         session.verified = true; session.trainingReady = true
         await session.prepareCreation()
-        let unavailable = session.confirmation == nil && session.message == session.speakerMessage
+        let unavailable = session.confirmation == nil && session.message == VoiceConsentError.speakerUnavailable.localizedDescription
         let shared = try SharedResources.locate()
         var record = try JSONDecoder().decode(VoiceConsentRecord.self, from: Data(contentsOf: shared.root.appendingPathComponent("fixtures/voice-lab/consent-record.json")))
         session.records = [record]

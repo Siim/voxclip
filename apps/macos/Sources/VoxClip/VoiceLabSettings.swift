@@ -14,6 +14,7 @@ import VoxClipCore
                         else { confirmBeta = true }
                     } else {
                         app.set("voiceLab.enabled", .bool(false))
+                        app.speakerModelLibrary.task?.cancel(); app.speakerModelLibrary.confirmation.respond(false)
                         if !app.voiceLabSettingsVisible { app.settingsPane = "general" }
                     }
                 })).disabled(session.busy || session.recorder.recording)
@@ -21,6 +22,7 @@ import VoxClipCore
             }
             if session.enabled {
                 keySection
+                SpeakerModelRows(app: app)
                 voicesSection
                 exportSection
                 Section("Storage") {

@@ -94,30 +94,25 @@ public struct VoiceSpeakerCheck: Sendable {
     public var available: Bool { embedder != nil && threshold.map { $0.isFinite && (0...1).contains($0) } == true }
     public func embedding(_ pcm16k: [Float]) async throws -> [Float] {
         guard available, let embedder else { throw VoiceConsentError.speakerUnavailable }
+        try await embedder.validateAvailability()
         guard pcm16k.count >= 48_000, pcm16k.allSatisfy(\.isFinite) else { throw VoiceConsentError.speakerMismatch }
-        var voiced: [Float] = []
-        let frame = 160
-        let gate = pow(10.0, -45.0 / 20.0)
-        for start in stride(from: 0, through: pcm16k.count - frame, by: frame) {
-            let samples = pcm16k[start..<(start + frame)]
-            let rms = sqrt(samples.reduce(0.0) { $0 + Double($1) * Double($1) } / Double(frame))
-            if rms > gate { voiced.append(contentsOf: samples) }
-        }
+        let voiced = try await embedder.voicedSamples(pcm16k)
         guard voiced.count >= 48_000, (1...16_384).contains(embedder.dimension) else { throw VoiceConsentError.speakerMismatch }
         var mean = [Float](repeating: 0, count: embedder.dimension)
-        for start in stride(from: 0, through: voiced.count - 48_000, by: 24_000) {
+        for window in try SpeakerAudio.windows(voiced) {
             try Task.checkCancellation()
-            let result = try await embedder.embed(Array(voiced[start..<(start + 48_000)]))
+            let result = try await embedder.embed(window)
             guard result.count == mean.count, result.allSatisfy(\.isFinite) else { throw VoiceConsentError.speakerMismatch }
             for index in mean.indices { mean[index] += result[index] }
         }
-        let norm = sqrt(mean.reduce(0.0) { $0 + Double($1) * Double($1) })
-        guard norm > 0, norm.isFinite else { throw VoiceConsentError.speakerMismatch }
-        return mean.map { Float(Double($0) / norm) }
+        return try SpeakerAudio.normalized(mean)
     }
     public static func cosine(_ left: [Float], _ right: [Float]) throws -> Double {
         guard left.count == right.count, !left.isEmpty else { throw VoiceConsentError.speakerMismatch }
-        return zip(left, right).reduce(0.0) { $0 + Double($1.0) * Double($1.1) }
+        let unitLeft = try SpeakerAudio.normalized(left)
+        let unitRight = try SpeakerAudio.normalized(right)
+        let score = zip(unitLeft, unitRight).reduce(0.0) { $0 + Double($1.0) * Double($1.1) }
+        return min(1, max(-1, score))
     }
 }
 
@@ -134,6 +129,7 @@ public actor VoiceUseGuard {
         guard check.available, check.embedder?.modelID == record.speaker.model, check.threshold == record.speaker.threshold,
               let owner = VoiceConsentRecord.decodeEmbedding(record.speaker.embedding) else { throw VoiceConsentError.speakerUnavailable }
         let key = VoiceLabFingerprint.fields([contentKey, recordID, record.speaker.embedding, record.statement.audioSha256])
+        try await check.embedder?.validateAvailability()
         if !cache.contains(key) {
             let maximum = voiceChanger ? 480_000 : 160_000
             let candidate = try await check.embedding(Array(speech16k.prefix(maximum)))

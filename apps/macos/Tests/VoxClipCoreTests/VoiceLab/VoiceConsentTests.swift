@@ -5,6 +5,7 @@ import Testing
 
 private final class ConsentRequestLog: Sendable { let value = Mutex<[String]>([]) }
 private final class ConsentTranscriptionCount: Sendable { let value = Mutex(0) }
+private final class SpeakerAvailability: Sendable { let value = Mutex(true) }
 
 @Suite("Own-voice consent", .timeLimit(.minutes(2)))
 struct VoiceConsentTests {
@@ -193,6 +194,61 @@ struct VoiceConsentTests {
         let modelID = "fixture-calibrated"
         let dimension = 2
         func embed(_ pcm16k: [Float]) async throws -> [Float] { [1, 0] }
+    }
+    private struct SignEmbedding: SpeakerEmbedder {
+        let modelID = "fixture-calibrated"
+        let dimension = 2
+        let present: SpeakerAvailability
+        func embed(_ pcm16k: [Float]) async throws -> [Float] { pcm16k[0] > 0 ? [1, 0] : [0, 1] }
+        func validateAvailability() async throws { if !present.value.withLock({ $0 }) { throw VoiceConsentError.speakerUnavailable } }
+    }
+    @Test(arguments: [5, 10]) func filteringDropsOtherSpeakersAndEnforcesTenSeconds(acceptedSeconds: Int) async throws {
+        let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let calls = ConsentRequestLog(); let store = storage(root); let client = client(calls)
+        _ = try await client.plan()
+        let check = VoiceSpeakerCheck(embedder: SignEmbedding(present: SpeakerAvailability()), calibratedThreshold: 0.8)
+        let service = enroll(store: store, client: client, check: check, raw: try await raw())
+        let id = UUID().uuidString
+        try await service.verify(recordID: id, statement: statement(), wav: wav, attestations: attestations, approved: true, enabled: true)
+        let good = VoiceLabRequestFixtures.wav(rate: 16_000, frames: acceptedSeconds * 16_000, fill: 4_000)
+        let badFrames = (60 - acceptedSeconds) * 8_000
+        let bad = VoiceLabRequestFixtures.wav(rate: 16_000, frames: badFrames, fill: -4_000)
+        let samples = [VoiceTrainingSample(wav: good, speech16k: [], seconds: Double(acceptedSeconds), source: "readAloud", snrDb: 25)] + (0..<2).map { _ in VoiceTrainingSample(wav: bad, speech16k: [], seconds: Double(badFrames) / 16_000, source: "readAloud", snrDb: 25) }
+        if acceptedSeconds < 10 {
+            await #expect(throws: VoiceConsentError.speakerMismatch) { try await service.prepare(recordID: id, displayName: "Example", samples: samples, enabled: true) }
+            #expect(calls.value.withLock { !$0.contains("POST /v1/voices/add") })
+        } else {
+            let quote = try await service.prepare(recordID: id, displayName: "Example", samples: samples, enabled: true)
+            let record = try await service.create(quote: quote, approved: true, enabled: true, appVersion: "0.1.0")
+            #expect(record.samples.count == 1)
+            #expect(record.samples[0].seconds == 10)
+        }
+    }
+    @Test func cachedGuardStillRequiresInstalledModel() async throws {
+        let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let store = storage(root); let record = try fixtureRecord(wav: wav)
+        try await store.saveStatement(wav, recordID: record.id); try await store.save(record)
+        let present = SpeakerAvailability()
+        let checker = SignEmbedding(present: present)
+        let service = VoiceUseGuard(store: store, check: .init(embedder: checker, calibratedThreshold: 0.8))
+        let audio = [Float](repeating: 0.1, count: 160_000)
+        _ = try await service.authorize(contentKey: "content", recordID: record.id, speech16k: audio, approved: true)
+        present.value.withLock { $0 = false }
+        await #expect(throws: VoiceConsentError.speakerUnavailable) { try await service.authorize(contentKey: "content", recordID: record.id, speech16k: audio, approved: true) }
+    }
+    @Test func removedModelRefusesPreparedCloneBeforeUpload() async throws {
+        let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let calls = ConsentRequestLog(); let store = storage(root); let client = client(calls)
+        _ = try await client.plan()
+        let present = SpeakerAvailability()
+        let check = VoiceSpeakerCheck(embedder: SignEmbedding(present: present), calibratedThreshold: 0.8)
+        let service = enroll(store: store, client: client, check: check, raw: try await raw())
+        let id = UUID().uuidString
+        try await service.verify(recordID: id, statement: statement(), wav: wav, attestations: attestations, approved: true, enabled: true)
+        let quote = try await service.prepare(recordID: id, displayName: "Example", samples: training(), enabled: true)
+        present.value.withLock { $0 = false }
+        await #expect(throws: VoiceConsentError.speakerUnavailable) { try await service.create(quote: quote, approved: true, enabled: true, appVersion: "0.1.0") }
+        #expect(calls.value.withLock { !$0.contains("POST /v1/voices/add") })
     }
     @Test func pendingVerificationOnlyActivatesOwnedVerifiedClone() async throws {
         let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }

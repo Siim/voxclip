@@ -19,7 +19,7 @@ public actor VoiceEnrollment {
     public typealias Transcribe = @Sendable (Data, String) async throws -> RawTranscript
     private let store: VoiceConsentStore
     private let client: ElevenLabsVoiceLab
-    private let speaker: VoiceSpeakerCheck
+    private var speaker: VoiceSpeakerCheck
     private let transcribe: Transcribe
     private var attempts: [Date] = []
     private var verified: [String: Verified] = [:]
@@ -41,7 +41,12 @@ public actor VoiceEnrollment {
     public init(store: VoiceConsentStore, client: ElevenLabsVoiceLab, speaker: VoiceSpeakerCheck = VoiceSpeakerCheck(), transcribe: @escaping Transcribe) {
         self.store = store; self.client = client; self.speaker = speaker; self.transcribe = transcribe
     }
-    public nonisolated var speakerAvailable: Bool { speaker.available }
+    public var speakerAvailable: Bool { speaker.available }
+    public func setSpeakerCheck(_ check: VoiceSpeakerCheck) throws {
+        guard !busy else { throw VoiceLabError.invalidInput }
+        if speaker.embedder?.modelID != check.embedder?.modelID || speaker.threshold != check.threshold { pending.removeAll() }
+        speaker = check
+    }
     public func verify(recordID: String, statement: VoiceConsentStatement, wav: Data, attestations: VoiceConsentRecord.Attestations,
                        approved: Bool, enabled: Bool, now: Date = Date()) async throws {
         guard approved, enabled else { throw VoiceLabError.consentRequired }
@@ -102,6 +107,7 @@ public actor VoiceEnrollment {
         guard speaker.available, let threshold = speaker.threshold, let embedder = speaker.embedder else { throw VoiceConsentError.speakerUnavailable }
         guard !busy, let draft = pending.removeValue(forKey: quote.id) else { throw VoiceLabError.invalidInput }
         busy = true; defer { busy = false }
+        try await embedder.validateAvailability()
         guard VoiceLabFingerprint.bytes(try await store.statement(recordID: draft.policy.recordID)) == draft.verified.hash else { throw VoiceConsentError.invalidRecord }
         let result = try await client.createOwnClone(draft.request, policy: draft.policy, requestID: quote.requestID, authorization: .init(quote: quote, approved: true))
         let statement = draft.verified.statement

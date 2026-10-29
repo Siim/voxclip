@@ -51,7 +51,10 @@ import VoxClipMedia
         if subscription.voiceSlotsUsed >= subscription.voiceLimit { return "Your ElevenLabs account has no free voice slots." }
         return nil
     }
-    var speakerMessage: String { VoiceConsentError.speakerUnavailable.localizedDescription }
+    var speakerMessage: String {
+        if app.speakerModelLibrary.installed { return "Own-voice checks run on this Mac. Estonian is not available yet." }
+        return "Download the own-voice check model in Settings → Voice Lab before creating a voice. No audio is sent for this check."
+    }
     func load() async {
         do { records = try await store.records() } catch { message = "The local voice records could not be read. No audio was sent." }
     }
@@ -176,6 +179,8 @@ import VoxClipMedia
         busy = true; defer { busy = false }
         do {
             let (_, enrollment) = try services()
+            let check = try await app.speakerModelLibrary.check(language: statement?.language ?? "en")
+            try await enrollment.setSpeakerCheck(check)
             quote = try await enrollment.prepare(recordID: recordID, displayName: displayName, samples: training, enabled: enabled)
             confirmation = .create
         } catch { message = await errorMessage(error) }
