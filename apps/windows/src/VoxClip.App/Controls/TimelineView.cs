@@ -157,6 +157,7 @@ public sealed class TimelineView : UserControl
     }
     internal void DebugCreateRangePeers()
     {
+        AutomationProperties.SetAutomationId(slider, "NativeProbe.Playhead");
         _ = FrameworkElementAutomationPeer.CreatePeerForElement(slider);
         _ = FrameworkElementAutomationPeer.CreatePeerForElement(startHandle);
         _ = FrameworkElementAutomationPeer.CreatePeerForElement(endHandle);

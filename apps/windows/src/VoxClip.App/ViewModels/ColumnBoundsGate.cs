@@ -27,7 +27,7 @@ internal static class ColumnBoundsGate
     internal static readonly string[] Rewrite = ["Rewrite.Header", "Rewrite.Instruction", "Rewrite.Words", "Rewrite.Close", "Rewrite.Propose"];
 
     internal static IReadOnlyList<string> RequiredIds(ColumnFitState state, IReadOnlyList<string> galleryChoices,
-        bool apply = false, bool settings = false)
+        bool apply = false, bool settings = false, bool accent = true)
     {
         var required = new List<string>(Common);
         if (state == ColumnFitState.Rewrite)
@@ -43,7 +43,7 @@ internal static class ColumnBoundsGate
             if (state == ColumnFitState.FineTune)
             {
                 required.AddRange(FineTune);
-                required.AddRange(CaptionFineTune.Colors.Select(color => "FineTune.Colour." + color.Name));
+                if (accent) required.AddRange(CaptionFineTune.Colors.Select(color => "FineTune.Colour." + color.Name));
             }
         }
         return required;

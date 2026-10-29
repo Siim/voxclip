@@ -1,5 +1,10 @@
 param([Parameter(Mandatory=$true)][string]$EvidenceDir, [Parameter(Mandatory=$true)][string]$Executable)
 $ErrorActionPreference = 'Stop'
+if ([Threading.Thread]::CurrentThread.GetApartmentState() -ne 'MTA') {
+    & powershell.exe -NoProfile -NonInteractive -Mta -ExecutionPolicy Bypass -File $PSCommandPath -EvidenceDir $EvidenceDir -Executable $Executable
+    if ($LASTEXITCODE) { throw 'MTA listener failed.' }
+    exit 0
+}
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
 Add-Type -ReferencedAssemblies UIAutomationClient, UIAutomationTypes @'
 using System.Threading;
@@ -20,9 +25,12 @@ $app = Get-Process -Id $appId
 if ($app.Path -ne (Resolve-Path -LiteralPath $Executable).Path) { throw 'Listener target is not the owned executable.' }
 if ($app.MainWindowHandle -eq [IntPtr]::Zero) { throw 'The owned timeline has no window.' }
 $window = [System.Windows.Automation.AutomationElement]::FromHandle($app.MainWindowHandle)
+$playhead = $window.FindFirst([System.Windows.Automation.TreeScope]::Descendants,
+    [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::AutomationIdProperty, 'NativeProbe.Playhead'))
+if (-not $playhead -or $playhead.Current.ProcessId -ne $appId) { throw 'The owned probe playhead did not realize.' }
 try {
-    [System.Windows.Automation.Automation]::AddAutomationPropertyChangedEventHandler($window,
-        [System.Windows.Automation.TreeScope]::Subtree, [TimelinePropertyListener]::Handler,
+    [System.Windows.Automation.Automation]::AddAutomationPropertyChangedEventHandler($playhead,
+        [System.Windows.Automation.TreeScope]::Element, [TimelinePropertyListener]::Handler,
         @([System.Windows.Automation.RangeValuePattern]::ValueProperty, [System.Windows.Automation.RangeValuePattern]::MinimumProperty,
           [System.Windows.Automation.RangeValuePattern]::MaximumProperty, [System.Windows.Automation.RangeValuePattern]::SmallChangeProperty,
           [System.Windows.Automation.AutomationElement]::HelpTextProperty))
@@ -31,9 +39,12 @@ try {
     if (-not (Test-Path -LiteralPath $result)) { throw 'The listener run produced no native allocation result.' }
     $measured = Get-Content -LiteralPath $result -Raw | ConvertFrom-Json
     if (-not $measured.PropertyListener) { throw 'The app did not observe the real property listener.' }
-    Start-Sleep -Milliseconds 250
+    $deadline = [DateTime]::UtcNow.AddSeconds(10)
+    while ([TimelinePropertyListener]::Events -eq 0 -and [DateTime]::UtcNow -lt $deadline) { Start-Sleep -Milliseconds 50 }
     if ([TimelinePropertyListener]::Events -eq 0) { throw 'No actual UIA property change was delivered.' }
     [TimelinePropertyListener]::Events | Set-Content -LiteralPath (Join-Path $EvidenceDir 'timeline-listener-events.txt')
 } finally {
-    [System.Windows.Automation.Automation]::RemoveAutomationPropertyChangedEventHandler($window, [TimelinePropertyListener]::Handler)
+    [System.Windows.Automation.Automation]::RemoveAutomationPropertyChangedEventHandler($playhead, [TimelinePropertyListener]::Handler)
+    [IO.File]::WriteAllText((Join-Path $EvidenceDir 'timeline-listener-stopped.txt'), 'unsubscribed')
 }
+[Environment]::Exit(0)

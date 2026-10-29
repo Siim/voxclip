@@ -35,7 +35,8 @@ try {
     Write-Output "Capturing $screen at $([DateTime]::UtcNow.ToString('O'))"
     Remove-Item (Join-Path $shots 'complete'), (Join-Path $shots 'error.txt') -Force -ErrorAction SilentlyContinue
     Remove-Item (Join-Path $shots "$screen.png"), (Join-Path $shots "$screen-window.png"), (Join-Path $shots "$screen-self-check.json") -Force -ErrorAction SilentlyContinue
-    $appAction = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$launcher`" -Screen $screen -Configuration $Configuration -RuntimeIdentifier $RuntimeIdentifier -WindowSize $size -Root `"$root`""
+    $ordinaryArgument = if ($Exercise -and $capture -eq 'editor') { ' -OrdinaryEditor' } else { '' }
+    $appAction = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$launcher`" -Screen $screen -Configuration $Configuration -RuntimeIdentifier $RuntimeIdentifier -WindowSize $size -Root `"$root`"$ordinaryArgument"
     Register-ScheduledTask -TaskName $appTask -Action $appAction -Principal $principal -Force | Out-Null
     $exerciseArgument = if ($Exercise -and $capture -notlike 'editor-*') { ' -Exercise' } else { '' }
     $shotAction = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$script`" -Screen $screen$exerciseArgument -CaptureName $capture -RuntimeIdentifier $RuntimeIdentifier -Root `"$root`""

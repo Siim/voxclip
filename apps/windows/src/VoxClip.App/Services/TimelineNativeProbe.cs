@@ -133,6 +133,15 @@ internal static class TimelineNativeProbe
                     Frames = 4096, FullControlBytesPerFrame = bytes / 4096.0, PlayheadBytesPerFrame = playheadBytes / 4096.0,
                     FullControlMillisecondsPerFrame = milliseconds / 4096, PlayheadMillisecondsPerFrame = playheadMilliseconds / 4096
                 }, new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
+            if (listener && Environment.GetEnvironmentVariable("VOXCLIP_UI_EVIDENCE_DIR") is { Length: > 0 } listenerEvidence)
+            {
+                var delivered = Path.Combine(listenerEvidence, "timeline-listener-events.txt");
+                var stopped = Path.Combine(listenerEvidence, "timeline-listener-stopped.txt");
+                var deadline = DateTime.UtcNow.AddSeconds(15);
+                while (!File.Exists(stopped) && DateTime.UtcNow < deadline) await Task.Delay(50);
+                Require(File.Exists(stopped) && File.Exists(delivered) && int.TryParse(await File.ReadAllTextAsync(delivered), out var events) && events > 0,
+                    "The attached listener did not acknowledge delivered events and unsubscribe before the timeline was removed");
+            }
             if (!listener) Require(playheadBytes == 0, "Playhead-only native control path allocated without a property listener");
         }
         finally { longTimeline.Detach(); host.Children.Remove(longTimeline); }

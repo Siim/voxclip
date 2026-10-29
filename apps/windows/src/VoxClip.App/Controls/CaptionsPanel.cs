@@ -416,6 +416,7 @@ internal sealed class CaptionsPanel : UserControl
     internal void RefreshSamples() => samples?.Refresh();
 
 #if DEBUG
+    internal bool DebugFitRequiresAccent => tiles.Values.FirstOrDefault(tile => tile.Style.Id == model.Project.Captions.StyleId)?.Style.Accent is not null;
     internal IReadOnlyList<string> DebugFitGalleryIds()
     {
         var choices = new List<string>();
@@ -454,7 +455,7 @@ internal sealed class CaptionsPanel : UserControl
         try
         {
             await inspect("captions");
-            model.SetCaptionStyle("vox-highlight");
+            model.SetCaptionStyle("karaoke");
             fineTune.IsExpanded = true;
             await inspect("fine-tune");
             fineTune.IsExpanded = false;

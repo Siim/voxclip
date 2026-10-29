@@ -37,6 +37,7 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
     private Dictionary<string, (string? Frame, CaptionCard? Card)> clipTiles = [];
 #if DEBUG
     internal EditorPage? DebugEditor => editor;
+    internal bool DebugNavigationPaneOpen { get => Nav.IsPaneOpen; set => Nav.IsPaneOpen = value; }
     internal bool DebugHoldNavigation() => navigation.Wait(0);
     internal void DebugReleaseNavigation() => navigation.Release();
     internal SidebarRow? DebugSelectedRow => Nav.SelectedItem as SidebarRow;

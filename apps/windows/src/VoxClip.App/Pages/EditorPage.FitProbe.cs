@@ -45,11 +45,20 @@ public sealed partial class EditorPage
             }
             return null;
         }
+        bool Presented(FrameworkElement element)
+        {
+            for (DependencyObject? ancestor = element; ancestor is not null; ancestor = VisualTreeHelper.GetParent(ancestor))
+            {
+                if (ancestor is UIElement presented && (presented.Visibility != Visibility.Visible || presented.Opacity == 0)) return false;
+                if (ancestor == RightPane) return true;
+            }
+            return false;
+        }
         var captionPanel = NativeDescendants(RightPane).OfType<CaptionsPanel>().SingleOrDefault();
         var rewritePanel = NativeDescendants(RightPane).OfType<RewritePanel>().SingleOrDefault();
         captionPanel?.DebugFitRealizeGallery();
         var required = ColumnBoundsGate.RequiredIds(state, captionPanel?.DebugFitGalleryIds() ?? [],
-            rewritePanel?.DebugFitRequiresApply == true, rewritePanel?.DebugFitRequiresSettings == true);
+            rewritePanel?.DebugFitRequiresApply == true, rewritePanel?.DebugFitRequiresSettings == true, captionPanel?.DebugFitRequiresAccent == true);
         var scrollOffsets = NativeDescendants(RightPane).OfType<ScrollViewer>()
             .Select(viewer => (Viewer: viewer, Offset: viewer.VerticalOffset)).ToArray();
         var observations = new List<object>();
@@ -70,6 +79,8 @@ public sealed partial class EditorPage
             var identities = new HashSet<nint>();
             void Collect(AutomationPeer peer, FrameworkElement owner)
             {
+                if (peer is FrameworkElementAutomationPeer { Owner: FrameworkElement nativeOwner }) owner = nativeOwner;
+                if (!Presented(owner)) return;
                 if (!identities.Add(((WinRT.IWinRTObject)peer).NativeObject.ThisPtr)) return;
                 if (!peers.TryAdd(peer, owner)) return;
                 try
@@ -78,7 +89,7 @@ public sealed partial class EditorPage
                 }
                 catch (Exception exception) when (exception is not OutOfMemoryException) { EnumerationFailed(owner, sample, exception); }
             }
-            foreach (var element in NativeDescendants(RightPane).OfType<FrameworkElement>())
+            foreach (var element in NativeDescendants(RightPane).OfType<FrameworkElement>().Where(Presented))
                 try
                 {
                     if (FrameworkElementAutomationPeer.CreatePeerForElement(element) is { } peer)
@@ -115,7 +126,11 @@ public sealed partial class EditorPage
                 if (ScrollOwner(owner) is { } viewer)
                     region = new(AutomationProperties.GetAutomationId(viewer), ElementBounds(viewer), viewer.VerticalOffset * scale, viewer.ExtentHeight * scale,
                         FrameworkElementAutomationPeer.CreatePeerForElement(viewer) is { } viewportPeer && !viewportPeer.IsOffscreen());
-                return new(id, name, role, Rectangle(peer.GetBoundingRectangle()).ToScreen(origin.X, origin.Y), peer.IsOffscreen(), region);
+                var bounds = Rectangle(peer.GetBoundingRectangle()).ToScreen(origin.X, origin.Y);
+                var offscreen = peer.IsOffscreen();
+                if (!bounds.Measurable && offscreen && region is not null && peer is FrameworkElementAutomationPeer { Owner: FrameworkElement nativeOwner }
+                    && ReferenceEquals(nativeOwner, owner)) bounds = ElementBounds(owner);
+                return new(id, name, role, bounds, offscreen, region);
             }
             catch (Exception exception) when (exception is not OutOfMemoryException)
             {
@@ -130,7 +145,12 @@ public sealed partial class EditorPage
             {
                 var measurement = ReadPeer(peer, owner, sample);
                 var decision = ColumnBoundsGate.Assess(measurement, Rectangle(column), Rectangle(client));
-                observations.Add(new { Sample = sample, Peer = measurement, decision.Accepted, decision.Classification });
+                var ancestors = new List<object>();
+                if (!decision.Accepted)
+                    for (DependencyObject? ancestor = owner; ancestor is not null; ancestor = VisualTreeHelper.GetParent(ancestor))
+                        if (ancestor is FrameworkElement element) ancestors.Add(new { Type = element.GetType().Name, element.Visibility, element.Opacity });
+                observations.Add(new { Sample = sample, Peer = measurement, decision.Accepted, decision.Classification,
+                    Control = peer.IsControlElement(), Content = peer.IsContentElement(), Ancestors = ancestors });
                 if (!measurement.Bounds.Measurable)
                     unmeasurable.Add(new { Sample = sample, measurement.Id, measurement.Name, measurement.Role, measurement.Bounds });
                 else if (!decision.Accepted) failures.Add(sample + ": " + measurement.Role + " " + measurement.Name + " " + measurement.Id + ": " + decision.Classification + " " + measurement.Bounds);

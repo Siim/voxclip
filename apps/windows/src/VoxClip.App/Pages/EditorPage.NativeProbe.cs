@@ -177,15 +177,30 @@ public sealed partial class EditorPage
             await NativeWaitAsync(() => rewrite is { NewWords: "Sunday", Review: not null } && panel.IsLoaded && panel.ActualHeight > 0,
                 "The edited Rewrite review was not ready.");
             var rightWidth = RightColumn.Width;
+            var originalSize = window.AppWindow.Size;
+            var originalPaneOpen = window.DebugNavigationPaneOpen;
             try
             {
+                window.AppWindow.Resize(new((int)(1440 * XamlRoot.RasterizationScale), (int)(900 * XamlRoot.RasterizationScale)));
+                await Task.Delay(200);
                 foreach (var width in new[] { 300, 348, 388, 560 })
                 {
+                    if (!EditorLayout.TranscriptFits(WorkArea.ActualWidth, ViewerSplitter.Width, width, Token("VcLayoutTranscriptMinWidth")))
+                    {
+                        window.CloseNavigationPane();
+                        await Task.Delay(200);
+                    }
                     RightColumn.Width = new(width);
                     await DebugRightColumnBoundsAsync(window, output, "rewrite-" + width, ColumnFitState.Rewrite);
                 }
-        }
-        finally { RightColumn.Width = rightWidth; }
+            }
+            finally
+            {
+                RightColumn.Width = rightWidth;
+                window.AppWindow.Resize(originalSize);
+                window.DebugNavigationPaneOpen = originalPaneOpen;
+                await Task.Delay(200);
+            }
         NativeRequire(rewrite.Review!.Diff.Hunks.SelectMany(hunk => hunk.AbsorbedItemIds).Count() == 2 &&
             rewrite.Review.Runs.Any(run => run.Text == "[laughter]" && run.Kind == RewriteDiffKind.Removed) &&
             rewrite.Review.Runs.Any(run => run.Text == "[unlabeled speech]" && run.Kind == RewriteDiffKind.Removed),

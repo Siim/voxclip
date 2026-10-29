@@ -53,7 +53,10 @@ internal sealed class ExportDialog : ContentDialog
         if (onlyClip is not null)
         {
             var clip = model.KeptClips.Single(clip => clip.Id == onlyClip);
-            target.Items.Add(new RadioButton { Content = $"This clip\nClip {clip.Number} · {clip.Title} · {clip.Duration}" });
+            var currentClip = new RadioButton { Content = $"This clip\nClip {clip.Number} · {clip.Title} · {clip.Duration}" };
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(currentClip, $"This clip, Clip {clip.Number} · {clip.Title} · {clip.Duration}");
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(currentClip, "Export.ThisClip");
+            target.Items.Add(currentClip);
         }
         target.Items.Add(new RadioButton { Content = $"All {model.KeptClips.Count} clips", IsEnabled = model.KeptClips.Count > 0 });
         target.Items.Add(new RadioButton { Content = $"Full video · {EditorViewModel.Duration(model.FullTakeDuration)}" });

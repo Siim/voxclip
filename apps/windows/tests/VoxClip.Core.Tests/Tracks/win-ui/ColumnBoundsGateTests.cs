@@ -6,6 +6,15 @@ namespace VoxClip.Ui.Tests;
 
 public sealed class ColumnBoundsGateTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void FineTuneRequiresSwatchesOnlyForAccentedStyles(bool accent)
+    {
+        var required = ColumnBoundsGate.RequiredIds(ColumnFitState.FineTune, ["CaptionStyle.vox-bold-plus"], accent: accent);
+        Assert.Equal(accent ? CaptionFineTune.Colors.Length : 0, required.Count(id => id.StartsWith("FineTune.Colour.", StringComparison.Ordinal)));
+        Assert.All(ColumnBoundsGate.FineTune, id => Assert.Contains(id, required));
+    }
     private static readonly ColumnRect Column = new(700, 100, 300, 700);
     private static readonly ColumnRect Client = new(0, 0, 1000, 800);
     private static ColumnPeer Peer(string id = "PreviewStage", ColumnRect? bounds = null, bool offscreen = false,

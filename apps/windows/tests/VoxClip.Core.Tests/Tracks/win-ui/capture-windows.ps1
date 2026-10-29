@@ -128,7 +128,8 @@ function Find-Visible([IntPtr]$Window, [string]$Name, [bool]$Prefix) {
         try {
             $items = [System.Windows.Automation.AutomationElement]::FromHandle($Window).FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition)
             foreach ($element in $items) {
-                $matches = if ($Prefix) { $element.Current.Name.StartsWith($Name) } else { $element.Current.Name -eq $Name }
+                $accessibleName = [string]$element.Current.Name
+                $matches = if ($Prefix) { $accessibleName.StartsWith($Name) } else { $accessibleName -eq $Name }
                 if (-not $matches) { continue }
                 if (-not $element.Current.IsOffscreen -and $element.Current.BoundingRectangle.Width -gt 0 -and $element.Current.BoundingRectangle.Height -gt 0) {
                     $script:ControlLocators[$element] = @{ Window=$Window; Name=$Name; Prefix=$Prefix }
@@ -338,6 +339,7 @@ try {
     }
 } catch {
     [System.IO.File]::WriteAllText((Join-Path $shots 'error.txt'), $_.Exception.Message)
+    [System.IO.File]::WriteAllText((Join-Path $shots 'error-detail.txt'), ($_ | Out-String) + $_.ScriptStackTrace)
     throw
 } finally {
     if (-not $ManualState -and $app -and -not $app.HasExited) { $app | Stop-Process -Force -ErrorAction SilentlyContinue }
