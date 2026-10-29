@@ -10,6 +10,19 @@ namespace VoxClip.Ui.Tests;
 public sealed class StartupCheckTests
 {
     [Fact]
+    public void FlyoutEscapeWaitsForClosedAndReceivesHandledKeys()
+    {
+        var root = Path.GetDirectoryName(Environment.GetEnvironmentVariable("VOXCLIP_SHARED_DIR"))!;
+        var source = File.ReadAllText(Path.Combine(root, "apps/windows/src/VoxClip.App/Controls/SelectionFlyout.cs"));
+        Assert.Contains("flyout.Closed +=", source);
+        Assert.Contains("bar.AddHandler(UIElement.KeyDownEvent, escape, true)", source);
+        Assert.Contains("owner.DispatcherQueue.TryEnqueue", source);
+        Assert.Contains("restoreFocus |= focus", source);
+        Assert.Contains("flyout.Closing +=", source);
+        Assert.Contains("restoreFocus |= InputState.Down(VirtualKey.Escape)", source);
+    }
+
+    [Fact]
     public void RightColumnHasABoundedSingleSurfaceWithoutInactivePeerSubtrees()
     {
         var root = Path.GetDirectoryName(Environment.GetEnvironmentVariable("VOXCLIP_SHARED_DIR"))!;
