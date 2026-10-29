@@ -198,7 +198,8 @@ public enum VoiceLabSourceAudio {
         return mono
     }
 
-    private static func resample(_ samples: [Float], from rate: Double, to target: Double) throws -> [Float] {
+    package static func resample(_ samples: [Float], from rate: Double, to target: Double) throws -> [Float] {
+        if rate == target { return samples }
         guard let input = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: rate, channels: 1, interleaved: false),
               let output = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: target, channels: 1, interleaved: false),
               let converter = AVAudioConverter(from: input, to: output),

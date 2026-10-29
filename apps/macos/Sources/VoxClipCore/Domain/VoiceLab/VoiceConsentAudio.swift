@@ -69,7 +69,7 @@ public enum VoiceConsentAudio {
         }
         throw VoiceLabError.invalidAudio
     }
-    static func resample(_ samples: [Float], rate: Int) -> [Float] {
+    package static func resample(_ samples: [Float], rate: Int) -> [Float] {
         guard rate != 16_000 else { return samples }
         let cutoff = 0.94 * min(1, 16_000 / Double(rate))
         let radius = Int(ceil(32 / cutoff))
