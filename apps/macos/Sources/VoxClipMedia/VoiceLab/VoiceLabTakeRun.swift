@@ -32,7 +32,7 @@ public actor VoiceLabTakeRun {
         let models = try await client.models().filter { $0.supportsTimestampedTTS && $0.languages.contains(language) }
         let remote = try await client.listOwnClones()
         let voices = try await store.activeVoices().filter { record in
-            record.statement.language == language && remote.contains { $0.id == record.voiceId && $0.isVerified }
+            record.statement.language == language && remote.contains { $0.id == record.voiceId && (!$0.requiresVerification || $0.isVerified) }
         }
         return (models, voices)
     }

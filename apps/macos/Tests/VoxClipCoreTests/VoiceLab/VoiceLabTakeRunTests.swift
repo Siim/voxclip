@@ -56,6 +56,7 @@ private final class TakeRunHTTP: Sendable {
         var mismatchCount = 0
         var duration = 4.0
         var missingAlignment = false
+        var remoteRequiresVerification = false
         var malformedAlignment = false
         var current = true
         var paused = false
@@ -110,7 +111,10 @@ struct VoiceLabTakeRunTests {
             case ("GET", "/v1/models"):
                 return (200, [:], Data(#"[{"model_id":"eleven_v3","name":"Speech","can_do_text_to_speech":true,"can_do_voice_conversion":false,"languages":[{"language_id":"en"}],"maximum_text_length_per_request":5000}]"#.utf8))
             case ("GET", "/v2/voices"):
-                return (200, [:], Data(#"{"voices":[{"voice_id":"fixtureOwnVoice","name":"My voice","category":"cloned","is_owner":true,"voice_verification":{"is_verified":true}}],"has_more":false}"#.utf8))
+                let requiresVerification = http.value.withLock { $0.remoteRequiresVerification }
+                let row: [String: Any] = ["voice_id": "fixtureOwnVoice", "name": "My voice", "category": "cloned", "is_owner": true,
+                    "voice_verification": ["requires_verification": requiresVerification, "is_verified": false]]
+                return (200, [:], try JSONSerialization.data(withJSONObject: ["voices": [row], "has_more": false]))
             case ("POST", "/v1/text-to-speech/fixtureOwnVoice/with-timestamps"):
                 let body = try #require(JSONSerialization.jsonObject(with: VoiceLabRequestFixtures.body(request)) as? [String: Any])
                 let seed = try #require(body["seed"] as? UInt32)
@@ -149,7 +153,8 @@ struct VoiceLabTakeRunTests {
             prices: VoiceLabPricingTests.catalogIfPresent, spend: ledger, enforceCapabilities: true)
         let clock = TakeRunClock(); await client.useClock { clock.now() }
         let run = VoiceLabTakeRun(client: client, store: store, speaker: .init(embedder: TakeRunEmbedder(drift: drift), calibratedThreshold: 0.45)) { http.value.withLock { $0.current } }
-        _ = try await run.discover(language: "en")
+        let choices = try await run.discover(language: "en")
+        #expect(choices.voices.map(\.id) == (initial.remoteRequiresVerification ? [] : [record.id]))
         let rate = 24_000
         let source: [Float] = (0..<(8 * rate)).map { index in
             let seconds = Double(index) / Double(rate)
@@ -280,6 +285,12 @@ struct VoiceLabTakeRunTests {
         await #expect(throws: VoiceLabError.consentRequired) { try await fixture.run.execute(changed, approved: true) }
         #expect(fixture.http.value.withLock { $0.seeds.isEmpty && $0.qa == 0 })
         #expect(await fixture.ledger.total(provider: "elevenlabs", at: fixture.clock.now())?.usd == 0)
+    }
+    @Test func providerVerificationRequiredVoiceIsNotOfferedOrSent() async throws {
+        let fixture = try await fixture { $0.remoteRequiresVerification = true }
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        await #expect(throws: VoiceLabError.consentRequired) { try await fixture.run.prepare(fixture.input) }
+        #expect(fixture.http.value.withLock { $0.seeds.isEmpty && $0.qa == 0 })
     }
     @Test(arguments: [false, true]) func preflightRefusalsNeverSendPaidRequests(noVoicedSource: Bool) async throws {
         let fixture = try await fixture(sourceAudible: !noVoicedSource, roomToneAvailable: noVoicedSource)
