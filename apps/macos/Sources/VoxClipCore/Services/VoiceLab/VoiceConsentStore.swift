@@ -36,8 +36,12 @@ public actor VoiceConsentStore {
     }
     public func abandonEnrollment(recordID: String) throws {
         let directory = try directory(recordID)
-        guard !FileManager.default.fileExists(atPath: directory.appendingPathComponent("record.json").path),
-              !FileManager.default.fileExists(atPath: directory.appendingPathComponent("creation.json").path) else { return }
+        guard !FileManager.default.fileExists(atPath: directory.appendingPathComponent("record.json").path) else { return }
+        if hasCreation(recordID) {
+            var intent = try readJournal(VoiceCreationIntent.self, name: "creation.json", recordID: recordID)
+            intent.cancelled = true
+            try writeJournal(intent, name: "creation.json", recordID: recordID)
+        }
         try discardStatement(recordID: recordID)
         liveEnrollments.remove(recordID)
     }
@@ -62,8 +66,7 @@ public actor VoiceConsentStore {
         guard (5...30).contains(seconds) else { throw VoiceLabError.invalidAudio }
         let directory = try directory(recordID, create: true)
         let url = try file("statement.wav", in: directory)
-        try wav.write(to: url, options: .atomic)
-        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+        try writePrivate(wav, to: url)
         liveEnrollments.insert(recordID)
     }
     public func statement(recordID: String) throws -> Data {
@@ -81,8 +84,7 @@ public actor VoiceConsentStore {
         let directory = try directory(record.id, create: true)
         let url = try file("record.json", in: directory)
         let encoder = JSONEncoder(); encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        try encoder.encode(record).write(to: url, options: .atomic)
-        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+        try writePrivate(encoder.encode(record), to: url)
     }
     public func load(_ id: String) throws -> VoiceConsentRecord {
         let directory = try directory(id)
@@ -119,7 +121,10 @@ public actor VoiceConsentStore {
         let directory = try directory(recordID)
         let url = try file("statement.wav", in: directory)
         try checkpoint(.removeStatement)
-        if FileManager.default.fileExists(atPath: url.path) { try FileManager.default.removeItem(at: url) }
+        if FileManager.default.fileExists(atPath: url.path) {
+            try FileManager.default.removeItem(at: url)
+            try synchronizeDirectory(directory)
+        }
     }
 }
 

@@ -2,7 +2,7 @@ import Foundation
 
 public enum VoiceConsentError: Error, LocalizedError, Equatable, Sendable {
     case invalidRecord, invalidName, invalidWords, attestationsRequired, statementMismatch, tooManyAttempts
-    case speakerUnavailable, speakerMismatch, voiceOwnerMismatch, inactive, cancelled
+    case speakerUnavailable, speakerMismatch, voiceOwnerMismatch, inactive, cancelled, creationPending
     public var errorDescription: String? {
         switch self {
         case .invalidName: "Enter a name with 1 to 60 Unicode scalars and no control characters."
@@ -15,6 +15,7 @@ public enum VoiceConsentError: Error, LocalizedError, Equatable, Sendable {
         case .voiceOwnerMismatch: "This doesn't sound like the voice owner. Voice Lab is only for your own videos."
         case .inactive: "This voice is not active. It cannot generate new takes."
         case .cancelled: ""
+        case .creationPending: "Voice creation may have completed. Reconcile the pending voice in Settings. Do not create it again."
         case .invalidRecord: "The voice consent record could not be verified. No audio was sent."
         }
     }

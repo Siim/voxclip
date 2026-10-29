@@ -72,7 +72,11 @@ import VoxClipCore
             if session.unsavedRecord != nil {
                 Button("Retry saving consent record") { Task { await session.retrySavingRecord() } }.disabled(session.busy)
             }
-            Button("Create Your Voice…") { session.showEnrollment = true }.disabled(session.busy || session.planMessage != nil || session.unsavedRecord != nil)
+            if !session.pendingCreations.isEmpty {
+                Text("Voice creation may have completed. Reconcile before creating another voice.").font(.caption)
+                Button("Reconcile pending voice…") { Task { await session.load() } }.disabled(session.busy)
+            }
+            Button("Create Your Voice…") { session.showEnrollment = true }.disabled(session.busy || session.planMessage != nil || session.unsavedRecord != nil || !session.pendingCreations.isEmpty)
             Text(session.speakerMessage).font(.caption).foregroundStyle(.secondary)
         }
     }

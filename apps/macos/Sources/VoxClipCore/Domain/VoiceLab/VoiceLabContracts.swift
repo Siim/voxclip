@@ -108,6 +108,11 @@ public struct VoiceLabVoice: Sendable, Equatable {
     public let isOwner: Bool
     public let requiresVerification: Bool
     public let isVerified: Bool
+    public let consentRecordID: String?
+    public init(id: String, name: String, category: String, isOwner: Bool, requiresVerification: Bool, isVerified: Bool, consentRecordID: String? = nil) {
+        self.id = id; self.name = name; self.category = category; self.isOwner = isOwner
+        self.requiresVerification = requiresVerification; self.isVerified = isVerified; self.consentRecordID = consentRecordID
+    }
 }
 
 public enum VoiceLabVoiceChoice: Sendable, Equatable {
@@ -176,6 +181,7 @@ public struct VoiceLabCloneSample: Sendable, Equatable {
 
 /// One own-voice clone upload (voice-lab §6.5, §6.7). The single consent statement is sent first, then training samples in caller order.
 public struct VoiceLabCloneRequest: Sendable, Equatable {
+    public let recoveryNonce: String?
     public let displayName: String
     /// Statement language, `[a-z]{2,3}`, sent as the `language` label.
     public let language: String
@@ -183,9 +189,10 @@ public struct VoiceLabCloneRequest: Sendable, Equatable {
     /// Sent in the description as RFC 3339 UTC in whole seconds.
     public let createdAt: Date
     public let removeBackgroundNoise: Bool
-    public init(displayName: String, language: String, samples: [VoiceLabCloneSample], createdAt: Date, removeBackgroundNoise: Bool) {
+    public init(displayName: String, language: String, samples: [VoiceLabCloneSample], createdAt: Date, removeBackgroundNoise: Bool, recoveryNonce: String? = nil) {
         self.displayName = displayName; self.language = language; self.samples = samples
         self.createdAt = createdAt; self.removeBackgroundNoise = removeBackgroundNoise
+        self.recoveryNonce = recoveryNonce
     }
 }
 

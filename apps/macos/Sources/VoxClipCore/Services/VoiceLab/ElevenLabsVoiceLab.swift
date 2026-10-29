@@ -91,7 +91,8 @@ public actor ElevenLabsVoiceLab {
                 guard seenVoiceIDs.insert(id).inserted else { throw VoiceLabError.malformedResponse }
                 result.append(VoiceLabVoice(id: id, name: name, category: category, isOwner: item["is_owner"] as? Bool == true,
                                             requiresVerification: verification["requires_verification"] as? Bool == true,
-                                            isVerified: verification["is_verified"] as? Bool == true))
+                                            isVerified: verification["is_verified"] as? Bool == true,
+                                            consentRecordID: (item["labels"] as? [String: String])?["voxclip_record_id"]))
             }
             if !more { discoveredVoices = Dictionary(result.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first }); return result }
             guard let next = row["next_page_token"] as? String, !next.isEmpty, next.count <= 256, seen.insert(next).inserted else { throw VoiceLabError.malformedResponse }
@@ -208,7 +209,9 @@ public actor ElevenLabsVoiceLab {
         guard total >= 10, total <= 240 else { throw VoiceLabError.invalidInput }
         let created = Date(timeIntervalSince1970: seconds).formatted(.iso8601)
         let consentHash = VoiceLabFingerprint.bytes(consent[0].wav)
+        if let nonce = request.recoveryNonce, UUID(uuidString: nonce) == nil { throw VoiceLabError.invalidInput }
         var fields = [region.rawValue, "v1/voices/add", name, request.language, created, String(request.removeBackgroundNoise), String(request.samples.count)]
+        if let nonce = request.recoveryNonce { fields.append(nonce) }
         for (index, sample) in request.samples.enumerated() {
             fields += [String(index), sample.role.rawValue, VoiceLabFingerprint.bytes(sample.wav)]
         }
@@ -216,9 +219,13 @@ public actor ElevenLabsVoiceLab {
         for (index, sample) in request.samples.filter({ $0.role == .training }).enumerated() {
             parts.append(.file("files[]", "sample-\(index < 8 ? "0" : "")\(index + 2).wav", sample.wav))
         }
-        parts += [.text("remove_background_noise", String(request.removeBackgroundNoise)),
-                  .text("description", "VoxClip own-voice clone. Consent sha256:\(consentHash). Created \(created)."),
-                  .text("labels", "{\"language\":\"\(request.language)\"}")]
+        var labels = "{\"language\":\"\(request.language)\"}"
+        var description = "VoxClip own-voice clone. Consent sha256:\(consentHash). Created \(created)."
+        if let nonce = request.recoveryNonce {
+            labels = "{\"language\":\"\(request.language)\",\"voxclip_record_id\":\"\(nonce)\"}"
+            description += " VoxClip request \(nonce)."
+        }
+        parts += [.text("remove_background_noise", String(request.removeBackgroundNoise)), .text("description", description), .text("labels", labels)]
         return (fields + VoiceLabFingerprint.policy(policy), parts)
     }
     private func deleteFields(_ id: String, _ policy: OwnVoicePolicy) -> [String] {

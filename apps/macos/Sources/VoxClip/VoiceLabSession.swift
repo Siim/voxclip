@@ -17,6 +17,7 @@ import VoxClipMedia
     var confirmation: Request?
     var records: [VoiceConsentRecord] = []
     var deleting: Set<String> = []
+    var pendingCreations: [VoiceCreationIntent] = []
     var visibleRecords: [VoiceConsentRecord] { records.filter { $0.status != .deleted || deleting.contains($0.id) } }
     var subscription: VoiceLabSubscription?
     var message: String?
@@ -46,7 +47,7 @@ import VoxClipMedia
     init(app: AppModel) { self.app = app; self.store = VoiceConsentStore(locations: app.locations) }
     var enabled: Bool { app.bool("voiceLab.enabled") }
     var canRecord: Bool { enabled && !busy && ownVoice && adult && ownVideosOnly && (try? VoiceConsentText.displayName(displayName)) != nil }
-    var canCreate: Bool { enabled && !busy && verified && trainingReady && unsavedRecord == nil }
+    var canCreate: Bool { enabled && !busy && verified && trainingReady && unsavedRecord == nil && pendingCreations.isEmpty }
     var planMessage: String? {
         guard let subscription else { return "Check your ElevenLabs account before creating a voice." }
         if !subscription.canClone { return "Instant voice cloning needs an ElevenLabs Starter plan or higher." }
@@ -60,15 +61,20 @@ import VoxClipMedia
     func load(recover: Bool = true) async {
         do {
             if recover {
-                let regions = Set(try await store.pendingDeletions().map(\.region))
+                let deletions = try await store.pendingDeletions().map(\.region)
+                let creations = try await store.pendingCreations().map(\.region)
+                let regions = Set(deletions + creations)
                 for region in regions {
                     let client = ElevenLabsVoiceLab(keys: app.secrets, region: region, logger: app.log)
                     do { try await VoiceEnrollment.resumeDeletions(store: store, client: client) }
                     catch { message = "Couldn't finish deleting a voice. Retry deletion below. No audio was sent." }
+                    do { try await VoiceEnrollment.reconcileCreations(store: store, client: client) }
+                    catch { message = "A voice creation still needs reconciliation. No create request was repeated. Retry below." }
                 }
             }
             deleting = Set(try await store.pendingDeletions().map { $0.record.id })
             records = try await store.records()
+            pendingCreations = try await store.pendingCreations()
         } catch { message = "The local voice records could not be read. No audio was sent." }
     }
     func reconcileStartup() async {
@@ -135,9 +141,11 @@ import VoxClipMedia
                 unsavedRecord = error.record
                 training = []; statementWAV = nil; recorder.discard(); trainingReady = false
                 message = "ElevenLabs created voice \(error.record.voiceId), but the local consent record could not be saved. Retry saving; do not create the voice again."
+                await load(recover: false)
                 return
             }
             message = await errorMessage(error)
+            if action == .create { trainingReady = false; await load(recover: false) }
             if case .delete = action { await load(recover: false) }
             if action == .verify {
                 verified = false; statementWAV = nil; recorder.discard()
@@ -225,7 +233,7 @@ import VoxClipMedia
         guard let record = unsavedRecord, !busy else { return }
         busy = true; defer { busy = false }
         do {
-            try await store.save(record)
+            try await store.completeCreation(record)
             unsavedRecord = nil; showEnrollment = false
             await load(); message = "Consent record saved. No provider request was made."
         } catch { message = "The consent record still could not be saved. Free some disk space, then retry saving. Do not create the voice again." }

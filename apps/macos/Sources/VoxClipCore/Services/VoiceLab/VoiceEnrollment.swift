@@ -95,7 +95,7 @@ public actor VoiceEnrollment {
         guard verification.statement.text.hasPrefix(prefix) else { throw VoiceLabError.consentRequired }
         let request = VoiceLabCloneRequest(displayName: name, language: verification.statement.language,
                                           samples: [.init(role: .consentStatement, wav: statementWAV)] + accepted.map { .init(role: .training, wav: $0.wav) },
-                                          createdAt: now, removeBackgroundNoise: accepted.contains { $0.snrDb < 20 })
+                                          createdAt: now, removeBackgroundNoise: accepted.contains { $0.snrDb < 20 }, recoveryNonce: recordID)
         let policy = OwnVoicePolicy(recordID: recordID, recordActive: true, providerConsentGranted: true, statementVerified: true, speakerMatched: true)
         let quote = try await client.prepareClone(request, policy: policy, requestID: UUID())
         pending.removeAll()
@@ -109,18 +109,60 @@ public actor VoiceEnrollment {
         busy = true; defer { busy = false }
         try await embedder.validateAvailability()
         guard VoiceLabFingerprint.bytes(try await store.statement(recordID: draft.policy.recordID)) == draft.verified.hash else { throw VoiceConsentError.invalidRecord }
-        let result = try await client.createOwnClone(draft.request, policy: draft.policy, requestID: quote.requestID, authorization: .init(quote: quote, approved: true))
         let statement = draft.verified.statement
-        let record = VoiceConsentRecord(schema: "voxclip-consent/1", recordId: draft.policy.recordID, provider: "elevenlabs", type: "ivc",
-                                        voiceId: result.voiceID, voiceName: draft.request.displayName + " (VoxClip)", status: result.requiresVerification ? .verificationRequired : .active,
+        let template = VoiceConsentRecord(schema: "voxclip-consent/1", recordId: draft.policy.recordID, provider: "elevenlabs", type: "ivc",
+                                        voiceId: "pending", voiceName: draft.request.displayName + " (VoxClip)", status: .verificationRequired,
                                         createdAt: VoiceConsentRecord.timestamp(draft.request.createdAt), deletedAt: nil,
                                         statement: .init(language: statement.language, text: statement.text, nonce: statement.nonce, audioFile: "statement.wav", audioSha256: draft.verified.hash, stt: draft.verified.match),
                                         attestations: draft.verified.attestations, samples: draft.samples,
                                         speaker: .init(model: embedder.modelID, threshold: threshold, embedding: VoiceConsentRecord.encodeEmbedding(draft.embedding)), app: .init(version: appVersion, platform: "macos"))
+        try await store.beginCreation(.init(requestID: quote.requestID, region: client.region, startedAt: Date(), record: template))
+        let result: VoiceLabCloneResult
+        do { result = try await client.createOwnClone(draft.request, policy: draft.policy, requestID: quote.requestID, authorization: .init(quote: quote, approved: true)) }
+        catch let error as VoiceConsentError {
+            try await store.removeJournal("creation.json", recordID: template.id)
+            throw error
+        } catch let error as VoiceLabError where Self.definitiveRejection(error) {
+            try await store.removeJournal("creation.json", recordID: template.id)
+            throw error
+        }
+        catch { throw VoiceConsentError.creationPending }
+        let record = template.assigningVoice(result.voiceID, requiresVerification: result.requiresVerification)
         verified.removeValue(forKey: record.id)
-        do { try await store.save(record) }
+        do { try await store.recordCreationResult(record); try await store.completeCreation(record) }
         catch { throw VoiceConsentSaveError(record: record) }
         return record
+    }
+    private static func definitiveRejection(_ error: VoiceLabError) -> Bool {
+        switch error {
+        case .missingKey, .consentRequired, .planUnavailable, .noVoiceSlots, .invalidInput, .permissionMissing, .unauthorized, .quotaExceeded, .rateLimited: true
+        default: false
+        }
+    }
+    public static func reconcileCreations(store: VoiceConsentStore, client: ElevenLabsVoiceLab) async throws {
+        let pending = try await store.pendingCreations().filter { $0.region == client.region }
+        guard !pending.isEmpty else { return }
+        let voices = try await client.listOwnClones()
+        var failure: (any Error)?
+        for intent in pending {
+            do {
+                let matches = voices.filter { $0.consentRecordID == intent.record.id || (intent.record.voiceId != "pending" && $0.id == intent.record.voiceId) }
+                guard matches.count == 1, let voice = matches.first else { throw VoiceConsentError.creationPending }
+                let record = intent.record.assigningVoice(voice.id, requiresVerification: voice.requiresVerification && !voice.isVerified)
+                let statementValid = (try? await store.statement(recordID: record.id)).map { VoiceLabFingerprint.bytes($0) == record.statement.audioSha256 } == true
+                let existing = try? await store.load(record.id)
+                let deleting = await store.hasDeletion(record.id)
+                if intent.cancelled != true && statementValid && existing?.status != .deleted && !deleting {
+                    try await store.recordCreationResult(record)
+                    try await store.completeCreation(record)
+                } else {
+                    let deletion = try await store.deleteRecoveredCreation(record, region: client.region)
+                    try await resumeDeletion(deletion, store: store, client: client)
+                    try await store.removeJournal("creation.json", recordID: record.id)
+                }
+            } catch { failure = error }
+        }
+        if let failure { throw failure }
     }
     public func delete(recordID: String, approved: Bool, enabled: Bool, now: Date = Date()) async throws {
         guard enabled, approved else { throw VoiceLabError.consentRequired }

@@ -291,7 +291,7 @@ struct VoiceConsentTests {
         #expect(!FileManager.default.fileExists(atPath: store.root.appendingPathComponent(id + "/statement.wav").path))
         #expect(calls.value.withLock { $0 } == ["GET /v1/user/subscription", "POST /v1/voices/add", "DELETE /v1/voices/fixtureOwnVoice"])
     }
-    @Test(arguments: VoiceConsentCheckpoint.allCases) func deletionResumesEveryDurableBoundary(step: VoiceConsentCheckpoint) async throws {
+    @Test(arguments: [VoiceConsentCheckpoint.deletionIntent, .remoteDeleted, .removeStatement, .saveTombstone, .clearDeletion]) func deletionResumesEveryDurableBoundary(step: VoiceConsentCheckpoint) async throws {
         let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
         let store = VoiceConsentStore(locations: SpeechTestFiles.locations(root), fault: { checkpoint in
             if checkpoint == step { throw CocoaError(.fileWriteUnknown) }
@@ -334,24 +334,72 @@ struct VoiceConsentTests {
     }
     @Test func paidCreateSaveFailureRetriesLocallyWithoutAnotherClone() async throws {
         let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
-        let calls = ConsentRequestLog(); let store = storage(root); let client = client(calls)
+        let shouldFail = Mutex(true)
+        let store = VoiceConsentStore(locations: SpeechTestFiles.locations(root), fault: { step in
+            if step == .saveCreation && shouldFail.withLock({ $0 }) { throw CocoaError(.fileWriteUnknown) }
+        })
+        let calls = ConsentRequestLog(); let client = client(calls)
         _ = try await client.plan()
         let service = enroll(store: store, client: client, check: .init(embedder: Embedder(output: [1, 0]), calibratedThreshold: 0.8), raw: try await raw())
         let id = UUID().uuidString
         try await service.verify(recordID: id, statement: statement(), wav: wav, attestations: attestations, approved: true, enabled: true)
         let quote = try await service.prepare(recordID: id, displayName: "Example", samples: training(), enabled: true)
-        let obstructed = store.root.appendingPathComponent(id + "/record.json", isDirectory: true)
-        try FileManager.default.createDirectory(at: obstructed, withIntermediateDirectories: true)
         do {
             _ = try await service.create(quote: quote, approved: true, enabled: true, appVersion: "0.1.0")
             Issue.record("Expected a recoverable local save failure")
         } catch let error as VoiceConsentSaveError {
             #expect(error.record.voiceId == "fixtureOwnVoice")
-            try FileManager.default.removeItem(at: obstructed)
-            try await store.save(error.record)
+            shouldFail.withLock { $0 = false }
+            try await store.completeCreation(error.record)
             #expect(try await store.load(id) == error.record)
         }
         await #expect(throws: VoiceLabError.invalidInput) { try await service.create(quote: quote, approved: true, enabled: true, appVersion: "0.1.0") }
+        #expect(calls.value.withLock { $0.filter { $0.hasPrefix("POST") }.count } == 1)
+    }
+    @Test(arguments: ["local-save", "timeout", "crash", "invalid-consent", "cancelled"]) func uncertainCreationReconcilesWithoutAnotherPost(mode: String) async throws {
+        let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let id = UUID().uuidString
+        let calls = ConsentRequestLog(); let created = Mutex(false)
+        let base = SpeechStubHTTP.register { request in
+            let path = request.url?.path ?? ""
+            calls.value.withLock { $0.append((request.httpMethod ?? "") + " " + path) }
+            switch path {
+            case "/v1/user/subscription": return (200, [:], Data(#"{"tier":"starter","status":"active","character_count":0,"character_limit":1000,"can_use_instant_voice_cloning":true,"voice_slots_used":0,"voice_limit":3}"#.utf8))
+            case "/v1/voices/add":
+                #expect(String(decoding: try VoiceLabRequestFixtures.body(request), as: UTF8.self).contains(id))
+                created.withLock { $0 = true }
+                if mode == "timeout" || mode == "invalid-consent" || mode == "cancelled" { throw URLError(.timedOut) }
+                return (200, [:], Data(#"{"voice_id":"fixtureOwnVoice","requires_verification":false}"#.utf8))
+            case "/v2/voices":
+                let voice = "{\"voice_id\":\"fixtureOwnVoice\",\"name\":\"Example (VoxClip)\",\"category\":\"cloned\",\"is_owner\":true,\"labels\":{\"voxclip_record_id\":\"\(id)\"},\"voice_verification\":{\"is_verified\":true}}"
+                return (200, [:], Data("{\"voices\":[\(created.withLock { $0 } ? voice : "")],\"has_more\":false}".utf8))
+            case "/v1/voices/fixtureOwnVoice":
+                created.withLock { $0 = false }; return (200, [:], Data(#"{"status":"ok"}"#.utf8))
+            default: Issue.record("Unexpected recovery request"); return (500, [:], Data())
+            }
+        }
+        let client = ElevenLabsVoiceLab(keys: SpeechTestKeys(value: "synthetic-recovery-key"), session: URLSession(configuration: SpeechStubHTTP.configuration(for: base)), prices: VoiceLabPricingTests.catalogIfPresent)
+        let store = VoiceConsentStore(locations: SpeechTestFiles.locations(root), fault: { step in
+            if (mode == "local-save" && step == .saveCreation) || (mode == "crash" && step == .creationResult) { throw CocoaError(.fileWriteUnknown) }
+        })
+        _ = try await client.plan()
+        let service = enroll(store: store, client: client, check: .init(embedder: Embedder(output: [1, 0]), calibratedThreshold: 0.8), raw: try await raw())
+        try await service.verify(recordID: id, statement: statement(), wav: wav, attestations: attestations, approved: true, enabled: true)
+        let quote = try await service.prepare(recordID: id, displayName: "Example", samples: training(), enabled: true)
+        await #expect(throws: (any Error).self) { try await service.create(quote: quote, approved: true, enabled: true, appVersion: "0.1.0") }
+        let restarted = storage(root)
+        #expect(try await restarted.pendingCreations().count == 1)
+        try await restarted.reconcileAbandonedEnrollments()
+        if mode == "invalid-consent" { try await restarted.discardStatement(recordID: id) }
+        if mode == "cancelled" {
+            try await restarted.abandonEnrollment(recordID: id)
+            #expect(!FileManager.default.fileExists(atPath: restarted.root.appendingPathComponent("\(id)/statement.wav").path))
+        }
+        try await VoiceEnrollment.reconcileCreations(store: restarted, client: client)
+        let record = try await restarted.load(id)
+        #expect(record.status == (mode == "invalid-consent" || mode == "cancelled" ? .deleted : .active))
+        #expect(try await restarted.pendingCreations().isEmpty)
+        try await VoiceEnrollment.reconcileCreations(store: restarted, client: client)
         #expect(calls.value.withLock { $0.filter { $0.hasPrefix("POST") }.count } == 1)
     }
     @Test func useTimeGuardAndDeletedCache() async throws {
