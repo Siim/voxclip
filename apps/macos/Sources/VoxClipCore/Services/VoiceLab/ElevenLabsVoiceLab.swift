@@ -153,6 +153,15 @@ public actor ElevenLabsVoiceLab {
                          fields: deleteFields(voiceID, policy), units: 1)
     }
 
+    public func prepareConsentDeletion(_ record: VoiceConsentRecord, requestID: UUID) throws -> VoiceLabQuote {
+        try record.validate()
+        guard record.status != .deleted else { throw VoiceConsentError.inactive }
+        discoveredVoices[record.voiceId] = VoiceLabVoice(id: record.voiceId, name: record.voiceName, category: "cloned", isOwner: true,
+                                                      requiresVerification: record.status == .verificationRequired, isVerified: record.status == .active)
+        let policy = OwnVoicePolicy(recordID: record.id, cloneVoiceID: record.voiceId, recordActive: true, providerConsentGranted: true, statementVerified: true, speakerMatched: true)
+        return try prepareDelete(voiceID: record.voiceId, policy: policy, requestID: requestID)
+    }
+
     public func prepareSynthesis(text: String, modelID: String, voice: VoiceLabVoiceChoice, language: String,
                                  options: VoiceLabSpeechOptions, requestID: UUID) throws -> VoiceLabQuote {
         try voice.validate()
@@ -453,6 +462,9 @@ public actor ElevenLabsVoiceLab {
                 bytes.append(byte)
             }
             afterLastByte?()
+            if method == "DELETE", url.path.hasPrefix("/v1/voices/"), http.statusCode == 404 {
+                return Reply(bytes: Data("{\"status\":\"ok\"}".utf8), response: http, spendWarning: nil)
+            }
             // A complete 2xx reply is kept even if the task was cancelled after its last byte.
             guard (200..<300).contains(http.statusCode) else {
                 try Task.checkCancellation()
@@ -541,7 +553,7 @@ public actor ElevenLabsVoiceLab {
         bytes[at..<(at + 4)].elementsEqual(tag.utf8)
     }
     @discardableResult
-    private static func validateWAV(_ bytes: Data, maxBytes: Int) throws -> (rate: Int, frames: Int) {
+    static func validateWAV(_ bytes: Data, maxBytes: Int) throws -> (rate: Int, frames: Int) {
         guard bytes.count >= 44, bytes.count <= maxBytes else { throw VoiceLabError.unsupportedFormat }
         return try bytes.withUnsafeBytes { raw in
             guard wavTag(raw, 0, "RIFF"), wavTag(raw, 8, "WAVE"),
