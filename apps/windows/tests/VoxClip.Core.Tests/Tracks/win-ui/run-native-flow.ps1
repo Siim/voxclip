@@ -18,11 +18,11 @@ Push-Location $Root
 $probeData = Join-Path $Root ('shell-probe-data-' + [Guid]::NewGuid().ToString('N'))
 $probeApp = $null
 function Assert-BuildSpace([long]$FreeBytes = (Get-PSDrive -Name ([IO.Path]::GetPathRoot($Root).TrimEnd('\').TrimEnd(':'))).Free) {
-    if ($FreeBytes -lt 6GB) { throw 'Native builds require at least 6 GiB free; keep owned scratch below 2 GiB.' }
+    if ($FreeBytes -lt (6GB + 1536MB)) { throw 'Native runs require 1.5 GiB headroom above the 6 GiB floor; keep owned scratch below 2 GiB.' }
 }
 try {
     Assert-BuildSpace
-    & 'C:\Program Files\dotnet\dotnet.exe' build $project -c Release -r $RuntimeIdentifier "-p:Platform=$platform" -m:1 --disable-build-servers '-p:UseSharedCompilation=false' 2>&1 | Tee-Object (Join-Path $evidence 'build.log')
+    & 'C:\Program Files\dotnet\dotnet.exe' build $project -c Release -r $RuntimeIdentifier "-p:Platform=$platform" -p:SelfContained=true -p:UseAppHost=true -m:1 --disable-build-servers '-p:UseSharedCompilation=false' 2>&1 | Tee-Object (Join-Path $evidence 'build.log')
     if ($LASTEXITCODE -ne 0) { throw 'UI companion native build failed.' }
     Expand-Archive -LiteralPath $TestToolsZip -DestinationPath $tools -Force
     $outputs = @(Get-ChildItem (Join-Path $Root 'apps\windows\tests\VoxClip.Core.Tests\Tracks\win-ui\.artifacts\bin') -Filter 'VoxClip.Ui.Tests.dll' -Recurse | Where-Object { $_.FullName -like "*Release*$RuntimeIdentifier*" })
@@ -32,8 +32,12 @@ try {
     Copy-Item (Join-Path $toolBin[0].DirectoryName '*.dll') $outputs[0].DirectoryName -Force
     $env:VOXCLIP_UI_NATIVE_FIXTURE = Join-Path $Root 'shared\fixtures\media\bars-1080p.mp4'
     $env:VOXCLIP_UI_EVIDENCE_DIR = $evidence
+    $env:VOXCLIP_UI_NATIVE_RUNTIME = $RuntimeIdentifier
     $env:VOXCLIP_DATA_DIR = Join-Path $Root 'test-data'
-    & 'C:\Program Files\dotnet\dotnet.exe' $outputs[0].FullName -noLogo 2>&1 | Tee-Object (Join-Path $evidence 'test.log')
+    $companion = Join-Path $outputs[0].DirectoryName 'VoxClip.Ui.Tests.exe'
+    if (-not (Test-Path -LiteralPath $companion)) { throw 'The architecture-matched self-contained test host is missing.' }
+    Assert-BuildSpace
+    & $companion -noLogo 2>&1 | Tee-Object (Join-Path $evidence 'test.log')
     if ($LASTEXITCODE -ne 0) { throw 'Native UI companion test failed.' }
 
     # The Debug-only shell probe (Services/ShellNativeProbe.cs): Home, Recent, drop, close and the sidebar header rows

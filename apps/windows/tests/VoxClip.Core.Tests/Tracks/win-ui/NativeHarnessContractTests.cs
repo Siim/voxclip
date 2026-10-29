@@ -6,6 +6,17 @@ namespace VoxClip.Ui.Tests;
 public sealed class NativeHarnessContractTests
 {
     [Fact]
+    public void NativeFlowUsesItsPrivateArchitectureMatchedHostAndDiskReserve()
+    {
+        var root = Path.GetDirectoryName(Environment.GetEnvironmentVariable("VOXCLIP_SHARED_DIR"))!;
+        var flow = File.ReadAllText(Path.Combine(root, "apps/windows/tests/VoxClip.Core.Tests/Tracks/win-ui/run-native-flow.ps1"));
+        Assert.Contains("-p:SelfContained=true -p:UseAppHost=true", flow);
+        Assert.Contains("& $companion -noLogo", flow);
+        Assert.Contains("VOXCLIP_UI_NATIVE_RUNTIME = $RuntimeIdentifier", flow);
+        Assert.Contains("6GB + 1536MB", flow);
+    }
+
+    [Fact]
     public void SmokeRetriesForegroundAcquisitionWithoutRelaxingOwnership()
     {
         var root = Path.GetDirectoryName(Environment.GetEnvironmentVariable("VOXCLIP_SHARED_DIR"))!;
