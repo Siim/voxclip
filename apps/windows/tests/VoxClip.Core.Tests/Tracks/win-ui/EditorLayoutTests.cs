@@ -151,8 +151,8 @@ public sealed class EditorLayoutTests
     }
 
     [Theory]
-    [InlineData(413, 65, 62, 45, 225, 16)]
-    [InlineData(713, 32, 40, 45, 284, 312)]
+    [InlineData(413, 65, 62, 45, 233, 8)]
+    [InlineData(713, 32, 40, 45, 276, 320)]
     public void StageLeavesTheMeasuredCaptionMinimumReachable(double column, double frame, double transport,
         double chrome, double captions, double expected)
     {

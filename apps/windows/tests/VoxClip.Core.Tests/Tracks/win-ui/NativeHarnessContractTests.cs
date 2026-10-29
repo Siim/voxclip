@@ -28,13 +28,13 @@ public sealed class NativeHarnessContractTests
         Assert.Contains("details.Children.Add(notice); details.Children.Add(fineTune)", captions);
         Assert.Contains("fineTuneViewport.Content = details", captions);
         Assert.Contains("fineTune.Content = controls", captions);
-        Assert.Contains("body.RowDefinitions[2].Height = fineTune.IsExpanded || notice.IsOpen ? new(1, GridUnitType.Star) : GridLength.Auto", captions);
+        Assert.Contains("body.RowDefinitions[1].Height = fineTune.IsExpanded || notice.IsOpen ? new(1, GridUnitType.Star) : GridLength.Auto", captions);
         Assert.Contains("content.Visibility = fineTune.IsExpanded ? Visibility.Visible : Visibility.Collapsed", captions);
         Assert.Contains("fineTune.Content = null", captions);
         Assert.Contains("chip.Visibility = chip.Source is null ? Visibility.Collapsed : Visibility.Visible", captions);
         Assert.Contains("args.ItemContainer.Visibility = Visibility.Collapsed", captions);
         Assert.Contains("args.ItemContainer.Visibility = Visibility.Visible", captions);
-        Assert.Contains("body.RowDefinitions[3].MinHeight = minimum", captions);
+        Assert.Contains("body.RowDefinitions[2].MinHeight = minimum", captions);
         Assert.DoesNotContain("MaxHeight = 300", captions);
         var editor = File.ReadAllText(Path.Combine(root, "apps/windows/src/VoxClip.App/Pages/EditorPage.xaml.cs"));
         Assert.Contains("captions.FitChanged += (_, _) => SizeStage()", editor);

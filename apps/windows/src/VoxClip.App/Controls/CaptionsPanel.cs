@@ -54,7 +54,8 @@ internal sealed class CaptionsPanel : UserControl
     private FrameworkElement? measuredHeader;
     private double headerHeight = 64;
     internal IReadOnlyList<CaptionStyle> Styles { get; private set; } = [];
-    internal double MinimumContentHeight => body.RowDefinitions[3].MinHeight + headerHeight + 80;
+    internal double MinimumContentHeight => body.RowDefinitions[2].MinHeight + headerHeight + 36 +
+        body.Padding.Top + body.Padding.Bottom + body.RowSpacing * (body.RowDefinitions.Count - 1);
     internal event EventHandler? FitChanged;
     internal Control FocusTarget
     {
@@ -101,7 +102,6 @@ internal sealed class CaptionsPanel : UserControl
         AutomationProperties.SetAutomationId(gallery, "Captions.Gallery");
         gallery.UseSystemFocusVisuals = true;
         Content = body;
-        body.RowDefinitions.Add(new() { Height = GridLength.Auto });
         body.RowDefinitions.Add(new() { Height = GridLength.Auto });
         body.RowDefinitions.Add(new() { Height = GridLength.Auto });
         body.RowDefinitions.Add(new() { Height = new(1, GridUnitType.Star) });
@@ -206,7 +206,7 @@ internal sealed class CaptionsPanel : UserControl
             if (!enabled.IsOn) { rememberedStyle = model.Project.Captions.StyleId; model.SetCaptionStyle("off"); }
             else model.SetCaptionStyle(CaptionFineTune.TurnOn(rememberedStyle, App.Services.Get("captions.defaultStyleId", "vox-highlight")));
         };
-        Grid.SetRow(header, 1); body.Children.Add(header);
+        Grid.SetRow(header, 0); body.Children.Add(header);
         var styleRow = new Grid { ColumnSpacing = 8 };
         styleRow.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
         styleRow.ColumnDefinitions.Add(new());
@@ -216,7 +216,7 @@ internal sealed class CaptionsPanel : UserControl
         labels.Children.Add(new TextBlock { Text = "Fine tune", FontSize = 12, TextWrapping = TextWrapping.Wrap });
         Grid.SetColumn(labels, 1); styleRow.Children.Add(labels);
         fineTune.Header = styleRow;
-        Grid.SetRow(fineTuneViewport, 2); body.Children.Add(fineTuneViewport);
+        Grid.SetRow(fineTuneViewport, 1); body.Children.Add(fineTuneViewport);
         gallery.ItemsPanel = (ItemsPanelTemplate)XamlReader.Load("<ItemsPanelTemplate xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation'><ItemsWrapGrid Orientation='Horizontal' MaximumRowsOrColumns='2'/></ItemsPanelTemplate>");
         gallery.ItemTemplate = (DataTemplate)XamlReader.Load("<DataTemplate xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation'><StackPanel Spacing='4' AutomationProperties.Name='{Binding Description}'><Grid><Border CornerRadius='10' Background='{ThemeResource VcStageBrush}'><Image Source='{Binding Bitmap}' Stretch='Fill'/></Border><Border Visibility='{Binding Selected}' Margin='-2' BorderBrush='{ThemeResource VcAccentTextBrush}' BorderThickness='2' CornerRadius='12'/><Border Visibility='{Binding Selected}' Width='18' Height='18' CornerRadius='9' Background='{ThemeResource VcChipMediaBackgroundBrush}' HorizontalAlignment='Right' VerticalAlignment='Top' Margin='6'><TextBlock Text='&#xE73E;' FontFamily='{ThemeResource SymbolThemeFontFamily}' FontSize='10' HorizontalAlignment='Center' VerticalAlignment='Center' AutomationProperties.AccessibilityView='Raw' Foreground='{ThemeResource VcChipMediaForegroundBrush}'/></Border></Grid><TextBlock Text='{Binding Name}' FontSize='12' Foreground='{ThemeResource VcTextSecondaryBrush}' TextTrimming='CharacterEllipsis'/></StackPanel></DataTemplate>");
         gallery.GroupStyle.Add(new GroupStyle { HeaderTemplate = (DataTemplate)XamlReader.Load("<DataTemplate xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation'><TextBlock Text='{Binding Name}' AutomationProperties.AutomationId='{Binding AutomationId}' FontSize='11' FontWeight='SemiBold' Foreground='{ThemeResource VcTextSecondaryBrush}' Margin='4,12,0,4'/></DataTemplate>") });
@@ -259,7 +259,7 @@ internal sealed class CaptionsPanel : UserControl
             _ = RenderTileAsync(tile, true);
         };
         gallery.SizeChanged += (_, _) => SizeTiles();
-        Grid.SetRow(gallery, 3); body.Children.Add(gallery);
+        Grid.SetRow(gallery, 2); body.Children.Add(gallery);
         ModelChanged(this, EventArgs.Empty);
     }
 
@@ -283,9 +283,9 @@ internal sealed class CaptionsPanel : UserControl
     {
         tileWidth = CaptionFineTune.TileWidth(gallery.ActualWidth);
         var minimum = Math.Round(tileWidth * 0.45) + 28;
-        if (Math.Abs(body.RowDefinitions[3].MinHeight - minimum) > 0.1)
+        if (Math.Abs(body.RowDefinitions[2].MinHeight - minimum) > 0.1)
         {
-            body.RowDefinitions[3].MinHeight = minimum;
+            body.RowDefinitions[2].MinHeight = minimum;
             UpdateFineTuneSpace();
         }
         if (gallery.ItemsPanelRoot is ItemsWrapGrid panel) panel.ItemWidth = (gallery.ActualWidth > 8 ? gallery.ActualWidth : 8) / 2;
@@ -298,8 +298,8 @@ internal sealed class CaptionsPanel : UserControl
     {
         if (fineTune.Content is UIElement content) content.Visibility = fineTune.IsExpanded ? Visibility.Visible : Visibility.Collapsed;
         notice.Visibility = notice.IsOpen ? Visibility.Visible : Visibility.Collapsed;
-        body.RowDefinitions[2].Height = fineTune.IsExpanded || notice.IsOpen ? new(1, GridUnitType.Star) : GridLength.Auto;
-        body.RowDefinitions[3].Height = fineTune.IsExpanded || notice.IsOpen ? new(body.RowDefinitions[3].MinHeight) : new(1, GridUnitType.Star);
+        body.RowDefinitions[1].Height = fineTune.IsExpanded || notice.IsOpen ? new(1, GridUnitType.Star) : GridLength.Auto;
+        body.RowDefinitions[2].Height = fineTune.IsExpanded || notice.IsOpen ? new(body.RowDefinitions[2].MinHeight) : new(1, GridUnitType.Star);
         FitChanged?.Invoke(this, EventArgs.Empty);
     }
 
