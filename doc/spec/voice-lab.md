@@ -1113,7 +1113,7 @@ The fit policy ships only after the user's listening check passes (§14 S16). It
 
 A micro-stretch of at most ±3% on the dry TTS, before room tone is added, with Signalsmith Stretch (MIT) or Sonic (Apache-2.0), may be tried later. It needs the user's approval, the blinded listening check (variant Z in §8.9.4) and a later ADR. Until then the §10.5 refusal stays. FFmpeg `atempo`, SoundTouch, Apple `AVAudioUnitTimePitch` and Rubber Band are not fit candidates.
 
-Private take invalidation is explicit and idempotent: first stop every registered consumer, then remove both the fitted/mixed scratch directory and its private paid-snapshot directory. Retaining a stale take or snapshot handle never retains those files after invalidation completes. Published paid and fitted assets are untouched.
+Private take invalidation is explicit and idempotent: first stop every registered consumer, then remove both the fitted/mixed scratch directory and its private paid-snapshot directory. Retaining a stale take or snapshot handle never retains those files after invalidation completes. Every audition instance subscribes to its lease, including players in other windows; invalidation awaits their stop on the main actor without polling position. Published paid and fitted assets are untouched.
 
 ### 8.10 Seams
 

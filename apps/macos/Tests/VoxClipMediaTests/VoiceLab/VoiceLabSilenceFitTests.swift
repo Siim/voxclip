@@ -204,6 +204,30 @@ extension HeavyMediaTests {
         #expect(!FileManager.default.fileExists(atPath: scratch.fitted.snapshot.url.deletingLastPathComponent().path))
         #expect(FileManager.default.fileExists(atPath: root.appendingPathComponent(scratch.fitted.paidAsset.file).path))
     }
+    @MainActor @Test(arguments: [false, true]) func sharedLeaseStopsBothWindowsBeforeCleanup(ending: Bool) async throws {
+        let vector = try #require(FittedAssetVector.load().first)
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let scratch = try vector.scratch(root: root)
+        var backends: [AuditionTestBackend] = []
+        func player() -> VoiceLabAudition {
+            VoiceLabAudition { _, completion in
+                let backend = AuditionTestBackend(finished: completion); backends.append(backend); return backend
+            }
+        }
+        let first = player(), otherWindow = player(), take = UUID()
+        try first.play(scratch, takeId: take, selectionId: "selection")
+        try otherWindow.play(scratch, takeId: take, selectionId: "selection")
+        #expect(first.isPlaying && otherWindow.isPlaying)
+        if ending { await first.endSession() } else { await first.reject(take) }
+        #expect(!first.isPlaying && !otherWindow.isPlaying)
+        #expect(backends.allSatisfy { $0.stops == 1 })
+        #expect(!FileManager.default.fileExists(atPath: scratch.mixedAudioURL.path))
+        #expect(!FileManager.default.fileExists(atPath: scratch.fitted.snapshot.url.path))
+        backends[1].finished()
+        #expect(!otherWindow.completed && !otherWindow.isPlaying)
+    }
     #endif
     @Test func sharedTest19HashesAndUneditedFrames() throws {
         for vector in try FittedAssetVector.load() {
