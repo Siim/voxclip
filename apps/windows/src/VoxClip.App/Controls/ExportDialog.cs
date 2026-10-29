@@ -74,6 +74,7 @@ internal sealed class ExportDialog : ContentDialog
         form.Children.Add(disclosure); body.Children.Add(form);
         target.SelectionChanged += (_, _) => UpdateDisclosure();
         UpdateDisclosure();
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(progress, "Export progress");
         body.Children.Add(progress); body.Children.Add(notice);
         // share.captions holds 3,000 Unicode scalars (voice-lab §11.3), but MaxLength counts UTF-16 units, so it is only a loose
         // bound: TextChanging cuts typed, pasted and loaded text with SharePostText.CapCaption, as the Mac field does, and keeps

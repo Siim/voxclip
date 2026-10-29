@@ -41,6 +41,7 @@ internal sealed class TranscriptionDialog : ContentDialog
         cloudKey.PasswordChanged += (_, _) => saveCloudKey.IsEnabled = !string.IsNullOrWhiteSpace(cloudKey.Password);
         cloudKeyRow.Children.Add(saveCloudKey); body.Children.Add(cloudKeyRow);
         body.Children.Add(cloudConsent);
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(progress, "Transcription progress");
         body.Children.Add(Ui.Button("Manage local models…", App.OpenSettings)); body.Children.Add(progress); body.Children.Add(notice);
         Content = new ScrollViewer { Content = body, MaxHeight = 600 };
         cloudConsent.IsChecked = false;

@@ -265,6 +265,7 @@ public sealed partial class SettingsWindow : Window
             panel.Children.Add(Ui.Text($"{model.Engine} · {model.TotalBytes / 1_000_000d:0} MB · {model.License}", "HelperText"));
             panel.Children.Add(Ui.Text(available ? "Installed and verified." : "Not installed.", "HelperText"));
             var bar = new ProgressBar { Visibility = Visibility.Collapsed }; panel.Children.Add(bar);
+            AutomationProperties.SetName(bar, (available ? "Removing " : "Downloading ") + model.Id);
             panel.Children.Add(Ui.Button(available ? "Remove" : "Download", () => RunSensitive(async () =>
             {
                 if (preparing) return;

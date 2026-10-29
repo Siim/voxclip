@@ -456,7 +456,10 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
     private void EditorChanged(object? sender, EventArgs args) => UpdateShell();
     private async void RetryExportClicked(object sender, RoutedEventArgs args)
     {
-        if (editor is { } current && ReferenceEquals(ContentFrame.Content, current)) await current.RetryExportAsync((sender as FrameworkElement)?.Tag as string);
+        if (editor is not { } current || !ReferenceEquals(ContentFrame.Content, current)) return;
+        var clipId = (sender as FrameworkElement)?.Tag as string;
+        FocusStayingRow(sender, Shell.ScopeRow(clipId));
+        await current.RetryExportAsync(clipId);
     }
     /// <summary>New suggestions appear under Suggested and the first takes focus without being selected (design §6.2).</summary>
     private void SuggestionsFound(object? sender, string clipId) => FocusRow(Shell.Rows.FirstOrDefault(row => row.ClipId == clipId));
@@ -554,15 +557,21 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
     private void DismissSuggestionInvoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args) => args.Handled = RowCommand(args, (model, id) => model.Dismiss(id));
     private void RemoveClipInvoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args) => args.Handled = RowCommand(args, (model, id) => model.Remove(id));
     private void RemoveClipClicked(object sender, RoutedEventArgs args) { if (sender is FrameworkElement { Tag: string id }) ClipCommand(id, model => model.Remove(id)); }
-    private void KeepAllClicked(object sender, RoutedEventArgs args) { if (RowEdits(SidebarKind.SuggestedHeader)) editor?.ViewModel.KeepAll(); }
-    private void CancelFindingClicked(object sender, RoutedEventArgs args) => editor?.FindClips.Cancel();
-    private void CalloutClosed(InfoBar sender, object args) => editor?.FindClips.Dismiss();
+    /// <summary>Keep all removes its own header, so focus moves to the first clip it kept, as after Keep (design §15).</summary>
+    private void KeepAllClicked(object sender, RoutedEventArgs args)
+    {
+        if (!RowEdits(SidebarKind.SuggestedHeader) || editor?.ViewModel is not { } model) return;
+        var first = model.SuggestedClips.FirstOrDefault()?.Id;
+        if (model.KeepAll()) FocusRow(Shell.Rows.FirstOrDefault(row => first is not null && row.ClipId == first) ?? Shell.Rows.FirstOrDefault(row => row.Kind == SidebarKind.FullTake));
+    }
+    private void CancelFindingClicked(object sender, RoutedEventArgs args) { FocusStayingRow(sender); editor?.FindClips.Cancel(); }
+    private void CalloutClosed(InfoBar sender, object args) { FocusStayingRow(sender); editor?.FindClips.Dismiss(); }
     /// <summary>Retry runs the search again; Set up AI… and Sign-in help open Settings at the AI page.</summary>
     private async void CalloutActionClicked(object sender, RoutedEventArgs args)
     {
         if (editor is not { } current || Shell.Callout is not { } callout) return;
         CalloutTip.IsOpen = false;
-        if (callout.Action == ClipCallouts.Retry) await current.FindClips.RetryAsync();
+        if (callout.Action == ClipCallouts.Retry) { FocusStayingRow(sender); await current.FindClips.RetryAsync(); }
         else App.OpenSettings("Providers & Keys");
     }
     private void CalloutTipActionClicked(TeachingTip sender, object args) => CalloutActionClicked(sender, new RoutedEventArgs());
@@ -586,8 +595,13 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
             CalloutTip.IsOpen = true;
         });
     }
-    private void CancelTakeTranscriptionClicked(object sender, RoutedEventArgs args) { if (ProjectPath is { } path) TranscriptionActivity.Cancel(path); }
-    private void CancelRecentTranscriptionClicked(object sender, RoutedEventArgs args) { if (sender is FrameworkElement { Tag: string path }) TranscriptionActivity.Cancel(path); }
+    private void CancelTakeTranscriptionClicked(object sender, RoutedEventArgs args) { if (ProjectPath is { } path) { FocusStayingRow(sender); TranscriptionActivity.Cancel(path); } }
+    private void CancelRecentTranscriptionClicked(object sender, RoutedEventArgs args)
+    {
+        if (sender is not FrameworkElement { Tag: string path }) return;
+        FocusStayingRow(sender, Shell.Rows.FirstOrDefault(row => row.Recent?.Path == path));
+        TranscriptionActivity.Cancel(path);
+    }
     private async void RenameClipInvoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
     {
         if ((args.Element as FrameworkElement)?.Tag is not string id || !RowEdits(id)) return;
@@ -652,6 +666,14 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
     {
         if (row is null) return;
         DispatcherQueue.TryEnqueue(() => (Nav.ContainerFromMenuItem(row) as Control)?.Focus(FocusState.Keyboard));
+    }
+    /// <summary>A link that its own command hides or removes (Cancel, a callout's Close or Retry, an export's Retry) first
+    /// hands focus that is on it to a row that stays, Full take unless given, so focus is not lost with it (design §15).</summary>
+    private void FocusStayingRow(object link, SidebarRow? row = null)
+    {
+        if (link is not DependencyObject owner || FocusManager.GetFocusedElement(Root.XamlRoot) is not Control focused || !InputState.DescendsFrom(focused, owner)
+            || (row ?? Shell.Rows.FirstOrDefault(item => item.Kind == SidebarKind.FullTake)) is not { } target) return;
+        (Nav.ContainerFromMenuItem(target) as Control)?.Focus(focused.FocusState == FocusState.Keyboard ? FocusState.Keyboard : FocusState.Programmatic);
     }
     private void EditorPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs args)
     {

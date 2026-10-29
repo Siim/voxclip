@@ -185,6 +185,8 @@ public sealed class EditorViewModel : ObservableObject
     public bool CanRedo => redo.Count > 0;
     public int SelectionStart => Math.Min(selectionAnchor, selectionEnd);
     public int SelectionEnd => Math.Max(selectionAnchor, selectionEnd);
+    /// <summary>The selection's moving end: the word the last arrow key or drag reached, which Shift+arrows extend from.</summary>
+    public int SelectionCaret => selectionEnd;
     public bool HasSelection => SelectionStart >= 0 && SelectionEnd < Words.Count;
     public double SourceTime { get => sourceTime; set { if (SetProperty(ref sourceTime, value)) OnPropertyChanged(nameof(TimeLabel)); } }
     public string TimeLabel => Timecode(SourceTime);
@@ -218,6 +220,9 @@ public sealed class EditorViewModel : ObservableObject
         OnPropertyChanged(nameof(SelectionText));
         SelectionChanged?.Invoke(this, EventArgs.Empty);
     }
+    /// <summary>← / → move the caret one word; with Shift they extend the selection from its moving end (design §11.2). With
+    /// nothing selected, the first arrow selects the first word.</summary>
+    public void Step(int delta, bool extend = false) => Select(HasSelection ? selectionEnd + delta : 0, extend);
 
     public bool Apply(EditOperation operation)
     {
@@ -478,12 +483,26 @@ public sealed class EditorViewModel : ObservableObject
     public string AccessibleWord(int index, bool showLowConfidence = false)
     {
         if (index < 0 || index >= Words.Count) return "Transcript";
+        return WordStates(index, showLowConfidence) + (HasSelection && index >= SelectionStart && index <= SelectionEnd ? ", selected" : "");
+    }
+    /// <summary>What Narrator says after a keyboard move (design §15): the caret word with its states, then "selected" or the
+    /// selection's size, as in "shipped, corrected, heard as: ship, 3 words selected"; "All 9 words selected" after Select All;
+    /// empty with nothing selected.</summary>
+    public string SelectionAnnouncement(bool showLowConfidence = false)
+    {
+        if (!HasSelection) return "";
+        var count = SelectionEnd - SelectionStart + 1;
+        if (count > 1 && count == Words.Count) return $"All {count} words selected";
+        return WordStates(selectionEnd, showLowConfidence) + (count == 1 ? ", selected" : $", {count} words selected");
+    }
+    private string WordStates(int index, bool showLowConfidence)
+    {
         var word = Words[index];
         return DisplayText(word) + (state?.CutWordIds.Contains(word.Id) == true ? ", cut" : "")
             + (EditingAlgorithms.IsFillerText(DisplayText(word)) ? ", filler" : "")
             + (showLowConfidence && word.Conf is < 0.6 ? ", low confidence" : "")
             + (state?.Corrections.ContainsKey(word.Id) == true ? ", corrected, heard as: " + word.Text : "")
-            + (IsAiWord(index) ? ", AI modified" : "") + (HasSelection && index >= SelectionStart && index <= SelectionEnd ? ", selected" : "");
+            + (IsAiWord(index) ? ", AI modified" : "");
     }
     public bool CanPreviewCut => HasSelection && CanExport;
     internal TimeRange? PreviewCutRange() => CanPreviewCut

@@ -38,6 +38,8 @@ internal sealed class CaptionsPanel : UserControl
     private readonly Image chip = new() { Width = 64, Height = 36, Stretch = Stretch.Fill };
     private readonly TextBlock off = new() { Text = "Off", HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
     private string fineTuneKey = "";
+    private string fineTuneShape = "";
+    private Action? syncFineTune;
     private readonly HashSet<Tile> visible = [];
     private string? rememberedStyle;
     private string? scope = "<initial>";
@@ -332,8 +334,14 @@ internal sealed class CaptionsPanel : UserControl
             summary.Foreground = Ui.ThemeBrush(this, "VcTextSecondaryBrush");
             styleName.FontWeight = Microsoft.UI.Text.FontWeights.SemiBold;
             fineTune.IsEnabled = selected is not null && !model.Busy;
-            var key = project.Captions.StyleId + "|" + CaptionFineTune.Preset(project) + "|" + System.Text.Json.JsonSerializer.Serialize(project.Captions) + "|" + model.IsReadOnly + "|" + model.Busy;
-            if (key != fineTuneKey && selected is not null) { fineTuneKey = key; BuildFineTune(selected.Style); }
+            var shape = CaptionFineTune.Shape(project, model.IsReadOnly);
+            var key = shape + "|" + CaptionFineTune.Preset(project) + "|" + System.Text.Json.JsonSerializer.Serialize(project.Captions) + "|" + model.Busy;
+            if (key != fineTuneKey && selected is not null)
+            {
+                fineTuneKey = key;
+                if (shape != fineTuneShape) { fineTuneShape = shape; BuildFineTune(selected.Style); }
+                else syncFineTune?.Invoke();
+            }
             if (scope != project.Edits.ActiveClipId)
             {
                 scope = project.Edits.ActiveClipId;
@@ -348,32 +356,30 @@ internal sealed class CaptionsPanel : UserControl
     {
         var controls = Ui.Stack(12);
         controls.Margin = new Thickness(0, 8, 0, 0);
-        var project = model.Project;
-        var patch = CaptionFineTune.Patch(project.Captions);
-        void Options(string label, string[] choices, int selected, Action<int> choose, bool available = true)
+        var initial = CaptionFineTune.Values(style, model.Project);
+        var syncs = new List<Action<CaptionFineTune.FineTuneValues>>();
+        void Options(string label, string[] choices, Func<CaptionFineTune.FineTuneValues, int> selected, Action<int> choose, bool available = true)
         {
             var section = Ui.Stack(4); section.Children.Add(Ui.Text(label));
-            var segment = new CommunityToolkit.WinUI.Controls.Segmented { SelectedIndex = selected, IsEnabled = available && (!model.IsReadOnly || label == "Position"), HorizontalAlignment = HorizontalAlignment.Stretch };
+            var segment = new CommunityToolkit.WinUI.Controls.Segmented { SelectedIndex = selected(initial), IsEnabled = available && (!model.IsReadOnly || label == "Position"), HorizontalAlignment = HorizontalAlignment.Stretch };
             foreach (var choice in choices) segment.Items.Add(new CommunityToolkit.WinUI.Controls.SegmentedItem { Content = choice, MinWidth = 0, Padding = new(8, 4, 8, 4) });
-            segment.SelectedIndex = selected;
+            segment.SelectedIndex = selected(initial);
             AutomationProperties.SetName(segment, label);
             AutomationProperties.SetAutomationId(segment, "FineTune." + label);
             segment.SelectionChanged += (_, _) => { if (!syncing && segment.SelectedIndex >= 0) choose(segment.SelectedIndex); };
+            syncs.Add(now => segment.SelectedIndex = selected(now));
             section.Children.Add(segment); controls.Children.Add(section);
         }
         void Change(string section, params (string Key, JsonNode? Value)[] values) => model.SetCaptionOverrides(CaptionFineTune.Change(model.Project.Captions, section, values));
-        var scale = patch["font"]?["sizeScale"]?.GetValue<double>() ?? 1;
-        Options("Size", ["S", "M", "L", "XL"], scale < 0.9 ? 0 : scale < 1.1 ? 1 : scale < 1.3 ? 2 : 3,
+        Options("Size", ["S", "M", "L", "XL"], now => now.Size,
             index => Change("font", ("sizeScale", index == 1 ? null : JsonValue.Create(new[] { 0.8, 1, 1.2, 1.45 }[index]))));
-        var upper = patch["text"]?["transform"]?.GetValue<string>() is { } transform ? transform == "uppercase" : style.Text.Transform == CaptionTextTransformValue.Uppercase;
-        Options("Case", ["As said", "ALL CAPS"], upper ? 1 : 0, index => Change("text", ("transform", JsonValue.Create(index == 0 ? "none" : "uppercase"))), style.Text.UserOverridable);
-        var words = patch["layout"]?["maxWords"]?.GetValue<int>();
-        Options("Words on screen", ["1", "Phrase", "Line"], words == 1 ? 0 : words >= 16 ? 2 : 1,
+        Options("Case", ["As said", "ALL CAPS"], now => now.Case, index => Change("text", ("transform", JsonValue.Create(index == 0 ? "none" : "uppercase"))), style.Text.UserOverridable);
+        Options("Words on screen", ["1", "Phrase", "Line"], now => now.Words,
             index => Change("layout", ("maxWords", index == 1 ? null : JsonValue.Create(index == 0 ? 1 : 16)), ("maxLines", index == 1 ? null : JsonValue.Create(1))));
-        var punctuation = new ToggleSwitch { Header = "Keep punctuation", IsEnabled = style.Text.UserOverridable && !model.IsReadOnly,
-            IsOn = patch["text"]?["punctuation"]?.GetValue<string>() is { } keep ? keep == "keep" : style.Text.Punctuation == CaptionTextPunctuationValue.Keep };
+        var punctuation = new ToggleSwitch { Header = "Keep punctuation", IsEnabled = style.Text.UserOverridable && !model.IsReadOnly, IsOn = initial.Punctuation };
         AutomationProperties.SetAutomationId(punctuation, "FineTune.Punctuation");
         punctuation.Toggled += (_, _) => { if (!syncing) Change("text", ("punctuation", JsonValue.Create(punctuation.IsOn ? "keep" : "strip-keep-numeric"))); };
+        syncs.Add(now => punctuation.IsOn = now.Punctuation);
         controls.Children.Add(punctuation);
         if (style.Accent is not null)
         {
@@ -394,14 +400,16 @@ internal sealed class CaptionsPanel : UserControl
             }
             controls.Children.Add(swatches);
         }
-        var position = CaptionFineTune.StoredPosition(project);
-        Options("Position", ["Top", "Middle", "Bottom"], position is { Y: < 0.35 } ? 0 : position is { Y: < 0.65 } ? 1 : 2, model.MoveCaptionPosition, style.Position.UserDraggable);
+        Options("Position", ["Top", "Middle", "Bottom"], now => now.Position, model.MoveCaptionPosition, style.Position.UserDraggable);
         controls.Children.Add(Ui.Text("Drag captions on the video to move them.", "HelperText"));
         var reset = new HyperlinkButton { IsEnabled = !model.IsReadOnly, Content = "Reset to Style", HorizontalAlignment = HorizontalAlignment.Left, Padding = new Thickness(0) };
         AutomationProperties.SetAutomationId(reset, "FineTune.Reset");
-        reset.Click += (_, _) => { model.SetCaptions(CaptionFineTune.Reset(model.Project.Captions)); BuildFineTune(style); };
+        reset.Click += (_, _) => model.SetCaptions(CaptionFineTune.Reset(model.Project.Captions));
         controls.Children.Add(reset);
-        ToolTipService.SetToolTip(fineTune, $"Size {scale:0.##}× · {CaptionFineTune.Summary(style, project)} · Position {(position is { } stored ? $"{stored.X:0.##}, {stored.Y:0.##}" : "Bottom")}");
+        void Describe(CaptionFineTune.FineTuneValues now) => ToolTipService.SetToolTip(fineTune,
+            $"Size {now.Scale:0.##}× · {CaptionFineTune.Summary(style, model.Project)} · Position {(now.Stored is { } stored ? $"{stored.X:0.##}, {stored.Y:0.##}" : "Bottom")}");
+        Describe(initial); syncs.Add(Describe);
+        syncFineTune = () => { var now = CaptionFineTune.Values(style, model.Project); foreach (var sync in syncs) sync(now); };
         fineTune.Content = new ScrollViewer { Content = controls, MaxHeight = 300, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
     }
 

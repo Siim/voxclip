@@ -1,5 +1,10 @@
 # Windows fixed contracts
 
+### 2026-10-29 - sol-win-redesign r14 A5 - Keyboard and accessibility
+
+- Word arrows move from `SelectionCaret`, including Shift extension in either direction; the first arrow selects word zero. Keyboard movement announces the caret and selection through the selection notification activity and reveals the word with line margin. The transcript's read-only ValuePattern supplies current selection on refocus without changing its stable accessible Name; Page Up/Down scroll without moving selection.
+- Fine tune rebuilds only for a different style/read-only control shape; value, aspect, Undo/Redo, Reset and Busy changes synchronize existing controls in place. Onboarding preserves the focused step choice. Self-removing actions hand focus to a staying sidebar row or Home tile before cancellation; Keep all focuses its first kept clip. Progress controls have explicit names. Spoken Narrator acceptance remains a lead-owned manual gate.
+
 ### 2026-10-29 - sol-win-redesign r14 A4 - Viewer bar
 
 - Replaces r12's transport rule: Back and Forward remain 32 by 32 subtle buttons, Play is a round 40 by 40 default neutral button, then AI modified and the time trail as one right-aligned group. The measured row moves that group together below the controls with a 4 epx gap only when necessary; it never shrinks targets or truncates the time.

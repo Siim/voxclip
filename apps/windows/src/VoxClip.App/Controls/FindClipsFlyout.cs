@@ -46,6 +46,7 @@ internal sealed class FindClipsFlyout
         line.Children.Add(connector);
         line.Children.Add(change);
         AutomationProperties.SetName(change, "Change connector");
+        AutomationProperties.SetName(busy, "AI request in progress");
         change.Click += (_, _) => { flyout.Hide(); App.OpenSettings("Providers & Keys"); };
         preset.SelectionChanged += (_, _) => instructions.Header = preset.SelectedIndex == 4 ? "Describe the clips you want" : "Anything specific? (optional)";
         instructions.KeyDown += (_, args) =>

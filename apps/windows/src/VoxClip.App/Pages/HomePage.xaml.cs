@@ -244,9 +244,13 @@ public sealed partial class HomePage : Page
     {
         if (window is not null && sender is FrameworkElement { Tag: string path }) await window.LocateProjectAsync(path);
     }
+    /// <summary>Cancel hides itself once the transcription stops, so focus that is on it moves to its tile first.</summary>
     private void CancelTranscriptionClicked(object sender, RoutedEventArgs args)
     {
-        if (sender is FrameworkElement { Tag: string path }) TranscriptionActivity.Cancel(path);
+        if (sender is not FrameworkElement { Tag: string path } link) return;
+        if (link is Control focused && focused.FocusState != FocusState.Unfocused && link.DataContext is { } item && RecentGrid.ContainerFromItem(item) is Control tile)
+            tile.Focus(focused.FocusState == FocusState.Keyboard ? FocusState.Keyboard : FocusState.Programmatic);
+        TranscriptionActivity.Cancel(path);
     }
     private async void ImportClicked(object sender, RoutedEventArgs args) { if (window is not null) await window.ChooseAsync(false); }
     private async void OpenClicked(object sender, RoutedEventArgs args) { if (window is not null) await window.ChooseAsync(true); }

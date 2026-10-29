@@ -33,6 +33,7 @@ internal sealed class RewritePanel : Grid
         AutomationProperties.SetAutomationId(propose, "Rewrite.Propose");
         AutomationProperties.SetAutomationId(apply, "Rewrite.Apply");
         AutomationProperties.SetName(this, "Rewrite");
+        AutomationProperties.SetName(busy, "AI request in progress");
         RowDefinitions.Add(new() { Height = new(1, GridUnitType.Star) });
         RowDefinitions.Add(new() { Height = GridLength.Auto });
         BorderBrush = Ui.ThemeBrush(this, "VcLineDefaultBrush");

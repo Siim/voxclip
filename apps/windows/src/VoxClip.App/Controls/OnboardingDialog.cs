@@ -22,6 +22,7 @@ internal sealed class OnboardingDialog : ContentDialog
     private readonly CheckBox consent = new() { Content = "I understand what this connector sends and want to use it." };
     private IReadOnlyList<TranscriptionModel> catalogue = [];
     private int step;
+    private int rendered = -1;
     private bool downloading;
 
     internal OnboardingDialog(MainWindow owner)
@@ -78,12 +79,18 @@ internal sealed class OnboardingDialog : ContentDialog
 
     private void Render()
     {
-        body.Children.Clear();
-        body.Children.Add(Ui.Text($"Step {step + 1} of 3", "HelperText"));
-        body.Children.Add(Ui.Text(step switch { 0 => "Cut video by its words.", 1 => "Find clips with AI (optional)", _ => "Five keys to know" }, "SubtitleTextBlockStyle"));
+        var lead = step switch { 0 => engine, 1 => connector, _ => (ComboBox?)null };
+        var keep = rendered == step && lead is not null && body.Children.Count > 2 && body.Children[2] == lead ? 3 : 0;
+        rendered = step;
+        while (body.Children.Count > keep) body.Children.RemoveAt(body.Children.Count - 1);
+        if (keep == 0)
+        {
+            body.Children.Add(Ui.Text($"Step {step + 1} of 3", "HelperText"));
+            body.Children.Add(Ui.Text(step switch { 0 => "Cut video by its words.", 1 => "Find clips with AI (optional)", _ => "Five keys to know" }, "SubtitleTextBlockStyle"));
+            if (lead is not null) body.Children.Add(lead);
+        }
         if (step == 0)
         {
-            body.Children.Add(engine);
             body.Children.Add(Ui.Text(engine.SelectedIndex == 1
                 ? "ElevenLabs keeps the audio under its terms. No upload happens until you confirm for a take."
                 : "Audio stays on this PC. A local model is downloaded only when you choose to download it.", "HelperText"));
@@ -109,7 +116,6 @@ internal sealed class OnboardingDialog : ContentDialog
         }
         else if (step == 1)
         {
-            body.Children.Add(connector);
             if ((connector.SelectedItem as ComboBoxItem)?.Tag is ProviderEntry entry)
             {
                 body.Children.Add(Ui.Text(entry.DataFlow, "HelperText"));

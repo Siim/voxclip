@@ -85,6 +85,33 @@ public sealed class CaptionCardTests
         Assert.Equal(edits, model.Project.Edits);
     }
 
+    /// <summary>Fine tune updates its controls in place from these values and builds them again only when the shape changes,
+    /// so the control that made a change keeps keyboard focus.</summary>
+    [Fact]
+    public void FineTuneValuesFollowEveryChangeWhileItsShapeFollowsOnlyTheStyleAndReadOnly()
+    {
+        var project = HomeViewModelTests.Fixture("interview-take.voxclip");
+        var style = Core.Services.Settings.CaptionStyleLibrary.Load(Shared).Find(project.Captions.StyleId)!;
+        var model = new EditorViewModel(project);
+        var shape = CaptionFineTune.Shape(model.Project, model.IsReadOnly);
+        var plain = CaptionFineTune.Values(style, model.Project);
+        Assert.Equal((1d, 1, 1, 2), (plain.Scale, plain.Size, plain.Words, plain.Position));
+        model.SetCaptionOverrides(CaptionFineTune.Change(model.Project.Captions, "font", ("sizeScale", System.Text.Json.Nodes.JsonValue.Create(1.2))));
+        model.SetCaptionOverrides(CaptionFineTune.Change(model.Project.Captions, "text", ("transform", System.Text.Json.Nodes.JsonValue.Create("uppercase")),
+            ("punctuation", System.Text.Json.Nodes.JsonValue.Create("keep"))));
+        model.SetCaptionOverrides(CaptionFineTune.Change(model.Project.Captions, "layout", ("maxWords", System.Text.Json.Nodes.JsonValue.Create(1))));
+        model.SetCaptions(CaptionFineTune.Position(model.Project, 0));
+        var tuned = CaptionFineTune.Values(style, model.Project);
+        Assert.Equal((1.2, 2, 1, 0, true, 0), (tuned.Scale, tuned.Size, tuned.Case, tuned.Words, tuned.Punctuation, tuned.Position));
+        Assert.Equal(shape, CaptionFineTune.Shape(model.Project, model.IsReadOnly));
+        model.SetCaptions(CaptionFineTune.Reset(model.Project.Captions));
+        Assert.Equal(plain, CaptionFineTune.Values(style, model.Project));
+        Assert.Equal(shape, CaptionFineTune.Shape(model.Project, model.IsReadOnly));
+        model.SetCaptionStyle("vox-highlight");
+        Assert.NotEqual(shape, CaptionFineTune.Shape(model.Project, model.IsReadOnly));
+        Assert.NotEqual(shape, CaptionFineTune.Shape(project, !model.IsReadOnly));
+    }
+
     private static string SharedRoot()
     {
         for (var directory = new DirectoryInfo(AppContext.BaseDirectory); directory is not null; directory = directory.Parent)

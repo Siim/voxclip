@@ -1,6 +1,7 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Automation.Peers;
+using Microsoft.UI.Xaml.Automation.Provider;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Documents;
@@ -156,6 +157,34 @@ public sealed class TranscriptView : UserControl
             break;
         }
     }
+    /// <summary>After a keyboard move: scroll as little as needed to keep the caret word on screen, and tell Narrator the
+    /// caret word and the selection's size (design §15). Select All announces without scrolling.</summary>
+    internal void SelectionMovedByKeyboard(bool reveal = true)
+    {
+        if (model is null || !model.HasSelection) return;
+        if (reveal) KeepWordInView(model.SelectionCaret);
+        Ui.Announce(this, model.SelectionAnnouncement(App.Services.Get("general.showLowConfidence", false)), "selection");
+    }
+    private void KeepWordInView(int wordIndex)
+    {
+        if (!IsLoaded || model is null) return;
+        for (var index = 0; index < model.Paragraphs.Count; index++)
+        {
+            var paragraph = model.Paragraphs[index];
+            if (wordIndex < paragraph.StartIndex || wordIndex >= paragraph.StartIndex + paragraph.Count) continue;
+            var element = repeater.GetOrCreateElement(index);
+            repeater.UpdateLayout();
+            var options = new BringIntoViewOptions { AnimationDesired = Ui.EffectPolicy.Animations };
+            if (element is Grid grid && realized.TryGetValue(grid, out var visual) && visual.Runs.FirstOrDefault(run => run.Index == wordIndex) is { } word
+                && TranscriptOverlay.Bounds(word.Run).FirstOrDefault() is { Width: > 0 } bounds)
+            {
+                options.TargetRect = new Windows.Foundation.Rect(bounds.X, bounds.Y - bounds.Height, bounds.Width, bounds.Height * 3);
+                visual.Text.StartBringIntoView(options);
+            }
+            else element.StartBringIntoView(options);
+            break;
+        }
+    }
 
     /// <summary>Segoe UI Variable Text at 19 epx is the Windows transcript default; design §4.1 (C4).</summary>
     internal static double DefaultFontSize => (double)Application.Current.Resources["VcTranscriptFontSize"];
@@ -230,6 +259,12 @@ public sealed class TranscriptView : UserControl
         {
             ShowSelectionFlyout(true); args.Handled = true;
         }
+        else if (args.Key is Windows.System.VirtualKey.PageDown or Windows.System.VirtualKey.PageUp)
+        {
+            var page = Math.Max(LineHeight(fontSize), scroll.ViewportHeight - LineHeight(fontSize));
+            scroll.ChangeView(null, scroll.VerticalOffset + (args.Key == Windows.System.VirtualKey.PageDown ? page : -page), null, !Ui.EffectPolicy.Animations);
+            args.Handled = true;
+        }
     }
     public void ApplySettings()
     {
@@ -237,10 +272,17 @@ public sealed class TranscriptView : UserControl
         Zoom(0); RefreshVisuals();
     }
     protected override AutomationPeer OnCreateAutomationPeer() => new TranscriptPeer(this);
-    private sealed class TranscriptPeer(TranscriptView owner) : FrameworkElementAutomationPeer(owner)
+    /// <summary>The transcript's value is the caret word and the selection's size, so Narrator says where the caret is when
+    /// focus comes back to the transcript. Keyboard moves announce it as a notification, not as a value change, so it is
+    /// not spoken twice.</summary>
+    private sealed class TranscriptPeer(TranscriptView owner) : FrameworkElementAutomationPeer(owner), IValueProvider
     {
         protected override string GetClassNameCore() => "VoxClipTranscript";
         protected override AutomationControlType GetAutomationControlTypeCore() => AutomationControlType.Document;
+        protected override object GetPatternCore(PatternInterface pattern) => pattern == PatternInterface.Value ? this : base.GetPatternCore(pattern);
+        public bool IsReadOnly => true;
+        public string Value => owner.model?.SelectionAnnouncement(App.Services.Get("general.showLowConfidence", false)) is { Length: > 0 } text ? text : "No words selected";
+        public void SetValue(string value) => throw new InvalidOperationException("The transcript is edited with its own commands.");
     }
     private void ModelChanged(object? sender, EventArgs args)
     {
@@ -556,7 +598,7 @@ public sealed class TranscriptView : UserControl
         }
         text.KeyDown += (_, args) =>
         {
-            if (args.Key is Windows.System.VirtualKey.Enter or Windows.System.VirtualKey.Tab) { model.Correct(text.Text); correction.IsOpen = false; if (args.Key == Windows.System.VirtualKey.Tab) model.Select(model.SelectionEnd + 1); Focus(FocusState.Keyboard); args.Handled = true; }
+            if (args.Key is Windows.System.VirtualKey.Enter or Windows.System.VirtualKey.Tab) { model.Correct(text.Text); correction.IsOpen = false; if (args.Key == Windows.System.VirtualKey.Tab) { model.Select(model.SelectionEnd + 1); KeepWordInView(model.SelectionCaret); } Focus(FocusState.Keyboard); args.Handled = true; }
             if (args.Key == Windows.System.VirtualKey.Escape) { correction.IsOpen = false; Focus(FocusState.Keyboard); args.Handled = true; }
         };
         EventHandler<object>? opened = null;
