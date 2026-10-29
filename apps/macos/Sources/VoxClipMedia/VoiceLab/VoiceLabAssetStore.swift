@@ -43,6 +43,13 @@ public enum VoiceLabAssetStoreError: Error, LocalizedError, Sendable, Equatable 
 /// After it the file is kept: a failure to confirm it is `publishedUnverified`, and different bytes at the name are
 /// `altered`.
 public enum VoiceLabAssetStore {
+    @discardableResult public static func recoverStalePartials(paidRoot: URL) throws -> Int {
+        let root = try VoiceLabPaidRoot.open(paidRoot)
+        defer { Darwin.close(root) }
+        let lock = try VoiceLabAssetRecovery.lock(root)
+        defer { Darwin.close(lock) }
+        return try VoiceLabAssetRecovery.recover(root, before: VoiceLabAssetRecovery.processStartedAt)
+    }
     enum WriteBoundary: String, CaseIterable { case directories, temporary, header, pcm, fileSync, rename, directorySync, verification }
     /// The RIFF size field is 32 bits and counts 36 header bytes plus 2 bytes per frame. That is tighter than §10.4's
     /// 8 GiB and 24 h × 192 kHz bounds, so `VoiceLabAssets.prepare` accepts every length written here.
@@ -136,6 +143,9 @@ public enum VoiceLabAssetStore {
         guard parts.count == 2 else { throw VoiceLabAssetStoreError.unsafePath(file) }
         let rootFD = try openRoot(paidRoot, file: file)
         defer { Darwin.close(rootFD) }
+        let lock = try VoiceLabAssetRecovery.lock(rootFD)
+        defer { Darwin.close(lock) }
+        _ = try VoiceLabAssetRecovery.recover(rootFD, before: VoiceLabAssetRecovery.processStartedAt)
         let projectFD = try directory(parts[0], in: rootFD, file: file)
         defer { Darwin.close(projectFD) }
         try checkpoint?(.directories)

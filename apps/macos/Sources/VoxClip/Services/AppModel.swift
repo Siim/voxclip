@@ -211,6 +211,9 @@ extension ProviderChoice {
         await startupTask?.value
     }
     private func loadStartup() async {
+        let paidRoot = locations.root.appendingPathComponent("VoiceLab", isDirectory: true)
+        do { _ = try await Task.detached(priority: .utility) { try VoiceLabAssetStore.recoverStalePartials(paidRoot: paidRoot) }.value }
+        catch { await log.write(LogEntry(level: .warn, category: "voice-lab", message: "Voice Lab partial-file recovery could not finish; paid assets were kept.")) }
         await voiceLabSession.reconcileStartup()
         recent = Self.isTestSession ? [] : NSDocumentController.shared.recentDocumentURLs
         do {

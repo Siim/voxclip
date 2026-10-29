@@ -1,4 +1,5 @@
 import CryptoKit
+import Darwin
 import Foundation
 import Synchronization
 import Testing
@@ -312,6 +313,51 @@ extension HeavyMediaTests {
                 }
             }
         }
+    }
+    @Test func startupRecoveryDeletesOnlyOwnedOldPartialsAndNeverCompleteAudio() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let directory = root.appendingPathComponent(projectId)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
+        let identity = UUID().uuidString.lowercased()
+        let old = directory.appendingPathComponent(".old.wav.\(identity).partial")
+        let current = directory.appendingPathComponent(".current.wav.\(identity).partial")
+        let unknown = directory.appendingPathComponent("old.partial")
+        let complete = directory.appendingPathComponent("paid.wav")
+        let link = directory.appendingPathComponent(".link.wav.\(identity).partial")
+        let boundary = Date(timeIntervalSince1970: 1_000)
+        for path in [old, current, unknown, complete] {
+            try Data([1, 2, 3]).write(to: path)
+            try FileManager.default.setAttributes([.modificationDate: path == current ? boundary : boundary.addingTimeInterval(-1)], ofItemAtPath: path.path)
+        }
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: complete)
+        let descriptor = try VoiceLabPaidRoot.open(root)
+        defer { Darwin.close(descriptor) }
+        let lock = try VoiceLabAssetRecovery.lock(descriptor)
+        defer { Darwin.close(lock) }
+        #expect(try VoiceLabAssetRecovery.recover(descriptor, before: boundary) == 1)
+        #expect(try VoiceLabAssetRecovery.recover(descriptor, before: boundary) == 0)
+        #expect(!FileManager.default.fileExists(atPath: old.path))
+        for path in [current, unknown, complete, link] { #expect(FileManager.default.fileExists(atPath: path.path)) }
+        #expect(try Data(contentsOf: complete) == Data([1, 2, 3]))
+    }
+    @Test func writerHoldsRecoveryLockUntilPublicationCompletes() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: root) }
+        var checked = false
+        let asset = try VoiceLabAssetStore.write(pcm16: Data(repeating: 0, count: 480), sampleRate: 24_000,
+            projectId: projectId, assetId: "paid", paidRoot: root, createdAt: Date(), afterPublish: nil, checkpoint: { point in
+                guard point == .temporary else { return }
+                let descriptor = Darwin.open(root.appendingPathComponent(".asset-write.lock").path, O_RDWR)
+                defer { Darwin.close(descriptor) }
+                #expect(descriptor >= 0 && flock(descriptor, LOCK_EX | LOCK_NB) == -1)
+                checked = true
+            })
+        #expect(checked)
+        #expect(try VoiceLabAssetStore.recoverStalePartials(paidRoot: root) == 0)
+        #expect(FileManager.default.fileExists(atPath: root.appendingPathComponent(asset.file).path))
     }
     @Test func pcm24OddFramePaddingIsCanonicalAndVerified() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
