@@ -126,6 +126,7 @@ public sealed partial class EditorPage : Page
         Bindings.Update();
         await EditorInitialSelection.ApplyAsync(project.Export.Aspect, aspectLoaded.Task, index => Aspect.SelectedIndex = index, ct);
         captions = new(ViewModel, () => MediaPath, lifetime.Token);
+        captions.FitChanged += (_, _) => SizeStage();
         rightContent = new(captions);
         CaptionsHost.Children.Add(rightContent);
         SelectionChanged(this, EventArgs.Empty);
@@ -834,7 +835,7 @@ public sealed partial class EditorPage : Page
     {
         var oriented = media?.OrientedSize ?? MediaFromProject(ViewModel.Project).OrientedSize;
         (PreviewStage.Width, PreviewStage.Height) = EditorLayout.Stage(RightPane.ActualWidth - RightPane.BorderThickness.Left - 32, ViewModel.Project.Export.Aspect, oriented);
-        var maximum = Math.Max(80, RightPane.ActualHeight - FrameRow.ActualHeight - TransportRow.ActualHeight - 68 - 160);
+        var maximum = Math.Max(80, RightPane.ActualHeight - FrameRow.ActualHeight - TransportRow.ActualHeight - 68 - (captions?.MinimumContentHeight ?? 160));
         if (PreviewStage.Height > maximum)
         {
             PreviewStage.Width *= maximum / PreviewStage.Height;

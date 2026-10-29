@@ -33,6 +33,7 @@ internal sealed class CaptionsPanel : UserControl
     private readonly GridView gallery = new() { SelectionMode = ListViewSelectionMode.Single, IsItemClickEnabled = false };
     private readonly ToggleSwitch enabled = new() { OnContent = "", OffContent = "", HorizontalAlignment = HorizontalAlignment.Right };
     private readonly Expander fineTune = new() { HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch };
+    private readonly ScrollViewer fineTuneViewport = new() { HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
     private readonly TextBlock styleName = new() { TextWrapping = TextWrapping.Wrap };
     private readonly TextBlock summary = new() { FontSize = 12, TextWrapping = TextWrapping.Wrap };
     private readonly Image chip = new() { Width = 64, Height = 36, Stretch = Stretch.Fill };
@@ -51,6 +52,8 @@ internal sealed class CaptionsPanel : UserControl
     private bool syncing;
     private double playhead;
     internal IReadOnlyList<CaptionStyle> Styles { get; private set; } = [];
+    internal double MinimumContentHeight => fineTune.IsExpanded ? body.RowDefinitions[3].MinHeight + 160 : 160;
+    internal event EventHandler? FitChanged;
     internal Control FocusTarget
     {
         get
@@ -97,6 +100,9 @@ internal sealed class CaptionsPanel : UserControl
         body.RowDefinitions.Add(new() { Height = GridLength.Auto });
         body.RowDefinitions.Add(new() { Height = GridLength.Auto });
         body.RowDefinitions.Add(new() { Height = new(1, GridUnitType.Star) });
+        fineTuneViewport.Content = fineTune;
+        fineTune.Expanding += (_, _) => UpdateFineTuneSpace();
+        fineTune.Collapsed += (_, _) => UpdateFineTuneSpace();
         ActualThemeChanged += (_, _) => { summary.Foreground = Ui.ThemeBrush(this, "VcTextSecondaryBrush"); RenderVisible(true); };
         Loaded += (_, _) => Ui.EffectsChanged += EffectsChanged;
         Unloaded += (_, _) => Ui.EffectsChanged -= EffectsChanged;
@@ -200,7 +206,7 @@ internal sealed class CaptionsPanel : UserControl
         labels.Children.Add(new TextBlock { Text = "Fine tune", FontSize = 12, TextWrapping = TextWrapping.Wrap });
         Grid.SetColumn(labels, 1); styleRow.Children.Add(labels);
         fineTune.Header = styleRow;
-        Grid.SetRow(fineTune, 2); body.Children.Add(fineTune);
+        Grid.SetRow(fineTuneViewport, 2); body.Children.Add(fineTuneViewport);
         gallery.ItemsPanel = (ItemsPanelTemplate)XamlReader.Load("<ItemsPanelTemplate xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation'><ItemsWrapGrid Orientation='Horizontal' MaximumRowsOrColumns='2'/></ItemsPanelTemplate>");
         gallery.ItemTemplate = (DataTemplate)XamlReader.Load("<DataTemplate xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation'><StackPanel Spacing='4' AutomationProperties.Name='{Binding Description}'><Grid><Border CornerRadius='10' Background='{ThemeResource VcStageBrush}'><Image Source='{Binding Bitmap}' Stretch='Fill'/></Border><Border Visibility='{Binding Selected}' Margin='-2' BorderBrush='{ThemeResource VcAccentTextBrush}' BorderThickness='2' CornerRadius='12'/><Border Visibility='{Binding Selected}' Width='18' Height='18' CornerRadius='9' Background='{ThemeResource VcChipMediaBackgroundBrush}' HorizontalAlignment='Right' VerticalAlignment='Top' Margin='6'><TextBlock Text='&#xE73E;' FontFamily='{ThemeResource SymbolThemeFontFamily}' FontSize='10' HorizontalAlignment='Center' VerticalAlignment='Center' AutomationProperties.AccessibilityView='Raw' Foreground='{ThemeResource VcChipMediaForegroundBrush}'/></Border></Grid><TextBlock Text='{Binding Name}' FontSize='12' Foreground='{ThemeResource VcTextSecondaryBrush}' TextTrimming='CharacterEllipsis'/></StackPanel></DataTemplate>");
         gallery.GroupStyle.Add(new GroupStyle { HeaderTemplate = (DataTemplate)XamlReader.Load("<DataTemplate xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation'><TextBlock Text='{Binding Name}' FontSize='11' FontWeight='SemiBold' Foreground='{ThemeResource VcTextSecondaryBrush}' Margin='4,12,0,4'/></DataTemplate>") });
@@ -259,10 +265,22 @@ internal sealed class CaptionsPanel : UserControl
     private void SizeTiles()
     {
         tileWidth = CaptionFineTune.TileWidth(gallery.ActualWidth);
+        var minimum = Math.Round(tileWidth * 0.45) + 28;
+        if (Math.Abs(body.RowDefinitions[3].MinHeight - minimum) > 0.1)
+        {
+            body.RowDefinitions[3].MinHeight = minimum;
+            FitChanged?.Invoke(this, EventArgs.Empty);
+        }
         if (gallery.ItemsPanelRoot is ItemsWrapGrid panel) panel.ItemWidth = (gallery.ActualWidth > 8 ? gallery.ActualWidth : 8) / 2;
         foreach (var tile in visible)
             if (gallery.ContainerFromItem(tile) is SelectorItem container) SizeTile(container);
         RenderVisible(true);
+    }
+
+    private void UpdateFineTuneSpace()
+    {
+        body.RowDefinitions[2].Height = fineTune.IsExpanded ? new(1, GridUnitType.Star) : GridLength.Auto;
+        FitChanged?.Invoke(this, EventArgs.Empty);
     }
 
     private void RenderVisible(bool force)
@@ -376,11 +394,17 @@ internal sealed class CaptionsPanel : UserControl
         Options("Case", ["As said", "ALL CAPS"], now => now.Case, index => Change("text", ("transform", JsonValue.Create(index == 0 ? "none" : "uppercase"))), style.Text.UserOverridable);
         Options("Words on screen", ["1", "Phrase", "Line"], now => now.Words,
             index => Change("layout", ("maxWords", index == 1 ? null : JsonValue.Create(index == 0 ? 1 : 16)), ("maxLines", index == 1 ? null : JsonValue.Create(1))));
-        var punctuation = new ToggleSwitch { Header = "Keep punctuation", IsEnabled = style.Text.UserOverridable && !model.IsReadOnly, IsOn = initial.Punctuation };
+        var punctuation = new ToggleSwitch { OnContent = "", OffContent = "", MinWidth = 0, IsEnabled = style.Text.UserOverridable && !model.IsReadOnly, IsOn = initial.Punctuation, HorizontalAlignment = HorizontalAlignment.Right };
         AutomationProperties.SetAutomationId(punctuation, "FineTune.Punctuation");
+        AutomationProperties.SetName(punctuation, "Keep punctuation");
         punctuation.Toggled += (_, _) => { if (!syncing) Change("text", ("punctuation", JsonValue.Create(punctuation.IsOn ? "keep" : "strip-keep-numeric"))); };
         syncs.Add(now => punctuation.IsOn = now.Punctuation);
-        controls.Children.Add(punctuation);
+        var punctuationRow = new Grid();
+        punctuationRow.ColumnDefinitions.Add(new() { Width = new(1, GridUnitType.Star) });
+        punctuationRow.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
+        punctuationRow.Children.Add(new TextBlock { Text = "Keep punctuation", VerticalAlignment = VerticalAlignment.Center });
+        Grid.SetColumn(punctuation, 1); punctuationRow.Children.Add(punctuation);
+        controls.Children.Add(punctuationRow);
         if (style.Accent is not null)
         {
             controls.Children.Add(Ui.Text("Colour"));
@@ -410,7 +434,7 @@ internal sealed class CaptionsPanel : UserControl
             $"Size {now.Scale:0.##}× · {CaptionFineTune.Summary(style, model.Project)} · Position {(now.Stored is { } stored ? $"{stored.X:0.##}, {stored.Y:0.##}" : "Bottom")}");
         Describe(initial); syncs.Add(Describe);
         syncFineTune = () => { var now = CaptionFineTune.Values(style, model.Project); foreach (var sync in syncs) sync(now); };
-        fineTune.Content = new ScrollViewer { Content = controls, MaxHeight = 300, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
+        fineTune.Content = controls;
     }
 
     internal void RefreshSamples() => samples?.Refresh();

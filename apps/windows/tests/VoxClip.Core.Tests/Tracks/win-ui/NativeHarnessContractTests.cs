@@ -6,6 +6,21 @@ namespace VoxClip.Ui.Tests;
 public sealed class NativeHarnessContractTests
 {
     [Fact]
+    public void FineTuneScrollsWithinItsAllocatedRowAndReservesOneGalleryTile()
+    {
+        var root = Path.GetDirectoryName(Environment.GetEnvironmentVariable("VOXCLIP_SHARED_DIR"))!;
+        var captions = File.ReadAllText(Path.Combine(root, "apps/windows/src/VoxClip.App/Controls/CaptionsPanel.cs"));
+        Assert.Contains("fineTuneViewport.Content = fineTune", captions);
+        Assert.Contains("fineTune.Content = controls", captions);
+        Assert.Contains("body.RowDefinitions[2].Height = fineTune.IsExpanded ? new(1, GridUnitType.Star) : GridLength.Auto", captions);
+        Assert.Contains("body.RowDefinitions[3].MinHeight = minimum", captions);
+        Assert.DoesNotContain("MaxHeight = 300", captions);
+        var editor = File.ReadAllText(Path.Combine(root, "apps/windows/src/VoxClip.App/Pages/EditorPage.xaml.cs"));
+        Assert.Contains("captions.FitChanged += (_, _) => SizeStage()", editor);
+        Assert.Contains("captions?.MinimumContentHeight ?? 160", editor);
+    }
+
+    [Fact]
     public void NativeFlowUsesItsPrivateArchitectureMatchedHostAndDiskReserve()
     {
         var root = Path.GetDirectoryName(Environment.GetEnvironmentVariable("VOXCLIP_SHARED_DIR"))!;
