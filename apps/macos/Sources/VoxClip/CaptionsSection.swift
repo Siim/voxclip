@@ -143,7 +143,9 @@ private extension VerticalAlignment {
                         CaptionGalleryAudit.snapshots[galleryID] = .init(paint: galleryTile?.frame, header: galleryLayout.header,
                             visible: galleryViewport.visible, size: galleryViewport.size, pending: galleryReveal.pending,
                             selectedStyle: model.project.captions.styleId, paintStyle: galleryTile?.styleID, interrupted: galleryReveal.interrupted,
-                            commands: galleryReveal.commands)
+                            commands: galleryReveal.commands, consumed: galleryReveal.request == galleryRequest,
+                            requestStyle: galleryReveal.request.map { String($0.selection.split(separator: "/").last ?? "") },
+                            requestHeight: galleryReveal.request?.size.height)
                         return
                     }
                     if let selected = notification.userInfo?["selectStyle"] as? String {
@@ -358,9 +360,11 @@ private enum CaptionGallerySpace: Hashable { case content }
 #if DEBUG
 @MainActor enum CaptionGalleryAudit {
     static let notification = Notification.Name("com.voxclip.caption-gallery-audit")
-    struct Snapshot: Codable {
+    struct Snapshot: Codable, Equatable {
         let paint: CGRect?; let header: CGRect?; let visible: CGRect; let size: CGSize; let pending: Bool
         let selectedStyle: String; let paintStyle: String?; let interrupted: Bool; let commands: Int
+        /// Whether the reveal has taken the gallery's current request (selection, viewport, Fine Tune).
+        let consumed: Bool; let requestStyle: String?; let requestHeight: CGFloat?
     }
     static var snapshots: [String: Snapshot] = [:]
 }

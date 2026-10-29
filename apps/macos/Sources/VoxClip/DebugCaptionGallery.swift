@@ -13,6 +13,7 @@ import VoxClipCore
         let snapshot: CaptionGalleryAudit.Snapshot?
         let elapsed: Double
         let settled: Bool
+        let passes: Int
     }
     static func run(app: AppModel, directory: URL) async throws -> [DebugUISuite.Result] {
         guard let root = app.shared?.root else { throw VoxClipError.sharedResourcesMissing }
@@ -64,8 +65,12 @@ import VoxClipCore
             let cancelled = snapshot(identifier)
             for _ in 0..<12 { host.layoutSubtreeIfNeeded(); await Task.yield() }
             let after = snapshot(identifier)
-            results.append(.init(name: "gallery user scroll at \(width) interrupts a pending reveal", passed: pending?.pending == true && cancelled?.pending == false && cancelled?.interrupted == true))
-            results.append(.init(name: "gallery user scroll at \(width) stays cancelled through layout", passed: after?.interrupted == true && after?.pending == false && after?.commands == cancelled?.commands))
+            // Hosted CI keeps no evidence, so the names carry the snapshot values.
+            func state(_ snapshot: CaptionGalleryAudit.Snapshot?) -> String {
+                snapshot.map { "pending \($0.pending), interrupted \($0.interrupted), commands \($0.commands), consumed \($0.consumed), request \($0.requestStyle ?? "none") at \($0.requestHeight ?? -1), size \($0.size.width)x\($0.size.height), visible y \($0.visible.minY)" } ?? "no snapshot"
+            }
+            results.append(.init(name: "gallery user scroll at \(width) interrupts a pending reveal (\(state(pending)); then \(state(cancelled)))", passed: pending?.pending == true && cancelled?.pending == false && cancelled?.interrupted == true))
+            results.append(.init(name: "gallery user scroll at \(width) stays cancelled through layout (\(state(cancelled)); then \(state(after)))", passed: after?.interrupted == true && after?.pending == false && after?.commands == cancelled?.commands))
         }
         results.append(.init(name: "gallery interaction audit opens no windows", passed: NSApp.windows.count == windowsBefore))
         try JSONEncoder().encode(measurements).write(to: directory.appendingPathComponent("caption-gallery-interactions.json"), options: .atomic)
@@ -224,27 +229,39 @@ import VoxClipCore
                                width: CGFloat, height: CGFloat, short: Bool = false) async -> Measurement {
         let started = ProcessInfo.processInfo.systemUptime
         var current: CaptionGalleryAudit.Snapshot?
+        var previous: CaptionGalleryAudit.Snapshot?
         var settled = false
+        var passes = 0
         repeat {
             host.layoutSubtreeIfNeeded()
             current = snapshot(identifier)
-            if let current, let paint = current.paint, current.selectedStyle == style, current.paintStyle == style, !current.pending,
+            passes += 1
+            var ready = false
+            // Cached frames and the model's style are right the moment a change is made, before SwiftUI
+            // has delivered it; only a consumed request shows the gallery has acted on the change.
+            if let current, let paint = current.paint, current.consumed, current.selectedStyle == style, current.paintStyle == style, !current.pending,
                current.visible.height > 0, abs(current.visible.width - current.size.width) <= 0.5 {
                 if short {
-                    settled = paint.height > current.visible.height && abs(paint.minY - current.visible.minY) <= 0.5
+                    ready = paint.height > current.visible.height && abs(paint.minY - current.visible.minY) <= 0.5
                 } else {
                     let visible = current.visible.insetBy(dx: -0.5, dy: -0.5)
-                    settled = visible.contains(paint)
+                    ready = visible.contains(paint)
                     if let header = current.header, header.union(paint).height + 24 <= current.visible.height {
-                        settled = settled && visible.contains(header)
+                        ready = ready && visible.contains(header)
                     }
                 }
-                if settled { break }
+                // An unattached host has no display cycle: its measured viewport must match the gallery's real frame.
+                if ready, host.window == nil {
+                    ready = DebugRightColumn.markers(in: host)["caption.gallery.\(identifier)"].map { abs($0.height - current.size.height) <= 0.5 } ?? false
+                }
             }
+            // Settled once the state holds across a turn, so nothing owed is still on its way.
+            if ready, let previous, previous == current { settled = true; break }
+            previous = ready ? current : nil
             await Task.yield()
         } while ProcessInfo.processInfo.systemUptime - started < 2
         return Measurement(name: name, width: width, height: height, style: style, snapshot: current,
-            elapsed: ProcessInfo.processInfo.systemUptime - started, settled: settled)
+            elapsed: ProcessInfo.processInfo.systemUptime - started, settled: settled, passes: passes)
     }
 }
 #endif

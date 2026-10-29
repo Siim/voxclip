@@ -5,6 +5,7 @@ import VoxClipCore
 import XCTest
 import Darwin
 
+extension HeavyMediaTests {
 @Suite("mac-ui", .serialized) struct MacUIIntegrationTests {
     @Test("Gallery selections reveal their complete paint without opening a window") func captionGalleryInteractions() throws {
         let directory = try UIProcessHarness.run(mode: "-captionGalleryAudit", name: "caption-gallery")
@@ -252,6 +253,7 @@ import Darwin
         #expect(UpdateChecker.available(version: "v0.2.0", htmlURL: unsafe, downloadURL: nil, currentVersion: "0.1.0") == nil)
         #expect(UpdateChecker.available(version: "v0.2.0", htmlURL: safe, downloadURL: nil, currentVersion: "0.1.0", prerelease: true) == nil)
     }
+}
 }
 
 final class MacUIRenderPerformanceTests: XCTestCase {
