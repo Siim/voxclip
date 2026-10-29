@@ -494,6 +494,12 @@ public protocol SpeakerEmbedder: Sendable {
 - **Threshold τ.** It comes from calibration (spike S6). Set it where the false-accept rate is at most 1% on at least 200 impostor pairs, while at least 95% of 50 own-voice pairs pass. τ is stored per model in the catalogue. The ECAPA-class starting point is 0.6. **M3 does not ship without a calibrated τ.**
 - **Clone creation.** Every training sample must score ≥ τ against the consent recording. If any sample fails, drop it. If the remaining total falls under 10 s, block with "Some of these recordings don't sound like the voice in your consent statement."
 
+**S6 outcome (macOS W2, 2026-10-29).** Use the official WeSpeaker ResNet34-LM VoxCeleb ONNX export, 256 dimensions, at Hugging Face revision `f0c48c298fd835726c27956a5d617bad7115627e`. Its official model card declares CC BY 4.0, and the toolkit repo's licence is Apache-2.0. The exact 26,530,309-byte file and SHA-256 are pinned in `shared/catalog/voice-lab-models.json`, alongside the existing Silero VAD v6.2.0 asset. The Mac uses Microsoft's official ONNX Runtime SwiftPM 1.19.2 package (CPU only); weights remain an explicitly approved download, not a bundled model. Settings → Voice Lab and Local Models use the existing resumable-download, size, licence and verification patterns.
+
+The preprocessing contract `silero-6.2.0-strict-kaldi80-v1` uses the existing whisper.cpp Silero VAD on CPU, with threshold 0.5, 250 ms minimum speech, 100 ms minimum silence and no padding/overlap. Concatenate voiced ranges, take the 3 s / 1.5 s windows, compute the official export's 80-bin Kaldi-compatible Hamming log-mel features with mean normalization, normalize each embedding, average and normalize again. `tools/voice-lab/README.md` specifies all feature constants and reproduction commands; the Python calibration tool calls production Swift preprocessing and checks it against an independent NumPy feature implementation.
+
+English calibration on LibriSpeech test-clean (CC BY 4.0) used 120 distinct six-second utterances from 40 speakers: 7,020 impostor pairs and 120 same-speaker pairs. The selected τ is **0.3555008164510893**, with 70 false accepts (0.9971509971509971%) and 120/120 same-speaker passes (100%). The catalogue binds this threshold to the exact model, VAD, preprocessing version, language and calibration metadata. The complete empirical curve and pair scores are in `shared/fixtures/voice-lab/speaker/`; they are calibration evidence, not held-out accuracy or spoof resistance. No account-free Estonian speaker-labelled subset was obtained in W2, so Estonian calibration is owed and the Mac refuses Estonian enrollment rather than borrowing the English threshold. A user own-voice check on this Mac's microphone remains a release acceptance gate for the lead to schedule. The shared parity vectors allow Windows to verify the same model and preprocessing without committing the 26.5 MB model.
+
 ### 6.7 Create the voice
 
 ```
@@ -1589,7 +1595,7 @@ The Guidelines do not settle whether a free, open-source, bring-your-own-key des
 | S3 | Do Voice Isolator and Voice Changer preserve duration, and which formats come back? Is the Voice Changer acceptable on Estonian? | §4.4, §7 |
 | S4 | When is `requires_verification` true for API-created IVC voices? | §6.7 |
 | S5 | Which IVC upload formats are accepted (M4A AAC, WAV, FLAC)? How does multipart encode `labels`? | §6.5, §6.7 |
-| S6 | Pick and calibrate the speaker-embedding model (licence, ONNX Runtime on both platforms, τ) | §6.6, the M3 release |
+| S6 | WeSpeaker ResNet34-LM selected (CC BY 4.0 weights); Mac ONNX Runtime SwiftPM 1.19.2 CPU and English LibriSpeech calibration complete (τ 0.3555008164510893, 0.9972% FAR, 100% same-speaker pass). Estonian calibration, the user's Mac microphone check and Windows runtime parity remain owed. | §6.6, the M3 release |
 | S7 | Real processing times for fal LatentSync, lipsync-2 and sync-3 on 3 s and 10 s windows at 1080×1920 | §9 UX |
 | S8 | The fal REST upload-initiate path and the storage lifecycle header for short retention. Whether sync.so watermarks output on its lowest plan | §9.4, §9.5 |
 | S9 | Validate the C2PA manifest against spec 2.4. Does a self-signed manifest survive and display on LinkedIn and X? | §11.7 |

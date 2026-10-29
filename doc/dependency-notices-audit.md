@@ -1,5 +1,11 @@
 # Dependency notice provenance (2026-10-25)
 
+## macOS Voice Lab S6 (2026-10-29)
+
+The official Microsoft `onnxruntime-swift-package-manager` package is pinned to 1.19.2, commit `bbc428e168a0374eb7d0503cdb7c73fdc1d99751`. Its Apple binary archive has SHA-256 `28787ee2f966a2c47eb293322c733c5dc4b5e3327cec321c1fe31a7c698edf68`. Exact MIT texts from both the package and verified archive, plus complete upstream ONNX Runtime 1.19.2 third-party notices, are in root `THIRD_PARTY_NOTICES.md` and therefore About → Licences. No Extensions product or non-CPU execution provider is selected. The Apple runtime is statically linked and uses MLAS, not Intel MKL; the generic all-platform notices do not broaden the Mac dependency allowance. The Mac framework notice gate recognizes this exact component.
+
+Official WeSpeaker ResNet34-LM weights at revision `f0c48c298fd835726c27956a5d617bad7115627e` are CC BY 4.0 per the pinned model card; the toolkit repository is Apache-2.0. The weights remain outside Git and app bundles. Exact file size/hash, attribution and calibration are in `shared/catalog/voice-lab-models.json`. The four LibriSpeech test-clean excerpts are CC BY 4.0, attributed to Vassil Panayotov, with source archive hash, modifications, book/chapter/utterance IDs and the full CC BY legal code recorded in the fixture README and root notices. NumPy and Python ONNX Runtime are throwaway calibration-tool dependencies, never app payloads. English clean-read calibration is not a substitute for the owed Estonian and microphone acceptance checks.
+
 The root `THIRD_PARTY_NOTICES.md` is the notice payload copied into both apps. This audit records how its Windows dependency sections were selected. The FFmpeg source/runtime notices in the root file are the accepted final R4 texts and were not re-generated here.
 
 ## Resolved Windows package graph
