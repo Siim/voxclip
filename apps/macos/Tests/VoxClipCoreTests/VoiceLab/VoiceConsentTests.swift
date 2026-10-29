@@ -1,11 +1,23 @@
+#if DEBUG
 import Foundation
 import Synchronization
 import Testing
-@testable import VoxClipCore
+@_spi(Testing) @testable import VoxClipCore
+@_spi(Testing) @testable import VoxClipMedia
 
 private final class ConsentRequestLog: Sendable { let value = Mutex<[String]>([]) }
 private final class ConsentTranscriptionCount: Sendable { let value = Mutex(0) }
 private final class SpeakerAvailability: Sendable { let value = Mutex(true) }
+private final class OperationRemote: Sendable {
+    struct State { var present = false; var lists = 0; var posts = 0; var deletes = 0; var listFailure = false }
+    let value = Mutex(State())
+}
+private final class OperationClock: Sendable {
+    let value: Mutex<Date>
+    init(_ date: Date) { value = Mutex(date) }
+    func now() -> Date { value.withLock { $0 } }
+    func advance(_ seconds: Double) { value.withLock { $0.addTimeInterval(seconds) } }
+}
 
 @Suite("Own-voice consent", .timeLimit(.minutes(2)))
 struct VoiceConsentTests {
@@ -291,7 +303,7 @@ struct VoiceConsentTests {
         #expect(!FileManager.default.fileExists(atPath: store.root.appendingPathComponent(id + "/statement.wav").path))
         #expect(calls.value.withLock { $0 } == ["GET /v1/user/subscription", "POST /v1/voices/add", "DELETE /v1/voices/fixtureOwnVoice"])
     }
-    @Test(arguments: [VoiceConsentCheckpoint.deletionIntent, .remoteDeleted, .removeStatement, .saveTombstone, .clearDeletion]) func deletionResumesEveryDurableBoundary(step: VoiceConsentCheckpoint) async throws {
+    @Test(arguments: [VoiceConsentCheckpoint.deletionIntent, .remoteDeleted, .removeStatement, .audioRemoved, .tombstoneRecord, .saveTombstone, .clearDeletion]) func deletionResumesEveryDurableBoundary(step: VoiceConsentCheckpoint) async throws {
         let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
         let store = VoiceConsentStore(locations: SpeechTestFiles.locations(root), fault: { checkpoint in
             if checkpoint == step { throw CocoaError(.fileWriteUnknown) }
@@ -307,13 +319,13 @@ struct VoiceConsentTests {
         if step == .deletionIntent {
             _ = try await restarted.beginDeletion(record.id, region: .default, at: now)
         }
-        try await VoiceEnrollment.resumeDeletions(store: restarted, client: retry)
+        try await VoiceOperationReconciler(store: restarted, client: retry).reconcile(force: true)
         let deleted = try await restarted.load(record.id)
         #expect(deleted.status == .deleted)
         #expect(deleted.samples == record.samples && deleted.statement.audioSha256 == record.statement.audioSha256)
-        #expect(try await restarted.pendingDeletions().isEmpty)
+        #expect(try await restarted.operations().filter { $0.kind == .delete && !$0.finished }.isEmpty)
         #expect(!FileManager.default.fileExists(atPath: restarted.root.appendingPathComponent("\(record.id)/statement.wav").path))
-        try await VoiceEnrollment.resumeDeletions(store: restarted, client: retry)
+        try await VoiceOperationReconciler(store: restarted, client: retry).reconcile(force: true)
     }
     @Test(arguments: [404, 500]) func deletionHandlesMissingAndFailure(status: Int) async throws {
         let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
@@ -328,7 +340,7 @@ struct VoiceConsentTests {
             #expect(try await store.load(record.id).status == .active)
             #expect(try await store.statement(recordID: record.id) == wav)
             #expect(try await store.activeVoices().isEmpty)
-            try await VoiceEnrollment.resumeDeletions(store: storage(root), client: client(calls, deletionStatus: 404))
+            try await VoiceOperationReconciler(store: storage(root), client: client(calls, deletionStatus: 404)).reconcile(force: true)
             #expect(try await store.load(record.id).status == .deleted)
         }
     }
@@ -350,7 +362,7 @@ struct VoiceConsentTests {
         } catch let error as VoiceConsentSaveError {
             #expect(error.record.voiceId == "fixtureOwnVoice")
             shouldFail.withLock { $0 = false }
-            try await store.completeCreation(error.record)
+            try await VoiceOperationReconciler(store: store, client: client).reconcile(force: true)
             #expect(try await store.load(id) == error.record)
         }
         await #expect(throws: VoiceLabError.invalidInput) { try await service.create(quote: quote, approved: true, enabled: true, appVersion: "0.1.0") }
@@ -388,18 +400,18 @@ struct VoiceConsentTests {
         let quote = try await service.prepare(recordID: id, displayName: "Example", samples: training(), enabled: true)
         await #expect(throws: (any Error).self) { try await service.create(quote: quote, approved: true, enabled: true, appVersion: "0.1.0") }
         let restarted = storage(root)
-        #expect(try await restarted.pendingCreations().count == 1)
+        #expect(try await restarted.operations().filter { $0.kind == .create && !$0.finished }.count == 1)
         try await restarted.reconcileAbandonedEnrollments()
         if mode == "invalid-consent" { try await restarted.discardStatement(recordID: id) }
         if mode == "cancelled" {
             try await restarted.abandonEnrollment(recordID: id)
             #expect(!FileManager.default.fileExists(atPath: restarted.root.appendingPathComponent("\(id)/statement.wav").path))
         }
-        try await VoiceEnrollment.reconcileCreations(store: restarted, client: client)
-        let record = try await restarted.load(id)
-        #expect(record.status == (mode == "invalid-consent" || mode == "cancelled" ? .deleted : .active))
-        #expect(try await restarted.pendingCreations().isEmpty)
-        try await VoiceEnrollment.reconcileCreations(store: restarted, client: client)
+        try await VoiceOperationReconciler(store: restarted, client: client).reconcile(force: true)
+        if mode == "local-save" { #expect(try await restarted.load(id).status == .active) }
+        else { #expect(try await restarted.records().isEmpty) }
+        #expect(try await restarted.operations().filter { $0.kind == .create && !$0.finished }.isEmpty)
+        try await VoiceOperationReconciler(store: restarted, client: client).reconcile(force: true)
         #expect(calls.value.withLock { $0.filter { $0.hasPrefix("POST") }.count } == 1)
     }
     @Test func legacyClonePolicyCannotDispatch() async throws {
@@ -519,6 +531,11 @@ struct VoiceConsentTests {
         #expect(!FileManager.default.fileExists(atPath: store.root.appendingPathComponent(abandoned).path))
         try await restarted.abandonEnrollment(recordID: record.id)
         #expect(try await restarted.statement(recordID: record.id) == wav)
+        let current = locations.cache.appendingPathComponent("voice-consent/current")
+        try FileManager.default.createDirectory(at: current, withIntermediateDirectories: true)
+        try wav.write(to: current.appendingPathComponent("statement.wav"))
+        try await restarted.reconcileAbandonedEnrollments()
+        #expect(FileManager.default.fileExists(atPath: current.appendingPathComponent("statement.wav").path))
     }
     @Test func betaGateAndSettingsValidation() throws {
         #expect(!VoiceLabGate.settingsVisible(enabled: false, internalBuild: false))
@@ -531,3 +548,195 @@ struct VoiceConsentTests {
         #expect(throws: (any Error).self) { try SettingsDocument(values: ["voiceLab.labelPosition": .string("off")]).validate() }
     }
 }
+
+extension VoiceConsentTests {
+    private func operationClient(_ remote: OperationRemote, nonce: String) -> ElevenLabsVoiceLab {
+        let base = SpeechStubHTTP.register { request in
+            switch (request.httpMethod, request.url?.path) {
+            case ("GET", "/v1/user/subscription"):
+                return (200, [:], Data(#"{"tier":"starter","status":"active","character_count":0,"character_limit":1000,"can_use_instant_voice_cloning":true,"voice_slots_used":0,"voice_limit":3}"#.utf8))
+            case ("POST", "/v1/voices/add"):
+                remote.value.withLock { $0.posts += 1; $0.present = true }
+                return (200, [:], Data(#"{"voice_id":"fixtureOwnVoice","requires_verification":false}"#.utf8))
+            case ("GET", "/v2/voices"):
+                let state = remote.value.withLock { $0.lists += 1; return $0 }
+                if state.listFailure { return (500, [:], Data()) }
+                let rows: [[String: Any]] = state.present ? [["voice_id": "fixtureOwnVoice", "name": "Example (VoxClip)", "category": "cloned", "is_owner": true, "labels": ["voxclip_record_id": nonce], "voice_verification": ["is_verified": true]]] : []
+                return (200, [:], try JSONSerialization.data(withJSONObject: ["voices": rows, "has_more": false]))
+            case ("DELETE", "/v1/voices/fixtureOwnVoice"):
+                let existed = remote.value.withLock { state in state.deletes += 1; let present = state.present; state.present = false; return present }
+                return (existed ? 200 : 404, [:], Data(#"{"status":"ok"}"#.utf8))
+            default: Issue.record("Unexpected operation request"); return (500, [:], Data())
+            }
+        }
+        return ElevenLabsVoiceLab(keys: SpeechTestKeys(value: "synthetic-journal-key"), session: URLSession(configuration: SpeechStubHTTP.configuration(for: base)), prices: VoiceLabPricingTests.catalogIfPresent, enforceCapabilities: true)
+    }
+    private func seedOperation(_ store: VoiceConsentStore, record: VoiceConsentRecord) async throws -> VoiceOperation {
+        try await store.saveStatement(wav, recordID: record.id)
+        return try await store.beginCreation(record: record.assigningVoice("pending", requiresVerification: true), requestID: UUID(), region: .default, at: now)
+    }
+    @Test(arguments: [VoiceConsentCheckpoint.saveDraft, .creationIntent, .creationDispatched, .creationResult, .saveRecord, .saveCreation, .clearCreation])
+    func creationRestartsAtEveryWrite(step: VoiceConsentCheckpoint) async throws {
+        let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let fired = Mutex(false)
+        let store = VoiceConsentStore(locations: SpeechTestFiles.locations(root), fault: { checkpoint in
+            if checkpoint == step { fired.withLock { $0 = true }; throw CocoaError(.fileWriteUnknown) }
+        })
+        let id = UUID().uuidString; let remote = OperationRemote(); let client = operationClient(remote, nonce: id)
+        _ = try await client.plan()
+        let service = enroll(store: store, client: client, check: .init(embedder: Embedder(output: [1, 0]), calibratedThreshold: 0.8), raw: try await raw())
+        try await service.verify(recordID: id, statement: statement(), wav: wav, attestations: attestations, approved: true, enabled: true)
+        let quote = try await service.prepare(recordID: id, displayName: "Example", samples: training(), enabled: true)
+        await #expect(throws: (any Error).self) { try await service.create(quote: quote, approved: true, enabled: true, appVersion: "0.1.0") }
+        #expect(fired.withLock { $0 })
+        let restarted = storage(root)
+        try await restarted.reconcileAbandonedEnrollments()
+        let reconciler = VoiceOperationReconciler(store: restarted, client: client)
+        try await reconciler.reconcile(force: true)
+        try await reconciler.reconcile(force: true)
+        #expect(try await restarted.operations().isEmpty)
+        let shouldSave = [VoiceConsentCheckpoint.saveRecord, .saveCreation, .clearCreation].contains(step)
+        if shouldSave {
+            #expect(try await restarted.load(id).status == .active)
+            #expect(try await restarted.statement(recordID: id) == wav)
+        } else {
+            #expect(!FileManager.default.fileExists(atPath: restarted.root.appendingPathComponent("\(id)/statement.wav").path))
+            #expect(!remote.value.withLock { $0.present })
+        }
+        let expectedPosts = [VoiceConsentCheckpoint.saveDraft, .creationIntent, .creationDispatched].contains(step) ? 0 : 1
+        #expect(remote.value.withLock { $0.posts } == expectedPosts)
+    }
+    @Test(arguments: [VoiceConsentCheckpoint.withdrawing, .removeStatement, .tombstoneRecord, .withdrawn, .clearCreation])
+    func saveFailureWithdrawalRestartsAtEveryWrite(step: VoiceConsentCheckpoint) async throws {
+        let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let record = try fixtureRecord(wav: wav); let initial = storage(root)
+        let value = try await seedOperation(initial, record: record)
+        _ = try await initial.transition(value.id, to: .dispatched, at: now)
+        _ = try await initial.transition(value.id, to: .created, at: now, remoteVoiceID: record.voiceId, requiresVerification: false)
+        let remote = OperationRemote(); remote.value.withLock { $0.present = true }
+        let client = operationClient(remote, nonce: record.id)
+        let fired = Mutex(false)
+        let failing = VoiceConsentStore(locations: SpeechTestFiles.locations(root), fault: { checkpoint in
+            if checkpoint == step { fired.withLock { $0 = true }; throw CocoaError(.fileWriteUnknown) }
+        })
+        do {
+            try await failing.withdrawCreation(recordID: record.id)
+            try await VoiceOperationReconciler(store: failing, client: client).reconcile(force: true)
+        } catch {}
+        #expect(fired.withLock { $0 })
+        let restarted = storage(root)
+        try await restarted.withdrawCreation(recordID: record.id)
+        try await VoiceOperationReconciler(store: restarted, client: client).reconcile(force: true)
+        #expect(try await restarted.operations().isEmpty)
+        #expect(try await restarted.load(record.id).status == .deleted)
+        #expect(!FileManager.default.fileExists(atPath: restarted.root.appendingPathComponent("\(record.id)/statement.wav").path))
+        #expect(!remote.value.withLock { $0.present })
+        #expect(remote.value.withLock { $0.posts } == 0)
+    }
+    @Test func emptyListThenLateAppearanceUsesBackoffWithoutKeepingAudio() async throws {
+        let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let store = storage(root); let record = try fixtureRecord(wav: wav)
+        let value = try await seedOperation(store, record: record)
+        _ = try await store.transition(value.id, to: .dispatched, at: now)
+        let remote = OperationRemote(); let clock = OperationClock(now)
+        let reconciler = VoiceOperationReconciler(store: store, client: operationClient(remote, nonce: record.id), now: { clock.now() })
+        try await reconciler.reconcile()
+        #expect(try await store.operation(value.id).blocksCreation)
+        #expect(!FileManager.default.fileExists(atPath: store.root.appendingPathComponent("\(record.id)/statement.wav").path))
+        clock.advance(10); try await reconciler.reconcile()
+        #expect(remote.value.withLock { $0.lists } == 1)
+        remote.value.withLock { $0.present = true }
+        clock.advance(21); try await reconciler.reconcile()
+        #expect(try await store.operations().isEmpty)
+        #expect(try await store.records().isEmpty)
+        #expect(remote.value.withLock { $0.lists == 2 && $0.deletes == 1 && $0.posts == 0 && !$0.present })
+    }
+    @Test(arguments: [false, true]) func abandonmentIsBoundedEvenWhenListingFails(listFailure: Bool) async throws {
+        let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let store = storage(root); let record = try fixtureRecord(wav: wav)
+        let value = try await seedOperation(store, record: record)
+        _ = try await store.transition(value.id, to: .dispatched, at: now)
+        let remote = OperationRemote(); remote.value.withLock { $0.listFailure = listFailure }
+        let clock = OperationClock(now.addingTimeInterval(24 * 60 * 60 + 1))
+        let reconciler = VoiceOperationReconciler(store: store, client: operationClient(remote, nonce: record.id), now: { clock.now() })
+        try await reconciler.reconcile()
+        let abandoned = try await store.operation(value.id)
+        #expect(abandoned.state == .abandoned && !abandoned.blocksCreation && abandoned.finished)
+        #expect(!FileManager.default.fileExists(atPath: store.root.appendingPathComponent("\(record.id)/statement.wav").path))
+        try await reconciler.reconcile(force: true)
+        #expect(remote.value.withLock { $0.lists } == 1)
+    }
+    @Test func deletionJournalDoesNotDependOnARecordAndTreats404AsSuccess() async throws {
+        let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let store = storage(root); let record = try fixtureRecord(wav: wav)
+        try await store.saveStatement(wav, recordID: record.id); try await store.save(record)
+        _ = try await store.beginDeletion(record.id, region: .default, at: now)
+        try FileManager.default.removeItem(at: store.root.appendingPathComponent("\(record.id)/record.json"))
+        let restarted = storage(root); let remote = OperationRemote()
+        try await VoiceOperationReconciler(store: restarted, client: operationClient(remote, nonce: record.id)).reconcile(force: true)
+        #expect(try await restarted.operations().isEmpty)
+        #expect(!FileManager.default.fileExists(atPath: store.root.appendingPathComponent("\(record.id)/statement.wav").path))
+        #expect(remote.value.withLock { $0.deletes == 1 && $0.lists == 0 })
+    }
+    @Test func operationBlockingTransitionsAndJournalPrivacy() async throws {
+        let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let store = storage(root); let record = try fixtureRecord(wav: wav)
+        var value = try await seedOperation(store, record: record)
+        #expect(!value.blocksCreation)
+        value = try await store.transition(value.id, to: .dispatched, at: now)
+        #expect(value.blocksCreation)
+        value = try await store.transition(value.id, to: .created, at: now, remoteVoiceID: record.voiceId, requiresVerification: false)
+        #expect(value.blocksCreation)
+        value = try await store.transition(value.id, to: .withdrawing, at: now)
+        #expect(!value.blocksCreation)
+        await #expect(throws: VoiceConsentError.invalidRecord) { _ = try await store.transition(value.id, to: .dispatched, at: now) }
+        let url = await store.operationsRoot.appendingPathComponent(value.id.uuidString + ".json")
+        let object = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
+        #expect(object["record"] == nil && object["audio"] == nil && object["embedding"] == nil && object["statement"] == nil)
+        let permissions = try FileManager.default.attributesOfItem(atPath: url.path)[.posixPermissions] as? Int
+        #expect(permissions == 0o600)
+    }
+    @Test(arguments: [false, true]) func legacyDeletionWithoutARecordMigratesAndResumesIndependently(guardBeforeStartup: Bool) async throws {
+        let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let store = storage(root); let record = try fixtureRecord(wav: wav)
+        try await store.saveStatement(wav, recordID: record.id)
+        var object: [String: Any] = ["region": "default", "requestedAt": now.timeIntervalSinceReferenceDate, "remoteDeleted": false]
+        object["record"] = try JSONSerialization.jsonObject(with: JSONEncoder().encode(record))
+        let legacy = store.root.appendingPathComponent("\(record.id)/deletion.json")
+        try JSONSerialization.data(withJSONObject: object).write(to: legacy)
+        let restarted = storage(root)
+        if guardBeforeStartup {
+            await #expect(throws: VoiceConsentError.inactive) { try await restarted.validateUse(record) }
+        }
+        try await restarted.reconcileAbandonedEnrollments()
+        #expect(!FileManager.default.fileExists(atPath: legacy.path))
+        #expect(try await restarted.operations().count == 1)
+        let remote = OperationRemote()
+        try await VoiceOperationReconciler(store: restarted, client: operationClient(remote, nonce: record.id)).reconcile(force: true)
+        #expect(try await restarted.load(record.id).status == .deleted)
+        #expect(try await restarted.operations().isEmpty)
+        #expect(remote.value.withLock { $0.deletes == 1 && $0.lists == 0 })
+    }
+    @Test(arguments: [VoiceConsentCheckpoint.removeDraft, .retryScheduled, .abandoned])
+    func uncertaintyMetadataRestartsAtEveryWrite(step: VoiceConsentCheckpoint) async throws {
+        let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let initial = storage(root); let record = try fixtureRecord(wav: wav)
+        let value = try await seedOperation(initial, record: record)
+        _ = try await initial.transition(value.id, to: .dispatched, at: now)
+        let fired = Mutex(false)
+        let failing = VoiceConsentStore(locations: SpeechTestFiles.locations(root), fault: { checkpoint in
+            if checkpoint == step { fired.withLock { $0 = true }; throw CocoaError(.fileWriteUnknown) }
+        })
+        let clock = OperationClock(step == .abandoned ? now.addingTimeInterval(24 * 60 * 60) : now)
+        let remote = OperationRemote(); let client = operationClient(remote, nonce: record.id)
+        await #expect(throws: (any Error).self) { try await VoiceOperationReconciler(store: failing, client: client, now: { clock.now() }).reconcile() }
+        #expect(fired.withLock { $0 })
+        #expect(!FileManager.default.fileExists(atPath: initial.root.appendingPathComponent("\(record.id)/statement.wav").path))
+        clock.advance(24 * 60 * 60 + 1)
+        let restarted = storage(root)
+        try await VoiceOperationReconciler(store: restarted, client: client, now: { clock.now() }).reconcile()
+        #expect(try await restarted.operation(value.id).state == .abandoned)
+        #expect(try await restarted.records().isEmpty)
+    }
+}
+#endif

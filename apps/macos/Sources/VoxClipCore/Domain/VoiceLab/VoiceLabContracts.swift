@@ -1,9 +1,9 @@
 import Foundation
 import CryptoKit
 
-enum VoiceLabFingerprint {
-    static func bytes(_ data: Data) -> String { SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined() }
-    static func fields(_ fields: [String]) -> String {
+package enum VoiceLabFingerprint {
+    package static func bytes(_ data: Data) -> String { SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined() }
+    package static func fields(_ fields: [String]) -> String {
         var payload = Data()
         for field in fields {
             var length = UInt64(field.utf8.count).bigEndian
@@ -12,10 +12,7 @@ enum VoiceLabFingerprint {
         }
         return bytes(payload)
     }
-    static func policy(_ value: OwnVoicePolicy) -> [String] {
-        [value.recordID, value.cloneVoiceID ?? "", String(value.recordActive), String(value.providerConsentGranted),
-         String(value.statementVerified), String(value.speakerMatched)]
-    }
+
 }
 
 /// Values passed between the Voice Lab UI, Core services and future media integration.
@@ -41,9 +38,9 @@ public struct VoiceLabQuote: Sendable, Equatable {
     public let region: ElevenLabsRegion
     public let endpoint: String
     public let languageMode: VoiceLabLanguageMode?
-    let fingerprint: String
-    let guardAudioHash: String?
-    init(id: UUID, operation: VoiceLabOperation, requestID: UUID, estimate: CostEstimate, region: ElevenLabsRegion,
+    package let fingerprint: String
+    package let guardAudioHash: String?
+    package init(id: UUID, operation: VoiceLabOperation, requestID: UUID, estimate: CostEstimate, region: ElevenLabsRegion,
          endpoint: String, languageMode: VoiceLabLanguageMode?, fingerprint: String, guardAudioHash: String? = nil) {
         self.id = id; self.operation = operation; self.requestID = requestID; self.estimate = estimate; self.region = region
         self.endpoint = endpoint; self.languageMode = languageMode; self.fingerprint = fingerprint; self.guardAudioHash = guardAudioHash
@@ -62,36 +59,11 @@ public struct VoiceLabAuthorization: Sendable, Equatable {
     }
 }
 
-public struct OwnVoicePolicy: Sendable, Equatable {
-    let capability: VoiceOperationCapability?
-    public let recordID: String
-    /// Nil only while creating a new clone. At use or deletion it must match the selected clone.
-    public let cloneVoiceID: String?
-    /// Supplied by the consent store; a deleted or suspended record cannot authorize generation.
-    public let recordActive: Bool
-    public let providerConsentGranted: Bool
-    public let statementVerified: Bool
-    public let speakerMatched: Bool
-    public init(recordID: String, cloneVoiceID: String? = nil, recordActive: Bool,
-                providerConsentGranted: Bool, statementVerified: Bool, speakerMatched: Bool) {
-        self.recordID = recordID; self.cloneVoiceID = cloneVoiceID; self.recordActive = recordActive; self.providerConsentGranted = providerConsentGranted
-        self.statementVerified = statementVerified; self.speakerMatched = speakerMatched
-        capability = nil
-    }
-    private init(recordID: String, cloneVoiceID: String?, capability: VoiceOperationCapability) {
-        self.recordID = recordID; self.cloneVoiceID = cloneVoiceID; self.capability = capability
-        recordActive = true; providerConsentGranted = true; statementVerified = true; speakerMatched = true
-    }
-    func authorized(for quote: VoiceLabQuote, validate: @escaping @Sendable () async throws -> Void) -> Self {
-        Self(recordID: recordID, cloneVoiceID: cloneVoiceID, capability: VoiceOperationCapability(quote: quote, validate: validate))
-    }
-    public func validate() throws {
-        guard !recordID.isEmpty, recordActive, providerConsentGranted, statementVerified else { throw VoiceLabError.consentRequired }
-        guard speakerMatched else { throw VoiceLabError.speakerMismatch }
-    }
-}
-
 public struct VoiceLabModel: Sendable, Equatable {
+    package init(id: String, name: String, languages: [String], canSpeak: Bool, canConvert: Bool, maximumTextLength: Int?, characterCostMultiplier: Double?) {
+        self.id = id; self.name = name; self.languages = languages; self.canSpeak = canSpeak; self.canConvert = canConvert; self.maximumTextLength = maximumTextLength; self.characterCostMultiplier = characterCostMultiplier
+    }
+
     public let id: String
     public let name: String
     public let languages: [String]
@@ -104,6 +76,10 @@ public struct VoiceLabModel: Sendable, Equatable {
 }
 
 public struct VoiceLabSubscription: Sendable, Equatable {
+    package init(tier: String, status: String, characterCount: Int, characterLimit: Int, nextResetUnix: Int?, canClone: Bool, voiceSlotsUsed: Int, voiceLimit: Int) {
+        self.tier = tier; self.status = status; self.characterCount = characterCount; self.characterLimit = characterLimit; self.nextResetUnix = nextResetUnix; self.canClone = canClone; self.voiceSlotsUsed = voiceSlotsUsed; self.voiceLimit = voiceLimit
+    }
+
     public let tier: String
     public let status: String
     public let characterCount: Int
@@ -129,13 +105,6 @@ public struct VoiceLabVoice: Sendable, Equatable {
     }
 }
 
-public enum VoiceLabVoiceChoice: Sendable, Equatable {
-    case own(voiceID: String, policy: OwnVoicePolicy)
-    case stock(voiceID: String)
-    public var id: String { switch self { case .own(let id, _), .stock(let id): id } }
-    public func validate() throws { if case .own(_, let policy) = self { try policy.validate() } }
-}
-
 /// Per-request TTS inputs (voice-lab §8.5). Core keeps the 300 Unicode scalars of context nearest the window and drops a cut word.
 public struct VoiceLabSpeechOptions: Sendable, Equatable {
     public let seed: UInt32
@@ -147,6 +116,10 @@ public struct VoiceLabSpeechOptions: Sendable, Equatable {
 }
 
 public struct VoiceLabReceipt: Sendable, Equatable {
+    package init(provider: String, region: ElevenLabsRegion, endpoint: String, modelID: String?, voiceID: String?, requestID: UUID, providerRequestID: String?, spendWarning: VoiceLabSpendWarning?) {
+        self.provider = provider; self.region = region; self.endpoint = endpoint; self.modelID = modelID; self.voiceID = voiceID; self.requestID = requestID; self.providerRequestID = providerRequestID; self.spendWarning = spendWarning
+    }
+
     public let provider: String
     public let region: ElevenLabsRegion
     public let endpoint: String
@@ -161,6 +134,10 @@ public struct VoiceLabReceipt: Sendable, Equatable {
 
 /// PCM is signed 16-bit little-endian mono; timing starts at zero in generated audio.
 public struct VoiceLabAudioResult: Sendable, Equatable {
+    package init(pcm: Data, sampleRate: Int, alignment: [VoiceLabCharacterTiming]?, receipt: VoiceLabReceipt) {
+        self.pcm = pcm; self.sampleRate = sampleRate; self.alignment = alignment; self.receipt = receipt
+    }
+
     public let pcm: Data
     public let sampleRate: Int
     public let alignment: [VoiceLabCharacterTiming]?
@@ -169,12 +146,20 @@ public struct VoiceLabAudioResult: Sendable, Equatable {
 }
 
 public struct VoiceLabCharacterTiming: Sendable, Equatable {
+    package init(character: String, start: Double, end: Double) {
+        self.character = character; self.start = start; self.end = end
+    }
+
     public let character: String
     public let start: Double
     public let end: Double
 }
 
 public struct VoiceLabCloneResult: Sendable, Equatable {
+    package init(voiceID: String, requiresVerification: Bool, consentRecordID: String, receipt: VoiceLabReceipt) {
+        self.voiceID = voiceID; self.requiresVerification = requiresVerification; self.consentRecordID = consentRecordID; self.receipt = receipt
+    }
+
     public let voiceID: String
     public let requiresVerification: Bool
     public let consentRecordID: String
@@ -236,7 +221,7 @@ public struct VoiceRewriteQuote: Sendable, Equatable {
     public let connector: ConnectorID
     public let model: String
     public let estimate: CostEstimate
-    let fingerprint: String
+    package let fingerprint: String
 }
 
 public struct VoiceRewriteAuthorization: Sendable, Equatable {

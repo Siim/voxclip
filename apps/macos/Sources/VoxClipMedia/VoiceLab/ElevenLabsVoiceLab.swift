@@ -1,4 +1,5 @@
 import Foundation
+import VoxClipCore
 
 /// Explicit, region-bound Voice Lab transport. Mutations are sent once, including on 429/5xx.
 public actor ElevenLabsVoiceLab {
@@ -168,6 +169,13 @@ public actor ElevenLabsVoiceLab {
               voice.isOwner, voice.category == "cloned" else { throw VoiceLabError.consentRequired }
         return try quote(.deleteClone, requestID: requestID, endpoint: "v1/voices/\(voiceID)",
                          fields: deleteFields(voiceID, policy), units: 1)
+    }
+
+    func prepareOperationDeletion(_ operation: VoiceOperation, requestID: UUID) throws -> VoiceLabQuote {
+        guard let voiceID = operation.remoteVoiceID, operation.region == region else { throw VoiceConsentError.invalidRecord }
+        discoveredVoices[voiceID] = VoiceLabVoice(id: voiceID, name: "", category: "cloned", isOwner: true, requiresVerification: false, isVerified: false)
+        let policy = OwnVoicePolicy(recordID: operation.recordID, cloneVoiceID: voiceID, recordActive: true, providerConsentGranted: true, statementVerified: true, speakerMatched: true)
+        return try prepareDelete(voiceID: voiceID, policy: policy, requestID: requestID)
     }
 
     public func prepareConsentDeletion(_ record: VoiceConsentRecord, requestID: UUID) throws -> VoiceLabQuote {
@@ -573,50 +581,9 @@ public actor ElevenLabsVoiceLab {
     private static func le32(_ bytes: Data, _ at: Int) -> Int {
         Int(bytes[at]) | Int(bytes[at + 1]) << 8 | Int(bytes[at + 2]) << 16 | Int(bytes[at + 3]) << 24
     }
-    private static func wavLE16(_ bytes: UnsafeRawBufferPointer, _ at: Int) -> Int {
-        Int(bytes[at]) | Int(bytes[at + 1]) << 8
-    }
-    private static func wavLE32(_ bytes: UnsafeRawBufferPointer, _ at: Int) -> Int {
-        Int(bytes[at]) | Int(bytes[at + 1]) << 8 | Int(bytes[at + 2]) << 16 | Int(bytes[at + 3]) << 24
-    }
-    private static func wavTag(_ bytes: UnsafeRawBufferPointer, _ at: Int, _ tag: String) -> Bool {
-        bytes[at..<(at + 4)].elementsEqual(tag.utf8)
-    }
     @discardableResult
-    static func validateWAV(_ bytes: Data, maxBytes: Int) throws -> (rate: Int, frames: Int) {
-        guard bytes.count >= 44, bytes.count <= maxBytes else { throw VoiceLabError.unsupportedFormat }
-        return try bytes.withUnsafeBytes { raw in
-            guard wavTag(raw, 0, "RIFF"), wavTag(raw, 8, "WAVE"),
-                  wavLE32(raw, 4) == raw.count - 8 else { throw VoiceLabError.unsupportedFormat }
-            var offset = 12
-            var rate: Int?
-            var samples: Int?
-            while offset < raw.count {
-                guard raw.count - offset >= 8 else { throw VoiceLabError.unsupportedFormat }
-                let size = wavLE32(raw, offset + 4)
-                let start = offset + 8
-                let available = raw.count - start
-                guard size <= available, (size & 1) <= available - size else { throw VoiceLabError.unsupportedFormat }
-                if wavTag(raw, offset, "fmt ") {
-                    guard rate == nil, size == 16 || size == 18,
-                          wavLE16(raw, start) == 1, wavLE16(raw, start + 2) == 1,
-                          wavLE16(raw, start + 14) == 16,
-                          size == 16 || wavLE16(raw, start + 16) == 0 else { throw VoiceLabError.unsupportedFormat }
-                    let parsedRate = wavLE32(raw, start + 4)
-                    guard (8_000...96_000).contains(parsedRate),
-                          wavLE32(raw, start + 8) == parsedRate * 2,
-                          wavLE16(raw, start + 12) == 2 else { throw VoiceLabError.unsupportedFormat }
-                    rate = parsedRate
-                } else if wavTag(raw, offset, "data") {
-                    guard samples == nil, size > 0, size.isMultiple(of: 2) else { throw VoiceLabError.unsupportedFormat }
-                    samples = size / 2
-                }
-                offset = start + size + (size & 1)
-            }
-            guard let rate, let samples,
-                  samples >= (rate + 49) / 50, samples <= rate * 290 else { throw VoiceLabError.unsupportedFormat }
-            return (rate, samples)
-        }
+    package static func validateWAV(_ bytes: Data, maxBytes: Int) throws -> (rate: Int, frames: Int) {
+        try VoiceConsentAudio.validateWAV(bytes, maxBytes: maxBytes)
     }
     private static func validatePCM(_ pcm: Data, maxBytes: Int) throws {
         guard pcm.count >= 960, pcm.count <= maxBytes, pcm.count.isMultiple(of: 2) else { throw VoiceLabError.invalidAudio }

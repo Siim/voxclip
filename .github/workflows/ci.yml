@@ -114,6 +114,10 @@ jobs:
           echo "::endgroup::"
           exit 1
 
+      - name: Release own-voice access boundary
+        if: ${{ !cancelled() && steps.release_cli.outcome == 'success' }}
+        run: python3 tools/voice-lab/check_release_boundary.py --bin-path "$(swift build --package-path apps/macos -c release --show-bin-path)"
+
       # Core, Media and CaptionParityTests run as separate processes with separate budgets; together they are the
       # whole suite.
       - name: Swift test (VoxClipCoreTests)

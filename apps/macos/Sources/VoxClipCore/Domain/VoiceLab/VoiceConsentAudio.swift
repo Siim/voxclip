@@ -1,8 +1,54 @@
 import Foundation
 
 public enum VoiceConsentAudio {
+    private static func wavLE16(_ bytes: UnsafeRawBufferPointer, _ at: Int) -> Int {
+        Int(bytes[at]) | Int(bytes[at + 1]) << 8
+    }
+    private static func wavLE32(_ bytes: UnsafeRawBufferPointer, _ at: Int) -> Int {
+        Int(bytes[at]) | Int(bytes[at + 1]) << 8 | Int(bytes[at + 2]) << 16 | Int(bytes[at + 3]) << 24
+    }
+    private static func wavTag(_ bytes: UnsafeRawBufferPointer, _ at: Int, _ tag: String) -> Bool {
+        bytes[at..<(at + 4)].elementsEqual(tag.utf8)
+    }
+    @discardableResult
+    package static func validateWAV(_ bytes: Data, maxBytes: Int) throws -> (rate: Int, frames: Int) {
+        guard bytes.count >= 44, bytes.count <= maxBytes else { throw VoiceLabError.unsupportedFormat }
+        return try bytes.withUnsafeBytes { raw in
+            guard wavTag(raw, 0, "RIFF"), wavTag(raw, 8, "WAVE"),
+                  wavLE32(raw, 4) == raw.count - 8 else { throw VoiceLabError.unsupportedFormat }
+            var offset = 12
+            var rate: Int?
+            var samples: Int?
+            while offset < raw.count {
+                guard raw.count - offset >= 8 else { throw VoiceLabError.unsupportedFormat }
+                let size = wavLE32(raw, offset + 4)
+                let start = offset + 8
+                let available = raw.count - start
+                guard size <= available, (size & 1) <= available - size else { throw VoiceLabError.unsupportedFormat }
+                if wavTag(raw, offset, "fmt ") {
+                    guard rate == nil, size == 16 || size == 18,
+                          wavLE16(raw, start) == 1, wavLE16(raw, start + 2) == 1,
+                          wavLE16(raw, start + 14) == 16,
+                          size == 16 || wavLE16(raw, start + 16) == 0 else { throw VoiceLabError.unsupportedFormat }
+                    let parsedRate = wavLE32(raw, start + 4)
+                    guard (8_000...96_000).contains(parsedRate),
+                          wavLE32(raw, start + 8) == parsedRate * 2,
+                          wavLE16(raw, start + 12) == 2 else { throw VoiceLabError.unsupportedFormat }
+                    rate = parsedRate
+                } else if wavTag(raw, offset, "data") {
+                    guard samples == nil, size > 0, size.isMultiple(of: 2) else { throw VoiceLabError.unsupportedFormat }
+                    samples = size / 2
+                }
+                offset = start + size + (size & 1)
+            }
+            guard let rate, let samples,
+                  samples >= (rate + 49) / 50, samples <= rate * 290 else { throw VoiceLabError.unsupportedFormat }
+            return (rate, samples)
+        }
+    }
+
     public static func pcm16k(_ wav: Data) throws -> [Float] {
-        let format = try ElevenLabsVoiceLab.validateWAV(wav, maxBytes: 16 * 1_024 * 1_024)
+        let format = try validateWAV(wav, maxBytes: 16 * 1_024 * 1_024)
         func size(_ offset: Int) -> Int {
             Int(wav.withUnsafeBytes { UInt32(littleEndian: $0.loadUnaligned(fromByteOffset: offset, as: UInt32.self)) })
         }

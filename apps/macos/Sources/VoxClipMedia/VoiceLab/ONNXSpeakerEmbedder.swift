@@ -26,7 +26,10 @@ public actor ONNXSpeakerEmbedder: SpeakerEmbedder {
     }
     public func validateAvailability() async throws { _ = try model.verifiedFiles(at: directory) }
     public func speakerCheck(language: String = "en") throws -> VoiceSpeakerCheck {
-        guard let threshold = model.calibratedThreshold(language: language) else { throw VoiceConsentError.speakerUnavailable }
+        let trusted = try SpeakerModelCatalog(shared: SharedResources.locate()).entry
+        guard trusted.id == model.id, trusted.preprocessing == model.preprocessing,
+              trusted.files.map(\.sha256) == model.files.map(\.sha256),
+              let threshold = trusted.calibratedThreshold(language: language) else { throw VoiceConsentError.speakerUnavailable }
         _ = try model.verifiedFiles(at: directory)
         return VoiceSpeakerCheck(verifiedEmbedder: self, calibratedThreshold: threshold)
     }

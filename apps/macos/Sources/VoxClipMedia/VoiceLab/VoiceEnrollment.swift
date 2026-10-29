@@ -1,4 +1,5 @@
 import Foundation
+import VoxClipCore
 
 public struct VoiceConsentSaveError: Error, Sendable {
     public let record: VoiceConsentRecord
@@ -20,6 +21,7 @@ public actor VoiceEnrollment {
     private let store: VoiceConsentStore
     private let client: ElevenLabsVoiceLab
     private var speaker: VoiceSpeakerCheck
+    private let reconciler: VoiceOperationReconciler
     private let transcribe: Transcribe
     private var attempts: [Date] = []
     private var verified: [String: Verified] = [:]
@@ -38,8 +40,9 @@ public actor VoiceEnrollment {
         let samples: [VoiceConsentRecord.Sample]
         let embedding: [Float]
     }
-    package init(store: VoiceConsentStore, client: ElevenLabsVoiceLab, speaker: VoiceSpeakerCheck = VoiceSpeakerCheck(), transcribe: @escaping Transcribe) {
+    public init(store: VoiceConsentStore, client: ElevenLabsVoiceLab, speaker: VoiceSpeakerCheck = VoiceSpeakerCheck(), reconciler: VoiceOperationReconciler? = nil, transcribe: @escaping Transcribe) {
         self.store = store; self.client = client; self.speaker = speaker; self.transcribe = transcribe
+        self.reconciler = reconciler ?? VoiceOperationReconciler(store: store, client: client)
     }
     public var speakerAvailable: Bool { speaker.available }
     public func setSpeakerCheck(_ check: VoiceSpeakerCheck) throws {
@@ -101,6 +104,7 @@ public actor VoiceEnrollment {
         let store = store; let embedder = speaker.embedder; let statementHash = verification.hash
         let authorization = policy.authorized(for: quote) {
             try await embedder?.validateAvailability()
+            try await store.dispatchCreation(recordID: recordID, requestID: quote.requestID, statementHash: statementHash)
             try await store.validateCreation(recordID: recordID, requestID: quote.requestID, statementHash: statementHash)
         }
         pending.removeAll()
@@ -121,80 +125,39 @@ public actor VoiceEnrollment {
                                         statement: .init(language: statement.language, text: statement.text, nonce: statement.nonce, audioFile: "statement.wav", audioSha256: draft.verified.hash, stt: draft.verified.match),
                                         attestations: draft.verified.attestations, samples: draft.samples,
                                         speaker: .init(model: embedder.modelID, threshold: threshold, embedding: VoiceConsentRecord.encodeEmbedding(draft.embedding)), app: .init(version: appVersion, platform: "macos"))
-        try await store.beginCreation(.init(requestID: quote.requestID, region: client.region, startedAt: Date(), record: template))
+        let operation = try await store.beginCreation(record: template, requestID: quote.requestID, region: client.region, at: Date())
+        guard await store.claimOperation(operation.id) else { throw VoiceConsentError.creationPending }
         let result: VoiceLabCloneResult
-        do { result = try await client.createOwnClone(draft.request, policy: draft.policy, requestID: quote.requestID, authorization: .init(quote: quote, approved: true)) }
-        catch let error as VoiceConsentError {
-            try await store.removeJournal("creation.json", recordID: template.id)
-            throw error
-        } catch let error as VoiceLabError where Self.definitiveRejection(error) {
-            try await store.removeJournal("creation.json", recordID: template.id)
-            throw error
+        do {
+            result = try await client.createOwnClone(draft.request, policy: draft.policy, requestID: quote.requestID, authorization: .init(quote: quote, approved: true))
+        } catch {
+            await store.releaseOperation(operation.id)
+            try await store.discardStatement(recordID: template.id)
+            if let current = try? await store.operation(operation.id), current.state == .intent {
+                try await reconciler.reconcile(operationID: operation.id, force: true)
+                throw error
+            }
+            try await store.scheduleRetry(operation.id, at: Date())
+            throw VoiceConsentError.creationPending
         }
-        catch { throw VoiceConsentError.creationPending }
         let record = template.assigningVoice(result.voiceID, requiresVerification: result.requiresVerification)
         verified.removeValue(forKey: record.id)
-        do { try await store.recordCreationResult(record); try await store.completeCreation(record) }
-        catch { throw VoiceConsentSaveError(record: record) }
+        do {
+            _ = try await store.transition(operation.id, to: .created, at: Date(), remoteVoiceID: result.voiceID, requiresVerification: result.requiresVerification)
+            await store.releaseOperation(operation.id)
+            try await reconciler.reconcile(operationID: operation.id, force: true)
+        } catch {
+            await store.releaseOperation(operation.id)
+            throw VoiceConsentSaveError(record: record)
+        }
         return record
-    }
-    private static func definitiveRejection(_ error: VoiceLabError) -> Bool {
-        switch error {
-        case .missingKey, .consentRequired, .planUnavailable, .noVoiceSlots, .invalidInput, .permissionMissing, .unauthorized, .quotaExceeded, .rateLimited: true
-        default: false
-        }
-    }
-    public static func reconcileCreations(store: VoiceConsentStore, client: ElevenLabsVoiceLab) async throws {
-        let pending = try await store.pendingCreations().filter { $0.region == client.region }
-        guard !pending.isEmpty else { return }
-        let voices = try await client.listOwnClones()
-        var failure: (any Error)?
-        for intent in pending {
-            do {
-                let matches = voices.filter { $0.consentRecordID == intent.record.id || (intent.record.voiceId != "pending" && $0.id == intent.record.voiceId) }
-                guard matches.count == 1, let voice = matches.first else { throw VoiceConsentError.creationPending }
-                let record = intent.record.assigningVoice(voice.id, requiresVerification: voice.requiresVerification && !voice.isVerified)
-                let statementValid = (try? await store.statement(recordID: record.id)).map { VoiceLabFingerprint.bytes($0) == record.statement.audioSha256 } == true
-                let existing = try? await store.load(record.id)
-                let deleting = await store.hasDeletion(record.id)
-                if intent.cancelled != true && statementValid && existing?.status != .deleted && !deleting {
-                    try await store.recordCreationResult(record)
-                    try await store.completeCreation(record)
-                } else {
-                    let deletion = try await store.deleteRecoveredCreation(record, region: client.region)
-                    try await resumeDeletion(deletion, store: store, client: client)
-                    try await store.removeJournal("creation.json", recordID: record.id)
-                }
-            } catch { failure = error }
-        }
-        if let failure { throw failure }
     }
     public func delete(recordID: String, approved: Bool, enabled: Bool, now: Date = Date()) async throws {
         guard enabled, approved else { throw VoiceLabError.consentRequired }
         guard !busy else { throw VoiceLabError.invalidInput }
         busy = true; defer { busy = false }
-        let intent = try await store.beginDeletion(recordID, region: client.region, at: now)
-        try await Self.resumeDeletion(intent, store: store, client: client)
-    }
-    public static func resumeDeletions(store: VoiceConsentStore, client: ElevenLabsVoiceLab) async throws {
-        var failure: (any Error)?
-        for intent in try await store.pendingDeletions() where intent.region == client.region {
-            do { try await resumeDeletion(intent, store: store, client: client) }
-            catch { failure = error }
-        }
-        if let failure { throw failure }
-    }
-    private static func resumeDeletion(_ intent: VoiceDeletionIntent, store: VoiceConsentStore, client: ElevenLabsVoiceLab) async throws {
-        var intent = intent
-        if !intent.remoteDeleted {
-            let record = intent.record
-        let requestID = UUID()
-        let quote = try await client.prepareConsentDeletion(record, requestID: requestID)
-        let policy = OwnVoicePolicy(recordID: record.id, cloneVoiceID: record.voiceId, recordActive: true, providerConsentGranted: true, statementVerified: true, speakerMatched: true)
-        _ = try await client.deleteOwnClone(voiceID: record.voiceId, policy: policy, requestID: requestID, authorization: .init(quote: quote, approved: true))
-            intent = try await store.recordRemoteDeletion(intent)
-        }
-        try await store.finishDeletion(intent)
+        let operation = try await store.beginDeletion(recordID, region: client.region, at: now)
+        try await reconciler.reconcile(operationID: operation.id, force: true)
     }
     public func cancel(recordID: String) async throws {
         guard !busy else { throw VoiceLabError.invalidInput }

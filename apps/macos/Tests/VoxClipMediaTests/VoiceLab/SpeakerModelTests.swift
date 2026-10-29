@@ -48,4 +48,25 @@ struct SpeakerModelTests {
         let model = try SpeakerModelCatalog(shared: SharedResources.locate()).entry
         #expect(throws: (any Error).self) { try ONNXSpeakerEmbedder(model: model, directory: URL(fileURLWithPath: "/voxclip-no-model")) }
     }
+    @Test(.enabled(if: modelDirectory != nil, "Needs the verified local model cache; never downloads."))
+    func runtimeFactoryDoesNotTrustCallerSuppliedCalibration() async throws {
+        let trusted = try SpeakerModelCatalog(shared: SharedResources.locate()).entry
+        var object = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(trusted)) as? [String: Any])
+        var calibration = try #require(object["calibration"] as? [String: Any])
+        var margin = try #require(calibration["margin"] as? [String: Any])
+        let maximum = try #require(margin["maximumCalibrationImpostorScore"] as? Double)
+        object["threshold"] = maximum + 0.002; margin["candidateThreshold"] = maximum + 0.002
+        calibration["outcome"] = "passed"; calibration["margin"] = margin
+        var languages = try #require(calibration["languages"] as? [[String: Any]])
+        languages[0]["falseAcceptRate"] = 0.0; languages[0]["sameSpeakerPassRate"] = 1.0
+        var conditions = try #require(languages[0]["conditions"] as? [[String: Any]])
+        for index in conditions.indices { conditions[index]["falseAcceptRate"] = 0.0; conditions[index]["sameSpeakerPassRate"] = 1.0 }
+        languages[0]["conditions"] = conditions; calibration["languages"] = languages; object["calibration"] = calibration
+        let supplied = try JSONDecoder().decode(SpeakerModel.self, from: JSONSerialization.data(withJSONObject: object))
+        #expect(supplied.calibratedThreshold() != nil)
+        let directory = URL(fileURLWithPath: try #require(Self.modelDirectory))
+        let runtime = try ONNXSpeakerEmbedder(model: supplied, directory: directory)
+        if let expected = trusted.calibratedThreshold() { #expect(try await runtime.speakerCheck().threshold == expected) }
+        else { await #expect(throws: VoiceConsentError.speakerUnavailable) { try await runtime.speakerCheck() } }
+    }
 }

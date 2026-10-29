@@ -1,0 +1,114 @@
+import Foundation
+import VoxClipCore
+
+public actor VoiceOperationReconciler {
+    private let store: VoiceConsentStore
+    private let clients: @Sendable (ElevenLabsRegion) -> ElevenLabsVoiceLab
+    private let now: @Sendable () -> Date
+    public init(store: VoiceConsentStore, client: ElevenLabsVoiceLab) {
+        self.store = store; clients = { _ in client }; now = { Date() }
+    }
+    public init(store: VoiceConsentStore, clients: @escaping @Sendable (ElevenLabsRegion) -> ElevenLabsVoiceLab) {
+        self.store = store; self.clients = clients; now = { Date() }
+    }
+    #if DEBUG
+    @_spi(Testing) public init(store: VoiceConsentStore, client: ElevenLabsVoiceLab, now: @escaping @Sendable () -> Date) {
+        self.store = store; clients = { _ in client }; self.now = now
+    }
+    #endif
+    public func reconcile(operationID: UUID? = nil, force: Bool = false) async throws {
+        var failure: (any Error)?
+        for value in try await store.operations() where operationID == nil || value.id == operationID {
+            guard value.state != .abandoned, await store.claimOperation(value.id) else { continue }
+            do { try await resume(value, force: force) }
+            catch {
+                try? await store.scheduleRetry(value.id, at: now())
+                failure = error
+            }
+            await store.releaseOperation(value.id)
+        }
+        if let failure { throw failure }
+    }
+    private func resume(_ snapshot: VoiceOperation, force: Bool) async throws {
+        var value = try await store.operation(snapshot.id)
+        while true {
+            switch (value.kind, value.state) {
+            case (.create, .intent):
+                value = try await store.transition(value.id, to: .withdrawing, at: now())
+            case (.create, .dispatched):
+                try await store.discardStatement(recordID: value.recordID)
+                try await store.discardUnresolvedDraft(value)
+                guard let remote = try await findRemote(value, force: force) else { return }
+                value = try await store.transition(value.id, to: .withdrawing, at: now(), remoteVoiceID: remote.id)
+            case (.create, .created):
+                let draft = try? await store.load(value.recordID)
+                let audio = try? await store.statement(recordID: value.recordID)
+                let valid = draft?.status != .deleted && audio.map { VoiceLabFingerprint.bytes($0) == draft?.statement.audioSha256 } == true
+                if !valid {
+                    value = try await store.transition(value.id, to: .withdrawing, at: now())
+                    continue
+                }
+                try await store.saveCreatedRecord(value)
+                value = try await store.transition(value.id, to: .saved, at: now())
+            case (.create, .withdrawing):
+                try await store.discardStatement(recordID: value.recordID)
+                try await store.discardUnresolvedDraft(value)
+                if value.remoteVoiceID == nil, value.wasDispatched {
+                    guard let remote = try await findRemote(value, force: force) else { return }
+                    value = try await store.transition(value.id, to: .withdrawing, at: now(), remoteVoiceID: remote.id)
+                }
+                if let voiceID = value.remoteVoiceID { try await deleteRemote(value, voiceID: voiceID) }
+                try await store.tombstone(value)
+                value = try await store.transition(value.id, to: .withdrawn, at: now())
+            case (.delete, .intent):
+                if !force, let next = value.nextAttemptAt, now() < next { return }
+                guard let voiceID = value.remoteVoiceID else { throw VoiceConsentError.invalidRecord }
+                try await deleteRemote(value, voiceID: voiceID)
+                value = try await store.transition(value.id, to: .remoteDeleted, at: now())
+            case (.delete, .remoteDeleted):
+                try await store.discardStatement(recordID: value.recordID)
+                value = try await store.transition(value.id, to: .audioRemoved, at: now())
+            case (.delete, .audioRemoved):
+                try await store.tombstone(value)
+                value = try await store.transition(value.id, to: .tombstoned, at: now())
+            case (_, .saved), (_, .withdrawn), (_, .tombstoned):
+                try await store.removeOperation(value)
+                return
+            case (_, .abandoned): return
+            default: throw VoiceConsentError.invalidRecord
+            }
+        }
+    }
+    private func findRemote(_ value: VoiceOperation, force: Bool) async throws -> VoiceLabVoice? {
+        if !force, let next = value.nextAttemptAt, now() < next { return nil }
+        let client = clients(value.region)
+        guard client.region == value.region else { throw VoiceConsentError.invalidRecord }
+        let voices: [VoiceLabVoice]
+        do { voices = try await client.listOwnClones().filter { $0.consentRecordID == value.providerNonce } }
+        catch {
+            if now().timeIntervalSince(value.startedAt) >= 24 * 60 * 60 {
+                try await store.tombstone(value)
+                _ = try await store.transition(value.id, to: .abandoned, at: now())
+                return nil
+            }
+            throw error
+        }
+        guard voices.count <= 1 else { throw VoiceConsentError.invalidRecord }
+        if let voice = voices.first { return voice }
+        if now().timeIntervalSince(value.startedAt) >= 24 * 60 * 60 {
+            try await store.tombstone(value)
+            _ = try await store.transition(value.id, to: .abandoned, at: now())
+        } else {
+            try await store.scheduleRetry(value.id, at: now())
+        }
+        return nil
+    }
+    private func deleteRemote(_ value: VoiceOperation, voiceID: String) async throws {
+        let client = clients(value.region)
+        guard client.region == value.region else { throw VoiceConsentError.invalidRecord }
+        let requestID = UUID()
+        let policy = OwnVoicePolicy(recordID: value.recordID, cloneVoiceID: voiceID, recordActive: true, providerConsentGranted: true, statementVerified: true, speakerMatched: true)
+        let quote = try await client.prepareOperationDeletion(value, requestID: requestID)
+        _ = try await client.deleteOwnClone(voiceID: voiceID, policy: policy, requestID: requestID, authorization: .init(quote: quote, approved: true))
+    }
+}

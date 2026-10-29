@@ -484,6 +484,7 @@ import VoxClipCore
         }
     }
 
+    #if DEBUG
     @Test func extractedChunksSatisfyCoreConversionInputContract() async throws {
         let folder = try directory()
         defer { try? FileManager.default.removeItem(at: folder) }
@@ -522,6 +523,7 @@ import VoxClipCore
         }
     }
 
+    #endif
     /// A paid asset written by the store into a temporary data directory, as a provider result would be.
     private func asset(_ samples: [Float], rate: Int, in folder: URL, id: String) throws -> URL {
         let paid = DataLocations(environment: ["VOXCLIP_DATA_DIR": folder.path]).root.appendingPathComponent("VoiceLab", isDirectory: true)

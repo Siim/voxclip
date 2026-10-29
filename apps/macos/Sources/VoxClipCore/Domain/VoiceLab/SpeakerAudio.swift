@@ -1,6 +1,14 @@
 import Foundation
 
 public enum SpeakerAudio {
+    public static func cosine(_ left: [Float], _ right: [Float]) throws -> Double {
+        guard left.count == right.count, !left.isEmpty else { throw VoiceConsentError.speakerMismatch }
+        let unitLeft = try SpeakerAudio.normalized(left)
+        let unitRight = try SpeakerAudio.normalized(right)
+        let score = zip(unitLeft, unitRight).reduce(0.0) { $0 + Double($1.0) * Double($1.1) }
+        return min(1, max(-1, score))
+    }
+
     public static let version = "sinc32-blackman94-silero-6.2.0-kaldi80-v2"
     public static let windowSize = 48_000
     public static let hopSize = 24_000

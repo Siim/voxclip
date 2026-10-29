@@ -67,10 +67,17 @@ import VoxClipCore
             }
             if session.unsavedRecord != nil {
                 Button("Retry saving consent record") { Task { await session.retrySavingRecord() } }.disabled(session.busy)
+                Button("Remove This Voice", role: .destructive) { Task { await session.cancelEnrollment() } }.disabled(session.busy)
             }
-            if !session.pendingCreations.isEmpty {
-                Text("Voice creation may have completed. Reconcile before creating another voice.").font(.caption)
-                Button("Reconcile pending voice…") { Task { await session.load() } }.disabled(session.busy)
+            ForEach(session.operations.filter { !$0.finished }) { operation in
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(operation.kind == .create ? "Voice creation" : "Voice removal").fontWeight(.medium)
+                    Text(operation.displayState).font(.caption)
+                    Button("Retry") { Task { await session.load(force: true) } }.disabled(session.busy)
+                    if operation.kind == .create {
+                        Button("Remove This Voice", role: .destructive) { Task { await session.withdrawOperation(operation) } }.disabled(session.busy)
+                    }
+                }
             }
             Button("Create Your Voice…") { session.showEnrollment = true }.disabled(session.busy || session.planMessage != nil || session.unsavedRecord != nil || !session.pendingCreations.isEmpty)
             Text(session.speakerMessage).font(.caption).foregroundStyle(.secondary)
@@ -181,7 +188,7 @@ import VoxClipCore
             }
             HStack {
                 Spacer()
-                Button(session.unsavedRecord == nil ? "Cancel" : "Close", role: .cancel) { Task { await session.cancelEnrollment() } }.keyboardShortcut(.cancelAction).disabled(session.busy)
+                Button(session.unsavedRecord == nil ? "Cancel" : "Remove This Voice", role: session.unsavedRecord == nil ? .cancel : .destructive) { Task { await session.cancelEnrollment() } }.keyboardShortcut(.cancelAction).disabled(session.busy)
                 if session.unsavedRecord != nil {
                     Button("Retry saving consent record") { Task { await session.retrySavingRecord() } }.disabled(session.busy)
                 } else {

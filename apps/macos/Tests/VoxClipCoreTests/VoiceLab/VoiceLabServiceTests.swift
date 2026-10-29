@@ -1,7 +1,9 @@
+#if DEBUG
 import Foundation
 import Synchronization
 import Testing
 @testable import VoxClipCore
+@_spi(Testing) @testable import VoxClipMedia
 
 @Suite("Voice Lab offline service", .timeLimit(.minutes(1)))
 struct VoiceLabServiceTests {
@@ -824,3 +826,4 @@ struct VoiceRewriteServiceTests {
         #expect(proposal.sourceWords[0].text == "Hi")
     }
 }
+#endif

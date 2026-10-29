@@ -1,7 +1,8 @@
+#if DEBUG
 import Foundation
 import Testing
 @testable import VoxClipCore
-import VoxClipMedia
+@_spi(Testing) @testable import VoxClipMedia
 @testable import VoxClip
 
 @Suite("Headless Voice Lab session", .serialized, .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil, "Use an isolated VOXCLIP_DATA_DIR for app-model tests; no windows or provider requests are opened."))
@@ -61,4 +62,68 @@ import VoxClipMedia
         #expect(app.speakerModelLibrary.model?.calibratedThreshold() == nil)
         #expect(session.speakerMessage == VoiceConsentError.speakerUnavailable.localizedDescription)
     }
+    @Test func saveFailureCanBeWithdrawnFromTheSheetWithoutServices() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = VoiceConsentStore(locations: locations(root), fault: { step in
+            if step == .saveRecord { throw CocoaError(.fileWriteUnknown) }
+        })
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [VoiceLabAppHTTP.self]
+        let client = ElevenLabsVoiceLab(keys: VoiceLabAppKeys(), session: URLSession(configuration: configuration))
+        let reconciler = VoiceOperationReconciler(store: store, client: client)
+        let app = AppModel(); let session = VoiceLabSession(app: app, store: store, reconciler: reconciler)
+        let wav = try VoiceTrainingAudio.wav([Float](repeating: 0.1, count: 5 * 48_000))
+        let shared = try SharedResources.locate()
+        var json = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: shared.root.appendingPathComponent("fixtures/voice-lab/consent-record.json"))) as? [String: Any])
+        json["recordId"] = session.recordID
+        var statement = try #require(json["statement"] as? [String: Any]); statement["audioSha256"] = VoiceLabFingerprint.bytes(wav); json["statement"] = statement
+        let record = try JSONDecoder().decode(VoiceConsentRecord.self, from: JSONSerialization.data(withJSONObject: json))
+        try await store.saveStatement(wav, recordID: record.id)
+        let operation = try await store.beginCreation(record: record.assigningVoice("pending", requiresVerification: true), requestID: UUID(), region: .default, at: Date())
+        _ = try await store.transition(operation.id, to: .dispatched, at: Date())
+        _ = try await store.transition(operation.id, to: .created, at: Date(), remoteVoiceID: record.voiceId, requiresVerification: false)
+        await #expect(throws: (any Error).self) { try await reconciler.reconcile(force: true) }
+        session.unsavedRecord = record; session.showEnrollment = true
+        await session.cancelEnrollment()
+        #expect(session.unsavedRecord == nil && !session.showEnrollment)
+        #expect(try await store.operations().isEmpty)
+        #expect(try await store.load(record.id).status == .deleted)
+        #expect(!FileManager.default.fileExists(atPath: store.root.appendingPathComponent("\(record.id)/statement.wav").path))
+    }
+    @Test func journalRowsRemainVisibleWithoutARecord() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = VoiceConsentStore(locations: locations(root))
+        let app = AppModel(); let session = VoiceLabSession(app: app, store: store)
+        let wav = try VoiceTrainingAudio.wav([Float](repeating: 0.1, count: 5 * 48_000))
+        let shared = try SharedResources.locate()
+        var json = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: shared.root.appendingPathComponent("fixtures/voice-lab/consent-record.json"))) as? [String: Any])
+        var statement = try #require(json["statement"] as? [String: Any]); statement["audioSha256"] = VoiceLabFingerprint.bytes(wav); json["statement"] = statement
+        let record = try JSONDecoder().decode(VoiceConsentRecord.self, from: JSONSerialization.data(withJSONObject: json))
+        try await store.saveStatement(wav, recordID: record.id); try await store.save(record)
+        let operation = try await store.beginDeletion(record.id, region: .default, at: Date())
+        try FileManager.default.removeItem(at: store.root.appendingPathComponent("\(record.id)/record.json"))
+        await session.load(recover: false)
+        #expect(session.records.isEmpty)
+        #expect(session.operations.map(\.id) == [operation.id])
+        #expect(session.operations.first?.displayState == "Removing…")
+    }
 }
+
+private struct VoiceLabAppKeys: KeyProvider {
+    func key(for provider: String) async throws -> String? { "synthetic-journal-ui-key" }
+}
+private final class VoiceLabAppHTTP: URLProtocol, @unchecked Sendable {
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() {
+        #expect(request.httpMethod == "DELETE")
+        let response = HTTPURLResponse(url: request.url!, statusCode: 404, httpVersion: nil, headerFields: ["Content-Type": "application/json"])!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: Data(#"{"status":"ok"}"#.utf8))
+        client?.urlProtocolDidFinishLoading(self)
+    }
+    override func stopLoading() {}
+}
+#endif

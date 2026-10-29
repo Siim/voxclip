@@ -92,8 +92,16 @@ public struct VoiceStatementMatch: Codable, Sendable, Equatable {
 }
 
 public struct VoiceConsentRecord: Codable, Sendable, Equatable, Identifiable {
+    package init(schema: String, recordId: String, provider: String, type: String, voiceId: String, voiceName: String, status: Status, createdAt: String, deletedAt: String?, statement: Statement, attestations: Attestations, samples: [Sample], speaker: Speaker, app: App) {
+        self.schema = schema; self.recordId = recordId; self.provider = provider; self.type = type; self.voiceId = voiceId; self.voiceName = voiceName; self.status = status; self.createdAt = createdAt; self.deletedAt = deletedAt; self.statement = statement; self.attestations = attestations; self.samples = samples; self.speaker = speaker; self.app = app
+    }
+
     public enum Status: String, Codable, Sendable { case active, verificationRequired, deleted }
     public struct Statement: Codable, Sendable, Equatable {
+        package init(language: String, text: String, nonce: [String], audioFile: String, audioSha256: String, stt: VoiceStatementMatch) {
+            self.language = language; self.text = text; self.nonce = nonce; self.audioFile = audioFile; self.audioSha256 = audioSha256; self.stt = stt
+        }
+
         public let language: String
         public let text: String
         public let nonce: [String]
@@ -112,17 +120,31 @@ public struct VoiceConsentRecord: Codable, Sendable, Equatable, Identifiable {
         public var complete: Bool { ownVoice && adult && ownVideosOnly }
     }
     public struct Sample: Codable, Sendable, Equatable {
+        package init(sha256: String, seconds: Double, source: String, speakerScore: Double) {
+            self.sha256 = sha256; self.seconds = seconds; self.source = source; self.speakerScore = speakerScore
+        }
+
         public let sha256: String
         public let seconds: Double
         public let source: String
         public let speakerScore: Double
     }
     public struct Speaker: Codable, Sendable, Equatable {
+        package init(model: String, threshold: Double, embedding: String) {
+            self.model = model; self.threshold = threshold; self.embedding = embedding
+        }
+
         public let model: String
         public let threshold: Double
         public let embedding: String
     }
-    public struct App: Codable, Sendable, Equatable { public let version: String; public let platform: String }
+    public struct App: Codable, Sendable, Equatable {
+        package init(version: String, platform: String) {
+            self.version = version; self.platform = platform
+        }
+        public let version: String
+        public let platform: String
+    }
     public let schema: String
     public let recordId: String
     public let provider: String

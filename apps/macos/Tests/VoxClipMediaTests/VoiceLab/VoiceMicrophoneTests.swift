@@ -1,3 +1,4 @@
+#if DEBUG
 import Foundation
 import Testing
 @testable import VoxClipMedia
@@ -33,3 +34,4 @@ struct VoiceMicrophoneTests {
         #expect(teardownCount == 2)
     }
 }
+#endif

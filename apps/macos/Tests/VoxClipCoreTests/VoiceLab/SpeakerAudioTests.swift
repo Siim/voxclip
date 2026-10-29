@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import VoxClipCore
+@_spi(Testing) @testable import VoxClipMedia
 
 @Suite("Speaker preprocessing and catalogue")
 struct SpeakerAudioTests {
