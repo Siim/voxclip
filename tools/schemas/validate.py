@@ -53,6 +53,8 @@ def schema_for(path, document, by_name):
         return by_name["consent.schema.json"]
     if isinstance(document, dict) and document.get("schema") == "voxclip-voice-statements/1":
         return by_name["voice-statements.schema.json"]
+    if isinstance(document, dict) and document.get("schema") == "voxclip-voice-models/1":
+        return by_name["voice-models.schema.json"]
     raise SystemExit(f"{path}: no schema applies (expected .voxclip, .transcript.json, voxclip-settings/1 "
                      "or voxclip-voice-lab-prices/1)")
 
@@ -65,7 +67,8 @@ def main(argv):
         *fixtures.joinpath("media").glob("*.transcript.json"),
     ]) + [ROOT / "shared" / "catalog" / "voice-lab.json",
           ROOT / "shared" / "voice-lab" / "statements.json",
-          fixtures / "voice-lab" / "consent-record.json"]
+          fixtures / "voice-lab" / "consent-record.json",
+          ROOT / "shared" / "catalog" / "voice-lab-models.json"]
     if not files:
         print("no files to validate", file=sys.stderr)
         return 1
