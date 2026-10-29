@@ -545,7 +545,7 @@ public actor ElevenLabsVoiceLab {
         request.setValue(key, forHTTPHeaderField: "xi-api-key")
         if let contentType { request.setValue(contentType, forHTTPHeaderField: "Content-Type") }
         request.setValue("VoxClip/\(AppVersion.current)", forHTTPHeaderField: "User-Agent")
-        let permit: VoiceDispatchPermit?
+        let permit: VoiceOperationDispatch?
         if let capability {
             guard let billing else { throw VoiceLabError.consentRequired }
             permit = try await capability.consume(billing.quote)
@@ -561,7 +561,7 @@ public actor ElevenLabsVoiceLab {
         var recording: Task<VoiceLabSpendWarning?, Never>?
         do {
             try Task.checkCancellation()
-            if let permit { try permit.start { transport.resume() } } else { transport.resume() }
+            if let permit { try await permit.start { transport.resume() } } else { transport.resume() }
             defer { transport.cancel() }
             var response: HTTPURLResponse?
             var bytes = Data()

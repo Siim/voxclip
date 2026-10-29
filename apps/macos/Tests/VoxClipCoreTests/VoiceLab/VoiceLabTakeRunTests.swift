@@ -160,7 +160,12 @@ struct VoiceLabTakeRunTests {
         let client = ElevenLabsVoiceLab(keys: SpeechTestKeys(value: "synthetic-take-key"), session: URLSession(configuration: SpeechStubHTTP.configuration(for: base)),
             prices: VoiceLabPricingTests.catalogIfPresent, spend: ledger, enforceCapabilities: true)
         let clock = TakeRunClock(); await client.useClock { clock.now() }
-        let run = VoiceLabTakeRun(client: client, store: store, speaker: .init(embedder: TakeRunEmbedder(drift: drift), calibratedThreshold: 0.45)) { http.value.withLock { $0.current } }
+        let run = VoiceLabTakeRun(client: client, store: store, speaker: .init(embedder: TakeRunEmbedder(drift: drift), calibratedThreshold: 0.45), dispatchIfCurrent: { start in
+            try http.value.withLock { state in
+                guard state.current else { throw VoiceLabError.consentRequired }
+                try start()
+            }
+        }) { http.value.withLock { $0.current } }
         let choices = try await run.discover(language: "en")
         #expect(choices.voices.map(\.id) == (initial.remoteRequiresVerification ? [] : [record.id]))
         let rate = 24_000
@@ -198,6 +203,19 @@ struct VoiceLabTakeRunTests {
         await #expect(throws: (any Error).self) { try await sending.value }
         #expect(fixture.http.value.withLock { $0.seeds.isEmpty && $0.qa == 0 })
         #expect(await fixture.ledger.total(provider: "elevenlabs", at: fixture.clock.now())?.usd == 0)
+    }
+    @Test(arguments: [false, true]) func inputChangeAtTransportBoundary(invalidate: Bool) async throws {
+        let fixture = try await fixture(); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let quote = try await fixture.run.prepare(fixture.input)
+        let suspension = TakeRunSuspension()
+        await fixture.client.useDispatchHook { await suspension.pause() }
+        let sending = Task { try await fixture.run.execute(quote, approved: true) }
+        try await suspension.reached.wait()
+        if invalidate { await fixture.run.invalidate() }
+        else { fixture.http.value.withLock { $0.current = false } }
+        await suspension.release()
+        _ = try await sending.value
+        #expect(fixture.http.value.withLock { $0.seeds.isEmpty && $0.qa == 0 })
     }
     @Test(arguments: [false, true]) func withdrawalWinsBetweenValidationAndTransport(deleting: Bool) async throws {
         let fixture = try await fixture(); defer { try? FileManager.default.removeItem(at: fixture.root) }

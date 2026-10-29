@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 import VoxClipCore
 
 public actor VoiceLabTakeRun {
@@ -17,6 +18,8 @@ public actor VoiceLabTakeRun {
     private let speaker: VoiceSpeakerCheck
     private let useGuard: VoiceUseGuard
     private let inputsAreCurrent: @Sendable () async -> Bool
+    private let dispatchIfCurrent: VoiceLabDispatchBoundary
+    private nonisolated let dispatchRevision = Mutex(0)
     private var pending: Pending?
     private var task: Task<VoiceLabTakeRunResult, Never>?
     private var runningID: UUID?
@@ -27,9 +30,11 @@ public actor VoiceLabTakeRun {
     package func useExecuteHook(_ hook: @escaping @Sendable (String) async -> Void) { executeHook = hook }
     #endif
     public init(client: ElevenLabsVoiceLab, store: VoiceConsentStore, speaker: VoiceSpeakerCheck,
+                dispatchIfCurrent: @escaping VoiceLabDispatchBoundary,
                 inputsAreCurrent: @escaping @Sendable () async -> Bool) {
         self.client = client; self.store = store; self.speaker = speaker; useGuard = VoiceUseGuard(store: store, check: speaker)
         self.inputsAreCurrent = inputsAreCurrent
+        self.dispatchIfCurrent = dispatchIfCurrent
     }
     public func discover(language: String) async throws -> (models: [VoiceLabModel], voices: [VoiceConsentRecord]) {
         guard await inputsAreCurrent() else { throw VoiceLabError.consentRequired }
@@ -112,6 +117,7 @@ public actor VoiceLabTakeRun {
     }
     public func cancel() async {
         stop = .cancelled; revision += 1; task?.cancel()
+        dispatchRevision.withLock { $0 = revision }
         if let pending {
             self.pending = nil
             await client.discardRun(pending.quote.id, quotes: pending.quote.takes.flatMap { [$0.synthesis, $0.qa] })
@@ -160,6 +166,7 @@ public actor VoiceLabTakeRun {
             do {
                 let authorization = try await useGuard.authorize(quote: take.synthesis, contentKey: value.input.contentKey,
                     recordID: value.record.id, speech16k: value.sourceSpeech, approved: true)
+                try await authorization.capability?.bindDispatch(boundary(revision: expected))
                 try await validate(value, revision: expected)
                 let result = try await client.synthesize(text: value.input.text, modelID: value.input.modelID,
                     voice: .own(voiceID: value.record.voiceId, policy: authorization), language: value.input.language,
@@ -188,6 +195,7 @@ public actor VoiceLabTakeRun {
                 let score = try VoiceSpeakerCheck.cosine(owner, vector)
                 try await validate(value, revision: expected)
                 let capability = VoiceOperationCapability(quote: take.qa) { try await self.validate(value, revision: expected) }
+                try await capability.bindDispatch(boundary(revision: expected))
                 let recognized = try await client.transcribeQA(processed.mixed, rate: processed.sampleRate,
                     language: value.input.language, authorization: VoiceLabAuthorization(quote: take.qa, approved: true), capability: capability)
                 qaReceipt = recognized.receipt
@@ -218,6 +226,17 @@ public actor VoiceLabTakeRun {
     }
     private func policy(_ record: VoiceConsentRecord) -> OwnVoicePolicy {
         OwnVoicePolicy(recordID: record.id, cloneVoiceID: record.voiceId, recordActive: true, providerConsentGranted: true, statementVerified: true, speakerMatched: true)
+    }
+    private func boundary(revision expected: Int) -> VoiceLabDispatchBoundary {
+        let dispatch = dispatchIfCurrent
+        return { [self] start in
+            try await dispatch {
+                try self.dispatchRevision.withLock { revision in
+                    guard revision == expected else { throw Abort.invalidated }
+                    try start()
+                }
+            }
+        }
     }
     private func fatal(_ error: any Error) -> Bool {
         if error is VoiceConsentError || error is CancellationError || error is Abort || Task.isCancelled { return true }

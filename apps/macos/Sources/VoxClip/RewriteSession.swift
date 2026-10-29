@@ -101,7 +101,12 @@ struct RewriteConnector {
     func configureGeneration(client: ElevenLabsVoiceLab, store: VoiceConsentStore, speaker: VoiceSpeakerCheck) {
         generation?.invalidate()
         let region = client.region
-        let run = VoiceLabTakeRun(client: client, store: store, speaker: speaker) { [weak self] in
+        let run = VoiceLabTakeRun(client: client, store: store, speaker: speaker, dispatchIfCurrent: { [weak self] start in
+            try await MainActor.run {
+                guard self?.generationIsCurrent(region: region) == true else { throw VoiceLabError.consentRequired }
+                try start()
+            }
+        }) { [weak self] in
             await self?.generationIsCurrent(region: region) ?? false
         }
         generation = RewriteGenerationSession(run: run) { [weak self] in self?.generationIsCurrent(region: region) ?? false }

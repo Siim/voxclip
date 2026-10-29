@@ -15,7 +15,12 @@ private struct GenerationTestKeys: KeyProvider {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let store = VoiceConsentStore(locations: DataLocations(environment: ["VOXCLIP_DATA_DIR": root.path]))
         let client = ElevenLabsVoiceLab(keys: GenerationTestKeys(), region: .default)
-        return RewriteGenerationSession(run: VoiceLabTakeRun(client: client, store: store, speaker: .unavailable, inputsAreCurrent: { true }), inputsAreCurrent: current)
+        return RewriteGenerationSession(run: VoiceLabTakeRun(client: client, store: store, speaker: .unavailable, dispatchIfCurrent: { start in
+            try await MainActor.run {
+                guard current() else { throw VoiceLabError.consentRequired }
+                try start()
+            }
+        }, inputsAreCurrent: { true }), inputsAreCurrent: current)
     }
     private func row(index: Int, residual: Double = 0, failure: Bool = false, score: Double = 1) -> VoiceLabTakeRow {
         let plan = VoiceLabFitPlan(edits: [], incoming: .init(padFrames: 0, borrowedSamples: 0), outgoing: .init(padFrames: 0, borrowedSamples: 0),
