@@ -5,6 +5,21 @@ import subprocess
 import tempfile
 
 
+def same_module_source():
+    source = pathlib.Path(__file__).resolve().parents[2] / "apps/macos/Sources/VoxClipMedia/VoiceLab/VoiceSpeakerCheck.swift"
+    declaration = source.read_text().split("public actor VoiceUseGuard", 1)[0]
+    if "public final class VoiceSpeakerCheck" not in declaration:
+        raise RuntimeError("Cannot locate production speaker-check declaration")
+    return declaration + """
+public actor ONNXSpeakerEmbedder: SpeakerEmbedder {
+    public nonisolated let modelID = "verified-model-control"
+    public nonisolated let dimension = 256
+    public func embed(_ samples: [Float]) async throws -> [Float] { [] }
+    func validateIdentity(trustedEntry: SpeakerModel) throws {}
+}
+"""
+
+
 def check(bin_path, build_path):
     sdk = subprocess.check_output(["xcrun", "--sdk", "macosx", "--show-sdk-path"], text=True).strip()
     compiler = subprocess.check_output(["xcrun", "--find", "swiftc"], text=True).strip()
@@ -37,7 +52,7 @@ struct Fake: SpeakerEmbedder {
     }
     with tempfile.TemporaryDirectory(prefix="voxclip-release-boundary-") as directory:
         source = pathlib.Path(directory) / "Probe.swift"
-        source.write_text(header + "let check = VoiceSpeakerCheck()\nlet hash = VoiceLabFingerprint.bytes(Data())\n")
+        source.write_text(header + "let check = VoiceSpeakerCheck.unavailable\nlet hash = VoiceLabFingerprint.bytes(Data())\n")
         positive = subprocess.run(flags + [str(source)], capture_output=True, text=True)
         if positive.returncode:
             raise RuntimeError("Release control probe failed; this is not boundary evidence:\n" + positive.stderr)
@@ -49,7 +64,22 @@ struct Fake: SpeakerEmbedder {
             if any(message in result.stderr for message in ["no such module", "missing required module", "could not build module"]):
                 raise RuntimeError("Release probe failed for an import, not access control: " + name)
             print("Rejected Release bypass: " + name)
-    print("Release control and five same-package access-boundary probes passed.")
+        same_module = same_module_source()
+        source.write_text(same_module + "let check = VoiceSpeakerCheck.unavailable\n")
+        control = subprocess.run(flags + [str(source)], capture_output=True, text=True)
+        if control.returncode:
+            raise RuntimeError("Same-module Release control failed:\n" + control.stderr)
+        for name, probe in {
+            "same-module-raw-threshold": probes["arbitrary-threshold"],
+            "same-module-private-construction": 'func bypass(_ model: ONNXSpeakerEmbedder, _ entry: SpeakerModel) { _ = VoiceSpeakerCheck(verifiedModel: model, trustedEntry: entry, language: "en") }',
+            "same-module-debug-injection": probes["debug-injection"].replace("Fake()", "nil"),
+        }.items():
+            source.write_text(same_module + probe + "\n")
+            result = subprocess.run(flags + [str(source)], capture_output=True, text=True)
+            if not result.returncode or "error:" not in result.stderr:
+                raise RuntimeError("Same-module Release boundary accepted " + name)
+            print("Rejected Release bypass: " + name)
+    print("Release controls, five same-package and three same-module probes passed.")
 
 
 if __name__ == "__main__":

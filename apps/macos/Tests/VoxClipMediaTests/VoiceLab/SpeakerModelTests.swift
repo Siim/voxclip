@@ -69,5 +69,9 @@ struct SpeakerModelTests {
         let runtime = try ONNXSpeakerEmbedder(model: supplied, directory: directory)
         #expect(trusted.calibratedThreshold() == 0.45)
         #expect(try await runtime.speakerCheck().threshold == 0.45)
+        await #expect(throws: VoiceConsentError.speakerUnavailable) {
+            try await VoiceSpeakerCheck.make(verifiedModel: runtime, trustedEntry: supplied, language: "en")
+        }
+        #expect(!VoiceSpeakerCheck.unavailable.available)
     }
 }

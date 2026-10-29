@@ -162,7 +162,7 @@ struct VoiceConsentTests {
     @Test func noUploadWithoutConsentAttestationsAndGate() async throws {
         let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
         let calls = ConsentRequestLog(); let transcriptions = ConsentTranscriptionCount()
-        let service = enroll(store: storage(root), client: client(calls), check: .init(), raw: try await raw(), calls: transcriptions)
+        let service = enroll(store: storage(root), client: client(calls), check: .unavailable, raw: try await raw(), calls: transcriptions)
         let id = UUID().uuidString; let statement = try statement()
         await #expect(throws: VoiceLabError.consentRequired) { try await service.verify(recordID: id, statement: statement, wav: wav, attestations: attestations, approved: false, enabled: true) }
         await #expect(throws: VoiceLabError.consentRequired) { try await service.verify(recordID: id, statement: statement, wav: wav, attestations: attestations, approved: true, enabled: false) }
@@ -173,7 +173,7 @@ struct VoiceConsentTests {
     @Test func threeAttemptsPerTenMinutes() async throws {
         let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
         let calls = ConsentRequestLog(); let transcriptions = ConsentTranscriptionCount()
-        let service = enroll(store: storage(root), client: client(calls), check: .init(), raw: try await raw(), calls: transcriptions)
+        let service = enroll(store: storage(root), client: client(calls), check: .unavailable, raw: try await raw(), calls: transcriptions)
         let id = UUID().uuidString; let statement = try statement()
         for _ in 0..<3 { try await service.verify(recordID: id, statement: statement, wav: wav, attestations: attestations, approved: true, enabled: true, now: now) }
         await #expect(throws: VoiceConsentError.tooManyAttempts) { try await service.verify(recordID: id, statement: statement, wav: wav, attestations: attestations, approved: true, enabled: true, now: now.addingTimeInterval(599)) }
@@ -291,7 +291,7 @@ struct VoiceConsentTests {
         let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
         let store = storage(root); let record = try fixtureRecord(wav: wav); let calls = ConsentRequestLog()
         try await store.saveStatement(wav, recordID: record.id); try await store.save(record)
-        let service = enroll(store: store, client: client(calls), check: .init(), raw: try await raw())
+        let service = enroll(store: store, client: client(calls), check: .unavailable, raw: try await raw())
         await #expect(throws: VoiceLabError.consentRequired) { try await service.delete(recordID: record.id, approved: false, enabled: true) }
         #expect(calls.value.withLock { $0.isEmpty })
         #expect(try await store.load(record.id) == record)
@@ -323,7 +323,7 @@ struct VoiceConsentTests {
         })
         let record = try fixtureRecord(wav: wav); let calls = ConsentRequestLog()
         try await store.saveStatement(wav, recordID: record.id); try await store.save(record)
-        let service = enroll(store: store, client: client(calls), check: .init(), raw: try await raw())
+        let service = enroll(store: store, client: client(calls), check: .unavailable, raw: try await raw())
         await #expect(throws: (any Error).self) { try await service.delete(recordID: record.id, approved: true, enabled: true, now: now) }
         #expect(try await store.records().count == 1)
         if step != .deletionIntent { #expect(try await store.activeVoices().isEmpty) }
@@ -344,7 +344,7 @@ struct VoiceConsentTests {
         let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
         let store = storage(root); let record = try fixtureRecord(wav: wav); let calls = ConsentRequestLog()
         try await store.saveStatement(wav, recordID: record.id); try await store.save(record)
-        let service = enroll(store: store, client: client(calls, deletionStatus: status), check: .init(), raw: try await raw())
+        let service = enroll(store: store, client: client(calls, deletionStatus: status), check: .unavailable, raw: try await raw())
         if status == 404 {
             try await service.delete(recordID: record.id, approved: true, enabled: true)
             #expect(try await store.load(record.id).status == .deleted)

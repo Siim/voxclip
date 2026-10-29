@@ -8,17 +8,21 @@ public final class VoiceSpeakerCheck: Sendable {
     #if DEBUG
     private let testing: (any SpeakerEmbedder)?
     #endif
-    public init() {
-        production = nil; threshold = nil; calibratedLanguage = nil
+    public static let unavailable = VoiceSpeakerCheck(verifiedModel: nil, trustedEntry: nil, language: nil)
+    private init(verifiedModel: ONNXSpeakerEmbedder?, trustedEntry: SpeakerModel?, language: String?) {
+        production = verifiedModel; calibratedLanguage = language
+        threshold = language.flatMap { trustedEntry?.calibratedThreshold(language: $0) }
         #if DEBUG
         testing = nil
         #endif
     }
-    init(verifiedEmbedder: ONNXSpeakerEmbedder, calibratedThreshold: Double, language: String) {
-        production = verifiedEmbedder; threshold = calibratedThreshold; calibratedLanguage = language
-        #if DEBUG
-        testing = nil
-        #endif
+    static func make(verifiedModel: ONNXSpeakerEmbedder, trustedEntry: SpeakerModel, language: String) async throws -> VoiceSpeakerCheck {
+        let canonical = try SpeakerModelCatalog(shared: SharedResources.locate()).entry
+        let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys]
+        guard try encoder.encode(trustedEntry) == encoder.encode(canonical),
+              canonical.calibratedThreshold(language: language) != nil else { throw VoiceConsentError.speakerUnavailable }
+        try await verifiedModel.validateIdentity(trustedEntry: canonical)
+        return VoiceSpeakerCheck(verifiedModel: verifiedModel, trustedEntry: canonical, language: language)
     }
     #if DEBUG
     @_spi(Testing) public init(embedder: (any SpeakerEmbedder)?, calibratedThreshold: Double? = nil, language: String? = nil) {
@@ -45,7 +49,7 @@ public actor VoiceUseGuard {
     private let store: VoiceConsentStore
     private let check: VoiceSpeakerCheck
     private var cache: Set<String> = []
-    public init(store: VoiceConsentStore, check: VoiceSpeakerCheck = VoiceSpeakerCheck()) { self.store = store; self.check = check }
+    public init(store: VoiceConsentStore, check: VoiceSpeakerCheck = .unavailable) { self.store = store; self.check = check }
     func authorize(contentKey: String, recordID: String, speech16k: [Float], voiceChanger: Bool = false, approved: Bool) async throws -> OwnVoicePolicy {
         guard approved else { throw VoiceLabError.consentRequired }
         guard !contentKey.isEmpty else { throw VoiceLabError.invalidInput }

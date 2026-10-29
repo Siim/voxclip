@@ -25,13 +25,16 @@ public actor ONNXSpeakerEmbedder: SpeakerEmbedder {
         try SpeakerAudio.select(pcm16k, ranges: SpeakerVAD.ranges(pcm16k, model: vad))
     }
     public func validateAvailability() async throws { _ = try model.verifiedFiles(at: directory) }
-    public func speakerCheck(language: String = "en") throws -> VoiceSpeakerCheck {
+    public func speakerCheck(language: String = "en") async throws -> VoiceSpeakerCheck {
         let trusted = try SpeakerModelCatalog(shared: SharedResources.locate()).entry
+        return try await VoiceSpeakerCheck.make(verifiedModel: self, trustedEntry: trusted, language: language)
+    }
+    func validateIdentity(trustedEntry trusted: SpeakerModel) throws {
+        let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys]
         guard trusted.id == model.id, trusted.preprocessing == model.preprocessing,
-              trusted.files.map(\.sha256) == model.files.map(\.sha256),
-              let threshold = trusted.calibratedThreshold(language: language) else { throw VoiceConsentError.speakerUnavailable }
-        _ = try model.verifiedFiles(at: directory)
-        return VoiceSpeakerCheck(verifiedEmbedder: self, calibratedThreshold: threshold, language: language)
+              trusted.dimension == model.dimension,
+              try encoder.encode(trusted.files) == encoder.encode(model.files) else { throw VoiceConsentError.speakerUnavailable }
+        _ = try trusted.verifiedFiles(at: directory)
     }
     public func embed(_ pcm16k: [Float]) async throws -> [Float] {
         guard pcm16k.count <= 240 * 16_000 else { throw VoiceConsentError.speakerMismatch }

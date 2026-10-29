@@ -40,7 +40,7 @@ public actor VoiceEnrollment {
         let samples: [VoiceConsentRecord.Sample]
         let embedding: [Float]
     }
-    public init(store: VoiceConsentStore, client: ElevenLabsVoiceLab, speaker: VoiceSpeakerCheck = VoiceSpeakerCheck(), reconciler: VoiceOperationReconciler? = nil, transcribe: @escaping Transcribe) {
+    public init(store: VoiceConsentStore, client: ElevenLabsVoiceLab, speaker: VoiceSpeakerCheck = .unavailable, reconciler: VoiceOperationReconciler? = nil, transcribe: @escaping Transcribe) {
         self.store = store; self.client = client; self.speaker = speaker; self.transcribe = transcribe
         self.reconciler = reconciler ?? VoiceOperationReconciler(store: store, client: client)
     }

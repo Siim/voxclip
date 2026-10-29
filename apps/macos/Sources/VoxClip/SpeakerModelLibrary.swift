@@ -56,16 +56,16 @@ import VoxClipMedia
         }
     }
     func check(language: String = "en") async throws -> VoiceSpeakerCheck {
-        guard let shared = app.shared else { return VoiceSpeakerCheck() }
+        guard let shared = app.shared else { return .unavailable }
         let model = try SpeakerModelCatalog(shared: shared).entry
-        guard model.calibratedThreshold(language: language) != nil else { return VoiceSpeakerCheck() }
+        guard model.calibratedThreshold(language: language) != nil else { return .unavailable }
         let directory = model.directory(app.locations)
         do {
             _ = try await Task.detached(priority: .utility) { try model.verifiedFiles(at: directory) }.value
             if embedder == nil { embedder = try await Task.detached(priority: .utility) { try ONNXSpeakerEmbedder(model: model, directory: directory) }.value }
             installed = true
-            return try await embedder?.speakerCheck(language: language) ?? VoiceSpeakerCheck()
-        } catch { embedder = nil; installed = false; return VoiceSpeakerCheck() }
+            return try await embedder?.speakerCheck(language: language) ?? .unavailable
+        } catch { embedder = nil; installed = false; return .unavailable }
     }
     func useGuard(store: VoiceConsentStore, recordID: String) async throws -> VoiceUseGuard {
         let record = try await store.load(recordID)
