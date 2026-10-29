@@ -33,6 +33,7 @@ internal sealed class AppServices : IAsyncDisposable
     internal IModelCatalog Models { get; } = new ModelCatalog();
     internal IModelDownloader Downloads { get; }
     internal ITranscriptionService Transcription { get; private set; } = null!;
+    internal LocalRuntimeGuard LocalRuntime { get; } = new(LocalRuntimeFiles.ReadVersion);
     internal IClipFinder ClipFinder { get; private set; } = null!;
     internal IEncoderProbe Encoders { get; } = new EncoderProbe();
     internal IUpdateChecker Updates { get; }

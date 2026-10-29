@@ -66,6 +66,7 @@ internal sealed class TranscriptionDialog : ContentDialog
                     Ui.Show(notice, "No installed local model supports this language. Choose another model or download one in Settings → Local Models.", InfoBarSeverity.Warning);
             }
             else if (engine.SelectedIndex == 0) Ui.Show(notice, "No local model installed. Download one in Settings → Local Models.");
+            CheckLocalRuntime();
         }, "Local models");
         PrimaryButtonClick += Transcribe;
         Closing += (_, args) => { if (running) { lifetime.Cancel(); args.Cancel = true; } };
@@ -80,6 +81,27 @@ internal sealed class TranscriptionDialog : ContentDialog
         flow.Text = cloud
             ? "ElevenLabs Scribe uploads this take's audio track with your key. ElevenLabs stores it under its terms and may use it to improve its services unless you opt out in your ElevenLabs account. No video is sent."
             : "Audio stays on this computer. No key or account is needed.";
+        CheckLocalRuntime();
+    }
+    private bool CheckLocalRuntime()
+    {
+        if (engine.SelectedIndex != 0)
+        {
+            notice.ActionButton = null;
+            notice.Content = null;
+            if (notice.Message == LocalRuntimeGuard.Message) notice.IsOpen = false;
+            IsPrimaryButtonEnabled = !running;
+            return true;
+        }
+        if (App.Services.LocalRuntime.IsSupported) return true;
+        IsPrimaryButtonEnabled = false;
+        Ui.Show(notice, LocalRuntimeGuard.Message, InfoBarSeverity.Warning);
+        var architecture = System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture.ToString().ToLowerInvariant();
+        notice.Content = new HyperlinkButton { Content = "Microsoft Visual C++ downloads",
+            NavigateUri = new Uri("https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist") };
+        notice.ActionButton = new HyperlinkButton { Content = "Download for " + architecture.ToUpperInvariant(),
+            NavigateUri = new Uri($"https://aka.ms/vc14/vc_redist.{architecture}.exe") };
+        return false;
     }
     private async Task RefreshCloudKeyAsync()
     {
@@ -106,8 +128,12 @@ internal sealed class TranscriptionDialog : ContentDialog
         if (running || model.IsLeaving) return;
         await Ui.RunAsync(notice, async () =>
         {
-            if (engine.SelectedIndex == 0 && models.SelectedItem is null) { Ui.Show(notice, "Download a local model first. Your video is still here."); return; }
-            if (engine.SelectedIndex == 1)
+            if (!CheckLocalRuntime()) return;
+            var local = engine.SelectedIndex == 0;
+            var selectedModel = models.SelectedItem as string;
+            var requestedLanguage = language.Text.Trim().ToLowerInvariant();
+            if (local && selectedModel is null) { Ui.Show(notice, "Download a local model first. Your video is still here."); return; }
+            if (!local)
             {
                 if (await App.Services.Keys.GetKeyAsync("elevenlabs-api-key", lifetime.Token) is null) { Ui.Show(notice, "Add an ElevenLabs key here before uploading this take."); cloudKey.Focus(FocusState.Programmatic); return; }
                 if (cloudConsent.IsChecked != true) { Ui.Show(notice, "Confirm the audio upload before continuing."); return; }
@@ -133,9 +159,8 @@ internal sealed class TranscriptionDialog : ContentDialog
                 var audio = await new CacheIndex(App.Services.Data.Cache).ExtractAudioAsync(App.Services.Audio, media, source.ContentKey, null, lifetime.Token);
                 App.Services.Log.Write(VoxClip.Core.Services.Logging.LogLevel.Info, "transcribe", "dialog stage=audio-ready");
                 await App.Services.Log.FlushAsync(CancellationToken.None);
-                var requestedLanguage = language.Text.Trim().ToLowerInvariant();
-                var plan = new TranscriptionPlan(engine.SelectedIndex == 0 ? TranscriptEngine.Whispercpp : TranscriptEngine.Elevenlabs,
-                    models.SelectedItem as string, requestedLanguage.Length == 0 || requestedLanguage == "auto" ? new LanguageChoice.Auto() : new LanguageChoice.Forced(requestedLanguage), new());
+                var plan = new TranscriptionPlan(local ? TranscriptEngine.Whispercpp : TranscriptEngine.Elevenlabs,
+                    selectedModel, requestedLanguage.Length == 0 || requestedLanguage == "auto" ? new LanguageChoice.Auto() : new LanguageChoice.Forced(requestedLanguage), new());
                 var transcript = await App.Services.Transcription.TranscribeAsync(new(plan, audio.Audio, source.ContentKey), new Progress<TranscriptionProgress>(value =>
                 {
                     progress.IsIndeterminate = value.Fraction is null; progress.Value = (value.Fraction ?? 0) * 100; Ui.Show(notice, value.Stage.ToString());
