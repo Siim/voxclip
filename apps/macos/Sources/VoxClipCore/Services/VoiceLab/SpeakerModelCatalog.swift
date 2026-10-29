@@ -19,10 +19,37 @@ public struct SpeakerModel: Codable, Sendable {
         public let preprocessing: String
         public let modelSha256: String
         public let vadSha256: String
+        public let outcome: String?
+        public let margin: Margin?
         public let languages: [Language]
+        public struct Margin: Codable, Sendable {
+            public let policy: String
+            public let absoluteFloor: Double
+            public let crossRuntimeDrift: Double
+            public let maximumCalibrationImpostorScore: Double
+            public let candidateThreshold: Double
+            public let farLimit: Double
+            public let sameSpeakerMinimum: Double
+        }
         public struct Language: Codable, Sendable {
             public let language: String
             public let corpus: String
+            public let impostorPairs: Int
+            public let sameSpeakerPairs: Int
+            public let falseAcceptRate: Double
+            public let sameSpeakerPassRate: Double
+            public let speakers: Int?
+            public let calibrationSpeakers: Int?
+            public let independentClips: Int?
+            public let audioRenders: Int?
+            public let conditions: [Condition]?
+        }
+        public struct Condition: Codable, Sendable {
+            public let corpus: String
+            public let sampleRate: Int
+            public let role: String
+            public let speakers: Int
+            public let independentClips: Int
             public let impostorPairs: Int
             public let sameSpeakerPairs: Int
             public let falseAcceptRate: Double
@@ -34,9 +61,24 @@ public struct SpeakerModel: Codable, Sendable {
               preprocessing == SpeakerAudio.version, let calibration, calibration.preprocessing == preprocessing,
               calibration.modelSha256 == files.first(where: { $0.role == "speaker" })?.sha256,
               calibration.vadSha256 == files.first(where: { $0.role == "vad" })?.sha256,
+              calibration.outcome == "passed", let margin = calibration.margin,
+              margin.policy == "clean-max-plus-margin-production-v1",
+              margin.absoluteFloor.isFinite, margin.absoluteFloor >= 0.002,
+              margin.crossRuntimeDrift.isFinite, margin.crossRuntimeDrift >= 0,
+              margin.maximumCalibrationImpostorScore.isFinite,
+              threshold == margin.candidateThreshold,
+              threshold >= margin.maximumCalibrationImpostorScore + max(margin.absoluteFloor, margin.crossRuntimeDrift),
+              margin.farLimit.isFinite, (0...0.005).contains(margin.farLimit),
+              margin.sameSpeakerMinimum.isFinite, (0.95...1).contains(margin.sameSpeakerMinimum),
               let result = calibration.languages.first(where: { $0.language == language }),
+              let speakers = result.speakers, let calibrationSpeakers = result.calibrationSpeakers,
+              let clips = result.independentClips, let renders = result.audioRenders,
+              speakers >= calibrationSpeakers, calibrationSpeakers >= 80, clips >= speakers * 3, renders == clips * 2,
+              let conditions = result.conditions, conditions.count >= 4,
+              Set(conditions.map(\.sampleRate)) == [44_100, 48_000],
+              conditions.allSatisfy({ $0.speakers >= 2 && $0.independentClips >= $0.speakers * 3 && $0.impostorPairs >= 200 && $0.sameSpeakerPairs >= 50 && $0.falseAcceptRate.isFinite && (0...margin.farLimit).contains($0.falseAcceptRate) && $0.sameSpeakerPassRate.isFinite && (margin.sameSpeakerMinimum...1).contains($0.sameSpeakerPassRate) }),
               result.impostorPairs >= 200, result.sameSpeakerPairs >= 50,
-              result.falseAcceptRate.isFinite, (0...0.01).contains(result.falseAcceptRate),
+              result.falseAcceptRate.isFinite, (0...margin.farLimit).contains(result.falseAcceptRate),
               result.sameSpeakerPassRate.isFinite, (0.95...1).contains(result.sameSpeakerPassRate) else { return nil }
         return threshold
     }

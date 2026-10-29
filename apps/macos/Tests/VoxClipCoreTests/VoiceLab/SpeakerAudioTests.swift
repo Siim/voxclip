@@ -64,7 +64,7 @@ struct SpeakerAudioTests {
         #expect(entry.dimension == 256)
         #expect(entry.files.map(\.role) == ["speaker", "vad"])
         #expect(entry.totalBytes == 27_415_407)
-        #expect(entry.calibratedThreshold(language: "en") != nil)
+        #expect((entry.calibratedThreshold(language: "en") != nil) == (entry.threshold != nil))
         #expect(entry.calibratedThreshold(language: "et") == nil)
         let object = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(entry)) as? [String: Any])
         var missing = object; missing["threshold"] = NSNull()
@@ -75,5 +75,37 @@ struct SpeakerAudioTests {
         let changed = try JSONDecoder().decode(SpeakerModel.self, from: JSONSerialization.data(withJSONObject: wrong))
         #expect(changed.calibratedThreshold() == nil)
         #expect(throws: (any Error).self) { try entry.verifiedFiles(at: URL(fileURLWithPath: "/voxclip-missing-speaker-model")) }
+    }
+    @Test(arguments: ["missing-margin", "small-margin", "threshold", "outcome", "speaker-count", "pooled-far", "condition-far", "condition-own", "sample-rate"])
+    func catalogueRefusesMissingOrUnsafeMarginEvidence(mutation: String) throws {
+        let entry = try SpeakerModelCatalog(shared: SharedResources(root: FixtureLoader.sharedRoot())).entry
+        var object = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(entry)) as? [String: Any])
+        var calibration = try #require(object["calibration"] as? [String: Any])
+        var margin = try #require(calibration["margin"] as? [String: Any])
+        let maximum = try #require(margin["maximumCalibrationImpostorScore"] as? Double)
+        object["threshold"] = maximum + 0.002
+        margin["candidateThreshold"] = maximum + 0.002
+        calibration["outcome"] = "passed"
+        var languages = try #require(calibration["languages"] as? [[String: Any]])
+        languages[0]["falseAcceptRate"] = 0.0; languages[0]["sameSpeakerPassRate"] = 1.0
+        var conditions = try #require(languages[0]["conditions"] as? [[String: Any]])
+        for index in conditions.indices { conditions[index]["falseAcceptRate"] = 0.0; conditions[index]["sameSpeakerPassRate"] = 1.0 }
+        languages[0]["conditions"] = conditions; calibration["languages"] = languages; calibration["margin"] = margin; object["calibration"] = calibration
+        let baseline = try JSONDecoder().decode(SpeakerModel.self, from: JSONSerialization.data(withJSONObject: object))
+        #expect(baseline.calibratedThreshold() != nil)
+        switch mutation {
+        case "missing-margin": calibration.removeValue(forKey: "margin")
+        case "small-margin": margin["absoluteFloor"] = 0.0000001; calibration["margin"] = margin
+        case "threshold": object["threshold"] = maximum + 0.001; margin["candidateThreshold"] = maximum + 0.001; calibration["margin"] = margin
+        case "outcome": calibration["outcome"] = "withheld"
+        case "speaker-count": languages[0]["calibrationSpeakers"] = 79
+        case "pooled-far": languages[0]["falseAcceptRate"] = 0.006
+        case "condition-far": conditions[0]["falseAcceptRate"] = 0.006
+        case "condition-own": conditions[0]["sameSpeakerPassRate"] = 0.94
+        default: for index in conditions.indices { conditions[index]["sampleRate"] = 48_000 }
+        }
+        languages[0]["conditions"] = conditions; calibration["languages"] = languages; object["calibration"] = calibration
+        let changed = try JSONDecoder().decode(SpeakerModel.self, from: JSONSerialization.data(withJSONObject: object))
+        #expect(changed.calibratedThreshold() == nil)
     }
 }

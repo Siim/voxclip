@@ -32,7 +32,152 @@
       "licenseUrl": "https://github.com/wenet-e2e/wespeaker/blob/master/docs/pretrained.md#model-license",
       "attribution": "WeSpeaker ResNet34-LM, trained on VoxCeleb2 Dev by the WeSpeaker project (CC BY 4.0). Wang et al., WeSpeaker: A research and production oriented speaker embedding learning toolkit, ICASSP 2023. Silero VAD v6.2.0 by the Silero Team; GGML conversion by ggml-org (MIT). No weight modifications.",
       "threshold": null,
-      "calibration": null
+      "calibration": {
+        "date": "2026-10-29",
+        "preprocessing": "sinc32-blackman94-silero-6.2.0-kaldi80-v2",
+        "modelSha256": "7bb2f06e9df17cdf1ef14ee8a15ab08ed28e8d0ef5054ee135741560df2ec068",
+        "vadSha256": "2aa269b785eeb53a82983a20501ddf7c1d9c48e33ab63a41391ac6c9f7fb6987",
+        "outcome": "withheld",
+        "margin": {
+          "policy": "clean-max-plus-margin-production-v1",
+          "rule": "maximum clean-calibration impostor score + max(0.002, measured cross-runtime drift); no nextafter boundary. Freeze before disjoint validation. Publish only if every corpus/rate has FAR <= 0.005 and same-speaker pass >= 0.95.",
+          "absoluteFloor": 0.002,
+          "crossRuntimeDrift": 0.0,
+          "driftBasis": "Not applicable: all embeddings and cosine scores use the production Swift helper and official ONNX Runtime 1.19.2 CPU; no Python scoring path. The 0.002 floor remains in force.",
+          "maximumCalibrationImpostorScore": 0.5480655012824021,
+          "candidateThreshold": 0.5500655012824021,
+          "farLimit": 0.005,
+          "sameSpeakerMinimum": 0.95
+        },
+        "languages": [
+          {
+            "language": "en",
+            "corpus": "LibriSpeech dev-clean + test-clean; dev-other + test-other speaker-disjoint validation (OpenSLR 12, CC BY 4.0)",
+            "speakers": 146,
+            "calibrationSpeakers": 80,
+            "independentClips": 438,
+            "audioRenders": 876,
+            "impostorPairs": 47088,
+            "sameSpeakerPairs": 876,
+            "falseAcceptRate": 0.0,
+            "sameSpeakerPassRate": 0.9771689497716894,
+            "conditions": [
+              {
+                "corpus": "dev-clean",
+                "sampleRate": 48000,
+                "role": "calibration",
+                "speakers": 40,
+                "independentClips": 120,
+                "impostorPairs": 7020,
+                "sameSpeakerPairs": 120,
+                "falseAccepts": 0,
+                "sameSpeakerPasses": 118,
+                "falseAcceptRate": 0.0,
+                "sameSpeakerPassRate": 0.9833333333333333,
+                "maximumImpostorScore": 0.5478437459602904
+              },
+              {
+                "corpus": "dev-clean",
+                "sampleRate": 44100,
+                "role": "calibration",
+                "speakers": 40,
+                "independentClips": 120,
+                "impostorPairs": 7020,
+                "sameSpeakerPairs": 120,
+                "falseAccepts": 0,
+                "sameSpeakerPasses": 118,
+                "falseAcceptRate": 0.0,
+                "sameSpeakerPassRate": 0.9833333333333333,
+                "maximumImpostorScore": 0.5480655012824021
+              },
+              {
+                "corpus": "test-clean",
+                "sampleRate": 48000,
+                "role": "calibration",
+                "speakers": 40,
+                "independentClips": 120,
+                "impostorPairs": 7020,
+                "sameSpeakerPairs": 120,
+                "falseAccepts": 0,
+                "sameSpeakerPasses": 118,
+                "falseAcceptRate": 0.0,
+                "sameSpeakerPassRate": 0.9833333333333333,
+                "maximumImpostorScore": 0.5186780540476644
+              },
+              {
+                "corpus": "test-clean",
+                "sampleRate": 44100,
+                "role": "calibration",
+                "speakers": 40,
+                "independentClips": 120,
+                "impostorPairs": 7020,
+                "sameSpeakerPairs": 120,
+                "falseAccepts": 0,
+                "sameSpeakerPasses": 118,
+                "falseAcceptRate": 0.0,
+                "sameSpeakerPassRate": 0.9833333333333333,
+                "maximumImpostorScore": 0.5177630234593975
+              },
+              {
+                "corpus": "dev-other",
+                "sampleRate": 48000,
+                "role": "speaker-disjoint validation",
+                "speakers": 33,
+                "independentClips": 99,
+                "impostorPairs": 4752,
+                "sameSpeakerPairs": 99,
+                "falseAccepts": 0,
+                "sameSpeakerPasses": 99,
+                "falseAcceptRate": 0.0,
+                "sameSpeakerPassRate": 1.0,
+                "maximumImpostorScore": 0.4475903363294354
+              },
+              {
+                "corpus": "dev-other",
+                "sampleRate": 44100,
+                "role": "speaker-disjoint validation",
+                "speakers": 33,
+                "independentClips": 99,
+                "impostorPairs": 4752,
+                "sameSpeakerPairs": 99,
+                "falseAccepts": 0,
+                "sameSpeakerPasses": 99,
+                "falseAcceptRate": 0.0,
+                "sameSpeakerPassRate": 1.0,
+                "maximumImpostorScore": 0.44638654009165835
+              },
+              {
+                "corpus": "test-other",
+                "sampleRate": 48000,
+                "role": "speaker-disjoint validation",
+                "speakers": 33,
+                "independentClips": 99,
+                "impostorPairs": 4752,
+                "sameSpeakerPairs": 99,
+                "falseAccepts": 0,
+                "sameSpeakerPasses": 93,
+                "falseAcceptRate": 0.0,
+                "sameSpeakerPassRate": 0.9393939393939394,
+                "maximumImpostorScore": 0.5052433144406846
+              },
+              {
+                "corpus": "test-other",
+                "sampleRate": 44100,
+                "role": "speaker-disjoint validation",
+                "speakers": 33,
+                "independentClips": 99,
+                "impostorPairs": 4752,
+                "sameSpeakerPairs": 99,
+                "falseAccepts": 0,
+                "sameSpeakerPasses": 93,
+                "falseAcceptRate": 0.0,
+                "sameSpeakerPassRate": 0.9393939393939394,
+                "maximumImpostorScore": 0.4975725062146207
+              }
+            ]
+          }
+        ]
+      }
     }
   ]
 }

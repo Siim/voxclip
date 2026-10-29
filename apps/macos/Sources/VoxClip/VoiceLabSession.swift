@@ -63,6 +63,7 @@ import VoxClipMedia
         return nil
     }
     var speakerMessage: String {
+        if app.speakerModelLibrary.model?.calibratedThreshold() == nil { return VoiceConsentError.speakerUnavailable.localizedDescription }
         if app.speakerModelLibrary.installed { return "Own-voice checks run on this Mac. Estonian is not available yet." }
         return "Download the own-voice check model in Settings → Voice Lab before creating a voice. No audio is sent for this check."
     }

@@ -50,4 +50,15 @@ import VoxClipMedia
         #expect(!session.showEnrollment)
         #expect(!FileManager.default.fileExists(atPath: store.root.appendingPathComponent("\(session.recordID)/statement.wav").path))
     }
+    @Test func withheldCalibrationNeverAdvertisesSpeakerAvailability() throws {
+        let app = AppModel()
+        let entry = try SpeakerModelCatalog(shared: SharedResources.locate()).entry
+        var object = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(entry)) as? [String: Any])
+        object["threshold"] = NSNull()
+        app.speakerModelLibrary.model = try JSONDecoder().decode(SpeakerModel.self, from: JSONSerialization.data(withJSONObject: object))
+        app.speakerModelLibrary.installed = true
+        let session = VoiceLabSession(app: app)
+        #expect(app.speakerModelLibrary.model?.calibratedThreshold() == nil)
+        #expect(session.speakerMessage == VoiceConsentError.speakerUnavailable.localizedDescription)
+    }
 }

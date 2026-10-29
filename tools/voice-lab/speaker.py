@@ -8,38 +8,22 @@ import sys
 import wave
 
 import numpy as np
-import onnxruntime as ort
-from calibration import choose_threshold
+from calibration import choose_threshold, rates, conditions_pass, FAR_LIMIT, OWN_LIMIT, MARGIN_FLOOR
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 CATALOG = ROOT / "shared/catalog/voice-lab-models.json"
 FIXTURES = ROOT / "shared/fixtures/voice-lab/speaker"
-VERSION = "silero-6.2.0-strict-kaldi80-v1"
+VERSION = "sinc32-blackman94-silero-6.2.0-kaldi80-v2"
+ARCHIVES = {
+    "dev-clean": "76f87d090650617fca0cac8f88b9416e0ebf80350acb97b343a85fa903728ab3",
+    "test-clean": "39fde525e59672dc6d1551919b1478f724438a95aa55f874b576be21967e6c23",
+    "dev-other": "12661c48e8c3fe1de2c1caa4c3e135193bfb1811584f11f569dd12645aa84365",
+    "test-other": "d09c181bba5cf717b3dee7d4d592af11a3ee3a09e08ae025c5506f6ebe961c29",
+}
 
 
 def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
-
-
-def read_wav(path):
-    with wave.open(str(path), "rb") as audio:
-        if (audio.getnchannels(), audio.getsampwidth(), audio.getframerate()) != (1, 2, 16000):
-            raise ValueError("Expected mono PCM16 WAV at 16000 Hz")
-        return np.frombuffer(audio.readframes(audio.getnframes()), dtype="<i2").astype(np.float32) / 32768
-
-
-def windows(pcm):
-    if len(pcm) < 48000 or not np.isfinite(pcm).all():
-        raise ValueError("At least three seconds of finite voiced samples are required")
-    return [pcm[start:start + 48000] for start in range(0, len(pcm) - 48000 + 1, 24000)]
-
-
-def normalized(vector):
-    vector = np.asarray(vector, dtype=np.float64)
-    norm = np.linalg.norm(vector)
-    if not math.isfinite(norm) or norm <= 0:
-        raise ValueError("Invalid embedding")
-    return (vector / norm).astype(np.float32)
 
 
 def features(pcm):
@@ -66,23 +50,14 @@ def features(pcm):
     return result.astype(np.float32)
 
 
-def session(model):
-    options = ort.SessionOptions()
-    options.intra_op_num_threads = 2
-    options.inter_op_num_threads = 1
-    return ort.InferenceSession(str(model), sess_options=options, providers=["CPUExecutionProvider"])
-
-
-def embed(runtime, matrices):
-    vectors = [normalized(runtime.run(["embs"], {"feats": np.asarray(matrix, dtype=np.float32).reshape(1, 298, 80)})[0].reshape(-1)) for matrix in matrices]
-    return normalized(np.sum(vectors, axis=0, dtype=np.float32))
-
-
-def preprocess(cli, vad, items, output):
+def preprocess(cli, vad, items, output, include_features=False):
     output.mkdir(parents=True, exist_ok=True)
     manifest = output / "inputs.json"
     manifest.write_text(json.dumps(items), encoding="utf-8")
-    subprocess.run([str(cli), "speaker-diagnostic", "--input", str(manifest), "--vad", str(vad), "--output", str(output)], check=True)
+    command = [str(cli), "speaker-diagnostic", "--input", str(manifest), "--model-directory", str(vad.parent), "--output", str(output)]
+    if include_features:
+        command.append("--include-features")
+    subprocess.run(command, check=True)
     return {item["id"]: json.loads((output / (item["id"] + ".json")).read_text()) for item in items}
 
 
@@ -97,76 +72,118 @@ def verify_assets(model, vad):
 
 def calibrate(args):
     entry = verify_assets(args.model, args.vad)
+    if args.update_catalog:
+        catalog = json.loads(CATALOG.read_text())
+        catalog["models"][0].update(preprocessing=VERSION, threshold=None, calibration=None)
+        CATALOG.write_text(json.dumps(catalog, indent=2, ensure_ascii=False) + "\n")
     clips = args.work / "clips"
     clips.mkdir(parents=True, exist_ok=True)
     items = []
-    for speaker in sorted(args.corpus.iterdir()):
-        if not speaker.is_dir():
-            continue
-        count = 0
-        for source in sorted(speaker.rglob("*.flac")):
-            target = clips / (source.stem + ".wav")
-            subprocess.run([args.ffmpeg, "-nostdin", "-v", "error", "-y", "-i", str(source), "-t", "6", "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le", str(target)], check=True)
-            if len(read_wav(target)) < 96000:
-                continue
-            items.append({"id": source.stem, "wav": str(target)})
-            count += 1
-            if count == 4:
-                break
+    corpus_speakers = {}
+    corpora = ["dev-clean", "test-clean"] + (["dev-other", "test-other"] if args.harder else [])
+    for corpus in corpora:
+        archive = args.corpus.parent / (corpus + ".tar.gz")
+        if archive.exists() and digest(archive) != ARCHIVES[corpus]:
+            raise ValueError("Corpus archive checksum mismatch: " + corpus)
+        root = args.corpus / corpus
+        speakers = sorted(directory for directory in root.iterdir() if directory.is_dir())
+        identities = {speaker.name for speaker in speakers}
+        if any(identities & previous for previous in corpus_speakers.values()):
+            raise ValueError("Corpus speakers must be disjoint")
+        corpus_speakers[corpus] = identities
+        for speaker in speakers:
+            count = 0
+            for source in sorted(speaker.rglob("*.flac")):
+                decoded = []
+                for rate in [48_000, 44_100]:
+                    identity = f"{source.stem}-{rate}"
+                    target = clips / (identity + ".wav")
+                    subprocess.run([args.ffmpeg, "-nostdin", "-v", "error", "-y", "-i", str(source), "-t", "6", "-ac", "1", "-ar", str(rate), "-c:a", "pcm_s16le", str(target)], check=True)
+                    with wave.open(str(target), "rb") as audio:
+                        if audio.getnframes() < rate * 6:
+                            break
+                    decoded.append({"id": identity, "source": source.stem, "speaker": speaker.name, "corpus": corpus, "sampleRate": rate, "group": f"{corpus}-{rate}", "wav": str(target)})
+                if len(decoded) != 2:
+                    continue
+                items.extend(decoded)
+                count += 1
+                if count == 4:
+                    break
     prepared = preprocess(args.cli, args.vad, items, args.work / "preprocessed")
-    runtime = session(args.model)
-    selected = []
-    speakers = {}
+    selected, counts = [], {}
     for item in items:
-        speaker = item["id"].split("-")[0]
-        result = prepared[item["id"]]
-        if not result["features"] or speakers.get(speaker, 0) >= 3:
+        key = (item["corpus"], item["speaker"])
+        if item["sampleRate"] != 48_000 or counts.get(key, 0) >= 3:
             continue
-        pcm = read_wav(pathlib.Path(item["wav"]))
-        speech = np.concatenate([pcm[start:end] for start, end in result["ranges"]])
-        independent = [features(window) for window in windows(speech)]
-        maximum = max(float(np.max(np.abs(matrix - np.asarray(other).reshape(298, 80)))) for matrix, other in zip(independent, result["features"]))
-        if maximum > 2e-4 or len(independent) != len(result["features"]):
-            raise ValueError(f"Swift/Python preprocessing drift: {maximum}")
-        selected.append({"id": item["id"], "speaker": speaker, "embedding": embed(runtime, result["features"]), "wavSha256": digest(pathlib.Path(item["wav"]))})
-        speakers[speaker] = speakers.get(speaker, 0) + 1
-    impostor, own, pairs = [], [], []
-    for index, left in enumerate(selected):
-        for right in selected[index + 1:]:
-            score = float(np.dot(normalized(left["embedding"]).astype(np.float64), normalized(right["embedding"]).astype(np.float64)))
-            same = left["speaker"] == right["speaker"]
-            (own if same else impostor).append(score)
-            pairs.append([left["id"], right["id"], same, score])
+        versions = [candidate for candidate in items if candidate["source"] == item["source"]]
+        if len(versions) != 2 or any(not prepared[version["id"]].get("embedding") for version in versions):
+            continue
+        selected.extend(versions)
+        counts[key] = counts.get(key, 0) + 1
+    for corpus, speakers in corpus_speakers.items():
+        if any(counts.get((corpus, speaker), 0) != 3 for speaker in speakers):
+            raise ValueError("Every speaker needs three distinct utterances with enough voiced audio at both rates")
+    selected_by_id = {item["id"]: item for item in selected}
+    pairs = []
+    for score in json.loads((args.work / "preprocessed/scores.json").read_text()):
+        left, right = selected_by_id.get(score["left"]), selected_by_id.get(score["right"])
+        if left is None or right is None:
+            continue
+        if left["source"] == right["source"]:
+            raise ValueError("A pair must use distinct source utterances")
+        pairs.append([left["id"], right["id"], left["speaker"] == right["speaker"], score["value"], left["group"]])
+    fitting = [pair for pair in pairs if "clean" in pair[4]]
+    impostor = [pair[3] for pair in fitting if not pair[2]]
+    own = [pair[3] for pair in fitting if pair[2]]
     chosen, curve = choose_threshold(impostor, own)
+    candidate = max(0, max(impostor) + MARGIN_FLOOR)
+    conditions = []
+    for corpus in corpora:
+        for rate in [48_000, 44_100]:
+            group = f"{corpus}-{rate}"
+            group_pairs = [pair for pair in pairs if pair[4] == group]
+            different = [pair[3] for pair in group_pairs if not pair[2]]
+            same = [pair[3] for pair in group_pairs if pair[2]]
+            far, passed = rates(different, same, candidate)
+            conditions.append({"corpus": corpus, "sampleRate": rate, "role": "calibration" if "clean" in corpus else "speaker-disjoint validation", "speakers": len(corpus_speakers[corpus]), "independentClips": len(corpus_speakers[corpus]) * 3, "impostorPairs": len(different), "sameSpeakerPairs": len(same), "falseAccepts": sum(score >= candidate for score in different), "sameSpeakerPasses": sum(score >= candidate for score in same), "falseAcceptRate": far, "sameSpeakerPassRate": passed, "maximumImpostorScore": max(different)})
+    if not conditions_pass(conditions):
+        chosen = None
+    all_impostor = [pair[3] for pair in pairs if not pair[2]]
+    all_own = [pair[3] for pair in pairs if pair[2]]
+    all_far, all_passed = rates(all_impostor, all_own, candidate)
+    margin = {"policy": "clean-max-plus-margin-production-v1", "rule": "maximum clean-calibration impostor score + max(0.002, measured cross-runtime drift); no nextafter boundary. Freeze before disjoint validation. Publish only if every corpus/rate has FAR <= 0.005 and same-speaker pass >= 0.95.", "absoluteFloor": MARGIN_FLOOR, "crossRuntimeDrift": 0.0, "driftBasis": "Not applicable: all embeddings and cosine scores use the production Swift helper and official ONNX Runtime 1.19.2 CPU; no Python scoring path. The 0.002 floor remains in force.", "maximumCalibrationImpostorScore": max(impostor), "candidateThreshold": candidate, "farLimit": FAR_LIMIT, "sameSpeakerMinimum": OWN_LIMIT}
     report = {
-        "schema": "voxclip-speaker-calibration/1", "date": args.date, "model": entry["id"],
+        "schema": "voxclip-speaker-calibration/2", "date": args.date, "model": entry["id"],
         "modelSha256": digest(args.model), "vadSha256": digest(args.vad), "preprocessing": VERSION,
-        "runtime": "onnxruntime " + ort.__version__ + " CPUExecutionProvider", "language": "en",
-        "corpus": "LibriSpeech test-clean (OpenSLR 12, CC BY 4.0)", "clipSeconds": 6,
-        "selection": "Sorted speaker/chapter/utterance; first four utterances at least 6 s; first three with at least 3 s Silero speech. Different utterances for same-speaker pairs; no augmentation.",
-        "speakers": len(speakers), "clips": [{key: value for key, value in item.items() if key != "embedding"} for item in selected],
-        "impostorPairs": len(impostor), "sameSpeakerPairs": len(own),
-        "threshold": chosen[0] if chosen else None, "falseAcceptRate": chosen[1] if chosen else None, "sameSpeakerPassRate": chosen[2] if chosen else None,
+        "runtime": "production Swift / ONNX Runtime 1.19.2 CPU", "language": "en",
+        "cliSha256": digest(args.cli),
+        "decoder": subprocess.check_output([args.ffmpeg, "-version"], text=True).splitlines()[0],
+        "corpusArchives": [{"corpus": corpus, "url": f"https://www.openslr.org/resources/12/{corpus}.tar.gz", "sha256": ARCHIVES[corpus]} for corpus in corpora],
+        "corpus": "LibriSpeech dev-clean + test-clean; dev-other + test-other speaker-disjoint validation (OpenSLR 12, CC BY 4.0)" if args.harder else "LibriSpeech dev-clean + test-clean (OpenSLR 12, CC BY 4.0)", "clipSeconds": 6,
+        "selection": "Sorted speaker/chapter/utterance; first four utterances at least 6 s; first three with at least 3 s Silero speech at both 48000 and 44100 Hz. Each pair uses different utterances. Rate renders and pairs are correlated, not independent trials.",
+        "speakers": sum(len(value) for value in corpus_speakers.values()), "calibrationSpeakers": sum(len(value) for key, value in corpus_speakers.items() if "clean" in key),
+        "independentClips": len({item["source"] for item in selected}), "audioRenders": len(selected),
+        "clips": [{key: value for key, value in item.items() if key not in ["wav", "group"]} | {"wavSha256": digest(pathlib.Path(item["wav"]))} for item in selected],
+        "impostorPairs": len(all_impostor), "sameSpeakerPairs": len(all_own), "conditions": conditions, "margin": margin,
+        "threshold": candidate if chosen else None, "falseAcceptRate": all_far, "sameSpeakerPassRate": all_passed,
         "curveColumns": ["threshold", "falseAcceptRate", "sameSpeakerPassRate"], "curve": curve,
-        "limitations": ["Calibration, not a held-out accuracy claim or a microphone check.", "No account-free Estonian speaker-labelled subset was obtained in this run; calibration owed.", "User own-voice check on this Mac microphone is owed."]
+        "validationCurve": [[point[0], *rates(all_impostor, all_own, point[0])] for point in curve],
+        "limitations": ["Calibration pairs share speakers and clips; rate renders are not independent recordings. Counts are not independent statistical trials.", "Clean calibration and disjoint harder read-speech validation are not microphone acceptance, spoof resistance or a held-out field-accuracy claim.", "Estonian calibration remains owed.", "User own-voice check on this Mac microphone is owed."]
     }
     args.report.parent.mkdir(parents=True, exist_ok=True)
     args.report.write_text(json.dumps(report, indent=2) + "\n")
     (args.report.parent / "calibration-pairs.json").write_text(json.dumps(pairs, separators=(",", ":")) + "\n")
-    if not chosen:
-        if args.update_catalog:
-            catalog = json.loads(CATALOG.read_text())
-            catalog["models"][0]["threshold"] = None
-            catalog["models"][0]["calibration"] = None
-            CATALOG.write_text(json.dumps(catalog, indent=2, ensure_ascii=False) + "\n")
-        print("No threshold meets both targets. No threshold was published.", file=sys.stderr)
-        return 2
     if args.update_catalog:
         catalog = json.loads(CATALOG.read_text())
-        catalog["models"][0]["threshold"] = chosen[0]
-        catalog["models"][0]["calibration"] = {"date": args.date, "preprocessing": VERSION, "modelSha256": digest(args.model), "vadSha256": digest(args.vad), "languages": [{"language": "en", "corpus": report["corpus"], "impostorPairs": len(impostor), "sameSpeakerPairs": len(own), "falseAcceptRate": chosen[1], "sameSpeakerPassRate": chosen[2]}]}
+        model = catalog["models"][0]
+        model["preprocessing"] = VERSION
+        model["threshold"] = candidate if chosen else None
+        model["calibration"] = {"date": args.date, "preprocessing": VERSION, "modelSha256": digest(args.model), "vadSha256": digest(args.vad), "outcome": "passed" if chosen else "withheld", "margin": margin, "languages": [{"language": "en", "corpus": report["corpus"], "speakers": report["speakers"], "calibrationSpeakers": report["calibrationSpeakers"], "independentClips": report["independentClips"], "audioRenders": len(selected), "impostorPairs": len(all_impostor), "sameSpeakerPairs": len(all_own), "falseAcceptRate": all_far, "sameSpeakerPassRate": all_passed, "conditions": conditions}]}
         CATALOG.write_text(json.dumps(catalog, indent=2, ensure_ascii=False) + "\n")
-    print(json.dumps({key: report[key] for key in ["speakers", "impostorPairs", "sameSpeakerPairs", "threshold", "falseAcceptRate", "sameSpeakerPassRate"]}))
+    print(json.dumps({key: report[key] for key in ["speakers", "independentClips", "impostorPairs", "sameSpeakerPairs", "threshold", "falseAcceptRate", "sameSpeakerPassRate"]}), flush=True)
+    if not chosen:
+        print("No threshold satisfies the conservative margin and every calibration/validation condition. Cloning remains unavailable.", file=sys.stderr)
+        return 2
     return 0
 
 
@@ -176,24 +193,23 @@ def parity(args):
         expected = json.loads((FIXTURES / "vectors.json").read_text())
         items = [{"id": item["id"], "wav": str(FIXTURES / (item["id"] + ".wav"))} for item in expected["clips"]]
     else:
-        report = json.loads(args.report.read_text())
-        selected_speakers = sorted({item["id"].split("-")[0] for item in report["clips"]})[:2]
-        chosen = [item for speaker in selected_speakers for item in [clip for clip in report["clips"] if clip["id"].split("-")[0] == speaker][:2]]
-        FIXTURES.mkdir(parents=True, exist_ok=True)
-        for item in chosen:
-            (FIXTURES / (item["id"] + ".wav")).write_bytes((args.work / "clips" / (item["id"] + ".wav")).read_bytes())
-        items = [{"id": item["id"], "wav": str(FIXTURES / (item["id"] + ".wav"))} for item in chosen]
+        base_ids = ["1089-134686-0000", "1089-134686-0002", "1188-133604-0000", "1188-133604-0001"]
+        ids = list(base_ids)
+        for source in [base_ids[0], base_ids[2]]:
+            for rate in [48_000, 44_100]:
+                identity = f"{source}-{rate}"
+                subprocess.run([args.ffmpeg, "-nostdin", "-v", "error", "-y", "-i", str(FIXTURES / (source + ".wav")), "-ar", str(rate), "-c:a", "pcm_s16le", str(FIXTURES / (identity + ".wav"))], check=True)
+                ids.append(identity)
+        items = [{"id": identity, "wav": str(FIXTURES / (identity + ".wav"))} for identity in ids]
     prepared = preprocess(args.cli, args.vad, items, args.work / "parity")
-    runtime = session(args.model)
     vectors = []
     for item in items:
         result = prepared[item["id"]]
-        pcm = read_wav(pathlib.Path(item["wav"]))
-        speech = np.concatenate([pcm[start:end] for start, end in result["ranges"]])
-        embedding = embed(runtime, [features(window).reshape(-1).tolist() for window in windows(speech)])
-        vectors.append({"id": item["id"], "sha256": digest(pathlib.Path(item["wav"])), "ranges": result["ranges"], "embedding": embedding.tolist()})
-    scores = [[left["id"], right["id"], float(np.dot(left["embedding"], right["embedding"]))] for index, left in enumerate(vectors) for right in vectors[index + 1:]]
-    result = {"schema": "voxclip-speaker-vectors/1", "model": entry["id"], "modelSha256": digest(args.model), "vadSha256": digest(args.vad), "preprocessing": VERSION, "runtime": "onnxruntime " + ort.__version__ + " CPU", "embeddingAbsoluteTolerance": 0.0002, "scoreAbsoluteTolerance": 0.0002, "clips": vectors, "scores": scores}
+        with wave.open(item["wav"], "rb") as audio:
+            rate = audio.getframerate()
+        vectors.append({"id": item["id"], "sha256": digest(pathlib.Path(item["wav"])), "sampleRate": rate, "ranges": result["ranges"], "embedding": result["embedding"]})
+    scores = [[item["left"], item["right"], item["value"]] for item in json.loads((args.work / "parity/scores.json").read_text())]
+    result = {"schema": "voxclip-speaker-vectors/1", "model": entry["id"], "modelSha256": digest(args.model), "vadSha256": digest(args.vad), "preprocessing": VERSION, "runtime": "production Swift / ONNX Runtime 1.19.2 CPU", "embeddingAbsoluteTolerance": 0.0002, "scoreAbsoluteTolerance": 0.0002, "clips": vectors, "scores": scores}
     numerical_pcm = np.asarray([np.float32(math.sin(index * 0.071) * 0.2) for index in range(48000)], dtype=np.float32)
     numerical = features(numerical_pcm)
     feature_vector = {"preprocessing": "kaldi80-v1", "formula": "Float(sin(Double(index) * 0.071) * 0.2), 48000 samples", "first": numerical[0].tolist(), "last": numerical[-1].tolist()}
@@ -231,9 +247,10 @@ def main():
     parser.add_argument("--ffmpeg", default="ffmpeg")
     parser.add_argument("--update-catalog", action="store_true")
     parser.add_argument("--check", action="store_true")
+    parser.add_argument("--harder", action="store_true", help="Evaluate disjoint dev-other and test-other speakers without refitting the clean threshold")
     args = parser.parse_args()
     if args.mode == "calibrate" and args.corpus is None:
-        parser.error("Calibration requires an already downloaded LibriSpeech test-clean directory")
+        parser.error("Calibration requires an already downloaded LibriSpeech root with dev-clean and test-clean")
     return calibrate(args) if args.mode == "calibrate" else parity(args)
 
 
