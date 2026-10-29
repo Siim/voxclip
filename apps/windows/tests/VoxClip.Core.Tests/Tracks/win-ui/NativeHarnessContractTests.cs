@@ -44,6 +44,11 @@ public sealed class NativeHarnessContractTests
         Assert.Contains("& $companion -noLogo", flow);
         Assert.Contains("VOXCLIP_UI_NATIVE_RUNTIME = $RuntimeIdentifier", flow);
         Assert.Contains("6GB + 1536MB", flow);
+        Assert.Contains("[Diagnostics.Stopwatch]::StartNew()", flow);
+        Assert.Contains("$elapsed.Elapsed.TotalSeconds -lt 900", flow);
+        Assert.Contains("native-flow-result.json", flow);
+        Assert.Contains("FAILED native gate:", flow);
+        Assert.DoesNotContain("$deadline=[DateTime]", flow);
     }
 
     [Fact]
