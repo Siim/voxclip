@@ -1,6 +1,7 @@
 import AppKit
 import Observation
 import VoxClipCore
+import VoxClipMedia
 
 enum RewriteEntry { case selection, context, menu, shortcut, insertWords }
 enum RewriteEntryAction { case unavailable, turnOnVoiceLab, openPassage }
@@ -95,6 +96,23 @@ struct RewriteConnector {
     private(set) var quote: VoiceRewriteQuote?
     private(set) var estimate: VoiceLabCostPresentation.Kind?
     private(set) var revision = 0
+    #if DEBUG
+    private(set) var generation: RewriteGenerationSession?
+    func configureGeneration(client: ElevenLabsVoiceLab, store: VoiceConsentStore, speaker: VoiceSpeakerCheck) {
+        generation?.invalidate()
+        let region = client.region
+        let run = VoiceLabTakeRun(client: client, store: store, speaker: speaker) { [weak self] in
+            await self?.generationIsCurrent(region: region) ?? false
+        }
+        generation = RewriteGenerationSession(run: run) { [weak self] in self?.generationIsCurrent(region: region) ?? false }
+    }
+    private func generationIsCurrent(region: ElevenLabsRegion) -> Bool {
+        current && !isProposing && editor.app.bool("voiceLab.providerConsent.elevenlabs") &&
+            editor.app.bool("voiceLab.betaNoticeAccepted") &&
+            editor.app.string("transcription.elevenlabs.region", fallback: "default") == region.rawValue &&
+            (generation?.input == nil || generation?.inputsMatchCurrentSelection == true)
+    }
+    #endif
     private var shownQuoteID: UUID?
     @ObservationIgnored private let service: VoiceRewriteService?
     @ObservationIgnored private let connectorIsCurrent: @MainActor () -> Bool
@@ -228,6 +246,9 @@ struct RewriteConnector {
         schedulePreparation()
     }
     private func invalidate() {
+        #if DEBUG
+        generation?.invalidate()
+        #endif
         revision += 1; preparing?.cancel(); sending?.cancel()
         quote = nil; estimate = nil; shownQuoteID = nil; request = nil
     }
