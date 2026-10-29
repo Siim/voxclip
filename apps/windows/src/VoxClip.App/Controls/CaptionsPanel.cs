@@ -312,8 +312,10 @@ internal sealed class CaptionsPanel : UserControl
     }
     private void UpdateViewportBounds()
     {
+        var maximum = fineTune.IsExpanded || notice.IsOpen ? double.PositiveInfinity : headerViewport;
+        if (fineTuneViewport.MaxHeight < headerViewport) fineTuneViewport.MaxHeight = maximum;
         fineTuneViewport.MinHeight = headerViewport;
-        fineTuneViewport.MaxHeight = fineTune.IsExpanded || notice.IsOpen ? double.PositiveInfinity : headerViewport;
+        fineTuneViewport.MaxHeight = maximum;
     }
 
     private void MeasureFineTuneHeader()
