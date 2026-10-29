@@ -147,6 +147,11 @@ public sealed partial class EditorPage
                 return new(id, name, role, default, true);
             }
         }
+        bool HasId(KeyValuePair<AutomationPeer, FrameworkElement> entry, string id)
+        {
+            try { return entry.Key.GetAutomationId() == id; }
+            catch (Exception exception) when (exception is not OutOfMemoryException) { EnumerationFailed(entry.Value, id, exception); return false; }
+        }
         Dictionary<AutomationPeer, FrameworkElement> Observe(string sample)
         {
             var peers = CollectPeers(sample);
@@ -225,15 +230,15 @@ public sealed partial class EditorPage
                 if (captionPanel?.DebugFitRealizeChoice(id) == true)
                 {
                     await DebugSettleColumnAsync();
-                    peers = Observe("realize-" + id);
+                    peers = CollectPeers("realize-" + id);
                 }
-                var matches = peers.Where(entry => ReadPeer(entry.Key, entry.Value, id).Id == id).ToArray();
+                var matches = peers.Where(entry => HasId(entry, id)).ToArray();
                 if (matches.Length == 0 && captionPanel?.DebugFitRealizeChoice(id) == true)
                 {
                     await Task.Delay(120);
                     UpdateLayout();
                     peers = Observe("realize-" + id);
-                    matches = peers.Where(entry => ReadPeer(entry.Key, entry.Value, id).Id == id).ToArray();
+                    matches = peers.Where(entry => HasId(entry, id)).ToArray();
                 }
                 if (matches.Length > 0)
                 {
@@ -261,7 +266,7 @@ public sealed partial class EditorPage
                         failures.Add(id + ": realization/ScrollItem failed: " + exception.GetType().Name);
                     }
                 }
-                var measured = peers.Select(entry => ReadPeer(entry.Key, entry.Value, id)).Where(peer => peer.Id == id).ToArray();
+                var measured = peers.Where(entry => HasId(entry, id)).Select(entry => ReadPeer(entry.Key, entry.Value, id)).ToArray();
                 if (id == "PreviewStage" && measured.Length > 0)
                     measured = [.. measured, new ColumnPeer(id, AutomationProperties.GetName(PreviewStage), "Stage layout",
                         ElementBounds(PreviewStage), PreviewStage.Visibility != Visibility.Visible)];
