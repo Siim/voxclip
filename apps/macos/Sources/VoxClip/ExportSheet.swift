@@ -20,7 +20,7 @@ import VoxClipCore
                 TimelineView(.periodic(from: .now, by: 1)) { context in
                     Text(model.exportStatus(at: context.date))
                 }
-                ProgressView(value: model.exportProgress?.fraction).frame(width: 420)
+                ProgressView(value: model.exportProgress?.fraction).frame(width: 420).accessibilityLabel("Export progress")
                 Text(model.exportProgress?.phase.rawValue.capitalized ?? "Preparing…").foregroundStyle(.secondary)
                 HStack { Button("Close") { dismiss() }; Spacer(); Button("Cancel") { model.exportTask?.cancel() } }
             } else if !model.exports.isEmpty {
@@ -33,10 +33,11 @@ import VoxClipCore
                     ForEach(model.exportClipIDs, id: \.self) { id in Text(model.project.edits.clips.first { $0.id == id }?.title ?? "Clip").tag(id) }
                 }.onAppear { let target = model.exportClipIDs.first ?? "full"; draft.load(target: target, model: model); shareTarget = target }
                 TextEditor(text: Binding(get: { draft.captionDraft }, set: { draft.edit($0); copied = false })).focused($captionFocused).frame(height: 90).border(Color.secondary.opacity(0.3))
+                    .accessibilityLabel("Caption")
                 HStack { if let weight = ShareText.weight(draft.captionDraft) { Text("\(weight)/280 X").foregroundStyle(weight > 280 ? DesignValues.color("status.warning") : Color.secondary) }; Text("\(draft.captionDraft.unicodeScalars.count)/3,000 LinkedIn").foregroundStyle(.secondary) }.font(.caption.monospacedDigit())
                 HStack {
                     Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting(model.exports.map(\.outputURL)) }
-                    Button(copied ? "Caption copied." : "Copy caption") { commitCaption(); copyText(draft.captionDraft); copied = true; copyRevision += 1 }
+                    Button(copied ? "Caption copied." : "Copy caption") { commitCaption(); copyText(draft.captionDraft); copied = true; copyRevision += 1; model.announce("Caption copied.") }
                     Button("Open X") { openShare("x") }.disabled(opening)
                     Button("Open LinkedIn") { openShare("linkedin") }.disabled(opening)
                 }
@@ -174,6 +175,8 @@ extension EditorModel {
         exportError = nil; exports = []; exporting = true; exportStartedAt = Date(); exportIndex = 1
         exportClipIDs = targets.compactMap { if case .clip(let id) = $0 { id } else { nil } }
         activeExportKey = targets.first.map { ExportLedger.key($0, aspect: snapshot.export.aspect) }
+        let total = targets.count
+        announce(total == 1 ? "Exporting 1 video" : "Exporting \(total) videos")
         exportTask = Task { [weak self] in
             guard let self else { return }
             defer { exporting = false; exportProgress = nil; activeExportKey = nil }
@@ -198,7 +201,10 @@ extension EditorModel {
                     let srt = snapshot.export.srt ? url.deletingPathExtension().appendingPathExtension("srt") : nil
                     let job = ExportJob(target: target, render: render, aspect: snapshot.export.aspect, quality: snapshot.export.quality, outputURL: url, writeSRT: snapshot.export.srt, srtURL: srt)
                     let result = try await exporter.export(job) { [weak self] value in Task { @MainActor in
-                        if self?.activeExportKey == key { self?.exportProgress = value }
+                        guard let self, self.activeExportKey == key else { return }
+                        let before = Int((self.exportProgress?.fraction ?? 0) * 4), after = Int((value.fraction ?? 0) * 4)
+                        self.exportProgress = value
+                        if after > before, after < 4 { self.announce("Rendering \(self.exportIndex) of \(total) · \(after * 25)%") }
                     } }
                     exports.append(result)
                     try app.exportLedger.record(ExportRecord(projectID: snapshot.id, targetID: ExportLedger.targetID(target), exportedAt: Date(),
@@ -206,6 +212,7 @@ extension EditorModel {
                     activeExportKey = nil
                 }
                 await app.log.write(LogEntry(level: .info, category: "export", message: "success targets=\(exports.count)"))
+                announce("Saved \(exports.count) video\(exports.count == 1 ? "" : "s") to \(FileManager.default.displayName(atPath: folder.path))")
                 if openFolderAfter { NSWorkspace.shared.activateFileViewerSelecting(exports.map(\.outputURL)) }
             } catch is CancellationError {
                 if let key = activeExportKey { failedExports[key] = folder }
@@ -216,6 +223,7 @@ extension EditorModel {
             } catch {
                 if let key = activeExportKey { failedExports[key] = folder }
                 exportError = await app.safeError(error, context: "export")
+                if let exportError, !exportError.isEmpty { announce(exportError) }
             }
         }
     }

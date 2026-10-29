@@ -219,7 +219,14 @@ import VoxClipCore
         .accessibilityElement(children: .combine)
         .accessibilityLabel(shownStatus.spokenState.map { "\(title), \($0)" } ?? title)
         .accessibilityHint(item.map { "\(durationLabel($0.duration)), \($0.keptClips) clips, opened \(RecentProjects.relativeDay($0.modified))" } ?? "")
+        .accessibilityActions {
+            if shownStatus == .missing || shownStatus == .unreadable { Button("Locate the video for \(title)", action: locate) }
+            if transcription != nil { Button("Cancel transcription", action: cancelTranscription) }
+        }
     }
+
+    private func locate() { Task { await shell.locateMedia(for: url) } }
+    private func cancelTranscription() { transcription?.workTask?.cancel(); transcription?.progress = nil }
 
     @ViewBuilder private var meta: some View {
         switch shownStatus {
@@ -228,7 +235,7 @@ import VoxClipCore
         case .transcribing:
             HStack(spacing: 6) {
                 Text("Transcribing on this Mac").foregroundStyle(DesignValues.color("text.secondary"))
-                Button("Cancel") { transcription?.workTask?.cancel(); transcription?.progress = nil }
+                Button("Cancel", action: cancelTranscription)
                     .buttonStyle(.link).underline().foregroundStyle(DesignValues.color("text.primary"))
             }
         case .loading: Text("Loading…").foregroundStyle(DesignValues.color("text.secondary"))
@@ -244,7 +251,7 @@ import VoxClipCore
     private func warning(_ text: String) -> some View {
         HStack(spacing: 6) {
             Label(text, systemImage: "exclamationmark.triangle").labelStyle(.titleAndIcon)
-            Button("Locate…") { Task { await shell.locateMedia(for: url) } }
+            Button("Locate…", action: locate)
                 .buttonStyle(.link).underline()
                 .accessibilityLabel("Locate the video for \(title)")
         }

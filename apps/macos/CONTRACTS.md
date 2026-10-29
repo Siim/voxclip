@@ -1,5 +1,12 @@
 # macOS implementation contracts
 
+### 2026-10-30 — sol-mac-polish — accessibility follow-ups
+
+- Bare-key menu equivalents yield to focused buttons, switches, segmented controls and pop-ups; transcript, sidebar and timeline transport paths remain available, as do Command shortcuts. Native menu checks and window-free focused-control checks cover the distinction.
+- Transcript accessibility exposes cut/playing/AI-modified states, hides decoration markers in length-preserving whole-text reads, and supplies spoken selected text. Collapsed cuts read as a count of cut words. Attributed-text checks protect offsets; actual VoiceOver speech remains a lead-owned acceptance gate.
+- Rename, Retry export, Locate, Cancel transcription and connector Change/Retry remain independently reachable. Clip → Cancel Finding Clips uses Command-period; sidebar Escape cancels a search before hiding the sidebar. Cancellation stays silent.
+- Export announces start, quarter-progress, success or the inline error; Caption and Export progress have labels, and copying announces completion. Fake-export headless checks cover start/completion/error/cancellation; native focus and announcement order are owed to the lead.
+
 ### 2026-10-30 — sol-mac-polish — release gaps
 
 - Transport buttons use system arrows with a runtime 3 overlay; no Apple-derived symbol artwork is bundled or retained in the source tree. Asset-catalog release tests reject custom symbol files and the old compiled glyphs.

@@ -19,10 +19,14 @@ import VoxClipCore
             Text("Find clips in this take").font(.headline)
             if let connector {
                 HStack(spacing: 6) {
-                    Text("Connector").foregroundStyle(DesignValues.color("text.secondary"))
-                    Text("\(connector.label) ·")
-                    Text("●").foregroundStyle(DesignValues.color(status == .ready ? "status.success" : "status.warning")).accessibilityHidden(true)
-                    Text(Self.statusText(status))
+                    HStack(spacing: 6) {
+                        Text("Connector").foregroundStyle(DesignValues.color("text.secondary"))
+                        Text("\(connector.label) ·")
+                        Text("●").foregroundStyle(DesignValues.color(status == .ready ? "status.success" : "status.warning")).accessibilityHidden(true)
+                        Text(Self.statusText(status))
+                    }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityIdentifier("clipConnectorStatus")
                     Spacer(minLength: 8)
                     Button("Change…") { model.showFindClips = false; openVoxClipSettings(pane: "ai") }.buttonStyle(.borderless).foregroundStyle(DesignValues.accentText)
                     if status != nil && status != .ready {
@@ -30,8 +34,6 @@ import VoxClipCore
                     }
                 }
                 .font(.callout)
-                .accessibilityElement(children: .combine)
-                .accessibilityIdentifier("clipConnectorStatus")
             } else {
                 HStack {
                     Text("Choose a connector in AI settings.")

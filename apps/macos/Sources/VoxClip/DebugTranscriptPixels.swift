@@ -99,6 +99,16 @@ import VoxClipCore
         results.append(.init(name: "word-snapped selection excludes clip badge and end-bracket placeholders", passed: decorations.count == 2 && avoidsDecorations && text.map.span(at: decorations[0].range.location)?.selectable == true))
         let copied = selected.flatMap { text.map.intersecting($0).filter(\.selectable) }.filter { !$0.pause }.map { (text.string as NSString).substring(with: $0.range) }.joined(separator: " ")
         results.append(.init(name: "Copy Text's word map never includes a badge or bracket", passed: !copied.contains(" ") && !copied.contains("]") && copied.contains("uncertain")))
+        let whole = NSRange(location: 0, length: text.string.utf16.count)
+        let spokenValue = text.accessibilityValue() as? String
+        let spokenText = text.accessibilityAttributedString(for: whole)
+        results.append(.init(name: "VoiceOver reads the clip markers as blanks and keeps the transcript's length", passed:
+            spokenValue?.utf16.count == whole.length && spokenValue?.contains("]") == false && spokenText?.length == whole.length && spokenText?.string.contains("]") == false))
+        if let cut = text.map.span(id: "pixel-cut") {
+            let states = spokenText?.attribute(.accessibilityCustomText, at: cut.range.location, effectiveRange: nil) as? [String]
+            results.append(.init(name: "a cut word reads with its state alone and carries it as a text attribute within a line", passed:
+                text.accessibilityAttributedString(for: cut.range)?.string == text.accessibilityString(for: cut.range) && text.accessibilityString(for: cut.range)?.contains(", cut") == true && states?.first == "cut"))
+        }
         if let pause = model.pauses.first {
             let uncut = renderer.attributes[pause.id]?[.vcRounded] == nil
             pageProject.edits.cutPauseIds = [pause.id]
@@ -184,6 +194,7 @@ import VoxClipCore
                     let base = (text.string as NSString).substring(with: span.range)
                     let expected: String = base + (cut ? ", cut" : "") + (playing ? ", playing" : "") + (ai ? ", AI modified" : "")
                     results.append(.init(name: "VoiceOver word states use cut, playing, AI modified order (cut=\(cut), playing=\(playing), AI=\(ai))", passed: text.accessibilityString(for: span.range) == expected))
+                    results.append(.init(name: "VoiceOver attributed word reading matches (cut=\(cut), playing=\(playing), AI=\(ai))", passed: text.accessibilityAttributedString(for: span.range)?.string == expected))
                 }
             }
         }

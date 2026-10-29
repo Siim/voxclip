@@ -426,15 +426,53 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
     override func accessibilityString(for range: NSRange) -> String? {
         map.intersecting(range).filter(\.selectable).map(spoken).joined(separator: " ")
     }
-    private func spoken(_ span: TranscriptSpan) -> String {
-        guard let model else { return (string as NSString).substring(with: span.range) }
-        if span.pause, let pause = model.pauseIndex[span.id] {
-            let suffix = model.cutPauseIDs.contains(span.id) ? ", cut" : ""
-            return "pause \(toFixed1(pause.duration)) seconds\(suffix)"
+    override func accessibilityAttributedString(for range: NSRange) -> NSAttributedString? {
+        let words = map.intersecting(range).filter(\.selectable)
+        if words.count == 1, let span = words.first, NSIntersectionRange(span.range, range) == span.range, range.length <= span.range.length + 1 {
+            return NSAttributedString(string: spoken(span))
         }
-        var value = (string as NSString).substring(with: span.range)
-        if model.cutWordIDs.contains(span.id) { value += ", cut" }
-        if model.playingWordID == span.id { value += ", playing" }
+        guard let base = super.accessibilityAttributedString(for: range) else { return nil }
+        guard base.length == range.length else { return base }
+        let result = NSMutableAttributedString(attributedString: base)
+        for span in map.intersecting(range) {
+            let overlap = NSIntersectionRange(span.range, range)
+            guard overlap.length > 0 else { continue }
+            let local = NSRange(location: overlap.location - range.location, length: overlap.length)
+            if !span.selectable { result.replaceCharacters(in: local, with: String(repeating: " ", count: local.length)); continue }
+            if span.pause || !span.ids.isEmpty, overlap.location == span.range.location { result.replaceCharacters(in: NSRange(location: local.location, length: 1), with: " ") }
+            let states = accessibilityStates(span)
+            if !states.isEmpty { result.addAttribute(.accessibilityCustomText, value: states, range: local) }
+        }
+        return result
+    }
+    override func accessibilityValue() -> String? {
+        let value = NSMutableString(string: string)
+        for span in map.spans where !span.selectable && NSMaxRange(span.range) <= value.length {
+            value.replaceCharacters(in: span.range, with: String(repeating: " ", count: span.range.length))
+        }
+        return value as String
+    }
+    override func accessibilitySelectedText() -> String? {
+        let ranges = selectedRanges.map(\.rangeValue)
+        guard let first = ranges.first, let last = ranges.last else { return "" }
+        let selection = NSUnionRange(first, last)
+        return selection.length == 0 ? "" : accessibilityString(for: selection)
+    }
+    private func spoken(_ span: TranscriptSpan) -> String {
+        let states = accessibilityStates(span)
+        if span.pause || !span.ids.isEmpty, !states.isEmpty { return states.joined(separator: ", ") }
+        return ([(string as NSString).substring(with: span.range)] + states).joined(separator: ", ")
+    }
+    private func accessibilityStates(_ span: TranscriptSpan) -> [String] {
+        guard let model else { return [] }
+        if span.pause {
+            guard let pause = model.pauseIndex[span.id] else { return [] }
+            return ["pause \(toFixed1(pause.duration)) seconds"] + (model.cutPauseIDs.contains(span.id) ? ["cut"] : [])
+        }
+        if !span.ids.isEmpty { return [span.ids.count == 1 ? "1 cut word" : "\(span.ids.count) cut words"] }
+        var states: [String] = []
+        if model.cutWordIDs.contains(span.id) { states.append("cut") }
+        if model.playingWordID == span.id { states.append("playing") }
         if let position = model.index(span.id), let plan = model.voiceLabPlan {
             let word = model.words[position]
             let modified: Bool = plan.pieces.contains { (piece: VoiceLabOutputPiece) -> Bool in
@@ -442,9 +480,9 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
                 let end: Double = Double(piece.sourceEndSample) / plan.sampleRate
                 return piece.kind == .synth && word.start >= start && word.end <= end
             }
-            if modified { value += ", AI modified" }
+            if modified { states.append("AI modified") }
         }
-        return value
+        return states
     }
     override func keyDown(with event: NSEvent) {
         model?.focusedPane = .transcript

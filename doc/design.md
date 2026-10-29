@@ -978,7 +978,7 @@ The sidebar list is the clip range layer (editing §2.5 and §10.6), presented a
   - the footnote "Sends transcript text with word numbers. No audio or video." For local connectors it reads "Runs on this {Mac/PC}. Nothing leaves it.";
   - **[Find Clips]** as the default button.
 - **Consent.** The first cloud use runs the existing consent alert (ai.md §4.8).
-- **While it runs:** the popover closes. The sidebar shows a "Finding clips…" row under the Suggested header, with a spinner (Windows: a fixed-width `ProgressRing`), **Cancel**, and the connector line "{connector} · reading {duration} of transcript" in 11 `text.secondary`.
+- **While it runs:** the popover closes. The sidebar shows a "Finding clips…" row under the Suggested header, with a spinner (Windows: a fixed-width `ProgressRing`), **Cancel**, and the connector line "{connector} · reading {duration} of transcript" in 11 `text.secondary`. On macOS, Clip > Cancel Finding Clips (⌘.) and Esc in the sidebar also cancel; cancelling is silent.
 - **Results:** the new suggestions appear under Suggested and the first is focused (not selected). Announce "Found 3 clips".
 - **No connector:** the popover is replaced by an inline callout under the sidebar actions. Copy is in §13, with **Set Up AI…** and the line "You can also select words and press ⌘K to make a clip yourself."
 - **Failures** show in the same place with **Retry** (§13).
@@ -1330,7 +1330,7 @@ Model row: name; "languages · size · licence"; third-party note with a Source 
 
 ### 11.1 Scope rule
 
-Single-letter keys (J K L I O P C [ ]) and bare Space, ⌫ and arrows act on the editor only when keyboard focus is in the transcript, the viewer or the timeline **and** no inline correction field is open **and** no IME composition is in progress (`NSTextInputClient.hasMarkedText()` false; WinUI: focus is not a `TextBox`, `PasswordBox`, `AutoSuggestBox`, `RichEditBox` or `NumberBox`). In any text field they type text. Single-letter keys do not act in the sidebar list either, except [ and ]. macOS implements them in the `NSTextView` subclass's `keyDown` and in `.onKeyPress` on the viewer and timeline; Windows uses `KeyboardAccelerator`s scoped with `ScopeOwner` to the editor root plus a focus check.
+Single-letter keys (J K L I O P C [ ]) and bare Space, ⌫ and arrows act on the editor only when keyboard focus is in the transcript, the viewer or the timeline **and** no inline correction field is open **and** no IME composition is in progress (`NSTextInputClient.hasMarkedText()` false; WinUI: focus is not a `TextBox`, `PasswordBox`, `AutoSuggestBox`, `RichEditBox` or `NumberBox`). In any text field they type text. Single-letter keys do not act in the sidebar list either, except [ and ]. A button, switch, segmented control or pop-up that has keyboard focus (Full Keyboard Access) keeps Space and the other bare keys for itself; on macOS the editor's bare-key menu commands are disabled for that key press. macOS implements them in the `NSTextView` subclass's `keyDown` and in `.onKeyPress` on the viewer and timeline; Windows uses `KeyboardAccelerator`s scoped with `ScopeOwner` to the editor root plus a focus check.
 
 On Windows avoid **Ctrl+Alt+letter** (AltGr on many layouts types characters). Use Ctrl+Shift.
 
@@ -1389,7 +1389,7 @@ On Windows avoid **Ctrl+Alt+letter** (AltGr on many layouts types characters). U
 - **Edit:** Undo, Redo, Cut Selection, Restore Selection, Correct Word, Rewrite… (⇧⌘R), Insert Words…, Select All, Copy Text, Find…, Find Next, Find Previous, Cut Fillers, Tighten Pauses, Restore All Cuts, Transcribe Again…; M2: Tighten with AI…, Clean Audio…; M3: Change Voice….
 - **View:** Show/Hide Sidebar (⌃⌘S), Show/Hide Viewer (⌥⌘I), Home (⌘1), Full Take (⌘2), Show/Hide Cut Words (⇧⌘H), Show/Hide Pauses, Source/Edited Timeline, Bigger/Smaller/Actual Size, Enter Full Screen. Each Show/Hide title describes the current action.
 - **Playback:** Play/Pause, Play from Selection, Preview Cut, Back 3 Seconds (J), Forward 3 Seconds, Shuttle Back/Stop/Forward, Go to Start/End.
-- **Clip:** Make Clip from Selection (⌘K), Find Clips… (⇧⌘K), Keep Suggestion, Dismiss Suggestion, Keep All Suggestions, Rename Clip…, Remove Clip, Set Start (I), Set End (O), Previous Clip ([), Next Clip (]), Export Clip….
+- **Clip:** Make Clip from Selection (⌘K), Find Clips… (⇧⌘K), Cancel Finding Clips (⌘., only while finding), Keep Suggestion, Dismiss Suggestion, Keep All Suggestions, Rename Clip…, Remove Clip, Set Start (I), Set End (O), Previous Clip ([), Next Clip (]), Export Clip….
 - **Window:** standard items, plus "VoxClip" (brings back the main window).
 - **Help:** Keyboard Shortcuts, Welcome Tour, What Leaves This Mac, Reveal Logs, Copy Diagnostics.
 
@@ -1452,9 +1452,9 @@ Voice: short, factual, calm, always reassuring about the media. No exclamation m
 | Everything cut | Editor, Export | Export disabled; status "Keep at least one word before exporting." |
 | Suggestion selected, Export pressed | Export tooltip | "Keep this clip to export it." |
 | Edit summary | toolbar subtitle / command row | §3.5 grammar: "{edited} after cuts · {n} cuts", "Clip {k} · {edited} after cuts · {n} cuts", "Clip {k} · {edited} · No cuts yet" |
-| Export progress | Export sheet; sidebar row | sheet: "Rendering {i} of {n} · {p}% · about {t} left" [Cancel]; row: "Exporting {p}%" with a ring |
-| Export done | Export sheet | "Saved {n} video(s) to {folder}" + share buttons |
-| Export failure | Export sheet; sidebar row | sheet: "Export stopped: {reason}. Your edits are saved." [Try again]; row: "⚠ Export failed" [Retry] |
+| Export progress | Export sheet; sidebar row | sheet: "Rendering {i} of {n} · {p}% · about {t} left" [Cancel]; row: "Exporting {p}%" with a ring. Announce "Exporting {n} video(s)", then "Rendering {i} of {n} · {p}%" at 25, 50 and 75% |
+| Export done | Export sheet | "Saved {n} video(s) to {folder}" + share buttons. Announce it with the folder's name; Copy caption announces "Caption copied." |
+| Export failure | Export sheet; sidebar row | sheet: "Export stopped: {reason}. Your edits are saved." [Try again]; row: "⚠ Export failed" [Retry]. Announce the sheet message; a cancelled export is silent |
 | Exported, then edited | sidebar row, second line | "⚠ Edited since export" in `status.warning` |
 | No encoder (Windows) | Export | "No H.264 encoder is available on this PC. Install the Media Feature Pack or update your graphics driver." (Error) |
 | HDR source (Windows) | Export | "This video is HDR. Colours are converted to standard range and may look flatter." (Informational) |
