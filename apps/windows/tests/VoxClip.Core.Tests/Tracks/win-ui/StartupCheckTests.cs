@@ -10,6 +10,18 @@ namespace VoxClip.Ui.Tests;
 public sealed class StartupCheckTests
 {
     [Fact]
+    public void RightColumnHasABoundedSingleSurfaceWithoutInactivePeerSubtrees()
+    {
+        var root = Path.GetDirectoryName(Environment.GetEnvironmentVariable("VOXCLIP_SHARED_DIR"))!;
+        var source = File.ReadAllText(Path.Combine(root, "apps/windows/src/VoxClip.App/Controls/RightColumn.cs"));
+        Assert.Equal(2, source.Split("Children.Add(", StringSplitOptions.None).Length - 1);
+        Assert.DoesNotContain("Children.Insert(", source);
+        Assert.DoesNotContain("Visibility.Collapsed", source);
+        Assert.Contains("surface.Child = panel", source);
+        Assert.Equal(2, source.Split("surface.Child = captions", StringSplitOptions.None).Length - 1);
+    }
+
+    [Fact]
     public void FirstLaunchTourWaitsForTheWindowRootAndCleansUpItsSubscription()
     {
         var root = Path.GetDirectoryName(Environment.GetEnvironmentVariable("VOXCLIP_SHARED_DIR"))!;
