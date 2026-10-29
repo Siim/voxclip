@@ -53,6 +53,11 @@ private final class TakeRunDispatchSignal: Sendable {
 private actor TakeRunSuspension {
     nonisolated let reached = TakeRunDispatchSignal()
     private var continuation: CheckedContinuation<Void, Never>?
+    private var calls = 0
+    func pause(on ordinal: Int) async {
+        calls += 1
+        if calls == ordinal { await pause() }
+    }
     func pause() async {
         await withCheckedContinuation { continuation in self.continuation = continuation; reached.fire() }
     }
@@ -63,6 +68,7 @@ private final class TakeRunHTTP: Sendable {
         var seeds: [UInt32] = []
         var contexts: [[String: String]] = []
         var qa = 0
+        var qaWAVs: [Data] = []
         var firstStatus = 200
         var mismatchCount = 0
         var duration = 4.0
@@ -149,7 +155,12 @@ struct VoiceLabTakeRunTests {
                 let alignment: Any = state.missingAlignment ? NSNull() : ["characters": characters, "character_start_times_seconds": state.malformedAlignment ? Array(starts.dropLast()) : starts, "character_end_times_seconds": ends]
                 return (200, [:], try JSONSerialization.data(withJSONObject: ["audio_base64": pcm.base64EncodedString(), "alignment": alignment]))
             case ("POST", "/v1/speech-to-text"):
-                let body = String(decoding: try VoiceLabRequestFixtures.body(request), as: UTF8.self)
+                let bytes = try VoiceLabRequestFixtures.body(request)
+                let body = String(decoding: bytes, as: UTF8.self)
+                let start = try #require(bytes.range(of: Data("RIFF".utf8))?.lowerBound)
+                let size = bytes.withUnsafeBytes { Int(UInt32(littleEndian: $0.loadUnaligned(fromByteOffset: start + 4, as: UInt32.self))) }
+                let wave = bytes.subdata(in: start..<(start + size + 8))
+                http.value.withLock { $0.qaWAVs.append(wave) }
                 for (field, value) in [("model_id", "scribe_v2"), ("language_code", "en"), ("diarize", "false"), ("tag_audio_events", "false"), ("timestamps_granularity", "word")] {
                     #expect(body.contains("name=\"\(field)\"\r\n\r\n\(value)\r\n"))
                 }
@@ -163,7 +174,8 @@ struct VoiceLabTakeRunTests {
         let client = ElevenLabsVoiceLab(keys: SpeechTestKeys(value: "synthetic-take-key"), session: URLSession(configuration: SpeechStubHTTP.configuration(for: base)),
             prices: VoiceLabPricingTests.catalogIfPresent, spend: ledger, enforceCapabilities: true)
         let clock = TakeRunClock(); await client.useClock({ clock.now() }, monotonic: { clock.elapsed() })
-        let run = VoiceLabTakeRun(client: client, store: store, speaker: .init(embedder: TakeRunEmbedder(drift: drift), calibratedThreshold: 0.45), dispatchIfCurrent: { start in
+        let run = VoiceLabTakeRun(client: client, store: store, speaker: .init(embedder: TakeRunEmbedder(drift: drift), calibratedThreshold: 0.45),
+            storage: VoiceLabTakeStorage(projectId: UUID().uuidString.lowercased(), paidRoot: root.appendingPathComponent("VoiceLab"), scratchRoot: root.appendingPathComponent("scratch")), dispatchIfCurrent: { start in
             try http.value.withLock { state in
                 guard state.current else { throw VoiceLabError.consentRequired }
                 try start()
@@ -294,6 +306,38 @@ struct VoiceLabTakeRunTests {
         #expect(await fixture.ledger.total(provider: "elevenlabs", at: fixture.clock.now())?.usd == amount)
         await #expect(throws: VoiceLabError.consentRequired) { try await fixture.run.execute(quote, approved: true) }
         #expect(fixture.http.value.withLock { $0.seeds.count } == 1)
+    }
+    @Test func qaMeasuresScratchReadbackAndRejectionRemovesOnlyScratch() async throws {
+        let fixture = try await fixture(); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let quote = try await fixture.run.prepare(fixture.input)
+        let result = try await fixture.run.execute(quote, approved: true)
+        let row = try #require(result.best), audio = try #require(row.audio), qa = try #require(row.qa)
+        let scratch = try #require(await fixture.run.scratch(for: row.id))
+        #expect(scratch.audio == audio)
+        #expect(fixture.http.value.withLock { $0.qaWAVs.first } == (try VoiceLabTakeWAV.encode(audio.mixed, rate: audio.sampleRate)))
+        #expect(qa.values.peakDbfs == (try VoiceLabLoudness.samplePeakDbfs(audio.mixed)))
+        #expect(qa.values.lufsJumpLu == (try VoiceLabLoudness.lufsJumpLu(audio.mixed, sampleRate: audio.sampleRate, seamSamples: audio.seams)))
+        let paid = try #require(await fixture.run.paidAsset(for: row.id))
+        let paidURL = fixture.root.appendingPathComponent("VoiceLab").appendingPathComponent(paid.file)
+        await fixture.run.reject(row.id)
+        #expect(!scratch.isValid && !FileManager.default.fileExists(atPath: scratch.mixedAudioURL.path))
+        #expect(FileManager.default.fileExists(atPath: paidURL.path))
+    }
+    @Test func withdrawalAlsoOrdersScribeDispatchAfterScratchPreparation() async throws {
+        let fixture = try await fixture(); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let quote = try await fixture.run.prepare(fixture.input)
+        let suspension = TakeRunSuspension()
+        await fixture.client.useDispatchHook { await suspension.pause(on: 2) }
+        let sending = Task { try await fixture.run.execute(quote, approved: true) }
+        try await suspension.reached.wait()
+        _ = try await fixture.store.beginDeletion(fixture.input.recordID, region: .default, at: Date())
+        await suspension.release()
+        let result = try await sending.value
+        #expect(result.end == .fatal)
+        #expect(fixture.http.value.withLock { $0.seeds.count == 1 && $0.qa == 0 })
+        let scratch = try #require(await fixture.run.scratch(for: quote.takes[0].synthesis.requestID))
+        await fixture.run.cancel()
+        #expect(!scratch.isValid && !FileManager.default.fileExists(atPath: scratch.mixedAudioURL.path))
     }
     @Test(arguments: [401, 500]) func fatalVersusNonfatalFailureRemainsARow(status: Int) async throws {
         let fixture = try await fixture { $0.firstStatus = status }; defer { try? FileManager.default.removeItem(at: fixture.root) }

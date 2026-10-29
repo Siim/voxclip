@@ -18,6 +18,9 @@ public actor VoiceLabTakeRun {
     private let speaker: VoiceSpeakerCheck
     private let useGuard: VoiceUseGuard
     private let inputsAreCurrent: @Sendable () async -> Bool
+    private let storage: VoiceLabTakeStorage
+    private var scratches: [UUID: VoiceLabTakeScratch] = [:]
+    private var paidAssets: [UUID: VoiceLabAsset] = [:]
     private let dispatchIfCurrent: VoiceLabDispatchBoundary
     private nonisolated let dispatchRevision = Mutex(0)
     private var pending: Pending?
@@ -31,12 +34,17 @@ public actor VoiceLabTakeRun {
     package func useExecuteHook(_ hook: @escaping @Sendable (String) async -> Void) { executeHook = hook }
     #endif
     public init(client: ElevenLabsVoiceLab, store: VoiceConsentStore, speaker: VoiceSpeakerCheck,
+                storage: VoiceLabTakeStorage,
                 dispatchIfCurrent: @escaping VoiceLabDispatchBoundary,
                 inputsAreCurrent: @escaping @Sendable () async -> Bool) {
         self.client = client; self.store = store; self.speaker = speaker; useGuard = VoiceUseGuard(store: store, check: speaker)
         self.inputsAreCurrent = inputsAreCurrent
         self.dispatchIfCurrent = dispatchIfCurrent
+        self.storage = storage
     }
+    public func scratch(for takeId: UUID) -> VoiceLabTakeScratch? { scratches[takeId] }
+    public func paidAsset(for takeId: UUID) -> VoiceLabAsset? { paidAssets[takeId] }
+    public func reject(_ takeId: UUID) { scratches.removeValue(forKey: takeId)?.invalidate() }
     public func discover(language: String) async throws -> (models: [VoiceLabModel], voices: [VoiceConsentRecord]) {
         guard await inputsAreCurrent() else { throw VoiceLabError.consentRequired }
         let models = try await client.models().filter { $0.supportsTimestampedTTS && $0.languages.contains(language) }
@@ -50,6 +58,7 @@ public actor VoiceLabTakeRun {
         await invalidate()
         if let task { _ = await task.value }
         task = nil; runningID = nil
+        try FileManager.default.createDirectory(at: storage.scratchRoot, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         let currentRevision = revision
         let record = try await store.load(input.recordID)
         try await store.validateUse(record)
@@ -75,10 +84,11 @@ public actor VoiceLabTakeRun {
                 quotes.append(qa)
                 takes.append(VoiceLabTakeQuote(index: index, seed: options.seed, synthesis: speech, qa: qa))
             }
-            guard revision == currentRevision, await inputsAreCurrent() else { throw Abort.invalidated }
+            let modelRevision = await client.modelRevision()
+            guard revision == currentRevision, await inputsAreCurrent(), revision == currentRevision else { throw Abort.invalidated }
             let quote = VoiceLabTakeRunQuote(id: id, takes: takes, preparedAt: quotes.map(\.preparedAt).min() ?? Date())
             pending = Pending(quote: quote, input: input, record: record, preflight: preflight, source: resampled,
-                              sourceSpeech: sourceSpeech, modelRevision: await client.modelRevision())
+                              sourceSpeech: sourceSpeech, modelRevision: modelRevision)
             return quote
         } catch {
             await client.discardRun(id, quotes: quotes)
@@ -125,6 +135,8 @@ public actor VoiceLabTakeRun {
     public func cancel() async {
         stop = .cancelled; revision += 1; task?.cancel()
         dispatchRevision.withLock { $0 = revision }
+        for scratch in scratches.values { scratch.invalidate() }
+        scratches.removeAll()
         if let pending {
             self.pending = nil
             await client.discardRun(pending.quote.id, quotes: pending.quote.takes.flatMap { [$0.synthesis, $0.qa] })
@@ -181,8 +193,21 @@ public actor VoiceLabTakeRun {
                     authorization: VoiceLabAuthorization(quote: take.synthesis, approved: true))
                 receipt = result.receipt
                 generated = result
+                let storage = storage
+                let paid = try await Task.detached(priority: .utility) {
+                    try VoiceLabAssetStore.write(pcm16: result.pcm, sampleRate: result.sampleRate, projectId: storage.projectId,
+                        assetId: UUID().uuidString.lowercased(), paidRoot: storage.paidRoot, createdAt: Date())
+                }.value
+                paidAssets[take.synthesis.requestID] = paid
                 try await validate(value, revision: expected)
-                let processed = try VoiceLabTakeProcessing.process(result, input: value.input, preflight: value.preflight, sourceAtAssetRate: value.source)
+                let analysis = try VoiceLabTakeProcessing.process(result, input: value.input, preflight: value.preflight)
+                let snapshot = try VoiceLabAssets.preparePaid(asset: paid, projectId: storage.projectId, paidRoot: storage.paidRoot, scratchRoot: storage.scratchRoot)
+                let fitted = try VoiceLabSilenceFit.prepare(snapshot: snapshot, paidAsset: paid, fit: analysis.fit,
+                    window: value.input.window, sourceSampleRate: value.input.sourceSampleRate)
+                let scratch = try VoiceLabAudioRenderer.stageTake(fitted: fitted, analysis: analysis, input: value.input,
+                    sourceAtAssetRate: value.source, scratchRoot: storage.scratchRoot)
+                scratches[take.synthesis.requestID] = scratch
+                let processed = scratch.audio
                 audio = processed
                 let vector: [Float]
                 do {
@@ -201,7 +226,10 @@ public actor VoiceLabTakeRun {
                 guard let owner = VoiceConsentRecord.decodeEmbedding(value.record.speaker.embedding) else { throw VoiceConsentError.invalidRecord }
                 let score = try VoiceSpeakerCheck.cosine(owner, vector)
                 try await validate(value, revision: expected)
-                let capability = VoiceOperationCapability(quote: take.qa) { try await self.validate(value, revision: expected) }
+                let store = store
+                let capability = VoiceOperationCapability(quote: take.qa, reserve: {
+                    try await store.dispatchPermit(value.record, requestID: take.qa.requestID)
+                }) { try await self.validate(value, revision: expected) }
                 try await capability.bindDispatch(boundary(revision: expected))
                 let recognized = try await client.transcribeQA(processed.mixed, rate: processed.sampleRate,
                     language: value.input.language, authorization: VoiceLabAuthorization(quote: take.qa, approved: true), capability: capability)

@@ -125,6 +125,11 @@ public struct VoiceLabTakeAudio: Sendable, Equatable {
     public let roomTone: VoiceLabRoomTone?
     public let fit: VoiceLabFitResult
     public var words: [VoiceLabWord] { fit.plan.words }
+    package init(sampleRate: Int, trimmed: [Float], mixed: [Float], patchRange: Range<Int>, seams: [Int], gainDb: Double,
+                 roomTone: VoiceLabRoomTone?, fit: VoiceLabFitResult) {
+        self.sampleRate = sampleRate; self.trimmed = trimmed; self.mixed = mixed; self.patchRange = patchRange
+        self.seams = seams; self.gainDb = gainDb; self.roomTone = roomTone; self.fit = fit
+    }
 }
 
 public enum VoiceLabTakeFailure: Sendable, Equatable {

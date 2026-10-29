@@ -30,6 +30,7 @@ public enum VoiceLabAssetError: Error, LocalizedError, Sendable, Equatable {
 public final class PreparedVoiceLabAsset: @unchecked Sendable {
     public let segmentId: String
     public let assetId: String
+    public let sha256: String
     public let url: URL
     public let sampleRate: Int
     public let channels: Int
@@ -40,9 +41,9 @@ public final class PreparedVoiceLabAsset: @unchecked Sendable {
     public let gainDb: Double
     private let scratch: URL
 
-    fileprivate init(segmentId: String, assetId: String, url: URL, sampleRate: Int, channels: Int, frameCount: Int64,
+    fileprivate init(segmentId: String, assetId: String, sha256: String, url: URL, sampleRate: Int, channels: Int, frameCount: Int64,
                      trimStartFrame: Int64, trimEndFrame: Int64, stretch: Double, gainDb: Double, scratch: URL) {
-        self.segmentId = segmentId; self.assetId = assetId; self.url = url; self.sampleRate = sampleRate; self.channels = channels
+        self.segmentId = segmentId; self.assetId = assetId; self.sha256 = sha256; self.url = url; self.sampleRate = sampleRate; self.channels = channels
         self.frameCount = frameCount; self.trimStartFrame = trimStartFrame; self.trimEndFrame = trimEndFrame
         self.stretch = stretch; self.gainDb = gainDb; self.scratch = scratch
     }
@@ -90,13 +91,26 @@ public enum VoiceLabAssets {
         guard project.voiceLab.assets?.contains(asset) == true,
               project.voiceLab.segments.first(where: { $0.id == segmentId })?.audio == audio,
               audio.assetId == asset.id else { throw VoiceLabAssetError.invalidSelection(asset.id) }
+        return try snapshot(asset: asset, audio: audio, segmentId: segmentId, projectId: project.id, paidRoot: paidRoot, scratchRoot: scratchRoot)
+    }
+
+    public static func preparePaid(asset: VoiceLabAsset, projectId: String, paidRoot: URL, scratchRoot: URL) throws -> PreparedVoiceLabAsset {
+        let audio = VoiceLabAudio(assetId: asset.id, trimStart: 0, trimEnd: asset.durationSeconds)
+        return try snapshot(asset: asset, audio: audio, segmentId: asset.id, projectId: projectId, paidRoot: paidRoot, scratchRoot: scratchRoot)
+    }
+
+    private static func snapshot(asset: VoiceLabAsset, audio: VoiceLabAudio, segmentId: String, projectId: String,
+                                 paidRoot: URL, scratchRoot: URL) throws -> PreparedVoiceLabAsset {
+        let expected = try VoiceLabAssetNaming.file(projectId: projectId, assetId: asset.id, extension: (asset.file as NSString).pathExtension)
+        guard asset.file == expected, asset.kind == "audio", asset.durationSeconds.isFinite, asset.durationSeconds > 0,
+              asset.sha256.range(of: #"\A[0-9a-f]{64}\z"#, options: .regularExpression) != nil else { throw VoiceLabAssetError.invalidSelection(asset.id) }
         let root = paidRoot.standardizedFileURL.resolvingSymlinksInPath()
         let rootFD = Darwin.open(root.path, O_RDONLY | O_DIRECTORY | O_CLOEXEC)
         guard rootFD >= 0 else {
             throw errno == EACCES || errno == EPERM ? VoiceLabAssetError.unreadable(asset.file) : VoiceLabAssetError.missing(asset.file)
         }
         defer { Darwin.close(rootFD) }
-        let projectFD = Darwin.openat(rootFD, project.id, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+        let projectFD = Darwin.openat(rootFD, projectId, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
         guard projectFD >= 0 else {
             if errno == ELOOP || errno == ENOTDIR { throw VoiceLabAssetError.unsafePath(asset.file) }
             throw errno == EACCES || errno == EPERM ? VoiceLabAssetError.unreadable(asset.file) : VoiceLabAssetError.missing(asset.file)
@@ -114,11 +128,11 @@ public enum VoiceLabAssets {
         guard info.st_size > 0, info.st_size <= maxBytes else { throw VoiceLabAssetError.tooLarge(asset.file) }
 
         let scratch = scratchRoot.appendingPathComponent("voxclip-voice-\(UUID().uuidString)", isDirectory: true)
-        do { try FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: false) }
+        do { try FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700]) }
         catch { throw VoiceLabAssetError.unreadable(asset.file) }
         do {
             let snapshot = scratch.appendingPathComponent(name)
-            guard FileManager.default.createFile(atPath: snapshot.path, contents: nil) else { throw VoiceLabAssetError.unreadable(asset.file) }
+            guard FileManager.default.createFile(atPath: snapshot.path, contents: nil, attributes: [.posixPermissions: 0o600]) else { throw VoiceLabAssetError.unreadable(asset.file) }
             let writer = try FileHandle(forWritingTo: snapshot)
             defer { try? writer.close() }
             var hash = SHA256()
@@ -170,7 +184,7 @@ public enum VoiceLabAssets {
             let start = frame(audio.trimStart, rate: asset.sampleRate)
             let end = frame(audio.trimEnd, rate: asset.sampleRate)
             guard start >= 0, end > start, end <= decoded else { throw VoiceLabAssetError.invalidTrim(asset.file) }
-            return PreparedVoiceLabAsset(segmentId: segmentId, assetId: asset.id, url: snapshot, sampleRate: Int(rate), channels: channels,
+            return PreparedVoiceLabAsset(segmentId: segmentId, assetId: asset.id, sha256: asset.sha256, url: snapshot, sampleRate: Int(rate), channels: channels,
                                          frameCount: decoded, trimStartFrame: start, trimEndFrame: end,
                                          stretch: audio.stretch, gainDb: audio.gainDb, scratch: scratch)
         } catch {

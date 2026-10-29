@@ -1,0 +1,271 @@
+{
+  "schema": "voxclip-fitted-asset-cases/1",
+  "cases": [
+    {
+      "name": "pads-and-removal",
+      "rate": 24000,
+      "channels": 1,
+      "bits": 16,
+      "floating": false,
+      "kind": "pads-remove",
+      "incomingPadFrames": 240,
+      "outgoingPadFrames": 240,
+      "edits": [
+        {
+          "kind": "remove",
+          "start": 9000,
+          "count": 480
+        }
+      ],
+      "residualSeconds": 0,
+      "windowStart": 2.5,
+      "windowEnd": 3.2,
+      "expected": {
+        "paidSHA256": "96dff4144445d1e877c95b5ad699ab400a546083cffb2dee3447a57b4452f4dd",
+        "fittedSHA256": "437b27eb12335808a32df3ec2ef5eeae2bb68982c24fd0d5229092d2896fa7ed",
+        "outputFrames": 16800,
+        "trimStartFrame": 240,
+        "trimEndFrame": 17040
+      }
+    },
+    {
+      "name": "balanced-edits",
+      "rate": 24000,
+      "channels": 1,
+      "bits": 16,
+      "floating": false,
+      "kind": "balanced",
+      "incomingPadFrames": 0,
+      "outgoingPadFrames": 0,
+      "edits": [
+        {
+          "kind": "remove",
+          "start": 9000,
+          "count": 480
+        },
+        {
+          "kind": "insert",
+          "start": 11400,
+          "count": 480
+        }
+      ],
+      "residualSeconds": 0,
+      "windowStart": 2.5,
+      "windowEnd": 3.2,
+      "expected": {
+        "paidSHA256": "96dff4144445d1e877c95b5ad699ab400a546083cffb2dee3447a57b4452f4dd",
+        "fittedSHA256": "94892bbe7f8b1eff7f706df7bcddd006c08880871f2bcd8d548753e75a8cab2e",
+        "outputFrames": 16800,
+        "trimStartFrame": 240,
+        "trimEndFrame": 17040
+      }
+    },
+    {
+      "name": "unchanged-paid",
+      "rate": 24000,
+      "channels": 1,
+      "bits": 16,
+      "floating": false,
+      "kind": "none",
+      "incomingPadFrames": 0,
+      "outgoingPadFrames": 0,
+      "edits": [],
+      "residualSeconds": 0,
+      "windowStart": 2.5,
+      "windowEnd": 3.2,
+      "expected": {
+        "paidSHA256": "96dff4144445d1e877c95b5ad699ab400a546083cffb2dee3447a57b4452f4dd",
+        "fittedSHA256": "96dff4144445d1e877c95b5ad699ab400a546083cffb2dee3447a57b4452f4dd",
+        "outputFrames": 16800,
+        "trimStartFrame": 2400,
+        "trimEndFrame": 19200
+      }
+    },
+    {
+      "name": "partial-insertion",
+      "rate": 24000,
+      "channels": 1,
+      "bits": 16,
+      "floating": false,
+      "kind": "changed",
+      "incomingPadFrames": 0,
+      "outgoingPadFrames": 0,
+      "edits": [
+        {
+          "kind": "insert",
+          "start": 9000,
+          "count": 1200
+        }
+      ],
+      "residualSeconds": 0.05,
+      "windowStart": 2.5,
+      "windowEnd": 3.2,
+      "expected": {
+        "paidSHA256": "96dff4144445d1e877c95b5ad699ab400a546083cffb2dee3447a57b4452f4dd",
+        "fittedSHA256": "4c4fd4e547a7ffae699b00399c29b49d60f16a467198a534aac91ce015288c1a",
+        "outputFrames": 18000,
+        "trimStartFrame": 240,
+        "trimEndFrame": 18240
+      }
+    },
+    {
+      "name": "pads-only",
+      "rate": 24000,
+      "channels": 1,
+      "bits": 16,
+      "floating": false,
+      "kind": "pads",
+      "incomingPadFrames": 240,
+      "outgoingPadFrames": 240,
+      "edits": [],
+      "residualSeconds": 0.02,
+      "windowStart": 2.5,
+      "windowEnd": 3.2,
+      "expected": {
+        "paidSHA256": "96dff4144445d1e877c95b5ad699ab400a546083cffb2dee3447a57b4452f4dd",
+        "fittedSHA256": "e29aa51370da3ab45ae5c1d5dc5aed7cd5c54f43ab995a1aba9b315b3dc8d194",
+        "outputFrames": 17280,
+        "trimStartFrame": 240,
+        "trimEndFrame": 17520
+      }
+    },
+    {
+      "name": "stereo-pcm24",
+      "rate": 24000,
+      "channels": 2,
+      "bits": 24,
+      "floating": false,
+      "kind": "balanced",
+      "incomingPadFrames": 0,
+      "outgoingPadFrames": 0,
+      "edits": [
+        {
+          "kind": "remove",
+          "start": 9000,
+          "count": 480
+        },
+        {
+          "kind": "insert",
+          "start": 11400,
+          "count": 480
+        }
+      ],
+      "residualSeconds": 0,
+      "windowStart": 2.5,
+      "windowEnd": 3.2,
+      "expected": {
+        "paidSHA256": "b3d8e810069d879e57bb458142e3e20fd5e56ddddd2a1150fd1c4b77172a3573",
+        "fittedSHA256": "6fb0205782051cbef97c4a479bc3eed5fc4a08d24ed12953162af622ec6206cb",
+        "outputFrames": 16800,
+        "trimStartFrame": 240,
+        "trimEndFrame": 17040
+      }
+    },
+    {
+      "name": "borrowed-window",
+      "rate": 24000,
+      "channels": 1,
+      "bits": 16,
+      "floating": false,
+      "kind": "borrowed",
+      "incomingPadFrames": 480,
+      "outgoingPadFrames": 0,
+      "edits": [],
+      "residualSeconds": 0,
+      "windowStart": 2.48,
+      "windowEnd": 3.2,
+      "expected": {
+        "paidSHA256": "96dff4144445d1e877c95b5ad699ab400a546083cffb2dee3447a57b4452f4dd",
+        "fittedSHA256": "6d0e350d043985d2a7b93d0ecdc96c54bd8a673b2066375a029acd52c271e3f1",
+        "outputFrames": 17280,
+        "trimStartFrame": 240,
+        "trimEndFrame": 17520
+      }
+    },
+    {
+      "name": "stereo-pcm32",
+      "rate": 24000,
+      "channels": 2,
+      "bits": 32,
+      "floating": false,
+      "kind": "balanced",
+      "incomingPadFrames": 0,
+      "outgoingPadFrames": 0,
+      "edits": [
+        {
+          "kind": "remove",
+          "start": 9000,
+          "count": 480
+        },
+        {
+          "kind": "insert",
+          "start": 11400,
+          "count": 480
+        }
+      ],
+      "residualSeconds": 0,
+      "windowStart": 2.5,
+      "windowEnd": 3.2,
+      "expected": {
+        "paidSHA256": "4b9b49500ba4a3ceffbf439201f22c26369edb0eaea40501d651dcdf48ca0333",
+        "fittedSHA256": "b42d0d52b7343ebcc4ee57684cfb04dba2b6f1ebc628b192b0cc4d01e6a351ad",
+        "outputFrames": 16800,
+        "trimStartFrame": 240,
+        "trimEndFrame": 17040
+      }
+    },
+    {
+      "name": "stereo-float32",
+      "rate": 24000,
+      "channels": 2,
+      "bits": 32,
+      "floating": true,
+      "kind": "balanced",
+      "incomingPadFrames": 0,
+      "outgoingPadFrames": 0,
+      "edits": [
+        {
+          "kind": "remove",
+          "start": 9000,
+          "count": 480
+        },
+        {
+          "kind": "insert",
+          "start": 11400,
+          "count": 480
+        }
+      ],
+      "residualSeconds": 0,
+      "windowStart": 2.5,
+      "windowEnd": 3.2,
+      "expected": {
+        "paidSHA256": "2b879b532010c9b2ff13f4224a819068c2e5b0e2d67835bfb3504747ccff2fe7",
+        "fittedSHA256": "1bb02397521687b83bc865482911140c9068e4fe25133bf31fb41e16ed508aa2",
+        "outputFrames": 16800,
+        "trimStartFrame": 240,
+        "trimEndFrame": 17040
+      }
+    },
+    {
+      "name": "mono-float64",
+      "rate": 24000,
+      "channels": 1,
+      "bits": 64,
+      "floating": true,
+      "kind": "pads",
+      "incomingPadFrames": 240,
+      "outgoingPadFrames": 240,
+      "edits": [],
+      "residualSeconds": 0.02,
+      "windowStart": 2.5,
+      "windowEnd": 3.2,
+      "expected": {
+        "paidSHA256": "e0fdaa3835c989b3eb60ec3e386fa48703ca234c6ba2ef209410d828f02f4c65",
+        "fittedSHA256": "0d78afa38e8b400317ea6c809c2f8a0963c4a7ee67d47e56718096c321006e57",
+        "outputFrames": 17280,
+        "trimStartFrame": 240,
+        "trimEndFrame": 17520
+      }
+    }
+  ]
+}

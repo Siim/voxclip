@@ -15,7 +15,8 @@ private struct GenerationTestKeys: KeyProvider {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let store = VoiceConsentStore(locations: DataLocations(environment: ["VOXCLIP_DATA_DIR": root.path]))
         let client = ElevenLabsVoiceLab(keys: GenerationTestKeys(), region: .default)
-        return RewriteGenerationSession(run: VoiceLabTakeRun(client: client, store: store, speaker: .unavailable, dispatchIfCurrent: { start in
+        return RewriteGenerationSession(run: VoiceLabTakeRun(client: client, store: store, speaker: .unavailable,
+            storage: VoiceLabTakeStorage(projectId: UUID().uuidString.lowercased(), paidRoot: root.appendingPathComponent("VoiceLab"), scratchRoot: root.appendingPathComponent("scratch")), dispatchIfCurrent: { start in
             try await MainActor.run {
                 guard current() else { throw VoiceLabError.consentRequired }
                 try start()
