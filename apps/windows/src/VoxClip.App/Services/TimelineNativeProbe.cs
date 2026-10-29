@@ -19,7 +19,7 @@ internal static class TimelineNativeProbe
     {
         var host = (Panel)window.Content;
         var pattern = new Canvas { Width = 128, Height = 96, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top,
-            Background = Ui.ThemeBrush(host, "VcTimelineTrackBrush"), RequestedTheme = ElementTheme.Dark };
+            Background = Ui.ThemeBrush(host, "VcTimelineTrackBrush"), RequestedTheme = ElementTheme.Dark, HighContrastAdjustment = ElementHighContrastAdjustment.None };
         var timeline = new TimelineView { Width = 700, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Bottom };
         var model = new EditorViewModel(project with { Edits = project.Edits with { Clips = [], ActiveClipId = null } });
         model.Select(2); model.Select(5, true); var id = model.MakeClip();
@@ -48,6 +48,13 @@ internal static class TimelineNativeProbe
             Phase("pattern raster");
             await bitmap.RenderAsync(pattern, 128, 96).AsTask().WaitAsync(TimeSpan.FromSeconds(10));
             var pixels = (await bitmap.GetPixelsAsync()).ToArray();
+            if (Environment.GetEnvironmentVariable("VOXCLIP_UI_EVIDENCE_DIR") is { Length: > 0 } patternEvidence)
+                await File.WriteAllTextAsync(Path.Combine(patternEvidence, "timeline-hatch-pixels.json"), System.Text.Json.JsonSerializer.Serialize(new
+                {
+                    bitmap.PixelWidth, bitmap.PixelHeight, PixelsBgra = pixels,
+                    WordSix = Difference(pixels, 15, 6), WordNine = Difference(pixels, 15, 9),
+                    PauseNine = Difference(pixels, 47, 9), PauseSix = Difference(pixels, 47, 6)
+                }));
             Require(bitmap.PixelWidth == 128 && bitmap.PixelHeight == 96, "timeline raster dimensions changed");
             Require(Difference(pixels, 15, 6) <= 2 && Difference(pixels, 15, 9) > 10, "word hatch is not periodic every six pixels");
             Require(Difference(pixels, 47, 9) <= 2 && Difference(pixels, 47, 6) > 10, "pause hatch is not periodic every nine pixels");

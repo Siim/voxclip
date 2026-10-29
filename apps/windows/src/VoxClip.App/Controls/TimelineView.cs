@@ -18,7 +18,7 @@ public sealed class TimelineView : UserControl
 {
     private const double TrackTop = TimelineLayout.TrackTop;
     private const double TrackHeight = 30;
-    private readonly Canvas canvas = new() { Height = 60, IsHitTestVisible = false };
+    private readonly Canvas canvas = new() { Height = 60, IsHitTestVisible = false, HighContrastAdjustment = ElementHighContrastAdjustment.None };
     private readonly Canvas geometryBand = new() { Height = 60, IsHitTestVisible = false };
     private readonly Rectangle trackBed = new() { Height = TrackHeight, RadiusX = 6, RadiusY = 6 };
     private readonly CompositeTransform viewportTransform = new();

@@ -6,6 +6,18 @@ namespace VoxClip.Ui.Tests;
 public sealed class NativeHarnessContractTests
 {
     [Fact]
+    public void TimelinePreservesTokenOpacityAndExactHatchPixelAssertionsInHighContrast()
+    {
+        var root = Path.GetDirectoryName(Environment.GetEnvironmentVariable("VOXCLIP_SHARED_DIR"))!;
+        var timeline = File.ReadAllText(Path.Combine(root, "apps/windows/src/VoxClip.App/Controls/TimelineView.cs"));
+        Assert.Contains("IsHitTestVisible = false, HighContrastAdjustment = ElementHighContrastAdjustment.None", timeline);
+        var probe = File.ReadAllText(Path.Combine(root, "apps/windows/src/VoxClip.App/Services/TimelineNativeProbe.cs"));
+        Assert.Contains("HighContrastAdjustment = ElementHighContrastAdjustment.None", probe);
+        Assert.Contains("Difference(pixels, 15, 6) <= 2 && Difference(pixels, 15, 9) > 10", probe);
+        Assert.Contains("Difference(pixels, 47, 9) <= 2 && Difference(pixels, 47, 6) > 10", probe);
+    }
+
+    [Fact]
     public void SidebarProbeWaitsForTheNamedHeaderControl()
     {
         var root = Path.GetDirectoryName(Environment.GetEnvironmentVariable("VOXCLIP_SHARED_DIR"))!;
