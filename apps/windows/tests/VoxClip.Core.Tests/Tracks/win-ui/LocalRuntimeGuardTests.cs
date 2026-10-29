@@ -1,3 +1,4 @@
+#if WIN_UI_TESTS
 using VoxClip.App.ViewModels;
 using Xunit;
 
@@ -29,3 +30,4 @@ public sealed class LocalRuntimeGuardTests
         Assert.Equal(new[] { "msvcp140.dll", "vcruntime140.dll" }, reads);
     }
 }
+#endif
