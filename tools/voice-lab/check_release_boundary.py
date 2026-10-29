@@ -3,6 +3,7 @@ import pathlib
 import platform
 import subprocess
 import tempfile
+from release_source import scan
 
 
 def same_module_source():
@@ -21,6 +22,17 @@ public actor ONNXSpeakerEmbedder: SpeakerEmbedder {
 
 
 def check(bin_path, build_path):
+    scan(pathlib.Path(__file__).resolve().parents[2])
+    with tempfile.TemporaryDirectory(prefix="voxclip-release-source-control-") as directory:
+        fixture = pathlib.Path(directory) / "AnotherModule.swift"
+        fixture.write_text("final class VoiceSpeakerCheck {\nprivate init() {}\npackage init(control: Int) {}\n}\n")
+        try:
+            scan(pathlib.Path(directory))
+        except RuntimeError:
+            print("Source scan rejected the non-private initializer positive control.")
+        else:
+            raise RuntimeError("Release source scan accepted its positive control")
+    print("All-module Release initializer source scan passed.")
     sdk = subprocess.check_output(["xcrun", "--sdk", "macosx", "--show-sdk-path"], text=True).strip()
     compiler = subprocess.check_output(["xcrun", "--find", "swiftc"], text=True).strip()
     flags = [compiler, "-typecheck", "-swift-version", "6", "-package-name", "macos", "-sdk", sdk,
