@@ -84,6 +84,13 @@ internal static class ColumnBoundsGate
         return failures;
     }
 
+    internal static IReadOnlyList<ColumnPeer> ResolveVirtualizedAliases(IReadOnlyList<ColumnPeer> peers,
+        IReadOnlySet<ColumnPeer> parkedCopies, bool scrollProven, ColumnRect column, ColumnRect client) =>
+        peers.Where(peer => !scrollProven || !parkedCopies.Contains(peer) ||
+            !peers.Any(realized => !parkedCopies.Contains(realized) && realized.Id == peer.Id &&
+                realized.Scroll is { } scroll && scroll.Viewport.Contains(realized.Bounds) &&
+                Assess(realized, column, client, required: true).Accepted)).ToArray();
+
     /// <summary>The viewer bar (design §5.1, §15), in epx relative to the bar. Back 32, a 40 round Play and Forward 32 keep
     /// their sizes and lead on one line. The AI modified tag, when shown, and then the time follow Forward on that line or,
     /// only when they don't fit beside it with the gap, sit together on a second line under it. The time ends at the

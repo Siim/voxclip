@@ -156,6 +156,45 @@ public sealed class ColumnBoundsGateTests
     public void RealizedDataAndContainerPeersMayBothCoverTheSameIdentity() =>
         Assert.Empty(ColumnBoundsGate.RequiredFailures(["PreviewStage"], [Peer(), Peer() with { Role = "DataItem" }], Column, Client));
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ParkedCopyNeedsAnExplicitScrollProofAndAVisibleSameIdentity(bool proven)
+    {
+        var region = new ColumnScrollRegion("gallery", new(716, 400, 268, 380), 200, 1000);
+        var visible = Peer("CaptionGroup.Phrase", new(720, 420, 80, 20), scroll: region);
+        var cached = visible with { Bounds = new(-15000, -15000, 80, 20), Offscreen = true };
+        var resolved = ColumnBoundsGate.ResolveVirtualizedAliases([visible, cached], new HashSet<ColumnPeer> { cached }, proven, Column, Client);
+        Assert.Equal(proven ? 1 : 2, resolved.Count);
+        Assert.Equal(proven ? 0 : 1, ColumnBoundsGate.RequiredFailures([visible.Id], resolved, Column, Client).Count);
+        Assert.Single(ColumnBoundsGate.ResolveVirtualizedAliases([cached], new HashSet<ColumnPeer> { cached }, true, Column, Client));
+    }
+
+    [Fact]
+    public void CacheProofCannotHideARealInvalidAliasOrADifferentRequiredIdentity()
+    {
+        var region = new ColumnScrollRegion("gallery", new(716, 400, 268, 380), 200, 1000);
+        var visible = Peer("CaptionGroup.Phrase", new(720, 420, 80, 20), scroll: region);
+        var cached = visible with { Bounds = new(-15000, -15000, 80, 20), Offscreen = true };
+        var invalid = visible with { Bounds = default };
+        var other = cached with { Id = "CaptionGroup.Sentence" };
+        var resolved = ColumnBoundsGate.ResolveVirtualizedAliases([visible, cached, invalid, other],
+            new HashSet<ColumnPeer> { cached, other }, true, Column, Client);
+        Assert.Equal(["CaptionGroup.Phrase: unmeasurable", "CaptionGroup.Sentence: required peer is offscreen"],
+            ColumnBoundsGate.RequiredFailures([visible.Id, other.Id], resolved, Column, Client));
+    }
+
+    [Fact]
+    public void CacheProofRequiresTheLiveCopyInsideBothClientAndOwningViewport()
+    {
+        var region = new ColumnScrollRegion("gallery", new(716, 400, 268, 380), 200, 1000);
+        var cached = Peer("CaptionGroup.Phrase", new(-15000, -15000, 80, 20), offscreen: true, scroll: region);
+        foreach (var live in new[] { cached with { Bounds = new(720, 120, 80, 20), Offscreen = false },
+            cached with { Bounds = new(720, 810, 80, 20), Offscreen = false }, cached with { Bounds = default, Offscreen = false } })
+            Assert.Equal(2, ColumnBoundsGate.ResolveVirtualizedAliases([live, cached],
+                new HashSet<ColumnPeer> { cached }, true, Column, Client).Count);
+    }
+
     [Fact]
     public void EachSampledStateRequiresItsSpecificControls()
     {

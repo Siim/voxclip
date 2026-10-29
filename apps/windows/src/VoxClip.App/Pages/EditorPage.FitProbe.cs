@@ -152,6 +152,16 @@ public sealed partial class EditorPage
             try { return entry.Key.GetAutomationId() == id; }
             catch (Exception exception) when (exception is not OutOfMemoryException) { EnumerationFailed(entry.Value, id, exception); return false; }
         }
+        bool ParkedCopy(ColumnPeer measurement, FrameworkElement owner)
+        {
+            if (!measurement.Offscreen || captionPanel?.DebugFitGalleryIdentity(owner) is not { } identity ||
+                !required.Contains(identity.Id) || measurement.Id != identity.Id || measurement.Scroll is not { } region ||
+                !ReferenceEquals(ScrollOwner(identity.Container), ScrollOwner(owner)) ||
+                FrameworkElementAutomationPeer.CreatePeerForElement(identity.Container)?.IsOffscreen() != true) return false;
+            var bounds = ElementBounds(identity.Container);
+            return bounds.Contains(measurement.Bounds) && (bounds.Bottom < region.Viewport.Y - region.VerticalOffset - 1 ||
+                bounds.Y > region.Viewport.Y - region.VerticalOffset + region.ExtentHeight + 1);
+        }
         Dictionary<AutomationPeer, FrameworkElement> Observe(string sample)
         {
             var peers = CollectPeers(sample);
@@ -227,6 +237,7 @@ public sealed partial class EditorPage
             var peers = Observe("initial");
             foreach (var id in required)
             {
+                var scrollProven = false;
                 if (captionPanel?.DebugFitRealizeChoice(id) == true)
                 {
                     // Realization has already updated layout. Find the identity now; settle and
@@ -243,7 +254,8 @@ public sealed partial class EditorPage
                 }
                 if (matches.Length > 0)
                 {
-                    var preferred = matches.FirstOrDefault(entry => entry.Key is FrameworkElementAutomationPeer);
+                    var preferred = matches.FirstOrDefault(entry => entry.Key is FrameworkElementAutomationPeer &&
+                        !ParkedCopy(ReadPeer(entry.Key, entry.Value, "realization-target"), entry.Value));
                     var (peer, owner) = preferred.Key is null ? matches[0] : preferred;
                     try
                     {
@@ -257,6 +269,7 @@ public sealed partial class EditorPage
                             var after = ReadPeer(peer, owner, "ownership-after");
                             var proven = after.Scroll is { } scroll && scroll.Viewport.Contains(after.Bounds) &&
                                 ColumnBoundsGate.Assess(after, Rectangle(column), Rectangle(client), required: true).Accepted;
+                            scrollProven = proven;
                             scrollProofs.Add(new { Target = id, Before = before, After = after, Proven = proven });
                             if (!proven) failures.Add("scroll ownership not proven: " + id);
                             peers = Observe("scroll-to-" + id);
@@ -267,12 +280,19 @@ public sealed partial class EditorPage
                         failures.Add(id + ": realization/ScrollItem failed: " + exception.GetType().Name);
                     }
                 }
-                var measured = peers.Where(entry => HasId(entry, id)).Select(entry => ReadPeer(entry.Key, entry.Value, id)).ToArray();
+                var aliases = peers.Where(entry => HasId(entry, id))
+                    .Select(entry => (entry.Value, Measurement: ReadPeer(entry.Key, entry.Value, id))).ToArray();
+                var rawMeasured = aliases.Select(entry => entry.Measurement).ToArray();
+                var parkedCopies = aliases.Where(entry => ParkedCopy(entry.Measurement, entry.Value))
+                    .Select(entry => entry.Measurement).ToHashSet();
+                var measured = ColumnBoundsGate.ResolveVirtualizedAliases(rawMeasured, parkedCopies, scrollProven,
+                    Rectangle(column), Rectangle(client)).ToArray();
                 if (id == "PreviewStage" && measured.Length > 0)
                     measured = [.. measured, new ColumnPeer(id, AutomationProperties.GetName(PreviewStage), "Stage layout",
                         ElementBounds(PreviewStage), PreviewStage.Visibility != Visibility.Visible)];
                 var rejected = ColumnBoundsGate.RequiredFailures([id], measured, Rectangle(column), Rectangle(client));
-                coverage.Add(new { RequiredId = id, Found = measured, Failures = rejected,
+                coverage.Add(new { RequiredId = id, Found = measured, RawFound = rawMeasured, ParkedCopies = parkedCopies,
+                    ScrollProven = scrollProven, Failures = rejected,
                     Aliases = peers.Where(entry => HasId(entry, id)).Select(entry => new
                     {
                         Peer = ((WinRT.IWinRTObject)entry.Key).NativeObject.ThisPtr.ToInt64(),
