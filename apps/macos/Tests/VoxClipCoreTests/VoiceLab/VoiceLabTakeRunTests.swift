@@ -10,6 +10,43 @@ private final class TakeRunClock: Sendable {
     func now() -> Date { date.withLock { $0 } }
     func advance(_ seconds: Double) { date.withLock { $0.addTimeInterval(seconds) } }
 }
+private final class TakeRunDispatchSignal: Sendable {
+    private struct State {
+        var fired = false
+        var cancelled = false
+        var continuation: CheckedContinuation<Void, any Error>?
+    }
+    private let value = Mutex(State())
+    func fire() {
+        let continuation = value.withLock { state in
+            state.fired = true
+            let result = state.continuation; state.continuation = nil
+            return result
+        }
+        continuation?.resume(returning: ())
+    }
+    func wait() async throws {
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                let outcome = value.withLock { state -> Int in
+                    if state.cancelled { return -1 }
+                    if state.fired { return 1 }
+                    state.continuation = continuation
+                    return 0
+                }
+                if outcome == 1 { continuation.resume(returning: ()) }
+                else if outcome == -1 { continuation.resume(throwing: CancellationError()) }
+            }
+        } onCancel: {
+            let continuation = self.value.withLock { state in
+                state.cancelled = true
+                let result = state.continuation; state.continuation = nil
+                return result
+            }
+            continuation?.resume(throwing: CancellationError())
+        }
+    }
+}
 private final class TakeRunHTTP: Sendable {
     struct State: Sendable {
         var seeds: [UInt32] = []
@@ -27,6 +64,7 @@ private final class TakeRunHTTP: Sendable {
     let value: Mutex<State>
     init(_ initial: State) { value = Mutex(initial) }
     let gate = DispatchSemaphore(value: 0)
+    let dispatched = TakeRunDispatchSignal()
 }
 private actor TakeRunEmbedder: SpeakerEmbedder {
     nonisolated let modelID = "fixture-calibrated"
@@ -42,7 +80,7 @@ private actor TakeRunEmbedder: SpeakerEmbedder {
     }
 }
 
-@Suite("Bounded take run", .timeLimit(.minutes(2)))
+@Suite("Bounded take run", .serialized, .timeLimit(.minutes(2)))
 struct VoiceLabTakeRunTests {
     private struct Fixture {
         let root: URL
@@ -81,7 +119,8 @@ struct VoiceLabTakeRunTests {
                     state.entered = true
                     return state
                 }
-                if state.paused { _ = http.gate.wait(timeout: .now() + 10) }
+                http.dispatched.fire()
+                if state.paused { http.gate.wait() }
                 if state.seeds.count == 1 && state.firstStatus != 200 { return (state.firstStatus, [:], Data()) }
                 var pcm = Data()
                 let frames = Int(state.duration * 24_000)
@@ -193,10 +232,8 @@ struct VoiceLabTakeRunTests {
             #expect(fixture.http.value.withLock { $0.seeds.isEmpty && $0.qa == 0 })
         } else {
             let sending = Task { try await fixture.run.execute(quote, approved: true) }
-            for _ in 0..<1_000 {
-                if fixture.http.value.withLock({ $0.entered }) { break }
-                try await Task.sleep(for: .milliseconds(2))
-            }
+            defer { sending.cancel(); fixture.http.gate.signal() }
+            try await fixture.http.dispatched.wait()
             #expect(fixture.http.value.withLock { $0.entered })
             await fixture.run.cancel(); fixture.http.gate.signal()
             let result = try await sending.value

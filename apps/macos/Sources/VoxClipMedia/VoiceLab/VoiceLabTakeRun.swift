@@ -8,6 +8,7 @@ public actor VoiceLabTakeRun {
         let record: VoiceConsentRecord
         let preflight: VoiceLabTakePreflight
         let source: [Float]
+        let sourceSpeech: [Float]
         let modelRevision: Int
     }
     private enum Abort: Error { case invalidated }
@@ -47,6 +48,10 @@ public actor VoiceLabTakeRun {
               speaker.threshold == record.speaker.threshold else { throw VoiceConsentError.speakerUnavailable }
         let preflight = try VoiceLabTakeProcessing.preflight(input, envelope: VoiceLabTakeProcessing.envelope(input.source, sampleRate: input.sourceSampleRate))
         let resampled = try VoiceLabSourceAudio.resample(input.source, from: Double(input.sourceSampleRate), to: 24_000)
+        let rate = input.sourceSampleRate
+        let center = Int((input.window.startSample + input.window.endSample) / 2)
+        let start = max(0, center - 5 * rate), end = min(input.source.count, start + 10 * rate)
+        let sourceSpeech = VoiceConsentAudio.resample(Array(input.source[start..<end]), rate: rate)
         let id = UUID()
         var takes: [VoiceLabTakeQuote] = []
         var quotes: [VoiceLabQuote] = []
@@ -62,7 +67,8 @@ public actor VoiceLabTakeRun {
             }
             guard revision == currentRevision, await inputsAreCurrent() else { throw Abort.invalidated }
             let quote = VoiceLabTakeRunQuote(id: id, takes: takes, preparedAt: quotes.map(\.preparedAt).min() ?? Date())
-            pending = Pending(quote: quote, input: input, record: record, preflight: preflight, source: resampled, modelRevision: await client.modelRevision())
+            pending = Pending(quote: quote, input: input, record: record, preflight: preflight, source: resampled,
+                              sourceSpeech: sourceSpeech, modelRevision: await client.modelRevision())
             return quote
         } catch {
             await client.discardRun(id, quotes: quotes)
@@ -122,12 +128,8 @@ public actor VoiceLabTakeRun {
             var generated: VoiceLabAudioResult?
             var audio: VoiceLabTakeAudio?
             do {
-                let rate = value.input.sourceSampleRate
-                let center = Int((value.input.window.startSample + value.input.window.endSample) / 2)
-                let sourceStart = max(0, center - 5 * rate), sourceEnd = min(value.input.source.count, sourceStart + 10 * rate)
-                let sourceSpeech = VoiceConsentAudio.resample(Array(value.input.source[sourceStart..<sourceEnd]), rate: rate)
                 let authorization = try await useGuard.authorize(quote: take.synthesis, contentKey: value.input.contentKey,
-                    recordID: value.record.id, speech16k: sourceSpeech, approved: true)
+                    recordID: value.record.id, speech16k: value.sourceSpeech, approved: true)
                 try await validate(value, revision: expected)
                 let result = try await client.synthesize(text: value.input.text, modelID: value.input.modelID,
                     voice: .own(voiceID: value.record.voiceId, policy: authorization), language: value.input.language,
@@ -139,7 +141,10 @@ public actor VoiceLabTakeRun {
                 let processed = try VoiceLabTakeProcessing.process(result, input: value.input, preflight: value.preflight, sourceAtAssetRate: value.source)
                 audio = processed
                 let vector: [Float]
-                do { vector = try await speaker.embedding(VoiceConsentAudio.resample(processed.trimmed, rate: processed.sampleRate)) }
+                do {
+                    guard processed.trimmed.count >= processed.sampleRate * 3 else { throw VoiceConsentError.speakerMismatch }
+                    vector = try await speaker.embedding(VoiceConsentAudio.resample(processed.trimmed, rate: processed.sampleRate))
+                }
                 catch VoiceConsentError.speakerMismatch {
                     let peak = try VoiceLabLoudness.samplePeakDbfs(processed.mixed)
                     let jump = try VoiceLabLoudness.lufsJumpLu(processed.mixed, sampleRate: processed.sampleRate, seamSamples: processed.seams)
