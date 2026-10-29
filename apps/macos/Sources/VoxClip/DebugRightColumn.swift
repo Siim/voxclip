@@ -212,6 +212,20 @@ import VoxClipMedia
             let first = reveal.shouldScroll(to: .tile("vox-highlight"), anchor: .top)
             let duplicate = reveal.shouldScroll(to: .tile("vox-highlight"), anchor: .top)
             results.append(.init(name: "gallery at \(viewport) coalesces repeated top-alignment commands", passed: first && !duplicate))
+            var allowed = 0
+            while reveal.takeRecheck(), allowed < 100 { allowed += 1 }
+            let renewed = reveal.shouldScroll(to: .tile("outline"), anchor: .top) && reveal.takeRecheck()
+            reveal.complete()
+            results.append(.init(name: "gallery at \(viewport) re-checks a pending reveal at most 8 times per command, and none once complete",
+                passed: allowed == 8 && renewed && !reveal.takeRecheck()))
+            var landing = CaptionGalleryReveal()
+            landing.begin(CaptionGalleryRequest(selection: "lazy-landing", size: CGSize(width: 320, height: viewport), fineTune: false))
+            let issued = landing.shouldScroll(to: .tile("editorial"), anchor: .top, geometry: [0])
+            let unmoved = landing.shouldScroll(to: .tile("editorial"), anchor: .top, geometry: [0])
+            let reissued = (1...3).map { landing.shouldScroll(to: .tile("editorial"), anchor: .top, geometry: [CGFloat($0) * 100]) }
+            let capped = landing.shouldScroll(to: .tile("editorial"), anchor: .top, geometry: [400])
+            results.append(.init(name: "gallery at \(viewport) re-issues a command that landed short only after geometry moved, at most 3 times",
+                passed: issued && !unmoved && reissued == [true, true, true] && !capped))
         }
         return results
     }

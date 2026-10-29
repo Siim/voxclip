@@ -29,6 +29,7 @@ private extension VerticalAlignment {
     @State private var galleryViewport = CaptionGalleryViewport()
     @State private var galleryTiles: [String: CGRect] = [:]
     @State private var galleryHeaders: [CaptionStyleGroup: CGRect] = [:]
+    @State private var galleryRecheck = 0
     #if DEBUG
     @State private var galleryID = UUID().uuidString
     #endif
@@ -166,6 +167,7 @@ private extension VerticalAlignment {
             } action: { _, viewport in galleryViewport = viewport }
             .onChange(of: galleryRequest, initial: true) { _, request in galleryReveal.begin(request); revealSelection(reader: reader) }
             .onChange(of: galleryLayout) { _, _ in revealSelection(reader: reader) }
+            .onChange(of: galleryRecheck) { _, _ in revealSelection(reader: reader) }
             .onScrollPhaseChange { _, phase in galleryScrollPhaseChanged(phase) }
             .onChange(of: fineTune) { _, expanded in
                 if expanded { reader.scrollTo("captions.fineTune", anchor: .top) }
@@ -237,7 +239,11 @@ private extension VerticalAlignment {
             }
             if complete { galleryReveal.complete(); return }
         }
-        if galleryReveal.shouldScroll(to: target, anchor: .top) { reader.scrollTo(target, anchor: .top) }
+        let geometry = [galleryViewport.visible.minY, galleryViewport.size.height, galleryTile?.frame.minY ?? -1, galleryLayout.header?.minY ?? -1]
+        if galleryReveal.shouldScroll(to: target, anchor: .top, geometry: geometry) { reader.scrollTo(target, anchor: .top) }
+        // A scroll that lands where the view already is changes no geometry, so nothing would
+        // re-check the reveal and it would stay pending. Check again next turn, a bounded number of times.
+        if galleryReveal.takeRecheck() { DispatchQueue.main.async { galleryRecheck &+= 1 } }
     }
     private var style: CaptionStyle? { model.app.styles.first { $0.id == model.project.captions.styleId } }
     private var storedPosition: CaptionPosition? { model.captionPreset == .source ? model.project.captions.position : model.project.captions.positionByAspect[model.captionPreset.rawValue] }
@@ -288,18 +294,34 @@ struct CaptionGalleryReveal: Equatable {
     private(set) var commands = 0
     private var lastTarget: CaptionGalleryTarget?
     private var lastAnchor = UnitPoint.top
+    private var rechecks = 0
+    private var lastGeometry: [CGFloat] = []
+    private var reissues = 0
     mutating func begin(_ request: CaptionGalleryRequest) {
         guard self.request != request else { return }
-        self.request = request; pending = !request.fineTune; interrupted = false; lastTarget = nil
+        self.request = request; pending = !request.fineTune; interrupted = false; lastTarget = nil; rechecks = 0
+    }
+    /// Whether a still-pending reveal may be checked again without a geometry change: at most
+    /// eight times per scroll command, so a reveal that can't complete doesn't spin.
+    mutating func takeRecheck() -> Bool {
+        guard pending, rechecks < 8 else { return false }
+        rechecks += 1
+        return true
     }
     mutating func complete() { pending = false }
     mutating func resumeForLayout() { if !interrupted { pending = request?.fineTune == false } }
-    mutating func restart() { pending = request?.fineTune == false; interrupted = false; lastTarget = nil }
+    mutating func restart() { pending = request?.fineTune == false; interrupted = false; lastTarget = nil; rechecks = 0 }
     mutating func cancelForUserScroll() { pending = false; interrupted = true }
-    mutating func shouldScroll(to target: CaptionGalleryTarget, anchor: UnitPoint) -> Bool {
+    /// Identical commands are coalesced. The same command goes out again only when the geometry
+    /// moved since it was issued and the reveal still isn't complete: a lazy grid's first scroll to a
+    /// distant row lands on an estimate. At most three times per target, so it can't fight layout.
+    mutating func shouldScroll(to target: CaptionGalleryTarget, anchor: UnitPoint, geometry: [CGFloat] = []) -> Bool {
         guard pending else { return false }
-        if lastTarget == target, abs(lastAnchor.x - anchor.x) < 0.000001, abs(lastAnchor.y - anchor.y) < 0.000001 { return false }
-        lastTarget = target; lastAnchor = anchor; commands += 1
+        if lastTarget == target, abs(lastAnchor.x - anchor.x) < 0.000001, abs(lastAnchor.y - anchor.y) < 0.000001 {
+            guard geometry != lastGeometry, reissues < 3 else { return false }
+            reissues += 1
+        } else { reissues = 0 }
+        lastTarget = target; lastAnchor = anchor; lastGeometry = geometry; commands += 1; rechecks = 0
         return true
     }
 }

@@ -526,8 +526,13 @@ import VoxClipCore
               shell.windowWidth < WorkspaceShell.sidebarCollapseWidth && editor.showFindClips && !editor.showAISetup && !shell.sidebarOverlay && shell.columnVisibility == .detailOnly)
         editor.showFindClips = false
         shell.revealSidebar()
-        try await Task.sleep(for: .milliseconds(250))
-        let overlayList = tables(in: root).first { $0 !== list && !$0.isHiddenOrHasHiddenAncestor }
+        // Wait for the overlay itself (bounded) rather than a fixed delay that a busy Mac outlasts.
+        var overlayList: NSTableView?
+        for _ in 0..<80 {
+            overlayList = tables(in: root).first { $0 !== list && !$0.isHiddenOrHasHiddenAncestor }
+            if shell.sidebarOverlay, overlayList != nil { break }
+            try await Task.sleep(for: .milliseconds(25))
+        }
         check("at 900 explicitly showing the sidebar opens its overlay while the column stays collapsed",
               shell.windowWidth < WorkspaceShell.sidebarCollapseWidth && shell.sidebarOverlay && shell.columnVisibility == .detailOnly && overlayList != nil)
         window.setContentSize(NSSize(width: 880, height: 800))

@@ -335,7 +335,7 @@ private enum UIProcessHarness {
         defer { try? log.close() }
         process.standardOutput = log; process.standardError = log
         try process.run()
-        let deadline = Date().addingTimeInterval(mode == "-uiSelfTest" ? 240 : 120)
+        let deadline = Date().addingTimeInterval(mode == "-uiSelfTest" ? 360 : 120)
         while process.isRunning && Date() < deadline { Thread.sleep(forTimeInterval: 0.05) }
         if process.isRunning {
             process.terminate()
@@ -351,6 +351,7 @@ private enum UIProcessHarness {
                   let data = try? Data(contentsOf: directory.appendingPathComponent(report)),
                   let results = try? JSONDecoder().decode([Result].self, from: data),
                   results.contains(where: { !$0.passed }) else {
+                reportFailure(directory)
                 throw Failure.appFailed(process.terminationStatus)
             }
         }
@@ -360,6 +361,20 @@ private enum UIProcessHarness {
             if environment["VOXCLIP_UI_EVIDENCE_DIR"] == nil { try? FileManager.default.removeItem(at: directory) }
             throw error
         }
+    }
+    /// Hosted CI keeps no UI evidence, so name the failing checks and the end of the app log.
+    private static func reportFailure(_ directory: URL) {
+        var lines: [String] = []
+        for report in ["results.json", "results-progress.json"] {
+            guard let data = try? Data(contentsOf: directory.appendingPathComponent(report)),
+                  let results = try? JSONDecoder().decode([Result].self, from: data) else { continue }
+            lines += results.filter { !$0.passed }.prefix(20).map { "\(report) failed: \($0.name)" }
+            break
+        }
+        if let log = try? String(contentsOf: directory.appendingPathComponent("app.log"), encoding: .utf8) {
+            lines += log.split(separator: "\n").suffix(15).map { "app.log: \($0)" }
+        }
+        FileHandle.standardError.write(Data((lines.joined(separator: "\n") + "\n").utf8))
     }
     static func cleanTemporary(_ directory: URL) {
         if ProcessInfo.processInfo.environment["VOXCLIP_UI_EVIDENCE_DIR"] == nil { try? FileManager.default.removeItem(at: directory) }
