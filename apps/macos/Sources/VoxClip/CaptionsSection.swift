@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 import VoxClipCore
 import VoxClipMedia
 
@@ -12,10 +13,19 @@ enum CaptionStyleGroup: String, CaseIterable {
     }
 }
 
+enum CaptionGalleryTarget: Hashable { case tile(String), header(CaptionStyleGroup), end }
+
 @MainActor struct CaptionsSection: View {
     @Bindable var model: EditorModel
     @State private var fineTune = false
     @State private var width: CGFloat = 360
+    @State private var galleryReveal = CaptionGalleryReveal()
+    @State private var galleryViewport = CaptionGalleryViewport()
+    @State private var galleryTile: CaptionGalleryTileGeometry?
+    @State private var galleryHeaders: [CaptionStyleGroup: CGRect] = [:]
+    #if DEBUG
+    @State private var galleryID = UUID().uuidString
+    #endif
     init(model: EditorModel, fineTune: Bool = false) {
         self.model = model
         _fineTune = State(initialValue: fineTune)
@@ -106,33 +116,98 @@ enum CaptionStyleGroup: String, CaseIterable {
     }
     private var gallery: some View {
         ScrollViewReader { reader in
-            ScrollView {
-              VStack(alignment: .leading, spacing: 12) {
-                fineTuneControls
-                if let error = model.captionError { InlineNotice(text: error).fixedSize(horizontal: false, vertical: true) }
-                LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)], alignment: .leading, spacing: 10) {
-                    ForEach(CaptionStyleGroup.allCases, id: \.self) { group in
-                        let styles = model.app.styles.filter { CaptionStyleGroup.group(for: $0) == group }.sorted { $0.order < $1.order }
-                        if !styles.isEmpty {
-                            Section { ForEach(styles, id: \.id) { style in styleTile(style).id(style.id) } } header: {
-                                Text(group.rawValue).font(.system(size: 11, weight: .semibold)).foregroundStyle(DesignValues.color("text.secondary")).padding(.top, 2)
-                            }
-                        }
+            #if DEBUG
+            galleryScroll(reader: reader).columnLayoutEvidence("caption.gallery.\(galleryID)")
+                .onReceive(NotificationCenter.default.publisher(for: CaptionGalleryAudit.notification)) { notification in
+                    guard notification.object as? String == galleryID else { return }
+                    if notification.userInfo?["snapshot"] as? Bool == true {
+                        CaptionGalleryAudit.snapshots[galleryID] = .init(paint: galleryTile?.frame, header: galleryLayout.header,
+                            visible: galleryViewport.visible, size: galleryViewport.size, pending: galleryReveal.pending)
+                        return
                     }
-                }.padding(.vertical, 3).accessibilityRepresentation {
-                Picker("Caption style", selection: Binding(get: { model.project.captions.styleId }, set: { model.setStyle($0) })) {
-                    ForEach(model.app.styles.sorted { $0.order < $1.order }, id: \.id) { Text("\($0.name): \($0.description)").tag($0.id) }
-                }.pickerStyle(.radioGroup)
-                .accessibilityIdentifier("voxclip.captions.gallery")
+                    if notification.userInfo?["end"] as? Bool == true {
+                        galleryReveal.complete(); reader.scrollTo(CaptionGalleryTarget.end, anchor: .bottom)
+                    } else { galleryReveal.restart(); revealSelection(reader: reader) }
                 }
-                if model.app.styles.isEmpty { Text("Caption styles are unavailable. Reinstall VoxClip.").foregroundStyle(.secondary) }
-              }.padding(.bottom, 24)
+            #else
+            galleryScroll(reader: reader)
+            #endif
+        }
+    }
+    private func galleryScroll(reader: ScrollViewProxy) -> some View {
+        ScrollView { galleryContents }
+            .onScrollGeometryChange(for: CaptionGalleryViewport.self) { geometry in
+                CaptionGalleryViewport(visible: geometry.visibleRect, size: geometry.containerSize)
+            } action: { _, viewport in galleryViewport = viewport }
+            .onChange(of: galleryRequest, initial: true) { _, request in galleryReveal.begin(request); revealSelection(reader: reader) }
+            .onChange(of: galleryLayout) { _, _ in revealSelection(reader: reader) }
+            .onScrollPhaseChange { _, phase in
+                if phase == .tracking || phase == .interacting { galleryReveal.complete() }
             }
-            .onChange(of: model.activeClip?.id) { _, _ in reader.scrollTo(model.project.captions.styleId, anchor: .top) }
+            .onChange(of: fineTune) { _, expanded in
+                if expanded { reader.scrollTo("captions.fineTune", anchor: .top) }
+            }
             .overlay(alignment: .bottom) {
                 LinearGradient(colors: [DesignValues.color("bg.surface").opacity(0), DesignValues.color("bg.surface")], startPoint: .top, endPoint: .bottom).frame(height: 24).allowsHitTesting(false).accessibilityHidden(true)
             }
+            .padding(.horizontal, -3)
+    }
+    private var galleryContents: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            fineTuneControls.id("captions.fineTune")
+            if let error = model.captionError { InlineNotice(text: error).fixedSize(horizontal: false, vertical: true) }
+            galleryGrid
+            if model.app.styles.isEmpty { Text("Caption styles are unavailable. Reinstall VoxClip.").foregroundStyle(.secondary) }
+        }.padding(.horizontal, 3).padding(.bottom, 24)
+            .overlay(alignment: .bottom) { Color.clear.frame(height: 24).id(CaptionGalleryTarget.end).allowsHitTesting(false).accessibilityHidden(true) }
+            .coordinateSpace(name: CaptionGallerySpace.content)
+    }
+    private var galleryGrid: some View {
+        LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)], alignment: .leading, spacing: 10) {
+            ForEach(CaptionStyleGroup.allCases, id: \.self) { group in
+                let styles = model.app.styles.filter { CaptionStyleGroup.group(for: $0) == group }.sorted { $0.order < $1.order }
+                if !styles.isEmpty {
+                    Section { ForEach(styles, id: \.id) { style in styleTile(style).id(CaptionGalleryTarget.tile(style.id)) } } header: {
+                        Text(group.rawValue).font(.system(size: 11, weight: .semibold)).foregroundStyle(DesignValues.color("text.secondary")).padding(.top, 2)
+                            .onGeometryChange(for: CGRect.self) { geometry in geometry.frame(in: .named(CaptionGallerySpace.content)) } action: { galleryHeaders[group] = $0 }
+                            .id(CaptionGalleryTarget.header(group)).columnLayoutEvidence("caption.group.\(group.rawValue)")
+                    }
+                }
+            }
+        }.padding(.vertical, 3).accessibilityRepresentation { galleryPicker }
+    }
+    private var galleryPicker: some View {
+        Picker("Caption style", selection: Binding(get: { model.project.captions.styleId }, set: { model.setStyle($0) })) {
+            ForEach(model.app.styles.sorted { $0.order < $1.order }, id: \.id) { Text("\($0.name): \($0.description)").tag($0.id) }
+        }.pickerStyle(.radioGroup).accessibilityIdentifier("voxclip.captions.gallery")
+    }
+    private var galleryRequest: CaptionGalleryRequest {
+        CaptionGalleryRequest(selection: "\(model.project.id)/\(model.activeClip?.id ?? "full")/\(model.project.captions.styleId)", size: galleryViewport.size, fineTune: fineTune)
+    }
+    private var galleryLayout: CaptionGalleryLayout {
+        CaptionGalleryLayout(tile: galleryTile, header: style.flatMap { galleryHeaders[CaptionStyleGroup.group(for: $0)] }, viewport: galleryViewport)
+    }
+    private func revealSelection(reader: ScrollViewProxy) {
+        guard galleryReveal.pending, !fineTune, galleryViewport.size.height > 0 else { return }
+        var target = CaptionGalleryTarget.tile(model.project.captions.styleId)
+        if let tile = galleryTile, tile.styleID == model.project.captions.styleId {
+            let expectedWidth: CGFloat = (galleryViewport.size.width - 14) / 2 + 6
+            var visible = galleryViewport.visible
+            if tile.frame.height + 24 <= visible.height { visible.size.height -= 24 }
+            var complete = abs(tile.frame.width - expectedWidth) <= 0.5 && visible.insetBy(dx: -0.5, dy: -0.5).contains(tile.frame)
+            if let style, let header = galleryLayout.header, header.union(tile.frame).height + 24 <= galleryViewport.size.height {
+                target = .header(CaptionStyleGroup.group(for: style))
+                complete = complete && visible.insetBy(dx: -0.5, dy: -0.5).contains(header)
+            }
+            if complete { galleryReveal.complete(); return }
         }
+        var anchor = UnitPoint.top
+        if case .tile = target {
+            if let tile = galleryTile, tile.styleID == model.project.captions.styleId {
+                anchor = CaptionGalleryReveal.anchor(viewportHeight: galleryViewport.size.height, paintHeight: tile.frame.height)
+            }
+        }
+        if galleryReveal.shouldScroll(to: target, anchor: anchor) { reader.scrollTo(target, anchor: anchor) }
     }
     private var style: CaptionStyle? { model.app.styles.first { $0.id == model.project.captions.styleId } }
     private var storedPosition: CaptionPosition? { model.captionPreset == .source ? model.project.captions.position : model.project.captions.positionByAspect[model.captionPreset.rawValue] }
@@ -151,6 +226,14 @@ enum CaptionStyleGroup: String, CaseIterable {
                 Text(style.name + (selected && model.captionsEdited ? " · Edited" : "")).font(.system(size: 11, weight: selected ? .semibold : .regular)).foregroundStyle(DesignValues.color("text.primary")).lineLimit(1).columnLayoutEvidence("caption.name.\(id)")
             }.contentShape(Rectangle())
         }.buttonStyle(.plain).accessibilityLabel("\(style.name): \(style.description)").accessibilityAddTraits(selected ? .isSelected : [])
+            .background {
+                Color.clear
+                    .onGeometryChange(for: CaptionGalleryTileGeometry?.self) { geometry in
+                        selected ? CaptionGalleryTileGeometry(styleID: id, frame: geometry.frame(in: .named(CaptionGallerySpace.content))) : nil
+                    } action: { tile in if let tile, tile.frame.width > 0, tile.frame.height > 0 { galleryTile = tile } }
+                    .columnLayoutEvidence("caption.tile.\(id)")
+                    .padding(.horizontal, -3).padding(.top, -3).allowsHitTesting(false).accessibilityHidden(true)
+            }
     }
     private func value(_ group: String, _ key: String) -> JSONValue? { if case .object(let object) = model.project.captions.overrides[group] { return object[key] }; return nil }
     private func setOverride(_ group: String, _ key: String, _ value: JSONValue) {
@@ -161,6 +244,64 @@ enum CaptionStyleGroup: String, CaseIterable {
     private func overrideNumber(_ group: String, _ key: String, fallback: Double) -> Binding<Double> { Binding(get: { if case .number(let number) = value(group, key) { return number }; return fallback }, set: { setOverride(group, key, .number($0)) }) }
     private func overrideString(_ group: String, _ key: String, fallback: String) -> Binding<String> { Binding(get: { if case .string(let string) = value(group, key) { return string }; return fallback }, set: { setOverride(group, key, .string($0)) }) }
 }
+
+struct CaptionGalleryRequest: Equatable {
+    let selection: String
+    let size: CGSize
+    let fineTune: Bool
+}
+
+struct CaptionGalleryReveal: Equatable {
+    private(set) var request: CaptionGalleryRequest?
+    private(set) var pending = false
+    private var lastTarget: CaptionGalleryTarget?
+    private var lastAnchor = UnitPoint.top
+    mutating func begin(_ request: CaptionGalleryRequest) {
+        guard self.request != request else { return }
+        self.request = request; pending = !request.fineTune; lastTarget = nil
+    }
+    mutating func complete() { pending = false }
+    mutating func restart() { pending = request?.fineTune == false; lastTarget = nil }
+    mutating func shouldScroll(to target: CaptionGalleryTarget, anchor: UnitPoint) -> Bool {
+        guard pending else { return false }
+        if lastTarget == target, abs(lastAnchor.x - anchor.x) < 0.000001, abs(lastAnchor.y - anchor.y) < 0.000001 { return false }
+        lastTarget = target; lastAnchor = anchor
+        return true
+    }
+    static func anchor(viewportHeight: CGFloat, paintHeight: CGFloat) -> UnitPoint {
+        let available: CGFloat = viewportHeight - max(0, paintHeight - 3)
+        let fraction: CGFloat = available > 0 ? min(1, 3 / available) : 0
+        return UnitPoint(x: 0.5, y: fraction)
+    }
+}
+
+private struct CaptionGalleryViewport: Equatable {
+    var visible = CGRect.zero
+    var size = CGSize.zero
+}
+
+private struct CaptionGalleryTileGeometry: Equatable {
+    let styleID: String
+    let frame: CGRect
+}
+
+private struct CaptionGalleryLayout: Equatable {
+    let tile: CaptionGalleryTileGeometry?
+    let header: CGRect?
+    let viewport: CaptionGalleryViewport
+}
+
+private enum CaptionGallerySpace: Hashable { case content }
+
+#if DEBUG
+@MainActor enum CaptionGalleryAudit {
+    static let notification = Notification.Name("com.voxclip.caption-gallery-audit")
+    struct Snapshot: Codable {
+        let paint: CGRect?; let header: CGRect?; let visible: CGRect; let size: CGSize; let pending: Bool
+    }
+    static var snapshots: [String: Snapshot] = [:]
+}
+#endif
 
 @MainActor private struct CaptionControlRow<Content: View>: View {
     let title: String

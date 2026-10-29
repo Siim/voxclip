@@ -10,7 +10,7 @@ import Darwin
         let directory = try UIProcessHarness.run(mode: "-layoutAudit", name: "layout")
         defer { UIProcessHarness.cleanTemporary(directory) }
         let report = try JSONDecoder().decode([UIProcessHarness.Result].self, from: Data(contentsOf: directory.appendingPathComponent("results.json")))
-        #expect(report.count >= 312)
+        #expect(report.count >= 315)
         for result in report { #expect(result.passed && result.skipped == nil, Comment(rawValue: result.name)) }
         struct Measurement: Decodable { let width: Double; let minimumWidth: Double; let proposedWidth: Double; let stageWidth: Double; let variant: String; let frameChoices: [String]; let viewOverflow: [String]; let accessibilityOverflow: [String] }
         let measurements = try JSONDecoder().decode([Measurement].self, from: Data(contentsOf: directory.appendingPathComponent("right-column-layout.json")))
@@ -150,6 +150,7 @@ import Darwin
             }
         }
         try verifyColumnSettlements(in: directory)
+        try verifySelectedGallery(in: directory)
     }
     private func verifyColumnSettlements(in directory: URL) throws {
         struct Settlement: Decodable { let elapsed: Double; let settled: Bool; let stage: CGRect; let root: CGRect; let column: CGRect }
@@ -161,6 +162,17 @@ import Darwin
                 #expect(abs(result.column.width - width) <= 1 && abs(result.stage.width - (width - 32)) <= 0.5)
                 #expect(abs(result.root.minX - result.column.minX) <= 0.5 && abs(result.root.width - result.column.width) <= 0.5)
             }
+        }
+    }
+    private func verifySelectedGallery(in directory: URL) throws {
+        struct Choice: Decodable { let role: String; let frame: CGRect }
+        struct Selection: Decodable { let style: String; let visible: Bool; let paint: CGRect; let viewport: CGRect; let choice: Choice; let header: CGRect? }
+        for name in ["live-editor-full", "live-editor-1280", "live-editor-1280-initial", "live-editor-clip"] {
+            let result = try JSONDecoder().decode(Selection.self, from: Data(contentsOf: directory.appendingPathComponent("\(name)-selected-gallery.json")))
+            let viewport = result.viewport.insetBy(dx: -0.5, dy: -0.5)
+            #expect(result.visible && !result.style.isEmpty && result.choice.role == "AXRadioButton", Comment(rawValue: name))
+            #expect(viewport.contains(result.paint) && viewport.contains(result.choice.frame), Comment(rawValue: name))
+            if let header = result.header, header.union(result.paint).height + 24 <= result.viewport.height { #expect(viewport.contains(header)) }
         }
     }
     @Test("Native Save As boundary preserves portable media and edits", .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_UI_TESTS"] == "1")) func saveBoundary() throws {

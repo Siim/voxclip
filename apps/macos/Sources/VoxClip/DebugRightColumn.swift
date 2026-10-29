@@ -71,11 +71,13 @@ import VoxClipMedia
         guard let root = app.shared?.root else { throw VoxClipError.sharedResourcesMissing }
         let fixture = try DemoEditing.loadFixture(root.appendingPathComponent("fixtures/projects/five-questions.voxclip"))
         var measurements: [HeightMeasurement] = []
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let sizes: [(String, CGFloat, CGFloat)] = [("1440x900", 360, 775), ("1280x800", 320, 675),
             ("1280x700", 320, 575), ("960x600", 300, 475)]
         for (window, width, height) in sizes {
             let extra = width == 320 && height == 675 ? ["rewrite", "rewrite-budget", "fine-tune", "caption-error", "captions-off"] : []
             for variant in ["source", "9:16", "1:1", "16:9"] + extra {
+                try Data("\(window) \(variant)".utf8).write(to: directory.appendingPathComponent("height-progress.txt"), options: .atomic)
                 let model = EditorModel(document: VoxClipDocument(project: fixture, demo: true), app: app, preview: DemoPreviewEngine())
                 defer { model.close() }
                 model.setAspect(AspectRatio(rawValue: variant) ?? .source)
@@ -198,6 +200,16 @@ import VoxClipMedia
         // Window-free only: the native divider drag runs in the UI self-test (DebugSidebar).
         results += try await measureHeights(app: app, directory: directory)
         results += try await measureResizes(app: app, fixture: fixture, directory: directory)
+        let ringCases: [(CGFloat, CGFloat)] = [(399.5, 93), (272, 84), (264, 93)]
+        for (viewport, paint) in ringCases {
+            let anchor = CaptionGalleryReveal.anchor(viewportHeight: viewport, paintHeight: paint)
+            let topAllowance: CGFloat = (viewport - (paint - 3)) * anchor.y
+            var reveal = CaptionGalleryReveal()
+            reveal.begin(CaptionGalleryRequest(selection: "ring-probe", size: CGSize(width: 320, height: viewport), fineTune: false))
+            let first = reveal.shouldScroll(to: .tile("vox-highlight"), anchor: anchor)
+            let duplicate = reveal.shouldScroll(to: .tile("vox-highlight"), anchor: anchor)
+            results.append(.init(name: "gallery ring anchor at \(viewport) preserves three points and coalesces repeated commands", passed: abs(topAllowance - 3) <= 0.001 && first && !duplicate))
+        }
         return results
     }
     private static func candidates(_ prefix: String, _ measurement: Measurement) -> Int {
@@ -291,6 +303,7 @@ import VoxClipMedia
 @MainActor final class ColumnLayoutMarker: NSView {
     var name = ""
     override func isAccessibilityElement() -> Bool { false }
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }
 @MainActor struct ColumnLayoutProbe: NSViewRepresentable {
     let name: String

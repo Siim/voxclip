@@ -40,6 +40,13 @@ import VoxClipCore
             .filter { $0.identifier == "voxclip.editor.right" }
             .min { abs($0.frame.minX - column.minX) + abs($0.frame.minY - column.minY) < abs($1.frame.minX - column.minX) + abs($1.frame.minY - column.minY) }?.frame
     }
+    static func galleryChoice(in window: NSWindow, label: String) -> Element? {
+        guard let column = columnFrame(in: window) else { return nil }
+        let application = AXUIElementCreateApplication(getpid())
+        let windows = attribute(application, kAXWindowsAttribute) as? [AXUIElement] ?? []
+        return windows.flatMap { descendants($0, depth: 0) }.compactMap(element)
+            .first { $0.role == kAXRadioButtonRole && $0.label == label && $0.frame.minX >= column.minX && $0.frame.maxX <= column.maxX }
+    }
     static func assertBounds(window: NSWindow, name: String, directory: URL) throws {
         let editorWindow = window.sheetParent ?? window
         guard let contentView = editorWindow.contentView else { return }
@@ -153,7 +160,7 @@ import VoxClipCore
     private static func containsTranscript(_ view: NSView) -> Bool {
         view is TranscriptNSTextView || view.subviews.contains { containsTranscript($0) }
     }
-    private static func screenFrame(_ view: NSView, window: NSWindow) -> CGRect {
+    static func screenFrame(_ view: NSView, window: NSWindow) -> CGRect {
         let rect = window.convertToScreen(view.convert(view.bounds, to: nil))
         let top = NSScreen.screens.first?.frame.maxY ?? 0
         return CGRect(x: rect.minX, y: top - rect.maxY, width: rect.width, height: rect.height)

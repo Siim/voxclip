@@ -39,7 +39,13 @@ import VoxClipMedia
             guard !DebugUISuite.sessionLocked else { throw CocoaError(.userCancelled) }
             shell.windowWidth = size.width
             try await DebugUISuite.snapshot(WorkspaceView(shell: shell).environment(app), name: name, size: size,
-                appearance: appearance, directory: directory, active: true, mainWindow: true, native: true, beforeCapture: prepare)
+                appearance: appearance, directory: directory, active: true, mainWindow: true, native: true, beforeCapture: { window in
+                    let target = try await prepare?(window) ?? window
+                    if ["live-editor-full", "live-editor-1280", "live-editor-clip"].contains(name), let editor = shell.editor {
+                        try await assertSelectedGallery(in: window, styleID: editor.project.captions.styleId, app: app, name: name, directory: directory)
+                    }
+                    return target
+                })
             results.append(.init(name: "native scene \(name)", passed: true))
         }
         try await scene("live-home")
@@ -62,6 +68,7 @@ import VoxClipMedia
             guard let right = DebugColumnBounds.split(in: window.contentView)?.arrangedSubviews.last, abs(right.frame.width - 320) <= 1 else {
                 throw VoxClipError.exportFailed("The 1280 scene must have a 320-point right column.")
             }
+            try await assertSelectedGallery(in: window, styleID: editor.project.captions.styleId, app: app, name: "live-editor-1280-initial", directory: directory)
             try await auditGalleryScroll(in: right, window: window, app: app, directory: directory)
             return nil
         }
@@ -140,22 +147,30 @@ import VoxClipMedia
               let last = CaptionStyleGroup.allCases.flatMap({ group in
                   app.styles.filter { CaptionStyleGroup.group(for: $0) == group }.sorted { $0.order < $1.order }
               }).last else { throw CocoaError(.coderInvalidValue) }
-        let original = scroll.contentView.bounds.origin
-        defer { scroll.contentView.scroll(to: original); scroll.reflectScrolledClipView(scroll.contentView) }
+        defer { try? galleryCommand(in: right, end: false) }
         var lastFrame: CGRect?
-        for _ in 0..<4 {
-            let maximum = max(0, document.bounds.height - scroll.contentView.bounds.height)
-            scroll.contentView.scroll(to: NSPoint(x: 0, y: document.isFlipped ? maximum : 0))
-            scroll.reflectScrolledClipView(scroll.contentView)
-            try await Task.sleep(for: .milliseconds(150))
+        let started = ProcessInfo.processInfo.systemUptime
+        let originalDocument = document.bounds
+        repeat {
+            try galleryCommand(in: right, end: true)
+            await Task.yield()
             right.layoutSubtreeIfNeeded()
             lastFrame = DebugRightColumn.markers(in: right)["caption.name.\(last.id)"]
             let viewport = scroll.convert(scroll.bounds, to: right)
-            if let lastFrame, viewport.insetBy(dx: -0.5, dy: -0.5).contains(lastFrame) { break }
-        }
+            if let lastFrame {
+                let inside = viewport.insetBy(dx: -0.5, dy: -0.5).contains(lastFrame)
+                let clearsFade: Bool
+                if right.isFlipped { clearsFade = lastFrame.maxY <= viewport.maxY - 23.5 }
+                else { clearsFade = lastFrame.minY >= viewport.minY + 23.5 }
+                if inside && clearsFade { break }
+            }
+        } while ProcessInfo.processInfo.systemUptime - started < 2
         let viewport = scroll.convert(scroll.bounds, to: right)
-        struct ScrollEvidence: Encodable { let style: String; let viewport: CGRect; let lastName: CGRect? }
-        try JSONEncoder().encode(ScrollEvidence(style: last.id, viewport: viewport, lastName: lastFrame))
+        struct ScrollEvidence: Encodable { let style: String; let viewport: CGRect; let lastName: CGRect?; let document: CGRect; let content: CGRect; let insets: [CGFloat]; let originalDocument: CGRect; let elapsed: Double }
+        let insets = scroll.contentInsets
+        try JSONEncoder().encode(ScrollEvidence(style: last.id, viewport: viewport, lastName: lastFrame, document: document.bounds,
+            content: scroll.contentView.bounds, insets: [insets.top, insets.left, insets.bottom, insets.right], originalDocument: originalDocument,
+            elapsed: ProcessInfo.processInfo.systemUptime - started))
             .write(to: directory.appendingPathComponent("gallery-scroll.json"), options: .atomic)
         let clearsFade = lastFrame.map { right.isFlipped ? $0.maxY <= viewport.maxY - 23.5 : $0.minY >= viewport.minY + 23.5 } ?? false
         guard let lastFrame, viewport.insetBy(dx: -0.5, dy: -0.5).contains(lastFrame), clearsFade else {
@@ -168,6 +183,58 @@ import VoxClipMedia
         guard app.styles.allSatisfy({ labels.contains("\($0.name): \($0.description)") }) else {
             throw VoxClipError.exportFailed("Every caption style must remain available to accessibility while scrolled.")
         }
+    }
+    private static func galleryCommand(in right: NSView, end: Bool) throws {
+        let prefix = "caption.gallery."
+        guard let key = DebugRightColumn.markers(in: right).keys.first(where: { $0.hasPrefix(prefix) }) else { throw CocoaError(.coderInvalidValue) }
+        let identifier = String(key.dropFirst(prefix.count))
+        NotificationCenter.default.post(name: CaptionGalleryAudit.notification, object: identifier, userInfo: ["end": end])
+    }
+    private static func assertSelectedGallery(in window: NSWindow, styleID: String, app: AppModel, name: String, directory: URL) async throws {
+        guard let right = DebugColumnBounds.split(in: window.contentView)?.arrangedSubviews.last,
+              let style = app.styles.first(where: { $0.id == styleID }) else { throw CocoaError(.coderInvalidValue) }
+        let started = ProcessInfo.processInfo.systemUptime
+        var paint: CGRect?, viewport: CGRect?, header: CGRect?, choice: DebugColumnBounds.Element?
+        var initialPaint: CGRect?, initialViewport: CGRect?
+        var visible = false
+        repeat {
+            window.contentView?.layoutSubtreeIfNeeded()
+            let markers = DebugRightColumn.markers(in: right)
+            if let local = markers["caption.tile.\(styleID)"], let scroll = DebugRightColumn.scrollViews(in: right).first {
+                let screen = window.convertToScreen(right.convert(local, to: nil))
+                let top = NSScreen.screens.first?.frame.maxY ?? 0
+                paint = CGRect(x: screen.minX, y: top - screen.maxY, width: screen.width, height: screen.height)
+                viewport = DebugColumnBounds.screenFrame(scroll, window: window)
+                if initialPaint == nil { initialPaint = paint; initialViewport = viewport }
+                if let localHeader = markers["caption.group.\(CaptionStyleGroup.group(for: style).rawValue)"] {
+                    let screenHeader = window.convertToScreen(right.convert(localHeader, to: nil))
+                    header = CGRect(x: screenHeader.minX, y: top - screenHeader.maxY, width: screenHeader.width, height: screenHeader.height)
+                }
+            }
+            choice = DebugColumnBounds.galleryChoice(in: window, label: "\(style.name): \(style.description)")
+            if let paint, let viewport, let choice {
+                visible = viewport.insetBy(dx: -0.5, dy: -0.5).contains(paint) && viewport.insetBy(dx: -0.5, dy: -0.5).contains(choice.frame)
+                if let header, header.union(paint).height + 24 <= viewport.height {
+                    visible = visible && viewport.insetBy(dx: -0.5, dy: -0.5).contains(header)
+                }
+            }
+            if visible { break }
+            await Task.yield()
+        } while ProcessInfo.processInfo.systemUptime - started < 2
+        struct SelectionEvidence: Encodable {
+            let style: String; let visible: Bool; let paint: CGRect?; let viewport: CGRect?; let choice: DebugColumnBounds.Element?
+            let initialPaint: CGRect?; let initialViewport: CGRect?; let header: CGRect?; let elapsed: Double
+            let swiftUI: CaptionGalleryAudit.Snapshot?
+        }
+        let prefix = "caption.gallery."
+        let key = DebugRightColumn.markers(in: right).keys.first { $0.hasPrefix(prefix) }
+        let identifier = key.map { String($0.dropFirst(prefix.count)) }
+        if let identifier { NotificationCenter.default.post(name: CaptionGalleryAudit.notification, object: identifier, userInfo: ["snapshot": true]) }
+        let snapshot = identifier.flatMap { CaptionGalleryAudit.snapshots[$0] }
+        try JSONEncoder().encode(SelectionEvidence(style: styleID, visible: visible, paint: paint, viewport: viewport, choice: choice,
+            initialPaint: initialPaint, initialViewport: initialViewport, header: header, elapsed: ProcessInfo.processInfo.systemUptime - started, swiftUI: snapshot))
+            .write(to: directory.appendingPathComponent("\(name)-selected-gallery.json"), options: .atomic)
+        guard visible else { throw VoxClipError.exportFailed("The selected caption tile, ring, checkmark and AX choice must fit the gallery in \(name).") }
     }
     private static func dragColumn(in window: NSWindow, to width: CGFloat, shell: WorkspaceShell, directory: URL) async throws {
         guard let split = DebugColumnBounds.split(in: window.contentView), split.arrangedSubviews.count == 2 else { throw CocoaError(.coderInvalidValue) }
