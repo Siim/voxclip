@@ -123,6 +123,7 @@ extension ProviderChoice {
     }()
     /// The Settings tab to show; Set Up AI… and Change… open "ai".
     var settingsPane = "general"
+    @ObservationIgnored lazy var voiceLabSession = VoiceLabSession(app: self)
     var activeEditor: EditorModel? { shell.editor }
     private(set) var settingsLoaded = false
     private(set) var loadingSettings = true
@@ -272,6 +273,7 @@ extension ProviderChoice {
         if key == "editing.pauseBreath", settingsLoaded, settings.values[key] != value { pauseBreathRevision += 1 }
         if key == "llm.connector" || key.hasPrefix("llm.baseUrl.") || key.hasPrefix("llm.cliPath.") { refreshConnectorReadiness() }
         settings.values[key] = value
+        if key == "voiceLab.labelPosition" { Task { await shell.editor?.updatePreview(load: false) } }
         if key == "voiceLab.enabled" || key == "llm.connector" || key.hasPrefix("llm.model.") || key.hasPrefix("llm.baseUrl.") || key.hasPrefix("llm.cliPath.") {
             shell.editor?.closeRewrite(returnFocus: false)
         }

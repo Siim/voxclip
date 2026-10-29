@@ -24,7 +24,8 @@ import VoxClipCore
         app.set("general.appearance", .string("dark"))
         await app.flushSettings()
         let saved = try await JSONSettingsStore(locations: locations).load()
-        return [
+        let voiceLab = try await DebugVoiceLab.run(app: app)
+        return voiceLab + [
             .init(name: "settings drafts do not write until commit", passed: delayed && valid),
             .init(name: "too-long settings show an inline error and keep the last value", passed: tooLong),
             .init(name: "empty settings show an inline error and keep the last value", passed: empty),

@@ -461,7 +461,7 @@ import VoxClipCore
     }
 }
 
-let privacyCopy = "On-device transcription, editing, captions and export stay on this Mac. Your chosen cloud transcription engine receives audio only. Your chosen AI connector receives transcript text only, no audio or video. Installed CLIs use your own sign-in. Model downloads and update checks contact their publishers. No telemetry. Posting is optional and never happens without your click."
+let privacyCopy = "On-device transcription, editing, captions and export stay on this Mac. Your chosen cloud transcription engine receives audio only. Your chosen AI connector receives transcript text only, no audio or video. Installed CLIs use your own sign-in. Model downloads and update checks contact their publishers. No telemetry. Posting is optional and never happens without your click.\n\nVoice Lab (only when you turn it on): Clean audio sends source audio to ElevenLabs. Your consent recording is sent to ElevenLabs Scribe for verification and to IVC as a clone sample. Training samples are sent to ElevenLabs IVC and deleted locally after upload; hashes stay. Patch and context text go to ElevenLabs TTS. Lip sync sends the edited window's video and audio to fal.ai or sync.so, with remote deletion where their APIs allow. Speaker embeddings never leave this Mac; consent records stay local. Each provider action requires your approval."
 
 @MainActor func openVoxClipSettings(pane: String? = nil) {
     if let pane { AppModel.sharedModel.settingsPane = pane }
