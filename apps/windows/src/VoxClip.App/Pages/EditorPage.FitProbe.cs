@@ -162,6 +162,18 @@ public sealed partial class EditorPage
             return bounds.Contains(measurement.Bounds) && (bounds.Bottom < region.Viewport.Y - region.VerticalOffset - 1 ||
                 bounds.Y > region.Viewport.Y - region.VerticalOffset + region.ExtentHeight + 1);
         }
+        List<object> AncestorEvidence(FrameworkElement owner)
+        {
+            var ancestors = new List<object>();
+            for (DependencyObject? ancestor = owner; ancestor is not null; ancestor = VisualTreeHelper.GetParent(ancestor))
+                if (ancestor is FrameworkElement element) ancestors.Add(new { Type = element.GetType().Name,
+                    Id = AutomationProperties.GetAutomationId(element), element.Visibility, element.Opacity,
+                    Bounds = ElementBounds(element), Clip = element.Clip is RectangleGeometry clip ? (ColumnRect?)Rectangle(clip.Rect) : null,
+                    Offscreen = FrameworkElementAutomationPeer.CreatePeerForElement(element)?.IsOffscreen(),
+                    Scroll = element is ScrollViewer scroll ? new { scroll.ViewportWidth, scroll.ViewportHeight, scroll.HorizontalOffset,
+                        scroll.VerticalOffset, scroll.ExtentWidth, scroll.ExtentHeight, scroll.ScrollableHeight } : null });
+            return ancestors;
+        }
         Dictionary<AutomationPeer, FrameworkElement> Observe(string sample)
         {
             var peers = CollectPeers(sample);
@@ -192,15 +204,7 @@ public sealed partial class EditorPage
                     deferredRealizations.Add(parked.Id);
                     decision = new(true, "virtualized cache; explicit required realization follows");
                 }
-                var ancestors = new List<object>();
-                if (!decision.Accepted)
-                    for (DependencyObject? ancestor = owner; ancestor is not null; ancestor = VisualTreeHelper.GetParent(ancestor))
-                        if (ancestor is FrameworkElement element) ancestors.Add(new { Type = element.GetType().Name,
-                            Id = AutomationProperties.GetAutomationId(element), element.Visibility, element.Opacity,
-                            Bounds = ElementBounds(element), Clip = element.Clip is RectangleGeometry clip ? (ColumnRect?)Rectangle(clip.Rect) : null,
-                            Offscreen = FrameworkElementAutomationPeer.CreatePeerForElement(element)?.IsOffscreen(),
-                            Scroll = element is ScrollViewer scroll ? new { scroll.ViewportWidth, scroll.ViewportHeight, scroll.HorizontalOffset,
-                                scroll.VerticalOffset, scroll.ExtentWidth, scroll.ExtentHeight, scroll.ScrollableHeight } : null });
+                var ancestors = decision.Accepted ? [] : AncestorEvidence(owner);
                 if (sample == "initial" || !decision.Accepted)
                     observations.Add(new { Sample = sample, Peer = measurement, decision.Accepted, decision.Classification,
                         Control = peer.IsControlElement(), Content = peer.IsContentElement(), LayoutBounds = ElementBounds(owner),
@@ -270,7 +274,8 @@ public sealed partial class EditorPage
                             var proven = after.Scroll is { } scroll && scroll.Viewport.Contains(after.Bounds) &&
                                 ColumnBoundsGate.Assess(after, Rectangle(column), Rectangle(client), required: true).Accepted;
                             scrollProven = proven;
-                            scrollProofs.Add(new { Target = id, Before = before, After = after, Proven = proven });
+                            scrollProofs.Add(new { Target = id, Before = before, After = after, Proven = proven,
+                                Ancestors = AncestorEvidence(owner) });
                             if (!proven) failures.Add("scroll ownership not proven: " + id);
                             peers = Observe("scroll-to-" + id);
                         }
@@ -300,7 +305,9 @@ public sealed partial class EditorPage
                         Type = entry.Value.GetType().Name, Layout = ElementBounds(entry.Value),
                         NativeOwner = entry.Key is FrameworkElementAutomationPeer { Owner: FrameworkElement nativeOwner }
                             ? ((WinRT.IWinRTObject)nativeOwner).NativeObject.ThisPtr.ToInt64() : (long?)null,
-                        Gallery = captionPanel?.DebugFitGalleryIdentity(entry.Value)?.Id
+                        Gallery = captionPanel?.DebugFitGalleryIdentity(entry.Value)?.Id,
+                        ParkedAncestors = ParkedCopy(ReadPeer(entry.Key, entry.Value, "cache-evidence"), entry.Value)
+                            ? AncestorEvidence(entry.Value) : []
                     }).ToArray() });
                 failures.AddRange(rejected);
                 if (measured.Length == 0) unmeasurable.Add(new { Id = id, Name = id, Role = "required peer", Error = "missing or unrealized" });
