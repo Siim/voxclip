@@ -51,8 +51,10 @@ internal sealed class CaptionsPanel : UserControl
     private bool loading;
     private bool syncing;
     private double playhead;
+    private FrameworkElement? measuredHeader;
+    private double headerHeight = 64;
     internal IReadOnlyList<CaptionStyle> Styles { get; private set; } = [];
-    internal double MinimumContentHeight => body.RowDefinitions[3].MinHeight + 136;
+    internal double MinimumContentHeight => body.RowDefinitions[3].MinHeight + headerHeight + 80;
     internal event EventHandler? FitChanged;
     internal Control FocusTarget
     {
@@ -106,7 +108,8 @@ internal sealed class CaptionsPanel : UserControl
         var details = Ui.Stack(8);
         details.Children.Add(notice); details.Children.Add(fineTune);
         fineTuneViewport.Content = details;
-        fineTuneViewport.MinHeight = 56;
+        fineTuneViewport.MinHeight = headerHeight;
+        fineTune.Loaded += (_, _) => MeasureFineTuneHeader();
         AutomationProperties.SetAutomationId(fineTuneViewport, "FineTune.ScrollViewer");
         fineTune.RegisterPropertyChangedCallback(Expander.IsExpandedProperty, (_, _) => UpdateFineTuneSpace());
         notice.RegisterPropertyChangedCallback(InfoBar.IsOpenProperty, (_, _) => UpdateFineTuneSpace());
@@ -283,7 +286,7 @@ internal sealed class CaptionsPanel : UserControl
         if (Math.Abs(body.RowDefinitions[3].MinHeight - minimum) > 0.1)
         {
             body.RowDefinitions[3].MinHeight = minimum;
-            FitChanged?.Invoke(this, EventArgs.Empty);
+            UpdateFineTuneSpace();
         }
         if (gallery.ItemsPanelRoot is ItemsWrapGrid panel) panel.ItemWidth = (gallery.ActualWidth > 8 ? gallery.ActualWidth : 8) / 2;
         foreach (var tile in visible)
@@ -296,6 +299,34 @@ internal sealed class CaptionsPanel : UserControl
         if (fineTune.Content is UIElement content) content.Visibility = fineTune.IsExpanded ? Visibility.Visible : Visibility.Collapsed;
         notice.Visibility = notice.IsOpen ? Visibility.Visible : Visibility.Collapsed;
         body.RowDefinitions[2].Height = fineTune.IsExpanded || notice.IsOpen ? new(1, GridUnitType.Star) : GridLength.Auto;
+        body.RowDefinitions[3].Height = fineTune.IsExpanded || notice.IsOpen ? new(body.RowDefinitions[3].MinHeight) : new(1, GridUnitType.Star);
+        FitChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void MeasureFineTuneHeader()
+    {
+        FrameworkElement? Find(DependencyObject parent)
+        {
+            for (var index = 0; index < VisualTreeHelper.GetChildrenCount(parent); index++)
+            {
+                var child = VisualTreeHelper.GetChild(parent, index);
+                if (child is ToggleButton toggle && (toggle.Name == "ExpanderHeader" || Equals(toggle.Content, fineTune.Header))) return toggle;
+                if (Find(child) is { } found) return found;
+            }
+            return null;
+        }
+        var header = Find(fineTune);
+        if (header == measuredHeader) return;
+        if (measuredHeader is not null) measuredHeader.SizeChanged -= HeaderSizeChanged;
+        measuredHeader = header;
+        if (header is not null) { header.SizeChanged += HeaderSizeChanged; UpdateHeaderHeight(header.ActualHeight); }
+    }
+    private void HeaderSizeChanged(object sender, SizeChangedEventArgs args) => UpdateHeaderHeight(args.NewSize.Height);
+    private void UpdateHeaderHeight(double height)
+    {
+        if (height <= 0 || Math.Abs(headerHeight - height) <= 0.1) return;
+        headerHeight = height;
+        fineTuneViewport.MinHeight = height;
         FitChanged?.Invoke(this, EventArgs.Empty);
     }
 
@@ -556,6 +587,7 @@ internal sealed class CaptionsPanel : UserControl
 
     internal void Detach()
     {
+        if (measuredHeader is not null) measuredHeader.SizeChanged -= HeaderSizeChanged;
         model.PropertyChanged -= ModelPropertyChanged;
         model.Changed -= ModelChanged;
         samples?.Dispose();

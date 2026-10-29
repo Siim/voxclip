@@ -58,9 +58,9 @@ internal static class ShellNativeProbe
             checks.Add("missing media is read-only; remaining navigation checks use a synthetic resolved-media state");
             editor.ViewModel.SetMediaUnavailable(false);
             var diagnostic = Environment.GetEnvironmentVariable("VOXCLIP_NATIVE_DIAGNOSTIC");
-            if (diagnostic is "bounds" or "caption")
+            if (diagnostic is "bounds" or "bounds-critical" or "caption")
             {
-                if (diagnostic == "bounds") await Gate("layout", () => editor.DebugLayoutGateAsync(window, output, checks));
+                if (diagnostic is "bounds" or "bounds-critical") await Gate("layout", () => editor.DebugLayoutGateAsync(window, output, checks));
                 else
                     for (var attempt = 1; attempt <= 5; attempt++)
                         await Gate("caption-" + attempt, () => window.DebugEditor!.DebugCaptionGateAsync(window, output, checks));

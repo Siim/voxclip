@@ -835,7 +835,10 @@ public sealed partial class EditorPage : Page
     {
         var oriented = media?.OrientedSize ?? MediaFromProject(ViewModel.Project).OrientedSize;
         (PreviewStage.Width, PreviewStage.Height) = EditorLayout.Stage(RightPane.ActualWidth - RightPane.BorderThickness.Left - 32, ViewModel.Project.Export.Aspect, oriented);
-        var maximum = Math.Max(80, RightPane.ActualHeight - FrameRow.ActualHeight - TransportRow.ActualHeight - 68 - (captions?.MinimumContentHeight ?? 160));
+        var chrome = PreviewPane.Padding.Top + PreviewPane.Padding.Bottom + PreviewPane.RowSpacing +
+            FrameRow.Margin.Top + FrameRow.Margin.Bottom + CaptionsHost.BorderThickness.Top + CaptionsHost.BorderThickness.Bottom;
+        var maximum = EditorLayout.StageHeightBudget(RightPane.ActualHeight, FrameRow.ActualHeight,
+            TransportRow.ActualHeight, chrome, captions?.MinimumContentHeight ?? 160);
         if (PreviewStage.Height > maximum)
         {
             PreviewStage.Width *= maximum / PreviewStage.Height;

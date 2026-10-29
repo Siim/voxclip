@@ -150,6 +150,17 @@ public sealed class EditorLayoutTests
         Assert.Equal((0.0, 0.0), EditorLayout.Stage(-20, ExportAspect.Landscape, new PixelSize(1920, 1080)));
     }
 
+    [Theory]
+    [InlineData(413, 65, 62, 45, 225, 16)]
+    [InlineData(713, 32, 40, 45, 284, 312)]
+    public void StageLeavesTheMeasuredCaptionMinimumReachable(double column, double frame, double transport,
+        double chrome, double captions, double expected)
+    {
+        var stage = EditorLayout.StageHeightBudget(column, frame, transport, chrome, captions);
+        Assert.Equal(expected, stage);
+        Assert.Equal(column, stage + frame + transport + chrome + captions);
+    }
+
     [Fact]
     public void TheFrameRowListsPortraitFirstAndKeepsThePersistedValues()
     {

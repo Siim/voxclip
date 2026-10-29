@@ -34,6 +34,8 @@ public sealed partial class EditorPage
                 (1280, 800, 348, ElementTheme.Light), (1440, 900, 300, ElementTheme.Light),
                 (1440, 900, 560, ElementTheme.Light), (760, 600, 300, ElementTheme.Light), (1000, 800, 0, ElementTheme.Light) })
             {
+                if (Environment.GetEnvironmentVariable("VOXCLIP_NATIVE_DIAGNOSTIC") == "bounds-critical" &&
+                    item.Item3 != 560 && item.Item1 != 760) continue;
                 root.RequestedTheme = item.Item4;
                 var scale = XamlRoot.RasterizationScale;
                 window.AppWindow.Resize(new((int)(item.Item1 * scale), (int)(item.Item2 * scale)));
