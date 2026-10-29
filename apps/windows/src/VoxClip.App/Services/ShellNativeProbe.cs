@@ -57,6 +57,17 @@ internal static class ShellNativeProbe
             Require(editor!.ViewModel.IsReadOnly && !editor.ViewModel.CanExport, "missing fixture media was not read-only");
             checks.Add("missing media is read-only; remaining navigation checks use a synthetic resolved-media state");
             editor.ViewModel.SetMediaUnavailable(false);
+            var diagnostic = Environment.GetEnvironmentVariable("VOXCLIP_NATIVE_DIAGNOSTIC");
+            if (diagnostic is "bounds" or "caption")
+            {
+                if (diagnostic == "bounds") await Gate("layout", () => editor.DebugLayoutGateAsync(window, output, checks));
+                else
+                    for (var attempt = 1; attempt <= 5; attempt++)
+                        await Gate("caption-" + attempt, () => window.DebugEditor!.DebugCaptionGateAsync(window, output, checks));
+                Require(failures.Count == 0, string.Join("\n\n", failures));
+                await File.WriteAllTextAsync(report, JsonSerializer.Serialize(new { status = "passed", diagnostic, checks }));
+                return;
+            }
             await Gate("timeline", () => TimelineNativeProbe.RunAsync(window, editor.ViewModel.Project, checks));
             await Gate("transcript", () => TranscriptNativeProbe.RunAsync(window, editor.ViewModel.Project, checks));
             await Gate("layout", () => editor.DebugLayoutGateAsync(window, output, checks));

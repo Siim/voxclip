@@ -86,6 +86,7 @@ public sealed partial class EditorPage
         ViewModel.SetMediaUnavailable(false);
         ViewModel.Apply(new VoxClip.Core.Domain.Editing.EditOperation.SetActiveClip(null));
         ShowViewer(true);
+        var attempt = 0;
         async Task Begin()
         {
             var snapshot = await SnapshotAsync(CancellationToken.None);
@@ -96,7 +97,17 @@ public sealed partial class EditorPage
             var screen = new NativeGateInput.NativePoint();
             NativeRequire(NativeGateInput.ClientToScreen(hwnd, ref screen), "Caption client-to-screen failed.");
             var scale = XamlRoot.RasterizationScale;
-            NativeGateInput.SetCursorPos(screen.X + (int)(point.X * scale), screen.Y + (int)(point.Y * scale));
+            var hit = new Point(screen.X + (int)(point.X * scale), screen.Y + (int)(point.Y * scale));
+            var top = target.TransformToVisual(window.Content).TransformPoint(default);
+            await File.AppendAllTextAsync(Path.Combine(output, "caption-hits.jsonl"), JsonSerializer.Serialize(new
+            {
+                Attempt = ++attempt, At = DateTimeOffset.UtcNow, Screen = hit, Local = point, Scale = scale,
+                Overlay = new Rect(top.X, top.Y, target.ActualWidth, target.ActualHeight),
+                HitElements = VisualTreeHelper.FindElementsInHostCoordinates(point, (UIElement)window.Content)
+                    .OfType<FrameworkElement>().Select(element => new { Type = element.GetType().Name,
+                        Name = AutomationProperties.GetName(element), Id = AutomationProperties.GetAutomationId(element) }).Take(12).ToArray()
+            }) + Environment.NewLine);
+            NativeGateInput.SetCursorPos((int)hit.X, (int)hit.Y);
             NativeGateInput.Mouse(2);
             await Task.Delay(120);
             NativeRequire(CaptionDrag.IsDragging, "Native left-down did not begin caption drag.");
