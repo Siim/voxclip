@@ -4,7 +4,7 @@ import Foundation
 package enum VoiceConsentCheckpoint: String, Sendable, CaseIterable {
     case saveDraft, removeDraft, saveRecord, tombstoneRecord, creationIntent, creationDispatched, creationResult, saveCreation, clearCreation
     case withdrawing, withdrawn, deletionIntent, remoteDeleted, removeStatement, audioRemoved, saveTombstone, clearDeletion
-    case retryScheduled, abandoned
+    case retryScheduled, abandoned, saveAudit
 }
 
 public struct VoiceOperation: Codable, Sendable, Identifiable, Equatable {
@@ -27,6 +27,7 @@ public struct VoiceOperation: Codable, Sendable, Identifiable, Equatable {
     public var attempts: Int
     public var nextAttemptAt: Date?
     public var failed: Bool
+    public var audit: VoiceConsentAudit?
     public var finished: Bool { [.saved, .withdrawn, .tombstoned, .abandoned].contains(state) }
     public var blocksCreation: Bool { blocksCreation(at: Date()) }
     public func blocksCreation(at date: Date) -> Bool {
@@ -86,6 +87,8 @@ extension VoiceConsentStore {
         guard value.id == id, UUID(uuidString: value.recordID) != nil, value.providerNonce == value.recordID,
               value.attempts >= 0, value.updatedAt >= value.startedAt,
               value.remoteVoiceID.map({ $0.range(of: "^[A-Za-z0-9_-]{1,128}$", options: .regularExpression) != nil }) ?? true else { throw VoiceConsentError.invalidRecord }
+        try value.audit?.validate(recordID: value.recordID)
+        guard value.audit == nil || value.audit?.remoteVoiceID == value.remoteVoiceID else { throw VoiceConsentError.invalidRecord }
         let allowed: Set<VoiceOperation.State> = value.kind == .create
             ? [.intent, .dispatched, .created, .saved, .withdrawing, .withdrawn, .abandoned]
             : [.intent, .remoteDeleted, .audioRemoved, .tombstoned]
@@ -102,7 +105,8 @@ extension VoiceConsentStore {
         guard !(try operations()).contains(where: { $0.blocksCreation(at: date) || (!$0.finished && $0.recordID == record.id) }) else { throw VoiceConsentError.creationPending }
         try checkpoint(.saveDraft)
         try save(record)
-        let value = VoiceOperation(id: requestID, kind: .create, recordID: record.id, region: region, at: date)
+        var value = VoiceOperation(id: requestID, kind: .create, recordID: record.id, region: region, at: date)
+        value.audit = try VoiceConsentAudit(record: record)
         try writeOperation(value, checkpoint: .creationIntent)
         return value
     }
@@ -119,6 +123,7 @@ extension VoiceConsentStore {
         value.state = state; value.updatedAt = max(date, value.updatedAt); value.failed = false; value.nextAttemptAt = nil
         if state == .dispatched { value.wasDispatched = true }
         if let remoteVoiceID { value.remoteVoiceID = remoteVoiceID }
+        value.audit?.remoteVoiceID = value.remoteVoiceID
         if let requiresVerification { value.requiresVerification = requiresVerification }
         let step: VoiceConsentCheckpoint
         switch state {
@@ -162,7 +167,8 @@ extension VoiceConsentStore {
             return existing
         }
         let record = try load(id)
-        let value = VoiceOperation(id: UUID(), kind: .delete, recordID: id, region: region, at: date, remoteVoiceID: record.voiceId)
+        var value = VoiceOperation(id: UUID(), kind: .delete, recordID: id, region: region, at: date, remoteVoiceID: record.voiceId)
+        value.audit = try VoiceConsentAudit(record: record)
         try writeOperation(value, checkpoint: .deletionIntent)
         return value
     }
@@ -173,6 +179,9 @@ extension VoiceConsentStore {
             var value = VoiceOperation(id: UUID(), kind: .create, recordID: recordID, region: region, at: date, remoteVoiceID: voiceID)
             value.state = .withdrawing; value.wasDispatched = true
             try writeOperation(value, checkpoint: .withdrawing)
+        }
+        if let value = try operations().first(where: { $0.recordID == recordID && $0.kind == .create && !$0.finished }) {
+            _ = try preserveCreationAudit(value.id)
         }
         try discardStatement(recordID: recordID)
     }
@@ -193,7 +202,35 @@ extension VoiceConsentStore {
         try FileManager.default.removeItem(at: url)
         try synchronizeDirectory(directory)
     }
+    package func preserveCreationAudit(_ id: UUID) throws -> VoiceOperation {
+        var value = try operation(id)
+        guard value.audit == nil else { return value }
+        let url = try file("record.json", in: directory(value.recordID))
+        guard FileManager.default.fileExists(atPath: url.path) else { return value }
+        let record = try JSONDecoder().decode(VoiceConsentRecord.self, from: Data(contentsOf: url))
+        guard record.id == value.recordID else { throw VoiceConsentError.invalidRecord }
+        value.audit = try VoiceConsentAudit(record: record)
+        value.audit?.remoteVoiceID = value.remoteVoiceID
+        try writeOperation(value, checkpoint: .saveAudit)
+        return value
+    }
+    package func auditTombstone(recordID: String) throws -> VoiceConsentAudit? {
+        let url = try file("audit.json", in: directory(recordID))
+        guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+        guard (try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0) <= 16 * 1_024 else { throw VoiceConsentError.invalidRecord }
+        let audit = try JSONDecoder().decode(VoiceConsentAudit.self, from: Data(contentsOf: url))
+        try audit.validate(recordID: recordID)
+        guard audit.deletedAt != nil, audit.remoteVoiceID != nil else { throw VoiceConsentError.invalidRecord }
+        return audit
+    }
     package func tombstone(_ value: VoiceOperation) throws {
+        if var audit = value.audit, let voiceID = value.remoteVoiceID {
+            audit.remoteVoiceID = voiceID; audit.deletedAt = VoiceConsentRecord.timestamp(value.updatedAt)
+            try audit.validate(recordID: value.recordID)
+            try checkpoint(.tombstoneRecord)
+            let encoder = JSONEncoder(); encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            try writePrivate(encoder.encode(audit), to: file("audit.json", in: directory(value.recordID, create: true)))
+        }
         let url = try file("record.json", in: directory(value.recordID))
         guard FileManager.default.fileExists(atPath: url.path) else { return }
         var record = try JSONDecoder().decode(VoiceConsentRecord.self, from: Data(contentsOf: url))
@@ -267,6 +304,7 @@ extension VoiceConsentStore {
                     value.state = deletion != nil || creation?.cancelled == true ? .withdrawing : (value.remoteVoiceID == nil ? .dispatched : .created)
                     value.requiresVerification = record.status == .verificationRequired
                 } else if deletion?.remoteDeleted == true { value.state = .remoteDeleted }
+                value.audit = try VoiceConsentAudit(record: record)
                 try writeOperation(value, checkpoint: value.kind == .create ? .creationIntent : .deletionIntent)
             }
             for url in [creationFile, deletionFile] where manager.fileExists(atPath: url.path) { try manager.removeItem(at: url) }

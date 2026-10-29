@@ -36,6 +36,7 @@ public actor VoiceConsentStore {
             guard UUID(uuidString: id) != nil, !liveEnrollments.contains(id) else { continue }
             let directory = try directory(id)
             guard !(try hasOperation(id)) else { continue }
+            if try auditTombstone(recordID: id) != nil { continue }
             if let record = try? load(id), record.voiceId != "pending" {
                 if record.status == .deleted { try discardStatement(recordID: id) }
                 continue

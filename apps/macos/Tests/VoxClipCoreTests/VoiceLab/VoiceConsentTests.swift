@@ -662,7 +662,53 @@ extension VoiceConsentTests {
         clock.advance(21); try await reconciler.reconcile()
         #expect(try await store.operations().isEmpty)
         #expect(try await store.records().isEmpty)
+        let audit = try #require(await store.auditTombstone(recordID: record.id))
+        #expect(audit.statementSha256 == record.statement.audioSha256)
+        #expect(audit.recordingSha256s == record.samples.map(\.sha256))
+        #expect(audit.language == record.statement.language && audit.createdAt == record.createdAt)
+        #expect(audit.acceptedAt == record.attestations.acceptedAt && audit.remoteVoiceID == "fixtureOwnVoice")
+        #expect(audit.deletedAt != nil)
+        let restarted = storage(root)
+        try await restarted.reconcileAbandonedEnrollments()
+        #expect(try await restarted.auditTombstone(recordID: record.id) == audit)
         #expect(remote.value.withLock { $0.lists == 2 && $0.deletes == 1 && $0.posts == 0 && !$0.present })
+    }
+    @Test(arguments: [VoiceConsentCheckpoint.saveAudit, .removeStatement, .removeDraft, .tombstoneRecord, .withdrawn, .clearCreation])
+    func uncertainCreationKeepsAuditAtEveryRecoveryBoundary(step: VoiceConsentCheckpoint) async throws {
+        let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let store = storage(root); let record = try fixtureRecord(wav: wav)
+        let operation = try await seedOperation(store, record: record)
+        _ = try await store.transition(operation.id, to: .dispatched, at: now)
+        let journal = await store.operationsRoot.appendingPathComponent(operation.id.uuidString + ".json")
+        var legacy = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: journal)) as? [String: Any])
+        legacy.removeValue(forKey: "audit")
+        try JSONSerialization.data(withJSONObject: legacy).write(to: journal)
+        let fired = Mutex(false)
+        let failing = VoiceConsentStore(locations: SpeechTestFiles.locations(root), fault: { checkpoint in
+            if checkpoint == step { fired.withLock { $0 = true }; throw CocoaError(.fileWriteUnknown) }
+        })
+        let remote = OperationRemote(); remote.value.withLock { $0.present = true }
+        let client = operationClient(remote, nonce: record.id)
+        await #expect(throws: (any Error).self) { try await VoiceOperationReconciler(store: failing, client: client).reconcile(force: true) }
+        #expect(fired.withLock { $0 })
+        if step == .saveAudit {
+            #expect(try await failing.statement(recordID: record.id) == wav)
+            #expect(FileManager.default.fileExists(atPath: failing.root.appendingPathComponent("\(record.id)/record.json").path))
+        } else {
+            let audit = try #require(await failing.operation(operation.id).audit)
+            #expect(audit.statementSha256 == record.statement.audioSha256)
+            #expect(audit.recordingSha256s == record.samples.map(\.sha256))
+            let object = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(audit)) as? [String: Any])
+            #expect(Set(object.keys).isSubset(of: ["recordID", "statementSha256", "recordingSha256s", "createdAt", "acceptedAt", "language", "remoteVoiceID", "deletedAt"]))
+        }
+        let restarted = storage(root)
+        try await VoiceOperationReconciler(store: restarted, client: client).reconcile(force: true)
+        #expect(try await restarted.operations().isEmpty)
+        let audit = try #require(await restarted.auditTombstone(recordID: record.id))
+        #expect(audit.statementSha256 == record.statement.audioSha256 && audit.recordingSha256s == record.samples.map(\.sha256))
+        #expect(audit.remoteVoiceID == record.voiceId && audit.deletedAt != nil)
+        #expect(!FileManager.default.fileExists(atPath: restarted.root.appendingPathComponent("\(record.id)/statement.wav").path))
+        #expect(remote.value.withLock { !$0.present && $0.posts == 0 })
     }
     @Test(arguments: [false, true]) func cleanupRequiresSuccessfulListingAfterBlockingDeadline(listFailure: Bool) async throws {
         let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }

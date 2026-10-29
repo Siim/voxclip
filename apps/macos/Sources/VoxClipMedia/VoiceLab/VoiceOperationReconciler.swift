@@ -36,6 +36,7 @@ public actor VoiceOperationReconciler {
             case (.create, .intent):
                 value = try await store.transition(value.id, to: .withdrawing, at: now())
             case (.create, .dispatched):
+                value = try await store.preserveCreationAudit(value.id)
                 try await store.discardStatement(recordID: value.recordID)
                 try await store.discardUnresolvedDraft(value)
                 guard let remote = try await findRemote(value, force: force) else { return }
@@ -51,6 +52,7 @@ public actor VoiceOperationReconciler {
                 try await store.saveCreatedRecord(value)
                 value = try await store.transition(value.id, to: .saved, at: now())
             case (.create, .withdrawing):
+                value = try await store.preserveCreationAudit(value.id)
                 try await store.discardStatement(recordID: value.recordID)
                 try await store.discardUnresolvedDraft(value)
                 if value.remoteVoiceID == nil, value.wasDispatched {
