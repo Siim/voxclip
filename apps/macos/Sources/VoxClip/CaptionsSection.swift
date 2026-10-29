@@ -90,15 +90,6 @@ enum CaptionGalleryTarget: Hashable { case tile(String), header(CaptionStyleGrou
             .labelsHidden().toggleStyle(.switch).controlSize(.small).fixedSize().accessibilityIdentifier("voxclip.captions.switch")
     }
     private var liveChip: some View {
-        Menu {
-            Picker("Caption style", selection: styleSelection) {
-                ForEach(model.app.styles.sorted { $0.order < $1.order }, id: \.id) { Text($0.name).tag($0.id) }
-            }
-        } label: { chipContent }
-        .menuStyle(.borderlessButton).menuIndicator(.hidden).frame(width: 64, height: 36)
-        .accessibilityLabel("Caption style").accessibilityIdentifier("voxclip.captions.styleChip")
-    }
-    private var chipContent: some View {
         Group {
             if let style { CaptionTile(input: chipInput(style), pipeline: model.app.captions) }
             else {
@@ -140,10 +131,6 @@ enum CaptionGalleryTarget: Hashable { case tile(String), header(CaptionStyleGrou
                         return
                     }
                     if let selected = notification.userInfo?["selectStyle"] as? String {
-                        styleSelection.wrappedValue = selected
-                        return
-                    }
-                    if let selected = notification.userInfo?["chipStyle"] as? String {
                         styleSelection.wrappedValue = selected
                         return
                     }

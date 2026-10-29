@@ -49,11 +49,14 @@ import VoxClipCore
                 let includesRing = paint.flatMap { envelope in target.map { abs(envelope.minY - $0.minY) <= 0.5 && abs(envelope.height - $0.height) <= 0.5 } } ?? false
                 results.append(.init(name: "gallery \(row) selection at \(width): the scroll target includes the ring's real top", passed: includesRing))
             }
-            command(identifier, ["chipStyle": first.id])
-            let chip = await settle(host: host, identifier: identifier, style: first.id,
-                name: "chip-\(Int(width))", width: width, height: height)
-            measurements.append(chip)
-            results.append(.init(name: "gallery chip selection at \(width) reveals its complete tile", passed: chip.settled && model.project.captions.styleId == first.id))
+            let undo = UndoManager(); undo.groupsByEvent = false; model.undoManager = undo
+            for (row, style) in outsideRows(model, to: first.id) {
+                changeOutside(row, to: style, model: model, undo: undo)
+                let receipt = await settle(host: host, identifier: identifier, style: style,
+                    name: "\(row)-\(Int(width))", width: width, height: height)
+                measurements.append(receipt)
+                results.append(.init(name: "gallery \(row) style change at \(width) reveals its complete tile", passed: receipt.settled && model.project.captions.styleId == style))
+            }
             command(identifier, ["beginReveal": true])
             let pending = snapshot(identifier)
             command(identifier, ["userScroll": true])
@@ -78,15 +81,25 @@ import VoxClipCore
         let identifier = try await galleryID(in: host)
         var measurements: [Measurement] = []
         var results: [DebugUISuite.Result] = []
-        for (row, style) in [("first", first), ("middle", middle), ("last", last), ("chip", first)] {
-            if row == "chip" { try await chooseFromChip(style) }
-            else { try await chooseFromGallery(style) }
+        for (row, style) in [("first", first), ("middle", middle), ("last", last)] {
+            try chooseFromGallery(style)
             let receipt = await settle(host: host, identifier: identifier, style: style.id,
                 name: row, width: host.frame.width, height: host.frame.height)
             measurements.append(receipt)
             results.append(.init(name: "\(name) \(row) selection reveals its complete paint", passed: receipt.settled))
             if receipt.settled { try await assertSelection(style.id, "\(name)-\(row)") }
         }
+        let documentUndo = model.undoManager
+        let undo = UndoManager(); undo.groupsByEvent = false; model.undoManager = undo
+        for (row, style) in outsideRows(model, to: first.id) {
+            changeOutside(row, to: style, model: model, undo: undo)
+            let receipt = await settle(host: host, identifier: identifier, style: style,
+                name: row, width: host.frame.width, height: host.frame.height)
+            measurements.append(receipt)
+            results.append(.init(name: "\(name) \(row) style change reveals its complete paint", passed: receipt.settled))
+            if receipt.settled { try await assertSelection(style, "\(name)-\(row)") }
+        }
+        model.undoManager = documentUndo
         command(identifier, ["beginReveal": true])
         let pending = snapshot(identifier)
         command(identifier, ["userScroll": true])
@@ -96,7 +109,7 @@ import VoxClipCore
         results.append(.init(name: "\(name) user scroll cancels a pending reveal", passed: pending?.pending == true && cancelled?.interrupted == true && cancelled?.pending == false))
         results.append(.init(name: "\(name) cancelled reveal stays cancelled through layout", passed: after?.interrupted == true && after?.pending == false && after?.commands == cancelled?.commands))
         guard let originalStyle = model.app.styles.first(where: { $0.id == original }) else { throw CocoaError(.coderInvalidValue) }
-        try await chooseFromGallery(originalStyle)
+        try chooseFromGallery(originalStyle)
         let restored = await settle(host: host, identifier: identifier, style: original,
             name: "restore", width: host.frame.width, height: host.frame.height)
         measurements.append(restored)
@@ -130,7 +143,7 @@ import VoxClipCore
         var measurements: [Measurement] = []
         var results: [DebugUISuite.Result] = []
         for style in [first, last] {
-            command(identifier, ["chipStyle": style.id])
+            model.setStyle(style.id)
             let receipt = await settle(host: host, identifier: identifier, style: style.id,
                 name: "short-\(style.id)", width: width, height: height, short: true)
             measurements.append(receipt)
@@ -158,38 +171,31 @@ import VoxClipCore
     private static func command(_ identifier: String, _ info: [String: Any]) {
         NotificationCenter.default.post(name: CaptionGalleryAudit.notification, object: identifier, userInfo: info)
     }
-    private static func chooseFromGallery(_ style: CaptionStyle) async throws {
-        let label = "\(style.name): \(style.description)"
-        let pressed = await Task.detached { pressAccessibility(role: kAXRadioButtonRole, label: label) }.value
-        guard pressed else { throw VoxClipError.exportFailed("The native caption style choice could not be pressed.") }
+    /// Style changes that start outside the gallery, which must still reveal the selected tile: the
+    /// editor's own undoable action, then Undo of it. Each row names the style it leaves selected.
+    private static func outsideRows(_ model: EditorModel, to style: String) -> [(String, String)] {
+        [("external", style), ("undo", model.project.captions.styleId)]
     }
-    private static func chooseFromChip(_ style: CaptionStyle) async throws {
-        let opening = Task.detached { pressAccessibility(identifier: "voxclip.captions.styleChip") }
-        let label = style.name
-        let selected = await Task.detached {
-            let started = ProcessInfo.processInfo.systemUptime
-            repeat {
-                if pressAccessibility(role: kAXMenuItemRole, label: label) { return true }
-                await Task.yield()
-            } while ProcessInfo.processInfo.systemUptime - started < 2
-            return false
-        }.value
-        guard selected else { throw VoxClipError.exportFailed("The native caption chip menu did not offer the requested style.") }
-        guard await opening.value else { throw VoxClipError.exportFailed("The native caption chip menu could not be opened.") }
+    private static func changeOutside(_ row: String, to style: String, model: EditorModel, undo: UndoManager) {
+        if row == "undo" { undo.undo() } else { undo.beginUndoGrouping(); model.setStyle(style); undo.endUndoGrouping() }
     }
-    private nonisolated static func pressAccessibility(identifier: String? = nil, role: String? = nil, label: String? = nil) -> Bool {
+    /// Presses a gallery choice through the app's own accessibility tree. In-process AX calls are
+    /// answered synchronously by SwiftUI, which syncs with the main thread: from any other thread
+    /// they deadlock, so this stays on the main actor.
+    private static func chooseFromGallery(_ style: CaptionStyle) throws {
+        guard pressAccessibility(role: kAXRadioButtonRole, label: "\(style.name): \(style.description)") else {
+            throw VoxClipError.exportFailed("The native caption style choice could not be pressed.")
+        }
+    }
+    private static func pressAccessibility(role: String, label: String) -> Bool {
         func attribute(_ element: AXUIElement, _ name: String) -> CFTypeRef? {
             var value: CFTypeRef?
             return AXUIElementCopyAttributeValue(element, name as CFString, &value) == .success ? value : nil
         }
         func find(_ element: AXUIElement, depth: Int) -> AXUIElement? {
             guard depth < 32 else { return nil }
-            let matchesID = identifier.map { attribute(element, kAXIdentifierAttribute) as? String == $0 } ?? true
-            let matchesRole = role.map { attribute(element, kAXRoleAttribute) as? String == $0 } ?? true
-            let matchesLabel = label.map { expected in
-                [kAXTitleAttribute, kAXDescriptionAttribute].contains { attribute(element, $0) as? String == expected }
-            } ?? true
-            if matchesID && matchesRole && matchesLabel { return element }
+            if attribute(element, kAXRoleAttribute) as? String == role,
+               [kAXTitleAttribute, kAXDescriptionAttribute].contains(where: { attribute(element, $0) as? String == label }) { return element }
             let children = attribute(element, kAXChildrenAttribute) as? [AXUIElement] ?? []
             for child in children { if let found = find(child, depth: depth + 1) { return found } }
             return nil

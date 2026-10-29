@@ -10,7 +10,7 @@ import Darwin
         let directory = try UIProcessHarness.run(mode: "-captionGalleryAudit", name: "caption-gallery")
         defer { UIProcessHarness.cleanTemporary(directory) }
         let report = try JSONDecoder().decode([UIProcessHarness.Result].self, from: Data(contentsOf: directory.appendingPathComponent("results.json")))
-        #expect(report.count == 49)
+        #expect(report.count == 53)
         for result in report { #expect(result.passed && result.skipped == nil, Comment(rawValue: result.name)) }
         struct Measurement: Decodable {
             let name: String
@@ -18,7 +18,7 @@ import Darwin
             let settled: Bool
         }
         let measurements = try JSONDecoder().decode([Measurement].self, from: Data(contentsOf: directory.appendingPathComponent("caption-gallery-interactions.json")))
-        #expect(measurements.count == 16)
+        #expect(measurements.count == 20)
         #expect(Set(measurements.filter { $0.name.hasPrefix("last-") }.map(\.width)) == [300, 320, 360, 560])
         for measurement in measurements { #expect(measurement.settled, Comment(rawValue: measurement.name)) }
     }
@@ -184,7 +184,7 @@ import Darwin
         struct Choice: Decodable { let role: String; let frame: CGRect }
         struct Selection: Decodable { let style: String; let visible: Bool; let paint: CGRect; let viewport: CGRect; let choice: Choice; let header: CGRect? }
         let interactionScenes = ["live-editor-full", "live-editor-1280", "live-editor-300", "live-editor-560"]
-        let interactionSelections = interactionScenes.flatMap { scene in ["first", "middle", "last", "chip"].map { "\(scene)-\($0)" } }
+        let interactionSelections = interactionScenes.flatMap { scene in ["first", "middle", "last", "external", "undo"].map { "\(scene)-\($0)" } }
         let initialSelections = ["live-editor-full", "live-editor-1280", "live-editor-1280-initial", "live-editor-clip", "live-editor-300", "live-editor-560"]
         for name in initialSelections + interactionSelections {
             let result = try JSONDecoder().decode(Selection.self, from: Data(contentsOf: directory.appendingPathComponent("\(name)-selected-gallery.json")))
@@ -196,7 +196,7 @@ import Darwin
         for name in interactionScenes {
             let report = try JSONDecoder().decode([UIProcessHarness.Result].self,
                 from: Data(contentsOf: directory.appendingPathComponent("\(name)-gallery-interaction-results.json")))
-            #expect(report.count == (name == "live-editor-full" ? 11 : 7))
+            #expect(report.count == (name == "live-editor-full" ? 12 : 8))
             for result in report { #expect(result.passed && result.skipped == nil, Comment(rawValue: result.name)) }
         }
         struct ShortSnapshot: Decodable { let paint: CGRect; let visible: CGRect; let pending: Bool }
