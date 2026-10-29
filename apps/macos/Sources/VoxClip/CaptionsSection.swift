@@ -201,13 +201,7 @@ enum CaptionGalleryTarget: Hashable { case tile(String), header(CaptionStyleGrou
             }
             if complete { galleryReveal.complete(); return }
         }
-        var anchor = UnitPoint.top
-        if case .tile = target {
-            if let tile = galleryTile, tile.styleID == model.project.captions.styleId {
-                anchor = CaptionGalleryReveal.anchor(viewportHeight: galleryViewport.size.height, paintHeight: tile.frame.height)
-            }
-        }
-        if galleryReveal.shouldScroll(to: target, anchor: anchor) { reader.scrollTo(target, anchor: anchor) }
+        if galleryReveal.shouldScroll(to: target, anchor: .top) { reader.scrollTo(target, anchor: .top) }
     }
     private var style: CaptionStyle? { model.app.styles.first { $0.id == model.project.captions.styleId } }
     private var storedPosition: CaptionPosition? { model.captionPreset == .source ? model.project.captions.position : model.project.captions.positionByAspect[model.captionPreset.rawValue] }
@@ -224,7 +218,7 @@ enum CaptionGalleryTarget: Hashable { case tile(String), header(CaptionStyleGrou
                     if selected { Image(systemName: "checkmark").font(.system(size: 9, weight: .bold)).foregroundStyle(.white).frame(width: 18, height: 18).background(.black.opacity(0.62), in: Circle()).padding(5) }
                 }.overlay { if selected { RoundedRectangle(cornerRadius: 12).stroke(DesignValues.accentText, lineWidth: 2).padding(-2) } }
                 Text(style.name + (selected && model.captionsEdited ? " · Edited" : "")).font(.system(size: 11, weight: selected ? .semibold : .regular)).foregroundStyle(DesignValues.color("text.primary")).lineLimit(1).columnLayoutEvidence("caption.name.\(id)")
-            }.contentShape(Rectangle())
+            }.padding(.top, 3).contentShape(Rectangle())
         }.buttonStyle(.plain).accessibilityLabel("\(style.name): \(style.description)").accessibilityAddTraits(selected ? .isSelected : [])
             .background {
                 Color.clear
@@ -232,7 +226,7 @@ enum CaptionGalleryTarget: Hashable { case tile(String), header(CaptionStyleGrou
                         selected ? CaptionGalleryTileGeometry(styleID: id, frame: geometry.frame(in: .named(CaptionGallerySpace.content))) : nil
                     } action: { tile in if let tile, tile.frame.width > 0, tile.frame.height > 0 { galleryTile = tile } }
                     .columnLayoutEvidence("caption.tile.\(id)")
-                    .padding(.horizontal, -3).padding(.top, -3).allowsHitTesting(false).accessibilityHidden(true)
+                    .padding(.horizontal, -3).allowsHitTesting(false).accessibilityHidden(true)
             }
     }
     private func value(_ group: String, _ key: String) -> JSONValue? { if case .object(let object) = model.project.captions.overrides[group] { return object[key] }; return nil }
@@ -267,11 +261,6 @@ struct CaptionGalleryReveal: Equatable {
         if lastTarget == target, abs(lastAnchor.x - anchor.x) < 0.000001, abs(lastAnchor.y - anchor.y) < 0.000001 { return false }
         lastTarget = target; lastAnchor = anchor
         return true
-    }
-    static func anchor(viewportHeight: CGFloat, paintHeight: CGFloat) -> UnitPoint {
-        let available: CGFloat = viewportHeight - max(0, paintHeight - 3)
-        let fraction: CGFloat = available > 0 ? min(1, 3 / available) : 0
-        return UnitPoint(x: 0.5, y: fraction)
     }
 }
 

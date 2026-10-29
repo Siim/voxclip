@@ -200,15 +200,12 @@ import VoxClipMedia
         // Window-free only: the native divider drag runs in the UI self-test (DebugSidebar).
         results += try await measureHeights(app: app, directory: directory)
         results += try await measureResizes(app: app, fixture: fixture, directory: directory)
-        let ringCases: [(CGFloat, CGFloat)] = [(399.5, 93), (272, 84), (264, 93)]
-        for (viewport, paint) in ringCases {
-            let anchor = CaptionGalleryReveal.anchor(viewportHeight: viewport, paintHeight: paint)
-            let topAllowance: CGFloat = (viewport - (paint - 3)) * anchor.y
+        for viewport: CGFloat in [399.5, 272, 264] {
             var reveal = CaptionGalleryReveal()
             reveal.begin(CaptionGalleryRequest(selection: "ring-probe", size: CGSize(width: 320, height: viewport), fineTune: false))
-            let first = reveal.shouldScroll(to: .tile("vox-highlight"), anchor: anchor)
-            let duplicate = reveal.shouldScroll(to: .tile("vox-highlight"), anchor: anchor)
-            results.append(.init(name: "gallery ring anchor at \(viewport) preserves three points and coalesces repeated commands", passed: abs(topAllowance - 3) <= 0.001 && first && !duplicate))
+            let first = reveal.shouldScroll(to: .tile("vox-highlight"), anchor: .top)
+            let duplicate = reveal.shouldScroll(to: .tile("vox-highlight"), anchor: .top)
+            results.append(.init(name: "gallery at \(viewport) coalesces repeated top-alignment commands", passed: first && !duplicate))
         }
         return results
     }
