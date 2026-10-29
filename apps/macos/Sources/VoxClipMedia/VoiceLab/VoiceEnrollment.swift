@@ -103,7 +103,9 @@ public actor VoiceEnrollment {
         let policy = OwnVoicePolicy(recordID: recordID, recordActive: true, providerConsentGranted: true, statementVerified: true, speakerMatched: true)
         let quote = try await client.prepareClone(request, policy: policy, requestID: UUID())
         let store = store; let embedder = speaker.embedder; let statementHash = verification.hash
-        let authorization = policy.authorized(for: quote) {
+        let authorization = policy.authorized(for: quote, reserve: {
+            try await store.creationDispatchPermit(recordID: recordID, requestID: quote.requestID, statementHash: statementHash)
+        }) {
             try await embedder?.validateAvailability()
             try await store.dispatchCreation(recordID: recordID, requestID: quote.requestID, statementHash: statementHash)
             try await store.validateCreation(recordID: recordID, requestID: quote.requestID, statementHash: statementHash)

@@ -47,6 +47,14 @@ private final class TakeRunDispatchSignal: Sendable {
         }
     }
 }
+private actor TakeRunSuspension {
+    nonisolated let reached = TakeRunDispatchSignal()
+    private var continuation: CheckedContinuation<Void, Never>?
+    func pause() async {
+        await withCheckedContinuation { continuation in self.continuation = continuation; reached.fire() }
+    }
+    func release() { continuation?.resume(); continuation = nil }
+}
 private final class TakeRunHTTP: Sendable {
     struct State: Sendable {
         var seeds: [UInt32] = []
@@ -176,6 +184,32 @@ struct VoiceLabTakeRunTests {
             contentKey: "synthetic-source", source: source, sourceSampleRate: rate, items: items, window: window,
             incomingSilence: nil, outgoingSilence: nil, providerConsent: true)
         return Fixture(root: root, http: http, clock: clock, store: store, client: client, ledger: ledger, run: run, input: input)
+    }
+    @Test(arguments: [false, true]) func withdrawalWinsBetweenValidationAndTransport(deleting: Bool) async throws {
+        let fixture = try await fixture(); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let quote = try await fixture.run.prepare(fixture.input)
+        let suspension = TakeRunSuspension()
+        await fixture.client.useDispatchHook { await suspension.pause() }
+        let sending = Task { try await fixture.run.execute(quote, approved: true) }
+        try await suspension.reached.wait()
+        if deleting { _ = try await fixture.store.beginDeletion(fixture.input.recordID, region: .default, at: Date()) }
+        else { try await fixture.store.withdrawCreation(recordID: fixture.input.recordID, remoteVoiceID: "fixtureOwnVoice") }
+        await suspension.release()
+        _ = try await sending.value
+        #expect(fixture.http.value.withLock { $0.seeds.isEmpty && $0.qa == 0 })
+    }
+    @Test func withdrawalMarksAnAlreadyStartedDispatchAmbiguous() async throws {
+        let fixture = try await fixture { $0.paused = true }; defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let quote = try await fixture.run.prepare(fixture.input)
+        let sending = Task { try await fixture.run.execute(quote, approved: true) }
+        defer { sending.cancel(); fixture.http.gate.signal() }
+        try await fixture.http.dispatched.wait()
+        let operation = try await fixture.store.beginDeletion(fixture.input.recordID, region: .default, at: Date())
+        let persisted = try await fixture.store.operation(operation.id)
+        #expect(persisted.ambiguousDispatchIDs == [quote.takes[0].synthesis.requestID])
+        fixture.http.gate.signal()
+        _ = try await sending.value
+        #expect(fixture.http.value.withLock { $0.seeds.count == 1 && $0.qa == 0 })
     }
     @Test func oneApprovalStopsAfterFirstPassingFitAndCannotReplay() async throws {
         let fixture = try await fixture(); defer { try? FileManager.default.removeItem(at: fixture.root) }

@@ -87,7 +87,7 @@ public actor VoiceUseGuard {
         guard quote.endpoint == expected else { throw VoiceLabError.consentRequired }
         let policy = try await authorize(contentKey: contentKey, recordID: recordID, speech16k: speech16k, voiceChanger: quote.operation == .voiceChange, approved: approved)
         let store = store; let embedder = check.embedder
-        return policy.authorized(for: quote) {
+        return policy.authorized(for: quote, reserve: { try await store.dispatchPermit(record, requestID: quote.requestID) }) {
             try await embedder?.validateAvailability()
             try await store.validateUse(record)
         }

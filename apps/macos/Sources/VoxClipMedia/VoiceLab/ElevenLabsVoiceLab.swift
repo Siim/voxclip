@@ -21,6 +21,8 @@ public actor ElevenLabsVoiceLab {
     private var afterLastByte: (@Sendable () -> Void)?
     #if DEBUG
     private var enforceCapabilities = true
+    private var dispatchHook: (@Sendable () async -> Void)?
+    package func useDispatchHook(_ hook: @escaping @Sendable () async -> Void) { dispatchHook = hook }
     #endif
     #if DEBUG
     @_spi(Testing) public func useClock(_ clock: @escaping @Sendable () -> Date) { now = clock }
@@ -543,25 +545,41 @@ public actor ElevenLabsVoiceLab {
         request.setValue(key, forHTTPHeaderField: "xi-api-key")
         if let contentType { request.setValue(contentType, forHTTPHeaderField: "Content-Type") }
         request.setValue("VoxClip/\(AppVersion.current)", forHTTPHeaderField: "User-Agent")
+        let permit: VoiceDispatchPermit?
         if let capability {
             guard let billing else { throw VoiceLabError.consentRequired }
-            try await capability.consume(billing.quote)
-        }
+            permit = try await capability.consume(billing.quote)
+        } else { permit = nil }
+        defer { permit?.finish() }
+        #if DEBUG
+        if capability != nil { await dispatchHook?() }
+        #endif
+        let relay = VoiceLabHTTPStream(limit: limit)
+        let transport = session.dataTask(with: request)
+        transport.delegate = relay
         let start = Date()
         var recording: Task<VoiceLabSpendWarning?, Never>?
         do {
             try Task.checkCancellation()
-            let (stream, response) = try await session.bytes(for: request, delegate: VoiceLabNoRedirect())
-            guard let http = response as? HTTPURLResponse else { throw VoiceLabError.malformedResponse }
-            // The provider has billed once it answers 2xx: a cancelled, broken or oversized body is still recorded.
-            if let billing, (200..<300).contains(http.statusCode) { recording = record(billing, at: start) }
-            if let size = http.value(forHTTPHeaderField: "Content-Length").flatMap(Int.init), size > limit { throw VoiceLabError.responseTooLarge }
+            if let permit { try permit.start { transport.resume() } } else { transport.resume() }
+            defer { transport.cancel() }
+            var response: HTTPURLResponse?
             var bytes = Data()
-            for try await byte in stream {
-                try Task.checkCancellation()
-                guard bytes.count < limit else { throw VoiceLabError.responseTooLarge }
-                bytes.append(byte)
-            }
+            try await withTaskCancellationHandler {
+                for try await event in relay.stream {
+                    switch event {
+                    case .response(let http):
+                        response = http
+                        if let billing, (200..<300).contains(http.statusCode) { recording = record(billing, at: start) }
+                        if let size = http.value(forHTTPHeaderField: "Content-Length").flatMap(Int.init), size > limit { throw VoiceLabError.responseTooLarge }
+                    case .data(let data):
+                        try Task.checkCancellation()
+                        guard data.count <= limit - bytes.count else { throw VoiceLabError.responseTooLarge }
+                        bytes.append(data)
+                    }
+                }
+            } onCancel: { transport.cancel() }
+            guard let http = response else { throw VoiceLabError.malformedResponse }
             afterLastByte?()
             if method == "DELETE", url.path.hasPrefix("/v1/voices/"), http.statusCode == 404 {
                 return Reply(bytes: Data("{\"status\":\"ok\"}".utf8), response: http, spendWarning: nil)
@@ -577,6 +595,7 @@ public actor ElevenLabsVoiceLab {
             _ = await recording?.value
             if error is CancellationError { throw VoiceLabError.cancelled }
             if let error = error as? VoiceLabError { throw error }
+            if error is VoiceConsentError { throw error }
             if Task.isCancelled { throw VoiceLabError.cancelled }
             throw VoiceLabError.network
         }

@@ -28,8 +28,9 @@ public struct OwnVoicePolicy: Sendable, Equatable {
         self.recordID = recordID; self.cloneVoiceID = cloneVoiceID; self.capability = capability
         recordActive = true; providerConsentGranted = true; statementVerified = true; speakerMatched = true
     }
-    func authorized(for quote: VoiceLabQuote, validate: @escaping @Sendable () async throws -> Void) -> Self {
-        Self(recordID: recordID, cloneVoiceID: cloneVoiceID, capability: VoiceOperationCapability(quote: quote, validate: validate))
+    func authorized(for quote: VoiceLabQuote, reserve: (@Sendable () async throws -> VoiceDispatchPermit)? = nil,
+                    validate: @escaping @Sendable () async throws -> Void) -> Self {
+        Self(recordID: recordID, cloneVoiceID: cloneVoiceID, capability: VoiceOperationCapability(quote: quote, reserve: reserve, validate: validate))
     }
     public func validate() throws {
         guard !recordID.isEmpty, recordActive, providerConsentGranted, statementVerified else { throw VoiceLabError.consentRequired }

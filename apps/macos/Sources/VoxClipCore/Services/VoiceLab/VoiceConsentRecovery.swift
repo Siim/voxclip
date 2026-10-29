@@ -28,6 +28,7 @@ public struct VoiceOperation: Codable, Sendable, Identifiable, Equatable {
     public var nextAttemptAt: Date?
     public var failed: Bool
     public var audit: VoiceConsentAudit?
+    public var ambiguousDispatchIDs: [UUID]?
     public var finished: Bool { [.saved, .withdrawn, .tombstoned, .abandoned].contains(state) }
     public var blocksCreation: Bool { blocksCreation(at: Date()) }
     public func blocksCreation(at date: Date) -> Bool {
@@ -96,6 +97,12 @@ extension VoiceConsentStore {
         return value
     }
     private func writeOperation(_ value: VoiceOperation, checkpoint step: VoiceConsentCheckpoint) throws {
+        var value = value
+        if value.kind == .delete || value.state == .withdrawing || value.state == .withdrawn {
+            let active = dispatchGate.revoke(value.recordID)
+            let ambiguous = Set(value.ambiguousDispatchIDs ?? []).union(active)
+            value.ambiguousDispatchIDs = ambiguous.isEmpty ? nil : ambiguous.sorted { $0.uuidString < $1.uuidString }
+        }
         try checkpoint(step)
         let encoder = JSONEncoder(); encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         try writePrivate(encoder.encode(value), to: operationFile(value.id, create: true))
