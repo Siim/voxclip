@@ -23,6 +23,7 @@ public actor VoiceLabTakeRun {
     private var pending: Pending?
     private var task: Task<VoiceLabTakeRunResult, Never>?
     private var runningID: UUID?
+    private var executionOwner: UUID?
     private var revision = 0
     private var stop: VoiceLabTakeRunEnd = .cancelled
     #if DEBUG
@@ -86,7 +87,9 @@ public actor VoiceLabTakeRun {
     }
     public func execute(_ quote: VoiceLabTakeRunQuote, approved: Bool,
                         progress: @escaping @Sendable ([VoiceLabTakeRow]) async -> Void = { _ in }) async throws -> VoiceLabTakeRunResult {
-        guard approved, task == nil, runningID == nil, let value = pending, value.quote == quote else { throw VoiceLabError.consentRequired }
+        guard approved, task == nil, runningID == nil, executionOwner == nil, let value = pending, value.quote == quote else { throw VoiceLabError.consentRequired }
+        let owner = UUID()
+        executionOwner = owner
         let currentRevision = revision
         runningID = quote.id
         pending = nil
@@ -102,8 +105,7 @@ public actor VoiceLabTakeRun {
             try await checkpoint("approval", revision: currentRevision)
             try await checkpoint("launch", revision: currentRevision)
         } catch {
-            await client.discardRun(quote.id, quotes: quotes)
-            if runningID == quote.id { runningID = nil }
+            await release(owner: owner, quote: quote)
             throw error
         }
         let operation = Task { await self.perform(value, revision: currentRevision, progress: progress) }
@@ -111,9 +113,14 @@ public actor VoiceLabTakeRun {
         let result = await withTaskCancellationHandler { await operation.value } onCancel: {
             operation.cancel()
         }
-        await client.discardRun(quote.id, quotes: quotes)
-        if runningID == quote.id { task = nil; runningID = nil }
+        await release(owner: owner, quote: quote)
         return result
+    }
+    private func release(owner: UUID, quote: VoiceLabTakeRunQuote) async {
+        guard executionOwner == owner else { return }
+        await client.discardRun(quote.id, quotes: quote.takes.flatMap { [$0.synthesis, $0.qa] })
+        guard executionOwner == owner else { return }
+        task = nil; runningID = nil; executionOwner = nil
     }
     public func cancel() async {
         stop = .cancelled; revision += 1; task?.cancel()

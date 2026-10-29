@@ -221,6 +221,20 @@ struct VoiceLabTakeRunTests {
             #expect(fixture.http.value.withLock { $0.seeds.isEmpty && $0.qa == 0 })
         }
     }
+    @Test(arguments: ["clock", "approval"]) func concurrentExecuteCannotDiscardOwnerQuotes(point: String) async throws {
+        let fixture = try await fixture(); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let quote = try await fixture.run.prepare(fixture.input)
+        let suspension = TakeRunSuspension()
+        await fixture.run.useExecuteHook { if $0 == point { await suspension.pause() } }
+        let owner = Task { try await fixture.run.execute(quote, approved: true) }
+        try await suspension.reached.wait()
+        await #expect(throws: VoiceLabError.consentRequired) { try await fixture.run.execute(quote, approved: true) }
+        #expect(await fixture.client.quotesAreFresh(quote.takes.flatMap { [$0.synthesis, $0.qa] }))
+        await suspension.release()
+        let result = try await owner.value
+        #expect(result.end == .earlyStop)
+        #expect(fixture.http.value.withLock { $0.seeds.count == 1 && $0.qa == 1 })
+    }
     @Test(arguments: [false, true]) func inputChangeAtTransportBoundary(invalidate: Bool) async throws {
         let fixture = try await fixture(); defer { try? FileManager.default.removeItem(at: fixture.root) }
         let quote = try await fixture.run.prepare(fixture.input)
