@@ -5,7 +5,7 @@
       "id": "wespeaker-resnet34-lm-voxceleb-f0c48c2",
       "displayName": "WeSpeaker ResNet34-LM · own-voice check",
       "dimension": 256,
-      "preprocessing": "silero-6.2.0-strict-kaldi80-v1",
+      "preprocessing": "sinc32-blackman94-silero-6.2.0-kaldi80-v2",
       "languages": [
         "en"
       ],
@@ -31,23 +31,8 @@
       "license": "CC-BY-4.0 (weights); MIT (Silero VAD)",
       "licenseUrl": "https://github.com/wenet-e2e/wespeaker/blob/master/docs/pretrained.md#model-license",
       "attribution": "WeSpeaker ResNet34-LM, trained on VoxCeleb2 Dev by the WeSpeaker project (CC BY 4.0). Wang et al., WeSpeaker: A research and production oriented speaker embedding learning toolkit, ICASSP 2023. Silero VAD v6.2.0 by the Silero Team; GGML conversion by ggml-org (MIT). No weight modifications.",
-      "threshold": 0.3555008164510893,
-      "calibration": {
-        "date": "2026-10-29",
-        "preprocessing": "silero-6.2.0-strict-kaldi80-v1",
-        "modelSha256": "7bb2f06e9df17cdf1ef14ee8a15ab08ed28e8d0ef5054ee135741560df2ec068",
-        "vadSha256": "2aa269b785eeb53a82983a20501ddf7c1d9c48e33ab63a41391ac6c9f7fb6987",
-        "languages": [
-          {
-            "language": "en",
-            "corpus": "LibriSpeech test-clean (OpenSLR 12, CC BY 4.0)",
-            "impostorPairs": 7020,
-            "sameSpeakerPairs": 120,
-            "falseAcceptRate": 0.009971509971509971,
-            "sameSpeakerPassRate": 1.0
-          }
-        ]
-      }
+      "threshold": null,
+      "calibration": null
     }
   ]
 }

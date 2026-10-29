@@ -1,5 +1,9 @@
 # macOS implementation contracts
 
+### 2026-10-29 — sol-mac-voicelab — W2 review resampling and margin
+
+- G1: `VoiceConsentAudio` now uses a defined anti-aliased Blackman-windowed sinc converter, with rational phase kernels, binary64 accumulation and Float32 output. The shared `SpeakerAudio.embedding` helper is used by both production checks and the DEBUG calibration CLI; the CLI also computes cosine scores in production Swift. Eight parity vectors include 48 kHz and 44.1 kHz WAVs with production expectations. The new preprocessing version invalidates the old calibration; the catalogue withholds its threshold pending G2. The exact Windows-matchable resampling contract is in `doc/spec/voice-lab.md` §6.6. Regression assertions cover identity, sample count, DC, impulse alignment, passband preservation and alias suppression.
+
 ### 2026-10-29 — sol-mac-voicelab — W1 review recovery and consent guards
 
 - F6: the Voice Lab Settings task is keyed by the beta's enabled value. Each off-to-on transition loads local records/recovery independently of account approval, then offers the account-check confirmation. A headless app-model test target (isolated data directory, no windows/microphone/provider requests) exercises repeated off/on transitions with an existing durable voice and the original nil-services cancellation regression. The Release-off discovery exception remains staging; W6 still owes a discoverable consent-guarded shipping opt-in.

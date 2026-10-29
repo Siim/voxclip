@@ -1,9 +1,24 @@
 import Foundation
 
 public enum SpeakerAudio {
-    public static let version = "silero-6.2.0-strict-kaldi80-v1"
+    public static let version = "sinc32-blackman94-silero-6.2.0-kaldi80-v2"
     public static let windowSize = 48_000
     public static let hopSize = 24_000
+
+    public static func embedding(_ pcm16k: [Float], using embedder: any SpeakerEmbedder) async throws -> [Float] {
+        try await embedder.validateAvailability()
+        guard pcm16k.count >= windowSize, pcm16k.allSatisfy(\.isFinite) else { throw VoiceConsentError.speakerMismatch }
+        let voiced = try await embedder.voicedSamples(pcm16k)
+        guard voiced.count >= windowSize, (1...16_384).contains(embedder.dimension) else { throw VoiceConsentError.speakerMismatch }
+        var mean = [Float](repeating: 0, count: embedder.dimension)
+        for window in try windows(voiced) {
+            try Task.checkCancellation()
+            let result = try await embedder.embed(window)
+            guard result.count == mean.count, result.allSatisfy(\.isFinite) else { throw VoiceConsentError.speakerMismatch }
+            for index in mean.indices { mean[index] += result[index] }
+        }
+        return try normalized(mean)
+    }
 
     public static func windows(_ speech: [Float]) throws -> [[Float]] {
         guard speech.count >= windowSize, speech.allSatisfy(\.isFinite) else { throw VoiceConsentError.speakerMismatch }

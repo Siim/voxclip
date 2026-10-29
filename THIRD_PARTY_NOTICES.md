@@ -4,7 +4,7 @@
 
 WeSpeaker ResNet34-LM weights (VoxCeleb2 Dev), official WeSpeaker ONNX export at Hugging Face revision `f0c48c298fd835726c27956a5d617bad7115627e`: CC BY 4.0, per the official model card and WeSpeaker pretrained-model licence statement. Attribution: WeSpeaker project; Hongji Wang et al., “WeSpeaker: A research and production oriented speaker embedding learning toolkit,” ICASSP 2023. The weights are downloaded on request, unmodified, and never bundled. The toolkit itself is Apache-2.0 (full text below).
 
-LibriSpeech test-clean excerpts: LibriSpeech (c) 2014 Vassil Panayotov, CC BY 4.0. Source: `https://www.openslr.org/resources/12/test-clean.tar.gz`, SHA-256 `39fde525e59672dc6d1551919b1478f724438a95aa55f874b576be21967e6c23`. Four six-second speech excerpts in `shared/fixtures/voice-lab/speaker/` were decoded from FLAC to mono 16 kHz PCM16 WAV and truncated; see that folder’s README for utterance IDs and books. Neither corpus nor model is endorsed by VoxClip or its original authors.
+LibriSpeech test-clean excerpts: LibriSpeech (c) 2014 Vassil Panayotov, CC BY 4.0. Source: `https://www.openslr.org/resources/12/test-clean.tar.gz`, SHA-256 `39fde525e59672dc6d1551919b1478f724438a95aa55f874b576be21967e6c23`. Four six-second speech excerpts in `shared/fixtures/voice-lab/speaker/` were decoded from FLAC to mono 16 kHz PCM16 WAV and truncated. Four additional renders resample two of those excerpts to 48 kHz and 44.1 kHz. These are modifications; see that folder’s README for utterance IDs and books. Neither corpus nor model is endorsed by VoxClip or its original authors.
 
 Creative Commons Attribution 4.0 International, exact legal code from `https://creativecommons.org/licenses/by/4.0/legalcode.txt`:
 

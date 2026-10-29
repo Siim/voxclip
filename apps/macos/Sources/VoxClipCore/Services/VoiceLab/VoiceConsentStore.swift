@@ -143,18 +143,7 @@ public struct VoiceSpeakerCheck: Sendable {
     public var available: Bool { embedder != nil && threshold.map { $0.isFinite && (0...1).contains($0) } == true }
     public func embedding(_ pcm16k: [Float]) async throws -> [Float] {
         guard available, let embedder else { throw VoiceConsentError.speakerUnavailable }
-        try await embedder.validateAvailability()
-        guard pcm16k.count >= 48_000, pcm16k.allSatisfy(\.isFinite) else { throw VoiceConsentError.speakerMismatch }
-        let voiced = try await embedder.voicedSamples(pcm16k)
-        guard voiced.count >= 48_000, (1...16_384).contains(embedder.dimension) else { throw VoiceConsentError.speakerMismatch }
-        var mean = [Float](repeating: 0, count: embedder.dimension)
-        for window in try SpeakerAudio.windows(voiced) {
-            try Task.checkCancellation()
-            let result = try await embedder.embed(window)
-            guard result.count == mean.count, result.allSatisfy(\.isFinite) else { throw VoiceConsentError.speakerMismatch }
-            for index in mean.indices { mean[index] += result[index] }
-        }
-        return try SpeakerAudio.normalized(mean)
+        return try await SpeakerAudio.embedding(pcm16k, using: embedder)
     }
     public static func cosine(_ left: [Float], _ right: [Float]) throws -> Double {
         guard left.count == right.count, !left.isEmpty else { throw VoiceConsentError.speakerMismatch }

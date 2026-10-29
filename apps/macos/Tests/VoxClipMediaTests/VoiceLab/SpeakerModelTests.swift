@@ -12,7 +12,10 @@ struct SpeakerModelTests {
         let model = try SpeakerModelCatalog(shared: shared).entry
         let directory = URL(fileURLWithPath: try #require(Self.modelDirectory))
         let embedder = try ONNXSpeakerEmbedder(model: model, directory: directory)
-        let check = try await embedder.speakerCheck()
+        if model.calibratedThreshold() == nil {
+            do { _ = try await embedder.speakerCheck(); Issue.record("An uncalibrated model issued a speaker check") }
+            catch { #expect(error as? VoiceConsentError == .speakerUnavailable) }
+        }
         struct Vectors: Decodable {
             struct Clip: Decodable { let id: String; let sha256: String; let ranges: [[Int]]; let embedding: [Float] }
             let clips: [Clip]
@@ -28,7 +31,7 @@ struct SpeakerModelTests {
             let pcm = try VoiceConsentAudio.pcm16k(data)
             let ranges = try SpeakerVAD.ranges(pcm, model: directory.appendingPathComponent("ggml-silero-v6.2.0.bin"))
             #expect(ranges.map { [$0.lowerBound, $0.upperBound] } == clip.ranges)
-            let result = try await check.embedding(pcm)
+            let result = try await SpeakerAudio.embedding(pcm, using: embedder)
             #expect(result.count == 256)
             for index in result.indices { #expect(abs(result[index] - clip.embedding[index]) <= vectors.embeddingAbsoluteTolerance) }
             actual.append(result)
