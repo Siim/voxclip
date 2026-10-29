@@ -6,6 +6,21 @@ namespace VoxClip.Ui.Tests;
 public sealed class NativeHarnessContractTests
 {
     [Fact]
+    public void BoundsMatrixContinuesAfterAStateFailureButStillFailsClosed()
+    {
+        var root = Path.GetDirectoryName(Environment.GetEnvironmentVariable("VOXCLIP_SHARED_DIR"))!;
+        var captions = File.ReadAllText(Path.Combine(root, "apps/windows/src/VoxClip.App/Controls/CaptionsPanel.cs"));
+        Assert.Contains("await Inspect(\"fine-tune\")", captions);
+        Assert.Contains("await Inspect(\"captions-off\")", captions);
+        Assert.Contains("await Inspect(\"caption-error\")", captions);
+        Assert.Contains("throw new AggregateException(\"Caption state bounds failed.\", failures)", captions);
+        var probe = File.ReadAllText(Path.Combine(root, "apps/windows/src/VoxClip.App/Pages/EditorPage.NativeProbe.cs"));
+        Assert.Contains("await Inspect(() => captions!.DebugFitStatesAsync", probe);
+        Assert.Contains("throw new AggregateException(\"Right-column matrix bounds failed.\", failures)", probe);
+        Assert.Contains("exception is not OutOfMemoryException", probe);
+    }
+
+    [Fact]
     public void FineTuneScrollsWithinItsAllocatedRowAndReservesOneGalleryTile()
     {
         var root = Path.GetDirectoryName(Environment.GetEnvironmentVariable("VOXCLIP_SHARED_DIR"))!;

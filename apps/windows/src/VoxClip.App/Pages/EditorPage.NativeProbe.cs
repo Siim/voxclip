@@ -22,6 +22,12 @@ public sealed partial class EditorPage
         var initial = window.AppWindow.Size;
         var theme = root.RequestedTheme;
         var observations = new List<object>();
+        var failures = new List<Exception>();
+        async Task Inspect(Func<Task> inspect)
+        {
+            try { await inspect(); }
+            catch (Exception exception) when (exception is not OutOfMemoryException) { failures.Add(exception); }
+        }
         try
         {
             foreach (var item in new[] { (1440, 900, 388, ElementTheme.Light), (1440, 900, 388, ElementTheme.Dark),
@@ -54,12 +60,12 @@ public sealed partial class EditorPage
                     try
                     {
                         TransportElapsed.Text = "9:59:59.9"; TransportTotal.Text = " / 9:59:59.9"; AiModified.Visibility = Visibility.Visible;
-                        await captions!.DebugFitStatesAsync(name => DebugRightColumnBoundsAsync(window, output, label + "-" + name,
-                            name == "fine-tune" ? ColumnFitState.FineTune : ColumnFitState.Captions));
+                        await Inspect(() => captions!.DebugFitStatesAsync(name => DebugRightColumnBoundsAsync(window, output, label + "-" + name,
+                            name == "fine-tune" ? ColumnFitState.FineTune : ColumnFitState.Captions)));
                         foreach (var unavailable in new[] { EditorMediaState.Missing, EditorMediaState.Corrupt })
                         {
                             mediaState = unavailable; SizeStage();
-                            await DebugRightColumnBoundsAsync(window, output, label + "-" + unavailable);
+                            await Inspect(() => DebugRightColumnBoundsAsync(window, output, label + "-" + unavailable));
                         }
                     }
                     finally { TransportElapsed.Text = elapsed; TransportTotal.Text = total; AiModified.Visibility = ai; mediaState = state; SizeStage(); }
@@ -67,6 +73,7 @@ public sealed partial class EditorPage
                 await NativeImageAsync(window, output, label);
             }
             await File.WriteAllTextAsync(Path.Combine(output, "layout-geometry.json"), JsonSerializer.Serialize(observations, new JsonSerializerOptions { WriteIndented = true }));
+            if (failures.Count > 0) throw new AggregateException("Right-column matrix bounds failed.", failures);
             checks.Add("light/dark/1280/compact native geometry: command row, timeline and right column within 4 epx of mockup; compact viewer collapses first");
         }
         finally { root.RequestedTheme = theme; window.AppWindow.Resize(initial); await Task.Delay(100); viewerForced = false; ShowViewer(true); }

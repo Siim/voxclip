@@ -476,24 +476,31 @@ internal sealed class CaptionsPanel : UserControl
         var original = model.Project.Captions;
         var expanded = fineTune.IsExpanded;
         var message = notice.Message;
+        var failures = new List<Exception>();
+        async Task Inspect(string name)
+        {
+            try { await inspect(name); }
+            catch (Exception exception) when (exception is not OutOfMemoryException) { failures.Add(exception); }
+        }
         try
         {
-            await inspect("captions");
+            await Inspect("captions");
             model.SetCaptionStyle("karaoke");
             fineTune.IsExpanded = true;
-            await inspect("fine-tune");
+            await Inspect("fine-tune");
             fineTune.IsExpanded = false;
             model.SetCaptionStyle("off");
-            await inspect("captions-off");
+            await Inspect("captions-off");
             notice.Message = "Couldn't load caption styles. Try again.";
             notice.IsOpen = true;
-            await inspect("caption-error");
+            await Inspect("caption-error");
         }
         finally
         {
             notice.IsOpen = false; notice.Message = message;
             model.SetCaptions(original); fineTune.IsExpanded = expanded;
         }
+        if (failures.Count > 0) throw new AggregateException("Caption state bounds failed.", failures);
     }
 #endif
 
