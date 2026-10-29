@@ -197,6 +197,12 @@ import VoxClipMedia
         let stacked = measurements.first { $0.width == 300 && $0.variant == "source" }?.markers["frame.stacked"]
         results.append(.init(name: "300-point Frame choices use a stacked picker spanning the leading inner width (\(stacked.map { "\($0)" } ?? "none"))",
             passed: stacked.map { abs($0.minX - 16) <= 0.5 && abs($0.width - 268) <= 0.5 } ?? false))
+        for measurement in measurements {
+            guard let heading = measurement.markers["header.captions.heading"], let toggle = measurement.markers["header.captions.switch"] else { continue }
+            results.append(.init(name: "Captions switch at \(measurement.width) (\(measurement.variant)) is centred on the heading inside the inner width",
+                passed: abs(heading.midY - toggle.midY) <= 0.5 && toggle.maxX <= measurement.width - 16 + 0.5))
+        }
+        results += try await captionsSwitchIdentity(app: app, fixture: fixture)
         // Window-free only: the native divider drag runs in the UI self-test (DebugSidebar).
         results += try await measureHeights(app: app, directory: directory)
         results += try await measureResizes(app: app, fixture: fixture, directory: directory)
@@ -207,6 +213,32 @@ import VoxClipMedia
             let duplicate = reveal.shouldScroll(to: .tile("vox-highlight"), anchor: .top)
             results.append(.init(name: "gallery at \(viewport) coalesces repeated top-alignment commands", passed: first && !duplicate))
         }
+        return results
+    }
+    /// Turning captions off can change which header form fits. The switch the user pressed must
+    /// survive that (same AppKit control), or keyboard and VoiceOver focus is lost on every press.
+    private static func captionsSwitchIdentity(app: AppModel, fixture: Project) async throws -> [DebugUISuite.Result] {
+        func switches(in view: NSView) -> [NSSwitch] { ((view as? NSSwitch).map { [$0] } ?? []) + view.subviews.flatMap { switches(in: $0) } }
+        var results: [DebugUISuite.Result] = []
+        var formChanged = false
+        for width: CGFloat in [300, 320, 340] {
+            let model = EditorModel(document: VoxClipDocument(project: fixture, demo: true), app: app, preview: DemoPreviewEngine())
+            defer { model.close() }
+            model.setStyle("vox-highlight")
+            let controller = NSHostingController(rootView: RightColumnContents(model: model, columnHeight: 4096, columnWidth: width))
+            controller.sizingOptions = []
+            let host = controller.view
+            host.frame = CGRect(x: 0, y: 0, width: width, height: 4096)
+            host.layoutSubtreeIfNeeded(); try await Task.sleep(for: .milliseconds(60)); host.layoutSubtreeIfNeeded()
+            let before = switches(in: host), formBefore = markers(in: host).keys.filter { $0.hasPrefix("captions.") }.sorted()
+            model.setCaptionsEnabled(false)
+            host.layoutSubtreeIfNeeded(); try await Task.sleep(for: .milliseconds(60)); host.layoutSubtreeIfNeeded()
+            let after = switches(in: host), formAfter = markers(in: host).keys.filter { $0.hasPrefix("captions.") }.sorted()
+            formChanged = formChanged || formBefore != formAfter
+            results.append(.init(name: "Captions switch at \(width) keeps its control when captions turn off (\(formBefore) to \(formAfter), \(before.count)/\(after.count) switches)",
+                passed: before.count == 1 && after.count == 1 && before[0] === after[0] && after[0].state == .off))
+        }
+        results.append(.init(name: "Captions switch identity check exercised a header form change", passed: formChanged))
         return results
     }
     private static func candidates(_ prefix: String, _ measurement: Measurement) -> Int {

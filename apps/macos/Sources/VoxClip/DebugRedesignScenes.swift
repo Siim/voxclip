@@ -199,7 +199,7 @@ import VoxClipMedia
         guard let right = DebugColumnBounds.split(in: window.contentView)?.arrangedSubviews.last,
               let style = app.styles.first(where: { $0.id == styleID }) else { throw CocoaError(.coderInvalidValue) }
         let started = ProcessInfo.processInfo.systemUptime
-        var paint: CGRect?, viewport: CGRect?, header: CGRect?, choice: DebugColumnBounds.Element?
+        var paint: CGRect?, viewport: CGRect?, header: CGRect?, ring: CGRect?, choice: DebugColumnBounds.Element?
         var initialPaint: CGRect?, initialViewport: CGRect?
         var visible = false
         repeat {
@@ -211,6 +211,11 @@ import VoxClipMedia
                 paint = CGRect(x: screen.minX, y: top - screen.maxY, width: screen.width, height: screen.height)
                 viewport = DebugColumnBounds.screenFrame(scroll, window: window)
                 if initialPaint == nil { initialPaint = paint; initialViewport = viewport }
+                // The ring marker is the stroke's path, outset 2 points; a 2-point stroke paints 1 more.
+                if let localRing = markers["caption.ring.\(styleID)"] {
+                    let screenRing = window.convertToScreen(right.convert(localRing, to: nil))
+                    ring = CGRect(x: screenRing.minX - 1, y: top - screenRing.maxY - 1, width: screenRing.width + 2, height: screenRing.height + 2)
+                }
                 if let localHeader = markers["caption.group.\(CaptionStyleGroup.group(for: style).rawValue)"] {
                     let screenHeader = window.convertToScreen(right.convert(localHeader, to: nil))
                     header = CGRect(x: screenHeader.minX, y: top - screenHeader.maxY, width: screenHeader.width, height: screenHeader.height)
@@ -218,7 +223,8 @@ import VoxClipMedia
             }
             choice = DebugColumnBounds.galleryChoice(in: window, label: "\(style.name): \(style.description)")
             if let paint, let viewport, let choice {
-                visible = viewport.insetBy(dx: -0.5, dy: -0.5).contains(paint) && viewport.insetBy(dx: -0.5, dy: -0.5).contains(choice.frame)
+                visible = viewport.insetBy(dx: -0.5, dy: -0.5).contains(paint) && choice.selected
+                    && ring.map { viewport.insetBy(dx: -0.5, dy: -0.5).contains($0) } == true
                 if let header, header.union(paint).height + 24 <= viewport.height {
                     visible = visible && viewport.insetBy(dx: -0.5, dy: -0.5).contains(header)
                 }
@@ -227,7 +233,7 @@ import VoxClipMedia
             await Task.yield()
         } while ProcessInfo.processInfo.systemUptime - started < 2
         struct SelectionEvidence: Encodable {
-            let style: String; let visible: Bool; let paint: CGRect?; let viewport: CGRect?; let choice: DebugColumnBounds.Element?
+            let style: String; let visible: Bool; let paint: CGRect?; let viewport: CGRect?; let ring: CGRect?; let choice: DebugColumnBounds.Element?
             let initialPaint: CGRect?; let initialViewport: CGRect?; let header: CGRect?; let elapsed: Double
             let swiftUI: CaptionGalleryAudit.Snapshot?
         }
@@ -236,10 +242,10 @@ import VoxClipMedia
         let identifier = key.map { String($0.dropFirst(prefix.count)) }
         if let identifier { NotificationCenter.default.post(name: CaptionGalleryAudit.notification, object: identifier, userInfo: ["snapshot": true]) }
         let snapshot = identifier.flatMap { CaptionGalleryAudit.snapshots[$0] }
-        try JSONEncoder().encode(SelectionEvidence(style: styleID, visible: visible, paint: paint, viewport: viewport, choice: choice,
+        try JSONEncoder().encode(SelectionEvidence(style: styleID, visible: visible, paint: paint, viewport: viewport, ring: ring, choice: choice,
             initialPaint: initialPaint, initialViewport: initialViewport, header: header, elapsed: ProcessInfo.processInfo.systemUptime - started, swiftUI: snapshot))
             .write(to: directory.appendingPathComponent("\(name)-selected-gallery.json"), options: .atomic)
-        guard visible else { throw VoxClipError.exportFailed("The selected caption tile, ring, checkmark and AX choice must fit the gallery in \(name).") }
+        guard visible else { throw VoxClipError.exportFailed("The selected caption tile, ring and checkmark must fit the gallery, and its AX choice must be selected, in \(name).") }
     }
     private static func dragColumn(in window: NSWindow, to width: CGFloat, shell: WorkspaceShell, directory: URL) async throws {
         guard let split = DebugColumnBounds.split(in: window.contentView), split.arrangedSubviews.count == 2 else { throw CocoaError(.coderInvalidValue) }

@@ -181,7 +181,7 @@ import Darwin
         }
     }
     private func verifySelectedGallery(in directory: URL) throws {
-        struct Choice: Decodable { let role: String; let frame: CGRect }
+        struct Choice: Decodable { let role: String; let frame: CGRect; let selected: Bool }
         struct Selection: Decodable { let style: String; let visible: Bool; let paint: CGRect; let viewport: CGRect; let choice: Choice; let header: CGRect? }
         let interactionScenes = ["live-editor-full", "live-editor-1280", "live-editor-300", "live-editor-560"]
         let interactionSelections = interactionScenes.flatMap { scene in ["first", "middle", "last", "external", "undo"].map { "\(scene)-\($0)" } }
@@ -190,7 +190,7 @@ import Darwin
             let result = try JSONDecoder().decode(Selection.self, from: Data(contentsOf: directory.appendingPathComponent("\(name)-selected-gallery.json")))
             let viewport = result.viewport.insetBy(dx: -0.5, dy: -0.5)
             #expect(result.visible && !result.style.isEmpty && result.choice.role == "AXRadioButton", Comment(rawValue: name))
-            #expect(viewport.contains(result.paint) && viewport.contains(result.choice.frame), Comment(rawValue: name))
+            #expect(viewport.contains(result.paint) && result.choice.selected, Comment(rawValue: name))
             if let header = result.header, header.union(result.paint).height + 24 <= result.viewport.height { #expect(viewport.contains(header)) }
         }
         for name in interactionScenes {

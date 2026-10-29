@@ -14,6 +14,11 @@ enum CaptionStyleGroup: String, CaseIterable {
 }
 
 enum CaptionGalleryTarget: Hashable { case tile(String), header(CaptionStyleGroup), end }
+private extension VerticalAlignment {
+    /// Centres the Captions switch on the heading in both header forms.
+    enum CaptionsHeading: AlignmentID { static func defaultValue(in context: ViewDimensions) -> CGFloat { context[VerticalAlignment.center] } }
+    static let captionsHeading = VerticalAlignment(CaptionsHeading.self)
+}
 
 @MainActor struct CaptionsSection: View {
     @Bindable var model: EditorModel
@@ -76,18 +81,27 @@ enum CaptionGalleryTarget: Hashable { case tile(String), header(CaptionStyleGrou
                 }
     }
     private var sectionHeader: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: 8) { heading; liveChip; styleSummary.fixedSize(horizontal: true, vertical: false); Spacer(minLength: 0); captionsSwitch }.columnLayoutEvidence("captions.inline")
-            VStack(alignment: .leading, spacing: 8) {
-                HStack { heading; Spacer(); captionsSwitch }
-                HStack(spacing: 8) { liveChip; styleSummary; Spacer(minLength: 0) }
-            }.columnLayoutEvidence("captions.stacked")
+        // The switch stays outside ViewThatFits. Turning captions off shortens the summary and can
+        // change which form fits; a switch inside the candidates would be replaced and lose focus.
+        HStack(alignment: .captionsHeading, spacing: 8) {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) { heading; liveChip; styleSummary.fixedSize(horizontal: true, vertical: false); Spacer(minLength: 0) }.columnLayoutEvidence("captions.inline")
+                VStack(alignment: .leading, spacing: 8) {
+                    heading
+                    HStack(spacing: 8) { liveChip; styleSummary; Spacer(minLength: 0) }
+                }.columnLayoutEvidence("captions.stacked")
+            }
+            captionsSwitch
         }
     }
-    private var heading: some View { Text("Captions").font(.system(size: 13, weight: .semibold)).accessibilityIdentifier("voxclip.captions.heading") }
+    private var heading: some View {
+        Text("Captions").font(.system(size: 13, weight: .semibold)).accessibilityIdentifier("voxclip.captions.heading")
+            .alignmentGuide(.captionsHeading) { $0[VerticalAlignment.center] }.columnLayoutEvidence("header.captions.heading")
+    }
     private var captionsSwitch: some View {
         Toggle("Captions", isOn: Binding(get: { model.project.captions.styleId != "off" }, set: { model.setCaptionsEnabled($0) }))
             .labelsHidden().toggleStyle(.switch).controlSize(.small).fixedSize().accessibilityIdentifier("voxclip.captions.switch")
+            .alignmentGuide(.captionsHeading) { $0[VerticalAlignment.center] }.columnLayoutEvidence("header.captions.switch")
     }
     private var liveChip: some View {
         Group {
@@ -238,7 +252,7 @@ enum CaptionGalleryTarget: Hashable { case tile(String), header(CaptionStyleGrou
                     CaptionTile(input: model.captionTileInput(style), pipeline: model.app.captions)
                         .aspectRatio(1 / 0.45, contentMode: .fit).clipShape(.rect(cornerRadius: 10))
                     if selected { Image(systemName: "checkmark").font(.system(size: 9, weight: .bold)).foregroundStyle(.white).frame(width: 18, height: 18).background(.black.opacity(0.62), in: Circle()).padding(5) }
-                }.overlay { if selected { RoundedRectangle(cornerRadius: 12).stroke(DesignValues.accentText, lineWidth: 2).padding(-2) } }
+                }.overlay { if selected { RoundedRectangle(cornerRadius: 12).stroke(DesignValues.accentText, lineWidth: 2).padding(-2).columnLayoutEvidence("caption.ring.\(id)") } }
                 Text(style.name + (selected && model.captionsEdited ? " · Edited" : "")).font(.system(size: 11, weight: selected ? .semibold : .regular)).foregroundStyle(DesignValues.color("text.primary")).lineLimit(1).columnLayoutEvidence("caption.name.\(id)")
             }.padding(.top, 3).contentShape(Rectangle())
         }.buttonStyle(.plain).accessibilityLabel("\(style.name): \(style.description)").accessibilityAddTraits(selected ? .isSelected : [])

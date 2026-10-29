@@ -9,6 +9,9 @@ import VoxClipCore
         let identifier: String
         let role: String
         let frame: CGRect
+        /// A radio button's AXValue. The gallery's Picker representation places its rows by
+        /// style order, not over the tiles, so a choice's frame says nothing about its tile.
+        let selected: Bool
     }
     struct Evidence: Codable {
         let editor: Bool
@@ -186,8 +189,10 @@ import VoxClipCore
         guard AXValueGetValue(unsafeBitCast(position, to: AXValue.self), .cgPoint, &point),
               AXValueGetValue(unsafeBitCast(size, to: AXValue.self), .cgSize, &dimensions) else { return nil }
         let label = [kAXDescriptionAttribute, kAXTitleAttribute, kAXValueAttribute].compactMap { attribute(element, $0) as? String }.first { !$0.isEmpty } ?? ""
+        let role = attribute(element, kAXRoleAttribute) as? String ?? ""
+        let selected = role == kAXRadioButtonRole && (attribute(element, kAXValueAttribute) as? NSNumber)?.intValue == 1
         return Element(label: label, identifier: attribute(element, kAXIdentifierAttribute) as? String ?? "",
-            role: attribute(element, kAXRoleAttribute) as? String ?? "", frame: CGRect(origin: point, size: dimensions))
+            role: role, frame: CGRect(origin: point, size: dimensions), selected: selected)
     }
 }
 #endif

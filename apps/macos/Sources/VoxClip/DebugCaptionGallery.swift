@@ -44,9 +44,10 @@ import VoxClipCore
                 results.append(.init(name: "gallery \(row) selection at \(width): full ring, checkmark and name fit", passed: receipt.settled))
                 results.append(.init(name: "gallery \(row) selection at \(width): selection uses the editor's real style action", passed: model.project.captions.styleId == style.id))
                 let markers = DebugRightColumn.markers(in: host)
-                let paint = markers["caption.tile.\(style.id)"]
+                // The ring marker is the stroke's path, outset 2 points; a 2-point stroke paints 1 more.
+                let ring = markers["caption.ring.\(style.id)"]?.insetBy(dx: -1, dy: -1)
                 let target = markers["caption.target.\(style.id)"]
-                let includesRing = paint.flatMap { envelope in target.map { abs(envelope.minY - $0.minY) <= 0.5 && abs(envelope.height - $0.height) <= 0.5 } } ?? false
+                let includesRing = ring.flatMap { ring in target.map { ring.minY >= $0.minY - 0.5 && ring.maxY <= $0.maxY + 0.5 && ring.minX >= $0.minX - 3.5 && ring.maxX <= $0.maxX + 3.5 } } ?? false
                 results.append(.init(name: "gallery \(row) selection at \(width): the scroll target includes the ring's real top", passed: includesRing))
             }
             let undo = UndoManager(); undo.groupsByEvent = false; model.undoManager = undo
@@ -131,11 +132,11 @@ import VoxClipCore
         let model = EditorModel(document: VoxClipDocument(project: fixture, demo: true), app: app, preview: DemoPreviewEngine())
         defer { model.close() }
         let width: CGFloat = 360
-        let height: CGFloat = 140
+        let tall: CGFloat = 600
         let controller = NSHostingController(rootView: CaptionsSection(model: model))
         controller.sizingOptions = []
         let host = controller.view
-        host.frame = CGRect(x: 0, y: 0, width: width, height: height)
+        host.frame = CGRect(x: 0, y: 0, width: width, height: tall)
         content.addSubview(host)
         defer { host.removeFromSuperview() }
         let identifier = try await galleryID(in: host)
@@ -144,6 +145,18 @@ import VoxClipCore
         var results: [DebugUISuite.Result] = []
         for style in [first, last] {
             model.setStyle(style.id)
+            // The chrome above the gallery depends on the style: a longer summary takes the
+            // two-row header. Measure it in a tall host, then leave a 40-point viewport, shorter
+            // than any tile, so every style gets a gallery to reveal into.
+            host.frame.size.height = tall
+            let started = ProcessInfo.processInfo.systemUptime
+            var viewport: CGFloat = 0
+            repeat {
+                host.layoutSubtreeIfNeeded(); await Task.yield()
+                viewport = snapshot(identifier)?.size.height ?? 0
+            } while viewport <= 0 && ProcessInfo.processInfo.systemUptime - started < 2
+            let height = tall - viewport + 40
+            host.frame.size.height = height
             let receipt = await settle(host: host, identifier: identifier, style: style.id,
                 name: "short-\(style.id)", width: width, height: height, short: true)
             measurements.append(receipt)
