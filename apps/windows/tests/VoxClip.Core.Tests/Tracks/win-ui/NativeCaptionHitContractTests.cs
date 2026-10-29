@@ -15,6 +15,9 @@ public sealed class NativeCaptionHitContractTests
         Assert.Contains("FindElementsInHostCoordinates", probe);
         Assert.Contains("CaptionDrag.IsDragging", probe);
         Assert.Contains("Native left-down did not begin caption drag.", probe);
+        Assert.Contains("inputElapsed.Elapsed < TimeSpan.FromSeconds(2)", probe);
+        Assert.Contains("Native left-up did not finish caption drag.", probe);
+        Assert.Contains("caption-input-ack.jsonl", probe);
         Assert.Contains("AutomationElement]::FromPoint", observer);
         Assert.Contains("BoundingRectangle", observer);
     }

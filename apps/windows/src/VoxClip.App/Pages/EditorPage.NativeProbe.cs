@@ -92,6 +92,7 @@ public sealed partial class EditorPage
             var snapshot = await SnapshotAsync(CancellationToken.None);
             CaptionDrag.Update(snapshot.Captions, 0);
             EditorRoot.UpdateLayout();
+            await DebugSettleColumnAsync();
             var target = NativeDescendants(CaptionDrag).OfType<FrameworkElement>().Single(element => AutomationProperties.GetName(element) == "Caption position. Drag to move captions.");
             var point = target.TransformToVisual(window.Content).TransformPoint(new Point(target.ActualWidth / 2, target.ActualHeight / 2));
             var screen = new NativeGateInput.NativePoint();
@@ -108,13 +109,23 @@ public sealed partial class EditorPage
                         Name = AutomationProperties.GetName(element), Id = AutomationProperties.GetAutomationId(element) }).Take(12).ToArray()
             }) + Environment.NewLine);
             NativeGateInput.SetCursorPos((int)hit.X, (int)hit.Y);
+            var inputElapsed = System.Diagnostics.Stopwatch.StartNew();
             NativeGateInput.Mouse(2);
-            await Task.Delay(120);
+            while (!CaptionDrag.IsDragging && inputElapsed.Elapsed < TimeSpan.FromSeconds(2)) await Task.Delay(20);
+            await File.AppendAllTextAsync(Path.Combine(output, "caption-input-ack.jsonl"), JsonSerializer.Serialize(new
+                { Attempt = attempt, At = DateTimeOffset.UtcNow, Dragging = CaptionDrag.IsDragging, Milliseconds = inputElapsed.Elapsed.TotalMilliseconds }) + Environment.NewLine);
             NativeRequire(CaptionDrag.IsDragging, "Native left-down did not begin caption drag.");
             NativeGateInput.SetCursorPos(screen.X + (int)((point.X - 40) * scale), screen.Y + (int)((point.Y - 25) * scale));
             await Task.Delay(100);
         }
-        async Task Release() { NativeGateInput.Mouse(4); await Task.Delay(150); }
+        async Task Release()
+        {
+            NativeGateInput.Mouse(4);
+            var elapsed = System.Diagnostics.Stopwatch.StartNew();
+            while (CaptionDrag.IsDragging && elapsed.Elapsed < TimeSpan.FromSeconds(2)) await Task.Delay(20);
+            NativeRequire(!CaptionDrag.IsDragging, "Native left-up did not finish caption drag.");
+            await Task.Delay(150);
+        }
         var initial = CaptionFineTune.StoredPosition(ViewModel.Project);
         var initialAspect = ViewModel.Project.Export.Aspect;
         var originalPath = window.ProjectPath;
