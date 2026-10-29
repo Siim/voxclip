@@ -229,7 +229,8 @@ public sealed partial class EditorPage
             {
                 if (captionPanel?.DebugFitRealizeChoice(id) == true)
                 {
-                    await DebugSettleColumnAsync();
+                    // Realization has already updated layout. Find the identity now; settle and
+                    // measure once after its ScrollItem request, before the complete inventory.
                     peers = CollectPeers("realize-" + id);
                 }
                 var matches = peers.Where(entry => HasId(entry, id)).ToArray();
