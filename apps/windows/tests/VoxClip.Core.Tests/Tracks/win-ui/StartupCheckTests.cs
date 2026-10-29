@@ -10,6 +10,20 @@ namespace VoxClip.Ui.Tests;
 public sealed class StartupCheckTests
 {
     [Fact]
+    public void FirstLaunchTourWaitsForTheWindowRootAndCleansUpItsSubscription()
+    {
+        var root = Path.GetDirectoryName(Environment.GetEnvironmentVariable("VOXCLIP_SHARED_DIR"))!;
+        var source = File.ReadAllText(Path.Combine(root, "apps/windows/src/VoxClip.App/MainWindow.xaml.cs"));
+        var start = source.IndexOf("internal async Task ShowOnboardingAsync()", StringComparison.Ordinal);
+        var end = source.IndexOf("internal async Task CheckUpdatesAsync", start, StringComparison.Ordinal);
+        var method = source[start..end];
+        Assert.Contains("Root.Loaded += Ready", method);
+        Assert.Contains("Root.Loaded -= Ready", method);
+        Assert.Contains("await loaded.Task.WaitAsync(lifetime.Token)", method);
+        Assert.True(method.IndexOf("await loaded.Task", StringComparison.Ordinal) < method.IndexOf("new OnboardingDialog", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task TranscriptionChoicesExcludeVerifiedVadDependencies()
     {
         var catalogue = await new VoxClip.Core.Services.Models.ModelCatalog().GetModelsAsync(TestContext.Current.CancellationToken);

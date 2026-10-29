@@ -789,7 +789,22 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
 #if DEBUG
     internal string DebugNotice => WindowNotice.IsOpen ? WindowNotice.Message : "";
 #endif
-    internal async Task ShowOnboardingAsync() => await new OnboardingDialog(this) { XamlRoot = Root.XamlRoot }.ShowAsync();
+    internal async Task ShowOnboardingAsync()
+    {
+        if (!Root.IsLoaded || Root.XamlRoot is null)
+        {
+            var loaded = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            void Ready(object sender, RoutedEventArgs args) => loaded.TrySetResult();
+            Root.Loaded += Ready;
+            try
+            {
+                if (Root.IsLoaded && Root.XamlRoot is not null) loaded.TrySetResult();
+                await loaded.Task.WaitAsync(lifetime.Token);
+            }
+            finally { Root.Loaded -= Ready; }
+        }
+        await new OnboardingDialog(this) { XamlRoot = Root.XamlRoot }.ShowAsync();
+    }
     internal async Task CheckUpdatesAsync(bool manual = false)
     {
         try
