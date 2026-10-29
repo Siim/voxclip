@@ -211,6 +211,7 @@ extension ProviderChoice {
         await startupTask?.value
     }
     private func loadStartup() async {
+        await voiceLabSession.reconcileStartup()
         recent = Self.isTestSession ? [] : NSDocumentController.shared.recentDocumentURLs
         do {
             var loaded = try await settingsStore.load()

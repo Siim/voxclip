@@ -138,6 +138,6 @@ public actor VoiceEnrollment {
         guard !busy else { throw VoiceLabError.invalidInput }
         verified.removeValue(forKey: recordID)
         pending.removeAll()
-        try await store.discardStatement(recordID: recordID)
+        try await store.abandonEnrollment(recordID: recordID)
     }
 }

@@ -2,7 +2,32 @@ import Foundation
 
 public actor VoiceConsentStore {
     public nonisolated let root: URL
-    public init(locations: DataLocations) { root = locations.root.appendingPathComponent("VoiceLab/consent", isDirectory: true) }
+    private let temporaryRecordings: URL
+    private var liveEnrollments: Set<String> = []
+    public init(locations: DataLocations) {
+        root = locations.root.appendingPathComponent("VoiceLab/consent", isDirectory: true)
+        temporaryRecordings = locations.cache.appendingPathComponent("voice-consent", isDirectory: true)
+    }
+    public func reconcileAbandonedEnrollments() throws {
+        let manager = FileManager.default
+        if manager.fileExists(atPath: temporaryRecordings.path) { try manager.removeItem(at: temporaryRecordings) }
+        guard manager.fileExists(atPath: root.path) else { return }
+        for entry in try manager.contentsOfDirectory(at: root, includingPropertiesForKeys: nil) {
+            let id = entry.lastPathComponent
+            guard UUID(uuidString: id) != nil, !liveEnrollments.contains(id) else { continue }
+            let directory = try directory(id)
+            guard !manager.fileExists(atPath: directory.appendingPathComponent("record.json").path),
+                  !manager.fileExists(atPath: directory.appendingPathComponent("creation.json").path) else { continue }
+            try manager.removeItem(at: directory)
+        }
+    }
+    public func abandonEnrollment(recordID: String) throws {
+        let directory = try directory(recordID)
+        guard !FileManager.default.fileExists(atPath: directory.appendingPathComponent("record.json").path),
+              !FileManager.default.fileExists(atPath: directory.appendingPathComponent("creation.json").path) else { return }
+        try discardStatement(recordID: recordID)
+        liveEnrollments.remove(recordID)
+    }
     private func directory(_ id: String, create: Bool = false) throws -> URL {
         guard UUID(uuidString: id) != nil else { throw VoiceConsentError.invalidRecord }
         let directory = root.appendingPathComponent(id, isDirectory: true)
@@ -26,6 +51,7 @@ public actor VoiceConsentStore {
         let url = try file("statement.wav", in: directory)
         try wav.write(to: url, options: .atomic)
         try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+        liveEnrollments.insert(recordID)
     }
     public func statement(recordID: String) throws -> Data {
         let directory = try directory(recordID)

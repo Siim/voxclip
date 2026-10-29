@@ -350,6 +350,42 @@ struct VoiceConsentTests {
         let other = VoiceUseGuard(store: store, check: .init(embedder: Embedder(output: [0, 1]), calibratedThreshold: 0.8))
         await #expect(throws: (any Error).self) { try await other.authorize(contentKey: "content", recordID: record.id, speech16k: audio, approved: true) }
     }
+    @Test(arguments: ["recorded", "verified", "training", "quoted"]) func cancellationRemovesUncommittedStatement(step: String) async throws {
+        let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let store = storage(root)
+        let id = UUID().uuidString.lowercased()
+        try await store.saveStatement(wav, recordID: id)
+        if step != "recorded" {
+            let transport = client(ConsentRequestLog())
+            _ = try await transport.plan()
+            let service = enroll(store: store, client: transport, check: .init(embedder: Embedder(output: [1, 0]), calibratedThreshold: 0.8), raw: try await raw())
+            try await service.verify(recordID: id, statement: statement(), wav: wav, attestations: attestations, approved: true, enabled: true)
+            if step == "quoted" { _ = try await service.prepare(recordID: id, displayName: "Example", samples: training(), enabled: true) }
+            try await service.cancel(recordID: id)
+        }
+        try await store.abandonEnrollment(recordID: id)
+        #expect(!FileManager.default.fileExists(atPath: store.root.appendingPathComponent("\(id)/statement.wav").path))
+    }
+    @Test func startupRemovesCrashFilesButPreservesDurableAndLiveStatements() async throws {
+        let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let locations = SpeechTestFiles.locations(root)
+        let store = storage(root); let record = try fixtureRecord(wav: wav)
+        try await store.saveStatement(wav, recordID: record.id); try await store.save(record)
+        let abandoned = UUID().uuidString.lowercased()
+        try await store.saveStatement(wav, recordID: abandoned)
+        let temporary = locations.cache.appendingPathComponent("voice-consent/stale")
+        try FileManager.default.createDirectory(at: temporary, withIntermediateDirectories: true)
+        try wav.write(to: temporary.appendingPathComponent("statement.wav"))
+        let restarted = storage(root)
+        let live = UUID().uuidString.lowercased(); try await restarted.saveStatement(wav, recordID: live)
+        try await restarted.reconcileAbandonedEnrollments()
+        #expect(try await restarted.statement(recordID: record.id) == wav)
+        #expect(try await restarted.statement(recordID: live) == wav)
+        #expect(!FileManager.default.fileExists(atPath: temporary.path))
+        #expect(!FileManager.default.fileExists(atPath: store.root.appendingPathComponent(abandoned).path))
+        try await restarted.abandonEnrollment(recordID: record.id)
+        #expect(try await restarted.statement(recordID: record.id) == wav)
+    }
     @Test func betaGateAndSettingsValidation() throws {
         #expect(!VoiceLabGate.settingsVisible(enabled: false, internalBuild: false))
         #expect(VoiceLabGate.settingsVisible(enabled: false, internalBuild: true))

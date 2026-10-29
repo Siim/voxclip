@@ -1,5 +1,9 @@
 # macOS implementation contracts
 
+### 2026-10-29 — sol-mac-voicelab — W1 review recovery and consent guards
+
+- F1: cancellation abandons the statement through the store even before provider services exist. Startup removes abandoned enrollment directories and interrupted transcription cache recordings, preserving durable records, pending-creation journals and current in-process enrollments. Core regression coverage exercises recorded/verified/training/quoted cancellation, stale crash files and durable/live recording preservation. Native windows and microphone checks remain owed; the lead resolves the separate layout-branch CONTRACTS conflict at integration.
+
 ### 2026-10-29 — sol-mac-voicelab — W2 calibrated local speaker check
 
 - `shared/catalog/voice-lab-models.json` pins the official WeSpeaker ResNet34-LM VoxCeleb ONNX weights (26,530,309 bytes, CC BY 4.0), Silero VAD v6.2.0 and the English calibration. The toolkit is Apache-2.0. `apps/macos/Package.swift` and `apps/macos/Package.resolved` pin Microsoft's official ONNX Runtime SwiftPM 1.19.2 at `bbc428e168a0374eb7d0503cdb7c73fdc1d99751`; Media alone imports it. Root notices include the exact package/archive MIT texts, upstream third-party notices, model attribution and the corpus's CC BY legal code. The staged final app/CLI and ONNX/whisper frameworks pass the existing framework-notice and nm/otool licence gates; this is not signed-release acceptance.

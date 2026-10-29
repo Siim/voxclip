@@ -58,6 +58,10 @@ import VoxClipMedia
     func load() async {
         do { records = try await store.records() } catch { message = "The local voice records could not be read. No audio was sent." }
     }
+    func reconcileStartup() async {
+        do { try await store.reconcileAbandonedEnrollments() }
+        catch { message = "An abandoned voice recording could not be removed. Open Voice Lab and retry cleanup." }
+    }
     private func services() throws -> (ElevenLabsVoiceLab, VoiceEnrollment) {
         let selected = ElevenLabsRegion(rawValue: app.string("transcription.elevenlabs.region", fallback: "default")) ?? .default
         if let client, let enrollment, region == selected { return (client, enrollment) }
@@ -134,6 +138,7 @@ import VoxClipMedia
         do {
             guard let shared = app.shared else { throw VoxClipError.sharedResourcesMissing }
             if let enrollment { try await enrollment.cancel(recordID: recordID) }
+            try await store.abandonEnrollment(recordID: recordID)
             recordID = UUID().uuidString.lowercased()
             let recentLanguage = app.recent.compactMap { app.recentProjects.items[$0]?.language }.first
             let language = app.shell.document?.project.transcript?.language ?? recentLanguage ?? "en"
@@ -193,8 +198,12 @@ import VoxClipMedia
     func cancelEnrollment() async {
         guard !busy else { return }
         if unsavedRecord != nil { showEnrollment = false; return }
-        recorder.discard(); statementWAV = nil; training = []; verified = false; trainingReady = false; statement = nil; quote = nil
-        try? await enrollment?.cancel(recordID: recordID)
+        recorder.discard()
+        do {
+            try await enrollment?.cancel(recordID: recordID)
+            try await store.abandonEnrollment(recordID: recordID)
+        } catch { message = "The statement recording could not be removed. Retry Cancel to finish cleanup."; return }
+        statementWAV = nil; training = []; verified = false; trainingReady = false; statement = nil; quote = nil
         showEnrollment = false
     }
     func retrySavingRecord() async {
