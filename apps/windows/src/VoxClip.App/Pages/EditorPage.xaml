@@ -150,7 +150,7 @@
                                     </ResourceDictionary.ThemeDictionaries>
                                 </ResourceDictionary>
                             </Grid.Resources>
-                            <Image x:Name="PreviewImage" Stretch="Uniform" AutomationProperties.AutomationId="PreviewStage" AutomationProperties.Name="Video preview, full take"/>
+                            <Image x:Name="PreviewImage" Stretch="Uniform" AutomationProperties.AutomationId="PreviewImage" AutomationProperties.Name="Video preview, full take"/>
                             <StackPanel x:Name="PreviewStandIn" Margin="20" Spacing="8" VerticalAlignment="Top" HorizontalAlignment="Center" IsHitTestVisible="False"
                                 Background="{ThemeResource StageMessagePlateBrush}" BorderBrush="{ThemeResource StageMessageEdgeBrush}" BorderThickness="{ThemeResource StageMessageEdgeThickness}"
                                 Padding="{ThemeResource StageMessagePadding}" CornerRadius="{ThemeResource StageMessageCornerRadius}">

@@ -6,6 +6,7 @@ internal readonly record struct ColumnRect(double X, double Y, double Width, dou
 {
     internal double Right => X + Width;
     internal double Bottom => Y + Height;
+    internal ColumnRect ToScreen(double clientX, double clientY) => this with { X = X + clientX, Y = Y + clientY };
     internal bool Measurable => double.IsFinite(X) && double.IsFinite(Y) && double.IsFinite(Right) &&
         double.IsFinite(Bottom) && Width > 0 && Height > 0;
     internal bool Contains(ColumnRect other) => Measurable && other.Measurable &&

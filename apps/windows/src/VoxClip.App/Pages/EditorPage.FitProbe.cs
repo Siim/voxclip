@@ -67,8 +67,10 @@ public sealed partial class EditorPage
         Dictionary<AutomationPeer, FrameworkElement> CollectPeers(string sample)
         {
             var peers = new Dictionary<AutomationPeer, FrameworkElement>();
+            var identities = new HashSet<nint>();
             void Collect(AutomationPeer peer, FrameworkElement owner)
             {
+                if (!identities.Add(((WinRT.IWinRTObject)peer).NativeObject.ThisPtr)) return;
                 if (!peers.TryAdd(peer, owner)) return;
                 try
                 {
@@ -82,7 +84,6 @@ public sealed partial class EditorPage
                     if (FrameworkElementAutomationPeer.CreatePeerForElement(element) is { } peer)
                     {
                         Collect(peer, element);
-                        peers[peer] = element;
                     }
                 }
                 catch (Exception exception) when (exception is not OutOfMemoryException) { EnumerationFailed(element, sample, exception); }
@@ -114,7 +115,7 @@ public sealed partial class EditorPage
                 if (ScrollOwner(owner) is { } viewer)
                     region = new(AutomationProperties.GetAutomationId(viewer), ElementBounds(viewer), viewer.VerticalOffset * scale, viewer.ExtentHeight * scale,
                         FrameworkElementAutomationPeer.CreatePeerForElement(viewer) is { } viewportPeer && !viewportPeer.IsOffscreen());
-                return new(id, name, role, Rectangle(peer.GetBoundingRectangle()), peer.IsOffscreen(), region);
+                return new(id, name, role, Rectangle(peer.GetBoundingRectangle()).ToScreen(origin.X, origin.Y), peer.IsOffscreen(), region);
             }
             catch (Exception exception) when (exception is not OutOfMemoryException)
             {

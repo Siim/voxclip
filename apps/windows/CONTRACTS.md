@@ -1,5 +1,9 @@
 # Windows fixed contracts
 
+### 2026-10-29 - sol-win-redesign r14 - Native bounds coordinates
+
+- The in-process peer bounds are translated from client to screen coordinates before the right-column checks; native peer identity deduplicates recursive enumeration. The stage container alone owns `PreviewStage`, so a zero-sized missing-video image cannot alias a required stage peer. Required coverage and both-axis containment remain fail closed.
+
 ### 2026-10-29 - sol-win-redesign r14 A5 - Keyboard and accessibility
 
 - Word arrows move from `SelectionCaret`, including Shift extension in either direction; the first arrow selects word zero. Keyboard movement announces the caret and selection through the selection notification activity and reveals the word with line margin. The transcript's read-only ValuePattern supplies current selection on refocus without changing its stable accessible Name; Page Up/Down scroll without moving selection.

@@ -11,6 +11,22 @@ public sealed class ColumnBoundsGateTests
     private static ColumnPeer Peer(string id = "PreviewStage", ColumnRect? bounds = null, bool offscreen = false,
         ColumnScrollRegion? scroll = null) => new(id, "Named " + id, "Button", bounds ?? new(720, 120, 260, 32), offscreen, scroll);
 
+    [Theory]
+    [InlineData(164, 156)]
+    [InlineData(-1200, 200)]
+    [InlineData(0, 0)]
+    public void InProcessPeerBoundsUseTheSameScreenOriginAsTheColumn(double clientX, double clientY)
+    {
+        var peer = Peer() with { Bounds = Peer().Bounds.ToScreen(clientX, clientY) };
+        Assert.True(ColumnBoundsGate.Assess(peer, Column.ToScreen(clientX, clientY), Client.ToScreen(clientX, clientY)).Accepted);
+        var overflowing = peer with { Bounds = new ColumnRect(990, 120, 40, 32).ToScreen(clientX, clientY) };
+        Assert.False(ColumnBoundsGate.Assess(overflowing, Column.ToScreen(clientX, clientY), Client.ToScreen(clientX, clientY)).Accepted);
+    }
+
+    [Fact]
+    public void TranslatingAnEmptyPeerDoesNotMakeItMeasurable() =>
+        Assert.False(default(ColumnRect).ToScreen(164, 156).Measurable);
+
     [Fact]
     public void MissingRequiredPeerFailsDespiteManyUnrelatedPeers()
     {
