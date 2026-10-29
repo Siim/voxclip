@@ -272,7 +272,16 @@ public sealed partial class EditorPage
                     measured = [.. measured, new ColumnPeer(id, AutomationProperties.GetName(PreviewStage), "Stage layout",
                         ElementBounds(PreviewStage), PreviewStage.Visibility != Visibility.Visible)];
                 var rejected = ColumnBoundsGate.RequiredFailures([id], measured, Rectangle(column), Rectangle(client));
-                coverage.Add(new { RequiredId = id, Found = measured, Failures = rejected });
+                coverage.Add(new { RequiredId = id, Found = measured, Failures = rejected,
+                    Aliases = peers.Where(entry => HasId(entry, id)).Select(entry => new
+                    {
+                        Peer = ((WinRT.IWinRTObject)entry.Key).NativeObject.ThisPtr.ToInt64(),
+                        Owner = ((WinRT.IWinRTObject)entry.Value).NativeObject.ThisPtr.ToInt64(),
+                        Type = entry.Value.GetType().Name, Layout = ElementBounds(entry.Value),
+                        NativeOwner = entry.Key is FrameworkElementAutomationPeer { Owner: FrameworkElement nativeOwner }
+                            ? ((WinRT.IWinRTObject)nativeOwner).NativeObject.ThisPtr.ToInt64() : (long?)null,
+                        Gallery = captionPanel?.DebugFitGalleryIdentity(entry.Value)?.Id
+                    }).ToArray() });
                 failures.AddRange(rejected);
                 if (measured.Length == 0) unmeasurable.Add(new { Id = id, Name = id, Role = "required peer", Error = "missing or unrealized" });
             }
