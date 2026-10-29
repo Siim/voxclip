@@ -10,19 +10,6 @@ namespace VoxClip.Ui.Tests;
 public sealed class StartupCheckTests
 {
     [Fact]
-    public void FlyoutEscapeWaitsForClosedAndReceivesHandledKeys()
-    {
-        var root = Path.GetDirectoryName(Environment.GetEnvironmentVariable("VOXCLIP_SHARED_DIR"))!;
-        var source = File.ReadAllText(Path.Combine(root, "apps/windows/src/VoxClip.App/Controls/SelectionFlyout.cs"));
-        Assert.Contains("flyout.Closed +=", source);
-        Assert.Contains("bar.AddHandler(UIElement.KeyDownEvent, escape, true)", source);
-        Assert.Contains("owner.DispatcherQueue.TryEnqueue", source);
-        Assert.Contains("restoreFocus |= focus", source);
-        Assert.Contains("flyout.Closing +=", source);
-        Assert.Contains("restoreFocus |= InputState.Down(VirtualKey.Escape)", source);
-    }
-
-    [Fact]
     public void RightColumnHasABoundedSingleSurfaceWithoutInactivePeerSubtrees()
     {
         var root = Path.GetDirectoryName(Environment.GetEnvironmentVariable("VOXCLIP_SHARED_DIR"))!;
@@ -32,6 +19,19 @@ public sealed class StartupCheckTests
         Assert.DoesNotContain("Visibility.Collapsed", source);
         Assert.Contains("surface.Child = panel", source);
         Assert.Equal(2, source.Split("surface.Child = captions", StringSplitOptions.None).Length - 1);
+    }
+
+    [Fact]
+    public async Task TranscriptionChoicesExcludeVerifiedVadDependencies()
+    {
+        var catalogue = await new VoxClip.Core.Services.Models.ModelCatalog().GetModelsAsync(TestContext.Current.CancellationToken);
+        var installed = catalogue.Select(model => new VoxClip.Core.Services.Models.InstalledModel(model.Id, "unused", true, null)).ToArray();
+        var choices = VoxClip.App.ViewModels.TranscriptionModelChoices.InstalledLocal(catalogue, installed);
+        Assert.Contains(choices, model => model.Id == "whisper-small.en-q5_1");
+        Assert.DoesNotContain(choices, model => model.Id == "silero-vad-v6.2.0");
+        Assert.All(choices, model => Assert.Equal("asr", model.Kind));
+        Assert.Empty(VoxClip.App.ViewModels.TranscriptionModelChoices.InstalledLocal(catalogue,
+            installed.Select(model => model with { Verified = false }).ToArray()));
     }
 
     [Fact]
@@ -49,18 +49,35 @@ public sealed class StartupCheckTests
     }
 
     [Fact]
-    public async Task TranscriptionChoicesExcludeVerifiedVadDependencies()
+    public void FlyoutEscapeWaitsForClosedAndReceivesHandledKeys()
     {
-        var catalogue = await new VoxClip.Core.Services.Models.ModelCatalog().GetModelsAsync(TestContext.Current.CancellationToken);
-        var installed = catalogue.Select(model => new VoxClip.Core.Services.Models.InstalledModel(model.Id, "unused", true, null)).ToArray();
-        var choices = VoxClip.App.ViewModels.TranscriptionModelChoices.InstalledLocal(catalogue, installed);
-        Assert.Contains(choices, model => model.Id == "whisper-small.en-q5_1");
-        Assert.DoesNotContain(choices, model => model.Id == "silero-vad-v6.2.0");
-        Assert.All(choices, model => Assert.Equal("asr", model.Kind));
-        Assert.Empty(VoxClip.App.ViewModels.TranscriptionModelChoices.InstalledLocal(catalogue,
-            installed.Select(model => model with { Verified = false }).ToArray()));
+        var root = Path.GetDirectoryName(Environment.GetEnvironmentVariable("VOXCLIP_SHARED_DIR"))!;
+        var source = File.ReadAllText(Path.Combine(root, "apps/windows/src/VoxClip.App/Controls/SelectionFlyout.cs"));
+        Assert.Contains("flyout.Closed +=", source);
+        Assert.Contains("bar.AddHandler(UIElement.KeyDownEvent, escape, true)", source);
+        Assert.Contains("owner.DispatcherQueue.TryEnqueue", source);
+        Assert.Contains("restoreFocus |= focus", source);
+        Assert.Contains("flyout.Closing +=", source);
+        Assert.Contains("restoreFocus |= InputState.Down(VirtualKey.Escape)", source);
     }
 
+    [Fact]
+    public void ParagraphPreparationAndLayoutRedrawOnlyTheAffectedParagraph()
+    {
+        var root = Path.GetDirectoryName(Environment.GetEnvironmentVariable("VOXCLIP_SHARED_DIR"))!;
+        var source = File.ReadAllText(Path.Combine(root, "apps/windows/src/VoxClip.App/Controls/TranscriptView.cs"));
+        var prepared = source[source.IndexOf("private void Prepared(", StringComparison.Ordinal)..source.IndexOf("private FrameworkElement ClipBadge", StringComparison.Ordinal)];
+        Assert.DoesNotContain("RefreshVisuals()", prepared);
+        Assert.Contains("RefreshParagraph(realized[grid])", prepared);
+        var layout = source[source.IndexOf("private void ParagraphSizeChanged", StringComparison.Ordinal)..source.IndexOf("public void RefreshVisuals()", StringComparison.Ordinal)];
+        Assert.DoesNotContain("foreach (var visual in realized.Values)", layout);
+        Assert.Contains("RefreshParagraph(changed)", layout);
+        Assert.Contains("visual.LayoutHandler = (_, _) => ParagraphLayoutUpdated(visual)", prepared);
+        Assert.Contains("Text.LayoutUpdated -= LayoutHandler", source);
+        var paragraph = source[source.IndexOf("private void RefreshParagraph(", StringComparison.Ordinal)..source.IndexOf("private int Hit(", StringComparison.Ordinal)];
+        Assert.DoesNotContain("TryEnqueue(RefreshVisuals)", paragraph);
+        Assert.Contains("visual.Released", paragraph);
+    }
     [Fact]
     public void RouteRepetitionsUseFreshProcessesAndAllFourRealRoutes()
     {

@@ -36,6 +36,14 @@ public sealed class TranscriptView : UserControl
     private sealed record ParagraphVisual(RichTextBlock Text, List<WordRun> Runs, List<PauseRun> Pauses, TranscriptOverlay Overlay)
     {
         internal int[] HighlightStarts { get; set; } = [];
+        internal EventHandler<object>? LayoutHandler { get; set; }
+        internal bool Released { get; private set; }
+        internal void Release()
+        {
+            Released = true;
+            if (LayoutHandler is not null) Text.LayoutUpdated -= LayoutHandler;
+            Overlay.Dispose();
+        }
     }
     public bool CorrectionOpen => correction.IsOpen;
     internal bool CanRewrite => RewriteRequested is not null && RewriteEntryPolicy.Resolve(RewriteEntry.Selection,
@@ -120,7 +128,7 @@ public sealed class TranscriptView : UserControl
             ItemTemplate = (DataTemplate)XamlReader.Load("<DataTemplate xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation'><Grid ColumnSpacing='20' Padding='0,4'><Grid.ColumnDefinitions><ColumnDefinition Width='56'/><ColumnDefinition Width='*'/></Grid.ColumnDefinitions><TextBlock FontSize='12' TextAlignment='Right' VerticalAlignment='Top' Margin='0,5,0,0' TextWrapping='Wrap'/><Grid Grid.Column='1' MinWidth='480' MaxWidth='680' HorizontalAlignment='Left'><Border IsHitTestVisible='False'/><RichTextBlock IsTextSelectionEnabled='False' TextWrapping='Wrap'/><Border IsHitTestVisible='False'/></Grid></Grid></DataTemplate>")
         };
         repeater.ElementPrepared += Prepared;
-        repeater.ElementClearing += (_, args) => { if (args.Element is Grid grid && realized.Remove(grid, out var visual)) visual.Overlay.Dispose(); };
+        repeater.ElementClearing += (_, args) => { if (args.Element is Grid grid && realized.Remove(grid, out var visual)) visual.Release(); };
         scroll = new ScrollViewer { Content = repeater, Padding = new Thickness(16, 16, 16, 24), HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
         Content = scroll;
         scroll.ViewChanging += (_, _) => selectionFlyout.Hide();
@@ -205,6 +213,8 @@ public sealed class TranscriptView : UserControl
         if (model is not null) { model.Changed -= ModelChanged; model.SelectionChanged -= ModelChanged; model.Announcement -= Announce; }
         correction.IsOpen = false;
         selectionFlyout.Hide();
+        foreach (var visual in realized.Values) visual.Release();
+        realized.Clear();
     }
     public void SetDisplay(bool cutWords, bool pauses)
     {
@@ -321,7 +331,7 @@ public sealed class TranscriptView : UserControl
         gutter.FontFamily = (FontFamily)Application.Current.Resources["VcMonoFontFamily"];
         gutter.FontSize = (double)Application.Current.Resources["VcTimecodeFontSize"];
         gutter.Foreground = Brush("VcTextTertiaryBrush");
-        if (realized.Remove(grid, out var previous)) previous.Overlay.Dispose();
+        if (realized.Remove(grid, out var previous)) previous.Release();
         var page = (Grid)grid.Children[1];
         var rich = (RichTextBlock)page.Children[1];
         rich.HighContrastAdjustment = ElementHighContrastAdjustment.None;
@@ -383,17 +393,18 @@ public sealed class TranscriptView : UserControl
         }
         rich.Blocks.Add(paragraph);
         var overlay = new TranscriptOverlay(rich, (FrameworkElement)page.Children[0], (FrameworkElement)page.Children[2]);
-        realized[grid] = new(rich, runs, pauses, overlay);
+        var visual = new ParagraphVisual(rich, runs, pauses, overlay);
+        realized[grid] = visual;
         rich.SizeChanged -= ParagraphSizeChanged;
         rich.SizeChanged += ParagraphSizeChanged;
-        rich.LayoutUpdated -= ParagraphLayoutUpdated;
-        rich.LayoutUpdated += ParagraphLayoutUpdated;
+        visual.LayoutHandler = (_, _) => ParagraphLayoutUpdated(visual);
+        rich.LayoutUpdated += visual.LayoutHandler;
         rich.PointerPressed -= Pressed; rich.PointerPressed += Pressed;
         rich.PointerMoved -= Moved; rich.PointerMoved += Moved;
         rich.PointerReleased -= Released; rich.PointerReleased += Released;
         rich.DoubleTapped -= DoubleTappedWord; rich.DoubleTapped += DoubleTappedWord;
         rich.RightTapped -= WordContextRequested; rich.RightTapped += WordContextRequested;
-        RefreshVisuals();
+        RefreshParagraph(realized[grid]);
         if (FrameProbePrepared is { } report) report(System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds);
     }
 
@@ -417,13 +428,15 @@ public sealed class TranscriptView : UserControl
 
     private void ParagraphSizeChanged(object sender, SizeChangedEventArgs args)
     {
-        foreach (var visual in realized.Values) visual.Overlay.Invalidate();
-        RefreshVisuals();
+        if (realized.Values.FirstOrDefault(visual => ReferenceEquals(visual.Text, sender)) is not { } changed) return;
+        changed.Overlay.Invalidate();
+        RefreshParagraph(changed);
     }
 
-    private void ParagraphLayoutUpdated(object? sender, object args)
+    private void ParagraphLayoutUpdated(ParagraphVisual changed)
     {
-        foreach (var visual in realized.Values) visual.Overlay.DrawAfterLayout(RefreshVisuals);
+        if (changed.Overlay.NeedsLayout)
+            changed.Overlay.DrawAfterLayout(() => RefreshParagraph(changed));
     }
 
     public void RefreshVisuals()
@@ -431,10 +444,18 @@ public sealed class TranscriptView : UserControl
 #if DEBUG
         if (debugGlyphOnly) return;
 #endif
-        if (model?.State is not { } state) return;
+        if (model?.State is null) return;
         scroll.Background = Brush("VcBgSurfaceBrush");
+        foreach (var visual in realized.Values) RefreshParagraph(visual);
+    }
+
+    private void RefreshParagraph(ParagraphVisual visual)
+    {
+#if DEBUG
+        if (debugGlyphOnly) return;
+#endif
+        if (visual.Released || model?.State is not { } state) return;
         var lowConfidence = App.Services.Get("general.showLowConfidence", false);
-        foreach (var visual in realized.Values)
         {
             foreach (var run in visual.Runs)
             {
@@ -477,7 +498,7 @@ public sealed class TranscriptView : UserControl
                     visual.Runs.Select(run => run.Run.Text).ToArray(),
                     visual.Runs.Select(run => pauseAfter.GetValueOrDefault(run.Index)).ToArray(),
                     visual.Runs.Select(run => run.After).ToArray());
-                DispatcherQueue.TryEnqueue(RefreshVisuals);
+                DispatcherQueue.TryEnqueue(() => RefreshParagraph(visual));
             }
             for (var index = 0; index < visual.Runs.Count; index++)
             {
