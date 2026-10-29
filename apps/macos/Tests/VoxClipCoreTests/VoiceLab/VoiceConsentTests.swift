@@ -758,6 +758,30 @@ extension VoiceConsentTests {
         #expect(!FileManager.default.fileExists(atPath: restarted.root.appendingPathComponent("\(record.id)/statement.wav").path))
         #expect(remote.value.withLock { !$0.present && $0.posts == 0 })
     }
+    @Test func missingAuditAndDraftCannotAuthorizeButStillCleansUp() async throws {
+        let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let store = storage(root); let record = try fixtureRecord(wav: wav)
+        let operation = try await seedOperation(store, record: record)
+        _ = try await store.transition(operation.id, to: .dispatched, at: now)
+        let journal = await store.operationsRoot.appendingPathComponent(operation.id.uuidString + ".json")
+        var object = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: journal)) as? [String: Any])
+        object.removeValue(forKey: "audit")
+        try JSONSerialization.data(withJSONObject: object).write(to: journal)
+        try FileManager.default.removeItem(at: store.root.appendingPathComponent("\(record.id)/record.json"))
+        try await store.discardStatement(recordID: record.id)
+        let restarted = storage(root)
+        #expect(try await restarted.activeVoices().isEmpty)
+        let guardService = VoiceUseGuard(store: restarted, check: .init(embedder: Embedder(output: [1, 0]), calibratedThreshold: 0.8))
+        await #expect(throws: (any Error).self) {
+            try await guardService.authorize(contentKey: "missing-audit", recordID: record.id, speech16k: [1, 0], approved: true)
+        }
+        let remote = OperationRemote(); remote.value.withLock { $0.present = true }
+        try await VoiceOperationReconciler(store: restarted, client: operationClient(remote, nonce: record.id)).reconcile(force: true)
+        #expect(try await restarted.operations().isEmpty)
+        #expect(try await restarted.records().isEmpty)
+        #expect(try await restarted.auditTombstone(recordID: record.id) == nil)
+        #expect(remote.value.withLock { $0.deletes == 1 && $0.posts == 0 && !$0.present })
+    }
     @Test(arguments: [false, true]) func cleanupRequiresSuccessfulListingAfterBlockingDeadline(listFailure: Bool) async throws {
         let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
         let store = storage(root); let record = try fixtureRecord(wav: wav)
