@@ -53,7 +53,7 @@ internal sealed class TranscriptionDialog : ContentDialog
             var catalogue = await App.Services.Models.GetModelsAsync(lifetime.Token);
             var installed = await App.Services.Downloads.ListInstalledAsync(lifetime.Token);
             var requestedLanguage = language.Text.Trim().ToLowerInvariant();
-            var available = catalogue.Where(entry => entry.Engine == TranscriptEngine.Whispercpp && installed.Any(item => item.Id == entry.Id && item.Verified)).ToArray();
+            var available = TranscriptionModelChoices.InstalledLocal(catalogue, installed);
             foreach (var entry in available) models.Items.Add(entry.Id);
             if (available.Length > 0)
             {
@@ -126,9 +126,13 @@ internal sealed class TranscriptionDialog : ContentDialog
             try
             {
                 var source = model.Project.Media.Source;
+                App.Services.Log.Write(VoxClip.Core.Services.Logging.LogLevel.Info, "transcribe", "dialog stage=probe");
+                await App.Services.Log.FlushAsync(CancellationToken.None);
                 var media = await App.Services.Probe.ProbeAsync(source.AbsolutePath, lifetime.Token);
                 Report(MediaTranscriptionStage.ExtractingAudio, null);
                 var audio = await new CacheIndex(App.Services.Data.Cache).ExtractAudioAsync(App.Services.Audio, media, source.ContentKey, null, lifetime.Token);
+                App.Services.Log.Write(VoxClip.Core.Services.Logging.LogLevel.Info, "transcribe", "dialog stage=audio-ready");
+                await App.Services.Log.FlushAsync(CancellationToken.None);
                 var requestedLanguage = language.Text.Trim().ToLowerInvariant();
                 var plan = new TranscriptionPlan(engine.SelectedIndex == 0 ? TranscriptEngine.Whispercpp : TranscriptEngine.Elevenlabs,
                     models.SelectedItem as string, requestedLanguage.Length == 0 || requestedLanguage == "auto" ? new LanguageChoice.Auto() : new LanguageChoice.Forced(requestedLanguage), new());
@@ -139,6 +143,12 @@ internal sealed class TranscriptionDialog : ContentDialog
                 }), lifetime.Token);
                 if (model.IsLeaving) return;
                 model.SetTranscript(transcript);
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                App.Services.Log.Write(VoxClip.Core.Services.Logging.LogLevel.Error, "transcribe",
+                    $"dialog failed type={exception.GetType().Name} hresult={exception.HResult}");
+                throw;
             }
             finally
             {

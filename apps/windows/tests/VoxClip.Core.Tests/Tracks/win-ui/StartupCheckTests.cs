@@ -10,6 +10,19 @@ namespace VoxClip.Ui.Tests;
 public sealed class StartupCheckTests
 {
     [Fact]
+    public async Task TranscriptionChoicesExcludeVerifiedVadDependencies()
+    {
+        var catalogue = await new VoxClip.Core.Services.Models.ModelCatalog().GetModelsAsync(TestContext.Current.CancellationToken);
+        var installed = catalogue.Select(model => new VoxClip.Core.Services.Models.InstalledModel(model.Id, "unused", true, null)).ToArray();
+        var choices = VoxClip.App.ViewModels.TranscriptionModelChoices.InstalledLocal(catalogue, installed);
+        Assert.Contains(choices, model => model.Id == "whisper-small.en-q5_1");
+        Assert.DoesNotContain(choices, model => model.Id == "silero-vad-v6.2.0");
+        Assert.All(choices, model => Assert.Equal("asr", model.Kind));
+        Assert.Empty(VoxClip.App.ViewModels.TranscriptionModelChoices.InstalledLocal(catalogue,
+            installed.Select(model => model with { Verified = false }).ToArray()));
+    }
+
+    [Fact]
     public void RouteRepetitionsUseFreshProcessesAndAllFourRealRoutes()
     {
         var root = Path.GetDirectoryName(Environment.GetEnvironmentVariable("VOXCLIP_SHARED_DIR"))!;
