@@ -93,9 +93,9 @@ public actor VoiceLabTakeRun {
         stop = .cancelled
         let quotes = quote.takes.flatMap { [$0.synthesis, $0.qa] }
         do {
-            let time = await client.quoteTime()
+            let fresh = await client.quotesAreFresh(quotes)
             try await checkpoint("clock", revision: currentRevision)
-            guard time < quote.expiresAt else { throw VoiceLabError.consentRequired }
+            guard fresh else { throw VoiceLabError.consentRequired }
             try await validate(value, revision: currentRevision)
             try await checkpoint("validation", revision: currentRevision)
             try await client.approveRun(quote.id, quotes: quotes)

@@ -1107,7 +1107,7 @@ The fit policy ships only after the user's listening check passes (§14 S16). It
 
 A micro-stretch of at most ±3% on the dry TTS, before room tone is added, with Signalsmith Stretch (MIT) or Sonic (Apache-2.0), may be tried later. It needs the user's approval, the blinded listening check (variant Z in §8.9.4) and a later ADR. Until then the §10.5 refusal stays. FFmpeg `atempo`, SoundTouch, Apple `AVAudioUnitTimePitch` and Rubber Band are not fit candidates.
 
-At transport start, a take's dispatch capability checks both its own-voice permit and its reserved input revision. The app checks project selection, provider consent and region on the main actor and starts the transport in that same non-suspending turn. Run invalidation and transport start share a revision gate. An earlier asynchronous validation is not dispatch authorization.
+At transport start, a take's dispatch capability checks both its own-voice permit and its reserved input revision. The app checks project selection, provider consent and region on the main actor and starts the transport in that same non-suspending turn. Run invalidation and transport start share a revision gate. An earlier asynchronous validation is not dispatch authorization. Unapproved quote expiry uses five elapsed minutes on a monotonic clock; wall-clock dates are display metadata only. Exactly five minutes is expired, including after a backward wall-clock adjustment.
 
 ### 8.10 Seams
 

@@ -5,9 +5,9 @@ import Testing
 @_spi(Testing) @testable import VoxClipCore
 
 private final class RewriteQuoteClock: Sendable {
-    let date = Mutex(Date())
-    func now() -> Date { date.withLock { $0 } }
-    func advance(_ seconds: Double) { date.withLock { $0.addTimeInterval(seconds) } }
+    let time = Mutex<Duration>(.zero)
+    func now() -> Duration { time.withLock { $0 } }
+    func advance(_ seconds: Double) { time.withLock { $0 += .seconds(seconds) } }
 }
 
 struct VoiceLabQuoteExpiryTests {

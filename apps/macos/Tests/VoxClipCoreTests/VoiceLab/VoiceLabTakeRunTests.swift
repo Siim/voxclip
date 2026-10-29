@@ -7,8 +7,11 @@ import Testing
 
 private final class TakeRunClock: Sendable {
     let date = Mutex(Date())
+    let time = Mutex<Duration>(.zero)
     func now() -> Date { date.withLock { $0 } }
-    func advance(_ seconds: Double) { date.withLock { $0.addTimeInterval(seconds) } }
+    func elapsed() -> Duration { time.withLock { $0 } }
+    func advance(_ seconds: Double) { date.withLock { $0.addTimeInterval(seconds) }; time.withLock { $0 += .seconds(seconds) } }
+    func rewindWall() { date.withLock { $0.addTimeInterval(-3_600) } }
 }
 private final class TakeRunDispatchSignal: Sendable {
     private struct State {
@@ -159,7 +162,7 @@ struct VoiceLabTakeRunTests {
         let ledger = VoiceLabSpendLedger(locations: locations)
         let client = ElevenLabsVoiceLab(keys: SpeechTestKeys(value: "synthetic-take-key"), session: URLSession(configuration: SpeechStubHTTP.configuration(for: base)),
             prices: VoiceLabPricingTests.catalogIfPresent, spend: ledger, enforceCapabilities: true)
-        let clock = TakeRunClock(); await client.useClock { clock.now() }
+        let clock = TakeRunClock(); await client.useClock({ clock.now() }, monotonic: { clock.elapsed() })
         let run = VoiceLabTakeRun(client: client, store: store, speaker: .init(embedder: TakeRunEmbedder(drift: drift), calibratedThreshold: 0.45), dispatchIfCurrent: { start in
             try http.value.withLock { state in
                 guard state.current else { throw VoiceLabError.consentRequired }
@@ -203,6 +206,20 @@ struct VoiceLabTakeRunTests {
         await #expect(throws: (any Error).self) { try await sending.value }
         #expect(fixture.http.value.withLock { $0.seeds.isEmpty && $0.qa == 0 })
         #expect(await fixture.ledger.total(provider: "elevenlabs", at: fixture.clock.now())?.usd == 0)
+    }
+    @Test(arguments: [299.0, 300.0, 301.0]) func expiryIgnoresBackwardWallClock(seconds: Double) async throws {
+        let fixture = try await fixture(); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let quote = try await fixture.run.prepare(fixture.input)
+        fixture.clock.advance(seconds)
+        fixture.clock.rewindWall()
+        #expect(fixture.clock.now() < quote.preparedAt)
+        if seconds < 300 {
+            _ = try await fixture.run.execute(quote, approved: true)
+            #expect(fixture.http.value.withLock { $0.seeds.count == 1 })
+        } else {
+            await #expect(throws: VoiceLabError.consentRequired) { try await fixture.run.execute(quote, approved: true) }
+            #expect(fixture.http.value.withLock { $0.seeds.isEmpty && $0.qa == 0 })
+        }
     }
     @Test(arguments: [false, true]) func inputChangeAtTransportBoundary(invalidate: Bool) async throws {
         let fixture = try await fixture(); defer { try? FileManager.default.removeItem(at: fixture.root) }

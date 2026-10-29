@@ -15,6 +15,8 @@ public actor ElevenLabsVoiceLab {
     private var preparedOrder: [UUID] = []
     private var approvedRuns: [UUID: Set<UUID>] = [:]
     private var now: @Sendable () -> Date = { Date() }
+    private var monotonic: @Sendable () -> Duration = VoiceLabQuoteClock.continuousSource()
+    private var deadlines: [UUID: Duration] = [:]
     private var discoveryRevision = 0
     private var prices: VoiceLabPriceCatalog?
     private var fixedBoundary: String?
@@ -25,7 +27,9 @@ public actor ElevenLabsVoiceLab {
     package func useDispatchHook(_ hook: @escaping @Sendable () async -> Void) { dispatchHook = hook }
     #endif
     #if DEBUG
-    @_spi(Testing) public func useClock(_ clock: @escaping @Sendable () -> Date) { now = clock }
+    @_spi(Testing) public func useClock(_ clock: @escaping @Sendable () -> Date, monotonic: @escaping @Sendable () -> Duration) {
+        now = clock; self.monotonic = monotonic
+    }
     #endif
     private let maxUpload = 16 * 1_024 * 1_024
     /// Up to 25 clone files of at most `maxUpload` bytes each, with multipart framing.
@@ -162,8 +166,10 @@ public actor ElevenLabsVoiceLab {
         if preparedOrder.count >= 32 {
             guard let oldest = preparedOrder.first(where: { candidate in !approvedRuns.values.contains(where: { $0.contains(candidate) }) }) else { throw VoiceLabError.invalidInput }
             prepared.removeValue(forKey: oldest); preparedOrder.removeAll { $0 == oldest }
+            deadlines.removeValue(forKey: oldest)
         }
         prepared[value.id] = value
+        deadlines[value.id] = monotonic() + .seconds(300)
         preparedOrder.append(value.id)
         return value
     }
@@ -337,23 +343,28 @@ public actor ElevenLabsVoiceLab {
         guard authorization.approved, value.operation == operation, value.requestID == requestID,
               value.region == region, value.endpoint == endpoint,
               value.fingerprint == VoiceLabFingerprint.fields(fields), prepared[value.id] == value,
-              now() < value.preparedAt.addingTimeInterval(300) || approvedRuns.values.contains(where: { $0.contains(value.id) }),
+              fresh(value) || approvedRuns.values.contains(where: { $0.contains(value.id) }),
               try estimate(operation, modelID: value.modelID, units: value.estimate.units) == value.estimate else {
             throw VoiceLabError.consentRequired
         }
         prepared.removeValue(forKey: value.id)
+        deadlines.removeValue(forKey: value.id)
         preparedOrder.removeAll { $0 == value.id }
     }
 
     func modelRevision() -> Int { discoveryRevision }
-    func quoteTime() -> Date { now() }
+    private func fresh(_ quote: VoiceLabQuote) -> Bool {
+        guard prepared[quote.id] == quote, let deadline = deadlines[quote.id] else { return false }
+        return monotonic() < deadline
+    }
+    func quotesAreFresh(_ quotes: [VoiceLabQuote]) -> Bool { !quotes.isEmpty && quotes.allSatisfy { fresh($0) } }
     func approveRun(_ id: UUID, quotes: [VoiceLabQuote]) throws {
         guard approvedRuns[id] == nil, !quotes.isEmpty,
-              quotes.allSatisfy({ prepared[$0.id] == $0 && now() < $0.preparedAt.addingTimeInterval(300) }) else { throw VoiceLabError.consentRequired }
+              quotesAreFresh(quotes) else { throw VoiceLabError.consentRequired }
         approvedRuns[id] = Set(quotes.map(\.id))
     }
     func discardRun(_ id: UUID, quotes: [VoiceLabQuote]) {
-        for quote in quotes { prepared.removeValue(forKey: quote.id) }
+        for quote in quotes { prepared.removeValue(forKey: quote.id); deadlines.removeValue(forKey: quote.id) }
         let ids = Set(quotes.map(\.id))
         preparedOrder.removeAll { ids.contains($0) }
         approvedRuns.removeValue(forKey: id)
