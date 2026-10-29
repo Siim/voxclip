@@ -105,6 +105,17 @@ function Invoke-FakeSignTool {
 }
 
 try {
+    Invoke-Test 'VC++ prerequisite matches each package architecture' {
+        Assert-Equal (Get-ReleasePrerequisite -RuntimeIdentifier win-x64) 'vcredist143-x64'
+        Assert-Equal (Get-ReleasePrerequisite -RuntimeIdentifier win-arm64) 'vcredist143-arm64'
+        Assert-Throws { Get-ReleasePrerequisite -RuntimeIdentifier win-x86 } 'ValidateSet|does not belong'
+    }
+    Invoke-Test 'VC++ verification rejects missing and pre-14.44 runtimes' {
+        Assert-Throws { Assert-ReleaseVcRuntime @{architecture='x64';installed=$false;version=$null} } '14.44'
+        Assert-Throws { Assert-ReleaseVcRuntime @{architecture='x64';installed=$true;version='14.30.30704'} } '14.44'
+        Assert-ReleaseVcRuntime @{architecture='x64';installed=$true;version='14.44.35211.0'}
+        Assert-ReleaseVcRuntime @{architecture='arm64';installed=$true;version='14.50.0.0'}
+    }
     $matchRoot = Join-Path $temporary 'file-match'
     New-Item -ItemType Directory -Path $matchRoot | Out-Null
     $matchExpected = Join-Path $matchRoot 'expected.txt'

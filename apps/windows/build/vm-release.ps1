@@ -211,7 +211,7 @@ try {
                 $icon = Join-Path $repository 'shared\brand\windows\app.ico'
                 Write-Host 'WARNING: SKELETON TEST ONLY: using shared brand ICO; win-ui must provide the release ICO path.'
             }
-            & (Join-Path $PSScriptRoot 'Pack-Velopack.ps1') -Vpk $vpk -AppDirectory $app -OutputDirectory (Join-Path $out "$rid\releases") -Version $configuration.Version -RuntimeIdentifier $rid -Icon $icon -SignTool $configuration.SignTool -Dlib $configuration.Dlib -Metadata $metadata -ReleaseNotes $releaseNotes
+            & (Join-Path $PSScriptRoot 'Pack-Velopack.ps1') -Vpk $vpk -AppDirectory $app -OutputDirectory (Join-Path $out "$rid\releases") -Version $configuration.Version -RuntimeIdentifier $rid -Framework (Get-ReleasePrerequisite -RuntimeIdentifier $rid) -Icon $icon -SignTool $configuration.SignTool -Dlib $configuration.Dlib -Metadata $metadata -ReleaseNotes $releaseNotes
             if (-not $?) { throw "Velopack packaging failed for $rid." }
         }
     } finally {
