@@ -1,5 +1,10 @@
 # Windows fixed contracts
 
+### 2026-10-29 - sol-win-redesign r14 A1 - Model download confirmation
+
+- `ModelDownloadCopy` supplies the catalogue publisher, attribution, source-page link, dependency-inclusive size and progress for Windows and CLI downloads. Settings confirms with a ContentDialog; the tour's checked licence confirms only the exact model and terms displayed. `models install <id>` is command consent and prints those terms to stderr unless `--quiet`.
+- `ModelStore.InstallAsync` without a confirmation callback throws `InvalidOperationException` before any HTTP request; declined confirmation still cancels. Listing, verification and removal need no confirmation. Installs for the same data root and model continue to share the existing in-flight operation.
+
 - **2026-10-28 - sol-win-redesign r12 D1:** Right-column content uses its actual 300-560 epx width, with 16 epx side padding. Frame measures the label and the four complete segments: it is inline iff their natural widths plus 12 epx fit; otherwise Frame sits above the full-width selector with a 12 epx gap. Transport uses the same measurement with a 4 epx gap, moving AI modified above the unchanged controls/time when needed; Windows shows no playback-rate control. Long timecodes are not truncated. Caption summary text wraps beside its chip, with Fine tune below the summary; the stage yields height on the smallest viewer-visible window. Native UIA bounds, untrimmed Frame labels, narrow states and cropped captures are prepared but remain owed until the same VM returns.
 - Round 13 hardens that owed gate: named per-state stage/transport/time/Frame/Captions/gallery/Fine tune/Rewrite peers must be realized and nonempty, every onscreen peer fits both column and client axes, and only vertically scrolled peers within an owned, contained ScrollViewer (including the Captions gallery and Rewrite) may be classified scrolled out; each state records required bounds and all unmeasurable role/name evidence, with portable negative and scrolling tests.
 

@@ -20,6 +20,7 @@ internal sealed class OnboardingDialog : ContentDialog
     private readonly CheckBox modelApproval = new() { Content = "I accept this model's licence and want to download it." };
     private readonly ComboBox connector = Ui.Choice("AI connector (optional)", []);
     private readonly CheckBox consent = new() { Content = "I understand what this connector sends and want to use it." };
+    private IReadOnlyList<TranscriptionModel> catalogue = [];
     private int step;
     private bool downloading;
 
@@ -38,8 +39,9 @@ internal sealed class OnboardingDialog : ContentDialog
             modelApproval.IsChecked = false;
             if ((models.SelectedItem as ComboBoxItem)?.Tag is TranscriptionModel model)
             {
-                modelTerms.Text = $"{model.Id} · {model.TotalBytes / 1_000_000d:0} MB\nLicence: {model.License}\n{model.Attribution}\n{model.LicenseUrl}";
-                modelApproval.Content = $"I accept the {model.License} licence for {model.Id}.";
+                var dependencies = ModelDownloadCopy.Dependencies(model, catalogue);
+                modelTerms.Text = $"{ModelDownloadCopy.Title(model)}\n{ModelDownloadCopy.Body(model, dependencies)}\n{model.LicenseUrl}";
+                modelApproval.Content = $"I accept the {model.License} licence for {ModelDownloadCopy.DisplayName(model)} and want to download it ({ModelDownloadCopy.Size(model, dependencies)}).";
             }
         };
         connector.SelectionChanged += (_, _) => { consent.IsChecked = false; Render(); };
@@ -59,9 +61,9 @@ internal sealed class OnboardingDialog : ContentDialog
 
     private async Task LoadChoicesAsync()
     {
-        var catalog = await App.Services.Models.GetModelsAsync(lifetime.Token);
+        catalogue = await App.Services.Models.GetModelsAsync(lifetime.Token);
         var installed = await App.Services.Downloads.ListInstalledAsync(lifetime.Token);
-        foreach (var model in catalog.Where(item => item.Listed && item.Engine == TranscriptEngine.Whispercpp))
+        foreach (var model in catalogue.Where(item => item.Listed && item.Engine == TranscriptEngine.Whispercpp))
             models.Items.Add(new ComboBoxItem { Content = $"{model.Id} · {model.TotalBytes / 1_000_000d:0} MB" + (installed.Any(item => item.Id == model.Id && item.Verified) ? " · installed" : ""), Tag = model });
         if (models.Items.Count > 0) models.SelectedIndex = 0;
         var providers = await ProviderCatalog.ReadAsync(lifetime.Token);
@@ -156,10 +158,14 @@ internal sealed class OnboardingDialog : ContentDialog
     {
         if (downloading || (models.SelectedItem as ComboBoxItem)?.Tag is not TranscriptionModel model) return;
         if (modelApproval.IsChecked != true) { Ui.Show(notice, "Accept the displayed model licence before downloading.", InfoBarSeverity.Warning); return; }
+        var approved = ModelDownloadCopy.Body(model, ModelDownloadCopy.Dependencies(model, catalogue));
+        Task<bool> Confirm(TranscriptionModel candidate, IReadOnlyList<TranscriptionModel> dependencies, CancellationToken _) =>
+            candidate.Id == model.Id && ModelDownloadCopy.Body(candidate, dependencies) == approved ? Task.FromResult(true)
+                : throw new InvalidOperationException("The model download no longer matches the licence shown.");
         downloading = true;
         try
         {
-            await App.Services.Downloads.InstallAsync(model.Id, new Progress<ModelDownloadProgress>(value => Ui.Show(notice, value.Stage)), lifetime.Token);
+            await App.Services.Installer(Confirm).InstallAsync(model.Id, new Progress<ModelDownloadProgress>(value => Ui.Show(notice, ModelDownloadCopy.Progress(model, value))), lifetime.Token);
             Ui.Show(notice, "Model installed and verified.", InfoBarSeverity.Success);
         }
         finally { downloading = false; }

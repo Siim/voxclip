@@ -269,16 +269,16 @@ public sealed partial class SettingsWindow : Window
             {
                 if (preparing) return;
                 if (download is not null) { Ui.Show(notice, "A model download is already running."); return; }
-                var host = model.Files.FirstOrDefault()?.Url.Host ?? model.LicenseUrl.Host;
-                if (!await Ui.ConfirmAsync(Root.XamlRoot, available ? "Remove model?" : "Download model?", available ? $"Remove {model.Id}? Your projects and source videos stay here." : $"{model.Id}\nPublisher: {host}\nDownload: {model.TotalBytes / 1_000_000d:0} MB\nLicence: {model.License}\n{model.Attribution}\n{model.LicenseUrl}", available ? "Remove" : "Download and accept licence")) return;
+                if (available && !await Ui.ConfirmAsync(Root.XamlRoot, "Remove model?", $"Remove {model.Id}? Your projects and source videos stay here.", "Remove")) return;
                 if (preparing) return;
-                download = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token); bar.Visibility = Visibility.Visible;
+                download = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token); bar.Visibility = available ? Visibility.Visible : Visibility.Collapsed;
                 try
                 {
                     if (available) await App.Services.Downloads.RemoveAsync(model.Id, download.Token);
-                    else await App.Services.Downloads.InstallAsync(model.Id, new Progress<ModelDownloadProgress>(value => { bar.IsIndeterminate = value.TotalBytes is null; bar.Value = value.TotalBytes > 0 ? value.BytesReceived * 100d / value.TotalBytes.Value : 0; Ui.Show(notice, value.Stage); }), download.Token);
+                    else await App.Services.Installer(ConfirmDownloadAsync).InstallAsync(model.Id, new Progress<ModelDownloadProgress>(value => { bar.Visibility = Visibility.Visible; bar.IsIndeterminate = value.TotalBytes is null; bar.Value = value.TotalBytes > 0 ? value.BytesReceived * 100d / value.TotalBytes.Value : 0; Ui.Show(notice, ModelDownloadCopy.Progress(model, value)); }), download.Token);
                     Ui.Show(notice, available ? "Model removed." : "Model installed and verified. Reopen Local Models to refresh.");
                 }
+                catch (OperationCanceledException) when (!lifetime.IsCancellationRequested) { notice.IsOpen = false; throw; }
                 finally { download.Dispose(); download = null; bar.Visibility = Visibility.Collapsed; }
             }, "Local models")));
             panel.Children.Add(Ui.Button("Cancel download", () => download?.Cancel()));
@@ -286,6 +286,8 @@ public sealed partial class SettingsWindow : Window
             group.Items.Add(new SettingsCard { Content = panel, HorizontalContentAlignment = HorizontalAlignment.Stretch }); Body.Children.Add(group);
         }
     }
+    private Task<bool> ConfirmDownloadAsync(TranscriptionModel model, IReadOnlyList<TranscriptionModel> dependencies, CancellationToken ct) =>
+        Ui.OnUiThreadAsync(DispatcherQueue, async () => !preparing && await Ui.ConfirmDownloadAsync(Root.XamlRoot, model, dependencies, ct) && !preparing);
     private void Export()
     {
         var aspects = new[] { "source", "16:9", "9:16", "1:1" };

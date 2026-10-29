@@ -21,7 +21,7 @@ public sealed class ModelStore : IModelDownloader
     private readonly Func<TranscriptionModel, IReadOnlyList<TranscriptionModel>, CancellationToken, Task<bool>>? confirm;
     private readonly SemaphoreSlim downloads;
 
-    /// <summary>Use standard data paths; downloads require an explicit confirmation callback.</summary>
+    /// <summary>Use standard data paths. Installs require an explicit confirmation callback.</summary>
     public ModelStore() : this(new ModelCatalog()) { }
 
     /// <summary>Compose the catalogue, application data locations and transport; plan W5.</summary>
@@ -65,7 +65,8 @@ public sealed class ModelStore : IModelDownloader
         var needed = remaining * 1.1 + 1_073_741_824;
         var available = new DriveInfo(Path.GetPathRoot(root)!).AvailableFreeSpace;
         if (available < needed) throw SpeechCopy.DiskFull(root, needed - available);
-        if (confirm is null || !await confirm(model, entries.Where(entry => entry.Id != id).ToArray(), ct).WaitAsync(ct).ConfigureAwait(false))
+        if (confirm is null) throw new InvalidOperationException("This model store has no download confirmation.");
+        if (!await confirm(model, entries.Where(entry => entry.Id != id).ToArray(), ct).WaitAsync(ct).ConfigureAwait(false))
             throw new OperationCanceledException(ct);
         var modelGate = Gate(id);
         await modelGate.WaitAsync(ct).ConfigureAwait(false);

@@ -1,9 +1,13 @@
+using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
+using VoxClip.App.Services;
 using VoxClip.App.ViewModels;
+using VoxClip.Core.Services.Logging;
+using VoxClip.Core.Services.Models;
 
 namespace VoxClip.App.Controls;
 
@@ -87,7 +91,7 @@ internal static class Ui
     internal static async Task RunAsync(InfoBar notice, Func<Task> action, string feature)
     {
         try { await action(); }
-        catch (OperationCanceledException) { }
+        catch (OperationCanceledException) { StartupDiagnostics.Log.Write(LogLevel.Info, "ui", feature + " cancelled."); }
         catch (Exception exception)
         {
             var message = UiError.Message(exception, feature);
@@ -109,5 +113,35 @@ internal static class Ui
         {
             if (ct.IsCancellationRequested) dialog.Hide();
         }
+    }
+    internal static async Task<bool> ConfirmDownloadAsync(XamlRoot root, TranscriptionModel model, IReadOnlyList<TranscriptionModel> dependencies, CancellationToken ct = default)
+    {
+        ct.ThrowIfCancellationRequested();
+        var source = ModelDownloadCopy.SourcePage(model);
+        var dialog = new ContentDialog { XamlRoot = root, Title = ModelDownloadCopy.Title(model), Content = Text(ModelDownloadCopy.Body(model, dependencies)),
+            PrimaryButtonText = "Download", SecondaryButtonText = source is null ? "" : "Open source page", CloseButtonText = "Cancel", DefaultButton = ContentDialogButton.Primary };
+        dialog.SecondaryButtonClick += (sender, args) =>
+        {
+            args.Cancel = true;
+            if (source is not null) _ = Windows.System.Launcher.LaunchUriAsync(source);
+        };
+        var showing = dialog.ShowAsync();
+        try { return await showing.AsTask().WaitAsync(ct) == ContentDialogResult.Primary; }
+        finally
+        {
+            if (ct.IsCancellationRequested) dialog.Hide();
+        }
+    }
+    internal static Task<T> OnUiThreadAsync<T>(DispatcherQueue queue, Func<Task<T>> action)
+    {
+        if (queue.HasThreadAccess) return action();
+        var result = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
+        if (!queue.TryEnqueue(async () =>
+        {
+            try { result.TrySetResult(await action()); }
+            catch (OperationCanceledException exception) { result.TrySetCanceled(exception.CancellationToken); }
+            catch (Exception exception) { result.TrySetException(exception); }
+        })) result.TrySetCanceled();
+        return result.Task;
     }
 }

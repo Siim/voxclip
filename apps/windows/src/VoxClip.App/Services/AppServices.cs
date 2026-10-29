@@ -96,6 +96,9 @@ internal sealed class AppServices : IAsyncDisposable
             Get("llm.baseUrl." + wireId, ""), Get("llm.cliPath." + wireId, ""));
     }
 
+    internal IModelDownloader Installer(Func<TranscriptionModel, IReadOnlyList<TranscriptionModel>, CancellationToken, Task<bool>> confirm) =>
+        new ModelStore(Models, Data.Root, confirmDownload: confirm);
+
     internal T Get<T>(string key, T fallback)
     {
         if (!Settings.Values.TryGetValue(key, out var value)) return fallback;

@@ -66,6 +66,14 @@ internal static class ServicesMergeAdapter
     // TODO(merge): W5 ModelCatalog(sharedRoot), ModelStore(IModelCatalog, DataLocations, HttpClient).
     internal static ModelCatalog Models() => MergeApi.Construct<ModelCatalog>([SharedResources.ResolveRoot()]);
     internal static ModelStore ModelStorage() => MergeApi.Construct<ModelStore>([Models(), DataLocations.Resolve(), Http]);
+    internal static ModelStore ModelInstaller(TextWriter? terms) => new(Models(), DataLocations.Resolve().Root, Http, CommandConfirmation(terms));
+    internal static Func<TranscriptionModel, IReadOnlyList<TranscriptionModel>, CancellationToken, Task<bool>> CommandConfirmation(TextWriter? terms) =>
+        (model, dependencies, ct) =>
+        {
+            ct.ThrowIfCancellationRequested();
+            terms?.WriteLine(ModelDownloadCopy.Title(model) + Environment.NewLine + ModelDownloadCopy.Body(model, dependencies));
+            return Task.FromResult(true);
+        };
     // TODO(merge): W7 LlmCatalog.Load(sharedRoot), never the parameterless unavailable placeholder.
     internal static LlmCatalog LlmModels() => MergeApi.Invoke<LlmCatalog>(typeof(LlmCatalog).GetMethod("Load", [typeof(string)]), null, [SharedResources.ResolveRoot()]);
     internal static LlmConnector Connector(ConnectorId id, IKeyProvider? keys = null)
