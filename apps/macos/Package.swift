@@ -10,6 +10,7 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-argument-parser", exact: "1.8.2"),
+        .package(url: "https://github.com/microsoft/onnxruntime-swift-package-manager", exact: "1.19.2"),
     ],
     targets: [
         .binaryTarget(
@@ -18,7 +19,7 @@ let package = Package(
             checksum: "e57f8c48933000acabc13bb913fbe82805d483a2deff692cc6738836bd92393b"
         ),
         .target(name: "VoxClipCore", swiftSettings: [.swiftLanguageMode(.v6)]),
-        .target(name: "VoxClipMedia", dependencies: ["VoxClipCore", "whisper"], swiftSettings: [.swiftLanguageMode(.v6)]),
+        .target(name: "VoxClipMedia", dependencies: ["VoxClipCore", "whisper", .product(name: "onnxruntime", package: "onnxruntime-swift-package-manager")], swiftSettings: [.swiftLanguageMode(.v6)]),
         .executableTarget(
             name: "VoxClip", dependencies: ["VoxClipCore", "VoxClipMedia"], exclude: ["Info.plist"],
             swiftSettings: [.swiftLanguageMode(.v6)],

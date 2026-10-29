@@ -215,6 +215,8 @@ public actor BundledModelCatalog: ModelCatalog {
 }
 /// Serial model manager, never evicted as cache; architecture §7.1 and transcription §12.
 public actor ModelStore: ModelDownloader {
+    public enum Namespace: String, Sendable { case voiceLab = "voice-lab" }
+    let namespace: Namespace?
     let catalog: any ModelCatalog
     let locations: DataLocations
     let configuration: URLSessionConfiguration
@@ -223,14 +225,17 @@ public actor ModelStore: ModelDownloader {
     var queued: Set<String> = []
     var busy = false
     public init(catalog: any ModelCatalog, locations: DataLocations) {
+        namespace = nil
         self.catalog = catalog; self.locations = locations; configuration = .ephemeral; confirmation = nil
         availableCapacity = Self.volumeAvailableCapacity
     }
-    public init(catalog: any ModelCatalog, locations: DataLocations, configuration: URLSessionConfiguration = .ephemeral, confirm: @escaping @Sendable (ModelDescriptor, Int64) async throws -> Bool) {
+    public init(catalog: any ModelCatalog, locations: DataLocations, configuration: URLSessionConfiguration = .ephemeral, namespace: Namespace? = nil, confirm: @escaping @Sendable (ModelDescriptor, Int64) async throws -> Bool) {
+        self.namespace = namespace
         self.catalog = catalog; self.locations = locations; self.configuration = configuration; confirmation = confirm
         availableCapacity = Self.volumeAvailableCapacity
     }
     init(catalog: any ModelCatalog, locations: DataLocations, configuration: URLSessionConfiguration = .ephemeral, confirm: (@Sendable (ModelDescriptor, Int64) async throws -> Bool)? = nil, availableCapacity: @escaping @Sendable (URL) throws -> Int64?) {
+        namespace = nil
         self.catalog = catalog; self.locations = locations; self.configuration = configuration; confirmation = confirm
         self.availableCapacity = availableCapacity
     }

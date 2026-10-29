@@ -4,7 +4,7 @@ extension ModelStore {
     struct Marker: Codable { let files: [ModelFile]; let installedAt: Date }
     struct Partial: Codable, Equatable { let url: URL; let bytes: Int64; let sha256: String }
 
-    func modelDirectory(_ model: ModelDescriptor) -> URL { locations.models.appendingPathComponent(model.engine.rawValue).appendingPathComponent(model.id) }
+    func modelDirectory(_ model: ModelDescriptor) -> URL { locations.models.appendingPathComponent(namespace?.rawValue ?? model.engine.rawValue).appendingPathComponent(model.id) }
     func fileURL(_ model: ModelDescriptor, _ file: ModelFile) -> URL { modelDirectory(model).appendingPathComponent(file.name) }
     func isInstalled(_ model: ModelDescriptor) -> Bool {
         let url = modelDirectory(model).appendingPathComponent("installed.json")
