@@ -48,6 +48,9 @@ public static class EditorLayout
     public static double StageHeightBudget(double columnHeight, double frameHeight, double transportHeight,
         double chromeHeight, double captionsHeight) => Math.Max(1, columnHeight - frameHeight - transportHeight - chromeHeight - captionsHeight);
 
+    public static double CaptionHeaderViewport(double availableForCaptions, double fixedContentHeight, double measuredHeaderHeight) =>
+        Math.Clamp(availableForCaptions - fixedContentHeight, 56, Math.Max(56, measuredHeaderHeight));
+
     /// <summary>Why Export is unavailable for the scope, or null when it can run. The text is the button's tooltip and
     /// accessible description (delta §3.5, placeholder spec §5.4.4), and what Ctrl+E says. While transcription, clip search
     /// or an export runs it is design §14's "Finish the current task first."</summary>

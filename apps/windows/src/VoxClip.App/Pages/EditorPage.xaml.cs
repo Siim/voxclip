@@ -837,6 +837,8 @@ public sealed partial class EditorPage : Page
         (PreviewStage.Width, PreviewStage.Height) = EditorLayout.Stage(RightPane.ActualWidth - RightPane.BorderThickness.Left - 32, ViewModel.Project.Export.Aspect, oriented);
         var chrome = PreviewPane.Padding.Top + PreviewPane.Padding.Bottom + PreviewPane.RowSpacing +
             FrameRow.Margin.Top + FrameRow.Margin.Bottom + CaptionsHost.BorderThickness.Top + CaptionsHost.BorderThickness.Bottom;
+        // Prefer the full header with an 80-high stage; short columns scroll it in the existing details viewport.
+        captions?.ConstrainHeight(RightPane.ActualHeight - FrameRow.ActualHeight - TransportRow.ActualHeight - chrome - 80);
         var maximum = EditorLayout.StageHeightBudget(RightPane.ActualHeight, FrameRow.ActualHeight,
             TransportRow.ActualHeight, chrome, captions?.MinimumContentHeight ?? 160);
         if (PreviewStage.Height > maximum)

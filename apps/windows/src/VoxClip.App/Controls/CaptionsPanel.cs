@@ -53,9 +53,16 @@ internal sealed class CaptionsPanel : UserControl
     private double playhead;
     private FrameworkElement? measuredHeader;
     private double headerHeight = 64;
+    private double headerViewport = 56;
     internal IReadOnlyList<CaptionStyle> Styles { get; private set; } = [];
-    internal double MinimumContentHeight => body.RowDefinitions[2].MinHeight + headerHeight + 36 +
+    private double FixedContentHeight => body.RowDefinitions[2].MinHeight + 36 +
         body.Padding.Top + body.Padding.Bottom + body.RowSpacing * (body.RowDefinitions.Count - 1);
+    internal double MinimumContentHeight => FixedContentHeight + headerViewport;
+    internal void ConstrainHeight(double availableForCaptions)
+    {
+        headerViewport = EditorLayout.CaptionHeaderViewport(availableForCaptions, FixedContentHeight, headerHeight);
+        UpdateViewportBounds();
+    }
     internal event EventHandler? FitChanged;
     internal Control FocusTarget
     {
@@ -108,7 +115,7 @@ internal sealed class CaptionsPanel : UserControl
         var details = Ui.Stack(8);
         details.Children.Add(notice); details.Children.Add(fineTune);
         fineTuneViewport.Content = details;
-        fineTuneViewport.MinHeight = headerHeight;
+        fineTuneViewport.MinHeight = headerViewport;
         fineTune.Loaded += (_, _) => MeasureFineTuneHeader();
         AutomationProperties.SetAutomationId(fineTuneViewport, "FineTune.ScrollViewer");
         fineTune.RegisterPropertyChangedCallback(Expander.IsExpandedProperty, (_, _) => UpdateFineTuneSpace());
@@ -300,7 +307,13 @@ internal sealed class CaptionsPanel : UserControl
         notice.Visibility = notice.IsOpen ? Visibility.Visible : Visibility.Collapsed;
         body.RowDefinitions[1].Height = fineTune.IsExpanded || notice.IsOpen ? new(1, GridUnitType.Star) : GridLength.Auto;
         body.RowDefinitions[2].Height = fineTune.IsExpanded || notice.IsOpen ? new(body.RowDefinitions[2].MinHeight) : new(1, GridUnitType.Star);
+        UpdateViewportBounds();
         FitChanged?.Invoke(this, EventArgs.Empty);
+    }
+    private void UpdateViewportBounds()
+    {
+        fineTuneViewport.MinHeight = headerViewport;
+        fineTuneViewport.MaxHeight = fineTune.IsExpanded || notice.IsOpen ? double.PositiveInfinity : headerViewport;
     }
 
     private void MeasureFineTuneHeader()
@@ -326,7 +339,6 @@ internal sealed class CaptionsPanel : UserControl
     {
         if (height <= 0 || Math.Abs(headerHeight - height) <= 0.1) return;
         headerHeight = height;
-        fineTuneViewport.MinHeight = height;
         FitChanged?.Invoke(this, EventArgs.Empty);
     }
 
@@ -570,6 +582,9 @@ internal sealed class CaptionsPanel : UserControl
             fineTune.IsExpanded = true;
             await Inspect("fine-tune");
             fineTune.IsExpanded = false;
+            model.SetCaptionStyle("box-highlight");
+            model.SetCaptionOverrides(CaptionFineTune.Change(model.Project.Captions, "font", ("sizeScale", System.Text.Json.Nodes.JsonValue.Create(1.2))));
+            await Inspect("long-header");
             model.SetCaptionStyle("off");
             await Inspect("captions-off");
             notice.Message = "Couldn't load caption styles. Try again.";

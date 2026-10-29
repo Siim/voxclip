@@ -161,6 +161,14 @@ public sealed class EditorLayoutTests
         Assert.Equal(column, stage + frame + transport + chrome + captions);
     }
 
+    [Theory]
+    [InlineData(161, 158, 94, 56)]
+    [InlineData(461, 158, 94, 94)]
+    [InlineData(516, 217, 59, 59)]
+    public void LongCaptionHeadersScrollOnlyWhenTheColumnNeedsTheSpace(double available, double fixedContent,
+        double measuredHeader, double expected) =>
+        Assert.Equal(expected, EditorLayout.CaptionHeaderViewport(available, fixedContent, measuredHeader));
+
     [Fact]
     public void TheFrameRowListsPortraitFirstAndKeepsThePersistedValues()
     {
