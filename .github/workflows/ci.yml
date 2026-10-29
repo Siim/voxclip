@@ -125,6 +125,15 @@ jobs:
           VOXCLIP_CAPTION_PYTHON: ${{ steps.py.outputs.python-path }}
         run: swift test --jobs 2 --filter VoxClipCoreTests
 
+      - name: Swift test (headless Voice Lab app model)
+        if: ${{ !cancelled() && steps.swift_build.outcome == 'success' }}
+        timeout-minutes: 10
+        working-directory: apps/macos
+        env:
+          VOXCLIP_SHARED_DIR: ${{ github.workspace }}/shared
+          VOXCLIP_DATA_DIR: ${{ runner.temp }}/voxclip-voice-lab-app-tests
+        run: swift test --jobs 2 --filter VoxClipAppTests
+
       - name: Swift test (VoxClipMediaTests)
         if: ${{ !cancelled() && steps.swift_build.outcome == 'success' }}
         timeout-minutes: 15

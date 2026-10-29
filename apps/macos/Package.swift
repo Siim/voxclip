@@ -32,6 +32,7 @@ let package = Package(
             linkerSettings: [.unsafeFlags(["-Xlinker", "-sectcreate", "-Xlinker", "__TEXT", "-Xlinker", "__info_plist", "-Xlinker", "Sources/VoxClip/Info.plist"])]
         ),
         .testTarget(name: "VoxClipCoreTests", dependencies: ["VoxClipCore"], swiftSettings: [.swiftLanguageMode(.v6)]),
+        .testTarget(name: "VoxClipAppTests", dependencies: ["VoxClip", "VoxClipCore", "VoxClipMedia"], swiftSettings: [.swiftLanguageMode(.v6)]),
         .testTarget(name: "VoxClipMediaTests", dependencies: ["VoxClipMedia", "voxclip-cli"], swiftSettings: [.swiftLanguageMode(.v6)]),
     ]
 )

@@ -45,6 +45,14 @@ import VoxClipMedia
     @ObservationIgnored private var quote: VoiceLabQuote?
     @ObservationIgnored private var acceptedAt = Date()
     init(app: AppModel) { self.app = app; self.store = VoiceConsentStore(locations: app.locations) }
+    #if DEBUG
+    init(app: AppModel, store: VoiceConsentStore) { self.app = app; self.store = store }
+    #endif
+    func refreshEnabledState() async {
+        guard enabled else { records = []; deleting = []; pendingCreations = []; return }
+        await load()
+        if subscription == nil { request(.subscription) }
+    }
     var enabled: Bool { app.bool("voiceLab.enabled") }
     var canRecord: Bool { enabled && !busy && ownVoice && adult && ownVideosOnly && (try? VoiceConsentText.displayName(displayName)) != nil }
     var canCreate: Bool { enabled && !busy && verified && trainingReady && unsavedRecord == nil && pendingCreations.isEmpty }

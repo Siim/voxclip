@@ -10,7 +10,7 @@ import VoxClipCore
             Section {
                 Toggle("Show Voice Lab (beta)", isOn: Binding(get: { session.enabled }, set: { enabled in
                     if enabled {
-                        if app.bool("voiceLab.betaNoticeAccepted") { app.set("voiceLab.enabled", .bool(true)); session.request(.subscription) }
+                        if app.bool("voiceLab.betaNoticeAccepted") { app.set("voiceLab.enabled", .bool(true)) }
                         else { confirmBeta = true }
                     } else {
                         app.set("voiceLab.enabled", .bool(false))
@@ -34,16 +34,12 @@ import VoxClipCore
             if let message = session.message { Section { Text(message).textSelection(.enabled).accessibilityIdentifier("voice-lab-message") } }
         }.formStyle(.grouped)
             .alert("Turn on Voice Lab?", isPresented: $confirmBeta) {
-                Button("Turn on") { app.set("voiceLab.betaNoticeAccepted", .bool(true)); app.set("voiceLab.enabled", .bool(true)); session.request(.subscription) }
+                Button("Turn on") { app.set("voiceLab.betaNoticeAccepted", .bool(true)); app.set("voiceLab.enabled", .bool(true)) }
                 Button("Cancel", role: .cancel) {}
             } message: { Text(VoiceLabSession.betaCopy) }
             .sheet(isPresented: $session.showEnrollment) { CreateVoiceSheet(session: session) }
             .sheet(item: Binding(get: { session.showEnrollment ? nil : session.confirmation }, set: { session.confirmation = $0 })) { VoiceLabRequestSheet(session: session, action: $0) }
-            .task {
-                guard session.enabled else { return }
-                await session.load()
-                if session.subscription == nil { session.request(.subscription) }
-            }
+            .task(id: session.enabled) { await session.refreshEnabledState() }
     }
     private var keySection: some View {
         Section("Your API keys") {
