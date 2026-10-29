@@ -17,20 +17,23 @@ enum CaptionGalleryTarget: Hashable { case tile(String), header(CaptionStyleGrou
 
 @MainActor struct CaptionsSection: View {
     @Bindable var model: EditorModel
+    @ObservedObject private var document: VoxClipDocument
     @State private var fineTune = false
     @State private var width: CGFloat = 360
     @State private var galleryReveal = CaptionGalleryReveal()
     @State private var galleryViewport = CaptionGalleryViewport()
-    @State private var galleryTile: CaptionGalleryTileGeometry?
+    @State private var galleryTiles: [String: CGRect] = [:]
     @State private var galleryHeaders: [CaptionStyleGroup: CGRect] = [:]
     #if DEBUG
     @State private var galleryID = UUID().uuidString
     #endif
     init(model: EditorModel, fineTune: Bool = false) {
         self.model = model
+        self.document = model.document
         _fineTune = State(initialValue: fineTune)
     }
     var body: some View {
+        let _ = document.project
         VStack(alignment: .leading, spacing: 12) {
             sectionHeader
             gallery
@@ -87,6 +90,15 @@ enum CaptionGalleryTarget: Hashable { case tile(String), header(CaptionStyleGrou
             .labelsHidden().toggleStyle(.switch).controlSize(.small).fixedSize().accessibilityIdentifier("voxclip.captions.switch")
     }
     private var liveChip: some View {
+        Menu {
+            Picker("Caption style", selection: styleSelection) {
+                ForEach(model.app.styles.sorted { $0.order < $1.order }, id: \.id) { Text($0.name).tag($0.id) }
+            }
+        } label: { chipContent }
+        .menuStyle(.borderlessButton).menuIndicator(.hidden).frame(width: 64, height: 36)
+        .accessibilityLabel("Caption style").accessibilityIdentifier("voxclip.captions.styleChip")
+    }
+    private var chipContent: some View {
         Group {
             if let style { CaptionTile(input: chipInput(style), pipeline: model.app.captions) }
             else {
@@ -122,11 +134,23 @@ enum CaptionGalleryTarget: Hashable { case tile(String), header(CaptionStyleGrou
                     guard notification.object as? String == galleryID else { return }
                     if notification.userInfo?["snapshot"] as? Bool == true {
                         CaptionGalleryAudit.snapshots[galleryID] = .init(paint: galleryTile?.frame, header: galleryLayout.header,
-                            visible: galleryViewport.visible, size: galleryViewport.size, pending: galleryReveal.pending)
+                            visible: galleryViewport.visible, size: galleryViewport.size, pending: galleryReveal.pending,
+                            selectedStyle: model.project.captions.styleId, paintStyle: galleryTile?.styleID, interrupted: galleryReveal.interrupted,
+                            commands: galleryReveal.commands)
                         return
                     }
+                    if let selected = notification.userInfo?["selectStyle"] as? String {
+                        styleSelection.wrappedValue = selected
+                        return
+                    }
+                    if let selected = notification.userInfo?["chipStyle"] as? String {
+                        styleSelection.wrappedValue = selected
+                        return
+                    }
+                    if notification.userInfo?["beginReveal"] as? Bool == true { galleryReveal.restart(); return }
+                    if notification.userInfo?["userScroll"] as? Bool == true { galleryScrollPhaseChanged(.interacting); return }
                     if notification.userInfo?["end"] as? Bool == true {
-                        galleryReveal.complete(); reader.scrollTo(CaptionGalleryTarget.end, anchor: .bottom)
+                        galleryReveal.cancelForUserScroll(); reader.scrollTo(CaptionGalleryTarget.end, anchor: .bottom)
                     } else { galleryReveal.restart(); revealSelection(reader: reader) }
                 }
             #else
@@ -141,9 +165,7 @@ enum CaptionGalleryTarget: Hashable { case tile(String), header(CaptionStyleGrou
             } action: { _, viewport in galleryViewport = viewport }
             .onChange(of: galleryRequest, initial: true) { _, request in galleryReveal.begin(request); revealSelection(reader: reader) }
             .onChange(of: galleryLayout) { _, _ in revealSelection(reader: reader) }
-            .onScrollPhaseChange { _, phase in
-                if phase == .tracking || phase == .interacting { galleryReveal.complete() }
-            }
+            .onScrollPhaseChange { _, phase in galleryScrollPhaseChanged(phase) }
             .onChange(of: fineTune) { _, expanded in
                 if expanded { reader.scrollTo("captions.fineTune", anchor: .top) }
             }
@@ -177,9 +199,15 @@ enum CaptionGalleryTarget: Hashable { case tile(String), header(CaptionStyleGrou
         }.padding(.vertical, 3).accessibilityRepresentation { galleryPicker }
     }
     private var galleryPicker: some View {
-        Picker("Caption style", selection: Binding(get: { model.project.captions.styleId }, set: { model.setStyle($0) })) {
+        Picker("Caption style", selection: styleSelection) {
             ForEach(model.app.styles.sorted { $0.order < $1.order }, id: \.id) { Text("\($0.name): \($0.description)").tag($0.id) }
         }.pickerStyle(.radioGroup).accessibilityIdentifier("voxclip.captions.gallery")
+    }
+    private var styleSelection: Binding<String> {
+        Binding(get: { model.project.captions.styleId }, set: { model.setStyle($0) })
+    }
+    private func galleryScrollPhaseChanged(_ phase: ScrollPhase) {
+        if phase == .tracking || phase == .interacting { galleryReveal.cancelForUserScroll() }
     }
     private var galleryRequest: CaptionGalleryRequest {
         CaptionGalleryRequest(selection: "\(model.project.id)/\(model.activeClip?.id ?? "full")/\(model.project.captions.styleId)", size: galleryViewport.size, fineTune: fineTune)
@@ -187,14 +215,21 @@ enum CaptionGalleryTarget: Hashable { case tile(String), header(CaptionStyleGrou
     private var galleryLayout: CaptionGalleryLayout {
         CaptionGalleryLayout(tile: galleryTile, header: style.flatMap { galleryHeaders[CaptionStyleGroup.group(for: $0)] }, viewport: galleryViewport)
     }
+    private var galleryTile: CaptionGalleryTileGeometry? {
+        let identifier = model.project.captions.styleId
+        return galleryTiles[identifier].map { CaptionGalleryTileGeometry(styleID: identifier, frame: $0) }
+    }
     private func revealSelection(reader: ScrollViewProxy) {
-        guard galleryReveal.pending, !fineTune, galleryViewport.size.height > 0 else { return }
+        guard !galleryReveal.interrupted, !fineTune, galleryViewport.size.height > 0, galleryReveal.request != nil else { return }
+        galleryReveal.resumeForLayout()
         var target = CaptionGalleryTarget.tile(model.project.captions.styleId)
         if let tile = galleryTile, tile.styleID == model.project.captions.styleId {
             let expectedWidth: CGFloat = (galleryViewport.size.width - 14) / 2 + 6
             var visible = galleryViewport.visible
             if tile.frame.height + 24 <= visible.height { visible.size.height -= 24 }
-            var complete = abs(tile.frame.width - expectedWidth) <= 0.5 && visible.insetBy(dx: -0.5, dy: -0.5).contains(tile.frame)
+            let shortViewport = tile.frame.height > visible.height
+            let verticallyVisible = shortViewport ? abs(tile.frame.minY - visible.minY) <= 0.5 : visible.insetBy(dx: -0.5, dy: -0.5).contains(tile.frame)
+            var complete = abs(tile.frame.width - expectedWidth) <= 0.5 && verticallyVisible
             if let style, let header = galleryLayout.header, header.union(tile.frame).height + 24 <= galleryViewport.size.height {
                 target = .header(CaptionStyleGroup.group(for: style))
                 complete = complete && visible.insetBy(dx: -0.5, dy: -0.5).contains(header)
@@ -220,11 +255,11 @@ enum CaptionGalleryTarget: Hashable { case tile(String), header(CaptionStyleGrou
                 Text(style.name + (selected && model.captionsEdited ? " · Edited" : "")).font(.system(size: 11, weight: selected ? .semibold : .regular)).foregroundStyle(DesignValues.color("text.primary")).lineLimit(1).columnLayoutEvidence("caption.name.\(id)")
             }.padding(.top, 3).contentShape(Rectangle())
         }.buttonStyle(.plain).accessibilityLabel("\(style.name): \(style.description)").accessibilityAddTraits(selected ? .isSelected : [])
+            .columnLayoutEvidence("caption.target.\(id)")
             .background {
                 Color.clear
-                    .onGeometryChange(for: CaptionGalleryTileGeometry?.self) { geometry in
-                        selected ? CaptionGalleryTileGeometry(styleID: id, frame: geometry.frame(in: .named(CaptionGallerySpace.content))) : nil
-                    } action: { tile in if let tile, tile.frame.width > 0, tile.frame.height > 0 { galleryTile = tile } }
+                    .onGeometryChange(for: CGRect.self) { geometry in geometry.frame(in: .named(CaptionGallerySpace.content)) }
+                    action: { frame in if frame.width > 0, frame.height > 0 { galleryTiles[id] = frame } }
                     .columnLayoutEvidence("caption.tile.\(id)")
                     .padding(.horizontal, -3).allowsHitTesting(false).accessibilityHidden(true)
             }
@@ -248,18 +283,22 @@ struct CaptionGalleryRequest: Equatable {
 struct CaptionGalleryReveal: Equatable {
     private(set) var request: CaptionGalleryRequest?
     private(set) var pending = false
+    private(set) var interrupted = false
+    private(set) var commands = 0
     private var lastTarget: CaptionGalleryTarget?
     private var lastAnchor = UnitPoint.top
     mutating func begin(_ request: CaptionGalleryRequest) {
         guard self.request != request else { return }
-        self.request = request; pending = !request.fineTune; lastTarget = nil
+        self.request = request; pending = !request.fineTune; interrupted = false; lastTarget = nil
     }
     mutating func complete() { pending = false }
-    mutating func restart() { pending = request?.fineTune == false; lastTarget = nil }
+    mutating func resumeForLayout() { if !interrupted { pending = request?.fineTune == false } }
+    mutating func restart() { pending = request?.fineTune == false; interrupted = false; lastTarget = nil }
+    mutating func cancelForUserScroll() { pending = false; interrupted = true }
     mutating func shouldScroll(to target: CaptionGalleryTarget, anchor: UnitPoint) -> Bool {
         guard pending else { return false }
         if lastTarget == target, abs(lastAnchor.x - anchor.x) < 0.000001, abs(lastAnchor.y - anchor.y) < 0.000001 { return false }
-        lastTarget = target; lastAnchor = anchor
+        lastTarget = target; lastAnchor = anchor; commands += 1
         return true
     }
 }
@@ -287,6 +326,7 @@ private enum CaptionGallerySpace: Hashable { case content }
     static let notification = Notification.Name("com.voxclip.caption-gallery-audit")
     struct Snapshot: Codable {
         let paint: CGRect?; let header: CGRect?; let visible: CGRect; let size: CGSize; let pending: Bool
+        let selectedStyle: String; let paintStyle: String?; let interrupted: Bool; let commands: Int
     }
     static var snapshots: [String: Snapshot] = [:]
 }

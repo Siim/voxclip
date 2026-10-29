@@ -37,12 +37,14 @@ import VoxClipCore
     }
     func applicationDidFinishLaunching(_ notification: Notification) {
         #if DEBUG
-        if let index = CommandLine.arguments.firstIndex(of: "-layoutAudit"), index + 1 < CommandLine.arguments.count {
+        if let index = CommandLine.arguments.firstIndex(where: { ["-layoutAudit", "-captionGalleryAudit"].contains($0) }), index + 1 < CommandLine.arguments.count {
             let directory = URL(fileURLWithPath: CommandLine.arguments[index + 1])
             Task {
                 await model.start()
                 do {
-                    let results = try await DebugRightColumn.run(app: model, directory: directory)
+                    let results = CommandLine.arguments[index] == "-captionGalleryAudit"
+                        ? try await DebugCaptionGallery.run(app: model, directory: directory)
+                        : try await DebugRightColumn.run(app: model, directory: directory)
                     try JSONEncoder().encode(results).write(to: directory.appendingPathComponent("results.json"), options: .atomic)
                     exit(results.allSatisfy(\.passed) ? 0 : 1)
                 } catch { fputs("Layout audit failed: \(error)\n", stderr); exit(1) }

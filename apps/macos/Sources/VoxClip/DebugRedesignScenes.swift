@@ -41,8 +41,13 @@ import VoxClipMedia
             try await DebugUISuite.snapshot(WorkspaceView(shell: shell).environment(app), name: name, size: size,
                 appearance: appearance, directory: directory, active: true, mainWindow: true, native: true, beforeCapture: { window in
                     let target = try await prepare?(window) ?? window
-                    if ["live-editor-full", "live-editor-1280", "live-editor-clip"].contains(name), let editor = shell.editor {
+                    if ["live-editor-full", "live-editor-1280", "live-editor-clip", "live-editor-300", "live-editor-560"].contains(name), let editor = shell.editor {
                         try await assertSelectedGallery(in: window, styleID: editor.project.captions.styleId, app: app, name: name, directory: directory)
+                        if name != "live-editor-clip", let right = DebugColumnBounds.split(in: window.contentView)?.arrangedSubviews.last {
+                            try await DebugCaptionGallery.runNative(in: right, model: editor, window: window, name: name, directory: directory) { style, capture in
+                                try await assertSelectedGallery(in: window, styleID: style, app: app, name: capture, directory: directory)
+                            }
+                        }
                     }
                     return target
                 })

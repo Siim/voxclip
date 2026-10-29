@@ -6,6 +6,22 @@ import XCTest
 import Darwin
 
 @Suite("mac-ui", .serialized) struct MacUIIntegrationTests {
+    @Test("Gallery selections reveal their complete paint without opening a window") func captionGalleryInteractions() throws {
+        let directory = try UIProcessHarness.run(mode: "-captionGalleryAudit", name: "caption-gallery")
+        defer { UIProcessHarness.cleanTemporary(directory) }
+        let report = try JSONDecoder().decode([UIProcessHarness.Result].self, from: Data(contentsOf: directory.appendingPathComponent("results.json")))
+        #expect(report.count == 49)
+        for result in report { #expect(result.passed && result.skipped == nil, Comment(rawValue: result.name)) }
+        struct Measurement: Decodable {
+            let name: String
+            let width: CGFloat
+            let settled: Bool
+        }
+        let measurements = try JSONDecoder().decode([Measurement].self, from: Data(contentsOf: directory.appendingPathComponent("caption-gallery-interactions.json")))
+        #expect(measurements.count == 16)
+        #expect(Set(measurements.filter { $0.name.hasPrefix("last-") }.map(\.width)) == [300, 320, 360, 560])
+        for measurement in measurements { #expect(measurement.settled, Comment(rawValue: measurement.name)) }
+    }
     @Test("Right-column content fits without opening a window") func rightColumnLayout() throws {
         let directory = try UIProcessHarness.run(mode: "-layoutAudit", name: "layout")
         defer { UIProcessHarness.cleanTemporary(directory) }
@@ -167,12 +183,31 @@ import Darwin
     private func verifySelectedGallery(in directory: URL) throws {
         struct Choice: Decodable { let role: String; let frame: CGRect }
         struct Selection: Decodable { let style: String; let visible: Bool; let paint: CGRect; let viewport: CGRect; let choice: Choice; let header: CGRect? }
-        for name in ["live-editor-full", "live-editor-1280", "live-editor-1280-initial", "live-editor-clip"] {
+        let interactionScenes = ["live-editor-full", "live-editor-1280", "live-editor-300", "live-editor-560"]
+        let interactionSelections = interactionScenes.flatMap { scene in ["first", "middle", "last", "chip"].map { "\(scene)-\($0)" } }
+        let initialSelections = ["live-editor-full", "live-editor-1280", "live-editor-1280-initial", "live-editor-clip", "live-editor-300", "live-editor-560"]
+        for name in initialSelections + interactionSelections {
             let result = try JSONDecoder().decode(Selection.self, from: Data(contentsOf: directory.appendingPathComponent("\(name)-selected-gallery.json")))
             let viewport = result.viewport.insetBy(dx: -0.5, dy: -0.5)
             #expect(result.visible && !result.style.isEmpty && result.choice.role == "AXRadioButton", Comment(rawValue: name))
             #expect(viewport.contains(result.paint) && viewport.contains(result.choice.frame), Comment(rawValue: name))
             if let header = result.header, header.union(result.paint).height + 24 <= result.viewport.height { #expect(viewport.contains(header)) }
+        }
+        for name in interactionScenes {
+            let report = try JSONDecoder().decode([UIProcessHarness.Result].self,
+                from: Data(contentsOf: directory.appendingPathComponent("\(name)-gallery-interaction-results.json")))
+            #expect(report.count == (name == "live-editor-full" ? 11 : 7))
+            for result in report { #expect(result.passed && result.skipped == nil, Comment(rawValue: result.name)) }
+        }
+        struct ShortSnapshot: Decodable { let paint: CGRect; let visible: CGRect; let pending: Bool }
+        struct ShortMeasurement: Decodable { let settled: Bool; let snapshot: ShortSnapshot }
+        let short = try JSONDecoder().decode([ShortMeasurement].self,
+            from: Data(contentsOf: directory.appendingPathComponent("caption-gallery-short.json")))
+        #expect(short.count == 2)
+        for measurement in short {
+            #expect(measurement.settled && !measurement.snapshot.pending)
+            #expect(measurement.snapshot.paint.height > measurement.snapshot.visible.height)
+            #expect(abs(measurement.snapshot.paint.minY - measurement.snapshot.visible.minY) <= 0.5)
         }
     }
     @Test("Native Save As boundary preserves portable media and edits", .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_UI_TESTS"] == "1")) func saveBoundary() throws {
