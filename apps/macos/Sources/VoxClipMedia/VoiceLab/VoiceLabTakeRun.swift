@@ -22,6 +22,10 @@ public actor VoiceLabTakeRun {
     private var runningID: UUID?
     private var revision = 0
     private var stop: VoiceLabTakeRunEnd = .cancelled
+    #if DEBUG
+    private var executeHook: (@Sendable (String) async -> Void)?
+    package func useExecuteHook(_ hook: @escaping @Sendable (String) async -> Void) { executeHook = hook }
+    #endif
     public init(client: ElevenLabsVoiceLab, store: VoiceConsentStore, speaker: VoiceSpeakerCheck,
                 inputsAreCurrent: @escaping @Sendable () async -> Bool) {
         self.client = client; self.store = store; self.speaker = speaker; useGuard = VoiceUseGuard(store: store, check: speaker)
@@ -77,17 +81,24 @@ public actor VoiceLabTakeRun {
     }
     public func execute(_ quote: VoiceLabTakeRunQuote, approved: Bool,
                         progress: @escaping @Sendable ([VoiceLabTakeRow]) async -> Void = { _ in }) async throws -> VoiceLabTakeRunResult {
-        guard approved, task == nil, let value = pending, value.quote == quote,
-              await client.quoteTime() < quote.expiresAt else { throw VoiceLabError.consentRequired }
+        guard approved, task == nil, runningID == nil, let value = pending, value.quote == quote else { throw VoiceLabError.consentRequired }
+        let currentRevision = revision
+        runningID = quote.id
         pending = nil
         stop = .cancelled
-        let currentRevision = revision
         let quotes = quote.takes.flatMap { [$0.synthesis, $0.qa] }
         do {
+            let time = await client.quoteTime()
+            try await checkpoint("clock", revision: currentRevision)
+            guard time < quote.expiresAt else { throw VoiceLabError.consentRequired }
             try await validate(value, revision: currentRevision)
+            try await checkpoint("validation", revision: currentRevision)
             try await client.approveRun(quote.id, quotes: quotes)
+            try await checkpoint("approval", revision: currentRevision)
+            try await checkpoint("launch", revision: currentRevision)
         } catch {
             await client.discardRun(quote.id, quotes: quotes)
+            if runningID == quote.id { runningID = nil }
             throw error
         }
         let operation = Task { await self.perform(value, revision: currentRevision, progress: progress) }
@@ -111,11 +122,30 @@ public actor VoiceLabTakeRun {
         stop = .invalidated
     }
     private func validate(_ value: Pending, revision expected: Int) async throws {
-        try Task.checkCancellation()
-        guard revision == expected, await inputsAreCurrent(), await client.modelRevision() == value.modelRevision else { throw Abort.invalidated }
+        try reservation(expected)
+        let current = await inputsAreCurrent()
+        try await checkpoint("inputs", revision: expected)
+        guard current else { throw Abort.invalidated }
+        let modelRevision = await client.modelRevision()
+        try await checkpoint("model", revision: expected)
+        guard modelRevision == value.modelRevision else { throw Abort.invalidated }
         try await speaker.embedder?.validateAvailability()
+        try await checkpoint("embedder", revision: expected)
         try await store.validateUse(value.record)
-        guard try await store.load(value.record.id) == value.record else { throw VoiceConsentError.inactive }
+        try await checkpoint("consent", revision: expected)
+        let record = try await store.load(value.record.id)
+        try await checkpoint("record", revision: expected)
+        guard record == value.record else { throw VoiceConsentError.inactive }
+    }
+    private func reservation(_ expected: Int) throws {
+        try Task.checkCancellation()
+        guard revision == expected, runningID != nil else { throw Abort.invalidated }
+    }
+    private func checkpoint(_ name: String, revision expected: Int) async throws {
+        #if DEBUG
+        await executeHook?(name)
+        #endif
+        try reservation(expected)
     }
     private func perform(_ value: Pending, revision expected: Int,
                          progress: @escaping @Sendable ([VoiceLabTakeRow]) async -> Void) async -> VoiceLabTakeRunResult {

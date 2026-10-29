@@ -185,6 +185,20 @@ struct VoiceLabTakeRunTests {
             incomingSilence: nil, outgoingSilence: nil, providerConsent: true)
         return Fixture(root: root, http: http, clock: clock, store: store, client: client, ledger: ledger, run: run, input: input)
     }
+    @Test(arguments: ["clock", "inputs", "model", "embedder", "consent", "record", "validation", "approval", "launch"])
+    func cancellationAtEveryExecuteSuspension(point: String) async throws {
+        let fixture = try await fixture(); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let quote = try await fixture.run.prepare(fixture.input)
+        let suspension = TakeRunSuspension()
+        await fixture.run.useExecuteHook { if $0 == point { await suspension.pause() } }
+        let sending = Task { try await fixture.run.execute(quote, approved: true) }
+        try await suspension.reached.wait()
+        await fixture.run.cancel()
+        await suspension.release()
+        await #expect(throws: (any Error).self) { try await sending.value }
+        #expect(fixture.http.value.withLock { $0.seeds.isEmpty && $0.qa == 0 })
+        #expect(await fixture.ledger.total(provider: "elevenlabs", at: fixture.clock.now())?.usd == 0)
+    }
     @Test(arguments: [false, true]) func withdrawalWinsBetweenValidationAndTransport(deleting: Bool) async throws {
         let fixture = try await fixture(); defer { try? FileManager.default.removeItem(at: fixture.root) }
         let quote = try await fixture.run.prepare(fixture.input)
