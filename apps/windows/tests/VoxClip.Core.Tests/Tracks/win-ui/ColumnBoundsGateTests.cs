@@ -170,5 +170,43 @@ public sealed class ColumnBoundsGateTests
             }
         }
     }
+
+    private static readonly ColumnRect Back = new(0, 4, 32, 32), Play = new(36, 0, 40, 40), Forward = new(80, 4, 32, 32);
+    private static IReadOnlyList<string> Transport(ColumnRect bar, ColumnRect? tag, ColumnRect time, bool stacked,
+        ColumnRect? back = null, ColumnRect? play = null, ColumnRect? forward = null) =>
+        ColumnBoundsGate.TransportFailures(bar, back ?? Back, play ?? Play, forward ?? Forward, tag, time, stacked, 4);
+
+    [Fact]
+    public void TheSpecViewerBarPassesInlineAndStackedUnderTheControls()
+    {
+        Assert.Empty(Transport(new(0, 0, 528, 40), new(292, 10, 72, 20), new(368, 11, 160, 18), stacked: false));
+        Assert.Empty(Transport(new(0, 0, 268, 40), null, new(153, 11, 115, 18), stacked: false));
+        Assert.Empty(Transport(new(0, 0, 268, 64), new(32, 44, 72, 20), new(108, 45, 160, 18), stacked: true));
+    }
+
+    [Fact]
+    public void ShrunkTargetsFailEvenWhenTheRowFits() =>
+        Assert.Equal(["TransportBack: 28x32, not 32x32", "TransportPlay: 36x40, not 40x40", "TransportForward: 28x32, not 32x32"],
+            Transport(new(0, 0, 268, 40), null, new(108, 11, 160, 18), stacked: false, back: new(0, 4, 28, 32), play: new(32, 0, 36, 40), forward: new(72, 4, 28, 32)));
+
+    [Fact]
+    public void TheAiTagMustFollowTheControlsInlineAndStacked()
+    {
+        Assert.Equal(["AiModified: not after Forward on the transport's line"], Transport(new(0, 0, 528, 40), new(0, 10, 72, 20),
+            new(368, 11, 160, 18), stacked: false, back: new(76, 4, 32, 32), play: new(112, 0, 40, 40), forward: new(156, 4, 32, 32)));
+        Assert.Equal(["AiModified: not under the transport", "TransportTime: not under the transport", "TransportTime: does not follow AI modified on its line"],
+            Transport(new(0, 0, 268, 64), new(0, 0, 72, 20), new(116, 35, 152, 18), stacked: true,
+                back: new(0, 28, 32, 32), play: new(36, 24, 40, 40), forward: new(80, 28, 32, 32)));
+    }
+
+    [Fact]
+    public void ATimeThatDoesNotFitBesideTheControlsCannotOverflowTheBar() =>
+        Assert.Equal(["TransportTime: outside the viewer bar", "TransportTime: does not end at the bar's trailing edge"],
+            Transport(new(0, 0, 268, 40), null, new(116, 11, 160, 18), stacked: false));
+
+    [Fact]
+    public void TheTagAndTimeStayBesideTheControlsWhileTheyFit() =>
+        Assert.Equal(["Transport: the tag and time moved under the controls although they fit beside them"],
+            Transport(new(0, 0, 528, 64), new(292, 44, 72, 20), new(368, 45, 160, 18), stacked: true));
 }
 #endif

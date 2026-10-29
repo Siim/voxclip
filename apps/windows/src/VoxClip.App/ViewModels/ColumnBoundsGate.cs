@@ -82,4 +82,38 @@ internal static class ColumnBoundsGate
         }
         return failures;
     }
+
+    /// <summary>The viewer bar (design §5.1, §15), in epx relative to the bar. Back 32, a 40 round Play and Forward 32 keep
+    /// their sizes and lead on one line. The AI modified tag, when shown, and then the time follow Forward on that line or,
+    /// only when they don't fit beside it with the gap, sit together on a second line under it. The time ends at the
+    /// trailing edge and nothing leaves the bar, so nothing is shrunk or truncated to fit a 300 column.</summary>
+    internal static IReadOnlyList<string> TransportFailures(ColumnRect bar, ColumnRect back, ColumnRect play, ColumnRect forward,
+        ColumnRect? tag, ColumnRect time, bool stacked, double gap)
+    {
+        var failures = new List<string>();
+        foreach (var (id, bounds, size) in new[] { ("TransportBack", back, 32.0), ("TransportPlay", play, 40.0), ("TransportForward", forward, 32.0) })
+            if (Math.Abs(bounds.Width - size) > 0.5 || Math.Abs(bounds.Height - size) > 0.5)
+                failures.Add(id + ": " + bounds.Width + "x" + bounds.Height + ", not " + size + "x" + size);
+        var parts = new List<(string Id, ColumnRect Bounds)> { ("TransportBack", back), ("TransportPlay", play), ("TransportForward", forward) };
+        if (tag is { } shown) parts.Add(("AiModified", shown));
+        parts.Add(("TransportTime", time));
+        foreach (var (id, bounds) in parts)
+            if (!bar.Contains(bounds)) failures.Add(id + ": outside the viewer bar");
+        static double Middle(ColumnRect bounds) => bounds.Y + bounds.Height / 2;
+        if (back.Right > play.X + 1 || play.Right > forward.X + 1 || Math.Abs(Middle(back) - Middle(play)) > 1 || Math.Abs(Middle(forward) - Middle(play)) > 1)
+            failures.Add("Transport: Back, Play and Forward are not one leading line");
+        var controlsBottom = Math.Max(play.Bottom, Math.Max(back.Bottom, forward.Bottom));
+        if (stacked && forward.Right + gap + time.Right - (tag ?? time).X < bar.Right - 1)
+            failures.Add("Transport: the tag and time moved under the controls although they fit beside them");
+        foreach (var (id, bounds) in parts.Skip(3))
+        {
+            if (stacked && bounds.Y < controlsBottom - 1) failures.Add(id + ": not under the transport");
+            if (!stacked && (bounds.X < forward.Right - 1 || bounds.Y < play.Y - 1 || bounds.Bottom > play.Bottom + 1))
+                failures.Add(id + ": not after Forward on the transport's line");
+        }
+        if (tag is { } ai && (time.X < ai.Right - 1 || time.Y > ai.Bottom || time.Bottom < ai.Y))
+            failures.Add("TransportTime: does not follow AI modified on its line");
+        if (Math.Abs(time.Right - bar.Right) > 1) failures.Add("TransportTime: does not end at the bar's trailing edge");
+        return failures;
+    }
 }

@@ -13,11 +13,40 @@ public sealed class EditorLayoutTests
     [InlineData(267.9, 40, 216, 12, true)]
     [InlineData(356, 40, 320, 12, true)]
     [InlineData(356, 40, 280, 12, false)]
-    [InlineData(268, 76, 252, 4, true)]
-    [InlineData(528, 76, 252, 4, false)]
+    [InlineData(268, 112, 152, 4, false)]
+    [InlineData(268, 112, 160, 4, true)]
+    [InlineData(268, 112, 191, 4, true)]
+    [InlineData(528, 112, 236, 4, false)]
     [InlineData(268, 0, 252, 4, false)]
     public void RowFallbackUsesMeasuredContentNotAWindowBreakpoint(double available, double leading, double trailing, double gap, bool stacked) =>
         Assert.Equal(stacked, EditorLayout.StackMeasuredRow(available, leading, trailing, gap));
+
+    /// <summary>Design §5.1 and §15: the transport keeps Back 32, a 40 round Play and Forward 32 at every column width, and
+    /// leads; the AI modified tag, then the time, trail as one group that MeasuredRow moves under the transport when it
+    /// doesn't fit beside it.</summary>
+    [Fact]
+    public void TheViewerBarLeadsWithFullSizeTargetsAndTrailsTheTagThenTheTime()
+    {
+        var root = Path.GetDirectoryName(Environment.GetEnvironmentVariable("VOXCLIP_SHARED_DIR"))!;
+        System.Xml.Linq.XNamespace xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
+        var row = System.Xml.Linq.XDocument.Load(Path.Combine(root, "apps/windows/src/VoxClip.App/Pages/EditorPage.xaml")).Descendants()
+            .Single(element => (string?)element.Attribute(xaml + "Name") == "TransportRow");
+        var children = row.Elements().ToArray();
+        Assert.Equal(2, children.Length);
+        var buttons = children[0].Elements().Where(element => element.Name.LocalName == "Button").ToArray();
+        Assert.Equal(["TransportBack", "TransportPlay", "TransportForward"], buttons.Select(button => (string?)button.Attribute("AutomationProperties.AutomationId")));
+        foreach (var (button, size) in buttons.Zip(new[] { "32", "40", "32" }))
+        {
+            Assert.Equal(size, (string?)button.Attribute("Width"));
+            Assert.Equal(size, (string?)button.Attribute("Height"));
+        }
+        Assert.Equal("20", (string?)buttons[1].Attribute("CornerRadius"));
+        Assert.Null(buttons[1].Attribute("Style"));
+        Assert.Equal("{ThemeResource SubtleButtonStyle}", (string?)buttons[0].Attribute("Style"));
+        Assert.Equal("{ThemeResource SubtleButtonStyle}", (string?)buttons[2].Attribute("Style"));
+        Assert.Equal(["AiModified", "TransportTime"], children[1].Elements().Select(element => (string?)element.Attribute(xaml + "Name")));
+        Assert.Equal("Right", (string?)children[1].Attribute("HorizontalAlignment"));
+    }
 
     [Fact]
     public void FitProbeRetainsBothBoundsAndAllRequiredWidthsAndStates()
@@ -32,6 +61,7 @@ public sealed class EditorLayoutTests
         Assert.Contains("9:59:59.9", page);
         Assert.Contains("ColumnBoundsGate.Assess", probe);
         Assert.Contains("ColumnBoundsGate.RequiredFailures", probe);
+        Assert.Contains("ColumnBoundsGate.TransportFailures", probe);
         Assert.Contains("RequiredPeers = coverage", probe);
         Assert.Contains("UnmeasurablePeers = unmeasurable", probe);
         Assert.Contains("IScrollItemProvider", probe);

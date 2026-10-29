@@ -1,5 +1,10 @@
 # Windows fixed contracts
 
+### 2026-10-29 - sol-win-redesign r14 A4 - Viewer bar
+
+- Replaces r12's transport rule: Back and Forward remain 32 by 32 subtle buttons, Play is a round 40 by 40 default neutral button, then AI modified and the time trail as one right-aligned group. The measured row moves that group together below the controls with a 4 epx gap only when necessary; it never shrinks targets or truncates the time.
+- Every native fit sample records the transport geometry and checks `ColumnBoundsGate.TransportFailures`: sizes, containment, button and tag/time order, trailing time and inline/stacked placement. Pure negative cases reject the previous undersized and tag-first layouts.
+
 ### 2026-10-29 - sol-win-redesign r14 A3 - High Contrast transcript and stage
 
 - Transcript RichTextBlocks disable the automatic contrast backplate; the existing system-colour runs and Composition fills remain visible. Selection uses Highlight/HighlightText; playing uses WindowText/Window, as design sections 4.1 and 5.4.9 require. Loaded and the next render after an effects change refresh the copied overlay brushes.

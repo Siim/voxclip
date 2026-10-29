@@ -143,6 +143,18 @@ public sealed partial class EditorPage
                 if (text.IsTextTrimmed) failures.Add("A Frame label was truncated: " + text.Text);
         }
         if (AutomationProperties.GetName(Aspect) != "Frame") failures.Add("Frame automation name changed.");
+        ColumnRect InBar(FrameworkElement element)
+        {
+            var position = element.TransformToVisual(TransportRow).TransformPoint(default);
+            return new(position.X, position.Y, element.ActualWidth, element.ActualHeight);
+        }
+        var transport = new
+        {
+            Bar = new ColumnRect(0, 0, TransportRow.ActualWidth, TransportRow.ActualHeight), Back = InBar(PreviewBack), Play = InBar(PreviewPlay),
+            Forward = InBar(PreviewForward), Tag = AiModified.Visibility == Visibility.Visible ? InBar(AiModified) : (ColumnRect?)null, Time = InBar(TransportTime)
+        };
+        failures.AddRange(ColumnBoundsGate.TransportFailures(transport.Bar, transport.Back, transport.Play, transport.Forward, transport.Tag,
+            transport.Time, TransportRow.Stacked, TransportRow.Gap));
         try
         {
             var peers = Observe("initial");
@@ -195,7 +207,7 @@ public sealed partial class EditorPage
         }
         await File.WriteAllTextAsync(Path.Combine(output, label + "-bounds.json"), JsonSerializer.Serialize(new
         {
-            Column = column, Client = client, FrameStacked = FrameRow.Stacked, TransportStacked = TransportRow.Stacked,
+            Column = column, Client = client, FrameStacked = FrameRow.Stacked, TransportStacked = TransportRow.Stacked, Transport = transport,
             State = state.ToString(), RequiredPeers = coverage, UnmeasurablePeers = unmeasurable, Elements = observations, Failures = failures
         }, new JsonSerializerOptions { WriteIndented = true }));
         var bitmap = new RenderTargetBitmap();
