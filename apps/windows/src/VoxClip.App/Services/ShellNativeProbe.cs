@@ -203,8 +203,16 @@ internal static class ShellNativeProbe
         await Until(() => window.DebugContainer(row) is { ActualHeight: > 0 }, $"the {row.Kind} row was not realized");
         var container = (Control)window.DebugContainer(row)!;
         Require(container.IsEnabled && AutomationProperties.GetAccessibilityView(container) == AccessibilityView.Content, $"the {row.Kind} row is disabled or hidden from Narrator");
-        var control = Descendants(container).OfType<T>().FirstOrDefault(item => FrameworkElementAutomationPeer.CreatePeerForElement(item).GetName() == name);
-        Require(control is not null, $"the {row.Kind} row has no control named \"{name}\"");
+        T? control = null;
+        await Until(() =>
+        {
+            window.Content.UpdateLayout();
+            if (window.DebugContainer(row) is not Control current) return false;
+            container = current;
+            control = Descendants(container).OfType<T>().FirstOrDefault(item => FrameworkElementAutomationPeer.CreatePeerForElement(item).GetName() == name);
+            return control is { ActualWidth: > 0, Visibility: Visibility.Visible };
+        }, $"the {row.Kind} row has no control named \"{name}\"");
+        Require(container.IsEnabled && AutomationProperties.GetAccessibilityView(container) == AccessibilityView.Content, $"the {row.Kind} row is disabled or hidden from Narrator");
         var peer = FrameworkElementAutomationPeer.CreatePeerForElement(control!);
         Require(control!.IsEnabled && peer.IsEnabled() && peer.IsControlElement() && control.Visibility == Visibility.Visible && control.ActualWidth > 0,
             $"\"{name}\" is not a visible, enabled control element");

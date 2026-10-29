@@ -6,6 +6,16 @@ namespace VoxClip.Ui.Tests;
 public sealed class NativeHarnessContractTests
 {
     [Fact]
+    public void SidebarProbeWaitsForTheNamedHeaderControl()
+    {
+        var root = Path.GetDirectoryName(Environment.GetEnvironmentVariable("VOXCLIP_SHARED_DIR"))!;
+        var probe = File.ReadAllText(Path.Combine(root, "apps/windows/src/VoxClip.App/Services/ShellNativeProbe.cs"));
+        Assert.Contains("window.Content.UpdateLayout()", probe);
+        Assert.Contains("return control is { ActualWidth: > 0, Visibility: Visibility.Visible }", probe);
+        Assert.Contains("control!.IsEnabled && peer.IsEnabled() && peer.IsControlElement()", probe);
+    }
+
+    [Fact]
     public void RecentWalkUsesTheStoredProjectTitle()
     {
         var root = Path.GetDirectoryName(Environment.GetEnvironmentVariable("VOXCLIP_SHARED_DIR"))!;
