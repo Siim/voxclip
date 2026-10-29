@@ -19,7 +19,10 @@ import VoxClipMedia
 func viewerStageSize(ratio: Double, innerWidth: CGFloat, columnHeight: CGFloat, rewriting: Bool) -> CGSize {
     let aspect = max(0.01, ratio)
     let width = max(1, innerWidth)
-    let cap: CGFloat = rewriting && columnHeight < 760 ? 124 : aspect <= 1 ? 320 : .greatestFiniteMagnitude
+    let panelReserve: CGFloat = 320
+    let availableStageHeight = max(1, columnHeight - panelReserve)
+    let aspectCap: CGFloat = rewriting && columnHeight < 760 ? 124 : aspect <= 1 ? 320 : .greatestFiniteMagnitude
+    let cap = min(aspectCap, availableStageHeight)
     let height = min(width / aspect, cap)
     return CGSize(width: min(width, height * aspect), height: height)
 }
@@ -27,7 +30,7 @@ func viewerStageSize(ratio: Double, innerWidth: CGFloat, columnHeight: CGFloat, 
 @MainActor struct ViewerSection: View {
     @Bindable var model: EditorModel
     var columnHeight: CGFloat = 800
-    @State private var innerWidth: CGFloat = 328
+    var columnWidth: CGFloat
     var ratio: Double {
         switch model.project.export.aspect {
         case .source:
@@ -39,7 +42,7 @@ func viewerStageSize(ratio: Double, innerWidth: CGFloat, columnHeight: CGFloat, 
         }
     }
     var body: some View {
-        let size = viewerStageSize(ratio: ratio, innerWidth: innerWidth, columnHeight: columnHeight, rewriting: model.rewrite != nil)
+        let size = viewerStageSize(ratio: ratio, innerWidth: max(1, columnWidth - 32), columnHeight: columnHeight, rewriting: model.rewrite != nil)
         VStack(spacing: 10) {
             ZStack {
                 Rectangle().fill(DesignValues.color("stage"))
@@ -51,30 +54,38 @@ func viewerStageSize(ratio: Double, innerWidth: CGFloat, columnHeight: CGFloat, 
                 }
             }
             .frame(width: size.width, height: size.height)
+            .columnLayoutEvidence("viewer.stage")
             .clipShape(.rect(cornerRadius: 10))
             .frame(maxWidth: .infinity)
             .accessibilityElement(children: .contain)
             .accessibilityLabel(stageLabel)
+            .accessibilityIdentifier("voxclip.viewer.stage")
             viewerRow
-            HStack(spacing: 8) {
-                Text("Frame").font(.system(size: 13)).foregroundStyle(DesignValues.color("text.secondary")).fixedSize()
-                Picker("Frame", selection: Binding(get: { model.project.export.aspect }, set: { model.setAspect($0) })) {
-                    ForEach([AspectRatio.portrait, .square, .landscape, .source], id: \.self) { aspect in
-                        Text(aspect == .source ? "Original" : aspect.rawValue)
-                            .fontWeight(model.project.export.aspect == aspect ? .semibold : .regular).tag(aspect)
-                    }
-                }.labelsHidden().pickerStyle(.segmented).frame(height: 24)
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) { frameLabel; framePicker.controlSize(.regular) }.frame(height: 24).columnLayoutEvidence("frame.regular")
+                HStack(spacing: 8) { frameLabel; framePicker.controlSize(.small) }.frame(height: 24).columnLayoutEvidence("frame.small")
+                VStack(alignment: .leading, spacing: 6) {
+                    frameLabel
+                    framePicker.controlSize(.small).frame(maxWidth: .infinity, alignment: .leading)
+                }.frame(maxWidth: .infinity, alignment: .leading).columnLayoutEvidence("frame.stacked")
             }
         }
         .padding(VCTokens.spacingPanePaddingMacos)
         .frame(maxWidth: .infinity)
-        .onGeometryChange(for: CGFloat.self) { (geometry: GeometryProxy) -> CGFloat in geometry.size.width } action: { (width: CGFloat) in
-            let padded: CGFloat = width - 32
-            innerWidth = max(1, padded)
-        }
         .tint(DesignValues.accentText)
         .focusable()
         .onKeyPress(characters: CharacterSet(charactersIn: " jklpico[]")) { key in model.transport(key.characters, shift: key.modifiers.contains(.shift)); return .handled }
+    }
+    private var frameLabel: some View {
+        Text("Frame").font(.system(size: 13)).foregroundStyle(DesignValues.color("text.secondary")).fixedSize()
+    }
+    private var framePicker: some View {
+        Picker("Frame", selection: Binding(get: { model.project.export.aspect }, set: { model.setAspect($0) })) {
+            ForEach([AspectRatio.portrait, .square, .landscape, .source], id: \.self) { aspect in
+                Text(aspect == .source ? "Original" : aspect.rawValue)
+                    .fontWeight(model.project.export.aspect == aspect ? .semibold : .regular).tag(aspect)
+            }
+        }.labelsHidden().pickerStyle(.segmented).frame(height: 24).accessibilityLabel("Frame")
     }
     private var stageLabel: String {
         let scope = model.activeClip.flatMap { model.clipNumber($0.id) }.map { "clip \($0)" } ?? "full take"
@@ -82,28 +93,53 @@ func viewerStageSize(ratio: Double, innerWidth: CGFloat, columnHeight: CGFloat, 
         return "Video preview, \(scope)\(ai)\(model.mediaStatus.spokenState.map { ", " + $0 } ?? "")"
     }
     private var viewerRow: some View {
-        HStack(spacing: 4) {
-            if model.voiceLabPlan?.pieces.contains(where: { $0.kind == .synth }) == true {
-                Text("AI modified").font(.system(size: 11)).padding(.horizontal, 4).padding(.vertical, 2)
-                    .overlay { RoundedRectangle(cornerRadius: 4).stroke(DesignValues.accentText, lineWidth: 1) }
-            }
-            HStack(spacing: 0) {
-                Text(timecode(model.playhead))
-                Text(" / \(timecode(model.duration))").foregroundStyle(DesignValues.color("text.secondary"))
-                if model.playbackRate != 1 { Text(" · \(model.playbackRate.formatted())×").foregroundStyle(DesignValues.color("text.secondary")) }
-            }
-            .font(DesignValues.mono(12)).monospacedDigit().fixedSize()
-            .accessibilityElement(children: .ignore).accessibilityLabel("Playback time")
-            .accessibilityIdentifier("voxclip.viewer.time")
-            .accessibilityValue("\(timecode(floor(model.playhead))) of \(timecode(model.duration))")
-            Spacer(minLength: 4)
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 4) {
+                aiTag
+                HStack(spacing: 0) {
+                    playbackTime
+                    if model.playbackRate != 1 { Text(" · \(model.playbackRate.formatted())×").font(DesignValues.mono(12)).foregroundStyle(DesignValues.color("text.secondary")).fixedSize().accessibilityHidden(true) }
+                }
+                Spacer(minLength: 4)
+                transportButtons
+            }.frame(height: 34).columnLayoutEvidence("transport.inline")
+            VStack(alignment: .leading, spacing: 6) {
+                if hasAI || model.playbackRate != 1 {
+                    HStack(spacing: 8) {
+                        aiTag
+                        if model.playbackRate != 1 { Text("\(model.playbackRate.formatted())×").font(.system(size: 11)).foregroundStyle(DesignValues.color("text.secondary")).fixedSize().accessibilityHidden(true) }
+                    }
+                }
+                HStack(spacing: 4) { playbackTime; Spacer(minLength: 4); transportButtons }.frame(height: 34)
+            }.columnLayoutEvidence("transport.stacked")
+        }.buttonStyle(.plain).foregroundStyle(DesignValues.color("text.primary"))
+    }
+    private var hasAI: Bool { model.voiceLabPlan?.pieces.contains { $0.kind == .synth } == true }
+    @ViewBuilder private var aiTag: some View {
+        if hasAI {
+            Text("AI modified").font(.system(size: 11)).fixedSize().padding(.horizontal, 4).padding(.vertical, 2)
+                .overlay { RoundedRectangle(cornerRadius: 4).stroke(DesignValues.accentText, lineWidth: 1) }
+        }
+    }
+    private var playbackTime: some View {
+        HStack(spacing: 0) {
+            Text(timecode(model.playhead))
+            Text(" / \(timecode(model.duration))").foregroundStyle(DesignValues.color("text.secondary"))
+        }
+        .font(DesignValues.mono(12)).monospacedDigit().fixedSize()
+        .accessibilityElement(children: .ignore).accessibilityLabel("Playback time")
+        .accessibilityIdentifier("voxclip.viewer.time")
+        .accessibilityValue("\(timecode(floor(model.playhead))) of \(timecode(model.duration))")
+    }
+    private var transportButtons: some View {
+        Group {
             Button { model.transport("j") } label: { transportSymbol("gobackward.3", fallback: "gobackward").frame(width: 28, height: 28) }
                 .help("Back 3 Seconds (J)").accessibilityLabel(EditorIconAction.back.name)
             Button { model.transport(" ") } label: { Image(systemName: model.isPlaying ? "pause.fill" : "play.fill").frame(width: 34, height: 34) }
                 .background(DesignValues.color("bg.sunken"), in: Circle()).help("Play/Pause (Space)").accessibilityLabel((model.isPlaying ? EditorIconAction.pause : .play).name)
             Button { model.seek(source: min(model.sourceDuration, model.sourceTime + 3)) } label: { transportSymbol("goforward.3", fallback: "goforward").frame(width: 28, height: 28) }
                 .help("Forward 3 Seconds").accessibilityLabel(EditorIconAction.forward.name)
-        }.buttonStyle(.plain).foregroundStyle(DesignValues.color("text.primary")).frame(height: 34)
+        }
     }
     @ViewBuilder private func transportSymbol(_ name: String, fallback: String) -> some View {
         if NSImage(named: name) != nil { Image(name).renderingMode(.template) }
