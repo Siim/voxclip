@@ -89,7 +89,7 @@ public sealed class VoiceOperationReconciler
                     break;
                 case (VoiceOperationKind.Delete, VoiceOperationState.Intent):
                     if (!force && value.NextAttemptAt is { } next && clock.GetUtcNow() < next) return;
-                    await Client(value.Region).DeleteOperationAsync(value, ct).ConfigureAwait(false);
+                    if (!value.RemoteStateUnknown) await Client(value.Region).DeleteOperationAsync(value, ct).ConfigureAwait(false);
                     ct.ThrowIfCancellationRequested();
                     store.Transition(id, VoiceOperationState.RemoteDeleted, clock.GetUtcNow());
                     break;

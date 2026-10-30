@@ -16,16 +16,18 @@ public enum VoiceOperationKind { Create, Delete }
 public enum VoiceOperationState { Intent, Dispatched, Created, Saved, Withdrawing, Withdrawn, RemoteDeleted, AudioRemoved, Tombstoned, Abandoned }
 
 public sealed record VoiceConsentAudit(string RecordId, string StatementSha256, string[] RecordingSha256s,
-    DateTimeOffset CreatedAt, DateTimeOffset AcceptedAt, string Language, string? RemoteVoiceId, DateTimeOffset? DeletedAt)
+    DateTimeOffset CreatedAt, DateTimeOffset AcceptedAt, string Language, string? RemoteVoiceId, DateTimeOffset? DeletedAt,
+    VoiceConsentCreator? Creator = null, bool RemoteStateUnknown = false)
 {
     internal static VoiceConsentAudit From(VoiceConsentRecord record)
     {
         record.Validate();
         return new(record.RecordId, record.Statement.AudioSha256, record.Samples.Select(sample => sample.Sha256).ToArray(),
-            record.CreatedAt, record.Attestations.AcceptedAt, record.Statement.Language, record.VoiceId == "pending" ? null : record.VoiceId, record.DeletedAt);
+            record.CreatedAt, record.Attestations.AcceptedAt, record.Statement.Language, record.VoiceId == "pending" ? null : record.VoiceId, record.DeletedAt, record.Creator);
     }
     internal void Validate(string recordId)
     {
+        Creator?.Validate();
         if (RecordId != recordId || !VoiceConsentRecord.HashValid(StatementSha256) || RecordingSha256s.Length is < 1 or > 24 ||
             RecordingSha256s.Any(hash => !VoiceConsentRecord.HashValid(hash)) || Language is not ("en" or "et") ||
             RemoteVoiceId is { } remote && !VoiceConsentRecord.SafeId(remote)) throw VoiceConsentStore.Invalid();
@@ -35,7 +37,7 @@ public sealed record VoiceConsentAudit(string RecordId, string StatementSha256, 
 public sealed record VoiceOperation(Guid Id, VoiceOperationKind Kind, string RecordId, string ProviderNonce, ElevenLabsRegion Region,
     DateTimeOffset StartedAt, DateTimeOffset UpdatedAt, VoiceOperationState State, string? RemoteVoiceId, bool WasDispatched,
     bool? RequiresVerification, int Attempts, DateTimeOffset? NextAttemptAt, bool Failed, VoiceConsentAudit? Audit, Guid[]? AmbiguousDispatchIds,
-    string? RemoteNameSha256 = null, bool RecoveryNeedsReview = false)
+    string? RemoteNameSha256 = null, bool RecoveryNeedsReview = false, string? CreatorKeyFingerprint = null, bool RemoteStateUnknown = false)
 {
     [JsonIgnore] public bool Finished => State is VoiceOperationState.Saved or VoiceOperationState.Withdrawn or VoiceOperationState.Tombstoned or VoiceOperationState.Abandoned;
     public bool BlocksCreation(DateTimeOffset now) => Kind == VoiceOperationKind.Create && WasDispatched && !Finished &&
@@ -214,6 +216,16 @@ public sealed class VoiceConsentStore
     }
     public VoiceCreationClaim ClaimCreation(VoiceConsentRecord record, Guid requestId, ElevenLabsRegion region, DateTimeOffset now) =>
         new(this, BeginClaimedCreation(record, requestId, region, now), record.Statement.AudioSha256);
+    public OwnVoicePolicy CreateDeletionPolicy(string recordId)
+    {
+        lock (State.Sync)
+        {
+            var record = Load(recordId);
+            if (record.Status == VoiceConsentStatus.Deleted || record.VoiceId == "pending") throw Invalid();
+            return new(recordId, record.VoiceId, true, true, true, true, true)
+                { Creator = record.Creator ?? new(ElevenLabsRegion.Default, null) };
+        }
+    }
     internal VoiceDispatchPermit CreationPermit(string recordId, Guid requestId, string statementHash) => new(this, recordId, requestId, () =>
     {
         var operation = Operation(requestId);
@@ -322,12 +334,14 @@ public sealed class VoiceConsentStore
     {
         lock (State.Sync)
         {
+            if (record.Creator is { } creator && creator.Region != region) throw new VoiceCreatorMismatchException();
             if (requestId == Guid.Empty || State.Claimed.Contains(requestId) || State.Revoked.Contains(record.RecordId) ||
                 Operations().Any(value => value.Id == requestId || value.BlocksCreation(now) || !value.Finished && value.RecordId == record.RecordId))
                 throw new VoiceConsentException(VoiceConsentError.CreationPending);
             Save(record);
             var value = WriteOperation(NewOperation(requestId, VoiceOperationKind.Create, record.RecordId, region, now) with
-                { Audit = VoiceConsentAudit.From(record), RemoteNameSha256 = Hash(System.Text.Encoding.UTF8.GetBytes(record.VoiceName)) }, "creationIntent");
+                { Audit = VoiceConsentAudit.From(record), RemoteNameSha256 = Hash(System.Text.Encoding.UTF8.GetBytes(record.VoiceName)),
+                    CreatorKeyFingerprint = record.Creator?.KeyFingerprint }, "creationIntent");
             State.Claimed.Add(value.Id);
             return value;
         }
@@ -385,9 +399,21 @@ public sealed class VoiceConsentStore
             var existing = Operations().FirstOrDefault(value => value.RecordId == recordId && !value.Finished);
             if (existing is not null) return existing.Kind == VoiceOperationKind.Create ? Transition(existing.Id, VoiceOperationState.Withdrawing, now) : existing;
             var record = Load(recordId);
+            if ((record.Creator?.Region ?? ElevenLabsRegion.Default) != region) throw new VoiceCreatorMismatchException();
             if (record.Status == VoiceConsentStatus.Deleted || record.VoiceId == "pending") throw Invalid();
             return WriteOperation(NewOperation(Guid.NewGuid(), VoiceOperationKind.Delete, recordId, region, now) with
-                { RemoteVoiceId = record.VoiceId, Audit = VoiceConsentAudit.From(record) }, "deletionIntent");
+                { RemoteVoiceId = record.VoiceId, Audit = VoiceConsentAudit.From(record), CreatorKeyFingerprint = record.Creator?.KeyFingerprint }, "deletionIntent");
+        }
+    }
+    public VoiceOperation BeginLocalRemoval(string recordId, bool approved, DateTimeOffset now)
+    {
+        if (!approved) throw new VoiceLabException(VoiceLabErrorKind.ConsentRequired);
+        lock (State.Sync)
+        {
+            var record = Load(recordId);
+            var operation = BeginDeletion(recordId, record.Creator?.Region ?? ElevenLabsRegion.Default, now);
+            if (operation.Kind != VoiceOperationKind.Delete) throw Invalid();
+            return WriteOperation(operation with { RemoteStateUnknown = true }, "localRemovalIntent");
         }
     }
     public void WithdrawCreation(string recordId, DateTimeOffset now)
@@ -457,7 +483,7 @@ public sealed class VoiceConsentStore
         {
             if (value.Audit is { } audit && value.RemoteVoiceId is { } remote)
             {
-                audit = audit with { RemoteVoiceId = remote, DeletedAt = value.UpdatedAt };
+                audit = audit with { RemoteVoiceId = remote, DeletedAt = value.UpdatedAt, RemoteStateUnknown = value.RemoteStateUnknown };
                 Write(JsonSerializer.SerializeToUtf8Bytes(audit, VoiceConsentJson.Default.VoiceConsentAudit), FileIn(DirectoryFor(value.RecordId, true), "audit.json"), "tombstoneRecord");
             }
             if (File.Exists(FileIn(DirectoryFor(value.RecordId), "record.json")))
@@ -586,7 +612,8 @@ public sealed class VoiceCreationClaim : IDisposable
         var operation = Operation;
         return new(operation.RecordId, null, true, true, true, true, true)
         {
-            DispatchPermit = store.CreationPermit(operation.RecordId, id, statementHash), ValidateDispatch = validateDispatch
+            DispatchPermit = store.CreationPermit(operation.RecordId, id, statementHash), ValidateDispatch = validateDispatch,
+            Creator = new(operation.Region, operation.CreatorKeyFingerprint)
         };
     }
     public void PreserveAmbiguousDispatch(DateTimeOffset now)

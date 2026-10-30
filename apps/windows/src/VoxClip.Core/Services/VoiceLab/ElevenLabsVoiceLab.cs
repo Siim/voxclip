@@ -188,6 +188,23 @@ public sealed class ElevenLabsVoiceLab : IDisposable
         (await DiscoverVoicesAsync(ct).ConfigureAwait(false)).Where(voice => voice.IsOwner && voice.Category == "cloned").ToArray();
 
     public VoiceLabAuthorization Approve(VoiceLabPreparedAction action, bool affirmative) => actions.Approve(action, affirmative);
+    public async Task<VoiceConsentCreator> GetCreatorIdentityAsync(CancellationToken ct = default)
+    {
+        var key = await keys.GetKeyAsync("elevenlabs-api-key", ct).ConfigureAwait(false);
+        ct.ThrowIfCancellationRequested();
+        if (string.IsNullOrWhiteSpace(key)) throw new VoiceLabException(VoiceLabErrorKind.MissingKey);
+        return new(Region, VoiceConsentCreator.Fingerprint(key));
+    }
+    public async Task ValidateCreatorAsync(VoiceConsentCreator? expected, CancellationToken ct = default)
+    {
+        var actual = await GetCreatorIdentityAsync(ct).ConfigureAwait(false);
+        RequireCreator(expected ?? new(ElevenLabsRegion.Default, null), actual.Region, actual.KeyFingerprint!);
+    }
+    private static void RequireCreator(VoiceConsentCreator expected, ElevenLabsRegion region, string fingerprint)
+    {
+        expected.Validate();
+        if (expected.Region != region || expected.KeyFingerprint is { } hash && hash != fingerprint) throw new VoiceCreatorMismatchException();
+    }
 
     public VoiceLabPreparedAction PrepareSynthesis(string text, string modelId, VoiceLabVoiceChoice voice, string language,
         VoiceLabSpeechOptions options, Guid requestId)
@@ -215,6 +232,7 @@ public sealed class ElevenLabsVoiceLab : IDisposable
     public VoiceLabPreparedAction PrepareDeletion(string voiceId, OwnVoicePolicy policy, Guid requestId)
     {
         policy.Validate(voiceId);
+        if (!allowTestPolicy && policy.Creator is null) throw new VoiceLabException(VoiceLabErrorKind.ConsentRequired);
         SelectedOwnForDeletion(voiceId);
         return actions.Prepare(DeleteFingerprint(voiceId, policy), Quoted(VoiceLabOperation.DeleteClone, null, 1),
             Review(VoiceLabOperation.DeleteClone, requestId, "/v1/voices/" + voiceId, null, voiceId, null, null, policy));
@@ -264,7 +282,7 @@ public sealed class ElevenLabsVoiceLab : IDisposable
         SelectedOwnForDeletion(voiceId);
         var id = actions.Claim(authorization, DeleteFingerprint(voiceId, policy), VoiceLabOperation.DeleteClone, requestId);
         var path = "/v1/voices/" + voiceId;
-        using var reply = await SendAsync(HttpMethod.Delete, path, null, 128 * 1024, ct, allowNotFound: true, billing: authorization).ConfigureAwait(false);
+        using var reply = await SendAsync(HttpMethod.Delete, path, null, 128 * 1024, ct, allowNotFound: true, billing: authorization, creator: policy.Creator).ConfigureAwait(false);
         if (reply.Status != HttpStatusCode.NotFound)
         {
             using var json = Parse(reply.Bytes);
@@ -519,7 +537,7 @@ public sealed class ElevenLabsVoiceLab : IDisposable
     /// estimate is recorded once from then on however the body ends, and the record finishes before this returns or throws; Voice Lab
     /// §3.1.</summary>
     private async Task<Reply> SendAsync(HttpMethod method, string path, HttpContent? body, int limit, CancellationToken ct, bool allowNotFound = false,
-        VoiceLabAuthorization? billing = null, OwnVoicePolicy? policy = null)
+        VoiceLabAuthorization? billing = null, OwnVoicePolicy? policy = null, VoiceConsentCreator? creator = null)
     {
         ct.ThrowIfCancellationRequested();
         var origin = Region.BaseUri();
@@ -530,6 +548,7 @@ public sealed class ElevenLabsVoiceLab : IDisposable
         catch (OperationCanceledException) { throw new VoiceLabException(VoiceLabErrorKind.Cancelled); }
         catch (Exception) { throw new VoiceLabException(VoiceLabErrorKind.MissingKey); }
         if (string.IsNullOrWhiteSpace(key)) throw new VoiceLabException(VoiceLabErrorKind.MissingKey);
+        if ((creator ?? policy?.Creator) is { } identity) RequireCreator(identity, Region, VoiceConsentCreator.Fingerprint(key));
         log.RegisterSecret(key);
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
         deadline.CancelAfter(TimeSpan.FromMinutes(5));
@@ -596,7 +615,7 @@ public sealed class ElevenLabsVoiceLab : IDisposable
         var authorization = Approve(prepared, true);
         actions.Claim(authorization, DeleteFingerprint(voiceId, policy), VoiceLabOperation.DeleteClone, requestId);
         using var reply = await SendAsync(HttpMethod.Delete, "/v1/voices/" + voiceId, null, 128 * 1024, ct,
-            allowNotFound: true, billing: authorization).ConfigureAwait(false);
+            allowNotFound: true, billing: authorization, creator: new(operation.Region, operation.CreatorKeyFingerprint)).ConfigureAwait(false);
         if (reply.Status != HttpStatusCode.NotFound)
         {
             using var json = Parse(reply.Bytes);

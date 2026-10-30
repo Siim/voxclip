@@ -131,11 +131,13 @@ public sealed class VoiceEnrollment
             speaker.ValidateAvailability();
             if (VoiceConsentStore.Hash(store.Statement(draft.Policy.RecordId)) != draft.Verified.Hash) throw new VoiceConsentException(VoiceConsentError.InvalidRecord);
             var authorization = client.Approve(quote, true);
+            var creator = await client.GetCreatorIdentityAsync(ct).ConfigureAwait(false);
+            ct.ThrowIfCancellationRequested();
             var statement = draft.Verified.Statement;
             var record = new VoiceConsentRecord("voxclip-consent/1", draft.Policy.RecordId, "elevenlabs", "ivc", "pending", draft.Request.DisplayName + " (VoxClip)",
                 VoiceConsentStatus.VerificationRequired, draft.Request.CreatedAt, null,
                 new(statement.Language, statement.Text, statement.Nonce.ToArray(), "statement.wav", draft.Verified.Hash, draft.Verified.Match),
-                draft.Verified.Attestations, draft.Samples, new(model, threshold, VoiceConsentRecord.EncodeEmbedding(draft.Embedding)), new(appVersion, "windows"));
+                draft.Verified.Attestations, draft.Samples, new(model, threshold, VoiceConsentRecord.EncodeEmbedding(draft.Embedding)), new(appVersion, "windows"), creator);
             claim = store.ClaimCreation(record, quote.Review.RequestId, client.Region, clock.GetUtcNow());
             var operation = claim.Operation;
             var policy = claim.DispatchPolicy(token => { token.ThrowIfCancellationRequested(); speaker.ValidateAvailability(); return Task.CompletedTask; });
@@ -182,7 +184,21 @@ public sealed class VoiceEnrollment
         try
         {
             ct.ThrowIfCancellationRequested();
+            await client.ValidateCreatorAsync(store.Load(recordId).Creator, ct).ConfigureAwait(false);
+            ct.ThrowIfCancellationRequested();
             var operation = store.BeginDeletion(recordId, client.Region, clock.GetUtcNow());
+            await reconciler.ReconcileAsync(operation.Id, true, ct).ConfigureAwait(false);
+        }
+        finally { Release(); }
+    }
+    public async Task RemoveFromVoxClipOnlyAsync(string recordId, bool approved, bool enabled, CancellationToken ct = default)
+    {
+        RequireApproval(approved, enabled);
+        Reserve();
+        try
+        {
+            ct.ThrowIfCancellationRequested();
+            var operation = store.BeginLocalRemoval(recordId, approved, clock.GetUtcNow());
             await reconciler.ReconcileAsync(operation.Id, true, ct).ConfigureAwait(false);
         }
         finally { Release(); }

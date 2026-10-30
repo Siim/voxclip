@@ -40,6 +40,72 @@ public sealed class VoiceConsentTests
     private static HttpResponseMessage Json(int status, string body) => new((HttpStatusCode)status) { Content = new StringContent(body, Encoding.UTF8, "application/json") };
     private static VoiceConsentRecord Fixture() => JsonSerializer.Deserialize(FixtureLoader.ReadText("fixtures/voice-lab/consent-record.json"), VoiceConsentJson.Default.VoiceConsentRecord)!;
     [Fact]
+    public async Task ReviewProbe_WrongCreatorRegionCannotConfirmRemote404()
+    {
+        using var storage = new Storage();
+        var store = new VoiceConsentStore(storage.Locations);
+        var record = Draft(store, voice: "active-voice");
+        store.Save(record);
+        using var remote = new Remote((_, _) => Task.FromResult(Json(404, "{}")));
+        using var client = ElevenLabsVoiceLab.ForTesting(new MemoryKeys(), remote, ElevenLabsRegion.Eu);
+        var error = await Record.ExceptionAsync(async () =>
+        {
+            store.BeginDeletion(record.RecordId, client.Region, Now);
+            await new VoiceOperationReconciler(store, _ => client).ReconcileAsync(ct: Token);
+        });
+        Assert.NotNull(error);
+        Assert.Equal(0, remote.Calls);
+        Assert.Equal(VoiceConsentStatus.Active, store.Load(record.RecordId).Status);
+    }
+    [Theory]
+    [InlineData(false, true)]
+    [InlineData(false, false)]
+    [InlineData(true, true)]
+    public async Task DeletionChecksCreatorKeyBeforeAccepting404(bool legacy, bool matching)
+    {
+        using var storage = new Storage();
+        var store = new VoiceConsentStore(storage.Locations);
+        const string creatorKey = "synthetic-creator-identity";
+        var creator = new VoiceConsentCreator(ElevenLabsRegion.Default, legacy ? null : VoiceConsentCreator.Fingerprint(creatorKey));
+        var record = Draft(store, voice: "active-voice") with { Creator = creator };
+        store.Save(record);
+        using var remote = new Remote((_, _) => Task.FromResult(Json(404, "{}")));
+        using var client = ElevenLabsVoiceLab.ForTesting(new MemoryKeys(matching ? creatorKey : "different-synthetic-key"), remote, ElevenLabsRegion.Default);
+        store.BeginDeletion(record.RecordId, client.Region, Now);
+        var reconcile = new VoiceOperationReconciler(store, _ => client).ReconcileAsync(ct: Token);
+        if (!legacy && !matching)
+        {
+            var error = await Assert.ThrowsAsync<VoiceCreatorMismatchException>(() => reconcile);
+            Assert.Equal(VoiceCreatorMismatchException.Explanation, error.Message);
+            Assert.Equal(0, remote.Calls);
+            Assert.Equal(VoiceConsentStatus.Active, store.Load(record.RecordId).Status);
+            Assert.NotEmpty(store.Statement(record.RecordId));
+        }
+        else
+        {
+            await reconcile;
+            Assert.Equal(1, remote.Calls);
+            Assert.False(store.AuditTombstone(record.RecordId)!.RemoteStateUnknown);
+        }
+    }
+    [Fact]
+    public async Task LocalOnlyRemovalDurablyRecordsUnknownRemoteStateWithoutSending()
+    {
+        using var storage = new Storage();
+        var store = new VoiceConsentStore(storage.Locations);
+        var record = Draft(store, voice: "active-voice") with { Creator = new(ElevenLabsRegion.Eu, VoiceConsentCreator.Fingerprint("synthetic-key")) };
+        store.Save(record);
+        Assert.Throws<VoiceLabException>(() => store.BeginLocalRemoval(record.RecordId, false, Now));
+        store.BeginLocalRemoval(record.RecordId, true, Now);
+        await new VoiceOperationReconciler(store, _ => throw new InvalidOperationException("No remote call allowed")).ReconcileAsync(ct: Token);
+        var audit = store.AuditTombstone(record.RecordId)!;
+        Assert.True(audit.RemoteStateUnknown);
+        Assert.Equal(record.Creator, audit.Creator);
+        Assert.Equal(16, audit.Creator!.KeyFingerprint!.Length);
+        Assert.Equal(VoiceConsentStatus.Deleted, store.Load(record.RecordId).Status);
+        Assert.Empty(store.Operations());
+    }
+    [Fact]
     public void ReviewProbe_CancelAfterSavedKeepsStatementAndDeletionAvailable()
     {
         using var storage = new Storage();

@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Json.Serialization;
 using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Transcript;
+using VoxClip.Core.Services.Speech;
 #pragma warning disable CS1591
 
 namespace VoxClip.Core.Domain.VoiceLab;
@@ -99,12 +100,27 @@ public sealed record VoiceConsentAttestations(bool OwnVoice, bool Adult, bool Ow
 public sealed record VoiceConsentSample(string Sha256, double Seconds, string Source, double SpeakerScore);
 public sealed record VoiceConsentSpeaker(string Model, double Threshold, string Embedding);
 public sealed record VoiceConsentApp(string Version, string Platform);
+public sealed record VoiceConsentCreator(ElevenLabsRegion Region, string? KeyFingerprint)
+{
+    public static string Fingerprint(string key) => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(key)))[..16];
+    public void Validate()
+    {
+        if (!Enum.IsDefined(Region) || KeyFingerprint is { } hash && (hash.Length != 16 || hash.Any(character => !char.IsAsciiHexDigitLower(character))))
+            throw new VoiceConsentException(VoiceConsentError.InvalidRecord);
+    }
+}
+public sealed class VoiceCreatorMismatchException() : Exception(Explanation)
+{
+    public const string Explanation = "This voice was created with a different ElevenLabs key or region. Use that key to delete it, or remove it from VoxClip only; the voice may stay in that ElevenLabs account.";
+}
 public sealed record VoiceConsentRecord(string Schema, string RecordId, string Provider, string Type, string VoiceId, string VoiceName,
     VoiceConsentStatus Status, DateTimeOffset CreatedAt, DateTimeOffset? DeletedAt, VoiceConsentStatementRecord Statement,
-    VoiceConsentAttestations Attestations, VoiceConsentSample[] Samples, VoiceConsentSpeaker Speaker, VoiceConsentApp App)
+    VoiceConsentAttestations Attestations, VoiceConsentSample[] Samples, VoiceConsentSpeaker Speaker, VoiceConsentApp App,
+    VoiceConsentCreator? Creator = null)
 {
     public void Validate()
     {
+        Creator?.Validate();
         if (Schema != "voxclip-consent/1" || !Guid.TryParseExact(RecordId, "D", out _) || Provider != "elevenlabs" || Type != "ivc" ||
             !SafeId(VoiceId) || VoiceName.EnumerateRunes().Count() is < 1 or > 70 || !Enum.IsDefined(Status) || !Attestations.Complete ||
             Statement.AudioFile != "statement.wav" || Statement.Language is not ("en" or "et") || Statement.Text.Length == 0 ||
