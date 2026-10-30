@@ -91,7 +91,8 @@ printf '%s\n' '{"issues":[{"message":"test failure detail"}]}'
         self.environment['APP_BUNDLE'] = str(bundle)
         self.write_command('nm', '#!/bin/bash\nprintf "000000000 T _OrtGetApiBase\\n"\n')
         notices = resources / 'THIRD_PARTY_NOTICES.md'
-        main_notices = subprocess.check_output(['git', 'show', 'origin/main:THIRD_PARTY_NOTICES.md'], cwd=PACKAGE, text=True)
+        # A fixed notices file: CI checkouts have no origin/main, and main itself now carries the ONNX Runtime section.
+        main_notices = '# Third-party notices\n\nNo ONNX Runtime section.\n'
         notices.write_text(main_notices)
         self.assert_failed(self.run_function('linked_ort_notice_gate'), 'Missing pinned ONNX Runtime')
         notices.write_text(main_notices + '\n#### ONNX Runtime SwiftPM 1.19.2\n28787ee2f966a2c47eb293322c733c5dc4b5e3327cec321c1fe31a7c698edf68\n')
