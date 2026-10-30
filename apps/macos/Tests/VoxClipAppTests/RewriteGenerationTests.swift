@@ -17,6 +17,25 @@ private struct GenerationTestKeys: KeyProvider {
         #expect(RewriteSession.proposalError(.refused(category: nil), provider: "Example", model: "test").contains("declined to rewrite"))
         #expect(RewriteSession.proposalError(.truncated, provider: "Example", model: "test").contains("rewrite was incomplete"))
     }
+    @Test(arguments: 0..<4) func exposureAndGenerationShareTheBetaGate(bits: Int) throws {
+        let enabled = bits & 1 != 0, accepted = bits & 2 != 0
+        let app = AppModel()
+        app.settings.values["voiceLab.enabled"] = .bool(enabled)
+        app.settings.values["voiceLab.betaNoticeAccepted"] = .bool(accepted)
+        app.settings.values["voiceLab.providerConsent.elevenlabs"] = .bool(true)
+        app.settings.values["transcription.elevenlabs.region"] = .string("default")
+        let shared = try SharedResources.locate()
+        let project = try JSONProjectStore.decode(Data(contentsOf: shared.root.appendingPathComponent("fixtures/voice-lab/passage-render-v3.voxclip")))
+        let editor = EditorModel(document: VoxClipDocument(project: project, demo: true), app: app, preview: DemoPreviewEngine())
+        defer { editor.close() }
+        let session = RewriteSession(editor: editor, range: 0...0, envelope: nil, connector: nil)
+        let expected = VoiceLabGate.rewriteEnabled(enabled: enabled, noticeAccepted: accepted, internalBuild: RewriteEntryPolicy.buildEnabled)
+        #expect(app.voiceLabRewriteEnabled == expected)
+        #expect(session.generationIsCurrent(region: .default) == expected)
+        #expect(!session.generationIsCurrent(region: .eu))
+        app.settings.values["voiceLab.providerConsent.elevenlabs"] = .bool(false)
+        #expect(!session.generationIsCurrent(region: .default))
+    }
     private func session(current: @escaping @MainActor () -> Bool = { true }) -> RewriteGenerationSession {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let store = VoiceConsentStore(locations: DataLocations(environment: ["VOXCLIP_DATA_DIR": root.path]))

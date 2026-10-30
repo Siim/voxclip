@@ -115,9 +115,8 @@ struct RewriteConnector {
         generation = RewriteGenerationSession(run: run) { [weak self] in self?.generationIsCurrent(region: region) ?? false }
     }
     func reportGenerationProblem(_ error: any Error) { problem = Self.refusal(error) }
-    private func generationIsCurrent(region: ElevenLabsRegion) -> Bool {
+    func generationIsCurrent(region: ElevenLabsRegion) -> Bool {
         current && !isProposing && editor.app.bool("voiceLab.providerConsent.elevenlabs") &&
-            editor.app.bool("voiceLab.betaNoticeAccepted") &&
             editor.app.string("transcription.elevenlabs.region", fallback: "default") == region.rawValue &&
             (generation?.input == nil || generation?.inputsMatchCurrentSelection == true)
     }
