@@ -90,6 +90,21 @@ public sealed class VoiceLabEditingTests
         VoiceLabProject.Validate(new VoiceLabEditCommand.Accept(segment, published.Assets, fixture.Voice).ApplyingTo(fixture.Empty));
     }
     [Fact]
+    public void SemanticNoOpsKeepHistoryRedoDirtyStateAndTimestamp()
+    {
+        var fixture = new Fixture(true);
+        var accepted = new VoiceLabEditHistory(fixture.Empty).Apply(new VoiceLabEditCommand.Accept(fixture.Segment(), fixture.Published.Assets, fixture.Voice));
+        var history = accepted.Apply(new VoiceLabEditCommand.SetEnabled("accepted-test", false)).Undo();
+        Assert.Same(history, history.Apply(new VoiceLabEditCommand.SetEnabled("accepted-test", true)));
+        Assert.Same(history, history.Apply(new VoiceLabEditCommand.ChooseCandidate("accepted-test", 0), history.Present.ModifiedAt.AddSeconds(1)));
+        var changed = history.Apply(new VoiceLabEditCommand.SetEnabled("accepted-test", false));
+        Assert.True(changed.Present.ModifiedAt > history.Present.ModifiedAt);
+        Assert.Same(history.Present, changed.Undo().Present);
+        Assert.Same(changed.Present, changed.Undo().Redo().Present);
+        Assert.Throws<ArgumentOutOfRangeException>(() => history.Apply(new VoiceLabEditCommand.Delete("accepted-test"), history.Present.ModifiedAt));
+        Assert.Throws<ArgumentOutOfRangeException>(() => history.Apply(new VoiceLabEditCommand.Delete("accepted-test"), history.Present.ModifiedAt.AddTicks(-1)));
+    }
+    [Fact]
     public void CommandsUseExactProjectSnapshotsAndSingleUndoSteps()
     {
         var fixture = new Fixture(true);
@@ -105,7 +120,7 @@ public sealed class VoiceLabEditingTests
         Assert.Same(history.Present, disabled.Undo().Present);
         Assert.Equal("Turn on Voice Lab", disabled.Apply(new VoiceLabEditCommand.SetEnabled("accepted-test", true)).UndoActionName);
         var chosen = history.Apply(new VoiceLabEditCommand.ChooseCandidate("accepted-test", 0));
-        Assert.Equal("Choose Voice Lab take", chosen.UndoActionName);
+        Assert.Same(history, chosen);
         var deleted = history.Apply(new VoiceLabEditCommand.Delete("accepted-test"));
         Assert.Equal("Delete Voice Lab segment", deleted.UndoActionName);
         Assert.Empty(deleted.Present.VoiceLab.Segments);
@@ -135,7 +150,7 @@ public sealed class VoiceLabEditingTests
         var history = new VoiceLabEditHistory(fixture.Empty, initiallyDirty);
         VoiceLabEditCommand[] commands = [new VoiceLabEditCommand.Accept(fixture.Segment(), fixture.Published.Assets, fixture.Voice),
             new VoiceLabEditCommand.SetEnabled("accepted-test", false), new VoiceLabEditCommand.SetEnabled("accepted-test", true),
-            new VoiceLabEditCommand.ChooseCandidate("accepted-test", 0), new VoiceLabEditCommand.Delete("accepted-test")];
+            new VoiceLabEditCommand.Delete("accepted-test")];
         foreach (var command in commands)
         {
             var before = history;

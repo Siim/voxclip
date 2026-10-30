@@ -58,7 +58,15 @@ public sealed record VoiceLabEditHistory(Project Present, IReadOnlyList<VoiceLab
     public VoiceLabEditHistory Apply(VoiceLabEditCommand command, DateTimeOffset? modifiedAt = null)
     {
         var next = command.ApplyingTo(Present);
-        if (modifiedAt is { } date) next = next with { ModifiedAt = date };
+        if (command is VoiceLabEditCommand.SetEnabled enabled && Present.VoiceLab.Segments.Any(segment => segment.Id == enabled.SegmentId && segment.Enabled == enabled.Enabled) ||
+            command is VoiceLabEditCommand.ChooseCandidate chosen && Present.VoiceLab.Segments.Any(segment => segment.Id == chosen.SegmentId && segment.SelectedCandidateIndex == chosen.Index)) return this;
+        var date = modifiedAt ?? TimeProvider.System.GetUtcNow();
+        if (date <= Present.ModifiedAt)
+        {
+            if (modifiedAt.HasValue) throw new ArgumentOutOfRangeException(nameof(modifiedAt));
+            date = Present.ModifiedAt.AddTicks(1);
+        }
+        next = next with { ModifiedAt = date };
         var step = new VoiceLabEditStep(Present, next, command.ActionName, IsDirty, true);
         return new(next, Array.AsReadOnly(UndoStack.TakeLast(499).Append(step).ToArray()), [], true);
     }
