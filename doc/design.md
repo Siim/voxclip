@@ -913,7 +913,7 @@ On macOS each segmented control's label leads it on one line; when they don't fi
 
 There is no separate Fine Tune row and no "Off" tile.
 
-The gallery scrolls inside the column and clips at its own viewport, which always ends above the column's bottom padding, so every style can be scrolled into view at any window height. The Captions header stays fixed; Fine Tune and caption errors scroll with the gallery.
+The gallery scrolls inside the column and clips at its own viewport, which always ends above the column's bottom padding, so every style can be scrolled into view at any window height. The Captions header stays fixed; Fine Tune and caption errors scroll with the gallery. On macOS the small, fixed catalogue uses eager two-column rows, so reveal positions never depend on a lazy grid's estimated offscreen heights.
 
 **Gallery.**
 
