@@ -282,17 +282,19 @@ func failedRestoreKeepsItsBackupAndAttemptsEveryOtherRestore(_ failedIndex: Int)
     var keptBackup: URL?
     var restored: [URL] = []
     do {
-        try ExportSafety.publishAll(outputs) { source, destination in
-            if source == outputs[2].partial { throw NSError(domain: NSPOSIXErrorDomain, code: Int(ENOSPC)) }
-            if source.lastPathComponent.contains(".rollback-") {
+        try ExportSafety.publishAll(outputs, events: { phase, destination in
+            if phase == .willPublish && destination == outputs[2].destination { throw POSIXError(.ENOSPC) }
+            if phase == .willRollback {
                 if destination == outputs[failedIndex].destination {
-                    keptBackup = source
+                    let directories = try FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)
+                        .filter { $0.lastPathComponent.hasPrefix(".voxclip-export-") }
+                    keptBackup = try directories.flatMap { try FileManager.default.contentsOfDirectory(at: $0, includingPropertiesForKeys: nil) }
+                        .first { $0.lastPathComponent.hasPrefix(destination.lastPathComponent + ".rollback-") }
                     throw NSError(domain: NSPOSIXErrorDomain, code: Int(EIO))
                 }
                 restored.append(destination)
             }
-            try ExportSafety.publish(source, to: destination)
-        }
+        })
         Issue.record("Expected failed restore")
     } catch {
         let backup = try #require(keptBackup)
@@ -331,10 +333,9 @@ func cancellationAfterPublicationRestoresExistingAndRemovesNewDestinations(_ exi
         try Data("new".utf8).write(to: output.partial)
     }
     let task = Task {
-        try ExportSafety.publishAll(outputs) { source, destination in
-            try ExportSafety.publish(source, to: destination)
-            if source == outputs[0].partial { withUnsafeCurrentTask { $0?.cancel() } }
-        }
+        try ExportSafety.publishAll(outputs, events: { phase, destination in
+            if phase == .didPublish && destination == outputs[0].destination { withUnsafeCurrentTask { $0?.cancel() } }
+        })
     }
     await #expect(throws: CancellationError.self) { try await task.value }
     if existing {

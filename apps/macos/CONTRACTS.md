@@ -1,5 +1,11 @@
 # macOS implementation contracts
 
+### 2026-10-30 — sol-mac-polish r3 — identity-bound export publication
+
+- Capture absent/replacement approvals before encoding and before combined CLI WAV staging, including the approved file's device/inode/nanosecond birth time. Pin destination/private directory descriptors and publish with renameatx_np RENAME_EXCL or RENAME_SWAP. Verify the swapped-out original, undo an identity mismatch immediately and report the documented retry/name conflict copy. No plain replacing rename or destination unlink remains in publication.
+- Swapped-out originals are the transaction's backups inside recovery-marked mode-0700 private directories. Commit removes them only after every video/SRT/provenance/WAV output succeeds. Rollback refuses changed destinations, verifies reversed operations too, and retains/report originals it cannot restore without touching an unrelated replacement. Existing cancellation and failed-restore assertions stay mandatory.
+- Deterministic hooks reproduce absent-path appearance, unapproved replacement and unrelated rollback replacement on the old implementation (six failing assertions). Regressions also cover pre-encoding approvals, races after the rollback identity check, successful create/replace, multi-output conflict rollback and protected recovery paths. Verification results are recorded in the round-three handoff.
+
 ### 2026-10-30 — sol-mac-polish r2 — private scratch directories and fd cleanup
 
 - Supersedes the per-file check/unlink contract below: all new GUI/CLI export partials, SRT/provenance/WAV staging and writer work live in unique mode-0700 destination-local directories. Schema-4 leases bind directory dev/inode/birth identity to pid plus kernel process start. Registry references also live in leased private directories; no scratch metadata file outside those directories is unlinked.

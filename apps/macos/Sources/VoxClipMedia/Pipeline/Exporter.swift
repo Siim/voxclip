@@ -103,7 +103,9 @@ public actor AVExporter: Exporter {
     }
 
     package func export(_ job: ExportJob, additionalOutputs: [(partial: URL, destination: URL)],
+                        approvals: [URL: ExportSafety.DestinationApproval]? = nil,
                         progress: @escaping @Sendable (ExportProgress) -> Void) async throws -> ExportResult {
+        let approved = try approvals ?? transactionPreflight(job, additionalOutputs: additionalOutputs, plannedEditedAudioURL: nil).approvals
         try await acquire()
         defer { release() }
         let id = UUID()
@@ -111,7 +113,7 @@ public actor AVExporter: Exporter {
         defer { activeID = nil; activePumps = nil }
         do {
             return try await withTaskCancellationHandler {
-                try await perform(job, additionalOutputs: additionalOutputs, progress: progress)
+                try await perform(job, additionalOutputs: additionalOutputs, approvals: approved, progress: progress)
             } onCancel: {
                 ExportInterruptTiming.testOnly?.mark(.cancelRequest)
                 Task { await self.cancelActive(id) }
@@ -140,12 +142,13 @@ public actor AVExporter: Exporter {
         let srtText: String?
         let sidecarLimit: Int64
         let outputNeeds: [DiskCapacity.Need]
+        let approvals: [URL: ExportSafety.DestinationApproval]
     }
 
     /// The CLI calls this before staging WAV. Export calls the same calculation
     /// after the WAV partial exists, when free space already reflects its bytes.
-    package func preflightCombinedExport(_ job: ExportJob, editedAudioURL: URL) throws {
-        _ = try transactionPreflight(job, additionalOutputs: [], plannedEditedAudioURL: editedAudioURL)
+    @discardableResult package func preflightCombinedExport(_ job: ExportJob, editedAudioURL: URL) throws -> [URL: ExportSafety.DestinationApproval] {
+        try transactionPreflight(job, additionalOutputs: [], plannedEditedAudioURL: editedAudioURL).approvals
     }
 
     private func transactionPreflight(_ job: ExportJob,
@@ -218,12 +221,14 @@ public actor AVExporter: Exporter {
                                bytes: try VoiceLabAudioRenderer.scratchBytes(input: input)))
         }
         try DiskCapacity.check(needs, provider: capacityProvider)
+        let approvals = try ExportSafety.approveDestinations(primary.map(\.0) + extras.map(\.destination))
         return TransactionPreflight(destination: destination, marked: marked, provenanceURL: provenanceURL,
                                     provenancePartial: provenancePartial, srtURL: srtURL, srtText: srtText,
-                                    sidecarLimit: sidecarLimit, outputNeeds: outputNeeds)
+                                    sidecarLimit: sidecarLimit, outputNeeds: outputNeeds, approvals: approvals)
     }
 
     private func perform(_ job: ExportJob, additionalOutputs: [(partial: URL, destination: URL)],
+                         approvals: [URL: ExportSafety.DestinationApproval],
                          progress: @escaping @Sendable (ExportProgress) -> Void) async throws -> ExportResult {
         try Task.checkCancellation()
         let started = ContinuousClock.now
@@ -392,7 +397,7 @@ public actor AVExporter: Exporter {
                                   bytes: try DiskCapacity.fileBytes(output.destination))
             }
             try DiskCapacity.check(rollbackNeeds, provider: capacityProvider)
-            try ExportSafety.publishAll(outputs + additionalOutputs)
+            try ExportSafety.publishAll(outputs + additionalOutputs, approvals: approvals)
             let elapsed = started.duration(to: .now).components
             return ExportResult(outputURL: destination, srtURL: srtURL, durationSeconds: job.render.timeline.duration,
                                 width: output.size.width, height: output.size.height, fps: output.fps, frames: frames,
@@ -553,11 +558,13 @@ public actor AVExporter: Exporter {
     }
 
     public func writeEditedAudio(_ request: RenderRequest, to destination: URL) async throws {
+        let destination = destination.standardizedFileURL.resolvingSymlinksInPath()
+        let approval = try ExportSafety.approveDestinations([destination])[destination]
         let partial = try await stageEditedAudio(request, to: destination)
         defer { ExportSafety.discardPartial(partial) }
         do {
             try Task.checkCancellation()
-            try ExportSafety.publish(partial, to: destination.standardizedFileURL.resolvingSymlinksInPath())
+            try ExportSafety.publish(partial, to: destination, approval: approval)
         } catch {
             if error is VoiceLabRenderCapabilityError { throw error }
             if error is CancellationError || Task.isCancelled { throw CancellationError() }
