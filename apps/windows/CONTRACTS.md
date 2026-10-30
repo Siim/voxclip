@@ -1,5 +1,10 @@
 # Windows fixed contracts
 
+### 2026-10-30 — Settings restart edit boundary (R2b)
+
+- Restart preparation disables Settings navigation and content before checking any text fields. All registered text fields use awaited settings-queue writes, including legacy language, provider and export fields; these authorized commits remain allowed while ordinary editing and actions are gated. Invalid or failed commits restore interactivity immediately and remain retryable. Successful preparation keeps Settings disabled until the restart coordinator resumes it, including after a later veto or dispatch failure.
+- Host regression tests cover edits attempted while a later field save is pending and after successful preparation, validation/save failure recovery and retry, plus App wiring. Native Windows acceptance remains owed; no VM access is used for this repair.
+
 ### 2026-10-30 — Windows microphone capture and settings repairs (R2)
 
 - `VoxClip.Media.Audio.VoiceMicrophoneRecorder.StartAsync(30 | 90, ct)` resolves the active Console-role default at each start, on the MTA owner thread `vc-mic`. The pinned NAudio 3.3 `WasapiRecorderBuilder` wraps WASAPI capture with an explicit device, shared mode, event sync and its mix format; no format override, stream routing or resampling. `Stop()` returns `MicrophoneTake(float[] Mono, int Rate)` at the device rate; `Completion` observes owner-thread teardown. `Discard` and `DisposeAsync` zero retained audio, including a previously returned take. There are no recording files or provider requests in this layer. Session code converts with Core's target-rate resampler in the later integration round.

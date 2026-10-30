@@ -14,6 +14,122 @@ namespace VoxClip.Core.Tests.Tracks.WinUi;
 public sealed class VoiceLabSettingsTests
 {
     [Fact]
+    public void RestartPreparationLocksSettingsContentUntilResume()
+    {
+        var window = AppSource("SettingsWindow.xaml.cs");
+        Assert.Contains("SettingsContent.IsEnabled = enabled", window);
+        Assert.Contains("<ScrollViewer x:Name=\"SettingsContent\"", AppSource("SettingsWindow.xaml"));
+        Assert.Contains("Navigation.IsEnabled = enabled", window);
+        Assert.Contains("await restartPreparation.PrepareAsync(textCommits)", window);
+        Assert.Contains("restartPreparation.Resume()", window);
+        Assert.DoesNotContain("Func<bool> save", window);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task EditsDuringRestartPreparationAreBlockedAndFailuresResumeEditing(bool accepted)
+    {
+        var editing = true;
+        var first = "20"; var second = "30";
+        var savedFirst = first; var savedSecond = second;
+        var release = new TaskCompletionSource<bool>();
+        var firstCommit = new SettingsTextCommit(() => first, () => { savedFirst = first; return Task.FromResult(true); }, _ => { });
+        var secondCommit = new SettingsTextCommit(() => second, async () =>
+        {
+            if (!await release.Task) return false;
+            savedSecond = second;
+            return true;
+        }, _ => { });
+        var state = new SettingsRestartState(enabled => editing = enabled);
+        first = "12.50"; second = "40";
+        var preparation = state.PrepareAsync([firstCommit, secondCommit]);
+        Assert.False(preparation.IsCompleted);
+        Assert.True(state.IsPreparing);
+        Assert.False(editing);
+        if (editing) { first = "99"; second = "100"; }
+        Assert.Equal("12.50", savedFirst);
+        Assert.Equal("12.50", first);
+        Assert.Equal("40", second);
+        release.SetResult(accepted);
+        Assert.Equal(accepted, await preparation);
+        Assert.Equal(accepted, state.IsPreparing);
+        Assert.Equal(!accepted, editing);
+        if (accepted)
+        {
+            if (editing) first = "99";
+            Assert.Equal(savedFirst, first);
+            Assert.Equal(savedSecond, second);
+        }
+        state.Resume();
+        Assert.True(editing);
+        Assert.False(state.IsPreparing);
+        release = new TaskCompletionSource<bool>();
+        release.SetResult(true);
+        first = "50";
+        Assert.True(await state.PrepareAsync([firstCommit, secondCommit]));
+        Assert.Equal(first, savedFirst);
+        state.Resume();
+    }
+
+    [Fact]
+    public async Task FailedSettingsCommitRestoresEditingAndRemainsRetryable()
+    {
+        var editing = true; var text = "20"; var fail = true; var failures = 0;
+        var commit = new SettingsTextCommit(() => text, () => fail ? throw new IOException("save failed") : Task.FromResult(true), _ => failures++);
+        var state = new SettingsRestartState(enabled => editing = enabled);
+        text = "12.50";
+        Assert.False(await state.PrepareAsync([commit]));
+        Assert.Equal(1, failures);
+        Assert.True(editing);
+        Assert.False(state.IsPreparing);
+        fail = false;
+        Assert.True(await state.PrepareAsync([commit]));
+        Assert.False(editing);
+        state.Resume();
+        Assert.True(editing);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task LaterRestartVetoOrDispatchFailureResumesSettings(bool dispatchFails)
+    {
+        var editing = true; var text = "20";
+        var commit = new SettingsTextCommit(() => text, () => Task.FromResult(true), _ => { });
+        var state = new SettingsRestartState(enabled => editing = enabled);
+        var drain = new TaskCompletionSource();
+        var settings = new PreparedSettings(state, commit, drain.Task);
+        var coordinator = new UpdateRestartCoordinator(() => [new VetoWindow(!dispatchFails)]);
+        text = "12.50";
+        var restart = coordinator.RunAsync(settings, _ => throw new IOException("dispatch failed"), TestContext.Current.CancellationToken);
+        Assert.False(restart.IsCompleted);
+        Assert.False(editing);
+        if (editing) text = "99";
+        Assert.Equal("12.50", text);
+        drain.SetResult();
+        Assert.Equal(dispatchFails ? RestartResult.UpdateFailed : RestartResult.SaveFailed, await restart);
+        Assert.True(editing);
+        Assert.False(state.IsPreparing);
+    }
+
+    private sealed class PreparedSettings(SettingsRestartState state, SettingsTextCommit commit, Task drain) : IUpdateRestartSettings
+    {
+        public async Task<RestartPreparation> PrepareAsync() => await state.PrepareAsync([commit]) ? RestartPreparation.Ready : RestartPreparation.SaveFailed;
+        public RestartPreparation Freeze() => RestartPreparation.Ready;
+        public Task DrainAsync(CancellationToken ct) => drain.WaitAsync(ct);
+        public Task FlushAsync(CancellationToken ct) => Task.CompletedTask;
+        public void Resume() => state.Resume();
+    }
+
+    private sealed class VetoWindow(bool veto) : IUpdateRestartWindow
+    {
+        public bool IsBusyForRestart => false;
+        public Task<RestartPreparation> PrepareForRestartAsync() => Task.FromResult(veto ? RestartPreparation.SaveFailed : RestartPreparation.Ready);
+        public void ResumeAfterRestart() { }
+    }
+
+    [Fact]
     public async Task SynchronouslyRejectedTextCommitCanBeRetried()
     {
         var text = "20"; var accepted = false; var attempts = 0;

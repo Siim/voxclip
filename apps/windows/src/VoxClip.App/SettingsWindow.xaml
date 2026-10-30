@@ -15,7 +15,7 @@
                 <NavigationViewItem Content="Voice Lab" Tag="Voice Lab" x:Name="VoiceLabItem" Icon="Audio" Visibility="Collapsed"/>
                 <NavigationViewItem Content="About" Tag="About" Icon="Help"/>
             </NavigationView.MenuItems>
-            <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+            <ScrollViewer x:Name="SettingsContent" HorizontalScrollBarVisibility="Disabled">
                 <StackPanel x:Name="Body" Padding="28,16,28,32" Spacing="20" MaxWidth="680" HorizontalAlignment="Stretch"/>
             </ScrollViewer>
         </NavigationView>
