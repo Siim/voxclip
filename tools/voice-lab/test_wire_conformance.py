@@ -4,6 +4,18 @@ import unittest
 
 
 class WireConformanceTests(unittest.TestCase):
+    def test_v3_has_no_stitching_and_context_does_not_bind_its_quote(self):
+        root = pathlib.Path(__file__).resolve().parents[2]
+        document = json.loads((root / 'shared/fixtures/voice-lab/request-cases.json').read_text())
+        rows = [case for case in document['cases'] if case['input'].get('modelId') == 'eleven_v3']
+        self.assertTrue(rows)
+        for case in rows:
+            self.assertNotIn('previous_text', case['request']['json'])
+            self.assertNotIn('next_text', case['request']['json'])
+        mutations = [item for item in document['quoteMutations'] if item['case'].startswith('v3_')]
+        self.assertEqual(len(mutations), 2)
+        self.assertTrue(all(item['allowed'] for item in mutations))
+
     def test_every_clone_uses_repeated_files_field(self):
         root = pathlib.Path(__file__).resolve().parents[2]
         cases = json.loads((root / 'shared/fixtures/voice-lab/request-cases.json').read_text())['cases']

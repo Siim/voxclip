@@ -13,6 +13,27 @@ struct VoiceLabServiceTests {
     private var plan: Data { Data("{\"tier\":\"starter\",\"status\":\"active\",\"character_count\":0,\"character_limit\":10000,\"can_use_instant_voice_cloning\":true,\"voice_slots_used\":0,\"voice_limit\":10}".utf8) }
     private var voices: Data { Data("{\"voices\":[{\"voice_id\":\"own123\",\"name\":\"Mine\",\"category\":\"cloned\",\"is_owner\":true,\"voice_verification\":{\"requires_verification\":false,\"is_verified\":true}},{\"voice_id\":\"stock123\",\"name\":\"Stock\",\"category\":\"premade\",\"is_owner\":false}],\"has_more\":false}".utf8) }
     private var policy: OwnVoicePolicy { OwnVoicePolicy(recordID: "record-1", cloneVoiceID: "own123", recordActive: true, providerConsentGranted: true, statementVerified: true, speakerMatched: true) }
+    @Test func optionalVoiceFieldsAreSkippedAndPageSizeIsExplicit() async throws {
+        let client = service { request in
+            let query = URLComponents(url: try #require(request.url), resolvingAgainstBaseURL: false)?.queryItems
+            #expect(query?.contains(URLQueryItem(name: "page_size", value: "100")) == true)
+            return (200, [:], Data(#"{"voices":[{"voice_id":"missingName","category":"cloned"},{"voice_id":"missingCategory","name":"Incomplete"},{"voice_id":"valid","name":"Valid","category":"cloned"}],"has_more":false}"#.utf8))
+        }
+        #expect(try await client.voices().map(\.id) == ["valid"])
+    }
+    @Test(arguments: ["subscription_required", "feature_not_available", "voice_access_denied", "model_access_denied", "missing_permissions"])
+    func accessDenialsDoNotAllClaimMissingPermissions(code: String) async throws {
+        let client = service { _ in (403, [:], Data("{\"detail\":{\"status\":\"\(code)\"}}".utf8)) }
+        let expected: VoiceLabError = switch code {
+        case "subscription_required": .subscriptionRequired
+        case "feature_not_available": .featureUnavailable
+        case "voice_access_denied": .voiceAccessDenied
+        case "model_access_denied": .modelAccessDenied
+        default: .permissionMissing("voices_read")
+        }
+        await #expect(throws: expected) { _ = try await client.voices() }
+        #expect(expected.accessMessage != nil || code == "missing_permissions")
+    }
     private func approve(_ quote: VoiceLabQuote, approved: Bool = true) -> VoiceLabAuthorization {
         VoiceLabAuthorization(quote: quote, approved: approved)
     }
@@ -183,8 +204,8 @@ struct VoiceLabServiceTests {
             case "/v2/voices": return (200, [:], voices)
             case "/v1/voices/add":
                 let body = String(decoding: try VoiceLabRequestFixtures.body(request), as: UTF8.self)
-                #expect(body.contains("name=\"files[]\"; filename=\"consent-statement.wav\"\r\nContent-Type: audio/wav"))
-                #expect(body.contains("name=\"files[]\"; filename=\"sample-02.wav\"\r\nContent-Type: audio/wav"))
+                #expect(body.contains("name=\"files\"; filename=\"consent-statement.wav\"\r\nContent-Type: audio/wav"))
+                #expect(body.contains("name=\"files\"; filename=\"sample-02.wav\"\r\nContent-Type: audio/wav"))
                 #expect(body.contains("name=\"name\"\r\n\r\nMy voice (VoxClip)\r\n"))
                 return (200, [:], Data("{\"voice_id\":\"newclone\",\"requires_verification\":true}".utf8))
             case "/v1/voices/own123":

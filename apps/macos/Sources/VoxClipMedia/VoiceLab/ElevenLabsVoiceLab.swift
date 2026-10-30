@@ -110,13 +110,14 @@ public actor ElevenLabsVoiceLab {
         for _ in 0..<20 {
             try Task.checkCancellation()
             var components = URLComponents(url: region.baseURL.appendingPathComponent("v2/voices"), resolvingAgainstBaseURL: false)!
-            if let cursor { components.queryItems = [URLQueryItem(name: "next_page_token", value: cursor)] }
+            components.queryItems = [URLQueryItem(name: "page_size", value: "100")]
+            if let cursor { components.queryItems?.append(URLQueryItem(name: "next_page_token", value: cursor)) }
             let data = try await send(components.url!, method: "GET", limit: 4 * 1_024 * 1_024)
             guard let row = try? JSONSerialization.jsonObject(with: data.bytes) as? [String: Any],
                   let voices = row["voices"] as? [[String: Any]], let more = row["has_more"] as? Bool else { throw VoiceLabError.malformedResponse }
             for item in voices {
-                guard let id = item["voice_id"] as? String, Self.safeID(id), let name = item["name"] as? String,
-                      let category = item["category"] as? String else { throw VoiceLabError.malformedResponse }
+                guard let id = item["voice_id"] as? String, Self.safeID(id) else { throw VoiceLabError.malformedResponse }
+                guard let name = item["name"] as? String, let category = item["category"] as? String else { continue }
                 let verification = item["voice_verification"] as? [String: Any] ?? [:]
                 guard seenVoiceIDs.insert(id).inserted else { throw VoiceLabError.malformedResponse }
                 result.append(VoiceLabVoice(id: id, name: name, category: category, isOwner: item["is_owner"] as? Bool == true,
@@ -289,7 +290,8 @@ public actor ElevenLabsVoiceLab {
     private func speechFields(_ text: String, _ model: String, _ voice: VoiceLabVoiceChoice, _ language: String, _ options: VoiceLabSpeechOptions) -> [String] {
         // Trimmed context is never empty, so "" stands for an omitted field.
         [region.rawValue, "v1/text-to-speech/\(voice.id)/with-timestamps", "pcm_24000", text, model, language, String(options.seed),
-         Self.speechContext(options.previousText, previous: true) ?? "", Self.speechContext(options.nextText, previous: false) ?? ""] + voiceFields(voice)
+         model == "eleven_v3" ? "" : Self.speechContext(options.previousText, previous: true) ?? "",
+         model == "eleven_v3" ? "" : Self.speechContext(options.nextText, previous: false) ?? ""] + voiceFields(voice)
     }
     /// Removes Unicode White_Space at both ends. Foundation's whitespace sets differ: they also hold U+200B.
     private static func trimWhiteSpace(_ text: String) -> String {
@@ -458,8 +460,10 @@ public actor ElevenLabsVoiceLab {
         var payload: [String: Any] = ["text": text, "model_id": modelID, "voice_settings": ["stability": 0.5, "similarity_boost": 0.8],
                                       "seed": Int(options.seed), "apply_text_normalization": "auto"]
         if modelID != "eleven_multilingual_v2" { payload["language_code"] = language }
-        if let previous = Self.speechContext(options.previousText, previous: true) { payload["previous_text"] = previous }
-        if let next = Self.speechContext(options.nextText, previous: false) { payload["next_text"] = next }
+        if modelID != "eleven_v3" {
+            if let previous = Self.speechContext(options.previousText, previous: true) { payload["previous_text"] = previous }
+            if let next = Self.speechContext(options.nextText, previous: false) { payload["next_text"] = next }
+        }
         let body = try JSONSerialization.data(withJSONObject: payload)
         try claim(authorization, operation: .textToSpeech, requestID: requestID, endpoint: path,
                   fields: speechFields(text, modelID, voice, language, options))
@@ -626,6 +630,12 @@ public actor ElevenLabsVoiceLab {
     private static func mapError(_ status: Int, _ body: Data, path: String, method: String) -> VoiceLabError {
         let text = String(decoding: body.prefix(16_384), as: UTF8.self).lowercased()
         if text.contains("quota") || text.contains("credit") { return .quotaExceeded }
+        if status == 403 {
+            if text.contains("subscription_required") { return .subscriptionRequired }
+            if text.contains("feature_not_available") { return .featureUnavailable }
+            if text.contains("voice_access_denied") { return .voiceAccessDenied }
+            if text.contains("model_access_denied") { return .modelAccessDenied }
+        }
         if status == 403 || (status == 401 && text.contains("permission")) {
             let permission: String
             switch (path, method) {

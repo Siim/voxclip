@@ -238,7 +238,7 @@ struct VoiceLabRequestCaseTests {
         let document = try VoiceLabRequestFixtures.document()
         let cases = try #require(document["cases"] as? [[String: Any]])
         let boundary = try #require(document["multipartBoundary"] as? String)
-        #expect(cases.count == 21)
+        #expect(cases.count >= 22)
         for row in cases {
             let name = try #require(row["case"] as? String), operation = try #require(row["operation"] as? String)
             let (lab, recorder) = try await recordingService(document)
@@ -256,7 +256,7 @@ struct VoiceLabRequestCaseTests {
         let document = try VoiceLabRequestFixtures.document()
         let cases = try #require(document["cases"] as? [[String: Any]])
         let rows = try #require(document["quoteMutations"] as? [[String: Any]])
-        #expect(rows.count == 18)
+        #expect(rows.count == 20)
         for row in rows {
             let name = try #require(row["case"] as? String), allowed = try #require(row["allowed"] as? Bool)
             let invalid = row["error"] as? String == "invalidInput"

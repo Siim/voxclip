@@ -283,6 +283,7 @@ struct RewriteConnector {
         isOpen = false; invalidate()
     }
     static func refusal(_ error: any Error) -> String {
+        if let message = (error as? VoiceLabError)?.accessMessage { return message }
         if let geometry = error as? VoiceLabGeometryError, let isStart = geometry.takeEdgeIsStart {
             return "This change is too close to the \(isStart ? "start" : "end") of the take to blend in. Re-record this sentence instead."
         }

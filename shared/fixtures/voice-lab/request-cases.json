@@ -32,6 +32,15 @@
         "languages": [
           {
             "language_id": "en"
+          },
+          {
+            "language_id": "et"
+          },
+          {
+            "language_id": "ja"
+          },
+          {
+            "language_id": "th"
           }
         ]
       },
@@ -69,6 +78,41 @@
   },
   "multipartBoundary": "voxclip-0123456789abcdef0123456789abcdef",
   "cases": [
+    {
+      "case": "tts_v3_context_omitted",
+      "operation": "textToSpeech",
+      "input": {
+        "voiceId": "voice123",
+        "modelId": "eleven_v3",
+        "language": "en",
+        "text": "Hello.",
+        "seed": 42,
+        "previousText": "Before",
+        "nextText": "After"
+      },
+      "request": {
+        "method": "POST",
+        "path": "/v1/text-to-speech/voice123/with-timestamps",
+        "query": {
+          "output_format": "pcm_24000"
+        },
+        "headers": {
+          "xi-api-key": "[REDACTED]",
+          "content-type": "application/json"
+        },
+        "json": {
+          "text": "Hello.",
+          "model_id": "eleven_v3",
+          "language_code": "en",
+          "voice_settings": {
+            "stability": 0.5,
+            "similarity_boost": 0.8
+          },
+          "seed": 42,
+          "apply_text_normalization": "auto"
+        }
+      }
+    },
     {
       "case": "clone_estonian_caller_order",
       "operation": "createClone",
@@ -458,11 +502,11 @@
       }
     },
     {
-      "case": "tts_v3_split_words_dropped",
+      "case": "tts_v2_split_words_dropped",
       "operation": "textToSpeech",
       "input": {
         "voiceId": "voice123",
-        "modelId": "eleven_v3",
+        "modelId": "eleven_multilingual_v2",
         "language": "et",
         "text": "T\u00e4na on ilus p\u00e4ev.",
         "seed": 4294967295,
@@ -481,8 +525,7 @@
         },
         "json": {
           "text": "T\u00e4na on ilus p\u00e4ev.",
-          "model_id": "eleven_v3",
-          "language_code": "et",
+          "model_id": "eleven_multilingual_v2",
           "voice_settings": {
             "stability": 0.5,
             "similarity_boost": 0.8
@@ -495,11 +538,11 @@
       }
     },
     {
-      "case": "tts_v3_cut_beside_white_space",
+      "case": "tts_v2_cut_beside_white_space",
       "operation": "textToSpeech",
       "input": {
         "voiceId": "voice123",
-        "modelId": "eleven_v3",
+        "modelId": "eleven_multilingual_v2",
         "language": "en",
         "text": "Right beside a space.",
         "seed": 1,
@@ -518,8 +561,7 @@
         },
         "json": {
           "text": "Right beside a space.",
-          "model_id": "eleven_v3",
-          "language_code": "en",
+          "model_id": "eleven_multilingual_v2",
           "voice_settings": {
             "stability": 0.5,
             "similarity_boost": 0.8
@@ -532,11 +574,11 @@
       }
     },
     {
-      "case": "tts_v3_cut_at_word_start",
+      "case": "tts_v2_cut_at_word_start",
       "operation": "textToSpeech",
       "input": {
         "voiceId": "voice123",
-        "modelId": "eleven_v3",
+        "modelId": "eleven_multilingual_v2",
         "language": "et",
         "text": "Sona algab siit.",
         "seed": 2,
@@ -555,8 +597,7 @@
         },
         "json": {
           "text": "Sona algab siit.",
-          "model_id": "eleven_v3",
-          "language_code": "et",
+          "model_id": "eleven_multilingual_v2",
           "voice_settings": {
             "stability": 0.5,
             "similarity_boost": 0.8
@@ -602,11 +643,11 @@
       }
     },
     {
-      "case": "tts_v3_unbroken_long_word",
+      "case": "tts_v2_unbroken_long_word",
       "operation": "textToSpeech",
       "input": {
         "voiceId": "voice123",
-        "modelId": "eleven_v3",
+        "modelId": "eleven_multilingual_v2",
         "language": "et",
         "text": "Lause.",
         "seed": 42,
@@ -625,8 +666,7 @@
         },
         "json": {
           "text": "Lause.",
-          "model_id": "eleven_v3",
-          "language_code": "et",
+          "model_id": "eleven_multilingual_v2",
           "voice_settings": {
             "stability": 0.5,
             "similarity_boost": 0.8
@@ -639,11 +679,11 @@
       }
     },
     {
-      "case": "tts_v3_japanese_scalar_cut",
+      "case": "tts_v2_japanese_scalar_cut",
       "operation": "textToSpeech",
       "input": {
         "voiceId": "voice123",
-        "modelId": "eleven_v3",
+        "modelId": "eleven_multilingual_v2",
         "language": "ja",
         "text": "\u30c6\u30b9\u30c8\u3067\u3059\u3002",
         "seed": 7,
@@ -662,8 +702,7 @@
         },
         "json": {
           "text": "\u30c6\u30b9\u30c8\u3067\u3059\u3002",
-          "model_id": "eleven_v3",
-          "language_code": "ja",
+          "model_id": "eleven_multilingual_v2",
           "voice_settings": {
             "stability": 0.5,
             "similarity_boost": 0.8
@@ -676,11 +715,11 @@
       }
     },
     {
-      "case": "tts_v3_thai_cluster_kept",
+      "case": "tts_v2_thai_cluster_kept",
       "operation": "textToSpeech",
       "input": {
         "voiceId": "voice123",
-        "modelId": "eleven_v3",
+        "modelId": "eleven_multilingual_v2",
         "language": "th",
         "text": "\u0e2a\u0e27\u0e31\u0e2a\u0e14\u0e35\u0e04\u0e23\u0e31\u0e1a",
         "seed": 8,
@@ -699,8 +738,7 @@
         },
         "json": {
           "text": "\u0e2a\u0e27\u0e31\u0e2a\u0e14\u0e35\u0e04\u0e23\u0e31\u0e1a",
-          "model_id": "eleven_v3",
-          "language_code": "th",
+          "model_id": "eleven_multilingual_v2",
           "voice_settings": {
             "stability": 0.5,
             "similarity_boost": 0.8
@@ -713,11 +751,11 @@
       }
     },
     {
-      "case": "tts_v3_thai_cluster_split_after_base",
+      "case": "tts_v2_thai_cluster_split_after_base",
       "operation": "textToSpeech",
       "input": {
         "voiceId": "voice123",
-        "modelId": "eleven_v3",
+        "modelId": "eleven_multilingual_v2",
         "language": "th",
         "text": "\u0e2a\u0e27\u0e31\u0e2a\u0e14\u0e35\u0e04\u0e23\u0e31\u0e1a",
         "seed": 11,
@@ -736,8 +774,7 @@
         },
         "json": {
           "text": "\u0e2a\u0e27\u0e31\u0e2a\u0e14\u0e35\u0e04\u0e23\u0e31\u0e1a",
-          "model_id": "eleven_v3",
-          "language_code": "th",
+          "model_id": "eleven_multilingual_v2",
           "voice_settings": {
             "stability": 0.5,
             "similarity_boost": 0.8
@@ -750,11 +787,11 @@
       }
     },
     {
-      "case": "tts_v3_thai_cluster_split_between_marks",
+      "case": "tts_v2_thai_cluster_split_between_marks",
       "operation": "textToSpeech",
       "input": {
         "voiceId": "voice123",
-        "modelId": "eleven_v3",
+        "modelId": "eleven_multilingual_v2",
         "language": "th",
         "text": "\u0e2a\u0e27\u0e31\u0e2a\u0e14\u0e35\u0e04\u0e23\u0e31\u0e1a",
         "seed": 12,
@@ -773,8 +810,7 @@
         },
         "json": {
           "text": "\u0e2a\u0e27\u0e31\u0e2a\u0e14\u0e35\u0e04\u0e23\u0e31\u0e1a",
-          "model_id": "eleven_v3",
-          "language_code": "th",
+          "model_id": "eleven_multilingual_v2",
           "voice_settings": {
             "stability": 0.5,
             "similarity_boost": 0.8
@@ -787,11 +823,11 @@
       }
     },
     {
-      "case": "tts_v3_emoji_split_after_zwj",
+      "case": "tts_v2_emoji_split_after_zwj",
       "operation": "textToSpeech",
       "input": {
         "voiceId": "voice123",
-        "modelId": "eleven_v3",
+        "modelId": "eleven_multilingual_v2",
         "language": "en",
         "text": "Love wins.",
         "seed": 9,
@@ -810,8 +846,7 @@
         },
         "json": {
           "text": "Love wins.",
-          "model_id": "eleven_v3",
-          "language_code": "en",
+          "model_id": "eleven_multilingual_v2",
           "voice_settings": {
             "stability": 0.5,
             "similarity_boost": 0.8
@@ -824,11 +859,11 @@
       }
     },
     {
-      "case": "tts_v3_emoji_split_before_zwj",
+      "case": "tts_v2_emoji_split_before_zwj",
       "operation": "textToSpeech",
       "input": {
         "voiceId": "voice123",
-        "modelId": "eleven_v3",
+        "modelId": "eleven_multilingual_v2",
         "language": "en",
         "text": "Love stays.",
         "seed": 13,
@@ -847,8 +882,7 @@
         },
         "json": {
           "text": "Love stays.",
-          "model_id": "eleven_v3",
-          "language_code": "en",
+          "model_id": "eleven_multilingual_v2",
           "voice_settings": {
             "stability": 0.5,
             "similarity_boost": 0.8
@@ -861,11 +895,11 @@
       }
     },
     {
-      "case": "tts_v3_estonian_marks_at_cut",
+      "case": "tts_v2_estonian_marks_at_cut",
       "operation": "textToSpeech",
       "input": {
         "voiceId": "voice123",
-        "modelId": "eleven_v3",
+        "modelId": "eleven_multilingual_v2",
         "language": "et",
         "text": "Tere o\u0303htust.",
         "seed": 10,
@@ -884,8 +918,7 @@
         },
         "json": {
           "text": "Tere o\u0303htust.",
-          "model_id": "eleven_v3",
-          "language_code": "et",
+          "model_id": "eleven_multilingual_v2",
           "voice_settings": {
             "stability": 0.5,
             "similarity_boost": 0.8
@@ -898,11 +931,11 @@
       }
     },
     {
-      "case": "tts_v3_estonian_vowel_cut",
+      "case": "tts_v2_estonian_vowel_cut",
       "operation": "textToSpeech",
       "input": {
         "voiceId": "voice123",
-        "modelId": "eleven_v3",
+        "modelId": "eleven_multilingual_v2",
         "language": "et",
         "text": "Ja\u0308rgmine peatus.",
         "seed": 14,
@@ -921,8 +954,7 @@
         },
         "json": {
           "text": "Ja\u0308rgmine peatus.",
-          "model_id": "eleven_v3",
-          "language_code": "et",
+          "model_id": "eleven_multilingual_v2",
           "voice_settings": {
             "stability": 0.5,
             "similarity_boost": 0.8
@@ -935,11 +967,11 @@
       }
     },
     {
-      "case": "tts_v3_clean_cut_after_word_rule",
+      "case": "tts_v2_clean_cut_after_word_rule",
       "operation": "textToSpeech",
       "input": {
         "voiceId": "voice123",
-        "modelId": "eleven_v3",
+        "modelId": "eleven_multilingual_v2",
         "language": "et",
         "text": "Puhas.",
         "seed": 15,
@@ -958,8 +990,7 @@
         },
         "json": {
           "text": "Puhas.",
-          "model_id": "eleven_v3",
-          "language_code": "et",
+          "model_id": "eleven_multilingual_v2",
           "voice_settings": {
             "stability": 0.5,
             "similarity_boost": 0.8
@@ -972,11 +1003,11 @@
       }
     },
     {
-      "case": "tts_v3_short_context_sent_as_trimmed",
+      "case": "tts_v2_short_context_sent_as_trimmed",
       "operation": "textToSpeech",
       "input": {
         "voiceId": "voice123",
-        "modelId": "eleven_v3",
+        "modelId": "eleven_multilingual_v2",
         "language": "et",
         "text": "L\u00fchike.",
         "seed": 16,
@@ -995,8 +1026,7 @@
         },
         "json": {
           "text": "L\u00fchike.",
-          "model_id": "eleven_v3",
-          "language_code": "et",
+          "model_id": "eleven_multilingual_v2",
           "voice_settings": {
             "stability": 0.5,
             "similarity_boost": 0.8
@@ -1135,29 +1165,43 @@
   ],
   "quoteMutations": [
     {
+      "case": "v3_previous_not_bound",
+      "base": "tts_v3_context_omitted",
+      "field": "previousText",
+      "value": "Changed",
+      "allowed": true
+    },
+    {
+      "case": "v3_next_not_bound",
+      "base": "tts_v3_context_omitted",
+      "field": "nextText",
+      "value": "Changed",
+      "allowed": true
+    },
+    {
       "case": "tts_seed",
-      "base": "tts_v3_split_words_dropped",
+      "base": "tts_v2_split_words_dropped",
       "field": "seed",
       "value": 4294967294,
       "allowed": false
     },
     {
       "case": "tts_previous_text",
-      "base": "tts_v3_split_words_dropped",
+      "base": "tts_v2_split_words_dropped",
       "field": "previousText",
       "value": "A different previous sentence.",
       "allowed": false
     },
     {
       "case": "tts_next_text",
-      "base": "tts_v3_split_words_dropped",
+      "base": "tts_v2_split_words_dropped",
       "field": "nextText",
       "value": "A different next sentence.",
       "allowed": false
     },
     {
       "case": "tts_same",
-      "base": "tts_v3_split_words_dropped",
+      "base": "tts_v2_split_words_dropped",
       "field": "same",
       "allowed": true
     },

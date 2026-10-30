@@ -141,7 +141,7 @@ Creating an Instant Voice Clone takes a verified own-voice consent record and sp
 
 Each paid action starts with preparation on the same service instance that will dispatch it: Swift uses `prepareClone(_:policy:requestID:)`, `prepareDelete`, `prepareSynthesis(text:modelID:voice:language:options:requestID:)` or `prepareConversion(audio:modelID:voice:language:seed:cleanAudioOn:requestID:)`. Windows uses `PrepareClone(VoiceLabCloneRequest, …)`, `PrepareDeletion`, `PrepareSynthesis(…, VoiceLabSpeechOptions, …)` or `PrepareConversion(…, uint seed, bool cleanAudioOn, …)`. `VoiceLabSpeechOptions` carries the seed and the optional previous and next text. Preparation performs no provider call. Its immutable quote binds the operation and caller request ID, provider/region/endpoint, displayed estimate, selected model/voice/language, consent identity and verification state, and all billable text or the SHA-256 of exact audio bytes. It also binds every other request field that can change the paid result:
 
-- **Speech:** the seed and the trimmed `previous_text` and `next_text`.
+- **Speech:** the seed and, except for `eleven_v3`, the trimmed `previous_text` and `next_text`. V3 has no stitching: context is neither sent nor bound into its quote.
 - **Conversion:** the seed and the Clean audio state.
 - **Clone:** the trimmed display name, the `labels` language, the creation time, the noise-removal choice, and each sample's position, role and SHA-256.
 
@@ -902,7 +902,7 @@ POST {base}/v1/text-to-speech/{voice_id}/with-timestamps?output_format=pcm_24000
 → 200 { "audio_base64": "…", "alignment": … | null, "normalized_alignment": … | null }
 ```
 
-Core removes Unicode White_Space at both ends of `previous_text` and `next_text`. A trimmed text of at most 300 Unicode scalars is sent as it is. A longer `previous_text` keeps its last 300 scalars and a longer `next_text` its first 300, and two steps then adjust the cut:
+For `eleven_v3`, omit `previous_text` and `next_text`; stitching is unavailable. Other models use the following context rules. Core removes Unicode White_Space at both ends of `previous_text` and `next_text`. A trimmed text of at most 300 Unicode scalars is sent as it is. A longer `previous_text` keeps its last 300 scalars and a longer `next_text` its first 300, and two steps then adjust the cut:
 
 1. **Word rule.** If the kept scalars contain at least one White_Space character, a word split by the cut is dropped. White_Space beside the cut is kept.
 2. **Clean cut.** The cut then moves until it splits no cluster.

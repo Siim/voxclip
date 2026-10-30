@@ -284,6 +284,7 @@ import VoxClipMedia
         if let error = error as? VoiceConsentError { return error.localizedDescription }
         if let error = error as? MicrophoneError { return error.localizedDescription }
         if let error = error as? VoiceLabError {
+            if let message = error.accessMessage { return message }
             switch error {
             case .planUnavailable: return "Instant voice cloning needs an ElevenLabs Starter plan or higher."
             case .noVoiceSlots: return "Your ElevenLabs account has no free voice slots."
