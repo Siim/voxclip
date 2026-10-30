@@ -3,6 +3,93 @@ import Testing
 @testable import VoxClipCore
 
 @Suite("Owned stale scratch") struct ScratchCleanupTests {
+    private var deadOwner: ScratchCleanup.ProcessOwner { .init(pid: Int32.max, startSeconds: 1, startMicroseconds: 0) }
+
+    @Test func leasedItemsStillRefuseSymlinksAndTraversal() throws {
+        let root = try directory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let exports = root.appendingPathComponent("Exports"), registry = root.appendingPathComponent("Scratch")
+        let work = exports.appendingPathComponent("voxclip-export-\(UUID().uuidString).partial")
+        _ = try file(work, "writer.tmp")
+        let partial = try file(exports, "voxclip-partial-\(UUID().uuidString).partial")
+        let record = try ScratchCleanup.registerExport(workDirectory: work, partials: [partial], registry: registry, owner: deadOwner)
+        let outside = root.appendingPathComponent("Outside")
+        try FileManager.default.createDirectory(at: outside, withIntermediateDirectories: true)
+        let target = outside.appendingPathComponent(partial.lastPathComponent)
+        try FileManager.default.moveItem(at: partial, to: target)
+        try FileManager.default.createSymbolicLink(at: partial, withDestinationURL: target)
+        _ = ScratchCleanup.sweep(registry: registry, cache: root, temporary: root)
+        #expect(FileManager.default.fileExists(atPath: target.path))
+        #expect((try FileManager.default.attributesOfItem(atPath: partial.path)[.type]) as? FileAttributeType == .typeSymbolicLink)
+        #expect(!FileManager.default.fileExists(atPath: record.path))
+
+        let secondWork = exports.appendingPathComponent("voxclip-export-\(UUID().uuidString).partial")
+        _ = try file(secondWork, "writer.tmp")
+        let secondPartial = try file(exports, "voxclip-partial-\(UUID().uuidString).partial")
+        let secondRecord = try ScratchCleanup.registerExport(workDirectory: secondWork, partials: [secondPartial], registry: registry, owner: deadOwner)
+        let secondTarget = outside.appendingPathComponent(secondPartial.lastPathComponent)
+        try FileManager.default.moveItem(at: secondPartial, to: secondTarget)
+        let contents = try Data(contentsOf: secondRecord)
+        let parsed = try JSONSerialization.jsonObject(with: contents)
+        var document = try #require(parsed as? [String: Any])
+        var items = try #require(document["partials"] as? [[String: Any]])
+        items[0]["name"] = "../Outside/" + secondTarget.lastPathComponent
+        document["partials"] = items
+        try JSONSerialization.data(withJSONObject: document).write(to: secondRecord)
+        _ = ScratchCleanup.sweep(registry: registry, cache: root, temporary: root)
+        #expect(FileManager.default.fileExists(atPath: secondTarget.path))
+        #expect(FileManager.default.fileExists(atPath: secondWork.path))
+        #expect(!FileManager.default.fileExists(atPath: secondRecord.path))
+    }
+
+    @Test func deadOwnerIsRemovedButALiveOtherProcessIsNot() throws {
+        let root = try directory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let child = Process()
+        child.executableURL = URL(fileURLWithPath: "/bin/sleep")
+        child.arguments = ["60"]
+        try child.run()
+        defer { if child.isRunning { child.terminate(); child.waitUntilExit() } }
+        let observed = try ScratchCleanup.processOwner(of: child.processIdentifier)
+        let owner = try #require(observed)
+        let work = root.appendingPathComponent("voxclip-export-\(UUID().uuidString).partial")
+        _ = try file(work, "writer.tmp")
+        let partial = try file(root, "voxclip-partial-\(UUID().uuidString).partial")
+        let registry = root.appendingPathComponent("Scratch")
+        let record = try ScratchCleanup.registerExport(workDirectory: work, partials: [partial], registry: registry, owner: owner)
+        _ = ScratchCleanup.sweep(registry: registry, cache: root, temporary: root, exportDirectories: [root], before: .distantFuture)
+        for path in [partial, work, record] { #expect(FileManager.default.fileExists(atPath: path.path)) }
+        child.terminate(); child.waitUntilExit()
+        _ = ScratchCleanup.sweep(registry: registry, cache: root, temporary: root, before: .distantPast)
+        for path in [partial, work, record] { #expect(!FileManager.default.fileExists(atPath: path.path)) }
+    }
+
+    @Test func reusedPIDWithADifferentStartTimeIsAbandoned() throws {
+        let root = try directory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let observed = try ScratchCleanup.processOwner(of: ProcessInfo.processInfo.processIdentifier)
+        var owner = try #require(observed)
+        owner.startSeconds -= 1
+        let work = root.appendingPathComponent("voxclip-export-\(UUID().uuidString).partial")
+        _ = try file(work, "writer.tmp")
+        let partial = try file(root, "voxclip-partial-\(UUID().uuidString).partial")
+        let registry = root.appendingPathComponent("Scratch")
+        let record = try ScratchCleanup.registerExport(workDirectory: work, partials: [partial], registry: registry, owner: owner)
+        _ = ScratchCleanup.sweep(registry: registry, cache: root, temporary: root, before: .distantPast)
+        for path in [partial, work, record] { #expect(!FileManager.default.fileExists(atPath: path.path)) }
+    }
+    @Test func liveOwnerSurvivesASecondInstanceAndClockSkew() throws {
+        let root = try directory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let exports = root.appendingPathComponent("Exports"), registry = root.appendingPathComponent("Scratch")
+        let work = exports.appendingPathComponent("voxclip-export-\(UUID().uuidString).partial")
+        _ = try file(work, "writer.tmp")
+        let partial = try file(exports, "voxclip-partial-\(UUID().uuidString).partial")
+        let record = try ScratchCleanup.registerExport(workDirectory: work, partials: [partial], registry: registry)
+        _ = ScratchCleanup.sweep(registry: registry, cache: root.appendingPathComponent("Cache"), temporary: root,
+            exportDirectories: [exports], before: .distantFuture)
+        for path in [work, partial, record] { #expect(FileManager.default.fileExists(atPath: path.path)) }
+    }
     @Test func replacementUserFileSurvivesAStaleExportJournal() throws {
         let root = try directory()
         defer { try? FileManager.default.removeItem(at: root) }
@@ -10,7 +97,7 @@ import Testing
         let work = exports.appendingPathComponent("voxclip-export-\(UUID().uuidString).partial")
         _ = try file(work, "writer.tmp")
         let partial = try file(exports, "voxclip-partial-\(UUID().uuidString).partial")
-        _ = try ScratchCleanup.registerExport(workDirectory: work, partials: [partial], registry: registry)
+        _ = try ScratchCleanup.registerExport(workDirectory: work, partials: [partial], registry: registry, owner: deadOwner)
         try FileManager.default.moveItem(at: partial, to: exports.appendingPathComponent("original-held.mp4"))
         let replacement = Data("user replacement, never VoxClip scratch".utf8)
         try replacement.write(to: partial)
@@ -31,7 +118,7 @@ import Testing
         return url
     }
 
-    @Test func removesOnlyOldOwnedFilesAndKeepsCompletedAssets() throws {
+    @Test func unleasedLegacyScratchAndCompletedAssetsAreNeverAgeDeleted() throws {
         let root = try directory()
         defer { try? FileManager.default.removeItem(at: root) }
         let cache = root.appendingPathComponent("Cache"), temporary = root.appendingPathComponent("Temp")
@@ -54,16 +141,15 @@ import Testing
         let removed = ScratchCleanup.sweep(registry: root.appendingPathComponent("Scratch"), cache: cache, temporary: temporary,
             exportDirectories: [exports], before: cutoff)
         let removedNames = Set(removed.map(\.lastPathComponent))
-        #expect(removed.count == 3)
-        #expect(removedNames == [staleUpload.lastPathComponent, cli.lastPathComponent, legacyWork.lastPathComponent])
-        for stale in [staleUpload, cli, legacyWork] { #expect(!FileManager.default.fileExists(atPath: stale.path)) }
+        #expect(removed.isEmpty && removedNames.isEmpty)
+        for stale in [staleUpload, cli, legacyWork] { #expect(FileManager.default.fileExists(atPath: stale.path)) }
         for kept in [transcript, audio, lookalike, unowned, freshCLI, freshInput, ambiguousPartial, completed] {
             #expect(FileManager.default.fileExists(atPath: kept.path), "Must retain \(kept.lastPathComponent)")
         }
         #expect(ScratchCleanup.processStart > .distantPast && ScratchCleanup.processStart <= Date())
     }
 
-    @Test func exportJournalOwnsExactPartialsAndRetainsNewWork() throws {
+    @Test func deadOwnerCleanupIgnoresWallClockAndModificationDates() throws {
         let root = try directory()
         defer { try? FileManager.default.removeItem(at: root) }
         let exports = root.appendingPathComponent("Exports"), registry = root.appendingPathComponent("Scratch")
@@ -71,11 +157,11 @@ import Testing
         _ = try file(work, "writer.tmp")
         let partial = try file(exports, "take.mp4.partial"), sidecar = try file(exports, "take.srt.partial")
         let complete = try file(exports, "take.mp4")
-        let record = try ScratchCleanup.registerExport(workDirectory: work, partials: [partial, sidecar], registry: registry)
+        let record = try ScratchCleanup.registerExport(workDirectory: work, partials: [partial, sidecar], registry: registry, owner: deadOwner)
         let cutoff = Date().addingTimeInterval(10)
         try FileManager.default.setAttributes([.modificationDate: cutoff.addingTimeInterval(1)], ofItemAtPath: partial.path)
         _ = ScratchCleanup.sweep(registry: registry, cache: root.appendingPathComponent("Cache"), temporary: root, before: cutoff)
-        #expect(FileManager.default.fileExists(atPath: partial.path))
+        #expect(!FileManager.default.fileExists(atPath: partial.path))
         #expect(!FileManager.default.fileExists(atPath: record.path))
         #expect(!FileManager.default.fileExists(atPath: sidecar.path) && !FileManager.default.fileExists(atPath: work.path))
         #expect(FileManager.default.fileExists(atPath: complete.path))
@@ -99,6 +185,6 @@ import Testing
         _ = ScratchCleanup.sweep(registry: registry, cache: cache, temporary: root, before: Date().addingTimeInterval(10))
         #expect(FileManager.default.fileExists(atPath: target.path))
         #expect((try FileManager.default.attributesOfItem(atPath: link.path)[.type]) as? FileAttributeType == .typeSymbolicLink)
-        #expect(FileManager.default.fileExists(atPath: malformed.path))
+        #expect(!FileManager.default.fileExists(atPath: malformed.path))
     }
 }

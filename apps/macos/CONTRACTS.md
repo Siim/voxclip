@@ -1,9 +1,15 @@
 # macOS implementation contracts
 
+### 2026-10-30 — sol-mac-polish r2 — abandoned process leases
+
+- Export journals bind identities to the owner's pid and exact sysctl kinfo_proc process start. Reaping requires a missing owner or a different start time; a live matching owner or an unqueryable owner is never reaped. Wall-clock age, creation dates and modification dates do not establish abandonment. A replacement item is retained and the abandoned journal dropped.
+- Unleased legacy export directories, uploads and CLI workspaces are conservatively left alone, regardless of age. Their earlier age-only cleanup is superseded; producers need an ownership lease before launch may reap them. Symlinked items/ancestors and traversal are refused.
+- The live-owner regression fails before the fix. Real child-process tests retain its live export, reap it after exit, and treat a reused pid with a different kernel start as abandoned. Clock-skew, replacement, traversal and symlink regressions cover the fail-closed policy; no native windows or external calls are used.
+
 ### 2026-10-30 — sol-mac-polish r2 — exact scratch file identities
 
 - Export journals snapshot each created item's device, inode and nanosecond birth time. Cleanup refuses a replacement at the same path and drops the stale record rather than claiming the replacement. Journaled MP4/SRT partials use unique VoxClip UUID names; writer creation and exclusive sidecar creation record their actual identities, never a guessed future file.
-- The replacement-user-file regression fails on round 1 and passes with this change; all four scratch tests and the real H.264/AAC export/journal-cleanup test pass. Cross-process abandonment protection is the separate follow-up below this round's scope.
+- The replacement-user-file regression fails on round 1 and passes with this change; all four scratch tests and the real H.264/AAC export/journal-cleanup test pass. Cross-process abandonment protection is recorded in the subsequent round-two entry.
 
 ### 2026-10-30 — sol-mac-polish — ElevenLabs first-use consent regression
 
