@@ -1,5 +1,9 @@
 # Windows fixed contracts
 
+### 2026-10-30 — CLI stop-budget parity audit
+
+- The macOS SIGINT fixture separates VoxClip-owned stop work from AVAssetWriter/VideoToolbox teardown. Windows has no CLI SIGINT stress twin or mixed 2 s writer/cleanup budget: cancellation JSON tests assert silent cancelled/exit 6, and process-cleanup tests assert that the child and observer are reaped under their existing hang guard. No Windows product or test behavior changed.
+
 ### 2026-10-30 — Interrupted-download fixture parity audit
 
 - The Mac repeated-interruption fixture now uses post-write acknowledgement rather than polling its URLProtocol loading thread. Windows has no repeated-interruption polling twin: its range test seeds a closed eight-byte partial before the request, and cancellation uses a progress callback rather than a disk-size poll. Product FileStream disposal completes before resumable retries. No Windows product or test behavior changed.
