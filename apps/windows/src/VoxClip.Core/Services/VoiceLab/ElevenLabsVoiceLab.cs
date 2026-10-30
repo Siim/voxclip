@@ -37,7 +37,9 @@ public sealed class ElevenLabsVoiceLab : IDisposable
     private Dictionary<string, VoiceLabVoice> voices = new(StringComparer.Ordinal);
     private VoiceLabSubscription? subscription;
     private VoiceLabPriceCatalog? prices;
+    private long modelRevision;
     public ElevenLabsRegion Region { get; }
+    public long ModelRevision { get { lock (discoveredGate) return modelRevision; } }
 
     /// <summary><paramref name="prices"/> defaults to <c>shared/catalog/voice-lab.json</c>, read on the first estimate. Each action the
     /// provider accepts is recorded in <paramref name="spend"/>, <c>&lt;data&gt;/VoiceLab/spend.json</c> by default; Voice Lab §3.1.</summary>
@@ -117,7 +119,7 @@ public sealed class ElevenLabsVoiceLab : IDisposable
                 OptionalBool(row, "can_do_voice_conversion") ?? false, maximum, multiplier));
         }
         if (found.Count == 0) throw Malformed();
-        lock (discoveredGate) models = found;
+        lock (discoveredGate) { models = found; modelRevision = checked(modelRevision + 1); }
         return found.Values.ToArray();
     }
 
@@ -188,6 +190,48 @@ public sealed class ElevenLabsVoiceLab : IDisposable
         (await DiscoverVoicesAsync(ct).ConfigureAwait(false)).Where(voice => voice.IsOwner && voice.Category == "cloned").ToArray();
 
     public VoiceLabAuthorization Approve(VoiceLabPreparedAction action, bool affirmative) => actions.Approve(action, affirmative);
+    public bool QuotesAreFresh(IReadOnlyList<VoiceLabPreparedAction> quotes) => actions.QuotesAreFresh(quotes);
+    public IReadOnlyList<VoiceLabAuthorization> ApproveTakeRun(VoiceLabTakeRunQuote quote, bool affirmative) => actions.ApproveRun(quote.Id, quote.Actions, affirmative);
+    public void DiscardTakeRun(VoiceLabTakeRunQuote quote) => actions.DiscardRun(quote.Id, quote.Actions);
+    public VoiceLabPreparedAction PrepareQa(string language, string recordId, Guid requestId)
+    {
+        if (!CloneLanguage.IsMatch(language) || string.IsNullOrWhiteSpace(recordId)) throw Invalid();
+        return actions.Prepare(QaFingerprint(language, recordId), Quoted(VoiceLabOperation.SpeechToText, "scribe_v2", VoiceLabTakeProcessing.MaximumQaSeconds),
+            new(VoiceLabOperation.SpeechToText, requestId, "elevenlabs", Region, "/v1/speech-to-text", "scribe_v2", null,
+                new(VoiceLabLanguageModeKind.Explicit, language), null, recordId));
+    }
+    public async Task<VoiceLabQaTranscript> TranscribeQaAsync(float[] samples, int rate, string language, OwnVoicePolicy policy,
+        VoiceLabAuthorization authorization, CancellationToken ct = default)
+    {
+        if (rate != 24000 || !CloneLanguage.IsMatch(language)) throw Invalid();
+        policy.Validate();
+        var wav = VoiceLabTakeProcessing.EncodeQaWav(samples, rate);
+        var id = actions.Claim(authorization, QaFingerprint(language, policy.RecordId), VoiceLabOperation.SpeechToText, authorization.Review.RequestId);
+        using var body = Multipart(NewBoundary(), [new("model_id", "scribe_v2"), new("language_code", language), new("tag_audio_events", "false"),
+            new("diarize", "false"), new("timestamps_granularity", "word"), new("file", null, "qa.wav", wav)]);
+        using var reply = await SendAsync(HttpMethod.Post, "/v1/speech-to-text", body, 4 * 1024 * 1024, ct, billing: authorization, policy: policy).ConfigureAwait(false);
+        using var json = Parse(reply.Bytes);
+        var root = json.RootElement;
+        var detected = RequiredString(root, "language_code");
+        if (await new VoxClip.Core.Services.Models.ModelCatalog().NormalizeLanguageAsync(detected, ct).ConfigureAwait(false) != language ||
+            !root.TryGetProperty("words", out var words) || words.ValueKind != JsonValueKind.Array) throw Malformed();
+        ct.ThrowIfCancellationRequested();
+        var result = new List<VoiceLabWord>();
+        double previous = 0;
+        foreach (var word in words.EnumerateArray())
+        {
+            if (OptionalString(word, "type") != "word") continue;
+            var text = RequiredString(word, "text");
+            if (!word.TryGetProperty("start", out var startValue) || !startValue.TryGetDouble(out var start) ||
+                !word.TryGetProperty("end", out var endValue) || !endValue.TryGetDouble(out var end) ||
+                !double.IsFinite(start) || !double.IsFinite(end) || start < previous || end <= start || end > samples.Length / (double)rate || result.Count >= 5000) throw Malformed();
+            result.Add(new(text, start, end, true));
+            previous = end;
+        }
+        return new(Array.AsReadOnly(result.ToArray()), Receipt("/v1/speech-to-text", "scribe_v2", null, id, reply));
+    }
+    private string QaFingerprint(string language, string recordId) => VoiceLabActionGate.Fingerprint(Region.ToString(), "scribe_v2", language, recordId,
+        VoiceLabTakeProcessing.MaximumQaSeconds.ToString(CultureInfo.InvariantCulture));
     public async Task<VoiceConsentCreator> GetCreatorIdentityAsync(CancellationToken ct = default)
     {
         var key = await keys.GetKeyAsync("elevenlabs-api-key", ct).ConfigureAwait(false);
@@ -496,6 +540,7 @@ public sealed class ElevenLabsVoiceLab : IDisposable
             VoiceLabOperation.DeleteClone => VoiceLabPricedOperation.ElevenLabsDeleteClone,
             VoiceLabOperation.TextToSpeech => VoiceLabPricedOperation.ElevenLabsTextToSpeech,
             VoiceLabOperation.VoiceChange => VoiceLabPricedOperation.ElevenLabsVoiceChange,
+            VoiceLabOperation.SpeechToText => VoiceLabPricedOperation.ElevenLabsSpeechToText,
             _ => throw Invalid()
         };
         double? multiplier;
@@ -563,6 +608,7 @@ public sealed class ElevenLabsVoiceLab : IDisposable
             ct.ThrowIfCancellationRequested();
             if (policy is not null) RequirePermit(policy);
             if (policy?.DispatchPermit is { } bound && bound.RequestId != billing?.Review.RequestId) throw new VoiceLabException(VoiceLabErrorKind.ConsentRequired);
+            if (policy is not null && billing?.Review.ConsentRecordId is { } consent && consent != policy.RecordId) throw new VoiceLabException(VoiceLabErrorKind.ConsentRequired);
             var sending = policy?.DispatchPermit is { } permit
                 ? permit.Start(() => http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, deadline.Token), deadline.Token)
                 : http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, deadline.Token);

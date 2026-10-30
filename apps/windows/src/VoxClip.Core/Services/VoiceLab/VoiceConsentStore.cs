@@ -58,11 +58,13 @@ internal sealed class VoiceRootState
     internal bool TemporaryReconciled;
 }
 
-internal sealed class VoiceDispatchPermit(VoiceConsentStore store, string recordId, Guid requestId, Action validate)
+internal sealed class VoiceDispatchPermit(VoiceConsentStore store, string recordId, Guid requestId, Action validate, VoiceLabDispatchBinding? binding = null)
 {
     private bool consumed;
     internal Guid RequestId => requestId;
     internal Task<T> Start<T>(Func<Task<T>> transport, CancellationToken ct)
+        => binding is null ? StartCurrent(transport, ct) : binding.Start(() => StartCurrent(transport, ct));
+    private Task<T> StartCurrent<T>(Func<Task<T>> transport, CancellationToken ct)
     {
         lock (store.State.Sync)
         {
@@ -202,7 +204,7 @@ public sealed class VoiceConsentStore
         }
     }
     internal VoiceDispatchPermit UsePermit(VoiceConsentRecord record, Guid requestId) => new(this, record.RecordId, requestId, () => ValidateUse(record));
-    internal OwnVoicePolicy CreateUsePolicy(VoiceConsentRecord record, Guid requestId, Func<CancellationToken, Task> validateDispatch)
+    internal OwnVoicePolicy CreateUsePolicy(VoiceConsentRecord record, Guid requestId, Func<CancellationToken, Task> validateDispatch, VoiceLabDispatchBinding? binding = null)
     {
         ArgumentNullException.ThrowIfNull(validateDispatch);
         if (!VoiceSpeakerCheck.WindowsNativeParityVerified) throw new VoiceConsentException(VoiceConsentError.SpeakerUnavailable);
@@ -213,7 +215,7 @@ public sealed class VoiceConsentStore
             {
                 if (!VoiceSpeakerCheck.WindowsNativeParityVerified) throw new VoiceConsentException(VoiceConsentError.SpeakerUnavailable);
                 ValidateUse(record);
-            }),
+            }, binding),
             ValidateDispatch = validateDispatch
         };
     }

@@ -10,7 +10,7 @@ public sealed class VoiceUseGuard(VoiceConsentStore store, VoiceSpeakerCheck? ch
     private readonly SemaphoreSlim gate = new(1, 1);
     private readonly HashSet<string> cache = [];
     public async Task<OwnVoicePolicy> AuthorizeAsync(string contentKey, string recordId, float[] speech16k, Guid requestId,
-        bool approved, bool voiceChanger = false, CancellationToken ct = default)
+        bool approved, bool voiceChanger = false, CancellationToken ct = default, VoiceLabDispatchBinding? binding = null)
     {
         if (!approved) throw new VoiceLabException(VoiceLabErrorKind.ConsentRequired);
         if (contentKey.Length == 0 || requestId == Guid.Empty || speech16k.Any(sample => !float.IsFinite(sample))) throw new VoiceLabException(VoiceLabErrorKind.InvalidInput);
@@ -37,7 +37,7 @@ public sealed class VoiceUseGuard(VoiceConsentStore store, VoiceSpeakerCheck? ch
                 cache.Add(key);
             }
             return store.CreateUsePolicy(record, requestId,
-                token => { token.ThrowIfCancellationRequested(); this.check.ValidateAvailability(); store.ValidateUse(record); return Task.CompletedTask; });
+                token => { token.ThrowIfCancellationRequested(); this.check.ValidateAvailability(); store.ValidateUse(record); return Task.CompletedTask; }, binding);
         }
         finally { gate.Release(); }
     }

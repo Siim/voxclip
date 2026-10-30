@@ -6,7 +6,7 @@ using VoxClip.Core.Services.VoiceLab;
 
 namespace VoxClip.Core.Domain.VoiceLab;
 
-public enum VoiceLabOperation { CreateClone, DeleteClone, TextToSpeech, VoiceChange, VoiceRewrite, PatchRewrite }
+public enum VoiceLabOperation { CreateClone, DeleteClone, TextToSpeech, VoiceChange, VoiceRewrite, PatchRewrite, SpeechToText }
 public enum VoiceLabErrorKind
 {
     InvalidInput, ConsentRequired, SpeakerMismatch, PlanUnavailable, NoVoiceSlots, MissingKey,
