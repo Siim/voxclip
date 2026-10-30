@@ -14,6 +14,15 @@ namespace VoxClip.Core.Tests.Tracks.WinUi;
 public sealed class VoiceLabSettingsTests
 {
     [Fact]
+    public void EachInvalidCapSubmissionExplicitlyAnnouncesEvenUnchangedCopy()
+    {
+        var pane = AppSource("Controls/VoiceLabSettingsPane.cs");
+        var validation = pane[pane.IndexOf("if (parsed.Error is", StringComparison.Ordinal)..];
+        Assert.Contains("Ui.Show(message, error, InfoBarSeverity.Warning);\n                    Ui.Announce(message, error, \"voice-lab-message\");", validation);
+        Assert.Contains("if (message.Message != VoiceLabCopy.CapError)", pane);
+    }
+
+    [Fact]
     public async Task FailedNavigationSaveRemainsUncommittedAndRetryable()
     {
         var text = "20";

@@ -38,7 +38,7 @@ internal sealed class VoiceLabSettingsPane : UserControl
         AutomationProperties.SetAutomationId(message, "voice-lab-message");
         message.RegisterPropertyChangedCallback(InfoBar.MessageProperty, (_, _) =>
         {
-            Ui.Announce(message, message.Message, "voice-lab-message");
+            if (message.Message != VoiceLabCopy.CapError) Ui.Announce(message, message.Message, "voice-lab-message");
             DispatcherQueue.TryEnqueue(() => { if (message.IsLoaded && message.IsOpen) message.StartBringIntoView(); });
         });
         body.Children.Add(message);
@@ -170,7 +170,12 @@ internal sealed class VoiceLabSettingsPane : UserControl
             owner.TrackTextField(field, async () =>
             {
                 var parsed = VoiceLabSettingsState.MonthlyCap(field.Text);
-                if (parsed.Error is { } error) { Ui.Show(message, error, InfoBarSeverity.Warning); return false; }
+                if (parsed.Error is { } error)
+                {
+                    Ui.Show(message, error, InfoBarSeverity.Warning);
+                    Ui.Announce(message, error, "voice-lab-message");
+                    return false;
+                }
                 var settings = new AppSettings("voxclip-settings/1");
                 settings.SetVoiceLabMonthlyCap(provider.Item1, parsed.Amount);
                 await App.Services.SetAsync("voiceLab.monthlyCapUsd." + provider.Item1,
