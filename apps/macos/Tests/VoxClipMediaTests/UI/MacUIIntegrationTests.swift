@@ -11,7 +11,7 @@ extension HeavyMediaTests {
         let directory = try UIProcessHarness.run(mode: "-captionGalleryAudit", name: "caption-gallery")
         defer { UIProcessHarness.cleanTemporary(directory) }
         let report = try JSONDecoder().decode([UIProcessHarness.Result].self, from: Data(contentsOf: directory.appendingPathComponent("results.json")))
-        #expect(report.count == 63)
+        #expect(report.count == 64)
         for result in report { #expect(result.passed && result.skipped == nil, Comment(rawValue: result.name)) }
         struct Measurement: Decodable {
             let name: String

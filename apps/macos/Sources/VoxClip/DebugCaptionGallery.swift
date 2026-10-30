@@ -300,8 +300,10 @@ import VoxClipCore
         var previous: CaptionGalleryAudit.Snapshot?
         var settled = false
         var passes = 0
+        var stablePasses = 0
         repeat {
             host.layoutSubtreeIfNeeded()
+            host.displayIfNeeded()
             current = snapshot(identifier)
             passes += 1
             var ready = false
@@ -323,8 +325,8 @@ import VoxClipCore
                     ready = DebugRightColumn.markers(in: host)["caption.gallery.\(identifier)"].map { abs($0.height - current.size.height) <= 0.5 } ?? false
                 }
             }
-            // Settled once the state holds across a turn, so nothing owed is still on its way.
-            if ready, let previous, previous == current { settled = true; break }
+            stablePasses = ready && previous == current ? stablePasses + 1 : 0
+            if stablePasses >= 3 { settled = true; break }
             previous = ready ? current : nil
             await Task.yield()
         } while ProcessInfo.processInfo.systemUptime - started < 2

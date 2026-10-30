@@ -175,7 +175,14 @@ import VoxClipCore
             scroll.record(CaptionGalleryViewport(visible: CGRect(origin: CGPoint(x: 0, y: CGFloat(offset)), size: size), size: size))
         }
         let sizeUpdate = scroll.record(CaptionGalleryViewport(visible: .zero, size: CGSize(width: 320, height: 272)))
+        var delayed = CaptionGalleryReveal()
+        delayed.begin(CaptionGalleryRequest(selection: "full/editorial", size: size, fineTune: false))
+        let corrections = (0..<16).map { offset in
+            delayed.shouldScroll(to: .tile("editorial"), anchor: .top, geometry: [CGFloat(offset)])
+        }
+        let duplicate = delayed.shouldScroll(to: .tile("editorial"), anchor: .top, geometry: [15])
         return [
+            .init(name: "delayed measured layout keeps correcting without a retry budget or duplicate commands", passed: corrections.allSatisfy { $0 } && !duplicate),
             .init(name: "scope changes reveal the selected tile with Fine Tune expanded", passed: expandedScope && nextScope),
             .init(name: "viewport resizing cannot resume a user-interrupted reveal", passed: resized),
             .init(name: "clicking a visible tile does not request a reveal", passed: clicked),

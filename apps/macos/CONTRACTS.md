@@ -1,5 +1,10 @@
 # macOS implementation contracts
 
+### 2026-10-30 — sol-mac-polish r2 — event-driven gallery convergence
+
+- Lazy-grid estimates can be revised after the previous three-command correction budget is spent. Reveal now responds to every changed measured geometry, including content extent changes that release an earlier clamped scroll, coalesces identical commands, and stops on complete paint or explicit user interruption, not an elapsed number of dispatch turns. Late viewport changes revalidate completed paint without publishing every scroll frame; requests must be current and completed checks do not churn observed state.
+- Window-free acceptance requires the current request to be consumed, complete measured paint/header containment, the actual host viewport, and three stable layout/display passes. The original two-second failure bound and all paint assertions remain. A sixteen-layout correction regression fails on the budgeted policy; scope, Fine Tune, tile-click and scroll-interruption regressions remain.
+
 ### 2026-10-30 — sol-mac-polish r2 — abandoned process leases
 
 - Export journals bind identities to the owner's pid and exact sysctl kinfo_proc process start. Reaping requires a missing owner or a different start time; a live matching owner or an unqueryable owner is never reaped. Wall-clock age, creation dates and modification dates do not establish abandonment. A replacement item is retained and the abandoned journal dropped.
