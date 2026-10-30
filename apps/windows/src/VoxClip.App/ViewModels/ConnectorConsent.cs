@@ -14,8 +14,11 @@ internal static class ConnectorConsent
             ConnectorConsentAction.Rewrite => $"Rewrite sends these {words} words (no audio or video) to {label} using your API key.",
             _ => $"Test sends a short test request to {label} using your API key. Nothing from your projects is sent."
         };
-        if (detection?.AuthMethod is not { Length: > 0 } method ||
-            !detection.UsesApiKey && method is not ("oauth" or "claudeAi" or "claude.ai" or "chatgpt")) return null;
+        if (detection?.AuthMethod is not { Length: > 0 } method) return null;
+        var normalized = method.ToLowerInvariant().Replace('-', '_').Replace('.', '_');
+        // third_party does not identify an Anthropic plan or API-key bill payer;
+        // ai §4.8 has no consent sentence for that route. Keep it unknown.
+        if (!detection.UsesApiKey && normalized is not ("oauth" or "oauth_token" or "claudeai" or "claude_ai" or "chatgpt")) return null;
         var claude = id == ConnectorId.ClaudeCode;
         var cli = claude ? "Claude Code" : "Codex";
         var provider = claude ? "Anthropic" : "OpenAI";

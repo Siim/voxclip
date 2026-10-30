@@ -78,6 +78,24 @@ public sealed class ConnectorPreflightTests
     }
 
     [Theory]
+    [InlineData("claude.ai", true, false)]
+    [InlineData("oauth_token", true, false)]
+    [InlineData("OAuth-Token", true, false)]
+    [InlineData("api_key", true, true)]
+    [InlineData("api_key_helper", true, true)]
+    [InlineData("none", false, false)]
+    [InlineData("third_party", false, false)]
+    public void ClaudeDocumentedMethodsUseKnownBillingOnly(string method, bool known, bool key)
+    {
+        foreach (var action in Enum.GetValues<ConnectorConsentAction>())
+        {
+            var text = ConnectorConsent.Text(action, ConnectorId.ClaudeCode, "Claude Code", 17, new("fake", "1", method, key));
+            if (!known) Assert.Null(text);
+            else Assert.Contains(key ? "billed to the API key" : "toward your Claude plan's usage", text);
+        }
+    }
+
+    [Theory]
     [InlineData(ConnectorId.ClaudeCode)]
     [InlineData(ConnectorId.Codex)]
     public void UnknownCliSignInCannotProduceAnyConsentSheet(ConnectorId id)
