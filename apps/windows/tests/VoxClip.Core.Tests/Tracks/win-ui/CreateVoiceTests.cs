@@ -322,22 +322,44 @@ public sealed class CreateVoiceTests
     }
 #else
     [Fact]
+    public void ReleaseAppInspectionHasAnUnconditionalBuildPrerequisite()
+    {
+        var root = Path.GetDirectoryName(SharedResources.ResolveRoot())!;
+        var project = System.Xml.Linq.XDocument.Load(Path.Combine(root, "apps/windows/tests/VoxClip.Core.Tests/Tracks/win-ui/VoxClip.Ui.Tests.csproj"));
+        var target = Assert.Single(project.Descendants("Target"), target => (string?)target.Attribute("Name") == "BuildReleaseAppForInspection");
+        Assert.Equal("CoreCompile", (string?)target.Attribute("BeforeTargets"));
+        var build = Assert.Single(target.Elements("MSBuild"));
+        Assert.Equal("Restore;Build", (string?)build.Attribute("Targets"));
+        Assert.EndsWith("VoxClip.App.TypeCheck.csproj", (string?)build.Attribute("Projects"));
+        Assert.Contains("Configuration=Release", (string?)build.Attribute("Properties"));
+    }
+
+    [Fact]
     public void ReleaseOmitsConsentFakesAndDebugEnvironmentStrings()
     {
         var assembly = typeof(CreateVoiceSession).Assembly;
         Assert.DoesNotContain(assembly.GetTypes(), type => type.Namespace == "VoxClip.App.Services" && type.Name.StartsWith("Debug", StringComparison.Ordinal));
         var root = Path.GetDirectoryName(SharedResources.ResolveRoot())!;
         var typecheck = Path.Combine(root, "apps/windows/tests/VoxClip.App.TypeCheck/bin/Release/net10.0-windows10.0.26100.0/VoxClip.WinCheck.dll");
-        if (File.Exists(typecheck))
-        {
-            using var stream = File.OpenRead(typecheck); using var pe = new PEReader(stream);
-            var metadata = pe.GetMetadataReader();
-            Assert.DoesNotContain(metadata.TypeDefinitions.Select(handle => metadata.GetString(metadata.GetTypeDefinition(handle).Name)), name => name.StartsWith("DebugConsent", StringComparison.Ordinal) || name.StartsWith("DebugAvailableSpeaker", StringComparison.Ordinal));
-            var prefix = string.Join("_", "VOXCLIP", "DEBUG", "");
-            Assert.Equal(-1, File.ReadAllBytes(typecheck).AsSpan().IndexOf(Encoding.Unicode.GetBytes(prefix)));
-        }
+        Assert.True(File.Exists(typecheck), "Build the Release App typecheck before running the Release UI tests.");
+        using var stream = File.OpenRead(typecheck); using var pe = new PEReader(stream);
+        var metadata = pe.GetMetadataReader();
+        Assert.DoesNotContain(metadata.TypeDefinitions.Select(handle => metadata.GetString(metadata.GetTypeDefinition(handle).Name)), name => name.StartsWith("DebugConsent", StringComparison.Ordinal) || name.StartsWith("DebugAvailableSpeaker", StringComparison.Ordinal));
+        var prefix = string.Join("_", "VOXCLIP", "DEBUG", "");
+        Assert.Equal(-1, File.ReadAllBytes(typecheck).AsSpan().IndexOf(Encoding.Unicode.GetBytes(prefix)));
         foreach (var file in new[] { "Services/DebugConsentScribe.cs", "Services/DebugVoiceLabBackend.cs" })
         { var source = AppFile(file); Assert.StartsWith("#if DEBUG", source); Assert.EndsWith("#endif", source.TrimEnd()); }
+        foreach (var file in new[] { "Services/AppServices.cs", "Controls/CreateVoicePage.cs" })
+        {
+            var depth = 0;
+            foreach (var line in AppFile(file).Split('\n'))
+            {
+                if (line.Trim() == "#if DEBUG") depth++;
+                if (line.Trim() == "#endif" && depth > 0) depth--;
+                if (line.Contains("VOXCLIP_DEBUG_", StringComparison.Ordinal) || line.Contains("DebugConsent", StringComparison.Ordinal) || line.Contains("DebugAvailableSpeaker", StringComparison.Ordinal))
+                    Assert.True(depth > 0, $"DEBUG wiring must be guarded in {file}: {line}");
+            }
+        }
     }
 #endif
 

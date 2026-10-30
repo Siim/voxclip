@@ -72,4 +72,9 @@
     <Compile Include="../../../../src/VoxClip.App/Services/CaptionGalleryRenderer.cs" Link="Services/CaptionGalleryRenderer.cs" />
   </ItemGroup>
   <Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk" />
+  <Target Name="BuildReleaseAppForInspection" BeforeTargets="CoreCompile" Condition="'$(Configuration)' == 'Release'">
+    <MSBuild Projects="$(MSBuildThisFileDirectory)../../../VoxClip.App.TypeCheck/VoxClip.App.TypeCheck.csproj"
+             Targets="Restore;Build" Properties="Configuration=Release"
+             RemoveProperties="TargetFramework;RuntimeIdentifier;SelfContained" BuildInParallel="false" />
+  </Target>
 </Project>
