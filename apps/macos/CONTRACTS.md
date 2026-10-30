@@ -1,5 +1,11 @@
 # macOS implementation contracts
 
+### 2026-10-30 — sol-mac-voicelab — W10 accepted pre-open directory retention
+
+An open failure immediately after exclusive mkdir has no pinned fd/identity and intentionally leaves its empty operation directory and intent while the owner lives. The next sweep after owner death reclaims it using **empty-only rmdir**, never emptying an identity-less directory. A deterministic post-mkdir/pre-open failure checkpoint verifies retention while live and reclamation after death. This is accepted for 0.1.0, not a cleanup gate left owed.
+
+W10 does not change the shipped room-tone refusal or add a Clean Audio action. `VoiceLabGeometryError.roomToneUnavailable` shows "This take has no half-second pause to copy the room sound from. Clean audio removes background sound from the whole take, so new words can blend in. Clean audio is not available in this build. Re-record this sentence instead." The lead updates design §13 at merge.
+
 ### 2026-10-30 — sol-mac-voicelab — W10 identity-less creation recovery
 
 This supersedes W8's region-only allowance for uncertain **creation** discovery: without a creator key fingerprint, recovery performs no discovery, never trusts an empty listing, and never abandons automatically. It durably marks manual review and shows "Recovery needs the ElevenLabs key that started this voice." Settings offers "I've checked my ElevenLabs account — stop looking", with Cancel the default confirmation. Only that explicit action writes `remoteStateUnknown: true` and finishes with a retained abandoned operation tombstone (including available audit hashes and deletion timestamp); crash recovery finishes that local-only cleanup without provider calls. No consent/authorization is restored. Legacy **deletion** retains region-only matching and matched-region 404 handling. Core tests cover repeated restarts beyond 24 hours under a different account with zero discovery/deletion calls, and faults at the stop action's durable boundaries. A headless App test exercises the explicit confirmation, unknown-state tombstone and lack of provider-consent side effects. Normal discovery tests now seed creator-bound operations rather than relying on legacy identity-less fixtures.

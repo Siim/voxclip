@@ -56,6 +56,7 @@ enum VoiceLabAssetRecovery {
                 try checkpoint?("intent")
                 guard mkdirat(parentCopy, name, 0o700) == 0 else { throw VoiceLabAssetStoreError.unwritable(name) }
                 created = true
+                try checkpoint?("created")
                 directory = openat(parentCopy, name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
                 guard directory >= 0 else { throw VoiceLabAssetStoreError.unwritable(name) }
                 try checkpoint?("opened")

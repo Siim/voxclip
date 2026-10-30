@@ -584,6 +584,29 @@ extension HeavyMediaTests {
         #expect(FileManager.default.fileExists(atPath: path.path) == (scenario != "reused-pid"))
         #expect(try Data(contentsOf: target.appendingPathComponent("user.txt")) == Data("keep".utf8))
     }
+    @Test func failureBeforeOpeningNewDirectoryIsReclaimedOnlyAfterOwnerDeath() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let project = root.appendingPathComponent(projectId)
+        try FileManager.default.createDirectory(at: project, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let rootFD = try VoiceLabPaidRoot.open(root)
+        let parent = Darwin.open(project.path, O_RDONLY | O_DIRECTORY)
+        defer { Darwin.close(parent); Darwin.close(rootFD) }
+        let owner = VoiceLabAssetRecovery.Owner(pid: 123, seconds: 100, microseconds: 0)
+        #expect(throws: VoiceLabAssetStoreError.self) {
+            _ = try VoiceLabAssetRecovery.Operation(parent: parent, owner: owner, checkpoint: { stage in
+                if stage == "created" { throw VoiceLabAssetStoreError.unwritable("injected open failure") }
+            })
+        }
+        let name = try #require(FileManager.default.contentsOfDirectory(atPath: project.path).first { $0.hasPrefix("op-") })
+        let directory = project.appendingPathComponent(name)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: directory.path).isEmpty)
+        #expect(FileManager.default.fileExists(atPath: project.appendingPathComponent(VoiceLabAssetRecovery.intentName(name)).path))
+        #expect(try VoiceLabAssetRecovery.recover(rootFD, status: { _ in .running(owner) }) == 0)
+        #expect(FileManager.default.fileExists(atPath: directory.path))
+        #expect(try VoiceLabAssetRecovery.recover(rootFD, status: { _ in .gone }) == 1)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: project.path).isEmpty)
+    }
     @Test func pcm24OddFramePaddingIsCanonicalAndVerified() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false)
