@@ -7,6 +7,17 @@ import VoxClipCore
 @testable import VoxClipMedia
 
 @Suite struct VoiceLabSourceAudioTests {
+    @Test func rewriteSourceRetainsNativeRateAndAbsoluteFrameOrder() async throws {
+        let root = try directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let url = root.appendingPathComponent("rewrite.mov")
+        try await movie(url, rate: 48_000, channels: 1, frames: 4_800, float: false) { frame, _ in Double(Self.left(frame)) }
+        let result = try await VoiceLabSourceAudio.rewriteSource(source: url, frames: 4_800, sampleRate: 48_000)
+        let wav = try await VoiceLabSourceAudio.conversionInput(source: url, startSample: 0, endSample: 4_800, sourceSampleRate: 48_000)
+        let expected = stride(from: 44, to: wav.count, by: 2).map { offset in
+            Float(Int16(bitPattern: UInt16(wav[offset]) | UInt16(wav[offset + 1]) << 8)) / 32768
+        }
+        #expect(result == expected && result.count == 4_800)
+    }
     // Sample-unique content per channel, so a shifted cut, a swapped channel or another downmix cannot match.
     private static func left(_ index: Int) -> Float { Float((index * 7_919) % 4_001 - 2_000) / 4_000 }
     private static func right(_ index: Int) -> Float { Float((index * 104_729) % 3_001 - 1_500) / 6_000 }
@@ -605,6 +616,31 @@ import VoxClipCore
         #expect(throws: VoiceLabSourceAudioError.unsupportedFormat) {
             try VoiceLabSourceAudio.decodeAsset(url: garbage, targetSampleRate: 24_000)
         }
+    }
+
+    @Test func decodeCleanupNeverTraversesAReplacedSnapshotDirectory() throws {
+        let folder = try directory()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let checked = try asset((0..<4_800).map(Self.left), rate: 24_000, in: folder, id: "checked")
+        let original = folder.appendingPathComponent("original")
+        var replacement: URL?
+        defer { if let replacement { try? FileManager.default.removeItem(at: replacement) } }
+        let result = Result {
+            try VoiceLabSourceAudio.decodeAsset(url: checked, targetSampleRate: 24_000, expectedSha256: nil) { snapshot in
+                let directory = snapshot.deletingLastPathComponent()
+                replacement = directory
+                do {
+                    try FileManager.default.moveItem(at: directory, to: original)
+                    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
+                    try Data("replacement user file".utf8).write(to: directory.appendingPathComponent("user.txt"))
+                } catch { Issue.record(error) }
+            }
+        }
+        if case .success = result { Issue.record("A replaced snapshot path must not decode") }
+        let directory = try #require(replacement)
+        #expect(try Data(contentsOf: directory.appendingPathComponent("user.txt")) == Data("replacement user file".utf8))
+        #expect(try FileManager.default.contentsOfDirectory(atPath: original.path).isEmpty)
+        #expect(FileManager.default.fileExists(atPath: checked.path))
     }
 
     @Test func decodedAssetIsTheCheckedFileEvenIfThePathIsSwapped() throws {

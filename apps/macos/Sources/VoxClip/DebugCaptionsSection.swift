@@ -17,6 +17,17 @@ import VoxClipCore
         var results: [DebugUISuite.Result] = []
         func check(_ name: String, _ passed: Bool) { results.append(.init(name: name, passed: passed)) }
         check("bundled caption styles have no Other group", app.styles.allSatisfy { CaptionStyleGroup.group(for: $0) != .other })
+        check("visual gallery scroll targets cannot collide with the accessibility Picker's style IDs", AnyHashable(CaptionGalleryTarget.tile("vox-highlight")) != AnyHashable("vox-highlight"))
+        var reveal = CaptionGalleryReveal()
+        let size = CGSize(width: 294, height: 272)
+        let firstRequest = CaptionGalleryRequest(selection: "full/vox-highlight", size: size, fineTune: false)
+        reveal.begin(firstRequest); reveal.complete(); reveal.begin(firstRequest)
+        check("recreating a selected lazy tile does not steal the user's scroll position", !reveal.pending)
+        check("gallery geometry markers never intercept a tile click", ColumnLayoutMarker().hitTest(.zero) == nil)
+        reveal.begin(CaptionGalleryRequest(selection: "clip/vox-highlight", size: size, fineTune: false))
+        check("a scope change requests selected-tile visibility again", reveal.pending)
+        reveal.complete(); reveal.begin(CaptionGalleryRequest(selection: "clip/editorial", size: size, fineTune: false))
+        check("a style change requests selected-tile visibility again", reveal.pending)
         let document = VoxClipDocument(project: fixture, demo: true)
         let model = EditorModel(document: document, app: app, preview: DemoPreviewEngine())
         defer { model.close() }

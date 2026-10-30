@@ -46,7 +46,7 @@ func selectionBarFrame(lineRects: [CGRect], visibleRect: CGRect, barSize: CGSize
             Button { model.cutSelection(); dismiss() } label: { label("Cut", "⌫") }
             Button { model.cutSelection(restore: true); dismiss() } label: { label("Restore", "⇧⌫") }
                 .disabled(model.selectedWordIDs.isDisjoint(with: model.cutWordIDs) && model.selectedPauseIDs.isDisjoint(with: model.cutPauseIDs))
-            if RewriteEntryPolicy.buildEnabled && model.app.bool("voiceLab.enabled") {
+            if model.app.voiceLabRewriteEnabled {
                 Divider().frame(height: 18)
                 Button { model.beginRewrite(); dismiss() } label: { label("Rewrite…", "⇧⌘R") }.disabled(!model.capabilities.ai)
             }

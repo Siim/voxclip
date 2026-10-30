@@ -5,7 +5,71 @@ import VoxClipCore
 import XCTest
 import Darwin
 
+extension HeavyMediaTests {
 @Suite("mac-ui", .serialized) struct MacUIIntegrationTests {
+    @Test("Gallery selections reveal their complete paint without opening a window") func captionGalleryInteractions() throws {
+        let directory = try UIProcessHarness.run(mode: "-captionGalleryAudit", name: "caption-gallery")
+        defer { UIProcessHarness.cleanTemporary(directory) }
+        let report = try JSONDecoder().decode([UIProcessHarness.Result].self, from: Data(contentsOf: directory.appendingPathComponent("results.json")))
+        #expect(report.count == 53)
+        for result in report { #expect(result.passed && result.skipped == nil, Comment(rawValue: result.name)) }
+        struct Measurement: Decodable {
+            let name: String
+            let width: CGFloat
+            let settled: Bool
+        }
+        let measurements = try JSONDecoder().decode([Measurement].self, from: Data(contentsOf: directory.appendingPathComponent("caption-gallery-interactions.json")))
+        #expect(measurements.count == 20)
+        #expect(Set(measurements.filter { $0.name.hasPrefix("last-") }.map(\.width)) == [300, 320, 360, 560])
+        for measurement in measurements { #expect(measurement.settled, Comment(rawValue: measurement.name)) }
+    }
+    @Test("Right-column content fits without opening a window") func rightColumnLayout() throws {
+        let directory = try UIProcessHarness.run(mode: "-layoutAudit", name: "layout")
+        defer { UIProcessHarness.cleanTemporary(directory) }
+        let report = try JSONDecoder().decode([UIProcessHarness.Result].self, from: Data(contentsOf: directory.appendingPathComponent("results.json")))
+        #expect(report.count >= 315)
+        for result in report { #expect(result.passed && result.skipped == nil, Comment(rawValue: result.name)) }
+        struct Measurement: Decodable { let width: Double; let minimumWidth: Double; let proposedWidth: Double; let stageWidth: Double; let variant: String; let frameChoices: [String]; let viewOverflow: [String]; let accessibilityOverflow: [String] }
+        let measurements = try JSONDecoder().decode([Measurement].self, from: Data(contentsOf: directory.appendingPathComponent("right-column-layout.json")))
+        #expect(measurements.count == 108)
+        let captures = try JSONDecoder().decode([String].self, from: Data(contentsOf: directory.appendingPathComponent("rewrite-captures.json")))
+        #expect(captures.count == 48)
+        for name in captures { #expect(FileManager.default.fileExists(atPath: directory.appendingPathComponent(name).path)) }
+        #expect(Set(measurements.map(\.width)) == [300, 320, 340, 360, 440, 560])
+        for measurement in measurements {
+            #expect(measurement.minimumWidth <= measurement.width + 0.5 && measurement.proposedWidth <= measurement.width + 0.5)
+            #expect(measurement.stageWidth > 0 && measurement.stageWidth <= measurement.width - 31.5)
+            #expect(measurement.viewOverflow.isEmpty && measurement.accessibilityOverflow.isEmpty)
+            #expect(measurement.frameChoices == ["9:16", "1:1", "16:9", "Original"], Comment(rawValue: "\(measurement.variant) at \(measurement.width)"))
+        }
+        struct HeightMeasurement: Decodable {
+            let width: Double
+            let height: Double
+            let variant: String
+            let scrollFrames: [CGRect]
+            let scrollClipping: [Bool]
+            let viewOverflow: [String]
+        }
+        let heights = try JSONDecoder().decode([HeightMeasurement].self, from: Data(contentsOf: directory.appendingPathComponent("right-column-heights.json")))
+        #expect(heights.count == 29)
+        #expect(Set(heights.map(\.height)) == [475, 575, 675, 775])
+        for measurement in heights {
+            let viewport = try #require(measurement.scrollFrames.first)
+            #expect(viewport.height > 0)
+            #expect(measurement.scrollClipping.allSatisfy { $0 })
+            #expect(measurement.viewOverflow.isEmpty, Comment(rawValue: "\(measurement.variant) at \(measurement.width)x\(measurement.height)"))
+            if !measurement.variant.hasPrefix("rewrite") {
+                #expect(viewport.maxY <= measurement.height - 15.5)
+            }
+        }
+        struct ResizeMeasurement: Decodable { let width: Double; let stage: CGRect; let elapsed: Double; let settled: Bool; let viewOverflow: [String] }
+        let resizes = try JSONDecoder().decode([ResizeMeasurement].self, from: Data(contentsOf: directory.appendingPathComponent("right-column-resizes.json")))
+        #expect(resizes.map(\.width) == [320, 300, 560])
+        for resize in resizes {
+            #expect(resize.settled && resize.elapsed < 2 && resize.viewOverflow.isEmpty)
+            #expect(abs(resize.stage.width - (resize.width - 32)) <= 0.5 && abs(resize.stage.minX - 16) <= 0.5)
+        }
+    }
     @Test("Saved Voice Lab recipe uses native preview and App export", .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_UI_TESTS"] == "1")) func voiceRecipeWorkflow() async throws {
         let directory = ProcessInfo.processInfo.environment["VOXCLIP_UI_EVIDENCE_DIR"].map { URL(fileURLWithPath: $0).appendingPathComponent("voice") } ?? FileManager.default.temporaryDirectory.appendingPathComponent("voxclip-voice-app-\(UUID().uuidString)")
         defer { UIProcessHarness.cleanTemporary(directory) }
@@ -79,7 +143,7 @@ import Darwin
     }
     private func verifyRedesignScenes(in directory: URL) throws {
         let report = try JSONDecoder().decode([UIProcessHarness.Result].self, from: Data(contentsOf: directory.appendingPathComponent("redesign-scenes.json")))
-        let names = ["live-home", "live-home-empty", "live-dragover", "live-editor-full", "live-editor-clip", "live-editor-1280-blue", "live-compact", "live-selection-bar", "live-suggested", "live-finding", "live-export-clip", "live-rewrite"]
+        let names = ["live-home", "live-home-empty", "live-dragover", "live-editor-full", "live-editor-clip", "live-editor-1280", "live-editor-1280-blue", "live-editor-1180", "live-editor-300", "live-editor-560", "live-editor-960", "live-compact", "live-selection-bar", "live-suggested", "live-finding", "live-export-clip", "live-rewrite"]
         #expect(report.count == names.count)
         for name in names {
             let result = try #require(report.first { $0.name == "native scene \(name)" })
@@ -90,6 +154,64 @@ import Darwin
             #expect(result.passed && result.skipped == nil, Comment(rawValue: name))
             let image = try #require(NSBitmapImageRep(data: Data(contentsOf: directory.appendingPathComponent(name).appendingPathExtension("png"))))
             #expect(image.pixelsWide >= 600 && image.pixelsHigh >= 400)
+            if name != "live-home" && name != "live-home-empty" && name != "live-dragover" {
+                struct Bounds: Decodable { let editor: Bool; let collapsed: Bool; let column: CGRect; let content: CGRect; let failures: [String]; let elements: [Element] }
+                struct Element: Decodable { let identifier: String; let frame: CGRect }
+                let bounds = try JSONDecoder().decode(Bounds.self, from: Data(contentsOf: directory.appendingPathComponent("\(name)-bounds.json")))
+                #expect(bounds.editor && bounds.failures.isEmpty, Comment(rawValue: name))
+                #expect(bounds.collapsed == (name == "live-compact"), Comment(rawValue: name))
+                if name == "live-editor-full" { #expect(abs(bounds.content.width - 1440) <= 1 && abs(bounds.content.height - 900) <= 1 && abs(bounds.column.width - 360) <= 1) }
+                if name == "live-editor-1180" { #expect(abs(bounds.content.width - 1180) <= 1 && abs(bounds.content.height - 800) <= 1 && abs(bounds.column.width - 300) <= 1) }
+                if name == "live-editor-1280" { #expect(!bounds.collapsed && abs(bounds.column.width - 320) <= 1) }
+                if name == "live-editor-300" { #expect(!bounds.collapsed && abs(bounds.column.width - 300) <= 1) }
+                if name == "live-editor-560" { #expect(!bounds.collapsed && abs(bounds.column.width - 560) <= 1) }
+                if name == "live-editor-960" { #expect(!bounds.collapsed && abs(bounds.content.width - 960) <= 1 && abs(bounds.content.height - 600) <= 1) }
+                if !bounds.collapsed { #expect(bounds.elements.contains { $0.identifier == "voxclip.viewer.time" }) }
+            }
+        }
+        try verifyColumnSettlements(in: directory)
+        try verifySelectedGallery(in: directory)
+    }
+    private func verifyColumnSettlements(in directory: URL) throws {
+        struct Settlement: Decodable { let elapsed: Double; let settled: Bool; let stage: CGRect; let root: CGRect; let column: CGRect }
+        for width: Double in [300, 560] {
+            for suffix in ["", "-resize-64", "-resize-0"] {
+                let name = "drag-\(Int(width))\(suffix)-settlement.json"
+                let result = try JSONDecoder().decode(Settlement.self, from: Data(contentsOf: directory.appendingPathComponent(name)))
+                #expect(result.settled && result.elapsed < 2, Comment(rawValue: name))
+                #expect(abs(result.column.width - width) <= 1 && abs(result.stage.width - (width - 32)) <= 0.5)
+                #expect(abs(result.root.minX - result.column.minX) <= 0.5 && abs(result.root.width - result.column.width) <= 0.5)
+            }
+        }
+    }
+    private func verifySelectedGallery(in directory: URL) throws {
+        struct Choice: Decodable { let role: String; let frame: CGRect; let selected: Bool }
+        struct Selection: Decodable { let style: String; let visible: Bool; let paint: CGRect; let viewport: CGRect; let choice: Choice; let header: CGRect? }
+        let interactionScenes = ["live-editor-full", "live-editor-1280", "live-editor-300", "live-editor-560"]
+        let interactionSelections = interactionScenes.flatMap { scene in ["first", "middle", "last", "external", "undo"].map { "\(scene)-\($0)" } }
+        let initialSelections = ["live-editor-full", "live-editor-1280", "live-editor-1280-initial", "live-editor-clip", "live-editor-300", "live-editor-560"]
+        for name in initialSelections + interactionSelections {
+            let result = try JSONDecoder().decode(Selection.self, from: Data(contentsOf: directory.appendingPathComponent("\(name)-selected-gallery.json")))
+            let viewport = result.viewport.insetBy(dx: -0.5, dy: -0.5)
+            #expect(result.visible && !result.style.isEmpty && result.choice.role == "AXRadioButton", Comment(rawValue: name))
+            #expect(viewport.contains(result.paint) && result.choice.selected, Comment(rawValue: name))
+            if let header = result.header, header.union(result.paint).height + 24 <= result.viewport.height { #expect(viewport.contains(header)) }
+        }
+        for name in interactionScenes {
+            let report = try JSONDecoder().decode([UIProcessHarness.Result].self,
+                from: Data(contentsOf: directory.appendingPathComponent("\(name)-gallery-interaction-results.json")))
+            #expect(report.count == (name == "live-editor-full" ? 12 : 8))
+            for result in report { #expect(result.passed && result.skipped == nil, Comment(rawValue: result.name)) }
+        }
+        struct ShortSnapshot: Decodable { let paint: CGRect; let visible: CGRect; let pending: Bool }
+        struct ShortMeasurement: Decodable { let settled: Bool; let snapshot: ShortSnapshot }
+        let short = try JSONDecoder().decode([ShortMeasurement].self,
+            from: Data(contentsOf: directory.appendingPathComponent("caption-gallery-short.json")))
+        #expect(short.count == 2)
+        for measurement in short {
+            #expect(measurement.settled && !measurement.snapshot.pending)
+            #expect(measurement.snapshot.paint.height > measurement.snapshot.visible.height)
+            #expect(abs(measurement.snapshot.paint.minY - measurement.snapshot.visible.minY) <= 0.5)
         }
     }
     @Test("Native Save As boundary preserves portable media and edits", .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_UI_TESTS"] == "1")) func saveBoundary() throws {
@@ -134,6 +256,7 @@ import Darwin
         #expect(UpdateChecker.available(version: "v0.2.0", htmlURL: unsafe, downloadURL: nil, currentVersion: "0.1.0") == nil)
         #expect(UpdateChecker.available(version: "v0.2.0", htmlURL: safe, downloadURL: nil, currentVersion: "0.1.0", prerelease: true) == nil)
     }
+}
 }
 
 final class MacUIRenderPerformanceTests: XCTestCase {
@@ -217,7 +340,7 @@ private enum UIProcessHarness {
         defer { try? log.close() }
         process.standardOutput = log; process.standardError = log
         try process.run()
-        let deadline = Date().addingTimeInterval(mode == "-uiSelfTest" ? 240 : 120)
+        let deadline = Date().addingTimeInterval(mode == "-uiSelfTest" ? 360 : 120)
         while process.isRunning && Date() < deadline { Thread.sleep(forTimeInterval: 0.05) }
         if process.isRunning {
             process.terminate()
@@ -233,6 +356,7 @@ private enum UIProcessHarness {
                   let data = try? Data(contentsOf: directory.appendingPathComponent(report)),
                   let results = try? JSONDecoder().decode([Result].self, from: data),
                   results.contains(where: { !$0.passed }) else {
+                reportFailure(directory)
                 throw Failure.appFailed(process.terminationStatus)
             }
         }
@@ -242,6 +366,20 @@ private enum UIProcessHarness {
             if environment["VOXCLIP_UI_EVIDENCE_DIR"] == nil { try? FileManager.default.removeItem(at: directory) }
             throw error
         }
+    }
+    /// Hosted CI keeps no UI evidence, so name the failing checks and the end of the app log.
+    private static func reportFailure(_ directory: URL) {
+        var lines: [String] = []
+        for report in ["results.json", "results-progress.json"] {
+            guard let data = try? Data(contentsOf: directory.appendingPathComponent(report)),
+                  let results = try? JSONDecoder().decode([Result].self, from: data) else { continue }
+            lines += results.filter { !$0.passed }.prefix(20).map { "\(report) failed: \($0.name)" }
+            break
+        }
+        if let log = try? String(contentsOf: directory.appendingPathComponent("app.log"), encoding: .utf8) {
+            lines += log.split(separator: "\n").suffix(15).map { "app.log: \($0)" }
+        }
+        FileHandle.standardError.write(Data((lines.joined(separator: "\n") + "\n").utf8))
     }
     static func cleanTemporary(_ directory: URL) {
         if ProcessInfo.processInfo.environment["VOXCLIP_UI_EVIDENCE_DIR"] == nil { try? FileManager.default.removeItem(at: directory) }

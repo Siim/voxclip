@@ -245,7 +245,7 @@ How it is built:
 - **Detail.** `VStack(spacing: 0) { EditorSplit(transcript | rightColumn); TimelineStrip().frame(height: 72) }`.
   - `EditorSplit` is an `NSSplitViewController` behind `NSViewControllerRepresentable`. It is not an `.inspector`.
   - The transcript item has `holdingPriority = .defaultLow`.
-  - The right item has `minimumThickness = 300`, `maximumThickness = 560`, `canCollapse = true` and `holdingPriority = .defaultHigh`.
+  - The right item has `minimumThickness = 300`, `maximumThickness = 560`, `canCollapse = true` and `holdingPriority = .defaultLow + 1` (251). One above the transcript is enough for the transcript to give way first when the window resizes, while `.defaultHigh` would stop the divider from being dragged.
   - The divider is `.thin`. Autosave name `VoxClip.editor` (one per window, not per project).
 - **Glass.** Glass is used only by the system on the sidebar and the toolbar, plus the selection bar (§4.3). It is never used on the transcript, the stage, the gallery, the timeline or sidebar rows. The transcript scroll view keeps `.scrollEdgeEffectStyle(.automatic)`.
 - **Menus.** The menu bar mirrors every action (§11.3).
@@ -407,12 +407,14 @@ From the top:
 
 The column background is the page (`bg.surface` on Windows). On macOS it is the window background behind the split, with no card and no inset. Pane padding is 16.
 
+**Fit.** The column lays its content out at exactly its own width, anywhere from 300 to 560. Nothing in it may run past the column or the window edge, and nothing is clipped to make it fit. A row that doesn't fit switches to its stacked form: the viewer bar and the Frame row (§5.1), the Captions header and the Fine Tune rows (§6.1), and the Rewrite header and New words label (§6.3). The switch is chosen from the content's measured width, not from a fixed breakpoint.
+
 ### 3.7 Narrow widths
 
 | Width | macOS | Windows |
 |---|---|---|
 | ≥ 1440 | Sidebar, transcript measure 680, right column 360 | Pane, measure 680, right column 388 |
-| 1280 (default) | measure about 580, right column 320. The Captions header wraps to two rows below a column width of 340 | measure 560, right column 348 |
+| 1280 (default) | measure about 580, right column 320. The Captions header wraps to two rows when one row doesn't fit (§6.1), and the Frame row stacks (§5.1) | measure 560, right column 348 |
 | Transcript pane would drop below 596 (macOS) or 588 (Windows), about 1150 window width | The right column collapses first. "Show Viewer" (⌥⌘I) and View > Show Viewer bring it back; showing it at this width hides the sidebar to make room. The timeline gains the compact transport (§5.3). Below a window width of 1100 the toolbar capsule is icon-only (§3.5) | The right column collapses first. The Viewer toggle brings it back, and showing it hides the pane (`IsPaneOpen = false`). The timeline gains the compact transport. `CommandBar` overflow takes Tighten pauses and Restore cuts |
 | < 960 | Only reachable in full screen or Split View. The sidebar collapses (`columnVisibility = .detailOnly`); the toolbar sidebar button brings it back as an overlay | `NavigationView` goes `LeftMinimal`; the `TitleBar` pane toggle opens it as an overlay |
 
@@ -531,8 +533,9 @@ Restore is disabled when nothing in the selection is cut. When the selection alr
 - It sits at the top of the right column with 16 padding. On macOS it starts at y 62.
 - Content: the edited result of the current scope. A new cut shows on the next frame (architecture.md §5 and §6).
 - **Frames:**
-  - 16:9 and Original-landscape fill the column's inner width: 328×184 at 360, and 355×200 on Windows at 388.
+  - 16:9 and Original-landscape fill the column's inner width: 328×184 at 360, 288×162 at 320, and 355×200 on Windows at 388.
   - 9:16 and 1:1 are centred, at most 320 high and never wider than the inner width (180×320 for 9:16). A 9:16 or 1:1 frame is a centre crop of the source with no pillar bars, as in export.
+  - On macOS the stage keeps these sizes while the column is at least the stage height plus 320 (every frame at 1280×800 and larger). That 320 holds everything below the stage: the viewer bar, the Frame row, their spacing and padding, the hairline and the Captions panel. In a shorter column only the stage height yields, keeping its aspect and centring, so the area below it keeps that budget.
   - While Rewrite is open and the column is shorter than 760, the stage drops to 220×124 (16:9; other frames fit inside a 124-high box). On Windows the time, the AI tag and the transport stack beside it. On macOS the viewer row stays under it.
 - There is no transport pill and no overlay on the stage except the caption overlay and the compositor's AI MODIFIED chip. The one exception: with no video, the stage shows the §5.4.6 overlays (the message, the word rhythm, the audiogram and the status chip). None of them is interactive; Locate… stays in the transcript InfoBar.
 - **Caption position.** The caption block on the stage is draggable and snaps to the centre line and the thirds. While dragging, safe-zone guides for the frame appear (9:16: bands over the top 12% and the bottom 22%). This is unchanged.
@@ -545,11 +548,13 @@ Restore is disabled when nothing in the selection is cut. When the selection alr
   - when the scope contains accepted AI speech, an **AI modified** tag before the time: 11 pt, 1 px `accent.text` outline, radius 4, `accent.text` text;
   - trailing: **Back 3 seconds** (28 pt, `gobackward.3`, tooltip "Back 3 Seconds (J)"), **Play/Pause** (34 pt round neutral button, Space), **Forward 3 seconds** (28 pt, `goforward.3`, tooltip "Forward 3 Seconds", no key; L is shuttle).
   - `gobackward.3` and `goforward.3` are custom symbols exported from the `gobackward` template and bundled with the app.
+  - When the row doesn't fit (the AI modified tag, a rate and long times together), the AI modified tag and then the rate ("1.5×", 11 `text.secondary`) move to a caption line 6 above the row. The row keeps the time and the three buttons at their sizes. The time is never truncated or scaled, and the rate stays out of the accessibility tree as before.
 - **Windows**, row 1 is 40 high:
   - leading: Back 3 seconds (32 subtle icon button, name "Back 3 seconds (J)"), Play (40 round, `ControlFillColorDefaultBrush` fill, 1 px `ControlStrokeColorDefaultBrush`, ink glyph), Forward 3 seconds (32, name "Forward 3 seconds");
   - trailing: the AI modified tag (12, 1 px `accent.text`, 16.34:1 light, 14.16:1 dark), then the time in Cascadia Mono 13.
 - **Frame row:** 24 high on macOS, 32 on Windows. The label "Frame" (13 or 14 `text.secondary`) leads.
   - The control: macOS `Picker(.segmented)` with `.labelsHidden()`; Windows `CommunityToolkit.WinUI.Controls.Segmented`.
+  - When the row doesn't fit, macOS first uses the small control size in the same 24-high row, then puts "Frame" on its own line, 6 above a full-width small picker. At 1280 (column 320) it stacks; at 360 the small control fits in one row. No label is truncated or dropped.
   - The options, in this order: **9:16 · 1:1 · 16:9 · Original**. The selected label is semibold, as a cue that does not depend on colour. On Windows the selected segment has a white knob with a 1 px `line.strong` stroke.
   - The control reads and writes `export.aspect`, whose persisted values (`portrait`, `square`, `landscape`, `source`) and file suffixes (§8) do not change. Only the label "Source" becomes "Original".
   - Face-tracked reframe (M2) adds a "Follow face" toggle to this row.
@@ -868,13 +873,13 @@ The inspector and its Captions, Clips and AI tabs are gone. The commands ⌘1–
 
 **Header.** It has two forms.
 
-- **One row, 36 high**, used on macOS when the column is 340 or wider:
+- **One row, 36 high**, used on macOS when the heading, chip, full style name and summary, and switch fit on one line (about 340 and wider for a short summary):
   - "Captions" 13/600;
   - a 64×36 live chip of the current style on the current frame, or the one-line caption card when there is no frame (§5.4.3);
   - the style name, 13/600, followed by "Edited" in 11 `text.secondary` when overrides exist;
   - under the name, the Fine Tune disclosure label "› {summary}" in 11 `text.secondary`;
   - on the trailing side, a regular switch (38×22).
-- **Two rows**, used on macOS below 340 and always on Windows:
+- **Two rows**, used on macOS when one row doesn't fit, and always on Windows:
   - the header (36): "Captions" on the leading side, a switch on the trailing side;
   - the style row: the chip, the name and "Edited", and the summary under them. On Windows the trailing "Fine tune ⌄" makes this whole row the `Expander` header (`ExpandDirection="Down"`); its tooltip lists the size, case, words, colour and position.
 
@@ -904,7 +909,11 @@ The inspector and its Captions, Clips and AI tabs are gone. The commands ⌘1–
 - **Position:** `Top · Middle · Bottom`, with the hint "Drag captions on the video to move them."
 - **"Reset to Style"**, a link button.
 
+On macOS each segmented control's label leads it on one line; when they don't fit, the label moves 6 above the control. The hint and caption errors wrap rather than truncate.
+
 There is no separate Fine Tune row and no "Off" tile.
+
+The gallery scrolls inside the column and clips at its own viewport, which always ends above the column's bottom padding, so every style can be scrolled into view at any window height. The Captions header stays fixed; Fine Tune and caption errors scroll with the gallery. On macOS the small, fixed catalogue uses eager two-column rows, so reveal positions never depend on a lazy grid's estimated offscreen heights.
 
 **Gallery.**
 
@@ -921,7 +930,7 @@ There is no separate Fine Tune row and no "Off" tile.
   A style with none of these tags goes into an "Other" group at the end. A test asserts that the bundled styles produce no "Other" group.
 - **Tile content.** Each tile renders the real style with the export renderer: the current phrase at the playhead, with that style's word count and casing (captions spec §15.3; fallback: the style's `preview.text`). It is drawn over the band of the current frame behind the style's caption position, dimmed 35%. With no frame, samples sit on the card backdrop (§5.4.3), not dimmed. A tile that cannot render draws exactly the backdrop it would have had: the band of the current frame dimmed 35%, or the card backdrop (design.md section 5.4.3) when there is no frame, and stage black in the loading states (design.md section 5.4.4). It never draws text. In clip scope the playhead is inside the clip. The selected tile is drawn with the active overrides.
 - **Selected tile:** a 2 px `accent.text` outline at offset 2, a check badge (a white check on a 62% black disc, 18, top-right, inset 6), and the name "Box highlight · Edited" in 600 `text.primary`. Other names are 11 (macOS) or 12 (Windows) `text.secondary`.
-- **Scrolling.** The grid scrolls the selected tile into view when the scope changes. The scroll view ends 8 above the strip with a 24 (macOS) or 12 (Windows) fade to the column background.
+- **Scrolling.** The grid scrolls the selected tile into view when the scope changes. The scroll view ends 16 above the strip (the pane padding) with a 24 (macOS) or 12 (Windows) fade to the column background.
 - **Accessibility.** Options are named "{name}: {description}" ("Box highlight: a box behind the spoken word, a few words at a time").
 - **Motion.** Under Reduce Motion, tiles are static; animated styles show their resting frame.
 - Captions follow edited time, and phrase grouping does not break at cut seams (captions spec D9). Under Reduce Motion the preview shows animated styles without animation; export keeps them.
@@ -966,7 +975,7 @@ The sidebar list is the clip range layer (editing §2.5 and §10.6), presented a
   - **Connector**: a read-only line, for example "Claude Code · Ready", from the selected `llm.connector` and its status ("● Ready", "● Key missing", "● Not running", "● Not found", "● Not signed in", "● Too old"), with **Change…**, which opens Settings → AI. The status refreshes after a key or server setting changes. It is advisory: Find Clips runs the connector's preflight when pressed;
   - **Preset**: a single choice of Best moments · Hooks · One per topic · Quotes · Custom;
   - **Instructions**: a field reading "Anything specific? (optional)", or "Describe the clips you want" for Custom (at most 500 characters, Return runs it);
-  - the footnote "Sends transcript text with word numbers. No audio or video." For local connectors it reads "Runs on this {Mac/PC}. Nothing leaves it.";
+  - the footnote "Sends transcript text with word numbers. No audio or video." For loopback local connectors it reads "Runs on this {Mac/PC}. Nothing leaves it."; for a configured remote local-server connector it reads "Sends these {count} words to {host}.";
   - **[Find Clips]** as the default button.
 - **Consent.** The first cloud use runs the existing consent alert (ai.md §4.8).
 - **While it runs:** the popover closes. The sidebar shows a "Finding clips…" row under the Suggested header, with a spinner (Windows: a fixed-width `ProgressRing`), **Cancel**, and the connector line "{connector} · reading {duration} of transcript" in 11 `text.secondary`.
@@ -1004,13 +1013,14 @@ Voice Lab appears only when Settings → Voice Lab → Show Voice Lab (beta) is 
 
 From the top:
 
-1. **Header**, one row: a `waveform` glyph, "Rewrite" 13/600, a "Beta" tag (11, `text.secondary`, 1 px `line.strong` outline), "{n} words at {m:ss.d}" in 11 `text.secondary`, and a close button named "Close Rewrite" (Esc).
+1. **Header**, one row: a `waveform` glyph, "Rewrite" 13/600, a "Beta" tag (11, `text.secondary`, 1 px `line.strong` outline), "{n} words at {m:ss.d}" in 11 `text.secondary`, and a close button named "Close Rewrite" (Esc). When the row doesn't fit, "{n} words at {m:ss.d}" moves to a second line under the title and the close button.
 2. **What should change?** A one-line field, focused when the panel opens, with a bordered **Rewrite · {cost}** button, for example "Rewrite · < $0.01". It sends the passage and the instruction to the selected LLM connector (`VoiceRewriteService`, voice-lab.md §2.6) and fills New words with the proposal. Under it, the line for that send in 11 `text.secondary`:
    - API key: "Sends these {n} words to {connector} with your key."
    - CLI: "Sends these {n} words to {CLI} with your sign-in. Counts toward your {plan}."
    - Local: "Runs on this {Mac/PC}. Nothing leaves it."
+   - A configured non-loopback local-server connector: "Sends these {count} words to {host}." Only loopback servers may use the nothing-leaves wording.
 3. **New words.**
-   - The label, with the summary on the trailing side: "{i} new, {r} removed · about {s} s".
+   - The label, with the summary on the trailing side: "{i} new, {r} removed · about {s} s". When they don't fit, the summary moves under the label.
    - An editable plain-text field holding only the new text, prefilled with the passage.
    - Under it, a read-only diff line from the voice-lab.md §8.2 LCS:
      - removed words in `text.secondary` with a 1.5 px `cut.stroke` strike;

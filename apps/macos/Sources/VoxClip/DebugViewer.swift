@@ -21,7 +21,7 @@ import ApplicationServices
         for (name, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
             for aspect in [AspectRatio.landscape, .portrait, .square] {
                 model.setAspect(aspect)
-                let view = NSHostingView(rootView: ViewerSection(model: model).frame(width: 360).background(DesignValues.color("bg.surface")))
+                let view = NSHostingView(rootView: ViewerSection(model: model, columnWidth: 360).frame(width: 360).background(DesignValues.color("bg.surface")))
                 view.frame = CGRect(x: 0, y: 0, width: 360, height: aspect == .landscape ? 294.5 : 430)
                 let window = NSWindow(contentRect: view.frame, styleMask: [.borderless], backing: .buffered, defer: false)
                 window.isReleasedWhenClosed = false; window.contentView = view; window.appearance = NSAppearance(named: appearance)

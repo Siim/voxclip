@@ -206,6 +206,36 @@ import VoxClipCore
         #expect(cancelled)
     }
 
+    @Test(arguments: [false, true])
+    func failedDisclosureKeepsReplacementDirectoriesAndCallerFiles(cancel: Bool) async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let native = root.appendingPathComponent("native.mp4"), stage = root.appendingPathComponent("stage.mp4.partial")
+        try await nativeMP4(native)
+        let (project, prepared) = try prepared("passage-render-v3")
+        let original = root.appendingPathComponent("original")
+        var replacement: URL?
+        do {
+            _ = try VoiceLabDisclosureWriter.stage(sourceMP4: native, stagedMP4: stage, finalFilename: "render.mp4",
+                project: project, prepared: prepared, appVersion: "0.1.0", createdAt: Date(timeIntervalSince1970: 0), afterCopy: { directory in
+                    replacement = directory
+                    try FileManager.default.moveItem(at: directory, to: original)
+                    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
+                    try Data("keep".utf8).write(to: directory.appendingPathComponent("user.txt"))
+                    try Data("caller replacement".utf8).write(to: stage)
+                    if cancel { throw CancellationError() }
+                })
+            Issue.record("Cancellation or a destination collision must refuse publication")
+        } catch is CancellationError { #expect(cancel) }
+        catch VoiceLabDisclosureError.destinationExists { #expect(!cancel) }
+        let directory = try #require(replacement)
+        #expect(try Data(contentsOf: directory.appendingPathComponent("user.txt")) == Data("keep".utf8))
+        #expect(try Data(contentsOf: stage) == Data("caller replacement".utf8))
+        #expect(try FileManager.default.contentsOfDirectory(atPath: original.path).isEmpty)
+        #expect(FileManager.default.fileExists(atPath: native.path))
+    }
+
     private func nativeMP4(_ url: URL) async throws {
         let writer = try AVAssetWriter(outputURL: url, fileType: .mp4)
         let input = AVAssetWriterInput(mediaType: .video, outputSettings: [

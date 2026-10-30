@@ -16,20 +16,42 @@ public final class VoiceLabTakeScratch: Sendable {
     public let fittedAudioURL: URL
     public let fitted: VoiceLabFittedAudio
     public let audio: VoiceLabTakeAudio
-    private let directory: URL
-    private let valid = Mutex(true)
-    public var isValid: Bool { valid.withLock { $0 } }
-    public func invalidate() {
-        valid.withLock { valid in
-            guard valid else { return }
-            valid = false
-            try? FileManager.default.removeItem(at: directory)
+    private let operation: VoiceLabAssetRecovery.Operation
+    private struct State {
+        var valid = true
+        var consumers: [UUID: @Sendable () async -> Void] = [:]
+        var cleanup: Task<Void, Never>?
+    }
+    private let state = Mutex(State())
+    public var isValid: Bool { state.withLock { $0.valid } }
+    func attach(_ stop: @escaping @Sendable () async -> Void) throws -> UUID {
+        try state.withLock { state in
+            guard state.valid else { throw VoiceLabError.invalidAudio }
+            let id = UUID(); state.consumers[id] = stop; return id
         }
     }
-    init(directory: URL, fitted: VoiceLabFittedAudio, audio: VoiceLabTakeAudio) {
-        self.directory = directory; self.fitted = fitted; self.audio = audio
+    func detach(_ id: UUID) { _ = state.withLock { $0.consumers.removeValue(forKey: id) } }
+    public func invalidate() async {
+        let operation = operation, snapshot = fitted.snapshot
+        let cleanup = state.withLock { state in
+            if let cleanup = state.cleanup { return cleanup }
+            state.valid = false
+            let consumers = Array(state.consumers.values)
+            state.consumers.removeAll()
+            let cleanup = Task.detached(priority: .utility) {
+                for stop in consumers { await stop() }
+                snapshot.invalidate()
+                operation.discard()
+            }
+            state.cleanup = cleanup
+            return cleanup
+        }
+        await cleanup.value
+    }
+    init(directory: URL, operation: VoiceLabAssetRecovery.Operation, fitted: VoiceLabFittedAudio, audio: VoiceLabTakeAudio) {
+        self.operation = operation; self.fitted = fitted; self.audio = audio
         mixedAudioURL = directory.appendingPathComponent("mixed.wav")
         fittedAudioURL = directory.appendingPathComponent("fitted.wav")
     }
-    deinit { try? FileManager.default.removeItem(at: directory) }
+    deinit { operation.discard() }
 }

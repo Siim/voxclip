@@ -526,8 +526,13 @@ import VoxClipCore
               shell.windowWidth < WorkspaceShell.sidebarCollapseWidth && editor.showFindClips && !editor.showAISetup && !shell.sidebarOverlay && shell.columnVisibility == .detailOnly)
         editor.showFindClips = false
         shell.revealSidebar()
-        try await Task.sleep(for: .milliseconds(250))
-        let overlayList = tables(in: root).first { $0 !== list && !$0.isHiddenOrHasHiddenAncestor }
+        // Wait for the overlay itself (bounded) rather than a fixed delay that a busy Mac outlasts.
+        var overlayList: NSTableView?
+        for _ in 0..<80 {
+            overlayList = tables(in: root).first { $0 !== list && !$0.isHiddenOrHasHiddenAncestor }
+            if shell.sidebarOverlay, overlayList != nil { break }
+            try await Task.sleep(for: .milliseconds(25))
+        }
         check("at 900 explicitly showing the sidebar opens its overlay while the column stays collapsed",
               shell.windowWidth < WorkspaceShell.sidebarCollapseWidth && shell.sidebarOverlay && shell.columnVisibility == .detailOnly && overlayList != nil)
         window.setContentSize(NSSize(width: 880, height: 800))
@@ -564,50 +569,85 @@ import VoxClipCore
         controller.splitView = split
         split.isVertical = true
         split.dividerStyle = .thin
-        let left = NSViewController(), right = NSViewController()
-        left.view = NSView(frame: NSRect(x: 0, y: 0, width: 700, height: 400))
-        right.view = NSView(frame: NSRect(x: 0, y: 0, width: 400, height: 400))
+        guard let root = app.shared?.root, let fixture = try? DemoEditing.loadFixture(root.appendingPathComponent("fixtures/projects/five-questions.voxclip")) else {
+            check("divider drag loads the real right-column fixture", false)
+            return results
+        }
+        let model = EditorModel(document: VoxClipDocument(project: fixture, demo: true), app: app, preview: DemoPreviewEngine())
+        defer { model.close() }
+        let left = NSViewController()
+        let right = NSHostingController(rootView: GeometryReader { geometry in
+            RightColumnContents(model: model, columnHeight: geometry.size.height, columnWidth: geometry.size.width).frame(width: geometry.size.width, height: geometry.size.height)
+        })
+        right.sizingOptions = []
+        left.view = NSView(frame: NSRect(x: 0, y: 0, width: 700, height: 675))
+        right.view.frame = NSRect(x: 0, y: 0, width: 400, height: 675)
         let leftItem = NSSplitViewItem(viewController: left), rightItem = NSSplitViewItem(viewController: right)
-        leftItem.minimumThickness = 300
+        leftItem.minimumThickness = VCTokens.sizeTranscriptMinWidth
+        leftItem.holdingPriority = .defaultLow
         rightItem.minimumThickness = 300
         rightItem.maximumThickness = 560
+        rightItem.holdingPriority = EditorSplit.rightHoldingPriority
+        rightItem.canCollapse = true
         controller.addSplitViewItem(leftItem)
         controller.addSplitViewItem(rightItem)
-        let window = NSWindow(contentRect: NSRect(x: -10000, y: -10000, width: 1101, height: 400), styleMask: [.titled, .resizable], backing: .buffered, defer: false)
+        let window = NSWindow(contentRect: NSRect(x: -10000, y: -10000, width: 1101, height: 675), styleMask: [.titled, .resizable], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         window.contentViewController = controller
-        window.setContentSize(NSSize(width: 1101, height: 400))
+        window.setContentSize(NSSize(width: 1101, height: 675))
         split.setPosition(700, ofDividerAt: 0)
         split.layoutSubtreeIfNeeded()
         split.onDividerDrag = { shell.rememberRightWidth($0) }
-        let start = right.view.frame.width
-        let point = split.convert(NSPoint(x: left.view.frame.maxX + split.dividerThickness / 2, y: 200), to: nil)
-        func event(_ type: NSEvent.EventType, _ x: Double) -> NSEvent? {
-            NSEvent.mouseEvent(with: type, location: NSPoint(x: x, y: point.y), modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
-                               windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: type == .leftMouseUp ? 0 : 1)
-        }
-        guard let down = event(.leftMouseDown, point.x), let drag = event(.leftMouseDragged, point.x + 40), let up = event(.leftMouseUp, point.x + 40) else {
-            check("a divider drag stores the dragged width", false)
-            return results
-        }
-        // If the split view never reads the posted events, a late mouse-up ends its loop.
-        let windowNumber = window.windowNumber, end = NSPoint(x: point.x + 40, y: point.y)
-        let fallback = Timer(timeInterval: 2, repeats: false) { _ in
-            MainActor.assumeIsolated {
-                if let late = NSEvent.mouseEvent(with: .leftMouseUp, location: end, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
-                                                 windowNumber: windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 0) { NSApp.postEvent(late, atStart: true) }
+        for expected: CGFloat in [360, 300, 560] {
+            let start = right.view.frame.width
+            let point = split.convert(NSPoint(x: left.view.frame.maxX + split.dividerThickness / 2, y: 200), to: nil)
+            func event(_ type: NSEvent.EventType, _ x: Double) -> NSEvent? {
+                NSEvent.mouseEvent(with: type, location: NSPoint(x: x, y: point.y), modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                   windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: type == .leftMouseUp ? 0 : 1)
             }
+            let target = point.x + start - expected
+            guard let down = event(.leftMouseDown, point.x), let drag = event(.leftMouseDragged, target), let up = event(.leftMouseUp, target) else {
+                check("a divider drag stores the dragged width", false)
+                return results
+            }
+            let windowNumber = window.windowNumber, end = NSPoint(x: target, y: point.y)
+            let fallback = Timer(timeInterval: 2, repeats: false) { _ in
+                MainActor.assumeIsolated {
+                    if let late = NSEvent.mouseEvent(with: .leftMouseUp, location: end, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                                     windowNumber: windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 0) { NSApp.postEvent(late, atStart: true) }
+                }
+            }
+            RunLoop.main.add(fallback, forMode: .common)
+            NSApp.postEvent(drag, atStart: false)
+            NSApp.postEvent(up, atStart: false)
+            split.mouseDown(with: down)
+            fallback.invalidate()
+            let stored = app.settings.values["ui.rightColumnWidth"]
+            check("a drag of the divider stores \(expected) points (\(start) → \(right.view.frame.width))", abs(right.view.frame.width - expected) < 1.5 && stored == .number(expected))
+            let stageSettled = await stageFits(right.view, width: expected)
+            check("the stage follows the dragged \(expected)-point column", stageSettled)
         }
-        RunLoop.main.add(fallback, forMode: .common)
-        NSApp.postEvent(drag, atStart: false)
-        NSApp.postEvent(up, atStart: false)
-        split.mouseDown(with: down)
-        fallback.invalidate()
+        let expected: CGFloat = 560
         let stored = app.settings.values["ui.rightColumnWidth"]
-        let expected = (start - 40).rounded()
-        check("a drag of the divider stores the dragged width (\(start) → \(right.view.frame.width))", abs(right.view.frame.width - (start - 40)) < 1.5 && stored == .number(expected))
+        for width: CGFloat in [1201, 1001] {
+            window.setContentSize(NSSize(width: width, height: 675))
+            window.contentView?.layoutSubtreeIfNeeded()
+            check("window resize to \(width) preserves the dragged right-column width", abs(right.view.frame.width - expected) < 1.5 && app.settings.values["ui.rightColumnWidth"] == stored)
+            let stageSettled = await stageFits(right.view, width: expected)
+            check("the stage follows the preserved width after resize to \(width)", stageSettled)
+        }
         window.close()
         return results
+    }
+
+    private static func stageFits(_ view: NSView, width: CGFloat) async -> Bool {
+        let started = ProcessInfo.processInfo.systemUptime
+        repeat {
+            view.window?.contentView?.layoutSubtreeIfNeeded()
+            if let stage = DebugRightColumn.markers(in: view)["viewer.stage"], abs(stage.width - (width - 32)) <= 0.5 { return true }
+            await Task.yield()
+        } while ProcessInfo.processInfo.systemUptime - started < 2
+        return false
     }
 
     /// The toolbar and edit summary (step 8): the summary grammar and cut count for each

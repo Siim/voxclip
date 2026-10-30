@@ -29,12 +29,17 @@ public struct VoiceOperation: Codable, Sendable, Identifiable, Equatable {
     public var failed: Bool
     public var audit: VoiceConsentAudit?
     public var ambiguousDispatchIDs: [UUID]?
+    public var expectedVoiceName: String?
+    public var recoveryNeedsReview: Bool?
+    public var creatorKeyFingerprint: String?
+    public var remoteStateUnknown: Bool?
     public var finished: Bool { [.saved, .withdrawn, .tombstoned, .abandoned].contains(state) }
     public var blocksCreation: Bool { blocksCreation(at: Date()) }
     public func blocksCreation(at date: Date) -> Bool {
         kind == .create && [.dispatched, .created].contains(state) && date < startedAt.addingTimeInterval(24 * 60 * 60)
     }
     public var displayState: String {
+        if recoveryNeedsReview == true { return "More than one voice may match. Check your ElevenLabs voices, then Retry. No voice was deleted." }
         if kind == .create, wasDispatched, remoteVoiceID == nil, !finished {
             return "Checking your ElevenLabs account for an unfinished voice…"
         }
@@ -53,7 +58,7 @@ extension VoiceConsentRecord {
     package func assigningVoice(_ voiceID: String, requiresVerification: Bool) -> Self {
         Self(schema: schema, recordId: recordId, provider: provider, type: type, voiceId: voiceID, voiceName: voiceName,
              status: requiresVerification ? .verificationRequired : .active, createdAt: createdAt, deletedAt: nil,
-             statement: statement, attestations: attestations, samples: samples, speaker: speaker, app: app)
+             statement: statement, attestations: attestations, samples: samples, speaker: speaker, app: app, region: region, creator: creator)
     }
 }
 
@@ -115,6 +120,8 @@ extension VoiceConsentStore {
         try save(record)
         var value = VoiceOperation(id: requestID, kind: .create, recordID: record.id, region: region, at: date)
         value.audit = try VoiceConsentAudit(record: record)
+        value.expectedVoiceName = record.voiceName + " (VoxClip)"
+        value.creatorKeyFingerprint = record.creator?.keyFingerprint
         try writeOperation(value, checkpoint: .creationIntent)
         claimedOperations.insert(value.id)
         return value
@@ -161,6 +168,11 @@ extension VoiceConsentStore {
         }
         try writeOperation(value, checkpoint: .retryScheduled)
     }
+    package func requireRecoveryReview(_ id: UUID) throws {
+        var value = try operation(id)
+        value.recoveryNeedsReview = true
+        try writeOperation(value, checkpoint: .retryScheduled)
+    }
     package func removeOperation(_ value: VoiceOperation) throws {
         guard value.finished, value.state != .abandoned else { throw VoiceConsentError.invalidRecord }
         try checkpoint(value.kind == .create ? .clearCreation : .clearDeletion)
@@ -169,6 +181,14 @@ extension VoiceConsentStore {
             try FileManager.default.removeItem(at: url); try synchronizeDirectory(operationsRoot)
         }
     }
+    package func discardUnsentCreation(_ id: UUID) throws {
+        let value = try operation(id)
+        guard value.kind == .create, value.state == .intent, !value.wasDispatched, value.remoteVoiceID == nil else { throw VoiceConsentError.invalidRecord }
+        try discardUnresolvedDraft(value)
+        try checkpoint(.clearCreation)
+        try FileManager.default.removeItem(at: operationFile(id))
+        try synchronizeDirectory(operationsRoot)
+    }
     package func beginDeletion(_ id: String, region: ElevenLabsRegion, at date: Date) throws -> VoiceOperation {
         try migrateLegacyOperations()
         if let existing = try operations().first(where: { $0.recordID == id && !$0.finished }) {
@@ -176,16 +196,27 @@ extension VoiceConsentStore {
             return existing
         }
         let record = try load(id)
+        guard record.recordedRegion == region else { throw VoiceConsentError.creatorMismatch }
         var value = VoiceOperation(id: UUID(), kind: .delete, recordID: id, region: region, at: date, remoteVoiceID: record.voiceId)
         value.audit = try VoiceConsentAudit(record: record)
+        value.creatorKeyFingerprint = record.creator?.keyFingerprint
         try writeOperation(value, checkpoint: .deletionIntent)
         return value
     }
     public func withdrawCreation(recordID: String, remoteVoiceID: String? = nil, region: ElevenLabsRegion = .default, at date: Date = Date()) throws {
-        if let value = try operations().first(where: { $0.recordID == recordID && $0.kind == .create && ![.withdrawn, .abandoned].contains($0.state) }) {
+        let pending = try operations().first { $0.recordID == recordID && $0.kind == .create && !$0.finished }
+        if pending == nil {
+            let recordFile = try file("record.json", in: directory(recordID))
+            if FileManager.default.fileExists(atPath: recordFile.path) {
+                let record = try JSONDecoder().decode(VoiceConsentRecord.self, from: Data(contentsOf: recordFile))
+                guard record.voiceId == "pending" || record.status == .deleted else { throw VoiceConsentError.inactive }
+            }
+        }
+        if let value = pending {
             _ = try transition(value.id, to: .withdrawing, at: date, remoteVoiceID: remoteVoiceID)
         } else if let voiceID = remoteVoiceID {
             var value = VoiceOperation(id: UUID(), kind: .create, recordID: recordID, region: region, at: date, remoteVoiceID: voiceID)
+            value.creatorKeyFingerprint = (try? load(recordID))?.creator?.keyFingerprint
             value.state = .withdrawing; value.wasDispatched = true
             try writeOperation(value, checkpoint: .withdrawing)
         }
@@ -234,6 +265,7 @@ extension VoiceConsentStore {
     }
     package func tombstone(_ value: VoiceOperation) throws {
         if var audit = value.audit, let voiceID = value.remoteVoiceID {
+            audit.remoteStateUnknown = value.remoteStateUnknown
             audit.remoteVoiceID = voiceID; audit.deletedAt = VoiceConsentRecord.timestamp(value.updatedAt)
             try audit.validate(recordID: value.recordID)
             try checkpoint(.tombstoneRecord)
@@ -249,6 +281,21 @@ extension VoiceConsentStore {
         record.status = .deleted; record.deletedAt = VoiceConsentRecord.timestamp(value.updatedAt)
         try checkpoint(.tombstoneRecord)
         try save(record)
+    }
+    public func removeFromVoxClipOnly(_ id: String, at date: Date = Date()) throws {
+        let record = try load(id)
+        var value = try beginDeletion(id, region: record.recordedRegion, at: date)
+        value.remoteStateUnknown = true
+        try writeOperation(value, checkpoint: .deletionIntent)
+        try finishLocalRemoval(value)
+    }
+    package func finishLocalRemoval(_ value: VoiceOperation) throws {
+        guard value.kind == .delete, value.remoteStateUnknown == true else { throw VoiceConsentError.invalidRecord }
+        try discardStatement(recordID: value.recordID)
+        try tombstone(value)
+        var finished = value; finished.state = .tombstoned
+        try writeOperation(finished, checkpoint: .saveTombstone)
+        try removeOperation(finished)
     }
     package func hasOperation(_ id: String) throws -> Bool { try operations().contains { $0.recordID == id && !$0.finished } }
     package func hasDeletion(_ id: String) throws -> Bool { try operations().contains { $0.recordID == id && !$0.finished && ($0.kind == .delete || $0.state == .withdrawing) } }

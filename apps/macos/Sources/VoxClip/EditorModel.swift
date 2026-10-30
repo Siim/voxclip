@@ -61,7 +61,7 @@ struct EditorRenderSnapshot {
     private var pendingRewriteSelection: Set<String> = []
     func beginRewrite(inserting: Bool = false, entry: RewriteEntry = .selection) {
         let action = RewriteEntryPolicy.resolve(inserting ? .insertWords : entry, enabled: app.bool("voiceLab.enabled"),
-            editable: capabilities.ai, selection: !selectedIDs.isEmpty)
+            noticeAccepted: app.bool("voiceLab.betaNoticeAccepted"), editable: capabilities.ai, selection: !selectedIDs.isEmpty)
         if action == .turnOnVoiceLab { pendingRewriteSelection = selectedWordIDs; showVoiceLabOptIn = true; return }
         guard action == .openPassage, let first = selectedIDs.first, let last = selectedIDs.last,
               let lower = index(first), let upper = index(last) else { return }
@@ -74,7 +74,7 @@ struct EditorRenderSnapshot {
         rewriteOpenTask = Task { [weak self] in
             guard let self else { return }
             if waveform == nil { await loadWaveform() }
-            guard !Task.isCancelled, capabilities.ai, app.bool("voiceLab.enabled"), project == snapshot,
+            guard !Task.isCancelled, capabilities.ai, app.voiceLabRewriteEnabled, project == snapshot,
                   selectedWordIDs == selection, selectedPauseIDs == pauses, sourceTime == caret,
                   rewriteConnectorSignature == signature else { return }
             let provider = app.providers.first { $0.id == app.string("llm.connector") }
@@ -116,6 +116,7 @@ struct EditorRenderSnapshot {
         }
     }
     func enableVoiceLab() {
+        app.set("voiceLab.betaNoticeAccepted", .bool(true))
         app.set("voiceLab.enabled", .bool(true))
         showVoiceLabOptIn = false
         guard selectedWordIDs == pendingRewriteSelection else { return }
@@ -268,6 +269,7 @@ struct EditorRenderSnapshot {
     @ObservationIgnored private var renderedActiveClipID: String?
 
     init(document: VoxClipDocument, app: AppModel, preview: (any PreviewEngine)? = nil, exporter: any Exporter = ExportQueue()) {
+        document.beginVoiceLabActivity(paidRoot: app.locations.root.appendingPathComponent("VoiceLab"))
         self.document = document
         self.app = app
         self.exporter = exporter
@@ -529,7 +531,7 @@ struct EditorRenderSnapshot {
         let total = Int64(max(0, duration) * 48_000)
         return EditPlan(sampleRate: 48_000, totalSamples: total, cuts: [], kept: total > 0 ? [MediaInterval(startSample: 0, endSample: total)] : [])
     }
-    func replace(_ newProject: Project, name: String) {
+    func replace(_ newProject: Project, name: String, restoringSnapshot: Bool = false) {
         // A Versions-browser version is read-only.
         guard capabilities.writable, capabilities.media || name == "Locate media" || onlyCaptionPositionChanged(newProject) else { return }
         // The title follows the document's name, not the edit history (design §2), so
@@ -541,17 +543,19 @@ struct EditorRenderSnapshot {
         preview.pause(); isPlaying = false
         let previous = project
         let mediaChanged = previous.media.source != newProject.media.source
-        undoManager?.registerUndo(withTarget: self) { model in model.replace(previous, name: name) }
+        undoManager?.registerUndo(withTarget: self) { model in model.replace(previous, name: name, restoringSnapshot: true) }
         undoManager?.setActionName(name)
         #if DEBUG
         undoSteps += 1
         #endif
         var changed = newProject
+        if !restoringSnapshot {
         #if DEBUG
         changed.modifiedAt = editTimestampForTests ?? Date()
         #else
         changed.modifiedAt = Date()
         #endif
+        }
         document.replaceProject(changed)
         recordDocumentChange()
         error = nil

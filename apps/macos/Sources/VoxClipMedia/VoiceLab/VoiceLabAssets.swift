@@ -2,6 +2,7 @@ import AVFoundation
 import CryptoKit
 import Darwin
 import Foundation
+import Synchronization
 import VoxClipCore
 
 /// Errors from the paid-asset boundary. No case permits a source-audio fallback.
@@ -39,15 +40,24 @@ public final class PreparedVoiceLabAsset: @unchecked Sendable {
     public let trimEndFrame: Int64
     public let stretch: Double
     public let gainDb: Double
-    private let scratch: URL
+    private let scratch: VoiceLabAssetRecovery.Operation
+    private let valid = Mutex(true)
+    public var isValid: Bool { valid.withLock { $0 } }
+    public func invalidate() {
+        valid.withLock { valid in
+            guard valid else { return }
+            valid = false
+            scratch.discard()
+        }
+    }
 
     fileprivate init(segmentId: String, assetId: String, sha256: String, url: URL, sampleRate: Int, channels: Int, frameCount: Int64,
-                     trimStartFrame: Int64, trimEndFrame: Int64, stretch: Double, gainDb: Double, scratch: URL) {
+                     trimStartFrame: Int64, trimEndFrame: Int64, stretch: Double, gainDb: Double, scratch: VoiceLabAssetRecovery.Operation) {
         self.segmentId = segmentId; self.assetId = assetId; self.sha256 = sha256; self.url = url; self.sampleRate = sampleRate; self.channels = channels
         self.frameCount = frameCount; self.trimStartFrame = trimStartFrame; self.trimEndFrame = trimEndFrame
         self.stretch = stretch; self.gainDb = gainDb; self.scratch = scratch
     }
-    deinit { try? FileManager.default.removeItem(at: scratch) }
+    deinit { invalidate() }
 }
 
 public enum VoiceLabAssets {
@@ -127,9 +137,10 @@ public enum VoiceLabAssets {
         guard fstat(sourceFD, &info) == 0, (info.st_mode & mode_t(S_IFMT)) == mode_t(S_IFREG) else { throw VoiceLabAssetError.unsafePath(asset.file) }
         guard info.st_size > 0, info.st_size <= maxBytes else { throw VoiceLabAssetError.tooLarge(asset.file) }
 
-        let scratch = scratchRoot.appendingPathComponent("voxclip-voice-\(UUID().uuidString)", isDirectory: true)
-        do { try FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700]) }
+        let operation: VoiceLabAssetRecovery.Operation
+        do { operation = try VoiceLabAssetRecovery.Operation.create(in: scratchRoot) }
         catch { throw VoiceLabAssetError.unreadable(asset.file) }
+        let scratch = scratchRoot.appendingPathComponent(operation.name, isDirectory: true)
         do {
             let snapshot = scratch.appendingPathComponent(name)
             guard FileManager.default.createFile(atPath: snapshot.path, contents: nil, attributes: [.posixPermissions: 0o600]) else { throw VoiceLabAssetError.unreadable(asset.file) }
@@ -186,9 +197,9 @@ public enum VoiceLabAssets {
             guard start >= 0, end > start, end <= decoded else { throw VoiceLabAssetError.invalidTrim(asset.file) }
             return PreparedVoiceLabAsset(segmentId: segmentId, assetId: asset.id, sha256: asset.sha256, url: snapshot, sampleRate: Int(rate), channels: channels,
                                          frameCount: decoded, trimStartFrame: start, trimEndFrame: end,
-                                         stretch: audio.stretch, gainDb: audio.gainDb, scratch: scratch)
+                                         stretch: audio.stretch, gainDb: audio.gainDb, scratch: operation)
         } catch {
-            try? FileManager.default.removeItem(at: scratch)
+            operation.discard()
             if error is CancellationError || error is VoiceLabAssetError { throw error }
             throw VoiceLabAssetError.unreadable(asset.file)
         }

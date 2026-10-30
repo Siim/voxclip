@@ -44,7 +44,21 @@ public actor VoiceLabTakeRun {
     }
     public func scratch(for takeId: UUID) -> VoiceLabTakeScratch? { scratches[takeId] }
     public func paidAsset(for takeId: UUID) -> VoiceLabAsset? { paidAssets[takeId] }
-    public func reject(_ takeId: UUID) { scratches.removeValue(forKey: takeId)?.invalidate() }
+    public func publishForAcceptance(_ row: VoiceLabTakeRow, input: VoiceLabTakeInput, at date: Date) async throws -> (VoiceLabPublishedTake, VoiceConsentRecord) {
+        let version = revision
+        guard row.selectable, let scratch = scratches[row.id], scratch.isValid,
+              await inputsAreCurrent(), version == revision else { throw VoiceLabError.consentRequired }
+        let record = try await store.load(input.recordID)
+        try await store.validateUse(record)
+        guard version == revision, scratch.isValid, await inputsAreCurrent(), version == revision,
+              let receipt = row.receipt, receipt.voiceID == record.voiceId else { throw VoiceLabError.consentRequired }
+        let publication = try scratch.fitted.publish(projectId: storage.projectId,
+            assetId: UUID().uuidString.lowercased(), paidRoot: storage.paidRoot, createdAt: date,
+            requestId: receipt.requestID.uuidString, seed: row.seed, gainDb: scratch.audio.gainDb)
+        return (VoiceLabPublishedTake(assets: publication.assets, audio: publication.audio, outDuration: publication.outDuration,
+            words: publication.words, chunks: publication.chunks), record)
+    }
+    public func reject(_ takeId: UUID) async { await scratches.removeValue(forKey: takeId)?.invalidate() }
     public func discover(language: String) async throws -> (models: [VoiceLabModel], voices: [VoiceConsentRecord]) {
         guard await inputsAreCurrent() else { throw VoiceLabError.consentRequired }
         let models = try await client.models().filter { $0.supportsTimestampedTTS && $0.languages.contains(language) }
@@ -135,8 +149,9 @@ public actor VoiceLabTakeRun {
     public func cancel() async {
         stop = .cancelled; revision += 1; task?.cancel()
         dispatchRevision.withLock { $0 = revision }
-        for scratch in scratches.values { scratch.invalidate() }
+        let retired = Array(scratches.values)
         scratches.removeAll()
+        for scratch in retired { await scratch.invalidate() }
         if let pending {
             self.pending = nil
             await client.discardRun(pending.quote.id, quotes: pending.quote.takes.flatMap { [$0.synthesis, $0.qa] })
@@ -277,7 +292,7 @@ public actor VoiceLabTakeRun {
         if error is VoiceConsentError || error is CancellationError || error is Abort || Task.isCancelled { return true }
         guard let error = error as? VoiceLabError else { return false }
         switch error {
-        case .unauthorized, .permissionMissing, .missingKey, .quotaExceeded, .consentRequired, .speakerMismatch, .cancelled: return true
+        case .unauthorized, .permissionMissing, .missingKey, .quotaExceeded, .consentRequired, .speakerMismatch, .cancelled, .invalidAlignment: return true
         default: return false
         }
     }

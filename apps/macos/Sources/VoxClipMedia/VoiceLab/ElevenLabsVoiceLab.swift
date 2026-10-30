@@ -12,6 +12,21 @@ public actor ElevenLabsVoiceLab {
     private var discoveredVoices: [String: VoiceLabVoice] = [:]
     private var subscription: VoiceLabSubscription?
     private var prepared: [UUID: VoiceLabQuote] = [:]
+    private var creatorBindings: [UUID: String] = [:]
+    public func creatorKeyFingerprint() async throws -> String {
+        guard let key = try await keys.key(for: "elevenlabs"), !key.isEmpty else { throw VoiceLabError.missingKey }
+        return String(VoiceLabFingerprint.bytes(Data(key.utf8)).prefix(16))
+    }
+    public func validateCreationQuote(_ quote: VoiceLabQuote) async throws -> String {
+        guard quote.operation == .createClone, prepared[quote.id] == quote, fresh(quote) else { throw VoiceLabError.consentRequired }
+        let fingerprint = try await creatorKeyFingerprint()
+        let plan = try await plan()
+        guard plan.canClone else { throw VoiceLabError.planUnavailable }
+        guard plan.voiceSlotsUsed < plan.voiceLimit else { throw VoiceLabError.noVoiceSlots }
+        guard prepared[quote.id] == quote, fresh(quote) else { throw VoiceLabError.consentRequired }
+        creatorBindings[quote.id] = fingerprint
+        return fingerprint
+    }
     private var preparedOrder: [UUID] = []
     private var approvedRuns: [UUID: Set<UUID>] = [:]
     private var now: @Sendable () -> Date = { Date() }
@@ -110,19 +125,25 @@ public actor ElevenLabsVoiceLab {
         for _ in 0..<20 {
             try Task.checkCancellation()
             var components = URLComponents(url: region.baseURL.appendingPathComponent("v2/voices"), resolvingAgainstBaseURL: false)!
-            if let cursor { components.queryItems = [URLQueryItem(name: "next_page_token", value: cursor)] }
+            components.queryItems = [URLQueryItem(name: "page_size", value: "100")]
+            if let cursor { components.queryItems?.append(URLQueryItem(name: "next_page_token", value: cursor)) }
             let data = try await send(components.url!, method: "GET", limit: 4 * 1_024 * 1_024)
             guard let row = try? JSONSerialization.jsonObject(with: data.bytes) as? [String: Any],
                   let voices = row["voices"] as? [[String: Any]], let more = row["has_more"] as? Bool else { throw VoiceLabError.malformedResponse }
             for item in voices {
-                guard let id = item["voice_id"] as? String, Self.safeID(id), let name = item["name"] as? String,
-                      let category = item["category"] as? String else { throw VoiceLabError.malformedResponse }
+                guard let id = item["voice_id"] as? String, Self.safeID(id) else { throw VoiceLabError.malformedResponse }
+                guard let name = item["name"] as? String, let category = item["category"] as? String else { continue }
                 let verification = item["voice_verification"] as? [String: Any] ?? [:]
                 guard seenVoiceIDs.insert(id).inserted else { throw VoiceLabError.malformedResponse }
                 result.append(VoiceLabVoice(id: id, name: name, category: category, isOwner: item["is_owner"] as? Bool == true,
                                             requiresVerification: verification["requires_verification"] as? Bool == true,
                                             isVerified: verification["is_verified"] as? Bool == true,
-                                            consentRecordID: (item["labels"] as? [String: String])?["voxclip_record_id"]))
+                                            consentRecordID: (item["labels"] as? [String: String])?["voxclip_record_id"],
+                                            createdAt: (item["created_at_unix"] as? NSNumber).flatMap { number in
+                                                let seconds = number.doubleValue
+                                                return CFGetTypeID(number) != CFBooleanGetTypeID() && seconds.isFinite && seconds >= 0 && seconds <= 253_402_300_799
+                                                    ? Date(timeIntervalSince1970: seconds) : nil
+                                            }))
             }
             if !more { discoveredVoices = Dictionary(result.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first }); return result }
             guard let next = row["next_page_token"] as? String, !next.isEmpty, next.count <= 256, seen.insert(next).inserted else { throw VoiceLabError.malformedResponse }
@@ -191,20 +212,28 @@ public actor ElevenLabsVoiceLab {
                          fields: deleteFields(voiceID, policy), units: 1)
     }
 
-    func prepareOperationDeletion(_ operation: VoiceOperation, requestID: UUID) throws -> VoiceLabQuote {
+    func prepareOperationDeletion(_ operation: VoiceOperation, requestID: UUID) async throws -> VoiceLabQuote {
         guard let voiceID = operation.remoteVoiceID, operation.region == region else { throw VoiceConsentError.invalidRecord }
+        let fingerprint = try await creatorKeyFingerprint()
+        guard operation.creatorKeyFingerprint == nil || operation.creatorKeyFingerprint == fingerprint else { throw VoiceConsentError.creatorMismatch }
         discoveredVoices[voiceID] = VoiceLabVoice(id: voiceID, name: "", category: "cloned", isOwner: true, requiresVerification: false, isVerified: false)
         let policy = OwnVoicePolicy(recordID: operation.recordID, cloneVoiceID: voiceID, recordActive: true, providerConsentGranted: true, statementVerified: true, speakerMatched: true)
-        return try prepareDelete(voiceID: voiceID, policy: policy, requestID: requestID)
+        let quote = try prepareDelete(voiceID: voiceID, policy: policy, requestID: requestID)
+        creatorBindings[quote.id] = fingerprint
+        return quote
     }
 
-    public func prepareConsentDeletion(_ record: VoiceConsentRecord, requestID: UUID) throws -> VoiceLabQuote {
+    public func prepareConsentDeletion(_ record: VoiceConsentRecord, requestID: UUID) async throws -> VoiceLabQuote {
         try record.validate()
+        let fingerprint = try await creatorKeyFingerprint()
+        guard record.recordedRegion == region, record.creator == nil || record.creator?.keyFingerprint == fingerprint else { throw VoiceConsentError.creatorMismatch }
         guard record.status != .deleted else { throw VoiceConsentError.inactive }
         discoveredVoices[record.voiceId] = VoiceLabVoice(id: record.voiceId, name: record.voiceName, category: "cloned", isOwner: true,
                                                       requiresVerification: record.status == .verificationRequired, isVerified: record.status == .active)
         let policy = OwnVoicePolicy(recordID: record.id, cloneVoiceID: record.voiceId, recordActive: true, providerConsentGranted: true, statementVerified: true, speakerMatched: true)
-        return try prepareDelete(voiceID: record.voiceId, policy: policy, requestID: requestID)
+        let quote = try prepareDelete(voiceID: record.voiceId, policy: policy, requestID: requestID)
+        creatorBindings[quote.id] = fingerprint
+        return quote
     }
 
     public func prepareSynthesis(text: String, modelID: String, voice: VoiceLabVoiceChoice, language: String,
@@ -259,9 +288,9 @@ public actor ElevenLabsVoiceLab {
         for (index, sample) in request.samples.enumerated() {
             fields += [String(index), sample.role.rawValue, VoiceLabFingerprint.bytes(sample.wav)]
         }
-        var parts: [Part] = [.text("name", "\(name) (VoxClip)"), .file("files[]", "consent-statement.wav", consent[0].wav)]
+        var parts: [Part] = [.text("name", "\(name) (VoxClip)"), .file("files", "consent-statement.wav", consent[0].wav)]
         for (index, sample) in request.samples.filter({ $0.role == .training }).enumerated() {
-            parts.append(.file("files[]", "sample-\(index < 8 ? "0" : "")\(index + 2).wav", sample.wav))
+            parts.append(.file("files", "sample-\(index < 8 ? "0" : "")\(index + 2).wav", sample.wav))
         }
         var labels = "{\"language\":\"\(request.language)\"}"
         var description = "VoxClip own-voice clone. Consent sha256:\(consentHash). Created \(created)."
@@ -284,7 +313,8 @@ public actor ElevenLabsVoiceLab {
     private func speechFields(_ text: String, _ model: String, _ voice: VoiceLabVoiceChoice, _ language: String, _ options: VoiceLabSpeechOptions) -> [String] {
         // Trimmed context is never empty, so "" stands for an omitted field.
         [region.rawValue, "v1/text-to-speech/\(voice.id)/with-timestamps", "pcm_24000", text, model, language, String(options.seed),
-         Self.speechContext(options.previousText, previous: true) ?? "", Self.speechContext(options.nextText, previous: false) ?? ""] + voiceFields(voice)
+         model == "eleven_v3" ? "" : Self.speechContext(options.previousText, previous: true) ?? "",
+         model == "eleven_v3" ? "" : Self.speechContext(options.nextText, previous: false) ?? ""] + voiceFields(voice)
     }
     /// Removes Unicode White_Space at both ends. Foundation's whitespace sets differ: they also hold U+200B.
     private static func trimWhiteSpace(_ text: String) -> String {
@@ -375,6 +405,27 @@ public actor ElevenLabsVoiceLab {
                          fields: [region.rawValue, "scribe_v2", language, String(VoiceLabTakeProcessing.maximumQASeconds)],
                          model: "scribe_v2", units: VoiceLabTakeProcessing.maximumQASeconds, languageMode: .explicit(language))
     }
+    public func prepareConsentVerification(wav: Data, language: String, requestID: UUID) throws -> VoiceLabQuote {
+        _ = try VoiceConsentAudio.pcm16k(wav)
+        guard ["en", "et"].contains(language) else { throw VoiceLabError.invalidInput }
+        let seconds = Double((wav.count - 44) / 2) / 16_000
+        return try quote(.speechToText, requestID: requestID, endpoint: "v1/speech-to-text",
+            fields: [region.rawValue, "scribe_v2", language, VoiceLabFingerprint.bytes(wav)],
+            model: "scribe_v2", units: seconds, languageMode: .explicit(language))
+    }
+    public func transcribeConsentStatement(wav: Data, language: String, authorization: VoiceLabAuthorization) async throws -> RawTranscript {
+        _ = try VoiceConsentAudio.pcm16k(wav)
+        let boundary = newBoundary()
+        let parts: [Part] = [.text("model_id", "scribe_v2"), .text("language_code", language),
+            .text("tag_audio_events", "false"), .text("diarize", "false"), .text("timestamps_granularity", "word"), .file("file", "statement.wav", wav)]
+        let body = try multipart(parts, boundary: boundary, limit: maxRequest)
+        try claim(authorization, operation: .speechToText, requestID: authorization.requestID, endpoint: "v1/speech-to-text",
+            fields: [region.rawValue, "scribe_v2", language, VoiceLabFingerprint.bytes(wav)])
+        let reply = try await send("v1/speech-to-text", method: "POST", body: body,
+            contentType: "multipart/form-data; boundary=\"\(boundary)\"", limit: maxResponse, billing: authorization)
+        let mapper = ElevenLabsTranscriber(keys: keys, region: region, logger: logger)
+        return try await mapper.mapResponse(reply.bytes, diarize: false)
+    }
     func transcribeQA(_ samples: [Float], rate: Int, language: String, authorization: VoiceLabAuthorization,
                       capability: VoiceOperationCapability) async throws -> (words: [VoiceLabWord], receipt: VoiceLabReceipt) {
         guard rate == 24_000, !samples.isEmpty, samples.count <= Int(VoiceLabTakeProcessing.maximumQASeconds) * rate else { throw VoiceLabError.invalidAudio }
@@ -453,8 +504,10 @@ public actor ElevenLabsVoiceLab {
         var payload: [String: Any] = ["text": text, "model_id": modelID, "voice_settings": ["stability": 0.5, "similarity_boost": 0.8],
                                       "seed": Int(options.seed), "apply_text_normalization": "auto"]
         if modelID != "eleven_multilingual_v2" { payload["language_code"] = language }
-        if let previous = Self.speechContext(options.previousText, previous: true) { payload["previous_text"] = previous }
-        if let next = Self.speechContext(options.nextText, previous: false) { payload["next_text"] = next }
+        if modelID != "eleven_v3" {
+            if let previous = Self.speechContext(options.previousText, previous: true) { payload["previous_text"] = previous }
+            if let next = Self.speechContext(options.nextText, previous: false) { payload["next_text"] = next }
+        }
         let body = try JSONSerialization.data(withJSONObject: payload)
         try claim(authorization, operation: .textToSpeech, requestID: requestID, endpoint: path,
                   fields: speechFields(text, modelID, voice, language, options))
@@ -548,6 +601,9 @@ public actor ElevenLabsVoiceLab {
         try Task.checkCancellation()
         guard url.scheme == "https", url.host == region.baseURL.host, body?.count ?? 0 <= maxRequest else { throw VoiceLabError.invalidInput }
         guard let key = try await keys.key(for: "elevenlabs"), !key.isEmpty else { throw VoiceLabError.missingKey }
+        if let billing, let expected = creatorBindings.removeValue(forKey: billing.quote.id) {
+            guard String(VoiceLabFingerprint.bytes(Data(key.utf8)).prefix(16)) == expected else { throw VoiceConsentError.creatorMismatch }
+        }
         await logger.register(secret: key)
         var request = URLRequest(url: url)
         request.httpMethod = method
@@ -621,6 +677,12 @@ public actor ElevenLabsVoiceLab {
     private static func mapError(_ status: Int, _ body: Data, path: String, method: String) -> VoiceLabError {
         let text = String(decoding: body.prefix(16_384), as: UTF8.self).lowercased()
         if text.contains("quota") || text.contains("credit") { return .quotaExceeded }
+        if status == 403 {
+            if text.contains("subscription_required") { return .subscriptionRequired }
+            if text.contains("feature_not_available") { return .featureUnavailable }
+            if text.contains("voice_access_denied") { return .voiceAccessDenied }
+            if text.contains("model_access_denied") { return .modelAccessDenied }
+        }
         if status == 403 || (status == 401 && text.contains("permission")) {
             let permission: String
             switch (path, method) {

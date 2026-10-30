@@ -6,16 +6,16 @@ import VoxClipCore
 /// Owns every decoded snapshot and staged CAF until the last graph reader is gone.
 public final class VoiceLabRenderLease: @unchecked Sendable {
     public let mixedAudioURL: URL
-    private let scratch: URL
+    private let scratch: VoiceLabAssetRecovery.Operation
     private let preparedAssets: [String: PreparedVoiceLabAsset]
 
-    init(mixedAudioURL: URL, scratch: URL, preparedAssets: [String: PreparedVoiceLabAsset]) {
+    init(mixedAudioURL: URL, scratch: VoiceLabAssetRecovery.Operation, preparedAssets: [String: PreparedVoiceLabAsset]) {
         self.mixedAudioURL = mixedAudioURL
         self.scratch = scratch
         self.preparedAssets = preparedAssets
     }
 
-    deinit { try? FileManager.default.removeItem(at: scratch) }
+    deinit { scratch.discard() }
 }
 
 /// Produces one exact-length source-grid stream for player, MP4 and edited WAV readers.
@@ -73,8 +73,8 @@ enum VoiceLabAudioRenderer {
         }
         guard mixed.allSatisfy(\.isFinite) else { throw VoiceLabError.invalidAudio }
         try reserveDisk(scratchRoot, frames: Int64(mixed.count), additionalBytes: Int64(fitted.wave.pcm.count + 88))
-        let directory = scratchRoot.appendingPathComponent("voxclip-take-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
+        let operation = try VoiceLabAssetRecovery.Operation.create(in: scratchRoot)
+        let directory = scratchRoot.appendingPathComponent(operation.name, isDirectory: true)
         do {
             try writePrivate(fitted.wave.bytes, to: directory.appendingPathComponent("fitted.wav"))
             var pcm = Data()
@@ -87,8 +87,8 @@ enum VoiceLabAudioRenderer {
             guard measured == mixed else { throw VoiceLabError.invalidAudio }
             let audio = VoiceLabTakeAudio(sampleRate: rate, trimmed: analysis.trimmed, mixed: measured,
                 patchRange: lead..<(lead + length), seams: seams, gainDb: analysis.gainDb, roomTone: analysis.roomTone, fit: analysis.fit)
-            return VoiceLabTakeScratch(directory: directory, fitted: fitted, audio: audio)
-        } catch { try? FileManager.default.removeItem(at: directory); throw error }
+            return VoiceLabTakeScratch(directory: directory, operation: operation, fitted: fitted, audio: audio)
+        } catch { operation.discard(); throw error }
     }
 
     private static func writePrivate(_ bytes: Data, to url: URL) throws {
@@ -113,8 +113,8 @@ enum VoiceLabAudioRenderer {
         let estimate = try scratchEstimate(input: input)
         try reserveDisk(scratchRoot, frames: estimate.frames, additionalBytes: estimate.snapshots)
         let prepared = try VoiceLabAssets.prepare(project: input.project, plan: plan, paidRoot: input.paidRoot, scratchRoot: scratchRoot)
-        let scratch = scratchRoot.appendingPathComponent("voxclip-mix-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: false)
+        let operation = try VoiceLabAssetRecovery.Operation.create(in: scratchRoot)
+        let scratch = scratchRoot.appendingPathComponent(operation.name, isDirectory: true)
         do {
             let sourceURL = scratch.appendingPathComponent("source.caf")
             let mixedURL = scratch.appendingPathComponent("mixed.caf")
@@ -136,7 +136,7 @@ enum VoiceLabAudioRenderer {
                     throw VoiceLabAssetError.invalidSelection(item.segmentId)
                 }
                 try stageFit(asset, recipe: item.recipe, outputFrames: item.piece.outputEndSample - item.piece.outputStartSample,
-                             rate: plan.sampleRate, to: url, scratch: scratch)
+                             rate: plan.sampleRate, to: url, scratch: scratchRoot)
                 let (handles, overflow) = item.recipe.seams.in.fadeSamples.addingReportingOverflow(item.recipe.seams.out.fadeSamples)
                 guard !overflow else { throw VoxClipError.diskFull(scratch.path) }
                 remainingFit -= item.piece.outputEndSample - item.piece.outputStartSample + handles
@@ -145,9 +145,9 @@ enum VoiceLabAudioRenderer {
             try mix(plan: plan, selected: input.prepared.selectedSegmentRecipes, prepared: prepared,
                     sourceURL: sourceURL, sourceFrames: sourceFrames, fitURLs: fitURLs, to: mixedURL)
             try Task.checkCancellation()
-            return VoiceLabRenderLease(mixedAudioURL: mixedURL, scratch: scratch, preparedAssets: prepared)
+            return VoiceLabRenderLease(mixedAudioURL: mixedURL, scratch: operation, preparedAssets: prepared)
         } catch {
-            try? FileManager.default.removeItem(at: scratch)
+            operation.discard()
             throw error
         }
     }
@@ -290,13 +290,14 @@ enum VoiceLabAudioRenderer {
               outputFrames > 0, outputFrames <= Int64.max - incoming - outgoing else {
             throw VoiceLabProjectError.invalidFadeHandles
         }
-        let conformedURL = scratch.appendingPathComponent("conformed-\(asset.segmentId).caf")
+        let operation = try VoiceLabAssetRecovery.Operation.create(in: scratch)
+        defer { operation.discard() }
+        let conformedURL = scratch.appendingPathComponent(operation.name).appendingPathComponent("conformed.caf")
         try conform(asset: asset, start: asset.trimStartFrame - rawPre,
                     frames: asset.trimEndFrame - asset.trimStartFrame + rawPre + rawPost,
                     rate: rate, to: conformedURL)
         let sourceFile = try AVAudioFile(forReading: conformedURL, commonFormat: .pcmFormatFloat32, interleaved: false)
         guard sourceFile.length > 0 else { throw VoxClipError.decodeFailed("Fitted asset has no samples") }
-        defer { try? FileManager.default.removeItem(at: conformedURL) }
         if unity {
             let expected = outputFrames + incoming + outgoing
             guard sourceFile.length == expected else {

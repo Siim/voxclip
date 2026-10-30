@@ -159,6 +159,7 @@ import VoxClipCore
                 } else {
                     HStack(spacing: 4) {
                         Text(SidebarStyle.fullTakeMeta(editor)).font(editor.transcribed ? DesignValues.mono(11) : .system(size: 11))
+                        if editor.containsAISpeech() { Text("AI modified").font(.system(size: 11)) }
                         if !exportStatus.secondLine && exportStatus != .none { Text(exportStatus.label).font(.system(size: 11)) }
                     }.foregroundStyle(SidebarStyle.meta(emphasized))
                     if exportStatus.secondLine {
@@ -177,7 +178,7 @@ import VoxClipCore
         .frame(height: exportStatus.secondLine ? 66 : 50)
         .modifier(SidebarRowForeground(emphasized: emphasized))
         .accessibilityElement(children: .combine)
-        .accessibilityLabel((!editor.transcribed && editor.progress == nil ? "Full take, not transcribed" : "Full take, \(SidebarStyle.spokenDuration(editor.editedDuration(nil))) after cuts") + (exportStatus == .none ? "" : ", \(exportStatus.label)"))
+        .accessibilityLabel((!editor.transcribed && editor.progress == nil ? "Full take, not transcribed" : "Full take, \(SidebarStyle.spokenDuration(editor.editedDuration(nil))) after cuts") + (exportStatus == .none ? "" : ", \(exportStatus.label)") + (editor.containsAISpeech() ? ", AI modified" : ""))
     }
     private var exportStatus: ClipExportStatus { editor.exportRowStatus(target: .fullEdit) }
 }
@@ -219,6 +220,7 @@ import VoxClipCore
                 }
                 HStack(spacing: 4) {
                     Text(durationLabel(duration)).font(DesignValues.mono(11)).foregroundStyle(SidebarStyle.meta(emphasized))
+                    if editor.containsAISpeech(clipID: clip.id) { Text("AI modified").font(.system(size: 11)).foregroundStyle(SidebarStyle.meta(emphasized)) }
                     if !exportStatus.secondLine, exportStatus != .none {
                         Text(exportStatus.label).font(.system(size: 11)).foregroundStyle(SidebarStyle.meta(emphasized)).lineLimit(1)
                     }
@@ -267,8 +269,8 @@ import VoxClipCore
             }
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(suggested ? "Suggested clip \(number), \(title), \(SidebarStyle.spokenDuration(duration))" : "Clip \(number), \(title), \(SidebarStyle.spokenDuration(duration))")
-        .accessibilityHint(suggested ? reason : exportStatus.label)
+        .accessibilityLabel((suggested ? "Suggested clip \(number), \(title), \(SidebarStyle.spokenDuration(duration))" : "Clip \(number), \(title), \(SidebarStyle.spokenDuration(duration))") + (editor.containsAISpeech(clipID: clip.id) ? ", AI modified" : ""))
+        .accessibilityHint((suggested ? reason : exportStatus.label) + (editor.containsAISpeech(clipID: clip.id) ? ", AI modified" : ""))
         .accessibilityActions {
             if suggested {
                 Button("Keep") { editor.keep(clip.id) }.disabled(!editor.capabilities.edit)

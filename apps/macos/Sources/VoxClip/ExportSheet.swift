@@ -59,7 +59,7 @@ import VoxClipCore
                 if let disclosure = model.exportDisclosure(targets) { Label(disclosure, systemImage: "waveform").font(.caption) }
                 if let note = model.captionError { InlineNotice(text: note) }
                 if let error = model.exportError { InlineNotice(text: error) }
-                HStack { Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction); Spacer(); Button(model.exportError == nil ? "Export" : "Try again") { model.beginExport(targets: targets, folder: folder) }.keyboardShortcut(.defaultAction).disabled(!model.canExport || targets.isEmpty) }
+                HStack { Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction); Spacer(); Button(model.exportError == nil ? "Export" : "Try again") { model.beginExport(targets: targets, folder: folder) }.accessibilityLabel(model.exportAccessibleName(model.exportError == nil ? "Export" : "Try again", targets: targets)).keyboardShortcut(.defaultAction).disabled(!model.canExport || targets.isEmpty) }
             }
         }.padding(24).frame(width: 620)
         .background(DesignValues.color("bg.window"))

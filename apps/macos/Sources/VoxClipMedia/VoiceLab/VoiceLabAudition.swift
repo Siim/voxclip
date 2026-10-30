@@ -38,6 +38,7 @@ import VoxClipCore
     private var token = UUID()
     private var scratch: VoiceLabTakeScratch?
     private var backend: (any VoiceLabAuditionBackend)?
+    private var subscription: UUID?
     private let makeBackend: @MainActor (URL, @escaping @MainActor @Sendable () -> Void) throws -> any VoiceLabAuditionBackend
     public init() { makeBackend = { try VoiceLabAudioPlayback(url: $0, finished: $1) } }
     #if DEBUG
@@ -55,8 +56,13 @@ import VoxClipCore
             self.refreshPosition(); self.isPlaying = false; self.completed = true
         }
         backend = playback
-        guard playback.play() else { backend = nil; throw VoiceLabError.invalidAudio }
+        subscription = try scratch.attach { [weak self] in await self?.leaseInvalidated(token: current) }
+        guard playback.play() else { stop(); throw VoiceLabError.invalidAudio }
         isPlaying = true
+    }
+    private func leaseInvalidated(token: UUID) {
+        guard self.token == token else { return }
+        stop(); scratch = nil; takeId = nil
     }
     public func refreshPosition() {
         if scratch?.isValid == false { stop(); return }
@@ -64,6 +70,8 @@ import VoxClipCore
     }
     public func stop() {
         token = UUID()
+        if let subscription { scratch?.detach(subscription) }
+        subscription = nil
         backend?.stop(); backend = nil
         isPlaying = false; completed = false; position = 0
     }
@@ -75,11 +83,11 @@ import VoxClipCore
         guard selectionId != id else { return }
         stop(); scratch = nil; takeId = nil; selectionId = id
     }
-    public func reject(_ id: UUID) {
+    public func reject(_ id: UUID) async {
         guard takeId == id else { return }
-        stop(); scratch?.invalidate(); scratch = nil; takeId = nil
+        stop(); await scratch?.invalidate(); scratch = nil; takeId = nil
     }
-    public func endSession() {
-        stop(); scratch?.invalidate(); scratch = nil; takeId = nil; selectionId = nil
+    public func endSession() async {
+        stop(); await scratch?.invalidate(); scratch = nil; takeId = nil; selectionId = nil
     }
 }
