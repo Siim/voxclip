@@ -68,6 +68,9 @@ public sealed class NativeHarnessContractTests
         Assert.Contains("ClippingAncestor = clippingAncestor", probe);
         Assert.Contains("required.Contains(parked.Id)", probe);
         Assert.Contains("ScrollProofs = scrollProofs", probe);
+        Assert.Contains("LabelScrollProofs = labelScrollProofs", probe);
+        Assert.Contains("after.Name == before.Name && after.Role == before.Role", probe);
+        Assert.Contains("label scroll ownership not proven:", probe);
         Assert.Contains("scroll.Viewport.Contains(after.Bounds)", probe);
         Assert.Contains("required: true", probe);
         Assert.Contains("DebugSettleColumnAsync()", probe);

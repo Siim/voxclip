@@ -66,6 +66,7 @@ public sealed partial class EditorPage
         var unmeasurable = new List<object>();
         var failures = new List<string>();
         var scrollProofs = new List<object>();
+        var labelScrollProofs = new List<object>();
         var deferredRealizations = new HashSet<string>();
         void EnumerationFailed(FrameworkElement owner, string sample, Exception exception)
         {
@@ -312,6 +313,39 @@ public sealed partial class EditorPage
                 failures.AddRange(rejected);
                 if (measured.Length == 0) unmeasurable.Add(new { Id = id, Name = id, Role = "required peer", Error = "missing or unrealized" });
             }
+            // Static labels and named inline/header peers are independently reachable,
+            // not merely inferred reachable from their neighbouring required control.
+            if (state == ColumnFitState.FineTune)
+            {
+                foreach (var (peer, owner) in CollectPeers("labels"))
+                {
+                    var before = ReadPeer(peer, owner, "label-before");
+                    if (before.Scroll?.Id != "FineTune.ScrollViewer" || before.Name.Length == 0 ||
+                        required.Contains(before.Id) || owner is ScrollBar ||
+                        !(before.Role.StartsWith("Text/", StringComparison.Ordinal) ||
+                          before.Role.Contains("NamedContainerAutomationPeer", StringComparison.Ordinal) ||
+                          before.Role.StartsWith("ListItem/", StringComparison.Ordinal) ||
+                          before.Role.StartsWith("Hyperlink/", StringComparison.Ordinal))) continue;
+                    var proven = false;
+                    var after = before;
+                    try
+                    {
+                        if (peer.GetPattern(PatternInterface.ScrollItem) is IScrollItemProvider item) item.ScrollIntoView();
+                        else owner.StartBringIntoView(new BringIntoViewOptions { AnimationDesired = false, VerticalAlignmentRatio = 0.5 });
+                        await DebugSettleColumnAsync();
+                        after = ReadPeer(peer, owner, "label-after");
+                        proven = after.Name == before.Name && after.Role == before.Role &&
+                            after.Scroll is { } scroll && scroll.Viewport.Contains(after.Bounds) &&
+                            ColumnBoundsGate.Assess(after, Rectangle(column), Rectangle(client), required: true).Accepted;
+                    }
+                    catch (Exception error) when (error is not OutOfMemoryException)
+                    {
+                        failures.Add("label scrolling failed: " + before.Name + ": " + error.GetType().Name);
+                    }
+                    labelScrollProofs.Add(new { Before = before, After = after, Proven = proven, Ancestors = AncestorEvidence(owner) });
+                    if (!proven) failures.Add("label scroll ownership not proven: " + before.Name + " / " + before.Role);
+                }
+            }
         }
         finally
         {
@@ -323,7 +357,7 @@ public sealed partial class EditorPage
         {
             Column = column, Client = client, FrameStacked = FrameRow.Stacked, TransportStacked = TransportRow.Stacked, Transport = transport,
             State = state.ToString(), RequiredPeers = coverage, UnmeasurablePeers = unmeasurable, Elements = observations,
-            DeferredRealizations = deferredRealizations, ScrollProofs = scrollProofs, Failures = failures
+            DeferredRealizations = deferredRealizations, ScrollProofs = scrollProofs, LabelScrollProofs = labelScrollProofs, Failures = failures
         }, new JsonSerializerOptions { WriteIndented = true }));
         var bitmap = new RenderTargetBitmap();
         await bitmap.RenderAsync(RightPane);
