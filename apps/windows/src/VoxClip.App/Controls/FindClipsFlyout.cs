@@ -167,6 +167,7 @@ internal sealed class FindClipsFlyout
 
     private async Task FindWithAsync(ProviderEntry chosen)
     {
+        Func<CancellationToken, Task<bool>> authorize;
         try
         {
             // The connector's preflight (AI spec §4): a connector that isn't ready explains itself under the actions.
@@ -179,8 +180,9 @@ internal sealed class FindClipsFlyout
                 Show(ClipCallouts.NotReady(chosen.Id, chosen.Label, status, CliHint(chosen, "installHint"), CliHint(chosen, "signInHint")));
                 return;
             }
-            if (!await ProviderCatalog.ConsentAsync(chosen, anchor?.XamlRoot ?? flyout.XamlRoot, ConnectorConsentAction.FindClips,
-                model.Words.Count(word => word.Kind == VoxClip.Core.Domain.Shared.WordKind.Word), selectedConnector, status, ct)) return;
+            var root = anchor?.XamlRoot ?? flyout.XamlRoot;
+            authorize = token => ProviderCatalog.ConsentAsync(chosen, root, ConnectorConsentAction.FindClips,
+                model.Words.Count(word => word.Kind == VoxClip.Core.Domain.Shared.WordKind.Word), selectedConnector, status, token);
         }
         catch (OperationCanceledException) { return; }
         catch (Exception exception) when (exception is not OutOfMemoryException)
@@ -202,8 +204,8 @@ internal sealed class FindClipsFlyout
         {
             var request = new ClipFinderRequest(state.Transcript.Words, state.Corrections, state.CutWordIds, (ClipPreset)Math.Max(0, preset.SelectedIndex),
                 instructions.Text, state.Transcript.Language, chosen.Id, App.Services.Get("llm.model." + chosen.WireId, chosen.DefaultModel));
-            var result = await App.Services.ClipFinder.FindClipsAsync(request, null, search.Token);
-            if (model.IsLeaving) return;
+            var result = await ConnectorPreflight.FindAsync(App.Services.ClipFinder, request, authorize, search.Token);
+            if (result is null || model.IsLeaving) return;
             var added = model.AddAiResult(result);
             // None found reads the prompt file's message (design §13), under Suggested.
             if (result.Clips.Count == 0) NoneFound = await ProviderCatalog.ClipMessageAsync("noResults", ct) ?? ClipAnnouncements.NoResults;

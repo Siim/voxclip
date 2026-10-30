@@ -19,4 +19,19 @@ internal static class ConnectorPreflight
         ct.ThrowIfCancellationRequested();
         return true;
     }
+    internal static async Task<VoxClip.Core.Domain.Clips.AiResult?> FindAsync(IClipFinder finder, ClipFinderRequest request,
+        Func<CancellationToken, Task<bool>> consent, CancellationToken ct)
+    {
+        if (!await consent(ct).WaitAsync(ct)) return null;
+        ct.ThrowIfCancellationRequested();
+        return await finder.FindClipsAsync(request, null, ct);
+    }
+
+    internal static async Task<LlmConnectionTestResult?> TestAsync(LlmRunner runner, ILlmConnector connector, string model,
+        Func<CancellationToken, Task<bool>> consent, CancellationToken ct)
+    {
+        if (!await consent(ct).WaitAsync(ct)) return null;
+        ct.ThrowIfCancellationRequested();
+        return await runner.TestAsync(connector, model, ct);
+    }
 }

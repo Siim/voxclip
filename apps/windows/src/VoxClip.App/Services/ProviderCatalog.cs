@@ -65,14 +65,13 @@ internal static class ProviderCatalog
         ConnectorStatus.CliTooOld => "● Too old", _ => "● Unavailable"
     };
 
-    internal static async Task TestAsync(ProviderEntry entry, string model, CancellationToken ct)
+    internal static async Task<LlmConnectionTestResult?> TestAsync(ProviderEntry entry, string model, Func<CancellationToken, Task<bool>> consent, CancellationToken ct)
     {
         var connector = App.Services.Connector(entry.Id);
         var status = await connector.GetStatusAsync(ct);
         if (status is not ConnectorStatus.Ready) throw new InvalidOperationException("Connector is not ready.");
         var catalog = LlmCatalog.Load(App.Services.SharedRoot!);
-        var result = await new LlmRunner(App.Services.Keys, catalog, new VoxClip.Core.Domain.Shared.Redactor()).TestAsync(connector, model, ct);
-        if (!result.Passed) throw new InvalidDataException("The connector did not return the expected test response.");
+        return await ConnectorPreflight.TestAsync(new LlmRunner(App.Services.Keys, catalog, new VoxClip.Core.Domain.Shared.Redactor()), connector, model, consent, ct);
     }
 
     internal static bool HasConsent(ProviderEntry entry) => !entry.Cloud && !entry.Cli || App.Services.Get("llm.cloudConsent." + entry.WireId, false);

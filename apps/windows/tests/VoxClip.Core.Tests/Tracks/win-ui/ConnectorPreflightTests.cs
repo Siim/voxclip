@@ -8,27 +8,53 @@ namespace VoxClip.Core.Tests.Tracks.WinUi;
 public sealed class ConnectorPreflightTests
 {
     [Theory]
-    [InlineData("FindClips", false)]
-    [InlineData("FindClips", true)]
-    [InlineData("Rewrite", false)]
-    [InlineData("Rewrite", true)]
-    [InlineData("Test", false)]
-    [InlineData("Test", true)]
-    public async Task EveryActionDetectsBeforeConsentButNeverSendsUntilContinue(string action, bool grant)
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task RealFindAndTestPipelinesNeverSendUntilContinue(bool test, bool grant)
     {
-        Assert.True(Enum.TryParse<ConnectorConsentAction>(action, out _));
-        var statusCalls = 0; var requests = 0;
-        Task<ConnectorStatus> Detect(CancellationToken token) { token.ThrowIfCancellationRequested(); statusCalls++; return Task.FromResult<ConnectorStatus>(new ConnectorStatus.Ready()); }
         var ct = TestContext.Current.CancellationToken;
-        await ConnectorPreflight.ProbeAsync(Detect, ct);
-        var status = await ConnectorPreflight.ProbeAsync(Detect, ct);
-        Assert.Equal(2, statusCalls);
-        var dialog = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var pending = ConnectorPreflight.AuthorizeAsync(status, false, _ => dialog.Task, ct);
-        Assert.Equal(0, requests);
-        dialog.SetResult(grant);
-        if (await pending) requests++;
-        Assert.Equal(grant ? 1 : 0, requests);
+        var fake = new RecordingConnector();
+        var consent = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var catalog = LlmCatalog.Load(Environment.GetEnvironmentVariable("VOXCLIP_SHARED_DIR")!);
+        var keys = new NoKeys();
+        var runner = new LlmRunner(keys, catalog, new VoxClip.Core.Domain.Shared.Redactor());
+        Task pending;
+        if (test) pending = ConnectorPreflight.TestAsync(runner, fake, "default", _ => consent.Task, ct);
+        else
+        {
+            var project = VoxClip.Core.Domain.Shared.ProjectSerialization.Deserialize(File.ReadAllText(Path.Combine(Environment.GetEnvironmentVariable("VOXCLIP_SHARED_DIR")!, "fixtures/projects/interview-take.voxclip")));
+            var finder = new ClipFinder(catalog, keys, new VoxClip.Core.Domain.Shared.Redactor(), _ => fake);
+            var request = new ClipFinderRequest(project.Transcript!.Words, new Dictionary<string, string>(), new HashSet<string>(), VoxClip.Core.Domain.Clips.ClipPreset.Best, null, "en", fake.Id, "default");
+            pending = ConnectorPreflight.FindAsync(finder, request, _ => consent.Task, ct);
+        }
+        Assert.False(pending.IsCompleted);
+        Assert.Equal(0, fake.Sends);
+        consent.SetResult(grant);
+        await pending;
+        Assert.Equal(grant ? 1 : 0, fake.Sends);
+    }
+
+    private sealed class NoKeys : IKeyProvider
+    {
+        public Task<string?> GetKeyAsync(string account, CancellationToken ct) => Task.FromResult<string?>(null);
+    }
+    private sealed class RecordingConnector : ILlmConnector
+    {
+        internal int Sends { get; private set; }
+        public ConnectorId Id => ConnectorId.Codex;
+        public Task<ConnectorStatus> GetStatusAsync(CancellationToken ct) => Task.FromResult<ConnectorStatus>(new ConnectorStatus.Ready());
+        public Task<IReadOnlyList<LlmModel>> GetModelsAsync(bool refresh, CancellationToken ct) => Task.FromResult<IReadOnlyList<LlmModel>>([]);
+        public Task<int?> GetContextTokensAsync(string model, CancellationToken ct) => Task.FromResult<int?>(32768);
+        public Task<RawCompletion> SendAsync(LlmRequest request, string model, CancellationToken ct)
+        {
+            Sends++;
+            var body = request.Feature == LlmFeature.Test
+                ? new System.Text.Json.Nodes.JsonObject { ["ok"] = true, ["echo"] = "voxclip" }
+                : new System.Text.Json.Nodes.JsonObject { ["clips"] = new System.Text.Json.Nodes.JsonArray() };
+            return Task.FromResult(new RawCompletion(null, body, model, new StopKind.Complete(), null, "recording"));
+        }
     }
 
     [Fact]

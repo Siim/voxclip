@@ -322,6 +322,25 @@ public sealed class RewritePanelTests
     }
 
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task RealRewriteProposalNeverSendsWhileConsentIsPendingOrCancelled(bool grant)
+    {
+        var fake = new RecordingConnector();
+        var consent = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var session = new RewriteSession(Editor(), 10, 12, Envelope(), new(fake, "chosen", "Test", "apiKey", ""), consent: _ => consent.Task);
+        await session.SetInstructionAsync("Plainly");
+        var action = session.Prepared!;
+        session.MarkEstimateShown(action);
+        var pending = session.ProposeAsync(action, true);
+        Assert.False(pending.IsCompleted);
+        Assert.DoesNotContain("send", fake.Calls);
+        consent.SetResult(grant);
+        Assert.Equal(grant, await pending);
+        Assert.Equal(grant ? 1 : 0, fake.Calls.Count(call => call == "send"));
+    }
+
+    [Theory]
     [InlineData("instruction")]
     [InlineData("words")]
     [InlineData("passage")]
