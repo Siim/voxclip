@@ -427,6 +427,24 @@ function Assert-ReleaseResources {
     }
 }
 
+function Assert-ReleaseWhisperRuntimes {
+    param([string] $AppDirectory, [ValidateSet('win-x64', 'win-arm64')][string] $RuntimeIdentifier)
+    $runtimes = Join-Path $AppDirectory 'runtimes'
+    if (-not (Test-Path -LiteralPath (Join-Path (Join-Path $runtimes $RuntimeIdentifier) 'whisper.dll') -PathType Leaf)) {
+        throw "Whisper.net native runtime is missing for $RuntimeIdentifier."
+    }
+    $foreign = @()
+    if (Test-Path -LiteralPath (Join-Path $AppDirectory 'ggml-metal.metal')) { $foreign += 'ggml-metal.metal' }
+    foreach ($file in Get-ChildItem -LiteralPath $runtimes -Recurse -File) {
+        $relative = $file.FullName.Substring($runtimes.Length).TrimStart('\', '/').Replace('\', '/')
+        if (-not ($relative.StartsWith("$RuntimeIdentifier/", [StringComparison]::OrdinalIgnoreCase) -or
+                $relative.StartsWith("noavx/$RuntimeIdentifier/", [StringComparison]::OrdinalIgnoreCase))) {
+            $foreign += "runtimes/$relative"
+        }
+    }
+    if ($foreign.Count) { throw "Foreign Whisper.net natives in the $RuntimeIdentifier payload: $($foreign -join ', ')" }
+}
+
 function Assert-ReleaseFileMatches {
     param([string] $Expected, [string] $Actual)
     if (-not (Test-Path -LiteralPath $Expected -PathType Leaf) -or

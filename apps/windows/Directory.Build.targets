@@ -1,0 +1,15 @@
+<Project>
+  <Target Name="KeepTargetWhisperNatives" AfterTargets="ComputeResolvedFilesToPublishList"
+          Condition="'$(RuntimeIdentifier)' == 'win-x64' or '$(RuntimeIdentifier)' == 'win-arm64'">
+    <ItemGroup>
+      <_WhisperNativeToPublish Include="@(ResolvedFileToPublish)"
+          Condition="$([System.String]::Copy('%(ResolvedFileToPublish.FullPath)').Replace('\', '/').ToLowerInvariant().Contains('/whisper.net.runtime'))" />
+      <_TargetWhisperNativeToPublish Include="@(_WhisperNativeToPublish)"
+          Condition="$([System.String]::Copy('%(_WhisperNativeToPublish.RelativePath)').Replace('\', '/').StartsWith('runtimes/$(RuntimeIdentifier)/')) or $([System.String]::Copy('%(_WhisperNativeToPublish.RelativePath)').Replace('\', '/').StartsWith('runtimes/noavx/$(RuntimeIdentifier)/'))" />
+      <_ForeignWhisperNativeToPublish Include="@(_WhisperNativeToPublish)" Exclude="@(_TargetWhisperNativeToPublish)" />
+      <ResolvedFileToPublish Remove="@(_ForeignWhisperNativeToPublish)" />
+    </ItemGroup>
+    <Error Condition="'@(_WhisperNativeToPublish)' != '' and '@(_TargetWhisperNativeToPublish)' == ''"
+           Text="No Whisper.net native for $(RuntimeIdentifier) is left to publish. Check the Whisper.net.Runtime package layout." />
+  </Target>
+</Project>

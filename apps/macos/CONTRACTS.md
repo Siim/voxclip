@@ -1,5 +1,9 @@
 # macOS implementation contracts
 
+### 2026-10-30 — Portable Windows release runtime checks
+
+- The Windows release-scripts-5 draft is reapplied by intent: Windows RID publishes prune foreign Whisper.net natives and the Metal shader, and the release VM rejects payload drift. Portable PowerShell tests exercise both architectures and the actual MSBuild target, including no-RID/non-Windows preservation and a missing-target failure. Mac development payloads remain unchanged.
+
 ### 2026-10-30 — GitHub version pin and Apple Speech reservations
 
 - UpdateChecker and Windows release tooling each hold one named 2022-11-28 API constant with GitHub's March 10, 2028 support end date. Injected-session and portable release-tool tests require the actual header.

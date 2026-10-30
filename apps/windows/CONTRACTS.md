@@ -1,5 +1,9 @@
 # Windows fixed contracts
 
+### 2026-10-30 — Release Whisper native payload isolation
+
+- Reapplied release-scripts-5 by intent against the redesign scripts. Directory.Build.targets keeps only the selected Windows RID's Whisper.net natives (including its noavx subtree), removes the Metal shader, and fails if no target runtime remains. VM staging verifies the payload before FFmpeg/signing. Portable tests exercise the actual target and both RID payload guards. No-RID/non-Windows builds and unrelated assets are unchanged; vcredist145, Pack-Velopack argument quoting and the signing regex are preserved. VM publish/sign/install checks remain owed.
+
 ### 2026-10-30 — GitHub version pin and Apple Speech parity note
 
 - The Windows release-tool GitHub header uses one named 2022-11-28 constant, with GitHub's March 10, 2028 support end date. The portable stub checks the actual header on release queries; the Mac update checker mirrors the pin and transport test. Apple Speech is Mac-only: its reservation Bool false is success, while thrown limits retain stale-locale recovery.

@@ -180,6 +180,49 @@ public static class ReleaseArgumentReader {
         $runtimeFolders = Get-ReleaseRuntimeFolders
         foreach ($folder in $read) { if ($runtimeFolders -cnotcontains $folder) { throw "Release runtime folders omit $folder." } }
     }
+    Invoke-Test 'release payload keeps only the RID Whisper.net natives' {
+        foreach ($rid in @('win-x64', 'win-arm64')) {
+            $app = Join-Path $temporary "whisper-payload-$rid"
+            $runtimes = Join-Path $app 'runtimes'
+            $other = if ($rid -eq 'win-x64') { 'win-arm64' } else { 'win-x64' }
+            foreach ($relative in @("$rid/whisper.dll", "$rid/ggml-cpu-whisper.dll", "noavx/$rid/whisper.dll")) {
+                $path = Join-Path $runtimes $relative
+                New-Item -ItemType Directory -Force -Path (Split-Path -Parent $path) | Out-Null
+                [IO.File]::WriteAllText($path, 'native')
+            }
+            Assert-ReleaseWhisperRuntimes -AppDirectory $app -RuntimeIdentifier $rid
+            Assert-Throws { Assert-ReleaseWhisperRuntimes -AppDirectory $app -RuntimeIdentifier $other } "missing for $other"
+            foreach ($relative in @('win-x86/whisper.dll', 'macos-arm64/libggml-metal-whisper.dylib', 'noavx/linux-x64/libwhisper.so', "$other/whisper.dll")) {
+                $path = Join-Path $runtimes $relative
+                New-Item -ItemType Directory -Force -Path (Split-Path -Parent $path) | Out-Null
+                [IO.File]::WriteAllText($path, 'foreign')
+                Assert-Throws { Assert-ReleaseWhisperRuntimes -AppDirectory $app -RuntimeIdentifier $rid } ([regex]::Escape("runtimes/$relative"))
+                Remove-Item -LiteralPath $path
+            }
+            [IO.File]::WriteAllText((Join-Path $app 'ggml-metal.metal'), 'shader')
+            Assert-Throws { Assert-ReleaseWhisperRuntimes -AppDirectory $app -RuntimeIdentifier $rid } 'ggml-metal\.metal'
+        }
+    }
+    Invoke-Test 'MSBuild prunes Whisper natives only for the selected Windows RID' {
+        $project = Join-Path $temporary 'whisper-publish.proj'
+        $output = Join-Path $temporary 'whisper-publish.txt'
+        $target = [Security.SecurityElement]::Escape((Join-Path (Split-Path -Parent $PSScriptRoot) 'Directory.Build.targets'))
+        $items = @('runtimes/win-x64/whisper.dll', 'runtimes/noavx/win-x64/whisper.dll', 'runtimes/win-arm64/whisper.dll', 'runtimes/win-x86/whisper.dll', 'runtimes/linux-x64/libwhisper.so', 'runtimes/macos-arm64/libwhisper.dylib', 'ggml-metal.metal')
+        $entries = ($items | ForEach-Object { '<ResolvedFileToPublish Include="packages/whisper.net.runtime/1.9.1/' + $_ + '"><RelativePath>' + $_ + '</RelativePath></ResolvedFileToPublish>' }) -join ''
+        $content = '<Project><ItemGroup>' + $entries + '<ResolvedFileToPublish Include="other/preserve.dll"><RelativePath>preserve.dll</RelativePath></ResolvedFileToPublish></ItemGroup><Target Name="ComputeResolvedFilesToPublishList"/><Import Project="' + $target + '"/><Target Name="Record" DependsOnTargets="ComputeResolvedFilesToPublishList"><WriteLinesToFile File="' + [Security.SecurityElement]::Escape($output) + '" Lines="@(ResolvedFileToPublish->''%(RelativePath)'')" Overwrite="true"/></Target></Project>'
+        [IO.File]::WriteAllText($project, $content)
+        foreach ($rid in @('win-x64', 'win-arm64', 'linux-x64', '')) {
+            $result = & dotnet msbuild $project -nologo -t:Record "-p:RuntimeIdentifier=$rid" 2>&1
+            if ($LASTEXITCODE -ne 0) { throw "Whisper publish target failed: $result" }
+            $actual = @(Get-Content -LiteralPath $output)
+            $expected = @($items | Where-Object { $rid -notlike 'win-*' -or $_.StartsWith("runtimes/$rid/") -or $_.StartsWith("runtimes/noavx/$rid/") }) + @('preserve.dll')
+            Assert-Equal ($actual -join '|') ($expected -join '|')
+        }
+        $content = $content.Replace('packages/whisper.net.runtime/1.9.1/runtimes/win-arm64/whisper.dll', 'other/arm64/preserve.dll').Replace('<RelativePath>runtimes/win-arm64/whisper.dll</RelativePath>', '<RelativePath>preserve-arm64.dll</RelativePath>')
+        [IO.File]::WriteAllText($project, $content)
+        $result = & dotnet msbuild $project -nologo -t:Record '-p:RuntimeIdentifier=win-arm64' 2>&1
+        if ($LASTEXITCODE -eq 0 -or ($result -join ' ') -notmatch 'No Whisper.net native for win-arm64') { throw 'Missing target Whisper runtime must fail closed.' }
+    }
     Invoke-Test 'current full package requires one exact Full entry for the RID' {
         $current = [pscustomobject]@{ Type = 'Full'; RelativeFileName = 'VoxClip-0.1.0-win-x64-full.nupkg' }
         $delta = [pscustomobject]@{ Type = 'Delta'; RelativeFileName = 'VoxClip-0.1.0-win-x64-delta.nupkg' }
