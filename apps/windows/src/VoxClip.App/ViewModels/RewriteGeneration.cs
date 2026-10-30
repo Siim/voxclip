@@ -262,18 +262,24 @@ internal sealed partial class RewriteGeneration : IDisposable
             else StopQuoteExpiry();
             return;
         }
-        if (ReferenceEquals(quote, timedQuote)) return;
+        if (ReferenceEquals(quote, timedQuote))
+        {
+            if (quote is not null) quoteExpiry?.Change(QuoteFreshnessDelay(quote), Timeout.InfiniteTimeSpan);
+            return;
+        }
         StopQuoteExpiry();
         if (quote is null) return;
         timedQuote = quote;
-        var due = quote.ExpiresAt - clock.GetUtcNow();
         quoteExpiry = clock.CreateTimer(_ => { _ = onUi(RefreshExpiredQuote); }, null,
-            due > TimeSpan.Zero ? due : TimeSpan.Zero, Timeout.InfiniteTimeSpan);
+            QuoteFreshnessDelay(quote), Timeout.InfiniteTimeSpan);
     }
+    private TimeSpan QuoteFreshnessDelay(VoiceLabTakeRunQuote quote) =>
+        TimeSpan.FromTicks(Math.Clamp((quote.ExpiresAt - clock.GetUtcNow()).Ticks, 0, TimeSpan.FromSeconds(30).Ticks));
     private void RefreshExpiredQuote()
     {
         if (closed || !current() || IsRunning || IsPreparing || discovering || timedQuote is not { } quote) return;
         if (clock.GetUtcNow() >= quote.ExpiresAt || !runner.IsQuoteFresh(quote)) _ = InputsChangedAsync(preserveReview: true);
+        else quoteExpiry?.Change(QuoteFreshnessDelay(quote), Timeout.InfiniteTimeSpan);
     }
     private void StopQuoteExpiry()
     {

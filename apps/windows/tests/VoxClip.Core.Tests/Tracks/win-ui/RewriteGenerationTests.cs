@@ -52,6 +52,8 @@ public sealed class RewriteGenerationTests
     private sealed class Clock : TimeProvider
     {
         internal DateTimeOffset Now = new(2026, 10, 30, 12, 0, 0, TimeSpan.Zero);
+        private DateTimeOffset? timerNow;
+        private DateTimeOffset TimerNow => timerNow ?? Now;
         private readonly List<Timer> timers = [];
         public override DateTimeOffset GetUtcNow() => Now;
         public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
@@ -64,17 +66,23 @@ public sealed class RewriteGenerationTests
             foreach (var timer in timers.ToArray()) timer.Fire();
         }
         internal int ActiveTimers => timers.Count(timer => timer.Due is not null);
+        internal void SeparateTimerClock() => timerNow = Now;
+        internal void AdvanceTimers(TimeSpan elapsed)
+        {
+            timerNow = TimerNow + elapsed;
+            FireDueTimers();
+        }
         private sealed class Timer(Clock clock, TimerCallback callback, object? state) : ITimer
         {
             internal DateTimeOffset? Due { get; private set; }
             public bool Change(TimeSpan dueTime, TimeSpan period)
             {
                 Assert.Equal(Timeout.InfiniteTimeSpan, period);
-                Due = dueTime == Timeout.InfiniteTimeSpan ? null : clock.Now + dueTime; return true;
+                Due = dueTime == Timeout.InfiniteTimeSpan ? null : clock.TimerNow + dueTime; return true;
             }
             internal void Fire()
             {
-                if (Due is not { } due || due > clock.Now) return;
+                if (Due is not { } due || due > clock.TimerNow) return;
                 Due = null; callback(state);
             }
             public void Dispose() => Due = null;
@@ -386,6 +394,55 @@ public sealed class RewriteGenerationTests
         Assert.Equal(0, test.Clock.ActiveTimers);
         test.Clock.Now = test.Clock.Now.AddMinutes(10); test.Clock.FireDueTimers();
         Assert.Equal(fail ? 3 : 2, test.Runner.Preparations);
+    }
+    [Fact]
+    public async Task BackwardWallClockAdjustmentRearmsEarlyExpiryWithoutRendering()
+    {
+        await using var test = new Harness(); await test.ReadyAsync();
+        test.Clock.SeparateTimerClock();
+        var quote = test.Generation.Quote!;
+        test.Clock.Now = test.Clock.Now.AddHours(-1);
+        test.Clock.AdvanceTimers(TimeSpan.FromMinutes(5));
+        Assert.Equal(1, test.Runner.Preparations);
+        Assert.Equal(1, test.Clock.ActiveTimers);
+        test.Clock.Now = quote.ExpiresAt;
+        test.Clock.AdvanceTimers(TimeSpan.FromSeconds(30));
+        await test.Generation.PendingUpdate;
+        Assert.Equal(2, test.Runner.Preparations);
+        test.Generation.MarkEstimateShown(test.Generation.Quote!);
+        Assert.True(test.Generation.CanExecute);
+        Assert.Equal(0, test.Runner.PaidRequests);
+    }
+    [Fact]
+    public async Task ForwardWallClockAdjustmentRecoversWithinThirtyTimerSecondsWithoutRendering()
+    {
+        await using var test = new Harness(); await test.ReadyAsync();
+        test.Clock.SeparateTimerClock();
+        test.Clock.Now = test.Generation.Quote!.ExpiresAt.AddHours(1);
+        test.Clock.AdvanceTimers(TimeSpan.FromSeconds(30));
+        await test.Generation.PendingUpdate;
+        Assert.Equal(2, test.Runner.Preparations);
+        test.Generation.MarkEstimateShown(test.Generation.Quote!);
+        Assert.True(test.Generation.CanExecute);
+        Assert.Equal(0, test.Runner.PaidRequests);
+    }
+    [Fact]
+    public async Task EarlyTimerDuringDeclinedConfirmationResumesBoundedFreshnessChecks()
+    {
+        await using var test = new Harness(); test.Runner.Price = 1; await test.ReadyAsync();
+        test.Clock.SeparateTimerClock();
+        var quote = test.Generation.Quote!;
+        var approval = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var pending = test.Generation.GenerateAsync((_, _) => approval.Task);
+        test.Clock.Now = test.Clock.Now.AddHours(-1);
+        test.Clock.AdvanceTimers(TimeSpan.FromMinutes(5));
+        approval.SetResult(false); await pending;
+        Assert.Equal(1, test.Clock.ActiveTimers);
+        test.Clock.Now = quote.ExpiresAt;
+        test.Clock.AdvanceTimers(TimeSpan.FromSeconds(30));
+        await test.Generation.PendingUpdate;
+        Assert.Equal(2, test.Runner.Preparations);
+        Assert.Equal(0, test.Runner.PaidRequests);
     }
     [Fact]
     public async Task ExpiryWhileDecliningAnOpenConfirmationStillAutomaticallyRequotes()

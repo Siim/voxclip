@@ -1,5 +1,10 @@
 # Windows fixed contracts
 
+### 2026-10-30 - Windows Voice Lab quote clock recovery
+
+- Displayed quotes use the injected TimeProvider for a bounded 30-second freshness check, shortened to the known expiry when sooner. An early callback rearms after a backward wall-clock change; a forward change recovers within the next check without needing a render or click.
+- Expiry only prepares a free replacement quote, preserves reviewed takes, and requires the new estimate to be rendered before Generate enables. Independent wall-clock/timer regressions cover both directions without dispatch, sleeps or provider access.
+
 ### 2026-10-30 - Windows Voice Lab editor R11
 
 - The DEBUG Rewrite take list consumes the finalized Settings R6a `TakeRowPresentation` and `VoiceLabAudition` APIs without altering either. Single-selection containers retain failed rows, hide their actions, and receive the complete shared accessible name in `ContainerContentChanging`. Containers and their content are 40 epx high with zero container padding, 32-epx Play/Pause and Reject targets, invariant mono duration, and an ellipsized note whose complete text remains accessible. Only the outer Rewrite viewport scrolls vertically. Retries remain whole three-take runs.
