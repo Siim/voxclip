@@ -1,5 +1,11 @@
 # macOS implementation contracts
 
+### 2026-10-30 — sol-mac-vl-followups — Silent microphone takes
+
+- The recorder observes the original microphone channels before the mono mixer. Exactly two consecutive seconds of digital zero on every channel latch `Silent`; any nonzero sample on any channel resets the interval. Both interleaved and planar Float32/Int16/Int32 buffers are checked at their actual input rate. Mono cancellation is not silence. The next meter check, or an earlier explicit Stop, discards the take and removes both audio taps exactly once; a new take clears the failure.
+- Copy: `The microphone sent only silence. Check that it isn't muted, and that System Settings → Privacy & Security → Microphone allows VoxClip.` The sheet shows `Silent` and `Open Settings`, opening `x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone`. Failed audio cannot become a verified statement or training take through `finishRecording`.
+- Deterministic sample-path tests cover the frame before and exactly at 2.0 s at 16/44.1/48 kHz, signed zero, stereo cancellation, subnormal nonzero samples, interval reset, both integer formats, immediate Stop, retry and idempotent teardown. Disabling the silence latch made the positive regressions fail (24 assertions); the headless UI guard also checks the raw-input tap, teardown and Settings action. No microphone is opened.
+
 ### 2026-10-30 — sol-mac-vl-followups — opt-in confirmation defaults
 
 - In `Turn on Voice Lab?`, Cancel is the explicit Return/default action; the cancel role and exit handler dismiss without enabling Voice Lab. Turn on remains an explicit click. Non-destructive provider approvals are unchanged.

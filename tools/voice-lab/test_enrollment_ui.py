@@ -3,6 +3,18 @@ import unittest
 
 
 class EnrollmentUITests(unittest.TestCase):
+    def test_silent_state_offers_microphone_privacy_settings(self):
+        root = pathlib.Path(__file__).resolve().parents[2]
+        source = (root / 'apps/macos/Sources/VoxClip/VoiceLabSettings.swift').read_text()
+        sheet = source[source.index('private struct CreateVoiceSheet'):]
+        self.assertRegex(sheet, r'if session\.recorder\.failure == \.silent \{\s*Text\("Silent"\)')
+        self.assertIn('Button("Open Settings") { NSWorkspace.shared.open(MicrophoneError.privacySettingsURL) }', sheet)
+        session = (root / 'apps/macos/Sources/VoxClip/VoiceLabSession.swift').read_text()
+        self.assertIn('message = failure.localizedDescription; recorder.discard(); trainingReady = false', session)
+        recorder = (root / 'apps/macos/Sources/VoxClipMedia/VoiceLab/VoiceMicrophoneRecorder.swift').read_text()
+        self.assertIn('input.installTap(onBus: 0, bufferSize: 1_024, format: format) { buffer, _ in sink.observeInput(buffer) }', recorder)
+        self.assertIn('input.removeTap(onBus: 0); mixer.removeTap(onBus: 0); engine.stop()', recorder)
+
     def test_turn_on_defaults_return_and_escape_to_cancel(self):
         root = pathlib.Path(__file__).resolve().parents[2]
         source = (root / 'apps/macos/Sources/VoxClip/VoiceLabSettings.swift').read_text()

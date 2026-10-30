@@ -1,5 +1,6 @@
 import SwiftUI
 import VoxClipCore
+import VoxClipMedia
 
 @MainActor struct VoiceLabSettings: View {
     @Bindable var app: AppModel
@@ -267,7 +268,13 @@ import VoxClipCore
                     }
                     Text("If you use a screen reader, wear headphones so it isn't recorded.").font(.caption).foregroundStyle(.secondary)
                     recordingControls
+                    if session.recorder.failure == .silent {
+                        Text("Silent").font(.headline)
+                    }
                     if let message = session.message { Text(message).textSelection(.enabled) }
+                    if session.recorder.failure == .silent {
+                        Button("Open Settings") { NSWorkspace.shared.open(MicrophoneError.privacySettingsURL) }
+                    }
                     Text(session.speakerMessage).font(.caption)
                 }.frame(maxWidth: .infinity, alignment: .leading)
             }
