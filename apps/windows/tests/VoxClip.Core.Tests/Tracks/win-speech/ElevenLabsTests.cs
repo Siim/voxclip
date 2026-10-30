@@ -212,13 +212,13 @@ public sealed class ElevenLabsTests
     }
 
     [Fact]
-    public async Task KeyTestUsesTheSameMappingAndExplainsResidency()
+    public async Task KeyTestExplainsResidencyWithoutEchoingTheBody()
     {
         using var handler = new StubHttp((_, _) => Task.FromResult(StubHttp.Json("{\"detail\":{\"status\":\"invalid_api_key\"}}", HttpStatusCode.Unauthorized)));
         var error = await Assert.ThrowsAsync<VoxClipException>(() => ElevenLabsTranscriber.ForTesting(new TestKeys(), handler, region: ElevenLabsRegion.Eu)
             .TestKeyAsync(TestContext.Current.CancellationToken));
         Assert.Equal(VoxClipErrorCode.ProviderError, error.Code);
-        Assert.Contains("most accounts use Region: Default", error.Message);
+        Assert.Equal("ElevenLabs answered 401: The request could not be completed. ElevenLabs EU residency needs a key from a data-residency workspace; most accounts use Region: Default", error.Message);
         using var busy = new StubHttp((_, _) => Task.FromResult(StubHttp.Json("{}", HttpStatusCode.ServiceUnavailable)));
         var outage = await Assert.ThrowsAsync<VoxClipException>(() => ElevenLabsTranscriber.ForTesting(new TestKeys(), busy, region: ElevenLabsRegion.Default)
             .TestKeyAsync(TestContext.Current.CancellationToken));

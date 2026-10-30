@@ -240,7 +240,7 @@ public actor ElevenLabsTranscriber: Transcriber {
         } catch { try? output.close(); try? FileManager.default.removeItem(at: url); throw error }
     }
 
-    public static func providerError(status: Int, data: Data, key: String, region: ElevenLabsRegion = .default) -> VoxClipError {
+    static func providerError(status: Int, data: Data, key: String, region: ElevenLabsRegion = .default) -> VoxClipError {
         let body = String(decoding: data, as: UTF8.self)
         let lower = body.lowercased()
         if lower.contains("quota") || lower.contains("credit") { return .quotaExceeded("ElevenLabs") }
@@ -258,13 +258,11 @@ public actor ElevenLabsTranscriber: Transcriber {
             }
         }
         // A residency host only knows keys from its own Enterprise workspace; ordinary keys fail there.
-        var hint = ""
-        if region.isResidency, authentication || status == 400 {
-            hint = " ElevenLabs \(region.rawValue.uppercased()) residency needs a key from a data-residency workspace; most accounts use Region: Default"
-        } else if authentication { return .keyRejected("ElevenLabs", status: status) }
+        let hint = authentication || status == 400 ? region.residencyHint : ""
+        if hint.isEmpty, authentication { return .keyRejected("ElevenLabs", status: status) }
         let safe = Redactor(knownSecrets: [key]).redact(message.replacingOccurrences(of: key, with: "[REDACTED]"))
         // Error copy keeps 200 characters; shorten the reason so the hint stays whole.
-        return .providerError(String(safe.prefix(200 - hint.count)) + hint, provider: "ElevenLabs", status: status)
+        return .providerError(hint.isEmpty ? String(safe.prefix(200)) : "\(safe.prefix(199 - hint.count)) \(hint)", provider: "ElevenLabs", status: status)
     }
 }
 

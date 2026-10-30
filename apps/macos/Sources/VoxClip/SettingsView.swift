@@ -279,8 +279,15 @@ extension AppModel {
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         if status == 200 { return "Works." }
         if [401, 403].contains(status), String(decoding: data.prefix(10_000), as: UTF8.self).contains("user_read") { return "The key works. It can't read account details (user_read), and that is fine for transcription." }
-        // Same mapping as transcription: only a 401 or a key error is a rejected key.
-        return UserMessages.message(ElevenLabsTranscriber.providerError(status: status, data: data, key: key, region: region))
+        // Like Windows TestKeyAsync (transcription §8.5): name the status, never echo the provider's body.
+        let hint = [400, 401].contains(status) ? region.residencyHint : ""
+        let error: VoxClipError = switch status {
+        case _ where !hint.isEmpty: .providerError("The request could not be completed. \(hint)", provider: "ElevenLabs", status: status)
+        case 401: .keyRejected("ElevenLabs", status: 401)
+        case 429: .rateLimited("elevenlabs")
+        default: .providerError("The request could not be completed.", provider: "ElevenLabs", status: status)
+        }
+        return UserMessages.message(error)
     } catch let error as URLError where error.code != .cancelled { return UserMessages.message(VoxClipError.offline)
     } catch { return "Failed: " + (await app.safeError(error)) }
 }
