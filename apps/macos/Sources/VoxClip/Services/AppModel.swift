@@ -67,7 +67,8 @@ extension ProviderChoice {
         llmLeases[id] = runs
         return runs
     }
-    static let sharedModel = AppModel()
+    /// The app's own model. Outside harness sessions a development build reads unset Voice Lab settings as on (voice-lab §5).
+    static let sharedModel = AppModel(developmentDefaults: !isTestSession)
     nonisolated static let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.0.0"
     static let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "0"
     public var startupError: VoxClipError?
@@ -164,6 +165,9 @@ extension ProviderChoice {
     let log: RedactingLogger
     let secrets: SecretStore
     let settingsStore: any SettingsStore
+    /// Read for keys the user's settings leave unset and never saved. Only the user's own settings file in a development
+    /// build has any; injected stores and Release builds have none (voice-lab §5).
+    let unsetDefaults: [String: JSONValue]
     let projectStore: JSONProjectStore
     let updates: any UpdateChecking
     let shared: SharedResources?
@@ -193,7 +197,8 @@ extension ProviderChoice {
     @ObservationIgnored lazy var exportLedger = ExportLedger(file: locations.root.appendingPathComponent("exports.json"))
     @ObservationIgnored lazy var appleSpeechAssets = AppleSpeechAssetLibrary(app: self)
 
-    public init(settingsStore: (any SettingsStore)? = nil, updates: any UpdateChecking = UpdateChecker(), modelDownloader: (any ModelDownloader)? = nil) {
+    public init(settingsStore: (any SettingsStore)? = nil, updates: any UpdateChecking = UpdateChecker(), modelDownloader: (any ModelDownloader)? = nil,
+                developmentDefaults: Bool = false) {
         let directory = DataLocations().logs
         let logger = RedactingLogger(homeDirectory: FileManager.default.homeDirectoryForCurrentUser.path, directory: directory) { entry in
             let logger = os.Logger(subsystem: "com.voxconvo.voxclip", category: entry.category)
@@ -207,6 +212,7 @@ extension ProviderChoice {
         log = logger
         secrets = SecretStore(log: logger)
         self.settingsStore = settingsStore ?? JSONSettingsStore(locations: locations, logger: logger)
+        unsetDefaults = developmentDefaults && settingsStore == nil ? VoiceLabGate.developmentDefaults(internalBuild: RewriteEntryPolicy.buildEnabled) : [:]
         projectStore = JSONProjectStore(logger: logger)
         self.updates = updates
         self.modelDownloader = modelDownloader
@@ -281,8 +287,10 @@ extension ProviderChoice {
         #endif
     }
 
+    /// The user's value, else the build's unset default. Every typed read goes through here.
+    private func lookup(_ key: String) -> JSONValue? { settings.values[key] ?? unsetDefaults[key] }
     func string(_ key: String, fallback: String = "") -> String {
-        if case .string(let value) = settings.values[key] { return value }
+        if case .string(let value) = lookup(key) { return value }
         return fallback
     }
     @discardableResult func selectOnboardingConnector(_ id: String) -> Bool {
@@ -291,11 +299,11 @@ extension ProviderChoice {
         return true
     }
     func bool(_ key: String, fallback: Bool = false) -> Bool {
-        if case .bool(let value) = settings.values[key] { return value }
+        if case .bool(let value) = lookup(key) { return value }
         return fallback
     }
     func number(_ key: String, fallback: Double) -> Double {
-        if case .number(let value) = settings.values[key] { return value }
+        if case .number(let value) = lookup(key) { return value }
         return fallback
     }
     @discardableResult func set(_ key: String, _ value: JSONValue) -> Bool {

@@ -651,6 +651,27 @@ fi
                 self.assertNotIn("notarytool", invocations)
                 self.assertNotIn("create-dmg ", invocations)
 
+    def test_release_build_never_reads_unset_voice_lab_settings_as_on(self):
+        # Development builds read an unset Voice Lab switch and beta notice as on (doc/spec/voice-lab.md section 5).
+        # Only DEBUG turns that on, and the release swift build is -c release with no extra compiler conditions.
+        policy = (PACKAGE / "Sources/VoxClip/RewriteSession.swift").read_text()
+        self.assertIn("static var buildEnabled: Bool {\n        #if DEBUG\n        true\n        #else\n        false\n        #endif\n    }", policy)
+        model = (PACKAGE / "Sources/VoxClip/Services/AppModel.swift").read_text()
+        self.assertEqual(re.findall(r"VoiceLabGate\.developmentDefaults\([^)]*\)", model),
+                         ["VoiceLabGate.developmentDefaults(internalBuild: RewriteEntryPolicy.buildEnabled)"])
+        self.assertIn("developmentDefaults && settingsStore == nil ?", model)
+        gate = (PACKAGE / "Sources/VoxClipCore/Domain/VoiceLab/VoiceConsent.swift").read_text()
+        self.assertIn("guard internalBuild else { return [:] }", gate)
+        self.assertNotIn(".define(", (PACKAGE / "Package.swift").read_text())
+        script = self.prepare_release()
+        for arguments in (("--release", "--no-upload", "--allow-dirty"), ("--release",)):
+            with self.subTest(arguments=arguments):
+                self.calls.unlink(missing_ok=True)
+                self.assert_failed(self.run_bundle(script, *arguments), "Mock swift build stopped")
+                build = next(line for line in self.calls.read_text().splitlines() if line.startswith("swift build "))
+                self.assertIn(" -c release ", build)
+                self.assertNotRegex(build, r"(?:^|\s)(?:-D\S*|-Xswiftc|-Xcc|debug)(?:\s|$)")
+
     def test_release_rejects_ignored_resources_even_with_allow_dirty(self):
         self.prepare_upload()
         self.environment["MOCK_IGNORED"] = "shared/catalog/maintainer.p12\\0"

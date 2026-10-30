@@ -33,6 +33,12 @@ public enum VoiceLabGate {
         enabled && (noticeAccepted || internalBuild)
     }
     public static func canEnroll(enabled: Bool, busy: Bool) -> Bool { enabled && !busy }
+    /// Values a development build reads for the switch and the beta notice while the user's settings leave them unset.
+    /// They are never saved, and an explicit value always wins. Release builds get none (voice-lab §5).
+    public static func developmentDefaults(internalBuild: Bool) -> [String: JSONValue] {
+        guard internalBuild else { return [:] }
+        return ["voiceLab.enabled": .bool(true), "voiceLab.betaNoticeAccepted": .bool(true)]
+    }
 }
 
 public struct VoiceConsentStatement: Codable, Sendable, Equatable {
