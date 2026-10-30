@@ -14,6 +14,9 @@ class StagedActionsTests(unittest.TestCase):
             fixture.write_text('class DebugRewrite {}')
             with self.assertRaisesRegex(RuntimeError, 'Release exposes'):
                 check_staged_actions(root)
-            fixture.write_text('var publishForTests: Int = 0')
-            with self.assertRaisesRegex(RuntimeError, 'Release exposes'):
+            for name in ['publishForTests', 'prepareForTests', 'executeForTests', 'finishGenerationForTests']:
+                fixture.write_text('var ' + name + ': Int = 0')
+                with self.assertRaisesRegex(RuntimeError, 'Release exposes'):
+                    check_staged_actions(root)
+                fixture.write_text('#if DEBUG\nvar ' + name + ': Int = 0\n#endif')
                 check_staged_actions(root)

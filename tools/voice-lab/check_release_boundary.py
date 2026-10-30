@@ -8,7 +8,7 @@ import re
 
 
 def check_staged_actions(root):
-    pattern = re.compile(r'\b(?:publishForTests|voiceRecoveryForTests|DebugRewrite|DebugRewriteGeneration|showFixture|DebugVoiceLab)\b')
+    pattern = re.compile(r'\b(?:publishForTests|prepareForTests|executeForTests|finishGenerationForTests|voiceRecoveryForTests|DebugRewrite|DebugRewriteGeneration|showFixture|DebugVoiceLab)\b')
     for source in sorted(root.rglob('*.swift')):
         if '.build' in source.parts:
             continue
@@ -22,7 +22,8 @@ def same_module_source():
     if "public final class VoiceSpeakerCheck" not in declaration:
         raise RuntimeError("Cannot locate production speaker-check declaration")
     capability = source.with_name('VoiceOperationCapability.swift').read_text()
-    return capability + declaration + """
+    policy = source.with_name('OwnVoicePolicy.swift').read_text()
+    return capability + declaration + policy + """
 public actor ONNXSpeakerEmbedder: SpeakerEmbedder {
     public nonisolated let modelID = "verified-model-control"
     public nonisolated let dimension = 256
@@ -30,6 +31,25 @@ public actor ONNXSpeakerEmbedder: SpeakerEmbedder {
     func validateIdentity(trustedEntry: SpeakerModel) throws {}
 }
 """
+
+
+def require_access_rejection(name, result, protection, symbol=None):
+    diagnostic = (symbol + ' is ' if symbol else '') + "inaccessible due to '" + protection + "' protection level"
+    if not result.returncode or diagnostic not in result.stderr:
+        raise RuntimeError('Release probe did not prove ' + protection + ' access: ' + name + '\n' + result.stderr)
+    if any(message in result.stderr for message in ['no such module', 'missing required module', 'could not build module']):
+        raise RuntimeError('Release probe failed for an import: ' + name + '\n' + result.stderr)
+
+
+PROOF_CALL = '''func forge(_ store: VoiceConsentStore, _ record: VoiceConsentRecord?, _ embedder: any SpeakerEmbedder) {
+    _ = VoiceSpeakerMatch(recordID: "forged", cloneVoiceID: nil, store: store, record: record, statementHash: "forged", embedder: embedder)
+}'''
+POLICY_CALL = '''func bypass(_ policy: OwnVoicePolicy, _ quote: VoiceLabQuote, _ store: VoiceConsentStore, _ record: VoiceConsentRecord?, _ embedder: any SpeakerEmbedder) throws {
+    _ = try policy.authorized(for: quote, proof: .init(recordID: "forged", cloneVoiceID: nil, store: store, record: record, statementHash: "forged", embedder: embedder))
+}'''
+CAPABILITY_CALL = '''func forgeCapability(_ policy: OwnVoicePolicy, _ quote: VoiceLabQuote) {
+    _ = type(of: policy.capability!).init(quote: quote, reserve: nil, validate: {})
+}'''
 
 
 def check(bin_path, build_path):
@@ -89,9 +109,9 @@ struct Fake: SpeakerEmbedder {
         "debug-injection": "let check = VoiceSpeakerCheck(embedder: Fake(), calibratedThreshold: 0)",
         "package-injection": 'let check = VoiceSpeakerCheck(verifiedModel: nil, trustedEntry: nil, language: nil)',
         "arbitrary-threshold": 'func bypass(_ model: ONNXSpeakerEmbedder, _ entry: SpeakerModel) { _ = VoiceSpeakerCheck(verifiedModel: model, trustedEntry: entry, language: "en") }',
-        "capability-construction": "func bypass(_ quote: VoiceLabQuote) { _ = VoiceOperationCapability(quote: quote, validate: {}) }",
-        "policy-capability": "func bypass(_ policy: OwnVoicePolicy, _ quote: VoiceLabQuote) { _ = policy.authorized(for: quote, validate: {}) }",
-        "speaker-proof": 'let proof = VoiceSpeakerMatch(recordID: "forged", cloneVoiceID: nil)',
+        "capability-construction": CAPABILITY_CALL,
+        "policy-capability": POLICY_CALL,
+        "speaker-proof": POLICY_CALL,
     }
     with tempfile.TemporaryDirectory(prefix="voxclip-release-boundary-") as directory:
         source = pathlib.Path(directory) / "Probe.swift"
@@ -102,18 +122,30 @@ struct Fake: SpeakerEmbedder {
         for name, probe in probes.items():
             source.write_text(header + probe + "\n")
             result = subprocess.run(flags + [str(source)], capture_output=True, text=True)
-            if not result.returncode or "error:" not in result.stderr:
-                raise RuntimeError("Release boundary unexpectedly accepted " + name)
-            if any(message in result.stderr for message in ["no such module", "missing required module", "could not build module"]):
-                raise RuntimeError("Release probe failed for an import, not access control: " + name)
-            if name in {"package-injection", "arbitrary-threshold"} and 'private' not in result.stderr:
-                raise RuntimeError("Constructor probe did not fail for private access: " + name + result.stderr)
+            protection, symbol = {
+                'capability-construction': ('internal', "'VoiceOperationCapability' initializer"),
+                'policy-capability': ('internal', "'authorized'"),
+                'speaker-proof': ('fileprivate', "'VoiceSpeakerMatch' initializer"),
+            }.get(name, ('private', "'VoiceSpeakerCheck' initializer"))
+            require_access_rejection(name, result, protection, symbol)
             print("Rejected Release bypass: " + name)
         same_module = same_module_source()
-        source.write_text(same_module + "let check = VoiceSpeakerCheck.unavailable\n")
+        source.write_text('\n'.join([same_module, PROOF_CALL, POLICY_CALL, CAPABILITY_CALL]) + '''
+private extension VoiceSpeakerCheck {
+    static func allowed(_ model: ONNXSpeakerEmbedder?, _ entry: SpeakerModel?, _ language: String?) {
+        _ = VoiceSpeakerCheck(verifiedModel: model, trustedEntry: entry, language: language)
+    }
+}
+let check = VoiceSpeakerCheck.unavailable
+''')
         control = subprocess.run(flags + [str(source)], capture_output=True, text=True)
         if control.returncode:
             raise RuntimeError("Same-module Release control failed:\n" + control.stderr)
+        fake = 'struct Fake' + header.split('struct Fake', 1)[1]
+        source.write_text(same_module + fake + probes['debug-injection'])
+        debug_control = subprocess.run(flags + ['-DDEBUG', str(source)], capture_output=True, text=True)
+        if debug_control.returncode:
+            raise RuntimeError('DEBUG injection control failed:\n' + debug_control.stderr)
         for name, probe in {
             "same-module-raw-threshold": probes["arbitrary-threshold"],
             "same-module-private-construction": 'func bypass(_ model: ONNXSpeakerEmbedder, _ entry: SpeakerModel) { _ = VoiceSpeakerCheck(verifiedModel: model, trustedEntry: entry, language: "en") }',
@@ -121,19 +153,15 @@ struct Fake: SpeakerEmbedder {
         }.items():
             source.write_text(same_module + probe + "\n")
             result = subprocess.run(flags + [str(source)], capture_output=True, text=True)
-            if not result.returncode or "error:" not in result.stderr:
-                raise RuntimeError("Same-module Release boundary accepted " + name)
-            if name in {"same-module-raw-threshold", "same-module-private-construction"} and "inaccessible due to 'private' protection level" not in result.stderr:
-                raise RuntimeError("Same-module constructor probe failed for the wrong reason: " + name + result.stderr)
+            require_access_rejection(name, result, 'private', "'VoiceSpeakerCheck' initializer")
             print("Rejected Release bypass: " + name)
         declaration = pathlib.Path(directory) / 'Speaker.swift'
         declaration.write_text(same_module)
-        source.write_text('import Foundation\nimport VoxClipCore\nlet proof = VoiceSpeakerMatch(recordID: "forged", cloneVoiceID: nil, store: VoiceConsentStore(locations: .init(environment: [:])), record: nil, statementHash: "forged", embedder: VoiceSpeakerCheck.unavailable.embedder!)\n')
+        source.write_text('import Foundation\nimport VoxClipCore\n' + PROOF_CALL)
         result = subprocess.run(flags + [str(declaration), str(source)], capture_output=True, text=True)
-        if not result.returncode or "inaccessible due to 'fileprivate' protection level" not in result.stderr:
-            raise RuntimeError('Same-module speaker proof must reject fabrication for fileprivate access:\n' + result.stderr)
+        require_access_rejection('same-module-speaker-proof', result, 'fileprivate', "'VoiceSpeakerMatch' initializer")
         print('Rejected Release bypass: same-module-speaker-proof')
-    print("Release controls, six same-package and four same-module probes passed.")
+    print("Release/DEBUG signature controls, six same-package and four same-module probes passed.")
 
 
 if __name__ == "__main__":
