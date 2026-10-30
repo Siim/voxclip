@@ -6,7 +6,7 @@ Sections: Fonts; Data (Unicode Character Database); Application components (macO
 
 ## Windows installer prerequisite
 
-VoxClip does not bundle or redistribute the Microsoft Visual C++ runtime. Windows Setup uses Velopack's `vcredist145-x64` or `vcredist145-arm64` prerequisite to install Microsoft's official Visual C++ 2015-2022 Redistributable package under Microsoft's terms. Microsoft supplies the package and its licence; its DLLs are not copied into VoxClip. Installer verification requires runtime version 14.44 or newer for Whisper.net's native libraries. Velopack 1.2.161's vcredist145 prerequisite requires at least 14.50, so an older installation is upgraded rather than satisfying Setup below the release gate.
+VoxClip does not bundle or redistribute the Microsoft Visual C++ runtime. Windows Setup uses Velopack's `vcredist145-x64` or `vcredist145-arm64` prerequisite to install Microsoft's official Visual C++ 2015-2026 Redistributable package under Microsoft's terms. Microsoft supplies the package and its licence; its DLLs are not copied into VoxClip. Installer verification requires runtime version 14.44 or newer for Whisper.net's native libraries. Velopack 1.2.161's vcredist145 prerequisite requires at least 14.50, so an older installation is upgraded rather than satisfying Setup below the release gate.
 
 ## Fonts
 
