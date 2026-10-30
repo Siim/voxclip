@@ -63,6 +63,7 @@ import VoxClipCore
                     if record.status == .verificationRequired { Text("ElevenLabs needs to verify this voice before it can be used. Finish verification on elevenlabs.io, then come back.").font(.caption) }
                     if session.deleting.contains(record.id) { Text(session.busy ? "Deleting…" : "Couldn't finish deleting").font(.caption) }
                     Button(session.deleting.contains(record.id) ? "Retry deletion…" : "Delete voice", role: .destructive) { session.request(.delete(record.id)) }.disabled(session.busy)
+                    Button("Remove from VoxClip only", role: .destructive) { session.request(.removeLocal(record.id)) }.disabled(session.busy)
                 }
             }
             if session.unsavedRecord != nil {
@@ -158,9 +159,10 @@ import VoxClipCore
             Text(VoiceLabSession.providerCopy)
             switch action {
             case .subscription: Text("Reads your subscription, plan, available voice slots and pending voice verification status. No audio, video or transcript is sent. This check is free.")
-            case .verify: Text("Sends only the statement recording to ElevenLabs Scribe v2. Estimated cost: under $0.01. No video is sent.")
+            case .verify: Text("Sends only the statement recording to ElevenLabs Scribe v2. No video is sent. \(session.verificationCost)")
             case .create: Text("Checks your plan, then sends the consent recording and training audio to create your own voice. No video is sent. \(session.creationCost)")
             case .delete: Text("Deletes this voice from ElevenLabs, removes the local statement recording, and marks the local consent record deleted. Existing rendered takes stay playable and labelled. This action is free.")
+            case .removeLocal: Text("Removes the local consent statement and records that the remote state is unknown. The voice may stay in your ElevenLabs account. This action is free.")
             }
             HStack {
                 Spacer()

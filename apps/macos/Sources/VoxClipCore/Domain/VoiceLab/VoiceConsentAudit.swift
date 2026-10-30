@@ -9,6 +9,7 @@ public struct VoiceConsentAudit: Codable, Sendable, Equatable {
     public let language: String
     public package(set) var remoteVoiceID: String?
     public package(set) var deletedAt: String?
+    public package(set) var remoteStateUnknown: Bool?
 
     init(record: VoiceConsentRecord) throws {
         try record.validate()

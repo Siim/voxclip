@@ -12,6 +12,21 @@ public actor ElevenLabsVoiceLab {
     private var discoveredVoices: [String: VoiceLabVoice] = [:]
     private var subscription: VoiceLabSubscription?
     private var prepared: [UUID: VoiceLabQuote] = [:]
+    private var creatorBindings: [UUID: String] = [:]
+    public func creatorKeyFingerprint() async throws -> String {
+        guard let key = try await keys.key(for: "elevenlabs"), !key.isEmpty else { throw VoiceLabError.missingKey }
+        return String(VoiceLabFingerprint.bytes(Data(key.utf8)).prefix(16))
+    }
+    public func validateCreationQuote(_ quote: VoiceLabQuote) async throws -> String {
+        guard quote.operation == .createClone, prepared[quote.id] == quote, fresh(quote) else { throw VoiceLabError.consentRequired }
+        let fingerprint = try await creatorKeyFingerprint()
+        let plan = try await plan()
+        guard plan.canClone else { throw VoiceLabError.planUnavailable }
+        guard plan.voiceSlotsUsed < plan.voiceLimit else { throw VoiceLabError.noVoiceSlots }
+        guard prepared[quote.id] == quote, fresh(quote) else { throw VoiceLabError.consentRequired }
+        creatorBindings[quote.id] = fingerprint
+        return fingerprint
+    }
     private var preparedOrder: [UUID] = []
     private var approvedRuns: [UUID: Set<UUID>] = [:]
     private var now: @Sendable () -> Date = { Date() }
@@ -197,20 +212,28 @@ public actor ElevenLabsVoiceLab {
                          fields: deleteFields(voiceID, policy), units: 1)
     }
 
-    func prepareOperationDeletion(_ operation: VoiceOperation, requestID: UUID) throws -> VoiceLabQuote {
+    func prepareOperationDeletion(_ operation: VoiceOperation, requestID: UUID) async throws -> VoiceLabQuote {
         guard let voiceID = operation.remoteVoiceID, operation.region == region else { throw VoiceConsentError.invalidRecord }
+        let fingerprint = try await creatorKeyFingerprint()
+        guard operation.creatorKeyFingerprint == nil || operation.creatorKeyFingerprint == fingerprint else { throw VoiceConsentError.creatorMismatch }
         discoveredVoices[voiceID] = VoiceLabVoice(id: voiceID, name: "", category: "cloned", isOwner: true, requiresVerification: false, isVerified: false)
         let policy = OwnVoicePolicy(recordID: operation.recordID, cloneVoiceID: voiceID, recordActive: true, providerConsentGranted: true, statementVerified: true, speakerMatched: true)
-        return try prepareDelete(voiceID: voiceID, policy: policy, requestID: requestID)
+        let quote = try prepareDelete(voiceID: voiceID, policy: policy, requestID: requestID)
+        creatorBindings[quote.id] = fingerprint
+        return quote
     }
 
-    public func prepareConsentDeletion(_ record: VoiceConsentRecord, requestID: UUID) throws -> VoiceLabQuote {
+    public func prepareConsentDeletion(_ record: VoiceConsentRecord, requestID: UUID) async throws -> VoiceLabQuote {
         try record.validate()
+        let fingerprint = try await creatorKeyFingerprint()
+        guard (record.region ?? .default) == region, record.creatorKeyFingerprint == nil || record.creatorKeyFingerprint == fingerprint else { throw VoiceConsentError.creatorMismatch }
         guard record.status != .deleted else { throw VoiceConsentError.inactive }
         discoveredVoices[record.voiceId] = VoiceLabVoice(id: record.voiceId, name: record.voiceName, category: "cloned", isOwner: true,
                                                       requiresVerification: record.status == .verificationRequired, isVerified: record.status == .active)
         let policy = OwnVoicePolicy(recordID: record.id, cloneVoiceID: record.voiceId, recordActive: true, providerConsentGranted: true, statementVerified: true, speakerMatched: true)
-        return try prepareDelete(voiceID: record.voiceId, policy: policy, requestID: requestID)
+        let quote = try prepareDelete(voiceID: record.voiceId, policy: policy, requestID: requestID)
+        creatorBindings[quote.id] = fingerprint
+        return quote
     }
 
     public func prepareSynthesis(text: String, modelID: String, voice: VoiceLabVoiceChoice, language: String,
@@ -381,6 +404,27 @@ public actor ElevenLabsVoiceLab {
         return try quote(.speechToText, requestID: requestID, endpoint: "v1/speech-to-text",
                          fields: [region.rawValue, "scribe_v2", language, String(VoiceLabTakeProcessing.maximumQASeconds)],
                          model: "scribe_v2", units: VoiceLabTakeProcessing.maximumQASeconds, languageMode: .explicit(language))
+    }
+    public func prepareConsentVerification(wav: Data, language: String, requestID: UUID) throws -> VoiceLabQuote {
+        _ = try VoiceConsentAudio.pcm16k(wav)
+        guard ["en", "et"].contains(language) else { throw VoiceLabError.invalidInput }
+        let seconds = Double((wav.count - 44) / 2) / 16_000
+        return try quote(.speechToText, requestID: requestID, endpoint: "v1/speech-to-text",
+            fields: [region.rawValue, "scribe_v2", language, VoiceLabFingerprint.bytes(wav)],
+            model: "scribe_v2", units: seconds, languageMode: .explicit(language))
+    }
+    public func transcribeConsentStatement(wav: Data, language: String, authorization: VoiceLabAuthorization) async throws -> RawTranscript {
+        _ = try VoiceConsentAudio.pcm16k(wav)
+        let boundary = newBoundary()
+        let parts: [Part] = [.text("model_id", "scribe_v2"), .text("language_code", language),
+            .text("tag_audio_events", "false"), .text("diarize", "false"), .text("timestamps_granularity", "word"), .file("file", "statement.wav", wav)]
+        let body = try multipart(parts, boundary: boundary, limit: maxRequest)
+        try claim(authorization, operation: .speechToText, requestID: authorization.requestID, endpoint: "v1/speech-to-text",
+            fields: [region.rawValue, "scribe_v2", language, VoiceLabFingerprint.bytes(wav)])
+        let reply = try await send("v1/speech-to-text", method: "POST", body: body,
+            contentType: "multipart/form-data; boundary=\"\(boundary)\"", limit: maxResponse, billing: authorization)
+        let mapper = ElevenLabsTranscriber(keys: keys, region: region, logger: logger)
+        return try await mapper.mapResponse(reply.bytes, diarize: false)
     }
     func transcribeQA(_ samples: [Float], rate: Int, language: String, authorization: VoiceLabAuthorization,
                       capability: VoiceOperationCapability) async throws -> (words: [VoiceLabWord], receipt: VoiceLabReceipt) {
@@ -557,6 +601,9 @@ public actor ElevenLabsVoiceLab {
         try Task.checkCancellation()
         guard url.scheme == "https", url.host == region.baseURL.host, body?.count ?? 0 <= maxRequest else { throw VoiceLabError.invalidInput }
         guard let key = try await keys.key(for: "elevenlabs"), !key.isEmpty else { throw VoiceLabError.missingKey }
+        if let billing, let expected = creatorBindings.removeValue(forKey: billing.quote.id) {
+            guard String(VoiceLabFingerprint.bytes(Data(key.utf8)).prefix(16)) == expected else { throw VoiceConsentError.creatorMismatch }
+        }
         await logger.register(secret: key)
         var request = URLRequest(url: url)
         request.httpMethod = method

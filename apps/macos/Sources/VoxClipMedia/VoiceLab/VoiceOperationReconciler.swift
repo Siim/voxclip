@@ -5,11 +5,12 @@ public actor VoiceOperationReconciler {
     private let store: VoiceConsentStore
     private let clients: @Sendable (ElevenLabsRegion) -> ElevenLabsVoiceLab
     private let now: @Sendable () -> Date
+    private var regionIsCurrent: @Sendable (ElevenLabsRegion) async -> Bool = { _ in true }
     public init(store: VoiceConsentStore, client: ElevenLabsVoiceLab) {
         self.store = store; clients = { _ in client }; now = { Date() }
     }
-    public init(store: VoiceConsentStore, clients: @escaping @Sendable (ElevenLabsRegion) -> ElevenLabsVoiceLab) {
-        self.store = store; self.clients = clients; now = { Date() }
+    public init(store: VoiceConsentStore, regionIsCurrent: @escaping @Sendable (ElevenLabsRegion) async -> Bool = { _ in true }, clients: @escaping @Sendable (ElevenLabsRegion) -> ElevenLabsVoiceLab) {
+        self.store = store; self.clients = clients; self.regionIsCurrent = regionIsCurrent; now = { Date() }
     }
     #if DEBUG
     @_spi(Testing) public init(store: VoiceConsentStore, client: ElevenLabsVoiceLab, now: @escaping @Sendable () -> Date) {
@@ -31,6 +32,7 @@ public actor VoiceOperationReconciler {
     }
     private func resume(_ snapshot: VoiceOperation, force: Bool) async throws {
         var value = try await store.operation(snapshot.id)
+        if value.remoteStateUnknown == true { try await store.finishLocalRemoval(value); return }
         while true {
             switch (value.kind, value.state) {
             case (.create, .intent):
@@ -85,17 +87,23 @@ public actor VoiceOperationReconciler {
         }
     }
     private func findRemote(_ value: VoiceOperation, force: Bool) async throws -> VoiceLabVoice? {
+        guard await regionIsCurrent(value.region) else { throw VoiceConsentError.creatorMismatch }
         if !force, let next = value.nextAttemptAt, now() < next { return nil }
         let client = clients(value.region)
         guard client.region == value.region else { throw VoiceConsentError.invalidRecord }
+        if let expected = value.creatorKeyFingerprint {
+            guard try await client.creatorKeyFingerprint() == expected else { throw VoiceConsentError.creatorMismatch }
+        }
         let discovered = try await client.listOwnClones()
         let start = floor(value.startedAt.timeIntervalSince1970)
         let end = value.startedAt.addingTimeInterval(24 * 60 * 60)
         let voices = discovered.filter { voice in
             voice.consentRecordID == value.providerNonce ||
-                (voice.name == value.expectedVoiceName && voice.createdAt.map { $0.timeIntervalSince1970 >= start && $0 <= end } == true)
+                (voice.consentRecordID == nil && voice.name == value.expectedVoiceName && voice.createdAt.map { $0.timeIntervalSince1970 >= start && $0 <= end } == true)
         }
-        let uncertain = discovered.contains { $0.name == value.expectedVoiceName && $0.createdAt == nil && $0.consentRecordID != value.providerNonce }
+        let uncertain = discovered.contains { candidate in
+            candidate.name == value.expectedVoiceName && candidate.consentRecordID != value.providerNonce && !voices.contains(where: { $0.id == candidate.id })
+        }
         guard voices.count <= 1, !uncertain else {
             try await store.requireRecoveryReview(value.id)
             throw VoiceConsentError.invalidRecord
@@ -114,6 +122,7 @@ public actor VoiceOperationReconciler {
         return nil
     }
     private func deleteRemote(_ value: VoiceOperation, voiceID: String) async throws {
+        guard await regionIsCurrent(value.region) else { throw VoiceConsentError.creatorMismatch }
         let client = clients(value.region)
         guard client.region == value.region else { throw VoiceConsentError.invalidRecord }
         let requestID = UUID()
