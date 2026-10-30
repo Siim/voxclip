@@ -16,7 +16,7 @@ public final class VoiceLabTakeScratch: Sendable {
     public let fittedAudioURL: URL
     public let fitted: VoiceLabFittedAudio
     public let audio: VoiceLabTakeAudio
-    private let directory: URL
+    private let operation: VoiceLabAssetRecovery.Operation
     private struct State {
         var valid = true
         var consumers: [UUID: @Sendable () async -> Void] = [:]
@@ -32,7 +32,7 @@ public final class VoiceLabTakeScratch: Sendable {
     }
     func detach(_ id: UUID) { _ = state.withLock { $0.consumers.removeValue(forKey: id) } }
     public func invalidate() async {
-        let directory = directory, snapshot = fitted.snapshot
+        let operation = operation, snapshot = fitted.snapshot
         let cleanup = state.withLock { state in
             if let cleanup = state.cleanup { return cleanup }
             state.valid = false
@@ -41,17 +41,17 @@ public final class VoiceLabTakeScratch: Sendable {
             let cleanup = Task.detached(priority: .utility) {
                 for stop in consumers { await stop() }
                 snapshot.invalidate()
-                try? FileManager.default.removeItem(at: directory)
+                operation.discard()
             }
             state.cleanup = cleanup
             return cleanup
         }
         await cleanup.value
     }
-    init(directory: URL, fitted: VoiceLabFittedAudio, audio: VoiceLabTakeAudio) {
-        self.directory = directory; self.fitted = fitted; self.audio = audio
+    init(directory: URL, operation: VoiceLabAssetRecovery.Operation, fitted: VoiceLabFittedAudio, audio: VoiceLabTakeAudio) {
+        self.operation = operation; self.fitted = fitted; self.audio = audio
         mixedAudioURL = directory.appendingPathComponent("mixed.wav")
         fittedAudioURL = directory.appendingPathComponent("fitted.wav")
     }
-    deinit { try? FileManager.default.removeItem(at: directory) }
+    deinit { operation.discard() }
 }

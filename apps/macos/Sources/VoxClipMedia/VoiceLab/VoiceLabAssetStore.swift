@@ -37,9 +37,9 @@ public enum VoiceLabAssetStoreError: Error, LocalizedError, Sendable, Equatable 
 /// The root resolves as `VoiceLabAssets.prepare` resolves it. When only its last component is missing, it is created with
 /// mode 0700 inside the existing data folder; a missing data folder is `rootMissing`. `<projectId>` is created the same
 /// way, and neither it nor the file is followed through a link. Anything already at the file's name is `alreadyExists`
-/// before a byte is written. Each write goes to an exclusive 0600 temporary file in the same directory, is flushed with
+/// before a byte is written. Each write goes to an exclusive 0600 file in a journalled private operation directory, is flushed with
 /// `F_FULLFSYNC`, and moves into place with `RENAME_EXCL`, so an existing file is never overwritten or truncated; the
-/// directory is then flushed the same way. Cancellation or failure before that move removes only the temporary file.
+/// project directory is then flushed the same way. Cancellation or failure releases only the pinned operation directory.
 /// After it the file is kept: a failure to confirm it is `publishedUnverified`, and different bytes at the name are
 /// `altered`.
 public enum VoiceLabAssetStore {
@@ -155,19 +155,17 @@ public enum VoiceLabAssetStore {
         var existing = stat()
         if Darwin.fstatat(projectFD, name, &existing, AT_SYMLINK_NOFOLLOW) == 0 { throw VoiceLabAssetStoreError.alreadyExists(file) }
         guard errno == ENOENT else { throw VoiceLabAssetStoreError.unwritable(file) }
+        let operation: VoiceLabAssetRecovery.Operation
+        do { operation = try VoiceLabAssetRecovery.Operation(parent: projectFD) }
+        catch VoiceLabAssetStoreError.unsafePath { throw VoiceLabAssetStoreError.unsafePath(file) }
+        catch { throw VoiceLabAssetStoreError.unwritable(file) }
+        defer { operation.discard() }
         let temporary = ".\(name).\(UUID().uuidString.lowercased()).partial"
-        let fd = Darwin.openat(projectFD, temporary, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0o600)
+        let fd = Darwin.openat(operation.descriptor, temporary, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0o600)
         guard fd >= 0 else { throw VoiceLabAssetStoreError.unwritable(file) }
         let journal: VoiceLabAssetRecovery.Journal
-        do { journal = try VoiceLabAssetRecovery.recordPartial(projectFD, name: temporary, descriptor: fd) }
+        do { journal = try VoiceLabAssetRecovery.recordPartial(operation.descriptor, name: temporary, descriptor: fd) }
         catch { Darwin.close(fd); throw error }
-        var published = false
-        defer {
-            if !published {
-                VoiceLabAssetRecovery.removeIfMatching(projectFD, name: temporary, identity: journal.partial.identity)
-                VoiceLabAssetRecovery.removeIfMatching(projectFD, name: journal.name, identity: journal.identity)
-            }
-        }
         var hash = SHA256()
         let stride = channels * (bits / 8)
         do {
@@ -199,12 +197,11 @@ public enum VoiceLabAssetStore {
             try checkpoint?(.fileSync)
         }
         try Task.checkCancellation()
-        guard renameatx_np(projectFD, temporary, projectFD, name, UInt32(RENAME_EXCL)) == 0 else {
+        guard renameatx_np(operation.descriptor, temporary, projectFD, name, UInt32(RENAME_EXCL)) == 0 else {
             throw errno == EEXIST ? VoiceLabAssetStoreError.alreadyExists(file) : VoiceLabAssetStoreError.unwritable(file)
         }
         // From here the paid file exists under its final name and is kept, whatever happens next.
-        published = true
-        guard renameatx_np(projectFD, journal.name, projectFD, ".\(name).ownership.json", UInt32(RENAME_EXCL)) == 0 else {
+        guard renameatx_np(operation.descriptor, journal.name, projectFD, ".\(name).ownership.json", UInt32(RENAME_EXCL)) == 0 else {
             throw VoiceLabAssetStoreError.publishedUnverified(file)
         }
         try checkpoint?(.rename)

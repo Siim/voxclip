@@ -618,6 +618,31 @@ import VoxClipCore
         }
     }
 
+    @Test func decodeCleanupNeverTraversesAReplacedSnapshotDirectory() throws {
+        let folder = try directory()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let checked = try asset((0..<4_800).map(Self.left), rate: 24_000, in: folder, id: "checked")
+        let original = folder.appendingPathComponent("original")
+        var replacement: URL?
+        defer { if let replacement { try? FileManager.default.removeItem(at: replacement) } }
+        let result = Result {
+            try VoiceLabSourceAudio.decodeAsset(url: checked, targetSampleRate: 24_000, expectedSha256: nil) { snapshot in
+                let directory = snapshot.deletingLastPathComponent()
+                replacement = directory
+                do {
+                    try FileManager.default.moveItem(at: directory, to: original)
+                    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
+                    try Data("replacement user file".utf8).write(to: directory.appendingPathComponent("user.txt"))
+                } catch { Issue.record(error) }
+            }
+        }
+        if case .success = result { Issue.record("A replaced snapshot path must not decode") }
+        let directory = try #require(replacement)
+        #expect(try Data(contentsOf: directory.appendingPathComponent("user.txt")) == Data("replacement user file".utf8))
+        #expect(try FileManager.default.contentsOfDirectory(atPath: original.path).isEmpty)
+        #expect(FileManager.default.fileExists(atPath: checked.path))
+    }
+
     @Test func decodedAssetIsTheCheckedFileEvenIfThePathIsSwapped() throws {
         let folder = try directory()
         defer { try? FileManager.default.removeItem(at: folder) }

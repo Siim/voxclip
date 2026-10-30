@@ -205,6 +205,25 @@ extension HeavyMediaTests {
         #expect(!FileManager.default.fileExists(atPath: scratch.fitted.snapshot.url.deletingLastPathComponent().path))
         #expect(FileManager.default.fileExists(atPath: root.appendingPathComponent(scratch.fitted.paidAsset.file).path))
     }
+    @Test func invalidationNeverTraversesReplacementScratchOrSnapshotDirectories() async throws {
+        let vector = try #require(FittedAssetVector.load().first)
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let scratch = try vector.scratch(root: root)
+        let directories = [scratch.mixedAudioURL.deletingLastPathComponent(), scratch.fitted.snapshot.url.deletingLastPathComponent()]
+        for (index, directory) in directories.enumerated() {
+            try FileManager.default.moveItem(at: directory, to: root.appendingPathComponent("original-\(index)"))
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
+            try Data("replacement user file".utf8).write(to: directory.appendingPathComponent("user.txt"))
+        }
+        await scratch.invalidate()
+        for (index, directory) in directories.enumerated() {
+            #expect(try Data(contentsOf: directory.appendingPathComponent("user.txt")) == Data("replacement user file".utf8))
+            #expect(try FileManager.default.contentsOfDirectory(atPath: root.appendingPathComponent("original-\(index)").path).isEmpty)
+        }
+        #expect(!scratch.isValid && !scratch.fitted.snapshot.isValid)
+    }
     @MainActor @Test(arguments: [false, true]) func sharedLeaseStopsBothWindowsBeforeCleanup(ending: Bool) async throws {
         let vector = try #require(FittedAssetVector.load().first)
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
@@ -342,13 +361,16 @@ extension HeavyMediaTests {
         defer { Darwin.close(project); Darwin.close(partial) }
         _ = try VoiceLabAssetRecovery.recordPartial(project, name: old.lastPathComponent, descriptor: partial,
             owner: .init(pid: 123, seconds: 100, microseconds: 0))
+        let operation = try VoiceLabAssetRecovery.Operation(parent: project, owner: .init(pid: 123, seconds: 100, microseconds: 0))
+        let staged = directory.appendingPathComponent(operation.name).appendingPathComponent("audio.partial")
+        try Data([4, 5]).write(to: staged)
         #expect(try VoiceLabAssetRecovery.recover(descriptor, status: { _ in .gone }) == 1)
         #expect(try VoiceLabAssetRecovery.recover(descriptor, status: { _ in .gone }) == 0)
-        #expect(!FileManager.default.fileExists(atPath: old.path))
-        for path in [current, unknown, complete, link] { #expect(FileManager.default.fileExists(atPath: path.path)) }
+        #expect(!FileManager.default.fileExists(atPath: staged.path))
+        for path in [old, current, unknown, complete, link] { #expect(FileManager.default.fileExists(atPath: path.path)) }
         #expect(try Data(contentsOf: complete) == Data([1, 2, 3]))
     }
-    @Test(arguments: ["replacement", "live", "dead", "reused", "unknown"])
+    @Test(arguments: ["replacement", "live", "dead", "reused", "unknown", "unjournalled"])
     func partialRecoveryRequiresAbandonmentAndOriginalIdentity(scenario: String) throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let directory = root.appendingPathComponent(projectId)
@@ -356,16 +378,22 @@ extension HeavyMediaTests {
         defer { try? FileManager.default.removeItem(at: root) }
         let rootFD = try VoiceLabPaidRoot.open(root)
         let projectFD = Darwin.open(directory.path, O_RDONLY | O_DIRECTORY)
-        let name = ".paid.wav.\(UUID().uuidString.lowercased()).partial"
-        let fd = openat(projectFD, name, O_RDWR | O_CREAT | O_EXCL, 0o600)
-        defer { Darwin.close(fd); Darwin.close(projectFD); Darwin.close(rootFD) }
+        defer { Darwin.close(projectFD); Darwin.close(rootFD) }
         guard case .running(let owner) = VoiceLabAssetRecovery.ownerStatus(getppid()) else {
             Issue.record("Cannot read the live second process start time"); return
         }
-        _ = try VoiceLabAssetRecovery.recordPartial(projectFD, name: name, descriptor: fd, owner: owner)
-        let file = directory.appendingPathComponent(name)
+        let operation = try VoiceLabAssetRecovery.Operation(parent: projectFD, owner: owner)
+        let staged = directory.appendingPathComponent(operation.name)
+        let file = staged.appendingPathComponent("audio.partial")
+        try Data([1, 2]).write(to: file)
+        var info = stat()
+        #expect(fstat(operation.descriptor, &info) == 0 && info.st_mode & 0o777 == 0o700)
+        if scenario == "unjournalled" { try FileManager.default.removeItem(at: staged.appendingPathComponent(".operation.json")) }
         if scenario == "replacement" {
-            try FileManager.default.removeItem(at: file)
+            let journal = try Data(contentsOf: staged.appendingPathComponent(".operation.json"))
+            try FileManager.default.moveItem(at: staged, to: directory.appendingPathComponent("kept-original"))
+            try FileManager.default.createDirectory(at: staged, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
+            try journal.write(to: staged.appendingPathComponent(".operation.json"))
             try Data("replacement user file".utf8).write(to: file)
         }
         let removed = try VoiceLabAssetRecovery.recover(rootFD, status: { pid in
@@ -382,6 +410,39 @@ extension HeavyMediaTests {
         #expect(FileManager.default.fileExists(atPath: file.path) == !abandoned)
         if scenario == "replacement" { #expect(try Data(contentsOf: file) == Data("replacement user file".utf8)) }
     }
+    @Test(arguments: ["file", "directory", "symlink"])
+    func recoveryUsesOpenedDirectoryWhenItsPathIsReplaced(replacement: String) throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let project = root.appendingPathComponent(projectId)
+        try FileManager.default.createDirectory(at: project, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let rootFD = try VoiceLabPaidRoot.open(root), projectFD = Darwin.open(project.path, O_RDONLY | O_DIRECTORY)
+        defer { Darwin.close(projectFD); Darwin.close(rootFD) }
+        let operation = try VoiceLabAssetRecovery.Operation(parent: projectFD, owner: .init(pid: 123, seconds: 100, microseconds: 0))
+        let staged = project.appendingPathComponent(operation.name), original = project.appendingPathComponent("original")
+        try Data([1, 2]).write(to: staged.appendingPathComponent("audio.partial"))
+        let outside = root.appendingPathComponent("user-files")
+        try FileManager.default.createDirectory(at: outside, withIntermediateDirectories: false)
+        let marker = outside.appendingPathComponent("user.txt")
+        try Data("keep".utf8).write(to: marker)
+        var opened = false
+        let recovered = try VoiceLabAssetRecovery.recover(rootFD, status: { _ in .gone }, afterOpening: { name in
+            #expect(name == operation.name); opened = true
+            try FileManager.default.moveItem(at: staged, to: original)
+            if replacement == "file" { try Data("keep".utf8).write(to: staged) }
+            else if replacement == "symlink" { try FileManager.default.createSymbolicLink(at: staged, withDestinationURL: outside) }
+            else {
+                try FileManager.default.createDirectory(at: staged, withIntermediateDirectories: false)
+                try Data("keep".utf8).write(to: staged.appendingPathComponent("user.txt"))
+            }
+        })
+        #expect(recovered == 1)
+        #expect(opened && FileManager.default.fileExists(atPath: staged.path))
+        #expect(try Data(contentsOf: marker) == Data("keep".utf8))
+        #expect(try FileManager.default.contentsOfDirectory(atPath: original.path).isEmpty)
+        if replacement == "file" { #expect(try Data(contentsOf: staged) == Data("keep".utf8)) }
+        else { #expect(try Data(contentsOf: staged.appendingPathComponent("user.txt")) == Data("keep".utf8)) }
+    }
     @Test func writerHoldsRecoveryLockUntilPublicationCompletes() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false)
@@ -393,6 +454,15 @@ extension HeavyMediaTests {
                 let descriptor = Darwin.open(root.appendingPathComponent(".asset-write.lock").path, O_RDWR)
                 defer { Darwin.close(descriptor) }
                 #expect(descriptor >= 0 && flock(descriptor, LOCK_EX | LOCK_NB) == -1)
+                let directory = root.appendingPathComponent(projectId)
+                let names = try FileManager.default.contentsOfDirectory(atPath: directory.path)
+                #expect(names.count == 1)
+                let operation = try #require(names.first)
+                #expect(operation.hasPrefix(".voxclip-operation-"))
+                let entries = try FileManager.default.contentsOfDirectory(atPath: directory.appendingPathComponent(operation).path)
+                #expect(entries.contains(".operation.json"))
+                #expect(entries.filter { $0.hasSuffix(".partial") }.count == 1)
+                #expect(entries.filter { $0.hasSuffix(".partial.owner.json") }.count == 1)
                 checked = true
             })
         #expect(checked)

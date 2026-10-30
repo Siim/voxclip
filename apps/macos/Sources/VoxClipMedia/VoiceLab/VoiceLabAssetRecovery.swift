@@ -1,5 +1,6 @@
 import Darwin
 import Foundation
+import Synchronization
 import VoxClipCore
 
 enum VoiceLabAssetRecovery {
@@ -18,9 +19,120 @@ enum VoiceLabAssetRecovery {
             device = info.st_dev; inode = info.st_ino
             birthSeconds = Int64(info.st_birthtimespec.tv_sec); birthNanos = Int64(info.st_birthtimespec.tv_nsec)
         }
-        func matches(_ info: stat) -> Bool {
-            info.st_mode & S_IFMT == S_IFREG && info.st_uid == getuid() && self == Identity(info)
+        func matches(_ info: stat, type: mode_t = S_IFREG) -> Bool {
+            info.st_mode & S_IFMT == type && info.st_uid == getuid() && self == Identity(info)
         }
+    }
+    struct DirectoryRecord: Codable {
+        let name: String
+        let owner: Owner
+        let identity: Identity
+    }
+    final class Operation: Sendable {
+        let descriptor: Int32
+        let name: String
+        private let parent: Int32
+        private let record: DirectoryRecord
+        private let removed = Mutex(false)
+
+        init(parent: Int32, owner: Owner? = nil) throws {
+            let current: Owner
+            if let owner { current = owner }
+            else if case .running(let actual) = ownerStatus(getpid()) { current = actual }
+            else { throw VoiceLabAssetStoreError.unwritable("operation owner") }
+            name = ".voxclip-operation-\(UUID().uuidString.lowercased())"
+            let parentCopy = fcntl(parent, F_DUPFD_CLOEXEC, 0)
+            guard parentCopy >= 0 else { throw VoiceLabAssetStoreError.unwritable(name) }
+            guard mkdirat(parentCopy, name, 0o700) == 0 else {
+                close(parentCopy); throw VoiceLabAssetStoreError.unwritable(name)
+            }
+            let directory = openat(parentCopy, name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+            var info = stat()
+            guard directory >= 0, fstat(directory, &info) == 0, info.st_mode & S_IFMT == S_IFDIR,
+                  info.st_uid == getuid(), info.st_mode & 0o777 == 0o700 else {
+                if directory >= 0 { close(directory) }
+                close(parentCopy); throw VoiceLabAssetStoreError.unsafePath(name)
+            }
+            let record = DirectoryRecord(name: name, owner: current, identity: Identity(info))
+            do {
+                try writeRecord(record, directory: directory)
+                guard VoiceLabPaidRoot.fullSync(parentCopy) else { throw VoiceLabAssetStoreError.unwritable(name) }
+            } catch {
+                close(directory); close(parentCopy); throw error
+            }
+            self.parent = parentCopy; descriptor = directory; self.record = record
+        }
+
+        static func create(in root: URL) throws -> Operation {
+            let parent = Darwin.open(root.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+            guard parent >= 0 else { throw VoiceLabAssetStoreError.unsafePath(root.lastPathComponent) }
+            defer { close(parent) }
+            return try Operation(parent: parent)
+        }
+
+        func discard() {
+            removed.withLock { removed in
+                guard !removed else { return }
+                removed = true
+                _ = try? clear(descriptor, parent: parent, record: record)
+            }
+        }
+
+        deinit { discard(); close(descriptor); close(parent) }
+    }
+
+    private static func writeRecord(_ record: DirectoryRecord, directory: Int32) throws {
+        let descriptor = openat(directory, ".operation.json", O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0o600)
+        guard descriptor >= 0 else { throw VoiceLabAssetStoreError.unwritable(record.name) }
+        defer { close(descriptor) }
+        let bytes = try JSONEncoder().encode(record)
+        try bytes.withUnsafeBytes { buffer in
+            var offset = 0
+            while offset < buffer.count {
+                let count = Darwin.write(descriptor, buffer.baseAddress!.advanced(by: offset), buffer.count - offset)
+                if count < 0 && errno == EINTR { continue }
+                guard count > 0 else { throw VoiceLabAssetStoreError.unwritable(record.name) }
+                offset += count
+            }
+        }
+        guard VoiceLabPaidRoot.fullSync(descriptor), VoiceLabPaidRoot.fullSync(directory) else {
+            throw VoiceLabAssetStoreError.unwritable(record.name)
+        }
+    }
+
+    private static func directoryRecord(_ descriptor: Int32) -> DirectoryRecord? {
+        let journal = openat(descriptor, ".operation.json", O_RDONLY | O_NONBLOCK | O_NOFOLLOW | O_CLOEXEC)
+        guard journal >= 0 else { return nil }
+        defer { close(journal) }
+        var info = stat()
+        guard fstat(journal, &info) == 0, info.st_mode & S_IFMT == S_IFREG, info.st_uid == getuid(),
+              (1...4096).contains(info.st_size) else { return nil }
+        var bytes = Data(count: Int(info.st_size))
+        guard bytes.withUnsafeMutableBytes({ Darwin.read(journal, $0.baseAddress, $0.count) }) == bytes.count else { return nil }
+        return try? JSONDecoder().decode(DirectoryRecord.self, from: bytes)
+    }
+
+    private static func clear(_ descriptor: Int32, parent: Int32, record: DirectoryRecord) throws -> Bool {
+        var info = stat()
+        guard fstat(descriptor, &info) == 0, record.identity.matches(info, type: S_IFDIR),
+              info.st_mode & 0o777 == 0o700 else { return false }
+        let entries = try names(descriptor).filter { $0 != ".operation.json" }
+        for name in entries {
+            guard fstatat(descriptor, name, &info, AT_SYMLINK_NOFOLLOW) == 0,
+                  info.st_mode & S_IFMT != S_IFDIR else { return false }
+        }
+        for name in entries {
+            guard unlinkat(descriptor, name, 0) == 0 || errno == ENOENT else {
+                throw VoiceLabAssetStoreError.unwritable(record.name)
+            }
+        }
+        guard unlinkat(descriptor, ".operation.json", 0) == 0 || errno == ENOENT else {
+            throw VoiceLabAssetStoreError.unwritable(record.name)
+        }
+        if fstatat(parent, record.name, &info, AT_SYMLINK_NOFOLLOW) == 0,
+           record.identity.matches(info, type: S_IFDIR) { _ = unlinkat(parent, record.name, AT_REMOVEDIR) }
+        guard VoiceLabPaidRoot.fullSync(parent) else { throw VoiceLabAssetStoreError.unwritable(record.name) }
+        return true
     }
     struct Partial: Codable {
         let name: String
@@ -72,10 +184,6 @@ enum VoiceLabAssetRecovery {
         guard VoiceLabPaidRoot.fullSync(fd), VoiceLabPaidRoot.fullSync(directory) else { throw VoiceLabAssetStoreError.unwritable(journal) }
         return Journal(partial: partial, name: journal, identity: identity)
     }
-    static func removeIfMatching(_ directory: Int32, name: String, identity: Identity) {
-        var info = stat()
-        if fstatat(directory, name, &info, AT_SYMLINK_NOFOLLOW) == 0, identity.matches(info) { _ = unlinkat(directory, name, 0) }
-    }
     static func ownsComplete(_ directory: Int32, name: String, info: stat) -> Bool {
         guard let (partial, _) = readJournal(directory, name: ".\(name).ownership.json"),
               partial.name.hasPrefix(".\(name)."), partial.identity.matches(info) else { return false }
@@ -120,7 +228,8 @@ enum VoiceLabAssetRecovery {
         }
         return result
     }
-    static func recover(_ root: Int32, status: (Int32) -> OwnerStatus = ownerStatus) throws -> Int {
+    static func recover(_ root: Int32, status: (Int32) -> OwnerStatus = ownerStatus,
+                        afterOpening: ((String) throws -> Void)? = nil) throws -> Int {
         var removed = 0
         for project in try names(root) {
             guard (try? VoiceLabAssetNaming.file(projectId: project, assetId: "probe", extension: "wav")) != nil else { continue }
@@ -128,30 +237,23 @@ enum VoiceLabAssetRecovery {
             guard directory >= 0 else { continue }
             defer { close(directory) }
             for name in try names(directory) {
-                guard name.hasPrefix("."), name.hasSuffix(".partial.owner.json"),
-                      let (record, journalIdentity) = readJournal(directory, name: name),
-                      name == record.name + ".owner.json", !record.name.contains("/") else { continue }
-                let stem = String(record.name.dropFirst().dropLast(8))
-                let identity: String
-                if let separator = stem.range(of: ".wav.", options: .backwards) {
-                    let asset = String(stem[..<separator.lowerBound])
-                    guard (try? VoiceLabAssetNaming.file(projectId: project, assetId: asset, extension: "wav")) == "\(project)/\(asset).wav" else { continue }
-                    identity = String(stem[separator.upperBound...])
-                } else if stem.hasPrefix("asset-retention.") {
-                    identity = String(stem.dropFirst("asset-retention.".count))
-                } else { continue }
-                guard let uuid = UUID(uuidString: identity), uuid.uuidString.lowercased() == identity else { continue }
+                guard name.hasPrefix(".voxclip-operation-"),
+                      let uuid = UUID(uuidString: String(name.dropFirst(".voxclip-operation-".count))),
+                      name == ".voxclip-operation-\(uuid.uuidString.lowercased())" else { continue }
+                let operation = openat(directory, name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+                guard operation >= 0 else { continue }
+                defer { close(operation) }
                 var info = stat()
+                guard let record = directoryRecord(operation), record.name == name,
+                      fstat(operation, &info) == 0, record.identity.matches(info, type: S_IFDIR),
+                      info.st_mode & 0o777 == 0o700 else { continue }
                 switch status(record.owner.pid) {
                 case .unknown: continue
                 case .running(let actual) where actual == record.owner: continue
                 case .gone, .running: break
                 }
-                guard fstatat(directory, record.name, &info, AT_SYMLINK_NOFOLLOW) == 0,
-                      record.identity.matches(info) else { continue }
-                guard unlinkat(directory, record.name, 0) == 0 else { throw VoiceLabAssetStoreError.unwritable(name) }
-                removeIfMatching(directory, name: name, identity: journalIdentity)
-                removed += 1
+                try afterOpening?(name)
+                if try clear(operation, parent: directory, record: record) { removed += 1 }
             }
             guard VoiceLabPaidRoot.fullSync(directory) else { throw VoiceLabAssetStoreError.unwritable(project) }
         }

@@ -127,12 +127,13 @@ public enum VoiceLabSourceAudio {
             throw VoiceLabSourceAudioError.unreadable
         }
         guard Int64(info.st_size) <= VoiceLabAssets.maxBytes else { throw VoiceLabSourceAudioError.tooLarge }
-        let scratch = FileManager.default.temporaryDirectory.appendingPathComponent("voxclip-voice-decode-\(UUID().uuidString)",
-                                                                                    isDirectory: true)
-        guard Darwin.mkdir(scratch.path, 0o700) == 0 else { throw VoiceLabSourceAudioError.unreadable }
-        defer { try? FileManager.default.removeItem(at: scratch) }
+        let operation: VoiceLabAssetRecovery.Operation
+        do { operation = try VoiceLabAssetRecovery.Operation.create(in: FileManager.default.temporaryDirectory) }
+        catch { throw VoiceLabSourceAudioError.unreadable }
+        defer { operation.discard() }
+        let scratch = FileManager.default.temporaryDirectory.appendingPathComponent(operation.name, isDirectory: true)
         let snapshot = scratch.appendingPathComponent("asset." + url.pathExtension)
-        let copyFD = Darwin.open(snapshot.path, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0o600)
+        let copyFD = Darwin.openat(operation.descriptor, snapshot.lastPathComponent, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0o600)
         guard copyFD >= 0 else { throw VoiceLabSourceAudioError.unreadable }
         let copy = FileHandle(fileDescriptor: copyFD, closeOnDealloc: true)
         afterCheck?(snapshot)

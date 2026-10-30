@@ -135,15 +135,13 @@ public enum VoiceLabAssetRetention {
         return data
     }
     private static func persist(_ ledger: Ledger, name: String, directory: Int32) throws {
+        let operation = try VoiceLabAssetRecovery.Operation(parent: directory)
+        defer { operation.discard() }
         let temporary = ".asset-retention.\(UUID().uuidString.lowercased()).partial"
-        let descriptor = openat(directory, temporary, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0o600)
+        let descriptor = openat(operation.descriptor, temporary, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0o600)
         guard descriptor >= 0 else { throw VoiceLabAssetStoreError.unwritable(name) }
         defer { close(descriptor) }
-        let journal = try VoiceLabAssetRecovery.recordPartial(directory, name: temporary, descriptor: descriptor)
-        defer {
-            VoiceLabAssetRecovery.removeIfMatching(directory, name: temporary, identity: journal.partial.identity)
-            VoiceLabAssetRecovery.removeIfMatching(directory, name: journal.name, identity: journal.identity)
-        }
+        _ = try VoiceLabAssetRecovery.recordPartial(operation.descriptor, name: temporary, descriptor: descriptor)
         let data = try JSONEncoder().encode(ledger)
         try data.withUnsafeBytes { buffer in
             var offset = 0
@@ -154,7 +152,7 @@ public enum VoiceLabAssetRetention {
                 offset += written
             }
         }
-        guard VoiceLabPaidRoot.fullSync(descriptor), renameat(directory, temporary, directory, name) == 0,
+        guard VoiceLabPaidRoot.fullSync(descriptor), renameat(operation.descriptor, temporary, directory, name) == 0,
               VoiceLabPaidRoot.fullSync(directory) else { throw VoiceLabAssetStoreError.unwritable(name) }
     }
 }

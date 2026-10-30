@@ -29,6 +29,13 @@ public enum VoiceLabDisclosureWriter {
     public static func stage(sourceMP4: URL, stagedMP4: URL, finalFilename: String,
                              project: Project, prepared: VoiceLabPreparedRender, appVersion: String,
                              createdAt: Date = Date()) throws -> VoiceLabStagedDisclosure {
+        try stage(sourceMP4: sourceMP4, stagedMP4: stagedMP4, finalFilename: finalFilename, project: project,
+                  prepared: prepared, appVersion: appVersion, createdAt: createdAt, afterCopy: nil)
+    }
+
+    static func stage(sourceMP4: URL, stagedMP4: URL, finalFilename: String,
+                      project: Project, prepared: VoiceLabPreparedRender, appVersion: String,
+                      createdAt: Date, afterCopy: ((URL) throws -> Void)?) throws -> VoiceLabStagedDisclosure {
         try prepared.verify(project: project, scope: prepared.outputPlan.scope, labelPosition: prepared.disclosure.position)
         guard prepared.disclosure.required, !prepared.selectedSegmentRecipes.isEmpty,
               !appVersion.isEmpty, !appVersion.contains("/"), !appVersion.contains("\\"),
@@ -36,18 +43,21 @@ public enum VoiceLabDisclosureWriter {
               finalFilename == URL(fileURLWithPath: finalFilename).lastPathComponent,
               sourceMP4.standardizedFileURL != stagedMP4.standardizedFileURL else { throw VoiceLabDisclosureError.invalidMP4 }
         guard !FileManager.default.fileExists(atPath: stagedMP4.path) else { throw VoiceLabDisclosureError.destinationExists }
-        var created = false
+        let parent = open(stagedMP4.deletingLastPathComponent().path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+        guard parent >= 0 else { throw VoiceLabDisclosureError.invalidMP4 }
+        defer { close(parent) }
+        let operation = try VoiceLabAssetRecovery.Operation(parent: parent)
+        defer { operation.discard() }
         do {
             let input = try FileHandle(forReadingFrom: sourceMP4)
             defer { try? input.close() }
             try validateMP4(input)
             try input.seek(toOffset: 0)
-            let descriptor = open(stagedMP4.path, O_WRONLY | O_CREAT | O_EXCL, S_IRUSR | S_IWUSR)
+            let descriptor = openat(operation.descriptor, "marked.mp4", O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, S_IRUSR | S_IWUSR)
             guard descriptor >= 0 else {
                 if errno == EEXIST { throw VoiceLabDisclosureError.destinationExists }
                 throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
             }
-            created = true
             let output = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
             defer { try? output.close() }
             var hash = SHA256()
@@ -69,14 +79,16 @@ public enum VoiceLabDisclosureWriter {
             hash.update(data: box)
             try output.synchronize()
             try Task.checkCancellation()
+            try afterCopy?(stagedMP4.deletingLastPathComponent().appendingPathComponent(operation.name))
             let digest = hash.finalize().map { String(format: "%02x", $0) }.joined()
             let sidecar = try sidecar(project: project, prepared: prepared, filename: finalFilename,
                                       hash: digest, appVersion: appVersion, createdAt: createdAt)
+            guard renameatx_np(operation.descriptor, "marked.mp4", parent, stagedMP4.lastPathComponent, UInt32(RENAME_EXCL)) == 0 else {
+                if errno == EEXIST { throw VoiceLabDisclosureError.destinationExists }
+                throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+            }
             return VoiceLabStagedDisclosure(mp4URL: stagedMP4,
                 sidecarFilename: finalFilename + ".provenance.json", sidecarData: sidecar, sha256: digest)
-        } catch {
-            if created { try? FileManager.default.removeItem(at: stagedMP4) }
-            throw error
         }
     }
 
