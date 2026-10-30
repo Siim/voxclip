@@ -40,6 +40,8 @@
     <Compile Include="ColumnBoundsGateTests.cs" />
     <Compile Include="TimelineTests.cs" />
     <Compile Include="UpdateRestartTests.cs" />
+    <Compile Include="VelopackUpdateTests.cs" />
+    <Compile Include="VelopackUpdateTestDoubles.cs" />
     <Compile Include="StartupCheckTests.cs" />
     <Compile Include="NativeHarnessContractTests.cs" />
     <Compile Include="HighContrastTraceTests.cs" />
@@ -51,6 +53,7 @@
     <Compile Include="../../../../src/VoxClip.App/Services/StartupCheck.cs" Link="Services/StartupCheck.cs" />
     <Compile Include="../../../../src/VoxClip.App/Services/RedirectedLaunchSelection.cs" Link="Services/RedirectedLaunchSelection.cs" />
     <Compile Include="../../../../src/VoxClip.App/Services/UpdateRestartCoordinator.cs" Link="Services/UpdateRestartCoordinator.cs" />
+    <Compile Include="../../../../src/VoxClip.App/Services/VelopackUpdates.cs" Link="Services/VelopackUpdates.cs" />
     <Compile Include="../../../../src/VoxClip.App/Services/SettingsWriteQueue.cs" Link="Services/SettingsWriteQueue.cs" />
     <Compile Include="../../../../src/VoxClip.App/Services/ExportLedger.cs" Link="Services/ExportLedger.cs" />
     <Compile Include="../../../../src/VoxClip.App/ViewModels/*.cs" LinkBase="ViewModels" />
