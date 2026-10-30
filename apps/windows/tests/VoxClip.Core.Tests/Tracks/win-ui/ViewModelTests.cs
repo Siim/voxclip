@@ -27,6 +27,7 @@ public sealed class ViewModelTests
     {
         var root = Path.GetDirectoryName(Environment.GetEnvironmentVariable("VOXCLIP_SHARED_DIR"))!;
         var source = File.ReadAllText(Path.Combine(root, "apps/windows/src/VoxClip.App/SettingsWindow.xaml.cs"));
+        Assert.Contains("Residency regions are for ElevenLabs Enterprise workspaces with data residency, which have their own keys. Most accounts use Default.", source);
         Assert.Contains("Automatic update checks contact GitHub", source);
         Assert.Contains("Model downloads contact their publishers", source);
         Assert.Contains("Posting happens only when you choose to share", source);
