@@ -752,6 +752,41 @@ extension VoiceConsentTests {
         #expect(try await store.auditTombstone(recordID: record.id) == nil)
         #expect(calls.value.withLock { $0 } == (changeAt == 3 ? ["GET"] : []))
     }
+    @Test(arguments: [false, true])
+    func outsideWindowSameNameCandidateRequiresDurableReview(hasNonceMatch: Bool) async throws {
+        let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let store = storage(root); let record = try fixtureRecord(wav: wav)
+        let operation = try await seedOperation(store, record: record)
+        _ = try await store.transition(operation.id, to: .dispatched, at: now)
+        let calls = ConsentRequestLog(); let remote = OperationRemote(); remote.value.withLock { $0.present = true }
+        let base = SpeechStubHTTP.register { request in
+            calls.value.withLock { $0.append(request.httpMethod ?? "") }
+            #expect(request.httpMethod == "GET")
+            var voices: [[String: Any]] = []
+            if remote.value.withLock({ $0.present }) {
+                voices.append(["voice_id": "outsideWindow", "name": record.voiceName + " (VoxClip)",
+                    "category": "cloned", "is_owner": true, "created_at_unix": 1_793_275_199])
+                if hasNonceMatch {
+                    voices.append(["voice_id": "nonceMatch", "name": record.voiceName + " (VoxClip)",
+                        "category": "cloned", "is_owner": true, "labels": ["voxclip_record_id": operation.providerNonce]])
+                }
+            }
+            return (200, [:], try JSONSerialization.data(withJSONObject: ["voices": voices, "has_more": false]))
+        }
+        let client = ElevenLabsVoiceLab(keys: SpeechTestKeys(value: "synthetic-journal-key"), session: URLSession(configuration: SpeechStubHTTP.configuration(for: base)))
+        let clock = OperationClock(now.addingTimeInterval(24 * 60 * 60 + 1))
+        let reconciler = VoiceOperationReconciler(store: store, client: client, now: { clock.now() })
+        await #expect(throws: VoiceConsentError.invalidRecord) { try await reconciler.reconcile(force: true) }
+        let pending = try await store.operation(operation.id)
+        #expect(pending.recoveryNeedsReview == true && !pending.finished && pending.remoteVoiceID == nil)
+        remote.value.withLock { $0.present = false }
+        let restarted = storage(root)
+        try await VoiceOperationReconciler(store: restarted, client: client, now: { clock.now() }).reconcile(force: true)
+        let retained = try await restarted.operation(operation.id)
+        #expect(retained.recoveryNeedsReview == true && !retained.finished && retained.remoteVoiceID == nil)
+        #expect(try await restarted.auditTombstone(recordID: record.id) == nil)
+        #expect(calls.value.withLock { $0 } == ["GET", "GET"])
+    }
     private func operationClient(_ remote: OperationRemote, nonce: String, fallbackName: String? = nil, duplicate: Bool = false, conflictingNonce: Bool = false) -> ElevenLabsVoiceLab {
         let base = SpeechStubHTTP.register { request in
             switch (request.httpMethod, request.url?.path) {

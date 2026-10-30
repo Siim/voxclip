@@ -1,5 +1,9 @@
 # macOS implementation contracts
 
+### 2026-10-30 — sol-mac-voicelab — W8 same-name recovery parity
+
+The Mac's existing uncertainty predicate already treats every same-name candidate not selected by the nonce or valid missing-label creation window as uncertain, including dated candidates outside that window. Keep this rule unchanged. Added regressions cover an out-of-window candidate alone and alongside an exact nonce match: neither deletes anything, both durably require manual review, and an empty listing after restarting cannot abandon the operation or clear that review obligation.
+
 ### 2026-10-30 — sol-mac-voicelab — W8 creator-bound recovery discovery
 
 Recovery already checked the operation's region and creator fingerprint before discovery. Now every discovery page additionally binds the fingerprint to the exact key used by transport, closing key changes between the initial check and dispatch or between pages. Recheck the selected region before trusting results. A mismatch leaves the durable operation pending and Settings shows "Recovery needs the ElevenLabs key that started this voice." No empty result from a different creator can abandon an operation. Legacy operations still match on their recorded region only. Deterministic tests change keys before the initial check, before first dispatch and before a later page; all retain the obligation beyond its 24-hour window without deletion or abandonment.
