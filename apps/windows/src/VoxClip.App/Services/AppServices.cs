@@ -188,6 +188,14 @@ internal sealed class AppServices : IAsyncDisposable
     internal IModelDownloader Installer(Func<TranscriptionModel, IReadOnlyList<TranscriptionModel>, CancellationToken, Task<bool>> confirm) =>
         new ModelStore(Models, Data.Root, confirmDownload: confirm);
 
+    /// <summary>Raised on the UI thread after a model is installed or removed, so open model lists (the Transcribe dialog) follow.</summary>
+    internal event EventHandler? ModelsChanged;
+    internal void NotifyModelsChanged() => ModelsChanged?.Invoke(this, EventArgs.Empty);
+
+    /// <summary>Detect the spoken language with an installed multilingual model before routing; transcription §9.8 and §11.2.</summary>
+    internal Task<(string Language, double Probability)> DetectLanguageAsync(VoxClip.Core.Domain.Transcript.TranscriptionRequest request, CancellationToken ct) =>
+        (localSpeech ?? throw new InvalidOperationException("Local transcription is not ready.")).DetectLanguageAsync(request, ct);
+
     internal T Get<T>(string key, T fallback)
     {
         if (!Settings.Values.TryGetValue(key, out var value)) return fallback;

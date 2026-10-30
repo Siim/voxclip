@@ -1,6 +1,7 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using VoxClip.App.Services;
+using VoxClip.App.ViewModels;
 using VoxClip.Core.Domain.Transcript;
 using VoxClip.Core.Services.Models;
 
@@ -21,6 +22,9 @@ internal sealed class OnboardingDialog : ContentDialog
     private readonly ComboBox connector = Ui.Choice("AI connector (optional)", []);
     private readonly CheckBox consent = new() { Content = "I understand what this connector sends and want to use it." };
     private IReadOnlyList<TranscriptionModel> catalogue = [];
+    private System.Text.Json.JsonElement? catalogueRoot;
+    private bool preselecting;
+    private bool modelChosen;
     private int step;
     private int rendered = -1;
     private bool downloading;
@@ -37,6 +41,7 @@ internal sealed class OnboardingDialog : ContentDialog
         engine.SelectionChanged += (_, _) => Render();
         models.SelectionChanged += (_, _) =>
         {
+            modelChosen |= !preselecting;
             modelApproval.IsChecked = false;
             if ((models.SelectedItem as ComboBoxItem)?.Tag is TranscriptionModel model)
             {
@@ -46,6 +51,7 @@ internal sealed class OnboardingDialog : ContentDialog
             }
         };
         connector.SelectionChanged += (_, _) => { consent.IsChecked = false; Render(); };
+        language.TextChanged += (_, _) => { if (!modelChosen) PreselectRecommended(); };
         Content = new ScrollViewer { Content = body, MinWidth = 480, MaxHeight = 480 };
         Opened += async (_, _) => await Ui.RunAsync(notice, LoadChoicesAsync, "Welcome tour");
         PrimaryButtonClick += Continue;
@@ -64,9 +70,10 @@ internal sealed class OnboardingDialog : ContentDialog
     {
         catalogue = await App.Services.Models.GetModelsAsync(lifetime.Token);
         var installed = await App.Services.Downloads.ListInstalledAsync(lifetime.Token);
+        catalogueRoot = await (App.Services.Models as ModelCatalog ?? new ModelCatalog()).RootAsync(lifetime.Token);
         foreach (var model in catalogue.Where(item => item.Listed && item.Engine == TranscriptEngine.Whispercpp))
-            models.Items.Add(new ComboBoxItem { Content = $"{model.Id} · {model.TotalBytes / 1_000_000d:0} MB" + (installed.Any(item => item.Id == model.Id && item.Verified) ? " · installed" : ""), Tag = model });
-        if (models.Items.Count > 0) models.SelectedIndex = 0;
+            models.Items.Add(new ComboBoxItem { Content = $"{ModelDownloadCopy.DisplayName(model)} · {model.TotalBytes / 1_000_000d:0} MB" + (installed.Any(item => item.Id == model.Id && item.Verified) ? " · installed" : ""), Tag = model });
+        PreselectRecommended();
         var providers = await ProviderCatalog.ReadAsync(lifetime.Token);
         foreach (var group in new[] { ("apiKey", "Your API key"), ("local", "On this computer"), ("cli", "Installed CLI (your own sign-in)") })
         {
@@ -75,6 +82,17 @@ internal sealed class OnboardingDialog : ContentDialog
             foreach (var entry in providers.Where(item => item.Group == group.Item1)) connector.Items.Add(new ComboBoxItem { Content = entry.Label, Tag = entry });
         }
         Render();
+    }
+
+    /// <summary>Preselect the model transcription §11.2 recommends for the tour's language (Whisper large-v3-turbo for auto and
+    /// English, TalTech only for Estonian; the low-memory download under 8 GB), until the user picks one.</summary>
+    private void PreselectRecommended()
+    {
+        if (catalogueRoot is not { } root || models.Items.Count == 0) return;
+        var id = TranscriptionRouting.RecommendedDownload(root, language.Text, TranscriptionRouting.InstalledMemoryBytes);
+        preselecting = true;
+        try { models.SelectedItem = models.Items.OfType<ComboBoxItem>().FirstOrDefault(item => (item.Tag as TranscriptionModel)?.Id == id) ?? models.Items[0]; }
+        finally { preselecting = false; }
     }
 
     private void Render()

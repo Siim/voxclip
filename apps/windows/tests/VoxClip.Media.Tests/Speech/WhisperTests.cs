@@ -127,6 +127,32 @@ public sealed class WhisperTests(ITestOutputHelper output)
         Assert.False(Directory.Exists(Path.Combine(files.Root, "Models")));
     }
 
+    [Fact]
+    public async Task DetectionBeforeRoutingRefusesWithoutLoadingNativeCode()
+    {
+        using var files = new WaveFiles();
+        await using var engine = new WhisperNetTranscriber(new ModelCatalog(), dataRoot: files.Root);
+        ExtractedAudio audio = new(files.Wav, 16000, 1, 0, 0);
+        var key = new string('a', 64);
+        var ct = TestContext.Current.CancellationToken;
+        // Only an OpenAI multilingual model detects (transcription §9.8): a TalTech or English-only model asks for the language.
+        var english = await Assert.ThrowsAsync<VoxClipException>(() => engine.DetectLanguageAsync(
+            new(new(TranscriptEngine.Whispercpp, "whisper-base.en-q5_1", new LanguageChoice.Auto(), new()), audio, key), ct));
+        Assert.Equal("Which language is spoken?", english.Message);
+        var taltech = await Assert.ThrowsAsync<VoxClipException>(() => engine.DetectLanguageAsync(
+            new(new(TranscriptEngine.Whispercpp, "taltech-et-verbatim-2604-q8_0", new LanguageChoice.Auto(), new()), audio, key), ct));
+        Assert.Equal("Which language is spoken?", taltech.Message);
+        // A missing turbo is a download, not a native load.
+        var missing = await Assert.ThrowsAsync<VoxClipException>(() => engine.DetectLanguageAsync(
+            new(new(TranscriptEngine.Whispercpp, "whisper-large-v3-turbo-q5_0", new LanguageChoice.Auto(), new()), audio, key), ct));
+        Assert.Equal(VoxClipErrorCode.ModelMissing, missing.Code);
+        Assert.StartsWith("Download the Multilingual · Whisper large-v3-turbo (Q5_0) model", missing.Message);
+        // Detection never decodes a forced plan.
+        await Assert.ThrowsAsync<ArgumentException>(() => engine.DetectLanguageAsync(
+            new(new(TranscriptEngine.Whispercpp, "whisper-large-v3-turbo-q5_0", new LanguageChoice.Forced("en"), new()), audio, key), ct));
+        Assert.False(Directory.Exists(Path.Combine(files.Root, "Models")));
+    }
+
     public static bool ModelsEnabled => DownloadTestsEnabled(Environment.GetEnvironmentVariable("VOXCLIP_TEST_DOWNLOAD"), Environment.GetEnvironmentVariable("VOXCLIP_LIVE_TESTS"));
     internal static bool DownloadTestsEnabled(string? download, string? live) => download == "1" || live == "1";
 

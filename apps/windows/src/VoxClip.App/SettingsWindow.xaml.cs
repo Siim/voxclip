@@ -266,7 +266,7 @@ public sealed partial class SettingsWindow : Window
         Body.Children.Add(Ui.Text("Residency regions are for ElevenLabs Enterprise workspaces with data residency, which have their own keys. Most accounts use Default.", "HelperText"));
         await ProviderRowAsync("ElevenLabs", "Sends the audio track to ElevenLabs, which keeps it under its terms. You confirm the first upload before audio is sent. " + VoiceLabCopy.SharedKeyFootnote, "elevenlabs-api-key", null);
         if (generation != pageGeneration) return;
-        Body.Children.Add(Ui.Button("Manage local models…", () => Navigation.SelectedItem = Navigation.MenuItems.OfType<NavigationViewItem>().First(item => (string)item.Tag == "Local Models")));
+        Body.Children.Add(Ui.Button("Manage local models…", () => Navigation.SelectedItem = Navigation.MenuItems.OfType<NavigationViewItem>().First(item => (string)item.Tag == SettingsSections.LocalModels)));
         Body.Children.Add(Ui.Text("Models download only after you confirm. Local transcription runs entirely on this PC.", "HelperText"));
     }
     private async Task ProvidersAsync()
@@ -398,15 +398,17 @@ public sealed partial class SettingsWindow : Window
         if (catalogue.Count == 0) Body.Children.Add(Ui.Text("No models are available in this build."));
         foreach (var model in catalogue.Where(entry => entry.Listed))
         {
-            var panel = Ui.Stack(12); var available = installed.Any(entry => entry.Id == model.Id && entry.Verified);
+            var panel = Ui.Stack(12); var row = new LocalModelRowState(installed.Any(entry => entry.Id == model.Id && entry.Verified));
             panel.Children.Add(Ui.Text($"{model.Engine} · {model.TotalBytes / 1_000_000d:0} MB · {model.License}", "HelperText"));
-            panel.Children.Add(Ui.Text(available ? "Installed and verified." : "Not installed.", "HelperText"));
+            var status = Ui.Text(row.Status, "HelperText"); panel.Children.Add(status);
             var bar = new ProgressBar { Visibility = Visibility.Collapsed }; panel.Children.Add(bar);
-            AutomationProperties.SetName(bar, (available ? "Removing " : "Downloading ") + model.Id);
-            panel.Children.Add(Ui.Button(available ? "Remove" : "Download", () => RunSensitive(async () =>
+            AutomationProperties.SetName(bar, row.ProgressName(model.Id));
+            Button? action = null;
+            action = Ui.Button(row.Action, () => RunSensitive(async () =>
             {
                 if (preparing) return;
                 if (download is not null) { Ui.Show(notice, "A model download is already running."); return; }
+                var available = row.Installed;
                 if (available && !await Ui.ConfirmAsync(Root.XamlRoot, "Remove model?", $"Remove {model.Id}? Your projects and source videos stay here.", "Remove")) return;
                 if (preparing) return;
                 download = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token); bar.Visibility = available ? Visibility.Visible : Visibility.Collapsed;
@@ -414,11 +416,16 @@ public sealed partial class SettingsWindow : Window
                 {
                     if (available) await App.Services.Downloads.RemoveAsync(model.Id, download.Token);
                     else await App.Services.Installer(ConfirmDownloadAsync).InstallAsync(model.Id, new Progress<ModelDownloadProgress>(value => { bar.Visibility = Visibility.Visible; bar.IsIndeterminate = value.TotalBytes is null; bar.Value = value.TotalBytes > 0 ? value.BytesReceived * 100d / value.TotalBytes.Value : 0; Ui.Show(notice, ModelDownloadCopy.Progress(model, value)); }), download.Token);
-                    Ui.Show(notice, available ? "Model removed." : "Model installed and verified. Reopen Local Models to refresh.");
+                    // The row follows the change in place; reopening Local Models is not needed (design §Settings, model row).
+                    Ui.Show(notice, row.Finish());
+                    status.Text = row.Status; action!.Content = row.Action;
+                    AutomationProperties.SetName(action, row.Action); AutomationProperties.SetName(bar, row.ProgressName(model.Id));
+                    App.Services.NotifyModelsChanged();
                 }
                 catch (OperationCanceledException) when (!lifetime.IsCancellationRequested) { notice.IsOpen = false; throw; }
                 finally { download.Dispose(); download = null; bar.Visibility = Visibility.Collapsed; }
-            }, "Local models")));
+            }, "Local models"));
+            panel.Children.Add(action);
             panel.Children.Add(Ui.Button("Cancel download", () => download?.Cancel()));
             var group = new SettingsExpander { Header = model.Id, HorizontalAlignment = HorizontalAlignment.Stretch };
             group.Items.Add(new SettingsCard { Content = panel, HorizontalContentAlignment = HorizontalAlignment.Stretch }); Body.Children.Add(group);

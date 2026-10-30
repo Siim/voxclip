@@ -108,7 +108,7 @@ public sealed class WhisperNetTranscriber : ITranscriber, IAsyncDisposable
                     request.Plan.Model, readiness is Readiness.NeedsModels missing ? missing.Bytes : 0);
             await NativeJobs.WaitAsync(ct).ConfigureAwait(false);
             handedOff = true;
-            return await NativeWork.RunAsync(() => RunOwnedAsync(request, progress, ct), () =>
+            return await NativeWork.RunAsync(() => RunOwnedAsync(() => RunAsync(request, progress, ct)), () =>
             {
                 if (!disposed) idle.Change(TimeSpan.FromSeconds(120), Timeout.InfiniteTimeSpan);
                 NativeJobs.Release();
@@ -121,12 +121,12 @@ public sealed class WhisperNetTranscriber : ITranscriber, IAsyncDisposable
         }
     }
 
-    private async Task<RawTranscript> RunOwnedAsync(TranscriptionRequest request, IProgress<TranscriptionProgress> progress, CancellationToken ct)
+    private async Task<T> RunOwnedAsync<T>(Func<Task<T>> run)
     {
         try
         {
             await TraceAsync("native-slot").ConfigureAwait(false);
-            return await RunAsync(request, progress, ct).ConfigureAwait(false);
+            return await run().ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
@@ -181,10 +181,7 @@ public sealed class WhisperNetTranscriber : ITranscriber, IAsyncDisposable
         {
             await TraceAsync("vad-build").ConfigureAwait(false);
             ct.ThrowIfCancellationRequested();
-            await using var vad = vadFactory.CreateBuilder().WithUseGpu(false).WithThreads(Threads)
-                .WithThreshold(0.30f).WithMinSpeechDuration(TimeSpan.FromMilliseconds(250))
-                .WithMinSilenceDuration(TimeSpan.FromMilliseconds(2000)).WithSpeechPadding(TimeSpan.FromMilliseconds(400))
-                .WithSamplesOverlap(TimeSpan.FromMilliseconds(100)).Build();
+            await using var vad = BuildVad(vadFactory);
             await TraceAsync("vad-detect").ConfigureAwait(false);
             ct.ThrowIfCancellationRequested();
             regions = await vad.DetectSpeechAsync(samples, ct).ConfigureAwait(false);
@@ -204,11 +201,7 @@ public sealed class WhisperNetTranscriber : ITranscriber, IAsyncDisposable
         if (factoryKey != contextKey)
         {
             factory?.Dispose(); factory = null; factoryKey = null;
-            factory = await Task.Run(() => WhisperFactory.FromPath(modelPath, new WhisperFactoryOptions
-            {
-                UseGpu = false, UseFlashAttention = !dtw, UseDtwTimeStamps = dtw,
-                HeadsPreset = Preset(metadata.GetProperty("dtwAheadsPreset").GetString()!)
-            }), ct).ConfigureAwait(false);
+            factory = await Task.Run(() => CreateFactory(modelPath, metadata, dtw), ct).ConfigureAwait(false);
             factoryKey = contextKey;
         }
         ct.ThrowIfCancellationRequested();
@@ -313,6 +306,109 @@ public sealed class WhisperNetTranscriber : ITranscriber, IAsyncDisposable
         ct.ThrowIfCancellationRequested();
         return await decode(language, probability).ConfigureAwait(false);
     }
+
+    /// <summary>Detect the spoken language before routing; transcription §9.8 and §11.2. The plan names an installed OpenAI
+    /// multilingual model with <see cref="LanguageChoice.Auto"/>. Uses the first 30 s of the first speech unit of the normalized
+    /// audio, exactly as an automatic transcription would, and returns the BCP 47 code with its probability; the caller applies
+    /// the 0.5 threshold. The loaded model stays warm for the transcription that follows. Nothing is decoded or uploaded.</summary>
+    public async Task<(string Language, double Probability)> DetectLanguageAsync(TranscriptionRequest request, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        SpeechCopy.ValidateIdentifiers(request.Plan);
+        if (request.Plan.Engine != Engine || request.Plan.Language is not LanguageChoice.Auto)
+            throw new ArgumentException("Language detection needs an automatic-language Whisper plan.", nameof(request));
+        await TraceAsync("detect-queued").ConfigureAwait(false);
+        await operation.WaitAsync(ct).ConfigureAwait(false);
+        var handedOff = false;
+        try
+        {
+            ObjectDisposedException.ThrowIf(disposed, this);
+            idle.Change(Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
+            var readiness = await ReadinessAsync(request.Plan, ct).ConfigureAwait(false);
+            if (readiness is Readiness.UnsupportedLanguage) throw SpeechCopy.ChooseLanguage();
+            if (readiness is not Readiness.Ready)
+                throw SpeechCopy.ModelMissing(request.Plan.Model is { } id ? await catalog.GetModelAsync(id, ct).ConfigureAwait(false) : null,
+                    request.Plan.Model, readiness is Readiness.NeedsModels missing ? missing.Bytes : 0);
+            await NativeJobs.WaitAsync(ct).ConfigureAwait(false);
+            handedOff = true;
+            return await NativeWork.RunAsync(() => RunOwnedAsync(() => DetectAsync(request, ct)), () =>
+            {
+                if (!disposed) idle.Change(TimeSpan.FromSeconds(120), Timeout.InfiniteTimeSpan);
+                NativeJobs.Release();
+                operation.Release();
+            }, ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            if (!handedOff) operation.Release();
+        }
+    }
+
+    private async Task<(string Language, double Probability)> DetectAsync(TranscriptionRequest request, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        var model = (await catalog.GetModelAsync(request.Plan.Model!, ct).ConfigureAwait(false))!;
+        var required = await RequiredAsync(model, ct).ConfigureAwait(false);
+        var installed = (await store.ListInstalledAsync(ct).ConfigureAwait(false)).Where(entry => entry.Verified).ToDictionary(entry => entry.Id, StringComparer.Ordinal);
+        if (required.Any(entry => !installed.ContainsKey(entry.Id))) throw SpeechCopy.ModelMissing(model, model.Id, required.Sum(entry => entry.TotalBytes));
+        var metadata = model.RawMetadata.GetProperty("whisper");
+        var vadModel = required.Single(entry => entry.Id == metadata.GetProperty("vadModel").GetString());
+        var vadPath = Path.Combine(installed[vadModel.Id].Directory, vadModel.Files.Single(file => file.Role == "vad").Name);
+        var modelFile = model.Files.Single(file => file.Role == "model");
+        var modelPath = Path.Combine(installed[model.Id].Directory, modelFile.Name);
+        var samples = await WhisperAudio.ReadAsync(request.Audio, ct).ConfigureAwait(false);
+        if (samples.Length == 0) throw new VoxClipException(VoxClipErrorCode.NoSpeech, "We didn't hear any words. Check the audio track or choose the language.");
+        await Task.Run(() => WhisperAudio.Normalize(samples, ct), ct).ConfigureAwait(false);
+        ct.ThrowIfCancellationRequested();
+        ConfigureRuntime();
+        var warningReported = 0;
+        using var diagnostics = LogProvider.AddLogger((level, _) =>
+        {
+            if (level <= WhisperLogLevel.Warning && Interlocked.Exchange(ref warningReported, 1) == 0)
+                log.Write(LogLevel.Warn, "transcribe", "whisper.cpp reported a native diagnostic; raw native text was suppressed.");
+        });
+        await TraceAsync("detect-vad").ConfigureAwait(false);
+        IReadOnlyList<VadSegmentData> regions;
+        using (var vadFactory = WhisperVadFactory.FromPath(vadPath))
+        {
+            ct.ThrowIfCancellationRequested();
+            await using var vad = BuildVad(vadFactory);
+            regions = await vad.DetectSpeechAsync(samples, ct).ConfigureAwait(false);
+        }
+        ct.ThrowIfCancellationRequested();
+        var units = WhisperAudio.MergeRegions(regions, samples.Length);
+        if (units.Count == 0) throw new VoxClipException(VoxClipErrorCode.NoSpeech, "We didn't hear any words. Check the audio track or choose the language.");
+        var dtw = request.Plan.Options.Dtw;
+        var contextKey = modelPath + ":" + modelFile.Sha256 + ":" + dtw;
+        await TraceAsync("detect-model-load").ConfigureAwait(false);
+        if (factoryKey != contextKey)
+        {
+            factory?.Dispose(); factory = null; factoryKey = null;
+            factory = await Task.Run(() => CreateFactory(modelPath, metadata, dtw), ct).ConfigureAwait(false);
+            factoryKey = contextKey;
+        }
+        ct.ThrowIfCancellationRequested();
+        using var detector = factory!.CreateBuilder().WithThreads(Threads).Build();
+        var first = units[0];
+        var detectionSamples = samples.AsSpan(first.Start, Math.Min(30 * 16000, first.End - first.Start)).ToArray();
+        var detection = await Task.Run(() => detector.DetectLanguageWithProbability(detectionSamples), ct).ConfigureAwait(false);
+        ct.ThrowIfCancellationRequested();
+        await TraceAsync("detect-complete").ConfigureAwait(false);
+        var probability = (double)detection.probability;
+        return string.IsNullOrWhiteSpace(detection.language) || !double.IsFinite(probability) ? ("", 0)
+            : (await NormalizeDetectedLanguageAsync(detection.language, ct).ConfigureAwait(false), probability);
+    }
+
+    private static WhisperVadProcessor BuildVad(WhisperVadFactory vadFactory) => vadFactory.CreateBuilder().WithUseGpu(false).WithThreads(Threads)
+        .WithThreshold(0.30f).WithMinSpeechDuration(TimeSpan.FromMilliseconds(250))
+        .WithMinSilenceDuration(TimeSpan.FromMilliseconds(2000)).WithSpeechPadding(TimeSpan.FromMilliseconds(400))
+        .WithSamplesOverlap(TimeSpan.FromMilliseconds(100)).Build();
+
+    private static WhisperFactory CreateFactory(string modelPath, System.Text.Json.JsonElement metadata, bool dtw) => WhisperFactory.FromPath(modelPath, new WhisperFactoryOptions
+    {
+        UseGpu = false, UseFlashAttention = !dtw, UseDtwTimeStamps = dtw,
+        HeadsPreset = Preset(metadata.GetProperty("dtwAheadsPreset").GetString()!)
+    });
 
     private static int Threads => Math.Min(8, Math.Max(2, Environment.ProcessorCount / 2));
     private async Task TraceAsync(string stage)
