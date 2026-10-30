@@ -13,7 +13,7 @@
     <key>NSHighResolutionCapable</key><true/>
     <key>NSAccentColorName</key><string>AccentColor</string>
     <key>NSCameraUsageDescription</key><string>VoxClip uses the camera when you choose to record a video.</string>
-    <key>NSMicrophoneUsageDescription</key><string>VoxClip uses the microphone when you choose to record audio.</string>
+    <key>NSMicrophoneUsageDescription</key><string>VoxClip uses the microphone when you choose to record audio, your own-voice consent statement or a Voice Lab training read-aloud.</string>
     <key>NSSpeechRecognitionUsageDescription</key><string>VoxClip transcribes your videos on this Mac so you can edit them by their words.</string>
     <key>CFBundleDocumentTypes</key><array><dict>
         <key>CFBundleTypeName</key><string>VoxClip project</string>

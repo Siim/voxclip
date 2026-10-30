@@ -115,6 +115,7 @@ framework_notice_gate() {
         [[ "$component" != *.dylib ]] || kind=library
         case "$(basename "$component")" in
             whisper.framework|libwhisper.dylib) notice='Copyright (c) 2023-2026 The ggml authors' ;;
+            onnxruntime.framework) notice='Copyright (c) Microsoft Corporation' ;;
             *) die "No known licence notice for $kind: $(basename "$component")." ;;
         esac
         grep -F "$notice" "$APP_BUNDLE/Contents/Resources/THIRD_PARTY_NOTICES.md" >/dev/null \

@@ -86,7 +86,7 @@ import VoxClipCore
 
 @MainActor struct LocalModelsView: View {
     let app: AppModel
-    var body: some View { Form { LocalModelRows(app: app) }.formStyle(.grouped) }
+    var body: some View { Form { LocalModelRows(app: app); if app.bool("voiceLab.enabled") { SpeakerModelRows(app: app) } }.formStyle(.grouped) }
 }
 
 @MainActor struct LocalModelRows: View {

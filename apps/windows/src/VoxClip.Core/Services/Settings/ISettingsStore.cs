@@ -20,7 +20,8 @@ public sealed record AppSettings
         "export.fileNamePattern":"{project}-{clip}-{aspect}","export.openFolderAfter":false,
         "update.autoCheck":true,"update.lastCheckAt":null,"update.latestVersion":null,"update.htmlURL":null,
         "llm.connector":"","llm.cliPath.claude-code":"","llm.cliPath.codex":"","llm.clips.snapToLines":true,
-        "llm.clips.lastPreset":"best","llm.tighten.strength":"normal","voiceLab.enabled":false}
+        "llm.clips.lastPreset":"best","llm.tighten.strength":"normal","voiceLab.enabled":false,
+        "voiceLab.labelPosition":"top-right","voiceLab.c2pa":true,"voiceLab.betaNoticeAccepted":false}
         """;
 
     /// <summary>Hand-coded schema defaults; verified against settings.schema.json, plan W8.</summary>

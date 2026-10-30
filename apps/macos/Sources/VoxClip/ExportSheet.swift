@@ -59,7 +59,7 @@ import VoxClipCore
                 if let disclosure = model.exportDisclosure(targets) { Label(disclosure, systemImage: "waveform").font(.caption) }
                 if let note = model.captionError { InlineNotice(text: note) }
                 if let error = model.exportError { InlineNotice(text: error) }
-                HStack { Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction); Spacer(); Button(model.exportError == nil ? "Export" : "Try again") { model.beginExport(targets: targets, folder: folder) }.keyboardShortcut(.defaultAction).disabled(!model.canExport || targets.isEmpty) }
+                HStack { Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction); Spacer(); Button(model.exportError == nil ? "Export" : "Try again") { model.beginExport(targets: targets, folder: folder) }.accessibilityLabel(model.exportAccessibleName(model.exportError == nil ? "Export" : "Try again", targets: targets)).keyboardShortcut(.defaultAction).disabled(!model.canExport || targets.isEmpty) }
             }
         }.padding(24).frame(width: 620)
         .background(DesignValues.color("bg.window"))
@@ -168,6 +168,7 @@ extension EditorModel {
     func beginExport(targets: [ExportTarget], folder: URL) {
         guard !targets.isEmpty, canExport, mediaExportable else { return }
         let renderSnapshot = renderSnapshot()
+        let labelPosition = app.voiceLabLabelPosition
         let snapshot = renderSnapshot.project
         let pattern = app.string("export.fileNamePattern", fallback: "{project}-{clip}-{aspect}")
         let openFolderAfter = app.bool("export.openFolderAfter", fallback: false)
@@ -187,8 +188,8 @@ extension EditorModel {
                     activeExportKey = key
                     failedExports[key] = nil
                     exportProgress = nil
-                    let render = try await renderRequest(target: target, snapshot: renderSnapshot)
-                    let fingerprint = try ExportFingerprint.value(snapshot, target: target)
+                    let render = try await renderRequest(target: target, snapshot: renderSnapshot, labelPosition: labelPosition)
+                    let fingerprint = try ExportFingerprint.value(snapshot, target: target, labelPosition: labelPosition)
                     let name: String
                     switch target { case .fullEdit: name = "full"; case .clip(let id): name = snapshot.edits.clips.first { $0.id == id }?.title ?? "clip" }
                     let aspect = snapshot.export.aspect.rawValue.replacingOccurrences(of: ":", with: "x")

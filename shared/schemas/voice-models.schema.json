@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://voxclip.app/schemas/voice-models.schema.json",
+  "type": "object", "additionalProperties": false,
+  "required": ["schema", "models"],
+  "properties": {
+    "schema": {"const": "voxclip-voice-models/1"},
+    "models": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/model"}}
+  },
+  "$defs": {
+    "hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "file": {
+      "type": "object", "additionalProperties": false, "required": ["role", "name", "url", "bytes", "sha256"],
+      "properties": {"role": {"enum": ["speaker", "vad"]}, "name": {"type": "string", "pattern": "^[a-zA-Z0-9_.-]+$"}, "url": {"type": "string", "format": "uri", "pattern": "^https://"}, "bytes": {"type": "integer", "minimum": 1}, "sha256": {"$ref": "#/$defs/hash"}}
+    },
+    "language": {
+      "type": "object", "additionalProperties": false,
+      "required": ["language", "corpus", "speakers", "calibrationSpeakers", "independentClips", "audioRenders", "impostorPairs", "sameSpeakerPairs", "falseAcceptRate", "sameSpeakerPassRate", "conditions"],
+      "properties": {"language": {"enum": ["en", "et"]}, "corpus": {"type": "string", "minLength": 1}, "speakers": {"type": "integer", "minimum": 80}, "calibrationSpeakers": {"type": "integer", "minimum": 80}, "independentClips": {"type": "integer", "minimum": 240}, "audioRenders": {"type": "integer", "minimum": 480}, "impostorPairs": {"type": "integer", "minimum": 200}, "sameSpeakerPairs": {"type": "integer", "minimum": 50}, "falseAcceptRate": {"type": "number", "minimum": 0, "maximum": 1}, "sameSpeakerPassRate": {"type": "number", "minimum": 0, "maximum": 1}, "conditions": {"type": "array", "minItems": 4, "items": {"$ref": "#/$defs/condition"}}}
+    },
+    "condition": {
+      "type": "object", "additionalProperties": false,
+      "required": ["corpus", "sampleRate", "role", "speakers", "independentClips", "impostorPairs", "sameSpeakerPairs", "falseAccepts", "sameSpeakerPasses", "falseAcceptRate", "sameSpeakerPassRate", "maximumImpostorScore"],
+      "properties": {"corpus": {"enum": ["dev-clean", "test-clean", "dev-other", "test-other"]}, "sampleRate": {"enum": [44100, 48000]}, "role": {"enum": ["calibration", "speaker-disjoint validation"]}, "speakers": {"type": "integer", "minimum": 2}, "independentClips": {"type": "integer", "minimum": 6}, "impostorPairs": {"type": "integer", "minimum": 200}, "sameSpeakerPairs": {"type": "integer", "minimum": 50}, "falseAccepts": {"type": "integer", "minimum": 0}, "sameSpeakerPasses": {"type": "integer", "minimum": 0}, "falseAcceptRate": {"type": "number", "minimum": 0, "maximum": 1}, "sameSpeakerPassRate": {"type": "number", "minimum": 0, "maximum": 1}, "maximumImpostorScore": {"type": "number", "minimum": -1, "maximum": 1}}
+    },
+    "margin": {
+      "type": "object", "additionalProperties": false,
+      "required": ["policy", "rule", "percentileProbability", "percentileMethod", "percentileCalibrationImpostorScore", "roundingIncrement", "absoluteFloor", "crossRuntimeDrift", "driftBasis", "maximumCalibrationImpostorScore", "candidateThreshold", "farLimit", "sameSpeakerMinimum"],
+      "properties": {"policy": {"const": "clean-p999-plus-margin-ceil-cent-production-v1"}, "rule": {"type": "string", "minLength": 1}, "percentileProbability": {"const": 0.999}, "percentileMethod": {"const": "linear-(n-1)"}, "percentileCalibrationImpostorScore": {"type": "number", "minimum": -1, "maximum": 1}, "roundingIncrement": {"const": 0.01}, "absoluteFloor": {"type": "number", "minimum": 0.002}, "crossRuntimeDrift": {"type": "number", "minimum": 0}, "driftBasis": {"type": "string", "minLength": 1}, "maximumCalibrationImpostorScore": {"type": "number", "minimum": -1, "maximum": 1}, "candidateThreshold": {"type": "number", "minimum": 0}, "farLimit": {"type": "number", "minimum": 0, "maximum": 0.005}, "sameSpeakerMinimum": {"type": "number", "minimum": 0.95, "maximum": 1}}
+    },
+    "model": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "displayName", "dimension", "preprocessing", "languages", "files", "totalBytes", "publisher", "sourcePage", "license", "licenseUrl", "attribution", "threshold", "calibration"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^[a-z0-9-]+$"}, "displayName": {"type": "string", "minLength": 1},
+        "dimension": {"const": 256}, "preprocessing": {"const": "sinc32-blackman94-silero-6.2.0-kaldi80-v2"},
+        "languages": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"enum": ["en", "et"]}},
+        "files": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"$ref": "#/$defs/file"}},
+        "totalBytes": {"type": "integer", "minimum": 1}, "publisher": {"type": "string", "minLength": 1},
+        "sourcePage": {"type": "string", "format": "uri"}, "license": {"type": "string", "minLength": 1},
+        "licenseUrl": {"type": "string", "format": "uri"}, "attribution": {"type": "string", "minLength": 1},
+        "threshold": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+        "calibration": {"oneOf": [{"type": "null"}, {
+          "type": "object", "additionalProperties": false,
+          "required": ["date", "preprocessing", "modelSha256", "vadSha256", "outcome", "margin", "languages"],
+          "properties": {"date": {"type": "string", "format": "date"}, "preprocessing": {"const": "sinc32-blackman94-silero-6.2.0-kaldi80-v2"}, "modelSha256": {"$ref": "#/$defs/hash"}, "vadSha256": {"$ref": "#/$defs/hash"}, "outcome": {"enum": ["passed", "withheld"]}, "margin": {"$ref": "#/$defs/margin"}, "languages": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/language"}}}
+        }]}
+      }
+    }
+  }
+}

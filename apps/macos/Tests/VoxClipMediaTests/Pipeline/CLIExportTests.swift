@@ -7,13 +7,20 @@ import VoxClipCore
 import VoxClipMedia
 
 struct CLIResult: Sendable {
+    enum ReportError: Error, Equatable { case watchdogTimeout(status: Int32), emptyOutput(status: Int32) }
     let status: Int32
     let stdout: Data
     let stderr: String
     let interruptLatency: Double?
     let watchdogFired: Bool
     let interruptReadinessObserved: Bool
-    var json: [String: Any] { get throws { try #require(JSONSerialization.jsonObject(with: stdout) as? [String: Any]) } }
+    var json: [String: Any] {
+        get throws {
+            guard !watchdogFired else { throw ReportError.watchdogTimeout(status: status) }
+            guard !stdout.isEmpty else { throw ReportError.emptyOutput(status: status) }
+            return try #require(JSONSerialization.jsonObject(with: stdout) as? [String: Any])
+        }
+    }
 
     struct InterruptTiming {
         let handler: UInt64

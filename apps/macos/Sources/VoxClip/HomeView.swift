@@ -268,7 +268,7 @@ import VoxClipCore
             Text("Keyboard shortcuts").font(.title2)
             Text("Select words in the transcript. Single-letter keys work in the editor, never while typing a correction or in a text field.").foregroundStyle(.secondary)
             Grid(alignment: .leading, horizontalSpacing: 40, verticalSpacing: 8) {
-                ForEach(Self.lines, id: \.self) { line in
+                ForEach(Self.lines.filter { RewriteEntryPolicy.buildEnabled || $0 != "⇧⌘R|Rewrite" }, id: \.self) { line in
                     let parts = line.split(separator: "|")
                     GridRow { Text(parts[0]).font(DesignValues.mono()); Text(parts[1]) }
                 }

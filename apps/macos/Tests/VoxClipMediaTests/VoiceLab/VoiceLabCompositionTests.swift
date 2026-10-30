@@ -260,6 +260,58 @@ struct VoiceLabCompositionTests {
                                   sampleRate: Double(project.media.source.audio!.sampleRate))
     }
 
+    @Test(.timeLimit(.minutes(4))) func fittedAssetTest19UsesUnityRecipeInWAVAndDecodedMP4() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("voxclip-fitted-render-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let media = try await source(in: root)
+        var (project, _) = try fixture(source: media, root: root)
+        let vector = try #require(FittedAssetVector.load().first { $0.name == "balanced-edits" })
+        let fitted = try vector.prepare(root: root, projectId: project.id)
+        let original = try #require(project.voiceLab.segments[0].candidates[0].recipe)
+        let published = try fitted.publish(projectId: project.id, assetId: "fitted-test19", paidRoot: root,
+            createdAt: Date(), requestId: try #require(original.provenance.requestId), seed: original.seed, gainDb: 0)
+        let recipe = published.applying(to: original)
+        project.voiceLab.assets!.append(contentsOf: published.assets)
+        project.voiceLab.segments[0].candidates[0].assetId = published.audio.assetId
+        project.voiceLab.segments[0].candidates[0].recipe = recipe
+        project.voiceLab.segments[0].audio = published.audio
+        project.voiceLab.segments[0].words = published.words
+        project.voiceLab.segments[0].outDuration = published.outDuration
+        try VoiceLabProject.validate(project)
+        let prepared = try VoiceLabRenderContract.prepare(project, scope: .full, labelPosition: .topRight)
+        let input = try VoiceLabRenderInput(project: project, scope: .full, labelPosition: .topRight, paidRoot: root, prepared: prepared)
+        let request = RenderRequest(sourceURL: media, plan: try legacyPlan(project),
+            output: OutputSpec(size: PixelSize(width: 640, height: 360), fps: 30, videoBitrate: 2_000_000), voiceLab: input)
+        let wav = root.appendingPathComponent("fitted.wav"), mp4 = root.appendingPathComponent("fitted.mp4")
+        try await AVExporter().writeEditedAudio(request, to: wav)
+        _ = try await AVExporter(appVersion: "0.1.0").export(ExportJob(render: request, outputURL: mp4)) { _ in }
+        let piece = try #require(prepared.outputPlan.pieces.first { $0.kind == .synth })
+        let markers = [Int(piece.outputStartSample), Int(piece.outputStartSample) + 4800,
+                       Int(piece.outputStartSample) + 24_000, Int(piece.outputEndSample)]
+        let all = try samples(wav, at: 0, count: Int(prepared.outputPlan.outputSamples))
+        for center in markers { #expect(abs(markerOnset(all, center: center) - center) <= 500) }
+        _ = try await compareDecodedMP4(mp4, wav: wav, windows: [(48_000, 440), (5 * 48_000, 440)], markerCenters: markers)
+        #expect(recipe.audio.stretch == 1 && recipe.outDuration == vector.windowEnd - vector.windowStart)
+        #expect(recipe.chunks[0].assetId == fitted.paidAsset.id && recipe.chunks[0].assetSha256 == fitted.paidAsset.sha256)
+        let partialVector = try #require(FittedAssetVector.load().first { $0.name == "partial-insertion" })
+        let partialFit = try partialVector.prepare(root: root, projectId: project.id)
+        let partial = try partialFit.publish(projectId: project.id, assetId: "partial-test19", paidRoot: root,
+            createdAt: Date(), requestId: try #require(original.provenance.requestId), seed: original.seed, gainDb: 0)
+        var partialRecipe = partial.applying(to: original)
+        partialRecipe.video.mode = .retimed
+        partialRecipe.video.outputSamples = Int64(EditingPrimitives.jsRound(partial.outDuration * 48_000))
+        partialRecipe.video.retimeFactor = Double(partialRecipe.video.sourceEndSample - partialRecipe.video.sourceStartSample) / Double(partialRecipe.video.outputSamples)
+        project.voiceLab.assets!.append(contentsOf: partial.assets)
+        project.voiceLab.segments[0].candidates[0].assetId = partial.audio.assetId
+        project.voiceLab.segments[0].candidates[0].recipe = partialRecipe
+        project.voiceLab.segments[0].audio = partial.audio
+        project.voiceLab.segments[0].words = partial.words
+        project.voiceLab.segments[0].outDuration = partial.outDuration
+        try VoiceLabProject.validate(project)
+        #expect(partial.outDuration == (partialVector.windowEnd - partialVector.windowStart) + partialVector.residualSeconds)
+    }
+
     @Test(.timeLimit(.minutes(3))) func builderAndEditedWaveUseMixedSourceGrid() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("voxclip-composition-test-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false)

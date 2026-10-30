@@ -114,6 +114,10 @@ jobs:
           echo "::endgroup::"
           exit 1
 
+      - name: Release own-voice access boundary
+        if: ${{ !cancelled() && steps.release_cli.outcome == 'success' }}
+        run: python3 tools/voice-lab/check_release_boundary.py --bin-path "$(swift build --package-path apps/macos -c release --show-bin-path)"
+
       # Core, Media and CaptionParityTests run as separate processes with separate budgets; together they are the
       # whole suite.
       - name: Swift test (VoxClipCoreTests)
@@ -124,6 +128,15 @@ jobs:
           VOXCLIP_SHARED_DIR: ${{ github.workspace }}/shared
           VOXCLIP_CAPTION_PYTHON: ${{ steps.py.outputs.python-path }}
         run: swift test --jobs 2 --filter VoxClipCoreTests
+
+      - name: Swift test (headless Voice Lab app model)
+        if: ${{ !cancelled() && steps.swift_build.outcome == 'success' }}
+        timeout-minutes: 10
+        working-directory: apps/macos
+        env:
+          VOXCLIP_SHARED_DIR: ${{ github.workspace }}/shared
+          VOXCLIP_DATA_DIR: ${{ runner.temp }}/voxclip-voice-lab-app-tests
+        run: swift test --jobs 2 --filter VoxClipAppTests
 
       - name: Swift test (VoxClipMediaTests)
         if: ${{ !cancelled() && steps.swift_build.outcome == 'success' }}
@@ -705,6 +718,12 @@ jobs:
             fi
           done < <(git ls-files -z 'shared/*.json' 'shared/**/*.json' 'shared/**/*.voxclip' skills-lock.json)
           exit $status
+
+      - name: Check offline speaker fixtures and calibration policy
+        if: ${{ !cancelled() }}
+        run: |
+          python3 -m unittest discover -s tools/voice-lab -p 'test_*.py'
+          python3 tools/voice-lab/check.py
 
       - name: Launch media stays within the Git budget
         if: ${{ !cancelled() }}

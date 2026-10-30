@@ -10,6 +10,9 @@ import VoxClipCore
             TranscriptionSettings(app: app).tabItem { Label("Transcription", systemImage: "waveform") }.tag("transcription")
             ProviderSettings(app: app).tabItem { Label("AI", systemImage: "key") }.tag("ai")
             ExportSettings(app: app).tabItem { Label("Export", systemImage: "square.and.arrow.up") }.tag("export")
+            if app.voiceLabSettingsVisible {
+                VoiceLabSettings(app: app, session: app.voiceLabSession).tabItem { Label("Voice Lab", systemImage: "waveform.badge.mic") }.tag("voiceLab")
+            }
             AboutSettings(app: app).tabItem { Label("About", systemImage: "info.circle") }.tag("about")
         }
         .frame(minWidth: 600, minHeight: 480)
@@ -200,7 +203,7 @@ extension AppModel {
                 }.disabled(testing || !saved && value.isEmpty)
                 if saved { Button("Forget key") { Task { do { try await app.saveProviderKey("", for: provider); saved = false; result = nil } catch { result = await app.safeError(error) } } } }
             }
-            Text(provider == "elevenlabs" ? "The key stays in the macOS Keychain and is used only for transcription." : "The key stays in the macOS Keychain and is used only for AI features.").font(.caption).foregroundStyle(.secondary)
+            Text(provider == "elevenlabs" ? "The key stays in the macOS Keychain and is shared with Voice Lab when you turn it on." : "The key stays in the macOS Keychain and is used only for AI features.").font(.caption).foregroundStyle(.secondary)
             Text(provider == "elevenlabs" ? "Sends the audio track to ElevenLabs." : "Sends transcript text only. No audio or video.").font(.caption).foregroundStyle(.secondary)
             if let result { Text(result).font(.caption).foregroundStyle(result.hasPrefix("Works") ? DesignValues.color("status.success") : DesignValues.color("status.warning")) }
         }

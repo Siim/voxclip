@@ -123,6 +123,8 @@ extension ProviderChoice {
     }()
     /// The Settings tab to show; Set Up AI… and Change… open "ai".
     var settingsPane = "general"
+    @ObservationIgnored lazy var voiceLabSession = VoiceLabSession(app: self)
+    @ObservationIgnored lazy var speakerModelLibrary = SpeakerModelLibrary(app: self)
     var activeEditor: EditorModel? { shell.editor }
     private(set) var settingsLoaded = false
     private(set) var loadingSettings = true
@@ -209,6 +211,16 @@ extension ProviderChoice {
         await startupTask?.value
     }
     private func loadStartup() async {
+        let paidRoot = locations.root.appendingPathComponent("VoiceLab", isDirectory: true)
+        do {
+            _ = try await Task.detached(priority: .utility) {
+                let removed = try VoiceLabAssetStore.recoverStalePartials(paidRoot: paidRoot)
+                try VoiceLabAssetRetention.discoverUnlisted(paidRoot: paidRoot)
+                return removed
+            }.value
+        }
+        catch { await log.write(LogEntry(level: .warn, category: "voice-lab", message: "Voice Lab partial-file recovery could not finish; paid assets were kept.")) }
+        await voiceLabSession.reconcileStartup()
         recent = Self.isTestSession ? [] : NSDocumentController.shared.recentDocumentURLs
         do {
             var loaded = try await settingsStore.load()
@@ -273,6 +285,7 @@ extension ProviderChoice {
         if key == "editing.pauseBreath", settingsLoaded, settings.values[key] != value { pauseBreathRevision += 1 }
         if key == "llm.connector" || key.hasPrefix("llm.baseUrl.") || key.hasPrefix("llm.cliPath.") { refreshConnectorReadiness() }
         settings.values[key] = value
+        if key == "voiceLab.labelPosition" { Task { await shell.editor?.updatePreview(load: false) } }
         if key == "voiceLab.enabled" || key == "llm.connector" || key.hasPrefix("llm.model.") || key.hasPrefix("llm.baseUrl.") || key.hasPrefix("llm.cliPath.") {
             shell.editor?.closeRewrite(returnFocus: false)
         }

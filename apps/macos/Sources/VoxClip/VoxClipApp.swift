@@ -132,7 +132,7 @@ import VoxClipCore
         guard didReviewAll else { terminating = false; NSApp.reply(toApplicationShouldTerminate: false); return }
         Task { await model.flushSettings(); NSApp.reply(toApplicationShouldTerminate: true) }
     }
-    func applicationWillTerminate(_ notification: Notification) { model.modelLibrary.task?.cancel() }
+    func applicationWillTerminate(_ notification: Notification) { model.modelLibrary.task?.cancel(); model.speakerModelLibrary.task?.cancel() }
 
     #if DEBUG
     weak var commandWindowForTesting: NSWindow?
@@ -475,7 +475,17 @@ import VoxClipCore
     }
 }
 
-let privacyCopy = "On-device transcription, editing, captions and export stay on this Mac. Your chosen cloud transcription engine receives audio only. Your chosen AI connector receives transcript text only, no audio or video. Installed CLIs use your own sign-in. Model downloads and update checks contact their publishers. No telemetry. Posting is optional and never happens without your click."
+let privacyCopy = """
+On-device transcription, editing, captions and export stay on this Mac. Your chosen cloud transcription engine receives audio only. Your chosen AI connector receives transcript text only, no audio or video. Installed CLIs use your own sign-in. Model downloads and update checks contact their publishers. No telemetry. Posting is optional and never happens without your click.
+
+Voice Lab (only when you turn it on; each provider action requires your approval):
+• Source audio for Clean audio goes to ElevenLabs, only on your click. The input WAV is an evictable local cache; the result stays in this Mac's Voice Lab data folder.
+• Consent statement audio goes to ElevenLabs Scribe for the check and IVC as one clone sample. It stays in this Mac's consent record folder until the voice is deleted.
+• Training samples go to ElevenLabs IVC. They are deleted locally after upload; hashes are kept.
+• Patch text and context text go to ElevenLabs TTS (previous_text / future_text, at most 100 or 300 characters). They stay in the project segment. Speech-check audio goes to ElevenLabs Scribe for QA.
+• Lip-sync window video and audio go to fal.ai or sync.so. Remote files are deleted where the API allows; the result stays in this Mac's project Voice Lab folder.
+• Speaker embeddings never leave this Mac. They stay in the local consent record.
+"""
 
 @MainActor func openVoxClipSettings(pane: String? = nil) {
     if let pane { AppModel.sharedModel.settingsPane = pane }

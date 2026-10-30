@@ -67,6 +67,18 @@ import VoxClipCore
                 Button(action) { if session.applyLocalChanges() { session.editor.closeRewrite() } }
                     .disabled(!session.current || session.isProposing)
             }
+            #if DEBUG
+            if let generation = session.generation {
+                Button(generation.acceptTitle) {
+                    approvalTask = Task {
+                        if await generation.accept(into: session.editor) { session.editor.closeRewrite() }
+                    }
+                }
+                .keyboardShortcut(.return, modifiers: [])
+                .disabled(!session.current || !generation.readyToAccept || session.isProposing || !session.editor.capabilities.edit)
+                if !generation.problem.isEmpty { InlineNotice(text: generation.problem) }
+            }
+            #endif
         }.padding(16).frame(maxWidth: .infinity, alignment: .leading)
     }
     private var header: some View {

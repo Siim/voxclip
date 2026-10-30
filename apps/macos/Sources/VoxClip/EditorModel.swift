@@ -478,7 +478,7 @@ struct EditorRenderSnapshot {
         do {
             voiceLabPlan = try VoiceLabRenderPreflight.prepare(project: project,
                 scope: activeClip.map { .clip($0.id) } ?? .full,
-                paidRoot: app.locations.root.appendingPathComponent("VoiceLab", isDirectory: true))?.prepared.outputPlan
+                paidRoot: app.locations.root.appendingPathComponent("VoiceLab", isDirectory: true), labelPosition: app.voiceLabLabelPosition)?.prepared.outputPlan
             if let state {
                 var comparable = edits
                 comparable.cutWordIds = renderedEdits?.cutWordIds ?? []
@@ -958,7 +958,7 @@ struct EditorRenderSnapshot {
     func renderSnapshot() -> EditorRenderSnapshot {
         EditorRenderSnapshot(project: project, state: editState(), plan: plan)
     }
-    func renderRequest(target: ExportTarget? = nil, snapshot: EditorRenderSnapshot? = nil) async throws -> RenderRequest {
+    func renderRequest(target: ExportTarget? = nil, snapshot: EditorRenderSnapshot? = nil, labelPosition: VoiceLabLabelPosition? = nil) async throws -> RenderRequest {
         let snapshot = snapshot ?? renderSnapshot()
         let project = snapshot.project
         let state = snapshot.state
@@ -974,7 +974,7 @@ struct EditorRenderSnapshot {
         }
         let voiceLab = try VoiceLabRenderPreflight.prepare(project: project,
             scope: clip.map { .clip($0.id) } ?? .full,
-            paidRoot: app.locations.root.appendingPathComponent("VoiceLab", isDirectory: true))
+            paidRoot: app.locations.root.appendingPathComponent("VoiceLab", isDirectory: true), labelPosition: labelPosition ?? app.voiceLabLabelPosition)
         if clip != nil && state == nil { throw VoxClipError.exportFailed("Clip transcript is unavailable") }
         let segments = try state.map { try buildSegments($0, activeClip: clip) }
         var plan = snapshot.plan

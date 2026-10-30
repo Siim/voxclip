@@ -3,6 +3,7 @@ import Foundation
 import Synchronization
 import Testing
 @testable import VoxClipCore
+@_spi(Testing) @testable import VoxClipMedia
 
 /// Builds inputs from shared/fixtures/voice-lab/request-cases.json and reads requests as its README describes.
 enum VoiceLabRequestFixtures {
@@ -94,6 +95,7 @@ final class RequestRecorder: Sendable {
     let paid = Mutex<[RecordedRequest]>([])
 }
 
+#if DEBUG
 @Suite("Voice Lab request cases", .timeLimit(.minutes(1)))
 struct VoiceLabRequestCaseTests {
     private let key = "synthetic-voice-lab-key"
@@ -304,3 +306,4 @@ struct VoiceLabRequestCaseTests {
         #expect(platform == Array(UInt32(0x00)...0x1F) + Array(UInt32(0x7F)...0x9F))
     }
 }
+#endif
