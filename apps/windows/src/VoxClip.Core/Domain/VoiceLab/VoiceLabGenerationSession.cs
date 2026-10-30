@@ -10,6 +10,14 @@ public interface IVoiceLabTakeRunner
     void InvalidatePreparation();
     bool IsQuoteFresh(VoiceLabTakeRunQuote quote);
     Task<VoiceLabMonthlyCap?> RefreshMonthlyCapAsync(VoiceLabMonthlyCap? cap, CancellationToken ct = default);
+    async Task<decimal?> ReadMonthlySpendAsync(VoiceLabMonthlyCap? fallback, CancellationToken ct = default) =>
+        (await RefreshMonthlyCapAsync(fallback ?? new(decimal.MaxValue, 0), ct).ConfigureAwait(false))?.Spent;
+    async Task<VoiceLabTakeRunResult> ExecuteWithDispatchAsync(VoiceLabTakeRunQuote quote, VoiceLabRunDispatch dispatch,
+        Func<IReadOnlyList<VoiceLabTakeRow>, Task>? progress = null, CancellationToken ct = default)
+    {
+        await dispatch.AuthorizeAsync(ct).ConfigureAwait(false);
+        return await dispatch.Start(() => ExecuteAsync(quote, true, progress, ct), ct).ConfigureAwait(false);
+    }
 }
 
 public enum VoiceLabGenerationAction { Completed, ConfirmationRequired }
@@ -31,6 +39,8 @@ public sealed class VoiceLabGenerationSession(IVoiceLabTakeRunner runner)
     private Guid? selectedTakeId;
     private Guid? auditionedTakeId;
     private IReadOnlyList<VoiceLabTakeRow> rows = Array.Empty<VoiceLabTakeRow>();
+    public Func<CancellationToken, Task<decimal?>>? ReadMonthlyCapAsync { get; set; }
+    public Func<string, CancellationToken, Task<bool>>? ConfirmCostAsync { get; set; }
     public VoiceLabTakeRunQuote? PendingQuote { get { lock (sync) { ExpireQuote(); return quote; } } }
     public VoiceLabCostPresentationResult? Cost { get { lock (sync) { ExpireQuote(); return cost; } } }
     public Exception? PreparationFailure { get { lock (sync) return preparationFailure; } }
@@ -87,7 +97,7 @@ public sealed class VoiceLabGenerationSession(IVoiceLabTakeRunner runner)
             entered = true;
             await runner.DiscardPendingAsync().ConfigureAwait(false);
             if (!request.Input.ProviderConsent) throw new VoiceLabException(VoiceLabErrorKind.ConsentRequired);
-            var monthlyCap = await runner.RefreshMonthlyCapAsync(request.Cap, request.Cancellation.Token).ConfigureAwait(false);
+            var monthlyCap = await CurrentCapAsync(request.Cancellation.Token).ConfigureAwait(false);
             var prepared = await runner.PrepareAsync(request.Input, request.Cancellation.Token).ConfigureAwait(false);
             lock (sync)
             {
@@ -120,10 +130,36 @@ public sealed class VoiceLabGenerationSession(IVoiceLabTakeRunner runner)
         lock (sync)
         {
             prepared = RequireQuote();
-            if (cost?.Kind == VoiceLabCostPresentationKind.Confirm) return VoiceLabGenerationAction.ConfirmationRequired;
+        }
+        var decision = await CurrentDecisionAsync(prepared, ct).ConfigureAwait(false);
+        lock (sync)
+        {
+            if (!ReferenceEquals(RequireQuote(), prepared)) throw new VoiceLabException(VoiceLabErrorKind.ConsentRequired);
+            cost = decision;
+            if (decision.Kind == VoiceLabCostPresentationKind.Confirm) return VoiceLabGenerationAction.ConfirmationRequired;
         }
         await ApproveAsync(prepared, true, ct).ConfigureAwait(false);
-        return VoiceLabGenerationAction.Completed;
+        lock (sync) return ReferenceEquals(quote, prepared) ? VoiceLabGenerationAction.ConfirmationRequired : VoiceLabGenerationAction.Completed;
+    }
+
+    private async Task<VoiceLabMonthlyCap?> CurrentCapAsync(CancellationToken ct)
+    {
+        VoiceLabMonthlyCap? fallback;
+        lock (sync) fallback = cap;
+        var spent = await runner.ReadMonthlySpendAsync(fallback, ct).ConfigureAwait(false);
+        decimal? limit;
+        if (ReadMonthlyCapAsync is { } read) limit = await read(ct).ConfigureAwait(false);
+        else { lock (sync) limit = cap?.Limit; }
+        ct.ThrowIfCancellationRequested();
+        if (limit is null) return null;
+        if (spent is null || limit < 0) throw new VoiceLabException(VoiceLabErrorKind.ConsentRequired);
+        return new(limit.Value, spent.Value);
+    }
+    private async Task<VoiceLabCostPresentationResult> CurrentDecisionAsync(VoiceLabTakeRunQuote expected, CancellationToken ct)
+    {
+        var current = await CurrentCapAsync(ct).ConfigureAwait(false);
+        ct.ThrowIfCancellationRequested();
+        return VoiceLabCostPresentation.Kind(expected.Estimate, false, "ElevenLabs", current);
     }
 
     public async Task<VoiceLabTakeRunResult?> ApproveAsync(VoiceLabTakeRunQuote expected, bool approved, CancellationToken ct = default)
@@ -133,10 +169,12 @@ public sealed class VoiceLabGenerationSession(IVoiceLabTakeRunner runner)
         long version;
         CancellationTokenSource cancellation;
         Task lease;
+        VoiceLabCostPresentationResult? approvedCost;
         lock (sync)
         {
             if (!ReferenceEquals(RequireQuote(), expected)) throw new VoiceLabException(VoiceLabErrorKind.ConsentRequired);
             if (!approved) return null;
+            approvedCost = cost;
             snapshot = input!; monthlyCap = cap; version = revision;
             quote = null; cost = null; executing = true;
             cancellation = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -145,6 +183,8 @@ public sealed class VoiceLabGenerationSession(IVoiceLabTakeRunner runner)
         }
         var entered = false;
         var completed = false;
+        var retain = false;
+        var started = false;
         try
         {
             await lease.ConfigureAwait(false);
@@ -154,7 +194,29 @@ public sealed class VoiceLabGenerationSession(IVoiceLabTakeRunner runner)
                 cancellation.Token.ThrowIfCancellationRequested();
                 if (revision != version || !runner.IsQuoteFresh(expected)) throw new VoiceLabException(VoiceLabErrorKind.ConsentRequired);
             }
-            var result = await runner.ExecuteAsync(expected, true, progress =>
+            void Validate()
+            {
+                cancellation.Token.ThrowIfCancellationRequested();
+                if (revision != version || !snapshot.ProviderConsent || !started && !runner.IsQuoteFresh(expected))
+                    throw new VoiceLabException(VoiceLabErrorKind.ConsentRequired);
+            }
+            var dispatch = new VoiceLabRunDispatch(async token =>
+            {
+                while (true)
+                {
+                    var decision = await CurrentDecisionAsync(expected, token).ConfigureAwait(false);
+                    lock (sync) { Validate(); cost = decision; }
+                    if (decision.Kind != VoiceLabCostPresentationKind.Confirm || decision == approvedCost) return;
+                    if (ConfirmCostAsync is not { } confirm || !await confirm(decision.Text, token).ConfigureAwait(false))
+                        throw new VoiceLabConfirmationRequiredException(decision);
+                    lock (sync) { Validate(); approvedCost = decision; }
+                }
+            }, action =>
+            {
+                lock (sync) { Validate(); action(); started = true; }
+            });
+            await dispatch.AuthorizeAsync(cancellation.Token).ConfigureAwait(false);
+            var result = await runner.ExecuteWithDispatchAsync(expected, dispatch, progress =>
             {
                 lock (sync)
                 {
@@ -167,9 +229,19 @@ public sealed class VoiceLabGenerationSession(IVoiceLabTakeRunner runner)
             completed = true;
             return result;
         }
+        catch (VoiceLabConfirmationRequiredException error)
+        {
+            lock (sync)
+            {
+                if (!started && revision == version && runner.IsQuoteFresh(expected))
+                { retain = true; quote = expected; cost = error.Decision; }
+            }
+            if (!retain) throw;
+            return null;
+        }
         finally
         {
-            if (entered) await runner.DiscardPendingAsync().ConfigureAwait(false);
+            if (entered && !retain) await runner.DiscardPendingAsync().ConfigureAwait(false);
             Preparation? next = null;
             lock (sync)
             {

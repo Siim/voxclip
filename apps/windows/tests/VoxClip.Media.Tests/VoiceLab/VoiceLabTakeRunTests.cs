@@ -18,6 +18,59 @@ namespace VoxClip.Media.Tests.VoiceLab;
 
 public sealed class VoiceLabTakeRunTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task TransportRechecksTheRealLedgerForTtsAndScribe(bool atScribe)
+    {
+        await using var fixture = new Fixture();
+        await fixture.Prepare();
+        var session = new VoiceLabGenerationSession(fixture.Run);
+        var quote = await session.UpdateInputsAsync(fixture.Input, new(0.10m, 0), Token);
+        var additional = 0.10m - quote.Estimate.Usd!.Value / 2;
+        async Task CrossCap() => await fixture.Ledger.RecordAsync(new("elevenlabs", "fixture", 1, "call", additional, null, "fixture"), DateTimeOffset.UnixEpoch, Token);
+        if (atScribe) fixture.Run.Suspension = async stage => { if (stage == "qaAuthorization") { fixture.Run.Suspension = null; await CrossCap(); } };
+        else fixture.Keys.Suspension = async _ => { fixture.Keys.Suspension = null; await CrossCap(); };
+        if (atScribe)
+            await Assert.ThrowsAsync<VoiceLabConfirmationRequiredException>(() => session.ContinueAsync(Token));
+        else
+            Assert.Equal(VoiceLabGenerationAction.ConfirmationRequired, await session.ContinueAsync(Token));
+        Assert.Equal(atScribe ? 1 : 0, fixture.Remote.Seeds.Count);
+        Assert.Empty(fixture.Remote.QaWavs);
+    }
+    [Fact]
+    public async Task SuspendedConfirmationRechecksCurrentCapAndRepeatsOnlyChangedCopy()
+    {
+        await using var fixture = new Fixture();
+        await fixture.Prepare();
+        var session = new VoiceLabGenerationSession(fixture.Run);
+        decimal? limit = 0.10m;
+        var read = typeof(VoiceLabGenerationSession).GetProperty("ReadMonthlyCapAsync");
+        var confirm = typeof(VoiceLabGenerationSession).GetProperty("ConfirmCostAsync");
+        Assert.NotNull(read); Assert.NotNull(confirm);
+        read.SetValue(session, (Func<CancellationToken, Task<decimal?>>)(_ => Task.FromResult(limit)));
+        var copies = new List<string>();
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var resume = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        confirm.SetValue(session, (Func<string, CancellationToken, Task<bool>>)(async (copy, token) =>
+        {
+            copies.Add(copy);
+            if (copies.Count == 1) { entered.SetResult(); return await resume.Task.WaitAsync(token); }
+            return false;
+        }));
+        var quote = await session.UpdateInputsAsync(fixture.Input, new(0.10m, 0), Token);
+        var amount = 0.10m - quote.Estimate.Usd!.Value / 2;
+        fixture.Keys.Suspension = async _ => { fixture.Keys.Suspension = null; await fixture.Ledger.RecordAsync(new("elevenlabs", "fixture", 1, "call", amount, null, "fixture"), DateTimeOffset.UnixEpoch, Token); };
+        var execution = session.ContinueAsync(Token);
+        await entered.Task.WaitAsync(Token);
+        limit = 0.10m - quote.Estimate.Usd.Value / 4;
+        resume.SetResult(true);
+        Assert.Equal(VoiceLabGenerationAction.ConfirmationRequired, await execution);
+        Assert.Equal(2, copies.Count);
+        Assert.NotEqual(copies[0], copies[1]);
+        Assert.Empty(fixture.Remote.Seeds); Assert.Empty(fixture.Remote.QaWavs);
+        Assert.Same(quote, session.PendingQuote);
+    }
     private static CancellationToken Token => TestContext.Current.CancellationToken;
     private sealed class Clock : TimeProvider
     {

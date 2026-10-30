@@ -1,5 +1,9 @@
 # Windows fixed contracts
 
+### 2026-10-30 — sol-win-voicelab — C7 live cap decisions (Terra P2)
+
+The immutable whole-run quote does not freeze monthly spending or settings. Continue and approval reread the real ledger, then the current cap, and every TTS/Scribe boundary repeats that decision through its run-bound authorization. A changed confirmation copy asks again after suspended confirmation; an identical approved copy is reused only within that run. Unknown prices/S14 and newly crossed caps cannot use an earlier inline approval. Cap reads use the strict ledger reader: unreadable/malformed spending fails closed with a configured cap. Quote/revision/consent/cancellation and the existing model/voice-use permit remain checked synchronously at transport start. Unlike Mac MainActor orchestration, Core uses a session lock and the run dispatch handshake. The UI track must bind `ReadMonthlyCapAsync` to current settings and `ConfirmCostAsync` to its cancellable sheet (compatibility callers retain the cap supplied to UpdateInputs). Six new cases fail against 8ca4d1ce: the reviewer's $0.04/$0.05/$0.10 → $0.08 example through Continue and direct approval, corrupt ledger refusal, TTS/Scribe boundary spending, and a suspended sheet with changed current cap. Quote/price preservation before the first paid transport is further tightened in the separate replacement-launch change.
+
 ### 2026-10-30 — sol-win-voicelab — C7 declined confirmation (Terra P3)
 
 Declining `ApproveAsync` retains the same fresh immutable quote, displayed price, previous rows, selection and audition; another Continue click reopens confirmation without dispatch or manual preparation. This matches Mac W10's early return rather than replacing a declined quote. `DecliningKeepsQuotePriceAndPriorTakesForTheNextConfirmation` fails against 8ca4d1ce. Live rechecking of the cap on that next click is covered by the separate C7 live-cap change.

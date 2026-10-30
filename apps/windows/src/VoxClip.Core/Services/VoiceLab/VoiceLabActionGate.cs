@@ -12,6 +12,7 @@ internal sealed class VoiceLabActionGate
     private readonly Dictionary<Guid, long> preparedAt = new();
     private readonly Dictionary<Guid, Guid> approvedByRun = new();
     private readonly HashSet<Guid> runs = [];
+    private readonly HashSet<Guid> claimedRunActions = [];
     private readonly TimeProvider clock;
     internal VoiceLabActionGate(TimeProvider? clock = null) => this.clock = clock ?? TimeProvider.System;
 
@@ -50,7 +51,11 @@ internal sealed class VoiceLabActionGate
         lock (gate)
         {
             var issued = VerifyLocked(approval, fingerprint, operation, requestId);
-            Remove(approval.Token);
+            if (approvedByRun.ContainsKey(approval.Token))
+            {
+                if (!claimedRunActions.Add(approval.Token)) throw new VoiceLabException(VoiceLabErrorKind.ConsentRequired);
+            }
+            else Remove(approval.Token);
             return issued.Review.RequestId;
         }
     }
@@ -73,7 +78,7 @@ internal sealed class VoiceLabActionGate
     {
         lock (gate) return quotes.Count > 0 && quotes.All(Fresh);
     }
-    internal IReadOnlyList<VoiceLabAuthorization> ApproveRun(Guid id, IReadOnlyList<VoiceLabPreparedAction> quotes, bool affirmative)
+    internal IReadOnlyList<VoiceLabAuthorization> ApproveRun(Guid id, IReadOnlyList<VoiceLabPreparedAction> quotes, bool affirmative, VoiceLabRunDispatch? dispatch = null)
     {
         lock (gate)
         {
@@ -86,7 +91,25 @@ internal sealed class VoiceLabActionGate
                     throw new VoiceLabException(VoiceLabErrorKind.InvalidInput);
             runs.Add(id);
             foreach (var quote in quotes) approvedByRun.Add(quote.Token, id);
-            return Array.AsReadOnly(quotes.Select(quote => new VoiceLabAuthorization(quote.Token, quote.Fingerprint, quote.Estimate, quote.Review)).ToArray());
+            return Array.AsReadOnly(quotes.Select(quote => new VoiceLabAuthorization(quote.Token, quote.Fingerprint, quote.Estimate, quote.Review) { RunDispatch = dispatch, IsRunAuthorization = true }).ToArray());
+        }
+    }
+    internal Task<T> StartRunAction<T>(VoiceLabAuthorization approval, Func<Task<T>> transport)
+    {
+        lock (gate)
+        {
+            if (!approvedByRun.ContainsKey(approval.Token) || !claimedRunActions.Contains(approval.Token) || !pending.ContainsKey(approval.Token)) throw new VoiceLabException(VoiceLabErrorKind.ConsentRequired);
+            Remove(approval.Token);
+            return transport();
+        }
+    }
+    internal void ReleaseRun(Guid id, IReadOnlyList<VoiceLabPreparedAction> quotes)
+    {
+        lock (gate)
+        {
+            foreach (var quote in quotes)
+                if (approvedByRun.GetValueOrDefault(quote.Token) == id) { approvedByRun.Remove(quote.Token); claimedRunActions.Remove(quote.Token); }
+            runs.Remove(id);
         }
     }
     internal void DiscardRun(Guid id, IReadOnlyList<VoiceLabPreparedAction> quotes)
@@ -105,6 +128,7 @@ internal sealed class VoiceLabActionGate
         pending.Remove(token);
         preparedAt.Remove(token);
         approvedByRun.Remove(token);
+        claimedRunActions.Remove(token);
     }
 
     private static string BoundFingerprint(string fingerprint, VoiceLabEstimate estimate, VoiceLabReview review) =>
