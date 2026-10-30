@@ -1,4 +1,5 @@
 #if WIN_UI_TESTS
+using System.Diagnostics;
 using System.Reflection.Metadata;
 using System.Reflection.PortableExecutable;
 using System.Text;
@@ -27,7 +28,7 @@ public sealed class VoiceLabReleaseBoundaryTests
                     yield return [enabled, accepted, internalBuild];
     }
     private static bool Expected(bool enabled, bool accepted, bool internalBuild) =>
-#if DEBUG
+#if VOXCLIP_DEVELOPMENT
         enabled && (accepted || internalBuild);
 #else
         enabled && accepted;
@@ -170,6 +171,77 @@ public sealed class VoiceLabReleaseBoundaryTests
         }
     }
 
+    [Fact]
+    public void ReleaseSourceNeverReadsUnsetVoiceLabSettingsAsOn()
+    {
+        var policy = ReleaseSource(Source("ViewModels/RewriteEntryPolicy.cs"));
+        Assert.Contains("internal static bool InternalBuild => false;", policy);
+        Assert.DoesNotContain("InternalBuild => true", policy);
+        Assert.Contains("new SettingsStore { UnsetDefaults = VoiceLabBeta.DevelopmentDefaults(RewriteEntryPolicy.InternalBuild) }", ReleaseSource(Source("Services/AppServices.cs")));
+        var beta = ReleaseSource(File.ReadAllText(Path.Combine(Root, "apps/windows/src/VoxClip.Core/Domain/VoiceLab/VoiceLabBeta.cs")));
+        Assert.Contains("return enabled && betaNoticeAccepted;", beta);
+        Assert.DoesNotContain("betaNoticeAccepted || internalBuild", beta);
+        Assert.DoesNotContain("voiceLab.enabled", beta);
+    }
+
+    [Fact]
+    public void ReleasePipelinesNeverPassTheDevelopmentBuildProperty()
+    {
+        var windows = Path.Combine(Root, "apps/windows");
+        string[] text = [".ps1", ".psm1", ".sh", ".py", ".cs", ".json", ".md", ".yml", ".yaml", ".csproj", ".props", ".targets", ".cmd", ".bat"];
+        bool Generated(string path) => Path.GetRelativePath(Root, path).Split(Path.DirectorySeparatorChar)
+            .Any(part => part is "bin" or "obj" or ".artifacts" or ".cache" or "verification");
+        var pipeline = Directory.EnumerateFiles(Path.Combine(windows, "build"), "*", SearchOption.AllDirectories)
+            .Concat(Directory.EnumerateFiles(Path.Combine(Root, ".github"), "*", SearchOption.AllDirectories))
+            .Concat(new[] { "verify-windows.sh", "build-windows.ps1" }.Select(name => Path.Combine(windows, "tests/VoxClip.Core.Tests/Tracks/win-ui", name)))
+            .Where(path => !Generated(path) && text.Contains(Path.GetExtension(path), StringComparer.OrdinalIgnoreCase)).ToArray();
+        foreach (var name in new[] { "vm-release.ps1", "release-windows.sh", "Release-Common.ps1", "ci.yml", "verify-windows.sh" })
+            Assert.Contains(pipeline, path => Path.GetFileName(path) == name);
+        foreach (var path in pipeline)
+        {
+            var content = File.ReadAllText(path);
+            Assert.False(content.Contains("VoxClipDevelopmentBuild", StringComparison.OrdinalIgnoreCase), path);
+            Assert.False(content.Contains("VOXCLIP_DEVELOPMENT", StringComparison.OrdinalIgnoreCase), path);
+        }
+        var definitions = Directory.EnumerateFiles(windows, "*", SearchOption.AllDirectories)
+            .Where(path => !Generated(path) && Path.GetExtension(path) is ".csproj" or ".props" or ".targets")
+            .Where(path => File.ReadAllText(path).Contains("VoxClipDevelopmentBuild", StringComparison.OrdinalIgnoreCase) ||
+                File.ReadAllText(path).Contains("VOXCLIP_DEVELOPMENT", StringComparison.OrdinalIgnoreCase))
+            .Select(path => Path.GetRelativePath(windows, path));
+        Assert.Equal(new[] { "Directory.Build.targets" }, definitions);
+    }
+
+    [Theory]
+    [InlineData("Release", null, false, false)]
+    [InlineData("Release", null, true, false)]
+    [InlineData("Release", "true", false, true)]
+    [InlineData("Debug", null, false, true)]
+    [InlineData("Debug", "false", false, false)]
+    public async Task OnlyDebugOrAnExplicitPropertyDefinesTheDevelopmentConstant(string configuration, string? property, bool environment, bool expected)
+    {
+        var host = Environment.GetEnvironmentVariable("DOTNET_HOST_PATH");
+        var start = new ProcessStartInfo(string.IsNullOrEmpty(host) ? "dotnet" : host)
+        {
+            UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, WorkingDirectory = Path.Combine(Root, "apps/windows")
+        };
+        foreach (var argument in new[] { "msbuild", "src/VoxClip.Core/VoxClip.Core.csproj", "-nologo", "-nodeReuse:false", "-getProperty:DefineConstants", "-p:Configuration=" + configuration })
+            start.ArgumentList.Add(argument);
+        if (property is not null) start.ArgumentList.Add("-p:VoxClipDevelopmentBuild=" + property);
+        start.Environment.Remove("VoxClipDevelopmentBuild");
+        // MSBuild reads environment variables as properties; Directory.Build.targets ignores this one.
+        if (environment) start.Environment["VoxClipDevelopmentBuild"] = "true";
+        start.Environment["DOTNET_CLI_TELEMETRY_OPTOUT"] = "1";
+        start.Environment["MSBUILDDISABLENODEREUSE"] = "1";
+        using var process = Process.Start(start)!;
+        var output = process.StandardOutput.ReadToEndAsync(TestContext.Current.CancellationToken);
+        var error = process.StandardError.ReadToEndAsync(TestContext.Current.CancellationToken);
+        await process.WaitForExitAsync(TestContext.Current.CancellationToken);
+        Assert.True(process.ExitCode == 0, await error + await output);
+        var constants = (await output).Trim().Split(';', StringSplitOptions.TrimEntries);
+        Assert.Contains(configuration.ToUpperInvariant(), constants);
+        Assert.Equal(expected, constants.Contains("VOXCLIP_DEVELOPMENT"));
+    }
+
 #if !DEBUG
     [Fact]
     public void ReleaseAppAssemblyIncludesProductAndOmitsDebugTypesMethodsAndStrings()
@@ -206,8 +278,8 @@ public sealed class VoiceLabReleaseBoundaryTests
             {
                 var condition = directive[4..].Split("||", StringSplitOptions.TrimEntries).Any(term => term switch
                 {
-                    "DEBUG" or "WIN_UI_TESTS" => false,
-                    "!DEBUG" or "DISABLE_XAML_GENERATED_MAIN" => true,
+                    "DEBUG" or "WIN_UI_TESTS" or "VOXCLIP_DEVELOPMENT" => false,
+                    "!DEBUG" or "!VOXCLIP_DEVELOPMENT" or "DISABLE_XAML_GENERATED_MAIN" => true,
                     _ => throw new InvalidOperationException("Unrecognized Release condition: " + term)
                 });
                 branches.Push((active, condition)); active &= condition;

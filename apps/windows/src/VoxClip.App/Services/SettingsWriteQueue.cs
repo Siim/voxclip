@@ -53,11 +53,8 @@ internal sealed class SettingsWriteQueue(ISettingsStore store)
 #if DEBUG
                 if (DebugBeforeSave is { } beforeSave) await beforeSave(key);
 #endif
-                var values = new Dictionary<string, JsonElement>(Current.Values, StringComparer.Ordinal)
-                {
-                    [key] = JsonSerializer.SerializeToElement(value)
-                };
-                var next = new AppSettings("voxclip-settings/1") { Values = values };
+                // Untouched defaults stay implicit, so the store writes only stored values and this change.
+                var next = Current.With(key, JsonSerializer.SerializeToElement(value));
                 await store.SaveAsync(next, ct);
                 lock (sync)
                 {

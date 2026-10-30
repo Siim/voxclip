@@ -94,6 +94,21 @@ public sealed record AppSettings
         }
     }
 
+    /// <summary>A copy with one value set. Every other value stays stored or implicit, so saving the copy writes the stored values and
+    /// this change but no untouched default (architecture §2.5).</summary>
+    public AppSettings With(string key, JsonElement value)
+    {
+        ArgumentNullException.ThrowIfNull(key);
+        var next = new AppSettings(Schema)
+        {
+            Values = new Dictionary<string, JsonElement>(Values, StringComparer.Ordinal),
+            ImplicitDefaults = ImplicitDefaults is null ? null : new Dictionary<string, JsonElement>(ImplicitDefaults, StringComparer.Ordinal)
+        };
+        next.RemovedKeys.UnionWith(RemovedKeys);
+        next.Set(key, value);
+        return next;
+    }
+
     [JsonIgnore]
     internal HashSet<string> RemovedKeys { get; } = new(StringComparer.Ordinal);
     /// <summary>Construct the schema envelope; unknown dotted keys are retained by extension data.</summary>
@@ -135,6 +150,8 @@ public sealed class SettingsStore : ISettingsStore
     private string? lastLoadError;
     private string? lastWriteError;
     private long revision;
+    private readonly IReadOnlyDictionary<string, JsonElement> unsetDefaults =
+        new System.Collections.ObjectModel.ReadOnlyDictionary<string, JsonElement>(new Dictionary<string, JsonElement>());
 
     /// <summary>Use VOXCLIP_DATA_DIR or the platform data root, or an explicit settings file.</summary>
     public SettingsStore(string? path = null, Action<string>? onWarning = null) : this(path, onWarning, new AtomicFileOperations()) { }
@@ -147,6 +164,23 @@ public sealed class SettingsStore : ISettingsStore
         this.path = Path.GetFullPath(path ?? DataLocations.Resolve().Settings);
         this.onWarning = onWarning;
         this.fileOperations = fileOperations;
+    }
+
+    /// <summary>Values read in place of the schema default for keys the settings file leaves unset. Like schema defaults they are
+    /// never saved unless a setter changes them, so an explicit value always wins. Only known keys with valid values are accepted.
+    /// The App's development build uses this for Voice Lab (Voice Lab §5).</summary>
+    public IReadOnlyDictionary<string, JsonElement> UnsetDefaults
+    {
+        get => unsetDefaults;
+        init
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            var candidate = new AppSettings("voxclip-settings/1") { Values = value.ToDictionary(pair => pair.Key, pair => pair.Value.Clone(), StringComparer.Ordinal) };
+            if (candidate.Values.Keys.Any(key => !SettingsValidation.KnownKey(key)))
+                throw new ArgumentException("Unset defaults must use known settings keys.", nameof(value));
+            SettingsValidation.Validate(candidate);
+            unsetDefaults = new System.Collections.ObjectModel.ReadOnlyDictionary<string, JsonElement>(candidate.Values);
+        }
     }
 
     /// <inheritdoc />
@@ -298,9 +332,10 @@ public sealed class SettingsStore : ISettingsStore
     private static string Serialize(AppSettings settings)
         => JsonSerializer.Serialize(settings with { Values = settings.Values.OrderBy(pair => pair.Key, StringComparer.Ordinal).ToDictionary(pair => pair.Key, pair => pair.Value) }, SettingsJsonContext.Default.AppSettings) + "\n";
 
-    private static AppSettings Resolve(AppSettings settings)
+    private AppSettings Resolve(AppSettings settings)
     {
         var defaults = SettingsValidation.Defaults();
+        foreach (var pair in unsetDefaults) defaults.Values[pair.Key] = pair.Value.Clone();
         var implicitDefaults = defaults.Values.Where(pair => !settings.Values.ContainsKey(pair.Key)).ToDictionary(pair => pair.Key, pair => pair.Value.Clone(), StringComparer.Ordinal);
         foreach (var pair in settings.Values) defaults.Values[pair.Key] = pair.Value.Clone();
         if (OperatingSystem.IsWindows() && defaults.Values["transcription.engineMode"].GetString() == "apple")

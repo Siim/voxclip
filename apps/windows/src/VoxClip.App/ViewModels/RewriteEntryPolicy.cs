@@ -5,7 +5,9 @@ internal enum RewriteEntryAction { Unavailable, OpenPassage, OpenInsertion }
 
 internal static class RewriteEntryPolicy
 {
-#if DEBUG
+    /// <summary>Development builds (VOXCLIP_DEVELOPMENT: Debug, or -p:VoxClipDevelopmentBuild=true) skip the beta notice and read unset
+    /// Voice Lab settings as on. Release pipelines never define it.</summary>
+#if VOXCLIP_DEVELOPMENT
     internal static bool InternalBuild => true;
 #else
     internal static bool InternalBuild => false;

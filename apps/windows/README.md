@@ -40,6 +40,18 @@ The platform-specific executables are under `src/VoxClip.App/bin/ARM64/Release/n
 
 The full `VoxClip.slnx` includes the App. For full-solution builds select `-p:Platform=ARM64 -r win-arm64` or `-p:Platform=x64 -r win-x64`. On a 4 GB VM, use `-m:1` and never run the two architecture builds concurrently.
 
+## Windows: development test copy
+
+Debug builds are development builds: Voice Lab reads as on until you set the switch, and Rewrite skips the beta notice (doc/spec/voice-lab.md section 5). A Release-config build behaves like a shipped one. To make a Release-config test copy a development build, add `-p:VoxClipDevelopmentBuild=true`:
+
+```powershell
+dotnet publish src/VoxClip.App/VoxClip.App.csproj -c Release -r win-arm64 --self-contained -m:1 -p:VoxClipDevelopmentBuild=true
+```
+
+Use `-r win-x64` for x64. Only `-p:` sets the property; an environment variable of that name is ignored. Never pass it to a release build. `build/` and CI never do, and `VoiceLabReleaseBoundaryTests` checks this.
+
+An explicit value in `settings.json` always wins. Earlier Windows builds wrote every default on the first settings change, so an older test copy's settings may already store `"voiceLab.enabled": false`. Turn Voice Lab on once in Settings, or delete the `voiceLab.enabled` and `voiceLab.betaNoticeAccepted` lines.
+
 ## Native media dependencies
 
 NuGet pins are centralized in `Directory.Packages.props`; see the root [`THIRD_PARTY_NOTICES.md`](../../THIRD_PARTY_NOTICES.md) for pinned sources and licences. Whisper.net CPU runtimes include **both win-x64 and win-arm64**; NoAvx is the x64 fallback. macOS native SkiaSharp/HarfBuzz assets let renderer tests run without Windows.

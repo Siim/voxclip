@@ -255,6 +255,82 @@ public sealed class VoiceLabSettingsTests
     }
 
     [Fact]
+    public async Task DevelopmentBuildsReadUnsetVoiceLabAsOnWithoutWritingItAndKeepAnExplicitOff()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "voxclip-voice-lab-development-" + Guid.NewGuid().ToString("N"));
+        var path = Path.Combine(directory, "settings.json");
+        // The App's own store (AppServices) passes exactly this overlay.
+        var overlay = VoiceLabBeta.DevelopmentDefaults(RewriteEntryPolicy.InternalBuild);
+        var store = new SettingsStore(path) { UnsetDefaults = overlay };
+        var queue = new SettingsWriteQueue(store);
+        var ct = TestContext.Current.CancellationToken;
+        try
+        {
+            queue.Initialize(await store.LoadAsync(ct));
+            var development = RewriteEntryPolicy.InternalBuild;
+#if VOXCLIP_DEVELOPMENT
+            Assert.True(development);
+#else
+            Assert.False(development);
+            Assert.Empty(overlay);
+#endif
+            Assert.Equal(development, queue.Current.GetBool("voiceLab.enabled"));
+            Assert.Equal(development, queue.Current.GetBool("voiceLab.betaNoticeAccepted"));
+            Assert.Equal(development, RewriteEntryPolicy.Available(queue.Current.GetBool("voiceLab.enabled") == true, queue.Current.GetBool("voiceLab.betaNoticeAccepted") == true));
+            await queue.SetAsync("general.appearance", "dark", ct);
+            await queue.FlushAsync(ct);
+            Assert.Equal(development, queue.Current.GetBool("voiceLab.enabled"));
+            Assert.Equal(new[] { "general.appearance", "schema" }, Written(path));
+            await queue.SetAsync("voiceLab.enabled", false, ct);
+            await queue.FlushAsync(ct);
+            Assert.Equal(new[] { "general.appearance", "schema", "voiceLab.enabled" }, Written(path));
+            var reopened = await new SettingsStore(path) { UnsetDefaults = overlay }.LoadAsync(ct);
+            Assert.False(reopened.GetBool("voiceLab.enabled"));
+            Assert.Equal(development, reopened.GetBool("voiceLab.betaNoticeAccepted"));
+            Assert.False(RewriteEntryPolicy.Available(reopened.GetBool("voiceLab.enabled") == true, reopened.GetBool("voiceLab.betaNoticeAccepted") == true));
+        }
+        finally { await queue.FlushAsync(ct); if (Directory.Exists(directory)) Directory.Delete(directory, true); }
+    }
+
+    [Fact]
+    public async Task StoresWithoutTheOverlayKeepTheShippedOffDefault()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "voxclip-voice-lab-shipped-" + Guid.NewGuid().ToString("N"));
+        var path = Path.Combine(directory, "settings.json");
+        var store = new SettingsStore(path);
+        var queue = new SettingsWriteQueue(store);
+        var ct = TestContext.Current.CancellationToken;
+        try
+        {
+            Assert.Empty(store.UnsetDefaults);
+            Assert.Empty(VoiceLabBeta.DevelopmentDefaults(false));
+            queue.Initialize(await store.LoadAsync(ct));
+            Assert.False(queue.Current.GetBool("voiceLab.enabled"));
+            Assert.False(queue.Current.GetBool("voiceLab.betaNoticeAccepted"));
+            Assert.False(RewriteEntryPolicy.Available(queue.Current.GetBool("voiceLab.enabled") == true, queue.Current.GetBool("voiceLab.betaNoticeAccepted") == true));
+            await queue.SetAsync("general.appearance", "dark", ct);
+            await queue.FlushAsync(ct);
+            Assert.Equal(new[] { "general.appearance", "schema" }, Written(path));
+        }
+        finally { await queue.FlushAsync(ct); if (Directory.Exists(directory)) Directory.Delete(directory, true); }
+    }
+
+    [Fact]
+    public void AppServicesPassesTheDevelopmentOverlayOnlyToTheUsersStore()
+    {
+        var services = AppSource("Services/AppServices.cs");
+        Assert.Contains("new SettingsStore { UnsetDefaults = VoiceLabBeta.DevelopmentDefaults(RewriteEntryPolicy.InternalBuild) }", services);
+        Assert.Single(System.Text.RegularExpressions.Regex.Matches(services, "UnsetDefaults ="));
+        Assert.Contains("var next = Current.With(key, JsonSerializer.SerializeToElement(value));", AppSource("Services/SettingsWriteQueue.cs"));
+    }
+
+    private static string[] Written(string path)
+    {
+        using var document = JsonDocument.Parse(File.ReadAllText(path));
+        return document.RootElement.EnumerateObject().Select(property => property.Name).Order(StringComparer.Ordinal).ToArray();
+    }
+
+    [Fact]
     public void CancelWritesNothing() => Assert.Empty(VoiceLabSettingsState.TurnOn(false).WritesAfterNotice(false));
 
     [Fact]

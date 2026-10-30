@@ -41,12 +41,28 @@ public sealed class VoiceLabPresentationTests
         foreach (var accepted in new[] { false, true })
         foreach (var internalBuild in new[] { false, true })
         {
-#if DEBUG
+#if VOXCLIP_DEVELOPMENT
             var expected = enabled && (accepted || internalBuild);
 #else
             var expected = enabled && accepted;
 #endif
             Assert.Equal(expected, VoiceLabBeta.IsAvailable(enabled, accepted, internalBuild));
         }
+    }
+
+    [Fact]
+    public void OnlyDevelopmentBuildsReadUnsetVoiceLabKeysAsOn()
+    {
+        Assert.Empty(VoiceLabBeta.DevelopmentDefaults(false));
+        var defaults = VoiceLabBeta.DevelopmentDefaults(true);
+#if VOXCLIP_DEVELOPMENT
+        Assert.Equal(new[] { "voiceLab.betaNoticeAccepted", "voiceLab.enabled" }, defaults.Keys.Order(StringComparer.Ordinal));
+        Assert.All(defaults.Values, value => Assert.Equal(JsonValueKind.True, value.ValueKind));
+#else
+        Assert.Empty(defaults);
+#endif
+        // The shipped schema default stays off.
+        Assert.Equal(JsonValueKind.False, VoxClip.Core.Services.Settings.AppSettings.Defaults["voiceLab.enabled"].ValueKind);
+        Assert.Equal(JsonValueKind.False, VoxClip.Core.Services.Settings.AppSettings.Defaults["voiceLab.betaNoticeAccepted"].ValueKind);
     }
 }

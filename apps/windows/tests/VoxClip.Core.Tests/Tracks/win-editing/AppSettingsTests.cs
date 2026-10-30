@@ -155,6 +155,53 @@ public sealed class AppSettingsTests
         Assert.True(reloaded.GetBool("org.example.keep"));
     }
 
+    [Fact]
+    public async Task UnsetDefaultsReplaceSchemaDefaultsOnlyForUnsetKeysAndAreNeverWritten()
+    {
+        using var storage = new TestStorage();
+        var path = storage.PathFor("settings.json");
+        await File.WriteAllTextAsync(path, "{\"schema\":\"voxclip-settings/1\",\"voiceLab.betaNoticeAccepted\":false}", TestContext.Current.CancellationToken);
+        var overlay = new Dictionary<string, JsonElement> { ["voiceLab.enabled"] = Element("true"), ["voiceLab.betaNoticeAccepted"] = Element("true") };
+        var store = new SettingsStore(path) { UnsetDefaults = overlay };
+        var settings = await store.LoadAsync(TestContext.Current.CancellationToken);
+        Assert.True(settings.GetBool("voiceLab.enabled"));
+        Assert.False(settings.GetBool("voiceLab.betaNoticeAccepted"));
+        settings = settings.With("general.appearance", Element("\"dark\""));
+        await store.SaveAsync(settings, TestContext.Current.CancellationToken);
+        await store.FlushAsync(TestContext.Current.CancellationToken);
+        using (var written = JsonDocument.Parse(await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken)))
+            Assert.Equal(new[] { "general.appearance", "schema", "voiceLab.betaNoticeAccepted" },
+                written.RootElement.EnumerateObject().Select(property => property.Name).Order(StringComparer.Ordinal));
+        Assert.False((await new SettingsStore(path).LoadAsync(TestContext.Current.CancellationToken)).GetBool("voiceLab.enabled"));
+        settings = (await store.LoadAsync(TestContext.Current.CancellationToken)).With("voiceLab.enabled", Element("false"));
+        await store.SaveAsync(settings, TestContext.Current.CancellationToken);
+        await store.FlushAsync(TestContext.Current.CancellationToken);
+        Assert.False((await new SettingsStore(path) { UnsetDefaults = overlay }.LoadAsync(TestContext.Current.CancellationToken)).GetBool("voiceLab.enabled"));
+    }
+
+    [Fact]
+    public void UnsetDefaultsAcceptOnlyKnownKeysWithValidValues()
+    {
+        Assert.Throws<ArgumentException>(() => new SettingsStore("unused.json") { UnsetDefaults = new Dictionary<string, JsonElement> { ["org.example.flag"] = Element("true") } });
+        Assert.Throws<JsonException>(() => new SettingsStore("unused.json") { UnsetDefaults = new Dictionary<string, JsonElement> { ["voiceLab.enabled"] = Element("\"yes\"") } });
+        Assert.Empty(new SettingsStore("unused.json").UnsetDefaults);
+    }
+
+    [Fact]
+    public async Task WithKeepsUntouchedDefaultsImplicitAndWritesAnExplicitDefaultValue()
+    {
+        using var storage = new TestStorage();
+        var path = storage.PathFor("settings.json");
+        var store = new SettingsStore(path);
+        var settings = (await store.LoadAsync(TestContext.Current.CancellationToken)).With("voiceLab.c2pa", AppSettings.Defaults["voiceLab.c2pa"]);
+        settings = settings.With("editing.pauseBreath", Element("\"tight\""));
+        Assert.Equal("tight", settings.GetString("editing.pauseBreath"));
+        await store.SaveAsync(settings, TestContext.Current.CancellationToken);
+        await store.FlushAsync(TestContext.Current.CancellationToken);
+        using var written = JsonDocument.Parse(await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken));
+        Assert.Equal(new[] { "editing.pauseBreath", "schema", "voiceLab.c2pa" }, written.RootElement.EnumerateObject().Select(property => property.Name).Order(StringComparer.Ordinal));
+    }
+
     private static JsonElement Element(string json)
     {
         using var document = JsonDocument.Parse(json);
