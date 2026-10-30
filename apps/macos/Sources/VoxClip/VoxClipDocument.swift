@@ -212,7 +212,8 @@ extension UTType {
             retainedVoiceLabFiles.formUnion(VoiceLabAssetRetention.references(in: project))
             do {
                 try VoiceLabAssetRetention.closeProject(projectId: project.id,
-                    paidRoot: editorModel.app.locations.root.appendingPathComponent("VoiceLab"), references: retainedVoiceLabFiles, allowDeletion: !anotherOpen)
+                    paidRoot: editorModel.app.locations.root.appendingPathComponent("VoiceLab"), references: retainedVoiceLabFiles, allowDeletion: !anotherOpen,
+                    recheckReferences: { self.retainedVoiceLabFiles.union(VoiceLabAssetRetention.references(in: self.project)) })
             } catch {
                 let logger = editorModel.app.log
                 Task { await logger.write(LogEntry(level: .warn, category: "voice-lab", message: "Asset cleanup deferred; paid media is safe.")) }
