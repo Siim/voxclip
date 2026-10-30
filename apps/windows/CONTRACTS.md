@@ -1,5 +1,11 @@
 # Windows fixed contracts
 
+### 2026-10-30 — lead — Voice Lab merged on both platforms
+
+- Squash-merged track/sol-win-voicelab at 3f5c3ea6 (c1-c7) with track/sol-mac-voicelab at 03e43989, so both Cores replay the same shared goldens. Only Windows files, the ONNX Runtime notice row and the pause-fit vectors and generator came from the Windows track; its copy of older Mac sources was superseded by the Mac squash.
+- The App binding owed to track sol-win-voicelab-ui: `VoiceConsentStore.StopLookingForCreation(Guid, DateTimeOffset)` behind a Cancel-default confirmation; `VoiceLabGenerationSession.UpdateInputsAsync`, `ReadMonthlyCapAsync`, `ConfirmCostAsync`, `CancelAsync` and `InvalidateAsync`; per-operation accessible names from `ExpectedVoiceName` and `StartedAt` ("{action} {voice name}, created {d MMMM yyyy}", then ", voice ID ending {last 6}" or ", attempt {n}" on a collision).
+- The speaker check (A8) stays closed until native win-arm64 and win-x64 ONNX Runtime parity evidence exists; the lead flips it in its own commit.
+
 ### 2026-10-30 — sol-win-voicelab — C7 pre-open directory retention inspection
 
 Mac ce3162d8's per-operation mkdir/open window has no equivalent reclamation target here. `VoiceLabAssetStore.cs:127` creates a persistent project folder, not an operation-owned directory; `VoiceLabPartialJournal.cs:41` similarly creates a shared persistent `.asset-partials` folder. Neither is ever swept or recursively emptied. The audio partial is exclusively opened at `VoiceLabAssetStore.cs:140`, and its handle identity is captured at `VoiceLabPartialJournal.cs:39` before a per-file owner/identity journal is written. The sweep at `VoiceLabPartialJournal.cs:85` enumerates only journal files, never directories. Therefore an open/identity/journal failure may conservatively retain an unjournalled file or empty persistent folder, but cannot trigger Mac's unsafe operation-directory reclamation: no new directory-cleanup implementation or pre-open regression is applicable. Preserve the lead's intentional Windows-only DELETE-handle/file-index cleanup; Unix deletes/renames no audio and drops entries only for already-missing files. Native Windows CI evidence does not substitute for VM/audio acceptance or open A8.

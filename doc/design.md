@@ -1063,7 +1063,7 @@ From the top:
   Neither is preselected. An unavailable option shows why. Use Take stays disabled until one is chosen. The choice is never remembered.
 - **Cut-only or text-only diff** (voice-lab.md §8.2 classes cut and textOnly). Voice and Takes hide, and the footer button reads **Apply Cuts** or **Apply Correction**. No AI is used and nothing is sent.
 - **Patch budget exceeded.** "That's a lot to re-voice. Re-record these sentences instead." Generate is disabled.
-- **No room tone** (voice-lab.md §8.7). "This take has no half-second pause to copy the room sound from. Clean audio removes background sound from the whole take, so new words can blend in." [Clean Audio…] opens the Clean audio panel. Generate is disabled.
+- **No room tone** (voice-lab.md §8.7). "This take has no half-second pause to copy the room sound from. Clean audio removes background sound from the whole take, so new words can blend in. Clean audio is not available in this build. Re-record this sentence instead." Generate is disabled. When Clean audio (M2) ships, the last two sentences give way to [Clean Audio…], which opens the Clean audio panel.
 - **Too close to the take edge** (voice-lab.md §8.4). "This change is too close to the {start/end} of the take to blend in. Re-record this sentence instead." Generate is disabled.
 - **Cost of $0.50 or more, or unknown.** The cost confirmation from voice-lab.md §3.1 appears before the action runs.
 
@@ -1484,7 +1484,7 @@ Voice: short, factual, calm, always reassuring about the media. No exclamation m
 | Rewrite: length changed | Rewrite panel | "Take {i} runs {s} s longer than the words it replaces. Choose how the video keeps up." For a shorter take: "Take {i} runs {s} s shorter than the words it replaces. Choose how the video keeps up." Options as §6.3 |
 | Rewrite: no voice | Rewrite panel, Voice row | "No voice yet" [Create Your Voice… (2 min)] |
 | Rewrite: too much | Rewrite panel | "That's a lot to re-voice. Re-record these sentences instead." |
-| Rewrite: no room tone | Rewrite panel | "This take has no half-second pause to copy the room sound from. Clean audio removes background sound from the whole take, so new words can blend in." [Clean Audio…]; Generate is disabled |
+| Rewrite: no room tone | Rewrite panel | "This take has no half-second pause to copy the room sound from. Clean audio removes background sound from the whole take, so new words can blend in. Clean audio is not available in this build. Re-record this sentence instead." Generate is disabled. [Clean Audio…] replaces the last two sentences once Clean audio (M2) ships |
 | Rewrite: too close to the take edge | Rewrite panel | "This change is too close to the {start/end} of the take to blend in. Re-record this sentence instead." Generate is disabled |
 | Rewrite: disclosure | Rewrite footer | "Exports show AI MODIFIED on the video and in the post." |
 | Rewrite: video missing | Rewrite panel | "Find the original video before rewriting speech. Your edits are saved." [Locate…] |

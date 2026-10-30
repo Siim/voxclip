@@ -1,5 +1,15 @@
 # macOS implementation contracts
 
+### 2026-10-30 — lead — Voice Lab merged on both platforms
+
+- Squash-merged track/sol-mac-voicelab at 03e43989 (W1-W11) and track/sol-win-voicelab at 3f5c3ea6 (c1-c7) together, so the shared request goldens, quote mutations and pause-fit vectors match on both Cores.
+- Voice Lab stays behind the beta opt-in: Release needs `enabled && betaNoticeAccepted`; DEBUG needs `enabled && (betaNoticeAccepted || internalBuild)`, for exposure and generation alike.
+- Merge rule for transcript accessibility: an accepted replacement span reads its replacement words, then "playing", then "AI modified", and never inherits the dormant source words' cut state. Replacement spans list their source word ids, so a collapsed cut run is identified as a span with ids that is not an accepted replacement.
+- The caption gallery audit keeps main's eager rows and measured convergence; W11's run-loop layout turn replaces `Task.yield()` while the gallery is not ready.
+- design.md §13 now carries the shipped room-tone refusal ("… Clean audio is not available in this build. Re-record this sentence instead."); [Clean Audio…] returns when Clean audio (M2) ships.
+- Push gates: hosted CI on the merged head and the native window gates (appSelfTest, documentScene, demoWindow, voiceRecipeWorkflow, settingsLifecycle, saveBoundary) on an idle, unlocked console.
+- Owed to 0.1.0: the Windows Voice Lab App (track sol-win-voicelab-ui and its editor-side track), native Windows evidence (ORT parity, then the A8 flip), and the Mac screen-reader headphones caption that Windows R4 introduces.
+
 ### 2026-10-30 — sol-mac-voicelab — W11 hosted gallery audit
 
 W10 CI 41027662313 also failed the window-free gallery's undo-at-360 check. Its settle loop incorrectly treated `Task.yield()` as a render-loop turn: the task may resume before AppKit's coalesced SwiftUI/layout work. The audit now awaits the main run loop's before-waiting phase, after layout observers, before comparing the next snapshot. The two-second bound, request-consumption and full-tile/header/ring geometry assertions are unchanged. Failures include the expected/actual style and complete measured snapshot in their names, which survive CI's temporary evidence cleanup. A headless test proves a before-waiting layout observer has fired before settlement resumes; another pins failure diagnostics and rejects an unsettled matching style. This is audit scheduling, not a relaxation of gallery visibility.
