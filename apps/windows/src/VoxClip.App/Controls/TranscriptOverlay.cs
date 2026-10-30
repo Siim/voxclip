@@ -37,6 +37,7 @@ internal sealed class TranscriptOverlay : IDisposable
     }
 #if DEBUG
     internal void DebugClearAbove() => above.Shapes.Clear();
+    internal void DebugClearBehind() => behind.Shapes.Clear();
     internal IReadOnlyList<Rect> DebugCached(Inline inline) => Cached(inline);
     internal object DebugDiagnostics => new { owner.ActualWidth, owner.ActualHeight, Scale = owner.XamlRoot?.RasterizationScale,
         BehindSize = behind.Size, AboveSize = above.Size, BehindShapes = behind.Shapes.Count, AboveShapes = above.Shapes.Count,

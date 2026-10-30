@@ -6,6 +6,21 @@ namespace VoxClip.Ui.Tests;
 public sealed class NativeHarnessContractTests
 {
     [Fact]
+    public void TranscriptDecorationGateRemovesGlyphInkAndRejectsMissingPaint()
+    {
+        var root = Path.GetDirectoryName(Environment.GetEnvironmentVariable("VOXCLIP_SHARED_DIR"))!;
+        var probe = File.ReadAllText(Path.Combine(root, "apps/windows/src/VoxClip.App/Services/TranscriptNativeProbe.cs"));
+        Assert.Contains("DebugHideGlyphs(retainDecorations: true)", probe);
+        Assert.Contains("CheckStrikes(decorationPixels)", probe);
+        Assert.Contains("CheckPlaying(decorationPixels)", probe);
+        Assert.Contains("DebugRemovePaint(strikeMutation)", probe);
+        Assert.Contains("Require(rejected,", probe);
+        Assert.Contains("CheckStrikes(restored); CheckPlaying(restored)", probe);
+        var transcript = File.ReadAllText(Path.Combine(root, "apps/windows/src/VoxClip.App/Controls/TranscriptView.cs"));
+        Assert.Contains("if (!retainDecorations) visual.Overlay.DebugClearAbove()", transcript);
+    }
+
+    [Fact]
     public void BoundsMatrixContinuesAfterAStateFailureButStillFailsClosed()
     {
         var root = Path.GetDirectoryName(Environment.GetEnvironmentVariable("VOXCLIP_SHARED_DIR"))!;

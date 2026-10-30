@@ -97,15 +97,21 @@ public sealed class TranscriptView : UserControl
         }
     }
     internal void DebugEndGlyph() { debugGlyphOnly = false; RefreshVisuals(); }
-    internal void DebugHideGlyphs()
+    internal void DebugHideGlyphs(bool retainDecorations = false)
     {
         debugGlyphOnly = true;
         foreach (var visual in realized.Values)
         {
-            visual.Overlay.DebugClearAbove();
+            visual.Text.TextHighlighters.Clear();
+            if (!retainDecorations) visual.Overlay.DebugClearAbove();
             foreach (var word in visual.Runs)
                 word.Run.Foreground = new SolidColorBrush(Windows.UI.Color.FromArgb(0, 0, 0, 0));
         }
+    }
+    internal void DebugRemovePaint(bool strike)
+    {
+        foreach (var visual in realized.Values)
+            if (strike) visual.Overlay.DebugClearAbove(); else visual.Overlay.DebugClearBehind();
     }
 #endif
     public event EventHandler? SeekRequested;

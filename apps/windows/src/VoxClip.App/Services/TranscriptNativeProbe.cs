@@ -93,6 +93,50 @@ internal static class TranscriptNativeProbe
                 Require(Contains(pixels, bitmap.PixelWidth, bitmap.PixelHeight, new(area.X, area.Y + area.Height * 0.52 - 1, area.Width, 3),
                     ((SolidColorBrush)Ui.ThemeBrush(transcript, "VcCutStrokeBrush")).Color), $"{model.Words[filler].Text} has no cut.stroke strike");
             }
+            // Isolate Composition paint: cut glyphs and strikes share GrayText in HC,
+            // and unhighlighted glyphs share WindowText with the playing fill.
+            // Neither glyph ink may satisfy a decoration assertion.
+            transcript.DebugHideGlyphs(retainDecorations: true);
+            await NextFrameAsync();
+            await bitmap.RenderAsync(rasterRoot);
+            var decorationPixels = (await bitmap.GetPixelsAsync()).ToArray();
+            var strikeColor = ((SolidColorBrush)Ui.ThemeBrush(transcript, "VcCutStrokeBrush")).Color;
+            void CheckStrikes(byte[] sample)
+            {
+                foreach (var index in new[] { 1, 2, 5 })
+                {
+                    var area = Bounds(transcript, index);
+                    Require(Contains(sample, bitmap.PixelWidth, bitmap.PixelHeight,
+                        new(area.X, area.Y + area.Height * 0.52 - 1, area.Width, 3), strikeColor),
+                        $"Isolated cut strike is absent for {model.Words[index].Text}");
+                }
+            }
+            void CheckPlaying(byte[] sample) => Require(Contains(sample, bitmap.PixelWidth, bitmap.PixelHeight, playing, playingColor),
+                "Isolated playing fill is absent");
+            CheckStrikes(decorationPixels);
+            CheckPlaying(decorationPixels);
+            foreach (var strikeMutation in new[] { true, false })
+            {
+                // Deliberately break the actual painted visual, then require the
+                // very same positive assertion to reject it. Restore after each.
+                transcript.DebugRemovePaint(strikeMutation);
+                await NextFrameAsync();
+                await bitmap.RenderAsync(rasterRoot);
+                var broken = (await bitmap.GetPixelsAsync()).ToArray();
+                var rejected = false;
+                try { if (strikeMutation) CheckStrikes(broken); else CheckPlaying(broken); }
+                catch (InvalidOperationException) { rejected = true; }
+                Require(rejected, "Decoration assertion accepted deliberately missing " + (strikeMutation ? "strike" : "playing fill"));
+                transcript.DebugEndGlyph();
+                await NextFrameAsync();
+                transcript.DebugHideGlyphs(retainDecorations: true);
+                await NextFrameAsync();
+                await bitmap.RenderAsync(rasterRoot);
+                var restored = (await bitmap.GetPixelsAsync()).ToArray();
+                CheckStrikes(restored); CheckPlaying(restored);
+                checks.Add($"{Name(theme)} isolated {(strikeMutation ? "cut strike" : "playing fill")}: missing-paint mutation rejected; restored paint passes");
+            }
+            transcript.DebugEndGlyph();
             checks.Add(Ui.HighContrast
                 ? $"High Contrast {Ui.HighContrastScheme} realized transcript raster: cut strike including um, and uh, out-of-scope glyph, Highlight selection and WindowText playing fills with their text matching the live system colours"
                 : $"{theme} realized transcript raster: cut strike including um, and uh, out-of-scope glyph, distinct selection/playing fills and badge-aware highlight offsets");
