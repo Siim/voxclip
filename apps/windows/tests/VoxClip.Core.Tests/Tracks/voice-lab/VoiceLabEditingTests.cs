@@ -126,4 +126,32 @@ public sealed class VoiceLabEditingTests
         Assert.Throws<VoiceLabProjectException>(() => new VoiceLabEditCommand.ChooseCandidate("accepted-test", 10).ApplyingTo(accepted));
         Assert.Single(accepted.VoiceLab.Segments);
     }
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void EveryEditRestoresExactModifiedAtAndDirtyState(bool initiallyDirty)
+    {
+        var fixture = new Fixture(true);
+        var history = new VoiceLabEditHistory(fixture.Empty, initiallyDirty);
+        VoiceLabEditCommand[] commands = [new VoiceLabEditCommand.Accept(fixture.Segment(), fixture.Published.Assets, fixture.Voice),
+            new VoiceLabEditCommand.SetEnabled("accepted-test", false), new VoiceLabEditCommand.SetEnabled("accepted-test", true),
+            new VoiceLabEditCommand.ChooseCandidate("accepted-test", 0), new VoiceLabEditCommand.Delete("accepted-test")];
+        foreach (var command in commands)
+        {
+            var before = history;
+            var date = history.Present.ModifiedAt.AddSeconds(1);
+            history = history.Apply(command, date);
+            Assert.True(history.IsDirty);
+            Assert.Equal(date, history.Present.ModifiedAt);
+            Assert.Equal(before.UndoStack.Count + 1, history.UndoStack.Count);
+            var undone = history.Undo();
+            Assert.Same(before.Present, undone.Present);
+            Assert.Equal(before.IsDirty, undone.IsDirty);
+            Assert.Equal(before.Present.ModifiedAt, undone.Present.ModifiedAt);
+            var redone = undone.Redo();
+            Assert.Same(history.Present, redone.Present);
+            Assert.True(redone.IsDirty);
+            Assert.Equal(date, redone.Present.ModifiedAt);
+        }
+    }
 }

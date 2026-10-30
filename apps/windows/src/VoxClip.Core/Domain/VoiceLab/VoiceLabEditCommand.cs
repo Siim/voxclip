@@ -48,21 +48,22 @@ public abstract record VoiceLabEditCommand
     }
 }
 
-public sealed record VoiceLabEditStep(Project Before, Project After, string ActionName);
+public sealed record VoiceLabEditStep(Project Before, Project After, string ActionName, bool BeforeDirty = false, bool AfterDirty = true);
 
-public sealed record VoiceLabEditHistory(Project Present, IReadOnlyList<VoiceLabEditStep> UndoStack, IReadOnlyList<VoiceLabEditStep> RedoStack)
+public sealed record VoiceLabEditHistory(Project Present, IReadOnlyList<VoiceLabEditStep> UndoStack, IReadOnlyList<VoiceLabEditStep> RedoStack, bool IsDirty = false)
 {
-    public VoiceLabEditHistory(Project project) : this(project, [], []) { }
+    public VoiceLabEditHistory(Project project, bool isDirty = false) : this(project, [], [], isDirty) { }
     public string? UndoActionName => UndoStack.LastOrDefault()?.ActionName;
     public string? RedoActionName => RedoStack.LastOrDefault()?.ActionName;
-    public VoiceLabEditHistory Apply(VoiceLabEditCommand command)
+    public VoiceLabEditHistory Apply(VoiceLabEditCommand command, DateTimeOffset? modifiedAt = null)
     {
         var next = command.ApplyingTo(Present);
-        var step = new VoiceLabEditStep(Present, next, command.ActionName);
-        return new(next, Array.AsReadOnly(UndoStack.TakeLast(499).Append(step).ToArray()), []);
+        if (modifiedAt is { } date) next = next with { ModifiedAt = date };
+        var step = new VoiceLabEditStep(Present, next, command.ActionName, IsDirty, true);
+        return new(next, Array.AsReadOnly(UndoStack.TakeLast(499).Append(step).ToArray()), [], true);
     }
     public VoiceLabEditHistory Undo() => UndoStack.Count == 0 ? this : new(UndoStack[^1].Before,
-        Array.AsReadOnly(UndoStack.Take(UndoStack.Count - 1).ToArray()), Array.AsReadOnly(RedoStack.Append(UndoStack[^1]).ToArray()));
+        Array.AsReadOnly(UndoStack.Take(UndoStack.Count - 1).ToArray()), Array.AsReadOnly(RedoStack.Append(UndoStack[^1]).ToArray()), UndoStack[^1].BeforeDirty);
     public VoiceLabEditHistory Redo() => RedoStack.Count == 0 ? this : new(RedoStack[^1].After,
-        Array.AsReadOnly(UndoStack.TakeLast(499).Append(RedoStack[^1]).ToArray()), Array.AsReadOnly(RedoStack.Take(RedoStack.Count - 1).ToArray()));
+        Array.AsReadOnly(UndoStack.TakeLast(499).Append(RedoStack[^1]).ToArray()), Array.AsReadOnly(RedoStack.Take(RedoStack.Count - 1).ToArray()), RedoStack[^1].AfterDirty);
 }
