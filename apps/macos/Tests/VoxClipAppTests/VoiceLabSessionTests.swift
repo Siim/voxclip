@@ -1,4 +1,5 @@
 #if DEBUG
+import AVFoundation
 import Foundation
 import Testing
 @testable import VoxClipCore
@@ -360,6 +361,143 @@ import Testing
         #expect(session.records.isEmpty)
         #expect(session.operations.map(\.id) == [operation.id])
         #expect(session.operations.first?.displayState == "Removing…")
+    }
+}
+
+/// voice-lab.md §6.2 and §6.5.2: the training source the sheet offers, headlessly and with no provider request.
+@Suite("Headless Voice Lab training source", .serialized, .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil, "Use an isolated VOXCLIP_DATA_DIR for app-model tests; no windows or provider requests are opened."))
+@MainActor struct VoiceLabTrainingSourceTests {
+    /// 50 s at 8 kHz: four 8 s bursts of tone 2.5 s apart over a quiet floor.
+    private static let bursts: [ClosedRange<Double>] = [1...9, 11.5...19.5, 22...30, 32.5...40.5]
+    private func take(in folder: URL) throws -> URL {
+        let rate = 8_000.0, frames = 50 * 8_000
+        let url = folder.appendingPathComponent("take.wav")
+        let format = try #require(AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: rate, channels: 1, interleaved: false))
+        let buffer = try #require(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(frames)))
+        buffer.frameLength = AVAudioFrameCount(frames)
+        let samples = try #require(buffer.floatChannelData?[0])
+        for index in 0..<frames {
+            let time = Double(index) / rate
+            samples[index] = Float(sin(2 * Double.pi * 220 * time) * (Self.bursts.contains { $0.contains(time) } ? 0.2 : 0.0005))
+        }
+        let file = try AVAudioFile(forWriting: url, settings: format.settings, commonFormat: .pcmFormatFloat32, interleaved: false)
+        try file.write(from: buffer)
+        return url
+    }
+    private func project(bursts: Int, language: String = "et", events: Bool = false) throws -> Project {
+        let shared = try SharedResources.locate()
+        var project = try JSONProjectStore.decode(Data(contentsOf: shared.root.appendingPathComponent("fixtures/voice-lab/passage-project.voxclip")))
+        project.voiceLab = ProjectVoiceLab(segments: [], assets: project.voiceLab.assets)
+        var words: [TimedWord] = []
+        for (index, burst) in Self.bursts.prefix(bursts).enumerated() {
+            words.append(TimedWord(id: "w\(index)a", text: "one", kind: events ? .event : .word, start: burst.lowerBound, end: burst.lowerBound + 4, conf: 0.95))
+            words.append(TimedWord(id: "w\(index)b", text: "two", kind: events ? .event : .word, start: burst.lowerBound + 4.1, end: burst.upperBound, conf: 0.95))
+        }
+        project.transcript?.words = words
+        project.transcript?.language = language
+        return project
+    }
+    private func folder() throws -> URL {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("voxclip-training-source-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        return url
+    }
+    private func session() throws -> (AppModel, VoiceLabSession) {
+        let app = AppModel()
+        app.settings.values["voiceLab.enabled"] = .bool(true)
+        app.speakerModelLibrary.model = try SpeakerModelCatalog(shared: SharedResources.locate()).entry
+        app.speakerModelLibrary.installed = true
+        return (app, VoiceLabSession(app: app))
+    }
+
+    @Test func projectAudioIsTheDefaultAndAnEstonianProjectRecordsAnEnglishStatement() async throws {
+        let root = try folder(); defer { try? FileManager.default.removeItem(at: root) }
+        let (_, session) = try session()
+        session.openEnrollment(project: .init(project: try project(bursts: 4), name: "Interview", source: try take(in: root)))
+        #expect(session.showEnrollment && session.trainingSource == .project && session.projectAudio == .finding)
+        #expect(session.offersProjectAudio && session.projectChoiceEnabled && session.projectAudioLine == "Finding clear speech in Interview…")
+        #expect(session.enrollmentLanguage == "en" && session.speakerReady)
+        await session.analysis?.value
+        guard case .found(let selection) = session.projectAudio else { Issue.record("The analysis did not finish"); return }
+        #expect(selection.status == .ok && selection.availableMs == 32_000 && selection.selected.count == 4)
+        #expect(session.trainingSource == .project && session.projectAudioUsable)
+        #expect(session.projectAudioLine == "32 s of clear speech found in Interview")
+        #expect(VoiceLabSession.projectChoice == "Use this project's audio (recommended)" && VoiceLabSession.readAloudChoice == "Record a read-aloud (about 90 s)")
+        session.verified = true
+        #expect(session.canCreate)
+        session.chooseTrainingSource(.readAloud)
+        #expect(session.trainingSource == .readAloud && !session.canCreate)
+        session.chooseTrainingSource(.project)
+        #expect(session.trainingSource == .project)
+        session.finishCreation()
+        #expect(session.projectAudio == .noProject && session.trainingSource == .readAloud && session.analysis == nil)
+    }
+    @Test func tooLittleOrNoSpeechSelectsTheReadAloud() async throws {
+        let root = try folder(); defer { try? FileManager.default.removeItem(at: root) }
+        let (_, session) = try session()
+        let url = try take(in: root)
+        for (project, line) in [(try project(bursts: 2), "This project has only 16 s of clear speech. Record a read-aloud instead."),
+                                (try project(bursts: 4, events: true), "This project has no clear speech to use. Record a read-aloud instead.")] {
+            session.showEnrollment = false
+            session.openEnrollment(project: .init(project: project, name: "Interview", source: url))
+            await session.analysis?.value
+            #expect(session.trainingSource == .readAloud && !session.projectAudioUsable && !session.projectChoiceEnabled)
+            #expect(session.offersProjectAudio && session.projectAudioLine == line)
+            session.chooseTrainingSource(.project)
+            #expect(session.trainingSource == .readAloud)
+        }
+    }
+    @Test func missingProjectTranscriptOrMediaOffersOnlyTheReadAloudOrSaysWhy() async throws {
+        let root = try folder(); defer { try? FileManager.default.removeItem(at: root) }
+        let (_, session) = try session()
+        var untranscribed = try project(bursts: 4); untranscribed.transcript = nil
+        let unreadable = VoiceLabSession.projectUnreadableCopy
+        #expect(unreadable == "VoxClip can't read this project's audio. Record a read-aloud instead.")
+        let cases: [(VoiceLabSession.TrainingProject?, String, Bool)] = [
+            (nil, "Open a project to use its audio instead.", false),
+            (.init(project: untranscribed, name: "Interview", source: try take(in: root)), "Transcribe this project to use its audio instead.", false),
+            (.init(project: try project(bursts: 4), name: "Interview", source: nil), unreadable, true),
+            (.init(project: try project(bursts: 4), name: "Interview", source: root.appendingPathComponent("missing.mov")), unreadable, true),
+        ]
+        for (project, line, offered) in cases {
+            session.showEnrollment = false
+            session.openEnrollment(project: project)
+            await session.analysis?.value
+            #expect(session.trainingSource == .readAloud && session.projectAudioLine == line && session.offersProjectAudio == offered)
+            #expect(!session.projectChoiceEnabled)
+        }
+    }
+    @Test func speakerMismatchBlocksProjectAudioAndKeepsTheVerifiedStatement() async throws {
+        let root = try folder(); defer { try? FileManager.default.removeItem(at: root) }
+        let (_, session) = try session()
+        session.openEnrollment(project: .init(project: try project(bursts: 4), name: "Interview", source: try take(in: root)))
+        await session.analysis?.value
+        let statement = VoiceConsentStatement(language: "en", text: "Offline statement fixture", nonce: [])
+        session.statement = statement; session.verified = true
+        await session.creationFailed(VoiceConsentError.speakerMismatch)
+        #expect(session.projectMismatch && session.message == "Some of this project's audio doesn't sound like the voice in your consent statement. Record a read-aloud instead.")
+        #expect(!session.projectChoiceEnabled && !session.canCreate)
+        session.useReadAloud()
+        #expect(session.trainingSource == .readAloud && !session.projectMismatch && session.message == nil)
+        #expect(session.verified && session.statement == statement)
+        await session.creationFailed(VoiceConsentError.speakerMismatch)
+        #expect(!session.projectMismatch && session.message == VoiceConsentError.speakerMismatch.localizedDescription)
+    }
+    @Test func confirmationNamesTheProjectSpeechAndTheRewriteEntryDropsTheEstimate() {
+        #expect(VoiceLabSession.creationCopy(projectName: "Interview", keptSeconds: 47.99, cost: "≈ $0.00") ==
+            "Checks your plan, then sends the consent recording and 47 s of speech from Interview to create your own voice. No video is sent. ≈ $0.00")
+        #expect(VoiceLabSession.creationCopy(projectName: nil, keptSeconds: 47.99, cost: "≈ $0.00") ==
+            "Checks your plan, then sends the consent recording and training audio to create your own voice. No video is sent. ≈ $0.00")
+        #expect(RewriteTakesView.createVoiceTitle == "Create Your Voice…")
+    }
+    @Test func statementLanguageNeedsACalibratedSpeakerCheck() throws {
+        let model = try SpeakerModelCatalog(shared: SharedResources.locate()).entry
+        let calibrated: (String) -> Bool = { model.calibratedThreshold(language: $0) != nil }
+        for (candidate, expected) in [("et", "en"), ("et-EE", "en"), ("en-GB", "en"), ("fr", "en"), ("", "en")] {
+            #expect(VoiceLabSession.statementLanguage(candidate, calibrated: calibrated) == expected)
+        }
+        #expect(VoiceLabSession.statementLanguage(nil, calibrated: calibrated) == "en")
+        #expect(VoiceLabSession.statementLanguage("et-EE", calibrated: { $0 == "et" }) == "et")
     }
 }
 
