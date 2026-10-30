@@ -78,7 +78,7 @@ private struct AcceptanceTestKeys: KeyProvider {
             }
         }
         #expect(model.exportDisclosure([.fullEdit, .clip("clip-main")]) == expected)
-        model.project.voiceLab.segments[0].enabled = false
+        try model.applyVoiceLab(.setEnabled(segmentID: project.voiceLab.segments[0].id, enabled: false))
         #expect(model.exportDisclosure([.fullEdit, .clip("clip-main")]) == nil)
     }
     @Test(arguments: [false, true])
