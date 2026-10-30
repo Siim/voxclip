@@ -1,5 +1,9 @@
 # macOS implementation contracts
 
+### 2026-10-30 — sol-mac-voicelab — W9 room-tone copy self-test
+
+The native room-tone refusal expectation predates W6's capability limitation. Product copy correctly says Clean audio is unavailable in this build and offers re-recording instead; do not remove that qualification or advertise a non-existent cleaning client. Native and headless App checks now assert the complete exact refusal, not just substrings. A native mismatch prints the full expected and actual copy.
+
 ### 2026-10-30 — sol-mac-voicelab — W9 verification approval self-test
 
 The native verification check previously had no statement WAV and asserted synchronously, although verification now prepares a local quote asynchronously. Its DEBUG-only fixture stages a synthetic 16 kHz statement and an injected client whose key provider records and refuses credential access. `request` returns its preparation task for deterministic awaiting; existing UI callers still discard it. The check proves a busy, unverified/no-confirmation state before preparation and an idle, unverified/Verify-confirmation state afterward, with zero credential requests (therefore no paid dispatch). Both states print expected/actual on failure. A headless App regression runs all twelve native consent logic checks, restores settings and speaker prerequisites, and never opens a window, records audio or contacts a provider. The unavailable-speaker check clears stale errors and explicitly requests creation before asserting refusal.

@@ -485,7 +485,7 @@ actor RewriteFixtureConnector: LLMConnector {
             editor.close()
         }
         check("insertion fallback exact copy", RewriteSession.refusal(VoiceLabGeometryError.insertionUnsupported) == "Inserting words isn't available yet. Your edits are saved.")
-        check("room tone fallback exact copy", RewriteSession.refusal(VoiceLabGeometryError.roomToneUnavailable) == "This take has no half-second pause to copy the room sound from. Clean audio removes background sound from the whole take, so new words can blend in.")
+        results.append(.equal("room tone fallback exact copy", expected: "This take has no half-second pause to copy the room sound from. Clean audio removes background sound from the whole take, so new words can blend in. Clean audio is not available in this build. Re-record this sentence instead.", actual: RewriteSession.refusal(VoiceLabGeometryError.roomToneUnavailable)))
         check("no speech rate fallback exact copy", RewriteSession.refusal(VoiceLabLengthBudgetError.rateUnavailable) == "There isn't enough timed speech to estimate this change. Your edits are saved.")
         check("placement fallback exact copy", RewriteSession.refusal(VoiceLabGeometryError.reversedWords) == "This change can't be placed in this take. Your edits are saved.")
         check("take start refusal uses Core edge and exact copy", RewriteSession.refusal(VoiceLabGeometryError.seamFadeOutsideTake(isStart: true)) == "This change is too close to the start of the take to blend in. Re-record this sentence instead.")

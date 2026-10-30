@@ -333,8 +333,7 @@ private struct GenerationTestKeys: KeyProvider {
     }
     @Test func unavailableCleaningHasAnExplicitReasonAndSafeAlternative() {
         let copy = RewriteSession.refusal(VoiceLabGeometryError.roomToneUnavailable)
-        #expect(copy.contains("Clean audio is not available in this build."))
-        #expect(copy.contains("Re-record this sentence instead."))
+        #expect(copy == "This take has no half-second pause to copy the room sound from. Clean audio removes background sound from the whole take, so new words can blend in. Clean audio is not available in this build. Re-record this sentence instead.")
     }
     @Test func theBestTakeAutoplaysOnlyOnceAndNeverAfterAnotherSelection() {
         let session = session(); let first = row(index: 0); let second = row(index: 1, score: 0.9)
