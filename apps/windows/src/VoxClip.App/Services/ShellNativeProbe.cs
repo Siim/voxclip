@@ -65,7 +65,7 @@ internal static class ShellNativeProbe
                     for (var attempt = 1; attempt <= 5; attempt++)
                         await Gate("caption-" + attempt, () => window.DebugEditor!.DebugCaptionGateAsync(window, output, checks));
                 Require(failures.Count == 0, string.Join("\n\n", failures));
-                await File.WriteAllTextAsync(report, JsonSerializer.Serialize(new { status = "passed", diagnostic, checks }));
+                await File.WriteAllTextAsync(report, JsonSerializer.Serialize(new { status = "diagnostic", diagnostic, checks }));
                 return;
             }
             await Gate("timeline", () => TimelineNativeProbe.RunAsync(window, editor.ViewModel.Project, checks));

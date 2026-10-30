@@ -86,6 +86,10 @@ public sealed class NativeHarnessContractTests
         Assert.Contains("[Diagnostics.Stopwatch]::StartNew()", flow);
         Assert.Contains("$elapsed.Elapsed.TotalSeconds -lt 900", flow);
         Assert.Contains("native-flow-result.json", flow);
+        Assert.Contains("EnvironmentVariables.Remove('VOXCLIP_NATIVE_DIAGNOSTIC')", flow);
+        Assert.Contains("$result.PSObject.Properties.Name -contains 'diagnostic'", flow);
+        var shell = File.ReadAllText(Path.Combine(root, "apps/windows/src/VoxClip.App/Services/ShellNativeProbe.cs"));
+        Assert.Contains("status = \"diagnostic\"", shell);
         Assert.Contains("FAILED native gate:", flow);
         Assert.DoesNotContain("$deadline=[DateTime]", flow);
     }

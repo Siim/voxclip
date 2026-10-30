@@ -59,6 +59,7 @@ try {
     $start.Arguments = "--shell-probe `"$probe`""
     $start.EnvironmentVariables['VOXCLIP_DATA_DIR'] = $probeData
     $start.EnvironmentVariables['VOXCLIP_SHARED_DIR'] = Join-Path $Root 'shared'
+    $start.EnvironmentVariables.Remove('VOXCLIP_NATIVE_DIAGNOSTIC')
     $probeApp = [System.Diagnostics.Process]::Start($start)
     # A passing probe exits the app; a failing one writes its report and leaves the window open with the error.
     $phase = 'shell'
@@ -66,7 +67,7 @@ try {
     while (-not $probeApp.HasExited -and -not (Test-Path -LiteralPath $report) -and $elapsed.Elapsed.TotalSeconds -lt 900) { Start-Sleep -Milliseconds 500 }
     if (-not (Test-Path -LiteralPath $report)) { throw 'The shell probe wrote no report within 900 monotonic seconds.' }
     $result = Get-Content -LiteralPath $report -Raw | ConvertFrom-Json
-    if ($result.status -ne 'passed') { throw ('The shell probe failed: ' + (@($result.checks | Where-Object { $_ -like 'FAILED native gate:*' }) -join ', ') + '; see shell-native-result.json.') }
+    if ($result.status -ne 'passed' -or $result.PSObject.Properties.Name -contains 'diagnostic') { throw ('The shell probe failed: ' + (@($result.checks | Where-Object { $_ -like 'FAILED native gate:*' }) -join ', ') + '; see shell-native-result.json.') }
     $exitWait = [Diagnostics.Stopwatch]::StartNew()
     while (-not $probeApp.HasExited -and $exitWait.Elapsed.TotalSeconds -lt 10) { Start-Sleep -Milliseconds 100 }
     if ($probeApp.HasExited -and $probeApp.ExitCode -ne 0) { throw 'The shell probe exited unsuccessfully after its report.' }
