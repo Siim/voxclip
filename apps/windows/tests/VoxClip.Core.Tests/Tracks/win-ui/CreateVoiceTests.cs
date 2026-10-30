@@ -224,6 +224,29 @@ public sealed class CreateVoiceTests
     }
 
     [Fact]
+    public async Task FailedVerifyKeepsCleanupWarningAndVetoesLeaving()
+    {
+        await using var setup = new ConsentSetup { Mismatch = true };
+        await setup.TakeAsync();
+        setup.FailDeletion = true;
+        Assert.True(setup.Session.RequestVerification());
+        await setup.Session.ApproveVerificationAsync(true);
+        Assert.StartsWith("The statement recording could not be removed.", setup.Session.Message);
+        Assert.Contains("That didn't match the statement.", setup.Session.Message);
+        Assert.False(await setup.Session.TryLeaveAsync(VoiceCreationLeaveTrigger.Back, _ => Task.FromResult(true)));
+        Assert.True(setup.Session.IsBusyForRestart);
+        setup.FailDeletion = false;
+        Assert.True(setup.Session.CanRetryCleanup);
+        Assert.False(setup.Session.CanRecord); Assert.False(setup.Session.CanVerify);
+        Assert.Contains("Leaving and restarting are blocked", setup.Session.Message);
+        Assert.Contains("Try removing the recording again", AppFile("Controls/CreateVoicePage.cs"));
+        await setup.Session.RetryCleanupAsync();
+        Assert.False(setup.Session.IsBusyForRestart); Assert.False(setup.Session.CanRetryCleanup);
+        setup.AssertNoStatement();
+        Assert.True(await setup.Session.TryLeaveAsync(VoiceCreationLeaveTrigger.Back, _ => Task.FromResult(true)));
+    }
+
+    [Fact]
     public async Task VerificationIsLimitedToThreeAttemptsPerTenMinutes()
     {
         await using var setup = new ConsentSetup { Mismatch = true };
@@ -369,7 +392,7 @@ public sealed class CreateVoiceTests
         internal readonly ConsentClock Clock = new();
         internal readonly ConsentCapture Capture = new();
         internal readonly CreateVoiceSession Session;
-        internal bool Enabled = true, Speaker = true, Mismatch;
+        internal bool Enabled = true, Speaker = true, Mismatch, FailDeletion;
         internal string? Plan;
         internal int Consents, ScribeCalls;
         internal TaskCompletionSource? HoldScribe;
@@ -379,7 +402,7 @@ public sealed class CreateVoiceTests
             var locations = new DataLocations(root, Path.Combine(root, "settings.json"), Path.Combine(root, "Models"), Path.Combine(root, "cache"), Path.Combine(root, "autosave"), Path.Combine(root, "secrets"), Path.Combine(root, "logs"));
             var backend = new VoiceStatementBackend(locations, new NoKeys(), new QuietLog(), ElevenLabsRegion.Default,
                 () => Enabled, () => Plan, _ => { Consents++; return Task.CompletedTask; }, Clock, () => Speaker, ScribeAsync);
-            Session = new(backend, Capture, Dispatch, Clock);
+            Session = new(new DeletionFailureBackend(backend, () => FailDeletion), Capture, Dispatch, Clock);
         }
         internal void Inputs() => Session.SetInputs("Example", "en", true, true, true);
         internal Task WhenRecording()
@@ -417,9 +440,22 @@ public sealed class CreateVoiceTests
         }
         public async ValueTask DisposeAsync()
         {
+            FailDeletion = false;
             await Session.DisposeAsync();
             if (Directory.Exists(root)) Directory.Delete(root, true);
         }
+    }
+    private sealed class DeletionFailureBackend(IVoiceStatementBackend inner, Func<bool> fail) : IVoiceStatementBackend
+    {
+        public bool Enabled => inner.Enabled;
+        public bool SpeakerAvailable => inner.SpeakerAvailable;
+        public string? PlanMessage => inner.PlanMessage;
+        public string VerificationCost => inner.VerificationCost;
+        public VoiceConsentStatement Statement(string name, string language, DateOnly date) => inner.Statement(name, language, date);
+        public Task SaveStatementAsync(string recordId, MicrophoneTake take, CancellationToken ct) => inner.SaveStatementAsync(recordId, take, ct);
+        public Task VerifyAsync(string recordId, VoiceConsentStatement statement, VoiceConsentAttestations attestations, CancellationToken ct) => inner.VerifyAsync(recordId, statement, attestations, ct);
+        public Task AbandonAsync(string recordId) => fail() ? Task.FromException(new IOException("injected deletion failure")) : inner.AbandonAsync(recordId);
+        public void Dispose() => inner.Dispose();
     }
     private sealed class ConsentCapture : IVoiceStatementCapture
     {

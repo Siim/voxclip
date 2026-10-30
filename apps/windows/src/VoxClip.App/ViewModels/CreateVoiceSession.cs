@@ -37,6 +37,8 @@ internal sealed class CreateVoiceSession(IVoiceStatementBackend backend, IVoiceS
     private bool leaving;
     private bool disposed;
     private bool cleanupPending;
+    private string? verificationFailure;
+    private const string CleanupWarning = "The statement recording could not be removed. Try removing the recording again. Leaving and restarting are blocked until it is removed.";
     private string? recordId;
     private string displayName = "";
     private string language = "en";
@@ -66,9 +68,10 @@ internal sealed class CreateVoiceSession(IVoiceStatementBackend backend, IVoiceS
         backend.PlanMessage
     }.OfType<string>().ToArray();
     internal string? BlockedReason => GateMessages.FirstOrDefault();
-    internal bool InputsEditable => !Busy && !Recording && !Activating && !HasStatementRecording && !Verified && !leaving;
+    internal bool CanRetryCleanup => cleanupPending && !Busy && !leaving;
+    internal bool InputsEditable => !Busy && !Recording && !Activating && !HasStatementRecording && !Verified && !cleanupPending && !leaving;
     internal bool CanRecord => !disposed && !Busy && !Recording && !Activating && !Verified && !cleanupPending && !leaving && BlockedReason is null && ownVoice && adult && ownVideos && ValidName();
-    internal bool CanVerify => !disposed && !Busy && !Recording && !leaving && HasStatementRecording && !Verified && BlockedReason is null;
+    internal bool CanVerify => !disposed && !Busy && !Recording && !leaving && !cleanupPending && HasStatementRecording && !Verified && BlockedReason is null;
     private bool ValidName()
     {
         try { VoiceConsentText.DisplayName(displayName); return true; }
@@ -77,8 +80,8 @@ internal sealed class CreateVoiceSession(IVoiceStatementBackend backend, IVoiceS
     private void Notify() => Changed?.Invoke(this, EventArgs.Empty);
     private void Say(string text)
     {
-        Message = text;
-        if (!Recording) Announcement?.Invoke(text);
+        Message = cleanupPending ? CleanupWarning + (verificationFailure is { } failure ? "\n" + failure : "") : text;
+        if (!Recording) Announcement?.Invoke(Message);
     }
     internal void SetInputs(string name, string selectedLanguage, bool own, bool isAdult, bool ownVideosOnly)
     {
@@ -100,7 +103,7 @@ internal sealed class CreateVoiceSession(IVoiceStatementBackend backend, IVoiceS
     private async Task RecordCoreAsync(CancellationToken ct)
     {
         var saved = false;
-        Busy = true; MicrophoneFailure = null; VerificationRequested = false; HasFailure = false;
+        Busy = true; MicrophoneFailure = null; VerificationRequested = false; HasFailure = false; verificationFailure = null;
         try
         {
             await DeleteStatementAsync();
@@ -190,10 +193,11 @@ internal sealed class CreateVoiceSession(IVoiceStatementBackend backend, IVoiceS
         catch (OperationCanceledException) when (ct.IsCancellationRequested || !backend.Enabled) { await CleanupAfterFailureAsync(); }
         catch (Exception error)
         {
-            await CleanupAfterFailureAsync();
-            await dispatch(() => { HasFailure = true; Say(error is VoiceConsentException { Kind: VoiceConsentError.TooManyAttempts }
+            verificationFailure = error is VoiceConsentException { Kind: VoiceConsentError.TooManyAttempts }
                 ? "Three attempts are allowed per 10 minutes. Please try again later."
-                : "That didn't match the statement. Read it again, clearly, in one take."); });
+                : "That didn't match the statement. Read it again, clearly, in one take.";
+            await CleanupAfterFailureAsync();
+            await dispatch(() => { HasFailure = true; Say(verificationFailure); });
         }
         finally { await dispatch(() => { Busy = false; Notify(); }); }
     }
@@ -212,8 +216,19 @@ internal sealed class CreateVoiceSession(IVoiceStatementBackend backend, IVoiceS
         try { await DeleteStatementAsync(); await dispatch(() => Statement = null); }
         catch (Exception)
         {
-            await dispatch(() => { cleanupPending = true; HasFailure = true; Say("The statement recording could not be removed. Retry Stop to finish cleanup."); });
+            await dispatch(() => { cleanupPending = true; HasFailure = true; Say(CleanupWarning); });
         }
+    }
+    internal async Task RetryCleanupAsync()
+    {
+        if (!CanRetryCleanup) return;
+        Busy = true; Notify();
+        try
+        {
+            await CleanupAfterFailureAsync();
+            if (!cleanupPending) await dispatch(() => { Message = verificationFailure; HasFailure = verificationFailure is not null; });
+        }
+        finally { await dispatch(() => { Busy = false; Notify(); }); }
     }
     internal async Task<bool> TryLeaveAsync(VoiceCreationLeaveTrigger trigger, Func<VoiceCreationLeaveTrigger, Task<bool>> confirm)
     {

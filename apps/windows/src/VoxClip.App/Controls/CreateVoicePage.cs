@@ -32,6 +32,7 @@ internal sealed class CreateVoicePage : UserControl, IAsyncDisposable
     private readonly Button verify;
     private readonly Button cancel;
     private readonly Button openSettings;
+    private readonly Button retryCleanup;
     private readonly DispatcherTimer timer = new() { Interval = TimeSpan.FromMilliseconds(100) };
     private bool wasRecording;
     private bool hadStatement;
@@ -74,6 +75,8 @@ internal sealed class CreateVoicePage : UserControl, IAsyncDisposable
         verify = Ui.Button("Verify statement · < $0.01", () => owner.RunSensitive(VerifyAsync, "Verify statement"));
         AutomationProperties.SetAutomationId(verify, "voice-verify-statement"); body.Children.Add(verify);
         AutomationProperties.SetAutomationId(message, "voice-create-message"); body.Children.Add(message);
+        retryCleanup = Ui.Button("Try removing the recording again", () => owner.RunSensitive(session.RetryCleanupAsync, "Remove recording"));
+        AutomationProperties.SetAutomationId(retryCleanup, "voice-retry-recording-cleanup"); body.Children.Add(retryCleanup);
         openSettings = Ui.Button(VoiceLabCopy.MicrophoneOpenSettings, () => owner.RunSensitive(OpenMicrophoneSettingsAsync, VoiceLabCopy.MicrophoneOpenSettings));
         AutomationProperties.SetAutomationId(openSettings, "voice-open-microphone-settings"); body.Children.Add(openSettings);
         session.Changed += SessionChanged;
@@ -103,6 +106,7 @@ internal sealed class CreateVoicePage : UserControl, IAsyncDisposable
         teleprompter.Text = session.Statement?.Text ?? "";
         record.IsEnabled = session.CanRecord; record.Content = session.HasStatementRecording ? "Record statement again" : "Record statement";
         verify.IsEnabled = session.CanVerify;
+        retryCleanup.Visibility = session.CanRetryCleanup ? Visibility.Visible : Visibility.Collapsed;
         stop.Visibility = session.Recording ? Visibility.Visible : Visibility.Collapsed;
         level.Visibility = session.Recording ? Visibility.Visible : Visibility.Collapsed;
         seconds.Visibility = session.Recording ? Visibility.Visible : Visibility.Collapsed;
