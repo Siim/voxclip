@@ -28,13 +28,14 @@ internal static class Ui
     {
         if (snapshot == value) return;
         snapshot = value;
+#if DEBUG
         TraceEffects("settings");
+#endif
         EffectsChanged?.Invoke(null, EventArgs.Empty);
     }
-    [System.Diagnostics.Conditional("DEBUG")]
+#if DEBUG
     internal static void TraceEffects(string phase, FrameworkElement? owner = null)
     {
-#if DEBUG
         string? Color(string key) => owner is not null && ThemeBrush(owner, key) is SolidColorBrush brush
             ? $"{brush.Color.R},{brush.Color.G},{brush.Color.B}" : null;
         var directory = Core.Services.Project.DataLocations.Resolve().Logs;
@@ -46,8 +47,8 @@ internal static class Ui
             Playing = Color("VcWordPlayingBackgroundBrush"), PlayingText = Color("VcWordPlayingForegroundBrush")
         });
         File.AppendAllText(Path.Combine(directory, "accessibility-effects.jsonl"), entry + "\n");
-#endif
     }
+#endif
     internal static void Announce(FrameworkElement owner, string text, string activity,
         AutomationNotificationProcessing processing = AutomationNotificationProcessing.MostRecent)
     {
