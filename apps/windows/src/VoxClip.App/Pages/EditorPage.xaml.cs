@@ -91,7 +91,7 @@ public sealed partial class EditorPage : Page
         preview = new PreviewEngine();
 #endif
         ViewModel.SetMediaUnavailable(!demo && mediaPath is null);
-        projectWrites = new(project);
+        projectWrites = new(project, ViewModel.MarkSaved);
         ViewModel.SetVoiceLabLabelPosition(VoiceLabSettingsState.LabelPosition(App.Services.Settings.GetString("voiceLab.labelPosition")));
         ViewModel.SetExportRecords(App.Services.ExportLedger.Records);
         App.Services.ExportLedger.Changed += LedgerChanged;
@@ -411,7 +411,7 @@ public sealed partial class EditorPage : Page
             return await dialog.ShowAsync() == ContentDialogResult.Primary;
         }, lifetime.Token);
         if (!relinked) return;
-        projectWrites = new(ViewModel.Project);
+        projectWrites = new(ViewModel.Project, ViewModel.MarkSaved);
         MediaPath = ViewModel.Project.Media.Source.AbsolutePath;
         media = selectedMedia;
         mediaState = media?.Video is null ? EditorMediaState.AudioOnly : EditorMediaState.Ready;
@@ -641,7 +641,10 @@ public sealed partial class EditorPage : Page
             {
                 if (ViewModel.IsLeaving) return;
                 var previous = owner.ProjectPath;
-                await App.Services.Projects.SaveAsync(ViewModel.Project, file.Path, lifetime.Token); owner.SetProjectPath(file.Path);
+                var snapshot = ViewModel.Project;
+                await App.Services.Projects.SaveAsync(snapshot, file.Path, lifetime.Token);
+                ViewModel.MarkSaved(snapshot);
+                owner.SetProjectPath(file.Path);
                 if (previous is not null && !previous.Equals(file.Path, StringComparison.OrdinalIgnoreCase) && Path.GetDirectoryName(previous)?.TrimEnd(Path.DirectorySeparatorChar).Equals(App.Services.Data.Autosave.TrimEnd(Path.DirectorySeparatorChar), StringComparison.OrdinalIgnoreCase) == true) File.Delete(previous);
             }
             finally { saves.Release(); }

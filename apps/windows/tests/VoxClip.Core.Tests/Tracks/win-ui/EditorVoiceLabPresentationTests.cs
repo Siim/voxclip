@@ -9,12 +9,15 @@ namespace VoxClip.Ui.Tests;
 public sealed class EditorVoiceLabPresentationTests
 {
     [Theory]
-    [InlineData(0)]
-    [InlineData(1)]
-    [InlineData(2)]
-    public void ReplacementAccessibilityReportsPlaybackAnywhereInItsSourceSpan(int position)
+    [InlineData("passage-render-v3", 0)]
+    [InlineData("passage-render-v3", 1)]
+    [InlineData("passage-render-v3", 2)]
+    [InlineData("full-take-render-v3", 0)]
+    [InlineData("full-take-render-v3", 1)]
+    [InlineData("full-take-render-v3", 2)]
+    public void ReplacementAccessibilityReportsPlaybackAnywhereInItsSourceSpan(string fixture, int position)
     {
-        var project = Fixture("passage-render-v3");
+        var project = Fixture(fixture);
         var editor = new EditorViewModel(project);
         var segment = project.VoiceLab.Segments.First(segment => segment.Enabled);
         var first = editor.Index(segment.Replace.FirstWordId);

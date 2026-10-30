@@ -10,6 +10,7 @@ using Microsoft.UI.Xaml.Markup;
 using Microsoft.UI.Xaml.Media;
 using VoxClip.App.ViewModels;
 using VoxClip.Core.Domain.Editing;
+using VoxClip.Core.Domain.VoiceLab;
 using Windows.UI.Text;
 
 namespace VoxClip.App.Controls;
@@ -688,6 +689,31 @@ public sealed class TranscriptView : UserControl
                         false, true, RewriteEntryPolicy.BuildEnabled) == RewriteEntryAction.OpenInsertion);
         }
         Add("Cut", () => model?.CutSelection());
+#if DEBUG
+        if (model is not null)
+        {
+            var voiceLab = DebugVoiceLabActions.For(model, App.Services.Get("voiceLab.enabled", false));
+            if (voiceLab.Actions.Count > 0) menu.Items.Add(new MenuFlyoutSeparator());
+            foreach (var action in voiceLab.Actions)
+            {
+                MenuFlyoutItemBase item;
+                if (action.Command is VoiceLabEditCommand.ChooseCandidate)
+                {
+                    var candidate = new ToggleMenuFlyoutItem { Text = action.Label, IsChecked = action.Selected };
+                    candidate.Click += (_, _) => voiceLab.Apply(model, action, App.Services.Get("voiceLab.enabled", false));
+                    item = candidate;
+                }
+                else
+                {
+                    var operation = new MenuFlyoutItem { Text = action.Label };
+                    operation.Click += (_, _) => voiceLab.Apply(model, action, App.Services.Get("voiceLab.enabled", false));
+                    item = operation;
+                }
+                AutomationProperties.SetAutomationId(item, action.Id);
+                menu.Items.Add(item);
+            }
+        }
+#endif
         Add("Restore", () => model?.CutSelection(true));
         Add("Correct spelling…", BeginCorrection);
         Add("Play from here", () => { if (contextIndex >= 0) model?.Select(contextIndex); PlayRequested?.Invoke(this, EventArgs.Empty); }, model is { IsReadOnly: false, Busy: false });
