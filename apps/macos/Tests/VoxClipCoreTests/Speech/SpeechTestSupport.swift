@@ -60,21 +60,50 @@ actor SpeechTestLogger: Redacting {
     }
 }
 
-final class SpeechStubHTTP: URLProtocol {
+final class SpeechStubHTTP: URLProtocol, @unchecked Sendable {
     typealias Handler = @Sendable (URLRequest) throws -> (Int, [String: String], Data)
+    private struct LoadingThread: @unchecked Sendable {
+        let thread = Thread.current
+        func fail(_ stub: SpeechStubHTTP, code: URLError.Code) {
+            stub.perform(#selector(SpeechStubHTTP.fail(_:)), on: thread, with: URLError(code) as NSError, waitUntilDone: false)
+        }
+    }
+    final class WriteAcknowledgement: Sendable {
+        private struct State {
+            var written = false
+            var action: (@Sendable () -> Void)?
+        }
+        private let state = Mutex(State())
+
+        func onWrite(_ action: @escaping @Sendable () -> Void) {
+            let written = state.withLock { state in
+                if state.written { return true }
+                state.action = action
+                return false
+            }
+            if written { action() }
+        }
+
+        func acknowledge() {
+            let action = state.withLock { state -> (@Sendable () -> Void)? in
+                state.written = true
+                defer { state.action = nil }
+                return state.action
+            }
+            action?()
+        }
+    }
     struct Reply: Sendable {
         let status: Int
         let headers: [String: String]
         let body: Data
         var failure: URLError.Code? = nil
-        /// Delays `failure` until this returns true (at most 10 s): a dropped connection still
-        /// delivers the bytes sent before it, but URLSession discards bytes its delegate has not
-        /// taken when the failure arrives first.
-        var failWhen: (@Sendable () -> Bool)? = nil
+        var failureAfterWrite: WriteAcknowledgement? = nil
         /// Leaves the reply open after `body`, as a server that stops sending does, without blocking the loading thread
         /// that every stubbed session shares. The task then ends only when it is cancelled.
         var stalls = false
     }
+    private let stopped = Mutex(false)
     static let handlers = Mutex<[String: @Sendable (URLRequest) throws -> Reply]>([:])
     static func register(_ handler: @escaping Handler) -> URL {
         registerStream { request in
@@ -109,17 +138,22 @@ final class SpeechStubHTTP: URLProtocol {
             client?.urlProtocol(self, didLoad: reply.body)
             if reply.stalls { return }
             if let failure = reply.failure {
-                if let failWhen = reply.failWhen {
-                    let deadline = ContinuousClock.now.advanced(by: .seconds(10))
-                    while !failWhen(), ContinuousClock.now < deadline { Thread.sleep(forTimeInterval: 0.01) }
+                if let acknowledgement = reply.failureAfterWrite {
+                    let loadingThread = LoadingThread()
+                    acknowledgement.onWrite { [weak self] in
+                        if let self { loadingThread.fail(self, code: failure) }
+                    }
                 } else {
-                    Thread.sleep(forTimeInterval: 0.3)
+                    fail(URLError(failure) as NSError)
                 }
-                client?.urlProtocol(self, didFailWithError: URLError(failure))
                 return
             }
             client?.urlProtocolDidFinishLoading(self)
         } catch { client?.urlProtocol(self, didFailWithError: error) }
     }
-    override func stopLoading() {}
+    @objc private func fail(_ error: NSError) {
+        guard !stopped.withLock({ $0 }) else { return }
+        client?.urlProtocol(self, didFailWithError: error)
+    }
+    override func stopLoading() { stopped.withLock { $0 = true } }
 }

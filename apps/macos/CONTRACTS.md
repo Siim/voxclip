@@ -1,5 +1,9 @@
 # macOS implementation contracts
 
+### 2026-10-30 — Deterministic interrupted model-download fixture
+
+- SpeechStubHTTP no longer polls or sleeps on URLSession's shared loading thread before dropping a stream. A one-shot write acknowledgement schedules failure back on that thread only after ModelStore's existing post-write progress callback; it handles either registration order without blocking delivery. The resume regression checks the actual partial bytes before each drop and exact Range offsets 1000/2000, then verifies the final payload. Product retry, file-write and resume behavior are unchanged. Windows has no polling interruption twin; its seeded-range and cancellation tests do not share this race.
+
 ### 2026-10-30 — Gemini runner incomplete-output regression
 
 - The real LLM runner is tested through stub HTTP for MAX_TOKENS, CONTINUATION and MALFORMED_RESPONSE with empty text, truncated JSON and schema-valid-looking JSON. Exact caller errors and user copy remain truncated/incomplete for token stops and server 500 for malformed responses; each case sends exactly one request and never sleeps or corrects the reply. Both Cores mirror the nine-case matrix. No production behavior changed.

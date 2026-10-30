@@ -9,6 +9,8 @@ struct ModelStoreTests {
         let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
         let payload = Data((0..<3000).map { UInt8($0 % 251) })
         let ranges = Mutex<[String?]>([])
+        let writtenPartials = Mutex<[Data?]>([])
+        let acknowledgements = [SpeechStubHTTP.WriteAcknowledgement(), SpeechStubHTTP.WriteAcknowledgement()]
         let partial = SpeechTestFiles.locations(root).models.appendingPathComponent("whispercpp/test-model/model.bin.partial")
         let base = SpeechStubHTTP.registerStream { request in
             // Serve from the requested offset, and drop the connection only after the bytes sent before it are on disk.
@@ -20,16 +22,31 @@ struct ModelStoreTests {
                 headers: range == nil ? [:] : ["Content-Range": "bytes \(offset)-2999/3000"],
                 body: payload.subdata(in: offset..<end),
                 failure: attempt < 3 ? .networkConnectionLost : nil,
-                failWhen: { ((try? FileManager.default.attributesOfItem(atPath: partial.path)[.size]) as? NSNumber)?.intValue ?? 0 >= end })
+                failureAfterWrite: attempt < 3 ? acknowledgements[attempt - 1] : nil)
         }
         let model = SpeechTestFiles.model(base.appendingPathComponent("model.bin"), data: payload)
         let store = ModelStore(catalog: SpeechTestCatalog(entries: [model]), locations: SpeechTestFiles.locations(root), configuration: SpeechStubHTTP.configuration(), confirm: { _, _ in true }, availableCapacity: { _ in Int64.max })
-        try await store.install(id: model.id) { _ in }
+        try await store.install(id: model.id) { progress in
+            guard progress.receivedBytes == 1000 || progress.receivedBytes == 2000 else { return }
+            writtenPartials.withLock { $0.append(try? Data(contentsOf: partial)) }
+            acknowledgements[Int(progress.receivedBytes / 1000) - 1].acknowledge()
+        }
         let requested = ranges.withLock { $0 }
-        #expect(requested.count == 3 && requested.first == .some(nil))
-        let offsets = requested.dropFirst().compactMap { $0.flatMap { Int($0.dropFirst("bytes=".count).dropLast()) } }
-        #expect(offsets.count == 2 && offsets[0] > 0 && offsets[1] > offsets[0])
+        #expect(writtenPartials.withLock { $0 } == [payload.prefix(1000), payload.prefix(2000)])
+        #expect(requested == [nil, "bytes=1000-", "bytes=2000-"])
+        #expect(try Data(contentsOf: partial.deletingPathExtension()) == payload)
         #expect(try await store.verify(id: model.id))
+    }
+    @Test(arguments: [false, true])
+    func writeAcknowledgementHandlesEitherEventOrder(_ writeFirst: Bool) {
+        let acknowledgement = SpeechStubHTTP.WriteAcknowledgement()
+        let failures = Mutex(0)
+        if writeFirst { acknowledgement.acknowledge() }
+        acknowledgement.onWrite { failures.withLock { $0 += 1 } }
+        #expect(failures.withLock { $0 } == (writeFirst ? 1 : 0))
+        acknowledgement.acknowledge()
+        acknowledgement.acknowledge()
+        #expect(failures.withLock { $0 } == 1)
     }
     @Test func sha256VectorsAndIncremental() throws {
         #expect(SpeechSHA256.hex(Data()) == "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855")

@@ -1,5 +1,9 @@
 # Windows fixed contracts
 
+### 2026-10-30 — Interrupted-download fixture parity audit
+
+- The Mac repeated-interruption fixture now uses post-write acknowledgement rather than polling its URLProtocol loading thread. Windows has no repeated-interruption polling twin: its range test seeds a closed eight-byte partial before the request, and cancellation uses a progress callback rather than a disk-size poll. Product FileStream disposal completes before resumable retries. No Windows product or test behavior changed.
+
 ### 2026-10-30 — Gemini runner incomplete-output regression
 
 - The real LLM runner is tested through stub HTTP for MAX_TOKENS, CONTINUATION and MALFORMED_RESPONSE with empty text, truncated JSON and schema-valid-looking JSON. Exact caller error kinds, codes, statuses and user copy remain truncated/incomplete for token stops and server 500 for malformed responses; each case sends exactly one request and never sleeps or corrects the reply. Both Cores mirror the nine-case matrix. No production behavior changed.
