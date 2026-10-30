@@ -84,6 +84,19 @@ public sealed class VoiceConsentTests
         Assert.Equal("""{"region":"eu","keyFingerprint":"0123456789abcdef"}""", JsonSerializer.Serialize(json.RootElement.GetProperty("creator")));
     }
 
+    [Fact]
+    public void ReviewPersistedCreatorUsesNumericRegion()
+    {
+        using var storage = new Storage();
+        var store = new VoiceConsentStore(storage.Locations);
+        var record = Draft(store, voice: "active-voice") with { Creator = new(ElevenLabsRegion.Eu, "0123456789abcdef") };
+        store.Save(record);
+        using var json = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(store.Root, record.RecordId, "record.json")));
+        var creator = json.RootElement.GetProperty("creator");
+        Assert.Equal(JsonValueKind.String, creator.GetProperty("region").ValueKind);
+        Assert.Equal("""{"region":"eu","keyFingerprint":"0123456789abcdef"}""", JsonSerializer.Serialize(creator));
+    }
+
     [Theory]
     [InlineData(ElevenLabsRegion.Default, "default")]
     [InlineData(ElevenLabsRegion.Us, "us")]

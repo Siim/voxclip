@@ -82,7 +82,7 @@ public sealed class VoiceLabAssetStoreTests
     }
 
     [Fact]
-    public void CancellationAndPublicationRaceDeleteOnlyTheTemporaryFile()
+    public void CancellationAndPublicationRaceRetainUnixPartials()
     {
         using var storage = new VoiceLabTestStorage();
         using var cancelled = new CancellationTokenSource(); cancelled.Cancel();
@@ -91,13 +91,15 @@ public sealed class VoiceLabAssetStoreTests
         using var cancellation = new CancellationTokenSource();
         Assert.Throws<OperationCanceledException>(() => VoiceLabAssetStore.Write([1, 0], 24_000, storage.ProjectId,
             "cancelled", storage.PaidRoot, CreatedAt, cancellation.Token, cancellation.Cancel, null));
-        Assert.Empty(Directory.GetFiles(directory));
-        Assert.Empty(Directory.GetFileSystemEntries(Path.Combine(directory, VoiceLabPartialJournal.Folder)));
+        Assert.Equal(OperatingSystem.IsWindows() ? 0 : 1, Directory.GetFiles(directory, "*.partial").Length);
+        Assert.Equal(OperatingSystem.IsWindows() ? 0 : 1, Directory.GetFiles(Path.Combine(directory, VoiceLabPartialJournal.Folder)).Length);
         var raced = Path.Combine(directory, "race.wav");
         Refuses(VoiceLabAssetStoreErrorCode.AlreadyExists, () => VoiceLabAssetStore.Write([1, 0], 24_000, storage.ProjectId,
             "race", storage.PaidRoot, CreatedAt, default, () => File.WriteAllBytes(raced, [42]), null));
         Assert.Equal(new byte[] { 42 }, File.ReadAllBytes(raced));
-        Assert.Equal(new[] { raced }, Directory.GetFiles(directory));
+        Assert.Equal(new[] { raced }, Directory.GetFiles(directory, "*.wav"));
+        Assert.Equal(OperatingSystem.IsWindows() ? 0 : 2, Directory.GetFiles(directory, "*.partial").Length);
+        Assert.Equal(OperatingSystem.IsWindows() ? 0 : 2, Directory.GetFiles(Path.Combine(directory, VoiceLabPartialJournal.Folder)).Length);
     }
 
     [Fact]
@@ -111,7 +113,11 @@ public sealed class VoiceLabAssetStoreTests
         }, TestContext.Current.CancellationToken)));
         Assert.Single(results, result => result);
         Assert.Equal(50, File.ReadAllBytes(Path.Combine(storage.PaidRoot, storage.ProjectId, "take.wav")).Length);
-        Assert.Single(Directory.GetFiles(Path.Combine(storage.PaidRoot, storage.ProjectId)));
+        var directory = Path.Combine(storage.PaidRoot, storage.ProjectId);
+        Assert.Single(Directory.GetFiles(directory, "*.wav"));
+        if (OperatingSystem.IsWindows()) Assert.Empty(Directory.GetFiles(directory, "*.partial"));
+        foreach (var partial in Directory.GetFiles(directory, "*.partial"))
+            Assert.True(File.Exists(Path.Combine(directory, VoiceLabPartialJournal.Folder, Path.GetFileName(partial) + ".json")));
     }
 
     [Fact]

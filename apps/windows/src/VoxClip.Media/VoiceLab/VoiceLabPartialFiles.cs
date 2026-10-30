@@ -55,42 +55,14 @@ internal static class VoiceLabPartialFiles
         if ((mode & 0xF000) != 0x8000 || links != 1) throw new IOException("Voice Lab partial is not a regular, unlinked file");
     }
 
-    internal static bool Delete(string path, VoiceLabFileIdentity expected, string journalDirectory, Action? identityChecked = null)
+    internal static bool Delete(string path, VoiceLabFileIdentity expected)
     {
+        if (!OperatingSystem.IsWindows()) return false;
         using var handle = Open(path, delete: true);
         if (Identity(handle) != expected) return false;
-        identityChecked?.Invoke();
-        if (OperatingSystem.IsWindows())
-        {
-            byte disposition = 1;
-            if (!SetFileInformationByHandle(handle, 4, ref disposition, sizeof(byte))) throw Failure();
-            return true;
-        }
-        var quarantine = Path.Combine(journalDirectory, Guid.NewGuid().ToString("N") + ".reclaim");
-        Move(path, quarantine);
-        var removed = false;
-        try
-        {
-            using var relocated = Open(quarantine);
-            if (Identity(relocated) != expected) return false;
-            File.Delete(quarantine);
-            removed = true;
-            return true;
-        }
-        finally
-        {
-            if (!removed)
-            {
-                try { Move(quarantine, path); }
-                catch (IOException) { }
-            }
-        }
-    }
-
-    private static void Move(string source, string destination)
-    {
-        try { VoiceLabAssetStore.MoveExclusive(source, destination, Path.GetFileName(source)); }
-        catch (VoiceLabAssetStoreException error) { throw new IOException("Cannot quarantine Voice Lab partial", error); }
+        byte disposition = 1;
+        if (!SetFileInformationByHandle(handle, 4, ref disposition, sizeof(byte))) throw Failure();
+        return true;
     }
 
     private static IOException Failure() => new("Cannot inspect or reclaim Voice Lab partial", new Win32Exception(Marshal.GetLastPInvokeError()));

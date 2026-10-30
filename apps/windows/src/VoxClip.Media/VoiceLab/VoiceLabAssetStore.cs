@@ -261,7 +261,7 @@ public static class VoiceLabAssetStore
     private static extern SafeFileHandle CreateFileW(string name, uint access, FileShare share, IntPtr security,
         FileMode disposition, uint flags, IntPtr template);
 
-    internal static void MoveExclusive(string temporary, string final, string file)
+    private static void MoveExclusive(string temporary, string final, string file)
     {
         if (OperatingSystem.IsWindows())
         {

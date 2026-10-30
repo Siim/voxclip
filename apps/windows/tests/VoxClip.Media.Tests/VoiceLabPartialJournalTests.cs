@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.IO.Pipes;
+using VoxClip.Core.Services.Logging;
 using VoxClip.Media.VoiceLab;
 using Xunit;
 
@@ -37,7 +38,7 @@ public sealed class VoiceLabPartialJournalTests
     }
 
     [Fact]
-    public void ReplacementSurvivesAndItsStaleJournalIsDropped()
+    public void ReplacementSurvivesAndUnixKeepsItsJournal()
     {
         using var storage = new VoiceLabTestStorage();
         var partial = Register(storage, ReusedPid());
@@ -45,17 +46,18 @@ public sealed class VoiceLabPartialJournalTests
         File.WriteAllText(partial, "replacement");
         Assert.Equal(0, Sweep(storage));
         Assert.Equal("replacement", File.ReadAllText(partial));
-        Assert.Empty(Directory.GetFiles(Path.Combine(ProjectDirectory(storage), VoiceLabPartialJournal.Folder)));
+        Assert.Equal(IsWindows ? 0 : 1, Directory.GetFiles(Path.Combine(ProjectDirectory(storage), VoiceLabPartialJournal.Folder)).Length);
     }
 
     [Fact]
-    public void ReusedPidWithDifferentStartTimeIsAnAbandonedOwner()
+    public void ReusedPidWithDifferentStartTimeIsReclaimedOnlyOnWindows()
     {
         using var storage = new VoiceLabTestStorage();
+        Assert.True(ReusedPid().IsDefinitelyGone());
         var partial = Register(storage, ReusedPid());
         Assert.True(File.Exists(partial));
-        Assert.Equal(1, Sweep(storage));
-        Assert.False(File.Exists(partial));
+        Assert.Equal(IsWindows ? 1 : 0, Sweep(storage));
+        Assert.Equal(!IsWindows, File.Exists(partial));
     }
 
     [Fact]
@@ -84,7 +86,7 @@ public sealed class VoiceLabPartialJournalTests
                 cancellation.Cancel();
             }, null));
         Assert.Equal("replacement", File.ReadAllText(replacement!));
-        Assert.Empty(Directory.GetFiles(Path.Combine(ProjectDirectory(storage), VoiceLabPartialJournal.Folder)));
+        Assert.Equal(IsWindows ? 0 : 1, Directory.GetFiles(Path.Combine(ProjectDirectory(storage), VoiceLabPartialJournal.Folder)).Length);
     }
 
     [Fact]
@@ -98,20 +100,50 @@ public sealed class VoiceLabPartialJournalTests
     }
 
     [Fact]
-    public void UnixReplacementAfterIdentityCheckIsRestoredAndNeverUnlinked()
+    public void UnixDeleteHelperNeverDeletesOrRenames()
     {
         if (OperatingSystem.IsWindows()) return;
         using var storage = new VoiceLabTestStorage();
         var partial = Register(storage, ReusedPid());
         VoiceLabFileIdentity identity;
         using (var handle = VoiceLabPartialFiles.Open(partial)) identity = VoiceLabPartialFiles.Identity(handle);
-        Assert.False(VoiceLabPartialFiles.Delete(partial, identity, Path.Combine(ProjectDirectory(storage), VoiceLabPartialJournal.Folder), () =>
-        {
-            File.Move(partial, partial + ".retained");
-            File.WriteAllText(partial, "replacement during reclamation");
-        }));
-        Assert.Equal("replacement during reclamation", File.ReadAllText(partial));
-        Assert.True(File.Exists(partial + ".retained"));
+        var paths = Directory.GetFiles(ProjectDirectory(storage), "*", SearchOption.AllDirectories).Order().ToArray();
+        Assert.False(VoiceLabPartialFiles.Delete(partial, identity));
+        Assert.False(VoiceLabPartialFiles.Delete(partial + ".missing", identity));
+        Assert.Equal(new byte[] { 7 }, File.ReadAllBytes(partial));
+        Assert.Equal(paths, Directory.GetFiles(ProjectDirectory(storage), "*", SearchOption.AllDirectories).Order());
+    }
+
+    [Fact]
+    public async Task UnixSweepRetainsDeadReplacementAndLiveFilesWithoutRenaming()
+    {
+        if (IsWindows) return;
+        using var storage = new VoiceLabTestStorage();
+        _ = Register(storage, ReusedPid());
+        var replacement = Register(storage, ReusedPid());
+        File.Move(replacement, replacement + ".retained");
+        File.WriteAllText(replacement, "replacement");
+        _ = Register(storage, VoiceLabPartialOwner.Current());
+        var paths = Directory.GetFiles(ProjectDirectory(storage), "*", SearchOption.AllDirectories).Order().ToArray();
+        var bytes = paths.ToDictionary(path => path, File.ReadAllBytes);
+        await using var log = new Log(Path.Combine(storage.Root, "test-logs"));
+        Assert.Equal(0, VoiceLabPartialJournal.Sweep(ProjectDirectory(storage), log));
+        Assert.Equal(paths, Directory.GetFiles(ProjectDirectory(storage), "*", SearchOption.AllDirectories).Order());
+        foreach (var path in paths) Assert.Equal(bytes[path], File.ReadAllBytes(path));
+        var messages = await log.ReadRecentAsync(10, TestContext.Current.CancellationToken);
+        Assert.Equal(3, messages.Count);
+        Assert.All(messages, message => Assert.Contains("deferred until a Windows identity-checked sweep", message));
+    }
+
+    [Fact]
+    public void UnixMissingPartialDropsItsJournalEvenForALiveOwner()
+    {
+        if (IsWindows) return;
+        using var storage = new VoiceLabTestStorage();
+        var partial = Register(storage, VoiceLabPartialOwner.Current());
+        File.Delete(partial);
+        Assert.Equal(0, Sweep(storage));
+        Assert.Empty(Directory.GetFiles(Path.Combine(ProjectDirectory(storage), VoiceLabPartialJournal.Folder)));
     }
 
     [Fact]
@@ -129,7 +161,7 @@ public sealed class VoiceLabPartialJournalTests
     }
 
     [Fact]
-    public async Task LiveSecondProcessSurvivesAndDeadOwnersPartialIsRemoved()
+    public async Task LiveSecondProcessSurvivesAndDeadOwnerCleanupIsWindowsOnly()
     {
         using var storage = new VoiceLabTestStorage();
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
@@ -154,8 +186,9 @@ public sealed class VoiceLabPartialJournalTests
             Assert.True(File.Exists(partial));
             child.Kill(entireProcessTree: true);
             await child.WaitForExitAsync(timeout.Token);
-            Assert.Equal(1, Sweep(storage));
-            Assert.False(File.Exists(partial));
+            Assert.Equal(IsWindows ? 1 : 0, Sweep(storage));
+            Assert.Equal(!IsWindows, File.Exists(partial));
+            Assert.Empty(Directory.GetFiles(ProjectDirectory(storage), "*.reclaim", SearchOption.AllDirectories));
         }
         finally
         {
@@ -201,7 +234,7 @@ public sealed class VoiceLabPartialJournalTests
         Assert.True(File.Exists(target));
         Assert.NotNull(new FileInfo(partial).LinkTarget);
         var directory = Path.Combine(ProjectDirectory(storage), VoiceLabPartialJournal.Folder);
-        Directory.Delete(directory);
+        Directory.Move(directory, directory + ".retained");
         Directory.CreateSymbolicLink(directory, storage.Root);
         Assert.Equal(VoiceLabAssetStoreErrorCode.UnsafePath, Assert.Throws<VoiceLabAssetStoreException>(() => Sweep(storage)).Code);
     }
