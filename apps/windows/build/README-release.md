@@ -77,7 +77,7 @@ and cannot be resumed by the current driver; start a new skeleton run instead.
   File values win even when empty or invalid; credentials never use this fallback.
   Account and profile must match `^[A-Za-z0-9][A-Za-z0-9-]{1,63}$`.
   Endpoint must be exactly `https://<region>.codesigning.azure.net`, with a
-  lowercase region matching `^[a-z]{2,8}$`. When absent from both the file and
+  lowercase region matching `^[a-z]{2,8}[0-9]?$`. When absent from both the file and
   environment, the Mac uses `https://neu.codesigning.azure.net` and sends it
   explicitly over stdin; the VM still requires and validates the endpoint.
   For example, export `AZURE_SIGNING_ACCOUNT='<account>'` and

@@ -227,7 +227,7 @@ try {
         Assert-Equal $fixture['AZURE_CLIENT_SECRET'] 'fixture-alias'
     }
     Invoke-Test 'VM metadata validation accepts exact account profile and region boundaries' {
-        foreach ($region in @('aa', 'abcdefgh')) {
+        foreach ($region in @('aa', 'abcdefgh', 'wus2', 'wus3')) {
             $fixture = New-TestSigningCredentials
             $fixture['AZURE_SIGNING_ACCOUNT'] = 'A1'
             $fixture['AZURE_SIGNING_PROFILE'] = 'Z' * 64

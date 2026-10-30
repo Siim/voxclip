@@ -31,7 +31,7 @@ function Assert-ReleaseSigningCredentials {
     $patterns = @{
         AZURE_SIGNING_ACCOUNT = '\A[A-Za-z0-9][A-Za-z0-9-]{1,63}\z'
         AZURE_SIGNING_PROFILE = '\A[A-Za-z0-9][A-Za-z0-9-]{1,63}\z'
-        AZURE_SIGNING_ENDPOINT = '\Ahttps://[a-z]{2,8}\.codesigning\.azure\.net\z'
+        AZURE_SIGNING_ENDPOINT = '\Ahttps://[a-z]{2,8}[0-9]?\.codesigning\.azure\.net\z'
     }
     foreach ($name in @('AZURE_SIGNING_ACCOUNT', 'AZURE_SIGNING_PROFILE', 'AZURE_SIGNING_ENDPOINT')) {
         if (-not $Credentials[$name] -or $Credentials[$name] -cnotmatch $patterns[$name]) { throw $name }
