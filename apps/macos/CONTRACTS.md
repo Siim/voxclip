@@ -1,5 +1,9 @@
 # macOS implementation contracts
 
+### 2026-10-30 — sol-mac-voicelab — W9 verification approval self-test
+
+The native verification check previously had no statement WAV and asserted synchronously, although verification now prepares a local quote asynchronously. Its DEBUG-only fixture stages a synthetic 16 kHz statement and an injected client whose key provider records and refuses credential access. `request` returns its preparation task for deterministic awaiting; existing UI callers still discard it. The check proves a busy, unverified/no-confirmation state before preparation and an idle, unverified/Verify-confirmation state afterward, with zero credential requests (therefore no paid dispatch). Both states print expected/actual on failure. A headless App regression runs all twelve native consent logic checks, restores settings and speaker prerequisites, and never opens a window, records audio or contacts a provider. The unavailable-speaker check clears stale errors and explicitly requests creation before asserting refusal.
+
 ### 2026-10-30 — sol-mac-voicelab — W9 attestation self-test prerequisites
 
 The native attestation check stages an installed, calibrated English speaker catalog entry without loading a model or using a microphone. It checks all eight combinations, allowing recording only with all three attestations. The former fixture omitted the speaker pre-gate added in W6. Headless App tests cover the same eight combinations alongside the existing unavailable/uncalibrated-speaker refusal tests. Diagnostic comparisons retain expected and actual values in a failed result's name, so the native harness prints both in its failure log without changing the report schema.

@@ -67,6 +67,11 @@ import VoxClipMedia
         let secrets = app.secrets; let logger = app.log
         self.reconciler = reconciler ?? VoiceOperationReconciler(store: store) { ElevenLabsVoiceLab(keys: secrets, region: $0, logger: logger) }
     }
+    func stageVerificationForTests(statement: VoiceConsentStatement, wav: Data, client: ElevenLabsVoiceLab) {
+        self.statement = statement; statementWAV = wav
+        self.client = client; region = client.region
+        enrollment = VoiceEnrollment(store: store, client: client, reconciler: reconciler)
+    }
     #endif
     func refreshEnabledState() async {
         guard enabled else { records = []; deleting = []; operations = []; return }
@@ -135,13 +140,14 @@ import VoxClipMedia
         self.client = client; self.enrollment = enrollment; region = selected
         return (client, enrollment)
     }
-    func request(_ action: Request) {
-        if (action == .verify || action == .create) && !speakerReady { message = VoiceConsentError.speakerUnavailable.localizedDescription; return }
-        guard VoiceLabGate.canEnroll(enabled: enabled, busy: busy), !recorder.recording else { return }
+    @discardableResult
+    func request(_ action: Request) -> Task<Void, Never>? {
+        if (action == .verify || action == .create) && !speakerReady { message = VoiceConsentError.speakerUnavailable.localizedDescription; return nil }
+        guard VoiceLabGate.canEnroll(enabled: enabled, busy: busy), !recorder.recording else { return nil }
         if action == .verify {
-            guard let statementWAV, let statement else { return }
+            guard let statementWAV, let statement else { return nil }
             busy = true
-            Task {
+            return Task {
                 defer { busy = false }
                 do {
                     let (client, _) = try services()
@@ -149,9 +155,9 @@ import VoxClipMedia
                     if enabled { confirmation = action }
                 } catch { message = await errorMessage(error) }
             }
-            return
         }
         confirmation = action
+        return nil
     }
     func approve(_ action: Request) async {
         guard enabled, !busy else { return }

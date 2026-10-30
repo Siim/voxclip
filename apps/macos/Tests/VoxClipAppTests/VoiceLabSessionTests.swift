@@ -27,6 +27,18 @@ import Testing
         #expect(result.name == "fixture; expected: true; actual: false")
         #expect(DebugUISuite.Result.equal("fixture", expected: true, actual: true).name == "fixture")
     }
+    @Test func nativeConsentLogicRunsHeadlesslyWithoutRecordingOrDispatch() async throws {
+        let app = AppModel()
+        let settings = app.settings
+        let model = app.speakerModelLibrary.model
+        let installed = app.speakerModelLibrary.installed
+        let results = try await DebugVoiceLab.run(app: app)
+        #expect(results.count == 12)
+        for result in results { #expect(result.passed, Comment(rawValue: result.name)) }
+        #expect(app.settings == settings)
+        #expect(app.speakerModelLibrary.model?.id == model?.id)
+        #expect(app.speakerModelLibrary.installed == installed)
+    }
     @Test func recoveryExplainsTheRequiredCreatorKeyAndKeepsTheOperation() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
