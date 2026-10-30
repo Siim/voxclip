@@ -71,7 +71,11 @@ enum UserMessages {
         case .speechAssetsUnavailable(let language, let reason): return "macOS couldn't install its \(clean(language)) speech model: \(clean(reason))."
         case .transcriptionFailed(let detail): return "Transcription stopped: \(clean(detail)). Your video is still here."
         case .offline: return "You're offline. On-device transcription and editing still work."
-        case .providerError(let detail, let provider, let status): return "\(provider ?? "The provider") answered \(status.map(String.init) ?? httpStatus(detail)): the request could not finish. Your edits are saved."
+        case .providerError(let detail, let provider, let status):
+            // Show the provider's own reason when it gave one; it is redacted where the error is made.
+            let reason = clean(detail)
+            let generic = reason.isEmpty || reason.lowercased() == "the request could not be completed"
+            return "\(provider ?? "The provider") answered \(status.map(String.init) ?? httpStatus(detail)): \(generic ? "the request could not finish" : reason). Your edits are saved."
         case .cliNotInstalled(let detail): return "\(provider(detail)) isn't installed. Install it, sign in once in a terminal, then try again."
         case .cliNotSignedIn(let detail): return "\(provider(detail)) isn't signed in. Sign in once in a terminal, then try again."
         case .llmInvalidOutput: return "Could not find clips right now: the model's answer wasn't valid. Your edits are saved."

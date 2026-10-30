@@ -65,6 +65,7 @@ public sealed class ElevenLabsTests
     [InlineData(403, "{}", VoxClipErrorCode.KeyPermissionMissing)]
     [InlineData(422, "{\"detail\":[{\"msg\":\"bad input\"}]}", VoxClipErrorCode.ProviderError)]
     [InlineData(400, "{\"detail\":\"credits used up\"}", VoxClipErrorCode.QuotaExceeded)]
+    [InlineData(400, "{\"detail\":{\"status\":\"invalid_parameter\",\"message\":\"bad input\"}}", VoxClipErrorCode.ProviderError)]
     public async Task MapsErrorsWithoutRetryingClientFailures(int status, string body, VoxClipErrorCode expected)
     {
         using var files = new SpeechFiles();
@@ -73,7 +74,7 @@ public sealed class ElevenLabsTests
             .TranscribeAsync(files.Request(), new CaptureProgress<TranscriptionProgress>(), TestContext.Current.CancellationToken));
         Assert.Equal(expected, error.Code);
         Assert.Equal(1, handler.Calls);
-        if (status == 422) Assert.Contains("bad input", error.Message);
+        if (expected == VoxClipErrorCode.ProviderError) Assert.Contains("bad input", error.Message);
     }
 
     [Theory]
@@ -188,6 +189,18 @@ public sealed class ElevenLabsTests
         var invalidTerm = await Assert.ThrowsAsync<VoxClipException>(() => engine.TranscribeAsync(files.Request(new(Keyterms: ["bad[term]"])), new CaptureProgress<TranscriptionProgress>(), TestContext.Current.CancellationToken));
         Assert.Contains("bad[term]", invalidTerm.Message);
         Assert.Equal(0, handler.Calls);
+    }
+
+    [Fact]
+    public void KeyErrorsAtAnyStatusReadAsKeyProblemsAndResidencyExplainsItself()
+    {
+        const string invalid = "{\"detail\":{\"type\":\"authentication_error\",\"code\":\"invalid_api_key\",\"message\":\"Invalid API key\"}}";
+        Assert.Equal(VoxClipErrorCode.KeyRejected, ElevenLabsTranscriber.MapError(HttpStatusCode.BadRequest, invalid, "synthetic-key").Code);
+        var residency = ElevenLabsTranscriber.MapError(HttpStatusCode.BadRequest, invalid, "synthetic-key", ElevenLabsRegion.Eu);
+        Assert.Equal(VoxClipErrorCode.ProviderError, residency.Code);
+        Assert.Contains("most accounts use Region: Default", residency.Message);
+        Assert.Contains("IN residency", ElevenLabsTranscriber.MapError(HttpStatusCode.BadRequest, "{}", "synthetic-key", ElevenLabsRegion.In).Message);
+        Assert.Equal("ElevenLabs answered 400: The request could not be completed.", ElevenLabsTranscriber.MapError(HttpStatusCode.BadRequest, "{}", "synthetic-key", ElevenLabsRegion.Us).Message);
     }
 
     [Fact]

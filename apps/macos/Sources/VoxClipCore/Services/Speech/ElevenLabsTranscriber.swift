@@ -123,7 +123,10 @@ public actor ElevenLabsTranscriber: Transcriber {
                     return raw
                 }
                 try Task.checkCancellation()
-                let failure = Self.providerError(status: http.statusCode, data: data, key: key)
+                let failure = Self.providerError(status: http.statusCode, data: data, key: key, region: region)
+                if case .providerError(let detail, _, _) = failure {
+                    await Log(logger: logger).write(.warn, category: "transcribe", message: "engine=elevenlabs status=\(http.statusCode) detail=\(detail)")
+                }
                 if attempt < 2 && (http.statusCode == 429 || http.statusCode >= 500), failure.code != .quotaExceeded {
                     try await sleep(SpeechHTTPFailure.delay(http.value(forHTTPHeaderField: "Retry-After")) ?? Double(1 << attempt))
                     continue
@@ -237,7 +240,7 @@ public actor ElevenLabsTranscriber: Transcriber {
         } catch { try? output.close(); try? FileManager.default.removeItem(at: url); throw error }
     }
 
-    static func providerError(status: Int, data: Data, key: String) -> VoxClipError {
+    static func providerError(status: Int, data: Data, key: String, region: ElevenLabsRegion = .default) -> VoxClipError {
         let body = String(decoding: data, as: UTF8.self)
         let lower = body.lowercased()
         if lower.contains("quota") || lower.contains("credit") { return .quotaExceeded("ElevenLabs") }
@@ -245,10 +248,20 @@ public actor ElevenLabsTranscriber: Transcriber {
         if status == 401 { return .keyRejected("ElevenLabs", status: status) }
         if status == 429 { return .rateLimited("elevenlabs") }
         var message = "The request could not be completed."
+        var authentication = false
         if let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
             if let detail = object["detail"] as? String { message = detail }
             else if let detail = object["detail"] as? [[String: Any]], let validation = detail.first?["msg"] as? String { message = validation }
+            // ElevenLabs also answers {"detail": {"status": "...", "message": "..."}}.
+            else if let detail = object["detail"] as? [String: Any] {
+                if let text = (detail["message"] as? String) ?? (detail["status"] as? String) { message = text }
+                authentication = detail["type"] as? String == "authentication_error" || [detail["code"], detail["status"]].contains { $0 as? String == "invalid_api_key" }
+            }
         }
+        // A residency host only knows keys from its own Enterprise workspace; ordinary keys fail there.
+        if region.isResidency, authentication || status == 400 || status == 401 {
+            message = "\(message) ElevenLabs \(region.rawValue.uppercased()) residency needs a key from a data-residency workspace; most accounts use Region: Default"
+        } else if authentication { return .keyRejected("ElevenLabs", status: status) }
         let safe = Redactor(knownSecrets: [key]).redact(message.replacingOccurrences(of: key, with: "[REDACTED]"))
         return .providerError(String(safe.prefix(200)), provider: "ElevenLabs", status: status)
     }

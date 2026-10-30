@@ -18,6 +18,9 @@ public enum ElevenLabsRegion: String, Codable, CaseIterable, Sendable {
         return URL(string: base)!
     }
 
+    /// Data-residency hosts serve separate Enterprise workspaces with their own keys.
+    public var isResidency: Bool { self == .eu || self == .india || self == .singapore }
+
     public static func from(settings: SettingsDocument, logger: any Redacting) async -> ElevenLabsRegion {
         guard let stored = settings.values["transcription.elevenlabs.region"] else { return .default }
         if case .string(let value) = stored, let region = ElevenLabsRegion(rawValue: value) { return region }

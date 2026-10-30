@@ -58,9 +58,23 @@ struct SpeechErrorCopyTests {
                       (400, "credit quota", "Your ElevenLabs credits or key quota are used up."),
                       (422, #"{"detail":[{"msg":"invalid synthetic-key"}]}"#, "ElevenLabs answered 422: invalid [REDACTED]"),
                       (500, #"{"detail":"Please try again"}"#, "ElevenLabs answered 500: Please try again"),
+                      (400, #"{"detail":{"status":"invalid_parameter","message":"Unsupported value for synthetic-key"}}"#, "ElevenLabs answered 400: Unsupported value for [REDACTED]"),
+                      (400, #"{"detail":{"status":"model_unavailable"}}"#, "ElevenLabs answered 400: model_unavailable"),
                       (400, "invalid", "ElevenLabs answered 400: The request could not be completed.")])
     func providerCopyUsesStatusAndRedactedDetail(_ status: Int, _ body: String, _ expected: String) {
         #expect(ElevenLabsTranscriber.providerError(status: status, data: Data(body.utf8), key: "synthetic-key").errorDescription == expected)
+    }
+
+    @Test func keyErrorsAtAnyStatusReadAsKeyProblemsAndResidencyExplainsItself() {
+        let invalid = #"{"detail":{"type":"authentication_error","code":"invalid_api_key","message":"Invalid API key"}}"#
+        #expect(ElevenLabsTranscriber.providerError(status: 400, data: Data(invalid.utf8), key: "synthetic-key").code == .keyRejected)
+        let residency = ElevenLabsTranscriber.providerError(status: 400, data: Data(invalid.utf8), key: "synthetic-key", region: .eu)
+        #expect(residency.code == .providerError)
+        #expect(residency.errorDescription?.contains("most accounts use Region: Default") == true)
+        let generic = ElevenLabsTranscriber.providerError(status: 400, data: Data("{}".utf8), key: "synthetic-key", region: .india)
+        #expect(generic.errorDescription?.contains("IN residency") == true)
+        let global = ElevenLabsTranscriber.providerError(status: 400, data: Data("{}".utf8), key: "synthetic-key", region: .us)
+        #expect(global.errorDescription == "ElevenLabs answered 400: The request could not be completed.")
     }
 
     @Test func malformedSuccessAndUploadSizeCarryExactCopy() async throws {

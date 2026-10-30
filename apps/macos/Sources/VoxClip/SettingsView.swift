@@ -62,9 +62,9 @@ extension AppModel {
                 LanguagePicker(app: app)
                 ProviderKeyRow(provider: "elevenlabs", label: "ElevenLabs Scribe", app: app)
             } footer: { Text("Sends the audio track to ElevenLabs, which keeps it under its terms. You confirm before the first upload.") }
-            Section("Advanced") {
+            Section {
                 Picker("Region", selection: app.stringBinding("transcription.elevenlabs.region", fallback: "default")) { Text("Default").tag("default"); Text("EU residency").tag("eu"); Text("US").tag("us"); Text("India").tag("in"); Text("Singapore").tag("sg") }
-            }
+            } header: { Text("Advanced") } footer: { Text("Residency regions are for ElevenLabs Enterprise workspaces with data residency, which have their own keys. Most accounts use Default.") }
             LocalModelRows(app: app)
             Section {
                 Text("Models download on first use and never ship inside the app. Each runs entirely on this Mac.")

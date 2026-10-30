@@ -22,6 +22,7 @@ public sealed class ElevenLabsTranscriber : ITranscriber, IDisposable
     private static readonly string UserAgent = BuildUserAgent();
     private readonly HttpClient http;
     private readonly IKeyProvider keys;
+    private readonly ElevenLabsRegion region;
     private readonly ModelCatalog catalog;
     private readonly Uri endpoint;
     private readonly Uri subscriptionEndpoint;
@@ -55,6 +56,7 @@ public sealed class ElevenLabsTranscriber : ITranscriber, IDisposable
         ModelCatalog? modelCatalog = null, ILog? logger = null)
     {
         var origin = region.BaseUri();
+        this.region = region;
         keys = keyProvider;
         if (httpClient is null)
         {
@@ -205,7 +207,7 @@ public sealed class ElevenLabsTranscriber : ITranscriber, IDisposable
                 await using var activity = new ActivityStream(incoming, _ => idle.CancelAfter(TimeSpan.FromSeconds(300)));
                 if (!response.IsSuccessStatusCode)
                 {
-                    throw MapError(response.StatusCode, await ReadErrorBodyAsync(activity, idle.Token).ConfigureAwait(false), key);
+                    throw MapError(response.StatusCode, await ReadErrorBodyAsync(activity, idle.Token).ConfigureAwait(false), key, region);
                 }
                 JsonDocument document;
                 try { document = await JsonDocument.ParseAsync(activity, cancellationToken: idle.Token).ConfigureAwait(false); }
@@ -330,7 +332,7 @@ public sealed class ElevenLabsTranscriber : ITranscriber, IDisposable
          message.Contains("does not have", StringComparison.OrdinalIgnoreCase) || message.Contains("doesn't have", StringComparison.OrdinalIgnoreCase) ||
          message.Contains("required", StringComparison.OrdinalIgnoreCase));
 
-    private static VoxClipException MapError(HttpStatusCode status, string body, string key)
+    internal static VoxClipException MapError(HttpStatusCode status, string body, string key, ElevenLabsRegion region = ElevenLabsRegion.Default)
     {
         if (body.Contains("quota", StringComparison.OrdinalIgnoreCase) || body.Contains("credit", StringComparison.OrdinalIgnoreCase))
             return new(VoxClipErrorCode.QuotaExceeded, "Your ElevenLabs credits or key quota are used up.");
@@ -339,6 +341,7 @@ public sealed class ElevenLabsTranscriber : ITranscriber, IDisposable
         if (status == HttpStatusCode.Unauthorized) return new(VoxClipErrorCode.KeyRejected, "ElevenLabs rejected the key (401). Your video is still here.");
         if (status == HttpStatusCode.TooManyRequests) return new(VoxClipErrorCode.RateLimited, "ElevenLabs is busy. Try again in a minute.");
         var detail = "The request could not be completed.";
+        var authentication = false;
         try
         {
             using var json = JsonDocument.Parse(body);
@@ -346,9 +349,22 @@ public sealed class ElevenLabsTranscriber : ITranscriber, IDisposable
             {
                 if (value.ValueKind == JsonValueKind.Array && value.GetArrayLength() > 0 && value[0].TryGetProperty("msg", out var message)) detail = message.GetString() ?? detail;
                 else if (value.ValueKind == JsonValueKind.String) detail = value.GetString()!;
+                // ElevenLabs also answers {"detail": {"status": "...", "message": "..."}}.
+                else if (value.ValueKind == JsonValueKind.Object)
+                {
+                    if (value.TryGetProperty("message", out var text) && text.ValueKind == JsonValueKind.String) detail = text.GetString()!;
+                    else if (value.TryGetProperty("status", out var code) && code.ValueKind == JsonValueKind.String) detail = code.GetString()!;
+                    authentication = value.TryGetProperty("type", out var type) && type.ValueKind == JsonValueKind.String && type.GetString() == "authentication_error"
+                        || new[] { "code", "status" }.Any(name => value.TryGetProperty(name, out var field) && field.ValueKind == JsonValueKind.String && field.GetString() == "invalid_api_key");
+                }
             }
         }
         catch (Exception error) when (error is JsonException or InvalidOperationException) { }
+        // A residency host only knows keys from its own Enterprise workspace; ordinary keys fail there.
+        var residency = region is ElevenLabsRegion.Eu or ElevenLabsRegion.In or ElevenLabsRegion.Sg;
+        if (residency && (authentication || status is HttpStatusCode.BadRequest or HttpStatusCode.Unauthorized))
+            detail = $"{detail} ElevenLabs {region.ToString().ToUpperInvariant()} residency needs a key from a data-residency workspace; most accounts use Region: Default";
+        else if (authentication) return new(VoxClipErrorCode.KeyRejected, $"ElevenLabs rejected the key ({(int)status}). Your video is still here.");
         detail = new Redactor([key]).Redact(detail);
         if (detail.Length > 200) detail = detail[..200];
         return new(VoxClipErrorCode.ProviderError, $"ElevenLabs answered {(int)status}: {detail}");
