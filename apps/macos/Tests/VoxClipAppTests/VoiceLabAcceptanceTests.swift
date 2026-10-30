@@ -28,6 +28,11 @@ private struct AcceptanceTestKeys: KeyProvider {
 
 @Suite("Headless Voice Lab acceptance", .serialized, .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil))
 @MainActor struct VoiceLabAcceptanceTests {
+    @Test func wordAccessibilityCoversSourceAndAcceptedSpeechWithoutAWindow() throws {
+        let results = try DebugTranscriptPixels.wordAccessibility(app: AppModel())
+        #expect(results.count == 8)
+        for result in results { #expect(result.passed, Comment(rawValue: result.name)) }
+    }
     private func fixture() throws -> Project {
         let shared = try SharedResources.locate()
         return try JSONProjectStore.decode(Data(contentsOf: shared.root.appendingPathComponent("fixtures/voice-lab/passage-render-v3.voxclip")))
