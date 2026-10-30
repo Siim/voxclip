@@ -73,7 +73,8 @@ extension HeavyMediaTests {
                 let literalSize: CGSize = switch measurement.variant {
                 case "9:16": CGSize(width: 180, height: 320)
                 case "1:1": CGSize(width: 288, height: 288)
-                case "rewrite", "rewrite-budget": CGSize(width: 124 * 16.0 / 9, height: 124)
+                // Every Rewrite state, including the Voice Lab takes states, opens Rewrite in a column under 760 high (design §5.1).
+                case let variant where variant.hasPrefix("rewrite"): CGSize(width: 124 * 16.0 / 9, height: 124)
                 default: CGSize(width: 288, height: 162)
                 }
                 #expect(abs(measurement.stage.width - literalSize.width) <= 0.5 && abs(measurement.stage.height - literalSize.height) <= 0.5,

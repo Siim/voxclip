@@ -41,7 +41,8 @@ private struct AcceptanceTestKeys: KeyProvider {
     }
     @Test func wordAccessibilityCoversSourceAndAcceptedSpeechWithoutAWindow() throws {
         let results = try DebugTranscriptPixels.wordAccessibility(app: enabledApp())
-        #expect(results.count == 8)
+        // Eight cut, playing and AI states, each read as plain and attributed text.
+        #expect(results.count == 16)
         for result in results { #expect(result.passed, Comment(rawValue: result.name)) }
     }
     @Test func interiorClipBoundariesSurviveReplacementUndoAndRedo() throws {
