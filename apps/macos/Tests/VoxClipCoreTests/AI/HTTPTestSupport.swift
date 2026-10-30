@@ -296,7 +296,7 @@ enum HTTPFixtures {
     static func localDetails(_ id: ConnectorID, context: Int = 32768, thinking: Bool = true) throws -> [HTTPReply] {
         switch id {
         case .ollama:
-            return [.json(try encode(["model_info": ["gemma4.context_length": context], "capabilities": thinking ? ["completion", "thinking"] : ["completion"]]))]
+            return [.json(try encode(["model_info": ["gemma4.context_length": context], "capabilities": thinking ? ["completion", "thinking"] : ["completion"], "thinking": thinking ? ["values": [false, true]] : [:]]))]
         case .lmstudio:
             return [.json(try encode(["state": "loaded", "loaded_context_length": context, "max_context_length": 65536]))]
         default: return []

@@ -24,7 +24,7 @@ public sealed class HttpConnectorTests
     {
         var catalog = Catalog();
         var model = catalog.Provider(id)["defaultModel"]?.GetValue<string>() ?? "local-test";
-        using var handler = new StubHttp((request, _, _) => Task.FromResult(Response(200, request.RequestUri!.AbsolutePath == "/api/show" ? "{\"capabilities\":[\"completion\",\"thinking\"],\"model_info\":{\"test.context_length\":32768}}" : Completion(id))));
+        using var handler = new StubHttp((request, _, _) => Task.FromResult(Response(200, request.RequestUri!.AbsolutePath == "/api/show" ? "{\"capabilities\":[\"completion\",\"thinking\"],\"thinking\":{\"values\":[false,true]},\"model_info\":{\"test.context_length\":32768}}" : Completion(id))));
         using var client = new HttpClient(handler) { Timeout = Timeout.InfiniteTimeSpan };
         var keys = new MemoryKeys();
         var connector = new LlmConnector(id, catalog, client, keys, new Redactor());

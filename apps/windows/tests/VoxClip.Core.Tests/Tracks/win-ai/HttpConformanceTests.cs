@@ -9,6 +9,26 @@ namespace VoxClip.Core.Tests.Tracks.WinAi;
 public sealed class HttpConformanceTests
 {
     [Theory]
+    [InlineData("[false,true]", "false")]
+    [InlineData("[\"high\",\"medium\",\"low\"]", "\"low\"")]
+    [InlineData("[\"high\",\"medium\"]", "\"medium\"")]
+    [InlineData("[true]", null)]
+    [InlineData("[\"false\"]", null)]
+    [InlineData("[]", null)]
+    [InlineData("null", null)]
+    [InlineData("[\"tiny\",\"huge\"]", null)]
+    public async Task OllamaUsesOnlyAdvertisedThinkingControls(string values, string? expected)
+    {
+        var details = "{\"capabilities\":[\"completion\",\"thinking\"],\"model_info\":{\"model.context_length\":32768},\"thinking\":{\"values\":" + values + "}}";
+        using var handler = new StubHttp((request, _, _) => Task.FromResult(Response(200, request.RequestUri!.AbsolutePath == "/api/show" ? details : Completion(ConnectorId.Ollama))));
+        using var client = new HttpClient(handler);
+        var connector = new LlmConnector(ConnectorId.Ollama, Catalog(), client, new MemoryKeys(), new Redactor());
+        await connector.SendAsync(Catalog().TestRequest(ConnectorId.Ollama), "local", TestContext.Current.CancellationToken);
+        EqualJson(expected is null ? null : JsonNode.Parse(expected), handler.Requests[^1].Body!["think"]);
+        Assert.Equal(2, handler.Requests.Count);
+    }
+
+    [Theory]
     [InlineData("gemini-3.5-flash-lite")]
     [InlineData("gemini-3.8-flash")]
     [InlineData("gemini-3.1-pro-preview")]

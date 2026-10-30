@@ -233,7 +233,7 @@ for (const [id, lineEntries, edits] of verifierCases) {
 }
 
 const baselineOptions = (connector, clipBudget = null) => {
-  if (connector.id === 'ollama') return { model: 'gemma4:12b', modelContext: 32768, capabilities: ['completion', 'thinking'] }
+  if (connector.id === 'ollama') return { model: 'gemma4:12b', modelContext: 32768, capabilities: ['completion', 'thinking'], thinkingValues: [false, true] }
   if (connector.id === 'lmstudio') return { model: 'local-model' }
   if (connector.id === 'apple-foundation') return { macOSMajor: 27, clipBudget }
   if (connector.cli) return {
@@ -602,7 +602,10 @@ const variants = [
   ['openai-custom-reasoning', 'openai', { model: 'o3-custom' }],
   ['gemini-model-path-escaping', 'gemini', { model: 'models/custom/model with space?#' }],
   ['gemini-legacy-no-thinking-level', 'gemini', { model: 'gemini-2.5-pro' }],
-  ['ollama-no-thinking', 'ollama', { capabilities: ['completion'] }],
+  ['ollama-no-thinking', 'ollama', { capabilities: ['completion'], thinkingValues: null }],
+  ['ollama-gpt-oss-thinking', 'ollama', { thinkingValues: ['high', 'medium', 'low'] }],
+  ['ollama-medium-minimum-thinking', 'ollama', { thinkingValues: ['high', 'medium'] }],
+  ['ollama-unknown-thinking-levels', 'ollama', { thinkingValues: ['tiny', 'huge'] }],
   ['ollama-context-cap', 'ollama', { modelContext: 8192 }],
   ['lmstudio-custom-base', 'lmstudio', { baseUrl: 'http://127.0.0.1:2345/' }],
   ['apple-macos-26', 'apple-foundation', { macOSMajor: 26, clipBudget: 5 }],

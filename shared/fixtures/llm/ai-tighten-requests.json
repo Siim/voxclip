@@ -30,6 +30,10 @@
             "capabilities": [
               "completion",
               "thinking"
+            ],
+            "thinkingValues": [
+              false,
+              true
             ]
           },
           "lmstudio": {
@@ -769,6 +773,10 @@
             "capabilities": [
               "completion",
               "thinking"
+            ],
+            "thinkingValues": [
+              false,
+              true
             ]
           },
           "lmstudio": {
@@ -1508,6 +1516,10 @@
             "capabilities": [
               "completion",
               "thinking"
+            ],
+            "thinkingValues": [
+              false,
+              true
             ]
           },
           "lmstudio": {
@@ -2240,6 +2252,10 @@
             "capabilities": [
               "completion",
               "thinking"
+            ],
+            "thinkingValues": [
+              false,
+              true
             ]
           },
           "lmstudio": {
@@ -2979,6 +2995,10 @@
             "capabilities": [
               "completion",
               "thinking"
+            ],
+            "thinkingValues": [
+              false,
+              true
             ]
           },
           "lmstudio": {
@@ -3718,6 +3738,10 @@
             "capabilities": [
               "completion",
               "thinking"
+            ],
+            "thinkingValues": [
+              false,
+              true
             ]
           },
           "lmstudio": {
@@ -4450,6 +4474,10 @@
             "capabilities": [
               "completion",
               "thinking"
+            ],
+            "thinkingValues": [
+              false,
+              true
             ]
           },
           "lmstudio": {
@@ -5189,6 +5217,10 @@
             "capabilities": [
               "completion",
               "thinking"
+            ],
+            "thinkingValues": [
+              false,
+              true
             ]
           },
           "lmstudio": {
@@ -5928,6 +5960,10 @@
             "capabilities": [
               "completion",
               "thinking"
+            ],
+            "thinkingValues": [
+              false,
+              true
             ]
           },
           "lmstudio": {
@@ -6660,6 +6696,10 @@
             "capabilities": [
               "completion",
               "thinking"
+            ],
+            "thinkingValues": [
+              false,
+              true
             ]
           },
           "lmstudio": {
@@ -7399,6 +7439,10 @@
             "capabilities": [
               "completion",
               "thinking"
+            ],
+            "thinkingValues": [
+              false,
+              true
             ]
           },
           "lmstudio": {
@@ -8138,6 +8182,10 @@
             "capabilities": [
               "completion",
               "thinking"
+            ],
+            "thinkingValues": [
+              false,
+              true
             ]
           },
           "lmstudio": {
@@ -8870,6 +8918,10 @@
             "capabilities": [
               "completion",
               "thinking"
+            ],
+            "thinkingValues": [
+              false,
+              true
             ]
           },
           "lmstudio": {
@@ -9609,6 +9661,10 @@
             "capabilities": [
               "completion",
               "thinking"
+            ],
+            "thinkingValues": [
+              false,
+              true
             ]
           },
           "lmstudio": {
@@ -10348,6 +10404,10 @@
             "capabilities": [
               "completion",
               "thinking"
+            ],
+            "thinkingValues": [
+              false,
+              true
             ]
           },
           "lmstudio": {
@@ -11080,6 +11140,10 @@
             "capabilities": [
               "completion",
               "thinking"
+            ],
+            "thinkingValues": [
+              false,
+              true
             ]
           },
           "lmstudio": {
@@ -11819,6 +11883,10 @@
             "capabilities": [
               "completion",
               "thinking"
+            ],
+            "thinkingValues": [
+              false,
+              true
             ]
           },
           "lmstudio": {
@@ -12558,6 +12626,10 @@
             "capabilities": [
               "completion",
               "thinking"
+            ],
+            "thinkingValues": [
+              false,
+              true
             ]
           },
           "lmstudio": {
@@ -13313,6 +13385,10 @@
             "capabilities": [
               "completion",
               "thinking"
+            ],
+            "thinkingValues": [
+              false,
+              true
             ]
           },
           "lmstudio": {
@@ -14045,6 +14121,10 @@
             "capabilities": [
               "completion",
               "thinking"
+            ],
+            "thinkingValues": [
+              false,
+              true
             ]
           },
           "lmstudio": {

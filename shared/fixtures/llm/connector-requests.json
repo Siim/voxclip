@@ -398,6 +398,10 @@
           "capabilities": [
             "completion",
             "thinking"
+          ],
+          "thinkingValues": [
+            false,
+            true
           ]
         }
       },
@@ -2249,6 +2253,433 @@
           "modelContext": 32768,
           "capabilities": [
             "completion"
+          ],
+          "thinkingValues": null
+        }
+      },
+      "expected": {
+        "kind": "http",
+        "model": "gemma4:12b",
+        "timeoutSeconds": 600,
+        "method": "POST",
+        "url": "http://127.0.0.1:11434/api/chat",
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "model": "gemma4:12b",
+          "stream": false,
+          "messages": [
+            {
+              "role": "system",
+              "content": "You choose clips from a spoken recording. Each clip is published as its own post, so it has to make sense to someone who never heard the rest of the recording.\n\nThe transcript is given as numbered lines. \"[12-37] 0:05\" means the line contains words 12 to 37 and starts 5 seconds into the recording. \"(pause 2.3s)\" marks a silence.\n\nHow to choose a clip:\n- Start where a thought starts, never mid-sentence, and not on a word that points back to something earlier (\"so\", \"and\", \"that\", \"like I said\") unless the clip still makes sense.\n- End where the thought lands, normally at the end of a line.\n- start_word and end_word are inclusive word numbers from the transcript. Use only numbers that appear in it.\n- Respect the requested clip length; the times in the transcript tell you how long a range is.\n- title: a short, plain headline in the speaker's language. No hashtags, no emoji, no quotation marks.\n- reason: one sentence on why the clip works as a standalone post.\n- score: 1 to 10, how strong the clip is as a standalone post.\n- Never invent content. If nothing fits the request, return an empty list."
+            },
+            {
+              "role": "user",
+              "content": "<transcript>\n[0-5] 0:00 So, today I want to talk.\n(pause 2.3s)\n[6-10] 0:03 Um why cut by words?\n[11-12] 0:05 \"It works.\"\n[13-15] 0:07 Fast and clean\n(pause 61.5s)\n[16-16] 1:10 Tere!\n[17-18] 1:10 Mis toimub?\n[19-59] 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n[60-65] 1:23 w60 w61 w62 w63 w64 w65\n(pause 114.5s)\n[66-66] 3:20 end.\n</transcript>\n\nThe recording is 3:20 long.\nFind the 3 to 5 strongest moments. Each clip should be 20 to 60 seconds long."
+            }
+          ],
+          "format": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "clips"
+            ],
+            "properties": {
+              "clips": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "title",
+                    "start_word",
+                    "end_word",
+                    "reason",
+                    "score"
+                  ],
+                  "properties": {
+                    "title": {
+                      "type": "string"
+                    },
+                    "start_word": {
+                      "type": "integer"
+                    },
+                    "end_word": {
+                      "type": "integer"
+                    },
+                    "reason": {
+                      "type": "string"
+                    },
+                    "score": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "options": {
+            "num_ctx": 8192,
+            "num_predict": 4096,
+            "temperature": 0
+          },
+          "keep_alive": "10m"
+        }
+      }
+    },
+    {
+      "id": "ollama-gpt-oss-thinking",
+      "kind": "connector-request",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §6",
+      "input": {
+        "request": {
+          "feature": "clipFinder",
+          "system": "You choose clips from a spoken recording. Each clip is published as its own post, so it has to make sense to someone who never heard the rest of the recording.\n\nThe transcript is given as numbered lines. \"[12-37] 0:05\" means the line contains words 12 to 37 and starts 5 seconds into the recording. \"(pause 2.3s)\" marks a silence.\n\nHow to choose a clip:\n- Start where a thought starts, never mid-sentence, and not on a word that points back to something earlier (\"so\", \"and\", \"that\", \"like I said\") unless the clip still makes sense.\n- End where the thought lands, normally at the end of a line.\n- start_word and end_word are inclusive word numbers from the transcript. Use only numbers that appear in it.\n- Respect the requested clip length; the times in the transcript tell you how long a range is.\n- title: a short, plain headline in the speaker's language. No hashtags, no emoji, no quotation marks.\n- reason: one sentence on why the clip works as a standalone post.\n- score: 1 to 10, how strong the clip is as a standalone post.\n- Never invent content. If nothing fits the request, return an empty list.",
+          "cachedBlock": "<transcript>\n[0-5] 0:00 So, today I want to talk.\n(pause 2.3s)\n[6-10] 0:03 Um why cut by words?\n[11-12] 0:05 \"It works.\"\n[13-15] 0:07 Fast and clean\n(pause 61.5s)\n[16-16] 1:10 Tere!\n[17-18] 1:10 Mis toimub?\n[19-59] 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n[60-65] 1:23 w60 w61 w62 w63 w64 w65\n(pause 114.5s)\n[66-66] 3:20 end.\n</transcript>",
+          "instruction": "The recording is 3:20 long.\nFind the 3 to 5 strongest moments. Each clip should be 20 to 60 seconds long.",
+          "schemaName": "clips",
+          "schema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "clips"
+            ],
+            "properties": {
+              "clips": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "title",
+                    "start_word",
+                    "end_word",
+                    "reason",
+                    "score"
+                  ],
+                  "properties": {
+                    "title": {
+                      "type": "string"
+                    },
+                    "start_word": {
+                      "type": "integer"
+                    },
+                    "end_word": {
+                      "type": "integer"
+                    },
+                    "reason": {
+                      "type": "string"
+                    },
+                    "score": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "maxOutputTokens": 16000,
+          "effort": "medium",
+          "language": "en"
+        },
+        "connector": "ollama",
+        "options": {
+          "model": "gemma4:12b",
+          "modelContext": 32768,
+          "capabilities": [
+            "completion",
+            "thinking"
+          ],
+          "thinkingValues": [
+            "high",
+            "medium",
+            "low"
+          ]
+        }
+      },
+      "expected": {
+        "kind": "http",
+        "model": "gemma4:12b",
+        "timeoutSeconds": 600,
+        "method": "POST",
+        "url": "http://127.0.0.1:11434/api/chat",
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "model": "gemma4:12b",
+          "stream": false,
+          "messages": [
+            {
+              "role": "system",
+              "content": "You choose clips from a spoken recording. Each clip is published as its own post, so it has to make sense to someone who never heard the rest of the recording.\n\nThe transcript is given as numbered lines. \"[12-37] 0:05\" means the line contains words 12 to 37 and starts 5 seconds into the recording. \"(pause 2.3s)\" marks a silence.\n\nHow to choose a clip:\n- Start where a thought starts, never mid-sentence, and not on a word that points back to something earlier (\"so\", \"and\", \"that\", \"like I said\") unless the clip still makes sense.\n- End where the thought lands, normally at the end of a line.\n- start_word and end_word are inclusive word numbers from the transcript. Use only numbers that appear in it.\n- Respect the requested clip length; the times in the transcript tell you how long a range is.\n- title: a short, plain headline in the speaker's language. No hashtags, no emoji, no quotation marks.\n- reason: one sentence on why the clip works as a standalone post.\n- score: 1 to 10, how strong the clip is as a standalone post.\n- Never invent content. If nothing fits the request, return an empty list."
+            },
+            {
+              "role": "user",
+              "content": "<transcript>\n[0-5] 0:00 So, today I want to talk.\n(pause 2.3s)\n[6-10] 0:03 Um why cut by words?\n[11-12] 0:05 \"It works.\"\n[13-15] 0:07 Fast and clean\n(pause 61.5s)\n[16-16] 1:10 Tere!\n[17-18] 1:10 Mis toimub?\n[19-59] 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n[60-65] 1:23 w60 w61 w62 w63 w64 w65\n(pause 114.5s)\n[66-66] 3:20 end.\n</transcript>\n\nThe recording is 3:20 long.\nFind the 3 to 5 strongest moments. Each clip should be 20 to 60 seconds long."
+            }
+          ],
+          "format": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "clips"
+            ],
+            "properties": {
+              "clips": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "title",
+                    "start_word",
+                    "end_word",
+                    "reason",
+                    "score"
+                  ],
+                  "properties": {
+                    "title": {
+                      "type": "string"
+                    },
+                    "start_word": {
+                      "type": "integer"
+                    },
+                    "end_word": {
+                      "type": "integer"
+                    },
+                    "reason": {
+                      "type": "string"
+                    },
+                    "score": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "options": {
+            "num_ctx": 8192,
+            "num_predict": 4096,
+            "temperature": 0
+          },
+          "think": "low",
+          "keep_alive": "10m"
+        }
+      }
+    },
+    {
+      "id": "ollama-medium-minimum-thinking",
+      "kind": "connector-request",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §6",
+      "input": {
+        "request": {
+          "feature": "clipFinder",
+          "system": "You choose clips from a spoken recording. Each clip is published as its own post, so it has to make sense to someone who never heard the rest of the recording.\n\nThe transcript is given as numbered lines. \"[12-37] 0:05\" means the line contains words 12 to 37 and starts 5 seconds into the recording. \"(pause 2.3s)\" marks a silence.\n\nHow to choose a clip:\n- Start where a thought starts, never mid-sentence, and not on a word that points back to something earlier (\"so\", \"and\", \"that\", \"like I said\") unless the clip still makes sense.\n- End where the thought lands, normally at the end of a line.\n- start_word and end_word are inclusive word numbers from the transcript. Use only numbers that appear in it.\n- Respect the requested clip length; the times in the transcript tell you how long a range is.\n- title: a short, plain headline in the speaker's language. No hashtags, no emoji, no quotation marks.\n- reason: one sentence on why the clip works as a standalone post.\n- score: 1 to 10, how strong the clip is as a standalone post.\n- Never invent content. If nothing fits the request, return an empty list.",
+          "cachedBlock": "<transcript>\n[0-5] 0:00 So, today I want to talk.\n(pause 2.3s)\n[6-10] 0:03 Um why cut by words?\n[11-12] 0:05 \"It works.\"\n[13-15] 0:07 Fast and clean\n(pause 61.5s)\n[16-16] 1:10 Tere!\n[17-18] 1:10 Mis toimub?\n[19-59] 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n[60-65] 1:23 w60 w61 w62 w63 w64 w65\n(pause 114.5s)\n[66-66] 3:20 end.\n</transcript>",
+          "instruction": "The recording is 3:20 long.\nFind the 3 to 5 strongest moments. Each clip should be 20 to 60 seconds long.",
+          "schemaName": "clips",
+          "schema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "clips"
+            ],
+            "properties": {
+              "clips": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "title",
+                    "start_word",
+                    "end_word",
+                    "reason",
+                    "score"
+                  ],
+                  "properties": {
+                    "title": {
+                      "type": "string"
+                    },
+                    "start_word": {
+                      "type": "integer"
+                    },
+                    "end_word": {
+                      "type": "integer"
+                    },
+                    "reason": {
+                      "type": "string"
+                    },
+                    "score": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "maxOutputTokens": 16000,
+          "effort": "medium",
+          "language": "en"
+        },
+        "connector": "ollama",
+        "options": {
+          "model": "gemma4:12b",
+          "modelContext": 32768,
+          "capabilities": [
+            "completion",
+            "thinking"
+          ],
+          "thinkingValues": [
+            "high",
+            "medium"
+          ]
+        }
+      },
+      "expected": {
+        "kind": "http",
+        "model": "gemma4:12b",
+        "timeoutSeconds": 600,
+        "method": "POST",
+        "url": "http://127.0.0.1:11434/api/chat",
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "model": "gemma4:12b",
+          "stream": false,
+          "messages": [
+            {
+              "role": "system",
+              "content": "You choose clips from a spoken recording. Each clip is published as its own post, so it has to make sense to someone who never heard the rest of the recording.\n\nThe transcript is given as numbered lines. \"[12-37] 0:05\" means the line contains words 12 to 37 and starts 5 seconds into the recording. \"(pause 2.3s)\" marks a silence.\n\nHow to choose a clip:\n- Start where a thought starts, never mid-sentence, and not on a word that points back to something earlier (\"so\", \"and\", \"that\", \"like I said\") unless the clip still makes sense.\n- End where the thought lands, normally at the end of a line.\n- start_word and end_word are inclusive word numbers from the transcript. Use only numbers that appear in it.\n- Respect the requested clip length; the times in the transcript tell you how long a range is.\n- title: a short, plain headline in the speaker's language. No hashtags, no emoji, no quotation marks.\n- reason: one sentence on why the clip works as a standalone post.\n- score: 1 to 10, how strong the clip is as a standalone post.\n- Never invent content. If nothing fits the request, return an empty list."
+            },
+            {
+              "role": "user",
+              "content": "<transcript>\n[0-5] 0:00 So, today I want to talk.\n(pause 2.3s)\n[6-10] 0:03 Um why cut by words?\n[11-12] 0:05 \"It works.\"\n[13-15] 0:07 Fast and clean\n(pause 61.5s)\n[16-16] 1:10 Tere!\n[17-18] 1:10 Mis toimub?\n[19-59] 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n[60-65] 1:23 w60 w61 w62 w63 w64 w65\n(pause 114.5s)\n[66-66] 3:20 end.\n</transcript>\n\nThe recording is 3:20 long.\nFind the 3 to 5 strongest moments. Each clip should be 20 to 60 seconds long."
+            }
+          ],
+          "format": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "clips"
+            ],
+            "properties": {
+              "clips": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "title",
+                    "start_word",
+                    "end_word",
+                    "reason",
+                    "score"
+                  ],
+                  "properties": {
+                    "title": {
+                      "type": "string"
+                    },
+                    "start_word": {
+                      "type": "integer"
+                    },
+                    "end_word": {
+                      "type": "integer"
+                    },
+                    "reason": {
+                      "type": "string"
+                    },
+                    "score": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "options": {
+            "num_ctx": 8192,
+            "num_predict": 4096,
+            "temperature": 0
+          },
+          "think": "medium",
+          "keep_alive": "10m"
+        }
+      }
+    },
+    {
+      "id": "ollama-unknown-thinking-levels",
+      "kind": "connector-request",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §6",
+      "input": {
+        "request": {
+          "feature": "clipFinder",
+          "system": "You choose clips from a spoken recording. Each clip is published as its own post, so it has to make sense to someone who never heard the rest of the recording.\n\nThe transcript is given as numbered lines. \"[12-37] 0:05\" means the line contains words 12 to 37 and starts 5 seconds into the recording. \"(pause 2.3s)\" marks a silence.\n\nHow to choose a clip:\n- Start where a thought starts, never mid-sentence, and not on a word that points back to something earlier (\"so\", \"and\", \"that\", \"like I said\") unless the clip still makes sense.\n- End where the thought lands, normally at the end of a line.\n- start_word and end_word are inclusive word numbers from the transcript. Use only numbers that appear in it.\n- Respect the requested clip length; the times in the transcript tell you how long a range is.\n- title: a short, plain headline in the speaker's language. No hashtags, no emoji, no quotation marks.\n- reason: one sentence on why the clip works as a standalone post.\n- score: 1 to 10, how strong the clip is as a standalone post.\n- Never invent content. If nothing fits the request, return an empty list.",
+          "cachedBlock": "<transcript>\n[0-5] 0:00 So, today I want to talk.\n(pause 2.3s)\n[6-10] 0:03 Um why cut by words?\n[11-12] 0:05 \"It works.\"\n[13-15] 0:07 Fast and clean\n(pause 61.5s)\n[16-16] 1:10 Tere!\n[17-18] 1:10 Mis toimub?\n[19-59] 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n[60-65] 1:23 w60 w61 w62 w63 w64 w65\n(pause 114.5s)\n[66-66] 3:20 end.\n</transcript>",
+          "instruction": "The recording is 3:20 long.\nFind the 3 to 5 strongest moments. Each clip should be 20 to 60 seconds long.",
+          "schemaName": "clips",
+          "schema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "clips"
+            ],
+            "properties": {
+              "clips": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "title",
+                    "start_word",
+                    "end_word",
+                    "reason",
+                    "score"
+                  ],
+                  "properties": {
+                    "title": {
+                      "type": "string"
+                    },
+                    "start_word": {
+                      "type": "integer"
+                    },
+                    "end_word": {
+                      "type": "integer"
+                    },
+                    "reason": {
+                      "type": "string"
+                    },
+                    "score": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "maxOutputTokens": 16000,
+          "effort": "medium",
+          "language": "en"
+        },
+        "connector": "ollama",
+        "options": {
+          "model": "gemma4:12b",
+          "modelContext": 32768,
+          "capabilities": [
+            "completion",
+            "thinking"
+          ],
+          "thinkingValues": [
+            "tiny",
+            "huge"
           ]
         }
       },
@@ -2386,6 +2817,10 @@
           "capabilities": [
             "completion",
             "thinking"
+          ],
+          "thinkingValues": [
+            false,
+            true
           ]
         }
       },
@@ -4072,6 +4507,10 @@
           "capabilities": [
             "completion",
             "thinking"
+          ],
+          "thinkingValues": [
+            false,
+            true
           ]
         }
       },

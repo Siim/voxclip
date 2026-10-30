@@ -1,5 +1,9 @@
 # macOS implementation contracts
 
+### 2026-10-30 — Ollama advertised thinking controls
+
+- Both Cores select `think: false` only from an actual boolean false in cached /api/show thinking.values; otherwise use the lowest advertised low/medium/high string or omit think for unknown/absent controls. Capability alone never invents a control. Shared request goldens cover booleans, GPT-OSS levels in reverse order, medium minimum, unknown and absent metadata.
+
 ### 2026-10-30 — Gemini schema compatibility retained
 
 - Keep responseMimeType/responseJsonSchema: the current generateContent reference deprecates the older field and describes responseFormat, but does not explicitly establish its general availability for all three curated models. Dated source comments link the reference; tests pin the existing schema field on each curated model without mixing the two formats. No speculative wire migration.

@@ -3,6 +3,18 @@ import Testing
 @testable import VoxClipCore
 
 extension HTTPConnectorTests {
+    @Test(arguments: ["[false,true]", "[\"high\",\"medium\",\"low\"]", "[\"high\",\"medium\"]", "[true]", "[\"false\"]", "[]", "null", "[\"tiny\",\"huge\"]"])
+    func ollamaUsesOnlyAdvertisedThinkingControls(_ values: String) async throws {
+        let details = "{\"capabilities\":[\"completion\",\"thinking\"],\"model_info\":{\"model.context_length\":32768},\"thinking\":{\"values\":\(values)}}"
+        let harness = try HTTPHarness(.ollama, replies: [.json(details), HTTPFixtures.success(.ollama)])
+        defer { harness.finish() }
+        _ = try await harness.connector.send(harness.catalog.connectionTest(for: .ollama), model: "local")
+        let body = try #require(HTTPStubProtocol.requests.last).json()
+        let expected: JSONValue = values == "[false,true]" ? .bool(false) : values.contains("\"low\"") ? .string("low") : values.contains("\"medium\"") ? .string("medium") : .null
+        #expect(body[ai: "think"] == expected)
+        #expect(HTTPStubProtocol.requests.count == 2)
+    }
+
     @Test(arguments: ["gemini-3.5-flash-lite", "gemini-3.8-flash", "gemini-3.1-pro-preview"])
     func geminiCuratedModelsRetainCompatibleSchemaField(_ model: String) async throws {
         let harness = try HTTPHarness(.gemini, replies: [HTTPFixtures.success(.gemini)])

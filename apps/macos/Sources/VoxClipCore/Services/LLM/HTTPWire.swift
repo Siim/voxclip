@@ -68,7 +68,9 @@ extension HTTPConnector {
                     "options": ["num_ctx": computed, "num_predict": maximum, "temperature": 0], "keep_alive": "10m"]
             let capabilities = discovered[ai: "capabilities"].aiArray.compactMap(\.aiString)
             if discovered[ai: "capabilities"] != .null && !capabilities.contains("completion") { throw LLMError.noModels }
-            if capabilities.contains("thinking") { body["think"] = false }
+            let thinkingValues = discovered[ai: "thinking"][ai: "values"].aiArray
+            if thinkingValues.contains(.bool(false)) { body["think"] = false }
+            else if let lowest = ["low", "medium", "high"].first(where: { thinkingValues.contains(.string($0)) }) { body["think"] = lowest }
         case .lmstudio:
             body = ["model": model, "max_tokens": maximum, "temperature": 0, "messages": messages, "response_format": schemaFormat]
         default: throw LLMError.noConnector

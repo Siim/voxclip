@@ -213,7 +213,11 @@ public sealed partial class LlmConnector
             var numContext = Math.Min(context, Math.Max(8192, (int)(Math.Ceiling(needed / 1024.0) * 1024)));
             var body = new JsonObject { ["model"] = model, ["stream"] = false, ["messages"] = messages, ["format"] = schema,
                 ["options"] = new JsonObject { ["num_ctx"] = numContext, ["num_predict"] = maxOut, ["temperature"] = 0 }, ["keep_alive"] = "10m" };
-            if (details["capabilities"] is JsonArray capabilities && capabilities.Any(capability => capability?.GetValue<string>() == "thinking")) body["think"] = false;
+            if (details["thinking"]?["values"] is JsonArray thinkingValues)
+            {
+                if (thinkingValues.Any(value => value is JsonValue item && item.TryGetValue<bool>(out var enabled) && !enabled)) body["think"] = false;
+                else if (new[] { "low", "medium", "high" }.FirstOrDefault(level => thinkingValues.Any(value => value is JsonValue item && item.TryGetValue<string>(out var name) && name == level)) is { } lowest) body["think"] = lowest;
+            }
             return body;
         }
         var compatible = new JsonObject { ["model"] = model, ["messages"] = messages,

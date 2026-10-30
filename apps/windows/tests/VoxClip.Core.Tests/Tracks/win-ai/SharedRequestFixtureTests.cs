@@ -73,7 +73,7 @@ public sealed partial class SharedFixtureTests
         if (options["serverSideFallback"] is { } beta && catalog.Model(id, model) is { } modelInfo) modelInfo["serverSideFallback"] = beta.DeepClone();
         using var handler = new StubHttp((message, _, _) =>
         {
-            if (message.RequestUri!.AbsolutePath == "/api/show") return Task.FromResult(Response(200, new JsonObject { ["model_info"] = new JsonObject { ["model.context_length"] = Integer(options, "modelContext", 4096) }, ["capabilities"] = options["capabilities"]?.DeepClone() ?? new JsonArray("completion") }.ToJsonString()));
+            if (message.RequestUri!.AbsolutePath == "/api/show") return Task.FromResult(Response(200, new JsonObject { ["model_info"] = new JsonObject { ["model.context_length"] = Integer(options, "modelContext", 4096) }, ["capabilities"] = options["capabilities"]?.DeepClone() ?? new JsonArray("completion"), ["thinking"] = options["thinkingValues"] is null ? null : new JsonObject { ["values"] = options["thinkingValues"]!.DeepClone() } }.ToJsonString()));
             if (message.Method == HttpMethod.Get) return Task.FromResult(Response(200, new JsonObject { ["data"] = new JsonArray(new JsonObject { ["id"] = model, ["capabilities"] = new JsonObject { ["effort"] = new JsonObject { ["supported"] = options["effortSupported"]?.DeepClone() ?? JsonValue.Create(false) }, ["structured_outputs"] = new JsonObject { ["supported"] = options["structuredOutputsSupported"]?.DeepClone() ?? JsonValue.Create(true) } } }) }.ToJsonString()));
             return Task.FromResult(Response(200, Completion(id)));
         });
