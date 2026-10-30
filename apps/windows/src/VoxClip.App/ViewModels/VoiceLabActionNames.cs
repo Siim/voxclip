@@ -15,8 +15,11 @@ internal static class VoiceLabActionNames
     internal static string ForRecord(string action, VoiceConsentRecord record, IReadOnlyList<VoiceConsentRecord> peers)
     {
         var label = Created(record.VoiceName, record.CreatedAt);
-        var suffix = peers.Count(peer => Created(peer.VoiceName, peer.CreatedAt) == label) > 1
-            ? ", voice ID ending " + Ending(record.VoiceId) : "";
+        var matching = peers.Where(peer => Created(peer.VoiceName, peer.CreatedAt) == label).ToArray();
+        var suffix = matching.Length > 1
+            ? matching.Count(peer => Ending(peer.VoiceId) == Ending(record.VoiceId)) > 1
+                ? ", voice ID " + record.VoiceId : ", voice ID ending " + Ending(record.VoiceId)
+            : "";
         return action + " " + label + suffix;
     }
 
@@ -28,12 +31,20 @@ internal static class VoiceLabActionNames
             var record = records.FirstOrDefault(record => record.RecordId == value.RecordId);
             return Created(record?.VoiceName ?? (value.Kind == VoiceOperationKind.Create ? "Voice creation" : "Voice removal"), record?.CreatedAt ?? value.StartedAt);
         }
+        string? VoiceId(VoiceOperation value)
+        {
+            var voiceId = value.RemoteVoiceId ?? records.FirstOrDefault(record => record.RecordId == value.RecordId)?.VoiceId;
+            return voiceId is not null and not "pending" ? voiceId : null;
+        }
         var label = Label(operation);
         var suffix = "";
-        if (peers.Count(peer => Label(peer) == label) > 1)
+        var matching = peers.Where(peer => Label(peer) == label).ToArray();
+        if (matching.Length > 1)
         {
-            var voiceId = operation.RemoteVoiceId ?? records.FirstOrDefault(record => record.RecordId == operation.RecordId)?.VoiceId;
-            suffix = voiceId is not null and not "pending" ? ", voice ID ending " + Ending(voiceId)
+            var voiceId = VoiceId(operation);
+            suffix = voiceId is not null
+                ? matching.Count(peer => VoiceId(peer) is { } peerId && Ending(peerId) == Ending(voiceId)) > 1
+                    ? ", voice ID " + voiceId : ", voice ID ending " + Ending(voiceId)
                 : ", attempt " + (peers.ToList().FindIndex(peer => peer.Id == operation.Id) + 1).ToString(CultureInfo.InvariantCulture);
         }
         return action + " " + label + suffix;

@@ -60,6 +60,32 @@ public sealed class VoiceLabReviewTests
     }
 
     [Fact]
+    public void CollidingIdSuffixesUseFullIdsForVoiceAndOperationActions()
+    {
+        var seed = JsonSerializer.Deserialize<VoiceConsentRecord>(File.ReadAllText(Path.Combine(SharedResources.ResolveRoot(), "fixtures/voice-lab/consent-record.json")), new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+        var records = new[] { "voice-A123456", "voice-B123456", "voice-C654321" }.Select(id => seed with
+        { RecordId = Guid.NewGuid().ToString("D"), VoiceName = "My voice", VoiceId = id }).ToArray();
+        foreach (var action in new[] { "Delete voice", "Remove from VoxClip only" })
+        {
+            var labels = records.Select(record => VoiceLabActionNames.ForRecord(action, record, records)).ToArray();
+            Assert.Equal(3, labels.Distinct().Count());
+            Assert.EndsWith(", voice ID voice-A123456", labels[0]);
+            Assert.EndsWith(", voice ID voice-B123456", labels[1]);
+            Assert.EndsWith(", voice ID ending 654321", labels[2]);
+        }
+        var operations = records.Select(record => new VoiceOperation(Guid.NewGuid(), VoiceOperationKind.Create, record.RecordId, "nonce", ElevenLabsRegion.Default,
+            record.CreatedAt, record.CreatedAt, VoiceOperationState.Dispatched, record.VoiceId, true, null, 0, null, false, null, null)).ToArray();
+        foreach (var action in new[] { "Retry voice creation", "Remove unfinished voice" })
+        {
+            var labels = operations.Select(operation => VoiceLabActionNames.ForOperation(action, operation, operations, records)).ToArray();
+            Assert.Equal(3, labels.Distinct().Count());
+            Assert.EndsWith(", voice ID voice-A123456", labels[0]);
+            Assert.EndsWith(", voice ID voice-B123456", labels[1]);
+            Assert.EndsWith(", voice ID ending 654321", labels[2]);
+        }
+    }
+
+    [Fact]
     public void KeyInventoryUsesGateAwareGenerationOwner()
     {
         Assert.Contains("keyInventory.RefreshAsync()", Pane);
