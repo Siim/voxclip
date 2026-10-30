@@ -1,5 +1,13 @@
 # Windows fixed contracts
 
+### 2026-10-31 - win-ort-pin - Pinned ONNX Runtime only; Windows ML excluded
+
+- `Microsoft.WindowsAppSDK` 2.5.1 pulled Windows ML (`Microsoft.WindowsAppSDK.ML` 2.1.94 -> `Microsoft.Windows.AI.MachineLearning` 2.1.74). In self-contained builds its ONNX Runtime 1.24.20260504.1 `onnxruntime.dll` replaced the pinned `Microsoft.ML.OnnxRuntime` 1.19.2 native file beside the 1.19.2 managed binding, and DirectML plus the unused Windows AI, Search and Widgets binaries shipped. The App and its type-check project now reference ML, AI.MachineLearning, AI, Search and Widgets at the resolved versions with `ExcludeAssets="all"`; Directory.Packages.props pins them. The metapackage itself stays, because CommunityToolkit.WinUI depends on it.
+- Both RIDs' MSBuild build and publish inventories lose only files from those five packages (58-63 per list), gain none and change none; the WinRT registration manifest loses only their entries, and no remaining PE or winmd file imports or names them. The only `onnxruntime.dll`, `onnxruntime_providers_shared.dll` and `Microsoft.ML.OnnxRuntime.dll` are the pinned 1.19.2 files. The 1.19.2 native library imports the VC++ runtime, which the existing vcredist145 prerequisite provides.
+- `build/Assert-OnnxRuntimePin.ps1` runs after each Release WinUI build in CI. It fails unless the output's ONNX Runtime natives are byte-identical to the pinned package's `runtimes/<rid>/native` files, the managed binding has the pinned version, and no DirectML, Windows AI, Search, Widgets or other `onnxruntime*.dll` file is present.
+- The first-run Windows component terms now contain only the Windows App SDK 2.5.1 terms; the terms hash is that body's pinned SHA-256. Receipt format 2 replaces format 1, so acceptances of the earlier App SDK + Windows ML terms are asked again. The root notices drop the Windows App SDK ML and Windows ML Runtime terms and third-party notices.
+- Still owed: A8 native parity evidence against the shipped folder on win-arm64 and win-x64, and the release flow's publish-folder use of the same pin check.
+
 ### 2026-10-30 — lead — Windows Voice Lab UI merged
 
 - Squash-merged track/sol-win-vl-ui-editor at 61de6b66, which contains both Windows Voice Lab UI tracks (R1-R12). Terra review findings through R11 were folded in. The R12 review's two P2s harden the Release checks and are owed in a follow-up before the first Windows release: inspect the shipped win-x64 and win-arm64 Release App assemblies in CI rather than the typecheck surrogate, and exclude fakes, harnesses and seams by inventory rather than by name markers.
