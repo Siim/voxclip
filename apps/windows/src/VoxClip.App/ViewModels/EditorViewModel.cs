@@ -14,6 +14,7 @@ public sealed class EditorViewModel : ObservableObject
 {
     private readonly Func<EditState, EditOperation, EditState> reduce;
     private readonly Func<EditState, EditSummary> summarize;
+    private readonly Func<DateTimeOffset> now;
     private sealed record History(EditState? State, ProjectCaptions Captions);
     private readonly Stack<History> undo = new();
     private readonly Stack<History> redo = new();
@@ -102,11 +103,13 @@ public sealed class EditorViewModel : ObservableObject
     }
 
     public EditorViewModel(Project project, Func<EditState, EditOperation, EditState>? reduce = null,
-        Func<EditState, EditSummary>? summarize = null)
+        Func<EditState, EditSummary>? summarize = null, Func<DateTimeOffset>? now = null)
     {
         this.project = project;
         this.reduce = reduce ?? EditingEngine.Reduce;
         this.summarize = summarize ?? EditingEngine.Summarize;
+        this.now = now ?? (() => DateTimeOffset.UtcNow);
+        LlmRuns.Changed += (_, _) => { OnPropertyChanged(nameof(Busy)); OnPropertyChanged(nameof(CanFindClips)); OnPropertyChanged(nameof(CanExport)); };
         InitializeState();
         Refresh();
     }
@@ -118,17 +121,20 @@ public sealed class EditorViewModel : ObservableObject
 
     public Project Project => project;
     internal CaptionDragSession CaptionDrag { get; } = new();
+    internal ProjectLlmRuns LlmRuns { get; } = new();
     public bool IsLeaving => isLeaving;
     internal void BeginLeaving()
     {
         CaptionDrag.Cancel();
         isLeaving = true;
+        OnPropertyChanged(nameof(CanFindClips));
         Notice = "Saving this project before leaving. Editing is paused.";
         OnPropertyChanged(nameof(CanExport));
     }
     internal void ResumeEditing()
     {
         isLeaving = false;
+        OnPropertyChanged(nameof(CanFindClips));
         OnPropertyChanged(nameof(CanExport));
     }
     internal Project ScopedProject(EditState? renderState)
@@ -157,7 +163,8 @@ public sealed class EditorViewModel : ObservableObject
     /// <summary>Edited length of the whole take, whatever clip is active; the Full take row's duration.</summary>
     public double FullTakeDuration { get; private set; }
     public string Notice { get => notice; set => SetProperty(ref notice, value); }
-    public bool Busy { get => busy; set { if (SetProperty(ref busy, value)) OnPropertyChanged(nameof(CanExport)); } }
+    public bool Busy { get => busy || LlmRuns.IsBusy; set { if (SetProperty(ref busy, value)) { OnPropertyChanged(nameof(CanFindClips)); OnPropertyChanged(nameof(CanExport)); } } }
+    public bool CanFindClips => HasTranscript && !Busy && !IsLeaving;
     public bool HasTranscript => state is not null;
     public bool CanExport => !Busy && !isLeaving && !IsReadOnly && Summary.CanExport;
     /// <summary>Why Export can't run for <paramref name="clipId"/>'s scope (null is Full take), or null when it can. The Export
@@ -178,6 +185,8 @@ public sealed class EditorViewModel : ObservableObject
     public bool CanRedo => redo.Count > 0;
     public int SelectionStart => Math.Min(selectionAnchor, selectionEnd);
     public int SelectionEnd => Math.Max(selectionAnchor, selectionEnd);
+    /// <summary>The selection's moving end: the word the last arrow key or drag reached, which Shift+arrows extend from.</summary>
+    public int SelectionCaret => selectionEnd;
     public bool HasSelection => SelectionStart >= 0 && SelectionEnd < Words.Count;
     public double SourceTime { get => sourceTime; set { if (SetProperty(ref sourceTime, value)) OnPropertyChanged(nameof(TimeLabel)); } }
     public string TimeLabel => Timecode(SourceTime);
@@ -195,6 +204,8 @@ public sealed class EditorViewModel : ObservableObject
     public event EventHandler? Changed;
     public event EventHandler? SaveRequested;
     public event EventHandler? SelectionChanged;
+    internal long RewriteSelectionRevision { get; private set; }
+    internal void RewriteCaretChanged() => RewriteSelectionRevision++;
     public event EventHandler<string>? Announcement;
 
     public void Select(int index, bool extend = false)
@@ -203,11 +214,15 @@ public sealed class EditorViewModel : ObservableObject
         index = Math.Clamp(index, 0, Words.Count - 1);
         if (!extend || selectionAnchor < 0) selectionAnchor = index;
         selectionEnd = index;
+        RewriteSelectionRevision++;
         SourceTime = Words[index].Start;
         OnPropertyChanged(nameof(HasSelection));
         OnPropertyChanged(nameof(SelectionText));
         SelectionChanged?.Invoke(this, EventArgs.Empty);
     }
+    /// <summary>← / → move the caret one word; with Shift they extend the selection from its moving end (design §11.2). With
+    /// nothing selected, the first arrow selects the first word.</summary>
+    public void Step(int delta, bool extend = false) => Select(HasSelection ? selectionEnd + delta : 0, extend);
 
     public bool Apply(EditOperation operation)
     {
@@ -468,12 +483,26 @@ public sealed class EditorViewModel : ObservableObject
     public string AccessibleWord(int index, bool showLowConfidence = false)
     {
         if (index < 0 || index >= Words.Count) return "Transcript";
+        return WordStates(index, showLowConfidence) + (HasSelection && index >= SelectionStart && index <= SelectionEnd ? ", selected" : "");
+    }
+    /// <summary>What Narrator says after a keyboard move (design §15): the caret word with its states, then "selected" or the
+    /// selection's size, as in "shipped, corrected, heard as: ship, 3 words selected"; "All 9 words selected" after Select All;
+    /// empty with nothing selected.</summary>
+    public string SelectionAnnouncement(bool showLowConfidence = false)
+    {
+        if (!HasSelection) return "";
+        var count = SelectionEnd - SelectionStart + 1;
+        if (count > 1 && count == Words.Count) return $"All {count} words selected";
+        return WordStates(selectionEnd, showLowConfidence) + (count == 1 ? ", selected" : $", {count} words selected");
+    }
+    private string WordStates(int index, bool showLowConfidence)
+    {
         var word = Words[index];
         return DisplayText(word) + (state?.CutWordIds.Contains(word.Id) == true ? ", cut" : "")
             + (EditingAlgorithms.IsFillerText(DisplayText(word)) ? ", filler" : "")
             + (showLowConfidence && word.Conf is < 0.6 ? ", low confidence" : "")
             + (state?.Corrections.ContainsKey(word.Id) == true ? ", corrected, heard as: " + word.Text : "")
-            + (IsAiWord(index) ? ", AI modified" : "") + (HasSelection && index >= SelectionStart && index <= SelectionEnd ? ", selected" : "");
+            + (IsAiWord(index) ? ", AI modified" : "");
     }
     public bool CanPreviewCut => HasSelection && CanExport;
     internal TimeRange? PreviewCutRange() => CanPreviewCut
@@ -522,7 +551,7 @@ public sealed class EditorViewModel : ObservableObject
     private void SyncProject()
     {
         if (state is null) return;
-        project = project with { ModifiedAt = DateTimeOffset.UtcNow, Edits = new(state.PauseThresholdSeconds, state.PauseKeepSeconds,
+        project = project with { ModifiedAt = now(), Edits = new(state.PauseThresholdSeconds, state.PauseKeepSeconds,
             state.CutWordIds.ToArray(), state.CutPauseIds.ToArray(), new Dictionary<string, string>(state.Corrections), state.Clips.ToArray(), state.ActiveClipId) };
     }
 
@@ -568,7 +597,7 @@ public sealed class EditorViewModel : ObservableObject
         }
         else { FullTakeDuration = project.Media.Source.DurationSeconds; SummaryLine = ""; SummaryTooltip = ""; }
         RefreshExportRows();
-        foreach (var name in new[] { nameof(Project), nameof(State), nameof(Summary), nameof(SummaryLine), nameof(SummaryTooltip), nameof(KeptClips), nameof(SuggestedClips), nameof(FillerLabel), nameof(CanExport), nameof(CanUndo), nameof(CanRedo), nameof(HasTranscript), nameof(FullTakeDuration) }) OnPropertyChanged(name);
+        foreach (var name in new[] { nameof(Project), nameof(State), nameof(Summary), nameof(SummaryLine), nameof(SummaryTooltip), nameof(KeptClips), nameof(SuggestedClips), nameof(FillerLabel), nameof(CanExport), nameof(CanFindClips), nameof(CanUndo), nameof(CanRedo), nameof(HasTranscript), nameof(FullTakeDuration) }) OnPropertyChanged(name);
         Changed?.Invoke(this, EventArgs.Empty);
     }
 }

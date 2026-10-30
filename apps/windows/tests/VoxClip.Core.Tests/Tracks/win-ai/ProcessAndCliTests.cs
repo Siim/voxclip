@@ -11,6 +11,41 @@ namespace VoxClip.Core.Tests.Tracks.WinAi;
 public sealed class ProcessAndCliTests
 {
     [Theory]
+    [InlineData("", 0, null)]
+    [InlineData("Ready", 0, null)]
+    [InlineData("Unknown sign-in status", 0, null)]
+    [InlineData("Logged in using ChatGPT", 0, "chatgpt")]
+    [InlineData("Logged in using an API key", 0, "apiKey")]
+    [InlineData("API key configured - sk-proj-***ABCDE\nAuthentication is checked when you send a request.", 0, "apiKey")]
+    [InlineData("Logged in using an API key - sk-***ABCDE", 0, "apiKey")]
+    [InlineData("Not logged in", 1, "signedOut")]
+    public async Task CodexStatusRecognizesOnlyTheDocumentedSignInMethods(string output, int exitCode, string? expected)
+    {
+        var catalog = Catalog();
+        using var processes = new FixtureProcessRunner(ConnectorId.Codex, catalog, new());
+        processes.Override = request => request.Arguments.Contains("login") ? new(exitCode, output, "", TimeSpan.Zero, false) : null;
+        using var http = new HttpClient(new StubHttp((_, _, _) => throw new InvalidOperationException()));
+        var connector = new LlmConnector(ConnectorId.Codex, catalog, http, new MemoryKeys(null), new Redactor(),
+            processes: processes, binaryOverride: processes.BinaryPath);
+        var status = await connector.GetStatusAsync(TestContext.Current.CancellationToken);
+        if (expected is "chatgpt" or "apiKey")
+        {
+            Assert.IsType<ConnectorStatus.Ready>(status);
+            Assert.Equal(expected, connector.CliDetection!.AuthMethod);
+            Assert.Equal(expected == "apiKey", connector.CliDetection.UsesApiKey);
+        }
+        else
+        {
+            if (expected == "signedOut") Assert.IsType<ConnectorStatus.CliSignedOut>(status);
+            else Assert.Equal("Codex stopped with an error: The CLI could not be started or its output could not be read.", Assert.IsType<ConnectorStatus.Unavailable>(status).Reason);
+            Assert.Null(connector.CliDetection!.AuthMethod);
+            Assert.False(connector.CliDetection.UsesApiKey);
+            await Assert.ThrowsAsync<LlmException>(() => connector.SendAsync(catalog.TestRequest(ConnectorId.Codex), "default", TestContext.Current.CancellationToken));
+        }
+        Assert.Empty(processes.Generations);
+    }
+
+    [Theory]
     [InlineData(ConnectorId.ClaudeCode, false)]
     [InlineData(ConnectorId.ClaudeCode, true)]
     [InlineData(ConnectorId.Codex, false)]

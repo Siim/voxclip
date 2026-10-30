@@ -25,6 +25,8 @@
     <Compile Include="RoundThreeTests.cs" />
     <Compile Include="RoundFourTests.cs" />
     <Compile Include="RoundFiveTests.cs" />
+    <Compile Include="RewritePanelTests.cs" />
+    <Compile Include="ConnectorPreflightTests.cs" />
     <Compile Include="ExportWorkflowTests.cs" />
     <Compile Include="ExportEquivalenceTests.cs" />
     <Compile Include="RelinkViewModelTests.cs" />
@@ -35,14 +37,23 @@
     <Compile Include="ClipSemanticsTests.cs" />
     <Compile Include="CaptionCardTests.cs" />
     <Compile Include="EditorLayoutTests.cs" />
+    <Compile Include="ColumnBoundsGateTests.cs" />
     <Compile Include="TimelineTests.cs" />
     <Compile Include="UpdateRestartTests.cs" />
+    <Compile Include="VelopackUpdateTests.cs" />
+    <Compile Include="VelopackUpdateTestDoubles.cs" />
     <Compile Include="StartupCheckTests.cs" />
+    <Compile Include="NativeHarnessContractTests.cs" />
+    <Compile Include="HighContrastTraceTests.cs" />
     <Compile Include="RedirectedLaunchSelectionTests.cs" />
     <Compile Include="NativeIntegratedFlowTests.cs" />
+    <Compile Include="KeyboardSelectionTests.cs" />
+    <Compile Include="LocalRuntimeGuardTests.cs" />
+    <Compile Include="NativeCaptionHitContractTests.cs" />
     <Compile Include="../../../../src/VoxClip.App/Services/StartupCheck.cs" Link="Services/StartupCheck.cs" />
     <Compile Include="../../../../src/VoxClip.App/Services/RedirectedLaunchSelection.cs" Link="Services/RedirectedLaunchSelection.cs" />
     <Compile Include="../../../../src/VoxClip.App/Services/UpdateRestartCoordinator.cs" Link="Services/UpdateRestartCoordinator.cs" />
+    <Compile Include="../../../../src/VoxClip.App/Services/VelopackUpdates.cs" Link="Services/VelopackUpdates.cs" />
     <Compile Include="../../../../src/VoxClip.App/Services/SettingsWriteQueue.cs" Link="Services/SettingsWriteQueue.cs" />
     <Compile Include="../../../../src/VoxClip.App/Services/ExportLedger.cs" Link="Services/ExportLedger.cs" />
     <Compile Include="../../../../src/VoxClip.App/ViewModels/*.cs" LinkBase="ViewModels" />

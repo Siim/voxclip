@@ -1,10 +1,68 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+function Get-ReleasePrerequisite {
+    param([Parameter(Mandatory = $true)][ValidateSet('win-x64', 'win-arm64')][string] $RuntimeIdentifier)
+    return 'vcredist145-' + $RuntimeIdentifier.Substring(4)
+}
+
+function Assert-ReleaseVcRuntime {
+    param([Parameter(Mandatory = $true)] $Runtime)
+    if (-not $Runtime.installed -or -not $Runtime.version -or [version] $Runtime.version -lt [version] '14.44.0') {
+        throw "Microsoft VC++ runtime 14.44 or newer is required for $($Runtime.architecture)."
+    }
+}
+
+function Get-ReleaseVcRuntime {
+    param([Parameter(Mandatory = $true)][ValidateSet('win-x64', 'win-arm64')][string] $RuntimeIdentifier)
+    $architecture = $RuntimeIdentifier.Substring(4)
+    $best = @{ architecture = $architecture; installed = $false; version = $null; registryView = $null }
+    foreach ($view in @([Microsoft.Win32.RegistryView]::Registry64, [Microsoft.Win32.RegistryView]::Registry32)) {
+        $base = [Microsoft.Win32.RegistryKey]::OpenBaseKey([Microsoft.Win32.RegistryHive]::LocalMachine, $view)
+        $key = $null
+        try {
+            $key = $base.OpenSubKey("SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\$architecture")
+            if ($null -eq $key -or $key.GetValue('Installed', 0) -ne 1) { continue }
+            $version = $null
+            if (-not [version]::TryParse(([string] $key.GetValue('Version', '')).TrimStart('v'), [ref] $version)) { continue }
+            if (-not $best.installed -or $version -gt [version] $best.version) {
+                $best = @{ architecture = $architecture; installed = $true; version = $version.ToString(); registryView = $view.ToString() }
+            }
+        } finally {
+            if ($null -ne $key) { $key.Dispose() }
+            $base.Dispose()
+        }
+    }
+    return $best
+}
+
+function ConvertTo-ReleaseNativeArgument {
+    param([AllowEmptyString()][string] $Value)
+    # Windows argv quoting: double backslashes before a quote or the closing
+    # delimiter. ProcessStartInfo bypasses PowerShell 5.1's legacy re-quoting.
+    $escaped = [regex]::Replace($Value, '(\\*)"', '$1$1\"')
+    $escaped = [regex]::Replace($escaped, '(\\+)$', '$1$1')
+    return '"' + $escaped + '"'
+}
+
 function Invoke-ReleaseTool {
     param([string] $Executable, [string[]] $Arguments)
-    & $Executable @Arguments
-    if ($LASTEXITCODE -ne 0) { throw "Native command failed ($LASTEXITCODE): $Executable" }
+    $start = New-Object Diagnostics.ProcessStartInfo
+    $start.FileName = $Executable
+    $start.UseShellExecute = $false
+    $start.WorkingDirectory = (Get-Location).Path
+    $start.RedirectStandardOutput = $true
+    $start.RedirectStandardError = $true
+    $start.Arguments = ($Arguments | ForEach-Object { ConvertTo-ReleaseNativeArgument $_ }) -join ' '
+    $process = [Diagnostics.Process]::Start($start)
+    try {
+        $nativeErrorRead = $process.StandardError.ReadToEndAsync()
+        while ($null -ne ($nativeLine = $process.StandardOutput.ReadLine())) { Write-Output $nativeLine }
+        $process.WaitForExit()
+        $nativeErrorText = $nativeErrorRead.GetAwaiter().GetResult()
+        if ($nativeErrorText.Length) { Write-Output $nativeErrorText.TrimEnd("`r", "`n") }
+        if ($process.ExitCode -ne 0) { throw "Native command failed ($($process.ExitCode)): $Executable" }
+    } finally { $process.Dispose() }
 }
 
 function Get-ReleaseDeltaBase {

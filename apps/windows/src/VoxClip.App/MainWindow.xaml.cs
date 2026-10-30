@@ -37,6 +37,7 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
     private Dictionary<string, (string? Frame, CaptionCard? Card)> clipTiles = [];
 #if DEBUG
     internal EditorPage? DebugEditor => editor;
+    internal bool DebugNavigationPaneOpen { get => Nav.IsPaneOpen; set => Nav.IsPaneOpen = value; }
     internal bool DebugHoldNavigation() => navigation.Wait(0);
     internal void DebugReleaseNavigation() => navigation.Release();
     internal SidebarRow? DebugSelectedRow => Nav.SelectedItem as SidebarRow;
@@ -46,6 +47,7 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
     internal Task DebugRequestCloseAsync() => RequestCloseAsync(ShellPath.CloseWindow);
     internal FrameworkElement? DebugContainer(SidebarRow row) => Nav.ContainerFromMenuItem(row) as FrameworkElement;
     internal bool DebugCalloutTipOpen => CalloutTip.IsOpen;
+    internal Exception? DebugOpenError { get; private set; }
 #endif
     private Button? updateRestart;
     /// <summary>Construct the shell on the DispatcherQueue thread; architecture §7.2.</summary>
@@ -232,6 +234,9 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
     /// open project is saved through the leave boundary first. <paramref name="via"/> names the path for ShellNavigation.</summary>
     internal async Task OpenPathAsync(string path, ShellPath via, bool demo = false)
     {
+#if DEBUG
+        DebugOpenError = null;
+#endif
         if (App.Restart.IsPreparing) return;
         var fullPath = Path.GetFullPath(path);
         var newImport = !Path.GetExtension(fullPath).Equals(".voxclip", StringComparison.OrdinalIgnoreCase);
@@ -309,6 +314,9 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
         }
         catch (Exception exception)
         {
+#if DEBUG
+            DebugOpenError = exception;
+#endif
             if (!installed)
             {
                 try
@@ -425,9 +433,13 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
     private void SyncSelection()
     {
         var target = ShowingHome ? Shell.Home : Shell.ScopeRow(editor!.ViewModel.State?.ActiveClipId);
-        if (target is null || ReferenceEquals(Nav.SelectedItem, target)) return;
+        if (target is null) return;
         syncingSelection = true;
-        try { Nav.SelectedItem = target; }
+        try
+        {
+            Nav.SelectedItem = target;
+            if (Nav.ContainerFromMenuItem(target) is NavigationViewItem item) item.IsSelected = true;
+        }
         finally { syncingSelection = false; }
     }
     private void Watch(EditorPage? previous, EditorPage next)
@@ -445,7 +457,10 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
     private void EditorChanged(object? sender, EventArgs args) => UpdateShell();
     private async void RetryExportClicked(object sender, RoutedEventArgs args)
     {
-        if (editor is { } current && ReferenceEquals(ContentFrame.Content, current)) await current.RetryExportAsync((sender as FrameworkElement)?.Tag as string);
+        if (editor is not { } current || !ReferenceEquals(ContentFrame.Content, current)) return;
+        var clipId = (sender as FrameworkElement)?.Tag as string;
+        FocusStayingRow(sender, Shell.ScopeRow(clipId));
+        await current.RetryExportAsync(clipId);
     }
     /// <summary>New suggestions appear under Suggested and the first takes focus without being selected (design §6.2).</summary>
     private void SuggestionsFound(object? sender, string clipId) => FocusRow(Shell.Rows.FirstOrDefault(row => row.ClipId == clipId));
@@ -535,6 +550,7 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
     private void ScopeRowKeys(object sender, RoutedEventArgs args)
     {
         if (sender is UIElement row) foreach (var accelerator in row.KeyboardAccelerators) accelerator.ScopeOwner = row;
+        DispatcherQueue.TryEnqueue(SyncSelection);
     }
     private void KeepClicked(object sender, RoutedEventArgs args) { if (sender is FrameworkElement { Tag: string id }) ClipCommand(id, model => model.Keep(id)); }
     private void DismissClicked(object sender, RoutedEventArgs args) { if (sender is FrameworkElement { Tag: string id }) ClipCommand(id, model => model.Dismiss(id)); }
@@ -542,15 +558,21 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
     private void DismissSuggestionInvoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args) => args.Handled = RowCommand(args, (model, id) => model.Dismiss(id));
     private void RemoveClipInvoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args) => args.Handled = RowCommand(args, (model, id) => model.Remove(id));
     private void RemoveClipClicked(object sender, RoutedEventArgs args) { if (sender is FrameworkElement { Tag: string id }) ClipCommand(id, model => model.Remove(id)); }
-    private void KeepAllClicked(object sender, RoutedEventArgs args) { if (RowEdits(SidebarKind.SuggestedHeader)) editor?.ViewModel.KeepAll(); }
-    private void CancelFindingClicked(object sender, RoutedEventArgs args) => editor?.FindClips.Cancel();
-    private void CalloutClosed(InfoBar sender, object args) => editor?.FindClips.Dismiss();
+    /// <summary>Keep all removes its own header, so focus moves to the first clip it kept, as after Keep (design §15).</summary>
+    private void KeepAllClicked(object sender, RoutedEventArgs args)
+    {
+        if (!RowEdits(SidebarKind.SuggestedHeader) || editor?.ViewModel is not { } model) return;
+        var first = model.SuggestedClips.FirstOrDefault()?.Id;
+        if (model.KeepAll()) FocusRow(Shell.Rows.FirstOrDefault(row => first is not null && row.ClipId == first) ?? Shell.Rows.FirstOrDefault(row => row.Kind == SidebarKind.FullTake));
+    }
+    private void CancelFindingClicked(object sender, RoutedEventArgs args) { FocusStayingRow(sender); editor?.FindClips.Cancel(); }
+    private void CalloutClosed(InfoBar sender, object args) { FocusStayingRow(sender); editor?.FindClips.Dismiss(); }
     /// <summary>Retry runs the search again; Set up AI… and Sign-in help open Settings at the AI page.</summary>
     private async void CalloutActionClicked(object sender, RoutedEventArgs args)
     {
         if (editor is not { } current || Shell.Callout is not { } callout) return;
         CalloutTip.IsOpen = false;
-        if (callout.Action == ClipCallouts.Retry) await current.FindClips.RetryAsync();
+        if (callout.Action == ClipCallouts.Retry) { FocusStayingRow(sender); await current.FindClips.RetryAsync(); }
         else App.OpenSettings("Providers & Keys");
     }
     private void CalloutTipActionClicked(TeachingTip sender, object args) => CalloutActionClicked(sender, new RoutedEventArgs());
@@ -564,6 +586,7 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
         if (!Nav.IsPaneOpen) Nav.IsPaneOpen = true;
         DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
         {
+            Nav.UpdateLayout();
             if (Shell.Rows.FirstOrDefault(row => row.Kind == SidebarKind.Callout) is not { } row || Nav.ContainerFromMenuItem(row) is not FrameworkElement container) return;
             container.StartBringIntoView();
             if (fromPane) return;
@@ -573,8 +596,13 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
             CalloutTip.IsOpen = true;
         });
     }
-    private void CancelTakeTranscriptionClicked(object sender, RoutedEventArgs args) { if (ProjectPath is { } path) TranscriptionActivity.Cancel(path); }
-    private void CancelRecentTranscriptionClicked(object sender, RoutedEventArgs args) { if (sender is FrameworkElement { Tag: string path }) TranscriptionActivity.Cancel(path); }
+    private void CancelTakeTranscriptionClicked(object sender, RoutedEventArgs args) { if (ProjectPath is { } path) { FocusStayingRow(sender); TranscriptionActivity.Cancel(path); } }
+    private void CancelRecentTranscriptionClicked(object sender, RoutedEventArgs args)
+    {
+        if (sender is not FrameworkElement { Tag: string path }) return;
+        FocusStayingRow(sender, Shell.Rows.FirstOrDefault(row => row.Recent?.Path == path));
+        TranscriptionActivity.Cancel(path);
+    }
     private async void RenameClipInvoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
     {
         if ((args.Element as FrameworkElement)?.Tag is not string id || !RowEdits(id)) return;
@@ -639,6 +667,14 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
     {
         if (row is null) return;
         DispatcherQueue.TryEnqueue(() => (Nav.ContainerFromMenuItem(row) as Control)?.Focus(FocusState.Keyboard));
+    }
+    /// <summary>A link that its own command hides or removes (Cancel, a callout's Close or Retry, an export's Retry) first
+    /// hands focus that is on it to a row that stays, Full take unless given, so focus is not lost with it (design §15).</summary>
+    private void FocusStayingRow(object link, SidebarRow? row = null)
+    {
+        if (link is not DependencyObject owner || FocusManager.GetFocusedElement(Root.XamlRoot) is not Control focused || !InputState.DescendsFrom(focused, owner)
+            || (row ?? Shell.Rows.FirstOrDefault(item => item.Kind == SidebarKind.FullTake)) is not { } target) return;
+        (Nav.ContainerFromMenuItem(target) as Control)?.Focus(focused.FocusState == FocusState.Keyboard ? FocusState.Keyboard : FocusState.Programmatic);
     }
     private void EditorPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs args)
     {
@@ -754,14 +790,29 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
 #if DEBUG
     internal string DebugNotice => WindowNotice.IsOpen ? WindowNotice.Message : "";
 #endif
-    internal async Task ShowOnboardingAsync() => await new OnboardingDialog(this) { XamlRoot = Root.XamlRoot }.ShowAsync();
+    internal async Task ShowOnboardingAsync()
+    {
+        if (!Root.IsLoaded || Root.XamlRoot is null)
+        {
+            var loaded = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            void Ready(object sender, RoutedEventArgs args) => loaded.TrySetResult();
+            Root.Loaded += Ready;
+            try
+            {
+                if (Root.IsLoaded && Root.XamlRoot is not null) loaded.TrySetResult();
+                await loaded.Task.WaitAsync(lifetime.Token);
+            }
+            finally { Root.Loaded -= Ready; }
+        }
+        await new OnboardingDialog(this) { XamlRoot = Root.XamlRoot }.ShowAsync();
+    }
     internal async Task CheckUpdatesAsync(bool manual = false)
     {
         try
         {
             if (!manual) await Task.Delay(TimeSpan.FromSeconds(10), lifetime.Token);
             var update = await App.Services.Updates.CheckAsync(manual, lifetime.Token);
-            if (update is null) { if (manual) { WindowNotice.Message = "No update available. Development builds do not self-update."; WindowNotice.IsOpen = true; } return; }
+            if (update is null) { if (manual) { WindowNotice.ActionButton = null; WindowNotice.Severity = InfoBarSeverity.Informational; WindowNotice.Message = App.Services.Updates is VelopackUpdates { IsInstalled: false } ? "Development builds do not self-update." : $"VoxClip {AppServices.Version} is the latest version."; WindowNotice.IsOpen = true; } return; }
             await App.Services.Updates.DownloadAsync(update, null, lifetime.Token);
             WindowNotice.Message = $"VoxClip {update.Version} is ready. Restart to update.";
             var restart = new Button { Content = "Restart now", IsEnabled = !App.Services.IsBusy };
@@ -794,6 +845,7 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
             WindowNotice.IsOpen = true;
         }
         catch (OperationCanceledException) { }
+        catch (HttpRequestException) when (manual) { WindowNotice.ActionButton = null; WindowNotice.Message = "Couldn't check for updates. You're offline."; WindowNotice.Severity = InfoBarSeverity.Warning; WindowNotice.IsOpen = true; }
         catch (Exception exception) { if (manual) ShowError(exception, "Update"); else App.Services.Log.Write(Core.Services.Logging.LogLevel.Info, "update", "automatic check unavailable"); }
     }
     private async void WindowClosed(object sender, WindowEventArgs args)

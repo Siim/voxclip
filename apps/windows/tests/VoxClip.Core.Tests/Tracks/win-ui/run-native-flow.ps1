@@ -17,13 +17,15 @@ New-Item -ItemType Directory -Force $evidence | Out-Null
 Push-Location $Root
 $probeData = Join-Path $Root ('shell-probe-data-' + [Guid]::NewGuid().ToString('N'))
 $probeApp = $null
-function Assert-BuildSpace {
-    $drive = Get-PSDrive -Name ([IO.Path]::GetPathRoot($Root).TrimEnd('\').TrimEnd(':'))
-    if ($drive.Free -lt 15GB) { throw 'Native builds require at least 15 GiB free.' }
+$phase = 'build companion'
+$status = 'failed'
+$failure = $null
+function Assert-BuildSpace([long]$FreeBytes = (Get-PSDrive -Name ([IO.Path]::GetPathRoot($Root).TrimEnd('\').TrimEnd(':'))).Free) {
+    if ($FreeBytes -lt (6GB + 1536MB)) { throw 'Native runs require 1.5 GiB headroom above the 6 GiB floor; keep owned scratch below 2 GiB.' }
 }
 try {
     Assert-BuildSpace
-    & 'C:\Program Files\dotnet\dotnet.exe' build $project -c Release -r $RuntimeIdentifier "-p:Platform=$platform" -m:1 --disable-build-servers '-p:UseSharedCompilation=false' 2>&1 | Tee-Object (Join-Path $evidence 'build.log')
+    & 'C:\Program Files\dotnet\dotnet.exe' build $project -c Release -r $RuntimeIdentifier "-p:Platform=$platform" -p:SelfContained=true -p:UseAppHost=true -m:1 --disable-build-servers '-p:UseSharedCompilation=false' 2>&1 | Tee-Object (Join-Path $evidence 'build.log')
     if ($LASTEXITCODE -ne 0) { throw 'UI companion native build failed.' }
     Expand-Archive -LiteralPath $TestToolsZip -DestinationPath $tools -Force
     $outputs = @(Get-ChildItem (Join-Path $Root 'apps\windows\tests\VoxClip.Core.Tests\Tracks\win-ui\.artifacts\bin') -Filter 'VoxClip.Ui.Tests.dll' -Recurse | Where-Object { $_.FullName -like "*Release*$RuntimeIdentifier*" })
@@ -33,12 +35,18 @@ try {
     Copy-Item (Join-Path $toolBin[0].DirectoryName '*.dll') $outputs[0].DirectoryName -Force
     $env:VOXCLIP_UI_NATIVE_FIXTURE = Join-Path $Root 'shared\fixtures\media\bars-1080p.mp4'
     $env:VOXCLIP_UI_EVIDENCE_DIR = $evidence
+    $env:VOXCLIP_UI_NATIVE_RUNTIME = $RuntimeIdentifier
     $env:VOXCLIP_DATA_DIR = Join-Path $Root 'test-data'
-    & 'C:\Program Files\dotnet\dotnet.exe' $outputs[0].FullName -noLogo 2>&1 | Tee-Object (Join-Path $evidence 'test.log')
+    $companion = Join-Path $outputs[0].DirectoryName 'VoxClip.Ui.Tests.exe'
+    if (-not (Test-Path -LiteralPath $companion)) { throw 'The architecture-matched self-contained test host is missing.' }
+    Assert-BuildSpace
+    $phase = 'native companion'
+    & $companion -noLogo 2>&1 | Tee-Object (Join-Path $evidence 'test.log')
     if ($LASTEXITCODE -ne 0) { throw 'Native UI companion test failed.' }
 
     # The Debug-only shell probe (Services/ShellNativeProbe.cs): Home, Recent, drop, close and the sidebar header rows
     # through the save-before-leaving boundary, in the real window.
+    $phase = 'build shell'
     Assert-BuildSpace
     & 'C:\Program Files\dotnet\dotnet.exe' build (Join-Path $Root 'apps\windows\src\VoxClip.App\VoxClip.App.csproj') -c Debug -r $RuntimeIdentifier "-p:Platform=$platform" -m:1 --disable-build-servers '-p:UseSharedCompilation=false' 2>&1 | Tee-Object (Join-Path $evidence 'app-debug-build.log')
     if ($LASTEXITCODE -ne 0) { throw 'Debug App build for the shell probe failed.' }
@@ -51,15 +59,25 @@ try {
     $start.Arguments = "--shell-probe `"$probe`""
     $start.EnvironmentVariables['VOXCLIP_DATA_DIR'] = $probeData
     $start.EnvironmentVariables['VOXCLIP_SHARED_DIR'] = Join-Path $Root 'shared'
+    $start.EnvironmentVariables.Remove('VOXCLIP_NATIVE_DIAGNOSTIC')
     $probeApp = [System.Diagnostics.Process]::Start($start)
     # A passing probe exits the app; a failing one writes its report and leaves the window open with the error.
-    for ($i = 0; $i -lt 360 -and -not $probeApp.HasExited -and -not (Test-Path -LiteralPath $report); $i++) { Start-Sleep -Milliseconds 500 }
-    for ($i = 0; $i -lt 20 -and -not $probeApp.HasExited; $i++) { Start-Sleep -Milliseconds 500 }
-    if (-not (Test-Path -LiteralPath $report)) { throw 'The shell probe wrote no report within three minutes.' }
+    $phase = 'shell'
+    $elapsed = [Diagnostics.Stopwatch]::StartNew()
+    while (-not $probeApp.HasExited -and -not (Test-Path -LiteralPath $report) -and $elapsed.Elapsed.TotalSeconds -lt 900) { Start-Sleep -Milliseconds 500 }
+    if (-not (Test-Path -LiteralPath $report)) { throw 'The shell probe wrote no report within 900 monotonic seconds.' }
     $result = Get-Content -LiteralPath $report -Raw | ConvertFrom-Json
-    if ($result.status -ne 'passed') { throw "The shell probe failed: $($result.error)" }
+    if ($result.status -ne 'passed' -or $result.PSObject.Properties.Name -contains 'diagnostic') { throw ('The shell probe failed: ' + (@($result.checks | Where-Object { $_ -like 'FAILED native gate:*' }) -join ', ') + '; see shell-native-result.json.') }
+    $exitWait = [Diagnostics.Stopwatch]::StartNew()
+    while (-not $probeApp.HasExited -and $exitWait.Elapsed.TotalSeconds -lt 10) { Start-Sleep -Milliseconds 100 }
+    if ($probeApp.HasExited -and $probeApp.ExitCode -ne 0) { throw 'The shell probe exited unsuccessfully after its report.' }
     Write-Output "Shell probe passed $(@($result.checks).Count) checks."
+    $status = 'passed'
+} catch {
+    $failure = $_.Exception.Message
+    throw
 } finally {
+    @{ status = $status; phase = $phase; runtime = $RuntimeIdentifier; failure = $failure } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $evidence 'native-flow-result.json') -Encoding ASCII
     # Wait for a stopped probe to exit, so it no longer holds its log or data root open when they are copied and removed.
     if ($probeApp -and -not $probeApp.HasExited) {
         Stop-Process -Id $probeApp.Id -Force -ErrorAction SilentlyContinue

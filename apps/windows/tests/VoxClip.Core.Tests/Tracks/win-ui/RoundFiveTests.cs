@@ -79,6 +79,34 @@ public sealed class RoundFiveTests(ITestOutputHelper output)
         Assert.Contains("AutomationProperties.SetName(PreviewPlay, PlaybackPresentation.Name(position.IsPlaying))", page);
     }
     [Fact]
+    public void HighContrastStageMessageSitsOnAWindowPlateOverTheBlackStage()
+    {
+        var app = Path.Combine(Path.GetDirectoryName(Environment.GetEnvironmentVariable("VOXCLIP_SHARED_DIR"))!, "apps/windows/src/VoxClip.App");
+        System.Xml.Linq.XNamespace xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
+        var page = System.Xml.Linq.XDocument.Load(Path.Combine(app, "Pages/EditorPage.xaml"));
+        System.Xml.Linq.XElement Named(string name) => page.Descendants().Single(element => (string?)element.Attribute(xaml + "Name") == name);
+        var standIn = Named("PreviewStandIn");
+        var themes = standIn.Parent!.Descendants().Where(element => element.Name.LocalName == "ResourceDictionary" && element.Attribute(xaml + "Key") is not null)
+            .ToDictionary(element => (string)element.Attribute(xaml + "Key")!, element => element.Elements().ToDictionary(resource => (string)resource.Attribute(xaml + "Key")!));
+        string Value(string theme, string key) => (string?)themes[theme][key].Attribute("Color") ?? themes[theme][key].Value;
+        Assert.Equal("{ThemeResource SystemColorWindowColor}", Value("HighContrast", "StageMessagePlateBrush"));
+        Assert.Equal("{ThemeResource SystemColorWindowTextColor}", Value("HighContrast", "StageMessageEdgeBrush"));
+        Assert.Equal("1", Value("HighContrast", "StageMessageEdgeThickness"));
+        Assert.Equal("1", Value("HighContrast", "StageMessageFileOpacity"));
+        Assert.Equal("Transparent", Value("Default", "StageMessagePlateBrush"));
+        Assert.Equal("0", Value("Default", "StageMessageEdgeThickness"));
+        Assert.Equal("0.66", Value("Default", "StageMessageFileOpacity"));
+        foreach (var (attribute, key) in new[] { ("Background", "StageMessagePlateBrush"), ("BorderBrush", "StageMessageEdgeBrush"), ("BorderThickness", "StageMessageEdgeThickness") })
+            Assert.Equal("{ThemeResource " + key + "}", (string?)standIn.Attribute(attribute));
+        Assert.Equal("{ThemeResource StageMessageFileOpacity}", (string?)Named("PreviewFile").Attribute("Opacity"));
+        var contrast = System.Xml.Linq.XDocument.Load(Path.Combine(app, "Themes/Tokens.xaml")).Descendants().Single(element => (string?)element.Attribute(xaml + "Key") == "HighContrast");
+        foreach (var (name, key) in new[] { ("PreviewEmpty", "VcChipMediaForegroundBrush"), ("PreviewFile", "VcChipMediaForegroundBrush"), ("PreviewStateGlyph", "VcChipWarningGlyphBrush") })
+        {
+            Assert.Equal("{ThemeResource " + key + "}", (string?)Named(name).Attribute("Foreground"));
+            Assert.Equal("{ThemeResource SystemColorWindowTextColor}", contrast.Elements().Single(element => (string?)element.Attribute(xaml + "Key") == key).Attribute("Color")!.Value);
+        }
+    }
+    [Fact]
     public async Task DialogRoutingMapsEveryControlChoiceAndFreezesTheSnapshot()
     {
         var model = new EditorViewModel(RoundThreeTests.Fixture());

@@ -19,6 +19,10 @@ if ($ManualState) {
     return
 }
 if ($Configuration -eq 'Release' -and ($Screen -ne 'home' -or $Exercise)) { throw 'Release probes support Home only; fixture exercises are debug-only.' }
+$taskToken = [Guid]::NewGuid().ToString('N')
+$appTask = 'VoxClipUiWinUi-' + $taskToken
+$shotTask = 'VoxClipShotWinUi-' + $taskToken
+$principal = New-ScheduledTaskPrincipal -UserId ([Security.Principal.WindowsIdentity]::GetCurrent().Name) -LogonType Interactive
 $captureNames = @('terms', 'editor', 'home', 'settings', 'export', 'export-this-clip', 'editor-full-take', 'editor-find-clips', 'editor-manual-clip', 'editor-preview-end', 'editor-captions', 'editor-light', 'editor-1280-light', 'editor-compact-light', 'editor-compact-viewer', 'editor-compact-dark', 'settings-providers-keys', 'settings-local-models', 'settings-export', 'settings-accounts', 'settings-about', 'onboarding-1', 'onboarding-2', 'onboarding-3', 'settings-general-dark', 'editor-dark')
 foreach ($name in $captureNames) {
     Remove-Item (Join-Path $shots "$name-window.png"), (Join-Path $shots "$name-window.jpg"), (Join-Path $shots "$name-self-check.json"), (Join-Path $shots "$name-interactions.json") -Force -ErrorAction SilentlyContinue
@@ -31,13 +35,14 @@ try {
     Write-Output "Capturing $screen at $([DateTime]::UtcNow.ToString('O'))"
     Remove-Item (Join-Path $shots 'complete'), (Join-Path $shots 'error.txt') -Force -ErrorAction SilentlyContinue
     Remove-Item (Join-Path $shots "$screen.png"), (Join-Path $shots "$screen-window.png"), (Join-Path $shots "$screen-self-check.json") -Force -ErrorAction SilentlyContinue
-    & schtasks.exe /Create /TN VoxClipUiWinUi /TR "powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$launcher`" -Screen $screen -Configuration $Configuration -RuntimeIdentifier $RuntimeIdentifier -WindowSize $size -Root `"$root`"" /SC ONCE /ST 00:00 /IT /F
-    if ($LASTEXITCODE -ne 0) { throw 'Could not create app task.' }
+    $ordinaryArgument = if ($Exercise -and $capture -eq 'editor') { ' -OrdinaryEditor' } else { '' }
+    $appAction = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$launcher`" -Screen $screen -Configuration $Configuration -RuntimeIdentifier $RuntimeIdentifier -WindowSize $size -Root `"$root`"$ordinaryArgument"
+    Register-ScheduledTask -TaskName $appTask -Action $appAction -Principal $principal -Force | Out-Null
     $exerciseArgument = if ($Exercise -and $capture -notlike 'editor-*') { ' -Exercise' } else { '' }
-    & schtasks.exe /Create /TN VoxClipShotWinUi /TR "powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$script`" -Screen $screen$exerciseArgument -CaptureName $capture -RuntimeIdentifier $RuntimeIdentifier -Root `"$root`"" /SC ONCE /ST 00:00 /IT /F
-    if ($LASTEXITCODE -ne 0) { throw 'Could not create screenshot task.' }
-    & schtasks.exe /Run /TN VoxClipUiWinUi
-    & schtasks.exe /Run /TN VoxClipShotWinUi
+    $shotAction = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$script`" -Screen $screen$exerciseArgument -CaptureName $capture -RuntimeIdentifier $RuntimeIdentifier -Root `"$root`""
+    Register-ScheduledTask -TaskName $shotTask -Action $shotAction -Principal $principal -Force | Out-Null
+    Start-ScheduledTask -TaskName $appTask
+    Start-ScheduledTask -TaskName $shotTask
     for ($attempt = 0; $attempt -lt 75; $attempt++) {
         if (Test-Path (Join-Path $shots 'complete')) { break }
         Start-Sleep -Seconds 2
@@ -45,8 +50,8 @@ try {
     if (-not (Test-Path (Join-Path $shots 'complete'))) { throw 'Interactive screenshot task exceeded 150 seconds.' }
     if (Test-Path (Join-Path $shots 'error.txt')) { throw (Get-Content (Join-Path $shots 'error.txt') -Raw) }
     if (-not (Test-Path (Join-Path $shots "$capture-window.png"))) { throw "The $capture window was not captured." }
-    & schtasks.exe /End /TN VoxClipShotWinUi
-    & schtasks.exe /End /TN VoxClipUiWinUi
+    Stop-ScheduledTask -TaskName $shotTask
+    Stop-ScheduledTask -TaskName $appTask
     Start-Sleep -Seconds 2
     }
     if ($Screen -eq 'all') {
@@ -63,9 +68,9 @@ try {
     throw
 } finally {
     $ErrorActionPreference = 'Continue'
-    & schtasks.exe /End /TN VoxClipUiWinUi 2>$null
-    & schtasks.exe /End /TN VoxClipShotWinUi 2>$null
-    & schtasks.exe /Delete /TN VoxClipUiWinUi /F 2>$null
-    & schtasks.exe /Delete /TN VoxClipShotWinUi /F 2>$null
+    Stop-ScheduledTask -TaskName $appTask -ErrorAction SilentlyContinue
+    Stop-ScheduledTask -TaskName $shotTask -ErrorAction SilentlyContinue
+    Unregister-ScheduledTask -TaskName $appTask -Confirm:$false -ErrorAction SilentlyContinue
+    Unregister-ScheduledTask -TaskName $shotTask -Confirm:$false -ErrorAction SilentlyContinue
     Get-Process VoxClip -ErrorAction SilentlyContinue | Where-Object { $_.Path -like "$root\*\$RuntimeIdentifier\VoxClip.exe" } | Stop-Process -Force
 }

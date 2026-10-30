@@ -21,6 +21,8 @@ public sealed class NativeIntegratedFlowTests
     public async Task SyntheticImportEditCaptionExportSaveAndReopen()
     {
         if (!OperatingSystem.IsWindows()) Assert.Skip("Native Windows media integration requires a Windows x64 or ARM64 host.");
+        var runtime = "win-" + System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture.ToString().ToLowerInvariant();
+        if (Environment.GetEnvironmentVariable("VOXCLIP_UI_NATIVE_RUNTIME") is { Length: > 0 } expectedRuntime) Assert.Equal(expectedRuntime, runtime);
         var root = Root();
         var source = Environment.GetEnvironmentVariable("VOXCLIP_UI_NATIVE_FIXTURE");
         if (string.IsNullOrWhiteSpace(source)) Assert.Skip("Set VOXCLIP_UI_NATIVE_FIXTURE to the committed synthetic bars video.");
@@ -91,7 +93,7 @@ public sealed class NativeIntegratedFlowTests
                 Directory.CreateDirectory(evidence);
                 await File.WriteAllTextAsync(Path.Combine(evidence, "native-integrated-flow.json"), JsonSerializer.Serialize(new
                 {
-                    source = Path.GetFileName(source), projectReopened = true, savedCutWords = reopened.Project.Edits.CutWordIds.Count,
+                    runtime, source = Path.GetFileName(source), projectReopened = true, savedCutWords = reopened.Project.Edits.CutWordIds.Count,
                     routes = new[] { "Full video", "This clip", "All clips" }, ledgerReloaded = true, exportedEditedUndo = true,
                     full = new { name = Path.GetFileName(full.Video), aspect = "Original", full.Duration, full.WordCount, bytes = new FileInfo(full.Video).Length, srtBytes = new FileInfo(full.Srt).Length },
                     clip = new { name = Path.GetFileName(selected.Video), aspect = "9:16", selected.Duration, selected.WordCount, bytes = new FileInfo(selected.Video).Length, srtBytes = new FileInfo(selected.Srt).Length }

@@ -57,7 +57,8 @@ public sealed partial class LlmConnector
         {
             if (Uri.TryCreate(address.TrimEnd('/') + "/", UriKind.Absolute, out var parsed) &&
                 parsed.Scheme is "http" or "https" && parsed.Host.Length > 0 && parsed.Query.Length == 0 && parsed.Fragment.Length == 0 && parsed.UserInfo.Length == 0 &&
-                (keyDestination is null || parsed.Scheme == "https")) baseUri = parsed;
+                (keyDestination is null || parsed.Scheme == "https") &&
+                (id is not (ConnectorId.Ollama or ConnectorId.LmStudio) || parsed.IsLoopback)) baseUri = parsed;
             else unavailableReason = $"{Label}'s server address in Settings isn't valid.";
         }
         if (!MatchesKeyConfiguration() || keyDestination is not null && !AllowsStoredKey(baseUri)) unavailableReason = InvalidKeyDestination;

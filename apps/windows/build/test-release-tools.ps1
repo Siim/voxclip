@@ -105,6 +105,52 @@ function Invoke-FakeSignTool {
 }
 
 try {
+    Invoke-Test 'native signing arguments survive Windows PowerShell legacy quoting' {
+        $argumentDirectory = Join-Path $temporary 'native argument fixture'
+        New-Item -ItemType Directory -Path $argumentDirectory | Out-Null
+        $argumentOutput = Join-Path $argumentDirectory 'captured arguments.txt'
+        $argvFixture = @('--signTemplate', 'powershell.exe -File "C:\release tools\Sign-Artifacts.ps1" -SignTool "C:\Program Files\Windows Kits\signtool.exe" -Dlib "D:\signing path\sign.dll" -Metadata "D:\signing path\metadata.json" -Paths {{file}}', 'C:\path with space\', 'ab"cd', '', '{{file}}')
+        if ($PSVersionTable.PSEdition -eq 'Desktop') {
+            $argumentTool = Join-Path $argumentDirectory 'argument reader.exe'
+            Add-Type -TypeDefinition @'
+using System;using System.IO;using System.Text;
+public static class ReleaseArgumentReader {
+ public static void Main(string[] values) {
+  var result=new string[values.Length-1];
+  for(int i=1;i<values.Length;i++) result[i-1]=Convert.ToBase64String(Encoding.UTF8.GetBytes(values[i]));
+  File.WriteAllLines(values[0],result);
+  Console.WriteLine("S");Console.Error.WriteLine("E");
+ }
+}
+'@ -OutputAssembly $argumentTool -OutputType ConsoleApplication
+            $nativeArguments = @($argumentOutput) + $argvFixture
+        } else {
+            $argumentTool = (Get-Command python3 -ErrorAction Stop).Source
+            $nativeArguments = @('-c', 'import base64,pathlib,sys; pathlib.Path(sys.argv[1]).write_text(chr(10).join(base64.b64encode(v.encode()).decode() for v in sys.argv[2:])); print(chr(83)); print(chr(69), file=sys.stderr)', $argumentOutput) + $argvFixture
+        }
+        $oldNativePassing = Get-Variable -Name PSNativeCommandArgumentPassing -Scope Global -ErrorAction SilentlyContinue
+        try {
+            Set-Variable -Name PSNativeCommandArgumentPassing -Value Legacy -Scope Global
+            $nativeOutput = @(Invoke-ReleaseTool -Executable $argumentTool -Arguments $nativeArguments)
+            Assert-Equal ($nativeOutput -join ',') 'S,E'
+            $roundTrip = @([IO.File]::ReadAllLines($argumentOutput) | ForEach-Object { [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($_)) })
+            Assert-Equal ($roundTrip -join "`n") ($argvFixture -join "`n")
+        } finally {
+            if ($null -ne $oldNativePassing) { Set-Variable -Name PSNativeCommandArgumentPassing -Value $oldNativePassing.Value -Scope Global }
+            else { Remove-Variable -Name PSNativeCommandArgumentPassing -Scope Global -ErrorAction SilentlyContinue }
+        }
+    }
+    Invoke-Test 'VC++ prerequisite matches each package architecture' {
+        Assert-Equal (Get-ReleasePrerequisite -RuntimeIdentifier win-x64) 'vcredist145-x64'
+        Assert-Equal (Get-ReleasePrerequisite -RuntimeIdentifier win-arm64) 'vcredist145-arm64'
+        Assert-Throws { Get-ReleasePrerequisite -RuntimeIdentifier win-x86 } 'ValidateSet|does not belong'
+    }
+    Invoke-Test 'VC++ verification rejects missing and pre-14.44 runtimes' {
+        Assert-Throws { Assert-ReleaseVcRuntime @{architecture='x64';installed=$false;version=$null} } '14.44'
+        Assert-Throws { Assert-ReleaseVcRuntime @{architecture='x64';installed=$true;version='14.30.30704'} } '14.44'
+        Assert-ReleaseVcRuntime @{architecture='x64';installed=$true;version='14.44.35211.0'}
+        Assert-ReleaseVcRuntime @{architecture='arm64';installed=$true;version='14.50.0.0'}
+    }
     $matchRoot = Join-Path $temporary 'file-match'
     New-Item -ItemType Directory -Path $matchRoot | Out-Null
     $matchExpected = Join-Path $matchRoot 'expected.txt'
@@ -124,6 +170,7 @@ try {
     Invoke-Test 'release runtime folders cover every shared folder the sources read' {
         $repository = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))
         $read = @(Get-ChildItem -LiteralPath (Join-Path $repository 'apps/windows/src') -Recurse -File -Filter '*.cs' |
+            Where-Object { $_.Name -notlike '*Probe*.cs' -and $_.FullName -notmatch '[\\/](obj|bin)[\\/]' } |
             Select-String -Pattern 'Path\.Combine\([^,()]*(?:\([^()]*\))?[^,()]*,\s*"([a-z-]+)"' -AllMatches -CaseSensitive |
             ForEach-Object { $_.Matches } | ForEach-Object { $_.Groups[1].Value } |
             Where-Object { Test-Path -LiteralPath (Join-Path (Join-Path $repository 'shared') $_) -PathType Container } |
@@ -215,7 +262,7 @@ try {
         Assert-Equal $fixture['AZURE_CLIENT_SECRET'] 'fixture-alias'
     }
     Invoke-Test 'VM metadata validation accepts exact account profile and region boundaries' {
-        foreach ($region in @('aa', 'abcdefgh')) {
+        foreach ($region in @('aa', 'abcdefgh', 'wus2', 'wus3')) {
             $fixture = New-TestSigningCredentials
             $fixture['AZURE_SIGNING_ACCOUNT'] = 'A1'
             $fixture['AZURE_SIGNING_PROFILE'] = 'Z' * 64
@@ -662,6 +709,12 @@ function Join-Path {
     }
     Microsoft.PowerShell.Management\Join-Path -Path $Path -ChildPath $ChildPath
 }
+$script:fixtureScenario = $null
+function Get-ReleaseVcRuntime {
+    param([string] $RuntimeIdentifier)
+    $after = $null -ne $script:fixtureScenario
+    return @{ architecture=$RuntimeIdentifier.Substring(4); installed=($after -and $script:fixtureScenario -ne 'vc-runtime-missing'); version=if($after){'14.50.0.0'}else{$null}; registryView='fixture' }
+}
 function Assert-ReleaseSignatures {
     if ($script:fixtureScenario -in @('verification-fail', 'both-fail')) { throw 'Fixture original verification failure.' }
 }
@@ -748,10 +801,11 @@ function Invoke-ReleaseProcess {
         $env:LOCALAPPDATA = Join-Path $temporary 'user-data-fixture'
         foreach ($scenario in @('success', 'install-fail', 'verification-fail', 'cleanup-fail', 'both-fail', 'cli-timeout',
             'notices-mismatch', 'updater-mismatch', 'stub-mismatch', 'notices-and-cleanup-fail', 'terms-hash-invalid',
-            'terms-gate-bypass', 'terms-missing-recheck-bypass', 'terms-corrupt-recheck-bypass', 'terms-gate-and-cleanup-fail')) {
+            'terms-gate-bypass', 'terms-missing-recheck-bypass', 'terms-corrupt-recheck-bypass', 'terms-gate-and-cleanup-fail', 'vc-runtime-missing')) {
             Invoke-Test "install evidence survives $scenario and preserves the first error" {
                 $report = Join-Path $temporary ("install-report-" + $scenario)
                 $failure = $null
+                $script:fixtureScenario = $null
                 $timer = [Diagnostics.Stopwatch]::StartNew()
                 try {
                     & (Join-Path $installFixture 'Test-Install.ps1') -Setup $scenario -SignTool fixture -Version 0.1.0 -RuntimeIdentifier win-x64 -ReportDirectory $report -ExpectedNotices $expectedNotice -PackagedUpdaterHash $expectedPayloadHash -PackagedStubHash $expectedPayloadHash
@@ -769,6 +823,8 @@ function Invoke-ReleaseProcess {
                 if ($scenario -eq 'success' -and $timer.Elapsed.TotalSeconds -lt 2.5) { throw 'Test-Install did not wait for its updater.' }
                 if ($scenario -eq 'success') { Assert-Equal ($global:fixtureGateEvents -join '|') 'terms|probe:7|accept|probe:3|probe:7|accept|probe:7' }
                 Assert-Equal $env:VOXCLIP_DATA_DIR $oldDataDirectory
+                if ($scenario -eq 'vc-runtime-missing') { Assert-Equal $receipt.error 'Microsoft VC++ runtime 14.44 or newer is required for x64.' }
+                if ($scenario -eq 'success') { Assert-Equal $receipt.vcRuntimeBefore.installed $false; Assert-Equal $receipt.vcRuntimeAfter.version '14.50.0.0' }
                 if ($scenario -eq 'cli-timeout') { Assert-Equal $failure.Message 'Fixture CLI exceeded 60 seconds.' }
                 $mismatchErrors = @{
                     'notices-mismatch' = 'Release file differs from root source'
@@ -816,6 +872,7 @@ function Invoke-ReleaseProcess {
     }
     Invoke-Test 'atomic VM locks never remove another owner or ownerless locks' {
         $engine = (Get-Process -Id $PID).Path
+        if ([IO.Path]::GetFileNameWithoutExtension($engine) -eq 'dotnet') { $engine = (Get-Command pwsh -ErrorAction Stop).Source }
         $lockScript = Join-Path $PSScriptRoot 'Release-Lock.ps1'
         $lockPath = Join-Path $temporary 'vm.lock'
         & $engine -NoProfile -NonInteractive -File $lockScript -Operation Acquire -Path $lockPath -RunId alpha

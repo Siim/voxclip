@@ -35,6 +35,9 @@ public static class SmokeDesktop {
     [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr window);
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr window);
     [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr window, out uint process);
+    [DllImport("user32.dll")] private static extern void keybd_event(byte key, byte scan, uint flags, UIntPtr extra);
+    public static void UnlockForeground() { keybd_event(0x12, 0, 0, UIntPtr.Zero); keybd_event(0x12, 0, 2, UIntPtr.Zero); }
 }
 '@
 $desktop = [SmokeDesktop]::OpenInputDesktop(0, $false, 1)
@@ -89,8 +92,16 @@ try {
     if (-not $check -or $check.status -ne 'ready' -or $check.screen -ne 'editor' -or -not $check.rootLoaded -or -not $check.rendered -or $check.processId -ne $app.Id) { throw 'No owned, loaded and rendered Editor within 15 seconds.' }
     $windowHandle = [IntPtr]([long]$check.windowHandle)
     if (-not [SmokeDesktop]::IsWindowVisible($windowHandle)) { throw 'The reported Editor window is not visible.' }
-    [void][SmokeDesktop]::SetForegroundWindow($windowHandle)
+    for ($foregroundAttempt = 0; $foregroundAttempt -lt 4; $foregroundAttempt++) {
+        if ($foregroundAttempt -gt 0) { [SmokeDesktop]::UnlockForeground() }
+        [void][SmokeDesktop]::SetForegroundWindow($windowHandle)
+        Start-Sleep -Milliseconds 250
+        if ([SmokeDesktop]::GetForegroundWindow() -eq $windowHandle) { break }
+    }
     if ([SmokeDesktop]::GetForegroundWindow() -ne $windowHandle) { throw 'The owned Editor could not be foregrounded on this desktop.' }
+    [uint32]$foregroundProcess = 0
+    [void][SmokeDesktop]::GetWindowThreadProcessId($windowHandle, [ref]$foregroundProcess)
+    if ($foregroundProcess -ne $app.Id) { throw 'The foreground Editor does not belong to the owned process.' }
     $window = [System.Windows.Automation.AutomationElement]::FromHandle($windowHandle)
     $condition = New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::NameProperty, 'Transcript. Select words to cut. Enter corrects spelling. Control K makes a clip.')
     $transcript = $window.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $condition)

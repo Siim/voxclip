@@ -20,7 +20,9 @@ internal sealed class OnboardingDialog : ContentDialog
     private readonly CheckBox modelApproval = new() { Content = "I accept this model's licence and want to download it." };
     private readonly ComboBox connector = Ui.Choice("AI connector (optional)", []);
     private readonly CheckBox consent = new() { Content = "I understand what this connector sends and want to use it." };
+    private IReadOnlyList<TranscriptionModel> catalogue = [];
     private int step;
+    private int rendered = -1;
     private bool downloading;
 
     internal OnboardingDialog(MainWindow owner)
@@ -38,8 +40,9 @@ internal sealed class OnboardingDialog : ContentDialog
             modelApproval.IsChecked = false;
             if ((models.SelectedItem as ComboBoxItem)?.Tag is TranscriptionModel model)
             {
-                modelTerms.Text = $"{model.Id} · {model.TotalBytes / 1_000_000d:0} MB\nLicence: {model.License}\n{model.Attribution}\n{model.LicenseUrl}";
-                modelApproval.Content = $"I accept the {model.License} licence for {model.Id}.";
+                var dependencies = ModelDownloadCopy.Dependencies(model, catalogue);
+                modelTerms.Text = $"{ModelDownloadCopy.Title(model)}\n{ModelDownloadCopy.Body(model, dependencies)}\n{model.LicenseUrl}";
+                modelApproval.Content = $"I accept the {model.License} licence for {ModelDownloadCopy.DisplayName(model)} and want to download it ({ModelDownloadCopy.Size(model, dependencies)}).";
             }
         };
         connector.SelectionChanged += (_, _) => { consent.IsChecked = false; Render(); };
@@ -59,9 +62,9 @@ internal sealed class OnboardingDialog : ContentDialog
 
     private async Task LoadChoicesAsync()
     {
-        var catalog = await App.Services.Models.GetModelsAsync(lifetime.Token);
+        catalogue = await App.Services.Models.GetModelsAsync(lifetime.Token);
         var installed = await App.Services.Downloads.ListInstalledAsync(lifetime.Token);
-        foreach (var model in catalog.Where(item => item.Listed && item.Engine == TranscriptEngine.Whispercpp))
+        foreach (var model in catalogue.Where(item => item.Listed && item.Engine == TranscriptEngine.Whispercpp))
             models.Items.Add(new ComboBoxItem { Content = $"{model.Id} · {model.TotalBytes / 1_000_000d:0} MB" + (installed.Any(item => item.Id == model.Id && item.Verified) ? " · installed" : ""), Tag = model });
         if (models.Items.Count > 0) models.SelectedIndex = 0;
         var providers = await ProviderCatalog.ReadAsync(lifetime.Token);
@@ -76,12 +79,18 @@ internal sealed class OnboardingDialog : ContentDialog
 
     private void Render()
     {
-        body.Children.Clear();
-        body.Children.Add(Ui.Text($"Step {step + 1} of 3", "HelperText"));
-        body.Children.Add(Ui.Text(step switch { 0 => "Cut video by its words.", 1 => "Find clips with AI (optional)", _ => "Five keys to know" }, "SubtitleTextBlockStyle"));
+        var lead = step switch { 0 => engine, 1 => connector, _ => (ComboBox?)null };
+        var keep = rendered == step && lead is not null && body.Children.Count > 2 && body.Children[2] == lead ? 3 : 0;
+        rendered = step;
+        while (body.Children.Count > keep) body.Children.RemoveAt(body.Children.Count - 1);
+        if (keep == 0)
+        {
+            body.Children.Add(Ui.Text($"Step {step + 1} of 3", "HelperText"));
+            body.Children.Add(Ui.Text(step switch { 0 => "Cut video by its words.", 1 => "Find clips with AI (optional)", _ => "Five keys to know" }, "SubtitleTextBlockStyle"));
+            if (lead is not null) body.Children.Add(lead);
+        }
         if (step == 0)
         {
-            body.Children.Add(engine);
             body.Children.Add(Ui.Text(engine.SelectedIndex == 1
                 ? "ElevenLabs keeps the audio under its terms. No upload happens until you confirm for a take."
                 : "Audio stays on this PC. A local model is downloaded only when you choose to download it.", "HelperText"));
@@ -107,7 +116,6 @@ internal sealed class OnboardingDialog : ContentDialog
         }
         else if (step == 1)
         {
-            body.Children.Add(connector);
             if ((connector.SelectedItem as ComboBoxItem)?.Tag is ProviderEntry entry)
             {
                 body.Children.Add(Ui.Text(entry.DataFlow, "HelperText"));
@@ -115,13 +123,11 @@ internal sealed class OnboardingDialog : ContentDialog
                 if (entry.Cloud || entry.Cli) body.Children.Add(consent);
                 body.Children.Add(Ui.Button("Check status", () => _ = Ui.RunAsync(notice, async () =>
                     Ui.Show(notice, ProviderCatalog.Status(await App.Services.Connector(entry.Id).GetStatusAsync(lifetime.Token))), "Connector status")));
-                body.Children.Add(Ui.Button("Test connector", () => _ = Ui.RunAsync(notice, async () =>
+                body.Children.Add(Ui.Button("Test connector in Settings…", () =>
                 {
-                    if ((entry.Cloud || entry.Cli) && consent.IsChecked != true)
-                    { Ui.Show(notice, "Confirm the connector's data flow before testing.", InfoBarSeverity.Warning); return; }
-                    await ProviderCatalog.TestAsync(entry, App.Services.Get("llm.model." + entry.WireId, entry.DefaultModel), lifetime.Token);
-                    Ui.Show(notice, "Works.", InfoBarSeverity.Success);
-                }, "Connection test")));
+                    Hide();
+                    App.OpenSettings("Providers & Keys");
+                }));
             }
             else body.Children.Add(Ui.Text("Sends transcript text only when you choose an external connector. No audio or video. You can always make clips yourself: select words, press Ctrl+K.", "HelperText"));
         }
@@ -158,10 +164,14 @@ internal sealed class OnboardingDialog : ContentDialog
     {
         if (downloading || (models.SelectedItem as ComboBoxItem)?.Tag is not TranscriptionModel model) return;
         if (modelApproval.IsChecked != true) { Ui.Show(notice, "Accept the displayed model licence before downloading.", InfoBarSeverity.Warning); return; }
+        var approved = ModelDownloadCopy.Body(model, ModelDownloadCopy.Dependencies(model, catalogue));
+        Task<bool> Confirm(TranscriptionModel candidate, IReadOnlyList<TranscriptionModel> dependencies, CancellationToken _) =>
+            candidate.Id == model.Id && ModelDownloadCopy.Body(candidate, dependencies) == approved ? Task.FromResult(true)
+                : throw new InvalidOperationException("The model download no longer matches the licence shown.");
         downloading = true;
         try
         {
-            await App.Services.Downloads.InstallAsync(model.Id, new Progress<ModelDownloadProgress>(value => Ui.Show(notice, value.Stage)), lifetime.Token);
+            await App.Services.Installer(Confirm).InstallAsync(model.Id, new Progress<ModelDownloadProgress>(value => Ui.Show(notice, ModelDownloadCopy.Progress(model, value))), lifetime.Token);
             Ui.Show(notice, "Model installed and verified.", InfoBarSeverity.Success);
         }
         finally { downloading = false; }
@@ -187,7 +197,6 @@ internal sealed class OnboardingDialog : ContentDialog
                 if ((entry.Cloud || entry.Cli) && consent.IsChecked != true)
                 { Ui.Show(notice, "Confirm the connector's data flow before continuing.", InfoBarSeverity.Warning); consent.Focus(FocusState.Programmatic); return; }
                 await App.Services.SetAsync("llm.connector", entry.WireId, lifetime.Token);
-                if (entry.Cloud || entry.Cli) await App.Services.SetAsync("llm.cloudConsent." + entry.WireId, true, lifetime.Token);
             }
             else if (step == 1) return;
             if (step == 2) { await CompleteAsync(); Hide(); }

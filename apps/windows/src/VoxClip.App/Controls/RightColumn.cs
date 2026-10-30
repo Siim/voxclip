@@ -7,12 +7,28 @@ namespace VoxClip.App.Controls;
 internal sealed class RightColumn : Grid
 {
     private readonly Border fade = new() { Height = 12, VerticalAlignment = VerticalAlignment.Bottom, IsHitTestVisible = false };
+    private readonly Border surface = new();
+    private readonly CaptionsPanel captions;
+    private RewritePanel? rewrite;
+    internal Control FocusTarget => rewrite?.FocusTarget ?? captions.FocusTarget;
     internal RightColumn(CaptionsPanel captions)
     {
-        Children.Add(captions);
+        this.captions = captions;
+        surface.Child = captions;
+        Children.Add(surface);
         Children.Add(fade);
         ActualThemeChanged += (_, _) => UpdateFade();
         UpdateFade();
+    }
+    internal void ShowRewrite(RewritePanel panel)
+    {
+        rewrite = panel;
+        surface.Child = panel;
+    }
+    internal void CloseRewrite()
+    {
+        rewrite = null;
+        surface.Child = captions;
     }
     private void UpdateFade()
     {

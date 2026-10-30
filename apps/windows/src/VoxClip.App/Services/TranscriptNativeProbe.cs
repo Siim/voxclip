@@ -9,6 +9,7 @@ using VoxClip.App.ViewModels;
 using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Shared;
 using Windows.Foundation;
+using Windows.UI.ViewManagement;
 
 namespace VoxClip.App.Services;
 
@@ -16,17 +17,28 @@ internal static class TranscriptNativeProbe
 {
     internal static async Task RunAsync(MainWindow window, Project project, List<string> checks)
     {
-        if (Ui.HighContrast) { checks.Add("transcript pixel gate requires a normal theme; contrast-mode tokens intentionally share selection/playing fills"); return; }
+        var failures = new List<Exception>();
+        foreach (var theme in Ui.HighContrast ? new[] { ElementTheme.Default } : new[] { ElementTheme.Dark, ElementTheme.Light })
+            try { await RunThemeAsync(window, project, checks, theme); }
+            catch (Exception exception) { failures.Add(new InvalidOperationException(Name(theme) + " transcript", exception)); }
+        if (failures.Count > 0) throw new AggregateException(failures);
+    }
+    private static string Name(ElementTheme theme) => Ui.HighContrast ? "HighContrast" : theme.ToString();
+    private static async Task RunThemeAsync(MainWindow window, Project project, List<string> checks, ElementTheme theme)
+    {
         var host = (Panel)window.Content;
         var transcript = new TranscriptView { Width = 780, Height = 300, HorizontalAlignment = HorizontalAlignment.Left,
-            VerticalAlignment = VerticalAlignment.Top, RequestedTheme = ElementTheme.Dark };
+            VerticalAlignment = VerticalAlignment.Top, RequestedTheme = theme };
+        var rasterRoot = new Grid { Width = 1560, Height = 600, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top };
+        transcript.RenderTransform = new ScaleTransform { ScaleX = 2, ScaleY = 2 };
+        rasterRoot.Children.Add(transcript);
         var model = new EditorViewModel(project with { Edits = project.Edits with { Clips = [], ActiveClipId = null, CutWordIds = [], CutPauseIds = [] } });
         model.Select(1); model.Select(5, true);
         Require(model.MakeClip() is not null, "transcript pixel fixture did not make a clip");
-        model.Apply(new EditOperation.CutSelection([model.Words[2].Id]));
+        model.Apply(new EditOperation.CutSelection([model.Words[1].Id, model.Words[2].Id, model.Words[5].Id]));
         model.Select(3); model.SourceTime = model.Words[4].Start;
         transcript.Attach(model);
-        host.Children.Add(transcript);
+        host.Children.Add(rasterRoot);
         try
         {
             transcript.Background = Ui.ThemeBrush(transcript, "VcBgSurfaceBrush");
@@ -41,23 +53,100 @@ internal static class TranscriptNativeProbe
             var selected = Bounds(transcript, 3);
             var playing = Bounds(transcript, 4);
             var bitmap = new RenderTargetBitmap();
-            await bitmap.RenderAsync(transcript, 1560, 600);
+            await bitmap.RenderAsync(rasterRoot);
             var pixels = (await bitmap.GetPixelsAsync()).ToArray();
+            if (Environment.GetEnvironmentVariable("VOXCLIP_UI_EVIDENCE_DIR") is { Length: > 0 } evidence)
+            {
+                Directory.CreateDirectory(evidence);
+                await File.WriteAllTextAsync(Path.Combine(evidence, $"transcript-{Name(theme)}-geometry.json"),
+                    System.Text.Json.JsonSerializer.Serialize(transcript.DebugGeometry, new System.Text.Json.JsonSerializerOptions { WriteIndented = true, IncludeFields = true }));
+                using var stream = File.Create(Path.Combine(evidence, $"transcript-{Name(theme)}-raster.png"));
+                var encoder = await Windows.Graphics.Imaging.BitmapEncoder.CreateAsync(Windows.Graphics.Imaging.BitmapEncoder.PngEncoderId, stream.AsRandomAccessStream());
+                encoder.SetPixelData(Windows.Graphics.Imaging.BitmapPixelFormat.Bgra8, Windows.Graphics.Imaging.BitmapAlphaMode.Premultiplied,
+                    (uint)bitmap.PixelWidth, (uint)bitmap.PixelHeight, 96, 96, pixels);
+                await encoder.FlushAsync();
+            }
             var selectionColor = ((SolidColorBrush)Ui.ThemeBrush(transcript, "VcSelectionTranscriptBrush")).Color;
             var playingColor = ((SolidColorBrush)Ui.ThemeBrush(transcript, "VcWordPlayingBackgroundBrush")).Color;
-            Require(selectionColor != playingColor, "normal-theme selection and playing fill tokens are equal");
+            Require(selectionColor != playingColor, "selection and playing fill tokens are equal");
             Require(Contains(pixels, bitmap.PixelWidth, bitmap.PixelHeight, new(cut.X, cut.Y + cut.Height * 0.52 - 1, cut.Width, 3),
                 ((SolidColorBrush)Ui.ThemeBrush(transcript, "VcCutStrokeBrush")).Color), "cut strike pixels do not match cut.stroke within three levels");
             Require(Contains(pixels, bitmap.PixelWidth, bitmap.PixelHeight, outside, ((SolidColorBrush)Ui.ThemeBrush(transcript, "VcTextSecondaryBrush")).Color),
                 "out-of-scope glyph pixels do not match text.secondary");
             Require(Contains(pixels, bitmap.PixelWidth, bitmap.PixelHeight, selected, selectionColor), "selection fill pixels do not match selection.transcript");
             Require(Contains(pixels, bitmap.PixelWidth, bitmap.PixelHeight, playing, playingColor), "playing fill pixels do not match word.playing.background");
-            checks.Add("realized transcript raster: cut strike, out-of-scope glyph, distinct selection/playing fills and badge-aware highlight offsets");
+            if (Ui.HighContrast)
+            {
+                var system = new UISettings();
+                var highlight = system.UIElementColor(UIElementType.Highlight);
+                var windowText = system.UIElementColor(UIElementType.WindowText);
+                Require(SameColor(selectionColor, highlight), $"contrast-mode selection.transcript {selectionColor} is not the live Highlight {highlight}");
+                Require(SameColor(playingColor, windowText), $"contrast-mode word.playing.background {playingColor} is not the live WindowText {windowText}");
+                Require(Contains(pixels, bitmap.PixelWidth, bitmap.PixelHeight, selected, system.UIElementColor(UIElementType.HighlightText)),
+                    "selected glyph pixels do not match the live HighlightText");
+                Require(Contains(pixels, bitmap.PixelWidth, bitmap.PixelHeight, playing, system.UIElementColor(UIElementType.Window)),
+                    "playing glyph pixels do not match the live Window colour");
+            }
+            foreach (var filler in new[] { 1, 5 })
+            {
+                var area = Bounds(transcript, filler);
+                Require(Contains(pixels, bitmap.PixelWidth, bitmap.PixelHeight, new(area.X, area.Y + area.Height * 0.52 - 1, area.Width, 3),
+                    ((SolidColorBrush)Ui.ThemeBrush(transcript, "VcCutStrokeBrush")).Color), $"{model.Words[filler].Text} has no cut.stroke strike");
+            }
+            // Isolate Composition paint: cut glyphs and strikes share GrayText in HC,
+            // and unhighlighted glyphs share WindowText with the playing fill.
+            // Neither glyph ink may satisfy a decoration assertion.
+            transcript.DebugHideGlyphs(retainDecorations: true);
+            await NextFrameAsync();
+            await bitmap.RenderAsync(rasterRoot);
+            var decorationPixels = (await bitmap.GetPixelsAsync()).ToArray();
+            var strikeColor = ((SolidColorBrush)Ui.ThemeBrush(transcript, "VcCutStrokeBrush")).Color;
+            void CheckStrikes(byte[] sample)
+            {
+                foreach (var index in new[] { 1, 2, 5 })
+                {
+                    var area = Bounds(transcript, index);
+                    Require(Contains(sample, bitmap.PixelWidth, bitmap.PixelHeight,
+                        new(area.X, area.Y + area.Height * 0.52 - 1, area.Width, 3), strikeColor),
+                        $"Isolated cut strike is absent for {model.Words[index].Text}");
+                }
+            }
+            void CheckPlaying(byte[] sample) => Require(Contains(sample, bitmap.PixelWidth, bitmap.PixelHeight, playing, playingColor),
+                "Isolated playing fill is absent");
+            CheckStrikes(decorationPixels);
+            CheckPlaying(decorationPixels);
+            foreach (var strikeMutation in new[] { true, false })
+            {
+                // Deliberately break the actual painted visual, then require the
+                // very same positive assertion to reject it. Restore after each.
+                transcript.DebugRemovePaint(strikeMutation);
+                await NextFrameAsync();
+                await bitmap.RenderAsync(rasterRoot);
+                var broken = (await bitmap.GetPixelsAsync()).ToArray();
+                var rejected = false;
+                try { if (strikeMutation) CheckStrikes(broken); else CheckPlaying(broken); }
+                catch (InvalidOperationException) { rejected = true; }
+                Require(rejected, "Decoration assertion accepted deliberately missing " + (strikeMutation ? "strike" : "playing fill"));
+                transcript.DebugEndGlyph();
+                await NextFrameAsync();
+                transcript.DebugHideGlyphs(retainDecorations: true);
+                await NextFrameAsync();
+                await bitmap.RenderAsync(rasterRoot);
+                var restored = (await bitmap.GetPixelsAsync()).ToArray();
+                CheckStrikes(restored); CheckPlaying(restored);
+                checks.Add($"{Name(theme)} isolated {(strikeMutation ? "cut strike" : "playing fill")}: missing-paint mutation rejected; restored paint passes");
+            }
+            transcript.DebugEndGlyph();
+            checks.Add(Ui.HighContrast
+                ? $"High Contrast {Ui.HighContrastScheme} realized transcript raster: cut strike including um, and uh, out-of-scope glyph, Highlight selection and WindowText playing fills with their text matching the live system colours"
+                : $"{theme} realized transcript raster: cut strike including um, and uh, out-of-scope glyph, distinct selection/playing fills and badge-aware highlight offsets");
+            if (!Ui.HighContrast) await TranscriptAlignmentProbe.RunAsync(transcript, rasterRoot, model, checks);
         }
-        finally { transcript.Detach(); host.Children.Remove(transcript); }
+        finally { transcript.Detach(); host.Children.Remove(rasterRoot); }
     }
     private static Rect Bounds(TranscriptView transcript, int index) => transcript.DebugWordBounds(index)
         ?? throw new InvalidOperationException("Native transcript word was not realized.");
+    private static bool SameColor(Windows.UI.Color left, Windows.UI.Color right) => left.R == right.R && left.G == right.G && left.B == right.B;
     private static bool Contains(byte[] pixels, int width, int height, Rect area, Windows.UI.Color color)
     {
         var left = Math.Clamp((int)Math.Floor(area.Left * 2), 0, width);

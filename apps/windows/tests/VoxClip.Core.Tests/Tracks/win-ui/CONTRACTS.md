@@ -5,6 +5,15 @@
 - CI tries the Debug Editor in the hosted process's input desktop. launch-smoke.ps1 refuses stale output and requires the owned process's existing ready self-check, rootLoaded/rendered, visible native window and visible Transcript UIA node. Only then does observed-self-check.json report status ok. Failed or absent application checks fail the job; portable StartupCheckTests also cover blank/uniform images and pin the smoke's negative checks.
 - If the hosted evidence reports no interactive input desktop, that is not a launch pass. Before merge, with an owned vm.lock and a serial Debug App build for each RID, run `powershell -NoProfile -ExecutionPolicy Bypass -File apps\windows\tests\VoxClip.Core.Tests\Tracks\win-ui\launch-smoke.ps1 -Root C:\voxclip-build\sol-win-r9 -EvidenceDir C:\voxclip-build\sol-win-r9\smoke-win-arm64 -RuntimeIdentifier win-arm64 -Schedule` (then win-x64 with its own fresh evidence directory). The helper registers a unique interactive scheduled task for the logged-in owner and removes only that task. A non-ok scheduled result fails. Keep both reports as mandatory manual pre-merge evidence; hosted build success is never a substitute.
 
+## Round 6 — internal Rewrite panel, checklist 15a (2026-10-28)
+
+- The five decision commits cover DEBUG-only entry routes/one-time enablement, the flush proposal panel, Core diff/window/budget/meter/summary wiring, local cuts/corrections through one ApplyBatch, and the right-column focus/lifetime boundary. No Voice, Takes, synthesis, paid TTS or acceptance is introduced. A persisted enabled setting cannot expose Release entries.
+- Focused `RewritePanelTests`: all 18 cases pass in both Release and Debug. Entry/gate tests cover five routes, off state and the between-word caret; state-machine tests record connector discovery/send and prove no call before a displayed exact estimate and affirmative approval. They cover failed proposals, clearing an error after a successful retry, stale answers versus typing, editor replacement/leave/media failure, diff runs/absorbed transcript labels/spoken description, single/multiple Core fit meters, complete-patch pricing, absent/refused windows, unknown model and whole-transcript patch budget.
+- `ApplyCutsMatchesTheManualSavedProjectByteForByteAndUndoesOnce` compares actual serialized UTF-8 bytes, including modification time through a fixed injected editor clock, with manual cuts. `ApplyCorrectionUsesWholeItemTextsAndOneUndoStepWithoutAi` checks whole-item CorrectedTexts and a single Undo. Voice changes cannot apply locally. `WaveformReusesNativeCacheAcrossInstancesWithoutDecodingAgain` checks the retained 10 ms envelope without decoding twice.
+- The only Core change is the wiring metadata `VoiceLabGeometryException.TakeEdgeIsStart`, so the App can select the exact start/end refusal row. `TakeEdgeRefusalNamesTheEdgeWithoutChangingTheSharedError` passes both existing shared edge cases and retains their code and Incoming metadata. No shared fixtures or Swift files change.
+- Final local checks: zero-warning cross-platform/UI Release builds and App Release/Debug typechecks; Core 2,057 passed / 28 skipped (2,085 total); UI 371 passed / 3 native prerequisites skipped (374 total); focused Rewrite 18 passed; XAML zero problems; design drift check and all 16 design tests pass. The exact CI secret pattern and changed-PowerShell ASCII checks are required before push. Builds use nice, -m:2, disabled compiler/node reuse and one build/test process at a time.
+- Native VM SSH answers but authentication fails with the available key. No VM lock is acquired, no native check is claimed. The handoff records branch-only hosted CI separately. Owed on both architectures: mockup/pixel comparisons, theme/High Contrast, transcript/timeline passage geometry, diff stroke geometry, panel scrolling/resizing, F6 in both directions, opening/closing focus and actual Narrator speech. Earlier owed native gates remain open. Core insertion placement currently refuses; it is surfaced inline, never replaced with guessed geometry.
+
 ## Round 5 — synchronous history, canonical exports and exact copy (2026-10-27)
 
 - Merged origin/main (`5d6a295a5b0c4a9c63701a3f72255cd487d1dcc6`) first and preserved both Windows contract histories. The merge's second parent, not a later moving remote-tracking ref, identifies the integrated source. Step 15 remains unstarted; scheduling that work is lead-owned.
@@ -130,8 +139,9 @@ Historical layout, superseded by ADR-R29 and rounds 2-4. The Clips pane, seconda
 - Imports present an explicit transcription dialog. A compatible local model
   no longer starts transcription on dialog opening. The dialog shows the
   local/cloud data flow, installed-model prerequisite, inline ElevenLabs key
-  entry, and a clear per-take upload checkbox. Neither route starts until
-  Transcribe is chosen; cloud still checks its key and consent first.
+  entry, and the transcription §8.5 first-use ElevenLabs consent page. Neither
+  route starts until Transcribe is chosen; first cloud use instead requires
+  Continue, which stores `transcription.cloudConsent.elevenlabs` before upload.
 - The editor shows the active clip in its context line and keeps playback and
   Export visible. Its clip-footer export opens with Selected clips chosen,
   while the top Export opens with Full edit; the existing `ExportSelection.Scope`
@@ -214,8 +224,9 @@ Historical layout, superseded by ADR-R29 and rounds 2-4. The Clips pane, seconda
   and offers optional grouped AI connector choice, secure key save, status,
   connection test and data-flow consent. New imports enter the transcription
   sheet and start local transcription when a compatible verified local model
-  is installed. Cloud transcription remains an explicit per-take action with
-  key and audio-upload confirmation; its checkbox starts clear for every take.
+  is installed. Cloud transcription remains an explicit per-take action with a key; the
+  first upload requires the §8.5 Continue/Cancel page and stores the schema
+  consent grant. Later takes reuse that grant and still require Transcribe.
   Changing the ElevenLabs residency region recomposes the speech service for
   subsequent takes while keeping an in-flight transcriber alive until shutdown.
   No model was downloaded in verification.

@@ -59,8 +59,10 @@ internal sealed class CliLlmAdapter(ConnectorId id, LlmCatalog catalog, IProcess
                 return new ConnectorStatus.Ready();
             }
             if (result.ExitCode != 0) throw ProbeFailure();
-            IsApiKeyAuth = authText.Contains("API key", StringComparison.OrdinalIgnoreCase);
-            AuthMethod = IsApiKeyAuth ? "apiKey" : "chatgpt";
+            AuthMethod = authSettings["apiKeyText"]?.GetValue<string>() is { Length: > 0 } apiKeyText &&
+                authText.Contains(apiKeyText, StringComparison.OrdinalIgnoreCase) ? "apiKey" :
+                authText.Contains("ChatGPT", StringComparison.OrdinalIgnoreCase) ? "chatgpt" : throw ProbeFailure();
+            IsApiKeyAuth = AuthMethod == "apiKey";
             return new ConnectorStatus.Ready();
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw Failure(LlmErrorKind.Cancelled, "", LlmFeature.Test); }

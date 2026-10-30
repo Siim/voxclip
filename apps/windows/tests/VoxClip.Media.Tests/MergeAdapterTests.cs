@@ -2,7 +2,9 @@ using VoxClip.Cli;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Domain.Transcript;
 using VoxClip.Core.Services.LLM;
+using VoxClip.Core.Services.Models;
 using VoxClip.Core.Services.Speech;
+using VoxClip.Tests.Support;
 using Xunit;
 
 namespace VoxClip.Media.Tests;
@@ -46,6 +48,22 @@ public sealed class MergeAdapterTests
         var failure = Assert.Throws<IOException>(() => MergeApi.Construct<FailingBoundary>(["input"]));
         Assert.Equal("original service failure", failure.Message);
         Assert.Throws<VoxClipException>(() => MergeApi.Invoke<object>(null, null, []));
+    }
+
+    [Fact]
+    public async Task ModelsInstallPrintsTheDownloadTermsAndTheCommandIsTheConsent()
+    {
+        var catalogue = await new ModelCatalog(FixtureLoader.SharedRoot).GetModelsAsync(TestContext.Current.CancellationToken);
+        var model = catalogue.Single(entry => entry.Id == "whisper-small.en-q5_1");
+        var dependencies = ModelDownloadCopy.Dependencies(model, catalogue);
+        using var terms = new StringWriter();
+        Assert.True(await ServicesMergeAdapter.CommandConfirmation(terms)(model, dependencies, TestContext.Current.CancellationToken));
+        Assert.Equal(ModelDownloadCopy.Title(model) + Environment.NewLine + ModelDownloadCopy.Body(model, dependencies) + Environment.NewLine, terms.ToString());
+        Assert.Contains("(190.98 MB)", terms.ToString());
+        Assert.True(await ServicesMergeAdapter.CommandConfirmation(null)(model, dependencies, TestContext.Current.CancellationToken));
+        using var cancel = new CancellationTokenSource();
+        cancel.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => ServicesMergeAdapter.CommandConfirmation(terms)(model, dependencies, cancel.Token));
     }
 
     public sealed class ConstructorBoundary(IKeyProvider keys, IEnumerable<ITranscriber> engines, object? optional)
