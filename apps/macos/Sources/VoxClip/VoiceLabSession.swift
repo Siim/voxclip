@@ -154,7 +154,7 @@ import VoxClipMedia
                 guard let quote else { throw VoiceConsentError.speakerUnavailable }
                 subscription = try await client.plan()
                 let record = try await enrollment.create(quote: quote, approved: true, enabled: enabled, appVersion: AppModel.version)
-                training = []; statementWAV = nil; recorder.discard(); showEnrollment = false
+                finishCreation()
                 message = record.status == .verificationRequired ? "ElevenLabs needs to verify this voice before it can be used. Finish verification on elevenlabs.io, then come back." : "Your voice is ready."
                 await load()
             case .delete(let id):
@@ -248,6 +248,12 @@ import VoxClipMedia
         guard let quote else { return "Check ElevenLabs pricing before creating your voice." }
         return quote.estimate.usd.map { VoiceLabCostPresentation.format($0) } ?? "VoxClip can't tell what this costs. Check ElevenLabs's pricing."
     }
+    func finishCreation() {
+        recordID = UUID().uuidString.lowercased()
+        statement = nil; statementWAV = nil; training = []; quote = nil
+        verified = false; trainingReady = false; recordingTraining = false
+        recorder.discard(); showEnrollment = false
+    }
     func cancelEnrollment() async {
         guard !busy else { return }
         recorder.discard()
@@ -275,7 +281,7 @@ import VoxClipMedia
         busy = true; defer { busy = false }
         await load(force: true)
         if let record = unsavedRecord, !operations.contains(where: { $0.recordID == record.id && !$0.finished }) {
-            unsavedRecord = nil; showEnrollment = false
+            unsavedRecord = nil; finishCreation()
             let saved = records.contains { $0.id == record.id && $0.status != .deleted }
             message = saved ? "Consent record saved. No create request was repeated." : "Voice removed. No create request was repeated."
         } else { message = "The consent record still could not be saved. Retry saving or Remove This Voice. Do not create it again." }

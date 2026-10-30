@@ -10,6 +10,32 @@ import Testing
     private func locations(_ root: URL) -> DataLocations {
         DataLocations(environment: ["VOXCLIP_DATA_DIR": root.path])
     }
+    @Test func reopeningAndCancellingAfterSuccessPreservesTheActiveVoice() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = VoiceConsentStore(locations: locations(root))
+        let session = VoiceLabSession(app: AppModel(), store: store)
+        let wav = try VoiceTrainingAudio.wav([Float](repeating: 0.1, count: 5 * 48_000))
+        let shared = try SharedResources.locate()
+        var json = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: shared.root.appendingPathComponent("fixtures/voice-lab/consent-record.json"))) as? [String: Any])
+        json["recordId"] = session.recordID
+        var statement = try #require(json["statement"] as? [String: Any])
+        statement["audioSha256"] = VoiceLabFingerprint.bytes(wav); json["statement"] = statement
+        let record = try JSONDecoder().decode(VoiceConsentRecord.self, from: JSONSerialization.data(withJSONObject: json))
+        try await store.saveStatement(wav, recordID: record.id); try await store.save(record)
+        session.verified = true; session.trainingReady = true
+        session.finishCreation()
+        #expect(session.recordID != record.id && !session.verified && !session.trainingReady && session.statement == nil)
+        session.showEnrollment = true
+        await session.cancelEnrollment()
+        #expect(try await store.load(record.id) == record)
+        #expect(try await store.statement(recordID: record.id) == wav)
+        await #expect(throws: VoiceConsentError.inactive) { try await store.withdrawCreation(recordID: record.id) }
+        try FileManager.default.removeItem(at: store.root.appendingPathComponent("\(record.id)/statement.wav"))
+        let restarted = VoiceConsentStore(locations: locations(root))
+        await #expect(throws: (any Error).self) { try await restarted.reconcileAbandonedEnrollments() }
+        #expect(FileManager.default.fileExists(atPath: store.root.appendingPathComponent("\(record.id)/record.json").path))
+    }
     @Test func enablingBetaLoadsExistingRecordsBeforeAccountApproval() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }

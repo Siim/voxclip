@@ -191,7 +191,15 @@ extension VoiceConsentStore {
         return value
     }
     public func withdrawCreation(recordID: String, remoteVoiceID: String? = nil, region: ElevenLabsRegion = .default, at date: Date = Date()) throws {
-        if let value = try operations().first(where: { $0.recordID == recordID && $0.kind == .create && ![.withdrawn, .abandoned].contains($0.state) }) {
+        let pending = try operations().first { $0.recordID == recordID && $0.kind == .create && !$0.finished }
+        if pending == nil {
+            let recordFile = try file("record.json", in: directory(recordID))
+            if FileManager.default.fileExists(atPath: recordFile.path) {
+                let record = try JSONDecoder().decode(VoiceConsentRecord.self, from: Data(contentsOf: recordFile))
+                guard record.voiceId == "pending" || record.status == .deleted else { throw VoiceConsentError.inactive }
+            }
+        }
+        if let value = pending {
             _ = try transition(value.id, to: .withdrawing, at: date, remoteVoiceID: remoteVoiceID)
         } else if let voiceID = remoteVoiceID {
             var value = VoiceOperation(id: UUID(), kind: .create, recordID: recordID, region: region, at: date, remoteVoiceID: voiceID)
