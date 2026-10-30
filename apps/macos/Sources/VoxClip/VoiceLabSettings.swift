@@ -1,5 +1,6 @@
 import SwiftUI
 import VoxClipCore
+import VoxClipMedia
 
 @MainActor struct VoiceLabSettings: View {
     @Bindable var app: AppModel
@@ -35,8 +36,9 @@ import VoxClipCore
         }.formStyle(.grouped)
             .alert("Turn on Voice Lab?", isPresented: $confirmBeta) {
                 Button("Turn on") { app.set("voiceLab.betaNoticeAccepted", .bool(true)); app.set("voiceLab.enabled", .bool(true)) }
-                Button("Cancel", role: .cancel) {}
+                Button("Cancel", role: .cancel) {}.keyboardShortcut(.defaultAction)
             } message: { Text(VoiceLabSession.betaCopy) }
+            .onExitCommand { confirmBeta = false }
             .sheet(isPresented: $session.showEnrollment) { CreateVoiceSheet(session: session, shared: app.shared) }
             .sheet(item: Binding(get: { session.showEnrollment ? nil : session.confirmation }, set: { session.confirmation = $0 })) { VoiceLabRequestSheet(session: session, action: $0, shared: app.shared) }
             .task(id: session.enabled) { await session.refreshEnabledState() }
@@ -139,7 +141,13 @@ import VoxClipCore
             var context = base
             if bases.filter({ $0 == base }).count > 1 || row.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 if let voiceID = row.voiceID, !voiceID.isEmpty, voiceID != "pending" {
-                    context += ", voice ID ending \(voiceID.suffix(6))"
+                    let suffix = voiceID.suffix(6)
+                    let collision = rows.enumerated().contains { otherIndex, other in
+                        guard otherIndex != index, bases[otherIndex] == base,
+                              let otherID = other.voiceID, otherID != "pending" else { return false }
+                        return otherID.suffix(6) == suffix
+                    }
+                    context += collision ? ", voice ID \(voiceID)" : ", voice ID ending \(suffix)"
                 } else { context += ", attempt \(row.ordinal)" }
             }
             contexts[row.key] = context
@@ -252,15 +260,22 @@ import VoxClipCore
                 VStack(alignment: .leading, spacing: 14) {
                     Text(VoiceLabSession.noticeCopy)
                     HStack { Link("ElevenLabs terms", destination: URL(string: "https://elevenlabs.io/terms-of-use")!); Link("Prohibited Use Policy", destination: URL(string: "https://elevenlabs.io/use-policy")!) }
+                    Text(session.speakerMessage).font(.caption)
                     attestations
                     if let statement = session.statement {
                         Text(session.verified ? "Training read-aloud · about 90 seconds" : "Read this aloud").font(.headline)
                         Text(session.verified ? session.script : statement.text).textSelection(.enabled).accessibilityIdentifier("voice-consent-teleprompter")
                         if statement.language == "et" { Text("Estonian draft — pending the user's review.").font(.caption) }
                     }
+                    Text("If you use a screen reader, wear headphones so it isn't recorded.").font(.caption).foregroundStyle(.secondary)
                     recordingControls
+                    if session.recorder.failure == .silent {
+                        Text("Silent").font(.headline)
+                    }
                     if let message = session.message { Text(message).textSelection(.enabled) }
-                    Text(session.speakerMessage).font(.caption)
+                    if session.recorder.failure == .silent {
+                        Button("Open Settings") { NSWorkspace.shared.open(MicrophoneError.privacySettingsURL) }
+                    }
                 }.frame(maxWidth: .infinity, alignment: .leading)
             }
             HStack {

@@ -1,7 +1,12 @@
+import Darwin
 import Foundation
 import Observation
 import VoxClipCore
 import VoxClipMedia
+#if canImport(stdio_h) && canImport(xlocale)
+import stdio_h
+import xlocale
+#endif
 
 @MainActor @Observable final class RewriteGenerationSession {
     enum Phase: Equatable {
@@ -116,7 +121,18 @@ import VoxClipMedia
         return "\(factor < 1 ? "Slows" : "Speeds") these \(String(format: "%.1f", audio.fit.plan.windowEnd - audio.fit.plan.windowStart)) s of video \(factor < 1 ? "to" : "up to") \(String(format: "%.2f", factor))× and crops in slightly around your face. Nothing is sent."
     }
     static func pauseFitNote(_ seconds: Double) -> String {
-        "pauses " + (seconds >= 0 ? "+" : "−") + String(format: "%.1f s", locale: Locale(identifier: "en_US_POSIX"), abs(seconds))
+        let sign = seconds >= 0 ? "+" : "−"
+        let magnitude = abs(seconds)
+        let required = withVaList([magnitude]) { vsnprintf_l(nil, 0, nil, "%.1f", $0) }
+        precondition(required >= 0)
+        let byteCount: Int = Int(required)
+        let capacity: Int = byteCount + 1
+        var buffer = [CChar](repeating: 0, count: capacity)
+        let written = withVaList([magnitude]) { vsnprintf_l(&buffer, capacity, nil, "%.1f", $0) }
+        precondition(written == required)
+        let bytes = buffer.prefix(Int(written)).map { UInt8(bitPattern: $0) }
+        let number = String(decoding: bytes, as: UTF8.self)
+        return "pauses \(sign)\(number) s"
     }
     func play(_ row: VoiceLabTakeRow) async {
         guard row.selectable else { return }

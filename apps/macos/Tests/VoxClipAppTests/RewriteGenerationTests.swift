@@ -527,6 +527,18 @@ private final class GenerationDispatchCount: Sendable {
         #expect(RewriteGenerationSession.pauseFitNote(-12.36) == "pauses −12.4 s")
         #expect(RewriteGenerationSession.pauseFitNote(12.36) == "pauses +12.4 s")
     }
+    @Test func pauseFitNotesReplayEverySharedVectorByteForByte() throws {
+        struct Vector: Decodable { let seconds: Double; let expected: String }
+        struct Fixture: Decodable { let cases: [Vector] }
+        let shared = try SharedResources.locate()
+        let data = try Data(contentsOf: shared.root.appendingPathComponent("fixtures/voice-lab/pause-fit-note-cases.json"))
+        let fixture = try JSONDecoder().decode(Fixture.self, from: data)
+        #expect(fixture.cases.count == 18)
+        for vector in fixture.cases {
+            let actual = RewriteGenerationSession.pauseFitNote(vector.seconds)
+            #expect(Array(actual.utf8) == Array(vector.expected.utf8), "seconds=\(vector.seconds), expected=\(vector.expected), actual=\(actual)")
+        }
+    }
     @Test func completionAnnouncementsCountOnlyActualTakes() {
         #expect(RewriteGenerationSession.completionAnnouncement(count: 3, fittedTake: nil) == "Three takes ready.")
         #expect(RewriteGenerationSession.completionAnnouncement(count: 1, fittedTake: nil) == "One take ready.")

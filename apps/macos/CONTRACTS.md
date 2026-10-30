@@ -1,5 +1,38 @@
 # macOS implementation contracts
 
+### 2026-10-30 — sol-mac-vl-followups — recording availability before attestations
+
+- The Create Your Voice sheet shows `speakerMessage` before the attestations, while Record statement stays disabled by `canRecord`. Unavailable model, unsupported selected language and missing calibration all show `The speaker check isn't available yet. Your voice can't be created until it is.` without waiting for a name or any checkbox.
+- No new gate: `VoiceLabSession.speakerReady` reuses `VoiceLabGate.canCheckOwnVoice`, the installed-model flag and `SpeakerModel.calibratedThreshold(language: enrollmentLanguage)`. Calibration verifies its model/preprocessing/threshold evidence; only English is supported, with finite calibrated τ. The same predicate guards statement recording, verify/create preparation and paid approval before services or credentials.
+- The headless UI regression failed before the reason moved above attestations. Eight deterministic session cases cover missing model, Estonian, French and withheld calibration, with zero/all attestations, and fail if credentials are requested. Existing valid-model attestation and gate-matrix tests remain unchanged.
+
+### 2026-10-30 — sol-mac-vl-followups — Silent microphone takes
+
+- The recorder observes the original microphone channels before the mono mixer. Exactly two consecutive seconds of digital zero on every channel latch `Silent`; any nonzero sample on any channel resets the interval. Both interleaved and planar Float32/Int16/Int32 buffers are checked at their actual input rate. Mono cancellation is not silence. The next meter check, or an earlier explicit Stop, discards the take and removes both audio taps exactly once; a new take clears the failure.
+- Copy: `The microphone sent only silence. Check that it isn't muted, and that System Settings → Privacy & Security → Microphone allows VoxClip.` The sheet shows `Silent` and `Open Settings`, opening `x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone`. Failed audio cannot become a verified statement or training take through `finishRecording`.
+- Deterministic sample-path tests cover the frame before and exactly at 2.0 s at 16/44.1/48 kHz, signed zero, stereo cancellation, subnormal nonzero samples, interval reset, both integer formats, immediate Stop, retry and idempotent teardown. Disabling the silence latch made the positive regressions fail (24 assertions); the headless UI guard also checks the raw-input tap, teardown and Settings action. No microphone is opened.
+- Lead fix at merge (review P2): Stop closes the sample sink and reads `silent` and the samples in one lock, so silence that latches while the taps are still attached cannot reach an accepted take; later input and mixer callbacks are ignored. `stopClosesTheSinkSoLateSilenceCannotChangeAnAcceptedTake` covers it.
+
+### 2026-10-30 — sol-mac-vl-followups — opt-in confirmation defaults
+
+- In `Turn on Voice Lab?`, Cancel is the explicit Return/default action; the cancel role and exit handler dismiss without enabling Voice Lab. Turn on remains an explicit click. Non-destructive provider approvals are unchanged.
+- Voice deletion, own-voice audio/local removal and stop-looking already use a Cancel-default request sheet and an Escape dismissal. The headless UI guard checks both surfaces; the new beta-default assertion failed before the change. The existing session `deletionNeverUsesTheDestructiveDefault` test remains in force.
+
+### 2026-10-30 — sol-mac-vl-followups — screen-reader recording guidance
+
+- The Create Your Voice sheet always shows `If you use a screen reader, wear headphones so it isn't recorded.` immediately after the teleprompter (outside its conditional) and before recording controls. It is plain caption-sized secondary text in normal reading order, not a live region or an announcement.
+- `test_enrollment_ui.py` checks exact copy, unconditional placement and ordering headlessly; it fails against the preceding UI, which omitted this text. No microphone or native window is opened.
+
+### 2026-10-30 — sol-mac-vl-followups — accessible-name final fallback
+
+- Per-voice and per-operation actions keep `<action> <voice name>, created <d MMMM yyyy>` with the fixed English month table. A duplicate name/day adds `, voice ID ending <last six>`; if that suffix still collides within the same name/day, use `, voice ID <full voice ID>` instead. Operations without a usable voice ID keep `, attempt <ordinal>`. Visible titles are unchanged.
+- The headless accessibility regression covers two and three same-name/day voices, both unique suffixes and IDs `voice-A123456`, `voice-B123456`, `voice-C123456`. The shared-suffix cases failed before this change; the unchanged attempt and ordinary suffix cases also pass.
+
+### 2026-10-30 — sol-mac-vl-followups — pause-fit printf parity
+
+- `RewriteGenerationSession.pauseFitNote(_:)` replays every shared pause-fit vector byte for byte. It chooses `+` for values >= 0 (including -0), otherwise U+2212, before rounding; the magnitude uses C `vsnprintf_l` with a nil (C) locale and `%.1f`, with a dynamically sized buffer, then ` s`. Foundation's explicit-locale decimal rounding is not this contract.
+- The 18-vector headless replay failed on six vectors before the formatter change; the shared fixture is unchanged. Other explicit-locale Voice Lab copy (`lengthCopy` and take duration) remains outside this pause-note contract and is unchanged.
+
 ### 2026-10-30 — lead — Voice Lab merged on both platforms
 
 - Squash-merged track/sol-mac-voicelab at 03e43989 (W1-W11) and track/sol-win-voicelab at 3f5c3ea6 (c1-c7) together, so the shared request goldens, quote mutations and pause-fit vectors match on both Cores.

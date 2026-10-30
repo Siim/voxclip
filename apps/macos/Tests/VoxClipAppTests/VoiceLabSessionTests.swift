@@ -7,7 +7,7 @@ import Testing
 
 @Suite("Headless Voice Lab session", .serialized, .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil, "Use an isolated VOXCLIP_DATA_DIR for app-model tests; no windows or provider requests are opened."))
 @MainActor struct VoiceLabSessionTests {
-    @Test(arguments: [2, 3]) func recoveryOperationAccessibilityIdentifiesEachVoiceAndAction(count: Int) throws {
+    @Test(arguments: [2, 3], [false, true]) func recoveryOperationAccessibilityIdentifiesEachVoiceAndAction(count: Int, sharedSuffix: Bool) throws {
         let shared = try SharedResources.locate()
         let date = try #require(ISO8601DateFormatter().date(from: "2026-10-30T12:00:00Z"))
         let fixture = try Data(contentsOf: shared.root.appendingPathComponent("fixtures/voice-lab/consent-record.json"))
@@ -15,7 +15,8 @@ import Testing
             var json = try #require(JSONSerialization.jsonObject(with: fixture) as? [String: Any])
             json["recordId"] = UUID().uuidString.lowercased()
             json["voiceName"] = "My voice (VoxClip)"
-            json["voiceId"] = "owned-voice-00000\(index)"
+            let prefix = ["A", "B", "C"][index - 1]
+            json["voiceId"] = sharedSuffix ? "voice-\(prefix)123456" : "owned-voice-00000\(index)"
             json["createdAt"] = "2026-10-30T12:00:00Z"
             return try JSONDecoder().decode(VoiceConsentRecord.self, from: JSONSerialization.data(withJSONObject: json))
         }
@@ -30,7 +31,8 @@ import Testing
             let labels = try records.enumerated().map { index, record in
                 let context = try #require(voices["record-\(record.id)"])
                 let label = VoiceLabSettings.actionAccessibilityLabel(action, context: context)
-                #expect(label == "\(action) My voice (VoxClip), created 30 October 2026, voice ID ending 00000\(index + 1)")
+                let identifier = sharedSuffix ? "voice ID \(record.voiceId)" : "voice ID ending 00000\(index + 1)"
+                #expect(label == "\(action) My voice (VoxClip), created 30 October 2026, \(identifier)")
                 return label
             }
             #expect(Set(labels).count == count)
@@ -179,6 +181,45 @@ import Testing
         for threshold: Double? in [nil, .nan, -.infinity, -1, 1.1] {
             #expect(!VoiceLabGate.canCheckOwnVoice(speakerAvailable: true, calibratedThreshold: threshold, language: "en"))
         }
+    }
+    @Test(arguments: ["missing-model", "et", "fr", "uncalibrated"], [false, true])
+    func unavailableSpeakerReasonDoesNotWaitForAttestationsOrPaidSteps(condition: String, attested: Bool) async throws {
+        let app = AppModel()
+        app.settings.values["voiceLab.enabled"] = .bool(true)
+        let model = try SpeakerModelCatalog(shared: SharedResources.locate()).entry
+        if condition == "uncalibrated" {
+            var object = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(model)) as? [String: Any])
+            object["threshold"] = NSNull()
+            app.speakerModelLibrary.model = try JSONDecoder().decode(SpeakerModel.self, from: JSONSerialization.data(withJSONObject: object))
+        } else { app.speakerModelLibrary.model = model }
+        app.speakerModelLibrary.installed = condition != "missing-model"
+        let session = VoiceLabSession(app: app)
+        session.displayName = "Example"
+        session.ownVoice = attested; session.adult = attested; session.ownVideosOnly = attested
+        let language = ["et", "fr"].contains(condition) ? condition : "en"
+        let statement = VoiceConsentStatement(language: language, text: "Offline statement fixture", nonce: [])
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [VoiceLabAppHTTP.self]
+        let client = ElevenLabsVoiceLab(keys: VoiceLabNoPaidKeys(), session: URLSession(configuration: configuration))
+        let wav = try VoiceTrainingAudio.wav([Float](repeating: 0.1, count: 5 * 48_000))
+        session.stageVerificationForTests(statement: statement, wav: wav, client: client)
+        let reason = VoiceConsentError.speakerUnavailable.localizedDescription
+        #expect(!session.speakerReady && !session.canRecord && !session.canCreate)
+        #expect(session.speakerMessage == reason)
+        await session.beginStatement()
+        #expect(!session.recorder.recording && session.message == reason)
+        for action: VoiceLabSession.Request in [.verify, .create] {
+            session.stageVerificationForTests(statement: statement, wav: wav, client: client)
+            let task = session.request(action)
+            #expect(task == nil && session.confirmation == nil)
+            await task?.value
+            await session.approve(action)
+            #expect(session.message == reason && !session.busy)
+            #expect(!app.bool("voiceLab.providerConsent.elevenlabs"))
+        }
+        await session.prepareCreation()
+        #expect(session.confirmation == nil && session.message == reason)
+        session.stopRecovery()
     }
     @Test func startupAndSettingsFlushDoNotAwaitRemoteRecovery() async {
         let app = AppModel(), barrier = SessionRecoveryBarrier()
@@ -340,6 +381,12 @@ import Testing
 
 private struct VoiceLabAppKeys: KeyProvider {
     func key(for provider: String) async throws -> String? { "synthetic-journal-ui-key" }
+}
+private struct VoiceLabNoPaidKeys: KeyProvider {
+    func key(for provider: String) async throws -> String? {
+        Issue.record("Unavailable speaker checks must not reach credentials or provider calls")
+        return nil
+    }
 }
 private final class VoiceLabAppHTTP: URLProtocol, @unchecked Sendable {
     override class func canInit(with request: URLRequest) -> Bool { true }

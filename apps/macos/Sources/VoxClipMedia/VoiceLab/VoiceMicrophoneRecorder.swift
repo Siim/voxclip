@@ -3,16 +3,51 @@ import Foundation
 import Observation
 import Synchronization
 
-private final class VoiceMicrophoneSamples: Sendable {
-    struct State: Sendable { var samples: [Float] = []; var level: Float = 0 }
+final class VoiceMicrophoneSamples: Sendable {
+    struct State: Sendable {
+        var samples: [Float] = []
+        var level: Float = 0
+        var zeroFrames = 0
+        var inputRate = 0.0
+        var silent = false
+        /// Set by stop: callbacks still in flight after the final reading change nothing.
+        var closed = false
+    }
     let state = Mutex(State())
     let maximum: Int
     init(seconds: Int) { maximum = seconds * 48_000 }
+    func observeInput(_ buffer: AVAudioPCMBuffer) {
+        if let channels = buffer.floatChannelData { observeInput(channels, buffer: buffer) }
+        else if let channels = buffer.int16ChannelData { observeInput(channels, buffer: buffer) }
+        else if let channels = buffer.int32ChannelData { observeInput(channels, buffer: buffer) }
+    }
+    private func observeInput<Sample: Numeric>(_ channels: UnsafePointer<UnsafeMutablePointer<Sample>>, buffer: AVAudioPCMBuffer) {
+        let rate = buffer.format.sampleRate
+        let channelCount = Int(buffer.format.channelCount)
+        let interleaved = buffer.format.isInterleaved
+        let stride = interleaved ? channelCount : 1
+        let requiredFrames: Double = 2 * rate
+        guard rate.isFinite, rate > 0, channelCount > 0 else { return }
+        state.withLock { value in
+            guard !value.silent, !value.closed else { return }
+            if value.inputRate != rate { value.zeroFrames = 0; value.inputRate = rate }
+            for frame in 0..<Int(buffer.frameLength) {
+                var zero = true
+                for channel in 0..<channelCount {
+                    let dataChannel = interleaved ? 0 : channel
+                    let offset = frame * stride + (interleaved ? channel : 0)
+                    if channels[dataChannel][offset] != .zero { zero = false; break }
+                }
+                value.zeroFrames = zero ? value.zeroFrames + 1 : 0
+                if Double(value.zeroFrames) >= requiredFrames { value.silent = true; return }
+            }
+        }
+    }
     func append(_ buffer: AVAudioPCMBuffer) {
         guard let channel = buffer.floatChannelData?[0] else { return }
         state.withLock { value in
             let count = min(Int(buffer.frameLength), maximum - value.samples.count)
-            guard count > 0 else { return }
+            guard !value.closed, count > 0 else { return }
             let incoming = UnsafeBufferPointer(start: channel, count: count)
             value.samples.append(contentsOf: incoming)
             value.level = sqrt(incoming.reduce(Float(0)) { $0 + $1 * $1 } / Float(count))
@@ -57,11 +92,12 @@ private final class VoiceMicrophoneSamples: Sendable {
         engine.connect(mixer, to: engine.mainMixerNode, format: mono)
         engine.mainMixerNode.outputVolume = 0
         let sink = VoiceMicrophoneSamples(seconds: maximumSeconds)
+        input.installTap(onBus: 0, bufferSize: 1_024, format: format) { buffer, _ in sink.observeInput(buffer) }
         mixer.installTap(onBus: 0, bufferSize: 1_024, format: mono) { buffer, _ in sink.append(buffer) }
         engine.prepare()
-        do { try engine.start() } catch { mixer.removeTap(onBus: 0); throw MicrophoneError.unavailable }
+        do { try engine.start() } catch { input.removeTap(onBus: 0); mixer.removeTap(onBus: 0); throw MicrophoneError.unavailable }
         self.engine = engine; self.sink = sink; samples = []; seconds = 0; level = 0; recording = true
-        teardown = { mixer.removeTap(onBus: 0); engine.stop() }
+        teardown = { input.removeTap(onBus: 0); mixer.removeTap(onBus: 0); engine.stop() }
         let id = UUID(); takeID = id
         lastCount = 0; lastProgress = .now
         deadline = lastProgress.advanced(by: .seconds(maximumSeconds)); maximumSamples = maximumSeconds * 48_000
@@ -82,14 +118,21 @@ private final class VoiceMicrophoneSamples: Sendable {
     }
     public func stop() {
         guard recording else { releaseResources(); return }
-        samples = sink?.state.withLock { $0.samples } ?? []
+        // One reading closes the sink, so silence that latches after it can't slip into an accepted take.
+        let final = sink?.state.withLock { value -> (silent: Bool, samples: [Float]) in
+            value.closed = true
+            return (value.silent, value.samples)
+        }
+        if final?.silent == true { failInput(.silent); return }
+        samples = final?.samples ?? []
         seconds = Double(samples.count) / 48_000
         recording = false; releaseResources()
     }
     public func discard() { stop(); samples = []; seconds = 0 }
     func checkInput(at now: ContinuousClock.Instant) {
         guard recording, let sink else { return }
-        let reading = sink.state.withLock { ($0.samples.count, $0.level) }
+        let reading = sink.state.withLock { ($0.samples.count, $0.level, $0.silent) }
+        if reading.2 { failInput(.silent); return }
         seconds = Double(reading.0) / 48_000
         level = min(1, Double(reading.1) * 5)
         if reading.0 != lastCount { lastCount = reading.0; lastProgress = now }
@@ -97,9 +140,9 @@ private final class VoiceMicrophoneSamples: Sendable {
         if lastProgress.duration(to: now) >= .milliseconds(1_500) { failInput(); return }
         if now >= deadline { stop() }
     }
-    private func failInput() {
+    private func failInput(_ error: MicrophoneError = .deviceLost) {
         guard recording else { return }
-        failure = .deviceLost
+        failure = error
         recording = false; samples = []; seconds = 0
         releaseResources()
     }
@@ -111,9 +154,9 @@ private final class VoiceMicrophoneSamples: Sendable {
         engine = nil; sink = nil; level = 0
     }
     #if DEBUG
-    func simulateTake(samples: [Float], at now: ContinuousClock.Instant, teardown: @escaping @MainActor () -> Void) {
+    func simulateTake(samples: [Float], input: VoiceMicrophoneSamples? = nil, at now: ContinuousClock.Instant, teardown: @escaping @MainActor () -> Void) {
         discard(); failure = nil
-        let sink = VoiceMicrophoneSamples(seconds: 30)
+        let sink = input ?? VoiceMicrophoneSamples(seconds: 30)
         sink.state.withLock { $0.samples = samples }
         self.sink = sink; self.teardown = teardown
         recording = true; lastCount = samples.count; lastProgress = now
@@ -123,12 +166,14 @@ private final class VoiceMicrophoneSamples: Sendable {
 }
 
 public enum MicrophoneError: LocalizedError, Equatable {
-    case permission, unavailable, deviceLost
+    case permission, unavailable, deviceLost, silent
+    package static let privacySettingsURL = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")!
     public var errorDescription: String? {
         switch self {
         case .permission: "Microphone access is off. Allow VoxClip in System Settings → Privacy & Security → Microphone to record your consent."
         case .unavailable: "The microphone isn't available. Check your input device and try again."
         case .deviceLost: "The microphone stopped sending audio. This take was discarded. Check your input device and record again."
+        case .silent: "The microphone sent only silence. Check that it isn't muted, and that System Settings → Privacy & Security → Microphone allows VoxClip."
         }
     }
 }
