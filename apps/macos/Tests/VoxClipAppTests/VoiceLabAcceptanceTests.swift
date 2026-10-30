@@ -33,6 +33,37 @@ private struct AcceptanceTestKeys: KeyProvider {
         #expect(results.count == 8)
         for result in results { #expect(result.passed, Comment(rawValue: result.name)) }
     }
+    @Test func interiorClipBoundariesSurviveReplacementUndoAndRedo() throws {
+        var project = try fixture()
+        var start = try #require(project.edits.clips.first), end = start
+        start.id = "inside-start"; start.startWordId = "w5"
+        end.id = "inside-end"; end.endWordId = "w4"
+        project.edits.clips = [start, end]
+        let model = EditorModel(document: VoxClipDocument(project: project, demo: true), app: AppModel(), preview: DemoPreviewEngine())
+        defer { model.close() }
+        let text = TranscriptNSTextView(usingTextLayoutManager: true), renderer = TranscriptRenderer()
+        text.model = model; renderer.text = text
+        let undo = UndoManager(); undo.groupsByEvent = false; model.undoManager = undo
+        func assertMarkers(ai: Bool) throws {
+            renderer.rebuild(model: model)
+            let leading = try #require(text.map.span(id: "clip-start:inside-start"))
+            let trailing = try #require(text.map.span(id: "clip-end:inside-end"))
+            let word = try #require(text.map.span(id: "w4"))
+            #expect(text.map.spans.filter { $0.id == leading.id || $0.id == trailing.id }.count == 2)
+            if ai {
+                #expect(NSMaxRange(leading.range) <= word.range.location)
+                #expect(trailing.range.location >= NSMaxRange(word.range))
+                #expect(text.map.span(id: "w5")?.range == word.range)
+            }
+        }
+        try assertMarkers(ai: true)
+        undo.beginUndoGrouping()
+        try model.applyVoiceLab(.setEnabled(segmentID: project.voiceLab.segments[0].id, enabled: false))
+        undo.endUndoGrouping()
+        try assertMarkers(ai: false)
+        undo.undo(); try assertMarkers(ai: true)
+        undo.redo(); try assertMarkers(ai: false)
+    }
     private func fixture() throws -> Project {
         let shared = try SharedResources.locate()
         return try JSONProjectStore.decode(Data(contentsOf: shared.root.appendingPathComponent("fixtures/voice-lab/passage-render-v3.voxclip")))
@@ -83,7 +114,8 @@ private struct AcceptanceTestKeys: KeyProvider {
             }
         }
         #expect(model.exportDisclosure([.fullEdit, .clip("clip-main")]) == expected)
-        try model.applyVoiceLab(.setEnabled(segmentID: project.voiceLab.segments[0].id, enabled: false))
+        var disabled = project; disabled.voiceLab.segments[0].enabled = false
+        model.replace(disabled, name: "Disable missing replacement")
         #expect(model.exportDisclosure([.fullEdit, .clip("clip-main")]) == nil)
     }
     @Test(arguments: [false, true])

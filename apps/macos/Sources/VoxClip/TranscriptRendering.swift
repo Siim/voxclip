@@ -159,12 +159,18 @@ struct TranscriptAppearance: Equatable {
             if let segment = replacements.first(where: { $0.replace.firstWordId == word.id }), let replacement = segment.words {
                 let end = (transcript.firstIndex { $0.id == segment.replace.lastWordId } ?? position) + 1
                 let ids = transcript[position..<end].map(\.id)
+                for covered in transcript[(position + 1)..<end] {
+                    for clip in starts[covered.id] ?? [] {
+                        marker("clip-start:\(clip.id)", kind: .badge(number: model.clipNumber(clip.id) ?? 1, clipID: clip.id,
+                            suggested: clip.origin == .ai && !clip.selected), width: 22)
+                    }
+                }
                 let content = replacement.map(\.text).joined(separator: " ")
                 let range = NSRange(location: value.length, length: content.utf16.count)
                 spans.append(TranscriptSpan(id: word.id, range: range, pause: false, ids: ids))
                 value.append(NSAttributedString(string: content + " ", attributes: body))
                 words[word.id] = word; positions[word.id] = position; displayedText[word.id] = content
-                endMarkers(transcript[end - 1].id)
+                for covered in transcript[position..<end] { endMarkers(covered.id) }
                 position = end
                 continue
             }
