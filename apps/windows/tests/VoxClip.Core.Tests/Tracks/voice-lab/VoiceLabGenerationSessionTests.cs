@@ -8,6 +8,27 @@ namespace VoxClip.Core.Tests.Tracks.VoiceLab;
 
 public sealed class VoiceLabGenerationSessionTests
 {
+    [Fact]
+    public async Task CancellationDuringTheLiveCostReadCannotLaunchAndKeepsTheQuote()
+    {
+        var runner = new Runner();
+        var session = new VoiceLabGenerationSession(runner);
+        var quote = await session.UpdateInputsAsync(Input(), ct: Token);
+        var method = typeof(VoiceLabGenerationSession).GetMethod("CancelAsync", Type.EmptyTypes);
+        Assert.NotNull(method);
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var resume = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        runner.Refresh = async (cap, _) => { entered.SetResult(); await resume.Task; return cap; };
+        var execution = session.ContinueAsync(Token);
+        await entered.Task.WaitAsync(Token);
+        var cleanup = method.CreateDelegate<Func<Task>>(session)();
+        Assert.False(cleanup.IsCompleted);
+        resume.SetResult();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => execution);
+        await cleanup;
+        Assert.Same(quote, session.PendingQuote); Assert.NotNull(session.Cost);
+        Assert.Equal(0, runner.Sends);
+    }
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -132,6 +153,13 @@ public sealed class VoiceLabGenerationSessionTests
             if (Resume is not null) await Resume.Task.WaitAsync(ct);
             Sends += quote.Takes.Count;
             return new(quote.Takes.Select(take => new VoiceLabTakeRow(Guid.NewGuid(), take.Index, take.Seed)).ToArray(), VoiceLabTakeRunEnd.Completed);
+        }
+        public async Task<VoiceLabTakeRunResult> ExecuteWithDispatchAsync(VoiceLabTakeRunQuote quote, VoiceLabRunDispatch dispatch,
+            Func<IReadOnlyList<VoiceLabTakeRow>, Task>? progress = null, CancellationToken ct = default)
+        {
+            if (FailBeforeStart) throw new VoiceLabException(VoiceLabErrorKind.ConsentRequired);
+            await dispatch.AuthorizeAsync(ct);
+            return await dispatch.Start(() => ExecuteAsync(quote, true, progress, ct), ct);
         }
         public Task DiscardPendingAsync() { Pending = null; return Task.CompletedTask; }
         public void InvalidatePreparation() => Pending = null;
@@ -352,7 +380,7 @@ public sealed class VoiceLabGenerationSessionTests
         await session.TryAnotherAsync(Input(), ct: Token);
         runner.FailBeforeStart = true;
         await Assert.ThrowsAsync<VoiceLabException>(() => session.ContinueAsync(Token));
-        Assert.Same(previous, session.Rows); Assert.Null(session.PendingQuote);
+        Assert.Same(previous, session.Rows); Assert.NotNull(session.PendingQuote); Assert.NotNull(session.Cost);
         Assert.Equal(3, runner.Sends);
     }
 

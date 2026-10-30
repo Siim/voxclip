@@ -18,6 +18,212 @@ namespace VoxClip.Media.Tests.VoiceLab;
 
 public sealed class VoiceLabTakeRunTests
 {
+    [Fact]
+    public async Task UnreadableSpendAtTransportKeepsReviewAndExposesPreparationRetry()
+    {
+        await using var fixture = new Fixture();
+        await fixture.Prepare();
+        var session = new VoiceLabGenerationSession(fixture.Run);
+        await session.UpdateInputsAsync(fixture.Input, ct: Token); await session.ContinueAsync(Token);
+        var previous = session.Rows;
+        var scratch = fixture.Run.Scratch(previous[0].Id)!;
+        await session.UpdateInputsAsync(fixture.Input, new(0.10m, 0), Token);
+        fixture.Keys.Suspension = _ => { fixture.Keys.Suspension = null; File.WriteAllText(fixture.Ledger.FilePath, "not json"); return Task.CompletedTask; };
+        await Assert.ThrowsAsync<VoiceLabException>(() => session.ContinueAsync(Token));
+        Assert.Same(previous, session.Rows); Assert.True(scratch.IsValid);
+        Assert.Single(fixture.Remote.Seeds);
+        Assert.Null(session.PendingQuote); Assert.NotNull(session.PreparationFailure);
+        File.Delete(fixture.Ledger.FilePath);
+        await session.UpdateInputsAsync(fixture.Input, new(0.10m, 0), Token);
+        Assert.NotNull(session.PendingQuote); Assert.NotNull(session.Cost); Assert.Null(session.PreparationFailure);
+    }
+    [Fact]
+    public async Task CancellationDuringFirstTransportConfirmationWaitsAndKeepsPlayingReview()
+    {
+        await using var fixture = new Fixture();
+        await fixture.Prepare();
+        var session = new VoiceLabGenerationSession(fixture.Run);
+        await session.UpdateInputsAsync(fixture.Input, ct: Token); await session.ContinueAsync(Token);
+        var previous = session.Rows;
+        var scratch = fixture.Run.Scratch(previous[0].Id)!;
+        var playing = true;
+        using var consumer = scratch.AttachConsumer(() => { playing = false; return Task.CompletedTask; });
+        session.SelectTake(previous[0].Id); session.AuditionTake(previous[0].Id);
+        var confirm = typeof(VoiceLabGenerationSession).GetProperty("ConfirmCostAsync");
+        var cancel = typeof(VoiceLabGenerationSession).GetMethod("CancelAsync", Type.EmptyTypes);
+        Assert.NotNull(confirm); Assert.NotNull(cancel);
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var resume = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        confirm.SetValue(session, (Func<string, CancellationToken, Task<bool>>)((_, _) => { entered.SetResult(); return resume.Task; }));
+        var quote = await session.UpdateInputsAsync(fixture.Input, new(0.10m, 0), Token);
+        fixture.Keys.Suspension = async _ =>
+        {
+            fixture.Keys.Suspension = null;
+            var total = await fixture.Ledger.TotalAsync("elevenlabs", DateTimeOffset.UnixEpoch, Token);
+            await fixture.Ledger.RecordAsync(new("elevenlabs", "fixture", 1, "call", 0.10m - quote.Estimate.Usd!.Value / 2 - total!.Usd, null, "fixture"), DateTimeOffset.UnixEpoch, Token);
+        };
+        var execution = session.ContinueAsync(Token);
+        await entered.Task.WaitAsync(Token);
+        var cleanup = cancel.CreateDelegate<Func<Task>>(session)();
+        Assert.False(cleanup.IsCompleted);
+        resume.SetResult(true);
+        var error = await Record.ExceptionAsync(async () => await execution);
+        Assert.True(error is OperationCanceledException or VoiceLabException { Kind: VoiceLabErrorKind.Cancelled });
+        await cleanup;
+        Assert.Same(previous, session.Rows); Assert.True(scratch.IsValid); Assert.True(playing);
+        Assert.Equal(previous[0].Id, session.SelectedTakeId); Assert.Equal(previous[0].Id, session.AuditionedTakeId);
+        Assert.Single(fixture.Remote.Seeds);
+        Assert.NotNull(session.PendingQuote); Assert.NotNull(session.Cost);
+        Assert.Equal(VoiceLabGenerationAction.ConfirmationRequired, await session.ContinueAsync(Token));
+    }
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task FirstTransportCapDecisionKeepsReviewedScratchUntilPaidStart(bool approve)
+    {
+        await using var fixture = new Fixture();
+        await fixture.Prepare();
+        var session = new VoiceLabGenerationSession(fixture.Run);
+        await session.UpdateInputsAsync(fixture.Input, ct: Token);
+        await session.ContinueAsync(Token);
+        var previous = session.Rows;
+        var prior = previous[0];
+        session.SelectTake(prior.Id); session.AuditionTake(prior.Id);
+        var scratch = fixture.Run.Scratch(prior.Id)!;
+        var playing = true;
+        using var consumer = scratch.AttachConsumer(() => { playing = false; return Task.CompletedTask; });
+        var quote = await session.UpdateInputsAsync(fixture.Input, new(0.10m, 0), Token);
+        fixture.Keys.Suspension = async _ =>
+        {
+            fixture.Keys.Suspension = null;
+            var total = await fixture.Ledger.TotalAsync("elevenlabs", DateTimeOffset.UnixEpoch, Token);
+            await fixture.Ledger.RecordAsync(new("elevenlabs", "fixture", 1, "call", 0.10m - quote.Estimate.Usd!.Value / 2 - total!.Usd, null, "fixture"), DateTimeOffset.UnixEpoch, Token);
+        };
+        var confirmations = 0;
+        var confirm = typeof(VoiceLabGenerationSession).GetProperty("ConfirmCostAsync");
+        Assert.NotNull(confirm);
+        confirm.SetValue(session, (Func<string, CancellationToken, Task<bool>>)((_, _) =>
+        {
+            confirmations++;
+            Assert.Same(previous, session.Rows);
+            Assert.Equal(prior.Id, session.SelectedTakeId); Assert.Equal(prior.Id, session.AuditionedTakeId);
+            Assert.True(scratch.IsValid); Assert.True(playing);
+            Assert.Single(fixture.Remote.Seeds);
+            return Task.FromResult(approve);
+        }));
+        var outcome = await session.ContinueAsync(Token);
+        Assert.Equal(1, confirmations);
+        if (approve)
+        {
+            Assert.Equal(VoiceLabGenerationAction.Completed, outcome);
+            Assert.False(scratch.IsValid); Assert.False(playing);
+            Assert.DoesNotContain(session.Rows, row => row.Id == prior.Id);
+            Assert.Equal(2, fixture.Remote.Seeds.Count);
+        }
+        else
+        {
+            Assert.Equal(VoiceLabGenerationAction.ConfirmationRequired, outcome);
+            Assert.Same(previous, session.Rows); Assert.True(scratch.IsValid); Assert.True(playing);
+            Assert.Same(quote, session.PendingQuote); Assert.NotNull(session.Cost);
+            Assert.Equal(VoiceLabGenerationAction.ConfirmationRequired, await session.ContinueAsync(Token));
+            Assert.Single(fixture.Remote.Seeds);
+            await fixture.Run.PublishForAcceptanceAsync(prior.Id, DateTimeOffset.UnixEpoch, Token);
+        }
+    }
+    [Theory]
+    [InlineData("approval")]
+    [InlineData("launch")]
+    [InlineData("authorization")]
+    public async Task CancelledReplacementRequotesWithoutRetiringReviewedAudition(string point)
+    {
+        await using var fixture = new Fixture();
+        await fixture.Prepare();
+        var session = new VoiceLabGenerationSession(fixture.Run);
+        await session.UpdateInputsAsync(fixture.Input, ct: Token);
+        await session.ContinueAsync(Token);
+        var previous = session.Rows;
+        var prior = previous[0];
+        session.SelectTake(prior.Id); session.AuditionTake(prior.Id);
+        var scratch = fixture.Run.Scratch(prior.Id)!;
+        var playing = true;
+        using var consumer = scratch.AttachConsumer(() => { playing = false; return Task.CompletedTask; });
+        var old = session.PendingQuote!;
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var resume = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        fixture.Run.Suspension = async stage => { if (stage == point) { fixture.Run.Suspension = null; entered.SetResult(); await resume.Task; } };
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(Token);
+        var execution = session.ContinueAsync(cancellation.Token);
+        await entered.Task.WaitAsync(Token);
+        cancellation.Cancel(); resume.SetResult();
+        _ = await Record.ExceptionAsync(async () => await execution);
+        Assert.Same(previous, session.Rows);
+        Assert.Equal(prior.Id, session.SelectedTakeId); Assert.Equal(prior.Id, session.AuditionedTakeId);
+        Assert.True(scratch.IsValid); Assert.True(playing);
+        Assert.NotNull(session.PendingQuote); Assert.NotEqual(old.Id, session.PendingQuote.Id);
+        Assert.NotNull(session.Cost); Assert.False(session.IsPreparing);
+        Assert.Single(fixture.Remote.Seeds);
+        await fixture.Run.PublishForAcceptanceAsync(prior.Id, DateTimeOffset.UnixEpoch, Token);
+    }
+    [Fact]
+    public async Task SessionCancelKeepsPlayingScratchUntilExplicitInvalidation()
+    {
+        await using var fixture = new Fixture();
+        await fixture.Prepare();
+        var session = new VoiceLabGenerationSession(fixture.Run);
+        await session.UpdateInputsAsync(fixture.Input, ct: Token); await session.ContinueAsync(Token);
+        var prior = session.Rows[0];
+        session.SelectTake(prior.Id); session.AuditionTake(prior.Id);
+        var scratch = fixture.Run.Scratch(prior.Id)!;
+        var playing = true;
+        using var consumer = scratch.AttachConsumer(() => { playing = false; return Task.CompletedTask; });
+        var cancel = typeof(VoiceLabGenerationSession).GetMethod("CancelAsync", Type.EmptyTypes);
+        var invalidate = typeof(VoiceLabGenerationSession).GetMethod("InvalidateAsync", Type.EmptyTypes);
+        Assert.NotNull(cancel); Assert.NotNull(invalidate);
+        await cancel.CreateDelegate<Func<Task>>(session)();
+        Assert.True(scratch.IsValid); Assert.True(playing);
+        Assert.Equal(prior.Id, session.SelectedTakeId); Assert.Equal(prior.Id, session.AuditionedTakeId);
+        Assert.NotNull(session.PendingQuote); Assert.NotNull(session.Cost);
+        await invalidate.CreateDelegate<Func<Task>>(session)();
+        Assert.False(scratch.IsValid); Assert.False(playing); Assert.Empty(session.Rows);
+    }
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CancellationRacingFirstTransportPreservesOnlyUnlaunchedTakes(bool afterTransport)
+    {
+        await using var fixture = new Fixture();
+        await fixture.Prepare();
+        var session = new VoiceLabGenerationSession(fixture.Run);
+        await session.UpdateInputsAsync(fixture.Input, ct: Token); await session.ContinueAsync(Token);
+        var previous = session.Rows;
+        var scratch = fixture.Run.Scratch(previous[0].Id)!;
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(Token);
+        var reviewPresentAtTransport = false;
+        if (afterTransport) fixture.Remote.OnTts = () => { reviewPresentAtTransport = scratch.IsValid; cancellation.Cancel(); };
+        else fixture.Keys.Suspension = _ => { fixture.Keys.Suspension = null; cancellation.Cancel(); return Task.CompletedTask; };
+        _ = await Record.ExceptionAsync(async () => await session.ContinueAsync(cancellation.Token));
+        Assert.Equal(afterTransport ? 2 : 1, fixture.Remote.Seeds.Count);
+        Assert.Equal(!afterTransport, scratch.IsValid);
+        if (afterTransport) Assert.True(reviewPresentAtTransport);
+        if (!afterTransport) Assert.Same(previous, session.Rows);
+        Assert.NotNull(session.PendingQuote); Assert.NotNull(session.Cost);
+    }
+    [Fact]
+    public async Task ExpiredQuoteAtFirstTransportKeepsPriorAuditionAndAutomaticallyRequotes()
+    {
+        await using var fixture = new Fixture();
+        await fixture.Prepare();
+        var session = new VoiceLabGenerationSession(fixture.Run);
+        await session.UpdateInputsAsync(fixture.Input, ct: Token); await session.ContinueAsync(Token);
+        var previous = session.Rows;
+        var scratch = fixture.Run.Scratch(previous[0].Id)!;
+        var old = session.PendingQuote!;
+        fixture.Keys.Suspension = _ => { fixture.Keys.Suspension = null; fixture.Clock.Advance(300); return Task.CompletedTask; };
+        await Assert.ThrowsAsync<VoiceLabException>(() => session.ContinueAsync(Token));
+        Assert.True(scratch.IsValid); Assert.Same(previous, session.Rows);
+        Assert.NotNull(session.PendingQuote); Assert.NotEqual(old.Id, session.PendingQuote.Id);
+        Assert.Single(fixture.Remote.Seeds);
+    }
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -98,6 +304,7 @@ public sealed class VoiceLabTakeRunTests
         internal int Mismatches;
         internal double Duration = 4;
         internal bool MissingAlignment;
+        internal Action? OnTts;
         private static HttpResponseMessage Json(object value, int status = 200) => new((HttpStatusCode)status) { Content = new StringContent(JsonSerializer.Serialize(value), Encoding.UTF8, "application/json") };
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
         {
@@ -110,6 +317,7 @@ public sealed class VoiceLabTakeRunTests
             {
                 var body = JsonNode.Parse(bytes)!;
                 Seeds.Add(body["seed"]!.GetValue<uint>());
+                OnTts?.Invoke();
                 Assert.Null(body["previous_text"]);
                 Assert.Null(body["next_text"]);
                 if (Seeds.Count == 1 && FirstStatus != 200) return Json(new { }, FirstStatus);

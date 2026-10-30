@@ -8,16 +8,13 @@ public interface IVoiceLabTakeRunner
         Func<IReadOnlyList<VoiceLabTakeRow>, Task>? progress = null, CancellationToken ct = default);
     Task DiscardPendingAsync();
     void InvalidatePreparation();
+    Task InvalidateAsync() { InvalidatePreparation(); return DiscardPendingAsync(); }
     bool IsQuoteFresh(VoiceLabTakeRunQuote quote);
     Task<VoiceLabMonthlyCap?> RefreshMonthlyCapAsync(VoiceLabMonthlyCap? cap, CancellationToken ct = default);
     async Task<decimal?> ReadMonthlySpendAsync(VoiceLabMonthlyCap? fallback, CancellationToken ct = default) =>
         (await RefreshMonthlyCapAsync(fallback ?? new(decimal.MaxValue, 0), ct).ConfigureAwait(false))?.Spent;
-    async Task<VoiceLabTakeRunResult> ExecuteWithDispatchAsync(VoiceLabTakeRunQuote quote, VoiceLabRunDispatch dispatch,
-        Func<IReadOnlyList<VoiceLabTakeRow>, Task>? progress = null, CancellationToken ct = default)
-    {
-        await dispatch.AuthorizeAsync(ct).ConfigureAwait(false);
-        return await dispatch.Start(() => ExecuteAsync(quote, true, progress, ct), ct).ConfigureAwait(false);
-    }
+    Task<VoiceLabTakeRunResult> ExecuteWithDispatchAsync(VoiceLabTakeRunQuote quote, VoiceLabRunDispatch dispatch,
+        Func<IReadOnlyList<VoiceLabTakeRow>, Task>? progress = null, CancellationToken ct = default);
 }
 
 public enum VoiceLabGenerationAction { Completed, ConfirmationRequired }
@@ -30,7 +27,9 @@ public sealed class VoiceLabGenerationSession(IVoiceLabTakeRunner runner)
     private long revision;
     private bool executing;
     private bool preparing;
+    private Guid? continuing;
     private CancellationTokenSource? active;
+    private TaskCompletionSource? executionFinished;
     private VoiceLabTakeInput? input;
     private VoiceLabMonthlyCap? cap;
     private VoiceLabTakeRunQuote? quote;
@@ -58,6 +57,32 @@ public sealed class VoiceLabGenerationSession(IVoiceLabTakeRunner runner)
 
     public Task<VoiceLabGenerationAction> TryAnotherAsync(CancellationToken ct = default) => ContinueAsync(ct);
     public Task<VoiceLabGenerationAction> GenerateAgainAsync(CancellationToken ct = default) => ContinueAsync(ct);
+    public async Task CancelAsync()
+    {
+        Task? completion;
+        lock (sync)
+        {
+            if (!executing && continuing is null) return;
+            Cancel(active);
+            completion = executionFinished?.Task;
+        }
+        if (completion is not null) await completion.ConfigureAwait(false);
+    }
+    public async Task InvalidateAsync()
+    {
+        lock (sync)
+        {
+            revision++;
+            runner.InvalidatePreparation();
+            Cancel(active);
+            quote = null; cost = null; input = null; preparing = false;
+            continuing = null;
+            rows = Array.Empty<VoiceLabTakeRow>(); selectedTakeId = null; auditionedTakeId = null;
+        }
+        await serial.WaitAsync().ConfigureAwait(false);
+        try { await runner.InvalidateAsync().ConfigureAwait(false); }
+        finally { serial.Release(); }
+    }
     public Task<VoiceLabTakeRunQuote> TryAnotherAsync(VoiceLabTakeInput input, VoiceLabMonthlyCap? cap = null, CancellationToken ct = default) => PrepareAsync(input, cap, ct);
     public Task<VoiceLabTakeRunQuote> GenerateAgainAsync(VoiceLabTakeInput input, VoiceLabMonthlyCap? cap = null, CancellationToken ct = default) => PrepareAsync(input, cap, ct);
     public Task<VoiceLabTakeRunQuote> PrepareAsync(VoiceLabTakeInput input, VoiceLabMonthlyCap? cap = null, CancellationToken ct = default)
@@ -83,6 +108,7 @@ public sealed class VoiceLabGenerationSession(IVoiceLabTakeRunner runner)
     private Preparation BeginPreparation(VoiceLabTakeInput snapshot, VoiceLabMonthlyCap? monthlyCap, CancellationToken ct)
     {
         runner.InvalidatePreparation();
+        continuing = null;
         quote = null; cost = null; preparationFailure = null; preparing = true;
         input = snapshot; cap = monthlyCap;
         active = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -127,19 +153,43 @@ public sealed class VoiceLabGenerationSession(IVoiceLabTakeRunner runner)
     public async Task<VoiceLabGenerationAction> ContinueAsync(CancellationToken ct = default)
     {
         VoiceLabTakeRunQuote prepared;
+        var owner = Guid.NewGuid();
+        CancellationTokenSource cancellation;
+        var finished = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         lock (sync)
         {
             prepared = RequireQuote();
+            continuing = owner;
+            active = cancellation = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            executionFinished = finished;
         }
-        var decision = await CurrentDecisionAsync(prepared, ct).ConfigureAwait(false);
-        lock (sync)
+        try
         {
-            if (!ReferenceEquals(RequireQuote(), prepared)) throw new VoiceLabException(VoiceLabErrorKind.ConsentRequired);
-            cost = decision;
-            if (decision.Kind == VoiceLabCostPresentationKind.Confirm) return VoiceLabGenerationAction.ConfirmationRequired;
+            var decision = await CurrentDecisionAsync(prepared, cancellation.Token).ConfigureAwait(false);
+            Task<VoiceLabTakeRunResult?> execution;
+            lock (sync)
+            {
+                cancellation.Token.ThrowIfCancellationRequested();
+                if (continuing != owner || !ReferenceEquals(quote, prepared)) throw new VoiceLabException(VoiceLabErrorKind.ConsentRequired);
+                continuing = null;
+                _ = RequireQuote();
+                cost = decision;
+                if (decision.Kind == VoiceLabCostPresentationKind.Confirm) return VoiceLabGenerationAction.ConfirmationRequired;
+                execution = ApproveAsync(prepared, true, cancellation.Token);
+            }
+            await execution.ConfigureAwait(false);
+            lock (sync) return ReferenceEquals(quote, prepared) ? VoiceLabGenerationAction.ConfirmationRequired : VoiceLabGenerationAction.Completed;
         }
-        await ApproveAsync(prepared, true, ct).ConfigureAwait(false);
-        lock (sync) return ReferenceEquals(quote, prepared) ? VoiceLabGenerationAction.ConfirmationRequired : VoiceLabGenerationAction.Completed;
+        finally
+        {
+            lock (sync)
+            {
+                if (continuing == owner) continuing = null;
+                if (ReferenceEquals(active, cancellation)) active = null;
+            }
+            cancellation.Dispose();
+            finished.TrySetResult();
+        }
     }
 
     private async Task<VoiceLabMonthlyCap?> CurrentCapAsync(CancellationToken ct)
@@ -169,6 +219,7 @@ public sealed class VoiceLabGenerationSession(IVoiceLabTakeRunner runner)
         long version;
         CancellationTokenSource cancellation;
         Task lease;
+        TaskCompletionSource finished;
         VoiceLabCostPresentationResult? approvedCost;
         lock (sync)
         {
@@ -177,12 +228,12 @@ public sealed class VoiceLabGenerationSession(IVoiceLabTakeRunner runner)
             approvedCost = cost;
             snapshot = input!; monthlyCap = cap; version = revision;
             quote = null; cost = null; executing = true;
+            executionFinished = finished = new(TaskCreationOptions.RunContinuationsAsynchronously);
             cancellation = CancellationTokenSource.CreateLinkedTokenSource(ct);
             active = cancellation;
             lease = serial.WaitAsync();
         }
         var entered = false;
-        var completed = false;
         var retain = false;
         var started = false;
         try
@@ -213,20 +264,25 @@ public sealed class VoiceLabGenerationSession(IVoiceLabTakeRunner runner)
                 }
             }, action =>
             {
-                lock (sync) { Validate(); action(); started = true; }
+                lock (sync)
+                {
+                    Validate(); action();
+                    if (!started) { rows = Array.Empty<VoiceLabTakeRow>(); selectedTakeId = null; auditionedTakeId = null; }
+                    started = true;
+                }
             });
             await dispatch.AuthorizeAsync(cancellation.Token).ConfigureAwait(false);
             var result = await runner.ExecuteWithDispatchAsync(expected, dispatch, progress =>
             {
                 lock (sync)
                 {
+                    if (revision != version) return Task.CompletedTask;
                     rows = Array.AsReadOnly(progress.ToArray());
                     if (rows.Count == 0) { selectedTakeId = null; auditionedTakeId = null; }
                 }
                 return Task.CompletedTask;
             }, cancellation.Token).ConfigureAwait(false);
-            lock (sync) rows = Array.AsReadOnly(result.Rows.ToArray());
-            completed = true;
+            lock (sync) if (started && revision == version) rows = Array.AsReadOnly(result.Rows.ToArray());
             return result;
         }
         catch (VoiceLabConfirmationRequiredException error)
@@ -241,29 +297,33 @@ public sealed class VoiceLabGenerationSession(IVoiceLabTakeRunner runner)
         }
         finally
         {
-            if (entered && !retain) await runner.DiscardPendingAsync().ConfigureAwait(false);
-            Preparation? next = null;
-            lock (sync)
+            try
             {
-                executing = false;
-                if (ReferenceEquals(active, cancellation)) active = null;
-                if (completed && revision == version)
-                    next = BeginPreparation(snapshot with { Seed = unchecked(snapshot.Seed + 3) }, monthlyCap, CancellationToken.None);
+                if (entered && !retain) await runner.DiscardPendingAsync().ConfigureAwait(false);
+                Preparation? next = null;
+                lock (sync)
+                {
+                    executing = false;
+                    if (ReferenceEquals(active, cancellation)) active = null;
+                    if (!retain && revision == version)
+                        next = BeginPreparation(snapshot with { Seed = started ? unchecked(snapshot.Seed + 3) : snapshot.Seed }, monthlyCap, CancellationToken.None);
+                }
+                if (entered) serial.Release();
+                cancellation.Dispose();
+                if (next is not null)
+                {
+                    try { await PrepareCurrentAsync(next).ConfigureAwait(false); }
+                    catch (Exception) { }
+                }
             }
-            if (entered) serial.Release();
-            cancellation.Dispose();
-            if (next is not null)
-            {
-                try { await PrepareCurrentAsync(next).ConfigureAwait(false); }
-                catch (Exception) { }
-            }
+            finally { finished.TrySetResult(); }
         }
     }
 
     private VoiceLabTakeRunQuote RequireQuote()
     {
         ExpireQuote();
-        if (executing || preparing || quote is null) throw new VoiceLabException(VoiceLabErrorKind.ConsentRequired);
+        if (executing || preparing || continuing is not null || quote is null) throw new VoiceLabException(VoiceLabErrorKind.ConsentRequired);
         return quote;
     }
     private void ExpireQuote()
