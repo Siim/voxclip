@@ -310,6 +310,21 @@ struct VoiceLabTakeRunTests {
         await #expect(throws: VoiceLabError.consentRequired) { try await fixture.run.execute(quote, approved: true) }
         #expect(fixture.http.value.withLock { $0.seeds.count } == 1)
     }
+    @Test func freshWholeRunQuotePreservesAuditionUntilReplacementStarts() async throws {
+        let fixture = try await fixture(); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let initial = try await fixture.run.prepare(fixture.input)
+        let result = try await fixture.run.execute(initial, approved: true)
+        let row = try #require(result.best)
+        let scratch = try #require(await fixture.run.scratch(for: row.id))
+        let quote = try await fixture.run.prepare(fixture.input)
+        #expect(quote.id != initial.id && quote.takes.map(\.index) == [0, 1, 2])
+        #expect(scratch.isValid && FileManager.default.fileExists(atPath: scratch.mixedAudioURL.path))
+        await #expect(throws: VoiceLabError.consentRequired) { try await fixture.run.execute(quote, approved: false) }
+        #expect(scratch.isValid && fixture.http.value.withLock { $0.seeds.count == 1 })
+        let next = try await fixture.run.execute(quote, approved: true)
+        #expect(!scratch.isValid && next.rows.first?.index == 0)
+        await fixture.run.invalidate()
+    }
     @Test func qaMeasuresScratchReadbackAndRejectionRemovesOnlyScratch() async throws {
         let fixture = try await fixture(); defer { try? FileManager.default.removeItem(at: fixture.root) }
         let quote = try await fixture.run.prepare(fixture.input)

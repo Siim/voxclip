@@ -48,6 +48,61 @@ private struct GenerationTestKeys: KeyProvider {
         session.invalidate()
         #expect(session.rows.isEmpty && !session.readyToAccept && session.quote == nil)
     }
+    @Test(arguments: [false, true]) func replacementQuoteKeepsTakesUntilApproved(unknownPrice: Bool) async throws {
+        let session = session()
+        let shared = try SharedResources.locate()
+        let voice = try JSONDecoder().decode(VoiceConsentRecord.self,
+            from: Data(contentsOf: shared.root.appendingPathComponent("fixtures/voice-lab/consent-record.json")))
+        session.showFixture("ready", voice: voice)
+        let first = row(index: 0), chosen = row(index: 2, score: 0.9)
+        let window = VoiceLabWindow(firstWordId: "word", lastWordId: "word", leftBridgeWordIds: [], rightBridgeWordIds: [],
+            start: 1, end: 2, startSample: 24_000, endSample: 48_000,
+            leftSeam: .init(kind: .hard, time: 1, sample: 24_000, fadeSamples: 288),
+            rightSeam: .init(kind: .hard, time: 2, sample: 48_000, fadeSamples: 288))
+        let input = VoiceLabTakeInput(text: "Hello", modelID: "eleven_multilingual_v2", recordID: voice.id, language: "en",
+            seed: 7, contentKey: "test", source: [], sourceSampleRate: 24_000, items: [], window: window,
+            incomingSilence: nil, outgoingSilence: nil, providerConsent: true)
+        session.review(.init(rows: [first, chosen], end: .completed), input: input)
+        #expect(session.select(chosen.id))
+        let originalRows = session.rows
+        var prepared: [UUID] = []
+        session.prepareForTests = { _ in
+            #expect(session.rows == originalRows && session.selectedID == chosen.id)
+            #expect(session.select(first.id) && session.select(chosen.id))
+            let takes = (0..<3).map { index in
+                let estimate = CostEstimate(provider: "elevenlabs", operation: "test", units: 1, unit: "take",
+                    usd: unknownPrice ? nil : Decimal(string: "0.01"), basis: "test")
+                let quote = VoiceLabQuote(id: UUID(), operation: .textToSpeech, requestID: UUID(), estimate: estimate,
+                    region: .default, endpoint: "test", languageMode: nil, fingerprint: "test")
+                return VoiceLabTakeQuote(index: index, seed: UInt32(index), synthesis: quote, qa: quote)
+            }
+            let quote = VoiceLabTakeRunQuote(id: UUID(), takes: takes, preparedAt: Date())
+            prepared.append(quote.id)
+            return quote
+        }
+        await session.prepare(input)
+        let quote = try #require(session.quote)
+        #expect(quote.takes.map(\.index) == [0, 1, 2])
+        if unknownPrice { guard case .confirm = session.cost else { Issue.record("Unknown price needs confirmation"); return } }
+        else { #expect(session.buttonTitle.contains("0.06")) }
+        session.approve(false)
+        #expect(session.rows == originalRows && session.selectedID == chosen.id && session.readyToAccept)
+        #expect(session.quote == quote)
+        let replacement = row(index: 0)
+        session.executeForTests = { approved, progress in
+            #expect(approved == quote && session.rows == originalRows && session.selectedID == chosen.id)
+            await progress([])
+            #expect(session.rows.isEmpty && session.selectedID == nil)
+            return .init(rows: [replacement], end: .completed)
+        }
+        session.approve(true)
+        await session.finishGenerationForTests()
+        #expect(session.rows == [replacement] && session.selectedID == replacement.id)
+        #expect(session.cost == nil && session.quote == nil)
+        session.prepareForTests = { _ in throw CancellationError() }
+        #expect(prepared == [quote.id])
+        session.invalidate()
+    }
     @Test func changedLengthRequiresExplicitTakeAndVideoChoices() {
         let session = session(); let take = row(index: 0, residual: 0.5)
         session.review(VoiceLabTakeRunResult(rows: [take], end: .completed))

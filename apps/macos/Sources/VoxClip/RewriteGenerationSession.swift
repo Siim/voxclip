@@ -29,9 +29,14 @@ import VoxClipMedia
     @ObservationIgnored private var cleanup: Task<Void, Never>?
     @ObservationIgnored private var revision = 0
     @ObservationIgnored private var accepting = false
+    private(set) var preparingQuote = false
+    @ObservationIgnored private var quotedInput: VoiceLabTakeInput?
     #if DEBUG
     private var fixture = false
     @ObservationIgnored var publishForTests: (@MainActor (VoiceLabTakeRow, VoiceLabTakeInput, Date) async throws -> (VoiceLabPublishedTake, VoiceConsentRecord))?
+    @ObservationIgnored var prepareForTests: (@MainActor (VoiceLabTakeInput) async throws -> VoiceLabTakeRunQuote)?
+    @ObservationIgnored var executeForTests: (@MainActor (VoiceLabTakeRunQuote, @Sendable ([VoiceLabTakeRow]) async -> Void) async throws -> VoiceLabTakeRunResult)?
+    func finishGenerationForTests() async { await sending?.value }
     func showFixture(_ state: String, voice: VoiceConsentRecord) {
         fixture = true
         voices = state == "no-voice" ? [] : [voice]
@@ -71,7 +76,11 @@ import VoxClipMedia
     var readyToAccept: Bool { !accepting && inputsAreCurrent() && phase == .readyToAccept && selected?.selectable == true }
     var acceptTitle: String { selected.map { "Use Take \($0.index + 1)" } ?? "Use Take 1" }
     var buttonTitle: String { VoiceLabCostPresentation.buttonTitle(rows.isEmpty ? "Generate Takes" : "Generate Again", kind: cost ?? .confirm("")) }
-    func fail(_ text: String) { phase = .failed; problem = text }
+    func fail(_ text: String) {
+        preparingQuote = false
+        if rows.isEmpty { phase = .failed }
+        problem = text
+    }
     var retimeFactor: Double? {
         guard let audio = selected?.audio, audio.fit.plan.outputFrames > 0 else { return nil }
         return (audio.fit.plan.windowEnd - audio.fit.plan.windowStart) * Double(audio.sampleRate) / Double(audio.fit.plan.outputFrames)
@@ -152,7 +161,7 @@ import VoxClipMedia
         return false
     }
     var selected: VoiceLabTakeRow? { rows.first { $0.id == selectedID } }
-    var canGenerate: Bool { inputsAreCurrent() && selectedVoiceID != nil && selectedModelID != nil && phase != .generating && phase != .preparing }
+    var canGenerate: Bool { !accepting && !preparingQuote && inputsAreCurrent() && selectedVoiceID != nil && selectedModelID != nil && phase != .generating }
     var inputsMatchCurrentSelection: Bool { input?.recordID == selectedVoiceID && input?.modelID == selectedModelID }
     func discover(language: String) async {
         guard inputsAreCurrent() else { return }
@@ -177,39 +186,54 @@ import VoxClipMedia
     }
     func reservePreparation() -> Int? {
         guard canGenerate else { return nil }
-        invalidate(); phase = .preparing
+        revision += 1; quote = nil; cost = nil; quotedInput = nil; problem = ""; preparingQuote = true
+        if rows.isEmpty { phase = .preparing }
         return revision
     }
     func preparationIsCurrent(_ reservation: Int) -> Bool { reservation == revision && inputsAreCurrent() && !Task.isCancelled }
     func prepare(_ input: VoiceLabTakeInput, cap: VoiceLabMonthlyCap? = nil, reservation: Int? = nil) async {
         guard selectedVoiceID == input.recordID, selectedModelID == input.modelID else { return }
-        if let reservation { guard preparationIsCurrent(reservation), phase == .preparing else { return } }
+        if let reservation { guard preparationIsCurrent(reservation), preparingQuote else { return } }
         else { guard reservePreparation() != nil else { return } }
-        self.input = input
         let version = revision
+        defer { if version == revision { preparingQuote = false } }
         await cleanup?.value
         guard version == revision else { return }
         do {
-            let quote = try await run.prepare(input)
+            let quote: VoiceLabTakeRunQuote
+            #if DEBUG
+            if let prepareForTests { quote = try await prepareForTests(input) }
+            else { quote = try await run.prepare(input) }
+            #else
+            quote = try await run.prepare(input)
+            #endif
             guard version == revision else { return }
-            self.quote = quote
+            self.quote = quote; quotedInput = input
             cost = VoiceLabCostPresentation.kind(quote.estimate, isLipSync: false, providerName: "ElevenLabs", cap: cap)
-            phase = .awaitingApproval
+            if rows.isEmpty { self.input = input; phase = .awaitingApproval }
         } catch {
             guard version == revision else { return }
-            phase = .failed; problem = RewriteSession.refusal(error)
+            fail(RewriteSession.refusal(error))
         }
     }
     func approve(_ approved: Bool) {
-        guard approved, phase == .awaitingApproval, let quote else { return }
-        self.quote = nil; phase = .generating
+        guard approved, canGenerate, let quote else { return }
+        self.quote = nil; cost = nil; phase = .generating
         let version = revision; let run = run
         sending = Task { [weak self] in
             guard let self else { return }
             do {
-                let result = try await run.execute(quote, approved: true) { rows in
+                let progress: @Sendable ([VoiceLabTakeRow]) async -> Void = { rows in
                     await self.updateRows(rows, version: version)
                 }
+                let started: @Sendable () async -> Void = { await self.updateRows([], version: version) }
+                let result: VoiceLabTakeRunResult
+                #if DEBUG
+                if let executeForTests { result = try await executeForTests(quote, progress) }
+                else { result = try await run.execute(quote, approved: true, progress: progress, started: started) }
+                #else
+                result = try await run.execute(quote, approved: true, progress: progress, started: started)
+                #endif
                 guard self.revision == version else { return }
                 self.review(result)
             } catch {
@@ -221,6 +245,10 @@ import VoxClipMedia
     }
     private func updateRows(_ rows: [VoiceLabTakeRow], version: Int) {
         guard revision == version else { return }
+        if rows.isEmpty {
+            audition.stop(); bestID = nil; selectedID = nil; videoChoice = nil
+            input = quotedInput; quotedInput = nil
+        }
         for row in rows where !self.rows.contains(where: { $0.id == row.id }) && row.selectable {
             announcement = "Take \(row.index + 1) ready."
         }
@@ -263,14 +291,14 @@ import VoxClipMedia
     }
     func cancel() {
         audition.stop()
-        sending?.cancel(); revision += 1; quote = nil; selectedID = nil; phase = .cancelled
+        sending?.cancel(); revision += 1; quote = nil; cost = nil; quotedInput = nil; preparingQuote = false; selectedID = nil; phase = .cancelled
         enqueueCleanup(cancelled: true)
     }
     func invalidate() {
         audition.stop()
         sending?.cancel(); sending = nil; revision += 1
         quote = nil; cost = nil; rows = []; bestID = nil; selectedID = nil; videoChoice = nil; problem = ""; phase = .idle
-        input = nil
+        input = nil; quotedInput = nil; preparingQuote = false
         enqueueCleanup(cancelled: false)
     }
     private func enqueueCleanup(cancelled: Bool) {

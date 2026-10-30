@@ -152,11 +152,12 @@ import VoxClipCore
     private func generate() {
         approvalTask = Task {
             if session.generation?.quote == nil { await session.prepareTakes(); return }
-            guard let generation = session.generation, generation.phase == .awaitingApproval else { return }
+            guard let generation = session.generation, generation.canGenerate, let quote = generation.quote else { return }
             if case .confirm(let copy) = generation.cost {
                 guard let window = session.editor.window,
                       await RewriteApprovalSheet(title: "Generate Takes", copy: copy, parent: window).confirm() else { return }
             }
+            guard generation.quote == quote else { return }
             generation.approve(true)
         }
     }

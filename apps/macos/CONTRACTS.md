@@ -1,5 +1,10 @@
 # macOS implementation contracts
 
+### 2026-10-30 — sol-mac-voicelab — W7 replacement-run approval
+
+- Generate Again and Try Another prepare a fresh immutable quote for all three takes. Preparing or cancelling approval preserves the existing rows, audition leases and exact selection. The next click executes a known under-threshold quote, otherwise asks for confirmation. Only starting the approved run replaces the rows; its numbering starts at Take 1. A stale displayed quote cannot approve a different replacement quote. The single-take retry API remains deferred.
+- Regression coverage: `RewriteGenerationTests.replacementQuoteKeepsTakesUntilApproved` (known/unknown price, selection, cancellation and start) and `VoiceLabTakeRunTests.freshWholeRunQuotePreservesAuditionUntilReplacementStarts` (real mocked run, private scratch lifetime and numbering).
+
 ### 2026-10-30 — sol-mac-voicelab — W6 panel, shipping opt-in and review fixes
 
 - This entry supersedes the W5 staging and cleanup descriptions below. R0 checked CI `40976398364`: its failure was the window-free caption-gallery reveal, fixed by `c7396cbc` with eager two-column catalogue layout. The earlier canonical portrait-counter CLI stall did not recur in the fresh Release E2E run; no timeout, retries or acceptance thresholds were raised. R0 completed the previously interrupted Release, Media and CaptionParity verification. All evidence for this round is under `/tmp/voxclip-sol-mac-voicelab/w6/`; native window tests and paid/live calls are not part of it.

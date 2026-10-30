@@ -69,11 +69,17 @@ public actor VoiceLabTakeRun {
         return (models, voices)
     }
     public func prepare(_ input: VoiceLabTakeInput) async throws -> VoiceLabTakeRunQuote {
-        await invalidate()
-        if let task { _ = await task.value }
-        task = nil; runningID = nil
-        try FileManager.default.createDirectory(at: storage.scratchRoot, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+        guard task == nil, executionOwner == nil, runningID == nil else { throw VoiceLabError.consentRequired }
+        revision += 1
+        dispatchRevision.withLock { $0 = revision }
         let currentRevision = revision
+        if let pending {
+            self.pending = nil
+            await client.discardRun(pending.quote.id, quotes: pending.quote.takes.flatMap { [$0.synthesis, $0.qa] })
+        }
+        try Task.checkCancellation()
+        guard revision == currentRevision else { throw Abort.invalidated }
+        try FileManager.default.createDirectory(at: storage.scratchRoot, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         let record = try await store.load(input.recordID)
         try await store.validateUse(record)
         guard input.providerConsent, input.language == record.statement.language,
@@ -110,7 +116,8 @@ public actor VoiceLabTakeRun {
         }
     }
     public func execute(_ quote: VoiceLabTakeRunQuote, approved: Bool,
-                        progress: @escaping @Sendable ([VoiceLabTakeRow]) async -> Void = { _ in }) async throws -> VoiceLabTakeRunResult {
+                        progress: @escaping @Sendable ([VoiceLabTakeRow]) async -> Void = { _ in },
+                        started: @escaping @Sendable () async -> Void = {}) async throws -> VoiceLabTakeRunResult {
         guard approved, task == nil, runningID == nil, executionOwner == nil, let value = pending, value.quote == quote else { throw VoiceLabError.consentRequired }
         let owner = UUID()
         executionOwner = owner
@@ -128,6 +135,14 @@ public actor VoiceLabTakeRun {
             try await client.approveRun(quote.id, quotes: quotes)
             try await checkpoint("approval", revision: currentRevision)
             try await checkpoint("launch", revision: currentRevision)
+            await started()
+            try reservation(currentRevision)
+            let retired = Array(scratches.values)
+            scratches.removeAll(); paidAssets.removeAll()
+            for scratch in retired {
+                await scratch.invalidate()
+                try reservation(currentRevision)
+            }
         } catch {
             await release(owner: owner, quote: quote)
             throw error

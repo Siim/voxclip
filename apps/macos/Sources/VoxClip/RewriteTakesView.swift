@@ -53,7 +53,8 @@ import VoxClipCore
                 InlineNotice(text: generation.problem)
                 HStack { Button("Open Settings") { openVoxClipSettings(pane: "voiceLab") }; Button("Retry", action: generate) }
             }
-            if generation.phase == .awaitingApproval, case .confirm(let copy) = generation.cost {
+            if generation.phase != .failed && !generation.problem.isEmpty { InlineNotice(text: generation.problem) }
+            if generation.quote != nil, case .confirm(let copy) = generation.cost {
                 Text(copy).font(.system(size: 11)).fixedSize(horizontal: false, vertical: true).accessibilityLabel("Cost confirmation. " + copy)
             }
             if generation.selected?.fits == false { lengthChoice }
@@ -92,7 +93,7 @@ import VoxClipCore
                 Label("Take \(row.index + 1) didn't pass the speech check.", systemImage: "exclamationmark.triangle")
                     .font(.system(size: 10)).foregroundStyle(DesignValues.color("status.warning"))
                 Button(VoiceLabCostPresentation.buttonTitle("Try Another", takes: 3, kind: generation.cost ?? .confirm("")), action: generate)
-                    .font(.system(size: 10)).disabled(generation.phase == .generating || generation.phase == .preparing || generation.cost == nil)
+                    .font(.system(size: 10)).disabled(!generation.canGenerate)
             }.accessibilityLabel("Take \(row.index + 1) didn't pass the speech check")
         }
     }
