@@ -133,6 +133,35 @@ public sealed class VoiceConsentTests
             Assert.Contains("Checking", store.Operation(operation.Id).DisplayState);
         }
     }
+    [Fact]
+    public async Task ReviewProbe_ConflictingNonceNeverDeletesAndReviewSurvivesEmptyListing()
+    {
+        using var storage = new Storage();
+        var clock = new Clock { Now = Now.AddHours(30) };
+        var store = new VoiceConsentStore(storage.Locations, clock);
+        var record = Draft(store);
+        var operation = store.BeginClaimedCreation(record, Guid.NewGuid(), ElevenLabsRegion.Default, Now);
+        store.Transition(operation.Id, VoiceOperationState.Dispatched, Now);
+        store.Release(operation.Id);
+        var deletions = 0;
+        var empty = false;
+        using var remote = new Remote((request, _) =>
+        {
+            if (request.Method == HttpMethod.Delete) { deletions++; return Task.FromResult(Json(404, "{}")); }
+            var rows = empty ? Array.Empty<object>() : [new { voice_id = "other", name = record.VoiceName,
+                category = "cloned", is_owner = true, created_at_unix = Now.AddMinutes(1).ToUnixTimeSeconds(),
+                labels = new { voxclip_record_id = "another-request" } }];
+            return Task.FromResult(Json(200, JsonSerializer.Serialize(new { voices = rows, has_more = false })));
+        });
+        using var client = ElevenLabsVoiceLab.ForTesting(new MemoryKeys(), remote, ElevenLabsRegion.Default);
+        var reconciler = new VoiceOperationReconciler(store, _ => client, clock);
+        await reconciler.ReconcileAsync(force: true, ct: Token);
+        Assert.Equal(0, deletions);
+        empty = true;
+        await reconciler.ReconcileAsync(force: true, ct: Token);
+        Assert.False(store.Operation(operation.Id).Finished);
+        Assert.Contains("Checking", store.Operation(operation.Id).DisplayState);
+    }
     [Theory]
     [InlineData("subscription_required", VoiceLabErrorKind.PlanUnavailable)]
     [InlineData("feature_not_available", VoiceLabErrorKind.FeatureUnavailable)]

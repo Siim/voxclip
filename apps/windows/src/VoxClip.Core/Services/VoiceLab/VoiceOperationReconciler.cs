@@ -117,20 +117,29 @@ public sealed class VoiceOperationReconciler
     private async Task<VoiceLabVoice?> FindRemoteAsync(VoiceOperation value, bool force, CancellationToken ct)
     {
         if (!force && value.NextAttemptAt is { } next && clock.GetUtcNow() < next) return null;
-        var voices = await Client(value.Region).DiscoverVoicesAsync(ct).ConfigureAwait(false);
+        var voices = await Client(value.Region).ListOwnClonesAsync(ct).ConfigureAwait(false);
         ct.ThrowIfCancellationRequested();
         var candidates = voices.Where(voice => voice.IsOwner && voice.Category == "cloned").ToArray();
         bool SameName(VoiceLabVoice voice) => value.RemoteNameSha256 is { } hash && VoiceConsentStore.Hash(System.Text.Encoding.UTF8.GetBytes(voice.Name)) == hash;
-        var matches = candidates.Where(voice => voice.ConsentRecordId == value.ProviderNonce || SameName(voice) &&
-            voice.CreatedAt is { } created && created >= value.StartedAt.AddSeconds(-1) && created <= value.StartedAt.AddHours(24)).ToArray();
-        if (matches.Length > 1) throw VoiceConsentStore.Invalid();
-        if (value.RemoteNameSha256 is null && matches.Length == 0 ||
-            candidates.Any(voice => SameName(voice) && voice.CreatedAt is null && !matches.Any(match => match.Id == voice.Id)))
+        var start = DateTimeOffset.FromUnixTimeSeconds(value.StartedAt.ToUnixTimeSeconds());
+        bool Conflicts(VoiceLabVoice voice) => voice.ConsentRecordId is { } nonce && nonce != value.ProviderNonce;
+        var matches = candidates.Where(voice => !Conflicts(voice) && (voice.ConsentRecordId == value.ProviderNonce || SameName(voice) &&
+            voice.CreatedAt is { } created && created >= start && created <= value.StartedAt.AddHours(24))).ToArray();
+        var uncertain = value.RemoteNameSha256 is null && matches.Length == 0 ||
+            candidates.Any(voice => SameName(voice) && (Conflicts(voice) || voice.CreatedAt is null && voice.ConsentRecordId != value.ProviderNonce));
+        if (matches.Length > 1 || uncertain)
+        {
+            store.RequireRecoveryReview(value.Id);
+            store.ScheduleRetry(value.Id, clock.GetUtcNow());
+            if (matches.Length > 1) throw VoiceConsentStore.Invalid();
+            return null;
+        }
+        if (matches.Length == 1) return matches[0];
+        if (value.RecoveryNeedsReview)
         {
             store.ScheduleRetry(value.Id, clock.GetUtcNow());
             return null;
         }
-        if (matches.Length == 1) return matches[0];
         if (clock.GetUtcNow() - value.StartedAt >= TimeSpan.FromHours(24))
         {
             store.Tombstone(value);

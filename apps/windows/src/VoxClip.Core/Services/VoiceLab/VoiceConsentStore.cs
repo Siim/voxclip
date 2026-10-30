@@ -35,7 +35,7 @@ public sealed record VoiceConsentAudit(string RecordId, string StatementSha256, 
 public sealed record VoiceOperation(Guid Id, VoiceOperationKind Kind, string RecordId, string ProviderNonce, ElevenLabsRegion Region,
     DateTimeOffset StartedAt, DateTimeOffset UpdatedAt, VoiceOperationState State, string? RemoteVoiceId, bool WasDispatched,
     bool? RequiresVerification, int Attempts, DateTimeOffset? NextAttemptAt, bool Failed, VoiceConsentAudit? Audit, Guid[]? AmbiguousDispatchIds,
-    string? RemoteNameSha256 = null)
+    string? RemoteNameSha256 = null, bool RecoveryNeedsReview = false)
 {
     [JsonIgnore] public bool Finished => State is VoiceOperationState.Saved or VoiceOperationState.Withdrawn or VoiceOperationState.Tombstoned or VoiceOperationState.Abandoned;
     public bool BlocksCreation(DateTimeOffset now) => Kind == VoiceOperationKind.Create && WasDispatched && !Finished &&
@@ -372,6 +372,10 @@ public sealed class VoiceConsentStore
         }
     }
     internal bool Claim(Guid id) { lock (State.Sync) return State.Claimed.Add(id); }
+    internal void RequireRecoveryReview(Guid id)
+    {
+        lock (State.Sync) WriteOperation(Operation(id) with { RecoveryNeedsReview = true }, "recoveryReview");
+    }
     internal void Release(Guid id) { lock (State.Sync) State.Claimed.Remove(id); }
     internal bool HasOperation(string id) => Operations().Any(value => value.RecordId == id && !value.Finished);
     public VoiceOperation BeginDeletion(string recordId, ElevenLabsRegion region, DateTimeOffset now)
