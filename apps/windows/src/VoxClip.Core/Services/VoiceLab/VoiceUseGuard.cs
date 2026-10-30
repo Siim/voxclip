@@ -1,9 +1,8 @@
 using System.Buffers.Binary;
 using VoxClip.Core.Domain.VoiceLab;
-using VoxClip.Core.Services.VoiceLab;
 #pragma warning disable CS1591
 
-namespace VoxClip.Media.VoiceLab;
+namespace VoxClip.Core.Services.VoiceLab;
 
 public sealed class VoiceUseGuard(VoiceConsentStore store, VoiceSpeakerCheck? check = null)
 {

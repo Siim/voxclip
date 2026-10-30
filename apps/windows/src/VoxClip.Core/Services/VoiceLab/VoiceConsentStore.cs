@@ -197,13 +197,19 @@ public sealed class VoiceConsentStore
         }
     }
     internal VoiceDispatchPermit UsePermit(VoiceConsentRecord record, Guid requestId) => new(this, record.RecordId, requestId, () => ValidateUse(record));
-    public OwnVoicePolicy CreateUsePolicy(VoiceConsentRecord record, Guid requestId, Func<CancellationToken, Task> validateDispatch)
+    internal OwnVoicePolicy CreateUsePolicy(VoiceConsentRecord record, Guid requestId, Func<CancellationToken, Task> validateDispatch)
     {
         ArgumentNullException.ThrowIfNull(validateDispatch);
+        if (!VoiceSpeakerCheck.WindowsNativeParityVerified) throw new VoiceConsentException(VoiceConsentError.SpeakerUnavailable);
         ValidateUse(record);
         return new(record.RecordId, record.VoiceId, true, true, true, true, true)
         {
-            DispatchPermit = UsePermit(record, requestId), ValidateDispatch = validateDispatch
+            DispatchPermit = new(this, record.RecordId, requestId, () =>
+            {
+                if (!VoiceSpeakerCheck.WindowsNativeParityVerified) throw new VoiceConsentException(VoiceConsentError.SpeakerUnavailable);
+                ValidateUse(record);
+            }),
+            ValidateDispatch = validateDispatch
         };
     }
     public VoiceCreationClaim ClaimCreation(VoiceConsentRecord record, Guid requestId, ElevenLabsRegion region, DateTimeOffset now) =>

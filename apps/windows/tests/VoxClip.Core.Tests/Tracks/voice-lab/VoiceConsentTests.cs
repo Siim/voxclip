@@ -39,6 +39,20 @@ public sealed class VoiceConsentTests
     }
     private static HttpResponseMessage Json(int status, string body) => new((HttpStatusCode)status) { Content = new StringContent(body, Encoding.UTF8, "application/json") };
     private static VoiceConsentRecord Fixture() => JsonSerializer.Deserialize(FixtureLoader.ReadText("fixtures/voice-lab/consent-record.json"), VoiceConsentJson.Default.VoiceConsentRecord)!;
+    [Fact]
+    public async Task ReviewProbe_PublicPermitCannotBypassSpeakerGate()
+    {
+        using var storage = new Storage();
+        var store = new VoiceConsentStore(storage.Locations);
+        var record = Draft(store, voice: "voice123");
+        store.Save(record);
+        Assert.Null(typeof(VoiceConsentStore).GetMethod("CreateUsePolicy"));
+        Assert.False(VoiceSpeakerCheck.WindowsNativeParityVerified);
+        var error = Assert.Throws<VoiceConsentException>(() => store.CreateUsePolicy(record, Guid.NewGuid(), _ => Task.CompletedTask));
+        Assert.Equal(VoiceConsentError.SpeakerUnavailable, error.Kind);
+        await Assert.ThrowsAsync<VoiceConsentException>(() => new VoiceUseGuard(store).AuthorizeAsync("content", record.RecordId,
+            new float[48000], Guid.NewGuid(), true, ct: Token));
+    }
     private static VoiceConsentRecord Draft(VoiceConsentStore store, string? id = null, string voice = "pending")
     {
         var wav = VoiceLabTestCalls.SyntheticWav(16000, 16000 * 6, 2000);

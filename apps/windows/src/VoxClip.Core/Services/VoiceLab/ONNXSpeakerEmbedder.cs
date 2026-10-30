@@ -1,11 +1,10 @@
 using Microsoft.ML.OnnxRuntime;
 using Microsoft.ML.OnnxRuntime.Tensors;
 using VoxClip.Core.Domain.VoiceLab;
-using VoxClip.Core.Services.VoiceLab;
 using Whisper.net;
 #pragma warning disable CS1591
 
-namespace VoxClip.Media.VoiceLab;
+namespace VoxClip.Core.Services.VoiceLab;
 
 public sealed class ONNXSpeakerEmbedder : IDisposable
 {
