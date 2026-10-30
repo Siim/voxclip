@@ -1,5 +1,11 @@
 # Windows fixed contracts
 
+### 2026-10-30 — lead — ElevenLabs error detail and residency keys
+
+- `ElevenLabsTranscriber` keeps its region. `MapError(status, body, key, region)` reads the object form of `detail` (`{type, code, message, status}`) as well as a string or a list. A 401, `authentication_error` or `invalid_api_key` is a key problem at any status. `TestKeyAsync` keeps its status-only, no-echo mapping (transcription §8.5) and adds `ElevenLabsRegions.ResidencyHint()` to a residency 400 or 401.
+- On EU, India or Singapore residency, a key error or a 400 says the region needs a key from a data-residency workspace and points to Region: Default, matching the Mac copy (apps/macos/CONTRACTS.md, same date). The reason is shortened so the hint stays whole inside 200 characters. The Settings Region explanation is owed to the redesigned Settings window.
+- Tests: `ElevenLabsTests` covers the object detail, residency key errors, the residency 401, a 300-character reason and the residency key Test (ElevenLabsTests 27/27 and ElevenLabsKeyTestTests 17/17 on the Mac host).
+
 ### 2026-10-28 — sol-followups-9 round 2 — Final caption box paints
 
 - Supersedes round 1's style-level adjustment above. Captions §2.3 now runs once in the Core timeline after §10.2 precedence, including palette and emphasis paints. Swift chooses in `CaptionTimeline.fill`; C# in `CaptionTimeline.Paint`. Style resolution preserves the original paints. Preview, gallery, sidebar cards, export and CLI all reach the timeline; the sidebar's pre-layout plate removal is unchanged, and no surface bypass or renderer special case was found.

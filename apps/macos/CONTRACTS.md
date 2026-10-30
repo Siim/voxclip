@@ -1,10 +1,17 @@
 # macOS implementation contracts
 
+### 2026-10-30 — lead — ElevenLabs error detail and residency keys
+
+- A live Scribe upload failed with only "ElevenLabs answered 400: the request could not finish". `ElevenLabsTranscriber.providerError(status:data:key:region:)` now also reads the object form of `detail` (`{type, code, message, status}`), not only a string or a list. `UserMessages` shows the redacted reason unless it is the generic text, and the import logs `engine=elevenlabs status=… detail=…` at warn level.
+- A 401, or a body whose `type` is `authentication_error` or whose `code` or `status` is `invalid_api_key`, is a key problem at any HTTP status. The Settings key Test keeps transcription §8.5 and mirrors Windows `TestKeyAsync`: it names the status but never echoes the provider's body. A 401 is keyRejected, a 429 is rateLimited, any other status is a generic provider error (no longer "rejected the key" during an outage), and a network failure reads as offline.
+- `ElevenLabsRegion.isResidency` is true for EU, India and Singapore. Those hosts serve separate Enterprise data-residency workspaces with their own keys. On a residency region, a key error or a 400 says so and points to Region: Default. The reason is shortened so the hint stays whole inside the 200-character limit. `ElevenLabsRegion.residencyHint` holds the text once; the key Test adds it to a residency 400 or 401. The Settings → Transcription Advanced footer explains the same. Windows mirrors the mapping in `ElevenLabsTranscriber.MapError` (see apps/windows/CONTRACTS.md).
+- Tests: `SpeechErrorCopyTests` covers the object detail, residency key errors, the residency 401 and a 300-character reason. Branch CI 40986827640.
+
 ### 2026-10-29 — lead — Mac right-column layout merged
 
 - Squash-merged track/sol-mac-layout at f694d802 (Sol rounds 1–4 plus lead fixes; entry below). It fixes the user-reported right-column overflow: content fits the column at exactly its width from 300 to 560 points, with ViewThatFits fallbacks for the Frame row, viewer bar, Captions header, Fine Tune rows and the Rewrite header, and the gallery scrolls inside its own viewport.
 - doc/design.md takes the matching rules: §3.2 split holding priority 251; the §3.6 fit rule; the §3.7 1280 row; §5.1 stage sizes while the column holds the stage plus 320 for everything below it; the viewer-bar caption line and Frame fallbacks; §6.1 header forms, Fine Tune rows, gallery clipping and scrolling, and the scroll view ending 16 above the strip; §6.3 the Rewrite header and New words summary.
-- Verification: window-free gallery (53) and right-column layout (367) audits; native scene audit, demo window and self-test (1,574 checks) on the same product code at b9986eec, every gallery interaction set passing; branch CI 40963544004. The native rerun of the stricter harness settle (f694d802) is owed to the next unlocked session.
+- Verification: window-free gallery (53) and right-column layout (367) audits; native scene audit, demo window and self-test (1,574 checks) on the same product code at b9986eec, every gallery interaction set passing; branch CI 40963544004. The native rerun of the stricter harness settle at f694d802 passed afterwards (scene audit, demo window and self-test).
 - Open follow-ups from the pre-merge review (P3): stage-aspect and ID-collision checks that cannot fail; gallery reveal on scope change while Fine Tune is open; Frame inline row alignment; 13-point gallery row pitch against the specified 10; per-scroll-frame gallery rebuilds; auto-reveal hiding a caption error notice; and the VoiceOver outline of gallery choices, which follows the Picker representation (design §6.1) rather than the tiles.
 
 ### 2026-10-29 — sol-mac-layout — right-column bounds and adaptive rows
