@@ -83,8 +83,23 @@ public sealed class RewritePanelTests
         Assert.Equal(new[] { "Refused" }, announcements.Next(false, 1, "Refused", ""));
         Assert.Equal(["New words ready: 2 changes"], announcements.Next(false, 2, "", "2 changes"));
         var panel = AppSource("Controls", "RewritePanel.cs");
-        Assert.Contains("Ui.Announce(this, message, \"rewrite\")", panel);
+        Assert.Contains("Ui.Announce(this, message, \"rewrite\", AutomationNotificationProcessing.All)", panel);
         Assert.DoesNotContain("LiveSetting", panel);
+    }
+
+    [Fact]
+    public void RapidRewriteTransitionsQueueEveryDeduplicatedMessageInOrder()
+    {
+        var announcements = new RewriteAnnouncements();
+        var emitted = new List<string>();
+        emitted.AddRange(announcements.Next(true, 0, "", ""));
+        emitted.AddRange(announcements.Next(false, 1, "", "2 changes"));
+        emitted.AddRange(announcements.Next(false, 1, "Refused", ""));
+        emitted.AddRange(announcements.Next(false, 1, "Refused", ""));
+        Assert.Equal(["AI request in progress", "New words ready: 2 changes", "Refused"], emitted);
+        Assert.Contains("Ui.Announce(this, message, \"rewrite\", AutomationNotificationProcessing.All)", AppSource("Controls", "RewritePanel.cs"));
+        Assert.Contains("AutomationNotificationProcessing processing = AutomationNotificationProcessing.MostRecent", AppSource("Controls", "Ui.cs"));
+        Assert.Contains("processing, text, activity", AppSource("Controls", "Ui.cs"));
     }
 
     [Fact]

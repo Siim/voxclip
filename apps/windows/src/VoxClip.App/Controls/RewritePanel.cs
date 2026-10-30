@@ -1,5 +1,6 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
+using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using VoxClip.App.ViewModels;
@@ -199,7 +200,7 @@ internal sealed class RewritePanel : Grid
         if (session.Prepared is { } action) DispatcherQueue.TryEnqueue(() => session.MarkEstimateShown(action));
         if (IsLoaded)
             foreach (var message in announcements.Next(session.IsProposing, session.ProposalRevision, session.Problem, session.Review?.ChangeSummary ?? ""))
-                Ui.Announce(this, message, "rewrite");
+                Ui.Announce(this, message, "rewrite", AutomationNotificationProcessing.All);
     }
     private void Escape(object sender, KeyRoutedEventArgs args)
     {
