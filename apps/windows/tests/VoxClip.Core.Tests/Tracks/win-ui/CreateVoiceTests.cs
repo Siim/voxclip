@@ -23,6 +23,14 @@ public sealed class CreateVoiceTests
     private static Task Dispatch(Action action) { action(); return Task.CompletedTask; }
     private static string AppFile(string file) => File.ReadAllText(Path.Combine(Path.GetDirectoryName(SharedResources.ResolveRoot())!, "apps/windows/src/VoxClip.App", file));
 
+    [Fact]
+    public void CreationAuditDoesNotHardCodeAReleaseVersion()
+    {
+        var backend = AppFile("Services/VoiceStatementBackend.cs");
+        Assert.DoesNotContain("\"0.1.0\"", backend);
+        Assert.Contains("Assembly.GetName().Version?.ToString() ?? \"unknown\"", backend);
+    }
+
     [Theory]
     [InlineData(false, false, false)]
     [InlineData(true, false, false)]

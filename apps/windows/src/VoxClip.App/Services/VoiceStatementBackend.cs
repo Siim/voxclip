@@ -156,7 +156,7 @@ internal sealed class VoiceStatementBackend : IVoiceCreationBackend
         if (!subscription.CanClone) throw new VoiceLabException(VoiceLabErrorKind.PlanUnavailable);
         if (subscription.VoiceSlotsUsed >= subscription.VoiceLimit) throw new VoiceLabException(VoiceLabErrorKind.NoVoiceSlots);
         if (!QuoteIsFresh(quote)) throw new VoiceCreationExpiredException();
-        return await enrollment.CreateAsync((VoiceLabPreparedAction)quote.Ticket, true, Enabled, typeof(VoiceStatementBackend).Assembly.GetName().Version?.ToString() ?? "0.1.0", ct).ConfigureAwait(false);
+        return await enrollment.CreateAsync((VoiceLabPreparedAction)quote.Ticket, true, Enabled, typeof(VoiceStatementBackend).Assembly.GetName().Version?.ToString() ?? "unknown", ct).ConfigureAwait(false);
     }
     public async Task SaveCreationRecordAsync(VoiceConsentRecord record, CancellationToken ct)
     {
