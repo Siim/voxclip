@@ -113,6 +113,10 @@ public sealed class EditorVoiceLabPresentationTests
         Assert.Contains("VcAccentSoftBrush", chip);
         Assert.Contains("speech.Text + \" \"", transcript);
         Assert.Contains("if (!speech.Visible) continue", transcript);
+        Assert.Contains("model.Index(clip.Clip.StartWordId) >= index && model.Index(clip.Clip.StartWordId) <= speech.LastSourceIndex", transcript);
+        Assert.Contains("model.Index(clip.Clip.EndWordId) >= index && model.Index(clip.Clip.EndWordId) <= speech.LastSourceIndex", transcript);
+        Assert.Contains("run.Index <= wordIndex && run.LastIndex >= wordIndex", transcript);
+        Assert.Contains("visual.Runs.Where(run => run.LastIndex >= first && run.Index <= last)", transcript);
         Assert.Contains("if (ai) Pattern(rect.X, rect.Y + rect.Height - 1, rect.Width, \"VcAccentTextBrush\", 5, 9, 1)", Source("Controls/TranscriptOverlay.cs"));
     }
 }

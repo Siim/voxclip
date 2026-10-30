@@ -81,7 +81,7 @@ public sealed class TranscriptView : UserControl
     internal Windows.Foundation.Rect? DebugWordBounds(int index)
     {
         foreach (var visual in realized.Values)
-            if (visual.Runs.FirstOrDefault(run => run.Index == index) is { } word && TranscriptOverlay.Bounds(word.Run).FirstOrDefault() is { Width: > 0 } bounds)
+            if (visual.Runs.FirstOrDefault(run => run.Index <= index && run.LastIndex >= index) is { } word && TranscriptOverlay.Bounds(word.Run).FirstOrDefault() is { Width: > 0 } bounds)
                 return visual.Text.TransformToVisual(this).TransformBounds(bounds);
         return null;
     }
@@ -202,7 +202,7 @@ public sealed class TranscriptView : UserControl
             var element = repeater.GetOrCreateElement(index);
             repeater.UpdateLayout();
             var options = new BringIntoViewOptions { AnimationDesired = Ui.EffectPolicy.Animations };
-            if (element is Grid grid && realized.TryGetValue(grid, out var visual) && visual.Runs.FirstOrDefault(run => run.Index == wordIndex) is { } word
+            if (element is Grid grid && realized.TryGetValue(grid, out var visual) && visual.Runs.FirstOrDefault(run => run.Index <= wordIndex && run.LastIndex >= wordIndex) is { } word
                 && TranscriptOverlay.Bounds(word.Run).FirstOrDefault() is { Width: > 0 } bounds)
             {
                 options.TargetRect = new Windows.Foundation.Rect(bounds.X, bounds.Y - bounds.Height, bounds.Width, bounds.Height * 3);
@@ -369,12 +369,12 @@ public sealed class TranscriptView : UserControl
         for (var index = item.StartIndex; index < item.StartIndex + item.Count; index++)
         {
             var after = 0;
-            foreach (var clip in model.Clips.Where(clip => model.Index(clip.Clip.StartWordId) == index))
+            var speech = model.PresentedWord(index);
+            if (!speech.Visible) continue;
+            foreach (var clip in model.Clips.Where(clip => model.Index(clip.Clip.StartWordId) >= index && model.Index(clip.Clip.StartWordId) <= speech.LastSourceIndex))
             {
                 paragraph.Inlines.Add(new InlineUIContainer { Child = ClipBadge(clip) });
             }
-            var speech = model.PresentedWord(index);
-            if (!speech.Visible) continue;
             if (speech.StartsSegment)
             {
                 var chip = new Border { Background = Brush("VcAccentSoftBrush"), BorderBrush = Brush("VcAccentTextBrush"), BorderThickness = new Thickness(1),
@@ -556,7 +556,7 @@ public sealed class TranscriptView : UserControl
             {
                 var first = model.Index(clip.Clip.StartWordId);
                 var last = model.Index(clip.Clip.EndWordId);
-                var covered = visual.Runs.Where(run => run.Index >= first && run.Index <= last).ToArray();
+                var covered = visual.Runs.Where(run => run.LastIndex >= first && run.Index <= last).ToArray();
                 if (covered.Length == 0) continue;
                 var start = covered[0].Run.ContentStart.GetCharacterRect(LogicalDirection.Forward);
                 var end = covered[^1].Run.ContentEnd.GetCharacterRect(LogicalDirection.Backward);
