@@ -37,7 +37,9 @@ public sealed class ElevenLabsVoiceLab : IDisposable
     private Dictionary<string, VoiceLabVoice> voices = new(StringComparer.Ordinal);
     private VoiceLabSubscription? subscription;
     private VoiceLabPriceCatalog? prices;
+    private long modelRevision;
     public ElevenLabsRegion Region { get; }
+    public long ModelRevision { get { lock (discoveredGate) return modelRevision; } }
 
     /// <summary><paramref name="prices"/> defaults to <c>shared/catalog/voice-lab.json</c>, read on the first estimate. Each action the
     /// provider accepts is recorded in <paramref name="spend"/>, <c>&lt;data&gt;/VoiceLab/spend.json</c> by default; Voice Lab §3.1.</summary>
@@ -69,11 +71,13 @@ public sealed class ElevenLabsVoiceLab : IDisposable
         VoiceLabSpendLedger? spend = null)
     {
         ArgumentNullException.ThrowIfNull(handler);
-        return new(keys, new HttpClient(handler, disposeHandler: false) { Timeout = Timeout.InfiniteTimeSpan }, region, logger, clock, boundary, prices,
-            spend);
+        var client = new ElevenLabsVoiceLab(keys, new HttpClient(handler, disposeHandler: false) { Timeout = Timeout.InfiniteTimeSpan }, region, logger, clock, boundary, prices, spend);
+        client.allowTestPolicy = true;
+        return client;
     }
 
     public void Dispose() => http.Dispose();
+    private bool allowTestPolicy;
 
     public async Task<IReadOnlyList<VoiceLabModel>> DiscoverModelsAsync(CancellationToken ct)
     {
@@ -115,7 +119,7 @@ public sealed class ElevenLabsVoiceLab : IDisposable
                 OptionalBool(row, "can_do_voice_conversion") ?? false, maximum, multiplier));
         }
         if (found.Count == 0) throw Malformed();
-        lock (discoveredGate) models = found;
+        lock (discoveredGate) { models = found; modelRevision = checked(modelRevision + 1); }
         return found.Values.ToArray();
     }
 
@@ -133,7 +137,9 @@ public sealed class ElevenLabsVoiceLab : IDisposable
         return result;
     }
 
-    public async Task<IReadOnlyList<VoiceLabVoice>> DiscoverVoicesAsync(CancellationToken ct)
+    public Task<IReadOnlyList<VoiceLabVoice>> DiscoverVoicesAsync(CancellationToken ct) => DiscoverVoicesAsync(null, ct);
+
+    private async Task<IReadOnlyList<VoiceLabVoice>> DiscoverVoicesAsync(VoiceConsentCreator? creator, CancellationToken ct)
     {
         var found = new Dictionary<string, VoiceLabVoice>(StringComparer.Ordinal);
         var cursors = new HashSet<string>(StringComparer.Ordinal);
@@ -142,17 +148,19 @@ public sealed class ElevenLabsVoiceLab : IDisposable
         {
             ct.ThrowIfCancellationRequested();
             var path = "/v2/voices" + (cursor is null ? "?page_size=100" : "?page_size=100&next_page_token=" + Uri.EscapeDataString(cursor));
-            using var reply = await SendAsync(HttpMethod.Get, path, null, 4 * 1024 * 1024, ct).ConfigureAwait(false);
+            using var reply = await SendAsync(HttpMethod.Get, path, null, 4 * 1024 * 1024, ct, creator: creator).ConfigureAwait(false);
             using var json = Parse(reply.Bytes);
             var row = json.RootElement;
             if (row.ValueKind != JsonValueKind.Object || !row.TryGetProperty("voices", out var items) || items.ValueKind != JsonValueKind.Array) throw Malformed();
             foreach (var item in items.EnumerateArray())
             {
                 if (item.ValueKind != JsonValueKind.Object) throw Malformed();
+                var name = OptionalString(item, "name");
+                var category = OptionalString(item, "category");
+                if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(category)) continue;
                 var id = RequiredString(item, "voice_id");
                 if (!IsSafeId(id) || found.ContainsKey(id)) throw Malformed();
                 if (found.Count >= 2000) throw new VoiceLabException(VoiceLabErrorKind.ResponseTooLarge);
-                var category = RequiredString(item, "category");
                 bool required = false, verified = false;
                 if (item.TryGetProperty("voice_verification", out var verification) && verification.ValueKind != JsonValueKind.Null)
                 {
@@ -160,8 +168,13 @@ public sealed class ElevenLabsVoiceLab : IDisposable
                     required = OptionalBool(verification, "requires_verification") ?? false;
                     verified = OptionalBool(verification, "is_verified") ?? false;
                 }
-                found.Add(id, new(id, RequiredString(item, "name"), category,
-                    OptionalBool(item, "is_owner") ?? false, required, verified));
+                var created = OptionalLong(item, "created_at_unix");
+                if (created is < 0 or > 253402300799) throw Malformed();
+                found.Add(id, new(id, name, category,
+                    OptionalBool(item, "is_owner") ?? false, required, verified,
+                    item.TryGetProperty("labels", out var labels) && labels.ValueKind == JsonValueKind.Object
+                        ? OptionalString(labels, "voxclip_record_id") : null,
+                    created is { } seconds ? DateTimeOffset.FromUnixTimeSeconds(seconds) : null));
             }
             var more = RequiredBool(row, "has_more");
             if (!more)
@@ -175,7 +188,83 @@ public sealed class ElevenLabsVoiceLab : IDisposable
         throw new VoiceLabException(VoiceLabErrorKind.ResponseTooLarge);
     }
 
+    public async Task<IReadOnlyList<VoiceLabVoice>> ListOwnClonesAsync(CancellationToken ct = default) =>
+        (await DiscoverVoicesAsync(ct).ConfigureAwait(false)).Where(voice => voice.IsOwner && voice.Category == "cloned").ToArray();
+
+    internal async Task<IReadOnlyList<VoiceLabVoice>> ListOwnClonesAsync(VoiceConsentCreator creator, CancellationToken ct) =>
+        (await DiscoverVoicesAsync(creator, ct).ConfigureAwait(false)).Where(voice => voice.IsOwner && voice.Category == "cloned").ToArray();
+
     public VoiceLabAuthorization Approve(VoiceLabPreparedAction action, bool affirmative) => actions.Approve(action, affirmative);
+    public bool QuotesAreFresh(IReadOnlyList<VoiceLabPreparedAction> quotes) => actions.QuotesAreFresh(quotes);
+    public async Task<VoiceLabMonthlyCap?> RefreshMonthlyCapAsync(VoiceLabMonthlyCap? cap, CancellationToken ct = default)
+    {
+        if (cap is null) return null;
+        if (await ReadMonthlySpendAsync(ct).ConfigureAwait(false) is not { } total)
+            throw new VoiceLabException(VoiceLabErrorKind.ConsentRequired);
+        return cap with { Spent = total };
+    }
+    public async Task<decimal?> ReadMonthlySpendAsync(CancellationToken ct = default) => spend is null ? null :
+        (await spend.TotalForCapAsync("elevenlabs", clock.GetUtcNow(), ct).ConfigureAwait(false))?.Usd;
+    public IReadOnlyList<VoiceLabAuthorization> ApproveTakeRun(VoiceLabTakeRunQuote quote, bool affirmative) => actions.ApproveRun(quote.Id, quote.Actions, affirmative);
+    public IReadOnlyList<VoiceLabAuthorization> ApproveTakeRun(VoiceLabTakeRunQuote quote, VoiceLabRunDispatch dispatch) => actions.ApproveRun(quote.Id, quote.Actions, true, dispatch);
+    public void ReleaseTakeRun(VoiceLabTakeRunQuote quote) => actions.ReleaseRun(quote.Id, quote.Actions);
+    public void DiscardTakeRun(VoiceLabTakeRunQuote quote) => actions.DiscardRun(quote.Id, quote.Actions);
+    public VoiceLabPreparedAction PrepareQa(string language, string recordId, Guid requestId)
+    {
+        if (!CloneLanguage.IsMatch(language) || string.IsNullOrWhiteSpace(recordId)) throw Invalid();
+        return actions.Prepare(QaFingerprint(language, recordId), Quoted(VoiceLabOperation.SpeechToText, "scribe_v2", VoiceLabTakeProcessing.MaximumQaSeconds),
+            new(VoiceLabOperation.SpeechToText, requestId, "elevenlabs", Region, "/v1/speech-to-text", "scribe_v2", null,
+                new(VoiceLabLanguageModeKind.Explicit, language), null, recordId));
+    }
+    public async Task<VoiceLabQaTranscript> TranscribeQaAsync(float[] samples, int rate, string language, OwnVoicePolicy policy,
+        VoiceLabAuthorization authorization, CancellationToken ct = default)
+    {
+        if (rate != 24000 || !CloneLanguage.IsMatch(language)) throw Invalid();
+        policy.Validate();
+        var wav = VoiceLabTakeProcessing.EncodeQaWav(samples, rate);
+        var id = actions.Claim(authorization, QaFingerprint(language, policy.RecordId), VoiceLabOperation.SpeechToText, authorization.Review.RequestId);
+        using var body = Multipart(NewBoundary(), [new("model_id", "scribe_v2"), new("language_code", language), new("tag_audio_events", "false"),
+            new("diarize", "false"), new("timestamps_granularity", "word"), new("file", null, "qa.wav", wav)]);
+        using var reply = await SendAsync(HttpMethod.Post, "/v1/speech-to-text", body, 4 * 1024 * 1024, ct, billing: authorization, policy: policy).ConfigureAwait(false);
+        using var json = Parse(reply.Bytes);
+        var root = json.RootElement;
+        var detected = RequiredString(root, "language_code");
+        if (await new VoxClip.Core.Services.Models.ModelCatalog().NormalizeLanguageAsync(detected, ct).ConfigureAwait(false) != language ||
+            !root.TryGetProperty("words", out var words) || words.ValueKind != JsonValueKind.Array) throw Malformed();
+        ct.ThrowIfCancellationRequested();
+        var result = new List<VoiceLabWord>();
+        double previous = 0;
+        foreach (var word in words.EnumerateArray())
+        {
+            if (OptionalString(word, "type") != "word") continue;
+            var text = RequiredString(word, "text");
+            if (!word.TryGetProperty("start", out var startValue) || !startValue.TryGetDouble(out var start) ||
+                !word.TryGetProperty("end", out var endValue) || !endValue.TryGetDouble(out var end) ||
+                !double.IsFinite(start) || !double.IsFinite(end) || start < previous || end <= start || end > samples.Length / (double)rate || result.Count >= 5000) throw Malformed();
+            result.Add(new(text, start, end, true));
+            previous = end;
+        }
+        return new(Array.AsReadOnly(result.ToArray()), Receipt("/v1/speech-to-text", "scribe_v2", null, id, reply));
+    }
+    private string QaFingerprint(string language, string recordId) => VoiceLabActionGate.Fingerprint(Region.ToString(), "scribe_v2", language, recordId,
+        VoiceLabTakeProcessing.MaximumQaSeconds.ToString(CultureInfo.InvariantCulture));
+    public async Task<VoiceConsentCreator> GetCreatorIdentityAsync(CancellationToken ct = default)
+    {
+        var key = await keys.GetKeyAsync("elevenlabs-api-key", ct).ConfigureAwait(false);
+        ct.ThrowIfCancellationRequested();
+        if (string.IsNullOrWhiteSpace(key)) throw new VoiceLabException(VoiceLabErrorKind.MissingKey);
+        return new(Region, VoiceConsentCreator.Fingerprint(key));
+    }
+    public async Task ValidateCreatorAsync(VoiceConsentCreator? expected, CancellationToken ct = default)
+    {
+        var actual = await GetCreatorIdentityAsync(ct).ConfigureAwait(false);
+        RequireCreator(expected ?? new(ElevenLabsRegion.Default, null), actual.Region, actual.KeyFingerprint!);
+    }
+    private static void RequireCreator(VoiceConsentCreator expected, ElevenLabsRegion region, string fingerprint)
+    {
+        expected.Validate();
+        if (expected.Region != region || expected.KeyFingerprint is { } hash && hash != fingerprint) throw new VoiceCreatorMismatchException();
+    }
 
     public VoiceLabPreparedAction PrepareSynthesis(string text, string modelId, VoiceLabVoiceChoice voice, string language,
         VoiceLabSpeechOptions options, Guid requestId)
@@ -203,6 +292,7 @@ public sealed class ElevenLabsVoiceLab : IDisposable
     public VoiceLabPreparedAction PrepareDeletion(string voiceId, OwnVoicePolicy policy, Guid requestId)
     {
         policy.Validate(voiceId);
+        if (!allowTestPolicy && policy.Creator is null) throw new VoiceLabException(VoiceLabErrorKind.ConsentRequired);
         SelectedOwnForDeletion(voiceId);
         return actions.Prepare(DeleteFingerprint(voiceId, policy), Quoted(VoiceLabOperation.DeleteClone, null, 1),
             Review(VoiceLabOperation.DeleteClone, requestId, "/v1/voices/" + voiceId, null, voiceId, null, null, policy));
@@ -235,7 +325,7 @@ public sealed class ElevenLabsVoiceLab : IDisposable
         var boundary = NewBoundary();
         using var body = Multipart(boundary, CloneParts(upload));
         var id = actions.Claim(authorization, CloneFingerprint(upload, policy), VoiceLabOperation.CreateClone, requestId);
-        using var reply = await SendAsync(HttpMethod.Post, "/v1/voices/add", body, 128 * 1024, ct, billing: authorization).ConfigureAwait(false);
+        using var reply = await SendAsync(HttpMethod.Post, "/v1/voices/add", body, 128 * 1024, ct, billing: authorization, policy: policy).ConfigureAwait(false);
         using var json = Parse(reply.Bytes);
         if (json.RootElement.ValueKind != JsonValueKind.Object) throw Malformed();
         var voiceId = RequiredString(json.RootElement, "voice_id");
@@ -252,7 +342,7 @@ public sealed class ElevenLabsVoiceLab : IDisposable
         SelectedOwnForDeletion(voiceId);
         var id = actions.Claim(authorization, DeleteFingerprint(voiceId, policy), VoiceLabOperation.DeleteClone, requestId);
         var path = "/v1/voices/" + voiceId;
-        using var reply = await SendAsync(HttpMethod.Delete, path, null, 128 * 1024, ct, allowNotFound: true, billing: authorization).ConfigureAwait(false);
+        using var reply = await SendAsync(HttpMethod.Delete, path, null, 128 * 1024, ct, allowNotFound: true, billing: authorization, creator: policy.Creator).ConfigureAwait(false);
         if (reply.Status != HttpStatusCode.NotFound)
         {
             using var json = Parse(reply.Bytes);
@@ -278,12 +368,12 @@ public sealed class ElevenLabsVoiceLab : IDisposable
             ["seed"] = options.Seed, ["apply_text_normalization"] = "auto"
         };
         if (modelId != "eleven_multilingual_v2") payload["language_code"] = language;
-        if (SpeechContext(options.PreviousText, true) is { } previous) payload["previous_text"] = previous;
-        if (SpeechContext(options.NextText, false) is { } next) payload["next_text"] = next;
+        if (modelId != "eleven_v3" && SpeechContext(options.PreviousText, true) is { } previous) payload["previous_text"] = previous;
+        if (modelId != "eleven_v3" && SpeechContext(options.NextText, false) is { } next) payload["next_text"] = next;
         var jsonBody = Encoding.UTF8.GetBytes(payload.ToJsonString());
         var id = actions.Claim(authorization, SynthesisFingerprint(text, modelId, voice, language, options), VoiceLabOperation.TextToSpeech, requestId);
         using var reply = await SendAsync(HttpMethod.Post, path, new ByteArrayContent(jsonBody) { Headers = { ContentType = new MediaTypeHeaderValue("application/json") } }, MaxJsonAudio, ct,
-            billing: authorization).ConfigureAwait(false);
+            billing: authorization, policy: voice.Policy).ConfigureAwait(false);
         if (reply.ContentType is { } contentType && !contentType.Equals("application/json", StringComparison.OrdinalIgnoreCase)) throw new VoiceLabException(VoiceLabErrorKind.InvalidAudio);
         using var json = Parse(reply.Bytes);
         if (json.RootElement.ValueKind != JsonValueKind.Object || !json.RootElement.TryGetProperty("audio_base64", out var audio) || audio.ValueKind != JsonValueKind.String) throw new VoiceLabException(VoiceLabErrorKind.InvalidAudio);
@@ -310,7 +400,7 @@ public sealed class ElevenLabsVoiceLab : IDisposable
             new("remove_background_noise", cleanAudioOn ? "false" : "true")]);
         var id = actions.Claim(authorization, ConversionFingerprint(snapshot, modelId, voice, language, seed, cleanAudioOn), VoiceLabOperation.VoiceChange, requestId);
         var path = "/v1/voice-changer/" + voice.Id + "?output_format=pcm_24000";
-        using var reply = await SendAsync(HttpMethod.Post, path, body, MaxPcm, ct, billing: authorization).ConfigureAwait(false);
+        using var reply = await SendAsync(HttpMethod.Post, path, body, MaxPcm, ct, billing: authorization, policy: voice.Policy).ConfigureAwait(false);
         if (reply.ContentType is { } type && !new[] { "application/octet-stream", "audio/pcm", "audio/l16" }.Contains(type, StringComparer.OrdinalIgnoreCase))
             throw new VoiceLabException(VoiceLabErrorKind.InvalidAudio);
         ValidatePcm(reply.Bytes);
@@ -355,7 +445,8 @@ public sealed class ElevenLabsVoiceLab : IDisposable
     private string SynthesisFingerprint(string text, string model, VoiceLabVoiceChoice voice, string language, VoiceLabSpeechOptions options) =>
         Fingerprint(VoiceLabOperation.TextToSpeech, "/v1/text-to-speech/" + voice.Id + "/with-timestamps?output_format=pcm_24000", model, voice, language,
             VoiceLabActionGate.ContentHash(Encoding.UTF8.GetBytes(text)), options.Seed.ToString(CultureInfo.InvariantCulture),
-            ContextHash(SpeechContext(options.PreviousText, true)), ContextHash(SpeechContext(options.NextText, false)));
+            model == "eleven_v3" ? null : ContextHash(SpeechContext(options.PreviousText, true)),
+            model == "eleven_v3" ? null : ContextHash(SpeechContext(options.NextText, false)));
     private static string? ContextHash(string? context) => context is null ? null : VoiceLabActionGate.ContentHash(Encoding.UTF8.GetBytes(context));
     /// <summary>Voice-lab §8.5 context: Unicode White_Space is removed at both ends, then the last (previous) or first (next)
     /// 300 Unicode scalars are kept. If they hold White_Space, a word split by the cut is dropped first. Then the cut
@@ -392,7 +483,7 @@ public sealed class ElevenLabsVoiceLab : IDisposable
         VoiceLabActionGate.Fingerprint(["elevenlabs", Region.ToString(), VoiceLabOperation.CreateClone.ToString(), "/v1/voices/add", upload.DisplayName,
             upload.Language, upload.CreatedAt, upload.RemoveBackgroundNoise.ToString(), upload.Samples.Count.ToString(CultureInfo.InvariantCulture),
             .. upload.Samples.SelectMany((sample, index) => new[] { index.ToString(CultureInfo.InvariantCulture), sample.Role.ToString(), sample.Sha256 }),
-            PolicyIdentity(policy)]);
+            PolicyIdentity(policy), .. upload.RecoveryNonce is null ? Array.Empty<string>() : new[] { upload.RecoveryNonce }]);
     private string DeleteFingerprint(string id, OwnVoicePolicy policy) =>
         VoiceLabActionGate.Fingerprint("elevenlabs", Region.ToString(), VoiceLabOperation.DeleteClone.ToString(), "/v1/voices/" + id, PolicyIdentity(policy));
     private string ConversionFingerprint(byte[] audio, string model, VoiceLabVoiceChoice voice, string language, uint seed, bool cleanAudioOn) =>
@@ -412,7 +503,7 @@ public sealed class ElevenLabsVoiceLab : IDisposable
     private static VoiceLabLanguageMode Auto(string language) => new(VoiceLabLanguageModeKind.AutoDetected, language);
     private sealed record CloneFile(VoiceLabCloneSampleRole Role, byte[] Wav, string Sha256);
     private sealed record CloneUpload(string DisplayName, string Language, string CreatedAt, bool RemoveBackgroundNoise,
-        IReadOnlyList<CloneFile> Samples, string ConsentSha256);
+        IReadOnlyList<CloneFile> Samples, string ConsentSha256, string? RecoveryNonce);
     /// <summary>WAV only until spike S5: 1–25 complete mono PCM16 files of 5–30 s, 10–240 s in total, with exactly one consent statement.</summary>
     private static CloneUpload ValidatedClone(VoiceLabCloneRequest request)
     {
@@ -437,20 +528,22 @@ public sealed class ElevenLabsVoiceLab : IDisposable
             total += wav.DataBytes / 2 / (double)wav.SampleRate;
             samples.Add(new(sample.Role, snapshot, VoiceLabActionGate.ContentHash(snapshot)));
         }
-        if (total is < 10 or > 240) throw Invalid();
+        if (total is < 10 or > 240 || request.RecoveryNonce is not null && !Guid.TryParseExact(request.RecoveryNonce, "D", out _)) throw Invalid();
         return new(name, request.Language, DateTimeOffset.FromUnixTimeSeconds(seconds).ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture),
-            request.RemoveBackgroundNoise, samples, samples.Single(sample => sample.Role == VoiceLabCloneSampleRole.ConsentStatement).Sha256);
+            request.RemoveBackgroundNoise, samples, samples.Single(sample => sample.Role == VoiceLabCloneSampleRole.ConsentStatement).Sha256, request.RecoveryNonce);
     }
     private static IEnumerable<Part> CloneParts(CloneUpload upload)
     {
         yield return new("name", upload.DisplayName + " (VoxClip)");
-        yield return new("files[]", null, "consent-statement.wav", upload.Samples.Single(sample => sample.Role == VoiceLabCloneSampleRole.ConsentStatement).Wav);
+        yield return new("files", null, "consent-statement.wav", upload.Samples.Single(sample => sample.Role == VoiceLabCloneSampleRole.ConsentStatement).Wav);
         var number = 2;
         foreach (var sample in upload.Samples.Where(sample => sample.Role == VoiceLabCloneSampleRole.Training))
-            yield return new("files[]", null, "sample-" + (number++).ToString("00", CultureInfo.InvariantCulture) + ".wav", sample.Wav);
+            yield return new("files", null, "sample-" + (number++).ToString("00", CultureInfo.InvariantCulture) + ".wav", sample.Wav);
         yield return new("remove_background_noise", upload.RemoveBackgroundNoise ? "true" : "false");
-        yield return new("description", "VoxClip own-voice clone. Consent sha256:" + upload.ConsentSha256 + ". Created " + upload.CreatedAt + ".");
-        yield return new("labels", "{\"language\":\"" + upload.Language + "\"}");
+        yield return new("description", "VoxClip own-voice clone. Consent sha256:" + upload.ConsentSha256 + ". Created " + upload.CreatedAt + "." +
+            (upload.RecoveryNonce is null ? "" : " VoxClip request " + upload.RecoveryNonce + "."));
+        yield return new("labels", "{\"language\":\"" + upload.Language + "\"" +
+            (upload.RecoveryNonce is null ? "" : ",\"voxclip_record_id\":\"" + upload.RecoveryNonce + "\"") + "}");
     }
     /// <summary>The catalog estimate (Voice Lab §3.2) for <paramref name="units"/> of an ElevenLabs operation: seconds of audio, characters
     /// (Unicode scalars) of text or one call. TTS uses the selected model's discovered character multiplier, so discover models first;
@@ -463,6 +556,7 @@ public sealed class ElevenLabsVoiceLab : IDisposable
             VoiceLabOperation.DeleteClone => VoiceLabPricedOperation.ElevenLabsDeleteClone,
             VoiceLabOperation.TextToSpeech => VoiceLabPricedOperation.ElevenLabsTextToSpeech,
             VoiceLabOperation.VoiceChange => VoiceLabPricedOperation.ElevenLabsVoiceChange,
+            VoiceLabOperation.SpeechToText => VoiceLabPricedOperation.ElevenLabsSpeechToText,
             _ => throw Invalid()
         };
         double? multiplier;
@@ -504,7 +598,7 @@ public sealed class ElevenLabsVoiceLab : IDisposable
     /// estimate is recorded once from then on however the body ends, and the record finishes before this returns or throws; Voice Lab
     /// §3.1.</summary>
     private async Task<Reply> SendAsync(HttpMethod method, string path, HttpContent? body, int limit, CancellationToken ct, bool allowNotFound = false,
-        VoiceLabAuthorization? billing = null)
+        VoiceLabAuthorization? billing = null, OwnVoicePolicy? policy = null, VoiceConsentCreator? creator = null)
     {
         ct.ThrowIfCancellationRequested();
         var origin = Region.BaseUri();
@@ -515,6 +609,7 @@ public sealed class ElevenLabsVoiceLab : IDisposable
         catch (OperationCanceledException) { throw new VoiceLabException(VoiceLabErrorKind.Cancelled); }
         catch (Exception) { throw new VoiceLabException(VoiceLabErrorKind.MissingKey); }
         if (string.IsNullOrWhiteSpace(key)) throw new VoiceLabException(VoiceLabErrorKind.MissingKey);
+        if ((creator ?? policy?.Creator) is { } identity) RequireCreator(identity, Region, VoiceConsentCreator.Fingerprint(key));
         log.RegisterSecret(key);
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
         deadline.CancelAfter(TimeSpan.FromMinutes(5));
@@ -525,7 +620,25 @@ public sealed class ElevenLabsVoiceLab : IDisposable
             using var request = new HttpRequestMessage(method, url) { Content = body };
             request.Headers.TryAddWithoutValidation("xi-api-key", key);
             request.Headers.UserAgent.ParseAdd($"VoxClip/{LlmRuntime.Version}");
-            using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, deadline.Token).ConfigureAwait(false);
+            if (policy?.ValidateDispatch is { } validate) await validate(deadline.Token).ConfigureAwait(false);
+            ct.ThrowIfCancellationRequested();
+            if (policy is not null) RequirePermit(policy);
+            if (policy?.DispatchPermit is { } bound && bound.RequestId != billing?.Review.RequestId) throw new VoiceLabException(VoiceLabErrorKind.ConsentRequired);
+            if (policy is not null && billing?.Review.ConsentRecordId is { } consent && consent != policy.RecordId) throw new VoiceLabException(VoiceLabErrorKind.ConsentRequired);
+            if (billing?.RunDispatch is { } checking) await checking.AuthorizeAsync(deadline.Token).ConfigureAwait(false);
+            Task<HttpResponseMessage> Start()
+            {
+                lock (discoveredGate)
+                {
+                    if (policy?.ModelRevision is { } expected && expected != modelRevision) throw new VoiceLabRunInvalidatedException();
+                    Task<HttpResponseMessage> Transport() => billing?.IsRunAuthorization == true
+                        ? actions.StartRunAction(billing, () => http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, deadline.Token))
+                        : http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, deadline.Token);
+                    return policy?.DispatchPermit is { } permit ? permit.Start(Transport, deadline.Token) : Transport();
+                }
+            }
+            var sending = billing?.RunDispatch is { } dispatch ? dispatch.Start(Start, deadline.Token) : Start();
+            using var response = await sending.ConfigureAwait(false);
             if (response.RequestMessage?.RequestUri is { } final && (final.Scheme != url.Scheme || final.Host != url.Host || final.Port != url.Port || final.AbsolutePath != url.AbsolutePath))
                 throw new VoiceLabException(VoiceLabErrorKind.ProviderFailure);
             // The provider has billed once it answers 2xx: a cancelled, broken or oversized body is still recorded.
@@ -554,16 +667,53 @@ public sealed class ElevenLabsVoiceLab : IDisposable
         catch (Exception error) when (error is HttpRequestException or IOException) { throw new VoiceLabException(VoiceLabErrorKind.Network); }
         finally
         {
+            policy?.DispatchPermit?.Finish();
             // An accepted action is counted before its error reaches the caller.
             if (recording is not null) await recording.ConfigureAwait(false);
         }
+    }
+    private void RequirePermit(OwnVoicePolicy policy)
+    {
+        if (!allowTestPolicy && policy.DispatchPermit is null) throw new VoiceLabException(VoiceLabErrorKind.ConsentRequired);
+    }
+
+    internal async Task DeleteOperationAsync(VoiceOperation operation, CancellationToken ct)
+    {
+        if (operation.Region != Region || operation.RemoteVoiceId is not { } voiceId || !IsSafeId(voiceId)) throw Invalid();
+        var policy = new OwnVoicePolicy(operation.RecordId, voiceId, true, true, true, true, true);
+        var requestId = Guid.NewGuid();
+        var prepared = actions.Prepare(DeleteFingerprint(voiceId, policy), Quoted(VoiceLabOperation.DeleteClone, null, 1),
+            Review(VoiceLabOperation.DeleteClone, requestId, "/v1/voices/" + voiceId, null, voiceId, null, null, policy));
+        var authorization = Approve(prepared, true);
+        actions.Claim(authorization, DeleteFingerprint(voiceId, policy), VoiceLabOperation.DeleteClone, requestId);
+        using var reply = await SendAsync(HttpMethod.Delete, "/v1/voices/" + voiceId, null, 128 * 1024, ct,
+            allowNotFound: true, billing: authorization, creator: new(operation.Region, operation.CreatorKeyFingerprint)).ConfigureAwait(false);
+        if (reply.Status != HttpStatusCode.NotFound)
+        {
+            using var json = Parse(reply.Bytes);
+            if (RequiredString(json.RootElement, "status") != "ok") throw Malformed();
+        }
+        lock (discoveredGate) voices.Remove(voiceId);
     }
     private static VoiceLabException Error(HttpStatusCode statusCode, byte[] body, string path, HttpMethod method)
     {
         var status = (int)statusCode;
         var text = Encoding.UTF8.GetString(body.AsSpan(0, Math.Min(body.Length, 16384))).ToLowerInvariant();
+        string? code = null;
+        try
+        {
+            using var error = JsonDocument.Parse(body);
+            if (error.RootElement.TryGetProperty("detail", out var detail) && detail.ValueKind == JsonValueKind.Object)
+                code = OptionalString(detail, "code") ?? OptionalString(detail, "status");
+        }
+        catch (JsonException) { }
+        if (status == 402) return new(VoiceLabErrorKind.QuotaExceeded);
+        if (status == 403 && code is "subscription_required") return new(VoiceLabErrorKind.PlanUnavailable);
+        if (status == 403 && code is "feature_not_available") return new(VoiceLabErrorKind.FeatureUnavailable);
+        if (status == 403 && code is "voice_access_denied") return new(VoiceLabErrorKind.VoiceAccessDenied);
+        if (status == 403 && code is "model_access_denied") return new(VoiceLabErrorKind.ModelAccessDenied);
         if (text.Contains("quota") || text.Contains("credit")) return new(VoiceLabErrorKind.QuotaExceeded);
-        if (status == 403 || status == 401 && text.Contains("permission"))
+        if (status == 403 && code is "insufficient_permissions" or "missing_permissions" || status == 401 && text.Contains("permission"))
         {
             var permission = path switch
             {

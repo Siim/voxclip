@@ -6,13 +6,13 @@ using VoxClip.Core.Services.VoiceLab;
 
 namespace VoxClip.Core.Domain.VoiceLab;
 
-public enum VoiceLabOperation { CreateClone, DeleteClone, TextToSpeech, VoiceChange, VoiceRewrite, PatchRewrite }
+public enum VoiceLabOperation { CreateClone, DeleteClone, TextToSpeech, VoiceChange, VoiceRewrite, PatchRewrite, SpeechToText }
 public enum VoiceLabErrorKind
 {
     InvalidInput, ConsentRequired, SpeakerMismatch, PlanUnavailable, NoVoiceSlots, MissingKey,
     PermissionMissing, Unauthorized, QuotaExceeded, RateLimited, UnsupportedModel,
     UnsupportedEndpoint, UnsupportedFormat, MalformedResponse, InvalidAudio, InvalidAlignment,
-    ResponseTooLarge, Cancelled, ProviderFailure, Network
+    ResponseTooLarge, Cancelled, ProviderFailure, Network, FeatureUnavailable, VoiceAccessDenied, ModelAccessDenied
 }
 public sealed class VoiceLabException(VoiceLabErrorKind kind, string? detail = null) : Exception(kind.ToString())
 {
@@ -55,6 +55,8 @@ public sealed record VoiceLabPreparedAction
 }
 public sealed record VoiceLabAuthorization
 {
+    internal VoiceLabRunDispatch? RunDispatch { get; init; }
+    internal bool IsRunAuthorization { get; init; }
     internal VoiceLabAuthorization(Guid token, string fingerprint, VoiceLabEstimate estimate, VoiceLabReview review)
     { Token = token; Fingerprint = fingerprint; Estimate = estimate; Review = review; }
     internal Guid Token { get; }
@@ -67,6 +69,10 @@ public sealed record VoiceLabAuthorization
 public sealed record OwnVoicePolicy(string RecordId, string? CloneVoiceId, bool RecordActive, bool ProviderConsentGranted,
     bool StatementVerified, bool SpeakerMatched, bool OwnerConfirmed)
 {
+    internal VoiceDispatchPermit? DispatchPermit { get; init; }
+    internal Func<CancellationToken, Task>? ValidateDispatch { get; init; }
+    internal VoiceConsentCreator? Creator { get; init; }
+    internal long? ModelRevision { get; init; }
     public void Validate(string? selectedVoiceId = null)
     {
         if (string.IsNullOrWhiteSpace(RecordId) || !RecordActive || !ProviderConsentGranted || !StatementVerified || !OwnerConfirmed ||
@@ -87,7 +93,7 @@ public sealed record VoiceLabSubscription(string Tier, string Status, int Charac
     public bool IsNonCommercial => Tier == "free" || Status == "free";
 }
 public sealed record VoiceLabVoice(string Id, string Name, string Category, bool IsOwner,
-    bool RequiresVerification, bool IsVerified);
+    bool RequiresVerification, bool IsVerified, string? ConsentRecordId = null, DateTimeOffset? CreatedAt = null);
 public enum VoiceLabVoiceKind { Own, Stock }
 public sealed record VoiceLabVoiceChoice(string Id, VoiceLabVoiceKind Kind, OwnVoicePolicy? Policy)
 {
@@ -118,7 +124,7 @@ public sealed record VoiceLabCloneSample(VoiceLabCloneSampleRole Role, byte[] Wa
 /// <summary>One own-voice clone upload (voice-lab §6.5, §6.7). The single consent statement is sent first, then training samples in caller order.
 /// <c>Language</c> is <c>[a-z]{2,3}</c>; <c>CreatedAt</c> is sent as RFC 3339 UTC in whole seconds.</summary>
 public sealed record VoiceLabCloneRequest(string DisplayName, string Language, IReadOnlyList<VoiceLabCloneSample> Samples,
-    DateTimeOffset CreatedAt, bool RemoveBackgroundNoise);
+    DateTimeOffset CreatedAt, bool RemoveBackgroundNoise, string? RecoveryNonce = null);
 
 public enum VoiceRewriteScope { Passage, FullTake }
 /// <summary>One passage or full-take rewrite with its length budget (voice-lab §8.9.1), computed by the caller and bound by the quote.

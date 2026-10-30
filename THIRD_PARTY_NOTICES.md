@@ -7544,6 +7544,7 @@ The Apache License 2.0 text is reproduced above. `Package.resolved` pins https:/
 
 | Component | Use | Licence |
 |---|---|---|
+| Microsoft.ML.OnnxRuntime / Microsoft.ML.OnnxRuntime.Managed 1.19.2 | CPU-only own-voice embeddings (win-arm64 / win-x64) | package MIT licence and exact all-platform third-party notices reproduced in the ONNX Runtime 1.19.2 section above |
 | .NET 10.0.2 runtime and host packs (self-contained, win-x64 / win-arm64) | managed runtime | MIT and package third-party notices below |
 | Microsoft.WindowsAppSDK 2.5.1 and resolved Windows App SDK component packages | WinUI 3 self-contained runtime | Microsoft redistributable terms and package notices below; not the MIT source repository licence |
 | Microsoft.Windows.AI.MachineLearning 2.1.74, Microsoft.Web.WebView2 1.0.3719.77 | transitive native runtime and WebView2 loader | Microsoft package terms and notices below; installed WebView2 browser runtime is an operating-system prerequisite, not bundled |

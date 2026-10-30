@@ -33,9 +33,10 @@ public sealed class VoiceLabAssetException(VoiceLabAssetErrorCode code, string f
 }
 
 /// <summary>Owns validated snapshot bytes until a future composition releases them.</summary>
-public sealed class PreparedVoiceLabAsset : IDisposable
+public sealed class PreparedVoiceLabAsset : IDisposable, IAsyncDisposable
 {
     private readonly string scratch;
+    private readonly VoiceLabLifetime lifetime;
     public string SegmentId { get; }
     public string AssetId { get; }
     public string Path { get; }
@@ -46,13 +47,20 @@ public sealed class PreparedVoiceLabAsset : IDisposable
     public long TrimEndFrame { get; }
     public double Stretch { get; }
     public double GainDb { get; }
+    public string Sha256 { get; }
+    public bool IsValid => lifetime.IsValid;
     internal PreparedVoiceLabAsset(string segmentId, string id, string path, string scratch, int rate, int channels, long frames,
-        long trimStart, long trimEnd, double stretch, double gainDb)
+        long trimStart, long trimEnd, double stretch, double gainDb, string? sha256 = null)
     {
         SegmentId = segmentId; AssetId = id; Path = path; this.scratch = scratch; SampleRate = rate; Channels = channels;
         FrameCount = frames; TrimStartFrame = trimStart; TrimEndFrame = trimEnd; Stretch = stretch; GainDb = gainDb;
+        Sha256 = sha256 ?? Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(path)));
+        lifetime = new(() => { if (Directory.Exists(this.scratch)) Directory.Delete(this.scratch, true); });
     }
-    public void Dispose() { if (Directory.Exists(scratch)) Directory.Delete(scratch, true); }
+    public IDisposable AttachConsumer(Func<Task> stop) => lifetime.Attach(stop);
+    public Task InvalidateAsync() => lifetime.InvalidateAsync();
+    public void Dispose() => InvalidateAsync().GetAwaiter().GetResult();
+    public ValueTask DisposeAsync() => new(InvalidateAsync());
 }
 
 public static class VoiceLabAssets
@@ -107,8 +115,20 @@ public static class VoiceLabAssets
             project.VoiceLab.Segments.FirstOrDefault(segment => segment.Id == segmentId)?.Audio != audio ||
             audio.AssetId != asset.Id)
             throw new VoiceLabAssetException(VoiceLabAssetErrorCode.InvalidSelection, asset.File);
+        return await SnapshotAsync(asset, project.Id, audio, segmentId, paidRoot, scratchRoot, cancellationToken).ConfigureAwait(false);
+    }
+    public static Task<PreparedVoiceLabAsset> PreparePaidAsync(VoiceLabAsset asset, string projectId, string paidRoot,
+        string scratchRoot, CancellationToken ct = default)
+    {
+        if (VoiceLabAssetNaming.File(projectId, asset.Id, "wav") != asset.File || asset.Kind != "audio")
+            throw new VoiceLabAssetException(VoiceLabAssetErrorCode.InvalidSelection, asset.File);
+        return SnapshotAsync(asset, projectId, new(asset.Id, 0, asset.DurationSeconds, 1, 0), asset.Id, paidRoot, scratchRoot, ct);
+    }
+    private static async Task<PreparedVoiceLabAsset> SnapshotAsync(VoiceLabAsset asset, string projectId, VoiceLabAudio audio,
+        string segmentId, string paidRoot, string scratchRoot, CancellationToken cancellationToken)
+    {
         var rootPath = System.IO.Path.GetFullPath(paidRoot);
-        var sourcePath = System.IO.Path.Combine(rootPath, project.Id, System.IO.Path.GetFileName(asset.File));
+        var sourcePath = System.IO.Path.Combine(rootPath, projectId, System.IO.Path.GetFileName(asset.File));
         var scratch = System.IO.Path.Combine(scratchRoot, "voxclip-voice-" + Guid.NewGuid().ToString("N"));
         try { Directory.CreateDirectory(scratch); }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
@@ -152,7 +172,7 @@ public static class VoiceLabAssets
             if (start < 0 || end <= start || end > frames)
                 throw new VoiceLabAssetException(VoiceLabAssetErrorCode.InvalidTrim, asset.File);
             return new PreparedVoiceLabAsset(segmentId, asset.Id, snapshot, scratch, rate, channels, frames,
-                start, end, audio.Stretch, audio.GainDb);
+                start, end, audio.Stretch, audio.GainDb, asset.Sha256);
         }
         catch (Exception error) when (error is FileNotFoundException or DirectoryNotFoundException)
         {

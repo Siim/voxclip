@@ -1,0 +1,77 @@
+{
+  "schema": "voxclip-voice-lab-pause-fit-note/1",
+  "cases": [
+    {
+      "seconds": 0.0,
+      "expected": "pauses +0.0 s"
+    },
+    {
+      "seconds": -0.0,
+      "expected": "pauses +0.0 s"
+    },
+    {
+      "seconds": 0.04,
+      "expected": "pauses +0.0 s"
+    },
+    {
+      "seconds": -0.04,
+      "expected": "pauses −0.0 s"
+    },
+    {
+      "seconds": 0.05,
+      "expected": "pauses +0.1 s"
+    },
+    {
+      "seconds": -0.05,
+      "expected": "pauses −0.1 s"
+    },
+    {
+      "seconds": 0.06,
+      "expected": "pauses +0.1 s"
+    },
+    {
+      "seconds": -0.06,
+      "expected": "pauses −0.1 s"
+    },
+    {
+      "seconds": 0.15,
+      "expected": "pauses +0.1 s"
+    },
+    {
+      "seconds": -0.15,
+      "expected": "pauses −0.1 s"
+    },
+    {
+      "seconds": 1.25,
+      "expected": "pauses +1.2 s"
+    },
+    {
+      "seconds": -1.25,
+      "expected": "pauses −1.2 s"
+    },
+    {
+      "seconds": 1.35,
+      "expected": "pauses +1.4 s"
+    },
+    {
+      "seconds": -2.0,
+      "expected": "pauses −2.0 s"
+    },
+    {
+      "seconds": 999999.95,
+      "expected": "pauses +999999.9 s"
+    },
+    {
+      "seconds": -999999.95,
+      "expected": "pauses −999999.9 s"
+    },
+    {
+      "seconds": 1000000000000.25,
+      "expected": "pauses +1000000000000.2 s"
+    },
+    {
+      "seconds": -1000000000000.25,
+      "expected": "pauses −1000000000000.2 s"
+    }
+  ]
+}
