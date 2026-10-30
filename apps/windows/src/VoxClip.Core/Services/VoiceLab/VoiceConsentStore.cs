@@ -278,13 +278,7 @@ public sealed class VoiceConsentStore
                 .Any(file => Guid.TryParseExact(Path.GetFileNameWithoutExtension(file), "D", out var id) && Operation(id).RecordId == recordId);
             if (!existing)
             {
-                var regionJson = source.GetProperty("region");
-                var region = regionJson.ValueKind == JsonValueKind.Number ? (ElevenLabsRegion)regionJson.GetInt32() : regionJson.GetString() switch
-                {
-                    "default" => ElevenLabsRegion.Default, "us" => ElevenLabsRegion.Us, "eu" => ElevenLabsRegion.Eu,
-                    "in" => ElevenLabsRegion.In, "sg" => ElevenLabsRegion.Sg, _ => throw Invalid()
-                };
-                if (!Enum.IsDefined(region)) throw Invalid();
+                var region = source.GetProperty("region").Deserialize(VoiceConsentJson.Default.ElevenLabsRegion);
                 var date = source.GetProperty(deletion is null ? "startedAt" : "requestedAt");
                 var started = date.ValueKind == JsonValueKind.String ? date.GetDateTimeOffset() :
                     new DateTimeOffset(2001, 1, 1, 0, 0, 0, TimeSpan.Zero).AddSeconds(date.GetDouble());
@@ -674,4 +668,5 @@ public sealed class VoiceCreationClaim : IDisposable
 [JsonSerializable(typeof(VoiceOperation))]
 [JsonSerializable(typeof(VoiceConsentAudit))]
 [JsonSerializable(typeof(VoiceConsentText))]
+[JsonSerializable(typeof(ElevenLabsRegion))]
 internal partial class VoiceConsentJson : JsonSerializerContext;

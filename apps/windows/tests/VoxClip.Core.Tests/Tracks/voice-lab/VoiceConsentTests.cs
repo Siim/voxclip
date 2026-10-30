@@ -77,6 +77,81 @@ public sealed class VoiceConsentTests
     private static HttpResponseMessage Json(int status, string body) => new((HttpStatusCode)status) { Content = new StringContent(body, Encoding.UTF8, "application/json") };
     private static VoiceConsentRecord Fixture() => JsonSerializer.Deserialize(FixtureLoader.ReadText("fixtures/voice-lab/consent-record.json"), VoiceConsentJson.Default.VoiceConsentRecord)!;
     [Fact]
+    public void ReviewProbe_CreatorRegionMatchesMacWireShape()
+    {
+        var record = Fixture() with { Creator = new(ElevenLabsRegion.Eu, "0123456789abcdef") };
+        using var json = JsonDocument.Parse(JsonSerializer.Serialize(record, VoiceConsentJson.Default.VoiceConsentRecord));
+        Assert.Equal("""{"region":"eu","keyFingerprint":"0123456789abcdef"}""", JsonSerializer.Serialize(json.RootElement.GetProperty("creator")));
+    }
+
+    [Theory]
+    [InlineData(ElevenLabsRegion.Default, "default")]
+    [InlineData(ElevenLabsRegion.Us, "us")]
+    [InlineData(ElevenLabsRegion.Eu, "eu")]
+    [InlineData(ElevenLabsRegion.In, "in")]
+    [InlineData(ElevenLabsRegion.Sg, "sg")]
+    public void CreatorAndEveryJournalRegionRoundTripAndMigrate(ElevenLabsRegion region, string raw)
+    {
+        using var storage = new Storage();
+        var store = new VoiceConsentStore(storage.Locations);
+        var record = Draft(store, voice: "active-voice");
+        var node = System.Text.Json.Nodes.JsonNode.Parse(JsonSerializer.Serialize(record, VoiceConsentJson.Default.VoiceConsentRecord))!;
+        var macCreator = "{\"region\":\"" + raw + "\",\"keyFingerprint\":\"0123456789abcdef\"}";
+        node["creator"] = System.Text.Json.Nodes.JsonNode.Parse(macCreator);
+        record = JsonSerializer.Deserialize(node.ToJsonString(), VoiceConsentJson.Default.VoiceConsentRecord)!;
+        record.Validate();
+        Assert.Equal(new VoiceConsentCreator(region, "0123456789abcdef"), record.Creator);
+        store.Save(record);
+        var recordPath = Path.Combine(store.Root, record.RecordId, "record.json");
+        node["creator"]!["region"] = (int)region;
+        File.WriteAllText(recordPath, node.ToJsonString());
+        Assert.Equal(region, store.Load(record.RecordId).Creator!.Region);
+        store.Save(store.Load(record.RecordId));
+        using (var saved = JsonDocument.Parse(File.ReadAllBytes(recordPath)))
+            Assert.Equal(macCreator, JsonSerializer.Serialize(saved.RootElement.GetProperty("creator")));
+
+        var operation = store.BeginDeletion(record.RecordId, region, Now);
+        var operationPath = Path.Combine(store.OperationsRoot, operation.Id.ToString("D") + ".json");
+        var journal = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllBytes(operationPath))!;
+        Assert.Equal(raw, journal["region"]!.GetValue<string>());
+        Assert.Equal(raw, journal["audit"]!["creator"]!["region"]!.GetValue<string>());
+        journal["region"] = (int)region;
+        journal["audit"]!["creator"]!["region"] = (int)region;
+        File.WriteAllText(operationPath, journal.ToJsonString());
+        Assert.Equal(region, store.Operation(operation.Id).Region);
+        _ = store.Transition(operation.Id, VoiceOperationState.RemoteDeleted, Now);
+        using var migrated = JsonDocument.Parse(File.ReadAllBytes(operationPath));
+        Assert.Equal(raw, migrated.RootElement.GetProperty("region").GetString());
+        Assert.Equal(macCreator, JsonSerializer.Serialize(migrated.RootElement.GetProperty("audit").GetProperty("creator")));
+        using var audit = JsonDocument.Parse(JsonSerializer.Serialize(VoiceConsentAudit.From(record), VoiceConsentJson.Default.VoiceConsentAudit));
+        Assert.Equal(macCreator, JsonSerializer.Serialize(audit.RootElement.GetProperty("creator")));
+    }
+
+    [Theory]
+    [InlineData("\"EU\"")]
+    [InlineData("\" eu\"")]
+    [InlineData("\"eu \"")]
+    [InlineData("\"2\"")]
+    [InlineData("\"unknown\"")]
+    [InlineData("-1")]
+    [InlineData("5")]
+    [InlineData("2.0")]
+    [InlineData("2.5")]
+    [InlineData("2e0")]
+    [InlineData("2147483648")]
+    [InlineData("null")]
+    [InlineData("true")]
+    [InlineData("{}")]
+    [InlineData("[]")]
+    public void RegionConverterRefusesAnythingOutsideTheExactContract(string json)
+    {
+        Assert.Throws<JsonException>(() => JsonSerializer.Deserialize(json, VoiceConsentJson.Default.ElevenLabsRegion));
+        Assert.Throws<JsonException>(() => JsonSerializer.Serialize((ElevenLabsRegion)5, VoiceConsentJson.Default.ElevenLabsRegion));
+        var record = System.Text.Json.Nodes.JsonNode.Parse(JsonSerializer.Serialize(Fixture(), VoiceConsentJson.Default.VoiceConsentRecord))!;
+        record["creator"] = System.Text.Json.Nodes.JsonNode.Parse("{\"region\":" + json + ",\"keyFingerprint\":\"0123456789abcdef\"}");
+        Assert.Throws<JsonException>(() => JsonSerializer.Deserialize(record.ToJsonString(), VoiceConsentJson.Default.VoiceConsentRecord));
+    }
+    [Fact]
     public async Task ReviewProbe_WrongCreatorRegionCannotConfirmRemote404()
     {
         using var storage = new Storage();
