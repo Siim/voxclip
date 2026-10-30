@@ -246,17 +246,25 @@ internal sealed class VoiceLabSettingsPane : UserControl
             if (record.Status == VoiceConsentStatus.VerificationRequired) card.Children.Add(Ui.Text(VoiceLabCopy.VerificationRequired, "HelperText"));
             var deleting = session.Deleting.Contains(record.RecordId);
             if (deleting) card.Children.Add(Ui.Text(session.Busy ? "Deleting…" : "Couldn't finish deleting", "HelperText"));
-            card.Children.Add(SessionButton(deleting ? "Retry deletion…" : "Delete voice", "Delete voice " + record.VoiceName,
-                () => ConfirmAsync(new(VoiceLabRequestKind.Delete, record.RecordId))));
-            card.Children.Add(SessionButton("Remove from VoxClip only", "Remove " + record.VoiceName + " from VoxClip only",
-                () => ConfirmAsync(new(VoiceLabRequestKind.RemoveLocal, record.RecordId))));
+            var delete = SessionButton(deleting ? "Retry deletion…" : "Delete voice", VoiceLabActionNames.ForRecord("Delete voice", record, session.VisibleRecords),
+                () => ConfirmAsync(new(VoiceLabRequestKind.Delete, record.RecordId)));
+            AutomationProperties.SetAutomationId(delete, "delete-voice-" + record.RecordId);
+            card.Children.Add(delete);
+            var removeLocal = SessionButton("Remove from VoxClip only", VoiceLabActionNames.ForRecord("Remove from VoxClip only", record, session.VisibleRecords),
+                () => ConfirmAsync(new(VoiceLabRequestKind.RemoveLocal, record.RecordId)));
+            AutomationProperties.SetAutomationId(removeLocal, "remove-local-voice-" + record.RecordId);
+            card.Children.Add(removeLocal);
             AddCard(voices, card);
         }
         if (session.UnsavedRecord is { } unsaved)
         {
             var row = Ui.Stack();
-            row.Children.Add(SessionButton("Retry saving consent record", "Retry saving consent record", session.RetryUnsavedAsync));
-            row.Children.Add(SessionButton("Remove This Voice", "Remove unsaved voice", () => session.WithdrawOperationAsync(unsaved.RecordId)));
+            var retrySave = SessionButton("Retry saving consent record", VoiceLabActionNames.ForRecord("Retry saving consent record", unsaved, session.Records.Append(unsaved).DistinctBy(record => record.RecordId).ToArray()), session.RetryUnsavedAsync);
+            AutomationProperties.SetAutomationId(retrySave, "retry-save-voice-" + unsaved.RecordId);
+            row.Children.Add(retrySave);
+            var removeUnsaved = SessionButton("Remove This Voice", VoiceLabActionNames.ForRecord("Remove This Voice", unsaved, session.Records.Append(unsaved).DistinctBy(record => record.RecordId).ToArray()), () => session.WithdrawOperationAsync(unsaved.RecordId));
+            AutomationProperties.SetAutomationId(removeUnsaved, "remove-unsaved-voice-" + unsaved.RecordId);
+            row.Children.Add(removeUnsaved);
             AddCard(voices, row);
         }
         foreach (var operation in session.Operations.Where(operation => !operation.Finished))
@@ -268,12 +276,12 @@ internal sealed class VoiceLabSettingsPane : UserControl
             AutomationProperties.SetAutomationId(state, "voice-operation-" + operation.Id);
             AutomationProperties.SetLiveSetting(state, AutomationLiveSetting.Polite);
             row.Children.Add(state);
-            var retry = SessionButton("Retry", (operation.Kind == VoiceOperationKind.Create ? "Retry voice creation" : "Retry voice removal") + " " + operation.RecordId, () => session.LoadAsync(force: true));
+            var retry = SessionButton("Retry", VoiceLabActionNames.ForOperation(operation.Kind == VoiceOperationKind.Create ? "Retry voice creation" : "Retry voice removal", operation, session.Operations, session.Records), () => session.LoadAsync(force: true));
             AutomationProperties.SetAutomationId(retry, "retry-voice-" + operation.Id);
             row.Children.Add(retry);
             if (operation.Kind == VoiceOperationKind.Create)
             {
-                var remove = SessionButton("Remove unfinished voice", "Remove unfinished voice " + operation.RecordId, () => session.WithdrawOperationAsync(operation.RecordId));
+                var remove = SessionButton("Remove unfinished voice", VoiceLabActionNames.ForOperation("Remove unfinished voice", operation, session.Operations, session.Records), () => session.WithdrawOperationAsync(operation.RecordId));
                 AutomationProperties.SetAutomationId(remove, "remove-unfinished-" + operation.Id);
                 row.Children.Add(remove);
             }
