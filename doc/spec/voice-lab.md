@@ -441,7 +441,7 @@ A new statement is generated for each attempt:
 | en | `My name is {name}. Today is {date}. This is my own voice, and I agree to an AI copy of it being made with ElevenLabs for editing my own videos. {w1} {w2} {w3} {w4}.` |
 | et (draft, needs native review before release) | `Minu nimi on {name}. Täna on {date}. See on minu enda hääl ja ma nõustun, et sellest tehakse ElevenLabsi abil tehisintellekti koopia minu enda videote toimetamiseks. {w1} {w2} {w3} {w4}.` |
 
-- **Language.** The statement uses the language of the most recent project transcript, or English.
+- **Language.** The statement uses the transcript language of the open project, or else of the most recent project (its primary subtag: `en-GB` is `en`), but only when that language has a calibrated speaker check (§6.6). Otherwise it uses English. Only English is calibrated today, so an Estonian user records an English statement. Training audio from a project (§6.5 a) may be in any language, because the speaker match compares voices, not words. The consent record and the clone's `labels` language stay the statement language.
 - **`{date}`.** The local date written out in full. Use fixed month tables, not the OS locale, because the Windows build runs with `InvariantGlobalization`:
   - en: `25 October 2026`, months January … December;
   - et: `25. oktoober 2026`, months jaanuar, veebruar, märts, aprill, mai, juuni, juuli, august, september, oktoober, november, detsember.
@@ -466,24 +466,71 @@ A new statement is generated for each attempt:
 
 ### 6.5 Training samples
 
-Choose one source:
+The consent statement is always recorded live and verified (§6.2–§6.4); it is what keeps cloning to the user's own voice. Only the training samples have a choice of source, offered after verification:
 
-- **(a) From the user's own takes.** These are projects with a transcript whose speaker passes §6.6 against the consent clip. Pick spans of words in which:
-  - every `word` has `conf ≥ 0.8` (or conf is null);
-  - there are no `event` or `unlabeledSpeech` items;
-  - there is a single speaker label (or diarization is off);
-  - the estimated SNR is at least 20 dB (median speech-frame RMS against the take's 10th-percentile frame RMS).
-
-  Take 60 to 120 s in total, in spans of 5 to 30 s, preferring spans between pauses.
-- **(b) A fresh read-aloud.** A 90 s script from `shared/voice-lab/scripts-<lang>.txt` (created with M3), recorded like §6.3. It is uploaded in spans of 5 to 30 s, preferring spans between pauses, as in (a).
+- **(a) This project's audio.** Spans of the take in the project open in the editor. Other projects are not offered yet. Spans are read from the source media, so words cut in the edit still count and edits never change the selection. This is the default when the sheet opens with a project that has a transcript, including from the Rewrite panel's **Create Your Voice…**. §6.5.1 chooses the spans: at most 120 s of clear speech, and at least 30 s before the speaker match. Below that, the sheet falls back to (b).
+- **(b) A fresh read-aloud.** A 90 s script from `shared/voice-lab/scripts-<lang>.txt` (created with M3), recorded like §6.3. It is uploaded in spans of 5 to 30 s, preferring spans between pauses. It is the only source when no project is open, and the alternative to (a) otherwise.
 
 Then process the samples:
 
 1. Normalise each span to −20 dBFS RMS over voiced frames (frames above −45 dBFS), with true peak at most −3 dBTP.
-2. Encode each span as mono 16-bit PCM WAV at its source rate (8–96 kHz). Core accepts only WAV until spike S5 (§14) settles the upload format. After S5, the candidate is AAC-LC 256 kbps, 44.1 kHz mono, in M4A: AVAssetWriter on macOS, FFmpeg's native `aac` encoder on Windows.
-3. Upload 1 to 25 files, counting the consent statement from step 4. Each file lasts 5 to 30 s, and together they last 10 to 240 s (§6.7). The recommended total is 1 to 2 minutes. More than 3 minutes gives little improvement.
+2. Encode each span as mono 16-bit PCM WAV at its source rate (8–96 kHz). Core accepts only WAV until spike S5 (§14) settles the upload format. After S5, the candidate is AAC-LC 256 kbps, 44.1 kHz mono, in M4A: AVAssetWriter on macOS, FFmpeg's native `aac` encoder on Windows. Project spans are cut from the mean of the source's audio channels; a source rate outside 8–96 kHz makes (a) unavailable.
+3. Upload 1 to 25 files, counting the consent statement from step 4. Each file lasts 5 to 30 s, and together they last 10 to 240 s (§6.7). The recommended total is 1 to 2 minutes. More than 3 minutes gives little improvement. Project audio sends at most 120 s of spans, so at most 24 spans.
 4. **Add the consent statement recording as one of the samples.** This makes the clone provably derived from the consenting speaker.
-5. Set `remove_background_noise=false`. It "can make the quality worse" on clean audio. Use `true` only when the SNR is below 20 dB and Clean audio has not been applied to the source take.
+5. Set `remove_background_noise=false`. It "can make the quality worse" on clean audio. Use `true` only when the SNR is below 20 dB and Clean audio has not been applied to the source take. Project spans always pass 20 dB, so they send `false`.
+
+Training WAVs of either source are temporary. They are kept in memory or private temporary files and deleted after the upload, or when the sheet closes without one.
+
+#### 6.5.1 Span selection (project audio)
+
+`VoiceTrainingSpans.select` (Swift) and `VoiceTrainingSpans.Select` (C#) are pure Core functions with the same result on both platforms. Vectors: `shared/fixtures/voice-lab/training-spans.json`.
+
+Inputs:
+
+- **Items.** The project transcript's items in stored order, each with `kind`, `start`, `end`, `conf`, `speaker` and `synthetic`. Times are source seconds, not edited times. `synthetic` is true for every item from `firstWordId` to `lastWordId` of any Voice Lab segment.
+- **Excluded ranges.** Source `[start, end]` ranges that must never be used: the `replace` range of every Voice Lab segment, enabled or not, passage or full take. VoxClip never trains on generated audio.
+- **Frame levels.** The take's 10 ms levels in dBFS. Frame `i` covers mono samples `floor(i × rate / 100)` up to, not including, `floor((i + 1) × rate / 100)`, in integer arithmetic, and the take has `floor(samples × 100 / rate)` frames. A frame's level is `20 × log10(max(rms, 1e-9))`, with `rms` the root mean square of its samples in binary64.
+- **Duration.** The take's source duration in seconds.
+
+Every time is first converted to whole milliseconds, `ms(t) = floor(t × 1000 + 0.5)` in binary64. Everything after that is integer arithmetic, except the SNR.
+
+| Constant | Value |
+|---|---|
+| `TRAIN_MIN_CONF` | 0.8 (inclusive) |
+| `TRAIN_MAX_GAP` | 2,000 ms (inclusive) |
+| `TRAIN_SPAN_MIN`, `TRAIN_SPAN_MAX` | 5,000 ms and 30,000 ms (both inclusive) |
+| `TRAIN_VOICED` | −45 dBFS (a voiced frame is above it) |
+| `TRAIN_MIN_SNR` | 20 dB (inclusive) |
+| `TRAIN_TOTAL_MIN`, `TRAIN_TOTAL_MAX` | 30,000 ms and 120,000 ms (both inclusive) |
+
+1. **Usable words.** An item is usable when its `kind` is `word`, `conf` is null or at least `TRAIN_MIN_CONF`, `synthetic` is false, `ms(start) < ms(end) ≤ ms(duration)`, and it overlaps no excluded range (`xs < end` and `xe > start`, in milliseconds).
+2. **Runs.** Walk the items in order. A run is a sequence of consecutive usable words, so any other item ends it: an event, unlabeled speech, or a low-confidence, synthetic or excluded word. A usable word joins the current run only when all of these hold; otherwise it starts a new run:
+   - its `speaker` equals the run's (null equals only null);
+   - it starts at most `TRAIN_MAX_GAP` after the run's end;
+   - no excluded range has `xs <` its start and `xe >` the run's end.
+
+   A run starts at its first word's start and ends at the largest end among its words.
+3. **Split.** A piece longer than `TRAIN_SPAN_MAX` is split between two of its consecutive words. Each side runs from its first word's start to its largest word end. A boundary is valid when both sides last at least `TRAIN_SPAN_MIN`. Choose the valid boundary with the longest gap (the right side's start minus the left side's end). Break ties by the smallest `|leftEnd + rightStart − pieceStart − pieceEnd|`, the gap nearest the middle, then by the earlier boundary. Split the left side, then the right, again until no piece is longer than `TRAIN_SPAN_MAX`. A long piece with no valid boundary is rejected as `unsplittable`. A piece shorter than `TRAIN_SPAN_MIN` is rejected as `short`.
+4. **SNR.** The take's floor is its 10th-percentile frame: sort all `n` levels ascending and take index `floor(n / 10)`. A piece covers frames `floor((startMs + 5) / 10)` up to, not including, `floor((endMs + 5) / 10)`, clamped to `0…n`. Sort its voiced frames ascending and take index `floor(m / 2)` of the `m` frames. `snrDb` is that level minus the floor, in binary64. With no voiced frame, or no frames at all, `snrDb` is null. A piece qualifies when `snrDb ≥ TRAIN_MIN_SNR`; otherwise it is rejected as `lowSnr`.
+5. **Minimum.** `availableMs` is the total duration of the qualifying spans. Below `TRAIN_TOTAL_MIN` the status is `belowMinimum` and nothing is selected.
+6. **Pick.** Rank the qualifying spans by `snrDb` descending, then duration descending, then start ascending. Walk the ranking and select each span that keeps the selected total at or below `TRAIN_TOTAL_MAX`. A span that does not fit is skipped, and a later, shorter one may still fit. `selectedMs` is the selected total.
+
+The result has `status` (`ok` or `belowMinimum`), `availableMs`, `selectedMs` and the selected spans in source order, each with `startMs`, `endMs` and `snrDb`. For tests and diagnostics it also lists the qualifying spans and the rejected pieces in source order, each rejected piece with its `reason` (`short`, `unsplittable` or `lowSnr`) and `snrDb`.
+
+For the analysis, Media decodes the take once and streams it into the frame levels; it never holds the whole take in memory. The analysis runs on device when the sheet opens from a project, needs no network and is free. Media then cuts each selected span from the same mono mix, at samples `floor((startMs × rate + 500) / 1000)` up to, not including, `floor((endMs × rate + 500) / 1000)` in integer arithmetic. A cut therefore lasts 5 to 30 s in samples, and its WAV records `seconds` as its sample count over the rate.
+
+#### 6.5.2 Choosing the source in the sheet
+
+- **Opened with an editor project that has a transcript.** The analysis starts at once and the project option reads "Finding clear speech in {project name}…" until it finishes. After verification, the sheet shows two choices:
+  - **Use this project's audio (recommended)**, with "{n} s of clear speech found in {project name}", where `n = floor(availableMs / 1000)`. It is selected by default.
+  - **Record a read-aloud (about 90 s)**.
+- **Too little speech.** With `belowMinimum`, the project option is disabled and the read-aloud is selected, with "This project has only {n} s of clear speech. Record a read-aloud instead." When `n` is 0: "This project has no clear speech to use. Record a read-aloud instead."
+- **Unreadable audio.** When the source media is missing, cannot be decoded or has an unsupported rate, the project option is disabled with "VoxClip can't read this project's audio. Record a read-aloud instead."
+- **No project.** Opened from Settings with no project open, the sheet offers only the read-aloud, with "Open a project to use its audio instead." With a project that has no transcript: "Transcribe this project to use its audio instead."
+- **Speaker match.** **Create voice…** runs §6.6 on every selected span on device, before any request. When fewer than 30 s remain, the sheet blocks with "Some of this project's audio doesn't sound like the voice in your consent statement. Record a read-aloud instead." and **Record a Read-Aloud** switches to (b). The verified statement is kept, so it is not recorded again.
+- **Confirmation.** With project audio, the create confirmation reads "Checks your plan, then sends the consent recording and {m} s of speech from {project name} to create your own voice. No video is sent. {cost}", where `m` is the whole seconds of the spans that passed §6.6. With a read-aloud it keeps "…the consent recording and training audio…".
+- **Entry points.** The Rewrite panel's button reads **Create Your Voice…**: it always has a transcribed project, so its audio can be used. Settings keeps **Create Your Voice…**.
+- **Windows.** The flow and copy are the same. Until the Windows speaker check is enabled (§6.6), the sheet keeps the speaker-unavailable copy and refuses Record, as today.
 
 ### 6.6 Speaker match (on device)
 
@@ -499,7 +546,8 @@ public protocol SpeakerEmbedder: Sendable {
 - **Embedding.** Use 16 kHz mono input. Embed 3 s windows with a 1.5 s hop over voiced frames only, and average them.
 - **Score.** Cosine similarity of the L2-normalised embeddings.
 - **Threshold τ.** It comes from calibration (spike S6), not a model-family starting point. Use the 99.9th percentile of clean calibration impostor scores plus `max(0.002, measured cross-runtime drift)`, rounded up to 0.01. Freeze it before speaker-disjoint validation. Every corpus × input-rate condition must have false-accept rate ≤ 0.5% and same-speaker pass ≥ 95%, with at least 200 impostor and 50 same-speaker pairs. τ is stored per model in the catalogue. **M3 does not ship without a calibrated τ.**
-- **Clone creation.** Every training sample must score ≥ τ against the consent recording. If any sample fails, drop it. If the remaining total falls under 10 s, block with "Some of these recordings don't sound like the voice in your consent statement."
+- **Clone creation.** Every training sample must score ≥ τ against the consent recording. If any sample fails, or has too little voiced speech to embed, drop it. For a read-aloud, if the remaining total falls under 10 s, block with "Some of these recordings don't sound like the voice in your consent statement." For project spans (§6.5 a) the floor is 30 s, with the §6.5.2 copy and the switch to a read-aloud. Dropped spans are not replaced from the unselected ones.
+- **Language.** Project spans may be in another language than the statement. They are scored with the statement language's τ; cross-language pairs were not part of the S6 calibration.
 
 **S6 outcome (macOS W2, 2026-10-29).** Use the official WeSpeaker ResNet34-LM VoxCeleb ONNX export, 256 dimensions, at Hugging Face revision `f0c48c298fd835726c27956a5d617bad7115627e`. Its official model card declares CC BY 4.0, and the toolkit repo's licence is Apache-2.0. The exact 26,530,309-byte file and SHA-256 are pinned in `shared/catalog/voice-lab-models.json`, alongside the existing Silero VAD v6.2.0 asset. The Mac uses Microsoft's official ONNX Runtime SwiftPM 1.19.2 package (CPU only); weights remain an explicitly approved download, not a bundled model. Settings → Voice Lab and Local Models use the existing resumable-download, size, licence and verification patterns.
 
@@ -534,7 +582,7 @@ xi-api-key: <key>
 Content-Type: multipart/form-data; boundary="voxclip-<32 lowercase hex>"
   name                     = "{display name} (VoxClip)"
   files                    = consent-statement.wav          (the consent statement recording; always the first file)
-  files                    = sample-02.wav, sample-03.wav …  (the training samples in caller order)
+  files                    = sample-02.wav, sample-03.wav …  (the training samples in caller order; project spans in source order)
   remove_background_noise  = false, or true per §6.5 step 5
   description              = "VoxClip own-voice clone. Consent sha256:{statementSha256}. Created {created}."
   labels                   = {"language":"et","voxclip_record_id":"{recordId}"} (a JSON string; the private recovery hint is best-effort, never the only recovery evidence)
@@ -599,6 +647,7 @@ Stored locally in `<data>/VoiceLab/consent/<recordId>/record.json`, never upload
 ```
 
 - Sample audio is deleted after a successful upload. Only the hashes stay.
+- `samples[].source` is `project` for spans of the open project's audio (§6.5 a) and `readAloud` for a read-aloud (§6.5 b). Each entry keeps the SHA-256 and `seconds` of the WAV as sent and its speaker score. The record stores no project path, span times or transcript text.
 - The statement audio stays until the voice is deleted.
 - The project file only references the record by `recordId` (§10.1).
 - New records include `creator` with a settings region raw value (`default`, `us`, `eu`, `in`, `sg`) and the first 16 lowercase hex characters of SHA-256 over the API key's UTF-8 bytes. Never persist the key. Legacy records omit `creator` and match on their recorded region or operation journal's region only, with `default` when neither records one. Both operation kinds carry the same fingerprint as `creatorKeyFingerprint`.
@@ -1635,7 +1684,7 @@ The Guidelines do not settle whether a free, open-source, bring-your-own-key des
 |---|---|---|
 | Source audio for Clean audio | to ElevenLabs, only on the user's click | cache input WAV (evictable); result in `<data>/VoiceLab/<contentKey>/` |
 | Consent statement audio | to ElevenLabs STT (check) and IVC (one sample) | `<data>/VoiceLab/consent/<recordId>/` until the voice is deleted |
-| Training samples | to ElevenLabs IVC | deleted locally after upload; hashes kept |
+| Training samples (project spans or a read-aloud) | to ElevenLabs IVC | temporary; deleted locally after upload or when the sheet closes; hashes kept |
 | Patch text and context text | to ElevenLabs TTS (`previous_text` / `future_text`, ≤ 100 or 300 characters) | in the project segment |
 | Lip-sync window video and audio | to fal.ai or sync.so | deleted remotely where the API allows; result in `<data>/VoiceLab/<projectId>/` |
 | Speaker embeddings | never | in the consent record |
@@ -1735,6 +1784,7 @@ Unit tests run in both suites (`VoxClipCoreTests`, `VoxClip.Core.Tests`), with s
     - A WER of 0.10 with a nonce word missing fails.
     - A recognised language that differs from the statement fails.
     - Date strings use the month tables in en and et.
+    - An Estonian transcript gives an English statement while only English has a calibrated speaker check (§6.2).
 12. **Request goldens** for every endpoint in §4.3, §6.7, §7.3, §8.5, §8.8, §9.4 and §9.5: method, path, headers (with key values redacted), body or multipart parts.
     - The Isolator, forced-alignment, text-to-dialogue and lip-sync client goldens are waiting on their §4/§9 clients. Clean audio and Lip sync stay visibly unavailable with a reason in 0.1.0; no successful provider state machine is implied by the TTS/IVC goldens.
 13. **Provider state machines** with mocked HTTP:
@@ -1758,11 +1808,13 @@ Unit tests run in both suites (`VoxClipCoreTests`, `VoxClip.Core.Tests`), with s
     - Handles are present, and the rendered edited WAV and decoded MP4 put markers at the planned body and seam positions.
     - The recipe has a fit factor of 1, `outDuration` equal to the window (or the window plus `residualSeconds` after a partial fit), and chunks that name the paid asset's ID and SHA-256; v3 validation accepts it.
     - The existing unity passage, full-take and touching suites still pass, and both preflights still refuse a fit factor other than 1.
+20. **Training spans (§6.5.1).** Both Core suites replay every case in `training-spans.json` and match its status, totals and span lists exactly. With a fake speaker check, spans below τ are dropped before any request, fewer than 30 s left blocks with the §6.5.2 copy and no provider call, and the request sends the statement first and the kept spans in source order.
 
 Manual QA with real keys runs locally, never in CI:
 
 - one Clean audio run on a 3 min take;
 - one own-voice clone with the full consent flow in English and in Estonian;
+- one own-voice clone from an Estonian project's audio with an English statement;
 - three patches (a replace, an insert, a bridged replace);
 - one voice-changer preview;
 - one LatentSync and one lipsync-2 window;
