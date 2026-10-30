@@ -194,9 +194,13 @@ public sealed partial class LlmConnector
             var parts = new JsonArray();
             if (request.CachedBlock is not null) parts.Add((JsonNode)new JsonObject { ["text"] = request.CachedBlock });
             parts.Add((JsonNode)new JsonObject { ["text"] = request.Instruction });
+            var generation = new JsonObject { ["maxOutputTokens"] = maxOut, ["responseMimeType"] = "application/json", ["responseJsonSchema"] = schema };
+            var stripped = model.StartsWith("models/", StringComparison.Ordinal) ? model[7..] : model;
+            if (effort is not null && Regex.IsMatch(stripped, "^gemini-([3-9]|[1-9][0-9]+)([.-]|$)", RegexOptions.CultureInvariant))
+                generation["thinkingConfig"] = new JsonObject { ["thinkingLevel"] = effort.ToUpperInvariant() };
             return new JsonObject { ["systemInstruction"] = new JsonObject { ["parts"] = new JsonArray(new JsonObject { ["text"] = request.System }) },
                 ["contents"] = new JsonArray(new JsonObject { ["role"] = "user", ["parts"] = parts }),
-                ["generationConfig"] = new JsonObject { ["maxOutputTokens"] = maxOut, ["responseMimeType"] = "application/json", ["responseJsonSchema"] = schema } };
+                ["generationConfig"] = generation };
         }
         var messages = new JsonArray(new JsonObject { ["role"] = "system", ["content"] = request.System }, new JsonObject { ["role"] = "user", ["content"] = UserContent(request) });
         if (Id == ConnectorId.Ollama)
@@ -476,9 +480,19 @@ public sealed partial class LlmConnector
         {
             ConnectorId.Anthropic => new(Count(usage?["input_tokens"]), Count(usage?["output_tokens"]), Count(usage?["cache_read_input_tokens"]), Count(usage?["cache_creation_input_tokens"])),
             ConnectorId.OpenAI => new(Count(usage?["input_tokens"]), Count(usage?["output_tokens"]), Count(usage?["input_tokens_details"]?["cached_tokens"]), null),
-            ConnectorId.Gemini => new(Count(body["usageMetadata"]?["promptTokenCount"]), Count(body["usageMetadata"]?["candidatesTokenCount"]), Count(body["usageMetadata"]?["cachedContentTokenCount"]), null),
+            ConnectorId.Gemini => new(Count(body["usageMetadata"]?["promptTokenCount"]), GeminiOutput(body["usageMetadata"]), Count(body["usageMetadata"]?["cachedContentTokenCount"]), null),
             ConnectorId.Ollama => new(Count(body["prompt_eval_count"]), Count(body["eval_count"]), null, null),
             _ => new(Count(usage?["prompt_tokens"]), Count(usage?["completion_tokens"]), Count(usage?["prompt_tokens_details"]?["cached_tokens"]), null)
         };
+    }
+
+    private static long? GeminiOutput(JsonNode? usage)
+    {
+        static long? Count(JsonNode? node) => node is JsonValue value && value.TryGetValue<long>(out var count) ? count : null;
+        var visible = Count(usage?["candidatesTokenCount"]);
+        var thoughts = Count(usage?["thoughtsTokenCount"]);
+        if (visible is null && thoughts is null) return null;
+        try { return checked((visible ?? 0) + (thoughts ?? 0)); }
+        catch (OverflowException) { return null; }
     }
 }

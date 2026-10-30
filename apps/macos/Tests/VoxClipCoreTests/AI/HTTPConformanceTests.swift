@@ -3,6 +3,18 @@ import Testing
 @testable import VoxClipCore
 
 extension HTTPConnectorTests {
+    @Test
+    func geminiUsageIncludesBilledThinkingTokens() async throws {
+        let harness = try HTTPHarness(.gemini, replies: [.json(#"{"candidates":[{"finishReason":"STOP","content":{"parts":[{"text":"{}"}]}}],"usageMetadata":{"candidatesTokenCount":12,"thoughtsTokenCount":80}}"#)])
+        defer { harness.finish() }
+        let response = try await harness.connector.send(harness.catalog.connectionTest(for: .gemini), model: harness.model)
+        #expect(response.usage?.output == 92)
+        let body = try #require(HTTPStubProtocol.requests.last).json()
+        #expect(body[ai: "generationConfig"][ai: "maxOutputTokens"].aiInt == 2048)
+        #expect(body[ai: "generationConfig"][ai: "thinkingConfig"][ai: "thinkingLevel"].aiString == "LOW")
+        #expect(body[ai: "generationConfig"][ai: "thinkingConfig"][ai: "thinkingBudget"] == .null)
+    }
+
     @Test(arguments: ["FINISH_REASON_UNSPECIFIED", "STOP", "MAX_TOKENS", "SAFETY", "RECITATION", "LANGUAGE", "OTHER", "BLOCKLIST", "PROHIBITED_CONTENT", "SPII", "MALFORMED_FUNCTION_CALL", "IMAGE_SAFETY", "IMAGE_PROHIBITED_CONTENT", "IMAGE_OTHER", "NO_IMAGE", "IMAGE_RECITATION", "UNEXPECTED_TOOL_CALL", "TOO_MANY_TOOL_CALLS", "MISSING_THOUGHT_SIGNATURE", "MALFORMED_RESPONSE", "ESCALATION", "PUP_LIMITED_DISABLED", "CONTINUATION", "", "FUTURE_REASON"])
     func geminiFinishReasonsNeverCompleteUnlessStopped(_ reason: String) async throws {
         let reply = try HTTPFixtures.encode(["candidates": [["finishReason": reason, "content": ["parts": [["text": HTTPFixtures.completion]]]]]])

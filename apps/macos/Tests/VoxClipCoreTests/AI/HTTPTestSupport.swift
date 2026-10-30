@@ -338,6 +338,11 @@ enum HTTPFixtures {
             var parts: [[String: Any]] = block.map { [["text": $0]] } ?? []
             parts.append(["text": request.instruction])
             body = ["systemInstruction": ["parts": [["text": request.system]]], "contents": [["role": "user", "parts": parts]], "generationConfig": ["maxOutputTokens": request.maxOutputTokens, "responseMimeType": "application/json", "responseJsonSchema": schema]]
+            if let effort = request.effort {
+                var generation = body["generationConfig"] as! [String: Any]
+                generation["thinkingConfig"] = ["thinkingLevel": effort.rawValue.uppercased()]
+                body["generationConfig"] = generation
+            }
         case .ollama:
             let schemaText = String(decoding: try JSONSerialization.data(withJSONObject: schema, options: [.sortedKeys, .withoutEscapingSlashes]), as: UTF8.self)
             let estimated = [request.system, block ?? "", request.instruction, schemaText].reduce(0) { $0 + Int(ceil(Double($1.utf8.count) / 2.2)) }

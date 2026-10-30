@@ -8,6 +8,20 @@ namespace VoxClip.Core.Tests.Tracks.WinAi;
 
 public sealed class HttpConformanceTests
 {
+    [Fact]
+    public async Task GeminiUsageIncludesBilledThinkingTokens()
+    {
+        using var handler = new StubHttp((_, _, _) => Task.FromResult(Response(200, "{\"candidates\":[{\"finishReason\":\"STOP\",\"content\":{\"parts\":[{\"text\":\"{}\"}]}}],\"usageMetadata\":{\"candidatesTokenCount\":12,\"thoughtsTokenCount\":80}}")));
+        using var client = new HttpClient(handler);
+        var connector = new LlmConnector(ConnectorId.Gemini, Catalog(), client, new MemoryKeys(), new Redactor());
+        var result = await connector.SendAsync(Catalog().TestRequest(ConnectorId.Gemini), "gemini-3.8-flash", TestContext.Current.CancellationToken);
+        Assert.Equal(92, result.Usage!.Output);
+        var generation = handler.Requests.Single().Body!["generationConfig"]!;
+        Assert.Equal(2048, generation["maxOutputTokens"]!.GetValue<int>());
+        Assert.Equal("LOW", generation["thinkingConfig"]!["thinkingLevel"]!.GetValue<string>());
+        Assert.Null(generation["thinkingConfig"]!["thinkingBudget"]);
+    }
+
     public static TheoryData<string> GeminiFinishReasons => new("FINISH_REASON_UNSPECIFIED", "STOP", "MAX_TOKENS", "SAFETY", "RECITATION", "LANGUAGE", "OTHER", "BLOCKLIST", "PROHIBITED_CONTENT", "SPII", "MALFORMED_FUNCTION_CALL", "IMAGE_SAFETY", "IMAGE_PROHIBITED_CONTENT", "IMAGE_OTHER", "NO_IMAGE", "IMAGE_RECITATION", "UNEXPECTED_TOOL_CALL", "TOO_MANY_TOOL_CALLS", "MISSING_THOUGHT_SIGNATURE", "MALFORMED_RESPONSE", "ESCALATION", "PUP_LIMITED_DISABLED", "CONTINUATION", "", "FUTURE_REASON");
 
     [Theory]

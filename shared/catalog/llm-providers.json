@@ -231,8 +231,8 @@
         "mechanism": "generationConfig.responseMimeType = application/json and generationConfig.responseJsonSchema = schema (never together with responseSchema)"
       },
       "promptCaching": { "mechanism": "implicit caching", "minPrefixTokens": null },
-      "effort": null,
-      "neverSend": ["temperature", "topP", "topK", "responseSchema", "thinkingConfig"],
+      "effort": { "field": "generationConfig.thinkingConfig.thinkingLevel", "values": ["LOW", "MEDIUM", "HIGH"], "models": "Gemini 3 and later", "budget": "maxOutputTokens includes thinking and visible output; never increased beyond the canonical cap" },
+      "neverSend": ["temperature", "topP", "topK", "responseSchema", "thinkingBudget"],
       "modelList": {
         "method": "GET",
         "path": "/v1beta/models",

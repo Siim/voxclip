@@ -5,7 +5,7 @@
   "sources": {
     "shared/prompts/clip-finder.json": "f087788566198c36c19ddcc7e263f321d539fec4ed41d69a1d472eea152e4a89",
     "shared/prompts/ai-tighten.json": "0bdb47a851a41a0747235c248641905cf1d62cd39c70c651b2f765a14acc4163",
-    "shared/catalog/llm-providers.json": "ef0c1ce623c4d7f99f99aa28e16305598bdb5efbe0f922017df26b256e663515"
+    "shared/catalog/llm-providers.json": "c4e5c22c557e8c3e60534f994df8bd5ebfcf4db234f319ef86099a3bfd0db787"
   },
   "cases": [
     {

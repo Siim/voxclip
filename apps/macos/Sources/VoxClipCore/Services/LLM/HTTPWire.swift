@@ -51,8 +51,12 @@ extension HTTPConnector {
             var parts: [[String: Any]] = []
             if let cached = canonical.cachedBlock { parts.append(["text": cached]) }
             parts.append(["text": canonical.instruction])
+            var generation: [String: Any] = ["maxOutputTokens": maximum, "responseMimeType": "application/json", "responseJsonSchema": schema]
+            if stripped.range(of: #"^gemini-([3-9]|[1-9][0-9]+)([.-]|$)"#, options: .regularExpression) != nil, let effort = canonical.effort {
+                generation["thinkingConfig"] = ["thinkingLevel": effort.rawValue.uppercased()]
+            }
             body = ["systemInstruction": ["parts": [["text": canonical.system]]], "contents": [["role": "user", "parts": parts]],
-                    "generationConfig": ["maxOutputTokens": maximum, "responseMimeType": "application/json", "responseJsonSchema": schema]]
+                    "generationConfig": generation]
         case .ollama:
             let context = contexts[model] ?? 4096
             let policy = AITokenPolicy(catalog.document[ai: "policy"])
@@ -136,7 +140,11 @@ extension HTTPConnector {
                 }
             }
             text = candidate[ai: "content"][ai: "parts"].aiArray.filter { $0[ai: "thought"].aiBool != true }.compactMap { $0[ai: "text"].aiString }.joined()
-            usage = LLMUsage(input: value[ai: "usageMetadata"][ai: "promptTokenCount"].aiInt, output: value[ai: "usageMetadata"][ai: "candidatesTokenCount"].aiInt, cacheRead: value[ai: "usageMetadata"][ai: "cachedContentTokenCount"].aiInt)
+            let visible = value[ai: "usageMetadata"][ai: "candidatesTokenCount"].aiInt
+            let thoughts = value[ai: "usageMetadata"][ai: "thoughtsTokenCount"].aiInt
+            let total = (visible ?? 0).addingReportingOverflow(thoughts ?? 0)
+            let output = visible == nil && thoughts == nil || total.overflow ? nil : total.partialValue
+            usage = LLMUsage(input: value[ai: "usageMetadata"][ai: "promptTokenCount"].aiInt, output: output, cacheRead: value[ai: "usageMetadata"][ai: "cachedContentTokenCount"].aiInt)
         case .ollama:
             text = value[ai: "message"][ai: "content"].aiString ?? ""
             if value[ai: "done_reason"].aiString == "length" { stop = .truncated }

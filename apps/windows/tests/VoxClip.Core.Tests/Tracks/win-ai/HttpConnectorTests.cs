@@ -45,7 +45,7 @@ public sealed class HttpConnectorTests
         {
             case ConnectorId.Anthropic: expected["output_config"]!["format"]!["schema"] = schema; Assert.Equal("2026-10-21", sent.Headers["anthropic-version"]); Assert.Equal("server-side-fallback-2026-07-01", sent.Headers["anthropic-beta"]); break;
             case ConnectorId.OpenAI: expected["text"]!["format"]!["schema"] = schema; expected["prompt_cache_key"] = "voxclip-" + Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes("B")))[..16]; break;
-            case ConnectorId.Gemini: expected["generationConfig"]!["responseJsonSchema"] = schema; Assert.Equal("test-placeholder-value", sent.Headers["x-goog-api-key"]); Assert.DoesNotContain("key=", sent.Url, StringComparison.OrdinalIgnoreCase); break;
+            case ConnectorId.Gemini: expected["generationConfig"]!["responseJsonSchema"] = schema; expected["generationConfig"]!["thinkingConfig"] = new JsonObject { ["thinkingLevel"] = "MEDIUM" }; Assert.Equal("test-placeholder-value", sent.Headers["x-goog-api-key"]); Assert.DoesNotContain("key=", sent.Url, StringComparison.OrdinalIgnoreCase); break;
             case ConnectorId.Ollama: expected["format"] = schema; break;
             default: expected["response_format"]!["json_schema"]!["schema"] = schema; expected[id == ConnectorId.Xai ? "max_completion_tokens" : "max_tokens"] = id == ConnectorId.Xai ? 16000 : 4096; if (id == ConnectorId.LmStudio) expected["temperature"] = 0; break;
         }

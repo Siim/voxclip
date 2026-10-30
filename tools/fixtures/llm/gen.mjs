@@ -601,6 +601,7 @@ const variants = [
   ['openai-legacy-no-effort', 'openai', { model: 'gpt-4.1' }],
   ['openai-custom-reasoning', 'openai', { model: 'o3-custom' }],
   ['gemini-model-path-escaping', 'gemini', { model: 'models/custom/model with space?#' }],
+  ['gemini-legacy-no-thinking-level', 'gemini', { model: 'gemini-2.5-pro' }],
   ['ollama-no-thinking', 'ollama', { capabilities: ['completion'] }],
   ['ollama-context-cap', 'ollama', { modelContext: 8192 }],
   ['lmstudio-custom-base', 'lmstudio', { baseUrl: 'http://127.0.0.1:2345/' }],
@@ -613,6 +614,11 @@ const variants = [
 for (const [id, connector, overrides] of variants) {
   const options = { ...baselineOptions(connectors[connector], 8), ...overrides }
   add('connector-requests', id, 'connector-request', { request: bestRequest, connector, options }, renderConnector(bestRequest, connectors[connector], catalog, options), 'doc/spec/ai.md §6')
+}
+for (const effort of ['low', 'medium', 'high']) {
+  const request = { ...testRequest, effort }
+  const options = { model: 'gemini-3.8-flash' }
+  add('connector-requests', `gemini-thinking-${effort}`, 'connector-request', { request, connector: 'gemini', options }, renderConnector(request, connectors.gemini, catalog, options), '2026-10-30 Gemini generateContent thinking reference; ai.md §2.1 total output budget')
 }
 const specialSystem = 'Quote " slash \\ backspace\b tab\t line\n form\f return\r control\u0001 del\u007F 😀 e\u0301'
 const specialRequest = { ...testRequest, system: specialSystem }
@@ -686,7 +692,7 @@ assert(!wire.codex.argv.includes('--model'), 'Codex default must omit model')
 for (const [id, rendered] of Object.entries(wire)) {
   if (rendered.kind !== 'http') continue
   for (const forbidden of ['temperature', 'top_p', 'top_k', 'thinking', 'thinkingConfig', 'responseSchema', 'reasoning_effort']) {
-    if (!['ollama', 'lmstudio'].includes(id)) assert(!JSON.stringify(rendered.body).includes(`"${forbidden}":`), `${id} sent forbidden ${forbidden}`)
+    if (!['ollama', 'lmstudio'].includes(id) && !(id === 'gemini' && forbidden === 'thinkingConfig')) assert(!JSON.stringify(rendered.body).includes(`"${forbidden}":`), `${id} sent forbidden ${forbidden}`)
   }
 }
 for (const invalid of [

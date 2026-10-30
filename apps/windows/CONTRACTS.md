@@ -1,5 +1,9 @@
 # Windows fixed contracts
 
+### 2026-10-30 — Gemini effort and total output budget
+
+- Gemini 3+ maps canonical low/medium/high to LOW/MEDIUM/HIGH thinking levels; older/custom nonmatching ids omit the unsupported field. Shared request goldens cover all efforts, absent effort, legacy ids, connection tests and clip/tighten requests. The canonical cap is a combined thinking-plus-visible cap, never silently enlarged, and usage includes thoughts. Google documents relative thinking allowances, not a guaranteed visible-token reserve, and forbids combining thinkingLevel with thinkingBudget; no such guarantee is claimed.
+
 ### 2026-10-30 — Gemini terminal reasons
 
 - Mirrored tables accept only `STOP` as complete. Token limits truncate; policy/image blocks and escalation refuse; PUP-limited accounts are unavailable; malformed, tool, missing, unspecified and future reasons fail closed as server errors without a corrective retry. Prompt blocking takes precedence. Both Core suites cover every documented FinishReason plus empty/unknown values.
