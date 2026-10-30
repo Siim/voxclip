@@ -18,6 +18,7 @@ private actor VoiceLabNoDispatchKeys: KeyProvider {
             app.speakerModelLibrary.model = originalModel
             app.speakerModelLibrary.installed = originalInstalled
         }
+        app.settings.values["transcription.elevenlabs.region"] = .string("default")
         app.settings.values["voiceLab.enabled"] = .bool(false)
         let session = VoiceLabSession(app: app)
         let off = !session.enabled && !session.canRecord && !session.canCreate

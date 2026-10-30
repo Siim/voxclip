@@ -27,8 +27,10 @@ import Testing
         #expect(result.name == "fixture; expected: true; actual: false")
         #expect(DebugUISuite.Result.equal("fixture", expected: true, actual: true).name == "fixture")
     }
-    @Test func nativeConsentLogicRunsHeadlesslyWithoutRecordingOrDispatch() async throws {
+    @Test(arguments: ElevenLabsRegion.allCases)
+    func nativeConsentLogicRunsHeadlesslyWithoutRecordingOrDispatch(region: ElevenLabsRegion) async throws {
         let app = AppModel()
+        app.settings.values["transcription.elevenlabs.region"] = .string(region.rawValue)
         let settings = app.settings
         let model = app.speakerModelLibrary.model
         let installed = app.speakerModelLibrary.installed
