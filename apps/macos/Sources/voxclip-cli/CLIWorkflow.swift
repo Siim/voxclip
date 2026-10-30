@@ -255,12 +255,13 @@ enum CLIWorkflow {
         case .render: throw VoxClipError.exportFailed("Invalid caption operation")
         }
         try Task.checkCancellation()
-        let exporter = AVExporter(appVersion: VoxClipCLI.configuration.version)
+        let exporter = AVExporter(appVersion: VoxClipCLI.configuration.version,
+                                  cleanupRegistry: DataLocations().root.appendingPathComponent("Scratch"))
         let job = ExportJob(render: render, aspect: aspect, quality: quality, outputURL: URL(fileURLWithPath: options.output!),
             writeSRT: options.srt != nil, srtURL: options.srt.map { URL(fileURLWithPath: $0) })
         let audioDestination = options.audioOut.map { URL(fileURLWithPath: $0).standardizedFileURL.resolvingSymlinksInPath() }
         var audioStaging: URL?
-        defer { if let audioStaging { try? FileManager.default.removeItem(at: audioStaging) } }
+        defer { if let audioStaging { ExportSafety.discardPartial(audioStaging) } }
         try Task.checkCancellation()
         if let audioDestination {
             try await exporter.preflightCombinedExport(job, editedAudioURL: audioDestination)

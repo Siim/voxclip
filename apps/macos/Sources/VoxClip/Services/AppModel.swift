@@ -241,7 +241,7 @@ extension ProviderChoice {
             let temporary = FileManager.default.temporaryDirectory
             let exports = [ExportSelection.folder(string("export.folder", fallback: "~/Movies/VoxClip"))]
                 + exportLedger.records.map { URL(fileURLWithPath: $0.outputPath).deletingLastPathComponent() }
-            await Task.detached(priority: .utility) { ScratchCleanup.sweep(registry: registry, cache: cache, temporary: temporary, exportDirectories: exports) }.value
+            _ = await Task.detached(priority: .utility) { ScratchCleanup.sweep(registry: registry, cache: cache, temporary: temporary, exportDirectories: exports) }.value
         }
         restoreCachedUpdate()
         #if DEBUG

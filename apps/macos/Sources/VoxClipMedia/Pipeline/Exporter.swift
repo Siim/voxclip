@@ -231,7 +231,6 @@ public actor AVExporter: Exporter {
         let destination = preflight.destination
         let marked = preflight.marked
         let provenanceURL = preflight.provenanceURL
-        let provenancePartial = preflight.provenancePartial
         let srtURL = preflight.srtURL
         let srtText = preflight.srtText
         let sidecarLimit = preflight.sidecarLimit
@@ -241,26 +240,23 @@ public actor AVExporter: Exporter {
         defer { withExtendedLifetime(graph.voiceLabLease) {} }
         try DiskCapacity.check(outputNeeds, provider: capacityProvider)
         try Task.checkCancellation()
-        let partial = cleanupRegistry == nil ? try ExportSafety.preparePartial(for: destination)
-            : destination.deletingLastPathComponent().appendingPathComponent("voxclip-partial-\(UUID().uuidString).partial")
-        var scratchRecord: URL?
-        defer { if let scratchRecord { ScratchCleanup.finishExport(scratchRecord) } }
+        let scratch = try ScratchCleanup.createExportDirectory(in: destination.deletingLastPathComponent(), registry: cleanupRegistry)
+        let partial = scratch.url.appendingPathComponent("video.mp4.partial")
+        let provenancePartial = preflight.provenanceURL.map { _ in scratch.url.appendingPathComponent("provenance.json.partial") }
         var srtPartial: URL?
-        var ownsProvenancePartial = false
+        var srtScratch: ScratchCleanup.ExportDirectory?
         defer {
-            try? FileManager.default.removeItem(at: partial)
+            ScratchCleanup.discardExportDirectory(scratch)
+            if let srtScratch { ScratchCleanup.discardExportDirectory(srtScratch) }
             ExportInterruptTiming.testOnly?.mark(.partialDeleted)
-            if let srtPartial { try? FileManager.default.removeItem(at: srtPartial) }
-            if ownsProvenancePartial, let provenancePartial { try? FileManager.default.removeItem(at: provenancePartial) }
         }
         if let srtURL {
-            srtPartial = cleanupRegistry == nil ? try ExportSafety.preparePartial(for: srtURL)
-                : srtURL.deletingLastPathComponent().appendingPathComponent("voxclip-partial-\(UUID().uuidString).partial")
+            let directory = try ScratchCleanup.createExportDirectory(in: srtURL.deletingLastPathComponent(), registry: cleanupRegistry)
+            srtScratch = directory
+            srtPartial = directory.url.appendingPathComponent("captions.srt.partial")
         }
-        let workDirectory = destination.deletingLastPathComponent().appendingPathComponent("voxclip-export-\(UUID().uuidString).partial")
-        try FileManager.default.createDirectory(at: workDirectory, withIntermediateDirectories: false)
-        defer { try? FileManager.default.removeItem(at: workDirectory) }
-        scratchRecord = try cleanupRegistry.map { try ScratchCleanup.registerExport(workDirectory: workDirectory, partials: [], registry: $0) }
+        let workDirectory = scratch.url.appendingPathComponent("writer", isDirectory: true)
+        try FileManager.default.createDirectory(at: workDirectory, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
         let output = job.render.output
         let timeRange = CMTimeRange(start: .zero, duration: CMTime(value: job.render.timeline.outputSamples, timescale: Int32(job.render.timeline.sampleRate)))
         guard let videoComposition = graph.composition.copy() as? AVComposition,
@@ -289,9 +285,6 @@ public actor AVExporter: Exporter {
             audioReader = reader
         }
         let writer = try AVAssetWriter(outputURL: partial, fileType: .mp4)
-        if let scratchRecord, FileManager.default.fileExists(atPath: partial.path) {
-            try ScratchCleanup.recordExportPartial(partial, record: scratchRecord)
-        }
         writer.directoryForTemporaryFiles = workDirectory
         writer.shouldOptimizeForNetworkUse = true
         writer.movieTimeScale = 48000
@@ -324,7 +317,6 @@ public actor AVExporter: Exporter {
         do {
             try Task.checkCancellation()
             guard writer.startWriting() else { throw writer.error ?? VoxClipError.exportFailed("Cannot start export") }
-            if let scratchRecord { try ScratchCleanup.recordExportPartial(partial, record: scratchRecord) }
             writer.startSession(atSourceTime: .zero)
             let videoSource = ExportPumpSource(samples: videoSamples, receiver: videoReceiver)
             let audioSource: ExportPumpSource?
@@ -367,7 +359,6 @@ public actor AVExporter: Exporter {
                 guard descriptor >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
                 let sidecar = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
                 defer { try? sidecar.close() }
-                if let scratchRecord { try ScratchCleanup.recordExportPartial(srtPartial, record: scratchRecord) }
                 try sidecar.write(contentsOf: Data(srtText.utf8))
                 try sidecar.synchronize()
             }
@@ -383,9 +374,11 @@ public actor AVExporter: Exporter {
                     throw VoiceLabDisclosureError.invalidMP4
                 }
                 guard disclosure.sidecarData.count <= sidecarLimit else { throw VoxClipError.diskFull(provenanceURL.path) }
+                if let reserved = preflight.provenancePartial, FileManager.default.fileExists(atPath: reserved.path) {
+                    throw POSIXError(.EEXIST)
+                }
                 let descriptor = Darwin.open(provenancePartial.path, O_WRONLY | O_CREAT | O_EXCL, S_IRUSR | S_IWUSR)
                 guard descriptor >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
-                ownsProvenancePartial = true
                 let sidecar = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
                 try sidecar.write(contentsOf: disclosure.sidecarData)
                 try sidecar.synchronize()
@@ -418,7 +411,7 @@ public actor AVExporter: Exporter {
                 writer.cancelWriting()
                 ExportInterruptTiming.testOnly?.mark(.writerCancelEnd)
             }
-            try? FileManager.default.removeItem(at: partial)
+            ScratchCleanup.discardExportDirectory(scratch)
             ExportInterruptTiming.testOnly?.mark(.partialDeleted)
             if let failure = error as? VoxClipError, failure.requiresExportRecovery { throw failure }
             if error is CancellationError || Task.isCancelled { throw CancellationError() }
@@ -561,7 +554,7 @@ public actor AVExporter: Exporter {
 
     public func writeEditedAudio(_ request: RenderRequest, to destination: URL) async throws {
         let partial = try await stageEditedAudio(request, to: destination)
-        defer { try? FileManager.default.removeItem(at: partial) }
+        defer { ExportSafety.discardPartial(partial) }
         do {
             try Task.checkCancellation()
             try ExportSafety.publish(partial, to: destination.standardizedFileURL.resolvingSymlinksInPath())
@@ -619,9 +612,9 @@ public actor AVExporter: Exporter {
         let output = AVAssetReaderAudioMixOutput(audioTracks: [track], audioSettings: MediaSupport.pcm(rate: request.timeline.sampleRate, channels: 2))
         output.audioMix = graph.audioMix; output.alwaysCopiesSampleData = false
         let provider = reader.outputProvider(for: output)
-        let temporary = try ExportSafety.preparePartial(for: destination)
+        let temporary = try ExportSafety.preparePartial(for: destination, registry: cleanupRegistry)
         var prepared = false
-        defer { if !prepared { try? FileManager.default.removeItem(at: temporary) } }
+        defer { if !prepared { ExportSafety.discardPartial(temporary) } }
         let wav = try PCMFile(url: temporary, rate: Int(request.timeline.sampleRate), channels: 2, float: true)
         do {
             guard reader.startReading() else { throw VoxClipError.decodeFailed("Cannot read edited audio") }
@@ -657,7 +650,7 @@ public actor AVExporter: Exporter {
             prepared = true
             return temporary
         } catch {
-            reader.cancelReading(); try? wav.handle.close(); try? FileManager.default.removeItem(at: temporary)
+            reader.cancelReading(); try? wav.handle.close(); ExportSafety.discardPartial(temporary)
             if Task.isCancelled { throw CancellationError() }
             throw ExportSafety.failure(error, destination: destination)
         }

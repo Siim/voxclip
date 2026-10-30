@@ -89,10 +89,13 @@ package enum ExportSafety {
         return partial
     }
 
-    static func preparePartial(for destination: URL) throws -> URL {
-        let partial = try partialURL(for: destination)
-        if FileManager.default.fileExists(atPath: partial.path) { try FileManager.default.removeItem(at: partial) }
-        return partial
+    static func preparePartial(for destination: URL, registry: URL? = nil) throws -> URL {
+        let directory = try ScratchCleanup.createExportDirectory(in: destination.deletingLastPathComponent(), registry: registry)
+        return directory.url.appendingPathComponent(destination.lastPathComponent + ".partial")
+    }
+
+    package static func discardPartial(_ partial: URL) {
+        ScratchCleanup.discardExportDirectory(at: partial.deletingLastPathComponent())
     }
 
     static func validateDestination(_ destination: URL) throws {
@@ -113,12 +116,13 @@ package enum ExportSafety {
                                    move: (URL, URL) throws -> Void = { try publish($0, to: $1) }) throws {
         let manager = FileManager.default
         var backups: [URL?] = []
+        var backupDirectories: [ScratchCleanup.ExportDirectory?] = []
         var published = 0
         var retainedBackups: Set<Int> = []
         defer {
-            for output in outputs { try? manager.removeItem(at: output.partial) }
-            for (index, backup) in backups.enumerated() where !retainedBackups.contains(index) {
-                if let backup { try? manager.removeItem(at: backup) }
+            for output in outputs { discardPartial(output.partial) }
+            for (index, directory) in backupDirectories.enumerated() where !retainedBackups.contains(index) {
+                if let directory { ScratchCleanup.discardExportDirectory(directory) }
             }
         }
         do {
@@ -126,11 +130,13 @@ package enum ExportSafety {
                 try Task.checkCancellation()
                 try validateDestination(output.destination)
                 if manager.fileExists(atPath: output.destination.path) {
-                    let backup = URL(fileURLWithPath: output.destination.path + ".rollback-" + UUID().uuidString)
+                    let directory = try ScratchCleanup.createExportDirectory(in: output.destination.deletingLastPathComponent(), recovery: true)
+                    backupDirectories.append(directory)
+                    let backup = directory.url.appendingPathComponent(output.destination.lastPathComponent + ".rollback-" + UUID().uuidString)
                     backups.append(backup)
                     try manager.copyItem(at: output.destination, to: backup)
                     try manager.setAttributes([.immutable: false, .appendOnly: false], ofItemAtPath: backup.path)
-                } else { backups.append(nil) }
+                } else { backups.append(nil); backupDirectories.append(nil) }
             }
             for output in outputs {
                 try Task.checkCancellation()
@@ -149,7 +155,8 @@ package enum ExportSafety {
                     rollbackFailure = rollbackFailure ?? error
                     if let backup = backups[index] {
                         retainedBackups.insert(index)
-                        recoveryMessages.append("\(VoxClipError.exportRecoveryMessagePrefix)\(outputs[index].destination.lastPathComponent). The previous version is saved as \(backup.lastPathComponent).")
+                        let recoveryPath = backup.deletingLastPathComponent().lastPathComponent + "/" + backup.lastPathComponent
+                        recoveryMessages.append("\(VoxClipError.exportRecoveryMessagePrefix)\(outputs[index].destination.lastPathComponent). The previous version is saved as \(recoveryPath).")
                     }
                 }
             }
