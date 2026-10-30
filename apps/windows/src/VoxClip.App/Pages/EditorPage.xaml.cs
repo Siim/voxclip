@@ -535,7 +535,7 @@ public sealed partial class EditorPage : Page
             rightContent.CloseRewrite();
             if (panel.ReturnFocusOnClose && !disposed && !ViewModel.IsLeaving) FocusTranscript();
         };
-        ShowViewer(true);
+        SetViewerVisible(true);
         rightContent.ShowRewrite(panel);
         await rewrite.SetInstructionAsync("");
     }
@@ -779,8 +779,9 @@ public sealed partial class EditorPage : Page
         catch (Exception exception) when (exception is not OutOfMemoryException) { return false; }
     }
     private void ViewerClicked(object sender, RoutedEventArgs args)
+        => SetViewerVisible(Viewer.IsChecked == true);
+    private void SetViewerVisible(bool visible)
     {
-        var visible = Viewer.IsChecked == true;
         viewerSqueezed = false;
         viewerForced = visible && !TranscriptFits(ActualWidth);
         ShowViewer(visible);

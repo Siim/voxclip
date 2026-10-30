@@ -72,6 +72,21 @@ public sealed class EditorLayoutTests
         Assert.Contains("-right-column.png", probe);
     }
 
+    [Fact]
+    public void RewriteAndViewerToggleShareTheForcedShowRoute()
+    {
+        var root = Path.GetDirectoryName(Environment.GetEnvironmentVariable("VOXCLIP_SHARED_DIR"))!;
+        var source = File.ReadAllText(Path.Combine(root, "apps/windows/src/VoxClip.App/Pages/EditorPage.xaml.cs"));
+        var opening = source[source.IndexOf("private async Task OpenRewriteAsync", StringComparison.Ordinal)..source.IndexOf("private void CutSelectionClicked", StringComparison.Ordinal)];
+        Assert.Contains("SetViewerVisible(true)", opening);
+        Assert.DoesNotContain("ShowViewer(true)", opening);
+        var toggle = source[source.IndexOf("private void ViewerClicked", StringComparison.Ordinal)..source.IndexOf("private static double Token", StringComparison.Ordinal)];
+        Assert.Contains("SetViewerVisible(Viewer.IsChecked == true)", toggle);
+        Assert.Contains("viewerSqueezed = false", toggle);
+        Assert.Contains("viewerForced = visible && !TranscriptFits(ActualWidth)", toggle);
+        Assert.Contains("if (viewerForced) owner.CloseNavigationPane()", toggle);
+    }
+
     // Tokens.xaml: VcSizeRightColumnMin, VcSizeRightColumnMax; Workspace.xaml: VcLayoutTranscriptMinWidth; the splitter is 12.
     private const double Min = 300, Max = 560, TranscriptMin = 588, Splitter = 12, Pane = 264;
 
