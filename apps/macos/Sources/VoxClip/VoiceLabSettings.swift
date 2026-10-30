@@ -74,6 +74,9 @@ import VoxClipCore
                 VStack(alignment: .leading, spacing: 5) {
                     Text(operation.kind == .create ? "Voice creation" : "Voice removal").fontWeight(.medium)
                     Text(operation.displayState).font(.caption)
+                    if operation.needsCreatorRecoveryReview, operation.recoveryNeedsReview == true {
+                        Button(VoiceLabSession.Request.stopLooking(operation.id).title) { session.request(.stopLooking(operation.id)) }.disabled(session.busy)
+                    }
                     Button("Retry") { Task { await session.load(force: true) } }.disabled(session.busy)
                     if operation.kind == .create {
                         Button("Remove This Voice", role: .destructive) { Task { await session.withdrawOperation(operation) } }.disabled(session.busy)
@@ -163,6 +166,7 @@ import VoxClipCore
             case .create: Text("Checks your plan, then sends the consent recording and training audio to create your own voice. No video is sent. \(session.creationCost)")
             case .delete: Text("Deletes this voice from ElevenLabs, removes the local statement recording, and marks the local consent record deleted. Existing rendered takes stay playable and labelled. This action is free.")
             case .removeLocal: Text("Removes the local consent statement and records that the remote state is unknown. The voice may stay in your ElevenLabs account. This action is free.")
+            case .stopLooking: Text("Stops recovery without deleting any voice from ElevenLabs. Records that the remote state is unknown; the voice may stay in your ElevenLabs account. This action is free.")
             }
             HStack {
                 Spacer()

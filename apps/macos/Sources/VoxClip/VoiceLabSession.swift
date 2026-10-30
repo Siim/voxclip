@@ -5,12 +5,12 @@ import VoxClipMedia
 
 @MainActor @Observable final class VoiceLabSession {
     enum Request: Identifiable, Equatable {
-        case subscription, verify, create, delete(String), removeLocal(String)
+        case subscription, verify, create, delete(String), removeLocal(String), stopLooking(UUID)
         var id: String { String(describing: self) }
         var title: String {
-            switch self { case .subscription: "Check ElevenLabs account"; case .verify: "Verify statement"; case .create: "Create your voice"; case .delete: "Delete voice"; case .removeLocal: "Remove from VoxClip only" }
+            switch self { case .subscription: "Check ElevenLabs account"; case .verify: "Verify statement"; case .create: "Create your voice"; case .delete: "Delete voice"; case .removeLocal: "Remove from VoxClip only"; case .stopLooking: "I've checked my ElevenLabs account — stop looking" }
         }
-        var defaultIsCancel: Bool { switch self { case .delete, .removeLocal: true; default: false } }
+        var defaultIsCancel: Bool { switch self { case .delete, .removeLocal, .stopLooking: true; default: false } }
     }
     static let betaCopy = "Voice Lab can clone your own voice, change your voice and re-voice a few words. Everything it makes is labelled 'AI MODIFIED' in exports, as EU law requires. It uses your ElevenLabs key and, for lip sync, your fal.ai or sync.so key."
     static let providerCopy = "Voice Lab sends audio of your voice and the words to speak to ElevenLabs with your key. Under ElevenLabs' terms, ElevenLabs may use uploaded content, including your voice, to improve its services unless you opt out in your ElevenLabs account. Generated audio can be traced to your account."
@@ -164,6 +164,12 @@ import VoxClipMedia
         confirmation = nil; busy = true; message = nil
         defer { busy = false }
         do {
+            if case .stopLooking(let id) = action {
+                try await store.stopLookingForCreation(id)
+                await load(recover: false)
+                message = "Stopped looking. The remote state is unknown; the voice may stay in your ElevenLabs account."
+                return
+            }
             if action == .verify || action == .create {
                 guard speakerReady else { throw VoiceConsentError.speakerUnavailable }
                 let check = try await app.speakerModelLibrary.check(language: enrollmentLanguage)
@@ -198,6 +204,7 @@ import VoxClipMedia
             case .removeLocal(let id):
                 try await store.removeFromVoxClipOnly(id)
                 await load(); message = "Voice removed from VoxClip only. The remote state is unknown; it may stay in your ElevenLabs account."
+            case .stopLooking: return
             }
         } catch {
             if let error = error as? VoiceConsentSaveError {

@@ -34,11 +34,15 @@ public struct VoiceOperation: Codable, Sendable, Identifiable, Equatable {
     public var creatorKeyFingerprint: String?
     public var remoteStateUnknown: Bool?
     public var finished: Bool { [.saved, .withdrawn, .tombstoned, .abandoned].contains(state) }
+    public var needsCreatorRecoveryReview: Bool {
+        kind == .create && wasDispatched && remoteVoiceID == nil && creatorKeyFingerprint == nil && !finished
+    }
     public var blocksCreation: Bool { blocksCreation(at: Date()) }
     public func blocksCreation(at date: Date) -> Bool {
         kind == .create && [.dispatched, .created].contains(state) && date < startedAt.addingTimeInterval(24 * 60 * 60)
     }
     public var displayState: String {
+        if needsCreatorRecoveryReview { return VoiceConsentError.recoveryCreatorMismatch.localizedDescription }
         if recoveryNeedsReview == true { return "More than one voice may match. Check your ElevenLabs voices, then Retry. No voice was deleted." }
         if kind == .create, wasDispatched, remoteVoiceID == nil, !finished {
             return "Checking your ElevenLabs account for an unfinished voice…"
@@ -289,8 +293,29 @@ extension VoiceConsentStore {
         try writeOperation(value, checkpoint: .deletionIntent)
         try finishLocalRemoval(value)
     }
+    public func stopLookingForCreation(_ id: UUID, at date: Date = Date()) throws {
+        var value = try operation(id)
+        guard value.needsCreatorRecoveryReview, value.recoveryNeedsReview == true,
+              claimOperation(id) else { throw VoiceConsentError.invalidRecord }
+        defer { releaseOperation(id) }
+        value.remoteStateUnknown = true
+        value.updatedAt = max(date, value.updatedAt)
+        value.audit?.remoteStateUnknown = true
+        value.audit?.deletedAt = VoiceConsentRecord.timestamp(value.updatedAt)
+        try writeOperation(value, checkpoint: .saveTombstone)
+        try finishLocalRemoval(value)
+    }
     package func finishLocalRemoval(_ value: VoiceOperation) throws {
-        guard value.kind == .delete, value.remoteStateUnknown == true else { throw VoiceConsentError.invalidRecord }
+        guard value.remoteStateUnknown == true else { throw VoiceConsentError.invalidRecord }
+        if value.kind == .create {
+            guard value.creatorKeyFingerprint == nil, value.wasDispatched, value.remoteVoiceID == nil else { throw VoiceConsentError.invalidRecord }
+            try discardStatement(recordID: value.recordID)
+            try discardUnresolvedDraft(value)
+            var finished = value
+            finished.state = .abandoned; finished.nextAttemptAt = nil; finished.failed = false
+            try writeOperation(finished, checkpoint: .abandoned)
+            return
+        }
         try discardStatement(recordID: value.recordID)
         try tombstone(value)
         var finished = value; finished.state = .tombstoned

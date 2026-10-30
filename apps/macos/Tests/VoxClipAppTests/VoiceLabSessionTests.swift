@@ -7,6 +7,35 @@ import Testing
 
 @Suite("Headless Voice Lab session", .serialized, .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil, "Use an isolated VOXCLIP_DATA_DIR for app-model tests; no windows or provider requests are opened."))
 @MainActor struct VoiceLabSessionTests {
+    @Test func stoppingIdentitylessRecoveryIsExplicitLocalAndDefaultsToCancel() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = VoiceConsentStore(locations: locations(root))
+        let shared = try SharedResources.locate()
+        let wav = try VoiceTrainingAudio.wav([Float](repeating: 0.1, count: 5 * 48_000))
+        var json = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: shared.root.appendingPathComponent("fixtures/voice-lab/consent-record.json"))) as? [String: Any])
+        var statement = try #require(json["statement"] as? [String: Any])
+        statement["audioSha256"] = VoiceLabFingerprint.bytes(wav); json["statement"] = statement
+        let record = try JSONDecoder().decode(VoiceConsentRecord.self, from: JSONSerialization.data(withJSONObject: json))
+        try await store.saveStatement(wav, recordID: record.id)
+        let operation = try await store.beginClaimedCreation(record: record.assigningVoice("pending", requiresVerification: true), requestID: UUID(), region: .default, at: Date())
+        _ = try await store.transition(operation.id, to: .dispatched, at: Date())
+        try await store.requireRecoveryReview(operation.id)
+        await store.releaseOperation(operation.id)
+        let app = AppModel(); app.settings.values["voiceLab.enabled"] = .bool(true)
+        app.settings.values["voiceLab.providerConsent.elevenlabs"] = .bool(false)
+        let session = VoiceLabSession(app: app, store: store)
+        await session.load(recover: false)
+        let action = VoiceLabSession.Request.stopLooking(operation.id)
+        #expect(action.title == "I've checked my ElevenLabs account — stop looking" && action.defaultIsCancel)
+        session.request(action)
+        #expect(session.confirmation == action && session.operations.first?.finished == false)
+        await session.approve(action)
+        #expect(session.operations.first?.remoteStateUnknown == true && session.operations.first?.finished == true)
+        #expect(!app.bool("voiceLab.providerConsent.elevenlabs"))
+        #expect(session.message?.contains("remote state is unknown") == true)
+        session.stopRecovery()
+    }
     @Test(arguments: 0..<8) func recordingRequiresEveryAttestationWithACalibratedSpeaker(bits: Int) throws {
         let app = AppModel()
         app.settings.values["voiceLab.enabled"] = .bool(true)

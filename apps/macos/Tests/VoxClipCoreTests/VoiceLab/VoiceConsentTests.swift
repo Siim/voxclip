@@ -811,11 +811,59 @@ extension VoiceConsentTests {
         }
         return ElevenLabsVoiceLab(keys: SpeechTestKeys(value: "synthetic-journal-key"), session: URLSession(configuration: SpeechStubHTTP.configuration(for: base)), prices: VoiceLabPricingTests.catalogIfPresent, enforceCapabilities: true)
     }
-    private func seedOperation(_ store: VoiceConsentStore, record: VoiceConsentRecord) async throws -> VoiceOperation {
+    private func seedOperation(_ store: VoiceConsentStore, record: VoiceConsentRecord, bindCreator: Bool = true) async throws -> VoiceOperation {
+        var record = record
+        if bindCreator, record.creator == nil {
+            let fingerprint = String(VoiceLabFingerprint.bytes(Data("synthetic-journal-key".utf8)).prefix(16))
+            record.creator = .init(region: .default, keyFingerprint: fingerprint)
+        }
         try await store.saveStatement(wav, recordID: record.id)
         let value = try await store.beginClaimedCreation(record: record.assigningVoice("pending", requiresVerification: true), requestID: UUID(), region: .default, at: now)
         await store.releaseOperation(value.id)
         return value
+    }
+    @Test(arguments: [VoiceConsentCheckpoint.saveTombstone, .removeStatement, .removeDraft, .abandoned])
+    func identitylessCreationRequiresExplicitStopAndKeepsUnknownRemoteTombstone(step: VoiceConsentCheckpoint) async throws {
+        let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let store = storage(root), record = try fixtureRecord(wav: wav)
+        let operation = try await seedOperation(store, record: record, bindCreator: false)
+        _ = try await store.transition(operation.id, to: .dispatched, at: now)
+        let calls = ConsentRequestLog()
+        let base = SpeechStubHTTP.register { request in
+            calls.value.withLock { $0.append(request.httpMethod ?? "") }
+            return (200, [:], Data(#"{"voices":[],"has_more":false}"#.utf8))
+        }
+        let otherAccount = ElevenLabsVoiceLab(keys: SpeechTestKeys(value: "synthetic-other-account"),
+            session: URLSession(configuration: SpeechStubHTTP.configuration(for: base)))
+        let date = now.addingTimeInterval(48 * 60 * 60)
+        for _ in 0..<2 {
+            let restarted = storage(root)
+            await #expect(throws: VoiceConsentError.recoveryCreatorMismatch) {
+                try await VoiceOperationReconciler(store: restarted, client: otherAccount, now: { date }).reconcile(force: true)
+            }
+            let pending = try await restarted.operation(operation.id)
+            #expect(!pending.finished && pending.recoveryNeedsReview == true && pending.needsCreatorRecoveryReview)
+            #expect(pending.displayState == "Recovery needs the ElevenLabs key that started this voice.")
+        }
+        #expect(calls.value.withLock { $0.isEmpty })
+        if step == .removeDraft {
+            try await store.saveStatement(wav, recordID: record.id)
+            try await store.save(record.assigningVoice("pending", requiresVerification: true))
+        }
+        let failing = VoiceConsentStore(locations: SpeechTestFiles.locations(root), fault: { point in
+            if point == step { throw CocoaError(.fileWriteUnknown) }
+        })
+        await #expect(throws: (any Error).self) { try await failing.stopLookingForCreation(operation.id, at: date) }
+        let restarted = storage(root)
+        if step == .saveTombstone { try await restarted.stopLookingForCreation(operation.id, at: date) }
+        else { try await VoiceOperationReconciler(store: restarted, client: otherAccount).reconcile(force: true) }
+        let tombstone = try await restarted.operation(operation.id)
+        #expect(tombstone.finished && tombstone.state == .abandoned && tombstone.remoteStateUnknown == true)
+        #expect(tombstone.audit?.remoteStateUnknown == true && tombstone.audit?.deletedAt != nil)
+        #expect(try await restarted.activeVoices().isEmpty)
+        #expect(!FileManager.default.fileExists(atPath: restarted.root.appendingPathComponent("\(record.id)/statement.wav").path))
+        try await VoiceOperationReconciler(store: restarted, client: otherAccount).reconcile(force: true)
+        #expect(calls.value.withLock { $0.isEmpty })
     }
     @Test(arguments: [false, true])
     func missingProviderLabelRecoversByExactNameWindowAndCategory(ambiguous: Bool) async throws {

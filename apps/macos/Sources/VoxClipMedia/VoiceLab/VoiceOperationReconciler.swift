@@ -87,6 +87,10 @@ public actor VoiceOperationReconciler {
         }
     }
     private func findRemote(_ value: VoiceOperation, force: Bool) async throws -> VoiceLabVoice? {
+        guard value.creatorKeyFingerprint != nil else {
+            try await store.requireRecoveryReview(value.id)
+            throw VoiceConsentError.recoveryCreatorMismatch
+        }
         guard await regionIsCurrent(value.region) else { throw VoiceConsentError.recoveryCreatorMismatch }
         if !force, let next = value.nextAttemptAt, now() < next { return nil }
         let client = clients(value.region)
