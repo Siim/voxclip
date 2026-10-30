@@ -1,5 +1,10 @@
 # macOS implementation contracts
 
+### 2026-10-30 — sol-mac-vl-followups — screen-reader recording guidance
+
+- The Create Your Voice sheet always shows `If you use a screen reader, wear headphones so it isn't recorded.` immediately after the teleprompter (outside its conditional) and before recording controls. It is plain caption-sized secondary text in normal reading order, not a live region or an announcement.
+- `test_enrollment_ui.py` checks exact copy, unconditional placement and ordering headlessly; it fails against the preceding UI, which omitted this text. No microphone or native window is opened.
+
 ### 2026-10-30 — sol-mac-vl-followups — accessible-name final fallback
 
 - Per-voice and per-operation actions keep `<action> <voice name>, created <d MMMM yyyy>` with the fixed English month table. A duplicate name/day adds `, voice ID ending <last six>`; if that suffix still collides within the same name/day, use `, voice ID <full voice ID>` instead. Operations without a usable voice ID keep `, attempt <ordinal>`. Visible titles are unchanged.

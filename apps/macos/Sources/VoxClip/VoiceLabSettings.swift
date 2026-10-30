@@ -264,6 +264,7 @@ import VoxClipCore
                         Text(session.verified ? session.script : statement.text).textSelection(.enabled).accessibilityIdentifier("voice-consent-teleprompter")
                         if statement.language == "et" { Text("Estonian draft — pending the user's review.").font(.caption) }
                     }
+                    Text("If you use a screen reader, wear headphones so it isn't recorded.").font(.caption).foregroundStyle(.secondary)
                     recordingControls
                     if let message = session.message { Text(message).textSelection(.enabled) }
                     Text(session.speakerMessage).font(.caption)
