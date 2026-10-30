@@ -7,6 +7,27 @@ import Testing
 
 @Suite("Headless Voice Lab session", .serialized, .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil, "Use an isolated VOXCLIP_DATA_DIR for app-model tests; no windows or provider requests are opened."))
 @MainActor struct VoiceLabSessionTests {
+    @Test func unavailableSpeakerCheckPreventsRecordingAndPaidApproval() async {
+        let app = AppModel(); app.settings.values["voiceLab.enabled"] = .bool(true)
+        let session = VoiceLabSession(app: app)
+        session.displayName = "Example"; session.ownVoice = true; session.adult = true; session.ownVideosOnly = true
+        #expect(!session.canRecord)
+        await session.beginStatement()
+        #expect(!session.recorder.recording && session.statement == nil)
+        session.request(.verify)
+        #expect(session.confirmation == nil)
+        await session.approve(.verify)
+        #expect(session.message == VoiceConsentError.speakerUnavailable.localizedDescription)
+        #expect(!app.bool("voiceLab.providerConsent.elevenlabs"))
+        for available in [false, true] {
+            for language in ["en", "et", "fr"] {
+                #expect(VoiceLabGate.canCheckOwnVoice(speakerAvailable: available, calibratedThreshold: 0.45, language: language) == (available && language == "en"))
+            }
+        }
+        for threshold: Double? in [nil, .nan, -.infinity, -1, 1.1] {
+            #expect(!VoiceLabGate.canCheckOwnVoice(speakerAvailable: true, calibratedThreshold: threshold, language: "en"))
+        }
+    }
     @Test func startupAndSettingsFlushDoNotAwaitRemoteRecovery() async {
         let app = AppModel(), barrier = SessionRecoveryBarrier()
         app.voiceRecoveryForTests = { await barrier.pause() }

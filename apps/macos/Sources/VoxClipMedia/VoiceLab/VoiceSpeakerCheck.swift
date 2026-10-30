@@ -37,7 +37,10 @@ public final class VoiceSpeakerCheck: Sendable {
         #endif
     }
     public var available: Bool { embedder != nil && threshold.map { $0.isFinite && (0...1).contains($0) } == true }
-    func supports(language: String) -> Bool { available && (calibratedLanguage == nil || calibratedLanguage == language) }
+    func supports(language: String) -> Bool {
+        VoiceLabGate.canCheckOwnVoice(speakerAvailable: available, calibratedThreshold: threshold, language: language) &&
+            (calibratedLanguage == nil || calibratedLanguage == language)
+    }
     public func embedding(_ pcm16k: [Float]) async throws -> [Float] {
         guard available, let embedder else { throw VoiceConsentError.speakerUnavailable }
         return try await SpeakerAudio.embedding(pcm16k, using: embedder)

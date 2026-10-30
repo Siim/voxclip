@@ -22,6 +22,9 @@ public enum VoiceConsentError: Error, LocalizedError, Equatable, Sendable {
 }
 
 public enum VoiceLabGate {
+    public static func canCheckOwnVoice(speakerAvailable: Bool, calibratedThreshold: Double?, language: String) -> Bool {
+        speakerAvailable && language == "en" && calibratedThreshold.map { $0.isFinite && (0...1).contains($0) } == true
+    }
     public static func settingsVisible(enabled: Bool, internalBuild: Bool) -> Bool { enabled || internalBuild }
     public static func canEnroll(enabled: Bool, busy: Bool) -> Bool { enabled && !busy }
 }

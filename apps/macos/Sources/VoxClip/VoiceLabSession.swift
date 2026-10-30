@@ -70,8 +70,15 @@ import VoxClipMedia
         if subscription == nil { request(.subscription) }
     }
     var enabled: Bool { app.bool("voiceLab.enabled") }
-    var canRecord: Bool { enabled && !busy && ownVoice && adult && ownVideosOnly && (try? VoiceConsentText.displayName(displayName)) != nil }
-    var canCreate: Bool { enabled && !busy && verified && trainingReady && unsavedRecord == nil && pendingCreations.isEmpty }
+    var enrollmentLanguage: String {
+        statement?.language ?? app.shell.document?.project.transcript?.language ?? app.recent.compactMap { app.recentProjects.items[$0]?.language }.first ?? "en"
+    }
+    var speakerReady: Bool {
+        VoiceLabGate.canCheckOwnVoice(speakerAvailable: app.speakerModelLibrary.installed,
+            calibratedThreshold: app.speakerModelLibrary.model?.calibratedThreshold(language: enrollmentLanguage), language: enrollmentLanguage)
+    }
+    var canRecord: Bool { enabled && speakerReady && !busy && ownVoice && adult && ownVideosOnly && (try? VoiceConsentText.displayName(displayName)) != nil }
+    var canCreate: Bool { enabled && speakerReady && !busy && verified && trainingReady && unsavedRecord == nil && pendingCreations.isEmpty }
     var planMessage: String? {
         guard let subscription else { return "Check your ElevenLabs account before creating a voice." }
         if !subscription.canClone { return "Instant voice cloning needs an ElevenLabs Starter plan or higher." }
@@ -79,6 +86,7 @@ import VoxClipMedia
         return nil
     }
     var speakerMessage: String {
+        if !speakerReady { return VoiceConsentError.speakerUnavailable.localizedDescription }
         if app.speakerModelLibrary.model?.calibratedThreshold() == nil { return VoiceConsentError.speakerUnavailable.localizedDescription }
         if app.speakerModelLibrary.installed { return "Own-voice checks run on this Mac. Estonian is not available yet." }
         return "Download the own-voice check model in Settings → Voice Lab before creating a voice. No audio is sent for this check."
@@ -135,6 +143,7 @@ import VoxClipMedia
         return (client, enrollment)
     }
     func request(_ action: Request) {
+        if (action == .verify || action == .create) && !speakerReady { message = VoiceConsentError.speakerUnavailable.localizedDescription; return }
         guard VoiceLabGate.canEnroll(enabled: enabled, busy: busy), !recorder.recording else { return }
         confirmation = action
     }
@@ -143,6 +152,13 @@ import VoxClipMedia
         confirmation = nil; busy = true; message = nil
         defer { busy = false }
         do {
+            if action == .verify || action == .create {
+                guard speakerReady else { throw VoiceConsentError.speakerUnavailable }
+                let check = try await app.speakerModelLibrary.check(language: enrollmentLanguage)
+                guard check.available else { throw VoiceConsentError.speakerUnavailable }
+                let (_, enrollment) = try services()
+                try await enrollment.setSpeakerCheck(check)
+            }
             let (client, enrollment) = try services()
             app.set("voiceLab.providerConsent.elevenlabs", .bool(true))
             switch action {
@@ -187,17 +203,17 @@ import VoxClipMedia
         }
     }
     func beginStatement() async {
+        guard speakerReady else { message = VoiceConsentError.speakerUnavailable.localizedDescription; return }
         guard canRecord, planMessage == nil else { return }
         busy = true; message = nil
         defer { busy = false }
         do {
+            guard try await app.speakerModelLibrary.check(language: enrollmentLanguage).available else { throw VoiceConsentError.speakerUnavailable }
             guard let shared = app.shared else { throw VoxClipError.sharedResourcesMissing }
             if let enrollment { try await enrollment.cancel(recordID: recordID) }
             try await store.abandonEnrollment(recordID: recordID)
             recordID = UUID().uuidString.lowercased()
-            let recentLanguage = app.recent.compactMap { app.recentProjects.items[$0]?.language }.first
-            let language = app.shell.document?.project.transcript?.language ?? recentLanguage ?? "en"
-            let selected = language == "et" ? "et" : "en"
+            let selected = enrollmentLanguage
             let words = try String(contentsOf: shared.root.appendingPathComponent("voice-lab/nonce-words-\(selected).txt"), encoding: .utf8).split(whereSeparator: \.isWhitespace).map(String.init)
             var rng = SystemRandomNumberGenerator()
             let data = try VoiceConsentText(shared: shared)

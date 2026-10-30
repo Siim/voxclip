@@ -54,6 +54,7 @@ public actor VoiceEnrollment {
                        approved: Bool, enabled: Bool, now: Date = Date()) async throws {
         guard approved, enabled else { throw VoiceLabError.consentRequired }
         guard attestations.complete else { throw VoiceConsentError.attestationsRequired }
+        guard speaker.supports(language: statement.language) else { throw VoiceConsentError.speakerUnavailable }
         guard !busy else { throw VoiceLabError.invalidInput }
         attempts.removeAll { now.timeIntervalSince($0) >= 600 }
         guard attempts.count < 3 else { throw VoiceConsentError.tooManyAttempts }
