@@ -532,8 +532,8 @@ POST {base}/v1/voices/add
 xi-api-key: <key>
 Content-Type: multipart/form-data; boundary="voxclip-<32 lowercase hex>"
   name                     = "{display name} (VoxClip)"
-  files[]                  = consent-statement.wav          (the consent statement recording; always the first file)
-  files[]                  = sample-02.wav, sample-03.wav …  (the training samples in caller order)
+  files                    = consent-statement.wav          (the consent statement recording; always the first file)
+  files                    = sample-02.wav, sample-03.wav …  (the training samples in caller order)
   remove_background_noise  = false, or true per §6.5 step 5
   description              = "VoxClip own-voice clone. Consent sha256:{statementSha256}. Created {created}."
   labels                   = {"language":"et"}       (a JSON string. The API documents only the keys language, accent, gender and age, so the consent marker goes in description; spike S5 verifies the encoding)

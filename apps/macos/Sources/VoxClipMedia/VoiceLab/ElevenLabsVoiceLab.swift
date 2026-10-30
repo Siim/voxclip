@@ -259,9 +259,9 @@ public actor ElevenLabsVoiceLab {
         for (index, sample) in request.samples.enumerated() {
             fields += [String(index), sample.role.rawValue, VoiceLabFingerprint.bytes(sample.wav)]
         }
-        var parts: [Part] = [.text("name", "\(name) (VoxClip)"), .file("files[]", "consent-statement.wav", consent[0].wav)]
+        var parts: [Part] = [.text("name", "\(name) (VoxClip)"), .file("files", "consent-statement.wav", consent[0].wav)]
         for (index, sample) in request.samples.filter({ $0.role == .training }).enumerated() {
-            parts.append(.file("files[]", "sample-\(index < 8 ? "0" : "")\(index + 2).wav", sample.wav))
+            parts.append(.file("files", "sample-\(index < 8 ? "0" : "")\(index + 2).wav", sample.wav))
         }
         var labels = "{\"language\":\"\(request.language)\"}"
         var description = "VoxClip own-voice clone. Consent sha256:\(consentHash). Created \(created)."

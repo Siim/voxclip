@@ -225,8 +225,8 @@ def clone_request(source):
     assert display_name_valid(source['displayName'])
     consent_sample = next(item for item in source['samples'] if item['role'] == 'consentStatement')
     parts = [text_part('name', trim(source['displayName']) + ' (VoxClip)'),
-             file_part('files[]', 'consent-statement.wav', consent_sample)]
-    parts += [file_part('files[]', f'sample-{index + 2:02d}.wav', item)
+             file_part('files', 'consent-statement.wav', consent_sample)]
+    parts += [file_part('files', f'sample-{index + 2:02d}.wav', item)
               for index, item in enumerate(item for item in source['samples'] if item['role'] == 'training')]
     parts += [text_part('remove_background_noise', 'true' if source['removeBackgroundNoise'] else 'false'),
               text_part('description', f'VoxClip own-voice clone. Consent sha256:{sha256(consent_sample)}. '

@@ -115,21 +115,21 @@
           },
           {
             "headers": [
-              "Content-Disposition: form-data; name=\"files[]\"; filename=\"consent-statement.wav\"",
+              "Content-Disposition: form-data; name=\"files\"; filename=\"consent-statement.wav\"",
               "Content-Type: audio/wav"
             ],
             "sha256": "5ec432a9c59a66bf04f259cc63fe1cbe954133cc13792b1bbb57d485db18bb94"
           },
           {
             "headers": [
-              "Content-Disposition: form-data; name=\"files[]\"; filename=\"sample-02.wav\"",
+              "Content-Disposition: form-data; name=\"files\"; filename=\"sample-02.wav\"",
               "Content-Type: audio/wav"
             ],
             "sha256": "f8a1b186843c3a433db2acf4a8cb9dafb9acfdf68601f2bd79e5d39089c901c4"
           },
           {
             "headers": [
-              "Content-Disposition: form-data; name=\"files[]\"; filename=\"sample-03.wav\"",
+              "Content-Disposition: form-data; name=\"files\"; filename=\"sample-03.wav\"",
               "Content-Type: audio/wav"
             ],
             "sha256": "b8d2cd604273d03a519c6676ffeb2574dee9b031a07eb78ffbcbcf2cd71cab4d"
@@ -153,8 +153,8 @@
             "value": "{\"language\":\"et\"}"
           }
         ],
-        "bodyLength": 545207,
-        "bodySha256": "26036b4884f4a1006d5dfa1a90e72ddec8440dac3edbe55dda7e8b4e5a549b45"
+        "bodyLength": 545201,
+        "bodySha256": "d909920bbbdfb5fbe774d69e18feafe8ffab5a7579e6cbc84f8807b4c1470500"
       }
     },
     {
@@ -190,7 +190,7 @@
           },
           {
             "headers": [
-              "Content-Disposition: form-data; name=\"files[]\"; filename=\"consent-statement.wav\"",
+              "Content-Disposition: form-data; name=\"files\"; filename=\"consent-statement.wav\"",
               "Content-Type: audio/wav"
             ],
             "sha256": "99a00cb13591a8b767015477036fd3496377f8596dfe6dc5240c75f16ef3c46c"
@@ -214,8 +214,8 @@
             "value": "{\"language\":\"en\"}"
           }
         ],
-        "bodyLength": 882823,
-        "bodySha256": "bc5a51ca6b42818954511bedd5dd960dca650edf292a407bca6ad8eec619a78a"
+        "bodyLength": 882821,
+        "bodySha256": "9a27ccc91688e862e5ae24b0a88567aa813f269434306d2217f4cdf888898d10"
       }
     },
     {
@@ -305,70 +305,70 @@
           },
           {
             "headers": [
-              "Content-Disposition: form-data; name=\"files[]\"; filename=\"consent-statement.wav\"",
+              "Content-Disposition: form-data; name=\"files\"; filename=\"consent-statement.wav\"",
               "Content-Type: audio/wav"
             ],
             "sha256": "5ccc6ea77499fc2640a45e65b4901737952304f875acb037a0b2427685085d23"
           },
           {
             "headers": [
-              "Content-Disposition: form-data; name=\"files[]\"; filename=\"sample-02.wav\"",
+              "Content-Disposition: form-data; name=\"files\"; filename=\"sample-02.wav\"",
               "Content-Type: audio/wav"
             ],
             "sha256": "4d167fefff5402e9a0db46973e9d4c7587c8fc499a128e90565014a69e7bc401"
           },
           {
             "headers": [
-              "Content-Disposition: form-data; name=\"files[]\"; filename=\"sample-03.wav\"",
+              "Content-Disposition: form-data; name=\"files\"; filename=\"sample-03.wav\"",
               "Content-Type: audio/wav"
             ],
             "sha256": "044edf8a20e58c3e5c15c3771188f879969df055fa07ecc0d59675016d056b66"
           },
           {
             "headers": [
-              "Content-Disposition: form-data; name=\"files[]\"; filename=\"sample-04.wav\"",
+              "Content-Disposition: form-data; name=\"files\"; filename=\"sample-04.wav\"",
               "Content-Type: audio/wav"
             ],
             "sha256": "d7fa413aa1fc1d4993494c2d2289fcbf00a5d3030582067e6fa2bcbf97b9d5b1"
           },
           {
             "headers": [
-              "Content-Disposition: form-data; name=\"files[]\"; filename=\"sample-05.wav\"",
+              "Content-Disposition: form-data; name=\"files\"; filename=\"sample-05.wav\"",
               "Content-Type: audio/wav"
             ],
             "sha256": "624107d9df02588b3f71e13dd6848e9084cf21f700f2f620e2fcd8b0cb7cba07"
           },
           {
             "headers": [
-              "Content-Disposition: form-data; name=\"files[]\"; filename=\"sample-06.wav\"",
+              "Content-Disposition: form-data; name=\"files\"; filename=\"sample-06.wav\"",
               "Content-Type: audio/wav"
             ],
             "sha256": "6776d36f423edb7768f71d03457d6701cfdf2a60204741f8fe213f7b1fac8a44"
           },
           {
             "headers": [
-              "Content-Disposition: form-data; name=\"files[]\"; filename=\"sample-07.wav\"",
+              "Content-Disposition: form-data; name=\"files\"; filename=\"sample-07.wav\"",
               "Content-Type: audio/wav"
             ],
             "sha256": "1a01ce9fe326d0f2051a64dd0c7caab1be11271ee518aa7fc8624966c7348c6f"
           },
           {
             "headers": [
-              "Content-Disposition: form-data; name=\"files[]\"; filename=\"sample-08.wav\"",
+              "Content-Disposition: form-data; name=\"files\"; filename=\"sample-08.wav\"",
               "Content-Type: audio/wav"
             ],
             "sha256": "3fb4c59d92a00fecba181591f36852c872f896d11a07eb67cc9a762e132e2284"
           },
           {
             "headers": [
-              "Content-Disposition: form-data; name=\"files[]\"; filename=\"sample-09.wav\"",
+              "Content-Disposition: form-data; name=\"files\"; filename=\"sample-09.wav\"",
               "Content-Type: audio/wav"
             ],
             "sha256": "89ec1dfa816446b145b7345e55d1abee15038e89b4931d4ac6f7dbd4d1968cc0"
           },
           {
             "headers": [
-              "Content-Disposition: form-data; name=\"files[]\"; filename=\"sample-10.wav\"",
+              "Content-Disposition: form-data; name=\"files\"; filename=\"sample-10.wav\"",
               "Content-Type: audio/wav"
             ],
             "sha256": "8d2b25f619cc0bd6d67973770c791103f97b74fb636383941117373b77c3bd6d"
@@ -392,8 +392,8 @@
             "value": "{\"language\":\"fil\"}"
           }
         ],
-        "bodyLength": 802535,
-        "bodySha256": "20dcbb8721670316f566d3e9195b5a6a04827f367b6ca128241128cdc80c6f47"
+        "bodyLength": 802515,
+        "bodySha256": "19dee3efdf6c50cff6ec273067f4c235d1b0366408cd58e9168fb8013ec2a0d3"
       }
     },
     {
@@ -429,7 +429,7 @@
           },
           {
             "headers": [
-              "Content-Disposition: form-data; name=\"files[]\"; filename=\"consent-statement.wav\"",
+              "Content-Disposition: form-data; name=\"files\"; filename=\"consent-statement.wav\"",
               "Content-Type: audio/wav"
             ],
             "sha256": "c46ca7050a32b0bb5133651542091622b93b94b819c066ada3829abaee4b269e"
@@ -453,8 +453,8 @@
             "value": "{\"language\":\"et\"}"
           }
         ],
-        "bodyLength": 160822,
-        "bodySha256": "e4ed7c88d8c3ad441daf82d505371c83f8c1ea1732b46c9229cdc2e7b6a03a5c"
+        "bodyLength": 160820,
+        "bodySha256": "4a20d93beac901ea9c61a6777098caba880c12bdfacc95202f2ed1dc2da1a74b"
       }
     },
     {
