@@ -11,7 +11,7 @@ extension HeavyMediaTests {
         let directory = try UIProcessHarness.run(mode: "-captionGalleryAudit", name: "caption-gallery")
         defer { UIProcessHarness.cleanTemporary(directory) }
         let report = try JSONDecoder().decode([UIProcessHarness.Result].self, from: Data(contentsOf: directory.appendingPathComponent("results.json")))
-        #expect(report.count == 53)
+        #expect(report.count == 63)
         for result in report { #expect(result.passed && result.skipped == nil, Comment(rawValue: result.name)) }
         struct Measurement: Decodable {
             let name: String
@@ -43,6 +43,7 @@ extension HeavyMediaTests {
             let width: Double
             let height: Double
             let variant: String
+            let stage: CGRect
             let scrollFrames: [CGRect]
             let scrollClipping: [Bool]
             let viewOverflow: [String]
@@ -57,6 +58,16 @@ extension HeavyMediaTests {
             #expect(measurement.viewOverflow.isEmpty, Comment(rawValue: "\(measurement.variant) at \(measurement.width)x\(measurement.height)"))
             if !measurement.variant.hasPrefix("rewrite") {
                 #expect(viewport.maxY <= measurement.height - 15.5)
+            }
+            if measurement.width == 320 && measurement.height == 675 {
+                let literalSize: CGSize = switch measurement.variant {
+                case "9:16": CGSize(width: 180, height: 320)
+                case "1:1": CGSize(width: 288, height: 288)
+                case "rewrite", "rewrite-budget": CGSize(width: 124 * 16.0 / 9, height: 124)
+                default: CGSize(width: 288, height: 162)
+                }
+                #expect(abs(measurement.stage.width - literalSize.width) <= 0.5 && abs(measurement.stage.height - literalSize.height) <= 0.5,
+                    Comment(rawValue: "Literal design stage size for \(measurement.variant): \(measurement.stage.size) vs \(literalSize)"))
             }
         }
         struct ResizeMeasurement: Decodable { let width: Double; let stage: CGRect; let elapsed: Double; let settled: Bool; let viewOverflow: [String] }

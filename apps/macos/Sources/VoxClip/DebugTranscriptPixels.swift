@@ -100,7 +100,7 @@ import VoxClipCore
         let copied = selected.flatMap { text.map.intersecting($0).filter(\.selectable) }.filter { !$0.pause }.map { (text.string as NSString).substring(with: $0.range) }.joined(separator: " ")
         results.append(.init(name: "Copy Text's word map never includes a badge or bracket", passed: !copied.contains(" ") && !copied.contains("]") && copied.contains("uncertain")))
         let whole = NSRange(location: 0, length: text.string.utf16.count)
-        let spokenValue = text.accessibilityValue() as? String
+        let spokenValue = text.accessibilityValue()
         let spokenText = text.accessibilityAttributedString(for: whole)
         results.append(.init(name: "VoiceOver reads the clip markers as blanks and keeps the transcript's length", passed:
             spokenValue?.utf16.count == whole.length && spokenValue?.contains("]") == false && spokenText?.length == whole.length && spokenText?.string.contains("]") == false))

@@ -62,8 +62,8 @@ func viewerStageSize(ratio: Double, innerWidth: CGFloat, columnHeight: CGFloat, 
             .accessibilityIdentifier("voxclip.viewer.stage")
             viewerRow
             ViewThatFits(in: .horizontal) {
-                HStack(spacing: 8) { frameLabel; framePicker.controlSize(.regular) }.frame(height: 24).columnLayoutEvidence("frame.regular")
-                HStack(spacing: 8) { frameLabel; framePicker.controlSize(.small) }.frame(height: 24).columnLayoutEvidence("frame.small")
+                HStack(spacing: 8) { frameLabel; framePicker.controlSize(.regular) }.frame(maxWidth: .infinity, alignment: .leading).frame(height: 24).columnLayoutEvidence("frame.regular")
+                HStack(spacing: 8) { frameLabel; framePicker.controlSize(.small) }.frame(maxWidth: .infinity, alignment: .leading).frame(height: 24).columnLayoutEvidence("frame.small")
                 VStack(alignment: .leading, spacing: 6) {
                     frameLabel
                     framePicker.controlSize(.small).frame(maxWidth: .infinity, alignment: .leading)
@@ -77,7 +77,7 @@ func viewerStageSize(ratio: Double, innerWidth: CGFloat, columnHeight: CGFloat, 
         .onKeyPress(characters: CharacterSet(charactersIn: " jklpico[]")) { key in model.transport(key.characters, shift: key.modifiers.contains(.shift)); return .handled }
     }
     private var frameLabel: some View {
-        Text("Frame").font(.system(size: 13)).foregroundStyle(DesignValues.color("text.secondary")).fixedSize()
+        Text("Frame").font(.system(size: 13)).foregroundStyle(DesignValues.color("text.secondary")).fixedSize().columnLayoutEvidence("control.frame.label")
     }
     private var framePicker: some View {
         Picker("Frame", selection: Binding(get: { model.project.export.aspect }, set: { model.setAspect($0) })) {
@@ -85,7 +85,7 @@ func viewerStageSize(ratio: Double, innerWidth: CGFloat, columnHeight: CGFloat, 
                 Text(aspect == .source ? "Original" : aspect.rawValue)
                     .fontWeight(model.project.export.aspect == aspect ? .semibold : .regular).tag(aspect)
             }
-        }.labelsHidden().pickerStyle(.segmented).frame(height: 24).accessibilityLabel("Frame")
+        }.labelsHidden().pickerStyle(.segmented).frame(height: 24).accessibilityLabel("Frame").columnLayoutEvidence("control.frame.picker")
     }
     private var stageLabel: String {
         let scope = model.activeClip.flatMap { model.clipNumber($0.id) }.map { "clip \($0)" } ?? "full take"

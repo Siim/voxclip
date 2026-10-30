@@ -569,6 +569,9 @@ struct EditorRenderSnapshot {
             } catch is CancellationError {} catch { previewError = await app.safeError(error) }
         }
     }
+    #if DEBUG
+    func waitForPendingPreviewForAudit() async { await updateTask?.value }
+    #endif
     private func recordDocumentChange() {
         document.updateChangeCount(undoManager?.isUndoing == true ? .changeUndone : undoManager?.isRedoing == true ? .changeRedone : .changeDone)
     }

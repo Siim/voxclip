@@ -1,5 +1,13 @@
 # macOS implementation contracts
 
+### 2026-10-30 — sol-mac-polish — right-column review follow-ups
+
+- Stage expectations now come from the requested variant and source orientation, not the measured stage. Rewrite uses its 124-point cap; literal 320×675 stage sizes are asserted by the window-free test. The probe records the background's actual logical proposal so an unattached, 1× AppKit marker's integral rounding cannot masquerade as aspect distortion; native descendant overflow checks and the original half-point size tolerance remain intact.
+- Gallery scope changes reveal selection while Fine Tune stays open. Tile clicks suspend automatic reveal; Picker and external/Undo changes still reveal, and resizing does not clear a user interruption. Non-observed scroll geometry publishes only viewport size changes, not each scroll frame. Policy checks cover all these transitions and 120 position-only updates.
+- Typed scroll IDs are assigned by one target modifier and inspected on the real rendered tile markers, replacing the old type-inequality tautology. The gallery's visual row gap is 10 points after accounting for the 3-point ring reserve. Frame inline labels and stacked pickers align to the leading inner edge.
+- Caption errors remain outside the scroll view, below the fixed header. The window-free gallery checks their bounds before and after reveal/scroll requests, the actual row gap and target registrations, and tile/scope actions without opening windows. Existing gallery, ring, layout, overflow and timing assertions are retained. The Picker-based VoiceOver outline remains unchanged pending a design decision.
+- Headless asset tests now skip ordered-window snapshots and cover failure, silent cancellation, and changing language during a download. Native short-viewport reveal, real tile clicks, divider resizing and VoiceOver/FKA checks remain lead-owned. Core passes 604 tests; final gallery/build verification is subject to the 15 GB host reserve and concurrent host load.
+
 ### 2026-10-30 — sol-mac-polish — accessibility follow-ups
 
 - Bare-key menu equivalents yield to focused buttons, switches, segmented controls and pop-ups; transcript, sidebar and timeline transport paths remain available, as do Command shortcuts. Native menu checks and window-free focused-control checks cover the distinction.

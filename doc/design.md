@@ -554,7 +554,7 @@ Restore is disabled when nothing in the selection is cut. When the selection alr
   - trailing: the AI modified tag (12, 1 px `accent.text`, 16.34:1 light, 14.16:1 dark), then the time in Cascadia Mono 13.
 - **Frame row:** 24 high on macOS, 32 on Windows. The label "Frame" (13 or 14 `text.secondary`) leads.
   - The control: macOS `Picker(.segmented)` with `.labelsHidden()`; Windows `CommunityToolkit.WinUI.Controls.Segmented`.
-  - When the row doesn't fit, macOS first uses the small control size in the same 24-high row, then puts "Frame" on its own line, 6 above a full-width small picker. At 1280 (column 320) it stacks; at 360 the small control fits in one row. No label is truncated or dropped.
+  - When the row doesn't fit, macOS first uses the small control size in the same 24-high row, then puts "Frame" on its own line, 6 above a small picker at the leading edge. Inline rows also start at the leading inner edge. At 1280 (column 320) it stacks; at 360 the small control fits in one row. No label is truncated or dropped.
   - The options, in this order: **9:16 · 1:1 · 16:9 · Original**. The selected label is semibold, as a cue that does not depend on colour. On Windows the selected segment has a white knob with a 1 px `line.strong` stroke.
   - The control reads and writes `export.aspect`, whose persisted values (`portrait`, `square`, `landscape`, `source`) and file suffixes (§8) do not change. Only the label "Source" becomes "Original".
   - Face-tracked reframe (M2) adds a "Follow face" toggle to this row.
@@ -913,7 +913,7 @@ On macOS each segmented control's label leads it on one line; when they don't fi
 
 There is no separate Fine Tune row and no "Off" tile.
 
-The gallery scrolls inside the column and clips at its own viewport, which always ends above the column's bottom padding, so every style can be scrolled into view at any window height. The Captions header stays fixed; Fine Tune and caption errors scroll with the gallery.
+The gallery scrolls inside the column and clips at its own viewport, which always ends above the column's bottom padding, so every style can be scrolled into view at any window height. The Captions header and caption errors stay fixed; Fine Tune scrolls with the gallery. Neither automatic reveal nor manual scrolling may hide a caption error.
 
 **Gallery.**
 
@@ -930,7 +930,7 @@ The gallery scrolls inside the column and clips at its own viewport, which alway
   A style with none of these tags goes into an "Other" group at the end. A test asserts that the bundled styles produce no "Other" group.
 - **Tile content.** Each tile renders the real style with the export renderer: the current phrase at the playhead, with that style's word count and casing (captions spec §15.3; fallback: the style's `preview.text`). It is drawn over the band of the current frame behind the style's caption position, dimmed 35%. With no frame, samples sit on the card backdrop (§5.4.3), not dimmed. A tile that cannot render draws exactly the backdrop it would have had: the band of the current frame dimmed 35%, or the card backdrop (design.md section 5.4.3) when there is no frame, and stage black in the loading states (design.md section 5.4.4). It never draws text. In clip scope the playhead is inside the clip. The selected tile is drawn with the active overrides.
 - **Selected tile:** a 2 px `accent.text` outline at offset 2, a check badge (a white check on a 62% black disc, 18, top-right, inset 6), and the name "Box highlight · Edited" in 600 `text.primary`. Other names are 11 (macOS) or 12 (Windows) `text.secondary`.
-- **Scrolling.** The grid scrolls the selected tile into view when the scope changes. The scroll view ends 16 above the strip (the pane padding) with a 24 (macOS) or 12 (Windows) fade to the column background.
+- **Scrolling.** The grid scrolls the selected tile into view when the scope changes, including while Fine Tune is expanded. An external style change, Undo, or closing Fine Tune also reveals it. Clicking a visible tile never moves the gallery. Resizing alone never resumes a reveal interrupted by user scrolling. The scroll view ends 16 above the strip (the pane padding) with a 24 (macOS) or 12 (Windows) fade to the column background.
 - **Accessibility.** Options are named "{name}: {description}" ("Box highlight: a box behind the spoken word, a few words at a time").
 - **Motion.** Under Reduce Motion, tiles are static; animated styles show their resting frame.
 - Captions follow edited time, and phrase grouping does not break at cut seams (captions spec D9). Under Reduce Motion the preview shows animated styles without animation; export keeps them.
