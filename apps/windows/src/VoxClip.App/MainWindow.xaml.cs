@@ -812,7 +812,7 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
         {
             if (!manual) await Task.Delay(TimeSpan.FromSeconds(10), lifetime.Token);
             var update = await App.Services.Updates.CheckAsync(manual, lifetime.Token);
-            if (update is null) { if (manual) { WindowNotice.Message = "No update available. Development builds do not self-update."; WindowNotice.IsOpen = true; } return; }
+            if (update is null) { if (manual) { WindowNotice.ActionButton = null; WindowNotice.Severity = InfoBarSeverity.Informational; WindowNotice.Message = App.Services.Updates.IsInstalled ? $"VoxClip {AppServices.Version} is the latest version." : "Development builds do not self-update."; WindowNotice.IsOpen = true; } return; }
             await App.Services.Updates.DownloadAsync(update, null, lifetime.Token);
             WindowNotice.Message = $"VoxClip {update.Version} is ready. Restart to update.";
             var restart = new Button { Content = "Restart now", IsEnabled = !App.Services.IsBusy };
@@ -845,6 +845,7 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
             WindowNotice.IsOpen = true;
         }
         catch (OperationCanceledException) { }
+        catch (HttpRequestException) when (manual) { WindowNotice.ActionButton = null; WindowNotice.Message = "Couldn't check for updates. You're offline."; WindowNotice.Severity = InfoBarSeverity.Warning; WindowNotice.IsOpen = true; }
         catch (Exception exception) { if (manual) ShowError(exception, "Update"); else App.Services.Log.Write(Core.Services.Logging.LogLevel.Info, "update", "automatic check unavailable"); }
     }
     private async void WindowClosed(object sender, WindowEventArgs args)

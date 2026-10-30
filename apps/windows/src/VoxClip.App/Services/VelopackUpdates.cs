@@ -9,6 +9,7 @@ namespace VoxClip.App.Services;
 internal sealed class VelopackUpdates(AppServices services) : IUpdateChecker
 {
     private readonly UpdateManager manager = new(new GithubSource("https://github.com/Siim/voxclip", null, false));
+    internal bool IsInstalled => manager.IsInstalled;
     private Velopack.UpdateInfo? available;
     private VelopackAsset? downloaded;
     private readonly SemaphoreSlim check = new(1, 1);

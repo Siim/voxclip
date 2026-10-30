@@ -9,6 +9,17 @@ namespace VoxClip.Ui.Tests;
 public sealed class VelopackUpdateTests
 {
     [Fact]
+    public void ManualUpdateCopyDistinguishesInstalledAndDevelopmentBuilds()
+    {
+        var root = Path.GetDirectoryName(Environment.GetEnvironmentVariable("VOXCLIP_SHARED_DIR"))!;
+        var source = File.ReadAllText(Path.Combine(root, "apps/windows/src/VoxClip.App/MainWindow.xaml.cs"));
+        Assert.Contains("Updates.IsInstalled ? $\"VoxClip {AppServices.Version} is the latest version.\"", source);
+        Assert.Contains("Couldn't check for updates. You're offline.", source);
+        var settings = File.ReadAllText(Path.Combine(root, "apps/windows/src/VoxClip.App/SettingsWindow.xaml.cs"));
+        Assert.DoesNotContain("Update check finished.", settings);
+    }
+
+    [Fact]
     public async Task AutomaticCheckAndBackgroundDownloadNeverApplyUntilUserChoosesRestart()
     {
         var probe = new UpdateProbe();
