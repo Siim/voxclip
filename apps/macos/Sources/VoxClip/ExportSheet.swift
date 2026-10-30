@@ -202,7 +202,11 @@ extension EditorModel {
                     let job = ExportJob(target: target, render: render, aspect: snapshot.export.aspect, quality: snapshot.export.quality, outputURL: url, writeSRT: snapshot.export.srt, srtURL: srt)
                     let result = try await exporter.export(job) { [weak self] value in Task { @MainActor in
                         guard let self, self.activeExportKey == key else { return }
-                        let before = Int((self.exportProgress?.fraction ?? 0) * 4), after = Int((value.fraction ?? 0) * 4)
+                        let previousFraction: Double = self.exportProgress?.fraction ?? 0
+                        let currentFraction: Double = value.fraction ?? 0
+                        let previousQuarter: Double = previousFraction * 4
+                        let currentQuarter: Double = currentFraction * 4
+                        let before = Int(previousQuarter), after = Int(currentQuarter)
                         self.exportProgress = value
                         if after > before, after < 4 { self.announce("Rendering \(self.exportIndex) of \(total) · \(after * 25)%") }
                     } }

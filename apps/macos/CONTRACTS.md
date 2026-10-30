@@ -1,5 +1,9 @@
 # macOS implementation contracts
 
+### 2026-10-30 — sol-mac-polish r2 — hosted compiler guard
+
+- Rebuilt all tests with warn-long-expression-type-checking=300; no expression in the round-one/round-two touched files exceeds 300 ms. Reviewed added conversion arithmetic as well, and split export-progress quarters and Pocket-4 sample-duration/tone intermediates into typed operations for Xcode 26. The eight ownership/identity regressions pass in that build.
+
 ### 2026-10-30 — sol-mac-polish r2 — real transcription consent actions
 
 - The window-free integration audit mounts TranscriptionSheet and the real Settings key row. A DEBUG primitive-button style records SwiftUI's actual configuration.trigger for Transcribe, the shared consent sheet's Cancel/Continue, and Settings Test; it does not substitute gate callbacks. Consent content is mounted inline only in the audit, so no window is opened. Release buttons and normal sheet presentation are unchanged.

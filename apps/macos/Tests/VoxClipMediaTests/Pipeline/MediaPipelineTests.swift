@@ -177,7 +177,10 @@ extension HeavyMediaTests {
     let result = try await AVExporter().export(ExportJob(render: render, outputURL: destination)) { _ in }
     #expect(abs(result.frames - 180) <= 1)
     #expect(try await AVURLAsset(url: destination).loadTracks(withMediaType: .audio).count == 1)
-    let exported = try await AVAudioExtractor().extract(AudioExtractionRequest(sourceURL: destination, contentKey: "pocket4-export", durationSeconds: Double(result.audioSamples) / 48000, cacheDirectory: exportDirectory)) { _ in }
+    let exportedSampleCount = Double(result.audioSamples)
+    let exportDuration: Double = exportedSampleCount / 48000
+    let extraction = AudioExtractionRequest(sourceURL: destination, contentKey: "pocket4-export", durationSeconds: exportDuration, cacheDirectory: exportDirectory)
+    let exported = try await AVAudioExtractor().extract(extraction) { _ in }
     let exportTones = try pocketTones(exported.audio.wav16k)
     #expect(exportTones.first > 100 * exportTones.second, "1 kHz \(exportTones.first), 300 Hz \(exportTones.second)")
 }
@@ -187,10 +190,14 @@ private func pocketTones(_ wav: URL) throws -> (first: Double, second: Double) {
     try #require(samples.count > 32000)
     let window = samples[8000..<(samples.count - 8000)]
     func power(_ frequency: Double) -> Double {
-        let coefficient = 2 * cos(2 * Double.pi * frequency / 16000)
+        let angularFrequency: Double = 2 * Double.pi * frequency
+        let radiansPerSample: Double = angularFrequency / 16000
+        let coefficient: Double = 2 * cos(radiansPerSample)
         var previous = 0.0, older = 0.0
         for sample in window {
-            let current = Double(sample) + coefficient * previous - older
+            let converted = Double(sample)
+            let weighted: Double = coefficient * previous
+            let current: Double = converted + weighted - older
             older = previous; previous = current
         }
         return previous * previous + older * older - coefficient * previous * older
