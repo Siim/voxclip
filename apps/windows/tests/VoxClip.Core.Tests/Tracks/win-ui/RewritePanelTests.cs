@@ -200,7 +200,9 @@ public sealed class RewritePanelTests
         Assert.Contains("EditorFocusRegion.Captions: if (rightContent", page);
         Assert.Contains("panel.ReturnFocusOnClose", page);
         Assert.Contains("FocusTranscript()", page);
-        Assert.DoesNotContain("Use Take", panel);
+#if DEBUG
+        Assert.Contains("session.Generation?.ReadyToAccept", panel);
+#endif
         Assert.Contains("Content = \"Generate Takes\"", panel);
     }
 

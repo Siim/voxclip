@@ -225,8 +225,12 @@ public sealed partial class EditorPage
                         }
                         RightColumn.Width = new(width);
                         await DebugRightColumnBoundsAsync(window, output, "rewrite-" + width + "-" + windowWidth + "x" + windowHeight, ColumnFitState.Rewrite);
-                        await panel.DebugFitStatesAsync(name => DebugRightColumnBoundsAsync(window, output,
-                            "rewrite-r10-" + name + "-" + width + "-" + windowWidth + "x" + windowHeight, ColumnFitState.Rewrite));
+                        await panel.DebugFitStatesAsync(async name =>
+                        {
+                            await DebugRightColumnBoundsAsync(window, output,
+                                "rewrite-r11-" + name + "-" + width + "-" + windowWidth + "x" + windowHeight, ColumnFitState.Rewrite);
+                            panel.DebugValidateTakeRows();
+                        });
                         NativeRequire(Grid.GetColumn(TransportRow) == (RightPane.ActualHeight < 760 ? 1 : 0),
                             "Rewrite compact transport does not follow the actual column height.");
                     }

@@ -8,7 +8,7 @@ internal sealed record RewriteVoice(string Id, string Label);
 internal sealed record RewriteGenerationChoices(IReadOnlyList<RewriteVoice> Voices, IReadOnlyList<VoiceLabModel> Models);
 internal sealed class RewriteGenerationException(string message) : Exception(message);
 
-internal sealed class RewriteGeneration : IDisposable
+internal sealed partial class RewriteGeneration : IDisposable
 {
     internal const string SendLine = "Sends the new words and a short audio check to ElevenLabs with your key. No video.";
     internal const string NonePassed = "These takes didn't sound right. Try different wording or re-record.";
@@ -50,12 +50,12 @@ internal sealed class RewriteGeneration : IDisposable
     internal bool IsRequestingConsent { get; private set; }
     internal VoiceLabTakeRunQuote? Quote => core.PendingQuote;
     internal VoiceLabCostPresentationResult? Cost => core.Cost;
-    internal IReadOnlyList<VoiceLabTakeRow> Rows => core.Rows;
+    internal IReadOnlyList<VoiceLabTakeRow> Rows => core.Rows.Where(row => !rejected.Contains(row.Id)).ToArray();
     internal Guid? SelectedTakeId => core.SelectedTakeId;
     internal Guid? AuditionedTakeId => core.AuditionedTakeId;
     internal VoiceLabTakeInput? ReviewedInput { get; private set; }
     internal bool ReviewedInputsCurrent { get; private set; }
-    internal bool CanExecute => !closed && current() && !IsRunning && !IsPreparing && !discovering &&
+    internal bool CanExecute => !closed && current() && !accepting && !IsRunning && !IsPreparing && !discovering &&
         Quote is { } quote && ReferenceEquals(quote, shownQuote) && Cost is not null;
     internal string ButtonTitle
     {
@@ -154,14 +154,15 @@ internal sealed class RewriteGeneration : IDisposable
         if (id == ModelId || !Models.Any(model => model.Id == id)) return Task.CompletedTask;
         ModelId = id; return InputsChangedAsync();
     }
-    internal Task InputsChangedAsync()
+    internal Task InputsChangedAsync(bool preserveReview = false)
     {
         if (closed) return Task.CompletedTask;
         StopQuoteExpiry();
         Cancel(updating); Cancel(executing);
         runner.InvalidatePreparation();
         shownQuote = null; revision++;
-        pendingInput = null; ReviewedInputsCurrent = false;
+        pendingInput = null;
+        if (!preserveReview) ReviewedInputsCurrent = false;
         Problem = ""; Announcement = "";
         var cancellation = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
         updating = cancellation;
@@ -199,14 +200,15 @@ internal sealed class RewriteGeneration : IDisposable
     }
     internal async Task GenerateAsync(Func<string, CancellationToken, Task<bool>> confirm)
     {
-        if (closed || IsRunning || IsPreparing || !current()) return;
-        if (Quote is null) { await InputsChangedAsync(); return; }
+        if (closed || accepting || IsRunning || IsPreparing || !current()) return;
+        if (Quote is null) { await InputsChangedAsync(preserveReview: true); return; }
         if (!CanExecute) return;
         var version = revision;
         var quote = Quote!;
         if (pendingInput is { } input) pendingInput = input with { Seed = quote.Takes[0].Seed };
         var cancellation = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
         executing = cancellation;
+        runStarted = false;
         var declinedAtDispatch = false;
         core.ConfirmCostAsync = async (copy, token) =>
         {
@@ -224,7 +226,7 @@ internal sealed class RewriteGeneration : IDisposable
                 if (core.Cost is not { } cost || !await ConfirmAsync(cost.Text, confirm, cancellation.Token)) return;
                 cancellation.Token.ThrowIfCancellationRequested();
                 if (closed || revision != version || !current()) return;
-                if (!ReferenceEquals(Quote, quote)) { await InputsChangedAsync(); return; }
+                if (!ReferenceEquals(Quote, quote)) { await InputsChangedAsync(preserveReview: true); return; }
                 await core.ApproveAsync(quote, true, cancellation.Token);
             }
             if (closed || revision != version) return;
@@ -232,17 +234,14 @@ internal sealed class RewriteGeneration : IDisposable
             {
                 seed = unchecked(seed + 3);
                 shownQuote = null;
-                if (core.SelectedTakeId is null && new VoiceLabTakeRunResult(Rows, VoiceLabTakeRunEnd.Completed).Best is { } best)
-                    core.SelectTake(best.Id);
-                Phase = ReviewPhase();
                 ReviewedInputsCurrent = ReviewedInput is not null && ReferenceEquals(ReviewedInput, pendingInput);
-                if (Phase == RewriteGenerationPhase.NonePassed) Announcement = NonePassed;
+                if (runStarted && runner.Result is { } completed) FinishTakes(completed);
             }
             if (runner.Result is { End: VoiceLabTakeRunEnd.Fatal } result)
                 Fail(result.Rows.LastOrDefault()?.Failure ?? new VoiceLabException(VoiceLabErrorKind.ProviderFailure));
             if (core.PreparationFailure is { } error) Fail(error);
         }
-        catch (OperationCanceledException) { if (!closed && revision == version) Phase = Rows.Count == 0 ? RewriteGenerationPhase.Cancelled : ReviewPhase(); }
+        catch (OperationCanceledException) { if (!closed && revision == version) Phase = runStarted ? RewriteGenerationPhase.Cancelled : ReviewPhase(); }
         catch (VoiceLabException error) when (error.Kind == VoiceLabErrorKind.ConsentRequired && !closed && revision == version && Quote is null)
         { await InputsChangedAsync(); }
         catch (Exception error) when (error is not OutOfMemoryException) { if (!closed && revision == version) Fail(error); }
@@ -251,6 +250,7 @@ internal sealed class RewriteGeneration : IDisposable
             if (ReferenceEquals(executing, cancellation)) executing = null;
             cancellation.Dispose(); TrackQuoteExpiry(); Notify();
         }
+        if (!closed && takes is not null && BestTakeId is { } best && autoplayed.Add(best)) await PlayTakeAsync(best);
     }
     private void TrackQuoteExpiry()
     {
@@ -273,7 +273,7 @@ internal sealed class RewriteGeneration : IDisposable
     private void RefreshExpiredQuote()
     {
         if (closed || !current() || IsRunning || IsPreparing || discovering || timedQuote is not { } quote) return;
-        if (clock.GetUtcNow() >= quote.ExpiresAt || !runner.IsQuoteFresh(quote)) _ = InputsChangedAsync();
+        if (clock.GetUtcNow() >= quote.ExpiresAt || !runner.IsQuoteFresh(quote)) _ = InputsChangedAsync(preserveReview: true);
     }
     private void StopQuoteExpiry()
     {
@@ -298,26 +298,35 @@ internal sealed class RewriteGeneration : IDisposable
     {
         Cancel(executing);
         await core.CancelAsync();
-        if (!closed) { Phase = Rows.Count == 0 ? RewriteGenerationPhase.Cancelled : ReviewPhase(); Notify(); }
+        if (!closed) { Phase = runStarted ? RewriteGenerationPhase.Cancelled : ReviewPhase(); Notify(); }
     }
-    internal void SelectTake(Guid id) { core.SelectTake(id); Notify(); }
+    internal void SelectTake(Guid id) => _ = SelectTakeAsync(id);
     internal void AuditionTake(Guid? id) { core.AuditionTake(id); Notify(); }
     private RewriteGenerationPhase ReviewPhase() => core.SelectedTakeId is { } selected && Rows.FirstOrDefault(row => row.Id == selected) is { } row
-        ? row.Fits ? RewriteGenerationPhase.ReadyToAccept : RewriteGenerationPhase.LengthChanged
+        ? row.Fits || VideoChoice is not null ? RewriteGenerationPhase.ReadyToAccept : RewriteGenerationPhase.LengthChanged
         : Rows.Count == 0 ? RewriteGenerationPhase.Idle : RewriteGenerationPhase.NonePassed;
-    private Task ProgressAsync() => onUi(() =>
+    private async Task ProgressAsync()
     {
-        if (closed || executing is null || executing.IsCancellationRequested) return;
-        Phase = RewriteGenerationPhase.Generating;
-        if (Rows.Count == 0) ReviewedInput = pendingInput;
-        if (Rows.LastOrDefault() is { Selectable: true } row) Announcement = row.DisplayName + " ready.";
-        Notify();
-    });
+        await onUi(() =>
+        {
+            if (closed || executing is null || executing.IsCancellationRequested) return;
+            Phase = RewriteGenerationPhase.Generating;
+            if (core.Rows.Count == 0)
+            {
+                runStarted = true; rejected.Clear(); BestTakeId = null; VideoChoice = null;
+                reviewEnd = null;
+                ReviewedInput = pendingInput;
+            }
+            if (Rows.LastOrDefault() is { Selectable: true } row) Announcement = TakeRowPresentation.Ready(row.Index);
+            Notify();
+        });
+        if (core.Rows.Count == 0 && takes is not null) await takes.Audition.InvalidateAsync();
+    }
     private void Fail(Exception error)
     {
         Problem = RewriteSession.Refusal(error);
         Announcement = Problem;
-        if (!Rows.Any(row => row.Selectable)) Phase = RewriteGenerationPhase.Failed;
+        if (runStarted || !Rows.Any(row => row.Selectable)) Phase = RewriteGenerationPhase.Failed;
     }
     private void Notify() { if (!closed) Changed?.Invoke(this, EventArgs.Empty); }
     private static void Cancel(CancellationTokenSource? source)
@@ -333,7 +342,17 @@ internal sealed class RewriteGeneration : IDisposable
     }
     private async Task RetireAsync()
     {
-        try { await core.InvalidateAsync(); await discovery; await PendingUpdate; }
+        try
+        {
+            if (takes is not null)
+            {
+                takes.Audition.Changed -= AuditionChanged;
+                await takes.Audition.SelectionChangedAsync(null);
+                await takes.Audition.InvalidateAsync();
+                await takes.Audition.DisposeAsync();
+            }
+            await core.InvalidateAsync(); await discovery; await PendingUpdate;
+        }
         finally { release?.Invoke(); lifetime.Dispose(); }
     }
     private sealed class ObservedRunner(IVoiceLabTakeRunner inner, Func<Task> changed) : IVoiceLabTakeRunner

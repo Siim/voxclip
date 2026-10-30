@@ -595,7 +595,8 @@ public sealed partial class EditorPage : Page
             VoiceLabPrices.Load(), region, session.Project.Id, Current, OnUi);
         var fixtures = Environment.GetEnvironmentVariable("VOXCLIP_DEBUG_REWRITE_TAKES");
         var fake = fixtures?.StartsWith("fixtures:", StringComparison.Ordinal) == true
-            ? new DebugRewriteTakeRunner(fixtures[9..]) : null;
+            ? new DebugRewriteTakeRunner(fixtures[9..], storage: new(session.Project.Id, Path.Combine(App.Services.Data.Root, "VoiceLab"),
+                Path.Combine(App.Services.Data.Root, "VoiceLabScratch"))) : null;
         if (fake is not null) fake.State = Environment.GetEnvironmentVariable("VOXCLIP_DEBUG_REWRITE_STATE") ?? "ready";
         var runner = (IVoiceLabTakeRunner?)fake ?? backend.Runner;
         async Task<bool> Consent(CancellationToken ct)
@@ -623,6 +624,13 @@ public sealed partial class EditorPage : Page
                 if (session.IsOpen && ReferenceEquals(session.Generation, generation)) _ = generation!.DiscoveryInputsChangedAsync();
             });
         }
+        void OutputChanged(object sender, Windows.Media.Devices.DefaultAudioRenderDeviceChangedEventArgs args)
+        {
+            _ = OnUi(() =>
+            {
+                if (session.IsOpen && ReferenceEquals(session.Generation, generation)) _ = generation!.RefreshOutputAsync();
+            });
+        }
         generation = new RewriteGeneration(runner,
             ct => fake is null ? backend.DiscoverAsync(session.Project.Transcript?.Language ?? "en", ct) : fake.DiscoverAsync(ct),
             (voice, model, seed, ct) => session.GenerationInputAsync(voice, model, seed,
@@ -638,11 +646,23 @@ public sealed partial class EditorPage : Page
             }, () => Current() && !consenting, OnUi, () =>
             {
                 App.Services.VoiceLab.Changed -= ConsentRecordsChanged;
+                Windows.Media.Devices.MediaDevice.DefaultAudioRenderDeviceChanged -= OutputChanged;
                 keyChanges?.Dispose();
                 backend.Dispose(); fake?.Dispose();
             });
         App.Services.VoiceLab.Changed += ConsentRecordsChanged;
         session.ConfigureGeneration(generation);
+        var audition = new VoxClip.Media.Audio.VoiceLabAudition(ct => RewriteGeneration.PausePreviewAsync(preview, ct));
+        _ = generation.ConfigureTakesAsync(new(audition,
+            id => fake is null ? backend.Runner.Scratch(id) : fake.Scratch(id),
+            id => fake is null ? backend.Runner.RejectAsync(id) : fake.RejectAsync(id),
+            async (id, date, ct) =>
+            {
+                if (fake is not null) return await fake.PublishAsync(id, date, ct);
+                var (published, record) = await backend.Runner.PublishForAcceptanceAsync(id, date, ct);
+                return (new(published.Assets, published.Audio, published.OutDuration, published.Words, published.Chunks), record);
+            }));
+        Windows.Media.Devices.MediaDevice.DefaultAudioRenderDeviceChanged += OutputChanged;
         if (fake is null && Directory.Exists(App.Services.Data.Root))
         {
             keyChanges = new(App.Services.Data.Root, "elevenlabs-api-key.bin")

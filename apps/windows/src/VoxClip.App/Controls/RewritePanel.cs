@@ -9,7 +9,7 @@ using Windows.System;
 
 namespace VoxClip.App.Controls;
 
-internal sealed class RewritePanel : Grid
+internal sealed partial class RewritePanel : Grid
 {
     private readonly RewriteSession session;
     private readonly Func<bool> correctionOpen;
@@ -137,11 +137,7 @@ internal sealed class RewritePanel : Grid
         Grid.SetColumn(disclosureText, 1); disclosure.Children.Add(disclosureText);
         footerContent.Children.Add(disclosure);
         footerContent.Children.Add(apply);
-        apply.Click += (_, _) =>
-        {
-            ReturnFocusOnClose = true;
-            if (!session.ApplyLocalChanges()) ReturnFocusOnClose = false;
-        };
+        apply.Click += async (_, _) => await ApplyDefaultAsync();
         var footer = Themed(new Border { Padding = new(16, 12, 16, 12), BorderThickness = new(0, 1, 0, 0),
             Child = footerContent }, Border.BorderBrushProperty, "VcLineDefaultBrush");
         Grid.SetRow(footer, 1); Children.Add(footer);
@@ -168,7 +164,10 @@ internal sealed class RewritePanel : Grid
         .. noVoice.Visibility == Visibility.Visible && generationBody.Visibility == Visibility.Visible ? new[] { "Rewrite.CreateVoice" } : Array.Empty<string>(),
         .. voice.Visibility == Visibility.Visible && generationBody.Visibility == Visibility.Visible ? new[] { "Rewrite.Voice", "Rewrite.SpeechModel" } : Array.Empty<string>(),
         .. generationError.IsOpen && generationBody.Visibility == Visibility.Visible ? new[] { "Rewrite.GenerationError", "Rewrite.GenerationSettings", "Rewrite.GenerationRetry" } : Array.Empty<string>(),
-        .. cancelGeneration.Visibility == Visibility.Visible && generationBody.Visibility == Visibility.Visible ? new[] { "Rewrite.GenerationCancel", "Rewrite.GenerationProgress" } : Array.Empty<string>()];
+        .. cancelGeneration.Visibility == Visibility.Visible && generationBody.Visibility == Visibility.Visible ? new[] { "Rewrite.GenerationCancel", "Rewrite.GenerationProgress" } : Array.Empty<string>(),
+        .. renderedRows.Count > 0 && generationBody.Visibility == Visibility.Visible
+            ? new[] { "Rewrite.Takes", "Rewrite.UseTake" }.Concat(renderedRows.Select(row => "Rewrite.Take" + (row.Index + 1))).ToArray() : [],
+        .. lengthBody.Visibility == Visibility.Visible && generationBody.Visibility == Visibility.Visible ? new[] { "Rewrite.VideoChoice" } : []];
 #endif
     private T Themed<T>(T target, DependencyProperty property, string key) where T : DependencyObject
     {
@@ -189,7 +188,13 @@ internal sealed class RewritePanel : Grid
     }
     private void Changed(object? sender, EventArgs args)
     {
-        if (!session.IsOpen) { Closed?.Invoke(this, EventArgs.Empty); return; }
+        if (!session.IsOpen)
+        {
+#if DEBUG
+            if (applyingTake) return;
+#endif
+            Closed?.Invoke(this, EventArgs.Empty); return;
+        }
         Render();
     }
     private void Render()
@@ -270,6 +275,7 @@ internal sealed class RewritePanel : Grid
         generationError.ActionButton = settings; generationError.Content = retry;
         generationBody.Children.Add(discover); generationBody.Children.Add(voice); generationBody.Children.Add(speechModel);
         generationBody.Children.Add(noVoice); generationBody.Children.Add(Ui.Text("Takes", "BodyStrongTextBlockStyle"));
+        BuildTakes();
         generationBody.Children.Add(generate); generationBody.Children.Add(Small(RewriteGeneration.SendLine));
         generationBody.Children.Add(generationBusy); generationBody.Children.Add(generationProgress);
         generationBody.Children.Add(cancelGeneration); generationBody.Children.Add(generationError); generationBody.Children.Add(nonePassed);
@@ -301,6 +307,7 @@ internal sealed class RewritePanel : Grid
         generationError.Message = generation.Problem;
         generationError.IsOpen = generation.Problem.Length > 0;
         nonePassed.Visibility = generation.Phase == RewriteGenerationPhase.NonePassed ? Visibility.Visible : Visibility.Collapsed;
+        RenderTakes(generation);
         if (generation.Quote is { } quote) DispatcherQueue.TryEnqueue(() => generation.MarkEstimateShown(quote));
         if (IsLoaded && generation.Announcement.Length > 0 && generation.Announcement != generationAnnouncement)
         {
@@ -311,7 +318,7 @@ internal sealed class RewritePanel : Grid
     }
     internal async Task DebugFitStatesAsync(Func<string, Task> inspect)
     {
-        foreach (var state in new[] { "no-voice", "generating", "provider-error", "none-passed" })
+        foreach (var state in new[] { "no-voice", "generating", "provider-error", "none-passed", "ready", "three-ready", "mixed", "length-changed", "cancelled", "fatal" })
         {
             var fake = new DebugRewriteTakeRunner(Path.Combine(VoxClip.Core.Services.Project.SharedResources.ResolveRoot(), "fixtures", "voice-lab", "take-run-cases.json")) { State = state };
             var generation = new RewriteGeneration(fake, fake.DiscoverAsync,
@@ -337,19 +344,45 @@ internal sealed class RewritePanel : Grid
         }
     }
 #endif
-    private void Escape(object sender, KeyRoutedEventArgs args)
+    private async void Escape(object sender, KeyRoutedEventArgs args)
     {
         if (args.Key == VirtualKey.Enter && !InputState.Down(VirtualKey.Control) && !InputState.Down(VirtualKey.Menu) &&
             !InputState.Down(VirtualKey.Shift) && apply.IsEnabled && ShortcutPolicy.EditorMayHandle(
-                InputState.IsTextFocus(FocusManager.GetFocusedElement(XamlRoot)), correctionOpen(), false, false, true))
+                InputState.IsTextFocus(FocusManager.GetFocusedElement(XamlRoot)), correctionOpen(), false, false, true) &&
+            !NativeReturnTarget(FocusManager.GetFocusedElement(XamlRoot) as DependencyObject))
         {
-            ReturnFocusOnClose = true;
-            if (!session.ApplyLocalChanges()) ReturnFocusOnClose = false;
             args.Handled = true;
+            await ApplyDefaultAsync();
             return;
         }
         if (args.Key != VirtualKey.Escape) return;
         Close(); args.Handled = true;
     }
-    private void Close() { ReturnFocusOnClose = true; session.Dispose(); }
+    private bool NativeReturnTarget(DependencyObject? target)
+    {
+        while (target is not null && !ReferenceEquals(target, this))
+        {
+            if (target is Microsoft.UI.Xaml.Controls.Primitives.ButtonBase or ComboBox) return true;
+            target = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(target);
+        }
+        return false;
+    }
+    private async Task ApplyDefaultAsync()
+    {
+#if DEBUG
+        if (session.LocalAction is null)
+        {
+            if (session.Generation?.ReadyToAccept != true) return;
+            applyingTake = true;
+            try { ReturnFocusOnClose = await session.ApplyTakeAsync(); }
+            finally { applyingTake = false; }
+            if (ReturnFocusOnClose || !session.IsOpen) Closed?.Invoke(this, EventArgs.Empty);
+            return;
+        }
+#endif
+        ReturnFocusOnClose = true;
+        if (!session.ApplyLocalChanges()) ReturnFocusOnClose = false;
+        await Task.CompletedTask;
+    }
+    private void Close() { session.Dispose(); }
 }

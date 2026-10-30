@@ -65,12 +65,19 @@ internal sealed class RewriteSession : IDisposable
         !Editor.Busy && !Editor.IsLeaving && !Editor.IsReadOnly && connectorIsCurrent();
     internal void ConfigureGeneration(RewriteGeneration generation)
     {
+        if (Generation is { } previous) previous.Changed -= GenerationChanged;
         Generation?.Dispose();
         Generation = generation;
+        Editor.SelectionChanged -= GenerationSelectionChanged;
+        Editor.SelectionChanged += GenerationSelectionChanged;
         generation.Changed += GenerationChanged;
         Changed?.Invoke(this, EventArgs.Empty);
     }
     private void GenerationChanged(object? sender, EventArgs args) => Changed?.Invoke(this, EventArgs.Empty);
+    private void GenerationSelectionChanged(object? sender, EventArgs args)
+    {
+        if (Generation is { } generation) _ = generation.SelectionChangedAsync($"source:{Editor.SelectionStart}:{Editor.SelectionEnd}");
+    }
     internal async Task<VoiceLabTakeInput?> GenerationInputAsync(string recordId, string modelId, uint seed,
         bool providerConsent, Func<CancellationToken, Task<float[]>> source, CancellationToken ct)
     {
@@ -258,16 +265,25 @@ internal sealed class RewriteSession : IDisposable
     internal bool ApplyLocalChanges()
     {
         if (!IsOpen || LocalAction is null || !ReferenceEquals(Project, Editor.Project) || Editor.Busy || Editor.IsReadOnly || Editor.IsLeaving) return false;
+        return Editor.ApplyBatch(LocalOperations());
+    }
+
+    private IReadOnlyList<EditOperation> LocalOperations()
+    {
         List<EditOperation> operations = [];
-        foreach (var hunk in Review!.Diff.Hunks)
+        foreach (var hunk in Review?.Diff.Hunks ?? [])
         {
             if (hunk.Kind == VoiceLabDiffHunkKind.Cut) operations.Add(new EditOperation.SetWordCuts(hunk.SourceWordIds, true));
             else if (hunk.Kind == VoiceLabDiffHunkKind.TextOnly)
                 for (var index = 0; index < hunk.SourceWordIds.Count; index++)
                     operations.Add(new EditOperation.Correct(hunk.SourceWordIds[index], hunk.CorrectedTexts[index]));
         }
-        return Editor.ApplyBatch(operations);
+        return operations;
     }
+#if DEBUG
+    internal Task<bool> ApplyTakeAsync() => GenerationIsCurrent && Generation is { } generation
+        ? generation.AcceptAsync(Editor, LocalOperations()) : Task.FromResult(false);
+#endif
 
     private void InvalidateProposal() { revision++; sending?.Cancel(); confirming?.Cancel(); }
     internal void SettingsChanged(bool voiceLabEnabled)
@@ -307,6 +323,7 @@ internal sealed class RewriteSession : IDisposable
         if (!IsOpen) return;
         IsOpen = false;
 #if DEBUG
+        Editor.SelectionChanged -= GenerationSelectionChanged;
         if (Generation is { } generation) { generation.Changed -= GenerationChanged; generation.Dispose(); }
 #endif
         InvalidateProposal();

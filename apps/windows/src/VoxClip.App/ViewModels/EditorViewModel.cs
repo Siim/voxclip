@@ -294,12 +294,13 @@ public sealed class EditorViewModel : ObservableObject
         }
     }
 
-    public bool ApplyVoiceLab(VoiceLabEditCommand command, Project? expectedProject = null)
+    public bool ApplyVoiceLab(VoiceLabEditCommand command, Project? expectedProject = null, IReadOnlyList<EditOperation>? localOperations = null)
     {
         if (!Monitor.TryEnter(voiceLabEdits)) return false;
         try
         {
             if (applyingVoiceLab || isLeaving || IsReadOnly || Busy || state is null) return false;
+            if (localOperations is { Count: > 0 } && command is not VoiceLabEditCommand.Accept) return false;
             var snapshot = expectedProject ?? project;
             if (!ReferenceEquals(snapshot, project)) return false;
             applyingVoiceLab = true;
@@ -312,12 +313,17 @@ public sealed class EditorViewModel : ObservableObject
                             throw new VoiceLabProjectException(VoiceLabProjectErrorCode.InvalidAsset);
                 var modifiedAt = now();
                 if (modifiedAt <= snapshot.ModifiedAt) modifiedAt = snapshot.ModifiedAt.AddTicks(1);
-                var change = new VoiceLabEditHistory(snapshot, IsDirty).Apply(command, modifiedAt);
-                if (ReferenceEquals(change.Present, snapshot)) return false;
+                var nextState = state;
+                foreach (var operation in localOperations ?? []) nextState = reduce(nextState, operation);
+                var combined = nextState == state ? snapshot : snapshot with { Edits = new(nextState.PauseThresholdSeconds, nextState.PauseKeepSeconds,
+                    nextState.CutWordIds.ToArray(), nextState.CutPauseIds.ToArray(), new Dictionary<string, string>(nextState.Corrections), nextState.Clips.ToArray(), nextState.ActiveClipId) };
+                var change = new VoiceLabEditHistory(combined, IsDirty).Apply(command, modifiedAt);
+                if (ReferenceEquals(change.Present, combined) && nextState == state) return false;
                 CaptionDrag.Cancel();
                 if (!ReferenceEquals(project, snapshot) || isLeaving || IsReadOnly || Busy) return false;
                 undo.Push(CaptureHistory());
                 redo.Clear();
+                state = nextState;
                 project = change.Present;
                 Refresh();
                 Announcement?.Invoke(this, command.ActionName);
