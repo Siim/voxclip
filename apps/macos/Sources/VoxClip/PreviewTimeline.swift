@@ -89,7 +89,7 @@ func viewerStageSize(ratio: Double, innerWidth: CGFloat, columnHeight: CGFloat, 
     }
     private var stageLabel: String {
         let scope = model.activeClip.flatMap { model.clipNumber($0.id) }.map { "clip \($0)" } ?? "full take"
-        let ai = model.voiceLabPlan?.pieces.contains { $0.kind == .synth } == true ? ", contains AI-modified speech" : ""
+        let ai = hasAI ? ", contains AI-modified speech" : ""
         return "Video preview, \(scope)\(ai)\(model.mediaStatus.spokenState.map { ", " + $0 } ?? "")"
     }
     private var viewerRow: some View {
@@ -114,7 +114,7 @@ func viewerStageSize(ratio: Double, innerWidth: CGFloat, columnHeight: CGFloat, 
             }.columnLayoutEvidence("transport.stacked")
         }.buttonStyle(.plain).foregroundStyle(DesignValues.color("text.primary"))
     }
-    private var hasAI: Bool { model.voiceLabPlan?.pieces.contains { $0.kind == .synth } == true }
+    private var hasAI: Bool { model.containsAISpeech(clipID: model.activeClip?.id) }
     @ViewBuilder private var aiTag: some View {
         if hasAI {
             Text("AI modified").font(.system(size: 11)).fixedSize().padding(.horizontal, 4).padding(.vertical, 2)

@@ -3,6 +3,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 import Synchronization
 import VoxClipCore
+import VoxClipMedia
 
 extension UTType {
     public static let voxclipProject = UTType(exportedAs: "com.voxconvo.voxclip.project", conformingTo: .json)
@@ -32,6 +33,14 @@ extension UTType {
         let destination: URL
     }
     private let state: Mutex<State>
+    @MainActor private var retainedVoiceLabFiles: Set<String> = []
+    @MainActor private var voiceLabActivity: VoiceLabAssetActivity?
+    @MainActor private var voiceLabActivityReady = false
+    @MainActor func beginVoiceLabActivity(paidRoot: URL) {
+        guard voiceLabActivity == nil else { return }
+        voiceLabActivity = try? VoiceLabAssetActivity(paidRoot: paidRoot)
+        voiceLabActivityReady = voiceLabActivity != nil
+    }
     private let projectUndoManager = UndoManager()
     private let pendingWrite = Mutex<WriteSnapshot?>(nil)
     private let nameChange = Mutex<NameChange?>(nil)
@@ -139,6 +148,8 @@ extension UTType {
     }
     @MainActor public func replaceProject(_ project: Project) {
         guard project != self.project else { return }
+        retainedVoiceLabFiles.formUnion(VoiceLabAssetRetention.references(in: self.project))
+        retainedVoiceLabFiles.formUnion(VoiceLabAssetRetention.references(in: project))
         objectWillChange.send()
         state.withLock { $0.project = project; $0.revision += 1 }
     }
@@ -200,6 +211,29 @@ extension UTType {
     var versionForTesting = false
     #endif
     override public func close() {
+        if let editorModel {
+            voiceLabActivity = nil
+            let anotherOpen = NSDocumentController.shared.documents.contains(where: { document in
+                guard let other = document as? VoxClipDocument else { return false }
+                return other !== self && other.project.id == project.id
+            })
+            retainedVoiceLabFiles.formUnion(VoiceLabAssetRetention.references(in: project))
+            do {
+                try VoiceLabAssetRetention.closeProject(projectId: project.id,
+                    paidRoot: editorModel.app.locations.root.appendingPathComponent("VoiceLab"), references: retainedVoiceLabFiles, allowDeletion: voiceLabActivityReady && !anotherOpen,
+                    recheckReferences: {
+                        var references = self.retainedVoiceLabFiles.union(VoiceLabAssetRetention.references(in: self.project))
+                        for case let document as VoxClipDocument in NSDocumentController.shared.documents {
+                            references.formUnion(document.retainedVoiceLabFiles)
+                            references.formUnion(VoiceLabAssetRetention.references(in: document.project))
+                        }
+                        return references
+                    })
+            } catch {
+                let logger = editorModel.app.log
+                Task { await logger.write(LogEntry(level: .warn, category: "voice-lab", message: "Asset cleanup deferred; paid media is safe.")) }
+            }
+        }
         for case let version as VersionWindowController in windowControllers {
             version.shell.documentWillClose(self)
             version.close()

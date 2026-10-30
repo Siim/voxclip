@@ -36,6 +36,32 @@ public enum VoiceLabSourceAudio {
     /// The voice changer converts at most 290 s per request (§7.2).
     static let maximumSeconds = 290
 
+    public static func rewriteSource(source: URL, frames: Int64, sampleRate: Int) async throws -> [Float] {
+        guard frames > 0, frames <= 30_000_000, (8_000...96_000).contains(sampleRate) else { throw VoiceLabSourceAudioError.tooLarge }
+        var result: [Float] = []
+        result.reserveCapacity(Int(frames))
+        var start: Int64 = 0
+        let chunkSamples: Int = 280 * sampleRate
+        let chunkFrames: Int64 = Int64(chunkSamples)
+        let trailingSamples: Int = (sampleRate + 49) / 50
+        let trailingFrames: Int64 = Int64(trailingSamples)
+        let pcmScale: Float = 32_768
+        while start < frames {
+            try Task.checkCancellation()
+            var end = min(frames, start + chunkFrames)
+            if frames - end < trailingFrames { end = frames }
+            let wav = try await conversionInput(source: source, startSample: start, endSample: end, sourceSampleRate: Double(sampleRate))
+            for offset in stride(from: 44, to: wav.count, by: 2) {
+                let bits = UInt16(wav[offset]) | UInt16(wav[offset + 1]) << 8
+                let signed: Int16 = Int16(bitPattern: bits)
+                let sample: Float = Float(signed)
+                result.append(sample / pcmScale)
+            }
+            start = end
+        }
+        return result
+    }
+
     /// The complete mono PCM16 WAV of source frames `[startSample, endSample)` that §7.3 uploads, at the source rate
     /// with no resampling. The track the renderer uses is decoded as Float32 at its native rate, which must equal
     /// `sourceSampleRate`, then downmixed by the arithmetic mean of its channels and written with the paid-asset
@@ -108,12 +134,13 @@ public enum VoiceLabSourceAudio {
             throw VoiceLabSourceAudioError.unreadable
         }
         guard Int64(info.st_size) <= VoiceLabAssets.maxBytes else { throw VoiceLabSourceAudioError.tooLarge }
-        let scratch = FileManager.default.temporaryDirectory.appendingPathComponent("voxclip-voice-decode-\(UUID().uuidString)",
-                                                                                    isDirectory: true)
-        guard Darwin.mkdir(scratch.path, 0o700) == 0 else { throw VoiceLabSourceAudioError.unreadable }
-        defer { try? FileManager.default.removeItem(at: scratch) }
+        let operation: VoiceLabAssetRecovery.Operation
+        do { operation = try VoiceLabAssetRecovery.Operation.create(in: FileManager.default.temporaryDirectory) }
+        catch { throw VoiceLabSourceAudioError.unreadable }
+        defer { operation.discard() }
+        let scratch = FileManager.default.temporaryDirectory.appendingPathComponent(operation.name, isDirectory: true)
         let snapshot = scratch.appendingPathComponent("asset." + url.pathExtension)
-        let copyFD = Darwin.open(snapshot.path, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0o600)
+        let copyFD = Darwin.openat(operation.descriptor, snapshot.lastPathComponent, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0o600)
         guard copyFD >= 0 else { throw VoiceLabSourceAudioError.unreadable }
         let copy = FileHandle(fileDescriptor: copyFD, closeOnDealloc: true)
         afterCheck?(snapshot)
@@ -198,7 +225,8 @@ public enum VoiceLabSourceAudio {
         return mono
     }
 
-    private static func resample(_ samples: [Float], from rate: Double, to target: Double) throws -> [Float] {
+    package static func resample(_ samples: [Float], from rate: Double, to target: Double) throws -> [Float] {
+        if rate == target { return samples }
         guard let input = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: rate, channels: 1, interleaved: false),
               let output = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: target, channels: 1, interleaved: false),
               let converter = AVAudioConverter(from: input, to: output),

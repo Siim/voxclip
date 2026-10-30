@@ -128,6 +128,8 @@ extension ProviderChoice {
     }()
     /// The Settings tab to show; Set Up AI… and Change… open "ai".
     var settingsPane = "general"
+    @ObservationIgnored lazy var voiceLabSession = VoiceLabSession(app: self)
+    @ObservationIgnored lazy var speakerModelLibrary = SpeakerModelLibrary(app: self)
     var activeEditor: EditorModel? { shell.editor }
     private(set) var settingsLoaded = false
     private(set) var loadingSettings = true
@@ -168,6 +170,10 @@ extension ProviderChoice {
     let locations = DataLocations()
     private var settingsTask: Task<Void, Never>?
     private var startupTask: Task<Void, Never>?
+    private var voiceRecoveryTask: Task<Void, Never>?
+    #if DEBUG
+    var voiceRecoveryForTests: (@MainActor () async -> Void)?
+    #endif
     private var updateTask: Task<Void, Never>?
     private var pendingSettings: [String: JSONValue] = [:]
     var modelLibrary: ModelLibrary {
@@ -220,6 +226,15 @@ extension ProviderChoice {
         await startupTask?.value
     }
     private func loadStartup() async {
+        let paidRoot = locations.root.appendingPathComponent("VoiceLab", isDirectory: true)
+        do {
+            _ = try await Task.detached(priority: .utility) {
+                let removed = try VoiceLabAssetStore.recoverStalePartials(paidRoot: paidRoot)
+                try VoiceLabAssetRetention.discoverUnlisted(paidRoot: paidRoot)
+                return removed
+            }.value
+        }
+        catch { await log.write(LogEntry(level: .warn, category: "voice-lab", message: "Voice Lab partial-file recovery could not finish; paid assets were kept.")) }
         recent = Self.isTestSession ? [] : NSDocumentController.shared.recentDocumentURLs
         do {
             var loaded = try await settingsStore.load()
@@ -244,6 +259,7 @@ extension ProviderChoice {
             _ = await Task.detached(priority: .utility) { ScratchCleanup.sweep(registry: registry, cache: cache, temporary: temporary, exportDirectories: exports) }.value
         }
         restoreCachedUpdate()
+        startVoiceRecovery()
         #if DEBUG
         if Self.isTestSession || DebugProbes.requested { return }
         #endif
@@ -298,6 +314,7 @@ extension ProviderChoice {
             let consent = "llm.cloudConsent.\(key.dropFirst("llm.baseUrl.".count))"
             if bool(consent) { set(consent, .bool(false)) }
         }
+        if key == "voiceLab.labelPosition" { Task { await shell.editor?.updatePreview(load: false) } }
         if key == "voiceLab.enabled" || key == "llm.connector" || key.hasPrefix("llm.model.") || key.hasPrefix("llm.baseUrl.") || key.hasPrefix("llm.cliPath.") {
             shell.editor?.closeRewrite(returnFocus: false)
         }
@@ -324,6 +341,7 @@ extension ProviderChoice {
         }
     }
     func flushSettings() async {
+        stopVoiceRecovery()
         await startupTask?.value
         let pending = settingsTask
         settingsTask?.cancel()
@@ -331,6 +349,19 @@ extension ProviderChoice {
         guard settingsLoaded else { return }
         do { try await settingsStore.save(settings); try await settingsStore.flush() }
         catch { notice = await safeError(error, context: "Settings could not be saved.") }
+    }
+    private func startVoiceRecovery() {
+        voiceRecoveryTask = Task { [weak self] in
+            guard let self else { return }
+            #if DEBUG
+            if let voiceRecoveryForTests { await voiceRecoveryForTests(); return }
+            #endif
+            await voiceLabSession.reconcileStartup()
+        }
+    }
+    func stopVoiceRecovery() {
+        voiceRecoveryTask?.cancel(); voiceRecoveryTask = nil
+        voiceLabSession.stopRecovery()
     }
     private func restoreCachedUpdate() {
         guard let url = URL(string: string("update.htmlURL")) else { return }

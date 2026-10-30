@@ -31,17 +31,26 @@ public enum VoiceLabAssetStoreError: Error, LocalizedError, Sendable, Equatable 
 }
 
 /// Publishes paid audio into the caller's paid Voice Lab root exactly once (voice-lab.md §10.1, §10.4). Every asset is
-/// a canonical mono PCM16 WAV named by `VoiceLabAssetNaming`. Unsafe IDs throw Core's `invalidAsset`.
+/// a canonical WAV named by `VoiceLabAssetNaming`: paid PCM is mono PCM16; fitted PCM preserves its sample format and
+/// channels. Unsafe IDs throw Core's `invalidAsset`.
 ///
 /// The root resolves as `VoiceLabAssets.prepare` resolves it. When only its last component is missing, it is created with
 /// mode 0700 inside the existing data folder; a missing data folder is `rootMissing`. `<projectId>` is created the same
 /// way, and neither it nor the file is followed through a link. Anything already at the file's name is `alreadyExists`
-/// before a byte is written. Each write goes to an exclusive 0600 temporary file in the same directory, is flushed with
+/// before a byte is written. Each write goes to an exclusive 0600 file in a journalled private operation directory, is flushed with
 /// `F_FULLFSYNC`, and moves into place with `RENAME_EXCL`, so an existing file is never overwritten or truncated; the
-/// directory is then flushed the same way. Cancellation or failure before that move removes only the temporary file.
+/// project directory is then flushed the same way. Cancellation or failure releases only the pinned operation directory.
 /// After it the file is kept: a failure to confirm it is `publishedUnverified`, and different bytes at the name are
 /// `altered`.
 public enum VoiceLabAssetStore {
+    @discardableResult public static func recoverStalePartials(paidRoot: URL) throws -> Int {
+        let root = try VoiceLabPaidRoot.open(paidRoot)
+        defer { Darwin.close(root) }
+        let lock = try VoiceLabAssetRecovery.lock(root)
+        defer { Darwin.close(lock) }
+        return try VoiceLabAssetRecovery.recover(root)
+    }
+    enum WriteBoundary: String, CaseIterable { case directories, temporary, header, pcm, fileSync, rename, directorySync, verification }
     /// The RIFF size field is 32 bits and counts 36 header bytes plus 2 bytes per frame. That is tighter than §10.4's
     /// 8 GiB and 24 h × 192 kHz bounds, so `VoiceLabAssets.prepare` accepts every length written here.
     static let maxFrames = (Int(UInt32.max) - 36) / 2
@@ -56,13 +65,29 @@ public enum VoiceLabAssetStore {
 
     /// `afterPublish` runs once the file is at its final name, so tests can disturb the confirmation that follows.
     static func write(pcm16: Data, sampleRate: Int, projectId: String, assetId: String, paidRoot: URL, createdAt: Date,
-                      afterPublish: (() -> Void)?) throws -> VoiceLabAsset {
+                      afterPublish: (() -> Void)?, checkpoint: ((WriteBoundary) throws -> Void)? = nil) throws -> VoiceLabAsset {
         let file = try VoiceLabAssetNaming.file(projectId: projectId, assetId: assetId, extension: "wav")
         guard pcm16.count.isMultiple(of: 2) else { throw VoiceLabAssetStoreError.invalidAudio(file) }
         return try pcm16.withUnsafeBytes { bytes in
             try publish(file: file, assetId: assetId, frames: bytes.count / 2, sampleRate: sampleRate,
-                        paidRoot: paidRoot, createdAt: createdAt, afterPublish: afterPublish) { start, destination in
+                        paidRoot: paidRoot, createdAt: createdAt, afterPublish: afterPublish, checkpoint: checkpoint) { start, destination in
                 destination.copyMemory(from: UnsafeRawBufferPointer(rebasing: bytes[(start * 2)..<(start * 2 + destination.count)]))
+            }
+        }
+    }
+
+    static func writeWave(pcm: Data, sampleRate: Int, channels: Int, bits: Int, floating: Bool,
+                          projectId: String, assetId: String, paidRoot: URL, createdAt: Date,
+                          checkpoint: ((WriteBoundary) throws -> Void)? = nil) throws -> VoiceLabAsset {
+        let file = try VoiceLabAssetNaming.file(projectId: projectId, assetId: assetId, extension: "wav")
+        let stride = channels * (bits / 8)
+        guard (1...8).contains(channels), (floating ? [32, 64] : [16, 24, 32]).contains(bits),
+              stride > 0, pcm.count.isMultiple(of: stride), pcm.count <= Int(UInt32.max) - 37 else { throw VoiceLabAssetStoreError.invalidAudio(file) }
+        return try pcm.withUnsafeBytes { bytes in
+            try publish(file: file, assetId: assetId, frames: pcm.count / stride, sampleRate: sampleRate,
+                        paidRoot: paidRoot, createdAt: createdAt, afterPublish: nil, channels: channels, bits: bits,
+                        floating: floating, checkpoint: checkpoint) { start, destination in
+                destination.copyMemory(from: UnsafeRawBufferPointer(rebasing: bytes[(start * stride)..<(start * stride + destination.count)]))
             }
         }
     }
@@ -90,14 +115,16 @@ public enum VoiceLabAssetStore {
     }
 
     /// The canonical 44-byte little-endian header: RIFF size, one 16-byte `fmt ` chunk for mono PCM16, then `data`.
-    static func wavHeader(frames: Int, sampleRate: Int) -> Data {
+    static func wavHeader(frames: Int, sampleRate: Int, channels: Int = 1, bits: Int = 16, floating: Bool = false) -> Data {
         var header = Data()
         func text(_ value: String) { header.append(contentsOf: value.utf8) }
         func u16(_ value: UInt16) { withUnsafeBytes(of: value.littleEndian) { header.append(contentsOf: $0) } }
         func u32(_ value: UInt32) { withUnsafeBytes(of: value.littleEndian) { header.append(contentsOf: $0) } }
-        text("RIFF"); u32(UInt32(36 + frames * 2)); text("WAVEfmt "); u32(16)
-        u16(1); u16(1); u32(UInt32(sampleRate)); u32(UInt32(sampleRate * 2)); u16(2); u16(16)
-        text("data"); u32(UInt32(frames * 2))
+        let stride = channels * (bits / 8)
+        let size = frames * stride
+        text("RIFF"); u32(UInt32(36 + size + size % 2)); text("WAVEfmt "); u32(16)
+        u16(floating ? 3 : 1); u16(UInt16(channels)); u32(UInt32(sampleRate)); u32(UInt32(sampleRate * stride)); u16(UInt16(stride)); u16(UInt16(bits))
+        text("data"); u32(UInt32(frames * stride))
         return header
     }
 
@@ -108,59 +135,84 @@ public enum VoiceLabAssetStore {
     }
 
     private static func publish(file: String, assetId: String, frames: Int, sampleRate: Int, paidRoot: URL, createdAt: Date,
-                                afterPublish: (() -> Void)?,
+                                afterPublish: (() -> Void)?, channels: Int = 1, bits: Int = 16, floating: Bool = false,
+                                checkpoint: ((WriteBoundary) throws -> Void)? = nil,
                                 pcm: (_ start: Int, _ destination: UnsafeMutableRawBufferPointer) -> Void) throws -> VoiceLabAsset {
         try validate(frames: frames, sampleRate: sampleRate, file: file)
         let parts = file.split(separator: "/").map(String.init)
         guard parts.count == 2 else { throw VoiceLabAssetStoreError.unsafePath(file) }
         let rootFD = try openRoot(paidRoot, file: file)
         defer { Darwin.close(rootFD) }
+        let lock = try VoiceLabAssetRecovery.lock(rootFD)
+        defer { Darwin.close(lock) }
+        _ = try VoiceLabAssetRecovery.recover(rootFD)
         let projectFD = try directory(parts[0], in: rootFD, file: file)
         defer { Darwin.close(projectFD) }
+        try checkpoint?(.directories)
         let name = parts[1]
         // Anything already at the name, a link or directory included, is refused before a byte is written.
         // RENAME_EXCL below still settles a race with another writer.
         var existing = stat()
         if Darwin.fstatat(projectFD, name, &existing, AT_SYMLINK_NOFOLLOW) == 0 { throw VoiceLabAssetStoreError.alreadyExists(file) }
         guard errno == ENOENT else { throw VoiceLabAssetStoreError.unwritable(file) }
+        let operation: VoiceLabAssetRecovery.Operation
+        do { operation = try VoiceLabAssetRecovery.Operation(parent: projectFD) }
+        catch VoiceLabAssetStoreError.unsafePath { throw VoiceLabAssetStoreError.unsafePath(file) }
+        catch { throw VoiceLabAssetStoreError.unwritable(file) }
+        defer { operation.discard() }
         let temporary = ".\(name).\(UUID().uuidString.lowercased()).partial"
-        let fd = Darwin.openat(projectFD, temporary, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0o600)
+        let fd = Darwin.openat(operation.descriptor, temporary, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0o600)
         guard fd >= 0 else { throw VoiceLabAssetStoreError.unwritable(file) }
-        var published = false
-        defer { if !published { _ = Darwin.unlinkat(projectFD, temporary, 0) } }
+        let journal: VoiceLabAssetRecovery.Journal
+        do { journal = try VoiceLabAssetRecovery.recordPartial(operation.descriptor, name: temporary, descriptor: fd) }
+        catch { Darwin.close(fd); throw error }
         var hash = SHA256()
+        let stride = channels * (bits / 8)
         do {
             defer { Darwin.close(fd) }
-            let header = wavHeader(frames: frames, sampleRate: sampleRate)
+            try checkpoint?(.temporary)
+            let header = wavHeader(frames: frames, sampleRate: sampleRate, channels: channels, bits: bits, floating: floating)
             hash.update(data: header)
             try header.withUnsafeBytes { try writeAll(fd, $0, file) }
-            var chunk = [UInt8](repeating: 0, count: 2 * min(block, frames))
+            try checkpoint?(.header)
+            var chunk = [UInt8](repeating: 0, count: stride * min(block, frames))
             var start = 0
             while start < frames {
                 try Task.checkCancellation()
                 let count = min(block, frames - start)
                 try chunk.withUnsafeMutableBytes { raw in
-                    let destination = UnsafeMutableRawBufferPointer(rebasing: raw[0..<(2 * count)])
+                    let destination = UnsafeMutableRawBufferPointer(rebasing: raw[0..<(stride * count)])
                     pcm(start, destination)
                     hash.update(bufferPointer: UnsafeRawBufferPointer(destination))
                     try writeAll(fd, UnsafeRawBufferPointer(destination), file)
                 }
                 start += count
+                try checkpoint?(.pcm)
+            }
+            if (frames * stride).isMultiple(of: 2) == false {
+                let padding = Data([0]); hash.update(data: padding)
+                try padding.withUnsafeBytes { try writeAll(fd, $0, file) }
             }
             guard VoiceLabPaidRoot.fullSync(fd) else { throw VoiceLabAssetStoreError.unwritable(file) }
+            try checkpoint?(.fileSync)
         }
         try Task.checkCancellation()
-        guard renameatx_np(projectFD, temporary, projectFD, name, UInt32(RENAME_EXCL)) == 0 else {
+        guard renameatx_np(operation.descriptor, temporary, projectFD, name, UInt32(RENAME_EXCL)) == 0 else {
             throw errno == EEXIST ? VoiceLabAssetStoreError.alreadyExists(file) : VoiceLabAssetStoreError.unwritable(file)
         }
         // From here the paid file exists under its final name and is kept, whatever happens next.
-        published = true
+        guard renameatx_np(operation.descriptor, journal.name, projectFD, ".\(name).ownership.json", UInt32(RENAME_EXCL)) == 0 else {
+            throw VoiceLabAssetStoreError.publishedUnverified(file)
+        }
+        try checkpoint?(.rename)
         afterPublish?()
         guard VoiceLabPaidRoot.fullSync(projectFD) else { throw VoiceLabAssetStoreError.publishedUnverified(file) }
+        try checkpoint?(.directorySync)
         let digest = hash.finalize().map { String(format: "%02x", $0) }.joined()
-        guard try readBack(projectFD, name, bytes: 44 + 2 * frames, file: file) == digest else {
+        guard try readBack(projectFD, name, bytes: 44 + stride * frames + (stride * frames) % 2, file: file) == digest else {
             throw VoiceLabAssetStoreError.altered(file)
         }
+        try checkpoint?(.verification)
         return VoiceLabAsset(id: assetId, file: file, sha256: digest, durationSeconds: Double(frames) / Double(sampleRate),
                              sampleRate: sampleRate, createdAt: createdAt)
     }

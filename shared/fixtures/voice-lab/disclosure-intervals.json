@@ -1,0 +1,101 @@
+{
+  "schema": "voxclip-disclosure-intervals/1",
+  "cases": [
+    {
+      "id": "named-42-seconds",
+      "duration": 42,
+      "segments": [
+        [
+          12.1,
+          13.8
+        ],
+        [
+          13.9,
+          14.2
+        ]
+      ],
+      "expected": [
+        [
+          0,
+          3
+        ],
+        [
+          11.6,
+          14.7
+        ]
+      ]
+    },
+    {
+      "id": "expanded-gap-0.9",
+      "duration": 42,
+      "segments": [
+        [
+          12,
+          13
+        ],
+        [
+          14.9,
+          16
+        ]
+      ],
+      "expected": [
+        [
+          0,
+          3
+        ],
+        [
+          11.5,
+          16.5
+        ]
+      ]
+    },
+    {
+      "id": "expanded-gap-1.1",
+      "duration": 42,
+      "segments": [
+        [
+          12,
+          13
+        ],
+        [
+          15.1,
+          16
+        ]
+      ],
+      "expected": [
+        [
+          0,
+          3
+        ],
+        [
+          11.5,
+          13.5
+        ],
+        [
+          14.6,
+          16.5
+        ]
+      ]
+    },
+    {
+      "id": "clamp-near-clip-end",
+      "duration": 42,
+      "segments": [
+        [
+          41,
+          41.8
+        ]
+      ],
+      "expected": [
+        [
+          0,
+          3
+        ],
+        [
+          40.5,
+          42
+        ]
+      ]
+    }
+  ]
+}

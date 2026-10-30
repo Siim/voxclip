@@ -6,22 +6,98 @@ import VoxClipCore
 /// Owns every decoded snapshot and staged CAF until the last graph reader is gone.
 public final class VoiceLabRenderLease: @unchecked Sendable {
     public let mixedAudioURL: URL
-    private let scratch: URL
+    private let scratch: VoiceLabAssetRecovery.Operation
     private let preparedAssets: [String: PreparedVoiceLabAsset]
 
-    init(mixedAudioURL: URL, scratch: URL, preparedAssets: [String: PreparedVoiceLabAsset]) {
+    init(mixedAudioURL: URL, scratch: VoiceLabAssetRecovery.Operation, preparedAssets: [String: PreparedVoiceLabAsset]) {
         self.mixedAudioURL = mixedAudioURL
         self.scratch = scratch
         self.preparedAssets = preparedAssets
     }
 
-    deinit { try? FileManager.default.removeItem(at: scratch) }
+    deinit { scratch.discard() }
 }
 
 /// Produces one exact-length source-grid stream for player, MP4 and edited WAV readers.
 /// Every file read and write is limited to a 4096-frame buffer, except the stored 0.5 s room run.
 enum VoiceLabAudioRenderer {
     private static let block = 4096
+
+    static func stageTake(fitted: VoiceLabFittedAudio, analysis: VoiceLabTakeAnalysis, input: VoiceLabTakeInput,
+                          sourceAtAssetRate source: [Float], scratchRoot: URL) throws -> VoiceLabTakeScratch {
+        let plan = fitted.fit.plan, rate = fitted.snapshot.sampleRate
+        func frames(_ time: Double) -> Int { Int(EditingPrimitives.jsRound(time * Double(rate))) }
+        let start = frames(plan.windowStart), end = frames(plan.windowEnd), length = Int(plan.outputFrames)
+        guard start >= 0, end > start, end <= source.count, source.allSatisfy(\.isFinite) else { throw VoiceLabError.invalidAudio }
+        let lead = min(rate / 2, start), tail = min(rate / 2, source.count - end)
+        guard lead + length + tail <= Int(VoiceLabTakeProcessing.maximumQASeconds) * rate else { throw VoiceLabError.invalidAudio }
+        let tone: [Float]
+        if let room = analysis.roomTone {
+            let lower = frames(Double(room.sourceStartSample) / Double(input.sourceSampleRate))
+            let upper = frames(Double(room.sourceEndSample) / Double(input.sourceSampleRate))
+            guard lower >= 0, upper > lower, upper <= source.count else { throw VoiceLabError.invalidAudio }
+            tone = source[lower..<upper].flatMap { [$0, $0] }
+        } else { tone = [] }
+        let gain = Float(pow(10, analysis.gainDb / 20)), toneGain = Float(pow(10, (analysis.roomTone?.gainDb ?? 0) / 20))
+        func signal(_ relative: Int) throws -> Float {
+            let frame = fitted.trimStartFrame + Int64(relative)
+            guard frame >= 0, frame < fitted.wave.frames else { throw VoiceLabError.invalidAudio }
+            var sample: Float = 0
+            for channel in 0..<fitted.wave.channels { sample += Float(fitted.wave.sample(frame: frame, channel: channel)) / Float(fitted.wave.channels) }
+            let background = tone.isEmpty ? 0 : toneSample(tone, at: Int64(relative), channel: 0, rate: Double(rate)) * toneGain
+            return sample * gain + background
+        }
+        var mixed = Array(source[(start - lead)..<start])
+        for relative in 0..<length {
+            if relative.isMultiple(of: block) { try Task.checkCancellation() }
+            mixed.append(try signal(relative))
+        }
+        mixed.append(contentsOf: source[end..<(end + tail)])
+        var seams: [Int] = []
+        for incoming in [true, false] {
+            let placement = incoming ? input.window.leftSeam : input.window.rightSeam
+            if placement.kind == .none { continue }
+            let count = frames(Double(placement.fadeSamples) / Double(input.sourceSampleRate)), before = count / 2
+            let seam = lead + (incoming ? 0 : length), sourceSeam = incoming ? start : end
+            guard count >= 2, seam >= before, seam + count - before <= mixed.count,
+                  sourceSeam >= before, sourceSeam + count - before <= source.count else { throw VoiceLabError.invalidAudio }
+            var old: [Float] = [], generated: [Float] = []
+            for offset in 0..<count {
+                let local = offset - before
+                let original = source[sourceSeam + local], synthetic = try signal((incoming ? 0 : length) + local)
+                old.append(contentsOf: [original, original]); generated.append(contentsOf: [synthetic, synthetic])
+            }
+            let blended = incoming ? crossfade(old, generated, n: count) : crossfade(generated, old, n: count)
+            for offset in 0..<count { mixed[seam + offset - before] = blended[offset * 2] }
+            seams.append(seam)
+        }
+        guard mixed.allSatisfy(\.isFinite) else { throw VoiceLabError.invalidAudio }
+        try reserveDisk(scratchRoot, frames: Int64(mixed.count), additionalBytes: Int64(fitted.wave.pcm.count + 88))
+        let operation = try VoiceLabAssetRecovery.Operation.create(in: scratchRoot)
+        let directory = scratchRoot.appendingPathComponent(operation.name, isDirectory: true)
+        do {
+            try writePrivate(fitted.wave.bytes, to: directory.appendingPathComponent("fitted.wav"))
+            var pcm = Data()
+            for sample in mixed { withUnsafeBytes(of: sample.bitPattern.littleEndian) { pcm.append(contentsOf: $0) } }
+            let wave = VoiceLabWavePCM(rate: rate, channels: 1, bits: 32, floating: true, pcm: pcm)
+            let mixedURL = directory.appendingPathComponent("mixed.wav")
+            try writePrivate(wave.bytes, to: mixedURL)
+            let readback = try VoiceLabWavePCM(Data(contentsOf: mixedURL))
+            let measured = (0..<readback.frames).map { Float(readback.sample(frame: $0, channel: 0)) }
+            guard measured == mixed else { throw VoiceLabError.invalidAudio }
+            let audio = VoiceLabTakeAudio(sampleRate: rate, trimmed: analysis.trimmed, mixed: measured,
+                patchRange: lead..<(lead + length), seams: seams, gainDb: analysis.gainDb, roomTone: analysis.roomTone, fit: analysis.fit)
+            return VoiceLabTakeScratch(directory: directory, operation: operation, fitted: fitted, audio: audio)
+        } catch { operation.discard(); throw error }
+    }
+
+    private static func writePrivate(_ bytes: Data, to url: URL) throws {
+        guard FileManager.default.createFile(atPath: url.path, contents: nil, attributes: [.posixPermissions: 0o600]) else { throw VoiceLabError.invalidAudio }
+        let writer = try FileHandle(forWritingTo: url)
+        defer { try? writer.close() }
+        try writer.write(contentsOf: bytes)
+        try writer.synchronize()
+    }
 
     /// The asset snapshots and the mix are staged in fresh folders under `scratchRoot`.
     static func stage(request: RenderRequest, scratchRoot: URL, isolation: isolated (any Actor)? = #isolation) async throws -> VoiceLabRenderLease {
@@ -37,8 +113,8 @@ enum VoiceLabAudioRenderer {
         let estimate = try scratchEstimate(input: input)
         try reserveDisk(scratchRoot, frames: estimate.frames, additionalBytes: estimate.snapshots)
         let prepared = try VoiceLabAssets.prepare(project: input.project, plan: plan, paidRoot: input.paidRoot, scratchRoot: scratchRoot)
-        let scratch = scratchRoot.appendingPathComponent("voxclip-mix-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: false)
+        let operation = try VoiceLabAssetRecovery.Operation.create(in: scratchRoot)
+        let scratch = scratchRoot.appendingPathComponent(operation.name, isDirectory: true)
         do {
             let sourceURL = scratch.appendingPathComponent("source.caf")
             let mixedURL = scratch.appendingPathComponent("mixed.caf")
@@ -60,7 +136,7 @@ enum VoiceLabAudioRenderer {
                     throw VoiceLabAssetError.invalidSelection(item.segmentId)
                 }
                 try stageFit(asset, recipe: item.recipe, outputFrames: item.piece.outputEndSample - item.piece.outputStartSample,
-                             rate: plan.sampleRate, to: url, scratch: scratch)
+                             rate: plan.sampleRate, to: url, scratch: scratchRoot)
                 let (handles, overflow) = item.recipe.seams.in.fadeSamples.addingReportingOverflow(item.recipe.seams.out.fadeSamples)
                 guard !overflow else { throw VoxClipError.diskFull(scratch.path) }
                 remainingFit -= item.piece.outputEndSample - item.piece.outputStartSample + handles
@@ -69,9 +145,9 @@ enum VoiceLabAudioRenderer {
             try mix(plan: plan, selected: input.prepared.selectedSegmentRecipes, prepared: prepared,
                     sourceURL: sourceURL, sourceFrames: sourceFrames, fitURLs: fitURLs, to: mixedURL)
             try Task.checkCancellation()
-            return VoiceLabRenderLease(mixedAudioURL: mixedURL, scratch: scratch, preparedAssets: prepared)
+            return VoiceLabRenderLease(mixedAudioURL: mixedURL, scratch: operation, preparedAssets: prepared)
         } catch {
-            try? FileManager.default.removeItem(at: scratch)
+            operation.discard()
             throw error
         }
     }
@@ -214,13 +290,14 @@ enum VoiceLabAudioRenderer {
               outputFrames > 0, outputFrames <= Int64.max - incoming - outgoing else {
             throw VoiceLabProjectError.invalidFadeHandles
         }
-        let conformedURL = scratch.appendingPathComponent("conformed-\(asset.segmentId).caf")
+        let operation = try VoiceLabAssetRecovery.Operation.create(in: scratch)
+        defer { operation.discard() }
+        let conformedURL = scratch.appendingPathComponent(operation.name).appendingPathComponent("conformed.caf")
         try conform(asset: asset, start: asset.trimStartFrame - rawPre,
                     frames: asset.trimEndFrame - asset.trimStartFrame + rawPre + rawPost,
                     rate: rate, to: conformedURL)
         let sourceFile = try AVAudioFile(forReading: conformedURL, commonFormat: .pcmFormatFloat32, interleaved: false)
         guard sourceFile.length > 0 else { throw VoxClipError.decodeFailed("Fitted asset has no samples") }
-        defer { try? FileManager.default.removeItem(at: conformedURL) }
         if unity {
             let expected = outputFrames + incoming + outgoing
             guard sourceFile.length == expected else {

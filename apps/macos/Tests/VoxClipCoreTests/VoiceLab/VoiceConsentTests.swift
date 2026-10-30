@@ -1,0 +1,1201 @@
+#if DEBUG
+import Foundation
+import Synchronization
+import Testing
+@_spi(Testing) @testable import VoxClipCore
+@_spi(Testing) @testable import VoxClipMedia
+
+private final class ConsentRequestLog: Sendable { let value = Mutex<[String]>([]) }
+private final class ConsentTranscriptionCount: Sendable { let value = Mutex(0) }
+private final class SpeakerAvailability: Sendable { let value = Mutex(true) }
+private final class ConsentMutableKeys: KeyProvider, Sendable {
+    let value = Mutex("synthetic-creator-key")
+    func key(for provider: String) async throws -> String? { value.withLock { $0 } }
+}
+private final class ConsentDiscoveryKeys: KeyProvider, Sendable {
+    let changeAt: Int
+    let reads = Mutex(0)
+    init(changeAt: Int) { self.changeAt = changeAt }
+    func key(for provider: String) async throws -> String? {
+        let read = reads.withLock { $0 += 1; return $0 }
+        return read >= changeAt ? "synthetic-other-creator-key" : "synthetic-original-creator-key"
+    }
+}
+private final class OperationRemote: Sendable {
+    struct State { var present = false; var lists = 0; var posts = 0; var deletes = 0; var listFailure = false; var createFailure = false }
+    let value = Mutex(State())
+}
+private final class OperationClock: Sendable {
+    let value: Mutex<Date>
+    init(_ date: Date) { value = Mutex(date) }
+    func now() -> Date { value.withLock { $0 } }
+    func advance(_ seconds: Double) { value.withLock { $0.addTimeInterval(seconds) } }
+}
+
+@Suite("Own-voice consent", .timeLimit(.minutes(2)))
+struct VoiceConsentTests {
+    struct FixedRNG: RandomNumberGenerator {
+        var state: UInt64 = 41
+        mutating func next() -> UInt64 { state = state &* 6_364_136_223_846_793_005 &+ 1; return state }
+    }
+    struct Embedder: SpeakerEmbedder {
+        let modelID = "fixture-calibrated"
+        let dimension = 2
+        let output: [Float]
+        func embed(_ pcm16k: [Float]) async throws -> [Float] { #expect(pcm16k.count == 48_000); return output }
+    }
+    private var now: Date { Date(timeIntervalSince1970: 1_793_275_200) }
+    private var wav: Data { VoiceLabRequestFixtures.wav(rate: 16_000, frames: 80_000, fill: 4_000) }
+    private func fixtureRecord(wav: Data) throws -> VoiceConsentRecord {
+        var json = try #require(JSONSerialization.jsonObject(with: FixtureLoader.data("fixtures/voice-lab/consent-record.json")) as? [String: Any])
+        var statement = try #require(json["statement"] as? [String: Any]); statement["audioSha256"] = VoiceLabFingerprint.bytes(wav); json["statement"] = statement
+        return try JSONDecoder().decode(VoiceConsentRecord.self, from: JSONSerialization.data(withJSONObject: json))
+    }
+    private func statement() throws -> VoiceConsentStatement {
+        let record = try fixtureRecord(wav: wav)
+        return .init(language: record.statement.language, text: record.statement.text, nonce: record.statement.nonce)
+    }
+    private func raw() async throws -> RawTranscript {
+        let base = SpeechStubHTTP.register { _ in Issue.record("Response mapping must not use HTTP"); return (500, [:], Data()) }
+        let adapter = ElevenLabsTranscriber(keys: SpeechTestKeys(value: nil), session: URLSession(configuration: SpeechStubHTTP.configuration(for: base)), catalog: try SpeechTestFiles.catalog())
+        return try await adapter.mapResponse(FixtureLoader.data("fixtures/voice-lab/consent-scribe.json"), diarize: false)
+    }
+    private func client(_ calls: ConsentRequestLog, deletionStatus: Int = 200, verificationRequired: Bool = false, enforceCapabilities: Bool = true) -> ElevenLabsVoiceLab {
+        let base = SpeechStubHTTP.register { request in
+            let path = request.url?.path ?? ""
+            calls.value.withLock { $0.append((request.httpMethod ?? "") + " " + path) }
+            switch path {
+            case "/v1/user/subscription": return (200, [:], Data(#"{"tier":"starter","status":"active","character_count":0,"character_limit":1000,"can_use_instant_voice_cloning":true,"voice_slots_used":0,"voice_limit":3}"#.utf8))
+            case "/v1/voices/add":
+                #expect(request.httpMethod == "POST")
+                #expect(request.value(forHTTPHeaderField: "Content-Type")?.hasPrefix("multipart/form-data") == true)
+                let body = try VoiceLabRequestFixtures.body(request)
+                let text = String(decoding: body, as: UTF8.self)
+                #expect(text.contains("consent-statement.wav")); #expect(text.contains("VoxClip own-voice clone. Consent sha256:"))
+                return (200, [:], Data("{\"voice_id\":\"fixtureOwnVoice\",\"requires_verification\":\(verificationRequired)}".utf8))
+            case "/v1/voices/fixtureOwnVoice":
+                #expect(request.httpMethod == "DELETE")
+                return (deletionStatus, [:], Data(#"{"status":"ok"}"#.utf8))
+            default: Issue.record("Unexpected request"); return (500, [:], Data())
+            }
+        }
+        return ElevenLabsVoiceLab(keys: SpeechTestKeys(value: "synthetic-consent-key"), session: URLSession(configuration: SpeechStubHTTP.configuration(for: base)), prices: VoiceLabPricingTests.catalogIfPresent, enforceCapabilities: enforceCapabilities)
+    }
+    private func storage(_ root: URL) -> VoiceConsentStore { VoiceConsentStore(locations: SpeechTestFiles.locations(root)) }
+    private func enroll(store: VoiceConsentStore, client: ElevenLabsVoiceLab, check: VoiceSpeakerCheck, raw: RawTranscript, calls: ConsentTranscriptionCount = ConsentTranscriptionCount()) -> VoiceEnrollment {
+        VoiceEnrollment(store: store, client: client, speaker: check) { _, language in
+            calls.value.withLock { $0 += 1 }; #expect(language == "en"); return raw
+        }
+    }
+    private var attestations: VoiceConsentRecord.Attestations { .init(ownVoice: true, adult: true, ownVideosOnly: true, acceptedAt: now) }
+    private func training() -> [VoiceTrainingSample] {
+        let audio = VoiceLabRequestFixtures.wav(rate: 16_000, frames: 240_000, fill: 4_000)
+        return (0..<4).map { _ in .init(wav: audio, speech16k: [], seconds: 15, source: "readAloud", snrDb: 25) }
+    }
+
+    @Test func nonceIsDeterministicAndWithoutReplacement() throws {
+        let shared = SharedResources(root: try FixtureLoader.sharedRoot())
+        let text = try VoiceConsentText(shared: shared)
+        let words = try String(contentsOf: shared.root.appendingPathComponent("voice-lab/nonce-words-en.txt"), encoding: .utf8).split(whereSeparator: \.isWhitespace).map(String.init)
+        var first = FixedRNG(); var second = FixedRNG()
+        let calendar = Calendar(identifier: .gregorian)
+        let left = try text.statement(name: "  Example  ", language: "en", date: now, calendar: calendar, words: words, rng: &first)
+        let right = try text.statement(name: "Example", language: "en", date: now, calendar: calendar, words: words, rng: &second)
+        #expect(left == right); #expect(Set(left.nonce).count == 4); #expect(left.text.hasPrefix("My name is Example."))
+    }
+    @Test(arguments: ["en", "et"]) func sharedWordsAndDates(language: String) throws {
+        let shared = SharedResources(root: try FixtureLoader.sharedRoot())
+        let text = try VoiceConsentText(shared: shared)
+        let words = try String(contentsOf: shared.root.appendingPathComponent("voice-lab/nonce-words-\(language).txt"), encoding: .utf8).split(whereSeparator: \.isWhitespace).map(String.init)
+        var rng = FixedRNG()
+        var calendar = Calendar(identifier: .gregorian); calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let date = calendar.date(from: DateComponents(year: 2026, month: 10, day: 29))!
+        let statement = try text.statement(name: "Example", language: language, date: date, calendar: calendar, words: words, rng: &rng)
+        #expect(words.count >= 500 && Set(words).count == words.count)
+        #expect(statement.text.contains(language == "en" ? "29 October 2026" : "29. oktoober 2026"))
+        #expect(statement.nonce.allSatisfy(words.contains))
+        let script = try String(contentsOf: shared.root.appendingPathComponent("voice-lab/scripts-\(language).txt"), encoding: .utf8)
+        #expect(script.split(whereSeparator: \.isWhitespace).count >= 150)
+    }
+    @Test func namesUseScalarsAndTrimBeforeControls() throws {
+        #expect(try VoiceConsentText.displayName("\u{85} Name\n") == "Name")
+        #expect(try VoiceConsentText.displayName("A\u{200B}") == "A\u{200B}")
+        #expect(throws: VoiceConsentError.invalidName) { try VoiceConsentText.displayName(String(repeating: "o\u{303}", count: 31)) }
+        #expect(throws: VoiceConsentError.invalidName) { try VoiceConsentText.displayName("A\nB") }
+        #expect(throws: VoiceConsentError.invalidName) { try VoiceConsentText.displayName(" ") }
+    }
+    @Test func recordedScribeResponseMatches() async throws {
+        let match = try VoiceStatementMatch.verify(await raw(), statement: statement())
+        #expect(match.wer == 0); #expect(match.transcriptionId == "fixture-consent-response")
+    }
+    @Test func sharedConsentWerBoundaryStillRequiresEveryNonce() async throws {
+        struct Vectors: Decodable {
+            struct Case: Decodable { let id: String; let recognized: [String]; let wer: Double; let passes: Bool }
+            let language: String; let expected: [String]; let nonce: [String]; let cases: [Case]
+        }
+        let vectors = try JSONDecoder().decode(Vectors.self, from: FixtureLoader.data("fixtures/voice-lab/consent-checks.json"))
+        let statement = VoiceConsentStatement(language: vectors.language, text: vectors.expected.joined(separator: " "), nonce: vectors.nonce)
+        var transcript = try await raw()
+        let token = try #require(transcript.tokens.first)
+        for vector in vectors.cases {
+            transcript.tokens = vector.recognized.map { word in var value = token; value.text = word; return value }
+            if vector.passes { #expect(try VoiceStatementMatch.verify(transcript, statement: statement).wer == vector.wer) }
+            else { #expect(throws: VoiceConsentError.statementMismatch) { try VoiceStatementMatch.verify(transcript, statement: statement) } }
+        }
+    }
+    @Test func matchingRejectsLanguageNonceAndExcessErrors() async throws {
+        let statement = try statement()
+        var transcript = try await raw(); transcript.language = "et"
+        #expect(throws: VoiceConsentError.statementMismatch) { try VoiceStatementMatch.verify(transcript, statement: statement) }
+        transcript = try await raw(); transcript.tokens.removeLast()
+        #expect(throws: VoiceConsentError.statementMismatch) { try VoiceStatementMatch.verify(transcript, statement: statement) }
+        transcript = try await raw(); transcript.tokens = Array(transcript.tokens.suffix(4))
+        #expect(throws: VoiceConsentError.statementMismatch) { try VoiceStatementMatch.verify(transcript, statement: statement) }
+    }
+    @Test func recordRoundTripKeepsNullAndSchema() async throws {
+        let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let store = storage(root); let record = try fixtureRecord(wav: wav)
+        try await store.saveStatement(wav, recordID: record.id); try await store.save(record)
+        #expect(try await store.load(record.id) == record)
+        #expect(try await store.activeVoices().count == 1)
+        let json = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(record)) as? [String: Any])
+        #expect(json["deletedAt"] is NSNull); #expect(json["schema"] as? String == "voxclip-consent/1")
+        #expect(json["statement"] != nil && json["speaker"] != nil && json["attestations"] != nil)
+    }
+    @Test(.enabled(if: SchemaPython.enabled, SchemaPython.skipReason))
+    func encodedRecordAndSharedStatementsMatchSchemas() throws {
+        let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let record = try fixtureRecord(wav: wav)
+        let file = root.appendingPathComponent("record.json")
+        try JSONEncoder().encode(record).write(to: file)
+        try SchemaPython.validate([file, FixtureLoader.sharedRoot().appendingPathComponent("voice-lab/statements.json")])
+        var bound = record; bound.creator = .init(region: .eu, keyFingerprint: "0123456789abcdef")
+        try JSONEncoder().encode(bound).write(to: file)
+        try SchemaPython.validate([file])
+        let json = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: file)) as? [String: Any])
+        let creator = try #require(json["creator"] as? [String: String])
+        #expect(creator == ["region": "eu", "keyFingerprint": "0123456789abcdef"])
+        #expect(json["region"] == nil && json["creatorKeyFingerprint"] == nil)
+        #expect(try JSONDecoder().decode(VoiceConsentRecord.self, from: Data(contentsOf: file)) == bound)
+        #expect(record.creator == nil && record.recordedRegion == .default)
+        bound.creator = .init(region: .eu, keyFingerprint: "0123456789ABCDEF")
+        #expect(throws: VoiceConsentError.invalidRecord) { try bound.validate() }
+    }
+    @Test func storeRefusesAlteredAudio() async throws {
+        let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let store = storage(root); let record = try fixtureRecord(wav: wav)
+        try await store.saveStatement(wav, recordID: record.id); try await store.save(record)
+        var altered = wav; altered[altered.count - 1] ^= 1
+        try await store.saveStatement(altered, recordID: record.id)
+        await #expect(throws: VoiceConsentError.invalidRecord) { try await store.load(record.id) }
+    }
+    @Test func storeRejectsPathTraversalAndLinks() async throws {
+        let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let store = storage(root)
+        await #expect(throws: VoiceConsentError.invalidRecord) { try await store.saveStatement(wav, recordID: "../outside") }
+        try FileManager.default.createDirectory(at: store.root, withIntermediateDirectories: true)
+        let id = UUID().uuidString
+        try FileManager.default.createSymbolicLink(at: store.root.appendingPathComponent(id), withDestinationURL: root)
+        await #expect(throws: VoiceConsentError.invalidRecord) { try await store.saveStatement(wav, recordID: id) }
+    }
+    @Test func noUploadWithoutConsentAttestationsAndGate() async throws {
+        let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let calls = ConsentRequestLog(); let transcriptions = ConsentTranscriptionCount()
+        let service = enroll(store: storage(root), client: client(calls), check: .unavailable, raw: try await raw(), calls: transcriptions)
+        let id = UUID().uuidString; let statement = try statement()
+        await #expect(throws: VoiceLabError.consentRequired) { try await service.verify(recordID: id, statement: statement, wav: wav, attestations: attestations, approved: false, enabled: true) }
+        await #expect(throws: VoiceLabError.consentRequired) { try await service.verify(recordID: id, statement: statement, wav: wav, attestations: attestations, approved: true, enabled: false) }
+        let incomplete = VoiceConsentRecord.Attestations(ownVoice: true, adult: false, ownVideosOnly: true, acceptedAt: now)
+        await #expect(throws: VoiceConsentError.attestationsRequired) { try await service.verify(recordID: id, statement: statement, wav: wav, attestations: incomplete, approved: true, enabled: true) }
+        #expect(transcriptions.value.withLock { $0 } == 0); #expect(calls.value.withLock { $0.isEmpty })
+    }
+    @Test func threeAttemptsPerTenMinutes() async throws {
+        let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let calls = ConsentRequestLog(); let transcriptions = ConsentTranscriptionCount()
+        let service = enroll(store: storage(root), client: client(calls), check: .init(embedder: Embedder(output: [1, 0]), calibratedThreshold: 0.8), raw: try await raw(), calls: transcriptions)
+        let id = UUID().uuidString; let statement = try statement()
+        for _ in 0..<3 { try await service.verify(recordID: id, statement: statement, wav: wav, attestations: attestations, approved: true, enabled: true, now: now) }
+        await #expect(throws: VoiceConsentError.tooManyAttempts) { try await service.verify(recordID: id, statement: statement, wav: wav, attestations: attestations, approved: true, enabled: true, now: now.addingTimeInterval(599)) }
+        try await service.verify(recordID: id, statement: statement, wav: wav, attestations: attestations, approved: true, enabled: true, now: now.addingTimeInterval(600))
+        #expect(transcriptions.value.withLock { $0 } == 4)
+    }
+    @Test func unavailableSpeakerNeverCreates() async throws {
+        let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let calls = ConsentRequestLog()
+        let service = enroll(store: storage(root), client: client(calls), check: .init(embedder: Embedder(output: [1, 0])), raw: try await raw())
+        let id = UUID().uuidString
+        await #expect(throws: VoiceConsentError.speakerUnavailable) { try await service.verify(recordID: id, statement: statement(), wav: wav, attestations: attestations, approved: true, enabled: true) }
+        await #expect(throws: VoiceConsentError.speakerUnavailable) { try await service.prepare(recordID: id, displayName: "Example", samples: training(), enabled: true) }
+        #expect(calls.value.withLock { $0.isEmpty })
+    }
+    @Test func calibrationLanguageCannotBeReusedForAnotherLanguage() async throws {
+        let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let calls = ConsentRequestLog(); let store = storage(root)
+        let check = VoiceSpeakerCheck(embedder: Embedder(output: [1, 0]), calibratedThreshold: 0.8, language: "et")
+        let service = enroll(store: store, client: client(calls), check: check, raw: try await raw())
+        let record = try fixtureRecord(wav: wav)
+        await #expect(throws: VoiceConsentError.speakerUnavailable) { try await service.verify(recordID: record.id, statement: statement(), wav: wav, attestations: attestations, approved: true, enabled: true) }
+        await #expect(throws: VoiceLabError.consentRequired) { try await service.prepare(recordID: record.id, displayName: "Example", samples: training(), enabled: true) }
+        try await store.saveStatement(wav, recordID: record.id)
+        try await store.save(record)
+        let use = VoiceUseGuard(store: store, check: check)
+        await #expect(throws: VoiceConsentError.speakerUnavailable) { try await use.authorize(contentKey: "content", recordID: record.id, speech16k: [Float](repeating: 0.1, count: 160_000), approved: true) }
+        #expect(calls.value.withLock { $0.isEmpty })
+    }
+    @Test func mismatchedSpeakerNeverUploadsSamples() async throws {
+        let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let calls = ConsentRequestLog(); let store = storage(root); let client = client(calls)
+        _ = try await client.plan()
+        let check = VoiceSpeakerCheck(embedder: LengthEmbedding(), calibratedThreshold: 0.8)
+        let service = enroll(store: store, client: client, check: check, raw: try await raw())
+        let id = UUID().uuidString
+        try await service.verify(recordID: id, statement: statement(), wav: wav, attestations: attestations, approved: true, enabled: true)
+        let silent = VoiceLabRequestFixtures.wav(rate: 16_000, frames: 240_000)
+        let samples = (0..<4).map { _ in VoiceTrainingSample(wav: silent, speech16k: [], seconds: 15, source: "readAloud", snrDb: 25) }
+        await #expect(throws: VoiceConsentError.speakerMismatch) { try await service.prepare(recordID: id, displayName: "Example", samples: samples, enabled: true) }
+        #expect(calls.value.withLock { $0 } == ["GET /v1/user/subscription"])
+    }
+    struct LengthEmbedding: SpeakerEmbedder {
+        let modelID = "fixture-calibrated"
+        let dimension = 2
+        func embed(_ pcm16k: [Float]) async throws -> [Float] { [1, 0] }
+    }
+    private struct SignEmbedding: SpeakerEmbedder {
+        let modelID = "fixture-calibrated"
+        let dimension = 2
+        let present: SpeakerAvailability
+        func embed(_ pcm16k: [Float]) async throws -> [Float] { pcm16k[0] > 0 ? [1, 0] : [0, 1] }
+        func validateAvailability() async throws { if !present.value.withLock({ $0 }) { throw VoiceConsentError.speakerUnavailable } }
+    }
+    @Test(arguments: [5, 10]) func filteringDropsOtherSpeakersAndEnforcesTenSeconds(acceptedSeconds: Int) async throws {
+        let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let calls = ConsentRequestLog(); let store = storage(root); let client = client(calls)
+        _ = try await client.plan()
+        let check = VoiceSpeakerCheck(embedder: SignEmbedding(present: SpeakerAvailability()), calibratedThreshold: 0.8)
+        let service = enroll(store: store, client: client, check: check, raw: try await raw())
+        let id = UUID().uuidString
+        try await service.verify(recordID: id, statement: statement(), wav: wav, attestations: attestations, approved: true, enabled: true)
+        let good = VoiceLabRequestFixtures.wav(rate: 16_000, frames: acceptedSeconds * 16_000, fill: 4_000)
+        let badFrames = (60 - acceptedSeconds) * 8_000
+        let bad = VoiceLabRequestFixtures.wav(rate: 16_000, frames: badFrames, fill: -4_000)
+        let samples = [VoiceTrainingSample(wav: good, speech16k: [], seconds: Double(acceptedSeconds), source: "readAloud", snrDb: 25)] + (0..<2).map { _ in VoiceTrainingSample(wav: bad, speech16k: [], seconds: Double(badFrames) / 16_000, source: "readAloud", snrDb: 25) }
+        if acceptedSeconds < 10 {
+            await #expect(throws: VoiceConsentError.speakerMismatch) { try await service.prepare(recordID: id, displayName: "Example", samples: samples, enabled: true) }
+            #expect(calls.value.withLock { !$0.contains("POST /v1/voices/add") })
+        } else {
+            let quote = try await service.prepare(recordID: id, displayName: "Example", samples: samples, enabled: true)
+            let record = try await service.create(quote: quote, approved: true, enabled: true, appVersion: "0.1.0")
+            #expect(record.samples.count == 1)
+            #expect(record.samples[0].seconds == 10)
+        }
+    }
+    @Test func cachedGuardStillRequiresInstalledModel() async throws {
+        let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let store = storage(root); let record = try fixtureRecord(wav: wav)
+        try await store.saveStatement(wav, recordID: record.id); try await store.save(record)
+        let present = SpeakerAvailability()
+        let checker = SignEmbedding(present: present)
+        let service = VoiceUseGuard(store: store, check: .init(embedder: checker, calibratedThreshold: 0.8))
+        let audio = [Float](repeating: 0.1, count: 160_000)
+        _ = try await service.authorize(contentKey: "content", recordID: record.id, speech16k: audio, approved: true)
+        present.value.withLock { $0 = false }
+        await #expect(throws: VoiceConsentError.speakerUnavailable) { try await service.authorize(contentKey: "content", recordID: record.id, speech16k: audio, approved: true) }
+    }
+    @Test func removedModelRefusesPreparedCloneBeforeUpload() async throws {
+        let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let calls = ConsentRequestLog(); let store = storage(root); let client = client(calls)
+        _ = try await client.plan()
+        let present = SpeakerAvailability()
+        let check = VoiceSpeakerCheck(embedder: SignEmbedding(present: present), calibratedThreshold: 0.8)
+        let service = enroll(store: store, client: client, check: check, raw: try await raw())
+        let id = UUID().uuidString
+        try await service.verify(recordID: id, statement: statement(), wav: wav, attestations: attestations, approved: true, enabled: true)
+        let quote = try await service.prepare(recordID: id, displayName: "Example", samples: training(), enabled: true)
+        present.value.withLock { $0 = false }
+        await #expect(throws: VoiceConsentError.speakerUnavailable) { try await service.create(quote: quote, approved: true, enabled: true, appVersion: "0.1.0") }
+        #expect(calls.value.withLock { !$0.contains("POST /v1/voices/add") })
+    }
+    @Test func pendingVerificationOnlyActivatesOwnedVerifiedClone() async throws {
+        let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let store = storage(root)
+        var record = try fixtureRecord(wav: wav); record.status = .verificationRequired
+        try await store.saveStatement(wav, recordID: record.id); try await store.save(record)
+        let unowned = VoiceLabVoice(id: record.voiceId, name: "Other", category: "cloned", isOwner: false, requiresVerification: true, isVerified: true)
+        try await store.refreshVerification([unowned])
+        #expect(try await store.activeVoices().isEmpty)
+        let owned = VoiceLabVoice(id: record.voiceId, name: "Mine", category: "cloned", isOwner: true, requiresVerification: true, isVerified: true)
+        try await store.refreshVerification([owned])
+        #expect(try await store.activeVoices().count == 1)
+    }
+    @Test func cancelledDeletionPreservesRecordAndMakesNoRequest() async throws {
+        let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let store = storage(root); let record = try fixtureRecord(wav: wav); let calls = ConsentRequestLog()
+        try await store.saveStatement(wav, recordID: record.id); try await store.save(record)
+        let service = enroll(store: store, client: client(calls), check: .unavailable, raw: try await raw())
+        await #expect(throws: VoiceLabError.consentRequired) { try await service.delete(recordID: record.id, approved: false, enabled: true) }
+        #expect(calls.value.withLock { $0.isEmpty })
+        #expect(try await store.load(record.id) == record)
+    }
+    @Test(arguments: [false, true]) func createAndDeleteUseExistingIVC(verificationRequired: Bool) async throws {
+        let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let calls = ConsentRequestLog(); let store = storage(root); let client = client(calls, verificationRequired: verificationRequired)
+        _ = try await client.plan()
+        let check = VoiceSpeakerCheck(embedder: Embedder(output: [1, 0]), calibratedThreshold: 0.8)
+        let service = enroll(store: store, client: client, check: check, raw: try await raw())
+        let id = UUID().uuidString
+        try await service.verify(recordID: id, statement: statement(), wav: wav, attestations: attestations, approved: true, enabled: true)
+        let quote = try await service.prepare(recordID: id, displayName: "Example", samples: training(), enabled: true, now: now)
+        await #expect(throws: VoiceLabError.consentRequired) { try await service.create(quote: quote, approved: false, enabled: true, appVersion: "0.1.0") }
+        let record = try await service.create(quote: quote, approved: true, enabled: true, appVersion: "0.1.0")
+        #expect(record.status == (verificationRequired ? .verificationRequired : .active))
+        let fingerprint = try await client.creatorKeyFingerprint()
+        #expect(record.creator == .init(region: client.region, keyFingerprint: fingerprint))
+        let operations = try await store.operations()
+        #expect(operations.allSatisfy { $0.creatorKeyFingerprint == fingerprint })
+        #expect(!String(decoding: try JSONEncoder().encode(record), as: UTF8.self).contains("synthetic-consent-key"))
+        #expect(try await store.load(id) == record); #expect(record.samples.count == 4)
+        #expect(try await store.activeVoices().count == (verificationRequired ? 0 : 1))
+        try await service.delete(recordID: id, approved: true, enabled: true, now: now)
+        let deleted = try await store.load(id)
+        #expect(deleted.status == .deleted && deleted.deletedAt != nil && deleted.samples == record.samples)
+        #expect(!FileManager.default.fileExists(atPath: store.root.appendingPathComponent(id + "/statement.wav").path))
+        #expect(calls.value.withLock { $0 } == ["GET /v1/user/subscription", "GET /v1/user/subscription", "POST /v1/voices/add", "DELETE /v1/voices/fixtureOwnVoice"])
+    }
+    @Test(arguments: [VoiceConsentCheckpoint.deletionIntent, .remoteDeleted, .removeStatement, .audioRemoved, .tombstoneRecord, .saveTombstone, .clearDeletion]) func deletionResumesEveryDurableBoundary(step: VoiceConsentCheckpoint) async throws {
+        let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let store = VoiceConsentStore(locations: SpeechTestFiles.locations(root), fault: { checkpoint in
+            if checkpoint == step { throw CocoaError(.fileWriteUnknown) }
+        })
+        let record = try fixtureRecord(wav: wav); let calls = ConsentRequestLog()
+        try await store.saveStatement(wav, recordID: record.id); try await store.save(record)
+        let service = enroll(store: store, client: client(calls), check: .unavailable, raw: try await raw())
+        await #expect(throws: (any Error).self) { try await service.delete(recordID: record.id, approved: true, enabled: true, now: now) }
+        #expect(try await store.records().count == 1)
+        if step != .deletionIntent { #expect(try await store.activeVoices().isEmpty) }
+        let restarted = storage(root)
+        let retry = client(calls, deletionStatus: 404)
+        if step == .deletionIntent {
+            _ = try await restarted.beginDeletion(record.id, region: .default, at: now)
+        }
+        try await VoiceOperationReconciler(store: restarted, client: retry).reconcile(force: true)
+        let deleted = try await restarted.load(record.id)
+        #expect(deleted.status == .deleted)
+        #expect(deleted.samples == record.samples && deleted.statement.audioSha256 == record.statement.audioSha256)
+        #expect(try await restarted.operations().filter { $0.kind == .delete && !$0.finished }.isEmpty)
+        #expect(!FileManager.default.fileExists(atPath: restarted.root.appendingPathComponent("\(record.id)/statement.wav").path))
+        try await VoiceOperationReconciler(store: restarted, client: retry).reconcile(force: true)
+    }
+    @Test(arguments: [404, 500]) func deletionHandlesMissingAndFailure(status: Int) async throws {
+        let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let store = storage(root); let record = try fixtureRecord(wav: wav); let calls = ConsentRequestLog()
+        try await store.saveStatement(wav, recordID: record.id); try await store.save(record)
+        let service = enroll(store: store, client: client(calls, deletionStatus: status), check: .unavailable, raw: try await raw())
+        if status == 404 {
+            try await service.delete(recordID: record.id, approved: true, enabled: true)
+            #expect(try await store.load(record.id).status == .deleted)
+        } else {
+            await #expect(throws: VoiceLabError.providerFailure(500)) { try await service.delete(recordID: record.id, approved: true, enabled: true) }
+            #expect(try await store.load(record.id).status == .active)
+            #expect(try await store.statement(recordID: record.id) == wav)
+            #expect(try await store.activeVoices().isEmpty)
+            try await VoiceOperationReconciler(store: storage(root), client: client(calls, deletionStatus: 404)).reconcile(force: true)
+            #expect(try await store.load(record.id).status == .deleted)
+        }
+    }
+    @Test func paidCreateSaveFailureRetriesLocallyWithoutAnotherClone() async throws {
+        let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let shouldFail = Mutex(true)
+        let store = VoiceConsentStore(locations: SpeechTestFiles.locations(root), fault: { step in
+            if step == .saveCreation && shouldFail.withLock({ $0 }) { throw CocoaError(.fileWriteUnknown) }
+        })
+        let calls = ConsentRequestLog(); let client = client(calls)
+        _ = try await client.plan()
+        let service = enroll(store: store, client: client, check: .init(embedder: Embedder(output: [1, 0]), calibratedThreshold: 0.8), raw: try await raw())
+        let id = UUID().uuidString
+        try await service.verify(recordID: id, statement: statement(), wav: wav, attestations: attestations, approved: true, enabled: true)
+        let quote = try await service.prepare(recordID: id, displayName: "Example", samples: training(), enabled: true)
+        do {
+            _ = try await service.create(quote: quote, approved: true, enabled: true, appVersion: "0.1.0")
+            Issue.record("Expected a recoverable local save failure")
+        } catch let error as VoiceConsentSaveError {
+            #expect(error.record.voiceId == "fixtureOwnVoice")
+            shouldFail.withLock { $0 = false }
+            try await VoiceOperationReconciler(store: store, client: client).reconcile(force: true)
+            #expect(try await store.load(id) == error.record)
+        }
+        await #expect(throws: VoiceLabError.invalidInput) { try await service.create(quote: quote, approved: true, enabled: true, appVersion: "0.1.0") }
+        #expect(calls.value.withLock { $0.filter { $0.hasPrefix("POST") }.count } == 1)
+    }
+    @Test(arguments: ["local-save", "timeout", "crash", "invalid-consent", "cancelled"]) func uncertainCreationReconcilesWithoutAnotherPost(mode: String) async throws {
+        let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let id = UUID().uuidString
+        let calls = ConsentRequestLog(); let created = Mutex(false)
+        let base = SpeechStubHTTP.register { request in
+            let path = request.url?.path ?? ""
+            calls.value.withLock { $0.append((request.httpMethod ?? "") + " " + path) }
+            switch path {
+            case "/v1/user/subscription": return (200, [:], Data(#"{"tier":"starter","status":"active","character_count":0,"character_limit":1000,"can_use_instant_voice_cloning":true,"voice_slots_used":0,"voice_limit":3}"#.utf8))
+            case "/v1/voices/add":
+                #expect(String(decoding: try VoiceLabRequestFixtures.body(request), as: UTF8.self).contains(id))
+                created.withLock { $0 = true }
+                if mode == "timeout" || mode == "invalid-consent" || mode == "cancelled" { throw URLError(.timedOut) }
+                return (200, [:], Data(#"{"voice_id":"fixtureOwnVoice","requires_verification":false}"#.utf8))
+            case "/v2/voices":
+                let voice = "{\"voice_id\":\"fixtureOwnVoice\",\"name\":\"Example (VoxClip)\",\"category\":\"cloned\",\"is_owner\":true,\"labels\":{\"voxclip_record_id\":\"\(id)\"},\"voice_verification\":{\"is_verified\":true}}"
+                return (200, [:], Data("{\"voices\":[\(created.withLock { $0 } ? voice : "")],\"has_more\":false}".utf8))
+            case "/v1/voices/fixtureOwnVoice":
+                created.withLock { $0 = false }; return (200, [:], Data(#"{"status":"ok"}"#.utf8))
+            default: Issue.record("Unexpected recovery request"); return (500, [:], Data())
+            }
+        }
+        let client = ElevenLabsVoiceLab(keys: SpeechTestKeys(value: "synthetic-recovery-key"), session: URLSession(configuration: SpeechStubHTTP.configuration(for: base)), prices: VoiceLabPricingTests.catalogIfPresent, enforceCapabilities: true)
+        let store = VoiceConsentStore(locations: SpeechTestFiles.locations(root), fault: { step in
+            if (mode == "local-save" && step == .saveCreation) || (mode == "crash" && step == .creationResult) { throw CocoaError(.fileWriteUnknown) }
+        })
+        _ = try await client.plan()
+        let service = enroll(store: store, client: client, check: .init(embedder: Embedder(output: [1, 0]), calibratedThreshold: 0.8), raw: try await raw())
+        try await service.verify(recordID: id, statement: statement(), wav: wav, attestations: attestations, approved: true, enabled: true)
+        let quote = try await service.prepare(recordID: id, displayName: "Example", samples: training(), enabled: true)
+        await #expect(throws: (any Error).self) { try await service.create(quote: quote, approved: true, enabled: true, appVersion: "0.1.0") }
+        let restarted = storage(root)
+        #expect(try await restarted.operations().filter { $0.kind == .create && !$0.finished }.count == 1)
+        try await restarted.reconcileAbandonedEnrollments()
+        if mode == "invalid-consent" { try await restarted.discardStatement(recordID: id) }
+        if mode == "cancelled" {
+            try await restarted.abandonEnrollment(recordID: id)
+            #expect(!FileManager.default.fileExists(atPath: restarted.root.appendingPathComponent("\(id)/statement.wav").path))
+        }
+        try await VoiceOperationReconciler(store: restarted, client: client).reconcile(force: true)
+        if mode == "local-save" { #expect(try await restarted.load(id).status == .active) }
+        else { #expect(try await restarted.records().isEmpty) }
+        #expect(try await restarted.operations().filter { $0.kind == .create && !$0.finished }.isEmpty)
+        try await VoiceOperationReconciler(store: restarted, client: client).reconcile(force: true)
+        #expect(calls.value.withLock { $0.filter { $0.hasPrefix("POST") }.count } == 1)
+    }
+    @Test func legacyClonePolicyCannotDispatch() async throws {
+        let calls = ConsentRequestLog(); let client = client(calls)
+        _ = try await client.plan()
+        let policy = OwnVoicePolicy(recordID: UUID().uuidString, recordActive: true, providerConsentGranted: true, statementVerified: true, speakerMatched: true)
+        let request = VoiceLabCloneRequest(displayName: "Example", language: "en", samples: [.init(role: .consentStatement, wav: wav), .init(role: .training, wav: wav)], createdAt: now, removeBackgroundNoise: false)
+        let quote = try await client.prepareClone(request, policy: policy, requestID: UUID())
+        await #expect(throws: VoiceLabError.consentRequired) {
+            try await client.createOwnClone(request, policy: policy, requestID: quote.requestID, authorization: .init(quote: quote, approved: true))
+        }
+        #expect(calls.value.withLock { $0.filter { $0.hasPrefix("POST") }.isEmpty })
+    }
+    @Test(arguments: ["forged", "stale", "changed", "model-removed", "deleting", "valid-replay", "conversion-input"]) func dispatchRequiresCurrentOperationCapability(mode: String) async throws {
+        let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let store = storage(root); let record = try fixtureRecord(wav: wav); let calls = ConsentRequestLog()
+        try await store.saveStatement(wav, recordID: record.id); try await store.save(record)
+        let base = SpeechStubHTTP.register { request in
+            let path = request.url?.path ?? ""
+            calls.value.withLock { $0.append((request.httpMethod ?? "") + " " + path) }
+            switch path {
+            case "/v1/models": return (200, [:], Data(#"[{"model_id":"speaker_tts","can_do_text_to_speech":true,"can_do_voice_conversion":true,"languages":[{"language_id":"en"}]}]"#.utf8))
+            case "/v2/voices": return (200, [:], Data(#"{"voices":[{"voice_id":"fixtureOwnVoice","name":"Example","category":"cloned","is_owner":true,"voice_verification":{"is_verified":true}}],"has_more":false}"#.utf8))
+            case "/v1/text-to-speech/fixtureOwnVoice/with-timestamps":
+                let pcm = Data(repeating: 0, count: 4_800).base64EncodedString()
+                return (200, [:], Data("{\"audio_base64\":\"\(pcm)\",\"alignment\":{\"characters\":[\"H\",\"i\"],\"character_start_times_seconds\":[0,0.02],\"character_end_times_seconds\":[0.02,0.04]}}".utf8))
+            default: Issue.record("Unexpected capability request"); return (500, [:], Data())
+            }
+        }
+        let client = ElevenLabsVoiceLab(keys: SpeechTestKeys(value: "synthetic-capability-key"), session: URLSession(configuration: SpeechStubHTTP.configuration(for: base)), prices: VoiceLabPricingTests.catalogIfPresent, enforceCapabilities: true)
+        _ = try await client.models(); _ = try await client.voices()
+        let initial = OwnVoicePolicy(recordID: record.id, cloneVoiceID: record.voiceId, recordActive: true, providerConsentGranted: true, statementVerified: true, speakerMatched: true)
+        let options = VoiceLabSpeechOptions(seed: 7)
+        let voice = VoiceLabVoiceChoice.own(voiceID: record.voiceId, policy: initial)
+        let quote = try await client.prepareSynthesis(text: "Hi", modelID: "speaker_tts", voice: voice, language: "en", options: options, requestID: UUID())
+        let present = SpeakerAvailability()
+        let guardService = VoiceUseGuard(store: store, check: .init(embedder: SignEmbedding(present: present), calibratedThreshold: 0.8))
+        if mode == "conversion-input" {
+            let conversion = try await client.prepareConversion(audio: wav, modelID: "speaker_tts", voice: voice, language: "en", seed: 7, cleanAudioOn: false, requestID: UUID())
+            let changed = VoiceLabRequestFixtures.wav(rate: 16_000, frames: 80_000, fill: 8_000)
+            await #expect(throws: VoiceLabError.consentRequired) { try await guardService.authorizeConversion(quote: conversion, contentKey: "source", recordID: record.id, audio: changed, approved: true) }
+            return
+        }
+        let policy = mode == "forged" ? initial : try await guardService.authorize(quote: quote, contentKey: "source", recordID: record.id, speech16k: [Float](repeating: 0.1, count: 160_000), approved: true)
+        let authorizedVoice = VoiceLabVoiceChoice.own(voiceID: record.voiceId, policy: policy)
+        if mode == "stale" { try await store.markDeleted(record.id, at: now) }
+        if mode == "deleting" { _ = try await store.beginDeletion(record.id, region: .default, at: now) }
+        if mode == "model-removed" { present.value.withLock { $0 = false } }
+        let dispatchQuote = mode == "changed" ? try await client.prepareSynthesis(text: "Hi", modelID: "speaker_tts", voice: voice, language: "en", options: options, requestID: UUID()) : quote
+        let dispatch: @Sendable () async throws -> Void = {
+            _ = try await client.synthesize(text: "Hi", modelID: "speaker_tts", voice: authorizedVoice, language: "en", options: options, requestID: dispatchQuote.requestID, authorization: .init(quote: dispatchQuote, approved: true))
+        }
+        if mode == "valid-replay" {
+            try await dispatch()
+            await #expect(throws: (any Error).self) { try await dispatch() }
+            #expect(calls.value.withLock { $0.filter { $0.hasPrefix("POST") }.count } == 1)
+        } else {
+            await #expect(throws: (any Error).self) { try await dispatch() }
+            #expect(calls.value.withLock { $0.filter { $0.hasPrefix("POST") }.isEmpty })
+        }
+    }
+    @Test func useTimeGuardAndDeletedCache() async throws {
+        let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let store = storage(root); let record = try fixtureRecord(wav: wav)
+        try await store.saveStatement(wav, recordID: record.id); try await store.save(record)
+        let check = VoiceSpeakerCheck(embedder: Embedder(output: [1, 0]), calibratedThreshold: 0.8)
+        let guardService = VoiceUseGuard(store: store, check: check)
+        let audio = [Float](repeating: 0.1, count: 160_000)
+        let policy = try await guardService.authorize(contentKey: "content", recordID: record.id, speech16k: audio, approved: true)
+        try policy.validate()
+        await #expect(throws: VoiceLabError.consentRequired) { try await guardService.authorize(contentKey: "content", recordID: record.id, speech16k: audio, approved: false) }
+        try await store.markDeleted(record.id, at: now)
+        await #expect(throws: VoiceConsentError.inactive) { try await guardService.authorize(contentKey: "content", recordID: record.id, speech16k: audio, approved: true) }
+    }
+    @Test func useTimeGuardRefusesDifferentSpeakerAndUncalibrated() async throws {
+        let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let store = storage(root); let record = try fixtureRecord(wav: wav)
+        try await store.saveStatement(wav, recordID: record.id); try await store.save(record)
+        let audio = [Float](repeating: 0.1, count: 160_000)
+        let missing = VoiceUseGuard(store: store)
+        await #expect(throws: VoiceConsentError.speakerUnavailable) { try await missing.authorize(contentKey: "content", recordID: record.id, speech16k: audio, approved: true) }
+        let other = VoiceUseGuard(store: store, check: .init(embedder: Embedder(output: [0, 1]), calibratedThreshold: 0.8))
+        await #expect(throws: (any Error).self) { try await other.authorize(contentKey: "content", recordID: record.id, speech16k: audio, approved: true) }
+    }
+    @Test(arguments: ["recorded", "verified", "training", "quoted"]) func cancellationRemovesUncommittedStatement(step: String) async throws {
+        let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let store = storage(root)
+        let id = UUID().uuidString.lowercased()
+        try await store.saveStatement(wav, recordID: id)
+        if step != "recorded" {
+            let transport = client(ConsentRequestLog())
+            _ = try await transport.plan()
+            let service = enroll(store: store, client: transport, check: .init(embedder: Embedder(output: [1, 0]), calibratedThreshold: 0.8), raw: try await raw())
+            try await service.verify(recordID: id, statement: statement(), wav: wav, attestations: attestations, approved: true, enabled: true)
+            if step == "quoted" { _ = try await service.prepare(recordID: id, displayName: "Example", samples: training(), enabled: true) }
+            try await service.cancel(recordID: id)
+        }
+        try await store.abandonEnrollment(recordID: id)
+        #expect(!FileManager.default.fileExists(atPath: store.root.appendingPathComponent("\(id)/statement.wav").path))
+    }
+    @Test func startupRemovesCrashFilesButPreservesDurableAndLiveStatements() async throws {
+        let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let locations = SpeechTestFiles.locations(root)
+        let store = storage(root); let record = try fixtureRecord(wav: wav)
+        try await store.saveStatement(wav, recordID: record.id); try await store.save(record)
+        let abandoned = UUID().uuidString.lowercased()
+        try await store.saveStatement(wav, recordID: abandoned)
+        let temporary = locations.cache.appendingPathComponent("voice-consent/stale")
+        try FileManager.default.createDirectory(at: temporary, withIntermediateDirectories: true)
+        try wav.write(to: temporary.appendingPathComponent("statement.wav"))
+        let restarted = storage(root)
+        let live = UUID().uuidString.lowercased(); try await restarted.saveStatement(wav, recordID: live)
+        try await restarted.reconcileAbandonedEnrollments()
+        #expect(try await restarted.statement(recordID: record.id) == wav)
+        #expect(try await restarted.statement(recordID: live) == wav)
+        #expect(!FileManager.default.fileExists(atPath: temporary.path))
+        #expect(!FileManager.default.fileExists(atPath: store.root.appendingPathComponent(abandoned).path))
+        try await restarted.abandonEnrollment(recordID: record.id)
+        #expect(try await restarted.statement(recordID: record.id) == wav)
+        let current = locations.cache.appendingPathComponent("voice-consent/current")
+        try FileManager.default.createDirectory(at: current, withIntermediateDirectories: true)
+        try wav.write(to: current.appendingPathComponent("statement.wav"))
+        try await restarted.reconcileAbandonedEnrollments()
+        #expect(FileManager.default.fileExists(atPath: current.appendingPathComponent("statement.wav").path))
+    }
+    @Test func betaGateAndSettingsValidation() throws {
+        #expect(VoiceLabGate.settingsVisible(enabled: false, internalBuild: false))
+        #expect(VoiceLabGate.settingsVisible(enabled: false, internalBuild: true))
+        #expect(VoiceLabGate.settingsVisible(enabled: true, internalBuild: false))
+        #expect(!VoiceLabGate.canEnroll(enabled: true, busy: true))
+        #expect(!VoiceLabGate.canEnroll(enabled: false, busy: false))
+        #expect(VoiceLabGate.canEnroll(enabled: true, busy: false))
+        try SettingsDocument(values: ["voiceLab.labelPosition": .string("bottom-left"), "voiceLab.c2pa": .bool(false)]).validate()
+        #expect(throws: (any Error).self) { try SettingsDocument(values: ["voiceLab.labelPosition": .string("off")]).validate() }
+    }
+    @Test func statementOpeningComesFromTheReviewedTemplate() throws {
+        let data = Data(#"{"schema":"voxclip-voice-statements/1","templates":{"et":"Reviewed {name}, date {date}; {w1} {w2} {w3} {w4}."},"months":{}}"#.utf8)
+        let text = try JSONDecoder().decode(VoiceConsentText.self, from: data)
+        #expect(try text.statementOpening(name: " Example ", language: "et") == "Reviewed Example, date ")
+    }
+    @Test func deletionRejectsAnotherCreatorAndLocalRemovalKeepsUnknownTombstone() async throws {
+        let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let store = storage(root); var record = try fixtureRecord(wav: wav)
+        record.creator = .init(region: .default, keyFingerprint: "0123456789abcdef")
+        try await store.saveStatement(wav, recordID: record.id); try await store.save(record)
+        let calls = ConsentRequestLog(); let client = client(calls)
+        #expect(try await client.creatorKeyFingerprint() != record.creator?.keyFingerprint)
+        let enrollment = enroll(store: store, client: client, check: .unavailable, raw: try await raw())
+        await #expect(throws: VoiceConsentError.creatorMismatch) { try await enrollment.delete(recordID: record.id, approved: true, enabled: true) }
+        #expect(calls.value.withLock { $0.isEmpty })
+        #expect(try await store.load(record.id).status == .active)
+        try await store.removeFromVoxClipOnly(record.id)
+        #expect(try await store.load(record.id).status == .deleted)
+        #expect(try await store.auditTombstone(recordID: record.id)?.remoteStateUnknown == true)
+        #expect(try await store.operations().isEmpty)
+        #expect(calls.value.withLock { $0.isEmpty })
+    }
+    @Test func deletionRejectsAnotherRegionEvenWithoutFingerprint() async throws {
+        let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let store = storage(root); var record = try fixtureRecord(wav: wav); record.region = .eu
+        try await store.saveStatement(wav, recordID: record.id); try await store.save(record)
+        let calls = ConsentRequestLog()
+        let enrollment = enroll(store: store, client: client(calls, deletionStatus: 404), check: .unavailable, raw: try await raw())
+        await #expect(throws: VoiceConsentError.creatorMismatch) { try await enrollment.delete(recordID: record.id, approved: true, enabled: true) }
+        #expect(calls.value.withLock { $0.isEmpty })
+        #expect(try await store.load(record.id).status == .active)
+    }
+    @Test func matchingCreator404ConfirmsDeletion() async throws {
+        let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let store = storage(root); let calls = ConsentRequestLog(); let client = client(calls, deletionStatus: 404)
+        var record = try fixtureRecord(wav: wav)
+        record.creator = .init(region: client.region, keyFingerprint: try await client.creatorKeyFingerprint())
+        try await store.saveStatement(wav, recordID: record.id); try await store.save(record)
+        try await enroll(store: store, client: client, check: .unavailable, raw: raw()).delete(recordID: record.id, approved: true, enabled: true)
+        #expect(try await store.load(record.id).status == .deleted)
+        #expect(calls.value.withLock { $0.filter { $0.hasPrefix("DELETE") }.count } == 1)
+    }
+    @Test func changedCreatorAfterQuoteNeverDispatchesDeletion() async throws {
+        let calls = ConsentRequestLog(); let keys = ConsentMutableKeys()
+        let base = SpeechStubHTTP.register { request in
+            calls.value.withLock { $0.append(request.httpMethod ?? "") }
+            return (404, [:], Data())
+        }
+        let client = ElevenLabsVoiceLab(keys: keys, session: URLSession(configuration: SpeechStubHTTP.configuration(for: base)), region: .default)
+        var record = try fixtureRecord(wav: wav)
+        record.creator = .init(region: client.region, keyFingerprint: try await client.creatorKeyFingerprint())
+        let quote = try await client.prepareConsentDeletion(record, requestID: UUID())
+        keys.value.withLock { $0 = "synthetic-another-key" }
+        let policy = OwnVoicePolicy(recordID: record.id, cloneVoiceID: record.voiceId, recordActive: true, providerConsentGranted: true, statementVerified: true, speakerMatched: true)
+        await #expect(throws: VoiceConsentError.creatorMismatch) {
+            try await client.deleteOwnClone(voiceID: record.voiceId, policy: policy, requestID: quote.requestID, authorization: .init(quote: quote, approved: true))
+        }
+        #expect(calls.value.withLock { $0.isEmpty })
+    }
+    @Test func speakerProofCannotAuthorizeAnotherRecordOrOutliveWithdrawal() async throws {
+        let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let store = storage(root); let record = try fixtureRecord(wav: wav)
+        try await store.saveStatement(wav, recordID: record.id); try await store.save(record)
+        let check = VoiceSpeakerCheck(embedder: SignEmbedding(present: SpeakerAvailability()), calibratedThreshold: 0.8)
+        let proof = try await check.match(store: store, recordID: record.id, speech16k: [Float](repeating: 0.1, count: 160_000))
+        let client = ElevenLabsVoiceLab(keys: SpeechTestKeys(value: nil), region: .default)
+        let reference = try await client.prepareQA(language: "en", requestID: UUID())
+        let quote = VoiceLabQuote(id: UUID(), operation: .textToSpeech, requestID: UUID(), estimate: reference.estimate, region: .default,
+            endpoint: "v1/text-to-speech/\(record.voiceId)/with-timestamps", languageMode: .explicit("en"), fingerprint: "synthetic-proof")
+        let other = OwnVoicePolicy(recordID: UUID().uuidString, cloneVoiceID: record.voiceId, recordActive: true, providerConsentGranted: true, statementVerified: true, speakerMatched: true)
+        #expect(throws: VoiceLabError.consentRequired) { try other.authorized(for: quote, proof: proof) }
+        let owner = OwnVoicePolicy(recordID: record.id, cloneVoiceID: record.voiceId, recordActive: true, providerConsentGranted: true, statementVerified: true, speakerMatched: true)
+        let capability = try #require(owner.authorized(for: quote, proof: proof).capability)
+        try await store.markDeleted(record.id, at: now)
+        await #expect(throws: VoiceConsentError.inactive) { try await capability.consume(quote) }
+        await #expect(throws: VoiceConsentError.inactive) { try await check.match(store: store, recordID: record.id, speech16k: [Float](repeating: 0.1, count: 160_000)) }
+    }
+    @Test func consentVerificationBindsAudioLanguageAndBillsOnce() async throws {
+        let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let calls = ConsentRequestLog(); let response = try FixtureLoader.data("fixtures/voice-lab/consent-scribe.json")
+        let base = SpeechStubHTTP.register { request in
+            calls.value.withLock { $0.append(request.url?.path ?? "") }
+            let body = String(decoding: try VoiceLabRequestFixtures.body(request), as: UTF8.self)
+            #expect(body.contains("name=\"language_code\"\r\n\r\nen"))
+            return (200, [:], response)
+        }
+        let ledger = VoiceLabSpendLedger(locations: SpeechTestFiles.locations(root))
+        let client = ElevenLabsVoiceLab(keys: SpeechTestKeys(value: "synthetic-verification-key"), session: URLSession(configuration: SpeechStubHTTP.configuration(for: base)), prices: VoiceLabPricingTests.catalogIfPresent, spend: ledger)
+        let quote = try await client.prepareConsentVerification(wav: wav, language: "en", requestID: UUID())
+        let approval = VoiceLabAuthorization(quote: quote, approved: true)
+        let transcript = try await client.transcribeConsentStatement(wav: wav, language: "en", authorization: approval)
+        #expect(transcript.language == "en")
+        await #expect(throws: VoiceLabError.consentRequired) { try await client.transcribeConsentStatement(wav: wav, language: "en", authorization: approval) }
+        #expect(calls.value.withLock { $0.count } == 1)
+        #expect(await ledger.total(provider: "elevenlabs", at: Date())?.usd == quote.estimate.usd)
+        let second = try await client.prepareConsentVerification(wav: wav, language: "en", requestID: UUID())
+        await #expect(throws: VoiceLabError.consentRequired) { try await client.transcribeConsentStatement(wav: wav, language: "et", authorization: .init(quote: second, approved: true)) }
+        let changed = VoiceLabRequestFixtures.wav(rate: 16_000, frames: 80_000, fill: 8_000)
+        let third = try await client.prepareConsentVerification(wav: wav, language: "en", requestID: UUID())
+        await #expect(throws: VoiceLabError.consentRequired) { try await client.transcribeConsentStatement(wav: changed, language: "en", authorization: .init(quote: third, approved: true)) }
+        #expect(calls.value.withLock { $0.count } == 1)
+    }
+    @Test func expiredCreationQuoteKeepsVerifiedEnrollmentForRequoting() async throws {
+        let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let store = storage(root); let calls = ConsentRequestLog(); let client = client(calls)
+        let elapsed = Mutex<Duration>(.zero); let date = now
+        await client.useClock({ date }, monotonic: { elapsed.withLock { $0 } })
+        _ = try await client.plan()
+        let service = enroll(store: store, client: client, check: .init(embedder: Embedder(output: [1, 0]), calibratedThreshold: 0.8), raw: try await raw())
+        let id = UUID().uuidString
+        try await service.verify(recordID: id, statement: statement(), wav: wav, attestations: attestations, approved: true, enabled: true)
+        let quote = try await service.prepare(recordID: id, displayName: "Example", samples: training(), enabled: true, now: now)
+        elapsed.withLock { $0 = .seconds(300) }
+        await #expect(throws: VoiceLabError.consentRequired) { try await service.create(quote: quote, approved: true, enabled: true, appVersion: "0.1.0") }
+        #expect(try await store.statement(recordID: id) == wav)
+        #expect(try await store.operations().isEmpty)
+        #expect(calls.value.withLock { $0.filter { $0.hasPrefix("POST") }.isEmpty })
+        let refreshed = try await service.prepare(recordID: id, displayName: "Example", samples: training(), enabled: true, now: now)
+        #expect(refreshed.id != quote.id)
+    }
+}
+
+extension VoiceConsentTests {
+    @Test(arguments: [1, 2, 3])
+    func recoveryBindsEveryDiscoveryPageToTheOperationCreator(changeAt: Int) async throws {
+        let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let store = storage(root); var record = try fixtureRecord(wav: wav)
+        record.creator = .init(region: .default, keyFingerprint: String(VoiceLabFingerprint.bytes(Data("synthetic-original-creator-key".utf8)).prefix(16)))
+        let operation = try await seedOperation(store, record: record)
+        _ = try await store.transition(operation.id, to: .dispatched, at: now)
+        let calls = ConsentRequestLog()
+        let base = SpeechStubHTTP.register { request in
+            calls.value.withLock { $0.append(request.httpMethod ?? "") }
+            #expect(request.value(forHTTPHeaderField: "xi-api-key") == "synthetic-original-creator-key")
+            let listing = changeAt == 3 ? #"{"voices":[],"has_more":true,"next_page_token":"second"}"# : #"{"voices":[],"has_more":false}"#
+            return (200, [:], Data(listing.utf8))
+        }
+        let client = ElevenLabsVoiceLab(keys: ConsentDiscoveryKeys(changeAt: changeAt), session: URLSession(configuration: SpeechStubHTTP.configuration(for: base)))
+        let clock = OperationClock(now.addingTimeInterval(24 * 60 * 60 + 1))
+        let reconciler = VoiceOperationReconciler(store: store, client: client, now: { clock.now() })
+        await #expect(throws: VoiceConsentError.recoveryCreatorMismatch) { try await reconciler.reconcile(force: true) }
+        #expect(VoiceConsentError.recoveryCreatorMismatch.localizedDescription == "Recovery needs the ElevenLabs key that started this voice.")
+        let pending = try await storage(root).operation(operation.id)
+        #expect(!pending.finished && pending.failed && pending.attempts == 1 && pending.nextAttemptAt != nil)
+        #expect(try await store.auditTombstone(recordID: record.id) == nil)
+        #expect(calls.value.withLock { $0 } == (changeAt == 3 ? ["GET"] : []))
+    }
+    @Test(arguments: [false, true])
+    func outsideWindowSameNameCandidateRequiresDurableReview(hasNonceMatch: Bool) async throws {
+        let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let store = storage(root); let record = try fixtureRecord(wav: wav)
+        let operation = try await seedOperation(store, record: record)
+        _ = try await store.transition(operation.id, to: .dispatched, at: now)
+        let calls = ConsentRequestLog(); let remote = OperationRemote(); remote.value.withLock { $0.present = true }
+        let base = SpeechStubHTTP.register { request in
+            calls.value.withLock { $0.append(request.httpMethod ?? "") }
+            #expect(request.httpMethod == "GET")
+            var voices: [[String: Any]] = []
+            if remote.value.withLock({ $0.present }) {
+                voices.append(["voice_id": "outsideWindow", "name": record.voiceName + " (VoxClip)",
+                    "category": "cloned", "is_owner": true, "created_at_unix": 1_793_275_199])
+                if hasNonceMatch {
+                    voices.append(["voice_id": "nonceMatch", "name": record.voiceName + " (VoxClip)",
+                        "category": "cloned", "is_owner": true, "labels": ["voxclip_record_id": operation.providerNonce]])
+                }
+            }
+            return (200, [:], try JSONSerialization.data(withJSONObject: ["voices": voices, "has_more": false]))
+        }
+        let client = ElevenLabsVoiceLab(keys: SpeechTestKeys(value: "synthetic-journal-key"), session: URLSession(configuration: SpeechStubHTTP.configuration(for: base)))
+        let clock = OperationClock(now.addingTimeInterval(24 * 60 * 60 + 1))
+        let reconciler = VoiceOperationReconciler(store: store, client: client, now: { clock.now() })
+        await #expect(throws: VoiceConsentError.invalidRecord) { try await reconciler.reconcile(force: true) }
+        let pending = try await store.operation(operation.id)
+        #expect(pending.recoveryNeedsReview == true && !pending.finished && pending.remoteVoiceID == nil)
+        remote.value.withLock { $0.present = false }
+        let restarted = storage(root)
+        try await VoiceOperationReconciler(store: restarted, client: client, now: { clock.now() }).reconcile(force: true)
+        let retained = try await restarted.operation(operation.id)
+        #expect(retained.recoveryNeedsReview == true && !retained.finished && retained.remoteVoiceID == nil)
+        #expect(try await restarted.auditTombstone(recordID: record.id) == nil)
+        #expect(calls.value.withLock { $0 } == ["GET", "GET"])
+    }
+    private func operationClient(_ remote: OperationRemote, nonce: String, fallbackName: String? = nil, duplicate: Bool = false, conflictingNonce: Bool = false) -> ElevenLabsVoiceLab {
+        let base = SpeechStubHTTP.register { request in
+            switch (request.httpMethod, request.url?.path) {
+            case ("GET", "/v1/user/subscription"):
+                return (200, [:], Data(#"{"tier":"starter","status":"active","character_count":0,"character_limit":1000,"can_use_instant_voice_cloning":true,"voice_slots_used":0,"voice_limit":3}"#.utf8))
+            case ("POST", "/v1/voices/add"):
+                let failed = remote.value.withLock { $0.posts += 1; $0.present = true; return $0.createFailure }
+                if failed { return (500, [:], Data()) }
+                return (200, [:], Data(#"{"voice_id":"fixtureOwnVoice","requires_verification":false}"#.utf8))
+            case ("GET", "/v2/voices"):
+                let state = remote.value.withLock { $0.lists += 1; return $0 }
+                if state.listFailure { return (500, [:], Data()) }
+                var rows: [[String: Any]] = state.present ? [["voice_id": "fixtureOwnVoice", "name": fallbackName ?? "Example (VoxClip)", "category": "cloned", "is_owner": true,
+                    "created_at_unix": 1_793_275_201, "labels": conflictingNonce ? ["voxclip_record_id": "another-request"] : fallbackName == nil ? ["voxclip_record_id": nonce] : [:], "voice_verification": ["is_verified": true]]] : []
+                if duplicate, var second = rows.first { second["voice_id"] = "anotherVoice"; rows.append(second) }
+                return (200, [:], try JSONSerialization.data(withJSONObject: ["voices": rows, "has_more": false]))
+            case ("DELETE", "/v1/voices/fixtureOwnVoice"):
+                let existed = remote.value.withLock { state in state.deletes += 1; let present = state.present; state.present = false; return present }
+                return (existed ? 200 : 404, [:], Data(#"{"status":"ok"}"#.utf8))
+            default: Issue.record("Unexpected operation request"); return (500, [:], Data())
+            }
+        }
+        return ElevenLabsVoiceLab(keys: SpeechTestKeys(value: "synthetic-journal-key"), session: URLSession(configuration: SpeechStubHTTP.configuration(for: base)), prices: VoiceLabPricingTests.catalogIfPresent, enforceCapabilities: true)
+    }
+    private func seedOperation(_ store: VoiceConsentStore, record: VoiceConsentRecord, bindCreator: Bool = true) async throws -> VoiceOperation {
+        var record = record
+        if bindCreator, record.creator == nil {
+            let fingerprint = String(VoiceLabFingerprint.bytes(Data("synthetic-journal-key".utf8)).prefix(16))
+            record.creator = .init(region: .default, keyFingerprint: fingerprint)
+        }
+        try await store.saveStatement(wav, recordID: record.id)
+        let value = try await store.beginClaimedCreation(record: record.assigningVoice("pending", requiresVerification: true), requestID: UUID(), region: .default, at: now)
+        await store.releaseOperation(value.id)
+        return value
+    }
+    @Test(arguments: [VoiceConsentCheckpoint.saveTombstone, .removeStatement, .removeDraft, .abandoned])
+    func identitylessCreationRequiresExplicitStopAndKeepsUnknownRemoteTombstone(step: VoiceConsentCheckpoint) async throws {
+        let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let store = storage(root), record = try fixtureRecord(wav: wav)
+        let operation = try await seedOperation(store, record: record, bindCreator: false)
+        _ = try await store.transition(operation.id, to: .dispatched, at: now)
+        let calls = ConsentRequestLog()
+        let base = SpeechStubHTTP.register { request in
+            calls.value.withLock { $0.append(request.httpMethod ?? "") }
+            return (200, [:], Data(#"{"voices":[],"has_more":false}"#.utf8))
+        }
+        let otherAccount = ElevenLabsVoiceLab(keys: SpeechTestKeys(value: "synthetic-other-account"),
+            session: URLSession(configuration: SpeechStubHTTP.configuration(for: base)))
+        let date = now.addingTimeInterval(48 * 60 * 60)
+        for _ in 0..<2 {
+            let restarted = storage(root)
+            await #expect(throws: VoiceConsentError.recoveryCreatorMismatch) {
+                try await VoiceOperationReconciler(store: restarted, client: otherAccount, now: { date }).reconcile(force: true)
+            }
+            let pending = try await restarted.operation(operation.id)
+            #expect(!pending.finished && pending.recoveryNeedsReview == true && pending.needsCreatorRecoveryReview)
+            #expect(pending.displayState == "Recovery needs the ElevenLabs key that started this voice.")
+        }
+        #expect(calls.value.withLock { $0.isEmpty })
+        if step == .removeDraft {
+            try await store.saveStatement(wav, recordID: record.id)
+            try await store.save(record.assigningVoice("pending", requiresVerification: true))
+        }
+        let failing = VoiceConsentStore(locations: SpeechTestFiles.locations(root), fault: { point in
+            if point == step { throw CocoaError(.fileWriteUnknown) }
+        })
+        await #expect(throws: (any Error).self) { try await failing.stopLookingForCreation(operation.id, at: date) }
+        let restarted = storage(root)
+        if step == .saveTombstone { try await restarted.stopLookingForCreation(operation.id, at: date) }
+        else { try await VoiceOperationReconciler(store: restarted, client: otherAccount).reconcile(force: true) }
+        let tombstone = try await restarted.operation(operation.id)
+        #expect(tombstone.finished && tombstone.state == .abandoned && tombstone.remoteStateUnknown == true)
+        #expect(tombstone.audit?.remoteStateUnknown == true && tombstone.audit?.deletedAt != nil)
+        #expect(try await restarted.activeVoices().isEmpty)
+        #expect(!FileManager.default.fileExists(atPath: restarted.root.appendingPathComponent("\(record.id)/statement.wav").path))
+        try await VoiceOperationReconciler(store: restarted, client: otherAccount).reconcile(force: true)
+        #expect(calls.value.withLock { $0.isEmpty })
+    }
+    @Test(arguments: [false, true])
+    func missingProviderLabelRecoversByExactNameWindowAndCategory(ambiguous: Bool) async throws {
+        let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let store = storage(root), record = try fixtureRecord(wav: wav)
+        let operation = try await seedOperation(store, record: record)
+        _ = try await store.transition(operation.id, to: .dispatched, at: now)
+        let remote = OperationRemote(); remote.value.withLock { $0.present = true }
+        let reconciler = VoiceOperationReconciler(store: store,
+            client: operationClient(remote, nonce: record.id, fallbackName: record.voiceName + " (VoxClip)", duplicate: ambiguous))
+        if ambiguous {
+            await #expect(throws: (any Error).self) { try await reconciler.reconcile(force: true) }
+            let pending = try await store.operation(operation.id)
+            #expect(pending.recoveryNeedsReview == true && !pending.finished)
+            #expect(pending.displayState.contains("No voice was deleted"))
+            #expect(remote.value.withLock { $0.deletes } == 0)
+            remote.value.withLock { $0.present = false }
+            try await reconciler.reconcile(force: true)
+            #expect(try await store.operation(operation.id).recoveryNeedsReview == true)
+        } else {
+            try await reconciler.reconcile(force: true)
+            #expect(try await store.operations().isEmpty)
+            #expect(remote.value.withLock { $0.deletes } == 1)
+        }
+        #expect(remote.value.withLock { $0.posts } == 0)
+    }
+    @Test func conflictingNonceNeverDeletesSameNameInWindowClone() async throws {
+        let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let store = storage(root), record = try fixtureRecord(wav: wav)
+        let operation = try await seedOperation(store, record: record)
+        _ = try await store.transition(operation.id, to: .dispatched, at: now)
+        let remote = OperationRemote(); remote.value.withLock { $0.present = true }
+        let reconciler = VoiceOperationReconciler(store: store,
+            client: operationClient(remote, nonce: record.id, fallbackName: record.voiceName + " (VoxClip)", conflictingNonce: true))
+        await #expect(throws: (any Error).self) { try await reconciler.reconcile(force: true) }
+        #expect(remote.value.withLock { $0.deletes == 0 && $0.present })
+        #expect(try await store.operation(operation.id).recoveryNeedsReview == true)
+    }
+    @Test func creationClaimSurvivesLaunchSettingsAndWithdrawalRaces() async throws {
+        let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let store = storage(root); let record = try fixtureRecord(wav: wav); let requestID = UUID()
+        try await store.saveStatement(wav, recordID: record.id)
+        let remote = OperationRemote(); let client = operationClient(remote, nonce: record.id)
+        let launch = VoiceOperationReconciler(store: store, client: client)
+        let settings = VoiceOperationReconciler(store: store, client: client)
+        async let creation = store.beginClaimedCreation(record: record.assigningVoice("pending", requiresVerification: true), requestID: requestID, region: .default, at: now)
+        async let launchRecovery: Void = launch.reconcile(force: true)
+        async let settingsRecovery: Void = settings.reconcile(force: true)
+        let operation = try await creation
+        try await launchRecovery; try await settingsRecovery
+        #expect(try await store.operation(operation.id).state == .intent)
+        #expect(try await store.statement(recordID: record.id) == wav)
+        #expect(!(await store.claimOperation(operation.id)))
+        async let withdrawal: Void = store.withdrawCreation(recordID: record.id)
+        async let repeatedLaunch: Void = launch.reconcile(force: true)
+        async let repeatedSettings: Void = settings.reconcile(force: true)
+        try await withdrawal; try await repeatedLaunch; try await repeatedSettings
+        #expect(try await store.operation(operation.id).state == .withdrawing)
+        #expect(!(await store.claimOperation(operation.id)))
+        await store.releaseOperation(operation.id)
+        try await settings.reconcile(force: true)
+        #expect(try await store.operations().isEmpty)
+        #expect(remote.value.withLock { $0.posts == 0 && $0.lists == 0 && $0.deletes == 0 })
+    }
+    @Test(arguments: [VoiceConsentCheckpoint.removeStatement, .retryScheduled, .creationResult, .saveRecord])
+    func creationAlwaysReleasesClaimAfterFailure(step: VoiceConsentCheckpoint) async throws {
+        let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let store = VoiceConsentStore(locations: SpeechTestFiles.locations(root), fault: { checkpoint in
+            if checkpoint == step { throw CocoaError(.fileWriteUnknown) }
+        })
+        let id = UUID().uuidString; let remote = OperationRemote()
+        remote.value.withLock { $0.createFailure = [.removeStatement, .retryScheduled].contains(step) }
+        let client = operationClient(remote, nonce: id); _ = try await client.plan()
+        let service = enroll(store: store, client: client, check: .init(embedder: Embedder(output: [1, 0]), calibratedThreshold: 0.8), raw: try await raw())
+        try await service.verify(recordID: id, statement: statement(), wav: wav, attestations: attestations, approved: true, enabled: true)
+        let quote = try await service.prepare(recordID: id, displayName: "Example", samples: training(), enabled: true)
+        await #expect(throws: (any Error).self) { try await service.create(quote: quote, approved: true, enabled: true, appVersion: "0.1.0") }
+        #expect(await store.claimOperation(quote.requestID))
+        await store.releaseOperation(quote.requestID)
+        let restarted = storage(root)
+        try await VoiceOperationReconciler(store: restarted, client: client).reconcile(force: true)
+        #expect(try await restarted.operations().isEmpty)
+    }
+    @Test(arguments: [VoiceConsentCheckpoint.saveDraft, .creationIntent, .creationDispatched, .creationResult, .saveRecord, .saveCreation, .clearCreation])
+    func creationRestartsAtEveryWrite(step: VoiceConsentCheckpoint) async throws {
+        let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let fired = Mutex(false)
+        let store = VoiceConsentStore(locations: SpeechTestFiles.locations(root), fault: { checkpoint in
+            if checkpoint == step { fired.withLock { $0 = true }; throw CocoaError(.fileWriteUnknown) }
+        })
+        let id = UUID().uuidString; let remote = OperationRemote(); let client = operationClient(remote, nonce: id)
+        _ = try await client.plan()
+        let service = enroll(store: store, client: client, check: .init(embedder: Embedder(output: [1, 0]), calibratedThreshold: 0.8), raw: try await raw())
+        try await service.verify(recordID: id, statement: statement(), wav: wav, attestations: attestations, approved: true, enabled: true)
+        let quote = try await service.prepare(recordID: id, displayName: "Example", samples: training(), enabled: true)
+        await #expect(throws: (any Error).self) { try await service.create(quote: quote, approved: true, enabled: true, appVersion: "0.1.0") }
+        #expect(fired.withLock { $0 })
+        let restarted = storage(root)
+        try await restarted.reconcileAbandonedEnrollments()
+        let reconciler = VoiceOperationReconciler(store: restarted, client: client)
+        try await reconciler.reconcile(force: true)
+        try await reconciler.reconcile(force: true)
+        #expect(try await restarted.operations().isEmpty)
+        let shouldSave = [VoiceConsentCheckpoint.saveRecord, .saveCreation, .clearCreation].contains(step)
+        if shouldSave {
+            #expect(try await restarted.load(id).status == .active)
+            #expect(try await restarted.statement(recordID: id) == wav)
+        } else {
+            #expect(!FileManager.default.fileExists(atPath: restarted.root.appendingPathComponent("\(id)/statement.wav").path))
+            #expect(!remote.value.withLock { $0.present })
+        }
+        let expectedPosts = [VoiceConsentCheckpoint.saveDraft, .creationIntent, .creationDispatched].contains(step) ? 0 : 1
+        #expect(remote.value.withLock { $0.posts } == expectedPosts)
+    }
+    @Test(arguments: [VoiceConsentCheckpoint.withdrawing, .removeStatement, .tombstoneRecord, .withdrawn, .clearCreation])
+    func saveFailureWithdrawalRestartsAtEveryWrite(step: VoiceConsentCheckpoint) async throws {
+        let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let record = try fixtureRecord(wav: wav); let initial = storage(root)
+        let value = try await seedOperation(initial, record: record)
+        _ = try await initial.transition(value.id, to: .dispatched, at: now)
+        _ = try await initial.transition(value.id, to: .created, at: now, remoteVoiceID: record.voiceId, requiresVerification: false)
+        let remote = OperationRemote(); remote.value.withLock { $0.present = true }
+        let client = operationClient(remote, nonce: record.id)
+        let fired = Mutex(false)
+        let failing = VoiceConsentStore(locations: SpeechTestFiles.locations(root), fault: { checkpoint in
+            if checkpoint == step { fired.withLock { $0 = true }; throw CocoaError(.fileWriteUnknown) }
+        })
+        do {
+            try await failing.withdrawCreation(recordID: record.id)
+            try await VoiceOperationReconciler(store: failing, client: client).reconcile(force: true)
+        } catch {}
+        #expect(fired.withLock { $0 })
+        let restarted = storage(root)
+        try await restarted.withdrawCreation(recordID: record.id)
+        try await VoiceOperationReconciler(store: restarted, client: client).reconcile(force: true)
+        #expect(try await restarted.operations().isEmpty)
+        #expect(try await restarted.load(record.id).status == .deleted)
+        #expect(!FileManager.default.fileExists(atPath: restarted.root.appendingPathComponent("\(record.id)/statement.wav").path))
+        #expect(!remote.value.withLock { $0.present })
+        #expect(remote.value.withLock { $0.posts } == 0)
+    }
+    @Test func emptyListThenLateAppearanceUsesBackoffWithoutKeepingAudio() async throws {
+        let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let store = storage(root); let record = try fixtureRecord(wav: wav)
+        let value = try await seedOperation(store, record: record)
+        _ = try await store.transition(value.id, to: .dispatched, at: now)
+        let remote = OperationRemote(); let clock = OperationClock(now)
+        let reconciler = VoiceOperationReconciler(store: store, client: operationClient(remote, nonce: record.id), now: { clock.now() })
+        try await reconciler.reconcile()
+        #expect(try await store.operation(value.id).blocksCreation(at: clock.now()))
+        #expect(!FileManager.default.fileExists(atPath: store.root.appendingPathComponent("\(record.id)/statement.wav").path))
+        clock.advance(10); try await reconciler.reconcile()
+        #expect(remote.value.withLock { $0.lists } == 1)
+        remote.value.withLock { $0.present = true }
+        clock.advance(21); try await reconciler.reconcile()
+        #expect(try await store.operations().isEmpty)
+        #expect(try await store.records().isEmpty)
+        let audit = try #require(await store.auditTombstone(recordID: record.id))
+        #expect(audit.statementSha256 == record.statement.audioSha256)
+        #expect(audit.recordingSha256s == record.samples.map(\.sha256))
+        #expect(audit.language == record.statement.language && audit.createdAt == record.createdAt)
+        #expect(audit.acceptedAt == record.attestations.acceptedAt && audit.remoteVoiceID == "fixtureOwnVoice")
+        #expect(audit.deletedAt != nil)
+        let restarted = storage(root)
+        try await restarted.reconcileAbandonedEnrollments()
+        #expect(try await restarted.auditTombstone(recordID: record.id) == audit)
+        #expect(remote.value.withLock { $0.lists == 2 && $0.deletes == 1 && $0.posts == 0 && !$0.present })
+    }
+    @Test(arguments: [VoiceConsentCheckpoint.saveAudit, .removeStatement, .removeDraft, .tombstoneRecord, .withdrawn, .clearCreation])
+    func uncertainCreationKeepsAuditAtEveryRecoveryBoundary(step: VoiceConsentCheckpoint) async throws {
+        let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let store = storage(root); let record = try fixtureRecord(wav: wav)
+        let operation = try await seedOperation(store, record: record)
+        _ = try await store.transition(operation.id, to: .dispatched, at: now)
+        let journal = await store.operationsRoot.appendingPathComponent(operation.id.uuidString + ".json")
+        var legacy = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: journal)) as? [String: Any])
+        legacy.removeValue(forKey: "audit")
+        try JSONSerialization.data(withJSONObject: legacy).write(to: journal)
+        let fired = Mutex(false)
+        let failing = VoiceConsentStore(locations: SpeechTestFiles.locations(root), fault: { checkpoint in
+            if checkpoint == step { fired.withLock { $0 = true }; throw CocoaError(.fileWriteUnknown) }
+        })
+        let remote = OperationRemote(); remote.value.withLock { $0.present = true }
+        let client = operationClient(remote, nonce: record.id)
+        await #expect(throws: (any Error).self) { try await VoiceOperationReconciler(store: failing, client: client).reconcile(force: true) }
+        #expect(fired.withLock { $0 })
+        if step == .saveAudit {
+            #expect(try await failing.statement(recordID: record.id) == wav)
+            #expect(FileManager.default.fileExists(atPath: failing.root.appendingPathComponent("\(record.id)/record.json").path))
+        } else {
+            let audit = try #require(await failing.operation(operation.id).audit)
+            #expect(audit.statementSha256 == record.statement.audioSha256)
+            #expect(audit.recordingSha256s == record.samples.map(\.sha256))
+            let object = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(audit)) as? [String: Any])
+            #expect(Set(object.keys).isSubset(of: ["recordID", "statementSha256", "recordingSha256s", "createdAt", "acceptedAt", "language", "remoteVoiceID", "deletedAt"]))
+        }
+        let restarted = storage(root)
+        try await VoiceOperationReconciler(store: restarted, client: client).reconcile(force: true)
+        #expect(try await restarted.operations().isEmpty)
+        let audit = try #require(await restarted.auditTombstone(recordID: record.id))
+        #expect(audit.statementSha256 == record.statement.audioSha256 && audit.recordingSha256s == record.samples.map(\.sha256))
+        #expect(audit.remoteVoiceID == record.voiceId && audit.deletedAt != nil)
+        #expect(!FileManager.default.fileExists(atPath: restarted.root.appendingPathComponent("\(record.id)/statement.wav").path))
+        #expect(remote.value.withLock { !$0.present && $0.posts == 0 })
+    }
+    @Test func missingAuditAndDraftCannotAuthorizeButStillCleansUp() async throws {
+        let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let store = storage(root); let record = try fixtureRecord(wav: wav)
+        let operation = try await seedOperation(store, record: record)
+        _ = try await store.transition(operation.id, to: .dispatched, at: now)
+        let journal = await store.operationsRoot.appendingPathComponent(operation.id.uuidString + ".json")
+        var object = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: journal)) as? [String: Any])
+        object.removeValue(forKey: "audit")
+        try JSONSerialization.data(withJSONObject: object).write(to: journal)
+        try FileManager.default.removeItem(at: store.root.appendingPathComponent("\(record.id)/record.json"))
+        try await store.discardStatement(recordID: record.id)
+        let restarted = storage(root)
+        #expect(try await restarted.activeVoices().isEmpty)
+        let guardService = VoiceUseGuard(store: restarted, check: .init(embedder: Embedder(output: [1, 0]), calibratedThreshold: 0.8))
+        await #expect(throws: (any Error).self) {
+            try await guardService.authorize(contentKey: "missing-audit", recordID: record.id, speech16k: [1, 0], approved: true)
+        }
+        let remote = OperationRemote(); remote.value.withLock { $0.present = true }
+        try await VoiceOperationReconciler(store: restarted, client: operationClient(remote, nonce: record.id)).reconcile(force: true)
+        #expect(try await restarted.operations().isEmpty)
+        #expect(try await restarted.records().isEmpty)
+        #expect(try await restarted.auditTombstone(recordID: record.id) == nil)
+        #expect(remote.value.withLock { $0.deletes == 1 && $0.posts == 0 && !$0.present })
+    }
+    @Test(arguments: [false, true]) func cleanupRequiresSuccessfulListingAfterBlockingDeadline(listFailure: Bool) async throws {
+        let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let store = storage(root); let record = try fixtureRecord(wav: wav)
+        let value = try await seedOperation(store, record: record)
+        _ = try await store.transition(value.id, to: .dispatched, at: now)
+        let remote = OperationRemote(); remote.value.withLock { $0.listFailure = listFailure }
+        let clock = OperationClock(now.addingTimeInterval(24 * 60 * 60 + 1))
+        let reconciler = VoiceOperationReconciler(store: store, client: operationClient(remote, nonce: record.id), now: { clock.now() })
+        if listFailure {
+            await #expect(throws: (any Error).self) { try await reconciler.reconcile() }
+        } else { try await reconciler.reconcile() }
+        let pending = try await store.operation(value.id)
+        #expect(!pending.blocksCreation(at: clock.now()))
+        #expect(pending.finished == !listFailure)
+        #expect(!FileManager.default.fileExists(atPath: store.root.appendingPathComponent("\(record.id)/statement.wav").path))
+        if listFailure {
+            #expect(pending.state == .dispatched && pending.failed && pending.attempts == 1)
+            #expect(pending.nextAttemptAt == clock.now().addingTimeInterval(30))
+            #expect(pending.displayState == "Checking your ElevenLabs account for an unfinished voice…")
+            let restarted = storage(root)
+            try await VoiceOperationReconciler(store: restarted, client: operationClient(remote, nonce: record.id), now: { clock.now() }).reconcile()
+            #expect(remote.value.withLock { $0.lists } == 1)
+            remote.value.withLock { $0.listFailure = false; $0.present = true }
+            clock.advance(31)
+        }
+        try await reconciler.reconcile(force: true)
+        #expect(remote.value.withLock { $0.lists } == (listFailure ? 2 : 1))
+        if listFailure {
+            #expect(try await store.operations().isEmpty)
+            #expect(remote.value.withLock { $0.deletes == 1 && !$0.present })
+        } else { #expect(try await store.operation(value.id).state == .abandoned) }
+    }
+    @Test func deletionJournalDoesNotDependOnARecordAndTreats404AsSuccess() async throws {
+        let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let store = storage(root); let record = try fixtureRecord(wav: wav)
+        try await store.saveStatement(wav, recordID: record.id); try await store.save(record)
+        _ = try await store.beginDeletion(record.id, region: .default, at: now)
+        try FileManager.default.removeItem(at: store.root.appendingPathComponent("\(record.id)/record.json"))
+        let restarted = storage(root); let remote = OperationRemote()
+        try await VoiceOperationReconciler(store: restarted, client: operationClient(remote, nonce: record.id)).reconcile(force: true)
+        #expect(try await restarted.operations().isEmpty)
+        #expect(!FileManager.default.fileExists(atPath: store.root.appendingPathComponent("\(record.id)/statement.wav").path))
+        #expect(remote.value.withLock { $0.deletes == 1 && $0.lists == 0 })
+    }
+    @Test func operationBlockingTransitionsAndJournalPrivacy() async throws {
+        let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let store = storage(root); let record = try fixtureRecord(wav: wav)
+        var value = try await seedOperation(store, record: record)
+        #expect(!value.blocksCreation)
+        value = try await store.transition(value.id, to: .dispatched, at: now)
+        #expect(value.blocksCreation(at: now))
+        value = try await store.transition(value.id, to: .created, at: now, remoteVoiceID: record.voiceId, requiresVerification: false)
+        #expect(value.blocksCreation(at: now))
+        value = try await store.transition(value.id, to: .withdrawing, at: now)
+        #expect(!value.blocksCreation)
+        await #expect(throws: VoiceConsentError.invalidRecord) { _ = try await store.transition(value.id, to: .dispatched, at: now) }
+        let url = await store.operationsRoot.appendingPathComponent(value.id.uuidString + ".json")
+        let object = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
+        #expect(object["record"] == nil && object["audio"] == nil && object["embedding"] == nil && object["statement"] == nil)
+        let permissions = try FileManager.default.attributesOfItem(atPath: url.path)[.posixPermissions] as? Int
+        #expect(permissions == 0o600)
+    }
+    @Test(arguments: [false, true]) func legacyDeletionWithoutARecordMigratesAndResumesIndependently(guardBeforeStartup: Bool) async throws {
+        let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let store = storage(root); let record = try fixtureRecord(wav: wav)
+        try await store.saveStatement(wav, recordID: record.id)
+        var object: [String: Any] = ["region": "default", "requestedAt": now.timeIntervalSinceReferenceDate, "remoteDeleted": false]
+        object["record"] = try JSONSerialization.jsonObject(with: JSONEncoder().encode(record))
+        let legacy = store.root.appendingPathComponent("\(record.id)/deletion.json")
+        try JSONSerialization.data(withJSONObject: object).write(to: legacy)
+        let restarted = storage(root)
+        if guardBeforeStartup {
+            await #expect(throws: VoiceConsentError.inactive) { try await restarted.validateUse(record) }
+        }
+        try await restarted.reconcileAbandonedEnrollments()
+        #expect(!FileManager.default.fileExists(atPath: legacy.path))
+        #expect(try await restarted.operations().count == 1)
+        let remote = OperationRemote()
+        try await VoiceOperationReconciler(store: restarted, client: operationClient(remote, nonce: record.id)).reconcile(force: true)
+        #expect(try await restarted.load(record.id).status == .deleted)
+        #expect(try await restarted.operations().isEmpty)
+        #expect(remote.value.withLock { $0.deletes == 1 && $0.lists == 0 })
+    }
+    @Test(arguments: [VoiceConsentCheckpoint.removeDraft, .retryScheduled, .abandoned])
+    func uncertaintyMetadataRestartsAtEveryWrite(step: VoiceConsentCheckpoint) async throws {
+        let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let initial = storage(root); let record = try fixtureRecord(wav: wav)
+        let value = try await seedOperation(initial, record: record)
+        _ = try await initial.transition(value.id, to: .dispatched, at: now)
+        let fired = Mutex(false)
+        let failing = VoiceConsentStore(locations: SpeechTestFiles.locations(root), fault: { checkpoint in
+            if checkpoint == step { fired.withLock { $0 = true }; throw CocoaError(.fileWriteUnknown) }
+        })
+        let clock = OperationClock(step == .abandoned ? now.addingTimeInterval(24 * 60 * 60) : now)
+        let remote = OperationRemote(); let client = operationClient(remote, nonce: record.id)
+        await #expect(throws: (any Error).self) { try await VoiceOperationReconciler(store: failing, client: client, now: { clock.now() }).reconcile() }
+        #expect(fired.withLock { $0 })
+        #expect(!FileManager.default.fileExists(atPath: initial.root.appendingPathComponent("\(record.id)/statement.wav").path))
+        clock.advance(24 * 60 * 60 + 1)
+        let restarted = storage(root)
+        try await VoiceOperationReconciler(store: restarted, client: client, now: { clock.now() }).reconcile()
+        #expect(try await restarted.operation(value.id).state == .abandoned)
+        #expect(try await restarted.records().isEmpty)
+    }
+}
+#endif

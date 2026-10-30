@@ -122,11 +122,10 @@ struct TranscriptAppearance: Equatable {
         let clips = model.sortedClips
         let starts = Dictionary(grouping: clips, by: \.startWordId)
         let ends = Dictionary(grouping: clips, by: \.endWordId)
-        let synthPieces = model.voiceLabPlan?.pieces.filter { $0.kind == .synth } ?? []
-        let sampleRate = model.voiceLabPlan?.sampleRate ?? 48_000
+        let replacements = model.project.voiceLab.segments.filter(\.enabled)
         aiWordIDs = Set(transcript.filter { word in
-            synthPieces.contains { piece in
-                word.start >= Double(piece.sourceStartSample) / sampleRate && word.end <= Double(piece.sourceEndSample) / sampleRate
+            replacements.contains { segment in
+                word.start >= segment.replace.start && word.end <= segment.replace.end
             }
         }.map(\.id))
         func marker(_ id: String, kind: TranscriptSpanKind, width: CGFloat, glyph: String = " ") {
@@ -154,10 +153,28 @@ struct TranscriptAppearance: Equatable {
                 let number = model.clipNumber(clip.id) ?? 1
                 marker("clip-start:\(clip.id)", kind: .badge(number: number, clipID: clip.id, suggested: clip.origin == .ai && !clip.selected), width: 22)
             }
-            if aiWordIDs.contains(word.id), position == 0 || !aiWordIDs.contains(transcript[position - 1].id) {
-                marker("ai:\(word.id)", kind: .ai, width: 27)
+            if let segment = replacements.first(where: { $0.replace.firstWordId == word.id }) {
+                marker("ai:\(segment.id)", kind: .ai, width: 27)
             }
-            if !model.showCuts && model.cutWordIDs.contains(word.id) {
+            if let segment = replacements.first(where: { $0.replace.firstWordId == word.id }), let replacement = segment.words {
+                let end = (transcript.firstIndex { $0.id == segment.replace.lastWordId } ?? position) + 1
+                let ids = transcript[position..<end].map(\.id)
+                for covered in transcript[(position + 1)..<end] {
+                    for clip in starts[covered.id] ?? [] {
+                        marker("clip-start:\(clip.id)", kind: .badge(number: model.clipNumber(clip.id) ?? 1, clipID: clip.id,
+                            suggested: clip.origin == .ai && !clip.selected), width: 22)
+                    }
+                }
+                let content = replacement.map(\.text).joined(separator: " ")
+                let range = NSRange(location: value.length, length: content.utf16.count)
+                spans.append(TranscriptSpan(id: word.id, range: range, pause: false, ids: ids))
+                value.append(NSAttributedString(string: content + " ", attributes: body))
+                words[word.id] = word; positions[word.id] = position; displayedText[word.id] = content
+                for covered in transcript[position..<end] { endMarkers(covered.id) }
+                position = end
+                continue
+            }
+            if !model.showCuts && model.cutWordIDs.contains(word.id) && !aiWordIDs.contains(word.id) {
                 var end = position + 1
                 while end < transcript.count && model.cutWordIDs.contains(transcript[end].id) && starts[transcript[end].id] == nil && ends[transcript[end - 1].id] == nil { end += 1 }
                 let token = "⋯ \(end - position) cut"
@@ -243,6 +260,15 @@ struct TranscriptAppearance: Equatable {
 
     private func style(_ span: TranscriptSpan, state: TranscriptAppearance) -> [NSAttributedString.Key: Any] {
         if !span.selectable { return [.foregroundColor: NSColor.clear] }
+        if aiWordIDs.contains(span.id) {
+            var result: [NSAttributedString.Key: Any] = [.foregroundColor: DesignValues.nsColor("text.primary"),
+                .vcStrike: false, .vcUnderline: 3, .vcUnderlineColor: NSColor(DesignValues.accentText)]
+            if state.playing.map({ span.id == $0 || span.ids.contains($0) }) == true {
+                result[.vcRounded] = DesignValues.nsColor("word.playingBackground"); result[.vcRadius] = 4.0
+                result[.foregroundColor] = DesignValues.nsColor("word.playingForeground")
+            }
+            return result
+        }
         let cut = span.pause ? state.cutPauses.contains(span.id) : state.cutWords.contains(span.id)
         var result: [NSAttributedString.Key: Any] = [.foregroundColor: DesignValues.nsColor(cut ? "word.cut" : "text.primary"), .vcStrike: cut]
         if !span.ids.isEmpty || span.pause {

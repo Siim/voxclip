@@ -1,6 +1,7 @@
 import AppKit
 import Observation
 import VoxClipCore
+import VoxClipMedia
 
 enum RewriteEntry { case selection, context, menu, shortcut, insertWords }
 enum RewriteEntryAction { case unavailable, turnOnVoiceLab, openPassage }
@@ -12,9 +13,10 @@ enum RewriteEntryPolicy {
         false
         #endif
     }
-    static func resolve(_ entry: RewriteEntry, enabled: Bool, editable: Bool, selection: Bool, internalBuild: Bool = buildEnabled) -> RewriteEntryAction {
-        guard internalBuild, entry != .insertWords else { return .unavailable }
-        if !enabled { return entry == .menu && editable ? .turnOnVoiceLab : .unavailable }
+    static func resolve(_ entry: RewriteEntry, enabled: Bool, noticeAccepted: Bool = false, editable: Bool, selection: Bool, internalBuild: Bool = buildEnabled) -> RewriteEntryAction {
+        guard entry != .insertWords else { return .unavailable }
+        if !enabled { return internalBuild && entry == .menu && editable ? .turnOnVoiceLab : .unavailable }
+        guard VoiceLabGate.rewriteEnabled(enabled: enabled, noticeAccepted: noticeAccepted, internalBuild: internalBuild) else { return .unavailable }
         return editable && selection ? .openPassage : .unavailable
     }
 }
@@ -95,6 +97,31 @@ struct RewriteConnector {
     private(set) var quote: VoiceRewriteQuote?
     private(set) var estimate: VoiceLabCostPresentation.Kind?
     private(set) var revision = 0
+    private(set) var generation: RewriteGenerationSession?
+    func configureGeneration(client: ElevenLabsVoiceLab, store: VoiceConsentStore, speaker: VoiceSpeakerCheck) {
+        generation?.invalidate()
+        let region = client.region
+        let storage = VoiceLabTakeStorage(projectId: editor.project.id,
+            paidRoot: editor.app.locations.root.appendingPathComponent("VoiceLab", isDirectory: true),
+            scratchRoot: editor.app.locations.root.appendingPathComponent("VoiceLabScratch", isDirectory: true))
+        let run = VoiceLabTakeRun(client: client, store: store, speaker: speaker, storage: storage, dispatchIfCurrent: { [weak self] start in
+            guard let generation = await self?.generation else { throw VoiceLabError.consentRequired }
+            try await generation.dispatchWithCurrentCost(start)
+        }) { [weak self] in
+            await self?.generationIsCurrent(region: region) ?? false
+        }
+        generation = RewriteGenerationSession(run: run) { [weak self] in self?.generationIsCurrent(region: region) ?? false }
+        generation?.prepareQuote = { [weak self] in await self?.prepareTakes() }
+        generation?.readMonthlyCap = { [weak self] in
+            guard let self else { throw CancellationError() }
+            return try await self.currentGenerationCap()
+        }
+    }
+    func reportGenerationProblem(_ error: any Error) { problem = Self.refusal(error) }
+    func generationIsCurrent(region: ElevenLabsRegion) -> Bool {
+        current && !isProposing && editor.app.bool("voiceLab.providerConsent.elevenlabs") &&
+            editor.app.string("transcription.elevenlabs.region", fallback: "default") == region.rawValue
+    }
     private var shownQuoteID: UUID?
     @ObservationIgnored private let service: VoiceRewriteService?
     @ObservationIgnored private let connectorIsCurrent: @MainActor () -> Bool
@@ -121,7 +148,7 @@ struct RewriteConnector {
         header = "\(source.filter { $0.kind == .word }.count) words at \(timecode(source.first?.start ?? 0))"
         refreshReview()
     }
-    var current: Bool { isOpen && editor.capabilities.edit && editor.project == project && connectorIsCurrent() && editor.app.bool("voiceLab.enabled") }
+    var current: Bool { isOpen && editor.capabilities.edit && editor.project == project && connectorIsCurrent() && editor.app.voiceLabRewriteEnabled }
     var canPropose: Bool { current && !isProposing && !editor.llmRuns.isBusy && quote != nil && shownQuoteID == quote?.id }
     var proposalButton: String {
         guard let connector, let estimate else { return "Rewrite" }
@@ -139,15 +166,26 @@ struct RewriteConnector {
         switch connector.group {
         case "apiKey": return "Sends these \(count) words to \(connector.name) with your key."
         case "cli": return "Sends these \(count) words to \(connector.name) with your sign-in. Counts toward your \(connector.plan)."
-        default: return "Runs on this Mac. Nothing leaves it."
+        default:
+            if connector.connector.id.rawValue == "apple-foundation" { return "Runs on this Mac. Nothing leaves it." }
+            let id = connector.connector.id.rawValue
+            let fallback = editor.app.providers.first(where: { $0.id == id })?.baseUrl ?? ""
+            return Self.localSendLine(count: count, baseURL: editor.app.string("llm.baseUrl.\(id)", fallback: fallback))
         }
+    }
+    static func localSendLine(count: Int, baseURL: String) -> String {
+        guard let host = URL(string: baseURL)?.host?.lowercased() else { return "Sends these \(count) words to the configured server." }
+        if host == "localhost" || host == "::1" || host == "[::1]" || host.split(separator: ".").count == 4 && host.hasPrefix("127.") {
+            return "Runs on this Mac. Nothing leaves it."
+        }
+        return "Sends these \(count) words to \(host)."
     }
     var localAction: String? {
         guard let diff = review?.diff, !diff.hunks.isEmpty, diff.hunks.allSatisfy({ $0.kind != .voice }) else { return nil }
         return diff.hunks.contains { $0.kind == .textOnly } ? "Apply Correction" : "Apply Cuts"
     }
     func setInstruction(_ text: String) {
-        invalidate()
+        invalidate(preservingTakes: true)
         instruction = text
         problem = ""
         schedulePreparation()
@@ -197,6 +235,7 @@ struct RewriteConnector {
         let runs = editor.llmRuns
         let expected = revision
         isProposing = true; shownQuoteID = nil; problem = ""
+        generation?.inputsChanged()
         let task = Task { [self] () -> Bool in
             defer { runs.release(lease); isProposing = false }
             do {
@@ -210,12 +249,17 @@ struct RewriteConnector {
                 refreshReview()
                 return true
             } catch is CancellationError { return false } catch {
-                if current && revision == expected { problem = await editor.app.safeError(error, context: "ai:Rewrite") }
+                if current && revision == expected {
+                    if let error = error as? LLMError {
+                        problem = await editor.app.log.redact(Self.proposalError(error, provider: connector.name, model: connector.model))
+                    } else { problem = await editor.app.safeError(error, context: "ai:\(connector.name)") }
+                }
                 return false
             }
         }
         sending = task
         let result = await task.value
+        generation?.requestQuote()
         if current && revision == expected {
             quote = nil; estimate = nil; request = nil
             await prepare(revision: expected)
@@ -224,10 +268,11 @@ struct RewriteConnector {
     }
     func edit(_ text: String) {
         guard isOpen else { return }
-        invalidate(); newWords = text; problem = ""; refreshReview()
+        invalidate(preservingTakes: true); newWords = text; problem = ""; refreshReview()
         schedulePreparation()
     }
-    private func invalidate() {
+    private func invalidate(preservingTakes: Bool = false) {
+        if preservingTakes { generation?.inputsChanged() } else { generation?.invalidate() }
         revision += 1; preparing?.cancel(); sending?.cancel()
         quote = nil; estimate = nil; shownQuoteID = nil; request = nil
     }
@@ -238,6 +283,10 @@ struct RewriteConnector {
     }
     @discardableResult func applyLocalChanges() -> Bool {
         guard current, !isProposing, localAction != nil, let review else { return false }
+        return editor.apply(localCommands(review), name: localAction ?? "Rewrite")
+    }
+    var localCommands: [EditCommand] { review.map(localCommands) ?? [] }
+    private func localCommands(_ review: RewriteReview) -> [EditCommand] {
         var commands: [EditCommand] = []
         for hunk in review.diff.hunks {
             if hunk.kind == .cut {
@@ -247,22 +296,28 @@ struct RewriteConnector {
                 for (id, text) in zip(hunk.sourceWordIds, hunk.correctedTexts) { commands.append(.correct(id: id, text: text)) }
             }
         }
-        return editor.apply(commands, name: localAction ?? "Rewrite")
+        return commands
     }
     func close() {
         guard isOpen else { return }
         isOpen = false; invalidate()
     }
     static func refusal(_ error: any Error) -> String {
+        if let error = error as? VoiceConsentError { return error.localizedDescription }
+        if let error = error as? VoiceLabError, error == .unauthorized { return "ElevenLabs rejected the key (401). Your edits are saved." }
+        if let message = (error as? VoiceLabError)?.accessMessage { return message }
         if let geometry = error as? VoiceLabGeometryError, let isStart = geometry.takeEdgeIsStart {
             return "This change is too close to the \(isStart ? "start" : "end") of the take to blend in. Re-record this sentence instead."
         }
         switch error {
         case VoiceLabGeometryError.insertionUnsupported: return "Inserting words isn't available yet. Your edits are saved."
-        case VoiceLabGeometryError.roomToneUnavailable: return "This take has no half-second pause to copy the room sound from. Clean audio removes background sound from the whole take, so new words can blend in."
+        case VoiceLabGeometryError.roomToneUnavailable: return "This take has no half-second pause to copy the room sound from. Clean audio removes background sound from the whole take, so new words can blend in. Clean audio is not available in this build. Re-record this sentence instead."
         case is VoiceLabGeometryError: return "This change can't be placed in this take. Your edits are saved."
         case is VoiceLabLengthBudgetError: return "There isn't enough timed speech to estimate this change. Your edits are saved."
         default: return UserMessages.message(error)
         }
+    }
+    static func proposalError(_ error: LLMError, provider: String, model: String) -> String {
+        error.userMessage(label: provider, model: model, feature: .voiceRewrite) ?? ""
     }
 }

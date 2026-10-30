@@ -57,6 +57,11 @@ import VoxClipCore
                 if let summary = review.summary, !review.voiceHunks.isEmpty { Text(summary.copy).font(.system(size: 11)).foregroundStyle(.secondary) }
             }
             if !session.problem.isEmpty { InlineNotice(text: session.problem) }
+            if session.review?.voiceHunks.isEmpty == false {
+                Divider()
+                if let generation = session.generation { RewriteTakesView(session: session, generation: generation, generate: generate) }
+                else { Button("Choose Voice…") { approvalTask = Task { await session.discoverVoices() } } }
+            }
         }.padding(16).frame(maxWidth: .infinity, alignment: .leading)
     }
     var footer: some View {
@@ -66,6 +71,16 @@ import VoxClipCore
             if let action = session.localAction {
                 Button(action) { if session.applyLocalChanges() { session.editor.closeRewrite() } }
                     .disabled(!session.current || session.isProposing)
+            }
+            if let generation = session.generation {
+                Button(generation.acceptTitle) {
+                    approvalTask = Task {
+                        if await generation.accept(into: session.editor, localCommands: session.localCommands) { session.editor.closeRewrite() }
+                    }
+                }
+                .keyboardShortcut(.return, modifiers: [])
+                .disabled(!session.current || !generation.readyToAccept || session.isProposing || !session.editor.capabilities.edit)
+                if !generation.problem.isEmpty { InlineNotice(text: generation.problem) }
             }
         }.padding(16).frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -92,6 +107,23 @@ import VoxClipCore
             Text("Beta").font(.system(size: 11)).padding(.horizontal, 4).overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(.secondary.opacity(0.5)))
         }.fixedSize()
     }
+    #if DEBUG
+    var snapshot: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            header
+            Text("What should change?").font(.system(size: 12, weight: .semibold))
+            Text(session.instruction.isEmpty ? "What should change?" : session.instruction).font(.system(size: 12))
+                .frame(maxWidth: .infinity, alignment: .leading).padding(8).background(DesignValues.color("bg.surface"))
+            newWordsLabel
+            Text(session.newWords).font(.system(size: 12)).fixedSize(horizontal: false, vertical: true)
+            if let review = session.review { diffLine(review).font(.system(size: 12)).fixedSize(horizontal: false, vertical: true) }
+            Divider()
+            if let generation = session.generation { RewriteTakesView(session: session, generation: generation, generate: {}).snapshot }
+            Divider()
+            footer
+        }.padding(16).background(DesignValues.color("bg.surface"))
+    }
+    #endif
     private func diffLine(_ review: RewriteReview) -> Text {
         var result = AttributedString()
         for run in review.runs {
@@ -116,6 +148,13 @@ import VoxClipCore
             }
             await session.propose(quote, affirmative: approved)
         }
+    }
+    private func generate() {
+        guard let generation = session.generation, generation.canExecute else { return }
+        generation.approve(true, confirmation: { copy in
+            guard let window = session.editor.window else { return false }
+            return await RewriteApprovalSheet(title: "Generate Takes", copy: copy, parent: window).confirm()
+        })
     }
 }
 

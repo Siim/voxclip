@@ -1,0 +1,296 @@
+{
+  "language_code": "eng",
+  "language_probability": 1,
+  "text": "My name is Example. Today is 29 October 2026. This is my own voice, and I agree to an AI copy of it being made with ElevenLabs for editing my own videos. apple garden kettle window.",
+  "words": [
+    {
+      "type": "word",
+      "text": "My",
+      "start": 0,
+      "end": 0.18,
+      "speaker_id": "speaker_0",
+      "logprob": -0.01
+    },
+    {
+      "type": "word",
+      "text": "name",
+      "start": 0.2,
+      "end": 0.38,
+      "speaker_id": "speaker_0",
+      "logprob": -0.01
+    },
+    {
+      "type": "word",
+      "text": "is",
+      "start": 0.4,
+      "end": 0.5800000000000001,
+      "speaker_id": "speaker_0",
+      "logprob": -0.01
+    },
+    {
+      "type": "word",
+      "text": "Example.",
+      "start": 0.6000000000000001,
+      "end": 0.78,
+      "speaker_id": "speaker_0",
+      "logprob": -0.01
+    },
+    {
+      "type": "word",
+      "text": "Today",
+      "start": 0.8,
+      "end": 0.98,
+      "speaker_id": "speaker_0",
+      "logprob": -0.01
+    },
+    {
+      "type": "word",
+      "text": "is",
+      "start": 1,
+      "end": 1.18,
+      "speaker_id": "speaker_0",
+      "logprob": -0.01
+    },
+    {
+      "type": "word",
+      "text": "29",
+      "start": 1.2000000000000002,
+      "end": 1.3800000000000001,
+      "speaker_id": "speaker_0",
+      "logprob": -0.01
+    },
+    {
+      "type": "word",
+      "text": "October",
+      "start": 1.4000000000000001,
+      "end": 1.58,
+      "speaker_id": "speaker_0",
+      "logprob": -0.01
+    },
+    {
+      "type": "word",
+      "text": "2026.",
+      "start": 1.6,
+      "end": 1.78,
+      "speaker_id": "speaker_0",
+      "logprob": -0.01
+    },
+    {
+      "type": "word",
+      "text": "This",
+      "start": 1.8,
+      "end": 1.98,
+      "speaker_id": "speaker_0",
+      "logprob": -0.01
+    },
+    {
+      "type": "word",
+      "text": "is",
+      "start": 2,
+      "end": 2.18,
+      "speaker_id": "speaker_0",
+      "logprob": -0.01
+    },
+    {
+      "type": "word",
+      "text": "my",
+      "start": 2.2,
+      "end": 2.3800000000000003,
+      "speaker_id": "speaker_0",
+      "logprob": -0.01
+    },
+    {
+      "type": "word",
+      "text": "own",
+      "start": 2.4000000000000004,
+      "end": 2.5800000000000005,
+      "speaker_id": "speaker_0",
+      "logprob": -0.01
+    },
+    {
+      "type": "word",
+      "text": "voice,",
+      "start": 2.6,
+      "end": 2.7800000000000002,
+      "speaker_id": "speaker_0",
+      "logprob": -0.01
+    },
+    {
+      "type": "word",
+      "text": "and",
+      "start": 2.8000000000000003,
+      "end": 2.9800000000000004,
+      "speaker_id": "speaker_0",
+      "logprob": -0.01
+    },
+    {
+      "type": "word",
+      "text": "I",
+      "start": 3,
+      "end": 3.18,
+      "speaker_id": "speaker_0",
+      "logprob": -0.01
+    },
+    {
+      "type": "word",
+      "text": "agree",
+      "start": 3.2,
+      "end": 3.3800000000000003,
+      "speaker_id": "speaker_0",
+      "logprob": -0.01
+    },
+    {
+      "type": "word",
+      "text": "to",
+      "start": 3.4000000000000004,
+      "end": 3.5800000000000005,
+      "speaker_id": "speaker_0",
+      "logprob": -0.01
+    },
+    {
+      "type": "word",
+      "text": "an",
+      "start": 3.6,
+      "end": 3.7800000000000002,
+      "speaker_id": "speaker_0",
+      "logprob": -0.01
+    },
+    {
+      "type": "word",
+      "text": "AI",
+      "start": 3.8000000000000003,
+      "end": 3.9800000000000004,
+      "speaker_id": "speaker_0",
+      "logprob": -0.01
+    },
+    {
+      "type": "word",
+      "text": "copy",
+      "start": 4,
+      "end": 4.18,
+      "speaker_id": "speaker_0",
+      "logprob": -0.01
+    },
+    {
+      "type": "word",
+      "text": "of",
+      "start": 4.2,
+      "end": 4.38,
+      "speaker_id": "speaker_0",
+      "logprob": -0.01
+    },
+    {
+      "type": "word",
+      "text": "it",
+      "start": 4.4,
+      "end": 4.58,
+      "speaker_id": "speaker_0",
+      "logprob": -0.01
+    },
+    {
+      "type": "word",
+      "text": "being",
+      "start": 4.6000000000000005,
+      "end": 4.78,
+      "speaker_id": "speaker_0",
+      "logprob": -0.01
+    },
+    {
+      "type": "word",
+      "text": "made",
+      "start": 4.800000000000001,
+      "end": 4.98,
+      "speaker_id": "speaker_0",
+      "logprob": -0.01
+    },
+    {
+      "type": "word",
+      "text": "with",
+      "start": 5,
+      "end": 5.18,
+      "speaker_id": "speaker_0",
+      "logprob": -0.01
+    },
+    {
+      "type": "word",
+      "text": "ElevenLabs",
+      "start": 5.2,
+      "end": 5.38,
+      "speaker_id": "speaker_0",
+      "logprob": -0.01
+    },
+    {
+      "type": "word",
+      "text": "for",
+      "start": 5.4,
+      "end": 5.58,
+      "speaker_id": "speaker_0",
+      "logprob": -0.01
+    },
+    {
+      "type": "word",
+      "text": "editing",
+      "start": 5.6000000000000005,
+      "end": 5.78,
+      "speaker_id": "speaker_0",
+      "logprob": -0.01
+    },
+    {
+      "type": "word",
+      "text": "my",
+      "start": 5.800000000000001,
+      "end": 5.98,
+      "speaker_id": "speaker_0",
+      "logprob": -0.01
+    },
+    {
+      "type": "word",
+      "text": "own",
+      "start": 6,
+      "end": 6.18,
+      "speaker_id": "speaker_0",
+      "logprob": -0.01
+    },
+    {
+      "type": "word",
+      "text": "videos.",
+      "start": 6.2,
+      "end": 6.38,
+      "speaker_id": "speaker_0",
+      "logprob": -0.01
+    },
+    {
+      "type": "word",
+      "text": "apple",
+      "start": 6.4,
+      "end": 6.58,
+      "speaker_id": "speaker_0",
+      "logprob": -0.01
+    },
+    {
+      "type": "word",
+      "text": "garden",
+      "start": 6.6000000000000005,
+      "end": 6.78,
+      "speaker_id": "speaker_0",
+      "logprob": -0.01
+    },
+    {
+      "type": "word",
+      "text": "kettle",
+      "start": 6.800000000000001,
+      "end": 6.98,
+      "speaker_id": "speaker_0",
+      "logprob": -0.01
+    },
+    {
+      "type": "word",
+      "text": "window.",
+      "start": 7,
+      "end": 7.18,
+      "speaker_id": "speaker_0",
+      "logprob": -0.01
+    }
+  ],
+  "transcription_id": "fixture-consent-response"
+}

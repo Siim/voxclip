@@ -267,6 +267,7 @@ import VoxClipCore
 }
 
 @MainActor struct ShortcutsView: View {
+    var rewriteEnabled = false
     /// The current bindings: "keys|what they do".
     static let lines = bindings(internalBuild: RewriteEntryPolicy.buildEnabled)
     nonisolated static func bindings(internalBuild: Bool) -> [String] {
@@ -280,7 +281,7 @@ import VoxClipCore
             Text("Keyboard shortcuts").font(.title2)
             Text("Select words in the transcript. Single-letter keys work in the editor, never while typing a correction or in a text field.").foregroundStyle(.secondary)
             Grid(alignment: .leading, horizontalSpacing: 40, verticalSpacing: 8) {
-                ForEach(Self.lines, id: \.self) { line in
+                ForEach(Self.lines.filter { rewriteEnabled || $0 != "⇧⌘R|Rewrite" }, id: \.self) { line in
                     let parts = line.split(separator: "|")
                     GridRow { Text(parts[0]).font(DesignValues.mono()); Text(parts[1]) }
                 }

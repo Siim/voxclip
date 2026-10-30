@@ -1,0 +1,58 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "templates",
+    "months"
+  ],
+  "properties": {
+    "schema": {
+      "const": "voxclip-voice-statements/1"
+    },
+    "templates": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "en",
+        "et"
+      ],
+      "properties": {
+        "en": {
+          "type": "string"
+        },
+        "et": {
+          "type": "string"
+        }
+      }
+    },
+    "months": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "en",
+        "et"
+      ],
+      "properties": {
+        "en": {
+          "type": "array",
+          "minItems": 12,
+          "maxItems": 12,
+          "items": {
+            "type": "string"
+          }
+        },
+        "et": {
+          "type": "array",
+          "minItems": 12,
+          "maxItems": 12,
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://voxclip.app/schemas/voice-statements.schema.json"
+}

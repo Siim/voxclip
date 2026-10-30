@@ -128,7 +128,7 @@ struct ExportRecord: Codable, Equatable {
         return OutputSpec(size: size, fps: fps, videoBitrate: bitrate, quality: project.export.quality)
     }
 
-    static func value(_ project: Project, target: ExportTarget) throws -> String {
+    static func value(_ project: Project, target: ExportTarget, labelPosition: VoiceLabLabelPosition = .topRight) throws -> String {
         let clip: ClipRange?
         switch target {
         case .fullEdit: clip = nil
@@ -157,7 +157,7 @@ struct ExportRecord: Codable, Equatable {
         var words = captionCopy(segments, plan: plan)
         var voice: VoiceInput?
         if project.schemaVersion >= 3 {
-            let prepared = try VoiceLabRenderContract.prepare(project, scope: clip.map { .clip($0.id) } ?? .full, labelPosition: .topRight)
+            let prepared = try VoiceLabRenderContract.prepare(project, scope: clip.map { .clip($0.id) } ?? .full, labelPosition: labelPosition)
             words = prepared.outputPlan.captions
             let pieces = prepared.outputPlan.pieces.map(VoicePiece.init)
             let recipes = prepared.selectedSegmentRecipes.map { (selected: VoiceLabSelectedRecipe) -> VoiceRecipe in
@@ -247,7 +247,7 @@ extension EditorModel {
         }
         if failedExports[key] != nil { return .failed }
         guard let entry = app.exportLedger.entry(projectID: project.id, targetID: ExportLedger.targetID(target), aspect: aspect) else { return .none }
-        return entry.planFingerprint == (try? ExportFingerprint.value(project, target: target)) ? .exported : .changed
+        return entry.planFingerprint == (try? ExportFingerprint.value(project, target: target, labelPosition: app.voiceLabLabelPosition)) ? .exported : .changed
     }
 
     func retryExport(_ id: String) {
@@ -261,10 +261,9 @@ extension EditorModel {
 
     func exportDisclosure(_ targets: [ExportTarget]) -> String? {
         for target in targets {
-            let scope: VoiceLabOutputScope
-            switch target { case .fullEdit: scope = .full; case .clip(let id): scope = .clip(id) }
-            let root = app.locations.root.appendingPathComponent("VoiceLab", isDirectory: true)
-            if let input = try? VoiceLabRenderPreflight.prepare(project: project, scope: scope, paidRoot: root), input.prepared.disclosure.required {
+            let required: Bool
+            switch target { case .fullEdit: required = containsAISpeech(); case .clip(let id): required = containsAISpeech(clipID: id) }
+            if required {
                 return Self.exportSheetDisclosure(required: true)
             }
         }

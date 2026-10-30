@@ -25,7 +25,7 @@ MODE=debug
 NO_UPLOAD=false
 ALLOW_DIRTY=false
 DRY_RUN=false
-SHARED_DIRS=(caption-styles catalog data design fonts prompts schemas)
+SHARED_DIRS=(caption-styles catalog data design fonts prompts schemas voice-lab)
 
 source "$PWD/scripts/release-common.sh"
 
@@ -167,15 +167,13 @@ cp "$REPO_ROOT/shared/brand/macos/AppIcon.icns" "$REPO_ROOT/THIRD_PARTY_NOTICES.
 copy_shared_resources
 compile_asset_catalog
 
-for framework in "$BIN_DIR"/*.framework; do
-    [ -d "$framework" ] || continue
-    ditto "$framework" "$APP_BUNDLE/Contents/Frameworks/$(basename "$framework")"
-done
+copy_dynamic_frameworks
 for library in "$BIN_DIR"/*.dylib; do
     [ -f "$library" ] || continue
     cp "$library" "$APP_BUNDLE/Contents/Frameworks/"
 done
-[ "$MODE" != release ] || framework_notice_gate
+reject_embedded_archives
+framework_notice_gate
 find "$APP_BUNDLE/Contents/Frameworks" -name '*.dSYM' -prune -exec rm -rf {} +
 while IFS= read -r -d '' binary; do
     is_macho "$binary" || continue

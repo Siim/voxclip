@@ -3,6 +3,30 @@ import Testing
 @testable import VoxClipCore
 
 @Suite struct VoiceLabRenderContractTests {
+    @Test func allSharedPostTextCombinationsReplayInBothLanguages() throws {
+        struct Share: Decodable { let lines: [String: [String: String]] }
+        let share = try JSONDecoder().decode(Share.self, from: FixtureLoader.data("fixtures/share/cases.json"))
+        #expect(share.lines.count == 8)
+        for (key, languages) in share.lines {
+            let kinds = key.split(separator: "+").map { $0.hasPrefix("voiceChanger") ? "voiceChanger" : String($0) }
+            for language in ["en", "et"] {
+                #expect(VoiceLabRenderContract.disclosurePostText(kinds: kinds, ownVoice: key.contains("voiceChangerOwn"), language: language) == languages[language])
+            }
+        }
+    }
+    @Test func sharedDisclosureIntervalsUseTheExportedClipTimeline() throws {
+        struct Vectors: Decodable {
+            struct Case: Decodable { let id: String; let duration: Double; let segments: [[Double]]; let expected: [[Double]] }
+            let cases: [Case]
+        }
+        let vectors = try JSONDecoder().decode(Vectors.self, from: FixtureLoader.data("fixtures/voice-lab/disclosure-intervals.json"))
+        for vector in vectors.cases {
+            let ranges = [VoiceLabLabelInterval(start: 0, end: min(3, vector.duration))] + vector.segments.map {
+                VoiceLabLabelInterval(start: max(0, $0[0] - 0.5), end: min(vector.duration, $0[1] + 0.5))
+            }
+            #expect(VoiceLabRenderContract.mergeDisclosureIntervals(ranges) == vector.expected.map { VoiceLabLabelInterval(start: $0[0], end: $0[1]) }, Comment(rawValue: vector.id))
+        }
+    }
     private func fixture(_ name: String = "passage-render-v3") throws -> Project {
         try JSONProjectStore.decode(FixtureLoader.data("fixtures/voice-lab/\(name).voxclip"))
     }

@@ -43,7 +43,7 @@ import VoxClipCore
                 let receipt = await settle(host: host, identifier: identifier, style: style.id,
                     name: "\(row)-\(Int(width))", width: width, height: height)
                 measurements.append(receipt)
-                results.append(.init(name: "gallery \(row) selection at \(width): full ring, checkmark and name fit", passed: receipt.settled))
+                results.append(selectionResult(name: "gallery \(row) selection at \(width): full ring, checkmark and name fit", receipt: receipt, actualStyle: model.project.captions.styleId))
                 results.append(.init(name: "gallery \(row) selection at \(width): selection uses the editor's real style action", passed: model.project.captions.styleId == style.id))
                 let markers = DebugRightColumn.markers(in: host)
                 // The ring marker is the stroke's path, outset 2 points; a 2-point stroke paints 1 more.
@@ -58,7 +58,7 @@ import VoxClipCore
                 let receipt = await settle(host: host, identifier: identifier, style: style,
                     name: "\(row)-\(Int(width))", width: width, height: height)
                 measurements.append(receipt)
-                results.append(.init(name: "gallery \(row) style change at \(width) reveals its complete tile", passed: receipt.settled && model.project.captions.styleId == style))
+                results.append(selectionResult(name: "gallery \(row) style change at \(width) reveals its complete tile", receipt: receipt, actualStyle: model.project.captions.styleId))
             }
             command(identifier, ["beginReveal": true])
             let pending = snapshot(identifier)
@@ -294,6 +294,21 @@ import VoxClipCore
         command(identifier, ["snapshot": true])
         return CaptionGalleryAudit.snapshots[identifier]
     }
+    static func selectionResult(name: String, receipt: Measurement, actualStyle: String) -> DebugUISuite.Result {
+        let passed = receipt.settled && actualStyle == receipt.style
+        guard !passed else { return .init(name: name, passed: true) }
+        let measurement = (try? JSONEncoder().encode(receipt)).flatMap { String(data: $0, encoding: .utf8) } ?? "no measurement"
+        return .init(name: "\(name); expected style \(receipt.style), actual style \(actualStyle); \(measurement)", passed: false)
+    }
+    static func layoutTurn() async {
+        await withCheckedContinuation { continuation in
+            let observer = CFRunLoopObserverCreateWithHandler(nil, CFRunLoopActivity.beforeWaiting.rawValue, false, CFIndex.max) { _, _ in
+                continuation.resume()
+            }
+            CFRunLoopAddObserver(CFRunLoopGetMain(), observer, .commonModes)
+            CFRunLoopWakeUp(CFRunLoopGetMain())
+        }
+    }
     private static func settle(host: NSView, identifier: String, style: String, name: String,
                                width: CGFloat, height: CGFloat, short: Bool = false) async -> Measurement {
         let started = ProcessInfo.processInfo.systemUptime
@@ -344,7 +359,7 @@ import VoxClipCore
             if stablePasses >= 3 { settled = true; break }
             previous = ready ? current : nil
             previousPaint = ready ? actualPaint : nil
-            if !ready { await Task.yield() }
+            if !ready { await layoutTurn() }
         } while ProcessInfo.processInfo.systemUptime - started < 2
         return Measurement(name: name, width: width, height: height, style: style, snapshot: current,
             elapsed: ProcessInfo.processInfo.systemUptime - started, settled: settled, passes: passes, transitions: transitions)

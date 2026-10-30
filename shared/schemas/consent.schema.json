@@ -1,0 +1,271 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "recordId",
+    "provider",
+    "type",
+    "voiceId",
+    "voiceName",
+    "status",
+    "createdAt",
+    "deletedAt",
+    "statement",
+    "attestations",
+    "samples",
+    "speaker",
+    "app"
+  ],
+  "properties": {
+    "region": { "enum": ["default", "us", "eu", "in", "sg"] },
+    "creator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["region", "keyFingerprint"],
+      "properties": {
+        "region": { "enum": ["default", "us", "eu", "in", "sg"] },
+        "keyFingerprint": { "type": "string", "pattern": "^[0-9a-f]{16}$" }
+      }
+    },
+    "schema": {
+      "const": "voxclip-consent/1"
+    },
+    "recordId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "provider": {
+      "const": "elevenlabs"
+    },
+    "type": {
+      "const": "ivc"
+    },
+    "voiceId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{1,128}$"
+    },
+    "voiceName": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 70
+    },
+    "status": {
+      "enum": [
+        "active",
+        "verificationRequired",
+        "deleted"
+      ]
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "deletedAt": {
+      "anyOf": [
+        {
+          "type": "string",
+          "format": "date-time"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "statement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "language",
+        "text",
+        "nonce",
+        "audioFile",
+        "audioSha256",
+        "stt"
+      ],
+      "properties": {
+        "language": {
+          "enum": [
+            "en",
+            "et"
+          ]
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1
+        },
+        "nonce": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 4,
+            "maxLength": 8
+          }
+        },
+        "audioFile": {
+          "const": "statement.wav"
+        },
+        "audioSha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "stt": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "wer",
+            "transcriptionId"
+          ],
+          "properties": {
+            "wer": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 0.15
+            },
+            "transcriptionId": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "attestations": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ownVoice",
+        "adult",
+        "ownVideosOnly",
+        "acceptedAt"
+      ],
+      "properties": {
+        "ownVoice": {
+          "const": true
+        },
+        "adult": {
+          "const": true
+        },
+        "ownVideosOnly": {
+          "const": true
+        },
+        "acceptedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "samples": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 24,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "sha256",
+          "seconds",
+          "source",
+          "speakerScore"
+        ],
+        "properties": {
+          "sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "seconds": {
+            "type": "number",
+            "minimum": 5,
+            "maximum": 30
+          },
+          "source": {
+            "enum": [
+              "project",
+              "readAloud"
+            ]
+          },
+          "speakerScore": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1.00001
+          }
+        }
+      }
+    },
+    "speaker": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "model",
+        "threshold",
+        "embedding"
+      ],
+      "properties": {
+        "model": {
+          "type": "string",
+          "minLength": 1
+        },
+        "threshold": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "embedding": {
+          "type": "string",
+          "minLength": 4,
+          "contentEncoding": "base64"
+        }
+      }
+    },
+    "app": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "platform"
+      ],
+      "properties": {
+        "version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "platform": {
+          "enum": [
+            "macos",
+            "windows"
+          ]
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "deleted"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "deletedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "deletedAt": {
+            "type": "null"
+          }
+        }
+      }
+    }
+  ],
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://voxclip.app/schemas/consent.schema.json"
+}

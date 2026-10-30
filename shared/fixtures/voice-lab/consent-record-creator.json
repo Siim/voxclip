@@ -1,0 +1,54 @@
+{
+  "schema": "voxclip-consent/1",
+  "recordId": "6f0c2c1e-8a0e-4c5e-9d1f-0b9d4a7f2e11",
+  "provider": "elevenlabs",
+  "type": "ivc",
+  "voiceId": "fixtureOwnVoice",
+  "voiceName": "Example (VoxClip)",
+  "status": "active",
+  "createdAt": "2026-10-29T12:00:00Z",
+  "deletedAt": null,
+  "statement": {
+    "language": "en",
+    "text": "My name is Example. Today is 29 October 2026. This is my own voice, and I agree to an AI copy of it being made with ElevenLabs for editing my own videos. apple garden kettle window.",
+    "nonce": [
+      "apple",
+      "garden",
+      "kettle",
+      "window"
+    ],
+    "audioFile": "statement.wav",
+    "audioSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "stt": {
+      "wer": 0,
+      "transcriptionId": "fixture-consent-response"
+    }
+  },
+  "attestations": {
+    "ownVoice": true,
+    "adult": true,
+    "ownVideosOnly": true,
+    "acceptedAt": "2026-10-29T11:59:00Z"
+  },
+  "samples": [
+    {
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "seconds": 15,
+      "source": "readAloud",
+      "speakerScore": 1
+    }
+  ],
+  "speaker": {
+    "model": "fixture-calibrated",
+    "threshold": 0.8,
+    "embedding": "AACAPwAAAAA="
+  },
+  "app": {
+    "version": "0.1.0",
+    "platform": "macos"
+  },
+  "creator": {
+    "region": "eu",
+    "keyFingerprint": "0123456789abcdef"
+  }
+}

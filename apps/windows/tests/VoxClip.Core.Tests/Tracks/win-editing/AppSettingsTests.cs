@@ -27,6 +27,9 @@ public sealed class AppSettingsTests
         Assert.False(settings.GetBool("general.showLowConfidence"));
         Assert.Equal(5, settings.GetDouble("cache.limitGB"));
         Assert.Equal("system", settings.GetString("general.appearance"));
+        Assert.Equal("top-right", settings.GetString("voiceLab.labelPosition"));
+        Assert.True(settings.GetBool("voiceLab.c2pa"));
+        Assert.False(settings.GetBool("voiceLab.betaNoticeAccepted"));
         Assert.Null(settings.GetString("export.folder"));
         foreach (var key in new[] { "missing", "export.folder" })
         {

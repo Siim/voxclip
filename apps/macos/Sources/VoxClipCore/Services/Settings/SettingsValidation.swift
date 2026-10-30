@@ -33,7 +33,8 @@ extension SettingsDocument {
         "export.fileNamePattern": .string("{project}-{clip}-{aspect}"), "export.openFolderAfter": .bool(false), "update.autoCheck": .bool(true),
         "update.lastCheckAt": .null, "update.latestVersion": .null, "update.htmlURL": .null, "llm.connector": .string(""),
         "llm.cliPath.claude-code": .string(""), "llm.cliPath.codex": .string(""), "llm.clips.snapToLines": .bool(true),
-        "llm.clips.lastPreset": .string("best"), "llm.tighten.strength": .string("normal"), "voiceLab.enabled": .bool(false)
+        "llm.clips.lastPreset": .string("best"), "llm.tighten.strength": .string("normal"), "voiceLab.enabled": .bool(false),
+        "voiceLab.labelPosition": .string("top-right"), "voiceLab.c2pa": .bool(true), "voiceLab.betaNoticeAccepted": .bool(false)
     ]
 
     public subscript(_ key: String) -> JSONValue? {
@@ -52,6 +53,7 @@ extension SettingsDocument {
         try ProjectValidation.require(schema == "voxclip-settings/1" && values["schema"] == nil, "Invalid settings schema")
         let enums: [String: [String]] = [
             "general.appearance": ["system", "light", "dark"], "editing.pauseBreath": ["tight", "natural", "relaxed"],
+            "voiceLab.labelPosition": ["top-right", "top-left", "bottom-right", "bottom-left"],
             "transcription.engineMode": ["local", "apple", "elevenlabs", "ask"], "transcription.elevenlabs.region": ["default", "us", "eu", "in", "sg"],
             "export.defaultAspect": ["source", "16:9", "9:16", "1:1"], "export.quality": ["standard", "high"],
             "llm.clips.lastPreset": ["best", "hooks", "topics", "quotes", "custom"], "llm.tighten.strength": ["light", "normal", "strong"]

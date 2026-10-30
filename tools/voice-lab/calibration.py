@@ -1,0 +1,53 @@
+import math
+import bisect
+from decimal import Decimal, ROUND_CEILING
+
+FAR_LIMIT = 0.005
+OWN_LIMIT = 0.95
+MARGIN_FLOOR = 0.002
+PERCENTILE = 0.999
+PERCENTILE_METHOD = "linear-(n-1)"
+ROUNDING_INCREMENT = 0.01
+MARGIN_POLICY = "clean-p999-plus-margin-ceil-cent-production-v1"
+
+
+def calibration_percentile(impostor):
+    ordered = sorted(impostor)
+    position = (len(ordered) - 1) * PERCENTILE
+    lower = math.floor(position)
+    upper = math.ceil(position)
+    return ordered[lower] + (ordered[upper] - ordered[lower]) * (position - lower)
+
+
+def candidate_threshold(impostor, runtime_drift=0):
+    value = Decimal(str(calibration_percentile(impostor))) + Decimal(str(max(MARGIN_FLOOR, runtime_drift)))
+    increment = Decimal(str(ROUNDING_INCREMENT))
+    return max(0.0, float((value / increment).to_integral_value(rounding=ROUND_CEILING) * increment))
+
+
+def conditions_pass(conditions):
+    return bool(conditions) and all(item.get("impostorPairs", 0) >= 200 and item.get("sameSpeakerPairs", 0) >= 50
+                                    and math.isfinite(item["falseAcceptRate"]) and 0 <= item["falseAcceptRate"] <= FAR_LIMIT
+                                    and math.isfinite(item["sameSpeakerPassRate"]) and OWN_LIMIT <= item["sameSpeakerPassRate"] <= 1
+                                    for item in conditions)
+
+
+def rates(impostor, own, threshold):
+    impostor, own = sorted(impostor), sorted(own)
+    return [(len(impostor) - bisect.bisect_left(impostor, threshold)) / len(impostor),
+            (len(own) - bisect.bisect_left(own, threshold)) / len(own)]
+
+
+def choose_threshold(impostor, own, runtime_drift=0):
+    if len(impostor) < 200 or len(own) < 50:
+        raise ValueError("Calibration needs at least 200 impostor and 50 same-speaker pairs")
+    if not all(math.isfinite(score) and -1.000001 <= score <= 1.000001 for score in impostor + own):
+        raise ValueError("Invalid cosine score")
+    if not math.isfinite(runtime_drift) or runtime_drift < 0:
+        raise ValueError("Invalid runtime drift")
+    threshold = candidate_threshold(impostor, runtime_drift)
+    candidates = sorted({0.0, 1.0, threshold, *[index / 1000 for index in range(1001)]})
+    curve = [[candidate, *rates(impostor, own, candidate)] for candidate in candidates]
+    point = [threshold, *rates(impostor, own, threshold)]
+    eligible = 0 <= threshold <= 1 and point[1] <= FAR_LIMIT and point[2] >= OWN_LIMIT
+    return (point if eligible else None), curve

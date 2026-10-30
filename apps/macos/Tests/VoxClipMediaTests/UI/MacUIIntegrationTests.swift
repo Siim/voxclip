@@ -38,7 +38,10 @@ extension HeavyMediaTests {
         for result in report { #expect(result.passed && result.skipped == nil, Comment(rawValue: result.name)) }
         struct Measurement: Decodable { let width: Double; let minimumWidth: Double; let proposedWidth: Double; let stageWidth: Double; let variant: String; let frameChoices: [String]; let viewOverflow: [String]; let accessibilityOverflow: [String] }
         let measurements = try JSONDecoder().decode([Measurement].self, from: Data(contentsOf: directory.appendingPathComponent("right-column-layout.json")))
-        #expect(measurements.count == 60)
+        #expect(measurements.count == 108)
+        let captures = try JSONDecoder().decode([String].self, from: Data(contentsOf: directory.appendingPathComponent("rewrite-captures.json")))
+        #expect(captures.count == 48)
+        for name in captures { #expect(FileManager.default.fileExists(atPath: directory.appendingPathComponent(name).path)) }
         #expect(Set(measurements.map(\.width)) == [300, 320, 340, 360, 440, 560])
         for measurement in measurements {
             #expect(measurement.minimumWidth <= measurement.width + 0.5 && measurement.proposedWidth <= measurement.width + 0.5)
@@ -56,7 +59,7 @@ extension HeavyMediaTests {
             let viewOverflow: [String]
         }
         let heights = try JSONDecoder().decode([HeightMeasurement].self, from: Data(contentsOf: directory.appendingPathComponent("right-column-heights.json")))
-        #expect(heights.count == 21)
+        #expect(heights.count == 29)
         #expect(Set(heights.map(\.height)) == [475, 575, 675, 775])
         for measurement in heights {
             let viewport = try #require(measurement.scrollFrames.first)

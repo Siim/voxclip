@@ -51,7 +51,10 @@
     "llm.clips.lastPreset": { "enum": ["best", "hooks", "topics", "quotes", "custom"], "default": "best" },
     "llm.tighten.strength": { "enum": ["light", "normal", "strong"], "default": "normal", "description": "M2." },
 
-    "voiceLab.enabled": { "type": "boolean", "default": false, "description": "M3 beta: Settings → Voice Lab → Show Voice Lab. voice-lab.md section 5." }
+    "voiceLab.enabled": { "type": "boolean", "default": false, "description": "M3 beta: Settings → Voice Lab → Show Voice Lab. voice-lab.md section 5." },
+    "voiceLab.labelPosition": { "enum": ["top-right", "top-left", "bottom-right", "bottom-left"], "default": "top-right" },
+    "voiceLab.c2pa": { "type": "boolean", "default": true },
+    "voiceLab.betaNoticeAccepted": { "type": "boolean", "default": false }
   },
   "patternProperties": {
     "^llm\\.model\\.[a-z0-9]+(?:-[a-z0-9]+)*$": { "type": "string", "minLength": 1, "maxLength": 128, "description": "Model id per connector (never one shared key). Default: the catalog defaultModel." },

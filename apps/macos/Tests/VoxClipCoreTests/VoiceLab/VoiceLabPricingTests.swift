@@ -1,8 +1,10 @@
 import CryptoKit
+#if DEBUG
 import Foundation
 import Synchronization
 import Testing
 @testable import VoxClipCore
+@_spi(Testing) @testable import VoxClipMedia
 
 /// Replays shared/fixtures/voice-lab/pricing-cases.json (voice-lab §3.1 and §3.2, rules in pricing-cases-README.md).
 @Suite("Voice Lab pricing, cost presentation and spend ledger", .timeLimit(.minutes(1)))
@@ -651,3 +653,4 @@ private final class ConcurrentRecorders: Sendable {
     let arrived = Mutex(0)
     let warnings = Mutex<[VoiceLabSpendWarning]>([])
 }
+#endif

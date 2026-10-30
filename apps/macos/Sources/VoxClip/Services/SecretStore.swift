@@ -10,6 +10,8 @@ actor SecretStore: KeyProvider {
     init(log: any Redacting) { self.log = log }
 
     static func account(for provider: String) -> String {
+        if provider == "fal" { return "fal-api-key" }
+        if provider == "syncso" { return "syncso-api-key" }
         if provider == "elevenlabs" { return "elevenlabs-api-key" }
         if provider.hasPrefix("llm-api-key-") || provider == "elevenlabs-api-key" { return provider }
         return "llm-api-key-\(provider)"

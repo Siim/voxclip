@@ -109,16 +109,53 @@ compile_asset_catalog() {
 
 framework_notice_gate() {
     local component notice kind
+    linked_ort_notice_gate
     while IFS= read -r -d '' component; do
         kind=framework
         [[ "$component" != *.dylib ]] || kind=library
         case "$(basename "$component")" in
             whisper.framework|libwhisper.dylib) notice='Copyright (c) 2023-2026 The ggml authors' ;;
+            onnxruntime.framework) die "Static ONNX Runtime framework must not be embedded." ;;
             *) die "No known licence notice for $kind: $(basename "$component")." ;;
         esac
         grep -F "$notice" "$APP_BUNDLE/Contents/Resources/THIRD_PARTY_NOTICES.md" >/dev/null \
             || die "Missing $kind licence notice for $(basename "$component") in bundled THIRD_PARTY_NOTICES.md."
     done < <(find "$APP_BUNDLE/Contents/Frameworks" \( -type d -name '*.framework' -o -name '*.dylib' \) -print0)
+}
+
+linked_ort_notice_gate() {
+    local binary notices symbols
+    notices="$APP_BUNDLE/Contents/Resources/THIRD_PARTY_NOTICES.md"
+    for binary in "$APP_BUNDLE"/Contents/MacOS/*; do
+        [ -f "$binary" ] || continue
+        symbols=$(nm -g "$binary") || die "Cannot inspect linked runtime symbols: $binary"
+        if printf '%s\n' "$symbols" | grep -E '[[:space:]]_OrtGetApiBase$' >/dev/null; then
+            grep -Fx '#### ONNX Runtime SwiftPM 1.19.2' "$notices" >/dev/null \
+                && grep -F '28787ee2f966a2c47eb293322c733c5dc4b5e3327cec321c1fe31a7c698edf68' "$notices" >/dev/null \
+                || die "Missing pinned ONNX Runtime SwiftPM 1.19.2 notice for linked runtime."
+        fi
+    done
+}
+
+copy_dynamic_frameworks() {
+    local framework binary
+    for framework in "$BIN_DIR"/*.framework; do
+        [ -d "$framework" ] || continue
+        binary="$framework/$(basename "$framework" .framework)"
+        file -L "$binary" | grep 'current ar archive' >/dev/null && continue
+        file -L "$binary" | grep 'dynamically linked shared library' >/dev/null \
+            || die "Unsupported framework binary: $(basename "$framework")."
+        ditto "$framework" "$APP_BUNDLE/Contents/Frameworks/$(basename "$framework")"
+    done
+}
+
+reject_embedded_archives() {
+    local binary
+    while IFS= read -r -d '' binary; do
+        if file "$binary" | grep 'current ar archive' >/dev/null; then
+            die "Static archive must not be bundled: $binary"
+        fi
+    done < <(find "$APP_BUNDLE/Contents" -type f -print0)
 }
 
 release_notes() {

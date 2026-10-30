@@ -166,7 +166,7 @@ import VoxClipCore
         try JSONEncoder().encode(probes).write(to: directory.appendingPathComponent("transcript-decoration-pixels.json"))
         return results
     }
-    private static func wordAccessibility(app: AppModel) throws -> [DebugUISuite.Result] {
+    static func wordAccessibility(app: AppModel) throws -> [DebugUISuite.Result] {
         guard let root = app.shared?.root else { throw CocoaError(.fileNoSuchFile) }
         let fixture = root.appendingPathComponent("fixtures/voice-lab/passage-render-v3.voxclip")
         let project = try JSONProjectStore.decode(Data(contentsOf: fixture))
@@ -186,13 +186,17 @@ import VoxClipCore
         for cut in [false, true] {
             for playing in [false, true] {
                 for ai in [false, true] {
+                    var state = project
+                    for index in state.voiceLab.segments.indices { state.voiceLab.segments[index].enabled = ai }
+                    model.replace(state, name: "Accessibility state")
+                    model.showCuts = true
                     model.cutWordIDs = cut ? [word.id] : []
                     model.sourceTime = playing ? word.start : model.sourceDuration
                     model.voiceLabPlan = ai ? plan : nil
                     renderer.rebuild(model: model)
                     guard let span = text.map.span(id: word.id) else { throw CocoaError(.coderInvalidValue) }
                     let base = (text.string as NSString).substring(with: span.range)
-                    let expected: String = base + (cut ? ", cut" : "") + (playing ? ", playing" : "") + (ai ? ", AI modified" : "")
+                    let expected: String = (ai ? "new words" : base) + (cut && !ai ? ", cut" : "") + (playing ? ", playing" : "") + (ai ? ", AI modified" : "")
                     results.append(.init(name: "VoiceOver word states use cut, playing, AI modified order (cut=\(cut), playing=\(playing), AI=\(ai))", passed: text.accessibilityString(for: span.range) == expected))
                     results.append(.init(name: "VoiceOver attributed word reading matches (cut=\(cut), playing=\(playing), AI=\(ai))", passed: text.accessibilityAttributedString(for: span.range)?.string == expected))
                 }
