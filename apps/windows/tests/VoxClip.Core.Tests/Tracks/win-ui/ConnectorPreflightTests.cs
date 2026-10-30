@@ -157,6 +157,10 @@ public sealed class ConnectorPreflightTests
         Assert.Contains("selectedConnector!, await ProviderCatalog.ProbeAsync(entry, selectedConnector!, token), token)", rewrite);
         var settings = File.ReadAllText(Path.Combine(root, "SettingsWindow.xaml.cs"));
         Assert.Contains("ConnectorConsentAction.Test", settings);
+        Assert.Contains("pageGeneration++", settings);
+        Assert.Contains("if (generation != pageGeneration) return", settings);
+        Assert.Contains("_ = RefreshStatusAsync()", settings);
+        Assert.Contains("if (generation == pageGeneration && !lifetime.IsCancellationRequested)", settings);
         Assert.Contains("Snap clip edges to sentence boundaries", settings);
         Assert.Contains("var connectorStatus = await ProviderCatalog.ProbeAsync(entry, selectedConnector, lifetime.Token)", settings);
         Assert.Contains("var status = await ProviderCatalog.ProbeAsync(chosen, selectedConnector, ct)", find);

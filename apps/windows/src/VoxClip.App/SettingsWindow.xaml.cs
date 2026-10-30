@@ -19,6 +19,7 @@ public sealed partial class SettingsWindow : Window
     private readonly InfoBar notice = Ui.Notice();
     private readonly List<Func<bool>> textCommits = [];
     private CancellationTokenSource? download;
+    private int pageGeneration;
     private bool preparing;
     private int keyWrites;
     private int sensitiveActions;
@@ -57,6 +58,7 @@ public sealed partial class SettingsWindow : Window
     private async void PaneChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
     {
         if (args.SelectedItem is not NavigationViewItem item || Body is null) return;
+        pageGeneration++;
         textCommits.Clear();
         Body.Children.Clear(); notice.IsOpen = false;
         Body.Children.Add(Ui.Text((string)item.Tag, "TitleTextBlockStyle")); Body.Children.Add(notice);
@@ -148,6 +150,7 @@ public sealed partial class SettingsWindow : Window
     }
     private async Task TranscriptionAsync()
     {
+        var generation = pageGeneration;
         var modes = new[] { "local", "elevenlabs", "ask" };
         var current = App.Services.Get("transcription.engineMode", "local");
         var engine = Ui.Choice("Engine for new imports", ["On this PC", "ElevenLabs Scribe", "Ask each time"], Math.Max(0, Array.IndexOf(modes, current)));
@@ -165,23 +168,31 @@ public sealed partial class SettingsWindow : Window
         region.SelectionChanged += (_, _) => Save("transcription.elevenlabs.region", regions[region.SelectedIndex]); AddSetting(region);
         Body.Children.Add(Ui.Text("Residency regions are for ElevenLabs Enterprise workspaces with data residency, which have their own keys. Most accounts use Default.", "HelperText"));
         await ProviderRowAsync("ElevenLabs", "Sends the audio track to ElevenLabs, which keeps it under its terms. You confirm each take before upload.", "elevenlabs-api-key", null);
+        if (generation != pageGeneration) return;
         Body.Children.Add(Ui.Button("Manage local models…", () => Navigation.SelectedItem = Navigation.MenuItems.OfType<NavigationViewItem>().First(item => (string)item.Tag == "Local Models")));
         Body.Children.Add(Ui.Text("Models download only after you confirm. Local transcription runs entirely on this PC.", "HelperText"));
     }
     private async Task ProvidersAsync()
     {
+        var generation = pageGeneration;
         Body.Children.Add(Ui.Text("Keys are encrypted for your Windows account using DPAPI. Saved keys are never shown and never stored in settings or logs.", "HelperText"));
         var entries = await ProviderCatalog.ReadAsync(lifetime.Token);
+        if (generation != pageGeneration) return;
         var selected = Ui.Choice("Default connector for AI clips", ["None · manual clips still work", .. entries.Select(entry => entry.Label)]);
         selected.SelectedIndex = Math.Max(0, entries.ToList().FindIndex(entry => entry.WireId == App.Services.Get("llm.connector", "")) + 1);
         selected.SelectionChanged += (_, _) => Save("llm.connector", selected.SelectedIndex == 0 ? "" : entries[selected.SelectedIndex - 1].WireId); Body.Children.Add(selected);
         var snap = new ToggleSwitch { Header = "Snap clip edges to sentence boundaries", IsOn = App.Services.Get("llm.clips.snapToLines", true) };
         snap.Toggled += (_, _) => Save("llm.clips.snapToLines", snap.IsOn); Body.Children.Add(snap);
         await ProviderRowAsync("ElevenLabs", "Sends the audio track to ElevenLabs. No video is sent.", "elevenlabs-api-key", null);
-        foreach (var entry in entries) await ProviderRowAsync(entry.Label, entry.DataFlow, entry.Account, entry);
+        foreach (var entry in entries)
+        {
+            if (generation != pageGeneration) return;
+            await ProviderRowAsync(entry.Label, entry.DataFlow, entry.Account, entry);
+        }
     }
     private async Task ProviderRowAsync(string label, string dataFlow, string? account, ProviderEntry? entry)
     {
+        var generation = pageGeneration;
         var panel = Ui.Stack(12); panel.Children.Add(Ui.Text(dataFlow, "HelperText"));
         var hasKey = false;
         var keyUnreadable = false;
@@ -190,6 +201,7 @@ public sealed partial class SettingsWindow : Window
             try { hasKey = await App.Services.Keys.GetKeyAsync(account, lifetime.Token) is not null; }
             catch (Exception exception) when (exception is not OperationCanceledException) { keyUnreadable = true; hasKey = true; }
         }
+        if (generation != pageGeneration) return;
         var status = Ui.Text(keyUnreadable ? "This saved key can't be read. Forget it, then save a new key. Your media and edits are still here." : hasKey ? "Key saved securely." : account is null ? "Check detects availability; Test sends only a connection test." : "No key saved.", "HelperText");
         panel.Children.Add(status);
         var model = new TextBox { Header = "Model ID", Text = App.Services.Get("llm.model." + entry?.WireId, entry?.DefaultModel ?? "") };
@@ -235,7 +247,20 @@ public sealed partial class SettingsWindow : Window
         }
         if (entry is not null)
         {
-            status.Text = ProviderCatalog.Status(await ProviderCatalog.ProbeAsync(entry, App.Services.Connector(entry.Id), lifetime.Token));
+            _ = RefreshStatusAsync();
+            async Task RefreshStatusAsync()
+            {
+                try
+                {
+                    var detected = await ProviderCatalog.ProbeAsync(entry, App.Services.Connector(entry.Id), lifetime.Token);
+                    if (generation == pageGeneration && !lifetime.IsCancellationRequested) status.Text = ProviderCatalog.Status(detected);
+                }
+                catch (OperationCanceledException) { }
+                catch (Exception error) when (error is not OutOfMemoryException)
+                {
+                    if (generation == pageGeneration) status.Text = UiError.Message(error, "Connector status");
+                }
+            }
             panel.Children.Add(Ui.Button("Check status", () => _ = Ui.RunAsync(notice, async () => status.Text = ProviderCatalog.Status(await ProviderCatalog.ProbeAsync(entry, App.Services.Connector(entry.Id), lifetime.Token)), "Connector status")));
             panel.Children.Add(Ui.Button("Test", () => RunSensitive(async () =>
             {
