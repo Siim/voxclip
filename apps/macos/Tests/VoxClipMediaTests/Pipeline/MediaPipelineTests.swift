@@ -105,7 +105,9 @@ extension HeavyMediaTests {
     let directory = try temporaryDirectory()
     defer { try? FileManager.default.removeItem(at: directory) }
     let destination = directory.appendingPathComponent("out.mp4")
-    let result = try await AVExporter().export(ExportJob(render: request(), outputURL: destination)) { _ in }
+    let registry = directory.appendingPathComponent("Scratch")
+    let result = try await AVExporter(cleanupRegistry: registry).export(ExportJob(render: request(), outputURL: destination)) { _ in }
+    #expect(try FileManager.default.contentsOfDirectory(atPath: registry.path).isEmpty)
     #expect(result.width == 320 && result.height == 180)
     #expect(result.frames >= 52 && result.frames <= 53)
     #expect(result.audioSamples == 84000)

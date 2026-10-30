@@ -1,5 +1,11 @@
 # macOS implementation contracts
 
+### 2026-10-30 — sol-mac-polish — stale owned scratch after interrupted tasks
+
+- Launch sweeps only recognized VoxClip scratch older than the kernel-reported process start: exact UUID Scribe multipart files in hash-named cache entries, UUID CLI workspaces, and UUID export writer folders in known export directories. Both creation and modification dates, including directory descendants, must predate startup; links are never followed and newer work is retained.
+- GUI exports journal their exact MP4/SRT partial basenames and writer folder in a private app-data Scratch registry before writing. A later launch can recover a first export to a custom directory even if it never completed. Normal success/failure/cancellation removes the journal after partial cleanup. Unjournaled ambiguous user-named .partial files are deliberately preserved; the existing same-destination retry cleanup still applies.
+- Tests cover old versus new work, cache/transcript/completed-export preservation, malformed ownership records, traversal and links, plus successful export journal cleanup. This fixes interrupted-work disk residue, not an established external disclosure; no source media or paid assets are swept.
+
 ### 2026-10-30 — sol-mac-polish — shared fixture parity gaps
 
 - Confirm the sweep's SRT terminator divergence and align both Mac writers with the Windows blank-line terminator. A new hand-derived shared fixture pins exact UTF-8 bytes, multiline/multipage text, half-up milliseconds and skipped non-positive pages; existing exact Mac assertions are updated to the specified bytes, not relaxed.

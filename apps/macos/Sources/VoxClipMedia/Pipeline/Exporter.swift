@@ -61,7 +61,8 @@ public actor AVExporter: Exporter {
     private let writerObservation: WriterBoundaryObservation?
     private let appVersion: String?
     private let capacityProvider: DiskCapacity.Provider
-    public init(appVersion: String? = nil) { builder = CompositionBuilder(); appendCheck = nil; pumpObserver = nil; pullCheck = nil; decodeCheck = nil; writerObservation = nil; self.appVersion = appVersion; capacityProvider = DiskCapacity.systemVolume }
+    private var cleanupRegistry: URL?
+    public init(appVersion: String? = nil, cleanupRegistry: URL? = nil) { builder = CompositionBuilder(); appendCheck = nil; pumpObserver = nil; pullCheck = nil; decodeCheck = nil; writerObservation = nil; self.appVersion = appVersion; capacityProvider = DiskCapacity.systemVolume; self.cleanupRegistry = cleanupRegistry }
     public init(rasterizer: any CaptionRasterizer, appVersion: String? = nil) { builder = CompositionBuilder(rasterizer: rasterizer); appendCheck = nil; pumpObserver = nil; pullCheck = nil; decodeCheck = nil; writerObservation = nil; self.appVersion = appVersion; capacityProvider = DiskCapacity.systemVolume }
     init(capacityProvider: @escaping DiskCapacity.Provider, scratchRoot: URL = FileManager.default.temporaryDirectory, appVersion: String? = nil) {
         builder = CompositionBuilder(scratchRoot: scratchRoot); appendCheck = nil; pumpObserver = nil; pullCheck = nil
@@ -241,6 +242,8 @@ public actor AVExporter: Exporter {
         try DiskCapacity.check(outputNeeds, provider: capacityProvider)
         try Task.checkCancellation()
         let partial = try ExportSafety.preparePartial(for: destination)
+        var scratchRecord: URL?
+        defer { if let scratchRecord { ScratchCleanup.finishExport(scratchRecord) } }
         var srtPartial: URL?
         var ownsProvenancePartial = false
         defer {
@@ -253,6 +256,7 @@ public actor AVExporter: Exporter {
         let workDirectory = destination.deletingLastPathComponent().appendingPathComponent("voxclip-export-\(UUID().uuidString).partial")
         try FileManager.default.createDirectory(at: workDirectory, withIntermediateDirectories: false)
         defer { try? FileManager.default.removeItem(at: workDirectory) }
+        scratchRecord = try cleanupRegistry.map { try ScratchCleanup.registerExport(workDirectory: workDirectory, partials: [partial] + [srtPartial].compactMap { $0 }, registry: $0) }
         let output = job.render.output
         let timeRange = CMTimeRange(start: .zero, duration: CMTime(value: job.render.timeline.outputSamples, timescale: Int32(job.render.timeline.sampleRate)))
         guard let videoComposition = graph.composition.copy() as? AVComposition,

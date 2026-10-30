@@ -570,6 +570,8 @@ Acceptance: average bitrate within ±15% of target on the on-demand `--motion-60
 
 ### 8.2 Cache layout (per source)
 
+On macOS, launch also sweeps stale owned scratch using the kernel process-start time as a strict cutoff. Only exact UUID Scribe multipart names inside hash-named cache entries, UUID CLI workspaces, and UUID export writer folders qualify. Every descendant's creation and modification dates must predate startup; symlinks are not followed. GUI exports keep a private `<data>/Scratch/` ownership journal for exact MP4/SRT partial basenames and writer folders, allowing launch cleanup after forced termination even for a first export to a custom directory. Normal completion removes the journal after scratch cleanup. Unjournaled user-named `.partial` files, source media, transcripts, models and paid assets are never inferred to be scratch.
+
 ```text
 <data>/Cache/<contentKey>/
   meta.json                 { "schema": "voxclip-cache/1", contentKey, createdAt, lastAccessAt, bytes,
