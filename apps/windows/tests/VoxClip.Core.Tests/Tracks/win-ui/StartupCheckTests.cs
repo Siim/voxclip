@@ -95,6 +95,9 @@ public sealed class StartupCheckTests
         Assert.Contains("$_.ProcessId -eq $app.Id", script);
         Assert.Contains("'first-open','recent','drop','caption-file-replacement'", script);
         Assert.Contains("$observed.SourceSha -ne $SourceSha", script);
+        var route = File.ReadAllText(Path.Combine(root, "apps/windows/src/VoxClip.App/Services/ShellRouteProbe.cs"));
+        Assert.Contains("AssemblyInformationalVersionAttribute", route);
+        Assert.DoesNotContain("GetEnvironmentVariable(\"VOXCLIP_NATIVE_SOURCE_SHA\")", route);
         Assert.Contains("Assert-Lease", script);
         Assert.All(script, character => Assert.InRange((int)character, 0, 127));
     }

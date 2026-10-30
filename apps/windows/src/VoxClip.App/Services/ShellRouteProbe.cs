@@ -83,7 +83,8 @@ internal static class ShellRouteProbe
         finally
         {
             await File.WriteAllTextAsync(report + ".tmp", JsonSerializer.Serialize(new { Status = status, Failure = failure,
-                Architecture = RuntimeInformation.ProcessArchitecture.ToString(), SourceSha = Environment.GetEnvironmentVariable("VOXCLIP_NATIVE_SOURCE_SHA"),
+                Architecture = RuntimeInformation.ProcessArchitecture.ToString(), SourceSha = typeof(ShellRouteProbe).Assembly.GetCustomAttributes(typeof(System.Reflection.AssemblyInformationalVersionAttribute), false)
+                    .Cast<System.Reflection.AssemblyInformationalVersionAttribute>().Single().InformationalVersion.Split('+').ElementAtOrDefault(1),
                 Routes = observations }, new JsonSerializerOptions { WriteIndented = true }));
             File.Move(report + ".tmp", report, false);
         }
