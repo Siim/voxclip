@@ -11,13 +11,15 @@ internal sealed record VoiceLabTakeRunChecks(Action<VoiceConsentRecord> Validate
 public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
 {
     private sealed record Pending(VoiceLabTakeRunQuote Quote, VoiceLabTakeInput Input, VoiceConsentRecord Record,
-        VoiceLabTakePreflight Preflight, float[] Source, float[] Speech, long ModelRevision, long Revision, VoiceLabDispatchBinding Binding);
+        VoiceLabTakePreflight Preflight, float[] Source, float[] Speech, long ModelRevision, long Revision, VoiceLabDispatchBinding Binding,
+        VoiceLabDispatchBinding AcceptanceBinding);
     private readonly object sync = new();
     private readonly ElevenLabsVoiceLab client;
     private readonly VoiceConsentStore store;
     private readonly VoiceLabTakeStorage storage;
     private readonly VoiceLabTakeRunChecks checks;
     private readonly VoiceLabDispatchGate inputGate;
+    private readonly VoiceLabDispatchGate preparationGate = new();
     private readonly Func<CancellationToken, Task<bool>> inputsAreCurrent;
     private readonly Dictionary<Guid, VoiceLabTakeScratch> scratches = [];
     private readonly Dictionary<Guid, VoiceLabAsset> paidAssets = [];
@@ -53,13 +55,15 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
     {
         long version;
         VoiceLabDispatchBinding binding;
+        VoiceLabDispatchBinding acceptanceBinding;
         VoiceLabTakeRunQuote? retired;
         lock (sync)
         {
             if (preparing || owner.HasValue) throw new VoiceLabException(VoiceLabErrorKind.InvalidInput);
             preparing = true;
             version = revision;
-            binding = inputGate.Capture();
+            acceptanceBinding = inputGate.Capture();
+            binding = preparationGate.Capture(acceptanceBinding);
             retired = pending?.Quote;
             pending = null;
         }
@@ -101,7 +105,7 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
             lock (sync)
             {
                 Check(version, binding, ct);
-                pending = new(quote, snapshot, record, preflight, source, speech, model, version, binding);
+                pending = new(quote, snapshot, record, preflight, source, speech, model, version, binding, acceptanceBinding);
             }
             return quote;
         }
@@ -285,6 +289,18 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
         if (quote is not null) client.DiscardTakeRun(quote);
         return Task.CompletedTask;
     }
+    public bool IsQuoteFresh(VoiceLabTakeRunQuote quote) => client.QuotesAreFresh(quote.Actions);
+    public Task<VoiceLabMonthlyCap?> RefreshMonthlyCapAsync(VoiceLabMonthlyCap? cap, CancellationToken ct = default) => client.RefreshMonthlyCapAsync(cap, ct);
+    public void InvalidatePreparation()
+    {
+        VoiceLabTakeRunQuote? quote;
+        lock (sync)
+        {
+            preparationGate.Invalidate();
+            quote = pending?.Quote; pending = null;
+        }
+        if (quote is not null) client.DiscardTakeRun(quote);
+    }
     public Task CancelAsync() => StopAsync(VoiceLabTakeRunEnd.Cancelled);
     public Task InvalidateAsync() => StopAsync(VoiceLabTakeRunEnd.Invalidated);
     private async Task StopAsync(VoiceLabTakeRunEnd reason)
@@ -320,9 +336,10 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
             if (!acceptedRows.TryGetValue(id, out item) || !item.Row.Selectable || !scratches.TryGetValue(id, out scratch!) || !scratch.IsValid)
                 throw new VoiceLabException(VoiceLabErrorKind.ConsentRequired);
         }
-        await ValidateAsync(item.Input, ct).ConfigureAwait(false);
+        var acceptance = item.Input with { Binding = item.Input.AcceptanceBinding };
+        await ValidateAsync(acceptance, ct).ConfigureAwait(false);
         var publication = scratch.Fitted.Publish(storage.ProjectId, Guid.NewGuid().ToString("D"), storage.PaidRoot, date, id.ToString("D"), item.Row.Seed, scratch.Audio.GainDb, ct);
-        await ValidateAsync(item.Input, ct).ConfigureAwait(false);
+        await ValidateAsync(acceptance, ct).ConfigureAwait(false);
         if (!scratch.IsValid || item.Row.Receipt?.VoiceId != item.Input.Record.VoiceId) throw new VoiceLabException(VoiceLabErrorKind.ConsentRequired);
         return (publication, item.Input.Record);
     }

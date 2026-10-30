@@ -7,9 +7,9 @@ public sealed class VoiceLabDispatchGate
 {
     private readonly object sync = new();
     private long revision;
-    public VoiceLabDispatchBinding Capture()
+    public VoiceLabDispatchBinding Capture(VoiceLabDispatchBinding? parent = null)
     {
-        lock (sync) return new(this, revision);
+        lock (sync) return new(this, revision, parent);
     }
     public void Invalidate()
     {
@@ -28,7 +28,9 @@ public sealed class VoiceLabDispatchBinding
 {
     private readonly VoiceLabDispatchGate gate;
     private readonly long revision;
-    internal VoiceLabDispatchBinding(VoiceLabDispatchGate gate, long revision) { this.gate = gate; this.revision = revision; }
-    public void Validate() => gate.Start(revision, () => true);
-    internal T Start<T>(Func<T> start) => gate.Start(revision, start);
+    private readonly VoiceLabDispatchBinding? parent;
+    internal VoiceLabDispatchBinding(VoiceLabDispatchGate gate, long revision, VoiceLabDispatchBinding? parent = null)
+    { this.gate = gate; this.revision = revision; this.parent = parent; }
+    public void Validate() => Start(() => true);
+    internal T Start<T>(Func<T> start) => gate.Start(revision, () => parent is null ? start() : parent.Start(start));
 }

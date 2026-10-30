@@ -342,6 +342,74 @@ public sealed class VoiceLabTakeRunTests
         Assert.False(fixture.Client.QuotesAreFresh(second.Actions));
     }
     [Fact]
+    public async Task SessionAutomaticRequoteReadsActualAcceptedSpendForTheMonthlyCap()
+    {
+        await using var fixture = new Fixture();
+        var initial = await fixture.Prepare();
+        var total = Assert.IsType<decimal>(initial.Estimate.Usd);
+        var first = initial.Takes[0].Synthesis.Estimate.Usd!.Value + initial.Takes[0].Qa.Estimate.Usd!.Value;
+        Assert.True(first > 0);
+        var session = new VoiceLabGenerationSession(fixture.Run);
+        await session.UpdateInputsAsync(fixture.Input, new(total + first / 2, 99), Token);
+        Assert.Equal(VoiceLabCostPresentationKind.Inline, session.Cost!.Kind);
+        await session.ApproveAsync(session.PendingQuote!, true, Token);
+        Assert.Single(session.Rows);
+        Assert.Equal(first, (await fixture.Ledger.TotalAsync("elevenlabs", DateTimeOffset.UnixEpoch, Token))!.Usd);
+        Assert.Equal(VoiceLabCostPresentationKind.Confirm, session.Cost!.Kind);
+        Assert.Equal(VoiceLabGenerationAction.ConfirmationRequired, await session.TryAnotherAsync(Token));
+        Assert.Single(fixture.Remote.Seeds);
+    }
+
+    [Fact]
+    public async Task SessionAutomaticRequoteKeepsPriorScratchAuditionAndAcceptance()
+    {
+        await using var fixture = new Fixture();
+        await fixture.Prepare();
+        var session = new VoiceLabGenerationSession(fixture.Run);
+        await session.UpdateInputsAsync(fixture.Input, ct: Token);
+        await session.ApproveAsync(session.PendingQuote!, true, Token);
+        var row = Assert.Single(session.Rows);
+        var scratch = Assert.IsType<VoiceLabTakeScratch>(fixture.Run.Scratch(row.Id));
+        Assert.NotNull(session.PendingQuote); Assert.NotNull(session.Cost);
+        Assert.True(scratch.IsValid);
+        await fixture.Run.PublishForAcceptanceAsync(row.Id, DateTimeOffset.UnixEpoch, Token);
+        session.SelectTake(row.Id); session.AuditionTake(row.Id);
+        var old = session.PendingQuote!;
+        await session.UpdateInputsAsync(fixture.Input with { Seed = 100 }, ct: Token);
+        Assert.False(fixture.Run.IsQuoteFresh(old));
+        Assert.Equal(row.Id, session.SelectedTakeId); Assert.Equal(row.Id, session.AuditionedTakeId);
+        await session.ApproveAsync(session.PendingQuote!, false, Token);
+        Assert.True(scratch.IsValid);
+        await fixture.Run.PublishForAcceptanceAsync(row.Id, DateTimeOffset.UnixEpoch, Token);
+        Assert.Single(fixture.Remote.Seeds);
+    }
+
+    [Fact]
+    public async Task SessionInputChangeAfterApprovalBeforeLaunchSendsNothingAndKeepsPriorScratch()
+    {
+        await using var fixture = new Fixture();
+        await fixture.Prepare();
+        var session = new VoiceLabGenerationSession(fixture.Run);
+        await session.UpdateInputsAsync(fixture.Input, ct: Token);
+        await session.ApproveAsync(session.PendingQuote!, true, Token);
+        var prior = Assert.Single(session.Rows);
+        var scratch = fixture.Run.Scratch(prior.Id)!;
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var resume = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        fixture.Run.Suspension = async point => { if (point == "launch") { entered.TrySetResult(); await resume.Task.WaitAsync(Token); } };
+        var run = session.ApproveAsync(session.PendingQuote!, true, Token);
+        await entered.Task.WaitAsync(Token);
+        var changed = session.UpdateInputsAsync(fixture.Input with { Text = "Changed" }, ct: Token);
+        resume.SetResult();
+        Assert.NotNull(await Record.ExceptionAsync(() => run));
+        await changed;
+        Assert.Single(fixture.Remote.Seeds);
+        Assert.True(scratch.IsValid);
+        Assert.Equal(prior.Id, Assert.Single(session.Rows).Id);
+        Assert.NotNull(session.PendingQuote);
+    }
+
+    [Fact]
     public async Task RegenerationQuoteAndCancelledApprovalKeepPriorScratchAndAcceptance()
     {
         await using var fixture = new Fixture();

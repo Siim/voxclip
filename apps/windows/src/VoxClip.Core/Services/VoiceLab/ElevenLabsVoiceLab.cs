@@ -196,6 +196,13 @@ public sealed class ElevenLabsVoiceLab : IDisposable
 
     public VoiceLabAuthorization Approve(VoiceLabPreparedAction action, bool affirmative) => actions.Approve(action, affirmative);
     public bool QuotesAreFresh(IReadOnlyList<VoiceLabPreparedAction> quotes) => actions.QuotesAreFresh(quotes);
+    public async Task<VoiceLabMonthlyCap?> RefreshMonthlyCapAsync(VoiceLabMonthlyCap? cap, CancellationToken ct = default)
+    {
+        if (cap is null) return null;
+        if (spend is null || await spend.TotalAsync("elevenlabs", clock.GetUtcNow(), ct).ConfigureAwait(false) is not { } total)
+            throw new VoiceLabException(VoiceLabErrorKind.ConsentRequired);
+        return cap with { Spent = total.Usd };
+    }
     public IReadOnlyList<VoiceLabAuthorization> ApproveTakeRun(VoiceLabTakeRunQuote quote, bool affirmative) => actions.ApproveRun(quote.Id, quote.Actions, affirmative);
     public void DiscardTakeRun(VoiceLabTakeRunQuote quote) => actions.DiscardRun(quote.Id, quote.Actions);
     public VoiceLabPreparedAction PrepareQa(string language, string recordId, Guid requestId)
