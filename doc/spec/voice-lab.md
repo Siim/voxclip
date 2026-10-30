@@ -1358,7 +1358,7 @@ The shared `passage-project.voxclip`, `full-take-project.voxclip` and `plan-case
 
 ### 10.3 Undo
 
-Accept, turn off, turn on, delete, choosing another candidate, and changing the lip-sync tier are each one undo step. Undo never deletes assets. Unreferenced assets are removed when the project is closed, after 7 days.
+Accept, turn off, turn on, delete, choosing another candidate, and changing the lip-sync tier are each one undo step. Undo and redo restore the exact project snapshots, including `modifiedAt`, and preserve the document's prior clean or dirty count. Undo never deletes assets. Unreferenced assets are removed when the project is closed, after 7 days.
 
 Mac W5 stages these actions behind DEBUG until W6. `VoiceLabRecipeBuilder` builds the candidate from the fitted publication, fit analysis, QA, consent reference, receipt and quote without I/O. It uses the published unity asset, keeps original paid chunks, records relative synthetic words and source-grid video/seam policy, and refuses failed QA or changed-duration acceptance without supported explicit video treatment. Retimed output is bounded by the v3 0.80–1.25 speed range; a lip-sync choice alone is not a rendered video asset and cannot be accepted. `RewriteGenerationSession.accept` reserves acceptance before publication, revalidates its input revision and project snapshot after each suspension, and applies `VoiceLabEditCommand` through the document's single native undo transaction. Failed or stale publication never changes the project. Other fitting candidates with the same widened source window are retained; candidates requiring an unapproved length treatment or a different window are not silently substituted.
 

@@ -33,6 +33,33 @@ private struct AcceptanceTestKeys: KeyProvider {
         return try JSONProjectStore.decode(Data(contentsOf: shared.root.appendingPathComponent("fixtures/voice-lab/passage-render-v3.voxclip")))
     }
     @Test(arguments: [false, true])
+    func snapshotUndoPreservesTimestampsAndPriorDirtyCount(alreadyDirty: Bool) throws {
+        let original = try fixture()
+        let document = VoxClipDocument(project: original, demo: true)
+        let model = EditorModel(document: document, app: AppModel(), preview: DemoPreviewEngine())
+        defer { model.close() }
+        let undo = try #require(document.undoManager)
+        undo.groupsByEvent = false; model.undoManager = undo
+        document.updateChangeCount(.changeCleared)
+        if alreadyDirty { document.updateChangeCount(.changeDone) }
+        let editedAt = original.modifiedAt.addingTimeInterval(10)
+        model.editTimestampForTests = editedAt
+        undo.beginUndoGrouping()
+        try model.applyVoiceLab(.setEnabled(segmentID: original.voiceLab.segments[0].id, enabled: false))
+        undo.endUndoGrouping()
+        let edited = model.project
+        #expect(edited.modifiedAt == editedAt && document.isDocumentEdited)
+        model.editTimestampForTests = editedAt.addingTimeInterval(10)
+        undo.undo()
+        #expect(model.project == original && document.isDocumentEdited == alreadyDirty)
+        model.editTimestampForTests = editedAt.addingTimeInterval(20)
+        undo.redo()
+        #expect(model.project == edited && document.isDocumentEdited)
+        undo.undo()
+        #expect(model.project == original && document.isDocumentEdited == alreadyDirty)
+        undo.removeAllActions()
+    }
+    @Test(arguments: [false, true])
     func readyAcceptancePublishesOnceAndStalePublicationNeverMutates(cancel: Bool) async throws {
         var original = try fixture()
         let stored = original.voiceLab.segments[0], recipe = try #require(original.voiceLab.segments[0].candidates[0].recipe)
