@@ -52,7 +52,34 @@ public sealed class RewriteGenerationTests
     private sealed class Clock : TimeProvider
     {
         internal DateTimeOffset Now = new(2026, 10, 30, 12, 0, 0, TimeSpan.Zero);
+        private readonly List<Timer> timers = [];
         public override DateTimeOffset GetUtcNow() => Now;
+        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+        {
+            var timer = new Timer(this, callback, state);
+            timer.Change(dueTime, period); timers.Add(timer); return timer;
+        }
+        internal void FireDueTimers()
+        {
+            foreach (var timer in timers.ToArray()) timer.Fire();
+        }
+        internal int ActiveTimers => timers.Count(timer => timer.Due is not null);
+        private sealed class Timer(Clock clock, TimerCallback callback, object? state) : ITimer
+        {
+            internal DateTimeOffset? Due { get; private set; }
+            public bool Change(TimeSpan dueTime, TimeSpan period)
+            {
+                Assert.Equal(Timeout.InfiniteTimeSpan, period);
+                Due = dueTime == Timeout.InfiniteTimeSpan ? null : clock.Now + dueTime; return true;
+            }
+            internal void Fire()
+            {
+                if (Due is not { } due || due > clock.Now) return;
+                Due = null; callback(state);
+            }
+            public void Dispose() => Due = null;
+            public ValueTask DisposeAsync() { Dispose(); return ValueTask.CompletedTask; }
+        }
     }
     private sealed class Harness : IAsyncDisposable
     {
@@ -70,7 +97,7 @@ public sealed class RewriteGenerationTests
             Generation = new(Runner, _ => Task.FromResult(new RewriteGenerationChoices([new("voice-a", "A"), new("voice-b", "B")],
                 [new("model-a", "A", ["en"], true, false, 5000, 1), new("model-b", "B", ["en"], true, false, 5000, 1)])),
                 (voice, model, seed, _) => Task.FromResult<VoiceLabTakeInput?>(Input(voice, model, seed) with { Text = Text, ProviderConsent = Consented }),
-                _ => { ConsentCalls++; return Task.FromResult(Consented); }, _ => Task.FromResult(Cap), () => Current);
+                _ => { ConsentCalls++; return Task.FromResult(Consented); }, _ => Task.FromResult(Cap), () => Current, timeProvider: Clock);
         }
         internal async Task ReadyAsync()
         {
@@ -224,6 +251,65 @@ public sealed class RewriteGenerationTests
         await test.Generation.GenerateAsync((_, _) => { test.Clock.Now = test.Clock.Now.AddMinutes(5); return Task.FromResult(true); });
         Assert.Equal(0, test.Runner.PaidRequests); Assert.Equal(2, test.Runner.Preparations);
         Assert.NotNull(test.Generation.Quote); Assert.False(test.Generation.CanExecute);
+    }
+    [Fact]
+    public async Task RenderingAfterExpiryPreparesAndReenablesTheDisplayedButtonWithoutDispatch()
+    {
+        Assert.Contains("generate.Content = generation.ButtonTitle", Source("Controls/RewritePanel.cs"));
+        Assert.Contains("generate.IsEnabled = generation.CanExecute", Source("Controls/RewritePanel.cs"));
+        await using var test = new Harness(); await test.ReadyAsync();
+        var expired = test.Generation.Quote!;
+        var finish = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        test.Runner.BeforePrepare = ct => finish.Task.WaitAsync(ct);
+        test.Clock.Now = expired.ExpiresAt;
+        Assert.Null(test.Generation.Quote);
+        Assert.Equal("Generate Takes", test.Generation.ButtonTitle);
+        Assert.False(test.Generation.CanExecute); Assert.True(test.Generation.IsPreparing);
+        Assert.Equal(2, test.Runner.Preparations);
+        finish.SetResult(); await test.Generation.PendingUpdate;
+        Assert.Equal("Generate Takes · ≈ $0.02", test.Generation.ButtonTitle);
+        Assert.False(test.Generation.CanExecute);
+        test.Generation.MarkEstimateShown(expired); Assert.False(test.Generation.CanExecute);
+        test.Generation.MarkEstimateShown(test.Generation.Quote!);
+        Assert.True(test.Generation.CanExecute); Assert.Equal(0, test.Runner.PaidRequests);
+    }
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task QuoteTimerRepreparesWithoutRenderingAndPreparationFailureRemainsRetryable(bool fail)
+    {
+        await using var test = new Harness(); await test.ReadyAsync();
+        Assert.Equal(1, test.Clock.ActiveTimers);
+        test.Runner.PreparationError = fail ? new VoiceLabException(VoiceLabErrorKind.Unauthorized) : null;
+        test.Clock.Now = test.Generation.Quote!.ExpiresAt;
+        test.Clock.FireDueTimers(); await test.Generation.PendingUpdate;
+        Assert.Equal(2, test.Runner.Preparations); Assert.Equal(0, test.Runner.PaidRequests);
+        Assert.False(test.Generation.CanExecute);
+        if (fail)
+        {
+            Assert.Equal("Generate Takes", test.Generation.ButtonTitle);
+            Assert.Equal("ElevenLabs rejected the key (401). Your edits are saved.", test.Generation.Problem);
+            test.Clock.FireDueTimers(); Assert.Equal(2, test.Runner.Preparations);
+            test.Runner.PreparationError = null; await test.Generation.DiscoverAsync();
+        }
+        test.Generation.MarkEstimateShown(test.Generation.Quote!); Assert.True(test.Generation.CanExecute);
+        test.Generation.Dispose(); await test.Generation.Cleanup;
+        Assert.Equal(0, test.Clock.ActiveTimers);
+        test.Clock.Now = test.Clock.Now.AddMinutes(10); test.Clock.FireDueTimers();
+        Assert.Equal(fail ? 3 : 2, test.Runner.Preparations);
+    }
+    [Fact]
+    public async Task ExpiryWhileDecliningAnOpenConfirmationStillAutomaticallyRequotes()
+    {
+        await using var test = new Harness(); test.Runner.Price = 1; await test.ReadyAsync();
+        var approval = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var pending = test.Generation.GenerateAsync((_, _) => approval.Task);
+        test.Clock.Now = test.Generation.Quote!.ExpiresAt;
+        test.Clock.FireDueTimers(); Assert.Equal(1, test.Runner.Preparations);
+        approval.SetResult(false); await pending; await test.Generation.PendingUpdate;
+        Assert.Equal(2, test.Runner.Preparations); Assert.NotNull(test.Generation.Quote);
+        Assert.False(test.Generation.CanExecute); Assert.Equal(0, test.Runner.PaidRequests);
+        test.Generation.MarkEstimateShown(test.Generation.Quote!); Assert.True(test.Generation.CanExecute);
     }
     [Fact]
     public async Task PriorReviewIsReplacedOnlyAtTheFakeFirstPaidTransport()

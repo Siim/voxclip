@@ -1,5 +1,10 @@
 # Windows fixed contracts
 
+### 2026-10-30 - Windows Rewrite quote expiry recovery
+
+- R10 re-prepares an expired quote independently of Generate: a one-shot timer uses the injected TimeProvider and the quote's expiry, and the native panel's ButtonTitle render path checks freshness again. A later render still recovers if Core has already cleared PendingQuote. Preparation shows the plain disabled title; the new quote requires its own rendered-estimate acknowledgement. Failure exposes the existing inline provider error and Retry. Expiry sends no paid request and timers retire with the panel.
+- Provider consent is requested before the panel's first ElevenLabs request when the flag is unset, including Choose Voice discovery. It is not deferred to Generate. This matches the Mac discovery route; the review's contrary consent finding is rejected by the lead.
+
 ### 2026-10-30 - Windows Voice Lab editor R10
 
 - Merge reviewed Settings head `c4a83663` before editor generation. Preserve both tracks' contracts and UI-test inclusions. R2's review reports no additional findings. The inherited identity-less Settings recovery test still expects pre-c7 copy; its Settings R5 correction is not authored here.

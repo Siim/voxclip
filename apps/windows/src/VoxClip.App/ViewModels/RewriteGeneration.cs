@@ -20,6 +20,9 @@ internal sealed class RewriteGeneration : IDisposable
     private readonly Func<bool> current;
     private readonly Func<Action, Task> onUi;
     private readonly Action? release;
+    private readonly TimeProvider clock;
+    private ITimer? quoteExpiry;
+    private VoiceLabTakeRunQuote? timedQuote;
     private readonly CancellationTokenSource lifetime = new();
     private CancellationTokenSource? updating;
     private CancellationTokenSource? executing;
@@ -51,9 +54,16 @@ internal sealed class RewriteGeneration : IDisposable
     internal bool ReviewedInputsCurrent { get; private set; }
     internal bool CanExecute => !closed && current() && !IsRunning && !IsPreparing && !discovering &&
         Quote is { } quote && ReferenceEquals(quote, shownQuote) && Cost is not null;
-    internal string ButtonTitle => GenerationButtonTitle(Rows.Count == 0 ? "Generate Takes" : "Generate Again");
+    internal string ButtonTitle
+    {
+        get
+        {
+            RefreshExpiredQuote();
+            return GenerationButtonTitle(Rows.Count == 0 ? "Generate Takes" : "Generate Again");
+        }
+    }
     internal string GenerationButtonTitle(string title) => VoiceLabCostPresentation.ButtonTitle(title, null,
-        new(VoiceLabCostPresentationKind.Inline, Quote?.Estimate.Usd is > 0m and var amount ? VoiceLabCostPresentation.Format(amount) : ""));
+        new(VoiceLabCostPresentationKind.Inline, !IsPreparing && Quote?.Estimate.Usd is > 0m and var amount ? VoiceLabCostPresentation.Format(amount) : ""));
     internal string ButtonName => Quote?.Estimate.Usd is { } amount
         ? "Generate up to 3 new takes, about " + VoiceLabCostPresentation.Format(amount).Replace("≈ ", "", StringComparison.Ordinal)
         : "Generate up to 3 new takes";
@@ -66,11 +76,12 @@ internal sealed class RewriteGeneration : IDisposable
         Func<CancellationToken, Task<RewriteGenerationChoices>> discover,
         Func<string, string, uint, CancellationToken, Task<VoiceLabTakeInput?>> buildInput,
         Func<CancellationToken, Task<bool>> consent, Func<CancellationToken, Task<decimal?>> readMonthlyCap,
-        Func<bool> current, Func<Action, Task>? onUi = null, Action? release = null)
+        Func<bool> current, Func<Action, Task>? onUi = null, Action? release = null, TimeProvider? timeProvider = null)
     {
         this.discover = discover; this.buildInput = buildInput; this.consent = consent;
         this.current = current; this.onUi = onUi ?? (action => { action(); return Task.CompletedTask; });
         this.release = release ?? (() => (takeRunner as IDisposable)?.Dispose());
+        clock = timeProvider ?? TimeProvider.System;
         runner = new(takeRunner, ProgressAsync);
         core = new(runner) { ReadMonthlyCapAsync = readMonthlyCap };
     }
@@ -119,6 +130,7 @@ internal sealed class RewriteGeneration : IDisposable
     internal Task InputsChangedAsync()
     {
         if (closed) return Task.CompletedTask;
+        StopQuoteExpiry();
         Cancel(updating); Cancel(executing);
         runner.InvalidatePreparation();
         shownQuote = null; revision++;
@@ -149,7 +161,7 @@ internal sealed class RewriteGeneration : IDisposable
         catch (Exception error) when (error is not OutOfMemoryException) { if (!closed && revision == version) Fail(error); }
         finally
         {
-            if (ReferenceEquals(updating, cancellation)) { updating = null; IsPreparing = false; Notify(); }
+            if (ReferenceEquals(updating, cancellation)) { updating = null; IsPreparing = false; TrackQuoteExpiry(); Notify(); }
             cancellation.Dispose();
         }
     }
@@ -210,8 +222,35 @@ internal sealed class RewriteGeneration : IDisposable
         finally
         {
             if (ReferenceEquals(executing, cancellation)) executing = null;
-            cancellation.Dispose(); Notify();
+            cancellation.Dispose(); TrackQuoteExpiry(); Notify();
         }
+    }
+    private void TrackQuoteExpiry()
+    {
+        if (closed || IsRunning || IsPreparing) return;
+        var quote = Quote;
+        if (quote is null && timedQuote is not null)
+        {
+            if (Problem.Length == 0) RefreshExpiredQuote();
+            else StopQuoteExpiry();
+            return;
+        }
+        if (ReferenceEquals(quote, timedQuote)) return;
+        StopQuoteExpiry();
+        if (quote is null) return;
+        timedQuote = quote;
+        var due = quote.ExpiresAt - clock.GetUtcNow();
+        quoteExpiry = clock.CreateTimer(_ => { _ = onUi(RefreshExpiredQuote); }, null,
+            due > TimeSpan.Zero ? due : TimeSpan.Zero, Timeout.InfiniteTimeSpan);
+    }
+    private void RefreshExpiredQuote()
+    {
+        if (closed || !current() || IsRunning || IsPreparing || discovering || timedQuote is not { } quote) return;
+        if (clock.GetUtcNow() >= quote.ExpiresAt || !runner.IsQuoteFresh(quote)) _ = InputsChangedAsync();
+    }
+    private void StopQuoteExpiry()
+    {
+        quoteExpiry?.Dispose(); quoteExpiry = null; timedQuote = null;
     }
     private async Task<bool> ConfirmAsync(string copy, Func<string, CancellationToken, Task<bool>> confirm, CancellationToken ct)
     {
@@ -261,6 +300,7 @@ internal sealed class RewriteGeneration : IDisposable
     public void Dispose()
     {
         if (closed) return;
+        StopQuoteExpiry();
         closed = true; revision++; Cancel(updating); Cancel(executing); lifetime.Cancel(); shownQuote = null;
         Cleanup = RetireAsync();
     }
