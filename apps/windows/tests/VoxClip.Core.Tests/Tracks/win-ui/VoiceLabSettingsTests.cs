@@ -13,6 +13,24 @@ namespace VoxClip.Core.Tests.Tracks.WinUi;
 
 public sealed class VoiceLabSettingsTests
 {
+    [Fact]
+    public async Task RestartAwaitsTextCommitBeforeFreezingAndInvalidEditsVetoIt()
+    {
+        var text = "20";
+        var release = new TaskCompletionSource<bool>();
+        var commit = new SettingsTextCommit(() => text, () => release.Task, _ => { });
+        text = "12.50";
+        var pending = commit.CommitAsync();
+        Assert.False(pending.IsCompleted);
+        release.SetResult(false);
+        Assert.False(await pending);
+        var coordinator = AppSource("Services/UpdateRestartCoordinator.cs");
+        Assert.True(coordinator.IndexOf("await settings.PrepareAsync()", StringComparison.Ordinal)
+            < coordinator.IndexOf("settings.Freeze()", StringComparison.Ordinal));
+        Assert.Contains("await commit.CommitAsync()", AppSource("SettingsWindow.xaml.cs"));
+        Assert.Contains("await App.Services.SetAsync(\"voiceLab.monthlyCapUsd.", AppSource("Controls/VoiceLabSettingsPane.cs"));
+    }
+
     private static string Shared => Environment.GetEnvironmentVariable("VOXCLIP_SHARED_DIR")!;
     private static string AppSource(string file) => File.ReadAllText(Path.Combine(Path.GetDirectoryName(Shared)!, "apps", "windows", "src", "VoxClip.App", file));
 

@@ -17,7 +17,7 @@ public sealed partial class SettingsWindow : Window
 {
     private readonly CancellationTokenSource lifetime = new();
     private readonly InfoBar notice = Ui.Notice();
-    private readonly List<Func<bool>> textCommits = [];
+    private readonly List<SettingsTextCommit> textCommits = [];
     private CancellationTokenSource? download;
     private int pageGeneration;
     private bool preparing;
@@ -115,24 +115,20 @@ public sealed partial class SettingsWindow : Window
         finally { keyWrites--; }
     }
     internal void TrackTextField(TextBox field, Func<bool> save)
+        => TrackTextField(field, () => Task.FromResult(save()));
+    internal void TrackTextField(TextBox field, Func<Task<bool>> save)
     {
-        var committed = field.Text;
-        bool Commit()
-        {
-            if (field.Text == committed) return true;
-            if (!save()) return false;
-            committed = field.Text;
-            return true;
-        }
-        field.LostFocus += (_, _) => { if (!preparing) Commit(); };
-        textCommits.Add(Commit);
+        var commit = new SettingsTextCommit(() => field.Text, save,
+            exception => Ui.Show(notice, UiError.Message(exception, "Save settings"), InfoBarSeverity.Warning));
+        field.LostFocus += async (_, _) => { if (!preparing) await commit.CommitAsync(); };
+        textCommits.Add(commit);
     }
-    internal RestartPreparation PrepareForRestart()
+    internal async Task<RestartPreparation> PrepareForRestartAsync()
     {
         if (download is not null || keyWrites != 0 || sensitiveActions != 0) return RestartPreparation.Busy;
         if (preparing) return RestartPreparation.TransitionActive;
         foreach (var commit in textCommits)
-            if (!commit()) return RestartPreparation.SaveFailed;
+            if (!await commit.CommitAsync()) return RestartPreparation.SaveFailed;
         preparing = true;
         Navigation.IsEnabled = false;
         return RestartPreparation.Ready;

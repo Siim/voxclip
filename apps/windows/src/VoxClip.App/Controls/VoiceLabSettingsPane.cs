@@ -167,14 +167,14 @@ internal sealed class VoiceLabSettingsPane : UserControl
                 Text = App.Services.Settings.GetString("voiceLab.monthlyCapUsd." + provider.Item1) ?? "",
                 InputScope = new Microsoft.UI.Xaml.Input.InputScope { Names = { new Microsoft.UI.Xaml.Input.InputScopeName { NameValue = Microsoft.UI.Xaml.Input.InputScopeNameValue.Number } } } };
             AutomationProperties.SetName(field, header);
-            owner.TrackTextField(field, () =>
+            owner.TrackTextField(field, async () =>
             {
                 var parsed = VoiceLabSettingsState.MonthlyCap(field.Text);
                 if (parsed.Error is { } error) { Ui.Show(message, error, InfoBarSeverity.Warning); return false; }
                 var settings = new AppSettings("voxclip-settings/1");
                 settings.SetVoiceLabMonthlyCap(provider.Item1, parsed.Amount);
-                _ = Ui.RunAsync(message, () => App.Services.SetAsync("voiceLab.monthlyCapUsd." + provider.Item1,
-                    settings.GetString("voiceLab.monthlyCapUsd." + provider.Item1), token), "Save spending cap");
+                await App.Services.SetAsync("voiceLab.monthlyCapUsd." + provider.Item1,
+                    settings.GetString("voiceLab.monthlyCapUsd." + provider.Item1), token);
                 return true;
             });
             AddCard(section, field);

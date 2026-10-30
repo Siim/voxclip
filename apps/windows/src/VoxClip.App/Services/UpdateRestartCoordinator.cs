@@ -12,6 +12,7 @@ internal interface IUpdateRestartWindow
 
 internal interface IUpdateRestartSettings
 {
+    Task<RestartPreparation> PrepareAsync() => Task.FromResult(RestartPreparation.Ready);
     RestartPreparation Freeze();
     Task DrainAsync(CancellationToken ct);
     Task FlushAsync(CancellationToken ct);
@@ -35,7 +36,11 @@ internal sealed class UpdateRestartCoordinator(Func<IReadOnlyList<IUpdateRestart
             var windows = openWindows();
             if (windows.Any(window => window.IsBusyForRestart)) return RestartResult.Busy;
             RestartPreparation settingsResult;
-            try { settingsResult = settings.Freeze(); }
+            try
+            {
+                settingsResult = await settings.PrepareAsync();
+                if (settingsResult == RestartPreparation.Ready) settingsResult = settings.Freeze();
+            }
             catch (Exception) { return RestartResult.SettingsFailed; }
             if (settingsResult != RestartPreparation.Ready) return settingsResult switch
             {
