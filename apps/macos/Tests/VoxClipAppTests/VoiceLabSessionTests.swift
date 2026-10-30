@@ -7,6 +7,26 @@ import Testing
 
 @Suite("Headless Voice Lab session", .serialized, .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil, "Use an isolated VOXCLIP_DATA_DIR for app-model tests; no windows or provider requests are opened."))
 @MainActor struct VoiceLabSessionTests {
+    @Test(arguments: 0..<8) func recordingRequiresEveryAttestationWithACalibratedSpeaker(bits: Int) throws {
+        let app = AppModel()
+        app.settings.values["voiceLab.enabled"] = .bool(true)
+        app.speakerModelLibrary.model = try SpeakerModelCatalog(shared: SharedResources.locate()).entry
+        app.speakerModelLibrary.installed = true
+        let session = VoiceLabSession(app: app)
+        session.statement = VoiceConsentStatement(language: "en", text: "Offline statement fixture", nonce: [])
+        session.displayName = "Example"
+        session.ownVoice = bits & 1 != 0
+        session.adult = bits & 2 != 0
+        session.ownVideosOnly = bits & 4 != 0
+        #expect(session.speakerReady)
+        #expect(session.canRecord == (bits == 7))
+    }
+    @Test func nativeCheckFailuresPrintExpectedAndActualValues() {
+        let result = DebugUISuite.Result.equal("fixture", expected: true, actual: false)
+        #expect(!result.passed)
+        #expect(result.name == "fixture; expected: true; actual: false")
+        #expect(DebugUISuite.Result.equal("fixture", expected: true, actual: true).name == "fixture")
+    }
     @Test func recoveryExplainsTheRequiredCreatorKeyAndKeepsTheOperation() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }

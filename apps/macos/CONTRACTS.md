@@ -1,5 +1,9 @@
 # macOS implementation contracts
 
+### 2026-10-30 — sol-mac-voicelab — W9 attestation self-test prerequisites
+
+The native attestation check stages an installed, calibrated English speaker catalog entry without loading a model or using a microphone. It checks all eight combinations, allowing recording only with all three attestations. The former fixture omitted the speaker pre-gate added in W6. Headless App tests cover the same eight combinations alongside the existing unavailable/uncalibrated-speaker refusal tests. Diagnostic comparisons retain expected and actual values in a failed result's name, so the native harness prints both in its failure log without changing the report schema.
+
 ### 2026-10-30 — sol-mac-voicelab — W8 same-name recovery parity
 
 The Mac's existing uncertainty predicate already treats every same-name candidate not selected by the nonce or valid missing-label creation window as uncertain, including dated candidates outside that window. Keep this rule unchanged. Added regressions cover an out-of-window candidate alone and alongside an exact nonce match: neither deletes anything, both durably require manual review, and an empty listing after restarting cannot abandon the operation or clear that review obligation.

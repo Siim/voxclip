@@ -5,7 +5,13 @@ import VoxClipCore
 @MainActor enum DebugVoiceLab {
     static func run(app: AppModel) async throws -> [DebugUISuite.Result] {
         let original = app.settings
-        defer { app.settings = original }
+        let originalModel = app.speakerModelLibrary.model
+        let originalInstalled = app.speakerModelLibrary.installed
+        defer {
+            app.settings = original
+            app.speakerModelLibrary.model = originalModel
+            app.speakerModelLibrary.installed = originalInstalled
+        }
         app.settings.values["voiceLab.enabled"] = .bool(false)
         let session = VoiceLabSession(app: app)
         let off = !session.enabled && !session.canRecord && !session.canCreate
@@ -14,9 +20,15 @@ import VoxClipCore
         app.settings.values["voiceLab.enabled"] = .bool(true)
         let noVoice = session.records.isEmpty && session.planMessage != nil && !session.canCreate
         session.displayName = "Example"
-        let missingAttestations = !session.canRecord
-        session.ownVoice = true; session.adult = true; session.ownVideosOnly = true
-        let ready = session.canRecord
+        session.statement = VoiceConsentStatement(language: "en", text: "Offline statement fixture", nonce: [])
+        app.speakerModelLibrary.model = try SpeakerModelCatalog(shared: SharedResources.locate()).entry
+        app.speakerModelLibrary.installed = true
+        let attestationStates = (0..<8).map { bits in
+            session.ownVoice = bits & 1 != 0
+            session.adult = bits & 2 != 0
+            session.ownVideosOnly = bits & 4 != 0
+            return session.canRecord
+        }
         session.busy = true
         session.request(.verify)
         let busy = !session.canRecord && session.confirmation == nil
@@ -27,6 +39,7 @@ import VoxClipCore
         session.displayName = String(repeating: "o\u{303}", count: 31)
         let scalarLimit = !session.canRecord
         session.verified = true; session.trainingReady = true
+        app.speakerModelLibrary.installed = false
         await session.prepareCreation()
         let unavailable = session.confirmation == nil && session.message == VoiceConsentError.speakerUnavailable.localizedDescription
         let shared = try SharedResources.locate()
@@ -42,7 +55,7 @@ import VoxClipCore
             .init(name: "Voice Lab beta off refuses all actions", passed: off && offRequest),
             .init(name: "Voice Lab Settings stays discoverable with beta off", passed: VoiceLabGate.settingsVisible(enabled: false, internalBuild: false)),
             .init(name: "Voice Lab no-voice Settings state", passed: noVoice),
-            .init(name: "Voice Lab requires all attestations", passed: missingAttestations && ready),
+            .equal("Voice Lab requires all attestations (ownVoice/adult/ownVideosOnly bit masks 0...7)", expected: [false, false, false, false, false, false, false, true], actual: attestationStates),
             .init(name: "Voice Lab busy state disables actions", passed: busy),
             .init(name: "Voice Lab verification waits for explicit approval", passed: confirmation),
             .init(name: "Voice Lab display name uses Unicode scalars", passed: scalarLimit),

@@ -12,6 +12,11 @@ import ApplicationServices
         let name: String
         let passed: Bool
         var skipped: String? = nil
+        static func equal<Value: Equatable>(_ name: String, expected: Value, actual: Value) -> Self {
+            let passed = expected == actual
+            let diagnostic = passed ? name : "\(name); expected: \(String(reflecting: expected)); actual: \(String(reflecting: actual))"
+            return Self(name: diagnostic, passed: passed)
+        }
     }
     struct Layout: Codable { let transcriptWidth: Double; let previewWidth: Double }
     struct ToolbarExtent: Codable { let label: String; let width: Double; let attached: Bool }
