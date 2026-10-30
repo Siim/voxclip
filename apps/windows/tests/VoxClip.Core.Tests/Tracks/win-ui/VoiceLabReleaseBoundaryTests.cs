@@ -1,7 +1,6 @@
 #if WIN_UI_TESTS
-using System.Reflection.Metadata;
-using System.Reflection.PortableExecutable;
 using System.Text;
+using VoxClip.ReleaseBoundary;
 using VoxClip.App.Services;
 using VoxClip.App.ViewModels;
 using VoxClip.Core.Domain.VoiceLab;
@@ -158,6 +157,8 @@ public sealed class VoiceLabReleaseBoundaryTests
     [Fact]
     public void ReleaseSourceContainsProductGenerationButNoDebugVoiceLabHarness()
     {
+        // A fast name-marker scan of the Release-compiled App source. The guarantee is inventory-based: Windows CI inspects
+        // the real shipping App for both RIDs (ReleaseAssemblyInspectionTests covers the checker itself).
         foreach (var relative in new[] { "ViewModels/RewriteGeneration.cs", "ViewModels/RewriteGeneration.Takes.cs", "Services/RewriteGenerationBackend.cs", "Controls/RewritePanel.Takes.cs" })
             Assert.Contains("namespace VoxClip.App", ReleaseSource(Source(relative)));
         var forbidden = new[] { "VOXCLIP_DEBUG_", "DebugRewrite", "DebugConsent", "DebugAvailableSpeaker", "DebugVoice", "DebugFit", "DebugValidateTakeRows", "VoiceLabNativeProbe", "ShellNativeProbe", "TimelineNativeProbe", "TranscriptNativeProbe", "RestartNativeProbe" };
@@ -172,25 +173,24 @@ public sealed class VoiceLabReleaseBoundaryTests
 
 #if !DEBUG
     [Fact]
-    public void ReleaseAppAssemblyIncludesProductAndOmitsDebugTypesMethodsAndStrings()
+    public void ReleaseSurrogateMatchesTheShippingAllowlistsExactly()
     {
-        var path = Path.Combine(Root, "apps/windows/tests/VoxClip.App.TypeCheck/bin/Release/net10.0-windows10.0.26100.0/VoxClip.WinCheck.dll");
-        Assert.True(File.Exists(path), "Release App inspection is a mandatory UI build prerequisite.");
-        using var stream = File.OpenRead(path);
-        using var pe = new PEReader(stream);
-        var metadata = pe.GetMetadataReader();
-        var types = metadata.TypeDefinitions.Select(handle => metadata.GetString(metadata.GetTypeDefinition(handle).Name)).ToArray();
-        foreach (var product in new[] { "RewriteGeneration", "RewriteGenerationBackend", "RewritePanel", "RewriteSession", "RewriteTakeAccess" }) Assert.Contains(product, types);
-        Assert.DoesNotContain(types, name => name.StartsWith("Debug", StringComparison.Ordinal) || name.EndsWith("NativeProbe", StringComparison.Ordinal) || name is "ShellRouteProbe" or "TranscriptAlignmentProbe" or "DemoProject");
-        var methods = metadata.MethodDefinitions.Select(handle => metadata.GetString(metadata.GetMethodDefinition(handle).Name));
-        Assert.DoesNotContain(methods, name => name.StartsWith("Debug", StringComparison.Ordinal) ||
-            name.StartsWith("get_Debug", StringComparison.Ordinal) || name.StartsWith("set_Debug", StringComparison.Ordinal) ||
-            name.Contains("<Debug", StringComparison.Ordinal));
-        Assert.DoesNotContain(metadata.FieldDefinitions.Select(handle => metadata.GetString(metadata.GetFieldDefinition(handle).Name)),
-            name => name.StartsWith("Debug", StringComparison.Ordinal) || name.Contains("<Debug", StringComparison.Ordinal));
-        var bytes = File.ReadAllBytes(path);
+        // Fast macOS precheck only: the typecheck surrogate (VoxClip.WinCheck.dll, UseWinUI=false) must match the checked-in
+        // Release allowlists exactly. The guarantee is the shipping inspection after each real Windows CI Release App build.
+        var surrogate = Path.Combine(Root, ReleaseCheck.SurrogatePath);
+        Assert.True(File.Exists(surrogate), "The fast surrogate precheck is a mandatory UI build prerequisite; Windows CI separately inspects both shipping RIDs.");
+        var output = new StringWriter();
+        var error = new StringWriter();
+        var code = ReleaseCheck.Precheck(surrogate, Path.Combine(Root, ReleaseCheck.AllowlistDirectory), Root, null, output, error);
+        Assert.True(code == 0, output + "\n" + error);
+        var app = AssemblyInspector.Read(surrogate, Root);
+        Assert.Equal("Release", app.Identity.Configuration);
+        Assert.True(app.Identity.Optimized);
+        foreach (var product in new[] { "VoxClip.App.ViewModels.RewriteGeneration", "VoxClip.App.Services.RewriteGenerationBackend", "VoxClip.App.Controls.RewritePanel", "VoxClip.App.ViewModels.RewriteSession", "VoxClip.App.ViewModels.RewriteTakeAccess" })
+            Assert.Contains("type " + product, app.AllowlistLines);
+        Assert.Empty(app.Forbidden);
         foreach (var marker in new[] { "VOXCLIP_DEBUG_", "rewrite-r11-", "--voice-lab-probe", "--native-editor-probe", "fixtures:" })
-            Assert.Equal(-1, bytes.AsSpan().IndexOf(Encoding.Unicode.GetBytes(marker)));
+            Assert.DoesNotContain(app.Entries, entry => entry.Key.StartsWith("literal ", StringComparison.Ordinal) && entry.Key.Contains(marker, StringComparison.Ordinal));
     }
 #endif
 
