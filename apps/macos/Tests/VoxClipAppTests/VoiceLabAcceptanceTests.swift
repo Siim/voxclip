@@ -59,6 +59,28 @@ private struct AcceptanceTestKeys: KeyProvider {
         #expect(model.project == original && document.isDocumentEdited == alreadyDirty)
         undo.removeAllActions()
     }
+    @Test func exportDisclosureSurvivesMissingAssetsForFullAndClipScopes() throws {
+        var project = try fixture()
+        project.voiceLab.assets = []
+        var outside = try #require(project.edits.clips.first)
+        outside.id = "outside"; outside.startWordId = "w1"; outside.endWordId = "w2"
+        project.edits.clips.append(outside)
+        let model = EditorModel(document: VoxClipDocument(project: project, demo: true), app: AppModel(), preview: DemoPreviewEngine())
+        defer { model.close() }
+        let expected = "This video contains AI-modified speech. It will show AI MODIFIED."
+        #expect(model.exportDisclosure([.fullEdit]) == expected)
+        #expect(model.exportDisclosure([.clip("clip-main")]) == expected)
+        #expect(model.exportDisclosure([.clip("outside")]) == nil)
+        for scope: VoiceLabOutputScope in [.full, .clip("clip-main")] {
+            #expect(throws: (any Error).self) {
+                try VoiceLabRenderPreflight.prepare(project: project, scope: scope,
+                    paidRoot: model.app.locations.root.appendingPathComponent("VoiceLab"), labelPosition: .topRight)
+            }
+        }
+        #expect(model.exportDisclosure([.fullEdit, .clip("clip-main")]) == expected)
+        model.project.voiceLab.segments[0].enabled = false
+        #expect(model.exportDisclosure([.fullEdit, .clip("clip-main")]) == nil)
+    }
     @Test(arguments: [false, true])
     func readyAcceptancePublishesOnceAndStalePublicationNeverMutates(cancel: Bool) async throws {
         var original = try fixture()
