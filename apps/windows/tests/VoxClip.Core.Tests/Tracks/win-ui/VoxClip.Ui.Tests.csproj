@@ -29,6 +29,7 @@
     <Compile Include="VoiceLabSettingsTests.cs" />
     <Compile Include="VoiceLabSessionTests.cs" />
     <Compile Include="VoiceLabRecoveryTests.cs" />
+    <Compile Include="TakeRowPresentationTests.cs" />
     <Compile Include="VoiceLabReviewTests.cs" />
     <Compile Include="CreateVoiceTests.cs" />
     <Compile Include="VoiceCreationFlowTests.cs" />
