@@ -1,5 +1,14 @@
 # Windows fixed contracts
 
+### 2026-10-31 - Windows MVP fixes (track/win-mvp-fixes)
+
+- Local transcription routes per transcription §11.2. Core's `TranscriptionRouter`/`RoutingDecision` are public; the Transcribe dialog's default "Automatic" choice uses them through `TranscriptionRouting`. Auto first detects with an installed Whisper large-v3-turbo (`WhisperNetTranscriber.DetectLanguageAsync`, after audio extraction) and routes the detected language to the first installed model in `defaults.byLanguage[lang].windows.local`; a missing model is a download prompt (low-memory download under 8 GB) installed inside the dialog after its licence page, never a "can't transcribe" failure. Auto without a multilingual model asks for the language and offers the turbo download. A hand-picked model is honoured and checked against the language. The welcome tour preselects the recommended model for its language by display name. "Manage local models..." opens Local Models; the dialog follows `AppServices.ModelsChanged`; Local Models rows update in place. Progress copy matches the Mac sheet.
+- Share text for exports whose prepared Voice Lab render requires disclosure carries the post-text line (voice-lab §11.3-11.4): field prefill, removed-line warning with Share anyway / Restore line before Copy caption, Open X and Open LinkedIn, the line kept last in cut X text, and the X "Made with AI" tip.
+- Rewrite refuses a source longer than `RewriteSourceLimit.MaxFrames` (30,000,000 frames) before the paid AI proposal and before decoding. Region-only decoding is owed on both platforms: room tone is chosen from the whole source and recipes keep source-absolute sample positions.
+- Caption style, Fine tune and reset changes are their own undo steps, as on the Mac; undoing an earlier cut no longer reverts them.
+- Windows copy names Settings > Providers & Keys (Core's shared AI errors are renamed at `UiError`), and Settings > Export says Original. The cache-limit enforcement (P3) is still open.
+- Host gates only; native dialog, download, Narrator and share-composer checks remain owed on Windows.
+
 ### 2026-10-30 — lead — Windows Voice Lab UI merged
 
 - Squash-merged track/sol-win-vl-ui-editor at 61de6b66, which contains both Windows Voice Lab UI tracks (R1-R12). Terra review findings through R11 were folded in. The R12 review's two P2s harden the Release checks and are owed in a follow-up before the first Windows release: inspect the shipped win-x64 and win-arm64 Release App assemblies in CI rather than the typecheck surrogate, and exclude fakes, harnesses and seams by inventory rather than by name markers.
