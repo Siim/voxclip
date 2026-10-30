@@ -141,12 +141,14 @@ public sealed class ConnectorPreflightTests
         Assert.Equal(2, find.Split("ProviderCatalog.ProbeAsync").Length - 1);
         Assert.Contains("internal Task RetryAsync() => FindAsync()", find);
         Assert.Contains("ConnectorConsentAction.FindClips", find);
+        Assert.Contains("Snap: App.Services.Get(\"llm.clips.snapToLines\", true)", find);
         var rewrite = File.ReadAllText(Path.Combine(root, "Pages/EditorPage.xaml.cs"));
         Assert.Contains("ConnectorConsentAction.Rewrite", rewrite);
         Assert.Contains("if (entry is not null) await ProviderCatalog.ProbeAsync", rewrite);
         Assert.Contains("selectedConnector!, await ProviderCatalog.ProbeAsync(entry, selectedConnector!, token), token)", rewrite);
         var settings = File.ReadAllText(Path.Combine(root, "SettingsWindow.xaml.cs"));
         Assert.Contains("ConnectorConsentAction.Test", settings);
+        Assert.Contains("Snap clip edges to sentence boundaries", settings);
         Assert.Contains("var connectorStatus = await ProviderCatalog.ProbeAsync(entry, selectedConnector, lifetime.Token)", settings);
         Assert.Contains("var status = await ProviderCatalog.ProbeAsync(chosen, selectedConnector, ct)", find);
         var home = File.ReadAllText(Path.Combine(root, "Pages/HomePage.xaml.cs"));

@@ -174,6 +174,8 @@ public sealed partial class SettingsWindow : Window
         var selected = Ui.Choice("Default connector for AI clips", ["None · manual clips still work", .. entries.Select(entry => entry.Label)]);
         selected.SelectedIndex = Math.Max(0, entries.ToList().FindIndex(entry => entry.WireId == App.Services.Get("llm.connector", "")) + 1);
         selected.SelectionChanged += (_, _) => Save("llm.connector", selected.SelectedIndex == 0 ? "" : entries[selected.SelectedIndex - 1].WireId); Body.Children.Add(selected);
+        var snap = new ToggleSwitch { Header = "Snap clip edges to sentence boundaries", IsOn = App.Services.Get("llm.clips.snapToLines", true) };
+        snap.Toggled += (_, _) => Save("llm.clips.snapToLines", snap.IsOn); Body.Children.Add(snap);
         await ProviderRowAsync("ElevenLabs", "Sends the audio track to ElevenLabs. No video is sent.", "elevenlabs-api-key", null);
         foreach (var entry in entries) await ProviderRowAsync(entry.Label, entry.DataFlow, entry.Account, entry);
     }

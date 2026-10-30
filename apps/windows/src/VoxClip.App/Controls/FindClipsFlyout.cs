@@ -203,7 +203,8 @@ internal sealed class FindClipsFlyout
         try
         {
             var request = new ClipFinderRequest(state.Transcript.Words, state.Corrections, state.CutWordIds, (ClipPreset)Math.Max(0, preset.SelectedIndex),
-                instructions.Text, state.Transcript.Language, chosen.Id, App.Services.Get("llm.model." + chosen.WireId, chosen.DefaultModel));
+                instructions.Text, state.Transcript.Language, chosen.Id, App.Services.Get("llm.model." + chosen.WireId, chosen.DefaultModel),
+                Snap: App.Services.Get("llm.clips.snapToLines", true));
             var result = await ConnectorPreflight.FindAsync(App.Services.ClipFinder, request, authorize, search.Token);
             if (result is null || model.IsLeaving) return;
             var added = model.AddAiResult(result);
