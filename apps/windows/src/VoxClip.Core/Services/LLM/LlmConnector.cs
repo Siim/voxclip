@@ -411,7 +411,7 @@ public sealed partial class LlmConnector
         if (Id == ConnectorId.Anthropic)
         {
             text = string.Concat((body["content"] as JsonArray ?? []).Where(block => block?["type"]?.GetValue<string>() == "text").Select(block => block!["text"]?.GetValue<string>()));
-            stop = body["stop_reason"]?.GetValue<string>() switch { "max_tokens" => new StopKind.Truncated(), "refusal" => new StopKind.Refused(body["stop_details"]?["category"]?.GetValue<string>()), _ => stop };
+            stop = body["stop_reason"]?.GetValue<string>() switch { "max_tokens" or "model_context_window_exceeded" => new StopKind.Truncated(), "refusal" => new StopKind.Refused(body["stop_details"]?["category"]?.GetValue<string>()), _ => stop };
         }
         else if (Id == ConnectorId.OpenAI)
         {

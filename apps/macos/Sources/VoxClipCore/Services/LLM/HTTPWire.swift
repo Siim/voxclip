@@ -85,7 +85,7 @@ extension HTTPConnector {
         switch id {
         case .anthropic:
             switch value[ai: "stop_reason"].aiString {
-            case "max_tokens": stop = .truncated
+            case "max_tokens", "model_context_window_exceeded": stop = .truncated
             case "refusal": stop = .refused(category: value[ai: "stop_details"][ai: "category"].aiString)
             default: break
             }

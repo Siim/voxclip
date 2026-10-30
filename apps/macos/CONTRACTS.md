@@ -1,5 +1,9 @@
 # macOS implementation contracts
 
+### 2026-10-30 — Anthropic context exhaustion
+
+- `model_context_window_exceeded` maps to the same truncated stop as `max_tokens` (ai.md §4.6; Anthropic stop-reasons reference). Both Cores reject partial JSON without a paid corrective retry; stub runner tests assert one request.
+
 ### 2026-10-30 — LM Studio working context
 
 - Both Cores trust positive v0 context fields only for `state: loaded`, preferring `loaded_context_length`. Unloaded/unknown contexts use the conservative 4,096-token fallback from ai.md §§6.6/11.5, never a JIT model's advertised maximum. Stub tests cover states and positive loaded lengths; the Mac retains its assumed-context note.

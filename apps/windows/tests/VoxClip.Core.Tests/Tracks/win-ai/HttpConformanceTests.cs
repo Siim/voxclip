@@ -8,6 +8,19 @@ namespace VoxClip.Core.Tests.Tracks.WinAi;
 
 public sealed class HttpConformanceTests
 {
+    [Fact]
+    public async Task AnthropicContextExhaustionDoesNotCorrectPartialJson()
+    {
+        using var handler = new StubHttp((_, _, _) => Task.FromResult(Response(200, "{\"stop_reason\":\"model_context_window_exceeded\",\"content\":[{\"type\":\"text\",\"text\":\"{\"}]}")));
+        using var client = new HttpClient(handler);
+        var keys = new MemoryKeys();
+        var connector = new LlmConnector(ConnectorId.Anthropic, Catalog(), client, keys, new Redactor());
+        var runner = new LlmRunner(keys, Catalog(), new Redactor());
+        var failure = await Assert.ThrowsAsync<LlmException>(() => runner.RunAsync(Catalog().TestRequest(ConnectorId.Anthropic), connector, "claude-sonnet-5-5", TestContext.Current.CancellationToken));
+        Assert.Equal(LlmErrorKind.Truncated, failure.Error.Kind);
+        Assert.Single(handler.Requests);
+    }
+
     [Theory]
     [InlineData("not-loaded", 4096)]
     [InlineData("loading", 4096)]
