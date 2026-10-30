@@ -201,7 +201,7 @@ public sealed class RewritePanelTests
         Assert.Contains("panel.ReturnFocusOnClose", page);
         Assert.Contains("FocusTranscript()", page);
         Assert.DoesNotContain("Use Take", panel);
-        Assert.DoesNotContain("Generate takes", panel);
+        Assert.Contains("Content = \"Generate Takes\"", panel);
     }
 
     [Fact]

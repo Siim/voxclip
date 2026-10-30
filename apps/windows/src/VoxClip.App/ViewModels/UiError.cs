@@ -22,6 +22,19 @@ public static class UiError
     public static string Message(Exception exception, string action)
     {
         if (exception is OperationCanceledException) return "";
+        if (exception is VoiceLabException provider)
+            return provider.Kind switch
+            {
+                VoiceLabErrorKind.Cancelled => "",
+                VoiceLabErrorKind.Unauthorized => "ElevenLabs rejected the key (401). Your edits are saved.",
+                VoiceLabErrorKind.PlanUnavailable => "Your ElevenLabs subscription doesn't include this action. Check your plan on elevenlabs.io.",
+                VoiceLabErrorKind.FeatureUnavailable => "This feature isn't available for your ElevenLabs account. Your videos and edits are still here.",
+                VoiceLabErrorKind.VoiceAccessDenied => "Your ElevenLabs account can't use this voice. Choose another voice.",
+                VoiceLabErrorKind.ModelAccessDenied => "Your ElevenLabs account can't use this model. Choose another model.",
+                _ => "The operation could not finish. Your video and edits are still here."
+            };
+        if (exception is VoiceConsentException { Kind: VoiceConsentError.SpeakerUnavailable })
+            return "Own-voice speaker checking is not available in this build. Your edits are saved.";
         if (exception is VoiceLabProjectException voice)
             return voice.Code switch
             {

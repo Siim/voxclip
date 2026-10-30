@@ -1,0 +1,409 @@
+#if WIN_UI_TESTS
+using VoxClip.App.ViewModels;
+using VoxClip.Core.Domain.VoiceLab;
+using VoxClip.Core.Services.Project;
+using Xunit;
+#if DEBUG
+using System.Buffers.Binary;
+using VoxClip.App.Services;
+using VoxClip.Core.Domain.Editing;
+using VoxClip.Core.Domain.Shared;
+using VoxClip.Core.Domain.Transcript;
+#endif
+
+namespace VoxClip.Core.Tests.Tracks.WinUi;
+
+public sealed class RewriteGenerationTests
+{
+    private static string Source(string path) => File.ReadAllText(Path.Combine(Path.GetDirectoryName(SharedResources.ResolveRoot())!, "apps", "windows", "src", "VoxClip.App", path));
+    [Fact]
+    public void ProductAndFixtureGenerationStayDebugOnlyAndUseNativeErrorAndCostControls()
+    {
+        Assert.StartsWith("#if DEBUG", Source("ViewModels/RewriteGeneration.cs"));
+        Assert.StartsWith("#if DEBUG", Source("ViewModels/DebugRewriteTakeRunner.cs"));
+        Assert.StartsWith("#if DEBUG", Source("Services/RewriteGenerationBackend.cs"));
+        var panel = Source("Controls/RewritePanel.cs");
+        Assert.Contains("Severity = InfoBarSeverity.Error, IsClosable = false", panel);
+        Assert.Contains("generationError.ActionButton = settings; generationError.Content = retry", panel);
+        Assert.Contains("generation.MarkEstimateShown(quote)", panel);
+        Assert.Contains("Ui.ConfirmAsync(XamlRoot, \"Generate Takes\", copy, \"Continue\", token)", panel);
+        Assert.Contains("App.Settings?.ShowCreateVoice()", panel);
+        Assert.Contains("Create Your Voice… (2 min)", panel);
+        Assert.DoesNotContain("Clean Audio", panel);
+        Assert.Contains("prices: VoiceLabPrices.Load(), synthesisModel: \"eleven_multilingual_v2\"", Source("Pages/EditorPage.xaml.cs"));
+        Assert.Contains("panel.DebugFitStatesAsync", Source("Pages/EditorPage.NativeProbe.cs"));
+    }
+    [Fact]
+    public void Provider401AndRefusalsUseSafeExactCopy()
+    {
+        Assert.Equal("ElevenLabs rejected the key (401). Your edits are saved.", UiError.Message(new VoiceLabException(VoiceLabErrorKind.Unauthorized, "untrusted detail"), "Generate"));
+        Assert.DoesNotContain("untrusted", UiError.Message(new VoiceLabException(VoiceLabErrorKind.ProviderFailure, "untrusted"), "Generate"));
+        Assert.Equal("This take has no half-second pause to copy the room sound from. Clean audio removes background sound from the whole take, so new words can blend in. Clean audio is not available in this build. Re-record this sentence instead.",
+            RewriteSession.Refusal(new VoiceLabGeometryException(VoiceLabGeometryErrorCode.RoomToneUnavailable)));
+        foreach (var error in new Exception[] { new VoiceLabGeometryException(VoiceLabGeometryErrorCode.NoVoicedAudio), new VoiceLabAudioMathException(VoiceLabAudioMathErrorCode.NoVoicedAudio) })
+            Assert.Equal("There isn't enough timed speech to estimate this change. Your edits are saved.", RewriteSession.Refusal(error));
+    }
+#if DEBUG
+    private static string Fixture => Path.Combine(SharedResources.ResolveRoot(), "fixtures", "voice-lab", "take-run-cases.json");
+    private static VoiceLabTakeInput Input(string voice = "voice-a", string model = "model-a", uint seed = uint.MaxValue) =>
+        new("clearer words", model, voice, "en", seed, "content-key", [0.1f, 0.2f], 48_000, [], new HashSet<string>(),
+            new("first", "last", [], [], 1, 2, 48_000, 96_000, new(VoiceLabSeamKind.Hard, 1, 48_000, 100), new(VoiceLabSeamKind.Hard, 2, 96_000, 100)),
+            null, null, false, true);
+    private sealed class Clock : TimeProvider
+    {
+        internal DateTimeOffset Now = new(2026, 10, 30, 12, 0, 0, TimeSpan.Zero);
+        public override DateTimeOffset GetUtcNow() => Now;
+    }
+    private sealed class Harness : IAsyncDisposable
+    {
+        internal readonly Clock Clock = new();
+        internal readonly DebugRewriteTakeRunner Runner;
+        internal readonly RewriteGeneration Generation;
+        internal decimal? Cap;
+        internal bool Current = true;
+        internal bool Consented = true;
+        internal int ConsentCalls;
+        internal string Text = "clearer words";
+        internal Harness()
+        {
+            Runner = new(Fixture, Clock);
+            Generation = new(Runner, _ => Task.FromResult(new RewriteGenerationChoices([new("voice-a", "A"), new("voice-b", "B")],
+                [new("model-a", "A", ["en"], true, false, 5000, 1), new("model-b", "B", ["en"], true, false, 5000, 1)])),
+                (voice, model, seed, _) => Task.FromResult<VoiceLabTakeInput?>(Input(voice, model, seed) with { Text = Text, ProviderConsent = Consented }),
+                _ => { ConsentCalls++; return Task.FromResult(Consented); }, _ => Task.FromResult(Cap), () => Current);
+        }
+        internal async Task ReadyAsync()
+        {
+            await Generation.DiscoverAsync();
+            Generation.MarkEstimateShown(Assert.IsType<VoiceLabTakeRunQuote>(Generation.Quote));
+        }
+        internal Task GenerateAsync(bool approved = true) => Generation.GenerateAsync((_, _) => Task.FromResult(approved));
+        public async ValueTask DisposeAsync() { Generation.Dispose(); await Generation.Cleanup; }
+    }
+    [Fact]
+    public async Task NothingIsSentUntilThisExactEstimateHasRendered()
+    {
+        await using var test = new Harness();
+        await test.Generation.DiscoverAsync();
+        Assert.NotNull(test.Generation.Quote);
+        Assert.False(test.Generation.CanExecute);
+        await test.GenerateAsync();
+        Assert.Equal(0, test.Runner.PaidRequests);
+        test.Generation.MarkEstimateShown(test.Generation.Quote!);
+        Assert.True(test.Generation.CanExecute);
+        await test.GenerateAsync();
+        Assert.Equal(1, test.Runner.PaidRequests);
+        Assert.Equal(0, test.Runner.HttpCalls);
+        Assert.NotNull(test.Generation.Quote);
+        Assert.False(test.Generation.CanExecute);
+    }
+    [Theory]
+    [InlineData(0, "Generate Takes", "Generate Again")]
+    [InlineData(0.02, "Generate Takes · ≈ $0.02", "Generate Again · ≈ $0.02")]
+    [InlineData(1.2, "Generate Takes · ≈ $1.20", "Generate Again · ≈ $1.20")]
+    public async Task WholeRunButtonUsesTheFreshQuoteAmount(decimal price, string before, string after)
+    {
+        await using var test = new Harness(); test.Runner.Price = price;
+        await test.ReadyAsync();
+        Assert.Equal(before, test.Generation.ButtonTitle);
+        Assert.Contains("Generate up to 3 new takes, about ", test.Generation.ButtonName);
+        await test.GenerateAsync();
+        Assert.Equal(after, test.Generation.ButtonTitle);
+        Assert.Equal(3, test.Generation.Quote!.Takes.Count);
+        Assert.Equal(new[] { 0, 1, 2 }, test.Generation.Quote.Takes.Select(take => take.Index));
+    }
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task DeclineKeepsQuotePriceRowsSelectionAndAuditionAndAsksAgain(bool unknown)
+    {
+        await using var test = new Harness(); await test.ReadyAsync(); await test.GenerateAsync();
+        var selected = test.Generation.SelectedTakeId!.Value;
+        test.Generation.AuditionTake(selected);
+        test.Runner.Price = unknown ? null : 1m;
+        await test.Generation.InputsChangedAsync();
+        var quote = test.Generation.Quote!; test.Generation.MarkEstimateShown(quote);
+        var title = test.Generation.ButtonTitle;
+        var prompts = new List<string>();
+        Task<bool> Decline(string copy, CancellationToken ct) { prompts.Add(copy); return Task.FromResult(false); }
+        await test.Generation.GenerateAsync(Decline);
+        await test.Generation.GenerateAsync(Decline);
+        Assert.Equal(2, prompts.Count); Assert.Equal(prompts[0], prompts[1]);
+        if (unknown) Assert.Equal("VoxClip can't tell what this costs. Check ElevenLabs's pricing.", prompts[0]);
+        Assert.Same(quote, test.Generation.Quote); Assert.Equal(title, test.Generation.ButtonTitle);
+        Assert.Equal(selected, test.Generation.SelectedTakeId); Assert.Equal(selected, test.Generation.AuditionedTakeId);
+        Assert.Single(test.Generation.Rows); Assert.Equal(1, test.Runner.PaidRequests);
+    }
+    [Fact]
+    public async Task SubFiftyCentCapCrossingConfirmsUsingTheLiveCap()
+    {
+        await using var test = new Harness(); await test.ReadyAsync();
+        test.Runner.Spend = 0.99m; test.Cap = 1m;
+        var prompts = new List<string>();
+        await test.Generation.GenerateAsync((copy, _) => { prompts.Add(copy); return Task.FromResult(true); });
+        Assert.Contains("This takes you past your $1 limit for ElevenLabs this month.", Assert.Single(prompts));
+        Assert.Equal(1, test.Runner.PaidRequests);
+    }
+    [Theory]
+    [InlineData(0.49, 0)]
+    [InlineData(0.5, 1)]
+    public async Task S14ThresholdIsComparedBeforeRounding(decimal price, int expectedPrompts)
+    {
+        await using var test = new Harness(); test.Runner.Price = price;
+        await test.ReadyAsync();
+        var prompts = 0;
+        await test.Generation.GenerateAsync((_, _) => { prompts++; return Task.FromResult(true); });
+        Assert.Equal(expectedPrompts, prompts); Assert.Equal(1, test.Runner.PaidRequests);
+    }
+    [Fact]
+    public async Task ConsentDeclineAndNoVoiceMakeNoQuoteOrPaidRequest()
+    {
+        await using var test = new Harness(); test.Consented = false;
+        await test.Generation.DiscoverAsync(); await test.GenerateAsync();
+        Assert.False(test.Generation.HasDiscovered); Assert.Null(test.Generation.Quote); Assert.Equal(0, test.Runner.Preparations);
+        var runner = new DebugRewriteTakeRunner(Fixture) { State = "no-voice" };
+        using var generation = new RewriteGeneration(runner, runner.DiscoverAsync,
+            (_, _, _, _) => throw new InvalidOperationException("No voice must not prepare."), _ => Task.FromResult(true),
+            _ => Task.FromResult<decimal?>(null), () => true);
+        await generation.DiscoverAsync();
+        Assert.Empty(generation.Voices); Assert.True(generation.HasDiscovered); Assert.False(generation.CanExecute);
+        Assert.Equal(0, runner.PaidRequests); Assert.Equal(0, runner.HttpCalls);
+    }
+    [Fact]
+    public async Task CapIsReadAgainAtTheFirstTransportAndDeclineRetainsReview()
+    {
+        await using var test = new Harness(); await test.ReadyAsync(); await test.GenerateAsync();
+        var selected = test.Generation.SelectedTakeId;
+        test.Generation.MarkEstimateShown(test.Generation.Quote!);
+        test.Runner.BeforeTransport = _ => { test.Cap = 0.01m; return Task.CompletedTask; };
+        var prompts = 0;
+        await test.Generation.GenerateAsync((_, _) => { prompts++; return Task.FromResult(false); });
+        Assert.Equal(1, prompts); Assert.Equal(1, test.Runner.PaidRequests);
+        Assert.Equal(selected, test.Generation.SelectedTakeId); Assert.Single(test.Generation.Rows);
+        Assert.NotNull(test.Generation.Quote); Assert.True(test.Generation.CanExecute);
+    }
+    [Theory]
+    [InlineData("close")]
+    [InlineData("input")]
+    [InlineData("cancel")]
+    public async Task SuspendingConfirmationCannotOutliveItsOwner(string change)
+    {
+        await using var test = new Harness(); test.Runner.Price = 1;
+        await test.ReadyAsync();
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var approval = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        CancellationToken observed = default;
+        var pending = test.Generation.GenerateAsync((_, token) => { observed = token; entered.SetResult(); return approval.Task; });
+        await entered.Task;
+        await test.GenerateAsync();
+        if (change == "close") test.Generation.Dispose();
+        else if (change == "input") await test.Generation.InputsChangedAsync();
+        else await test.Generation.CancelAsync();
+        Assert.True(observed.IsCancellationRequested);
+        approval.SetResult(true); await pending;
+        Assert.Equal(0, test.Runner.PaidRequests);
+    }
+    [Fact]
+    public async Task FiveMinuteExpiryRequotesButDoesNotDispatchOrReuseRenderAcknowledgement()
+    {
+        await using var test = new Harness(); await test.ReadyAsync();
+        var old = test.Generation.Quote!;
+        test.Clock.Now = test.Clock.Now.AddMinutes(5);
+        await test.GenerateAsync();
+        Assert.NotSame(old, test.Generation.Quote); Assert.Equal(2, test.Runner.Preparations);
+        Assert.Equal(0, test.Runner.PaidRequests); Assert.False(test.Generation.CanExecute);
+        test.Generation.MarkEstimateShown(old); Assert.False(test.Generation.CanExecute);
+        test.Generation.MarkEstimateShown(test.Generation.Quote!); await test.GenerateAsync();
+        Assert.Equal(1, test.Runner.PaidRequests);
+    }
+    [Fact]
+    public async Task ExpiryDuringConfirmationRequotesWithoutAutomaticallySending()
+    {
+        await using var test = new Harness(); test.Runner.Price = 1;
+        await test.ReadyAsync();
+        await test.Generation.GenerateAsync((_, _) => { test.Clock.Now = test.Clock.Now.AddMinutes(5); return Task.FromResult(true); });
+        Assert.Equal(0, test.Runner.PaidRequests); Assert.Equal(2, test.Runner.Preparations);
+        Assert.NotNull(test.Generation.Quote); Assert.False(test.Generation.CanExecute);
+    }
+    [Fact]
+    public async Task PriorReviewIsReplacedOnlyAtTheFakeFirstPaidTransport()
+    {
+        await using var test = new Harness(); await test.ReadyAsync(); await test.GenerateAsync();
+        var selected = test.Generation.SelectedTakeId!.Value; test.Generation.AuditionTake(selected);
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var resume = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        test.Runner.BeforeTransport = async ct => { entered.SetResult(); await resume.Task.WaitAsync(ct); };
+        test.Generation.MarkEstimateShown(test.Generation.Quote!);
+        var pending = test.GenerateAsync(); await entered.Task;
+        Assert.Single(test.Generation.Rows); Assert.Equal(selected, test.Generation.SelectedTakeId);
+        Assert.Equal(selected, test.Generation.AuditionedTakeId);
+        var atTransport = false;
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        test.Generation.Changed += (_, _) =>
+        {
+            if (test.Generation.Phase != RewriteGenerationPhase.Generating) return;
+            atTransport = true; Assert.Empty(test.Generation.Rows); Assert.Null(test.Generation.SelectedTakeId); Assert.Null(test.Generation.AuditionedTakeId);
+            started.TrySetResult();
+        };
+        test.Runner.State = "generating";
+        resume.SetResult();
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+        Assert.True(atTransport);
+        await test.Generation.CancelAsync(); await pending;
+        Assert.Equal(2, test.Runner.PaidRequests);
+    }
+    [Fact]
+    public async Task CancellingBeforeFirstTransportKeepsPriorTakesSelectionAndAudition()
+    {
+        await using var test = new Harness(); await test.ReadyAsync(); await test.GenerateAsync();
+        var selected = test.Generation.SelectedTakeId!.Value; test.Generation.AuditionTake(selected);
+        test.Generation.MarkEstimateShown(test.Generation.Quote!);
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        test.Runner.BeforeTransport = async ct => { entered.SetResult(); await new TaskCompletionSource().Task.WaitAsync(ct); };
+        var pending = test.GenerateAsync(); await entered.Task;
+        await test.Generation.CancelAsync(); await pending;
+        Assert.Equal(1, test.Runner.PaidRequests); Assert.Single(test.Generation.Rows);
+        Assert.Equal(selected, test.Generation.SelectedTakeId); Assert.Equal(selected, test.Generation.AuditionedTakeId);
+        Assert.NotNull(test.Generation.Quote);
+    }
+    [Theory]
+    [InlineData("voice")]
+    [InlineData("model")]
+    [InlineData("text")]
+    [InlineData("instruction")]
+    [InlineData("consent")]
+    [InlineData("settings")]
+    public async Task EachInputChangeAutomaticallyRequotesWithoutPayingAndKeepsTakes(string field)
+    {
+        await using var test = new Harness(); await test.ReadyAsync(); await test.GenerateAsync();
+        var quote = test.Generation.Quote; var selected = test.Generation.SelectedTakeId!.Value;
+        test.Generation.AuditionTake(selected);
+        var count = test.Runner.Preparations;
+        switch (field)
+        {
+            case "voice": await test.Generation.ChooseVoiceAsync("voice-b"); break;
+            case "model": await test.Generation.ChooseModelAsync("model-b"); break;
+            case "text": test.Text = "new bound words"; await test.Generation.InputsChangedAsync(); break;
+            case "consent": test.Consented = false; await test.Generation.InputsChangedAsync(); break;
+            default: await test.Generation.InputsChangedAsync(); break;
+        }
+        Assert.NotSame(quote, test.Generation.Quote);
+        Assert.Equal(field == "consent" ? count : count + 1, test.Runner.Preparations);
+        Assert.Single(test.Generation.Rows); Assert.Equal(selected, test.Generation.SelectedTakeId); Assert.Equal(selected, test.Generation.AuditionedTakeId);
+        Assert.Equal(1, test.Runner.PaidRequests); Assert.False(test.Generation.CanExecute);
+    }
+    [Fact]
+    public async Task PreparingHasPlainDisabledTitleAndFailuresAreInlineAndRetryable()
+    {
+        await using var test = new Harness();
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var resume = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        test.Runner.BeforePrepare = async ct => { entered.SetResult(); await resume.Task.WaitAsync(ct); };
+        var pending = test.Generation.DiscoverAsync(); await entered.Task;
+        Assert.Equal("Generate Takes", test.Generation.ButtonTitle); Assert.True(test.Generation.IsPreparing); Assert.False(test.Generation.CanExecute);
+        test.Runner.PreparationError = new VoiceLabException(VoiceLabErrorKind.Unauthorized);
+        resume.SetResult(); await pending;
+        Assert.Equal("ElevenLabs rejected the key (401). Your edits are saved.", test.Generation.Problem);
+        Assert.Equal(RewriteGenerationPhase.Failed, test.Generation.Phase); Assert.Equal(0, test.Runner.PaidRequests);
+        test.Runner.BeforePrepare = null; test.Runner.PreparationError = null;
+        await test.Generation.InputsChangedAsync(); Assert.Equal("", test.Generation.Problem); Assert.NotNull(test.Generation.Quote);
+    }
+    [Fact]
+    public async Task ThreeFailedChecksProduceNonePassedAndAWholeFreshQuote()
+    {
+        await using var test = new Harness(); test.Runner.State = "none-passed";
+        await test.ReadyAsync(); await test.GenerateAsync();
+        Assert.Equal(3, test.Generation.Rows.Count); Assert.Equal(RewriteGenerationPhase.NonePassed, test.Generation.Phase);
+        Assert.Equal(RewriteGeneration.NonePassed, test.Generation.Announcement); Assert.Null(test.Generation.SelectedTakeId);
+        Assert.Equal(3, test.Generation.Quote!.Takes.Count); Assert.Equal(0, test.Runner.HttpCalls);
+        Assert.Equal(new uint[] { uint.MaxValue, 0, 1 }, (await new DebugRewriteTakeRunner(Fixture).PrepareAsync(Input(), TestContext.Current.CancellationToken)).Takes.Select(take => take.Seed));
+    }
+    [Fact]
+    public async Task FatalProviderResultIsNotMistakenForNonePassed()
+    {
+        await using var test = new Harness(); test.Runner.State = "provider-error";
+        await test.ReadyAsync(); await test.GenerateAsync();
+        Assert.Equal("ElevenLabs rejected the key (401). Your edits are saved.", test.Generation.Problem);
+        Assert.NotEqual(RewriteGenerationPhase.NonePassed, test.Generation.Phase);
+        Assert.NotNull(test.Generation.Quote);
+    }
+    [Theory]
+    [InlineData("edit")]
+    [InlineData("readonly")]
+    [InlineData("leaving")]
+    [InlineData("settings")]
+    [InlineData("region")]
+    [InlineData("close")]
+    public async Task RewriteOwnerRetiresGenerationOnEveryHardInvalidation(string reason)
+    {
+        var editor = Editor(); var current = true;
+        using var owner = new RewriteSession(editor, 10, 12, Envelope(), null, connectorIsCurrent: () => current);
+        await using var test = new Harness(); owner.ConfigureGeneration(test.Generation); await test.ReadyAsync(); await test.GenerateAsync();
+        switch (reason)
+        {
+            case "edit": editor.Apply(new EditOperation.Correct("w10", "changed")); break;
+            case "readonly": editor.SetMediaUnavailable(true); break;
+            case "leaving": editor.BeginLeaving(); break;
+            case "settings": owner.SettingsChanged(false); break;
+            case "region": current = false; owner.SettingsChanged(true); break;
+            default: owner.Dispose(); break;
+        }
+        await test.Generation.Cleanup;
+        Assert.False(test.Generation.CanExecute); Assert.Null(test.Generation.Quote); Assert.Empty(test.Generation.Rows);
+        await test.GenerateAsync(); Assert.Equal(1, test.Runner.PaidRequests);
+    }
+    [Fact]
+    public async Task OwnerInstructionWordsAndSettingsChangesCallTheAutomaticQuotePath()
+    {
+        using var owner = new RewriteSession(Editor(), 10, 12, Envelope(), null);
+        await using var test = new Harness(); owner.ConfigureGeneration(test.Generation); await test.ReadyAsync();
+        var count = test.Runner.Preparations;
+        await owner.SetInstructionAsync("clearer"); await test.Generation.PendingUpdate;
+        owner.Edit("better words"); await test.Generation.PendingUpdate;
+        owner.SettingsChanged(true); await test.Generation.PendingUpdate;
+        Assert.Equal(count + 3, test.Runner.Preparations); Assert.Equal(0, test.Runner.PaidRequests);
+    }
+    [Fact]
+    public async Task InputBindingUsesOneReviewedHunkBridgesSourceClockAndSelectedVoiceModel()
+    {
+        using var owner = new RewriteSession(Editor(), 10, 12, Envelope(), null);
+        owner.Edit("much clearer words");
+        var hunk = Assert.Single(owner.Review!.VoiceHunks);
+        var input = await owner.GenerationInputAsync("voice", "model", 42, true, _ => Task.FromResult(new float[] { 0.1f, 0.2f }), CancellationToken.None);
+        Assert.NotNull(input); Assert.Equal(hunk.PatchText, input.Text); Assert.Equal(hunk.Window, input.Window);
+        Assert.Equal("voice", input.RecordId); Assert.Equal("model", input.ModelId); Assert.Equal(42u, input.Seed);
+        Assert.Equal(48_000, input.SourceSampleRate); Assert.Equal(owner.Transcript, input.Items); Assert.False(input.CleanAudioOn); Assert.True(input.ProviderConsent);
+        using var multiple = new RewriteSession(Editor(), 10, 18, Envelope(), null);
+        multiple.Edit("Sunday word11 word12 word13 word14 word15 word16 word17 five");
+        Assert.Equal(2, multiple.Review!.VoiceHunks.Count);
+        var error = await Assert.ThrowsAsync<RewriteGenerationException>(() => multiple.GenerationInputAsync("voice", "model", 1, true,
+            _ => throw new InvalidOperationException("Must refuse before decoding."), CancellationToken.None));
+        Assert.Equal("Rewrite one passage at a time. Keep one changed passage, then generate takes.", error.Message);
+    }
+    [Fact]
+    public async Task SourceChunksMatchMacNativeRatePcm16AndTinyTrailingChunkRule()
+    {
+        var spans = new List<(long Start, long End)>();
+        var samples = await RewriteGenerationBackend.ReadSourceAsync("owned-fixture", 280L * 8_000 + 100, 8_000, CancellationToken.None,
+            (_, start, end, rate, _) =>
+            {
+                Assert.Equal(8_000, rate); spans.Add((start, end));
+                var bytes = new byte[44 + checked((int)(end - start) * 2)];
+                for (var offset = 44; offset < bytes.Length; offset += 2) BinaryPrimitives.WriteInt16LittleEndian(bytes.AsSpan(offset, 2), -16384);
+                return Task.FromResult(bytes);
+            });
+        Assert.Equal((0L, 280L * 8_000 + 100), Assert.Single(spans));
+        Assert.True(samples.All(sample => sample == -0.5f));
+        Assert.Equal("My voice · consent Oct 12", RewriteGenerationBackend.VoiceLabel("My voice", new(2026, 10, 12, 0, 0, 0, TimeSpan.Zero)));
+    }
+    private static EditorViewModel Editor()
+    {
+        var project = ProjectSerialization.Deserialize(File.ReadAllText(Path.Combine(SharedResources.ResolveRoot(), "fixtures", "projects", "interview-take.voxclip")));
+        var words = Enumerable.Range(0, 80).Select(index => new TimedWord("w" + index, "word" + index, WordKind.Word, index + 1, index + 1.4, null, null, 1, null, TimingSource.Native)).ToArray();
+        return new(project with { Transcript = project.Transcript! with { Words = words }, Media = project.Media with { Source = project.Media.Source with { DurationSeconds = 100, Audio = new(48_000, 1) } },
+            Edits = project.Edits with { CutWordIds = [], CutPauseIds = [], Corrections = new Dictionary<string, string>(), Clips = [], ActiveClipId = null } });
+    }
+    private static AudioEnvelope Envelope() => new(48_000, 0.01, Enumerable.Repeat(0.01f, 10_000).ToArray());
+#endif
+}
+#endif

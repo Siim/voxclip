@@ -25,6 +25,20 @@ internal sealed class RewritePanel : Grid
     private readonly RewriteAnnouncements announcements = new();
     private readonly List<(DependencyObject Target, DependencyProperty Property, string Key)> brushes = [];
     private bool updating;
+#if DEBUG
+    private readonly StackPanel generationBody = Ui.Stack(12);
+    private readonly ComboBox voice = new() { Header = "Voice", HorizontalAlignment = HorizontalAlignment.Stretch, DisplayMemberPath = "Label", SelectedValuePath = "Id" };
+    private readonly ComboBox speechModel = new() { Header = "Speech model", HorizontalAlignment = HorizontalAlignment.Stretch, DisplayMemberPath = "Name", SelectedValuePath = "Id" };
+    private readonly Button discover = new() { Content = "Choose Voice…" };
+    private readonly StackPanel noVoice = Ui.Stack(6);
+    private readonly Button generate = new() { Content = "Generate Takes", HorizontalAlignment = HorizontalAlignment.Left };
+    private readonly TextBlock generationProgress = Ui.Text("");
+    private readonly ProgressRing generationBusy = new() { Width = 16, Height = 16 };
+    private readonly Button cancelGeneration = new() { Content = "Cancel" };
+    private readonly InfoBar generationError = new() { Severity = InfoBarSeverity.Error, IsClosable = false };
+    private readonly TextBlock nonePassed = Ui.Text(RewriteGeneration.NonePassed);
+    private string generationAnnouncement = "";
+#endif
     internal Control FocusTarget => instruction;
     internal bool ReturnFocusOnClose { get; private set; }
     internal event EventHandler? Closed;
@@ -106,6 +120,10 @@ internal sealed class RewritePanel : Grid
         newHeader.Children.Add(changeSummary);
         body.Children.Add(newHeader);
         body.Children.Add(words); body.Children.Add(review); body.Children.Add(problem);
+#if DEBUG
+        BuildGeneration();
+        body.Children.Add(generationBody);
+#endif
         var scroll = new ScrollViewer { Content = body, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
         AutomationProperties.SetAutomationId(scroll, "Rewrite.Scroll");
         Children.Add(scroll);
@@ -145,7 +163,12 @@ internal sealed class RewritePanel : Grid
 #if DEBUG
     internal IReadOnlyList<string> DebugFitRequiredIds() => [.. ColumnBoundsGate.Rewrite,
         .. session.LocalAction is null ? Array.Empty<string>() : ["Rewrite.Apply"],
-        .. session.Connector is null ? new[] { "Rewrite.Settings" } : Array.Empty<string>()];
+        .. session.Connector is null ? new[] { "Rewrite.Settings" } : Array.Empty<string>(),
+        .. generationBody.Visibility == Visibility.Visible ? new[] { "Rewrite.Generate", "Rewrite.ChooseVoice" } : Array.Empty<string>(),
+        .. noVoice.Visibility == Visibility.Visible && generationBody.Visibility == Visibility.Visible ? new[] { "Rewrite.CreateVoice" } : Array.Empty<string>(),
+        .. voice.Visibility == Visibility.Visible && generationBody.Visibility == Visibility.Visible ? new[] { "Rewrite.Voice", "Rewrite.SpeechModel" } : Array.Empty<string>(),
+        .. generationError.IsOpen && generationBody.Visibility == Visibility.Visible ? new[] { "Rewrite.GenerationError", "Rewrite.GenerationSettings", "Rewrite.GenerationRetry" } : Array.Empty<string>(),
+        .. cancelGeneration.Visibility == Visibility.Visible && generationBody.Visibility == Visibility.Visible ? new[] { "Rewrite.GenerationCancel", "Rewrite.GenerationProgress" } : Array.Empty<string>()];
 #endif
     private T Themed<T>(T target, DependencyProperty property, string key) where T : DependencyObject
     {
@@ -198,10 +221,122 @@ internal sealed class RewritePanel : Grid
             if (current.Budget.Copy is { } budget) review.Children.Add(Small(budget));
         }
         if (session.Prepared is { } action) DispatcherQueue.TryEnqueue(() => session.MarkEstimateShown(action));
+#if DEBUG
+        RenderGeneration();
+#endif
         if (IsLoaded)
             foreach (var message in announcements.Next(session.IsProposing, session.ProposalRevision, session.Problem, session.Review?.ChangeSummary ?? ""))
                 Ui.Announce(this, message, "rewrite", AutomationNotificationProcessing.All);
     }
+#if DEBUG
+    private void BuildGeneration()
+    {
+        AutomationProperties.SetAutomationId(voice, "Rewrite.Voice");
+        AutomationProperties.SetAutomationId(speechModel, "Rewrite.SpeechModel");
+        AutomationProperties.SetAutomationId(generate, "Rewrite.Generate");
+        AutomationProperties.SetAutomationId(discover, "Rewrite.ChooseVoice");
+        AutomationProperties.SetAutomationId(generationProgress, "Rewrite.GenerationProgress");
+        AutomationProperties.SetAutomationId(generationError, "Rewrite.GenerationError");
+        AutomationProperties.SetAutomationId(cancelGeneration, "Rewrite.GenerationCancel");
+        var create = Ui.Button("Create Your Voice… (2 min)", () =>
+        {
+            App.OpenSettings("Voice Lab");
+            App.Settings?.ShowCreateVoice();
+        });
+        AutomationProperties.SetAutomationId(create, "Rewrite.CreateVoice");
+        noVoice.Children.Add(Small("No voice yet")); noVoice.Children.Add(create);
+        discover.Click += async (_, _) => { if (session.Generation is { } generation) await generation.DiscoverAsync(); };
+        voice.SelectionChanged += async (_, _) =>
+        { if (!updating && session.Generation is { } generation) await generation.ChooseVoiceAsync(voice.SelectedValue as string); };
+        speechModel.SelectionChanged += async (_, _) =>
+        { if (!updating && session.Generation is { } generation) await generation.ChooseModelAsync(speechModel.SelectedValue as string); };
+        generate.Click += async (_, _) =>
+        {
+            if (session.Generation is not { } generation) return;
+            App.Services.BusyOperations++;
+            try { await generation.GenerateAsync((copy, token) => Ui.ConfirmAsync(XamlRoot, "Generate Takes", copy, "Continue", token)); }
+            finally { App.Services.BusyOperations--; }
+        };
+        cancelGeneration.Click += async (_, _) => { if (session.Generation is { } generation) await generation.CancelAsync(); };
+        var settings = Ui.Button("Open Settings", () => App.OpenSettings("Providers & Keys"));
+        AutomationProperties.SetAutomationId(settings, "Rewrite.GenerationSettings");
+        var retry = new Button { Content = "Retry" };
+        AutomationProperties.SetAutomationId(retry, "Rewrite.GenerationRetry");
+        retry.Click += async (_, _) =>
+        {
+            if (session.Generation is not { } generation) return;
+            await generation.DiscoverAsync();
+        };
+        generationError.ActionButton = settings; generationError.Content = retry;
+        generationBody.Children.Add(discover); generationBody.Children.Add(voice); generationBody.Children.Add(speechModel);
+        generationBody.Children.Add(noVoice); generationBody.Children.Add(Ui.Text("Takes", "BodyStrongTextBlockStyle"));
+        generationBody.Children.Add(generate); generationBody.Children.Add(Small(RewriteGeneration.SendLine));
+        generationBody.Children.Add(generationBusy); generationBody.Children.Add(generationProgress);
+        generationBody.Children.Add(cancelGeneration); generationBody.Children.Add(generationError); generationBody.Children.Add(nonePassed);
+    }
+    private void RenderGeneration()
+    {
+        var generation = session.Generation;
+        generationBody.Visibility = generation is not null && session.LocalAction is null ? Visibility.Visible : Visibility.Collapsed;
+        if (generation is null) return;
+        updating = true;
+        if (!ReferenceEquals(voice.ItemsSource, generation.Voices)) voice.ItemsSource = generation.Voices;
+        if (!ReferenceEquals(speechModel.ItemsSource, generation.Models)) speechModel.ItemsSource = generation.Models;
+        voice.SelectedValue = generation.VoiceId; speechModel.SelectedValue = generation.ModelId;
+        updating = false;
+        voice.Visibility = generation.Voices.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        speechModel.Visibility = generation.Voices.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        discover.Content = generation.HasDiscovered ? "Refresh voices" : "Choose Voice…";
+        discover.IsEnabled = !generation.IsRunning && !generation.IsPreparing;
+        noVoice.Visibility = generation.HasDiscovered && generation.Voices.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        generate.Content = generation.ButtonTitle;
+        generate.IsEnabled = generation.CanExecute;
+        SetName(generate, generation.ButtonName); ToolTipService.SetToolTip(generate, generation.ButtonName);
+        var generating = generation.Phase == RewriteGenerationPhase.Generating;
+        generationProgress.Text = generating ? generation.ProgressCopy : generation.IsPreparing ? "Preparing takes…" : "";
+        generationBusy.IsActive = generating || generation.IsPreparing;
+        generationBusy.Visibility = generationBusy.IsActive ? Visibility.Visible : Visibility.Collapsed;
+        generationProgress.Visibility = generationBusy.Visibility;
+        cancelGeneration.Visibility = generation.IsRunning ? Visibility.Visible : Visibility.Collapsed;
+        generationError.Message = generation.Problem;
+        generationError.IsOpen = generation.Problem.Length > 0;
+        nonePassed.Visibility = generation.Phase == RewriteGenerationPhase.NonePassed ? Visibility.Visible : Visibility.Collapsed;
+        if (generation.Quote is { } quote) DispatcherQueue.TryEnqueue(() => generation.MarkEstimateShown(quote));
+        if (IsLoaded && generation.Announcement.Length > 0 && generation.Announcement != generationAnnouncement)
+        {
+            generationAnnouncement = generation.Announcement;
+            Ui.Announce(this, generationAnnouncement, "rewrite", AutomationNotificationProcessing.All);
+        }
+        if (generation.Announcement.Length == 0) generationAnnouncement = "";
+    }
+    internal async Task DebugFitStatesAsync(Func<string, Task> inspect)
+    {
+        foreach (var state in new[] { "no-voice", "generating", "provider-error", "none-passed" })
+        {
+            var fake = new DebugRewriteTakeRunner(Path.Combine(VoxClip.Core.Services.Project.SharedResources.ResolveRoot(), "fixtures", "voice-lab", "take-run-cases.json")) { State = state };
+            var generation = new RewriteGeneration(fake, fake.DiscoverAsync,
+                (voiceId, modelId, seed, ct) => session.GenerationInputAsync(voiceId, modelId, seed, true,
+                    _ => Task.FromResult(new float[checked((int)Math.Floor(session.Project.Media.Source.DurationSeconds *
+                        (session.Project.Media.Source.Audio?.SampleRate ?? 48_000) + 0.5))]), ct),
+                _ => Task.FromResult(true), _ => Task.FromResult<decimal?>(null), () => session.GenerationIsCurrent);
+            session.ConfigureGeneration(generation);
+            await generation.DiscoverAsync();
+            if (generation.Quote is { } quote) generation.MarkEstimateShown(quote);
+            Task? running = null;
+            if (state != "no-voice") running = generation.GenerateAsync((_, _) => Task.FromResult(true));
+            if (state != "generating" && running is not null) await running;
+            RenderGeneration();
+            try { await inspect(state); }
+            finally
+            {
+                await generation.CancelAsync();
+                if (running is not null) await running;
+                generation.Dispose(); await generation.Cleanup;
+            }
+            if (fake.HttpCalls != 0) throw new InvalidOperationException("Rewrite fixture made an HTTP request.");
+        }
+    }
+#endif
     private void Escape(object sender, KeyRoutedEventArgs args)
     {
         if (args.Key == VirtualKey.Enter && !InputState.Down(VirtualKey.Control) && !InputState.Down(VirtualKey.Menu) &&

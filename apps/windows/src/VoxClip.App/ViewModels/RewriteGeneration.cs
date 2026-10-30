@@ -1,0 +1,293 @@
+#if DEBUG
+using VoxClip.Core.Domain.VoiceLab;
+
+namespace VoxClip.App.ViewModels;
+
+internal enum RewriteGenerationPhase { Idle, Preparing, AwaitingApproval, Generating, NonePassed, Failed, Cancelled, LengthChanged, ReadyToAccept }
+internal sealed record RewriteVoice(string Id, string Label);
+internal sealed record RewriteGenerationChoices(IReadOnlyList<RewriteVoice> Voices, IReadOnlyList<VoiceLabModel> Models);
+internal sealed class RewriteGenerationException(string message) : Exception(message);
+
+internal sealed class RewriteGeneration : IDisposable
+{
+    internal const string SendLine = "Sends the new words and a short audio check to ElevenLabs with your key. No video.";
+    internal const string NonePassed = "These takes didn't sound right. Try different wording or re-record.";
+    private readonly VoiceLabGenerationSession core;
+    private readonly ObservedRunner runner;
+    private readonly Func<CancellationToken, Task<RewriteGenerationChoices>> discover;
+    private readonly Func<string, string, uint, CancellationToken, Task<VoiceLabTakeInput?>> buildInput;
+    private readonly Func<CancellationToken, Task<bool>> consent;
+    private readonly Func<bool> current;
+    private readonly Func<Action, Task> onUi;
+    private readonly Action? release;
+    private readonly CancellationTokenSource lifetime = new();
+    private CancellationTokenSource? updating;
+    private CancellationTokenSource? executing;
+    private VoiceLabTakeRunQuote? shownQuote;
+    private VoiceLabTakeInput? pendingInput;
+    private bool closed;
+    private bool discovering;
+    private bool confirming;
+    private Task discovery = Task.CompletedTask;
+    private long revision;
+    private uint seed = (uint)Random.Shared.NextInt64(0, 1L << 32);
+    internal RewriteGenerationPhase Phase { get; private set; }
+    internal IReadOnlyList<RewriteVoice> Voices { get; private set; } = [];
+    internal IReadOnlyList<VoiceLabModel> Models { get; private set; } = [];
+    internal string? VoiceId { get; private set; }
+    internal string? ModelId { get; private set; }
+    internal string Problem { get; private set; } = "";
+    internal string Announcement { get; private set; } = "";
+    internal bool IsRunning => executing is not null;
+    internal bool IsPreparing { get; private set; }
+    internal bool HasDiscovered { get; private set; }
+    internal bool IsRequestingConsent { get; private set; }
+    internal VoiceLabTakeRunQuote? Quote => core.PendingQuote;
+    internal VoiceLabCostPresentationResult? Cost => core.Cost;
+    internal IReadOnlyList<VoiceLabTakeRow> Rows => core.Rows;
+    internal Guid? SelectedTakeId => core.SelectedTakeId;
+    internal Guid? AuditionedTakeId => core.AuditionedTakeId;
+    internal VoiceLabTakeInput? ReviewedInput { get; private set; }
+    internal bool ReviewedInputsCurrent { get; private set; }
+    internal bool CanExecute => !closed && current() && !IsRunning && !IsPreparing && !discovering &&
+        Quote is { } quote && ReferenceEquals(quote, shownQuote) && Cost is not null;
+    internal string ButtonTitle => GenerationButtonTitle(Rows.Count == 0 ? "Generate Takes" : "Generate Again");
+    internal string GenerationButtonTitle(string title) => VoiceLabCostPresentation.ButtonTitle(title, null,
+        new(VoiceLabCostPresentationKind.Inline, Quote?.Estimate.Usd is > 0m and var amount ? VoiceLabCostPresentation.Format(amount) : ""));
+    internal string ButtonName => Quote?.Estimate.Usd is { } amount
+        ? "Generate up to 3 new takes, about " + VoiceLabCostPresentation.Format(amount).Replace("≈ ", "", StringComparison.Ordinal)
+        : "Generate up to 3 new takes";
+    internal string ProgressCopy => $"Generating take {Math.Min(3, Rows.Count + 1)} of 3…";
+    internal Task PendingUpdate { get; private set; } = Task.CompletedTask;
+    internal Task Cleanup { get; private set; } = Task.CompletedTask;
+    internal event EventHandler? Changed;
+
+    internal RewriteGeneration(IVoiceLabTakeRunner takeRunner,
+        Func<CancellationToken, Task<RewriteGenerationChoices>> discover,
+        Func<string, string, uint, CancellationToken, Task<VoiceLabTakeInput?>> buildInput,
+        Func<CancellationToken, Task<bool>> consent, Func<CancellationToken, Task<decimal?>> readMonthlyCap,
+        Func<bool> current, Func<Action, Task>? onUi = null, Action? release = null)
+    {
+        this.discover = discover; this.buildInput = buildInput; this.consent = consent;
+        this.current = current; this.onUi = onUi ?? (action => { action(); return Task.CompletedTask; });
+        this.release = release ?? (() => (takeRunner as IDisposable)?.Dispose());
+        runner = new(takeRunner, ProgressAsync);
+        core = new(runner) { ReadMonthlyCapAsync = readMonthlyCap };
+    }
+
+    internal Task DiscoverAsync()
+    {
+        if (closed || discovering || !current()) return Task.CompletedTask;
+        return discovery = DiscoverCurrentAsync();
+    }
+    private async Task DiscoverCurrentAsync()
+    {
+        if (closed || discovering || !current()) return;
+        discovering = true;
+        Problem = ""; Announcement = "";
+        Notify();
+        var version = revision;
+        try
+        {
+            IsRequestingConsent = true;
+            var allowed = await consent(lifetime.Token);
+            IsRequestingConsent = false;
+            if (!allowed || closed || !current()) return;
+            var choices = await discover(lifetime.Token);
+            if (closed || version != revision || !current()) return;
+            Voices = choices.Voices; Models = choices.Models;
+            if (!Voices.Any(voice => voice.Id == VoiceId)) VoiceId = Voices.FirstOrDefault()?.Id;
+            if (!Models.Any(model => model.Id == ModelId)) ModelId = Models.FirstOrDefault()?.Id;
+            HasDiscovered = true;
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception error) when (error is not OutOfMemoryException) { if (!closed) Fail(error); }
+        finally { IsRequestingConsent = false; discovering = false; Notify(); }
+        if (!closed && HasDiscovered) await InputsChangedAsync();
+    }
+
+    internal Task ChooseVoiceAsync(string? id)
+    {
+        if (id == VoiceId || !Voices.Any(voice => voice.Id == id)) return Task.CompletedTask;
+        VoiceId = id; return InputsChangedAsync();
+    }
+    internal Task ChooseModelAsync(string? id)
+    {
+        if (id == ModelId || !Models.Any(model => model.Id == id)) return Task.CompletedTask;
+        ModelId = id; return InputsChangedAsync();
+    }
+    internal Task InputsChangedAsync()
+    {
+        if (closed) return Task.CompletedTask;
+        Cancel(updating); Cancel(executing);
+        runner.InvalidatePreparation();
+        shownQuote = null; revision++;
+        pendingInput = null; ReviewedInputsCurrent = false;
+        Problem = ""; Announcement = "";
+        var cancellation = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
+        updating = cancellation;
+        IsPreparing = VoiceId is not null && ModelId is not null && current();
+        if (Rows.Count == 0) Phase = IsPreparing ? RewriteGenerationPhase.Preparing : RewriteGenerationPhase.Idle;
+        Notify();
+        return PendingUpdate = PrepareAsync(revision, cancellation);
+    }
+    private async Task PrepareAsync(long version, CancellationTokenSource cancellation)
+    {
+        try
+        {
+            await core.CancelAsync();
+            cancellation.Token.ThrowIfCancellationRequested();
+            if (!IsPreparing || VoiceId is null || ModelId is null) return;
+            var input = await buildInput(VoiceId, ModelId, seed, cancellation.Token);
+            if (closed || revision != version || !current()) return;
+            if (input is null) { Phase = Rows.Count == 0 ? RewriteGenerationPhase.Idle : ReviewPhase(); return; }
+            pendingInput = input.Snapshot();
+            await core.UpdateInputsAsync(input, ct: cancellation.Token);
+            if (revision == version && Rows.Count == 0) Phase = RewriteGenerationPhase.AwaitingApproval;
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception error) when (error is not OutOfMemoryException) { if (!closed && revision == version) Fail(error); }
+        finally
+        {
+            if (ReferenceEquals(updating, cancellation)) { updating = null; IsPreparing = false; Notify(); }
+            cancellation.Dispose();
+        }
+    }
+    internal void MarkEstimateShown(VoiceLabTakeRunQuote quote)
+    {
+        if (closed || IsPreparing || !ReferenceEquals(Quote, quote) || ReferenceEquals(shownQuote, quote)) return;
+        shownQuote = quote; Notify();
+    }
+    internal async Task GenerateAsync(Func<string, CancellationToken, Task<bool>> confirm)
+    {
+        if (closed || IsRunning || IsPreparing || !current()) return;
+        if (Quote is null) { await InputsChangedAsync(); return; }
+        if (!CanExecute) return;
+        var version = revision;
+        var quote = Quote!;
+        if (pendingInput is { } input) pendingInput = input with { Seed = quote.Takes[0].Seed };
+        var cancellation = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
+        executing = cancellation;
+        var declinedAtDispatch = false;
+        core.ConfirmCostAsync = async (copy, token) =>
+        {
+            var approved = await ConfirmAsync(copy, confirm, token);
+            if (!approved) declinedAtDispatch = true;
+            return approved;
+        };
+        Problem = ""; Notify();
+        try
+        {
+            var action = await core.ContinueAsync(cancellation.Token);
+            if (action == VoiceLabGenerationAction.ConfirmationRequired)
+            {
+                if (declinedAtDispatch) return;
+                if (core.Cost is not { } cost || !await ConfirmAsync(cost.Text, confirm, cancellation.Token)) return;
+                cancellation.Token.ThrowIfCancellationRequested();
+                if (closed || revision != version || !current()) return;
+                if (!ReferenceEquals(Quote, quote)) { await InputsChangedAsync(); return; }
+                await core.ApproveAsync(quote, true, cancellation.Token);
+            }
+            if (closed || revision != version) return;
+            if (!ReferenceEquals(Quote, quote))
+            {
+                seed = unchecked(seed + 3);
+                shownQuote = null;
+                if (core.SelectedTakeId is null && new VoiceLabTakeRunResult(Rows, VoiceLabTakeRunEnd.Completed).Best is { } best)
+                    core.SelectTake(best.Id);
+                Phase = ReviewPhase();
+                ReviewedInputsCurrent = ReviewedInput is not null && ReferenceEquals(ReviewedInput, pendingInput);
+                if (Phase == RewriteGenerationPhase.NonePassed) Announcement = NonePassed;
+            }
+            if (runner.Result is { End: VoiceLabTakeRunEnd.Fatal } result)
+                Fail(result.Rows.LastOrDefault()?.Failure ?? new VoiceLabException(VoiceLabErrorKind.ProviderFailure));
+            if (core.PreparationFailure is { } error) Fail(error);
+        }
+        catch (OperationCanceledException) { if (!closed && revision == version) Phase = Rows.Count == 0 ? RewriteGenerationPhase.Cancelled : ReviewPhase(); }
+        catch (VoiceLabException error) when (error.Kind == VoiceLabErrorKind.ConsentRequired && !closed && revision == version && Quote is null)
+        { await InputsChangedAsync(); }
+        catch (Exception error) when (error is not OutOfMemoryException) { if (!closed && revision == version) Fail(error); }
+        finally
+        {
+            if (ReferenceEquals(executing, cancellation)) executing = null;
+            cancellation.Dispose(); Notify();
+        }
+    }
+    private async Task<bool> ConfirmAsync(string copy, Func<string, CancellationToken, Task<bool>> confirm, CancellationToken ct)
+    {
+        var approved = false;
+        Task<bool>? pending = null;
+        await onUi(() =>
+        {
+            if (closed || confirming || ct.IsCancellationRequested || !current()) return;
+            confirming = true;
+            pending = confirm(copy, ct);
+        });
+        if (pending is null) return false;
+        try { approved = await pending.WaitAsync(ct); }
+        finally { await onUi(() => confirming = false); }
+        return approved && !ct.IsCancellationRequested && !closed;
+    }
+    internal async Task CancelAsync()
+    {
+        Cancel(executing);
+        await core.CancelAsync();
+        if (!closed) { Phase = Rows.Count == 0 ? RewriteGenerationPhase.Cancelled : ReviewPhase(); Notify(); }
+    }
+    internal void SelectTake(Guid id) { core.SelectTake(id); Notify(); }
+    internal void AuditionTake(Guid? id) { core.AuditionTake(id); Notify(); }
+    private RewriteGenerationPhase ReviewPhase() => core.SelectedTakeId is { } selected && Rows.FirstOrDefault(row => row.Id == selected) is { } row
+        ? row.Fits ? RewriteGenerationPhase.ReadyToAccept : RewriteGenerationPhase.LengthChanged
+        : Rows.Count == 0 ? RewriteGenerationPhase.Idle : RewriteGenerationPhase.NonePassed;
+    private Task ProgressAsync() => onUi(() =>
+    {
+        if (closed || executing is null || executing.IsCancellationRequested) return;
+        Phase = RewriteGenerationPhase.Generating;
+        if (Rows.Count == 0) ReviewedInput = pendingInput;
+        if (Rows.LastOrDefault() is { Selectable: true } row) Announcement = row.DisplayName + " ready.";
+        Notify();
+    });
+    private void Fail(Exception error)
+    {
+        Problem = RewriteSession.Refusal(error);
+        Announcement = Problem;
+        if (!Rows.Any(row => row.Selectable)) Phase = RewriteGenerationPhase.Failed;
+    }
+    private void Notify() { if (!closed) Changed?.Invoke(this, EventArgs.Empty); }
+    private static void Cancel(CancellationTokenSource? source)
+    {
+        try { source?.Cancel(); } catch (ObjectDisposedException) { }
+    }
+    public void Dispose()
+    {
+        if (closed) return;
+        closed = true; revision++; Cancel(updating); Cancel(executing); lifetime.Cancel(); shownQuote = null;
+        Cleanup = RetireAsync();
+    }
+    private async Task RetireAsync()
+    {
+        try { await core.InvalidateAsync(); await discovery; await PendingUpdate; }
+        finally { release?.Invoke(); lifetime.Dispose(); }
+    }
+    private sealed class ObservedRunner(IVoiceLabTakeRunner inner, Func<Task> changed) : IVoiceLabTakeRunner
+    {
+        internal VoiceLabTakeRunResult? Result { get; private set; }
+        public Task<VoiceLabTakeRunQuote> PrepareAsync(VoiceLabTakeInput input, CancellationToken ct = default) => inner.PrepareAsync(input, ct);
+        public Task DiscardPendingAsync() => inner.DiscardPendingAsync();
+        public void InvalidatePreparation() => inner.InvalidatePreparation();
+        public Task InvalidateAsync() => inner.InvalidateAsync();
+        public bool IsQuoteFresh(VoiceLabTakeRunQuote quote) => inner.IsQuoteFresh(quote);
+        public Task<VoiceLabMonthlyCap?> RefreshMonthlyCapAsync(VoiceLabMonthlyCap? cap, CancellationToken ct = default) => inner.RefreshMonthlyCapAsync(cap, ct);
+        public Task<decimal?> ReadMonthlySpendAsync(VoiceLabMonthlyCap? cap, CancellationToken ct = default) => inner.ReadMonthlySpendAsync(cap, ct);
+        public Task<VoiceLabTakeRunResult> ExecuteAsync(VoiceLabTakeRunQuote quote, bool approved, Func<IReadOnlyList<VoiceLabTakeRow>, Task>? progress = null, CancellationToken ct = default) =>
+            inner.ExecuteAsync(quote, approved, progress, ct);
+        public async Task<VoiceLabTakeRunResult> ExecuteWithDispatchAsync(VoiceLabTakeRunQuote quote, VoiceLabRunDispatch dispatch,
+            Func<IReadOnlyList<VoiceLabTakeRow>, Task>? progress = null, CancellationToken ct = default)
+        {
+            Result = null;
+            return Result = await inner.ExecuteWithDispatchAsync(quote, dispatch, async rows =>
+                { if (progress is not null) await progress(rows); await changed(); }, ct);
+        }
+    }
+}
+#endif
