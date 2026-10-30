@@ -234,7 +234,7 @@ internal sealed partial class RewritePanel : Grid
         AutomationProperties.SetAutomationId(generationProgress, "Rewrite.GenerationProgress");
         AutomationProperties.SetAutomationId(generationError, "Rewrite.GenerationError");
         AutomationProperties.SetAutomationId(cancelGeneration, "Rewrite.GenerationCancel");
-        var create = Ui.Button("Create Your Voice… (2 min)", () =>
+        var create = Ui.Button("Create Your Voice…", () =>
         {
             App.OpenSettings("Voice Lab");
             App.Settings?.ShowCreateVoice();

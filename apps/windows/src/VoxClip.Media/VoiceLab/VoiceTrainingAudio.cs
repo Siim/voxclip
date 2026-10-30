@@ -1,5 +1,4 @@
 using System.Buffers.Binary;
-using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Domain.VoiceLab;
 #pragma warning disable CS1591
 
@@ -61,18 +60,38 @@ public static class VoiceTrainingAudio
         }
         return result;
     }
-    public static VoiceTrainingSample ProjectSpan(float[] take, int rate, double start, double end, IReadOnlyList<TimedWord> transcript, bool diarization,
-        bool cleanAudioApplied = false)
+    /// <summary>The take's §6.5.1 frame levels: one streamed decode of the first audio track's mono mix, never the whole take in
+    /// memory. Missing media, a decode failure or a rate outside 8–96 kHz throws <see cref="VoiceLabSourceAudioException"/>.</summary>
+    public static async Task<VoiceTrainingTake> AnalyzeAsync(string source, int rate, CancellationToken ct = default)
     {
-        if (rate is < 8000 or > 96000 || !double.IsFinite(start) || !double.IsFinite(end) || start < 0 || end - start is < 5 or > 30 || end * rate > take.Length) throw Invalid();
-        var items = transcript.Where(word => word.End > start && word.Start < end).ToArray();
-        if (items.Length == 0 || items.Any(word => word.Kind != WordKind.Word || word.Conf is { } confidence && (!double.IsFinite(confidence) || confidence < 0.8) ||
-            !double.IsFinite(word.Start) || !double.IsFinite(word.End) || word.End <= word.Start || word.Start < start || word.End > end) ||
-            diarization && (items.Any(word => string.IsNullOrWhiteSpace(word.Speaker)) || items.Select(word => word.Speaker).Distinct().Count() != 1)) throw Invalid();
-        var chunk = take[(int)Math.Ceiling(start * rate)..(int)Math.Floor(end * rate)];
-        var snr = SnrDb(chunk, rate);
-        if (snr < 20) throw Invalid();
-        return new(Wav(chunk, rate), chunk.Length / (double)rate, "project", snr, cleanAudioApplied);
+        var levels = new VoiceTrainingLevels(rate);
+        await VoiceLabSourceAudio.TrainingMixAsync(source, rate, (samples, _) => levels.Append(samples), null, ct).ConfigureAwait(false);
+        return levels.Finish();
+    }
+    /// <summary>Cuts the selected spans from the same mono mix in one streamed pass that stops after the last span, as normalised
+    /// project training samples in the given order.</summary>
+    public static async Task<IReadOnlyList<VoiceTrainingSample>> ProjectSpansAsync(string source, int rate, IReadOnlyList<VoiceTrainingSpan> spans,
+        CancellationToken ct = default)
+    {
+        var cut = new VoiceTrainingCut(spans, rate);
+        await VoiceLabSourceAudio.TrainingMixAsync(source, rate, cut.Append, next => next < cut.End, ct).ConfigureAwait(false);
+        return cut.Finish();
+    }
+    /// <summary>A span's source samples [floor((startMs × rate + 500) / 1000), floor((endMs × rate + 500) / 1000)) in integer
+    /// arithmetic, so a 5–30 s span always cuts 5–30 s of samples.</summary>
+    internal static (long Start, long End) SpanSamples(VoiceTrainingSpan span, int rate)
+    {
+        if (rate is < 8000 or > 96000 || span.StartMs < 0 || span.EndMs - span.StartMs is < VoiceTrainingSpans.SpanMinMs or > VoiceTrainingSpans.SpanMaxMs ||
+            span.EndMs > long.MaxValue / 96000 || !double.IsFinite(span.SnrDb) || span.SnrDb < VoiceTrainingSpans.MinSnrDb) throw Invalid();
+        return ((span.StartMs * rate + 500) / 1000, (span.EndMs * rate + 500) / 1000);
+    }
+    /// <summary>One cut span as a project sample: normalised like every training WAV, lasting its sample count over the rate, with the
+    /// selection's take-relative SNR. Project spans always clear 20 dB, so they never ask for background-noise removal.</summary>
+    internal static VoiceTrainingSample ProjectSpan(float[] samples, int rate, VoiceTrainingSpan span)
+    {
+        var (start, end) = SpanSamples(span, rate);
+        if (samples.LongLength != end - start) throw Invalid();
+        return new(Wav(samples, rate), samples.Length / (double)rate, "project", span.SnrDb);
     }
     public static double SnrDb(float[] samples, int rate)
     {
@@ -91,4 +110,72 @@ public static class VoiceTrainingAudio
         return 20 * Math.Log10(Math.Max(speech[speech.Length / 2], 1e-9) / Math.Max(levels[levels.Count / 10], 1e-9));
     }
     private static VoiceLabException Invalid() => new(VoiceLabErrorKind.InvalidAudio);
+}
+
+/// <summary>A take's 10 ms levels in dBFS and its decoded length (§6.5.1).</summary>
+public sealed record VoiceTrainingTake(int Rate, long Samples, IReadOnlyList<double> FrameDb)
+{
+    /// <summary>The decoded length floored to whole milliseconds, so every selected span ends inside the decoded samples.</summary>
+    public double Duration => Samples * 1000 / Rate / 1000.0;
+}
+
+/// <summary>Streaming §6.5.1 levels: frame i covers mono samples floor(i × rate / 100) up to floor((i + 1) × rate / 100), its level is
+/// 20 × log10(max(rms, 1e-9)) with the RMS in binary64, and the take has floor(samples × 100 / rate) frames.</summary>
+internal sealed class VoiceTrainingLevels(int rate)
+{
+    private readonly List<double> levels = [];
+    private long samples;
+    private long frameEnd = rate / 100;
+    private double power;
+    private long count;
+    internal void Append(ReadOnlySpan<float> mono)
+    {
+        foreach (var value in mono)
+        {
+            power += (double)value * value; count++; samples++;
+            if (samples < frameEnd) continue;
+            levels.Add(20 * Math.Log10(Math.Max(Math.Sqrt(power / count), 1e-9)));
+            power = 0; count = 0;
+            frameEnd = (levels.Count + 1L) * rate / 100;
+        }
+    }
+    internal VoiceTrainingTake Finish() => new(rate, samples, levels.Take((int)(samples * 100 / rate)).ToArray());
+}
+
+/// <summary>Collects the selected spans' samples from sequential mono blocks; the take must reach the last span.</summary>
+internal sealed class VoiceTrainingCut
+{
+    private readonly int rate;
+    private readonly VoiceTrainingSpan[] spans;
+    private readonly (long Start, long End)[] bounds;
+    private readonly float[][] samples;
+    private long consumed;
+    internal VoiceTrainingCut(IReadOnlyList<VoiceTrainingSpan> spans, int rate)
+    {
+        if (spans.Count is < 1 or > 24) throw new VoiceLabException(VoiceLabErrorKind.InvalidInput);
+        this.rate = rate; this.spans = spans.ToArray();
+        bounds = this.spans.Select(span => VoiceTrainingAudio.SpanSamples(span, rate)).ToArray();
+        samples = bounds.Select(bound => new float[bound.End - bound.Start]).ToArray();
+        End = bounds.Max(bound => bound.End);
+    }
+    internal long End { get; }
+    internal void Append(ReadOnlySpan<float> block, long first)
+    {
+        for (var index = 0; index < bounds.Length; index++)
+        {
+            var from = Math.Max(first, bounds[index].Start);
+            var to = Math.Min(first + block.Length, bounds[index].End);
+            if (to > from) block[(int)(from - first)..(int)(to - first)].CopyTo(samples[index].AsSpan((int)(from - bounds[index].Start)));
+        }
+        consumed = Math.Max(consumed, first + block.Length);
+    }
+    internal IReadOnlyList<VoiceTrainingSample> Finish()
+    {
+        try
+        {
+            if (consumed < End) throw new VoiceLabSourceAudioException(VoiceLabSourceAudioErrorCode.RangeOutsideMedia);
+            return spans.Select((span, index) => VoiceTrainingAudio.ProjectSpan(samples[index], rate, span)).ToArray();
+        }
+        finally { foreach (var span in samples) Array.Clear(span); }
+    }
 }

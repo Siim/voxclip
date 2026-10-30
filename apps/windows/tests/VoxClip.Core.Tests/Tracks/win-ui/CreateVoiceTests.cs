@@ -62,7 +62,6 @@ public sealed class CreateVoiceTests
 
     [Theory]
     [InlineData("speaker")]
-    [InlineData("language")]
     [InlineData("plan")]
     [InlineData("beta")]
     public async Task PreGateBlocksBeforeCaptureConsentAndScribe(string closed)
@@ -71,13 +70,27 @@ public sealed class CreateVoiceTests
         setup.Speaker = closed != "speaker";
         setup.Enabled = closed != "beta";
         setup.Plan = closed == "plan" ? "Check your ElevenLabs account before creating a voice." : null;
-        setup.Session.SetInputs("Example", closed == "language" ? "et" : "en", true, true, true);
+        setup.Session.SetInputs("Example", "en", true, true, true);
         Assert.NotNull(setup.Session.BlockedReason);
         await setup.Session.RecordAsync();
         Assert.False(setup.Session.RequestVerification());
         await setup.Session.ApproveVerificationAsync(true);
         Assert.Equal(0, setup.Capture.Starts); Assert.Equal(0, setup.Consents); Assert.Equal(0, setup.ScribeCalls);
         setup.AssertNoStatement();
+    }
+
+    [Theory]
+    [InlineData("et")]
+    [InlineData("et-EE")]
+    [InlineData("en-GB")]
+    [InlineData("fr")]
+    public async Task UncalibratedTranscriptLanguagesRecordAnEnglishStatement(string transcript)
+    {
+        await using var setup = new ConsentSetup();
+        setup.Session.SetInputs("Example", transcript, true, true, true);
+        Assert.Equal("en", setup.Session.Statement!.Language);
+        Assert.StartsWith("My name is Example. Today is ", setup.Session.Statement.Text);
+        Assert.Null(setup.Session.BlockedReason); Assert.True(setup.Session.CanRecord);
     }
 
     [Fact]
@@ -536,6 +549,7 @@ public sealed class CreateVoiceTests
     {
         public bool Enabled => inner.Enabled;
         public bool SpeakerAvailable => inner.SpeakerAvailable;
+        public bool SpeakerCalibrated(string language) => inner.SpeakerCalibrated(language);
         public string? PlanMessage => inner.PlanMessage;
         public string VerificationCost => inner.VerificationCost;
         public VoiceConsentStatement Statement(string name, string language, DateOnly date) => inner.Statement(name, language, date);

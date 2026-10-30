@@ -143,9 +143,28 @@ public static class VoiceLabSourceAudio
         return builder.Finish();
     }
 
-    private delegate void SampleBlock(ReadOnlySpan<float> samples, long first);
+    internal delegate void SampleBlock(ReadOnlySpan<float> samples, long first);
 
-    private static unsafe int Decode(string path, int? expectedRate, long start, long? end, SampleBlock consume, CancellationToken ct)
+    /// <summary>The first audio track's mono mix (the mean of its channels) at the source rate, from sample 0 in decode order, for
+    /// own-voice training (§6.5.1): one streamed pass that stops once <paramref name="more"/> refuses the next sample index. The
+    /// decoded rate must equal <paramref name="rate"/> (8–96 kHz), and it is returned; missing media and decode failures are refused.</summary>
+    internal static Task<int> TrainingMixAsync(string source, int rate, SampleBlock consume, Func<long, bool>? more, CancellationToken ct)
+        => MediaThread.Run("voice-training-audio", () =>
+        {
+            if (rate is < 8_000 or > 96_000) throw Failure(VoiceLabSourceAudioErrorCode.UnsupportedRate);
+            try
+            {
+                FfmpegLoader.InitializeAsync(ct).GetAwaiter().GetResult();
+                return Decode(source, rate, 0, null, consume, ct, more);
+            }
+            catch (VoxClipException failure) when (failure.Code == VoxClipErrorCode.NoAudioTrack)
+            { throw Failure(VoiceLabSourceAudioErrorCode.NoAudioTrack); }
+            catch (Exception failure) when (failure is IOException or UnauthorizedAccessException or VoxClipException)
+            { throw Failure(VoiceLabSourceAudioErrorCode.Unreadable); }
+        }, ct);
+
+    private static unsafe int Decode(string path, int? expectedRate, long start, long? end, SampleBlock consume, CancellationToken ct,
+        Func<long, bool>? more = null)
     {
         using var decoder = OpenDecoder(path, end.HasValue);
         var rate = decoder.Codec->sample_rate;
@@ -166,7 +185,7 @@ public static class VoiceLabSourceAudio
         var layout = new AVChannelLayout();
         try
         {
-            while ((!end.HasValue || next < end.Value) && decoder.Next(ct))
+            while ((!end.HasValue || next < end.Value) && (more is null || more(next)) && decoder.Next(ct))
             {
                 ct.ThrowIfCancellationRequested();
                 var frame = decoder.Frame;

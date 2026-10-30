@@ -1,5 +1,13 @@
 # Windows fixed contracts
 
+### 2026-10-31 - Windows own-voice training from the project's audio
+
+- Voice Lab §6.5 (a) on Windows. Core `VoiceTrainingSpans.Select` replays all 12 `training-spans.json` cases exactly, and `VoiceTrainingSpans.Inputs` builds its items and excluded ranges from a project. Any millisecond value beyond 2^53 is refused as invalid input, so the integer steps cannot overflow.
+- Media `VoiceTrainingAudio.AnalyzeAsync` streams the first audio track's mono mix once into the §6.5.1 frame levels. The duration it reports is the decoded length floored to whole milliseconds, so every selected span ends inside the decoded samples. `ProjectSpansAsync` cuts the selected spans from the same mix in one pass that stops after the last span. It replaces the old whole-take `ProjectSpan`.
+- `VoiceEnrollment.PrepareAsync` refuses mixed sources. Project spans must number 1-24 and total 30-120 s, counted in whole milliseconds (round(samples × 1000 / rate)) so they match the selection exactly. Every span gets the speaker match before any request. Dropped spans are never replaced, fewer than 30 s kept is `SpeakerMismatch`, and project spans never ask for noise removal. The read-aloud rules are unchanged. Tests cover the testable `PrepareTrainingAsync` step with a fake embedder and a transport that fails if called.
+- Create Your Voice opens with the editor's project. A project with a transcript is the default source, with the §6.5.2 picker, lines, speaker block and confirmation copy. The analysis starts only while Voice Lab and the speaker check are open, so with A8 closed nothing is decoded and the sheet keeps `SpeakerUnavailable`. The statement language falls back to English unless the speaker check is calibrated for the transcript's language. The Rewrite button reads "Create Your Voice…", and the privacy row follows §12.
+- A8 stays closed. Native picker layout, Narrator, keyboard and real-media decode (the `RequiresFFmpeg` test) remain owed on Windows.
+
 ### 2026-10-30 — lead — Windows Voice Lab UI merged
 
 - Squash-merged track/sol-win-vl-ui-editor at 61de6b66, which contains both Windows Voice Lab UI tracks (R1-R12). Terra review findings through R11 were folded in. The R12 review's two P2s harden the Release checks and are owed in a follow-up before the first Windows release: inspect the shipped win-x64 and win-arm64 Release App assemblies in CI rather than the typecheck surrogate, and exclude fakes, harnesses and seams by inventory rather than by name markers.

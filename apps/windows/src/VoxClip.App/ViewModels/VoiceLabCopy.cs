@@ -23,6 +23,19 @@ internal static class VoiceLabCopy
     internal const string MicrophoneDeviceLost = "The microphone stopped sending audio. This take was discarded. Check your input device and record again.";
     internal const string MicrophoneWaiting = "Waiting for the microphone…";
     internal const string MicrophoneSettingsUri = "ms-settings:privacy-microphone";
+    internal const string TrainingAudio = "Training audio";
+    internal const string ProjectChoice = "Use this project's audio (recommended)";
+    internal const string ReadAloudChoice = "Record a read-aloud (about 90 s)";
+    internal const string ProjectUnreadable = "VoxClip can't read this project's audio. Record a read-aloud instead.";
+    internal const string NoProject = "Open a project to use its audio instead.";
+    internal const string NoTranscript = "Transcribe this project to use its audio instead.";
+    internal const string ProjectMismatch = "Some of this project's audio doesn't sound like the voice in your consent statement. Record a read-aloud instead.";
+    internal const string RecordReadAloud = "Record a Read-Aloud";
+    internal static string ProjectFinding(string project) => "Finding clear speech in " + project + "…";
+    internal static string ProjectFound(long seconds, string project) => Seconds(seconds) + " s of clear speech found in " + project;
+    internal static string ProjectTooLittle(long seconds) => seconds == 0 ? "This project has no clear speech to use. Record a read-aloud instead."
+        : "This project has only " + Seconds(seconds) + " s of clear speech. Record a read-aloud instead.";
+    internal static string Seconds(long seconds) => seconds.ToString(System.Globalization.CultureInfo.InvariantCulture);
     internal const string MicrophoneOpenSettings = "Open Settings";
     internal static string MicrophoneDeviceLine(string name) => "Microphone: " + name;
     internal static string MicrophoneFailure(VoxClip.Media.Audio.MicrophoneError error) => error switch

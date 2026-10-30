@@ -28,7 +28,8 @@ public sealed class RewriteGenerationTests
         Assert.Contains("generation.MarkEstimateShown(quote)", panel);
         Assert.Contains("Ui.ConfirmAsync(XamlRoot, \"Generate Takes\", copy, \"Continue\", token)", panel);
         Assert.Contains("App.Settings?.ShowCreateVoice()", panel);
-        Assert.Contains("Create Your Voice… (2 min)", panel);
+        Assert.Contains("Ui.Button(\"Create Your Voice…\", () =>", panel);
+        Assert.DoesNotContain("(2 min)", panel);
         Assert.DoesNotContain("Clean Audio", panel);
         Assert.Contains("prices: VoiceLabPrices.Load(), synthesisModel: \"eleven_multilingual_v2\"", Source("Pages/EditorPage.xaml.cs"));
         Assert.Contains("panel.DebugFitStatesAsync", Source("Pages/EditorPage.NativeProbe.cs"));

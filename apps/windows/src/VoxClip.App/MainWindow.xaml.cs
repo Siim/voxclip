@@ -20,6 +20,8 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
     internal string? ProjectPath { get; private set; }
     internal string VoiceEnrollmentLanguage => editor?.ViewModel?.Project.Transcript?.Language
         ?? home.ViewModel.RecentProjects.Select(project => project.TranscriptLanguage).FirstOrDefault(language => language is not null) ?? "en";
+    /// <summary>The editor's open project as own-voice training audio (voice-lab.md §6.5 a), or null when this window has none.</summary>
+    internal VoiceTrainingProject? VoiceTrainingProject => editor is { ViewModel: { } model } page ? new(model.Title, model.Project, page.MediaPath) : null;
     internal string CurrentScreen => ContentFrame.Content is EditorPage ? "editor" : ContentFrame.Content is HomePage ? "home" : "none";
     /// <summary>Sidebar rows for this window.</summary>
     internal ShellViewModel Shell { get; } = new();

@@ -36,6 +36,7 @@ internal sealed class DebugVoiceCreationBackend : IVoiceCreationBackend
     }
     public bool Enabled => inner.Enabled;
     public bool SpeakerAvailable => inner.SpeakerAvailable;
+    public bool SpeakerCalibrated(string language) => inner.SpeakerCalibrated(language);
     public string? PlanMessage => inner.PlanMessage;
     public string VerificationCost => inner.VerificationCost;
     public bool CreationPending => client.HasPendingCreation;
@@ -59,13 +60,16 @@ internal sealed class DebugVoiceCreationBackend : IVoiceCreationBackend
         finally { Array.Clear(samples); }
         ct.ThrowIfCancellationRequested(); return Task.CompletedTask;
     }
-    public Task<VoiceCreationQuote> PrepareCreationAsync(string recordId, string name, CancellationToken ct)
+    public Task<VoiceProjectAudio> AnalyzeProjectAsync(VoiceTrainingProject project, CancellationToken ct) => inner.AnalyzeProjectAsync(project, ct);
+    public Task<VoiceCreationQuote> PrepareCreationAsync(string recordId, string name, VoiceProjectAudio? project, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
         if (!Enabled || !SpeakerAvailable || scenario == "speaker-unavailable") throw new VoiceConsentException(VoiceConsentError.SpeakerUnavailable);
         if (!embedder.Matches(scenario == "speaker-mismatch")) throw new VoiceConsentException(VoiceConsentError.SpeakerMismatch);
-        if (statement is null || trainingSeconds < 60 || CreationPending) throw new VoiceConsentException(VoiceConsentError.InvalidRecord);
-        return Task.FromResult(new VoiceCreationQuote(new(VoiceLabCostPresentationKind.Inline, ""), new Draft(recordId, name, clock.GetTimestamp())));
+        if (statement is null || (project is null ? trainingSeconds < 60 : project.Selection.SelectedMs < 30_000) || CreationPending)
+            throw new VoiceConsentException(VoiceConsentError.InvalidRecord);
+        return Task.FromResult(new VoiceCreationQuote(new(VoiceLabCostPresentationKind.Inline, ""), new Draft(recordId, name, clock.GetTimestamp()),
+            project is null ? null : new(project.Name, project.Selection.SelectedMs / 1000)));
     }
     public bool QuoteIsFresh(VoiceCreationQuote quote) => quote.Ticket is Draft draft && scenario != "expired" && clock.GetElapsedTime(draft.PreparedAt) < TimeSpan.FromMinutes(5);
     public async Task<VoiceConsentRecord> CreateAsync(VoiceCreationQuote quote, CancellationToken ct)
