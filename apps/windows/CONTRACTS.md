@@ -1,5 +1,9 @@
 # Windows fixed contracts
 
+### 2026-10-30 — sol-win-voicelab — C7 declined confirmation (Terra P3)
+
+Declining `ApproveAsync` retains the same fresh immutable quote, displayed price, previous rows, selection and audition; another Continue click reopens confirmation without dispatch or manual preparation. This matches Mac W10's early return rather than replacing a declined quote. `DecliningKeepsQuotePriceAndPriorTakesForTheNextConfirmation` fails against 8ca4d1ce. Live rechecking of the cap on that next click is covered by the separate C7 live-cap change.
+
 ### 2026-10-30 — sol-win-voicelab — C7 identity-less creation recovery
 
 Mirror Mac 176f687a: uncertain creations without a creator fingerprint never discover or expire, and persist manual review with “Recovery needs the ElevenLabs key that started this voice.” `VoiceConsentStore.StopLookingForCreation(Guid id, DateTimeOffset now)` is the explicit local-only stop; only it marks a creation's `remoteStateUnknown`, retains an abandoned journal tombstone and stamps the available audit hashes with `deletedAt`. Restart completes every durable cleanup boundary without provider calls or restoring consent. Legacy deletion remains region-only. The operation exposes `ExpectedVoiceName` and `StartedAt` for the UI's unique accessible label: voice name plus “d MMMM yyyy”, falling back to an operation ordinal. Unlike Mac, no Settings UI ships on this track; the UI track must confirm the stop action with Cancel default. Existing Windows journal casing is retained; new fields use Mac's `expectedVoiceName` and `remoteStateUnknown` names, and creator JSON remains the shared string-region shape. Eight regressions fail on 8ca4d1ce (six stop boundaries, repeated 30-day restarts, creator-bound stop refusal); ordinary discovery tests now use creator-bound fixtures.

@@ -7,6 +7,28 @@ namespace VoxClip.Core.Tests.Tracks.VoiceLab;
 
 public sealed class VoiceLabGenerationSessionTests
 {
+    [Fact]
+    public async Task DecliningKeepsQuotePriceAndPriorTakesForTheNextConfirmation()
+    {
+        var runner = new Runner();
+        var session = new VoiceLabGenerationSession(runner);
+        await session.UpdateInputsAsync(Input(), ct: Token);
+        await session.ContinueAsync(Token);
+        var previous = session.Rows;
+        session.SelectTake(previous[0].Id); session.AuditionTake(previous[1].Id);
+        runner.Price = 0.60m;
+        var quote = await session.UpdateInputsAsync(Input(), ct: Token);
+        var cost = session.Cost;
+        Assert.Equal(VoiceLabGenerationAction.ConfirmationRequired, await session.ContinueAsync(Token));
+        await session.ApproveAsync(quote, false, Token);
+        Assert.Same(quote, session.PendingQuote);
+        Assert.Equal(cost, session.Cost);
+        Assert.Same(previous, session.Rows);
+        Assert.Equal(previous[0].Id, session.SelectedTakeId);
+        Assert.Equal(previous[1].Id, session.AuditionedTakeId);
+        Assert.Equal(VoiceLabGenerationAction.ConfirmationRequired, await session.ContinueAsync(Token));
+        Assert.Equal(3, runner.Sends);
+    }
     private static CancellationToken Token => TestContext.Current.CancellationToken;
     private static VoiceLabTakeInput Input() => new("Hello", "eleven_v3", "record", "en", 1, "source", [0.1f], 24000, [], new HashSet<string>(),
         new("first", "last", [], [], 0, 1, 0, 24000, new(VoiceLabSeamKind.Hard, 0, 0, 0), new(VoiceLabSeamKind.Hard, 1, 24000, 0)), null, null, false, true);
@@ -228,9 +250,9 @@ public sealed class VoiceLabGenerationSessionTests
         await session.GenerateAgainAsync(input, ct: Token);
         var kept = session.Rows;
         await session.ApproveAsync(session.PendingQuote!, false, Token);
-        Assert.Same(kept, session.Rows); Assert.Null(session.PendingQuote); Assert.Null(runner.Pending);
+        Assert.Same(kept, session.Rows); Assert.NotNull(session.PendingQuote); Assert.NotNull(runner.Pending);
         Assert.Equal(6, runner.Sends);
-        await Assert.ThrowsAsync<VoiceLabException>(() => session.ContinueAsync(Token));
+        Assert.NotNull(session.Cost);
     }
 
     [Theory]

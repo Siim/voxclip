@@ -136,6 +136,7 @@ public sealed class VoiceLabGenerationSession(IVoiceLabTakeRunner runner)
         lock (sync)
         {
             if (!ReferenceEquals(RequireQuote(), expected)) throw new VoiceLabException(VoiceLabErrorKind.ConsentRequired);
+            if (!approved) return null;
             snapshot = input!; monthlyCap = cap; version = revision;
             quote = null; cost = null; executing = true;
             cancellation = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -153,7 +154,6 @@ public sealed class VoiceLabGenerationSession(IVoiceLabTakeRunner runner)
                 cancellation.Token.ThrowIfCancellationRequested();
                 if (revision != version || !runner.IsQuoteFresh(expected)) throw new VoiceLabException(VoiceLabErrorKind.ConsentRequired);
             }
-            if (!approved) { await runner.DiscardPendingAsync().ConfigureAwait(false); return null; }
             var result = await runner.ExecuteAsync(expected, true, progress =>
             {
                 lock (sync)
