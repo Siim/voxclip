@@ -139,8 +139,9 @@ Historical layout, superseded by ADR-R29 and rounds 2-4. The Clips pane, seconda
 - Imports present an explicit transcription dialog. A compatible local model
   no longer starts transcription on dialog opening. The dialog shows the
   local/cloud data flow, installed-model prerequisite, inline ElevenLabs key
-  entry, and a clear per-take upload checkbox. Neither route starts until
-  Transcribe is chosen; cloud still checks its key and consent first.
+  entry, and the transcription §8.5 first-use ElevenLabs consent page. Neither
+  route starts until Transcribe is chosen; first cloud use instead requires
+  Continue, which stores `transcription.cloudConsent.elevenlabs` before upload.
 - The editor shows the active clip in its context line and keeps playback and
   Export visible. Its clip-footer export opens with Selected clips chosen,
   while the top Export opens with Full edit; the existing `ExportSelection.Scope`
@@ -223,8 +224,9 @@ Historical layout, superseded by ADR-R29 and rounds 2-4. The Clips pane, seconda
   and offers optional grouped AI connector choice, secure key save, status,
   connection test and data-flow consent. New imports enter the transcription
   sheet and start local transcription when a compatible verified local model
-  is installed. Cloud transcription remains an explicit per-take action with
-  key and audio-upload confirmation; its checkbox starts clear for every take.
+  is installed. Cloud transcription remains an explicit per-take action with a key; the
+  first upload requires the §8.5 Continue/Cancel page and stores the schema
+  consent grant. Later takes reuse that grant and still require Transcribe.
   Changing the ElevenLabs residency region recomposes the speech service for
   subsequent takes while keeping an in-flight transcriber alive until shutdown.
   No model was downloaded in verification.

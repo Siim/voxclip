@@ -167,7 +167,7 @@ public sealed partial class SettingsWindow : Window
         var region = Ui.Choice("ElevenLabs region", ["Default", "US", "EU", "India", "Singapore"], Math.Max(0, Array.IndexOf(regions, App.Services.Get("transcription.elevenlabs.region", "default"))));
         region.SelectionChanged += (_, _) => Save("transcription.elevenlabs.region", regions[region.SelectedIndex]); AddSetting(region);
         Body.Children.Add(Ui.Text("Residency regions are for ElevenLabs Enterprise workspaces with data residency, which have their own keys. Most accounts use Default.", "HelperText"));
-        await ProviderRowAsync("ElevenLabs", "Sends the audio track to ElevenLabs, which keeps it under its terms. You confirm each take before upload.", "elevenlabs-api-key", null);
+        await ProviderRowAsync("ElevenLabs", "Sends the audio track to ElevenLabs, which keeps it under its terms. You confirm the first upload before audio is sent.", "elevenlabs-api-key", null);
         if (generation != pageGeneration) return;
         Body.Children.Add(Ui.Button("Manage local models…", () => Navigation.SelectedItem = Navigation.MenuItems.OfType<NavigationViewItem>().First(item => (string)item.Tag == "Local Models")));
         Body.Children.Add(Ui.Text("Models download only after you confirm. Local transcription runs entirely on this PC.", "HelperText"));

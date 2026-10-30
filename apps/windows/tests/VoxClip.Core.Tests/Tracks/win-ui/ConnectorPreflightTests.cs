@@ -58,6 +58,28 @@ public sealed class ConnectorPreflightTests
     }
 
     [Fact]
+    public void ElevenLabsUsesOneFirstUseDialogAndPersistsOnlyOnContinue()
+    {
+        var root = Path.GetDirectoryName(Environment.GetEnvironmentVariable("VOXCLIP_SHARED_DIR"))!;
+        var source = File.ReadAllText(Path.Combine(root, "apps/windows/src/VoxClip.App/Controls/TranscriptionDialog.cs"));
+        Assert.DoesNotContain("cloudConsent.IsChecked", source);
+        Assert.Contains("Title = \"Transcribe with ElevenLabs?\"", source);
+        Assert.Contains("PrimaryButtonText = \"Continue\"; CloseButtonText = \"Cancel\"", source);
+        var handler = source[source.IndexOf("private async void Transcribe", StringComparison.Ordinal)..source.IndexOf("private void ShowCloudConsent", StringComparison.Ordinal)];
+        Assert.Contains("if (confirmingCloud)", handler);
+        Assert.Contains("if (startingTranscription || closed || model.IsLeaving) return", handler);
+        var save = handler.IndexOf("SetAsync(\"transcription.cloudConsent.elevenlabs\", true", StringComparison.Ordinal);
+        var run = handler.IndexOf("await RunTranscriptionAsync()", StringComparison.Ordinal);
+        Assert.True(save >= 0 && run > save);
+        var workflow = source[source.IndexOf("private async Task RunTranscriptionAsync", StringComparison.Ordinal)..];
+        var consent = workflow.IndexOf("Get(\"transcription.cloudConsent.elevenlabs\", false)", StringComparison.Ordinal);
+        var audio = workflow.IndexOf("ExtractAudioAsync", StringComparison.Ordinal);
+        Assert.True(consent >= 0 && audio > consent);
+        Assert.Contains("ShowCloudConsent(); return;", workflow);
+        Assert.DoesNotContain("new ContentDialog", source);
+    }
+
+    [Fact]
     public void ConnectionTestCopyShowsTheActualModelFallbackAndMismatch()
     {
         Assert.Equal("Works · chosen · 1.2 s", ConnectorTestPresentation.Text(new(true, "chosen", false, 1.234)));
