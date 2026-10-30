@@ -97,6 +97,7 @@ public sealed record VoiceLabTakeRow(Guid Id, int Index, uint Seed, VoiceLabRece
     VoiceLabAudioResult? Generated = null, VoiceLabTakeQuote? Quote = null, VoiceLabTakeAudio? Audio = null,
     VoiceLabTakeQaResult? Qa = null, double? Score = null, Exception? Failure = null)
 {
+    public string DisplayName => "Take " + (Index + 1).ToString(System.Globalization.CultureInfo.InvariantCulture);
     public bool Selectable => Failure is null && Qa?.Passed == true && Audio is not null;
     public bool Fits => Audio?.Fit is VoiceLabFitResult.Exact;
 }

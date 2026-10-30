@@ -332,10 +332,67 @@ public sealed class VoiceLabTakeRunTests
         Assert.Equal(2, fixture.Remote.Qa);
         var second = await fixture.Run.PrepareAsync(fixture.Input, Token);
         fixture.Remote.Mismatches = 100;
-        var stopped = await fixture.Run.ExecuteAsync(second, true, rows => { fixture.Current = false; fixture.Gate.Invalidate(); return Task.CompletedTask; }, Token);
+        var stopped = await fixture.Run.ExecuteAsync(second, true, rows =>
+        {
+            if (rows.Count > 0) { fixture.Current = false; fixture.Gate.Invalidate(); }
+            return Task.CompletedTask;
+        }, Token);
         Assert.Equal(VoiceLabTakeRunEnd.Invalidated, stopped.End);
         Assert.Equal(3, fixture.Remote.Seeds.Count);
         Assert.False(fixture.Client.QuotesAreFresh(second.Actions));
+    }
+    [Fact]
+    public async Task RegenerationQuoteAndCancelledApprovalKeepPriorScratchAndAcceptance()
+    {
+        await using var fixture = new Fixture();
+        var first = await fixture.Run.ExecuteAsync(await fixture.Prepare(), true, ct: Token);
+        var row = Assert.Single(first.Rows);
+        Assert.True(row.Selectable);
+        var scratch = Assert.IsType<VoiceLabTakeScratch>(fixture.Run.Scratch(row.Id));
+        var second = await fixture.Run.PrepareAsync(fixture.Input, Token);
+        Assert.True(scratch.IsValid);
+        Assert.Same(scratch, fixture.Run.Scratch(row.Id));
+        await fixture.Run.PublishForAcceptanceAsync(row.Id, DateTimeOffset.UnixEpoch, Token);
+        await fixture.Run.DiscardPendingAsync();
+        Assert.True(scratch.IsValid);
+        await fixture.Run.PublishForAcceptanceAsync(row.Id, DateTimeOffset.UnixEpoch, Token);
+        Assert.False(fixture.Client.QuotesAreFresh(second.Actions));
+        Assert.Single(fixture.Remote.Seeds);
+    }
+    [Fact]
+    public async Task WholeRunLaunchRetiresPriorRowsAndRestartsAtTakeOne()
+    {
+        await using var fixture = new Fixture();
+        var first = await fixture.Run.ExecuteAsync(await fixture.Prepare(), true, ct: Token);
+        var prior = Assert.Single(first.Rows);
+        var scratch = Assert.IsType<VoiceLabTakeScratch>(fixture.Run.Scratch(prior.Id));
+        var second = await fixture.Run.PrepareAsync(fixture.Input with { Seed = 100 }, Token);
+        Assert.True(scratch.IsValid);
+        Assert.Equal(3, second.Takes.Count);
+        fixture.Remote.Mismatches = 100;
+        var started = false;
+        var result = await fixture.Run.ExecuteAsync(second, true, rows =>
+        {
+            if (rows.Count == 0) { started = true; Assert.False(scratch.IsValid); Assert.Null(fixture.Run.Scratch(prior.Id)); }
+            return Task.CompletedTask;
+        }, Token);
+        Assert.True(started);
+        Assert.Equal(new[] { "Take 1", "Take 2", "Take 3" }, result.Rows.Select(row => row.DisplayName));
+        Assert.Equal(new uint[] { uint.MaxValue, 100, 101, 102 }, fixture.Remote.Seeds);
+        await Assert.ThrowsAsync<VoiceLabException>(() => fixture.Run.PublishForAcceptanceAsync(prior.Id, DateTimeOffset.UnixEpoch, Token));
+    }
+    [Fact]
+    public async Task ExpiredRegenerationQuoteDoesNotDestroyPreviousTake()
+    {
+        await using var fixture = new Fixture();
+        var first = await fixture.Run.ExecuteAsync(await fixture.Prepare(), true, ct: Token);
+        var prior = Assert.Single(first.Rows);
+        var second = await fixture.Run.PrepareAsync(fixture.Input, Token);
+        fixture.Clock.Advance(300);
+        await Assert.ThrowsAsync<VoiceLabException>(() => fixture.Run.ExecuteAsync(second, true, ct: Token));
+        Assert.True(fixture.Run.Scratch(prior.Id)!.IsValid);
+        await fixture.Run.PublishForAcceptanceAsync(prior.Id, DateTimeOffset.UnixEpoch, Token);
+        Assert.Single(fixture.Remote.Seeds);
     }
     [Theory]
     [InlineData(2.0, false)]

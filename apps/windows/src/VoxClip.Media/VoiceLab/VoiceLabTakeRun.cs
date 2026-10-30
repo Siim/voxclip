@@ -8,7 +8,7 @@ internal sealed record VoiceLabTakeRunChecks(Action<VoiceConsentRecord> Validate
     Func<VoiceConsentRecord, float[], Guid, VoiceLabDispatchBinding, long, CancellationToken, Task<OwnVoicePolicy>> Authorize,
     Func<float[], int, CancellationToken, Task<float[]>> Embedding);
 
-public sealed class VoiceLabTakeRun
+public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
 {
     private sealed record Pending(VoiceLabTakeRunQuote Quote, VoiceLabTakeInput Input, VoiceConsentRecord Record,
         VoiceLabTakePreflight Preflight, float[] Source, float[] Speech, long ModelRevision, long Revision, VoiceLabDispatchBinding Binding);
@@ -54,24 +54,20 @@ public sealed class VoiceLabTakeRun
         long version;
         VoiceLabDispatchBinding binding;
         VoiceLabTakeRunQuote? retired;
-        VoiceLabTakeScratch[] oldScratches;
         lock (sync)
         {
             if (preparing || owner.HasValue) throw new VoiceLabException(VoiceLabErrorKind.InvalidInput);
             preparing = true;
-            version = ++revision;
-            inputGate.Invalidate();
+            version = revision;
             binding = inputGate.Capture();
             retired = pending?.Quote;
             pending = null;
-            oldScratches = scratches.Values.ToArray(); scratches.Clear(); acceptedRows.Clear();
         }
         if (retired is not null) client.DiscardTakeRun(retired);
         var quotes = new List<VoiceLabTakeQuote>();
         var id = Guid.NewGuid();
         try
         {
-            await Task.WhenAll(oldScratches.Select(scratch => scratch.InvalidateAsync())).ConfigureAwait(false);
             Check(version, binding, ct);
             ct.ThrowIfCancellationRequested();
             var snapshot = input.Snapshot();
@@ -144,6 +140,15 @@ public sealed class VoiceLabTakeRun
             var approvals = client.ApproveTakeRun(quote, true);
             await Checkpoint("approval", value, token).ConfigureAwait(false);
             await Checkpoint("launch", value, token).ConfigureAwait(false);
+            VoiceLabTakeScratch[] retired;
+            lock (sync)
+            {
+                Check(value.Revision, value.Binding, token);
+                value = value with { Revision = ++revision };
+                retired = scratches.Values.ToArray(); scratches.Clear(); acceptedRows.Clear();
+            }
+            await Task.WhenAll(retired.Select(scratch => scratch.InvalidateAsync())).ConfigureAwait(false);
+            if (progress is not null) await progress(Array.Empty<VoiceLabTakeRow>()).ConfigureAwait(false);
             return await PerformAsync(value, approvals, progress ?? (_ => Task.CompletedTask), token).ConfigureAwait(false);
         }
         finally
@@ -268,6 +273,17 @@ public sealed class VoiceLabTakeRun
         ct.ThrowIfCancellationRequested();
         lock (sync) if (revision != expected) throw new VoiceLabRunInvalidatedException();
         binding.Validate();
+    }
+    public Task DiscardPendingAsync()
+    {
+        VoiceLabTakeRunQuote? quote;
+        lock (sync)
+        {
+            if (preparing || owner.HasValue) throw new VoiceLabException(VoiceLabErrorKind.InvalidInput);
+            quote = pending?.Quote; pending = null;
+        }
+        if (quote is not null) client.DiscardTakeRun(quote);
+        return Task.CompletedTask;
     }
     public Task CancelAsync() => StopAsync(VoiceLabTakeRunEnd.Cancelled);
     public Task InvalidateAsync() => StopAsync(VoiceLabTakeRunEnd.Invalidated);
