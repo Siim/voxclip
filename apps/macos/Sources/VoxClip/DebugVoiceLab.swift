@@ -40,7 +40,7 @@ import VoxClipCore
         let position = app.voiceLabLabelPosition == .bottomLeft
         return [
             .init(name: "Voice Lab beta off refuses all actions", passed: off && offRequest),
-            .init(name: "Voice Lab Release off has no Settings entry", passed: !VoiceLabGate.settingsVisible(enabled: false, internalBuild: false)),
+            .init(name: "Voice Lab Settings stays discoverable with beta off", passed: VoiceLabGate.settingsVisible(enabled: false, internalBuild: false)),
             .init(name: "Voice Lab no-voice Settings state", passed: noVoice),
             .init(name: "Voice Lab requires all attestations", passed: missingAttestations && ready),
             .init(name: "Voice Lab busy state disables actions", passed: busy),

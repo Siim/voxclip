@@ -36,6 +36,25 @@ public enum VoiceLabSourceAudio {
     /// The voice changer converts at most 290 s per request (§7.2).
     static let maximumSeconds = 290
 
+    public static func rewriteSource(source: URL, frames: Int64, sampleRate: Int) async throws -> [Float] {
+        guard frames > 0, frames <= 30_000_000, (8_000...96_000).contains(sampleRate) else { throw VoiceLabSourceAudioError.tooLarge }
+        var result: [Float] = []
+        result.reserveCapacity(Int(frames))
+        var start: Int64 = 0
+        while start < frames {
+            try Task.checkCancellation()
+            var end = min(frames, start + Int64(280 * sampleRate))
+            if frames - end < Int64((sampleRate + 49) / 50) { end = frames }
+            let wav = try await conversionInput(source: source, startSample: start, endSample: end, sourceSampleRate: Double(sampleRate))
+            for offset in stride(from: 44, to: wav.count, by: 2) {
+                let bits = UInt16(wav[offset]) | UInt16(wav[offset + 1]) << 8
+                result.append(Float(Int16(bitPattern: bits)) / 32768)
+            }
+            start = end
+        }
+        return result
+    }
+
     /// The complete mono PCM16 WAV of source frames `[startSample, endSample)` that §7.3 uploads, at the source rate
     /// with no resampling. The track the renderer uses is decoded as Float32 at its native rate, which must equal
     /// `sourceSampleRate`, then downmixed by the arithmetic mean of its channels and written with the paid-asset

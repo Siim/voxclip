@@ -1,6 +1,5 @@
 import Foundation
 
-#if DEBUG
 public enum VoiceLabEditCommand: Sendable {
     case accept(VoiceLabSegment, assets: [VoiceLabAsset], voice: VoiceLabVoiceReference)
     case setEnabled(segmentID: String, enabled: Bool)
@@ -34,7 +33,6 @@ public enum VoiceLabEditCommand: Sendable {
         }
     }
 }
-#endif
 
 public enum EditingLimits {
     public static let maxCorrectionScalars = 200

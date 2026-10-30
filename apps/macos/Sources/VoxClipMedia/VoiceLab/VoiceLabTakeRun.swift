@@ -44,7 +44,6 @@ public actor VoiceLabTakeRun {
     }
     public func scratch(for takeId: UUID) -> VoiceLabTakeScratch? { scratches[takeId] }
     public func paidAsset(for takeId: UUID) -> VoiceLabAsset? { paidAssets[takeId] }
-    #if DEBUG
     public func publishForAcceptance(_ row: VoiceLabTakeRow, input: VoiceLabTakeInput, at date: Date) async throws -> (VoiceLabPublishedTake, VoiceConsentRecord) {
         let version = revision
         guard row.selectable, let scratch = scratches[row.id], scratch.isValid,
@@ -59,7 +58,6 @@ public actor VoiceLabTakeRun {
         return (VoiceLabPublishedTake(assets: publication.assets, audio: publication.audio, outDuration: publication.outDuration,
             words: publication.words, chunks: publication.chunks), record)
     }
-    #endif
     public func reject(_ takeId: UUID) async { await scratches.removeValue(forKey: takeId)?.invalidate() }
     public func discover(language: String) async throws -> (models: [VoiceLabModel], voices: [VoiceConsentRecord]) {
         guard await inputsAreCurrent() else { throw VoiceLabError.consentRequired }
@@ -294,7 +292,7 @@ public actor VoiceLabTakeRun {
         if error is VoiceConsentError || error is CancellationError || error is Abort || Task.isCancelled { return true }
         guard let error = error as? VoiceLabError else { return false }
         switch error {
-        case .unauthorized, .permissionMissing, .missingKey, .quotaExceeded, .consentRequired, .speakerMismatch, .cancelled: return true
+        case .unauthorized, .permissionMissing, .missingKey, .quotaExceeded, .consentRequired, .speakerMismatch, .cancelled, .invalidAlignment: return true
         default: return false
         }
     }

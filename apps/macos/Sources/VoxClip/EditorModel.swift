@@ -61,7 +61,7 @@ struct EditorRenderSnapshot {
     private var pendingRewriteSelection: Set<String> = []
     func beginRewrite(inserting: Bool = false, entry: RewriteEntry = .selection) {
         let action = RewriteEntryPolicy.resolve(inserting ? .insertWords : entry, enabled: app.bool("voiceLab.enabled"),
-            editable: capabilities.ai, selection: !selectedIDs.isEmpty)
+            noticeAccepted: app.bool("voiceLab.betaNoticeAccepted"), editable: capabilities.ai, selection: !selectedIDs.isEmpty)
         if action == .turnOnVoiceLab { pendingRewriteSelection = selectedWordIDs; showVoiceLabOptIn = true; return }
         guard action == .openPassage, let first = selectedIDs.first, let last = selectedIDs.last,
               let lower = index(first), let upper = index(last) else { return }
@@ -74,7 +74,7 @@ struct EditorRenderSnapshot {
         rewriteOpenTask = Task { [weak self] in
             guard let self else { return }
             if waveform == nil { await loadWaveform() }
-            guard !Task.isCancelled, capabilities.ai, app.bool("voiceLab.enabled"), project == snapshot,
+            guard !Task.isCancelled, capabilities.ai, app.voiceLabRewriteEnabled, project == snapshot,
                   selectedWordIDs == selection, selectedPauseIDs == pauses, sourceTime == caret,
                   rewriteConnectorSignature == signature else { return }
             let provider = app.providers.first { $0.id == app.string("llm.connector") }
@@ -116,6 +116,7 @@ struct EditorRenderSnapshot {
         }
     }
     func enableVoiceLab() {
+        app.set("voiceLab.betaNoticeAccepted", .bool(true))
         app.set("voiceLab.enabled", .bool(true))
         showVoiceLabOptIn = false
         guard selectedWordIDs == pendingRewriteSelection else { return }

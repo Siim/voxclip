@@ -975,7 +975,7 @@ The sidebar list is the clip range layer (editing §2.5 and §10.6), presented a
   - **Connector**: a read-only line, for example "Claude Code · Ready", from the selected `llm.connector` and its status ("● Ready", "● Key missing", "● Not running", "● Not found", "● Not signed in", "● Too old"), with **Change…**, which opens Settings → AI. The status refreshes after a key or server setting changes. It is advisory: Find Clips runs the connector's preflight when pressed;
   - **Preset**: a single choice of Best moments · Hooks · One per topic · Quotes · Custom;
   - **Instructions**: a field reading "Anything specific? (optional)", or "Describe the clips you want" for Custom (at most 500 characters, Return runs it);
-  - the footnote "Sends transcript text with word numbers. No audio or video." For local connectors it reads "Runs on this {Mac/PC}. Nothing leaves it.";
+  - the footnote "Sends transcript text with word numbers. No audio or video." For loopback local connectors it reads "Runs on this {Mac/PC}. Nothing leaves it."; for a configured remote local-server connector it reads "Sends these {count} words to {host}.";
   - **[Find Clips]** as the default button.
 - **Consent.** The first cloud use runs the existing consent alert (ai.md §4.8).
 - **While it runs:** the popover closes. The sidebar shows a "Finding clips…" row under the Suggested header, with a spinner (Windows: a fixed-width `ProgressRing`), **Cancel**, and the connector line "{connector} · reading {duration} of transcript" in 11 `text.secondary`.
@@ -1018,6 +1018,7 @@ From the top:
    - API key: "Sends these {n} words to {connector} with your key."
    - CLI: "Sends these {n} words to {CLI} with your sign-in. Counts toward your {plan}."
    - Local: "Runs on this {Mac/PC}. Nothing leaves it."
+   - A configured non-loopback local-server connector: "Sends these {count} words to {host}." Only loopback servers may use the nothing-leaves wording.
 3. **New words.**
    - The label, with the summary on the trailing side: "{i} new, {r} removed · about {s} s". When they don't fit, the summary moves under the label.
    - An editable plain-text field holding only the new text, prefilled with the passage.

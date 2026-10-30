@@ -268,7 +268,10 @@ struct VoiceLabTakeRunTests {
         let sending = Task { try await fixture.run.execute(quote, approved: true) }
         try await suspension.reached.wait()
         if deleting { _ = try await fixture.store.beginDeletion(fixture.input.recordID, region: .default, at: Date()) }
-        else { try await fixture.store.withdrawCreation(recordID: fixture.input.recordID, remoteVoiceID: "fixtureOwnVoice") }
+        else {
+            await #expect(throws: VoiceConsentError.inactive) { try await fixture.store.withdrawCreation(recordID: fixture.input.recordID, remoteVoiceID: "fixtureOwnVoice") }
+            _ = try await fixture.store.beginDeletion(fixture.input.recordID, region: .default, at: Date())
+        }
         await suspension.release()
         _ = try await sending.value
         #expect(fixture.http.value.withLock { $0.seeds.isEmpty && $0.qa == 0 })
@@ -301,7 +304,7 @@ struct VoiceLabTakeRunTests {
         #expect(result.best?.audio?.fit.plan.outputFrames == 96_000)
         #expect(result.best?.audio?.roomTone?.sourceStartSample == 156_000)
         #expect(fixture.http.value.withLock { $0.seeds == [UInt32.max] && $0.qa == 1 })
-        #expect(fixture.http.value.withLock { $0.contexts.first?["previous"] == "before" && $0.contexts.first?["next"] == "after last" })
+        #expect(fixture.http.value.withLock { $0.contexts.first?["previous"] == "" && $0.contexts.first?["next"] == "" })
         let amount = (quote.takes[0].synthesis.estimate.usd ?? 0) + (quote.takes[0].qa.estimate.usd ?? 0)
         #expect(await fixture.ledger.total(provider: "elevenlabs", at: fixture.clock.now())?.usd == amount)
         await #expect(throws: VoiceLabError.consentRequired) { try await fixture.run.execute(quote, approved: true) }
@@ -400,8 +403,8 @@ struct VoiceLabTakeRunTests {
         let fixture = try await fixture { $0.missingAlignment = !malformed; $0.malformedAlignment = malformed }; defer { try? FileManager.default.removeItem(at: fixture.root) }
         let quote = try await fixture.run.prepare(fixture.input)
         let result = try await fixture.run.execute(quote, approved: true)
-        #expect(result.best == nil && result.rows.count == 3)
-        #expect(fixture.http.value.withLock { $0.qa == 0 && $0.seeds.count == 3 })
+        #expect(result.best == nil && result.rows.count == 1)
+        #expect(fixture.http.value.withLock { $0.qa == 0 && $0.seeds.count == 1 })
     }
     @Test func changedDurationRanksButDoesNotPretendToFit() async throws {
         let fixture = try await fixture { $0.duration = 5 }; defer { try? FileManager.default.removeItem(at: fixture.root) }

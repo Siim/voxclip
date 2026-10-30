@@ -587,6 +587,7 @@ Stored locally in `<data>/VoiceLab/consent/<recordId>/record.json`, never upload
   "status": "active",
   "createdAt": "2026-10-25T12:00:00Z",
   "deletedAt": null,
+  "creator": { "region": "eu", "keyFingerprint": "0123456789abcdef" },
   "statement": { "language": "et", "text": "Minu nimi on …", "nonce": ["…", "…", "…", "…"],
                  "audioFile": "statement.wav", "audioSha256": "…", "stt": { "wer": 0.04, "transcriptionId": "…" } },
   "attestations": { "ownVoice": true, "adult": true, "ownVideosOnly": true, "acceptedAt": "2026-10-25T11:58:10Z" },
@@ -599,10 +600,13 @@ Stored locally in `<data>/VoiceLab/consent/<recordId>/record.json`, never upload
 - Sample audio is deleted after a successful upload. Only the hashes stay.
 - The statement audio stays until the voice is deleted.
 - The project file only references the record by `recordId` (§10.1).
+- New records include `creator` with a settings region raw value (`default`, `us`, `eu`, `in`, `sg`) and the first 16 lowercase hex characters of SHA-256 over the API key's UTF-8 bytes. Never persist the key. Legacy records omit `creator` and match on their recorded region or operation journal's region only, with `default` when neither records one. Both operation kinds carry the same fingerprint as `creatorKeyFingerprint`.
 
 Each create or delete operation has one private, atomically written journal at `<data>/VoiceLab/voice-ops/<operationId>.json`. It contains only the operation and record IDs, kind, state, provider recovery label/nonce, exact expected provider name, region, remote voice ID once known, timestamps, verification requirement, retry metadata and a minimal audit object. The audit contains the record ID, statement-audio SHA-256, training-recording SHA-256 values, creation and attestation timestamps, language and remote ID once known. It contains no audio, statement text or embedding. The audit is durable in the initial creation intent. A journal without audit data cannot authorize generation; cleanup still runs. A create's full consent draft uses the normal `record.json` above, not a second copy in the journal; it cannot authorize generation while the operation is unfinished.
 
 Recovery lists owned voices of category `cloned`. It matches the recovery label OR the exact expected provider name with `created_at_unix` inside the journal's 24-hour creation window (rounded down to the provider's seconds precision at the start). The label is a best-effort hint, not the sole recovery evidence. Multiple candidates, or a same-name candidate without a creation timestamp and without the label, require user review in Settings; no voice is deleted. That obligation stays visible even if a later listing is empty. Retry can resolve it only with one unambiguous match.
+
+A candidate carrying a different recovery nonce is not ours, even if its name and creation time match. It is never deleted by fallback matching. An ambiguous or unprovable candidate keeps the obligation visible for user review.
 
 Completing or recovering a successful creation resets the enrollment session to a new record ID. Cancelling a later sheet cannot withdraw a saved active voice. Withdrawal without an unfinished creation refuses active and verification-required records. Startup cleanup removes only absent records or pending drafts; a non-pending record that fails validation is preserved and reported, never inferred to be abandoned.
 
@@ -633,11 +637,13 @@ The result is cached per (project `contentKey`, `recordId`).
 
 [Delete voice] runs:
 
-1. `DELETE {base}/v1/voices/{voice_id}` → `{"status":"ok"}`. A 404 also counts as deleted.
+1. Verify the current key fingerprint and region against the creator binding, then `DELETE {base}/v1/voices/{voice_id}` → `{"status":"ok"}`. A 404 counts as deleted only after that match.
 2. Delete the local statement audio.
 3. Set `status: "deleted"` and `deletedAt`, keeping the record and its hashes as the audit trail.
 
-The same operation journal records `intent` → `remoteDeleted` → `audioRemoved` → `tombstoned`, then is removed. The reconciler enumerates `voice-ops/` independently of consent records, so a missing `record.json` cannot strand deletion or its local audio. Each boundary is independently resumable; repeating a DELETE after an uncertain response is safe because 404 is success. Withdrawal of a creation uses its existing journal, not a second deletion journal. Existing rendered assets are never deleted by this recovery.
+The same operation journal records `intent` → `remoteDeleted` → `audioRemoved` → `tombstoned`, then is removed. The reconciler enumerates `voice-ops/` independently of consent records, so a missing `record.json` cannot strand deletion or its local audio. Each boundary is independently resumable; repeating a DELETE after an uncertain response is safe because a creator-matched 404 is success. Withdrawal of a creation uses its existing journal, not a second deletion journal. Existing rendered assets are never deleted by this recovery.
+
+On a creator mismatch, refuse with: "This voice was created with a different ElevenLabs key or region. Use that key to delete it, or remove it from VoxClip only; the voice may stay in that ElevenLabs account." **Remove from VoxClip only** makes no remote request and writes a non-authorizing tombstone with `remoteStateUnknown: true`.
 
 If an uncertain creation's unresolved draft was discarded and the remote voice appears later, deletion writes the journal's minimal audit to `<data>/VoiceLab/consent/<recordId>/audit.json`, adding the remote ID and deletion timestamp before removing the operation. It does not fabricate a full consent record or retain its statement text, name or embedding. This private, non-authorizing tombstone survives startup cleanup and keeps the original hashes and timestamps. Existing full consent records are still tombstoned as above. Journals from older versions whose draft and audit were already lost can finish remote cleanup but cannot reconstruct missing historical hashes.
 
@@ -1707,7 +1713,7 @@ Unit tests run in both suites (`VoxClipCoreTests`, `VoxClip.Core.Tests`), with s
    - A take whose pauses and seams can hold only part of its residual returns `changedDuration` with every edit at its limit. `residualSeconds` is the rest, and `outDuration = duration(W) + residualSeconds`.
    - At a take edge, the pad keeps the first aligned word at its source distance from the edge.
    - Both Cores run placement → lendable silence → fit → recipe → both validators → output planner → render preparation on a 44.1 kHz millisecond-word window, hard/hard at [2.556, 3.143] s, and a take-end variant. Exact fits keep identical source/output sample lengths and prepare as source video. Changed-duration recipes prepare in §8.9 step 3's `zoomCover` or `lipsync` mode; native request capture still refuses both (§10.5), preserving the source-only renderer gate.
-5. **Alignment to words (§8.8).** The character alignment for `"I said 2025"` gives 3 words, all `synthetic: true`. A null alignment falls back to the Scribe words with interpolation.
+5. **Alignment to words (§8.8).** The character alignment for `"I said 2025"` gives 3 words, all `synthetic: true`. A null or malformed alignment ends the run after that paid take; the paid asset is retained. Scribe/interpolation fallback remains deferred with §8.5 rather than buying further takes that cannot pass alignment.
 6. **Candidate ranking (§8.6).** Rejected candidates are never shown. An exactly fitted take has `fitCost = 0`, and a `changedDuration` take's fit cost rises with `|residualSeconds|`. The score formula orders a fixed set.
 7. **Plan mapping (§10.2).**
    - With `outDuration == in`, the plan's `mapTime` is unchanged outside the segment.
@@ -1729,7 +1735,9 @@ Unit tests run in both suites (`VoxClipCoreTests`, `VoxClip.Core.Tests`), with s
     - A recognised language that differs from the statement fails.
     - Date strings use the month tables in en and et.
 12. **Request goldens** for every endpoint in §4.3, §6.7, §7.3, §8.5, §8.8, §9.4 and §9.5: method, path, headers (with key values redacted), body or multipart parts.
+    - The Isolator, forced-alignment, text-to-dialogue and lip-sync client goldens are waiting on their §4/§9 clients. Clean audio and Lip sync stay visibly unavailable with a reason in 0.1.0; no successful provider state machine is implied by the TTS/IVC goldens.
 13. **Provider state machines** with mocked HTTP:
+    - The following §9 state machines remain waiting on those clients; the unavailable UI cannot submit them.
     - fal `IN_QUEUE` → `IN_PROGRESS` → `COMPLETED`, and the cancel responses 200, 202 and 400;
     - sync.so `PENDING` → `COMPLETED`, `FAILED` with `errorCode`, and a 429 retry reusing the same Idempotency-Key;
     - a submit is never retried after a timeout.

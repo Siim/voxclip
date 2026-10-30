@@ -13,9 +13,10 @@ enum RewriteEntryPolicy {
         false
         #endif
     }
-    static func resolve(_ entry: RewriteEntry, enabled: Bool, editable: Bool, selection: Bool, internalBuild: Bool = buildEnabled) -> RewriteEntryAction {
-        guard internalBuild, entry != .insertWords else { return .unavailable }
-        if !enabled { return entry == .menu && editable ? .turnOnVoiceLab : .unavailable }
+    static func resolve(_ entry: RewriteEntry, enabled: Bool, noticeAccepted: Bool = false, editable: Bool, selection: Bool, internalBuild: Bool = buildEnabled) -> RewriteEntryAction {
+        guard entry != .insertWords else { return .unavailable }
+        if !enabled { return internalBuild && entry == .menu && editable ? .turnOnVoiceLab : .unavailable }
+        guard VoiceLabGate.rewriteEnabled(enabled: enabled, noticeAccepted: noticeAccepted, internalBuild: internalBuild) else { return .unavailable }
         return editable && selection ? .openPassage : .unavailable
     }
 }
@@ -96,7 +97,6 @@ struct RewriteConnector {
     private(set) var quote: VoiceRewriteQuote?
     private(set) var estimate: VoiceLabCostPresentation.Kind?
     private(set) var revision = 0
-    #if DEBUG
     private(set) var generation: RewriteGenerationSession?
     func configureGeneration(client: ElevenLabsVoiceLab, store: VoiceConsentStore, speaker: VoiceSpeakerCheck) {
         generation?.invalidate()
@@ -114,13 +114,13 @@ struct RewriteConnector {
         }
         generation = RewriteGenerationSession(run: run) { [weak self] in self?.generationIsCurrent(region: region) ?? false }
     }
+    func reportGenerationProblem(_ error: any Error) { problem = Self.refusal(error) }
     private func generationIsCurrent(region: ElevenLabsRegion) -> Bool {
         current && !isProposing && editor.app.bool("voiceLab.providerConsent.elevenlabs") &&
             editor.app.bool("voiceLab.betaNoticeAccepted") &&
             editor.app.string("transcription.elevenlabs.region", fallback: "default") == region.rawValue &&
             (generation?.input == nil || generation?.inputsMatchCurrentSelection == true)
     }
-    #endif
     private var shownQuoteID: UUID?
     @ObservationIgnored private let service: VoiceRewriteService?
     @ObservationIgnored private let connectorIsCurrent: @MainActor () -> Bool
@@ -147,7 +147,7 @@ struct RewriteConnector {
         header = "\(source.filter { $0.kind == .word }.count) words at \(timecode(source.first?.start ?? 0))"
         refreshReview()
     }
-    var current: Bool { isOpen && editor.capabilities.edit && editor.project == project && connectorIsCurrent() && editor.app.bool("voiceLab.enabled") }
+    var current: Bool { isOpen && editor.capabilities.edit && editor.project == project && connectorIsCurrent() && editor.app.voiceLabRewriteEnabled }
     var canPropose: Bool { current && !isProposing && !editor.llmRuns.isBusy && quote != nil && shownQuoteID == quote?.id }
     var proposalButton: String {
         guard let connector, let estimate else { return "Rewrite" }
@@ -165,8 +165,19 @@ struct RewriteConnector {
         switch connector.group {
         case "apiKey": return "Sends these \(count) words to \(connector.name) with your key."
         case "cli": return "Sends these \(count) words to \(connector.name) with your sign-in. Counts toward your \(connector.plan)."
-        default: return "Runs on this Mac. Nothing leaves it."
+        default:
+            if connector.connector.id.rawValue == "apple-foundation" { return "Runs on this Mac. Nothing leaves it." }
+            let id = connector.connector.id.rawValue
+            let fallback = editor.app.providers.first(where: { $0.id == id })?.baseUrl ?? ""
+            return Self.localSendLine(count: count, baseURL: editor.app.string("llm.baseUrl.\(id)", fallback: fallback))
         }
+    }
+    static func localSendLine(count: Int, baseURL: String) -> String {
+        guard let host = URL(string: baseURL)?.host?.lowercased() else { return "Sends these \(count) words to the configured server." }
+        if host == "localhost" || host == "::1" || host == "[::1]" || host.split(separator: ".").count == 4 && host.hasPrefix("127.") {
+            return "Runs on this Mac. Nothing leaves it."
+        }
+        return "Sends these \(count) words to \(host)."
     }
     var localAction: String? {
         guard let diff = review?.diff, !diff.hunks.isEmpty, diff.hunks.allSatisfy({ $0.kind != .voice }) else { return nil }
@@ -258,9 +269,7 @@ struct RewriteConnector {
         schedulePreparation()
     }
     private func invalidate() {
-        #if DEBUG
         generation?.invalidate()
-        #endif
         revision += 1; preparing?.cancel(); sending?.cancel()
         quote = nil; estimate = nil; shownQuoteID = nil; request = nil
     }
@@ -271,6 +280,10 @@ struct RewriteConnector {
     }
     @discardableResult func applyLocalChanges() -> Bool {
         guard current, !isProposing, localAction != nil, let review else { return false }
+        return editor.apply(localCommands(review), name: localAction ?? "Rewrite")
+    }
+    var localCommands: [EditCommand] { review.map(localCommands) ?? [] }
+    private func localCommands(_ review: RewriteReview) -> [EditCommand] {
         var commands: [EditCommand] = []
         for hunk in review.diff.hunks {
             if hunk.kind == .cut {
@@ -280,20 +293,22 @@ struct RewriteConnector {
                 for (id, text) in zip(hunk.sourceWordIds, hunk.correctedTexts) { commands.append(.correct(id: id, text: text)) }
             }
         }
-        return editor.apply(commands, name: localAction ?? "Rewrite")
+        return commands
     }
     func close() {
         guard isOpen else { return }
         isOpen = false; invalidate()
     }
     static func refusal(_ error: any Error) -> String {
+        if let error = error as? VoiceConsentError { return error.localizedDescription }
+        if let error = error as? VoiceLabError, error == .unauthorized { return "ElevenLabs rejected the key (401). Your edits are saved." }
         if let message = (error as? VoiceLabError)?.accessMessage { return message }
         if let geometry = error as? VoiceLabGeometryError, let isStart = geometry.takeEdgeIsStart {
             return "This change is too close to the \(isStart ? "start" : "end") of the take to blend in. Re-record this sentence instead."
         }
         switch error {
         case VoiceLabGeometryError.insertionUnsupported: return "Inserting words isn't available yet. Your edits are saved."
-        case VoiceLabGeometryError.roomToneUnavailable: return "This take has no half-second pause to copy the room sound from. Clean audio removes background sound from the whole take, so new words can blend in."
+        case VoiceLabGeometryError.roomToneUnavailable: return "This take has no half-second pause to copy the room sound from. Clean audio removes background sound from the whole take, so new words can blend in. Clean audio is not available in this build. Re-record this sentence instead."
         case is VoiceLabGeometryError: return "This change can't be placed in this take. Your edits are saved."
         case is VoiceLabLengthBudgetError: return "There isn't enough timed speech to estimate this change. Your edits are saved."
         default: return UserMessages.message(error)

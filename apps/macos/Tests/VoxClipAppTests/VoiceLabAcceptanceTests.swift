@@ -28,8 +28,19 @@ private struct AcceptanceTestKeys: KeyProvider {
 
 @Suite("Headless Voice Lab acceptance", .serialized, .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil))
 @MainActor struct VoiceLabAcceptanceTests {
+    @Test func disablingBetaHidesAnExistingPanelInEveryEditor() throws {
+        let app = enabledApp()
+        let model = EditorModel(document: VoxClipDocument(project: try fixture(), demo: true), app: app, preview: DemoPreviewEngine())
+        defer { model.close() }
+        let session = RewriteSession(editor: model, range: 0...1, envelope: nil, connector: nil)
+        model.rewrite = session
+        let column = RightColumnContents(model: model, columnHeight: 800, columnWidth: 300)
+        #expect(column.visibleRewrite === session)
+        app.settings.values["voiceLab.enabled"] = .bool(false)
+        #expect(column.visibleRewrite == nil && !session.current)
+    }
     @Test func wordAccessibilityCoversSourceAndAcceptedSpeechWithoutAWindow() throws {
-        let results = try DebugTranscriptPixels.wordAccessibility(app: AppModel())
+        let results = try DebugTranscriptPixels.wordAccessibility(app: enabledApp())
         #expect(results.count == 8)
         for result in results { #expect(result.passed, Comment(rawValue: result.name)) }
     }
@@ -39,7 +50,7 @@ private struct AcceptanceTestKeys: KeyProvider {
         start.id = "inside-start"; start.startWordId = "w5"
         end.id = "inside-end"; end.endWordId = "w4"
         project.edits.clips = [start, end]
-        let model = EditorModel(document: VoxClipDocument(project: project, demo: true), app: AppModel(), preview: DemoPreviewEngine())
+        let model = EditorModel(document: VoxClipDocument(project: project, demo: true), app: enabledApp(), preview: DemoPreviewEngine())
         defer { model.close() }
         let text = TranscriptNSTextView(usingTextLayoutManager: true), renderer = TranscriptRenderer()
         text.model = model; renderer.text = text
@@ -64,6 +75,12 @@ private struct AcceptanceTestKeys: KeyProvider {
         undo.undo(); try assertMarkers(ai: true)
         undo.redo(); try assertMarkers(ai: false)
     }
+    private func enabledApp() -> AppModel {
+        let app = AppModel()
+        app.settings.values["voiceLab.enabled"] = .bool(true)
+        app.settings.values["voiceLab.betaNoticeAccepted"] = .bool(true)
+        return app
+    }
     private func fixture() throws -> Project {
         let shared = try SharedResources.locate()
         return try JSONProjectStore.decode(Data(contentsOf: shared.root.appendingPathComponent("fixtures/voice-lab/passage-render-v3.voxclip")))
@@ -72,7 +89,7 @@ private struct AcceptanceTestKeys: KeyProvider {
     func snapshotUndoPreservesTimestampsAndPriorDirtyCount(alreadyDirty: Bool) throws {
         let original = try fixture()
         let document = VoxClipDocument(project: original, demo: true)
-        let model = EditorModel(document: document, app: AppModel(), preview: DemoPreviewEngine())
+        let model = EditorModel(document: document, app: enabledApp(), preview: DemoPreviewEngine())
         defer { model.close() }
         let undo = try #require(document.undoManager)
         undo.groupsByEvent = false; model.undoManager = undo
@@ -101,7 +118,7 @@ private struct AcceptanceTestKeys: KeyProvider {
         var outside = try #require(project.edits.clips.first)
         outside.id = "outside"; outside.startWordId = "w1"; outside.endWordId = "w2"
         project.edits.clips.append(outside)
-        let model = EditorModel(document: VoxClipDocument(project: project, demo: true), app: AppModel(), preview: DemoPreviewEngine())
+        let model = EditorModel(document: VoxClipDocument(project: project, demo: true), app: enabledApp(), preview: DemoPreviewEngine())
         defer { model.close() }
         let expected = "This video contains AI-modified speech. It will show AI MODIFIED."
         #expect(model.exportDisclosure([.fullEdit]) == expected)
@@ -118,6 +135,32 @@ private struct AcceptanceTestKeys: KeyProvider {
         model.replace(disabled, name: "Disable missing replacement")
         #expect(model.exportDisclosure([.fullEdit, .clip("clip-main")]) == nil)
     }
+    @Test func acceptingSpeechAndLocalEditsIsOneExactUndoStep() throws {
+        var original = try fixture()
+        let segment = original.voiceLab.segments[0]
+        let assets = try #require(original.voiceLab.assets)
+        var voice = try #require(original.voiceLab.voices?.first)
+        voice.status = .active
+        original.voiceLab.segments = []; original.voiceLab.assets = []; original.voiceLab.voices = []
+        let document = VoxClipDocument(project: original, demo: true)
+        let model = EditorModel(document: document, app: enabledApp(), preview: DemoPreviewEngine())
+        defer { model.close() }
+        let undo = try #require(document.undoManager)
+        undo.groupsByEvent = false; model.undoManager = undo
+        undo.beginUndoGrouping()
+        try model.applyVoiceLab(.accept(segment, assets: assets, voice: voice), localCommands: [
+            .cutSelection(ids: ["w1"]), .correct(id: "w2", text: "Corrected")
+        ])
+        undo.endUndoGrouping()
+        let accepted = model.project
+        #expect(accepted.voiceLab.segments == [segment])
+        #expect(accepted.edits.cutWordIds.contains("w1"))
+        #expect(accepted.edits.corrections["w2"] == "Corrected")
+        undo.undo()
+        #expect(model.project == original && !undo.canUndo)
+        undo.redo()
+        #expect(model.project == accepted)
+    }
     @Test(arguments: [false, true])
     func readyAcceptancePublishesOnceAndStalePublicationNeverMutates(cancel: Bool) async throws {
         var original = try fixture()
@@ -127,7 +170,7 @@ private struct AcceptanceTestKeys: KeyProvider {
         let assets = try #require(original.voiceLab.assets)
         original.voiceLab.segments = []; original.voiceLab.assets = []; original.voiceLab.voices = []
         let document = VoxClipDocument(project: original, demo: true)
-        let model = EditorModel(document: document, app: AppModel(), preview: DemoPreviewEngine())
+        let model = EditorModel(document: document, app: enabledApp(), preview: DemoPreviewEngine())
         defer { model.close() }
         let undo = try #require(document.undoManager)
         undo.groupsByEvent = false; model.undoManager = undo; model.editTimestampForTests = original.modifiedAt
@@ -193,7 +236,7 @@ private struct AcceptanceTestKeys: KeyProvider {
         var original = accepted
         original.voiceLab.segments = []; original.voiceLab.assets = []
         let document = VoxClipDocument(project: original, demo: true)
-        let model = EditorModel(document: document, app: AppModel(), preview: DemoPreviewEngine())
+        let model = EditorModel(document: document, app: enabledApp(), preview: DemoPreviewEngine())
         defer { model.close() }
         let undo = try #require(document.undoManager)
         undo.groupsByEvent = false; model.undoManager = undo
@@ -227,7 +270,7 @@ private struct AcceptanceTestKeys: KeyProvider {
     @Test func disclosureIsScopeSpecificAndOffRestoresTheSource() throws {
         let project = try fixture()
         let document = VoxClipDocument(project: project, demo: true)
-        let model = EditorModel(document: document, app: AppModel(), preview: DemoPreviewEngine())
+        let model = EditorModel(document: document, app: enabledApp(), preview: DemoPreviewEngine())
         defer { model.close() }
         #expect(model.containsAISpeech())
         #expect(model.exportAccessibleName("Export", targets: [.fullEdit]) == "Export, contains AI-modified speech")
@@ -245,7 +288,7 @@ private struct AcceptanceTestKeys: KeyProvider {
     func acceptedWordsPaintAndSpeakWithoutAWindow(appearance: NSAppearance.Name) throws {
         let project = try fixture()
         let document = VoxClipDocument(project: project, demo: true)
-        let model = EditorModel(document: document, app: AppModel(), preview: DemoPreviewEngine())
+        let model = EditorModel(document: document, app: enabledApp(), preview: DemoPreviewEngine())
         defer { model.close() }
         let coordinator = TranscriptTextView.Coordinator(model: model)
         let text = TranscriptNSTextView(usingTextLayoutManager: true)
