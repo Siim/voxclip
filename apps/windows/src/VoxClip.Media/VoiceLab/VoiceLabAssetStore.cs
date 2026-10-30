@@ -63,6 +63,39 @@ public static class VoiceLabAssetStore
 
     internal static short Pcm16(float sample)
         => (short)Math.Clamp(Math.Round((double)sample * 32_767, MidpointRounding.ToEven), -32_767, 32_767);
+    public static int CleanupStalePartials(string paidRoot, string projectId, DateTimeOffset processStart)
+    {
+        var label = VoiceLabAssetNaming.File(projectId, "cleanup", "wav");
+        var root = OpenRoot(paidRoot, label);
+        var directory = Path.Combine(root, projectId);
+        if (!Directory.Exists(directory)) return 0;
+        RequireDirectory(directory, label, false);
+        var removed = 0;
+        foreach (var path in Directory.EnumerateFiles(directory))
+        {
+            var name = Path.GetFileName(path);
+            if (!name.StartsWith('.') || !name.EndsWith(".partial", StringComparison.Ordinal)) continue;
+            var body = name[1..^8];
+            var separator = body.LastIndexOf('.');
+            if (separator < 0 || !Guid.TryParseExact(body[(separator + 1)..], "N", out _)) continue;
+            var target = body[..separator];
+            if (!target.EndsWith(".wav", StringComparison.Ordinal)) continue;
+            try { if (Path.GetFileName(VoiceLabAssetNaming.File(projectId, target[..^4], "wav")) != target) continue; }
+            catch (ArgumentException) { continue; }
+            if ((File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0 || File.GetLastWriteTimeUtc(path) >= processStart.UtcDateTime) continue;
+            using var file = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            VoiceLabAssets.RequireWithinRoot(root, path, file.SafeFileHandle, label);
+            File.Delete(path);
+            removed++;
+        }
+        return removed;
+    }
+    public static VoiceLabAsset WriteWave(ReadOnlySpan<byte> pcm, int sampleRate, int channels, int bits, bool floating,
+        string projectId, string assetId, string paidRoot, DateTimeOffset createdAt, CancellationToken ct = default)
+    {
+        var wave = new VoiceLabWavePcm(sampleRate, channels, bits, floating, pcm.ToArray());
+        return Publish([], [], false, sampleRate, projectId, assetId, paidRoot, createdAt, VoiceLabAssetNaming.File(projectId, assetId, "wav"), ct, null, null, wave);
+    }
 
     internal static byte[] WavHeader(long frames, int sampleRate)
     {
@@ -92,9 +125,9 @@ public static class VoiceLabAssetStore
 
     private static VoiceLabAsset Publish(ReadOnlySpan<byte> pcm16, ReadOnlySpan<float> samples, bool derived,
         int sampleRate, string projectId, string assetId, string paidRoot, DateTimeOffset createdAt, string file,
-        CancellationToken cancellationToken, Action? beforePublish, Action? afterPublish)
+        CancellationToken cancellationToken, Action? beforePublish, Action? afterPublish, VoiceLabWavePcm? wave = null)
     {
-        var frames = derived ? samples.Length : pcm16.Length / 2;
+        var frames = wave?.Frames ?? (derived ? samples.Length : pcm16.Length / 2);
         Validate(frames, sampleRate, file);
         cancellationToken.ThrowIfCancellationRequested();
         string? temporary = null;
@@ -124,7 +157,7 @@ public static class VoiceLabAssetStore
             {
                 temporaryCreated = true;
                 VoiceLabAssets.RequireWithinRoot(root, temporary, output.SafeFileHandle, file);
-                var header = WavHeader(frames, sampleRate);
+                var header = wave?.Header() ?? WavHeader(frames, sampleRate);
                 output.Write(header); hash.AppendData(header);
                 var buffer = derived ? new byte[2 * Math.Min(BlockFrames, frames)] : [];
                 for (var start = 0; start < frames; start += Math.Min(BlockFrames, frames - start))
@@ -138,9 +171,10 @@ public static class VoiceLabAssetStore
                             BinaryPrimitives.WriteInt16LittleEndian(buffer.AsSpan(2 * index), Pcm16(samples[start + index]));
                         bytes = buffer.AsSpan(0, count * 2);
                     }
-                    else bytes = pcm16.Slice(start * 2, count * 2);
+                    else bytes = wave is null ? pcm16.Slice(start * 2, count * 2) : wave.Pcm.AsSpan(start * wave.Stride, count * wave.Stride);
                     output.Write(bytes); hash.AppendData(bytes);
                 }
+                if (wave is not null && wave.Pcm.Length % 2 != 0) { output.WriteByte(0); hash.AppendData([0]); }
                 output.Flush(true);
             }
             beforePublish?.Invoke();
@@ -155,7 +189,7 @@ public static class VoiceLabAssetStore
                 throw Failure(VoiceLabAssetStoreErrorCode.Altered, file);
             using var stored = new FileStream(final, FileMode.Open, FileAccess.Read, FileShare.Read);
             VoiceLabAssets.RequireWithinRoot(root, final, stored.SafeFileHandle, file);
-            if (stored.Length != 44L + 2L * frames || Convert.ToHexStringLower(SHA256.HashData(stored)) != digest)
+            if (stored.Length != 44L + (wave is null ? 2L * frames : wave.Pcm.Length + wave.Pcm.Length % 2) || Convert.ToHexStringLower(SHA256.HashData(stored)) != digest)
                 throw Failure(VoiceLabAssetStoreErrorCode.Altered, file);
             return new(assetId, "audio", file, digest, frames / (double)sampleRate, sampleRate, createdAt);
         }

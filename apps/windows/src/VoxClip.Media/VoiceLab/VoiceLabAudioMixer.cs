@@ -21,12 +21,15 @@ internal sealed class VoiceLabWaveReader : IDisposable
     private readonly int bits;
     private long cachedStart = -1;
     private int cachedFrames;
+    private readonly PreparedVoiceLabAsset owner;
+    private readonly IDisposable? lease;
     internal int Rate { get; }
     internal int Channels { get; }
     internal long Frames { get; }
 
     internal VoiceLabWaveReader(PreparedVoiceLabAsset asset)
     {
+        owner = asset;
         file = new FileStream(asset.Path, FileMode.Open, FileAccess.Read, FileShare.Read, 64 * 1024, FileOptions.RandomAccess);
         try
         {
@@ -59,6 +62,7 @@ internal sealed class VoiceLabWaveReader : IDisposable
             Rate = rate; Channels = channels; Frames = asset.FrameCount;
             dataStart = offset; bytesPerFrame = block; format = sampleFormat; bits = sampleBits;
             bytes = new byte[checked(4096 * block)]; cache = new float[4096 * channels];
+            lease = asset.AttachConsumer(() => { Dispose(); return Task.CompletedTask; });
         }
         catch { file.Dispose(); throw; }
     }
@@ -67,6 +71,7 @@ internal sealed class VoiceLabWaveReader : IDisposable
 
     internal void Read(double firstFrame, double step, Span<float> stereo, CancellationToken ct)
     {
+        if (!owner.IsValid) throw new VoiceLabException(VoiceLabErrorKind.InvalidAudio);
         if (stereo.Length % 2 != 0 || !double.IsFinite(firstFrame) || !double.IsFinite(step) || step <= 0)
             throw Invalid();
         for (var i = 0; i < stereo.Length / 2; i++)
@@ -117,7 +122,7 @@ internal sealed class VoiceLabWaveReader : IDisposable
         }
     }
 
-    public void Dispose() => file.Dispose();
+    public void Dispose() { lease?.Dispose(); file.Dispose(); }
 }
 
 /// <summary>Reads source, generated pieces, room tone and centered seams with fixed block storage.</summary>
