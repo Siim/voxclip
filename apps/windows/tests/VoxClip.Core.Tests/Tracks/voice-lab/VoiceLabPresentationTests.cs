@@ -29,10 +29,10 @@ public sealed class VoiceLabPresentationTests
     }
 
     [Theory]
-    [InlineData(double.NaN)]
-    [InlineData(double.PositiveInfinity)]
-    [InlineData(double.NegativeInfinity)]
-    public void NonfinitePauseNotesAreRefused(double seconds) => Assert.Throws<VoiceLabException>(() => VoiceLabPauseFitNote.Format(seconds));
+    [InlineData(double.NaN, "pauses −nan s")]
+    [InlineData(double.PositiveInfinity, "pauses +inf s")]
+    [InlineData(double.NegativeInfinity, "pauses −inf s")]
+    public void NonfinitePauseNotesAlsoMatchFoundationPrintf(double seconds, string expected) => Assert.Equal(expected, VoiceLabPauseFitNote.Format(seconds));
 
     [Fact]
     public void BetaPredicateNeverBypassesEnabledOrReleaseConsent()
