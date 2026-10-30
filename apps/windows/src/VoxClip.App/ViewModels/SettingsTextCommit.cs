@@ -5,11 +5,10 @@ internal sealed class SettingsTextCommit(Func<string> read, Func<Task<bool>> sav
     private string committed = read();
     private Task<bool>? pending;
 
-    internal Task<bool> CommitAsync() => pending ??= CommitCoreAsync();
+    internal Task<bool> CommitAsync() => pending is { IsCompleted: false } ? pending : pending = CommitCoreAsync();
 
     private async Task<bool> CommitCoreAsync()
     {
-        await Task.Yield();
         try
         {
             var text = read();
@@ -19,6 +18,5 @@ internal sealed class SettingsTextCommit(Func<string> read, Func<Task<bool>> sav
             return read() == committed;
         }
         catch (Exception exception) { failed(exception); return false; }
-        finally { pending = null; }
     }
 }

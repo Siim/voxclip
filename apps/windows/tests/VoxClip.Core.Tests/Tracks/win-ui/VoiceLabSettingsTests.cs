@@ -14,6 +14,40 @@ namespace VoxClip.Core.Tests.Tracks.WinUi;
 public sealed class VoiceLabSettingsTests
 {
     [Fact]
+    public async Task SynchronouslyRejectedTextCommitCanBeRetried()
+    {
+        var text = "20"; var accepted = false; var attempts = 0;
+        var commit = new SettingsTextCommit(() => text, () => { attempts++; return Task.FromResult(accepted); }, _ => { });
+        text = "12.50";
+        Assert.False(await commit.CommitAsync());
+        accepted = true;
+        Assert.True(await commit.CommitAsync());
+        Assert.Equal(2, attempts);
+    }
+
+    [Fact]
+    public void MicrophoneCopyAndNativeSafetyFollowLeadDecisions()
+    {
+        Assert.Equal("No microphone found. Connect one and try again.", VoiceLabCopy.MicrophoneFailure(VoxClip.Media.Audio.MicrophoneError.NoDevice));
+        Assert.Equal("Waiting for the microphone…", VoiceLabCopy.MicrophoneWaiting);
+        Assert.Equal("Microphone: Input", VoiceLabCopy.MicrophoneDeviceLine("Input"));
+        Assert.Equal("ms-settings:privacy-microphone", VoiceLabCopy.MicrophoneSettingsUri);
+        Assert.Equal("Open Settings", VoiceLabCopy.MicrophoneOpenSettings);
+        foreach (var error in Enum.GetValues<VoxClip.Media.Audio.MicrophoneError>()) Assert.NotEmpty(VoiceLabCopy.MicrophoneFailure(error));
+        var root = Path.GetDirectoryName(Shared)!;
+        var endpoint = File.ReadAllText(Path.Combine(root, "apps/windows/src/VoxClip.Media/Audio/MicrophoneDevices.cs"));
+        Assert.Contains("DataFlow.Capture, Role.Console", endpoint);
+        Assert.Contains(".WithSharedMode().WithEventSync()", endpoint);
+        Assert.DoesNotContain("WithFormat", endpoint); Assert.DoesNotContain("WithDefaultDeviceStreamRouting", endpoint);
+        Assert.Contains("CreateNotificationClient", endpoint); Assert.Contains("args.DeviceId == boundId", endpoint);
+        Assert.DoesNotContain("notifications.DefaultDeviceChanged +=", endpoint);
+        var script = File.ReadAllText(Path.Combine(root, "apps/windows/tests/VoxClip.Core.Tests/Tracks/win-ui/microphone-native.ps1"));
+        Assert.Contains("$HostBackupSha256", script); Assert.Contains("} finally {", script);
+        Assert.Contains("registry restoration is unverified", script); Assert.Contains("$inventory.Result.CaptureCount", script);
+        Assert.All(script, character => Assert.True(character < 128));
+    }
+
+    [Fact]
     public void EachInvalidCapSubmissionExplicitlyAnnouncesEvenUnchangedCopy()
     {
         var pane = AppSource("Controls/VoiceLabSettingsPane.cs");

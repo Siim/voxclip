@@ -2,6 +2,23 @@ namespace VoxClip.App.ViewModels;
 
 internal static class VoiceLabCopy
 {
+    internal const string MicrophonePermission = "Microphone access is off. Turn on Microphone access and Let desktop apps access your microphone in Settings → Privacy & security → Microphone to record your consent.";
+    internal const string MicrophoneNoDevice = "No microphone found. Connect one and try again.";
+    internal const string MicrophoneSilent = "The microphone sent only silence. Check that it isn't muted, and that Settings → Privacy & security → Microphone lets desktop apps use it.";
+    internal const string MicrophoneUnavailable = "The microphone isn't available. Check your input device and try again.";
+    internal const string MicrophoneDeviceLost = "The microphone stopped sending audio. This take was discarded. Check your input device and record again.";
+    internal const string MicrophoneWaiting = "Waiting for the microphone…";
+    internal const string MicrophoneSettingsUri = "ms-settings:privacy-microphone";
+    internal const string MicrophoneOpenSettings = "Open Settings";
+    internal static string MicrophoneDeviceLine(string name) => "Microphone: " + name;
+    internal static string MicrophoneFailure(VoxClip.Media.Audio.MicrophoneError error) => error switch
+    {
+        VoxClip.Media.Audio.MicrophoneError.Permission => MicrophonePermission,
+        VoxClip.Media.Audio.MicrophoneError.NoDevice => MicrophoneNoDevice,
+        VoxClip.Media.Audio.MicrophoneError.Silent => MicrophoneSilent,
+        VoxClip.Media.Audio.MicrophoneError.DeviceLost => MicrophoneDeviceLost,
+        _ => MicrophoneUnavailable
+    };
     internal const string BetaNotice = "Voice Lab can clone your own voice, change your voice and re-voice a few words. Everything it makes is labelled 'AI MODIFIED' in exports, as EU law requires. It uses your ElevenLabs key and, for lip sync, your fal.ai or sync.so key.";
     internal const string ToggleCaption = "Voice Lab is optional. Import, cut, captions, clips and export work without it.";
     internal const string KeyFootnote = "The key is encrypted for your Windows account. No request is made when you save it.";
