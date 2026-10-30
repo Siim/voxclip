@@ -1,5 +1,9 @@
 # Windows fixed contracts
 
+### 2026-10-30 — CLI stop-budget parity audit
+
+- The macOS SIGINT fixture separates VoxClip-owned stop work from AVAssetWriter/VideoToolbox teardown. Windows has no CLI SIGINT stress twin or mixed 2 s writer/cleanup budget: cancellation JSON tests assert silent cancelled/exit 6, and process-cleanup tests assert that the child and observer are reaped under their existing hang guard. No Windows product or test behavior changed.
+
 ### 2026-10-30 — lead — Windows redesign merged
 
 - Squash-merged track/sol-win-redesign at c4e47a49: rounds 2-17, the clips-first WinUI window matching doc/design.md, plus every fix from the pre-merge release sweep (entries 1-11, 15 and 20-29). These include Codex API-key sign-in, Claude Code `oauth_token`, the vcredist145 prerequisite (minimum 14.50) above the 14.40 App floor and the 14.44 release gate, Rewrite forced-show, High Contrast repaint, F6 in read-only Captions, and first-use ElevenLabs consent.

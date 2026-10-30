@@ -1,5 +1,9 @@
 # macOS implementation contracts
 
+### 2026-10-30 — Separate CLI stop work from Apple writer teardown
+
+- The SIGINT stress regression retains the 2 s budget for the sum of VoxClip-owned stop phases, including pump stop, reader teardown, writer handoff, partial deletion, resource release and process exit. AVAssetWriter/VideoToolbox teardown is measured separately under the unchanged 15 s SIGINT watchdog, which must never fire. SIGINT_STRESS keeps total internal timings and adds owned_max and writer_max. Synthetic timing cases prove that a slow writer does not consume the owned budget and that slow owned cleanup still fails it. Product code and HeavyMediaTests serialization are unchanged.
+
 ### 2026-10-30 — lead — ElevenLabs error detail and residency keys
 
 - A live Scribe upload failed with only "ElevenLabs answered 400: the request could not finish". `ElevenLabsTranscriber.providerError(status:data:key:region:)` now also reads the object form of `detail` (`{type, code, message, status}`), not only a string or a list. `UserMessages` shows the redacted reason unless it is the generic text, and the import logs `engine=elevenlabs status=… detail=…` at warn level.

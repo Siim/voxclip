@@ -21,29 +21,44 @@ struct CLIResult: Sendable {
         let exit: UInt64
         let phases: [String: UInt64]
 
-        var breakdown: String {
-            func seconds(_ start: String, _ end: String) -> String {
-                guard let first = phases[start], let last = phases[end], first > 0, last >= first else { return "notReached" }
-                let difference: UInt64 = last - first
-                let elapsedNanoseconds: Double = Double(difference)
-                let nanosecondsPerSecond: Double = 1_000_000_000.0
-                let elapsed: Double = elapsedNanoseconds / nanosecondsPerSecond
-                return String(format: "%.6f", elapsed)
+        private static let ownedIntervals = [
+            ("handler_to_cancel", "handler", "cancelRequest"),
+            ("cancel_to_pumps", "cancelRequest", "pumpsStopped"),
+            ("cancel_to_teardown", "cancelRequest", "teardownStart"),
+            ("reader_teardown", "teardownStart", "readersStopped"),
+            ("writer_handoff", "readersStopped", "writerCancelStart"),
+            ("partial_delete", "writerCancelEnd", "partialDeleted"),
+            ("resource_release", "partialDeleted", "exportReturned"),
+            ("return_to_exit", "exportReturned", "exit")
+        ]
+
+        private func seconds(_ start: String, _ end: String) -> Double? {
+            guard let first = phases[start], let last = phases[end], first > 0, last >= first else { return nil }
+            return Double(last - first) / 1e9
+        }
+
+        var ownedStopPathLatency: Double {
+            get throws {
+                try Self.ownedIntervals.reduce(0) { total, interval in
+                    if interval.2 == "pumpsStopped", phases["pumpsStopped"] == 0 { return total }
+                    return total + (try #require(seconds(interval.1, interval.2), "Missing or reversed stop interval \(interval.0): \(phases)"))
+                }
             }
-            let intervals: [(String, String, String)] = [
-                ("handler_to_cancel", "handler", "cancelRequest"),
-                ("cancel_to_pumps", "cancelRequest", "pumpsStopped"),
-                ("cancel_to_teardown", "cancelRequest", "teardownStart"),
-                ("reader_teardown", "teardownStart", "readersStopped"),
+        }
+
+        var writerTeardownLatency: Double {
+            get throws { try #require(seconds("writerCancelStart", "writerCancelEnd"), "Writer teardown must complete") }
+        }
+
+        var breakdown: String {
+            let intervals = Self.ownedIntervals + [
                 ("video_reader_cancel", "videoReaderCancelStart", "videoReaderCancelEnd"),
                 ("audio_reader_cancel", "audioReaderCancelStart", "audioReaderCancelEnd"),
-                ("writer_teardown", "writerCancelStart", "writerCancelEnd"),
-                ("partial_delete", "writerCancelEnd", "partialDeleted"),
-                ("resource_release", "partialDeleted", "exportReturned"),
-                ("return_to_exit", "exportReturned", "exit")
+                ("writer_teardown", "writerCancelStart", "writerCancelEnd")
             ]
             return intervals.map { (interval: (String, String, String)) -> String in
-                "\(interval.0)=\(seconds(interval.1, interval.2))"
+                let elapsed = seconds(interval.1, interval.2).map { String(format: "%.6f", $0) } ?? "notReached"
+                return "\(interval.0)=\(elapsed)"
             }.joined(separator: " ")
         }
     }
@@ -78,6 +93,30 @@ struct CLIResult: Sendable {
         }
     }
 
+}
+
+@Test(arguments: [UInt64(100_000_000), 2_158_140_000], [UInt64(70_000_000), 2_070_000_000])
+func cliInterruptTimingSeparatesWriterAndOwnedBudgets(_ writerNanoseconds: UInt64, _ resourceNanoseconds: UInt64) throws {
+    let handler: UInt64 = 1_000_000_000
+    let writerStart = handler + 130_000_000
+    let writerEnd = writerStart + writerNanoseconds
+    let returned = writerEnd + 60_000_000 + resourceNanoseconds
+    let exit = returned + 80_000_000
+    for pumpsStopped in [UInt64(0), handler + 30_000_000] {
+        let timing = CLIResult.InterruptTiming(handler: handler, exportStart: handler - 1, exit: exit, phases: [
+            "handler": handler, "cancelRequest": handler + 10_000_000,
+            "pumpsStopped": pumpsStopped, "teardownStart": handler + 40_000_000,
+            "readersStopped": handler + 80_000_000, "writerCancelStart": writerStart,
+            "writerCancelEnd": writerEnd, "partialDeleted": writerEnd + 60_000_000,
+            "exportReturned": returned, "exit": exit
+        ])
+        let owned = try timing.ownedStopPathLatency
+        let expected = (pumpsStopped == 0 ? 0.27 : 0.29) + Double(resourceNanoseconds) / 1e9
+        #expect(abs(owned - expected) < 1e-9)
+        #expect((owned <= 2) == (resourceNanoseconds == 70_000_000))
+        #expect(try timing.writerTeardownLatency == Double(writerNanoseconds) / 1e9)
+        #expect(timing.breakdown.contains("writer_teardown="))
+    }
 }
 
 private final class CLIProcessTiming: Sendable {
@@ -528,7 +567,10 @@ func cliCaptionHarnessRejectsAmbiguousArguments(_ arguments: [String]) throws {
     let unrelated = directory.appendingPathComponent("interrupted-0.mp4.partial.sb-existing")
     try Data("preserve this file".utf8).write(to: unrelated)
     var latencies: [Double] = []
+    var ownedLatencies: [Double] = []
+    var writerLatencies: [Double] = []
     var wallLatencies: [Double] = []
+    let interruptTimeout: Double = 15
     var slowestLatency: Double = -1
     var slowestBreakdown: String = ""
     var random: UInt64 = 0x564f58434c495034
@@ -548,7 +590,7 @@ func cliCaptionHarnessRejectsAmbiguousArguments(_ arguments: [String]) throws {
                             continuation.resume(with: Result {
                                 try runCLI(["export", "--open", source.path, "--transcript", transcriptURL.path,
                                     "--export", output.path, "--aspect", "9:16", "--style", "off", "--json", "--quiet"],
-                                    directory: directory, interruptAfter: offset)
+                                    directory: directory, interruptAfter: offset, interruptTimeout: interruptTimeout)
                             })
                         }
                     }
@@ -566,7 +608,9 @@ func cliCaptionHarnessRejectsAmbiguousArguments(_ arguments: [String]) throws {
             try #require(result.status == 6, "SIGINT pair \(iteration), export \(pump), offset \(offsets[pump]): exit \(result.status), \(result.stderr)")
             let latency = try result.internalStopPathLatency
             let timing = try result.internalInterruptTiming
-            let breakdown = "pair=\(iteration) export=\(pump) internal=\(latency) \(timing.breakdown)"
+            let ownedLatency = try timing.ownedStopPathLatency
+            let writerLatency = try timing.writerTeardownLatency
+            let breakdown = "pair=\(iteration) export=\(pump) internal=\(latency) owned=\(ownedLatency) \(timing.breakdown)"
             if latency > 1 { print("SIGINT_SLOW \(breakdown)") }
             if latency > slowestLatency {
                 slowestLatency = latency
@@ -575,12 +619,15 @@ func cliCaptionHarnessRejectsAmbiguousArguments(_ arguments: [String]) throws {
             for phase in ["cancelRequest", "exportReturned"] {
                 #expect(try #require(timing.phases[phase]) > 0, "Required stop phase \(phase) was not recorded")
             }
-            for phase in ["cancelRequest", "teardownStart", "readersStopped", "writerCancelStart", "writerCancelEnd", "partialDeleted", "exportReturned"] {
+            for phase in ["cancelRequest", "pumpsStopped", "teardownStart", "readersStopped", "writerCancelStart", "writerCancelEnd", "partialDeleted", "exportReturned"] {
                 let stamp = try #require(timing.phases[phase])
                 #expect(stamp == 0 || (stamp >= timing.handler && stamp <= timing.exit), "Invalid stop phase \(phase): \(result.stderr)")
             }
-            #expect(latency <= 2)
+            #expect(ownedLatency <= 2, "VoxClip-owned stop work exceeded 2 s: \(breakdown)")
+            #expect(writerLatency < interruptTimeout, "Writer teardown exceeded the existing SIGINT watchdog: \(breakdown)")
             latencies.append(latency)
+            ownedLatencies.append(ownedLatency)
+            writerLatencies.append(writerLatency)
             wallLatencies.append(try #require(result.interruptLatency))
             let error = try #require(result.json["error"] as? [String: Any])
             #expect(error["code"] as? String == "cancelled")
@@ -594,7 +641,7 @@ func cliCaptionHarnessRejectsAmbiguousArguments(_ arguments: [String]) throws {
     #expect(try Data(contentsOf: unrelated) == Data("preserve this file".utf8))
     let internalSummary = "internal_min=\(latencies.min() ?? 0) internal_max=\(latencies.max() ?? 0) internal_mean=\(latencies.reduce(0, +) / Double(latencies.count))"
     let wallSummary = "wall_min=\(wallLatencies.min() ?? 0) wall_max=\(wallLatencies.max() ?? 0) wall_mean=\(wallLatencies.reduce(0, +) / Double(wallLatencies.count))"
-    let summary = "SIGINT_STRESS pairs=30 exports=\(latencies.count) watchdogs=0 \(internalSummary) \(wallSummary) slowest_\(slowestBreakdown)"
+    let summary = "SIGINT_STRESS pairs=30 exports=\(latencies.count) watchdogs=0 \(internalSummary) owned_max=\(ownedLatencies.max() ?? 0) writer_max=\(writerLatencies.max() ?? 0) \(wallSummary) slowest_\(slowestBreakdown)"
     print(summary)
     if ProcessInfo.processInfo.environment["GITHUB_ACTIONS"] == "true" {
         print("::notice title=SIGINT_STRESS::\(summary)")
