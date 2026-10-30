@@ -110,8 +110,8 @@ public sealed partial class LlmConnector
             var keep = Id switch
             {
                 ConnectorId.Anthropic => item["capabilities"]?["structured_outputs"]?["supported"]?.GetValue<bool>() != false,
-                ConnectorId.OpenAI => (id.StartsWith("gpt-", StringComparison.Ordinal) || Regex.IsMatch(id, "^o[0-9]", RegexOptions.CultureInvariant)) && !HasAny("audio", "realtime", "transcribe", "tts", "image", "search", "embedding", "moderation", "instruct"),
-                ConnectorId.Xai => id.StartsWith("grok-", StringComparison.Ordinal) && !HasAny("image", "imagine", "video", "vision", "tts", "stt"),
+                ConnectorId.OpenAI => (id.StartsWith("gpt-", StringComparison.Ordinal) || Regex.IsMatch(id, "^o[0-9]", RegexOptions.CultureInvariant)) && !HasAny("audio", "realtime", "live", "voice", "transcribe", "tts", "image", "search", "embedding", "moderation", "instruct"),
+                ConnectorId.Xai => id.StartsWith("grok-", StringComparison.Ordinal) && !HasAny("image", "imagine", "video", "vision", "tts", "stt", "voice", "audio", "realtime", "live", "transcribe"),
                 ConnectorId.Gemini => id.StartsWith("gemini-", StringComparison.Ordinal) && !HasAny("embedding", "image", "tts", "audio", "live", "aqa") && (item["supportedGenerationMethods"] as JsonArray ?? []).Any(method => method?.GetValue<string>() == "generateContent"),
                 _ => !HasAny("embed")
             };

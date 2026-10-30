@@ -150,7 +150,7 @@
         "path": "/v1/models",
         "items": "data",
         "id": "id",
-        "include": "id starts with gpt- or matches ^o[0-9]; id contains none of: audio, realtime, transcribe, tts, image, search, embedding, moderation, instruct",
+        "include": "id starts with gpt- or matches ^o[0-9]; id contains none of: audio, realtime, live, voice, transcribe, tts, image, search, embedding, moderation, instruct",
         "sort": "created descending"
       },
       "requestIdHeader": "x-request-id",
@@ -194,7 +194,7 @@
         "path": "/v1/models",
         "items": "data",
         "id": "id",
-        "include": "id starts with grok-; id contains none of: image, imagine, video, vision, tts, stt"
+        "include": "id starts with grok-; id contains none of: image, imagine, video, vision, tts, stt, voice, audio, realtime, live, transcribe"
       },
       "requestIdHeader": "x-request-id",
       "defaultModel": "grok-4.5",

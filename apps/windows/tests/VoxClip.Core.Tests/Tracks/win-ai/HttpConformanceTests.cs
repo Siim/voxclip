@@ -9,6 +9,22 @@ namespace VoxClip.Core.Tests.Tracks.WinAi;
 public sealed class HttpConformanceTests
 {
     [Theory]
+    [InlineData(ConnectorId.OpenAI, "gpt")]
+    [InlineData(ConnectorId.Xai, "grok")]
+    public async Task TextModelPickersExcludeVoiceLiveAudioAndRealtime(ConnectorId id, string prefix)
+    {
+        string[] excluded = [$"{prefix}-live-1", $"{prefix}-voice-2.0", $"{prefix}-voice-3.0", $"{prefix}-audio-preview", $"{prefix}-realtime-preview", $"{prefix}-transcribe", $"{prefix}-tts", $"{prefix}-image-1"];
+        var accepted = $"{prefix}-text-custom";
+        var body = new JsonObject { ["data"] = new JsonArray(excluded.Append(accepted).Select(model => (JsonNode)new JsonObject { ["id"] = model, ["created"] = 1 }).ToArray()) };
+        using var handler = new StubHttp((_, _, _) => Task.FromResult(Response(200, body.ToJsonString())));
+        using var client = new HttpClient(handler);
+        var connector = new LlmConnector(id, Catalog(), client, new MemoryKeys(), new Redactor());
+        var models = await connector.GetModelsAsync(true, TestContext.Current.CancellationToken);
+        Assert.Contains(models, model => model.Id == accepted);
+        Assert.DoesNotContain(models, model => excluded.Contains(model.Id));
+    }
+
+    [Theory]
     [InlineData("[false,true]", "false")]
     [InlineData("[\"high\",\"medium\",\"low\"]", "\"low\"")]
     [InlineData("[\"high\",\"medium\"]", "\"medium\"")]

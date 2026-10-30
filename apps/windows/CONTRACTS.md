@@ -1,5 +1,9 @@
 # Windows fixed contracts
 
+### 2026-10-30 — Text-only cloud model pickers
+
+- OpenAI and xAI discovered-model filters reject live, voice, audio, realtime and transcription-only ids in addition to existing non-text exclusions. Both stub suites include the audit examples gpt-live-1 and grok-voice-2.0/3.0, plus text controls; the shared catalog records the same filter rules.
+
 ### 2026-10-30 — Codex curated retirement
 
 - Removed gpt-5.5 from the shared Codex curated list following its October 14, 2026 ChatGPT-sign-in retirement. Offline and failed-refresh picker tests exclude it, and pin its absence from fallbackOrder. A successful CLI model/list remains authoritative for that user's authentication mode.

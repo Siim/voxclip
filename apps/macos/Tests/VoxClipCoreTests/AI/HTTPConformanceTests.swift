@@ -3,6 +3,19 @@ import Testing
 @testable import VoxClipCore
 
 extension HTTPConnectorTests {
+    @Test(arguments: [ConnectorID.openai, .xai])
+    func textModelPickersExcludeVoiceLiveAudioAndRealtime(_ id: ConnectorID) async throws {
+        let prefix = id == .openai ? "gpt" : "grok"
+        let excluded = ["\(prefix)-live-1", "\(prefix)-voice-2.0", "\(prefix)-voice-3.0", "\(prefix)-audio-preview", "\(prefix)-realtime-preview", "\(prefix)-transcribe", "\(prefix)-tts", "\(prefix)-image-1"]
+        let accepted = "\(prefix)-text-custom"
+        let data = try HTTPFixtures.encode(["data": (excluded + [accepted]).map { ["id": $0, "created": 1] as [String: Any] }])
+        let harness = try HTTPHarness(id, replies: [.json(data)])
+        defer { harness.finish() }
+        let models = try await harness.connector.models(refresh: true)
+        #expect(models.contains { $0.id == accepted })
+        #expect(models.allSatisfy { !excluded.contains($0.id) })
+    }
+
     @Test(arguments: ["[false,true]", "[\"high\",\"medium\",\"low\"]", "[\"high\",\"medium\"]", "[true]", "[\"false\"]", "[]", "null", "[\"tiny\",\"huge\"]"])
     func ollamaUsesOnlyAdvertisedThinkingControls(_ values: String) async throws {
         let details = "{\"capabilities\":[\"completion\",\"thinking\"],\"model_info\":{\"model.context_length\":32768},\"thinking\":{\"values\":\(values)}}"
