@@ -35,8 +35,9 @@ import VoxClipCore
         }.formStyle(.grouped)
             .alert("Turn on Voice Lab?", isPresented: $confirmBeta) {
                 Button("Turn on") { app.set("voiceLab.betaNoticeAccepted", .bool(true)); app.set("voiceLab.enabled", .bool(true)) }
-                Button("Cancel", role: .cancel) {}
+                Button("Cancel", role: .cancel) {}.keyboardShortcut(.defaultAction)
             } message: { Text(VoiceLabSession.betaCopy) }
+            .onExitCommand { confirmBeta = false }
             .sheet(isPresented: $session.showEnrollment) { CreateVoiceSheet(session: session, shared: app.shared) }
             .sheet(item: Binding(get: { session.showEnrollment ? nil : session.confirmation }, set: { session.confirmation = $0 })) { VoiceLabRequestSheet(session: session, action: $0, shared: app.shared) }
             .task(id: session.enabled) { await session.refreshEnabledState() }

@@ -3,6 +3,19 @@ import unittest
 
 
 class EnrollmentUITests(unittest.TestCase):
+    def test_turn_on_defaults_return_and_escape_to_cancel(self):
+        root = pathlib.Path(__file__).resolve().parents[2]
+        source = (root / 'apps/macos/Sources/VoxClip/VoiceLabSettings.swift').read_text()
+        start = source.index('.alert("Turn on Voice Lab?"')
+        alert = source[start:source.index('.sheet(isPresented:', start)]
+        self.assertIn('Button("Cancel", role: .cancel) {}.keyboardShortcut(.defaultAction)', alert)
+        self.assertIn('.onExitCommand { confirmBeta = false }', alert)
+        self.assertNotRegex(alert, r'Button\("Turn on"[^\n]*keyboardShortcut')
+        sheet = source[source.index('if action.defaultIsCancel'):source.index('private struct CreateVoiceSheet')]
+        self.assertIn('Button("Cancel", role: .cancel)', sheet)
+        self.assertIn('.keyboardShortcut(.defaultAction)', sheet)
+        self.assertIn('.onExitCommand { session.confirmation = nil }', sheet)
+
     def test_headphones_caption_is_always_before_record_and_not_live(self):
         root = pathlib.Path(__file__).resolve().parents[2]
         source = (root / 'apps/macos/Sources/VoxClip/VoiceLabSettings.swift').read_text()

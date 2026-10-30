@@ -1,5 +1,10 @@
 # macOS implementation contracts
 
+### 2026-10-30 — sol-mac-vl-followups — opt-in confirmation defaults
+
+- In `Turn on Voice Lab?`, Cancel is the explicit Return/default action; the cancel role and exit handler dismiss without enabling Voice Lab. Turn on remains an explicit click. Non-destructive provider approvals are unchanged.
+- Voice deletion, own-voice audio/local removal and stop-looking already use a Cancel-default request sheet and an Escape dismissal. The headless UI guard checks both surfaces; the new beta-default assertion failed before the change. The existing session `deletionNeverUsesTheDestructiveDefault` test remains in force.
+
 ### 2026-10-30 — sol-mac-vl-followups — screen-reader recording guidance
 
 - The Create Your Voice sheet always shows `If you use a screen reader, wear headphones so it isn't recorded.` immediately after the teleprompter (outside its conditional) and before recording controls. It is plain caption-sized secondary text in normal reading order, not a live region or an announcement.
