@@ -7,6 +7,17 @@ import Testing
 
 @Suite("Headless Voice Lab session", .serialized, .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil, "Use an isolated VOXCLIP_DATA_DIR for app-model tests; no windows or provider requests are opened."))
 @MainActor struct VoiceLabSessionTests {
+    @Test func startupAndSettingsFlushDoNotAwaitRemoteRecovery() async {
+        let app = AppModel(), barrier = SessionRecoveryBarrier()
+        app.voiceRecoveryForTests = { await barrier.pause() }
+        await app.start()
+        await barrier.wait()
+        #expect(!app.loadingSettings)
+        await app.flushSettings()
+        barrier.resume()
+        await barrier.finished()
+        #expect(barrier.cancelled)
+    }
     private func locations(_ root: URL) -> DataLocations {
         DataLocations(environment: ["VOXCLIP_DATA_DIR": root.path])
     }
@@ -136,6 +147,22 @@ import Testing
         #expect(session.operations.map(\.id) == [operation.id])
         #expect(session.operations.first?.displayState == "Removing…")
     }
+}
+
+@MainActor private final class SessionRecoveryBarrier {
+    private var arrived = false
+    private var arrival: CheckedContinuation<Void, Never>?
+    private var release: CheckedContinuation<Void, Never>?
+    private var completion: CheckedContinuation<Void, Never>?
+    private var done = false
+    var cancelled = false
+    func pause() async {
+        await withCheckedContinuation { release = $0; arrived = true; arrival?.resume(); arrival = nil }
+        cancelled = Task.isCancelled; done = true; completion?.resume(); completion = nil
+    }
+    func wait() async { if !arrived { await withCheckedContinuation { arrival = $0 } } }
+    func resume() { release?.resume(); release = nil }
+    func finished() async { if !done { await withCheckedContinuation { completion = $0 } } }
 }
 
 private struct VoiceLabAppKeys: KeyProvider {

@@ -59,7 +59,10 @@ public actor VoiceOperationReconciler {
                     guard let remote = try await findRemote(value, force: force) else { return }
                     value = try await store.transition(value.id, to: .withdrawing, at: now(), remoteVoiceID: remote.id)
                 }
-                if let voiceID = value.remoteVoiceID { try await deleteRemote(value, voiceID: voiceID) }
+                if let voiceID = value.remoteVoiceID {
+                    if !force, let next = value.nextAttemptAt, now() < next { return }
+                    try await deleteRemote(value, voiceID: voiceID)
+                }
                 try await store.tombstone(value)
                 value = try await store.transition(value.id, to: .withdrawn, at: now())
             case (.delete, .intent):

@@ -93,7 +93,7 @@ import VoxClipMedia
             operations = try await store.operations()
             deleting = Set(operations.filter { !$0.finished && ($0.kind == .delete || $0.state == .withdrawing) }.map(\.recordID))
             records = try await store.records()
-            scheduleRecovery()
+            if !Task.isCancelled { scheduleRecovery() }
         } catch { message = "The local voice records could not be read. No audio was sent." }
     }
     private func scheduleRecovery() {
@@ -106,7 +106,14 @@ import VoxClipMedia
             await self?.load()
         }
     }
-    func reconcileStartup() async { await load() }
+    func reconcileStartup() async {
+        guard !Task.isCancelled else { return }
+        do {
+            if !enabled, try await store.records().isEmpty, try await store.operations().isEmpty { return }
+            await load()
+        } catch { message = "The local voice records could not be read. No audio was sent." }
+    }
+    func stopRecovery() { recoveryTask?.cancel(); recoveryTask = nil }
     private func services() throws -> (ElevenLabsVoiceLab, VoiceEnrollment) {
         let selected = ElevenLabsRegion(rawValue: app.string("transcription.elevenlabs.region", fallback: "default")) ?? .default
         if let client, let enrollment, region == selected { return (client, enrollment) }

@@ -132,7 +132,7 @@ import VoxClipCore
         guard didReviewAll else { terminating = false; NSApp.reply(toApplicationShouldTerminate: false); return }
         Task { await model.flushSettings(); NSApp.reply(toApplicationShouldTerminate: true) }
     }
-    func applicationWillTerminate(_ notification: Notification) { model.modelLibrary.task?.cancel(); model.speakerModelLibrary.task?.cancel() }
+    func applicationWillTerminate(_ notification: Notification) { model.stopVoiceRecovery(); model.modelLibrary.task?.cancel(); model.speakerModelLibrary.task?.cancel() }
 
     #if DEBUG
     weak var commandWindowForTesting: NSWindow?
