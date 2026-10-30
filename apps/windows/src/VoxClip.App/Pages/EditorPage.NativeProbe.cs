@@ -212,17 +212,28 @@ public sealed partial class EditorPage
             var originalPaneOpen = window.DebugNavigationPaneOpen;
             try
             {
-                window.AppWindow.Resize(new((int)(1440 * XamlRoot.RasterizationScale), (int)(900 * XamlRoot.RasterizationScale)));
-                await Task.Delay(200);
-                foreach (var width in new[] { 300, 348, 388, 560 })
+                foreach (var (windowWidth, windowHeight) in new[] { (1440, 900), (1280, 800) })
                 {
-                    if (!EditorLayout.TranscriptFits(WorkArea.ActualWidth, ViewerSplitter.Width, width, Token("VcLayoutTranscriptMinWidth")))
+                    window.AppWindow.Resize(new((int)(windowWidth * XamlRoot.RasterizationScale), (int)(windowHeight * XamlRoot.RasterizationScale)));
+                    await DebugSettleColumnAsync();
+                    foreach (var width in new[] { 300, 348, 388, 560 })
                     {
-                        window.CloseNavigationPane();
-                        await Task.Delay(200);
+                        if (!EditorLayout.TranscriptFits(WorkArea.ActualWidth, ViewerSplitter.Width, width, Token("VcLayoutTranscriptMinWidth")))
+                        {
+                            window.CloseNavigationPane();
+                            await DebugSettleColumnAsync();
+                        }
+                        RightColumn.Width = new(width);
+                        await DebugRightColumnBoundsAsync(window, output, "rewrite-" + width + "-" + windowWidth + "x" + windowHeight, ColumnFitState.Rewrite);
+                        await panel.DebugFitStatesAsync(async name =>
+                        {
+                            await DebugRightColumnBoundsAsync(window, output,
+                                "rewrite-r11-" + name + "-" + width + "-" + windowWidth + "x" + windowHeight, ColumnFitState.Rewrite);
+                            panel.DebugValidateTakeRows();
+                        });
+                        NativeRequire(Grid.GetColumn(TransportRow) == (RightPane.ActualHeight < 760 ? 1 : 0),
+                            "Rewrite compact transport does not follow the actual column height.");
                     }
-                    RightColumn.Width = new(width);
-                    await DebugRightColumnBoundsAsync(window, output, "rewrite-" + width, ColumnFitState.Rewrite);
                 }
             }
             finally

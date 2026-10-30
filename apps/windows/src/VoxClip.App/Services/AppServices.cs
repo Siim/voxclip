@@ -15,6 +15,8 @@ using VoxClip.Core.Services.LLM;
 using VoxClip.Core.Services.Updates;
 using VoxClip.Media.Pipeline;
 using VoxClip.Media.Speech;
+using Microsoft.UI.Dispatching;
+using VoxClip.Core.Domain.VoiceLab;
 
 namespace VoxClip.App.Services;
 
@@ -56,6 +58,88 @@ internal sealed class AppServices : IAsyncDisposable
 #endif
     private WhisperNetTranscriber? localSpeech;
     private readonly List<ElevenLabsTranscriber> cloudSpeechInstances = [];
+    private VoiceLabSession? voiceLab;
+    private CreateVoiceSession? voiceEnrollment;
+#if DEBUG
+    private DebugVoiceLabBackend? debugVoiceLab;
+    internal int? DebugVoiceLabHttpCalls => debugVoiceLab?.HttpCalls;
+#endif
+    private readonly DispatcherQueue dispatcher = DispatcherQueue.GetForCurrentThread();
+    internal bool VoiceLabEnabled => RewriteEntryPolicy.Available(Settings.GetBool("voiceLab.enabled") == true,
+        Settings.GetBool("voiceLab.betaNoticeAccepted") == true);
+    internal VoiceLabSession VoiceLab
+    {
+        get
+        {
+            if (voiceLab is not null) return voiceLab;
+            async Task Consent(CancellationToken ct)
+            {
+                Task? save = null;
+                await OnUiAsync(() => save = SetAsync("voiceLab.providerConsent.elevenlabs", true, ct));
+                await save!;
+            }
+            IVoiceLabBackend backend = new VoiceLabBackend(Data, Keys, Log, () => VoiceLabEnabled,
+                () => ElevenLabsRegions.FromSettings(Settings, Log), Consent);
+#if DEBUG
+            var fixtures = Environment.GetEnvironmentVariable("VOXCLIP_DEBUG_VOICELAB");
+            if (fixtures?.StartsWith("fixtures:", StringComparison.Ordinal) == true)
+                backend = debugVoiceLab = DebugVoiceLabBackend.FromFixtures(fixtures[9..], () => VoiceLabEnabled, Consent);
+#endif
+            voiceLab = new(backend, OnUiAsync);
+            return voiceLab;
+        }
+    }
+    internal async Task<CreateVoiceSession> CreateVoiceEnrollmentAsync(CancellationToken ct)
+    {
+        async Task Consent(CancellationToken cancellation)
+        {
+            Task? save = null;
+            await OnUiAsync(() => save = SetAsync("voiceLab.providerConsent.elevenlabs", true, cancellation));
+            await save!;
+        }
+        var selectedRegion = ElevenLabsRegions.FromSettings(Settings, Log);
+        Func<bool>? speaker = null;
+        Func<VoiceConsentStatement, VoxClip.Core.Domain.Transcript.TranscriptionRequest, CancellationToken, Task<VoxClip.Core.Domain.Transcript.RawTranscript>>? scribe = null;
+#if DEBUG
+        var fixtures = Environment.GetEnvironmentVariable("VOXCLIP_DEBUG_VOICELAB");
+        if (fixtures?.StartsWith("fixtures:", StringComparison.Ordinal) == true)
+        {
+            speaker = () => DebugAvailableSpeakerCheck.Available;
+            var fake = new DebugConsentScribe(fixtures[9..]);
+            scribe = async (statement, request, cancellation) =>
+            {
+                var result = await fake.TranscribeAsync(statement, request, cancellation);
+                Directory.CreateDirectory(Data.Cache);
+                await File.WriteAllTextAsync(Path.Combine(Data.Cache, "consent-scribe-result.json"),
+                    System.Text.Json.JsonSerializer.Serialize(new { fixture = "consent-scribe.json", calls = fake.Calls, httpCalls = 0 }), cancellation);
+                return result;
+            };
+        }
+#endif
+        var backend = await Task.Run(() => new VoiceStatementBackend(Data, Keys, Log, selectedRegion,
+            () => VoiceLabEnabled, () => VoiceLab.PlanMessage, Consent, speakerAvailable: speaker, transcribe: scribe), ct);
+        if (ct.IsCancellationRequested) { backend.Dispose(); ct.ThrowIfCancellationRequested(); }
+        IVoiceStatementBackend selected = backend;
+#if DEBUG
+        if (fixtures?.StartsWith("fixtures:", StringComparison.Ordinal) == true && debugVoiceLab is not null)
+            selected = new DebugVoiceCreationBackend(backend, debugVoiceLab, Data, fixtures[9..]);
+#endif
+        return voiceEnrollment = new(selected, new VoiceStatementCapture(new VoxClip.Media.Audio.VoiceMicrophoneRecorder(Log)), OnUiAsync);
+    }
+#if DEBUG
+    internal string? DebugMicrophoneSettingsUri { get; set; }
+#endif
+    private Task OnUiAsync(Action action)
+    {
+        if (dispatcher.HasThreadAccess) { action(); return Task.CompletedTask; }
+        var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        if (!dispatcher.TryEnqueue(() =>
+        {
+            try { action(); completion.SetResult(); }
+            catch (Exception exception) { completion.SetException(exception); }
+        })) completion.SetException(new InvalidOperationException("The UI dispatcher is closed."));
+        return completion.Task;
+    }
 
     internal AppServices()
     {
@@ -66,6 +150,8 @@ internal sealed class AppServices : IAsyncDisposable
             if (key == "transcription.elevenlabs.region" && localSpeech is not null) ConfigureCloudSpeech();
             // Window layout (ui.*, such as the splitter's width) changes nothing the listeners show.
             if (!key.StartsWith("ui.", StringComparison.Ordinal)) SettingsChanged?.Invoke(this, EventArgs.Empty);
+            if (key is "voiceLab.enabled" or "voiceLab.betaNoticeAccepted")
+                _ = VoiceLab.RefreshEnabledStateAsync();
         };
         Keys = new(Data.Secrets, Log);
         Downloads = new ModelStore(Models, Data.Root);
@@ -88,6 +174,8 @@ internal sealed class AppServices : IAsyncDisposable
         localSpeech = new WhisperNetTranscriber(Models, Downloads, Data.Root, Log);
         ConfigureCloudSpeech();
         ClipFinder = new ClipFinder(new LlmCatalog(), Keys, new Redactor(), id => Connector(id));
+        await Task.Run(() => VoiceLabBackend.ReconcileLocalStatements(Data), ct);
+        await VoiceLab.ReconcileStartupAsync();
     }
 
     internal LlmConnector Connector(ConnectorId id)
@@ -145,6 +233,8 @@ internal sealed class AppServices : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        if (voiceEnrollment is not null) await voiceEnrollment.DisposeAsync();
+        voiceLab?.Dispose();
         try { await SettingsStore.FlushAsync(CancellationToken.None); }
         catch (Exception) { Log.Write(LogLevel.Warn, "settings", "flush failed"); }
         if (localSpeech is not null) await localSpeech.DisposeAsync();

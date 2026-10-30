@@ -1,4 +1,8 @@
-param([Parameter(Mandatory=$true)][string]$Root, [Parameter(Mandatory=$true)][string]$DataRoot, [Parameter(Mandatory=$true)][string]$EvidenceDir, [string]$NormalProject, [ValidateSet('win-x64','win-arm64')][string]$RuntimeIdentifier='win-arm64')
+param([Parameter(Mandatory=$true)][string]$Root, [Parameter(Mandatory=$true)][string]$DataRoot, [Parameter(Mandatory=$true)][string]$EvidenceDir, [string]$NormalProject, [ValidateSet('win-x64','win-arm64')][string]$RuntimeIdentifier='win-arm64', [ValidateSet('Debug','Release')][string]$Configuration='Debug', [string]$VoiceLabStep, [switch]$Schedule)
+if ($VoiceLabStep) {
+    & (Join-Path $PSScriptRoot 'native-voicelab-walk.ps1') -Root $Root -AcceptedDataRoot $DataRoot -EvidenceDir $EvidenceDir -NormalProject $NormalProject -RuntimeIdentifier $RuntimeIdentifier -Configuration $Configuration -Step $VoiceLabStep -Schedule:$Schedule
+    return
+}
 $ErrorActionPreference='Stop'
 $root=(Resolve-Path $Root).Path
 $shots=Join-Path $EvidenceDir $RuntimeIdentifier

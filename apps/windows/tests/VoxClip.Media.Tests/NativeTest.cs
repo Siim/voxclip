@@ -6,7 +6,7 @@ using Xunit;
 
 namespace VoxClip.Media.Tests;
 
-internal enum NativeGate { Prerequisite, Evidence, AudioOutput }
+internal enum NativeGate { Prerequisite, Evidence, AudioOutput, AudioInput }
 
 internal enum NativeGateOutcome { Run, Skip, Fail }
 
@@ -67,6 +67,20 @@ internal static class NativeTest
     internal static void RequireAudioOutput() => Apply(Outcome(NativeGate.AudioOutput, HasDefaultRenderEndpoint()),
         "This WASAPI preview test needs a default Windows audio output device, which hosted runners lack. verify-windows.ps1 (also run by verify-vm.sh) sets VOXCLIP_REQUIRE_AUDIO_OUTPUT=1 to require it.");
 
+    internal static void RequireAudioInput() => Apply(Outcome(NativeGate.AudioInput, HasDefaultCaptureEndpoint()),
+        "This microphone test requires a Console-role Windows capture endpoint. Set VOXCLIP_REQUIRE_AUDIO_INPUT=1 only for an explicitly provisioned native audio run.");
+
+    private static bool HasDefaultCaptureEndpoint()
+    {
+        if (!OperatingSystem.IsWindows()) return false;
+        try
+        {
+            using var devices = new MMDeviceEnumerator();
+            return devices.HasDefaultAudioEndpoint(DataFlow.Capture, Role.Console);
+        }
+        catch (Exception) { return false; }
+    }
+
     private static bool HasDefaultRenderEndpoint()
     {
         if (!OperatingSystem.IsWindows()) return false;
@@ -81,18 +95,20 @@ internal static class NativeTest
     internal static NativeGateOutcome Outcome(NativeGate gate, bool present) => Decide(gate, present,
         Environment.GetEnvironmentVariable("VOXCLIP_REQUIRE_NATIVE"),
         Environment.GetEnvironmentVariable("VOXCLIP_REQUIRE_VM_EVIDENCE"),
-        Environment.GetEnvironmentVariable("VOXCLIP_REQUIRE_AUDIO_OUTPUT"));
+        Environment.GetEnvironmentVariable("VOXCLIP_REQUIRE_AUDIO_OUTPUT"),
+        Environment.GetEnvironmentVariable("VOXCLIP_REQUIRE_AUDIO_INPUT"));
 
     // Each flag governs only its own gate: VOXCLIP_REQUIRE_NATIVE prerequisites, VOXCLIP_REQUIRE_VM_EVIDENCE evidence
     // and VOXCLIP_REQUIRE_AUDIO_OUTPUT the audio output device.
     internal static NativeGateOutcome Decide(NativeGate gate, bool present, string? requireNative, string? requireVmEvidence,
-        string? requireAudioOutput)
+        string? requireAudioOutput, string? requireAudioInput = null)
     {
         if (present) return NativeGateOutcome.Run;
         var required = gate switch
         {
             NativeGate.Evidence => requireVmEvidence,
             NativeGate.AudioOutput => requireAudioOutput,
+            NativeGate.AudioInput => requireAudioInput,
             _ => requireNative,
         };
         return required == "1" ? NativeGateOutcome.Fail : NativeGateOutcome.Skip;

@@ -126,6 +126,7 @@
                 <Border Grid.RowSpan="3" BorderBrush="{ThemeResource VcLineDefaultBrush}" BorderThickness="1,0,0,0" IsHitTestVisible="False"/>
                 <Grid x:Name="PreviewPane" Padding="16,16,16,0" RowSpacing="8">
                     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                     <Border x:Name="PreviewStage" Background="{ThemeResource VcStageBrush}" RequestedTheme="Dark" CornerRadius="{StaticResource VcRadiusPaneCornerRadius}" Height="200" HorizontalAlignment="Center">
                         <Grid>
                             <Grid.Resources>
@@ -167,13 +168,13 @@
                     <!-- Viewer bar (delta §5.1): Back 3 seconds, Play, Forward 3 seconds lead; the AI modified tag, then the time, trail.
                          When the tag and time don't fit beside the controls they move together to a second line, still trailing. -->
                     <controls:MeasuredRow x:Name="TransportRow" Grid.Row="1" Gap="4">
-                        <Grid ColumnSpacing="4">
+                        <Grid x:Name="TransportButtons" ColumnSpacing="4">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                             <Button x:Name="PreviewBack" Width="32" MinWidth="0" Height="32" Padding="0" VerticalAlignment="Center" Style="{ThemeResource SubtleButtonStyle}" Click="BackClicked" AutomationProperties.AutomationId="TransportBack" AutomationProperties.Name="Back 3 seconds (J)" ToolTipService.ToolTip="Back 3 seconds (J)"><SymbolIcon Symbol="Previous"/></Button>
                             <Button x:Name="PreviewPlay" Grid.Column="1" Width="40" MinWidth="0" Height="40" Padding="0" CornerRadius="20" Click="PlayClicked" AutomationProperties.AutomationId="TransportPlay" AutomationProperties.Name="Play" AutomationProperties.AcceleratorKey="Space" ToolTipService.ToolTip="Play (Space)"><SymbolIcon x:Name="PlayGlyph" Symbol="Play"/></Button>
                             <Button x:Name="PreviewForward" Grid.Column="2" Width="32" MinWidth="0" Height="32" Padding="0" VerticalAlignment="Center" Style="{ThemeResource SubtleButtonStyle}" Click="ForwardClicked" AutomationProperties.AutomationId="TransportForward" AutomationProperties.Name="Forward 3 seconds" ToolTipService.ToolTip="Forward 3 seconds"><SymbolIcon Symbol="Next"/></Button>
                         </Grid>
-                        <StackPanel Orientation="Horizontal" Spacing="4" HorizontalAlignment="Right" VerticalAlignment="Center">
+                        <StackPanel x:Name="TransportMeta" Orientation="Horizontal" Spacing="4" HorizontalAlignment="Right" VerticalAlignment="Center">
                             <Border x:Name="AiModified" CornerRadius="4" BorderBrush="{ThemeResource VcAccentTextBrush}" BorderThickness="1" Padding="4,1" VerticalAlignment="Center" Visibility="Collapsed"><TextBlock Text="AI modified" FontSize="12" Foreground="{ThemeResource VcAccentTextBrush}"/></Border>
                             <TextBlock x:Name="TransportTime" AutomationProperties.AutomationId="TransportTime" VerticalAlignment="Center" FontFamily="{StaticResource VcMonoFontFamily}" FontSize="13" Foreground="{ThemeResource VcTextPrimaryBrush}"><Run x:Name="TransportElapsed" Text="0:00.0"/><Run x:Name="TransportTotal" Foreground="{ThemeResource VcTextSecondaryBrush}"/></TextBlock>
                         </StackPanel>

@@ -12,6 +12,149 @@ namespace VoxClip.Core.Tests.Tracks.WinUi;
 
 public sealed class RewritePanelTests
 {
+    [Theory]
+    [InlineData("edit")]
+    [InlineData("readonly")]
+    [InlineData("leaving")]
+    [InlineData("settings")]
+    [InlineData("connector")]
+    [InlineData("close")]
+    public void EveryClosePathHandsPanelFocusOffBeforeRemoval(string path)
+    {
+        var editor = Editor();
+        var current = true;
+        using var session = new RewriteSession(editor, 10, 12, Envelope(), null, connectorIsCurrent: () => current);
+        var closed = 0;
+        session.Changed += (_, _) => { if (!session.IsOpen) closed++; };
+        switch (path)
+        {
+            case "edit": editor.Apply(new EditOperation.Correct("w10", "changed")); break;
+            case "readonly": editor.SetMediaUnavailable(true); break;
+            case "leaving": editor.BeginLeaving(); break;
+            case "settings": session.SettingsChanged(false); break;
+            case "connector": current = false; session.SettingsChanged(true); break;
+            default: session.Dispose(); break;
+        }
+        Assert.False(session.IsOpen);
+        Assert.Equal(1, closed);
+        Assert.True(FocusCycle.RestoreRewriteFocus(true, false, false));
+        Assert.False(FocusCycle.RestoreRewriteFocus(false, false, false));
+        Assert.False(FocusCycle.RestoreRewriteFocus(true, true, true));
+        var page = AppSource("Pages", "EditorPage.xaml.cs");
+        var handoff = page.IndexOf("FocusCycle.RestoreRewriteFocus", StringComparison.Ordinal);
+        Assert.True(handoff >= 0 && handoff < page.IndexOf("rightContent.CloseRewrite()", handoff, StringComparison.Ordinal));
+        Assert.Contains("InputState.DescendsFrom(FocusManager.GetFocusedElement(XamlRoot) as DependencyObject, panel)", page);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CostConfirmationCancelsOnCloseOrRevisionWithoutSending(bool revise)
+    {
+        var fake = new RecordingConnector();
+        using var session = new RewriteSession(Editor(), 10, 12, Envelope(), new(fake, "chosen", "Test", "local", ""));
+        await session.SetInstructionAsync("Plainly");
+        var action = session.Prepared!;
+        session.MarkEstimateShown(action);
+        CancellationToken observed = default;
+        var waiting = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var pending = session.ConfirmCostAsync(action, token => { observed = token; return waiting.Task; });
+        if (revise) session.Edit("changed"); else session.Dispose();
+        Assert.True(observed.IsCancellationRequested);
+        Assert.False(await pending);
+        waiting.SetResult(true);
+        Assert.DoesNotContain("send", fake.Calls);
+        Assert.Contains("session.ConfirmCostAsync(action, token => Ui.ConfirmAsync", AppSource("Controls", "RewritePanel.cs"));
+        Assert.Contains("DefaultButton = ContentDialogButton.Close", AppSource("Controls", "Ui.cs"));
+    }
+
+    [Fact]
+    public void NarratorAnnouncesOnlyTransitionsAndEachArrivingProposal()
+    {
+        var announcements = new RewriteAnnouncements();
+        Assert.Empty(announcements.Next(false, 0, "", ""));
+        Assert.Equal(["AI request in progress"], announcements.Next(true, 0, "", ""));
+        Assert.Empty(announcements.Next(true, 0, "", ""));
+        Assert.Equal(["New words ready: 2 changes"], announcements.Next(false, 1, "", "2 changes"));
+        Assert.Empty(announcements.Next(false, 1, "", "2 changes"));
+        Assert.Equal(["Refused"], announcements.Next(false, 1, "Refused", ""));
+        Assert.Empty(announcements.Next(false, 1, "Refused", ""));
+        Assert.Empty(announcements.Next(false, 1, "", ""));
+        Assert.Equal(new[] { "Refused" }, announcements.Next(false, 1, "Refused", ""));
+        Assert.Equal(["New words ready: 2 changes"], announcements.Next(false, 2, "", "2 changes"));
+        var panel = AppSource("Controls", "RewritePanel.cs");
+        Assert.Contains("Ui.Announce(this, message, \"rewrite\", AutomationNotificationProcessing.All)", panel);
+        Assert.DoesNotContain("LiveSetting", panel);
+    }
+
+    [Fact]
+    public void RapidRewriteTransitionsQueueEveryDeduplicatedMessageInOrder()
+    {
+        var announcements = new RewriteAnnouncements();
+        var emitted = new List<string>();
+        emitted.AddRange(announcements.Next(true, 0, "", ""));
+        emitted.AddRange(announcements.Next(false, 1, "", "2 changes"));
+        emitted.AddRange(announcements.Next(false, 1, "Refused", ""));
+        emitted.AddRange(announcements.Next(false, 1, "Refused", ""));
+        Assert.Equal(["AI request in progress", "New words ready: 2 changes", "Refused"], emitted);
+        Assert.Contains("Ui.Announce(this, message, \"rewrite\", AutomationNotificationProcessing.All)", AppSource("Controls", "RewritePanel.cs"));
+        Assert.Contains("AutomationNotificationProcessing processing = AutomationNotificationProcessing.MostRecent", AppSource("Controls", "Ui.cs"));
+        Assert.Contains("processing, text, activity", AppSource("Controls", "Ui.cs"));
+    }
+
+    [Fact]
+    public void PanelHasOneOuterHairlineAndRefreshesAllOwnedBrushesAfterParenting()
+    {
+        var panel = AppSource("Controls", "RewritePanel.cs");
+        Assert.DoesNotContain("BorderThickness = new(0, 1, 0, 0);", panel);
+        Assert.Contains("ActualThemeChanged += (_, _) => RefreshBrushes()", panel);
+        Assert.Contains("Ui.EffectsChanged += EffectsChanged", panel);
+        Assert.Contains("Ui.EffectsChanged -= EffectsChanged", panel);
+        Assert.Contains("foreach (var (target, property, key) in brushes) target.SetValue(property, Ui.ThemeBrush(this, key))", panel);
+        var loaded = panel.IndexOf("Loaded +=", StringComparison.Ordinal);
+        Assert.True(panel.IndexOf("RefreshBrushes();", loaded, StringComparison.Ordinal) > loaded);
+        Assert.Contains("x:Name=\"CaptionsHost\"", AppSource("Pages", "EditorPage.xaml"));
+    }
+
+    [Theory]
+    [InlineData("instruction", true, false, true, false)]
+    [InlineData("proposed words", true, false, true, false)]
+    [InlineData("correction", false, true, true, false)]
+    [InlineData("footer", false, false, true, true)]
+    [InlineData("elsewhere", false, false, false, false)]
+    public void ReturnDefaultRespectsFocusedEditorsAndTheEnabledButton(string focus, bool textFocus, bool correctionOpen, bool enabled, bool expected)
+    {
+        Assert.NotEmpty(focus);
+        Assert.Equal(expected, enabled && ShortcutPolicy.EditorMayHandle(textFocus, correctionOpen, false, false, true));
+        var panel = AppSource("Controls", "RewritePanel.cs");
+        Assert.Contains("apply.IsEnabled && ShortcutPolicy.EditorMayHandle", panel);
+        Assert.Contains("InputState.IsTextFocus(FocusManager.GetFocusedElement(XamlRoot)), correctionOpen()", panel);
+        Assert.Contains("apply.IsEnabled = session.LocalAction is not null && !session.Editor.Busy", panel);
+        Assert.Contains("new RewritePanel(rewrite, () => Transcript.CorrectionOpen)", AppSource("Pages", "EditorPage.xaml.cs"));
+    }
+
+    [Theory]
+    [InlineData("word12", "Apply Cuts")]
+    [InlineData("WORD10 word11 word12", "Apply Correction")]
+    public void ReturnAppliesTheLabelledLocalDefaultWithoutAi(string text, string label)
+    {
+        var editor = Editor();
+        using var session = new RewriteSession(editor, 10, 12, Envelope(), null);
+        session.Edit(text);
+        Assert.Equal(label, session.LocalAction);
+        Assert.True(session.ApplyLocalChanges());
+        Assert.False(session.IsOpen);
+        Assert.True(editor.CanUndo);
+        editor.Undo();
+        Assert.False(editor.CanUndo);
+        var panel = AppSource("Controls", "RewritePanel.cs");
+        Assert.Contains("args.Key == VirtualKey.Enter", panel);
+        Assert.Contains("PreviewKeyDown += Escape", panel);
+        Assert.Contains("session.LocalAction is not null && !session.Editor.Busy", panel);
+    }
+
+    private static string AppSource(string directory, string name) => File.ReadAllText(Path.Combine(Path.GetDirectoryName(Shared)!, "apps", "windows", "src", "VoxClip.App", directory, name));
+
     private static string Shared => Environment.GetEnvironmentVariable("VOXCLIP_SHARED_DIR")!;
     private static EditorViewModel Editor(params TimedWord[] words)
     {
@@ -49,7 +192,7 @@ public sealed class RewritePanelTests
         Assert.Contains("SetName(close, \"Close Rewrite\")", panel);
         Assert.Contains("SetName(instruction, \"What should change?\")", panel);
         Assert.Contains("SetName(words, \"New words\")", panel);
-        Assert.Contains("Loaded += (_, _) => instruction.Focus(FocusState.Programmatic)", panel);
+        Assert.Contains("instruction.Focus(FocusState.Programmatic)", panel);
         Assert.Contains("VirtualKey.Escape", panel);
         Assert.Contains("ReturnFocusOnClose = true", panel);
         Assert.Contains("if (!session.ApplyLocalChanges()) ReturnFocusOnClose = false", panel);
@@ -57,8 +200,10 @@ public sealed class RewritePanelTests
         Assert.Contains("EditorFocusRegion.Captions: if (rightContent", page);
         Assert.Contains("panel.ReturnFocusOnClose", page);
         Assert.Contains("FocusTranscript()", page);
-        Assert.DoesNotContain("Use Take", panel);
-        Assert.DoesNotContain("Generate takes", panel);
+#if DEBUG
+        Assert.Contains("session.Generation?.ReadyToAccept", panel);
+#endif
+        Assert.Contains("Content = \"Generate Takes\"", panel);
     }
 
     [Fact]
@@ -447,7 +592,7 @@ public sealed class RewritePanelTests
         var page = File.ReadAllText(Path.Combine(app, "Pages/EditorPage.xaml.cs"));
         Assert.Contains("FindClipsCommand.IsEnabled = ViewModel.CanFindClips", page);
         Assert.Contains("FindClipsBusy.IsActive = ViewModel.LlmRuns.IsBusy", page);
-        Assert.Contains("!ViewModel.Busy && !ViewModel.IsLeaving", page);
+        Assert.Contains("RewriteCommand.IsEnabled = App.Services.VoiceLabEnabled && Transcript.CanRewrite", page);
         Assert.Contains("IsActive=\"{x:Bind IsLlmBusy, Mode=OneWay}\"", File.ReadAllText(Path.Combine(app, "MainWindow.xaml")));
     }
 
@@ -578,7 +723,7 @@ public sealed class RewritePanelTests
         if (opens) Assert.Equal("word10 word11 word12", session!.NewWords);
         else Assert.Equal(-1, editor.RewriteStart);
         var app = Path.Combine(Path.GetDirectoryName(Shared)!, "apps", "windows", "src", "VoxClip.App");
-        Assert.Contains("!passage.IsCurrent", File.ReadAllText(Path.Combine(app, "Pages", "EditorPage.xaml.cs")));
+        Assert.Contains("opening == rewriteOpenRevision && passage.IsCurrent", File.ReadAllText(Path.Combine(app, "Pages", "EditorPage.xaml.cs")));
         Assert.Contains("model?.RewriteCaretChanged()", File.ReadAllText(Path.Combine(app, "Controls", "TranscriptView.cs")));
     }
 
@@ -609,25 +754,21 @@ public sealed class RewritePanelTests
     public void EveryEntryRespectsTheReleaseGate(int entryIndex)
     {
         var entry = (RewriteEntry)entryIndex;
-        Assert.Equal(RewriteEntryAction.Unavailable, RewriteEntryPolicy.Resolve(entry, true, true, true, true, false));
         Assert.Equal(entry == RewriteEntry.InsertWords ? RewriteEntryAction.Unavailable : RewriteEntryAction.OpenPassage,
-            RewriteEntryPolicy.Resolve(entry, true, true, true, true, true));
-        Assert.Equal(RewriteEntryAction.Unavailable, RewriteEntryPolicy.Resolve(entry, true, false, true, true, true));
+            RewriteEntryPolicy.Resolve(entry, true, true, true, true, true, false));
+        Assert.Equal(RewriteEntryAction.Unavailable, RewriteEntryPolicy.Resolve(entry, true, true, false, true, true, true));
     }
 
     [Fact]
-    public void DisabledVoiceLabOnlyOffersTheOneTimeOverflowFlow()
+    public void DisabledVoiceLabOffersNoRewriteEntryAndInsertionRemainsUnavailable()
     {
         foreach (var entry in Enum.GetValues<RewriteEntry>())
-            Assert.Equal(entry == RewriteEntry.Overflow ? RewriteEntryAction.TurnOnVoiceLab : RewriteEntryAction.Unavailable,
-                RewriteEntryPolicy.Resolve(entry, false, true, true, true, true));
-        Assert.Equal(RewriteEntryAction.Unavailable, RewriteEntryPolicy.Resolve(RewriteEntry.InsertWords, true, true, true, false, true));
+            Assert.Equal(RewriteEntryAction.Unavailable,
+                RewriteEntryPolicy.Resolve(entry, false, true, true, true, true, true));
+        Assert.Equal(RewriteEntryAction.Unavailable, RewriteEntryPolicy.Resolve(RewriteEntry.InsertWords, true, true, true, true, false, true));
         Assert.True(RewriteEntryPolicy.BetweenWords([Word(0, "one"), Word(1, "two")], 0));
         Assert.False(RewriteEntryPolicy.BetweenWords([Word(0, "one"), Word(1, "[event]", WordKind.Event)], 0));
         Assert.False(RewriteEntryPolicy.BetweenWords([Word(0, "one")], 0));
-#if !DEBUG
-        Assert.False(RewriteEntryPolicy.BuildEnabled);
-#endif
     }
 
     [Fact]

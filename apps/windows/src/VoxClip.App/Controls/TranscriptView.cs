@@ -10,6 +10,7 @@ using Microsoft.UI.Xaml.Markup;
 using Microsoft.UI.Xaml.Media;
 using VoxClip.App.ViewModels;
 using VoxClip.Core.Domain.Editing;
+using VoxClip.Core.Domain.VoiceLab;
 using Windows.UI.Text;
 
 namespace VoxClip.App.Controls;
@@ -31,7 +32,7 @@ public sealed class TranscriptView : UserControl
     private double fontSize = DefaultFontSize;
     private string structure = "";
     private readonly Popup correction = new() { IsLightDismissEnabled = true };
-    private sealed record WordRun(int Index, Run Run, int After);
+    private sealed record WordRun(int Index, Run Run, int After, int LastIndex);
     private sealed record PauseRun(Pause Pause, Inline Inline, Run? Run);
     private sealed record ParagraphVisual(RichTextBlock Text, List<WordRun> Runs, List<PauseRun> Pauses, TranscriptOverlay Overlay)
     {
@@ -47,8 +48,9 @@ public sealed class TranscriptView : UserControl
     }
     public bool CorrectionOpen => correction.IsOpen;
     internal bool CanRewrite => RewriteRequested is not null && RewriteEntryPolicy.Resolve(RewriteEntry.Selection,
-        App.Services.Get("voiceLab.enabled", false), model is { IsReadOnly: false, Busy: false, IsLeaving: false },
-        model?.HasSelection == true, false, RewriteEntryPolicy.BuildEnabled) == RewriteEntryAction.OpenPassage;
+        App.Services.Get("voiceLab.enabled", false), App.Services.Get("voiceLab.betaNoticeAccepted", false),
+        model is { IsReadOnly: false, Busy: false, IsLeaving: false },
+        model?.HasSelection == true, false, RewriteEntryPolicy.InternalBuild) == RewriteEntryAction.OpenPassage;
     private int insertionAfterIndex = -1;
     internal int InsertionAfterIndex
     {
@@ -62,7 +64,7 @@ public sealed class TranscriptView : UserControl
     }
     internal void RequestRewrite()
     {
-        if (!RewriteEntryPolicy.BuildEnabled || !App.Services.Get("voiceLab.enabled", false) || model is null) return;
+        if (!App.Services.VoiceLabEnabled || model is null) return;
         if (CanRewrite) RewriteRequested?.Invoke(this, EventArgs.Empty);
         else if (RewriteRequested is null) { model.Notice = "Rewrite is not available in this build."; Announce(model.Notice); }
     }
@@ -81,7 +83,7 @@ public sealed class TranscriptView : UserControl
     internal Windows.Foundation.Rect? DebugWordBounds(int index)
     {
         foreach (var visual in realized.Values)
-            if (visual.Runs.FirstOrDefault(run => run.Index == index) is { } word && TranscriptOverlay.Bounds(word.Run).FirstOrDefault() is { Width: > 0 } bounds)
+            if (visual.Runs.FirstOrDefault(run => run.Index <= index && run.LastIndex >= index) is { } word && TranscriptOverlay.Bounds(word.Run).FirstOrDefault() is { Width: > 0 } bounds)
                 return visual.Text.TransformToVisual(this).TransformBounds(bounds);
         return null;
     }
@@ -202,7 +204,7 @@ public sealed class TranscriptView : UserControl
             var element = repeater.GetOrCreateElement(index);
             repeater.UpdateLayout();
             var options = new BringIntoViewOptions { AnimationDesired = Ui.EffectPolicy.Animations };
-            if (element is Grid grid && realized.TryGetValue(grid, out var visual) && visual.Runs.FirstOrDefault(run => run.Index == wordIndex) is { } word
+            if (element is Grid grid && realized.TryGetValue(grid, out var visual) && visual.Runs.FirstOrDefault(run => run.Index <= wordIndex && run.LastIndex >= wordIndex) is { } word
                 && TranscriptOverlay.Bounds(word.Run).FirstOrDefault() is { Width: > 0 } bounds)
             {
                 options.TargetRect = new Windows.Foundation.Rect(bounds.X, bounds.Y - bounds.Height, bounds.Width, bounds.Height * 3);
@@ -257,7 +259,7 @@ public sealed class TranscriptView : UserControl
         if (model is null || !model.HasSelection || dragging || CorrectionOpen || !IsLoaded || FocusManager.GetFocusedElement(XamlRoot) is TextBox) return;
         var rectangles = new List<Windows.Foundation.Rect>();
         foreach (var visual in realized.Values)
-            foreach (var run in visual.Runs.Where(run => run.Index >= model.SelectionStart && run.Index <= model.SelectionEnd))
+            foreach (var run in visual.Runs.Where(run => run.LastIndex >= model.SelectionStart && run.Index <= model.SelectionEnd))
                 foreach (var rect in TranscriptOverlay.Bounds(run.Run))
                 {
                     var bounds = visual.Text.TransformToVisual(this).TransformBounds(rect);
@@ -273,7 +275,7 @@ public sealed class TranscriptView : UserControl
         var cut = model.Words.Skip(model.SelectionStart).Take(model.SelectionEnd - model.SelectionStart + 1).Any(word => model.State!.CutWordIds.Contains(word.Id))
             || model.State!.Pauses.Any(pause => pause.AfterIndex >= model.SelectionStart && pause.AfterIndex < model.SelectionEnd && model.State.CutPauseIds.Contains(pause.Id));
         selectionFlyout.Show(new(first.X, top, Math.Max(1, first.Width), bottom - top), below, keyboard, !model.IsReadOnly && !model.Busy,
-            cut, RewriteEntryPolicy.BuildEnabled && App.Services.Get("voiceLab.enabled", false), CanRewrite,
+            cut, App.Services.VoiceLabEnabled, CanRewrite,
             model.Clips.FirstOrDefault(clip => model.Index(clip.Clip.StartWordId) == model.SelectionStart && model.Index(clip.Clip.EndWordId) == model.SelectionEnd) is { } existing
                 ? $"Clip {existing.Number} already covers these words." : null);
     }
@@ -369,21 +371,25 @@ public sealed class TranscriptView : UserControl
         for (var index = item.StartIndex; index < item.StartIndex + item.Count; index++)
         {
             var after = 0;
-            foreach (var clip in model.Clips.Where(clip => model.Index(clip.Clip.StartWordId) == index))
+            var speech = model.PresentedWord(index);
+            if (!speech.Visible) continue;
+            foreach (var clip in model.Clips.Where(clip => model.Index(clip.Clip.StartWordId) >= index && model.Index(clip.Clip.StartWordId) <= speech.LastSourceIndex))
             {
                 paragraph.Inlines.Add(new InlineUIContainer { Child = ClipBadge(clip) });
             }
-            if (model.IsAiWord(index) && (index == 0 || !model.IsAiWord(index - 1)))
+            if (speech.StartsSegment)
             {
-                var chip = new Border { Background = Brush("VcAccentSoftBrush"), CornerRadius = new CornerRadius(3), Margin = new Thickness(0, 0, 4, 0), Padding = new Thickness(3, 0, 3, 0),
-                    Child = new TextBlock { Text = "AI", FontSize = 11, Foreground = Brush("VcAccentTextBrush"), FontFamily = (FontFamily)Application.Current.Resources["VcMonoFontFamily"] } };
+                var chip = new Border { Background = Brush("VcAccentSoftBrush"), BorderBrush = Brush("VcAccentTextBrush"), BorderThickness = new Thickness(1),
+                    CornerRadius = new CornerRadius(4), Margin = new Thickness(0, 0, 4, 0), Padding = new Thickness(3, 0, 3, 0),
+                    Child = new TextBlock { Text = "AI", FontSize = 10, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+                        Foreground = Brush("VcAccentTextBrush"), FontFamily = (FontFamily)Application.Current.Resources["VcMonoFontFamily"] } };
                 AutomationProperties.SetName(chip, "AI modified");
                 paragraph.Inlines.Add(new InlineUIContainer { Child = chip });
             }
             var word = model.Words[index];
-            var run = new Run { Text = model.DisplayText(word) + " " };
+            var run = new Run { Text = speech.Text + " " };
             paragraph.Inlines.Add(run);
-            foreach (var clip in model.Clips.Where(clip => model.Index(clip.Clip.EndWordId) == index))
+            foreach (var clip in model.Clips.Where(clip => model.Index(clip.Clip.EndWordId) >= index && model.Index(clip.Clip.EndWordId) <= speech.LastSourceIndex))
             {
                 paragraph.Inlines.Add(new Run { Text = "]", Foreground = Brush(clip.Id == model.State?.ActiveClipId ? "VcAccentTextBrush" : "VcLineStrongBrush") });
                 after++;
@@ -408,7 +414,7 @@ public sealed class TranscriptView : UserControl
                     pauses.Add(new(pause, pauseRun, pauseRun));
                 }
             }
-            runs.Add(new(index, run, after));
+            runs.Add(new(index, run, after, speech.LastSourceIndex));
         }
         rich.Blocks.Add(paragraph);
         var overlay = new TranscriptOverlay(rich, (FrameworkElement)page.Children[0], (FrameworkElement)page.Children[2]);
@@ -480,7 +486,7 @@ public sealed class TranscriptView : UserControl
             {
                 var word = model.Words[run.Index];
                 if (showCuts && state.CutWordIds.Contains(word.Id) || EditingAlgorithms.IsFillerText(model.DisplayText(word)) ||
-                    lowConfidence && word.Conf is < 0.6 || state.Corrections.ContainsKey(word.Id) || model.IsAiWord(run.Index) ||
+                    lowConfidence && word.Conf is < 0.6 || state.Corrections.ContainsKey(word.Id) || model.PresentedWord(run.Index).AiModified ||
                     model.SourceTime >= word.Start && model.SourceTime < word.End || run.Index >= model.RewriteStart && run.Index <= model.RewriteEnd ||
                     model.HasSelection && run.Index >= model.SelectionStart && run.Index <= model.SelectionEnd)
                     visual.Overlay.Measure(run.Run);
@@ -493,8 +499,9 @@ public sealed class TranscriptView : UserControl
             {
                 var word = model.Words.ElementAtOrDefault(run.Index);
                 if (word is null) continue;
-                var cut = state.CutWordIds.Contains(word.Id);
-                var text = model.DisplayText(word) + " ";
+                var speech = model.PresentedWord(run.Index);
+                var cut = !speech.AiModified && state.CutWordIds.Contains(word.Id);
+                var text = speech.Text + " ";
                 if (cut && !showCuts)
                 {
                     var count = 1;
@@ -524,14 +531,15 @@ public sealed class TranscriptView : UserControl
                 var run = visual.Runs[index];
                 var word = model.Words.ElementAtOrDefault(run.Index);
                 if (word is null) continue;
-                var selected = model.HasSelection && run.Index >= model.SelectionStart && run.Index <= model.SelectionEnd;
-                var rewriting = run.Index >= model.RewriteStart && run.Index <= model.RewriteEnd;
-                var playing = model.SourceTime >= word.Start && model.SourceTime < word.End;
+                var selected = model.HasSelection && run.LastIndex >= model.SelectionStart && run.Index <= model.SelectionEnd;
+                var rewriting = run.LastIndex >= model.RewriteStart && run.Index <= model.RewriteEnd;
+                var playing = model.SourceTime >= word.Start && model.SourceTime < model.Words[run.LastIndex].End;
                 var length = run.Run.Text.TrimEnd().Length;
-                var decoration = TranscriptWordDecoration.For(state.CutWordIds.Contains(word.Id), false, EditingAlgorithms.IsFillerText(model.DisplayText(word)),
-                    lowConfidence && word.Conf is < 0.6, state.Corrections.ContainsKey(word.Id), word.Text);
-                visual.Overlay.Word(run.Run, state.CutWordIds.Contains(word.Id) && showCuts, decoration.Filler, decoration.LowConfidence,
-                    decoration.Corrected, model.IsAiWord(run.Index), selected, playing, rewriting);
+                var ai = model.PresentedWord(run.Index).AiModified;
+                var decoration = TranscriptWordDecoration.For(!ai && state.CutWordIds.Contains(word.Id), false, !ai && EditingAlgorithms.IsFillerText(model.DisplayText(word)),
+                    !ai && lowConfidence && word.Conf is < 0.6, !ai && state.Corrections.ContainsKey(word.Id), word.Text);
+                visual.Overlay.Word(run.Run, !ai && state.CutWordIds.Contains(word.Id) && showCuts, decoration.Filler, decoration.LowConfidence,
+                    decoration.Corrected, ai, selected, playing, rewriting);
                 if (length == 0 || TranscriptWordHighlight.For(selected && !rewriting, playing, Ui.HighContrast) is not { } highlight) continue;
                 // Selected words draw in text.primary on the selection fill, which also overrides the cut and filler colours
                 // (they fail contrast on it); High Contrast maps the fill to Highlight, so the text takes HighlightText.
@@ -550,7 +558,7 @@ public sealed class TranscriptView : UserControl
             {
                 var first = model.Index(clip.Clip.StartWordId);
                 var last = model.Index(clip.Clip.EndWordId);
-                var covered = visual.Runs.Where(run => run.Index >= first && run.Index <= last).ToArray();
+                var covered = visual.Runs.Where(run => run.LastIndex >= first && run.Index <= last).ToArray();
                 if (covered.Length == 0) continue;
                 var start = covered[0].Run.ContentStart.GetCharacterRect(LogicalDirection.Forward);
                 var end = covered[^1].Run.ContentEnd.GetCharacterRect(LogicalDirection.Backward);
@@ -580,6 +588,7 @@ public sealed class TranscriptView : UserControl
         if (index < 0) return;
         Focus(FocusState.Pointer);
         model.Select(index, InputState.Down(Windows.System.VirtualKey.Shift));
+        if (model.PresentedWord(index).LastSourceIndex > index) model.Select(model.PresentedWord(index).LastSourceIndex, true);
         dragging = true;
         rich.CapturePointer(args.Pointer);
         SeekRequested?.Invoke(this, EventArgs.Empty);
@@ -671,16 +680,43 @@ public sealed class TranscriptView : UserControl
         var menu = new MenuFlyout();
         void Add(string label, Action action, bool enabled = true, string? key = null) { var item = new MenuFlyoutItem { Text = label, IsEnabled = enabled, KeyboardAcceleratorTextOverride = key ?? "" }; item.Click += (_, _) => action(); menu.Items.Add(item); }
         Add("Make clip", () => MakeClipRequested?.Invoke(this, EventArgs.Empty), model is { IsReadOnly: false, Busy: false, HasSelection: true });
-        if (RewriteEntryPolicy.BuildEnabled && App.Services.Get("voiceLab.enabled", false))
+        if (App.Services.VoiceLabEnabled)
         {
             Add("Rewrite…", RequestRewrite, CanRewrite, "Ctrl+R");
-            if (RewriteEntryPolicy.Resolve(RewriteEntry.InsertWords, true, model is { IsReadOnly: false, Busy: false, IsLeaving: false },
-                false, InsertionAfterIndex >= 0, RewriteEntryPolicy.BuildEnabled) == RewriteEntryAction.OpenInsertion)
+            if (RewriteEntryPolicy.Resolve(RewriteEntry.InsertWords, App.Services.Get("voiceLab.enabled", false),
+                App.Services.Get("voiceLab.betaNoticeAccepted", false), model is { IsReadOnly: false, Busy: false, IsLeaving: false },
+                false, InsertionAfterIndex >= 0, RewriteEntryPolicy.InternalBuild) == RewriteEntryAction.OpenInsertion)
                 Add("Insert Words…", () => InsertWordsRequested?.Invoke(this, EventArgs.Empty), InsertWordsRequested is not null &&
-                    RewriteEntryPolicy.Resolve(RewriteEntry.InsertWords, true, model is { IsReadOnly: false, Busy: false, IsLeaving: false },
-                        false, true, RewriteEntryPolicy.BuildEnabled) == RewriteEntryAction.OpenInsertion);
+                    RewriteEntryPolicy.Resolve(RewriteEntry.InsertWords, App.Services.Get("voiceLab.enabled", false),
+                        App.Services.Get("voiceLab.betaNoticeAccepted", false), model is { IsReadOnly: false, Busy: false, IsLeaving: false },
+                        false, true, RewriteEntryPolicy.InternalBuild) == RewriteEntryAction.OpenInsertion);
         }
         Add("Cut", () => model?.CutSelection());
+#if DEBUG
+        if (model is not null)
+        {
+            var voiceLab = DebugVoiceLabActions.For(model, App.Services.Get("voiceLab.enabled", false));
+            if (voiceLab.Actions.Count > 0) menu.Items.Add(new MenuFlyoutSeparator());
+            foreach (var action in voiceLab.Actions)
+            {
+                MenuFlyoutItemBase item;
+                if (action.Command is VoiceLabEditCommand.ChooseCandidate)
+                {
+                    var candidate = new ToggleMenuFlyoutItem { Text = action.Label, IsChecked = action.Selected };
+                    candidate.Click += (_, _) => voiceLab.Apply(model, action, App.Services.Get("voiceLab.enabled", false));
+                    item = candidate;
+                }
+                else
+                {
+                    var operation = new MenuFlyoutItem { Text = action.Label };
+                    operation.Click += (_, _) => voiceLab.Apply(model, action, App.Services.Get("voiceLab.enabled", false));
+                    item = operation;
+                }
+                AutomationProperties.SetAutomationId(item, action.Id);
+                menu.Items.Add(item);
+            }
+        }
+#endif
         Add("Restore", () => model?.CutSelection(true));
         Add("Correct spelling…", BeginCorrection);
         Add("Play from here", () => { if (contextIndex >= 0) model?.Select(contextIndex); PlayRequested?.Invoke(this, EventArgs.Empty); }, model is { IsReadOnly: false, Busy: false });

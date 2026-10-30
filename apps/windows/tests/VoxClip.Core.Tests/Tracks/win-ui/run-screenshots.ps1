@@ -1,4 +1,4 @@
-param([ValidateSet('all', 'editor', 'home', 'settings')][string]$Screen = 'all', [ValidateSet('Debug', 'Release')][string]$Configuration = 'Debug', [switch]$Exercise, [string]$Root = 'C:\voxclip-build\win-ui', [ValidateSet('win-x64', 'win-arm64')][string]$RuntimeIdentifier = 'win-arm64', [string]$ManualState, [string]$RequiredName)
+param([ValidateSet('all', 'editor', 'home', 'settings', 'settings-voicelab')][string]$Screen = 'all', [ValidateSet('Debug', 'Release')][string]$Configuration = 'Debug', [switch]$Exercise, [string]$Root = 'C:\voxclip-build\win-ui', [ValidateSet('win-x64', 'win-arm64')][string]$RuntimeIdentifier = 'win-arm64', [string]$ManualState, [string]$RequiredName)
 $ErrorActionPreference = 'Stop'
 $root = $Root
 $launcher = Join-Path $root 'apps\windows\tests\VoxClip.Core.Tests\Tracks\win-ui\launch-windows.ps1'
@@ -6,7 +6,7 @@ $script = Join-Path $root 'apps\windows\tests\VoxClip.Core.Tests\Tracks\win-ui\c
 $shots = Join-Path $root "screenshots\$RuntimeIdentifier"
 New-Item -ItemType Directory -Force $shots | Out-Null
 function Write-Catalog {
-    $required = @('home', 'home-empty', 'home-dragover', 'editor-light', 'editor-dark', 'editor-1280-light', 'editor-compact-light', 'finding', 'suggested', 'exported', 'export-edited', 'exporting', 'export-failed', 'transcribing', 'focus', 'opaque-flyout', 'splitter', 'high-contrast-black', 'high-contrast-white')
+    $required = @('home', 'home-empty', 'home-dragover', 'editor-light', 'editor-dark', 'editor-1280-light', 'editor-compact-light', 'settings-voicelab', 'finding', 'suggested', 'exported', 'export-edited', 'exporting', 'export-failed', 'transcribing', 'focus', 'opaque-flyout', 'splitter', 'high-contrast-black', 'high-contrast-white')
     $items = foreach ($name in $required) { @{ name=$name; captured=(Test-Path (Join-Path $shots "$name-window.png")); visualReview='pending'; narrator='not observed' } }
     [IO.File]::WriteAllText((Join-Path $shots 'capture-catalog.json'), (ConvertTo-Json -Depth 6 -InputObject @{
         runtime=$RuntimeIdentifier; captures=@($items); mockupToleranceEpx=4; rewrite='deferred with checklist step 15, pending VoiceLabWordDiff';
@@ -28,7 +28,7 @@ foreach ($name in $captureNames) {
     Remove-Item (Join-Path $shots "$name-window.png"), (Join-Path $shots "$name-window.jpg"), (Join-Path $shots "$name-self-check.json"), (Join-Path $shots "$name-interactions.json") -Force -ErrorAction SilentlyContinue
 }
 try {
-    $screens = if ($Screen -eq 'all') { @('editor', 'home', 'settings', 'editor-1280-light', 'editor-compact-light') } else { @($Screen) }
+    $screens = if ($Screen -eq 'all') { @('editor', 'home', 'settings', 'settings-voicelab', 'editor-1280-light', 'editor-compact-light') } else { @($Screen) }
     foreach ($capture in $screens) {
     $screen = if ($capture.StartsWith('editor-')) { 'editor' } else { $capture }
     $size = switch ($capture) { 'home' { '1280x800' }; 'editor-1280-light' { '1280x800' }; 'editor-compact-light' { '1024x700' }; default { '1440x900' } }

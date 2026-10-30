@@ -26,6 +26,24 @@
     <Compile Include="RoundFourTests.cs" />
     <Compile Include="RoundFiveTests.cs" />
     <Compile Include="RewritePanelTests.cs" />
+    <Compile Include="RewriteGenerationTests.cs" />
+    <Compile Include="VoiceLabReleaseBoundaryTests.cs" />
+    <Compile Include="RewriteTakeReviewTests.cs" />
+    <Compile Include="../../../../src/VoxClip.App/Services/RewriteGenerationBackend.cs" Link="Services/RewriteGenerationBackend.cs" />
+    <Compile Include="EditorVoiceLabPresentationTests.cs" />
+    <Compile Include="EditorVoiceLabHistoryTests.cs" />
+    <Compile Include="VoiceLabSettingsTests.cs" />
+    <Compile Include="VoiceLabSessionTests.cs" />
+    <Compile Include="VoiceLabRecoveryTests.cs" />
+    <Compile Include="TakeRowPresentationTests.cs" />
+    <Compile Include="VoiceLabReviewTests.cs" />
+    <Compile Include="CreateVoiceTests.cs" />
+    <Compile Include="VoiceCreationFlowTests.cs" />
+    <Compile Include="../../../../src/VoxClip.App/Services/DebugVoiceCreationBackend.cs" Link="Services/DebugVoiceCreationBackend.cs" />
+    <Compile Include="../../../../src/VoxClip.App/Services/VoiceStatementBackend.cs" Link="Services/VoiceStatementBackend.cs" />
+    <Compile Include="../../../../src/VoxClip.App/Services/DebugConsentScribe.cs" Link="Services/DebugConsentScribe.cs" />
+    <Compile Include="../../../../src/VoxClip.App/Services/VoiceLabBackend.cs" Link="Services/VoiceLabBackend.cs" />
+    <Compile Include="../../../../src/VoxClip.App/Services/DebugVoiceLabBackend.cs" Link="Services/DebugVoiceLabBackend.cs" />
     <Compile Include="ConnectorPreflightTests.cs" />
     <Compile Include="ExportWorkflowTests.cs" />
     <Compile Include="ExportEquivalenceTests.cs" />
@@ -64,4 +82,9 @@
     <Compile Include="../../../../src/VoxClip.App/Services/CaptionGalleryRenderer.cs" Link="Services/CaptionGalleryRenderer.cs" />
   </ItemGroup>
   <Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk" />
+  <Target Name="BuildReleaseAppForInspection" BeforeTargets="CoreCompile" Condition="'$(Configuration)' == 'Release'">
+    <MSBuild Projects="$(MSBuildThisFileDirectory)../../../VoxClip.App.TypeCheck/VoxClip.App.TypeCheck.csproj"
+             Targets="Restore;Build" Properties="Configuration=Release"
+             RemoveProperties="TargetFramework;RuntimeIdentifier;SelfContained" BuildInParallel="false" />
+  </Target>
 </Project>

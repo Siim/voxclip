@@ -15,10 +15,14 @@ public sealed class EditorViewModel : ObservableObject
     private readonly Func<EditState, EditOperation, EditState> reduce;
     private readonly Func<EditState, EditSummary> summarize;
     private readonly Func<DateTimeOffset> now;
-    private sealed record History(EditState? State, ProjectCaptions Captions);
+    private sealed record History(EditState? State, Project Project, bool IsDirty);
     private readonly Stack<History> undo = new();
     private readonly Stack<History> redo = new();
     private Project project;
+    private Project savedProject;
+    private string savedJson;
+    private readonly object voiceLabEdits = new();
+    private bool applyingVoiceLab;
     private EditState? state;
     private string notice = "";
     private bool busy;
@@ -27,6 +31,14 @@ public sealed class EditorViewModel : ObservableObject
     private double sourceTime;
     private bool isLeaving;
     private IReadOnlyList<ExportRecord> exportRecords = [];
+    private VoxClip.Core.Domain.VoiceLab.VoiceLabLabelPosition voiceLabLabelPosition = VoiceLabSettingsState.LabelPosition(null);
+    internal bool SetVoiceLabLabelPosition(VoxClip.Core.Domain.VoiceLab.VoiceLabLabelPosition position)
+    {
+        if (voiceLabLabelPosition == position) return false;
+        voiceLabLabelPosition = position;
+        RefreshExportRows();
+        return true;
+    }
     private readonly Dictionary<string, ExportRowState> exportActivity = new(StringComparer.Ordinal);
     internal event EventHandler? ExportStatesChanged;
     internal void SetExportRecords(IReadOnlyList<ExportRecord> records)
@@ -47,7 +59,7 @@ public sealed class EditorViewModel : ObservableObject
         var record = exportRecords.FirstOrDefault(record => record.ProjectId == project.Id && record.TargetId == key);
         if (record is null) return new(ClipExportState.None);
         ExportTarget target = clipId is null ? new ExportTarget.FullEdit() : new ExportTarget.Clip(clipId);
-        return new(record.PlanFingerprint == ExportFingerprint.For(project, target) ? ClipExportState.Exported : ClipExportState.ChangedSinceExport);
+        return new(record.PlanFingerprint == ExportFingerprint.For(project, target, voiceLabLabelPosition) ? ClipExportState.Exported : ClipExportState.ChangedSinceExport);
     }
     private void RefreshExportRows()
     {
@@ -92,6 +104,7 @@ public sealed class EditorViewModel : ObservableObject
                 }
                 await store.SaveAsync(relinked, projectPath, ct);
                 project = relinked;
+                MarkSaved(relinked);
                 SetMediaUnavailable(false);
                 Notice = "";
                 Refresh();
@@ -106,6 +119,8 @@ public sealed class EditorViewModel : ObservableObject
         Func<EditState, EditSummary>? summarize = null, Func<DateTimeOffset>? now = null)
     {
         this.project = project;
+        savedProject = project;
+        savedJson = DirtyIdentity(project);
         this.reduce = reduce ?? EditingEngine.Reduce;
         this.summarize = summarize ?? EditingEngine.Summarize;
         this.now = now ?? (() => DateTimeOffset.UtcNow);
@@ -120,6 +135,18 @@ public sealed class EditorViewModel : ObservableObject
     }
 
     public Project Project => project;
+    private static string DirtyIdentity(Project snapshot) => System.Text.Json.JsonSerializer.Serialize(snapshot, ProjectJsonContext.Default.Project);
+    public bool IsDirty => !ReferenceEquals(project, savedProject) && DirtyIdentity(project) != savedJson;
+    internal void MarkSaved(Project snapshot)
+    {
+        savedProject = snapshot;
+        savedJson = DirtyIdentity(snapshot);
+        OnPropertyChanged(nameof(IsDirty));
+    }
+    private History CaptureHistory() => new(state, project, IsDirty);
+    internal IReadOnlySet<string> VoiceLabAssetReferences(IEnumerable<Project>? otherDocuments = null)
+        => new[] { project, savedProject }.Concat(undo.Select(entry => entry.Project)).Concat(redo.Select(entry => entry.Project))
+            .Concat(otherDocuments ?? []).SelectMany(VoiceLabAssetRetention.References).ToHashSet(StringComparer.Ordinal);
     internal CaptionDragSession CaptionDrag { get; } = new();
     internal ProjectLlmRuns LlmRuns { get; } = new();
     public bool IsLeaving => isLeaving;
@@ -155,8 +182,20 @@ public sealed class EditorViewModel : ObservableObject
         RewriteEnd = last;
         SelectionChanged?.Invoke(this, EventArgs.Empty);
     }
-    public bool IsAiWord(int index) => index >= 0 && index < Words.Count && project.VoiceLab.Segments.Any(segment =>
-        segment.Enabled && Words[index].Start < segment.Replace.End && Words[index].End > segment.Replace.Start);
+    private Project? speechProject;
+    private EditState? speechState;
+    private IReadOnlyList<TranscriptSpeechWord> speechWords = [];
+    internal TranscriptSpeechWord PresentedWord(int index)
+    {
+        if (!ReferenceEquals(speechProject, project) || !ReferenceEquals(speechState, state))
+        {
+            speechWords = TranscriptWordDecoration.Speech(project, Words, state?.Corrections);
+            speechProject = project;
+            speechState = state;
+        }
+        return index >= 0 && index < speechWords.Count ? speechWords[index] : new("", false, false, false, index);
+    }
+    internal bool ContainsAiSpeech(string? clipId = null) => VoiceLabDisclosure.Contains(() => ScopedProject(State), clipId, IsReadOnly, voiceLabLabelPosition);
     public ObservableCollection<TranscriptParagraph> Paragraphs { get; } = [];
     public ObservableCollection<ClipRow> Clips { get; } = [];
     public EditSummary Summary { get; private set; } = new(0, 0, 0, 0, false, false, false, true);
@@ -241,7 +280,7 @@ public sealed class EditorViewModel : ObservableObject
             foreach (var operation in operations) next = reduce(next, operation);
             if (next == state) return false;
             CaptionDrag.Cancel();
-            undo.Push(new(state, project.Captions));
+            undo.Push(CaptureHistory());
             redo.Clear();
             state = next;
             SyncProject();
@@ -253,6 +292,51 @@ public sealed class EditorViewModel : ObservableObject
             Notice = UiError.Message(exception, "Editing");
             return false;
         }
+    }
+
+    public bool ApplyVoiceLab(VoiceLabEditCommand command, Project? expectedProject = null, IReadOnlyList<EditOperation>? localOperations = null)
+    {
+        if (!Monitor.TryEnter(voiceLabEdits)) return false;
+        try
+        {
+            if (applyingVoiceLab || isLeaving || IsReadOnly || Busy || state is null) return false;
+            if (localOperations is { Count: > 0 } && command is not VoiceLabEditCommand.Accept) return false;
+            var snapshot = expectedProject ?? project;
+            if (!ReferenceEquals(snapshot, project)) return false;
+            applyingVoiceLab = true;
+            try
+            {
+                if (command is VoiceLabEditCommand.Accept accept)
+                    foreach (var asset in accept.Assets)
+                        if (undo.Concat(redo).SelectMany(entry => entry.Project.VoiceLab.Assets ?? [])
+                            .Any(retained => retained.Id == asset.Id && retained != asset))
+                            throw new VoiceLabProjectException(VoiceLabProjectErrorCode.InvalidAsset);
+                var modifiedAt = now();
+                if (modifiedAt <= snapshot.ModifiedAt) modifiedAt = snapshot.ModifiedAt.AddTicks(1);
+                var nextState = state;
+                foreach (var operation in localOperations ?? []) nextState = reduce(nextState, operation);
+                var combined = nextState == state ? snapshot : snapshot with { Edits = new(nextState.PauseThresholdSeconds, nextState.PauseKeepSeconds,
+                    nextState.CutWordIds.ToArray(), nextState.CutPauseIds.ToArray(), new Dictionary<string, string>(nextState.Corrections), nextState.Clips.ToArray(), nextState.ActiveClipId) };
+                var change = new VoiceLabEditHistory(combined, IsDirty).Apply(command, modifiedAt);
+                if (ReferenceEquals(change.Present, combined) && nextState == state) return false;
+                CaptionDrag.Cancel();
+                if (!ReferenceEquals(project, snapshot) || isLeaving || IsReadOnly || Busy) return false;
+                undo.Push(CaptureHistory());
+                redo.Clear();
+                state = nextState;
+                project = change.Present;
+                Refresh();
+                Announcement?.Invoke(this, command.ActionName);
+                return true;
+            }
+            finally { applyingVoiceLab = false; }
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            Notice = UiError.Message(exception, "Voice Lab");
+            return false;
+        }
+        finally { Monitor.Exit(voiceLabEdits); }
     }
 
     public void CutSelection(bool restore = false)
@@ -383,13 +467,14 @@ public sealed class EditorViewModel : ObservableObject
     public void Redo() => MoveHistory(redo, undo);
     private void MoveHistory(Stack<History> from, Stack<History> to)
     {
-        if (isLeaving || from.Count == 0 || IsReadOnly && !ReferenceEquals(from.Peek().State, state)) return;
+        if (isLeaving || from.Count == 0 || IsReadOnly && (!ReferenceEquals(from.Peek().State, state) ||
+            !ReferenceEquals(from.Peek().Project.VoiceLab, project.VoiceLab))) return;
         CaptionDrag.Cancel();
         var next = from.Pop();
-        to.Push(new(state, project.Captions));
+        to.Push(CaptureHistory());
         state = next.State;
-        project = project with { Captions = next.Captions, ModifiedAt = DateTimeOffset.UtcNow };
-        SyncProject();
+        project = project with { Edits = next.Project.Edits, Captions = next.Project.Captions, VoiceLab = next.Project.VoiceLab,
+            SchemaVersion = next.Project.SchemaVersion, ModifiedAt = next.Project.ModifiedAt };
         Refresh();
     }
 
@@ -438,7 +523,7 @@ public sealed class EditorViewModel : ObservableObject
         if (isLeaving || Busy) return;
         CaptionDrag.Cancel();
         if (CaptionFineTune.StoredPosition(project) == CaptionFineTune.StoredPosition(project with { Captions = captions })) return;
-        undo.Push(new(state, project.Captions)); redo.Clear();
+        undo.Push(CaptureHistory()); redo.Clear();
         project = project with { Captions = captions, ModifiedAt = DateTimeOffset.UtcNow };
         Refresh();
     }
@@ -498,11 +583,22 @@ public sealed class EditorViewModel : ObservableObject
     private string WordStates(int index, bool showLowConfidence)
     {
         var word = Words[index];
-        return DisplayText(word) + (state?.CutWordIds.Contains(word.Id) == true ? ", cut" : "")
-            + (EditingAlgorithms.IsFillerText(DisplayText(word)) ? ", filler" : "")
-            + (showLowConfidence && word.Conf is < 0.6 ? ", low confidence" : "")
-            + (state?.Corrections.ContainsKey(word.Id) == true ? ", corrected, heard as: " + word.Text : "")
-            + (IsAiWord(index) ? ", AI modified" : "");
+        var speech = PresentedWord(index);
+        if (!speech.Visible)
+            for (var first = index - 1; first >= 0; first--)
+                if (PresentedWord(first) is { Visible: true, AiModified: true } replacement && replacement.LastSourceIndex >= index)
+                { speech = replacement; break; }
+        return speech.Text + (!speech.AiModified && state?.CutWordIds.Contains(word.Id) == true ? ", cut" : "")
+            + (!speech.AiModified && EditingAlgorithms.IsFillerText(DisplayText(word)) ? ", filler" : "")
+            + (!speech.AiModified && showLowConfidence && word.Conf is < 0.6 ? ", low confidence" : "")
+            + (!speech.AiModified && state?.Corrections.ContainsKey(word.Id) == true ? ", corrected, heard as: " + word.Text : "")
+            + (speech.AiModified && SourceTime >= Words[IndexOfSpeechStart(index)].Start && SourceTime < Words[speech.LastSourceIndex].End ? ", playing" : "")
+            + (speech.AiModified ? ", AI modified" : "");
+    }
+    private int IndexOfSpeechStart(int index)
+    {
+        while (index > 0 && !PresentedWord(index).Visible) index--;
+        return index;
     }
     public bool CanPreviewCut => HasSelection && CanExport;
     internal TimeRange? PreviewCutRange() => CanPreviewCut
@@ -568,7 +664,7 @@ public sealed class EditorViewModel : ObservableObject
             {
                 var split = index == Words.Count || (Words[index].Speaker != Words[index - 1].Speaker ||
                     Words[index].Start - Words[index - 1].End >= 1.5 && Words[index - 1].Text.EndsWithAny(".!?")) || index - start >= 100;
-                if (!split) continue;
+                if (!split || index < Words.Count && !PresentedWord(index).Visible) continue;
                 Paragraphs.Add(new(start, index - start, Timecode(Words[start].Start), Words[start].Speaker));
                 start = index;
             }
@@ -597,7 +693,7 @@ public sealed class EditorViewModel : ObservableObject
         }
         else { FullTakeDuration = project.Media.Source.DurationSeconds; SummaryLine = ""; SummaryTooltip = ""; }
         RefreshExportRows();
-        foreach (var name in new[] { nameof(Project), nameof(State), nameof(Summary), nameof(SummaryLine), nameof(SummaryTooltip), nameof(KeptClips), nameof(SuggestedClips), nameof(FillerLabel), nameof(CanExport), nameof(CanFindClips), nameof(CanUndo), nameof(CanRedo), nameof(HasTranscript), nameof(FullTakeDuration) }) OnPropertyChanged(name);
+        foreach (var name in new[] { nameof(Project), nameof(State), nameof(IsDirty), nameof(Summary), nameof(SummaryLine), nameof(SummaryTooltip), nameof(KeptClips), nameof(SuggestedClips), nameof(FillerLabel), nameof(CanExport), nameof(CanFindClips), nameof(CanUndo), nameof(CanRedo), nameof(HasTranscript), nameof(FullTakeDuration) }) OnPropertyChanged(name);
         Changed?.Invoke(this, EventArgs.Empty);
     }
 }

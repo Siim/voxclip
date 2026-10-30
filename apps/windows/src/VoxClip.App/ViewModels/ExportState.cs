@@ -5,6 +5,25 @@ using VoxClip.Core.Domain.Shared;
 
 namespace VoxClip.App.ViewModels;
 
+internal static class VoiceLabDisclosure
+{
+    internal static bool Contains(Func<Project> snapshot, string? clipId, bool mediaUnavailable = false,
+        VoxClip.Core.Domain.VoiceLab.VoiceLabLabelPosition labelPosition = VoxClip.Core.Domain.VoiceLab.VoiceLabLabelPosition.TopLeft)
+    {
+        if (mediaUnavailable) return true;
+        try
+        {
+            var project = snapshot();
+            if (project.SchemaVersion != 3 && project.VoiceLab.Segments.All(segment => !segment.Enabled)) return false;
+            var scope = clipId is null ? VoxClip.Core.Domain.VoiceLab.VoiceLabOutputScope.Full : VoxClip.Core.Domain.VoiceLab.VoiceLabOutputScope.Clip(clipId);
+            return VoxClip.Core.Domain.VoiceLab.VoiceLabRenderContract.Prepare(project, scope, labelPosition).Disclosure.Required;
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException) { return true; }
+    }
+
+    internal static string AccessibleName(string name, bool contains) => name + (contains ? ", contains AI-modified speech" : "");
+}
+
 internal sealed record ExportRecord(string ProjectId, string TargetId, DateTimeOffset ExportedAt, string PlanFingerprint, string StyleId, ExportAspect Aspect, string OutputPath);
 internal readonly record struct ExportRowState(ClipExportState State, double? Progress = null)
 {
@@ -18,7 +37,7 @@ internal readonly record struct ExportRowState(ClipExportState State, double? Pr
 internal static class ExportFingerprint
 {
     internal static string TargetId(ExportTarget target) => target is ExportTarget.Clip clip ? clip.Id : "full";
-    internal static string For(Project project, ExportTarget target)
+    internal static string For(Project project, ExportTarget target, VoxClip.Core.Domain.VoiceLab.VoiceLabLabelPosition? labelPosition = null)
     {
         var state = ExportSelection.Scope(EditingEngine.FromProject(project), target);
         var media = ExportRenderInput.Media(project);
@@ -28,7 +47,7 @@ internal static class ExportFingerprint
         if (project.SchemaVersion == 3)
         {
             var scope = target is ExportTarget.Clip clip ? VoxClip.Core.Domain.VoiceLab.VoiceLabOutputScope.Clip(clip.Id) : VoxClip.Core.Domain.VoiceLab.VoiceLabOutputScope.Full;
-            var prepared = VoxClip.Core.Domain.VoiceLab.VoiceLabRenderContract.Prepare(project, scope, VoxClip.Core.Domain.VoiceLab.VoiceLabLabelPosition.TopRight);
+            var prepared = VoxClip.Core.Domain.VoiceLab.VoiceLabRenderContract.Prepare(project, scope, labelPosition ?? VoiceLabSettingsState.LabelPosition(null));
             voice = new
             {
                 prepared.OutputPlan, prepared.Disclosure,

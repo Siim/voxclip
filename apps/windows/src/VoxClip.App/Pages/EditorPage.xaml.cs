@@ -10,9 +10,12 @@ using VoxClip.Core.Domain.Captions;
 using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Domain.VoiceLab;
+using VoxClip.Core.Services.Speech;
+using VoxClip.Core.Services.VoiceLab;
 using VoxClip.Core.Services.Media;
 using VoxClip.Media.Pipeline;
 using VoxClip.Media.Captions;
+using VoxClip.Media.VoiceLab;
 using Windows.System;
 using System.Runtime.InteropServices.WindowsRuntime;
 using Microsoft.UI.Xaml.Media.Imaging;
@@ -29,6 +32,7 @@ public sealed partial class EditorPage : Page
     private CaptionsPanel? captions;
     private Controls.RightColumn? rightContent;
     private RewriteSession? rewrite;
+    private ElevenLabsRegion? rewriteGenerationRegion;
     private long rewriteOpenRevision;
     private MediaInfo? media;
     private EditorMediaState mediaState;
@@ -91,7 +95,8 @@ public sealed partial class EditorPage : Page
         preview = new PreviewEngine();
 #endif
         ViewModel.SetMediaUnavailable(!demo && mediaPath is null);
-        projectWrites = new(project);
+        projectWrites = new(project, ViewModel.MarkSaved);
+        ViewModel.SetVoiceLabLabelPosition(VoiceLabSettingsState.LabelPosition(App.Services.Settings.GetString("voiceLab.labelPosition")));
         ViewModel.SetExportRecords(App.Services.ExportLedger.Records);
         App.Services.ExportLedger.Changed += LedgerChanged;
         LocateMedia.Visibility = ViewModel.IsReadOnly ? Visibility.Visible : Visibility.Collapsed;
@@ -119,6 +124,7 @@ public sealed partial class EditorPage : Page
         ViewModel.PropertyChanged += (_, args) =>
         {
             if (args.PropertyName == nameof(EditorViewModel.CanExport)) UpdateExport();
+            if (args.PropertyName == nameof(EditorViewModel.IsReadOnly)) { UpdateAiTag(); SizeStage(); }
             if (args.PropertyName is nameof(EditorViewModel.Busy) or nameof(EditorViewModel.CanFindClips)) UpdateFindClips();
         };
         Untranscribed.Visibility = ViewModel.HasTranscript ? Visibility.Collapsed : Visibility.Visible;
@@ -218,7 +224,7 @@ public sealed partial class EditorPage : Page
         VoiceLabRenderInput? voice = null;
         if (project.SchemaVersion == 3)
         {
-            var prepared = VoiceLabRenderContract.Prepare(project, scope, VoiceLabLabelPosition.TopRight);
+            var prepared = VoiceLabRenderContract.Prepare(project, scope, VoiceLabSettingsState.LabelPosition(App.Services.Settings.GetString("voiceLab.labelPosition")));
             if (prepared.OutputPlan.RequiresSyntheticRendering)
                 voice = VoiceLabRenderInput.Capture(project, prepared, Path.Combine(App.Services.Data.Root, "VoiceLab"));
         }
@@ -296,8 +302,8 @@ public sealed partial class EditorPage : Page
     }
     private void UpdateRewriteCommand()
     {
-        RewriteCommand.Visibility = RewriteEntryPolicy.BuildEnabled ? Visibility.Visible : Visibility.Collapsed;
-        RewriteCommand.IsEnabled = !ViewModel.Busy && !ViewModel.IsLeaving && (!App.Services.Get("voiceLab.enabled", false) || Transcript.CanRewrite);
+        RewriteCommand.Visibility = App.Services.VoiceLabEnabled ? Visibility.Visible : Visibility.Collapsed;
+        RewriteCommand.IsEnabled = App.Services.VoiceLabEnabled && Transcript.CanRewrite;
     }
     private async Task RenderUnavailableCaptionsAsync()
     {
@@ -351,8 +357,17 @@ public sealed partial class EditorPage : Page
     private void EditorSettingsChanged(object? sender, EventArgs args)
     {
         if (disposed || ViewModel.IsLeaving) return;
+        if (ViewModel.SetVoiceLabLabelPosition(VoiceLabSettingsState.LabelPosition(App.Services.Settings.GetString("voiceLab.labelPosition"))))
+            _ = RunAsync(UpdatePreviewAsync, "Preview label position");
         rewriteOpenRevision++;
-        rewrite?.SettingsChanged(App.Services.Get("voiceLab.enabled", false));
+        if (App.Services.VoiceLabEnabled && rewrite is { IsOpen: true, Generation: { } previous } session &&
+            rewriteGenerationRegion != ElevenLabsRegions.FromSettings(App.Services.Settings, App.Services.Log))
+        {
+            var rediscover = previous.HasStartedDiscovery;
+            ConfigureRewriteGeneration(session);
+            if (rediscover) _ = RediscoverRewriteAsync(session, previous, session.Generation!);
+        }
+        rewrite?.SettingsChanged(App.Services.VoiceLabEnabled);
         Transcript.ApplySettings();
         SelectionChanged(this, EventArgs.Empty);
         captions?.RefreshSamples();
@@ -407,7 +422,7 @@ public sealed partial class EditorPage : Page
             return await dialog.ShowAsync() == ContentDialogResult.Primary;
         }, lifetime.Token);
         if (!relinked) return;
-        projectWrites = new(ViewModel.Project);
+        projectWrites = new(ViewModel.Project, ViewModel.MarkSaved);
         MediaPath = ViewModel.Project.Media.Source.AbsolutePath;
         media = selectedMedia;
         mediaState = media?.Video is null ? EditorMediaState.AudioOnly : EditorMediaState.Ready;
@@ -490,22 +505,12 @@ public sealed partial class EditorPage : Page
     private void MakeClipClicked(object sender, RoutedEventArgs args) => MakeClipAndReveal();
     private async void RewriteClicked(object sender, RoutedEventArgs args)
     {
-        if (!RewriteEntryPolicy.BuildEnabled) return;
-        await RunAsync(async () =>
-        {
-            if (!App.Services.Get("voiceLab.enabled", false))
-            {
-                var dialog = new ContentDialog { XamlRoot = XamlRoot, Title = "Turn on Voice Lab",
-                    Content = Ui.Text(RewriteEntryPolicy.EnablementCopy), PrimaryButtonText = "Turn on", CloseButtonText = "Cancel" };
-                if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
-                await App.Services.SetAsync("voiceLab.enabled", true, lifetime.Token);
-            }
-            Transcript.RequestRewrite();
-        }, "Rewrite");
+        if (!App.Services.VoiceLabEnabled) return;
+        await RunAsync(() => { Transcript.RequestRewrite(); return Task.CompletedTask; }, "Rewrite");
     }
     private async Task OpenRewriteAsync(bool insertion)
     {
-        if (!RewriteEntryPolicy.BuildEnabled || !App.Services.Get("voiceLab.enabled", false) ||
+        if (!App.Services.VoiceLabEnabled ||
             ViewModel.IsReadOnly || ViewModel.Busy || ViewModel.IsLeaving || rightContent is null ||
             (insertion ? Transcript.InsertionAfterIndex < 0 : !ViewModel.HasSelection)) return;
         rewrite?.Dispose();
@@ -515,29 +520,164 @@ public sealed partial class EditorPage : Page
         var after = insertion ? Transcript.InsertionAfterIndex : (int?)null;
         var passage = new RewriteOpening(ViewModel, after);
         var envelope = !demo && media is not null ? await App.Services.Waveform.GetEnvelopeAsync(media, project.Media.Source.ContentKey, lifetime.Token) : null;
+#if DEBUG
+        if (envelope is null && Environment.GetEnvironmentVariable("VOXCLIP_DEBUG_REWRITE_TAKES")?.StartsWith("fixtures:", StringComparison.Ordinal) == true)
+            envelope = new(project.Media.Source.Audio?.SampleRate ?? 48_000, 0.01,
+                Enumerable.Repeat(0.01f, checked((int)Math.Floor(project.Media.Source.DurationSeconds / 0.01))).ToArray());
+#endif
+        bool CurrentOpening() => opening == rewriteOpenRevision && passage.IsCurrent && !disposed &&
+            !ViewModel.IsLeaving && !ViewModel.IsReadOnly && !ViewModel.Busy && App.Services.VoiceLabEnabled;
+        if (!CurrentOpening()) return;
         var entry = (await ProviderCatalog.ReadAsync(lifetime.Token)).FirstOrDefault(item => item.WireId == App.Services.Get("llm.connector", ""));
+        if (!CurrentOpening()) return;
         var selectedConnector = entry is null ? null : App.Services.Connector(entry.Id);
         if (entry is not null) await ProviderCatalog.ProbeAsync(entry, selectedConnector!, lifetime.Token);
         var connector = entry is null ? null : new RewriteConnector(selectedConnector!,
             App.Services.Get("llm.model." + entry.WireId, entry.DefaultModel), entry.ShortName,
             entry.Cloud ? "apiKey" : entry.Cli ? "cli" : "local", entry.Id == VoxClip.Core.Services.LLM.ConnectorId.ClaudeCode ? "Claude plan" : "ChatGPT plan");
-        if (opening != rewriteOpenRevision || !passage.IsCurrent || disposed || ViewModel.IsLeaving ||
-            ViewModel.IsReadOnly || ViewModel.Busy || !App.Services.Get("voiceLab.enabled", false)) return;
+        var connectorWireId = App.Services.Get("llm.connector", "");
+        if (!CurrentOpening()) return;
         rewrite = new(ViewModel, passage.First, passage.Last, envelope, connector, passage.InsertionAfter,
+            prices: VoiceLabPrices.Load(), synthesisModel: "eleven_multilingual_v2",
             consent: async token => entry is not null && await ProviderCatalog.ConsentAsync(entry, XamlRoot, ConnectorConsentAction.Rewrite,
                 ViewModel.Words.Skip(passage.First).Take(passage.Last - passage.First + 1).Count(word => word.Kind == WordKind.Word),
                 selectedConnector!, await ProviderCatalog.ProbeAsync(entry, selectedConnector!, token), token),
-            connectorIsCurrent: () => entry is not null && App.Services.Get("llm.connector", "") == entry.WireId &&
-                App.Services.Get("llm.model." + entry.WireId, entry.DefaultModel) == connector?.Model);
-        var panel = new RewritePanel(rewrite);
+            connectorIsCurrent: () => App.Services.VoiceLabEnabled && App.Services.Get("llm.connector", "") == connectorWireId &&
+                (entry is null || App.Services.Get("llm.model." + entry.WireId, entry.DefaultModel) == connector?.Model));
+        ConfigureRewriteGeneration(rewrite);
+        var panel = new RewritePanel(rewrite, () => Transcript.CorrectionOpen);
         panel.Closed += (_, _) =>
         {
+            var insidePanel = InputState.DescendsFrom(FocusManager.GetFocusedElement(XamlRoot) as DependencyObject, panel);
+            if (FocusCycle.RestoreRewriteFocus(insidePanel, panel.ReturnFocusOnClose, disposed)) FocusTranscript();
             rightContent.CloseRewrite();
-            if (panel.ReturnFocusOnClose && !disposed && !ViewModel.IsLeaving) FocusTranscript();
+            SizeStage();
         };
         SetViewerVisible(true);
         rightContent.ShowRewrite(panel);
+        SizeStage();
         await rewrite.SetInstructionAsync("");
+    }
+    private static async Task RediscoverRewriteAsync(RewriteSession session, RewriteGeneration previous, RewriteGeneration next)
+    {
+        await previous.Cleanup;
+        if (session.IsOpen && ReferenceEquals(session.Generation, next)) await next.DiscoverAsync();
+    }
+    private void ConfigureRewriteGeneration(RewriteSession session)
+    {
+        var region = ElevenLabsRegions.FromSettings(App.Services.Settings, App.Services.Log);
+        rewriteGenerationRegion = region;
+        var consenting = false;
+        Task OnUi(Action action)
+        {
+            if (DispatcherQueue.HasThreadAccess) { action(); return Task.CompletedTask; }
+            var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            if (!DispatcherQueue.TryEnqueue(() =>
+            {
+                try { action(); completion.SetResult(); }
+                catch (Exception error) { completion.SetException(error); }
+            })) completion.SetException(new OperationCanceledException());
+            return completion.Task;
+        }
+        bool Current() => session.GenerationIsCurrent && App.Services.VoiceLabEnabled &&
+            ElevenLabsRegions.FromSettings(App.Services.Settings, App.Services.Log) == region;
+        var backend = new RewriteGenerationBackend(App.Services.Data, App.Services.Keys, App.Services.Log,
+            VoiceLabPrices.Load(), region, session.Project.Id, Current, OnUi);
+        IVoiceLabTakeRunner runner = backend.Runner;
+        Func<CancellationToken, Task<RewriteGenerationChoices>> discover = ct => backend.DiscoverAsync(session.Project.Transcript?.Language ?? "en", ct);
+        Func<CancellationToken, Task<float[]>> readSource = ct => RewriteGenerationBackend.ReadSourceAsync(media?.Path ?? "",
+            checked((long)Math.Floor(session.Project.Media.Source.DurationSeconds * (session.Project.Media.Source.Audio?.SampleRate ?? 0) + 0.5)),
+            session.Project.Media.Source.Audio?.SampleRate ?? 0, ct);
+        Func<Guid, VoiceLabTakeScratch?> scratch = backend.Runner.Scratch;
+        Func<Guid, Task> reject = backend.Runner.RejectAsync;
+        async Task<(VoiceLabPublishedTake Take, VoiceConsentRecord Consent)> Publish(Guid id, DateTimeOffset date, CancellationToken ct)
+        {
+            var (published, record) = await backend.Runner.PublishForAcceptanceAsync(id, date, ct);
+            return (new(published.Assets, published.Audio, published.OutDuration, published.Words, published.Chunks), record);
+        }
+        Func<Guid, DateTimeOffset, CancellationToken, Task<(VoiceLabPublishedTake Take, VoiceConsentRecord Consent)>> publish = Publish;
+        Action releaseRunner = backend.Dispose;
+        var watchKeys = true;
+#if DEBUG
+        var fixtures = Environment.GetEnvironmentVariable("VOXCLIP_DEBUG_REWRITE_TAKES");
+        var fake = fixtures?.StartsWith("fixtures:", StringComparison.Ordinal) == true
+            ? new DebugRewriteTakeRunner(fixtures[9..], storage: new(session.Project.Id, Path.Combine(App.Services.Data.Root, "VoiceLab"),
+                Path.Combine(App.Services.Data.Root, "VoiceLabScratch"))) : null;
+        if (fake is not null) fake.State = Environment.GetEnvironmentVariable("VOXCLIP_DEBUG_REWRITE_STATE") ?? "ready";
+        if (fake is not null)
+        {
+            runner = fake; discover = fake.DiscoverAsync;
+            readSource = _ => Task.FromResult(new float[checked((int)Math.Floor(session.Project.Media.Source.DurationSeconds *
+                (session.Project.Media.Source.Audio?.SampleRate ?? 48_000) + 0.5))]);
+            scratch = fake.Scratch; reject = fake.RejectAsync; publish = fake.PublishAsync;
+            releaseRunner = () => { backend.Dispose(); fake.Dispose(); };
+            watchKeys = false;
+        }
+#endif
+        async Task<bool> Consent(CancellationToken ct)
+        {
+            if (App.Services.Get("voiceLab.providerConsent.elevenlabs", false)) return true;
+            consenting = true;
+            try
+            {
+                if (!await Ui.ConfirmAsync(XamlRoot, "Use ElevenLabs?", VoiceLabCopy.ProviderConsent, "Continue", ct) || !Current()) return false;
+                await App.Services.SetAsync("voiceLab.providerConsent.elevenlabs", true, ct);
+                return Current();
+            }
+            finally { consenting = false; }
+        }
+        RewriteGeneration? generation = null;
+        FileSystemWatcher? keyChanges = null;
+        void ConsentRecordsChanged(object? sender, EventArgs args)
+        {
+            if (generation is { IsRequestingConsent: false } && session.IsOpen) _ = generation.DiscoveryInputsChangedAsync();
+        }
+        void KeyChanged(object? sender, FileSystemEventArgs args)
+        {
+            _ = OnUi(() =>
+            {
+                if (session.IsOpen && ReferenceEquals(session.Generation, generation)) _ = generation!.DiscoveryInputsChangedAsync();
+            });
+        }
+        void OutputChanged(object sender, Windows.Media.Devices.DefaultAudioRenderDeviceChangedEventArgs args)
+        {
+            _ = OnUi(() =>
+            {
+                if (session.IsOpen && ReferenceEquals(session.Generation, generation)) _ = generation!.RefreshOutputAsync();
+            });
+        }
+        generation = new RewriteGeneration(runner,
+            discover,
+            (voice, model, seed, ct) => session.GenerationInputAsync(voice, model, seed,
+                App.Services.Get("voiceLab.providerConsent.elevenlabs", false), readSource, ct),
+            Consent, async ct =>
+            {
+                decimal? cap = null;
+                await OnUi(() => { ct.ThrowIfCancellationRequested(); cap = App.Services.Settings.GetVoiceLabMonthlyCap("elevenlabs"); });
+                return cap;
+            }, () => Current() && !consenting, OnUi, () =>
+            {
+                App.Services.VoiceLab.Changed -= ConsentRecordsChanged;
+                Windows.Media.Devices.MediaDevice.DefaultAudioRenderDeviceChanged -= OutputChanged;
+                keyChanges?.Dispose();
+                releaseRunner();
+            });
+        App.Services.VoiceLab.Changed += ConsentRecordsChanged;
+        session.ConfigureGeneration(generation);
+        var audition = new VoxClip.Media.Audio.VoiceLabAudition(ct => RewriteGeneration.PausePreviewAsync(preview, ct));
+        _ = generation.ConfigureTakesAsync(new(audition, scratch, reject, publish));
+        Windows.Media.Devices.MediaDevice.DefaultAudioRenderDeviceChanged += OutputChanged;
+        if (watchKeys && Directory.Exists(App.Services.Data.Root))
+        {
+            keyChanges = new(App.Services.Data.Root, "elevenlabs-api-key.bin")
+            {
+                IncludeSubdirectories = true,
+                NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite | NotifyFilters.CreationTime
+            };
+            keyChanges.Changed += KeyChanged; keyChanges.Created += KeyChanged;
+            keyChanges.Deleted += KeyChanged; keyChanges.Renamed += KeyChanged;
+            keyChanges.EnableRaisingEvents = true;
+        }
     }
     private void CutSelectionClicked(object sender, RoutedEventArgs args) => ViewModel.CutSelection();
     private void RestoreSelectionClicked(object sender, RoutedEventArgs args) => ViewModel.CutSelection(true);
@@ -637,7 +777,10 @@ public sealed partial class EditorPage : Page
             {
                 if (ViewModel.IsLeaving) return;
                 var previous = owner.ProjectPath;
-                await App.Services.Projects.SaveAsync(ViewModel.Project, file.Path, lifetime.Token); owner.SetProjectPath(file.Path);
+                var snapshot = ViewModel.Project;
+                await App.Services.Projects.SaveAsync(snapshot, file.Path, lifetime.Token);
+                ViewModel.MarkSaved(snapshot);
+                owner.SetProjectPath(file.Path);
                 if (previous is not null && !previous.Equals(file.Path, StringComparison.OrdinalIgnoreCase) && Path.GetDirectoryName(previous)?.TrimEnd(Path.DirectorySeparatorChar).Equals(App.Services.Data.Autosave.TrimEnd(Path.DirectorySeparatorChar), StringComparison.OrdinalIgnoreCase) == true) File.Delete(previous);
             }
             finally { saves.Release(); }
@@ -767,16 +910,8 @@ public sealed partial class EditorPage : Page
         ExportButton.Content = label;
         ExportButton.IsEnabled = reason is null;
         ToolTipService.SetToolTip(ExportHost, reason ?? $"{label} (Ctrl+E)");
-        AutomationProperties.SetName(ExportButton, ScopeHasAiSpeech() ? label + ", contains AI-modified speech" : label);
+        AutomationProperties.SetName(ExportButton, VoiceLabDisclosure.AccessibleName(label, ViewModel.ContainsAiSpeech(ViewModel.State?.ActiveClipId)));
         AutomationProperties.SetHelpText(ExportButton, reason ?? "");
-    }
-    private bool ScopeHasAiSpeech()
-    {
-        var project = ViewModel.ScopedProject(ViewModel.State);
-        if (project.SchemaVersion != 3) return false;
-        var scope = project.Edits.ActiveClipId is { } id ? VoiceLabOutputScope.Clip(id) : VoiceLabOutputScope.Full;
-        try { return VoiceLabRenderContract.Prepare(project, scope, VoiceLabLabelPosition.TopRight).OutputPlan.RequiresSyntheticRendering; }
-        catch (Exception exception) when (exception is not OutOfMemoryException) { return false; }
     }
     private void ViewerClicked(object sender, RoutedEventArgs args)
         => SetViewerVisible(Viewer.IsChecked == true);
@@ -835,20 +970,43 @@ public sealed partial class EditorPage : Page
     private void SizeStage()
     {
         var oriented = media?.OrientedSize ?? MediaFromProject(ViewModel.Project).OrientedSize;
-        (PreviewStage.Width, PreviewStage.Height) = EditorLayout.Stage(RightPane.ActualWidth - RightPane.BorderThickness.Left - 32, ViewModel.Project.Export.Aspect, oriented);
+        var inner = RightPane.ActualWidth - RightPane.BorderThickness.Left - 32;
+        var compact = EditorLayout.CompactStage(rewrite is { IsOpen: true }, RightPane.ActualHeight);
+        if (Grid.GetColumn(TransportRow) != (compact ? 1 : 0))
+        {
+            TransportRow.Children.Clear();
+            TransportRow.Children.Add(compact ? TransportMeta : TransportButtons);
+            TransportRow.Children.Add(compact ? TransportButtons : TransportMeta);
+            TransportMeta.Children.Clear();
+            TransportMeta.Children.Add(compact ? TransportTime : AiModified);
+            TransportMeta.Children.Add(compact ? AiModified : TransportTime);
+        }
+        Grid.SetRow(TransportRow, compact ? 0 : 1);
+        Grid.SetColumn(TransportRow, compact ? 1 : 0);
+        TransportMeta.Orientation = compact ? Orientation.Vertical : Orientation.Horizontal;
+        TransportRow.VerticalAlignment = compact ? VerticalAlignment.Top : VerticalAlignment.Stretch;
+        PreviewStage.VerticalAlignment = compact ? VerticalAlignment.Top : VerticalAlignment.Stretch;
+        TransportRow.Margin = compact ? new Thickness(8, 0, 0, 0) : new Thickness(0);
+        TransportTime.Measure(new(double.PositiveInfinity, double.PositiveInfinity));
+        AiModified.Measure(new(double.PositiveInfinity, double.PositiveInfinity));
+        var rail = Math.Max(112, Math.Max(TransportTime.DesiredSize.Width, AiModified.DesiredSize.Width));
+        TransportRow.Width = compact ? rail : double.NaN;
+        (PreviewStage.Width, PreviewStage.Height) = compact
+            ? EditorLayout.RewriteStage(inner, ViewModel.Project.Export.Aspect, oriented, rail)
+            : EditorLayout.Stage(inner, ViewModel.Project.Export.Aspect, oriented);
         var chrome = PreviewPane.Padding.Top + PreviewPane.Padding.Bottom + PreviewPane.RowSpacing +
             FrameRow.Margin.Top + FrameRow.Margin.Bottom + CaptionsHost.BorderThickness.Top + CaptionsHost.BorderThickness.Bottom;
         // Prefer the full header with an 80-high stage; short columns scroll it in the existing details viewport.
         captions?.ConstrainHeight(RightPane.ActualHeight - FrameRow.ActualHeight - TransportRow.ActualHeight - chrome - 80);
         var maximum = EditorLayout.StageHeightBudget(RightPane.ActualHeight, FrameRow.ActualHeight,
             TransportRow.ActualHeight, chrome, captions?.MinimumContentHeight ?? 160);
-        if (PreviewStage.Height > maximum)
+        if (!compact && PreviewStage.Height > maximum)
         {
             PreviewStage.Width *= maximum / PreviewStage.Height;
             PreviewStage.Height = maximum;
         }
         var clip = ViewModel.Clips.FirstOrDefault(clip => clip.Id == ViewModel.State?.ActiveClipId);
-        var name = EditorMediaPresentation.Accessible(mediaState, clip?.Number, ScopeHasAiSpeech());
+        var name = EditorMediaPresentation.Accessible(mediaState, clip?.Number, ViewModel.ContainsAiSpeech(ViewModel.State?.ActiveClipId));
         AutomationProperties.SetName(PreviewStage, name); AutomationProperties.SetName(PreviewImage, name);
         PreviewEmpty.Text = EditorMediaPresentation.Title(mediaState);
         PreviewFile.Text = mediaState is EditorMediaState.Missing or EditorMediaState.Corrupt ? EditorMediaPresentation.FileName(ViewModel.Project.Media.Source.AbsolutePath) : "";
@@ -868,13 +1026,7 @@ public sealed partial class EditorPage : Page
     }
     private void UpdateAiTag()
     {
-        var first = 0;
-        var last = ViewModel.Words.Count - 1;
-        if (ViewModel.State?.ActiveClipId is { } id && ViewModel.Clips.FirstOrDefault(clip => clip.Id == id) is { } clip)
-        {
-            first = ViewModel.Index(clip.Clip.StartWordId); last = ViewModel.Index(clip.Clip.EndWordId);
-        }
-        AiModified.Visibility = first >= 0 && Enumerable.Range(first, Math.Max(0, last - first + 1)).Any(ViewModel.IsAiWord) ? Visibility.Visible : Visibility.Collapsed;
+        AiModified.Visibility = ViewModel.ContainsAiSpeech(ViewModel.State?.ActiveClipId) ? Visibility.Visible : Visibility.Collapsed;
     }
     internal async Task<bool> TrySaveBeforeLeavingAsync()
     {

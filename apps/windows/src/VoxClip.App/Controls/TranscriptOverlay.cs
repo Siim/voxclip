@@ -81,7 +81,7 @@ internal sealed class TranscriptOverlay : IDisposable
             if (filler) Pattern(rect.X, rect.Y + rect.Height - 2, rect.Width, "VcWordFillerBrush", 2, 4);
             if (lowConfidence) Pattern(rect.X, rect.Y + rect.Height + 1, rect.Width, "VcWordLowConfidenceBrush", 4, 7);
             if (corrected && firstRectangle) Rectangle(above, new(rect.X + 1, rect.Y + rect.Height + 4, 2, 2), "VcWordCorrectionDotBrush", 1);
-            if (ai) Pattern(rect.X, rect.Y + rect.Height - 1, rect.Width, "VcAccentTextBrush", 5, 9);
+            if (ai) Pattern(rect.X, rect.Y + rect.Height - 1, rect.Width, "VcAccentTextBrush", 5, 9, 1);
             firstRectangle = false;
         }
     }

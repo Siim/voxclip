@@ -259,7 +259,9 @@ public sealed class RoundThreeTests
         Assert.DoesNotContain(EditorFocusRegion.Viewer, FocusCycle.Regions(false));
         Assert.DoesNotContain(EditorFocusRegion.Captions, FocusCycle.Regions(false));
         Assert.True(ShortcutPolicy.PaneForwards("Ctrl+R"));
-        foreach (var key in new[] { "Ctrl+K", "Ctrl+Shift+K", "Ctrl+R", "Ctrl+Shift+I", "Ctrl+Enter", "F2", "Shift+F6", "[ / ]", "P  Preview This Cut" }) Assert.Contains(key, KeyboardHelp.Text);
+        foreach (var key in new[] { "Ctrl+K", "Ctrl+Shift+K", "Ctrl+Shift+I", "Ctrl+Enter", "F2", "Shift+F6", "[ / ]", "P  Preview This Cut" }) Assert.Contains(key, KeyboardHelp.Text(false, false));
+        Assert.DoesNotContain("Ctrl+R  Rewrite", KeyboardHelp.Text(false, false));
+        Assert.Contains("Ctrl+R  Rewrite", KeyboardHelp.Text(true, true));
     }
 }
 #endif

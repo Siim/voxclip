@@ -151,6 +151,11 @@ public sealed class ShellViewModel
                 : "Full take" + (state.Length > 0 ? state : ", not transcribed");
             full.Media = TakeMedia;
             if (fullExport.Label.Length > 0) full.AccessibleName += ", " + fullExport.Label;
+            if (editor.ContainsAiSpeech())
+            {
+                full.MetaStatus += " · AI modified";
+                full.AccessibleName += ", AI modified";
+            }
             full.Edits = !showingHome;
             next.Add(full);
             var active = editor.State?.ActiveClipId;
@@ -181,6 +186,11 @@ public sealed class ShellViewModel
                     : $"Clip {number}, {clip.Title}, {Spoken(clip.DurationSeconds)}";
                 row.ToolTip = clip.ToolTip;
                 if (export.Label.Length > 0) row.AccessibleName += ", " + export.Label;
+                if (editor.ContainsAiSpeech(clip.Id))
+                {
+                    row.MetaStatus += " · AI modified";
+                    row.AccessibleName += ", AI modified";
+                }
                 row.IsActive = clip.Id == active;
                 row.Media = ClipMedia.GetValueOrDefault(clip.Id);
                 row.Edits = !showingHome;

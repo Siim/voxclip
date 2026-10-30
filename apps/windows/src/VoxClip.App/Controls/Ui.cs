@@ -48,11 +48,12 @@ internal static class Ui
         File.AppendAllText(Path.Combine(directory, "accessibility-effects.jsonl"), entry + "\n");
 #endif
     }
-    internal static void Announce(FrameworkElement owner, string text, string activity)
+    internal static void Announce(FrameworkElement owner, string text, string activity,
+        AutomationNotificationProcessing processing = AutomationNotificationProcessing.MostRecent)
     {
         if (text.Length == 0) return;
         FrameworkElementAutomationPeer.CreatePeerForElement(owner)?.RaiseNotificationEvent(AutomationNotificationKind.ActionCompleted,
-            AutomationNotificationProcessing.MostRecent, text, activity);
+            processing, text, activity);
     }
     internal static void ApplyFlyoutEffects(Flyout flyout, FrameworkElement owner)
     {

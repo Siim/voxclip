@@ -1,4 +1,4 @@
-param([ValidateSet('editor', 'home', 'settings')][string]$Screen = 'editor', [switch]$Exercise, [string]$Root = 'C:\voxclip-build\win-ui', [ValidateSet('win-x64', 'win-arm64')][string]$RuntimeIdentifier = 'win-arm64', [string]$CaptureName = '', [ValidateSet('home-empty', 'home-dragover', 'finding', 'suggested', 'exported', 'export-edited', 'exporting', 'export-failed', 'transcribing', 'focus', 'opaque-flyout', 'splitter', 'high-contrast-black', 'high-contrast-white')][string]$ManualState, [string]$RequiredName)
+param([ValidateSet('editor', 'home', 'settings', 'settings-voicelab')][string]$Screen = 'editor', [switch]$Exercise, [string]$Root = 'C:\voxclip-build\win-ui', [ValidateSet('win-x64', 'win-arm64')][string]$RuntimeIdentifier = 'win-arm64', [string]$CaptureName = '', [ValidateSet('home-empty', 'home-dragover', 'finding', 'suggested', 'exported', 'export-edited', 'exporting', 'export-failed', 'transcribing', 'focus', 'opaque-flyout', 'splitter', 'high-contrast-black', 'high-contrast-white')][string]$ManualState, [string]$RequiredName)
 $ErrorActionPreference = 'Stop'
 $root = $Root
 $shots = Join-Path $root "screenshots\$RuntimeIdentifier"

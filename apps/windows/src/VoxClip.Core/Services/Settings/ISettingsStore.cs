@@ -70,6 +70,14 @@ public sealed record AppSettings
     /// <summary>A cap is a decimal string with up to nine whole digits and two decimals.</summary>
     internal static decimal? ParseMonthlyCap(string text) => VoiceLabMoney.Parse(text, 9, 2);
 
+    /// <summary>Parse the schema's plain-dollar cap without changing settings; empty or invalid input returns false.</summary>
+    public static bool TryParseVoiceLabMonthlyCap(string text, out decimal amount)
+    {
+        var parsed = ParseMonthlyCap(text);
+        amount = parsed ?? 0;
+        return parsed is not null;
+    }
+
     /// <summary>Set an independent JSON value; a null argument removes the stored override, plan W8.</summary>
     public void Set(string key, JsonElement? value)
     {

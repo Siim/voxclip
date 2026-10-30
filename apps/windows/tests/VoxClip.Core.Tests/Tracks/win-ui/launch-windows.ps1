@@ -1,4 +1,4 @@
-param([ValidateSet('editor', 'home', 'settings')][string]$Screen = 'editor', [ValidateSet('Debug', 'Release')][string]$Configuration = 'Debug', [string]$Root = 'C:\voxclip-build\win-ui', [ValidateSet('win-x64', 'win-arm64')][string]$RuntimeIdentifier = 'win-arm64', [ValidateSet('1440x900', '1440x960', '1280x800', '1024x700', '900x720')][string]$WindowSize = '1440x900', [switch]$OrdinaryEditor)
+param([ValidateSet('editor', 'home', 'settings', 'settings-voicelab')][string]$Screen = 'editor', [ValidateSet('Debug', 'Release')][string]$Configuration = 'Debug', [string]$Root = 'C:\voxclip-build\win-ui', [ValidateSet('win-x64', 'win-arm64')][string]$RuntimeIdentifier = 'win-arm64', [ValidateSet('1440x900', '1440x960', '1280x800', '1024x700', '900x720')][string]$WindowSize = '1440x900', [switch]$OrdinaryEditor)
 $ErrorActionPreference = 'Stop'
 $root = $Root
 $env:VOXCLIP_DATA_DIR = Join-Path $root 'capture-data'

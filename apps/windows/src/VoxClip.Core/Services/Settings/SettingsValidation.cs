@@ -72,7 +72,9 @@ internal static class SettingsValidation
                 case "llm.clips.lastPreset": Choice(value, "best", "hooks", "topics", "quotes", "custom"); break;
                 case "llm.tighten.strength": Choice(value, "light", "normal", "strong"); break;
                 case "general.showLowConfidence": case "general.showPlaceholderWords": case "general.openLastProject": case "onboarding.completed": case "transcription.cloudConsent.elevenlabs":
-                case "export.srt": case "export.openFolderAfter": case "update.autoCheck": case "llm.clips.snapToLines": case "voiceLab.enabled": Boolean(value); break;
+                case "export.srt": case "export.openFolderAfter": case "update.autoCheck": case "llm.clips.snapToLines": case "voiceLab.enabled":
+                case "voiceLab.c2pa": case "voiceLab.betaNoticeAccepted": Boolean(value); break;
+                case "voiceLab.labelPosition": Choice(value, "top-right", "top-left", "bottom-right", "bottom-left"); break;
                 default:
                     if (Regex.IsMatch(pair.Key, "\\Allm\\.model\\.[a-z0-9]+(?:-[a-z0-9]+)*\\z", RegexOptions.CultureInvariant)) Text(value, 1, 128);
                     else if (Regex.IsMatch(pair.Key, "\\A(?:llm\\.cloudConsent|voiceLab\\.providerConsent)\\.[a-z0-9]+(?:-[a-z0-9]+)*\\z", RegexOptions.CultureInvariant)) Boolean(value);

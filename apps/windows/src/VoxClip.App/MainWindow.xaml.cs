@@ -18,6 +18,8 @@ namespace VoxClip.App;
 public sealed partial class MainWindow : Window, IUpdateRestartWindow
 {
     internal string? ProjectPath { get; private set; }
+    internal string VoiceEnrollmentLanguage => editor?.ViewModel?.Project.Transcript?.Language
+        ?? home.ViewModel.RecentProjects.Select(project => project.TranscriptLanguage).FirstOrDefault(language => language is not null) ?? "en";
     internal string CurrentScreen => ContentFrame.Content is EditorPage ? "editor" : ContentFrame.Content is HomePage ? "home" : "none";
     /// <summary>Sidebar rows for this window.</summary>
     internal ShellViewModel Shell { get; } = new();
@@ -784,7 +786,8 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
         await new ContentDialog
         {
             XamlRoot = Root.XamlRoot, Title = "Keyboard shortcuts", CloseButtonText = "Done",
-            Content = new ScrollViewer { MaxHeight = 520, Content = new TextBlock { Text = KeyboardHelp.Text, TextWrapping = TextWrapping.Wrap } }
+            Content = new ScrollViewer { MaxHeight = 520, Content = new TextBlock { Text = KeyboardHelp.Text(
+                App.Services.Settings.GetBool("voiceLab.enabled") == true, App.Services.Settings.GetBool("voiceLab.betaNoticeAccepted") == true), TextWrapping = TextWrapping.Wrap } }
         }.ShowAsync();
     }
 #if DEBUG
