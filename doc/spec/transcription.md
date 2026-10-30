@@ -681,6 +681,7 @@ ElevenLabs transcribes files longer than 8 minutes in parallel internally, with 
   - Body: "ElevenLabs Scribe uploads this take's audio track with your key. ElevenLabs stores it under its terms and may use it to improve its services unless you opt out in your ElevenLabs account. No video is sent."
   - Buttons: [Continue] (default) stores `transcription.cloudConsent.elevenlabs = true` and uploads; [Cancel] uploads nothing and leaves the project "Not transcribed".
   - The Test button (below) sends no audio and needs no consent.
+  - The Mac headless App harness checks the same consent gate used by the sheet: no upload or project change before consent, cancellation without a stored grant, persistence before the first upload, and no repeat prompt after loading that grant. It uses a fake upload, not a provider call. The corresponding Windows App behavior/tests are owed to the Windows track.
 - **Test button**: `GET {base}/v1/user/subscription`. The button makes no paid call.
   - 200 shows "Works."
   - A 401 or 403 whose body says the key lacks a permission shows "The key works. It can't read account details (user_read), and that is fine for transcription." This proves the key is valid but does not prove it has `speech_to_text`.

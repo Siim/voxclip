@@ -18,6 +18,7 @@ import Darwin
             results += try await DebugExport.run(app: app, fixture: fixture, directory: directory, captures: false)
             results += try await DebugRewrite.run(app: app, fixture: fixture, directory: directory)
             results += try await DebugConnectorRequests.run(fixture: fixture, directory: directory)
+            results += try await DebugTranscriptionConsent.run(fixture: fixture)
             results += try await DebugDownloads.run(app: app, directory: directory, captures: false)
             results += try await DebugAccessibility.run(app: app, fixture: fixture, directory: directory)
             results += try await gallery(app: app, fixture: fixture, directory: directory)

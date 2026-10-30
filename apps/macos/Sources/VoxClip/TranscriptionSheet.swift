@@ -10,7 +10,7 @@ import VoxClipMedia
     @State private var remember = true
     @State private var speakers = "off"
     @State private var keyterms = ""
-    @State private var showCloudConsent = false
+    @State private var consent = TranscriptionConsentGate()
     @State private var error: String?
     @State private var running = false
     @State private var progress: TranscriptionProgress?
@@ -36,15 +36,16 @@ import VoxClipMedia
             }.formStyle(.grouped).scrollContentBackground(.hidden).disabled(running)
             if running { ProgressView(model.progress ?? "Reading video…", value: progress?.fraction) }
             if let error { InlineNotice(text: error) }
-            HStack { Button("Models and keys…") { openVoxClipSettings(pane: "transcription") }; Spacer(); Button(running ? "Cancel" : "Not now") { model.workTask?.cancel(); dismiss() }.keyboardShortcut(.cancelAction); Button(error == nil ? "Transcribe" : "Retry") { if engine == "elevenlabs" && !model.app.bool("transcription.cloudConsent.elevenlabs") { showCloudConsent = true } else { transcribe() } }.keyboardShortcut(.defaultAction).disabled(running) }
+            HStack { Button("Models and keys…") { openVoxClipSettings(pane: "transcription") }; Spacer(); Button(running ? "Cancel" : "Not now") { model.workTask?.cancel(); dismiss() }.keyboardShortcut(.cancelAction); Button(error == nil ? "Transcribe" : "Retry") { consent.request(engine: engine, app: model.app) { transcribe() } }.keyboardShortcut(.defaultAction).disabled(running) }
         }.padding(24).frame(width: 560)
-        .sheet(isPresented: $showCloudConsent) {
+        .sheet(isPresented: Binding(get: { consent.pending }, set: { if !$0 { consent.cancel() } })) {
             VStack(alignment: .leading, spacing: 16) {
                 Text("Transcribe with ElevenLabs?").font(.title2)
                 Text("ElevenLabs Scribe uploads this take's audio track with your key. ElevenLabs stores it under its terms and may use it to improve its services unless you opt out in your ElevenLabs account. No video is sent.")
-                HStack { Spacer(); Button("Cancel") { showCloudConsent = false }.keyboardShortcut(.cancelAction); Button("Continue") { model.app.set("transcription.cloudConsent.elevenlabs", .bool(true)); showCloudConsent = false; transcribe() }.keyboardShortcut(.defaultAction) }
+                HStack { Spacer(); Button("Cancel") { consent.cancel() }.keyboardShortcut(.cancelAction); Button("Continue") { consent.approve(app: model.app) }.keyboardShortcut(.defaultAction) }
             }.padding(24).frame(width: 480)
         }
+        .onDisappear { consent.cancel() }
         .task {
             engine = model.app.string("transcription.engineMode", fallback: "local"); if engine == "ask" { engine = "local" }
             language = model.project.transcript?.language ?? model.app.string("transcription.language", fallback: "auto")

@@ -1,5 +1,11 @@
 # macOS implementation contracts
 
+### 2026-10-30 — sol-mac-polish — ElevenLabs first-use consent regression
+
+- Move the sheet's decision and pending action into TranscriptionConsentGate, used directly by Transcribe/Retry, Continue and Cancel. Consent is stored before the operation starts; cancelling or dismissing discards the pending operation without changing settings or the project. The paid adapter and key Test implementation are untouched.
+- Headless fake-upload checks cover zero uploads/project mutation before consent, cancellation leaving the take untranscribed, exactly one upload after Continue, persisted consent across a new AppModel, and local/Apple engines never granting cloud consent. Windows App consent and native Mac sheet/focus checks remain owed to their owners.
+- Final offline verification for this track: Mac Debug and Release builds; Core 610/610, Media 286/286, CaptionParity 4/4, headless App 886/886, and both window-free UI audits (63 gallery checks, 433 right-column checks). The cross-platform .NET Release build has no warnings or errors; Core passes 2,072 with 28 prerequisite skips, portable Media passes 624 with five skips. Release tooling (15), Mac release safety (50), design (17), schemas, caption styles and fixture drift pass. An initial Core timing assertion failed under concurrent host load; the unchanged full suite passed after the other CPU-heavy run finished. No native windows, live providers or Windows VM were used.
+
 ### 2026-10-30 — sol-mac-polish — stale owned scratch after interrupted tasks
 
 - Launch sweeps only recognized VoxClip scratch older than the kernel-reported process start: exact UUID Scribe multipart files in hash-named cache entries, UUID CLI workspaces, and UUID export writer folders in known export directories. Both creation and modification dates, including directory descendants, must predate startup; links are never followed and newer work is retained.
@@ -30,7 +36,7 @@
 - Gallery scope changes reveal selection while Fine Tune stays open. Tile clicks suspend automatic reveal; Picker and external/Undo changes still reveal, and resizing does not clear a user interruption. Non-observed scroll geometry publishes only viewport size changes, not each scroll frame. Policy checks cover all these transitions and 120 position-only updates.
 - Typed scroll IDs are assigned by one target modifier and inspected on the real rendered tile markers, replacing the old type-inequality tautology. The gallery's visual row gap is 10 points after accounting for the 3-point ring reserve. Frame inline labels and stacked pickers align to the leading inner edge.
 - Caption errors remain outside the scroll view, below the fixed header. The window-free gallery checks their bounds before and after reveal/scroll requests, the actual row gap and target registrations, and tile/scope actions without opening windows. Existing gallery, ring, layout, overflow and timing assertions are retained. The Picker-based VoiceOver outline remains unchanged pending a design decision.
-- Headless asset tests now skip ordered-window snapshots and cover failure, silent cancellation, and changing language during a download. Native short-viewport reveal, real tile clicks, divider resizing and VoiceOver/FKA checks remain lead-owned. Core passes 604 tests; final gallery/build verification is subject to the 15 GB host reserve and concurrent host load.
+- Headless asset tests now skip ordered-window snapshots and cover failure, silent cancellation, and changing language during a download. Native short-viewport reveal, real tile clicks, divider resizing and VoiceOver/FKA checks remain lead-owned. Final offline verification is recorded in the newest entry above; all builds and tests kept the required 15 GB host reserve.
 
 ### 2026-10-30 — sol-mac-polish — accessibility follow-ups
 
