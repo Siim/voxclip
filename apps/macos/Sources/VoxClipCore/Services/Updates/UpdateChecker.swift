@@ -42,6 +42,9 @@ public struct UpdateRelease: Codable, Sendable, Equatable {
 public protocol UpdateChecking: Sendable { func check(currentVersion: String) async throws -> UpdateRelease? }
 /// mac-ui owns HTTP transport, 24-hour throttle and settings cache.
 public actor UpdateChecker: UpdateChecking {
+    // GitHub supports 2022-11-28 until March 10, 2028: https://docs.github.com/en/rest/about-the-rest-api/api-versions.
+    static let githubAPIVersion = "2022-11-28"
+    private let session: URLSession
     private struct Release: Decodable {
         struct Asset: Decodable { let name: String; let browser_download_url: URL }
         let tag_name: String
@@ -50,14 +53,14 @@ public actor UpdateChecker: UpdateChecking {
         let prerelease: Bool
         let assets: [Asset]
     }
-    public init() {}
+    public init(session: URLSession = .shared) { self.session = session }
     public func check(currentVersion: String) async throws -> UpdateRelease? {
         let endpoint = URL(string: "https://api.github.com/repos/Siim/voxclip/releases/latest")!
         var request = URLRequest(url: endpoint, timeoutInterval: 10)
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
-        request.setValue("2022-11-28", forHTTPHeaderField: "X-GitHub-Api-Version")
+        request.setValue(Self.githubAPIVersion, forHTTPHeaderField: "X-GitHub-Api-Version")
         request.setValue("VoxClip/\(currentVersion) (macOS)", forHTTPHeaderField: "User-Agent")
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await session.data(for: request)
         try Task.checkCancellation()
         guard let response = response as? HTTPURLResponse else { throw VoxClipError.offline }
         if response.statusCode == 404 { return nil }

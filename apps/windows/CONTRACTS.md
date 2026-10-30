@@ -1,5 +1,9 @@
 # Windows fixed contracts
 
+### 2026-10-30 — GitHub version pin and Apple Speech parity note
+
+- The Windows release-tool GitHub header uses one named 2022-11-28 constant, with GitHub's March 10, 2028 support end date. The portable stub checks the actual header on release queries; the Mac update checker mirrors the pin and transport test. Apple Speech is Mac-only: its reservation Bool false is success, while thrown limits retain stale-locale recovery.
+
 ### 2026-10-30 — Text-only cloud model pickers
 
 - OpenAI and xAI discovered-model filters reject live, voice, audio, realtime and transcription-only ids in addition to existing non-text exclusions. Both stub suites include the audit examples gpt-live-1 and grok-voice-2.0/3.0, plus text controls; the shared catalog records the same filter rules.

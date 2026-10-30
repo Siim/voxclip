@@ -1,5 +1,7 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+# GitHub supports 2022-11-28 until March 10, 2028: https://docs.github.com/en/rest/about-the-rest-api/api-versions.
+$script:ReleaseGitHubApiVersion = '2022-11-28'
 
 function Get-ReleasePrerequisite {
     param([Parameter(Mandatory = $true)][ValidateSet('win-x64', 'win-arm64')][string] $RuntimeIdentifier)
@@ -74,7 +76,7 @@ function Get-ReleaseDeltaBase {
     & $Vpk download github --repoUrl https://github.com/Siim/voxclip --channel $RuntimeIdentifier -o $OutputDirectory
     if ($LASTEXITCODE -eq 0) { return }
     $downloadExitCode = $LASTEXITCODE
-    $headers = @{ Accept = 'application/vnd.github+json'; 'User-Agent' = 'VoxClip-release'; 'X-GitHub-Api-Version' = '2022-11-28' }
+    $headers = @{ Accept = 'application/vnd.github+json'; 'User-Agent' = 'VoxClip-release'; 'X-GitHub-Api-Version' = $script:ReleaseGitHubApiVersion }
     try {
         $null = Invoke-RestMethod -Uri 'https://api.github.com/repos/Siim/voxclip/releases/latest' -Headers $headers -TimeoutSec 30
     } catch {

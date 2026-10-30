@@ -3,6 +3,19 @@ import Testing
 @testable import VoxClipCore
 
 extension HTTPConnectorTests {
+    @Test
+    func updateCheckKeepsSupportedGitHubVersionHeader() async throws {
+        HTTPStubProtocol.install([.json("{}", status: 404)])
+        let session = URLSession(configuration: HTTPStubProtocol.configuration())
+        defer { session.invalidateAndCancel() }
+        let checker = UpdateChecker(session: session)
+        #expect(try await checker.check(currentVersion: "0.1.0") == nil)
+        let request = try #require(HTTPStubProtocol.requests.first).request
+        #expect(request.value(forHTTPHeaderField: "X-GitHub-Api-Version") == "2022-11-28")
+        #expect(request.value(forHTTPHeaderField: "Accept") == "application/vnd.github+json")
+        #expect(HTTPStubProtocol.requests.count == 1)
+    }
+
     @Test(arguments: [ConnectorID.openai, .xai])
     func textModelPickersExcludeVoiceLiveAudioAndRealtime(_ id: ConnectorID) async throws {
         let prefix = id == .openai ? "gpt" : "grok"

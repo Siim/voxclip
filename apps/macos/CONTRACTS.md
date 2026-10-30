@@ -1,5 +1,10 @@
 # macOS implementation contracts
 
+### 2026-10-30 — GitHub version pin and Apple Speech reservations
+
+- UpdateChecker and Windows release tooling each hold one named 2022-11-28 API constant with GitHub's March 10, 2028 support end date. Injected-session and portable release-tool tests require the actual header.
+- Apple reserve false means already reserved, not a limit error; both true and false continue installation through the tested reservation seam. Thrown reservation-limit errors retain stale-locale release and one retry, and the existing exact message when all reserved speech locales are in use. No App UI changed.
+
 ### 2026-10-30 — Text-only cloud model pickers
 
 - OpenAI and xAI discovered-model filters reject live, voice, audio, realtime and transcription-only ids in addition to existing non-text exclusions. Both stub suites include the audit examples gpt-live-1 and grok-voice-2.0/3.0, plus text controls; the shared catalog records the same filter rules.

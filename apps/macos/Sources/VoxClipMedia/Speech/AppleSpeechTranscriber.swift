@@ -115,7 +115,7 @@ public actor AppleSpeechTranscriber: Transcriber, SpeechCacheIdentityProviding {
         let reserved = await AssetInventory.reservedLocales
         guard !reserved.contains(where: { $0.identifier(.bcp47) == locale.identifier(.bcp47) }) else { return }
         if reserved.count >= AssetInventory.maximumReservedLocales { try await releaseOldest(excluding: locale) }
-        guard try await AssetInventory.reserve(locale: locale) else { throw VoxClipError.speechAssetsUnavailable(locale.identifier(.bcp47), reason: "Unable to reserve the locale") }
+        try await AppleSpeechAssets.reserve { try await AssetInventory.reserve(locale: locale) }
         try touch(locale)
     }
     private func releaseOldest(excluding locale: Locale) async throws {

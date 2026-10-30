@@ -55,6 +55,7 @@ function Invoke-RestMethod {
     param([string] $Uri, $Headers, [int] $TimeoutSec)
     $script:requests += $Uri
     Assert-Equal $TimeoutSec 30
+    Assert-Equal $Headers['X-GitHub-Api-Version'] '2022-11-28'
     if ($Uri.EndsWith('/latest') -and $script:releaseStatus -ne 200) {
         $exception = New-Object Exception 'Simulated GitHub response'
         $exception | Add-Member -NotePropertyName Response -NotePropertyValue ([pscustomobject]@{ StatusCode = $script:releaseStatus })
