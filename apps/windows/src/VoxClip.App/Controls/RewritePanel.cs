@@ -25,7 +25,6 @@ internal sealed partial class RewritePanel : Grid
     private readonly RewriteAnnouncements announcements = new();
     private readonly List<(DependencyObject Target, DependencyProperty Property, string Key)> brushes = [];
     private bool updating;
-#if DEBUG
     private readonly StackPanel generationBody = Ui.Stack(12);
     private readonly ComboBox voice = new() { Header = "Voice", HorizontalAlignment = HorizontalAlignment.Stretch, DisplayMemberPath = "Label", SelectedValuePath = "Id" };
     private readonly ComboBox speechModel = new() { Header = "Speech model", HorizontalAlignment = HorizontalAlignment.Stretch, DisplayMemberPath = "Name", SelectedValuePath = "Id" };
@@ -38,7 +37,6 @@ internal sealed partial class RewritePanel : Grid
     private readonly InfoBar generationError = new() { Severity = InfoBarSeverity.Error, IsClosable = false };
     private readonly TextBlock nonePassed = Ui.Text(RewriteGeneration.NonePassed);
     private string generationAnnouncement = "";
-#endif
     internal Control FocusTarget => instruction;
     internal bool ReturnFocusOnClose { get; private set; }
     internal event EventHandler? Closed;
@@ -120,10 +118,8 @@ internal sealed partial class RewritePanel : Grid
         newHeader.Children.Add(changeSummary);
         body.Children.Add(newHeader);
         body.Children.Add(words); body.Children.Add(review); body.Children.Add(problem);
-#if DEBUG
         BuildGeneration();
         body.Children.Add(generationBody);
-#endif
         var scroll = new ScrollViewer { Content = body, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
         AutomationProperties.SetAutomationId(scroll, "Rewrite.Scroll");
         Children.Add(scroll);
@@ -190,9 +186,7 @@ internal sealed partial class RewritePanel : Grid
     {
         if (!session.IsOpen)
         {
-#if DEBUG
             if (applyingTake) return;
-#endif
             Closed?.Invoke(this, EventArgs.Empty); return;
         }
         Render();
@@ -226,14 +220,11 @@ internal sealed partial class RewritePanel : Grid
             if (current.Budget.Copy is { } budget) review.Children.Add(Small(budget));
         }
         if (session.Prepared is { } action) DispatcherQueue.TryEnqueue(() => session.MarkEstimateShown(action));
-#if DEBUG
         RenderGeneration();
-#endif
         if (IsLoaded)
             foreach (var message in announcements.Next(session.IsProposing, session.ProposalRevision, session.Problem, session.Review?.ChangeSummary ?? ""))
                 Ui.Announce(this, message, "rewrite", AutomationNotificationProcessing.All);
     }
-#if DEBUG
     private void BuildGeneration()
     {
         AutomationProperties.SetAutomationId(voice, "Rewrite.Voice");
@@ -316,6 +307,7 @@ internal sealed partial class RewritePanel : Grid
         }
         if (generation.Announcement.Length == 0) generationAnnouncement = "";
     }
+#if DEBUG
     internal async Task DebugFitStatesAsync(Func<string, Task> inspect)
     {
         foreach (var state in new[] { "no-voice", "generating", "provider-error", "none-passed", "ready", "three-ready", "mixed", "length-changed", "cancelled", "fatal" })
@@ -369,7 +361,6 @@ internal sealed partial class RewritePanel : Grid
     }
     private async Task ApplyDefaultAsync()
     {
-#if DEBUG
         if (session.LocalAction is null)
         {
             if (session.Generation?.ReadyToAccept != true) return;
@@ -379,7 +370,6 @@ internal sealed partial class RewritePanel : Grid
             if (ReturnFocusOnClose || !session.IsOpen) Closed?.Invoke(this, EventArgs.Empty);
             return;
         }
-#endif
         ReturnFocusOnClose = true;
         if (!session.ApplyLocalChanges()) ReturnFocusOnClose = false;
         await Task.CompletedTask;

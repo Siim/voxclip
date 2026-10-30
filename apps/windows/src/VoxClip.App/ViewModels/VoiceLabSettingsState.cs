@@ -13,7 +13,7 @@ internal sealed record VoiceLabCapInput(decimal? Amount, string? Canonical, stri
 
 internal static class VoiceLabSettingsState
 {
-    internal static bool PaneVisible(bool enabled, bool internalBuild) => enabled || internalBuild;
+    internal static bool PaneVisible => true;
     internal static VoiceLabTurnOn TurnOn(bool accepted) => new(!accepted,
         [new("voiceLab.betaNoticeAccepted", true), new("voiceLab.enabled", true)]);
     internal static IReadOnlyList<VoiceLabLabelChoice> LabelChoices { get; } = Array.AsReadOnly<VoiceLabLabelChoice>(

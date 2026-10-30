@@ -2,7 +2,7 @@ param([Parameter(Mandatory=$true)][string]$Root, [Parameter(Mandatory=$true)][st
     [Parameter(Mandatory=$true)][string]$EvidenceDir, [string]$NormalProject,
     [ValidateSet('win-arm64','win-x64')][string]$RuntimeIdentifier='win-arm64',
     [ValidateSet('Debug','Release')][string]$Configuration='Debug',
-    [ValidateSet('pane','cancel','turn-on','cap','label','light','dark','night-sky','release-off','release-on','release-smoke','session','account-cancel','delete-cancel','zero-http','consent-gate','consent','consent-cap','consent-error','training','training-cap','creation-cancel','creation-ready','creation-savefail','creation-uncertain','creation-expired')][string]$Step='pane',
+    [ValidateSet('pane','cancel','turn-on','cap','label','light','dark','night-sky','release-off','release-enabled-no-notice','release-notice-only','release-on','release-smoke','session','account-cancel','delete-cancel','zero-http','consent-gate','consent','consent-cap','consent-error','training','training-cap','creation-cancel','creation-ready','creation-savefail','creation-uncertain','creation-expired')][string]$Step='pane',
     [ValidatePattern('^[^"\r\n]*$')][string]$ConsentScenario='tone;rate=44100;channels=2', [ValidateRange(1,35)][int]$StopSeconds=12,
     [ValidateRange(1,95)][int]$TrainingSeconds=65,
     [ValidateSet('ready','verification','save-failure','uncertain','expired','speaker-mismatch','speaker-unavailable')][string]$CreationScenario='ready',
@@ -366,6 +366,8 @@ try {
     $off=$Step -in @('cancel','turn-on','release-off')
     $appearance=if($Step -eq 'dark'){'dark'}else{'light'}
     $settings=@{schema='voxclip-settings/1';'onboarding.completed'=$true;'update.autoCheck'=$false;'general.appearance'=$appearance;'voiceLab.enabled'=(-not $off);'voiceLab.betaNoticeAccepted'=(-not $off);'voiceLab.monthlyCapUsd.elevenlabs'='20'}
+    if($Step -eq 'release-enabled-no-notice'){$settings['voiceLab.enabled']=$true;$settings['voiceLab.betaNoticeAccepted']=$false}
+    if($Step -eq 'release-notice-only'){$settings['voiceLab.enabled']=$false;$settings['voiceLab.betaNoticeAccepted']=$true}
     $settings | ConvertTo-Json | Set-Content -LiteralPath $settingsPath -Encoding ASCII
     if($Step -eq 'night-sky'){Set-NightSky}
     if($Step -eq 'zero-http'){
@@ -392,11 +394,21 @@ try {
     $script:window=Settings-Window
     [void][VoiceLabNative]::SetForegroundWindow($window)
     if([VoiceLabNative]::GetForegroundWindow() -ne $window){throw 'Settings did not take foreground; leave this step owed rather than sending keys elsewhere.'}
-    if($Step -eq 'release-off') {
-        if(Find-Control 'Voice Lab' -Optional){throw 'Release exposes Voice Lab while disabled.'}
+    if($Configuration -eq 'Release'){Invoke-Control 'Voice Lab'}
+    [void](Find-Control 'Show Voice Lab (beta)')
+    if($Step -in @('release-off','release-enabled-no-notice','release-notice-only')) {
+        $toggle=Find-Control 'Show Voice Lab (beta)'
+        if($toggle.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern).Current.ToggleState -ne [System.Windows.Automation.ToggleState]::Off){throw 'A closed Release gate must display the opt-in switch as off.'}
+        foreach($name in @('ElevenLabs API key','Check ElevenLabs account',('Create Your Voice'+[char]0x2026),'Label position','Show in File Explorer')) {
+            if(Find-Control $name -Optional){throw ('A closed Release gate exposes a pane action: '+$name)}
+        }
     } else {
-        if($Configuration -eq 'Release'){Invoke-Control 'Voice Lab'}
-        [void](Find-Control 'Show Voice Lab (beta)')
+        if($Step -in @('release-on','release-smoke')) {
+            [void](Find-Control 'ElevenLabs API key')
+            [void](Find-Control 'Check ElevenLabs account')
+            [void](Find-Control 'Label position')
+            [void](Find-Control ('Create Your Voice'+[char]0x2026))
+        }
         switch($Step) {
             {$_ -in @('consent-gate','consent','consent-cap','consent-error') -or $_ -match '^(training|creation)'} {Consent-Step}
             'session' {

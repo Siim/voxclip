@@ -95,7 +95,7 @@ internal sealed class VoiceLabSettingsPane : UserControl
     internal void Refresh()
     {
         updating = true;
-        try { enabled.IsOn = App.Services.Settings.GetBool("voiceLab.enabled") == true; }
+        try { enabled.IsOn = App.Services.VoiceLabEnabled; }
         finally { updating = false; }
         enabledContent.Visibility = App.Services.VoiceLabEnabled ? Visibility.Visible : Visibility.Collapsed;
         _ = Ui.RunAsync(message, () => keyInventory.RefreshAsync(), "Voice Lab keys");
@@ -146,6 +146,7 @@ internal sealed class VoiceLabSettingsPane : UserControl
             {
                 await Ui.RunAsync(message, async () =>
                 {
+                    if (!App.Services.VoiceLabEnabled) return;
                     var secret = key.Password; key.Password = "";
                     if (string.IsNullOrWhiteSpace(secret)) return;
                     await owner.SaveKeyAsync(provider.Item2, secret, token);
@@ -162,6 +163,7 @@ internal sealed class VoiceLabSettingsPane : UserControl
             {
                 await Ui.RunAsync(message, async () =>
                 {
+                    if (!App.Services.VoiceLabEnabled) return;
                     await owner.SaveKeyAsync(provider.Item2, "", token);
                     key.Password = ""; key.PlaceholderText = "API key"; status.Text = "Key forgotten.";
                     key.Focus(FocusState.Programmatic);
@@ -320,6 +322,7 @@ internal sealed class VoiceLabSettingsPane : UserControl
             AutomationProperties.SetName(field, header);
             owner.TrackTextField(field, async () =>
             {
+                if (!App.Services.VoiceLabEnabled) return true;
                 var parsed = VoiceLabSettingsState.MonthlyCap(field.Text);
                 if (parsed.Error is { } error)
                 {
@@ -340,13 +343,13 @@ internal sealed class VoiceLabSettingsPane : UserControl
             Math.Max(0, positions.ToList().FindIndex(choice => choice.Key == App.Services.Settings.GetString("voiceLab.labelPosition"))));
         AutomationProperties.SetName(position, "Label position");
         position.SelectionChanged += (_, _) => owner.RunSensitive(() => Ui.RunAsync(message,
-            () => App.Services.SetAsync("voiceLab.labelPosition", positions[position.SelectedIndex].Key, token), "Save label position"), "Save label position");
+            () => App.Services.VoiceLabEnabled ? App.Services.SetAsync("voiceLab.labelPosition", positions[position.SelectedIndex].Key, token) : Task.CompletedTask, "Save label position"), "Save label position");
         var label = Ui.Stack(); label.Children.Add(position); label.Children.Add(Ui.Text(VoiceLabCopy.LabelHelper, "HelperText")); AddCard(section, label);
         var c2pa = new ToggleSwitch { Header = "Add Content Credentials (C2PA) to exports", IsOn = App.Services.Settings.GetBool("voiceLab.c2pa") ?? true };
         AutomationProperties.SetName(c2pa, "Add Content Credentials (C2PA) to exports");
         AutomationProperties.SetHelpText(c2pa, VoiceLabCopy.C2paHelper);
         c2pa.Toggled += (_, _) => owner.RunSensitive(() => Ui.RunAsync(message,
-            () => App.Services.SetAsync("voiceLab.c2pa", c2pa.IsOn, token), "Save Content Credentials preference"), "Save Content Credentials preference");
+            () => App.Services.VoiceLabEnabled ? App.Services.SetAsync("voiceLab.c2pa", c2pa.IsOn, token) : Task.CompletedTask, "Save Content Credentials preference"), "Save Content Credentials preference");
         var credentials = Ui.Stack(); credentials.Children.Add(c2pa); credentials.Children.Add(Ui.Text(VoiceLabCopy.C2paHelper, "HelperText")); AddCard(section, credentials);
     }
     private void AddVoiceCard(UIElement content, string recordId, string label)
@@ -365,7 +368,7 @@ internal sealed class VoiceLabSettingsPane : UserControl
         var section = Section("Storage"); enabledContent.Children.Add(section);
         var panel = Ui.Stack(); panel.Children.Add(Ui.Text(VoiceLabCopy.Storage, "HelperText"));
         var path = Path.Combine(App.Services.Data.Root, "VoiceLab"); panel.Children.Add(Selectable(path));
-        var reveal = Ui.Button("Show in File Explorer", () => ShareHelpers.Reveal(path));
+        var reveal = Ui.Button("Show in File Explorer", () => { if (App.Services.VoiceLabEnabled) ShareHelpers.Reveal(path); });
         AutomationProperties.SetName(reveal, "Show in File Explorer");
         reveal.IsEnabled = Directory.Exists(path);
         if (!reveal.IsEnabled) AutomationProperties.SetHelpText(reveal, VoiceLabCopy.EmptyStorage);

@@ -27,6 +27,7 @@
     <Compile Include="RoundFiveTests.cs" />
     <Compile Include="RewritePanelTests.cs" />
     <Compile Include="RewriteGenerationTests.cs" />
+    <Compile Include="VoiceLabReleaseBoundaryTests.cs" />
     <Compile Include="RewriteTakeReviewTests.cs" />
     <Compile Include="../../../../src/VoxClip.App/Services/RewriteGenerationBackend.cs" Link="Services/RewriteGenerationBackend.cs" />
     <Compile Include="EditorVoiceLabPresentationTests.cs" />

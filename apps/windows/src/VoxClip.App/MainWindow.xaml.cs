@@ -786,7 +786,8 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
         await new ContentDialog
         {
             XamlRoot = Root.XamlRoot, Title = "Keyboard shortcuts", CloseButtonText = "Done",
-            Content = new ScrollViewer { MaxHeight = 520, Content = new TextBlock { Text = KeyboardHelp.Text, TextWrapping = TextWrapping.Wrap } }
+            Content = new ScrollViewer { MaxHeight = 520, Content = new TextBlock { Text = KeyboardHelp.Text(
+                App.Services.Settings.GetBool("voiceLab.enabled") == true, App.Services.Settings.GetBool("voiceLab.betaNoticeAccepted") == true), TextWrapping = TextWrapping.Wrap } }
         }.ShowAsync();
     }
 #if DEBUG

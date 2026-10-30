@@ -65,14 +65,8 @@ internal sealed class AppServices : IAsyncDisposable
     internal int? DebugVoiceLabHttpCalls => debugVoiceLab?.HttpCalls;
 #endif
     private readonly DispatcherQueue dispatcher = DispatcherQueue.GetForCurrentThread();
-    internal bool VoiceLabEnabled => VoiceLabBeta.IsAvailable(Settings.GetBool("voiceLab.enabled") == true,
-        Settings.GetBool("voiceLab.betaNoticeAccepted") == true,
-#if DEBUG
-        true
-#else
-        false
-#endif
-    );
+    internal bool VoiceLabEnabled => RewriteEntryPolicy.Available(Settings.GetBool("voiceLab.enabled") == true,
+        Settings.GetBool("voiceLab.betaNoticeAccepted") == true);
     internal VoiceLabSession VoiceLab
     {
         get

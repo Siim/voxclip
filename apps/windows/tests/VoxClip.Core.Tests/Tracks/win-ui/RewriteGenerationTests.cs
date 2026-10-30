@@ -17,11 +17,11 @@ public sealed class RewriteGenerationTests
 {
     private static string Source(string path) => File.ReadAllText(Path.Combine(Path.GetDirectoryName(SharedResources.ResolveRoot())!, "apps", "windows", "src", "VoxClip.App", path));
     [Fact]
-    public void ProductAndFixtureGenerationStayDebugOnlyAndUseNativeErrorAndCostControls()
+    public void ProductGenerationShipsWhileFixturesStayDebugOnlyAndUseNativeErrorAndCostControls()
     {
-        Assert.StartsWith("#if DEBUG", Source("ViewModels/RewriteGeneration.cs"));
+        Assert.DoesNotContain("#if DEBUG", Source("ViewModels/RewriteGeneration.cs"));
         Assert.StartsWith("#if DEBUG", Source("ViewModels/DebugRewriteTakeRunner.cs"));
-        Assert.StartsWith("#if DEBUG", Source("Services/RewriteGenerationBackend.cs"));
+        Assert.DoesNotContain("#if DEBUG", Source("Services/RewriteGenerationBackend.cs"));
         var panel = Source("Controls/RewritePanel.cs");
         Assert.Contains("Severity = InfoBarSeverity.Error, IsClosable = false", panel);
         Assert.Contains("generationError.ActionButton = settings; generationError.Content = retry", panel);

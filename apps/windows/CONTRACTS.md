@@ -1,5 +1,13 @@
 # Windows fixed contracts
 
+### 2026-10-30 - Windows Voice Lab R12 Release opt-in
+
+- Settings always lists Voice Lab, including an off-by-default "Show Voice Lab (beta)" toggle. "Turn on Voice Lab?" uses the shipping optional-feature copy and Cancel as default. Declining persists neither flag. Pane actions and key inventory are hidden and guarded while the gate is closed.
+- RewriteEntryPolicy accepts enabled and betaNoticeAccepted and delegates to Core VoiceLabBeta: Release requires both; DEBUG permits the internal-build notice exception only while enabled. Selection, context, overflow, Ctrl+R, keyboard help and panel opening share that gate; off means no Rewrite entry, including no overflow turn-on route. Async opening rechecks after each preparation await before provider/key work and before panel creation. Toggle-off or notice revocation closes the active session.
+- Product generation, take review, audition and acceptance now compile in Release. Fixture runners/assets, native Voice Lab/editor probes, fit/row validators and every VOXCLIP_DEBUG_* read remain DEBUG-only. Portable source scanning and mandatory Release App metadata/string inspection protect both product inclusion and debug exclusion; no Release injection switch is introduced.
+- A8 remains closed. Create Your Voice retains its speaker-unavailable pre-gate UI, and production discovery/generation still uses the unavailable speaker guard. A valid local active consent record, remote identity/verification, provider consent and dispatch-time checks remain mandatory; the beta switch authorizes none of those. No live or paid call is used for verification.
+- The complete portable flag/entry/help/key matrix, blocked-discovery/key isolation, independent-clock recovery and DEBUG regressions are covered without windows, sleeps or audible output. Native Release ARM64/x64 gating, launch/capture and Narrator evidence remain owed on the unreachable VM, alongside the earlier device, speaker-parity, listening and paid QA gates.
+
 ### 2026-10-30 - Windows Voice Lab quote clock recovery
 
 - Displayed quotes use the injected TimeProvider for a bounded 30-second freshness check, shortened to the known expiry when sooner. An early callback rearms after a backward wall-clock change; a forward change recovers within the next check without needing a render or click.

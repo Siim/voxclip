@@ -1,4 +1,3 @@
-#if DEBUG
 using VoxClip.Core.Domain.VoiceLab;
 
 namespace VoxClip.App.ViewModels;
@@ -382,4 +381,3 @@ internal sealed partial class RewriteGeneration : IDisposable
         }
     }
 }
-#endif

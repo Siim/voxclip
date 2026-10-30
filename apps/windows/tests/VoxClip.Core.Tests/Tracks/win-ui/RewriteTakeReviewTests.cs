@@ -22,7 +22,7 @@ public sealed class RewriteTakeReviewTests
     public void NativeRowsUseSharedNamesSingleSelectionAndFortyEpxAtThreeHundred()
     {
         var source = AppSource("Controls/RewritePanel.Takes.cs");
-        Assert.StartsWith("#if DEBUG", source);
+        Assert.False(source.StartsWith("#if DEBUG", StringComparison.Ordinal));
         Assert.Contains("SelectionMode = ListViewSelectionMode.Single", source);
         Assert.Contains("ContainerContentChanging += TakeContainerChanging", source);
         Assert.Contains("SetName(args.ItemContainer, content.AutomationName)", source);

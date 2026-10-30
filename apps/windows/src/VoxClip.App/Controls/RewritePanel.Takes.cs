@@ -1,4 +1,3 @@
-#if DEBUG
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
@@ -131,6 +130,7 @@ internal sealed partial class RewritePanel
         else AutomationProperties.SetAutomationId(apply, "Rewrite.Apply");
     }
     private readonly HashSet<DependencyObject> renderedTakeElements = [];
+#if DEBUG
     internal void DebugValidateTakeRows()
     {
         for (var index = 0; index < renderedRows.Count; index++)
@@ -141,6 +141,7 @@ internal sealed partial class RewritePanel
                 throw new InvalidOperationException("A Rewrite take row exceeds 40 epx, overflows its column, or has a stale accessible name.");
         }
     }
+#endif
     private void RenderTakeButtons(RewriteGeneration generation)
     {
         foreach (var row in renderedRows)
@@ -156,4 +157,3 @@ internal sealed partial class RewritePanel
         }
     }
 }
-#endif

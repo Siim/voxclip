@@ -15,6 +15,7 @@ using VoxClip.Core.Services.VoiceLab;
 using VoxClip.Core.Services.Media;
 using VoxClip.Media.Pipeline;
 using VoxClip.Media.Captions;
+using VoxClip.Media.VoiceLab;
 using Windows.System;
 using System.Runtime.InteropServices.WindowsRuntime;
 using Microsoft.UI.Xaml.Media.Imaging;
@@ -31,9 +32,7 @@ public sealed partial class EditorPage : Page
     private CaptionsPanel? captions;
     private Controls.RightColumn? rightContent;
     private RewriteSession? rewrite;
-#if DEBUG
     private ElevenLabsRegion? rewriteGenerationRegion;
-#endif
     private long rewriteOpenRevision;
     private MediaInfo? media;
     private EditorMediaState mediaState;
@@ -303,8 +302,8 @@ public sealed partial class EditorPage : Page
     }
     private void UpdateRewriteCommand()
     {
-        RewriteCommand.Visibility = RewriteEntryPolicy.BuildEnabled ? Visibility.Visible : Visibility.Collapsed;
-        RewriteCommand.IsEnabled = !ViewModel.Busy && !ViewModel.IsLeaving && (!App.Services.Get("voiceLab.enabled", false) || Transcript.CanRewrite);
+        RewriteCommand.Visibility = App.Services.VoiceLabEnabled ? Visibility.Visible : Visibility.Collapsed;
+        RewriteCommand.IsEnabled = App.Services.VoiceLabEnabled && Transcript.CanRewrite;
     }
     private async Task RenderUnavailableCaptionsAsync()
     {
@@ -361,16 +360,14 @@ public sealed partial class EditorPage : Page
         if (ViewModel.SetVoiceLabLabelPosition(VoiceLabSettingsState.LabelPosition(App.Services.Settings.GetString("voiceLab.labelPosition"))))
             _ = RunAsync(UpdatePreviewAsync, "Preview label position");
         rewriteOpenRevision++;
-#if DEBUG
-        if (rewrite is { IsOpen: true, Generation: { } previous } session &&
+        if (App.Services.VoiceLabEnabled && rewrite is { IsOpen: true, Generation: { } previous } session &&
             rewriteGenerationRegion != ElevenLabsRegions.FromSettings(App.Services.Settings, App.Services.Log))
         {
             var rediscover = previous.HasStartedDiscovery;
             ConfigureRewriteGeneration(session);
             if (rediscover) _ = RediscoverRewriteAsync(session, previous, session.Generation!);
         }
-#endif
-        rewrite?.SettingsChanged(App.Services.Get("voiceLab.enabled", false));
+        rewrite?.SettingsChanged(App.Services.VoiceLabEnabled);
         Transcript.ApplySettings();
         SelectionChanged(this, EventArgs.Empty);
         captions?.RefreshSamples();
@@ -508,19 +505,12 @@ public sealed partial class EditorPage : Page
     private void MakeClipClicked(object sender, RoutedEventArgs args) => MakeClipAndReveal();
     private async void RewriteClicked(object sender, RoutedEventArgs args)
     {
-        if (!RewriteEntryPolicy.BuildEnabled) return;
-        await RunAsync(async () =>
-        {
-            if (!App.Services.Get("voiceLab.enabled", false))
-            {
-                if (!await VoiceLabDialogs.TurnOnAsync(XamlRoot, lifetime.Token)) return;
-            }
-            Transcript.RequestRewrite();
-        }, "Rewrite");
+        if (!App.Services.VoiceLabEnabled) return;
+        await RunAsync(() => { Transcript.RequestRewrite(); return Task.CompletedTask; }, "Rewrite");
     }
     private async Task OpenRewriteAsync(bool insertion)
     {
-        if (!RewriteEntryPolicy.BuildEnabled || !App.Services.Get("voiceLab.enabled", false) ||
+        if (!App.Services.VoiceLabEnabled ||
             ViewModel.IsReadOnly || ViewModel.Busy || ViewModel.IsLeaving || rightContent is null ||
             (insertion ? Transcript.InsertionAfterIndex < 0 : !ViewModel.HasSelection)) return;
         rewrite?.Dispose();
@@ -535,25 +525,26 @@ public sealed partial class EditorPage : Page
             envelope = new(project.Media.Source.Audio?.SampleRate ?? 48_000, 0.01,
                 Enumerable.Repeat(0.01f, checked((int)Math.Floor(project.Media.Source.DurationSeconds / 0.01))).ToArray());
 #endif
+        bool CurrentOpening() => opening == rewriteOpenRevision && passage.IsCurrent && !disposed &&
+            !ViewModel.IsLeaving && !ViewModel.IsReadOnly && !ViewModel.Busy && App.Services.VoiceLabEnabled;
+        if (!CurrentOpening()) return;
         var entry = (await ProviderCatalog.ReadAsync(lifetime.Token)).FirstOrDefault(item => item.WireId == App.Services.Get("llm.connector", ""));
+        if (!CurrentOpening()) return;
         var selectedConnector = entry is null ? null : App.Services.Connector(entry.Id);
         if (entry is not null) await ProviderCatalog.ProbeAsync(entry, selectedConnector!, lifetime.Token);
         var connector = entry is null ? null : new RewriteConnector(selectedConnector!,
             App.Services.Get("llm.model." + entry.WireId, entry.DefaultModel), entry.ShortName,
             entry.Cloud ? "apiKey" : entry.Cli ? "cli" : "local", entry.Id == VoxClip.Core.Services.LLM.ConnectorId.ClaudeCode ? "Claude plan" : "ChatGPT plan");
         var connectorWireId = App.Services.Get("llm.connector", "");
-        if (opening != rewriteOpenRevision || !passage.IsCurrent || disposed || ViewModel.IsLeaving ||
-            ViewModel.IsReadOnly || ViewModel.Busy || !App.Services.Get("voiceLab.enabled", false)) return;
+        if (!CurrentOpening()) return;
         rewrite = new(ViewModel, passage.First, passage.Last, envelope, connector, passage.InsertionAfter,
             prices: VoiceLabPrices.Load(), synthesisModel: "eleven_multilingual_v2",
             consent: async token => entry is not null && await ProviderCatalog.ConsentAsync(entry, XamlRoot, ConnectorConsentAction.Rewrite,
                 ViewModel.Words.Skip(passage.First).Take(passage.Last - passage.First + 1).Count(word => word.Kind == WordKind.Word),
                 selectedConnector!, await ProviderCatalog.ProbeAsync(entry, selectedConnector!, token), token),
-            connectorIsCurrent: () => App.Services.Get("llm.connector", "") == connectorWireId &&
+            connectorIsCurrent: () => App.Services.VoiceLabEnabled && App.Services.Get("llm.connector", "") == connectorWireId &&
                 (entry is null || App.Services.Get("llm.model." + entry.WireId, entry.DefaultModel) == connector?.Model));
-#if DEBUG
         ConfigureRewriteGeneration(rewrite);
-#endif
         var panel = new RewritePanel(rewrite, () => Transcript.CorrectionOpen);
         panel.Closed += (_, _) =>
         {
@@ -567,7 +558,6 @@ public sealed partial class EditorPage : Page
         SizeStage();
         await rewrite.SetInstructionAsync("");
     }
-#if DEBUG
     private static async Task RediscoverRewriteAsync(RewriteSession session, RewriteGeneration previous, RewriteGeneration next)
     {
         await previous.Cleanup;
@@ -593,12 +583,37 @@ public sealed partial class EditorPage : Page
             ElevenLabsRegions.FromSettings(App.Services.Settings, App.Services.Log) == region;
         var backend = new RewriteGenerationBackend(App.Services.Data, App.Services.Keys, App.Services.Log,
             VoiceLabPrices.Load(), region, session.Project.Id, Current, OnUi);
+        IVoiceLabTakeRunner runner = backend.Runner;
+        Func<CancellationToken, Task<RewriteGenerationChoices>> discover = ct => backend.DiscoverAsync(session.Project.Transcript?.Language ?? "en", ct);
+        Func<CancellationToken, Task<float[]>> readSource = ct => RewriteGenerationBackend.ReadSourceAsync(media?.Path ?? "",
+            checked((long)Math.Floor(session.Project.Media.Source.DurationSeconds * (session.Project.Media.Source.Audio?.SampleRate ?? 0) + 0.5)),
+            session.Project.Media.Source.Audio?.SampleRate ?? 0, ct);
+        Func<Guid, VoiceLabTakeScratch?> scratch = backend.Runner.Scratch;
+        Func<Guid, Task> reject = backend.Runner.RejectAsync;
+        async Task<(VoiceLabPublishedTake Take, VoiceConsentRecord Consent)> Publish(Guid id, DateTimeOffset date, CancellationToken ct)
+        {
+            var (published, record) = await backend.Runner.PublishForAcceptanceAsync(id, date, ct);
+            return (new(published.Assets, published.Audio, published.OutDuration, published.Words, published.Chunks), record);
+        }
+        Func<Guid, DateTimeOffset, CancellationToken, Task<(VoiceLabPublishedTake Take, VoiceConsentRecord Consent)>> publish = Publish;
+        Action releaseRunner = backend.Dispose;
+        var watchKeys = true;
+#if DEBUG
         var fixtures = Environment.GetEnvironmentVariable("VOXCLIP_DEBUG_REWRITE_TAKES");
         var fake = fixtures?.StartsWith("fixtures:", StringComparison.Ordinal) == true
             ? new DebugRewriteTakeRunner(fixtures[9..], storage: new(session.Project.Id, Path.Combine(App.Services.Data.Root, "VoiceLab"),
                 Path.Combine(App.Services.Data.Root, "VoiceLabScratch"))) : null;
         if (fake is not null) fake.State = Environment.GetEnvironmentVariable("VOXCLIP_DEBUG_REWRITE_STATE") ?? "ready";
-        var runner = (IVoiceLabTakeRunner?)fake ?? backend.Runner;
+        if (fake is not null)
+        {
+            runner = fake; discover = fake.DiscoverAsync;
+            readSource = _ => Task.FromResult(new float[checked((int)Math.Floor(session.Project.Media.Source.DurationSeconds *
+                (session.Project.Media.Source.Audio?.SampleRate ?? 48_000) + 0.5))]);
+            scratch = fake.Scratch; reject = fake.RejectAsync; publish = fake.PublishAsync;
+            releaseRunner = () => { backend.Dispose(); fake.Dispose(); };
+            watchKeys = false;
+        }
+#endif
         async Task<bool> Consent(CancellationToken ct)
         {
             if (App.Services.Get("voiceLab.providerConsent.elevenlabs", false)) return true;
@@ -632,12 +647,9 @@ public sealed partial class EditorPage : Page
             });
         }
         generation = new RewriteGeneration(runner,
-            ct => fake is null ? backend.DiscoverAsync(session.Project.Transcript?.Language ?? "en", ct) : fake.DiscoverAsync(ct),
+            discover,
             (voice, model, seed, ct) => session.GenerationInputAsync(voice, model, seed,
-                App.Services.Get("voiceLab.providerConsent.elevenlabs", false), token => fake is not null
-                    ? Task.FromResult(new float[checked((int)Math.Floor(session.Project.Media.Source.DurationSeconds * (session.Project.Media.Source.Audio?.SampleRate ?? 48_000) + 0.5))])
-                    : RewriteGenerationBackend.ReadSourceAsync(media?.Path ?? "", checked((long)Math.Floor(session.Project.Media.Source.DurationSeconds *
-                        (session.Project.Media.Source.Audio?.SampleRate ?? 0) + 0.5)), session.Project.Media.Source.Audio?.SampleRate ?? 0, token), ct),
+                App.Services.Get("voiceLab.providerConsent.elevenlabs", false), readSource, ct),
             Consent, async ct =>
             {
                 decimal? cap = null;
@@ -648,22 +660,14 @@ public sealed partial class EditorPage : Page
                 App.Services.VoiceLab.Changed -= ConsentRecordsChanged;
                 Windows.Media.Devices.MediaDevice.DefaultAudioRenderDeviceChanged -= OutputChanged;
                 keyChanges?.Dispose();
-                backend.Dispose(); fake?.Dispose();
+                releaseRunner();
             });
         App.Services.VoiceLab.Changed += ConsentRecordsChanged;
         session.ConfigureGeneration(generation);
         var audition = new VoxClip.Media.Audio.VoiceLabAudition(ct => RewriteGeneration.PausePreviewAsync(preview, ct));
-        _ = generation.ConfigureTakesAsync(new(audition,
-            id => fake is null ? backend.Runner.Scratch(id) : fake.Scratch(id),
-            id => fake is null ? backend.Runner.RejectAsync(id) : fake.RejectAsync(id),
-            async (id, date, ct) =>
-            {
-                if (fake is not null) return await fake.PublishAsync(id, date, ct);
-                var (published, record) = await backend.Runner.PublishForAcceptanceAsync(id, date, ct);
-                return (new(published.Assets, published.Audio, published.OutDuration, published.Words, published.Chunks), record);
-            }));
+        _ = generation.ConfigureTakesAsync(new(audition, scratch, reject, publish));
         Windows.Media.Devices.MediaDevice.DefaultAudioRenderDeviceChanged += OutputChanged;
-        if (fake is null && Directory.Exists(App.Services.Data.Root))
+        if (watchKeys && Directory.Exists(App.Services.Data.Root))
         {
             keyChanges = new(App.Services.Data.Root, "elevenlabs-api-key.bin")
             {
@@ -675,7 +679,6 @@ public sealed partial class EditorPage : Page
             keyChanges.EnableRaisingEvents = true;
         }
     }
-#endif
     private void CutSelectionClicked(object sender, RoutedEventArgs args) => ViewModel.CutSelection();
     private void RestoreSelectionClicked(object sender, RoutedEventArgs args) => ViewModel.CutSelection(true);
     private void CorrectClicked(object sender, RoutedEventArgs args) => Transcript.BeginCorrection();

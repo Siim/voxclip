@@ -106,10 +106,8 @@ if [ "${3:-}" = voice-lab ]; then
         build "$configuration" "$rid"
         if [ "$configuration" = Debug ]; then
             steps="pane cancel turn-on cap label light dark night-sky"
-        elif [ "$rid" = win-arm64 ]; then
-            steps="release-off release-on"
         else
-            steps="release-smoke"
+            steps="release-off release-enabled-no-notice release-notice-only release-on release-smoke"
         fi
         for step in $steps; do
             status=0

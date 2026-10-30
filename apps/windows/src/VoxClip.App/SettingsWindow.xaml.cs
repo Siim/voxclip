@@ -86,7 +86,7 @@ public sealed partial class SettingsWindow : Window
     }
     private void UpdateVoiceLabVisibility()
     {
-        VoiceLabItem.Visibility = VoiceLabSettingsState.PaneVisible(App.Services.Settings.GetBool("voiceLab.enabled") == true, RewriteEntryPolicy.BuildEnabled)
+        VoiceLabItem.Visibility = VoiceLabSettingsState.PaneVisible
             ? Visibility.Visible : Visibility.Collapsed;
         if (VoiceLabItem.Visibility == Visibility.Collapsed && ReferenceEquals(Navigation.SelectedItem, VoiceLabItem)) ShowSection("General");
     }

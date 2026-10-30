@@ -1,4 +1,3 @@
-#if DEBUG
 using System.Globalization;
 using VoxClip.Core.Domain.VoiceLab;
 using VoxClip.Core.Services.Media;
@@ -181,4 +180,3 @@ internal sealed partial class RewriteGeneration
         return false;
     }
 }
-#endif

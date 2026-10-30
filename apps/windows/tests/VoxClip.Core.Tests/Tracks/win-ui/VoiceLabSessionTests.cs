@@ -360,7 +360,8 @@ public sealed class VoiceLabSessionTests
         var probe = File.ReadAllText(Path.Combine(app, "Services", "VoiceLabNativeProbe.cs"));
         Assert.Contains("voice-lab-native-result.json", probe); Assert.Contains("DebugVoiceLabHttpCalls != 0", probe);
         var services = File.ReadAllText(Path.Combine(app, "Services", "AppServices.cs"));
-        Assert.Contains("VoiceLabBeta.IsAvailable", services);
+        Assert.Contains("RewriteEntryPolicy.Available", services);
+        Assert.Contains("VoiceLabBeta.IsAvailable", File.ReadAllText(Path.Combine(app, "ViewModels", "RewriteEntryPolicy.cs")));
         Assert.Contains("await VoiceLab.ReconcileStartupAsync()", services);
         Assert.Contains("voiceLab?.Dispose()", services);
         var harness = File.ReadAllBytes(Path.Combine(app, "..", "..", "tests", "VoxClip.Core.Tests", "Tracks", "win-ui", "native-voicelab-walk.ps1"));

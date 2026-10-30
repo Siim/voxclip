@@ -218,13 +218,9 @@ public sealed class VoiceLabSettingsTests
     private static string Shared => Environment.GetEnvironmentVariable("VOXCLIP_SHARED_DIR")!;
     private static string AppSource(string file) => File.ReadAllText(Path.Combine(Path.GetDirectoryName(Shared)!, "apps", "windows", "src", "VoxClip.App", file));
 
-    [Theory]
-    [InlineData(false, false, false)]
-    [InlineData(false, true, true)]
-    [InlineData(true, false, true)]
-    [InlineData(true, true, true)]
-    public void PaneVisibilityMatchesStaging(bool enabled, bool internalBuild, bool visible) =>
-        Assert.Equal(visible, VoiceLabSettingsState.PaneVisible(enabled, internalBuild));
+    [Fact]
+    public void PaneIsVisibleForShippingOptInEvenWhenDisabled() =>
+        Assert.True(VoiceLabSettingsState.PaneVisible);
 
     [Theory]
     [InlineData(false)]
@@ -313,13 +309,8 @@ public sealed class VoiceLabSettingsTests
         Assert.Contains(VoiceLabCopy.BetaNotice, File.ReadAllText(Path.Combine(root, "doc", "spec", "voice-lab.md")));
         var mac = File.ReadAllText(Path.Combine(root, "apps", "macos", "Sources", "VoxClip", "VoiceLabSettings.swift"));
         Assert.Contains(VoiceLabCopy.KeyGuidance, mac); Assert.Contains(VoiceLabCopy.KeyPermissions, mac);
-#if DEBUG
-        Assert.True(RewriteEntryPolicy.BuildEnabled);
-        Assert.Contains("Ctrl+R  Rewrite", KeyboardHelp.Text);
-#else
-        Assert.False(RewriteEntryPolicy.BuildEnabled);
-        Assert.DoesNotContain("Ctrl+R", KeyboardHelp.Text);
-#endif
+        Assert.Contains("Ctrl+R  Rewrite", KeyboardHelp.Text(true, true));
+        Assert.DoesNotContain("Ctrl+R", KeyboardHelp.Text(false, false));
     }
 
     [Fact]
@@ -344,7 +335,8 @@ public sealed class VoiceLabSettingsTests
     public void EntryAndAllRenderSitesUseTheSharedPolicy()
     {
         var editor = AppSource(Path.Combine("Pages", "EditorPage.xaml.cs"));
-        Assert.Contains("VoiceLabDialogs.TurnOnAsync", editor);
+        Assert.DoesNotContain("VoiceLabDialogs.TurnOnAsync", editor);
+        Assert.Contains("if (!App.Services.VoiceLabEnabled)", editor);
         Assert.DoesNotContain("Title = \"Turn on Voice Lab\"", editor);
         Assert.DoesNotContain("EnablementCopy", AppSource(Path.Combine("ViewModels", "RewriteEntryPolicy.cs")));
         var app = Path.Combine(Path.GetDirectoryName(Shared)!, "apps", "windows", "src", "VoxClip.App");

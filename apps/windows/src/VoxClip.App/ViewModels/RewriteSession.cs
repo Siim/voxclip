@@ -59,7 +59,6 @@ internal sealed class RewriteSession : IDisposable
         _ => "Choose a connector in Settings → AI."
     };
     internal event EventHandler? Changed;
-#if DEBUG
     internal RewriteGeneration? Generation { get; private set; }
     internal bool GenerationIsCurrent => IsOpen && ReferenceEquals(Project, Editor.Project) && !IsProposing &&
         !Editor.Busy && !Editor.IsLeaving && !Editor.IsReadOnly && connectorIsCurrent();
@@ -96,7 +95,6 @@ internal sealed class RewriteSession : IDisposable
             samples, Project.Media.Source.Audio?.SampleRate ?? throw new VoiceLabException(VoiceLabErrorKind.InvalidAudio),
             Transcript, Editor.State?.CutWordIds ?? new HashSet<string>(), window, silence.Incoming, silence.Outgoing, false, providerConsent);
     }
-#endif
 
     internal RewriteSession(EditorViewModel editor, int first, int last, AudioEnvelope? envelope, RewriteConnector? connector,
         int? insertionAfter = null, VoiceLabPriceCatalog? prices = null, string? synthesisModel = null,
@@ -128,9 +126,7 @@ internal sealed class RewriteSession : IDisposable
         if (!IsOpen) return;
         InvalidateProposal();
         Instruction = text;
-#if DEBUG
         if (!retainFailure && Generation is { } generation) _ = generation.InputsChangedAsync();
-#endif
         Prepared = null;
         Estimate = null;
         estimateShown = false;
@@ -227,9 +223,7 @@ internal sealed class RewriteSession : IDisposable
             if (ReferenceEquals(sending, cancellation)) sending = null;
             cancellation.Dispose();
             IsProposing = false;
-#if DEBUG
             if (IsOpen && Generation is { } generation) _ = generation.InputsChangedAsync();
-#endif
             if (IsOpen)
             {
                 Prepared = null;
@@ -245,9 +239,7 @@ internal sealed class RewriteSession : IDisposable
         InvalidateProposal();
         NewWords = text;
         RefreshReview();
-#if DEBUG
         if (Generation is { } generation) _ = generation.InputsChangedAsync();
-#endif
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
@@ -280,18 +272,14 @@ internal sealed class RewriteSession : IDisposable
         }
         return operations;
     }
-#if DEBUG
     internal Task<bool> ApplyTakeAsync() => GenerationIsCurrent && Generation is { } generation
         ? generation.AcceptAsync(Editor, LocalOperations()) : Task.FromResult(false);
-#endif
 
     private void InvalidateProposal() { revision++; sending?.Cancel(); confirming?.Cancel(); }
     internal void SettingsChanged(bool voiceLabEnabled)
     {
         if (!voiceLabEnabled || !connectorIsCurrent()) Dispose();
-#if DEBUG
         else if (Generation is { IsRequestingConsent: false } generation) _ = generation.InputsChangedAsync();
-#endif
     }
     private void EditorChanged(object? sender, EventArgs args) => Dispose();
     private void EditorPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs args)
@@ -310,9 +298,7 @@ internal sealed class RewriteSession : IDisposable
         VoiceLabGeometryException { Code: VoiceLabGeometryErrorCode.NoVoicedAudio } or
             VoiceLabAudioMathException { Code: VoiceLabAudioMathErrorCode.NoVoicedAudio } =>
             "There isn't enough timed speech to estimate this change. Your edits are saved.",
-#if DEBUG
         RewriteGenerationException problem => problem.Message,
-#endif
         VoiceLabGeometryException => "This change can't be placed in this take. Your edits are saved.",
         VoiceLabLengthBudgetException => "There isn't enough timed speech to estimate this change. Your edits are saved.",
         _ => UiError.Message(exception, "Rewrite")
@@ -322,10 +308,8 @@ internal sealed class RewriteSession : IDisposable
     {
         if (!IsOpen) return;
         IsOpen = false;
-#if DEBUG
         Editor.SelectionChanged -= GenerationSelectionChanged;
         if (Generation is { } generation) { generation.Changed -= GenerationChanged; generation.Dispose(); }
-#endif
         InvalidateProposal();
         lifetime.Cancel();
         if (!dispatched) Interlocked.Exchange(ref proposalLease, null)?.Dispose();

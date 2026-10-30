@@ -48,8 +48,9 @@ public sealed class TranscriptView : UserControl
     }
     public bool CorrectionOpen => correction.IsOpen;
     internal bool CanRewrite => RewriteRequested is not null && RewriteEntryPolicy.Resolve(RewriteEntry.Selection,
-        App.Services.Get("voiceLab.enabled", false), model is { IsReadOnly: false, Busy: false, IsLeaving: false },
-        model?.HasSelection == true, false, RewriteEntryPolicy.BuildEnabled) == RewriteEntryAction.OpenPassage;
+        App.Services.Get("voiceLab.enabled", false), App.Services.Get("voiceLab.betaNoticeAccepted", false),
+        model is { IsReadOnly: false, Busy: false, IsLeaving: false },
+        model?.HasSelection == true, false, RewriteEntryPolicy.InternalBuild) == RewriteEntryAction.OpenPassage;
     private int insertionAfterIndex = -1;
     internal int InsertionAfterIndex
     {
@@ -63,7 +64,7 @@ public sealed class TranscriptView : UserControl
     }
     internal void RequestRewrite()
     {
-        if (!RewriteEntryPolicy.BuildEnabled || !App.Services.Get("voiceLab.enabled", false) || model is null) return;
+        if (!App.Services.VoiceLabEnabled || model is null) return;
         if (CanRewrite) RewriteRequested?.Invoke(this, EventArgs.Empty);
         else if (RewriteRequested is null) { model.Notice = "Rewrite is not available in this build."; Announce(model.Notice); }
     }
@@ -274,7 +275,7 @@ public sealed class TranscriptView : UserControl
         var cut = model.Words.Skip(model.SelectionStart).Take(model.SelectionEnd - model.SelectionStart + 1).Any(word => model.State!.CutWordIds.Contains(word.Id))
             || model.State!.Pauses.Any(pause => pause.AfterIndex >= model.SelectionStart && pause.AfterIndex < model.SelectionEnd && model.State.CutPauseIds.Contains(pause.Id));
         selectionFlyout.Show(new(first.X, top, Math.Max(1, first.Width), bottom - top), below, keyboard, !model.IsReadOnly && !model.Busy,
-            cut, RewriteEntryPolicy.BuildEnabled && App.Services.Get("voiceLab.enabled", false), CanRewrite,
+            cut, App.Services.VoiceLabEnabled, CanRewrite,
             model.Clips.FirstOrDefault(clip => model.Index(clip.Clip.StartWordId) == model.SelectionStart && model.Index(clip.Clip.EndWordId) == model.SelectionEnd) is { } existing
                 ? $"Clip {existing.Number} already covers these words." : null);
     }
@@ -679,14 +680,16 @@ public sealed class TranscriptView : UserControl
         var menu = new MenuFlyout();
         void Add(string label, Action action, bool enabled = true, string? key = null) { var item = new MenuFlyoutItem { Text = label, IsEnabled = enabled, KeyboardAcceleratorTextOverride = key ?? "" }; item.Click += (_, _) => action(); menu.Items.Add(item); }
         Add("Make clip", () => MakeClipRequested?.Invoke(this, EventArgs.Empty), model is { IsReadOnly: false, Busy: false, HasSelection: true });
-        if (RewriteEntryPolicy.BuildEnabled && App.Services.Get("voiceLab.enabled", false))
+        if (App.Services.VoiceLabEnabled)
         {
             Add("Rewrite…", RequestRewrite, CanRewrite, "Ctrl+R");
-            if (RewriteEntryPolicy.Resolve(RewriteEntry.InsertWords, true, model is { IsReadOnly: false, Busy: false, IsLeaving: false },
-                false, InsertionAfterIndex >= 0, RewriteEntryPolicy.BuildEnabled) == RewriteEntryAction.OpenInsertion)
+            if (RewriteEntryPolicy.Resolve(RewriteEntry.InsertWords, App.Services.Get("voiceLab.enabled", false),
+                App.Services.Get("voiceLab.betaNoticeAccepted", false), model is { IsReadOnly: false, Busy: false, IsLeaving: false },
+                false, InsertionAfterIndex >= 0, RewriteEntryPolicy.InternalBuild) == RewriteEntryAction.OpenInsertion)
                 Add("Insert Words…", () => InsertWordsRequested?.Invoke(this, EventArgs.Empty), InsertWordsRequested is not null &&
-                    RewriteEntryPolicy.Resolve(RewriteEntry.InsertWords, true, model is { IsReadOnly: false, Busy: false, IsLeaving: false },
-                        false, true, RewriteEntryPolicy.BuildEnabled) == RewriteEntryAction.OpenInsertion);
+                    RewriteEntryPolicy.Resolve(RewriteEntry.InsertWords, App.Services.Get("voiceLab.enabled", false),
+                        App.Services.Get("voiceLab.betaNoticeAccepted", false), model is { IsReadOnly: false, Busy: false, IsLeaving: false },
+                        false, true, RewriteEntryPolicy.InternalBuild) == RewriteEntryAction.OpenInsertion);
         }
         Add("Cut", () => model?.CutSelection());
 #if DEBUG

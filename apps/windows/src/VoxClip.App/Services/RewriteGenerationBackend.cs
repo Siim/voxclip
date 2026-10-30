@@ -1,4 +1,3 @@
-#if DEBUG
 using System.Buffers.Binary;
 using System.Globalization;
 using VoxClip.App.ViewModels;
@@ -77,4 +76,3 @@ internal sealed class RewriteGenerationBackend : IDisposable
     }
     public void Dispose() { gate.Invalidate(); client.Dispose(); }
 }
-#endif

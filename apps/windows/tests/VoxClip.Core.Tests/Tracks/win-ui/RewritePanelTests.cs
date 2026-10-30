@@ -592,7 +592,7 @@ public sealed class RewritePanelTests
         var page = File.ReadAllText(Path.Combine(app, "Pages/EditorPage.xaml.cs"));
         Assert.Contains("FindClipsCommand.IsEnabled = ViewModel.CanFindClips", page);
         Assert.Contains("FindClipsBusy.IsActive = ViewModel.LlmRuns.IsBusy", page);
-        Assert.Contains("!ViewModel.Busy && !ViewModel.IsLeaving", page);
+        Assert.Contains("RewriteCommand.IsEnabled = App.Services.VoiceLabEnabled && Transcript.CanRewrite", page);
         Assert.Contains("IsActive=\"{x:Bind IsLlmBusy, Mode=OneWay}\"", File.ReadAllText(Path.Combine(app, "MainWindow.xaml")));
     }
 
@@ -723,7 +723,7 @@ public sealed class RewritePanelTests
         if (opens) Assert.Equal("word10 word11 word12", session!.NewWords);
         else Assert.Equal(-1, editor.RewriteStart);
         var app = Path.Combine(Path.GetDirectoryName(Shared)!, "apps", "windows", "src", "VoxClip.App");
-        Assert.Contains("!passage.IsCurrent", File.ReadAllText(Path.Combine(app, "Pages", "EditorPage.xaml.cs")));
+        Assert.Contains("opening == rewriteOpenRevision && passage.IsCurrent", File.ReadAllText(Path.Combine(app, "Pages", "EditorPage.xaml.cs")));
         Assert.Contains("model?.RewriteCaretChanged()", File.ReadAllText(Path.Combine(app, "Controls", "TranscriptView.cs")));
     }
 
@@ -754,25 +754,21 @@ public sealed class RewritePanelTests
     public void EveryEntryRespectsTheReleaseGate(int entryIndex)
     {
         var entry = (RewriteEntry)entryIndex;
-        Assert.Equal(RewriteEntryAction.Unavailable, RewriteEntryPolicy.Resolve(entry, true, true, true, true, false));
         Assert.Equal(entry == RewriteEntry.InsertWords ? RewriteEntryAction.Unavailable : RewriteEntryAction.OpenPassage,
-            RewriteEntryPolicy.Resolve(entry, true, true, true, true, true));
-        Assert.Equal(RewriteEntryAction.Unavailable, RewriteEntryPolicy.Resolve(entry, true, false, true, true, true));
+            RewriteEntryPolicy.Resolve(entry, true, true, true, true, true, false));
+        Assert.Equal(RewriteEntryAction.Unavailable, RewriteEntryPolicy.Resolve(entry, true, true, false, true, true, true));
     }
 
     [Fact]
-    public void DisabledVoiceLabOnlyOffersTheOneTimeOverflowFlow()
+    public void DisabledVoiceLabOffersNoRewriteEntryAndInsertionRemainsUnavailable()
     {
         foreach (var entry in Enum.GetValues<RewriteEntry>())
-            Assert.Equal(entry == RewriteEntry.Overflow ? RewriteEntryAction.TurnOnVoiceLab : RewriteEntryAction.Unavailable,
-                RewriteEntryPolicy.Resolve(entry, false, true, true, true, true));
-        Assert.Equal(RewriteEntryAction.Unavailable, RewriteEntryPolicy.Resolve(RewriteEntry.InsertWords, true, true, true, false, true));
+            Assert.Equal(RewriteEntryAction.Unavailable,
+                RewriteEntryPolicy.Resolve(entry, false, true, true, true, true, true));
+        Assert.Equal(RewriteEntryAction.Unavailable, RewriteEntryPolicy.Resolve(RewriteEntry.InsertWords, true, true, true, true, false, true));
         Assert.True(RewriteEntryPolicy.BetweenWords([Word(0, "one"), Word(1, "two")], 0));
         Assert.False(RewriteEntryPolicy.BetweenWords([Word(0, "one"), Word(1, "[event]", WordKind.Event)], 0));
         Assert.False(RewriteEntryPolicy.BetweenWords([Word(0, "one")], 0));
-#if !DEBUG
-        Assert.False(RewriteEntryPolicy.BuildEnabled);
-#endif
     }
 
     [Fact]
