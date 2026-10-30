@@ -253,6 +253,39 @@ public sealed class VoiceLabTakeRunTests
         Assert.False(Assert.Single(result.Rows).Selectable);
     }
     [Fact]
+    public async Task ModelDiscoveryChangeWinsWhileTransportIsSuspended()
+    {
+        await using var fixture = new Fixture();
+        var quote = await fixture.Prepare();
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var resume = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        fixture.Keys.Suspension = async _ => { entered.TrySetResult(); await resume.Task; };
+        var sending = fixture.Run.ExecuteAsync(quote, true, ct: Token);
+        await entered.Task.WaitAsync(Token);
+        fixture.Keys.Suspension = null;
+        await fixture.Client.DiscoverModelsAsync(Token);
+        resume.SetResult();
+        Assert.Equal(VoiceLabTakeRunEnd.Invalidated, (await sending).End);
+        Assert.Empty(fixture.Remote.Seeds);
+    }
+    [Fact]
+    public async Task PreparedInputOwnsItsAudioSnapshot()
+    {
+        await using var fixture = new Fixture();
+        var quote = await fixture.Prepare();
+        Array.Fill(fixture.Input.Source, float.NaN);
+        Assert.Equal(VoiceLabTakeRunEnd.EarlyStop, (await fixture.Run.ExecuteAsync(quote, true, ct: Token)).End);
+    }
+    [Fact]
+    public async Task InvalidPreflightNeverPreparesAPaidRun()
+    {
+        await using var fixture = new Fixture();
+        await fixture.Client.DiscoverModelsAsync(Token); await fixture.Client.DiscoverVoicesAsync(Token);
+        await Assert.ThrowsAsync<VoiceLabException>(() => fixture.Run.PrepareAsync(fixture.Input with { ProviderConsent = false }, Token));
+        Assert.Empty(fixture.Remote.Seeds);
+        Assert.Equal(0, fixture.Remote.Qa);
+    }
+    [Fact]
     public async Task UnapprovedRunExpiresWithoutSendingOrSpending()
     {
         await using var fixture = new Fixture();

@@ -23,10 +23,9 @@ public sealed class VoiceLabTakeScratch : IAsyncDisposable
     public IDisposable AttachConsumer(Func<Task> stop)
     {
         if (!IsValid) throw new VoiceLabException(VoiceLabErrorKind.InvalidAudio);
-        var stopped = 0;
-        Task Stop() => Interlocked.Exchange(ref stopped, 1) == 0 ? stop() : Task.CompletedTask;
-        var own = lifetime.Attach(Stop);
-        try { return new Consumer(own, Fitted.Snapshot.AttachConsumer(Stop)); }
+        var sharedStop = VoiceLabLifetime.Once(stop);
+        var own = lifetime.Attach(sharedStop);
+        try { return new Consumer(own, Fitted.Snapshot.AttachConsumer(sharedStop)); }
         catch { own.Dispose(); throw; }
     }
     public async Task InvalidateAsync()

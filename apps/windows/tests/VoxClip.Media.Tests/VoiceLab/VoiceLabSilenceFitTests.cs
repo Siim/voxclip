@@ -124,6 +124,21 @@ public sealed class VoiceLabSilenceFitTests
         Assert.Equal(expected, scratch.Audio.Mixed[scratch.Audio.PatchStart + relative], 7);
     }
     [Fact]
+    public async Task ConcurrentScratchAndSnapshotStopsAwaitTheSameConsumerTask()
+    {
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var calls = 0;
+        var stop = VoiceLabLifetime.Once(async () => { calls++; await release.Task; });
+        var scratch = stop();
+        var snapshot = stop();
+        Assert.Same(scratch, snapshot);
+        Assert.False(snapshot.IsCompleted);
+        Assert.Equal(1, calls);
+        release.SetResult();
+        await Task.WhenAll(scratch, snapshot);
+        Assert.Same(scratch, stop());
+    }
+    [Fact]
     public async Task SnapshotAndScratchInvalidationStopAllConsumersBeforeRemovingBytes()
     {
         using var cases = Cases();

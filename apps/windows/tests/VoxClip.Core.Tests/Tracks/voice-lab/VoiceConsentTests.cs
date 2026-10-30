@@ -309,6 +309,7 @@ public sealed class VoiceConsentTests
     {
         var record = Fixture();
         record.Validate();
+        Assert.DoesNotContain("\"creator\"", JsonSerializer.Serialize(record, VoiceConsentJson.Default.VoiceConsentRecord));
         using var scribe = FixtureLoader.ReadJson("fixtures/voice-lab/consent-scribe.json");
         var words = scribe.RootElement.GetProperty("words").EnumerateArray().Select(word => new RawToken(word.GetProperty("text").GetString()!, false,
             word.GetProperty("start").GetDouble(), word.GetProperty("end").GetDouble(), null, "speaker_0", WordKind.Word, 0)).ToArray();

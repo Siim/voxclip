@@ -116,7 +116,7 @@ public sealed class VoiceCreatorMismatchException() : Exception(Explanation)
 public sealed record VoiceConsentRecord(string Schema, string RecordId, string Provider, string Type, string VoiceId, string VoiceName,
     VoiceConsentStatus Status, DateTimeOffset CreatedAt, DateTimeOffset? DeletedAt, VoiceConsentStatementRecord Statement,
     VoiceConsentAttestations Attestations, VoiceConsentSample[] Samples, VoiceConsentSpeaker Speaker, VoiceConsentApp App,
-    VoiceConsentCreator? Creator = null)
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] VoiceConsentCreator? Creator = null)
 {
     public void Validate()
     {

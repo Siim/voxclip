@@ -8,6 +8,13 @@ internal sealed class VoiceLabLifetime(Action cleanup)
     private readonly Dictionary<Guid, Func<Task>> consumers = [];
     private Task? invalidation;
     private bool valid = true;
+    internal static Func<Task> Once(Func<Task> stop)
+    {
+        var gate = new object();
+        Task? stopping = null;
+        async Task Invoke() => await stop().ConfigureAwait(false);
+        return () => { lock (gate) return stopping ??= Invoke(); };
+    }
     internal bool IsValid { get { lock (sync) return valid; } }
     internal IDisposable Attach(Func<Task> stop)
     {
