@@ -12,6 +12,8 @@ import VoxClipMedia
     @State private var keyterms = ""
     @State private var consent = TranscriptionConsentGate()
     @State private var error: String?
+    @State private var prompt: TranscriptionPrompt?
+    @State private var installing: ModelDescriptor?
     @State private var running = false
     @State private var progress: TranscriptionProgress?
     @State private var hasCloudKey = false
@@ -46,20 +48,63 @@ import VoxClipMedia
                 }
             }.formStyle(.grouped).scrollContentBackground(.hidden).disabled(running)
             if running { ProgressView(model.progress ?? "Reading video…", value: progress?.fraction) }
+            if let prompt { promptRow(prompt) }
             if let error { InlineNotice(text: error) }
-            HStack { Button("Models and keys…") { openVoxClipSettings(pane: "transcription") }; Spacer(); Button(running ? "Cancel" : "Not now") { model.workTask?.cancel(); dismiss() }.keyboardShortcut(.cancelAction); Button(error == nil ? "Transcribe" : "Retry") { consent.request(engine: engine, app: model.app) { transcribe() } }.keyboardShortcut(.defaultAction).disabled(running).accessibilityIdentifier("transcription.start").auditButtonAction("transcription.start") }
+            HStack { Button("Models and keys…") { openVoxClipSettings(pane: "transcription") }; Spacer(); Button(running ? "Cancel" : "Not now") { model.workTask?.cancel(); dismiss() }.keyboardShortcut(.cancelAction); Button(error == nil && prompt == nil ? "Transcribe" : "Retry") { consent.request(engine: engine, app: model.app) { transcribe() } }.keyboardShortcut(.defaultAction).disabled(running || installing != nil).accessibilityIdentifier("transcription.start").auditButtonAction("transcription.start") }
             #if DEBUG
             if inlineConsentForAudit && consent.pending { consentSheet }
             #endif
         }.padding(24).frame(width: 560)
         .sheet(isPresented: Binding(get: { presentsConsentSheet }, set: { if !$0 { consent.cancel() } })) { consentSheet }
-        .onDisappear { consent.cancel() }
+        .onDisappear {
+            consent.cancel()
+            // A publisher confirmation the sheet asked for closes with it, so its download doesn't wait on a hidden dialog.
+            if model.app.modelLibrary.downloadOrigin == .transcription { model.app.modelLibrary.confirmation.respond(false) }
+        }
+        .onChange(of: [engine, language]) { if installing == nil { prompt = nil } }
+        .modifier(ModelDownloadConfirmationDialog(library: model.app.modelLibrary, origin: .transcription))
+        // A first-use download continues the transcription when it finishes (transcription §11.3); closing the sheet
+        // cancels only that continuation, and the app-owned download goes on.
+        .task(id: installing?.id) {
+            guard let descriptor = installing else { return }
+            let library = model.app.modelLibrary
+            let installed = await library.install(descriptor)
+            guard !Task.isCancelled, installing?.id == descriptor.id else { return }
+            installing = nil
+            if installed { prompt = nil; transcribe() }
+            else if library.failedModelID == descriptor.id, let failure = library.error { error = failure }
+        }
         .task {
             engine = model.app.string("transcription.engineMode", fallback: "local"); if engine == "ask" { engine = "local" }
             language = model.project.transcript?.language ?? model.app.string("transcription.language", fallback: "auto")
             hasCloudKey = await model.app.secrets.hasKey(for: "elevenlabs")
             if engine == "elevenlabs" && !hasCloudKey { engine = "local" }
         }
+    }
+    /// The callout for an engine that can't start yet, with [Download] and [Use ElevenLabs instead] for a missing
+    /// model (design §13), and the download's progress and Cancel in place of those buttons while it runs.
+    private func promptRow(_ prompt: TranscriptionPrompt) -> some View {
+        let library = model.app.modelLibrary
+        return VStack(alignment: .leading, spacing: 4) {
+            InlineNotice(text: prompt.message)
+            if let download = prompt.download {
+                HStack {
+                    if let progress = library.progress, progress.modelID == download.id {
+                        ProgressView(value: Double(progress.receivedBytes), total: Double(max(1, progress.totalBytes))).frame(width: 120)
+                        Text(ModelLibrary.progressText(download, progress: progress)).font(.caption)
+                        Spacer()
+                        Button("Cancel") { library.task?.cancel() }
+                    } else {
+                        Button("Download") { error = nil; installing = download }.disabled(running || library.progress != nil)
+                        if prompt.offersCloud { Button("Use ElevenLabs instead") { useElevenLabs() }.disabled(running) }
+                    }
+                }.padding(.horizontal, 12)
+            }
+        }
+    }
+    private func useElevenLabs() {
+        engine = "elevenlabs"
+        consent.request(engine: engine, app: model.app) { transcribe() }
     }
     private var presentsConsentSheet: Bool {
         #if DEBUG
@@ -80,7 +125,7 @@ import VoxClipMedia
     }
     private func transcribe() {
         model.findTask?.cancel()
-        running = true; error = nil
+        running = true; error = nil; prompt = nil
         model.workTask = Task {
             defer { running = false; model.progress = nil; model.progressFraction = nil; model.progressStage = nil }
             do {
@@ -101,18 +146,9 @@ import VoxClipMedia
                 let local = engine == "local" ? try await model.app.modelLibrary.localModel(language: language) : nil
                 let plan = TranscriptionPlan(engine: adapter.engine, model: local?.id, language: language == "auto" ? .auto : .forced(language), options: TranscriptionOptions(diarize: speakers != "off", numSpeakers: Int(speakers), keyterms: terms))
                 model.progress = "Reading video…"; model.progressStage = .readingVideo
-                switch await adapter.readiness(for: plan) {
-                case .ready: break
-                case .needsKey(let provider): error = "Add your \(provider == "elevenlabs" ? "ElevenLabs" : provider) key in Settings to use it."; return
-                case .needsModels(_, let bytes): error = "Download the \(local?.displayName ?? "transcription") model (\(ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file))) to transcribe on this Mac."; return
-                case .needsSystemAssets:
-                    await model.app.appleSpeechAssets.check(language)
-                    error = "Download Apple's \(Locale.current.localizedString(forLanguageCode: language) ?? language) speech model in Settings → Transcription first. Choose Models and keys… to open it."; return
-                case .unsupportedLanguage:
-                    let label = engine == "apple" ? "Apple Speech" : engine == "elevenlabs" ? "ElevenLabs Scribe" : "Whisper"
-                    error = "\(label) can't transcribe \(Locale.current.localizedString(forLanguageCode: language) ?? language)."; return
-                case .unavailable: error = "Transcription is not available in this build (mac-speech). Your video and edits are still here."; return
-                }
+                let readiness = await adapter.readiness(for: plan)
+                if case .needsSystemAssets = readiness { await model.app.appleSpeechAssets.check(language) }
+                if let next = TranscriptionPrompt(readiness, engine: engine, language: language, local: local, hasCloudKey: hasCloudKey) { prompt = next; return }
                 if remember { model.app.set("transcription.language", .string(language)) }
                 model.progress = "Extracting audio…"; model.progressStage = .extractingAudio
                 let audio = try await CacheStore(locations: model.app.locations).extractAudio(sourceURL: model.sourceURL, contentKey: model.project.media.source.contentKey, durationSeconds: model.sourceDuration, using: AVAudioExtractor()) { _ in }
@@ -148,6 +184,34 @@ import VoxClipMedia
                 if result.fromCache { model.error = "Using the earlier ElevenLabs transcript of this file (no charge)." }
                 dismiss()
             } catch is CancellationError {} catch VoxClipError.cancelled {} catch { self.error = await model.app.safeError(error) }
+        }
+    }
+}
+
+/// What the transcription sheet shows when its engine can't start yet (transcription §11.3, design §13).
+struct TranscriptionPrompt: Equatable {
+    let message: String
+    /// The local model [Download] installs before the transcription continues.
+    var download: ModelDescriptor?
+    /// [Use ElevenLabs instead], offered beside Download when an ElevenLabs key exists.
+    var offersCloud = false
+
+    /// nil when the engine is ready.
+    init?(_ readiness: Readiness, engine: String, language: String, local: ModelDescriptor?, hasCloudKey: Bool) {
+        let name = Locale.current.localizedString(forLanguageCode: language) ?? language
+        switch readiness {
+        case .ready: return nil
+        case .needsKey(let provider): message = "Add your \(provider == "elevenlabs" ? "ElevenLabs" : provider) key in Settings to use it."
+        case .needsModels(_, let bytes):
+            message = "Download the \(local?.displayName ?? "transcription") model (\(ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file))) to transcribe on this Mac."
+            download = local; offersCloud = local != nil && hasCloudKey
+        case .needsSystemAssets: message = "Download Apple's \(name) speech model in Settings → Transcription first. Choose Models and keys… to open it."
+        // Auto can't pick a model for Apple Speech, so the user chooses the language from the sheet's Language menu.
+        case .unsupportedLanguage where language == "auto": message = "Which language is spoken?"
+        case .unsupportedLanguage:
+            let label = engine == "apple" ? "Apple Speech" : engine == "elevenlabs" ? "ElevenLabs Scribe" : "Whisper"
+            message = "\(label) can't transcribe \(name)."
+        case .unavailable: message = "Transcription is not available in this build (mac-speech). Your video and edits are still here."
         }
     }
 }

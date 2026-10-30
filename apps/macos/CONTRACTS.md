@@ -1,5 +1,13 @@
 # macOS implementation contracts
 
+### 2026-10-31 — mac-mvp-fixes — first-use model download in the transcription sheet
+
+- A missing local model no longer ends the sheet in a dead-end error. `TranscriptionPrompt` maps the engine's readiness to the sheet's callout. For `needsModels` it shows "Download the {model} model ({size}) to transcribe on this Mac." with [Download], and [Use ElevenLabs instead] when a key exists (design §13, transcription §11.3). While the download runs, the callout shows "Downloading {model} · 37% · {done} of {total}" and [Cancel]. When the download finishes, the transcription continues by itself. Cancelling is silent; a failed download shows its error and offers Download again.
+- `ModelLibrary.install(_:)` downloads the model and the models it `requires` (Silero VAD), awaits a download of the same model that is already running, and returns true once every file is installed. `DownloadOrigin` makes only the view that started the download show the publisher confirmation (`ModelDownloadConfirmationDialog`, now shared by Settings and the sheet), so a Settings window left open never shows a second dialog. Closing the sheet cancels only the continuation; the app-owned download goes on.
+- `localModel` follows §11.2 for the download it recommends: `lowMemoryDownload`, when the language has one, below `lowMemoryThresholdBytes` of RAM. The macOS catalogue has no low-memory entries today, so the choice is unchanged.
+- Apple on-device with Auto now says "Which language is spoken?" (the Windows `SpeechCopy.ChooseLanguage` text) instead of "Apple Speech can't transcribe auto."
+- `TranscriptionDownloadTests` (headless, injected downloader, no network) cover the prompt and its buttons, Apple with Auto, the sheet download's success, decline and failure, the Settings origin, and the low-memory choice. They do not compile without the change.
+
 ### 2026-10-30 — sol-mac-vl-followups — recording availability before attestations
 
 - The Create Your Voice sheet shows `speakerMessage` before the attestations, while Record statement stays disabled by `canRecord`. Unavailable model, unsupported selected language and missing calibration all show `The speaker check isn't available yet. Your voice can't be created until it is.` without waiting for a name or any checkbox.
