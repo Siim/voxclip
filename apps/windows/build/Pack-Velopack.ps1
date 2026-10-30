@@ -4,7 +4,7 @@ param(
     [Parameter(Mandatory = $true)][string] $OutputDirectory,
     [Parameter(Mandatory = $true)][string] $Version,
     [Parameter(Mandatory = $true)][ValidateSet('win-x64', 'win-arm64')][string] $RuntimeIdentifier,
-    [Parameter(Mandatory = $true)][ValidateSet('vcredist143-x64', 'vcredist143-arm64')][string] $Framework,
+    [Parameter(Mandatory = $true)][ValidateSet('vcredist145-x64', 'vcredist145-arm64')][string] $Framework,
     [Parameter(Mandatory = $true)][string] $Icon,
     [Parameter(Mandatory = $true)][string] $SignTool,
     [Parameter(Mandatory = $true)][string] $Dlib,

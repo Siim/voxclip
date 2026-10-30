@@ -90,9 +90,9 @@ try {
     $process = Invoke-ReleaseProcess -Executable $Setup -Arguments ('--silent --installto "' + $installRoot + '"') -TimeoutSeconds 300
     $setupExitCode = $process.ExitCode
     $runtimeAfter = Get-ReleaseVcRuntime -RuntimeIdentifier $RuntimeIdentifier
-    Assert-ReleaseVcRuntime -Runtime $runtimeAfter
     $installed = Test-Path -LiteralPath $installRoot
     if ($process.ExitCode -ne 0 -or -not $installed) { throw "Silent install failed ($($process.ExitCode)); expected $installRoot." }
+    Assert-ReleaseVcRuntime -Runtime $runtimeAfter
     $current = Join-Path $installRoot 'current'
     foreach ($relative in @('Update.exe', 'VoxClip.exe', 'current\VoxClip.exe', 'current\voxclip-cli.exe', 'current\LICENSE', 'current\THIRD_PARTY_NOTICES.md', 'current\licenses\FFmpeg-LICENSE.txt', 'current\licenses\FFmpeg-BUILD.txt')) {
         if (-not (Test-Path -LiteralPath (Join-Path $installRoot $relative))) { throw "Installed file missing: $relative" }

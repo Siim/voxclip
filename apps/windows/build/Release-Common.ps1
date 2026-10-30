@@ -3,7 +3,7 @@ $ErrorActionPreference = 'Stop'
 
 function Get-ReleasePrerequisite {
     param([Parameter(Mandatory = $true)][ValidateSet('win-x64', 'win-arm64')][string] $RuntimeIdentifier)
-    return 'vcredist143-' + $RuntimeIdentifier.Substring(4)
+    return 'vcredist145-' + $RuntimeIdentifier.Substring(4)
 }
 
 function Assert-ReleaseVcRuntime {

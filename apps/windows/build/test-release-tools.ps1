@@ -106,8 +106,8 @@ function Invoke-FakeSignTool {
 
 try {
     Invoke-Test 'VC++ prerequisite matches each package architecture' {
-        Assert-Equal (Get-ReleasePrerequisite -RuntimeIdentifier win-x64) 'vcredist143-x64'
-        Assert-Equal (Get-ReleasePrerequisite -RuntimeIdentifier win-arm64) 'vcredist143-arm64'
+        Assert-Equal (Get-ReleasePrerequisite -RuntimeIdentifier win-x64) 'vcredist145-x64'
+        Assert-Equal (Get-ReleasePrerequisite -RuntimeIdentifier win-arm64) 'vcredist145-arm64'
         Assert-Throws { Get-ReleasePrerequisite -RuntimeIdentifier win-x86 } 'ValidateSet|does not belong'
     }
     Invoke-Test 'VC++ verification rejects missing and pre-14.44 runtimes' {
