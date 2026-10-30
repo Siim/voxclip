@@ -66,6 +66,25 @@ extension HTTPConnectorTests {
         #expect(body[ai: "generationConfig"][ai: "thinkingConfig"][ai: "thinkingBudget"] == .null)
     }
 
+    @Test(arguments: ["MAX_TOKENS", "CONTINUATION", "MALFORMED_RESPONSE"], ["", #"{"ok":true,"echo":"vox"#, HTTPFixtures.completion])
+    func geminiRunnerRejectsIncompleteOutputsWithoutRetries(_ reason: String, _ text: String) async throws {
+        let reply = try HTTPFixtures.encode(["candidates": [["finishReason": reason, "content": ["parts": [["text": text]]]]]])
+        let harness = try HTTPHarness(.gemini, replies: [.json(reply)])
+        defer { harness.finish() }
+        let request = try harness.catalog.connectionTest(for: .gemini)
+        let expected: LLMError = reason == "MALFORMED_RESPONSE" ? .server(status: 500) : .truncated
+        let message = reason == "MALFORMED_RESPONSE" ? "Google Gemini had a server error (500). Try again. Your edits are saved." : "The clip suggestions were incomplete. Please try again. Your edits are saved."
+        do {
+            _ = try await harness.runner().run(request, on: harness.connector, model: harness.model)
+            Issue.record("An incomplete Gemini response must not return an answer")
+        } catch let failure as LLMError {
+            #expect(failure == expected)
+            #expect(failure.userMessage(label: "Google Gemini", model: harness.model, feature: request.feature) == message)
+        }
+        #expect(HTTPStubProtocol.requests.count == 1)
+        #expect(harness.sleeps.durations.isEmpty)
+    }
+
     @Test(arguments: ["FINISH_REASON_UNSPECIFIED", "STOP", "MAX_TOKENS", "SAFETY", "RECITATION", "LANGUAGE", "OTHER", "BLOCKLIST", "PROHIBITED_CONTENT", "SPII", "MALFORMED_FUNCTION_CALL", "IMAGE_SAFETY", "IMAGE_PROHIBITED_CONTENT", "IMAGE_OTHER", "NO_IMAGE", "IMAGE_RECITATION", "UNEXPECTED_TOOL_CALL", "TOO_MANY_TOOL_CALLS", "MISSING_THOUGHT_SIGNATURE", "MALFORMED_RESPONSE", "ESCALATION", "PUP_LIMITED_DISABLED", "CONTINUATION", "", "FUTURE_REASON"])
     func geminiFinishReasonsNeverCompleteUnlessStopped(_ reason: String) async throws {
         let reply = try HTTPFixtures.encode(["candidates": [["finishReason": reason, "content": ["parts": [["text": HTTPFixtures.completion]]]]]])

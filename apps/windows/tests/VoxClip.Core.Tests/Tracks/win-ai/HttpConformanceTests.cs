@@ -76,6 +76,35 @@ public sealed class HttpConformanceTests
         Assert.Null(generation["thinkingConfig"]!["thinkingBudget"]);
     }
 
+    [Theory]
+    [InlineData("MAX_TOKENS", "")]
+    [InlineData("MAX_TOKENS", "{\"ok\":true,\"echo\":\"vox")]
+    [InlineData("MAX_TOKENS", "{\"ok\":true,\"echo\":\"voxclip\"}")]
+    [InlineData("CONTINUATION", "")]
+    [InlineData("CONTINUATION", "{\"ok\":true,\"echo\":\"vox")]
+    [InlineData("CONTINUATION", "{\"ok\":true,\"echo\":\"voxclip\"}")]
+    [InlineData("MALFORMED_RESPONSE", "")]
+    [InlineData("MALFORMED_RESPONSE", "{\"ok\":true,\"echo\":\"vox")]
+    [InlineData("MALFORMED_RESPONSE", "{\"ok\":true,\"echo\":\"voxclip\"}")]
+    public async Task GeminiRunnerRejectsIncompleteOutputsWithoutRetries(string reason, string text)
+    {
+        var body = new JsonObject { ["candidates"] = new JsonArray(new JsonObject { ["finishReason"] = reason, ["content"] = new JsonObject { ["parts"] = new JsonArray(new JsonObject { ["text"] = text }) } }) };
+        using var handler = new StubHttp((_, _, _) => Task.FromResult(Response(200, body.ToJsonString())));
+        using var client = new HttpClient(handler);
+        var catalog = Catalog();
+        var keys = new MemoryKeys();
+        var delays = new List<TimeSpan>();
+        var connector = new LlmConnector(ConnectorId.Gemini, catalog, client, keys, new Redactor(), (duration, _) => { delays.Add(duration); return Task.CompletedTask; });
+        var runner = new LlmRunner(keys, catalog, new Redactor());
+        var failure = await Assert.ThrowsAsync<LlmException>(() => runner.RunAsync(catalog.TestRequest(ConnectorId.Gemini), connector, "gemini-3.8-flash", TestContext.Current.CancellationToken));
+        Assert.Equal(reason == "MALFORMED_RESPONSE" ? LlmErrorKind.Server : LlmErrorKind.Truncated, failure.Error.Kind);
+        Assert.Equal(reason == "MALFORMED_RESPONSE" ? VoxClipErrorCode.ProviderError : VoxClipErrorCode.LlmInvalidOutput, failure.Error.Code);
+        Assert.Equal(reason == "MALFORMED_RESPONSE" ? (int?)500 : null, failure.Error.Status);
+        Assert.Equal(reason == "MALFORMED_RESPONSE" ? "Google Gemini had a server error (500). Try again. Your edits are saved." : "The clip suggestions were incomplete. Please try again. Your edits are saved.", failure.Error.UserMessage);
+        Assert.Single(handler.Requests);
+        Assert.Empty(delays);
+    }
+
     public static TheoryData<string> GeminiFinishReasons => new("FINISH_REASON_UNSPECIFIED", "STOP", "MAX_TOKENS", "SAFETY", "RECITATION", "LANGUAGE", "OTHER", "BLOCKLIST", "PROHIBITED_CONTENT", "SPII", "MALFORMED_FUNCTION_CALL", "IMAGE_SAFETY", "IMAGE_PROHIBITED_CONTENT", "IMAGE_OTHER", "NO_IMAGE", "IMAGE_RECITATION", "UNEXPECTED_TOOL_CALL", "TOO_MANY_TOOL_CALLS", "MISSING_THOUGHT_SIGNATURE", "MALFORMED_RESPONSE", "ESCALATION", "PUP_LIMITED_DISABLED", "CONTINUATION", "", "FUTURE_REASON");
 
     [Theory]

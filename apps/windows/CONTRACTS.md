@@ -1,5 +1,9 @@
 # Windows fixed contracts
 
+### 2026-10-30 — Gemini runner incomplete-output regression
+
+- The real LLM runner is tested through stub HTTP for MAX_TOKENS, CONTINUATION and MALFORMED_RESPONSE with empty text, truncated JSON and schema-valid-looking JSON. Exact caller error kinds, codes, statuses and user copy remain truncated/incomplete for token stops and server 500 for malformed responses; each case sends exactly one request and never sleeps or corrects the reply. Both Cores mirror the nine-case matrix. No production behavior changed.
+
 ### 2026-10-30 — Release Whisper native payload isolation
 
 - Reapplied release-scripts-5 by intent against the redesign scripts. Directory.Build.targets keeps only the selected Windows RID's Whisper.net natives (including its noavx subtree), removes the Metal shader, and fails if no target runtime remains. VM staging verifies the payload before FFmpeg/signing. Portable tests exercise the actual target and both RID payload guards. No-RID/non-Windows builds and unrelated assets are unchanged; vcredist145, Pack-Velopack argument quoting and the signing regex are preserved. VM publish/sign/install checks remain owed.
