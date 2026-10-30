@@ -4,6 +4,8 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json.Nodes;
 using VoxClip.Core.Domain.VoiceLab;
+using VoxClip.Core.Services.LLM;
+using VoxClip.Core.Services.Project;
 using VoxClip.Core.Services.Speech;
 using VoxClip.Core.Services.VoiceLab;
 using VoxClip.Core.Tests.Tracks.WinAi;
@@ -17,6 +19,17 @@ namespace VoxClip.Core.Tests.Tracks.VoiceLab;
 public sealed class VoiceLabRequestGoldenTests
 {
     private const string Key = "synthetic-voice-lab-key";
+    private sealed class SuspendingKeys : IKeyProvider
+    {
+        internal bool Suspend;
+        internal readonly TaskCompletionSource Entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal readonly TaskCompletionSource Resume = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public async Task<string?> GetKeyAsync(string account, CancellationToken ct)
+        {
+            if (Suspend) { Entered.SetResult(); await Resume.Task.WaitAsync(ct); }
+            return Key;
+        }
+    }
     private static JsonObject Cases()
     {
         var root = JsonNode.Parse(File.ReadAllText(Path.Combine(FixtureLoader.SharedRoot, "fixtures", "voice-lab", "request-cases.json")))!.AsObject();
@@ -96,7 +109,7 @@ public sealed class VoiceLabRequestGoldenTests
         }
         return new(Text("displayName"), Text("language"), samples,
             DateTimeOffset.Parse(Text("createdAt"), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind),
-            (input["removeBackgroundNoise"] ?? defaults["removeBackgroundNoise"])!.GetValue<bool>());
+            (input["removeBackgroundNoise"] ?? defaults["removeBackgroundNoise"])!.GetValue<bool>(), input["recoveryNonce"]?.GetValue<string>());
     }
 
     private abstract record Call;
@@ -224,7 +237,7 @@ public sealed class VoiceLabRequestGoldenTests
     {
         var root = Cases();
         var cases = root["cases"]!.AsArray();
-        Assert.Equal(21, cases.Count);
+        Assert.Equal(24, cases.Count);
         await ForEachRow(cases, async row =>
         {
             using var handler = new PaidRecorder(root["discovery"]!);
@@ -242,7 +255,7 @@ public sealed class VoiceLabRequestGoldenTests
     {
         var root = Cases();
         var rows = root["quoteMutations"]!.AsArray();
-        Assert.Equal(18, rows.Count);
+        Assert.Equal(20, rows.Count);
         await ForEachRow(rows, async row =>
         {
             var baseCase = root["cases"]!.AsArray().Single(item => item!["case"]!.GetValue<string>() == row["base"]!.GetValue<string>())!;
@@ -254,10 +267,73 @@ public sealed class VoiceLabRequestGoldenTests
             var approval = lab.Approve(Prepare(lab, MakeCall(operation, baseCase["input"]!), id), true);
             var send = Dispatch(lab, MakeCall(operation, baseCase["input"]!, row), approval, id);
             var refusal = row["error"]?.GetValue<string>() == "invalidInput" ? VoiceLabErrorKind.InvalidInput : VoiceLabErrorKind.ConsentRequired;
-            if (row["allowed"]!.GetValue<bool>()) await send;
+            var allowed = row["allowed"]!.GetValue<bool>();
+            if (allowed) await send;
             else Assert.Equal(refusal, (await Assert.ThrowsAsync<VoiceLabException>(() => send)).Kind);
-            Assert.Equal(row["allowed"]!.GetValue<bool>() ? 1 : 0, handler.Requests.Count);
+            Assert.Equal(allowed ? 1 : 0, handler.Requests.Count);
         });
+    }
+
+    [Fact]
+    public async Task CloneRecoveryNonceUsesExactMacLiteralPartsAndDocumentedFilesField()
+    {
+        var root = Cases();
+        var row = root["cases"]!.AsArray().First(item => item!["operation"]!.GetValue<string>() == "createClone")!;
+        var clone = (CloneCall)MakeCall("createClone", row["input"]!);
+        const string nonce = "6d81337a-7584-4a1e-ae04-121e619fc6b2";
+        var request = clone.Request with { RecoveryNonce = nonce };
+        using var handler = new PaidRecorder(root["discovery"]!);
+        using var lab = ElevenLabsVoiceLab.ForTesting(new MemoryKeys(Key), handler, ElevenLabsRegion.Default, boundary: Boundary(root));
+        await Discover(lab);
+        var id = Guid.NewGuid();
+        await lab.CreateOwnCloneAsync(request, CreatePolicy, lab.Approve(lab.PrepareClone(request, CreatePolicy, id), true), TestContext.Current.CancellationToken, id);
+        var parts = Parts(Assert.Single(handler.Requests).Body, Boundary(root));
+        var description = parts.Single(part => part.Headers[0] == "Content-Disposition: form-data; name=\"description\"");
+        Assert.EndsWith(" VoxClip request " + nonce + ".", Encoding.UTF8.GetString(description.Body));
+        var labels = parts.Single(part => part.Headers[0] == "Content-Disposition: form-data; name=\"labels\"");
+        Assert.Equal("{\"language\":\"" + request.Language + "\",\"voxclip_record_id\":\"" + nonce + "\"}", Encoding.UTF8.GetString(labels.Body));
+        Assert.Equal(request.Samples.Count, parts.Count(part => part.Headers[0].StartsWith("Content-Disposition: form-data; name=\"files\";", StringComparison.Ordinal)));
+        Assert.DoesNotContain(parts, part => part.Headers[0].Contains("files[]", StringComparison.Ordinal));
+    }
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task WithdrawalWhileClientAwaitsKeyPreventsTheActualHttpStart(bool failWithdrawalWrite)
+    {
+        var root = Cases();
+        var row = root["cases"]!.AsArray().First(item => item!["operation"]!.GetValue<string>() == "createClone")!;
+        var clone = (CloneCall)MakeCall("createClone", row["input"]!);
+        var location = Directory.CreateTempSubdirectory("voxclip-dispatch-race-").FullName;
+        try
+        {
+            var fail = false;
+            var locations = new DataLocations(location, Path.Combine(location, "settings.json"), Path.Combine(location, "Models"), Path.Combine(location, "Cache"),
+                Path.Combine(location, "Autosave"), Path.Combine(location, "Secrets"), Path.Combine(location, "Logs"));
+            var store = new VoiceConsentStore(locations, step => { if (fail && step == "Withdrawing") throw new IOException("injected"); });
+            var record = System.Text.Json.JsonSerializer.Deserialize(FixtureLoader.ReadText("fixtures/voice-lab/consent-record.json"), VoiceConsentJson.Default.VoiceConsentRecord)!;
+            var id = Guid.NewGuid();
+            var recordId = Guid.NewGuid().ToString("D");
+            var wav = clone.Request.Samples.Single(sample => sample.Role == VoiceLabCloneSampleRole.ConsentStatement).Wav;
+            store.SaveStatement(wav, recordId);
+            record = record with { RecordId = recordId, VoiceId = "pending", Statement = record.Statement with { AudioSha256 = VoiceConsentStore.Hash(wav) } };
+            using var claim = store.ClaimCreation(record, id, ElevenLabsRegion.Default, DateTimeOffset.UtcNow);
+            var policy = claim.DispatchPolicy(_ => Task.CompletedTask);
+            var keys = new SuspendingKeys();
+            using var handler = new PaidRecorder(root["discovery"]!);
+            using var client = ElevenLabsVoiceLab.ForTesting(keys, handler, ElevenLabsRegion.Default, boundary: Boundary(root));
+            await Discover(client);
+            var quote = client.PrepareClone(clone.Request, policy, id);
+            keys.Suspend = true;
+            var sending = client.CreateOwnCloneAsync(clone.Request, policy, client.Approve(quote, true), TestContext.Current.CancellationToken, id);
+            await keys.Entered.Task;
+            fail = failWithdrawalWrite;
+            if (fail) Assert.Throws<IOException>(() => store.WithdrawCreation(recordId, DateTimeOffset.UtcNow));
+            else store.WithdrawCreation(recordId, DateTimeOffset.UtcNow);
+            keys.Resume.SetResult();
+            Assert.Equal(VoiceConsentError.Inactive, (await Assert.ThrowsAsync<VoiceConsentException>(() => sending)).Kind);
+            Assert.Empty(handler.Requests);
+        }
+        finally { Directory.Delete(location, true); }
     }
 
     [Fact]

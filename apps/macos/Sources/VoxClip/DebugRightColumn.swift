@@ -75,7 +75,7 @@ import VoxClipMedia
         let sizes: [(String, CGFloat, CGFloat)] = [("1440x900", 360, 775), ("1280x800", 320, 675),
             ("1280x700", 320, 575), ("960x600", 300, 475)]
         for (window, width, height) in sizes {
-            let extra = width == 320 && height == 675 ? ["rewrite", "rewrite-budget", "fine-tune", "caption-error", "captions-off"] : []
+            let extra = width == 320 && height == 675 ? ["rewrite", "rewrite-budget", "fine-tune", "caption-error", "captions-off"] + DebugRewriteGeneration.variants : []
             for variant in ["source", "9:16", "1:1", "16:9"] + extra {
                 try Data("\(window) \(variant)".utf8).write(to: directory.appendingPathComponent("height-progress.txt"), options: .atomic)
                 let model = EditorModel(document: VoxClipDocument(project: fixture, demo: true), app: app, preview: DemoPreviewEngine())
@@ -91,6 +91,7 @@ import VoxClipMedia
                     let session = RewriteSession(editor: model, range: 12...25, envelope: envelope, connector: connector)
                     model.rewrite = session; model.rewriteRange = 12...25
                     session.edit(variant == "rewrite-budget" ? Array(repeating: "replacement", count: 180).joined(separator: " ") : "A clearer way to explain what happened in this passage.")
+                    if variant.hasPrefix("rewrite-takes-") { try DebugRewriteGeneration.install(String(variant.dropFirst(14)), in: session) }
                 }
                 let controller = NSHostingController(rootView: RightColumnContents(model: model, columnHeight: height, columnWidth: width, fineTune: variant == "fine-tune"))
                 controller.sizingOptions = []
@@ -132,6 +133,11 @@ import VoxClipMedia
         (host as? NSScrollView).map { [$0] } ?? host.subviews.flatMap { scrollViews(in: $0) }
     }
     static func run(app: AppModel, directory: URL) async throws -> [DebugUISuite.Result] {
+        let previous = app.settings
+        defer { app.settings = previous }
+        app.settings.values["voiceLab.enabled"] = .bool(true)
+        app.settings.values["voiceLab.betaNoticeAccepted"] = .bool(true)
+        app.settings.values["voiceLab.providerConsent.elevenlabs"] = .bool(true)
         if CommandLine.arguments.contains("-heightsOnly") { return try await measureHeights(app: app, directory: directory) }
         guard let root = app.shared?.root else { throw VoxClipError.sharedResourcesMissing }
         let fixture = try DemoEditing.loadFixture(root.appendingPathComponent("fixtures/projects/five-questions.voxclip"))
@@ -141,7 +147,7 @@ import VoxClipMedia
         let height: CGFloat = 4096
         var measurements: [Measurement] = []
         for width: CGFloat in [300, 320, 340, 360, 440, 560] {
-          for variant in ["source", "9:16", "1:1", "16:9", "ai-rate-hours", "captions-off", "fine-tune", "caption-error", "rewrite", "rewrite-budget"] {
+          for variant in ["source", "9:16", "1:1", "16:9", "ai-rate-hours", "captions-off", "fine-tune", "caption-error", "rewrite", "rewrite-budget"] + DebugRewriteGeneration.variants {
             let model = EditorModel(document: VoxClipDocument(project: fixture, demo: true), app: app, preview: DemoPreviewEngine())
             defer { model.close() }
             model.setAspect(AspectRatio(rawValue: variant) ?? .source)
@@ -164,6 +170,7 @@ import VoxClipMedia
                 let session = RewriteSession(editor: model, range: 12...25, envelope: envelope, connector: connector)
                 model.rewrite = session; model.rewriteRange = 12...25
                 session.edit(variant == "rewrite-budget" ? Array(repeating: "replacement", count: 180).joined(separator: " ") : "A clearer way to explain what happened in this passage.")
+                if variant.hasPrefix("rewrite-takes-") { try DebugRewriteGeneration.install(String(variant.dropFirst(14)), in: session) }
             }
             let content = RightColumnContents(model: model, columnHeight: height, columnWidth: width, fineTune: variant == "fine-tune")
             let controller = NSHostingController(rootView: content)
@@ -183,6 +190,8 @@ import VoxClipMedia
           }
         }
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let captures = try DebugRewriteGeneration.captures(app: app, directory: directory)
+        try JSONEncoder().encode(captures).write(to: directory.appendingPathComponent("rewrite-captures.json"), options: .atomic)
         try JSONEncoder().encode(measurements).write(to: directory.appendingPathComponent("right-column-layout.json"), options: .atomic)
         var results: [DebugUISuite.Result] = measurements.flatMap { measurement in [
             .init(name: "right column \(measurement.variant) at \(measurement.width): minimum \(measurement.minimumWidth), proposed \(measurement.proposedWidth)", passed: measurement.minimumWidth <= measurement.width + 0.5 && measurement.proposedWidth <= measurement.width + 0.5),
@@ -281,13 +290,20 @@ import VoxClipMedia
         func visit(_ view: NSView) {
             guard !view.isHidden else { return }
             let rect = view.convert(view.bounds, to: host)
-            if rect.width > 0 {
+            if rect.width > 0, rect.height > 0 {
                 var visible = rect
                 if let scroll = view.enclosingScrollView, scroll.clipsToBounds, scroll.contentView.clipsToBounds {
                     let viewport = scroll.convert(scroll.bounds, to: host)
                     if rect.minY < viewport.minY - 0.5 || rect.maxY > viewport.maxY + 0.5 { scrolled.append("\(type(of: view)): \(rect)") }
                     visible = rect.intersection(viewport)
                     if rect.minX < host.bounds.minX - 0.5 || rect.maxX > host.bounds.maxX + 0.5 { failures.append("Horizontal scroll content overflow: \(type(of: view)): \(rect)") }
+                }
+                var ancestor = view.superview
+                while let parent = ancestor, parent !== host {
+                    if let clip = parent as? NSClipView, clip.clipsToBounds {
+                        visible = visible.intersection(clip.convert(clip.bounds, to: host))
+                    }
+                    ancestor = parent.superview
                 }
                 if !visible.isNull && !host.bounds.insetBy(dx: -0.5, dy: -0.5).contains(visible) { failures.append("\(type(of: view)): \(rect)") }
             }
@@ -312,7 +328,7 @@ import VoxClipMedia
         }
         for element in accessibilityElements(host) where element.isAccessibilityElement() {
             let rect = localFrame(element, depth: 0)
-            if rect.width > 0, !bounds.insetBy(dx: -0.5, dy: -0.5).contains(rect) {
+            if rect.width > 0, rect.height > 0, !bounds.insetBy(dx: -0.5, dy: -0.5).contains(rect) {
                 failures.append("\(type(of: element)) \(element.accessibilityLabel() ?? "unlabelled"): \(rect)")
             }
         }

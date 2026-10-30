@@ -130,7 +130,7 @@ def release_source(source):
     return ''.join(output)
 
 
-def initializer_violations(source, names=None):
+def initializer_violations(source, names=None, factories=False, allow_make=False):
     names = names or {'VoiceSpeakerCheck'}
     source = release_source(source)
     matches = list(re.finditer(r'`[A-Za-z_][A-Za-z_0-9]*`|[A-Za-z_][A-Za-z_0-9]*|[^\s]', source))
@@ -152,14 +152,21 @@ def initializer_violations(source, names=None):
             types[cursor] = qualified[-1] in names
     stack = []
     violations = []
-    modifiers = {'private', 'fileprivate', 'internal', 'package', 'public', 'open', 'convenience', 'required', 'override', 'nonisolated', 'isolated'}
+    modifiers = {'private', 'fileprivate', 'internal', 'package', 'public', 'open', 'convenience', 'required', 'override', 'nonisolated', 'isolated', 'static', 'final'}
     for index, token in enumerate(tokens):
         if token == '{':
             stack.append(types.get(index))
         elif token == '}':
             if stack:
                 stack.pop()
-        elif token == 'init' and stack and stack[-1] is True and (index == 0 or tokens[index - 1] != '.'):
+        elif (token == 'init' or factories and token in ('func', 'var', 'let')) and stack and stack[-1] is True and (index == 0 or tokens[index - 1] != '.'):
+            if token != 'init':
+                declaration = source[matches[index].start():].split('{', 1)[0].split('=', 1)[0]
+                pattern = r'->\s*(?:Self|(?:[A-Za-z_][A-Za-z_0-9]*\.)?VoiceSpeakerCheck)\b' if token == 'func' else r':\s*(?:Self|VoiceSpeakerCheck)\b'
+                if not re.search(pattern, declaration):
+                    continue
+                if allow_make and token == 'func' and re.fullmatch(r'func\s+make\(verifiedModel:\s*ONNXSpeakerEmbedder,\s*trustedEntry:\s*SpeakerModel,\s*language:\s*String\)\s*async\s*throws\s*->\s*VoiceSpeakerCheck\s*', declaration):
+                    continue
             cursor = index - 1
             access = set()
             while cursor >= 0:
@@ -217,7 +224,9 @@ def scan(root):
         names = expanded
     for source, contents in sources:
         if any(name in contents for name in names):
-            for line in initializer_violations(contents, names):
+            canonical = source.as_posix().endswith('/Sources/VoxClipMedia/VoiceLab/VoiceSpeakerCheck.swift')
+            allow_make = canonical and 'try await verifiedModel.validateIdentity(trustedEntry: canonical)' in contents and 'try encoder.encode(trustedEntry) == encoder.encode(canonical)' in contents
+            for line in initializer_violations(contents, names, factories=True, allow_make=allow_make):
                 failures.append(f'{source}:{line}')
     if failures:
-        raise RuntimeError('Non-private Release VoiceSpeakerCheck initializer: ' + ', '.join(failures))
+        raise RuntimeError('Non-private Release VoiceSpeakerCheck initializer or factory: ' + ', '.join(failures))

@@ -18,6 +18,16 @@
     "app"
   ],
   "properties": {
+    "region": { "enum": ["default", "us", "eu", "in", "sg"] },
+    "creator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["region", "keyFingerprint"],
+      "properties": {
+        "region": { "enum": ["default", "us", "eu", "in", "sg"] },
+        "keyFingerprint": { "type": "string", "pattern": "^[0-9a-f]{16}$" }
+      }
+    },
     "schema": {
       "const": "voxclip-consent/1"
     },

@@ -3,6 +3,7 @@ import Foundation
 public enum VoiceConsentError: Error, LocalizedError, Equatable, Sendable {
     case invalidRecord, invalidName, invalidWords, attestationsRequired, statementMismatch, tooManyAttempts
     case speakerUnavailable, speakerMismatch, voiceOwnerMismatch, inactive, cancelled, creationPending
+    case creatorMismatch
     public var errorDescription: String? {
         switch self {
         case .invalidName: "Enter a name with 1 to 60 Unicode scalars and no control characters."
@@ -17,12 +18,19 @@ public enum VoiceConsentError: Error, LocalizedError, Equatable, Sendable {
         case .cancelled: ""
         case .creationPending: "Voice creation may have completed. Reconcile the pending voice in Settings. Do not create it again."
         case .invalidRecord: "The voice consent record could not be verified. No audio was sent."
+        case .creatorMismatch: "This voice was created with a different ElevenLabs key or region. Use that key to delete it, or remove it from VoxClip only; the voice may stay in that ElevenLabs account."
         }
     }
 }
 
 public enum VoiceLabGate {
-    public static func settingsVisible(enabled: Bool, internalBuild: Bool) -> Bool { enabled || internalBuild }
+    public static func canCheckOwnVoice(speakerAvailable: Bool, calibratedThreshold: Double?, language: String) -> Bool {
+        speakerAvailable && language == "en" && calibratedThreshold.map { $0.isFinite && (0...1).contains($0) } == true
+    }
+    public static func settingsVisible(enabled: Bool, internalBuild: Bool) -> Bool { true }
+    public static func rewriteEnabled(enabled: Bool, noticeAccepted: Bool, internalBuild: Bool) -> Bool {
+        enabled && (noticeAccepted || internalBuild)
+    }
     public static func canEnroll(enabled: Bool, busy: Bool) -> Bool { enabled && !busy }
 }
 
@@ -49,6 +57,10 @@ public struct VoiceConsentText: Codable, Sendable {
         guard (1...60).contains(name.unicodeScalars.count), !name.unicodeScalars.contains(where: { $0.properties.generalCategory == .control }) else { throw VoiceConsentError.invalidName }
         return name
     }
+    public func statementOpening(name: String, language: String) throws -> String {
+        guard let template = templates[language], let date = template.range(of: "{date}") else { throw VoiceConsentError.invalidWords }
+        return String(template[..<date.lowerBound]).replacingOccurrences(of: "{name}", with: try Self.displayName(name))
+    }
     public func statement<R: RandomNumberGenerator>(name: String, language: String?, date: Date, calendar: Calendar = Calendar(identifier: .gregorian),
                                                     words: [String], rng: inout R) throws -> VoiceConsentStatement {
         let name = try Self.displayName(name)
@@ -59,12 +71,16 @@ public struct VoiceConsentText: Codable, Sendable {
         var available = words
         var nonce: [String] = []
         for _ in 0..<4 { nonce.append(available.remove(at: Int.random(in: available.indices, using: &rng))) }
-        let parts = calendar.dateComponents([.day, .month, .year], from: date)
-        guard let day = parts.day, let month = parts.month, (1...12).contains(month), let year = parts.year else { throw VoiceConsentError.invalidRecord }
-        let dateText = "\(day)\(language == "et" ? "." : "") \(months[month - 1]) \(year)"
+        let dateText = try displayDate(date, language: language, calendar: calendar)
         var text = template.replacingOccurrences(of: "{name}", with: name).replacingOccurrences(of: "{date}", with: dateText)
         for index in nonce.indices { text = text.replacingOccurrences(of: "{w\(index + 1)}", with: nonce[index]) }
         return VoiceConsentStatement(language: language, text: text, nonce: nonce)
+    }
+    public func displayDate(_ date: Date, language: String = "en", calendar: Calendar = Calendar(identifier: .gregorian)) throws -> String {
+        let parts = calendar.dateComponents([.day, .month, .year], from: date)
+        guard let names = months[language], names.count == 12, let day = parts.day, let month = parts.month,
+              (1...12).contains(month), let year = parts.year else { throw VoiceConsentError.invalidRecord }
+        return "\(day)\(language == "et" ? "." : "") \(names[month - 1]) \(year)"
     }
 }
 
@@ -92,8 +108,17 @@ public struct VoiceStatementMatch: Codable, Sendable, Equatable {
 }
 
 public struct VoiceConsentRecord: Codable, Sendable, Equatable, Identifiable {
-    package init(schema: String, recordId: String, provider: String, type: String, voiceId: String, voiceName: String, status: Status, createdAt: String, deletedAt: String?, statement: Statement, attestations: Attestations, samples: [Sample], speaker: Speaker, app: App) {
+    package init(schema: String, recordId: String, provider: String, type: String, voiceId: String, voiceName: String, status: Status, createdAt: String, deletedAt: String?, statement: Statement, attestations: Attestations, samples: [Sample], speaker: Speaker, app: App, region: ElevenLabsRegion? = nil, creator: Creator? = nil) {
         self.schema = schema; self.recordId = recordId; self.provider = provider; self.type = type; self.voiceId = voiceId; self.voiceName = voiceName; self.status = status; self.createdAt = createdAt; self.deletedAt = deletedAt; self.statement = statement; self.attestations = attestations; self.samples = samples; self.speaker = speaker; self.app = app
+        self.region = region; self.creator = creator
+    }
+
+    public struct Creator: Codable, Sendable, Equatable {
+        public let region: ElevenLabsRegion
+        public let keyFingerprint: String
+        public init(region: ElevenLabsRegion, keyFingerprint: String) {
+            self.region = region; self.keyFingerprint = keyFingerprint
+        }
     }
 
     public enum Status: String, Codable, Sendable { case active, verificationRequired, deleted }
@@ -159,8 +184,11 @@ public struct VoiceConsentRecord: Codable, Sendable, Equatable, Identifiable {
     public let samples: [Sample]
     public let speaker: Speaker
     public let app: App
+    public var region: ElevenLabsRegion?
+    public var creator: Creator?
+    public var recordedRegion: ElevenLabsRegion { creator?.region ?? region ?? .default }
     public var id: String { recordId }
-    private enum CodingKeys: String, CodingKey { case schema, recordId, provider, type, voiceId, voiceName, status, createdAt, deletedAt, statement, attestations, samples, speaker, app }
+    private enum CodingKeys: String, CodingKey { case schema, recordId, provider, type, voiceId, voiceName, status, createdAt, deletedAt, statement, attestations, samples, speaker, app, region, creator }
     public func encode(to encoder: any Encoder) throws {
         var values = encoder.container(keyedBy: CodingKeys.self)
         try values.encode(schema, forKey: .schema); try values.encode(recordId, forKey: .recordId)
@@ -170,9 +198,12 @@ public struct VoiceConsentRecord: Codable, Sendable, Equatable, Identifiable {
         try values.encode(deletedAt, forKey: .deletedAt); try values.encode(statement, forKey: .statement)
         try values.encode(attestations, forKey: .attestations); try values.encode(samples, forKey: .samples)
         try values.encode(speaker, forKey: .speaker); try values.encode(app, forKey: .app)
+        try values.encodeIfPresent(region, forKey: .region); try values.encodeIfPresent(creator, forKey: .creator)
     }
     public static func timestamp(_ date: Date) -> String { ISO8601DateFormatter().string(from: date) }
     public func validate() throws {
+        guard creator.map({ $0.keyFingerprint.count == 16 && $0.keyFingerprint.allSatisfy { "0123456789abcdef".contains($0) } }) ?? true,
+              creator == nil || region == nil || creator?.region == region else { throw VoiceConsentError.invalidRecord }
         guard schema == "voxclip-consent/1", UUID(uuidString: recordId) != nil, provider == "elevenlabs", type == "ivc",
               !voiceId.isEmpty, voiceId.count <= 128, voiceId.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "_" || $0 == "-") }),
               (1...70).contains(voiceName.unicodeScalars.count), ISO8601DateFormatter().date(from: createdAt) != nil,

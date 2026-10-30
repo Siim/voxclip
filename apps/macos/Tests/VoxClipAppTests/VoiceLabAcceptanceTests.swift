@@ -28,9 +28,138 @@ private struct AcceptanceTestKeys: KeyProvider {
 
 @Suite("Headless Voice Lab acceptance", .serialized, .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil))
 @MainActor struct VoiceLabAcceptanceTests {
+    @Test func disablingBetaHidesAnExistingPanelInEveryEditor() throws {
+        let app = enabledApp()
+        let model = EditorModel(document: VoxClipDocument(project: try fixture(), demo: true), app: app, preview: DemoPreviewEngine())
+        defer { model.close() }
+        let session = RewriteSession(editor: model, range: 0...1, envelope: nil, connector: nil)
+        model.rewrite = session
+        let column = RightColumnContents(model: model, columnHeight: 800, columnWidth: 300)
+        #expect(column.visibleRewrite === session)
+        app.settings.values["voiceLab.enabled"] = .bool(false)
+        #expect(column.visibleRewrite == nil && !session.current)
+    }
+    @Test func wordAccessibilityCoversSourceAndAcceptedSpeechWithoutAWindow() throws {
+        let results = try DebugTranscriptPixels.wordAccessibility(app: enabledApp())
+        #expect(results.count == 8)
+        for result in results { #expect(result.passed, Comment(rawValue: result.name)) }
+    }
+    @Test func interiorClipBoundariesSurviveReplacementUndoAndRedo() throws {
+        var project = try fixture()
+        var start = try #require(project.edits.clips.first), end = start
+        start.id = "inside-start"; start.startWordId = "w5"
+        end.id = "inside-end"; end.endWordId = "w4"
+        project.edits.clips = [start, end]
+        let model = EditorModel(document: VoxClipDocument(project: project, demo: true), app: enabledApp(), preview: DemoPreviewEngine())
+        defer { model.close() }
+        let text = TranscriptNSTextView(usingTextLayoutManager: true), renderer = TranscriptRenderer()
+        text.model = model; renderer.text = text
+        let undo = UndoManager(); undo.groupsByEvent = false; model.undoManager = undo
+        func assertMarkers(ai: Bool) throws {
+            renderer.rebuild(model: model)
+            let leading = try #require(text.map.span(id: "clip-start:inside-start"))
+            let trailing = try #require(text.map.span(id: "clip-end:inside-end"))
+            let word = try #require(text.map.span(id: "w4"))
+            #expect(text.map.spans.filter { $0.id == leading.id || $0.id == trailing.id }.count == 2)
+            if ai {
+                #expect(NSMaxRange(leading.range) <= word.range.location)
+                #expect(trailing.range.location >= NSMaxRange(word.range))
+                #expect(text.map.span(id: "w5")?.range == word.range)
+            }
+        }
+        try assertMarkers(ai: true)
+        undo.beginUndoGrouping()
+        try model.applyVoiceLab(.setEnabled(segmentID: project.voiceLab.segments[0].id, enabled: false))
+        undo.endUndoGrouping()
+        try assertMarkers(ai: false)
+        undo.undo(); try assertMarkers(ai: true)
+        undo.redo(); try assertMarkers(ai: false)
+    }
+    private func enabledApp() -> AppModel {
+        let app = AppModel()
+        app.settings.values["voiceLab.enabled"] = .bool(true)
+        app.settings.values["voiceLab.betaNoticeAccepted"] = .bool(true)
+        return app
+    }
     private func fixture() throws -> Project {
         let shared = try SharedResources.locate()
         return try JSONProjectStore.decode(Data(contentsOf: shared.root.appendingPathComponent("fixtures/voice-lab/passage-render-v3.voxclip")))
+    }
+    @Test(arguments: [false, true])
+    func snapshotUndoPreservesTimestampsAndPriorDirtyCount(alreadyDirty: Bool) throws {
+        let original = try fixture()
+        let document = VoxClipDocument(project: original, demo: true)
+        let model = EditorModel(document: document, app: enabledApp(), preview: DemoPreviewEngine())
+        defer { model.close() }
+        let undo = try #require(document.undoManager)
+        undo.groupsByEvent = false; model.undoManager = undo
+        document.updateChangeCount(.changeCleared)
+        if alreadyDirty { document.updateChangeCount(.changeDone) }
+        let editedAt = original.modifiedAt.addingTimeInterval(10)
+        model.editTimestampForTests = editedAt
+        undo.beginUndoGrouping()
+        try model.applyVoiceLab(.setEnabled(segmentID: original.voiceLab.segments[0].id, enabled: false))
+        undo.endUndoGrouping()
+        let edited = model.project
+        #expect(edited.modifiedAt == editedAt && document.isDocumentEdited)
+        model.editTimestampForTests = editedAt.addingTimeInterval(10)
+        undo.undo()
+        #expect(model.project == original && document.isDocumentEdited == alreadyDirty)
+        model.editTimestampForTests = editedAt.addingTimeInterval(20)
+        undo.redo()
+        #expect(model.project == edited && document.isDocumentEdited)
+        undo.undo()
+        #expect(model.project == original && document.isDocumentEdited == alreadyDirty)
+        undo.removeAllActions()
+    }
+    @Test func exportDisclosureSurvivesMissingAssetsForFullAndClipScopes() throws {
+        var project = try fixture()
+        project.voiceLab.assets = []
+        var outside = try #require(project.edits.clips.first)
+        outside.id = "outside"; outside.startWordId = "w1"; outside.endWordId = "w2"
+        project.edits.clips.append(outside)
+        let model = EditorModel(document: VoxClipDocument(project: project, demo: true), app: enabledApp(), preview: DemoPreviewEngine())
+        defer { model.close() }
+        let expected = "This video contains AI-modified speech. It will show AI MODIFIED."
+        #expect(model.exportDisclosure([.fullEdit]) == expected)
+        #expect(model.exportDisclosure([.clip("clip-main")]) == expected)
+        #expect(model.exportDisclosure([.clip("outside")]) == nil)
+        for scope: VoiceLabOutputScope in [.full, .clip("clip-main")] {
+            #expect(throws: (any Error).self) {
+                try VoiceLabRenderPreflight.prepare(project: project, scope: scope,
+                    paidRoot: model.app.locations.root.appendingPathComponent("VoiceLab"), labelPosition: .topRight)
+            }
+        }
+        #expect(model.exportDisclosure([.fullEdit, .clip("clip-main")]) == expected)
+        var disabled = project; disabled.voiceLab.segments[0].enabled = false
+        model.replace(disabled, name: "Disable missing replacement")
+        #expect(model.exportDisclosure([.fullEdit, .clip("clip-main")]) == nil)
+    }
+    @Test func acceptingSpeechAndLocalEditsIsOneExactUndoStep() throws {
+        var original = try fixture()
+        let segment = original.voiceLab.segments[0]
+        let assets = try #require(original.voiceLab.assets)
+        var voice = try #require(original.voiceLab.voices?.first)
+        voice.status = .active
+        original.voiceLab.segments = []; original.voiceLab.assets = []; original.voiceLab.voices = []
+        let document = VoxClipDocument(project: original, demo: true)
+        let model = EditorModel(document: document, app: enabledApp(), preview: DemoPreviewEngine())
+        defer { model.close() }
+        let undo = try #require(document.undoManager)
+        undo.groupsByEvent = false; model.undoManager = undo
+        undo.beginUndoGrouping()
+        try model.applyVoiceLab(.accept(segment, assets: assets, voice: voice), localCommands: [
+            .cutSelection(ids: ["w1"]), .correct(id: "w2", text: "Corrected")
+        ])
+        undo.endUndoGrouping()
+        let accepted = model.project
+        #expect(accepted.voiceLab.segments == [segment])
+        #expect(accepted.edits.cutWordIds.contains("w1"))
+        #expect(accepted.edits.corrections["w2"] == "Corrected")
+        undo.undo()
+        #expect(model.project == original && !undo.canUndo)
+        undo.redo()
+        #expect(model.project == accepted)
     }
     @Test(arguments: [false, true])
     func readyAcceptancePublishesOnceAndStalePublicationNeverMutates(cancel: Bool) async throws {
@@ -41,7 +170,7 @@ private struct AcceptanceTestKeys: KeyProvider {
         let assets = try #require(original.voiceLab.assets)
         original.voiceLab.segments = []; original.voiceLab.assets = []; original.voiceLab.voices = []
         let document = VoxClipDocument(project: original, demo: true)
-        let model = EditorModel(document: document, app: AppModel(), preview: DemoPreviewEngine())
+        let model = EditorModel(document: document, app: enabledApp(), preview: DemoPreviewEngine())
         defer { model.close() }
         let undo = try #require(document.undoManager)
         undo.groupsByEvent = false; model.undoManager = undo; model.editTimestampForTests = original.modifiedAt
@@ -107,7 +236,7 @@ private struct AcceptanceTestKeys: KeyProvider {
         var original = accepted
         original.voiceLab.segments = []; original.voiceLab.assets = []
         let document = VoxClipDocument(project: original, demo: true)
-        let model = EditorModel(document: document, app: AppModel(), preview: DemoPreviewEngine())
+        let model = EditorModel(document: document, app: enabledApp(), preview: DemoPreviewEngine())
         defer { model.close() }
         let undo = try #require(document.undoManager)
         undo.groupsByEvent = false; model.undoManager = undo
@@ -141,7 +270,7 @@ private struct AcceptanceTestKeys: KeyProvider {
     @Test func disclosureIsScopeSpecificAndOffRestoresTheSource() throws {
         let project = try fixture()
         let document = VoxClipDocument(project: project, demo: true)
-        let model = EditorModel(document: document, app: AppModel(), preview: DemoPreviewEngine())
+        let model = EditorModel(document: document, app: enabledApp(), preview: DemoPreviewEngine())
         defer { model.close() }
         #expect(model.containsAISpeech())
         #expect(model.exportAccessibleName("Export", targets: [.fullEdit]) == "Export, contains AI-modified speech")
@@ -159,7 +288,7 @@ private struct AcceptanceTestKeys: KeyProvider {
     func acceptedWordsPaintAndSpeakWithoutAWindow(appearance: NSAppearance.Name) throws {
         let project = try fixture()
         let document = VoxClipDocument(project: project, demo: true)
-        let model = EditorModel(document: document, app: AppModel(), preview: DemoPreviewEngine())
+        let model = EditorModel(document: document, app: enabledApp(), preview: DemoPreviewEngine())
         defer { model.close() }
         let coordinator = TranscriptTextView.Coordinator(model: model)
         let text = TranscriptNSTextView(usingTextLayoutManager: true)

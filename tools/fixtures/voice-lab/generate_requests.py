@@ -186,7 +186,7 @@ DISCOVERY = {
         {'model_id': 'eleven_v3', 'name': 'Eleven v3', 'can_do_text_to_speech': True, 'can_do_voice_conversion': False,
          'languages': [{'language_id': 'en'}, {'language_id': 'et'}, {'language_id': 'ja'}, {'language_id': 'th'}]},
         {'model_id': 'eleven_multilingual_v2', 'name': 'Eleven Multilingual v2', 'can_do_text_to_speech': True,
-         'can_do_voice_conversion': False, 'languages': [{'language_id': 'en'}]},
+         'can_do_voice_conversion': False, 'languages': [{'language_id': 'en'}, {'language_id': 'et'}, {'language_id': 'ja'}, {'language_id': 'th'}]},
         {'model_id': 'eleven_multilingual_sts_v2', 'name': 'Eleven Multilingual v2 STS', 'can_do_text_to_speech': False,
          'can_do_voice_conversion': True, 'languages': [{'language_id': 'en'}]},
     ],
@@ -225,13 +225,16 @@ def clone_request(source):
     assert display_name_valid(source['displayName'])
     consent_sample = next(item for item in source['samples'] if item['role'] == 'consentStatement')
     parts = [text_part('name', trim(source['displayName']) + ' (VoxClip)'),
-             file_part('files[]', 'consent-statement.wav', consent_sample)]
-    parts += [file_part('files[]', f'sample-{index + 2:02d}.wav', item)
+             file_part('files', 'consent-statement.wav', consent_sample)]
+    parts += [file_part('files', f'sample-{index + 2:02d}.wav', item)
               for index, item in enumerate(item for item in source['samples'] if item['role'] == 'training')]
+    description = f'VoxClip own-voice clone. Consent sha256:{sha256(consent_sample)}. Created {created(source["createdAt"])}.'
+    labels = {'language': source['language']}
+    if nonce := source.get('recoveryNonce'):
+        labels['voxclip_record_id'] = nonce
+        description += f' VoxClip request {nonce}.'
     parts += [text_part('remove_background_noise', 'true' if source['removeBackgroundNoise'] else 'false'),
-              text_part('description', f'VoxClip own-voice clone. Consent sha256:{sha256(consent_sample)}. '
-                                       f'Created {created(source["createdAt"])}.'),
-              text_part('labels', json.dumps({'language': source['language']}, separators=(',', ':')))]
+              text_part('description', description), text_part('labels', json.dumps(labels, separators=(',', ':')))]
     return multipart_request('/v1/voices/add', {}, parts)
 
 
@@ -243,7 +246,7 @@ def speech_request(source):
     body['seed'] = source['seed']
     for key, field, previous in [('previousText', 'previous_text', True), ('nextText', 'next_text', False)]:
         value = context(source.get(key), previous)
-        if value is not None:
+        if value is not None and source['modelId'] != 'eleven_v3':
             body[field] = value
     body['apply_text_normalization'] = 'auto'
     return {'method': 'POST', 'path': f'/v1/text-to-speech/{source["voiceId"]}/with-timestamps',
@@ -323,6 +326,15 @@ ORPHAN_PREVIOUS = 'x' * 10 + ' ' + COMBINING_DIAERESIS + ('sona ' * 60)[:299]
 JOINER_NEXT = 'w ' + 'w' * 297 + ZERO_WIDTH_JOINER + ' tail'
 
 CASES = [
+    case('clone_recovery_nonce_english', 'createClone', {
+        'displayName': 'Alex Example', 'language': 'en', 'createdAt': '2026-10-26T09:15:42Z',
+        'recoveryNonce': '01234567-89ab-cdef-0123-456789abcdef', 'removeBackgroundNoise': False,
+        'samples': [consent(), training()]}),
+    case('clone_recovery_nonce_estonian', 'createClone', {
+        'displayName': 'Mari', 'language': 'et', 'createdAt': '2026-10-26T09:15:42Z',
+        'recoveryNonce': 'fedcba98-7654-3210-fedc-ba9876543210', 'removeBackgroundNoise': True,
+        'samples': [consent(80_000)]}),
+    case('tts_v3_context_omitted', 'textToSpeech', speech('Hello.', 'eleven_v3', 'en', 42, previousText='Before', nextText='After')),
     case('clone_estonian_caller_order', 'createClone', {
         'displayName': '  Mari ' + O_TILDE_CAPITAL + 'unapuu ', 'language': 'et',
         'createdAt': '2026-10-26T12:15:42.750+03:00', 'removeBackgroundNoise': False,
@@ -337,41 +349,41 @@ CASES = [
     case('clone_name_keeps_zero_width_space', 'createClone', {
         'displayName': ' ' + ZERO_WIDTH_SPACE + 'Mari' + ZERO_WIDTH_SPACE + NEXT_LINE, 'language': 'et',
         'createdAt': '2026-10-26T09:15:42Z', 'removeBackgroundNoise': False, 'samples': [consent(80_000)]}),
-    case('tts_v3_split_words_dropped', 'textToSpeech', speech(
-        'T' + A_UMLAUT + 'na on ilus p' + A_UMLAUT + 'ev.', 'eleven_v3', 'et', 4_294_967_295,
+    case('tts_v2_split_words_dropped', 'textToSpeech', speech(
+        'T' + A_UMLAUT + 'na on ilus p' + A_UMLAUT + 'ev.', 'eleven_multilingual_v2', 'et', 4_294_967_295,
         previousText=SPLIT_PREVIOUS, nextText=SPLIT_NEXT)),
-    case('tts_v3_cut_beside_white_space', 'textToSpeech', speech(
-        'Right beside a space.', 'eleven_v3', 'en', 1, previousText=BESIDE_PREVIOUS, nextText=BESIDE_NEXT)),
-    case('tts_v3_cut_at_word_start', 'textToSpeech', speech(
-        'Sona algab siit.', 'eleven_v3', 'et', 2, previousText=WORD_START_PREVIOUS, nextText=EXACT_NEXT)),
+    case('tts_v2_cut_beside_white_space', 'textToSpeech', speech(
+        'Right beside a space.', 'eleven_multilingual_v2', 'en', 1, previousText=BESIDE_PREVIOUS, nextText=BESIDE_NEXT)),
+    case('tts_v2_cut_at_word_start', 'textToSpeech', speech(
+        'Sona algab siit.', 'eleven_multilingual_v2', 'et', 2, previousText=WORD_START_PREVIOUS, nextText=EXACT_NEXT)),
     case('tts_multilingual_v2_omitted_context', 'textToSpeech', speech(
         'Hello there.', 'eleven_multilingual_v2', 'en', 0,
         nextText=' ' + IDEOGRAPHIC_SPACE + '\t' + LINE_SEPARATOR + ' ')),
-    case('tts_v3_unbroken_long_word', 'textToSpeech', speech(
-        'Lause.', 'eleven_v3', 'et', 42, previousText='a' * 200 + ZERO_WIDTH_SPACE + 'b' * 150,
+    case('tts_v2_unbroken_long_word', 'textToSpeech', speech(
+        'Lause.', 'eleven_multilingual_v2', 'et', 42, previousText='a' * 200 + ZERO_WIDTH_SPACE + 'b' * 150,
         nextText='L' + U_UMLAUT + 'hike' + UNIT_SEPARATOR + 'j' + A_UMLAUT + 'tk.' + UNIT_SEPARATOR + ' ')),
-    case('tts_v3_japanese_scalar_cut', 'textToSpeech', speech(
-        scalars(0x30C6, 0x30B9, 0x30C8, 0x3067, 0x3059, 0x3002), 'eleven_v3', 'ja', 7,
+    case('tts_v2_japanese_scalar_cut', 'textToSpeech', speech(
+        scalars(0x30C6, 0x30B9, 0x30C8, 0x3067, 0x3059, 0x3002), 'eleven_multilingual_v2', 'ja', 7,
         previousText=JAPANESE_PREVIOUS, nextText=JAPANESE_NEXT)),
-    case('tts_v3_thai_cluster_kept', 'textToSpeech', speech(
-        THAI_HELLO, 'eleven_v3', 'th', 8, previousText=THAI_KEPT[0], nextText=THAI_KEPT[1])),
-    case('tts_v3_thai_cluster_split_after_base', 'textToSpeech', speech(
-        THAI_HELLO, 'eleven_v3', 'th', 11, previousText=THAI_AFTER_BASE[0], nextText=THAI_AFTER_BASE[1])),
-    case('tts_v3_thai_cluster_split_between_marks', 'textToSpeech', speech(
-        THAI_HELLO, 'eleven_v3', 'th', 12, previousText=THAI_BETWEEN_MARKS[0], nextText=THAI_BETWEEN_MARKS[1])),
-    case('tts_v3_emoji_split_after_zwj', 'textToSpeech', speech(
-        'Love wins.', 'eleven_v3', 'en', 9, previousText=EMOJI_AFTER_ZWJ[0], nextText=EMOJI_AFTER_ZWJ[1])),
-    case('tts_v3_emoji_split_before_zwj', 'textToSpeech', speech(
-        'Love stays.', 'eleven_v3', 'en', 13, previousText=EMOJI_BEFORE_ZWJ[0], nextText=EMOJI_BEFORE_ZWJ[1])),
-    case('tts_v3_estonian_marks_at_cut', 'textToSpeech', speech(
-        'Tere o' + COMBINING_TILDE + 'htust.', 'eleven_v3', 'et', 10, previousText=ESTONIAN_PREVIOUS, nextText=ESTONIAN_NEXT)),
-    case('tts_v3_estonian_vowel_cut', 'textToSpeech', speech(
-        'Ja' + COMBINING_DIAERESIS + 'rgmine peatus.', 'eleven_v3', 'et', 14, previousText=VOWEL_PREVIOUS, nextText=VOWEL_NEXT)),
-    case('tts_v3_clean_cut_after_word_rule', 'textToSpeech', speech(
-        'Puhas.', 'eleven_v3', 'et', 15, previousText=ORPHAN_PREVIOUS, nextText=JOINER_NEXT)),
+    case('tts_v2_thai_cluster_kept', 'textToSpeech', speech(
+        THAI_HELLO, 'eleven_multilingual_v2', 'th', 8, previousText=THAI_KEPT[0], nextText=THAI_KEPT[1])),
+    case('tts_v2_thai_cluster_split_after_base', 'textToSpeech', speech(
+        THAI_HELLO, 'eleven_multilingual_v2', 'th', 11, previousText=THAI_AFTER_BASE[0], nextText=THAI_AFTER_BASE[1])),
+    case('tts_v2_thai_cluster_split_between_marks', 'textToSpeech', speech(
+        THAI_HELLO, 'eleven_multilingual_v2', 'th', 12, previousText=THAI_BETWEEN_MARKS[0], nextText=THAI_BETWEEN_MARKS[1])),
+    case('tts_v2_emoji_split_after_zwj', 'textToSpeech', speech(
+        'Love wins.', 'eleven_multilingual_v2', 'en', 9, previousText=EMOJI_AFTER_ZWJ[0], nextText=EMOJI_AFTER_ZWJ[1])),
+    case('tts_v2_emoji_split_before_zwj', 'textToSpeech', speech(
+        'Love stays.', 'eleven_multilingual_v2', 'en', 13, previousText=EMOJI_BEFORE_ZWJ[0], nextText=EMOJI_BEFORE_ZWJ[1])),
+    case('tts_v2_estonian_marks_at_cut', 'textToSpeech', speech(
+        'Tere o' + COMBINING_TILDE + 'htust.', 'eleven_multilingual_v2', 'et', 10, previousText=ESTONIAN_PREVIOUS, nextText=ESTONIAN_NEXT)),
+    case('tts_v2_estonian_vowel_cut', 'textToSpeech', speech(
+        'Ja' + COMBINING_DIAERESIS + 'rgmine peatus.', 'eleven_multilingual_v2', 'et', 14, previousText=VOWEL_PREVIOUS, nextText=VOWEL_NEXT)),
+    case('tts_v2_clean_cut_after_word_rule', 'textToSpeech', speech(
+        'Puhas.', 'eleven_multilingual_v2', 'et', 15, previousText=ORPHAN_PREVIOUS, nextText=JOINER_NEXT)),
     # At most 300 scalars once trimmed, so neither step runs: a leading mark and a final ZWJ are sent.
-    case('tts_v3_short_context_sent_as_trimmed', 'textToSpeech', speech(
-        'L' + U_UMLAUT + 'hike.', 'eleven_v3', 'et', 16, previousText=IDEOGRAPHIC_SPACE + COMBINING_DIAERESIS + 'Tere',
+    case('tts_v2_short_context_sent_as_trimmed', 'textToSpeech', speech(
+        'L' + U_UMLAUT + 'hike.', 'eleven_multilingual_v2', 'et', 16, previousText=IDEOGRAPHIC_SPACE + COMBINING_DIAERESIS + 'Tere',
         nextText='Tere' + ZERO_WIDTH_JOINER + NEXT_LINE)),
     case('voice_changer_clean_audio_off', 'voiceChange', {
         'voiceId': VOICE_ID, 'modelId': 'eleven_multilingual_sts_v2', 'language': 'en', 'seed': 123_456_789,
@@ -384,40 +396,40 @@ CASES = [
 names = {item['case']: item['request']['multipart'][0]['value'] for item in CASES if item['operation'] == 'createClone'}
 assert names['clone_name_keeps_zero_width_space'] == ZERO_WIDTH_SPACE + 'Mari' + ZERO_WIDTH_SPACE + ' (VoxClip)'
 bodies = {item['case']: item['request'].get('json', {}) for item in CASES}
-assert bodies['tts_v3_split_words_dropped']['previous_text'] == ' ' + SPLIT_BODY
-assert bodies['tts_v3_split_words_dropped']['next_text'] == SPLIT_NEXT_BODY + ' '
-assert bodies['tts_v3_cut_beside_white_space']['previous_text'][0] == IDEOGRAPHIC_SPACE
-assert bodies['tts_v3_cut_beside_white_space']['next_text'] == 'w' * 299 + THIN_SPACE
-assert bodies['tts_v3_cut_at_word_start']['previous_text'] == WORD_START_PREVIOUS[6:]
-assert len(bodies['tts_v3_cut_at_word_start']['next_text']) == 300
+assert bodies['tts_v2_split_words_dropped']['previous_text'] == ' ' + SPLIT_BODY
+assert bodies['tts_v2_split_words_dropped']['next_text'] == SPLIT_NEXT_BODY + ' '
+assert bodies['tts_v2_cut_beside_white_space']['previous_text'][0] == IDEOGRAPHIC_SPACE
+assert bodies['tts_v2_cut_beside_white_space']['next_text'] == 'w' * 299 + THIN_SPACE
+assert bodies['tts_v2_cut_at_word_start']['previous_text'] == WORD_START_PREVIOUS[6:]
+assert len(bodies['tts_v2_cut_at_word_start']['next_text']) == 300
 assert 'previous_text' not in bodies['tts_multilingual_v2_omitted_context']
 assert 'next_text' not in bodies['tts_multilingual_v2_omitted_context']
-assert bodies['tts_v3_unbroken_long_word']['previous_text'] == 'a' * 149 + ZERO_WIDTH_SPACE + 'b' * 150
-assert bodies['tts_v3_unbroken_long_word']['next_text'][-1] == UNIT_SEPARATOR
-assert bodies['tts_v3_japanese_scalar_cut']['previous_text'] == JAPANESE_REST
-assert bodies['tts_v3_japanese_scalar_cut']['next_text'] == JAPANESE_NEXT[:300]
-assert bodies['tts_v3_thai_cluster_kept']['previous_text'] == THAI * 25
-assert bodies['tts_v3_thai_cluster_kept']['next_text'] == THAI[3:] + THAI * 24 + THAI[:3]
-assert bodies['tts_v3_thai_cluster_split_after_base']['previous_text'] == THAI[3:] + THAI * 24 + THAI[:1]
-assert bodies['tts_v3_thai_cluster_split_after_base']['next_text'] == THAI[1:] + THAI * 24
-assert bodies['tts_v3_thai_cluster_split_between_marks']['previous_text'] == THAI[3:] + THAI * 24 + THAI[:2]
-assert bodies['tts_v3_thai_cluster_split_between_marks']['next_text'] == THAI[2:] + THAI * 24
-assert bodies['tts_v3_emoji_split_after_zwj']['previous_text'] == COUPLE * 49 + MICROPHONE
-assert bodies['tts_v3_emoji_split_after_zwj']['next_text'] == MICROPHONE * 2 + COUPLE * 49
-assert bodies['tts_v3_emoji_split_before_zwj']['previous_text'] == COUPLE * 49 + MICROPHONE * 2
-assert bodies['tts_v3_emoji_split_before_zwj']['next_text'] == MICROPHONE + COUPLE * 49
+assert bodies['tts_v2_unbroken_long_word']['previous_text'] == 'a' * 149 + ZERO_WIDTH_SPACE + 'b' * 150
+assert bodies['tts_v2_unbroken_long_word']['next_text'][-1] == UNIT_SEPARATOR
+assert bodies['tts_v2_japanese_scalar_cut']['previous_text'] == JAPANESE_REST
+assert bodies['tts_v2_japanese_scalar_cut']['next_text'] == JAPANESE_NEXT[:300]
+assert bodies['tts_v2_thai_cluster_kept']['previous_text'] == THAI * 25
+assert bodies['tts_v2_thai_cluster_kept']['next_text'] == THAI[3:] + THAI * 24 + THAI[:3]
+assert bodies['tts_v2_thai_cluster_split_after_base']['previous_text'] == THAI[3:] + THAI * 24 + THAI[:1]
+assert bodies['tts_v2_thai_cluster_split_after_base']['next_text'] == THAI[1:] + THAI * 24
+assert bodies['tts_v2_thai_cluster_split_between_marks']['previous_text'] == THAI[3:] + THAI * 24 + THAI[:2]
+assert bodies['tts_v2_thai_cluster_split_between_marks']['next_text'] == THAI[2:] + THAI * 24
+assert bodies['tts_v2_emoji_split_after_zwj']['previous_text'] == COUPLE * 49 + MICROPHONE
+assert bodies['tts_v2_emoji_split_after_zwj']['next_text'] == MICROPHONE * 2 + COUPLE * 49
+assert bodies['tts_v2_emoji_split_before_zwj']['previous_text'] == COUPLE * 49 + MICROPHONE * 2
+assert bodies['tts_v2_emoji_split_before_zwj']['next_text'] == MICROPHONE + COUPLE * 49
 assert ESTONIAN_PREVIOUS[-300] == COMBINING_DIAERESIS and not any(map(space, ESTONIAN_PREVIOUS))
-assert bodies['tts_v3_estonian_marks_at_cut']['previous_text'] == ESTONIAN_PREVIOUS[-299:]
-assert bodies['tts_v3_estonian_marks_at_cut']['next_text'] == ESTONIAN_NEXT[:300]
+assert bodies['tts_v2_estonian_marks_at_cut']['previous_text'] == ESTONIAN_PREVIOUS[-299:]
+assert bodies['tts_v2_estonian_marks_at_cut']['next_text'] == ESTONIAN_NEXT[:300]
 assert ESTONIAN_NEXT[299] == COMBINING_DIAERESIS and ESTONIAN_NEXT[300] == ' '
 assert VOWEL_PREVIOUS[-300] == 'a' and VOWEL_PREVIOUS[-299] == COMBINING_DIAERESIS and not extends(VOWEL_NEXT[0])
-assert bodies['tts_v3_estonian_vowel_cut']['previous_text'] == VOWEL_PREVIOUS[-300:]
-assert bodies['tts_v3_estonian_vowel_cut']['next_text'] == VOWEL_NEXT[:299] and VOWEL_NEXT[299] == 'o'
+assert bodies['tts_v2_estonian_vowel_cut']['previous_text'] == VOWEL_PREVIOUS[-300:]
+assert bodies['tts_v2_estonian_vowel_cut']['next_text'] == VOWEL_NEXT[:299] and VOWEL_NEXT[299] == 'o'
 assert not any(map(space, VOWEL_PREVIOUS[-300:] + VOWEL_NEXT[:300]))
-assert bodies['tts_v3_clean_cut_after_word_rule']['previous_text'] == ('sona ' * 60)[:299]
-assert bodies['tts_v3_clean_cut_after_word_rule']['next_text'] == 'w ' + 'w' * 296
-assert bodies['tts_v3_short_context_sent_as_trimmed']['previous_text'] == COMBINING_DIAERESIS + 'Tere'
-assert bodies['tts_v3_short_context_sent_as_trimmed']['next_text'] == 'Tere' + ZERO_WIDTH_JOINER
+assert bodies['tts_v2_clean_cut_after_word_rule']['previous_text'] == ('sona ' * 60)[:299]
+assert bodies['tts_v2_clean_cut_after_word_rule']['next_text'] == 'w ' + 'w' * 296
+assert bodies['tts_v2_short_context_sent_as_trimmed']['previous_text'] == COMBINING_DIAERESIS + 'Tere'
+assert bodies['tts_v2_short_context_sent_as_trimmed']['next_text'] == 'Tere' + ZERO_WIDTH_JOINER
 
 
 def mutation(name, base, field, allowed=False, error=None, **change):
@@ -429,10 +441,12 @@ def mutation(name, base, field, allowed=False, error=None, **change):
 
 
 QUOTE_MUTATIONS = [
-    mutation('tts_seed', 'tts_v3_split_words_dropped', 'seed', value=4_294_967_294),
-    mutation('tts_previous_text', 'tts_v3_split_words_dropped', 'previousText', value='A different previous sentence.'),
-    mutation('tts_next_text', 'tts_v3_split_words_dropped', 'nextText', value='A different next sentence.'),
-    mutation('tts_same', 'tts_v3_split_words_dropped', 'same', allowed=True),
+    mutation('v3_previous_not_bound', 'tts_v3_context_omitted', 'previousText', value='Changed', allowed=True),
+    mutation('v3_next_not_bound', 'tts_v3_context_omitted', 'nextText', value='Changed', allowed=True),
+    mutation('tts_seed', 'tts_v2_split_words_dropped', 'seed', value=4_294_967_294),
+    mutation('tts_previous_text', 'tts_v2_split_words_dropped', 'previousText', value='A different previous sentence.'),
+    mutation('tts_next_text', 'tts_v2_split_words_dropped', 'nextText', value='A different next sentence.'),
+    mutation('tts_same', 'tts_v2_split_words_dropped', 'same', allowed=True),
     mutation('voice_changer_seed', 'voice_changer_clean_audio_off', 'seed', value=123_456_790),
     mutation('voice_changer_clean_audio', 'voice_changer_clean_audio_off', 'cleanAudioOn', value=True),
     mutation('voice_changer_same', 'voice_changer_clean_audio_off', 'same', allowed=True),

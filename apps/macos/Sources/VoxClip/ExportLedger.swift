@@ -261,10 +261,9 @@ extension EditorModel {
 
     func exportDisclosure(_ targets: [ExportTarget]) -> String? {
         for target in targets {
-            let scope: VoiceLabOutputScope
-            switch target { case .fullEdit: scope = .full; case .clip(let id): scope = .clip(id) }
-            let root = app.locations.root.appendingPathComponent("VoiceLab", isDirectory: true)
-            if let input = try? VoiceLabRenderPreflight.prepare(project: project, scope: scope, paidRoot: root, labelPosition: app.voiceLabLabelPosition), input.prepared.disclosure.required {
+            let required: Bool
+            switch target { case .fullEdit: required = containsAISpeech(); case .clip(let id): required = containsAISpeech(clipID: id) }
+            if required {
                 return Self.exportSheetDisclosure(required: true)
             }
         }

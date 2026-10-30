@@ -64,7 +64,7 @@ import VoxClipCore
             .sheet(isPresented: editorFlag(\.showVoiceLabOptIn)) {
                 if let editor = shell.editor { VoiceLabOptInView(editor: editor) }
             }
-            .sheet(isPresented: $shell.showShortcuts) { ShortcutsView() }
+            .sheet(isPresented: $shell.showShortcuts) { ShortcutsView(rewriteEnabled: shell.app.voiceLabRewriteEnabled) }
             .sheet(isPresented: Binding(get: { shell.app.showTour }, set: { shell.app.showTour = $0 })) { OnboardingView() }
     }
     /// A changed pause breath setting applies to the open project as one undo step.
@@ -488,13 +488,14 @@ struct SubtitleDetail: Equatable {
     var columnHeight: CGFloat
     var columnWidth: CGFloat
     var fineTune = false
+    var visibleRewrite: RewriteSession? { model.app.voiceLabRewriteEnabled ? model.rewrite : nil }
     var body: some View {
         VStack(spacing: 0) {
             ViewerSection(model: model, columnHeight: columnHeight, columnWidth: columnWidth)
                 .modifier(EditorPaneFocus(model: model, pane: .viewer))
             Divider()
             Group {
-                if let rewrite = model.rewrite { RewritePanel(session: rewrite) }
+                if let rewrite = visibleRewrite { RewritePanel(session: rewrite) }
                 else { CaptionsSection(model: model, fineTune: fineTune).modifier(EditorPaneFocus(model: model, pane: .panel)) }
             }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .controlSize(.small)

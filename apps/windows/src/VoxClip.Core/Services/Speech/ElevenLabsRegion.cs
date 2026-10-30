@@ -1,10 +1,12 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using VoxClip.Core.Services.Logging;
 using VoxClip.Core.Services.Settings;
 
 namespace VoxClip.Core.Services.Speech;
 
 /// <summary>Closed ElevenLabs residency regions; transcription §8.1.</summary>
+[JsonConverter(typeof(ElevenLabsRegionJsonConverter))]
 public enum ElevenLabsRegion
 {
     /// <summary>Default ElevenLabs endpoint.</summary>
@@ -17,6 +19,38 @@ public enum ElevenLabsRegion
     In,
     /// <summary>Singapore residency endpoint.</summary>
     Sg
+}
+
+/// <summary>Exact settings raw values on write, with legacy numeric regions accepted only on read.</summary>
+public sealed class ElevenLabsRegionJsonConverter : JsonConverter<ElevenLabsRegion>
+{
+    /// <inheritdoc />
+    public override ElevenLabsRegion Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        if (reader.TokenType == JsonTokenType.Number && reader.TryGetInt32(out var numeric) && numeric is >= 0 and <= 4)
+            return (ElevenLabsRegion)numeric;
+        if (reader.TokenType != JsonTokenType.String) throw new JsonException("Invalid ElevenLabs region");
+        return reader.GetString() switch
+        {
+            "default" => ElevenLabsRegion.Default,
+            "us" => ElevenLabsRegion.Us,
+            "eu" => ElevenLabsRegion.Eu,
+            "in" => ElevenLabsRegion.In,
+            "sg" => ElevenLabsRegion.Sg,
+            _ => throw new JsonException("Invalid ElevenLabs region")
+        };
+    }
+
+    /// <inheritdoc />
+    public override void Write(Utf8JsonWriter writer, ElevenLabsRegion value, JsonSerializerOptions options) => writer.WriteStringValue(value switch
+    {
+        ElevenLabsRegion.Default => "default",
+        ElevenLabsRegion.Us => "us",
+        ElevenLabsRegion.Eu => "eu",
+        ElevenLabsRegion.In => "in",
+        ElevenLabsRegion.Sg => "sg",
+        _ => throw new JsonException("Invalid ElevenLabs region")
+    });
 }
 
 /// <summary>Resolve the shared region setting without accepting a host from settings.</summary>

@@ -142,6 +142,7 @@ actor RewriteFixtureConnector: LLMConnector {
         }
         for entry in [RewriteEntry.selection, .context, .menu, .shortcut, .insertWords] {
             check("release hides Rewrite entry \(entry)", RewriteEntryPolicy.resolve(entry, enabled: true, editable: true, selection: true, internalBuild: false) == .unavailable)
+            check("release beta enables Rewrite entry \(entry)", RewriteEntryPolicy.resolve(entry, enabled: true, noticeAccepted: true, editable: true, selection: true, internalBuild: false) == (entry == .insertWords ? .unavailable : .openPassage))
             let off = RewriteEntryPolicy.resolve(entry, enabled: false, editable: true, selection: true)
             check("Voice Lab off only offers one-time menu flow \(entry)", off == (entry == .menu ? .turnOnVoiceLab : .unavailable))
         }

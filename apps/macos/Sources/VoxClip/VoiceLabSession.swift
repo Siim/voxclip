@@ -5,11 +5,12 @@ import VoxClipMedia
 
 @MainActor @Observable final class VoiceLabSession {
     enum Request: Identifiable, Equatable {
-        case subscription, verify, create, delete(String)
+        case subscription, verify, create, delete(String), removeLocal(String)
         var id: String { String(describing: self) }
         var title: String {
-            switch self { case .subscription: "Check ElevenLabs account"; case .verify: "Verify statement · < $0.01"; case .create: "Create your voice"; case .delete: "Delete voice" }
+            switch self { case .subscription: "Check ElevenLabs account"; case .verify: "Verify statement"; case .create: "Create your voice"; case .delete: "Delete voice"; case .removeLocal: "Remove from VoxClip only" }
         }
+        var defaultIsCancel: Bool { switch self { case .delete, .removeLocal: true; default: false } }
     }
     static let betaCopy = "Voice Lab can clone your own voice, change your voice and re-voice a few words. Everything it makes is labelled 'AI MODIFIED' in exports, as EU law requires. It uses your ElevenLabs key and, for lip sync, your fal.ai or sync.so key."
     static let providerCopy = "Voice Lab sends audio of your voice and the words to speak to ElevenLabs with your key. Under ElevenLabs' terms, ElevenLabs may use uploaded content, including your voice, to improve its services unless you opt out in your ElevenLabs account. Generated audio can be traced to your account."
@@ -51,11 +52,14 @@ import VoxClipMedia
     @ObservationIgnored private var statementWAV: Data?
     @ObservationIgnored private var training: [VoiceTrainingSample] = []
     @ObservationIgnored private var quote: VoiceLabQuote?
+    @ObservationIgnored private var verificationQuote: VoiceLabQuote?
     @ObservationIgnored private var acceptedAt = Date()
     init(app: AppModel) {
         self.app = app; self.store = VoiceConsentStore(locations: app.locations)
         let secrets = app.secrets; let logger = app.log
-        reconciler = VoiceOperationReconciler(store: store) { ElevenLabsVoiceLab(keys: secrets, region: $0, logger: logger) }
+        reconciler = VoiceOperationReconciler(store: store, regionIsCurrent: { region in
+            await MainActor.run { app.string("transcription.elevenlabs.region", fallback: "default") == region.rawValue }
+        }) { ElevenLabsVoiceLab(keys: secrets, region: $0, logger: logger) }
     }
     #if DEBUG
     init(app: AppModel, store: VoiceConsentStore, reconciler: VoiceOperationReconciler? = nil) {
@@ -70,8 +74,15 @@ import VoxClipMedia
         if subscription == nil { request(.subscription) }
     }
     var enabled: Bool { app.bool("voiceLab.enabled") }
-    var canRecord: Bool { enabled && !busy && ownVoice && adult && ownVideosOnly && (try? VoiceConsentText.displayName(displayName)) != nil }
-    var canCreate: Bool { enabled && !busy && verified && trainingReady && unsavedRecord == nil && pendingCreations.isEmpty }
+    var enrollmentLanguage: String {
+        statement?.language ?? app.shell.document?.project.transcript?.language ?? app.recent.compactMap { app.recentProjects.items[$0]?.language }.first ?? "en"
+    }
+    var speakerReady: Bool {
+        VoiceLabGate.canCheckOwnVoice(speakerAvailable: app.speakerModelLibrary.installed,
+            calibratedThreshold: app.speakerModelLibrary.model?.calibratedThreshold(language: enrollmentLanguage), language: enrollmentLanguage)
+    }
+    var canRecord: Bool { enabled && speakerReady && !busy && ownVoice && adult && ownVideosOnly && (try? VoiceConsentText.displayName(displayName)) != nil }
+    var canCreate: Bool { enabled && speakerReady && !busy && verified && trainingReady && unsavedRecord == nil && pendingCreations.isEmpty }
     var planMessage: String? {
         guard let subscription else { return "Check your ElevenLabs account before creating a voice." }
         if !subscription.canClone { return "Instant voice cloning needs an ElevenLabs Starter plan or higher." }
@@ -79,6 +90,7 @@ import VoxClipMedia
         return nil
     }
     var speakerMessage: String {
+        if !speakerReady { return VoiceConsentError.speakerUnavailable.localizedDescription }
         if app.speakerModelLibrary.model?.calibratedThreshold() == nil { return VoiceConsentError.speakerUnavailable.localizedDescription }
         if app.speakerModelLibrary.installed { return "Own-voice checks run on this Mac. Estonian is not available yet." }
         return "Download the own-voice check model in Settings → Voice Lab before creating a voice. No audio is sent for this check."
@@ -93,7 +105,7 @@ import VoxClipMedia
             operations = try await store.operations()
             deleting = Set(operations.filter { !$0.finished && ($0.kind == .delete || $0.state == .withdrawing) }.map(\.recordID))
             records = try await store.records()
-            scheduleRecovery()
+            if !Task.isCancelled { scheduleRecovery() }
         } catch { message = "The local voice records could not be read. No audio was sent." }
     }
     private func scheduleRecovery() {
@@ -106,29 +118,38 @@ import VoxClipMedia
             await self?.load()
         }
     }
-    func reconcileStartup() async { await load() }
+    func reconcileStartup() async {
+        guard !Task.isCancelled else { return }
+        do {
+            if !enabled, try await store.records().isEmpty, try await store.operations().isEmpty { return }
+            await load()
+        } catch { message = "The local voice records could not be read. No audio was sent." }
+    }
+    func stopRecovery() { recoveryTask?.cancel(); recoveryTask = nil }
     private func services() throws -> (ElevenLabsVoiceLab, VoiceEnrollment) {
         let selected = ElevenLabsRegion(rawValue: app.string("transcription.elevenlabs.region", fallback: "default")) ?? .default
         if let client, let enrollment, region == selected { return (client, enrollment) }
-        let client = ElevenLabsVoiceLab(keys: app.secrets, region: selected, logger: app.log)
-        let transcriber = ElevenLabsTranscriber(keys: app.secrets, region: selected, logger: app.log)
-        let cache = app.locations.cache.appendingPathComponent("voice-consent", isDirectory: true)
-        let enrollment = VoiceEnrollment(store: store, client: client, reconciler: reconciler) { wav, language in
-            let temporary = cache.appendingPathComponent(UUID().uuidString, isDirectory: true)
-            try FileManager.default.createDirectory(at: temporary, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-            defer { try? FileManager.default.removeItem(at: temporary) }
-            let pcm = try VoiceConsentAudio.pcm16k(wav)
-            let file = temporary.appendingPathComponent("statement.wav")
-            try VoiceTrainingAudio.wav(pcm, rate: 16_000).write(to: file, options: .atomic)
-            let audio = ExtractedAudio(wav16k: file, sampleCount: Int64(pcm.count), durationSeconds: Double(pcm.count) / 16_000)
-            let plan = TranscriptionPlan(engine: .elevenlabs, model: "scribe_v2", language: .forced(language), options: .init(diarize: false))
-            return try await transcriber.transcribe(.init(plan: plan, audio: audio, contentKey: UUID().uuidString)) { _ in }
-        }
+        let client = ElevenLabsVoiceLab(keys: app.secrets, region: selected, logger: app.log, spend: VoiceLabSpendLedger(locations: app.locations))
+        let enrollment = VoiceEnrollment(store: store, client: client, reconciler: reconciler)
         self.client = client; self.enrollment = enrollment; region = selected
         return (client, enrollment)
     }
     func request(_ action: Request) {
+        if (action == .verify || action == .create) && !speakerReady { message = VoiceConsentError.speakerUnavailable.localizedDescription; return }
         guard VoiceLabGate.canEnroll(enabled: enabled, busy: busy), !recorder.recording else { return }
+        if action == .verify {
+            guard let statementWAV, let statement else { return }
+            busy = true
+            Task {
+                defer { busy = false }
+                do {
+                    let (client, _) = try services()
+                    verificationQuote = try await client.prepareConsentVerification(wav: statementWAV, language: statement.language, requestID: UUID())
+                    if enabled { confirmation = action }
+                } catch { message = await errorMessage(error) }
+            }
+            return
+        }
         confirmation = action
     }
     func approve(_ action: Request) async {
@@ -136,6 +157,13 @@ import VoxClipMedia
         confirmation = nil; busy = true; message = nil
         defer { busy = false }
         do {
+            if action == .verify || action == .create {
+                guard speakerReady else { throw VoiceConsentError.speakerUnavailable }
+                let check = try await app.speakerModelLibrary.check(language: enrollmentLanguage)
+                guard check.available else { throw VoiceConsentError.speakerUnavailable }
+                let (_, enrollment) = try services()
+                try await enrollment.setSpeakerCheck(check)
+            }
             let (client, enrollment) = try services()
             app.set("voiceLab.providerConsent.elevenlabs", .bool(true))
             switch action {
@@ -148,18 +176,21 @@ import VoxClipMedia
             case .verify:
                 guard let statement, let statementWAV else { throw VoiceLabError.invalidInput }
                 let attestations = VoiceConsentRecord.Attestations(ownVoice: ownVoice, adult: adult, ownVideosOnly: ownVideosOnly, acceptedAt: acceptedAt)
-                try await enrollment.verify(recordID: recordID, statement: statement, wav: statementWAV, attestations: attestations, approved: true, enabled: enabled)
+                try await enrollment.verify(recordID: recordID, statement: statement, wav: statementWAV, attestations: attestations, approved: true, enabled: enabled, verificationQuote: verificationQuote)
                 verified = true; recorder.discard(); message = "Statement verified. Record your training read-aloud next."
             case .create:
                 guard let quote else { throw VoiceConsentError.speakerUnavailable }
                 subscription = try await client.plan()
                 let record = try await enrollment.create(quote: quote, approved: true, enabled: enabled, appVersion: AppModel.version)
-                training = []; statementWAV = nil; recorder.discard(); showEnrollment = false
+                finishCreation()
                 message = record.status == .verificationRequired ? "ElevenLabs needs to verify this voice before it can be used. Finish verification on elevenlabs.io, then come back." : "Your voice is ready."
                 await load()
             case .delete(let id):
                 try await enrollment.delete(recordID: id, approved: true, enabled: enabled)
                 await load(); message = "Voice deleted. Existing rendered takes remain playable and labelled."
+            case .removeLocal(let id):
+                try await store.removeFromVoxClipOnly(id)
+                await load(); message = "Voice removed from VoxClip only. The remote state is unknown; it may stay in your ElevenLabs account."
             }
         } catch {
             if let error = error as? VoiceConsentSaveError {
@@ -170,7 +201,12 @@ import VoxClipMedia
                 return
             }
             message = await errorMessage(error)
-            if action == .create { trainingReady = false; await load(recover: false) }
+            if action == .create {
+                let savedStatement = try? await store.statement(recordID: recordID)
+                trainingReady = !training.isEmpty && savedStatement != nil
+                quote = nil
+                await load(recover: false)
+            }
             if case .delete = action { await load(recover: false) }
             if action == .verify {
                 verified = false; statementWAV = nil; recorder.discard()
@@ -180,17 +216,17 @@ import VoxClipMedia
         }
     }
     func beginStatement() async {
+        guard speakerReady else { message = VoiceConsentError.speakerUnavailable.localizedDescription; return }
         guard canRecord, planMessage == nil else { return }
         busy = true; message = nil
         defer { busy = false }
         do {
+            guard try await app.speakerModelLibrary.check(language: enrollmentLanguage).available else { throw VoiceConsentError.speakerUnavailable }
             guard let shared = app.shared else { throw VoxClipError.sharedResourcesMissing }
             if let enrollment { try await enrollment.cancel(recordID: recordID) }
             try await store.abandonEnrollment(recordID: recordID)
             recordID = UUID().uuidString.lowercased()
-            let recentLanguage = app.recent.compactMap { app.recentProjects.items[$0]?.language }.first
-            let language = app.shell.document?.project.transcript?.language ?? recentLanguage ?? "en"
-            let selected = language == "et" ? "et" : "en"
+            let selected = enrollmentLanguage
             let words = try String(contentsOf: shared.root.appendingPathComponent("voice-lab/nonce-words-\(selected).txt"), encoding: .utf8).split(whereSeparator: \.isWhitespace).map(String.init)
             var rng = SystemRandomNumberGenerator()
             let data = try VoiceConsentText(shared: shared)
@@ -246,7 +282,23 @@ import VoxClipMedia
     var hasStatementRecording: Bool { statementWAV != nil }
     var creationCost: String {
         guard let quote else { return "Check ElevenLabs pricing before creating your voice." }
-        return quote.estimate.usd.map { VoiceLabCostPresentation.format($0) } ?? "VoxClip can't tell what this costs. Check ElevenLabs's pricing."
+        switch VoiceLabCostPresentation.kind(quote.estimate, isLipSync: false, providerName: "ElevenLabs") {
+        case .inline(let amount): return amount.isEmpty ? "This action is free." : amount
+        case .confirm(let copy): return copy
+        }
+    }
+    var verificationCost: String {
+        guard let verificationQuote else { return "VoxClip can't tell what this costs. Check ElevenLabs's pricing." }
+        switch VoiceLabCostPresentation.kind(verificationQuote.estimate, isLipSync: false, providerName: "ElevenLabs") {
+        case .inline(let amount): return amount.isEmpty ? "This action is free." : amount
+        case .confirm(let copy): return copy
+        }
+    }
+    func finishCreation() {
+        recordID = UUID().uuidString.lowercased()
+        statement = nil; statementWAV = nil; training = []; quote = nil
+        verified = false; trainingReady = false; recordingTraining = false
+        recorder.discard(); showEnrollment = false
     }
     func cancelEnrollment() async {
         guard !busy else { return }
@@ -275,7 +327,7 @@ import VoxClipMedia
         busy = true; defer { busy = false }
         await load(force: true)
         if let record = unsavedRecord, !operations.contains(where: { $0.recordID == record.id && !$0.finished }) {
-            unsavedRecord = nil; showEnrollment = false
+            unsavedRecord = nil; finishCreation()
             let saved = records.contains { $0.id == record.id && $0.status != .deleted }
             message = saved ? "Consent record saved. No create request was repeated." : "Voice removed. No create request was repeated."
         } else { message = "The consent record still could not be saved. Retry saving or Remove This Voice. Do not create it again." }
@@ -284,6 +336,7 @@ import VoxClipMedia
         if let error = error as? VoiceConsentError { return error.localizedDescription }
         if let error = error as? MicrophoneError { return error.localizedDescription }
         if let error = error as? VoiceLabError {
+            if let message = error.accessMessage { return message }
             switch error {
             case .planUnavailable: return "Instant voice cloning needs an ElevenLabs Starter plan or higher."
             case .noVoiceSlots: return "Your ElevenLabs account has no free voice slots."
@@ -299,6 +352,9 @@ import VoxClipMedia
 }
 
 extension AppModel {
+    var voiceLabRewriteEnabled: Bool {
+        VoiceLabGate.rewriteEnabled(enabled: bool("voiceLab.enabled"), noticeAccepted: bool("voiceLab.betaNoticeAccepted"), internalBuild: RewriteEntryPolicy.buildEnabled)
+    }
     var voiceLabLabelPosition: VoiceLabLabelPosition {
         switch string("voiceLab.labelPosition", fallback: "top-right") {
         case "top-left": .topLeft

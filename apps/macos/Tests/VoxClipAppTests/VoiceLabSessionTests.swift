@@ -7,8 +7,74 @@ import Testing
 
 @Suite("Headless Voice Lab session", .serialized, .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil, "Use an isolated VOXCLIP_DATA_DIR for app-model tests; no windows or provider requests are opened."))
 @MainActor struct VoiceLabSessionTests {
+    @Test func createdDateUsesTheFixedMonthTable() throws {
+        #expect(VoiceLabSettings.createdDate("2026-10-26T12:00:00Z", shared: try SharedResources.locate()) == "26 October 2026")
+        #expect(VoiceLabSettings.createdDate("invalid", shared: try SharedResources.locate()) == "Date unavailable")
+    }
+    @Test func deletionNeverUsesTheDestructiveDefault() {
+        #expect(VoiceLabSession.Request.delete("voice").defaultIsCancel)
+        for request: VoiceLabSession.Request in [.subscription, .verify, .create] { #expect(!request.defaultIsCancel) }
+    }
+    @Test func unavailableSpeakerCheckPreventsRecordingAndPaidApproval() async {
+        let app = AppModel(); app.settings.values["voiceLab.enabled"] = .bool(true)
+        let session = VoiceLabSession(app: app)
+        session.displayName = "Example"; session.ownVoice = true; session.adult = true; session.ownVideosOnly = true
+        #expect(!session.canRecord)
+        await session.beginStatement()
+        #expect(!session.recorder.recording && session.statement == nil)
+        session.request(.verify)
+        #expect(session.confirmation == nil)
+        await session.approve(.verify)
+        #expect(session.message == VoiceConsentError.speakerUnavailable.localizedDescription)
+        #expect(!app.bool("voiceLab.providerConsent.elevenlabs"))
+        for available in [false, true] {
+            for language in ["en", "et", "fr"] {
+                #expect(VoiceLabGate.canCheckOwnVoice(speakerAvailable: available, calibratedThreshold: 0.45, language: language) == (available && language == "en"))
+            }
+        }
+        for threshold: Double? in [nil, .nan, -.infinity, -1, 1.1] {
+            #expect(!VoiceLabGate.canCheckOwnVoice(speakerAvailable: true, calibratedThreshold: threshold, language: "en"))
+        }
+    }
+    @Test func startupAndSettingsFlushDoNotAwaitRemoteRecovery() async {
+        let app = AppModel(), barrier = SessionRecoveryBarrier()
+        app.voiceRecoveryForTests = { await barrier.pause() }
+        await app.start()
+        await barrier.wait()
+        #expect(!app.loadingSettings)
+        await app.flushSettings()
+        barrier.resume()
+        await barrier.finished()
+        #expect(barrier.cancelled)
+    }
     private func locations(_ root: URL) -> DataLocations {
         DataLocations(environment: ["VOXCLIP_DATA_DIR": root.path])
+    }
+    @Test func reopeningAndCancellingAfterSuccessPreservesTheActiveVoice() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = VoiceConsentStore(locations: locations(root))
+        let session = VoiceLabSession(app: AppModel(), store: store)
+        let wav = try VoiceTrainingAudio.wav([Float](repeating: 0.1, count: 5 * 48_000))
+        let shared = try SharedResources.locate()
+        var json = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: shared.root.appendingPathComponent("fixtures/voice-lab/consent-record.json"))) as? [String: Any])
+        json["recordId"] = session.recordID
+        var statement = try #require(json["statement"] as? [String: Any])
+        statement["audioSha256"] = VoiceLabFingerprint.bytes(wav); json["statement"] = statement
+        let record = try JSONDecoder().decode(VoiceConsentRecord.self, from: JSONSerialization.data(withJSONObject: json))
+        try await store.saveStatement(wav, recordID: record.id); try await store.save(record)
+        session.verified = true; session.trainingReady = true
+        session.finishCreation()
+        #expect(session.recordID != record.id && !session.verified && !session.trainingReady && session.statement == nil)
+        session.showEnrollment = true
+        await session.cancelEnrollment()
+        #expect(try await store.load(record.id) == record)
+        #expect(try await store.statement(recordID: record.id) == wav)
+        await #expect(throws: VoiceConsentError.inactive) { try await store.withdrawCreation(recordID: record.id) }
+        try FileManager.default.removeItem(at: store.root.appendingPathComponent("\(record.id)/statement.wav"))
+        let restarted = VoiceConsentStore(locations: locations(root))
+        await #expect(throws: (any Error).self) { try await restarted.reconcileAbandonedEnrollments() }
+        #expect(FileManager.default.fileExists(atPath: store.root.appendingPathComponent("\(record.id)/record.json").path))
     }
     @Test func enablingBetaLoadsExistingRecordsBeforeAccountApproval() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
@@ -110,6 +176,22 @@ import Testing
         #expect(session.operations.map(\.id) == [operation.id])
         #expect(session.operations.first?.displayState == "Removing…")
     }
+}
+
+@MainActor private final class SessionRecoveryBarrier {
+    private var arrived = false
+    private var arrival: CheckedContinuation<Void, Never>?
+    private var release: CheckedContinuation<Void, Never>?
+    private var completion: CheckedContinuation<Void, Never>?
+    private var done = false
+    var cancelled = false
+    func pause() async {
+        await withCheckedContinuation { release = $0; arrived = true; arrival?.resume(); arrival = nil }
+        cancelled = Task.isCancelled; done = true; completion?.resume(); completion = nil
+    }
+    func wait() async { if !arrived { await withCheckedContinuation { arrival = $0 } } }
+    func resume() { release?.resume(); release = nil }
+    func finished() async { if !done { await withCheckedContinuation { completion = $0 } } }
 }
 
 private struct VoiceLabAppKeys: KeyProvider {

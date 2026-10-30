@@ -141,7 +141,7 @@ Creating an Instant Voice Clone takes a verified own-voice consent record and sp
 
 Each paid action starts with preparation on the same service instance that will dispatch it: Swift uses `prepareClone(_:policy:requestID:)`, `prepareDelete`, `prepareSynthesis(text:modelID:voice:language:options:requestID:)` or `prepareConversion(audio:modelID:voice:language:seed:cleanAudioOn:requestID:)`. Windows uses `PrepareClone(VoiceLabCloneRequest, …)`, `PrepareDeletion`, `PrepareSynthesis(…, VoiceLabSpeechOptions, …)` or `PrepareConversion(…, uint seed, bool cleanAudioOn, …)`. `VoiceLabSpeechOptions` carries the seed and the optional previous and next text. Preparation performs no provider call. Its immutable quote binds the operation and caller request ID, provider/region/endpoint, displayed estimate, selected model/voice/language, consent identity and verification state, and all billable text or the SHA-256 of exact audio bytes. It also binds every other request field that can change the paid result:
 
-- **Speech:** the seed and the trimmed `previous_text` and `next_text`.
+- **Speech:** the seed and, except for `eleven_v3`, the trimmed `previous_text` and `next_text`. V3 has no stitching: context is neither sent nor bound into its quote.
 - **Conversion:** the seed and the Clean audio state.
 - **Clone:** the trimmed display name, the `labels` language, the creation time, the noise-removal choice, and each sample's position, role and SHA-256.
 
@@ -532,11 +532,11 @@ POST {base}/v1/voices/add
 xi-api-key: <key>
 Content-Type: multipart/form-data; boundary="voxclip-<32 lowercase hex>"
   name                     = "{display name} (VoxClip)"
-  files[]                  = consent-statement.wav          (the consent statement recording; always the first file)
-  files[]                  = sample-02.wav, sample-03.wav …  (the training samples in caller order)
+  files                    = consent-statement.wav          (the consent statement recording; always the first file)
+  files                    = sample-02.wav, sample-03.wav …  (the training samples in caller order)
   remove_background_noise  = false, or true per §6.5 step 5
   description              = "VoxClip own-voice clone. Consent sha256:{statementSha256}. Created {created}."
-  labels                   = {"language":"et"}       (a JSON string. The API documents only the keys language, accent, gender and age, so the consent marker goes in description; spike S5 verifies the encoding)
+  labels                   = {"language":"et","voxclip_record_id":"{recordId}"} (a JSON string; the private recovery hint is best-effort, never the only recovery evidence)
 → 200 { "voice_id": "c38kUX8pkfYO2kHyqfFy", "requires_verification": false }
 ```
 
@@ -587,6 +587,7 @@ Stored locally in `<data>/VoiceLab/consent/<recordId>/record.json`, never upload
   "status": "active",
   "createdAt": "2026-10-25T12:00:00Z",
   "deletedAt": null,
+  "creator": { "region": "eu", "keyFingerprint": "0123456789abcdef" },
   "statement": { "language": "et", "text": "Minu nimi on …", "nonce": ["…", "…", "…", "…"],
                  "audioFile": "statement.wav", "audioSha256": "…", "stt": { "wer": 0.04, "transcriptionId": "…" } },
   "attestations": { "ownVoice": true, "adult": true, "ownVideosOnly": true, "acceptedAt": "2026-10-25T11:58:10Z" },
@@ -599,8 +600,21 @@ Stored locally in `<data>/VoiceLab/consent/<recordId>/record.json`, never upload
 - Sample audio is deleted after a successful upload. Only the hashes stay.
 - The statement audio stays until the voice is deleted.
 - The project file only references the record by `recordId` (§10.1).
+- New records include `creator` with a settings region raw value (`default`, `us`, `eu`, `in`, `sg`) and the first 16 lowercase hex characters of SHA-256 over the API key's UTF-8 bytes. Never persist the key. Legacy records omit `creator` and match on their recorded region or operation journal's region only, with `default` when neither records one. Both operation kinds carry the same fingerprint as `creatorKeyFingerprint`.
 
-Each create or delete operation has one private, atomically written journal at `<data>/VoiceLab/voice-ops/<operationId>.json`. It contains only the operation and record IDs, kind, state, provider recovery label/nonce, region, remote voice ID once known, timestamps, verification requirement, retry metadata and a minimal audit object. The audit contains the record ID, statement-audio SHA-256, training-recording SHA-256 values, creation and attestation timestamps, language and remote ID once known. It contains no audio, statement text, display name or embedding. The audit is durable in the initial creation intent; recovery of an older journal copies it from any surviving draft before deleting local audio or the unresolved draft. A create's full consent draft uses the normal `record.json` above, not a second copy in the journal; it cannot authorize generation while the operation is unfinished. Earlier record-adjacent journals are migrated into this directory before recovery.
+Each create or delete operation has one private, atomically written journal at `<data>/VoiceLab/voice-ops/<operationId>.json`. It contains only the operation and record IDs, kind, state, provider recovery label/nonce, exact expected provider name, region, remote voice ID once known, timestamps, verification requirement, retry metadata and a minimal audit object. The audit contains the record ID, statement-audio SHA-256, training-recording SHA-256 values, creation and attestation timestamps, language and remote ID once known. It contains no audio, statement text or embedding. The audit is durable in the initial creation intent. A journal without audit data cannot authorize generation; cleanup still runs. A create's full consent draft uses the normal `record.json` above, not a second copy in the journal; it cannot authorize generation while the operation is unfinished.
+
+Recovery lists owned voices of category `cloned`. It matches the recovery label OR the exact expected provider name with `created_at_unix` inside the journal's 24-hour creation window (rounded down to the provider's seconds precision at the start). The label is a best-effort hint, not the sole recovery evidence. Multiple candidates, or a same-name candidate without a creation timestamp and without the label, require user review in Settings; no voice is deleted. That obligation stays visible even if a later listing is empty. Retry can resolve it only with one unambiguous match.
+
+A candidate carrying a different recovery nonce is not ours, even if its name and creation time match. It is never deleted by fallback matching. An ambiguous or unprovable candidate keeps the obligation visible for user review.
+
+Completing or recovering a successful creation resets the enrollment session to a new record ID. Cancelling a later sheet cannot withdraw a saved active voice. Withdrawal without an unfinished creation refuses active and verification-required records. Startup cleanup removes only absent records or pending drafts; a non-pending record that fails validation is preserved and reported, never inferred to be abandoned.
+
+The transcript keeps clip boundaries inside an atomic accepted replacement visible: interior start badges map to its leading edge and interior end brackets to its trailing edge, each in source order. Source clip ranges are unchanged. Disabling, undoing and redoing the replacement rebuilds those markers from the same source IDs.
+
+Remote reconciliation starts in a background task after settings load, never in the import or quit critical path. It is cancelled on quit and follows persisted retry backoff, including withdrawal deletes. With the beta off and no consent records or obligations, it does not start provider or Keychain work. Existing cleanup obligations can finish in the background even while the beta is off; turning the beta off does not abandon a deletion.
+
+Before Record or any paid enrollment step, the same own-voice predicate requires an available local speaker check, a finite calibrated threshold and a calibrated language (English in 0.1.0). Unavailable checks refuse with `speakerUnavailable` before Scribe receives audio. The model's verified files are rechecked at the recording and paid-action boundaries.
 
 On macOS, production speaker-check construction has a private initializer and one factory. The factory takes the verified ONNX model handle and catalogue entry, checks the entry against the trusted shipped catalogue, revalidates model identity and files, and derives the language-bound threshold itself. No Release initializer exposes a numeric threshold or arbitrary embedder, including inside the Media module. Unavailable checks are a non-authorizing singleton; fake embedder injection exists only in DEBUG Testing SPI. Release boundary checks include same-module negative compilation against the production declaration.
 
@@ -623,11 +637,13 @@ The result is cached per (project `contentKey`, `recordId`).
 
 [Delete voice] runs:
 
-1. `DELETE {base}/v1/voices/{voice_id}` → `{"status":"ok"}`. A 404 also counts as deleted.
+1. Verify the current key fingerprint and region against the creator binding, then `DELETE {base}/v1/voices/{voice_id}` → `{"status":"ok"}`. A 404 counts as deleted only after that match.
 2. Delete the local statement audio.
 3. Set `status: "deleted"` and `deletedAt`, keeping the record and its hashes as the audit trail.
 
-The same operation journal records `intent` → `remoteDeleted` → `audioRemoved` → `tombstoned`, then is removed. The reconciler enumerates `voice-ops/` independently of consent records, so a missing `record.json` cannot strand deletion or its local audio. Each boundary is independently resumable; repeating a DELETE after an uncertain response is safe because 404 is success. Withdrawal of a creation uses its existing journal, not a second deletion journal. Existing rendered assets are never deleted by this recovery.
+The same operation journal records `intent` → `remoteDeleted` → `audioRemoved` → `tombstoned`, then is removed. The reconciler enumerates `voice-ops/` independently of consent records, so a missing `record.json` cannot strand deletion or its local audio. Each boundary is independently resumable; repeating a DELETE after an uncertain response is safe because a creator-matched 404 is success. Withdrawal of a creation uses its existing journal, not a second deletion journal. Existing rendered assets are never deleted by this recovery.
+
+On a creator mismatch, refuse with: "This voice was created with a different ElevenLabs key or region. Use that key to delete it, or remove it from VoxClip only; the voice may stay in that ElevenLabs account." **Remove from VoxClip only** makes no remote request and writes a non-authorizing tombstone with `remoteStateUnknown: true`.
 
 If an uncertain creation's unresolved draft was discarded and the remote voice appears later, deletion writes the journal's minimal audit to `<data>/VoiceLab/consent/<recordId>/audit.json`, adding the remote ID and deletion timestamp before removing the operation. It does not fabricate a full consent record or retain its statement text, name or embedding. This private, non-authorizing tombstone survives startup cleanup and keeps the original hashes and timestamps. Existing full consent records are still tombstoned as above. Journals from older versions whose draft and audit were already lost can finish remote cleanup but cannot reconstruct missing historical hashes.
 
@@ -900,7 +916,7 @@ POST {base}/v1/text-to-speech/{voice_id}/with-timestamps?output_format=pcm_24000
 → 200 { "audio_base64": "…", "alignment": … | null, "normalized_alignment": … | null }
 ```
 
-Core removes Unicode White_Space at both ends of `previous_text` and `next_text`. A trimmed text of at most 300 Unicode scalars is sent as it is. A longer `previous_text` keeps its last 300 scalars and a longer `next_text` its first 300, and two steps then adjust the cut:
+For `eleven_v3`, omit `previous_text` and `next_text`; stitching is unavailable. Other models use the following context rules. Core removes Unicode White_Space at both ends of `previous_text` and `next_text`. A trimmed text of at most 300 Unicode scalars is sent as it is. A longer `previous_text` keeps its last 300 scalars and a longer `next_text` its first 300, and two steps then adjust the cut:
 
 1. **Word rule.** If the kept scalars contain at least one White_Space character, a word split by the cut is dropped. White_Space beside the cut is kept.
 2. **Clean cut.** The cut then moves until it splits no cluster.
@@ -1358,15 +1374,15 @@ The shared `passage-project.voxclip`, `full-take-project.voxclip` and `plan-case
 
 ### 10.3 Undo
 
-Accept, turn off, turn on, delete, choosing another candidate, and changing the lip-sync tier are each one undo step. Undo never deletes assets. Unreferenced assets are removed when the project is closed, after 7 days.
+Accept, turn off, turn on, delete, choosing another candidate, and changing the lip-sync tier are each one undo step. Undo and redo restore the exact project snapshots, including `modifiedAt`, and preserve the document's prior clean or dirty count. Undo never deletes assets. Unreferenced assets are removed when the project is closed, after 7 days.
 
 Mac W5 stages these actions behind DEBUG until W6. `VoiceLabRecipeBuilder` builds the candidate from the fitted publication, fit analysis, QA, consent reference, receipt and quote without I/O. It uses the published unity asset, keeps original paid chunks, records relative synthetic words and source-grid video/seam policy, and refuses failed QA or changed-duration acceptance without supported explicit video treatment. Retimed output is bounded by the v3 0.80–1.25 speed range; a lip-sync choice alone is not a rendered video asset and cannot be accepted. `RewriteGenerationSession.accept` reserves acceptance before publication, revalidates its input revision and project snapshot after each suspension, and applies `VoiceLabEditCommand` through the document's single native undo transaction. Failed or stale publication never changes the project. Other fitting candidates with the same widened source window are retained; candidates requiring an unapproved length treatment or a different window are not silently substituted.
 
 `Domain/Editing/EditingContracts.swift` defines the DEBUG-only `VoiceLabEditCommand` accept, setEnabled, delete and chooseCandidate project-value transitions and their undo action names. The app registers exactly one whole-project inverse for each successful command. Windows must mirror the command variants, validation, asset conflict/deduplication rule and one-step project/asset-reference/dirty-state undo semantics when it wires acceptance; this does not alter the shared project schema or source timings.
 
-The specification does not define an undo-history expiry or authorize collecting catalogued assets after a segment is disabled, deleted or undone. Mac therefore conservatively retains every asset listed in any project snapshot observed by the document, persists that protection in the project's private `.asset-retention.json`, and never ages it out. Complete unlisted WAV/FLAC/MP4 assets get a persisted discovery timestamp (including startup discovery), not their creation or modification date. Only project close can delete them, at seven days or later. An open sibling document defers deletion. The cleanup holds the publication lock, pins directories, skips symlinks and unrelated names, and rechecks file identity before removing a file. Corrupt retention metadata refuses cleanup; backward clocks cannot accelerate it. A narrower catalog/history retention horizon remains a lead decision, not an inferred destructive policy.
+The specification does not define an undo-history expiry or authorize collecting catalogued assets after a segment is disabled, deleted or undone. Mac therefore conservatively retains every asset listed in any project snapshot observed by the document, persists that protection in the project's private `.asset-retention.json`, and never ages it out. Complete unlisted WAV/FLAC/MP4 assets discovered at launch are paid data, permanently protected rather than automatically collected in 0.1.0. Other unreferenced candidates observed at close get a persisted discovery timestamp and `lastObservedAt`, not their creation or modification date. Only project close can delete them, at seven days or later. A wall time earlier than any recorded timestamp, a forward jump exceeding 24 hours beyond monotonic elapsed time within one session, or loss of monotonic continuity at a process restart restarts grace. An open sibling document defers deletion. Cleanup holds the publication lock, pins directories, skips symlinks and unrelated names, and rechecks references and file identity immediately before every deletion. Corrupt retention metadata refuses cleanup. A narrower catalog/history retention horizon remains a lead decision, not an inferred destructive policy.
 
-Accepted transcript text is presentation-only: its stored synthetic words replace the covered source words in the text view, with the AI chip and a one-pixel dashed accent underline. The underlying transcript and timings remain unchanged. Turning the segment off reveals the original source text. Sidebar scope metadata, viewer/stage and export accessible names disclose enabled AI speech even if local media is unavailable; Full Take does not inherit the active clip's scope. The DEBUG Use Take footer closes Rewrite and returns focus only after successful acceptance. The privacy panel lists all six §12 data rows and QA audio. Native accept/transcript captures remain lead-owned gates.
+Accepted transcript text is presentation-only: its stored synthetic words replace the covered source words in the text view, with the AI chip and a one-pixel dashed accent underline. The underlying transcript and timings remain unchanged. Turning the segment off reveals the original source text. Sidebar scope metadata, viewer/stage, the visible Export sheet disclosure and export accessible names disclose enabled AI speech even if local media is unavailable; Full Take does not inherit the active clip's scope. Asset preflight failures are separate errors, never a reason to hide the disclosure. The DEBUG Use Take footer closes Rewrite and returns focus only after successful acceptance. The privacy panel lists all six §12 data rows and QA audio. Native accept/transcript captures remain lead-owned gates.
 
 The v2 Core functions return new project values for accept, enable/disable, delete and candidate selection. They do not register app `UndoManager`/`EditHistory` steps. Mac W5 adds the app undo wiring and conservative cleanup above; Windows app wiring and lip-sync tier changes remain integration work. No Core transition deletes a paid asset.
 
@@ -1382,7 +1398,7 @@ macOS uses AVAudioFile for WAV and for FLAC when the installed Core Audio decode
 
 Mac `EditorModel`, `CLIWorkflow` and `CompositionBuilder`, and Windows `EditorViewModel`, `CliOperations` and Media preview/export now use the request-bound v3 path in §10.5. They retain prepared handles and use `VoiceLabOutputPlan.pieces` for mixed source/synth composition. Older recipes and unsupported capabilities remain refused. This boundary does not add v2 fields for room tone, seams, video retiming, consent, disclosure or lip sync. Version 3 defines those explicit recipes in §10.5; native composition and workflow gates remain required before an enabled replacement can render.
 
-At launch, before writing paid or fitted audio, Mac recovery deletes only store-owned, regular `.partial` files older than the operating system's process-start timestamp. The exact temporary naming convention, no-follow descriptors and a shared inter-process writer/recovery lock protect active writers and unrelated files. Complete unlisted assets are never startup garbage: the seven-day unreferenced cleanup starts their clock at discovery, not their file age.
+At launch, before writing paid or fitted audio, Mac recovery deletes only store-owned, regular `.partial` files older than the operating system's process-start timestamp. The exact temporary naming convention, no-follow descriptors and a shared inter-process writer/recovery lock protect active writers and unrelated files. Complete unlisted assets are paid data, never startup garbage or automatically deleted after discovery.
 
 ### 10.5 Version 3 render recipe and preparation (ADR-R26)
 
@@ -1697,7 +1713,7 @@ Unit tests run in both suites (`VoxClipCoreTests`, `VoxClip.Core.Tests`), with s
    - A take whose pauses and seams can hold only part of its residual returns `changedDuration` with every edit at its limit. `residualSeconds` is the rest, and `outDuration = duration(W) + residualSeconds`.
    - At a take edge, the pad keeps the first aligned word at its source distance from the edge.
    - Both Cores run placement → lendable silence → fit → recipe → both validators → output planner → render preparation on a 44.1 kHz millisecond-word window, hard/hard at [2.556, 3.143] s, and a take-end variant. Exact fits keep identical source/output sample lengths and prepare as source video. Changed-duration recipes prepare in §8.9 step 3's `zoomCover` or `lipsync` mode; native request capture still refuses both (§10.5), preserving the source-only renderer gate.
-5. **Alignment to words (§8.8).** The character alignment for `"I said 2025"` gives 3 words, all `synthetic: true`. A null alignment falls back to the Scribe words with interpolation.
+5. **Alignment to words (§8.8).** The character alignment for `"I said 2025"` gives 3 words, all `synthetic: true`. A null or malformed alignment ends the run after that paid take; the paid asset is retained. Scribe/interpolation fallback remains deferred with §8.5 rather than buying further takes that cannot pass alignment.
 6. **Candidate ranking (§8.6).** Rejected candidates are never shown. An exactly fitted take has `fitCost = 0`, and a `changedDuration` take's fit cost rises with `|residualSeconds|`. The score formula orders a fixed set.
 7. **Plan mapping (§10.2).**
    - With `outDuration == in`, the plan's `mapTime` is unchanged outside the segment.
@@ -1719,7 +1735,9 @@ Unit tests run in both suites (`VoxClipCoreTests`, `VoxClip.Core.Tests`), with s
     - A recognised language that differs from the statement fails.
     - Date strings use the month tables in en and et.
 12. **Request goldens** for every endpoint in §4.3, §6.7, §7.3, §8.5, §8.8, §9.4 and §9.5: method, path, headers (with key values redacted), body or multipart parts.
+    - The Isolator, forced-alignment, text-to-dialogue and lip-sync client goldens are waiting on their §4/§9 clients. Clean audio and Lip sync stay visibly unavailable with a reason in 0.1.0; no successful provider state machine is implied by the TTS/IVC goldens.
 13. **Provider state machines** with mocked HTTP:
+    - The following §9 state machines remain waiting on those clients; the unavailable UI cannot submit them.
     - fal `IN_QUEUE` → `IN_PROGRESS` → `COMPLETED`, and the cancel responses 200, 202 and 400;
     - sync.so `PENDING` → `COMPLETED`, `FAILED` with `errorCode`, and a 429 retry reusing the same Idempotency-Key;
     - a submit is never retried after a timeout.

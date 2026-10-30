@@ -3,6 +3,7 @@ import Foundation
 /// Request-bound Voice Lab data. The paid root is a location for preflight only; Media reads
 /// the immutable private snapshots returned by VoiceLabAssets after validation.
 public struct VoiceLabRenderInput: Sendable, Equatable {
+    public static func supportsVideoMode(_ mode: VoiceLabVideoMode) -> Bool { mode == .source }
     public let project: Project
     public let scope: VoiceLabOutputScope
     public let labelPosition: VoiceLabLabelPosition
@@ -12,7 +13,7 @@ public struct VoiceLabRenderInput: Sendable, Equatable {
     public init(project: Project, scope: VoiceLabOutputScope, labelPosition: VoiceLabLabelPosition,
                 paidRoot: URL, prepared: VoiceLabPreparedRender) throws {
         try prepared.verify(project: project, scope: scope, labelPosition: labelPosition)
-        guard prepared.selectedSegmentRecipes.allSatisfy({ $0.recipe.video.mode == .source })
+        guard prepared.selectedSegmentRecipes.allSatisfy({ Self.supportsVideoMode($0.recipe.video.mode) })
         else { throw VoiceLabProjectError.videoModeUnsupported }
         self.project = project
         self.scope = scope

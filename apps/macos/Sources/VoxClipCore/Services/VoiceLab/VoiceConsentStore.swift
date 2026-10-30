@@ -37,9 +37,14 @@ public actor VoiceConsentStore {
             let directory = try directory(id)
             guard !(try hasOperation(id)) else { continue }
             if try auditTombstone(recordID: id) != nil { continue }
-            if let record = try? load(id), record.voiceId != "pending" {
-                if record.status == .deleted { try discardStatement(recordID: id) }
-                continue
+            let recordFile = try file("record.json", in: directory)
+            if manager.fileExists(atPath: recordFile.path) {
+                let stored = try JSONDecoder().decode(VoiceConsentRecord.self, from: Data(contentsOf: recordFile))
+                if stored.voiceId != "pending" {
+                    let record = try load(id)
+                    if record.status == .deleted { try discardStatement(recordID: id) }
+                    continue
+                }
             }
             try manager.removeItem(at: directory)
         }

@@ -160,6 +160,10 @@ extension ProviderChoice {
     let locations = DataLocations()
     private var settingsTask: Task<Void, Never>?
     private var startupTask: Task<Void, Never>?
+    private var voiceRecoveryTask: Task<Void, Never>?
+    #if DEBUG
+    var voiceRecoveryForTests: (@MainActor () async -> Void)?
+    #endif
     private var updateTask: Task<Void, Never>?
     private var pendingSettings: [String: JSONValue] = [:]
     var modelLibrary: ModelLibrary {
@@ -220,7 +224,6 @@ extension ProviderChoice {
             }.value
         }
         catch { await log.write(LogEntry(level: .warn, category: "voice-lab", message: "Voice Lab partial-file recovery could not finish; paid assets were kept.")) }
-        await voiceLabSession.reconcileStartup()
         recent = Self.isTestSession ? [] : NSDocumentController.shared.recentDocumentURLs
         do {
             var loaded = try await settingsStore.load()
@@ -237,6 +240,7 @@ extension ProviderChoice {
             return
         }
         restoreCachedUpdate()
+        startVoiceRecovery()
         #if DEBUG
         if Self.isTestSession || DebugProbes.requested { return }
         #endif
@@ -312,6 +316,7 @@ extension ProviderChoice {
         }
     }
     func flushSettings() async {
+        stopVoiceRecovery()
         await startupTask?.value
         let pending = settingsTask
         settingsTask?.cancel()
@@ -319,6 +324,19 @@ extension ProviderChoice {
         guard settingsLoaded else { return }
         do { try await settingsStore.save(settings); try await settingsStore.flush() }
         catch { notice = await safeError(error, context: "Settings could not be saved.") }
+    }
+    private func startVoiceRecovery() {
+        voiceRecoveryTask = Task { [weak self] in
+            guard let self else { return }
+            #if DEBUG
+            if let voiceRecoveryForTests { await voiceRecoveryForTests(); return }
+            #endif
+            await voiceLabSession.reconcileStartup()
+        }
+    }
+    func stopVoiceRecovery() {
+        voiceRecoveryTask?.cancel(); voiceRecoveryTask = nil
+        voiceLabSession.stopRecovery()
     }
     private func restoreCachedUpdate() {
         guard let url = URL(string: string("update.htmlURL")) else { return }

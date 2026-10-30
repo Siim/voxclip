@@ -25,8 +25,18 @@ public enum VoiceLabLanguageMode: Sendable, Equatable {
 public enum VoiceLabError: Error, Sendable, Equatable {
     case invalidInput, consentRequired, speakerMismatch, planUnavailable, noVoiceSlots, missingKey
     case permissionMissing(String), unauthorized, quotaExceeded, rateLimited
+    case subscriptionRequired, featureUnavailable, voiceAccessDenied, modelAccessDenied
     case unsupportedModel, unsupportedEndpoint, unsupportedFormat, malformedResponse, invalidAudio, invalidAlignment
     case responseTooLarge, cancelled, providerFailure(Int), network
+    public var accessMessage: String? {
+        switch self {
+        case .subscriptionRequired: "Your ElevenLabs subscription doesn't include this action. Check your plan on elevenlabs.io."
+        case .featureUnavailable: "This feature isn't available for your ElevenLabs account. Your videos and edits are still here."
+        case .voiceAccessDenied: "Your ElevenLabs account can't use this voice. Choose another voice."
+        case .modelAccessDenied: "Your ElevenLabs account can't use this model. Choose another model."
+        default: nil
+        }
+    }
 }
 
 /// Prepared by the service for one exact billable request; preparation performs no provider call.
@@ -103,9 +113,11 @@ public struct VoiceLabVoice: Sendable, Equatable {
     public let requiresVerification: Bool
     public let isVerified: Bool
     public let consentRecordID: String?
-    public init(id: String, name: String, category: String, isOwner: Bool, requiresVerification: Bool, isVerified: Bool, consentRecordID: String? = nil) {
+    public let createdAt: Date?
+    public init(id: String, name: String, category: String, isOwner: Bool, requiresVerification: Bool, isVerified: Bool, consentRecordID: String? = nil, createdAt: Date? = nil) {
         self.id = id; self.name = name; self.category = category; self.isOwner = isOwner
         self.requiresVerification = requiresVerification; self.isVerified = isVerified; self.consentRecordID = consentRecordID
+        self.createdAt = createdAt
     }
 }
 

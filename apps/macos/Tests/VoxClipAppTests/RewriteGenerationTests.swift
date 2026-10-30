@@ -1,5 +1,6 @@
 #if DEBUG
 import Foundation
+import AppKit
 import Testing
 @testable import VoxClipCore
 @testable import VoxClipMedia
@@ -11,6 +12,11 @@ private struct GenerationTestKeys: KeyProvider {
 
 @Suite("Headless Rewrite generation", .serialized)
 @MainActor struct RewriteGenerationTests {
+    @Test func proposalErrorsNameTheConnectorAndRewrite() {
+        #expect(RewriteSession.proposalError(.unauthorized, provider: "Example", model: "test").hasPrefix("Example rejected"))
+        #expect(RewriteSession.proposalError(.refused(category: nil), provider: "Example", model: "test").contains("declined to rewrite"))
+        #expect(RewriteSession.proposalError(.truncated, provider: "Example", model: "test").contains("rewrite was incomplete"))
+    }
     private func session(current: @escaping @MainActor () -> Bool = { true }) -> RewriteGenerationSession {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let store = VoiceConsentStore(locations: DataLocations(environment: ["VOXCLIP_DATA_DIR": root.path]))
@@ -45,11 +51,12 @@ private struct GenerationTestKeys: KeyProvider {
     @Test func changedLengthRequiresExplicitTakeAndVideoChoices() {
         let session = session(); let take = row(index: 0, residual: 0.5)
         session.review(VoiceLabTakeRunResult(rows: [take], end: .completed))
-        #expect(session.phase == .lengthChanged && session.bestID == take.id && session.selectedID == nil)
-        #expect(!session.readyToAccept && !session.chooseVideo(.retimed))
+        #expect(session.phase == .lengthChanged && session.bestID == take.id && session.selectedID == take.id)
+        #expect(!session.readyToAccept && session.videoChoice == nil)
         #expect(session.select(take.id) && !session.readyToAccept)
         #expect(!session.chooseVideo(.source))
-        #expect(session.chooseVideo(.retimed) && session.readyToAccept)
+        #expect(!session.chooseVideo(.retimed) && !session.readyToAccept)
+        #expect(!session.chooseVideo(.lipsync) && session.videoChoice == nil)
         session.cancel()
         #expect(!session.readyToAccept && !session.select(take.id))
     }
@@ -63,6 +70,74 @@ private struct GenerationTestKeys: KeyProvider {
         let stale = self.session(current: { false })
         stale.review(VoiceLabTakeRunResult(rows: [passing], end: .completed))
         #expect(!stale.readyToAccept)
+    }
+    @Test func pauseNotesHaveStableCrossPlatformSigns() {
+        #expect(RewriteGenerationSession.pauseFitNote(0.4) == "pauses +0.4 s")
+        #expect(RewriteGenerationSession.pauseFitNote(-0.4) == "pauses −0.4 s")
+        #expect(RewriteGenerationSession.pauseFitNote(0) == "pauses +0.0 s")
+    }
+    @Test func completionAnnouncementsCountOnlyActualTakes() {
+        #expect(RewriteGenerationSession.completionAnnouncement(count: 3, fittedTake: nil) == "Three takes ready.")
+        #expect(RewriteGenerationSession.completionAnnouncement(count: 1, fittedTake: nil) == "One take ready.")
+        #expect(RewriteGenerationSession.completionAnnouncement(count: 2, fittedTake: nil) == "Two takes ready.")
+        #expect(RewriteGenerationSession.completionAnnouncement(count: 1, fittedTake: 1) == "Take 1 fits.")
+    }
+    @Test func completionAnnouncementsCountEveryFailedTake() {
+        for failures in [1, 2] {
+            for fits in [false, true] {
+                let session = session()
+                session.review(VoiceLabTakeRunResult(rows: [row(index: 0, failure: true),
+                    row(index: 1, residual: 0.5, failure: failures == 2, score: 0.1),
+                    row(index: 2, residual: fits ? 0 : 0.5, score: 0.9)], end: .completed))
+                let count = failures == 1 ? "one" : "two"
+                let expected = fits ? "Take 3 fits. \(count.capitalized) failed the speech check." : "Three takes ready, \(count) failed the speech check."
+                #expect(session.announcement == expected)
+            }
+        }
+    }
+    @Test func remoteLocalServerNeverClaimsNothingLeavesTheMac() {
+        for url in ["http://localhost:11434", "http://127.0.0.1:8080", "http://[::1]:8080"] {
+            #expect(RewriteSession.localSendLine(count: 12, baseURL: url) == "Runs on this Mac. Nothing leaves it.")
+        }
+        #expect(RewriteSession.localSendLine(count: 12, baseURL: "http://192.168.1.2:8080") == "Sends these 12 words to 192.168.1.2.")
+        #expect(RewriteSession.localSendLine(count: 12, baseURL: "https://inference.example.test") == "Sends these 12 words to inference.example.test.")
+        #expect(!RewriteSession.localSendLine(count: 12, baseURL: "invalid").contains("Nothing leaves"))
+    }
+    @Test func unavailableCleaningHasAnExplicitReasonAndSafeAlternative() {
+        let copy = RewriteSession.refusal(VoiceLabGeometryError.roomToneUnavailable)
+        #expect(copy.contains("Clean audio is not available in this build."))
+        #expect(copy.contains("Re-record this sentence instead."))
+    }
+    @Test func theBestTakeAutoplaysOnlyOnceAndNeverAfterAnotherSelection() {
+        let session = session(); let first = row(index: 0); let second = row(index: 1, score: 0.9)
+        session.review(.init(rows: [first, second], end: .completed))
+        #expect(session.takeToAutoplay()?.id == first.id)
+        #expect(session.takeToAutoplay() == nil)
+        #expect(session.select(second.id))
+        #expect(session.takeToAutoplay() == nil)
+    }
+    @Test func layoutAuditIgnoresEmptyScrollerFramesButNotVisibleOverflow() {
+        let host = NSView(frame: NSRect(x: 0, y: 0, width: 300, height: 300))
+        let element = NSView(frame: NSRect(x: -1, y: 10, width: 17, height: 0))
+        element.setAccessibilityElement(true)
+        host.addSubview(element)
+        #expect(DebugRightColumn.accessibilityOverflow(host).isEmpty)
+        element.frame.size.height = 17
+        #expect(!DebugRightColumn.accessibilityOverflow(host).isEmpty)
+    }
+    @Test func layoutAuditIntersectsEveryNestedScrollViewport() {
+        let host = NSView(frame: NSRect(x: 0, y: 0, width: 300, height: 300))
+        let outer = NSScrollView(frame: host.bounds)
+        let content = NSView(frame: NSRect(x: 0, y: 0, width: 300, height: 900))
+        outer.clipsToBounds = true; outer.contentView.clipsToBounds = true
+        outer.documentView = content; host.addSubview(outer)
+        let inner = NSScrollView(frame: NSRect(x: 0, y: 600, width: 300, height: 100))
+        inner.clipsToBounds = true; inner.contentView.clipsToBounds = true
+        inner.documentView = NSView(frame: NSRect(x: 0, y: 0, width: 300, height: 200))
+        content.addSubview(inner)
+        #expect(DebugRightColumn.viewOverflow(host).isEmpty)
+        outer.clipsToBounds = false; outer.contentView.clipsToBounds = false
+        #expect(!DebugRightColumn.viewOverflow(host).isEmpty)
     }
 }
 #endif

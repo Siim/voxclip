@@ -22,7 +22,7 @@ public actor VoiceEnrollment {
     private let client: ElevenLabsVoiceLab
     private var speaker: VoiceSpeakerCheck
     private let reconciler: VoiceOperationReconciler
-    private let transcribe: Transcribe
+    private let transcribe: Transcribe?
     private var attempts: [Date] = []
     private var verified: [String: Verified] = [:]
     private var pending: [UUID: Pending] = [:]
@@ -40,10 +40,16 @@ public actor VoiceEnrollment {
         let samples: [VoiceConsentRecord.Sample]
         let embedding: [Float]
     }
+    public init(store: VoiceConsentStore, client: ElevenLabsVoiceLab, speaker: VoiceSpeakerCheck = .unavailable, reconciler: VoiceOperationReconciler? = nil) {
+        self.store = store; self.client = client; self.speaker = speaker; self.transcribe = nil
+        self.reconciler = reconciler ?? VoiceOperationReconciler(store: store, client: client)
+    }
+    #if DEBUG
     public init(store: VoiceConsentStore, client: ElevenLabsVoiceLab, speaker: VoiceSpeakerCheck = .unavailable, reconciler: VoiceOperationReconciler? = nil, transcribe: @escaping Transcribe) {
         self.store = store; self.client = client; self.speaker = speaker; self.transcribe = transcribe
         self.reconciler = reconciler ?? VoiceOperationReconciler(store: store, client: client)
     }
+    #endif
     public var speakerAvailable: Bool { speaker.available }
     public func setSpeakerCheck(_ check: VoiceSpeakerCheck) throws {
         guard !busy else { throw VoiceLabError.invalidInput }
@@ -51,9 +57,10 @@ public actor VoiceEnrollment {
         speaker = check
     }
     public func verify(recordID: String, statement: VoiceConsentStatement, wav: Data, attestations: VoiceConsentRecord.Attestations,
-                       approved: Bool, enabled: Bool, now: Date = Date()) async throws {
+                       approved: Bool, enabled: Bool, now: Date = Date(), verificationQuote: VoiceLabQuote? = nil) async throws {
         guard approved, enabled else { throw VoiceLabError.consentRequired }
         guard attestations.complete else { throw VoiceConsentError.attestationsRequired }
+        guard speaker.supports(language: statement.language) else { throw VoiceConsentError.speakerUnavailable }
         guard !busy else { throw VoiceLabError.invalidInput }
         attempts.removeAll { now.timeIntervalSince($0) >= 600 }
         guard attempts.count < 3 else { throw VoiceConsentError.tooManyAttempts }
@@ -61,7 +68,12 @@ public actor VoiceEnrollment {
         verified.removeValue(forKey: recordID)
         try await store.saveStatement(wav, recordID: recordID)
         attempts.append(now)
-        let result = try await transcribe(wav, statement.language)
+        let result: RawTranscript
+        if let transcribe { result = try await transcribe(wav, statement.language) }
+        else {
+            guard let verificationQuote else { throw VoiceLabError.consentRequired }
+            result = try await client.transcribeConsentStatement(wav: wav, language: statement.language, authorization: .init(quote: verificationQuote, approved: approved))
+        }
         let match = try VoiceStatementMatch.verify(result, statement: statement)
         verified[recordID] = Verified(statement: statement, match: match, hash: VoiceLabFingerprint.bytes(wav), attestations: attestations)
     }
@@ -95,21 +107,15 @@ public actor VoiceEnrollment {
         }
         guard !accepted.isEmpty, accepted.reduce(0.0, { $0 + $1.seconds }) >= 10 else { throw VoiceConsentError.speakerMismatch }
         let name = try VoiceConsentText.displayName(displayName)
-        let prefix = verification.statement.language == "et" ? "Minu nimi on \(name). Täna on " : "My name is \(name). Today is "
+        let prefix = try VoiceConsentText(shared: SharedResources.locate()).statementOpening(name: name, language: verification.statement.language)
         guard verification.statement.text.hasPrefix(prefix) else { throw VoiceLabError.consentRequired }
         let request = VoiceLabCloneRequest(displayName: name, language: verification.statement.language,
                                           samples: [.init(role: .consentStatement, wav: statementWAV)] + accepted.map { .init(role: .training, wav: $0.wav) },
                                           createdAt: now, removeBackgroundNoise: accepted.contains { $0.snrDb < 20 }, recoveryNonce: recordID)
         let policy = OwnVoicePolicy(recordID: recordID, recordActive: true, providerConsentGranted: true, statementVerified: true, speakerMatched: true)
         let quote = try await client.prepareClone(request, policy: policy, requestID: UUID())
-        let store = store; let embedder = speaker.embedder; let statementHash = verification.hash
-        let authorization = policy.authorized(for: quote, reserve: {
-            try await store.creationDispatchPermit(recordID: recordID, requestID: quote.requestID, statementHash: statementHash)
-        }) {
-            try await embedder?.validateAvailability()
-            try await store.dispatchCreation(recordID: recordID, requestID: quote.requestID, statementHash: statementHash)
-            try await store.validateCreation(recordID: recordID, requestID: quote.requestID, statementHash: statementHash)
-        }
+        let proof = try await speaker.enrollmentMatch(store: store, recordID: recordID, language: verification.statement.language, statement: statementWAV, sample: accepted[0].wav)
+        let authorization = try policy.authorized(for: quote, proof: proof)
         pending.removeAll()
         pending[quote.id] = Pending(request: request, policy: authorization, verified: verification, samples: hashes, embedding: owner)
         return quote
@@ -120,6 +126,7 @@ public actor VoiceEnrollment {
         guard !busy, let draft = pending.removeValue(forKey: quote.id) else { throw VoiceLabError.invalidInput }
         guard speaker.supports(language: draft.verified.statement.language) else { throw VoiceConsentError.speakerUnavailable }
         busy = true; defer { busy = false }
+        let creatorFingerprint = try await client.validateCreationQuote(quote)
         try await embedder.validateAvailability()
         guard VoiceLabFingerprint.bytes(try await store.statement(recordID: draft.policy.recordID)) == draft.verified.hash else { throw VoiceConsentError.invalidRecord }
         let statement = draft.verified.statement
@@ -128,7 +135,7 @@ public actor VoiceEnrollment {
                                         createdAt: VoiceConsentRecord.timestamp(draft.request.createdAt), deletedAt: nil,
                                         statement: .init(language: statement.language, text: statement.text, nonce: statement.nonce, audioFile: "statement.wav", audioSha256: draft.verified.hash, stt: draft.verified.match),
                                         attestations: draft.verified.attestations, samples: draft.samples,
-                                        speaker: .init(model: embedder.modelID, threshold: threshold, embedding: VoiceConsentRecord.encodeEmbedding(draft.embedding)), app: .init(version: appVersion, platform: "macos"))
+                                        speaker: .init(model: embedder.modelID, threshold: threshold, embedding: VoiceConsentRecord.encodeEmbedding(draft.embedding)), app: .init(version: appVersion, platform: "macos"), creator: .init(region: client.region, keyFingerprint: creatorFingerprint))
         let operation = try await store.beginClaimedCreation(record: template, requestID: quote.requestID, region: client.region, at: Date())
         let record: VoiceConsentRecord
         do {
@@ -150,10 +157,11 @@ public actor VoiceEnrollment {
         do {
             result = try await client.createOwnClone(draft.request, policy: draft.policy, requestID: quote.requestID, authorization: .init(quote: quote, approved: true))
         } catch {
-            try await store.discardStatement(recordID: template.id)
             if let current = try? await store.operation(operation.id), current.state == .intent {
+                try await store.discardUnsentCreation(operation.id)
                 throw error
             }
+            try await store.discardStatement(recordID: template.id)
             try await store.scheduleRetry(operation.id, at: Date())
             throw VoiceConsentError.creationPending
         }
