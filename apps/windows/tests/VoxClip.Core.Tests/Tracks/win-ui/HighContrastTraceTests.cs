@@ -6,6 +6,16 @@ namespace VoxClip.Ui.Tests;
 public sealed class HighContrastTraceTests
 {
     [Fact]
+    public void ThemeChangesReprepareAllInlineTranscriptPaint()
+    {
+        var root = Path.GetDirectoryName(Environment.GetEnvironmentVariable("VOXCLIP_SHARED_DIR"))!;
+        var source = File.ReadAllText(Path.Combine(root, "apps/windows/src/VoxClip.App/Controls/TranscriptView.cs"));
+        Assert.Contains("ActualThemeChanged += (_, _) => RebuildThemeVisuals()", source);
+        Assert.Contains("DispatcherQueue.TryEnqueue(RebuildThemeVisuals)", source);
+        Assert.Contains("repeater.ItemsSource = model?.Paragraphs", source);
+    }
+
+    [Fact]
     public void DebugThemeEvidenceIncludesTheSnapshotAndPostRenderPalette()
     {
         var root = Path.GetDirectoryName(Environment.GetEnvironmentVariable("VOXCLIP_SHARED_DIR"))!;

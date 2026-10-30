@@ -141,13 +141,13 @@ public sealed class TranscriptView : UserControl
         scroll.ViewChanged += (_, args) => { if (!args.IsIntermediate) ScheduleFlyout(); };
         KeyDown += SelectionKeyDown;
         KeyUp += (_, args) => { if (args.Key is Windows.System.VirtualKey.Left or Windows.System.VirtualKey.Right or Windows.System.VirtualKey.Home or Windows.System.VirtualKey.End) ScheduleFlyout(); };
-        ActualThemeChanged += (_, _) => RefreshVisuals();
+        ActualThemeChanged += (_, _) => RebuildThemeVisuals();
         Loaded += (_, _) => { Ui.EffectsChanged += EffectsChanged; RefreshVisuals(); if (pendingReveal >= 0) RevealWord(pendingReveal); };
         Unloaded += (_, _) => { Ui.EffectsChanged -= EffectsChanged; correction.IsOpen = false; selectionFlyout.Hide(); };
     }
     private void EffectsChanged(object? sender, EventArgs args)
     {
-        DispatcherQueue.TryEnqueue(RefreshVisuals);
+        DispatcherQueue.TryEnqueue(RebuildThemeVisuals);
         EventHandler<object>? rendered = null;
         rendered = (_, _) =>
         {
@@ -155,11 +155,19 @@ public sealed class TranscriptView : UserControl
             DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
             {
                 if (!IsLoaded) return;
-                RefreshVisuals();
+                RebuildThemeVisuals();
                 Ui.TraceEffects("transcript-post-render", this);
             });
         };
         CompositionTarget.Rendering += rendered;
+    }
+    private void RebuildThemeVisuals()
+    {
+        // Inline pauses, clip brackets and badge children also own resolved brushes.
+        // Reprepare realized paragraphs only on a theme/effects change.
+        repeater.ItemsSource = null;
+        repeater.ItemsSource = model?.Paragraphs;
+        RefreshVisuals();
     }
     internal void RevealWord(int wordIndex)
     {
