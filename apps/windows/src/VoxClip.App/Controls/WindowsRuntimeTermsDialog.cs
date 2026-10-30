@@ -89,14 +89,14 @@ internal static class WindowsRuntimeTermsDialog
         });
         var termsText = new TextBox
         {
-            Header = "Windows App SDK and Windows ML Runtime terms",
+            Header = "Windows App SDK terms",
             AcceptsReturn = true,
             Text = terms.DisplayText,
             IsReadOnly = true,
             TextWrapping = TextWrapping.Wrap,
             Height = Math.Max(140, Math.Min(410, xamlRoot.Size.Height - 300))
         };
-        AutomationProperties.SetName(termsText, "Windows App SDK and Windows ML Runtime terms");
+        AutomationProperties.SetName(termsText, "Windows App SDK terms");
         content.Children.Add(termsText);
         var dialog = new ContentDialog
         {

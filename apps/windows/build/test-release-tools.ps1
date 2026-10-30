@@ -792,7 +792,7 @@ function Invoke-ReleaseProcess {
         Assert-Equal (Test-Path -LiteralPath $env:VOXCLIP_DATA_DIR -PathType Container) $true
         $hash = 'a' * 64
         $receipt = Join-Path $env:VOXCLIP_DATA_DIR 'windows-runtime-agreement.txt'
-        $stamp = "format=voxclip-windows-runtime-agreement/1`nsha256=$hash`n"
+        $stamp = "format=voxclip-windows-runtime-agreement/2`nsha256=$hash`n"
         $exitCode = 0
         if ($Arguments -eq '--runtime-terms --json') {
             $global:fixtureGateEvents += 'terms'
