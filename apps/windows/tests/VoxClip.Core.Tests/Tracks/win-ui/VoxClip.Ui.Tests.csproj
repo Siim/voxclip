@@ -27,6 +27,9 @@
     <Compile Include="RoundFiveTests.cs" />
     <Compile Include="RewritePanelTests.cs" />
     <Compile Include="VoiceLabSettingsTests.cs" />
+    <Compile Include="VoiceLabSessionTests.cs" />
+    <Compile Include="../../../../src/VoxClip.App/Services/VoiceLabBackend.cs" Link="Services/VoiceLabBackend.cs" />
+    <Compile Include="../../../../src/VoxClip.App/Services/DebugVoiceLabBackend.cs" Link="Services/DebugVoiceLabBackend.cs" />
     <Compile Include="ConnectorPreflightTests.cs" />
     <Compile Include="ExportWorkflowTests.cs" />
     <Compile Include="ExportEquivalenceTests.cs" />

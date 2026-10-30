@@ -2,6 +2,17 @@ namespace VoxClip.App.ViewModels;
 
 internal static class VoiceLabCopy
 {
+    internal const string SpeakerUnavailable = "The speaker check is not ready on Windows yet. Creating a voice is unavailable.";
+    internal const string ProviderConsent = "Voice Lab sends audio of your voice and the words to speak to ElevenLabs with your key. Under ElevenLabs' terms, ElevenLabs may use uploaded content, including your voice, to improve its services unless you opt out in your ElevenLabs account. Generated audio can be traced to your account.";
+    internal const string AccountCheck = "Reads your subscription, plan, available voice slots and pending voice verification status. No audio, video or transcript is sent. This check is free.";
+    internal const string DeleteExplanation = "Deletes this voice from ElevenLabs, removes the local statement recording, and marks the local consent record deleted. Existing rendered takes stay playable and labelled. This action is free.";
+    internal const string RemoveLocalExplanation = "Removes the local consent statement and records that the remote state is unknown. The voice may stay in your ElevenLabs account. This action is free.";
+    internal const string Deleted = "Voice deleted. Existing rendered takes remain playable and labelled.";
+    internal const string RemovedLocal = "Voice removed from VoxClip only. The remote state is unknown; it may stay in your ElevenLabs account.";
+    internal const string VerificationRequired = "ElevenLabs needs to verify this voice before it can be used. Finish verification on elevenlabs.io, then come back.";
+    internal const string NonCommercial = "Free ElevenLabs plans allow non-commercial use only.";
+    internal const string RecoveryFailed = "Couldn't finish a voice operation. Retry below. No create request was repeated.";
+    internal const string ReadFailed = "The local voice records could not be read. No audio was sent.";
     internal const string MicrophonePermission = "Microphone access is off. Turn on Microphone access and Let desktop apps access your microphone in Settings → Privacy & security → Microphone to record your consent.";
     internal const string MicrophoneNoDevice = "No microphone found. Connect one and try again.";
     internal const string MicrophoneSilent = "The microphone sent only silence. Check that it isn't muted, and that Settings → Privacy & security → Microphone lets desktop apps use it.";

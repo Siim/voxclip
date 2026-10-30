@@ -2,7 +2,7 @@ param([Parameter(Mandatory=$true)][string]$Root, [Parameter(Mandatory=$true)][st
     [Parameter(Mandatory=$true)][string]$EvidenceDir, [string]$NormalProject,
     [ValidateSet('win-arm64','win-x64')][string]$RuntimeIdentifier='win-arm64',
     [ValidateSet('Debug','Release')][string]$Configuration='Debug',
-    [ValidateSet('pane','cancel','turn-on','cap','label','light','dark','night-sky','release-off','release-on','release-smoke')][string]$Step='pane', [switch]$Schedule)
+    [ValidateSet('pane','cancel','turn-on','cap','label','light','dark','night-sky','release-off','release-on','release-smoke','session','account-cancel','delete-cancel','zero-http')][string]$Step='pane', [switch]$SessionFixtures, [switch]$Schedule)
 $ErrorActionPreference='Stop'
 New-Item -ItemType Directory -Force $EvidenceDir | Out-Null
 $EvidenceDir=(Resolve-Path -LiteralPath $EvidenceDir).Path
@@ -12,6 +12,7 @@ if ($Schedule) {
     $task='VoxClipVoiceLab-' + [Guid]::NewGuid().ToString('N')
     $projectArgument=if($NormalProject){' -NormalProject "'+$NormalProject+'"'}else{''}
     $arguments='-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "'+$PSCommandPath+'" -Root "'+$Root+'" -AcceptedDataRoot "'+$AcceptedDataRoot+'" -EvidenceDir "'+$EvidenceDir+'" -RuntimeIdentifier '+$RuntimeIdentifier+' -Configuration '+$Configuration+' -Step '+$Step+$projectArgument
+    if($SessionFixtures){$arguments+=' -SessionFixtures'}
     $action=New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $arguments
     $principal=New-ScheduledTaskPrincipal -UserId ([Security.Principal.WindowsIdentity]::GetCurrent().Name) -LogonType Interactive
     try {
@@ -118,6 +119,10 @@ function Start-App([string]$arguments) {
     $start.EnvironmentVariables['VOXCLIP_DATA_DIR']=$data
     $start.EnvironmentVariables['VOXCLIP_SHARED_DIR']=Join-Path $root 'shared'
     $start.EnvironmentVariables['VOXCLIP_LIVE_TESTS']='0'
+    if($SessionFixtures -or $Step -in @('session','account-cancel','delete-cancel','zero-http')){
+        if($Configuration -ne 'Debug'){throw 'Session fixtures require a DEBUG build; refusing real provider access.'}
+        $start.EnvironmentVariables['VOXCLIP_DEBUG_VOICELAB']='fixtures:'+(Join-Path $root 'shared\fixtures\voice-lab')
+    }
     $script:app=[System.Diagnostics.Process]::Start($start)
     $script:ownedStart=$app.StartTime.ToUniversalTime().Ticks
 }
@@ -163,9 +168,22 @@ try {
     Copy-Item -LiteralPath $receipt -Destination (Join-Path $data 'windows-runtime-agreement.txt')
     $off=$Step -in @('cancel','turn-on','release-off')
     $appearance=if($Step -eq 'dark'){'dark'}else{'light'}
-    $settings=@{schema='voxclip-settings/1';'onboarding.completed'=$true;'general.appearance'=$appearance;'voiceLab.enabled'=(-not $off);'voiceLab.betaNoticeAccepted'=(-not $off);'voiceLab.monthlyCapUsd.elevenlabs'='20'}
+    $settings=@{schema='voxclip-settings/1';'onboarding.completed'=$true;'update.autoCheck'=$false;'general.appearance'=$appearance;'voiceLab.enabled'=(-not $off);'voiceLab.betaNoticeAccepted'=(-not $off);'voiceLab.monthlyCapUsd.elevenlabs'='20'}
     $settings | ConvertTo-Json | Set-Content -LiteralPath $settingsPath -Encoding ASCII
     if($Step -eq 'night-sky'){Set-NightSky}
+    if($Step -eq 'zero-http'){
+        Start-App ('--voice-lab-probe "'+$EvidenceDir+'"')
+        $probePath=Join-Path $EvidenceDir 'voice-lab-native-result.json'
+        for($attempt=0;$attempt -lt 120;$attempt++){
+            if(Test-Path -LiteralPath $probePath){break}
+            Start-Sleep -Milliseconds 250
+        }
+        if(-not (Test-Path -LiteralPath $probePath)){throw 'Voice Lab probe produced no report.'}
+        $probe=Get-Content -LiteralPath $probePath -Raw | ConvertFrom-Json
+        if($probe.status -ne 'passed' -or $probe.httpCalls -ne 0){throw 'The seeded zero-HTTP probe failed.'}
+        $status='passed'
+        return
+    }
     $startup=Join-Path $EvidenceDir 'startup.json'
     if($Configuration -eq 'Debug'){Start-App ('--screen settings-voicelab --self-check "'+$startup+'"')}
     else {
@@ -183,6 +201,49 @@ try {
         if($Configuration -eq 'Release'){Invoke-Control 'Voice Lab'}
         [void](Find-Control 'Show Voice Lab (beta)')
         switch($Step) {
+            'session' {
+                [void](Find-Control 'Check ElevenLabs account')
+                [void](Find-Control ('Own-voice check '+[char]0xB7+' on this PC'))
+                [void](Find-Control 'My voices')
+                [void](Find-Control 'Example (VoxClip), created 29 October 2026')
+                [void](Find-Control ('Created 29 October 2026 '+[char]0xB7+' fixtureOwnVoice'))
+                [void](Find-Control 'Awaiting verification, created 29 October 2026')
+                [void](Find-Control 'ElevenLabs needs to verify this voice before it can be used. Finish verification on elevenlabs.io, then come back.')
+                [void](Find-Control ('Removing'+[char]0x2026))
+                [void](Find-Control 'Recovery needs the ElevenLabs key that started this voice.')
+                [void](Find-Control ('Checking paused '+[char]0x2014+' review the unfinished voice in your ElevenLabs account.'))
+                $create=Find-Control ('Create Your Voice'+[char]0x2026)
+                if($create.Current.IsEnabled){throw 'A8-closed creation is enabled.'}
+                $download=Find-Control 'Download own-voice check model'
+                if($download.Current.IsEnabled){throw 'A8-closed download is enabled.'}
+                $reason='The speaker check is not ready on Windows yet. Creating a voice is unavailable.'
+                if($create.Current.HelpText -ne $reason -or $download.Current.HelpText -ne $reason){throw 'The disabled reason is missing.'}
+                $tree=[System.Windows.Automation.AutomationElement]::FromHandle($window).FindAll([System.Windows.Automation.TreeScope]::Descendants,[System.Windows.Automation.Condition]::TrueCondition)
+                @($tree | ForEach-Object {@{name=$_.Current.Name;id=$_.Current.AutomationId;help=$_.Current.HelpText;enabled=$_.Current.IsEnabled}}) | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $EvidenceDir 'voice-lab-uia.json') -Encoding UTF8
+            }
+            'account-cancel' {
+                Invoke-Control 'Check ElevenLabs account'
+                [void](Find-Control 'Continue');[void](Find-Control 'Cancel')
+                [VoiceLabNative]::Key(0x0D);Start-Sleep -Milliseconds 400
+                if(Find-Control 'Continue' -Optional){throw 'Account confirmation did not default to Cancel.'}
+                Invoke-Control 'Check ElevenLabs account';[VoiceLabNative]::Key(0x1B);Start-Sleep -Milliseconds 400
+                if(Find-Control 'Continue' -Optional){throw 'Esc did not cancel account confirmation.'}
+                if((Read-Settings).'voiceLab.providerConsent.elevenlabs' -eq $true){throw 'Cancel persisted provider consent.'}
+            }
+            'delete-cancel' {
+                Invoke-Control 'Delete voice Example (VoxClip)'
+                [void](Find-Control 'Delete voice');[void](Find-Control 'Cancel')
+                [VoiceLabNative]::Key(0x0D);Start-Sleep -Milliseconds 400
+                if(Find-Control 'Cancel' -Optional){throw 'Delete confirmation did not default to Cancel.'}
+                Invoke-Control 'Delete voice Example (VoxClip)';[VoiceLabNative]::Key(0x1B);Start-Sleep -Milliseconds 400
+                if(Find-Control 'Cancel' -Optional){throw 'Esc did not cancel deletion.'}
+                [void](Find-Control 'Example (VoxClip), created 29 October 2026')
+                Invoke-Control 'Remove Example (VoxClip) from VoxClip only'
+                [void](Find-Control 'Cancel');[VoiceLabNative]::Key(0x0D);Start-Sleep -Milliseconds 400
+                [void](Find-Control 'Example (VoxClip), created 29 October 2026')
+                Invoke-Control 'Remove Example (VoxClip) from VoxClip only';[VoiceLabNative]::Key(0x1B);Start-Sleep -Milliseconds 400
+                if(Find-Control 'Cancel' -Optional){throw 'Esc did not cancel local removal.'}
+            }
             'pane' {
                 $providers=@('ElevenLabs','fal.ai','sync.so')
                 $expected=@('Show Voice Lab (beta)')
@@ -238,6 +299,21 @@ try {
         }
     }
     Capture ('settings-voicelab-'+$Step)
+    if($SessionFixtures -or $Step -eq 'session'){
+        $scrollCondition=New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::IsScrollPatternAvailableProperty,$true)
+        $scrollables=[System.Windows.Automation.AutomationElement]::FromHandle($window).FindAll([System.Windows.Automation.TreeScope]::Descendants,$scrollCondition)
+        $scroller=$null
+        foreach($candidate in $scrollables){
+            $pattern=$candidate.GetCurrentPattern([System.Windows.Automation.ScrollPattern]::Pattern)
+            if($pattern.Current.VerticallyScrollable){$scroller=$pattern;break}
+        }
+        if(-not $scroller){throw 'The seeded Settings rows have no reachable vertical scroll pattern.'}
+        foreach($percent in @(0,50,100)){
+            $scroller.SetScrollPercent(-1,$percent);Start-Sleep -Milliseconds 400
+            Capture ('settings-voicelab-'+$Step+'-scroll-'+$percent)
+        }
+        $scroller.SetScrollPercent(-1,0)
+    }
     Assert-Space
     $status='passed'
 } catch {$reason=$_.Exception.Message}

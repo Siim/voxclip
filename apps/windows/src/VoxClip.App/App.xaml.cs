@@ -60,6 +60,13 @@ public partial class App : Application
                 }
             });
 #if DEBUG
+            var voiceLabProbeIndex = Array.IndexOf(Program.Arguments, "--voice-lab-probe");
+            if (voiceLabProbeIndex >= 0 && voiceLabProbeIndex + 1 < Program.Arguments.Length)
+            {
+                await VoiceLabNativeProbe.RunAsync(Program.Arguments[voiceLabProbeIndex + 1]);
+                Exit();
+                return;
+            }
             var settingsScreenIndex = Array.IndexOf(Program.Arguments, "--screen");
             if (settingsScreenIndex >= 0 && settingsScreenIndex + 1 < Program.Arguments.Length && Program.Arguments[settingsScreenIndex + 1] == "settings-voicelab")
             {
