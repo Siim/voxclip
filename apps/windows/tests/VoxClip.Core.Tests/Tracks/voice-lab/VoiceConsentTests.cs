@@ -40,6 +40,19 @@ public sealed class VoiceConsentTests
     private static HttpResponseMessage Json(int status, string body) => new((HttpStatusCode)status) { Content = new StringContent(body, Encoding.UTF8, "application/json") };
     private static VoiceConsentRecord Fixture() => JsonSerializer.Deserialize(FixtureLoader.ReadText("fixtures/voice-lab/consent-record.json"), VoiceConsentJson.Default.VoiceConsentRecord)!;
     [Fact]
+    public void ReviewProbe_CancelAfterSavedKeepsStatementAndDeletionAvailable()
+    {
+        using var storage = new Storage();
+        var store = new VoiceConsentStore(storage.Locations);
+        var record = Draft(store, voice: "active-voice");
+        store.Save(record);
+        var audio = store.Statement(record.RecordId);
+        store.WithdrawCreation(record.RecordId, Now);
+        Assert.Equal(audio, store.Statement(record.RecordId));
+        Assert.Equal(record.VoiceId, store.Load(record.RecordId).VoiceId);
+        Assert.Equal("active-voice", store.BeginDeletion(record.RecordId, ElevenLabsRegion.Default, Now).RemoteVoiceId);
+    }
+    [Fact]
     public async Task ReviewProbe_PublicPermitCannotBypassSpeakerGate()
     {
         using var storage = new Storage();

@@ -395,6 +395,11 @@ public sealed class VoiceConsentStore
         lock (State.Sync)
         {
             var value = Operations().FirstOrDefault(value => value.RecordId == recordId && value.Kind == VoiceOperationKind.Create && !value.Finished);
+            if (value is null && File.Exists(FileIn(DirectoryFor(recordId), "record.json")))
+            {
+                var record = Load(recordId);
+                if (record.VoiceId != "pending") return;
+            }
             if (value is not null)
             {
                 PreserveAudit(value.Id);
