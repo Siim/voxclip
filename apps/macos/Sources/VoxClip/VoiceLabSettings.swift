@@ -139,7 +139,13 @@ import VoxClipCore
             var context = base
             if bases.filter({ $0 == base }).count > 1 || row.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 if let voiceID = row.voiceID, !voiceID.isEmpty, voiceID != "pending" {
-                    context += ", voice ID ending \(voiceID.suffix(6))"
+                    let suffix = voiceID.suffix(6)
+                    let collision = rows.enumerated().contains { otherIndex, other in
+                        guard otherIndex != index, bases[otherIndex] == base,
+                              let otherID = other.voiceID, otherID != "pending" else { return false }
+                        return otherID.suffix(6) == suffix
+                    }
+                    context += collision ? ", voice ID \(voiceID)" : ", voice ID ending \(suffix)"
                 } else { context += ", attempt \(row.ordinal)" }
             }
             contexts[row.key] = context

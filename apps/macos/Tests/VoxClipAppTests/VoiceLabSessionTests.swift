@@ -7,7 +7,7 @@ import Testing
 
 @Suite("Headless Voice Lab session", .serialized, .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil, "Use an isolated VOXCLIP_DATA_DIR for app-model tests; no windows or provider requests are opened."))
 @MainActor struct VoiceLabSessionTests {
-    @Test(arguments: [2, 3]) func recoveryOperationAccessibilityIdentifiesEachVoiceAndAction(count: Int) throws {
+    @Test(arguments: [2, 3], [false, true]) func recoveryOperationAccessibilityIdentifiesEachVoiceAndAction(count: Int, sharedSuffix: Bool) throws {
         let shared = try SharedResources.locate()
         let date = try #require(ISO8601DateFormatter().date(from: "2026-10-30T12:00:00Z"))
         let fixture = try Data(contentsOf: shared.root.appendingPathComponent("fixtures/voice-lab/consent-record.json"))
@@ -15,7 +15,8 @@ import Testing
             var json = try #require(JSONSerialization.jsonObject(with: fixture) as? [String: Any])
             json["recordId"] = UUID().uuidString.lowercased()
             json["voiceName"] = "My voice (VoxClip)"
-            json["voiceId"] = "owned-voice-00000\(index)"
+            let prefix = ["A", "B", "C"][index - 1]
+            json["voiceId"] = sharedSuffix ? "voice-\(prefix)123456" : "owned-voice-00000\(index)"
             json["createdAt"] = "2026-10-30T12:00:00Z"
             return try JSONDecoder().decode(VoiceConsentRecord.self, from: JSONSerialization.data(withJSONObject: json))
         }
@@ -30,7 +31,8 @@ import Testing
             let labels = try records.enumerated().map { index, record in
                 let context = try #require(voices["record-\(record.id)"])
                 let label = VoiceLabSettings.actionAccessibilityLabel(action, context: context)
-                #expect(label == "\(action) My voice (VoxClip), created 30 October 2026, voice ID ending 00000\(index + 1)")
+                let identifier = sharedSuffix ? "voice ID \(record.voiceId)" : "voice ID ending 00000\(index + 1)"
+                #expect(label == "\(action) My voice (VoxClip), created 30 October 2026, \(identifier)")
                 return label
             }
             #expect(Set(labels).count == count)

@@ -1,5 +1,10 @@
 # macOS implementation contracts
 
+### 2026-10-30 — sol-mac-vl-followups — accessible-name final fallback
+
+- Per-voice and per-operation actions keep `<action> <voice name>, created <d MMMM yyyy>` with the fixed English month table. A duplicate name/day adds `, voice ID ending <last six>`; if that suffix still collides within the same name/day, use `, voice ID <full voice ID>` instead. Operations without a usable voice ID keep `, attempt <ordinal>`. Visible titles are unchanged.
+- The headless accessibility regression covers two and three same-name/day voices, both unique suffixes and IDs `voice-A123456`, `voice-B123456`, `voice-C123456`. The shared-suffix cases failed before this change; the unchanged attempt and ordinary suffix cases also pass.
+
 ### 2026-10-30 — sol-mac-vl-followups — pause-fit printf parity
 
 - `RewriteGenerationSession.pauseFitNote(_:)` replays every shared pause-fit vector byte for byte. It chooses `+` for values >= 0 (including -0), otherwise U+2212, before rounding; the magnitude uses C `vsnprintf_l` with a nil (C) locale and `%.1f`, with a dynamically sized buffer, then ` s`. Foundation's explicit-locale decimal rounding is not this contract.
