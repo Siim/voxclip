@@ -62,12 +62,16 @@ public struct VoiceConsentText: Codable, Sendable {
         var available = words
         var nonce: [String] = []
         for _ in 0..<4 { nonce.append(available.remove(at: Int.random(in: available.indices, using: &rng))) }
-        let parts = calendar.dateComponents([.day, .month, .year], from: date)
-        guard let day = parts.day, let month = parts.month, (1...12).contains(month), let year = parts.year else { throw VoiceConsentError.invalidRecord }
-        let dateText = "\(day)\(language == "et" ? "." : "") \(months[month - 1]) \(year)"
+        let dateText = try displayDate(date, language: language, calendar: calendar)
         var text = template.replacingOccurrences(of: "{name}", with: name).replacingOccurrences(of: "{date}", with: dateText)
         for index in nonce.indices { text = text.replacingOccurrences(of: "{w\(index + 1)}", with: nonce[index]) }
         return VoiceConsentStatement(language: language, text: text, nonce: nonce)
+    }
+    public func displayDate(_ date: Date, language: String = "en", calendar: Calendar = Calendar(identifier: .gregorian)) throws -> String {
+        let parts = calendar.dateComponents([.day, .month, .year], from: date)
+        guard let names = months[language], names.count == 12, let day = parts.day, let month = parts.month,
+              (1...12).contains(month), let year = parts.year else { throw VoiceConsentError.invalidRecord }
+        return "\(day)\(language == "et" ? "." : "") \(names[month - 1]) \(year)"
     }
 }
 

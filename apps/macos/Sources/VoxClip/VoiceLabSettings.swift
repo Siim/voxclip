@@ -59,7 +59,7 @@ import VoxClipCore
             ForEach(session.visibleRecords) { record in
                 VStack(alignment: .leading, spacing: 5) {
                     Text(record.voiceName).fontWeight(.medium)
-                    Text("Created \(record.createdAt) · \(record.voiceId)").font(.caption).textSelection(.enabled)
+                    Text("Created \(Self.createdDate(record.createdAt, shared: app.shared)) · \(record.voiceId)").font(.caption).textSelection(.enabled)
                     if record.status == .verificationRequired { Text("ElevenLabs needs to verify this voice before it can be used. Finish verification on elevenlabs.io, then come back.").font(.caption) }
                     if session.deleting.contains(record.id) { Text(session.busy ? "Deleting…" : "Couldn't finish deleting").font(.caption) }
                     Button(session.deleting.contains(record.id) ? "Retry deletion…" : "Delete voice", role: .destructive) { session.request(.delete(record.id)) }.disabled(session.busy)
@@ -96,6 +96,11 @@ import VoxClipCore
             Toggle("Add Content Credentials (C2PA) to exports", isOn: app.boolBinding("voiceLab.c2pa", fallback: true))
             Text("Applies to Clean-audio-only exports when the C2PA component is available. Exports that need disclosure always carry a machine-readable mark.").font(.caption)
         }
+    }
+    static func createdDate(_ value: String, shared: SharedResources?) -> String {
+        guard let date = ISO8601DateFormatter().date(from: value), let shared,
+              let text = try? VoiceConsentText(shared: shared).displayDate(date) else { return "Date unavailable" }
+        return text
     }
 }
 
