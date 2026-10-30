@@ -21,5 +21,6 @@
     <PackageReference Include="Whisper.net.Runtime" />
     <PackageReference Include="Whisper.net.Runtime.NoAvx" />
     <PackageReference Include="NAudio.Wasapi" />
+    <PackageReference Include="Microsoft.ML.OnnxRuntime" />
   </ItemGroup>
 </Project>
