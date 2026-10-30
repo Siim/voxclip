@@ -38,12 +38,13 @@ public sealed record VoiceOperation(Guid Id, VoiceOperationKind Kind, string Rec
     DateTimeOffset StartedAt, DateTimeOffset UpdatedAt, VoiceOperationState State, string? RemoteVoiceId, bool WasDispatched,
     bool? RequiresVerification, int Attempts, DateTimeOffset? NextAttemptAt, bool Failed, VoiceConsentAudit? Audit, Guid[]? AmbiguousDispatchIds,
     string? RemoteNameSha256 = null, bool RecoveryNeedsReview = false, string? CreatorKeyFingerprint = null, bool RemoteStateUnknown = false,
-    bool RecoveryNeedsCreatorKey = false)
+    bool RecoveryNeedsCreatorKey = false, string? ExpectedVoiceName = null)
 {
+    [JsonIgnore] public bool NeedsCreatorRecoveryReview => Kind == VoiceOperationKind.Create && WasDispatched && RemoteVoiceId is null && CreatorKeyFingerprint is null && !Finished;
     [JsonIgnore] public bool Finished => State is VoiceOperationState.Saved or VoiceOperationState.Withdrawn or VoiceOperationState.Tombstoned or VoiceOperationState.Abandoned;
     public bool BlocksCreation(DateTimeOffset now) => Kind == VoiceOperationKind.Create && WasDispatched && !Finished &&
         now - StartedAt < TimeSpan.FromHours(24);
-    [JsonIgnore] public string DisplayState => RecoveryNeedsCreatorKey && !Finished ? "Recovery needs the ElevenLabs key that started this voice."
+    [JsonIgnore] public string DisplayState => (NeedsCreatorRecoveryReview || RecoveryNeedsCreatorKey) && !Finished ? "Recovery needs the ElevenLabs key that started this voice."
         : RecoveryNeedsReview && !Finished ? "Checking paused — review the unfinished voice in your ElevenLabs account."
         : Kind == VoiceOperationKind.Create && WasDispatched && RemoteVoiceId is null && !Finished
         ? "Checking your ElevenLabs account for an unfinished voice…" : Failed ? "Couldn't finish — Retry"
@@ -345,7 +346,7 @@ public sealed class VoiceConsentStore
             Save(record);
             var value = WriteOperation(NewOperation(requestId, VoiceOperationKind.Create, record.RecordId, region, now) with
                 { Audit = VoiceConsentAudit.From(record), RemoteNameSha256 = Hash(System.Text.Encoding.UTF8.GetBytes(record.VoiceName)),
-                    CreatorKeyFingerprint = record.Creator?.KeyFingerprint }, "creationIntent");
+                    CreatorKeyFingerprint = record.Creator?.KeyFingerprint, ExpectedVoiceName = record.VoiceName }, "creationIntent");
             State.Claimed.Add(value.Id);
             return value;
         }
@@ -438,6 +439,35 @@ public sealed class VoiceConsentStore
             var operation = BeginDeletion(recordId, record.CreatorIdentity.Region, now);
             if (operation.Kind != VoiceOperationKind.Delete) throw Invalid();
             return WriteOperation(operation with { RemoteStateUnknown = true }, "localRemovalIntent");
+        }
+    }
+    public void StopLookingForCreation(Guid id, DateTimeOffset now)
+    {
+        lock (State.Sync)
+        {
+            var value = Operation(id);
+            if (!value.NeedsCreatorRecoveryReview || !value.RecoveryNeedsReview || !Claim(id)) throw Invalid();
+            try
+            {
+                value = PreserveAudit(id);
+                var date = now > value.UpdatedAt ? now : value.UpdatedAt;
+                value = WriteOperation(value with { RemoteStateUnknown = true, UpdatedAt = date,
+                    Audit = value.Audit is { } audit ? audit with { RemoteStateUnknown = true, DeletedAt = date } : null }, "saveTombstone");
+                FinishStoppedCreation(value);
+            }
+            finally { Release(id); }
+        }
+    }
+    internal void FinishStoppedCreation(VoiceOperation value)
+    {
+        lock (State.Sync)
+        {
+            if (value.Kind != VoiceOperationKind.Create || !value.RemoteStateUnknown || value.CreatorKeyFingerprint is not null ||
+                !value.WasDispatched || value.RemoteVoiceId is not null) throw Invalid();
+            State.Revoked.Add(value.RecordId);
+            DiscardStatement(value.RecordId);
+            DiscardUnresolvedDraft(value);
+            WriteOperation(value with { State = VoiceOperationState.Abandoned, NextAttemptAt = null, Failed = false }, "Abandoned");
         }
     }
     public void WithdrawCreation(string recordId, DateTimeOffset now)
