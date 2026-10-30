@@ -199,11 +199,15 @@ public sealed class ElevenLabsVoiceLab : IDisposable
     public async Task<VoiceLabMonthlyCap?> RefreshMonthlyCapAsync(VoiceLabMonthlyCap? cap, CancellationToken ct = default)
     {
         if (cap is null) return null;
-        if (spend is null || await spend.TotalAsync("elevenlabs", clock.GetUtcNow(), ct).ConfigureAwait(false) is not { } total)
+        if (await ReadMonthlySpendAsync(ct).ConfigureAwait(false) is not { } total)
             throw new VoiceLabException(VoiceLabErrorKind.ConsentRequired);
-        return cap with { Spent = total.Usd };
+        return cap with { Spent = total };
     }
+    public async Task<decimal?> ReadMonthlySpendAsync(CancellationToken ct = default) => spend is null ? null :
+        (await spend.TotalForCapAsync("elevenlabs", clock.GetUtcNow(), ct).ConfigureAwait(false))?.Usd;
     public IReadOnlyList<VoiceLabAuthorization> ApproveTakeRun(VoiceLabTakeRunQuote quote, bool affirmative) => actions.ApproveRun(quote.Id, quote.Actions, affirmative);
+    public IReadOnlyList<VoiceLabAuthorization> ApproveTakeRun(VoiceLabTakeRunQuote quote, VoiceLabRunDispatch dispatch) => actions.ApproveRun(quote.Id, quote.Actions, true, dispatch);
+    public void ReleaseTakeRun(VoiceLabTakeRunQuote quote) => actions.ReleaseRun(quote.Id, quote.Actions);
     public void DiscardTakeRun(VoiceLabTakeRunQuote quote) => actions.DiscardRun(quote.Id, quote.Actions);
     public VoiceLabPreparedAction PrepareQa(string language, string recordId, Guid requestId)
     {
@@ -621,14 +625,19 @@ public sealed class ElevenLabsVoiceLab : IDisposable
             if (policy is not null) RequirePermit(policy);
             if (policy?.DispatchPermit is { } bound && bound.RequestId != billing?.Review.RequestId) throw new VoiceLabException(VoiceLabErrorKind.ConsentRequired);
             if (policy is not null && billing?.Review.ConsentRecordId is { } consent && consent != policy.RecordId) throw new VoiceLabException(VoiceLabErrorKind.ConsentRequired);
-            Task<HttpResponseMessage> sending;
-            lock (discoveredGate)
+            if (billing?.RunDispatch is { } checking) await checking.AuthorizeAsync(deadline.Token).ConfigureAwait(false);
+            Task<HttpResponseMessage> Start()
             {
-                if (policy?.ModelRevision is { } expected && expected != modelRevision) throw new VoiceLabRunInvalidatedException();
-                sending = policy?.DispatchPermit is { } permit
-                    ? permit.Start(() => http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, deadline.Token), deadline.Token)
-                    : http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, deadline.Token);
+                lock (discoveredGate)
+                {
+                    if (policy?.ModelRevision is { } expected && expected != modelRevision) throw new VoiceLabRunInvalidatedException();
+                    Task<HttpResponseMessage> Transport() => billing?.IsRunAuthorization == true
+                        ? actions.StartRunAction(billing, () => http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, deadline.Token))
+                        : http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, deadline.Token);
+                    return policy?.DispatchPermit is { } permit ? permit.Start(Transport, deadline.Token) : Transport();
+                }
             }
+            var sending = billing?.RunDispatch is { } dispatch ? dispatch.Start(Start, deadline.Token) : Start();
             using var response = await sending.ConfigureAwait(false);
             if (response.RequestMessage?.RequestUri is { } final && (final.Scheme != url.Scheme || final.Host != url.Host || final.Port != url.Port || final.AbsolutePath != url.AbsolutePath))
                 throw new VoiceLabException(VoiceLabErrorKind.ProviderFailure);

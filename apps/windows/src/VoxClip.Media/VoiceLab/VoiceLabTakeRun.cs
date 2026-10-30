@@ -116,7 +116,13 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
         }
         finally { lock (sync) preparing = false; }
     }
-    public async Task<VoiceLabTakeRunResult> ExecuteAsync(VoiceLabTakeRunQuote quote, bool approved,
+    public Task<VoiceLabTakeRunResult> ExecuteAsync(VoiceLabTakeRunQuote quote, bool approved,
+        Func<IReadOnlyList<VoiceLabTakeRow>, Task>? progress = null, CancellationToken ct = default)
+    {
+        if (!approved) throw new VoiceLabException(VoiceLabErrorKind.ConsentRequired);
+        return ExecuteWithDispatchAsync(quote, new(_ => Task.CompletedTask, action => action()), progress, ct);
+    }
+    public async Task<VoiceLabTakeRunResult> ExecuteWithDispatchAsync(VoiceLabTakeRunQuote quote, VoiceLabRunDispatch dispatch,
         Func<IReadOnlyList<VoiceLabTakeRow>, Task>? progress = null, CancellationToken ct = default)
     {
         Pending value;
@@ -124,7 +130,7 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
         CancellationTokenSource cancellation;
         lock (sync)
         {
-            if (!approved || preparing || owner.HasValue || pending is not { } prepared || !ReferenceEquals(quote, prepared.Quote))
+            if (preparing || owner.HasValue || pending is not { } prepared || !ReferenceEquals(quote, prepared.Quote))
                 throw new VoiceLabException(VoiceLabErrorKind.ConsentRequired);
             value = prepared;
             pending = null;
@@ -135,42 +141,67 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
             stop = VoiceLabTakeRunEnd.Cancelled;
         }
         var token = cancellation.Token;
+        var transportStarted = false;
+        var retainQuote = false;
+        Task launchCleanup = Task.CompletedTask;
+        async Task RetireAsync(VoiceLabTakeScratch[] retired)
+        {
+            await Task.WhenAll(retired.Select(scratch => scratch.InvalidateAsync())).ConfigureAwait(false);
+            if (progress is not null) await progress(Array.Empty<VoiceLabTakeRow>()).ConfigureAwait(false);
+        }
+        dispatch = dispatch.WithStart(action =>
+        {
+            lock (sync)
+            {
+                Check(value.Revision, value.Binding, token);
+                if (!transportStarted && !client.QuotesAreFresh(quote.Actions)) throw new VoiceLabException(VoiceLabErrorKind.ConsentRequired);
+                action();
+                if (!transportStarted)
+                {
+                    transportStarted = true;
+                    value = value with { Revision = ++revision };
+                    var retired = scratches.Values.ToArray(); scratches.Clear(); acceptedRows.Clear();
+                    launchCleanup = RetireAsync(retired);
+                }
+            }
+        });
         try
         {
             await Checkpoint("clock", value, token).ConfigureAwait(false);
             if (!client.QuotesAreFresh(quote.Actions)) throw new VoiceLabException(VoiceLabErrorKind.ConsentRequired);
             await ValidateAsync(value, token).ConfigureAwait(false);
             await Checkpoint("validation", value, token).ConfigureAwait(false);
-            var approvals = client.ApproveTakeRun(quote, true);
+            await dispatch.AuthorizeAsync(token).ConfigureAwait(false);
+            var approvals = client.ApproveTakeRun(quote, dispatch);
             await Checkpoint("approval", value, token).ConfigureAwait(false);
             await Checkpoint("launch", value, token).ConfigureAwait(false);
-            VoiceLabTakeScratch[] retired;
-            lock (sync)
-            {
-                Check(value.Revision, value.Binding, token);
-                value = value with { Revision = ++revision };
-                retired = scratches.Values.ToArray(); scratches.Clear(); acceptedRows.Clear();
-            }
-            await Task.WhenAll(retired.Select(scratch => scratch.InvalidateAsync())).ConfigureAwait(false);
-            if (progress is not null) await progress(Array.Empty<VoiceLabTakeRow>()).ConfigureAwait(false);
-            return await PerformAsync(value, approvals, progress ?? (_ => Task.CompletedTask), token).ConfigureAwait(false);
+            return await PerformAsync(() => value, approvals, progress ?? (_ => Task.CompletedTask),
+                () => transportStarted, () => launchCleanup, token).ConfigureAwait(false);
         }
+        catch (VoiceLabConfirmationRequiredException) { retainQuote = !transportStarted; throw; }
         finally
         {
-            client.DiscardTakeRun(quote);
-            lock (sync)
+            try { await launchCleanup.ConfigureAwait(false); }
+            finally
             {
-                if (owner == execution) { owner = null; running = null; }
+                if (!retainQuote) client.DiscardTakeRun(quote);
+                else client.ReleaseTakeRun(quote);
+                lock (sync)
+                {
+                    if (retainQuote && revision == value.Revision && client.QuotesAreFresh(quote.Actions)) pending = value;
+                    if (owner == execution) { owner = null; running = null; }
+                }
+                cancellation.Dispose();
             }
-            cancellation.Dispose();
         }
     }
-    private async Task<VoiceLabTakeRunResult> PerformAsync(Pending value, IReadOnlyList<VoiceLabAuthorization> approvals,
-        Func<IReadOnlyList<VoiceLabTakeRow>, Task> progress, CancellationToken ct)
+    private async Task<VoiceLabTakeRunResult> PerformAsync(Func<Pending> current, IReadOnlyList<VoiceLabAuthorization> approvals,
+        Func<IReadOnlyList<VoiceLabTakeRow>, Task> progress, Func<bool> hasStarted, Func<Task> launchCleanup, CancellationToken ct)
     {
         var rows = new List<VoiceLabTakeRow>();
-        foreach (var take in value.Quote.Takes)
+        foreach (var take in current().Quote.Takes)
         {
+            var value = current();
             VoiceLabAudioResult? generated = null;
             VoiceLabReceipt? qaReceipt = null;
             VoiceLabTakeAudio? audio = null;
@@ -181,6 +212,8 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
                 await Checkpoint("authorization", value, ct).ConfigureAwait(false);
                 generated = await client.SynthesizeAsync(value.Input.Text, value.Input.ModelId, VoiceLabVoiceChoice.Own(value.Record.VoiceId, policy),
                     value.Input.Language, value.Input.Options(take.Index), approvals[take.Index * 2], ct, take.Synthesis.Review.RequestId).ConfigureAwait(false);
+                await launchCleanup().ConfigureAwait(false);
+                value = current();
                 if (Suspension is { } afterSynthesis) await afterSynthesis("synthesis").ConfigureAwait(false);
                 var paid = await Task.Run(() => VoiceLabAssetStore.Write(generated.Pcm, generated.SampleRate, storage.ProjectId,
                     Guid.NewGuid().ToString("D"), storage.PaidRoot, DateTimeOffset.UtcNow), CancellationToken.None).ConfigureAwait(false);
@@ -242,8 +275,15 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
                 await ValidateAsync(value, ct).ConfigureAwait(false);
                 if (row.Selectable && row.Fits) return new(rows.AsReadOnly(), VoiceLabTakeRunEnd.EarlyStop);
             }
+            catch (VoiceLabConfirmationRequiredException) { throw; }
             catch (Exception error)
             {
+                if (!hasStarted())
+                {
+                    if (error is VoiceConsentException or VoiceLabRunInvalidatedException) return new(rows.AsReadOnly(), End(error));
+                    throw;
+                }
+                value = current();
                 if (error is VoiceLabRunInvalidatedException || ct.IsCancellationRequested) return new(rows.AsReadOnly(), End(error));
                 rows.Add(new(take.Synthesis.Review.RequestId, take.Index, take.Seed, generated?.Receipt, qaReceipt, generated, take, audio, Failure: error));
                 await progress(rows.AsReadOnly()).ConfigureAwait(false);
@@ -291,6 +331,7 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
     }
     public bool IsQuoteFresh(VoiceLabTakeRunQuote quote) => client.QuotesAreFresh(quote.Actions);
     public Task<VoiceLabMonthlyCap?> RefreshMonthlyCapAsync(VoiceLabMonthlyCap? cap, CancellationToken ct = default) => client.RefreshMonthlyCapAsync(cap, ct);
+    public Task<decimal?> ReadMonthlySpendAsync(VoiceLabMonthlyCap? fallback, CancellationToken ct = default) => client.ReadMonthlySpendAsync(ct);
     public void InvalidatePreparation()
     {
         VoiceLabTakeRunQuote? quote;

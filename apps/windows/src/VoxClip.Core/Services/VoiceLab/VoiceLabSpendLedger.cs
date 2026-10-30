@@ -109,6 +109,20 @@ public sealed class VoiceLabSpendLedger
     public async Task<VoiceLabSpendTotal?> TotalAsync(string provider, DateTimeOffset start, CancellationToken ct) =>
         (await ReadAsync(ct).ConfigureAwait(false))?.Total(provider, Month(start));
 
+    /// <summary>Cap decisions never interpret malformed or unreadable persisted spending as zero.</summary>
+    public async Task<VoiceLabSpendTotal?> TotalForCapAsync(string provider, DateTimeOffset start, CancellationToken ct)
+    {
+        if (!Directory.Exists(Path.GetDirectoryName(FilePath))) return new VoiceLabSpendDocument().Total(provider, Month(start));
+        var (held, failure) = await AcquireAsync(true, ReadTimeout, ct).ConfigureAwait(false);
+        if (failure is not null) return null;
+        using (held)
+        {
+            if (!File.Exists(FilePath)) return new VoiceLabSpendDocument().Total(provider, Month(start));
+            var bytes = await TryReadAsync(ct).ConfigureAwait(false);
+            return bytes is null ? null : VoiceLabSpendDocument.Parse(bytes)?.Total(provider, Month(start));
+        }
+    }
+
     /// <summary>Add the estimate of one action that ran, once, after the provider accepted it, under the local month of <paramref name="start"/>.
     /// A free action (exactly $0) is not recorded and touches nothing. <paramref name="ct"/> applies only to the wait for the lock: once the
     /// lock is held the record completes, because the action already ran.</summary>
